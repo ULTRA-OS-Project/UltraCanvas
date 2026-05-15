@@ -259,10 +259,10 @@ namespace UltraCanvas {
 
 // ===== MAIN PIE CHART EXAMPLES CREATOR =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePieChartExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("PieChartContainer", 0, 0, 1000, 780);
+        auto container = std::make_shared<UltraCanvasContainer>("PieChartContainer", 0, 0, 1200, 780);
 
         // === TITLE ===
-        auto titleLabel = std::make_shared<UltraCanvasLabel>("TitleLabel", 20, 10, 960, 35);
+        auto titleLabel = std::make_shared<UltraCanvasLabel>("TitleLabel", 20, 10, 1160, 35);
         titleLabel->SetText("Pie Chart Examples - Enhanced with 3D, Gradients & Export");
         titleLabel->SetFontSize(18);
         titleLabel->SetFontWeight(FontWeight::Bold);
@@ -283,13 +283,13 @@ namespace UltraCanvas {
         container->AddChild(descLabel);
 
         // ===== EXAMPLE 1: MARKET SHARE ANALYSIS =====
-        auto marketLabel = std::make_shared<UltraCanvasLabel>("MarketLabel", 20, 130, 300, 25);
+        auto marketLabel = std::make_shared<UltraCanvasLabel>("MarketLabel", 240, 130, 300, 25);
         marketLabel->SetText("Market Share Distribution");
         marketLabel->SetFontSize(13);
         marketLabel->SetFontWeight(FontWeight::Bold);
         container->AddChild(marketLabel);
 
-        auto marketChart = CreatePieChartElement("MarketPieChart", 20, 160, 300, 250);
+        auto marketChart = CreatePieChartElement("MarketPieChart", 240, 160, 300, 250);
         marketChart->SetDataSource(GenerateMarketShareData());
         marketChart->SetColorPalette({
                                              Color(54, 162, 235, 255),   // Blue
@@ -306,13 +306,13 @@ namespace UltraCanvas {
         container->AddChild(marketChart);
 
         // ===== EXAMPLE 2: BUDGET ALLOCATION =====
-        auto budgetLabel = std::make_shared<UltraCanvasLabel>("BudgetLabel", 340, 130, 300, 25);
+        auto budgetLabel = std::make_shared<UltraCanvasLabel>("BudgetLabel", 560, 130, 300, 25);
         budgetLabel->SetText("Annual Budget Allocation");
         budgetLabel->SetFontSize(13);
         budgetLabel->SetFontWeight(FontWeight::Bold);
         container->AddChild(budgetLabel);
 
-        auto budgetChart = CreatePieChartElement("BudgetPieChart", 340, 160, 300, 250);
+        auto budgetChart = CreatePieChartElement("BudgetPieChart", 560, 160, 300, 250);
         budgetChart->SetDataSource(GenerateBudgetData());
         budgetChart->SetColorPalette({
                                              Color(255, 159, 64, 255),   // Orange
@@ -331,13 +331,13 @@ namespace UltraCanvas {
         container->AddChild(budgetChart);
 
         // ===== EXAMPLE 3: REGIONAL SALES =====
-        auto salesLabel = std::make_shared<UltraCanvasLabel>("SalesLabel", 660, 130, 300, 25);
+        auto salesLabel = std::make_shared<UltraCanvasLabel>("SalesLabel", 880, 130, 300, 25);
         salesLabel->SetText("Regional Sales Performance");
         salesLabel->SetFontSize(13);
         salesLabel->SetFontWeight(FontWeight::Bold);
         container->AddChild(salesLabel);
 
-        auto salesChart = CreatePieChartElement("SalesPieChart", 660, 160, 300, 250);
+        auto salesChart = CreatePieChartElement("SalesPieChart", 880, 160, 300, 250);
         salesChart->SetDataSource(GenerateRegionalSalesData());
         salesChart->SetColorPalette({
                                             Color(75, 192, 192, 255),   // Teal
@@ -355,13 +355,13 @@ namespace UltraCanvas {
         container->AddChild(salesChart);
 
         // ===== EXAMPLE 4: 3D DONUT WITH GRADIENTS =====
-        auto donutLabel = std::make_shared<UltraCanvasLabel>("DonutLabel", 20, 425, 460, 45);
+        auto donutLabel = std::make_shared<UltraCanvasLabel>("DonutLabel", 240, 425, 460, 45);
         donutLabel->SetText("3D Donut Chart with Radial Gradients & Exploded Slice");
         donutLabel->SetFontSize(13);
         donutLabel->SetFontWeight(FontWeight::Bold);
         container->AddChild(donutLabel);
 
-        auto donutChart = CreatePieChartElement("DonutChart", 20, 455, 460, 290);
+        auto donutChart = CreatePieChartElement("DonutChart", 240, 455, 460, 290);
         donutChart->SetDataSource(GenerateMarketShareData());
         donutChart->SetColorPalette({
                                             Color(255, 99, 132, 255),
@@ -403,13 +403,13 @@ namespace UltraCanvas {
         container->AddChild(donutChart);
 
         // ===== EXAMPLE 5: EXPORT SHOWCASE =====
-        auto exportLabel = std::make_shared<UltraCanvasLabel>("ExportLabel", 500, 425, 460, 25);
+        auto exportLabel = std::make_shared<UltraCanvasLabel>("ExportLabel", 720, 425, 460, 25);
         exportLabel->SetText("Export Preview");
         exportLabel->SetFontSize(13);
         exportLabel->SetFontWeight(FontWeight::Bold);
         container->AddChild(exportLabel);
 
-        auto exportChart = CreatePieChartElement("ExportChart", 500, 455, 460, 290);
+        auto exportChart = CreatePieChartElement("ExportChart", 720, 455, 460, 290);
         exportChart->SetDataSource(GenerateBudgetData());
         exportChart->SetColorPalette({
                                              Color(255, 159, 64, 255),
@@ -431,11 +431,11 @@ namespace UltraCanvas {
 
         container->AddChild(exportChart);
 
-        // === CONTROL PANEL ===
-        CreatePieChartControlPanel(container, marketChart, budgetChart, salesChart, exportChart, 1000, 130);
+        // === CONTROL PANEL (left column) ===
+        CreatePieChartControlPanel(container, marketChart, budgetChart, salesChart, exportChart, 20, 130);
 
         // === FORMAT SUPPORT INFO ===
-        auto formatLabel = std::make_shared<UltraCanvasLabel>("FormatLabel", 20, 755, 960, 20);
+        auto formatLabel = std::make_shared<UltraCanvasLabel>("FormatLabel", 20, 755, 1160, 20);
         formatLabel->SetText("Export Formats: PNG (lossless) • JPEG (quality 1-100) • BMP • TIFF • QOI (fast) • WEBP • JXL (next-gen)");
         formatLabel->SetFontSize(10);
         formatLabel->SetAlignment(TextAlignment::Center);
