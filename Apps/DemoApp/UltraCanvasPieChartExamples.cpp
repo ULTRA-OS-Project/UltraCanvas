@@ -7,8 +7,6 @@
 #include "UltraCanvasDemo.h"
 #include "Plugins/Charts/UltraCanvasSpecificChartElements.h"
 #include "Plugins/Charts/UltraCanvasPieChart.h"
-#include "UltraCanvasButton.h"
-#include "UltraCanvasModalDialog.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasDropdown.h"
@@ -67,27 +65,11 @@ namespace UltraCanvas {
         return data;
     }
 
-    std::shared_ptr<ChartDataVector> GenerateRegionalSalesData() {
-        auto data = std::make_shared<ChartDataVector>();
-        std::vector<ChartDataPoint> sales = {
-                ChartDataPoint(1, 2800, 0, "North America", 2800),
-                ChartDataPoint(2, 2200, 0, "Europe", 2200),
-                ChartDataPoint(3, 1900, 0, "Asia Pacific", 1900),
-                ChartDataPoint(4, 850, 0, "Latin America", 850),
-                ChartDataPoint(5, 450, 0, "Middle East", 450),
-                ChartDataPoint(6, 300, 0, "Africa", 300)
-        };
-        data->LoadFromArray(sales);
-        return data;
-    }
-
 // ===== CONTROL PANEL CREATION =====
     void CreatePieChartControlPanel(
             std::shared_ptr<UltraCanvasContainer> container,
             std::shared_ptr<UltraCanvasPieChartElement> pieChart1,
             std::shared_ptr<UltraCanvasPieChartElement> pieChart2,
-            std::shared_ptr<UltraCanvasPieChartElement> pieChart3,
-            std::shared_ptr<UltraCanvasPieChartElement> exportChart,
             int x, int y) {
 
         int yOffset = y;
@@ -104,11 +86,10 @@ namespace UltraCanvas {
         auto donutCheckbox = std::make_shared<UltraCanvasCheckbox>("DonutMode", x, yOffset, 150, controlHeight);
         donutCheckbox->SetText("Donut Mode");
         donutCheckbox->SetChecked(pieChartControls.donutMode);
-        donutCheckbox->onStateChanged = [pieChart1, pieChart2, pieChart3](CheckedState oldState, CheckedState newState) {
+        donutCheckbox->onStateChanged = [pieChart1, pieChart2](CheckedState oldState, CheckedState newState) {
             pieChartControls.donutMode = newState == CheckedState::Checked;
             pieChart1->SetDonutMode(newState == CheckedState::Checked);
             pieChart2->SetDonutMode(newState == CheckedState::Checked);
-            pieChart3->SetDonutMode(newState == CheckedState::Checked);
         };
         container->AddChild(donutCheckbox);
         yOffset += controlHeight + spacing;
@@ -123,16 +104,14 @@ namespace UltraCanvas {
         auto enable3DCheckbox = std::make_shared<UltraCanvasCheckbox>("3DEffects", x, yOffset, 150, controlHeight);
         enable3DCheckbox->SetText("3D Effects");
         enable3DCheckbox->SetChecked(pieChartControls.enable3DEffects);
-        enable3DCheckbox->onStateChanged = [pieChart1, pieChart2, pieChart3](CheckedState oldState, CheckedState newState) {
+        enable3DCheckbox->onStateChanged = [pieChart1, pieChart2](CheckedState oldState, CheckedState newState) {
             pieChartControls.enable3DEffects = newState == CheckedState::Checked;
             if (newState == CheckedState::Checked) {
                 pieChart1->Enable3DMode(pieChartControls.depthHeight, pieChartControls.perspectiveAngle);
                 pieChart2->Enable3DMode(pieChartControls.depthHeight, pieChartControls.perspectiveAngle);
-                pieChart3->Enable3DMode(pieChartControls.depthHeight, pieChartControls.perspectiveAngle);
             } else {
                 pieChart1->Disable3DMode();
                 pieChart2->Disable3DMode();
-                pieChart3->Disable3DMode();
             }
         };
         container->AddChild(enable3DCheckbox);
@@ -141,16 +120,14 @@ namespace UltraCanvas {
         auto gradientCheckbox = std::make_shared<UltraCanvasCheckbox>("GradientFills", x, yOffset, 180, controlHeight);
         gradientCheckbox->SetText("Radial Gradients");
         gradientCheckbox->SetChecked(pieChartControls.gradientFills);
-        gradientCheckbox->onStateChanged = [pieChart1, pieChart2, pieChart3](CheckedState oldState, CheckedState newState) {
+        gradientCheckbox->onStateChanged = [pieChart1, pieChart2](CheckedState oldState, CheckedState newState) {
             pieChartControls.gradientFills = newState == CheckedState::Checked;
             if (newState == CheckedState::Checked) {
                 pieChart1->SetAutoRadialGradients();
                 pieChart2->SetAutoRadialGradients();
-                pieChart3->SetAutoRadialGradients();
             } else {
                 pieChart1->ClearSliceGradients();
                 pieChart2->ClearSliceGradients();
-                pieChart3->ClearSliceGradients();
             }
         };
         container->AddChild(gradientCheckbox);
@@ -167,11 +144,10 @@ namespace UltraCanvas {
         explosionSlider->SetRange(0.0, 0.5);
         explosionSlider->SetStep(0.01);
         explosionSlider->SetValue(pieChartControls.globalExplosion);
-        explosionSlider->onValueChanged = [pieChart1, pieChart2, pieChart3](double value) {
+        explosionSlider->onValueChanged = [pieChart1, pieChart2](double value) {
             pieChartControls.globalExplosion = static_cast<float>(value);
             pieChart1->SetGlobalExplosion(pieChartControls.globalExplosion);
             pieChart2->SetGlobalExplosion(pieChartControls.globalExplosion);
-            pieChart3->SetGlobalExplosion(pieChartControls.globalExplosion);
         };
         container->AddChild(explosionSlider);
         yOffset += controlHeight + spacing * 2;
@@ -187,11 +163,10 @@ namespace UltraCanvas {
         perspectiveSlider->SetRange(5.0, 70.0);
         perspectiveSlider->SetStep(1.0);
         perspectiveSlider->SetValue(pieChartControls.perspectiveAngle);
-        perspectiveSlider->onValueChanged = [pieChart1, pieChart2, pieChart3](double value) {
+        perspectiveSlider->onValueChanged = [pieChart1, pieChart2](double value) {
             pieChartControls.perspectiveAngle = static_cast<float>(value);
             pieChart1->SetPerspectiveAngle(pieChartControls.perspectiveAngle);
             pieChart2->SetPerspectiveAngle(pieChartControls.perspectiveAngle);
-            pieChart3->SetPerspectiveAngle(pieChartControls.perspectiveAngle);
         };
         container->AddChild(perspectiveSlider);
         yOffset += controlHeight + spacing * 2;
@@ -210,7 +185,7 @@ namespace UltraCanvas {
         labelPosDropdown->AddItem("Edge");
         labelPosDropdown->AddItem("None");
         labelPosDropdown->SetSelectedIndex(0);
-        labelPosDropdown->onSelectionChanged = [pieChart1, pieChart2, pieChart3](int index, const DropdownItem& item) {
+        labelPosDropdown->onSelectionChanged = [pieChart1, pieChart2](int index, const DropdownItem& item) {
             LabelPosition pos;
             switch (index) {
                 case 0: pos = LabelPosition::Auto; break;
@@ -223,7 +198,6 @@ namespace UltraCanvas {
             pieChartControls.labelPosition = pos;
             pieChart1->SetLabelPosition(pos);
             pieChart2->SetLabelPosition(pos);
-            pieChart3->SetLabelPosition(pos);
         };
         container->AddChild(labelPosDropdown);
         yOffset += controlHeight + spacing;
@@ -231,39 +205,21 @@ namespace UltraCanvas {
         auto leaderLinesCheckbox = std::make_shared<UltraCanvasCheckbox>("LeaderLines", x, yOffset, 180, controlHeight);
         leaderLinesCheckbox->SetText("Leader Lines");
         leaderLinesCheckbox->SetChecked(pieChartControls.leaderLines);
-        leaderLinesCheckbox->onStateChanged = [pieChart1, pieChart2, pieChart3](CheckedState oldState, CheckedState newState) {
+        leaderLinesCheckbox->onStateChanged = [pieChart1, pieChart2](CheckedState oldState, CheckedState newState) {
             pieChartControls.leaderLines = newState == CheckedState::Checked;
             pieChart1->SetLeaderLinesEnabled(newState == CheckedState::Checked);
             pieChart2->SetLeaderLinesEnabled(newState == CheckedState::Checked);
-            pieChart3->SetLeaderLinesEnabled(newState == CheckedState::Checked);
         };
         container->AddChild(leaderLinesCheckbox);
-        yOffset += controlHeight + spacing * 2;
-
-        // === EXPORT BUTTON ===
-        auto exportButton = std::make_shared<UltraCanvasButton>("ExportButton", x, yOffset, 180, 30);
-        exportButton->SetText("Export to PNG");
-        exportButton->SetStyle(ButtonStyles::PrimaryStyle());
-        exportButton->onClick = [exportChart]() {
-            std::string filename = "pie_chart_export.png";
-            bool success = exportChart->QuickExport(filename);
-            if (success) {
-                UltraCanvasDialogManager::ShowInformation("Exported to pie_chart_export.png", "Exported");
-                debugOutput << "Exported pie chart to: " << filename << std::endl;
-            } else {
-                debugOutput << "Failed to export pie chart!" << std::endl;
-            }
-        };
-        container->AddChild(exportButton);
     }
 
 // ===== MAIN PIE CHART EXAMPLES CREATOR =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePieChartExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("PieChartContainer", 0, 0, 1200, 780);
+        auto container = std::make_shared<UltraCanvasContainer>("PieChartContainer", 0, 0, 1200, 810);
 
         // === TITLE ===
         auto titleLabel = std::make_shared<UltraCanvasLabel>("TitleLabel", 20, 10, 1160, 35);
-        titleLabel->SetText("Pie Chart Examples - Enhanced with 3D, Gradients & Export");
+        titleLabel->SetText("Pie Chart Examples - Enhanced with 3D & Gradients");
         titleLabel->SetFontSize(18);
         titleLabel->SetFontWeight(FontWeight::Bold);
         titleLabel->SetAlignment(TextAlignment::Center);
@@ -274,8 +230,7 @@ namespace UltraCanvas {
         auto descLabel = std::make_shared<UltraCanvasLabel>("DescLabel", 20, 55, 760, 60);
         descLabel->SetText(
                 "Comprehensive pie chart visualization with donut mode, exploded slices, radial gradients,\n"
-                "3D visual effects, advanced labeling, and multi-format export. Supports PNG, JPEG, TIFF,\n"
-                "QOI, WEBP, and JXL export formats. Features intelligent label positioning and interactive tooltips."
+                "3D visual effects, and advanced labeling. Features intelligent label positioning and interactive tooltips."
         );
         descLabel->SetFontSize(11);
         descLabel->SetWrap(TextWrap::WrapWord);
@@ -283,13 +238,13 @@ namespace UltraCanvas {
         container->AddChild(descLabel);
 
         // ===== EXAMPLE 1: MARKET SHARE ANALYSIS =====
-        auto marketLabel = std::make_shared<UltraCanvasLabel>("MarketLabel", 240, 130, 300, 25);
+        auto marketLabel = std::make_shared<UltraCanvasLabel>("MarketLabel", 240, 130, 460, 25);
         marketLabel->SetText("Market Share Distribution");
         marketLabel->SetFontSize(13);
         marketLabel->SetFontWeight(FontWeight::Bold);
         container->AddChild(marketLabel);
 
-        auto marketChart = CreatePieChartElement("MarketPieChart", 240, 160, 300, 250);
+        auto marketChart = CreatePieChartElement("MarketPieChart", 240, 160, 460, 290);
         marketChart->SetDataSource(GenerateMarketShareData());
         marketChart->SetColorPalette({
                                              Color(54, 162, 235, 255),   // Blue
@@ -306,13 +261,13 @@ namespace UltraCanvas {
         container->AddChild(marketChart);
 
         // ===== EXAMPLE 2: BUDGET ALLOCATION =====
-        auto budgetLabel = std::make_shared<UltraCanvasLabel>("BudgetLabel", 560, 130, 300, 25);
+        auto budgetLabel = std::make_shared<UltraCanvasLabel>("BudgetLabel", 720, 130, 460, 25);
         budgetLabel->SetText("Annual Budget Allocation");
         budgetLabel->SetFontSize(13);
         budgetLabel->SetFontWeight(FontWeight::Bold);
         container->AddChild(budgetLabel);
 
-        auto budgetChart = CreatePieChartElement("BudgetPieChart", 560, 160, 300, 250);
+        auto budgetChart = CreatePieChartElement("BudgetPieChart", 720, 160, 460, 290);
         budgetChart->SetDataSource(GenerateBudgetData());
         budgetChart->SetColorPalette({
                                              Color(255, 159, 64, 255),   // Orange
@@ -330,38 +285,14 @@ namespace UltraCanvas {
         budgetChart->SetTooltipsEnabled(true);
         container->AddChild(budgetChart);
 
-        // ===== EXAMPLE 3: REGIONAL SALES =====
-        auto salesLabel = std::make_shared<UltraCanvasLabel>("SalesLabel", 880, 130, 300, 25);
-        salesLabel->SetText("Regional Sales Performance");
-        salesLabel->SetFontSize(13);
-        salesLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(salesLabel);
-
-        auto salesChart = CreatePieChartElement("SalesPieChart", 880, 160, 300, 250);
-        salesChart->SetDataSource(GenerateRegionalSalesData());
-        salesChart->SetColorPalette({
-                                            Color(75, 192, 192, 255),   // Teal
-                                            Color(54, 162, 235, 255),   // Blue
-                                            Color(153, 102, 255, 255),  // Purple
-                                            Color(255, 159, 64, 255),   // Orange
-                                            Color(255, 99, 132, 255),   // Red
-                                            Color(255, 205, 86, 255)    // Yellow
-                                    });
-        salesChart->SetBorderColor(Colors::White);
-        salesChart->SetBorderWidth(2.0f);
-        salesChart->SetLabelContent(LabelContent::All);
-        salesChart->SetLabelPosition(LabelPosition::Auto);
-        salesChart->SetTooltipsEnabled(true);
-        container->AddChild(salesChart);
-
-        // ===== EXAMPLE 4: 3D DONUT WITH GRADIENTS =====
-        auto donutLabel = std::make_shared<UltraCanvasLabel>("DonutLabel", 240, 425, 460, 45);
-        donutLabel->SetText("3D Donut Chart with Radial Gradients & Exploded Slice");
+        // ===== EXAMPLE 3: 3D DONUT WITH GRADIENTS =====
+        auto donutLabel = std::make_shared<UltraCanvasLabel>("DonutLabel", 240, 470, 460, 25);
+        donutLabel->SetText("3D Donut with Highlighted Slice");
         donutLabel->SetFontSize(13);
         donutLabel->SetFontWeight(FontWeight::Bold);
         container->AddChild(donutLabel);
 
-        auto donutChart = CreatePieChartElement("DonutChart", 240, 455, 460, 290);
+        auto donutChart = CreatePieChartElement("DonutChart", 240, 500, 460, 290);
         donutChart->SetDataSource(GenerateMarketShareData());
         donutChart->SetColorPalette({
                                             Color(255, 99, 132, 255),
@@ -402,16 +333,16 @@ namespace UltraCanvas {
 
         container->AddChild(donutChart);
 
-        // ===== EXAMPLE 5: EXPORT SHOWCASE =====
-        auto exportLabel = std::make_shared<UltraCanvasLabel>("ExportLabel", 720, 425, 460, 25);
-        exportLabel->SetText("Export Preview");
-        exportLabel->SetFontSize(13);
-        exportLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(exportLabel);
+        // ===== EXAMPLE 4: STYLIZED SHOWCASE =====
+        auto styledLabel = std::make_shared<UltraCanvasLabel>("StyledLabel", 720, 470, 460, 25);
+        styledLabel->SetText("Stylized Pie Chart");
+        styledLabel->SetFontSize(13);
+        styledLabel->SetFontWeight(FontWeight::Bold);
+        container->AddChild(styledLabel);
 
-        auto exportChart = CreatePieChartElement("ExportChart", 720, 455, 460, 290);
-        exportChart->SetDataSource(GenerateBudgetData());
-        exportChart->SetColorPalette({
+        auto styledChart = CreatePieChartElement("StyledChart", 720, 500, 460, 290);
+        styledChart->SetDataSource(GenerateBudgetData());
+        styledChart->SetColorPalette({
                                              Color(255, 159, 64, 255),
                                              Color(54, 162, 235, 255),
                                              Color(255, 99, 132, 255),
@@ -420,27 +351,19 @@ namespace UltraCanvas {
                                              Color(199, 199, 199, 255)
                                      });
 
-        // High-quality rendering for export
-        exportChart->SetAutoRadialGradients();
-        exportChart->SetLabelContent(LabelContent::NameValue);
-        exportChart->SetLabelPosition(LabelPosition::Auto);
-        exportChart->SetLabelFont("Arial", 12.0f, FontWeight::Bold);
-        exportChart->SetBorderColor(Color(255, 255, 255, 255));
-        exportChart->SetBorderWidth(3.0f);
-        exportChart->SetTooltipsEnabled(true);
+        // Showcase styling: gradients, bold labels, thick white borders.
+        styledChart->SetAutoRadialGradients();
+        styledChart->SetLabelContent(LabelContent::NameValue);
+        styledChart->SetLabelPosition(LabelPosition::Auto);
+        styledChart->SetLabelFont("Arial", 12.0f, FontWeight::Bold);
+        styledChart->SetBorderColor(Color(255, 255, 255, 255));
+        styledChart->SetBorderWidth(3.0f);
+        styledChart->SetTooltipsEnabled(true);
 
-        container->AddChild(exportChart);
+        container->AddChild(styledChart);
 
         // === CONTROL PANEL (left column) ===
-        CreatePieChartControlPanel(container, marketChart, budgetChart, salesChart, exportChart, 20, 130);
-
-        // === FORMAT SUPPORT INFO ===
-        auto formatLabel = std::make_shared<UltraCanvasLabel>("FormatLabel", 20, 755, 1160, 20);
-        formatLabel->SetText("Export Formats: PNG (lossless) • JPEG (quality 1-100) • BMP • TIFF • QOI (fast) • WEBP • JXL (next-gen)");
-        formatLabel->SetFontSize(10);
-        formatLabel->SetAlignment(TextAlignment::Center);
-        formatLabel->SetTextColor(Color(100, 100, 100, 255));
-        container->AddChild(formatLabel);
+        CreatePieChartControlPanel(container, marketChart, budgetChart, 20, 130);
 
         return container;
     }
