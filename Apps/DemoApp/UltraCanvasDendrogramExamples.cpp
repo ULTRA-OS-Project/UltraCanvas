@@ -15,6 +15,7 @@
 #include "UltraCanvasDemo.h"
 #include "Plugins/Diagrams/UltraCanvasDendrogram.h"
 #include "Plugins/Diagrams/UltraCanvasDendrogramLayout.h"
+#include "UltraCanvasBoxLayout.h"
 #include <unordered_map>
 #include <string>
 #include <vector>
@@ -76,26 +77,29 @@ static std::shared_ptr<UltraCanvasContainer> MakeControlBar(
 {
     auto bar = std::make_shared<UltraCanvasContainer>("ctrl_"+d->GetIdentifier(), 0, 0, w, 36);
     bar->SetBackgroundColor(Color(247,247,250,255));
+    auto layout = CreateHBoxLayout(bar.get());
+    layout->SetSpacing(6);
+    layout->SetDefaultCrossAxisAlignment(LayoutAlignment::Center);
 
-    auto mkBtn = [&](const std::string& sfx, int x, int bw, const std::string& lbl,
+    auto mkBtn = [&](const std::string& sfx, int bw, const std::string& lbl,
                      std::function<void()> cb) {
-        auto btn = std::make_shared<UltraCanvasButton>(sfx+"_"+d->GetIdentifier(), x, 4, bw, 28, lbl);
+        auto btn = std::make_shared<UltraCanvasButton>(sfx+"_"+d->GetIdentifier(), 0, 0, bw, 28, lbl);
         btn->onClick = std::move(cb);
-        bar->AddChild(btn);
+        layout->AddUIElement(btn);
     };
 
-    mkBtn("rst",   4,  88, "Reset View",  [d]{ d->ResetView(); });
-    mkBtn("zi",   96,  36, "+",           [d]{ d->SetZoom(d->GetZoom()*1.3f); });
-    mkBtn("zo",  136,  36, "−",           [d]{ d->SetZoom(d->GetZoom()/1.3f); });
-    mkBtn("exp", 178,  90, "Expand All",  [d]{ d->ExpandAll(); });
-    mkBtn("col", 272,  98, "Collapse All",[d]{ d->CollapseAll(); });
-    mkBtn("rpos",374, 120, "Reset Pos",    [d]{ d->ResetNodePositions(); });
+    mkBtn("rst",  110, "Reset View",  [d]{ d->ResetView(); });
+    mkBtn("zi",   36, "+",           [d]{ d->SetZoom(d->GetZoom()*1.3f); });
+    mkBtn("zo",   36, "−",           [d]{ d->SetZoom(d->GetZoom()/1.3f); });
+    mkBtn("exp",  120, "Expand All",  [d]{ d->ExpandAll(); });
+    mkBtn("col",  120, "Collapse All",[d]{ d->CollapseAll(); });
+    mkBtn("rpos", 120, "Reset Pos",    [d]{ d->ResetNodePositions(); });
 
     auto lbl = std::make_shared<UltraCanvasLabel>("inf_"+d->GetIdentifier(),
                                                    504, 10, w-508, 20, info);
     lbl->SetTextColor(Color(100,100,110,255));
     lbl->SetFontSize(11.0f);
-    bar->AddChild(lbl);
+    layout->AddUIElement(lbl);
     return bar;
 }
 
@@ -594,25 +598,25 @@ namespace UltraCanvas {
         
         const int headerH = 62;
         
-        auto titleLbl = std::make_shared<UltraCanvasLabel>("DendrogramTitle", 1172, 34, "Dendrogram Analysis Suite");
+        auto titleLbl = std::make_shared<UltraCanvasLabel>("DendrogramTitle", 10, 0, 1172, 34, "Dendrogram Analysis Suite");
         titleLbl->SetFontSize(22.0f);
         titleLbl->SetFontWeight(FontWeight::Bold);
         titleLbl->SetTextColor(Color(20,20,30,255));
         container->AddChild(titleLbl);
         
-        auto subLbl = std::make_shared<UltraCanvasLabel>("DendrogramSub", 1172, 20, 
+        auto subLbl = std::make_shared<UltraCanvasLabel>("DendrogramSub", 10, 40, 1172, 20,
             "Interactive visualization of hierarchical data - Scroll to zoom, drag to pan, double-click to collapse");
         subLbl->SetFontSize(12.0f);
         subLbl->SetTextColor(Color(100,100,110,255));
         container->AddChild(subLbl);
         
-        auto tabs = std::make_shared<UltraCanvasTabbedContainer>("DendrogramTabs", 0, headerH, 1220, 860-headerH);
+        auto tabs = std::make_shared<UltraCanvasTabbedContainer>("DendrogramTabs", 10, headerH, 1220, 860-headerH);
         tabs->SetTabPosition(TabPosition::Top);
         tabs->SetTabStyle(TabStyle::Modern);
         
         long uid = 2000L;
         int tw = 1220;
-        int th = 860 - headerH - 36;
+        int th = 860 - headerH - 30;
         
         tabs->AddTab("Top-Down (E)",           MakeDemo1(uid,tw,th));
         tabs->AddTab("Left-Right Curved (F)", MakeDemo2(uid,tw,th));

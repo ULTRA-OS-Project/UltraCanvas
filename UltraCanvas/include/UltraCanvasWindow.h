@@ -182,6 +182,7 @@ namespace UltraCanvas {
         // Internal method for elements to request focus (called by element's SetFocus)
         virtual bool RequestElementFocus(UltraCanvasUIElement* element);
 
+        void CleanupElementReferences(UltraCanvasUIElement* element);
 
         // Platform-specific
         virtual NativeWindowHandle GetNativeHandle() const = 0;

@@ -8,6 +8,7 @@
 #include "Plugins/Text/UltraCanvasMarkdown.h"
 //#include "UltraCanvasButton3Sections.h"
 #include "Plugins/Charts/UltraCanvasDivergingBarChart.h"
+#include "UltraCanvasTextArea.h"
 #include <sstream>
 #include <random>
 #include <map>
@@ -317,89 +318,15 @@ namespace UltraCanvas {
         return container;
     }
 
-    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateFileLoaderExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("FileLoaderExamples", 0, 0, 1020, 780);
-
-        auto text = std::make_shared<UltraCanvasMarkdownDisplay>("FileLoaderExamplesText", 10, 10, 1000, 750);
-        text->SetMarkdownText("**FileLoader** is a comprehensive, cross-platform file handling system that eliminates the complexity of working with diverse file formats. Whether you're building desktop applications, content management systems, or media processing tools, FileLoader provides a single, unified API for loading, saving, and converting files across dozens of formats.\n"
-                               "\n"
-                               "-----------------\n"
-                               "\n"
-                               "**Purpose**\n"
-                               "\n"
-                               "Stop wrestling with dozens of different libraries and APIs for each file format. FileLoader gives you:\n"
-                               "\n"
-                               "-   **One API for Everything** - Load images, audio, video, documents, and 3D models through a single, consistent interface\n"
-                               "-   **Effortless Format Conversion** - Convert between compatible formats with a single function call\n"
-                               "-   **Built-in Security** - Automatic malware and virus scanning protects your users\n"
-                               "-   **Cross-Platform Compatibility** - Same code works on Windows, Linux, and macOS\n"
-                               "\n"
-                               "**Supported Formats**\n"
-                               "\n"
-                               "**Images:** PNG, JPEG, WebP, AVIF, HEIC, GIF, BMP, TIFF, SVG, PSD, HDR, TGA, RAW formats\n"
-                               "**Audio:** MP3, FLAC, WAV, OGG, AAC, M4A, OPUS, WMA\n"
-                               "**Video:** MP4, AVI, MKV, WebM, MOV, FLV, WMV\n"
-                               "**Documents:** PDF, DOCX, ODT, RTF, TXT, Markdown\n"
-                               "**3D Models:** OBJ, FBX, GLTF, STL, 3DS, PLY, COLLADA\n"
-                               "**Archives:** ZIP, RAR, 7Z, TAR, GZ, BZ2");
-        MarkdownStyle style = MarkdownStyle::Default();
-        style.fontSize = 12;
-        text->SetStyle(style);
-        container->AddChild(text);
-
-        return container;
-    }
-
-    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePixeLXExamples() {
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMarkdownDocScreen(const std::string& filename) {
         auto container = std::make_shared<UltraCanvasContainer>("Examples", 0, 0, 1020, 780);
 
-        auto text = std::make_shared<UltraCanvasMarkdownDisplay>("ExamplesText", 10, 10, 1000, 750);
-        text->SetMarkdownText("###PixelFX -- Professional Bitmap Processing for UltraCanvas\n"
-                              "-----------------------\n"
-                              "\n"
-                              "**Transform pixels into perfection with industrial-strength image processing**\n"
-                              "\n"
-                              "PixelFX is UltraCanvas's comprehensive bitmap manipulation and analytics engine, delivering professional-grade image processing capabilities to any application. Built on proven open-source foundations and wrapped in an intuitive API, PixelFX eliminates the complexity of bitmap operations while providing enterprise-level performance.\n"
-                              "\n"
-                              "**Core Capabilities**\n"
-                              "\n"
-                              "**300+ Operations Across 14 Categories:**\n"
-                              "-   **Arithmetic & Mathematical** -- Pixel-perfect calculations, trigonometry, statistics, and complex number operations\n"
-                              "-   **Color Space Mastery** -- Seamless conversions between RGB, sRGB, HSV, Lab, CMYK, XYZ, and specialized color spaces\n"
-                              "-   **Format Flexibility** -- Cast, scale, and transform between any image format or bit depth\n"
-                              "-   **Advanced Filtering** -- Convolution, edge detection, blur, sharpen, and custom kernel operations\n"
-                              "-   **Histogram Intelligence** -- Analysis, equalization, matching, and adaptive processing\n"
-                              "-   **Morphological Processing** -- Erosion, dilation, opening, closing, and rank filters\n"
-                              "-   **Frequency Domain** -- FFT transforms and frequency-based filtering\n"
-                              "-   **Geometric Transforms** -- Resize, rotate, affine, and perspective corrections\n"
-                              "-   **Drawing Operations** -- Shapes, lines, text, and flood fill with anti-aliasing\n"
-                              "-   **Statistical Analysis** -- Min/max detection, deviation, profiles, and measurements\n"
-                              "----------------\n"
-                              "### Why PixelFX?\n"
-                              "\n"
-                              "**Powered by libvips** – Lightning-fast processing with minimal memory footprint. Where other libraries load entire images into RAM, PixelFX streams data intelligently, handling multi-gigabyte images on modest hardware.\n"
-                              "\n"
-                              "**Multi-Format Excellence** – Native support for PNG, JPEG, WebP, AVIF, HEIC, TIFF, GIF, JPEG-XL, BMP, and more. Specialized formats like scientific FITS, medical DICOM, and RAW camera files are all handled seamlessly.\n"
-                              "\n"
-                              "**Cross-Platform Power** – Identical API across Windows, Linux, macOS, and mobile platforms. Write once, process anywhere.\n"
-                              "\n"
-                              "**Plugin Architecture** – Extend functionality without touching core code. Add custom filters, new formats, or specialized algorithms through clean plugin interfaces.\n"
-                              "\n"
-                              "**Performance That Scales**\n"
-                              "---------------------------\n"
-                              "\n"
-                              "*   **Multi-threaded by design** – Automatic CPU utilization across all cores\n"
-                              "    \n"
-                              "*   **Demand-driven processing** – Only compute what's needed, when it's needed\n"
-                              "    \n"
-                              "*   **Memory efficient** – Process 10GB images on machines with 2GB RAM\n"
-                              "    \n"
-                              "*   **Hardware accelerated** – Leverage SIMD instructions (SSE, AVX, NEON) automatically\n"
-                              "    \n"
-                              "*   **2-3× faster** than traditional libraries for typical operations");
-        MarkdownStyle style = MarkdownStyle::Default();
-        style.fontSize = 12;
-        text->SetStyle(style);
+        auto text = std::make_shared<UltraCanvasTextArea>("ExamplesText", 10, 10, 1030, 800);
+        text->SetText(LoadFile(filename));
+        text->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
+        text->SetReadOnly(true);
+        text->SetWordWrap(true);
+        text->SetCursorPosition(LineColumnIndex::INVALID);
         container->AddChild(text);
 
         return container;
@@ -431,170 +358,11 @@ namespace UltraCanvas {
         return container;
     }
 
-    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateIODeviceManagerExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("IODeviceManagerExamples", 0, 0, 1020, 780);
-
-        auto text = std::make_shared<UltraCanvasMarkdownDisplay>("IODeviceManagerExamplesText", 10, 10, 1000, 750);
-        text->SetMarkdownText("## Complete Feature Set\n"
-                              "**Device Management**\n"
-                              "\n"
-                              "✅ Device enumeration by category\n"
-                              "✅ Device enumeration by protocol\n"
-                              "✅ Device registration and lifecycle\n"
-                              "✅ Device state tracking\n"
-                              "✅ Device capability querying\n"
-                              "✅ Device connection management\n"
-                              "\n"
-                              "**Scanner-Specific Features**\n"
-                              "\n"
-                              "✅ Resolution configuration (DPI)\n"
-                              "✅ Color mode selection (Grayscale, RGB, RGBA)\n"
-                              "✅ Scan area definition (x, y, width, height)\n"
-                              "✅ Output format selection (PNG, JPEG, TIFF, BMP, PDF)\n"
-                              "✅ Multi-page scanning support\n"
-                              "✅ ADF (Auto Document Feeder) support\n"
-                              "✅ Duplex scanning support\n"
-                              "✅ Brightness/contrast adjustment\n"
-                              "✅ Document size presets (A4, Letter, Legal, etc.)\n"
-                              "\n"
-                              "**SANE Implementation (Linux)**\n"
-                              "\n"
-                              "✅ SANE library initialization\n"
-                              "✅ Device discovery\n"
-                              "✅ Device opening/closing\n"
-                              "✅ Option enumeration and configuration\n"
-                              "✅ Image acquisition\n"
-                              "✅ Frame-by-frame reading\n"
-                              "✅ Multi-frame document handling\n"
-                              "✅ Error handling and reporting\n"
-                              "✅ Status code translation");
-        MarkdownStyle style = MarkdownStyle::Default();
-        style.fontSize = 12;
-        text->SetStyle(style);
-        container->AddChild(text);
-
-        return container;
-    }
-
-    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSmartHomeExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("smarthome", 0, 0, 1020, 1280);
-
-        auto text = std::make_shared<UltraCanvasMarkdownDisplay>("smarthomeText", 10, 10, 1000, 1250);
-        text->SetMarkdownText("## UltraCanvas Smart Home Module - Feature Overview\n"
-                              "\n"
-                              "### Dashboard Panel (`SmartHomePanel`)\n"
-                              "\n"
-                              "-   **Device Organization** - Automatic grouping by room with collapsible sections\n"
-                              "-   **Scene Cards** - Quick-activate preset configurations (e.g., \"Movie Night\", \"Good Morning\")\n"
-                              "-   **Filtering & Search** - Filter by room, device category, or search by name\n"
-                              "-   **Multiple Layouts** - Grid, list, compact, or detailed view modes\n"
-                              "-   **Real-time Status** - Online/offline indicators, battery levels, last-seen timestamps\n"
-                              "\n"
-                              "### Device Cards (`SmartHomeDeviceCard`)\n"
-                              "\n"
-                              "-   Visual cards showing device name, room, status, and quick toggle switch\n"
-                              "-   Color-coded icons by category (lights=amber, locks=green, sensors=blue, etc.)\n"
-                              "-   Long-press for device settings, tap for quick control\n"
-                              "-   Battery indicator for wireless devices\n"
-                              "\n"
-                              "### Device-Specific Controls\n"
-                              "\n"
-                              "Widget\n"
-                              "\n"
-                              "Features\n"
-                              "\n"
-                              "**Light Control**\n"
-                              "\n"
-                              "On/off, brightness slider, color temperature (2700K-6500K), RGB color wheel, preset colors\n"
-                              "\n"
-                              "**Thermostat Control**\n"
-                              "\n"
-                              "Circular temperature dial, current/target temps, Heat/Cool/Auto/Eco modes, fan control, humidity display\n"
-                              "\n"
-                              "**Lock Control**\n"
-                              "\n"
-                              "Lock/unlock with animated icon, access log history, battery status, confirmation option\n"
-                              "\n"
-                              "**Blind Control**\n"
-                              "\n"
-                              "Position slider (0-100%), tilt angle, visual preview, Open/Stop/Close buttons\n"
-                              "\n"
-                              "**Sensor Display**\n"
-                              "\n"
-                              "Large value readout, unit display, 24h history graph, min/max tracking, threshold alerts\n"
-                              "\n"
-                              "### Dialogs & Wizards\n"
-                              "\n"
-                              "Dialog\n"
-                              "\n"
-                              "Purpose\n"
-                              "\n"
-                              "**Device Dialog**\n"
-                              "\n"
-                              "View/edit device name, room assignment, category; shows protocol, manufacturer, model\n"
-                              "\n"
-                              "**Pairing Wizard**\n"
-                              "\n"
-                              "Step-by-step: Select protocol → Search → Configure → Complete; supports Matter, Thread, Zigbee, Z-Wave, WiFi, Bluetooth\n"
-                              "\n"
-                              "**Scene Editor**\n"
-                              "\n"
-                              "Create/edit scenes with device selection and state configuration\n"
-                              "\n"
-                              "**Automation Editor**\n"
-                              "\n"
-                              "Build rules with triggers (time, device state, sunrise/sunset), conditions, and actions\n"
-                              "\n"
-                              "### Protocol Support\n"
-                              "\n"
-                              "Ready for integration with: **Matter**, **Thread**, **Zigbee**, **Z-Wave**, **WiFi**, **Bluetooth**");
-        MarkdownStyle style = MarkdownStyle::Default();
-        style.fontSize = 12;
-        text->SetStyle(style);
-        container->AddChild(text);
-
-        return container;
-    }
-
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateScannerSupportExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("ScannerExamples", 0, 0, 1020, 780);
 
         auto text = std::make_shared<UltraCanvasMarkdownDisplay>("ScannerExamplesText", 10, 10, 1000, 750);
         text->SetMarkdownText("**Scanner support**");
-        MarkdownStyle style = MarkdownStyle::Default();
-        style.fontSize = 12;
-        text->SetStyle(style);
-        container->AddChild(text);
-
-        return container;
-    }
-
-    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateQRCodeExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("QRCodeExamples", 0, 0, 1020, 780);
-
-        auto text = std::make_shared<UltraCanvasMarkdownDisplay>("QRCodeExamplesText", 10, 10, 1000, 750);
-        text->SetMarkdownText("###UltraCanvas QR Module -- Seamless Code Integration Across All Platforms\n"
-                              "--------------------------\n"
-                              "\n"
-                              "**Scan. Generate. Integrate. Anywhere.**\n"
-                              "\n"
-                              "The **UltraCanvas QR Module** brings professional QR code capabilities directly into your cross-platform applications with zero platform-specific headaches. Whether you're building inventory systems, contactless payment solutions, event ticketing, or authentication workflows, this module delivers enterprise-grade QR functionality through UltraCanvas's signature unified API.\n"
-                              "\n"
-                              "What It Does\n"
-                              "\n"
-                              "**QR Code Generation**\n"
-                              "\n"
-                              "-   Create customized QR codes with configurable error correction levels\n"
-                              "-   Support for URLs, vCards, WiFi credentials, plain text, and custom data formats\n"
-                              "-   Real-time preview with adjustable size, margin, and styling options\n"
-                              "-   Export to multiple formats: PNG, SVG, PDF, or direct canvas rendering\n"
-                              "\n"
-                              "**QR Code Scanning**\n"
-                              "\n"
-                              "-   High-speed camera integration with automatic focus and frame detection\n"
-                              "-   Multi-code detection -- scan multiple QR codes simultaneously\n"
-                              "-   Works with webcams, USB cameras, and built-in device cameras\n"
-                              "-   Robust decoding even with damaged, rotated, or partially obscured codes");
         MarkdownStyle style = MarkdownStyle::Default();
         style.fontSize = 12;
         text->SetStyle(style);

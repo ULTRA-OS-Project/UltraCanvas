@@ -406,14 +406,14 @@ namespace UltraCanvas {
 
         // Alignment selector
         auto alignLabel = std::make_shared<UltraCanvasLabel>(
-                "AlignLabel", 210, 12, 70, 20
+                "AlignLabel", 210, 12, 80, 20
         );
         alignLabel->SetText("Alignment:");
         alignLabel->SetFontSize(11);
         energyControls->AddChild(alignLabel);
 
         auto alignDropdown = std::make_shared<UltraCanvasDropdown>(
-                "AlignDropdown", 285, 10, 100, 25
+                "AlignDropdown", 295, 10, 100, 25
         );
         alignDropdown->AddItem("Left", "0");
         alignDropdown->AddItem("Right", "1");
@@ -424,14 +424,14 @@ namespace UltraCanvas {
 
         // Curvature slider
         auto curveLabel = std::make_shared<UltraCanvasLabel>(
-                "CurveLabel", 400, 12, 70, 20
+                "CurveLabel", 410, 12, 80, 20
         );
         curveLabel->SetText("Curvature:");
         curveLabel->SetFontSize(11);
         energyControls->AddChild(curveLabel);
 
         auto curveSlider = std::make_shared<UltraCanvasSlider>(
-                "CurveSlider", 475, 15, 150, 17
+                "CurveSlider", 495, 15, 150, 17
         );
         curveSlider->SetOrientation(SliderOrientation::Horizontal);
         curveSlider->SetRange(0.0f, 1.0f);
@@ -440,7 +440,7 @@ namespace UltraCanvas {
         energyControls->AddChild(curveSlider);
 
         auto curveValue = std::make_shared<UltraCanvasLabel>(
-                "CurveValue", 635, 12, 40, 20
+                "CurveValue", 640, 12, 40, 20
         );
         curveValue->SetText("0.5");
         curveValue->SetFontSize(11);
@@ -449,14 +449,14 @@ namespace UltraCanvas {
 
         // Export buttons
         auto exportSVG = std::make_shared<UltraCanvasButton>(
-                "ExportSVG", 700, 10, 100, 25
+                "ExportSVG", 710, 10, 110, 25
         );
         exportSVG->SetText("Export SVG");
         exportSVG->SetStyle(ButtonStyles::PrimaryStyle());
         energyControls->AddChild(exportSVG);
 
         auto loadCSV = std::make_shared<UltraCanvasButton>(
-                "LoadCSV", 810, 10, 100, 25
+                "LoadCSV", 830, 10, 100, 25
         );
         loadCSV->SetText("Load CSV");
         loadCSV->SetStyle(ButtonStyles::SecondaryStyle());
@@ -628,14 +628,14 @@ namespace UltraCanvas {
         customControls->AddChild(valueInput);
 
         auto addLinkBtn = std::make_shared<UltraCanvasButton>(
-                "AddLink", 570, 10, 80, 25
+                "AddLink", 570, 10, 100, 25
         );
         addLinkBtn->SetText("Add Link");
         addLinkBtn->SetStyle(ButtonStyles::PrimaryStyle());
         customControls->AddChild(addLinkBtn);
 
         auto clearBtn = std::make_shared<UltraCanvasButton>(
-                "ClearAll", 660, 10, 80, 25
+                "ClearAll", 680, 10, 100, 25
         );
         clearBtn->SetText("Clear All");
         clearBtn->SetStyle(ButtonStyles::DangerStyle());
@@ -650,21 +650,21 @@ namespace UltraCanvas {
         customControls->AddChild(presetLabel);
 
         auto presetBtn1 = std::make_shared<UltraCanvasButton>(
-                "PresetSupply", 85, 45, 110, 25
+                "PresetSupply", 85, 45, 130, 25
         );
         presetBtn1->SetText("Supply Chain");
         presetBtn1->SetStyle(ButtonStyles::SecondaryStyle());
         customControls->AddChild(presetBtn1);
 
         auto presetBtn2 = std::make_shared<UltraCanvasButton>(
-                "PresetBudget", 205, 45, 110, 25
+                "PresetBudget", 225, 45, 130, 25
         );
         presetBtn2->SetText("Budget Flow");
         presetBtn2->SetStyle(ButtonStyles::SecondaryStyle());
         customControls->AddChild(presetBtn2);
 
         auto presetBtn3 = std::make_shared<UltraCanvasButton>(
-                "PresetProcess", 325, 45, 110, 25
+                "PresetProcess", 365, 45, 130, 25
         );
         presetBtn3->SetText("Process Flow");
         presetBtn3->SetStyle(ButtonStyles::SecondaryStyle());
@@ -837,7 +837,7 @@ namespace UltraCanvas {
         perfControls->AddChild(linksValue);
 
         auto generateBtn = std::make_shared<UltraCanvasButton>(
-                "GenerateBtn", 520, 10, 140, 25
+                "GenerateBtn", 520, 10, 180, 25
         );
         generateBtn->SetText("Generate Random");
         generateBtn->SetStyle(ButtonStyles::PrimaryStyle());

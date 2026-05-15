@@ -122,11 +122,12 @@ const ColorPreset* PresetForLineColor(const Color& c) {
 // =============================================================================
 static std::shared_ptr<UltraCanvasContainer> BuildOrderExampleChart() {
     auto container = std::make_shared<UltraCanvasContainer>("OrderExample", 0, 0, 1400, 898);
+    FontStyle sysfont = UltraCanvasApplication::GetInstance()->GetSystemFontStyle();
     container->SetBackgroundColor(Color(245, 247, 250, 255));
     
     auto title = std::make_shared<UltraCanvasLabel>("Title", 30, 20, 1100, 35);
     title->SetText("Order Processing Flow Chart");
-    title->SetFont("Arial", 22.0f, FontWeight::Bold);
+    title->SetFont(sysfont.fontFamily, 22.0f, FontWeight::Bold);
     title->SetTextColor(Color(30, 30, 30, 255));
     container->AddChild(title);
     
@@ -233,7 +234,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildOrderExampleChart() {
     container->AddChild(btnZoomOut);
     btnX += 90 + spacing;
     
-    auto btnReset = std::make_shared<UltraCanvasButton>("btnReset", btnX, btnY, 100, btnH);
+    auto btnReset = std::make_shared<UltraCanvasButton>("btnReset", btnX, btnY, 120, btnH);
     btnReset->SetText("Reset View");
     btnReset->SetOnClick([chart]() { chart->SetZoomLevel(1.0f); chart->SetPanOffset(0, 0); });
     container->AddChild(btnReset);
@@ -260,7 +261,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildOrderExampleChart() {
     
     auto instrTitle = std::make_shared<UltraCanvasLabel>("instrTitle", 10, 10, 210, 25);
     instrTitle->SetText("How to Use");
-    instrTitle->SetFont("Arial", 14.0f, FontWeight::Bold);
+    instrTitle->SetFont(sysfont.fontFamily, 14.0f, FontWeight::Bold);
     instrTitle->SetTextColor(Color(40, 40, 40, 255));
     instrPanel->AddChild(instrTitle);
     
@@ -310,6 +311,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildOrderExampleChart() {
 //
 static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     auto container = std::make_shared<UltraCanvasContainer>("Builder", 0, 0, 1400, 898);
+    FontStyle sysfont = UltraCanvasApplication::GetInstance()->GetSystemFontStyle();
     container->SetBackgroundColor(Color(245, 247, 250, 255));
     
     // --- Title bar ---
@@ -349,7 +351,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     // Static header
     auto propsTitle = std::make_shared<UltraCanvasLabel>("propsTitle", 12, 10, 270, 25);
     propsTitle->SetText("Properties");
-    propsTitle->SetFont("Arial", 14.0f, FontWeight::Bold);
+    propsTitle->SetFont(sysfont.fontFamily, 14.0f, FontWeight::Bold);
     propsTitle->SetTextColor(Color(40, 40, 40, 255));
     propsPanel->AddChild(propsTitle);
     

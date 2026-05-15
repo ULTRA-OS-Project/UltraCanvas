@@ -40,27 +40,27 @@ namespace UltraCanvas {
         titleLabel->SetFontSize(18);
         container->AddChild(titleLabel);
         
-        auto btnCycleAlgorithm = std::make_shared<UltraCanvasButton>("btnCycleAlgorithm", 50, 530, 140, 30);
+        auto btnCycleAlgorithm = std::make_shared<UltraCanvasButton>("btnCycleAlgorithm", 50, 530, 160, 30);
         btnCycleAlgorithm->SetText("Cycle Algorithm");
         container->AddChild(btnCycleAlgorithm);
         
-        auto btnCycleStyle = std::make_shared<UltraCanvasButton>("btnCycleStyle", 200, 530, 140, 30);
+        auto btnCycleStyle = std::make_shared<UltraCanvasButton>("btnCycleStyle", 220, 530, 160, 30);
         btnCycleStyle->SetText("Cycle Style");
         container->AddChild(btnCycleStyle);
         
-        auto btnCycleColor = std::make_shared<UltraCanvasButton>("btnCycleColor", 350, 530, 140, 30);
+        auto btnCycleColor = std::make_shared<UltraCanvasButton>("btnCycleColor", 390, 530, 160, 30);
         btnCycleColor->SetText("Cycle Colors");
         container->AddChild(btnCycleColor);
         
-        auto btnToggleValues = std::make_shared<UltraCanvasButton>("btnToggleValues", 50, 570, 140, 30);
+        auto btnToggleValues = std::make_shared<UltraCanvasButton>("btnToggleValues", 50, 570, 160, 30);
         btnToggleValues->SetText("Toggle Values");
         container->AddChild(btnToggleValues);
         
-        auto btnToggleLabels = std::make_shared<UltraCanvasButton>("btnToggleLabels", 200, 570, 140, 30);
+        auto btnToggleLabels = std::make_shared<UltraCanvasButton>("btnToggleLabels", 220, 570, 160, 30);
         btnToggleLabels->SetText("Toggle Labels");
         container->AddChild(btnToggleLabels);
         
-        auto btnReset = std::make_shared<UltraCanvasButton>("btnReset", 350, 570, 140, 30);
+        auto btnReset = std::make_shared<UltraCanvasButton>("btnReset", 390, 570, 160, 30);
         btnReset->SetText("Reset");
         container->AddChild(btnReset);
         

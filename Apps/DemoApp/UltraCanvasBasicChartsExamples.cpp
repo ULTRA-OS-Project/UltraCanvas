@@ -106,7 +106,7 @@ static struct ChartControls {
         // Button group positioning
         int buttonY = 520;
         int buttonX = 50;
-        int buttonWidth = 120;
+        int buttonWidth = 140;
         int buttonHeight = 35;
         int buttonSpacing = 10;
 
@@ -273,7 +273,7 @@ static struct ChartControls {
         // Button group positioning
         int buttonY = 520;
         int buttonX = 50;
-        int buttonWidth = 120;
+        int buttonWidth = 140;
         int buttonHeight = 35;
         int buttonSpacing = 10;
 
@@ -378,7 +378,7 @@ static struct ChartControls {
         // Button for cycling scatter plot shapes
         int buttonY = 520;
         int buttonX = 50;
-        int buttonWidth = 180;
+        int buttonWidth = 220;
         int buttonHeight = 35;
 
         // Cycle Scatter Plot Shapes button
@@ -480,7 +480,7 @@ static struct ChartControls {
         // Button group positioning
         int buttonY = 520;
         int buttonX = 50;
-        int buttonWidth = 120;
+        int buttonWidth = 140;
         int buttonHeight = 35;
         int buttonSpacing = 10;
 

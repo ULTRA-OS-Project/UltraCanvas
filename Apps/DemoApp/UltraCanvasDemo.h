@@ -212,6 +212,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateCheckboxExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateToolbarExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateTabExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateBreadcrumbExamples();
 
         // Extended Functionality
         std::shared_ptr<UltraCanvasUIElement> CreateTreeViewExamples();
@@ -295,7 +296,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateSVGVectorExamples();
 
         std::shared_ptr<UltraCanvasUIElement> CreateFileLoaderExamples();
-        std::shared_ptr<UltraCanvasUIElement> CreatePixeLXExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateMarkdownDocScreen(const std::string& filename);
         std::shared_ptr<UltraCanvasUIElement> CreateQRCodeExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateGPIOExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateScannerSupportExamples();

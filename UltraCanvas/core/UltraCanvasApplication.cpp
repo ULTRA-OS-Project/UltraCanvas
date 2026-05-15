@@ -526,6 +526,22 @@ namespace UltraCanvas {
         debugOutput << "UltraCanvas: window found and unregistered successfully" << std::endl;
     }
 
+    void UltraCanvasApplicationBase::CleanupElementReferences(UltraCanvasUIElement* elem) {
+        if (capturedElement == elem) {
+            ReleaseMouse(elem);
+        }
+        if (hoveredElement == elem) {
+            hoveredElement = nullptr;
+        }
+        if (draggedElement == elem) {
+            draggedElement = nullptr;
+        }
+        auto win = elem->GetWindow();
+        if (win && win->IsCreated() && win->GetState() != WindowState::Closing &&  win->GetState() != WindowState::Closed && win->GetFocusedElement() == elem) {
+            win->SetFocusedElement(nullptr);
+        }
+    }
+
     // ===== MODAL WINDOW MANAGEMENT =====
     UltraCanvasWindowBase* UltraCanvasApplicationBase::GetCurrentModalWindow() {
         for (auto it = activeModalWindows.rbegin(); it != activeModalWindows.rend(); ++it) {

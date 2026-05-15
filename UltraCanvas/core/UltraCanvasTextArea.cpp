@@ -1326,11 +1326,18 @@ namespace UltraCanvas {
             return true;
         }
 
-        SetFocus(true);
 
         // --- Markdown link/image click: intercept before cursor move ---
         if (editingMode == TextAreaEditingMode::MarkdownHybrid && HandleMarkdownClick(event.pointer.x, event.pointer.y)) {
             return true;
+        }
+
+        if (isReadOnly) {
+            return true;
+        } else {
+            if (!IsFocused()) {
+                SetFocus(true);
+            }
         }
 
         // --- Click counting for single / double / triple click ---

@@ -257,21 +257,21 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBlockDia
     container->AddChild(btnConnect);
     btnX += 100;
  
-    auto btnZoomIn = std::make_shared<UltraCanvasButton>("btnZoomIn", btnX, btnY, 70, 32);
+    auto btnZoomIn = std::make_shared<UltraCanvasButton>("btnZoomIn", btnX, btnY, 90, 32);
     btnZoomIn->SetText("Zoom +");
     btnZoomIn->SetOnClick([diagram]() {
         diagram->SetZoomLevel(diagram->GetZoomLevel() * 1.2f);
     });
     container->AddChild(btnZoomIn);
-    btnX += 80;
+    btnX += 100;
  
-    auto btnZoomOut = std::make_shared<UltraCanvasButton>("btnZoomOut", btnX, btnY, 70, 32);
+    auto btnZoomOut = std::make_shared<UltraCanvasButton>("btnZoomOut", btnX, btnY, 90, 32);
     btnZoomOut->SetText("Zoom -");
     btnZoomOut->SetOnClick([diagram]() {
         diagram->SetZoomLevel(diagram->GetZoomLevel() * 0.8f);
     });
     container->AddChild(btnZoomOut);
-    btnX += 80;
+    btnX += 100;
  
     auto btnReset = std::make_shared<UltraCanvasButton>("btnReset", btnX, btnY, 90, 32);
     btnReset->SetText("Reset");

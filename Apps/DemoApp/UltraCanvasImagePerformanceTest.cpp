@@ -367,8 +367,8 @@ namespace UltraCanvas {
                 { UCImageSaveFormat::HEIF,     "HEIF", "heif", EncoderBackend::Libvips, false },
                 { UCImageSaveFormat::GIF,      "GIF",  "gif",  EncoderBackend::Libvips, false },
                 { UCImageSaveFormat::TIFF,     "TIFF", "tiff", EncoderBackend::Libvips, false },
-                { UCImageSaveFormat::JXL,      "JXL",  "jxl",  EncoderBackend::Libvips, false },
-                { UCImageSaveFormat::PNG,      "BMP",  "bmp",  EncoderBackend::BMP,     true  },
+                //{ UCImageSaveFormat::JXL,      "JXL",  "jxl",  EncoderBackend::Libvips, false },
+                { UCImageSaveFormat::BMP,      "BMP",  "bmp",  EncoderBackend::BMP,     true  },
         };
         constexpr int kAllCodecCount =
                 sizeof(kAllCodecs) / sizeof(kAllCodecs[0]);
@@ -1416,7 +1416,7 @@ namespace UltraCanvas {
         toolbarLayout->SetDefaultCrossAxisAlignment(LayoutAlignment::Center);
 
         state->chooseBtn = std::make_shared<UltraCanvasButton>(
-                "PerfChooseBtn", 0, 0, 140, 30);
+                "PerfChooseBtn", 0, 0, 160, 30);
         state->chooseBtn->SetText("Choose Image...");
 
         // [x] Include BMP — opt-in for the BMP codec, which would otherwise
@@ -1871,7 +1871,7 @@ namespace UltraCanvas {
             std::vector<FileFilter> filters = {
                     FileFilter("Bitmap Images",
                                {"png","jpg","jpeg","bmp","tiff","tif","gif",
-                                "webp","avif","heif","heic","qoi","jp2","jxl"}),
+                                "webp","avif","heif","heic","qoi","jp2"}),
                     FileFilter("All Files", { std::string("*") })
             };
             std::string path = UltraCanvasNativeDialogs::OpenFile(

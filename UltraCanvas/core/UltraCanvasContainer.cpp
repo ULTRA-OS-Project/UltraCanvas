@@ -27,6 +27,8 @@ namespace UltraCanvas {
         for (auto& child : children) {
             child->SetWindow(win);
         }
+        horizontalScrollbar->SetWindow(win);
+        verticalScrollbar->SetWindow(win);
     }
 
     void UltraCanvasContainer::UpdateGeometry(IRenderContext* ctx) {

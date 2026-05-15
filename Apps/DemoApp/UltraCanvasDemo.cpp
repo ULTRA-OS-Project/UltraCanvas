@@ -489,7 +489,7 @@ namespace UltraCanvas {
                 .AddVariant("button", "Toggle Button")
                 .AddVariant("button", "Three-Section Button");
 
-        basicBuilder.AddItem("dropdown", "Dropdown/ComboBox", "Dropdown selection controls",
+        basicBuilder.AddItem("dropdown", "Dropdown / ComboBox", "Dropdown selection controls",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateDropdownExamples(); },
                             "DemoApp/UltraCanvasDropDownExamples.cpp",
@@ -499,7 +499,7 @@ namespace UltraCanvas {
                 .AddVariant("dropdown", "Multi-Select");
 
         basicBuilder
-                .AddItem("checkbox", "Checkbox/Radio/Switch",
+                .AddItem("checkbox", "Checkbox / Radio / Switch",
                          "Interactive checkbox controls with multiple states and styles",
                          ImplementationStatus::FullyImplemented,
                          [this]() { return CreateCheckboxExamples(); },
@@ -518,6 +518,26 @@ namespace UltraCanvas {
                 .AddVariant("slider", "Horizontal Slider")
                 .AddVariant("slider", "Vertical Slider")
                 .AddVariant("slider", "Range Slider");
+
+        basicBuilder.AddItem("breadcrumb", "Breadcrumb",
+                             "Hierarchical path navigation with clickable segments",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateBreadcrumbExamples(); },
+                             "Apps/DemoApp/UltraCanvasBreadcrumbExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasBreadcrumb.md")
+                .AddVariant("breadcrumb", "Default Style")
+                .AddVariant("breadcrumb", "Compact Style")
+                .AddVariant("breadcrumb", "Pills Style")
+                .AddVariant("breadcrumb", "File Explorer Style")
+                .AddVariant("breadcrumb", "Web Docs Style")
+                .AddVariant("breadcrumb", "Separator Styles")
+                .AddVariant("breadcrumb", "Dropdown Items")
+                .AddVariant("breadcrumb", "Collapse Overflow")
+                .AddVariant("breadcrumb", "Ellipsize Overflow");
+
+        basicBuilder.AddItem("gauges", "Gauges", "Gauges",
+                             ImplementationStatus::PartiallyImplemented,
+                             [this]() { return CreatePartiallyImplementedExamples("Gauges is not ready yet"); });
 
         // ===== EXTENDED FUNCTIONALITY =====
         auto extendedBuilder = DemoCategoryBuilder(this, DemoCategory::ExtendedFunctionality);
@@ -1019,21 +1039,36 @@ namespace UltraCanvas {
                              "Apps/DemoApp/UltraCanvasTextRenderingExamples.cpp");
 
         auto modulesBuilder = DemoCategoryBuilder(this, DemoCategory::Modules);
-        modulesBuilder.AddItem("pixelfx", "Pixel FX", "Pixel FX",
-                             ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreatePixeLXExamples(); });
+        modulesBuilder.AddItem("audiofx", "Audio FX", "Audio FX",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/AudioFX/README.md")); });
         modulesBuilder.AddItem("fileloader", "File Loader", "File Loader",
-                             ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreateFileLoaderExamples(); });
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/FileLoader/README.md")); });
+        modulesBuilder.AddItem("iodevicemanager", "IODeviceManager support", "IODeviceManager support",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/IODeviceManager/README.md")); });
+        modulesBuilder.AddItem("pixelfx", "Pixel FX", "Pixel FX",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/PixelFX/README.md")); });
+        modulesBuilder.AddItem("smarthome", "Smart Home module", "UltraCanvas Smart Home Module",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/Smarthome/README.md")); });
+        modulesBuilder.AddItem("ultraai", "Ultra AI", "Ultra AI Module",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/UltraAI/README.md")); });
+        modulesBuilder.AddItem("ultranet", "Ultra Net", "Ultra Net Module",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/UltraNet/README.md")); });
+        modulesBuilder.AddItem("videofx", "VideoFX", "VideoFX Module",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/VideoFX/README.md")); });
+        modulesBuilder.AddItem("virtualfs", "VirtualFS", "VirtualFS Module",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/VirtualFS/README.md")); });
         modulesBuilder.AddItem("gpio", "GPIO support", "GPIO support",
                              ImplementationStatus::PartiallyImplemented,
                              [this]() { return CreatePartiallyImplementedExamples("## GPIO support"); });
-        modulesBuilder.AddItem("iodevicemanager", "IODeviceManager support", "IODeviceManager support",
-                               ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreateIODeviceManagerExamples(); });
-        modulesBuilder.AddItem("smarthome", "Smart Home module", "UltraCanvas Smart Home Module",
-                               ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreateSmartHomeExamples(); });
 
         auto widgetsBuilder = DemoCategoryBuilder(this, DemoCategory::Widgets);
         widgetsBuilder.AddItem("datepicker", "Date Picker", "Date Picker",
@@ -1089,7 +1124,11 @@ namespace UltraCanvas {
             for (const std::string& itemId : items) {
                 const auto& demoItem = demoItems[itemId];
                 TreeNodeData itemData(itemId, demoItem->displayName);
-                itemData.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/document.svg"), 16, 16);
+                if (demoItem->id == "imageperformance") {
+                    itemData.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/clock-five.svg"), 16, 16);
+                } else {
+                    itemData.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/document.svg"), 16, 16);
+                }
                 itemData.rightIcon = TreeNodeIcon(GetStatusIcon(demoItem->status), 12, 12);
                 categoryTreeView->AddNode(categoryData.nodeId, itemData);
             }

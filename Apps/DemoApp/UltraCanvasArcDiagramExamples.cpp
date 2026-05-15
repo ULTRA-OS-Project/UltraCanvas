@@ -446,6 +446,7 @@ namespace UltraCanvas {
                 "ArcTabs", 10, 72, 1010, 728);
         tabs->SetTabPosition(TabPosition::Top);
         tabs->SetTabStyle(TabStyle::Modern);
+        tabs->SetTabMaxWidth(300);
 
         tabs->AddTab("Character co-occurrence",   MakeFriendsTab(statusLabel));
         tabs->AddTab("Canonical reference",        MakeCanonicalTab(statusLabel));

@@ -1,11 +1,22 @@
-#### 2026-05-13 *0.1.33*
+#### 2026-05-15 *0.1.35*
+- Remove JXL from Image Performance test as JXL format does not supported by currently used libvips
+- Fix buttons size to fit text
+- Fix bug when element is deleted but capturing the mouse or focused then app may crash
+- Implemented Breadcrumbs element demo
+
+#### 2026-05-15 *0.1.34*
+- Use TextArea to show Markdown info in the Modules section
+- Add more modules description to Modules section
+- Implement Breadcrumb demo
+- 
+#### 2026-05-14 *0.1.33*
 - Implemented new Image performance demo
 - Fix problem with AltGr+key in Windows
 - Fix ordered list content offset in MD-mode in TextArea
 - Implemented Pie Chart element
 - Implemented Adjacency Diagram element
 - Implemented Arc Diagram element
-- Implemented BreadCrumb element
+- Implemented Breadcrumb element
 
 #### 2026-05-12 *0.1.32*
 - Implemented UltraCanvasFileLoader

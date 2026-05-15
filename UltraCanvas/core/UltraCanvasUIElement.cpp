@@ -13,6 +13,10 @@ namespace UltraCanvas {
 
     // new here
     UltraCanvasUIElement::~UltraCanvasUIElement() {
+        auto app = UltraCanvasApplication::GetInstance();
+        if (app) {
+            app->CleanupElementReferences(this);
+        }
     }
 
     Point2Di UltraCanvasUIElement::MapFromLocal(const Point2Di &localPos, UltraCanvasContainer* mapToParent) {

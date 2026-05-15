@@ -438,7 +438,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     );
     fileSizeCheck->SetText("Show File Size");
     fileSizeCheck->SetChecked(true);
-    projectControls->AddChild(fileSizeCheck);
+    //projectControls->AddChild(fileSizeCheck);
 
     auto highlightLabel = std::make_shared<UltraCanvasLabel>(
         "HighlightLabel", 0, 12, 65, 20
@@ -701,7 +701,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     perfControls->SetBackgroundColor(Color(248, 248, 252));
 
     auto sizeBtn500 = std::make_shared<UltraCanvasButton>(
-        "Size500Btn", 0, 8, 90, 28
+        "Size500Btn", 0, 8, 130, 28
     );
     sizeBtn500->SetText("~500 nodes");
     perfControls->AddChild(sizeBtn500);
@@ -725,7 +725,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     perfControls->AddChild(staticModeBtn);
 
     auto animatedModeBtn = std::make_shared<UltraCanvasButton>(
-        "AnimatedModeBtn", 0, 8, 90, 28
+        "AnimatedModeBtn", 0, 8, 130, 28
     );
     animatedModeBtn->SetText("Animated");
     perfControls->AddChild(animatedModeBtn);
@@ -1010,13 +1010,13 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
         // Left group: Theme, Layout, Show File Size, Highlight
         // Right group: + - Fit Expand Collapse
         std::vector<ToolbarItem> projLeft = {
-            {themeLabel,        50},
+            {themeLabel,        60},
             {themeDropdown,    110},
-            {layoutLabel,       50},
+            {layoutLabel,       60},
             {layoutDropdown,   110},
-            {fileSizeCheck,    130},
-            {highlightLabel,    65},
-            {highlightDropdown,150},
+//            {fileSizeCheck,    130},
+            {highlightLabel,    70},
+            {highlightDropdown,140},
         };
         std::vector<ToolbarItem> projRight = {
             {zoomInBtn,         36},
@@ -1035,20 +1035,20 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
             {unlimitedCheck,   100},
         };
         std::vector<ToolbarItem> storRight = {
-            {showOldBtn,       150},
-            {showRecentBtn,    145},
+            {showOldBtn,       170},
+            {showRecentBtn,    165},
             {resetStorageBtn,   80},
-            {exportBtn,        105},
+            {exportBtn,        110},
         };
         LayoutToolbarRow(storLeft, storRight, barW);
 
         // --- Performance toolbar ---
         std::vector<ToolbarItem> perfLeft = {
-            {sizeBtn500,        90},
-            {sizeBtn2k,        100},
-            {sizeBtn5k,        100},
+            {sizeBtn500,       120},
+            {sizeBtn2k,        140},
+            {sizeBtn5k,        140},
             {staticModeBtn,     90},
-            {animatedModeBtn,   90},
+            {animatedModeBtn,  120},
         };
         std::vector<ToolbarItem> perfRight = {
             {nodeCountLabel,   220},
@@ -1057,13 +1057,13 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
 
         // --- Custom toolbar ROW 1 ---
         std::vector<ToolbarItem> custRow1Left = {
-            {parentLabel,       50},
+            {parentLabel,       70},
             {parentInput,      110},
             {nameLabel,         50},
             {nameInput,        140},
             {typeLabel,         40},
             {typeDropdown,      90},
-            {sizeLabel,         65},
+            {sizeLabel,         75},
             {sizeInput,         70},
         };
         std::vector<ToolbarItem> custRow1Right = {
