@@ -374,6 +374,23 @@ namespace UltraCanvas {
         return s.name;
     }
 
+    // Compact, line-broken variant used for inside placement. Splitting the name
+    // and the value/percentage onto separate lines roughly halves the width of
+    // each line, which makes the label far more likely to fit within a slice.
+    std::string UltraCanvasPieChartElement::BuildInsideLabelText(const Slice& s) const {
+        switch (labelContent) {
+            case LabelContent::Name:            return s.name;
+            case LabelContent::Value:           return FormatValue(s.value);
+            case LabelContent::Percentage:      return FormatPercent(s.percentage);
+            case LabelContent::NameValue:       return s.name + "\n" + FormatValue(s.value);
+            case LabelContent::NamePercentage:  return s.name + "\n" + FormatPercent(s.percentage);
+            case LabelContent::ValuePercentage: return FormatValue(s.value) + "\n" + FormatPercent(s.percentage);
+            case LabelContent::All:
+                return s.name + "\n" + FormatValue(s.value) + "\n" + FormatPercent(s.percentage);
+        }
+        return s.name;
+    }
+
     // ===== RENDER ENTRY POINT =====
 
     void UltraCanvasPieChartElement::RenderChart(IRenderContext* ctx) {
@@ -765,19 +782,25 @@ namespace UltraCanvas {
             Point2Df textPos;     // top-left of text after adjustment
             Size2Di  textSize;
             bool     rightSide;
+            float    fontScale;   // 1.0 = native size; <1.0 = shrunk to fit inside
         };
 
         std::vector<LayoutItem> items;
         items.reserve(cachedSlices.size());
 
-        // Pass 1 — build initial layout
+        // Inside auto-scale tuning. Anything below kMinInsideScale just goes
+        // outside instead — readability beats squeezing every label in.
+        const float kAnchorRadiusFactor = 0.65f;
+        const float kChordSafety        = 0.92f;
+        const float kRadialFraction     = 0.55f;
+        const float kMinInsideScale     = 0.72f;
+
+        // Pass 1a — pick provisional position per slice, build the right text for it,
+        // measure at native size and remember each slice's required shrink factor.
         for (const Slice& s : cachedSlices) {
             LayoutItem it;
             it.slice = &s;
-            it.text = BuildLabelText(s);
-            if (it.text.empty()) continue;
-
-            it.textSize = ctx->GetTextLineDimensions(it.text);
+            it.fontScale = 1.0f;
 
             LabelPosition resolved = labelPosition;
             double sweep = s.endAngle - s.startAngle;
@@ -787,19 +810,72 @@ namespace UltraCanvas {
                            : LabelPosition::Outside;
             }
 
-            // Inside-fit check (also covers Auto -> Inside): if the label simply
-            // can't sit within the slice's chord at the label radius, push it
-            // outside so it doesn't bleed across neighbouring slices.
+            // Inside placement uses the compact multi-line variant so the slice
+            // chord only has to fit one word/number per line.
+            it.text = (resolved == LabelPosition::Inside)
+                      ? BuildInsideLabelText(s)
+                      : BuildLabelText(s);
+            if (it.text.empty()) continue;
+
+            ctx->SetFontSize(labelFontSize);
+            it.textSize = ctx->GetTextLineDimensions(it.text);
+
             if (resolved == LabelPosition::Inside) {
-                const float labelR = outerR * 0.65f;
-                float chord = 2.0f * labelR * static_cast<float>(std::sin(sweep * 0.5));
-                // Allow some slack, but require the text fit comfortably.
-                if (it.textSize.width > chord * 0.92f ||
-                    it.textSize.height > outerR * 0.55f) {
+                const float labelR = outerR * kAnchorRadiusFactor;
+                const float chord  = 2.0f * labelR * static_cast<float>(std::sin(sweep * 0.5));
+                const float innerLim = donutMode ? outerR * innerRadiusFraction : 0.0f;
+                const float availW = chord * kChordSafety;
+                const float availH = (outerR - innerLim) * kRadialFraction;
+
+                if (availW > 4.0f && availH > 4.0f &&
+                    it.textSize.width > 0 && it.textSize.height > 0) {
+                    float scaleW = availW / static_cast<float>(it.textSize.width);
+                    float scaleH = availH / static_cast<float>(it.textSize.height);
+                    float scale  = std::min({1.0f, scaleW, scaleH});
+
+                    if (scale >= kMinInsideScale) {
+                        it.fontScale = scale;
+                    } else {
+                        // Slice is too narrow even with shrunk text. Fall back to
+                        // the outside leader-line variant for this slice.
+                        resolved = LabelPosition::Outside;
+                        it.text = BuildLabelText(s);
+                        ctx->SetFontSize(labelFontSize);
+                        it.textSize = ctx->GetTextLineDimensions(it.text);
+                    }
+                } else {
                     resolved = LabelPosition::Outside;
+                    it.text = BuildLabelText(s);
+                    ctx->SetFontSize(labelFontSize);
+                    it.textSize = ctx->GetTextLineDimensions(it.text);
                 }
             }
+
             it.resolved = resolved;
+            items.push_back(it);
+        }
+
+        // Pass 1b — pick a single, uniform inside font scale so every label
+        // that sits inside the pie renders at the same typographic size.
+        float uniformInsideScale = 1.0f;
+        for (const auto& it : items) {
+            if (it.resolved == LabelPosition::Inside && it.fontScale < uniformInsideScale) {
+                uniformInsideScale = it.fontScale;
+            }
+        }
+        if (uniformInsideScale < 1.0f) {
+            for (auto& it : items) {
+                if (it.resolved != LabelPosition::Inside) continue;
+                it.fontScale = uniformInsideScale;
+                it.textSize.width  = static_cast<int>(it.textSize.width  * uniformInsideScale + 0.5f);
+                it.textSize.height = static_cast<int>(it.textSize.height * uniformInsideScale + 0.5f);
+            }
+        }
+
+        // Pass 1c — position labels now that text sizes are final.
+        for (auto& it : items) {
+            const Slice& s = *it.slice;
+            LabelPosition resolved = it.resolved;
 
             double ex = std::cos(s.midAngle) * s.explosion * outerR;
             double ey = std::sin(s.midAngle) * s.explosion * outerR * vScale;
@@ -845,8 +921,6 @@ namespace UltraCanvas {
             const float maxY = static_cast<float>(GetHeight()) - it.textSize.height - 2.0f;
             if (it.textPos.y < minY) it.textPos.y = minY;
             if (it.textPos.y > maxY) it.textPos.y = maxY;
-
-            items.push_back(it);
         }
 
         // Pass 2 — anti-overlap for outside labels (per hemisphere, sorted by Y)
@@ -910,6 +984,7 @@ namespace UltraCanvas {
                     3.0);
             }
 
+            ctx->SetFontSize(labelFontSize * it.fontScale);
             ctx->SetTextPaint(labelColor);
             ctx->DrawText(it.text, it.textPos);
         }
