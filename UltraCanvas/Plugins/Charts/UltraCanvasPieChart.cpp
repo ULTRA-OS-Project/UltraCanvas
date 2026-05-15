@@ -99,6 +99,30 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    void UltraCanvasPieChartElement::SetSliceHeight(size_t index, float heightFactor) {
+        // Allow shrinking down to half-depth and raising up to 4x — wider range
+        // than that produces silly overlap artifacts in the painter algorithm.
+        sliceHeightOverrides[index] = std::max(0.5f, std::min(4.0f, heightFactor));
+        InvalidateSlices();
+        RequestRedraw();
+    }
+
+    float UltraCanvasPieChartElement::GetSliceHeight(size_t index) const {
+        return GetSliceHeightFactor(index);
+    }
+
+    void UltraCanvasPieChartElement::ClearSliceHeight(size_t index) {
+        sliceHeightOverrides.erase(index);
+        InvalidateSlices();
+        RequestRedraw();
+    }
+
+    void UltraCanvasPieChartElement::ClearAllSliceHeights() {
+        sliceHeightOverrides.clear();
+        InvalidateSlices();
+        RequestRedraw();
+    }
+
     void UltraCanvasPieChartElement::SetLabelPosition(LabelPosition p) {
         labelPosition = p;
         InvalidateCache();
@@ -161,6 +185,18 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    void UltraCanvasPieChartElement::SetPerspectiveAngle(float angleDeg) {
+        perspectiveAngleDeg = std::max(0.0f, std::min(85.0f, angleDeg));
+        InvalidateCache();
+        RequestRedraw();
+    }
+
+    void UltraCanvasPieChartElement::SetDepthHeight(float h) {
+        depthHeight = std::max(0.0f, h);
+        InvalidateCache();
+        RequestRedraw();
+    }
+
     void UltraCanvasPieChartElement::SetLightDirection(Point2Df dir) {
         double len = std::sqrt(dir.x * dir.x + dir.y * dir.y);
         if (len > 1e-6) {
@@ -181,9 +217,23 @@ namespace UltraCanvas {
         bool needsLabelRoom =
             (labelPosition == LabelPosition::Outside || labelPosition == LabelPosition::Auto);
         if (needsLabelRoom) {
-            marginSide   = 70;
-            marginTop    = chartTitle.empty() ? 30 : 50;
-            marginBottom = 30;
+            // Reserve enough room on the sides for outside labels + leader-line gap.
+            // We estimate label width before having a render context, then cap at
+            // ~40% of the element width so we never starve the plot itself.
+            int estLabelW  = EstimateLongestLabelWidth();
+            int leaderGap  = 14;                                  // elbow + gap to text
+            marginSide     = std::max(40, estLabelW + leaderGap);
+            marginSide     = std::min(marginSide, std::max(40, GetWidth() * 4 / 10));
+
+            // Vertical room: budget for the tallest possible label block (could be 2-line).
+            int lineH      = EstimateLabelLineHeight();
+            int lineCount  = EstimateLabelLineCount();
+            int vRoom      = lineH * lineCount + 10;
+            marginTop      = chartTitle.empty() ? std::max(20, vRoom)
+                                                : std::max(40, 24 + vRoom);
+            marginBottom   = std::max(20, vRoom);
+            marginBottom   = std::min(marginBottom, std::max(20, GetHeight() * 3 / 10));
+            marginTop      = std::min(marginTop,    std::max(20, GetHeight() * 4 / 10));
         }
 
         ChartPlotArea area;
@@ -192,6 +242,54 @@ namespace UltraCanvas {
         area.width  = std::max(20, GetWidth()  - 2 * marginSide);
         area.height = std::max(20, GetHeight() - marginTop - marginBottom);
         return area;
+    }
+
+    // Rough label-width estimate without a render context. Uses ~0.6 * font size
+    // as average glyph width — close enough for margin budgeting in proportional
+    // sans-serif fonts. Always overestimates slightly, which is what we want.
+    int UltraCanvasPieChartElement::EstimateLongestLabelWidth() const {
+        const float glyphW = labelFontSize * 0.6f;
+        if (!dataSource) return static_cast<int>(glyphW * 10);
+
+        size_t count = dataSource->GetPointCount();
+        if (count == 0) return static_cast<int>(glyphW * 10);
+
+        size_t maxNameLen = 0;
+        double total = 0.0, maxValue = 0.0;
+        for (size_t i = 0; i < count; ++i) {
+            ChartDataPoint p = dataSource->GetPoint(i);
+            double v = p.value != 0.0 ? p.value : p.y;
+            if (v <= 0.0) continue;
+            total += v;
+            if (v > maxValue) maxValue = v;
+            if (p.label.size() > maxNameLen) maxNameLen = p.label.size();
+        }
+        if (total <= 0.0) return static_cast<int>(glyphW * 10);
+
+        std::string valStr = FormatValue(maxValue);
+        std::string pctStr = FormatPercent(maxValue / total);
+
+        size_t composed = maxNameLen;
+        switch (labelContent) {
+            case LabelContent::Name:            composed = maxNameLen; break;
+            case LabelContent::Value:           composed = valStr.size(); break;
+            case LabelContent::Percentage:      composed = pctStr.size(); break;
+            case LabelContent::NameValue:       composed = maxNameLen + 2 + valStr.size(); break;
+            case LabelContent::NamePercentage:  composed = maxNameLen + 2 + pctStr.size(); break;
+            case LabelContent::ValuePercentage: composed = valStr.size() + 3 + pctStr.size(); break;
+            case LabelContent::All:
+                composed = std::max(maxNameLen, valStr.size() + 3 + pctStr.size());
+                break;
+        }
+        return static_cast<int>(composed * glyphW);
+    }
+
+    int UltraCanvasPieChartElement::EstimateLabelLineHeight() const {
+        return static_cast<int>(labelFontSize * 1.25f + 0.5f);
+    }
+
+    int UltraCanvasPieChartElement::EstimateLabelLineCount() const {
+        return (labelContent == LabelContent::All) ? 2 : 1;
     }
 
     // ===== SLICE BUILDING =====
@@ -210,6 +308,12 @@ namespace UltraCanvas {
         auto it = sliceExplosionOverrides.find(index);
         if (it != sliceExplosionOverrides.end()) return it->second;
         return globalExplosion;
+    }
+
+    float UltraCanvasPieChartElement::GetSliceHeightFactor(size_t index) const {
+        auto it = sliceHeightOverrides.find(index);
+        if (it != sliceHeightOverrides.end()) return it->second;
+        return 1.0f;
     }
 
     void UltraCanvasPieChartElement::RebuildSlices() {
@@ -251,8 +355,9 @@ namespace UltraCanvas {
             s.startAngle = startAngle;
             s.endAngle   = endAngle;
             s.midAngle   = startAngle + sweep / 2.0;
-            s.baseColor  = ResolveSliceColor(s.index, p.color);
-            s.explosion  = GetSliceExplosion(s.index);
+            s.baseColor    = ResolveSliceColor(s.index, p.color);
+            s.explosion    = GetSliceExplosion(s.index);
+            s.heightFactor = GetSliceHeightFactor(s.index);
             cachedSlices.push_back(s);
 
             startAngle = endAngle;
@@ -265,8 +370,13 @@ namespace UltraCanvas {
         float availH = chartArea.height;
         if (enable3D) {
             // Reserve space for the depth strip below the ellipse and for the
-            // vertical squash from the perspective tilt.
-            availH = std::max<float>(20.0f, availH - depthHeight);
+            // extra vertical headroom that any raised (extruded) slice needs.
+            float maxHeightFactor = 1.0f;
+            for (auto& kv : sliceHeightOverrides) {
+                maxHeightFactor = std::max(maxHeightFactor, kv.second);
+            }
+            float extraHeadroom = depthHeight * (maxHeightFactor - 1.0f);
+            availH = std::max<float>(20.0f, availH - depthHeight - extraHeadroom);
         }
         float baseR = std::min<float>(chartArea.width, availH) * 0.5f - 4.0f;
         // Account for explosion outward push so slices stay on-canvas.
@@ -308,6 +418,23 @@ namespace UltraCanvas {
                 std::string text = s.name + "\n" + FormatValue(s.value) + " (" + FormatPercent(s.percentage) + ")";
                 return text;
             }
+        }
+        return s.name;
+    }
+
+    // Compact, line-broken variant used for inside placement. Splitting the name
+    // and the value/percentage onto separate lines roughly halves the width of
+    // each line, which makes the label far more likely to fit within a slice.
+    std::string UltraCanvasPieChartElement::BuildInsideLabelText(const Slice& s) const {
+        switch (labelContent) {
+            case LabelContent::Name:            return s.name;
+            case LabelContent::Value:           return FormatValue(s.value);
+            case LabelContent::Percentage:      return FormatPercent(s.percentage);
+            case LabelContent::NameValue:       return s.name + "\n" + FormatValue(s.value);
+            case LabelContent::NamePercentage:  return s.name + "\n" + FormatPercent(s.percentage);
+            case LabelContent::ValuePercentage: return FormatValue(s.value) + "\n" + FormatPercent(s.percentage);
+            case LabelContent::All:
+                return s.name + "\n" + FormatValue(s.value) + "\n" + FormatPercent(s.percentage);
         }
         return s.name;
     }
@@ -468,22 +595,36 @@ namespace UltraCanvas {
         double tilt = perspectiveAngleDeg * M_PI / 180.0;
         double vScale = std::cos(tilt);
 
-        // Sort slices for painter's algorithm: back-most (smallest projected
+        // Sort sides for painter's algorithm: back-most (smallest projected
         // mid-y on top face) first. After tilt, projected y at angle a is sin(a) * vScale.
-        std::vector<Slice> sorted = cachedSlices;
-        std::sort(sorted.begin(), sorted.end(),
+        std::vector<Slice> sortedSides = cachedSlices;
+        std::sort(sortedSides.begin(), sortedSides.end(),
                   [vScale](const Slice& a, const Slice& b) {
                       return std::sin(a.midAngle) * vScale < std::sin(b.midAngle) * vScale;
                   });
 
-        // Side strips (back-to-front)
-        for (const Slice& s : sorted) {
-            DrawSlice3DSides(ctx, cachedCenter, outerR, innerR, vScale, depthHeight, s);
+        // Side strips (back-to-front, with per-slice extra height).
+        for (const Slice& s : sortedSides) {
+            float extraHeight = depthHeight * std::max(0.0f, s.heightFactor - 1.0f);
+            DrawSlice3DSides(ctx, cachedCenter, outerR, innerR, vScale,
+                             depthHeight, extraHeight, s);
         }
 
-        // Top faces
-        for (const Slice& s : sorted) {
-            DrawSlice3DTop(ctx, cachedCenter, outerR, innerR, vScale, s);
+        // Top faces: raised tops are physically higher, so draw shorter slices
+        // first then the taller ones — that way a raised slice's top isn't
+        // covered by a neighbour's top face when their projections overlap.
+        std::vector<Slice> sortedTops = cachedSlices;
+        std::stable_sort(sortedTops.begin(), sortedTops.end(),
+                         [vScale](const Slice& a, const Slice& b) {
+                             if (a.heightFactor != b.heightFactor)
+                                 return a.heightFactor < b.heightFactor;
+                             return std::sin(a.midAngle) * vScale <
+                                    std::sin(b.midAngle) * vScale;
+                         });
+        for (const Slice& s : sortedTops) {
+            float extraHeight = depthHeight * std::max(0.0f, s.heightFactor - 1.0f);
+            DrawSlice3DTop(ctx, cachedCenter, outerR, innerR, vScale,
+                           extraHeight, s);
         }
     }
 
@@ -492,15 +633,21 @@ namespace UltraCanvas {
                                                      float outerR,
                                                      float innerR,
                                                      double vScale,
-                                                     float depth,
+                                                     float baseDepth,
+                                                     float extraHeight,
                                                      const Slice& s)
     {
+        // For a raised slice (heightFactor > 1) the top rim sits `extraHeight`
+        // pixels higher on screen but the bottom stays on the shared baseline,
+        // so the visible side strip is taller by the same amount.
+        const float depth = baseDepth + extraHeight;
+
         double ex = std::cos(s.midAngle) * s.explosion * outerR;
         double ey = std::sin(s.midAngle) * s.explosion * outerR * vScale;
 
         auto project = [&](double a, double r) -> Point2Df {
             return Point2Df(center.x + ex + r * std::cos(a),
-                            center.y + ey + r * std::sin(a) * vScale);
+                            center.y + ey - extraHeight + r * std::sin(a) * vScale);
         };
 
         double sweep = s.endAngle - s.startAngle;
@@ -612,13 +759,15 @@ namespace UltraCanvas {
                                                     float outerR,
                                                     float innerR,
                                                     double vScale,
+                                                    float extraHeight,
                                                     const Slice& s)
     {
         double ex = std::cos(s.midAngle) * s.explosion * outerR;
         double ey = std::sin(s.midAngle) * s.explosion * outerR * vScale;
 
         ctx->PushState();
-        ctx->Translate(center.x + ex, center.y + ey);
+        // Raised slices have their top face shifted up on screen by extraHeight.
+        ctx->Translate(center.x + ex, center.y + ey - extraHeight);
         ctx->Scale(1.0, vScale);
 
         // Resolve fill (gradient/pattern/base color shaded by top-face normal).
@@ -703,33 +852,110 @@ namespace UltraCanvas {
             Point2Df textPos;     // top-left of text after adjustment
             Size2Di  textSize;
             bool     rightSide;
+            float    fontScale;   // 1.0 = native size; <1.0 = shrunk to fit inside
         };
 
         std::vector<LayoutItem> items;
         items.reserve(cachedSlices.size());
 
-        // Pass 1 — build initial layout
+        // Inside auto-scale tuning. Anything below kMinInsideScale just goes
+        // outside instead — readability beats squeezing every label in.
+        const float kAnchorRadiusFactor = 0.65f;
+        const float kChordSafety        = 0.92f;
+        const float kRadialFraction     = 0.55f;
+        const float kMinInsideScale     = 0.72f;
+
+        // Pass 1a — pick provisional position per slice, build the right text for it,
+        // measure at native size and remember each slice's required shrink factor.
         for (const Slice& s : cachedSlices) {
             LayoutItem it;
             it.slice = &s;
-            it.text = BuildLabelText(s);
-            if (it.text.empty()) continue;
-
-            it.textSize = ctx->GetTextLineDimensions(it.text);
+            it.fontScale = 1.0f;
 
             LabelPosition resolved = labelPosition;
+            double sweep = s.endAngle - s.startAngle;
             if (resolved == LabelPosition::Auto) {
-                double sweep = s.endAngle - s.startAngle;
                 resolved = (sweep > (25.0 * M_PI / 180.0))
                            ? LabelPosition::Inside
                            : LabelPosition::Outside;
             }
+
+            // Inside placement uses the compact multi-line variant so the slice
+            // chord only has to fit one word/number per line.
+            it.text = (resolved == LabelPosition::Inside)
+                      ? BuildInsideLabelText(s)
+                      : BuildLabelText(s);
+            if (it.text.empty()) continue;
+
+            ctx->SetFontSize(labelFontSize);
+            it.textSize = ctx->GetTextLineDimensions(it.text);
+
+            if (resolved == LabelPosition::Inside) {
+                const float labelR = outerR * kAnchorRadiusFactor;
+                const float chord  = 2.0f * labelR * static_cast<float>(std::sin(sweep * 0.5));
+                const float innerLim = donutMode ? outerR * innerRadiusFraction : 0.0f;
+                const float availW = chord * kChordSafety;
+                const float availH = (outerR - innerLim) * kRadialFraction;
+
+                if (availW > 4.0f && availH > 4.0f &&
+                    it.textSize.width > 0 && it.textSize.height > 0) {
+                    float scaleW = availW / static_cast<float>(it.textSize.width);
+                    float scaleH = availH / static_cast<float>(it.textSize.height);
+                    float scale  = std::min({1.0f, scaleW, scaleH});
+
+                    if (scale >= kMinInsideScale) {
+                        it.fontScale = scale;
+                    } else {
+                        // Slice is too narrow even with shrunk text. Fall back to
+                        // the outside leader-line variant for this slice.
+                        resolved = LabelPosition::Outside;
+                        it.text = BuildLabelText(s);
+                        ctx->SetFontSize(labelFontSize);
+                        it.textSize = ctx->GetTextLineDimensions(it.text);
+                    }
+                } else {
+                    resolved = LabelPosition::Outside;
+                    it.text = BuildLabelText(s);
+                    ctx->SetFontSize(labelFontSize);
+                    it.textSize = ctx->GetTextLineDimensions(it.text);
+                }
+            }
+
             it.resolved = resolved;
+            items.push_back(it);
+        }
+
+        // Pass 1b — pick a single, uniform inside font scale so every label
+        // that sits inside the pie renders at the same typographic size.
+        float uniformInsideScale = 1.0f;
+        for (const auto& it : items) {
+            if (it.resolved == LabelPosition::Inside && it.fontScale < uniformInsideScale) {
+                uniformInsideScale = it.fontScale;
+            }
+        }
+        if (uniformInsideScale < 1.0f) {
+            for (auto& it : items) {
+                if (it.resolved != LabelPosition::Inside) continue;
+                it.fontScale = uniformInsideScale;
+                it.textSize.width  = static_cast<int>(it.textSize.width  * uniformInsideScale + 0.5f);
+                it.textSize.height = static_cast<int>(it.textSize.height * uniformInsideScale + 0.5f);
+            }
+        }
+
+        // Pass 1c — position labels now that text sizes are final.
+        for (auto& it : items) {
+            const Slice& s = *it.slice;
+            LabelPosition resolved = it.resolved;
 
             double ex = std::cos(s.midAngle) * s.explosion * outerR;
             double ey = std::sin(s.midAngle) * s.explosion * outerR * vScale;
+            // In 3D, a raised slice's visible top sits `extraH` pixels higher
+            // than the baseline ellipse — labels should follow it up.
+            float extraH = enable3D
+                           ? depthHeight * std::max(0.0f, s.heightFactor - 1.0f)
+                           : 0.0f;
             it.arcAttach = Point2Df(center.x + ex + outerR * std::cos(s.midAngle),
-                                    center.y + ey + outerR * std::sin(s.midAngle) * vScale);
+                                    center.y + ey - extraH + outerR * std::sin(s.midAngle) * vScale);
 
             float radiusFactor = 0.65f;
             if (resolved == LabelPosition::Inside)       radiusFactor = 0.65f;
@@ -737,7 +963,7 @@ namespace UltraCanvas {
             else if (resolved == LabelPosition::Outside) radiusFactor = 1.18f;
 
             it.anchor = Point2Df(center.x + ex + outerR * radiusFactor * std::cos(s.midAngle),
-                                 center.y + ey + outerR * radiusFactor * std::sin(s.midAngle) * vScale);
+                                 center.y + ey - extraH + outerR * radiusFactor * std::sin(s.midAngle) * vScale);
             it.rightSide = std::cos(s.midAngle) >= 0.0;
 
             if (resolved == LabelPosition::Inside) {
@@ -756,9 +982,20 @@ namespace UltraCanvas {
                                 ? it.anchor.x + 6.0
                                 : it.anchor.x - 6.0 - it.textSize.width;
                 it.textPos = Point2Df(elbowX, it.anchor.y - it.textSize.height / 2.0);
+
+                // Keep the label fully inside the chart element. The leader line
+                // in pass 3 will follow whatever x we end up with.
+                const float minX = 2.0f;
+                const float maxX = static_cast<float>(GetWidth()) - it.textSize.width - 2.0f;
+                if (it.textPos.x < minX) it.textPos.x = minX;
+                if (it.textPos.x > maxX) it.textPos.x = maxX;
             }
 
-            items.push_back(it);
+            // Vertical clamp for every label position so they never escape the element.
+            const float minY = 2.0f;
+            const float maxY = static_cast<float>(GetHeight()) - it.textSize.height - 2.0f;
+            if (it.textPos.y < minY) it.textPos.y = minY;
+            if (it.textPos.y > maxY) it.textPos.y = maxY;
         }
 
         // Pass 2 — anti-overlap for outside labels (per hemisphere, sorted by Y)
@@ -822,6 +1059,7 @@ namespace UltraCanvas {
                     3.0);
             }
 
+            ctx->SetFontSize(labelFontSize * it.fontScale);
             ctx->SetTextPaint(labelColor);
             ctx->DrawText(it.text, it.textPos);
         }

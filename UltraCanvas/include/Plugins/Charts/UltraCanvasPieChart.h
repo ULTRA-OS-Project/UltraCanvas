@@ -59,6 +59,14 @@ namespace UltraCanvas {
         void ClearSliceExplosion(size_t index);
         void ClearAllSliceExplosions();
 
+        // ===== Per-slice height (3D extrusion) =====
+        // heightFactor 1.0 = base depth (no change). >1.0 raises that slice
+        // above the others to highlight it. Only takes effect in 3D mode.
+        void SetSliceHeight(size_t index, float heightFactor);
+        float GetSliceHeight(size_t index) const;
+        void ClearSliceHeight(size_t index);
+        void ClearAllSliceHeights();
+
         // ===== Labels =====
         void SetLabelPosition(LabelPosition p);
         LabelPosition GetLabelPosition() const { return labelPosition; }
@@ -85,6 +93,12 @@ namespace UltraCanvas {
         void Enable3DMode(float depthHeight, float perspectiveAngleDeg);
         void Disable3DMode();
         bool Is3DEnabled() const { return enable3D; }
+        // Standalone tuning knobs — adjust either parameter without
+        // having to re-issue Enable3DMode.
+        void SetPerspectiveAngle(float angleDeg);
+        float GetPerspectiveAngle() const { return perspectiveAngleDeg; }
+        void SetDepthHeight(float h);
+        float GetDepthHeight() const { return depthHeight; }
         void SetLightDirection(Point2Df dir);
         void SetAmbientLight(float a);
         void SetDiffuseLight(float d);
@@ -114,6 +128,7 @@ namespace UltraCanvas {
 
         float globalExplosion = 0.0f;
         std::unordered_map<size_t, float> sliceExplosionOverrides;
+        std::unordered_map<size_t, float> sliceHeightOverrides;
 
         LabelPosition labelPosition = LabelPosition::Auto;
         LabelContent labelContent = LabelContent::NamePercentage;
@@ -151,6 +166,7 @@ namespace UltraCanvas {
             double midAngle;
             Color baseColor;
             float explosion;
+            float heightFactor;   // 1.0 = base; >1.0 = raised in 3D
         };
 
         std::vector<Slice> cachedSlices;
@@ -166,10 +182,15 @@ namespace UltraCanvas {
         void InvalidateSlices();
         void ComputeCenterAndRadius(const Rect2Df& plotArea);
         float GetSliceExplosion(size_t index) const;
+        float GetSliceHeightFactor(size_t index) const;
         Color ResolveSliceColor(size_t index, const Color& dataColor) const;
         std::string FormatPercent(double pct) const;
         std::string FormatValue(double v) const;
         std::string BuildLabelText(const Slice& slice) const;
+        std::string BuildInsideLabelText(const Slice& slice) const;
+        int EstimateLongestLabelWidth() const;
+        int EstimateLabelLineHeight() const;
+        int EstimateLabelLineCount() const;
 
         void RenderChartImpl(IRenderContext* ctx, const Rect2Df& chartArea);
         void Render2D(IRenderContext* ctx, const Rect2Df& chartArea);
@@ -186,13 +207,15 @@ namespace UltraCanvas {
                               float outerR,
                               float innerR,
                               double vScale,
-                              float depth,
+                              float baseDepth,
+                              float extraHeight,
                               const Slice& slice);
         void DrawSlice3DTop(IRenderContext* ctx,
                             const Point2Df& center,
                             float outerR,
                             float innerR,
                             double vScale,
+                            float extraHeight,
                             const Slice& slice);
 
         std::shared_ptr<IPaintPattern> CreateSliceGradient(IRenderContext* ctx,
