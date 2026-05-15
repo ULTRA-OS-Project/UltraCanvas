@@ -181,9 +181,23 @@ namespace UltraCanvas {
         bool needsLabelRoom =
             (labelPosition == LabelPosition::Outside || labelPosition == LabelPosition::Auto);
         if (needsLabelRoom) {
-            marginSide   = 70;
-            marginTop    = chartTitle.empty() ? 30 : 50;
-            marginBottom = 30;
+            // Reserve enough room on the sides for outside labels + leader-line gap.
+            // We estimate label width before having a render context, then cap at
+            // ~40% of the element width so we never starve the plot itself.
+            int estLabelW  = EstimateLongestLabelWidth();
+            int leaderGap  = 14;                                  // elbow + gap to text
+            marginSide     = std::max(40, estLabelW + leaderGap);
+            marginSide     = std::min(marginSide, std::max(40, GetWidth() * 4 / 10));
+
+            // Vertical room: budget for the tallest possible label block (could be 2-line).
+            int lineH      = EstimateLabelLineHeight();
+            int lineCount  = EstimateLabelLineCount();
+            int vRoom      = lineH * lineCount + 10;
+            marginTop      = chartTitle.empty() ? std::max(20, vRoom)
+                                                : std::max(40, 24 + vRoom);
+            marginBottom   = std::max(20, vRoom);
+            marginBottom   = std::min(marginBottom, std::max(20, GetHeight() * 3 / 10));
+            marginTop      = std::min(marginTop,    std::max(20, GetHeight() * 4 / 10));
         }
 
         ChartPlotArea area;
@@ -192,6 +206,54 @@ namespace UltraCanvas {
         area.width  = std::max(20, GetWidth()  - 2 * marginSide);
         area.height = std::max(20, GetHeight() - marginTop - marginBottom);
         return area;
+    }
+
+    // Rough label-width estimate without a render context. Uses ~0.6 * font size
+    // as average glyph width — close enough for margin budgeting in proportional
+    // sans-serif fonts. Always overestimates slightly, which is what we want.
+    int UltraCanvasPieChartElement::EstimateLongestLabelWidth() const {
+        const float glyphW = labelFontSize * 0.6f;
+        if (!dataSource) return static_cast<int>(glyphW * 10);
+
+        size_t count = dataSource->GetPointCount();
+        if (count == 0) return static_cast<int>(glyphW * 10);
+
+        size_t maxNameLen = 0;
+        double total = 0.0, maxValue = 0.0;
+        for (size_t i = 0; i < count; ++i) {
+            ChartDataPoint p = dataSource->GetPoint(i);
+            double v = p.value != 0.0 ? p.value : p.y;
+            if (v <= 0.0) continue;
+            total += v;
+            if (v > maxValue) maxValue = v;
+            if (p.label.size() > maxNameLen) maxNameLen = p.label.size();
+        }
+        if (total <= 0.0) return static_cast<int>(glyphW * 10);
+
+        std::string valStr = FormatValue(maxValue);
+        std::string pctStr = FormatPercent(maxValue / total);
+
+        size_t composed = maxNameLen;
+        switch (labelContent) {
+            case LabelContent::Name:            composed = maxNameLen; break;
+            case LabelContent::Value:           composed = valStr.size(); break;
+            case LabelContent::Percentage:      composed = pctStr.size(); break;
+            case LabelContent::NameValue:       composed = maxNameLen + 2 + valStr.size(); break;
+            case LabelContent::NamePercentage:  composed = maxNameLen + 2 + pctStr.size(); break;
+            case LabelContent::ValuePercentage: composed = valStr.size() + 3 + pctStr.size(); break;
+            case LabelContent::All:
+                composed = std::max(maxNameLen, valStr.size() + 3 + pctStr.size());
+                break;
+        }
+        return static_cast<int>(composed * glyphW);
+    }
+
+    int UltraCanvasPieChartElement::EstimateLabelLineHeight() const {
+        return static_cast<int>(labelFontSize * 1.25f + 0.5f);
+    }
+
+    int UltraCanvasPieChartElement::EstimateLabelLineCount() const {
+        return (labelContent == LabelContent::All) ? 2 : 1;
     }
 
     // ===== SLICE BUILDING =====
@@ -718,11 +780,24 @@ namespace UltraCanvas {
             it.textSize = ctx->GetTextLineDimensions(it.text);
 
             LabelPosition resolved = labelPosition;
+            double sweep = s.endAngle - s.startAngle;
             if (resolved == LabelPosition::Auto) {
-                double sweep = s.endAngle - s.startAngle;
                 resolved = (sweep > (25.0 * M_PI / 180.0))
                            ? LabelPosition::Inside
                            : LabelPosition::Outside;
+            }
+
+            // Inside-fit check (also covers Auto -> Inside): if the label simply
+            // can't sit within the slice's chord at the label radius, push it
+            // outside so it doesn't bleed across neighbouring slices.
+            if (resolved == LabelPosition::Inside) {
+                const float labelR = outerR * 0.65f;
+                float chord = 2.0f * labelR * static_cast<float>(std::sin(sweep * 0.5));
+                // Allow some slack, but require the text fit comfortably.
+                if (it.textSize.width > chord * 0.92f ||
+                    it.textSize.height > outerR * 0.55f) {
+                    resolved = LabelPosition::Outside;
+                }
             }
             it.resolved = resolved;
 
@@ -756,7 +831,20 @@ namespace UltraCanvas {
                                 ? it.anchor.x + 6.0
                                 : it.anchor.x - 6.0 - it.textSize.width;
                 it.textPos = Point2Df(elbowX, it.anchor.y - it.textSize.height / 2.0);
+
+                // Keep the label fully inside the chart element. The leader line
+                // in pass 3 will follow whatever x we end up with.
+                const float minX = 2.0f;
+                const float maxX = static_cast<float>(GetWidth()) - it.textSize.width - 2.0f;
+                if (it.textPos.x < minX) it.textPos.x = minX;
+                if (it.textPos.x > maxX) it.textPos.x = maxX;
             }
+
+            // Vertical clamp for every label position so they never escape the element.
+            const float minY = 2.0f;
+            const float maxY = static_cast<float>(GetHeight()) - it.textSize.height - 2.0f;
+            if (it.textPos.y < minY) it.textPos.y = minY;
+            if (it.textPos.y > maxY) it.textPos.y = maxY;
 
             items.push_back(it);
         }

@@ -170,6 +170,9 @@ namespace UltraCanvas {
         std::string FormatPercent(double pct) const;
         std::string FormatValue(double v) const;
         std::string BuildLabelText(const Slice& slice) const;
+        int EstimateLongestLabelWidth() const;
+        int EstimateLabelLineHeight() const;
+        int EstimateLabelLineCount() const;
 
         void RenderChartImpl(IRenderContext* ctx, const Rect2Df& chartArea);
         void Render2D(IRenderContext* ctx, const Rect2Df& chartArea);
