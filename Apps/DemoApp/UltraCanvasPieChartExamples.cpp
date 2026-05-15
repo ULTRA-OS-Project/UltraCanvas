@@ -176,6 +176,26 @@ namespace UltraCanvas {
         container->AddChild(explosionSlider);
         yOffset += controlHeight + spacing * 2;
 
+        // === PERSPECTIVE ANGLE (3D) ===
+        auto perspectiveLabel = std::make_shared<UltraCanvasLabel>("PerspectiveLabel", x, yOffset, 200, 20);
+        perspectiveLabel->SetText("Perspective Angle (3D):");
+        perspectiveLabel->SetFontWeight(FontWeight::Bold);
+        container->AddChild(perspectiveLabel);
+        yOffset += 25;
+
+        auto perspectiveSlider = std::make_shared<UltraCanvasSlider>("PerspectiveSlider", x, yOffset, 180, controlHeight);
+        perspectiveSlider->SetRange(5.0, 70.0);
+        perspectiveSlider->SetStep(1.0);
+        perspectiveSlider->SetValue(pieChartControls.perspectiveAngle);
+        perspectiveSlider->onValueChanged = [pieChart1, pieChart2, pieChart3](double value) {
+            pieChartControls.perspectiveAngle = static_cast<float>(value);
+            pieChart1->SetPerspectiveAngle(pieChartControls.perspectiveAngle);
+            pieChart2->SetPerspectiveAngle(pieChartControls.perspectiveAngle);
+            pieChart3->SetPerspectiveAngle(pieChartControls.perspectiveAngle);
+        };
+        container->AddChild(perspectiveSlider);
+        yOffset += controlHeight + spacing * 2;
+
         // === LABEL CONTROLS ===
         auto labelLabel = std::make_shared<UltraCanvasLabel>("LabelLabel", x, yOffset, 200, 20);
         labelLabel->SetText("Labels:");
@@ -366,6 +386,10 @@ namespace UltraCanvas {
 
         // Explode first slice
         donutChart->SetSliceExplosion(0, 0.18f);
+
+        // Highlight the largest slice by raising it 60% above the others
+        // (uses the new per-slice height extrusion API).
+        donutChart->SetSliceHeight(0, 1.6f);
 
         // Configure labels
         donutChart->SetLabelContent(LabelContent::NamePercentage);

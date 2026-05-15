@@ -99,6 +99,30 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    void UltraCanvasPieChartElement::SetSliceHeight(size_t index, float heightFactor) {
+        // Allow shrinking down to half-depth and raising up to 4x — wider range
+        // than that produces silly overlap artifacts in the painter algorithm.
+        sliceHeightOverrides[index] = std::max(0.5f, std::min(4.0f, heightFactor));
+        InvalidateSlices();
+        RequestRedraw();
+    }
+
+    float UltraCanvasPieChartElement::GetSliceHeight(size_t index) const {
+        return GetSliceHeightFactor(index);
+    }
+
+    void UltraCanvasPieChartElement::ClearSliceHeight(size_t index) {
+        sliceHeightOverrides.erase(index);
+        InvalidateSlices();
+        RequestRedraw();
+    }
+
+    void UltraCanvasPieChartElement::ClearAllSliceHeights() {
+        sliceHeightOverrides.clear();
+        InvalidateSlices();
+        RequestRedraw();
+    }
+
     void UltraCanvasPieChartElement::SetLabelPosition(LabelPosition p) {
         labelPosition = p;
         InvalidateCache();
@@ -157,6 +181,18 @@ namespace UltraCanvas {
 
     void UltraCanvasPieChartElement::Disable3DMode() {
         enable3D = false;
+        InvalidateCache();
+        RequestRedraw();
+    }
+
+    void UltraCanvasPieChartElement::SetPerspectiveAngle(float angleDeg) {
+        perspectiveAngleDeg = std::max(0.0f, std::min(85.0f, angleDeg));
+        InvalidateCache();
+        RequestRedraw();
+    }
+
+    void UltraCanvasPieChartElement::SetDepthHeight(float h) {
+        depthHeight = std::max(0.0f, h);
         InvalidateCache();
         RequestRedraw();
     }
@@ -274,6 +310,12 @@ namespace UltraCanvas {
         return globalExplosion;
     }
 
+    float UltraCanvasPieChartElement::GetSliceHeightFactor(size_t index) const {
+        auto it = sliceHeightOverrides.find(index);
+        if (it != sliceHeightOverrides.end()) return it->second;
+        return 1.0f;
+    }
+
     void UltraCanvasPieChartElement::RebuildSlices() {
         cachedSlices.clear();
         slicesValid = true;
@@ -313,8 +355,9 @@ namespace UltraCanvas {
             s.startAngle = startAngle;
             s.endAngle   = endAngle;
             s.midAngle   = startAngle + sweep / 2.0;
-            s.baseColor  = ResolveSliceColor(s.index, p.color);
-            s.explosion  = GetSliceExplosion(s.index);
+            s.baseColor    = ResolveSliceColor(s.index, p.color);
+            s.explosion    = GetSliceExplosion(s.index);
+            s.heightFactor = GetSliceHeightFactor(s.index);
             cachedSlices.push_back(s);
 
             startAngle = endAngle;
@@ -327,8 +370,13 @@ namespace UltraCanvas {
         float availH = chartArea.height;
         if (enable3D) {
             // Reserve space for the depth strip below the ellipse and for the
-            // vertical squash from the perspective tilt.
-            availH = std::max<float>(20.0f, availH - depthHeight);
+            // extra vertical headroom that any raised (extruded) slice needs.
+            float maxHeightFactor = 1.0f;
+            for (auto& kv : sliceHeightOverrides) {
+                maxHeightFactor = std::max(maxHeightFactor, kv.second);
+            }
+            float extraHeadroom = depthHeight * (maxHeightFactor - 1.0f);
+            availH = std::max<float>(20.0f, availH - depthHeight - extraHeadroom);
         }
         float baseR = std::min<float>(chartArea.width, availH) * 0.5f - 4.0f;
         // Account for explosion outward push so slices stay on-canvas.
@@ -547,22 +595,36 @@ namespace UltraCanvas {
         double tilt = perspectiveAngleDeg * M_PI / 180.0;
         double vScale = std::cos(tilt);
 
-        // Sort slices for painter's algorithm: back-most (smallest projected
+        // Sort sides for painter's algorithm: back-most (smallest projected
         // mid-y on top face) first. After tilt, projected y at angle a is sin(a) * vScale.
-        std::vector<Slice> sorted = cachedSlices;
-        std::sort(sorted.begin(), sorted.end(),
+        std::vector<Slice> sortedSides = cachedSlices;
+        std::sort(sortedSides.begin(), sortedSides.end(),
                   [vScale](const Slice& a, const Slice& b) {
                       return std::sin(a.midAngle) * vScale < std::sin(b.midAngle) * vScale;
                   });
 
-        // Side strips (back-to-front)
-        for (const Slice& s : sorted) {
-            DrawSlice3DSides(ctx, cachedCenter, outerR, innerR, vScale, depthHeight, s);
+        // Side strips (back-to-front, with per-slice extra height).
+        for (const Slice& s : sortedSides) {
+            float extraHeight = depthHeight * std::max(0.0f, s.heightFactor - 1.0f);
+            DrawSlice3DSides(ctx, cachedCenter, outerR, innerR, vScale,
+                             depthHeight, extraHeight, s);
         }
 
-        // Top faces
-        for (const Slice& s : sorted) {
-            DrawSlice3DTop(ctx, cachedCenter, outerR, innerR, vScale, s);
+        // Top faces: raised tops are physically higher, so draw shorter slices
+        // first then the taller ones — that way a raised slice's top isn't
+        // covered by a neighbour's top face when their projections overlap.
+        std::vector<Slice> sortedTops = cachedSlices;
+        std::stable_sort(sortedTops.begin(), sortedTops.end(),
+                         [vScale](const Slice& a, const Slice& b) {
+                             if (a.heightFactor != b.heightFactor)
+                                 return a.heightFactor < b.heightFactor;
+                             return std::sin(a.midAngle) * vScale <
+                                    std::sin(b.midAngle) * vScale;
+                         });
+        for (const Slice& s : sortedTops) {
+            float extraHeight = depthHeight * std::max(0.0f, s.heightFactor - 1.0f);
+            DrawSlice3DTop(ctx, cachedCenter, outerR, innerR, vScale,
+                           extraHeight, s);
         }
     }
 
@@ -571,15 +633,21 @@ namespace UltraCanvas {
                                                      float outerR,
                                                      float innerR,
                                                      double vScale,
-                                                     float depth,
+                                                     float baseDepth,
+                                                     float extraHeight,
                                                      const Slice& s)
     {
+        // For a raised slice (heightFactor > 1) the top rim sits `extraHeight`
+        // pixels higher on screen but the bottom stays on the shared baseline,
+        // so the visible side strip is taller by the same amount.
+        const float depth = baseDepth + extraHeight;
+
         double ex = std::cos(s.midAngle) * s.explosion * outerR;
         double ey = std::sin(s.midAngle) * s.explosion * outerR * vScale;
 
         auto project = [&](double a, double r) -> Point2Df {
             return Point2Df(center.x + ex + r * std::cos(a),
-                            center.y + ey + r * std::sin(a) * vScale);
+                            center.y + ey - extraHeight + r * std::sin(a) * vScale);
         };
 
         double sweep = s.endAngle - s.startAngle;
@@ -691,13 +759,15 @@ namespace UltraCanvas {
                                                     float outerR,
                                                     float innerR,
                                                     double vScale,
+                                                    float extraHeight,
                                                     const Slice& s)
     {
         double ex = std::cos(s.midAngle) * s.explosion * outerR;
         double ey = std::sin(s.midAngle) * s.explosion * outerR * vScale;
 
         ctx->PushState();
-        ctx->Translate(center.x + ex, center.y + ey);
+        // Raised slices have their top face shifted up on screen by extraHeight.
+        ctx->Translate(center.x + ex, center.y + ey - extraHeight);
         ctx->Scale(1.0, vScale);
 
         // Resolve fill (gradient/pattern/base color shaded by top-face normal).
@@ -879,8 +949,13 @@ namespace UltraCanvas {
 
             double ex = std::cos(s.midAngle) * s.explosion * outerR;
             double ey = std::sin(s.midAngle) * s.explosion * outerR * vScale;
+            // In 3D, a raised slice's visible top sits `extraH` pixels higher
+            // than the baseline ellipse — labels should follow it up.
+            float extraH = enable3D
+                           ? depthHeight * std::max(0.0f, s.heightFactor - 1.0f)
+                           : 0.0f;
             it.arcAttach = Point2Df(center.x + ex + outerR * std::cos(s.midAngle),
-                                    center.y + ey + outerR * std::sin(s.midAngle) * vScale);
+                                    center.y + ey - extraH + outerR * std::sin(s.midAngle) * vScale);
 
             float radiusFactor = 0.65f;
             if (resolved == LabelPosition::Inside)       radiusFactor = 0.65f;
@@ -888,7 +963,7 @@ namespace UltraCanvas {
             else if (resolved == LabelPosition::Outside) radiusFactor = 1.18f;
 
             it.anchor = Point2Df(center.x + ex + outerR * radiusFactor * std::cos(s.midAngle),
-                                 center.y + ey + outerR * radiusFactor * std::sin(s.midAngle) * vScale);
+                                 center.y + ey - extraH + outerR * radiusFactor * std::sin(s.midAngle) * vScale);
             it.rightSide = std::cos(s.midAngle) >= 0.0;
 
             if (resolved == LabelPosition::Inside) {
