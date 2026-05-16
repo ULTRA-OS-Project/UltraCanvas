@@ -1013,11 +1013,25 @@ namespace UltraCanvas {
                 GetIdentifier() + "_overflow", 0, 0, 220, 0);
         activePopupMenu->SetMenuType(MenuType::PopupMenu);
 
+        // Build a text representation of the current separator so menu rows can
+        // end with it (e.g. "Engineering  >"). Drawn chevrons fall back to text.
+        std::string sepSuffix;
+        switch (style.separatorStyle) {
+            case BreadcrumbSeparatorStyle::Chevron:       sepSuffix = ">";  break;
+            case BreadcrumbSeparatorStyle::ChevronDouble: sepSuffix = ">>"; break;
+            case BreadcrumbSeparatorStyle::CustomIcon:
+            case BreadcrumbSeparatorStyle::NoSeparator:   sepSuffix.clear(); break;
+            default:
+                sepSuffix = SeparatorTextFor(style.separatorStyle, style.customSeparatorText);
+                break;
+        }
+
         for (int idx : overflowItemIndices) {
             if (idx < 0 || idx >= (int)items.size()) continue;
             int capturedIdx = idx;
             const BreadcrumbItem& item = items[idx];
             std::string label = item.text.empty() ? std::string("(item)") : item.text;
+            if (!sepSuffix.empty()) label += "  " + sepSuffix;
             activePopupMenu->AddItem(MenuItemData::Action(label, [this, capturedIdx]() {
                 if (capturedIdx < 0 || capturedIdx >= (int)items.size()) return;
                 BreadcrumbItem& it = items[capturedIdx];
