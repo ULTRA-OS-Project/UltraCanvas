@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasBreadcrumbExamples.cpp
 // Breadcrumb navigation component demonstration for main demo app
-// Version: 1.0.0
-// Last Modified: 2026-05-15
+// Version: 1.1.0
+// Last Modified: 2026-05-16
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -15,23 +15,34 @@ namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBreadcrumbExamples() {
         auto mainContainer = std::make_shared<UltraCanvasContainer>("BreadcrumbExamples", 0, 0, 1000, 1100);
 
+        // Shared palette — matches the other demo pages.
+        const Color titleColor(50, 50, 150, 255);
+        const Color sectionHeaderColor(0, 100, 200, 255);
+        const Color descColor(100, 100, 100, 255);
+
+        // Two-column layout coordinates.
+        const int leftX = 40;
+        const int leftWidth = 320;
+        const int rightX = 380;
+        const int rightWidth = 580;
+
         // ===== PAGE TITLE =====
         auto title = std::make_shared<UltraCanvasLabel>("BreadcrumbTitle", 20, 10, 600, 35);
-        title->SetText("UltraCanvas Breadcrumb Showcase");
+        title->SetText("UltraCanvas Breadcrumb");
         title->SetFontSize(18);
         title->SetFontWeight(FontWeight::Bold);
-        title->SetTextColor(Color(50, 50, 150, 255));
+        title->SetTextColor(titleColor);
         mainContainer->AddChild(title);
 
-        auto subtitle = std::make_shared<UltraCanvasLabel>("BreadcrumbSubtitle", 20, 45, 800, 25);
+        auto subtitle = std::make_shared<UltraCanvasLabel>("BreadcrumbSubtitle", 20, 45, 600, 25);
         subtitle->SetText("Style presets, separator variants, dropdowns, and overflow strategies");
         subtitle->SetFontSize(12);
-        subtitle->SetTextColor(Color(100, 100, 100, 255));
+        subtitle->SetTextColor(descColor);
         mainContainer->AddChild(subtitle);
 
-        // Shared status label — every breadcrumb writes here on interaction.
-        auto statusLabel = std::make_shared<UltraCanvasLabel>("BreadcrumbStatus", 570, 10, 410, 60);
-        statusLabel->SetText("Click any segment to see selection feedback");
+        // Status label — pinned top-right, sized so it doesn't reach the section area below.
+        auto statusLabel = std::make_shared<UltraCanvasLabel>("BreadcrumbStatus", 660, 10, 320, 60);
+        statusLabel->SetText("Click on the elements to see callback results");
         statusLabel->SetFontSize(11);
         statusLabel->SetBackgroundColor(Color(245, 245, 245, 255));
         statusLabel->SetBorders(1.0f);
@@ -44,21 +55,35 @@ namespace UltraCanvas {
             statusLabel->SetText(oss.str());
         };
 
+        // Helper for the left-column "number + bold title + small description" block.
+        auto addDescription = [&](const std::string& id, int y,
+                                  const std::string& heading, const std::string& body) {
+            auto headingLbl = std::make_shared<UltraCanvasLabel>(id + "_h", leftX, y, leftWidth, 22);
+            headingLbl->SetText(heading);
+            headingLbl->SetFontSize(13);
+            headingLbl->SetFontWeight(FontWeight::Bold);
+            headingLbl->SetTextColor(sectionHeaderColor);
+            mainContainer->AddChild(headingLbl);
+
+            auto bodyLbl = std::make_shared<UltraCanvasLabel>(id + "_b", leftX, y + 22, leftWidth, 36);
+            bodyLbl->SetText(body);
+            bodyLbl->SetFontSize(11);
+            bodyLbl->SetTextColor(descColor);
+            mainContainer->AddChild(bodyLbl);
+        };
+
+        // Start below the status label so it never overlaps.
         int yOffset = 90;
-        const Color sectionHeaderColor(200, 50, 50, 255);
-        const Color descColor(100, 100, 100, 255);
+        const int rowStep = 60;
 
         // ========================================
         // SECTION 1: DEFAULT STYLE
         // ========================================
-        auto section1Label = std::make_shared<UltraCanvasLabel>("BC_Section1", 20, yOffset, 960, 25);
-        section1Label->SetText("1. Default Style (Chevron separators, bold current item)");
-        section1Label->SetFontWeight(FontWeight::Bold);
-        section1Label->SetTextColor(sectionHeaderColor);
-        mainContainer->AddChild(section1Label);
-        yOffset += 30;
+        addDescription("BC_Section1", yOffset,
+                       "1. Default style",
+                       "Chevron separators and bold current item");
 
-        auto bcDefault = CreateBreadcrumb("bc_default", 50, yOffset, 700, 30);
+        auto bcDefault = CreateBreadcrumb("bc_default", rightX, yOffset + 4, rightWidth, 30);
         bcDefault->AddItem("Home");
         bcDefault->AddItem("Documents");
         bcDefault->AddItem("Projects");
@@ -67,19 +92,16 @@ namespace UltraCanvas {
             reportClick("Default", idx, item);
         };
         mainContainer->AddChild(bcDefault);
-        yOffset += 45;
+        yOffset += rowStep;
 
         // ========================================
         // SECTION 2: COMPACT STYLE
         // ========================================
-        auto section2Label = std::make_shared<UltraCanvasLabel>("BC_Section2", 20, yOffset, 960, 25);
-        section2Label->SetText("2. Compact Style (smaller font, tighter padding)");
-        section2Label->SetFontWeight(FontWeight::Bold);
-        section2Label->SetTextColor(sectionHeaderColor);
-        mainContainer->AddChild(section2Label);
-        yOffset += 30;
+        addDescription("BC_Section2", yOffset,
+                       "2. Compact style",
+                       "Smaller font and tighter padding");
 
-        auto bcCompact = CreateBreadcrumb("bc_compact", 50, yOffset, 700, 24);
+        auto bcCompact = CreateBreadcrumb("bc_compact", rightX, yOffset + 6, rightWidth, 24);
         bcCompact->SetStyle(BreadcrumbStyle::Compact());
         bcCompact->AddItem("Home");
         bcCompact->AddItem("Documents");
@@ -89,19 +111,16 @@ namespace UltraCanvas {
             reportClick("Compact", idx, item);
         };
         mainContainer->AddChild(bcCompact);
-        yOffset += 40;
+        yOffset += rowStep;
 
         // ========================================
         // SECTION 3: PILLS STYLE
         // ========================================
-        auto section3Label = std::make_shared<UltraCanvasLabel>("BC_Section3", 20, yOffset, 960, 25);
-        section3Label->SetText("3. Pills Style (rounded backgrounds, no separators, highlighted current)");
-        section3Label->SetFontWeight(FontWeight::Bold);
-        section3Label->SetTextColor(sectionHeaderColor);
-        mainContainer->AddChild(section3Label);
-        yOffset += 30;
+        addDescription("BC_Section3", yOffset,
+                       "3. Pills style",
+                       "Rounded backgrounds, no separators, highlighted current");
 
-        auto bcPills = CreateBreadcrumb("bc_pills", 50, yOffset, 700, 32);
+        auto bcPills = CreateBreadcrumb("bc_pills", rightX, yOffset + 4, rightWidth, 32);
         bcPills->SetStyle(BreadcrumbStyle::Pills());
         bcPills->AddItem("Dashboard");
         bcPills->AddItem("Reports");
@@ -111,38 +130,32 @@ namespace UltraCanvas {
             reportClick("Pills", idx, item);
         };
         mainContainer->AddChild(bcPills);
-        yOffset += 50;
+        yOffset += rowStep;
 
         // ========================================
         // SECTION 4: FILE EXPLORER STYLE
         // ========================================
-        auto section4Label = std::make_shared<UltraCanvasLabel>("BC_Section4", 20, yOffset, 960, 25);
-        section4Label->SetText("4. File Explorer Style (built from path string via SetPath)");
-        section4Label->SetFontWeight(FontWeight::Bold);
-        section4Label->SetTextColor(sectionHeaderColor);
-        mainContainer->AddChild(section4Label);
-        yOffset += 30;
+        addDescription("BC_Section4", yOffset,
+                       "4. File explorer style",
+                       "Built from a path string via SetPath");
 
-        auto bcExplorer = CreateBreadcrumb("bc_explorer", 50, yOffset, 700, 28);
+        auto bcExplorer = CreateBreadcrumb("bc_explorer", rightX, yOffset + 4, rightWidth, 28);
         bcExplorer->SetStyle(BreadcrumbStyle::FileExplorer());
         bcExplorer->SetPath("/usr/local/share/applications", '/');
         bcExplorer->onItemClicked = [reportClick](int idx, const BreadcrumbItem& item) {
             reportClick("FileExplorer", idx, item);
         };
         mainContainer->AddChild(bcExplorer);
-        yOffset += 45;
+        yOffset += rowStep;
 
         // ========================================
         // SECTION 5: WEB DOCS STYLE
         // ========================================
-        auto section5Label = std::make_shared<UltraCanvasLabel>("BC_Section5", 20, yOffset, 960, 25);
-        section5Label->SetText("5. Web Docs Style (slash separators, underline-on-hover, link colors)");
-        section5Label->SetFontWeight(FontWeight::Bold);
-        section5Label->SetTextColor(sectionHeaderColor);
-        mainContainer->AddChild(section5Label);
-        yOffset += 30;
+        addDescription("BC_Section5", yOffset,
+                       "5. Web docs style",
+                       "Slash separators, underline-on-hover, link colors");
 
-        auto bcWeb = CreateBreadcrumb("bc_web", 50, yOffset, 700, 26);
+        auto bcWeb = CreateBreadcrumb("bc_web", rightX, yOffset + 4, rightWidth, 26);
         bcWeb->SetStyle(BreadcrumbStyle::WebDocs());
         bcWeb->AddItem("Docs");
         bcWeb->AddItem("Guides");
@@ -152,17 +165,14 @@ namespace UltraCanvas {
             reportClick("WebDocs", idx, item);
         };
         mainContainer->AddChild(bcWeb);
-        yOffset += 45;
+        yOffset += rowStep;
 
         // ========================================
         // SECTION 6: SEPARATOR GALLERY
         // ========================================
-        auto section6Label = std::make_shared<UltraCanvasLabel>("BC_Section6", 20, yOffset, 960, 25);
-        section6Label->SetText("6. Separator Gallery (one row per BreadcrumbSeparatorStyle)");
-        section6Label->SetFontWeight(FontWeight::Bold);
-        section6Label->SetTextColor(sectionHeaderColor);
-        mainContainer->AddChild(section6Label);
-        yOffset += 30;
+        addDescription("BC_Section6", yOffset,
+                       "6. Separator gallery",
+                       "One row per BreadcrumbSeparatorStyle");
 
         struct SepEntry {
             BreadcrumbSeparatorStyle style;
@@ -179,16 +189,17 @@ namespace UltraCanvas {
             {BreadcrumbSeparatorStyle::Dot,           "Dot"},
         };
 
+        int sepY = yOffset;
         for (const auto& entry : sepEntries) {
             auto lbl = std::make_shared<UltraCanvasLabel>(std::string("BC_SepLbl_") + entry.label,
-                                                         50, yOffset + 4, 140, 22);
+                                                         rightX, sepY + 4, 100, 22);
             lbl->SetText(entry.label);
             lbl->SetFontSize(11);
             lbl->SetTextColor(descColor);
             mainContainer->AddChild(lbl);
 
             auto bc = CreateBreadcrumb(std::string("bc_sep_") + entry.label,
-                                       200, yOffset, 500, 26);
+                                       rightX + 110, sepY, rightWidth - 110, 26);
             bc->SetSeparatorStyle(entry.style);
             bc->AddItem("Alpha");
             bc->AddItem("Beta");
@@ -198,61 +209,18 @@ namespace UltraCanvas {
                 reportClick(std::string("Separator/") + name, idx, item);
             };
             mainContainer->AddChild(bc);
-            yOffset += 32;
+            sepY += 30;
         }
-        yOffset += 10;
+        yOffset = sepY + 15;
 
         // ========================================
-        // SECTION 7: ITEM WITH DROPDOWN
+        // SECTION 7: COLLAPSE OVERFLOW
         // ========================================
-        auto section7Label = std::make_shared<UltraCanvasLabel>("BC_Section7", 20, yOffset, 960, 25);
-        section7Label->SetText("7. Item with Dropdown (click the chevron next to 'Projects')");
-        section7Label->SetFontWeight(FontWeight::Bold);
-        section7Label->SetTextColor(sectionHeaderColor);
-        mainContainer->AddChild(section7Label);
-        yOffset += 30;
+        addDescription("BC_Section7", yOffset,
+                       "7. Collapse overflow",
+                       "Middle items hidden behind a '...' menu (narrow width)");
 
-//        auto bcDropdown = CreateBreadcrumb("bc_dropdown", 50, yOffset, 700, 30);
-//        bcDropdown->AddItem("Workspace");
-//        std::vector<MenuItemData> projectsMenu = {
-//            MenuItemData::Action("Open UltraCanvas", [statusLabel]() {
-//                statusLabel->SetText("Dropdown: opened 'UltraCanvas'");
-//            }),
-//            MenuItemData::Action("Open DemoApp", [statusLabel]() {
-//                statusLabel->SetText("Dropdown: opened 'DemoApp'");
-//            }),
-//            MenuItemData::Action("Open Texter", [statusLabel]() {
-//                statusLabel->SetText("Dropdown: opened 'Texter'");
-//            }),
-//            MenuItemData::Action("New project...", [statusLabel]() {
-//                statusLabel->SetText("Dropdown: new project requested");
-//            }),
-//        };
-//        bcDropdown->AddItem(BreadcrumbItem::WithDropdown("Projects", projectsMenu));
-//        bcDropdown->AddItem("UltraCanvas");
-//        bcDropdown->AddItem("Source");
-//        bcDropdown->onItemClicked = [reportClick](int idx, const BreadcrumbItem& item) {
-//            reportClick("Dropdown", idx, item);
-//        };
-//        bcDropdown->onItemDropdown = [statusLabel](int idx, const BreadcrumbItem& item) {
-//            std::ostringstream oss;
-//            oss << "Dropdown chevron clicked on '" << item.text << "' (index " << idx << ")";
-//            statusLabel->SetText(oss.str());
-//        };
-//        mainContainer->AddChild(bcDropdown);
-//        yOffset += 50;
-
-        // ========================================
-        // SECTION 8: COLLAPSE OVERFLOW
-        // ========================================
-        auto section8Label = std::make_shared<UltraCanvasLabel>("BC_Section8", 20, yOffset, 960, 25);
-        section8Label->SetText("8. Collapse Overflow (middle items hidden behind a '...' menu — narrow width)");
-        section8Label->SetFontWeight(FontWeight::Bold);
-        section8Label->SetTextColor(sectionHeaderColor);
-        mainContainer->AddChild(section8Label);
-        yOffset += 30;
-
-        auto bcCollapse = CreateBreadcrumb("bc_collapse", 50, yOffset, 360, 30);
+        auto bcCollapse = CreateBreadcrumb("bc_collapse", rightX, yOffset + 4, 360, 30);
         bcCollapse->SetOverflowMode(BreadcrumbOverflowMode::Collapse);
         bcCollapse->AddItem("Root");
         bcCollapse->AddItem("Engineering");
@@ -270,25 +238,16 @@ namespace UltraCanvas {
             statusLabel->SetText("Overflow menu opened — pick any hidden segment");
         };
         mainContainer->AddChild(bcCollapse);
-
-        auto collapseDesc = std::make_shared<UltraCanvasLabel>("BC_CollapseDesc", 430, yOffset + 4, 540, 24);
-        collapseDesc->SetText("9-segment path in 360px wide control. First + tail kept, middle collapsed.");
-        collapseDesc->SetFontSize(10);
-        collapseDesc->SetTextColor(descColor);
-        mainContainer->AddChild(collapseDesc);
-        yOffset += 45;
+        yOffset += rowStep;
 
         // ========================================
-        // SECTION 9: ELLIPSIZE OVERFLOW
+        // SECTION 8: ELLIPSIZE OVERFLOW
         // ========================================
-        auto section9Label = std::make_shared<UltraCanvasLabel>("BC_Section9", 20, yOffset, 960, 25);
-        section9Label->SetText("9. Ellipsize Overflow (per-item text trimmed via maxItemTextWidth)");
-        section9Label->SetFontWeight(FontWeight::Bold);
-        section9Label->SetTextColor(sectionHeaderColor);
-        mainContainer->AddChild(section9Label);
-        yOffset += 30;
+        addDescription("BC_Section8", yOffset,
+                       "8. Ellipsize overflow",
+                       "Per-item text trimmed via maxItemTextWidth");
 
-        auto bcEllipsize = CreateBreadcrumb("bc_ellipsize", 50, yOffset, 700, 30);
+        auto bcEllipsize = CreateBreadcrumb("bc_ellipsize", rightX, yOffset + 4, rightWidth, 30);
         bcEllipsize->SetOverflowMode(BreadcrumbOverflowMode::Ellipsize);
         bcEllipsize->SetMaxItemTextWidth(60);
         bcEllipsize->AddItem("A Very Long Workspace Name");
@@ -299,7 +258,7 @@ namespace UltraCanvas {
             reportClick("Ellipsize", idx, item);
         };
         mainContainer->AddChild(bcEllipsize);
-        yOffset += 45;
+        yOffset += rowStep;
 
         return mainContainer;
     }
