@@ -260,6 +260,35 @@ namespace UltraCanvas {
         mainContainer->AddChild(bcEllipsize);
         yOffset += rowStep;
 
+        // ========================================
+        // SECTION 9: ROUNDED STRIP
+        // ========================================
+        addDescription("BC_Section9", yOffset,
+                       "9. Rounded strip",
+                       "Light gray rounded background, uniform clickable segments");
+
+        auto bcStrip = CreateBreadcrumb("bc_strip", rightX, yOffset + 4, 420, 32);
+        BreadcrumbStyle stripStyle = BreadcrumbStyle::Default();
+        stripStyle.backgroundColor       = Color(243, 243, 243, 255);
+        stripStyle.cornerRadius          = 4.0f;
+        stripStyle.separatorStyle        = BreadcrumbSeparatorStyle::Chevron;
+        stripStyle.separatorColor        = Color(140, 140, 140, 255);
+        stripStyle.itemTextColor         = Color(60, 60, 60, 255);
+        stripStyle.currentItemTextColor  = stripStyle.itemTextColor;
+        stripStyle.currentItemBold       = false;
+        stripStyle.currentItemClickable  = true;
+        stripStyle.itemPaddingHorizontal = 10;
+        stripStyle.separatorSpacing      = 8;
+        bcStrip->SetStyle(stripStyle);
+        bcStrip->AddItem("PlantUML");
+        bcStrip->AddItem("Language specification");
+        bcStrip->AddItem("Yaml Diagram");
+        bcStrip->onItemClicked = [reportClick](int idx, const BreadcrumbItem& item) {
+            reportClick("RoundedStrip", idx, item);
+        };
+        mainContainer->AddChild(bcStrip);
+        yOffset += rowStep;
+
         return mainContainer;
     }
 
