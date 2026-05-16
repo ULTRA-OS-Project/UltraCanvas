@@ -120,6 +120,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasPieChartExamples.cpp
             Apps/DemoApp/UltraCanvasAdjacencyDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasArcDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasSlideshowExamples.cpp
     )
 
     # These files depend on libvips
