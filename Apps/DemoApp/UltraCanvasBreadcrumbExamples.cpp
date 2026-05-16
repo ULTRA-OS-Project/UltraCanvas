@@ -1,19 +1,22 @@
 // Apps/DemoApp/UltraCanvasBreadcrumbExamples.cpp
 // Breadcrumb navigation component demonstration for main demo app
-// Version: 1.1.0
+// Version: 1.2.0
 // Last Modified: 2026-05-16
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasBreadcrumb.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasConfig.h"
+#include "UltraCanvasUtils.h"
 #include <sstream>
 
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBreadcrumbExamples() {
-        auto mainContainer = std::make_shared<UltraCanvasContainer>("BreadcrumbExamples", 0, 0, 1000, 1100);
+        auto mainContainer = std::make_shared<UltraCanvasContainer>("BreadcrumbExamples", 0, 0, 1000, 1300);
 
         // Shared palette — matches the other demo pages.
         const Color titleColor(50, 50, 150, 255);
@@ -35,7 +38,7 @@ namespace UltraCanvas {
         mainContainer->AddChild(title);
 
         auto subtitle = std::make_shared<UltraCanvasLabel>("BreadcrumbSubtitle", 20, 45, 600, 25);
-        subtitle->SetText("Style presets, separator variants, dropdowns, and overflow strategies");
+        subtitle->SetText("Style presets, separators, dropdowns, icons, navigation, and overflow modes");
         subtitle->SetFontSize(12);
         subtitle->SetTextColor(descColor);
         mainContainer->AddChild(subtitle);
@@ -214,10 +217,120 @@ namespace UltraCanvas {
         yOffset = sepY + 15;
 
         // ========================================
-        // SECTION 7: COLLAPSE OVERFLOW
+        // SECTION 7: ITEM WITH DROPDOWN
         // ========================================
         addDescription("BC_Section7", yOffset,
-                       "7. Collapse overflow",
+                       "7. Item with dropdown",
+                       "Click the small chevron next to 'Projects' to open the menu");
+
+        auto bcDropdown = CreateBreadcrumb("bc_dropdown", rightX, yOffset + 4, rightWidth, 30);
+        bcDropdown->AddItem("Workspace");
+        std::vector<MenuItemData> projectsMenu = {
+            MenuItemData::Action("Open UltraCanvas", [statusLabel]() {
+                statusLabel->SetText("Dropdown: opened 'UltraCanvas'");
+            }),
+            MenuItemData::Action("Open DemoApp", [statusLabel]() {
+                statusLabel->SetText("Dropdown: opened 'DemoApp'");
+            }),
+            MenuItemData::Action("Open Texter", [statusLabel]() {
+                statusLabel->SetText("Dropdown: opened 'Texter'");
+            }),
+            MenuItemData::Separator(),
+            MenuItemData::Action("New project...", [statusLabel]() {
+                statusLabel->SetText("Dropdown: new project requested");
+            }),
+        };
+        bcDropdown->AddItem(BreadcrumbItem::WithDropdown("Projects", projectsMenu));
+        bcDropdown->AddItem("UltraCanvas");
+        bcDropdown->AddItem("Source");
+        bcDropdown->onItemClicked = [reportClick](int idx, const BreadcrumbItem& item) {
+            reportClick("Dropdown", idx, item);
+        };
+        bcDropdown->onItemDropdown = [statusLabel](int idx, const BreadcrumbItem& item) {
+            std::ostringstream oss;
+            oss << "Dropdown chevron clicked on '" << item.text << "' (index " << idx << ")";
+            statusLabel->SetText(oss.str());
+        };
+        mainContainer->AddChild(bcDropdown);
+        yOffset += rowStep;
+
+        // ========================================
+        // SECTION 8: ICONS
+        // ========================================
+        addDescription("BC_Section8", yOffset,
+                       "8. Icons",
+                       "Per-item leading icons via WithIcon / IconOnly");
+
+        const std::string iconsRoot = NormalizePath(GetResourcesDir() + "media/icons/");
+        auto bcIcons = CreateBreadcrumb("bc_icons", rightX, yOffset + 4, rightWidth, 30);
+        bcIcons->AddItem(BreadcrumbItem::IconOnly(iconsRoot + "home-icon.png", "Home"));
+        bcIcons->AddItem(BreadcrumbItem::WithIcon("Documents", iconsRoot + "folder.png"));
+        bcIcons->AddItem(BreadcrumbItem::WithIcon("Projects", iconsRoot + "folder.png"));
+        bcIcons->AddItem(BreadcrumbItem::WithIcon("Report.txt", iconsRoot + "document.png"));
+        bcIcons->onItemClicked = [reportClick](int idx, const BreadcrumbItem& item) {
+            reportClick("Icons", idx, item);
+        };
+        mainContainer->AddChild(bcIcons);
+        yOffset += rowStep;
+
+        // ========================================
+        // SECTION 9: LIVE NAVIGATION
+        // ========================================
+        addDescription("BC_Section9", yOffset,
+                       "9. Live navigation",
+                       "Clicking a segment truncates the path — try it!");
+
+        const std::string initialNavPath = "/home/user/projects/ultracanvas/Apps/DemoApp";
+        auto bcNav = CreateBreadcrumb("bc_nav", rightX, yOffset + 4, rightWidth - 90, 30);
+        bcNav->SetPath(initialNavPath, '/');
+
+        auto resetBtn = std::make_shared<UltraCanvasButton>("BC_NavReset", rightX + rightWidth - 80, yOffset + 4, 80, 28);
+        resetBtn->SetText("Reset");
+        resetBtn->SetTooltip("Restore the original path");
+
+        auto navHint = std::make_shared<UltraCanvasLabel>("BC_NavHint", rightX, yOffset + 38, rightWidth, 18);
+        navHint->SetText("Path: " + initialNavPath);
+        navHint->SetFontSize(10);
+        navHint->SetTextColor(descColor);
+        mainContainer->AddChild(navHint);
+
+        // Capture by weak_ptr to avoid creating reference cycles.
+        std::weak_ptr<UltraCanvasBreadcrumb> bcNavWeak = bcNav;
+        std::weak_ptr<UltraCanvasLabel> navHintWeak = navHint;
+        auto refreshHint = [bcNavWeak, navHintWeak]() {
+            auto bc = bcNavWeak.lock();
+            auto hint = navHintWeak.lock();
+            if (!bc || !hint) return;
+            hint->SetText("Path: " + bc->GetPath('/'));
+        };
+
+        bcNav->onItemClicked = [bcNavWeak, refreshHint, statusLabel](int idx, const BreadcrumbItem& item) {
+            auto bc = bcNavWeak.lock();
+            if (!bc) return;
+            bc->RemoveItemsAfter(idx);
+            refreshHint();
+            std::ostringstream oss;
+            oss << "Navigation: jumped to '" << item.text << "' (path truncated)";
+            statusLabel->SetText(oss.str());
+        };
+
+        resetBtn->onClick = [bcNavWeak, refreshHint, statusLabel, initialNavPath]() {
+            auto bc = bcNavWeak.lock();
+            if (!bc) return;
+            bc->SetPath(initialNavPath, '/');
+            refreshHint();
+            statusLabel->SetText("Navigation: path reset to original");
+        };
+
+        mainContainer->AddChild(bcNav);
+        mainContainer->AddChild(resetBtn);
+        yOffset += rowStep + 10; // a bit extra for the path hint line
+
+        // ========================================
+        // SECTION 10: COLLAPSE OVERFLOW
+        // ========================================
+        addDescription("BC_Section10", yOffset,
+                       "10. Collapse overflow",
                        "Middle items hidden behind a '...' menu (narrow width)");
 
         auto bcCollapse = CreateBreadcrumb("bc_collapse", rightX, yOffset + 4, 360, 30);
@@ -241,11 +354,11 @@ namespace UltraCanvas {
         yOffset += rowStep;
 
         // ========================================
-        // SECTION 8: ELLIPSIZE OVERFLOW
+        // SECTION 11: ELLIPSIZE OVERFLOW
         // ========================================
-        addDescription("BC_Section8", yOffset,
-                       "8. Ellipsize overflow",
-                       "Per-item text trimmed via maxItemTextWidth");
+        addDescription("BC_Section11", yOffset,
+                       "11. Ellipsize overflow",
+                       "Per-item text trimmed via maxItemTextWidth=60");
 
         auto bcEllipsize = CreateBreadcrumb("bc_ellipsize", rightX, yOffset + 4, rightWidth, 30);
         bcEllipsize->SetOverflowMode(BreadcrumbOverflowMode::Ellipsize);
@@ -261,10 +374,30 @@ namespace UltraCanvas {
         yOffset += rowStep;
 
         // ========================================
-        // SECTION 9: ROUNDED STRIP
+        // SECTION 12: SHRINK-TEXT OVERFLOW
         // ========================================
-        addDescription("BC_Section9", yOffset,
-                       "9. Rounded strip",
+        addDescription("BC_Section12", yOffset,
+                       "12. ShrinkText overflow",
+                       "Per-item width auto-reduces until everything fits");
+
+        auto bcShrink = CreateBreadcrumb("bc_shrink", rightX, yOffset + 4, 420, 30);
+        bcShrink->SetOverflowMode(BreadcrumbOverflowMode::ShrinkText);
+        bcShrink->AddItem("Customers");
+        bcShrink->AddItem("Acme Corporation");
+        bcShrink->AddItem("North America Division");
+        bcShrink->AddItem("Quarterly Reports");
+        bcShrink->AddItem("2026 Q2 Final");
+        bcShrink->onItemClicked = [reportClick](int idx, const BreadcrumbItem& item) {
+            reportClick("ShrinkText", idx, item);
+        };
+        mainContainer->AddChild(bcShrink);
+        yOffset += rowStep;
+
+        // ========================================
+        // SECTION 13: ROUNDED STRIP
+        // ========================================
+        addDescription("BC_Section13", yOffset,
+                       "13. Rounded strip",
                        "Light gray rounded background, uniform clickable segments");
 
         auto bcStrip = CreateBreadcrumb("bc_strip", rightX, yOffset + 4, 420, 32);

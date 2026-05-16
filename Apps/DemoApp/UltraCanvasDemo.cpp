@@ -532,8 +532,11 @@ namespace UltraCanvas {
                 .AddVariant("breadcrumb", "Web Docs Style")
                 .AddVariant("breadcrumb", "Separator Styles")
                 .AddVariant("breadcrumb", "Dropdown Items")
+                .AddVariant("breadcrumb", "Icons")
+                .AddVariant("breadcrumb", "Live Navigation")
                 .AddVariant("breadcrumb", "Collapse Overflow")
                 .AddVariant("breadcrumb", "Ellipsize Overflow")
+                .AddVariant("breadcrumb", "ShrinkText Overflow")
                 .AddVariant("breadcrumb", "Rounded Strip");
 
         basicBuilder.AddItem("gauges", "Gauges", "Gauges",
