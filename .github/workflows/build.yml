@@ -24,7 +24,9 @@ jobs:
               brew install cairo pango harfbuzz vips glib freetype tinyxml2
               brew install jsoncpp
               brew install libcdr librevenge
-              brew install curl
+              # libcurl: use Apple's system libcurl (SecureTransport-family
+              # backend) — already present on every macOS install, so we add
+              # no extra dependency for UltraNet on this platform.
           - os: ubuntu-latest
             arch_label: x86_64
             install_deps: |
@@ -86,7 +88,7 @@ jobs:
             mingw-w64-x86_64-fmt
             mingw-w64-x86_64-imagemagick
             mingw-w64-x86_64-libheif
-            mingw-w64-x86_64-curl
+            mingw-w64-x86_64-curl-winssl
             zip
             
       # ===== macOS / Linux: system package manager =====
