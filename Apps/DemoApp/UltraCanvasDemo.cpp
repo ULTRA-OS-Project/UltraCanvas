@@ -1103,6 +1103,19 @@ namespace UltraCanvas {
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("Photo/Video viewer"); });
 
+        widgetsBuilder.AddItem("slideshow", "Slideshow",
+                               "Timed image diashow with info text panel and selectable indicator styles",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateSlideshowExamples(); },
+                               "Apps/DemoApp/UltraCanvasSlideshowExamples.cpp")
+                .AddVariant("slideshow", "Bars Indicator")
+                .AddVariant("slideshow", "Dots Indicator")
+                .AddVariant("slideshow", "Progress Bar")
+                .AddVariant("slideshow", "Story Bars")
+                .AddVariant("slideshow", "Counter")
+                .AddVariant("slideshow", "Thumbnails")
+                .AddVariant("slideshow", "Labels");
+
         debugOutput << "✓ Registered " << demoItems.size() << " demo items across "
                   << categoryItems.size() << " categories" << std::endl;
     }
