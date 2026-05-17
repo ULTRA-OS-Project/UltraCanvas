@@ -1,7 +1,7 @@
 // libspecific/Cairo/RenderContextCairo.cpp
 // Cairo support implementation for UltraCanvas Framework
-// Version: 1.0.8 - Multi-layer DPI pin (context + surface fallback + font map) + diagnostic log
-// Last Modified: 2026-05-10
+// Version: 1.0.9 - DrawTextLayout now applies text source color before pango_cairo_show_layout
+// Last Modified: 2026-05-17
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -762,6 +762,7 @@ namespace UltraCanvas {
         auto extents = layout.GetLayoutExtents();
 //        debugOutput << "RenderContextCairo::DrawTextLayout txt=" << layout.GetText() << " pos=" << pos.x << "," << pos.y << " offset=" << layout.GetLayoutVerticalOffset() <<  " extents=" << extents.logical.x << "," << extents.logical.y << " " << extents.logical.width << "x" << extents.logical.height << " ink=" << extents.ink.x << "," << extents.ink.y << " " << extents.ink.width << "x" << extents.ink.height << std::endl;
         cairo_move_to(cairo, pos.x, pos.y + layout.GetLayoutVerticalOffset());
+        ApplySourceToCairo(cairo, currentState.textSourceColor, currentState.textSourcePattern);
         pango_cairo_show_layout(cairo, static_cast<PangoLayout *>(layout.GetHandle()));
     }
 

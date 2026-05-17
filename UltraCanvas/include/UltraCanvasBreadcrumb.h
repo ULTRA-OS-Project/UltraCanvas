@@ -1,7 +1,7 @@
 // include/UltraCanvasBreadcrumb.h
 // Hierarchical breadcrumb navigation control with overflow handling and per-item dropdowns
-// Version: 1.0.0
-// Last Modified: 2026-05-14
+// Version: 1.1.0
+// Last Modified: 2026-05-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -243,9 +243,17 @@ namespace UltraCanvas {
             Rect2Di iconRect;
             Rect2Di textRect;
             Rect2Di dropdownRect;         // Empty if no dropdown
-            std::string displayText;      // Possibly-ellipsized text actually drawn
+            std::string displayText;      // Original item text (kept for overflow menu / debugging)
+            Size2Df textSize;             // Cached logical size from textLayout
+            std::unique_ptr<ITextLayout> textLayout;
             bool isOverflow = false;
             bool isCurrent = false;
+
+            ItemSlot() = default;
+            ItemSlot(ItemSlot&&) noexcept = default;
+            ItemSlot& operator=(ItemSlot&&) noexcept = default;
+            ItemSlot(const ItemSlot&) = delete;
+            ItemSlot& operator=(const ItemSlot&) = delete;
         };
 
         // ===== STATE =====
@@ -263,6 +271,7 @@ namespace UltraCanvas {
         // Layout cache — recomputed when geometry is dirty.
         std::vector<ItemSlot> slots;
         std::vector<int> overflowItemIndices; // Indices of items collapsed into "..."
+        std::unique_ptr<ITextLayout> separatorLayout; // For text-based separators
         int separatorWidth = 0;               // Cached separator width
         int separatorHeight = 0;
         int rowHeight = 0;
@@ -274,9 +283,10 @@ namespace UltraCanvas {
         // ===== HELPERS =====
         int ResolvedCurrentIndex() const;
         void RecalculateLayout(IRenderContext* ctx);
-        int MeasureItemWidth(IRenderContext* ctx, const BreadcrumbItem& item, bool includeDropdown,
-                             const std::string& displayText);
-        std::string FitText(IRenderContext* ctx, const std::string& text, int maxPixelWidth);
+        std::unique_ptr<ITextLayout> BuildItemLayout(IRenderContext* ctx, const std::string& text,
+                                                    bool bold, int maxWidth) const;
+        int ComputeItemSlotWidth(const BreadcrumbItem& item, const Size2Df& textSize,
+                                 bool includeDropdown) const;
         int MeasureSeparator(IRenderContext* ctx);
 
         // Hit testing (returns slot index or -1).
