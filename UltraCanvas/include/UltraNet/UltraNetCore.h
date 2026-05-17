@@ -214,3 +214,11 @@ void UltraNet_DetectSystemProxy(UltraNetProxyConfig& outProxy);
 void UltraNet_SetGlobalProxy(const UltraNetProxyConfig& proxy);
 UltraNetProxyConfig UltraNet_GetGlobalProxy();
 void UltraNet_DisableProxy();
+
+// ============================================================================
+// Cancellation & progress. Operate on a UltraNetHandle returned by an async
+// entry point (HTTP today; sessions / websockets later).
+// ============================================================================
+UltraNetResult         UltraNet_CancelRequest(UltraNetHandle handle);
+bool                   UltraNet_IsRequestActive(UltraNetHandle handle);
+UltraNetTransferStats  UltraNet_GetTransferStats(UltraNetHandle handle);

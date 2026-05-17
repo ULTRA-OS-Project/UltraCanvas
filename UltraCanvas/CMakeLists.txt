@@ -510,10 +510,15 @@ endif()
 # ===== BUILD ULTRANET LIBRARY (Stage 1: HTTP/HTTPS + URL on libcurl) =====
 if(ULTRACANVAS_ENABLE_NET)
     find_package(CURL REQUIRED)
+    find_package(Threads REQUIRED)
 
     set(ULTRANET_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetCore.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetHttp.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetHttpEasy.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetHttpAsync.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetCookies.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetDns.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetUrl.cpp
     )
     if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
@@ -539,9 +544,9 @@ if(ULTRACANVAS_ENABLE_NET)
         PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
             $<INSTALL_INTERFACE:include/ultracanvas>)
-    target_link_libraries(UltraNet PUBLIC CURL::libcurl)
+    target_link_libraries(UltraNet PUBLIC CURL::libcurl Threads::Threads)
     if(ULTRACANVAS_PLATFORM STREQUAL "Windows")
-        target_link_libraries(UltraNet PUBLIC winhttp)
+        target_link_libraries(UltraNet PUBLIC winhttp ws2_32)
     elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
         find_library(CFNETWORK_FRAMEWORK CFNetwork REQUIRED)
         find_library(CORE_FOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
