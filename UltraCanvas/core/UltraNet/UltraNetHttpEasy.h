@@ -22,10 +22,16 @@ namespace ultranet_internal {
     // std::vector, streams to a FILE*, or fires a per-chunk callback for
     // streaming use cases (SSE, chunked LLM tokens). When onChunk is set,
     // the body / file accumulators are bypassed. maxBytes==0 means unlimited.
+    //
+    // The struct also carries the per-request progress callbacks. They live
+    // here (rather than in a separate struct) so a single XFERINFODATA
+    // pointer can carry everything libcurl needs from us.
     struct WriteSink {
         std::vector<uint8_t>* body = nullptr;
         std::FILE* file = nullptr;
         std::function<void(const std::vector<uint8_t>&)> onChunk;
+        std::function<void(int64_t, int64_t)> perRequestDownload;
+        std::function<void(int64_t, int64_t)> perRequestUpload;
         int64_t maxBytes = 0;
         int64_t received = 0;
         bool exceededLimit = false;

@@ -139,9 +139,22 @@ std::size_t HeaderCallback(char* data, std::size_t size,
 }
 
 namespace {
-    int ProgressCallback(void* /*userdata*/,
+    int ProgressCallback(void* userdata,
                          curl_off_t dltotal, curl_off_t dlnow,
                          curl_off_t ultotal, curl_off_t ulnow) {
+        // Per-request callbacks first — they're more specific.
+        auto* sink = static_cast<WriteSink*>(userdata);
+        if (sink) {
+            if (sink->perRequestDownload && dlnow > 0) {
+                sink->perRequestDownload(static_cast<int64_t>(dlnow),
+                                         static_cast<int64_t>(dltotal));
+            }
+            if (sink->perRequestUpload && ulnow > 0) {
+                sink->perRequestUpload(static_cast<int64_t>(ulnow),
+                                       static_cast<int64_t>(ultotal));
+            }
+        }
+        // Then process-wide ones.
         const auto cb = UltraNet_GetTransferCallbacks();
         if (cb.onDownloadProgress && dlnow > 0) {
             cb.onDownloadProgress(static_cast<int64_t>(dlnow),
@@ -294,7 +307,9 @@ curl_slist* ConfigureEasyHandle(CURL* easy,
     // Per-chunk streaming: when the caller provides request.onDataChunk we
     // bypass body accumulation entirely and fire the callback as bytes
     // arrive (this is what UltraNet_SseStream layers on top of).
-    if (request.onDataChunk) sink->onChunk = request.onDataChunk;
+    if (request.onDataChunk)         sink->onChunk            = request.onDataChunk;
+    if (request.onDownloadProgress)  sink->perRequestDownload = request.onDownloadProgress;
+    if (request.onUploadProgress)    sink->perRequestUpload   = request.onUploadProgress;
     curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, &WriteCallback);
     curl_easy_setopt(easy, CURLOPT_WRITEDATA, sink);
     curl_easy_setopt(easy, CURLOPT_HEADERFUNCTION, &HeaderCallback);
@@ -304,10 +319,11 @@ curl_slist* ConfigureEasyHandle(CURL* easy,
     curl_easy_setopt(easy, CURLOPT_FAILONERROR, 0L);
 
     // Progress reporting — libcurl invokes ProgressCallback frequently during
-    // the transfer; the callback fans out to the global UltraNet callbacks.
+    // the transfer; XFERINFODATA carries the WriteSink so per-request
+    // callbacks (stashed there) fire alongside the global ones.
     curl_easy_setopt(easy, CURLOPT_NOPROGRESS, 0L);
     curl_easy_setopt(easy, CURLOPT_XFERINFOFUNCTION, &ProgressCallback);
-    curl_easy_setopt(easy, CURLOPT_XFERINFODATA, nullptr);
+    curl_easy_setopt(easy, CURLOPT_XFERINFODATA, sink);
 
     return slist;
 }

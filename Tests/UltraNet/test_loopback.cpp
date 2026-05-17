@@ -236,3 +236,40 @@ TEST(loopback_progress_callbacks_fire) {
     CHECK(events.load() > 0);
     CHECK(lastBytes.load() >= 4096);
 }
+
+TEST(loopback_per_request_progress_isolates_concurrent_transfers) {
+    if (!EnsureServer()) SKIP("python3 not available");
+
+    std::atomic<int64_t> bytesA{0}, bytesB{0};
+    std::atomic<bool>    doneA{false}, doneB{false};
+
+    UltraNetHttpRequest reqA;
+    reqA.url = Base() + "/big.bin";
+    reqA.onDownloadProgress = [&](int64_t n, int64_t) { bytesA = n; };
+
+    UltraNetHttpRequest reqB;
+    reqB.url = Base() + "/hello.txt";
+    reqB.onDownloadProgress = [&](int64_t n, int64_t) { bytesB = n; };
+
+    UltraNetHandle hA = UltraNet_HttpRequestAsync(reqA,
+        [&](const UltraNetResponse&) { doneA = true; });
+    UltraNetHandle hB = UltraNet_HttpRequestAsync(reqB,
+        [&](const UltraNetResponse&) { doneB = true; });
+    REQUIRE(hA != UltraNetInvalidHandle);
+    REQUIRE(hB != UltraNetInvalidHandle);
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while ((!doneA.load() || !doneB.load()) &&
+           std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    REQUIRE(doneA.load());
+    REQUIRE(doneB.load());
+
+    // Both per-request callbacks fired at least once; the bytes counts are
+    // distinct (A is 4 KB binary, B is ~30 B text — the small one converges
+    // way below the big one's total).
+    CHECK(bytesA.load() >= 4096);
+    CHECK(bytesB.load() > 0);
+    CHECK(bytesA.load() != bytesB.load());
+}

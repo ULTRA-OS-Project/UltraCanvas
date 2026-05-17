@@ -82,6 +82,15 @@ struct UltraNetHttpRequest {
     // worker for async. Use this for Server-Sent Events, chunked LLM
     // responses, and any other "process tokens as they arrive" workload.
     std::function<void(const std::vector<uint8_t>&)> onDataChunk;
+
+    // Optional. Per-request download / upload progress. Fires alongside any
+    // global UltraNetTransferCallbacks set via UltraNet_SetTransferCallbacks
+    // — apps with multiple concurrent transfers should set these per-request
+    // so they can tell which transfer the progress relates to.
+    // bytesNow is the running count; bytesTotal is what the server reported
+    // (Content-Length) or -1 if unknown for downloads.
+    std::function<void(int64_t bytesNow, int64_t bytesTotal)> onDownloadProgress;
+    std::function<void(int64_t bytesNow, int64_t bytesTotal)> onUploadProgress;
 };
 
 struct UltraNetResponse {
