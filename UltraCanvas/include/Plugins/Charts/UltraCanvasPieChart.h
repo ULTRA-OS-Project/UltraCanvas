@@ -75,6 +75,11 @@ namespace UltraCanvas {
         void SetLeaderLinesEnabled(bool on);
         bool GetLeaderLinesEnabled() const { return leaderLinesEnabled; }
         void SetLeaderLineStyle(const Color& c, float w);
+        // Gap in pixels between the pie's outer edge and the closest point of
+        // every outside label. Applied uniformly so the leader-line lengths
+        // look consistent around the chart.
+        void SetLabelMargin(float pixels);
+        float GetLabelMargin() const { return labelMargin; }
         void SetLabelFont(const std::string& family, float size, FontWeight weight);
         void SetLabelColor(const Color& c);
         void SetLabelBackgroundEnabled(bool on);
@@ -135,6 +140,7 @@ namespace UltraCanvas {
         bool leaderLinesEnabled = true;
         Color leaderLineColor = Color(150, 150, 150, 255);
         float leaderLineWidth = 1.0f;
+        float labelMargin = 8.0f;
         std::string labelFontFamily = "Arial";
         float labelFontSize = 11.0f;
         FontWeight labelFontWeight = FontWeight::Normal;
