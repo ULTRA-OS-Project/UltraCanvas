@@ -12,6 +12,7 @@ set(ULTRANET_TEST_SOURCES
     test_dns_format.cpp
     test_loopback.cpp
     test_smtp_plugin.cpp
+    test_imap_plugin.cpp
     test_sse.cpp
 )
 
@@ -34,6 +35,12 @@ if(TARGET UltraNetSmtpPlugin)
     add_dependencies(UltraNetTests UltraNetSmtpPlugin)
     target_compile_definitions(UltraNetTests PRIVATE
         ULTRANET_SMTP_PLUGIN_PATH_DEFINE="$<TARGET_FILE:UltraNetSmtpPlugin>")
+endif()
+
+if(TARGET UltraNetImapPlugin)
+    add_dependencies(UltraNetTests UltraNetImapPlugin)
+    target_compile_definitions(UltraNetTests PRIVATE
+        ULTRANET_IMAP_PLUGIN_PATH_DEFINE="$<TARGET_FILE:UltraNetImapPlugin>")
 endif()
 
 include(CTest)

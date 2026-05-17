@@ -39,6 +39,7 @@ endif()
 # library target so apps that don't need networking pay no cost.
 option(ULTRACANVAS_ENABLE_NET "Build the UltraNet networking library" ON)
 option(ULTRACANVAS_PLUGIN_SMTP "Build the UltraNet SMTP plug-in" ON)
+option(ULTRACANVAS_PLUGIN_IMAP "Build the UltraNet IMAP plug-in" ON)
 
 # ===== DETECT PLATFORM =====
 if(WIN32)
@@ -601,6 +602,14 @@ if(ULTRACANVAS_ENABLE_NET)
         message(STATUS "  [✓] UltraNet SMTP plug-in - ENABLED")
     elseif(ULTRACANVAS_PLUGIN_SMTP)
         message(STATUS "  [−] UltraNet SMTP plug-in - SKIPPED (Windows host: plug-in DSO loading is v1.1)")
+    endif()
+
+    # IMAP plug-in — symmetric pair with SMTP (SMTP sends, IMAP fetches).
+    if(ULTRACANVAS_PLUGIN_IMAP AND NOT ULTRACANVAS_PLATFORM STREQUAL "Windows")
+        add_subdirectory(Plugins/UltraNet/imap)
+        message(STATUS "  [✓] UltraNet IMAP plug-in - ENABLED")
+    elseif(ULTRACANVAS_PLUGIN_IMAP)
+        message(STATUS "  [−] UltraNet IMAP plug-in - SKIPPED (Windows host: plug-in DSO loading is v1.1)")
     endif()
 else()
     message(STATUS "  [−] UltraNet - DISABLED")
