@@ -1,3 +1,33 @@
+#### 2026-05-17 *0.1.36*
+- Implemented UltraNet networking module — full v1.0 master-registry surface
+  (`UltraNet/UltraNetCore.h`, `UltraNetHttp.h`, `UltraNetUrl.h`, `UltraNetWebSocket.h`,
+  `UltraNetFtp.h`, `UltraNetSocket.h`, `UltraNetTls.h`, `UltraNetDns.h`,
+  `UltraNetCookies.h`, `UltraNetPlugins.h`, `UltraNetSse.h`)
+- HTTP/HTTPS sync + async via libcurl multi-handle worker thread
+- WebSocket client (libcurl native `curl_ws_*`; runtime capability check
+  with a clear error when libcurl was built without `--enable-websockets`)
+- FTP / FTPS / SFTP download / upload / list / delete / rename / mkdir / rmdir
+- Raw TCP / UDP sockets (POSIX sockets / Winsock)
+- TLS wrap on raw TCP — OS-native backends: OpenSSL (Linux),
+  Schannel (Windows, `SCHANNEL_CRED`), SecureTransport (macOS) — no extra
+  TLS deps on Windows / macOS
+- DNS: A / AAAA / PTR via getaddrinfo; MX / TXT / SRV / NS / CNAME / SOA via
+  libresolv (Linux/macOS) and dnsapi (Windows)
+- Sessions with `CURLSH`-backed cookie + connection-pool sharing
+- Plugin system with `IUltraNetPlugin` + five specialised category interfaces;
+  dynamic DSO loading via dlopen / LoadLibrary; reference SMTP plug-in in
+  `Plugins/UltraNet/smtp/`
+- SSE / chunked HTTP streaming (`UltraNet_SseStream` + parser) — for
+  token-by-token LLM responses
+- Per-request progress callbacks alongside the global transfer-callbacks bag
+- Streamed HTTP upload from disk (constant memory)
+- `UltraCanvasFileLoader::LoadFile(pathOrUrl)` now dispatches `http://` /
+  `https://` URLs to UltraNet automatically
+- Networking demo screen in the demo app (Tools → Networking) — loads a
+  remote image via `UltraCanvasFileLoader::LoadFile(url)`
+- UltraNet test suite (`Tests/UltraNet/`, 60 tests, in-tree framework, CI
+  wired via `ULTRACANVAS_BUILD_NET_TESTS=ON`)
+
 #### 2026-05-15 *0.1.35*
 - Remove JXL from Image Performance test as JXL format does not supported by currently used libvips
 - Fix buttons size to fit text
