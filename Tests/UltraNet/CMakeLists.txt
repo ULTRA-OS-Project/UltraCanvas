@@ -78,6 +78,21 @@ if(TARGET UltraNetMqttPlugin)
     target_compile_definitions(UltraNetTests PRIVATE
         ULTRANET_MQTT_PLUGIN_PATH_DEFINE="$<TARGET_FILE:UltraNetMqttPlugin>")
 endif()
+if(TARGET UltraNetAmqpPlugin)
+    add_dependencies(UltraNetTests UltraNetAmqpPlugin)
+    target_compile_definitions(UltraNetTests PRIVATE
+        ULTRANET_AMQP_PLUGIN_PATH_DEFINE="$<TARGET_FILE:UltraNetAmqpPlugin>")
+endif()
+if(TARGET UltraNetCoapPlugin)
+    add_dependencies(UltraNetTests UltraNetCoapPlugin)
+    target_compile_definitions(UltraNetTests PRIVATE
+        ULTRANET_COAP_PLUGIN_PATH_DEFINE="$<TARGET_FILE:UltraNetCoapPlugin>")
+endif()
+if(TARGET UltraNetSnmpPlugin)
+    add_dependencies(UltraNetTests UltraNetSnmpPlugin)
+    target_compile_definitions(UltraNetTests PRIVATE
+        ULTRANET_SNMP_PLUGIN_PATH_DEFINE="$<TARGET_FILE:UltraNetSnmpPlugin>")
+endif()
 
 include(CTest)
 add_test(NAME UltraNet COMMAND UltraNetTests)

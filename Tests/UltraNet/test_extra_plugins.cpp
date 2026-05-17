@@ -54,6 +54,18 @@ fs::path FindOrBuild(const std::string& name) {
     if (name == "MQTT" && fs::exists(ULTRANET_MQTT_PLUGIN_PATH_DEFINE))
         return fs::path{ULTRANET_MQTT_PLUGIN_PATH_DEFINE};
 #endif
+#ifdef ULTRANET_AMQP_PLUGIN_PATH_DEFINE
+    if (name == "AMQP" && fs::exists(ULTRANET_AMQP_PLUGIN_PATH_DEFINE))
+        return fs::path{ULTRANET_AMQP_PLUGIN_PATH_DEFINE};
+#endif
+#ifdef ULTRANET_COAP_PLUGIN_PATH_DEFINE
+    if (name == "COAP" && fs::exists(ULTRANET_COAP_PLUGIN_PATH_DEFINE))
+        return fs::path{ULTRANET_COAP_PLUGIN_PATH_DEFINE};
+#endif
+#ifdef ULTRANET_SNMP_PLUGIN_PATH_DEFINE
+    if (name == "SNMP" && fs::exists(ULTRANET_SNMP_PLUGIN_PATH_DEFINE))
+        return fs::path{ULTRANET_SNMP_PLUGIN_PATH_DEFINE};
+#endif
 
     // Map test name -> source/class name pair.
     std::string lower = name, cls = name;
@@ -63,6 +75,9 @@ fs::path FindOrBuild(const std::string& name) {
     else if (name == "TELNET") cls = "Telnet";
     else if (name == "RTSP")   cls = "Rtsp";
     else if (name == "MQTT")   cls = "Mqtt";
+    else if (name == "AMQP")   cls = "Amqp";
+    else if (name == "COAP")   cls = "Coap";
+    else if (name == "SNMP")   cls = "Snmp";
 
     const fs::path src = fs::path{"UltraCanvas/Plugins/UltraNet"} / lower /
                          (cls + "Plugin.cpp");
@@ -75,14 +90,14 @@ fs::path FindOrBuild(const std::string& name) {
     fs::create_directories(outDir);
     const fs::path outFile = outDir / ("ultranet_" + lower + ".so");
 
-    // MQTT links paho-mqtt-c (libpaho-mqtt3as) instead of libcurl. Other
-    // plug-ins use libcurl. Pick the right link flags per plug-in.
+    // Each plug-in links a different backend library. Pick the right
+    // link flags per plug-in.
     std::string extraLinkFlags;
-    if (name == "MQTT") {
-        extraLinkFlags = " -lpaho-mqtt3as";
-    } else {
-        extraLinkFlags = " $(pkg-config --cflags --libs libcurl)";
-    }
+    if      (name == "MQTT") extraLinkFlags = " -lpaho-mqtt3as";
+    else if (name == "AMQP") extraLinkFlags = " -lrabbitmq";
+    else if (name == "COAP") extraLinkFlags = " -lcoap-3-openssl";
+    else if (name == "SNMP") extraLinkFlags = " -lsnmp";
+    else                     extraLinkFlags = " $(pkg-config --cflags --libs libcurl)";
 
     const std::string cmd =
         "g++ -std=c++20 -fPIC -shared "
@@ -190,6 +205,62 @@ TEST(mqtt_plugin_loads_and_registers) {
     auto r = msg->Publish(99999u, "test/topic", {1, 2, 3});
     CHECK(!bool(r));
     REQUIRE_EQ(r.code, UltraNetResultCode::InvalidHandle);
+}
+
+// ===== AMQP =====
+TEST(amqp_plugin_loads_and_registers) {
+    if (!LoadInto("AMQP", "amqp")) SKIP("AMQP plug-in not buildable (rabbitmq-c missing?)");
+
+    auto p = UltraNet_GetPlugin("amqp");
+    REQUIRE(p != nullptr);
+    REQUIRE_EQ(p->GetName(), std::string{"UltraNet-AMQP"});
+    auto schemes = p->GetSupportedSchemes();
+    CHECK(std::find(schemes.begin(), schemes.end(), "amqp")  != schemes.end());
+    CHECK(std::find(schemes.begin(), schemes.end(), "amqps") != schemes.end());
+    auto* msg = dynamic_cast<IMessagingProtocolPlugin*>(p.get());
+    REQUIRE(msg != nullptr);
+
+    auto r = msg->Publish(99999u, "queue", {1});
+    CHECK(!bool(r));
+    REQUIRE_EQ(r.code, UltraNetResultCode::InvalidHandle);
+}
+
+// ===== CoAP =====
+TEST(coap_plugin_loads_and_registers) {
+    if (!LoadInto("COAP", "coap")) SKIP("CoAP plug-in not buildable (libcoap3 missing?)");
+
+    auto p = UltraNet_GetPlugin("coap");
+    REQUIRE(p != nullptr);
+    REQUIRE_EQ(p->GetName(), std::string{"UltraNet-CoAP"});
+    auto schemes = p->GetSupportedSchemes();
+    CHECK(std::find(schemes.begin(), schemes.end(), "coap")  != schemes.end());
+    CHECK(std::find(schemes.begin(), schemes.end(), "coaps") != schemes.end());
+    auto* msg = dynamic_cast<IMessagingProtocolPlugin*>(p.get());
+    REQUIRE(msg != nullptr);
+
+    // Bad URL -> InvalidHandle, no crash.
+    UltraNetMessagingOptions opt;
+    REQUIRE_EQ(msg->Connect("http://not-coap/", opt), UltraNetInvalidHandle);
+}
+
+// ===== SNMP =====
+TEST(snmp_plugin_loads_and_registers) {
+    if (!LoadInto("SNMP", "snmp")) SKIP("SNMP plug-in not buildable (net-snmp missing?)");
+
+    auto p = UltraNet_GetPlugin("snmp");
+    REQUIRE(p != nullptr);
+    REQUIRE_EQ(p->GetName(), std::string{"UltraNet-SNMP"});
+    auto schemes = p->GetSupportedSchemes();
+    CHECK(std::find(schemes.begin(), schemes.end(), "snmp") != schemes.end());
+    auto* dir = dynamic_cast<IDirectoryProtocolPlugin*>(p.get());
+    REQUIRE(dir != nullptr);
+
+    // Non-snmp URL -> InvalidUrl.
+    UltraNetDirectoryQuery q;
+    std::vector<UltraNetDirectoryEntry> e;
+    auto r = dir->Search("http://wrong-scheme/", q, e);
+    CHECK(!bool(r));
+    REQUIRE_EQ(r.code, UltraNetResultCode::InvalidUrl);
 }
 
 // ===== Scheme registry coverage =====
