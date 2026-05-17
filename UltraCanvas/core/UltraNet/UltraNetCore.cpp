@@ -21,6 +21,9 @@ namespace {
     std::mutex          g_mutex;
     bool                g_initialized = false;
     UltraNetConfig      g_config = UltraNetConfig::Default();
+
+    std::mutex                 g_xferCbMutex;
+    UltraNetTransferCallbacks  g_xferCallbacks;
 }
 
 UltraNetResult UltraNet_Initialize(const UltraNetConfig& config) {
@@ -91,4 +94,17 @@ UltraNetProxyConfig UltraNet_GetGlobalProxy() {
 void UltraNet_DisableProxy() {
     std::lock_guard<std::mutex> lk(g_mutex);
     g_config.proxy = UltraNetProxyConfig{};
+}
+
+UltraNetTransferCallbacks UltraNet_SetTransferCallbacks(
+    const UltraNetTransferCallbacks& cb) {
+    std::lock_guard<std::mutex> lk(g_xferCbMutex);
+    UltraNetTransferCallbacks prev = std::move(g_xferCallbacks);
+    g_xferCallbacks = cb;
+    return prev;
+}
+
+UltraNetTransferCallbacks UltraNet_GetTransferCallbacks() {
+    std::lock_guard<std::mutex> lk(g_xferCbMutex);
+    return g_xferCallbacks;
 }

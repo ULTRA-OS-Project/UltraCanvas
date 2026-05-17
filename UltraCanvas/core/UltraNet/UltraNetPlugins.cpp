@@ -9,10 +9,46 @@
 
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
+
+#if defined(_WIN32) || defined(_WIN64)
+  #ifndef WIN32_LEAN_AND_MEAN
+  #define WIN32_LEAN_AND_MEAN
+  #endif
+  #include <windows.h>
+  using PluginLibHandle = HMODULE;
+  static PluginLibHandle PluginOpen(const char* path)   { return LoadLibraryA(path); }
+  static void*           PluginSym (PluginLibHandle h,
+                                    const char* sym)    { return reinterpret_cast<void*>(GetProcAddress(h, sym)); }
+  static constexpr const char* kPluginExt = ".dll";
+#else
+  #include <dlfcn.h>
+  using PluginLibHandle = void*;
+  static PluginLibHandle PluginOpen(const char* path)   { return dlopen(path, RTLD_NOW | RTLD_GLOBAL); }
+  static void*           PluginSym (PluginLibHandle h,
+                                    const char* sym)    { return dlsym(h, sym); }
+  #ifdef __APPLE__
+  static constexpr const char* kPluginExt = ".dylib";
+  #else
+  static constexpr const char* kPluginExt = ".so";
+  #endif
+#endif
+
+// Plug-in DSO contract:
+//
+//   extern "C" void UltraNet_PluginRegister(void);
+//
+// The plug-in implementation calls UltraNet_RegisterPlugin(...) from inside
+// this function for every IUltraNetPlugin it wants the framework to know
+// about. RefreshPlugins() loads the DSO, resolves this symbol, and invokes
+// it; the DSO stays loaded for the lifetime of the process.
+using UltraNet_PluginRegisterFn = void (*)();
+static constexpr const char* kPluginEntrySymbol = "UltraNet_PluginRegister";
 
 namespace {
 
@@ -21,6 +57,10 @@ struct Registry {
     std::unordered_map<std::string, std::shared_ptr<IUltraNetPlugin>> byName;
     std::unordered_map<std::string, std::shared_ptr<IUltraNetPlugin>> byScheme;
     std::string pluginDirectory = "Plugins/UltraNet";
+
+    // Tracks plugin libraries we've already dlopen'd so RefreshPlugins()
+    // is idempotent. Keyed by the canonical filesystem path of the DSO.
+    std::unordered_map<std::string, PluginLibHandle> loaded;
 };
 
 Registry& Reg() {
@@ -92,7 +132,46 @@ std::vector<std::shared_ptr<IUltraNetPlugin>> UltraNet_GetAllPlugins() {
 }
 
 void UltraNet_RefreshPlugins() {
-    // Reserved for dynamic loading (dlopen / LoadLibrary) — not yet wired.
+    Registry& r = Reg();
+
+    std::string dir;
+    {
+        std::lock_guard<std::mutex> lk(r.mutex);
+        dir = r.pluginDirectory;
+    }
+    if (dir.empty()) return;
+
+    std::error_code ec;
+    auto it = std::filesystem::directory_iterator(dir, ec);
+    if (ec) return;
+
+    for (const auto& entry : it) {
+        if (!entry.is_regular_file(ec) || ec) continue;
+        const auto& path = entry.path();
+        if (path.extension().string() != kPluginExt) continue;
+
+        const std::string canonical =
+            std::filesystem::weakly_canonical(path, ec).string();
+        if (ec || canonical.empty()) continue;
+
+        {
+            std::lock_guard<std::mutex> lk(r.mutex);
+            if (r.loaded.count(canonical)) continue;   // already loaded
+        }
+        PluginLibHandle h = PluginOpen(canonical.c_str());
+        if (!h) continue;
+
+        auto fn = reinterpret_cast<UltraNet_PluginRegisterFn>(
+            PluginSym(h, kPluginEntrySymbol));
+        if (!fn) continue;     // leave the lib loaded; later refresh may need it
+
+        {
+            std::lock_guard<std::mutex> lk(r.mutex);
+            r.loaded[canonical] = h;
+        }
+        // The plug-in calls UltraNet_RegisterPlugin(...) from inside this.
+        fn();
+    }
 }
 
 std::string UltraNet_GetPluginDirectory() {

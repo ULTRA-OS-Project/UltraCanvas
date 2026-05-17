@@ -222,3 +222,22 @@ void UltraNet_DisableProxy();
 UltraNetResult         UltraNet_CancelRequest(UltraNetHandle handle);
 bool                   UltraNet_IsRequestActive(UltraNetHandle handle);
 UltraNetTransferStats  UltraNet_GetTransferStats(UltraNetHandle handle);
+
+// ============================================================================
+// Global transfer progress callback bag. Set once on the module, every HTTP
+// request (sync and async) reports its progress through these callbacks.
+// All callbacks fire on the worker / request thread; do not block.
+// ============================================================================
+struct UltraNetTransferCallbacks {
+    // bytesReceivedSoFar, totalBytesExpected (-1 if server didn't send length)
+    std::function<void(int64_t, int64_t)>          onDownloadProgress;
+    // bytesSentSoFar, totalBytesToSend
+    std::function<void(int64_t, int64_t)>          onUploadProgress;
+    // bytesTransferred, totalBytesExpected, speedBytesPerSec
+    std::function<void(int64_t, int64_t, double)>  onTransferStats;
+};
+
+// Replaces the global callbacks. Returns the previous bag.
+UltraNetTransferCallbacks UltraNet_SetTransferCallbacks(
+    const UltraNetTransferCallbacks& cb);
+UltraNetTransferCallbacks UltraNet_GetTransferCallbacks();

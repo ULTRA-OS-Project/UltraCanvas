@@ -190,26 +190,61 @@ UltraNetResult UltraNet_HttpDownloadFile(const std::string& url,
     return result;
 }
 
+namespace {
+    std::size_t ReadFromFile(char* buffer, std::size_t size, std::size_t nmemb,
+                             void* userdata) {
+        std::FILE* fp = static_cast<std::FILE*>(userdata);
+        return std::fread(buffer, 1, size * nmemb, fp);
+    }
+}
+
 UltraNetResult UltraNet_HttpUploadFile(const std::string& url,
                                        const std::string& localPath,
                                        UltraNetResponse& outResponse,
                                        const UltraNetHttpOptions& options) {
+    if (!UltraNet_IsInitialized()) UltraNet_Initialize();
+    outResponse = {};
+
     std::FILE* fp = std::fopen(localPath.c_str(), "rb");
     if (!fp) {
         return UltraNetResult::Error(UltraNetResultCode::NotFound,
                                      "cannot open local file for read");
     }
     std::fseek(fp, 0, SEEK_END);
-    long size = std::ftell(fp);
+    const curl_off_t size = std::ftell(fp);
     std::fseek(fp, 0, SEEK_SET);
-    std::vector<uint8_t> body(static_cast<std::size_t>(size > 0 ? size : 0));
-    if (size > 0) std::fread(body.data(), 1, body.size(), fp);
-    std::fclose(fp);
 
     UltraNetHttpRequest req;
     req.url     = url;
     req.method  = UltraNetHttpMethod::Put;
-    req.body    = std::move(body);
     req.options = options;
-    return UltraNet_HttpRequest(req, outResponse);
+
+    const UltraNetConfig cfg = UltraNet_GetConfig();
+    std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> easy(
+        curl_easy_init(), curl_easy_cleanup);
+    if (!easy) {
+        std::fclose(fp);
+        return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory,
+                                     "curl_easy_init() failed");
+    }
+
+    ultranet_internal::WriteSink sink;
+    sink.body = &outResponse.body;
+    curl_slist* slist = ultranet_internal::ConfigureEasyHandle(
+        easy.get(), req, cfg, &sink, &outResponse);
+    std::unique_ptr<curl_slist, decltype(&curl_slist_free_all)>
+        slistGuard(slist, curl_slist_free_all);
+
+    // Upload streams from disk via libcurl's read callback — constant memory
+    // regardless of file size.
+    curl_easy_setopt(easy.get(), CURLOPT_UPLOAD, 1L);
+    curl_easy_setopt(easy.get(), CURLOPT_READFUNCTION, &ReadFromFile);
+    curl_easy_setopt(easy.get(), CURLOPT_READDATA, fp);
+    curl_easy_setopt(easy.get(), CURLOPT_INFILESIZE_LARGE,
+                     static_cast<curl_off_t>(size > 0 ? size : 0));
+
+    CURLcode rc = curl_easy_perform(easy.get());
+    std::fclose(fp);
+    return ultranet_internal::FinalizeFromEasy(
+        easy.get(), rc, url, outResponse, sink.exceededLimit);
 }

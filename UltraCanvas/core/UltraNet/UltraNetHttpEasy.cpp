@@ -131,6 +131,29 @@ std::size_t HeaderCallback(char* data, std::size_t size,
     return total;
 }
 
+namespace {
+    int ProgressCallback(void* /*userdata*/,
+                         curl_off_t dltotal, curl_off_t dlnow,
+                         curl_off_t ultotal, curl_off_t ulnow) {
+        const auto cb = UltraNet_GetTransferCallbacks();
+        if (cb.onDownloadProgress && dlnow > 0) {
+            cb.onDownloadProgress(static_cast<int64_t>(dlnow),
+                                  static_cast<int64_t>(dltotal));
+        }
+        if (cb.onUploadProgress && ulnow > 0) {
+            cb.onUploadProgress(static_cast<int64_t>(ulnow),
+                                static_cast<int64_t>(ultotal));
+        }
+        if (cb.onTransferStats) {
+            const curl_off_t now   = dlnow   + ulnow;
+            const curl_off_t total = dltotal + ultotal;
+            cb.onTransferStats(static_cast<int64_t>(now),
+                               static_cast<int64_t>(total), 0.0);
+        }
+        return 0;
+    }
+}
+
 UltraNetResultCode MapCurlError(CURLcode rc, long httpStatus) {
     switch (rc) {
         case CURLE_OK:
@@ -268,6 +291,12 @@ curl_slist* ConfigureEasyHandle(CURL* easy,
 
     curl_easy_setopt(easy, CURLOPT_NOSIGNAL, 1L);
     curl_easy_setopt(easy, CURLOPT_FAILONERROR, 0L);
+
+    // Progress reporting — libcurl invokes ProgressCallback frequently during
+    // the transfer; the callback fans out to the global UltraNet callbacks.
+    curl_easy_setopt(easy, CURLOPT_NOPROGRESS, 0L);
+    curl_easy_setopt(easy, CURLOPT_XFERINFOFUNCTION, &ProgressCallback);
+    curl_easy_setopt(easy, CURLOPT_XFERINFODATA, nullptr);
 
     return slist;
 }
