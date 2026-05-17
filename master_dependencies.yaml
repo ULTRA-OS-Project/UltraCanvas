@@ -21,16 +21,22 @@
 networking:
   core:
     libcurl:
-      min_version: "7.80"
+      min_version: "7.86"             # 7.86 ships the curl_ws_* API
       purpose: "HTTP/HTTPS, FTP/FTPS, WebSocket transport (Tier 1 core)"
       required: true
       platforms: ["all"]
       cmake_module: "CURL"
       pkg_config: "libcurl"
       apt: "libcurl4-openssl-dev"      # OpenSSL backend
-      vcpkg: "curl[schannel]"          # Schannel backend on Windows
+      vcpkg: "curl[schannel,websockets]"     # Schannel + WS on Windows
       brew: "(system)"                 # Apple ships libcurl with macOS
       msys2: "mingw-w64-x86_64-curl-winssl"  # Schannel-flavoured MinGW build
+      # WebSocket support requires libcurl built with --enable-websockets.
+      # UltraNet_WebSocketConnect detects this at runtime; if the linked
+      # libcurl doesn't list ws/wss in Protocols, it returns InvalidHandle
+      # with a clear error explaining how to fix the build.
+      # Distro packages vary: Ubuntu 24.04's libcurl4-openssl-dev 8.5 ships
+      # WITHOUT WS; vcpkg's curl[websockets] explicitly opts in.
 
     openssl:
       min_version: "1.1.1"
