@@ -9,6 +9,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNet/UltraNetDns.h"
+#include "UltraNetDnsImpl.h"
 
 #include <chrono>
 #include <cstring>
@@ -120,10 +121,17 @@ UltraNetResult UltraNet_DnsResolve(const std::string& hostname,
         return r;
     }
     if (type != UltraNetDnsType::A && type != UltraNetDnsType::AAAA) {
-        std::string msg = "DNS record type ";
-        msg += DnsTypeName(type);
-        msg += " requires c-ares (Stage 3)";
-        return UltraNetResult::Error(UltraNetResultCode::UnsupportedScheme, msg);
+        const std::string cacheKey =
+            std::string{DnsTypeName(type)} + "|" + hostname;
+        if (LookupCache(cacheKey, outAddresses)) {
+            return UltraNetResult::Ok();
+        }
+        // MX/TXT/SRV/NS/CNAME/SOA: hand off to the platform DNS backend
+        // (libresolv on Linux/macOS, dnsapi.dll on Windows).
+        UltraNetResult r =
+            ultranet_dns_platform::Resolve(hostname, type, outAddresses, 5000);
+        if (r) StoreCache(cacheKey, outAddresses);
+        return r;
     }
 
     const std::string cacheKey =

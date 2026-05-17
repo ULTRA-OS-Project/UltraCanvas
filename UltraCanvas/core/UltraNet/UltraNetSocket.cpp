@@ -6,6 +6,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNet/UltraNetSocket.h"
+#include "UltraNetSocketInternal.h"
 
 #include <atomic>
 #include <cstdio>
@@ -72,6 +73,14 @@ struct Entry {
     SocketFd       fd     = kInvalidFd;
     Kind           kind   = Kind::TcpStream;
     bool           isIpv6 = false;
+
+    // TLS layer (populated by UltraNet_TlsWrap via AttachTlsToSocket).
+    // If tlsCtx is non-null, send/recv/close are routed through these
+    // function pointers instead of touching the raw socket directly.
+    void*                       tlsCtx   = nullptr;
+    ultranet_internal::TlsReadFn  tlsRead  = nullptr;
+    ultranet_internal::TlsWriteFn tlsWrite = nullptr;
+    ultranet_internal::TlsCloseFn tlsClose = nullptr;
 };
 
 std::mutex g_regMutex;
@@ -298,6 +307,19 @@ UltraNetResult UltraNet_TcpSend(UltraNetHandle handle,
                                      "not a TCP stream");
     }
     if (data.empty()) return UltraNetResult::Ok();
+
+    if (e->tlsCtx && e->tlsWrite) {
+        int n = e->tlsWrite(e->tlsCtx,
+                            reinterpret_cast<const char*>(data.data()),
+                            data.size());
+        if (n < 0) {
+            return UltraNetResult::Error(UltraNetResultCode::SendFailed,
+                                         "TLS write failed");
+        }
+        outBytesSent = n;
+        return UltraNetResult::Ok();
+    }
+
 #if defined(_WIN32) || defined(_WIN64)
     int n = ::send(e->fd, reinterpret_cast<const char*>(data.data()),
                    static_cast<int>(data.size()), 0);
@@ -325,6 +347,20 @@ UltraNetResult UltraNet_TcpReceive(UltraNetHandle handle,
     if (timeoutMs > 0) ApplyTimeout(e->fd, 0, timeoutMs);
 
     outData.resize(static_cast<std::size_t>(maxBytes > 0 ? maxBytes : 65536));
+
+    if (e->tlsCtx && e->tlsRead) {
+        int n = e->tlsRead(e->tlsCtx,
+                           reinterpret_cast<char*>(outData.data()),
+                           outData.size(), timeoutMs);
+        if (n < 0) {
+            outData.clear();
+            return UltraNetResult::Error(UltraNetResultCode::ReceiveFailed,
+                                         "TLS read failed");
+        }
+        outData.resize(static_cast<std::size_t>(n));
+        return UltraNetResult::Ok();
+    }
+
 #if defined(_WIN32) || defined(_WIN64)
     int n = ::recv(e->fd, reinterpret_cast<char*>(outData.data()),
                    static_cast<int>(outData.size()), 0);
@@ -450,10 +486,52 @@ UltraNetResult UltraNet_SocketClose(UltraNetHandle handle) {
         return UltraNetResult::Error(UltraNetResultCode::InvalidHandle,
                                      "no such socket");
     }
+    // Tear TLS down first so the close-notify alert is written before the
+    // raw fd disappears.
+    if (e->tlsCtx && e->tlsClose) {
+        e->tlsClose(e->tlsCtx);
+        e->tlsCtx   = nullptr;
+        e->tlsRead  = nullptr;
+        e->tlsWrite = nullptr;
+        e->tlsClose = nullptr;
+    }
     CloseFd(e->fd);
     Unregister(handle);
     return UltraNetResult::Ok();
 }
+
+// ============================================================================
+// Internal hooks for the TLS implementation. Lives in this TU because it
+// needs access to the private g_sockets registry and Entry.
+// ============================================================================
+namespace ultranet_internal {
+
+std::intptr_t GetTcpFd(UltraNetHandle handle) {
+    auto e = Find(handle);
+    if (!e || e->kind != Kind::TcpStream) return -1;
+    return static_cast<std::intptr_t>(e->fd);
+}
+
+bool AttachTlsToSocket(UltraNetHandle handle,
+                       void* tlsCtx,
+                       TlsReadFn  readFn,
+                       TlsWriteFn writeFn,
+                       TlsCloseFn closeFn) {
+    auto e = Find(handle);
+    if (!e || e->kind != Kind::TcpStream) return false;
+    e->tlsCtx   = tlsCtx;
+    e->tlsRead  = readFn;
+    e->tlsWrite = writeFn;
+    e->tlsClose = closeFn;
+    return true;
+}
+
+bool IsTlsAttached(UltraNetHandle handle) {
+    auto e = Find(handle);
+    return e && e->tlsCtx != nullptr;
+}
+
+} // namespace ultranet_internal
 
 UltraNetResult UltraNet_SocketSetTimeout(UltraNetHandle handle,
                                          int sendTimeoutMs,

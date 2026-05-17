@@ -1,55 +1,82 @@
 // core/UltraNet/UltraNetTls.cpp
-// Stage-3 stubs for raw-TCP TLS layering. Returns Unknown with a clear
-// "deferred to v1.1" message; the implementation needs three OS-native
-// TLS backends (OpenSSL on Linux, Schannel on Windows, SecureTransport on
-// macOS) and lives behind a v1.1 milestone. HTTPS / WSS / FTPS users are
-// already covered by the libcurl-backed UltraNet_* entry points.
-// Version: 0.3.0 (Stage 3)
+// Public TLS-wrap entry points. Delegates the actual TLS work to the
+// per-platform backend in ultranet_tls_platform:: (declared in
+// UltraNetTlsImpl.h; implemented in OS/<Platform>/UltraNetTlsImpl.*).
+// Version: 0.3.1 (Stage 3 hardening)
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNet/UltraNetTls.h"
+#include "UltraNetSocketInternal.h"
+#include "UltraNetTlsImpl.h"
 
 #include <mutex>
-#include <string>
+#include <unordered_map>
 
 namespace {
-    constexpr const char* kDeferredMsg =
-        "UltraNet_Tls* is reserved for v1.1; use UltraNet_HttpGet / "
-        "UltraNet_WebSocketConnect / UltraNet_FtpDownload for TLS-protected "
-        "transport in Stage 3";
-
-    std::mutex   g_tlsConfigMutex;
-    std::string  g_caBundlePath;
-    std::string  g_extraTrustedPem;
+    // Tracks the per-handle TLS context pointer so UltraNet_TlsGetInfo and
+    // UltraNet_TlsHandshake can find the right backend context. The pointer
+    // is also held by the socket entry vtable (for Read/Write/Close), but
+    // GetInfo / Handshake go through this side table.
+    std::mutex g_mutex;
+    std::unordered_map<UltraNetHandle, void*> g_ctxByHandle;
 }
 
-UltraNetHandle UltraNet_TlsWrap(UltraNetHandle /*tcpHandle*/,
-                                const std::string& /*serverName*/,
-                                const UltraNetTlsOptions& /*options*/) {
-    return UltraNetInvalidHandle;
+UltraNetHandle UltraNet_TlsWrap(UltraNetHandle tcpHandle,
+                                const std::string& serverName,
+                                const UltraNetTlsOptions& options) {
+    const std::intptr_t fd = ultranet_internal::GetTcpFd(tcpHandle);
+    if (fd < 0) return UltraNetInvalidHandle;
+
+    void* ctx = nullptr;
+    UltraNetResult r = ultranet_tls_platform::Wrap(fd, serverName, options, &ctx);
+    if (!r || !ctx) return UltraNetInvalidHandle;
+
+    if (!ultranet_internal::AttachTlsToSocket(
+            tcpHandle, ctx,
+            &ultranet_tls_platform::Read,
+            &ultranet_tls_platform::Write,
+            &ultranet_tls_platform::Close)) {
+        ultranet_tls_platform::Close(ctx);
+        return UltraNetInvalidHandle;
+    }
+    {
+        std::lock_guard<std::mutex> lk(g_mutex);
+        g_ctxByHandle[tcpHandle] = ctx;
+    }
+    return tcpHandle;
 }
 
-UltraNetResult UltraNet_TlsHandshake(UltraNetHandle /*handle*/) {
-    return UltraNetResult::Error(UltraNetResultCode::Unknown, kDeferredMsg);
+UltraNetResult UltraNet_TlsHandshake(UltraNetHandle handle) {
+    void* ctx = nullptr;
+    {
+        std::lock_guard<std::mutex> lk(g_mutex);
+        auto it = g_ctxByHandle.find(handle);
+        if (it == g_ctxByHandle.end()) {
+            return UltraNetResult::Error(UltraNetResultCode::InvalidHandle,
+                                         "no TLS context attached to handle");
+        }
+        ctx = it->second;
+    }
+    return ultranet_tls_platform::Handshake(ctx);
 }
 
-UltraNetTlsInfo UltraNet_TlsGetInfo(UltraNetHandle /*handle*/) {
-    return {};
+UltraNetTlsInfo UltraNet_TlsGetInfo(UltraNetHandle handle) {
+    void* ctx = nullptr;
+    {
+        std::lock_guard<std::mutex> lk(g_mutex);
+        auto it = g_ctxByHandle.find(handle);
+        if (it == g_ctxByHandle.end()) return {};
+        ctx = it->second;
+    }
+    return ultranet_tls_platform::GetInfo(ctx);
 }
 
 UltraNetResult UltraNet_TlsSetCABundle(const std::string& caBundlePath) {
-    // Stored for v1.1 — the libcurl-backed paths honour the per-request /
-    // per-config caBundlePath fields today.
-    std::lock_guard<std::mutex> lk(g_tlsConfigMutex);
-    g_caBundlePath = caBundlePath;
+    ultranet_tls_platform::SetGlobalCABundle(caBundlePath);
     return UltraNetResult::Ok();
 }
 
 UltraNetResult UltraNet_TlsAddTrustedCert(const std::string& certPemData) {
-    std::lock_guard<std::mutex> lk(g_tlsConfigMutex);
-    g_extraTrustedPem += certPemData;
-    if (!g_extraTrustedPem.empty() && g_extraTrustedPem.back() != '\n') {
-        g_extraTrustedPem.push_back('\n');
-    }
+    ultranet_tls_platform::AddGlobalTrustedCertPem(certPemData);
     return UltraNetResult::Ok();
 }

@@ -511,6 +511,11 @@ endif()
 if(ULTRACANVAS_ENABLE_NET)
     find_package(CURL REQUIRED)
     find_package(Threads REQUIRED)
+    # OpenSSL is the TLS backend for UltraNet_TlsWrap on Linux. Windows and
+    # macOS use Schannel / SecureTransport (no extra dependency).
+    if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
+        find_package(OpenSSL REQUIRED)
+    endif()
 
     set(ULTRANET_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetCore.cpp
@@ -528,15 +533,23 @@ if(ULTRACANVAS_ENABLE_NET)
     )
     if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
         list(APPEND ULTRANET_SOURCES
-            ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraNetSupport.cpp)
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraNetSupport.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraNetTlsImpl.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraNetDnsImpl.cpp)
     elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
         list(APPEND ULTRANET_SOURCES
-            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraNetSupport.cpp)
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraNetSupport.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraNetTlsImpl.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraNetDnsImpl.cpp)
     elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
         list(APPEND ULTRANET_SOURCES
-            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraNetSupport.mm)
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraNetSupport.mm
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraNetTlsImpl.mm
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraNetDnsImpl.mm)
         set_source_files_properties(
             ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraNetSupport.mm
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraNetTlsImpl.mm
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraNetDnsImpl.mm
             PROPERTIES LANGUAGE OBJCXX COMPILE_FLAGS "-x objective-c++ -fobjc-arc")
     endif()
 
@@ -550,16 +563,25 @@ if(ULTRACANVAS_ENABLE_NET)
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
             $<INSTALL_INTERFACE:include/ultracanvas>)
     target_link_libraries(UltraNet PUBLIC CURL::libcurl Threads::Threads)
-    if(ULTRACANVAS_PLATFORM STREQUAL "Windows")
-        target_link_libraries(UltraNet PUBLIC winhttp ws2_32)
+    if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
+        target_link_libraries(UltraNet PUBLIC OpenSSL::SSL OpenSSL::Crypto resolv)
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
+        # winhttp: system-proxy detection; ws2_32: getaddrinfo/getnameinfo/recv/send;
+        # secur32: Schannel (AcquireCredentialsHandle etc.); crypt32: cert parsing;
+        # dnsapi: DnsQuery for non-A/AAAA DNS records.
+        target_link_libraries(UltraNet PUBLIC
+            winhttp ws2_32 secur32 crypt32 dnsapi)
     elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
         find_library(CFNETWORK_FRAMEWORK CFNetwork REQUIRED)
         find_library(CORE_FOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
         find_library(SYSTEM_CONFIG_FRAMEWORK SystemConfiguration REQUIRED)
+        find_library(SECURITY_FRAMEWORK Security REQUIRED)
         target_link_libraries(UltraNet PUBLIC
             ${CFNETWORK_FRAMEWORK}
             ${CORE_FOUNDATION_FRAMEWORK}
-            ${SYSTEM_CONFIG_FRAMEWORK})
+            ${SYSTEM_CONFIG_FRAMEWORK}
+            ${SECURITY_FRAMEWORK}
+            resolv)
     endif()
     target_compile_definitions(UltraNet PUBLIC ULTRACANVAS_HAS_NET=1)
 
