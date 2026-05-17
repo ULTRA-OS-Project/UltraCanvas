@@ -37,7 +37,9 @@ constexpr auto kStartTimeout = std::chrono::seconds(3);
 
 struct LoopbackServer {
     std::filesystem::path root;
-    pid_t   pid = -1;
+    // POSIX pid; the whole subprocess-management path is no-op on Windows
+    // anyway (Start() returns false there).
+    long    pid = -1;
     bool    started = false;
     std::string baseUrl;
 
@@ -62,7 +64,7 @@ struct LoopbackServer {
             for (int i = 0; i < 4096; ++i) big.put(static_cast<char>(i & 0xff));
         }
 
-        pid_t p = fork();
+        const pid_t p = fork();
         if (p < 0) return false;
         if (p == 0) {
             // child: become the server, silenced.
@@ -100,9 +102,9 @@ struct LoopbackServer {
     void Stop() {
 #if !defined(_WIN32)
         if (pid > 0) {
-            kill(pid, SIGTERM);
+            kill(static_cast<pid_t>(pid), SIGTERM);
             int status = 0;
-            waitpid(pid, &status, 0);
+            waitpid(static_cast<pid_t>(pid), &status, 0);
             pid = -1;
         }
         if (!root.empty()) {
@@ -164,8 +166,10 @@ TEST(loopback_http_head_returns_no_body) {
 
 TEST(loopback_http_download_streams_to_disk) {
     if (!EnsureServer()) SKIP("python3 not available");
-    const std::string path = std::string(std::filesystem::temp_directory_path()) +
-                             "/ultranet_loopback_dl.bin";
+    // path::value_type is wchar_t on Windows, so go through .string() rather
+    // than std::string(path) — the latter doesn't compile on Windows.
+    const std::string path =
+        (std::filesystem::temp_directory_path() / "ultranet_loopback_dl.bin").string();
     std::filesystem::remove(path);
     auto res = UltraNet_HttpDownloadFile(Base() + "/big.bin", path);
     REQUIRE(bool(res));
