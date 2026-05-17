@@ -9,6 +9,7 @@
 
 #include "UltraNetCore.h"
 #include "UltraNetFtp.h"      // UltraNetFtpEntry reused by IFileShareProtocolPlugin
+#include "UltraNetHttp.h"     // UltraNetHttpHeaders used by IRpcProtocolPlugin
 
 #include <cstdint>
 #include <functional>
@@ -180,6 +181,43 @@ public:
     virtual UltraNetResult ReadFrame(
         UltraNetHandle handle,
         std::vector<uint8_t>& outFrame) = 0;
+};
+
+// gRPC / future thrift / Cap'n Proto — generic byte-level RPC. Distinct
+// from the messaging interface (which is fire-and-forget pub/sub) because
+// RPC calls produce a response. Plug-ins serialize the wire framing; the
+// caller serializes the actual request/response payload (typically via
+// protobuf or another schema language).
+struct UltraNetRpcOptions {
+    UltraNetCredentials credentials;        // bearer token, basic auth, etc.
+    int connectTimeoutMs = 10000;
+    int callTimeoutMs    = 30000;
+    bool useTls          = true;            // grpcs:// implies true regardless
+    bool verifyTls       = true;
+    UltraNetHttpHeaders headers;            // forwarded as request metadata
+};
+
+class IRpcProtocolPlugin : public IUltraNetPlugin {
+public:
+    // Opens (logical) connection to the RPC endpoint. Most RPC libraries
+    // multiplex calls over a single HTTP/2 channel so "connect" is really
+    // "validate URL + cache settings"; the plug-in is free to keep the
+    // implementation lazy.
+    virtual UltraNetHandle Connect(
+        const std::string& url,
+        const UltraNetRpcOptions& options) = 0;
+
+    // Unary RPC. Caller serializes `request` (typically via protobuf);
+    // the plug-in delivers it over the wire and returns the response
+    // bytes in `outResponse`. Status carries the protocol-specific
+    // outcome (e.g. gRPC's status code lands in result.httpStatus).
+    virtual UltraNetResult UnaryCall(
+        UltraNetHandle handle,
+        const std::string& service,         // e.g. "myapp.UserService"
+        const std::string& method,          // e.g. "GetUser"
+        const std::vector<uint8_t>& request,
+        std::vector<uint8_t>& outResponse,
+        const UltraNetRpcOptions& options) = 0;
 };
 
 // WebDAV / future SMB / NFS — network file-share semantics. Distinct from

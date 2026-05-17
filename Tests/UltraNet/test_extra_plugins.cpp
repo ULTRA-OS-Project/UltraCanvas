@@ -78,6 +78,10 @@ fs::path FindOrBuild(const std::string& name) {
     if (name == "RTMP" && fs::exists(ULTRANET_RTMP_PLUGIN_PATH_DEFINE))
         return fs::path{ULTRANET_RTMP_PLUGIN_PATH_DEFINE};
 #endif
+#ifdef ULTRANET_GRPC_PLUGIN_PATH_DEFINE
+    if (name == "GRPC" && fs::exists(ULTRANET_GRPC_PLUGIN_PATH_DEFINE))
+        return fs::path{ULTRANET_GRPC_PLUGIN_PATH_DEFINE};
+#endif
 
     // Map test name -> source/class name pair.
     std::string lower = name, cls = name;
@@ -93,6 +97,7 @@ fs::path FindOrBuild(const std::string& name) {
     else if (name == "SSH")    cls = "Ssh";
     else if (name == "MDNS")   cls = "Mdns";
     else if (name == "RTMP")   cls = "Rtmp";
+    else if (name == "GRPC")   cls = "Grpc";
 
     const fs::path src = fs::path{"UltraCanvas/Plugins/UltraNet"} / lower /
                          (cls + "Plugin.cpp");
@@ -314,6 +319,30 @@ TEST(mdns_plugin_loads_and_registers) {
     auto r = dir->Search("mdns://", q, e);
     CHECK(!bool(r));
     REQUIRE_EQ(r.code, UltraNetResultCode::InvalidUrl);
+}
+
+// ===== gRPC =====
+TEST(grpc_plugin_loads_and_registers) {
+    if (!LoadInto("GRPC", "grpc")) SKIP("gRPC plug-in not buildable");
+
+    auto p = UltraNet_GetPlugin("grpc");
+    REQUIRE(p != nullptr);
+    REQUIRE_EQ(p->GetName(), std::string{"UltraNet-gRPC"});
+    auto schemes = p->GetSupportedSchemes();
+    CHECK(std::find(schemes.begin(), schemes.end(), "grpc")  != schemes.end());
+    CHECK(std::find(schemes.begin(), schemes.end(), "grpcs") != schemes.end());
+    auto* rpc = dynamic_cast<IRpcProtocolPlugin*>(p.get());
+    REQUIRE(rpc != nullptr);
+
+    // UnaryCall on a bogus handle -> InvalidHandle, no crash.
+    UltraNetRpcOptions opt;
+    std::vector<uint8_t> response;
+    auto r = rpc->UnaryCall(99999u, "svc", "Method", {1, 2, 3}, response, opt);
+    CHECK(!bool(r));
+    REQUIRE_EQ(r.code, UltraNetResultCode::InvalidHandle);
+
+    // Bogus URL on Connect -> InvalidHandle.
+    REQUIRE_EQ(rpc->Connect("not-a-grpc-url", opt), UltraNetInvalidHandle);
 }
 
 // ===== RTMP =====

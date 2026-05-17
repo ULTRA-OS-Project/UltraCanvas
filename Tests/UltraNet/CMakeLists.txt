@@ -108,6 +108,11 @@ if(TARGET UltraNetRtmpPlugin)
     target_compile_definitions(UltraNetTests PRIVATE
         ULTRANET_RTMP_PLUGIN_PATH_DEFINE="$<TARGET_FILE:UltraNetRtmpPlugin>")
 endif()
+if(TARGET UltraNetGrpcPlugin)
+    add_dependencies(UltraNetTests UltraNetGrpcPlugin)
+    target_compile_definitions(UltraNetTests PRIVATE
+        ULTRANET_GRPC_PLUGIN_PATH_DEFINE="$<TARGET_FILE:UltraNetGrpcPlugin>")
+endif()
 
 include(CTest)
 add_test(NAME UltraNet COMMAND UltraNetTests)
