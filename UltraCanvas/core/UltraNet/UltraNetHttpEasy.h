@@ -13,15 +13,19 @@
 #include <cstddef>
 #include <cstdio>
 #include <cstdint>
+#include <functional>
 #include <vector>
 
 namespace ultranet_internal {
 
     // Body sink for libcurl WRITEFUNCTION. Either accumulates bytes into a
-    // std::vector or streams to a FILE*. maxBytes==0 means unlimited.
+    // std::vector, streams to a FILE*, or fires a per-chunk callback for
+    // streaming use cases (SSE, chunked LLM tokens). When onChunk is set,
+    // the body / file accumulators are bypassed. maxBytes==0 means unlimited.
     struct WriteSink {
         std::vector<uint8_t>* body = nullptr;
         std::FILE* file = nullptr;
+        std::function<void(const std::vector<uint8_t>&)> onChunk;
         int64_t maxBytes = 0;
         int64_t received = 0;
         bool exceededLimit = false;

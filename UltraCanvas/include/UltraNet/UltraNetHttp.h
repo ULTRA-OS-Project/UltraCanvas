@@ -74,6 +74,14 @@ struct UltraNetHttpRequest {
     UltraNetHttpHeaders headers;
     std::vector<uint8_t> body;
     UltraNetHttpOptions options;
+
+    // Optional. When set, libcurl chunks are streamed to this callback in
+    // arrival order instead of being accumulated in response.body. The
+    // response.body field will be empty after the request completes. Fires
+    // on the request thread — the calling thread for sync, the curl_multi
+    // worker for async. Use this for Server-Sent Events, chunked LLM
+    // responses, and any other "process tokens as they arrive" workload.
+    std::function<void(const std::vector<uint8_t>&)> onDataChunk;
 };
 
 struct UltraNetResponse {

@@ -531,6 +531,7 @@ if(ULTRACANVAS_ENABLE_NET)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetSocket.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetTls.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetPlugins.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetSse.cpp
     )
     if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
         list(APPEND ULTRANET_SOURCES

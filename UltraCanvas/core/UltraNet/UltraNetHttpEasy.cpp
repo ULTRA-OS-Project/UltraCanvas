@@ -91,12 +91,19 @@ std::size_t WriteCallback(char* data, std::size_t size,
         sink->exceededLimit = true;
         return 0;
     }
-    if (sink->body) {
-        sink->body->insert(sink->body->end(), data, data + total);
-    }
-    if (sink->file) {
-        std::size_t written = std::fwrite(data, 1, total, sink->file);
-        if (written != total) return written;
+    if (sink->onChunk) {
+        // Streaming mode: hand bytes to the caller as they arrive.
+        sink->onChunk(std::vector<uint8_t>(
+            reinterpret_cast<uint8_t*>(data),
+            reinterpret_cast<uint8_t*>(data) + total));
+    } else {
+        if (sink->body) {
+            sink->body->insert(sink->body->end(), data, data + total);
+        }
+        if (sink->file) {
+            std::size_t written = std::fwrite(data, 1, total, sink->file);
+            if (written != total) return written;
+        }
     }
     sink->received += static_cast<int64_t>(total);
     return total;
@@ -284,6 +291,10 @@ curl_slist* ConfigureEasyHandle(CURL* easy,
     }
 
     sink->maxBytes = opt.maxReceiveSize > 0 ? opt.maxReceiveSize : cfg.maxReceiveSize;
+    // Per-chunk streaming: when the caller provides request.onDataChunk we
+    // bypass body accumulation entirely and fire the callback as bytes
+    // arrive (this is what UltraNet_SseStream layers on top of).
+    if (request.onDataChunk) sink->onChunk = request.onDataChunk;
     curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, &WriteCallback);
     curl_easy_setopt(easy, CURLOPT_WRITEDATA, sink);
     curl_easy_setopt(easy, CURLOPT_HEADERFUNCTION, &HeaderCallback);

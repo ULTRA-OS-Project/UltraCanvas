@@ -12,6 +12,7 @@ set(ULTRANET_TEST_SOURCES
     test_dns_format.cpp
     test_loopback.cpp
     test_smtp_plugin.cpp
+    test_sse.cpp
 )
 
 add_executable(UltraNetTests ${ULTRANET_TEST_SOURCES})
