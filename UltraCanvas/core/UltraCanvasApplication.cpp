@@ -51,16 +51,7 @@ namespace UltraCanvas {
     const size_t kDejaVuMonoFontsCount = sizeof(kDejaVuMonoFonts) / sizeof(kDejaVuMonoFonts[0]);
 
     std::string GetBundledFontsDir() {
-        // realpath() inside NormalizePath() strips trailing slashes on POSIX,
-        // so re-append a separator so callers can naively concatenate filenames.
         std::string p = NormalizePath(GetResourcesDir() + "media/fonts/dejavu/");
-        if (!p.empty() && p.back() != '/' && p.back() != '\\') {
-#if defined(_WIN32) || defined(_WIN64)
-            p.push_back('\\');
-#else
-            p.push_back('/');
-#endif
-        }
         return p;
     }
 
