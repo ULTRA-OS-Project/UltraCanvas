@@ -40,6 +40,7 @@ endif()
 option(ULTRACANVAS_ENABLE_NET "Build the UltraNet networking library" ON)
 option(ULTRACANVAS_PLUGIN_SMTP "Build the UltraNet SMTP plug-in" ON)
 option(ULTRACANVAS_PLUGIN_IMAP "Build the UltraNet IMAP plug-in" ON)
+option(ULTRACANVAS_PLUGIN_POP3 "Build the UltraNet POP3 plug-in" ON)
 
 # ===== DETECT PLATFORM =====
 if(WIN32)
@@ -610,6 +611,16 @@ if(ULTRACANVAS_ENABLE_NET)
         message(STATUS "  [✓] UltraNet IMAP plug-in - ENABLED")
     elseif(ULTRACANVAS_PLUGIN_IMAP)
         message(STATUS "  [−] UltraNet IMAP plug-in - SKIPPED (Windows host: plug-in DSO loading is v1.1)")
+    endif()
+
+    # POP3 plug-in — completes the mail trio. Simpler than IMAP (no folders,
+    # sequential message numbering); sometimes preferred for low-bandwidth
+    # one-and-done downloads where the IMAP session overhead is unwelcome.
+    if(ULTRACANVAS_PLUGIN_POP3 AND NOT ULTRACANVAS_PLATFORM STREQUAL "Windows")
+        add_subdirectory(Plugins/UltraNet/pop3)
+        message(STATUS "  [✓] UltraNet POP3 plug-in - ENABLED")
+    elseif(ULTRACANVAS_PLUGIN_POP3)
+        message(STATUS "  [−] UltraNet POP3 plug-in - SKIPPED (Windows host: plug-in DSO loading is v1.1)")
     endif()
 else()
     message(STATUS "  [−] UltraNet - DISABLED")
