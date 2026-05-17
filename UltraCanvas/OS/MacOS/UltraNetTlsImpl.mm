@@ -155,9 +155,9 @@ OSStatus VerifyPeer(Ctx* c) {
         if (host) {
             SecPolicyRef pol = SecPolicyCreateSSL(true, host);
             if (pol) {
-                CFArrayRef policies = CFArrayCreate(nullptr,
-                                                    (const void*[]){pol}, 1,
-                                                    &kCFTypeArrayCallBacks);
+                const void* values[] = { pol };
+                CFArrayRef  policies = CFArrayCreate(
+                    nullptr, values, 1, &kCFTypeArrayCallBacks);
                 SecTrustSetPolicies(trust, policies);
                 CFRelease(policies);
                 CFRelease(pol);
