@@ -9,6 +9,7 @@
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
+#include "UltraCanvasApplication.h"
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
@@ -20,6 +21,7 @@
 
 #ifdef ULTRACANVAS_HAS_NET
 #include <UltraNet/UltraNetCore.h>
+#include <UltraNet/UltraNetHttp.h>
 #endif
 
 #include <chrono>
@@ -95,10 +97,11 @@ UltraCanvasDemoApplication::CreateNetworkingExamples() {
     container->AddChild(preview);
 
     // ===== LOAD HANDLER =====
-    // Synchronous load on the UI thread — fine for a demo, briefly blocks
-    // the UI until the response arrives. A production app would use
-    // UltraNet_HttpRequestAsync and marshal the result back to the UI
-    // thread; that's a layering improvement tracked separately.
+    // Fully asynchronous: UltraNet_HttpRequestAsync runs the HTTP fetch on
+    // the curl_multi worker thread; the completion callback marshals the
+    // result back to the UI thread via UltraCanvasApplicationBase::
+    // PostToUIThread so the widget mutations stay on the right thread.
+    // The UI never blocks while the network is in flight.
     auto doLoad =
         [urlInput, status, preview]() {
             const std::string url = urlInput->GetText();
@@ -110,35 +113,63 @@ UltraCanvasDemoApplication::CreateNetworkingExamples() {
             status->SetText("Status: loading " + url + " ...");
             status->SetTextColor(Color(80, 80, 80, 255));
 
+#ifdef ULTRACANVAS_HAS_NET
             const auto t0 = std::chrono::steady_clock::now();
-            FileBytesResult res = UltraCanvasFileLoader::LoadFile(url);
-            const auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                std::chrono::steady_clock::now() - t0).count();
+            UltraNetHttpRequest req;
+            req.url    = url;
+            req.method = UltraNetHttpMethod::Get;
 
-            if (!res.success) {
-                std::ostringstream os;
-                os << "Status: FAILED — " << res.error;
-                if (res.httpStatus) os << " (HTTP " << res.httpStatus << ")";
-                status->SetText(os.str());
-                status->SetTextColor(Color(180, 0, 0, 255));
-                return;
-            }
+            UltraNet_HttpRequestAsync(req,
+                [status, preview, t0, url](const UltraNetResponse& resp) {
+                    // Worker thread. Copy what we'll need; the UltraNetResponse
+                    // moves into the lambda capture below.
+                    auto r = std::make_shared<UltraNetResponse>(resp);
+                    const auto dt =
+                        std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::steady_clock::now() - t0).count();
 
-            auto img = UCImageRaster::LoadFromMemory(res.bytes);
-            if (!img || !img->IsValid()) {
-                status->SetText("Status: download OK but image decode failed");
-                status->SetTextColor(Color(180, 100, 0, 255));
-                return;
-            }
-            preview->LoadFromImage(img);
-
-            std::ostringstream os;
-            os << "Status: " << res.bytes.size() << " bytes in " << dt << " ms"
-               << "  ·  Content-Type: "
-               << (res.contentType.empty() ? "(unknown)" : res.contentType)
-               << "  ·  Image " << img->GetWidth() << "x" << img->GetHeight();
-            status->SetText(os.str());
-            status->SetTextColor(Color(0, 130, 0, 255));
+                    auto* app = UltraCanvasApplicationBase::GetCurrent();
+                    if (!app) return;     // tearing down; abandon update
+                    app->PostToUIThread(
+                        [status, preview, r, dt, url]() {
+                            if (r->statusCode <= 0) {
+                                status->SetText("Status: FAILED — " +
+                                    (r->statusMessage.empty()
+                                        ? std::string{"transport error"}
+                                        : r->statusMessage));
+                                status->SetTextColor(Color(180, 0, 0, 255));
+                                return;
+                            }
+                            if (r->statusCode >= 400) {
+                                status->SetText("Status: HTTP " +
+                                    std::to_string(r->statusCode));
+                                status->SetTextColor(Color(180, 0, 0, 255));
+                                return;
+                            }
+                            auto img = UCImageRaster::LoadFromMemory(r->body);
+                            if (!img || !img->IsValid()) {
+                                status->SetText(
+                                    "Status: download OK but image decode failed");
+                                status->SetTextColor(Color(180, 100, 0, 255));
+                                return;
+                            }
+                            preview->LoadFromImage(img);
+                            std::ostringstream os;
+                            os << "Status: " << r->body.size() << " bytes in "
+                               << dt << " ms  ·  Content-Type: "
+                               << (r->contentType.empty()
+                                       ? "(unknown)" : r->contentType)
+                               << "  ·  Image "
+                               << img->GetWidth() << "x" << img->GetHeight();
+                            status->SetText(os.str());
+                            status->SetTextColor(Color(0, 130, 0, 255));
+                        });
+                });
+#else
+            status->SetText("Status: UltraNet not compiled in "
+                            "(rebuild with -DULTRACANVAS_ENABLE_NET=ON)");
+            status->SetTextColor(Color(180, 100, 0, 255));
+#endif
         };
     loadButton->SetOnClick(doLoad);
 

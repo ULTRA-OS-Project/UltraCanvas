@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include <algorithm>
+#include <atomic>
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -35,6 +36,61 @@
 
 
 namespace UltraCanvas {
+
+    // ===== Singleton accessor for cross-thread PostToUIThread =====
+    namespace {
+        std::atomic<UltraCanvasApplicationBase*> g_currentApplication{nullptr};
+    }
+
+    UltraCanvasApplicationBase::UltraCanvasApplicationBase() {
+        // Latch the most-recently-constructed app as the "current" one;
+        // UltraCanvas assumes one app per process.
+        g_currentApplication.store(this, std::memory_order_release);
+    }
+
+    UltraCanvasApplicationBase::~UltraCanvasApplicationBase() {
+        UltraCanvasApplicationBase* expected = this;
+        g_currentApplication.compare_exchange_strong(
+            expected, nullptr, std::memory_order_release);
+    }
+
+    UltraCanvasApplicationBase* UltraCanvasApplicationBase::GetCurrent() {
+        return g_currentApplication.load(std::memory_order_acquire);
+    }
+
+    void UltraCanvasApplicationBase::PostToUIThread(std::function<void()> task) {
+        if (!task) return;
+        {
+            std::lock_guard<std::mutex> lk(postedTasksMutex_);
+            postedTasks_.push_back(std::move(task));
+        }
+        // Wake the loop so the task runs promptly instead of waiting for
+        // the next OS event.
+        WakeUpEventLoop();
+    }
+
+    void UltraCanvasApplicationBase::ProcessPostedTasks() {
+        // Swap under lock so concurrent posts can keep enqueueing while we
+        // run tasks lock-free. Tasks running here might re-enter
+        // PostToUIThread to chain follow-up work; that lands in the next
+        // iteration, never the current vector.
+        std::vector<std::function<void()>> local;
+        {
+            std::lock_guard<std::mutex> lk(postedTasksMutex_);
+            local.swap(postedTasks_);
+        }
+        for (auto& fn : local) {
+            try {
+                fn();
+            } catch (const std::exception& e) {
+                std::cerr << "UltraCanvas PostToUIThread task threw: "
+                          << e.what() << std::endl;
+            } catch (...) {
+                std::cerr << "UltraCanvas PostToUIThread task threw "
+                             "non-std exception" << std::endl;
+            }
+        }
+    }
 
     const char* const kDejaVuAllFonts[] = {
         "DejaVuSans.ttf", "DejaVuSans-Bold.ttf",
@@ -326,6 +382,9 @@ namespace UltraCanvas {
                 // Fire expired timers
                 ProcessTimers();
 
+                // Run anything PostToUIThread enqueued from a background
+                // thread (async HTTP callbacks, std::thread, plug-ins).
+                ProcessPostedTasks();
 
                 std::erase_if(windows, [](const auto &w) {
                     return (w->GetState() == WindowState::Closed && w->GetConfig().deleteOnClose);
