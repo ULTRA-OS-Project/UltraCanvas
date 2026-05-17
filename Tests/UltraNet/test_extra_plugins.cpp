@@ -50,6 +50,10 @@ fs::path FindOrBuild(const std::string& name) {
     if (name == "RTSP" && fs::exists(ULTRANET_RTSP_PLUGIN_PATH_DEFINE))
         return fs::path{ULTRANET_RTSP_PLUGIN_PATH_DEFINE};
 #endif
+#ifdef ULTRANET_MQTT_PLUGIN_PATH_DEFINE
+    if (name == "MQTT" && fs::exists(ULTRANET_MQTT_PLUGIN_PATH_DEFINE))
+        return fs::path{ULTRANET_MQTT_PLUGIN_PATH_DEFINE};
+#endif
 
     // Map test name -> source/class name pair.
     std::string lower = name, cls = name;
@@ -58,6 +62,7 @@ fs::path FindOrBuild(const std::string& name) {
     else if (name == "LDAP")   cls = "Ldap";
     else if (name == "TELNET") cls = "Telnet";
     else if (name == "RTSP")   cls = "Rtsp";
+    else if (name == "MQTT")   cls = "Mqtt";
 
     const fs::path src = fs::path{"UltraCanvas/Plugins/UltraNet"} / lower /
                          (cls + "Plugin.cpp");
@@ -70,12 +75,20 @@ fs::path FindOrBuild(const std::string& name) {
     fs::create_directories(outDir);
     const fs::path outFile = outDir / ("ultranet_" + lower + ".so");
 
+    // MQTT links paho-mqtt-c (libpaho-mqtt3as) instead of libcurl. Other
+    // plug-ins use libcurl. Pick the right link flags per plug-in.
+    std::string extraLinkFlags;
+    if (name == "MQTT") {
+        extraLinkFlags = " -lpaho-mqtt3as";
+    } else {
+        extraLinkFlags = " $(pkg-config --cflags --libs libcurl)";
+    }
+
     const std::string cmd =
         "g++ -std=c++20 -fPIC -shared "
         "-I UltraCanvas/include "
-        + src.string() +
-        " $(pkg-config --cflags --libs libcurl) "
-        "-o " + outFile.string() + " 2>&1";
+        + src.string() + extraLinkFlags +
+        " -o " + outFile.string() + " 2>&1";
     if (std::system(cmd.c_str()) != 0) return {};
     return fs::exists(outFile) ? outFile : fs::path{};
 }
@@ -158,6 +171,25 @@ TEST(rtsp_plugin_loads_and_registers) {
     std::vector<uint8_t> frame;
     auto r = stream->ReadFrame(99999u, frame);
     CHECK(!bool(r));
+}
+
+// ===== MQTT =====
+TEST(mqtt_plugin_loads_and_registers) {
+    if (!LoadInto("MQTT", "mqtt")) SKIP("MQTT plug-in not buildable (paho-mqtt-c missing?)");
+
+    auto p = UltraNet_GetPlugin("mqtt");
+    REQUIRE(p != nullptr);
+    REQUIRE_EQ(p->GetName(), std::string{"UltraNet-MQTT"});
+    auto schemes = p->GetSupportedSchemes();
+    CHECK(std::find(schemes.begin(), schemes.end(), "mqtt")  != schemes.end());
+    CHECK(std::find(schemes.begin(), schemes.end(), "mqtts") != schemes.end());
+    auto* msg = dynamic_cast<IMessagingProtocolPlugin*>(p.get());
+    REQUIRE(msg != nullptr);
+
+    // Publish on a bogus session handle -> InvalidHandle, no crash.
+    auto r = msg->Publish(99999u, "test/topic", {1, 2, 3});
+    CHECK(!bool(r));
+    REQUIRE_EQ(r.code, UltraNetResultCode::InvalidHandle);
 }
 
 // ===== Scheme registry coverage =====

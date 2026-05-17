@@ -45,6 +45,7 @@ option(ULTRACANVAS_PLUGIN_WEBDAV "Build the UltraNet WebDAV plug-in" ON)
 option(ULTRACANVAS_PLUGIN_LDAP   "Build the UltraNet LDAP plug-in"   ON)
 option(ULTRACANVAS_PLUGIN_TELNET "Build the UltraNet Telnet plug-in" ON)
 option(ULTRACANVAS_PLUGIN_RTSP   "Build the UltraNet RTSP plug-in"   ON)
+option(ULTRACANVAS_PLUGIN_MQTT   "Build the UltraNet MQTT plug-in (requires paho-mqtt-c)" ON)
 
 # ===== DETECT PLATFORM =====
 if(WIN32)
@@ -667,6 +668,18 @@ if(ULTRACANVAS_ENABLE_NET)
     if(ULTRACANVAS_PLUGIN_RTSP)
         add_subdirectory(Plugins/UltraNet/rtsp)
         message(STATUS "  [✓] UltraNet RTSP plug-in - ENABLED")
+    endif()
+
+    # MQTT — first plug-in NOT backed by libcurl. Needs Eclipse Paho's
+    # libpaho-mqtt3as (async + SSL). The plug-in CMakeLists self-disables
+    # when paho-mqtt-c isn't installed, so this is safe to leave ON.
+    if(ULTRACANVAS_PLUGIN_MQTT)
+        add_subdirectory(Plugins/UltraNet/mqtt)
+        if(TARGET UltraNetMqttPlugin)
+            message(STATUS "  [✓] UltraNet MQTT plug-in - ENABLED")
+        else()
+            message(STATUS "  [−] UltraNet MQTT plug-in - SKIPPED (paho-mqtt-c not found)")
+        endif()
     endif()
 else()
     message(STATUS "  [−] UltraNet - DISABLED")

@@ -73,6 +73,11 @@ if(TARGET UltraNetRtspPlugin)
     target_compile_definitions(UltraNetTests PRIVATE
         ULTRANET_RTSP_PLUGIN_PATH_DEFINE="$<TARGET_FILE:UltraNetRtspPlugin>")
 endif()
+if(TARGET UltraNetMqttPlugin)
+    add_dependencies(UltraNetTests UltraNetMqttPlugin)
+    target_compile_definitions(UltraNetTests PRIVATE
+        ULTRANET_MQTT_PLUGIN_PATH_DEFINE="$<TARGET_FILE:UltraNetMqttPlugin>")
+endif()
 
 include(CTest)
 add_test(NAME UltraNet COMMAND UltraNetTests)
