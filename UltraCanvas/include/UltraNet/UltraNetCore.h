@@ -193,6 +193,15 @@ struct UltraNetConfig {
     UltraNetTlsVersion minTlsVersion = UltraNetTlsVersion::Tls12;
     int64_t maxReceiveSize = 0;     // 0 = unlimited
     bool enableHttp2 = true;
+    // HTTP/3 (QUIC). Requires libcurl built with nghttp3 + ngtcp2 or
+    // quiche — most distro packages don't have it; UltraNet_HasHttp3()
+    // reports the linked libcurl's capability at runtime. When enabled
+    // but the linked libcurl lacks HTTP/3 the request transparently
+    // falls back to HTTP/2 (CURL_HTTP_VERSION_3 semantics).
+    bool enableHttp3 = false;
+    // Hard-require HTTP/3. Fails the request (CURLE_UNSUPPORTED_PROTOCOL)
+    // when HTTP/3 isn't negotiable. Maps to CURL_HTTP_VERSION_3ONLY.
+    bool http3Only = false;
     bool enableCompression = true;
     std::string pluginDirectory = "Plugins/UltraNet";
 
@@ -224,6 +233,12 @@ void           UltraNet_SetConfig(const UltraNetConfig& config);
 
 std::string    UltraNet_GetVersion();
 std::string    UltraNet_GetBackendInfo();
+
+// True if the linked libcurl was built with HTTP/3 (QUIC) support
+// (CURL_VERSION_HTTP3). Apps can probe this before setting
+// UltraNetConfig::enableHttp3 / http3Only to give end-users a clearer
+// "HTTP/3 not available, falling back to HTTP/2" diagnostic.
+bool           UltraNet_HasHttp3();
 
 // ============================================================================
 // Proxy helpers. UltraNet_DetectSystemProxy is implemented in the per-platform

@@ -280,7 +280,16 @@ curl_slist* ConfigureEasyHandle(CURL* easy,
     if (cfg.enableCompression) {
         curl_easy_setopt(easy, CURLOPT_ACCEPT_ENCODING, "");
     }
-    if (cfg.enableHttp2) {
+    // HTTP version selection — HTTP/3 wins over HTTP/2 when requested.
+    // CURL_HTTP_VERSION_3 negotiates HTTP/3 with HTTP/2 fallback;
+    // CURL_HTTP_VERSION_3ONLY fails the request if HTTP/3 is unavailable.
+    // When libcurl wasn't built with HTTP/3, the _3 path silently falls
+    // back to HTTP/2 / HTTP/1.1; _3ONLY surfaces CURLE_UNSUPPORTED_PROTOCOL.
+    if (cfg.enableHttp3) {
+        curl_easy_setopt(easy, CURLOPT_HTTP_VERSION,
+                         cfg.http3Only ? CURL_HTTP_VERSION_3ONLY
+                                       : CURL_HTTP_VERSION_3);
+    } else if (cfg.enableHttp2) {
         curl_easy_setopt(easy, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2TLS);
     }
 

@@ -37,3 +37,32 @@ TEST(endpoint_to_string_ipv6_brackets) {
     ep.address = "::1"; ep.port = 8080; ep.isIpv6 = true;
     REQUIRE_EQ(ep.ToString(), std::string{"[::1]:8080"});
 }
+
+// ===== HTTP/3 detection =====
+TEST(http3_capability_check_returns_bool) {
+    UltraNet_Initialize();
+    // Whatever the answer is, it has to be consistent.
+    const bool a = UltraNet_HasHttp3();
+    const bool b = UltraNet_HasHttp3();
+    REQUIRE_EQ(a, b);
+}
+
+TEST(http3_backend_info_lists_protocols) {
+    UltraNet_Initialize();
+    const std::string info = UltraNet_GetBackendInfo();
+    CHECK(info.find("libcurl/") != std::string::npos);
+    // When HTTP/3 is present the marker appears; when not, it must not.
+    if (UltraNet_HasHttp3()) {
+        CHECK(info.find("+HTTP3") != std::string::npos);
+    } else {
+        CHECK(info.find("+HTTP3") == std::string::npos);
+    }
+}
+
+TEST(http3_config_flags_default_off) {
+    UltraNetConfig c = UltraNetConfig::Default();
+    CHECK(!c.enableHttp3);
+    CHECK(!c.http3Only);
+    // HTTP/2 stays the default upgrade target.
+    CHECK(c.enableHttp2);
+}

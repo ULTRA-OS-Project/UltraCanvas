@@ -78,7 +78,14 @@ std::string UltraNet_GetBackendInfo() {
     if (v && v->ssl_version) {
         os << ' ' << v->ssl_version;
     }
+    if (v && (v->features & CURL_VERSION_HTTP2))  os << " +HTTP2";
+    if (v && (v->features & CURL_VERSION_HTTP3))  os << " +HTTP3";
     return os.str();
+}
+
+bool UltraNet_HasHttp3() {
+    const curl_version_info_data* v = curl_version_info(CURLVERSION_NOW);
+    return v && (v->features & CURL_VERSION_HTTP3) != 0;
 }
 
 void UltraNet_SetGlobalProxy(const UltraNetProxyConfig& proxy) {
