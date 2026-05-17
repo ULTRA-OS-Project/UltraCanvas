@@ -37,7 +37,7 @@ namespace UltraCanvas {
         container->AddChild(hSliderLabel);
 
         // Value display for horizontal slider
-        auto hValueLabel = CreateLabel("HValueLabel", 340, 60, 80, 20);
+        auto hValueLabel = CreateLabel("HValueLabel", 340, 62, 80, 20);
         hValueLabel->SetText("50");
         hValueLabel->SetAlignment(TextAlignment::Center);
         hValueLabel->SetBackgroundColor(Color(240, 240, 240, 255));

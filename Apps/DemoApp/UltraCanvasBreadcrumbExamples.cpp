@@ -170,57 +170,12 @@ namespace UltraCanvas {
         mainContainer->AddChild(bcWeb);
         yOffset += rowStep;
 
-        // ========================================
-        // SECTION 6: SEPARATOR GALLERY
-        // ========================================
-        addDescription("BC_Section6", yOffset,
-                       "6. Separator gallery",
-                       "One row per BreadcrumbSeparatorStyle");
-
-        struct SepEntry {
-            BreadcrumbSeparatorStyle style;
-            const char* label;
-        };
-        const SepEntry sepEntries[] = {
-            {BreadcrumbSeparatorStyle::Chevron,       "Chevron"},
-            {BreadcrumbSeparatorStyle::ChevronDouble, "ChevronDouble"},
-            {BreadcrumbSeparatorStyle::Slash,         "Slash"},
-            {BreadcrumbSeparatorStyle::GreaterThan,   "GreaterThan"},
-            {BreadcrumbSeparatorStyle::Arrow,         "Arrow"},
-            {BreadcrumbSeparatorStyle::Bullet,        "Bullet"},
-            {BreadcrumbSeparatorStyle::Pipe,          "Pipe"},
-            {BreadcrumbSeparatorStyle::Dot,           "Dot"},
-        };
-
-        int sepY = yOffset;
-        for (const auto& entry : sepEntries) {
-            auto lbl = std::make_shared<UltraCanvasLabel>(std::string("BC_SepLbl_") + entry.label,
-                                                         rightX, sepY + 4, 100, 22);
-            lbl->SetText(entry.label);
-            lbl->SetFontSize(11);
-            lbl->SetTextColor(descColor);
-            mainContainer->AddChild(lbl);
-
-            auto bc = CreateBreadcrumb(std::string("bc_sep_") + entry.label,
-                                       rightX + 110, sepY, rightWidth - 110, 26);
-            bc->SetSeparatorStyle(entry.style);
-            bc->AddItem("Alpha");
-            bc->AddItem("Beta");
-            bc->AddItem("Gamma");
-            bc->AddItem("Delta");
-            bc->onItemClicked = [reportClick, name = std::string(entry.label)](int idx, const BreadcrumbItem& item) {
-                reportClick(std::string("Separator/") + name, idx, item);
-            };
-            mainContainer->AddChild(bc);
-            sepY += 30;
-        }
-        yOffset = sepY + 15;
 
         // ========================================
         // SECTION 7: ITEM WITH DROPDOWN
         // ========================================
-        addDescription("BC_Section7", yOffset,
-                       "7. Item with dropdown",
+        addDescription("BC_Section6", yOffset,
+                       "6. Item with dropdown",
                        "Click the small chevron next to 'Projects' to open the menu");
 
         auto bcDropdown = CreateBreadcrumb("bc_dropdown", rightX, yOffset + 4, rightWidth, 30);
@@ -257,8 +212,8 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 8: ICONS
         // ========================================
-        addDescription("BC_Section8", yOffset,
-                       "8. Icons",
+        addDescription("BC_Section7", yOffset,
+                       "7. Icons",
                        "Per-item leading icons via WithIcon / IconOnly");
 
         const std::string iconsRoot = NormalizePath(GetResourcesDir() + "media/icons/");
@@ -276,8 +231,8 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 9: LIVE NAVIGATION
         // ========================================
-        addDescription("BC_Section9", yOffset,
-                       "9. Live navigation",
+        addDescription("BC_Section8", yOffset,
+                       "8. Live navigation",
                        "Clicking a segment truncates the path — try it!");
 
         const std::string initialNavPath = "/home/user/projects/ultracanvas/Apps/DemoApp";
@@ -329,8 +284,8 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 10: COLLAPSE OVERFLOW
         // ========================================
-        addDescription("BC_Section10", yOffset,
-                       "10. Collapse overflow",
+        addDescription("BC_Section9", yOffset,
+                       "9. Collapse overflow",
                        "Middle items hidden behind a '...' menu (narrow width)");
 
         auto bcCollapse = CreateBreadcrumb("bc_collapse", rightX, yOffset + 4, 360, 30);
@@ -356,8 +311,8 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 11: ELLIPSIZE OVERFLOW
         // ========================================
-        addDescription("BC_Section11", yOffset,
-                       "11. Ellipsize overflow",
+        addDescription("BC_Section10", yOffset,
+                       "10. Ellipsize overflow",
                        "Per-item text trimmed via maxItemTextWidth=60");
 
         auto bcEllipsize = CreateBreadcrumb("bc_ellipsize", rightX, yOffset + 4, rightWidth, 30);
@@ -376,8 +331,8 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 12: SHRINK-TEXT OVERFLOW
         // ========================================
-        addDescription("BC_Section12", yOffset,
-                       "12. ShrinkText overflow",
+        addDescription("BC_Section11", yOffset,
+                       "11. ShrinkText overflow",
                        "Per-item width auto-reduces until everything fits");
 
         auto bcShrink = CreateBreadcrumb("bc_shrink", rightX, yOffset + 4, 420, 30);
@@ -396,8 +351,8 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 13: ROUNDED STRIP
         // ========================================
-        addDescription("BC_Section13", yOffset,
-                       "13. Rounded strip",
+        addDescription("BC_Section12", yOffset,
+                       "12. Rounded strip",
                        "Light gray rounded background, uniform clickable segments");
 
         auto bcStrip = CreateBreadcrumb("bc_strip", rightX, yOffset + 4, 420, 32);
@@ -421,6 +376,52 @@ namespace UltraCanvas {
         };
         mainContainer->AddChild(bcStrip);
         yOffset += rowStep;
+
+        // ========================================
+        // SECTION 6: SEPARATOR GALLERY
+        // ========================================
+        addDescription("BC_Section13", yOffset,
+                   "13. Separator gallery",
+                   "One row per BreadcrumbSeparatorStyle");
+
+        struct SepEntry {
+        BreadcrumbSeparatorStyle style;
+        const char* label;
+        };
+        const SepEntry sepEntries[] = {
+            {BreadcrumbSeparatorStyle::Chevron,       "Chevron"},
+            {BreadcrumbSeparatorStyle::ChevronDouble, "ChevronDouble"},
+            {BreadcrumbSeparatorStyle::Slash,         "Slash"},
+            {BreadcrumbSeparatorStyle::GreaterThan,   "GreaterThan"},
+            {BreadcrumbSeparatorStyle::Arrow,         "Arrow"},
+            {BreadcrumbSeparatorStyle::Bullet,        "Bullet"},
+            {BreadcrumbSeparatorStyle::Pipe,          "Pipe"},
+            {BreadcrumbSeparatorStyle::Dot,           "Dot"},
+        };
+
+        int sepY = yOffset;
+        for (const auto& entry : sepEntries) {
+            auto lbl = std::make_shared<UltraCanvasLabel>(std::string("BC_SepLbl_") + entry.label,
+                                                          rightX, sepY + 4, 100, 22);
+            lbl->SetText(entry.label);
+            lbl->SetFontSize(11);
+            lbl->SetTextColor(descColor);
+            mainContainer->AddChild(lbl);
+
+            auto bc = CreateBreadcrumb(std::string("bc_sep_") + entry.label,
+                                       rightX + 110, sepY, rightWidth - 110, 26);
+            bc->SetSeparatorStyle(entry.style);
+            bc->AddItem("Alpha");
+            bc->AddItem("Beta");
+            bc->AddItem("Gamma");
+            bc->AddItem("Delta");
+            bc->onItemClicked = [reportClick, name = std::string(entry.label)](int idx, const BreadcrumbItem& item) {
+                reportClick(std::string("Separator/") + name, idx, item);
+            };
+            mainContainer->AddChild(bc);
+            sepY += 30;
+        }
+        yOffset = sepY + 15;
 
         return mainContainer;
     }
