@@ -1,4 +1,4 @@
-// Apps/DemoApp/UltraCanvasPieChartExamples.cpp
+    // Apps/DemoApp/UltraCanvasPieChartExamples.cpp
 // Comprehensive pie chart demonstration with all features
 // Version: 1.0.0
 // Last Modified: 2025-01-16
@@ -154,7 +154,7 @@ namespace UltraCanvas {
         yOffset += controlHeight + spacing * 2;
 
         // === PERSPECTIVE ANGLE (3D) ===
-        auto perspectiveLabel = std::make_shared<UltraCanvasLabel>("PerspectiveLabel", x, yOffset, 200, 20);
+        auto perspectiveLabel = std::make_shared<UltraCanvasLabel>("PerspectiveLabel", x, yOffset, 300, 20);
         perspectiveLabel->SetText("Perspective Angle (3D):");
         perspectiveLabel->SetFontWeight(FontWeight::Bold);
         container->AddChild(perspectiveLabel);
