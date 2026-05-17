@@ -411,7 +411,9 @@ namespace UltraCanvas {
 
         basicBuilder.AddItem("toolbar", "Toolbar", "Tool and action bars",
                              ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateToolbarExamples(); })
+                             [this]() { return CreateToolbarExamples(); },
+                             "Apps/DemoApp/UltraCanvasToolbarExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasToolbarExamples.md")
                 .AddVariant("toolbar", "Horizontal Toolbar")
                 .AddVariant("toolbar", "Vertical Toolbar")
                 .AddVariant("toolbar", "Ribbon Style");
@@ -441,7 +443,7 @@ namespace UltraCanvas {
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateSegmentedControlExamples(); },
                              "Apps/DemoApp/UltraCanvasSegmentedControlExamples.cpp",
-                             "Docs/UltraCanvas/UltraCanvasSegmentedControl.md")
+                             "Docs/UltraCanvas/UltraCanvasSegmentedControlExamples.md")
                 .AddVariant("segmentedcontrol", "Bordered Style")
                 .AddVariant("segmentedcontrol", "iOS Style")
                 .AddVariant("segmentedcontrol", "Flat Style")
@@ -524,7 +526,7 @@ namespace UltraCanvas {
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateBreadcrumbExamples(); },
                              "Apps/DemoApp/UltraCanvasBreadcrumbExamples.cpp",
-                             "Docs/UltraCanvas/UltraCanvasBreadcrumb.md")
+                             "Docs/UltraCanvas/UltraCanvasBreadcrumbExamples.md")
                 .AddVariant("breadcrumb", "Default Style")
                 .AddVariant("breadcrumb", "Compact Style")
                 .AddVariant("breadcrumb", "Pills Style")
@@ -575,7 +577,9 @@ namespace UltraCanvas {
 
         extendedBuilder.AddItem("listview", "List View", "Item lists with custom rendering",
                                 ImplementationStatus::FullyImplemented,
-                                [this]() { return CreateListViewExamples(); })
+                                [this]() { return CreateListViewExamples(); },
+                                "Apps/DemoApp/UltraCanvasListViewExamples.cpp",
+                                "Docs/UltraCanvas/UltraCanvasListViewExamples.md")
                 .AddVariant("listview", "Simple List")
                 .AddVariant("listview", "Icon List")
                 .AddVariant("listview", "Detail View");
@@ -682,7 +686,9 @@ namespace UltraCanvas {
 #ifdef ULTRACANVAS_HAS_CDR_PLUGIN
         vectorBuilder.AddItem("cdrimages", "CDR Images", "CDR (CorelDraw) images display and manipulation",
                               ImplementationStatus::FullyImplemented,
-                              [this]() { return CreateCDRVectorExamples(); });
+                              [this]() { return CreateCDRVectorExamples(); },
+                              "Apps/DemoApp/UltraCanvasCDRExamples.cpp",
+                              "Docs/UltraCanvas/UltraCanvasCDRExamples.md");
 #endif
 #ifdef ULTRACANVAS_HAS_XAR_PLUGIN
         vectorBuilder.AddItem("xarimages", "XAR Images", "XAR Image display and manipulation",
@@ -725,7 +731,7 @@ namespace UltraCanvas {
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreatePieChartExamples(); },
                              "DemoApp/UltraCanvasPieChartExamples.cpp",
-                             "Docs/UltraCanvas/UltraCanvasPieChartExamplesElement.md");
+                             "Docs/UltraCanvas/UltraCanvasPieChartExamples.md");
 
         chartBuilder.AddItem("financialcharts", "Candlestick Chart", "Stock market OHLC and candlestick charts",
                              ImplementationStatus::FullyImplemented,
@@ -759,8 +765,8 @@ namespace UltraCanvas {
         chartBuilder.AddItem("populationcharts", "Population Chart", "Population chart data visualization",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreatePopulationChartExamples(); },
-                             "DemoApp/UltraCanvasPopulationChartsExamples.cpp",
-                             "Docs/UltraCanvas/UltraCanvasPopulationChartElement.md");
+                             "DemoApp/UltraCanvasPopulationChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasPopulationChartExamples.md");
 
         chartBuilder.AddItem("sunburstcharts", "Sunburst Chart", "Sunburst Chart",
                              ImplementationStatus::PartiallyImplemented,
@@ -788,7 +794,9 @@ namespace UltraCanvas {
 
         chartBuilder.AddItem("jitterchart", "Jitter chart", "Jitter chart",
                              ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateJitterPlotExamples(); });
+                             [this]() { return CreateJitterPlotExamples(); },
+                             "Apps/DemoApp/UltraCanvasJitterPlotExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasJitterPlotExamples.md");
 
         chartBuilder.AddItem("dumbbell", "Dumbbell chart", "Dumbbell chart",
                              ImplementationStatus::PartiallyImplemented,
@@ -816,7 +824,7 @@ namespace UltraCanvas {
                         ImplementationStatus::FullyImplemented,
                         [this]() { return CreateSankeyExamples(); },
                         "DemoApp/UltraCanvasSankeyExamples.cpp",
-                        "Docs/UltraCanvas/UltraCanvasSankeyDiagram.md"
+                        "Docs/UltraCanvas/UltraCanvasSankeyExamples.md"
                 )
                 .AddVariant("sankey", "Energy Flow")
                 .AddVariant("sankey", "Financial Flow")
@@ -834,47 +842,54 @@ namespace UltraCanvas {
         diagramBuilder.AddItem("flowchart", "Flow chart", "Interactive flowchart with decision points",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateFlowChartExamples(); },
-                               "Apps/DemoApp/UltraCanvasFlowChartExamples.cpp");
+                               "Apps/DemoApp/UltraCanvasFlowChartExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasFlowChartExamples.md");
 
         diagramBuilder.AddItem("venndiagram", "Venn Diagram", "Interactive Venn diagram for set visualization",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateVennDiagramExamples(); },
                                "Apps/DemoApp/UltraCanvasVennDiagramExamples.cpp",
-                               "Docs/UltraCanvasVennDiagram.md");
+                               "Docs/UltraCanvas/UltraCanvasVennDiagramExamples.md");
 
         diagramBuilder.AddItem("dendrogram", "Dendrogram", "Interactive dendrogram / phylogenetic tree visualization",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateDendrogramExamples(); },
-                               "Apps/DemoApp/UltraCanvasDendrogramExamples.cpp");
+                               "Apps/DemoApp/UltraCanvasDendrogramExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasDendrogramExamples.md");
 
         diagramBuilder.AddItem("treemap", "TreeMap", "Hierarchical TreeMap data visualization",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateTreeMapExamples(); },
                                "Apps/DemoApp/UltraCanvasTreeMapExamples.cpp",
-                               "Docs/UltraCanvasTreeMap.md");
+                               "Docs/UltraCanvas/UltraCanvasTreeMapExamples.md");
 
     diagramBuilder.AddItem("blockdiagram", "Block Diagram", "Interactive block diagram with shapes and connections",
                            ImplementationStatus::FullyImplemented,
                            [this]() { return CreateBlockDiagramExamples(); },
-                           "Apps/DemoApp/UltraCanvasBlockDiagramExamples.cpp");
+                           "Apps/DemoApp/UltraCanvasBlockDiagramExamples.cpp",
+                           "Docs/UltraCanvas/UltraCanvasBlockDiagramExamples.md");
 
     diagramBuilder.AddItem("nodediagram", "Node Diagram", "Network/graph visualization with nodes and edges",
                            ImplementationStatus::FullyImplemented,
                            [this]() { return CreateNodeDiagramExamples(); },
-                           "Apps/DemoApp/UltraCanvasNodeDiagramExamples.cpp");
+                           "Apps/DemoApp/UltraCanvasNodeDiagramExamples.cpp",
+                           "Docs/UltraCanvas/UltraCanvasNodeDiagramExamples.md");
 
     diagramBuilder.AddItem("gourcetree", "Force-Directed Tree", "Radial tree visualization for file systems inspired by Gource",
                            ImplementationStatus::FullyImplemented,
                            [this]() { return CreateGourceTreeExamples(); },
-                           "Apps/DemoApp/UltraCanvasGourceTreeExamples.cpp");
+                           "Apps/DemoApp/UltraCanvasGourceTreeExamples.cpp",
+                           "Docs/UltraCanvas/UltraCanvasGourceTreeExamples.md");
     diagramBuilder.AddItem("adjacencydiagrams", "Adjacency Diagram", "Architectural Adjacency Diagram",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateAdjacencyDiagramExamples(); },
-                               "Apps/DemoApp/UltraCanvasAdjacencyDiagramExamples.cpp");
+                               "Apps/DemoApp/UltraCanvasAdjacencyDiagramExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasAdjacencyDiagramExamples.md");
     diagramBuilder.AddItem("arcdiagrams", "Arc Diagram", "Arc Diagram",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateArcDiagramExamples(); },
-                               "Apps/DemoApp/UltraCanvasAdjacencyDiagramExamples.cpp");
+                               "Apps/DemoApp/UltraCanvasArcDiagramExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasArcDiagramExamples.md");
     diagramBuilder.AddItem("mindmap", "MindMap", "MindMap",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("MindMap is not ready yet"); });
@@ -958,7 +973,8 @@ namespace UltraCanvas {
         graphics3DBuilder.AddItem("glsurface", "OpenGL Surface", "Hardware-accelerated OpenGL 3D rendering surface",
                                   ImplementationStatus::FullyImplemented,
                                   [this]() { return CreateGLSurfaceExamples(); },
-                                  "Apps/DemoApp/UltraCanvasGLSurfaceExamples.cpp");
+                                  "Apps/DemoApp/UltraCanvasGLSurfaceExamples.cpp",
+                                  "Docs/UltraCanvas/UltraCanvasGLSurfaceExamples.md");
 #endif
 
         // ===== VIDEO ELEMENTS =====
@@ -1040,7 +1056,8 @@ namespace UltraCanvas {
                              "Configure text antialiasing, hinting style, and hint metrics",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateTextRenderingSettingsExamples(); },
-                             "Apps/DemoApp/UltraCanvasTextRenderingExamples.cpp");
+                             "Apps/DemoApp/UltraCanvasTextRenderingExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasTextRenderingExamples.md");
 
         auto modulesBuilder = DemoCategoryBuilder(this, DemoCategory::Modules);
         modulesBuilder.AddItem("audiofx", "Audio FX", "Audio FX",
