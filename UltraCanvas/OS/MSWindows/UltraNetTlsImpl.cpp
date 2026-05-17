@@ -61,17 +61,6 @@ struct Ctx {
     std::vector<char> rxPlain;     // decrypted bytes not yet returned to caller
 };
 
-DWORD ToSchannelProto(UltraNetTlsVersion v) {
-    switch (v) {
-        case UltraNetTlsVersion::Tls10: return SP_PROT_TLS1_0_CLIENT;
-        case UltraNetTlsVersion::Tls11: return SP_PROT_TLS1_1_CLIENT;
-        case UltraNetTlsVersion::Tls12: return SP_PROT_TLS1_2_CLIENT;
-        case UltraNetTlsVersion::Tls13: return SP_PROT_TLS1_3_CLIENT;
-        case UltraNetTlsVersion::Auto:
-        default:                        return 0;
-    }
-}
-
 bool ReadFromSocket(SOCKET fd, std::vector<char>& out) {
     char tmp[8192];
     int n = ::recv(fd, tmp, sizeof tmp, 0);
@@ -139,12 +128,17 @@ UltraNetResult Wrap(std::intptr_t fd,
         return UltraNetResult::Error(UltraNetResultCode::InvalidHandle, "bad fd");
     }
 
-    SCH_CREDENTIALS creds = {};
-    creds.dwVersion = SCH_CREDENTIALS_VERSION;
+    // SCHANNEL_CRED is the classic Schannel credential struct; works on all
+    // supported Windows versions and is universally available in MinGW-w64
+    // headers. (The newer SCH_CREDENTIALS struct is cleaner for TLS 1.3 but
+    // requires Windows 10 1809+ SDK headers, which several MinGW shipments
+    // still lack.)
+    SCHANNEL_CRED creds = {};
+    creds.dwVersion = SCHANNEL_CRED_VERSION;
     creds.dwFlags   = SCH_USE_STRONG_CRYPTO | SCH_CRED_NO_DEFAULT_CREDS;
     if (!opt.verifyPeer) {
         creds.dwFlags |= SCH_CRED_MANUAL_CRED_VALIDATION |
-                         SCH_CRED_NO_SERVERNAME_CHECK   |
+                         SCH_CRED_NO_SERVERNAME_CHECK    |
                          SCH_CRED_IGNORE_NO_REVOCATION_CHECK |
                          SCH_CRED_IGNORE_REVOCATION_OFFLINE;
     } else {
@@ -152,18 +146,29 @@ UltraNetResult Wrap(std::intptr_t fd,
                          SCH_CRED_REVOCATION_CHECK_CHAIN;
     }
 
-    TLS_PARAMETERS tlsParams = {};
-    DWORD disabled = 0;
-    if (opt.minVersion == UltraNetTlsVersion::Tls12 ||
-        opt.minVersion == UltraNetTlsVersion::Tls13) {
-        disabled |= SP_PROT_TLS1_0_CLIENT | SP_PROT_TLS1_1_CLIENT;
-    }
-    if (opt.minVersion == UltraNetTlsVersion::Tls13) {
-        disabled |= SP_PROT_TLS1_2_CLIENT;
-    }
-    tlsParams.grbitDisabledProtocols = disabled;
-    creds.pTlsParameters  = &tlsParams;
-    creds.cTlsParameters  = 1;
+    // Build the enabled-protocols bitmap from minVersion / maxVersion.
+    DWORD enabled = 0;
+    auto addRange = [&](UltraNetTlsVersion lo, UltraNetTlsVersion hi) {
+        const int loN = static_cast<int>(lo);
+        const int hiN = static_cast<int>(hi);
+        for (int n = loN; n <= hiN; ++n) {
+            switch (static_cast<UltraNetTlsVersion>(n)) {
+                case UltraNetTlsVersion::Tls10: enabled |= SP_PROT_TLS1_0_CLIENT; break;
+                case UltraNetTlsVersion::Tls11: enabled |= SP_PROT_TLS1_1_CLIENT; break;
+                case UltraNetTlsVersion::Tls12: enabled |= SP_PROT_TLS1_2_CLIENT; break;
+                case UltraNetTlsVersion::Tls13: enabled |= SP_PROT_TLS1_3_CLIENT; break;
+                default: break;
+            }
+        }
+    };
+    const UltraNetTlsVersion lo = (opt.minVersion == UltraNetTlsVersion::Auto)
+                                      ? UltraNetTlsVersion::Tls12
+                                      : opt.minVersion;
+    const UltraNetTlsVersion hi = (opt.maxVersion == UltraNetTlsVersion::Auto)
+                                      ? UltraNetTlsVersion::Tls13
+                                      : opt.maxVersion;
+    addRange(lo, hi);
+    creds.grbitEnabledProtocols = enabled;
 
     auto* c = new Ctx{};
     c->fd         = static_cast<SOCKET>(fd);

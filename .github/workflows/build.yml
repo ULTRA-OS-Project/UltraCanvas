@@ -2,9 +2,12 @@ name: Build
 
 on:
   push:
-    branches: [main]
+    # Run CI on main and on every Claude-authored feature branch so we
+    # get cross-platform validation before opening a PR.
+    branches: [main, "claude/**"]
   pull_request:
     branches: [main]
+  workflow_dispatch: {}
 
 jobs:
   build:
