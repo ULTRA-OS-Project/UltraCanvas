@@ -93,6 +93,21 @@ if(TARGET UltraNetSnmpPlugin)
     target_compile_definitions(UltraNetTests PRIVATE
         ULTRANET_SNMP_PLUGIN_PATH_DEFINE="$<TARGET_FILE:UltraNetSnmpPlugin>")
 endif()
+if(TARGET UltraNetSshPlugin)
+    add_dependencies(UltraNetTests UltraNetSshPlugin)
+    target_compile_definitions(UltraNetTests PRIVATE
+        ULTRANET_SSH_PLUGIN_PATH_DEFINE="$<TARGET_FILE:UltraNetSshPlugin>")
+endif()
+if(TARGET UltraNetMdnsPlugin)
+    add_dependencies(UltraNetTests UltraNetMdnsPlugin)
+    target_compile_definitions(UltraNetTests PRIVATE
+        ULTRANET_MDNS_PLUGIN_PATH_DEFINE="$<TARGET_FILE:UltraNetMdnsPlugin>")
+endif()
+if(TARGET UltraNetRtmpPlugin)
+    add_dependencies(UltraNetTests UltraNetRtmpPlugin)
+    target_compile_definitions(UltraNetTests PRIVATE
+        ULTRANET_RTMP_PLUGIN_PATH_DEFINE="$<TARGET_FILE:UltraNetRtmpPlugin>")
+endif()
 
 include(CTest)
 add_test(NAME UltraNet COMMAND UltraNetTests)

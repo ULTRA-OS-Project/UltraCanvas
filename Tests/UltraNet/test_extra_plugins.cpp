@@ -66,6 +66,18 @@ fs::path FindOrBuild(const std::string& name) {
     if (name == "SNMP" && fs::exists(ULTRANET_SNMP_PLUGIN_PATH_DEFINE))
         return fs::path{ULTRANET_SNMP_PLUGIN_PATH_DEFINE};
 #endif
+#ifdef ULTRANET_SSH_PLUGIN_PATH_DEFINE
+    if (name == "SSH" && fs::exists(ULTRANET_SSH_PLUGIN_PATH_DEFINE))
+        return fs::path{ULTRANET_SSH_PLUGIN_PATH_DEFINE};
+#endif
+#ifdef ULTRANET_MDNS_PLUGIN_PATH_DEFINE
+    if (name == "MDNS" && fs::exists(ULTRANET_MDNS_PLUGIN_PATH_DEFINE))
+        return fs::path{ULTRANET_MDNS_PLUGIN_PATH_DEFINE};
+#endif
+#ifdef ULTRANET_RTMP_PLUGIN_PATH_DEFINE
+    if (name == "RTMP" && fs::exists(ULTRANET_RTMP_PLUGIN_PATH_DEFINE))
+        return fs::path{ULTRANET_RTMP_PLUGIN_PATH_DEFINE};
+#endif
 
     // Map test name -> source/class name pair.
     std::string lower = name, cls = name;
@@ -78,6 +90,9 @@ fs::path FindOrBuild(const std::string& name) {
     else if (name == "AMQP")   cls = "Amqp";
     else if (name == "COAP")   cls = "Coap";
     else if (name == "SNMP")   cls = "Snmp";
+    else if (name == "SSH")    cls = "Ssh";
+    else if (name == "MDNS")   cls = "Mdns";
+    else if (name == "RTMP")   cls = "Rtmp";
 
     const fs::path src = fs::path{"UltraCanvas/Plugins/UltraNet"} / lower /
                          (cls + "Plugin.cpp");
@@ -97,6 +112,8 @@ fs::path FindOrBuild(const std::string& name) {
     else if (name == "AMQP") extraLinkFlags = " -lrabbitmq";
     else if (name == "COAP") extraLinkFlags = " -lcoap-3-openssl";
     else if (name == "SNMP") extraLinkFlags = " -lsnmp";
+    else if (name == "SSH")  extraLinkFlags = " -lssh";
+    else if (name == "MDNS") extraLinkFlags = " -lavahi-client -lavahi-common";
     else                     extraLinkFlags = " $(pkg-config --cflags --libs libcurl)";
 
     const std::string cmd =
@@ -261,6 +278,59 @@ TEST(snmp_plugin_loads_and_registers) {
     auto r = dir->Search("http://wrong-scheme/", q, e);
     CHECK(!bool(r));
     REQUIRE_EQ(r.code, UltraNetResultCode::InvalidUrl);
+}
+
+// ===== SSH =====
+TEST(ssh_plugin_loads_and_registers) {
+    if (!LoadInto("SSH", "ssh")) SKIP("SSH plug-in not buildable (libssh missing?)");
+
+    auto p = UltraNet_GetPlugin("ssh");
+    REQUIRE(p != nullptr);
+    REQUIRE_EQ(p->GetName(), std::string{"UltraNet-SSH"});
+    auto* sh = dynamic_cast<IRemoteAccessPlugin*>(p.get());
+    REQUIRE(sh != nullptr);
+
+    // Bad URL -> InvalidHandle, no crash.
+    UltraNetRemoteOptions opt;
+    REQUIRE_EQ(sh->OpenShell("not-an-ssh-url", opt), UltraNetInvalidHandle);
+}
+
+// ===== mDNS =====
+TEST(mdns_plugin_loads_and_registers) {
+    if (!LoadInto("MDNS", "mdns")) SKIP("mDNS plug-in not buildable");
+
+    auto p = UltraNet_GetPlugin("mdns");
+    REQUIRE(p != nullptr);
+    REQUIRE_EQ(p->GetName(), std::string{"UltraNet-mDNS"});
+    auto schemes = p->GetSupportedSchemes();
+    CHECK(std::find(schemes.begin(), schemes.end(), "mdns")  != schemes.end());
+    CHECK(std::find(schemes.begin(), schemes.end(), "dns-sd") != schemes.end());
+    auto* dir = dynamic_cast<IDirectoryProtocolPlugin*>(p.get());
+    REQUIRE(dir != nullptr);
+
+    // Missing baseDn (service type) -> InvalidUrl.
+    UltraNetDirectoryQuery q;
+    std::vector<UltraNetDirectoryEntry> e;
+    auto r = dir->Search("mdns://", q, e);
+    CHECK(!bool(r));
+    REQUIRE_EQ(r.code, UltraNetResultCode::InvalidUrl);
+}
+
+// ===== RTMP =====
+TEST(rtmp_plugin_loads_and_registers) {
+    if (!LoadInto("RTMP", "rtmp")) SKIP("RTMP plug-in not buildable");
+
+    auto p = UltraNet_GetPlugin("rtmp");
+    REQUIRE(p != nullptr);
+    REQUIRE_EQ(p->GetName(), std::string{"UltraNet-RTMP"});
+    auto* stream = dynamic_cast<IStreamingProtocolPlugin*>(p.get());
+    REQUIRE(stream != nullptr);
+
+    // ReadFrame on bogus handle -> InvalidHandle, no crash.
+    std::vector<uint8_t> frame;
+    auto r = stream->ReadFrame(99999u, frame);
+    CHECK(!bool(r));
+    REQUIRE_EQ(r.code, UltraNetResultCode::InvalidHandle);
 }
 
 // ===== Scheme registry coverage =====
