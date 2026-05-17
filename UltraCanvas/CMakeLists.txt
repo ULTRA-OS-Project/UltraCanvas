@@ -520,6 +520,18 @@ if(ULTRACANVAS_ENABLE_NET)
         find_package(OpenSSL REQUIRED)
     endif()
 
+    # c-ares: optional async DNS backend. When present, replaces the
+    # system getaddrinfo + libresolv path with a fully non-blocking
+    # resolver, fixes UltraNet_DnsSetServers (which was a no-op without
+    # c-ares), and unifies record-type handling across platforms.
+    pkg_check_modules(CARES libcares)
+    if(CARES_FOUND)
+        message(STATUS "  [✓] c-ares ${CARES_VERSION} - ENABLED (async DNS)")
+        set(ULTRANET_HAS_CARES 1)
+    else()
+        message(STATUS "  [−] c-ares - not found (using thread-per-call async DNS fallback)")
+    endif()
+
     set(ULTRANET_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetCore.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetHttp.cpp
@@ -535,21 +547,38 @@ if(ULTRACANVAS_ENABLE_NET)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetPlugins.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetSse.cpp
     )
+    if(ULTRANET_HAS_CARES)
+        list(APPEND ULTRANET_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetDnsCares.cpp)
+    endif()
+    # Per-platform DNS impl supplies ultranet_dns_platform::Resolve. When
+    # c-ares is enabled, UltraNetDnsCares.cpp supplies that same symbol —
+    # we'd get a duplicate-definition link error if we kept both. Exclude
+    # the per-platform DNS impl when c-ares wins.
     if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
         list(APPEND ULTRANET_SOURCES
             ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraNetSupport.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraNetTlsImpl.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraNetDnsImpl.cpp)
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraNetTlsImpl.cpp)
+        if(NOT ULTRANET_HAS_CARES)
+            list(APPEND ULTRANET_SOURCES
+                ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraNetDnsImpl.cpp)
+        endif()
     elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
         list(APPEND ULTRANET_SOURCES
             ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraNetSupport.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraNetTlsImpl.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraNetDnsImpl.cpp)
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraNetTlsImpl.cpp)
+        if(NOT ULTRANET_HAS_CARES)
+            list(APPEND ULTRANET_SOURCES
+                ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraNetDnsImpl.cpp)
+        endif()
     elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
         list(APPEND ULTRANET_SOURCES
             ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraNetSupport.mm
-            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraNetTlsImpl.mm
-            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraNetDnsImpl.mm)
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraNetTlsImpl.mm)
+        if(NOT ULTRANET_HAS_CARES)
+            list(APPEND ULTRANET_SOURCES
+                ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraNetDnsImpl.mm)
+        endif()
         set_source_files_properties(
             ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraNetSupport.mm
             ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraNetTlsImpl.mm
@@ -567,6 +596,11 @@ if(ULTRACANVAS_ENABLE_NET)
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
             $<INSTALL_INTERFACE:include/ultracanvas>)
     target_link_libraries(UltraNet PUBLIC CURL::libcurl Threads::Threads)
+    if(ULTRANET_HAS_CARES)
+        target_compile_definitions(UltraNet PUBLIC ULTRANET_HAS_CARES=1)
+        target_include_directories(UltraNet PRIVATE ${CARES_INCLUDE_DIRS})
+        target_link_libraries(UltraNet PUBLIC ${CARES_LIBRARIES})
+    endif()
     if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
         target_link_libraries(UltraNet PUBLIC OpenSSL::SSL OpenSSL::Crypto resolv)
     elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")

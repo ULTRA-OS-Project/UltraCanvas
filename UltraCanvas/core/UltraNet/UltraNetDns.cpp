@@ -13,12 +13,26 @@
 
 #include <chrono>
 #include <cstring>
+#include <functional>
 #include <mutex>
 #include <string>
 #include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
+#ifdef ULTRANET_HAS_CARES
+namespace ultranet_dns_platform {
+    // Defined in UltraNetDnsCares.cpp. Not part of UltraNetDnsImpl.h because
+    // only the c-ares backend supports them — the per-platform libresolv /
+    // dnsapi backends do not have a real async path.
+    UltraNetResult ResolveAsyncCares(
+        const std::string& hostname,
+        UltraNetDnsType type,
+        std::function<void(const std::vector<std::string>&)> onResult);
+    void SetCustomServersCares(const std::vector<std::string>& servers);
+}
+#endif
 
 #if defined(_WIN32) || defined(_WIN64)
   #ifndef WIN32_LEAN_AND_MEAN
@@ -108,12 +122,33 @@ const char* DnsTypeName(UltraNetDnsType t) {
 UltraNetResult UltraNet_DnsResolve(const std::string& hostname,
                                    std::vector<std::string>& outAddresses,
                                    UltraNetDnsType type,
-                                   int /*timeoutMs*/) {
+                                   int timeoutMs) {
     outAddresses.clear();
     if (hostname.empty()) {
         return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
                                      "hostname is empty");
     }
+
+#ifdef ULTRANET_HAS_CARES
+    // c-ares handles every record type uniformly (including PTR — but the
+    // caller-facing reverse-lookup API takes an IP, so PTR still flows
+    // through UltraNet_DnsReverseLookup for that ergonomics). Route every
+    // forward query through the c-ares Resolve() implementation; the
+    // per-platform libresolv / dnsapi path becomes unused.
+    if (type != UltraNetDnsType::PTR) {
+        const std::string cacheKey =
+            std::string{DnsTypeName(type)} + "|" + hostname;
+        if (LookupCache(cacheKey, outAddresses)) {
+            return UltraNetResult::Ok();
+        }
+        UltraNetResult r = ultranet_dns_platform::Resolve(
+            hostname, type, outAddresses,
+            timeoutMs > 0 ? timeoutMs : 5000);
+        if (r) StoreCache(cacheKey, outAddresses);
+        return r;
+    }
+#endif
+
     if (type == UltraNetDnsType::PTR) {
         std::string host;
         UltraNetResult r = UltraNet_DnsReverseLookup(hostname, host, 5000);
@@ -178,6 +213,16 @@ UltraNetResult UltraNet_DnsResolveAsync(
         return UltraNetResult::Error(UltraNetResultCode::InvalidState,
                                      "onResult callback is required");
     }
+#ifdef ULTRANET_HAS_CARES
+    // c-ares gives us real non-blocking async — no thread-per-call.
+    // PTR is the one exception: we go through the reverse-lookup path
+    // (still on a detached thread) since the c-ares ParsePtr helper
+    // needs the queried IP as well.
+    if (type != UltraNetDnsType::PTR) {
+        return ultranet_dns_platform::ResolveAsyncCares(
+            hostname, type, std::move(onResult));
+    }
+#endif
     std::thread([hostname, type, cb = std::move(onResult)]() {
         std::vector<std::string> addrs;
         UltraNet_DnsResolve(hostname, addrs, type, 5000);
@@ -229,7 +274,14 @@ void UltraNet_DnsClearCache() {
 }
 
 void UltraNet_DnsSetServers(const std::vector<std::string>& servers) {
-    std::lock_guard<std::mutex> lk(g_serversMutex);
-    g_customServers = servers;
-    // No-op against the system resolver. Stored for the c-ares backend.
+    {
+        std::lock_guard<std::mutex> lk(g_serversMutex);
+        g_customServers = servers;
+    }
+#ifdef ULTRANET_HAS_CARES
+    // c-ares accepts a comma-separated server list at any time; the next
+    // ares_query will use them. Without c-ares this remains a no-op
+    // against the system resolver.
+    ultranet_dns_platform::SetCustomServersCares(servers);
+#endif
 }
