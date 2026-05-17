@@ -39,16 +39,21 @@
   #endif
 #endif
 
-// Plug-in DSO contract:
-//
-//   extern "C" void UltraNet_PluginRegister(void);
-//
-// The plug-in implementation calls UltraNet_RegisterPlugin(...) from inside
-// this function for every IUltraNetPlugin it wants the framework to know
-// about. RefreshPlugins() loads the DSO, resolves this symbol, and invokes
-// it; the DSO stays loaded for the lifetime of the process.
-using UltraNet_PluginRegisterFn = void (*)();
-static constexpr const char* kPluginEntrySymbol = "UltraNet_PluginRegister";
+// Plug-in DSO contract — see UltraNetPlugins.h for the full description.
+// We resolve v2 (UltraNet_PluginInit) first, fall back to v1
+// (UltraNet_PluginRegister) for backward compatibility with POSIX plug-ins
+// built before the host-vtable contract.
+using UltraNet_PluginRegisterFn = void (*)();   // v1 (POSIX-only)
+static constexpr const char* kPluginEntryV1 = "UltraNet_PluginRegister";
+static constexpr const char* kPluginEntryV2 = "UltraNet_PluginInit";
+
+// Host vtable handed to v2 plug-ins. RegisterPlugin needs a non-template
+// wrapper for the function-pointer slot (UltraNet_RegisterPlugin is a free
+// function, not a template, so this just takes its address).
+static UltraNetPluginHost g_pluginHost = {
+    ULTRANET_PLUGIN_HOST_ABI_VERSION,
+    &UltraNet_RegisterPlugin
+};
 
 namespace {
 
@@ -161,16 +166,23 @@ void UltraNet_RefreshPlugins() {
         PluginLibHandle h = PluginOpen(canonical.c_str());
         if (!h) continue;
 
-        auto fn = reinterpret_cast<UltraNet_PluginRegisterFn>(
-            PluginSym(h, kPluginEntrySymbol));
-        if (!fn) continue;     // leave the lib loaded; later refresh may need it
+        // Prefer the v2 entry point (host-vtable injection — works on
+        // Windows too); fall back to v1 (POSIX-only symbol resolution).
+        auto init = reinterpret_cast<UltraNet_PluginInitFn>(
+            PluginSym(h, kPluginEntryV2));
+        UltraNet_PluginRegisterFn reg = nullptr;
+        if (!init) {
+            reg = reinterpret_cast<UltraNet_PluginRegisterFn>(
+                PluginSym(h, kPluginEntryV1));
+        }
+        if (!init && !reg) continue;   // leave lib loaded; later refresh may need it
 
         {
             std::lock_guard<std::mutex> lk(r.mutex);
             r.loaded[canonical] = h;
         }
-        // The plug-in calls UltraNet_RegisterPlugin(...) from inside this.
-        fn();
+        if (init) init(&g_pluginHost);
+        else      reg();
     }
 }
 

@@ -304,6 +304,15 @@ public:
 
 } // namespace
 
+// v2 entry — preferred, works on Windows. The host hands us a vtable so we
+// don't need to resolve UltraNet_RegisterPlugin via load-time symbol lookup.
+extern "C" ULTRANET_PLUGIN_EXPORT
+void UltraNet_PluginInit(const UltraNetPluginHost* host) {
+    if (!host || host->abiVersion < 1 || !host->RegisterPlugin) return;
+    host->RegisterPlugin(std::make_shared<SmtpPlugin>());
+}
+
+// v1 entry — POSIX-only fallback for hosts that don't supply the v2 vtable.
 extern "C" void UltraNet_PluginRegister(void) {
     UltraNet_RegisterPlugin(std::make_shared<SmtpPlugin>());
 }

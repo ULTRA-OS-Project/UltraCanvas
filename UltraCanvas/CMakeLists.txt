@@ -595,32 +595,20 @@ if(ULTRACANVAS_ENABLE_NET)
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NET=1)
     message(STATUS "  [✓] UltraNet - ENABLED (libcurl ${CURL_VERSION_STRING})")
 
-    # SMTP plug-in (loadable DSO; sample reference implementation of
-    # IMailProtocolPlugin). Linux/macOS only for now — Windows plug-in
-    # loading needs an import-library story (tracked for v1.1).
-    if(ULTRACANVAS_PLUGIN_SMTP AND NOT ULTRACANVAS_PLATFORM STREQUAL "Windows")
+    # Mail plug-ins (SMTP/IMAP/POP3) — load via dlopen/LoadLibrary on all
+    # three platforms. Plug-in DSOs use the v2 host-vtable contract so
+    # they don't depend on the host's import library at load time.
+    if(ULTRACANVAS_PLUGIN_SMTP)
         add_subdirectory(Plugins/UltraNet/smtp)
         message(STATUS "  [✓] UltraNet SMTP plug-in - ENABLED")
-    elseif(ULTRACANVAS_PLUGIN_SMTP)
-        message(STATUS "  [−] UltraNet SMTP plug-in - SKIPPED (Windows host: plug-in DSO loading is v1.1)")
     endif()
-
-    # IMAP plug-in — symmetric pair with SMTP (SMTP sends, IMAP fetches).
-    if(ULTRACANVAS_PLUGIN_IMAP AND NOT ULTRACANVAS_PLATFORM STREQUAL "Windows")
+    if(ULTRACANVAS_PLUGIN_IMAP)
         add_subdirectory(Plugins/UltraNet/imap)
         message(STATUS "  [✓] UltraNet IMAP plug-in - ENABLED")
-    elseif(ULTRACANVAS_PLUGIN_IMAP)
-        message(STATUS "  [−] UltraNet IMAP plug-in - SKIPPED (Windows host: plug-in DSO loading is v1.1)")
     endif()
-
-    # POP3 plug-in — completes the mail trio. Simpler than IMAP (no folders,
-    # sequential message numbering); sometimes preferred for low-bandwidth
-    # one-and-done downloads where the IMAP session overhead is unwelcome.
-    if(ULTRACANVAS_PLUGIN_POP3 AND NOT ULTRACANVAS_PLATFORM STREQUAL "Windows")
+    if(ULTRACANVAS_PLUGIN_POP3)
         add_subdirectory(Plugins/UltraNet/pop3)
         message(STATUS "  [✓] UltraNet POP3 plug-in - ENABLED")
-    elseif(ULTRACANVAS_PLUGIN_POP3)
-        message(STATUS "  [−] UltraNet POP3 plug-in - SKIPPED (Windows host: plug-in DSO loading is v1.1)")
     endif()
 else()
     message(STATUS "  [−] UltraNet - DISABLED")

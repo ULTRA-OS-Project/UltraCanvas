@@ -105,3 +105,16 @@ TEST(plugin_directory_get_set_roundtrip) {
     UltraNet_SetPluginDirectory(p);
     REQUIRE_EQ(UltraNet_GetPluginDirectory(), p);
 }
+
+TEST(plugin_host_vtable_abi_version_is_set) {
+    // The host vtable handed to v2 plug-in entry points carries the ABI
+    // version constant. If anything ever bumps the struct, the plug-in's
+    // version check will refuse mismatched hosts.
+    REQUIRE_EQ(ULTRANET_PLUGIN_HOST_ABI_VERSION, 1);
+
+    UltraNetPluginHost vtable{};
+    vtable.abiVersion    = ULTRANET_PLUGIN_HOST_ABI_VERSION;
+    vtable.RegisterPlugin = &UltraNet_RegisterPlugin;
+    REQUIRE(vtable.RegisterPlugin != nullptr);
+    REQUIRE_EQ(vtable.abiVersion, 1);
+}

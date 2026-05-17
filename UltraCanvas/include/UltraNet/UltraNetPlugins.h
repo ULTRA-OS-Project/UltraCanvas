@@ -174,7 +174,7 @@ void UltraNet_UnregisterPlugin(const std::string& pluginName);
 std::shared_ptr<IUltraNetPlugin> UltraNet_GetPlugin(const std::string& scheme);
 std::vector<std::shared_ptr<IUltraNetPlugin>> UltraNet_GetAllPlugins();
 
-// No-op until dynamic plug-in loading lands; reserved for ABI stability.
+// Loads plug-in DSOs from UltraNet_GetPluginDirectory(). Idempotent.
 void UltraNet_RefreshPlugins();
 
 std::string UltraNet_GetPluginDirectory();
@@ -183,3 +183,37 @@ void        UltraNet_SetPluginDirectory(const std::string& path);
 // Union of (core schemes baked into UltraNet) and (scheme strings reported
 // by every currently-registered plug-in).
 std::vector<std::string> UltraNet_GetSupportedSchemes();
+
+// ============================================================================
+// Plug-in DSO contract — entry points + the host vtable.
+//
+// Plug-in libraries must export exactly one of these C entry points:
+//
+//   v2 (preferred, works on all platforms):
+//     extern "C" ULTRANET_PLUGIN_EXPORT void
+//     UltraNet_PluginInit(const UltraNetPluginHost* host);
+//
+//   v1 (POSIX-only, deprecated):
+//     extern "C" void UltraNet_PluginRegister(void);
+//
+// v1 requires the plug-in to resolve UltraNet_RegisterPlugin via the host
+// binary's symbol table at dlopen time — POSIX gives this for free
+// (RTLD_GLOBAL + -rdynamic) but Windows does not. v2 fixes that: the host
+// passes a function-pointer table; the plug-in calls host->RegisterPlugin
+// instead of looking up the symbol. Same plug-in source can expose both.
+// ============================================================================
+
+constexpr int ULTRANET_PLUGIN_HOST_ABI_VERSION = 1;
+
+struct UltraNetPluginHost {
+    int abiVersion;            // == ULTRANET_PLUGIN_HOST_ABI_VERSION when loaded by a v2-capable host
+    void (*RegisterPlugin)(std::shared_ptr<IUltraNetPlugin>);
+};
+
+using UltraNet_PluginInitFn = void (*)(const UltraNetPluginHost* host);
+
+#if defined(_WIN32) || defined(_WIN64)
+  #define ULTRANET_PLUGIN_EXPORT __declspec(dllexport)
+#else
+  #define ULTRANET_PLUGIN_EXPORT __attribute__((visibility("default")))
+#endif

@@ -271,6 +271,14 @@ public:
 
 } // namespace
 
+// v2 entry — preferred, works on Windows (host-vtable injection).
+extern "C" ULTRANET_PLUGIN_EXPORT
+void UltraNet_PluginInit(const UltraNetPluginHost* host) {
+    if (!host || host->abiVersion < 1 || !host->RegisterPlugin) return;
+    host->RegisterPlugin(std::make_shared<Pop3Plugin>());
+}
+
+// v1 entry — POSIX-only fallback.
 extern "C" void UltraNet_PluginRegister(void) {
     UltraNet_RegisterPlugin(std::make_shared<Pop3Plugin>());
 }
