@@ -7,7 +7,7 @@
 **Namespace:** `UltraCanvas`
 **Header:** `include/Plugins/Diagrams/UltraCanvasArcDiagram.h`
 **Base Class:** `UltraCanvasUIElement`
-**Version:** 1.0.1
+**Version:** 1.0.2
 
 ## Class Hierarchy
 
@@ -36,6 +36,8 @@ UltraCanvasUIElement
 - **Axis arrow** extending the baseline past the last node
 - **Color legend** with custom entries
 - **Hover and click** callbacks for nodes and edges, with tooltips
+- **Connected-edge highlight**: hovering/selecting a node also brightens every arc touching it
+- **Apex value labels**: render each arc's weight as a raw value or as a percentage of total at the zenit
 
 ## Data Structures
 
@@ -70,6 +72,12 @@ enum class ArcNodeSizeMode {
     Fixed,         // All nodes use ArcNode.size
     ByValue,       // size = baseSize * sqrt(node.value)
     ByDegree       // size = baseSize * sqrt(connectionCount)
+};
+
+enum class ArcValueDisplay {
+    None,          // No auto-generated apex label (default)
+    Value,         // Show edge weight as numeric value at apex
+    Percentage     // Show edge weight as percentage of total at apex
 };
 ```
 
@@ -159,6 +167,16 @@ struct ArcDiagramStyle {
 
     float nodePadding = 40.0f, marginH = 40.0f, marginV = 40.0f;
     ArcOrientation orientation = ArcOrientation::Horizontal;
+
+    // Highlight all arcs touching the hovered/selected node
+    bool highlightConnectedEdges = true;
+
+    // Auto value/percentage label drawn at arc apex (zenit)
+    ArcValueDisplay arcValueDisplay  = ArcValueDisplay::None;
+    int             arcValueDecimals = 1;
+    float           arcValueFontSize = 10.0f;
+    Color           arcValueLabelColor  = Color(40, 40, 40, 230);
+    float           arcValueLabelOffset = 6.0f;   // gap above/below apex
 };
 ```
 
