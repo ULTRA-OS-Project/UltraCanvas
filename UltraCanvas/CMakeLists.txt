@@ -38,6 +38,7 @@ endif()
 # Stage 1 ships HTTP/HTTPS + URL utilities on libcurl. Built as a separate
 # library target so apps that don't need networking pay no cost.
 option(ULTRACANVAS_ENABLE_NET "Build the UltraNet networking library" ON)
+option(ULTRACANVAS_PLUGIN_SMTP "Build the UltraNet SMTP plug-in" ON)
 
 # ===== DETECT PLATFORM =====
 if(WIN32)
@@ -590,6 +591,16 @@ if(ULTRACANVAS_ENABLE_NET)
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraNet)
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NET=1)
     message(STATUS "  [✓] UltraNet - ENABLED (libcurl ${CURL_VERSION_STRING})")
+
+    # SMTP plug-in (loadable DSO; sample reference implementation of
+    # IMailProtocolPlugin). Linux/macOS only for now — Windows plug-in
+    # loading needs an import-library story (tracked for v1.1).
+    if(ULTRACANVAS_PLUGIN_SMTP AND NOT ULTRACANVAS_PLATFORM STREQUAL "Windows")
+        add_subdirectory(Plugins/UltraNet/smtp)
+        message(STATUS "  [✓] UltraNet SMTP plug-in - ENABLED")
+    elseif(ULTRACANVAS_PLUGIN_SMTP)
+        message(STATUS "  [−] UltraNet SMTP plug-in - SKIPPED (Windows host: plug-in DSO loading is v1.1)")
+    endif()
 else()
     message(STATUS "  [−] UltraNet - DISABLED")
 endif()

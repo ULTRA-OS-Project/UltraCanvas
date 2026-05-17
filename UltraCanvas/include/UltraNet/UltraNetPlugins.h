@@ -34,6 +34,7 @@ struct UltraNetMailMessage {
 
 struct UltraNetMailOptions {
     UltraNetCredentials credentials;
+    std::string serverUrl;              // "smtp://host:587/" / "smtps://host:465/"
     bool useTls = true;
     bool implicitTls = false;
     int connectTimeoutMs = 10000;

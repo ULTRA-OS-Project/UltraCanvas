@@ -46,6 +46,7 @@ option(BUILD_TEXTER_APP "Build the texter application" ON)
 option(BUILD_FILEMANAGER_APP "Build the file manager application" OFF) # OFF: source files not yet committed
 option(BUILD_DEMO_APP "Build the demo application" ON)
 option(BUILD_TESTS "Build unit tests" OFF)
+option(ULTRACANVAS_BUILD_NET_TESTS "Build the UltraNet test suite" OFF)
 option(ULTRACANVAS_PLUGIN_CDR "Build CDR plugin (requires libcdr)" ON)
 option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" ON)
 option(ULTRACANVAS_PLUGIN_VECTOR "Build Vector plugin" OFF)
@@ -296,18 +297,28 @@ endif()
 if(BUILD_TESTS)
     message(STATUS "")
     message(STATUS "── Building Unit Tests ──")
-    
+
     enable_testing()
-    
+
     # Find test framework
     find_package(Catch2 QUIET)
-    
+
     if(Catch2_FOUND)
         add_subdirectory(Tests)
     else()
         message(STATUS "  Catch2 not found - tests disabled")
         message(STATUS "  Install with: sudo apt install catch2")
     endif()
+endif()
+
+# ===== ULTRANET TESTS =====
+# Independent of BUILD_TESTS / Catch2: uses a tiny in-tree framework so it
+# can run wherever UltraNet is built.
+if(ULTRACANVAS_BUILD_NET_TESTS AND ULTRACANVAS_ENABLE_NET)
+    enable_testing()
+    add_subdirectory(Tests/UltraNet)
+    message(STATUS "")
+    message(STATUS "── UltraNet test suite enabled (target: UltraNetTests) ──")
 endif()
 
 # ===== DOCUMENTATION =====
