@@ -14,6 +14,7 @@ set(ULTRANET_TEST_SOURCES
     test_smtp_plugin.cpp
     test_imap_plugin.cpp
     test_sse.cpp
+    test_websocket.cpp
 )
 
 add_executable(UltraNetTests ${ULTRANET_TEST_SOURCES})
