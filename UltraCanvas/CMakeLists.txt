@@ -34,6 +34,11 @@ else()
     set(ULTRACANVAS_ENABLE_GL OFF CACHE BOOL "Enable OpenGL 3D surface support" FORCE)
 endif()
 
+# UltraNet — networking module (HTTP/HTTPS, FTP, WebSocket, TCP/UDP, TLS, DNS).
+# Stage 1 ships HTTP/HTTPS + URL utilities on libcurl. Built as a separate
+# library target so apps that don't need networking pay no cost.
+option(ULTRACANVAS_ENABLE_NET "Build the UltraNet networking library" ON)
+
 # ===== DETECT PLATFORM =====
 if(WIN32)
     set(ULTRACANVAS_PLATFORM "Windows")
@@ -500,6 +505,61 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         -Werror=return-type
 #        -Wall -Wextra -Wpedantic -Wno-unused-parameter
     )
+endif()
+
+# ===== BUILD ULTRANET LIBRARY (Stage 1: HTTP/HTTPS + URL on libcurl) =====
+if(ULTRACANVAS_ENABLE_NET)
+    find_package(CURL REQUIRED)
+
+    set(ULTRANET_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetCore.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetHttp.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetUrl.cpp
+    )
+    if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
+        list(APPEND ULTRANET_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraNetSupport.cpp)
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
+        list(APPEND ULTRANET_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraNetSupport.cpp)
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
+        list(APPEND ULTRANET_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraNetSupport.mm)
+        set_source_files_properties(
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraNetSupport.mm
+            PROPERTIES LANGUAGE OBJCXX COMPILE_FLAGS "-x objective-c++ -fobjc-arc")
+    endif()
+
+    add_library(UltraNet STATIC ${ULTRANET_SOURCES})
+    set_target_properties(UltraNet PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        OUTPUT_NAME "ultranet")
+    target_compile_features(UltraNet PUBLIC cxx_std_20)
+    target_include_directories(UltraNet
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include/ultracanvas>)
+    target_link_libraries(UltraNet PUBLIC CURL::libcurl)
+    if(ULTRACANVAS_PLATFORM STREQUAL "Windows")
+        target_link_libraries(UltraNet PUBLIC winhttp)
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
+        find_library(CFNETWORK_FRAMEWORK CFNetwork REQUIRED)
+        find_library(CORE_FOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
+        find_library(SYSTEM_CONFIG_FRAMEWORK SystemConfiguration REQUIRED)
+        target_link_libraries(UltraNet PUBLIC
+            ${CFNETWORK_FRAMEWORK}
+            ${CORE_FOUNDATION_FRAMEWORK}
+            ${SYSTEM_CONFIG_FRAMEWORK})
+    endif()
+    target_compile_definitions(UltraNet PUBLIC ULTRACANVAS_HAS_NET=1)
+
+    # Let UltraCanvas itself link UltraNet so that components like FileLoader
+    # can call UltraNet_HttpDownloadFile when ULTRACANVAS_ENABLE_NET is on.
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraNet)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NET=1)
+    message(STATUS "  [✓] UltraNet - ENABLED (libcurl ${CURL_VERSION_STRING})")
+else()
+    message(STATUS "  [−] UltraNet - DISABLED")
 endif()
 
 # ===== BUILD PLUGINS AS SEPARATE LIBRARIES =====

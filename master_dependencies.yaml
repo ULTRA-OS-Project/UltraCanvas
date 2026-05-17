@@ -1,0 +1,113 @@
+# master_dependencies.yaml
+# Authoritative dependency manifest for ULTRA OS / UltraCanvas modules.
+# Section structure follows the "core / advanced" two-tier convention.
+# This file is consumed by package-scripts, CI, and module integrators.
+# Version: 0.1.0
+# Author: UltraCanvas Framework / ULTRA OS
+
+# ===== NETWORK COMMUNICATION (UltraNet) =====
+networking:
+  core:
+    libcurl:
+      min_version: "7.80"
+      purpose: "HTTP/HTTPS, FTP/FTPS, WebSocket transport (Tier 1 core)"
+      required: true
+      platforms: ["all"]
+      cmake_module: "CURL"
+      pkg_config: "libcurl"
+      apt: "libcurl4-openssl-dev"
+      vcpkg: "curl[openssl]"
+      brew: "curl"
+
+    openssl:
+      min_version: "1.1.1"
+      purpose: "TLS 1.2/1.3 transport security, X.509 cert handling"
+      required: true
+      platforms: ["all"]
+      cmake_module: "OpenSSL"
+      pkg_config: "openssl"
+      apt: "libssl-dev"
+      vcpkg: "openssl"
+      brew: "openssl@3"
+
+    libssh2:
+      min_version: "1.10"
+      purpose: "SFTP / SSH file transfer support (Stage 3)"
+      required: true
+      platforms: ["all"]
+      cmake_module: "Libssh2"
+      pkg_config: "libssh2"
+      apt: "libssh2-1-dev"
+      vcpkg: "libssh2"
+      brew: "libssh2"
+
+    c-ares:
+      min_version: "1.17"
+      purpose: "Async DNS resolution (non-blocking) (Stage 2)"
+      required: true
+      platforms: ["all"]
+      cmake_module: "c-ares"
+      pkg_config: "libcares"
+      apt: "libc-ares-dev"
+      vcpkg: "c-ares"
+      brew: "c-ares"
+
+  advanced:
+    libwebsockets:
+      min_version: "4.3"
+      purpose: "Lightweight WebSocket server / advanced WS scenarios"
+      required: false
+      priority: "medium"
+      platforms: ["all"]
+      pkg_config: "libwebsockets"
+      apt: "libwebsockets-dev"
+
+    nghttp2:
+      min_version: "1.40"
+      purpose: "HTTP/2 multiplexing acceleration"
+      required: false
+      priority: "high"
+      platforms: ["all"]
+      pkg_config: "libnghttp2"
+      apt: "libnghttp2-dev"
+
+    nghttp3:
+      purpose: "HTTP/3 (QUIC) support - future"
+      required: false
+      priority: "low"
+      platforms: ["all"]
+
+    paho-mqtt:
+      min_version: "1.3"
+      purpose: "MQTT plugin (IoT messaging) - Tier 2 plugin"
+      required: false
+      priority: "medium"
+      platforms: ["all"]
+      cmake_module: "PahoMqttC"
+      apt: "libpaho-mqtt-dev"
+
+    libssh:
+      min_version: "0.9"
+      purpose: "Interactive SSH / shell plugin - Tier 3 plugin"
+      required: false
+      priority: "low"
+      platforms: ["all"]
+      pkg_config: "libssh"
+      apt: "libssh-dev"
+
+    avahi:
+      min_version: "0.8"
+      purpose: "mDNS / Zeroconf service discovery (Linux) - Tier 2 plugin"
+      required: false
+      priority: "low"
+      platforms: ["Linux"]
+      pkg_config: "avahi-client"
+      apt: "libavahi-client-dev"
+
+    openldap:
+      min_version: "2.4"
+      purpose: "LDAP / LDAPS plugin - Tier 3 plugin"
+      required: false
+      priority: "low"
+      platforms: ["all"]
+      apt: "libldap2-dev"
