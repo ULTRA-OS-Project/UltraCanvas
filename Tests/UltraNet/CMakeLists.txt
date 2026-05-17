@@ -10,6 +10,7 @@ set(ULTRANET_TEST_SOURCES
     test_result.cpp
     test_plugins.cpp
     test_dns_format.cpp
+    test_ftp_parser.cpp
     test_loopback.cpp
     test_smtp_plugin.cpp
     test_imap_plugin.cpp
