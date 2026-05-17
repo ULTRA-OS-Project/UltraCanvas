@@ -8,6 +8,7 @@
 #pragma once
 
 #include "UltraNetCore.h"
+#include "UltraNetFtp.h"      // UltraNetFtpEntry reused by IFileShareProtocolPlugin
 
 #include <cstdint>
 #include <functional>
@@ -82,6 +83,22 @@ struct UltraNetStreamOptions {
     bool preferTcp = true;
     std::string transport;              // "udp" | "tcp" | "rtsp"
 };
+
+// File-share plug-ins (WebDAV; future: SMB, NFS). Distinct from the FTP
+// surface (which is core / Tier 1) — these are plug-in-supplied
+// network-filesystem protocols.
+struct UltraNetFileShareOptions {
+    UltraNetCredentials credentials;
+    int  connectTimeoutMs   = 10000;
+    int  operationTimeoutMs = 30000;
+    bool useTls             = true;     // for webdavs:// / https:// backed shares
+    bool verifyTls          = true;
+};
+
+// Reuse UltraNetFtpEntry for listing results — same name / size / mtime /
+// permissions shape works for every network filesystem. WebDAV maps
+// PROPFIND props (getcontentlength / getlastmodified / resourcetype) into
+// the corresponding UltraNetFtpEntry fields.
 
 // ============================================================================
 // Base plugin interface. Every plug-in implements this; specialised plug-ins
@@ -163,6 +180,48 @@ public:
     virtual UltraNetResult ReadFrame(
         UltraNetHandle handle,
         std::vector<uint8_t>& outFrame) = 0;
+};
+
+// WebDAV / future SMB / NFS — network file-share semantics. Distinct from
+// FTP (which is Tier 1 core); shares the UltraNetFtpEntry result shape so
+// callers can treat any listing the same way regardless of transport.
+class IFileShareProtocolPlugin : public IUltraNetPlugin {
+public:
+    // List directory contents (WebDAV PROPFIND with Depth: 1).
+    virtual UltraNetResult ListDirectory(
+        const std::string& url,
+        std::vector<UltraNetFtpEntry>& outEntries,
+        const UltraNetFileShareOptions& options) = 0;
+
+    // Download / upload — same shape as the FTP module.
+    virtual UltraNetResult Download(
+        const std::string& url,
+        const std::string& localPath,
+        const UltraNetFileShareOptions& options) = 0;
+
+    virtual UltraNetResult Upload(
+        const std::string& localPath,
+        const std::string& url,
+        const UltraNetFileShareOptions& options) = 0;
+
+    // Mutating ops — DELETE, MKCOL, MOVE / COPY with Destination header.
+    virtual UltraNetResult Delete(
+        const std::string& url,
+        const UltraNetFileShareOptions& options) = 0;
+
+    virtual UltraNetResult CreateDirectory(
+        const std::string& url,
+        const UltraNetFileShareOptions& options) = 0;
+
+    virtual UltraNetResult Move(
+        const std::string& sourceUrl,
+        const std::string& destUrl,
+        const UltraNetFileShareOptions& options) = 0;
+
+    virtual UltraNetResult Copy(
+        const std::string& sourceUrl,
+        const std::string& destUrl,
+        const UltraNetFileShareOptions& options) = 0;
 };
 
 // ============================================================================

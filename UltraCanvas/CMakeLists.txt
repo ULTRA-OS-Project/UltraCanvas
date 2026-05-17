@@ -38,9 +38,13 @@ endif()
 # Stage 1 ships HTTP/HTTPS + URL utilities on libcurl. Built as a separate
 # library target so apps that don't need networking pay no cost.
 option(ULTRACANVAS_ENABLE_NET "Build the UltraNet networking library" ON)
-option(ULTRACANVAS_PLUGIN_SMTP "Build the UltraNet SMTP plug-in" ON)
-option(ULTRACANVAS_PLUGIN_IMAP "Build the UltraNet IMAP plug-in" ON)
-option(ULTRACANVAS_PLUGIN_POP3 "Build the UltraNet POP3 plug-in" ON)
+option(ULTRACANVAS_PLUGIN_SMTP   "Build the UltraNet SMTP plug-in"   ON)
+option(ULTRACANVAS_PLUGIN_IMAP   "Build the UltraNet IMAP plug-in"   ON)
+option(ULTRACANVAS_PLUGIN_POP3   "Build the UltraNet POP3 plug-in"   ON)
+option(ULTRACANVAS_PLUGIN_WEBDAV "Build the UltraNet WebDAV plug-in" ON)
+option(ULTRACANVAS_PLUGIN_LDAP   "Build the UltraNet LDAP plug-in"   ON)
+option(ULTRACANVAS_PLUGIN_TELNET "Build the UltraNet Telnet plug-in" ON)
+option(ULTRACANVAS_PLUGIN_RTSP   "Build the UltraNet RTSP plug-in"   ON)
 
 # ===== DETECT PLATFORM =====
 if(WIN32)
@@ -643,6 +647,26 @@ if(ULTRACANVAS_ENABLE_NET)
     if(ULTRACANVAS_PLUGIN_POP3)
         add_subdirectory(Plugins/UltraNet/pop3)
         message(STATUS "  [✓] UltraNet POP3 plug-in - ENABLED")
+    endif()
+
+    # Quick-win plug-ins: all libcurl-native, single-method-ish, same
+    # plug-in DSO shape as the mail trio. Cover four more spec
+    # categories (Web Modern / Directory / Remote Access / Streaming).
+    if(ULTRACANVAS_PLUGIN_WEBDAV)
+        add_subdirectory(Plugins/UltraNet/webdav)
+        message(STATUS "  [✓] UltraNet WebDAV plug-in - ENABLED")
+    endif()
+    if(ULTRACANVAS_PLUGIN_LDAP)
+        add_subdirectory(Plugins/UltraNet/ldap)
+        message(STATUS "  [✓] UltraNet LDAP plug-in - ENABLED")
+    endif()
+    if(ULTRACANVAS_PLUGIN_TELNET)
+        add_subdirectory(Plugins/UltraNet/telnet)
+        message(STATUS "  [✓] UltraNet Telnet plug-in - ENABLED")
+    endif()
+    if(ULTRACANVAS_PLUGIN_RTSP)
+        add_subdirectory(Plugins/UltraNet/rtsp)
+        message(STATUS "  [✓] UltraNet RTSP plug-in - ENABLED")
     endif()
 else()
     message(STATUS "  [−] UltraNet - DISABLED")

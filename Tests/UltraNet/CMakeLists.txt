@@ -15,6 +15,7 @@ set(ULTRANET_TEST_SOURCES
     test_smtp_plugin.cpp
     test_imap_plugin.cpp
     test_pop3_plugin.cpp
+    test_extra_plugins.cpp
     test_sse.cpp
     test_websocket.cpp
 )
@@ -50,6 +51,27 @@ if(TARGET UltraNetPop3Plugin)
     add_dependencies(UltraNetTests UltraNetPop3Plugin)
     target_compile_definitions(UltraNetTests PRIVATE
         ULTRANET_POP3_PLUGIN_PATH_DEFINE="$<TARGET_FILE:UltraNetPop3Plugin>")
+endif()
+
+if(TARGET UltraNetWebDavPlugin)
+    add_dependencies(UltraNetTests UltraNetWebDavPlugin)
+    target_compile_definitions(UltraNetTests PRIVATE
+        ULTRANET_WEBDAV_PLUGIN_PATH_DEFINE="$<TARGET_FILE:UltraNetWebDavPlugin>")
+endif()
+if(TARGET UltraNetLdapPlugin)
+    add_dependencies(UltraNetTests UltraNetLdapPlugin)
+    target_compile_definitions(UltraNetTests PRIVATE
+        ULTRANET_LDAP_PLUGIN_PATH_DEFINE="$<TARGET_FILE:UltraNetLdapPlugin>")
+endif()
+if(TARGET UltraNetTelnetPlugin)
+    add_dependencies(UltraNetTests UltraNetTelnetPlugin)
+    target_compile_definitions(UltraNetTests PRIVATE
+        ULTRANET_TELNET_PLUGIN_PATH_DEFINE="$<TARGET_FILE:UltraNetTelnetPlugin>")
+endif()
+if(TARGET UltraNetRtspPlugin)
+    add_dependencies(UltraNetTests UltraNetRtspPlugin)
+    target_compile_definitions(UltraNetTests PRIVATE
+        ULTRANET_RTSP_PLUGIN_PATH_DEFINE="$<TARGET_FILE:UltraNetRtspPlugin>")
 endif()
 
 include(CTest)
