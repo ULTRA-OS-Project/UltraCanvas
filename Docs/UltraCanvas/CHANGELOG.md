@@ -2,6 +2,7 @@
 - Change the Breadcrumbs element demo
 - Make more Docs for different controls 
 - Added Slideshow example in Widgets/Slideshow section of Demo app
+- Fix for Pie Chart labels
 
 #### 2026-05-15 *0.1.35*
 - Remove JXL from Image Performance test as JXL format does not supported by currently used libvips
