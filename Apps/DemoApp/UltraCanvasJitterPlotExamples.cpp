@@ -1,10 +1,12 @@
 // Apps/DemoApp/UltraCanvasJitterPlotExamples.cpp
 // Enhanced jitter plot examples with professional styling
-// Version: 2.1.2
-// Last Modified: 2026-05-09
+// Version: 2.1.3
+// Last Modified: 2026-05-18
 // Author: UltraCanvas Framework
 //
 // Changelog:
+//   2.1.3 - Vertically centered all filter/control row labels to align with
+//           adjacent 32px-tall dropdowns, inputs, and buttons.
 //   2.1.1 - Brazil example fixes after visual review:
 //           * Classic tab: removed quartile lines and mean cross markers —
 //             they cluttered the plot. Reverted to the original aesthetic
@@ -144,6 +146,7 @@ void AddBrazilFilterStrip(std::shared_ptr<UltraCanvasContainer> container,
     filterLabel->SetText("Filter:");
     filterLabel->SetFontSize(12);
     filterLabel->SetTextColor(Color(60, 60, 60, 255));
+    filterLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
     container->AddChild(filterLabel);
     
     auto regionDropdown = std::make_shared<UltraCanvasDropdown>(
@@ -171,6 +174,7 @@ void AddBrazilFilterStrip(std::shared_ptr<UltraCanvasContainer> container,
     scoreLabel->SetText("Min Score:");
     scoreLabel->SetFontSize(12);
     scoreLabel->SetTextColor(Color(60, 60, 60, 255));
+    scoreLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
     container->AddChild(scoreLabel);
     
     auto scoreInput = std::make_shared<UltraCanvasTextInput>(
@@ -199,6 +203,7 @@ void AddBrazilFilterStrip(std::shared_ptr<UltraCanvasContainer> container,
     quickLabel->SetText("Quick:");
     quickLabel->SetFontSize(12);
     quickLabel->SetTextColor(Color(60, 60, 60, 255));
+    quickLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
     container->AddChild(quickLabel);
     
     auto btnMin3 = std::make_shared<UltraCanvasButton>(
@@ -382,6 +387,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBrazilBeeswarmTab(
     methodLabel->SetText("Method:");
     methodLabel->SetFontSize(12);
     methodLabel->SetTextColor(Color(60, 60, 60, 255));
+    methodLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
     tab->AddChild(methodLabel);
     
     auto methodDropdown = std::make_shared<UltraCanvasDropdown>("BeeMethodDD", 110, ctrlY, 110, 32);
@@ -403,6 +409,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBrazilBeeswarmTab(
     prioLabel->SetText("Priority:");
     prioLabel->SetFontSize(12);
     prioLabel->SetTextColor(Color(60, 60, 60, 255));
+    prioLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
     tab->AddChild(prioLabel);
     
     auto prioDropdown = std::make_shared<UltraCanvasDropdown>("BeePrioDD", 300, ctrlY, 120, 32);
@@ -426,6 +433,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBrazilBeeswarmTab(
     corralLabel->SetText("Corral:");
     corralLabel->SetFontSize(12);
     corralLabel->SetTextColor(Color(60, 60, 60, 255));
+    corralLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
     tab->AddChild(corralLabel);
     
     auto corralDropdown = std::make_shared<UltraCanvasDropdown>("BeeCorralDD", 495, ctrlY, 100, 32);
@@ -447,6 +455,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBrazilBeeswarmTab(
     sideLabel->SetText("Side:");
     sideLabel->SetFontSize(12);
     sideLabel->SetTextColor(Color(60, 60, 60, 255));
+    sideLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
     tab->AddChild(sideLabel);
     
     auto sideDropdown = std::make_shared<UltraCanvasDropdown>("BeeSideDD", 655, ctrlY, 90, 32);
