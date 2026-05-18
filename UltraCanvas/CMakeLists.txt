@@ -580,10 +580,12 @@ if(ULTRACANVAS_PLUGIN_PDF)
     if(MUPDF_FOUND)
         list(APPEND ULTRACANVAS_CORE_SOURCES
             ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/UltraCanvasPDF_MuPDF.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/UltraCanvasPDFView.cpp
         )
         # Rebuild the library source list since we just appended.
         target_sources(${ULTRACANVAS_LIB_NAME} PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/UltraCanvasPDF_MuPDF.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/UltraCanvasPDFView.cpp
         )
         target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE
             ${MUPDF_INCLUDE_DIR}

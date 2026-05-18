@@ -16,7 +16,7 @@ component for **UltraTexter** and a reusable PDF engine for the framework.
 | MuPDF backend | ✅ landed in `Plugins/Documents/UltraCanvasPDF_MuPDF.cpp`, compile-verified + run-verified against a real PDF |
 | Dead stub (`PDF.h`, `PDF.cpp`, `Apps/PDFExampleApp.cpp`) | ✅ removed |
 | CMake gate `ULTRACANVAS_PLUGIN_PDF` | ✅ rewired around MuPDF (`find_library`) |
-| `UltraCanvasPDFView` widget | ⏳ next commit |
+| `UltraCanvasPDFView` widget | ✅ landed in `include/Plugins/Documents/UltraCanvasPDFView.h` + `Plugins/Documents/UltraCanvasPDFView.cpp` |
 | UltraTexter integration (`pdf` out of binary list + PDF tab routing) | ⏳ next commit |
 | Content-text rewrite (M3) | ⏳ |
 
