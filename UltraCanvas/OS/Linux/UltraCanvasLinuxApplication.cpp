@@ -892,14 +892,14 @@ namespace UltraCanvas {
 
     FontStyle UltraCanvasLinuxApplication::DetectSystemFontStyleNative() {
         FontStyle result;
-        result.fontFamily = "DejaVu Sans";
+        result.fontFamily = "Ubuntu";
         result.fontSize = 12.0;
         return result;
     }
 
     FontStyle UltraCanvasLinuxApplication::DetectMonospacedFontStyleNative() {
         FontStyle result;
-        result.fontFamily = "DejaVu Sans Mono";
+        result.fontFamily = "Ubuntu Mono";
         result.fontSize = 12.0;
         return result;
     }
@@ -912,8 +912,8 @@ namespace UltraCanvas {
         }
 
         const std::string dir = GetBundledFontsDir();
-        for (size_t i = 0; i < kDejaVuAllFontsCount; ++i) {
-            std::string path = dir + kDejaVuAllFonts[i];
+        for (size_t i = 0; i < kEmbeddedAllFontsCount; ++i) {
+            std::string path = dir + kEmbeddedAllFonts[i];
             if (!std::filesystem::exists(path)) {
                 debugOutput << "UltraCanvas: bundled font missing: " << path << std::endl;
                 continue;

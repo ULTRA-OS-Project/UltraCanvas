@@ -660,7 +660,7 @@ static UltraCanvasAppDelegate* g_appDelegate = nil;
 
     FontStyle UltraCanvasMacOSApplication::DetectMonospacedFontStyleNative() {
         FontStyle result;
-        result.fontFamily = "DejaVu Sans Mono";
+        result.fontFamily = "Ubuntu Mono";
         result.fontSize = 12.0f;
         return result;
     }
@@ -671,8 +671,8 @@ static UltraCanvasAppDelegate* g_appDelegate = nil;
         // process-privately via CoreText.
         @autoreleasepool {
             const std::string dir = GetBundledFontsDir();
-            for (size_t i = 0; i < kDejaVuMonoFontsCount; ++i) {
-                std::string path = dir + kDejaVuMonoFonts[i];
+            for (size_t i = 0; i < kEmbeddedAllFontsCount; ++i) {
+                std::string path = dir + kEmbeddedAllFonts[i];
                 if (!std::filesystem::exists(path)) {
                     debugOutput << "UltraCanvas: bundled font missing: " << path << std::endl;
                     continue;

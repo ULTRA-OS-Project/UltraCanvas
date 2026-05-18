@@ -3483,7 +3483,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         mainLayout->AddStretch(1);
 
         // OK button
-        auto okButton = std::make_shared<UltraCanvasButton>("AboutOK",  0, 80, 28);
+        auto okButton = std::make_shared<UltraCanvasButton>("AboutOK",  0, 0, 80, 28);
         okButton->SetText("OK");
         okButton->onClick = [this]() {
             aboutDialog->CloseDialog(DialogResult::OK);

@@ -2,6 +2,7 @@
 - Arc diagram improvement
 - Change layout of "Bitmap elements" screen in the Demo app
 - Use TextArea instead of Markdown element in the "Text Document/Markdown" screen in the Demo app
+- Replace DejaVu default embedded font by Ubuntu font
 
 #### 2026-05-17 *0.1.36*
 - Change the Breadcrumbs element demo

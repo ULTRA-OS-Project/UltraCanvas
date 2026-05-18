@@ -663,12 +663,12 @@ namespace UltraCanvas {
                               "Docs/UltraCanvas/UltraCanvasBitmapExamples.md");
 
         // PSP Images (Paint Shop Pro native format with layers and vector objects)
-        bitmapBuilder.AddItem("pspimages", "PSP Images",
-                              "PSP Paint Shop Pro native layered image format",
-                              ImplementationStatus::FullyImplemented,
-                              [this]() { return CreateBitmapFormatDemoPage("PSP", NormalizePath(GetResourcesDir() + "media/images/dice.pspimage")); },
-                              "DemoApp/UltraCanvasBitmapFormatDemo.cpp",
-                              "Docs/UltraCanvas/UltraCanvasBitmapExamples.md");
+//        bitmapBuilder.AddItem("pspimages", "PSP Images",
+//                              "PSP Paint Shop Pro native layered image format",
+//                              ImplementationStatus::FullyImplemented,
+//                              [this]() { return CreateBitmapFormatDemoPage("PSP", NormalizePath(GetResourcesDir() + "media/images/dice.pspimage")); },
+//                              "DemoApp/UltraCanvasBitmapFormatDemo.cpp",
+//                              "Docs/UltraCanvas/UltraCanvasBitmapExamples.md");
 
         bitmapBuilder.AddItem("imageperformance", "Image Performance Test",
                               "Benchmark image loading, decompression, and rendering speed",
