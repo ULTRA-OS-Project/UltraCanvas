@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasArcDiagramExamples.cpp
 // Demo examples for UltraCanvasArcDiagram — arc diagram
-// Version: 1.0.1
-// Last Modified: 2026-05-14
+// Version: 1.0.2
+// Last Modified: 2026-05-17
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -231,7 +231,7 @@ namespace UltraCanvas {
         auto tab = std::make_shared<UltraCanvasContainer>("ArcDirTab", 0, 0, 1020, 700);
 
         auto desc = std::make_shared<UltraCanvasLabel>("ArcDirDesc", 10, 8, 900, 22);
-        desc->SetText("Directed flow: arrowheads at arc midpoint, weight labels, self-loops, above/below encoding direction.");
+        desc->SetText("Directed flow: hover a node to focus its connections (others fade to gray). Click empty space to reset. Apex shows each link's share of total flow.");
         desc->SetFontSize(11);
         tab->AddChild(desc);
 
@@ -270,15 +270,17 @@ namespace UltraCanvas {
             return e;
         };
 
-        diagram->AddEdge(makeEdge("home",  "fleet",   10.0f, green, true,  ArcEdgeType::Above, "10"));
-        diagram->AddEdge(makeEdge("fleet", "special", 13.0f, green, true,  ArcEdgeType::Above, "13"));
-        diagram->AddEdge(makeEdge("home",  "marco",   10.0f, green, true,  ArcEdgeType::Above, "10"));
-        diagram->AddEdge(makeEdge("fleet", "train",    5.0f, gray,  true,  ArcEdgeType::Above, "5"));
-        diagram->AddEdge(makeEdge("fleet", "weNavy",   5.0f, gray,  true,  ArcEdgeType::Above, "5"));
-        diagram->AddEdge(makeEdge("fleet", "marco",    5.0f, gray,  true,  ArcEdgeType::Above, "5"));
+        // Labels intentionally omitted — the new arcValueDisplay style auto-renders
+        // each arc's share of the total weight as a percentage at the apex (zenit).
+        diagram->AddEdge(makeEdge("home",  "fleet",   10.0f, green, true,  ArcEdgeType::Above));
+        diagram->AddEdge(makeEdge("fleet", "special", 13.0f, green, true,  ArcEdgeType::Above));
+        diagram->AddEdge(makeEdge("home",  "marco",   10.0f, green, true,  ArcEdgeType::Above));
+        diagram->AddEdge(makeEdge("fleet", "train",    5.0f, gray,  true,  ArcEdgeType::Above));
+        diagram->AddEdge(makeEdge("fleet", "weNavy",   5.0f, gray,  true,  ArcEdgeType::Above));
+        diagram->AddEdge(makeEdge("fleet", "marco",    5.0f, gray,  true,  ArcEdgeType::Above));
 
         // Self-loop (below)
-        ArcEdge selfLoop = makeEdge("special","special",3.0f, violet, true, ArcEdgeType::Below, "3");
+        ArcEdge selfLoop = makeEdge("special","special",3.0f, violet, true, ArcEdgeType::Below);
         diagram->AddEdge(selfLoop);
 
         ArcDiagramStyle s;
@@ -296,6 +298,19 @@ namespace UltraCanvas {
         s.nodePadding       = 130.0f;
         s.marginH           = 80.0f;
         s.marginV           = 60.0f;
+        // P12 — show each connection's share of total flow as a percentage
+        s.arcValueDisplay   = ArcValueDisplay::Percentage;
+        s.arcValueDecimals  = 1;
+        s.arcValueFontSize  = 11.0f;
+        s.arcValueLabelColor = Color(30, 30, 30, 235);
+        s.arcValueLabelOffset = 8.0f;
+        // P11 — highlight arcs connected to the hovered/selected node (default on)
+        s.highlightConnectedEdges = true;
+        // P13 — focus mode: dim everything not involved with the active node.
+        // Picked a neutral mid-gray so it reads on both light and dark backgrounds.
+        s.dimUnconnected      = true;
+        s.dimmedColor         = Color(190, 190, 195, 110);
+        s.emphasizeActiveLabel = true;
         diagram->SetStyle(s);
 
         diagram->onEdgeClick = [statusLabel](int, const ArcEdge& e) {

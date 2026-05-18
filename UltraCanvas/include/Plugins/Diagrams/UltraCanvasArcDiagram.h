@@ -1,11 +1,14 @@
 // UltraCanvasArcDiagram.h
 // Arc diagram — nodes on a baseline, edges as cubic Bezier arcs above/below
-// Version: 1.0.1
-// Last Modified: 2025-05-10
+// Version: 1.0.2
+// Last Modified: 2026-05-17
 // Author: UltraCanvas Framework
 // Changes: P1 degree sizing, P2 vertical labels, P3 opacity weight, P4 semicircle mode,
 //          P5 axis arrow, P6 mid-arc arrowhead, P7 self-loops, P8 parallel bundles,
-//          P9 span z-order, P10 color legend
+//          P9 span z-order, P10 color legend,
+//          P11 connected-edge highlight on node hover/select,
+//          P12 auto value/percentage label at arc apex (zenit),
+//          P13 focus mode — dim non-involved nodes/arcs/labels to a user-defined gray
 
 #pragma once
 
@@ -24,6 +27,9 @@
 #endif
 #ifdef Above
 #undef Above
+#endif
+#ifdef None
+#undef None   // X11 defines `None` as 0L — collides with ArcValueDisplay::None
 #endif
 
 namespace UltraCanvas {
@@ -70,6 +76,13 @@ namespace UltraCanvas {
         Fixed,          ///< All nodes use ArcNode.size directly (default)
         ByValue,        ///< size = baseSize * sqrt(node.value)
         ByDegree        ///< P1 — size = baseSize * sqrt(connectionCount) — image 1 style
+    };
+
+    /// P12 — what to render automatically at the arc apex (zenit)
+    enum class ArcValueDisplay {
+        None,           ///< No auto-generated apex label (default; honors edge.label)
+        Value,          ///< Show edge weight as numeric value
+        Percentage      ///< Show edge weight as percentage of total edge weight
     };
 
 // ===== DATA STRUCTURES =====
@@ -162,6 +175,21 @@ namespace UltraCanvas {
         // Arc label
         float   arcLabelFontSize    = 10.0f;    ///< Arc apex label font size
         Color   arcLabelColor       = Color(80, 80, 80, 220);       ///< Arc label color
+
+        // P11 — highlight edges connected to hovered/selected node
+        bool    highlightConnectedEdges = true; ///< Brighten arcs touching the active node
+
+        // P13 — focus mode: gray out everything not involved with the active node
+        bool    dimUnconnected      = true;     ///< When a node is active, fade non-involved geometry
+        Color   dimmedColor         = Color(200, 200, 200, 140);    ///< Replacement color for dimmed arcs/nodes/labels
+        bool    emphasizeActiveLabel = true;    ///< Draw active node's label in bold weight
+
+        // P12 — auto value/percentage label drawn at arc apex (zenit)
+        ArcValueDisplay arcValueDisplay  = ArcValueDisplay::None;
+        int     arcValueDecimals    = 1;        ///< Decimal places for value/percentage text
+        float   arcValueFontSize    = 10.0f;    ///< Font size for apex value label
+        Color   arcValueLabelColor  = Color(40, 40, 40, 230);   ///< Apex value label color
+        float   arcValueLabelOffset = 6.0f;     ///< Gap between arc apex and value label
 
         // Tooltip
         bool    showTooltip         = true;     ///< Show tooltip on hover
@@ -294,7 +322,8 @@ namespace UltraCanvas {
         // ===== DATA =====
         std::vector<ArcNode>    nodes;          ///< Insertion-order node list
         std::vector<ArcEdge>    edges;          ///< Edge list
-        float                   maxWeight = 1.0f;
+        float                   maxWeight       = 1.0f;
+        float                   totalEdgeWeight = 0.0f;  ///< P12 — sum of weights for % display
 
         // ===== STATE =====
         ArcDiagramStyle style;
@@ -320,6 +349,8 @@ namespace UltraCanvas {
         // ===== INTERNAL HELPERS =====
         void    ComputeLayout();
         void    ComputeNodeDegrees();                           ///< P1 — build degreeCache
+        void    ComputeTotalEdgeWeight();                       ///< P12 — refresh sum cache
+        std::string FormatArcValueLabel(float weight) const;    ///< P12 — value/% formatter
         int     LookupNode(const std::string& id) const;
         float   ArcHeight(int srcIdx, int tgtIdx,
                           int bundleOffset = 0) const;         ///< P8 — bundle offset param
@@ -341,10 +372,14 @@ namespace UltraCanvas {
         void    DrawArc(IRenderContext* ctx, const ArcEdge& edge,
                         int srcIdx, int tgtIdx,
                         bool hovered, bool selected,
+                        bool connectedHighlight,                ///< P11
+                        bool dimmed,                            ///< P13 — render in dimmedColor
                         int bundleOffset = 0) const;           ///< P8
         void    DrawSelfLoop(IRenderContext* ctx,
                              const ArcEdge& edge, int nodeIdx,
-                             bool hovered, bool selected) const; ///< P7
+                             bool hovered, bool selected,
+                             bool connectedHighlight,
+                             bool dimmed) const;               ///< P7 + P11 + P13
         void    DrawArrowhead(IRenderContext* ctx,
                               float tipX, float tipY,
                               float angle, const Color& col) const;
@@ -363,6 +398,12 @@ namespace UltraCanvas {
 
         // ===== PRIVATE DATA =====
         std::vector<int>    degreeCache;    ///< P1 — edge count per node index
+
+        // P13 — per-render focus state, refreshed each Render() call
+        mutable int                 activeForDraw = -1;
+        mutable std::vector<bool>   connectedNodeMask;
+
+        void    RefreshFocusState() const;  ///< P13 — build activeForDraw + connectedNodeMask
     };
 
 // ===== FACTORY FUNCTION =====
