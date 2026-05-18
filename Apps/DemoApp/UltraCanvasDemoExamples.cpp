@@ -208,51 +208,17 @@ namespace UltraCanvas {
         return container;
     }
 
-    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMarkdownExamples() {
-//        auto container = std::make_shared<UltraCanvasContainer>("MarkdownExamples", 0, 0, 1020, 780);
-
-        auto text = std::make_shared<UltraCanvasMarkdownDisplay>("MarkDownText", 0, 0, 1026, 785);
-        text->SetMarkdownText(LoadFile(NormalizePath(GetResourcesDir() + "media/MarkdownExample.md")));
-        MarkdownStyle style = MarkdownStyle::Default();
-        style.fontSize = 12;
-        text->SetStyle(style);
-//        container->AddChild(text);
-
-        return text;
-    }
-
-//    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateCodeEditorExamples() {
-//        auto container = std::make_shared<UltraCanvasContainer>("CodeEditorExamples", 0, 0, 1000, 600);
+//    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMarkdownExamples() {
+////        auto container = std::make_shared<UltraCanvasContainer>("MarkdownExamples", 0, 0, 1020, 780);
 //
-//        auto title = std::make_shared<UltraCanvasLabel>("CodeEditorTitle", 10, 10, 300, 30);
-//        title->SetText("Code Editor Examples");
-//        title->SetFontSize(16);
-//        title->SetFontWeight(FontWeight::Bold);
-//        container->AddChild(title);
+//        auto text = std::make_shared<UltraCanvasMarkdownDisplay>("MarkDownText", 0, 0, 1026, 785);
+//        text->SetMarkdownText(LoadFile(NormalizePath(GetResourcesDir() + "media/MarkdownExample.md")));
+//        MarkdownStyle style = MarkdownStyle::Default();
+//        style.fontSize = 12;
+//        text->SetStyle(style);
+////        container->AddChild(text);
 //
-//        // Formula Editor (partially implemented)
-//        auto formulaEditor = std::make_shared<UltraCanvasFormulaEditor>("FormulaEditor", 20, 50, 600, 100);
-//        ProceduralFormula f;
-//        f.formula = "SUM(A1:A10) + AVERAGE(B1:B10) * 2.5";
-//        formulaEditor->SetFormula(f);
-////        formulaEditor->SetBackgroundColor(Color(248, 248, 248, 255));
-//        container->AddChild(formulaEditor);
-//
-//        auto formulaLabel = std::make_shared<UltraCanvasLabel>("FormulaLabel", 20, 160, 600, 20);
-//        formulaLabel->SetText("Formula Editor (Partially Implemented) - Supports mathematical expressions");
-//        formulaLabel->SetFontSize(12);
-//        container->AddChild(formulaLabel);
-//
-//        auto placeholder = std::make_shared<UltraCanvasLabel>("CodeEditorPlaceholder", 20, 200, 800, 300);
-//        placeholder->SetText("Code Editor Component - Partially Implemented\n\nCurrent Features:\n• Formula/Expression editing\n• Basic syntax validation\n\nPlanned Features:\n• C++ syntax highlighting\n• Pascal/Delphi support\n• COBOL syntax support\n• Line numbers and folding\n• Auto-completion\n• Error markers and tooltips\n• Find and replace\n• Multiple cursors\n• Code formatting\n• Plugin architecture for languagesRules");
-//        placeholder->SetAlignment(TextAlignment::Left);
-//        placeholder->SetBackgroundColor(Color(255, 255, 200, 100));
-////        placeholder->SetBorderStyle(BorderStyle::Dashed);
-//        placeholder->SetBorders(2.0f);
-//        placeholder->SetPadding(20.0f);
-//        container->AddChild(placeholder);
-//
-//        return container;
+//        return text;
 //    }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAudioExamples() {

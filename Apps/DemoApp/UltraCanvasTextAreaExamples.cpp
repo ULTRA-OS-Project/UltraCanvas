@@ -99,7 +99,7 @@ int main() {
 
         // ===== TEXTAREA 2: Python Code with Light Theme =====
         // Middle column
-        auto pythonLabel = std::make_shared<UltraCanvasLabel>("PythonLabel", 20, 257, 245, 20);
+        auto pythonLabel = std::make_shared<UltraCanvasLabel>("PythonLabel", 20, 257, 345, 20);
         pythonLabel->SetText("Python Syntax (Light Theme)");
         pythonLabel->SetFontSize(12);
         pythonLabel->SetFontWeight(FontWeight::Bold);
@@ -170,7 +170,7 @@ if __name__ == "__main__":
 
         // ===== TEXTAREA 3: Pascal Code with Custom Settings =====
         // Right column
-        auto pascalLabel = std::make_shared<UltraCanvasLabel>("PascalLabel", 20, 484, 265, 20);
+        auto pascalLabel = std::make_shared<UltraCanvasLabel>("PascalLabel", 20, 484, 365, 20);
         pascalLabel->SetText("Pascal Syntax (Custom Theme)");
         pascalLabel->SetFontSize(12);
         pascalLabel->SetFontWeight(FontWeight::Bold);
@@ -349,7 +349,7 @@ end.)";
 //        container->AddChild(themeDropdown);
 
         // Font size label
-        auto fontSizeLabel = std::make_shared<UltraCanvasLabel>("FontSizeLabel", 420, 720, 90, 20);
+        auto fontSizeLabel = std::make_shared<UltraCanvasLabel>("FontSizeLabel", 420, 724, 90, 20);
         fontSizeLabel->SetText("Font Size:");
         fontSizeLabel->SetAlignment(TextAlignment::Right);
         container->AddChild(fontSizeLabel);
@@ -381,7 +381,7 @@ end.)";
         container->AddChild(increaseFontBtn);
 
         // Clear all button
-        auto clearAllBtn = std::make_shared<UltraCanvasButton>("ClearAllBtn", 590, 720, 90, 25);
+        auto clearAllBtn = std::make_shared<UltraCanvasButton>("ClearAllBtn", 600, 720, 90, 25);
         clearAllBtn->SetText("Clear All");
 //        clearAllBtn->SetButtonStyle(ButtonStyle::Danger);
         clearAllBtn->onClick = [cppTextArea, pythonTextArea, pascalTextArea]() {
@@ -392,7 +392,7 @@ end.)";
         container->AddChild(clearAllBtn);
 
         // Line numbers toggle button
-        auto lineNumBtn = std::make_shared<UltraCanvasButton>("LineNumBtn", 700, 720, 110, 25);
+        auto lineNumBtn = std::make_shared<UltraCanvasButton>("LineNumBtn", 700, 720, 120, 25);
         lineNumBtn->SetText("Toggle Lines");
 //        lineNumBtn->SetButtonStyle(ButtonStyle::Secondary);
         lineNumBtn->onClick = [cppTextArea, pythonTextArea, pascalTextArea]() {
@@ -403,7 +403,7 @@ end.)";
         };
         container->AddChild(lineNumBtn);
 
-        auto syntaxToggleBtn = std::make_shared<UltraCanvasButton>("syntaxToggleBtn", 810, 730, 110, 25);
+        auto syntaxToggleBtn = std::make_shared<UltraCanvasButton>("syntaxToggleBtn", 830, 720, 140, 25);
         syntaxToggleBtn->SetText("Toggle syntax");
 //        lineNumBtn->SetButtonStyle(ButtonStyle::Secondary);
         syntaxToggleBtn->onClick = [cppTextArea, pythonTextArea, pascalTextArea]() {

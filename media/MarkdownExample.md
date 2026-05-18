@@ -235,11 +235,6 @@ This content is hidden by default and revealed when clicked.
    - Back to second level
 2. Second ordered item
    > With a blockquote
-   > 
-   > ```cpp
-   > // And a code block
-   > auto demo = CreateDemo();
-   > ```
 3. Third ordered item
 
 ## Mathematical Expressions (if LaTeX supported)

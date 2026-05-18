@@ -245,8 +245,6 @@ namespace UltraCanvas {
 
         // Document Elements
         std::shared_ptr<UltraCanvasUIElement> CreateTextDocumentExamples();
-        std::shared_ptr<UltraCanvasUIElement> CreateMarkdownExamples();
-        std::shared_ptr<UltraCanvasUIElement> CreateCodeEditorExamples();
         std::shared_ptr<UltraCanvasUIElement> CreatePartiallyImplementedExamples(const std::string& text);
         std::shared_ptr<UltraCanvasUIElement> CreateDomainTableDemo();
 
