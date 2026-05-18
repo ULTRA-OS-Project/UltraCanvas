@@ -7,7 +7,8 @@
 //          P5 axis arrow, P6 mid-arc arrowhead, P7 self-loops, P8 parallel bundles,
 //          P9 span z-order, P10 color legend,
 //          P11 connected-edge highlight on node hover/select,
-//          P12 auto value/percentage label at arc apex (zenit)
+//          P12 auto value/percentage label at arc apex (zenit),
+//          P13 focus mode — dim non-involved nodes/arcs/labels to a user-defined gray
 
 #include "Plugins/Diagrams/UltraCanvasArcDiagram.h"
 #include <algorithm>
@@ -197,6 +198,23 @@ namespace UltraCanvas {
             int ti = LookupNode(edge.targetId);
             if (si >= 0 && si < n) ++degreeCache[si];
             if (ti >= 0 && ti < n && ti != si) ++degreeCache[ti];
+        }
+    }
+
+    // P13 — recompute which node is "active" and which other nodes it touches.
+    // Called once per Render so DrawEdges, DrawNodes, and DrawLabels share a
+    // consistent focus picture without re-walking the edge list each.
+    void UltraCanvasArcDiagram::RefreshFocusState() const {
+        activeForDraw = (selectedNodeIdx >= 0) ? selectedNodeIdx : hoveredNodeIdx;
+        connectedNodeMask.assign(nodes.size(), false);
+        if (activeForDraw < 0) return;
+
+        connectedNodeMask[activeForDraw] = true;
+        for (const auto& e : edges) {
+            int si = LookupNode(e.sourceId);
+            int ti = LookupNode(e.targetId);
+            if (si == activeForDraw && ti >= 0) connectedNodeMask[ti] = true;
+            if (ti == activeForDraw && si >= 0) connectedNodeMask[si] = true;
         }
     }
 
@@ -402,6 +420,7 @@ namespace UltraCanvas {
             int srcIdx, int tgtIdx,
             bool hovered, bool selected,
             bool connectedHighlight,
+            bool dimmed,
             int bundleOffset) const
     {
         bool above = EdgeSideIsAbove(edge, srcIdx, tgtIdx);
@@ -418,22 +437,31 @@ namespace UltraCanvas {
         BaselinePoint(posS, sx, sy);
         BaselinePoint(posT, tx, ty);
 
-        // P3 — compute arc color with optional opacity encoding
-        Color col = edge.color;
-        if (style.arcEncodeOpacity) {
-            col.a = static_cast<uint8_t>(std::max(0.0f, std::min(255.0f, ArcOpacity(edge.weight))));
-        }
-        // P11 — brighten when hovered, selected, or attached to active node
-        if (hovered || selected || connectedHighlight) {
-            col.r = static_cast<uint8_t>(std::min(255, col.r + 40));
-            col.g = static_cast<uint8_t>(std::min(255, col.g + 40));
-            col.b = static_cast<uint8_t>(std::min(255, col.b + 40));
-            col.a = 255;
+        // P13 — when dimmed, replace the arc color entirely and skip the
+        // weight-driven opacity/brighten passes so the arc visually recedes.
+        Color col;
+        if (dimmed) {
+            col = style.dimmedColor;
+        } else {
+            col = edge.color;
+            // P3 — opacity weight encoding
+            if (style.arcEncodeOpacity) {
+                col.a = static_cast<uint8_t>(std::max(0.0f, std::min(255.0f, ArcOpacity(edge.weight))));
+            }
+            // P11 — brighten when hovered, selected, or attached to active node
+            if (hovered || selected || connectedHighlight) {
+                col.r = static_cast<uint8_t>(std::min(255, col.r + 40));
+                col.g = static_cast<uint8_t>(std::min(255, col.g + 40));
+                col.b = static_cast<uint8_t>(std::min(255, col.b + 40));
+                col.a = 255;
+            }
         }
 
         float lw = ArcWidth(edge.weight);
-        if (selected) lw += 1.5f;
-        else if (connectedHighlight) lw += 0.75f;
+        if (!dimmed) {
+            if (selected) lw += 1.5f;
+            else if (connectedHighlight) lw += 0.75f;
+        }
 
         ctx->SetStrokePaint(col);
         ctx->SetStrokeWidth(lw);
@@ -466,12 +494,16 @@ namespace UltraCanvas {
             }
         }
 
-        // Arc apex (zenit) label — P12 auto value/% takes precedence over edge.label
+        // Arc apex (zenit) label — P12 auto value/% takes precedence over edge.label.
+        // Skipped when the arc is dimmed (P13) so only focused arcs carry their
+        // value annotation.
         std::string apexText;
         Color       apexColor   = style.arcLabelColor;
         float       apexFont    = style.arcLabelFontSize;
         bool        apexOutside = false;
-        if (style.arcValueDisplay != ArcValueDisplay::None) {
+        if (dimmed) {
+            // leave apexText empty
+        } else if (style.arcValueDisplay != ArcValueDisplay::None) {
             apexText    = FormatArcValueLabel(edge.weight);
             apexColor   = style.arcValueLabelColor;
             apexFont    = style.arcValueFontSize;
@@ -512,7 +544,8 @@ namespace UltraCanvas {
             IRenderContext* ctx,
             const ArcEdge& edge, int nodeIdx,
             bool hovered, bool selected,
-            bool connectedHighlight) const
+            bool connectedHighlight,
+            bool dimmed) const
     {
         float pos = NodeScreenPos(nodeIdx);
         float cx, cy;
@@ -524,20 +557,29 @@ namespace UltraCanvas {
         float sign   = above ? -1.0f : 1.0f;
         float loopCY = cy + sign * (nodeR + loopR);
 
-        Color col = edge.color;
-        if (style.arcEncodeOpacity)
-            col.a = static_cast<uint8_t>(std::max(0.0f, std::min(255.0f, ArcOpacity(edge.weight))));
-        // P11 — also brighten self-loops when their node is the active one
-        if (hovered || selected || connectedHighlight) {
-            col.r = static_cast<uint8_t>(std::min(255, col.r + 40));
-            col.g = static_cast<uint8_t>(std::min(255, col.g + 40));
-            col.b = static_cast<uint8_t>(std::min(255, col.b + 40));
-            col.a = 255;
+        // P13 — dimmed self-loops render in the user-defined gray, skipping
+        // the opacity/brightness passes.
+        Color col;
+        if (dimmed) {
+            col = style.dimmedColor;
+        } else {
+            col = edge.color;
+            if (style.arcEncodeOpacity)
+                col.a = static_cast<uint8_t>(std::max(0.0f, std::min(255.0f, ArcOpacity(edge.weight))));
+            // P11 — also brighten self-loops when their node is the active one
+            if (hovered || selected || connectedHighlight) {
+                col.r = static_cast<uint8_t>(std::min(255, col.r + 40));
+                col.g = static_cast<uint8_t>(std::min(255, col.g + 40));
+                col.b = static_cast<uint8_t>(std::min(255, col.b + 40));
+                col.a = 255;
+            }
         }
 
         float lw = ArcWidth(edge.weight);
-        if (selected) lw += 1.5f;
-        else if (connectedHighlight) lw += 0.75f;
+        if (!dimmed) {
+            if (selected) lw += 1.5f;
+            else if (connectedHighlight) lw += 0.75f;
+        }
 
         ctx->SetStrokePaint(col);
         ctx->SetStrokeWidth(lw);
@@ -545,11 +587,14 @@ namespace UltraCanvas {
         ctx->Circle(cx, loopCY, loopR);
         ctx->Stroke();
 
-        // Loop apex label — P12 value/% takes precedence over edge.label
+        // Loop apex label — P12 value/% takes precedence over edge.label.
+        // Skipped when the loop is dimmed (P13).
         std::string apexText;
         Color       apexColor = style.arcLabelColor;
         float       apexFont  = style.arcLabelFontSize;
-        if (style.arcValueDisplay != ArcValueDisplay::None) {
+        if (dimmed) {
+            // leave apexText empty
+        } else if (style.arcValueDisplay != ArcValueDisplay::None) {
             apexText  = FormatArcValueLabel(edge.weight);
             apexColor = style.arcValueLabelColor;
             apexFont  = style.arcValueFontSize;
@@ -572,8 +617,8 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasArcDiagram::DrawEdges(IRenderContext* ctx) const {
-        // P11 — selected node wins over hovered for "active" highlight target
-        int activeNodeIdx = (selectedNodeIdx >= 0) ? selectedNodeIdx : hoveredNodeIdx;
+        // P11/P13 — focus state is already computed by Render(); reuse it.
+        int activeNodeIdx = activeForDraw;
 
         // P9 — sort edges by span (descending = longest first, shortest on top)
         // Build a sorted index list without modifying the original edge vector
@@ -607,13 +652,21 @@ namespace UltraCanvas {
             bool selected = (oi == selectedEdgeIdx);
 
             // P11 — does this edge touch the active (selected/hovered) node?
-            bool connectedHighlight = style.highlightConnectedEdges
-                                      && activeNodeIdx >= 0
-                                      && (srcIdx == activeNodeIdx || tgtIdx == activeNodeIdx);
+            bool touchesActive = activeNodeIdx >= 0
+                                 && (srcIdx == activeNodeIdx || tgtIdx == activeNodeIdx);
+            bool connectedHighlight = style.highlightConnectedEdges && touchesActive;
+
+            // P13 — every arc not touching the active node fades to dimmedColor.
+            // The hovered/selected edge itself is never dimmed even if no node
+            // is active.
+            bool dimmed = style.dimUnconnected
+                          && activeNodeIdx >= 0
+                          && !touchesActive
+                          && !hovered && !selected;
 
             // P7 — self-loop
             if (srcIdx >= 0 && srcIdx == tgtIdx) {
-                DrawSelfLoop(ctx, edge, srcIdx, hovered, selected, connectedHighlight);
+                DrawSelfLoop(ctx, edge, srcIdx, hovered, selected, connectedHighlight, dimmed);
                 continue;
             }
 
@@ -627,12 +680,15 @@ namespace UltraCanvas {
             auto bKey = std::make_tuple(loKey, hiKey, above);
             int offset = bundleCount[bKey]++;
 
-            DrawArc(ctx, edge, srcIdx, tgtIdx, hovered, selected, connectedHighlight, offset);
+            DrawArc(ctx, edge, srcIdx, tgtIdx,
+                    hovered, selected, connectedHighlight, dimmed, offset);
         }
     }
 
     void UltraCanvasArcDiagram::DrawNodes(IRenderContext* ctx) const {
         int n = static_cast<int>(nodes.size());
+        bool focusMode = style.dimUnconnected && activeForDraw >= 0;
+
         for (int i = 0; i < n; ++i) {
             const ArcNode& node = nodes[i];
             float pos = NodeScreenPos(i);
@@ -641,16 +697,22 @@ namespace UltraCanvas {
 
             float r = NodeRadius(i);   // P1 — unified radius
 
-            Color fillCol = node.color;
-            if (i == selectedNodeIdx) fillCol = style.nodeSelectedColor;
-            else if (i == hoveredNodeIdx) fillCol = style.nodeHoverColor;
+            // P13 — in focus mode, any node not connected to the active node
+            // (and not the active one itself) is filled with dimmedColor.
+            bool isInvolved = !focusMode || connectedNodeMask[i];
+
+            Color fillCol;
+            if (i == selectedNodeIdx)      fillCol = style.nodeSelectedColor;
+            else if (i == hoveredNodeIdx)  fillCol = style.nodeHoverColor;
+            else if (!isInvolved)          fillCol = style.dimmedColor;
+            else                           fillCol = node.color;
 
             ctx->SetFillPaint(fillCol);
             ctx->ClearPath();
             ctx->Circle(cx, cy, r);
             ctx->Fill();
 
-            ctx->SetStrokePaint(style.nodeStrokeColor);
+            ctx->SetStrokePaint(isInvolved ? style.nodeStrokeColor : style.dimmedColor);
             ctx->SetStrokeWidth(style.nodeStrokeWidth);
             ctx->ClearPath();
             ctx->Circle(cx, cy, r);
@@ -663,10 +725,9 @@ namespace UltraCanvas {
         if (n == 0) return;
 
         ctx->SetFontSize(style.labelFontSize);
-        ctx->SetFontFace("Sans", FontWeight::Normal, FontSlant::Normal);
-        ctx->SetTextPaint(style.labelColor);
 
         bool horiz = (style.orientation == ArcOrientation::Horizontal);
+        bool focusMode = style.dimUnconnected && activeForDraw >= 0;
 
         for (int i = 0; i < n; ++i) {
             const ArcNode& node = nodes[i];
@@ -675,6 +736,17 @@ namespace UltraCanvas {
             BaselinePoint(pos, cx, cy);
 
             float r = NodeRadius(i);   // P1
+
+            // P13 — label color/weight follows the same focus rules as the node:
+            //   * non-involved → dimmedColor
+            //   * active node → labelColor with bold weight (if enabled)
+            //   * everything else → labelColor with normal weight
+            bool isInvolved = !focusMode || connectedNodeMask[i];
+            bool isActive   = (i == activeForDraw);
+            FontWeight weight = (isActive && style.emphasizeActiveLabel)
+                                ? FontWeight::Bold : FontWeight::Normal;
+            ctx->SetFontFace("Sans", weight, FontSlant::Normal);
+            ctx->SetTextPaint(isInvolved ? style.labelColor : style.dimmedColor);
 
             auto dims = ctx->GetTextLineDimensions(node.label);
             int tw = dims.width, th = dims.height;
@@ -782,6 +854,7 @@ namespace UltraCanvas {
             ComputeNodeDegrees();       // P1 — build degree cache after layout
             ComputeTotalEdgeWeight();   // P12 — sum weights for percentage display
         }
+        RefreshFocusState();            // P13 — must run each frame so hover/select updates take effect
 
         ctx->PushState();
 

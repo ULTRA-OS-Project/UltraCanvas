@@ -37,6 +37,7 @@ UltraCanvasUIElement
 - **Color legend** with custom entries
 - **Hover and click** callbacks for nodes and edges, with tooltips
 - **Connected-edge highlight**: hovering/selecting a node also brightens every arc touching it
+- **Focus mode**: in the same interaction, every non-involved node, arc, and label fades to a user-defined `dimmedColor` (works on light or dark backgrounds); click empty space to restore the full diagram
 - **Apex value labels**: render each arc's weight as a raw value or as a percentage of total at the zenit
 
 ## Data Structures
@@ -170,6 +171,12 @@ struct ArcDiagramStyle {
 
     // Highlight all arcs touching the hovered/selected node
     bool highlightConnectedEdges = true;
+
+    // Focus mode: gray out non-involved nodes/arcs/labels when one is active.
+    // dimmedColor is user-defined so it can be tuned for light/dark backgrounds.
+    bool  dimUnconnected       = true;
+    Color dimmedColor          = Color(200, 200, 200, 140);
+    bool  emphasizeActiveLabel = true;   // bold weight on active node label
 
     // Auto value/percentage label drawn at arc apex (zenit)
     ArcValueDisplay arcValueDisplay  = ArcValueDisplay::None;

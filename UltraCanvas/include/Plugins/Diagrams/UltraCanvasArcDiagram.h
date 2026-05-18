@@ -7,7 +7,8 @@
 //          P5 axis arrow, P6 mid-arc arrowhead, P7 self-loops, P8 parallel bundles,
 //          P9 span z-order, P10 color legend,
 //          P11 connected-edge highlight on node hover/select,
-//          P12 auto value/percentage label at arc apex (zenit)
+//          P12 auto value/percentage label at arc apex (zenit),
+//          P13 focus mode — dim non-involved nodes/arcs/labels to a user-defined gray
 
 #pragma once
 
@@ -177,6 +178,11 @@ namespace UltraCanvas {
 
         // P11 — highlight edges connected to hovered/selected node
         bool    highlightConnectedEdges = true; ///< Brighten arcs touching the active node
+
+        // P13 — focus mode: gray out everything not involved with the active node
+        bool    dimUnconnected      = true;     ///< When a node is active, fade non-involved geometry
+        Color   dimmedColor         = Color(200, 200, 200, 140);    ///< Replacement color for dimmed arcs/nodes/labels
+        bool    emphasizeActiveLabel = true;    ///< Draw active node's label in bold weight
 
         // P12 — auto value/percentage label drawn at arc apex (zenit)
         ArcValueDisplay arcValueDisplay  = ArcValueDisplay::None;
@@ -367,11 +373,13 @@ namespace UltraCanvas {
                         int srcIdx, int tgtIdx,
                         bool hovered, bool selected,
                         bool connectedHighlight,                ///< P11
+                        bool dimmed,                            ///< P13 — render in dimmedColor
                         int bundleOffset = 0) const;           ///< P8
         void    DrawSelfLoop(IRenderContext* ctx,
                              const ArcEdge& edge, int nodeIdx,
                              bool hovered, bool selected,
-                             bool connectedHighlight) const;   ///< P7 + P11
+                             bool connectedHighlight,
+                             bool dimmed) const;               ///< P7 + P11 + P13
         void    DrawArrowhead(IRenderContext* ctx,
                               float tipX, float tipY,
                               float angle, const Color& col) const;
@@ -390,6 +398,12 @@ namespace UltraCanvas {
 
         // ===== PRIVATE DATA =====
         std::vector<int>    degreeCache;    ///< P1 — edge count per node index
+
+        // P13 — per-render focus state, refreshed each Render() call
+        mutable int                 activeForDraw = -1;
+        mutable std::vector<bool>   connectedNodeMask;
+
+        void    RefreshFocusState() const;  ///< P13 — build activeForDraw + connectedNodeMask
     };
 
 // ===== FACTORY FUNCTION =====

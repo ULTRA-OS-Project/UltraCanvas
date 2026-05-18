@@ -231,7 +231,7 @@ namespace UltraCanvas {
         auto tab = std::make_shared<UltraCanvasContainer>("ArcDirTab", 0, 0, 1020, 700);
 
         auto desc = std::make_shared<UltraCanvasLabel>("ArcDirDesc", 10, 8, 900, 22);
-        desc->SetText("Directed flow: arc apex shows each link's share of total flow as a percentage. Hover a node — its arcs brighten.");
+        desc->SetText("Directed flow: hover a node to focus its connections (others fade to gray). Click empty space to reset. Apex shows each link's share of total flow.");
         desc->SetFontSize(11);
         tab->AddChild(desc);
 
@@ -306,6 +306,11 @@ namespace UltraCanvas {
         s.arcValueLabelOffset = 8.0f;
         // P11 — highlight arcs connected to the hovered/selected node (default on)
         s.highlightConnectedEdges = true;
+        // P13 — focus mode: dim everything not involved with the active node.
+        // Picked a neutral mid-gray so it reads on both light and dark backgrounds.
+        s.dimUnconnected      = true;
+        s.dimmedColor         = Color(190, 190, 195, 110);
+        s.emphasizeActiveLabel = true;
         diagram->SetStyle(s);
 
         diagram->onEdgeClick = [statusLabel](int, const ArcEdge& e) {
