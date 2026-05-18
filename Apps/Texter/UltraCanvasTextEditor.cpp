@@ -35,7 +35,7 @@
 #include "UltraCanvasUtilsUtf8.h"
 
 namespace UltraCanvas {
-    std::string UltraCanvasTextEditor::version = "0.1.32";
+    std::string UltraCanvasTextEditor::version = "0.1.33";
     
 namespace {
     std::string GetAppDataDirectory() {
@@ -522,10 +522,14 @@ namespace {
                                                 debugOutput << "Recent folder no longer exists: " << folderCopy << std::endl;
                                                 return;
                                             }
-                                            UltraCanvasDialogManager::ShowOpenMultipleFilesDialog(
-                                                "Open File(s)",
-                                                config.fileFilters,
-                                                folderCopy,
+                                            FileDialogOptions opts;
+                                            opts.title = "Open File(s)";
+                                            opts.filters = config.fileFilters;
+                                            opts.initialDirectory = folderCopy;
+                                            opts.parentWindow = GetWindow();
+
+                                            UltraCanvasFileLoader::OpenMultipleFilesDialog(
+                                                opts,
                                                 [this](DialogResult result, const std::vector<std::string>& filePaths) {
                                                     if (result == DialogResult::OK) {
                                                         for (const auto& filePath : filePaths) {
@@ -534,8 +538,7 @@ namespace {
                                                             }
                                                         }
                                                     }
-                                                },
-                                                GetWindow()
+                                                }
                                             );
                                         });
                                         entry.tooltip = folder;

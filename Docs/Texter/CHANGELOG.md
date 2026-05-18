@@ -1,3 +1,6 @@
+#### 2026-05-18 *0.1.33*
+- Added an **"Open recent folder"** submenu placed directly under **File → Open...**
+
 #### 2026-05-13 *0.1.32*
 - Fix focus problem with Texter (new tab/close active tab)
 - Fix ordered list content offset in MD-mode in TextArea
