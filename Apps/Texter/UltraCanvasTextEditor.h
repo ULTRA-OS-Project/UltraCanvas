@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.h
 // Complete text editor application with multi-file tabs, autosave, and enhanced features
-// Version: 2.1.2
-// Last Modified: 2026-06-07
+// Version: 2.1.1
+// Last Modified: 2026-05-01
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -20,6 +20,7 @@
 #include "UltraCanvasTextEditorConfig.h"
 #include "UltraCanvasEncoding.h"
 #include "UltraCanvasSearchBar.h"
+#include "Plugins/Documents/UltraCanvasPDFView.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -92,6 +93,7 @@ namespace UltraCanvas {
                 FileFilter("Web Files", {"html", "htm", "css", "xml", "json"}),
                 FileFilter("Data / Config", {"json", "jsonc", "json5", "geojson", "webmanifest", "xml", "xsd", "xsl", "xslt", "yaml", "yml", "toml", "ini", "cfg", "pom", "rss", "atom", "kml"}),
                 FileFilter("Vector Graphics (Text)", std::vector<std::string>{"svg", "svgz"}),
+                FileFilter("PDF Documents", std::vector<std::string>{"pdf"}),
                 FileFilter("Script Files", {"sh", "bash", "bat", "cmd", "ps1"})
         };
 
@@ -102,6 +104,11 @@ namespace UltraCanvas {
 /**
  * @brief Data structure for each open file/document
  */
+    enum class DocumentKind {
+        Text,   // Backed by textArea (normal editor flow)
+        Pdf,    // Backed by pdfView (read-only display + page ops + save)
+    };
+
     struct DocumentTab {
         int documentId;                    // Stable unique ID (survives index shifts)
         std::string filePath;              // Full file path (empty for new/unsaved files)
@@ -112,6 +119,12 @@ namespace UltraCanvas {
         // at its left. searchBar/markdownToolbar are shared singletons re-parented on tab switch.
         std::shared_ptr<UltraCanvasContainer> contentBox;
         std::shared_ptr<UltraCanvasContainer> editorArea;
+        // For Pdf documents the tab swaps in this widget in place of textArea
+        // via tabContainer->SetTabContent. textArea is left allocated but
+        // detached from the tab so the rest of the editor's null-checked
+        // textArea accesses still work without changes.
+        std::shared_ptr<UltraCanvas::UltraCanvasPDFView> pdfView;
+        DocumentKind kind = DocumentKind::Text;
         std::string language;              // Syntax highlighting language
         bool isSaved;                      // Has unsaved changes
         bool isModified;                   // Has unsaved changes
@@ -135,6 +148,8 @@ namespace UltraCanvas {
                 , lastSaveTime(std::chrono::steady_clock::now())
                 , lastModifiedTime(std::chrono::steady_clock::now())
         {}
+
+        bool IsPdf() const { return kind == DocumentKind::Pdf; }
     };
 
 /**
@@ -210,7 +225,6 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasToolbar> toolbar;
         std::shared_ptr<UltraCanvasToolbar> markdownToolbar;
         std::shared_ptr<UltraCanvasTabbedContainer> tabContainer;
-        std::shared_ptr<UltraCanvasContainer> statusBarContainer;  // flex-row wrapper for status controls
         std::shared_ptr<UltraCanvasLabel> statusLabel;
         std::shared_ptr<UltraCanvasDropdown> languageDropdown;
         std::shared_ptr<UltraCanvasDropdown> encodingDropdown;
@@ -318,6 +332,9 @@ namespace UltraCanvas {
 
         // ===== FILE OPERATIONS =====
         bool LoadFileIntoDocument(int docIndex, const std::string& filePath);
+        // Convert the tab at docIndex into a PDF tab and load the file.
+        // Swaps in a UltraCanvasPDFView via tabContainer->SetTabContent.
+        bool LoadPDFIntoDocument(int docIndex, const std::string& filePath);
         bool SaveDocument(int docIndex);
         bool SaveDocumentAs(int docIndex, const std::string& filePath);
         bool IsBinaryFile(const std::vector<uint8_t>& rawBytes, const std::string& extension) const;
@@ -391,10 +408,6 @@ namespace UltraCanvas {
 
         // Layout
         void UpdateChildLayout();
-        // Builds the per-tab flex content (contentBox > editorArea > textArea) for a document.
-        void BuildDocumentContentBox(const std::shared_ptr<DocumentTab>& doc);
-        // Re-parents the shared searchBar + markdownToolbar into the active tab's content boxes.
-        void AttachSharedBarsToActiveTab();
 
         // ===== ASYNC MATCH COUNTING =====
         std::thread              matchCountThread;
@@ -439,11 +452,11 @@ namespace UltraCanvas {
         void PromptCrashRecovery();
 
         // ===== RENDERING =====
-        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;
-        void SetBounds(const Rect2Df& b) override;
+        void SetBounds(const Rect2Di& b) override;
         // ===== FILE OPERATIONS (PUBLIC API) =====
 
         /**
@@ -506,11 +519,6 @@ namespace UltraCanvas {
          * line has no usable content; callers treat that as "no suggestion".
          */
         std::string SuggestFileNameFromFirstLine(const std::string& firstLine) const;
-
-        // Re-derive the auto-proposed display name of an unsaved tab from the first
-        // line of its current content and refresh the tab + window title. No-op for
-        // saved documents. Shared by the live-rename (onTextChanged) and recovery paths.
-        void RefreshAutoDisplayName(int docIndex);
 
 
         void PerformAutosave(bool force = false);
