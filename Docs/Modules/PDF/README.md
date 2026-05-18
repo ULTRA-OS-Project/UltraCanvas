@@ -1,12 +1,24 @@
 # PDF Support for UltraCanvas — Investigation & Design
 
-**Status:** Research / Proposal
+**Status:** Milestone 1 backend landed (read + write); widget & Texter wiring TBD
 **Branch:** `claude/pdf-support-ultracanvas-qSJzr`
 **Last updated:** 2026-05-18
 
 This document is the result of investigating what it would take to add
 full-fledged PDF support to UltraCanvas — specifically a Text-plugin-style
 component for **UltraTexter** and a reusable PDF engine for the framework.
+
+## Status snapshot
+
+| Component | State |
+|---|---|
+| `IPDFDocument` interface (read/write/page-ops/annotations) | ✅ landed in `include/Plugins/Documents/UltraCanvasPDF.h` |
+| MuPDF backend | ✅ landed in `Plugins/Documents/UltraCanvasPDF_MuPDF.cpp`, compile-verified + run-verified against a real PDF |
+| Dead stub (`PDF.h`, `PDF.cpp`, `Apps/PDFExampleApp.cpp`) | ✅ removed |
+| CMake gate `ULTRACANVAS_PLUGIN_PDF` | ✅ rewired around MuPDF (`find_library`) |
+| `UltraCanvasPDFView` widget | ⏳ next commit |
+| UltraTexter integration (`pdf` out of binary list + PDF tab routing) | ⏳ next commit |
+| Content-text rewrite (M3) | ⏳ |
 
 The target feature set is:
 
