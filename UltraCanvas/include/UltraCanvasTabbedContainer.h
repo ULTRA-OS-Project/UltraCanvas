@@ -276,6 +276,11 @@ namespace UltraCanvas {
         int AddTab(const std::string& title, std::shared_ptr<UltraCanvasUIElement> content = nullptr);
         void RemoveTab(int index);
         void SetActiveTab(int index);
+        // Swap the UI element shown for an existing tab. Used when the tab's
+        // content type changes (e.g. plain TextArea swapped for a PDF view
+        // when the loaded file turns out to be a PDF).
+        void SetTabContent(int index, std::shared_ptr<UltraCanvasUIElement> content);
+        std::shared_ptr<UltraCanvasUIElement> GetTabContent(int index) const;
 
         // ===== TAB ICON AND BADGE METHODS =====
         void SetTabIcon(int index, const std::string& iconPath);

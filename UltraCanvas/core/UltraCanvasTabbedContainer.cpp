@@ -152,6 +152,27 @@ namespace UltraCanvas {
         UpdateOverflowDropdown();
     }
 
+    void UltraCanvasTabbedContainer::SetTabContent(int index,
+                                                   std::shared_ptr<UltraCanvasUIElement> content) {
+        if (index < 0 || index >= (int)tabs.size()) return;
+        if (tabs[index]->content == content) return;
+        if (tabs[index]->content) {
+            RemoveChild(tabs[index]->content);
+        }
+        tabs[index]->content = content;
+        if (content) {
+            AddChild(content);
+            content->SetVisible(activeTabIndex == index);
+        }
+        InvalidateTabbar();
+    }
+
+    std::shared_ptr<UltraCanvasUIElement>
+    UltraCanvasTabbedContainer::GetTabContent(int index) const {
+        if (index < 0 || index >= (int)tabs.size()) return nullptr;
+        return tabs[index]->content;
+    }
+
     void UltraCanvasTabbedContainer::SetActiveTab(int index) {
         if (index < 0 || index >= (int)tabs.size() || !tabs[index]->enabled) return;
 
