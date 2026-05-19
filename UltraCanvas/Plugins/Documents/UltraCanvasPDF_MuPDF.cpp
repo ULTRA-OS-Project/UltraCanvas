@@ -114,6 +114,11 @@ public:
     bool AddTextAnnotation(int pageNumber, const Rect2Df& at,
                            const std::string& text) override;
     bool RedactRect(int pageNumber, const Rect2Df& area) override;
+    bool ReplaceText(const PDFTextRun& target,
+                     const std::string& newText) override;
+    bool ApplyPendingRedactions(int pageNumber) override;
+    std::vector<PDFAnnotation> ListAnnotations(int pageNumber) override;
+    bool DeleteAnnotation(int pageNumber, int indexOnPage) override;
 
     // Identity
     std::string GetEngineName()    const override { return "MuPDF"; }
@@ -883,6 +888,144 @@ bool MuPDFDocument::RedactRect(int pageNumber, const Rect2Df& area) {
     }
     if (annot) pdf_drop_annot(ctx_, annot);
     if (page)  fz_drop_page(ctx_, &page->super);
+    if (ok) dirty_ = true;
+    return ok;
+}
+
+bool MuPDFDocument::ReplaceText(const PDFTextRun& target,
+                                const std::string& newText) {
+    if (!ctx_ || !pdoc_) return false;
+    std::lock_guard<std::mutex> lock(mu_);
+    const int total = fz_count_pages(ctx_, doc_);
+    if (target.pageNumber < 1 || target.pageNumber > total) return false;
+
+    pdf_page*  page    = nullptr;
+    pdf_annot* redact  = nullptr;
+    pdf_annot* freetext = nullptr;
+    fz_var(page);
+    fz_var(redact);
+    fz_var(freetext);
+    bool ok = true;
+    fz_try(ctx_) {
+        page = pdf_load_page(ctx_, pdoc_, target.pageNumber - 1);
+        const fz_rect r = FromRect(target.bbox);
+
+        // 1. Redact the bbox. black_boxes=0 → no visible black rectangle.
+        //    image_method=NONE → don't touch images in the bbox.
+        redact = pdf_create_annot(ctx_, page, PDF_ANNOT_REDACT);
+        pdf_set_annot_rect(ctx_, redact, r);
+        pdf_update_annot(ctx_, redact);
+
+        pdf_redact_options ropts = {};
+        ropts.black_boxes  = 0;
+        ropts.image_method = PDF_REDACT_IMAGE_NONE;
+        pdf_apply_redaction(ctx_, redact, &ropts);
+        // pdf_apply_redaction removes the annot itself on success — we must
+        // not pdf_drop_annot it afterwards.
+        redact = nullptr;
+
+        // 2. Overlay the new text as a free-text annotation at the same rect.
+        if (!newText.empty()) {
+            freetext = pdf_create_annot(ctx_, page, PDF_ANNOT_FREE_TEXT);
+            pdf_set_annot_rect(ctx_, freetext, r);
+            pdf_set_annot_contents(ctx_, freetext, newText.c_str());
+            pdf_update_annot(ctx_, freetext);
+        }
+    } fz_catch(ctx_) {
+        ok = false;
+    }
+    if (freetext) pdf_drop_annot(ctx_, freetext);
+    if (redact)   pdf_drop_annot(ctx_, redact);
+    if (page)     fz_drop_page(ctx_, &page->super);
+    if (ok) dirty_ = true;
+    return ok;
+}
+
+bool MuPDFDocument::ApplyPendingRedactions(int pageNumber) {
+    if (!ctx_ || !pdoc_) return false;
+    std::lock_guard<std::mutex> lock(mu_);
+    const int total = fz_count_pages(ctx_, doc_);
+    if (pageNumber < 1 || pageNumber > total) return false;
+
+    pdf_page* page = nullptr;
+    fz_var(page);
+    bool ok = true;
+    fz_try(ctx_) {
+        page = pdf_load_page(ctx_, pdoc_, pageNumber - 1);
+        pdf_redact_options ropts = {};
+        ropts.black_boxes  = 0;
+        ropts.image_method = PDF_REDACT_IMAGE_NONE;
+        // Returns 1 if any redactions were applied.
+        pdf_redact_page(ctx_, pdoc_, page, &ropts);
+    } fz_catch(ctx_) {
+        ok = false;
+    }
+    if (page) fz_drop_page(ctx_, &page->super);
+    if (ok) dirty_ = true;
+    return ok;
+}
+
+std::vector<PDFAnnotation> MuPDFDocument::ListAnnotations(int pageNumber) {
+    std::vector<PDFAnnotation> out;
+    if (!ctx_ || !pdoc_) return out;
+    std::lock_guard<std::mutex> lock(mu_);
+    const int total = fz_count_pages(ctx_, doc_);
+    if (pageNumber < 1 || pageNumber > total) return out;
+
+    pdf_page* page = nullptr;
+    fz_var(page);
+    fz_try(ctx_) {
+        page = pdf_load_page(ctx_, pdoc_, pageNumber - 1);
+        int idx = 0;
+        for (pdf_annot* a = pdf_first_annot(ctx_, page); a;
+             a = pdf_next_annot(ctx_, a)) {
+            PDFAnnotation rec;
+            rec.pageNumber  = pageNumber;
+            rec.indexOnPage = idx++;
+            rec.bbox        = ToRect(pdf_annot_rect(ctx_, a));
+            const char* typeStr = pdf_string_from_annot_type(
+                ctx_, pdf_annot_type(ctx_, a));
+            const char* contents = pdf_annot_contents(ctx_, a);
+            const char* author   = pdf_annot_author(ctx_, a);
+            rec.type     = typeStr ? typeStr : "Unknown";
+            rec.contents = contents ? contents : "";
+            rec.author   = author ? author : "";
+            out.push_back(std::move(rec));
+        }
+    } fz_catch(ctx_) {
+        out.clear();
+    }
+    if (page) fz_drop_page(ctx_, &page->super);
+    return out;
+}
+
+bool MuPDFDocument::DeleteAnnotation(int pageNumber, int indexOnPage) {
+    if (!ctx_ || !pdoc_) return false;
+    std::lock_guard<std::mutex> lock(mu_);
+    const int total = fz_count_pages(ctx_, doc_);
+    if (pageNumber < 1 || pageNumber > total || indexOnPage < 0) return false;
+
+    pdf_page* page = nullptr;
+    fz_var(page);
+    bool ok = true;
+    fz_try(ctx_) {
+        page = pdf_load_page(ctx_, pdoc_, pageNumber - 1);
+        int idx = 0;
+        pdf_annot* target = nullptr;
+        for (pdf_annot* a = pdf_first_annot(ctx_, page); a;
+             a = pdf_next_annot(ctx_, a)) {
+            if (idx == indexOnPage) { target = a; break; }
+            ++idx;
+        }
+        if (target) {
+            pdf_delete_annot(ctx_, page, target);
+        } else {
+            ok = false;
+        }
+    } fz_catch(ctx_) {
+        ok = false;
+    }
+    if (page) fz_drop_page(ctx_, &page->super);
     if (ok) dirty_ = true;
     return ok;
 }

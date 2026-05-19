@@ -94,6 +94,15 @@ public:
     bool InsertBlankPageAt(int at, float widthPt, float heightPt);
     bool SaveAs(const std::string& path, const PDFSaveOptions& opts = {});
 
+    // ----- Content editing (M3) -----
+    // Replace the text under `bboxPt` on the current page with `newText`.
+    // bbox is in PDF user units (same coordinate space as PDFTextRun::bbox
+    // returned by GetDocument()->ExtractTextRuns / Search).
+    bool ReplaceTextAt(const Rect2Df& bboxPt, const std::string& newText);
+    bool ApplyPendingRedactions();   // applies on the current page
+    std::vector<PDFAnnotation> ListAnnotationsOnCurrentPage();
+    bool DeleteAnnotation(int indexOnCurrentPage);
+
     // ----- Callbacks -----
     std::function<void(int currentPage, int totalPages)> onPageChanged;
     std::function<void(int hitCount)>                    onSearchResults;
