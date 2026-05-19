@@ -96,6 +96,17 @@ struct PDFImageRef {
     std::string mimeType;     // "image/jpeg", "image/png", "image/x-raw"
 };
 
+// ===== ANNOTATIONS =====
+
+struct PDFAnnotation {
+    int     pageNumber = 0;
+    int     indexOnPage = 0;
+    Rect2Df bbox;
+    std::string type;         // "FreeText", "Redact", "Text", "Highlight", …
+    std::string contents;
+    std::string author;
+};
+
 // ===== SAVE OPTIONS =====
 
 struct PDFSaveOptions {
@@ -161,6 +172,22 @@ public:
     virtual bool AddTextAnnotation(int pageNumber, const Rect2Df& at,
                                    const std::string& text) = 0;
     virtual bool RedactRect(int pageNumber, const Rect2Df& area) = 0;
+
+    // High-level: remove the underlying text in `target.bbox` (via a redaction
+    // that is applied immediately) and overlay a free-text annotation showing
+    // `newText` at the same rect. Lossless w.r.t. the rest of the page.
+    // Note: the bbox is interpreted in PDF user units; the redaction wipes
+    // *any* content intersecting that rect, so callers should pass a tight
+    // bbox (typically from PDFTextRun::bbox returned by ExtractTextRuns).
+    virtual bool ReplaceText(const PDFTextRun& target,
+                             const std::string& newText) = 0;
+
+    // Burn all pending redaction annotations on a page into the page content.
+    virtual bool ApplyPendingRedactions(int pageNumber) = 0;
+
+    // Read / remove annotations (FreeText, Redact, Text, …).
+    virtual std::vector<PDFAnnotation> ListAnnotations(int pageNumber) = 0;
+    virtual bool DeleteAnnotation(int pageNumber, int indexOnPage) = 0;
 
     // ----- Engine identity -----
     virtual std::string GetEngineName()    const = 0;

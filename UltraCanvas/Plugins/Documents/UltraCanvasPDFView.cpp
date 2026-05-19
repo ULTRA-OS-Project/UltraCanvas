@@ -187,6 +187,39 @@ bool UltraCanvasPDFView::SaveAs(const std::string& path,
     return doc_->Save(path, opts);
 }
 
+bool UltraCanvasPDFView::ReplaceTextAt(const Rect2Df& bboxPt,
+                                       const std::string& newText) {
+    if (!doc_) return false;
+    PDFTextRun run;
+    run.pageNumber = currentPage_;
+    run.bbox       = bboxPt;
+    if (!doc_->ReplaceText(run, newText)) return false;
+    InvalidateCaches();
+    Repaint();
+    return true;
+}
+
+bool UltraCanvasPDFView::ApplyPendingRedactions() {
+    if (!doc_) return false;
+    if (!doc_->ApplyPendingRedactions(currentPage_)) return false;
+    InvalidateCaches();
+    Repaint();
+    return true;
+}
+
+std::vector<PDFAnnotation> UltraCanvasPDFView::ListAnnotationsOnCurrentPage() {
+    return doc_ ? doc_->ListAnnotations(currentPage_)
+                : std::vector<PDFAnnotation>{};
+}
+
+bool UltraCanvasPDFView::DeleteAnnotation(int indexOnCurrentPage) {
+    if (!doc_) return false;
+    if (!doc_->DeleteAnnotation(currentPage_, indexOnCurrentPage)) return false;
+    InvalidateCaches();
+    Repaint();
+    return true;
+}
+
 // ===== Geometry =====
 
 Rect2Di UltraCanvasPDFView::ThumbStripArea() const {

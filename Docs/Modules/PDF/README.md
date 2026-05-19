@@ -18,7 +18,7 @@ component for **UltraTexter** and a reusable PDF engine for the framework.
 | CMake gate `ULTRACANVAS_PLUGIN_PDF` | ✅ rewired around MuPDF (`find_library`) |
 | `UltraCanvasPDFView` widget | ✅ landed in `include/Plugins/Documents/UltraCanvasPDFView.h` + `Plugins/Documents/UltraCanvasPDFView.cpp` |
 | UltraTexter integration | ✅ landed: `pdf` no longer in binary list, `DocumentKind::Pdf`, `LoadPDFIntoDocument`, PDF-aware Save, tab content swap via new `UltraCanvasTabbedContainer::SetTabContent` |
-| Content-text rewrite (M3) | ⏳ |
+| Content-text rewrite (M3) | ✅ landed: `IPDFDocument::ReplaceText` (redact-and-overlay), `ApplyPendingRedactions`, `ListAnnotations`, `DeleteAnnotation`; widget passthrough `UltraCanvasPDFView::ReplaceTextAt` |
 
 The target feature set is:
 
