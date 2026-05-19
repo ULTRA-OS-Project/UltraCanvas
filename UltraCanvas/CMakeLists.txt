@@ -270,6 +270,12 @@ file(GLOB ULTRACANVAS_CHARTS_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/*.cpp
 )
 
+# Built-in barcode plugin (1D symbologies, pure C++20, no extra deps).
+file(GLOB ULTRACANVAS_BARCODE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Barcode/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Barcode/Encoders/*.cpp
+)
+
 set(ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/ImageCairo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/RenderContextCairo.cpp
@@ -320,6 +326,7 @@ set(ULTRACANVAS_ALL_SOURCES
     ${ULTRACANVAS_LIBSPECIFIC_SOURCES}
     ${ULTRACANVAS_TEXT_SOURCES}
     ${ULTRACANVAS_CHARTS_SOURCES}
+    ${ULTRACANVAS_BARCODE_SOURCES}
         #        dialogs/PixelFXExportDialog.cpp
 #        dialogs/PixelFXExportDialog.h
 )

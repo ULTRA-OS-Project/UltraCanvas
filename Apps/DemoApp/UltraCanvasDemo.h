@@ -297,6 +297,7 @@ namespace UltraCanvas {
 
         std::shared_ptr<UltraCanvasUIElement> CreateFileLoaderExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateMarkdownDocScreen(const std::string& filename);
+        std::shared_ptr<UltraCanvasUIElement> CreateBarcodeExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateQRCodeExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateGPIOExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateScannerSupportExamples();
