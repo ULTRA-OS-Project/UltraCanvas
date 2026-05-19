@@ -427,6 +427,16 @@ namespace UltraCanvas {
                 .AddVariant("tabs", "Side Tabs")
                 .AddVariant("tabs", "Closable Tabs");
 
+        basicBuilder.AddItem("splitpane", "Split Pane",
+                             "Resizable horizontal/vertical pane splitter (VSCode-style)",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateSplitPaneExamples(); },
+                             "Apps/DemoApp/UltraCanvasSplitPaneExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasSplitPane.md")
+                .AddVariant("splitpane", "Horizontal Split")
+                .AddVariant("splitpane", "Vertical Split")
+                .AddVariant("splitpane", "Nested Splits");
+
         basicBuilder.AddItem("layouts", "Layout System",
                              "Box, Grid, and Flex layout examples",
                              ImplementationStatus::FullyImplemented,

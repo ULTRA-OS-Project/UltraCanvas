@@ -415,6 +415,25 @@ namespace UltraCanvas {
             return nullptr;
         }
 
+        // pos arrives in parent coords; convert once for local-coord comparisons.
+        Point2Di localPos(pos.x - bounds.x, pos.y - bounds.y);
+
+        // If pos lies on this container's own visible scrollbar, claim it for the
+        // container so the click reaches HandleScrollbarEvents instead of falling
+        // through to a child rendered behind the scrollbar.
+        int localContentX = GetBorderLeftWidth() + padding.left;
+        int localContentY = GetBorderTopWidth() + padding.top;
+        auto sbLocalBounds = [&](UltraCanvasScrollbar* sb) {
+            auto b = sb->GetBounds();
+            return Rect2Di(b.x + localContentX, b.y + localContentY, b.width, b.height);
+        };
+        if (verticalScrollbar->IsVisible() && sbLocalBounds(verticalScrollbar.get()).Contains(localPos)) {
+            return this;
+        }
+        if (horizontalScrollbar->IsVisible() && sbLocalBounds(horizontalScrollbar.get()).Contains(localPos)) {
+            return this;
+        }
+
         auto contentRect = GetContentRect();
 
         Point2Di contentPoint = Point2Di(
@@ -433,22 +452,25 @@ namespace UltraCanvas {
 
             // CRITICAL FIX: Check if content-relative coordinates are within child bounds
             if (childBounds.Contains(contentPoint)) {
-                // Check if child intersects with visible content area for clipping
+                // The *click point* must fall inside the visible (scrollbar-free)
+                // portion of the child — not merely intersect it. Otherwise clicks
+                // in the scrollbar-overlapped strip would be claimed by the child.
+                // visibleChildBounds is in local coords, so compare with localPos.
                 Rect2Di visibleChildBounds = GetVisibleChildBounds(childBounds);
-
-                // Only return child if it's actually visible (not clipped)
-                if (visibleChildBounds.IsValid()) {
-                    // Recursively check child containers with corrected coordinates
-                    auto childContainer = dynamic_cast<UltraCanvasContainer*>(child);
-                    if (childContainer) {
-                        // Pass child-relative coordinates to child container
-                        UltraCanvasUIElement* hitElement = childContainer->FindElementAtPoint(contentPoint);
-                        if (hitElement) {
-                            return hitElement;
-                        }
-                    }
-                    return child;
+                if (!visibleChildBounds.IsValid() || !visibleChildBounds.Contains(localPos)) {
+                    continue;
                 }
+
+                // Recursively check child containers with corrected coordinates
+                auto childContainer = dynamic_cast<UltraCanvasContainer*>(child);
+                if (childContainer) {
+                    // Pass child-relative coordinates to child container
+                    UltraCanvasUIElement* hitElement = childContainer->FindElementAtPoint(contentPoint);
+                    if (hitElement) {
+                        return hitElement;
+                    }
+                }
+                return child;
             }
         }
 

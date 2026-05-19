@@ -1,3 +1,7 @@
+#### 2026-05-19 *0.1.38*
+- Implemented the SplitPane element
+- Fix bug when scrollbar of outer container overlap with inner container's elements or scrollbar (mouse events incorrectly goes to inner container instead of outer container's scrollbar)
+
 #### 2026-05-18 *0.1.37*
 - Arc diagram improvement
 - Change layout of "Bitmap elements" screen in the Demo app
