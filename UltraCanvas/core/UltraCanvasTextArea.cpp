@@ -1,7 +1,7 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.5.1
-// Last Modified: 2026-05-01
+// Version: 3.5.2
+// Last Modified: 2026-05-20
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
@@ -1332,12 +1332,8 @@ namespace UltraCanvas {
             return true;
         }
 
-        if (isReadOnly) {
-            return true;
-        } else {
-            if (!IsFocused()) {
-                SetFocus(true);
-            }
+        if (!IsFocused()) {
+            SetFocus(true);
         }
 
         // --- Click counting for single / double / triple click ---
@@ -3096,7 +3092,8 @@ namespace UltraCanvas {
             }
         }
 
-        if (cursorPosition.lineIndex >= 0) {
+        if (cursorPosition.lineIndex >= 0 &&
+            !(isReadOnly && editingMode == TextAreaEditingMode::MarkdownHybrid)) {
             currentLine = MakePlainLineLayout(ctx, cursorPosition.lineIndex);
             currentLine->logicalLineNumber = lineLayouts[cursorPosition.lineIndex]->logicalLineNumber;
         } else {
@@ -3117,7 +3114,7 @@ namespace UltraCanvas {
             if (!lineLayouts[i]) continue;
 
             lineLayouts[i]->bounds.y = prevLineBottomPos;
-            if (cursorPosition.lineIndex == i) {
+            if (currentLine && cursorPosition.lineIndex == i) {
                 currentLine->bounds.y = prevLineBottomPos;
                 prevLineBottomPos += currentLine->bounds.height;
             } else {

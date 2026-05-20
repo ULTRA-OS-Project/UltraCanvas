@@ -1,3 +1,6 @@
+#### 2026-05-20 *0.1.39*
+- Show cursor and allow selection in the TextArea in read-only mode
+
 #### 2026-05-19 *0.1.38*
 - Implemented the SplitPane element
 - Fix bug when scrollbar of outer container overlap with inner container's elements or scrollbar (mouse events incorrectly goes to inner container instead of outer container's scrollbar)

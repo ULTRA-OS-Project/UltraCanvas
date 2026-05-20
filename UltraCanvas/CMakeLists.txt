@@ -8,7 +8,7 @@ cmake_minimum_required(VERSION 3.16)
 include(FetchContent)
 
 # ===== LIBRARY DEFINITION =====
-set(ULTRACANVAS_VERSION "0.1.38")
+set(ULTRACANVAS_VERSION "0.1.39")
 set(ULTRACANVAS_LIB_NAME "UltraCanvas")
 
 message(STATUS "")
@@ -390,7 +390,6 @@ target_link_libraries(${ULTRACANVAS_LIB_NAME}
         ${LIBVIPS_LIBRARIES}
         ${GLIB_LIBRARIES}
         ${TINYXML2_LIBRARIES}
-        ${GTK3_INCLUDE_DIRS}
 )
 
 # Platform-specific libraries

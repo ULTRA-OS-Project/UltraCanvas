@@ -7,7 +7,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(UltraCanvasDemoApp
-    VERSION 0.1.38
+    VERSION 0.1.39
     DESCRIPTION "UltraCanvas Framework Demo Application"
     LANGUAGES CXX
 )
@@ -331,7 +331,6 @@ if (BUILD_TEXTER_APP)
             Apps/Texter/UltraCanvasEncoding.cpp
             Apps/Texter/main.cpp
             Apps/Texter/UltraCanvasSearchBar.cpp
-            Apps/Texter/UltraCanvasSearchBar.h
     )
 
     # Include directories
