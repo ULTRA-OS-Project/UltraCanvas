@@ -558,7 +558,7 @@ namespace UltraCanvas {
             labelLayout->SetWrap(TextWrap::WrapNone);
             labelLayout->SetEllipsize(item.ellipsize);
             labelLayout->SetExplicitWidth(labelMaxWidth);
-            ctx->SetCurrentPaint(textColor);
+            ctx->SetTextPaint(textColor);
             ctx->DrawTextLayout(*labelLayout, Point2Di(currentX, textY));
         }
 
