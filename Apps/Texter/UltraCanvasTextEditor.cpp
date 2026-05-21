@@ -2110,8 +2110,6 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                     // Full-filename match wins over extension (e.g. pom.xml -> POM,
                     // manifest.json -> WebManifest). Falls through to extension otherwise.
                     doc->textArea->SetHighlightSyntax(true);
-                } else if (doc->textArea->SetProgrammingLanguageByExtension(ext)) {
-                    doc->textArea->SetHighlightSyntax(true);
                 } else {
                     doc->textArea->SetHighlightSyntax(false);
                 }

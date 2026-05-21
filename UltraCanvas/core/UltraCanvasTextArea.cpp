@@ -15,6 +15,7 @@
 #include <sstream>
 #include <cmath>
 #include <cstring>
+#include <filesystem>
 
 namespace UltraCanvas {
 // Constructor
@@ -2320,6 +2321,14 @@ namespace UltraCanvas {
         if (result && style.highlightSyntax) {
             InvalidateAllLineLayouts();
             RequestRedraw();
+        }
+        if (!result) {
+            std::filesystem::path p(filename);
+            std::string ext = p.extension().string();
+            if (!ext.empty() && ext[0] == '.') {
+                ext = ext.substr(1);
+            }
+            result = SetProgrammingLanguageByExtension(ext);
         }
         return result;
     }
