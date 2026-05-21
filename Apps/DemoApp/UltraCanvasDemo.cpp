@@ -1062,9 +1062,9 @@ namespace UltraCanvas {
                                [this]() { return CreatePartiallyImplementedExamples("## Bar code\n"
                                                                                     "Not ready yet"); });
 
-        toolsBuilder.AddItem("ocr", "OCR", "OCR",
-                             ImplementationStatus::NotImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples(""); });
+        toolsBuilder.AddItem("ocr", "OCR", "Optical Character Recognition",
+                             ImplementationStatus::PartiallyImplemented,
+                             [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/OCR/README.md")); });
 
         toolsBuilder.AddItem("vectorizer", "Vectorizer", "Vectorizer",
                              ImplementationStatus::NotImplemented,

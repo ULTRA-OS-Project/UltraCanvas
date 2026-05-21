@@ -50,6 +50,7 @@ option(ULTRACANVAS_PLUGIN_CDR "Build CDR plugin (requires libcdr)" ON)
 option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" ON)
 option(ULTRACANVAS_PLUGIN_VECTOR "Build Vector plugin" OFF)
 option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin (requires poppler)" OFF)
+option(ULTRACANVAS_PLUGIN_OCR "Build OCR plugin (requires tesseract + leptonica)" OFF)
 
 include(FetchContent)
 include(cmake/UltraCanvasAppIcon.cmake)
