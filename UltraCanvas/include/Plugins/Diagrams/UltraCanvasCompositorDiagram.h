@@ -92,13 +92,15 @@ namespace UltraCanvas {
 
 // Built-in socket data types. Apps can extend with Custom + a string tag.
 // The numeric values are stable for serialization.
+// Note: enum entries avoid the names `Bool` and `None` because X11 headers
+// (pulled in transitively via cairo/pango) #define them as macros.
 enum class SocketDataType {
     Any        = 0,   // Wildcard - connects to anything
     Image      = 1,   // Raster image / texture
     Color      = 2,   // RGBA color
     Vector     = 3,   // 2D/3D/4D vector
     Scalar     = 4,   // Float / int
-    Bool       = 5,
+    Boolean    = 5,
     String     = 6,
     Geometry   = 7,   // Mesh / curve
     Shader     = 8,   // Compiled shader fragment
@@ -110,7 +112,7 @@ enum class SocketDataType {
 // Per-row widget hint. The diagram renders a small inline control of the
 // chosen kind inside the node body and routes mouse events to it.
 enum class ParamWidgetKind {
-    None,          // Just a label, no editable control
+    NoWidget,      // Just a label, no editable control
     Dropdown,      // Combo box (choices from ParamSpec::choices)
     NumberInput,   // Numeric text field (min/max/step from ParamSpec)
     Checkbox,      // Boolean toggle
@@ -122,7 +124,7 @@ enum class ParamWidgetKind {
 
 // Tag for what a ParamValue currently holds. Set by the template's ParamSpec.
 enum class ParamValueKind {
-    None,
+    NoValue,
     Number,
     Boolean,
     Text,
@@ -170,8 +172,8 @@ struct CompositorParamSpec {
     std::string inputCustomTag;
 
     // Widget on the right side of the row.
-    ParamWidgetKind widget = ParamWidgetKind::None;
-    ParamValueKind valueKind = ParamValueKind::None;
+    ParamWidgetKind widget = ParamWidgetKind::NoWidget;
+    ParamValueKind valueKind = ParamValueKind::NoValue;
 
     // Constraints (interpretation depends on widget):
     //   NumberInput / Slider: numMin/numMax/numStep
@@ -193,7 +195,7 @@ struct CompositorParamSpec {
 // Runtime value for one row on one node. Tagged flat struct (matches the
 // project's existing style; no std::variant).
 struct ParamValue {
-    ParamValueKind kind = ParamValueKind::None;
+    ParamValueKind kind = ParamValueKind::NoValue;
 
     double  number = 0.0;
     bool    boolean = false;
@@ -574,6 +576,14 @@ private:
     Point2Df GetSocketWorldPosition(const CompositorNode& node,
                                      const CompositorNodeTemplate& tmpl,
                                      bool isOutput, int socketIndex) const;
+    // Resolves a socket id (which may live on outputs[], inputs[], or as a
+    // param row with hasInputSocket=true) to a world-space position. Returns
+    // false if the id can't be found on the template.
+    bool ResolveSocketWorldPosition(const CompositorNode& node,
+                                     const CompositorNodeTemplate& tmpl,
+                                     const std::string& socketId,
+                                     bool& outIsOutput,
+                                     Point2Df& outPos) const;
 
     // =========================================================================
     // HIT TESTING
