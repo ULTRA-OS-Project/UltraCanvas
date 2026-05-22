@@ -1136,7 +1136,7 @@ namespace UltraCanvas {
         context->SetFillPaint(style.backgroundColor);
         context->FillRectangle(bounds);
 
-        if (highlightCurrentLine && IsFocused() && currentLine) {
+        if (highlightCurrentLine && currentLine) {
             int highlightX = style.showLineNumbers ? bounds.x + computedLineNumbersWidth : bounds.x;
             int highlightW = bounds.width - (style.showLineNumbers ? computedLineNumbersWidth : 0);
             int highlightY = visibleTextArea.y + currentLine->bounds.y - verticalScrollOffset;
