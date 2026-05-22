@@ -4,9 +4,30 @@
 // widgets + optional preview), as opposed to UltraCanvasNodeDiagram's
 // opaque-shape model used for network/graph visualization.
 //
-// Version: 0.3.0
+// Version: 0.4.0
 // Last Modified: 2026-05-22
 // Author: UltraCanvas Framework
+//
+// CHANGELOG 0.4.0 (subgraphs / node groups - React Flow model):
+//  - NEW: CompositorNode::parentId. Children's x/y are RELATIVE to their
+//         parent's world top-left. Cycles are rejected.
+//  - NEW: CompositorNodeTemplate::isGroup (+ groupPadding, groupMinWidth,
+//         groupMinHeight). Group nodes auto-fit their bounds to enclose
+//         direct children; renderer skips param/preview drawing and uses
+//         a more transparent body.
+//  - NEW: SetNodeParent / GetNodeParent / GetChildrenOf / GetRootNodeIds /
+//         GetNodeWorldPos. SetNodeParent preserves world position.
+//  - NEW: Group(groupId, templateId, nodeIds) / Ungroup(groupId) conveniences.
+//  - NEW: RegisterDefaultGroupTemplate() ships a usable group template
+//         out of the box.
+//  - NEW: onNodeParentChanged(nodeId, oldParent, newParent) callback.
+//  - Per React Flow convention, parent assignment on drop is NOT automatic;
+//    host wires it via onNodeDrag and calls SetNodeParent.
+//  - Render order is tree-traversal (parents-before-children) so children
+//    appear nested visually; hit-test order is the reverse so children win
+//    clicks over their parent's body.
+//  - Serialization writes parentId; Paste remaps parent ids and orphans
+//    children whose parent isn't part of the paste.
 //
 // CHANGELOG 0.3.0 (Tier 2 polish features):
 //  - NEW: Minimap overlay (CompositorMinimapConfig) - small floating
@@ -317,6 +338,19 @@ struct CompositorNodeTemplate {
     double minWidth = 120.0f;
     double maxWidth = 400.0f;
     // Height is derived from row count + preview + header.
+
+    // Subgraph / group support. When isGroup is true:
+    //   - Bounds auto-fit to enclose all direct child nodes (per groupPadding).
+    //   - The renderer skips param-row and preview drawing; only header + body
+    //     are drawn, with a more transparent body so children show through.
+    //   - Default sockets/inputs/outputs/params are still respected if declared,
+    //     so the template author can opt into "interface sockets" on the group
+    //     itself (advanced; React Flow doesn't do this but the framework
+    //     doesn't preclude it).
+    bool   isGroup = false;
+    double groupPadding   = 16.0;   // Outer padding around enclosed children
+    double groupMinWidth  = 200.0;  // Lower bound on the auto-fit width
+    double groupMinHeight = 120.0;  // Lower bound on the auto-fit height
 };
 
 // =============================================================================
@@ -331,7 +365,10 @@ struct CompositorNode {
     // template title "Image"). Empty = use template title.
     std::string titleOverride;
 
-    // Position (world coords, top-left of node bounds)
+    // Position. When parentId is empty this is world-space top-left.
+    // When parentId is non-empty this is RELATIVE to the parent's world-space
+    // top-left (matching React Flow's convention). World position is computed
+    // by walking the parent chain via GetNodeWorldPos.
     double x = 0.0;
     double y = 0.0;
     double width = 0.0;           // 0 = use template defaultWidth
@@ -340,6 +377,10 @@ struct CompositorNode {
     bool isSelected = false;
     bool isDragging = false;
     int zIndex = 0;
+
+    // Parent node id (subgraph membership). Empty = top-level (no parent).
+    // Cycles are rejected by SetNodeParent.
+    std::string parentId;
 
     // Per-row parameter values, keyed by ParamSpec::id. Missing entries
     // fall back to the template's default for that param.
@@ -706,6 +747,50 @@ public:
     std::vector<std::string> SearchTemplates(const std::string& query) const;
 
     // =========================================================================
+    // SUBGRAPHS / NODE GROUPS  (React Flow model)
+    // =========================================================================
+    // A subgraph is a regular node whose template has isGroup=true. Other
+    // nodes become its children by setting their parentId. Children are
+    // positioned RELATIVE to the parent; the parent's bounds auto-fit to
+    // enclose them.
+    //
+    // The framework does NOT automatically reparent on drop - matching React
+    // Flow, the host wires that itself by listening to onNodeDrag /
+    // onSelectionChange and calling SetNodeParent.
+
+    // Set or clear the parent of a node. Empty newParentId = make it a root
+    // node. Preserves the node's WORLD position by adjusting its relative
+    // position. Rejects (returns false) if the change would create a cycle.
+    bool SetNodeParent(const std::string& nodeId, const std::string& newParentId);
+
+    // Lookup helpers.
+    std::string GetNodeParent(const std::string& nodeId) const;
+    std::vector<std::string> GetChildrenOf(const std::string& nodeId) const;
+    std::vector<std::string> GetRootNodeIds() const;
+    Point2Df GetNodeWorldPos(const std::string& nodeId) const;
+
+    // Convenience: create a new group node and reparent the given nodes into
+    // it. The group is positioned to enclose all the given nodes plus padding.
+    // Returns the new group's id (the caller-supplied one, or generated if
+    // empty). Returns "" if templateId isn't registered or doesn't have
+    // isGroup=true.
+    std::string Group(const std::string& groupId,
+                      const std::string& groupTemplateId,
+                      const std::vector<std::string>& nodeIds);
+
+    // Convenience: remove the group node and promote its children to roots,
+    // preserving their world positions. The links of the children survive
+    // unchanged.
+    void Ungroup(const std::string& groupId);
+
+    // Convenience: registers a built-in "group" template (isGroup=true,
+    // dark translucent body, no inputs/outputs/params). Use templateId="group"
+    // when adding group nodes. Apps can also register their own templates with
+    // isGroup=true directly via RegisterTemplate if they want custom styling.
+    void RegisterDefaultGroupTemplate(const std::string& templateId = "group",
+                                       const std::string& title = "Group");
+
+    // =========================================================================
     // SERIALIZATION
     // =========================================================================
     // Serializes registered templates, nodes (with paramValues), and links.
@@ -767,6 +852,12 @@ public:
     // User pressed Tab while hovering the canvas. Host renders a searchable
     // popup at (worldX, worldY) using SearchTemplates(query) for filtering.
     std::function<void(double worldX, double worldY)> onPaletteRequested;
+
+    // A node's parentId changed (entered, left, or moved between subgraphs).
+    // oldParentId / newParentId are empty for the root level.
+    std::function<void(const std::string& nodeId,
+                       const std::string& oldParentId,
+                       const std::string& newParentId)> onNodeParentChanged;
 
 private:
     // =========================================================================
@@ -878,6 +969,15 @@ private:
     void ApplySetParamValue(const std::string& nodeId, const std::string& paramId,
                              const ParamValue& value);
     void ApplyMoveNodes(const std::map<std::string, Point2Df>& positions);
+    // Raw reparent: sets parentId AND relative position without preserving
+    // world position (callers compute world preservation themselves).
+    void ApplySetNodeParent(const std::string& nodeId, const std::string& newParentId,
+                             double relX, double relY);
+
+    // Builds a render-order list: roots first in their nodeOrder, then each
+    // root's descendants recursively. Used by both rendering (forward) and
+    // hit-testing (reverse). Cheap enough to compute per frame.
+    std::vector<std::string> BuildRenderOrder() const;
 
     // Writes a single node and a single link as JSON object literals into the
     // provided ostream - factored out so Copy() can reuse the same formatting

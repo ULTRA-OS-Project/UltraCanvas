@@ -500,36 +500,54 @@ void UltraCanvasCompositorDiagram::RemoveNode(const std::string& nodeId) {
     auto nit = nodes.find(nodeId);
     if (nit == nodes.end()) return;
 
-    // Capture pre-state for undo.
-    CompositorNode savedNode = nit->second;
+    // Collect this node + all descendants (BFS). React Flow's convention is
+    // that removing a parent removes the whole subtree.
+    std::vector<std::string> victims;
+    std::vector<std::string> frontier{nodeId};
+    while (!frontier.empty()) {
+        std::string cur = frontier.back();
+        frontier.pop_back();
+        victims.push_back(cur);
+        for (const auto& id : nodeOrder) {
+            auto it = nodes.find(id);
+            if (it == nodes.end()) continue;
+            if (it->second.parentId == cur) frontier.push_back(id);
+        }
+    }
+    std::set<std::string> victimSet(victims.begin(), victims.end());
+
+    // Capture all victims for undo.
+    std::vector<CompositorNode> savedNodes;
+    for (const auto& v : victims) {
+        auto it = nodes.find(v);
+        if (it != nodes.end()) savedNodes.push_back(it->second);
+    }
     std::vector<CompositorLink> savedLinks;
     for (const auto& l : links) {
-        if (l.sourceNodeId == nodeId || l.targetNodeId == nodeId) {
+        if (victimSet.count(l.sourceNodeId) || victimSet.count(l.targetNodeId)) {
             savedLinks.push_back(l);
         }
     }
 
-    // Mutate: fire onLinkRemoved for each soon-to-die link, then erase.
+    // Mutate.
     for (const auto& l : savedLinks) {
         if (onLinkRemoved) onLinkRemoved(l.id);
     }
     links.erase(std::remove_if(links.begin(), links.end(),
         [&](const CompositorLink& l) {
-            return l.sourceNodeId == nodeId || l.targetNodeId == nodeId;
+            return victimSet.count(l.sourceNodeId) || victimSet.count(l.targetNodeId);
         }), links.end());
-    ApplyRemoveNode(nodeId);
+    for (const auto& v : victims) ApplyRemoveNode(v);
 
     if (historyRecording) {
         PushHistory({
-            // undo: re-add node first, then re-add dependent links
-            [this, savedNode, savedLinks]() {
-                ApplyAddNode(savedNode);
+            [this, savedNodes, savedLinks]() {
+                for (const auto& n : savedNodes) ApplyAddNode(n);
                 for (const auto& l : savedLinks) ApplyAddLink(l);
             },
-            // redo: remove links first, then node
-            [this, nodeId, savedLinks]() {
+            [this, victims, savedLinks]() {
                 for (const auto& l : savedLinks) ApplyRemoveLink(l.id);
-                ApplyRemoveNode(nodeId);
+                for (const auto& v : victims) ApplyRemoveNode(v);
             },
             "Remove node"
         });
@@ -1125,6 +1143,9 @@ UltraCanvasCompositorDiagram::NodeLayout
 UltraCanvasCompositorDiagram::ComputeNodeLayout(
         const CompositorNode& node, const CompositorNodeTemplate& tmpl) const {
     NodeLayout L;
+    Point2Df world = GetNodeWorldPos(node.id);  // walks parent chain
+    double nx = world.x;
+    double ny = world.y;
     double w = (node.width > 0.0) ? node.width : tmpl.defaultWidth;
     double rowH = style.rowHeight;
     double headerH = style.headerHeight;
@@ -1134,14 +1155,18 @@ UltraCanvasCompositorDiagram::ComputeNodeLayout(
     int nIn = static_cast<int>(tmpl.inputs.size());
 
     double bodyRowsH = (nOut + nParam + nIn) * rowH;
-    double previewH = (tmpl.hasPreview && !node.collapsed) ? tmpl.previewHeight : 0.0;
+    double previewH = (tmpl.hasPreview && !node.collapsed && !tmpl.isGroup) ? tmpl.previewHeight : 0.0;
     double previewPad = (previewH > 0.0) ? 6.0 : 0.0;
     double bodyH = node.collapsed ? 0.0 : (bodyRowsH + previewH + previewPad);
+    if (tmpl.isGroup) {
+        // Groups have a tall body that auto-fits to children below.
+        bodyH = std::max(bodyH, tmpl.groupMinHeight - headerH);
+    }
     double totalH = headerH + bodyH + 2.0;
 
-    L.bounds       = Rect2Df(node.x, node.y, w, totalH);
-    L.headerBounds = Rect2Df(node.x, node.y, w, headerH);
-    L.bodyBounds   = Rect2Df(node.x, node.y + headerH, w, bodyH);
+    L.bounds       = Rect2Df(nx, ny, w, totalH);
+    L.headerBounds = Rect2Df(nx, ny, w, headerH);
+    L.bodyBounds   = Rect2Df(nx, ny + headerH, w, bodyH);
 
     if (node.collapsed) return L;
 
@@ -1152,13 +1177,13 @@ UltraCanvasCompositorDiagram::ComputeNodeLayout(
 
     const SocketTypeInfo* anyInfo = GetSocketTypeInfo(SocketDataType::Any);
     double defaultDotR = anyInfo ? anyInfo->radius : 5.0;
-    double y = node.y + headerH;
+    double y = ny + headerH;
 
     for (int i = 0; i < nOut; ++i) {
         const auto& sock = tmpl.outputs[i];
         const auto* info = GetSocketTypeInfo(sock.type, sock.customTag);
         double r = info ? info->radius : defaultDotR;
-        double cx = node.x + w;
+        double cx = nx + w;
         double cy = y + rowH * 0.5;
         L.outputSocketBounds.push_back(Rect2Df(cx - r, cy - r, 2 * r, 2 * r));
         y += rowH;
@@ -1166,14 +1191,14 @@ UltraCanvasCompositorDiagram::ComputeNodeLayout(
 
     for (int i = 0; i < nParam; ++i) {
         const auto& spec = tmpl.params[i];
-        Rect2Df rowR(node.x, y, w, rowH);
+        Rect2Df rowR(nx, y, w, rowH);
         L.rowBounds.push_back(rowR);
         if (spec.widget == ParamWidgetKind::NoWidget) {
             L.rowWidgetBounds.push_back(Rect2Df(0, 0, 0, 0));
         } else {
             double widgetW = std::max(style.widgetMinWidth, w * 0.45);
             double widgetH = rowH - 6.0;
-            double widgetX = node.x + w - style.rowPaddingX - widgetW;
+            double widgetX = nx + w - style.rowPaddingX - widgetW;
             double widgetY = y + 3.0;
             L.rowWidgetBounds.push_back(Rect2Df(widgetX, widgetY, widgetW, widgetH));
         }
@@ -1184,17 +1209,42 @@ UltraCanvasCompositorDiagram::ComputeNodeLayout(
         const auto& sock = tmpl.inputs[i];
         const auto* info = GetSocketTypeInfo(sock.type, sock.customTag);
         double r = info ? info->radius : defaultDotR;
-        double cx = node.x;
+        double cx = nx;
         double cy = y + rowH * 0.5;
         L.inputSocketBounds.push_back(Rect2Df(cx - r, cy - r, 2 * r, 2 * r));
         y += rowH;
     }
 
-    if (tmpl.hasPreview) {
-        L.previewBounds = Rect2Df(node.x + style.rowPaddingX,
+    if (tmpl.hasPreview && !tmpl.isGroup) {
+        L.previewBounds = Rect2Df(nx + style.rowPaddingX,
                                    y + previewPad,
                                    w - 2 * style.rowPaddingX,
                                    tmpl.previewHeight);
+    }
+
+    // Group nodes auto-fit their bounds to enclose direct children + padding.
+    // We do this after the row layout so the header/body inherit the expanded
+    // size automatically.
+    if (tmpl.isGroup) {
+        double pad = tmpl.groupPadding;
+        double minXb = L.bounds.x;
+        double minYb = L.bounds.y;
+        double maxXb = L.bounds.x + std::max(L.bounds.width,  tmpl.groupMinWidth);
+        double maxYb = L.bounds.y + std::max(L.bounds.height, tmpl.groupMinHeight);
+        for (const auto& kv : nodes) {
+            if (kv.second.parentId != node.id) continue;
+            const auto* ct = GetTemplate(kv.second.templateId);
+            if (!ct) continue;
+            NodeLayout cL = ComputeNodeLayout(kv.second, *ct);
+            minXb = std::min(minXb, cL.bounds.x - pad);
+            minYb = std::min(minYb, cL.bounds.y - pad - headerH);  // reserve space above for the group header
+            maxXb = std::max(maxXb, cL.bounds.x + cL.bounds.width  + pad);
+            maxYb = std::max(maxYb, cL.bounds.y + cL.bounds.height + pad);
+        }
+        L.bounds       = Rect2Df(minXb, minYb, maxXb - minXb, maxYb - minYb);
+        L.headerBounds = Rect2Df(L.bounds.x, L.bounds.y, L.bounds.width, headerH);
+        L.bodyBounds   = Rect2Df(L.bounds.x, L.bounds.y + headerH,
+                                  L.bounds.width, L.bounds.height - headerH);
     }
     return L;
 }
@@ -1203,14 +1253,15 @@ Point2Df UltraCanvasCompositorDiagram::GetSocketWorldPosition(
         const CompositorNode& node, const CompositorNodeTemplate& tmpl,
         bool isOutput, int socketIndex) const {
     NodeLayout L = ComputeNodeLayout(node, tmpl);
+    Point2Df nworld = GetNodeWorldPos(node.id);
     if (isOutput) {
         if (socketIndex < 0 || socketIndex >= static_cast<int>(L.outputSocketBounds.size()))
-            return Point2Df(node.x + ((node.width > 0) ? node.width : tmpl.defaultWidth), node.y);
+            return Point2Df(nworld.x + ((node.width > 0) ? node.width : tmpl.defaultWidth), nworld.y);
         const auto& r = L.outputSocketBounds[socketIndex];
         return Point2Df(r.x + r.width * 0.5, r.y + r.height * 0.5);
     } else {
         if (socketIndex < 0 || socketIndex >= static_cast<int>(L.inputSocketBounds.size()))
-            return Point2Df(node.x, node.y);
+            return Point2Df(nworld.x, nworld.y);
         const auto& r = L.inputSocketBounds[socketIndex];
         return Point2Df(r.x + r.width * 0.5, r.y + r.height * 0.5);
     }
@@ -1222,8 +1273,10 @@ Point2Df UltraCanvasCompositorDiagram::GetSocketWorldPosition(
 
 std::string UltraCanvasCompositorDiagram::FindNodeAt(const Point2Di& screenPos) {
     Point2Df world = ScreenToWorld(screenPos);
-    // Walk top-down (highest z first) so the visually-topmost node wins.
-    for (auto it = nodeOrder.rbegin(); it != nodeOrder.rend(); ++it) {
+    // Walk REVERSE render order so children (which render after their parent)
+    // win clicks over their parent's body. The visually-topmost node wins.
+    auto order = BuildRenderOrder();
+    for (auto it = order.rbegin(); it != order.rend(); ++it) {
         const auto* n = GetNode(*it);
         if (!n) continue;
         const auto* tmpl = GetTemplate(n->templateId);
@@ -1272,8 +1325,10 @@ UltraCanvasCompositorDiagram::FindSocketAt(const Point2Di& screenPos) {
     SocketHit hit;
     Point2Df world = ScreenToWorld(screenPos);
     double slop = 4.0;  // world-space extra hit radius
-    // Reverse z-order so a socket on a node-on-top wins over an obscured one.
-    for (auto it = nodeOrder.rbegin(); it != nodeOrder.rend(); ++it) {
+    // Reverse render-order so a socket on a node-on-top (incl. children inside
+    // a group) wins over an obscured one below.
+    auto order = BuildRenderOrder();
+    for (auto it = order.rbegin(); it != order.rend(); ++it) {
         const auto* n = GetNode(*it);
         if (!n) continue;
         const auto* tmpl = GetTemplate(n->templateId);
@@ -1336,7 +1391,8 @@ UltraCanvasCompositorDiagram::WidgetHit
 UltraCanvasCompositorDiagram::FindRowWidgetAt(const Point2Di& screenPos) {
     WidgetHit hit;
     Point2Df world = ScreenToWorld(screenPos);
-    for (auto it = nodeOrder.rbegin(); it != nodeOrder.rend(); ++it) {
+    auto order = BuildRenderOrder();
+    for (auto it = order.rbegin(); it != order.rend(); ++it) {
         const auto* n = GetNode(*it);
         if (!n || n->collapsed) continue;
         const auto* tmpl = GetTemplate(n->templateId);
@@ -1455,7 +1511,10 @@ void UltraCanvasCompositorDiagram::RenderLinks(IRenderContext* ctx) {
 }
 
 void UltraCanvasCompositorDiagram::RenderNodes(IRenderContext* ctx) {
-    for (const auto& id : nodeOrder) {
+    // Render in tree order (roots first, then children) so nested children
+    // appear visually on top of their group containers.
+    auto order = BuildRenderOrder();
+    for (const auto& id : order) {
         const auto* n = GetNode(id);
         if (!n) continue;
         const auto* tmpl = GetTemplate(n->templateId);
@@ -1511,6 +1570,15 @@ void UltraCanvasCompositorDiagram::RenderNodePanel(
     ctx->DrawRoundedRectangle(L.bounds, tmpl.cornerRadius);
 
     if (node.collapsed) {
+        return;
+    }
+
+    // Group nodes: the body is intentionally just a translucent container so
+    // children show through. Skip param-row, socket, and preview drawing
+    // entirely (group templates can still declare sockets if the author wants
+    // interface sockets, in which case we'd draw them - but the React Flow
+    // default group is contents-only, so we ship that as the convention).
+    if (tmpl.isGroup) {
         return;
     }
 
@@ -2777,6 +2845,7 @@ void UltraCanvasCompositorDiagram::WriteNodeJson(std::ostream& out,
     out << "      \"id\": " << EscapeJsonString(n.id) << ",\n";
     out << "      \"templateId\": " << EscapeJsonString(n.templateId) << ",\n";
     out << "      \"titleOverride\": " << EscapeJsonString(n.titleOverride) << ",\n";
+    out << "      \"parentId\": " << EscapeJsonString(n.parentId) << ",\n";
     out << "      \"x\": " << n.x << ",\n";
     out << "      \"y\": " << n.y << ",\n";
     out << "      \"width\": " << n.width << ",\n";
@@ -2822,6 +2891,7 @@ bool UltraCanvasCompositorDiagram::ParseNodeFromObject(const std::string& obj,
     if (out.id.empty()) return false;
     out.templateId = ExtractStringValue(obj, "templateId");
     out.titleOverride = ExtractStringValue(obj, "titleOverride");
+    out.parentId = ExtractStringValue(obj, "parentId");
     out.x = ExtractNumberValue(obj, "x");
     out.y = ExtractNumberValue(obj, "y");
     out.width = ExtractNumberValue(obj, "width");
@@ -2937,6 +3007,22 @@ void UltraCanvasCompositorDiagram::Paste(double offsetX, double offsetY) {
         n.x += offsetX;
         n.y += offsetY;
         toAdd.push_back(n);
+    }
+    // Second pass: remap parentId. Orphan children (parent not in the paste
+    // selection) get promoted to roots so the paste produces a valid tree.
+    for (auto& n : toAdd) {
+        if (n.parentId.empty()) continue;
+        auto itp = idRemap.find(n.parentId);
+        if (itp != idRemap.end()) {
+            n.parentId = itp->second;
+        } else {
+            // Orphan - promote to root. Its x/y were relative to a parent
+            // that's not in the paste, so adopt the world position the
+            // original had (best-effort: use the rel position + offset and
+            // hope the user re-parents as needed; alternative would be to
+            // compute the source clipboard's world position pre-paste).
+            n.parentId.clear();
+        }
     }
     for (const auto& lobj : ExtractObjectArray(clipboard, "links")) {
         CompositorLink l;
@@ -3381,6 +3467,296 @@ void UltraCanvasCompositorDiagram::RenderAlignmentGuides(IRenderContext* ctx) {
             ctx->DrawLine(Point2Df(g.start, g.position), Point2Df(g.end, g.position));
         }
     }
+}
+
+// =============================================================================
+// SUBGRAPHS / NODE GROUPS
+// =============================================================================
+
+Point2Df UltraCanvasCompositorDiagram::GetNodeWorldPos(
+        const std::string& nodeId) const {
+    // Walk parent chain with a depth cap as defense against corrupted data.
+    const int MaxDepth = 32;
+    Point2Df out(0, 0);
+    std::string cur = nodeId;
+    for (int i = 0; i < MaxDepth && !cur.empty(); ++i) {
+        auto it = nodes.find(cur);
+        if (it == nodes.end()) break;
+        out.x += it->second.x;
+        out.y += it->second.y;
+        cur = it->second.parentId;
+    }
+    return out;
+}
+
+std::string UltraCanvasCompositorDiagram::GetNodeParent(
+        const std::string& nodeId) const {
+    auto it = nodes.find(nodeId);
+    return it == nodes.end() ? "" : it->second.parentId;
+}
+
+std::vector<std::string> UltraCanvasCompositorDiagram::GetChildrenOf(
+        const std::string& nodeId) const {
+    std::vector<std::string> out;
+    // Walk nodeOrder so children come back in stable z-order.
+    for (const auto& id : nodeOrder) {
+        auto it = nodes.find(id);
+        if (it == nodes.end()) continue;
+        if (it->second.parentId == nodeId) out.push_back(id);
+    }
+    return out;
+}
+
+std::vector<std::string> UltraCanvasCompositorDiagram::GetRootNodeIds() const {
+    std::vector<std::string> out;
+    for (const auto& id : nodeOrder) {
+        auto it = nodes.find(id);
+        if (it == nodes.end()) continue;
+        if (it->second.parentId.empty()) out.push_back(id);
+    }
+    return out;
+}
+
+void UltraCanvasCompositorDiagram::ApplySetNodeParent(
+        const std::string& nodeId, const std::string& newParentId,
+        double relX, double relY) {
+    auto* n = GetNode(nodeId);
+    if (!n) return;
+    std::string oldParent = n->parentId;
+    n->parentId = newParentId;
+    n->x = relX;
+    n->y = relY;
+    if (onNodeParentChanged) onNodeParentChanged(nodeId, oldParent, newParentId);
+    RequestRedraw();
+}
+
+bool UltraCanvasCompositorDiagram::SetNodeParent(
+        const std::string& nodeId, const std::string& newParentId) {
+    auto* n = GetNode(nodeId);
+    if (!n) return false;
+    if (n->parentId == newParentId) return true;
+
+    // Cycle check: walk up from newParentId; if we hit nodeId, reject.
+    if (!newParentId.empty()) {
+        const int MaxDepth = 64;
+        std::string cur = newParentId;
+        for (int i = 0; i < MaxDepth && !cur.empty(); ++i) {
+            if (cur == nodeId) return false;  // would create a cycle
+            auto it = nodes.find(cur);
+            if (it == nodes.end()) break;
+            cur = it->second.parentId;
+        }
+    }
+
+    // Preserve world position: newRel = currentWorld - newParentWorld.
+    Point2Df curWorld = GetNodeWorldPos(nodeId);
+    Point2Df newParentWorld(0, 0);
+    if (!newParentId.empty()) newParentWorld = GetNodeWorldPos(newParentId);
+    double newRelX = curWorld.x - newParentWorld.x;
+    double newRelY = curWorld.y - newParentWorld.y;
+
+    // Capture for undo.
+    std::string oldParent = n->parentId;
+    double oldRelX = n->x;
+    double oldRelY = n->y;
+
+    ApplySetNodeParent(nodeId, newParentId, newRelX, newRelY);
+
+    if (historyRecording) {
+        PushHistory({
+            [this, nodeId, oldParent, oldRelX, oldRelY]() {
+                ApplySetNodeParent(nodeId, oldParent, oldRelX, oldRelY);
+            },
+            [this, nodeId, newParentId, newRelX, newRelY]() {
+                ApplySetNodeParent(nodeId, newParentId, newRelX, newRelY);
+            },
+            "Change parent"
+        });
+    }
+    return true;
+}
+
+std::string UltraCanvasCompositorDiagram::Group(
+        const std::string& groupId, const std::string& groupTemplateId,
+        const std::vector<std::string>& nodeIds) {
+    const auto* tmpl = GetTemplate(groupTemplateId);
+    if (!tmpl || !tmpl->isGroup) return "";
+    if (nodeIds.empty()) return "";
+
+    // Compute bbox of the to-be-grouped nodes in world coords.
+    double minX =  1e18, minY =  1e18;
+    double maxX = -1e18, maxY = -1e18;
+    for (const auto& nid : nodeIds) {
+        const auto* n = GetNode(nid);
+        if (!n) continue;
+        const auto* nt = GetTemplate(n->templateId);
+        if (!nt) continue;
+        NodeLayout L = ComputeNodeLayout(*n, *nt);
+        minX = std::min(minX, L.bounds.x);
+        minY = std::min(minY, L.bounds.y);
+        maxX = std::max(maxX, L.bounds.x + L.bounds.width);
+        maxY = std::max(maxY, L.bounds.y + L.bounds.height);
+    }
+    if (minX > maxX || minY > maxY) return "";
+
+    // Position the group's world top-left a bit above-left of the children
+    // so its header sits above them; the auto-fit will expand the rest.
+    double headerH = style.headerHeight;
+    double pad = tmpl->groupPadding;
+    double gx = minX - pad;
+    double gy = minY - pad - headerH;
+
+    std::string realId = groupId.empty() ? GenerateUniqueNodeId("group") : groupId;
+    if (nodes.count(realId)) return "";  // collision
+
+    // Do the whole operation as one composite history step.
+    bool prevRec = historyRecording;
+    historyRecording = false;
+    if (!AddNode(realId, groupTemplateId, gx, gy)) {
+        historyRecording = prevRec;
+        return "";
+    }
+    std::vector<std::tuple<std::string, std::string, double, double>> oldStates;
+    for (const auto& nid : nodeIds) {
+        auto* n = GetNode(nid);
+        if (!n) continue;
+        if (nid == realId) continue;
+        oldStates.push_back({nid, n->parentId, n->x, n->y});
+        SetNodeParent(nid, realId);
+    }
+    historyRecording = prevRec;
+
+    if (historyRecording) {
+        std::string capturedGroupId = realId;
+        std::string capturedTmplId  = groupTemplateId;
+        double capturedGx = gx;
+        double capturedGy = gy;
+        PushHistory({
+            // undo: ungroup (restore each child's old parent + rel position),
+            // then remove the group node.
+            [this, capturedGroupId, oldStates]() {
+                for (const auto& s : oldStates) {
+                    ApplySetNodeParent(std::get<0>(s), std::get<1>(s),
+                                        std::get<2>(s), std::get<3>(s));
+                }
+                ApplyRemoveNode(capturedGroupId);
+            },
+            // redo: re-add group, re-set each child's parent (recomputing
+            // relative pos).
+            [this, capturedGroupId, capturedTmplId, capturedGx, capturedGy, nodeIds]() {
+                CompositorNode g(capturedGroupId, capturedTmplId, capturedGx, capturedGy);
+                ApplyAddNode(g);
+                bool prevRec2 = historyRecording;
+                historyRecording = false;
+                for (const auto& nid : nodeIds) SetNodeParent(nid, capturedGroupId);
+                historyRecording = prevRec2;
+            },
+            "Group nodes"
+        });
+    }
+    return realId;
+}
+
+void UltraCanvasCompositorDiagram::Ungroup(const std::string& groupId) {
+    auto* group = GetNode(groupId);
+    if (!group) return;
+    auto children = GetChildrenOf(groupId);
+    if (children.empty()) {
+        // Just remove the empty group.
+        RemoveNode(groupId);
+        return;
+    }
+    std::vector<std::tuple<std::string, std::string, double, double>> oldStates;
+    for (const auto& cid : children) {
+        const auto* c = GetNode(cid);
+        if (!c) continue;
+        oldStates.push_back({cid, c->parentId, c->x, c->y});
+    }
+    std::string capturedTmplId = group->templateId;
+    double capturedGx = group->x;  // group's relative pos (its parent's rel)
+    double capturedGy = group->y;
+    std::string groupParent = group->parentId;
+
+    bool prevRec = historyRecording;
+    historyRecording = false;
+    // Promote children to be siblings of the group (same parent as the group).
+    for (const auto& cid : children) SetNodeParent(cid, groupParent);
+    RemoveNode(groupId);
+    historyRecording = prevRec;
+
+    if (historyRecording) {
+        PushHistory({
+            // undo: re-add group with same id/template/pos/parent, restore children
+            [this, groupId, capturedTmplId, capturedGx, capturedGy,
+             groupParent, oldStates]() {
+                CompositorNode g(groupId, capturedTmplId, capturedGx, capturedGy);
+                g.parentId = groupParent;
+                ApplyAddNode(g);
+                for (const auto& s : oldStates) {
+                    ApplySetNodeParent(std::get<0>(s), std::get<1>(s),
+                                        std::get<2>(s), std::get<3>(s));
+                }
+            },
+            // redo: promote children to siblings, remove group
+            [this, groupId, children, groupParent]() {
+                bool prevRec2 = historyRecording;
+                historyRecording = false;
+                for (const auto& cid : children) SetNodeParent(cid, groupParent);
+                historyRecording = prevRec2;
+                ApplyRemoveNode(groupId);
+            },
+            "Ungroup"
+        });
+    }
+}
+
+void UltraCanvasCompositorDiagram::RegisterDefaultGroupTemplate(
+        const std::string& templateId, const std::string& title) {
+    CompositorNodeTemplate t;
+    t.id = templateId;
+    t.category = "Layout";
+    t.title = title;
+    t.iconName = "group";
+    t.headerColor       = Color(80, 80, 80, 255);
+    t.headerTextColor   = Color(255, 255, 255, 255);
+    t.bodyColor         = Color(60, 60, 60, 120);  // translucent so children show
+    t.borderColor       = Color(140, 140, 140, 255);
+    t.borderWidth       = 1.5;
+    t.cornerRadius      = 6.0;
+    t.isGroup = true;
+    t.groupPadding = 16.0;
+    t.groupMinWidth  = 200.0;
+    t.groupMinHeight = 120.0;
+    RegisterTemplate(t);
+}
+
+std::vector<std::string> UltraCanvasCompositorDiagram::BuildRenderOrder() const {
+    std::vector<std::string> out;
+    out.reserve(nodes.size());
+    // DFS from each root in nodeOrder, emitting parent then children.
+    std::function<void(const std::string&)> emit =
+        [&](const std::string& nid) {
+            out.push_back(nid);
+            // Emit children in their own z-order.
+            for (const auto& other : nodeOrder) {
+                auto it = nodes.find(other);
+                if (it == nodes.end()) continue;
+                if (it->second.parentId == nid) emit(other);
+            }
+        };
+    for (const auto& id : nodeOrder) {
+        auto it = nodes.find(id);
+        if (it == nodes.end()) continue;
+        if (it->second.parentId.empty()) emit(id);
+    }
+    // Orphan children (parent missing) become roots so they don't disappear.
+    if (out.size() < nodes.size()) {
+        std::set<std::string> seen(out.begin(), out.end());
+        for (const auto& id : nodeOrder) {
+            if (!seen.count(id) && nodes.count(id)) emit(id);
+        }
+    }
+    return out;
 }
 
 // =============================================================================
