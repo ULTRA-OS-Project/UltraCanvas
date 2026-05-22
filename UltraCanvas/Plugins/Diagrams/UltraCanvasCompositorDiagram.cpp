@@ -1377,8 +1377,13 @@ void UltraCanvasCompositorDiagram::Render(IRenderContext* ctx, const Rect2Di& di
     RenderNodes(ctx);
     if (isConnecting)    RenderConnectionLine(ctx);
     if (isSelectingBox)  RenderSelectionBox(ctx);
+    if (isDraggingNode && alignmentGuidesEnabled) RenderAlignmentGuides(ctx);
 
     ctx->PopState();
+
+    // Overlays render in screen space.
+    if (minimapConfig.visible)  RenderMinimap(ctx);
+    if (controlsConfig.visible) RenderControls(ctx);
 }
 
 void UltraCanvasCompositorDiagram::RenderGrid(IRenderContext* ctx) {
@@ -1814,12 +1819,43 @@ bool UltraCanvasCompositorDiagram::OnEvent(const UCEvent& event) {
 
 bool UltraCanvasCompositorDiagram::HandleMouseDown(const UCEvent& event) {
     if (!Contains(Point2Di(event.pointer.x, event.pointer.y))) return false;
-    if (!isInteractive && event.button != UCMouseButton::Middle) return false;
 
     Point2Di mousePos(event.pointer.x, event.pointer.y);
     lastMousePos = mousePos;
     dragStartPos = mousePos;
     isMultiSelectKeyHeld = event.shift;
+
+    // 0a. Controls overlay button click - always reachable even when
+    //     interaction is locked, otherwise the lock button can't be released.
+    if (controlsConfig.visible && event.button == UCMouseButton::Left) {
+        int btnIdx = FindControlButtonAt(mousePos);
+        if (btnIdx >= 0) {
+            int idx = btnIdx;
+            if (controlsConfig.showZoom) {
+                if (idx == 0) { ZoomIn();  return true; }
+                if (idx == 1) { ZoomOut(); return true; }
+                idx -= 2;
+            }
+            if (controlsConfig.showFit) {
+                if (idx == 0) { FitView(); return true; }
+                idx -= 1;
+            }
+            if (controlsConfig.showLock) {
+                if (idx == 0) { SetInteractive(!isInteractive); return true; }
+            }
+            return true;
+        }
+    }
+
+    if (!isInteractive && event.button != UCMouseButton::Middle) return false;
+
+    // 0b. Minimap click → recenter viewport (or start minimap drag).
+    if (minimapConfig.visible && minimapConfig.pannable &&
+        event.button == UCMouseButton::Left && PointInMinimap(mousePos)) {
+        isDraggingMinimap = true;
+        HandleMinimapDrag(mousePos);
+        return true;
+    }
 
     // Right-click: dispatch to the most-specific hook (socket > node > link >
     // canvas). The socket fallback (disconnect all) only triggers when no
@@ -1862,11 +1898,71 @@ bool UltraCanvasCompositorDiagram::HandleMouseDown(const UCEvent& event) {
     if (nodesConnectable) {
         SocketHit sh = FindSocketAt(mousePos);
         if (!sh.socketId.empty()) {
-            isConnecting = true;
-            connectionSourceNode = sh.nodeId;
-            connectionSourceSocket = sh.socketId;
-            connectionSourceIsOutput = sh.isOutput;
-            connectionEndPoint = ScreenToWorld(mousePos);
+            // Edge reconnection: if the user clicked a single-connection socket
+            // that already has an edge attached, pick the edge up by its near
+            // endpoint and let them re-route it. The original edge is removed
+            // (with history suppressed) and a connect-drag starts from the
+            // OTHER endpoint.
+            bool reconnectStarted = false;
+            if (edgeReconnectionEnabled) {
+                // Find an existing link on this socket.
+                CompositorLink* attached = nullptr;
+                for (auto& l : links) {
+                    if ((l.sourceNodeId == sh.nodeId && l.sourceSocketId == sh.socketId) ||
+                        (l.targetNodeId == sh.nodeId && l.targetSocketId == sh.socketId)) {
+                        attached = &l;
+                        break;
+                    }
+                }
+                if (attached) {
+                    // Only reconnect-pick the side of a single-connection socket
+                    // (typical: inputs). On unlimited-fanout sockets (typical:
+                    // outputs), preserve the fresh-connection UX.
+                    const auto* node = GetNode(sh.nodeId);
+                    const auto* tmpl = node ? GetTemplate(node->templateId) : nullptr;
+                    bool singleConn = false;
+                    if (tmpl) {
+                        CompositorSocketSpec stor;
+                        bool dummyIsOut = false;
+                        const auto* spec = ResolveSocketSpec(*tmpl, sh.socketId, dummyIsOut, stor);
+                        if (spec && spec->maxConnections == 1) singleConn = true;
+                    }
+                    if (singleConn) {
+                        reconnectSavedLink = *attached;
+                        // Drag from the OTHER endpoint.
+                        bool otherIsOutput;
+                        std::string otherNode, otherSocket;
+                        if (attached->sourceNodeId == sh.nodeId &&
+                            attached->sourceSocketId == sh.socketId) {
+                            otherNode = attached->targetNodeId;
+                            otherSocket = attached->targetSocketId;
+                            otherIsOutput = false;
+                        } else {
+                            otherNode = attached->sourceNodeId;
+                            otherSocket = attached->sourceSocketId;
+                            otherIsOutput = true;
+                        }
+                        bool prevRec = historyRecording;
+                        historyRecording = false;
+                        RemoveLink(attached->id);
+                        historyRecording = prevRec;
+                        isReconnectingEdge = true;
+                        isConnecting = true;
+                        connectionSourceNode = otherNode;
+                        connectionSourceSocket = otherSocket;
+                        connectionSourceIsOutput = otherIsOutput;
+                        connectionEndPoint = ScreenToWorld(mousePos);
+                        reconnectStarted = true;
+                    }
+                }
+            }
+            if (!reconnectStarted) {
+                isConnecting = true;
+                connectionSourceNode = sh.nodeId;
+                connectionSourceSocket = sh.socketId;
+                connectionSourceIsOutput = sh.isOutput;
+                connectionEndPoint = ScreenToWorld(mousePos);
+            }
             return true;
         }
     }
@@ -1933,6 +2029,7 @@ bool UltraCanvasCompositorDiagram::HandleMouseDown(const UCEvent& event) {
         if (!event.shift) DeselectAll();
         SelectNode(nid, true);
         isDraggingNode = true;
+        dragLeaderId = nid;
         dragStartPositions.clear();
         for (const auto& sel : selectedNodes) {
             const auto* n = GetNode(sel);
@@ -1981,8 +2078,8 @@ bool UltraCanvasCompositorDiagram::HandleMouseUp(const UCEvent& event) {
     if (isConnecting) {
         SocketHit sh = FindSocketAt(mousePos);
         bool ok = false;
+        std::string srcNode, srcSock, dstNode, dstSock;
         if (!sh.socketId.empty() && sh.nodeId != connectionSourceNode) {
-            std::string srcNode, srcSock, dstNode, dstSock;
             if (connectionSourceIsOutput && !sh.isOutput) {
                 srcNode = connectionSourceNode; srcSock = connectionSourceSocket;
                 dstNode = sh.nodeId;             dstSock = sh.socketId;
@@ -1992,14 +2089,68 @@ bool UltraCanvasCompositorDiagram::HandleMouseUp(const UCEvent& event) {
                 dstNode = connectionSourceNode; dstSock = connectionSourceSocket;
                 ok = true;
             }
+        }
+
+        if (isReconnectingEdge) {
+            // Reconnection flow: we already removed the original link. Bundle
+            // "remove original + add new" or "remove original + restore" into
+            // one composite undo entry so user gets a single-step undo.
+            CompositorLink original = reconnectSavedLink;
+            CompositorLink newLink;
+            bool addedNew = false;
             if (ok) {
-                AddLink(GenerateUniqueLinkId(), srcNode, srcSock, dstNode, dstSock);
+                newLink = original;  // preserve style/lineWidth/etc.
+                newLink.id = GenerateUniqueLinkId();
+                newLink.sourceNodeId = srcNode;
+                newLink.sourceSocketId = srcSock;
+                newLink.targetNodeId = dstNode;
+                newLink.targetSocketId = dstSock;
+                bool prevRec = historyRecording;
+                historyRecording = false;
+                if (AddLink(newLink)) addedNew = true;
+                historyRecording = prevRec;
             }
+            // Push a single composite history entry.
+            if (historyRecording) {
+                if (addedNew) {
+                    std::string newId = newLink.id;
+                    PushHistory({
+                        // undo: remove new, restore original
+                        [this, newId, original]() {
+                            ApplyRemoveLink(newId);
+                            ApplyAddLink(original);
+                        },
+                        // redo: remove original, add new
+                        [this, original, newLink]() {
+                            ApplyRemoveLink(original.id);
+                            ApplyAddLink(newLink);
+                        },
+                        "Reconnect edge"
+                    });
+                } else {
+                    // Drop on empty / incompatible: the original is gone. One
+                    // undoable "remove" step.
+                    PushHistory({
+                        [this, original]() { ApplyAddLink(original); },
+                        [this, original]() { ApplyRemoveLink(original.id); },
+                        "Remove edge (drop)"
+                    });
+                }
+            }
+            isReconnectingEdge = false;
+        } else if (ok) {
+            // Fresh connect-drag.
+            AddLink(GenerateUniqueLinkId(), srcNode, srcSock, dstNode, dstSock);
         }
         isConnecting = false;
         connectionSourceNode.clear();
         connectionSourceSocket.clear();
         RequestRedraw();
+        return true;
+    }
+
+    if (isDraggingMinimap) {
+        isDraggingMinimap = false;
         return true;
     }
 
@@ -2023,6 +2174,9 @@ bool UltraCanvasCompositorDiagram::HandleMouseUp(const UCEvent& event) {
         }
         isDraggingNode = false;
         dragStartPositions.clear();
+        dragLeaderId.clear();
+        currentAlignmentGuides.clear();
+        RequestRedraw();
         return true;
     }
     if (isSelectingBox) {
@@ -2048,18 +2202,47 @@ bool UltraCanvasCompositorDiagram::HandleMouseMove(const UCEvent& event) {
         return true;
     }
 
+    if (isDraggingMinimap) {
+        HandleMinimapDrag(mousePos);
+        return true;
+    }
+
     if (isDraggingNode) {
         Point2Df startW = ScreenToWorld(dragStartPos);
         Point2Df curW   = ScreenToWorld(mousePos);
         double dx = curW.x - startW.x;
         double dy = curW.y - startW.y;
+
+        // Compute the leader's proposed position, apply grid snap, then
+        // alignment snap on top. The same dx/dy is applied to all dragged nodes
+        // so the group moves rigidly.
+        Point2Df leaderProposed(0, 0);
+        bool haveLeader = false;
+        if (!dragLeaderId.empty()) {
+            auto lit = dragStartPositions.find(dragLeaderId);
+            if (lit != dragStartPositions.end()) {
+                leaderProposed = Point2Df(lit->second.x + dx, lit->second.y + dy);
+                haveLeader = true;
+            }
+        }
+        if (haveLeader) {
+            Point2Df gridSnapped = SnapWorldPoint(leaderProposed);
+            Point2Df alignSnapped = alignmentGuidesEnabled
+                ? ComputeAlignmentSnap(dragLeaderId, gridSnapped)
+                : gridSnapped;
+            dx = alignSnapped.x - dragStartPositions[dragLeaderId].x;
+            dy = alignSnapped.y - dragStartPositions[dragLeaderId].y;
+        }
+
         for (const auto& kv : dragStartPositions) {
             auto* n = GetNode(kv.first);
             if (!n) continue;
             Point2Df raw(kv.second.x + dx, kv.second.y + dy);
-            Point2Df snapped = SnapWorldPoint(raw);
-            n->x = snapped.x;
-            n->y = snapped.y;
+            // Only apply grid snap on non-leader nodes when there's no leader
+            // (paranoia path; in practice haveLeader is always true).
+            Point2Df final = haveLeader ? raw : SnapWorldPoint(raw);
+            n->x = final.x;
+            n->y = final.y;
             if (onNodeDrag) onNodeDrag(kv.first, n->x, n->y);
         }
         RequestRedraw();
@@ -2118,11 +2301,18 @@ bool UltraCanvasCompositorDiagram::HandleMouseMove(const UCEvent& event) {
 
     // Update hover for visual feedback.
     lastMousePos = mousePos;
-    std::string newHoveredNode = FindNodeAt(mousePos);
-    std::string newHoveredLink = newHoveredNode.empty() ? FindLinkAt(mousePos) : "";
-    if (newHoveredNode != hoveredNodeId || newHoveredLink != hoveredLinkId) {
+    int newHoveredCtrl = controlsConfig.visible ? FindControlButtonAt(mousePos) : -1;
+    std::string newHoveredNode;
+    std::string newHoveredLink;
+    if (newHoveredCtrl < 0 && !PointInMinimap(mousePos)) {
+        newHoveredNode = FindNodeAt(mousePos);
+        newHoveredLink = newHoveredNode.empty() ? FindLinkAt(mousePos) : "";
+    }
+    if (newHoveredNode != hoveredNodeId || newHoveredLink != hoveredLinkId ||
+        newHoveredCtrl != hoveredControlButton) {
         hoveredNodeId = newHoveredNode;
         hoveredLinkId = newHoveredLink;
+        hoveredControlButton = newHoveredCtrl;
         RequestRedraw();
     }
     return false;
@@ -2156,6 +2346,14 @@ bool UltraCanvasCompositorDiagram::HandleKeyDown(const UCEvent& event) {
             return true;
         case UCKeys::Escape:
             if (isConnecting) {
+                // If we were reconnecting an edge, Esc restores the original.
+                if (isReconnectingEdge) {
+                    bool prevRec = historyRecording;
+                    historyRecording = false;
+                    AddLink(reconnectSavedLink);
+                    historyRecording = prevRec;
+                    isReconnectingEdge = false;
+                }
                 isConnecting = false;
                 connectionSourceNode.clear();
                 connectionSourceSocket.clear();
@@ -2174,6 +2372,13 @@ bool UltraCanvasCompositorDiagram::HandleKeyDown(const UCEvent& event) {
             }
             DeselectAll();
             return true;
+        case UCKeys::Tab:
+            if (onPaletteRequested) {
+                Point2Df w = ScreenToWorld(lastMousePos);
+                onPaletteRequested(w.x, w.y);
+                return true;
+            }
+            break;
         case UCKeys::A:
             if (event.ctrl) { SelectAll();    return true; }
             break;
@@ -2788,6 +2993,439 @@ void UltraCanvasCompositorDiagram::Duplicate(double offsetX, double offsetY) {
     Copy();
     Paste(offsetX, offsetY);
     clipboard = savedClipboard;
+}
+
+// =============================================================================
+// MINIMAP OVERLAY
+// =============================================================================
+
+void UltraCanvasCompositorDiagram::SetMinimapVisible(bool visible) {
+    minimapConfig.visible = visible;
+    RequestRedraw();
+}
+
+void UltraCanvasCompositorDiagram::SetMinimapPosition(NodeDiagramPanelPosition pos) {
+    minimapConfig.position = pos;
+    RequestRedraw();
+}
+
+void UltraCanvasCompositorDiagram::SetMinimapConfig(const CompositorMinimapConfig& cfg) {
+    minimapConfig = cfg;
+    RequestRedraw();
+}
+
+Rect2Df UltraCanvasCompositorDiagram::GetMinimapRectScreen() const {
+    double w = minimapConfig.width;
+    double h = minimapConfig.height;
+    double pad = minimapConfig.padding;
+    double bw = static_cast<double>(GetWidth());
+    double bh = static_cast<double>(GetHeight());
+    double mx = pad, my = pad;
+    switch (minimapConfig.position) {
+        case NodeDiagramPanelPosition::TopLeft:     mx = pad;             my = pad;             break;
+        case NodeDiagramPanelPosition::TopRight:    mx = bw - w - pad;    my = pad;             break;
+        case NodeDiagramPanelPosition::BottomLeft:  mx = pad;             my = bh - h - pad;    break;
+        case NodeDiagramPanelPosition::BottomRight: mx = bw - w - pad;    my = bh - h - pad;    break;
+    }
+    return Rect2Df(mx, my, w, h);
+}
+
+bool UltraCanvasCompositorDiagram::PointInMinimap(const Point2Di& screenPos) const {
+    if (!minimapConfig.visible) return false;
+    Rect2Df r = GetMinimapRectScreen();
+    return screenPos.x >= r.x && screenPos.x <= r.x + r.width &&
+           screenPos.y >= r.y && screenPos.y <= r.y + r.height;
+}
+
+void UltraCanvasCompositorDiagram::RenderMinimap(IRenderContext* ctx) {
+    Rect2Df mr = GetMinimapRectScreen();
+    ctx->SetFillPaint(minimapConfig.backgroundColor);
+    ctx->FillRoundedRectangle(mr, 4.0);
+    ctx->SetStrokePaint(minimapConfig.borderColor);
+    ctx->SetStrokeWidth(1.0);
+    ctx->DrawRoundedRectangle(mr, 4.0);
+
+    if (nodes.empty()) return;
+
+    // World bbox of all node layouts (use computed bounds, not raw width/0).
+    double minX =  1e18, minY =  1e18;
+    double maxX = -1e18, maxY = -1e18;
+    for (const auto& kv : nodes) {
+        const auto* tmpl = GetTemplate(kv.second.templateId);
+        if (!tmpl) continue;
+        NodeLayout L = ComputeNodeLayout(kv.second, *tmpl);
+        minX = std::min(minX, L.bounds.x);
+        minY = std::min(minY, L.bounds.y);
+        maxX = std::max(maxX, L.bounds.x + L.bounds.width);
+        maxY = std::max(maxY, L.bounds.y + L.bounds.height);
+    }
+    if (minX > maxX || minY > maxY) return;
+    double margin = 20.0;
+    minX -= margin; minY -= margin; maxX += margin; maxY += margin;
+
+    double worldW = maxX - minX;
+    double worldH = maxY - minY;
+    if (worldW <= 0 || worldH <= 0) return;
+
+    double innerPad = 6.0;
+    double availW = mr.width  - 2 * innerPad;
+    double availH = mr.height - 2 * innerPad;
+    double scale = std::min(availW / worldW, availH / worldH);
+    double drawnW = worldW * scale;
+    double drawnH = worldH * scale;
+    double ox = mr.x + innerPad + (availW - drawnW) * 0.5;
+    double oy = mr.y + innerPad + (availH - drawnH) * 0.5;
+
+    auto worldToMini = [&](double wx, double wy) -> Point2Df {
+        return Point2Df(ox + (wx - minX) * scale, oy + (wy - minY) * scale);
+    };
+
+    ctx->SetFillPaint(minimapConfig.nodeColor);
+    for (const auto& kv : nodes) {
+        const auto* tmpl = GetTemplate(kv.second.templateId);
+        if (!tmpl) continue;
+        NodeLayout L = ComputeNodeLayout(kv.second, *tmpl);
+        Point2Df tl = worldToMini(L.bounds.x, L.bounds.y);
+        double w = L.bounds.width  * scale;
+        double h = L.bounds.height * scale;
+        if (w < 1) w = 1;
+        if (h < 1) h = 1;
+        ctx->FillRectangle(Rect2Df(tl.x, tl.y, w, h));
+    }
+
+    // Viewport rectangle
+    Point2Df tlW = ScreenToWorld({0, 0});
+    Point2Df brW = ScreenToWorld(Point2Di(GetWidth(), GetHeight()));
+    Point2Df vpTL = worldToMini(tlW.x, tlW.y);
+    Point2Df vpBR = worldToMini(brW.x, brW.y);
+    double vpW = vpBR.x - vpTL.x;
+    double vpH = vpBR.y - vpTL.y;
+    ctx->SetFillPaint(minimapConfig.viewportFill);
+    ctx->FillRectangle(Rect2Df(vpTL.x, vpTL.y, vpW, vpH));
+    ctx->SetStrokePaint(minimapConfig.viewportStroke);
+    ctx->SetStrokeWidth(1.5);
+    ctx->DrawRectangle(Rect2Df(vpTL.x, vpTL.y, vpW, vpH));
+}
+
+void UltraCanvasCompositorDiagram::HandleMinimapDrag(const Point2Di& screenPos) {
+    // Map the click point inside the minimap rect to a world coord and center
+    // the viewport on it.
+    Rect2Df mr = GetMinimapRectScreen();
+    if (nodes.empty()) return;
+    double minX =  1e18, minY =  1e18;
+    double maxX = -1e18, maxY = -1e18;
+    for (const auto& kv : nodes) {
+        const auto* tmpl = GetTemplate(kv.second.templateId);
+        if (!tmpl) continue;
+        NodeLayout L = ComputeNodeLayout(kv.second, *tmpl);
+        minX = std::min(minX, L.bounds.x);
+        minY = std::min(minY, L.bounds.y);
+        maxX = std::max(maxX, L.bounds.x + L.bounds.width);
+        maxY = std::max(maxY, L.bounds.y + L.bounds.height);
+    }
+    if (minX > maxX || minY > maxY) return;
+    double margin = 20.0;
+    minX -= margin; minY -= margin; maxX += margin; maxY += margin;
+    double worldW = maxX - minX, worldH = maxY - minY;
+    double innerPad = 6.0;
+    double availW = mr.width - 2 * innerPad, availH = mr.height - 2 * innerPad;
+    double scale = std::min(availW / worldW, availH / worldH);
+    if (scale <= 0) return;
+    double drawnW = worldW * scale, drawnH = worldH * scale;
+    double ox = mr.x + innerPad + (availW - drawnW) * 0.5;
+    double oy = mr.y + innerPad + (availH - drawnH) * 0.5;
+    double wx = minX + (screenPos.x - ox) / scale;
+    double wy = minY + (screenPos.y - oy) / scale;
+    CenterOn(wx, wy);
+}
+
+// =============================================================================
+// CONTROLS OVERLAY
+// =============================================================================
+
+void UltraCanvasCompositorDiagram::SetControlsVisible(bool visible) {
+    controlsConfig.visible = visible;
+    RequestRedraw();
+}
+
+void UltraCanvasCompositorDiagram::SetControlsPosition(NodeDiagramPanelPosition pos) {
+    controlsConfig.position = pos;
+    RequestRedraw();
+}
+
+void UltraCanvasCompositorDiagram::SetControlsConfig(const CompositorControlsConfig& cfg) {
+    controlsConfig = cfg;
+    RequestRedraw();
+}
+
+int UltraCanvasCompositorDiagram::FindControlButtonAt(const Point2Di& screenPos) {
+    if (!controlsConfig.visible) return -1;
+    int btnCount = 0;
+    if (controlsConfig.showZoom) btnCount += 2;
+    if (controlsConfig.showFit)  btnCount += 1;
+    if (controlsConfig.showLock) btnCount += 1;
+    if (btnCount == 0) return -1;
+    double bs = controlsConfig.buttonSize;
+    double gap = controlsConfig.gap;
+    double totalH = btnCount * bs + (btnCount - 1) * gap;
+    double panelW = bs + 2 * controlsConfig.padding;
+    double panelH = totalH + 2 * controlsConfig.padding;
+    double pad = controlsConfig.padding;
+    double bw = static_cast<double>(GetWidth());
+    double bh = static_cast<double>(GetHeight());
+    double px = 0, py = 0;
+    switch (controlsConfig.position) {
+        case NodeDiagramPanelPosition::TopLeft:     px = pad;             py = pad;             break;
+        case NodeDiagramPanelPosition::TopRight:    px = bw - panelW-pad; py = pad;             break;
+        case NodeDiagramPanelPosition::BottomLeft:  px = pad;             py = bh - panelH-pad; break;
+        case NodeDiagramPanelPosition::BottomRight: px = bw - panelW-pad; py = bh - panelH-pad; break;
+    }
+    double bx = px + controlsConfig.padding;
+    double by = py + controlsConfig.padding;
+    for (int i = 0; i < btnCount; ++i) {
+        double btnY = by + i * (bs + gap);
+        if (screenPos.x >= bx && screenPos.x <= bx + bs &&
+            screenPos.y >= btnY && screenPos.y <= btnY + bs) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+void UltraCanvasCompositorDiagram::RenderControls(IRenderContext* ctx) {
+    int btnCount = 0;
+    if (controlsConfig.showZoom) btnCount += 2;
+    if (controlsConfig.showFit)  btnCount += 1;
+    if (controlsConfig.showLock) btnCount += 1;
+    if (btnCount == 0) return;
+
+    double bs = controlsConfig.buttonSize;
+    double gap = controlsConfig.gap;
+    double totalH = btnCount * bs + (btnCount - 1) * gap;
+    double panelW = bs + 2 * controlsConfig.padding;
+    double panelH = totalH + 2 * controlsConfig.padding;
+    double pad = controlsConfig.padding;
+    double bw = static_cast<double>(GetWidth());
+    double bh = static_cast<double>(GetHeight());
+    double px = 0, py = 0;
+    switch (controlsConfig.position) {
+        case NodeDiagramPanelPosition::TopLeft:     px = pad;             py = pad;             break;
+        case NodeDiagramPanelPosition::TopRight:    px = bw - panelW-pad; py = pad;             break;
+        case NodeDiagramPanelPosition::BottomLeft:  px = pad;             py = bh - panelH-pad; break;
+        case NodeDiagramPanelPosition::BottomRight: px = bw - panelW-pad; py = bh - panelH-pad; break;
+    }
+
+    ctx->SetFillPaint(controlsConfig.backgroundColor);
+    ctx->FillRoundedRectangle(Rect2Df(px, py, panelW, panelH), 4.0);
+    ctx->SetStrokePaint(controlsConfig.borderColor);
+    ctx->SetStrokeWidth(1.0);
+    ctx->DrawRoundedRectangle(Rect2Df(px, py, panelW, panelH), 4.0);
+
+    double bx = px + controlsConfig.padding;
+    double by = py + controlsConfig.padding;
+    int btnIndex = 0;
+
+    auto drawBtnBg = [&](int idx) -> std::pair<double, double> {
+        double btnY = by + idx * (bs + gap);
+        if (hoveredControlButton == idx) {
+            ctx->SetFillPaint(controlsConfig.hoverColor);
+            ctx->FillRoundedRectangle(Rect2Df(bx, btnY, bs, bs), 3.0);
+        }
+        return { bx + bs * 0.5, btnY + bs * 0.5 };
+    };
+
+    if (controlsConfig.showZoom) {
+        auto [cx1, cy1] = drawBtnBg(btnIndex++);
+        ctx->SetStrokePaint(controlsConfig.iconColor);
+        ctx->SetStrokeWidth(2.0);
+        double a = bs * 0.25;
+        ctx->DrawLine({cx1 - a, cy1}, {cx1 + a, cy1});
+        ctx->DrawLine({cx1, cy1 - a}, {cx1, cy1 + a});
+        auto [cx2, cy2] = drawBtnBg(btnIndex++);
+        ctx->SetStrokePaint(controlsConfig.iconColor);
+        ctx->SetStrokeWidth(2.0);
+        ctx->DrawLine({cx2 - a, cy2}, {cx2 + a, cy2});
+    }
+    if (controlsConfig.showFit) {
+        auto [cx, cy] = drawBtnBg(btnIndex++);
+        ctx->SetStrokePaint(controlsConfig.iconColor);
+        ctx->SetStrokeWidth(1.8);
+        double hs = bs * 0.28;
+        double br = hs * 0.45;
+        // TL/TR/BL/BR brackets
+        ctx->DrawLine({cx - hs, cy - hs}, {cx - hs + br, cy - hs});
+        ctx->DrawLine({cx - hs, cy - hs}, {cx - hs, cy - hs + br});
+        ctx->DrawLine({cx + hs - br, cy - hs}, {cx + hs, cy - hs});
+        ctx->DrawLine({cx + hs, cy - hs}, {cx + hs, cy - hs + br});
+        ctx->DrawLine({cx - hs, cy + hs - br}, {cx - hs, cy + hs});
+        ctx->DrawLine({cx - hs, cy + hs}, {cx - hs + br, cy + hs});
+        ctx->DrawLine({cx + hs, cy + hs - br}, {cx + hs, cy + hs});
+        ctx->DrawLine({cx + hs - br, cy + hs}, {cx + hs, cy + hs});
+    }
+    if (controlsConfig.showLock) {
+        auto [cx, cy] = drawBtnBg(btnIndex++);
+        ctx->SetFillPaint(controlsConfig.iconColor);
+        ctx->SetStrokePaint(controlsConfig.iconColor);
+        ctx->SetStrokeWidth(1.8);
+        double bodyW = 9.0, bodyH = 7.0, bodyY = cy + 1.0;
+        ctx->FillRectangle(Rect2Df(cx - bodyW * 0.5, bodyY, bodyW, bodyH));
+        double shW = 7.0, shH = 5.5, shTop = bodyY - shH;
+        if (isInteractive) {
+            // Open shackle = unlocked = interactive
+            ctx->DrawLine({cx - shW * 0.5, bodyY}, {cx - shW * 0.5, shTop});
+            ctx->DrawLine({cx - shW * 0.5, shTop}, {cx + shW * 0.6, shTop});
+            ctx->DrawLine({cx + shW * 0.6, shTop}, {cx + shW * 0.6, shTop + 2.5});
+        } else {
+            ctx->DrawLine({cx - shW * 0.5, bodyY}, {cx - shW * 0.5, shTop});
+            ctx->DrawLine({cx - shW * 0.5, shTop}, {cx + shW * 0.5, shTop});
+            ctx->DrawLine({cx + shW * 0.5, shTop}, {cx + shW * 0.5, bodyY});
+        }
+    }
+}
+
+// =============================================================================
+// ALIGNMENT GUIDES
+// =============================================================================
+
+Point2Df UltraCanvasCompositorDiagram::ComputeAlignmentSnap(
+        const std::string& leaderId, const Point2Df& proposedTopLeft) {
+    currentAlignmentGuides.clear();
+    if (!alignmentGuidesEnabled || leaderId.empty()) return proposedTopLeft;
+    const auto* leader = GetNode(leaderId);
+    if (!leader) return proposedTopLeft;
+    const auto* leaderTmpl = GetTemplate(leader->templateId);
+    if (!leaderTmpl) return proposedTopLeft;
+
+    // Use the proposed top-left + the leader's computed size for candidate edges.
+    double lw = (leader->width > 0.0) ? leader->width : leaderTmpl->defaultWidth;
+    NodeLayout leaderL = ComputeNodeLayout(*leader, *leaderTmpl);
+    double lh = leaderL.bounds.height;
+
+    struct Candidate { double leaderPos; double snapTo; double otherStart; double otherEnd; };
+    std::vector<Candidate> vCands;  // vertical lines (constant X)
+    std::vector<Candidate> hCands;  // horizontal lines (constant Y)
+
+    // Leader candidate Xs: left, center, right
+    double lx0 = proposedTopLeft.x;
+    double lx1 = proposedTopLeft.x + lw;
+    double lxc = proposedTopLeft.x + lw * 0.5;
+    double ly0 = proposedTopLeft.y;
+    double ly1 = proposedTopLeft.y + lh;
+    double lyc = proposedTopLeft.y + lh * 0.5;
+
+    // World-space threshold (the user-set threshold is in pixels).
+    double thr = alignmentGuideThreshold / std::max(0.01, zoomLevel);
+
+    for (const auto& kv : nodes) {
+        if (kv.first == leaderId) continue;
+        if (dragStartPositions.count(kv.first)) continue;  // skip co-dragged
+        const auto* tmpl = GetTemplate(kv.second.templateId);
+        if (!tmpl) continue;
+        NodeLayout L = ComputeNodeLayout(kv.second, *tmpl);
+        double ox0 = L.bounds.x;
+        double ox1 = L.bounds.x + L.bounds.width;
+        double oxc = L.bounds.x + L.bounds.width * 0.5;
+        double oy0 = L.bounds.y;
+        double oy1 = L.bounds.y + L.bounds.height;
+        double oyc = L.bounds.y + L.bounds.height * 0.5;
+
+        auto tryV = [&](double lp, double op) {
+            if (std::abs(lp - op) <= thr) {
+                vCands.push_back({lp, op, std::min(ly0, oy0), std::max(ly1, oy1)});
+            }
+        };
+        auto tryH = [&](double lp, double op) {
+            if (std::abs(lp - op) <= thr) {
+                hCands.push_back({lp, op, std::min(lx0, ox0), std::max(lx1, ox1)});
+            }
+        };
+        // Vertical alignments (X coordinates)
+        tryV(lx0, ox0); tryV(lx0, oxc); tryV(lx0, ox1);
+        tryV(lxc, ox0); tryV(lxc, oxc); tryV(lxc, ox1);
+        tryV(lx1, ox0); tryV(lx1, oxc); tryV(lx1, ox1);
+        // Horizontal alignments (Y coordinates)
+        tryH(ly0, oy0); tryH(ly0, oyc); tryH(ly0, oy1);
+        tryH(lyc, oy0); tryH(lyc, oyc); tryH(lyc, oy1);
+        tryH(ly1, oy0); tryH(ly1, oyc); tryH(ly1, oy1);
+    }
+
+    // Pick closest in each axis and snap.
+    Point2Df out = proposedTopLeft;
+    if (!vCands.empty()) {
+        auto best = std::min_element(vCands.begin(), vCands.end(),
+            [](const Candidate& a, const Candidate& b) {
+                return std::abs(a.leaderPos - a.snapTo) < std::abs(b.leaderPos - b.snapTo);
+            });
+        out.x = proposedTopLeft.x + (best->snapTo - best->leaderPos);
+        currentAlignmentGuides.push_back({true, best->snapTo, best->otherStart, best->otherEnd});
+    }
+    if (!hCands.empty()) {
+        auto best = std::min_element(hCands.begin(), hCands.end(),
+            [](const Candidate& a, const Candidate& b) {
+                return std::abs(a.leaderPos - a.snapTo) < std::abs(b.leaderPos - b.snapTo);
+            });
+        out.y = proposedTopLeft.y + (best->snapTo - best->leaderPos);
+        currentAlignmentGuides.push_back({false, best->snapTo, best->otherStart, best->otherEnd});
+    }
+    return out;
+}
+
+void UltraCanvasCompositorDiagram::RenderAlignmentGuides(IRenderContext* ctx) {
+    if (currentAlignmentGuides.empty()) return;
+    ctx->SetStrokePaint(Color(255, 80, 200, 200));
+    ctx->SetStrokeWidth(1.0 / std::max(0.01, zoomLevel));
+    for (const auto& g : currentAlignmentGuides) {
+        if (g.vertical) {
+            ctx->DrawLine(Point2Df(g.position, g.start), Point2Df(g.position, g.end));
+        } else {
+            ctx->DrawLine(Point2Df(g.start, g.position), Point2Df(g.end, g.position));
+        }
+    }
+}
+
+// =============================================================================
+// NODE PALETTE HELPER
+// =============================================================================
+
+std::vector<std::string> UltraCanvasCompositorDiagram::SearchTemplates(
+        const std::string& query) const {
+    std::vector<std::string> result;
+    if (query.empty()) {
+        for (const auto& kv : templates) result.push_back(kv.first);
+        std::sort(result.begin(), result.end());
+        return result;
+    }
+    std::string q;
+    q.reserve(query.size());
+    for (char c : query) q.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+
+    struct Hit { std::string id; int score; };
+    std::vector<Hit> hits;
+    for (const auto& kv : templates) {
+        const auto& t = kv.second;
+        auto lower = [](std::string s) {
+            for (auto& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            return s;
+        };
+        std::string tid    = lower(t.id);
+        std::string ttitle = lower(t.title);
+        std::string tcat   = lower(t.category);
+        int score = -1;
+        if (tid.rfind(q, 0) == 0)         score = 1000;  // id starts with query
+        else if (ttitle.rfind(q, 0) == 0) score = 900;   // title starts with query
+        else if (ttitle.find(q) != std::string::npos) score = 500;
+        else if (tcat.find(q)   != std::string::npos) score = 300;
+        else if (tid.find(q)    != std::string::npos) score = 200;
+        if (score > 0) hits.push_back({kv.first, score});
+    }
+    std::sort(hits.begin(), hits.end(),
+        [](const Hit& a, const Hit& b) {
+            if (a.score != b.score) return a.score > b.score;
+            return a.id < b.id;
+        });
+    result.reserve(hits.size());
+    for (const auto& h : hits) result.push_back(h.id);
+    return result;
 }
 
 } // namespace UltraCanvas

@@ -4,9 +4,26 @@
 // widgets + optional preview), as opposed to UltraCanvasNodeDiagram's
 // opaque-shape model used for network/graph visualization.
 //
-// Version: 0.2.0
+// Version: 0.3.0
 // Last Modified: 2026-05-22
 // Author: UltraCanvas Framework
+//
+// CHANGELOG 0.3.0 (Tier 2 polish features):
+//  - NEW: Minimap overlay (CompositorMinimapConfig) - small floating
+//         viewport indicator with click-to-pan. Off by default; enable via
+//         SetMinimapVisible(true).
+//  - NEW: Controls overlay (CompositorControlsConfig) - zoom in/out/fit/lock
+//         buttons in a corner. Off by default.
+//  - NEW: Edge reconnection - clicking a connected single-connection socket
+//         starts a reconnect drag instead of a fresh connection. Drop on a
+//         new compatible socket reroutes; Esc restores. Toggle via
+//         SetEdgeReconnectionEnabled(bool); default true.
+//  - NEW: Alignment guides - dragging a node shows sticky lines when its
+//         edges/center align with other nodes within threshold, and snaps to
+//         the alignment. Off by default; enable via SetAlignmentGuidesEnabled.
+//  - NEW: Node palette helpers - SearchTemplates(query) returns ranked
+//         template ids; Tab key in canvas fires onPaletteRequested(worldX,
+//         worldY). Host renders the popup using its own widget toolkit.
 //
 // CHANGELOG 0.2.0 (Tier 1 productivity features):
 //  - NEW: 5 additional socket data types - Time, Matrix, Trigger, List, Path.
@@ -406,6 +423,54 @@ struct CompositorSnapGrid {
 };
 
 // =============================================================================
+// MINIMAP & CONTROLS OVERLAY CONFIGS
+// =============================================================================
+// Structurally identical to UltraCanvasNodeDiagram's overlay configs (the two
+// diagrams are independent but share the visual idiom; copying the struct
+// rather than reusing avoids cross-coupling). The position enum
+// NodeDiagramPanelPosition IS reused.
+
+struct CompositorMinimapConfig {
+    bool visible = false;
+    NodeDiagramPanelPosition position = NodeDiagramPanelPosition::BottomRight;
+    double width = 180.0;
+    double height = 130.0;
+    double padding = 10.0;
+    Color backgroundColor = Color(30, 30, 30, 235);
+    Color borderColor     = Color(80, 80, 80, 255);
+    Color nodeColor       = Color(140, 160, 200, 255);
+    Color viewportFill    = Color(80, 130, 200,  40);
+    Color viewportStroke  = Color(80, 130, 200, 200);
+    bool pannable = true;
+};
+
+struct CompositorControlsConfig {
+    bool visible = false;
+    NodeDiagramPanelPosition position = NodeDiagramPanelPosition::BottomLeft;
+    double buttonSize = 28.0;
+    double padding = 10.0;
+    double gap = 4.0;
+    Color backgroundColor = Color(40, 40, 40, 235);
+    Color borderColor     = Color(80, 80, 80, 255);
+    Color iconColor       = Color(220, 220, 220, 255);
+    Color hoverColor      = Color(70, 70, 70, 255);
+    bool showZoom = true;
+    bool showFit = true;
+    bool showLock = true;
+};
+
+// =============================================================================
+// ALIGNMENT GUIDES
+// =============================================================================
+
+struct CompositorAlignmentGuide {
+    bool   vertical = true;     // true = vertical line (constant X), false = horizontal
+    double position = 0.0;      // world coord on the constant axis
+    double start = 0.0;         // world coord on the other axis (line endpoints)
+    double end = 0.0;
+};
+
+// =============================================================================
 // COMPOSITOR DIAGRAM COMPONENT CLASS
 // =============================================================================
 
@@ -595,6 +660,52 @@ public:
     bool HasClipboard() const                    { return !clipboard.empty(); }
 
     // =========================================================================
+    // MINIMAP & CONTROLS OVERLAYS
+    // =========================================================================
+
+    void SetMinimapVisible(bool visible);
+    void SetMinimapPosition(NodeDiagramPanelPosition pos);
+    void SetMinimapConfig(const CompositorMinimapConfig& cfg);
+    const CompositorMinimapConfig& GetMinimapConfig() const { return minimapConfig; }
+
+    void SetControlsVisible(bool visible);
+    void SetControlsPosition(NodeDiagramPanelPosition pos);
+    void SetControlsConfig(const CompositorControlsConfig& cfg);
+    const CompositorControlsConfig& GetControlsConfig() const { return controlsConfig; }
+
+    // =========================================================================
+    // EDGE RECONNECTION
+    // =========================================================================
+    // When enabled (default true), clicking a connected single-connection
+    // socket starts an edge-reconnect drag instead of a fresh connection.
+    // Drop on a new compatible socket reroutes the edge; Esc restores it;
+    // drop on empty canvas leaves it removed.
+
+    void SetEdgeReconnectionEnabled(bool enabled) { edgeReconnectionEnabled = enabled; }
+    bool IsEdgeReconnectionEnabled() const        { return edgeReconnectionEnabled; }
+
+    // =========================================================================
+    // ALIGNMENT GUIDES
+    // =========================================================================
+    // When enabled (default false), dragging a node shows alignment guides
+    // when its edges/center match other nodes' edges/center within threshold,
+    // and snaps to that alignment.
+
+    void SetAlignmentGuidesEnabled(bool enabled)  { alignmentGuidesEnabled = enabled; }
+    bool IsAlignmentGuidesEnabled() const         { return alignmentGuidesEnabled; }
+    void SetAlignmentGuideThreshold(double px)    { alignmentGuideThreshold = px; }
+
+    // =========================================================================
+    // NODE PALETTE HELPERS
+    // =========================================================================
+    // The diagram does NOT render the palette popup itself - host renders it.
+    // SearchTemplates returns matching template ids ranked by match quality
+    // (prefix > title contains > category contains). onPaletteRequested fires
+    // when the user presses Tab while hovering the canvas.
+
+    std::vector<std::string> SearchTemplates(const std::string& query) const;
+
+    // =========================================================================
     // SERIALIZATION
     // =========================================================================
     // Serializes registered templates, nodes (with paramValues), and links.
@@ -652,6 +763,10 @@ public:
     // History changed (push / undo / redo / clear). The bool indicates whether
     // the most recent operation can be undone (false right after ClearHistory).
     std::function<void()> onHistoryChange;
+
+    // User pressed Tab while hovering the canvas. Host renders a searchable
+    // popup at (worldX, worldY) using SearchTemplates(query) for filtering.
+    std::function<void(double worldX, double worldY)> onPaletteRequested;
 
 private:
     // =========================================================================
@@ -713,6 +828,22 @@ private:
                           const ParamValue& value, const Rect2Df& widgetBounds);
     void RenderConnectionLine(IRenderContext* ctx);   // In-progress drag
     void RenderSelectionBox(IRenderContext* ctx);
+    void RenderMinimap(IRenderContext* ctx);          // Screen space (after PopState)
+    void RenderControls(IRenderContext* ctx);         // Screen space (after PopState)
+    void RenderAlignmentGuides(IRenderContext* ctx);  // World space
+
+    // Minimap & controls helpers (overlays live in screen space, so they hit-test
+    // in element-local pixel coords).
+    bool PointInMinimap(const Point2Di& screenPos) const;
+    int  FindControlButtonAt(const Point2Di& screenPos);
+    Rect2Df GetMinimapRectScreen() const;
+    void HandleMinimapDrag(const Point2Di& screenPos);
+
+    // Alignment guides: recomputes during node drag and stores the matched
+    // lines for rendering. Returns the snap adjustment to apply to the
+    // (already grid-snapped) drag delta.
+    Point2Df ComputeAlignmentSnap(const std::string& leaderId,
+                                   const Point2Df& proposedTopLeft);
 
     // =========================================================================
     // EVENT SUB-HANDLERS
@@ -833,6 +964,23 @@ private:
 
     // Snap to grid
     CompositorSnapGrid snapGrid;
+
+    // Minimap & controls overlays
+    CompositorMinimapConfig minimapConfig;
+    CompositorControlsConfig controlsConfig;
+    bool isDraggingMinimap = false;
+    int  hoveredControlButton = -1;
+
+    // Edge reconnection state
+    bool edgeReconnectionEnabled = true;
+    bool isReconnectingEdge = false;
+    CompositorLink reconnectSavedLink;   // Original edge captured at drag start
+
+    // Alignment guides
+    bool alignmentGuidesEnabled = false;
+    double alignmentGuideThreshold = 4.0;
+    std::vector<CompositorAlignmentGuide> currentAlignmentGuides;
+    std::string dragLeaderId;  // Primary node for alignment snap during multi-drag
 
     // Undo / redo history
     std::vector<HistoryEntry> undoStack;
