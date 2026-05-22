@@ -516,7 +516,7 @@ namespace UltraCanvas {
 
         // Adds localRect (in this element's local coords) to the appropriate
         // dirty-rect manager: the containing popup's, or the window's.
-        virtual void Invalidate(const Rect2Di& localRect);
+        virtual void InvalidateRect(const Rect2Di& localRect);
         void RequestRedraw();
         void RequestUpdateGeometry();
 

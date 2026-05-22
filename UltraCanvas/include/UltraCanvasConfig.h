@@ -8,17 +8,9 @@
 #include "UltraCanvasUtils.h"
 
 namespace UltraCanvas {
-
-    // Default directories relative to the executable
-#if defined(_WIN32) || defined(_WIN64)
-    constexpr const char* UC_DEFAULT_RESOURCES_DIR = "Resources/"; // exe/Resources/
-#elif defined(__APPLE__)
-    constexpr const char* UC_DEFAULT_RESOURCES_DIR = "../Resources/"; // .app/Contents/Resources/
-#else // Linux / Unix
-    constexpr const char* UC_DEFAULT_RESOURCES_DIR = "../share/UltraCanvas/"; // app/../share/UltraCanvas/
-#endif
     // Default application icon path relative to resources directory
-    constexpr const char* UC_DEFAULT_ICON_SUBPATH = "media/lib/icons/UltraCanvas-logo.png";
-
+    std::string GetDefaultIcon();
+    void SetDefaultIcon(const std::string& relativePath);
     std::string GetResourcesDir();
+    void SetResourcesDir(const std::string& relativePath);
 } // namespace UltraCanvas

@@ -53,7 +53,7 @@ namespace UltraCanvas {
         return pos;
     }
 
-    void UltraCanvasUIElement::Invalidate(const Rect2Di& localRect) {
+    void UltraCanvasUIElement::InvalidateRect(const Rect2Di& localRect) {
         if (!window || localRect.width <= 0 || localRect.height <= 0) return;
 
         // Walk up looking for a popup ancestor; popups own their own dirty
@@ -81,7 +81,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasUIElement::RequestRedraw() {
-        Invalidate(GetLocalBounds());
+        InvalidateRect(GetLocalBounds());
     }
 
     void UltraCanvasUIElement::RequestUpdateGeometry() {
@@ -266,7 +266,7 @@ namespace UltraCanvas {
         visible = vis;
         // Invalidate the rect we're about to vacate or occupy, in parent space.
         if (parentContainer) {
-            parentContainer->Invalidate(bounds);
+            parentContainer->InvalidateRect(bounds);
             parentContainer->InvalidateLayout();
         } else if (window && this != window) {
             window->AddDirtyRectangle(bounds);
@@ -308,7 +308,7 @@ namespace UltraCanvas {
         // in parent coords, so this is what the parent (or window) needs to repaint.
         Rect2Di damage = oldBounds.Union(b);
         if (parentContainer) {
-            parentContainer->Invalidate(damage);
+            parentContainer->InvalidateRect(damage);
         } else if (window && this != window) {
             window->AddDirtyRectangle(damage);
         }

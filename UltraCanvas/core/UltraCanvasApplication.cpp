@@ -96,7 +96,7 @@ namespace UltraCanvas {
             }
 
             // Auto-set default window icon if available
-            std::string iconPath = NormalizePath(GetResourcesDir() + UC_DEFAULT_ICON_SUBPATH);
+            std::string iconPath = GetDefaultIcon();
             if (std::filesystem::exists(iconPath)) {
                 SetDefaultWindowIcon(iconPath);
                 debugOutput << "UltraCanvas: Default window icon set to: " << iconPath << std::endl;
