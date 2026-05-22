@@ -893,6 +893,13 @@ namespace UltraCanvas {
                            "Apps/DemoApp/UltraCanvasNodeDiagramExamples.cpp",
                            "Docs/UltraCanvas/UltraCanvasNodeDiagramExamples.md");
 
+    diagramBuilder.AddItem("compositordiagram", "Compositor Diagram",
+                           "Compositor/shader-style node editor with typed sockets, embedded widgets, and subgraphs",
+                           ImplementationStatus::FullyImplemented,
+                           [this]() { return CreateCompositorDiagramExamples(); },
+                           "Apps/DemoApp/UltraCanvasCompositorDiagramExamples.cpp",
+                           "");
+
     diagramBuilder.AddItem("gourcetree", "Force-Directed Tree", "Radial tree visualization for file systems inspired by Gource",
                            ImplementationStatus::FullyImplemented,
                            [this]() { return CreateGourceTreeExamples(); },

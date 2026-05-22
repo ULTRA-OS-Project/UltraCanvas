@@ -621,7 +621,7 @@ bool UltraCanvasCompositorDiagram::SetParamNumber(const std::string& nodeId,
     if (!node) return false;
     ParamValue oldVal = CapturePrev(node, paramId);
     ParamValue newVal = oldVal;
-    if (newVal.kind == ParamValueKind::NoValue) newVal.kind = ParamValueKind::Number;
+    if (newVal.kind == ParamValueKind::Unset) newVal.kind = ParamValueKind::Number;
     newVal.number = value;
     ApplySetParamValue(nodeId, paramId, newVal);
     if (historyRecording) {
@@ -640,7 +640,7 @@ bool UltraCanvasCompositorDiagram::SetParamBool(const std::string& nodeId,
     if (!node) return false;
     ParamValue oldVal = CapturePrev(node, paramId);
     ParamValue newVal = oldVal;
-    if (newVal.kind == ParamValueKind::NoValue) newVal.kind = ParamValueKind::Boolean;
+    if (newVal.kind == ParamValueKind::Unset) newVal.kind = ParamValueKind::Boolean;
     newVal.boolean = value;
     ApplySetParamValue(nodeId, paramId, newVal);
     if (historyRecording) {
@@ -660,7 +660,7 @@ bool UltraCanvasCompositorDiagram::SetParamText(const std::string& nodeId,
     if (!node) return false;
     ParamValue oldVal = CapturePrev(node, paramId);
     ParamValue newVal = oldVal;
-    if (newVal.kind == ParamValueKind::NoValue) newVal.kind = ParamValueKind::Text;
+    if (newVal.kind == ParamValueKind::Unset) newVal.kind = ParamValueKind::Text;
     newVal.text = value;
     ApplySetParamValue(nodeId, paramId, newVal);
     if (historyRecording) {
@@ -680,7 +680,7 @@ bool UltraCanvasCompositorDiagram::SetParamColor(const std::string& nodeId,
     if (!node) return false;
     ParamValue oldVal = CapturePrev(node, paramId);
     ParamValue newVal = oldVal;
-    if (newVal.kind == ParamValueKind::NoValue) newVal.kind = ParamValueKind::Color;
+    if (newVal.kind == ParamValueKind::Unset) newVal.kind = ParamValueKind::Color;
     newVal.color = value;
     ApplySetParamValue(nodeId, paramId, newVal);
     if (historyRecording) {
@@ -1506,6 +1506,25 @@ void UltraCanvasCompositorDiagram::RenderLinks(IRenderContext* ctx) {
         ctx->SetStrokeWidth(lw);
         for (size_t i = 1; i < path.size(); ++i) {
             ctx->DrawLine(path[i - 1], path[i]);
+        }
+
+        // Optional edge label at the midpoint - a small rounded "pill" with text.
+        if (!l.label.empty() && path.size() >= 2) {
+            Point2Df mid = path[path.size() / 2];
+            ctx->SetFontFamily(style.fontFamily);
+            ctx->SetFontSize(style.socketLabelFontSize);
+            Size2Di td = ctx->GetTextLineDimensions(l.label);
+            double padX = 6.0;
+            double padY = 3.0;
+            Rect2Df pill(mid.x - td.width * 0.5 - padX,
+                          mid.y - td.height * 0.5 - padY,
+                          td.width + 2 * padX,
+                          td.height + 2 * padY);
+            ctx->SetFillPaint(l.labelBgColor);
+            ctx->FillRoundedRectangle(pill, pill.height * 0.5);
+            ctx->SetTextPaint(l.labelTextColor);
+            ctx->DrawText(l.label,
+                Point2Df(pill.x + padX, pill.y + padY));
         }
     }
 }
@@ -2881,7 +2900,8 @@ void UltraCanvasCompositorDiagram::WriteLinkJson(std::ostream& out,
     out << "      \"dstNode\": " << EscapeJsonString(l.targetNodeId) << ",\n";
     out << "      \"dstSocket\": " << EscapeJsonString(l.targetSocketId) << ",\n";
     out << "      \"style\": \"" << LinkStyleToCompositorString(l.style) << "\",\n";
-    out << "      \"lineWidth\": " << l.lineWidth << "\n";
+    out << "      \"lineWidth\": " << l.lineWidth << ",\n";
+    out << "      \"label\": " << EscapeJsonString(l.label) << "\n";
     out << "    }";
 }
 
@@ -2925,6 +2945,7 @@ bool UltraCanvasCompositorDiagram::ParseLinkFromObject(const std::string& obj,
     out.targetSocketId = ExtractStringValue(obj, "dstSocket");
     out.style = LinkStyleFromCompositorString(ExtractStringValue(obj, "style"));
     out.lineWidth = ExtractNumberValue(obj, "lineWidth", 2.0);
+    out.label = ExtractStringValue(obj, "label");
     return !out.sourceNodeId.empty() && !out.targetNodeId.empty();
 }
 

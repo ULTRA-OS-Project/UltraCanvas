@@ -195,8 +195,10 @@ enum class ParamWidgetKind {
 };
 
 // Tag for what a ParamValue currently holds. Set by the template's ParamSpec.
+// Note: avoid the names `None` and `NoValue` here - both are X11 #defines
+// (None=0L, NoValue=0x0000) pulled in via cairo/pango. `Unset` is safe.
 enum class ParamValueKind {
-    NoValue,
+    Unset,
     Number,
     Boolean,
     Text,
@@ -245,7 +247,7 @@ struct CompositorParamSpec {
 
     // Widget on the right side of the row.
     ParamWidgetKind widget = ParamWidgetKind::NoWidget;
-    ParamValueKind valueKind = ParamValueKind::NoValue;
+    ParamValueKind valueKind = ParamValueKind::Unset;
 
     // Constraints (interpretation depends on widget):
     //   NumberInput / Slider: numMin/numMax/numStep
@@ -267,7 +269,7 @@ struct CompositorParamSpec {
 // Runtime value for one row on one node. Tagged flat struct (matches the
 // project's existing style; no std::variant).
 struct ParamValue {
-    ParamValueKind kind = ParamValueKind::NoValue;
+    ParamValueKind kind = ParamValueKind::Unset;
 
     double  number = 0.0;
     bool    boolean = false;
@@ -412,6 +414,13 @@ struct CompositorLink {
     double lineWidth = 2.0f;
     // Line color: if 0-alpha, the renderer uses the source socket type's color.
     Color lineColorOverride = Color(0, 0, 0, 0);
+
+    // Optional label rendered at the midpoint of the routed path. Empty = no
+    // label drawn. Useful for KPI-style graphs showing correlation values,
+    // weighted edges, or transition conditions.
+    std::string label;
+    Color labelBgColor = Color(60, 200, 120, 220);   // pill background
+    Color labelTextColor = Color(255, 255, 255, 255);
 
     bool isSelected = false;
     bool selectable = true;

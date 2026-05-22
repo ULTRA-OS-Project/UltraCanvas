@@ -107,6 +107,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasDendrogramExamples.cpp
             Apps/DemoApp/UltraCanvasBlockDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasNodeDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasCompositorDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasFlowChartExamples.cpp
             Apps/DemoApp/UltraCanvasGourceTreeExamples.cpp
             Apps/DemoApp/UltraCanvasJitterPlotExamples.cpp
