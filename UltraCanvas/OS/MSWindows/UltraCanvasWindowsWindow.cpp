@@ -668,7 +668,7 @@ namespace UltraCanvas {
     void UltraCanvasWindowsWindow::InvalidateWindowNative() {
         if (!renderContext || !nativeSurface || !hwnd) return;
         // Trigger a synchronous WM_PAINT to blit the image surface to the window
-        InvalidateRect(hwnd, NULL, FALSE);
+        ::InvalidateRect(hwnd, NULL, FALSE);
         UpdateWindow(hwnd);
     }
 
