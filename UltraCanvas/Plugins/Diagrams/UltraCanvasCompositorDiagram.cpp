@@ -460,9 +460,15 @@ bool UltraCanvasCompositorDiagram::AddNode(const std::string& nodeId,
     for (const auto& spec : tmpl->params) {
         node.paramValues[spec.id] = SeedFromSpec(spec);
     }
-    nodes[nodeId] = node;
-    nodeOrder.push_back(nodeId);
-    RequestRedraw();
+    ApplyAddNode(node);
+
+    if (historyRecording) {
+        PushHistory({
+            [this, nodeId]()    { ApplyRemoveNode(nodeId); },
+            [this, node]()      { ApplyAddNode(node); },
+            "Add node"
+        });
+    }
     return true;
 }
 
@@ -478,24 +484,56 @@ void UltraCanvasCompositorDiagram::AddNode(const CompositorNode& node) {
             }
         }
     }
-    nodes[copy.id] = copy;
-    nodeOrder.push_back(copy.id);
-    RequestRedraw();
+    ApplyAddNode(copy);
+
+    if (historyRecording) {
+        std::string nodeId = copy.id;
+        PushHistory({
+            [this, nodeId]() { ApplyRemoveNode(nodeId); },
+            [this, copy]()   { ApplyAddNode(copy); },
+            "Add node"
+        });
+    }
 }
 
 void UltraCanvasCompositorDiagram::RemoveNode(const std::string& nodeId) {
-    if (!nodes.count(nodeId)) return;
+    auto nit = nodes.find(nodeId);
+    if (nit == nodes.end()) return;
+
+    // Capture pre-state for undo.
+    CompositorNode savedNode = nit->second;
+    std::vector<CompositorLink> savedLinks;
+    for (const auto& l : links) {
+        if (l.sourceNodeId == nodeId || l.targetNodeId == nodeId) {
+            savedLinks.push_back(l);
+        }
+    }
+
+    // Mutate: fire onLinkRemoved for each soon-to-die link, then erase.
+    for (const auto& l : savedLinks) {
+        if (onLinkRemoved) onLinkRemoved(l.id);
+    }
     links.erase(std::remove_if(links.begin(), links.end(),
         [&](const CompositorLink& l) {
-            bool dead = (l.sourceNodeId == nodeId || l.targetNodeId == nodeId);
-            if (dead && onLinkRemoved) onLinkRemoved(l.id);
-            return dead;
+            return l.sourceNodeId == nodeId || l.targetNodeId == nodeId;
         }), links.end());
-    nodes.erase(nodeId);
-    nodeOrder.erase(std::remove(nodeOrder.begin(), nodeOrder.end(), nodeId),
-                    nodeOrder.end());
-    selectedNodes.erase(nodeId);
-    RequestRedraw();
+    ApplyRemoveNode(nodeId);
+
+    if (historyRecording) {
+        PushHistory({
+            // undo: re-add node first, then re-add dependent links
+            [this, savedNode, savedLinks]() {
+                ApplyAddNode(savedNode);
+                for (const auto& l : savedLinks) ApplyAddLink(l);
+            },
+            // redo: remove links first, then node
+            [this, nodeId, savedLinks]() {
+                for (const auto& l : savedLinks) ApplyRemoveLink(l.id);
+                ApplyRemoveNode(nodeId);
+            },
+            "Remove node"
+        });
+    }
 }
 
 void UltraCanvasCompositorDiagram::UpdateNodePosition(const std::string& nodeId,
@@ -548,16 +586,33 @@ std::vector<std::string> UltraCanvasCompositorDiagram::GetAllNodeIds() const {
 // PARAMETER VALUES
 // =============================================================================
 
+// Internal helper: write a new ParamValue, push history capturing old/new.
+// Kept as a member function so the file-local SetParam* methods stay tidy.
+namespace {
+ParamValue CapturePrev(const CompositorNode* node, const std::string& paramId) {
+    if (!node) return {};
+    auto it = node->paramValues.find(paramId);
+    return (it == node->paramValues.end()) ? ParamValue{} : it->second;
+}
+} // anonymous namespace
+
 bool UltraCanvasCompositorDiagram::SetParamNumber(const std::string& nodeId,
                                                     const std::string& paramId,
                                                     double value) {
     auto* node = GetNode(nodeId);
     if (!node) return false;
-    auto& v = node->paramValues[paramId];
-    if (v.kind == ParamValueKind::NoValue) v.kind = ParamValueKind::Number;
-    v.number = value;
-    if (onParamChange) onParamChange(nodeId, paramId, v);
-    RequestRedraw();
+    ParamValue oldVal = CapturePrev(node, paramId);
+    ParamValue newVal = oldVal;
+    if (newVal.kind == ParamValueKind::NoValue) newVal.kind = ParamValueKind::Number;
+    newVal.number = value;
+    ApplySetParamValue(nodeId, paramId, newVal);
+    if (historyRecording) {
+        PushHistory({
+            [this, nodeId, paramId, oldVal]() { ApplySetParamValue(nodeId, paramId, oldVal); },
+            [this, nodeId, paramId, newVal]() { ApplySetParamValue(nodeId, paramId, newVal); },
+            "Change parameter"
+        });
+    }
     return true;
 }
 
@@ -565,11 +620,18 @@ bool UltraCanvasCompositorDiagram::SetParamBool(const std::string& nodeId,
                                                   const std::string& paramId, bool value) {
     auto* node = GetNode(nodeId);
     if (!node) return false;
-    auto& v = node->paramValues[paramId];
-    if (v.kind == ParamValueKind::NoValue) v.kind = ParamValueKind::Boolean;
-    v.boolean = value;
-    if (onParamChange) onParamChange(nodeId, paramId, v);
-    RequestRedraw();
+    ParamValue oldVal = CapturePrev(node, paramId);
+    ParamValue newVal = oldVal;
+    if (newVal.kind == ParamValueKind::NoValue) newVal.kind = ParamValueKind::Boolean;
+    newVal.boolean = value;
+    ApplySetParamValue(nodeId, paramId, newVal);
+    if (historyRecording) {
+        PushHistory({
+            [this, nodeId, paramId, oldVal]() { ApplySetParamValue(nodeId, paramId, oldVal); },
+            [this, nodeId, paramId, newVal]() { ApplySetParamValue(nodeId, paramId, newVal); },
+            "Toggle parameter"
+        });
+    }
     return true;
 }
 
@@ -578,11 +640,18 @@ bool UltraCanvasCompositorDiagram::SetParamText(const std::string& nodeId,
                                                   const std::string& value) {
     auto* node = GetNode(nodeId);
     if (!node) return false;
-    auto& v = node->paramValues[paramId];
-    if (v.kind == ParamValueKind::NoValue) v.kind = ParamValueKind::Text;
-    v.text = value;
-    if (onParamChange) onParamChange(nodeId, paramId, v);
-    RequestRedraw();
+    ParamValue oldVal = CapturePrev(node, paramId);
+    ParamValue newVal = oldVal;
+    if (newVal.kind == ParamValueKind::NoValue) newVal.kind = ParamValueKind::Text;
+    newVal.text = value;
+    ApplySetParamValue(nodeId, paramId, newVal);
+    if (historyRecording) {
+        PushHistory({
+            [this, nodeId, paramId, oldVal]() { ApplySetParamValue(nodeId, paramId, oldVal); },
+            [this, nodeId, paramId, newVal]() { ApplySetParamValue(nodeId, paramId, newVal); },
+            "Change text"
+        });
+    }
     return true;
 }
 
@@ -591,11 +660,18 @@ bool UltraCanvasCompositorDiagram::SetParamColor(const std::string& nodeId,
                                                    const Color& value) {
     auto* node = GetNode(nodeId);
     if (!node) return false;
-    auto& v = node->paramValues[paramId];
-    if (v.kind == ParamValueKind::NoValue) v.kind = ParamValueKind::Color;
-    v.color = value;
-    if (onParamChange) onParamChange(nodeId, paramId, v);
-    RequestRedraw();
+    ParamValue oldVal = CapturePrev(node, paramId);
+    ParamValue newVal = oldVal;
+    if (newVal.kind == ParamValueKind::NoValue) newVal.kind = ParamValueKind::Color;
+    newVal.color = value;
+    ApplySetParamValue(nodeId, paramId, newVal);
+    if (historyRecording) {
+        PushHistory({
+            [this, nodeId, paramId, oldVal]() { ApplySetParamValue(nodeId, paramId, oldVal); },
+            [this, nodeId, paramId, newVal]() { ApplySetParamValue(nodeId, paramId, newVal); },
+            "Change color"
+        });
+    }
     return true;
 }
 
@@ -604,10 +680,17 @@ bool UltraCanvasCompositorDiagram::SetParamDropdownIndex(const std::string& node
                                                           int index) {
     auto* node = GetNode(nodeId);
     if (!node) return false;
-    auto& v = node->paramValues[paramId];
-    v.dropdownIndex = index;
-    if (onParamChange) onParamChange(nodeId, paramId, v);
-    RequestRedraw();
+    ParamValue oldVal = CapturePrev(node, paramId);
+    ParamValue newVal = oldVal;
+    newVal.dropdownIndex = index;
+    ApplySetParamValue(nodeId, paramId, newVal);
+    if (historyRecording) {
+        PushHistory({
+            [this, nodeId, paramId, oldVal]() { ApplySetParamValue(nodeId, paramId, oldVal); },
+            [this, nodeId, paramId, newVal]() { ApplySetParamValue(nodeId, paramId, newVal); },
+            "Select option"
+        });
+    }
     return true;
 }
 
@@ -736,14 +819,45 @@ bool UltraCanvasCompositorDiagram::AddLink(const CompositorLink& link) {
         countOnSocket(link.sourceNodeId, link.sourceSocketId) >= srcSocket->maxConnections) {
         return false;
     }
+    // Replace existing connections on a saturated input socket. Capture for
+    // undo so the history entry can re-add them on undo.
+    std::vector<CompositorLink> displacedLinks;
     if (dstSocket->maxConnections > 0 &&
         countOnSocket(link.targetNodeId, link.targetSocketId) >= dstSocket->maxConnections) {
-        RemoveLinksOnSocket(link.targetNodeId, link.targetSocketId);
+        for (const auto& l : links) {
+            if (l.targetNodeId == link.targetNodeId && l.targetSocketId == link.targetSocketId) {
+                displacedLinks.push_back(l);
+            }
+        }
+        for (const auto& l : displacedLinks) {
+            if (onLinkRemoved) onLinkRemoved(l.id);
+        }
+        links.erase(std::remove_if(links.begin(), links.end(),
+            [&](const CompositorLink& l) {
+                return l.targetNodeId == link.targetNodeId &&
+                       l.targetSocketId == link.targetSocketId;
+            }), links.end());
     }
 
-    links.push_back(link);
+    ApplyAddLink(link);
     if (onLinkCreated) onLinkCreated(links.back());
-    RequestRedraw();
+
+    if (historyRecording) {
+        std::string linkId = link.id;
+        PushHistory({
+            // undo: remove the new link, restore displaced ones
+            [this, linkId, displacedLinks]() {
+                ApplyRemoveLink(linkId);
+                for (const auto& l : displacedLinks) ApplyAddLink(l);
+            },
+            // redo: remove displaced again, add the new one
+            [this, link, displacedLinks]() {
+                for (const auto& l : displacedLinks) ApplyRemoveLink(l.id);
+                ApplyAddLink(link);
+            },
+            "Add link"
+        });
+    }
     return true;
 }
 
@@ -751,22 +865,46 @@ void UltraCanvasCompositorDiagram::RemoveLink(const std::string& linkId) {
     auto it = std::find_if(links.begin(), links.end(),
         [&](const CompositorLink& l) { return l.id == linkId; });
     if (it == links.end()) return;
+    CompositorLink savedLink = *it;
     if (onLinkRemoved) onLinkRemoved(linkId);
-    links.erase(it);
-    selectedLinks.erase(linkId);
-    RequestRedraw();
+    ApplyRemoveLink(linkId);
+    if (historyRecording) {
+        PushHistory({
+            [this, savedLink]() { ApplyAddLink(savedLink); },
+            [this, linkId]()    { ApplyRemoveLink(linkId); },
+            "Remove link"
+        });
+    }
 }
 
 void UltraCanvasCompositorDiagram::RemoveLinksOnSocket(const std::string& nodeId,
                                                         const std::string& socketId) {
+    // Capture all affected links before erasing for a single composite history entry.
+    std::vector<CompositorLink> saved;
+    for (const auto& l : links) {
+        if ((l.sourceNodeId == nodeId && l.sourceSocketId == socketId) ||
+            (l.targetNodeId == nodeId && l.targetSocketId == socketId)) {
+            saved.push_back(l);
+        }
+    }
+    if (saved.empty()) return;
+    for (const auto& l : saved) {
+        if (onLinkRemoved) onLinkRemoved(l.id);
+    }
     links.erase(std::remove_if(links.begin(), links.end(),
         [&](const CompositorLink& l) {
-            bool dead = (l.sourceNodeId == nodeId && l.sourceSocketId == socketId) ||
-                        (l.targetNodeId == nodeId && l.targetSocketId == socketId);
-            if (dead && onLinkRemoved) onLinkRemoved(l.id);
-            return dead;
+            return (l.sourceNodeId == nodeId && l.sourceSocketId == socketId) ||
+                   (l.targetNodeId == nodeId && l.targetSocketId == socketId);
         }), links.end());
     RequestRedraw();
+
+    if (historyRecording) {
+        PushHistory({
+            [this, saved]() { for (const auto& l : saved) ApplyAddLink(l); },
+            [this, saved]() { for (const auto& l : saved) ApplyRemoveLink(l.id); },
+            "Disconnect socket"
+        });
+    }
 }
 
 CompositorLink* UltraCanvasCompositorDiagram::GetLink(const std::string& linkId) {
@@ -811,6 +949,27 @@ void UltraCanvasCompositorDiagram::SetGridVisible(bool visible, double spacing) 
     style.showGrid = visible;
     if (spacing > 0.0) style.gridSpacing = spacing;
     RequestRedraw();
+}
+
+// =============================================================================
+// SNAP-TO-GRID
+// =============================================================================
+
+void UltraCanvasCompositorDiagram::SetSnapToGrid(bool enabled) {
+    snapGrid.enabled = enabled;
+}
+
+void UltraCanvasCompositorDiagram::SetSnapGrid(double snapX, double snapY) {
+    if (snapX > 0.0) snapGrid.snapX = snapX;
+    if (snapY > 0.0) snapGrid.snapY = snapY;
+}
+
+Point2Df UltraCanvasCompositorDiagram::SnapWorldPoint(const Point2Df& p) const {
+    if (!snapGrid.enabled) return p;
+    Point2Df out;
+    out.x = std::round(p.x / snapGrid.snapX) * snapGrid.snapX;
+    out.y = std::round(p.y / snapGrid.snapY) * snapGrid.snapY;
+    return out;
 }
 
 // =============================================================================
@@ -1216,7 +1375,8 @@ void UltraCanvasCompositorDiagram::Render(IRenderContext* ctx, const Rect2Di& di
     if (style.showGrid) RenderGrid(ctx);
     RenderLinks(ctx);
     RenderNodes(ctx);
-    if (isConnecting) RenderConnectionLine(ctx);
+    if (isConnecting)    RenderConnectionLine(ctx);
+    if (isSelectingBox)  RenderSelectionBox(ctx);
 
     ctx->PopState();
 }
@@ -1661,20 +1821,32 @@ bool UltraCanvasCompositorDiagram::HandleMouseDown(const UCEvent& event) {
     dragStartPos = mousePos;
     isMultiSelectKeyHeld = event.shift;
 
-    // Right-click on empty canvas dispatches the create-node hook.
+    // Right-click: dispatch to the most-specific hook (socket > node > link >
+    // canvas). The socket fallback (disconnect all) only triggers when no
+    // onSocketRightClick hook is set, so apps that want custom menus retain
+    // full control of socket UX.
     if (event.button == UCMouseButton::Right) {
+        Point2Df w = ScreenToWorld(mousePos);
         SocketHit sh = FindSocketAt(mousePos);
         if (!sh.socketId.empty()) {
-            // Right-click on socket: disconnect.
-            RemoveLinksOnSocket(sh.nodeId, sh.socketId);
+            if (onSocketRightClick) {
+                onSocketRightClick(sh.nodeId, sh.socketId, sh.isOutput, w.x, w.y);
+            } else {
+                RemoveLinksOnSocket(sh.nodeId, sh.socketId);
+            }
             return true;
         }
         std::string nid = FindNodeAt(mousePos);
-        std::string lid = nid.empty() ? FindLinkAt(mousePos) : "";
-        if (nid.empty() && lid.empty() && onCanvasRightClick) {
-            Point2Df w = ScreenToWorld(mousePos);
-            onCanvasRightClick(w.x, w.y);
+        if (!nid.empty()) {
+            if (onNodeRightClick) onNodeRightClick(nid, w.x, w.y);
+            return true;
         }
+        std::string lid = FindLinkAt(mousePos);
+        if (!lid.empty()) {
+            if (onLinkRightClick) onLinkRightClick(lid, w.x, w.y);
+            return true;
+        }
+        if (onCanvasRightClick) onCanvasRightClick(w.x, w.y);
         return true;
     }
 
@@ -1699,32 +1871,32 @@ bool UltraCanvasCompositorDiagram::HandleMouseDown(const UCEvent& event) {
         }
     }
 
-    // 2. Row widget hit (handled inline; commit value changes).
+    // 2. Row widget hit. Mutations go through SetParam* so they record into
+    // the undo history. Widgets needing a popup editor (ColorSwatch, TextInput,
+    // FileBrowser, NumberInput) just fire onParamChange with the current value
+    // - the host app is expected to open the editor.
     WidgetHit wh = FindRowWidgetAt(mousePos);
     if (!wh.paramId.empty()) {
         auto* node = GetNode(wh.nodeId);
         const auto* tmpl = node ? GetTemplate(node->templateId) : nullptr;
         const auto* spec = tmpl ? FindParamSpec(*tmpl, wh.paramId) : nullptr;
         if (node && spec) {
-            // Bring this node to front so subsequent drags route to it.
             SelectNode(wh.nodeId, event.shift);
             switch (spec->widget) {
                 case ParamWidgetKind::Dropdown: {
                     if (!spec->choices.empty()) {
-                        auto& v = node->paramValues[spec->id];
-                        int next = v.dropdownIndex + 1;
+                        auto it = node->paramValues.find(spec->id);
+                        int cur = (it == node->paramValues.end()) ? 0 : it->second.dropdownIndex;
+                        int next = cur + 1;
                         if (next >= (int)spec->choices.size()) next = 0;
-                        v.dropdownIndex = next;
-                        if (onParamChange) onParamChange(node->id, spec->id, v);
-                        RequestRedraw();
+                        SetParamDropdownIndex(node->id, spec->id, next);
                     }
                     return true;
                 }
                 case ParamWidgetKind::Checkbox: {
-                    auto& v = node->paramValues[spec->id];
-                    v.boolean = !v.boolean;
-                    if (onParamChange) onParamChange(node->id, spec->id, v);
-                    RequestRedraw();
+                    auto it = node->paramValues.find(spec->id);
+                    bool cur = (it != node->paramValues.end()) && it->second.boolean;
+                    SetParamBool(node->id, spec->id, !cur);
                     return true;
                 }
                 case ParamWidgetKind::Slider: {
@@ -1738,18 +1910,12 @@ bool UltraCanvasCompositorDiagram::HandleMouseDown(const UCEvent& event) {
                         double newVal = spec->numMin + t * (spec->numMax - spec->numMin);
                         if (spec->numStep > 0)
                             newVal = std::round(newVal / spec->numStep) * spec->numStep;
-                        auto& v = node->paramValues[spec->id];
-                        v.number = newVal;
-                        if (onParamChange) onParamChange(node->id, spec->id, v);
-                        RequestRedraw();
+                        SetParamNumber(node->id, spec->id, newVal);
                         return true;
                     }
                     return true;
                 }
                 default:
-                    // Other kinds (ColorSwatch, TextInput, FileBrowser, NumberInput)
-                    // need a separate editor UX. Fire the change callback with the
-                    // current value so apps can spawn a popup.
                     if (onParamChange) {
                         auto it = node->paramValues.find(spec->id);
                         if (it != node->paramValues.end()) {
@@ -1785,9 +1951,27 @@ bool UltraCanvasCompositorDiagram::HandleMouseDown(const UCEvent& event) {
         return true;
     }
 
-    // 5. Empty canvas: deselect, start pan.
-    if (!event.shift) DeselectAll();
-    if (panOnDrag) isDraggingViewport = true;
+    // 5. Empty canvas:
+    //   - shift+drag (or pan-on-drag disabled): start rubber-band selection
+    //   - otherwise: start pan
+    Point2Df world = ScreenToWorld(mousePos);
+    if (event.shift || !panOnDrag) {
+        isSelectingBox = true;
+        selectionBoxStart = world;
+        selectionBoxEnd   = world;
+        if (event.shift) {
+            // Preserve existing selection so the rubber-band extends it.
+            selectionBoxStartNodes = selectedNodes;
+            selectionBoxStartLinks = selectedLinks;
+        } else {
+            selectionBoxStartNodes.clear();
+            selectionBoxStartLinks.clear();
+            DeselectAll();
+        }
+    } else {
+        DeselectAll();
+        isDraggingViewport = true;
+    }
     return true;
 }
 
@@ -1795,11 +1979,9 @@ bool UltraCanvasCompositorDiagram::HandleMouseUp(const UCEvent& event) {
     Point2Di mousePos(event.pointer.x, event.pointer.y);
 
     if (isConnecting) {
-        // Find a socket under the release point.
         SocketHit sh = FindSocketAt(mousePos);
         bool ok = false;
         if (!sh.socketId.empty() && sh.nodeId != connectionSourceNode) {
-            // Orient: src must be output, dst must be input.
             std::string srcNode, srcSock, dstNode, dstSock;
             if (connectionSourceIsOutput && !sh.isOutput) {
                 srcNode = connectionSourceNode; srcSock = connectionSourceSocket;
@@ -1811,11 +1993,7 @@ bool UltraCanvasCompositorDiagram::HandleMouseUp(const UCEvent& event) {
                 ok = true;
             }
             if (ok) {
-                static unsigned int linkCounter = 0;
-                char buf[64];
-                std::snprintf(buf, sizeof(buf), "link_%u", ++linkCounter);
-                std::string id(buf);
-                AddLink(id, srcNode, srcSock, dstNode, dstSock);
+                AddLink(GenerateUniqueLinkId(), srcNode, srcSock, dstNode, dstSock);
             }
         }
         isConnecting = false;
@@ -1826,7 +2004,32 @@ bool UltraCanvasCompositorDiagram::HandleMouseUp(const UCEvent& event) {
     }
 
     if (isDraggingNode) {
+        // Push a MoveNodes history entry if anything actually moved.
+        std::map<std::string, Point2Df> finalPositions;
+        bool moved = false;
+        for (const auto& kv : dragStartPositions) {
+            const auto* n = GetNode(kv.first);
+            if (!n) continue;
+            finalPositions[kv.first] = Point2Df(n->x, n->y);
+            if (n->x != kv.second.x || n->y != kv.second.y) moved = true;
+        }
+        if (moved && historyRecording) {
+            auto starts = dragStartPositions;
+            PushHistory({
+                [this, starts]()         { ApplyMoveNodes(starts); },
+                [this, finalPositions]() { ApplyMoveNodes(finalPositions); },
+                "Move nodes"
+            });
+        }
         isDraggingNode = false;
+        dragStartPositions.clear();
+        return true;
+    }
+    if (isSelectingBox) {
+        isSelectingBox = false;
+        selectionBoxStartNodes.clear();
+        selectionBoxStartLinks.clear();
+        RequestRedraw();
         return true;
     }
     if (isDraggingViewport) {
@@ -1853,9 +2056,53 @@ bool UltraCanvasCompositorDiagram::HandleMouseMove(const UCEvent& event) {
         for (const auto& kv : dragStartPositions) {
             auto* n = GetNode(kv.first);
             if (!n) continue;
-            n->x = kv.second.x + dx;
-            n->y = kv.second.y + dy;
+            Point2Df raw(kv.second.x + dx, kv.second.y + dy);
+            Point2Df snapped = SnapWorldPoint(raw);
+            n->x = snapped.x;
+            n->y = snapped.y;
             if (onNodeDrag) onNodeDrag(kv.first, n->x, n->y);
+        }
+        RequestRedraw();
+        return true;
+    }
+
+    if (isSelectingBox) {
+        selectionBoxEnd = ScreenToWorld(mousePos);
+        // Recompute selection: enclosed nodes + intra-selection links, union'd
+        // with the pre-drag selection.
+        double x0 = std::min(selectionBoxStart.x, selectionBoxEnd.x);
+        double y0 = std::min(selectionBoxStart.y, selectionBoxEnd.y);
+        double x1 = std::max(selectionBoxStart.x, selectionBoxEnd.x);
+        double y1 = std::max(selectionBoxStart.y, selectionBoxEnd.y);
+        Rect2Df box(x0, y0, x1 - x0, y1 - y0);
+
+        std::set<std::string> newSelectedNodes = selectionBoxStartNodes;
+        for (const auto& id : nodeOrder) {
+            const auto* n = GetNode(id);
+            if (!n) continue;
+            const auto* tmpl = GetTemplate(n->templateId);
+            if (!tmpl) continue;
+            NodeLayout L = ComputeNodeLayout(*n, *tmpl);
+            // Fully-enclosed: node bounds entirely inside box. This is the
+            // React Flow / Blender convention - half-enclosed nodes are NOT
+            // selected, avoiding accidental selection while panning over them.
+            if (L.bounds.x >= box.x && L.bounds.y >= box.y &&
+                L.bounds.x + L.bounds.width  <= box.x + box.width &&
+                L.bounds.y + L.bounds.height <= box.y + box.height) {
+                newSelectedNodes.insert(id);
+            }
+        }
+        std::set<std::string> newSelectedLinks = selectionBoxStartLinks;
+        for (const auto& l : links) {
+            if (newSelectedNodes.count(l.sourceNodeId) &&
+                newSelectedNodes.count(l.targetNodeId)) {
+                newSelectedLinks.insert(l.id);
+            }
+        }
+        if (newSelectedNodes != selectedNodes || newSelectedLinks != selectedLinks) {
+            selectedNodes = std::move(newSelectedNodes);
+            selectedLinks = std::move(newSelectedLinks);
+            NotifySelectionChange();
         }
         RequestRedraw();
         return true;
@@ -1869,7 +2116,7 @@ bool UltraCanvasCompositorDiagram::HandleMouseMove(const UCEvent& event) {
         return true;
     }
 
-    // Update hover for visual feedback (cheap; only redraw if something changed).
+    // Update hover for visual feedback.
     lastMousePos = mousePos;
     std::string newHoveredNode = FindNodeAt(mousePos);
     std::string newHoveredLink = newHoveredNode.empty() ? FindLinkAt(mousePos) : "";
@@ -1915,13 +2162,39 @@ bool UltraCanvasCompositorDiagram::HandleKeyDown(const UCEvent& event) {
                 RequestRedraw();
                 return true;
             }
+            if (isSelectingBox) {
+                isSelectingBox = false;
+                selectedNodes = selectionBoxStartNodes;
+                selectedLinks = selectionBoxStartLinks;
+                selectionBoxStartNodes.clear();
+                selectionBoxStartLinks.clear();
+                NotifySelectionChange();
+                RequestRedraw();
+                return true;
+            }
             DeselectAll();
             return true;
         case UCKeys::A:
-            if (event.ctrl) {
-                SelectAll();
-                return true;
-            }
+            if (event.ctrl) { SelectAll();    return true; }
+            break;
+        case UCKeys::Z:
+            if (event.ctrl && event.shift) { Redo(); return true; }
+            if (event.ctrl)                { Undo(); return true; }
+            break;
+        case UCKeys::Y:
+            if (event.ctrl) { Redo();         return true; }
+            break;
+        case UCKeys::C:
+            if (event.ctrl) { Copy();         return true; }
+            break;
+        case UCKeys::X:
+            if (event.ctrl) { Cut();          return true; }
+            break;
+        case UCKeys::V:
+            if (event.ctrl) { Paste();        return true; }
+            break;
+        case UCKeys::D:
+            if (event.ctrl) { Duplicate();    return true; }
             break;
         default: break;
     }
@@ -2100,6 +2373,10 @@ std::string UltraCanvasCompositorDiagram::ToJson() const {
 }
 
 bool UltraCanvasCompositorDiagram::FromJson(const std::string& json) {
+    // Programmatic load: suppress per-op history, wipe the existing history,
+    // then resume recording so subsequent user edits ARE undoable.
+    bool prevRec = historyRecording;
+    historyRecording = false;
     Clear();
     // Viewport
     std::string vp = FindRawValue(json, "viewport");
@@ -2157,8 +2434,360 @@ bool UltraCanvasCompositorDiagram::FromJson(const std::string& json) {
         l.lineWidth = ExtractNumberValue(lobj, "lineWidth", 2.0);
         AddLink(l);
     }
+
+    historyRecording = prevRec;
+    undoStack.clear();
+    redoStack.clear();
+    NotifyHistoryChange();
     RequestRedraw();
     return true;
+}
+
+// =============================================================================
+// APPLY-* PRIMITIVES (raw mutators - used by undo/redo lambdas, no history)
+// =============================================================================
+
+void UltraCanvasCompositorDiagram::ApplyAddNode(const CompositorNode& node) {
+    if (nodes.count(node.id)) return;
+    nodes[node.id] = node;
+    nodeOrder.push_back(node.id);
+    RequestRedraw();
+}
+
+void UltraCanvasCompositorDiagram::ApplyRemoveNode(const std::string& nodeId) {
+    if (!nodes.count(nodeId)) return;
+    nodes.erase(nodeId);
+    nodeOrder.erase(std::remove(nodeOrder.begin(), nodeOrder.end(), nodeId),
+                    nodeOrder.end());
+    selectedNodes.erase(nodeId);
+    RequestRedraw();
+}
+
+void UltraCanvasCompositorDiagram::ApplyAddLink(const CompositorLink& link) {
+    links.push_back(link);
+    RequestRedraw();
+}
+
+void UltraCanvasCompositorDiagram::ApplyRemoveLink(const std::string& linkId) {
+    auto it = std::find_if(links.begin(), links.end(),
+        [&](const CompositorLink& l) { return l.id == linkId; });
+    if (it == links.end()) return;
+    links.erase(it);
+    selectedLinks.erase(linkId);
+    RequestRedraw();
+}
+
+void UltraCanvasCompositorDiagram::ApplySetParamValue(
+        const std::string& nodeId, const std::string& paramId,
+        const ParamValue& value) {
+    auto* node = GetNode(nodeId);
+    if (!node) return;
+    node->paramValues[paramId] = value;
+    if (onParamChange) onParamChange(nodeId, paramId, value);
+    RequestRedraw();
+}
+
+void UltraCanvasCompositorDiagram::ApplyMoveNodes(
+        const std::map<std::string, Point2Df>& positions) {
+    for (const auto& kv : positions) {
+        auto* n = GetNode(kv.first);
+        if (n) { n->x = kv.second.x; n->y = kv.second.y; }
+    }
+    RequestRedraw();
+}
+
+// =============================================================================
+// HISTORY
+// =============================================================================
+
+void UltraCanvasCompositorDiagram::PushHistory(HistoryEntry entry) {
+    if (!historyRecording) return;
+    undoStack.push_back(std::move(entry));
+    if (undoStack.size() > historyLimit) {
+        undoStack.erase(undoStack.begin());
+    }
+    redoStack.clear();
+    NotifyHistoryChange();
+}
+
+void UltraCanvasCompositorDiagram::Undo() {
+    if (undoStack.empty()) return;
+    HistoryEntry e = std::move(undoStack.back());
+    undoStack.pop_back();
+    bool prev = historyRecording;
+    historyRecording = false;
+    if (e.undo) e.undo();
+    historyRecording = prev;
+    redoStack.push_back(std::move(e));
+    NotifyHistoryChange();
+}
+
+void UltraCanvasCompositorDiagram::Redo() {
+    if (redoStack.empty()) return;
+    HistoryEntry e = std::move(redoStack.back());
+    redoStack.pop_back();
+    bool prev = historyRecording;
+    historyRecording = false;
+    if (e.redo) e.redo();
+    historyRecording = prev;
+    undoStack.push_back(std::move(e));
+    NotifyHistoryChange();
+}
+
+void UltraCanvasCompositorDiagram::ClearHistory() {
+    undoStack.clear();
+    redoStack.clear();
+    NotifyHistoryChange();
+}
+
+void UltraCanvasCompositorDiagram::NotifyHistoryChange() {
+    if (onHistoryChange) onHistoryChange();
+}
+
+// =============================================================================
+// SELECTION-BOX RENDERING
+// =============================================================================
+
+void UltraCanvasCompositorDiagram::RenderSelectionBox(IRenderContext* ctx) {
+    if (!isSelectingBox) return;
+    double x0 = std::min(selectionBoxStart.x, selectionBoxEnd.x);
+    double y0 = std::min(selectionBoxStart.y, selectionBoxEnd.y);
+    double x1 = std::max(selectionBoxStart.x, selectionBoxEnd.x);
+    double y1 = std::max(selectionBoxStart.y, selectionBoxEnd.y);
+    Rect2Df r(x0, y0, x1 - x0, y1 - y0);
+    ctx->SetFillPaint(style.selectionBoxFill);
+    ctx->FillRectangle(r);
+    ctx->SetStrokePaint(style.selectionBoxStroke);
+    ctx->SetStrokeWidth(1.0 / std::max(0.01, zoomLevel));
+    ctx->DrawRectangle(r);
+}
+
+// =============================================================================
+// JSON HELPERS - per-node / per-link write & parse (reused by Copy/Paste)
+// =============================================================================
+
+void UltraCanvasCompositorDiagram::WriteNodeJson(std::ostream& out,
+                                                   const CompositorNode& n) const {
+    out << "    {\n";
+    out << "      \"id\": " << EscapeJsonString(n.id) << ",\n";
+    out << "      \"templateId\": " << EscapeJsonString(n.templateId) << ",\n";
+    out << "      \"titleOverride\": " << EscapeJsonString(n.titleOverride) << ",\n";
+    out << "      \"x\": " << n.x << ",\n";
+    out << "      \"y\": " << n.y << ",\n";
+    out << "      \"width\": " << n.width << ",\n";
+    out << "      \"collapsed\": " << (n.collapsed ? "true" : "false") << ",\n";
+    out << "      \"previewHandle\": " << EscapeJsonString(n.previewHandle) << ",\n";
+    out << "      \"params\": [";
+    bool firstP = true;
+    for (const auto& pv : n.paramValues) {
+        if (!firstP) out << ", ";
+        firstP = false;
+        const auto& v = pv.second;
+        out << "{ \"id\": " << EscapeJsonString(pv.first);
+        switch (v.kind) {
+            case ParamValueKind::Number:  out << ", \"number\": "  << v.number; break;
+            case ParamValueKind::Boolean: out << ", \"bool\": "    << (v.boolean ? "true" : "false"); break;
+            case ParamValueKind::Text:    out << ", \"text\": "    << EscapeJsonString(v.text); break;
+            case ParamValueKind::Color:   out << ", \"color\": "   << ColorToJsonString(v.color); break;
+            default: break;
+        }
+        if (v.dropdownIndex != 0) out << ", \"dropdown\": " << v.dropdownIndex;
+        out << " }";
+    }
+    out << "]\n";
+    out << "    }";
+}
+
+void UltraCanvasCompositorDiagram::WriteLinkJson(std::ostream& out,
+                                                   const CompositorLink& l) const {
+    out << "    {\n";
+    out << "      \"id\": " << EscapeJsonString(l.id) << ",\n";
+    out << "      \"srcNode\": " << EscapeJsonString(l.sourceNodeId) << ",\n";
+    out << "      \"srcSocket\": " << EscapeJsonString(l.sourceSocketId) << ",\n";
+    out << "      \"dstNode\": " << EscapeJsonString(l.targetNodeId) << ",\n";
+    out << "      \"dstSocket\": " << EscapeJsonString(l.targetSocketId) << ",\n";
+    out << "      \"style\": \"" << LinkStyleToCompositorString(l.style) << "\",\n";
+    out << "      \"lineWidth\": " << l.lineWidth << "\n";
+    out << "    }";
+}
+
+bool UltraCanvasCompositorDiagram::ParseNodeFromObject(const std::string& obj,
+                                                        CompositorNode& out) {
+    out.id = ExtractStringValue(obj, "id");
+    if (out.id.empty()) return false;
+    out.templateId = ExtractStringValue(obj, "templateId");
+    out.titleOverride = ExtractStringValue(obj, "titleOverride");
+    out.x = ExtractNumberValue(obj, "x");
+    out.y = ExtractNumberValue(obj, "y");
+    out.width = ExtractNumberValue(obj, "width");
+    out.collapsed = ExtractBoolValue(obj, "collapsed");
+    out.previewHandle = ExtractStringValue(obj, "previewHandle");
+    for (const auto& pobj : ExtractObjectArray(obj, "params")) {
+        std::string pid = ExtractStringValue(pobj, "id");
+        if (pid.empty()) continue;
+        ParamValue v;
+        std::string numRaw = FindRawValue(pobj, "number");
+        if (!numRaw.empty()) { v.kind = ParamValueKind::Number; v.number = ExtractNumberValue(pobj, "number"); }
+        std::string boolRaw = FindRawValue(pobj, "bool");
+        if (!boolRaw.empty()) { v.kind = ParamValueKind::Boolean; v.boolean = ExtractBoolValue(pobj, "bool"); }
+        std::string textRaw = FindRawValue(pobj, "text");
+        if (!textRaw.empty()) { v.kind = ParamValueKind::Text; v.text = ExtractStringValue(pobj, "text"); }
+        std::string colRaw = FindRawValue(pobj, "color");
+        if (!colRaw.empty()) { v.kind = ParamValueKind::Color; v.color = ExtractColorValue(pobj, "color", Color()); }
+        std::string ddRaw = FindRawValue(pobj, "dropdown");
+        if (!ddRaw.empty()) v.dropdownIndex = static_cast<int>(ExtractNumberValue(pobj, "dropdown"));
+        out.paramValues[pid] = v;
+    }
+    return true;
+}
+
+bool UltraCanvasCompositorDiagram::ParseLinkFromObject(const std::string& obj,
+                                                        CompositorLink& out) {
+    out.id = ExtractStringValue(obj, "id");
+    out.sourceNodeId   = ExtractStringValue(obj, "srcNode");
+    out.sourceSocketId = ExtractStringValue(obj, "srcSocket");
+    out.targetNodeId   = ExtractStringValue(obj, "dstNode");
+    out.targetSocketId = ExtractStringValue(obj, "dstSocket");
+    out.style = LinkStyleFromCompositorString(ExtractStringValue(obj, "style"));
+    out.lineWidth = ExtractNumberValue(obj, "lineWidth", 2.0);
+    return !out.sourceNodeId.empty() && !out.targetNodeId.empty();
+}
+
+// =============================================================================
+// CLIPBOARD (COPY / CUT / PASTE / DUPLICATE)
+// =============================================================================
+
+std::string UltraCanvasCompositorDiagram::GenerateUniqueNodeId(
+        const std::string& base) const {
+    std::string trimmed = base;
+    // Strip trailing _copyN suffix so repeated pastes don't grow indefinitely.
+    auto pos = trimmed.rfind("_copy");
+    if (pos != std::string::npos) trimmed.erase(pos);
+    for (int n = 1; n < 100000; ++n) {
+        std::string candidate = trimmed + "_copy" + std::to_string(n);
+        if (!nodes.count(candidate)) return candidate;
+    }
+    return trimmed + "_copy_" + std::to_string(std::rand());
+}
+
+std::string UltraCanvasCompositorDiagram::GenerateUniqueLinkId() const {
+    for (int i = 0; i < 100000; ++i) {
+        ++linkIdCounter;
+        std::string candidate = "link_" + std::to_string(linkIdCounter);
+        bool taken = false;
+        for (const auto& l : links) if (l.id == candidate) { taken = true; break; }
+        if (!taken) return candidate;
+    }
+    return "link_" + std::to_string(std::rand());
+}
+
+void UltraCanvasCompositorDiagram::Copy() {
+    if (selectedNodes.empty()) {
+        clipboard.clear();
+        return;
+    }
+    std::ostringstream out;
+    out << "{\n  \"nodes\": [\n";
+    bool first = true;
+    for (const auto& id : nodeOrder) {
+        if (!selectedNodes.count(id)) continue;
+        auto it = nodes.find(id);
+        if (it == nodes.end()) continue;
+        if (!first) out << ",\n";
+        first = false;
+        WriteNodeJson(out, it->second);
+    }
+    out << "\n  ],\n  \"links\": [\n";
+    first = true;
+    for (const auto& l : links) {
+        // Only links where BOTH endpoints are in the selection (intra-selection).
+        if (!selectedNodes.count(l.sourceNodeId)) continue;
+        if (!selectedNodes.count(l.targetNodeId)) continue;
+        if (!first) out << ",\n";
+        first = false;
+        WriteLinkJson(out, l);
+    }
+    out << "\n  ]\n}\n";
+    clipboard = out.str();
+}
+
+void UltraCanvasCompositorDiagram::Cut() {
+    Copy();
+    DeleteSelected();
+}
+
+void UltraCanvasCompositorDiagram::Paste(double offsetX, double offsetY) {
+    if (clipboard.empty()) return;
+
+    std::map<std::string, std::string> idRemap;
+    std::vector<CompositorNode> toAdd;
+    std::vector<CompositorLink> toLink;
+
+    for (const auto& nobj : ExtractObjectArray(clipboard, "nodes")) {
+        CompositorNode n;
+        if (!ParseNodeFromObject(nobj, n)) continue;
+        std::string origId = n.id;
+        n.id = GenerateUniqueNodeId(origId);
+        idRemap[origId] = n.id;
+        n.x += offsetX;
+        n.y += offsetY;
+        toAdd.push_back(n);
+    }
+    for (const auto& lobj : ExtractObjectArray(clipboard, "links")) {
+        CompositorLink l;
+        if (!ParseLinkFromObject(lobj, l)) continue;
+        auto its = idRemap.find(l.sourceNodeId);
+        auto itt = idRemap.find(l.targetNodeId);
+        if (its == idRemap.end() || itt == idRemap.end()) continue;
+        l.id = GenerateUniqueLinkId();
+        l.sourceNodeId = its->second;
+        l.targetNodeId = itt->second;
+        toLink.push_back(l);
+    }
+    if (toAdd.empty()) return;
+
+    // Apply as one composite history step (suppress per-op recording).
+    bool prevRec = historyRecording;
+    historyRecording = false;
+    for (const auto& n : toAdd) AddNode(n);
+    for (const auto& l : toLink) AddLink(l);
+    historyRecording = prevRec;
+
+    // Select the new nodes.
+    selectedNodes.clear();
+    selectedLinks.clear();
+    for (const auto& n : toAdd) selectedNodes.insert(n.id);
+    NotifySelectionChange();
+
+    if (historyRecording) {
+        std::vector<std::string> addedNodeIds;
+        std::vector<std::string> addedLinkIds;
+        for (const auto& n : toAdd) addedNodeIds.push_back(n.id);
+        for (const auto& l : toLink) addedLinkIds.push_back(l.id);
+        PushHistory({
+            // undo
+            [this, addedNodeIds, addedLinkIds]() {
+                for (const auto& lid : addedLinkIds) ApplyRemoveLink(lid);
+                for (const auto& nid : addedNodeIds) ApplyRemoveNode(nid);
+            },
+            // redo
+            [this, toAdd, toLink]() {
+                for (const auto& n : toAdd) ApplyAddNode(n);
+                for (const auto& l : toLink) ApplyAddLink(l);
+            },
+            "Paste"
+        });
+    }
+    RequestRedraw();
+}
+
+void UltraCanvasCompositorDiagram::Duplicate(double offsetX, double offsetY) {
+    if (selectedNodes.empty()) return;
+    // Save & restore clipboard so Duplicate doesn't trample user's clipboard.
+    std::string savedClipboard = clipboard;
+    Copy();
+    Paste(offsetX, offsetY);
+    clipboard = savedClipboard;
 }
 
 } // namespace UltraCanvas

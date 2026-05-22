@@ -4,9 +4,37 @@
 // widgets + optional preview), as opposed to UltraCanvasNodeDiagram's
 // opaque-shape model used for network/graph visualization.
 //
-// Version: 0.1.0 (API SKETCH - header only, no implementation yet)
+// Version: 0.2.0
 // Last Modified: 2026-05-22
 // Author: UltraCanvas Framework
+//
+// CHANGELOG 0.2.0 (Tier 1 productivity features):
+//  - NEW: 5 additional socket data types - Time, Matrix, Trigger, List, Path.
+//  - NEW: Rubber-band selection box. Shift+drag in empty canvas selects all
+//         enclosed nodes; non-shift drag still pans. Renders a translucent
+//         selection rectangle styled via CompositorDiagramStyle::selectionBox*.
+//  - NEW: Snap-to-grid. SetSnapToGrid / SetSnapGrid. Applies during node
+//         drag so multi-node alignment is automatic.
+//  - NEW: Right-click hooks for node / link / socket / canvas. Default socket
+//         right-click disconnects all links on the socket; the host can
+//         override this by setting onSocketRightClick.
+//  - NEW: Undo / Redo with bounded history (default 100 entries). Public
+//         mutators record automatically; FromJson suppresses recording during
+//         load. Closures capture pre/post state, so node removal restores all
+//         dependent links on undo.
+//  - NEW: Copy / Cut / Paste / Duplicate over selected nodes + intra-selection
+//         links. Internal clipboard only (JSON-encoded); OS clipboard binding
+//         is a separate concern. Paste rewrites ids to avoid collisions and
+//         offsets positions for visibility.
+//  - NEW: Keyboard shortcuts wired in HandleKeyDown:
+//             Ctrl+Z         Undo
+//             Ctrl+Y         Redo
+//             Ctrl+Shift+Z   Redo
+//             Ctrl+C / X / V Copy / Cut / Paste
+//             Ctrl+D         Duplicate
+//             Ctrl+A         Select all
+//             Delete / Backspace  Delete selected
+//             Escape         Cancel drag-to-connect / deselect
 //
 // CHANGELOG 0.1.0 (initial API sketch):
 //  - NEW: Companion to UltraCanvasNodeDiagram. NodeDiagram models nodes as
@@ -358,9 +386,23 @@ struct CompositorDiagramStyle {
     Color selectionColor = Color(255, 160, 30, 255);
     double selectionWidth = 2.0f;
 
+    // Rubber-band selection box (shift+drag in empty canvas)
+    Color selectionBoxFill   = Color( 80, 130, 200,  40);
+    Color selectionBoxStroke = Color( 80, 130, 200, 200);
+
     // In-progress connection
     Color connectionLineColor = Color(220, 220, 220, 220);
     double connectionLineWidth = 2.0f;
+};
+
+// =============================================================================
+// SNAP-TO-GRID
+// =============================================================================
+
+struct CompositorSnapGrid {
+    bool   enabled = false;
+    double snapX = 20.0;
+    double snapY = 20.0;
 };
 
 // =============================================================================
@@ -514,6 +556,45 @@ public:
     void SetZoomOnScroll(bool zoom)              { zoomOnScroll = zoom; }
 
     // =========================================================================
+    // SNAP-TO-GRID
+    // =========================================================================
+
+    void SetSnapToGrid(bool enabled);
+    void SetSnapGrid(double snapX, double snapY);
+    bool IsSnapToGridEnabled() const             { return snapGrid.enabled; }
+
+    // =========================================================================
+    // HISTORY (UNDO / REDO)
+    // =========================================================================
+    // Public mutators (AddNode/RemoveNode/UpdateNodePosition/AddLink/RemoveLink/
+    // SetParam*/Paste etc.) push undo entries automatically. Set
+    // SetHistoryRecording(false) to suppress recording during programmatic
+    // batch loads; FromJson does this internally.
+
+    void Undo();
+    void Redo();
+    bool CanUndo() const                         { return !undoStack.empty(); }
+    bool CanRedo() const                         { return !redoStack.empty(); }
+    void ClearHistory();
+    void SetHistoryLimit(size_t limit)           { historyLimit = limit; }
+    void SetHistoryRecording(bool enabled)       { historyRecording = enabled; }
+    size_t GetUndoStackSize() const              { return undoStack.size(); }
+    size_t GetRedoStackSize() const              { return redoStack.size(); }
+
+    // =========================================================================
+    // CLIPBOARD (COPY / PASTE / DUPLICATE)
+    // =========================================================================
+    // Copies selected nodes + intra-selection links to an internal clipboard
+    // buffer (JSON-encoded). Does NOT touch the OS clipboard - cross-platform
+    // OS clipboard binding is a separate concern.
+
+    void Copy();
+    void Cut();
+    void Paste(double offsetX = 20.0, double offsetY = 20.0);
+    void Duplicate(double offsetX = 20.0, double offsetY = 20.0);
+    bool HasClipboard() const                    { return !clipboard.empty(); }
+
+    // =========================================================================
     // SERIALIZATION
     // =========================================================================
     // Serializes registered templates, nodes (with paramValues), and links.
@@ -550,14 +631,27 @@ public:
     std::function<void(const std::vector<std::string>&,
                        const std::vector<std::string>&)> onSelectionChange;
 
-    // Right-click on empty canvas - typical use is to open a "create node"
-    // palette at worldX/worldY.
+    // Right-click hooks - the diagram does NOT show a built-in menu; the host
+    // app is expected to render a popup using the (worldX, worldY) anchor.
+    // Setting onSocketRightClick suppresses the default "disconnect all on
+    // socket" behaviour; if unset, right-clicking a socket disconnects it.
     std::function<void(double worldX, double worldY)> onCanvasRightClick;
+    std::function<void(const std::string& nodeId,
+                       double worldX, double worldY)> onNodeRightClick;
+    std::function<void(const std::string& linkId,
+                       double worldX, double worldY)> onLinkRightClick;
+    std::function<void(const std::string& nodeId, const std::string& socketId,
+                       bool isOutput,
+                       double worldX, double worldY)> onSocketRightClick;
 
     // Drag-to-connect failed because sockets were incompatible. Lets the app
     // surface a tooltip explaining why.
     std::function<void(const CompositorSocketSpec& src,
                        const CompositorSocketSpec& dst)> onConnectionRejected;
+
+    // History changed (push / undo / redo / clear). The bool indicates whether
+    // the most recent operation can be undone (false right after ClearHistory).
+    std::function<void()> onHistoryChange;
 
 private:
     // =========================================================================
@@ -618,6 +712,7 @@ private:
                           const CompositorParamSpec& spec,
                           const ParamValue& value, const Rect2Df& widgetBounds);
     void RenderConnectionLine(IRenderContext* ctx);   // In-progress drag
+    void RenderSelectionBox(IRenderContext* ctx);
 
     // =========================================================================
     // EVENT SUB-HANDLERS
@@ -635,11 +730,44 @@ private:
 
     Point2Df ScreenToWorld(const Point2Di& screenPos) const;
     Point2Di WorldToScreen(const Point2Df& worldPos) const;
+    Point2Df SnapWorldPoint(const Point2Df& p) const;
     void NotifySelectionChange();
+    void NotifyHistoryChange();
     void ClampZoom();
     bool TryConnect(const std::string& srcNodeId, const std::string& srcSocketId,
                     const std::string& dstNodeId, const std::string& dstSocketId,
                     std::string& outNewLinkId);
+
+    // Internal raw mutators - same effect as the public ones but bypass
+    // history recording. Used by the Undo/Redo lambdas.
+    void ApplyAddNode(const CompositorNode& node);
+    void ApplyRemoveNode(const std::string& nodeId);
+    void ApplyAddLink(const CompositorLink& link);
+    void ApplyRemoveLink(const std::string& linkId);
+    void ApplySetParamValue(const std::string& nodeId, const std::string& paramId,
+                             const ParamValue& value);
+    void ApplyMoveNodes(const std::map<std::string, Point2Df>& positions);
+
+    // Writes a single node and a single link as JSON object literals into the
+    // provided ostream - factored out so Copy() can reuse the same formatting
+    // as ToJson(). The corresponding parser is ParseNodeFromObject.
+    void WriteNodeJson(std::ostream& out, const CompositorNode& n) const;
+    void WriteLinkJson(std::ostream& out, const CompositorLink& l) const;
+    static bool ParseNodeFromObject(const std::string& obj, CompositorNode& out);
+    static bool ParseLinkFromObject(const std::string& obj, CompositorLink& out);
+
+    // Returns an id derived from `base` that does not collide with anything
+    // currently in `nodes`. Used by Paste to avoid id collisions.
+    std::string GenerateUniqueNodeId(const std::string& base) const;
+    std::string GenerateUniqueLinkId() const;
+
+    // PushHistory is a no-op when historyRecording is false.
+    struct HistoryEntry {
+        std::function<void()> undo;
+        std::function<void()> redo;
+        std::string description;
+    };
+    void PushHistory(HistoryEntry entry);
 
     // =========================================================================
     // DATA MEMBERS
@@ -671,15 +799,24 @@ private:
     bool isDraggingNode = false;
     bool isDraggingViewport = false;
     bool isConnecting = false;
+    bool isSelectingBox = false;
     Point2Di dragStartPos;
     Point2Di lastMousePos;
     std::map<std::string, Point2Df> dragStartPositions;
+    // Selection set at the start of a rubber-band drag, so we can extend
+    // (shift+drag) rather than replace.
+    std::set<std::string> selectionBoxStartNodes;
+    std::set<std::string> selectionBoxStartLinks;
 
     // In-progress connection state
     std::string connectionSourceNode;
     std::string connectionSourceSocket;
     bool        connectionSourceIsOutput = true;
     Point2Df    connectionEndPoint;
+
+    // Rubber-band selection box (world coords)
+    Point2Df selectionBoxStart;
+    Point2Df selectionBoxEnd;
 
     // Viewport
     double  zoomLevel = 1.0f;
@@ -693,6 +830,21 @@ private:
     bool panOnDrag        = true;
     bool zoomOnScroll     = true;
     bool isMultiSelectKeyHeld = false;
+
+    // Snap to grid
+    CompositorSnapGrid snapGrid;
+
+    // Undo / redo history
+    std::vector<HistoryEntry> undoStack;
+    std::vector<HistoryEntry> redoStack;
+    size_t historyLimit = 100;
+    bool   historyRecording = true;
+
+    // Clipboard (in-process; not the OS clipboard)
+    std::string clipboard;
+
+    // Counter for generating unique link ids during paste/drag-to-connect
+    mutable unsigned int linkIdCounter = 0;
 };
 
 // =============================================================================
