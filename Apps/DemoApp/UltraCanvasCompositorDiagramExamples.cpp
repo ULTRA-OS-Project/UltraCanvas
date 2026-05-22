@@ -661,6 +661,325 @@ void BuildOrmModeler(UltraCanvasCompositorDiagram& d) {
     d.FitView(30.0);
 }
 
+// ----- LOGIC DIAGRAM (German PLC / smart-home function blocks) --------------
+
+void BuildLogicDiagram(UltraCanvasCompositorDiagram& d) {
+    d.Clear();
+    d.ClearHistory();
+    d.SetHistoryRecording(false);
+
+    CompositorDiagramStyle st = d.GetStyle();
+    st.backgroundColor = Color(245, 245, 245, 255);
+    st.gridColor       = Color(228, 228, 228, 255);
+    st.showGrid = true;
+    d.SetStyle(st);
+
+    const Color FB_HEADER(190, 220, 170, 255);    // light green - regular FB
+    const Color FB_ORANGE(230, 175, 100, 255);    // orange - Tacho
+    const Color FB_BLUE  (175, 205, 220, 255);    // blue - Trainingsreset
+    const Color FB_BODY  (255, 252, 220, 255);    // cream
+    const Color FB_BORDER(150, 150, 90, 255);
+    const Color FB_TEXT  (20, 25, 20, 255);
+    const Color CST_BODY (225, 225, 225, 255);
+    const Color CST_BORDER(170, 170, 170, 255);
+    const Color IO_BODY  (255, 255, 255, 255);
+
+    auto mkBase = [&](const std::string& id, const std::string& subtitle,
+                       const Color& headerCol, double width) {
+        CompositorNodeTemplate t;
+        t.id = id;
+        t.title = subtitle;
+        t.category = "Logic";
+        t.headerColor = headerCol;
+        t.headerTextColor = FB_TEXT;
+        t.bodyColor = FB_BODY;
+        t.borderColor = FB_BORDER;
+        t.borderWidth = 1.0;
+        t.cornerRadius = 2.0;
+        t.defaultWidth = width;
+        return t;
+    };
+    auto addIn  = [](CompositorNodeTemplate& t, const std::string& id, const std::string& lbl) {
+        CompositorSocketSpec s; s.id = id; s.label = lbl;
+        s.type = SocketDataType::Scalar; s.maxConnections = 1;
+        t.inputs.push_back(s);
+    };
+    auto addOut = [](CompositorNodeTemplate& t, const std::string& id, const std::string& lbl) {
+        CompositorSocketSpec s; s.id = id; s.label = lbl;
+        s.type = SocketDataType::Scalar;
+        t.outputs.push_back(s);
+    };
+
+    // --- Function-block templates ---
+    { auto t = mkBase("fb_pulse",   "Impulsgeber",        FB_HEADER, 130);
+      addIn(t,"DisP","DisP"); addIn(t,"Inv","Inv"); addOut(t,"Q","Q");
+      d.RegisterTemplate(t); }
+    { auto t = mkBase("fb_counter", "Zaehler",            FB_HEADER, 130);
+      addIn(t,"Tr","Tr"); addIn(t,"R","R"); addOut(t,"AQ","AQ");
+      d.RegisterTemplate(t); }
+    { auto t = mkBase("fb_analog",  "Analogspeicher",     FB_HEADER, 130);
+      addIn(t,"AI","AI"); addIn(t,"Tr","Tr"); addIn(t,"R","R"); addOut(t,"AQ","AQ");
+      d.RegisterTemplate(t); }
+    { auto t = mkBase("fb_delayed", "Verzoegerter Impuls",FB_BLUE,   150);
+      addIn(t,"Tr","Tr"); addIn(t,"R","R"); addOut(t,"Q","Q");
+      d.RegisterTemplate(t); }
+    { auto t = mkBase("fb_and",     "UND",                FB_HEADER, 110);
+      addIn(t,"I1","I1"); addIn(t,"I2","I2"); addOut(t,"Q","Q");
+      d.RegisterTemplate(t); }
+    { auto t = mkBase("fb_formula", "Formel",             FB_HEADER, 130);
+      addIn(t,"AI1","AI1"); addIn(t,"AI2","AI2");
+      addIn(t,"AI3","AI3"); addIn(t,"AI4","AI4");
+      addOut(t,"AQ","AQ"); addOut(t,"TQ","TQ");
+      d.RegisterTemplate(t); }
+    { auto t = mkBase("fb_div",     "Dividierer",         FB_HEADER, 130);
+      addIn(t,"AI1","AI1"); addIn(t,"AI2","AI2"); addOut(t,"AQ","AQ");
+      d.RegisterTemplate(t); }
+    { auto t = mkBase("fb_int",     "Ganzzahl",           FB_HEADER, 130);
+      addIn(t,"AI1","AI1"); addIn(t,"R","R"); addOut(t,"AQ","AQ");
+      d.RegisterTemplate(t); }
+    { auto t = mkBase("fb_energy",  "Energiezaehler",     FB_ORANGE, 140);
+      addIn(t,"Tr","Tr"); addIn(t,"C","C"); addIn(t,"V","V");
+      addIn(t,"P","P"); addIn(t,"R","R");
+      addOut(t,"AQ","AQ");  addOut(t,"AQp","AQp"); addOut(t,"AQa","AQa");
+      addOut(t,"AQ1","AQ1"); addOut(t,"AQ2","AQ2"); addOut(t,"AQ3","AQ3");
+      addOut(t,"AQ4","AQ4"); addOut(t,"AQ5","AQ5"); addOut(t,"AQ6","AQ6");
+      addOut(t,"AQ7","AQ7"); addOut(t,"AQ8","AQ8"); addOut(t,"AQ9","AQ9");
+      addOut(t,"T","T");    addOut(t,"Q","Q");
+      d.RegisterTemplate(t); }
+
+    // --- Constants (gray strip with single output) ---
+    {
+        CompositorNodeTemplate t;
+        t.id = "fb_const";
+        t.title = "C";
+        t.category = "Logic";
+        t.headerColor = CST_BODY;
+        t.headerTextColor = FB_TEXT;
+        t.bodyColor = CST_BODY;
+        t.borderColor = CST_BORDER;
+        t.cornerRadius = 2.0;
+        t.defaultWidth = 200.0;
+        addOut(t, "out", "");
+        d.RegisterTemplate(t);
+    }
+
+    // --- Input marker (small white box, single output, letter badge in title) ---
+    {
+        CompositorNodeTemplate t;
+        t.id = "fb_input";
+        t.title = "Input";
+        t.category = "Logic";
+        t.headerColor = IO_BODY;
+        t.headerTextColor = FB_TEXT;
+        t.bodyColor = IO_BODY;
+        t.borderColor = CST_BORDER;
+        t.cornerRadius = 2.0;
+        t.defaultWidth = 160.0;
+        addOut(t, "out", "");
+        d.RegisterTemplate(t);
+    }
+
+    // --- Output sink template - "Virtueller Status" cards on the right edge ---
+    {
+        CompositorNodeTemplate t;
+        t.id = "fb_status";
+        t.title = "Status";
+        t.category = "Logic";
+        t.headerColor = IO_BODY;
+        t.headerTextColor = FB_TEXT;
+        t.bodyColor = IO_BODY;
+        t.borderColor = CST_BORDER;
+        t.cornerRadius = 2.0;
+        t.defaultWidth = 170.0;
+        CompositorParamSpec sub;
+        sub.id = "_sub"; sub.label = "Virtueller Status";
+        sub.widget = ParamWidgetKind::NoWidget;
+        t.params.push_back(sub);
+        CompositorParamSpec studio;
+        studio.id = "_studio"; studio.label = "Studio";
+        studio.widget = ParamWidgetKind::NoWidget;
+        t.params.push_back(studio);
+        CompositorSocketSpec s; s.id = "AI1"; s.label = "AI1";
+        s.type = SocketDataType::Scalar; s.maxConnections = 1;
+        t.inputs.push_back(s);
+        d.RegisterTemplate(t);
+    }
+
+    // --- "Merker" memo template (white sink with single AI input) ---
+    {
+        CompositorNodeTemplate t;
+        t.id = "fb_memo";
+        t.title = "Merker";
+        t.category = "Logic";
+        t.headerColor = IO_BODY;
+        t.headerTextColor = FB_TEXT;
+        t.bodyColor = IO_BODY;
+        t.borderColor = CST_BORDER;
+        t.cornerRadius = 2.0;
+        t.defaultWidth = 160.0;
+        CompositorSocketSpec s; s.id = "AI"; s.label = "AI";
+        s.type = SocketDataType::Scalar; s.maxConnections = 1;
+        t.inputs.push_back(s);
+        d.RegisterTemplate(t);
+    }
+
+    // --- Helper for instantiating a node with a custom title ---
+    auto place = [&](const std::string& id, const std::string& tmpl,
+                      const std::string& title, double x, double y) {
+        d.AddNode(id, tmpl, x, y);
+        auto* n = d.GetNode(id);
+        if (n) n->titleOverride = title;
+    };
+
+    // ===== Place nodes (positions approximate the reference layout) =====
+
+    // Top row inputs/outputs
+    place("inV",   "fb_input", "[V] Elite Counter",  -260,   30);
+    place("logT1", "fb_memo",  "[L] Training Log",     90,   10);
+    place("kmTop", "fb_memo",  "[M] Elite km",        330,   10);
+    place("o916",  "fb_analog","O916",                550,   10);
+    place("logT2", "fb_memo",  "[L] Training Log",    780,   10);
+
+    // Pulse generator + counter top-mid
+    place("sek",   "fb_pulse",   "Sekunden",           200, 130);
+    place("zeit",  "fb_counter", "Zeit in Sekunden",   420, 130);
+
+    // Top-right math chain
+    place("o919",  "fb_div",     "O919",               770, 110);
+    place("o923",  "fb_int",     "O923",               940, 110);
+    place("cMin",  "fb_const",   "[C] Sek. pro Min.=60", 600, 260);
+
+    // Left column inputs / trainingsreset
+    place("tres",  "fb_delayed", "Trainingsreset",     30, 280);
+    place("inI",   "fb_input",   "[I] Reed Elite",   -260, 460);
+
+    // O901 UND gate
+    place("o901",  "fb_and",     "O901",               60, 420);
+
+    // Kalibrierung pulse generator
+    place("kalib", "fb_pulse",   "Kalibrierung",      -110, 590);
+
+    // Tageszähler counter (mid-bottom)
+    place("tag",   "fb_counter", "Tageszaehler",      400, 480);
+    place("cHr",   "fb_const",   "[C] Sek. pro Stunde=3600", 380, 280);
+
+    // Tacho energy counter (the central beast)
+    place("tacho", "fb_energy",  "Tacho",             280, 360);
+
+    // Constants stack (middle column)
+    place("cF1",   "fb_const",   "[C] Faktor=1000",            550, 380);
+    place("cU1",   "fb_const",   "[C] Umfang m=2,099",         550, 410);
+    place("cK1",   "fb_const",   "[C] Korrektur=1,040",        550, 440);
+    place("cKkmh1","fb_const",   "[C] Korrektur=1,040",        550, 580);
+    place("cFkmh1","fb_const",   "[C] Faktor km/h=3,600",      550, 610);
+    place("cKkmh2","fb_const",   "[C] Korrektur=1,040",        550, 730);
+    place("cFkmh2","fb_const",   "[C] Faktor km/h=3,600",      550, 760);
+
+    // Right column - formulas
+    place("o913",  "fb_formula", "O913",               770, 220);
+    place("o898a", "fb_formula", "O898",               770, 380);
+    place("o898b", "fb_formula", "O898",               770, 560);
+    place("o899a", "fb_formula", "O899",               770, 720);
+    place("o899b", "fb_formula", "O899",               770, 860);
+
+    // Right far-right Ganzzahl + status sinks
+    place("o922",  "fb_int",     "O922",              1000, 820);
+
+    place("stDur", "fb_status",  "Elite Dauer",       1000, 180);
+    place("stDur2","fb_status",  "Elite Durchschnitt",1000, 240);
+    place("kmM",   "fb_memo",    "Elite km",          1000, 320);
+    place("stKM",  "fb_status",  "Elite Kilometer",   1000, 380);
+    place("stSpeed","fb_status", "Geschwindigkeit",   1000, 500);
+    place("stWk",  "fb_status",  "Kilometer diese Woche", 1000, 600);
+    place("stTot", "fb_status",  "Kilometer Gesamt",  1000, 880);
+
+    // Bottom-left supporting constants and o897
+    place("o897",   "fb_formula", "O897",            150, 760);
+    place("cFb1",   "fb_const",   "[C] Faktor km/h=3,600", -50, 760);
+    place("cUb1",   "fb_const",   "[C] Umfang m=2,099",    -50, 790);
+    place("cFakt1", "fb_const",   "[C] Faktor=1000",       -50, 820);
+    place("cAnz1",  "fb_const",   "[C] Anzahl Magnete=1",  -50, 850);
+    place("cMit1",  "fb_const",   "[C] Mittlung=60",        90, 900);
+
+    // ===== Links =====
+    auto link = [&](const std::string& id,
+                     const std::string& s, const std::string& ss,
+                     const std::string& t, const std::string& ts) {
+        CompositorLink l;
+        l.id = id;
+        l.sourceNodeId = s; l.sourceSocketId = ss;
+        l.targetNodeId = t; l.targetSocketId = ts;
+        l.style = LinkStyle::Step;
+        l.lineColorOverride = Color(160, 30, 30, 220);   // dark red, matches reference
+        l.lineWidth = 1.2;
+        d.AddLink(l);
+    };
+
+    // Top row connectivity
+    link("LD1",  "inV",   "out", "logT1", "AI");
+    link("LD2",  "o916",  "AQ",  "logT2", "AI");
+    link("LD3",  "o916",  "AQ",  "kmTop", "AI");
+
+    // Sekunden -> Zeit in Sekunden
+    link("LD4",  "sek",   "Q",   "zeit",  "Tr");
+    link("LD5",  "tres",  "Q",   "zeit",  "R");
+
+    // Zeit AQ fan-out
+    link("LD6",  "zeit",  "AQ",  "o916",  "AI");
+    link("LD7",  "zeit",  "AQ",  "o919",  "AI1");
+    link("LD8",  "cMin",  "out", "o919",  "AI2");
+    link("LD9",  "o919",  "AQ",  "o923",  "AI1");
+    link("LD10", "zeit",  "AQ",  "o913",  "AI1");
+    link("LD11", "cHr",   "out", "o913",  "AI2");
+
+    // O913 -> Status outputs
+    link("LD12", "o913",  "AQ",  "stDur",  "AI1");
+    link("LD13", "o913",  "TQ",  "stDur2", "AI1");
+
+    // Reed Elite -> O901 AND -> Tacho Tr
+    link("LD14", "inI",   "out", "o901",  "I1");
+    link("LD15", "kalib", "Q",   "o901",  "I2");
+    link("LD16", "o901",  "Q",   "tacho", "Tr");
+
+    // Tageszähler driven by Tacho
+    link("LD17", "tacho", "Q",   "tag",   "Tr");
+    link("LD18", "tres",  "Q",   "tag",   "R");
+    link("LD19", "tag",   "AQ",  "o898a", "AI4");
+
+    // O898 fed by constants
+    link("LD20", "cF1",   "out", "o898a", "AI1");
+    link("LD21", "cU1",   "out", "o898a", "AI2");
+    link("LD22", "cK1",   "out", "o898a", "AI3");
+    link("LD23", "o898a", "AQ",  "kmM",   "AI");
+    link("LD24", "o898a", "TQ",  "stKM",  "AI1");
+
+    // Tacho mid outputs -> O898b -> Speed
+    link("LD25", "tacho", "AQ1", "o898b", "AI4");
+    link("LD26", "cKkmh1","out", "o898b", "AI1");
+    link("LD27", "cFkmh1","out", "o898b", "AI2");
+    link("LD28", "o898b", "AQ",  "stSpeed","AI1");
+
+    // Tacho lower -> O899 chain -> weekly km + Ganzzahl
+    link("LD29", "tacho", "AQ5", "o899a", "AI4");
+    link("LD30", "o899a", "AQ",  "stWk",  "AI1");
+    link("LD31", "tacho", "AQ8", "o899b", "AI4");
+    link("LD32", "cKkmh2","out", "o899b", "AI1");
+    link("LD33", "cFkmh2","out", "o899b", "AI2");
+    link("LD34", "o899b", "AQ",  "o922",  "AI1");
+    link("LD35", "o922",  "AQ",  "stTot", "AI1");
+
+    // O897 chain (bottom-left)
+    link("LD36", "cFb1",  "out", "o897",  "AI1");
+    link("LD37", "cUb1",  "out", "o897",  "AI2");
+    link("LD38", "cFakt1","out", "o897",  "AI3");
+    link("LD39", "cAnz1", "out", "o897",  "AI4");
+    link("LD40", "o897",  "AQ",  "tacho", "P");
+    link("LD41", "cMit1", "out", "tacho", "V");
+
+    d.SetHistoryRecording(true);
+    d.FitView(40.0);
+}
+
 // =============================================================================
 // TAB 2: SUBGRAPH / GROUPS
 // =============================================================================
@@ -1019,6 +1338,7 @@ UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
     subBtn("sub_kpi",   "Music KPI",        BuildMusicKPI);
     subBtn("sub_port",  "Portfolio Tree",   BuildPortfolioTree);
     subBtn("sub_orm",   "ORM Modeler",      BuildOrmModeler);
+    subBtn("sub_logic", "Logic Diagram",    BuildLogicDiagram);
 
     tab1->AddChild(diag1);
 
