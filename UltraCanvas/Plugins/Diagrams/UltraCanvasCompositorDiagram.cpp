@@ -1697,6 +1697,9 @@ void UltraCanvasCompositorDiagram::RenderNodePanel(
     // component does not own raster resources).
     if (tmpl.hasPreview && L.previewBounds.width > 0.0 && L.previewBounds.height > 0.0) {
         const auto& pb = L.previewBounds;
+        if (tmpl.customPreviewRenderer) {
+            tmpl.customPreviewRenderer(ctx, pb, node);
+        } else {
         ctx->SetFillPaint(Color(60, 60, 60, 255));
         ctx->FillRectangle(pb);
         if (node.previewHandle.empty()) {
@@ -1727,6 +1730,7 @@ void UltraCanvasCompositorDiagram::RenderNodePanel(
         ctx->SetStrokePaint(Color(20, 20, 20, 255));
         ctx->SetStrokeWidth(1.0);
         ctx->DrawRectangle(pb);
+        }   // end of "default renderer" else branch
     }
 }
 

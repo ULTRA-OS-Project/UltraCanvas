@@ -335,6 +335,18 @@ struct CompositorNodeTemplate {
     bool hasPreview = false;
     double previewHeight = 120.0f;     // 0 = auto from width
 
+    // Optional callback that fully owns rendering of the preview slot.
+    // If set (and hasPreview is true), the component skips its default
+    // checkerboard / preview-handle drawing and calls this instead. The
+    // bounds passed in are the slot's world-space rect; the node argument
+    // lets the callback read params/title to drive its rendering. Use this
+    // for custom visualizations (donut charts, sparklines, gradient previews,
+    // metric badges, etc.) without extending the widget enum.
+    using PreviewRenderFn = std::function<void(IRenderContext* ctx,
+                                                 const Rect2Df& bounds,
+                                                 const struct CompositorNode& node)>;
+    PreviewRenderFn customPreviewRenderer;
+
     // Sizing
     double defaultWidth = 180.0f;
     double minWidth = 120.0f;

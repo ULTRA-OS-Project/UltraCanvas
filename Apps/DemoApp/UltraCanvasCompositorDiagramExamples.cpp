@@ -980,6 +980,191 @@ void BuildLogicDiagram(UltraCanvasCompositorDiagram& d) {
     d.FitView(40.0);
 }
 
+// ----- MARKETING FUNNEL (donut-ring cards via customPreviewRenderer) --------
+
+void BuildMarketingFunnel(UltraCanvasCompositorDiagram& d) {
+    d.Clear();
+    d.ClearHistory();
+    d.SetHistoryRecording(false);
+
+    CompositorDiagramStyle st = d.GetStyle();
+    st.backgroundColor = Color(235, 237, 240, 255);
+    st.gridColor       = Color(225, 228, 235, 255);
+    st.showGrid = false;
+    d.SetStyle(st);
+
+    // Stage colors (top header bar)
+    const Color STAGE_EXEC (76, 175, 80, 255);    // green
+    const Color STAGE_INTG (255, 152, 0, 255);    // orange
+    const Color STAGE_PREP (130, 130, 130, 255);  // gray
+    const Color RING_BLUE_PURPLE(120, 100, 220, 255);
+
+    // Donut chart preview renderer. Reads percentage/glyph/count/ring color
+    // from the node's paramValues map (set per-node via SetParam* below).
+    auto donutDraw = [](IRenderContext* ctx, const Rect2Df& pb,
+                         const CompositorNode& node) {
+        auto findP = [&node](const std::string& id) -> const ParamValue* {
+            auto it = node.paramValues.find(id);
+            return (it == node.paramValues.end()) ? nullptr : &it->second;
+        };
+        ctx->SetFillPaint(Color(255, 255, 255, 255));
+        ctx->FillRectangle(pb);
+
+        double pct = 0.0;
+        std::string glyph = "?";
+        std::string count = "0";
+        Color ringCol = Color(120, 100, 220, 255);
+        if (auto p = findP("pct"))   pct = p->number;
+        if (auto p = findP("glyph")) glyph = p->text;
+        if (auto p = findP("count")) count = p->text;
+        if (auto p = findP("ringR")) ringCol.r = static_cast<uint8_t>(p->number);
+        if (auto p = findP("ringG")) ringCol.g = static_cast<uint8_t>(p->number);
+        if (auto p = findP("ringB")) ringCol.b = static_cast<uint8_t>(p->number);
+
+        double cx = pb.x + pb.width  * 0.5;
+        double cy = pb.y + pb.height * 0.5 - 8.0;
+        double R  = std::min(pb.width, pb.height) * 0.34;
+        // Background ring
+        ctx->SetStrokePaint(Color(225, 228, 232, 255));
+        ctx->SetStrokeWidth(8.0);
+        ctx->DrawArc(cx, cy, R, 0.0, 2.0 * 3.14159265358979);
+        // Filled portion (clockwise from top)
+        double startA = -3.14159265358979 * 0.5;
+        double endA   = startA + 2.0 * 3.14159265358979 * (pct / 100.0);
+        ctx->SetStrokePaint(ringCol);
+        ctx->SetStrokeWidth(8.0);
+        ctx->DrawArc(cx, cy, R, startA, endA);
+
+        // Centered icon glyph
+        ctx->SetFontFamily("Sans");
+        ctx->SetFontSize(22);
+        ctx->SetTextPaint(Color(70, 90, 130, 255));
+        Size2Di gd = ctx->GetTextLineDimensions(glyph);
+        ctx->DrawText(glyph, Point2Df(cx - gd.width * 0.5, cy - gd.height * 0.5));
+
+        // Footer: count (left) + percentage (right)
+        ctx->SetFontSize(11);
+        ctx->SetTextPaint(Color(60, 70, 90, 255));
+        double footY = pb.y + pb.height - 18.0;
+        ctx->DrawText("o " + count, Point2Df(pb.x + 8.0, footY));
+        std::ostringstream pstr;
+        pstr << "v " << static_cast<int>(pct) << " %";
+        std::string pStr = pstr.str();
+        Size2Di pd = ctx->GetTextLineDimensions(pStr);
+        ctx->DrawText(pStr, Point2Df(pb.x + pb.width - 8.0 - pd.width, footY));
+    };
+
+    // Template factory: produces a "funnel card" with a colored header (stage
+    // name), a single AI input on the left, a single output on the right,
+    // and a preview slot owned by donutDraw.
+    auto mkCard = [&](const std::string& id, const std::string& stage,
+                       const Color& header) {
+        CompositorNodeTemplate t;
+        t.id = id;
+        t.title = stage;
+        t.category = "Funnel";
+        t.headerColor = header;
+        t.headerTextColor = Color(255, 255, 255, 255);
+        t.bodyColor = Color(255, 255, 255, 255);
+        t.borderColor = Color(190, 195, 205, 255);
+        t.borderWidth = 1.0;
+        t.cornerRadius = 8.0;
+        t.defaultWidth = 130.0;
+        t.hasPreview = true;
+        t.previewHeight = 130.0;
+        t.customPreviewRenderer = donutDraw;
+
+        CompositorSocketSpec in;
+        in.id = "in"; in.label = ""; in.type = SocketDataType::Scalar;
+        in.maxConnections = 1;
+        t.inputs.push_back(in);
+
+        CompositorSocketSpec out;
+        out.id = "out"; out.label = ""; out.type = SocketDataType::Scalar;
+        t.outputs.push_back(out);
+
+        // Parameter declarations - all NoWidget; values are set per-node and
+        // read by the preview renderer.
+        auto numParam = [&](const std::string& pid) {
+            CompositorParamSpec p;
+            p.id = pid; p.label = "";
+            p.widget = ParamWidgetKind::NoWidget;
+            p.valueKind = ParamValueKind::Number;
+            t.params.push_back(p);
+        };
+        auto txtParam = [&](const std::string& pid) {
+            CompositorParamSpec p;
+            p.id = pid; p.label = "";
+            p.widget = ParamWidgetKind::NoWidget;
+            p.valueKind = ParamValueKind::Text;
+            t.params.push_back(p);
+        };
+        numParam("pct");
+        numParam("ringR");
+        numParam("ringG");
+        numParam("ringB");
+        txtParam("glyph");
+        txtParam("count");
+
+        d.RegisterTemplate(t);
+    };
+
+    mkCard("funn_exec", "Execution",   STAGE_EXEC);
+    mkCard("funn_intg", "Integration", STAGE_INTG);
+    mkCard("funn_prep", "Preparation", STAGE_PREP);
+
+    // Helper to place + set the per-node params.
+    auto place = [&](const std::string& id, const std::string& tmpl,
+                      double x, double y,
+                      const std::string& glyph, const std::string& count,
+                      double pct, const Color& ringCol) {
+        d.AddNode(id, tmpl, x, y);
+        d.SetParamNumber(id, "pct", pct);
+        d.SetParamNumber(id, "ringR", ringCol.r);
+        d.SetParamNumber(id, "ringG", ringCol.g);
+        d.SetParamNumber(id, "ringB", ringCol.b);
+        d.SetParamText  (id, "glyph", glyph);
+        d.SetParamText  (id, "count", count);
+    };
+
+    Color RING_PURP_TEAL(60, 180, 200, 255);
+    Color RING_PINK_PURPLE(180, 60, 180, 255);
+    Color RING_BLUE_PURPLE2(120, 100, 220, 255);
+    Color RING_ORANGE(250, 160, 60, 255);
+
+    place("n_email",  "funn_exec", 60,  140, "M",  "2000", 10,  RING_PURP_TEAL);
+    place("n_stats",  "funn_exec", 360,  20, "S",  "150",  73,  RING_BLUE_PURPLE2);
+    place("n_mail2",  "funn_exec", 360, 260, "@",  "100",  40,  RING_PURP_TEAL);
+    place("n_intg",   "funn_intg", 660,  20, "U",  "110",  54,  RING_ORANGE);
+    place("n_sms",    "funn_exec", 660, 260, "T",  "30",   20,  RING_PINK_PURPLE);
+    place("n_prep",   "funn_prep", 960, 140, "C",  "30",   0,   RING_ORANGE);
+
+    auto linkLabeled = [&](const std::string& id,
+                            const std::string& s, const std::string& t,
+                            const std::string& label) {
+        CompositorLink l;
+        l.id = id;
+        l.sourceNodeId = s; l.sourceSocketId = "out";
+        l.targetNodeId = t; l.targetSocketId = "in";
+        l.style = LinkStyle::Step;
+        l.lineColorOverride = Color(160, 165, 175, 255);
+        l.lineWidth = 1.2;
+        l.label = label;
+        l.labelBgColor = Color(255, 255, 255, 240);
+        l.labelTextColor = Color(80, 90, 110, 255);
+        d.AddLink(l);
+    };
+    linkLabeled("f1", "n_email", "n_stats", "Accepted: 200");
+    linkLabeled("f2", "n_email", "n_mail2", "Opened: 500");
+    linkLabeled("f3", "n_stats", "n_intg",  "Submitted: 110");
+    linkLabeled("f4", "n_mail2", "n_sms",   "Accepted: 40");
+    linkLabeled("f5", "n_intg",  "n_prep",  "Visited: 60");
+    linkLabeled("f6", "n_sms",   "n_prep",  "Accepted: 6");
+
+    d.SetHistoryRecording(true);
+    d.FitView(40.0);
+}
+
 // =============================================================================
 // TAB 2: SUBGRAPH / GROUPS
 // =============================================================================
@@ -1339,6 +1524,7 @@ UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
     subBtn("sub_port",  "Portfolio Tree",   BuildPortfolioTree);
     subBtn("sub_orm",   "ORM Modeler",      BuildOrmModeler);
     subBtn("sub_logic", "Logic Diagram",    BuildLogicDiagram);
+    subBtn("sub_funn",  "Marketing Funnel", BuildMarketingFunnel);
 
     tab1->AddChild(diag1);
 
