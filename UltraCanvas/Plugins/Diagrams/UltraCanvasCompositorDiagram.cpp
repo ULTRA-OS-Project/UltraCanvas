@@ -208,6 +208,7 @@ const char* SocketDataTypeToString(SocketDataType t) {
         case SocketDataType::Shader:   return "shader";
         case SocketDataType::Audio:    return "audio";
         case SocketDataType::Data:     return "data";
+        case SocketDataType::Video:    return "video";
         case SocketDataType::Custom:   return "custom";
     }
     return "any";
@@ -330,6 +331,7 @@ UltraCanvasCompositorDiagram::UltraCanvasCompositorDiagram(
     seed(SocketDataType::Shader,   "Shader",   Color( 80, 180, 200, 255));
     seed(SocketDataType::Audio,    "Audio",    Color(220, 150, 150, 255));
     seed(SocketDataType::Data,     "Data",     Color(220, 220, 160, 255));
+    seed(SocketDataType::Video,    "Video",    Color(220, 130, 200, 255));  // magenta
 }
 
 // =============================================================================

@@ -106,6 +106,7 @@ enum class SocketDataType {
     Shader     = 8,   // Compiled shader fragment
     Audio      = 9,
     Data       = 10,  // Generic struct / record (ETL pipelines)
+    Video      = 11,  // Video stream (frame sequence + optional audio track)
     Custom     = 99   // Use SocketTypeInfo::customTag for sub-typing
 };
 
