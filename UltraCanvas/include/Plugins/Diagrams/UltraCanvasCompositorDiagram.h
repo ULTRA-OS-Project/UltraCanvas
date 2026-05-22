@@ -107,6 +107,11 @@ enum class SocketDataType {
     Audio      = 9,
     Data       = 10,  // Generic struct / record (ETL pipelines)
     Video      = 11,  // Video stream (frame sequence + optional audio track)
+    Time       = 12,  // Timestamp / duration (semantically distinct from Scalar)
+    Matrix     = 13,  // 3x3 / 4x4 transform (semantically distinct from Vector)
+    Trigger    = 14,  // Discrete signal / exec pin (visual scripting)
+    List       = 15,  // Collection / array (use customTag for element-type tagging)
+    Path       = 16,  // Filesystem path (binds naturally to FileBrowser widget)
     Custom     = 99   // Use SocketTypeInfo::customTag for sub-typing
 };
 

@@ -209,6 +209,11 @@ const char* SocketDataTypeToString(SocketDataType t) {
         case SocketDataType::Audio:    return "audio";
         case SocketDataType::Data:     return "data";
         case SocketDataType::Video:    return "video";
+        case SocketDataType::Time:     return "time";
+        case SocketDataType::Matrix:   return "matrix";
+        case SocketDataType::Trigger:  return "trigger";
+        case SocketDataType::List:     return "list";
+        case SocketDataType::Path:     return "path";
         case SocketDataType::Custom:   return "custom";
     }
     return "any";
@@ -332,6 +337,11 @@ UltraCanvasCompositorDiagram::UltraCanvasCompositorDiagram(
     seed(SocketDataType::Audio,    "Audio",    Color(220, 150, 150, 255));
     seed(SocketDataType::Data,     "Data",     Color(220, 220, 160, 255));
     seed(SocketDataType::Video,    "Video",    Color(220, 130, 200, 255));  // magenta
+    seed(SocketDataType::Time,     "Time",     Color(180, 180, 200, 255));  // silver-blue
+    seed(SocketDataType::Matrix,   "Matrix",   Color(140,  80, 180, 255));  // dark purple
+    seed(SocketDataType::Trigger,  "Trigger",  Color(230, 230, 230, 255));  // bright white (exec-pin convention)
+    seed(SocketDataType::List,     "List",     Color(180, 230, 180, 255));  // light green
+    seed(SocketDataType::Path,     "Path",     Color(180, 150, 110, 255));  // tan / brown
 }
 
 // =============================================================================
