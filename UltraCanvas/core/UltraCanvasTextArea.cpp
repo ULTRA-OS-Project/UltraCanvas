@@ -2968,7 +2968,9 @@ namespace UltraCanvas {
             return Rect2Di::INVALID;
         }
         LineLayoutBase* line = GetActualLineLayout(idx.lineIndex);
-
+        if (!line) {
+            return Rect2Di::INVALID;
+        }
         // make plain line for formatted line as plain line will be edited then
         std::unique_ptr<LineLayoutBase> tmplPLainLineLayoutPtr;
         if (line->layoutType != LineLayoutType::PlainLine) {
@@ -3034,10 +3036,16 @@ namespace UltraCanvas {
 
     LineLayoutBase* UltraCanvasTextArea::GetActualLineLayout(int idx) {
         LineLayoutBase* line;
+        if (lineLayouts.empty()) {
+            UpdateLineLayouts(GetRenderContext());
+        }
         if (currentLine && cursorPosition.lineIndex == idx) {
             return currentLine.get();
         }
         if (idx >= 0 && idx <= (int)lineLayouts.size()) {
+            if (!lineLayouts[idx]) {
+                UpdateLineLayouts(GetRenderContext());
+            }
             return lineLayouts[idx].get();
         }
         return nullptr;
