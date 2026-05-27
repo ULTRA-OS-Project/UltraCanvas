@@ -183,10 +183,10 @@ namespace UltraCanvas {
             // Use absolute coordinates
         } else {
             // objectBoundingBox - scale to bounds
-            actualX1 = bounds.x + x1 * bounds.width;
-            actualY1 = bounds.y + y1 * bounds.height;
-            actualX2 = bounds.x + x2 * bounds.width;
-            actualY2 = bounds.y + y2 * bounds.height;
+            actualX1 = finalBounds.x + x1 * finalBounds.width;
+            actualY1 = finalBounds.y + y1 * finalBounds.height;
+            actualX2 = finalBounds.x + x2 * finalBounds.width;
+            actualY2 = finalBounds.y + y2 * finalBounds.height;
         }
 
         return ctx->CreateLinearGradientPattern(actualX1, actualY1, actualX2, actualY2, stops);
@@ -201,11 +201,11 @@ namespace UltraCanvas {
             // Use absolute coordinates
         } else {
             // objectBoundingBox - scale to bounds
-            actualCx = bounds.x + cx * bounds.width;
-            actualCy = bounds.y + cy * bounds.height;
-            actualR = r * std::max(bounds.width, bounds.height);
-            actualFx = bounds.x + fx * bounds.width;
-            actualFy = bounds.y + fy * bounds.height;
+            actualCx = finalBounds.x + cx * finalBounds.width;
+            actualCy = finalBounds.y + cy * finalBounds.height;
+            actualR = r * std::max(finalBounds.width, finalBounds.height);
+            actualFx = finalBounds.x + fx * finalBounds.width;
+            actualFy = finalBounds.y + fy * finalBounds.height;
         }
         return ctx->CreateRadialGradientPattern(actualFx, actualFy, 0, actualCx, actualCy, actualR, stops);;
     }
@@ -1392,10 +1392,10 @@ namespace UltraCanvas {
         Rect2Df bounds{0, 0, 100, 100};
 
         if (name == "rect") {
-            bounds.x = ParseFloatAttribute(elem, "x", 0);
-            bounds.y = ParseFloatAttribute(elem, "y", 0);
-            bounds.width = ParseFloatAttribute(elem, "width", 100);
-            bounds.height = ParseFloatAttribute(elem, "height", 100);
+            finalBounds.x = ParseFloatAttribute(elem, "x", 0);
+            finalBounds.y = ParseFloatAttribute(elem, "y", 0);
+            finalBounds.width = ParseFloatAttribute(elem, "width", 100);
+            finalBounds.height = ParseFloatAttribute(elem, "height", 100);
         } else if (name == "circle") {
             float cx = ParseFloatAttribute(elem, "cx", 0);
             float cy = ParseFloatAttribute(elem, "cy", 0);
@@ -1467,19 +1467,19 @@ namespace UltraCanvas {
         // Handle aspect ratio
         if (preserveAspectRatio) {
             float docAspect = document->GetWidth() / document->GetHeight();
-            float boundsAspect = static_cast<float>(bounds.width) / static_cast<float>(bounds.height);
+            float boundsAspect = static_cast<float>(finalBounds.width) / static_cast<float>(finalBounds.height);
 
             if (docAspect > boundsAspect) {
                 // Document is wider - scale based on width
-                float scaleFactor = static_cast<float>(bounds.width) / document->GetWidth() * scale;
-                float pos_y = (bounds.height - document->GetHeight() * scaleFactor) / 2 + bounds.y;
-                context->Translate(bounds.x, pos_y);
+                float scaleFactor = static_cast<float>(finalBounds.width) / document->GetWidth() * scale;
+                float pos_y = (finalBounds.height - document->GetHeight() * scaleFactor) / 2 + finalBounds.y;
+                context->Translate(finalBounds.x, pos_y);
                 context->Scale(scaleFactor, scaleFactor);
             } else {
                 // Document is taller - scale based on height
-                float scaleFactor = static_cast<float>(bounds.height) / document->GetHeight();
-                float pos_x = (bounds.width - document->GetWidth() * scaleFactor) / 2 + bounds.x;
-                context->Translate(pos_x, bounds.y);
+                float scaleFactor = static_cast<float>(finalBounds.height) / document->GetHeight();
+                float pos_x = (finalBounds.width - document->GetWidth() * scaleFactor) / 2 + finalBounds.x;
+                context->Translate(pos_x, finalBounds.y);
                 context->Scale(scaleFactor, scaleFactor);
             }
         } else {
@@ -1487,9 +1487,9 @@ namespace UltraCanvas {
             if (scale != 1.0f) {
                 context->Scale(scale, scale);
             }
-            context->Translate(bounds.x, bounds.y);
-            float scaleX = static_cast<float>(bounds.width) / document->GetWidth();
-            float scaleY = static_cast<float>(bounds.height) / document->GetHeight();
+            context->Translate(finalBounds.x, finalBounds.y);
+            float scaleX = static_cast<float>(finalBounds.width) / document->GetWidth();
+            float scaleY = static_cast<float>(finalBounds.height) / document->GetHeight();
             context->Scale(scaleX, scaleY);
         }
 

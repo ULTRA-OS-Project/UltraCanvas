@@ -445,7 +445,7 @@ namespace UltraCanvas {
         AddChild(elem.shared_from_this());
         elem.SetPosition(pos);
         elem.SetVisible(true);
-        elem.zOrder = OverlayZOrder::Popups;
+        elem.SetZIndex(OverlayZOrder::Popups);
         elem.isPopup = true;
 
         // Allocate the popup's own off-screen render context. Size guard handles the

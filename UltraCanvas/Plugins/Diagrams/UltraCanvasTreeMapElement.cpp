@@ -176,8 +176,8 @@ void UltraCanvasTreeMapElement::RenderChart(IRenderContext* ctx) {
         ctx->PushState();
         
         auto bounds = GetBounds();
-        double centerX = bounds.x + bounds.width / 2;
-        double centerY = bounds.y + bounds.height / 2;
+        double centerX = finalBounds.x + finalBounds.width / 2;
+        double centerY = finalBounds.y + finalBounds.height / 2;
         
         if (enablePan && (panOffset.x != 0 || panOffset.y != 0)) {
             ctx->Translate(static_cast<double>(panOffset.x), static_cast<double>(panOffset.y));
@@ -698,8 +698,8 @@ void UltraCanvasTreeMapElement::DrawNavigationBreadcrumbs(IRenderContext* ctx) {
     if (path.empty()) return;
     
     auto bounds = GetBounds();
-    double x = bounds.x + 10;
-    double y = bounds.y + 15;
+    double x = finalBounds.x + 10;
+    double y = finalBounds.y + 15;
     
     ctx->SetFontFace(fontFamily, FontWeight::Normal, FontSlant::Normal);
     ctx->SetFontSize(12.0f);
@@ -722,7 +722,7 @@ void UltraCanvasTreeMapElement::DrawLeafNodeDetails(IRenderContext* ctx) {
     ctx->SetFillPaint(backgroundColor);
     ctx->FillRectangle(bounds);
     
-    double y = bounds.y + 20;
+    double y = finalBounds.y + 20;
     
     ctx->SetFontFace(fontFamily, FontWeight::Normal, FontSlant::Normal);
     ctx->SetFontSize(titleFontSize);
@@ -1178,8 +1178,8 @@ Rect2Df UltraCanvasTreeMapElement::GetPlotArea() const {
     return Rect2Df(
         10,
         topMargin,
-        bounds.width - 20,
-        bounds.height - topMargin - 10
+        finalBounds.width - 20,
+        finalBounds.height - topMargin - 10
     );
 }
 

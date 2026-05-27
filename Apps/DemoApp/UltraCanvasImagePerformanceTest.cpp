@@ -8,7 +8,7 @@
 // VERSION 2.5.7 - LEGEND ROW CENTRED HORIZONTALLY
 // ================================================================================
 // The title is horizontally centred but the legend was previously left-
-// aligned at bounds.x + leftMargin, leaving a visual mismatch. This
+// aligned at finalBounds.x + leftMargin, leaving a visual mismatch. This
 // release measures the total legend width up front (sum of swatch + gap
 // + label, plus inter-item gaps) and starts drawing from a centred X so
 // the legend row lines up with the title above it.
@@ -779,11 +779,11 @@ namespace UltraCanvas {
         void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override {
             if (!ctx || !IsVisible()) return;
             Rect2Di bounds = GetLocalBounds();
-            if (bounds.width < 40 || bounds.height < 40) return;
+            if (finalBounds.width < 40 || finalBounds.height < 40) return;
 
             // Fire geometry-changed callback if bounds have shifted since the last paint.
-            if (bounds.x != lastRenderBounds.x || bounds.y != lastRenderBounds.y ||
-                bounds.width != lastRenderBounds.width || bounds.height != lastRenderBounds.height) {
+            if (finalBounds.x != lastRenderBounds.x || finalBounds.y != lastRenderBounds.y ||
+                finalBounds.width != lastRenderBounds.width || finalBounds.height != lastRenderBounds.height) {
                 lastRenderBounds = bounds;
                 if (onGeometryChanged) onGeometryChanged();
             }
@@ -933,10 +933,10 @@ namespace UltraCanvas {
             auto dims = ctx->GetTextLineDimensions(title);
             int tw = dims.width, th = dims.height;
 
-            const int titleRowTop = bounds.y + 4;
+            const int titleRowTop = finalBounds.y + 4;
             const int titleRowH   = th + 2;
             ctx->DrawText(title,
-                          Point2Df(bounds.x + (bounds.width - tw) / 2,
+                          Point2Df(finalBounds.x + (finalBounds.width - tw) / 2,
                           titleRowTop + (titleRowH - th) / 2));
 
             // ---- Legend (lower row) ----
@@ -988,7 +988,7 @@ namespace UltraCanvas {
 
             // Pass 2 — draw, starting from the X that centres the row in the
             // chart bounds.
-            int swatchX = bounds.x + (bounds.width - totalLegendWidth) / 2;
+            int swatchX = finalBounds.x + (finalBounds.width - totalLegendWidth) / 2;
 
             for (int i = 0; i < 3; ++i) {
                 const auto& it = items[i];

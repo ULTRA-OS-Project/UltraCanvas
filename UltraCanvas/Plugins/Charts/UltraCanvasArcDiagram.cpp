@@ -934,8 +934,8 @@ namespace UltraCanvas {
         if (nodes.empty()) return false;
 
         auto bounds = GetLocalBounds();
-        float localX = static_cast<float>(event.pointer.x - bounds.x);
-        float localY = static_cast<float>(event.pointer.y - bounds.y);
+        float localX = static_cast<float>(event.pointer.x - finalBounds.x);
+        float localY = static_cast<float>(event.pointer.y - finalBounds.y);
 
         switch (event.type) {
 

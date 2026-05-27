@@ -381,7 +381,7 @@ namespace UltraCanvas {
 
         // Shadow (element-local)
         ctx->SetFillPaint(Color(0, 0, 0, 40));
-        ctx->FillRectangle(Rect2Df(4, 4, bounds.width, bounds.height));
+        ctx->FillRectangle(Rect2Df(4, 4, finalBounds.width, finalBounds.height));
 
         // Background
         ctx->SetFillPaint(style.backgroundColor);
@@ -512,14 +512,14 @@ namespace UltraCanvas {
         ctx->SetFontFace("sans-serif", FontWeight::Normal, FontSlant::Normal);
         ctx->SetFontSize(12);
         ctx->SetTextPaint(style.itemTextColor);
-        ctx->DrawText("File name:", Point2Di(style.padding, bounds.y + 8));
+        ctx->DrawText("File name:", Point2Di(style.padding, finalBounds.y + 8));
 
         const DocumentTypeInfo* selected = GetSelectedType();
         if (selected) {
             ctx->SetFontSize(10);
             ctx->SetTextPaint(Color(100, 100, 100));
             std::string preview = "Will create: " + GetFullFileName();
-            ctx->DrawText(preview, Point2Di(bounds.x, bounds.y + bounds.height + 4));
+            ctx->DrawText(preview, Point2Di(finalBounds.x, finalBounds.y + finalBounds.height + 4));
         }
     }
 

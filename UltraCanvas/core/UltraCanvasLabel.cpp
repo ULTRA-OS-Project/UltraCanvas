@@ -228,7 +228,7 @@ namespace UltraCanvas {
 
     // ===== SIZE CHANGES =====
     void UltraCanvasLabel::SetBounds(const Rect2Di &bnds) {
-        if (bnds != bounds) {
+        if (bnds != GetBounds()) {
             UltraCanvasUIElement::SetBounds(bnds);
             textLayout.reset();
             RequestRedraw();
@@ -249,14 +249,14 @@ namespace UltraCanvas {
                     textLayout->SetExplicitWidth(maxWidth);
                 }
                 auto lsize = textLayout->GetLayoutSize();
-                bounds.width = lsize.width + GetTotalBorderHorizontal() + GetTotalPaddingHorizontal();
-                bounds.height = lsize.height + GetTotalBorderVertical() + GetTotalPaddingVertical();
+                finalBounds.width = lsize.width + GetTotalBorderHorizontal() + GetTotalPaddingHorizontal();
+                finalBounds.height = lsize.height + GetTotalBorderVertical() + GetTotalPaddingVertical();
             } else if (GetHeight() == 0 && GetWidth() > 0) {
                 textLayout->SetExplicitWidth(crect.width);
-                bounds.height = textLayout->GetLayoutHeight() + GetTotalBorderVertical() + GetTotalPaddingVertical();
+                finalBounds.height = textLayout->GetLayoutHeight() + GetTotalBorderVertical() + GetTotalPaddingVertical();
             } else if (GetWidth() == 0 && GetHeight() > 0) {
                 textLayout->SetExplicitHeight(crect.height);
-                bounds.width = textLayout->GetLayoutWidth() + GetTotalBorderHorizontal() + GetTotalPaddingHorizontal();
+                finalBounds.width = textLayout->GetLayoutWidth() + GetTotalBorderHorizontal() + GetTotalPaddingHorizontal();
             } else {
                 textLayout->SetEllipsize(EllipsizeMode::EllipsizeEnd);
                 textLayout->SetExplicitWidth(crect.width);
@@ -272,8 +272,8 @@ namespace UltraCanvas {
 
         if (!text.empty()) {
             // Element-local content rect: ctx is already translated to element origin
-            int contentX = GetBorderLeftWidth() + padding.left;
-            int contentY = GetBorderTopWidth() + padding.top;
+            int contentX = GetBorderLeftWidth() + GetPaddingLeft();
+            int contentY = GetBorderTopWidth() + GetPaddingTop();
             if (style.hasShadow) {
                 ctx->SetCurrentPaint(style.shadowColor);
                 //textLayout->ChangeAttribute(TextAttributeFactory::CreateForeground(style.shadowColor));

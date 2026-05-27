@@ -206,8 +206,8 @@ namespace UltraCanvas {
 
     Rect2Di UltraCanvasListView::GetViewportRect() const {
         // Returns element-local coordinates (ctx is translated to element origin)
-        int localContentX = GetBorderLeftWidth() + padding.left;
-        int localContentY = GetBorderTopWidth() + padding.top;
+        int localContentX = GetBorderLeftWidth() + GetPaddingLeft();
+        int localContentY = GetBorderTopWidth() + GetPaddingTop();
         int crWidth = GetWidth() - GetTotalBorderHorizontal() - GetTotalPaddingHorizontal();
         int crHeight = GetHeight() - GetTotalBorderVertical() - GetTotalPaddingVertical();
         int sbWidth = verticalScrollbar->IsVisible() ? verticalScrollbar->GetStyle().trackSize : 0;
@@ -237,8 +237,8 @@ namespace UltraCanvas {
         UltraCanvasUIElement::Render(ctx, dirtyRect);
 
         // Element-local content rect (ctx is translated to element origin)
-        int localContentX = GetBorderLeftWidth() + padding.left;
-        int localContentY = GetBorderTopWidth() + padding.top;
+        int localContentX = GetBorderLeftWidth() + GetPaddingLeft();
+        int localContentY = GetBorderTopWidth() + GetPaddingTop();
         int crWidth = GetWidth() - GetTotalBorderHorizontal() - GetTotalPaddingHorizontal();
         int crHeight = GetHeight() - GetTotalBorderVertical() - GetTotalPaddingVertical();
         Rect2Di contentRect(localContentX, localContentY, crWidth, crHeight);

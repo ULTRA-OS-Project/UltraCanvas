@@ -1,7 +1,9 @@
 // include/UltraCanvasContainer.h
-// Container component with scrollbars and child element management - ENHANCED
-// Version: 2.1.0
-// Last Modified: 2026-05-11
+// Container component with scrollbars and child element management.
+// Children storage lives in CSSLayout::Element (inherited via UltraCanvasUIElement);
+// this class provides typed UI accessors over that storage.
+// Version: 3.0.0
+// Last Modified: 2026-05-27
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -33,8 +35,6 @@ namespace UltraCanvas {
 
     class UltraCanvasContainer : public UltraCanvasUIElement {
     private:
-        std::vector<std::shared_ptr<UltraCanvasUIElement>> children;
-
         // Content area management
         bool layoutDirty = true;
 
@@ -50,27 +50,37 @@ namespace UltraCanvas {
         std::unique_ptr<UltraCanvasScrollbar> horizontalScrollbar;
 
         ContainerStyle style;
-        //ScrollState scrollState;
 
     public:
         // ===== CONSTRUCTOR & DESTRUCTOR =====
         UltraCanvasContainer(const std::string &id, long x, long y, long w, long h)
                 : UltraCanvasUIElement(id, x, y, w, h) {
-//            UpdateLayout();
             CreateScrollbars();
         }
 
         virtual ~UltraCanvasContainer();
 
-        // ===== ENHANCED CHILD MANAGEMENT =====
+        // ===== CHILD MANAGEMENT =====
         void AddChild(std::shared_ptr<UltraCanvasUIElement> child);
         void RemoveChild(std::shared_ptr<UltraCanvasUIElement> child);
         void ClearChildren();
         bool HasChild(UltraCanvasUIElement* elem);
 
-        const std::vector<std::shared_ptr<UltraCanvasUIElement>> &GetChildren() const { return children; }
+        // Materializes a typed view over the engine's children vector.
+        // One allocation per call; intended for occasional iteration and
+        // legacy code. Performance-sensitive code should iterate
+        // CSSLayout::Element::Children() directly with static_pointer_cast.
+        std::vector<std::shared_ptr<UltraCanvasUIElement>> GetChildren() const {
+            const auto& src = Children();
+            std::vector<std::shared_ptr<UltraCanvasUIElement>> out;
+            out.reserve(src.size());
+            for (auto& c : src) {
+                out.push_back(std::static_pointer_cast<UltraCanvasUIElement>(c));
+            }
+            return out;
+        }
 
-        size_t GetChildCount() const { return children.size(); }
+        size_t GetChildCount() const { return Children().size(); }
 
         UltraCanvasUIElement *FindChildById(const std::string &id);
         UltraCanvasUIElement *FindElementAtPoint(const Point2Di &pos);
@@ -136,29 +146,21 @@ namespace UltraCanvas {
 
         void SetLayout(UltraCanvasLayout *newLayout);
 
-        // Get layout manager (non-owning pointer)
         UltraCanvasLayout *GetLayout() const { return layout; }
-
-        // Check if container has a layout
         bool HasLayout() const { return layout != nullptr; }
 
     private:
         // ===== INTERNAL METHODS =====
         void UpdateScrollability();
-
         void UpdateContentSize();
-
-//        void UpdateScrollbarPositions();
-//        void UpdateScrollAnimation();
-//        void UpdateHoverStates(const UCEvent& event);
 
         // Event handling helpers
         bool HandleScrollbarEvents(const UCEvent &event);
-
         bool HandleScrollWheel(const UCEvent &event);
 
         // Scrolling helpers
         void OnScrollChanged();
+
         // ===== SCROLLBAR CREATION =====
         void CreateScrollbars();
         void ApplyStyleToScrollbars();

@@ -219,8 +219,8 @@ namespace UltraCanvas {
         auto ctx = GetRenderContext();
         if (!ctx) return;
 
-        int newWidth = padding.left + padding.right;
-        int newHeight = padding.top + padding.bottom;
+        int newWidth = GetPaddingLeft() + GetPaddingRight();
+        int newHeight = GetPaddingTop() + GetPaddingBottom();
 
         // Calculate text dimensions
         if (!text.empty()) {
@@ -228,7 +228,7 @@ namespace UltraCanvas {
             ctx->SetFontSize(style.fontSize);
             Size2Di textSize = ctx->GetTextLineDimensions(text);
             newWidth += textSize.width;
-            newHeight = std::max(newHeight, textSize.height + padding.top + padding.bottom);
+            newHeight = std::max(newHeight, textSize.height + GetPaddingTop() + GetPaddingBottom());
         }
 
         // Add split button secondary section dimensions
@@ -270,7 +270,7 @@ namespace UltraCanvas {
         // Add icon dimensions for primary section
         if (HasIcon()) {
             newWidth += iconWidth;
-            newHeight = std::max(newHeight, iconHeight + padding.top + padding.bottom);
+            newHeight = std::max(newHeight, iconHeight + GetPaddingTop() + GetPaddingBottom());
 
             if (!text.empty() && (iconPosition == ButtonIconPosition::Left || iconPosition == ButtonIconPosition::Right)) {
                 newWidth += style.iconSpacing;
@@ -288,10 +288,10 @@ namespace UltraCanvas {
 
         // Regular button layout calculation
         Rect2Di bounds = GetLocalBounds();
-        int contentX = padding.left;
-        int contentY = padding.top;
-        int contentWidth = bounds.width - padding.left - padding.right;
-        int contentHeight = bounds.height - padding.top - padding.bottom;
+        int contentX = GetPaddingLeft();
+        int contentY = GetPaddingTop();
+        int contentWidth = finalBounds.width - GetPaddingLeft() - GetPaddingRight();
+        int contentHeight = finalBounds.height - GetPaddingTop() - GetPaddingBottom();
 
         // Reset rectangles
         iconRect = Rect2Di(0, 0, 0, 0);
@@ -367,11 +367,11 @@ namespace UltraCanvas {
                     }
                 }
 
-                secondaryWidth = contentWidth + padding.left + padding.right;
-                primaryWidth = bounds.width - secondaryWidth;
+                secondaryWidth = contentWidth + GetPaddingLeft() + GetPaddingRight();
+                primaryWidth = finalBounds.width - secondaryWidth;
             } else {
-                primaryWidth = bounds.width * split.primaryRatio;
-                secondaryWidth = bounds.width - primaryWidth;
+                primaryWidth = finalBounds.width * split.primaryRatio;
+                secondaryWidth = finalBounds.width - primaryWidth;
             }
 
             if (split.showSeparator) {
@@ -379,22 +379,22 @@ namespace UltraCanvas {
                 secondaryWidth -= split.separatorWidth / 2;
             }
 
-            primarySectionRect = Rect2Di(bounds.x, bounds.y, primaryWidth, bounds.height);
-            secondarySectionRect = Rect2Di(bounds.x + primaryWidth +
+            primarySectionRect = Rect2Di(finalBounds.x, finalBounds.y, primaryWidth, finalBounds.height);
+            secondarySectionRect = Rect2Di(finalBounds.x + primaryWidth +
                                            (split.showSeparator ? split.separatorWidth : 0),
-                                           bounds.y, secondaryWidth, bounds.height);
+                                           finalBounds.y, secondaryWidth, finalBounds.height);
 
             // Text rectangles within sections
-            textRect = Rect2Di(primarySectionRect.x + padding.left,
-                               primarySectionRect.y + padding.top,
-                               primarySectionRect.width - padding.left - padding.right,
-                               primarySectionRect.height - padding.top - padding.bottom);
+            textRect = Rect2Di(primarySectionRect.x + GetPaddingLeft(),
+                               primarySectionRect.y + GetPaddingTop(),
+                               primarySectionRect.width - GetPaddingLeft() - GetPaddingRight(),
+                               primarySectionRect.height - GetPaddingTop() - GetPaddingBottom());
 
             // Secondary section layout with icon support
-            int secContentX = secondarySectionRect.x + padding.left;
-            int secContentY = secondarySectionRect.y + padding.top;
-            int secContentWidth = secondarySectionRect.width - padding.left - padding.right;
-            int secContentHeight = secondarySectionRect.height - padding.top - padding.bottom;
+            int secContentX = secondarySectionRect.x + GetPaddingLeft();
+            int secContentY = secondarySectionRect.y + GetPaddingTop();
+            int secContentWidth = secondarySectionRect.width - GetPaddingLeft() - GetPaddingRight();
+            int secContentHeight = secondarySectionRect.height - GetPaddingTop() - GetPaddingBottom();
 
             if (HasSecondaryIcon() && !split.secondaryText.empty()) {
                 // Both icon and text in secondary section
@@ -443,29 +443,29 @@ namespace UltraCanvas {
             }
         } else {
             // Vertical split layout
-            int primaryHeight = bounds.height * split.primaryRatio;
-            int secondaryHeight = bounds.height - primaryHeight;
+            int primaryHeight = finalBounds.height * split.primaryRatio;
+            int secondaryHeight = finalBounds.height - primaryHeight;
 
             if (split.showSeparator) {
                 primaryHeight -= split.separatorWidth / 2;
                 secondaryHeight -= split.separatorWidth / 2;
             }
 
-            primarySectionRect = Rect2Di(bounds.x, bounds.y, bounds.width, primaryHeight);
-            secondarySectionRect = Rect2Di(bounds.x, bounds.y + primaryHeight +
+            primarySectionRect = Rect2Di(finalBounds.x, finalBounds.y, finalBounds.width, primaryHeight);
+            secondarySectionRect = Rect2Di(finalBounds.x, finalBounds.y + primaryHeight +
                                                      (split.showSeparator ? split.separatorWidth : 0),
-                                           bounds.width, secondaryHeight);
+                                           finalBounds.width, secondaryHeight);
 
             // Text rectangles within sections
-            textRect = Rect2Di(primarySectionRect.x + padding.left,
-                               primarySectionRect.y + padding.top,
-                               primarySectionRect.width - padding.left - padding.right,
-                               primarySectionRect.height - padding.top - padding.bottom);
+            textRect = Rect2Di(primarySectionRect.x + GetPaddingLeft(),
+                               primarySectionRect.y + GetPaddingTop(),
+                               primarySectionRect.width - GetPaddingLeft() - GetPaddingRight(),
+                               primarySectionRect.height - GetPaddingTop() - GetPaddingBottom());
 
             // Secondary section layout for vertical split
-            int secContentX = secondarySectionRect.x + padding.left;
+            int secContentX = secondarySectionRect.x + GetPaddingLeft();
             int secContentY = secondarySectionRect.y + 2;
-            int secContentWidth = secondarySectionRect.width - padding.left - padding.right;
+            int secContentWidth = secondarySectionRect.width - GetPaddingLeft() - GetPaddingRight();
             int secContentHeight = secondarySectionRect.height - 4;
 
             // For vertical split, always stack icon above text
@@ -647,8 +647,8 @@ namespace UltraCanvas {
     void UltraCanvasButton::DrawSplitButton(IRenderContext* ctx) {
         const SplitButtonStyle& split = style.splitStyle;
         Rect2Di bounds = GetLocalBounds();
-        bounds.width -= style.shadowOffset.x;
-        bounds.height -= style.shadowOffset.y;
+        finalBounds.width -= style.shadowOffset.x;
+        finalBounds.height -= style.shadowOffset.y;
 
         // Get colors for both sections
         Color primaryBg, primaryText, secondaryBg, secondaryText;
@@ -798,8 +798,8 @@ namespace UltraCanvas {
             GetCurrentColors(bgColor, textColor);
 
             Rect2Di bounds = GetLocalBounds();
-            bounds.width -= style.shadowOffset.x;
-            bounds.height -= style.shadowOffset.y;
+            finalBounds.width -= style.shadowOffset.x;
+            finalBounds.height -= style.shadowOffset.y;
 
             // Draw shadow if enabled and not pressed
             if (style.hasShadow && GetPrimaryState() != ElementState::Pressed) {

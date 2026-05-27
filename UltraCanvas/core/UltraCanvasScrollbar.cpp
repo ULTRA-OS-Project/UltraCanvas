@@ -57,7 +57,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasScrollbar::SetBounds(const Rect2Di& b) {
-        if (b != bounds) {
+        if (b != GetBounds()) {
             UltraCanvasUIElement::SetBounds(b);
             layoutDirty = true;
             RequestRedraw();
@@ -153,12 +153,12 @@ namespace UltraCanvas {
     void UltraCanvasScrollbar::UpdateVerticalLayout(const Rect2Di &bounds) {
         if (style.arrowButtonSize > 0) {
             // With arrow buttons
-            upArrowRect = Rect2Di(bounds.x, bounds.y,
-                                  bounds.width, style.arrowButtonSize);
-            downArrowRect = Rect2Di(bounds.x, bounds.y + bounds.height - style.arrowButtonSize,
-                                    bounds.width, style.arrowButtonSize);
-            trackRect = Rect2Di(bounds.x, bounds.y + style.arrowButtonSize,
-                                bounds.width, bounds.height - 2 * style.arrowButtonSize);
+            upArrowRect = Rect2Di(finalBounds.x, finalBounds.y,
+                                  finalBounds.width, style.arrowButtonSize);
+            downArrowRect = Rect2Di(finalBounds.x, finalBounds.y + finalBounds.height - style.arrowButtonSize,
+                                    finalBounds.width, style.arrowButtonSize);
+            trackRect = Rect2Di(finalBounds.x, finalBounds.y + style.arrowButtonSize,
+                                finalBounds.width, finalBounds.height - 2 * style.arrowButtonSize);
         } else {
             // No arrow buttons
             trackRect = bounds;
@@ -170,12 +170,12 @@ namespace UltraCanvas {
     void UltraCanvasScrollbar::UpdateHorizontalLayout(const Rect2Di &bounds) {
         if (style.arrowButtonSize > 0) {
             // With arrow buttons
-            upArrowRect = Rect2Di(bounds.x, bounds.y,
-                                  style.arrowButtonSize, bounds.height);
-            downArrowRect = Rect2Di(bounds.x + bounds.width - style.arrowButtonSize, bounds.y,
-                                    style.arrowButtonSize, bounds.height);
-            trackRect = Rect2Di(bounds.x + style.arrowButtonSize, bounds.y,
-                                bounds.width - 2 * style.arrowButtonSize, bounds.height);
+            upArrowRect = Rect2Di(finalBounds.x, finalBounds.y,
+                                  style.arrowButtonSize, finalBounds.height);
+            downArrowRect = Rect2Di(finalBounds.x + finalBounds.width - style.arrowButtonSize, finalBounds.y,
+                                    style.arrowButtonSize, finalBounds.height);
+            trackRect = Rect2Di(finalBounds.x + style.arrowButtonSize, finalBounds.y,
+                                finalBounds.width - 2 * style.arrowButtonSize, finalBounds.height);
         } else {
             // No arrow buttons
             trackRect = bounds;

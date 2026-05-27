@@ -1503,20 +1503,20 @@ namespace UltraCanvas {
         int verticalTabWidth;
         switch (tabPosition) {
             case TabPosition::Top:
-                return Rect2Di(0, 0, bounds.width, tabHeight);
+                return Rect2Di(0, 0, finalBounds.width, tabHeight);
 
             case TabPosition::Bottom:
-                return Rect2Di(0, bounds.height - tabHeight, bounds.width, tabHeight);
+                return Rect2Di(0, finalBounds.height - tabHeight, finalBounds.width, tabHeight);
 
             case TabPosition::Left:
-                return Rect2Di(0, 0, CalculateMaxTabWidth(), bounds.height);
+                return Rect2Di(0, 0, CalculateMaxTabWidth(), finalBounds.height);
 
             case TabPosition::Right:
                 verticalTabWidth = CalculateMaxTabWidth();
-                return Rect2Di(bounds.width - verticalTabWidth, 0, verticalTabWidth, bounds.height);
+                return Rect2Di(finalBounds.width - verticalTabWidth, 0, verticalTabWidth, finalBounds.height);
 
             default:
-                return Rect2Di(0, 0, bounds.width, tabHeight);
+                return Rect2Di(0, 0, finalBounds.width, tabHeight);
         }
     }
 
@@ -1527,29 +1527,29 @@ namespace UltraCanvas {
         switch (tabPosition) {
             case TabPosition::Top:
                 return Rect2Di(contentLeftPadding, tabHeight + contentTopPadding,
-                               bounds.width - contentLeftPadding,
-                               bounds.height - tabHeight - contentTopPadding);
+                               finalBounds.width - contentLeftPadding,
+                               finalBounds.height - tabHeight - contentTopPadding);
 
             case TabPosition::Bottom:
                 return Rect2Di(contentLeftPadding, contentTopPadding,
-                               bounds.width - contentLeftPadding,
-                               bounds.height - tabHeight - contentTopPadding);
+                               finalBounds.width - contentLeftPadding,
+                               finalBounds.height - tabHeight - contentTopPadding);
 
             case TabPosition::Left:
                 verticalTabWidth = CalculateMaxTabWidth();
                 return Rect2Di(verticalTabWidth + contentLeftPadding, contentTopPadding,
-                               bounds.width - verticalTabWidth - contentLeftPadding,
-                               bounds.height - contentTopPadding);
+                               finalBounds.width - verticalTabWidth - contentLeftPadding,
+                               finalBounds.height - contentTopPadding);
 
             case TabPosition::Right:
                 return Rect2Di(contentLeftPadding, contentTopPadding,
-                               bounds.width - CalculateMaxTabWidth() - contentLeftPadding,
-                               bounds.height - contentTopPadding);
+                               finalBounds.width - CalculateMaxTabWidth() - contentLeftPadding,
+                               finalBounds.height - contentTopPadding);
 
             default:
                 return Rect2Di(contentLeftPadding, tabHeight + contentTopPadding,
-                               bounds.width - contentLeftPadding,
-                               bounds.height - tabHeight - contentTopPadding);
+                               finalBounds.width - contentLeftPadding,
+                               finalBounds.height - tabHeight - contentTopPadding);
         }
     }
 
@@ -1575,7 +1575,7 @@ namespace UltraCanvas {
                     return Rect2Di(xOffset, 0, tabWidth, tabHeight);
                 } else {
                     Rect2Di bounds = GetBounds();
-                    return Rect2Di(xOffset, bounds.height - tabHeight, tabWidth, tabHeight);
+                    return Rect2Di(xOffset, finalBounds.height - tabHeight, tabWidth, tabHeight);
                 }
             }
 
@@ -1594,7 +1594,7 @@ namespace UltraCanvas {
                     return Rect2Di(0, yOffset, verticalTabWidth, tabHeight);  // Swapped: width first, then height
                 } else {
                     Rect2Di bounds = GetBounds();
-                    return Rect2Di(bounds.width - verticalTabWidth, yOffset, verticalTabWidth, tabHeight);
+                    return Rect2Di(finalBounds.width - verticalTabWidth, yOffset, verticalTabWidth, tabHeight);
                 }
             }
 
@@ -1619,24 +1619,24 @@ namespace UltraCanvas {
             case TabPosition::Bottom: {
                 // Horizontal tab bar - adjust width
                 if (overflowDropdownVisible && overflowDropdownPosition == OverflowDropdownPosition::Left) {
-                    bounds.x += overflowDropdownWidth + tabSpacing;
-                    bounds.width -= overflowDropdownWidth + tabSpacing;
+                    finalBounds.x += overflowDropdownWidth + tabSpacing;
+                    finalBounds.width -= overflowDropdownWidth + tabSpacing;
                 }
 
                 if (showScrollButtons) {
                     bool canPrev = activeTabIndex > 0;
                     bool canNext = activeTabIndex < (int)tabs.size() - 1;
                     if (canPrev) {
-                        bounds.x += 24;
-                        bounds.width -= 24;
+                        finalBounds.x += 24;
+                        finalBounds.width -= 24;
                     }
                     if (canNext) {
-                        bounds.width -= 24;
+                        finalBounds.width -= 24;
                     }
                 }
 
                 if (showNewTabButton && newTabButtonPosition == NewTabButtonPosition::FarRight) {
-                    bounds.width -= newTabButtonWidth + tabSpacing;
+                    finalBounds.width -= newTabButtonWidth + tabSpacing;
                 }
                 break;
             }
@@ -1645,24 +1645,24 @@ namespace UltraCanvas {
             case TabPosition::Right: {
                 // Vertical tab bar - adjust height
                 if (overflowDropdownVisible && overflowDropdownPosition == OverflowDropdownPosition::Left) {
-                    bounds.y += overflowDropdownWidth + tabSpacing;
-                    bounds.height -= overflowDropdownWidth + tabSpacing;
+                    finalBounds.y += overflowDropdownWidth + tabSpacing;
+                    finalBounds.height -= overflowDropdownWidth + tabSpacing;
                 }
 
                 if (showScrollButtons) {
                     bool canPrev = activeTabIndex > 0;
                     bool canNext = activeTabIndex < (int)tabs.size() - 1;
                     if (canPrev) {
-                        bounds.y += 24;
-                        bounds.height -= 24;
+                        finalBounds.y += 24;
+                        finalBounds.height -= 24;
                     }
                     if (canNext) {
-                        bounds.height -= 24;
+                        finalBounds.height -= 24;
                     }
                 }
 
                 if (showNewTabButton && newTabButtonPosition == NewTabButtonPosition::FarRight) {
-                    bounds.height -= newTabButtonWidth + tabSpacing;
+                    finalBounds.height -= newTabButtonWidth + tabSpacing;
                 }
                 break;
             }

@@ -267,7 +267,7 @@ static constexpr float kPi = 3.14159265f;
         }
         
         Rect2Df bounds = GetTreeBounds();
-        if (bounds.width <= 0 || bounds.height <= 0) {
+        if (finalBounds.width <= 0 || finalBounds.height <= 0) {
             return;
         }
         
@@ -1643,7 +1643,7 @@ static constexpr float kPi = 3.14159265f;
 
         try {
             Rect2Di bounds = GetBounds();
-            bool inside = bounds.Contains(Point2Di(event.pointer.x, event.pointer.y));
+            bool inside = finalBounds.Contains(Point2Di(event.pointer.x, event.pointer.y));
             if (!inside && event.type != UCEventType::MouseUp) return false;
 
             switch (event.type) {

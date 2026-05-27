@@ -394,9 +394,9 @@ namespace UltraCanvas {
 
     void UltraCanvasSlider::RenderCircularSlider(const Rect2Di &bounds, IRenderContext *ctx) {
         // Circular/knob style slider
-        int centerX = bounds.x + bounds.width / 2;
-        int centerY = bounds.y + bounds.height / 2;
-        float radius = std::min(bounds.width, bounds.height) / 2.0f - 10.0f;
+        int centerX = finalBounds.x + finalBounds.width / 2;
+        int centerY = finalBounds.y + finalBounds.height / 2;
+        float radius = std::min(finalBounds.width, finalBounds.height) / 2.0f - 10.0f;
 
         // Draw outer circle (track)
         ctx->SetStrokePaint(style.trackColor);
@@ -578,10 +578,10 @@ namespace UltraCanvas {
 
     Rect2Di UltraCanvasSlider::GetSliderInteriorRect(const Rect2Di &bounds, bool isVertical) const {
         if (isVertical) {
-            return Rect2Di(bounds.x, bounds.y, (int)style.handleSize, bounds.height);
+            return Rect2Di(finalBounds.x, finalBounds.y, (int)style.handleSize, finalBounds.height);
         } else {
-            return Rect2Di(bounds.x, bounds.y + bounds.height - (int)style.handleSize,
-                           bounds.width, (int)style.handleSize);
+            return Rect2Di(finalBounds.x, finalBounds.y + finalBounds.height - (int)style.handleSize,
+                           finalBounds.width, (int)style.handleSize);
         }
     }
 
@@ -849,12 +849,12 @@ namespace UltraCanvas {
         float newValue;
 
         if (orientation == SliderOrientation::Vertical) {
-            float ratio = 1.0f - (pos.y - bounds.y - style.handleSize / 2) /
-                                 (bounds.height - style.handleSize);
+            float ratio = 1.0f - (pos.y - finalBounds.y - style.handleSize / 2) /
+                                 (finalBounds.height - style.handleSize);
             newValue = minValue + ratio * (maxValue - minValue);
         } else {
-            float ratio = (pos.x - bounds.x - style.handleSize / 2) /
-                          (bounds.width - style.handleSize);
+            float ratio = (pos.x - finalBounds.x - style.handleSize / 2) /
+                          (finalBounds.width - style.handleSize);
             newValue = minValue + ratio * (maxValue - minValue);
         }
 

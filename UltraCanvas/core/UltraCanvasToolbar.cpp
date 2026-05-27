@@ -763,8 +763,8 @@ namespace UltraCanvas {
         ctx->FillRoundedRectangle({
                                           appearance.shadowOffset.x,
                                           appearance.shadowOffset.y,
-                                          bounds.width,
-                                          bounds.height
+                                          finalBounds.width,
+                                          finalBounds.height
                                   },
                 GetBorderTopWidth()
         );

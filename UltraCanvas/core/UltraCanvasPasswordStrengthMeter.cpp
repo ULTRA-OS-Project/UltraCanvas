@@ -155,17 +155,17 @@ namespace UltraCanvas {
 
     void UltraCanvasPasswordStrengthMeter::DrawBarStyle(IRenderContext *ctx, const Rect2Di &bounds) {
         int barHeight = config.height;
-        int barY = bounds.y + (bounds.height - barHeight) / 2;
+        int barY = finalBounds.y + (finalBounds.height - barHeight) / 2;
 
         // Draw background bar
         ctx->SetFillPaint(config.backgroundColor);
-        ctx->FillRoundedRectangle({bounds.x, barY, bounds.width, barHeight}, config.borderRadius);
+        ctx->FillRoundedRectangle({finalBounds.x, barY, finalBounds.width, barHeight}, config.borderRadius);
 
         // Draw strength bar
-        int fillWidth = static_cast<int>(bounds.width * (displayedStrength / 100.0f));
+        int fillWidth = static_cast<int>(finalBounds.width * (displayedStrength / 100.0f));
         if (fillWidth > 0) {
             ctx->SetFillPaint(currentColor);
-            ctx->FillRoundedRectangle({bounds.x, barY, fillWidth, barHeight}, config.borderRadius);
+            ctx->FillRoundedRectangle({finalBounds.x, barY, fillWidth, barHeight}, config.borderRadius);
         }
 
         // Draw label
@@ -175,9 +175,9 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasPasswordStrengthMeter::DrawCircularStyle(IRenderContext *ctx, const Rect2Di &bounds) {
-        double centerX = bounds.x + bounds.width / 2;
-        double centerY = bounds.y + bounds.height / 2;
-        double radius = std::min(bounds.width, bounds.height) / 2 - 5;
+        double centerX = finalBounds.x + finalBounds.width / 2;
+        double centerY = finalBounds.y + finalBounds.height / 2;
+        double radius = std::min(finalBounds.width, finalBounds.height) / 2 - 5;
 
         // Draw background circle
         ctx->SetStrokePaint(config.backgroundColor);
@@ -226,7 +226,7 @@ namespace UltraCanvas {
 
         if (!displayText.empty()) {
             int textWidth = ctx->GetTextLineWidth(displayText);
-            ctx->DrawText(displayText, Point2Df (bounds.x + static_cast<double>(bounds.width - textWidth) / 2.0, y));
+            ctx->DrawText(displayText, Point2Df (finalBounds.x + static_cast<double>(finalBounds.width - textWidth) / 2.0, y));
         }
     }
 }

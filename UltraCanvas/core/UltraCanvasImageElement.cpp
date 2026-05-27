@@ -94,7 +94,7 @@ namespace UltraCanvas {
 //    }
 
     void UltraCanvasImageElement::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
-        if (!IsVisible() || bounds.width == 0 || bounds.height == 0) return;
+        if (!IsVisible() || finalBounds.width == 0 || finalBounds.height == 0) return;
 
         ctx->PushState();
 
@@ -295,38 +295,38 @@ namespace UltraCanvas {
 //
 //        switch (scaleMode) {
 //            case ImageScaleMode::NoScale:
-//                return Rect2Di(bounds.x, bounds.y, imageWidth, imageHeight);
+//                return Rect2Di(finalBounds.x, finalBounds.y, imageWidth, imageHeight);
 //
 //            case ImageScaleMode::Stretch:
 //                return bounds;
 //
 //            case ImageScaleMode::Uniform: {
-//                float scaleX = bounds.width / imageWidth;
-//                float scaleY = bounds.height / imageHeight;
+//                float scaleX = finalBounds.width / imageWidth;
+//                float scaleY = finalBounds.height / imageHeight;
 //                float uniformScale = std::min(scaleX, scaleY);
 //
 //                float scaledWidth = imageWidth * uniformScale;
 //                float scaledHeight = imageHeight * uniformScale;
 //
 //                return Rect2Di(
-//                        bounds.x + (bounds.width - scaledWidth) / 2,
-//                        bounds.y + (bounds.height - scaledHeight) / 2,
+//                        finalBounds.x + (finalBounds.width - scaledWidth) / 2,
+//                        finalBounds.y + (finalBounds.height - scaledHeight) / 2,
 //                        scaledWidth,
 //                        scaledHeight
 //                );
 //            }
 //
 //            case ImageScaleMode::UniformToFill: {
-//                float scaleX = bounds.width / imageWidth;
-//                float scaleY = bounds.height / imageHeight;
+//                float scaleX = finalBounds.width / imageWidth;
+//                float scaleY = finalBounds.height / imageHeight;
 //                float uniformScale = std::max(scaleX, scaleY);
 //
 //                float scaledWidth = imageWidth * uniformScale;
 //                float scaledHeight = imageHeight * uniformScale;
 //
 //                return Rect2Di(
-//                        bounds.x + (bounds.width - scaledWidth) / 2,
-//                        bounds.y + (bounds.height - scaledHeight) / 2,
+//                        finalBounds.x + (finalBounds.width - scaledWidth) / 2,
+//                        finalBounds.y + (finalBounds.height - scaledHeight) / 2,
 //                        scaledWidth,
 //                        scaledHeight
 //                );
@@ -334,8 +334,8 @@ namespace UltraCanvas {
 //
 //            case ImageScaleMode::Center:
 //                return Rect2Di(
-//                        bounds.x + (bounds.width - imageWidth) / 2,
-//                        bounds.y + (bounds.height - imageHeight) / 2,
+//                        finalBounds.x + (finalBounds.width - imageWidth) / 2,
+//                        finalBounds.y + (finalBounds.height - imageHeight) / 2,
 //                        imageWidth,
 //                        imageHeight
 //                );

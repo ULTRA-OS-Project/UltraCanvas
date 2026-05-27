@@ -100,8 +100,8 @@ namespace UltraCanvas {
             int sbWidth = needsScrollbar ? static_cast<int>(style.scrollbarStyle.trackSize) : 0;
             ctx->ClipRect(Rect2Df(bw,
                                   bw,
-                                  bounds.width - bw * 2 - sbWidth,
-                                  bounds.height - bw * 2));
+                                  finalBounds.width - bw * 2 - sbWidth,
+                                  finalBounds.height - bw * 2));
 
             for (int i = 0; i < static_cast<int>(items.size()); ++i) {
                 if (items[i].visible) {
@@ -117,10 +117,10 @@ namespace UltraCanvas {
             if (needsScrollbar && menuScrollbar) {
                 int scrollbarWidth = static_cast<int>(style.scrollbarStyle.trackSize);
                 menuScrollbar->SetBounds(Rect2Di(
-                        bounds.width - scrollbarWidth - bw,
+                        finalBounds.width - scrollbarWidth - bw,
                         bw,
                         scrollbarWidth,
-                        bounds.height - bw * 2));
+                        finalBounds.height - bw * 2));
                 menuScrollbar->SetScrollPosition(scrollOffsetPixels);
                 ctx->PushState();
                 auto sbB = menuScrollbar->GetBounds();
@@ -580,7 +580,7 @@ namespace UltraCanvas {
 
     Rect2Di UltraCanvasMenu::GetItemBounds(int index) const {
         // Returns element-local coordinates (ctx is translated to element origin at render time)
-        Rect2Di bounds;
+        Rect2Di rect;
 
         if (orientation == MenuOrientation::Horizontal) {
             int currentX = 0;
@@ -591,10 +591,10 @@ namespace UltraCanvas {
                 }
             }
 
-            bounds.x = currentX;
-            bounds.y = 0;
-            bounds.width = CalculateItemWidth(items[index]) + style.paddingLeft + style.paddingRight;
-            bounds.height = style.itemHeight;
+            rect.x = currentX;
+            rect.y = 0;
+            rect.width = CalculateItemWidth(items[index]) + style.paddingLeft + style.paddingRight;
+            rect.height = style.itemHeight;
         } else {
             int currentY = -scrollOffsetPixels;
 
@@ -605,14 +605,14 @@ namespace UltraCanvas {
                 }
             }
 
-            bounds.x = 0;
-            bounds.y = currentY;
-            bounds.width = GetWidth();
-            bounds.height = (items[index].type == MenuItemType::Separator) ?
+            rect.x = 0;
+            rect.y = currentY;
+            rect.width = GetWidth();
+            rect.height = (items[index].type == MenuItemType::Separator) ?
                             style.separatorHeight : style.itemHeight;
         }
 
-        return bounds;
+        return rect;
     }
 
     int UltraCanvasMenu::CalculateItemWidth(const MenuItemData &item) const {
@@ -693,9 +693,9 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMenu::RenderSeparator(const Rect2Di &bounds, IRenderContext *ctx) {
-        int centerY = bounds.y + bounds.height / 2;
-        int startX = bounds.x + style.paddingLeft;
-        int endX = bounds.x + bounds.width - style.paddingRight;
+        int centerY = finalBounds.y + finalBounds.height / 2;
+        int startX = finalBounds.x + style.paddingLeft;
+        int endX = finalBounds.x + finalBounds.width - style.paddingRight;
 
         ctx->SetStrokePaint(style.separatorColor);
         ctx->SetStrokeWidth(1.0f);
@@ -709,8 +709,8 @@ namespace UltraCanvas {
 
         Point2Di textSize = ctx->GetTextDimension(item.label);
         int fontHeight = textSize.y;
-        int textX = bounds.x + style.paddingLeft;
-        int textY = bounds.y + (bounds.height - fontHeight) / 2;
+        int textX = finalBounds.x + style.paddingLeft;
+        int textY = finalBounds.y + (finalBounds.height - fontHeight) / 2;
 
         ctx->SetTextPaint(style.headerTextColor);
         ctx->DrawText(item.label, Point2Di(textX, textY));
@@ -772,8 +772,8 @@ namespace UltraCanvas {
         // Draw in element-local coordinates (ctx is translated to element origin)
         Rect2Di bounds = GetLocalBounds();
         ctx->SetStrokePaint(style.shadowColor);
-        ctx->DrawRectangle(Rect2Df(style.shadowOffset.x, style.shadowOffset.y, bounds.width,
-                           bounds.height));
+        ctx->DrawRectangle(Rect2Df(style.shadowOffset.x, style.shadowOffset.y, finalBounds.width,
+                           finalBounds.height));
     }
 
     int UltraCanvasMenu::GetItemUnderPointer(const UCEvent & ev) const {

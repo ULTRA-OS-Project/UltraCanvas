@@ -376,8 +376,8 @@ void UltraCanvasNodeDiagram::RunForceDirectedLayout(int iterations) {
     // 2.0.1: Bounds may not yet be set when the user calls RunLayout() right
     // after AddNode (parent layout pass hasn't run). Use a sane fallback so the
     // simulation always has a finite area to converge in.
-    double width  = static_cast<double>(bounds.width);
-    double height = static_cast<double>(bounds.height);
+    double width  = static_cast<double>(finalBounds.width);
+    double height = static_cast<double>(finalBounds.height);
     if (width  < 100.0f) width  = 800.0f;
     if (height < 100.0f) height = 600.0f;
     double centerX = width  / 2.0f;
@@ -572,9 +572,9 @@ void UltraCanvasNodeDiagram::RunForceDirectedLayout(int iterations) {
 void UltraCanvasNodeDiagram::ApplyCircularLayout() {
     if (nodes.empty()) return;
     
-    double centerX = bounds.width / 2.0;
-    double centerY = bounds.height / 2.0;
-    double radius = std::min(bounds.width, bounds.height) / 2.5f;
+    double centerX = finalBounds.width / 2.0;
+    double centerY = finalBounds.height / 2.0;
+    double radius = std::min(finalBounds.width, finalBounds.height) / 2.5f;
     
     size_t count = nodes.size();
     double angleStep = 2.0 * NODE_DIAGRAM_PI / count;
@@ -598,8 +598,8 @@ void UltraCanvasNodeDiagram::ApplyGridLayout() {
     if (cols == 0) cols = 1;
     size_t rows = (count + cols - 1) / cols;
     
-    double cellWidth = bounds.width / static_cast<double>(cols);
-    double cellHeight = bounds.height / static_cast<double>(rows);
+    double cellWidth = finalBounds.width / static_cast<double>(cols);
+    double cellHeight = finalBounds.height / static_cast<double>(rows);
     
     size_t idx = 0;
     for (auto& pair : nodes) {
@@ -1006,8 +1006,8 @@ void UltraCanvasNodeDiagram::FitView(double padding) {
     double contentH = maxY - minY;
     if (contentW <= 0 || contentH <= 0) return;
     
-    double availW = static_cast<double>(bounds.width) - padding * 2.0;
-    double availH = static_cast<double>(bounds.height) - padding * 2.0;
+    double availW = static_cast<double>(finalBounds.width) - padding * 2.0;
+    double availH = static_cast<double>(finalBounds.height) - padding * 2.0;
     if (availW <= 0 || availH <= 0) return;
     
     double zoomX = availW / contentW;
@@ -1021,16 +1021,16 @@ void UltraCanvasNodeDiagram::FitView(double padding) {
     double contentCenterX = (minX + maxX) / 2.0;
     double contentCenterY = (minY + maxY) / 2.0;
     
-    panOffset.x = bounds.width / 2.0 - contentCenterX * zoomLevel;
-    panOffset.y = bounds.height / 2.0 - contentCenterY * zoomLevel;
+    panOffset.x = finalBounds.width / 2.0 - contentCenterX * zoomLevel;
+    panOffset.y = finalBounds.height / 2.0 - contentCenterY * zoomLevel;
     
     NotifyViewportChange();
     RequestRedraw();
 }
 
 void UltraCanvasNodeDiagram::CenterOn(double worldX, double worldY) {
-    panOffset.x = bounds.width / 2.0 - worldX * zoomLevel;
-    panOffset.y = bounds.height / 2.0 - worldY * zoomLevel;
+    panOffset.x = finalBounds.width / 2.0 - worldX * zoomLevel;
+    panOffset.y = finalBounds.height / 2.0 - worldY * zoomLevel;
     NotifyViewportChange();
     RequestRedraw();
 }
@@ -1314,25 +1314,25 @@ std::pair<std::string, std::string> UltraCanvasNodeDiagram::FindHandleAt(const P
 bool UltraCanvasNodeDiagram::PointInMinimap(const Point2Di& screenPos) const {
     if (!minimapConfig.visible) return false;
     
-    double mx = bounds.x + minimapConfig.padding;
-    double my = bounds.y + minimapConfig.padding;
+    double mx = finalBounds.x + minimapConfig.padding;
+    double my = finalBounds.y + minimapConfig.padding;
     
     switch (minimapConfig.position) {
         case NodeDiagramPanelPosition::TopLeft:
-            mx = bounds.x + minimapConfig.padding;
-            my = bounds.y + minimapConfig.padding;
+            mx = finalBounds.x + minimapConfig.padding;
+            my = finalBounds.y + minimapConfig.padding;
             break;
         case NodeDiagramPanelPosition::TopRight:
-            mx = bounds.x + bounds.width - minimapConfig.width - minimapConfig.padding;
-            my = bounds.y + minimapConfig.padding;
+            mx = finalBounds.x + finalBounds.width - minimapConfig.width - minimapConfig.padding;
+            my = finalBounds.y + minimapConfig.padding;
             break;
         case NodeDiagramPanelPosition::BottomLeft:
-            mx = bounds.x + minimapConfig.padding;
-            my = bounds.y + bounds.height - minimapConfig.height - minimapConfig.padding;
+            mx = finalBounds.x + minimapConfig.padding;
+            my = finalBounds.y + finalBounds.height - minimapConfig.height - minimapConfig.padding;
             break;
         case NodeDiagramPanelPosition::BottomRight:
-            mx = bounds.x + bounds.width - minimapConfig.width - minimapConfig.padding;
-            my = bounds.y + bounds.height - minimapConfig.height - minimapConfig.padding;
+            mx = finalBounds.x + finalBounds.width - minimapConfig.width - minimapConfig.padding;
+            my = finalBounds.y + finalBounds.height - minimapConfig.height - minimapConfig.padding;
             break;
     }
     
@@ -1356,24 +1356,24 @@ int UltraCanvasNodeDiagram::FindControlButtonAt(const Point2Di& screenPos) {
     double panelW = bs + 2 * controlsConfig.padding;  // Inner padding around buttons
     double panelH = totalH + 2 * controlsConfig.padding;
     
-    double px = bounds.x;
-    double py = bounds.y;
+    double px = finalBounds.x;
+    double py = finalBounds.y;
     switch (controlsConfig.position) {
         case NodeDiagramPanelPosition::TopLeft:
             px += controlsConfig.padding;
             py += controlsConfig.padding;
             break;
         case NodeDiagramPanelPosition::TopRight:
-            px += bounds.width - panelW - controlsConfig.padding;
+            px += finalBounds.width - panelW - controlsConfig.padding;
             py += controlsConfig.padding;
             break;
         case NodeDiagramPanelPosition::BottomLeft:
             px += controlsConfig.padding;
-            py += bounds.height - panelH - controlsConfig.padding;
+            py += finalBounds.height - panelH - controlsConfig.padding;
             break;
         case NodeDiagramPanelPosition::BottomRight:
-            px += bounds.width - panelW - controlsConfig.padding;
-            py += bounds.height - panelH - controlsConfig.padding;
+            px += finalBounds.width - panelW - controlsConfig.padding;
+            py += finalBounds.height - panelH - controlsConfig.padding;
             break;
     }
     
@@ -1461,8 +1461,8 @@ void UltraCanvasNodeDiagram::RenderGrid(IRenderContext* ctx) {
     if (spacing < 1.0) return;
     
     Point2Df topLeft     = ScreenToWorld({0,0});
-    Point2Df bottomRight = ScreenToWorld(Point2Di(bounds.width,
-                                                   bounds.height));
+    Point2Df bottomRight = ScreenToWorld(Point2Di(finalBounds.width,
+                                                   finalBounds.height));
     
     double startX = std::floor(topLeft.x / spacing) * spacing;
     double endX   = std::ceil (bottomRight.x / spacing) * spacing;
@@ -2724,8 +2724,8 @@ bool UltraCanvasNodeDiagram::HandleMouseWheel(const UCEvent& event) {
     // Recompute pan so the same world point lands under the cursor again.
     // ScreenToWorld is: world = (screen - bounds - pan) / zoom
     // Solving for pan with the new zoom: pan = screen - bounds - world * zoom
-    panOffset.x = cursor.x - bounds.x - worldUnderCursor.x * zoomLevel;
-    panOffset.y = cursor.y - bounds.y - worldUnderCursor.y * zoomLevel;
+    panOffset.x = cursor.x - finalBounds.x - worldUnderCursor.x * zoomLevel;
+    panOffset.y = cursor.y - finalBounds.y - worldUnderCursor.y * zoomLevel;
     
     NotifyViewportChange();
     RequestRedraw();

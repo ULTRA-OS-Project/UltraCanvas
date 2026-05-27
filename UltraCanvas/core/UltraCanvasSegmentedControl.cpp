@@ -22,7 +22,7 @@ namespace UltraCanvas {
 
         // Build segment rects in element-local space
         Rect2Di bounds = GetLocalBounds();
-        int availableWidth = bounds.width;
+        int availableWidth = finalBounds.width;
 
         // Account for overall border
         //availableWidth -= static_cast<int>(style.borderWidth * 2);
@@ -70,9 +70,9 @@ namespace UltraCanvas {
         }
 
         // Calculate segment rectangles
-        int currentX = bounds.x;
-        int segmentY = bounds.y;
-        int segmentHeight = bounds.height;
+        int currentX = finalBounds.x;
+        int segmentY = finalBounds.y;
+        int segmentHeight = finalBounds.height;
 
         if (style.borderWidth > 0) {
             currentX += static_cast<int>(style.borderWidth);
@@ -158,8 +158,8 @@ namespace UltraCanvas {
             for (size_t i = 1; i < segmentRects.size(); i++) {
                 int x = segmentRects[i].x;
                 ctx->DrawLine(
-                        {static_cast<double>(x), bounds.y + style.borderWidth},
-                        {static_cast<double>(x), bounds.y + bounds.height - style.borderWidth}
+                        {static_cast<double>(x), finalBounds.y + style.borderWidth},
+                        {static_cast<double>(x), finalBounds.y + finalBounds.height - style.borderWidth}
                 );
             }
         }

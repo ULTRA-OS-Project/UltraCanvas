@@ -137,6 +137,10 @@ namespace UltraCanvas {
             InvalidateLayout();
         }
 
+        void Element::SortChildren(const ChildComparator& cmp) {
+            std::stable_sort(children.begin(), children.end(), cmp);
+        }
+
         void Element::InvalidateLayout() {
             measured.valid  = false;
             intrinsic.valid = false;

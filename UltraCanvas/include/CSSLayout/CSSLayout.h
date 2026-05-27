@@ -1,6 +1,6 @@
 // include/CSSLayout/CSSLayout.h
 // CSS-compliant layout engine: type model and Element base class.
-// Version: 4.3.0
+// Version: 4.4.0
 // Last Modified: 2026-05-27
 // Author: UltraCanvas Framework
 #pragma once
@@ -10,6 +10,7 @@
 #include <cmath>
 #include <string>
 #include <vector>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <variant>
@@ -324,6 +325,22 @@ namespace UltraCanvas {
             void AddChild(std::shared_ptr<Element> kid);
             void RemoveChild(Element* kid);
             void ClearChildren();
+            // Stable-sort the children vector in place by an arbitrary comparator.
+            // Provided so subclasses can sort (e.g. by z-index) without exposing
+            // the private vector. Does NOT invalidate layout (the resolved
+            // measure/arrange doesn't depend on sibling order for any current
+            // algorithm except Grid's auto-flow, which re-collects per Measure).
+            using ChildComparator = std::function<bool(const std::shared_ptr<Element>&,
+                                                       const std::shared_ptr<Element>&)>;
+            void SortChildren(const ChildComparator& cmp);
+
+            // Set the parent pointer WITHOUT inserting into the parent's
+            // children vector. Used by hosts that own a child via their own
+            // unique_ptr (e.g. a Container's scrollbars) but still want the
+            // child's GetPositionInWindow / InvalidateRect walk to find them.
+            // This breaks the parent ↔ children-of-parent invariant — callers
+            // must NOT also AddChild() the same element.
+            void SetParentNonOwning(Element* p) { parent = p; }
 
             const std::vector<std::shared_ptr<Element>>& Children() const { return children; }
 

@@ -381,8 +381,8 @@ namespace UltraCanvas {
             rightOffset += 20;
         }
 
-        int btnX = bounds.width - rightOffset - clearButtonSize - 2;
-        int btnY = (bounds.height - clearButtonSize) / 2;
+        int btnX = finalBounds.width - rightOffset - clearButtonSize - 2;
+        int btnY = (finalBounds.height - clearButtonSize) / 2;
 
         return Rect2Di(btnX, btnY, clearButtonSize, clearButtonSize);
     }
@@ -403,8 +403,8 @@ namespace UltraCanvas {
         return Rect2Di(
                 style.paddingLeft,
                 style.paddingTop,
-                bounds.width - style.paddingLeft - rightReduction,
-                bounds.height - style.paddingTop - style.paddingBottom
+                finalBounds.width - style.paddingLeft - rightReduction,
+                finalBounds.height - style.paddingTop - style.paddingBottom
         );
     }
 
@@ -588,14 +588,14 @@ namespace UltraCanvas {
         // Draw validation icon (simplified)
         if (lastValidationResult.state == ValidationState::Valid) {
             // Draw checkmark
-            Point2Di iconPos(bounds.x + bounds.width - 20, bounds.y + bounds.height / 2);
+            Point2Di iconPos(finalBounds.x + finalBounds.width - 20, finalBounds.y + finalBounds.height / 2);
             ctx->SetStrokePaint(style.validBorderColor);
             ctx->SetStrokeWidth(2.0f);
             ctx->DrawLine(iconPos, Point2Di(iconPos.x + 4, iconPos.y + 4));
             ctx->DrawLine(Point2Di(iconPos.x + 4, iconPos.y + 4), Point2Di(iconPos.x + 12, iconPos.y - 4));
         } else if (lastValidationResult.state == ValidationState::Invalid) {
             // Draw X
-            Point2Di iconPos(bounds.x + bounds.width - 20, bounds.y + bounds.height / 2 - 6);
+            Point2Di iconPos(finalBounds.x + finalBounds.width - 20, finalBounds.y + finalBounds.height / 2 - 6);
             ctx->SetStrokePaint(style.invalidBorderColor);
             ctx->SetStrokeWidth(2.0f);
             ctx->DrawLine(iconPos, Point2Di(iconPos.x + 12, iconPos.y + 12));
@@ -629,10 +629,10 @@ namespace UltraCanvas {
         if (!style.showShadow) return;
 
         Rect2Di shadowRect(
-                bounds.x + style.shadowOffset.x,
-                bounds.y + style.shadowOffset.y,
-                bounds.width,
-                bounds.height
+                finalBounds.x + style.shadowOffset.x,
+                finalBounds.y + style.shadowOffset.y,
+                finalBounds.width,
+                finalBounds.height
         );
 
         ctx->SetStrokePaint(style.shadowColor);

@@ -519,8 +519,8 @@ void UltraCanvasGourceTree::ZoomToFit() {
     float nodeWidth = maxX - minX;
     float nodeHeight = maxY - minY;
     
-    float zoomX = (bounds.width - 40) / nodeWidth;
-    float zoomY = (bounds.height - 40) / nodeHeight;
+    float zoomX = (finalBounds.width - 40) / nodeWidth;
+    float zoomY = (finalBounds.height - 40) / nodeHeight;
     
     zoomLevel = std::min(zoomX, zoomY);
     zoomLevel = std::clamp(zoomLevel, minZoom, maxZoom);
@@ -529,8 +529,8 @@ void UltraCanvasGourceTree::ZoomToFit() {
     float centerNodeX = (minX + maxX) / 2.0f;
     float centerNodeY = (minY + maxY) / 2.0f;
     
-    panX = bounds.width / 2.0f - centerNodeX * zoomLevel;
-    panY = bounds.height / 2.0f - centerNodeY * zoomLevel;
+    panX = finalBounds.width / 2.0f - centerNodeX * zoomLevel;
+    panY = finalBounds.height / 2.0f - centerNodeY * zoomLevel;
     
     RequestRedraw();
 }
@@ -553,8 +553,8 @@ void UltraCanvasGourceTree::CenterOnNode(const std::string& nodeId) {
     if (nodeIt == nodes.end()) return;
     
     Rect2Di bounds = GetBounds();
-    panX = bounds.width / 2.0f - nodeIt->second.x * zoomLevel;
-    panY = bounds.height / 2.0f - nodeIt->second.y * zoomLevel;
+    panX = finalBounds.width / 2.0f - nodeIt->second.x * zoomLevel;
+    panY = finalBounds.height / 2.0f - nodeIt->second.y * zoomLevel;
     
     RequestRedraw();
 }
@@ -566,8 +566,8 @@ void UltraCanvasGourceTree::PerformLayout() {
     
     // Update center point
     Rect2Di bounds = GetBounds();
-    style.centerX = bounds.width / 2.0f;
-    style.centerY = bounds.height / 2.0f;
+    style.centerX = finalBounds.width / 2.0f;
+    style.centerY = finalBounds.height / 2.0f;
     
     // Update visibility based on expanded state
     UpdateVisibility();
@@ -1127,7 +1127,7 @@ void UltraCanvasGourceTree::Render(IRenderContext* ctx, const Rect2Di& dirtyRect
 
 //    // Save state and set clip region (element-local coords)
 //    ctx->PushState();
-//    ctx->ClipRect(Rect2Df(bounds.x, bounds.y, bounds.width, bounds.height));
+//    ctx->ClipRect(Rect2Df(finalBounds.x, finalBounds.y, finalBounds.width, finalBounds.height));
 
     // Draw background
     DrawBackground(ctx);
@@ -1162,7 +1162,7 @@ void UltraCanvasGourceTree::DrawBackground(IRenderContext* ctx) {
     // Fill background
     ctx->SetFillPaint(style.backgroundColor);
     ctx->ClearPath();
-    ctx->Rect(0, 0, bounds.width, bounds.height);
+    ctx->Rect(0, 0, finalBounds.width, finalBounds.height);
     ctx->FillPathPreserve();
     
     // Draw depth rings (optional grid)
@@ -1179,8 +1179,8 @@ void UltraCanvasGourceTree::DrawBackground(IRenderContext* ctx) {
         }
         
         // Draw concentric circles
-        float centerX = bounds.x + panX + style.centerX * zoomLevel;
-        float centerY = bounds.y + panY + style.centerY * zoomLevel;
+        float centerX = finalBounds.x + panX + style.centerX * zoomLevel;
+        float centerY = finalBounds.y + panY + style.centerY * zoomLevel;
         
         for (int d = 1; d <= maxNodeDepth; d++) {
             float radius = d * style.ringSpacing * zoomLevel;

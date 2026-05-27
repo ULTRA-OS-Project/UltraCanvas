@@ -563,7 +563,7 @@ namespace UltraCanvas {
         ctx->PopState();
 
         // Draw scrollbar if needed
-        if (contentHeight > bounds.height) {
+        if (contentHeight > finalBounds.height) {
             UpdateScrollbarGeometry(bounds);
             DrawScrollbar(ctx);
         }
@@ -676,15 +676,15 @@ namespace UltraCanvas {
 
     Rect2Di UltraCanvasMarkdownDisplay::GetAdjustedBounds(const Rect2Di &bounds) {
         return Rect2Di(
-                bounds.x,
-                bounds.y - verticalScrollOffset,
-                bounds.width,
-                bounds.height
+                finalBounds.x,
+                finalBounds.y - verticalScrollOffset,
+                finalBounds.width,
+                finalBounds.height
         );
     }
 
     Point2Di UltraCanvasMarkdownDisplay::GetAdjustedPosition(const Rect2Di &bounds) {
-        return Point2Di(bounds.x, bounds.y - verticalScrollOffset);
+        return Point2Di(finalBounds.x, finalBounds.y - verticalScrollOffset);
     }
 
     void UltraCanvasMarkdownDisplay::RenderElement(IRenderContext *ctx, std::shared_ptr<MarkdownElement> element) {
@@ -884,23 +884,23 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMarkdownDisplay::UpdateScrollbarGeometry(const Rect2Di &bounds) {
-        if (contentHeight <= bounds.height) return;
+        if (contentHeight <= finalBounds.height) return;
 
         // Calculate scrollbar track rectangle
         scrollbarTrackRect = Rect2Di(
-                bounds.x + bounds.width - style.scrollbarWidth,
-                bounds.y,
+                finalBounds.x + finalBounds.width - style.scrollbarWidth,
+                finalBounds.y,
                 style.scrollbarWidth,
-                bounds.height
+                finalBounds.height
         );
 
         // Calculate thumb size and position
-        int maxScroll = std::max(0, contentHeight - bounds.height);
-        float visibleRatio = static_cast<float>(bounds.height) / static_cast<float>(contentHeight);
-        int thumbHeight = std::max(20, static_cast<int>(visibleRatio * bounds.height));
+        int maxScroll = std::max(0, contentHeight - (int)finalBounds.height);
+        float visibleRatio = static_cast<float>(finalBounds.height) / static_cast<float>(contentHeight);
+        int thumbHeight = std::max(20, static_cast<int>(visibleRatio * finalBounds.height));
 
-        int availableTrackHeight = bounds.height - thumbHeight;
-        int thumbY = bounds.y;
+        int availableTrackHeight = finalBounds.height - thumbHeight;
+        int thumbY = finalBounds.y;
         if (maxScroll > 0) {
             thumbY += static_cast<int>((static_cast<float>(verticalScrollOffset) / static_cast<float>(maxScroll)) * availableTrackHeight);
         }

@@ -456,7 +456,7 @@ namespace UltraCanvas {
         if (!rootNode) return nullptr;
 
         // y is element-local now; subtract local content offset + add scroll
-        int localContentY = GetBorderTopWidth() + padding.top;
+        int localContentY = GetBorderTopWidth() + GetPaddingTop();
         int relativeY = y - localContentY + scrollOffsetY;
         int nodeIndex = relativeY / rowHeight;
 
@@ -611,7 +611,7 @@ namespace UltraCanvas {
         TreeNode *clickedNode = GetNodeAtY(event.pointer.y);
         if (clickedNode) {
             // nodeX in element-local space
-            int localContentX = GetBorderLeftWidth() + padding.left;
+            int localContentX = GetBorderLeftWidth() + GetPaddingLeft();
             int nodeX = localContentX + clickedNode->level * indentSize;
 
             // Check if clicking on expand/collapse button

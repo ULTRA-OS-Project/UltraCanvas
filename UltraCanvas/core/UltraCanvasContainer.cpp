@@ -1,12 +1,13 @@
 // UltraCanvasContainer.cpp
-// Container component with scrollbars and child element management - ENHANCED
-// Version: 2.0.1
-// Last Modified: 2026-04-08
+// Container with scrollbars and child management. Child storage lives on
+// CSSLayout::Element (via UltraCanvasUIElement); we iterate it through
+// Children() and static_pointer_cast each element to UltraCanvasUIElement.
+// Version: 3.0.0
+// Last Modified: 2026-05-27
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasRenderContext.h"
-#include "UltraCanvasApplication.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasLayout.h"
 #include "UltraCanvasElementDebug.h"
@@ -14,6 +15,12 @@
 #include <cmath>
 
 namespace UltraCanvas {
+
+    // Local helper: every child of a Container is actually a UI element.
+    static inline UltraCanvasUIElement* asUI(const std::shared_ptr<CSSLayout::Element>& c) {
+        return static_cast<UltraCanvasUIElement*>(c.get());
+    }
+
     UltraCanvasContainer::~UltraCanvasContainer() {
         if (layout) {
             delete layout;
@@ -23,9 +30,8 @@ namespace UltraCanvas {
 // ===== RENDERING IMPLEMENTATION =====
     void UltraCanvasContainer::SetWindow(UltraCanvasWindowBase *win) {
         UltraCanvasUIElement::SetWindow(win);
-        // Propagate to children
-        for (auto& child : children) {
-            child->SetWindow(win);
+        for (auto& c : Children()) {
+            asUI(c)->SetWindow(win);
         }
         horizontalScrollbar->SetWindow(win);
         verticalScrollbar->SetWindow(win);
@@ -46,18 +52,18 @@ namespace UltraCanvas {
             isContainerGeometryUpdated = true;
         }
 
-        for (const auto &child: children) {
-            // fixme! check this in future when will need to implement feature like visibility:hidden
+        for (auto& c : Children()) {
+            UltraCanvasUIElement* child = asUI(c);
             if (!child || !child->IsVisible()) continue;
             if (child->isPopup) continue;
 
-            auto containerChild = dynamic_cast<UltraCanvasContainer*>(child.get());
+            auto containerChild = dynamic_cast<UltraCanvasContainer*>(child);
             if (isContainerGeometryUpdated || child->needsUpdateGeometry || containerChild) {
                 child->UpdateGeometry(ctx);
                 child->needsUpdateGeometry = false;
             }
         }
-        
+
         if (verticalScrollbar->IsVisible()) {
             verticalScrollbar->UpdateGeometry(ctx);
         }
@@ -76,7 +82,8 @@ namespace UltraCanvas {
         auto hsroll = GetHorizontalScrollPosition();
         auto vsroll = GetVerticalScrollPosition();
 
-        for (const auto &child: children) {
+        for (auto& c : Children()) {
+            UltraCanvasUIElement* child = asUI(c);
             if (!child || !child->IsVisible()) continue;
             if (child->isPopup) continue;
 
@@ -109,8 +116,8 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasContainer::RenderScrollbars(IRenderContext *ctx, const Rect2Di& dirtyRect) {
-        int localContentX = GetBorderLeftWidth() + padding.left;
-        int localContentY = GetBorderTopWidth() + padding.top;
+        int localContentX = GetBorderLeftWidth() + GetPaddingLeft();
+        int localContentY = GetBorderTopWidth()  + GetPaddingTop();
 
         auto renderScrollbar = [&](UltraCanvasScrollbar* sb) {
             auto sbBounds = sb->GetBounds();
@@ -141,7 +148,7 @@ namespace UltraCanvas {
     bool UltraCanvasContainer::OnEvent(const UCEvent& event) {
         if (UltraCanvasUIElement::OnEvent(event)) {
             return true;
-        }        
+        }
         if (HandleScrollbarEvents(event)) {
             return true;
         }
@@ -157,12 +164,13 @@ namespace UltraCanvas {
         int maxRight = 0;
         int maxBottom = 0;
 
-        for (const auto& child : children) {
+        for (auto& c : Children()) {
+            UltraCanvasUIElement* child = asUI(c);
             if (!child || !child->IsVisible()) continue;
             if (child->isPopup) continue;
 
             Rect2Di childBounds = child->GetBounds();
-            maxRight = std::max(maxRight, childBounds.x + childBounds.width);
+            maxRight  = std::max(maxRight,  childBounds.x + childBounds.width);
             maxBottom = std::max(maxBottom, childBounds.y + childBounds.height);
         }
         verticalScrollbar->SetVisible(style.forceShowVerticalScrollbar);
@@ -181,21 +189,20 @@ namespace UltraCanvas {
                 horizontalScrollbar->SetScrollDimensions(clientRect.width, maxRight);
                 verticalScrollbar->SetScrollDimensions(clientRect.height, maxBottom);
 
-                // Determine scrollbar visibility
                 verticalScrollbar->SetVisible(verticalScrollbar->IsScrollable());
                 horizontalScrollbar->SetVisible(horizontalScrollbar->IsScrollable());
             }
         }
 
         int trackSize = style.scrollbarStyle.trackSize;
-        int contentWidth = GetWidth() - GetTotalBorderHorizontal() - GetTotalPaddingHorizontal();
-        int contentHeight = GetHeight() - GetTotalBorderVertical() - GetTotalPaddingVertical();
-        int padAreaWidth = GetWidth() - GetTotalBorderHorizontal();
+        int contentWidth  = GetWidth()  - GetTotalBorderHorizontal() - GetTotalPaddingHorizontal();
+        int contentHeight = GetHeight() - GetTotalBorderVertical()   - GetTotalPaddingVertical();
+        int padAreaWidth  = GetWidth()  - GetTotalBorderHorizontal();
         int padAreaHeight = GetHeight() - GetTotalBorderVertical();
 
         if (verticalScrollbar->IsVisible()) {
-            int sbX = contentWidth + padding.right - trackSize;
-            int sbY = -padding.top;
+            int sbX = contentWidth + GetPaddingRight() - trackSize;
+            int sbY = -GetPaddingTop();
             int sbHeight = padAreaHeight;
 
             if (horizontalScrollbar->IsVisible()) {
@@ -205,8 +212,8 @@ namespace UltraCanvas {
             verticalScrollbar->SetBounds(Rect2Di(sbX, sbY, trackSize, sbHeight));
         }
         if (horizontalScrollbar->IsVisible()) {
-            int sbX = -padding.left;
-            int sbY = contentHeight + padding.bottom - trackSize;
+            int sbX = -GetPaddingLeft();
+            int sbY = contentHeight + GetPaddingBottom() - trackSize;
             int sbWidth = padAreaWidth;
 
             if (verticalScrollbar->IsVisible()) {
@@ -221,9 +228,6 @@ namespace UltraCanvas {
     Rect2Di UltraCanvasContainer::GetContentArea() {
         auto rect = GetLocalContentRect();
 
-//        rect.x = padding.left + GetBorderLeftWidth();
-//        rect.y = padding.top + GetBorderTopWidth();
-
         if (verticalScrollbar->IsVisible()) {
             rect.width -= style.scrollbarStyle.trackSize;
         }
@@ -232,18 +236,17 @@ namespace UltraCanvas {
             rect.height -= style.scrollbarStyle.trackSize;
         }
 
-        // Ensure minimum size
-        rect.width = std::max(0, rect.width);
+        rect.width  = std::max(0, rect.width);
         rect.height = std::max(0, rect.height);
         return rect;
     }
 
     bool UltraCanvasContainer::HandleScrollWheel(const UCEvent& event) {
         if (event.type != UCEventType::MouseWheel) return false;
-        int contentX = GetBorderLeftWidth() + padding.left;
-        int contentY = GetBorderTopWidth() + padding.top;
-        int contentW = GetWidth() - (GetTotalBorderHorizontal() + GetTotalPaddingHorizontal());
-        int contentH = GetHeight() - (GetTotalBorderVertical() + GetTotalPaddingVertical());
+        int contentX = GetBorderLeftWidth() + GetPaddingLeft();
+        int contentY = GetBorderTopWidth()  + GetPaddingTop();
+        int contentW = GetWidth()  - (GetTotalBorderHorizontal() + GetTotalPaddingHorizontal());
+        int contentH = GetHeight() - (GetTotalBorderVertical()   + GetTotalPaddingVertical());
         if (!Rect2Di(contentX, contentY, contentW, contentH).Contains(event.pointer)) return false;
 
         if (event.shift && style.forceShowHorizontalScrollbar) {
@@ -262,8 +265,8 @@ namespace UltraCanvas {
         }
         bool handled = false;
 
-        int localContentX = GetBorderLeftWidth() + padding.left;
-        int localContentY = GetBorderTopWidth() + padding.top;
+        int localContentX = GetBorderLeftWidth() + GetPaddingLeft();
+        int localContentY = GetBorderTopWidth()  + GetPaddingTop();
 
         auto scrollbarLocalBounds = [&](UltraCanvasScrollbar* sb) {
             auto b = sb->GetBounds();
@@ -301,7 +304,6 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasContainer::OnScrollChanged() {
-//        UpdateScrollbarPositions();
         RequestRedraw();
 
         if (onScrollChanged) {
@@ -315,27 +317,22 @@ namespace UltraCanvas {
         auto* prevContainer = child->GetParentContainer();
         if (prevContainer) {
             if (prevContainer == this) {
-                // if element already here then move it to back (to maintain order)
-                for(auto it =children.begin(); it != children.end(); ++it) {
-                    if (*it == child) {
-                        children.erase(it);
-                        children.push_back(child);
-                        return;
-                    }
-                }
+                // Already a child — move to back to maintain "last added is on top".
+                // CSSLayout::Element doesn't expose a reorder primitive, so the
+                // cheap path is: remove + re-add.
+                CSSLayout::Element::RemoveChild(child.get());
+                CSSLayout::Element::AddChild(std::static_pointer_cast<CSSLayout::Element>(child));
+                return;
             } else {
                 prevContainer->RemoveChild(child);
             }
         }
 
-
-        child->SetParentContainer(this);
+        // Engine bookkeeping: sets parent, pushes into the inherited children vector,
+        // bubbles InvalidateLayout up the engine tree.
+        CSSLayout::Element::AddChild(std::static_pointer_cast<CSSLayout::Element>(child));
         child->SetWindow(GetWindow());
 
-        // Add to this container at end
-        children.push_back(child);
-
-        // Notify callbacks
         if (onChildAdded) {
             onChildAdded(child.get());
         }
@@ -343,34 +340,40 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasContainer::RemoveChild(std::shared_ptr<UltraCanvasUIElement> child) {
-        auto it = std::find(children.begin(), children.end(), child);
-        if (it != children.end()) {
-            (*it)->SetParentContainer(nullptr);
-            (*it)->SetWindow(nullptr);
-            if (layout) {
-                layout->RemoveUIElement(*it);
-            }
-            children.erase(it);
+        if (!child) return;
+        // Check the child is actually ours before tearing it down.
+        bool found = false;
+        for (auto& c : Children()) {
+            if (c.get() == child.get()) { found = true; break; }
+        }
+        if (!found) return;
 
-            InvalidateLayout();
+        child->SetWindow(nullptr);
+        if (layout) {
+            layout->RemoveUIElement(child);
+        }
+        CSSLayout::Element::RemoveChild(child.get());
 
-            // Notify callbacks
-            if (onChildRemoved) {
-                onChildRemoved(child.get());
-            }
+        InvalidateLayout();
+
+        if (onChildRemoved) {
+            onChildRemoved(child.get());
         }
     }
 
     void UltraCanvasContainer::ClearChildren() {
-        for (auto& child : children) {
-            child->SetParentContainer(nullptr);
+        // Walk a snapshot of the current children so RemoveUIElement/SetWindow
+        // can mutate freely. Engine's ClearChildren wipes parent links + vector
+        // in one go after.
+        for (auto& c : Children()) {
+            UltraCanvasUIElement* child = asUI(c);
             child->SetWindow(nullptr);
-//            UltraCanvasPopupRegistry::UnregisterPopupElement(child.get());
             if (layout) {
-                layout->RemoveUIElement(child);
+                // Layout expects shared_ptr<UltraCanvasUIElement>; reconstruct one.
+                layout->RemoveUIElement(std::static_pointer_cast<UltraCanvasUIElement>(c));
             }
         }
-        children.clear();
+        CSSLayout::Element::ClearChildren();
         verticalScrollbar->SetScrollPosition(0);
         horizontalScrollbar->SetScrollPosition(0);
         horizontalScrollbar->SetScrollDimensions(0, 0);
@@ -378,13 +381,12 @@ namespace UltraCanvas {
     }
 
     UltraCanvasUIElement *UltraCanvasContainer::FindChildById(const std::string &id) {
-        for (const auto& child : children) {
+        for (auto& c : Children()) {
+            UltraCanvasUIElement* child = asUI(c);
             if (child->GetIdentifier() == id) {
-                return child.get();
+                return child;
             }
-
-            // Recursively search in child containers
-            if (auto* childContainer = dynamic_cast<UltraCanvasContainer*>(child.get())) {
+            if (auto* childContainer = dynamic_cast<UltraCanvasContainer*>(child)) {
                 if (auto* found = childContainer->FindChildById(id)) {
                     return found;
                 }
@@ -394,13 +396,12 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasContainer::HasChild(UltraCanvasUIElement* elem) {
-        for (const auto& child : children) {
-            if (child.get() == elem) {
+        for (auto& c : Children()) {
+            UltraCanvasUIElement* child = asUI(c);
+            if (child == elem) {
                 return true;
             }
-
-            // Recursively search in child containers
-            if (auto* childContainer = dynamic_cast<UltraCanvasContainer*>(child.get())) {
+            if (auto* childContainer = dynamic_cast<UltraCanvasContainer*>(child)) {
                 if (childContainer->HasChild(elem)) {
                     return true;
                 }
@@ -416,13 +417,13 @@ namespace UltraCanvas {
         }
 
         // pos arrives in parent coords; convert once for local-coord comparisons.
-        Point2Di localPos(pos.x - bounds.x, pos.y - bounds.y);
+        Point2Di localPos(pos.x - (int)finalBounds.x, pos.y - (int)finalBounds.y);
 
         // If pos lies on this container's own visible scrollbar, claim it for the
         // container so the click reaches HandleScrollbarEvents instead of falling
         // through to a child rendered behind the scrollbar.
-        int localContentX = GetBorderLeftWidth() + padding.left;
-        int localContentY = GetBorderTopWidth() + padding.top;
+        int localContentX = GetBorderLeftWidth() + GetPaddingLeft();
+        int localContentY = GetBorderTopWidth()  + GetPaddingTop();
         auto sbLocalBounds = [&](UltraCanvasScrollbar* sb) {
             auto b = sb->GetBounds();
             return Rect2Di(b.x + localContentX, b.y + localContentY, b.width, b.height);
@@ -441,30 +442,24 @@ namespace UltraCanvas {
                 pos.y - contentRect.y + verticalScrollbar->GetScrollPosition()
                 );
 
-        // Check children in reverse order (topmost first) with proper clipping
-        for (auto it = children.rbegin(); it != children.rend(); ++it) {
-            if (!(*it) || !(*it)->IsVisible()) {
-                continue;
-            }
+        // Check children in reverse order (topmost first) with proper clipping.
+        const auto& src = Children();
+        for (auto it = src.rbegin(); it != src.rend(); ++it) {
+            UltraCanvasUIElement* child = asUI(*it);
+            if (!child || !child->IsVisible()) continue;
 
-            UltraCanvasUIElement* child = it->get();
             Rect2Di childBounds = child->GetBounds();
 
-            // CRITICAL FIX: Check if content-relative coordinates are within child bounds
             if (childBounds.Contains(contentPoint)) {
                 // The *click point* must fall inside the visible (scrollbar-free)
                 // portion of the child — not merely intersect it. Otherwise clicks
                 // in the scrollbar-overlapped strip would be claimed by the child.
-                // visibleChildBounds is in local coords, so compare with localPos.
                 Rect2Di visibleChildBounds = GetVisibleChildBounds(childBounds);
                 if (!visibleChildBounds.IsValid() || !visibleChildBounds.Contains(localPos)) {
                     continue;
                 }
 
-                // Recursively check child containers with corrected coordinates
-                auto childContainer = dynamic_cast<UltraCanvasContainer*>(child);
-                if (childContainer) {
-                    // Pass child-relative coordinates to child container
+                if (auto* childContainer = dynamic_cast<UltraCanvasContainer*>(child)) {
                     UltraCanvasUIElement* hitElement = childContainer->FindElementAtPoint(contentPoint);
                     if (hitElement) {
                         return hitElement;
@@ -474,10 +469,10 @@ namespace UltraCanvas {
             }
         }
 
-        return this; // Hit container but no children
+        return this;
     }
 
-    // return visible bounds of child in the parent's content area (with scroll position subtracted, mean as visible on screen)
+    // return visible bounds of child in the parent's content area (with scroll position subtracted)
     Rect2Di UltraCanvasContainer::GetVisibleChildBounds(const Rect2Di& childBounds) {
         auto ca = GetContentArea();
 
@@ -496,14 +491,10 @@ namespace UltraCanvas {
         return Rect2Di::INVALID;
     }
 
-    /**
-    * Check if a child element is visible (not completely clipped)
-    */
     bool UltraCanvasContainer::IsChildVisible(UltraCanvasUIElement* child) {
         if (!child || !child->IsVisible()) {
             return false;
         }
-
         Rect2Di childBounds = child->GetBounds();
         return GetVisibleChildBounds(childBounds).IsValid();
     }
@@ -558,13 +549,10 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasContainer::RenderCorner(IRenderContext *ctx) {
-//        if (scrollbarsCornerRect.width > 0 && scrollbarsCornerRect.height > 0) {
-//            ctx->DrawFilledRectangle(scrollbarsCornerRect, backgroundColor);
-//        }
+        // intentionally empty for now
     }
 
     void UltraCanvasContainer::CreateScrollbars() {
-        // Create vertical scrollbar
         verticalScrollbar = std::make_unique<UltraCanvasScrollbar>(
                 GetIdentifier() + "_vscroll", 0, 0, style.scrollbarStyle.trackSize, 100,
                 ScrollbarOrientation::Vertical);
@@ -573,9 +561,11 @@ namespace UltraCanvas {
             OnScrollChanged();
         };
         verticalScrollbar->SetVisible(false);
-        verticalScrollbar->SetParentContainer(this);
+        // Scrollbars are owned via unique_ptr, NOT in the children vector,
+        // but they still need the parent link so InvalidateRect /
+        // GetPositionInWindow can walk up to compute window-relative coords.
+        verticalScrollbar->SetParentNonOwning(this);
 
-        // Create horizontal scrollbar
         horizontalScrollbar = std::make_unique<UltraCanvasScrollbar>(
                 GetIdentifier() + "_hscroll", 0, 0, 100, style.scrollbarStyle.trackSize,
                 ScrollbarOrientation::Horizontal);
@@ -584,7 +574,7 @@ namespace UltraCanvas {
             OnScrollChanged();
         };
         horizontalScrollbar->SetVisible(false);
-        horizontalScrollbar->SetParentContainer(this);
+        horizontalScrollbar->SetParentNonOwning(this);
 
         ApplyStyleToScrollbars();
     }
@@ -595,11 +585,11 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasContainer::SortChildrenByZOrder() {
-        std::stable_sort(children.begin(), children.end(),
-                         [](const std::shared_ptr<UltraCanvasUIElement>& a, const std::shared_ptr<UltraCanvasUIElement>& b) {
-                             if (!a) return true;  // null elements go to beginning
-                             if (!b) return false;
-                             return a->GetZOrder() < b->GetZOrder();
-                         });
+        SortChildren([](const std::shared_ptr<CSSLayout::Element>& a,
+                        const std::shared_ptr<CSSLayout::Element>& b) {
+            if (!a) return true;
+            if (!b) return false;
+            return a->zIndex < b->zIndex;
+        });
     }
 } // namespace UltraCanvas

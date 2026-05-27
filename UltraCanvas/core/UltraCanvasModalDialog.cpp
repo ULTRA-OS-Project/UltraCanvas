@@ -795,20 +795,20 @@ namespace UltraCanvas {
         // All rects are stored in element-local space
         Rect2Di bounds = GetLocalBounds();
 
-        pathBarRect = Rect2Di(10, 10, bounds.width - 20, pathBarHeight);
+        pathBarRect = Rect2Di(10, 10, finalBounds.width - 20, pathBarHeight);
 
         int topOffset = pathBarHeight + 20;
         int bottomOffset = buttonHeight + filterHeight + 70;
         fileListRect = Rect2Di(10, topOffset,
-                               bounds.width - 20, bounds.height - topOffset - bottomOffset);
+                               finalBounds.width - 20, finalBounds.height - topOffset - bottomOffset);
 
         maxVisibleItems = fileListRect.height / itemHeight;
 
-        int fileNameY = bounds.height - buttonHeight - filterHeight - 55;
-        fileNameInputRect = Rect2Di(90, fileNameY, bounds.width - 110, 22);
+        int fileNameY = finalBounds.height - buttonHeight - filterHeight - 55;
+        fileNameInputRect = Rect2Di(90, fileNameY, finalBounds.width - 110, 22);
 
-        int filterY = bounds.height - buttonHeight - filterHeight - 25;
-        filterSelectorRect = Rect2Di(90, filterY, bounds.width - 110, filterHeight);
+        int filterY = finalBounds.height - buttonHeight - filterHeight - 25;
+        filterSelectorRect = Rect2Di(90, filterY, finalBounds.width - 110, filterHeight);
     }
 
     Rect2Di UltraCanvasFileDialog::GetPathBarBounds() const {

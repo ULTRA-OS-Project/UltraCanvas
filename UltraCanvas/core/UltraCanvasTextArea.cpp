@@ -1083,18 +1083,18 @@ namespace UltraCanvas {
         int gutterW = computedLineNumbersWidth;
 
         context->SetFillPaint(style.lineNumbersBackgroundColor);
-        context->FillRectangle(Rect2Df(bounds.x, bounds.y, gutterW, bounds.height));
+        context->FillRectangle(Rect2Df(finalBounds.x, finalBounds.y, gutterW, finalBounds.height));
 
         context->SetStrokePaint(style.borderColor);
         context->SetStrokeWidth(1);
-        context->DrawLine({bounds.x + gutterW, bounds.y},
-                          {bounds.x + gutterW, bounds.y + bounds.height});
+        context->DrawLine({finalBounds.x + gutterW, finalBounds.y},
+                          {finalBounds.x + gutterW, finalBounds.y + finalBounds.height});
 
         context->SetFontFace(style.fontStyle.fontFamily, style.fontStyle.fontWeight, style.fontStyle.fontSlant);
         context->SetFontSize(style.fontStyle.fontSize);
         context->SetTextAlignment(TextAlignment::Right);
 
-        Rect2Df gutterClip{bounds.x, visibleTextArea.y, gutterW, visibleTextArea.height};
+        Rect2Df gutterClip{finalBounds.x, visibleTextArea.y, gutterW, visibleTextArea.height};
         context->PushState();
         context->ClipRect(gutterClip);
 
@@ -1113,7 +1113,7 @@ namespace UltraCanvas {
             if (IsFocused() && i == cursorPosition.lineIndex) {
                 Rect2Di cursorRect = LineColumnToCursorPos(cursorPosition);
                 context->SetFillPaint(Color(255, 128, 128, 255));
-                context->FillRectangle(Rect2Df(bounds.x+1, cursorRect.y, gutterW, cursorRect.height));
+                context->FillRectangle(Rect2Df(finalBounds.x+1, cursorRect.y, gutterW, cursorRect.height));
                 context->SetTextPaint(style.fontColor);
                 context->SetFontWeight(FontWeight::Normal);
             } else {
@@ -1122,7 +1122,7 @@ namespace UltraCanvas {
             }
             if (ll->logicalLineNumber) {
                 context->DrawTextInRect(std::to_string(ll->logicalLineNumber),
-                                        Rect2Df(bounds.x, numY, gutterW - 4, ll->bounds.height));
+                                        Rect2Df(finalBounds.x, numY, gutterW - 4, ll->bounds.height));
             }
         }
         context->PopState();
@@ -1137,8 +1137,8 @@ namespace UltraCanvas {
         context->FillRectangle(bounds);
 
         if (highlightCurrentLine && currentLine) {
-            int highlightX = style.showLineNumbers ? bounds.x + computedLineNumbersWidth : bounds.x;
-            int highlightW = bounds.width - (style.showLineNumbers ? computedLineNumbersWidth : 0);
+            int highlightX = style.showLineNumbers ? finalBounds.x + computedLineNumbersWidth : finalBounds.x;
+            int highlightW = finalBounds.width - (style.showLineNumbers ? computedLineNumbersWidth : 0);
             int highlightY = visibleTextArea.y + currentLine->bounds.y - verticalScrollOffset;
             context->PushState();
             context->ClipRect(visibleTextArea);
@@ -1171,12 +1171,12 @@ namespace UltraCanvas {
         auto bounds = GetLocalBounds();
 
         if (IsNeedVerticalScrollbar()) {
-            int scrollbarX = bounds.x + bounds.width - 15;
-            int scrollbarHeight = bounds.height - (IsNeedHorizontalScrollbar() ? 15 : 0);
+            int scrollbarX = finalBounds.x + finalBounds.width - 15;
+            int scrollbarHeight = finalBounds.height - (IsNeedHorizontalScrollbar() ? 15 : 0);
 
             // Hex mode still uses row-index scrolling; text mode uses pixel content height
             // derived from the built line layouts.
-            int thumbHeight, thumbY = bounds.y, maxThumbY;
+            int thumbHeight, thumbY = finalBounds.y, maxThumbY;
             if (editingMode == TextAreaEditingMode::Hex) {
                 int totalLines  = hexTotalRows;
                 int visibleLines = hexMaxVisibleRows;
@@ -1184,7 +1184,7 @@ namespace UltraCanvas {
                 thumbHeight = std::max(20, (visibleLines * scrollbarHeight) / std::max(1, totalLines));
                 maxThumbY = scrollbarHeight - thumbHeight;
                 if (totalLines > visibleLines && maxThumbY > 0) {
-                    thumbY = bounds.y + (firstLine * maxThumbY) / (totalLines - visibleLines);
+                    thumbY = finalBounds.y + (firstLine * maxThumbY) / (totalLines - visibleLines);
                 }
             } else {
                 int contentHeight = GetContentHeight();
@@ -1192,12 +1192,12 @@ namespace UltraCanvas {
                 thumbHeight = std::max(20, (viewportH * scrollbarHeight) / std::max(1, contentHeight));
                 maxThumbY = scrollbarHeight - thumbHeight;
                 if (contentHeight > viewportH && maxThumbY > 0) {
-                    thumbY = bounds.y + (verticalScrollOffset * maxThumbY) / (contentHeight - viewportH);
+                    thumbY = finalBounds.y + (verticalScrollOffset * maxThumbY) / (contentHeight - viewportH);
                 }
             }
 
             context->SetFillPaint(style.scrollbarTrackColor);
-            context->FillRectangle(Rect2Df(scrollbarX, bounds.y, 15, scrollbarHeight));
+            context->FillRectangle(Rect2Df(scrollbarX, finalBounds.y, 15, scrollbarHeight));
 
             verticalScrollThumb = {scrollbarX, thumbY, 15, thumbHeight};
 
@@ -1206,23 +1206,23 @@ namespace UltraCanvas {
         }
 
         if (IsNeedHorizontalScrollbar()) {
-            float scrollbarY = static_cast<float>(bounds.y + bounds.height - 15);
-            float scrollbarWidth = static_cast<float>(bounds.width - (IsNeedVerticalScrollbar() ? 15 : 0));
+            float scrollbarY = static_cast<float>(finalBounds.y + finalBounds.height - 15);
+            float scrollbarWidth = static_cast<float>(finalBounds.width - (IsNeedVerticalScrollbar() ? 15 : 0));
 
             float thumbWidthRatio = static_cast<float>(visibleTextArea.width) / static_cast<float>(maxLineWidth);
             float thumbWidth = std::max(20.0f, scrollbarWidth * thumbWidthRatio);
 
             float maxThumbX = scrollbarWidth - thumbWidth;
-            float thumbX = static_cast<float>(bounds.x);
+            float thumbX = static_cast<float>(finalBounds.x);
 
             if (maxLineWidth > visibleTextArea.width && maxThumbX > 0) {
                 float scrollRatio = static_cast<float>(horizontalScrollOffset) /
                                     static_cast<float>(maxLineWidth - visibleTextArea.width);
-                thumbX = static_cast<float>(bounds.x) + scrollRatio * maxThumbX;
+                thumbX = static_cast<float>(finalBounds.x) + scrollRatio * maxThumbX;
             }
 
             context->SetFillPaint(style.scrollbarTrackColor);
-            context->FillRectangle(Rect2Df(static_cast<float>(bounds.x), scrollbarY, scrollbarWidth, 15.0f));
+            context->FillRectangle(Rect2Df(static_cast<float>(finalBounds.x), scrollbarY, scrollbarWidth, 15.0f));
 
             horizontalScrollThumb = {static_cast<int>(thumbX), static_cast<int>(scrollbarY), static_cast<int>(thumbWidth), 15};
 
@@ -1435,7 +1435,7 @@ namespace UltraCanvas {
         // Scrollbar thumb dragging (pixel-based).
         if (isDraggingVerticalThumb) {
             auto bounds = GetLocalBounds();
-            int scrollbarHeight = bounds.height - (IsNeedHorizontalScrollbar() ? 15 : 0);
+            int scrollbarHeight = finalBounds.height - (IsNeedHorizontalScrollbar() ? 15 : 0);
             int thumbHeight = verticalScrollThumb.height;
             int maxThumbY = scrollbarHeight - thumbHeight;
 
@@ -1458,7 +1458,7 @@ namespace UltraCanvas {
 
         if (isDraggingHorizontalThumb) {
             auto bounds = GetLocalBounds();
-            float scrollbarWidth = static_cast<float>(bounds.width - (IsNeedVerticalScrollbar() ? 15 : 0));
+            float scrollbarWidth = static_cast<float>(finalBounds.width - (IsNeedVerticalScrollbar() ? 15 : 0));
             float thumbWidth = static_cast<float>(horizontalScrollThumb.width);
             float maxThumbX = scrollbarWidth - thumbWidth;
 
@@ -1479,14 +1479,14 @@ namespace UltraCanvas {
         if (!isSelectingText) {
             auto bounds = GetLocalBounds();
             if (IsNeedVerticalScrollbar() &&
-                event.pointer.x >= bounds.width - 15 && event.pointer.x <= bounds.width &&
-                event.pointer.y >= 0 && event.pointer.y <= bounds.height) {
+                event.pointer.x >= finalBounds.width - 15 && event.pointer.x <= finalBounds.width &&
+                event.pointer.y >= 0 && event.pointer.y <= finalBounds.height) {
                 SetMouseCursor(UCMouseCursor::SizeNS);
                 return true;
             }
             if (IsNeedHorizontalScrollbar() &&
-                event.pointer.y >= bounds.height - 15 && event.pointer.y <= bounds.height &&
-                event.pointer.x >= 0 && event.pointer.x <= bounds.width) {
+                event.pointer.y >= finalBounds.height - 15 && event.pointer.y <= finalBounds.height &&
+                event.pointer.x >= 0 && event.pointer.x <= finalBounds.width) {
                 SetMouseCursor(UCMouseCursor::SizeWE);
                 return true;
             }
@@ -3120,7 +3120,7 @@ namespace UltraCanvas {
         if (groupStart >= 0) tableSpans.push_back({groupStart, (int)lines.size() - 1});
 
         // Pass 2: normalize per-table column widths. Updates each cell's layout wrap width,
-        // bounds.x / width, and the row's bounds.height (so Pass 3 sees correct heights).
+        // finalBounds.x / width, and the row's finalBounds.height (so Pass 3 sees correct heights).
         for (auto [s, e] : tableSpans) {
             NormalizeTableGroupWidths(s, e);
         }
@@ -3225,7 +3225,7 @@ namespace UltraCanvas {
         const Color& hrColor       = markdownStyle.horizontalRuleColor;
         const Color& markerColor   = markdownStyle.bulletColor;
 
-        // bounds.x/y are content-relative (top of text area, before scroll). verticalScrollOffset
+        // finalBounds.x/y are content-relative (top of text area, before scroll). verticalScrollOffset
         // is the pixel Y-offset into the content that corresponds to the top of visibleTextArea.
         Point2Di posOrigin{visibleTextArea.x + line->bounds.x - horizontalScrollOffset,
                               visibleTextArea.y + line->bounds.y - verticalScrollOffset};

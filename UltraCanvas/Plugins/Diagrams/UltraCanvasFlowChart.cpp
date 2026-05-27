@@ -657,7 +657,7 @@ void UltraCanvasFlowChart::Render(IRenderContext* ctx, const Rect2Di& dirtyRect)
     ctx->FillRectangle(bounds);
     
     ctx->PushState();
-    ctx->Translate(bounds.x + panOffset.x, bounds.y + panOffset.y);
+    ctx->Translate(finalBounds.x + panOffset.x, finalBounds.y + panOffset.y);
     ctx->Scale(zoomLevel, zoomLevel);
     
     if (style.showGrid) {
@@ -679,8 +679,8 @@ void UltraCanvasFlowChart::RenderGrid(IRenderContext* ctx) {
     ctx->SetStrokeWidth(0.5f);
     
     double spacing = style.gridSpacing;
-    double width = static_cast<double>(bounds.width) / zoomLevel;
-    double height = static_cast<double>(bounds.height) / zoomLevel;
+    double width = static_cast<double>(finalBounds.width) / zoomLevel;
+    double height = static_cast<double>(finalBounds.height) / zoomLevel;
     
     double startX = -panOffset.x / zoomLevel;
     double startY = -panOffset.y / zoomLevel;

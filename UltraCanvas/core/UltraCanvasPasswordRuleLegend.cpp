@@ -222,7 +222,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasPasswordRuleLegend::DrawChecklistStyle(IRenderContext *ctx, const Rect2Di &bounds) {
-        int currentY = bounds.y + 10;
+        int currentY = finalBounds.y + 10;
 
         ctx->SetFontSize(12);
 
@@ -238,21 +238,21 @@ namespace UltraCanvas {
             ctx->SetTextPaint(iconColor);
             ctx->SetFontSize(config.iconSize);
             std::string icon = rule.isMet ? config.metIcon : config.unmetIcon;
-            ctx->DrawText(icon, Point2Df(bounds.x + 10, currentY - (config.iconSize - 12)));
+            ctx->DrawText(icon, Point2Df(finalBounds.x + 10, currentY - (config.iconSize - 12)));
 
             // Draw text
             Color textColor = config.textColor;
             textColor.a = static_cast<uint8_t>(255 * alpha);
             ctx->SetTextPaint(textColor);
             ctx->SetFontSize(12);
-            ctx->DrawText(rule.displayText, Point2Df(bounds.x + 30, currentY));
+            ctx->DrawText(rule.displayText, Point2Df(finalBounds.x + 30, currentY));
 
             currentY += config.itemSpacing + 16;
         }
     }
 
     void UltraCanvasPasswordRuleLegend::DrawBulletsStyle(IRenderContext *ctx, const Rect2Di &bounds) {
-        int currentY = bounds.y + 10;
+        int currentY = finalBounds.y + 10;
 
         ctx->SetFontSize(12);
 
@@ -265,20 +265,20 @@ namespace UltraCanvas {
             Color bulletColor = rule.isMet ? config.metColor : config.unmetColor;
             bulletColor.a = static_cast<uint8_t>(255 * alpha);
             ctx->SetTextPaint(bulletColor);
-            ctx->DrawText(config.bulletIcon, Point2Df(bounds.x + 10, currentY));
+            ctx->DrawText(config.bulletIcon, Point2Df(finalBounds.x + 10, currentY));
 
             // Draw text with color indicating status
             Color textColor = rule.isMet ? config.metColor : config.textColor;
             textColor.a = static_cast<uint8_t>(255 * alpha);
             ctx->SetTextPaint(textColor);
-            ctx->DrawText(rule.displayText, Point2Df(bounds.x + 25, currentY));
+            ctx->DrawText(rule.displayText, Point2Df(finalBounds.x + 25, currentY));
 
             currentY += config.itemSpacing + 14;
         }
     }
 
     void UltraCanvasPasswordRuleLegend::DrawDetailedStyle(IRenderContext *ctx, const Rect2Di &bounds) {
-        int currentY = bounds.y + 15;
+        int currentY = finalBounds.y + 15;
 
         ctx->SetFontSize(12);
 
@@ -293,8 +293,8 @@ namespace UltraCanvas {
                             Color(config.unmetColor.r, config.unmetColor.g, config.unmetColor.b, 20);
             bgColor.a = static_cast<uint8_t>(bgColor.a * alpha);
             ctx->SetFillPaint(bgColor);
-            ctx->FillRoundedRectangle({bounds.x + 10, currentY - 5,
-                                      bounds.width - 20, 30}, 4);
+            ctx->FillRoundedRectangle({finalBounds.x + 10, currentY - 5,
+                                      finalBounds.width - 20, 30}, 4);
 
             // Draw icon
             Color iconColor = rule.isMet ? config.metColor : config.unmetColor;
@@ -302,14 +302,14 @@ namespace UltraCanvas {
             ctx->SetTextPaint(iconColor);
             ctx->SetFontSize(config.iconSize);
             std::string icon = rule.isMet ? config.metIcon : config.unmetIcon;
-            ctx->DrawText(icon, Point2Df(bounds.x + 20, currentY - (config.iconSize - 12)));
+            ctx->DrawText(icon, Point2Df(finalBounds.x + 20, currentY - (config.iconSize - 12)));
 
             // Draw text
             Color textColor = config.textColor;
             textColor.a = static_cast<uint8_t>(255 * alpha);
             ctx->SetTextPaint(textColor);
             ctx->SetFontSize(12);
-            ctx->DrawText(rule.displayText, Point2Df(bounds.x + 45, currentY));
+            ctx->DrawText(rule.displayText, Point2Df(finalBounds.x + 45, currentY));
 
             currentY += config.itemSpacing + 35;
         }

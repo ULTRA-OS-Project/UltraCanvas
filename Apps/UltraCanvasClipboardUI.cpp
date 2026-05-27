@@ -35,17 +35,17 @@ namespace UltraCanvas {
             entry.type == ClipboardDataType::Video ||
             entry.type == ClipboardDataType::ThreeD ||
             entry.type == ClipboardDataType::Document) {
-            thumbnailRect = Rect2D(bounds.x + 5, bounds.y + 5, 60, bounds.height - 10);
-            contentRect = Rect2D(bounds.x + 70, bounds.y + 5, bounds.width - 155, bounds.height - 10);
+            thumbnailRect = Rect2D(finalBounds.x + 5, finalBounds.y + 5, 60, finalBounds.height - 10);
+            contentRect = Rect2D(finalBounds.x + 70, finalBounds.y + 5, finalBounds.width - 155, finalBounds.height - 10);
         } else {
             thumbnailRect = Rect2D(0, 0, 0, 0); // No thumbnail
-            contentRect = Rect2D(bounds.x + 10, bounds.y + 5, bounds.width - 105, bounds.height - 10);
+            contentRect = Rect2D(finalBounds.x + 10, finalBounds.y + 5, finalBounds.width - 105, finalBounds.height - 10);
         }
 
         // Button areas (right side) - 3 buttons: Copy, Save, Delete
-        copyButtonRect = Rect2D(bounds.x + bounds.width - 85, bounds.y + 5, 20, 20);
-        saveButtonRect = Rect2D(bounds.x + bounds.width - 55, bounds.y + 5, 20, 20);
-        deleteButtonRect = Rect2D(bounds.x + bounds.width - 25, bounds.y + 5, 20, 20);
+        copyButtonRect = Rect2D(finalBounds.x + finalBounds.width - 85, finalBounds.y + 5, 20, 20);
+        saveButtonRect = Rect2D(finalBounds.x + finalBounds.width - 55, finalBounds.y + 5, 20, 20);
+        deleteButtonRect = Rect2D(finalBounds.x + finalBounds.width - 25, finalBounds.y + 5, 20, 20);
     }
 
     void UltraCanvasClipboardItem::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
