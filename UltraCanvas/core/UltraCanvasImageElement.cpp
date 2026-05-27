@@ -16,8 +16,8 @@
 
 namespace UltraCanvas {
 
-    UltraCanvasImageElement::UltraCanvasImageElement(const std::string &identifier, long x, long y, long w,
-                                                     long h)
+    UltraCanvasImageElement::UltraCanvasImageElement(const std::string &identifier, float x, float y, float w,
+                                                     float h)
             : UltraCanvasUIElement(identifier, x, y, w, h) {
 
     }
@@ -93,7 +93,7 @@ namespace UltraCanvas {
 //        return ImageFormat::Unknown;
 //    }
 
-    void UltraCanvasImageElement::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasImageElement::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         if (!IsVisible() || finalBounds.width == 0 || finalBounds.height == 0) return;
 
         ctx->PushState();
@@ -254,7 +254,7 @@ namespace UltraCanvas {
             ctx->SetTextPaint(Colors::Red);
             ctx->SetFontStyle({.fontSize=10});
 
-            Rect2Df textRect = GetLocalBounds();
+            Rect2Dd textRect = GetLocalBounds();
             textRect.y += static_cast<double>(GetHeight()) / 2.0f + 10;
             textRect.height = 20;
 

@@ -53,9 +53,9 @@ namespace UltraCanvas {
         // Layout
         bool layoutDirty = true;
         bool autoSize = false;
-        Rect2Df indicatorRect;  // Position+size of the visual indicator (box, circle, or track)
-        Rect2Df textRect;
-        Rect2Df totalBounds;
+        Rect2Dd indicatorRect;  // Position+size of the visual indicator (box, circle, or track)
+        Rect2Dd textRect;
+        Rect2Dd totalBounds;
 
         // Helpers
         void CalculateLayout(IRenderContext* ctx);
@@ -64,14 +64,14 @@ namespace UltraCanvas {
 
         // Subclass hooks
         virtual void DrawIndicator(IRenderContext* ctx) = 0;
-        virtual Size2Df GetIndicatorSize() const = 0;
+        virtual Size2Dd GetIndicatorSize() const = 0;
         virtual void OnActivate() = 0;
         virtual const LabeledToggleVisualStyle& GetBaseVisualStyle() const = 0;
         virtual void DrawFocusRingShape(IRenderContext* ctx);  // Default: rectangle around indicator.
 
     public:
         UltraCanvasLabeledToggleBase(const std::string& identifier,
-                                     long x, long y, long w, long h,
+                                     float x, float y, float w, float h,
                                      const std::string& labelText);
         virtual ~UltraCanvasLabeledToggleBase() = default;
 
@@ -92,7 +92,7 @@ namespace UltraCanvas {
         bool GetAutoSize() const { return autoSize; }
 
         // ===== RENDER/EVENT =====
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         void UpdateGeometry(IRenderContext* ctx) override;
         bool OnEvent(const UCEvent& event) override;
 

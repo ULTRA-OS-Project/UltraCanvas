@@ -221,7 +221,7 @@ namespace UltraCanvas {
         /// @return New tab index if accepted, -1 to reject
         std::function<int(const TabTransferData& data, int insertionIndex)> onTabDragIn;
 
-        UltraCanvasTabbedContainer(const std::string& elementId, long posX, long posY, long w, long h);
+        UltraCanvasTabbedContainer(const std::string& elementId, float posX, float posY, float w, float h);
 
         void InvalidateTabbar() { tabbarLayoutDirty = true; RequestRedraw(); }
 
@@ -307,11 +307,11 @@ namespace UltraCanvas {
         void PopulateSearchAutoComplete();
 
         // ===== LAYOUT =====
-        void SetBounds(const Rect2Di& b) override;
+        void SetBounds(const Rect2Df& b) override;
         void UpdateGeometry(IRenderContext* ctx) override;
 
         // ===== RENDERING =====
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         void RenderTabBar(IRenderContext* ctx);
         void RenderTab(int index, IRenderContext* ctx);
         void RenderTabIcon(int index, IRenderContext* ctx);
@@ -419,7 +419,7 @@ namespace UltraCanvas {
 
 // ===== FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasTabbedContainer> CreateTabbedContainerWithDropdown(
-            const std::string& id, long x, long y, long width, long height,
+            const std::string& id, float x, float y, float width, float height,
             OverflowDropdownPosition dropdownPos = OverflowDropdownPosition::Left,
             bool enableSearch = true, int searchThreshold = 5) {
 
@@ -431,7 +431,7 @@ namespace UltraCanvas {
     }
 
     inline std::shared_ptr<UltraCanvasTabbedContainer> CreateTabbedContainer(
-            const std::string& id, long x, long y, long width, long height) {
+            const std::string& id, float x, float y, float width, float height) {
         return std::make_shared<UltraCanvasTabbedContainer>(id, x, y, width, height);
     }
 

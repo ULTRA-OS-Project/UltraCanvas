@@ -358,7 +358,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasTreeView::Render(IRenderContext *ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasTreeView::Render(IRenderContext *ctx, const Rect2Df& dirtyRect) {
         // Draw background / border
         UltraCanvasUIElement::Render(ctx, dirtyRect);
         // Build local-space content rect (ctx is translated to element origin)
@@ -545,7 +545,7 @@ namespace UltraCanvas {
         // Draw left icon
         if (node->data.leftIcon.visible && !node->data.leftIcon.iconPath.empty()) {
             ctx->DrawImage(node->data.leftIcon.iconPath.c_str(),
-                           Rect2Df(textX, nodeY + (rowHeight - node->data.leftIcon.height) / 2,
+                           Rect2Dd(textX, nodeY + (rowHeight - node->data.leftIcon.height) / 2,
                                    node->data.leftIcon.width, node->data.leftIcon.height),
                            ImageFitMode::Contain);
             textX += node->data.leftIcon.width + iconSpacing;
@@ -556,14 +556,14 @@ namespace UltraCanvas {
         ctx->SetFontSize(12);
         ctx->SetTextPaint(nodeTextColor);
         ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-        ctx->DrawTextInRect(node->data.text, Rect2Df(textX, nodeY, nodeWidth - textX, rowHeight));
+        ctx->DrawTextInRect(node->data.text, Rect2Dd(textX, nodeY, nodeWidth - textX, rowHeight));
 
         // Draw right icon
         if (node->data.rightIcon.visible && !node->data.rightIcon.iconPath.empty()) {
             int rightIconX = contentRect.Right() - node->data.rightIcon.width - textPadding - sbWidth;
 
             ctx->DrawImage(node->data.rightIcon.iconPath.c_str(),
-                           Rect2Df(rightIconX, nodeY + (rowHeight - node->data.rightIcon.height) / 2,
+                           Rect2Dd(rightIconX, nodeY + (rowHeight - node->data.rightIcon.height) / 2,
                                    node->data.rightIcon.width, node->data.rightIcon.height),
                            ImageFitMode::Contain);
         }
@@ -894,7 +894,7 @@ namespace UltraCanvas {
         verticalScrollbar->SetVisible(false);
     }
 
-    void UltraCanvasTreeView::SetBounds(const Rect2Di &bounds) {
+    void UltraCanvasTreeView::SetBounds(const Rect2Df &bounds) {
         if (bounds != GetBounds()) {
             UltraCanvasUIElement::SetBounds(bounds);
             UpdateScrollbars();

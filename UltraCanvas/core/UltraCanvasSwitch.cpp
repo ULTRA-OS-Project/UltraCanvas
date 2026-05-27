@@ -10,7 +10,7 @@
 namespace UltraCanvas {
 
     UltraCanvasSwitch::UltraCanvasSwitch(const std::string& identifier,
-                                         long x, long y, long w, long h,
+                                         float x, float y, float w, float h,
                                          const std::string& labelText)
             : UltraCanvasLabeledToggleBase(identifier, x, y, w, h, labelText) {}
 
@@ -35,11 +35,11 @@ namespace UltraCanvas {
         return estChar * static_cast<float>(maxLen);
     }
 
-    Size2Df UltraCanvasSwitch::GetIndicatorSize() const {
+    Size2Dd UltraCanvasSwitch::GetIndicatorSize() const {
         const bool horizontal = visualStyle.orientation == SwitchOrientation::Horizontal;
-        Size2Df size = horizontal
-                ? Size2Df{visualStyle.trackWidth, visualStyle.trackHeight}
-                : Size2Df{visualStyle.trackHeight, visualStyle.trackWidth};
+        Size2Dd size = horizontal
+                ? Size2Dd{visualStyle.trackWidth, visualStyle.trackHeight}
+                : Size2Dd{visualStyle.trackHeight, visualStyle.trackWidth};
 
         if (visualStyle.stateLabelPosition == SwitchStateLabelPosition::OutsideTrack) {
             const float labelExtent = EstimateStateLabelExtent();
@@ -53,12 +53,12 @@ namespace UltraCanvas {
         return size;
     }
 
-    Rect2Df UltraCanvasSwitch::GetTrackRect() const {
+    Rect2Dd UltraCanvasSwitch::GetTrackRect() const {
         const bool horizontal = visualStyle.orientation == SwitchOrientation::Horizontal;
         const float trackLong  = visualStyle.trackWidth;
         const float trackShort = visualStyle.trackHeight;
 
-        Rect2Df track = indicatorRect;
+        Rect2Dd track = indicatorRect;
         if (horizontal) {
             track.width = trackLong;
             track.height = trackShort;
@@ -71,7 +71,7 @@ namespace UltraCanvas {
 
     void UltraCanvasSwitch::DrawIndicator(IRenderContext* ctx) {
         const bool horizontal = visualStyle.orientation == SwitchOrientation::Horizontal;
-        const Rect2Df track = GetTrackRect();
+        const Rect2Dd track = GetTrackRect();
 
         const float pillRadius = std::min(track.width, track.height) / 2.0f;
         const float trackRadius = (visualStyle.trackCornerRadius < 0.0f)
@@ -93,7 +93,7 @@ namespace UltraCanvas {
         // Thumb position
         const float thumbRadius = (horizontal ? track.height : track.width) / 2.0f
                                   - visualStyle.thumbInset;
-        Point2Df thumbCenter;
+        Point2Dd thumbCenter;
         if (horizontal) {
             thumbCenter.y = track.y + track.height / 2.0f;
             thumbCenter.x = IsChecked()
@@ -120,7 +120,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasSwitch::DrawThumbIcon(IRenderContext* ctx,
-                                          const Point2Df& thumbCenter,
+                                          const Point2Dd& thumbCenter,
                                           float thumbRadius) {
         if (visualStyle.thumbIconStyle == SwitchThumbIconStyle::Plain) return;
 
@@ -128,7 +128,7 @@ namespace UltraCanvas {
         const float drawRadius = thumbRadius - inset;
         if (drawRadius <= 0.0f) return;
 
-        const Rect2Df iconRect(thumbCenter.x - drawRadius,
+        const Rect2Dd iconRect(thumbCenter.x - drawRadius,
                                thumbCenter.y - drawRadius,
                                drawRadius * 2.0f,
                                drawRadius * 2.0f);
@@ -172,7 +172,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasSwitch::DrawStateLabelInsideTrack(IRenderContext* ctx, const Rect2Df& track) {
+    void UltraCanvasSwitch::DrawStateLabelInsideTrack(IRenderContext* ctx, const Rect2Dd& track) {
         const std::string& text = IsChecked() ? visualStyle.onText : visualStyle.offText;
         if (text.empty()) return;
 
@@ -188,7 +188,7 @@ namespace UltraCanvas {
         const bool horizontal = visualStyle.orientation == SwitchOrientation::Horizontal;
         const float pad = visualStyle.stateLabelTrackPadding;
 
-        Point2Df pos;
+        Point2Dd pos;
         if (horizontal) {
             if (IsChecked()) {
                 pos.x = track.x + pad;
@@ -207,7 +207,7 @@ namespace UltraCanvas {
         ctx->DrawText(text, pos);
     }
 
-    void UltraCanvasSwitch::DrawStateLabelOutsideTrack(IRenderContext* ctx, const Rect2Df& track) {
+    void UltraCanvasSwitch::DrawStateLabelOutsideTrack(IRenderContext* ctx, const Rect2Dd& track) {
         const std::string& text = IsChecked() ? visualStyle.onText : visualStyle.offText;
         if (text.empty()) return;
 
@@ -222,7 +222,7 @@ namespace UltraCanvas {
         const Size2Di textSize = ctx->GetTextLineDimensions(text);
         const bool horizontal = visualStyle.orientation == SwitchOrientation::Horizontal;
 
-        Point2Df pos;
+        Point2Dd pos;
         if (horizontal) {
             pos.x = track.x + track.width + visualStyle.stateLabelOutsidePadding;
             pos.y = track.y + (track.height - textSize.height) / 2.0f;
@@ -235,14 +235,14 @@ namespace UltraCanvas {
 
     void UltraCanvasSwitch::DrawFocusRingShape(IRenderContext* ctx) {
         const auto& base = visualStyle.base;
-        const Rect2Df track = GetTrackRect();
+        const Rect2Dd track = GetTrackRect();
 
         const float pillRadius = std::min(track.width, track.height) / 2.0f;
         const float baseRadius = (visualStyle.trackCornerRadius < 0.0f)
                 ? pillRadius
                 : visualStyle.trackCornerRadius;
 
-        Rect2Df focusRect(
+        Rect2Dd focusRect(
                 track.x - base.focusRingWidth,
                 track.y - base.focusRingWidth,
                 track.width + 2 * base.focusRingWidth,
@@ -254,7 +254,7 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasSwitch> UltraCanvasSwitch::Create(
             const std::string& identifier,
-            long x, long y,
+            float x, float y,
             const std::string& text, bool checked) {
         auto sw = std::make_shared<UltraCanvasSwitch>(identifier, x, y, 200, 30, text);
         sw->SetChecked(checked);

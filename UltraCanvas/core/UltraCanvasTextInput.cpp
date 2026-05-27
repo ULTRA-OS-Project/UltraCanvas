@@ -14,7 +14,7 @@
 
 namespace UltraCanvas {
 
-    UltraCanvasTextInput::UltraCanvasTextInput(const std::string &id, long x, long y, long w, long h)
+    UltraCanvasTextInput::UltraCanvasTextInput(const std::string &id, float x, float y, float w, float h)
             : UltraCanvasUIElement(id, x, y, w, h)
             , text("")
             , placeholderText("")
@@ -227,7 +227,7 @@ namespace UltraCanvas {
         TextChanged();
     }
 
-    void UltraCanvasTextInput::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasTextInput::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         // Get colors based on state
         Color backgroundColor = GetBackgroundColor();
         Color borderColor = GetBorderColor();
@@ -239,7 +239,7 @@ namespace UltraCanvas {
         ctx->DrawFilledRectangle(bounds, backgroundColor, style.borderWidth, style.borderColor);
 
         // Get text area (excluding padding)
-        Rect2Df textArea = GetTextArea();
+        Rect2Dd textArea = GetTextArea();
         ctx->PushState();
         // Set clipping for text area ONLY
         ctx->ClipRect(textArea);
@@ -408,7 +408,7 @@ namespace UltraCanvas {
         );
     }
 
-    void UltraCanvasTextInput::RenderText(const Rect2Df &area, const Color &color, IRenderContext* ctx) {
+    void UltraCanvasTextInput::RenderText(const Rect2Dd &area, const Color &color, IRenderContext* ctx) {
         std::string renderText = passwordMode ?
                                  std::string(text.length(), '*') : GetDisplayText();
 
@@ -433,12 +433,12 @@ namespace UltraCanvas {
             //float baselineY = centeredY + (style.fontSize * 0.8f);
             double baselineY = centeredY;
 
-            Point2Df textPos(area.x - scrollOffset, baselineY);
+            Point2Dd textPos(area.x - scrollOffset, baselineY);
             ctx->DrawText(renderText, textPos);
         }
     }
 
-    void UltraCanvasTextInput::RenderPlaceholder(const Rect2Df &area, IRenderContext* ctx) {
+    void UltraCanvasTextInput::RenderPlaceholder(const Rect2Dd &area, IRenderContext* ctx) {
         ctx->SetTextAlignment(style.textAlignment);
         ctx->SetTextVerticalAlignment((inputType == TextInputType::Multiline) ?
             VerticalAlignment::Top : VerticalAlignment::Middle);
@@ -448,7 +448,7 @@ namespace UltraCanvas {
         ctx->DrawTextInRect(placeholderText, area);
     }
 
-    void UltraCanvasTextInput::RenderSelection(const Rect2Df &area, IRenderContext* ctx) {
+    void UltraCanvasTextInput::RenderSelection(const Rect2Dd &area, IRenderContext* ctx) {
         if (!HasSelection()) return;
 
         std::string displayText = GetDisplayText();
@@ -474,17 +474,17 @@ namespace UltraCanvas {
         double visibleEndX = std::min(selStartX + selWidth, area.x + area.width);
 
         if (visibleEndX > visibleStartX) {
-            Rect2Df selectionRect(visibleStartX, selectionY, visibleEndX - visibleStartX, selectionHeight);
+            Rect2Dd selectionRect(visibleStartX, selectionY, visibleEndX - visibleStartX, selectionHeight);
             ctx->SetFillPaint(style.selectionColor);
             ctx->FillRectangle(selectionRect);
         }
     }
 
-    void UltraCanvasTextInput::RenderCaret(const Rect2Df &area, IRenderContext* ctx) {
+    void UltraCanvasTextInput::RenderCaret(const Rect2Dd &area, IRenderContext* ctx) {
         if (!IsFocused() || !isCaretVisible) return;
 
         // FIXED: Calculate X position to match text rendering exactly
-        Rect2Df textArea = GetTextArea();
+        Rect2Dd textArea = GetTextArea();
         float caretX;
 
         if (text.empty() || caretPosition == 0) {
@@ -536,7 +536,7 @@ namespace UltraCanvas {
         );
     }
 
-    void UltraCanvasTextInput::RenderMultilineText(const Rect2Df &area, const std::string &displayText, const Point2Di &startPos, IRenderContext* ctx) {
+    void UltraCanvasTextInput::RenderMultilineText(const Rect2Dd &area, const std::string &displayText, const Point2Di &startPos, IRenderContext* ctx) {
         // Split text into lines
         std::vector<std::string> lines;
         std::string currentLine;
@@ -690,7 +690,7 @@ namespace UltraCanvas {
     size_t UltraCanvasTextInput::GetTextPositionFromPoint(const Point2Di& point) {
         IRenderContext *ctx = GetRenderContext();
 
-        Rect2Df textArea = GetTextArea();
+        Rect2Dd textArea = GetTextArea();
 
         if (inputType == TextInputType::Multiline) {
             // Calculate which line was clicked
@@ -1195,7 +1195,7 @@ namespace UltraCanvas {
     }
 
     float UltraCanvasTextInput::GetLineYPosition(int lineNumber) const {
-        Rect2Df textArea = GetTextArea();
+        Rect2Dd textArea = GetTextArea();
         float lineHeight = style.fontStyle.fontSize * 1.2f;
         return textArea.y + (lineNumber * lineHeight);
     }
@@ -1260,7 +1260,7 @@ namespace UltraCanvas {
     }
 
     float UltraCanvasTextInput::GetCaretYPosition() {
-        Rect2Df textArea = GetTextArea();
+        Rect2Dd textArea = GetTextArea();
 
         if (inputType == TextInputType::Multiline) {
             // Count line number where caret is

@@ -45,7 +45,7 @@ namespace UltraCanvas {
 
         bool IsDragging() const { return dragging; }
 
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         bool OnEvent(const UCEvent& event) override;
 
     private:
@@ -60,7 +60,7 @@ namespace UltraCanvas {
 
     class UltraCanvasSplitPane : public UltraCanvasContainer {
     public:
-        UltraCanvasSplitPane(const std::string& id, long x, long y, long w, long h,
+        UltraCanvasSplitPane(const std::string& id, float x, float y, float w, float h,
                              SplitOrientation orient);
 
         // ===== PANE MANAGEMENT =====
@@ -92,7 +92,7 @@ namespace UltraCanvas {
 
         // ===== OVERRIDES =====
         void UpdateGeometry(IRenderContext* ctx) override;
-        void SetBounds(const Rect2Di& b) override;
+        void SetBounds(const Rect2Df& b) override;
 
         // ===== INTERNAL (called by UltraCanvasSplitter) =====
         void BeginSplitterDrag(size_t splitterIndex);
@@ -124,12 +124,12 @@ namespace UltraCanvas {
 
     // ===== FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasSplitPane> CreateHorizontalSplitPane(
-            const std::string& id, long x, long y, long w, long h) {
+            const std::string& id, float x, float y, float w, float h) {
         return std::make_shared<UltraCanvasSplitPane>(id, x, y, w, h, SplitOrientation::Horizontal);
     }
 
     inline std::shared_ptr<UltraCanvasSplitPane> CreateVerticalSplitPane(
-            const std::string& id, long x, long y, long w, long h) {
+            const std::string& id, float x, float y, float w, float h) {
         return std::make_shared<UltraCanvasSplitPane>(id, x, y, w, h, SplitOrientation::Vertical);
     }
 

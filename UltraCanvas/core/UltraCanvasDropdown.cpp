@@ -57,8 +57,8 @@ namespace UltraCanvas {
             int sepY = option.rect.y + option.rect.height / 2;
             ctx->SetStrokePaint(style->listBorderColor);
             ctx->SetStrokeWidth(1.0f);
-            ctx->DrawLine(Point2Df(option.rect.x + 4, sepY),
-                         Point2Df(option.rect.x + option.rect.width - 4, sepY));
+            ctx->DrawLine(Point2Dd(option.rect.x + 4, sepY),
+                         Point2Dd(option.rect.x + option.rect.width - 4, sepY));
             return;
         }
 
@@ -134,12 +134,12 @@ namespace UltraCanvas {
             int cy = checkboxRect.y + checkboxRect.height / 2;
 
             ctx->DrawLine(
-                Point2Df(checkboxRect.x + 3, cy),
-                Point2Df(cx - 1, checkboxRect.y + checkboxRect.height - 4)
+                Point2Dd(checkboxRect.x + 3, cy),
+                Point2Dd(cx - 1, checkboxRect.y + checkboxRect.height - 4)
             );
             ctx->DrawLine(
-                Point2Df(cx - 1, checkboxRect.y + checkboxRect.height - 4),
-                Point2Df(checkboxRect.x + checkboxRect.width - 3, checkboxRect.y + 3)
+                Point2Dd(cx - 1, checkboxRect.y + checkboxRect.height - 4),
+                Point2Dd(checkboxRect.x + checkboxRect.width - 3, checkboxRect.y + 3)
             );
         }
     }
@@ -155,8 +155,8 @@ namespace UltraCanvas {
 
     // ===== DROPDOWN CONSTRUCTOR =====
 
-    UltraCanvasDropdown::UltraCanvasDropdown(const std::string &identifier, long x, long y,
-                                             long w, long h)
+    UltraCanvasDropdown::UltraCanvasDropdown(const std::string &identifier, float x, float y,
+                                             float w, float h)
             : UltraCanvasUIElement(identifier, x, y, w, h) {
         style.scrollbarStyle = ScrollbarStyle::DropDown();
         CreatePopupListView();
@@ -485,7 +485,7 @@ namespace UltraCanvas {
         }
 
         int dropdownWidth = maxTextWidth + static_cast<int>(style.paddingLeft + style.paddingRight);
-        dropdownWidth = std::max(dropdownWidth, GetBounds().width);
+        dropdownWidth = std::max(dropdownWidth, static_cast<int>(GetBounds().width));
         dropdownWidth = std::min(dropdownWidth, style.maxItemWidth);
 
         // Calculate height
@@ -620,7 +620,7 @@ namespace UltraCanvas {
 
     // ===== RENDERING =====
 
-    void UltraCanvasDropdown::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasDropdown::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         RenderButton(ctx);
     }
 

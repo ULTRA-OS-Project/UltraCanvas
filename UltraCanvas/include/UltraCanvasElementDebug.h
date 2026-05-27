@@ -168,28 +168,28 @@ namespace UltraCanvas {
             ctx->SetStrokeWidth(1.0f);
 
             // Top-left corner
-            ctx->DrawLine(Point2Df(bounds.x, bounds.y),
-                     Point2Df(bounds.x + markerSize, bounds.y));
-            ctx->DrawLine(Point2Df(bounds.x, bounds.y),
-                     Point2Df(bounds.x, bounds.y + markerSize));
+            ctx->DrawLine(Point2Dd(bounds.x, bounds.y),
+                     Point2Dd(bounds.x + markerSize, bounds.y));
+            ctx->DrawLine(Point2Dd(bounds.x, bounds.y),
+                     Point2Dd(bounds.x, bounds.y + markerSize));
 
             // Top-right corner
-            ctx->DrawLine(Point2Df(bounds.x + bounds.width, bounds.y),
-                     Point2Df(bounds.x + bounds.width - markerSize, bounds.y));
-            ctx->DrawLine(Point2Df(bounds.x + bounds.width, bounds.y),
-                     Point2Df(bounds.x + bounds.width, bounds.y + markerSize));
+            ctx->DrawLine(Point2Dd(bounds.x + bounds.width, bounds.y),
+                     Point2Dd(bounds.x + bounds.width - markerSize, bounds.y));
+            ctx->DrawLine(Point2Dd(bounds.x + bounds.width, bounds.y),
+                     Point2Dd(bounds.x + bounds.width, bounds.y + markerSize));
 
             // Bottom-left corner
-            ctx->DrawLine(Point2Df(bounds.x, bounds.y + bounds.height),
-                     Point2Df(bounds.x + markerSize, bounds.y + bounds.height));
-            ctx->DrawLine(Point2Df(bounds.x, bounds.y + bounds.height),
-                     Point2Df(bounds.x, bounds.y + bounds.height - markerSize));
+            ctx->DrawLine(Point2Dd(bounds.x, bounds.y + bounds.height),
+                     Point2Dd(bounds.x + markerSize, bounds.y + bounds.height));
+            ctx->DrawLine(Point2Dd(bounds.x, bounds.y + bounds.height),
+                     Point2Dd(bounds.x, bounds.y + bounds.height - markerSize));
 
             // Bottom-right corner
-            ctx->DrawLine(Point2Df(bounds.x + bounds.width, bounds.y + bounds.height),
-                     Point2Df(bounds.x + bounds.width - markerSize, bounds.y + bounds.height));
-            ctx->DrawLine(Point2Df(bounds.x + bounds.width, bounds.y + bounds.height),
-                     Point2Df(bounds.x + bounds.width, bounds.y + bounds.height - markerSize));
+            ctx->DrawLine(Point2Dd(bounds.x + bounds.width, bounds.y + bounds.height),
+                     Point2Dd(bounds.x + bounds.width - markerSize, bounds.y + bounds.height));
+            ctx->DrawLine(Point2Dd(bounds.x + bounds.width, bounds.y + bounds.height),
+                     Point2Dd(bounds.x + bounds.width, bounds.y + bounds.height - markerSize));
 
             ctx->PopState();
         }
@@ -280,7 +280,7 @@ namespace UltraCanvas {
             Point2Di textSize = ctx->GetTextDimension(text);
 
             // Calculate text position (top-left corner of element, with padding)
-            Point2Df textPos = Point2Df(bounds.x + settings.textPadding,
+            Point2Dd textPos = Point2Dd(bounds.x + settings.textPadding,
                                       bounds.y - textSize.y - settings.textPadding);
 
             // Ensure text stays within screen bounds

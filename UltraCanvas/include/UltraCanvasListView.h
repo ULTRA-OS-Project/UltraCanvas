@@ -81,9 +81,9 @@ namespace UltraCanvas {
 
         // === Core overrides ===
         void UpdateGeometry(IRenderContext* ctx) override;
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         bool OnEvent(const UCEvent& event) override;
-        void SetBounds(const Rect2Di& bounds) override;
+        void SetBounds(const Rect2Df& bounds) override;
         void SetWindow(UltraCanvasWindowBase* win) override;
         bool AcceptsFocus() const override { return true; }
 

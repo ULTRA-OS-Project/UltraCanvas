@@ -86,25 +86,25 @@ namespace UltraCanvas {
         Color disabledTextColor = Colors::TextDisabled;
 
         Color borderColor = Colors::ButtonShadow;
-        double borderWidth = 1.0f;
+        float borderWidth = 1.0f;
 
         // Text styling
         FontStyle fontStyle;
 
         std::string fontFamily;
-        double fontSize = 12.0f;
+        float fontSize = 12.0f;
         FontWeight fontWeight = FontWeight::Normal;
         TextAlignment textAlign = TextAlignment::Center;
 
         int iconSpacing = 4;  // Space between icon and text
-        double cornerRadius = 3.0f;
+        float cornerRadius = 3.0f;
 
         bool useIconAsMask = false;
 
         // Effects
         bool hasShadow = false;
         Color shadowColor = Color(0, 0, 0, 64);
-        Point2Di shadowOffset = Point2Di(0, 0);
+        Point2Df shadowOffset = Point2Di(0, 0);
         // Split button style
         SplitButtonStyle splitStyle;
     };
@@ -127,17 +127,17 @@ namespace UltraCanvas {
         bool autoresize = false;
 
         // Cached layout calculations
-        Rect2Di iconRect;
-        Rect2Di textRect;
-        Rect2Di secondaryTextRect;  // For split button secondary section
-        Rect2Di secondaryIconRect;  // For split button secondary icon (new)
-        Rect2Di primarySectionRect;  // Primary section bounds
-        Rect2Di secondarySectionRect;  // Secondary section bounds
+        Rect2Df iconRect;
+        Rect2Df textRect;
+        Rect2Df secondaryTextRect;  // For split button secondary section
+        Rect2Df secondaryIconRect;  // For split button secondary icon (new)
+        Rect2Df primarySectionRect;  // Primary section bounds
+        Rect2Df secondarySectionRect;  // Secondary section bounds
 
     public:
         // ===== CONSTRUCTOR =====
         UltraCanvasButton(const std::string& identifier = "Button",
-                          long x = 0, long y = 0, long w = 100, long h = 30,
+                          float x = 0, float y = 0, float w = 100, float h = 30,
                           const std::string& buttonText = "Button");
 
         void SetCanToggled(bool tgl) {
@@ -218,7 +218,7 @@ namespace UltraCanvas {
         std::function<void()> onHoverLeave;
 
         // ===== OVERRIDES =====
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         void UpdateGeometry(IRenderContext *ctx) override;
 
         bool OnEvent(const UCEvent& event) override;
@@ -245,13 +245,13 @@ namespace UltraCanvas {
 
 // ===== FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasButton> CreateButton(
-            const std::string& identifier, long x, long y, long w, long h,
+            const std::string& identifier, float x, float y, float w, float h,
             const std::string& text = "Button") {
         return std::make_shared<UltraCanvasButton>(identifier, x, y, w, h, text);
     }
 
     inline std::shared_ptr<UltraCanvasButton> CreateIconButton(
-            const std::string& identifier, long x, long y, long w, long h,
+            const std::string& identifier, float x, float y, float w, float h,
             const std::string& iconPath, const std::string& text = "") {
         auto button = CreateButton(identifier, x, y, w, h, text);
         button->SetIcon(iconPath);
@@ -268,7 +268,7 @@ namespace UltraCanvas {
             button = std::make_shared<UltraCanvasButton>(identifier);
         }
 
-        ButtonBuilder& SetPosition(long x, long y) {
+        ButtonBuilder& SetPosition(float x, float y) {
             button->SetX(x);
             button->SetY(y);
             return *this;
@@ -373,7 +373,7 @@ namespace UltraCanvas {
             return *this;
         }
 
-        ButtonBuilder& SetSize(long w, long h) {
+        ButtonBuilder& SetSize(float w, float h) {
             button->SetWidth(w);
             button->SetHeight(h);
             return *this;

@@ -172,7 +172,7 @@ namespace UltraCanvas {
         if (textLayout) {
             renderCtx->SetTextPaint(style.textColor);
             renderCtx->DrawTextLayout(*textLayout,
-                Point2Df(style.paddingLeft,
+                Point2Dd(style.paddingLeft,
                          style.paddingTop));
         }
 

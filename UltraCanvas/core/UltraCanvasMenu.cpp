@@ -54,7 +54,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasMenu::Render(IRenderContext *ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasMenu::Render(IRenderContext *ctx, const Rect2Df& dirtyRect) {
         // FIX: Simplified visibility check - if not visible at all, don't render
         if (menuType == MenuType::Menubar) {
 
@@ -98,7 +98,7 @@ namespace UltraCanvas {
             ctx->PushState();
             int bw = static_cast<int>(style.borderWidth);
             int sbWidth = needsScrollbar ? static_cast<int>(style.scrollbarStyle.trackSize) : 0;
-            ctx->ClipRect(Rect2Df(bw,
+            ctx->ClipRect(Rect2Dd(bw,
                                   bw,
                                   finalBounds.width - bw * 2 - sbWidth,
                                   finalBounds.height - bw * 2));
@@ -318,7 +318,7 @@ namespace UltraCanvas {
         return y;
     }
 
-    bool UltraCanvasMenu::ContainsInWindow(const Point2Di& point) {
+    bool UltraCanvasMenu::ContainsInWindow(const Point2Df& point) {
         if (menuType == MenuType::PopupMenu || menuType == MenuType::SubmenuMenu) {
             // Only check bounds if menu is actually visible
             if (!IsVisible()) {
@@ -472,10 +472,10 @@ namespace UltraCanvas {
 
             SetWidth(totalWidth);
             if (style.minWidth > 0) {
-                SetWidth(std::max(GetWidth(), style.minWidth));
+                SetWidth(std::max(GetWidth(), (float)style.minWidth));
             }
             if (style.maxWidth > 0) {
-                SetWidth(std::min(GetWidth(), style.maxWidth));
+                SetWidth(std::min(GetWidth(), (float)style.maxWidth));
             }
             SetHeight(totalHeight);
 
@@ -699,7 +699,7 @@ namespace UltraCanvas {
 
         ctx->SetStrokePaint(style.separatorColor);
         ctx->SetStrokeWidth(1.0f);
-        ctx->DrawLine(Point2Df(startX, centerY), Point2Df(endX, centerY));
+        ctx->DrawLine(Point2Dd(startX, centerY), Point2Dd(endX, centerY));
     }
 
     void UltraCanvasMenu::RenderHeader(const MenuItemData &item, const Rect2Di &bounds, IRenderContext *ctx) {
@@ -727,14 +727,14 @@ namespace UltraCanvas {
 
             if (item.type == MenuItemType::Checkbox) {
                 // Draw checkmark
-                Point2Df p1(position.x + 3, position.y + style.iconSize / 2);
-                Point2Df p2(position.x + style.iconSize / 2, position.y + style.iconSize - 3);
-                Point2Df p3(position.x + style.iconSize - 3, position.y + 3);
+                Point2Dd p1(position.x + 3, position.y + style.iconSize / 2);
+                Point2Dd p2(position.x + style.iconSize / 2, position.y + style.iconSize - 3);
+                Point2Dd p3(position.x + style.iconSize - 3, position.y + 3);
                 ctx->DrawLine(p1, p2);
                 ctx->DrawLine(p2, p3);
             } else {
                 // Draw radio dot
-                Point2Df center = {position.x + static_cast<double>(style.iconSize) / 2.0,
+                Point2Dd center = {position.x + static_cast<double>(style.iconSize) / 2.0,
                                     position.y + static_cast<double>(style.iconSize) / 2.0};
                 ctx->DrawCircle(center, static_cast<double>(style.iconSize) / 4.0);
             }
@@ -764,7 +764,7 @@ namespace UltraCanvas {
 
     void UltraCanvasMenu::RenderIcon(const std::string &iconPath, const Point2Di &position, IRenderContext *ctx) {
         // Would implement icon rendering based on file type
-        ctx->DrawImage(iconPath, Rect2Df(position.x, position.y, style.iconSize, style.iconSize), ImageFitMode::Contain);
+        ctx->DrawImage(iconPath, Rect2Dd(position.x, position.y, style.iconSize, style.iconSize), ImageFitMode::Contain);
     }
 
 
@@ -772,7 +772,7 @@ namespace UltraCanvas {
         // Draw in element-local coordinates (ctx is translated to element origin)
         Rect2Di bounds = GetLocalBounds();
         ctx->SetStrokePaint(style.shadowColor);
-        ctx->DrawRectangle(Rect2Df(style.shadowOffset.x, style.shadowOffset.y, finalBounds.width,
+        ctx->DrawRectangle(Rect2Dd(style.shadowOffset.x, style.shadowOffset.y, finalBounds.width,
                            finalBounds.height));
     }
 

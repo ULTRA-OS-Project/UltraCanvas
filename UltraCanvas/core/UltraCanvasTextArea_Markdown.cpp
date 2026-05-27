@@ -998,7 +998,7 @@ namespace UltraCanvas {
     void UltraCanvasTextArea::NormalizeTableGroupWidths(int startLine, int endLine) {
         constexpr int cellPadding = 4;
         constexpr int rowVerticalPad = 4;
-        const int availWidth = std::max(100, visibleTextArea.width);
+        const float availWidth = std::max(100.0f, visibleTextArea.width);
 
         int colCount = 0;
         for (int i = startLine; i <= endLine; i++) {
@@ -1056,7 +1056,7 @@ namespace UltraCanvas {
         {
             int sum = 0;
             for (int c = 0; c < colCount - 1; c++) sum += colWidth[c];
-            colWidth[colCount - 1] = std::max(20, availWidth - sum);
+            colWidth[colCount - 1] = std::max(20, static_cast<int>(availWidth) - sum);
         }
 
         // Apply: set ExplicitWidth + alignment per cell, re-measure heights, update row bounds.
@@ -1126,7 +1126,7 @@ namespace UltraCanvas {
             layout->SetFontStyle(style.fontStyle);
             layout->SetLineSpacing(style.lineHeight);
             if (wordWrap && visibleTextArea.width > 0) {
-                int w = std::max(1, visibleTextArea.width - shiftX);
+                float w = std::max(1.0f, visibleTextArea.width - shiftX);
                 layout->SetExplicitWidth(w);
                 layout->SetWrap(TextWrap::WrapWordChar);
             }
@@ -1490,7 +1490,7 @@ namespace UltraCanvas {
                     }
 
                     // Provisional bounds — Normalize overwrites width / height / per-cell geometry.
-                    tl->bounds.width  = std::max(100, visibleTextArea.width);
+                    tl->bounds.width  = std::max(100.0f, visibleTextArea.width);
                     tl->bounds.height = 1;
                     return tl;
                 }
@@ -1639,7 +1639,7 @@ namespace UltraCanvas {
                 cl->layout->SetLineSpacing(style.lineHeight);
                 if (wordWrap && visibleTextArea.width > 0) {
                     cl->layout->SetExplicitWidth(
-                            std::max(1, visibleTextArea.width - style.padding * 2));
+                            std::max(1.0f, visibleTextArea.width - style.padding * 2));
                     cl->layout->SetWrap(TextWrap::WrapWordChar);
                 }
                 int indentCp = utf8_byte_to_cp(rawLine, indentBytes);

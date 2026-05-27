@@ -185,7 +185,7 @@ namespace UltraCanvas {
         if (displayRow >= 0 && displayRow < hexMaxVisibleRows) {
             int y = hexVisibleArea.y + displayRow * hexRowHeight;
             ctx->SetFillPaint(style.currentLineHighlightColor);
-            ctx->FillRectangle(Rect2Df(hexVisibleArea.x, y, hexVisibleArea.width, hexRowHeight));
+            ctx->FillRectangle(Rect2Dd(hexVisibleArea.x, y, hexVisibleArea.width, hexRowHeight));
         }
     }
 
@@ -194,7 +194,7 @@ namespace UltraCanvas {
 
         // Draw address gutter background
         ctx->SetFillPaint(style.lineNumbersBackgroundColor);
-        ctx->FillRectangle(Rect2Df(finalBounds.x, hexVisibleArea.y, hexAddressWidth + style.padding, hexVisibleArea.height));
+        ctx->FillRectangle(Rect2Dd(finalBounds.x, hexVisibleArea.y, hexAddressWidth + style.padding, hexVisibleArea.height));
 
         // Draw separator line
         int separatorX = finalBounds.x + style.padding + hexAddressWidth - 4;
@@ -289,12 +289,12 @@ namespace UltraCanvas {
             // Highlight in hex panel
             int hexX = hexPanelStartX + startCol * hexByteWidth;
             int hexW = (endCol - startCol) * hexByteWidth;
-            ctx->FillRectangle(Rect2Df(hexX, y, hexW, hexRowHeight));
+            ctx->FillRectangle(Rect2Dd(hexX, y, hexW, hexRowHeight));
 
             // Highlight in ASCII panel
             int asciiX = hexAsciiPanelStartX + startCol * hexAsciiCharWidth;
             int asciiW = (endCol - startCol) * hexAsciiCharWidth;
-            ctx->FillRectangle(Rect2Df(asciiX, y, asciiW, hexRowHeight));
+            ctx->FillRectangle(Rect2Dd(asciiX, y, asciiW, hexRowHeight));
         }
     }
 
@@ -321,7 +321,7 @@ namespace UltraCanvas {
                 bandDrawn[displayRow] = true;
                 int y = hexVisibleArea.y + displayRow * hexRowHeight;
                 ctx->SetFillPaint(rowBandColor);
-                ctx->FillRectangle(Rect2Df(hexVisibleArea.x, y, hexVisibleArea.width, hexRowHeight));
+                ctx->FillRectangle(Rect2Dd(hexVisibleArea.x, y, hexVisibleArea.width, hexRowHeight));
             }
         }
 
@@ -347,12 +347,12 @@ namespace UltraCanvas {
                 // Hex panel highlight
                 int hexX = hexPanelStartX + startCol * hexByteWidth;
                 int hexW = (endCol - startCol) * hexByteWidth;
-                ctx->FillRectangle(Rect2Df(hexX, y, hexW, hexRowHeight));
+                ctx->FillRectangle(Rect2Dd(hexX, y, hexW, hexRowHeight));
 
                 // ASCII panel highlight
                 int asciiX = hexAsciiPanelStartX + startCol * hexAsciiCharWidth;
                 int asciiW = (endCol - startCol) * hexAsciiCharWidth;
-                ctx->FillRectangle(Rect2Df(asciiX, y, asciiW, hexRowHeight));
+                ctx->FillRectangle(Rect2Dd(asciiX, y, asciiW, hexRowHeight));
             }
         }
     }
@@ -385,7 +385,7 @@ namespace UltraCanvas {
             int charW = hexByteWidth / 3; // Width of one hex digit
             int x = hexPanelStartX + col * hexByteWidth + hexCursorNibble * charW;
             ctx->SetFillPaint(Color(style.cursorColor.r, style.cursorColor.g, style.cursorColor.b, 80));
-            ctx->FillRectangle(Rect2Df(x, y, charW, hexRowHeight));
+            ctx->FillRectangle(Rect2Dd(x, y, charW, hexRowHeight));
             // Also draw line cursor
             ctx->SetStrokeWidth(2);
             ctx->DrawLine({x, y}, {x, y + hexRowHeight}, style.cursorColor);
@@ -1187,11 +1187,11 @@ namespace UltraCanvas {
         if (hexCursorInAsciiPanel) {
             // Cursor is in ASCII panel → highlight the corresponding byte in the HEX panel
             int x = hexPanelStartX + col * hexByteWidth;
-            ctx->FillRectangle(Rect2Df(x, y, hexByteWidth, hexRowHeight));
+            ctx->FillRectangle(Rect2Dd(x, y, hexByteWidth, hexRowHeight));
         } else {
             // Cursor is in HEX panel → highlight the corresponding char in the ASCII panel
             int x = hexAsciiPanelStartX + col * hexAsciiCharWidth;
-            ctx->FillRectangle(Rect2Df(x, y, hexAsciiCharWidth, hexRowHeight));
+            ctx->FillRectangle(Rect2Dd(x, y, hexAsciiCharWidth, hexRowHeight));
         }
  
         ctx->PopState();

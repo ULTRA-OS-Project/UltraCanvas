@@ -209,8 +209,8 @@ namespace UltraCanvas {
         // Background and borders
         Color backgroundColor;
         Color borderColor;
-        int borderWidth;
-        int padding;
+        float borderWidth;
+        float padding;
 
         // Selection and cursor
         Color selectionColor;
@@ -308,10 +308,10 @@ namespace UltraCanvas {
 
     struct LineLayoutBase {
         LineLayoutType layoutType = LineLayoutType::PlainLine;
-        Rect2Df bounds = {0,0,0,0};
+        Rect2Dd bounds = {0,0,0,0};
         std::vector<MarkdownHitRect> hitRects; // bounds inside layout
         std::unique_ptr<ITextLayout> layout;
-        Point2Df layoutShift = {0, 0}; // for MD mode some elements render text layout shifted to right or bottom
+        Point2Dd layoutShift = {0, 0}; // for MD mode some elements render text layout shifted to right or bottom
         // Visible-cp ↔ source-line-cp mapping. See CpRun. Use VisibleCpToSourceCp /
         // SourceCpToVisibleCp helpers for lookups; do not arithmetically subtract any
         // single offset. The first entry's sourceCp is the block-prefix codepoint count.
@@ -366,14 +366,14 @@ namespace UltraCanvas {
 
         bool AcceptsFocus() const override { return true; }
         // Render method
-        virtual void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        virtual void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
         // Drives the per-line layout cache (UpdateLineLayouts) so layouts are ready
         // before Render runs. Called by the framework when RequestUpdateGeometry() has been set.
         virtual void UpdateGeometry(IRenderContext* ctx) override;
 
         // Override SetBounds to trigger layout recalculation on resize
-        void SetBounds(const Rect2Di& b) override {
+        void SetBounds(const Rect2Df& b) override {
             if (b.width != GetWidth() || b.height != GetHeight()) {
                 isNeedRecalculateVisibleArea = true;
             }
@@ -661,7 +661,7 @@ namespace UltraCanvas {
         int CalculateLineNumbersWidth(IRenderContext* ctx);
         void RebuildText();
         const TokenStyle& GetStyleForTokenType(TokenType type) const;
-        int GetContentHeight();
+        float GetContentHeight();
 
         // Initialization
         void ApplyDefaultStyle();
@@ -757,18 +757,18 @@ namespace UltraCanvas {
         std::unique_ptr<LineLayoutBase> currentLine;
 
         // Cursor / selection state is LineColumnIndex (codepoint-based); see fields above.
-        int computedLineHeight = 12;
-        int computedLineNumbersWidth = 40;
+        float computedLineHeight = 12;
+        float computedLineNumbersWidth = 40;
 
         // Scrolling
-        int horizontalScrollOffset;
-        int verticalScrollOffset;
+        float horizontalScrollOffset;
+        float verticalScrollOffset;
         // firstVisibleLine / maxVisibleLines removed in Step 8b — pixel-based verticalScrollOffset
         // is now the authoritative scroll state.
         int maxLineWidth;
-        Rect2Di visibleTextArea;
-        Rect2Di horizontalScrollThumb;
-        Rect2Di verticalScrollThumb;
+        Rect2Df visibleTextArea;
+        Rect2Df horizontalScrollThumb;
+        Rect2Df verticalScrollThumb;
         Point2Di dragStartOffset;
         bool isDraggingHorizontalThumb = false;
         bool isDraggingVerticalThumb = false;

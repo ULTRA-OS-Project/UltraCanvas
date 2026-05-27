@@ -12,7 +12,7 @@ namespace UltraCanvas {
 
 // ===== CONSTRUCTOR =====
     UltraCanvasButton::UltraCanvasButton(const std::string& identifier,
-                                         long x, long y, long w, long h,
+                                         float x, float y, float w, float h,
                                          const std::string& buttonText)
             : UltraCanvasUIElement(identifier, x, y, w, h), text(buttonText) {
         SetMouseCursor(UCMouseCursor::Hand);
@@ -228,7 +228,7 @@ namespace UltraCanvas {
             ctx->SetFontSize(style.fontSize);
             Size2Di textSize = ctx->GetTextLineDimensions(text);
             newWidth += textSize.width;
-            newHeight = std::max(newHeight, textSize.height + GetPaddingTop() + GetPaddingBottom());
+            newHeight = std::max(newHeight, static_cast<int>(textSize.height + GetPaddingTop() + GetPaddingBottom()));
         }
 
         // Add split button secondary section dimensions
@@ -270,7 +270,7 @@ namespace UltraCanvas {
         // Add icon dimensions for primary section
         if (HasIcon()) {
             newWidth += iconWidth;
-            newHeight = std::max(newHeight, iconHeight + GetPaddingTop() + GetPaddingBottom());
+            newHeight = std::max(newHeight, static_cast<int>(iconHeight + GetPaddingTop() + GetPaddingBottom()));
 
             if (!text.empty() && (iconPosition == ButtonIconPosition::Left || iconPosition == ButtonIconPosition::Right)) {
                 newWidth += style.iconSpacing;
@@ -287,62 +287,62 @@ namespace UltraCanvas {
         }
 
         // Regular button layout calculation
-        Rect2Di bounds = GetLocalBounds();
-        int contentX = GetPaddingLeft();
-        int contentY = GetPaddingTop();
-        int contentWidth = finalBounds.width - GetPaddingLeft() - GetPaddingRight();
-        int contentHeight = finalBounds.height - GetPaddingTop() - GetPaddingBottom();
+        Rect2Df bounds = GetLocalBounds();
+        float contentX = GetPaddingLeft();
+        float contentY = GetPaddingTop();
+        float contentWidth = finalBounds.width - GetPaddingLeft() - GetPaddingRight();
+        float contentHeight = finalBounds.height - GetPaddingTop() - GetPaddingBottom();
 
         // Reset rectangles
-        iconRect = Rect2Di(0, 0, 0, 0);
-        textRect = Rect2Di(0, 0, 0, 0);
-        secondaryTextRect = Rect2Di(0, 0, 0, 0);
-        secondaryIconRect = Rect2Di(0, 0, 0, 0);
-        primarySectionRect = Rect2Di(0, 0, 0, 0);
-        secondarySectionRect = Rect2Di(0, 0, 0, 0);
+        iconRect = Rect2Df(0, 0, 0, 0);
+        textRect = Rect2Df(0, 0, 0, 0);
+        secondaryTextRect = Rect2Df(0, 0, 0, 0);
+        secondaryIconRect = Rect2Df(0, 0, 0, 0);
+        primarySectionRect = Rect2Df(0, 0, 0, 0);
+        secondarySectionRect = Rect2Df(0, 0, 0, 0);
 
         if (HasIcon() && !text.empty()) {
             // Both icon and text
             if (iconPosition == ButtonIconPosition::Left) {
-                iconRect = Rect2Di(contentX, contentY + (contentHeight - iconHeight) / 2,
+                iconRect = Rect2Df(contentX, contentY + (contentHeight - iconHeight) / 2,
                                    iconWidth, iconHeight);
-                textRect = Rect2Di(contentX + iconWidth + style.iconSpacing, contentY,
+                textRect = Rect2Df(contentX + iconWidth + style.iconSpacing, contentY,
                                    contentWidth - iconWidth - style.iconSpacing, contentHeight);
             } else if (iconPosition == ButtonIconPosition::Right) {
-                textRect = Rect2Di(contentX, contentY,
+                textRect = Rect2Df(contentX, contentY,
                                    contentWidth - iconWidth - style.iconSpacing, contentHeight);
-                iconRect = Rect2Di(contentX + contentWidth - iconWidth,
+                iconRect = Rect2Df(contentX + contentWidth - iconWidth,
                                    contentY + (contentHeight - iconHeight) / 2,
                                    iconWidth, iconHeight);
             } else if (iconPosition == ButtonIconPosition::Top) {
-                iconRect = Rect2Di(contentX + (contentWidth - iconWidth) / 2, contentY,
+                iconRect = Rect2Df(contentX + (contentWidth - iconWidth) / 2, contentY,
                                    iconWidth, iconHeight);
-                textRect = Rect2Di(contentX, contentY + iconHeight + style.iconSpacing,
+                textRect = Rect2Df(contentX, contentY + iconHeight + style.iconSpacing,
                                    contentWidth, contentHeight - iconHeight - style.iconSpacing);
             } else if (iconPosition == ButtonIconPosition::Bottom) {
-                textRect = Rect2Di(contentX, contentY,
+                textRect = Rect2Df(contentX, contentY,
                                    contentWidth, contentHeight - iconHeight - style.iconSpacing);
-                iconRect = Rect2Di(contentX + (contentWidth - iconWidth) / 2,
+                iconRect = Rect2Df(contentX + (contentWidth - iconWidth) / 2,
                                    contentY + contentHeight - iconHeight,
                                    iconWidth, iconHeight);
             } else if (iconPosition == ButtonIconPosition::Center) {
-                iconRect = Rect2Di(contentX + (contentWidth - iconWidth) / 2,
+                iconRect = Rect2Df(contentX + (contentWidth - iconWidth) / 2,
                                    contentY + (contentHeight - iconHeight) / 2,
                                    iconWidth, iconHeight);
             }
         } else if (HasIcon()) {
             // Icon only
-            iconRect = Rect2Di(contentX + (contentWidth - iconWidth) / 2,
+            iconRect = Rect2Df(contentX + (contentWidth - iconWidth) / 2,
                                contentY + (contentHeight - iconHeight) / 2,
                                iconWidth, iconHeight);
         } else if (!text.empty()) {
             // Text only
-            textRect = Rect2Di(contentX, contentY, contentWidth, contentHeight);
+            textRect = Rect2Df(contentX, contentY, contentWidth, contentHeight);
         }
     }
 
     void UltraCanvasButton::CalculateSplitLayout() {
-        Rect2Di bounds = GetLocalBounds();
+        Rect2Df bounds = GetLocalBounds();
         const SplitButtonStyle& split = style.splitStyle;
 
         if (split.horizontal) {
@@ -379,13 +379,13 @@ namespace UltraCanvas {
                 secondaryWidth -= split.separatorWidth / 2;
             }
 
-            primarySectionRect = Rect2Di(finalBounds.x, finalBounds.y, primaryWidth, finalBounds.height);
-            secondarySectionRect = Rect2Di(finalBounds.x + primaryWidth +
+            primarySectionRect = Rect2Df(finalBounds.x, finalBounds.y, primaryWidth, finalBounds.height);
+            secondarySectionRect = Rect2Df(finalBounds.x + primaryWidth +
                                            (split.showSeparator ? split.separatorWidth : 0),
                                            finalBounds.y, secondaryWidth, finalBounds.height);
 
             // Text rectangles within sections
-            textRect = Rect2Di(primarySectionRect.x + GetPaddingLeft(),
+            textRect = Rect2Df(primarySectionRect.x + GetPaddingLeft(),
                                primarySectionRect.y + GetPaddingTop(),
                                primarySectionRect.width - GetPaddingLeft() - GetPaddingRight(),
                                primarySectionRect.height - GetPaddingTop() - GetPaddingBottom());
@@ -399,43 +399,43 @@ namespace UltraCanvas {
             if (HasSecondaryIcon() && !split.secondaryText.empty()) {
                 // Both icon and text in secondary section
                 if (split.secondaryIconPosition == ButtonSecondaryIconPosition::Left) {
-                    secondaryIconRect = Rect2Di(secContentX,
+                    secondaryIconRect = Rect2Df(secContentX,
                                                 secContentY + (secContentHeight - split.secondaryIconHeight) / 2,
                                                 split.secondaryIconWidth, split.secondaryIconHeight);
-                    secondaryTextRect = Rect2Di(secContentX + split.secondaryIconWidth + split.secondaryIconSpacing,
+                    secondaryTextRect = Rect2Df(secContentX + split.secondaryIconWidth + split.secondaryIconSpacing,
                                                 secContentY,
                                                 secContentWidth - split.secondaryIconWidth - split.secondaryIconSpacing,
                                                 secContentHeight);
                 } else {
                     // Icon on right
-                    secondaryTextRect = Rect2Di(secContentX, secContentY,
+                    secondaryTextRect = Rect2Df(secContentX, secContentY,
                                                 secContentWidth - split.secondaryIconWidth - split.secondaryIconSpacing,
                                                 secContentHeight);
-                    secondaryIconRect = Rect2Di(secContentX + secContentWidth - split.secondaryIconWidth,
+                    secondaryIconRect = Rect2Df(secContentX + secContentWidth - split.secondaryIconWidth,
                                                 secContentY + (secContentHeight - split.secondaryIconHeight) / 2,
                                                 split.secondaryIconWidth, split.secondaryIconHeight);
                 }
             } else if (HasSecondaryIcon()) {
                 // Icon only in secondary section
-                secondaryIconRect = Rect2Di(secContentX + (secContentWidth - split.secondaryIconWidth) / 2,
+                secondaryIconRect = Rect2Df(secContentX + (secContentWidth - split.secondaryIconWidth) / 2,
                                             secContentY + (secContentHeight - split.secondaryIconHeight) / 2,
                                             split.secondaryIconWidth, split.secondaryIconHeight);
-                secondaryTextRect = Rect2Di(0, 0, 0, 0);
+                secondaryTextRect = Rect2Df(0, 0, 0, 0);
             } else {
                 // Text only in secondary section
-                secondaryTextRect = Rect2Di(secContentX, secContentY, secContentWidth, secContentHeight);
-                secondaryIconRect = Rect2Di(0, 0, 0, 0);
+                secondaryTextRect = Rect2Df(secContentX, secContentY, secContentWidth, secContentHeight);
+                secondaryIconRect = Rect2Df(0, 0, 0, 0);
             }
 
             // Icon positioning for primary section
             if (HasIcon()) {
                 if (iconPosition == ButtonIconPosition::Left) {
-                    iconRect = Rect2Di(textRect.x, textRect.y + (textRect.height - iconHeight) / 2,
+                    iconRect = Rect2Df(textRect.x, textRect.y + (textRect.height - iconHeight) / 2,
                                        iconWidth, iconHeight);
                     textRect.x += iconWidth + style.iconSpacing;
                     textRect.width -= iconWidth + style.iconSpacing;
                 } else if (iconPosition == ButtonIconPosition::Right) {
-                    iconRect = Rect2Di(textRect.x + textRect.width - iconWidth,
+                    iconRect = Rect2Df(textRect.x + textRect.width - iconWidth,
                                        textRect.y + (textRect.height - iconHeight) / 2,
                                        iconWidth, iconHeight);
                     textRect.width -= iconWidth + style.iconSpacing;
@@ -451,13 +451,13 @@ namespace UltraCanvas {
                 secondaryHeight -= split.separatorWidth / 2;
             }
 
-            primarySectionRect = Rect2Di(finalBounds.x, finalBounds.y, finalBounds.width, primaryHeight);
-            secondarySectionRect = Rect2Di(finalBounds.x, finalBounds.y + primaryHeight +
+            primarySectionRect = Rect2Df(finalBounds.x, finalBounds.y, finalBounds.width, primaryHeight);
+            secondarySectionRect = Rect2Df(finalBounds.x, finalBounds.y + primaryHeight +
                                                      (split.showSeparator ? split.separatorWidth : 0),
                                            finalBounds.width, secondaryHeight);
 
             // Text rectangles within sections
-            textRect = Rect2Di(primarySectionRect.x + GetPaddingLeft(),
+            textRect = Rect2Df(primarySectionRect.x + GetPaddingLeft(),
                                primarySectionRect.y + GetPaddingTop(),
                                primarySectionRect.width - GetPaddingLeft() - GetPaddingRight(),
                                primarySectionRect.height - GetPaddingTop() - GetPaddingBottom());
@@ -471,20 +471,20 @@ namespace UltraCanvas {
             // For vertical split, always stack icon above text
             if (HasSecondaryIcon() && !split.secondaryText.empty()) {
                 // Icon above text
-                secondaryIconRect = Rect2Di(secContentX + (secContentWidth - split.secondaryIconWidth) / 2,
+                secondaryIconRect = Rect2Df(secContentX + (secContentWidth - split.secondaryIconWidth) / 2,
                                             secContentY, split.secondaryIconWidth, split.secondaryIconHeight);
-                secondaryTextRect = Rect2Di(secContentX,
+                secondaryTextRect = Rect2Df(secContentX,
                                             secContentY + split.secondaryIconHeight + split.secondaryIconSpacing,
                                             secContentWidth,
                                             secContentHeight - split.secondaryIconHeight - split.secondaryIconSpacing);
             } else if (HasSecondaryIcon()) {
-                secondaryIconRect = Rect2Di(secContentX + (secContentWidth - split.secondaryIconWidth) / 2,
+                secondaryIconRect = Rect2Df(secContentX + (secContentWidth - split.secondaryIconWidth) / 2,
                                             secContentY + (secContentHeight - split.secondaryIconHeight) / 2,
                                             split.secondaryIconWidth, split.secondaryIconHeight);
-                secondaryTextRect = Rect2Di(0, 0, 0, 0);
+                secondaryTextRect = Rect2Df(0, 0, 0, 0);
             } else {
-                secondaryTextRect = Rect2Di(secContentX, secContentY, secContentWidth, secContentHeight);
-                secondaryIconRect = Rect2Di(0, 0, 0, 0);
+                secondaryTextRect = Rect2Df(secContentX, secContentY, secContentWidth, secContentHeight);
+                secondaryIconRect = Rect2Df(0, 0, 0, 0);
             }
         }
 
@@ -638,7 +638,7 @@ namespace UltraCanvas {
 
         debugOutput << "btn draw text=" << text << " rect=" << textRect.x << "," << textRect.y << " " << textRect.width << "x" << textRect.height << std::endl;
         if (GetPrimaryState() == ElementState::Pressed) {
-            ctx->DrawTextInRect(text, Rect2Df(textRect.x+1, textRect.y+1, textRect.width, textRect.height));
+            ctx->DrawTextInRect(text, Rect2Dd(textRect.x+1, textRect.y+1, textRect.width, textRect.height));
         } else {
             ctx->DrawTextInRect(text, textRect);
         }
@@ -646,7 +646,7 @@ namespace UltraCanvas {
 
     void UltraCanvasButton::DrawSplitButton(IRenderContext* ctx) {
         const SplitButtonStyle& split = style.splitStyle;
-        Rect2Di bounds = GetLocalBounds();
+        Rect2Df bounds = GetLocalBounds();
         finalBounds.width -= style.shadowOffset.x;
         finalBounds.height -= style.shadowOffset.y;
 
@@ -656,7 +656,7 @@ namespace UltraCanvas {
 
         // Draw shadow if enabled and not pressed
         if (style.hasShadow && GetPrimaryState() != ElementState::Pressed) {
-            Rect2Di shadowBounds = bounds;
+            Rect2Df shadowBounds = bounds;
             shadowBounds.x += style.shadowOffset.x;
             shadowBounds.y += style.shadowOffset.y;
 
@@ -664,20 +664,20 @@ namespace UltraCanvas {
                                      Colors::Transparent, style.cornerRadius);
         }
 
-        Rect2Di drawBounds = bounds;
+        Rect2Df drawBounds = bounds;
 
         // Draw primary and secondary sections
         if (split.horizontal) {
             // Draw primary section
-            Rect2Di primaryDraw = primarySectionRect;
+            Rect2Df primaryDraw = primarySectionRect;
             ctx->DrawFilledRectangle(primaryDraw, primaryBg, 0, Colors::Transparent, 0);
 
             // Draw secondary section
-            Rect2Di secondaryDraw = secondarySectionRect;
+            Rect2Df secondaryDraw = secondarySectionRect;
             ctx->DrawFilledRectangle(secondaryDraw, secondaryBg, 0, Colors::Transparent, 0);
         } else {
             // Vertical split
-            Rect2Di primaryDraw = primarySectionRect;
+            Rect2Df primaryDraw = primarySectionRect;
             if (GetPrimaryState() == ElementState::Pressed) {
                 primaryDraw.x += 1;
                 primaryDraw.y += 1;
@@ -685,7 +685,7 @@ namespace UltraCanvas {
             ctx->DrawFilledRectangle(primaryDraw, primaryBg, 0, Colors::Transparent,
                                      style.cornerRadius);
 
-            Rect2Di secondaryDraw = secondarySectionRect;
+            Rect2Df secondaryDraw = secondarySectionRect;
             ctx->DrawFilledRectangle(secondaryDraw, secondaryBg, 0, Colors::Transparent,
                                      style.cornerRadius);
         }
@@ -698,13 +698,13 @@ namespace UltraCanvas {
             if (split.horizontal) {
                 int separatorX = primarySectionRect.x + primarySectionRect.width;
                 if (GetPrimaryState() == ElementState::Pressed) separatorX += 1;
-                ctx->DrawLine(Point2Df(separatorX, drawBounds.y),
-                              Point2Df(separatorX, drawBounds.y + drawBounds.height));
+                ctx->DrawLine(Point2Dd(separatorX, drawBounds.y),
+                              Point2Dd(separatorX, drawBounds.y + drawBounds.height));
             } else {
                 int separatorY = primarySectionRect.y + primarySectionRect.height;
                 if (GetPrimaryState() == ElementState::Pressed) separatorY += 1;
-                ctx->DrawLine(Point2Df(drawBounds.x, separatorY),
-                              Point2Df(drawBounds.x + drawBounds.width, separatorY));
+                ctx->DrawLine(Point2Dd(drawBounds.x, separatorY),
+                              Point2Dd(drawBounds.x + drawBounds.width, separatorY));
             }
         }
 
@@ -719,7 +719,7 @@ namespace UltraCanvas {
 
             Size2Di textSize = ctx->GetTextLineDimensions(text);
 
-            Point2Df primaryTextPos;
+            Point2Dd primaryTextPos;
             if (HasIcon() && (iconPosition == ButtonIconPosition::Left || iconPosition == ButtonIconPosition::Right)) {
                 primaryTextPos.x = textRect.x;
                 primaryTextPos.y = textRect.y + (textRect.height - textSize.height) / 2;
@@ -747,7 +747,7 @@ namespace UltraCanvas {
 
             Size2Di textSize = ctx->GetTextLineDimensions(split.secondaryText);
 
-            Point2Df secondaryTextPos;
+            Point2Dd secondaryTextPos;
 
             // Position text based on whether there's an icon
             if (HasSecondaryIcon() && split.horizontal) {
@@ -789,7 +789,7 @@ namespace UltraCanvas {
     }
 
 // ===== MAIN RENDER METHOD =====
-    void UltraCanvasButton::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasButton::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         if (style.splitStyle.enabled) {
             DrawSplitButton(ctx);
         } else {
@@ -797,13 +797,13 @@ namespace UltraCanvas {
             Color bgColor, textColor;
             GetCurrentColors(bgColor, textColor);
 
-            Rect2Di bounds = GetLocalBounds();
+            Rect2Df bounds = GetLocalBounds();
             finalBounds.width -= style.shadowOffset.x;
             finalBounds.height -= style.shadowOffset.y;
 
             // Draw shadow if enabled and not pressed
             if (style.hasShadow && GetPrimaryState() != ElementState::Pressed) {
-                Rect2Di shadowBounds = bounds;
+                Rect2Df shadowBounds = bounds;
                 shadowBounds.x += style.shadowOffset.x;
                 shadowBounds.y += style.shadowOffset.y;
 

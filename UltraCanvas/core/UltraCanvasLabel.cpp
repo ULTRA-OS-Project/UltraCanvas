@@ -38,7 +38,7 @@ namespace UltraCanvas {
         return style;
     }
 
-    UltraCanvasLabel::UltraCanvasLabel(const std::string &identifier, long x, long y, long w, long h,
+    UltraCanvasLabel::UltraCanvasLabel(const std::string &identifier, float x, float y, float w, float h,
                                        const std::string &labelText)
             : UltraCanvasUIElement(identifier, x, y, w, h), text(labelText) {
 
@@ -47,7 +47,7 @@ namespace UltraCanvas {
         SetText(labelText);
     }
 
-    UltraCanvasLabel::UltraCanvasLabel(const std::string &identifier, long w, long h, const std::string &labelText)
+    UltraCanvasLabel::UltraCanvasLabel(const std::string &identifier, float w, float h, const std::string &labelText)
             : UltraCanvasUIElement(identifier, w, h), text(labelText) {
 
         // Initialize style
@@ -129,14 +129,14 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
-    int UltraCanvasLabel::GetPreferredWidth() {
+    float UltraCanvasLabel::GetPreferredWidth() {
         if (!textLayout) {
             UpdateGeometry(GetRenderContext());
         }
         return textLayout->GetLayoutWidth() + GetTotalPaddingHorizontal() + GetTotalBorderHorizontal();
     }
 
-    int UltraCanvasLabel::GetPreferredHeight() {
+    float UltraCanvasLabel::GetPreferredHeight() {
         if (!textLayout) {
             UpdateGeometry(GetRenderContext());
         }
@@ -227,7 +227,7 @@ namespace UltraCanvas {
     }
 
     // ===== SIZE CHANGES =====
-    void UltraCanvasLabel::SetBounds(const Rect2Di &bnds) {
+    void UltraCanvasLabel::SetBounds(const Rect2Df &bnds) {
         if (bnds != GetBounds()) {
             UltraCanvasUIElement::SetBounds(bnds);
             textLayout.reset();
@@ -265,7 +265,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasLabel::Render(IRenderContext *ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasLabel::Render(IRenderContext *ctx, const Rect2Df& dirtyRect) {
         UpdateGeometry(ctx);
 
         UltraCanvasUIElement::Render(ctx, dirtyRect);
@@ -287,13 +287,13 @@ namespace UltraCanvas {
 
 
     std::shared_ptr<UltraCanvasLabel>
-    CreateLabel(const std::string &identifier, long x, long y, long w, long h,
+    CreateLabel(const std::string &identifier, float x, float y, float w, float h,
                 const std::string &text) {
         return std::make_shared<UltraCanvasLabel>(identifier, x, y, w, h, text);
     }
 
     std::shared_ptr<UltraCanvasLabel>
-    CreateLabel(const std::string &identifier, long w, long h, const std::string &text) {
+    CreateLabel(const std::string &identifier, float w, float h, const std::string &text) {
         return std::make_shared<UltraCanvasLabel>(identifier, 0, 0, w, h, text);
     }
 
@@ -302,14 +302,14 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasLabel>
-    CreateAutoLabel(const std::string &identifier, long x, long y, const std::string &text) {
+    CreateAutoLabel(const std::string &identifier, float x, float y, const std::string &text) {
         auto label = std::make_shared<UltraCanvasLabel>(identifier, x, y, 100, 25, text);
         label->SetAutoResize(true);
         return label;
     }
 
     std::shared_ptr<UltraCanvasLabel>
-    CreateHeaderLabel(const std::string &identifier, long x, long y, long w, long h,
+    CreateHeaderLabel(const std::string &identifier, float x, float y, float w, float h,
                       const std::string &text) {
         auto label = CreateLabel(identifier, x, y, w, h, text);
         label->SetStyle(LabelStyle::HeaderStyle());
@@ -317,7 +317,7 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasLabel>
-    CreateStatusLabel(const std::string &identifier, long x, long y, long w, long h,
+    CreateStatusLabel(const std::string &identifier, float x, float y, float w, float h,
                       const std::string &text) {
         auto label = CreateLabel(identifier, x, y, w, h, text);
         label->SetStyle(LabelStyle::StatusStyle());
@@ -325,7 +325,7 @@ namespace UltraCanvas {
         return label;
     }
 
-    LabelBuilder::LabelBuilder(const std::string &identifier, long x, long y, long w, long h) {
+    LabelBuilder::LabelBuilder(const std::string &identifier, float x, float y, float w, float h) {
         label = CreateLabel(identifier, x, y, w, h);
     }
 

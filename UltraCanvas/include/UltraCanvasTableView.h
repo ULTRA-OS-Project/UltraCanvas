@@ -151,7 +151,7 @@ public:
     
     // ===== CONSTRUCTOR =====
     UltraCanvasTableView(const std::string& identifier = "TableView",
-                        long x = 0, long y = 0, long w = 400, long h = 300)
+                        float x = 0, float y = 0, float w = 400, float h = 300)
         : UltraCanvasUIElement(identifier, x, y, w, h) {
         
         UpdateScrollBounds();
@@ -549,7 +549,7 @@ public:
     };
 
     // ===== RENDERING =====
-    void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override {
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override {
         ctx->PushState();
         
 
@@ -1072,7 +1072,7 @@ private:
 
 // ===== FACTORY FUNCTIONS =====
 inline std::shared_ptr<UltraCanvasTableView> CreateTableView(
-    const std::string& identifier, long x, long y, long w, long h) {
+    const std::string& identifier, float x, float y, float w, float h) {
     return UltraCanvasUIElementFactory::Create<UltraCanvasTableView>(identifier, x, y, w, h);
 }
 
@@ -1084,7 +1084,7 @@ inline std::shared_ptr<UltraCanvasTableView> CreateTableView(
 
 // ===== CONVENIENCE FUNCTIONS =====
 inline std::shared_ptr<UltraCanvasTableView> CreateTableWithData(
-    const std::string& identifier, long x, long y, long w, long h,
+    const std::string& identifier, float x, float y, float w, float h,
     const std::vector<std::string>& headers, const std::vector<std::vector<std::string>>& data) {
     auto table = CreateTableView(identifier, x, y, w, h);
     table->SetTableData(headers, data);

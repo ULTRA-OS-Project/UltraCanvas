@@ -164,7 +164,7 @@ public:
     bool IsSelected() const { return selected; }
     Color GetColor() const { return color; }
     
-    void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override {
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override {
         if (!ctx || !IsVisible()) return;
         // Outer "selected" ring
         auto localBounds = GetLocalBounds();
@@ -1197,7 +1197,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
         //   world = (screen - bounds - pan) / zoom
         auto d = customState->diagram;
         float zoom = d->GetZoomLevel();
-        Point2Df pan = d->GetPanOffset();
+        Point2Dd pan = d->GetPanOffset();
         float screenCx = static_cast<float>(d->GetX() + d->GetWidth()  / 2);
         float screenCy = static_cast<float>(d->GetY() + d->GetHeight() / 2);
         float worldCx = (screenCx - d->GetX() - pan.x) / zoom;

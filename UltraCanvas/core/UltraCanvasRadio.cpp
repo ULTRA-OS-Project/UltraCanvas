@@ -10,7 +10,7 @@
 namespace UltraCanvas {
 
     UltraCanvasRadio::UltraCanvasRadio(const std::string& identifier,
-                                       long x, long y, long w, long h,
+                                       float x, float y, float w, float h,
                                        const std::string& labelText)
             : UltraCanvasLabeledToggleBase(identifier, x, y, w, h, labelText) {}
 
@@ -33,7 +33,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasRadio::DrawIndicator(IRenderContext* ctx) {
-        Point2Df center(indicatorRect.x + indicatorRect.width / 2.0f,
+        Point2Dd center(indicatorRect.x + indicatorRect.width / 2.0f,
                         indicatorRect.y + indicatorRect.height / 2.0f);
         float radius = indicatorRect.width / 2.0f;
 
@@ -50,7 +50,7 @@ namespace UltraCanvas {
 
     void UltraCanvasRadio::DrawFocusRingShape(IRenderContext* ctx) {
         const auto& base = visualStyle.base;
-        Point2Df center(indicatorRect.x + indicatorRect.width / 2.0f,
+        Point2Dd center(indicatorRect.x + indicatorRect.width / 2.0f,
                         indicatorRect.y + indicatorRect.height / 2.0f);
         float radius = indicatorRect.width / 2.0f + base.focusRingWidth;
         ctx->DrawFilledCircle(center, radius, base.focusRingColor,
@@ -59,7 +59,7 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasRadio> UltraCanvasRadio::Create(
             const std::string& identifier,
-            long x, long y,
+            float x, float y,
             const std::string& text, bool checked) {
         auto radio = std::make_shared<UltraCanvasRadio>(identifier, x, y, 150, 24, text);
         radio->SetChecked(checked);

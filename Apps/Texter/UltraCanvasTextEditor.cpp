@@ -1262,7 +1262,7 @@ namespace {
         // Layout is managed by fixed positioning
         // Components are positioned in their setup methods
     }
-    void UltraCanvasTextEditor::SetBounds(const Rect2Di& b) {
+    void UltraCanvasTextEditor::SetBounds(const Rect2Df& b) {
         UltraCanvasWindow::SetBounds(b);
         UpdateChildLayout();
     }
@@ -4154,7 +4154,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
 // ===== PUBLIC API =====
 
-    void UltraCanvasTextEditor::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasTextEditor::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         // Poll for async match count results
         //debugOutput << "UltraCanvasTextEditor::Render" << std::endl;
         if (matchCountReady.load()) {
@@ -4688,7 +4688,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         ctx->PushState();
         // Dark translucent background
         ctx->SetFillPaint(Color(0, 0, 0, 100));
-        ctx->FillRectangle(Rect2Df(0, 0, w, h));
+        ctx->FillRectangle(Rect2Dd(0, 0, w, h));
 
         // Central drop zone indicator
         int zoneMargin = 40;
@@ -4729,7 +4729,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
         // Document body
         ctx->SetFillPaint(accentColor);
-        ctx->FillRectangle(Rect2Df(iconCenterX - iconW / 2, iconCenterY - iconH / 2,
+        ctx->FillRectangle(Rect2Dd(iconCenterX - iconW / 2, iconCenterY - iconH / 2,
                         iconW, iconH));
 
         // Document fold corner (top-right triangle overlay)
@@ -4737,7 +4737,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         Color bgColor = isDarkTheme ? Color(0, 0, 0, 100) : Color(0, 0, 0, 100);
         ctx->SetFillPaint(bgColor);
         // Approximate triangle with a small rectangle overlay at top-right
-        ctx->FillRectangle(Rect2Df(iconCenterX + iconW / 2 - foldSize,
+        ctx->FillRectangle(Rect2Dd(iconCenterX + iconW / 2 - foldSize,
                         iconCenterY - iconH / 2,
                         foldSize, foldSize));
 
@@ -4747,7 +4747,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         int lineY = iconCenterY - iconH / 2 + 18;
         for (int i = 0; i < 4; i++) {
             int lineW = (i == 3) ? iconW - 20 : iconW - 12;
-            ctx->FillRectangle(Rect2Df(iconCenterX - iconW / 2 + 6, lineY, lineW, 2));
+            ctx->FillRectangle(Rect2Dd(iconCenterX - iconW / 2 + 6, lineY, lineW, 2));
             lineY += 8;
         }
 

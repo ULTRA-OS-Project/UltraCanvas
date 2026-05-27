@@ -534,14 +534,14 @@ bool UltraCanvasBlockDiagram::OnEvent(const UCEvent& event) {
 // RENDERING
 // =============================================================================
 
-void UltraCanvasBlockDiagram::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+void UltraCanvasBlockDiagram::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
     if (!ctx || !IsVisible()) return;
     
     ctx->PushState();
 
     // Clip to bounds (element-local 0-based coords)
     Rect2Di local = GetLocalBounds();
-    ctx->ClipRect(Rect2Df(local.x, local.y, local.width, local.height));
+    ctx->ClipRect(Rect2Dd(local.x, local.y, local.width, local.height));
 
     RenderBackground(ctx);
 
@@ -566,7 +566,7 @@ void UltraCanvasBlockDiagram::Render(IRenderContext* ctx, const Rect2Di& dirtyRe
 void UltraCanvasBlockDiagram::RenderBackground(IRenderContext* ctx) {
     Rect2Di local = GetLocalBounds();
     ctx->SetFillPaint(backgroundColor);
-    ctx->FillRectangle(Rect2Df(local.x, local.y, local.width, local.height));
+    ctx->FillRectangle(Rect2Dd(local.x, local.y, local.width, local.height));
 }
 
 void UltraCanvasBlockDiagram::RenderGrid(IRenderContext* ctx) {
@@ -635,14 +635,14 @@ void UltraCanvasBlockDiagram::RenderNode(IRenderContext* ctx, const BlockNode& n
     if (node.isSelected) {
         ctx->SetStrokePaint(Color(0, 120, 255, 255));
         ctx->SetStrokeWidth(3.0f / zoomLevel);
-        ctx->DrawRectangle(Rect2Df(node.x - 4, node.y - 4, node.width + 8, node.height + 8));
+        ctx->DrawRectangle(Rect2Dd(node.x - 4, node.y - 4, node.width + 8, node.height + 8));
     }
 
     // Hover indicator
     if (node.isHovered && !node.isSelected) {
         ctx->SetStrokePaint(Color(0, 120, 255, 128));
         ctx->SetStrokeWidth(2.0f / zoomLevel);
-        ctx->DrawRectangle(Rect2Df(node.x - 2, node.y - 2, node.width + 4, node.height + 4));
+        ctx->DrawRectangle(Rect2Dd(node.x - 2, node.y - 2, node.width + 4, node.height + 4));
     }
     
     ctx->PopState();
@@ -742,19 +742,19 @@ void UltraCanvasBlockDiagram::RenderNodeText(IRenderContext* ctx, const BlockNod
 // =============================================================================
 
 void UltraCanvasBlockDiagram::DrawRectangle(IRenderContext* ctx, const BlockNode& node) {
-    ctx->FillRectangle(Rect2Df(node.x, node.y, node.width, node.height));
-    ctx->DrawRectangle(Rect2Df(node.x, node.y, node.width, node.height));
+    ctx->FillRectangle(Rect2Dd(node.x, node.y, node.width, node.height));
+    ctx->DrawRectangle(Rect2Dd(node.x, node.y, node.width, node.height));
 }
 
 void UltraCanvasBlockDiagram::DrawRoundedRectangle(IRenderContext* ctx, const BlockNode& node) {
     float radius = std::min(node.width, node.height) * 0.15f;
-    ctx->FillRoundedRectangle(Rect2Df(node.x, node.y, node.width, node.height), radius);
-    ctx->DrawRoundedRectangle(Rect2Df(node.x, node.y, node.width, node.height), radius);
+    ctx->FillRoundedRectangle(Rect2Dd(node.x, node.y, node.width, node.height), radius);
+    ctx->DrawRoundedRectangle(Rect2Dd(node.x, node.y, node.width, node.height), radius);
 }
 
 void UltraCanvasBlockDiagram::DrawOval(IRenderContext* ctx, const BlockNode& node) {
-    ctx->FillEllipse(Rect2Df(node.x, node.y, node.width, node.height));
-    ctx->DrawEllipse(Rect2Df(node.x, node.y, node.width, node.height));
+    ctx->FillEllipse(Rect2Dd(node.x, node.y, node.width, node.height));
+    ctx->DrawEllipse(Rect2Dd(node.x, node.y, node.width, node.height));
 }
 
 void UltraCanvasBlockDiagram::DrawDiamond(IRenderContext* ctx, const BlockNode& node) {
@@ -763,7 +763,7 @@ void UltraCanvasBlockDiagram::DrawDiamond(IRenderContext* ctx, const BlockNode& 
     float halfW = node.width / 2;
     float halfH = node.height / 2;
     
-    std::vector<Point2Df> points = {
+    std::vector<Point2Dd> points = {
         {cx, node.y},           // Top
         {node.x + node.width, cy},  // Right
         {cx, node.y + node.height}, // Bottom
@@ -780,7 +780,7 @@ void UltraCanvasBlockDiagram::DrawHexagon(IRenderContext* ctx, const BlockNode& 
     float rx = node.width / 2;
     float ry = node.height / 2;
     
-    std::vector<Point2Df> points;
+    std::vector<Point2Dd> points;
     for (int i = 0; i < 6; i++) {
         float angle = (3.14159f / 3.0f) * i;
         points.push_back({
@@ -796,7 +796,7 @@ void UltraCanvasBlockDiagram::DrawHexagon(IRenderContext* ctx, const BlockNode& 
 void UltraCanvasBlockDiagram::DrawParallelogram(IRenderContext* ctx, const BlockNode& node) {
     float offset = node.width * 0.2f;
     
-    std::vector<Point2Df> points = {
+    std::vector<Point2Dd> points = {
         {node.x + offset, node.y},
         {node.x + node.width, node.y},
         {node.x + node.width - offset, node.y + node.height},
@@ -810,7 +810,7 @@ void UltraCanvasBlockDiagram::DrawParallelogram(IRenderContext* ctx, const Block
 void UltraCanvasBlockDiagram::DrawTriangle(IRenderContext* ctx, const BlockNode& node) {
     float cx = node.x + node.width / 2;
     
-    std::vector<Point2Df> points = {
+    std::vector<Point2Dd> points = {
         {cx, node.y},
         {node.x + node.width, node.y + node.height},
         {node.x, node.y + node.height}
@@ -826,7 +826,7 @@ void UltraCanvasBlockDiagram::DrawStar(IRenderContext* ctx, const BlockNode& nod
     float outerR = std::min(node.width, node.height) / 2;
     float innerR = outerR * 0.4f;
     
-    std::vector<Point2Df> points;
+    std::vector<Point2Dd> points;
     for (int i = 0; i < 10; i++) {
         float angle = (3.14159f / 5.0f) * i - 3.14159f / 2;
         float r = (i % 2 == 0) ? outerR : innerR;
@@ -844,11 +844,11 @@ void UltraCanvasBlockDiagram::DrawStickyNote(IRenderContext* ctx, const BlockNod
     float foldSize = std::min(node.width, node.height) * 0.15f;
 
     // Main rectangle
-    ctx->FillRectangle(Rect2Df(node.x, node.y, node.width - foldSize, node.height));
-    ctx->DrawRectangle(Rect2Df(node.x, node.y, node.width - foldSize, node.height));
+    ctx->FillRectangle(Rect2Dd(node.x, node.y, node.width - foldSize, node.height));
+    ctx->DrawRectangle(Rect2Dd(node.x, node.y, node.width - foldSize, node.height));
     
     // Folded corner
-    std::vector<Point2Df> fold = {
+    std::vector<Point2Dd> fold = {
         {node.x + node.width - foldSize, node.y},
         {node.x + node.width, node.y + foldSize},
         {node.x + node.width - foldSize, node.y + foldSize}
@@ -870,8 +870,8 @@ void UltraCanvasBlockDiagram::DrawActor(IRenderContext* ctx, const BlockNode& no
     float headY = node.y + headRadius + 5;
 
     // Head
-    ctx->FillEllipse(Rect2Df(cx - headRadius, headY - headRadius, headRadius * 2, headRadius * 2));
-    ctx->DrawEllipse(Rect2Df(cx - headRadius, headY - headRadius, headRadius * 2, headRadius * 2));
+    ctx->FillEllipse(Rect2Dd(cx - headRadius, headY - headRadius, headRadius * 2, headRadius * 2));
+    ctx->DrawEllipse(Rect2Dd(cx - headRadius, headY - headRadius, headRadius * 2, headRadius * 2));
 
     // Body
     float bodyTop = headY + headRadius;
@@ -898,16 +898,16 @@ void UltraCanvasBlockDiagram::DrawCloud(IRenderContext* ctx, const BlockNode& no
     float r2 = node.width * 0.3f;
     float r3 = node.width * 0.25f;
 
-    ctx->FillEllipse(Rect2Df(node.x + r1 - r1, cy - r1, r1 * 2, r1 * 2));
-    ctx->FillEllipse(Rect2Df(cx - r2, node.y + r2 - r2, r2 * 2, r2 * 2));
-    ctx->FillEllipse(Rect2Df(node.x + node.width - r3 - r3, cy - r3, r3 * 2, r3 * 2));
-    ctx->FillEllipse(Rect2Df(cx - r1, node.y + node.height - r1 - r1, r1 * 2, r1 * 2));
+    ctx->FillEllipse(Rect2Dd(node.x + r1 - r1, cy - r1, r1 * 2, r1 * 2));
+    ctx->FillEllipse(Rect2Dd(cx - r2, node.y + r2 - r2, r2 * 2, r2 * 2));
+    ctx->FillEllipse(Rect2Dd(node.x + node.width - r3 - r3, cy - r3, r3 * 2, r3 * 2));
+    ctx->FillEllipse(Rect2Dd(cx - r1, node.y + node.height - r1 - r1, r1 * 2, r1 * 2));
 
     // Border
-    ctx->DrawEllipse(Rect2Df(node.x + r1 - r1, cy - r1, r1 * 2, r1 * 2));
-    ctx->DrawEllipse(Rect2Df(cx - r2, node.y + r2 - r2, r2 * 2, r2 * 2));
-    ctx->DrawEllipse(Rect2Df(node.x + node.width - r3 - r3, cy - r3, r3 * 2, r3 * 2));
-    ctx->DrawEllipse(Rect2Df(cx - r1, node.y + node.height - r1 - r1, r1 * 2, r1 * 2));
+    ctx->DrawEllipse(Rect2Dd(node.x + r1 - r1, cy - r1, r1 * 2, r1 * 2));
+    ctx->DrawEllipse(Rect2Dd(cx - r2, node.y + r2 - r2, r2 * 2, r2 * 2));
+    ctx->DrawEllipse(Rect2Dd(node.x + node.width - r3 - r3, cy - r3, r3 * 2, r3 * 2));
+    ctx->DrawEllipse(Rect2Dd(cx - r1, node.y + node.height - r1 - r1, r1 * 2, r1 * 2));
 }
 
 // =============================================================================
@@ -950,7 +950,7 @@ void UltraCanvasBlockDiagram::DrawIsometric3DRectangle(IRenderContext* ctx, cons
     
     // 1. Draw shadow (bottom-right offset)
     ctx->SetFillPaint(shadow);
-    std::vector<Point2Df> shadowPoints = {
+    std::vector<Point2Dd> shadowPoints = {
         {node.x + dx, node.y + node.height + dy},
         {node.x + node.width + dx, node.y + node.height + dy},
         {node.x + node.width + dx * 2, node.y + node.height},
@@ -960,7 +960,7 @@ void UltraCanvasBlockDiagram::DrawIsometric3DRectangle(IRenderContext* ctx, cons
     
     // 2. Draw top face
     ctx->SetFillPaint(topFace);
-    std::vector<Point2Df> topPoints = {
+    std::vector<Point2Dd> topPoints = {
         {node.x, node.y},
         {node.x + node.width, node.y},
         {node.x + node.width + dx, node.y - dy},
@@ -973,7 +973,7 @@ void UltraCanvasBlockDiagram::DrawIsometric3DRectangle(IRenderContext* ctx, cons
     
     // 3. Draw right side face
     ctx->SetFillPaint(rightSide);
-    std::vector<Point2Df> rightPoints = {
+    std::vector<Point2Dd> rightPoints = {
         {node.x + node.width, node.y},
         {node.x + node.width + dx, node.y - dy},
         {node.x + node.width + dx, node.y + node.height - dy},
@@ -986,10 +986,10 @@ void UltraCanvasBlockDiagram::DrawIsometric3DRectangle(IRenderContext* ctx, cons
     
     // 4. Draw front face (main surface)
     ctx->SetFillPaint(frontFace);
-    ctx->FillRectangle(Rect2Df(node.x, node.y, node.width, node.height));
+    ctx->FillRectangle(Rect2Dd(node.x, node.y, node.width, node.height));
     ctx->SetStrokePaint(border);
     ctx->SetStrokeWidth(node.borderWidth);
-    ctx->DrawRectangle(Rect2Df(node.x, node.y, node.width, node.height));
+    ctx->DrawRectangle(Rect2Dd(node.x, node.y, node.width, node.height));
 }
 
 void UltraCanvasBlockDiagram::DrawIsometric3DRoundedRectangle(IRenderContext* ctx, const BlockNode& node) {
@@ -1109,8 +1109,8 @@ void UltraCanvasBlockDiagram::RenderConnection(IRenderContext* ctx, const BlockC
         float dist = std::sqrt(dx * dx + dy * dy);
         float curvature = dist * 0.3f;
         
-        Point2Df cp1 = {x1 + curvature, y1};
-        Point2Df cp2 = {x2 - curvature, y2};
+        Point2Dd cp1 = {x1 + curvature, y1};
+        Point2Dd cp2 = {x2 - curvature, y2};
         
         ctx->DrawBezierCurve({x1, y1}, cp1, cp2, {x2, y2});
         // Tangent at the end of a cubic Bezier is (P3 - P2)
@@ -1144,7 +1144,7 @@ void UltraCanvasBlockDiagram::RenderConnection(IRenderContext* ctx, const BlockC
 
         // Background
         ctx->SetFillPaint(conn.labelBackgroundColor);
-        ctx->FillRectangle(Rect2Df(labelX - textW/2.0f - 3, labelY - textH/2.0f - 2,
+        ctx->FillRectangle(Rect2Dd(labelX - textW/2.0f - 3, labelY - textH/2.0f - 2,
                                     static_cast<float>(textW) + 6, static_cast<float>(textH) + 4));
 
         // Text

@@ -212,10 +212,10 @@ void UltraCanvasVennDiagramElement::ApplyTwoCircleLayout(double centerX, double 
     
     double overlap = radius * 0.35f;
     
-    circles[0].center = Point2Df(centerX - overlap, centerY);
+    circles[0].center = Point2Dd(centerX - overlap, centerY);
     circles[0].radius = radius;
     
-    circles[1].center = Point2Df(centerX + overlap, centerY);
+    circles[1].center = Point2Dd(centerX + overlap, centerY);
     circles[1].radius = radius;
 }
 
@@ -225,16 +225,16 @@ void UltraCanvasVennDiagramElement::ApplyThreeCircleLayout(double centerX, doubl
     double angle120 = 2.0f * M_PI / 3.0f;
     double offsetDistance = radius * 0.55f;
     
-    circles[0].center = Point2Df(centerX, centerY - offsetDistance);
+    circles[0].center = Point2Dd(centerX, centerY - offsetDistance);
     circles[0].radius = radius;
     
-    circles[1].center = Point2Df(
+    circles[1].center = Point2Dd(
         centerX + offsetDistance * cos(angle120 + M_PI/2), 
         centerY + offsetDistance * sin(angle120 + M_PI/2)
     );
     circles[1].radius = radius;
     
-    circles[2].center = Point2Df(
+    circles[2].center = Point2Dd(
         centerX + offsetDistance * cos(2 * angle120 + M_PI/2),
         centerY + offsetDistance * sin(2 * angle120 + M_PI/2)
     );
@@ -247,16 +247,16 @@ void UltraCanvasVennDiagramElement::ApplyFourCircleLayout(double centerX, double
     double offset = radius * 0.65f;
     double adjustedRadius = radius * 0.85f;
     
-    circles[0].center = Point2Df(centerX - offset, centerY - offset);
+    circles[0].center = Point2Dd(centerX - offset, centerY - offset);
     circles[0].radius = adjustedRadius;
     
-    circles[1].center = Point2Df(centerX + offset, centerY - offset);
+    circles[1].center = Point2Dd(centerX + offset, centerY - offset);
     circles[1].radius = adjustedRadius;
     
-    circles[2].center = Point2Df(centerX - offset, centerY + offset);
+    circles[2].center = Point2Dd(centerX - offset, centerY + offset);
     circles[2].radius = adjustedRadius;
     
-    circles[3].center = Point2Df(centerX + offset, centerY + offset);
+    circles[3].center = Point2Dd(centerX + offset, centerY + offset);
     circles[3].radius = adjustedRadius;
 }
 
@@ -268,7 +268,7 @@ void UltraCanvasVennDiagramElement::ApplyFiveCircleLayout(double centerX, double
     
     for (size_t i = 0; i < 5; ++i) {
         double angle = (i * 2.0f * M_PI / 5.0f) - M_PI/2;
-        circles[i].center = Point2Df(
+        circles[i].center = Point2Dd(
             centerX + pentagonRadius * cos(angle),
             centerY + pentagonRadius * sin(angle)
         );
@@ -331,7 +331,7 @@ void UltraCanvasVennDiagramElement::RecalculateRegions() {
     }
 }
 
-std::vector<size_t> UltraCanvasVennDiagramElement::FindCirclesContainingPoint(const Point2Df& point) const {
+std::vector<size_t> UltraCanvasVennDiagramElement::FindCirclesContainingPoint(const Point2Dd& point) const {
     std::vector<size_t> containingCircles;
     
     for (size_t i = 0; i < circles.size(); ++i) {
@@ -343,9 +343,9 @@ std::vector<size_t> UltraCanvasVennDiagramElement::FindCirclesContainingPoint(co
     return containingCircles;
 }
 
-Point2Df UltraCanvasVennDiagramElement::CalculateRegionLabelPosition(const std::vector<size_t>& circleIndices) const {
+Point2Dd UltraCanvasVennDiagramElement::CalculateRegionLabelPosition(const std::vector<size_t>& circleIndices) const {
     if (circleIndices.empty()) {
-        return Point2Df(GetWidth() * 0.1f, GetHeight() * 0.1f);
+        return Point2Dd(GetWidth() * 0.1f, GetHeight() * 0.1f);
     }
     
     if (circleIndices.size() == 1) {
@@ -358,11 +358,11 @@ Point2Df UltraCanvasVennDiagramElement::CalculateRegionLabelPosition(const std::
         sumY += circles[idx].center.y;
     }
     
-    return Point2Df(sumX / circleIndices.size(), sumY / circleIndices.size());
+    return Point2Dd(sumX / circleIndices.size(), sumY / circleIndices.size());
 }
 
 // ===== RENDERING IMPLEMENTATION =====
-void UltraCanvasVennDiagramElement::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+void UltraCanvasVennDiagramElement::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         RenderChart(ctx);
 }
 
@@ -446,7 +446,7 @@ void UltraCanvasVennDiagramElement::RenderLabels(IRenderContext* ctx) {
             labelText += " (" + std::to_string(circle.items.size()) + ")";
         }
         
-        ctx->DrawText(labelText, Point2Df(labelX, labelY));
+        ctx->DrawText(labelText, Point2Dd(labelX, labelY));
     }
 }
 
@@ -515,7 +515,7 @@ bool UltraCanvasVennDiagramElement::HandleChartMouseMove(const Point2Di& mousePo
 }
 
 bool UltraCanvasVennDiagramElement::HandleMouseDown(const Point2Di& mousePos) {
-    Point2Df localPos(mousePos.x, mousePos.y);
+    Point2Dd localPos(mousePos.x, mousePos.y);
     
     size_t circleIndex = FindCircleAtPoint(localPos);
     if (circleIndex != SIZE_MAX) {
@@ -569,7 +569,7 @@ bool UltraCanvasVennDiagramElement::OnEvent(const UCEvent& event) {
 
 // ===== UTILITY METHODS =====
 
-size_t UltraCanvasVennDiagramElement::FindCircleAtPoint(const Point2Df& point) const {
+size_t UltraCanvasVennDiagramElement::FindCircleAtPoint(const Point2Dd& point) const {
     for (size_t i = 0; i < circles.size(); ++i) {
         if (circles[i].Contains(point)) {
             return i;
@@ -578,7 +578,7 @@ size_t UltraCanvasVennDiagramElement::FindCircleAtPoint(const Point2Df& point) c
     return SIZE_MAX;
 }
 
-size_t UltraCanvasVennDiagramElement::FindRegionAtPoint(const Point2Df& point) const {
+size_t UltraCanvasVennDiagramElement::FindRegionAtPoint(const Point2Dd& point) const {
     std::vector<size_t> containingCircles = FindCirclesContainingPoint(point);
     
     size_t regionMask = 0;

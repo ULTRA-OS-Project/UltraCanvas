@@ -154,7 +154,7 @@ public:
 
     // Helper function to create buttons using proper API
     std::shared_ptr<UltraCanvasButton> CreateButton(const std::string& id,
-                                                    long x, long y, long w, long h,
+                                                    float x, float y, float w, float h,
                                                     const std::string& text) {
         try {
             auto button = std::make_shared<UltraCanvasButton>(id, x, y, w, h);

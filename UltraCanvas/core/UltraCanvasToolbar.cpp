@@ -363,7 +363,7 @@ namespace UltraCanvas {
 // ===== MAIN TOOLBAR IMPLEMENTATION =====
 
     UltraCanvasToolbar::UltraCanvasToolbar(const std::string& identifier,
-                                           long x, long y, long width, long height)
+                                           float x, float y, float width, float height)
             : UltraCanvasContainer(identifier, x, y, width, height) {
 
         // Set default background color and border
@@ -630,7 +630,7 @@ namespace UltraCanvas {
 
 // ===== RENDERING =====
 
-    void UltraCanvasToolbar::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasToolbar::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         // Render shadow if enabled (for Docked style)
         if (appearance.hasShadow) {
             RenderShadow(ctx);

@@ -430,11 +430,11 @@ namespace UltraCanvas {
         void PromptCrashRecovery();
 
         // ===== RENDERING =====
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;
-        void SetBounds(const Rect2Di& b) override;
+        void SetBounds(const Rect2Df& b) override;
         // ===== FILE OPERATIONS (PUBLIC API) =====
 
         /**

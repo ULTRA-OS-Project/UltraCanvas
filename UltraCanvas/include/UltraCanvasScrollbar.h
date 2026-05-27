@@ -298,9 +298,9 @@ namespace UltraCanvas {
         Rect2Di GetTrackRect() const { return trackRect; }
         Rect2Di GetThumbRect() const { return thumbRect; }
 
-        void SetBounds(const Rect2Di& b) override;
+        void SetBounds(const Rect2Df& b) override;
         // ===== RENDERING =====
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;

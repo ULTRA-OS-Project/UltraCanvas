@@ -75,7 +75,7 @@ namespace UltraCanvas {
         needsUpdateGeometry = false;
     }
 
-    void UltraCanvasContainer::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasContainer::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         UltraCanvasUIElement::Render(ctx, dirtyRect);
 
         auto ca = GetContentArea();
@@ -236,8 +236,8 @@ namespace UltraCanvas {
             rect.height -= style.scrollbarStyle.trackSize;
         }
 
-        rect.width  = std::max(0, rect.width);
-        rect.height = std::max(0, rect.height);
+        rect.width  = std::max(0.0f, rect.width);
+        rect.height = std::max(0.0f, rect.height);
         return rect;
     }
 
@@ -543,7 +543,7 @@ namespace UltraCanvas {
         InvalidateLayout();
     }
 
-    void UltraCanvasContainer::SetBounds(const Rect2Di& bounds) {
+    void UltraCanvasContainer::SetBounds(const Rect2Df& bounds) {
         UltraCanvasUIElement::SetBounds(bounds);
         InvalidateLayout();
     }

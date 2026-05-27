@@ -234,7 +234,7 @@ namespace UltraCanvas {
         std::function<void(int)> onItemHovered;
 
         // ===== CONSTRUCTORS =====
-        UltraCanvasMenu(const std::string& identifier, long x, long y, long w, long h)
+        UltraCanvasMenu(const std::string& identifier, float x, float y, float w, float h)
                 : UltraCanvasUIElement(identifier, x, y, w, h) {
             style = MenuStyle::Default();
         }
@@ -244,7 +244,7 @@ namespace UltraCanvas {
         }
 
         // ===== CORE RENDERING =====
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         void UpdateGeometry(IRenderContext *ctx) override;
 
         // ===== EVENT HANDLING =====
@@ -303,7 +303,7 @@ namespace UltraCanvas {
         int GetItemX(int index) const;
         int GetItemY(int index) const;
 
-        bool ContainsInWindow(const Point2Di& point) override;
+        bool ContainsInWindow(const Point2Df& point) override;
 
     protected:
         void OnPopupClosed(ClosePopupReason reason) override;
@@ -374,13 +374,13 @@ namespace UltraCanvas {
 // Rest of the file remains the same (factory functions, builder pattern, etc.)
 // ===== FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasMenu> CreateMenu(
-            const std::string& identifier, long x, long y, long w, long h) {
+            const std::string& identifier, float x, float y, float w, float h) {
         return UltraCanvasUIElementFactory::Create<UltraCanvasMenu>(
                 identifier, x, y, w, h);
     }
 
     inline std::shared_ptr<UltraCanvasMenu> CreateMenuBar(
-            const std::string& identifier, long x, long y, long w) {
+            const std::string& identifier, float x, float y, float w) {
         auto menu = CreateMenu(identifier, x, y, w, 32);
         menu->SetMenuType(MenuType::Menubar);
         return menu;
@@ -392,7 +392,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasMenu> menu;
 
     public:
-        MenuBuilder(const std::string& identifier, long x, long y, long w = 150, long h = 100) {
+        MenuBuilder(const std::string& identifier, float x, float y, float w = 150, float h = 100) {
             menu = CreateMenu(identifier, x, y, w, h);
         }
 

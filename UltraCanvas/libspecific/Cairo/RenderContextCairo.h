@@ -92,7 +92,7 @@ namespace UltraCanvas {
 
         bool ResizeSurface(const Size2Di& sz) override;
         Size2Di GetSurfaceSize() const override { return surfaceSize; }
-        void FlushToSurface(NativeSurfacePtr flushToSurface, const Point2Df& pos) override;
+        void FlushToSurface(NativeSurfacePtr flushToSurface, const Point2Dd& pos) override;
         float GetDeviceScale() const override {
             if (!surface) return 1.0f;
             double sx = 1.0, sy = 1.0;
@@ -117,9 +117,9 @@ namespace UltraCanvas {
         // Clipping
 //        void SetClipRect(float x, float y, float w, float h) override;
         void ClearClipRect() override;
-        void ClipRect(const Rect2Df& rect) override;
+        void ClipRect(const Rect2Dd& rect) override;
         void ClipRoundedRectangle(
-                const Rect2Df& rect,
+                const Rect2Dd& rect,
                 double borderTopLeftRadius, double borderTopRightRadius,
                 double borderBottomRightRadius, double borderBottomLeftRadius) override;
         void ClipPath() override;
@@ -164,12 +164,12 @@ namespace UltraCanvas {
         void SetCurrentPaint(std::shared_ptr<IPaintPattern> pattern) override;
 
         // Basic drawing
-        void DrawLine(const Point2Df& from, const Point2Df& to) override;
-        void DrawRectangle(const Rect2Df& rect) override;
-        void FillRectangle(const Rect2Df& rect) override;
-        void DrawRoundedRectangle(const Rect2Df & rect, double radius) override;
-        void FillRoundedRectangle(const Rect2Df & rect, double radius) override;
-        void DrawRoundedRectangleWidthBorders(const Rect2Df & rect,
+        void DrawLine(const Point2Dd& from, const Point2Dd& to) override;
+        void DrawRectangle(const Rect2Dd& rect) override;
+        void FillRectangle(const Rect2Dd& rect) override;
+        void DrawRoundedRectangle(const Rect2Dd & rect, double radius) override;
+        void FillRoundedRectangle(const Rect2Dd & rect, double radius) override;
+        void DrawRoundedRectangleWidthBorders(const Rect2Dd & rect,
                                               bool fill,
                                               double borderLeftWidth, double borderRightWidth,
                                               double borderTopWidth, double borderBottomWidth,
@@ -181,15 +181,15 @@ namespace UltraCanvas {
                                               const UCDashPattern& borderRightPattern,
                                               const UCDashPattern& borderTopPattern,
                                               const UCDashPattern& borderBottomPattern) override;
-        void DrawCircle(const Point2Df& center, double radius) override;
-        void FillCircle(const Point2Df& center, double radius) override;
-        void DrawEllipse(const Rect2Df& rect) override;
-        void FillEllipse(const Rect2Df& rect) override;
+        void DrawCircle(const Point2Dd& center, double radius) override;
+        void FillCircle(const Point2Dd& center, double radius) override;
+        void DrawEllipse(const Rect2Dd& rect) override;
+        void FillEllipse(const Rect2Dd& rect) override;
         void DrawArc(double x, double y, double radius, double startAngle, double endAngle) override;
         void FillArc(double x, double y, double radius, double startAngle, double endAngle) override;
-        void DrawBezierCurve(const Point2Df &start, const Point2Df &cp1, const Point2Df &cp2, const Point2Df &end) override;
-        void DrawLinePath(const std::vector<Point2Df> &points, bool closePath) override;
-        void FillLinePath(const std::vector<Point2Df> &points) override;
+        void DrawBezierCurve(const Point2Dd &start, const Point2Dd &cp1, const Point2Dd &cp2, const Point2Dd &end) override;
+        void DrawLinePath(const std::vector<Point2Dd> &points, bool closePath) override;
+        void FillLinePath(const std::vector<Point2Dd> &points) override;
 
         // path functions
         void ClearPath() override;
@@ -208,7 +208,7 @@ namespace UltraCanvas {
         void RoundedRect(double x, double y, double width, double height, double radius) override;
         void Circle(double x, double y, double radius) override;
 
-        Rect2Df GetPathExtents() override;
+        Rect2Dd GetPathExtents() override;
         void StrokePathPreserve() override;
         void FillPathPreserve() override;
         void FillText(const std::string& text, double x, double y) override;
@@ -220,16 +220,16 @@ namespace UltraCanvas {
         std::unique_ptr<ITextLayout> CreateTextLayout(const std::string& text, bool isMarkup) override;
         std::shared_ptr<ITextLayout> GetOrCreateTextLayout(const std::string& text, const Size2Di& sz, bool isMarkup) override;
 
-        void DrawTextLayout(ITextLayout &layout, const Point2Df &pos) override;
-        void DrawText(const std::string &text, const Point2Df &pos) override;
-        void DrawTextInRect(const std::string &text, const Rect2Df &rect) override;
+        void DrawTextLayout(ITextLayout &layout, const Point2Dd &pos) override;
+        void DrawText(const std::string &text, const Point2Dd &pos) override;
+        void DrawTextInRect(const std::string &text, const Rect2Dd &rect) override;
         Size2Di GetTextDimensions(const std::string &text, const Size2Di& explicitSize) override;
         int GetTextIndexForXY(const std::string &text, int x, int y, int w = 0, int h = 0) override;
 
         // Image rendering
-        void DrawPartOfPixmap(UCPixmap & pixmap, const Rect2Df &srcRect, const Rect2Df &destRect) override;
-        void DrawPixmap(UCPixmap& pixmap, const Rect2Df& rect, ImageFitMode fitMode) override;
-        void DrawMask(const Color& drawColor, UCPixmap& mask, const Rect2Df& rect, ImageFitMode fitMode) override;
+        void DrawPartOfPixmap(UCPixmap & pixmap, const Rect2Dd &srcRect, const Rect2Dd &destRect) override;
+        void DrawPixmap(UCPixmap& pixmap, const Rect2Dd& rect, ImageFitMode fitMode) override;
+        void DrawMask(const Color& drawColor, UCPixmap& mask, const Rect2Dd& rect, ImageFitMode fitMode) override;
 
         // ===== ENHANCED IMAGE RENDERING METHODS =====
 //        void DrawImageWithFilter(const std::string &imagePath, float x, float y, float w, float h,

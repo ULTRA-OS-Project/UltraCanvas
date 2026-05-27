@@ -173,7 +173,7 @@ namespace UltraCanvas {
         std::function<void(const DocumentTypeInfo*)> onSelectionChanged;
 
         // ===== RENDERING =====
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;

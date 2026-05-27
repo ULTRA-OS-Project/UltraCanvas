@@ -25,7 +25,7 @@ namespace UltraCanvas {
                        : UCMouseCursor::SizeNS);
     }
 
-    void UltraCanvasSplitter::Render(IRenderContext* ctx, const Rect2Di& /*dirtyRect*/) {
+    void UltraCanvasSplitter::Render(IRenderContext* ctx, const Rect2Df& /*dirtyRect*/) {
         if (!style.showSplitterBackground) return;
 
         Color fill = style.splitterColor;
@@ -33,7 +33,7 @@ namespace UltraCanvas {
         else if (IsHovered()) fill = style.splitterHoverColor;
 
         ctx->SetFillPaint(fill);
-        ctx->FillRectangle(Rect2Df(0, 0, GetWidth(), GetHeight()));
+        ctx->FillRectangle(Rect2Dd(0, 0, GetWidth(), GetHeight()));
     }
 
     bool UltraCanvasSplitter::OnEvent(const UCEvent& event) {
@@ -96,7 +96,7 @@ namespace UltraCanvas {
 // UltraCanvasSplitPane
 // =====================================================================
 
-    UltraCanvasSplitPane::UltraCanvasSplitPane(const std::string& id, long x, long y, long w, long h,
+    UltraCanvasSplitPane::UltraCanvasSplitPane(const std::string& id, float x, float y, float w, float h,
                                                SplitOrientation orient)
             : UltraCanvasContainer(id, x, y, w, h),
               orientation(orient) {
@@ -107,7 +107,7 @@ namespace UltraCanvas {
         SetContainerStyle(cs);
     }
 
-    void UltraCanvasSplitPane::SetBounds(const Rect2Di& b) {
+    void UltraCanvasSplitPane::SetBounds(const Rect2Df& b) {
         UltraCanvasContainer::SetBounds(b);
         InvalidateLayout();
     }

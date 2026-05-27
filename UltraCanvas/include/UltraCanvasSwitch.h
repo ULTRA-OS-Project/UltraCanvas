@@ -88,25 +88,25 @@ namespace UltraCanvas {
 
         // Computes the track sub-rect inside indicatorRect (which may include
         // outside-track label space along the long axis).
-        Rect2Df GetTrackRect() const;
+        Rect2Dd GetTrackRect() const;
 
         // Conservative width estimate for an outside-track label (in long-axis pixels).
         float EstimateStateLabelExtent() const;
 
-        void DrawThumbIcon(IRenderContext* ctx, const Point2Df& thumbCenter, float thumbRadius);
-        void DrawStateLabelInsideTrack(IRenderContext* ctx, const Rect2Df& track);
-        void DrawStateLabelOutsideTrack(IRenderContext* ctx, const Rect2Df& track);
+        void DrawThumbIcon(IRenderContext* ctx, const Point2Dd& thumbCenter, float thumbRadius);
+        void DrawStateLabelInsideTrack(IRenderContext* ctx, const Rect2Dd& track);
+        void DrawStateLabelOutsideTrack(IRenderContext* ctx, const Rect2Dd& track);
 
     protected:
         void DrawIndicator(IRenderContext* ctx) override;
-        Size2Df GetIndicatorSize() const override;
+        Size2Dd GetIndicatorSize() const override;
         void OnActivate() override { Toggle(); }
         const LabeledToggleVisualStyle& GetBaseVisualStyle() const override { return visualStyle.base; }
         void DrawFocusRingShape(IRenderContext* ctx) override;
 
     public:
         UltraCanvasSwitch(const std::string& identifier = "",
-                          long x = 0, long y = 0, long w = 200, long h = 30,
+                          float x = 0, float y = 0, float w = 200, float h = 30,
                           const std::string& labelText = "");
         ~UltraCanvasSwitch() override = default;
 
@@ -147,7 +147,7 @@ namespace UltraCanvas {
         // ===== FACTORY =====
         static std::shared_ptr<UltraCanvasSwitch> Create(
                 const std::string& identifier,
-                long x, long y,
+                float x, float y,
                 const std::string& text = "",
                 bool checked = false);
     };

@@ -53,7 +53,7 @@ namespace UltraCanvas {
 
     public:
         // ===== CONSTRUCTOR & DESTRUCTOR =====
-        UltraCanvasContainer(const std::string &id, long x, long y, long w, long h)
+        UltraCanvasContainer(const std::string &id, float x, float y, float w, float h)
                 : UltraCanvasUIElement(id, x, y, w, h) {
             CreateScrollbars();
         }
@@ -105,7 +105,7 @@ namespace UltraCanvas {
         Rect2Di GetVisibleChildBounds(const Rect2Di &childBounds);
         bool IsChildVisible(UltraCanvasUIElement *child);
 
-        void SetBounds(const Rect2Di &bounds) override;
+        void SetBounds(const Rect2Df &bounds) override;
 
         Rect2Di GetContentArea(); // zero based rectangle without container offset
 
@@ -137,7 +137,7 @@ namespace UltraCanvas {
         bool IsLayoutDirty() const { return layoutDirty; }
 
         // ===== OVERRIDDEN ELEMENT METHODS =====
-        void Render(IRenderContext *ctx, const Rect2Di &dirtyRect) override;
+        void Render(IRenderContext *ctx, const Rect2Df&dirtyRect) override;
         void UpdateGeometry(IRenderContext *ctx) override;
 
         bool OnEvent(const UCEvent &event) override;
@@ -174,12 +174,12 @@ namespace UltraCanvas {
 
 // ===== ENHANCED FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasContainer> CreateContainer(
-            const std::string& id, long x = 0, long y = 0, long w = 0, long h = 0) {
+            const std::string& id, float x = 0, float y = 0, float w = 0, float h = 0) {
         return std::make_shared<UltraCanvasContainer>(id, x, y, w, h);
     }
 
     inline std::shared_ptr<UltraCanvasContainer> CreateScrollableContainer(
-            const std::string& id, long x, long y, long w, long h,
+            const std::string& id, float x, float y, float w, float h,
             bool enableVertical = true, bool enableHorizontal = false) {
         auto container = std::make_shared<UltraCanvasContainer>(id, x, y, w, h);
 

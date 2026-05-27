@@ -120,7 +120,7 @@ namespace UltraCanvas {
     class UltraCanvasSlideshow : public UltraCanvasContainer {
     public:
         UltraCanvasSlideshow(const std::string& identifier = "Slideshow",
-                             long x = 0, long y = 0, long w = 800, long h = 450);
+                             float x = 0, float y = 0, float w = 800, float h = 450);
         ~UltraCanvasSlideshow() override;
 
         // ===== CONFIGURATION =====
@@ -152,7 +152,7 @@ namespace UltraCanvas {
         std::function<void(size_t)> onSlideChanged;
 
         // ===== OVERRIDES =====
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         bool OnEvent(const UCEvent& event) override;
 
     private:
@@ -224,7 +224,7 @@ namespace UltraCanvas {
 
         // One image-fade pass, with opacity already chosen by caller
         void DrawSlideAt(IRenderContext* ctx, size_t slideIdx,
-                         const Rect2Df& rect, float alpha,
+                         const Rect2Dd& rect, float alpha,
                          float horizontalOffsetPx);
 
         std::string LabelForSlide(size_t idx) const;
@@ -232,7 +232,7 @@ namespace UltraCanvas {
 
     // ===== FACTORY =====
     inline std::shared_ptr<UltraCanvasSlideshow> CreateSlideshow(
-            const std::string& identifier, long x, long y, long w, long h) {
+            const std::string& identifier, float x, float y, float w, float h) {
         return std::make_shared<UltraCanvasSlideshow>(identifier, x, y, w, h);
     }
 

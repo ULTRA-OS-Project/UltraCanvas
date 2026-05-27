@@ -7,8 +7,8 @@
 #include "UltraCanvasTooltipManager.h"
 
 namespace UltraCanvas {
-    UltraCanvasSankeyDiagram::UltraCanvasSankeyDiagram(const std::string &id, long x, long y,
-                                                       long w, long h)
+    UltraCanvasSankeyDiagram::UltraCanvasSankeyDiagram(const std::string &id, float x, float y,
+                                                       float w, float h)
             : UltraCanvasUIElement(id, x, y, w, h) {
         nodeWidth = 15.0f;  // Slightly thinner to give more space for labels
         nodePadding = 8.0f;
@@ -235,7 +235,7 @@ namespace UltraCanvas {
         needsLayout = false;
     }
 
-    void UltraCanvasSankeyDiagram::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasSankeyDiagram::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         if (!IsVisible()) return;
 
         auto bounds = GetLocalBounds();
@@ -729,13 +729,13 @@ namespace UltraCanvas {
     void UltraCanvasSankeyDiagram::DrawNode(IRenderContext *ctx, const SankeyNode &node) {
         // Draw node rectangle
         ctx->SetFillPaint(node.color);
-        ctx->FillRectangle(Rect2Df(node.x, node.y, nodeWidth, node.height));
+        ctx->FillRectangle(Rect2Dd(node.x, node.y, nodeWidth, node.height));
 
         // Draw node border
         if (style.nodeStrokeWidth > 0) {
             ctx->SetStrokePaint(style.nodeStrokeColor);
             ctx->SetStrokeWidth(style.nodeStrokeWidth);
-            ctx->DrawRectangle(Rect2Df(node.x, node.y, nodeWidth, node.height));
+            ctx->DrawRectangle(Rect2Dd(node.x, node.y, nodeWidth, node.height));
         }
 
         // Draw label

@@ -153,7 +153,7 @@ void UltraCanvasTreeMapElement::HighlightNode(std::shared_ptr<TreeMapNode> node)
     RequestRedraw();
 }
 
-void UltraCanvasTreeMapElement::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+void UltraCanvasTreeMapElement::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
 
     RenderCommonBackground(ctx);
     RenderChart(ctx);
@@ -231,7 +231,7 @@ bool UltraCanvasTreeMapElement::HandleChartMouseMove(const Point2Di& mousePos) {
 void UltraCanvasTreeMapElement::RecalculateLayout() {
     if (!currentNode || currentNode->children.empty()) return;
     
-    Rect2Df availableArea = GetPlotArea();
+    Rect2Dd availableArea = GetPlotArea();
     
     switch (algorithm) {
         case TreeMapAlgorithm::Squarified:
@@ -253,7 +253,7 @@ void UltraCanvasTreeMapElement::RecalculateLayout() {
 }
 
 void UltraCanvasTreeMapElement::CalculateSquarifiedLayout(
-    std::vector<std::shared_ptr<TreeMapNode>>& nodes, const Rect2Df& area) {
+    std::vector<std::shared_ptr<TreeMapNode>>& nodes, const Rect2Dd& area) {
     
     if (nodes.empty()) return;
     
@@ -266,7 +266,7 @@ void UltraCanvasTreeMapElement::CalculateSquarifiedLayout(
 
 void UltraCanvasTreeMapElement::SquarifyRecursive(
     std::vector<std::shared_ptr<TreeMapNode>>& nodes, size_t start, 
-    const Rect2Df& area, double length) {
+    const Rect2Dd& area, double length) {
     
     if (start >= nodes.size()) return;
     
@@ -293,14 +293,14 @@ void UltraCanvasTreeMapElement::SquarifyRecursive(
     LayoutRow(row, area, totalValue);
     
     if (i < nodes.size()) {
-        Rect2Df remainingArea = CalculateRemainingArea(area, row, totalValue);
+        Rect2Dd remainingArea = CalculateRemainingArea(area, row, totalValue);
         double newLength = std::min(remainingArea.width, remainingArea.height);
         SquarifyRecursive(nodes, i, remainingArea, newLength);
     }
 }
 
 void UltraCanvasTreeMapElement::CalculateSliceAndDiceLayout(
-    std::vector<std::shared_ptr<TreeMapNode>>& nodes, const Rect2Df& area, int depth) {
+    std::vector<std::shared_ptr<TreeMapNode>>& nodes, const Rect2Dd& area, int depth) {
     
     if (nodes.empty()) return;
     
@@ -320,10 +320,10 @@ void UltraCanvasTreeMapElement::CalculateSliceAndDiceLayout(
         double size = availableSize * proportion;
         
         if (horizontal) {
-            node->bounds = Rect2Df(currentPos, area.y, size - padding, area.height);
+            node->bounds = Rect2Dd(currentPos, area.y, size - padding, area.height);
             currentPos += size;
         } else {
-            node->bounds = Rect2Df(area.x, currentPos, area.width, size - padding);
+            node->bounds = Rect2Dd(area.x, currentPos, area.width, size - padding);
             currentPos += size;
         }
         
@@ -333,7 +333,7 @@ void UltraCanvasTreeMapElement::CalculateSliceAndDiceLayout(
 }
 
 void UltraCanvasTreeMapElement::CalculateStripLayout(
-    std::vector<std::shared_ptr<TreeMapNode>>& nodes, const Rect2Df& area) {
+    std::vector<std::shared_ptr<TreeMapNode>>& nodes, const Rect2Dd& area) {
     
     double totalValue = 0.0f;
     for (const auto& node : nodes) {
@@ -347,7 +347,7 @@ void UltraCanvasTreeMapElement::CalculateStripLayout(
         double proportion = node->GetTotalValue() / totalValue;
         double height = area.height * proportion - padding;
         
-        node->bounds = Rect2Df(area.x, currentY, area.width, height);
+        node->bounds = Rect2Dd(area.x, currentY, area.width, height);
         currentY += height + padding;
         
         if (node->bounds.height < minRectSize) node->bounds.height = minRectSize;
@@ -355,9 +355,9 @@ void UltraCanvasTreeMapElement::CalculateStripLayout(
 }
 
 void UltraCanvasTreeMapElement::CalculateSpiralLayout(
-    std::vector<std::shared_ptr<TreeMapNode>>& nodes, const Rect2Df& area) {
+    std::vector<std::shared_ptr<TreeMapNode>>& nodes, const Rect2Dd& area) {
     
-    Point2Df center(area.x + area.width / 2, area.y + area.height / 2);
+    Point2Dd center(area.x + area.width / 2, area.y + area.height / 2);
     double radius = 10.0f;
     double angle = 0.0f;
     double spiralTightness = 0.5f;
@@ -369,7 +369,7 @@ void UltraCanvasTreeMapElement::CalculateSpiralLayout(
         double x = center.x + radius * std::cos(angle) - size / 2;
         double y = center.y + radius * std::sin(angle) - size / 2;
         
-        node->bounds = Rect2Df(x, y, size, size);
+        node->bounds = Rect2Dd(x, y, size, size);
         
         angle += spiralTightness;
         radius += spiralTightness * 2;
@@ -377,14 +377,14 @@ void UltraCanvasTreeMapElement::CalculateSpiralLayout(
 }
 
 void UltraCanvasTreeMapElement::CalculateBinaryLayout(
-    std::vector<std::shared_ptr<TreeMapNode>>& nodes, const Rect2Df& area) {
+    std::vector<std::shared_ptr<TreeMapNode>>& nodes, const Rect2Dd& area) {
     
     BinaryLayoutRecursive(nodes, 0, nodes.size(), area);
 }
 
 void UltraCanvasTreeMapElement::BinaryLayoutRecursive(
     std::vector<std::shared_ptr<TreeMapNode>>& nodes, 
-    size_t start, size_t end, const Rect2Df& area) {
+    size_t start, size_t end, const Rect2Dd& area) {
     
     if (start >= end) return;
     
@@ -401,8 +401,8 @@ void UltraCanvasTreeMapElement::BinaryLayoutRecursive(
         double splitRatio = GetValueRatio(nodes, start, mid, end);
         double splitX = area.x + area.width * splitRatio;
         
-        Rect2Df leftArea(area.x, area.y, splitX - area.x - padding/2, area.height);
-        Rect2Df rightArea(splitX + padding/2, area.y, area.x + area.width - splitX - padding/2, area.height);
+        Rect2Dd leftArea(area.x, area.y, splitX - area.x - padding/2, area.height);
+        Rect2Dd rightArea(splitX + padding/2, area.y, area.x + area.width - splitX - padding/2, area.height);
         
         BinaryLayoutRecursive(nodes, start, mid, leftArea);
         BinaryLayoutRecursive(nodes, mid, end, rightArea);
@@ -410,8 +410,8 @@ void UltraCanvasTreeMapElement::BinaryLayoutRecursive(
         double splitRatio = GetValueRatio(nodes, start, mid, end);
         double splitY = area.y + area.height * splitRatio;
         
-        Rect2Df topArea(area.x, area.y, area.width, splitY - area.y - padding/2);
-        Rect2Df bottomArea(area.x, splitY + padding/2, area.width, area.y + area.height - splitY - padding/2);
+        Rect2Dd topArea(area.x, area.y, area.width, splitY - area.y - padding/2);
+        Rect2Dd bottomArea(area.x, splitY + padding/2, area.width, area.y + area.height - splitY - padding/2);
         
         BinaryLayoutRecursive(nodes, start, mid, topArea);
         BinaryLayoutRecursive(nodes, mid, end, bottomArea);
@@ -439,7 +439,7 @@ void UltraCanvasTreeMapElement::DrawTreeMapRectangle(
     
     if (!node || node->bounds.width < 1 || node->bounds.height < 1) return;
     
-    Rect2Df rect = node->bounds;
+    Rect2Dd rect = node->bounds;
     
     switch (visualStyle) {
         case TreeMapStyle::Flat:
@@ -472,7 +472,7 @@ void UltraCanvasTreeMapElement::DrawTreeMapRectangle(
 }
 
 void UltraCanvasTreeMapElement::DrawFlatRectangle(
-    IRenderContext* ctx, std::shared_ptr<TreeMapNode> node, const Rect2Df& rect) {
+    IRenderContext* ctx, std::shared_ptr<TreeMapNode> node, const Rect2Dd& rect) {
     
     if (!node->isTransparent) {
         if (!node->backgroundImagePath.empty() && node->hasBackgroundImage) {
@@ -495,7 +495,7 @@ void UltraCanvasTreeMapElement::DrawFlatRectangle(
 }
 
 void UltraCanvasTreeMapElement::DrawRaisedRectangle(
-    IRenderContext* ctx, std::shared_ptr<TreeMapNode> node, const Rect2Df& rect) {
+    IRenderContext* ctx, std::shared_ptr<TreeMapNode> node, const Rect2Dd& rect) {
     
     Color baseColor = node->backgroundColor.a > 0 ? node->backgroundColor : GetNodeColor(node);
     
@@ -517,7 +517,7 @@ void UltraCanvasTreeMapElement::DrawRaisedRectangle(
 }
 
 void UltraCanvasTreeMapElement::DrawSunkenRectangle(
-    IRenderContext* ctx, std::shared_ptr<TreeMapNode> node, const Rect2Df& rect) {
+    IRenderContext* ctx, std::shared_ptr<TreeMapNode> node, const Rect2Dd& rect) {
     
     Color baseColor = node->backgroundColor.a > 0 ? node->backgroundColor : GetNodeColor(node);
     
@@ -539,7 +539,7 @@ void UltraCanvasTreeMapElement::DrawSunkenRectangle(
 }
 
 void UltraCanvasTreeMapElement::DrawGradientRectangle(
-    IRenderContext* ctx, std::shared_ptr<TreeMapNode> node, const Rect2Df& rect) {
+    IRenderContext* ctx, std::shared_ptr<TreeMapNode> node, const Rect2Dd& rect) {
     
     Color baseColor = node->backgroundColor.a > 0 ? node->backgroundColor : GetNodeColor(node);
     Color startColor = LightenColor(baseColor, 0.2f);
@@ -566,7 +566,7 @@ void UltraCanvasTreeMapElement::DrawGradientRectangle(
 }
 
 void UltraCanvasTreeMapElement::DrawTexturedRectangle(
-    IRenderContext* ctx, std::shared_ptr<TreeMapNode> node, const Rect2Df& rect) {
+    IRenderContext* ctx, std::shared_ptr<TreeMapNode> node, const Rect2Dd& rect) {
     
     if (!node->backgroundImagePath.empty() && node->hasBackgroundImage) {
         UCImageRaster img(node->backgroundImagePath);
@@ -594,7 +594,7 @@ void UltraCanvasTreeMapElement::DrawTexturedRectangle(
 }
 
 void UltraCanvasTreeMapElement::DrawMinimalRectangle(
-    IRenderContext* ctx, std::shared_ptr<TreeMapNode> node, const Rect2Df& rect) {
+    IRenderContext* ctx, std::shared_ptr<TreeMapNode> node, const Rect2Dd& rect) {
     
     if (borderWidth > 0) {
         ctx->SetStrokePaint(borderColor);
@@ -606,7 +606,7 @@ void UltraCanvasTreeMapElement::DrawMinimalRectangle(
 }
 
 void UltraCanvasTreeMapElement::DrawRectangleContent(
-    IRenderContext* ctx, std::shared_ptr<TreeMapNode> node, const Rect2Df& rect) {
+    IRenderContext* ctx, std::shared_ptr<TreeMapNode> node, const Rect2Dd& rect) {
     
     if (rect.width < 20 || rect.height < 20) return;
     
@@ -621,7 +621,7 @@ void UltraCanvasTreeMapElement::DrawRectangleContent(
         for (const auto& iconPath : node->iconPaths) {
             if (iconX + iconSize > rect.x + rect.width - padding) break;
             
-            Rect2Df iconRect(iconX, contentY, iconSize, iconSize);
+            Rect2Dd iconRect(iconX, contentY, iconSize, iconSize);
             UCImageRaster img(iconPath);
             ctx->DrawImage(img, iconRect, ImageFitMode::Contain);
             iconX += iconSize + 2;
@@ -682,13 +682,13 @@ void UltraCanvasTreeMapElement::DrawRectangleContent(
     }
 }
 
-void UltraCanvasTreeMapElement::DrawSelectionIndicator(IRenderContext* ctx, const Rect2Df& rect) {
+void UltraCanvasTreeMapElement::DrawSelectionIndicator(IRenderContext* ctx, const Rect2Dd& rect) {
     ctx->SetStrokePaint(Color(255, 165, 0, 255));
     ctx->SetStrokeWidth(3.0f);
     ctx->DrawRectangle({rect.x - 1, rect.y - 1, rect.width + 2, rect.height + 2});
 }
 
-void UltraCanvasTreeMapElement::DrawHoverEffect(IRenderContext* ctx, const Rect2Df& rect) {
+void UltraCanvasTreeMapElement::DrawHoverEffect(IRenderContext* ctx, const Rect2Dd& rect) {
     ctx->SetFillPaint(Color(255, 255, 255, 30));
     ctx->FillRectangle(rect);
 }
@@ -748,14 +748,14 @@ void UltraCanvasTreeMapElement::DrawLeafNodeDetails(IRenderContext* ctx) {
 std::shared_ptr<TreeMapNode> UltraCanvasTreeMapElement::GetNodeAtPosition(const Point2Di& pos) const {
     if (!currentNode) return nullptr;
     
-    Point2Df relativePos(static_cast<double>(pos.x),
+    Point2Dd relativePos(static_cast<double>(pos.x),
                          static_cast<double>(pos.y));
     
     return FindNodeAtPositionRecursive(currentNode, relativePos);
 }
 
 std::shared_ptr<TreeMapNode> UltraCanvasTreeMapElement::FindNodeAtPositionRecursive(
-    std::shared_ptr<TreeMapNode> node, const Point2Df& pos) const {
+    std::shared_ptr<TreeMapNode> node, const Point2Dd& pos) const {
     
     if (!node || !node->isVisible) return nullptr;
     
@@ -897,10 +897,10 @@ void UltraCanvasTreeMapElement::ApplyAnimationTransform(IRenderContext* ctx) {
         
         for (const auto& child : currentNode->children) {
             if (oldBoundsMap.find(child->name) != oldBoundsMap.end()) {
-                const Rect2Df& oldBounds = oldBoundsMap[child->name];
-                const Rect2Df& newBounds = child->bounds;
+                const Rect2Dd& oldBounds = oldBoundsMap[child->name];
+                const Rect2Dd& newBounds = child->bounds;
                 
-                Rect2Df interpolated(
+                Rect2Dd interpolated(
                     oldBounds.x + (newBounds.x - oldBounds.x) * eased,
                     oldBounds.y + (newBounds.y - oldBounds.y) * eased,
                     oldBounds.width + (newBounds.width - oldBounds.width) * eased,
@@ -991,7 +991,7 @@ double UltraCanvasTreeMapElement::CalculateWorstRatio(
 }
 
 void UltraCanvasTreeMapElement::LayoutRow(
-    const std::vector<std::shared_ptr<TreeMapNode>>& row, const Rect2Df& area, double totalValue) {
+    const std::vector<std::shared_ptr<TreeMapNode>>& row, const Rect2Dd& area, double totalValue) {
     
     if (row.empty()) return;
     
@@ -1008,11 +1008,11 @@ void UltraCanvasTreeMapElement::LayoutRow(
         
         if (horizontal) {
             double width = (area.width * proportion) - padding;
-            node->bounds = Rect2Df(position, area.y, width, area.height - padding);
+            node->bounds = Rect2Dd(position, area.y, width, area.height - padding);
             position += width + padding;
         } else {
             double height = (area.height * proportion) - padding;
-            node->bounds = Rect2Df(area.x, position, area.width - padding, height);
+            node->bounds = Rect2Dd(area.x, position, area.width - padding, height);
             position += height + padding;
         }
         
@@ -1021,8 +1021,8 @@ void UltraCanvasTreeMapElement::LayoutRow(
     }
 }
 
-Rect2Df UltraCanvasTreeMapElement::CalculateRemainingArea(
-    const Rect2Df& area, const std::vector<std::shared_ptr<TreeMapNode>>& row, double totalValue) const {
+Rect2Dd UltraCanvasTreeMapElement::CalculateRemainingArea(
+    const Rect2Dd& area, const std::vector<std::shared_ptr<TreeMapNode>>& row, double totalValue) const {
     
     if (row.empty()) return area;
     
@@ -1035,9 +1035,9 @@ Rect2Df UltraCanvasTreeMapElement::CalculateRemainingArea(
     double usedSpace = (rowValue / totalValue) * (horizontal ? area.width : area.height);
     
     if (horizontal) {
-        return Rect2Df(area.x + usedSpace, area.y, area.width - usedSpace, area.height);
+        return Rect2Dd(area.x + usedSpace, area.y, area.width - usedSpace, area.height);
     } else {
-        return Rect2Df(area.x, area.y + usedSpace, area.width, area.height - usedSpace);
+        return Rect2Dd(area.x, area.y + usedSpace, area.width, area.height - usedSpace);
     }
 }
 
@@ -1165,17 +1165,17 @@ std::string UltraCanvasTreeMapElement::FormatPercentage(double percentage) const
     return std::to_string(static_cast<int>(percentage * 100) / 100.0) + "%";
 }
 
-bool UltraCanvasTreeMapElement::PointInRect(const Point2Df& point, const Rect2Df& rect) const {
+bool UltraCanvasTreeMapElement::PointInRect(const Point2Dd& point, const Rect2Dd& rect) const {
     return point.x >= rect.x && point.x <= rect.x + rect.width &&
            point.y >= rect.y && point.y <= rect.y + rect.height;
 }
 
-Rect2Df UltraCanvasTreeMapElement::GetPlotArea() const {
+Rect2Dd UltraCanvasTreeMapElement::GetPlotArea() const {
     auto bounds = GetBounds();
     
     double topMargin = (currentNode != rootNode) ? 30.0f : 10.0f;
     
-    return Rect2Df(
+    return Rect2Dd(
         10,
         topMargin,
         finalBounds.width - 20,

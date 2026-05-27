@@ -266,7 +266,7 @@ static constexpr float kPi = 3.14159265f;
             return;
         }
         
-        Rect2Df bounds = GetTreeBounds();
+        Rect2Dd bounds = GetTreeBounds();
         if (finalBounds.width <= 0 || finalBounds.height <= 0) {
             return;
         }
@@ -299,14 +299,14 @@ static constexpr float kPi = 3.14159265f;
         RequestRedraw();
     }
 
-    Rect2Df UltraCanvasDendrogram::GetTreeBounds() const
+    Rect2Dd UltraCanvasDendrogram::GetTreeBounds() const
     {
         float x = static_cast<float>(GetX() + style.marginLeft);
         float y = static_cast<float>(GetY() + style.marginTop);
         float w = static_cast<float>(GetWidth()  - style.marginLeft - style.marginRight);
         float h = static_cast<float>(GetHeight() - style.marginTop  - style.marginBottom);
 
-        if (w <= 0 || h <= 0) return Rect2Df(x, y, 10.0f, 10.0f);
+        if (w <= 0 || h <= 0) return Rect2Dd(x, y, 10.0f, 10.0f);
 
         switch (orientation) {
             case DendrogramOrientation::LeftRight:
@@ -342,14 +342,14 @@ static constexpr float kPi = 3.14159265f;
             }
         }
 
-        return Rect2Df(x, y, std::max(10.0f, w), std::max(10.0f, h));
+        return Rect2Dd(x, y, std::max(10.0f, w), std::max(10.0f, h));
     }
 
 // =============================================================================
 // RENDER
 // =============================================================================
 
-    void UltraCanvasDendrogram::Render(IRenderContext* ctx, const Rect2Di& dirtyRect)
+    void UltraCanvasDendrogram::Render(IRenderContext* ctx, const Rect2Df& dirtyRect)
     {
         if (!IsVisible()) return;
 
@@ -399,7 +399,7 @@ static constexpr float kPi = 3.14159265f;
     {
         Rect2Di b = GetLocalBounds();
         ctx->SetFillPaint(style.backgroundColor);
-        ctx->FillRectangle(Rect2Df(b.x, b.y, b.width, b.height));
+        ctx->FillRectangle(Rect2Dd(b.x, b.y, b.width, b.height));
     }
 
     void UltraCanvasDendrogram::RenderEmptyState(IRenderContext* ctx)
@@ -455,15 +455,15 @@ static constexpr float kPi = 3.14159265f;
             if (g->fillMode == GroupFillMode::BandFill) {
                 float pad = 3.0f;
                 if (orientation == DendrogramOrientation::LeftRight) {
-                    Rect2Df treeBounds = GetTreeBounds();
-                    ctx->FillRectangle(Rect2Df(
+                    Rect2Dd treeBounds = GetTreeBounds();
+                    ctx->FillRectangle(Rect2Dd(
                         treeBounds.x,
                         minPrimary - pad,
                         leafDepth - treeBounds.x + 120,
                         maxPrimary - minPrimary + pad * 2.0f));
                 } else if (orientation == DendrogramOrientation::TopDown) {
-                    Rect2Df treeBounds = GetTreeBounds();
-                    ctx->FillRectangle(Rect2Df(
+                    Rect2Dd treeBounds = GetTreeBounds();
+                    ctx->FillRectangle(Rect2Dd(
                         minPrimary - pad,
                         treeBounds.y,
                         maxPrimary - minPrimary + pad * 2.0f,
@@ -481,7 +481,7 @@ static constexpr float kPi = 3.14159265f;
                 }
                 if (minAngle > maxAngle) continue;
 
-                Rect2Df treeBounds = GetTreeBounds();
+                Rect2Dd treeBounds = GetTreeBounds();
                 float cx = treeBounds.x + treeBounds.width  * 0.5f;
                 float cy = treeBounds.y + treeBounds.height * 0.5f;
                 float maxR = std::min(treeBounds.width, treeBounds.height) * 0.5f;
@@ -512,7 +512,7 @@ static constexpr float kPi = 3.14159265f;
         if (layout.maxDistance <= 0.0f) return;
         if (orientation == DendrogramOrientation::Radial) return;
 
-        Rect2Df tb = GetTreeBounds();
+        Rect2Dd tb = GetTreeBounds();
 
         ctx->SetFontFace("sans-serif", FontWeight::Normal, FontSlant::Normal);
         ctx->SetFontSize(style.axisFontSize);
@@ -840,11 +840,11 @@ static constexpr float kPi = 3.14159265f;
 
                 // Hover ring on hovered leaf
                 if (node.id == hoveredNodeId) {
-                    ctx->DrawFilledCircle(Point2Df(node.px, node.py),
+                    ctx->DrawFilledCircle(Point2Dd(node.px, node.py),
                         style.leafNodeRadius + 2.5f,
                         Color(c.r, c.g, c.b, 80));
                 }
-                ctx->DrawFilledCircle(Point2Df(node.px, node.py),
+                ctx->DrawFilledCircle(Point2Dd(node.px, node.py),
                                       style.leafNodeRadius, c);
 
             } else {
@@ -861,7 +861,7 @@ static constexpr float kPi = 3.14159265f;
 
                 // Hover ring on hovered internal node
                 if (node.id == hoveredNodeId) {
-                    ctx->DrawFilledCircle(Point2Df(node.px, node.py),
+                    ctx->DrawFilledCircle(Point2Dd(node.px, node.py),
                         radius + 3.0f,
                         Color(color.r, color.g, color.b, 80));
                 }
@@ -892,13 +892,13 @@ static constexpr float kPi = 3.14159265f;
                 if (showDot) {
                     bool filled = (conf >= style.confidenceHighThreshold);
                     if (filled) {
-                        ctx->DrawFilledCircle(Point2Df(node.px, node.py), radius, color);
+                        ctx->DrawFilledCircle(Point2Dd(node.px, node.py), radius, color);
                     } else {
-                        ctx->DrawFilledCircle(Point2Df(node.px, node.py),
+                        ctx->DrawFilledCircle(Point2Dd(node.px, node.py),
                                               radius, Colors::Transparent, color, 1.0f);
                     }
                 } else {
-                    ctx->DrawFilledCircle(Point2Df(node.px, node.py), radius, color);
+                    ctx->DrawFilledCircle(Point2Dd(node.px, node.py), radius, color);
                 }
             }
         }
@@ -1225,7 +1225,7 @@ static constexpr float kPi = 3.14159265f;
             float bh = th + 4.0f;
 
             ctx->DrawFilledRectangle(
-                Rect2Df(bx, by, bw, bh),
+                Rect2Dd(bx, by, bw, bh),
                 style.annotationBgColor,
                 0.5f, style.annotationBorderColor, 2.0f);
 
@@ -1267,7 +1267,7 @@ static constexpr float kPi = 3.14159265f;
         if (!dataSource) return;
 
         // Sidebar sits to the right of the leaf labels column
-        Rect2Df tb     = GetTreeBounds();
+        Rect2Dd tb     = GetTreeBounds();
         float   sideX  = GetX() + GetWidth() - style.marginRight - 80.0f;
 
         ctx->SetFontFace("sans-serif", FontWeight::Normal, FontSlant::Normal);
@@ -1294,7 +1294,7 @@ static constexpr float kPi = 3.14159265f;
 
             // Colored bracket bar
             ctx->SetFillPaint(g->branchColor);
-            ctx->FillRectangle(Rect2Df(bx, by, static_cast<float>(style.sidebarBracketWidth), bh));
+            ctx->FillRectangle(Rect2Dd(bx, by, static_cast<float>(style.sidebarBracketWidth), bh));
 
             // Lines from bracket ends to label anchor
             float labelX = bx + style.sidebarBracketWidth + style.sidebarBracketGap;
@@ -1346,7 +1346,7 @@ static constexpr float kPi = 3.14159265f;
 
             Color fill = g->fillColor;
             fill.a = 200;
-            ctx->DrawFilledRectangle(Rect2Df(bx, by, bw, bh), fill, 1.0f, g->branchColor, 4.0f);
+            ctx->DrawFilledRectangle(Rect2Dd(bx, by, bw, bh), fill, 1.0f, g->branchColor, 4.0f);
             ctx->SetTextPaint(g->branchColor);
             ctx->DrawText(g->label, {static_cast<double>(bx + style.floatingBadgePad),
                                       static_cast<double>(by + th + style.floatingBadgePad)});
@@ -1357,7 +1357,7 @@ static constexpr float kPi = 3.14159265f;
     {
         if (!dataSource || orientation != DendrogramOrientation::Radial) return;
 
-        Rect2Df tb = GetTreeBounds();
+        Rect2Dd tb = GetTreeBounds();
         float   cx = tb.x + tb.width  * 0.5f;
         float   cy = tb.y + tb.height * 0.5f;
         float   maxR = std::min(tb.width, tb.height) * 0.5f * style.arcLabelRadiusMul;
@@ -1625,7 +1625,7 @@ static constexpr float kPi = 3.14159265f;
             if (minY > maxY) continue;
 
             // Check sidebar bracket area
-            Rect2Df tb    = GetTreeBounds();
+            Rect2Dd tb    = GetTreeBounds();
             float   sideX = GetX() + GetWidth() - style.marginRight - 80.0f;
             if (mx >= sideX && mx <= sideX + 80 && my >= minY - 4 && my <= maxY + 4)
                 return g->groupId;

@@ -15,7 +15,7 @@
 namespace UltraCanvas {
 
     namespace {
-        std::shared_ptr<UltraCanvasLabel> MakeSectionTitle(long x, long y, const std::string& text) {
+        std::shared_ptr<UltraCanvasLabel> MakeSectionTitle(float x, float y, const std::string& text) {
             auto t = std::make_shared<UltraCanvasLabel>("SplitSecTitle" + std::to_string(x) + "_" + std::to_string(y),
                                                        x, y, 900, 25);
             t->SetText(text);
@@ -25,7 +25,7 @@ namespace UltraCanvas {
             return t;
         }
 
-        std::shared_ptr<UltraCanvasLabel> MakeDescription(long x, long y, long w, const std::string& text) {
+        std::shared_ptr<UltraCanvasLabel> MakeDescription(float x, float y, float w, const std::string& text) {
             auto d = std::make_shared<UltraCanvasLabel>("SplitDesc" + std::to_string(x) + "_" + std::to_string(y),
                                                        x, y, w, 0);
             d->SetText(text);
@@ -46,7 +46,7 @@ namespace UltraCanvas {
             return l;
         }
 
-        std::shared_ptr<UltraCanvasLabel> MakeInfoLabel(const std::string& id, long x, long y, long w,
+        std::shared_ptr<UltraCanvasLabel> MakeInfoLabel(const std::string& id, float x, float y, float w,
                                                        const std::string& text, int fontSize = 12) {
             auto l = std::make_shared<UltraCanvasLabel>(id, x, y, w, 20);
             l->SetText(text);

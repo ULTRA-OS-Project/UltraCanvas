@@ -56,7 +56,7 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
-    void UltraCanvasScrollbar::SetBounds(const Rect2Di& b) {
+    void UltraCanvasScrollbar::SetBounds(const Rect2Df& b) {
         if (b != GetBounds()) {
             UltraCanvasUIElement::SetBounds(b);
             layoutDirty = true;
@@ -86,7 +86,7 @@ namespace UltraCanvas {
         return false;
     }
 
-    void UltraCanvasScrollbar::Render(IRenderContext *ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasScrollbar::Render(IRenderContext *ctx, const Rect2Df& dirtyRect) {
         if (!ctx || !ShouldBeVisible()) return;
 
         if (layoutDirty) {
@@ -257,30 +257,30 @@ namespace UltraCanvas {
         if (IsVertical()) {
             if (isUpOrLeft) {
                 // Up arrow
-                ctx->DrawLine(Point2Df(cx - arrowSize, cy + arrowSize / 2),
-                              Point2Df(cx, cy - arrowSize / 2));
-                ctx->DrawLine(Point2Df(cx, cy - arrowSize / 2),
-                              Point2Df(cx + arrowSize, cy + arrowSize / 2));
+                ctx->DrawLine(Point2Dd(cx - arrowSize, cy + arrowSize / 2),
+                              Point2Dd(cx, cy - arrowSize / 2));
+                ctx->DrawLine(Point2Dd(cx, cy - arrowSize / 2),
+                              Point2Dd(cx + arrowSize, cy + arrowSize / 2));
             } else {
                 // Down arrow
-                ctx->DrawLine(Point2Df(cx - arrowSize, cy - arrowSize / 2),
-                              Point2Df(cx, cy + arrowSize / 2));
-                ctx->DrawLine(Point2Df(cx, cy + arrowSize / 2),
-                              Point2Df(cx + arrowSize, cy - arrowSize / 2));
+                ctx->DrawLine(Point2Dd(cx - arrowSize, cy - arrowSize / 2),
+                              Point2Dd(cx, cy + arrowSize / 2));
+                ctx->DrawLine(Point2Dd(cx, cy + arrowSize / 2),
+                              Point2Dd(cx + arrowSize, cy - arrowSize / 2));
             }
         } else {
             if (isUpOrLeft) {
                 // Left arrow
-                ctx->DrawLine(Point2Df(cx + arrowSize / 2, cy - arrowSize),
-                              Point2Df(cx - arrowSize / 2, cy));
-                ctx->DrawLine(Point2Df(cx - arrowSize / 2, cy),
-                              Point2Df(cx + arrowSize / 2, cy + arrowSize));
+                ctx->DrawLine(Point2Dd(cx + arrowSize / 2, cy - arrowSize),
+                              Point2Dd(cx - arrowSize / 2, cy));
+                ctx->DrawLine(Point2Dd(cx - arrowSize / 2, cy),
+                              Point2Dd(cx + arrowSize / 2, cy + arrowSize));
             } else {
                 // Right arrow
-                ctx->DrawLine(Point2Df(cx - arrowSize / 2, cy - arrowSize),
-                              Point2Df(cx + arrowSize / 2, cy));
-                ctx->DrawLine(Point2Df(cx + arrowSize / 2, cy),
-                              Point2Df(cx - arrowSize / 2, cy + arrowSize));
+                ctx->DrawLine(Point2Dd(cx - arrowSize / 2, cy - arrowSize),
+                              Point2Dd(cx + arrowSize / 2, cy));
+                ctx->DrawLine(Point2Dd(cx + arrowSize / 2, cy),
+                              Point2Dd(cx - arrowSize / 2, cy + arrowSize));
             }
         }
     }

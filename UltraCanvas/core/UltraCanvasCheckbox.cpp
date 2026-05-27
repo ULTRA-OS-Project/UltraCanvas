@@ -9,7 +9,7 @@
 namespace UltraCanvas {
 
     UltraCanvasCheckbox::UltraCanvasCheckbox(const std::string& identifier,
-                                             long x, long y, long w, long h,
+                                             float x, float y, float w, float h,
                                              const std::string& labelText)
             : UltraCanvasLabeledToggleBase(identifier, x, y, w, h, labelText) {}
 
@@ -122,7 +122,7 @@ namespace UltraCanvas {
         Color color = GetCurrentCheckmarkColor();
         float margin = indicatorRect.width * 0.25f;
         float y = indicatorRect.y + indicatorRect.height / 2.0f;
-        Rect2Df lineRect(indicatorRect.x + margin,
+        Rect2Dd lineRect(indicatorRect.x + margin,
                          y - visualStyle.checkmarkThickness / 2.0f,
                          indicatorRect.width - 2 * margin,
                          visualStyle.checkmarkThickness);
@@ -131,7 +131,7 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasCheckbox> UltraCanvasCheckbox::CreateCheckbox(
             const std::string& identifier,
-            long x, long y, long w, long h,
+            float x, float y, float w, float h,
             const std::string& text, bool checked) {
         auto cb = std::make_shared<UltraCanvasCheckbox>(identifier, x, y, w, h, text);
         cb->SetChecked(checked);

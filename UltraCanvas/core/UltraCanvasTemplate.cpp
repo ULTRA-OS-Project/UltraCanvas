@@ -17,7 +17,7 @@
 namespace UltraCanvas {
 
 // ===== CONSTRUCTOR =====
-    UltraCanvasTemplate::UltraCanvasTemplate(const std::string& identifier, long x, long y, long w, long h)
+    UltraCanvasTemplate::UltraCanvasTemplate(const std::string& identifier, float x, float y, float w, float h)
             : UltraCanvasContainer(identifier, x, y, w, h),
               isDirty(true),
               isDragging(false),
@@ -185,9 +185,9 @@ namespace UltraCanvas {
     }
 
 // ===== SIZE CALCULATION =====
-    Point2Df UltraCanvasTemplate::CalculateRequiredSize() const {
+    Point2Dd UltraCanvasTemplate::CalculateRequiredSize() const {
         if (templateElements.empty()) {
-            return Point2Df(dimensions.fixedWidth, dimensions.fixedHeight);
+            return Point2Dd(dimensions.fixedWidth, dimensions.fixedHeight);
         }
 
         float totalWidth = appearance.paddingLeft + appearance.paddingRight;
@@ -313,16 +313,16 @@ namespace UltraCanvas {
         totalWidth = std::max(dimensions.minWidth, std::min(totalWidth, dimensions.maxWidth));
         totalHeight = std::max(dimensions.minHeight, std::min(totalHeight, dimensions.maxHeight));
 
-        return Point2Df(totalWidth, totalHeight);
+        return Point2Dd(totalWidth, totalHeight);
     }
 
     void UltraCanvasTemplate::FitToContent() {
-        Point2Df requiredSize = CalculateRequiredSize();
+        Point2Dd requiredSize = CalculateRequiredSize();
         SetWidth(static_cast<long>(requiredSize.x));
         SetHeight(static_cast<long>(requiredSize.y));
     }
 
-    void UltraCanvasTemplate::ApplyToContainer(const Rect2Df& containerRect) {
+    void UltraCanvasTemplate::ApplyToContainer(const Rect2Dd& containerRect) {
         SetX(static_cast<long>(containerRect.x + appearance.marginLeft));
         SetY(static_cast<long>(containerRect.y + appearance.marginTop));
         SetWidth(static_cast<long>(containerRect.width - appearance.marginLeft - appearance.marginRight));
@@ -339,7 +339,7 @@ namespace UltraCanvas {
     }
 
 // ===== RENDERING =====
-    void UltraCanvasTemplate::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasTemplate::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         // Draw template background
         DrawTemplateBackground();
 
@@ -361,7 +361,7 @@ namespace UltraCanvas {
         }
 
         // Render container children (the template elements)
-        UltraCanvasContainer::Render(IRenderContext* ctx, const Rect2Di& dirtyRect);
+        UltraCanvasContainer::Render(IRenderContext* ctx, const Rect2Df& dirtyRect);
 
         // Restore clipping
         if (scrollSettings.horizontal != TemplateScrollMode::Off ||
@@ -376,13 +376,13 @@ namespace UltraCanvas {
 
         // Handle drag functionality
         if (dragHandle.enabled) {
-            Point2Df mousePos(static_cast<float>(event.mouse.x), static_cast<float>(event.mouse.y));
+            Point2Dd mousePos(static_cast<float>(event.mouse.x), static_cast<float>(event.mouse.y));
 
             switch (event.type) {
                 case UCEventType::MouseDown:
                     if (event.mouse.button == UCMouseButton::Left) {
                         // Check if click is on drag handle
-                        Rect2Df handleRect;
+                        Rect2Dd handleRect;
                         float x = static_cast<float>(GetX());
                         float y = static_cast<float>(GetY());
                         float w = static_cast<float>(GetWidth());
@@ -390,16 +390,16 @@ namespace UltraCanvas {
 
                         switch (dragHandle.position) {
                             case LayoutDockSide::Left:
-                                handleRect = Rect2Df(x, y, dragHandle.width, h);
+                                handleRect = Rect2Dd(x, y, dragHandle.width, h);
                                 break;
                             case LayoutDockSide::Right:
-                                handleRect = Rect2Df(x + w - dragHandle.width, y, dragHandle.width, h);
+                                handleRect = Rect2Dd(x + w - dragHandle.width, y, dragHandle.width, h);
                                 break;
                             case LayoutDockSide::Top:
-                                handleRect = Rect2Df(x, y, w, dragHandle.width);
+                                handleRect = Rect2Dd(x, y, w, dragHandle.width);
                                 break;
                             case LayoutDockSide::Bottom:
-                                handleRect = Rect2Df(x, y + h - dragHandle.width, w, dragHandle.width);
+                                handleRect = Rect2Dd(x, y + h - dragHandle.width, w, dragHandle.width);
                                 break;
                             default:
                                 break;
@@ -436,13 +436,13 @@ namespace UltraCanvas {
     }
 
 // ===== DRAG FUNCTIONALITY =====
-    void UltraCanvasTemplate::StartDrag(const Point2Df& startPosition) {
+    void UltraCanvasTemplate::StartDrag(const Point2Dd& startPosition) {
         isDragging = true;
         dragStartPosition = startPosition;
-        dragOffset = Point2Df(startPosition.x - GetX(), startPosition.y - GetY());
+        dragOffset = Point2Dd(startPosition.x - GetX(), startPosition.y - GetY());
     }
 
-    void UltraCanvasTemplate::UpdateDrag(const Point2Df& currentPosition) {
+    void UltraCanvasTemplate::UpdateDrag(const Point2Dd& currentPosition) {
         if (isDragging) {
             SetX(static_cast<long>(currentPosition.x - dragOffset.x));
             SetY(static_cast<long>(currentPosition.y - dragOffset.y));
@@ -613,7 +613,7 @@ namespace UltraCanvas {
 
             case TemplatePlacementType::Dock: {
                 // Dock elements to specified sides
-                Rect2Df availableRect(baseX, baseY,
+                Rect2Dd availableRect(baseX, baseY,
                                       GetWidth() - appearance.paddingLeft - appearance.paddingRight,
                                       GetHeight() - appearance.paddingTop - appearance.paddingBottom);
 
@@ -720,19 +720,19 @@ namespace UltraCanvas {
         float w = static_cast<float>(GetWidth());
         float h = static_cast<float>(GetHeight());
 
-        Rect2Df handleRect;
+        Rect2Dd handleRect;
         switch (dragHandle.position) {
             case LayoutDockSide::Left:
-                handleRect = Rect2Df(x, y, dragHandle.width, h);
+                handleRect = Rect2Dd(x, y, dragHandle.width, h);
                 break;
             case LayoutDockSide::Right:
-                handleRect = Rect2Df(x + w - dragHandle.width, y, dragHandle.width, h);
+                handleRect = Rect2Dd(x + w - dragHandle.width, y, dragHandle.width, h);
                 break;
             case LayoutDockSide::Top:
-                handleRect = Rect2Df(x, y, w, dragHandle.width);
+                handleRect = Rect2Dd(x, y, w, dragHandle.width);
                 break;
             case LayoutDockSide::Bottom:
-                handleRect = Rect2Df(x, y + h - dragHandle.width, w, dragHandle.width);
+                handleRect = Rect2Dd(x, y + h - dragHandle.width, w, dragHandle.width);
                 break;
             default:
                 return;
@@ -778,10 +778,10 @@ namespace UltraCanvas {
             for (int i = -1; i <= 1; ++i) {
                 if (dragHandle.position == LayoutDockSide::Top || dragHandle.position == LayoutDockSide::Bottom) {
                     float barX = centerX + i * 10 - 3;
-                    ctx->FillRectangle(Rect2Df(barX, handleRect.y + 2, 6, handleRect.height - 4));
+                    ctx->FillRectangle(Rect2Dd(barX, handleRect.y + 2, 6, handleRect.height - 4));
                 } else {
                     float barY = centerY + i * 10 - 3;
-                    ctx->FillRectangle(Rect2Df(handleRect.x + 2, barY, handleRect.width - 4, 6));
+                    ctx->FillRectangle(Rect2Dd(handleRect.x + 2, barY, handleRect.width - 4, 6));
                 }
             }
         }
@@ -806,7 +806,7 @@ namespace UltraCanvas {
                                                   w, h, appearance.cornerRadius
                                           });
             } else {
-                ctx->FillRectangle(Rect2Df(
+                ctx->FillRectangle(Rect2Dd(
                         x + appearance.shadowOffset.x,
                         y + appearance.shadowOffset.y,
                         w, h
@@ -820,7 +820,7 @@ namespace UltraCanvas {
             if (appearance.cornerRadius > 0) {
                 ctx->FillRoundedRectangle({x, y, w, h}, appearance.cornerRadius);
             } else {
-                ctx->FillRectangle(Rect2Df(x, y, w, h));
+                ctx->FillRectangle(Rect2Dd(x, y, w, h));
             }
         }
 
@@ -831,7 +831,7 @@ namespace UltraCanvas {
             if (appearance.cornerRadius > 0) {
                 ctx->DrawRoundedRectangle(x, y, w, h, appearance.cornerRadius);
             } else {
-                ctx->DrawRectangle(Rect2Df(x, y, w, h));
+                ctx->DrawRectangle(Rect2Dd(x, y, w, h));
             }
         }
     }

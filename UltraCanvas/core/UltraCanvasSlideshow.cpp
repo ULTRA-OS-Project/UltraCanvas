@@ -24,7 +24,7 @@ namespace UltraCanvas {
     }
 
     UltraCanvasSlideshow::UltraCanvasSlideshow(const std::string& identifier,
-                                               long x, long y, long w, long h)
+                                               float x, float y, float w, float h)
             : UltraCanvasContainer(identifier, x, y, w, h) {
         SetMouseCursor(UCMouseCursor::Default);
         SetBackgroundColor(config.backgroundColor);
@@ -313,14 +313,14 @@ namespace UltraCanvas {
     }
 
     // ===== RENDER =====
-    void UltraCanvasSlideshow::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasSlideshow::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         // Container background + borders via base class
         UltraCanvasUIElement::Render(ctx, dirtyRect);
 
         if (slides.empty()) {
             ctx->SetTextPaint(Color(180, 180, 180));
             ctx->SetFontSize(14.0f);
-            ctx->DrawTextInRect("(no slides)", Rect2Df(GetLocalBounds()));
+            ctx->DrawTextInRect("(no slides)", Rect2Dd(GetLocalBounds()));
             return;
         }
 
@@ -336,7 +336,7 @@ namespace UltraCanvas {
         }
 
         ctx->PushState();
-        ctx->ClipRect(Rect2Df(GetLocalBounds()));
+        ctx->ClipRect(Rect2Dd(GetLocalBounds()));
         DrawBackground(ctx);
         DrawSlideImages(ctx);
         DrawInfoPanel(ctx);
@@ -347,11 +347,11 @@ namespace UltraCanvas {
     void UltraCanvasSlideshow::DrawBackground(IRenderContext* ctx) {
         Rect2Di img = GetImagePanelRect();
         ctx->SetFillPaint(config.backgroundColor);
-        ctx->FillRectangle(Rect2Df(img));
+        ctx->FillRectangle(Rect2Dd(img));
     }
 
     void UltraCanvasSlideshow::DrawSlideAt(IRenderContext* ctx, size_t slideIdx,
-                                           const Rect2Df& rect, float alpha,
+                                           const Rect2Dd& rect, float alpha,
                                            float horizontalOffsetPx) {
         if (slideIdx >= slides.size()) return;
         const auto& slide = slides[slideIdx];
@@ -360,18 +360,18 @@ namespace UltraCanvas {
         if (!img) return;
 
         ctx->PushState();
-        Rect2Df clipR = rect;
+        Rect2Dd clipR = rect;
         ctx->ClipRect(clipR);
         ctx->SetAlpha(std::max(0.0f, std::min(1.0f, alpha)));
 
-        Rect2Df dst = rect;
+        Rect2Dd dst = rect;
         dst.x += horizontalOffsetPx;
         ctx->DrawImage(*img, dst, ImageFitMode::Cover);
         ctx->PopState();
     }
 
     void UltraCanvasSlideshow::DrawSlideImages(IRenderContext* ctx) {
-        Rect2Df imgRect = Rect2Df(GetImagePanelRect());
+        Rect2Dd imgRect = Rect2Dd(GetImagePanelRect());
         float p = Smoothstep(transitionProgress);
 
         if (!transitioning) {
@@ -413,7 +413,7 @@ namespace UltraCanvas {
         if (info.width <= 0 || info.height <= 0) return;
 
         ctx->SetFillPaint(config.infoPanelColor);
-        ctx->FillRectangle(Rect2Df(info));
+        ctx->FillRectangle(Rect2Dd(info));
 
         // Choose source text
         std::string title;
@@ -460,7 +460,7 @@ namespace UltraCanvas {
             ctx->SetTextWrap(TextWrap::WrapWord);
             int titleH = static_cast<int>(config.titleFontSize * 2.5f);
             Rect2Di titleRect(textArea.x, textArea.y, textArea.width, titleH);
-            ctx->DrawTextInRect(title, Rect2Df(titleRect));
+            ctx->DrawTextInRect(title, Rect2Dd(titleRect));
             textArea.y += titleH + 8;
             textArea.height -= titleH + 8;
         }
@@ -473,7 +473,7 @@ namespace UltraCanvas {
             bodyFs.fontSize = config.bodyFontSize;
             ctx->SetFontStyle(bodyFs);
             ctx->SetTextWrap(TextWrap::WrapWord);
-            ctx->DrawTextInRect(body, Rect2Df(textArea));
+            ctx->DrawTextInRect(body, Rect2Dd(textArea));
         }
 
         ctx->PopState();
@@ -533,7 +533,7 @@ namespace UltraCanvas {
             if (s.hoverHighlight && i == hoveredIndicator && i != static_cast<int>(currentIndex)) {
                 fill = s.hoverColor;
             }
-            ctx->DrawFilledCircle(Point2Df(cx, static_cast<float>(centerY)), radius, fill);
+            ctx->DrawFilledCircle(Point2Dd(cx, static_cast<float>(centerY)), radius, fill);
         }
     }
 
@@ -554,7 +554,7 @@ namespace UltraCanvas {
             if (s.hoverHighlight && i == hoveredIndicator && i != static_cast<int>(currentIndex)) {
                 fill = s.hoverColor;
             }
-            ctx->DrawFilledRectangle(Rect2Df(r), fill, 0.0f, Colors::Transparent, s.cornerRadius);
+            ctx->DrawFilledRectangle(Rect2Dd(r), fill, 0.0f, Colors::Transparent, s.cornerRadius);
         }
     }
 
@@ -564,13 +564,13 @@ namespace UltraCanvas {
         Rect2Di full(panel.x, panel.y + (panel.height - static_cast<int>(s.itemHeight)) / 2,
                      panel.width, static_cast<int>(s.itemHeight));
 
-        ctx->DrawFilledRectangle(Rect2Df(full), s.inactiveColor, 0.0f, Colors::Transparent, s.cornerRadius);
+        ctx->DrawFilledRectangle(Rect2Dd(full), s.inactiveColor, 0.0f, Colors::Transparent, s.cornerRadius);
 
         float progress = transitioning ? Smoothstep(transitionProgress)
                                        : slideElapsed;
         int filledW = std::max(0, std::min(full.width, static_cast<int>(full.width * progress)));
         Rect2Di filled(full.x, full.y, filledW, full.height);
-        ctx->DrawFilledRectangle(Rect2Df(filled), s.activeColor, 0.0f, Colors::Transparent, s.cornerRadius);
+        ctx->DrawFilledRectangle(Rect2Dd(filled), s.activeColor, 0.0f, Colors::Transparent, s.cornerRadius);
 
         // Single hit rect covering the whole bar — clicking it advances to next.
         Rect2Di hit(full.x, full.y - 6, full.width, full.height + 12);
@@ -593,7 +593,7 @@ namespace UltraCanvas {
             indicatorHitRects.push_back(hit);
 
             // Background
-            ctx->DrawFilledRectangle(Rect2Df(r), s.inactiveColor, 0.0f, Colors::Transparent, s.cornerRadius);
+            ctx->DrawFilledRectangle(Rect2Dd(r), s.inactiveColor, 0.0f, Colors::Transparent, s.cornerRadius);
 
             // Fill: completed slides = full, current = progress, future = empty
             float fillFrac = 0.0f;
@@ -603,7 +603,7 @@ namespace UltraCanvas {
             if (fillFrac > 0.0f) {
                 Rect2Di filled(r.x, r.y,
                                static_cast<int>(r.width * fillFrac), r.height);
-                ctx->DrawFilledRectangle(Rect2Df(filled), s.activeColor, 0.0f, Colors::Transparent, s.cornerRadius);
+                ctx->DrawFilledRectangle(Rect2Dd(filled), s.activeColor, 0.0f, Colors::Transparent, s.cornerRadius);
             }
         }
     }
@@ -628,7 +628,7 @@ namespace UltraCanvas {
             default:                    x = panel.x + (panel.width - textSize.width) / 2; break;
         }
         int y = panel.y + (panel.height - textSize.height) / 2;
-        ctx->DrawText(txt, Point2Df(static_cast<float>(x), static_cast<float>(y)));
+        ctx->DrawText(txt, Point2Dd(static_cast<float>(x), static_cast<float>(y)));
 
         // No hit rects — counter is informational only
     }
@@ -654,19 +654,19 @@ namespace UltraCanvas {
                           (i == hoveredIndicator ? s.hoverColor : s.inactiveColor);
 
             ctx->PushState();
-            ctx->ClipRect(Rect2Df(r));
+            ctx->ClipRect(Rect2Dd(r));
             ctx->SetAlpha(isActive ? 1.0f : 0.65f);
             auto img = UCImage::Get(slides[i].imagePath);
             if (img) {
-                ctx->DrawImage(*img, Rect2Df(r), ImageFitMode::Cover);
+                ctx->DrawImage(*img, Rect2Dd(r), ImageFitMode::Cover);
             } else {
                 ctx->SetFillPaint(Color(100, 100, 100));
-                ctx->FillRectangle(Rect2Df(r));
+                ctx->FillRectangle(Rect2Dd(r));
             }
             ctx->PopState();
 
             // Border on top
-            ctx->DrawFilledRectangle(Rect2Df(r), Colors::Transparent,
+            ctx->DrawFilledRectangle(Rect2Dd(r), Colors::Transparent,
                                      isActive ? 2.0f : 1.0f, frame, 0.0f);
         }
     }
@@ -726,13 +726,13 @@ namespace UltraCanvas {
             std::string label = LabelForSlide(i);
             Size2Di sz = ctx->GetTextLineDimensions(label);
             int tx = cell.x + (cell.width - sz.width) / 2;
-            ctx->DrawText(label, Point2Df(static_cast<float>(tx), static_cast<float>(cell.y)));
+            ctx->DrawText(label, Point2Dd(static_cast<float>(tx), static_cast<float>(cell.y)));
 
             // Underline for active tab
             if (isActive) {
                 Rect2Di under(cell.x + labelHPad / 2, cell.y + textH + 2,
                               cell.width - labelHPad, underlineH);
-                ctx->DrawFilledRectangle(Rect2Df(under), s.activeColor, 0.0f,
+                ctx->DrawFilledRectangle(Rect2Dd(under), s.activeColor, 0.0f,
                                          Colors::Transparent, 0.0f);
             }
 

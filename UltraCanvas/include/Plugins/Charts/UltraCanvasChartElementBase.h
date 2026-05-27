@@ -258,7 +258,7 @@ namespace UltraCanvas {
         // RENDERING OVERRIDE FROM UIELEM
         // =============================================================================
 
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
         // =============================================================================
         // EVENT HANDLING OVERRIDE
@@ -328,8 +328,8 @@ namespace UltraCanvas {
         virtual void RenderAxisLabels(IRenderContext* ctx);
 //        virtual void RenderXAxisLabelsWithMode(IRenderContext* ctx); // New method for X-axis label handling
 
-        void RenderValueLabels(IRenderContext *ctx, const std::vector<Point2Df> &screenPositions);
-        Point2Df CalculateValueLabelPosition(const Point2Df &pointPos, size_t index, size_t totalPoints);
+        void RenderValueLabels(IRenderContext *ctx, const std::vector<Point2Dd> &screenPositions);
+        Point2Dd CalculateValueLabelPosition(const Point2Dd &pointPos, size_t index, size_t totalPoints);
 
         virtual double GetXAxisLabelPosition(size_t dataIndex, size_t totalPoints);
 
@@ -343,7 +343,7 @@ namespace UltraCanvas {
         bool HandleMouseWheel(const UCEvent& event);
 
         // Helper method to get screen position for a data point
-        Point2Df GetDataPointScreenPosition(size_t index, const ChartDataPoint& point) {
+        Point2Dd GetDataPointScreenPosition(size_t index, const ChartDataPoint& point) {
             if (useIndexBasedPositioning && dataSource) {
                 // Use index-based positioning (for categorical data with labels)
                 size_t totalPoints = dataSource->GetPointCount();
@@ -351,12 +351,12 @@ namespace UltraCanvas {
                     // Single point - center it
                     float x = cachedPlotArea.x + cachedPlotArea.width / 2;
                     ChartCoordinateTransform transform(cachedPlotArea, cachedDataBounds);
-                    return Point2Df(x, transform.DataToScreen(point.x, point.y).y);
+                    return Point2Dd(x, transform.DataToScreen(point.x, point.y).y);
                 } else {
                     // Multiple points - distribute evenly
                     float x = cachedPlotArea.x + (index * cachedPlotArea.width / (totalPoints - 1));
                     ChartCoordinateTransform transform(cachedPlotArea, cachedDataBounds);
-                    return Point2Df(x, transform.DataToScreen(point.x, point.y).y);
+                    return Point2Dd(x, transform.DataToScreen(point.x, point.y).y);
                 }
             } else {
                 // Use actual x coordinate positioning (for numeric data)

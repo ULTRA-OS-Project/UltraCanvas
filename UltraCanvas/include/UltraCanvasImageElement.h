@@ -50,8 +50,8 @@ private:
     
     // Transform properties
     float rotation = 0.0f;
-    Point2Df scale = Point2Df(1.0f, 1.0f);
-    Point2Df offset = Point2Df(0.0f, 0.0f);
+    Point2Dd scale = Point2Dd(1.0f, 1.0f);
+    Point2Dd offset = Point2Dd(0.0f, 0.0f);
     
     // Interaction
     bool clickable = false;
@@ -77,7 +77,7 @@ public:
     
     // ===== CONSTRUCTOR =====
     UltraCanvasImageElement(const std::string& identifier = "ImageElement",
-                           long x = 0, long y = 0, long w = 100, long h = 100);
+                           float x = 0, float y = 0, float w = 100, float h = 100);
 
     // ===== IMAGE LOADING =====
     bool LoadFromFile(const std::string& filePath);
@@ -120,7 +120,7 @@ public:
     void SetDraggable(bool enable) { draggable = enable; }
     
     // ===== RENDERING =====
-    void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
     
     // ===== EVENT HANDLING =====
     bool OnEvent(const UCEvent& event) override;
@@ -140,24 +140,24 @@ private:
 
 // ===== FACTORY FUNCTIONS =====
 inline std::shared_ptr<UltraCanvasImageElement> CreateImageElement(
-    const std::string& identifier, long x, long y, long w, long h) {
+    const std::string& identifier, float x, float y, float w, float h) {
     return UltraCanvasUIElementFactory::Create<UltraCanvasImageElement>(identifier, x, y, w, h);
 }
 
 inline std::shared_ptr<UltraCanvasImageElement> CreateImageElement(
-        const std::string& identifier, long w = 0, long h = 0) {
+        const std::string& identifier, float w = 0, float h = 0) {
     return UltraCanvasUIElementFactory::Create<UltraCanvasImageElement>(identifier, 0, 0, w, h);
 }
 
 inline std::shared_ptr<UltraCanvasImageElement> CreateImageFromFile(
-    const std::string& identifier, long x, long y, long w, long h, const std::string& imagePath) {
+    const std::string& identifier, float x, float y, float w, float h, const std::string& imagePath) {
     auto image = CreateImageElement(identifier, x, y, w, h);
     image->LoadFromFile(imagePath);
     return image;
 }
 
 inline std::shared_ptr<UltraCanvasImageElement> CreateImageFromMemory(
-    const std::string& identifier, long x, long y, long w, long h, 
+    const std::string& identifier, float x, float y, float w, float h, 
     const std::vector<uint8_t>& imageData, UCImageLoadFormat format = UCImageLoadFormat::Autodetect) {
     auto image = CreateImageElement(identifier, x, y, w, h);
     auto img = UCImageRaster::LoadFromMemory(imageData);
@@ -167,7 +167,7 @@ inline std::shared_ptr<UltraCanvasImageElement> CreateImageFromMemory(
 
 // ===== CONVENIENCE FUNCTIONS =====
 inline std::shared_ptr<UltraCanvasImageElement> CreateScaledImage(
-    const std::string& identifier, long x, long y, long w, long h,
+    const std::string& identifier, float x, float y, float w, float h,
     const std::string& imagePath, ImageFitMode fitMode) {
     auto image = CreateImageFromFile(identifier, x, y, w, h, imagePath);
     image->SetFitMode(fitMode);
@@ -175,7 +175,7 @@ inline std::shared_ptr<UltraCanvasImageElement> CreateScaledImage(
 }
 
 inline std::shared_ptr<UltraCanvasImageElement> CreateClickableImage(
-    const std::string& identifier, long x, long y, long w, long h,
+    const std::string& identifier, float x, float y, float w, float h,
     const std::string& imagePath, std::function<void()> clickCallback) {
     auto image = CreateImageFromFile(identifier, x, y, w, h, imagePath);
     image->SetClickable(true);

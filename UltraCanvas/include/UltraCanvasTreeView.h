@@ -222,10 +222,10 @@ public:
     bool OnEvent(const UCEvent& event) override;
     
     // ===== RENDERING =====
-    void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
     void UpdateGeometry(IRenderContext* ctx) override;
 
-    void SetBounds(const Rect2Di& bounds) override;
+    void SetBounds(const Rect2Df& bounds) override;
 
 // ==== WINDOW PROPAGATION =====
     void SetWindow(UltraCanvasWindowBase* win) override;
@@ -270,7 +270,7 @@ private:
 
 // ===== FACTORY FUNCTIONS =====
 //std::shared_ptr<UltraCanvasTreeView> CreateTreeView(
-//    const std::string& identifier, long x, long y, long w, long h) {
+//    const std::string& identifier, float x, float y, float w, float h) {
 //    return std::make_shared<UltraCanvasTreeView>(identifier, x, y, w, h);
 //}
 
@@ -280,7 +280,7 @@ private:
     std::shared_ptr<UltraCanvasTreeView> treeView;
     
 public:
-    TreeViewBuilder(const std::string& identifier, long x, long y, long w, long h) {
+    TreeViewBuilder(const std::string& identifier, float x, float y, float w, float h) {
         treeView = std::make_shared<UltraCanvasTreeView>(identifier, x, y, w, h);
         //treeView = CreateTreeView(identifier, x, y, w, h);
     }

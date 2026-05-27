@@ -254,7 +254,7 @@ struct ExtensionColorMap {
 class UltraCanvasGourceTree : public UltraCanvasUIElement {
 public:
     // ===== CONSTRUCTOR =====
-    UltraCanvasGourceTree(const std::string& id, long x, long y, long w, long h);
+    UltraCanvasGourceTree(const std::string& id, float x, float y, float w, float h);
     
     bool AcceptsFocus() const override { return true; }
     
@@ -354,7 +354,7 @@ public:
     
     // Pan
     void SetPan(float x, float y);
-    Point2Df GetPan() const { return Point2Df(panX, panY); }
+    Point2Dd GetPan() const { return Point2Dd(panX, panY); }
     void CenterOnNode(const std::string& nodeId);
     
     // ===== LAYOUT COMPUTATION =====
@@ -369,7 +369,7 @@ public:
     bool IsAnimationComplete() const;
     
     // ===== RENDERING =====
-    void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
     
     // ===== EVENT HANDLING =====
     bool OnEvent(const UCEvent& event) override;
@@ -418,7 +418,7 @@ private:
     bool isDragging = false;
     bool isPanning = false;
     Point2Di dragStartPos;
-    Point2Df panStartOffset;
+    Point2Dd panStartOffset;
     
     // Animation state
     bool needsLayout = true;
@@ -466,9 +466,9 @@ private:
     bool HandleKeyDown(const UCEvent& event);
     
     // ===== HELPER METHODS =====
-    Point2Df ScreenToWorld(const Point2Di& screenPos) const;
-    Point2Di WorldToScreen(const Point2Df& worldPos) const;
-    std::string FindNodeAtPosition(const Point2Df& worldPos) const;
+    Point2Dd ScreenToWorld(const Point2Di& screenPos) const;
+    Point2Di WorldToScreen(const Point2Dd& worldPos) const;
+    std::string FindNodeAtPosition(const Point2Dd& worldPos) const;
     Color GetNodeColor(const GourceNode& node) const;
     float CalculateOpacity(const GourceNode& node) const;
     std::string GetExtension(const std::string& filename) const;
@@ -482,7 +482,7 @@ private:
 // ===== FACTORY FUNCTION =====
 
 inline std::shared_ptr<UltraCanvasGourceTree> CreateGourceTree(
-    const std::string& id, long x, long y, long w, long h
+    const std::string& id, float x, float y, float w, float h
 ) {
     return std::make_shared<UltraCanvasGourceTree>(id, x, y, w, h);
 }

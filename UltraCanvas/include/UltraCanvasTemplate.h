@@ -116,7 +116,7 @@ namespace UltraCanvas {
         // Shadow
         bool hasShadow = false;
         Color shadowColor = Color(0, 0, 0, 64);
-        Point2Df shadowOffset = Point2Df(2.0f, 2.0f);
+        Point2Dd shadowOffset = Point2Dd(2.0f, 2.0f);
         float shadowBlur = 4.0f;
 
         void SetPadding(float padding) {
@@ -311,15 +311,15 @@ namespace UltraCanvas {
         // State
         bool isDirty = true;
         bool isDragging = false;
-        Point2Df dragStartPosition;
-        Point2Df dragOffset;
+        Point2Dd dragStartPosition;
+        Point2Dd dragOffset;
 
         // Element factory
         std::unordered_map<std::string, std::function<std::shared_ptr<UltraCanvasUIElement>(const TemplateElementDescriptor&)>> elementFactories;
 
     public:
         // ===== CONSTRUCTOR =====
-        UltraCanvasTemplate(const std::string& identifier = "Template", long x = 0, long y = 0, long w = 200, long h = 32);
+        UltraCanvasTemplate(const std::string& identifier = "Template", float x = 0, float y = 0, float w = 200, float h = 32);
 
         virtual ~UltraCanvasTemplate() = default;
 
@@ -362,12 +362,12 @@ namespace UltraCanvas {
         void UpdateElementProperties();
 
         // ===== SIZE CALCULATION =====
-        Point2Df CalculateRequiredSize() const;
+        Point2Dd CalculateRequiredSize() const;
         void FitToContent();
-        void ApplyToContainer(const Rect2Df& containerRect);
+        void ApplyToContainer(const Rect2Dd& containerRect);
 
         // ===== RENDERING =====
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         void UpdateGeometry(IRenderContext *ctx) override;
 
         // ===== EVENT HANDLING =====
@@ -376,8 +376,8 @@ namespace UltraCanvas {
         // ===== DRAG FUNCTIONALITY =====
         bool IsDraggable() const { return dragHandle.enabled; }
         bool IsDragging() const { return isDragging; }
-        void StartDrag(const Point2Df& startPosition);
-        void UpdateDrag(const Point2Df& currentPosition);
+        void StartDrag(const Point2Dd& startPosition);
+        void UpdateDrag(const Point2Dd& currentPosition);
         void EndDrag();
 
         // ===== ELEMENT FACTORY REGISTRATION =====

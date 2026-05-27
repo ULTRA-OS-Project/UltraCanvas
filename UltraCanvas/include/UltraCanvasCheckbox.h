@@ -58,13 +58,13 @@ namespace UltraCanvas {
 
     protected:
         void DrawIndicator(IRenderContext* ctx) override;
-        Size2Df GetIndicatorSize() const override { return {visualStyle.boxSize, visualStyle.boxSize}; }
+        Size2Dd GetIndicatorSize() const override { return {visualStyle.boxSize, visualStyle.boxSize}; }
         void OnActivate() override { Toggle(); }
         const LabeledToggleVisualStyle& GetBaseVisualStyle() const override { return visualStyle.base; }
 
     public:
         UltraCanvasCheckbox(const std::string& identifier = "",
-                            long x = 0, long y = 0, long w = 150, long h = 24,
+                            float x = 0, float y = 0, float w = 150, float h = 24,
                             const std::string& labelText = "");
         ~UltraCanvasCheckbox() override = default;
 
@@ -96,7 +96,7 @@ namespace UltraCanvas {
         // ===== FACTORY =====
         static std::shared_ptr<UltraCanvasCheckbox> CreateCheckbox(
                 const std::string& identifier,
-                long x, long y, long w, long h,
+                float x, float y, float w, float h,
                 const std::string& text = "",
                 bool checked = false);
     };

@@ -97,15 +97,15 @@ Matrix3x3 Matrix3x3::operator*(const Matrix3x3& other) const {
     return result;
 }
 
-Point2Df Matrix3x3::Transform(const Point2Df& point) const {
-    Point2Df result;
+Point2Dd Matrix3x3::Transform(const Point2Dd& point) const {
+    Point2Dd result;
     result.x = m[0][0] * point.x + m[0][1] * point.y + m[0][2];
     result.y = m[1][0] * point.x + m[1][1] * point.y + m[1][2];
     return result;
 }
 
-Rect2Df Matrix3x3::Transform(const Rect2Df& rect) const {
-    Point2Df corners[4] = {
+Rect2Dd Matrix3x3::Transform(const Rect2Dd& rect) const {
+    Point2Dd corners[4] = {
         {rect.x, rect.y},
         {rect.x + rect.width, rect.y},
         {rect.x, rect.y + rect.height},
@@ -126,7 +126,7 @@ Rect2Df Matrix3x3::Transform(const Rect2Df& rect) const {
         maxY = std::max(maxY, corners[i].y);
     }
     
-    return Rect2Df{minX, minY, maxX - minX, maxY - minY};
+    return Rect2Dd{minX, minY, maxX - minX, maxY - minY};
 }
 
 float Matrix3x3::Determinant() const {
@@ -200,19 +200,19 @@ Matrix3x3 VectorElement::GetGlobalTransform() const {
     return global;
 }
 
-Point2Df VectorElement::LocalToGlobal(const Point2Df& point) const {
+Point2Dd VectorElement::LocalToGlobal(const Point2Dd& point) const {
     return GetGlobalTransform().Transform(point);
 }
 
-Point2Df VectorElement::GlobalToLocal(const Point2Df& point) const {
+Point2Dd VectorElement::GlobalToLocal(const Point2Dd& point) const {
     return GetGlobalTransform().Inverse().Transform(point);
 }
 
 // ===== BASIC SHAPE IMPLEMENTATIONS =====
 
 // VectorRect
-Rect2Df VectorRect::GetBoundingBox() const {
-    Rect2Df bbox = Bounds;
+Rect2Dd VectorRect::GetBoundingBox() const {
+    Rect2Dd bbox = Bounds;
     if (Transform.has_value()) {
         bbox = Transform->Transform(bbox);
     }
@@ -226,8 +226,8 @@ std::shared_ptr<VectorElement> VectorRect::Clone() const {
 }
 
 // VectorCircle
-Rect2Df VectorCircle::GetBoundingBox() const {
-    Rect2Df bbox{
+Rect2Dd VectorCircle::GetBoundingBox() const {
+    Rect2Dd bbox{
         Center.x - Radius,
         Center.y - Radius,
         Radius * 2,
@@ -246,8 +246,8 @@ std::shared_ptr<VectorElement> VectorCircle::Clone() const {
 }
 
 // VectorEllipse
-Rect2Df VectorEllipse::GetBoundingBox() const {
-    Rect2Df bbox{
+Rect2Dd VectorEllipse::GetBoundingBox() const {
+    Rect2Dd bbox{
         Center.x - RadiusX,
         Center.y - RadiusY,
         RadiusX * 2,
@@ -266,13 +266,13 @@ std::shared_ptr<VectorElement> VectorEllipse::Clone() const {
 }
 
 // VectorLine
-Rect2Df VectorLine::GetBoundingBox() const {
+Rect2Dd VectorLine::GetBoundingBox() const {
     float minX = std::min(Start.x, End.x);
     float minY = std::min(Start.y, End.y);
     float maxX = std::max(Start.x, End.x);
     float maxY = std::max(Start.y, End.y);
     
-    Rect2Df bbox{minX, minY, maxX - minX, maxY - minY};
+    Rect2Dd bbox{minX, minY, maxX - minX, maxY - minY};
     if (Transform.has_value()) {
         bbox = Transform->Transform(bbox);
     }
@@ -286,9 +286,9 @@ std::shared_ptr<VectorElement> VectorLine::Clone() const {
 }
 
 // VectorPolyline
-Rect2Df VectorPolyline::GetBoundingBox() const {
+Rect2Dd VectorPolyline::GetBoundingBox() const {
     if (Points.empty()) {
-        return Rect2Df{0, 0, 0, 0};
+        return Rect2Dd{0, 0, 0, 0};
     }
     
     float minX = Points[0].x, maxX = Points[0].x;
@@ -301,7 +301,7 @@ Rect2Df VectorPolyline::GetBoundingBox() const {
         maxY = std::max(maxY, point.y);
     }
     
-    Rect2Df bbox{minX, minY, maxX - minX, maxY - minY};
+    Rect2Dd bbox{minX, minY, maxX - minX, maxY - minY};
     if (Transform.has_value()) {
         bbox = Transform->Transform(bbox);
     }
@@ -315,9 +315,9 @@ std::shared_ptr<VectorElement> VectorPolyline::Clone() const {
 }
 
 // VectorPolygon
-Rect2Df VectorPolygon::GetBoundingBox() const {
+Rect2Dd VectorPolygon::GetBoundingBox() const {
     if (Points.empty()) {
-        return Rect2Df{0, 0, 0, 0};
+        return Rect2Dd{0, 0, 0, 0};
     }
     
     float minX = Points[0].x, maxX = Points[0].x;
@@ -330,7 +330,7 @@ Rect2Df VectorPolygon::GetBoundingBox() const {
         maxY = std::max(maxY, point.y);
     }
     
-    Rect2Df bbox{minX, minY, maxX - minX, maxY - minY};
+    Rect2Dd bbox{minX, minY, maxX - minX, maxY - minY};
     if (Transform.has_value()) {
         bbox = Transform->Transform(bbox);
     }
@@ -345,11 +345,11 @@ std::shared_ptr<VectorElement> VectorPolygon::Clone() const {
 
 // ===== VECTOR PATH IMPLEMENTATION =====
 
-Rect2Df VectorPath::GetBoundingBox() const {
+Rect2Dd VectorPath::GetBoundingBox() const {
     if (!Path.cachedBounds) {
         if (Path.commands.empty()) return {0, 0, 0, 0};
         float minX = 1e9f, minY = 1e9f, maxX = -1e9f, maxY = -1e9f;
-        Point2Df cur{0, 0};
+        Point2Dd cur{0, 0};
         for (const auto &c: Path.commands) {
             if ((c.Type == PathCommandType::MoveTo || c.Type == PathCommandType::LineTo) &&
                 c.Parameters.size() >= 2) {
@@ -372,7 +372,7 @@ Rect2Df VectorPath::GetBoundingBox() const {
             }
         }
         if (minX > maxX) return {0, 0, 0, 0};
-        Path.cachedBounds = Rect2Df{minX, minY, maxX - minX, maxY - minY};
+        Path.cachedBounds = Rect2Dd{minX, minY, maxX - minX, maxY - minY};
     }
 
     if (Transform.has_value()) {
@@ -457,9 +457,9 @@ float VectorPath::GetLength() const {
     return Path.length.value();
 }
 
-Point2Df VectorPath::GetPointAtLength(float length) const {
+Point2Dd VectorPath::GetPointAtLength(float length) const {
     auto points = Flatten();
-    if (points.empty()) return Point2Df{0, 0};
+    if (points.empty()) return Point2Dd{0, 0};
     
     float currentLength = 0;
     for (size_t i = 1; i < points.size(); i++) {
@@ -469,7 +469,7 @@ Point2Df VectorPath::GetPointAtLength(float length) const {
         
         if (currentLength + segmentLength >= length) {
             float t = (length - currentLength) / segmentLength;
-            return Point2Df{
+            return Point2Dd{
                 points[i-1].x + t * dx,
                 points[i-1].y + t * dy
             };
@@ -502,11 +502,11 @@ float VectorPath::GetAngleAtLength(float length) const {
     return std::atan2(dy, dx);
 }
 
-std::vector<Point2Df> VectorPath::Flatten(float tolerance) const {
+std::vector<Point2Dd> VectorPath::Flatten(float tolerance) const {
     if (!Path.flattenedPoints.has_value()) {
-        std::vector<Point2Df> result;
-        Point2Df currentPoint{0, 0};
-        Point2Df startPoint{0, 0};
+        std::vector<Point2Dd> result;
+        Point2Dd currentPoint{0, 0};
+        Point2Dd startPoint{0, 0};
         
         for (const auto& cmd : Path.commands) {
             switch (cmd.Type) {
@@ -537,8 +537,8 @@ std::vector<Point2Df> VectorPath::Flatten(float tolerance) const {
                 
                 case PathCommandType::CurveTo: {
                     // Flatten cubic bezier curve
-                    Point2Df p0 = currentPoint;
-                    Point2Df p1, p2, p3;
+                    Point2Dd p0 = currentPoint;
+                    Point2Dd p1, p2, p3;
                     
                     if (cmd.Relative) {
                         p1 = {currentPoint.x + cmd.Parameters[0], 
@@ -566,7 +566,7 @@ std::vector<Point2Df> VectorPath::Flatten(float tolerance) const {
                         float mt2 = mt * mt;
                         float mt3 = mt2 * mt;
                         
-                        Point2Df point;
+                        Point2Dd point;
                         point.x = mt3 * p0.x + 3 * mt2 * t * p1.x + 
                                  3 * mt * t2 * p2.x + t3 * p3.x;
                         point.y = mt3 * p0.y + 3 * mt2 * t * p1.y + 
@@ -580,8 +580,8 @@ std::vector<Point2Df> VectorPath::Flatten(float tolerance) const {
                 
                 case PathCommandType::QuadraticTo: {
                     // Flatten quadratic bezier curve
-                    Point2Df p0 = currentPoint;
-                    Point2Df p1, p2;
+                    Point2Dd p0 = currentPoint;
+                    Point2Dd p1, p2;
                     
                     if (cmd.Relative) {
                         p1 = {currentPoint.x + cmd.Parameters[0], 
@@ -601,7 +601,7 @@ std::vector<Point2Df> VectorPath::Flatten(float tolerance) const {
                         float t = static_cast<float>(i) / steps;
                         float mt = 1 - t;
                         
-                        Point2Df point;
+                        Point2Dd point;
                         point.x = mt * mt * p0.x + 2 * mt * t * p1.x + t * t * p2.x;
                         point.y = mt * mt * p0.y + 2 * mt * t * p1.y + t * t * p2.y;
                         result.push_back(point);
@@ -620,7 +620,7 @@ std::vector<Point2Df> VectorPath::Flatten(float tolerance) const {
                     bool largeArc = cmd.Parameters[3] > 0.5f;
                     bool sweep = cmd.Parameters[4] > 0.5f;
                     
-                    Point2Df endPoint;
+                    Point2Dd endPoint;
                     if (cmd.Relative) {
                         endPoint = {currentPoint.x + cmd.Parameters[5],
                                    currentPoint.y + cmd.Parameters[6]};
@@ -658,7 +658,7 @@ std::vector<Point2Df> VectorPath::Flatten(float tolerance) const {
 // ===== TEXT ELEMENTS IMPLEMENTATION =====
 
 // VectorText
-Rect2Df VectorText::GetBoundingBox() const {
+Rect2Dd VectorText::GetBoundingBox() const {
     // Simplified bounding box calculation
     // In real implementation, this would use font metrics
     float width = 0;
@@ -669,7 +669,7 @@ Rect2Df VectorText::GetBoundingBox() const {
         width += span.Text.length() * BaseStyle.FontSize * 0.6f;
     }
     
-    Rect2Df bbox{Position.x, Position.y - BaseStyle.FontSize, width, height};
+    Rect2Dd bbox{Position.x, Position.y - BaseStyle.FontSize, width, height};
     if (Transform.has_value()) {
         bbox = Transform->Transform(bbox);
     }
@@ -703,10 +703,10 @@ std::string VectorText::GetPlainText() const {
 }
 
 // VectorTextPath
-Rect2Df VectorTextPath::GetBoundingBox() const {
+Rect2Dd VectorTextPath::GetBoundingBox() const {
     // Would need the actual path to calculate proper bounds
     // For now, return empty bounds
-    return Rect2Df{0, 0, 0, 0};
+    return Rect2Dd{0, 0, 0, 0};
 }
 
 std::shared_ptr<VectorElement> VectorTextPath::Clone() const {
@@ -719,22 +719,22 @@ std::shared_ptr<VectorElement> VectorTextPath::Clone() const {
 // ===== CONTAINER ELEMENTS IMPLEMENTATION =====
 
 // VectorGroup
-Rect2Df VectorGroup::GetBoundingBox() const {
+Rect2Dd VectorGroup::GetBoundingBox() const {
     if (Children.empty()) {
-        return Rect2Df{0, 0, 0, 0};
+        return Rect2Dd{0, 0, 0, 0};
     }
     
-    Rect2Df bbox = Children[0]->GetBoundingBox();
+    Rect2Dd bbox = Children[0]->GetBoundingBox();
     
     for (size_t i = 1; i < Children.size(); i++) {
-        Rect2Df childBox = Children[i]->GetBoundingBox();
+        Rect2Dd childBox = Children[i]->GetBoundingBox();
         
         float minX = std::min(bbox.x, childBox.x);
         float minY = std::min(bbox.y, childBox.y);
         float maxX = std::max(bbox.x + bbox.width, childBox.x + childBox.width);
         float maxY = std::max(bbox.y + bbox.height, childBox.y + childBox.height);
         
-        bbox = Rect2Df{minX, minY, maxX - minX, maxY - minY};
+        bbox = Rect2Dd{minX, minY, maxX - minX, maxY - minY};
     }
     
     if (Transform.has_value()) {
@@ -812,8 +812,8 @@ std::shared_ptr<VectorElement> VectorSymbol::Clone() const {
 
 
 // VectorUse
-Rect2Df VectorUse::GetBoundingBox() const {
-    Rect2Df bbox{Position.x, Position.y, Size.width, Size.height};
+Rect2Dd VectorUse::GetBoundingBox() const {
+    Rect2Dd bbox{Position.x, Position.y, Size.width, Size.height};
     if (Transform.has_value()) {
         bbox = Transform->Transform(bbox);
     }
@@ -830,8 +830,8 @@ std::shared_ptr<VectorElement> VectorUse::Clone() const {
 // ===== SPECIAL ELEMENTS IMPLEMENTATION =====
 
 // VectorImage
-Rect2Df VectorImage::GetBoundingBox() const {
-    Rect2Df bbox = Bounds;
+Rect2Dd VectorImage::GetBoundingBox() const {
+    Rect2Dd bbox = Bounds;
     if (Transform.has_value()) {
         bbox = Transform->Transform(bbox);
     }
@@ -877,22 +877,22 @@ std::shared_ptr<VectorElement> VectorFilter::Clone() const {
 
 
 // VectorClipPath
-Rect2Df VectorClipPath::GetBoundingBox() const {
+Rect2Dd VectorClipPath::GetBoundingBox() const {
     if (Data.Elements.empty()) {
-        return Rect2Df{0, 0, 0, 0};
+        return Rect2Dd{0, 0, 0, 0};
     }
     
-    Rect2Df bbox = Data.Elements[0]->GetBoundingBox();
+    Rect2Dd bbox = Data.Elements[0]->GetBoundingBox();
     
     for (size_t i = 1; i < Data.Elements.size(); i++) {
-        Rect2Df elemBox = Data.Elements[i]->GetBoundingBox();
+        Rect2Dd elemBox = Data.Elements[i]->GetBoundingBox();
         
         float minX = std::min(bbox.x, elemBox.x);
         float minY = std::min(bbox.y, elemBox.y);
         float maxX = std::max(bbox.x + bbox.width, elemBox.x + elemBox.width);
         float maxY = std::max(bbox.y + bbox.height, elemBox.y + elemBox.height);
         
-        bbox = Rect2Df{minX, minY, maxX - minX, maxY - minY};
+        bbox = Rect2Dd{minX, minY, maxX - minX, maxY - minY};
     }
     
     return bbox;
@@ -1043,38 +1043,38 @@ std::vector<std::shared_ptr<VectorElement>> VectorDocument::FindElementsByClass(
     return result;
 }
 
-Rect2Df VectorDocument::GetBoundingBox() const {
+Rect2Dd VectorDocument::GetBoundingBox() const {
     if (Layers.empty()) {
-        return Rect2Df{0, 0, Size.width, Size.height};
+        return Rect2Dd{0, 0, Size.width, Size.height};
     }
     
-    Rect2Df bbox = Layers[0]->GetBoundingBox();
+    Rect2Dd bbox = Layers[0]->GetBoundingBox();
     
     for (size_t i = 1; i < Layers.size(); i++) {
-        Rect2Df layerBox = Layers[i]->GetBoundingBox();
+        Rect2Dd layerBox = Layers[i]->GetBoundingBox();
         
         float minX = std::min(bbox.x, layerBox.x);
         float minY = std::min(bbox.y, layerBox.y);
         float maxX = std::max(bbox.x + bbox.width, layerBox.x + layerBox.width);
         float maxY = std::max(bbox.y + bbox.height, layerBox.y + layerBox.height);
         
-        bbox = Rect2Df{minX, minY, maxX - minX, maxY - minY};
+        bbox = Rect2Dd{minX, minY, maxX - minX, maxY - minY};
     }
     
     return bbox;
 }
 
 void VectorDocument::FitToContent(float padding) {
-    Rect2Df bbox = GetBoundingBox();
+    Rect2Dd bbox = GetBoundingBox();
     
-    ViewBox = Rect2Df{
+    ViewBox = Rect2Dd{
         bbox.x - padding,
         bbox.y - padding,
         bbox.width + 2 * padding,
         bbox.height + 2 * padding
     };
     
-    Size = Size2Df{ViewBox.width, ViewBox.height};
+    Size = Size2Dd{ViewBox.width, ViewBox.height};
 }
 
 void VectorDocument::Clear() {
@@ -1391,12 +1391,12 @@ std::string SerializeTransform(const Matrix3x3& transform) {
            std::to_string(transform.m[1][2]) + ")";
 }
 
-Rect2Df CalculateTextBounds(const std::vector<TextSpanData>& spans, const TextStyle& style) {
+Rect2Dd CalculateTextBounds(const std::vector<TextSpanData>& spans, const TextStyle& style) {
     // Simplified implementation
     // In real implementation, this would use proper font metrics
     
     if (spans.empty()) {
-        return Rect2Df{0, 0, 0, 0};
+        return Rect2Dd{0, 0, 0, 0};
     }
     
     float totalWidth = 0;
@@ -1408,16 +1408,16 @@ Rect2Df CalculateTextBounds(const std::vector<TextSpanData>& spans, const TextSt
         totalWidth += span.Text.length() * charWidth;
     }
     
-    return Rect2Df{0, 0, totalWidth, maxHeight};
+    return Rect2Dd{0, 0, totalWidth, maxHeight};
 }
 
-std::vector<Point2Df> PathToPolygon(const PathData& path, float tolerance = 0.0) {
+std::vector<Point2Dd> PathToPolygon(const PathData& path, float tolerance = 0.0) {
     VectorPath tempPath;
     tempPath.Path = path;
     return tempPath.Flatten(tolerance);
 }
 
-PathData PolygonToPath(const std::vector<Point2Df>& points, bool closed) {
+PathData PolygonToPath(const std::vector<Point2Dd>& points, bool closed) {
     PathData result;
     
     if (points.empty()) {
@@ -1460,8 +1460,8 @@ PathData SimplifyPath(const PathData& path, float tolerance) {
     }
     
     // Find point with maximum distance from line
-    std::function<std::vector<Point2Df>(const std::vector<Point2Df>&, float)> simplifySection = 
-        [&](const std::vector<Point2Df>& pts, float tol) -> std::vector<Point2Df> {
+    std::function<std::vector<Point2Dd>(const std::vector<Point2Dd>&, float)> simplifySection = 
+        [&](const std::vector<Point2Dd>& pts, float tol) -> std::vector<Point2Dd> {
         if (pts.size() <= 2) {
             return pts;
         }
@@ -1470,8 +1470,8 @@ PathData SimplifyPath(const PathData& path, float tolerance) {
         float maxDist = 0;
         size_t maxIndex = 0;
         
-        Point2Df start = pts.front();
-        Point2Df end = pts.back();
+        Point2Dd start = pts.front();
+        Point2Dd end = pts.back();
         
         for (size_t i = 1; i < pts.size() - 1; i++) {
             // Calculate perpendicular distance to line
@@ -1493,14 +1493,14 @@ PathData SimplifyPath(const PathData& path, float tolerance) {
         
         // If max distance is greater than tolerance, recursively simplify
         if (maxDist > tol) {
-            std::vector<Point2Df> left(pts.begin(), pts.begin() + maxIndex + 1);
-            std::vector<Point2Df> right(pts.begin() + maxIndex, pts.end());
+            std::vector<Point2Dd> left(pts.begin(), pts.begin() + maxIndex + 1);
+            std::vector<Point2Dd> right(pts.begin() + maxIndex, pts.end());
             
             auto simplifiedLeft = simplifySection(left, tol);
             auto simplifiedRight = simplifySection(right, tol);
             
             // Combine results
-            std::vector<Point2Df> result(simplifiedLeft.begin(), simplifiedLeft.end() - 1);
+            std::vector<Point2Dd> result(simplifiedLeft.begin(), simplifiedLeft.end() - 1);
             result.insert(result.end(), simplifiedRight.begin(), simplifiedRight.end());
             
             return result;
@@ -1514,7 +1514,7 @@ PathData SimplifyPath(const PathData& path, float tolerance) {
     return PolygonToPath(simplified, path.Closed);
 }
 
-bool IsPointInPath(const PathData& path, const Point2Df& point, FillRule rule) {
+bool IsPointInPath(const PathData& path, const Point2Dd& point, FillRule rule) {
     auto polygon = PathToPolygon(path);
     
     if (polygon.size() < 3) {
@@ -1525,8 +1525,8 @@ bool IsPointInPath(const PathData& path, const Point2Df& point, FillRule rule) {
     int crossings = 0;
     
     for (size_t i = 0; i < polygon.size(); i++) {
-        Point2Df p1 = polygon[i];
-        Point2Df p2 = polygon[(i + 1) % polygon.size()];
+        Point2Dd p1 = polygon[i];
+        Point2Dd p2 = polygon[(i + 1) % polygon.size()];
         
         // Check if ray from point going right crosses edge
         if ((p1.y <= point.y && p2.y > point.y) ||
@@ -1558,16 +1558,16 @@ PathData OffsetPath(const PathData& path, float offset) {
         return path;
     }
     
-    std::vector<Point2Df> offsetPoints;
+    std::vector<Point2Dd> offsetPoints;
     
     for (size_t i = 0; i < points.size(); i++) {
         size_t prev = (i + points.size() - 1) % points.size();
         size_t next = (i + 1) % points.size();
         
         // Calculate normals
-        Point2Df v1 = {points[i].x - points[prev].x, 
+        Point2Dd v1 = {points[i].x - points[prev].x, 
                       points[i].y - points[prev].y};
-        Point2Df v2 = {points[next].x - points[i].x, 
+        Point2Dd v2 = {points[next].x - points[i].x, 
                       points[next].y - points[i].y};
         
         // Normalize
@@ -1584,11 +1584,11 @@ PathData OffsetPath(const PathData& path, float offset) {
         }
         
         // Get perpendiculars
-        Point2Df n1 = {-v1.y, v1.x};
-        Point2Df n2 = {-v2.y, v2.x};
+        Point2Dd n1 = {-v1.y, v1.x};
+        Point2Dd n2 = {-v2.y, v2.x};
         
         // Average normal
-        Point2Df avgNormal = {(n1.x + n2.x) / 2, (n1.y + n2.y) / 2};
+        Point2Dd avgNormal = {(n1.x + n2.x) / 2, (n1.y + n2.y) / 2};
         float avgLen = std::sqrt(avgNormal.x * avgNormal.x + avgNormal.y * avgNormal.y);
         
         if (avgLen > 0) {

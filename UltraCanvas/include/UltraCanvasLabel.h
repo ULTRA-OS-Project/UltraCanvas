@@ -56,11 +56,11 @@ namespace UltraCanvas {
 
     public:
         // ===== CONSTRUCTOR =====
-        UltraCanvasLabel(const std::string &identifier, long x, long y, long w, long h,
+        UltraCanvasLabel(const std::string &identifier, float x, float y, float w, float h,
                          const std::string &labelText = "");
 
         explicit UltraCanvasLabel(const std::string &identifier = "Label",
-                                  long w = 100, long h = 25,
+                                  float w = 100, float h = 25,
                                   const std::string &labelText = "");
 
         virtual ~UltraCanvasLabel() = default;
@@ -89,18 +89,18 @@ namespace UltraCanvas {
         void SetMaxWidth(int mWidth);
         void SetTextIsMarkup(bool markup);
 
-        int GetPreferredWidth() override;
-        int GetPreferredHeight() override;
+        float GetPreferredWidth() override;
+        float GetPreferredHeight() override;
 
         // ===== RENDERING =====
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         void UpdateGeometry(IRenderContext *ctx) override;
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;
 
         // ===== SIZE CHANGES =====
-        void SetBounds(const Rect2Di& bounds) override;
+        void SetBounds(const Rect2Df& bounds) override;
 
         // ===== EVENT CALLBACKS =====
         std::function<void()> onClick;
@@ -117,25 +117,25 @@ namespace UltraCanvas {
     };
 // ===== FACTORY FUNCTIONS =====
     std::shared_ptr<UltraCanvasLabel> CreateLabel(
-            const std::string& identifier, long x, long y, long w, long h,
+            const std::string& identifier, float x, float y, float w, float h,
             const std::string& text = "");
 
     std::shared_ptr<UltraCanvasLabel> CreateLabel(
-            const std::string& identifier, long w, long h,
+            const std::string& identifier, float w, float h,
             const std::string& text = "");
 
     std::shared_ptr<UltraCanvasLabel> CreateLabel(const std::string& text);
 
     std::shared_ptr<UltraCanvasLabel> CreateAutoLabel(
-            const std::string& identifier, long x, long y,
+            const std::string& identifier, float x, float y,
             const std::string& text);
 
     std::shared_ptr<UltraCanvasLabel> CreateHeaderLabel(
-            const std::string& identifier, long x, long y, long w, long h,
+            const std::string& identifier, float x, float y, float w, float h,
             const std::string& text);
 
     std::shared_ptr<UltraCanvasLabel> CreateStatusLabel(
-            const std::string& identifier, long x, long y, long w, long h,
+            const std::string& identifier, float x, float y, float w, float h,
             const std::string& text = "Ready");
 
 // ===== BUILDER PATTERN =====
@@ -144,7 +144,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasLabel> label;
 
     public:
-        LabelBuilder(const std::string& identifier, long x, long y, long w = 100, long h = 25);
+        LabelBuilder(const std::string& identifier, float x, float y, float w = 100, float h = 25);
 
         LabelBuilder& SetText(const std::string& text);
         LabelBuilder& SetFont(const std::string& fontFamily, float fontSize = 12.0f);
@@ -162,7 +162,7 @@ namespace UltraCanvas {
     };
 
 // ===== CONVENIENCE BUILDER =====
-    inline LabelBuilder CreateLabelBuilder(const std::string& identifier, long x, long y, long w = 100, long h = 25) {
+    inline LabelBuilder CreateLabelBuilder(const std::string& identifier, float x, float y, float w = 100, float h = 25) {
         return LabelBuilder(identifier, x, y, w, h);
     }
 

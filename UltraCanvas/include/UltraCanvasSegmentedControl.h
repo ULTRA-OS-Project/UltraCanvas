@@ -154,7 +154,7 @@ namespace UltraCanvas {
 
     public:
         // ===== CONSTRUCTOR =====
-        UltraCanvasSegmentedControl(const std::string &identifier = "SegmentedControl", long x = 0, long y = 0, long w = 300, long h = 32)
+        UltraCanvasSegmentedControl(const std::string &identifier = "SegmentedControl", float x = 0, float y = 0, float w = 300, float h = 32)
                 : UltraCanvasUIElement(identifier, x, y, w, h) {
 
             mouseCursor = UCMouseCursor::Hand;
@@ -220,7 +220,7 @@ namespace UltraCanvas {
 
         // ===== RENDERING =====
 
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         void UpdateGeometry(IRenderContext *ctx) override;
 
         // ===== EVENT HANDLING =====
@@ -266,7 +266,7 @@ namespace UltraCanvas {
 // ===== FACTORY FUNCTIONS =====
 
     inline std::shared_ptr<UltraCanvasSegmentedControl> CreateSegmentedControl(
-            const std::string& identifier, long x, long y, long w, long h) {
+            const std::string& identifier, float x, float y, float w, float h) {
         return UltraCanvasUIElementFactory::Create<UltraCanvasSegmentedControl>(
                 identifier, x, y, w, h
         );
@@ -286,7 +286,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasSegmentedControl> control;
 
     public:
-        SegmentedControlBuilder(const std::string& identifier, long x, long y, long w, long h) {
+        SegmentedControlBuilder(const std::string& identifier, float x, float y, float w, float h) {
             control = CreateSegmentedControl(identifier, x, y, w, h);
         }
 

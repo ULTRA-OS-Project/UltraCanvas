@@ -456,9 +456,9 @@ namespace UltraCanvas {
 
     void RenderContextCairo::ResetTransform() {
         cairo_identity_matrix(cairo);
-        currentState.translation = Point2Df(0, 0);
+        currentState.translation = Point2Dd(0, 0);
         currentState.rotation = 0;
-        currentState.scale = Point2Df(1, 1);
+        currentState.scale = Point2Dd(1, 1);
     }
 
     void RenderContextCairo::ClearClipRect() {
@@ -469,7 +469,7 @@ namespace UltraCanvas {
 //        debugOutput << "RenderContextCairo::ClearClipRect - clip region cleared successfully" << std::endl;
     }
 
-    void RenderContextCairo::ClipRect(const Rect2Df& rect) {
+    void RenderContextCairo::ClipRect(const Rect2Dd& rect) {
 //        debugOutput << "RenderContextCairo::ClipRect - setting clip to "
 //                  << x << "," << y << " " << w << "x" << h << std::endl;
         cairo_rectangle(cairo, rect.x, rect.y, rect.width, rect.height);
@@ -481,7 +481,7 @@ namespace UltraCanvas {
     }
 
     void RenderContextCairo::ClipRoundedRectangle(
-            const Rect2Df& rect,
+            const Rect2Dd& rect,
             double borderTopLeftRadius, double borderTopRightRadius,
             double borderBottomRightRadius, double borderBottomLeftRadius) {
         // Clamp radii to prevent overlapping
@@ -564,7 +564,7 @@ namespace UltraCanvas {
     }
 
 // ===== BASIC DRAWING =====
-    void RenderContextCairo::FillRectangle(const Rect2Df& rect) {
+    void RenderContextCairo::FillRectangle(const Rect2Dd& rect) {
 //        debugOutput << "RenderContextCairo::FillRectangle this=" << this << " cairo=" << cairo << std::endl;
 
         // *** CRITICAL FIX: Apply fill style explicitly ***
@@ -576,7 +576,7 @@ namespace UltraCanvas {
 //        debugOutput << "RenderContextCairo::FillRectangle: Complete" << std::endl;
     }
 
-    void RenderContextCairo::DrawRectangle(const Rect2Df& rect) {
+    void RenderContextCairo::DrawRectangle(const Rect2Dd& rect) {
 //        debugOutput << "RenderContextCairo::DrawRectangle this=" << this << " cairo=" << cairo << std::endl;
 
         // *** CRITICAL FIX: Apply stroke style explicitly ***
@@ -588,7 +588,7 @@ namespace UltraCanvas {
 //        debugOutput << "RenderContextCairo::DrawRectangle: Complete" << std::endl;
     }
 
-    void RenderContextCairo::FillRoundedRectangle(const Rect2Df & rect, double radius) {
+    void RenderContextCairo::FillRoundedRectangle(const Rect2Dd & rect, double radius) {
 //        debugOutput << "RenderContextCairo::FillRoundedRectangle" << std::endl;
 
         // *** Apply fill style ***
@@ -605,7 +605,7 @@ namespace UltraCanvas {
         Fill();
     }
 
-    void RenderContextCairo::DrawRoundedRectangle(const Rect2Df & rect, double radius) {
+    void RenderContextCairo::DrawRoundedRectangle(const Rect2Dd & rect, double radius) {
 //        debugOutput << "RenderContextCairo::DrawRoundedRectangle" << std::endl;
 
         // *** Apply stroke style ***
@@ -622,17 +622,17 @@ namespace UltraCanvas {
         Stroke();
     }
 
-    void RenderContextCairo::FillCircle(const Point2Df& center, double radius) {
+    void RenderContextCairo::FillCircle(const Point2Dd& center, double radius) {
         cairo_arc(cairo, center.x, center.y, radius, 0, 2 * M_PI);
         Fill();
     }
 
-    void RenderContextCairo::DrawCircle(const Point2Df& center, double radius) {
+    void RenderContextCairo::DrawCircle(const Point2Dd& center, double radius) {
         cairo_arc(cairo, center.x, center.y, radius, 0, 2 * M_PI);
         Stroke();
     }
 
-    void RenderContextCairo::DrawLine(const Point2Df& from, const Point2Df& to) {
+    void RenderContextCairo::DrawLine(const Point2Dd& from, const Point2Dd& to) {
 //        debugOutput << "RenderContextCairo::DrawLine" << std::endl;
 
         // *** Apply stroke style ***
@@ -758,7 +758,7 @@ namespace UltraCanvas {
     }
 
 
-    void RenderContextCairo::DrawTextLayout(ITextLayout &layout, const Point2Df &pos) {
+    void RenderContextCairo::DrawTextLayout(ITextLayout &layout, const Point2Dd &pos) {
         auto extents = layout.GetLayoutExtents();
 //        debugOutput << "RenderContextCairo::DrawTextLayout txt=" << layout.GetText() << " pos=" << pos.x << "," << pos.y << " offset=" << layout.GetLayoutVerticalOffset() <<  " extents=" << extents.logical.x << "," << extents.logical.y << " " << extents.logical.width << "x" << extents.logical.height << " ink=" << extents.ink.x << "," << extents.ink.y << " " << extents.ink.width << "x" << extents.ink.height << std::endl;
         cairo_move_to(cairo, pos.x, pos.y + layout.GetLayoutVerticalOffset());
@@ -766,7 +766,7 @@ namespace UltraCanvas {
         pango_cairo_show_layout(cairo, static_cast<PangoLayout *>(layout.GetHandle()));
     }
 
-    void RenderContextCairo::DrawText(const std::string &text, const Point2Df &pos) {
+    void RenderContextCairo::DrawText(const std::string &text, const Point2Dd &pos) {
         // Comprehensive null checks
         if (text.empty()) {
             return; // Nothing to draw
@@ -781,7 +781,7 @@ namespace UltraCanvas {
 
     }
 
-    void RenderContextCairo::DrawTextInRect(const std::string &text, const Rect2Df &rect) {
+    void RenderContextCairo::DrawTextInRect(const std::string &text, const Rect2Dd &rect) {
         if (text.empty()) {
             return; // Nothing to draw
         }
@@ -964,7 +964,7 @@ namespace UltraCanvas {
     }
 
 
-    void RenderContextCairo::FillEllipse(const Rect2Df& rect) {
+    void RenderContextCairo::FillEllipse(const Rect2Dd& rect) {
 
         cairo_save(cairo);
         cairo_translate(cairo, rect.x + rect.width / 2, rect.y + rect.height / 2);
@@ -975,7 +975,7 @@ namespace UltraCanvas {
         Fill();
     }
 
-    void RenderContextCairo::DrawEllipse(const Rect2Df& rect) {
+    void RenderContextCairo::DrawEllipse(const Rect2Dd& rect) {
 
         cairo_save(cairo);
         cairo_translate(cairo, rect.x + rect.width / 2, rect.y + rect.height / 2);
@@ -986,7 +986,7 @@ namespace UltraCanvas {
         Stroke();
     }
 
-    void RenderContextCairo::FillLinePath(const std::vector<Point2Df> &points) {
+    void RenderContextCairo::FillLinePath(const std::vector<Point2Dd> &points) {
         if (points.empty()) return;
 
         cairo_move_to(cairo, points[0].x, points[0].y);
@@ -997,7 +997,7 @@ namespace UltraCanvas {
         Fill();
     }
 
-    void RenderContextCairo::DrawLinePath(const std::vector<Point2Df> &points, bool closePath) {
+    void RenderContextCairo::DrawLinePath(const std::vector<Point2Dd> &points, bool closePath) {
         if (points.empty()) return;
 
         cairo_move_to(cairo, points[0].x, points[0].y);
@@ -1036,8 +1036,8 @@ namespace UltraCanvas {
 //        cairo_fill(cairo);
 //    }
 
-    void RenderContextCairo::DrawBezierCurve(const Point2Df &start, const Point2Df &cp1, const Point2Df &cp2,
-                                             const Point2Df &end) {
+    void RenderContextCairo::DrawBezierCurve(const Point2Dd &start, const Point2Dd &cp1, const Point2Dd &cp2,
+                                             const Point2Dd &end) {
 //        ApplyStrokeStyle(currentState.style);
         cairo_move_to(cairo, start.x, start.y);
         cairo_curve_to(cairo, cp1.x, cp1.y, cp2.x, cp2.y, end.x, end.y);
@@ -1136,7 +1136,7 @@ namespace UltraCanvas {
     }
 
     void RenderContextCairo::DrawRoundedRectangleWidthBorders(
-            const Rect2Df & rect,
+            const Rect2Dd & rect,
             bool fill,
             double borderLeftWidth, double borderRightWidth,
             double borderTopWidth, double borderBottomWidth,
@@ -1331,9 +1331,9 @@ namespace UltraCanvas {
         cairo_arc(cairo, x, y, radius, 0, 2 * M_PI);
     }
 
-    Rect2Df RenderContextCairo::GetPathExtents() {
-        Rect2Df result;
-        Point2Df p2;
+    Rect2Dd RenderContextCairo::GetPathExtents() {
+        Rect2Dd result;
+        Point2Dd p2;
         cairo_path_extents(cairo, &result.x, &result.y, &p2.x, &p2.y);
         result.width = std::abs(p2.x - result.x);
         result.height = std::abs(p2.y - result.y);
@@ -1637,17 +1637,17 @@ namespace UltraCanvas {
         cairo_restore(cairo);
     }
 
-    void RenderContextCairo::DrawPixmap(UCPixmap& pixmap, const Rect2Df& rect, ImageFitMode fitMode) {
+    void RenderContextCairo::DrawPixmap(UCPixmap& pixmap, const Rect2Dd& rect, ImageFitMode fitMode) {
         DrawPixmapOrMask(cairo, pixmap, rect.x, rect.y, rect.width, rect.height, fitMode,
                          currentState.globalAlpha, false, Colors::Transparent);
     }
 
-    void RenderContextCairo::DrawMask(const Color& c, UCPixmap& mask, const Rect2Df& rect, ImageFitMode fitMode) {
+    void RenderContextCairo::DrawMask(const Color& c, UCPixmap& mask, const Rect2Dd& rect, ImageFitMode fitMode) {
         DrawPixmapOrMask(cairo, mask, rect.x, rect.y, rect.width, rect.height, fitMode,
                          currentState.globalAlpha, true, c);
     }
 
-    void RenderContextCairo::DrawPartOfPixmap(UCPixmap & pixmap, const Rect2Df &srcRect, const Rect2Df &destRect) {
+    void RenderContextCairo::DrawPartOfPixmap(UCPixmap & pixmap, const Rect2Dd &srcRect, const Rect2Dd &destRect) {
         try {
             // Validate source rectangle bounds
             if (srcRect.x < 0 || srcRect.y < 0 ||
@@ -1774,7 +1774,7 @@ namespace UltraCanvas {
         cairo_fill(cairo);
     }
 
-    void RenderContextCairo::FlushToSurface(NativeSurfacePtr flushToSurface, const Point2Df& pos) {
+    void RenderContextCairo::FlushToSurface(NativeSurfacePtr flushToSurface, const Point2Dd& pos) {
         // Copy staging surface to window surface
         cairo_t *toCtx = cairo_create(static_cast<cairo_surface_t *>(flushToSurface));
         if (!toCtx) {

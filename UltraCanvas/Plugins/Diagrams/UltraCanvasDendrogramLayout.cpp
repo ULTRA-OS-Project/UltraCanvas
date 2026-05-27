@@ -17,7 +17,7 @@ namespace UltraCanvas {
 
     DendrogramLayout DendrogramLayoutEngine::Compute(
             const IDendrogramDataSource* data,
-            const Rect2Df& bounds,
+            const Rect2Dd& bounds,
             DendrogramOrientation orientation,
             DendrogramScaleMode scaleMode,
             float leafSpacing)
@@ -367,7 +367,7 @@ namespace UltraCanvas {
 // RADIAL LAYOUT CONVERSION
 // =============================================================================
 
-    void DendrogramLayoutEngine::ApplyRadialLayout(DendrogramLayout& layout, const Rect2Df& bounds)
+    void DendrogramLayoutEngine::ApplyRadialLayout(DendrogramLayout& layout, const Rect2Dd& bounds)
     {
         float cx = bounds.x + bounds.width  * 0.5f;
         float cy = bounds.y + bounds.height * 0.5f;

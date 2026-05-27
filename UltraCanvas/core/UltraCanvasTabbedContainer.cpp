@@ -17,13 +17,13 @@
 
 namespace UltraCanvas {
 
-    UltraCanvasTabbedContainer::UltraCanvasTabbedContainer(const std::string &elementId, long posX,
-                                                           long posY, long w, long h)
+    UltraCanvasTabbedContainer::UltraCanvasTabbedContainer(const std::string &elementId, float posX,
+                                                           float posY, float w, float h)
             : UltraCanvasContainer(elementId, posX, posY, w, h) {
         InitializeOverflowDropdown();
     }
 
-    void UltraCanvasTabbedContainer::SetBounds(const Rect2Di& b) {
+    void UltraCanvasTabbedContainer::SetBounds(const Rect2Df& b) {
         UltraCanvasContainer::SetBounds(b);
         InvalidateTabbar();
     }
@@ -395,7 +395,7 @@ namespace UltraCanvas {
         searchAutoComplete->SetItems(items);
     }
 
-    void UltraCanvasTabbedContainer::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasTabbedContainer::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         // Safety net: UpdateGeometry normally consumes tabbarLayoutDirty,
         // but something may invalidate between UpdateGeometry and Render in
         // the same frame (e.g. scrollbar visibility toggles). Re-run the
@@ -486,7 +486,7 @@ namespace UltraCanvas {
         int iconX = tabBounds.x + tabPadding;
         int iconY = tabBounds.y + (tabBounds.height - iconSize) / 2;
 
-        ctx->DrawImage(tab->iconPath, Rect2Df(iconX, iconY, iconSize, iconSize), ImageFitMode::Contain);
+        ctx->DrawImage(tab->iconPath, Rect2Dd(iconX, iconY, iconSize, iconSize), ImageFitMode::Contain);
     }
 
     void UltraCanvasTabbedContainer::RenderTabBadge(int index, IRenderContext *ctx) {
@@ -512,7 +512,7 @@ namespace UltraCanvas {
 //        ctx->GetTextLineDimensions(badgeText, txtW, txtH);
         ctx->SetTextAlignment(TextAlignment::Center);
         ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-        ctx->DrawTextInRect(tab->badgeText, Rect2Df(badgeX, badgeY, tab->badgeWidth, tab->badgeHeight));
+        ctx->DrawTextInRect(tab->badgeText, Rect2Dd(badgeX, badgeY, tab->badgeWidth, tab->badgeHeight));
         ctx->PopState();
     }
 
@@ -530,10 +530,10 @@ namespace UltraCanvas {
         ctx->SetStrokeWidth(isActiveTab ? 1.0f : 2.0f);
         ctx->SetLineCap(LineCap::Round);
         ctx->SetStrokePaint(buttonColor);
-        ctx->DrawLine(Point2Df(center.x - halfSize, center.y - halfSize),
-                      Point2Df(center.x + halfSize, center.y + halfSize));
-        ctx->DrawLine(Point2Df(center.x + halfSize, center.y - halfSize),
-                      Point2Df(center.x - halfSize, center.y + halfSize));
+        ctx->DrawLine(Point2Dd(center.x - halfSize, center.y - halfSize),
+                      Point2Dd(center.x + halfSize, center.y + halfSize));
+        ctx->DrawLine(Point2Dd(center.x + halfSize, center.y - halfSize),
+                      Point2Dd(center.x - halfSize, center.y + halfSize));
         ctx->SetStrokeWidth(1.0f); // Restore default   
     }
 
@@ -695,8 +695,8 @@ namespace UltraCanvas {
         int size = 8;
 
         ctx->SetStrokePaint(newTabButtonIconColor);
-        ctx->DrawLine(Point2Df(center.x - size/2, center.y), Point2Df(center.x + size/2, center.y));
-        ctx->DrawLine(Point2Df(center.x, center.y - size/2), Point2Df(center.x, center.y + size/2));
+        ctx->DrawLine(Point2Dd(center.x - size/2, center.y), Point2Dd(center.x + size/2, center.y));
+        ctx->DrawLine(Point2Dd(center.x, center.y - size/2), Point2Dd(center.x, center.y + size/2));
     }
 
     void UltraCanvasTabbedContainer::RenderOverflowButton(IRenderContext* ctx) {
@@ -2059,7 +2059,7 @@ namespace UltraCanvas {
                     tabCornerRadius
             );
         } else {
-            ctx->DrawRectangle(Rect2Df(ghostX, ghostY, tabBounds.width, tabBounds.height));
+            ctx->DrawRectangle(Rect2Dd(ghostX, ghostY, tabBounds.width, tabBounds.height));
         }
 
         // Tab title text on ghost

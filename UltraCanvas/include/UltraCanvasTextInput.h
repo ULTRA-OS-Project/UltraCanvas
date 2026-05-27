@@ -337,7 +337,7 @@ private:
     
 public:
     // ===== CONSTRUCTOR =====
-    UltraCanvasTextInput(const std::string& id, long x, long y, long w, long h);
+    UltraCanvasTextInput(const std::string& id, float x, float y, float w, float h);
     
     virtual ~UltraCanvasTextInput() = default;
     
@@ -437,7 +437,7 @@ public:
     void SetFontSize(float size) { style.fontStyle.fontSize = size; }
     
     // ===== RENDERING (REQUIRED OVERRIDE) =====
-    void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
     
     // ===== EVENT HANDLING (REQUIRED OVERRIDE) =====
     bool OnEvent(const UCEvent& event) override;
@@ -513,15 +513,15 @@ private:
         }
     }
     
-    void RenderText(const Rect2Df& area, const Color& color, IRenderContext* ctx);
+    void RenderText(const Rect2Dd& area, const Color& color, IRenderContext* ctx);
     
-    void RenderPlaceholder(const Rect2Df& area, IRenderContext* ctx);
+    void RenderPlaceholder(const Rect2Dd& area, IRenderContext* ctx);
     
-    void RenderSelection(const Rect2Df& area, IRenderContext* ctx);
+    void RenderSelection(const Rect2Dd& area, IRenderContext* ctx);
     
-    void RenderCaret(const Rect2Df& area, IRenderContext* ctx);
+    void RenderCaret(const Rect2Dd& area, IRenderContext* ctx);
     
-    void RenderMultilineText(const Rect2Df& area, const std::string& displayText, const Point2Di& startPos, IRenderContext* ctx);
+    void RenderMultilineText(const Rect2Dd& area, const std::string& displayText, const Point2Di& startPos, IRenderContext* ctx);
     
     void RenderValidationFeedback(const Rect2Di& bounds, IRenderContext* ctx) const;
     
@@ -610,28 +610,28 @@ inline std::shared_ptr<UltraCanvasTextInput> CreatePasswordInput(
 }
 
 inline std::shared_ptr<UltraCanvasTextInput> CreateEmailInput(
-    const std::string& identifier, long x, long y, long w, long h) {
+    const std::string& identifier, float x, float y, float w, float h) {
     auto input = CreateTextInput(identifier, x, y, w, h);
     input->SetInputType(TextInputType::Email);
     return input;
 }
 
 inline std::shared_ptr<UltraCanvasTextInput> CreatePhoneInput(
-    const std::string& identifier, long x, long y, long w, long h) {
+    const std::string& identifier, float x, float y, float w, float h) {
     auto input = CreateTextInput(identifier, x, y, w, h);
     input->SetInputType(TextInputType::Phone);
     return input;
 }
 
 inline std::shared_ptr<UltraCanvasTextInput> CreateNumberInput(
-    const std::string& identifier, long x, long y, long w, long h) {
+    const std::string& identifier, float x, float y, float w, float h) {
     auto input = CreateTextInput(identifier, x, y, w, h);
     input->SetInputType(TextInputType::Number);
     return input;
 }
 
 //inline std::shared_ptr<UltraCanvasTextInput> CreateTextInput(
-//    const std::string& identifier, long x, long y, long w, long h) {
+//    const std::string& identifier, float x, float y, float w, float h) {
 //    auto input = CreateTextInput(identifier, x, y, w, h);
 //    input->SetInputType(TextInputType::Multiline);
 //    return input;
@@ -654,7 +654,7 @@ private:
 public:
     TextInputBuilder& SetIdentifier(const std::string& inputId) { identifier = inputId; return *this; }
     TextInputBuilder& SetPosition(long px, long py) { x = px; y = py; return *this; }
-    TextInputBuilder& SetSize(long width, long height) { w = width; h = height; return *this; }
+    TextInputBuilder& SetSize(float width, float height) { w = width; h = height; return *this; }
     TextInputBuilder& SetType(TextInputType inputType) { type = inputType; return *this; }
     TextInputBuilder& SetPlaceholder(const std::string& text) { placeholder = text; return *this; }
     TextInputBuilder& SetText(const std::string& text) { initialText = text; return *this; }

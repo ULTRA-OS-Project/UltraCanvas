@@ -21,13 +21,13 @@ namespace UltraCanvas {
         ctx->SetStrokePaint(lineColor);
         ctx->SetStrokeWidth(lineWidth);
 
-        std::vector<Point2Df> linePoints;
+        std::vector<Point2Dd> linePoints;
 
         for (size_t i = 0; i < dataSource->GetPointCount(); ++i) {
             auto point = dataSource->GetPoint(i);
 
             // Use the new positioning method that respects label mode
-            Point2Df screenPos = GetDataPointScreenPosition(i, point);
+            Point2Dd screenPos = GetDataPointScreenPosition(i, point);
             linePoints.push_back(screenPos);
         }
 
@@ -55,7 +55,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasLineChartElement::DrawSmoothLine(IRenderContext* ctx, const std::vector<Point2Df>& points) {
+    void UltraCanvasLineChartElement::DrawSmoothLine(IRenderContext* ctx, const std::vector<Point2Dd>& points) {
         if (points.size() < 3) {
             // Not enough points for smoothing
             for (size_t i = 1; i < points.size(); ++i) {
@@ -66,14 +66,14 @@ namespace UltraCanvas {
 
         // Simple Catmull-Rom spline interpolation
         for (size_t i = 0; i < points.size() - 1; ++i) {
-            Point2Df p0 = (i > 0) ? points[i-1] : points[i];
-            Point2Df p1 = points[i];
-            Point2Df p2 = points[i+1];
-            Point2Df p3 = (i < points.size() - 2) ? points[i+2] : points[i+1];
+            Point2Dd p0 = (i > 0) ? points[i-1] : points[i];
+            Point2Dd p1 = points[i];
+            Point2Dd p2 = points[i+1];
+            Point2Dd p3 = (i < points.size() - 2) ? points[i+2] : points[i+1];
 
             // Draw interpolated curve segment
             int steps = 20;
-            Point2Df prevPoint = p1;
+            Point2Dd prevPoint = p1;
 
             for (int step = 1; step <= steps; ++step) {
                 double t = step / static_cast<double>(steps);
@@ -90,7 +90,7 @@ namespace UltraCanvas {
                                   (2*p0.y - 5*p1.y + 4*p2.y - p3.y) * t2 +
                                   (-p0.y + 3*p1.y - 3*p2.y + p3.y) * t3);
 
-                Point2Df currentPoint(x, y);
+                Point2Dd currentPoint(x, y);
                 ctx->DrawLine(prevPoint, currentPoint);
                 prevPoint = currentPoint;
             }
@@ -106,7 +106,7 @@ namespace UltraCanvas {
 
         for (size_t i = 0; i < dataSource->GetPointCount(); ++i) {
             auto point = dataSource->GetPoint(i);
-            Point2Df screenPos = GetDataPointScreenPosition(i, point);
+            Point2Dd screenPos = GetDataPointScreenPosition(i, point);
 
             double dx = mousePos.x - screenPos.x;
             double dy = mousePos.y - screenPos.y;
@@ -167,13 +167,13 @@ namespace UltraCanvas {
 
                 // Draw the bar
                 ctx->SetFillPaint(barColor);
-                ctx->FillRectangle(Rect2Df(barX, barY, actualBarWidth, barHeight));
+                ctx->FillRectangle(Rect2Dd(barX, barY, actualBarWidth, barHeight));
 
                 // Draw border if enabled
                 if (barBorderWidth > 0) {
                     ctx->SetStrokePaint(barBorderColor);
                     ctx->SetStrokeWidth(barBorderWidth);
-                    ctx->DrawRectangle(Rect2Df(barX, barY, actualBarWidth, barHeight));
+                    ctx->DrawRectangle(Rect2Dd(barX, barY, actualBarWidth, barHeight));
                 }
             } else {
                 // Use original numeric positioning
@@ -194,12 +194,12 @@ namespace UltraCanvas {
                 }
 
                 ctx->SetFillPaint(barColor);
-                ctx->FillRectangle(Rect2Df(barX, topPos.y, actualBarWidth, barHeight));
+                ctx->FillRectangle(Rect2Dd(barX, topPos.y, actualBarWidth, barHeight));
 
                 if (barBorderWidth > 0) {
                     ctx->SetStrokePaint(barBorderColor);
                     ctx->SetStrokeWidth(barBorderWidth);
-                    ctx->DrawRectangle(Rect2Df(barX, topPos.y, actualBarWidth, barHeight));
+                    ctx->DrawRectangle(Rect2Dd(barX, topPos.y, actualBarWidth, barHeight));
                 }
             }
         }
@@ -250,7 +250,7 @@ namespace UltraCanvas {
             auto point = dataSource->GetPoint(i);
 
             // Use the new positioning method
-            Point2Df screenPos = GetDataPointScreenPosition(i, point);
+            Point2Dd screenPos = GetDataPointScreenPosition(i, point);
 
             // Draw point based on shape
             switch (pointShape) {
@@ -260,27 +260,27 @@ namespace UltraCanvas {
 
                 case PointShape::Square: {
                     double halfSize = pointSize;
-                    ctx->FillRectangle(Rect2Df(screenPos.x - halfSize, screenPos.y - halfSize,
+                    ctx->FillRectangle(Rect2Dd(screenPos.x - halfSize, screenPos.y - halfSize,
                                        halfSize * 2, halfSize * 2));
                     break;
                 }
 
                 case PointShape::Triangle: {
-                    std::vector<Point2Df> triangle = {
-                            Point2Df(screenPos.x, screenPos.y - pointSize),
-                            Point2Df(screenPos.x - pointSize, screenPos.y + pointSize),
-                            Point2Df(screenPos.x + pointSize, screenPos.y + pointSize)
+                    std::vector<Point2Dd> triangle = {
+                            Point2Dd(screenPos.x, screenPos.y - pointSize),
+                            Point2Dd(screenPos.x - pointSize, screenPos.y + pointSize),
+                            Point2Dd(screenPos.x + pointSize, screenPos.y + pointSize)
                     };
                     ctx->FillLinePath(triangle);
                     break;
                 }
 
                 case PointShape::Diamond: {
-                    std::vector<Point2Df> diamond = {
-                            Point2Df(screenPos.x, screenPos.y - pointSize),
-                            Point2Df(screenPos.x + pointSize, screenPos.y),
-                            Point2Df(screenPos.x, screenPos.y + pointSize),
-                            Point2Df(screenPos.x - pointSize, screenPos.y)
+                    std::vector<Point2Dd> diamond = {
+                            Point2Dd(screenPos.x, screenPos.y - pointSize),
+                            Point2Dd(screenPos.x + pointSize, screenPos.y),
+                            Point2Dd(screenPos.x, screenPos.y + pointSize),
+                            Point2Dd(screenPos.x - pointSize, screenPos.y)
                     };
                     ctx->FillLinePath(diamond);
                     break;
@@ -298,7 +298,7 @@ namespace UltraCanvas {
 
         for (size_t i = 0; i < dataSource->GetPointCount(); ++i) {
             auto point = dataSource->GetPoint(i);
-            Point2Df screenPos = GetDataPointScreenPosition(i, point);
+            Point2Dd screenPos = GetDataPointScreenPosition(i, point);
 
             double dx = mousePos.x - screenPos.x;
             double dy = mousePos.y - screenPos.y;
@@ -325,8 +325,8 @@ namespace UltraCanvas {
 // AREA CHART IMPLEMENTATION
 // =============================================================================
 
-    std::vector<Point2Df> CalculateSmoothPath(const std::vector<Point2Df>& points) {
-        std::vector<Point2Df> newpoints;
+    std::vector<Point2Dd> CalculateSmoothPath(const std::vector<Point2Dd>& points) {
+        std::vector<Point2Dd> newpoints;
         if (points.size() < 3) {
             newpoints = points;
             return newpoints;
@@ -336,14 +336,14 @@ namespace UltraCanvas {
 
         // Simple Catmull-Rom spline interpolation
         for (size_t i = 0; i < points.size() - 1; ++i) {
-            Point2Df p0 = (i > 0) ? points[i-1] : points[i];
-            Point2Df p1 = points[i];
-            Point2Df p2 = points[i+1];
-            Point2Df p3 = (i < points.size() - 2) ? points[i+2] : points[i+1];
+            Point2Dd p0 = (i > 0) ? points[i-1] : points[i];
+            Point2Dd p1 = points[i];
+            Point2Dd p2 = points[i+1];
+            Point2Dd p3 = (i < points.size() - 2) ? points[i+2] : points[i+1];
 
             // Draw interpolated curve segment
             int steps = 20;
-//            Point2Df prevPoint = p1;
+//            Point2Dd prevPoint = p1;
 
             for (int step = 1; step <= steps; ++step) {
                 double t = step / static_cast<double>(steps);
@@ -370,13 +370,13 @@ namespace UltraCanvas {
     void UltraCanvasAreaChartElement::RenderChart(IRenderContext* ctx) {
         if (!ctx || !dataSource || dataSource->GetPointCount() == 0) return;
 
-        std::vector<Point2Df> areaPoints;
-        std::vector<Point2Df> smoothedAreaPoints;
+        std::vector<Point2Dd> areaPoints;
+        std::vector<Point2Dd> smoothedAreaPoints;
 
         // Build the area polygon
         for (size_t i = 0; i < dataSource->GetPointCount(); ++i) {
             auto point = dataSource->GetPoint(i);
-            Point2Df screenPos = GetDataPointScreenPosition(i, point);
+            Point2Dd screenPos = GetDataPointScreenPosition(i, point);
             areaPoints.push_back(screenPos);
         }
 
@@ -390,10 +390,10 @@ namespace UltraCanvas {
             smoothedAreaPoints = areaPoints;
         }
         // Add bottom-right corner
-        smoothedAreaPoints.push_back(Point2Df(areaPoints.back().x, bottomY));
+        smoothedAreaPoints.push_back(Point2Dd(areaPoints.back().x, bottomY));
 
         // Add bottom-left corner
-        smoothedAreaPoints.push_back(Point2Df(areaPoints.front().x, bottomY));
+        smoothedAreaPoints.push_back(Point2Dd(areaPoints.front().x, bottomY));
 
         // Fill the area
         if (enableGradientFill) {
@@ -450,7 +450,7 @@ namespace UltraCanvas {
 
         for (size_t i = 0; i < dataSource->GetPointCount(); ++i) {
             auto point = dataSource->GetPoint(i);
-            Point2Df screenPos = GetDataPointScreenPosition(i, point);
+            Point2Dd screenPos = GetDataPointScreenPosition(i, point);
 
             double dx = std::abs(mousePos.x - screenPos.x);
             double dy = std::abs(mousePos.y - screenPos.y);

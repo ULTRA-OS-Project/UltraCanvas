@@ -1059,9 +1059,9 @@ void UltraCanvasNodeDiagram::SetSnapGrid(double snapX, double snapY) {
     snapGrid.snapY = snapY;
 }
 
-Point2Df UltraCanvasNodeDiagram::SnapPoint(const Point2Df& p) const {
+Point2Dd UltraCanvasNodeDiagram::SnapPoint(const Point2Dd& p) const {
     if (!snapGrid.enabled) return p;
-    return Point2Df(
+    return Point2Dd(
         std::round(p.x / snapGrid.snapX) * snapGrid.snapX,
         std::round(p.y / snapGrid.snapY) * snapGrid.snapY
     );
@@ -1109,21 +1109,21 @@ void UltraCanvasNodeDiagram::SetControlsConfig(const NodeDiagramControlsConfig& 
 // COORDINATE TRANSFORMS
 // =============================================================================
 
-Point2Df UltraCanvasNodeDiagram::ScreenToWorld(const Point2Di& screenPos) const {
-    Point2Df worldPos;
+Point2Dd UltraCanvasNodeDiagram::ScreenToWorld(const Point2Di& screenPos) const {
+    Point2Dd worldPos;
     worldPos.x = (screenPos.x - panOffset.x) / zoomLevel;
     worldPos.y = (screenPos.y - panOffset.y) / zoomLevel;
     return worldPos;
 }
 
-Point2Di UltraCanvasNodeDiagram::WorldToScreen(const Point2Df& worldPos) const {
+Point2Di UltraCanvasNodeDiagram::WorldToScreen(const Point2Dd& worldPos) const {
     Point2Di screenPos;
     screenPos.x = static_cast<int>(worldPos.x * zoomLevel + panOffset.x);
     screenPos.y = static_cast<int>(worldPos.y * zoomLevel + panOffset.y);
     return screenPos;
 }
 
-double UltraCanvasNodeDiagram::CalculateDistance(const Point2Df& a, const Point2Df& b) const {
+double UltraCanvasNodeDiagram::CalculateDistance(const Point2Dd& a, const Point2Dd& b) const {
     double dx = b.x - a.x;
     double dy = b.y - a.y;
     return std::sqrt(dx * dx + dy * dy);
@@ -1133,9 +1133,9 @@ double UltraCanvasNodeDiagram::CalculateDistance(const Point2Df& a, const Point2
 // HANDLE GEOMETRY
 // =============================================================================
 
-Point2Df UltraCanvasNodeDiagram::GetHandleWorldPosition(const NodeDiagramNode& node,
+Point2Dd UltraCanvasNodeDiagram::GetHandleWorldPosition(const NodeDiagramNode& node,
                                                          const NodeHandle& handle) const {
-    Point2Df p;
+    Point2Dd p;
     switch (handle.position) {
         case HandlePosition::Top:
             p.x = node.x + node.width / 2.0 + handle.offsetX;
@@ -1182,7 +1182,7 @@ HandlePosition UltraCanvasNodeDiagram::InferHandleSide(const NodeDiagramNode& fr
 // We test in WORLD coordinates, so PointInNode receives a world point.
 // =============================================================================
 
-bool UltraCanvasNodeDiagram::PointInNode(const NodeDiagramNode& node, const Point2Df& worldPos) const {
+bool UltraCanvasNodeDiagram::PointInNode(const NodeDiagramNode& node, const Point2Dd& worldPos) const {
     // First a quick AABB reject for everything except Cloud which extends slightly
     double halfW = node.width  * 0.5f;
     double halfH = node.height * 0.5f;
@@ -1239,7 +1239,7 @@ bool UltraCanvasNodeDiagram::PointInNode(const NodeDiagramNode& node, const Poin
 }
 
 std::string UltraCanvasNodeDiagram::FindNodeAt(const Point2Di& screenPos) {
-    Point2Df worldPos = ScreenToWorld(screenPos);
+    Point2Dd worldPos = ScreenToWorld(screenPos);
     
     // Iterate in reverse z-order (topmost first)
     for (auto it = nodeOrder.rbegin(); it != nodeOrder.rend(); ++it) {
@@ -1253,7 +1253,7 @@ std::string UltraCanvasNodeDiagram::FindNodeAt(const Point2Di& screenPos) {
 }
 
 std::string UltraCanvasNodeDiagram::FindLinkAt(const Point2Di& screenPos) {
-    Point2Df worldPos = ScreenToWorld(screenPos);
+    Point2Dd worldPos = ScreenToWorld(screenPos);
     double toleranceWorld = LINK_HIT_TOLERANCE / zoomLevel;
     
     for (const auto& link : links) {
@@ -1289,7 +1289,7 @@ std::string UltraCanvasNodeDiagram::FindLinkAt(const Point2Di& screenPos) {
 }
 
 std::pair<std::string, std::string> UltraCanvasNodeDiagram::FindHandleAt(const Point2Di& screenPos) {
-    Point2Df worldPos = ScreenToWorld(screenPos);
+    Point2Dd worldPos = ScreenToWorld(screenPos);
     
     // Iterate in reverse z-order so handles of the topmost node win
     for (auto it = nodeOrder.rbegin(); it != nodeOrder.rend(); ++it) {
@@ -1299,7 +1299,7 @@ std::pair<std::string, std::string> UltraCanvasNodeDiagram::FindHandleAt(const P
         
         for (const auto& handle : node.handles) {
             if (!handle.connectable) continue;
-            Point2Df hp = GetHandleWorldPosition(node, handle);
+            Point2Dd hp = GetHandleWorldPosition(node, handle);
             double dx = worldPos.x - hp.x;
             double dy = worldPos.y - hp.y;
             double r = handle.radius + HANDLE_HIT_TOLERANCE / zoomLevel;
@@ -1403,7 +1403,7 @@ static constexpr double NODE_DIAGRAM_PI_R3 = 3.14159265358979323846f;
 // MAIN RENDER
 // =============================================================================
 
-void UltraCanvasNodeDiagram::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+void UltraCanvasNodeDiagram::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
     if (!ctx || !IsVisible()) return;
     
     // Background (in screen space, no transform)
@@ -1460,8 +1460,8 @@ void UltraCanvasNodeDiagram::RenderGrid(IRenderContext* ctx) {
     double spacing = style.gridSpacing;
     if (spacing < 1.0) return;
     
-    Point2Df topLeft     = ScreenToWorld({0,0});
-    Point2Df bottomRight = ScreenToWorld(Point2Di(finalBounds.width,
+    Point2Dd topLeft     = ScreenToWorld({0,0});
+    Point2Dd bottomRight = ScreenToWorld(Point2Di(finalBounds.width,
                                                    finalBounds.height));
     
     double startX = std::floor(topLeft.x / spacing) * spacing;
@@ -1485,9 +1485,9 @@ void UltraCanvasNodeDiagram::RenderGrid(IRenderContext* ctx) {
 // Bezier paths use cubic De Casteljau sampled at 24 steps.
 // =============================================================================
 
-void UltraCanvasNodeDiagram::BuildLinkBezier(const Point2Df& src, const Point2Df& tgt,
+void UltraCanvasNodeDiagram::BuildLinkBezier(const Point2Dd& src, const Point2Dd& tgt,
                                               HandlePosition srcSide, HandlePosition tgtSide,
-                                              std::vector<Point2Df>& outPath) const {
+                                              std::vector<Point2Dd>& outPath) const {
     // Control point offset: tangent perpendicular to face, length proportional
     // to distance for organic curvature.
     double dx = tgt.x - src.x;
@@ -1497,19 +1497,19 @@ void UltraCanvasNodeDiagram::BuildLinkBezier(const Point2Df& src, const Point2Df
     
     auto offsetForSide = [offset](HandlePosition side) {
         switch (side) {
-            case HandlePosition::Right:  return Point2Df( offset,  0.0);
-            case HandlePosition::Left:   return Point2Df(-offset,  0.0);
-            case HandlePosition::Bottom: return Point2Df( 0.0,    offset);
-            case HandlePosition::Top:    return Point2Df( 0.0,   -offset);
+            case HandlePosition::Right:  return Point2Dd( offset,  0.0);
+            case HandlePosition::Left:   return Point2Dd(-offset,  0.0);
+            case HandlePosition::Bottom: return Point2Dd( 0.0,    offset);
+            case HandlePosition::Top:    return Point2Dd( 0.0,   -offset);
         }
-        return Point2Df(offset, 0.0);
+        return Point2Dd(offset, 0.0);
     };
     
-    Point2Df cp1Off = offsetForSide(srcSide);
-    Point2Df cp2Off = offsetForSide(tgtSide);
+    Point2Dd cp1Off = offsetForSide(srcSide);
+    Point2Dd cp2Off = offsetForSide(tgtSide);
     
-    Point2Df cp1(src.x + cp1Off.x, src.y + cp1Off.y);
-    Point2Df cp2(tgt.x + cp2Off.x, tgt.y + cp2Off.y);
+    Point2Dd cp1(src.x + cp1Off.x, src.y + cp1Off.y);
+    Point2Dd cp2(tgt.x + cp2Off.x, tgt.y + cp2Off.y);
     
     const int segments = 24;
     outPath.clear();
@@ -1527,9 +1527,9 @@ void UltraCanvasNodeDiagram::BuildLinkBezier(const Point2Df& src, const Point2Df
     }
 }
 
-void UltraCanvasNodeDiagram::BuildLinkStep(const Point2Df& src, const Point2Df& tgt,
+void UltraCanvasNodeDiagram::BuildLinkStep(const Point2Dd& src, const Point2Dd& tgt,
                                             HandlePosition srcSide, HandlePosition tgtSide,
-                                            bool smooth, std::vector<Point2Df>& outPath) const {
+                                            bool smooth, std::vector<Point2Dd>& outPath) const {
     // smooth=false -> sharp orthogonal; smooth=true -> rounded corners
     // (for now both produce the same polyline — corner rounding can be added later).
     (void)smooth;
@@ -1581,7 +1581,7 @@ void UltraCanvasNodeDiagram::RenderLink(IRenderContext* ctx, const NodeDiagramLi
     
     // Determine endpoints. If specific handles are referenced and they exist,
     // anchor on those; otherwise use node centers.
-    Point2Df srcPoint, tgtPoint;
+    Point2Dd srcPoint, tgtPoint;
     HandlePosition srcSide = HandlePosition::Right;
     HandlePosition tgtSide = HandlePosition::Left;
     
@@ -1635,7 +1635,7 @@ void UltraCanvasNodeDiagram::RenderLink(IRenderContext* ctx, const NodeDiagramLi
     }
     
     // Build path according to style
-    std::vector<Point2Df> path;
+    std::vector<Point2Dd> path;
     switch (link.style) {
         case LinkStyle::Bezier:
             BuildLinkBezier(srcPoint, tgtPoint, srcSide, tgtSide, path);
@@ -1661,8 +1661,8 @@ void UltraCanvasNodeDiagram::RenderLink(IRenderContext* ctx, const NodeDiagramLi
     
     // Arrow head: use last segment's local direction (lesson from BlockDiagram v2.3)
     if (link.directed && path.size() >= 2) {
-        const Point2Df& tip = path.back();
-        const Point2Df& prev = path[path.size() - 2];
+        const Point2Dd& tip = path.back();
+        const Point2Dd& prev = path[path.size() - 2];
         double ddx = tip.x - prev.x;
         double ddy = tip.y - prev.y;
         double dlen = std::sqrt(ddx * ddx + ddy * ddy);
@@ -1709,7 +1709,7 @@ void UltraCanvasNodeDiagram::RenderLinkLabel(IRenderContext* ctx, const NodeDiag
     double padding = 3.0;
     ctx->SetFillPaint(Color(255, 255, 255, 220));
     ctx->FillRoundedRectangle(
-        Rect2Df(
+        Rect2Dd(
             midX - textWidth / 2.0 - padding,
             midY - textHeight / 2.0 - padding,
             textWidth + padding * 2,
@@ -1805,17 +1805,17 @@ void UltraCanvasNodeDiagram::RenderNodeShape(IRenderContext* ctx, const NodeDiag
             break;
         case NodeShape::RoundedSquare: {
             double r = std::min(node.width, node.height) * 0.15f;
-            ctx->FillRoundedRectangle(Rect2Df(node.x, node.y, node.width, node.height), r);
-            ctx->DrawRoundedRectangle(Rect2Df(node.x, node.y, node.width, node.height), r);
+            ctx->FillRoundedRectangle(Rect2Dd(node.x, node.y, node.width, node.height), r);
+            ctx->DrawRoundedRectangle(Rect2Dd(node.x, node.y, node.width, node.height), r);
             break;
         }
         case NodeShape::Square:
         case NodeShape::Rectangle:
-            ctx->FillRectangle(Rect2Df(node.x, node.y, node.width, node.height));
-            ctx->DrawRectangle(Rect2Df(node.x, node.y, node.width, node.height));
+            ctx->FillRectangle(Rect2Dd(node.x, node.y, node.width, node.height));
+            ctx->DrawRectangle(Rect2Dd(node.x, node.y, node.width, node.height));
             break;
         case NodeShape::Diamond: {
-            std::vector<Point2Df> pts = {
+            std::vector<Point2Dd> pts = {
                 { centerX, node.y },
                 { node.x + node.width, centerY },
                 { centerX, node.y + node.height },
@@ -1828,7 +1828,7 @@ void UltraCanvasNodeDiagram::RenderNodeShape(IRenderContext* ctx, const NodeDiag
         case NodeShape::Hexagon: {
             double rx = node.width / 2.0;
             double ry = node.height / 2.0;
-            std::vector<Point2Df> pts;
+            std::vector<Point2Dd> pts;
             pts.reserve(6);
             for (int i = 0; i < 6; ++i) {
                 double angle = i * 60.0 * NODE_DIAGRAM_PI_R3 / 180.0;
@@ -1840,7 +1840,7 @@ void UltraCanvasNodeDiagram::RenderNodeShape(IRenderContext* ctx, const NodeDiag
             break;
         }
         case NodeShape::Triangle: {
-            std::vector<Point2Df> pts = {
+            std::vector<Point2Dd> pts = {
                 { centerX, node.y },
                 { node.x + node.width, node.y + node.height },
                 { node.x, node.y + node.height }
@@ -1852,7 +1852,7 @@ void UltraCanvasNodeDiagram::RenderNodeShape(IRenderContext* ctx, const NodeDiag
         case NodeShape::Star: {
             double outerR = radius;
             double innerR = radius * 0.4f;
-            std::vector<Point2Df> pts;
+            std::vector<Point2Dd> pts;
             pts.reserve(10);
             for (int i = 0; i < 10; ++i) {
                 double angle = i * 36.0 * NODE_DIAGRAM_PI_R3 / 180.0 - NODE_DIAGRAM_PI_R3 / 2.0;
@@ -1866,17 +1866,17 @@ void UltraCanvasNodeDiagram::RenderNodeShape(IRenderContext* ctx, const NodeDiag
         }
         case NodeShape::Cloud: {
             // Three overlapping ellipses. Border is approximate.
-            ctx->FillEllipse(Rect2Df(node.x + node.width * 0.25f, centerY,
+            ctx->FillEllipse(Rect2Dd(node.x + node.width * 0.25f, centerY,
                                       node.width * 0.2f, node.height * 0.3f));
-            ctx->FillEllipse(Rect2Df(centerX, node.y + node.height * 0.3f,
+            ctx->FillEllipse(Rect2Dd(centerX, node.y + node.height * 0.3f,
                                       node.width * 0.25f, node.height * 0.35f));
-            ctx->FillEllipse(Rect2Df(node.x + node.width * 0.75f, centerY,
+            ctx->FillEllipse(Rect2Dd(node.x + node.width * 0.75f, centerY,
                                       node.width * 0.2f, node.height * 0.3f));
-            ctx->DrawEllipse(Rect2Df(node.x + node.width * 0.25f, centerY,
+            ctx->DrawEllipse(Rect2Dd(node.x + node.width * 0.25f, centerY,
                                       node.width * 0.2f, node.height * 0.3f));
-            ctx->DrawEllipse(Rect2Df(centerX, node.y + node.height * 0.3f,
+            ctx->DrawEllipse(Rect2Dd(centerX, node.y + node.height * 0.3f,
                                       node.width * 0.25f, node.height * 0.35f));
-            ctx->DrawEllipse(Rect2Df(node.x + node.width * 0.75f, centerY,
+            ctx->DrawEllipse(Rect2Dd(node.x + node.width * 0.75f, centerY,
                                       node.width * 0.2f, node.height * 0.3f));
             break;
         }
@@ -1922,7 +1922,7 @@ void UltraCanvasNodeDiagram::RenderNodeLabel(IRenderContext* ctx, const NodeDiag
 
 void UltraCanvasNodeDiagram::RenderNodeHandles(IRenderContext* ctx, const NodeDiagramNode& node) {
     for (const auto& handle : node.handles) {
-        Point2Df hp = GetHandleWorldPosition(node, handle);
+        Point2Dd hp = GetHandleWorldPosition(node, handle);
         
         // Determine color
         Color hcolor = handle.color;
@@ -1956,7 +1956,7 @@ void UltraCanvasNodeDiagram::RenderConnectionLine(IRenderContext* ctx) {
     auto* node = GetNode(connectionSourceNode);
     if (!node) return;
     
-    Point2Df from;
+    Point2Dd from;
     HandlePosition fromSide = HandlePosition::Right;
     bool found = false;
     for (const auto& h : node->handles) {
@@ -1973,7 +1973,7 @@ void UltraCanvasNodeDiagram::RenderConnectionLine(IRenderContext* ctx) {
     }
     
     // Build a bezier preview
-    std::vector<Point2Df> path;
+    std::vector<Point2Dd> path;
     HandlePosition guessTo;
     switch (fromSide) {
         case HandlePosition::Right:  guessTo = HandlePosition::Left;   break;
@@ -1998,10 +1998,10 @@ void UltraCanvasNodeDiagram::RenderSelectionBox(IRenderContext* ctx) {
     if (w < 1 || h < 1) return;
     
     ctx->SetFillPaint(style.selectionBoxFill);
-    ctx->FillRectangle(Rect2Df(x, y, w, h));
+    ctx->FillRectangle(Rect2Dd(x, y, w, h));
     ctx->SetStrokePaint(style.selectionBoxStroke);
     ctx->SetStrokeWidth(1.0 / zoomLevel);
-    ctx->DrawRectangle(Rect2Df(x, y, w, h));
+    ctx->DrawRectangle(Rect2Dd(x, y, w, h));
 }
 
 void UltraCanvasNodeDiagram::RenderMinimap(IRenderContext* ctx) {
@@ -2030,10 +2030,10 @@ void UltraCanvasNodeDiagram::RenderMinimap(IRenderContext* ctx) {
 
     // Background panel
     ctx->SetFillPaint(minimapConfig.backgroundColor);
-    ctx->FillRoundedRectangle(Rect2Df(mx, my, minimapConfig.width, minimapConfig.height), 4.0);
+    ctx->FillRoundedRectangle(Rect2Dd(mx, my, minimapConfig.width, minimapConfig.height), 4.0);
     ctx->SetStrokePaint(minimapConfig.borderColor);
     ctx->SetStrokeWidth(1.0);
-    ctx->DrawRoundedRectangle(Rect2Df(mx, my, minimapConfig.width, minimapConfig.height), 4.0);
+    ctx->DrawRoundedRectangle(Rect2Dd(mx, my, minimapConfig.width, minimapConfig.height), 4.0);
     
     if (nodes.empty()) return;
     
@@ -2065,38 +2065,38 @@ void UltraCanvasNodeDiagram::RenderMinimap(IRenderContext* ctx) {
     double ox = mx + innerPad + (availW - drawnW) * 0.5f;
     double oy = my + innerPad + (availH - drawnH) * 0.5f;
     
-    auto worldToMini = [&](double wx, double wy) -> Point2Df {
-        return Point2Df(ox + (wx - minX) * scale, oy + (wy - minY) * scale);
+    auto worldToMini = [&](double wx, double wy) -> Point2Dd {
+        return Point2Dd(ox + (wx - minX) * scale, oy + (wy - minY) * scale);
     };
     
     // Draw nodes as small rectangles
     ctx->SetFillPaint(minimapConfig.nodeColor);
     for (const auto& pair : nodes) {
         const auto& n = pair.second;
-        Point2Df topLeft = worldToMini(n.x, n.y);
+        Point2Dd topLeft = worldToMini(n.x, n.y);
         double w = n.width * scale;
         double h = n.height * scale;
         if (w < 1) w = 1;
         if (h < 1) h = 1;
-        ctx->FillRectangle(Rect2Df(topLeft.x, topLeft.y, w, h));
+        ctx->FillRectangle(Rect2Dd(topLeft.x, topLeft.y, w, h));
     }
 
     // Draw viewport rectangle (the world-region currently visible).
     // ScreenToWorld() expects element-local pixel coords, so use {0,0}..{w,h}.
-    Point2Df topLeftWorld = ScreenToWorld(Point2Di(local.x, local.y));
-    Point2Df bottomRightWorld = ScreenToWorld(
+    Point2Dd topLeftWorld = ScreenToWorld(Point2Di(local.x, local.y));
+    Point2Dd bottomRightWorld = ScreenToWorld(
         Point2Di(local.x + local.width, local.y + local.height));
 
-    Point2Df vpTL = worldToMini(topLeftWorld.x, topLeftWorld.y);
-    Point2Df vpBR = worldToMini(bottomRightWorld.x, bottomRightWorld.y);
+    Point2Dd vpTL = worldToMini(topLeftWorld.x, topLeftWorld.y);
+    Point2Dd vpBR = worldToMini(bottomRightWorld.x, bottomRightWorld.y);
     double vpW = vpBR.x - vpTL.x;
     double vpH = vpBR.y - vpTL.y;
 
     ctx->SetFillPaint(minimapConfig.viewportFill);
-    ctx->FillRectangle(Rect2Df(vpTL.x, vpTL.y, vpW, vpH));
+    ctx->FillRectangle(Rect2Dd(vpTL.x, vpTL.y, vpW, vpH));
     ctx->SetStrokePaint(minimapConfig.viewportStroke);
     ctx->SetStrokeWidth(1.5f);
-    ctx->DrawRectangle(Rect2Df(vpTL.x, vpTL.y, vpW, vpH));
+    ctx->DrawRectangle(Rect2Dd(vpTL.x, vpTL.y, vpW, vpH));
 }
 
 void UltraCanvasNodeDiagram::RenderControls(IRenderContext* ctx) {
@@ -2136,10 +2136,10 @@ void UltraCanvasNodeDiagram::RenderControls(IRenderContext* ctx) {
 
     // Panel background
     ctx->SetFillPaint(controlsConfig.backgroundColor);
-    ctx->FillRoundedRectangle(Rect2Df(px, py, panelW, panelH), 4.0);
+    ctx->FillRoundedRectangle(Rect2Dd(px, py, panelW, panelH), 4.0);
     ctx->SetStrokePaint(controlsConfig.borderColor);
     ctx->SetStrokeWidth(1.0);
-    ctx->DrawRoundedRectangle(Rect2Df(px, py, panelW, panelH), 4.0);
+    ctx->DrawRoundedRectangle(Rect2Dd(px, py, panelW, panelH), 4.0);
     
     // Buttons
     double bx = px + controlsConfig.padding;
@@ -2154,7 +2154,7 @@ void UltraCanvasNodeDiagram::RenderControls(IRenderContext* ctx) {
         bool isHover = (hoveredControlButton == idx);
         if (isHover) {
             ctx->SetFillPaint(controlsConfig.hoverColor);
-            ctx->FillRoundedRectangle(Rect2Df(bx, btnY, bs, bs), 3.0);
+            ctx->FillRoundedRectangle(Rect2Dd(bx, btnY, bs, bs), 3.0);
         }
         return { bx + bs * 0.5f, btnY + bs * 0.5f };  // Returns icon center
     };
@@ -2198,7 +2198,7 @@ void UltraCanvasNodeDiagram::RenderControls(IRenderContext* ctx) {
         double bodyH = 7.0;
         double bodyY = cy + 1.0;
         // Body
-        ctx->FillRectangle(Rect2Df(cx - bodyW * 0.5f, bodyY, bodyW, bodyH));
+        ctx->FillRectangle(Rect2Dd(cx - bodyW * 0.5f, bodyY, bodyW, bodyH));
         // Shackle: U-shape on top
         double sh_w = 7.0;
         double sh_h = 5.5f;
@@ -2320,7 +2320,7 @@ bool UltraCanvasNodeDiagram::HandleMouseDown(const UCEvent& event) {
         if (!FindLinkAt(mousePos).empty()) return true;
         // Empty canvas: dispatch
         if (onCanvasRightClick) {
-            Point2Df world = ScreenToWorld(mousePos);
+            Point2Dd world = ScreenToWorld(mousePos);
             onCanvasRightClick(world.x, world.y);
         }
         return true;
@@ -2394,13 +2394,13 @@ bool UltraCanvasNodeDiagram::HandleMouseDown(const UCEvent& event) {
                 dragStartPositions.clear();
                 for (const auto& sid : selectedNodes) {
                     if (auto* sn = GetNode(sid)) {
-                        dragStartPositions[sid] = Point2Df(sn->x, sn->y);
+                        dragStartPositions[sid] = Point2Dd(sn->x, sn->y);
                         sn->isDragging = true;
                     }
                 }
                 // Always include the clicked node even if selection logic skipped it
                 if (dragStartPositions.find(clickedNodeId) == dragStartPositions.end()) {
-                    dragStartPositions[clickedNodeId] = Point2Df(node->x, node->y);
+                    dragStartPositions[clickedNodeId] = Point2Dd(node->x, node->y);
                     node->isDragging = true;
                 }
                 SetMouseCursor(UCMouseCursor::SizeAll);
@@ -2424,7 +2424,7 @@ bool UltraCanvasNodeDiagram::HandleMouseDown(const UCEvent& event) {
         // Plain drag in empty area = pan (if panOnDrag enabled)
         if (isMultiSelectKeyHeld) {
             isSelectingBox = true;
-            Point2Df worldPos = ScreenToWorld(mousePos);
+            Point2Dd worldPos = ScreenToWorld(mousePos);
             selectionBoxStart = worldPos;
             selectionBoxEnd = worldPos;
         } else if (panOnDrag) {
@@ -2576,8 +2576,8 @@ bool UltraCanvasNodeDiagram::HandleMouseMove(const UCEvent& event) {
     
     if (isDraggingNode) {
         // Compute total cursor delta in world space relative to drag start
-        Point2Df startWorld = ScreenToWorld(dragStartPos);
-        Point2Df currentWorld = ScreenToWorld(mousePos);
+        Point2Dd startWorld = ScreenToWorld(dragStartPos);
+        Point2Dd currentWorld = ScreenToWorld(mousePos);
         double worldDx = currentWorld.x - startWorld.x;
         double worldDy = currentWorld.y - startWorld.y;
         
@@ -2585,7 +2585,7 @@ bool UltraCanvasNodeDiagram::HandleMouseMove(const UCEvent& event) {
         for (const auto& kv : dragStartPositions) {
             auto* n = GetNode(kv.first);
             if (!n || !n->draggable) continue;
-            Point2Df newPos(kv.second.x + worldDx, kv.second.y + worldDy);
+            Point2Dd newPos(kv.second.x + worldDx, kv.second.y + worldDy);
             newPos = SnapPoint(newPos);
             n->x = newPos.x;
             n->y = newPos.y;
@@ -2716,7 +2716,7 @@ bool UltraCanvasNodeDiagram::HandleMouseWheel(const UCEvent& event) {
     Point2Di cursor(event.pointer.x, event.pointer.y);
     
     // World coords under cursor BEFORE zoom change
-    Point2Df worldUnderCursor = ScreenToWorld(cursor);
+    Point2Dd worldUnderCursor = ScreenToWorld(cursor);
     
     // Apply new zoom
     zoomLevel = newZoom;

@@ -156,7 +156,7 @@ namespace UltraCanvas {
 
     void UltraCanvasCDRPainterImpl::FillAndStroke(IRenderContext* ctx, const CDRStyleState& style) {
         // Get path bounds for gradient calculation
-        Rect2Df bounds = ctx->GetPathExtents();
+        Rect2Dd bounds = ctx->GetPathExtents();
 
         if (style.hasFill) {
             if (!style.fillGradientId.empty()) {
@@ -187,7 +187,7 @@ namespace UltraCanvas {
     std::shared_ptr<IPaintPattern> UltraCanvasCDRPainterImpl::CreateGradientPattern(
             IRenderContext* ctx,
             const std::string& gradientId,
-            const Rect2Df& bounds) {
+            const Rect2Dd& bounds) {
 
         auto it = document->gradients.find(gradientId);
         if (it == document->gradients.end() || it->second.stops.empty()) {
@@ -850,7 +850,7 @@ namespace UltraCanvas {
         const librevenge::RVNGPropertyListVector* points = propList.child("svg:points");
         if (!points || points->count() < 2) return;
 
-        std::vector<Point2Df> pointList;
+        std::vector<Point2Dd> pointList;
         for (unsigned long i = 0; i < points->count(); ++i) {
             const librevenge::RVNGPropertyList& point = (*points)[i];
             float x = ParseUnit(point["svg:x"]);
@@ -885,7 +885,7 @@ namespace UltraCanvas {
         const librevenge::RVNGPropertyListVector* points = propList.child("svg:points");
         if (!points || points->count() < 3) return;
 
-        std::vector<Point2Df> pointList;
+        std::vector<Point2Dd> pointList;
         for (unsigned long i = 0; i < points->count(); ++i) {
             const librevenge::RVNGPropertyList& point = (*points)[i];
             float x = ParseUnit(point["svg:x"]);
@@ -1299,9 +1299,9 @@ namespace UltraCanvas {
             if (image && image->IsValid()) {
                 if (hasTransform) {
                     // Draw at origin since we translated
-                    ctx->DrawImage(*image, Rect2Df(0, 0, imgW, imgH), ImageFitMode::Fill);
+                    ctx->DrawImage(*image, Rect2Dd(0, 0, imgW, imgH), ImageFitMode::Fill);
                 } else {
-                    ctx->DrawImage(*image, Rect2Df(imgX, imgY, imgW, imgH), ImageFitMode::Fill);
+                    ctx->DrawImage(*image, Rect2Dd(imgX, imgY, imgW, imgH), ImageFitMode::Fill);
                 }
             } else {
                 // Fallback placeholder if image loading fails
@@ -1814,7 +1814,7 @@ namespace UltraCanvas {
         ctx->DrawText(message, Point2Di(bounds.x + 10, bounds.y + bounds.height / 2));
     }
 
-    void UltraCanvasCDRElement::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasCDRElement::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         if (!IsVisible()) return;
 
         ctx->PushState();

@@ -12,7 +12,7 @@
 namespace UltraCanvas {
 
     UltraCanvasAutoComplete::UltraCanvasAutoComplete(const std::string& identifier,
-                                                     long x, long y, long w, long h)
+                                                     float x, float y, float w, float h)
         : UltraCanvasTextInput(identifier, x, y, w, h) {
         SetShowValidationState(false);
         CreatePopupListView();
@@ -329,7 +329,7 @@ namespace UltraCanvas {
         int listHeight = visibleItems * static_cast<int>(acStyle.itemHeight);
         listHeight += static_cast<int>(acStyle.borderWidth) * 2;
 
-        int listWidth = std::max(GetBounds().width, 100);
+        int listWidth = std::max(static_cast<int>(GetBounds().width), 100);
         if (acStyle.maxPopupWidth > 0) {
             listWidth = std::min(listWidth, acStyle.maxPopupWidth);
         }

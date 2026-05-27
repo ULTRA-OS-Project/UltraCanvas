@@ -56,7 +56,7 @@ namespace UltraCanvas {
 
     void UltraCanvasVectorElement::ZoomToFit() {
         if (!document) return;
-        Rect2Df docBounds = document->GetBoundingBox();
+        Rect2Dd docBounds = document->GetBoundingBox();
         if (docBounds.width <= 0 || docBounds.height <= 0) return;
 
         auto bounds = GetBounds();
@@ -91,7 +91,7 @@ namespace UltraCanvas {
 
     void UltraCanvasVectorElement::CenterDocument() {
         if (!document) return;
-        Rect2Df docBounds = document->GetBoundingBox();
+        Rect2Dd docBounds = document->GetBoundingBox();
         auto bounds = GetBounds();
         panOffset.x = (finalBounds.width - docBounds.width * zoomLevel) / 2 - docBounds.x * zoomLevel;
         panOffset.y = (finalBounds.height - docBounds.height * zoomLevel) / 2 - docBounds.y * zoomLevel;
@@ -133,7 +133,7 @@ namespace UltraCanvas {
         return document->FindElementById(selectedElementId);
     }
 
-    Point2Df UltraCanvasVectorElement::ScreenToDocument(int screenX, int screenY) const {
+    Point2Dd UltraCanvasVectorElement::ScreenToDocument(int screenX, int screenY) const {
         auto bounds = GetBounds();
         float localX = screenX - finalBounds.x - panOffset.x;
         float localY = screenY - finalBounds.y - panOffset.y;
@@ -147,12 +147,12 @@ namespace UltraCanvas {
         return {screenX, screenY};
     }
 
-    Size2Df UltraCanvasVectorElement::GetDocumentSize() const {
-        return document ? document->Size : Size2Df{0, 0};
+    Size2Dd UltraCanvasVectorElement::GetDocumentSize() const {
+        return document ? document->Size : Size2Dd{0, 0};
     }
 
-    Rect2Df UltraCanvasVectorElement::GetDocumentViewBox() const {
-        return document ? document->ViewBox : Rect2Df{0, 0, 0, 0};
+    Rect2Dd UltraCanvasVectorElement::GetDocumentViewBox() const {
+        return document ? document->ViewBox : Rect2Dd{0, 0, 0, 0};
     }
 
     size_t UltraCanvasVectorElement::GetLayerCount() const {
@@ -182,7 +182,7 @@ namespace UltraCanvas {
         viewTransform = Matrix3x3::Translate(panOffset.x, panOffset.y) * Matrix3x3::Scale(zoomLevel, zoomLevel);
     }
 
-    void UltraCanvasVectorElement::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasVectorElement::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         if (!IsVisible()) return;
         auto bounds = GetBounds();
 
@@ -245,7 +245,7 @@ namespace UltraCanvas {
     void UltraCanvasVectorElement::RenderDebugInfo(IRenderContext* ctx) {
         auto bounds = GetBounds();
         ctx->SetFillPaint(Color(0, 0, 0, 180));
-        ctx->FillRectangle(Rect2Df(finalBounds.x + 5, finalBounds.y + 5, 150, 60));
+        ctx->FillRectangle(Rect2Dd(finalBounds.x + 5, finalBounds.y + 5, 150, 60));
         ctx->SetTextPaint(Colors::White);
         ctx->SetFontSize(10);
         ctx->DrawText("Zoom: " + std::to_string(static_cast<int>(zoomLevel * 100)) + "%", finalBounds.x + 10, finalBounds.y + 20);
@@ -347,7 +347,7 @@ namespace UltraCanvas {
 
     std::string UltraCanvasVectorElement::HitTest(int x, int y) const {
         if (!document) return "";
-        Point2Df docPt = ScreenToDocument(x, y);
+        Point2Dd docPt = ScreenToDocument(x, y);
         auto hits = HitTestDocument(*document, docPt);
         return hits.empty() ? "" : hits[0]->Id;
     }

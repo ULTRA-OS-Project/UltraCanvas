@@ -81,7 +81,7 @@ namespace UltraCanvas {
 
 // ===== CONSTRUCTOR =====
     UltraCanvasBreadcrumb::UltraCanvasBreadcrumb(const std::string& identifier,
-                                                 long x, long y, long w, long h)
+                                                 float x, float y, float w, float h)
             : UltraCanvasUIElement(identifier, x, y, w, h) {
         style = BreadcrumbStyle::Default();
         SetMouseCursor(UCMouseCursor::Hand);
@@ -366,7 +366,7 @@ namespace UltraCanvas {
     }
 
     int UltraCanvasBreadcrumb::ComputeItemSlotWidth(const BreadcrumbItem& item,
-                                                   const Size2Df& textSize,
+                                                   const Size2Dd& textSize,
                                                    bool includeDropdown) const {
         int width = style.itemPaddingHorizontal * 2;
         bool hasIcon = item.icon != nullptr;
@@ -412,14 +412,14 @@ namespace UltraCanvas {
                  || style.overflowMode == BreadcrumbOverflowMode::Collapse));
 
         std::vector<std::unique_ptr<ITextLayout>> layouts(items.size());
-        std::vector<Size2Df> sizes(items.size());
+        std::vector<Size2Dd> sizes(items.size());
         std::vector<int> itemWidths(items.size());
         int totalWidth = 0;
         for (size_t i = 0; i < items.size(); ++i) {
             bool bold = (static_cast<int>(i) == currentIdx) && style.currentItemBold;
             int initMax = allowInitialEllipsize ? style.maxItemTextWidth : 0;
             layouts[i] = BuildItemLayout(ctx, items[i].text, bold, initMax);
-            sizes[i] = layouts[i] ? layouts[i]->GetLayoutSize() : Size2Df();
+            sizes[i] = layouts[i] ? layouts[i]->GetLayoutSize() : Size2Dd();
             itemWidths[i] = ComputeItemSlotWidth(items[i], sizes[i], true);
             totalWidth += itemWidths[i];
         }
@@ -561,7 +561,7 @@ namespace UltraCanvas {
                 ItemSlot oslot;
                 oslot.itemIndex = -1;
                 oslot.isOverflow = true;
-                Size2Df oTextSize = overflowLayout ? overflowLayout->GetLayoutSize() : Size2Df();
+                Size2Dd oTextSize = overflowLayout ? overflowLayout->GetLayoutSize() : Size2Dd();
                 int textW = static_cast<int>(oTextSize.width);
                 int textH = static_cast<int>(oTextSize.height);
                 int oWidth = style.itemPaddingHorizontal * 2 + textW
@@ -635,7 +635,7 @@ namespace UltraCanvas {
     }
 
 // ===== PREFERRED SIZE =====
-    int UltraCanvasBreadcrumb::GetPreferredWidth() {
+    float UltraCanvasBreadcrumb::GetPreferredWidth() {
         auto ctx = GetRenderContext();
         if (!ctx || items.empty()) return GetTotalPaddingHorizontal() + GetTotalBorderHorizontal();
         ctx->PushState();
@@ -646,7 +646,7 @@ namespace UltraCanvas {
         for (size_t i = 0; i < items.size(); ++i) {
             bool bold = (static_cast<int>(i) == currentIdx) && style.currentItemBold;
             auto layout = BuildItemLayout(ctx, items[i].text, bold, style.maxItemTextWidth);
-            Size2Df sz = layout ? layout->GetLayoutSize() : Size2Df();
+            Size2Dd sz = layout ? layout->GetLayoutSize() : Size2Dd();
             total += ComputeItemSlotWidth(items[i], sz, true);
             if (i + 1 < items.size()) {
                 total += sepW + style.separatorSpacing * 2;
@@ -656,7 +656,7 @@ namespace UltraCanvas {
         return total + GetTotalPaddingHorizontal() + GetTotalBorderHorizontal();
     }
 
-    int UltraCanvasBreadcrumb::GetPreferredHeight() {
+    float UltraCanvasBreadcrumb::GetPreferredHeight() {
         auto ctx = GetRenderContext();
         if (!ctx) return style.fontStyle.fontSize + style.itemPaddingVertical * 2
                         + GetTotalPaddingVertical() + GetTotalBorderVertical();
@@ -684,7 +684,7 @@ namespace UltraCanvas {
     }
 
 // ===== RENDERING =====
-    void UltraCanvasBreadcrumb::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasBreadcrumb::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         UpdateGeometry(ctx);
 
         // Draw the strip background using the base implementation, then our background color.
@@ -696,7 +696,7 @@ namespace UltraCanvas {
         ctx->PushState();
         // Clip to content area to avoid bleeding for Clip overflow mode.
         Rect2Di content = GetLocalContentRect();
-        ctx->ClipRect(Rect2Df(content.x, content.y, content.width, content.height));
+        ctx->ClipRect(Rect2Dd(content.x, content.y, content.width, content.height));
 
         ctx->SetFontStyle(style.fontStyle);
 
@@ -719,7 +719,7 @@ namespace UltraCanvas {
     void UltraCanvasBreadcrumb::RenderBackground(IRenderContext* ctx) {
         if (style.backgroundColor.a == 0 && style.borderColor.a == 0) return;
         Rect2Di b = GetLocalBounds();
-        ctx->DrawFilledRectangle(Rect2Df(b.x, b.y, b.width, b.height),
+        ctx->DrawFilledRectangle(Rect2Dd(b.x, b.y, b.width, b.height),
                                  style.backgroundColor,
                                  style.borderWidth,
                                  style.borderColor,
@@ -774,7 +774,7 @@ namespace UltraCanvas {
 
         if (drawBackground) {
             Rect2Di r = slot.rect;
-            ctx->DrawFilledRectangle(Rect2Df(r.x, r.y, r.width, r.height),
+            ctx->DrawFilledRectangle(Rect2Dd(r.x, r.y, r.width, r.height),
                                      bgColor, 0.0f, Colors::Transparent,
                                      static_cast<float>(style.itemCornerRadius));
         }
@@ -784,15 +784,15 @@ namespace UltraCanvas {
             int y = slot.rect.y + slot.rect.height - 2;
             ctx->SetStrokePaint(style.currentItemTextColor);
             ctx->SetStrokeWidth(2.0f);
-            ctx->DrawLine(Point2Df(slot.rect.x + 2, y),
-                          Point2Df(slot.rect.x + slot.rect.width - 2, y));
+            ctx->DrawLine(Point2Dd(slot.rect.x + 2, y),
+                          Point2Dd(slot.rect.x + slot.rect.width - 2, y));
         }
 
         // Icon
         if (!isOverflow && slot.itemIndex >= 0 && slot.itemIndex < (int)items.size()
             && items[slot.itemIndex].icon && slot.iconRect.width > 0) {
             ctx->DrawImage(*items[slot.itemIndex].icon.get(),
-                           Rect2Df(slot.iconRect.x, slot.iconRect.y,
+                           Rect2Dd(slot.iconRect.x, slot.iconRect.y,
                                    slot.iconRect.width, slot.iconRect.height),
                            ImageFitMode::Contain);
         }
@@ -801,7 +801,7 @@ namespace UltraCanvas {
         if (slot.textLayout && slot.textRect.width > 0) {
             ctx->SetTextPaint(textColor);
             ctx->DrawTextLayout(*slot.textLayout,
-                                Point2Df(slot.textRect.x, slot.textRect.y));
+                                Point2Dd(slot.textRect.x, slot.textRect.y));
 
             // Underline
             bool drawUnderline = false;
@@ -815,8 +815,8 @@ namespace UltraCanvas {
                 int y = slot.textRect.y + slot.textRect.height + 1;
                 ctx->SetStrokePaint(textColor);
                 ctx->SetStrokeWidth(1.0f);
-                ctx->DrawLine(Point2Df(slot.textRect.x, y),
-                              Point2Df(slot.textRect.x + slot.textRect.width, y));
+                ctx->DrawLine(Point2Dd(slot.textRect.x, y),
+                              Point2Dd(slot.textRect.x + slot.textRect.width, y));
             }
         }
 
@@ -865,16 +865,16 @@ namespace UltraCanvas {
                 if (!style.customSeparatorIcon) return;
                 int s = style.iconSize;
                 ctx->DrawImage(*style.customSeparatorIcon.get(),
-                               Rect2Df(x - s / 2.0f, centerY - s / 2.0f, s, s),
+                               Rect2Dd(x - s / 2.0f, centerY - s / 2.0f, s, s),
                                ImageFitMode::Contain);
                 return;
             }
             default: {
                 if (!separatorLayout) return;
                 ctx->SetTextPaint(style.separatorColor);
-                Size2Df sz = separatorLayout->GetLayoutSize();
+                Size2Dd sz = separatorLayout->GetLayoutSize();
                 ctx->DrawTextLayout(*separatorLayout,
-                                    Point2Df(x - sz.width / 2.0f, centerY - sz.height / 2.0f));
+                                    Point2Dd(x - sz.width / 2.0f, centerY - sz.height / 2.0f));
                 return;
             }
         }

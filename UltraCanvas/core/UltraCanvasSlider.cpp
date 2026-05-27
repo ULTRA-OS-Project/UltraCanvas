@@ -15,7 +15,7 @@
 
 namespace UltraCanvas {
 
-    UltraCanvasSlider::UltraCanvasSlider(const std::string &identifier, long x, long y, long w, long h)
+    UltraCanvasSlider::UltraCanvasSlider(const std::string &identifier, float x, float y, float w, float h)
             : UltraCanvasUIElement(identifier, x, y, w, h) {
 
         // Initialize standard properties
@@ -212,7 +212,7 @@ namespace UltraCanvas {
         style.handleColor = handle;
     }
 
-    void UltraCanvasSlider::Render(IRenderContext *ctx, const Rect2Di &dirtyRect) {
+    void UltraCanvasSlider::Render(IRenderContext *ctx, const Rect2Df&dirtyRect) {
 //        ctx->PushState();
 
         UpdateSliderState();
@@ -485,10 +485,10 @@ namespace UltraCanvas {
 
             case SliderHandleShape::Triangle: {
                 // Create triangle points (pointing up)
-                std::vector<Point2Df> triangle = {
-                        Point2Df(position.x, position.y - handleRadius),                    // Top
-                        Point2Df(position.x - handleRadius, position.y + handleRadius),    // Bottom left
-                        Point2Df(position.x + handleRadius, position.y + handleRadius)     // Bottom right
+                std::vector<Point2Dd> triangle = {
+                        Point2Dd(position.x, position.y - handleRadius),                    // Top
+                        Point2Dd(position.x - handleRadius, position.y + handleRadius),    // Bottom left
+                        Point2Dd(position.x + handleRadius, position.y + handleRadius)     // Bottom right
                 };
                 // Draw filled triangle
                 ctx->FillLinePath(triangle);
@@ -499,11 +499,11 @@ namespace UltraCanvas {
 
             case SliderHandleShape::Diamond: {
                 // Create diamond points
-                std::vector<Point2Df> diamond = {
-                        Point2Df(position.x, position.y - handleRadius),                   // Top
-                        Point2Df(position.x + handleRadius, position.y),                   // Right
-                        Point2Df(position.x, position.y + handleRadius),                   // Bottom
-                        Point2Df(position.x - handleRadius, position.y)                    // Left
+                std::vector<Point2Dd> diamond = {
+                        Point2Dd(position.x, position.y - handleRadius),                   // Top
+                        Point2Dd(position.x + handleRadius, position.y),                   // Right
+                        Point2Dd(position.x, position.y + handleRadius),                   // Bottom
+                        Point2Dd(position.x - handleRadius, position.y)                    // Left
                 };
                 // Draw filled diamond
                 ctx->FillLinePath(diamond);

@@ -374,14 +374,14 @@ namespace UltraCanvas {
 
 // ===== RENDERING =====
 
-    void UltraCanvasNewDocumentDialog::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasNewDocumentDialog::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         ctx->PushState();
 
         Rect2Di bounds = GetLocalBounds();
 
         // Shadow (element-local)
         ctx->SetFillPaint(Color(0, 0, 0, 40));
-        ctx->FillRectangle(Rect2Df(4, 4, finalBounds.width, finalBounds.height));
+        ctx->FillRectangle(Rect2Dd(4, 4, finalBounds.width, finalBounds.height));
 
         // Background
         ctx->SetFillPaint(style.backgroundColor);

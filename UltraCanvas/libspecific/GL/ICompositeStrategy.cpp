@@ -95,8 +95,8 @@ bool CompositeStrategyCPU::Composite(GLFramebuffer& framebuffer,
     if (!impl_->pixmap.IsValid()) {
         return false;
     }
-    Rect2Df srcRect(0, 0, static_cast<float>(fbWidth), static_cast<float>(fbHeight));
-    Rect2Df dstRect(static_cast<float>(destX), static_cast<float>(destY),
+    Rect2Dd srcRect(0, 0, static_cast<float>(fbWidth), static_cast<float>(fbHeight));
+    Rect2Dd dstRect(static_cast<float>(destX), static_cast<float>(destY),
                    static_cast<float>(destWidth), static_cast<float>(destHeight));
     ctx->DrawPartOfPixmap(impl_->pixmap, srcRect, dstRect);
 

@@ -526,8 +526,8 @@ namespace UltraCanvas {
         Point2Di mousePosition;
 
     public:
-        UltraCanvasToolbar(const std::string& identifier, long x, long y,
-                           long width, long height);
+        UltraCanvasToolbar(const std::string& identifier, float x, float y,
+                           float width, float height);
         virtual ~UltraCanvasToolbar() = default;
 
         // ===== CONFIGURATION =====
@@ -575,7 +575,7 @@ namespace UltraCanvas {
         void HandleOverflow();
 
         // ===== RENDERING =====
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         bool OnEvent(const UCEvent& event) override;
 
         // ===== AUTO-HIDE =====

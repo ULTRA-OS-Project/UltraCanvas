@@ -762,8 +762,8 @@ namespace UltraCanvas {
         if (extentsDirty) {
             PangoRectangle ink, logical;
             pango_layout_get_extents(layout, &ink, &logical);
-            extents.ink = Rect2Df(ink.x / PANGO_SCALE_D, ink.y / PANGO_SCALE_D, ink.width / PANGO_SCALE_D, ink.height / PANGO_SCALE_D);
-            extents.logical = Rect2Df(logical.x / PANGO_SCALE_D, logical.y / PANGO_SCALE_D, logical.width / PANGO_SCALE_D, logical.height / PANGO_SCALE_D);
+            extents.ink = Rect2Dd(ink.x / PANGO_SCALE_D, ink.y / PANGO_SCALE_D, ink.width / PANGO_SCALE_D, ink.height / PANGO_SCALE_D);
+            extents.logical = Rect2Dd(logical.x / PANGO_SCALE_D, logical.y / PANGO_SCALE_D, logical.width / PANGO_SCALE_D, logical.height / PANGO_SCALE_D);
 
             PangoContext* ctx = pango_layout_get_context(layout);
             const PangoFontDescription* desc = pango_layout_get_font_description(layout);

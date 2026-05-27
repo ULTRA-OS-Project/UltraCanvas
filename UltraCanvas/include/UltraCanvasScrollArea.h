@@ -325,7 +325,7 @@ namespace UltraCanvas {
         };
 
         // ===== RENDERING =====
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override {
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override {
             if (!ctx || !IsVisible()) return;
 
             ctx->PushState();

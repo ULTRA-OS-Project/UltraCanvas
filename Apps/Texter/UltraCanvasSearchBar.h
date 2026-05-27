@@ -89,7 +89,7 @@ namespace UltraCanvas {
 
         // ===== SETUP =====
         void Initialize();
-        void SetBounds(const Rect2Di& bounds) override;
+        void SetBounds(const Rect2Df& bounds) override;
 
         // ===== MODE CONTROL =====
         void SetMode(SearchBarMode newMode);

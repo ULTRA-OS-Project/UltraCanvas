@@ -61,7 +61,7 @@ namespace UltraCanvas {
 
     // ── SetBounds override — reposition children on resize ────────────────
 
-    void UltraCanvasSearchBar::SetBounds(const Rect2Di& bounds) {
+    void UltraCanvasSearchBar::SetBounds(const Rect2Df& bounds) {
         UltraCanvasContainer::SetBounds(bounds);
         UpdateLayout();
     }

@@ -173,7 +173,7 @@ namespace UltraCanvas {
 
         // ===== CONSTRUCTORS =====
         UltraCanvasBreadcrumb(const std::string& identifier = "Breadcrumb",
-                              long x = 0, long y = 0, long w = 400, long h = 28);
+                              float x = 0, float y = 0, float w = 400, float h = 28);
 
         virtual ~UltraCanvasBreadcrumb() = default;
 
@@ -226,14 +226,14 @@ namespace UltraCanvas {
         void SetMaxItemTextWidth(int maxWidth);
 
         // ===== OVERRIDES =====
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         void UpdateGeometry(IRenderContext* ctx) override;
         bool OnEvent(const UCEvent& event) override;
         bool AcceptsFocus() const override { return false; }
 
         // Preferred width = width needed to render all items uncollapsed.
-        int GetPreferredWidth() override;
-        int GetPreferredHeight() override;
+        float GetPreferredWidth() override;
+        float GetPreferredHeight() override;
 
     protected:
         // ===== INTERNAL TYPES =====
@@ -244,7 +244,7 @@ namespace UltraCanvas {
             Rect2Di textRect;
             Rect2Di dropdownRect;         // Empty if no dropdown
             std::string displayText;      // Original item text (kept for overflow menu / debugging)
-            Size2Df textSize;             // Cached logical size from textLayout
+            Size2Dd textSize;             // Cached logical size from textLayout
             std::unique_ptr<ITextLayout> textLayout;
             bool isOverflow = false;
             bool isCurrent = false;
@@ -285,7 +285,7 @@ namespace UltraCanvas {
         void RecalculateLayout(IRenderContext* ctx);
         std::unique_ptr<ITextLayout> BuildItemLayout(IRenderContext* ctx, const std::string& text,
                                                     bool bold, int maxWidth) const;
-        int ComputeItemSlotWidth(const BreadcrumbItem& item, const Size2Df& textSize,
+        int ComputeItemSlotWidth(const BreadcrumbItem& item, const Size2Dd& textSize,
                                  bool includeDropdown) const;
         int MeasureSeparator(IRenderContext* ctx);
 
@@ -307,7 +307,7 @@ namespace UltraCanvas {
 
 // ===== FACTORY =====
     inline std::shared_ptr<UltraCanvasBreadcrumb> CreateBreadcrumb(
-            const std::string& identifier, long x, long y, long w = 400, long h = 28) {
+            const std::string& identifier, float x, float y, float w = 400, float h = 28) {
         return std::make_shared<UltraCanvasBreadcrumb>(identifier, x, y, w, h);
     }
 
@@ -318,7 +318,7 @@ namespace UltraCanvas {
 
     public:
         explicit BreadcrumbBuilder(const std::string& identifier = "Breadcrumb",
-                                   long x = 0, long y = 0, long w = 400, long h = 28) {
+                                   float x = 0, float y = 0, float w = 400, float h = 28) {
             breadcrumb = std::make_shared<UltraCanvasBreadcrumb>(identifier, x, y, w, h);
         }
 

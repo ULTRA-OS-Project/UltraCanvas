@@ -35,8 +35,8 @@ namespace UltraCanvas {
 
     struct Gradient {
         GradientType type;
-        Point2Df startPoint;
-        Point2Df endPoint;
+        Point2Dd startPoint;
+        Point2Dd endPoint;
         double radius1, radius2;  // For radial gradients
         std::vector<GradientStop> stops;
 
@@ -126,9 +126,9 @@ namespace UltraCanvas {
     struct RenderState {
         FontStyle fontStyle;
         TextStyle textStyle;
-        Point2Df translation;
+        Point2Dd translation;
         double rotation = 0.0f;
-        Point2Df scale = Point2Df(1.0f, 1.0f);
+        Point2Dd scale = Point2Dd(1.0f, 1.0f);
         double globalAlpha = 1.0f;
 
         std::shared_ptr<IPaintPattern> fillSourcePattern = nullptr;
@@ -153,7 +153,7 @@ namespace UltraCanvas {
 //        virtual NativeSurface* GetNativeSurface() const = 0;
         virtual bool ResizeSurface(const Size2Di& sz) = 0;
         virtual Size2Di GetSurfaceSize() const = 0;
-        virtual void FlushToSurface(NativeSurfacePtr flushToSurface, const Point2Df& pos) = 0;
+        virtual void FlushToSurface(NativeSurfacePtr flushToSurface, const Point2Dd& pos) = 0;
 
         // Backing-store scale of the surface this context renders into:
         // 1.0 on standard displays, 2.0 on Retina, etc. Drawing always
@@ -170,7 +170,7 @@ namespace UltraCanvas {
 
         // ===== TRANSFORMATION =====
         virtual void Translate(double x, double y) = 0;
-        void Translate(const Point2Df& pos) { Translate(pos.x, pos.y); };
+        void Translate(const Point2Dd& pos) { Translate(pos.x, pos.y); };
         virtual void Rotate(double angle) = 0;
         virtual void Scale(double sx, double sy) = 0;
         virtual void SetTransform(double a, double b, double c, double d, double e, double f) = 0; // set matrix to
@@ -179,21 +179,21 @@ namespace UltraCanvas {
 
         // ===== CLIPPING =====
         virtual void ClearClipRect() = 0;
-        virtual void ClipRect(const Rect2Df& rect) = 0;
+        virtual void ClipRect(const Rect2Dd& rect) = 0;
         virtual void ClipPath() = 0;
         virtual void ClipRoundedRectangle(
-                const Rect2Df& rect,
+                const Rect2Dd& rect,
                 double borderTopLeftRadius, double borderTopRightRadius,
                 double borderBottomRightRadius, double borderBottomLeftRadius) = 0;
-//        virtual Rect2Df GetClipRect() const = 0;
+//        virtual Rect2Dd GetClipRect() const = 0;
 
         // ===== BASIC SHAPES =====
-        virtual void DrawLine(const Point2Df& from, const Point2Df& to) = 0;
-        virtual void DrawRectangle(const Rect2Df& rect) = 0;
-        virtual void FillRectangle(const Rect2Df& rect) = 0;
-        virtual void DrawRoundedRectangle(const Rect2Df & rect, double radius) = 0;
-        virtual void FillRoundedRectangle(const Rect2Df & rect, double radius) = 0;
-        virtual void DrawRoundedRectangleWidthBorders(const Rect2Df & rect,
+        virtual void DrawLine(const Point2Dd& from, const Point2Dd& to) = 0;
+        virtual void DrawRectangle(const Rect2Dd& rect) = 0;
+        virtual void FillRectangle(const Rect2Dd& rect) = 0;
+        virtual void DrawRoundedRectangle(const Rect2Dd & rect, double radius) = 0;
+        virtual void FillRoundedRectangle(const Rect2Dd & rect, double radius) = 0;
+        virtual void DrawRoundedRectangleWidthBorders(const Rect2Dd & rect,
                                                       bool fill,
                                                       double borderLeftWidth, double borderRightWidth,
                                                       double borderTopWidth, double borderBottomWidth,
@@ -205,16 +205,16 @@ namespace UltraCanvas {
                                                       const UCDashPattern& borderRightPattern,
                                                       const UCDashPattern& borderTopPattern,
                                                       const UCDashPattern& borderBottomPattern) = 0;
-        virtual void DrawCircle(const Point2Df& center, double radius) = 0;
-        virtual void FillCircle(const Point2Df& center, double radius) = 0;
-        virtual void DrawEllipse(const Rect2Df& rect) = 0;
-        virtual void FillEllipse(const Rect2Df& rect) = 0;
+        virtual void DrawCircle(const Point2Dd& center, double radius) = 0;
+        virtual void FillCircle(const Point2Dd& center, double radius) = 0;
+        virtual void DrawEllipse(const Rect2Dd& rect) = 0;
+        virtual void FillEllipse(const Rect2Dd& rect) = 0;
         virtual void DrawArc(double x, double y, double radius, double startAngle, double endAngle) = 0;
         virtual void FillArc(double x, double y, double radius, double startAngle, double endAngle) = 0;
 
-        virtual void DrawBezierCurve(const Point2Df& start, const Point2Df& cp1, const Point2Df& cp2, const Point2Df& end) = 0;
-        virtual void DrawLinePath(const std::vector<Point2Df>& points, bool closePath) = 0;
-        virtual void FillLinePath(const std::vector<Point2Df>& points) = 0;
+        virtual void DrawBezierCurve(const Point2Dd& start, const Point2Dd& cp1, const Point2Dd& cp2, const Point2Dd& end) = 0;
+        virtual void DrawLinePath(const std::vector<Point2Dd>& points, bool closePath) = 0;
+        virtual void FillLinePath(const std::vector<Point2Dd>& points) = 0;
 
         // PATH functions
         virtual void ClearPath() = 0;
@@ -235,7 +235,7 @@ namespace UltraCanvas {
 
         virtual void FillPathPreserve() = 0;
         virtual void StrokePathPreserve() = 0;
-        virtual Rect2Df GetPathExtents() = 0;
+        virtual Rect2Dd GetPathExtents() = 0;
 
         // === Gradient Methods ===
         virtual std::shared_ptr<IPaintPattern> CreateLinearGradientPattern(double x1, double y1, double x2, double y2,
@@ -277,7 +277,7 @@ namespace UltraCanvas {
         };
         virtual std::shared_ptr<ITextLayout> GetOrCreateTextLayout(const std::string& text, const Size2Di& sz, bool isMarkup) = 0;
 
-        virtual void DrawTextLayout(ITextLayout &layout, const Point2Df &pos) = 0;
+        virtual void DrawTextLayout(ITextLayout &layout, const Point2Dd &pos) = 0;
 
         virtual void SetFontFace(const std::string& family, FontWeight fw, FontSlant fs) = 0;
         virtual void SetFontFamily(const std::string& family) = 0;
@@ -304,8 +304,8 @@ namespace UltraCanvas {
         // === Transform Methods ===
 
         // ===== TEXT RENDERING =====
-        virtual void DrawText(const std::string &text, const Point2Df &pos) = 0;
-        virtual void DrawTextInRect(const std::string &text, const Rect2Df &rect) = 0;
+        virtual void DrawText(const std::string &text, const Point2Dd &pos) = 0;
+        virtual void DrawTextInRect(const std::string &text, const Rect2Dd &rect) = 0;
         virtual Size2Di GetTextDimensions(const std::string &text, const Size2Di& explicitSize) = 0;
         Size2Di GetTextLineDimensions(const std::string& text) { return GetTextDimensions(text, {0, 0}); };
         int GetTextLineWidth(const std::string& text) { return GetTextLineDimensions(text).width; };
@@ -314,38 +314,38 @@ namespace UltraCanvas {
         virtual int GetTextIndexForXY(const std::string &text, int x, int y, int w = 0, int h = 0) = 0;
 
         // ===== IMAGE RENDERING =====
-        virtual void DrawPartOfPixmap(UCPixmap& pixmap, const Rect2Df& srcRect, const Rect2Df& destRect) = 0;
-        virtual void DrawPixmap(UCPixmap& pixmap, const Rect2Df& rect, ImageFitMode fitMode) = 0;
+        virtual void DrawPartOfPixmap(UCPixmap& pixmap, const Rect2Dd& srcRect, const Rect2Dd& destRect) = 0;
+        virtual void DrawPixmap(UCPixmap& pixmap, const Rect2Dd& rect, ImageFitMode fitMode) = 0;
         // DrawMasked used mainly for B/W icons to replace non-transparent areas by specfied color
-        virtual void DrawMask(const Color& drawColor, UCPixmap& mask, const Rect2Df& rect, ImageFitMode fitMode) = 0;
+        virtual void DrawMask(const Color& drawColor, UCPixmap& mask, const Rect2Dd& rect, ImageFitMode fitMode) = 0;
 
         virtual void Clear(const Color& color) = 0;
 
         // ===== UTILITY FUNCTIONS =====
         virtual void* GetNativeContext() = 0;
 
-        void DrawLine(const Point2Df& start, const Point2Df& end, const Color &col) {
+        void DrawLine(const Point2Dd& start, const Point2Dd& end, const Color &col) {
             SetStrokePaint(col);
             DrawLine(start, end);
         }
 
-        void DrawImage(UCImage& img, const Point2Df& pos) {
+        void DrawImage(UCImage& img, const Point2Dd& pos) {
             auto pixmap = img.GetPixmap(0, 0, ImageFitMode::Contain, GetDeviceScale());
             if (pixmap) {
                 DrawPixmap(*pixmap,
-                    Rect2Df(pos.x, pos.y, pixmap->GetWidth(), pixmap->GetHeight()),
+                    Rect2Dd(pos.x, pos.y, pixmap->GetWidth(), pixmap->GetHeight()),
                     ImageFitMode::NoScale);
             }
         }
 
-        void DrawImage(const std::string& imagePath, const Point2Df& pos) {
+        void DrawImage(const std::string& imagePath, const Point2Dd& pos) {
             auto img = UCImage::Get(imagePath);
             if (img) {
                 DrawImage(*img, pos);
             }
         }
 
-        void DrawImage(UCImage& img, const Rect2Df& rect, ImageFitMode fitMode) {
+        void DrawImage(UCImage& img, const Rect2Dd& rect, ImageFitMode fitMode) {
             auto pixmap = img.GetPixmap(static_cast<int>(rect.width),
                                         static_cast<int>(rect.height), fitMode,
                                         GetDeviceScale());
@@ -353,30 +353,30 @@ namespace UltraCanvas {
                 DrawPixmap(*pixmap, rect, fitMode);
             }
         }
-        void DrawImage(const std::string& imagePath, const Rect2Df& rect, ImageFitMode fitMode) {
+        void DrawImage(const std::string& imagePath, const Rect2Dd& rect, ImageFitMode fitMode) {
             auto img = UCImage::Get(imagePath);
             if (img) {
                 DrawImage(*img, rect, fitMode);
             }
         }
 
-        void DrawMask(const Color& drawColor, UCImage& img, const Point2Df& pos) {
+        void DrawMask(const Color& drawColor, UCImage& img, const Point2Dd& pos) {
             auto pixmap = img.GetPixmap(0, 0, ImageFitMode::Contain, GetDeviceScale());
             if (pixmap) {
                 DrawMask(drawColor, *pixmap,
-                    Rect2Df(pos.x, pos.y, pixmap->GetWidth(), pixmap->GetHeight()),
+                    Rect2Dd(pos.x, pos.y, pixmap->GetWidth(), pixmap->GetHeight()),
                     ImageFitMode::NoScale);
             }
         }
 
-        void DrawMask(const Color& drawColor, const std::string& imagePath, const Point2Df& pos) {
+        void DrawMask(const Color& drawColor, const std::string& imagePath, const Point2Dd& pos) {
             auto img = UCImage::Get(imagePath);
             if (img) {
                 DrawMask(drawColor, *img, pos);
             }
         }
         
-        void DrawMask(const Color& drawColor, UCImage& img, const Rect2Df& rect, ImageFitMode fitMode) {
+        void DrawMask(const Color& drawColor, UCImage& img, const Rect2Dd& rect, ImageFitMode fitMode) {
             auto pixmap = img.GetPixmap(static_cast<int>(rect.width),
                                         static_cast<int>(rect.height), fitMode,
                                         GetDeviceScale());
@@ -385,20 +385,20 @@ namespace UltraCanvas {
             }
         }
 
-        void DrawMask(const Color& drawColor, const std::string& imagePath, const Rect2Df& rect, ImageFitMode fitMode) {
+        void DrawMask(const Color& drawColor, const std::string& imagePath, const Rect2Dd& rect, ImageFitMode fitMode) {
             auto img = UCImage::Get(imagePath);
             if (img) {
                 DrawMask(drawColor, *img, rect, fitMode);
             }
         }
         
-        void DrawPartOfImage(const std::string& imagePath, const Rect2Df& srcRect, const Rect2Df& destRect) {
+        void DrawPartOfImage(const std::string& imagePath, const Rect2Dd& srcRect, const Rect2Dd& destRect) {
         
             auto img = UCImage::Get(imagePath);
             DrawPartOfImage(*img.get(), srcRect, destRect);
         }
         
-        void DrawPartOfImage(UCImage& img, const Rect2Df& srcRect, const Rect2Df& destRect) {
+        void DrawPartOfImage(UCImage& img, const Rect2Dd& srcRect, const Rect2Dd& destRect) {
             auto pixmap = img.GetPixmap(0, 0, ImageFitMode::Contain, GetDeviceScale());
             DrawPartOfPixmap(*pixmap.get(), srcRect, destRect);
         }
@@ -408,16 +408,16 @@ namespace UltraCanvas {
             return Point2Di(sz.width, sz.height);
         }
 
-        Point2Df CalculateCenteredTextPosition(const std::string& text, const Rect2Df& bounds) {
+        Point2Dd CalculateCenteredTextPosition(const std::string& text, const Rect2Dd& bounds) {
             Size2Di sz = GetTextLineDimensions(text);
-            return Point2Df(
+            return Point2Dd(
                     bounds.x + (bounds.width - static_cast<float>(sz.width)) / 2,     // Center horizontally
                     bounds.y + (bounds.height - static_cast<float>(sz.height)) / 2   // Center vertically (baseline adjusted)
             );
         }
 
         // Draw filled rectangle with border
-        void DrawFilledRectangle(const Rect2Df& rect, const Color& fillColor,
+        void DrawFilledRectangle(const Rect2Dd& rect, const Color& fillColor,
                         float borderWidth = 1.0f, const Color& borderColor = Colors::Transparent, float borderRadius = 0.0f) {
 
             if (fillColor.a == 0 && borderColor.a == 0) return;
@@ -441,7 +441,7 @@ namespace UltraCanvas {
             PopState();
         }
 
-        void DrawFilledCircle(const Point2Df& center, float radius, const Color& fillColor, const Color& borderColor = Colors::Transparent, float borderWidth = 1.0f) {
+        void DrawFilledCircle(const Point2Dd& center, float radius, const Color& fillColor, const Color& borderColor = Colors::Transparent, float borderWidth = 1.0f) {
             PushState();
             ClearPath();
             Circle(center.x, center.y, radius);
@@ -459,7 +459,7 @@ namespace UltraCanvas {
         }
 
         void DrawFilledCircle(const Point2Di& center, float radius, const Color& fillColor) {
-            DrawFilledCircle(Point2Df(center.x, center.y), radius, fillColor);
+            DrawFilledCircle(Point2Dd(center.x, center.y), radius, fillColor);
         }
 
     };
@@ -541,8 +541,8 @@ namespace UltraCanvas {
     // ===== RESULT STRUCTS =====
 
     struct UCLayoutExtents {
-        Rect2Df ink;
-        Rect2Df logical;
+        Rect2Dd ink;
+        Rect2Dd logical;
     };
 
     struct UCLayoutHitResult {
@@ -755,7 +755,7 @@ namespace UltraCanvas {
 
         // ===== MEASUREMENT =====
         virtual UCLayoutExtents GetLayoutExtents() = 0;
-        Size2Df GetLayoutSize() { return GetLayoutExtents().logical.Size(); }
+        Size2Dd GetLayoutSize() { return GetLayoutExtents().logical.Size(); }
         double GetLayoutWidth() { return GetLayoutExtents().logical.width; }
         double GetLayoutHeight() { return GetLayoutExtents().logical.height; }
         virtual double GetLayoutVerticalOffset() = 0;

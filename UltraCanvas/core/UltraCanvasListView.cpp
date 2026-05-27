@@ -232,7 +232,7 @@ namespace UltraCanvas {
 
     // ===== RENDERING =====
 
-    void UltraCanvasListView::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasListView::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         // Draw background and border
         UltraCanvasUIElement::Render(ctx, dirtyRect);
 
@@ -285,7 +285,7 @@ namespace UltraCanvas {
         for (int col = 0; col < colCount; col++) {
             auto colDef = model->GetColumnDef(col);
             ctx->SetTextAlignment(colDef.alignment);
-            ctx->DrawTextInRect(colDef.title, Rect2Df(colX + 4, headerRect.y, colDef.width - 8, headerRect.height));
+            ctx->DrawTextInRect(colDef.title, Rect2Dd(colX + 4, headerRect.y, colDef.width - 8, headerRect.height));
 
             // Grid line between columns
             if (viewStyle.showGridLines && col < colCount - 1) {
@@ -324,7 +324,7 @@ namespace UltraCanvas {
             // Alternate row background
             if (viewStyle.alternateRowColors && row % 2 == 1) {
                 ctx->SetFillPaint(viewStyle.alternateRowColor);
-                ctx->FillRectangle(Rect2Df(viewport.x, rowY, viewport.width, viewStyle.rowHeight));
+                ctx->FillRectangle(Rect2Dd(viewport.x, rowY, viewport.width, viewStyle.rowHeight));
             }
 
             bool isSelected = selection && selection->IsSelected(row);
@@ -334,10 +334,10 @@ namespace UltraCanvas {
             // Draw full-row selection/hover background (before any column clipping)
             if (isSelected) {
                 ctx->SetFillPaint(viewStyle.selectionBackgroundColor);
-                ctx->FillRectangle(Rect2Df(viewport.x, rowY, viewport.width, viewStyle.rowHeight));
+                ctx->FillRectangle(Rect2Dd(viewport.x, rowY, viewport.width, viewStyle.rowHeight));
             } else if (isHovered) {
                 ctx->SetFillPaint(viewStyle.hoverBackgroundColor);
-                ctx->FillRectangle(Rect2Df(viewport.x, rowY, viewport.width, viewStyle.rowHeight));
+                ctx->FillRectangle(Rect2Dd(viewport.x, rowY, viewport.width, viewStyle.rowHeight));
             }
 
             if (colCount <= 1) {
@@ -631,7 +631,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasListView::SetBounds(const Rect2Di& bounds) {
+    void UltraCanvasListView::SetBounds(const Rect2Df& bounds) {
         if (bounds != GetBounds()) {
             UltraCanvasUIElement::SetBounds(bounds);
             UpdateScrollbar();

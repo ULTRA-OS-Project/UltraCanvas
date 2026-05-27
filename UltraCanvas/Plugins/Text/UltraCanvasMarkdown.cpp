@@ -517,7 +517,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMarkdownDisplay::ScrollTo(int offset) {
-        int maxScroll = std::max(0, contentHeight - GetHeight());
+        int maxScroll = std::max(0, static_cast<int>(contentHeight - GetHeight()));
         verticalScrollOffset = std::clamp(offset, 0, maxScroll);
         RequestRedraw();
         if (onScrollChanged) {
@@ -529,7 +529,7 @@ namespace UltraCanvas {
         ScrollTo(verticalScrollOffset + delta);
     }
 
-    void UltraCanvasMarkdownDisplay::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasMarkdownDisplay::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         if (!IsVisible()) return;
 
         ctx->PushState();
@@ -787,7 +787,7 @@ namespace UltraCanvas {
 
         // Draw left bar
         ctx->SetFillPaint(style.quoteBarColor);
-        ctx->FillRectangle(Rect2Df(adjustedBounds.x, adjustedBounds.y,
+        ctx->FillRectangle(Rect2Dd(adjustedBounds.x, adjustedBounds.y,
                            static_cast<int>(style.quoteBarWidth), adjustedBounds.height));
 
         // Draw text
@@ -978,7 +978,7 @@ namespace UltraCanvas {
             int deltaY = event.pointerGlobal.y - dragStartY;
 
             // Calculate scroll offset based on drag distance
-            int maxScroll = std::max(0, contentHeight - GetHeight());
+            int maxScroll = std::max(0, static_cast<int>(contentHeight - GetHeight()));
             int availableTrackHeight = GetHeight() - scrollbarThumbRect.height;
 
             if (availableTrackHeight > 0) {

@@ -120,7 +120,7 @@ namespace UltraCanvas {
     }
 // ===== RENDERING IMPLEMENTATION =====
 
-    void UltraCanvasSegmentedControl::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasSegmentedControl::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         // Update animation
         if (style.enableAnimation && selectionAnimationProgress < 1.0f) {
             UpdateAnimation();
@@ -273,21 +273,21 @@ namespace UltraCanvas {
         if (segment.HasIcon()) {
             int iconX = contentX;
             int iconY = contentY - style.iconSize / 2;
-            ctx->DrawImage(segment.iconPath, Rect2Df(iconX, iconY, style.iconSize, style.iconSize), ImageFitMode::Contain);
+            ctx->DrawImage(segment.iconPath, Rect2Dd(iconX, iconY, style.iconSize, style.iconSize), ImageFitMode::Contain);
             contentX += style.iconSize + style.iconSpacing;
         }
 
         // Render text
         if (segment.HasText()) {
             ITextLayout* textLayout = GetOrCreateTextLayout(ctx, segment);
-//            Rect2Df textRect(contentX, contentY, rect.width - ((contentX - rect.x) + style.paddingHorizontal), textSize.height);
+//            Rect2Dd textRect(contentX, contentY, rect.width - ((contentX - rect.x) + style.paddingHorizontal), textSize.height);
             textLayout->ChangeAttribute(TextAttributeFactory::CreateForeground(textColor));
             auto layoutWidth = rect.width - ((contentX - rect.x) + style.paddingHorizontal);
             if (textLayout->GetExplicitWidth() != layoutWidth) {
                 textLayout->SetExplicitWidth(layoutWidth);
             }
             auto textSize = textLayout->GetLayoutSize();
-            ctx->DrawTextLayout(*textLayout, Point2Df(contentX, contentY - textSize.height / 2));
+            ctx->DrawTextLayout(*textLayout, Point2Dd(contentX, contentY - textSize.height / 2));
         }
     }
 

@@ -17,7 +17,7 @@
 namespace UltraCanvas {
 
 // Helper function to create section title
-    std::shared_ptr<UltraCanvasLabel> CreateLayoutSectionTitle(long x, long y, const std::string& text) {
+    std::shared_ptr<UltraCanvasLabel> CreateLayoutSectionTitle(float x, float y, const std::string& text) {
         auto title = std::make_shared<UltraCanvasLabel>("LayoutSecTitle" + std::to_string(x), x, y, 600, 25);
         title->SetText(text);
         title->SetFontSize(14);
@@ -27,7 +27,7 @@ namespace UltraCanvas {
     }
 
 // Helper function to create description label
-    std::shared_ptr<UltraCanvasLabel> CreateLayoutDescription(long x, long y, long width, const std::string& text) {
+    std::shared_ptr<UltraCanvasLabel> CreateLayoutDescription(float x, float y, float width, const std::string& text) {
         auto desc = std::make_shared<UltraCanvasLabel>("LayoutDesc" + std::to_string(x), x, y, width, 0);
         desc->SetText(text);
         desc->SetTextColor(Color(80, 80, 80, 255));

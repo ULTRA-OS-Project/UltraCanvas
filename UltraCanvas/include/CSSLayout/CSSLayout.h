@@ -264,7 +264,7 @@ namespace UltraCanvas {
             std::optional<Position> position;
         };
 
-        // Note: project-wide Rect2Df is Rect2D<double>; layout engine works in
+        // Note: project-wide Rect2Dd is Rect2D<double>; layout engine works in
         // single-precision throughout, so we alias to Rect2D<float> explicitly.
         using LayoutRect = Rect2D<float>;
 

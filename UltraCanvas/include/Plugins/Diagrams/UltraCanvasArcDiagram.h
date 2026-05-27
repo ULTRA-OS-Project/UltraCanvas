@@ -235,7 +235,7 @@ namespace UltraCanvas {
         // ===== CONSTRUCTION =====
 
         UltraCanvasArcDiagram(const std::string& id,
-                              long x, long y, long w, long h);
+                              float x, float y, float w, float h);
 
         // ===== NODE API =====
 
@@ -315,7 +315,7 @@ namespace UltraCanvas {
 
         // ===== RENDER & EVENTS =====
 
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyrect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyrect) override;
         bool OnEvent(const UCEvent& event) override;
 
     private:
@@ -410,6 +410,6 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasArcDiagram> CreateArcDiagram(
             const std::string& id,
-            long x, long y, long width, long height);
+            float x, float y, float width, float height);
 
 } // namespace UltraCanvas

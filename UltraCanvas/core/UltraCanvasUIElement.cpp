@@ -23,41 +23,41 @@ namespace UltraCanvas {
         return dynamic_cast<UltraCanvasContainer*>(this->Parent());
     }
 
-    Point2Di UltraCanvasUIElement::MapFromLocal(const Point2Di &localPos, UltraCanvasContainer* mapToParent) {
-        Point2Di pos = localPos;
+    Point2Df UltraCanvasUIElement::MapFromLocal(const Point2Df &localPos, UltraCanvasContainer* mapToParent) {
+        Point2Df pos = localPos;
         if (auto* parentCont = GetParentContainer()) {
             auto pc = parentCont;
             while(pc) {
-                Rect2Di contentArea = pc->GetContentRect();
+                Rect2Df contentArea = pc->GetContentRect();
                 pos.x = pos.x + contentArea.x - pc->GetHorizontalScrollPosition();
                 pos.y = pos.y + contentArea.y - pc->GetVerticalScrollPosition();
                 if (pc == mapToParent) break;
                 pc = pc->GetParentContainer();
             }
-            pos.x += (int)finalBounds.x;
-            pos.y += (int)finalBounds.y;
+            pos.x += finalBounds.x;
+            pos.y += finalBounds.y;
         }
         return pos;
     }
 
-    Point2Di UltraCanvasUIElement::MapToLocal(const Point2Di &globalPos, UltraCanvasContainer* mapFromParent) {
-        Point2Di pos = globalPos;
+    Point2Df UltraCanvasUIElement::MapToLocal(const Point2Df &globalPos, UltraCanvasContainer* mapFromParent) {
+        Point2Df pos = globalPos;
         if (auto* parentCont = GetParentContainer()) {
             auto pc = parentCont;
             while(pc) {
-                Rect2Di contentArea = pc->GetContentRect();
+                Rect2Df contentArea = pc->GetContentRect();
                 pos.x = pos.x - contentArea.x + pc->GetHorizontalScrollPosition();
                 pos.y = pos.y - contentArea.y + pc->GetVerticalScrollPosition();
                 if (pc == mapFromParent) break;
                 pc = pc->GetParentContainer();
             }
-            pos.x -= (int)finalBounds.x;
-            pos.y -= (int)finalBounds.y;
+            pos.x -= finalBounds.x;
+            pos.y -= finalBounds.y;
         }
         return pos;
     }
 
-    void UltraCanvasUIElement::InvalidateRect(const Rect2Di& localRect) {
+    void UltraCanvasUIElement::InvalidateRect(const Rect2Df& localRect) {
         if (!window || localRect.width <= 0 || localRect.height <= 0) return;
 
         // Walk up looking for a popup ancestor; popups own their own dirty
@@ -68,16 +68,16 @@ namespace UltraCanvas {
             if (cur->isPopup) { popupAncestor = cur; break; }
         }
 
-        Point2Di posInWindow = GetPositionInWindow();
+        Point2Df posInWindow = GetPositionInWindow();
 
         if (popupAncestor) {
-            Point2Di popupPosInWindow = popupAncestor->GetPositionInWindow();
-            Rect2Di rectInPopup(localRect.x + posInWindow.x - popupPosInWindow.x,
+            Point2Df popupPosInWindow = popupAncestor->GetPositionInWindow();
+            Rect2Df rectInPopup(localRect.x + posInWindow.x - popupPosInWindow.x,
                                 localRect.y + posInWindow.y - popupPosInWindow.y,
                                 localRect.width, localRect.height);
             window->AddPopupDirtyRect(popupAncestor, rectInPopup);
         } else {
-            Rect2Di rectInWindow(localRect.x + posInWindow.x,
+            Rect2Df rectInWindow(localRect.x + posInWindow.x,
                                  localRect.y + posInWindow.y,
                                  localRect.width, localRect.height);
             window->AddDirtyRectangle(rectInWindow);
@@ -133,14 +133,14 @@ namespace UltraCanvas {
         return false;
     }
 
-    void UltraCanvasUIElement::Render(IRenderContext* ctx, const Rect2Di& /*dirtyRect*/) {
+    void UltraCanvasUIElement::Render(IRenderContext* ctx, const Rect2Df& /*dirtyRect*/) {
         auto bnds = GetLocalBounds();
-        int leftWidth   = GetBorderLeftWidth();
-        int rightWidth  = GetBorderRightWidth();
-        int topWidth    = GetBorderTopWidth();
-        int bottomWidth = GetBorderBottomWidth();
+        float leftWidth   = GetBorderLeftWidth();
+        float rightWidth  = GetBorderRightWidth();
+        float topWidth    = GetBorderTopWidth();
+        float bottomWidth = GetBorderBottomWidth();
         if (leftWidth > 0 || rightWidth > 0 || topWidth > 0 || bottomWidth > 0) {
-            int leftRadius = 0, rightRadius = 0, topRadius = 0, bottomRadius = 0;
+            float leftRadius = 0, rightRadius = 0, topRadius = 0, bottomRadius = 0;
             Color leftColor   = Colors::Transparent;
             Color rightColor  = Colors::Transparent;
             Color topColor    = Colors::Transparent;
@@ -184,8 +184,8 @@ namespace UltraCanvas {
         }
     }
 
-    Point2Di UltraCanvasUIElement::GetPositionInWindow() const {
-        Point2Di pos;
+    Point2Df UltraCanvasUIElement::GetPositionInWindow() const {
+        Point2Df pos;
         if (auto* parentCont = GetParentContainer()) {
             auto pc = parentCont;
             while(pc) {
@@ -194,13 +194,13 @@ namespace UltraCanvas {
                 pc = pc->GetParentContainer();
             }
         }
-        pos.x += (int)finalBounds.x;
-        pos.y += (int)finalBounds.y;
+        pos.x += finalBounds.x;
+        pos.y += finalBounds.y;
         return pos;
     }
 
-    int UltraCanvasUIElement::GetXInWindow() {
-        int pos = 0;
+    float UltraCanvasUIElement::GetXInWindow() {
+        float pos = 0.0f;
         if (auto* parentCont = GetParentContainer()) {
             auto pc = parentCont;
             while(pc) {
@@ -208,11 +208,11 @@ namespace UltraCanvas {
                 pc = pc->GetParentContainer();
             }
         }
-        return pos + (int)finalBounds.x;
+        return pos + finalBounds.x;
     }
 
-    int UltraCanvasUIElement::GetYInWindow() {
-        int pos = 0;
+    float UltraCanvasUIElement::GetYInWindow() {
+        float pos = 0.0f;
         if (auto* parentCont = GetParentContainer()) {
             auto pc = parentCont;
             while(pc) {
@@ -220,7 +220,7 @@ namespace UltraCanvas {
                 pc = pc->GetParentContainer();
             }
         }
-        return pos + (int)finalBounds.y;
+        return pos + finalBounds.y;
     }
 
     bool UltraCanvasUIElement::SetFocus(bool focus) {
@@ -253,7 +253,7 @@ namespace UltraCanvas {
         }
         visible = vis;
         // Invalidate the rect we're about to vacate or occupy, in parent space.
-        Rect2Di b = GetBounds();
+        Rect2Df b = GetBounds();
         if (auto* parentCont = GetParentContainer()) {
             parentCont->InvalidateRect(b);
             parentCont->InvalidateLayout();
@@ -273,9 +273,9 @@ namespace UltraCanvas {
         window = win;
     }
 
-    void UltraCanvasUIElement::SetOriginalSize(int w, int h) {
-        size.width  = CSSLayout::Dimension::Px((float)w);
-        size.height = CSSLayout::Dimension::Px((float)h);
+    void UltraCanvasUIElement::SetOriginalSize(float w, float h) {
+        size.width  = CSSLayout::Dimension::Px(w);
+        size.height = CSSLayout::Dimension::Px(h);
         if (auto* parentCont = GetParentContainer()) {
             parentCont->InvalidateLayout();
         } else {
@@ -283,8 +283,8 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasUIElement::SetBounds(const Rect2Di &b) {
-        Rect2Di oldBounds = GetBounds();
+    void UltraCanvasUIElement::SetBounds(const Rect2Df &b) {
+        Rect2Df oldBounds = GetBounds();
         if (oldBounds == b) return;
         if (oldBounds.Size() != b.Size()) {
             RequestUpdateGeometry();
@@ -292,10 +292,10 @@ namespace UltraCanvas {
         if (auto* parentCont = GetParentContainer()) {
             parentCont->RequestUpdateGeometry();
         }
-        finalBounds = CSSLayout::LayoutRect{(float)b.x, (float)b.y, (float)b.width, (float)b.height};
+        finalBounds = CSSLayout::LayoutRect{b.x, b.y, b.width, b.height};
         // Invalidate union of old+new bounds in parent space — bounds are stored
         // in parent coords, so this is what the parent (or window) needs to repaint.
-        Rect2Di damage = oldBounds.Union(b);
+        Rect2Df damage = oldBounds.Union(b);
         if (auto* parentCont = GetParentContainer()) {
             parentCont->InvalidateRect(damage);
         } else if (window && this != window) {

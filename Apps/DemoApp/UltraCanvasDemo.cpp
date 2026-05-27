@@ -14,7 +14,7 @@
 #include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
-    DemoLegendContainer::DemoLegendContainer(const std::string& identifier, long x, long y, long width, long height)
+    DemoLegendContainer::DemoLegendContainer(const std::string& identifier, float x, float y, float width, float height)
             : UltraCanvasContainer(identifier, x, y, width, height) {
 
         // Set container style
@@ -82,7 +82,7 @@ namespace UltraCanvas {
     }
 
     DemoHeaderContainer::DemoHeaderContainer(const std::string& identifier,
-                                             long x, long y, long width, long height)
+                                             float x, float y, float width, float height)
             : UltraCanvasContainer(identifier, x, y, width, height) {
 
         // Create title label (left side)

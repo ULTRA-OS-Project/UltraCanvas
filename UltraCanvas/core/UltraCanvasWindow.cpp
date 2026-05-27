@@ -340,7 +340,7 @@ namespace UltraCanvas {
             const auto& rects = dirtyRectManager.GetOptimizedRectangles();
             for (const auto& rect : rects) {
                 ctx->PushState();
-                ctx->ClipRect(Rect2Df(rect.x, rect.y, rect.width, rect.height));
+                ctx->ClipRect(Rect2Dd(rect.x, rect.y, rect.width, rect.height));
                 Render(ctx, rect);
                 RenderCustomContent(ctx, rect);
                 ctx->PopState();
@@ -375,7 +375,7 @@ namespace UltraCanvas {
                 const auto& popupRects = pe.dirtyRectManager.GetOptimizedRectangles();
                 for (const auto& rect : popupRects) {
                     p->renderContext->PushState();
-                    p->renderContext->ClipRect(Rect2Df(rect.x, rect.y, rect.width, rect.height));
+                    p->renderContext->ClipRect(Rect2Dd(rect.x, rect.y, rect.width, rect.height));
                     p->Render(p->renderContext.get(), rect);
                     p->renderContext->PopState();
                 }

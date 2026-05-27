@@ -12,7 +12,7 @@ namespace UltraCanvas {
 
     UltraCanvasLabeledToggleBase::UltraCanvasLabeledToggleBase(
             const std::string& identifier,
-            long x, long y, long w, long h,
+            float x, float y, float w, float h,
             const std::string& labelText)
             : UltraCanvasUIElement(identifier, x, y, w, h), text(labelText) {}
 
@@ -41,7 +41,7 @@ namespace UltraCanvas {
 
     void UltraCanvasLabeledToggleBase::CalculateLayout(IRenderContext* ctx) {
         const float padding = 4.0f;
-        Size2Df indicatorSize = GetIndicatorSize();
+        Size2Dd indicatorSize = GetIndicatorSize();
 
         indicatorRect.x = padding;
         indicatorRect.y = (GetHeight() - indicatorSize.height) / 2.0f;
@@ -65,7 +65,7 @@ namespace UltraCanvas {
 
     void UltraCanvasLabeledToggleBase::CalculateAutoSize(IRenderContext* ctx) {
         const auto& base = GetBaseVisualStyle();
-        Size2Df indicatorSize = GetIndicatorSize();
+        Size2Dd indicatorSize = GetIndicatorSize();
 
         Size2Di textSize{0, 0};
         if (!text.empty()) {
@@ -91,12 +91,12 @@ namespace UltraCanvas {
         ctx->SetTextPaint(color);
 
         double textY = textRect.y + (textRect.height - ctx->GetTextLineHeight(text)) / 2.0f;
-        ctx->DrawText(text, Point2Df(textRect.x, textY));
+        ctx->DrawText(text, Point2Dd(textRect.x, textY));
     }
 
     void UltraCanvasLabeledToggleBase::DrawFocusRingShape(IRenderContext* ctx) {
         const auto& base = GetBaseVisualStyle();
-        Rect2Df focusRect(
+        Rect2Dd focusRect(
                 indicatorRect.x - base.focusRingWidth,
                 indicatorRect.y - base.focusRingWidth,
                 indicatorRect.width + 2 * base.focusRingWidth,
@@ -114,7 +114,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasLabeledToggleBase::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasLabeledToggleBase::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         ctx->PushState();
         DrawIndicator(ctx);
         if (!text.empty()) DrawLabel(ctx);

@@ -59,7 +59,7 @@ namespace UltraCanvas {
     // CSSLayout::BoxModel::border (Dimension-typed) on the engine base.
     struct BorderSideVisual {
         Color color = Color(0, 0, 0, 255);
-        int radius = 0;                  // legacy per-side radius (CSS border-radius is per-corner)
+        float radius = 0.0f;             // legacy per-side radius (CSS border-radius is per-corner)
         UCDashPattern dashPattern;
     };
 
@@ -91,12 +91,10 @@ namespace UltraCanvas {
         ClickOutside
     };
 
-    // Internal helper: resolve a Dimension to integer pixels for the UI
-    // back-compat getters (which return int). Non-Px units (auto/%/fr/etc.)
-    // collapse to 0 — these are box-model widths set by the UI layer, which
-    // historically only used integer pixels.
-    inline int dimPx(const CSSLayout::Dimension& d) {
-        return d.unit == CSSLayout::DimensionUnit::Pixels ? (int)d.value : 0;
+    // Internal helper: resolve a Dimension to float pixels for the UI
+    // coordinate getters. Non-Px units (auto/%/fr/etc.) collapse to 0.
+    inline float dimPx(const CSSLayout::Dimension& d) {
+        return d.unit == CSSLayout::DimensionUnit::Pixels ? d.value : 0.0f;
     }
 
 // ===== UI BASE CLASS =====
@@ -130,20 +128,20 @@ namespace UltraCanvas {
 
         // ===== CONSTRUCTOR AND DESTRUCTOR =====
         UltraCanvasUIElement(const std::string& idstr,
-                             int x, int y, int w, int h) {
+                             float x, float y, float w, float h) {
             id = idstr;
-            finalBounds = CSSLayout::LayoutRect{(float)x, (float)y, (float)w, (float)h};
-            if (w > 0) size.width  = CSSLayout::Dimension::Px((float)w);
-            if (h > 0) size.height = CSSLayout::Dimension::Px((float)h);
+            finalBounds = CSSLayout::LayoutRect{x, y, w, h};
+            if (w > 0) size.width  = CSSLayout::Dimension::Px(w);
+            if (h > 0) size.height = CSSLayout::Dimension::Px(h);
             stateFlags.Reset();
         }
 
         explicit UltraCanvasUIElement(const std::string& idstr = "",
-                             int w = 0, int h = 0) {
+                             float w = 0, float h = 0) {
             id = idstr;
-            finalBounds = CSSLayout::LayoutRect{0.f, 0.f, (float)w, (float)h};
-            if (w > 0) size.width  = CSSLayout::Dimension::Px((float)w);
-            if (h > 0) size.height = CSSLayout::Dimension::Px((float)h);
+            finalBounds = CSSLayout::LayoutRect{0.f, 0.f, w, h};
+            if (w > 0) size.width  = CSSLayout::Dimension::Px(w);
+            if (h > 0) size.height = CSSLayout::Dimension::Px(h);
             stateFlags.Reset();
         }
 
@@ -154,117 +152,114 @@ namespace UltraCanvas {
         void SetIdentifier(const std::string& newId) { id = newId; }
 
         // ===== BOUNDS (wraps inherited Element::finalBounds) =====
-        Rect2Di GetBounds() const {
-            return Rect2Di((int)finalBounds.x, (int)finalBounds.y,
-                           (int)finalBounds.width, (int)finalBounds.height);
+        Rect2Df GetBounds() const {
+            return Rect2Df(finalBounds.x, finalBounds.y,
+                           finalBounds.width, finalBounds.height);
         }
 
-        Rect2Di GetLocalBounds() const {
-            return Rect2Di(0, 0, (int)finalBounds.width, (int)finalBounds.height);
+        Rect2Df GetLocalBounds() const {
+            return Rect2Df(0.0f, 0.0f, finalBounds.width, finalBounds.height);
         }
 
-        Point2Di GetPosition() {
-            return Point2Di((int)finalBounds.x, (int)finalBounds.y);
+        Point2Df GetPosition() {
+            return Point2Df(finalBounds.x, finalBounds.y);
         }
 
-        Size2Di GetSize() {
-            return Size2Di((int)finalBounds.width, (int)finalBounds.height);
+        Size2Df GetSize() {
+            return Size2Df(finalBounds.width, finalBounds.height);
         }
 
-        Size2Di GetOriginalSize() {
-            return Size2Di(dimPx(size.width), dimPx(size.height));
+        Size2Df GetOriginalSize() {
+            return Size2Df(dimPx(size.width), dimPx(size.height));
         }
 
-        virtual bool Contains(const Point2Di& point) {
+        virtual bool Contains(const Point2Df& point) {
             return GetLocalBounds().Contains(point);
         }
 
-        virtual bool ContainsInWindow(const Point2Di& point) {
+        virtual bool ContainsInWindow(const Point2Df& point) {
             return GetBoundsInWindow().Contains(point);
         }
 
-        int GetXInWindow();
-        int GetYInWindow();
+        float GetXInWindow();
+        float GetYInWindow();
 
-        int GetWidth() const { return (int)finalBounds.width; }
-        virtual int GetPreferredWidth() { return dimPx(size.width); }
-        virtual int GetMinWidth() const { return 0; }
-        virtual int GetMaxWidth() const { return 10000; }
-        void SetWidth(int w) { SetBounds((int)finalBounds.x, (int)finalBounds.y, w, (int)finalBounds.height); }
+        float GetWidth() const { return finalBounds.width; }
+        virtual float GetPreferredWidth() { return dimPx(size.width); }
+        virtual float GetMinWidth() const { return 0.0f; }
+        virtual float GetMaxWidth() const { return 10000.0f; }
+        void SetWidth(float w) { SetBounds(finalBounds.x, finalBounds.y, w, finalBounds.height); }
 
-        int GetHeight() const { return (int)finalBounds.height; }
-        virtual int GetPreferredHeight() { return dimPx(size.height); }
-        virtual int GetMinHeight() const { return 0; }
-        virtual int GetMaxHeight() const { return 10000; }
-        void SetHeight(int h) { SetBounds((int)finalBounds.x, (int)finalBounds.y, (int)finalBounds.width, h); }
+        float GetHeight() const { return finalBounds.height; }
+        virtual float GetPreferredHeight() { return dimPx(size.height); }
+        virtual float GetMinHeight() const { return 0.0f; }
+        virtual float GetMaxHeight() const { return 10000.0f; }
+        void SetHeight(float h) { SetBounds(finalBounds.x, finalBounds.y, finalBounds.width, h); }
 
-        int GetX() const { return (int)finalBounds.x; }
-        void SetX(int x) { SetBounds(x, (int)finalBounds.y, (int)finalBounds.width, (int)finalBounds.height); }
-        int GetY() const { return (int)finalBounds.y; }
-        void SetY(int y) { SetBounds((int)finalBounds.x, y, (int)finalBounds.width, (int)finalBounds.height); }
+        float GetX() const { return finalBounds.x; }
+        void SetX(float x) { SetBounds(x, finalBounds.y, finalBounds.width, finalBounds.height); }
+        float GetY() const { return finalBounds.y; }
+        void SetY(float y) { SetBounds(finalBounds.x, y, finalBounds.width, finalBounds.height); }
 
-        void SetPosition(int x, int y) { SetBounds(x, y, (int)finalBounds.width, (int)finalBounds.height); }
-        void SetPosition(const Point2Di& pos) { SetBounds(pos.x, pos.y, (int)finalBounds.width, (int)finalBounds.height); }
-        void SetSize(int w, int h) { SetBounds((int)finalBounds.x, (int)finalBounds.y, w, h); }
-        void SetSize(const Size2Di& sz) { SetBounds((int)finalBounds.x, (int)finalBounds.y, sz.width, sz.height); }
-        virtual void SetOriginalSize(int w, int h);
-        void SetBounds(int x, int y, int w, int h) {
-            SetBounds(Rect2Di(x, y, w, h));
-        }
+        void SetPosition(float x, float y) { SetBounds(x, y, finalBounds.width, finalBounds.height); }
+        void SetPosition(const Point2Df& pos) { SetBounds(pos.x, pos.y, finalBounds.width, finalBounds.height); }
+        void SetSize(float w, float h) { SetBounds(finalBounds.x, finalBounds.y, w, h); }
+        void SetSize(const Size2Df& sz) { SetBounds(finalBounds.x, finalBounds.y, sz.width, sz.height); }
+        virtual void SetOriginalSize(float w, float h);
         void SetBounds(float x, float y, float w, float h) {
-            SetBounds(Rect2Di(static_cast<int>(x), static_cast<int>(y), static_cast<int>(w), static_cast<int>(h)));
+            SetBounds(Rect2Df(x, y, w, h));
         }
-        virtual void SetBounds(const Rect2Di& b);
+        virtual void SetBounds(const Rect2Df& b);
 
-        Point2Di GetPositionInWindow() const;
-        Rect2Di GetBoundsInWindow() const {
+        Point2Df GetPositionInWindow() const;
+        Rect2Df GetBoundsInWindow() const {
             return GetBounds().SetPosition(GetPositionInWindow());
         }
 
         // ===== MARGIN SETTERS (write through to BoxModel::margin) =====
-        void SetMargin(int all) {
-            auto px = CSSLayout::Dimension::Px((float)all);
+        void SetMargin(float all) {
+            auto px = CSSLayout::Dimension::Px(all);
             box.margin.left = box.margin.right = box.margin.top = box.margin.bottom = px;
             RequestUpdateGeometry();
         }
 
-        void SetMargin(int vertical, int horizontal) {
-            box.margin.left   = box.margin.right  = CSSLayout::Dimension::Px((float)horizontal);
-            box.margin.top    = box.margin.bottom = CSSLayout::Dimension::Px((float)vertical);
+        void SetMargin(float vertical, float horizontal) {
+            box.margin.left   = box.margin.right  = CSSLayout::Dimension::Px(horizontal);
+            box.margin.top    = box.margin.bottom = CSSLayout::Dimension::Px(vertical);
             RequestUpdateGeometry();
         }
 
-        void SetMargin(int top, int right, int bottom, int left) {
-            box.margin.left   = CSSLayout::Dimension::Px((float)left);
-            box.margin.top    = CSSLayout::Dimension::Px((float)top);
-            box.margin.right  = CSSLayout::Dimension::Px((float)right);
-            box.margin.bottom = CSSLayout::Dimension::Px((float)bottom);
+        void SetMargin(float top, float right, float bottom, float left) {
+            box.margin.left   = CSSLayout::Dimension::Px(left);
+            box.margin.top    = CSSLayout::Dimension::Px(top);
+            box.margin.right  = CSSLayout::Dimension::Px(right);
+            box.margin.bottom = CSSLayout::Dimension::Px(bottom);
             RequestUpdateGeometry();
         }
 
         // ===== PADDING SETTERS (write through to BoxModel::padding) =====
-        void SetPadding(int all) {
-            auto px = CSSLayout::Dimension::Px((float)all);
+        void SetPadding(float all) {
+            auto px = CSSLayout::Dimension::Px(all);
             box.padding.left = box.padding.right = box.padding.top = box.padding.bottom = px;
             RequestUpdateGeometry();
         }
 
-        void SetPadding(int horizontal, int vertical) {
-            box.padding.left   = box.padding.right  = CSSLayout::Dimension::Px((float)horizontal);
-            box.padding.top    = box.padding.bottom = CSSLayout::Dimension::Px((float)vertical);
+        void SetPadding(float horizontal, float vertical) {
+            box.padding.left   = box.padding.right  = CSSLayout::Dimension::Px(horizontal);
+            box.padding.top    = box.padding.bottom = CSSLayout::Dimension::Px(vertical);
             RequestUpdateGeometry();
         }
 
-        void SetPadding(int top, int right, int bottom, int left) {
-            box.padding.left   = CSSLayout::Dimension::Px((float)left);
-            box.padding.top    = CSSLayout::Dimension::Px((float)top);
-            box.padding.right  = CSSLayout::Dimension::Px((float)right);
-            box.padding.bottom = CSSLayout::Dimension::Px((float)bottom);
+        void SetPadding(float top, float right, float bottom, float left) {
+            box.padding.left   = CSSLayout::Dimension::Px(left);
+            box.padding.top    = CSSLayout::Dimension::Px(top);
+            box.padding.right  = CSSLayout::Dimension::Px(right);
+            box.padding.bottom = CSSLayout::Dimension::Px(bottom);
             RequestUpdateGeometry();
         }
 
         // ===== BORDER SETTERS =====
-        void SetBorders(int width, const Color& color = Colors::Black, int borderRadius = 0, const UCDashPattern& dash = UCDashPattern()) {
+        void SetBorders(float width, const Color& color = Colors::Black, float borderRadius = 0.0f, const UCDashPattern& dash = UCDashPattern()) {
             SetBorderLeft(width, color, borderRadius, dash);
             SetBorderRight(width, color, borderRadius, dash);
             SetBorderTop(width, color, borderRadius, dash);
@@ -280,8 +275,8 @@ namespace UltraCanvas {
             RequestRedraw();
         }
 
-        void SetBorderLeft(int width, const Color& color = Colors::Black, int borderRadius = 0, const UCDashPattern& dash = UCDashPattern()) {
-            box.border.left = CSSLayout::Dimension::Px((float)width);
+        void SetBorderLeft(float width, const Color& color = Colors::Black, float borderRadius = 0.0f, const UCDashPattern& dash = UCDashPattern()) {
+            box.border.left = CSSLayout::Dimension::Px(width);
             if (!bordersVisual) bordersVisual.emplace();
             bordersVisual->left.color = color;
             bordersVisual->left.radius = borderRadius;
@@ -289,8 +284,8 @@ namespace UltraCanvas {
             RequestUpdateGeometry();
         }
 
-        void SetBorderRight(int width, const Color& color = Colors::Black, int borderRadius = 0, const UCDashPattern& dash = UCDashPattern()) {
-            box.border.right = CSSLayout::Dimension::Px((float)width);
+        void SetBorderRight(float width, const Color& color = Colors::Black, float borderRadius = 0.0f, const UCDashPattern& dash = UCDashPattern()) {
+            box.border.right = CSSLayout::Dimension::Px(width);
             if (!bordersVisual) bordersVisual.emplace();
             bordersVisual->right.color = color;
             bordersVisual->right.radius = borderRadius;
@@ -298,8 +293,8 @@ namespace UltraCanvas {
             RequestUpdateGeometry();
         }
 
-        void SetBorderTop(int width, const Color& color = Colors::Black, int borderRadius = 0, const UCDashPattern& dash = UCDashPattern()) {
-            box.border.top = CSSLayout::Dimension::Px((float)width);
+        void SetBorderTop(float width, const Color& color = Colors::Black, float borderRadius = 0.0f, const UCDashPattern& dash = UCDashPattern()) {
+            box.border.top = CSSLayout::Dimension::Px(width);
             if (!bordersVisual) bordersVisual.emplace();
             bordersVisual->top.color = color;
             bordersVisual->top.radius = borderRadius;
@@ -307,8 +302,8 @@ namespace UltraCanvas {
             RequestUpdateGeometry();
         }
 
-        void SetBorderBottom(int width, const Color& color = Colors::Black, int borderRadius = 0, const UCDashPattern& dash = UCDashPattern()) {
-            box.border.bottom = CSSLayout::Dimension::Px((float)width);
+        void SetBorderBottom(float width, const Color& color = Colors::Black, float borderRadius = 0.0f, const UCDashPattern& dash = UCDashPattern()) {
+            box.border.bottom = CSSLayout::Dimension::Px(width);
             if (!bordersVisual) bordersVisual.emplace();
             bordersVisual->bottom.color = color;
             bordersVisual->bottom.radius = borderRadius;
@@ -325,99 +320,85 @@ namespace UltraCanvas {
         }
 
         // ===== TOTAL CALCULATIONS =====
-        int GetTotalMarginHorizontal() const {
+        float GetTotalMarginHorizontal() const {
             return dimPx(box.margin.left) + dimPx(box.margin.right);
         }
 
-        int GetTotalMarginVertical() const {
+        float GetTotalMarginVertical() const {
             return dimPx(box.margin.top) + dimPx(box.margin.bottom);
         }
 
-        int GetTotalPaddingHorizontal() const {
+        float GetTotalPaddingHorizontal() const {
             return dimPx(box.padding.left) + dimPx(box.padding.right);
         }
 
-        int GetTotalPaddingVertical() const {
+        float GetTotalPaddingVertical() const {
             return dimPx(box.padding.top) + dimPx(box.padding.bottom);
         }
 
-        int GetTotalBorderHorizontal() const {
+        float GetTotalBorderHorizontal() const {
             return GetBorderLeftWidth() + GetBorderRightWidth();
         }
 
-        int GetTotalBorderVertical() const {
+        float GetTotalBorderVertical() const {
             return GetBorderTopWidth() + GetBorderBottomWidth();
         }
 
         // ===== CONTENT AREA CALCULATIONS =====
         // client area = bounds minus (border + padding), in parent coords
-        Rect2Di GetContentRect() const {
-            const int x = (int)finalBounds.x;
-            const int y = (int)finalBounds.y;
-            const int w = (int)finalBounds.width;
-            const int h = (int)finalBounds.height;
-            return Rect2Di(
-                    x + GetBorderLeftWidth() + dimPx(box.padding.left),
-                    y + GetBorderTopWidth()  + dimPx(box.padding.top),
-                    w - (GetTotalBorderHorizontal() + GetTotalPaddingHorizontal()),
-                    h - (GetTotalBorderVertical()   + GetTotalPaddingVertical())
+        Rect2Df GetContentRect() const {
+            return Rect2Df(
+                    finalBounds.x + GetBorderLeftWidth() + dimPx(box.padding.left),
+                    finalBounds.y + GetBorderTopWidth()  + dimPx(box.padding.top),
+                    finalBounds.width  - (GetTotalBorderHorizontal() + GetTotalPaddingHorizontal()),
+                    finalBounds.height - (GetTotalBorderVertical()   + GetTotalPaddingVertical())
             );
         }
 
         // local client area = bounds in element coords (0,0 origin) minus (border + padding)
-        Rect2Di GetLocalContentRect() const {
-            const int w = (int)finalBounds.width;
-            const int h = (int)finalBounds.height;
-            return Rect2Di(
+        Rect2Df GetLocalContentRect() const {
+            return Rect2Df(
                     GetBorderLeftWidth() + dimPx(box.padding.left),
                     GetBorderTopWidth()  + dimPx(box.padding.top),
-                    w - (GetTotalBorderHorizontal() + GetTotalPaddingHorizontal()),
-                    h - (GetTotalBorderVertical()   + GetTotalPaddingVertical())
+                    finalBounds.width  - (GetTotalBorderHorizontal() + GetTotalPaddingHorizontal()),
+                    finalBounds.height - (GetTotalBorderVertical()   + GetTotalPaddingVertical())
             );
         }
 
         // Padding box = bounds minus border
-        Rect2Di GetPaddingRect() {
-            const int x = (int)finalBounds.x;
-            const int y = (int)finalBounds.y;
-            const int w = (int)finalBounds.width;
-            const int h = (int)finalBounds.height;
-            return Rect2Di(
-                    x + GetBorderLeftWidth(),
-                    y + GetBorderTopWidth(),
-                    w - GetTotalBorderHorizontal(),
-                    h - GetTotalBorderVertical()
+        Rect2Df GetPaddingRect() {
+            return Rect2Df(
+                    finalBounds.x + GetBorderLeftWidth(),
+                    finalBounds.y + GetBorderTopWidth(),
+                    finalBounds.width  - GetTotalBorderHorizontal(),
+                    finalBounds.height - GetTotalBorderVertical()
             );
         }
 
         // Margin box = bounds plus margins
-        Rect2Di GetMarginRect() {
-            const int x = (int)finalBounds.x;
-            const int y = (int)finalBounds.y;
-            const int w = (int)finalBounds.width;
-            const int h = (int)finalBounds.height;
-            return Rect2Di(
-                    x - dimPx(box.margin.left),
-                    y - dimPx(box.margin.top),
-                    w + dimPx(box.margin.left) + dimPx(box.margin.right),
-                    h + dimPx(box.margin.top)  + dimPx(box.margin.bottom)
+        Rect2Df GetMarginRect() {
+            return Rect2Df(
+                    finalBounds.x - dimPx(box.margin.left),
+                    finalBounds.y - dimPx(box.margin.top),
+                    finalBounds.width  + dimPx(box.margin.left) + dimPx(box.margin.right),
+                    finalBounds.height + dimPx(box.margin.top)  + dimPx(box.margin.bottom)
             );
         }
 
-        int GetMarginLeft() const   { return dimPx(box.margin.left); }
-        int GetMarginRight() const  { return dimPx(box.margin.right); }
-        int GetMarginTop() const    { return dimPx(box.margin.top); }
-        int GetMarginBottom() const { return dimPx(box.margin.bottom); }
+        float GetMarginLeft() const   { return dimPx(box.margin.left); }
+        float GetMarginRight() const  { return dimPx(box.margin.right); }
+        float GetMarginTop() const    { return dimPx(box.margin.top); }
+        float GetMarginBottom() const { return dimPx(box.margin.bottom); }
 
-        int GetPaddingLeft() const   { return dimPx(box.padding.left); }
-        int GetPaddingRight() const  { return dimPx(box.padding.right); }
-        int GetPaddingTop() const    { return dimPx(box.padding.top); }
-        int GetPaddingBottom() const { return dimPx(box.padding.bottom); }
+        float GetPaddingLeft() const   { return dimPx(box.padding.left); }
+        float GetPaddingRight() const  { return dimPx(box.padding.right); }
+        float GetPaddingTop() const    { return dimPx(box.padding.top); }
+        float GetPaddingBottom() const { return dimPx(box.padding.bottom); }
 
-        int GetBorderLeftWidth() const   { return dimPx(box.border.left); }
-        int GetBorderRightWidth() const  { return dimPx(box.border.right); }
-        int GetBorderTopWidth() const    { return dimPx(box.border.top); }
-        int GetBorderBottomWidth() const { return dimPx(box.border.bottom); }
+        float GetBorderLeftWidth() const   { return dimPx(box.border.left); }
+        float GetBorderRightWidth() const  { return dimPx(box.border.right); }
+        float GetBorderTopWidth() const    { return dimPx(box.border.top); }
+        float GetBorderBottomWidth() const { return dimPx(box.border.bottom); }
 
         bool HasBorder() const {
             return GetBorderLeftWidth() > 0 || GetBorderRightWidth() > 0 ||
@@ -434,9 +415,9 @@ namespace UltraCanvas {
                    GetMarginTop() > 0  || GetMarginBottom() > 0;
         }
 
-        // Coordinate mapping (unchanged signatures; implementation uses GetParentContainer()).
-        Point2Di MapFromLocal(const Point2Di &localPos, UltraCanvasContainer* mapToParent = nullptr);
-        Point2Di MapToLocal(const Point2Di &globalPos, UltraCanvasContainer* mapFromParent = nullptr);
+        // Coordinate mapping (implementation uses GetParentContainer()).
+        Point2Df MapFromLocal(const Point2Df &localPos, UltraCanvasContainer* mapToParent = nullptr);
+        Point2Df MapToLocal(const Point2Df &globalPos, UltraCanvasContainer* mapFromParent = nullptr);
 
         UCMouseCursor GetMouseCursor() const { return mouseCursor; }
         void SetMouseCursor(UCMouseCursor cur) { mouseCursor = cur; }
@@ -491,7 +472,7 @@ namespace UltraCanvas {
         // ===== CORE VIRTUAL METHODS =====
         IRenderContext* GetRenderContext() const;
         // dirtyRect is in element-local coordinates (matches the translated ctx).
-        virtual void Render(IRenderContext* ctx, const Rect2Di& dirtyRect);
+        virtual void Render(IRenderContext* ctx, const Rect2Df& dirtyRect);
         virtual void UpdateGeometry(IRenderContext* ctx) {};
 
         // ===== EVENT HANDLING =====
@@ -504,7 +485,7 @@ namespace UltraCanvas {
 
         // Adds localRect (in this element's local coords) to the appropriate
         // dirty-rect manager: the containing popup's, or the window's.
-        virtual void InvalidateRect(const Rect2Di& localRect);
+        virtual void InvalidateRect(const Rect2Df& localRect);
         void RequestRedraw();
         // TODO: when the CSSLayout engine takes over the UpdateGeometry/Render
         // pipeline, this should also call InvalidateLayout() so the engine

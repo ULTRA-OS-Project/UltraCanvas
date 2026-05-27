@@ -42,14 +42,14 @@ namespace UltraCanvas {
 
     protected:
         void DrawIndicator(IRenderContext* ctx) override;
-        Size2Df GetIndicatorSize() const override { return {visualStyle.boxSize, visualStyle.boxSize}; }
+        Size2Dd GetIndicatorSize() const override { return {visualStyle.boxSize, visualStyle.boxSize}; }
         void OnActivate() override { SetChecked(true); }  // Standard UX: clicking selected radio is no-op.
         const LabeledToggleVisualStyle& GetBaseVisualStyle() const override { return visualStyle.base; }
         void DrawFocusRingShape(IRenderContext* ctx) override;
 
     public:
         UltraCanvasRadio(const std::string& identifier = "",
-                         long x = 0, long y = 0, long w = 150, long h = 24,
+                         float x = 0, float y = 0, float w = 150, float h = 24,
                          const std::string& labelText = "");
         ~UltraCanvasRadio() override = default;
 
@@ -67,7 +67,7 @@ namespace UltraCanvas {
         // ===== FACTORY =====
         static std::shared_ptr<UltraCanvasRadio> Create(
                 const std::string& identifier,
-                long x, long y,
+                float x, float y,
                 const std::string& text = "",
                 bool checked = false);
     };

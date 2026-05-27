@@ -253,7 +253,7 @@ namespace UltraCanvas {
     }
 
 // ===== RENDERING METHODS =====
-    void UltraCanvasPopulationChart::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasPopulationChart::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         if (!IsVisible()) {
             return;
         }
@@ -280,7 +280,7 @@ namespace UltraCanvas {
 
     void UltraCanvasPopulationChart::RenderBackground(IRenderContext* ctx) {
         ctx->SetFillPaint(backgroundColor);
-        ctx->FillRectangle(Rect2Df(0, 0, GetWidth(), GetHeight()));
+        ctx->FillRectangle(Rect2Dd(0, 0, GetWidth(), GetHeight()));
     }
 
     void UltraCanvasPopulationChart::RenderTitle(IRenderContext* ctx) {
@@ -294,7 +294,7 @@ namespace UltraCanvas {
         if (!chartTitle.empty()) {
             double titleWidth = ctx->GetTextLineWidth(chartTitle);
             double titleX = (GetWidth() - titleWidth) / 2;
-            ctx->DrawText(chartTitle, Point2Df(titleX, 5));
+            ctx->DrawText(chartTitle, Point2Dd(titleX, 5));
         }
 
         if (!chartSubtitle.empty()) {
@@ -426,7 +426,7 @@ namespace UltraCanvas {
         for (const auto& item : legendItems) {
             // Draw color box
             ctx->SetFillPaint(item.ItemColor);
-            ctx->FillRectangle(Rect2Df(legendX, legendY, 15, 15));
+            ctx->FillRectangle(Rect2Dd(legendX, legendY, 15, 15));
 
             // Draw label
             ctx->SetTextPaint(textColor);
@@ -446,12 +446,12 @@ namespace UltraCanvas {
                                                        int width, int height,
                                                        const Color& color, bool rightSide) {
         ctx->SetFillPaint(color);
-        ctx->FillRectangle(Rect2Df(x, y, width, height));
+        ctx->FillRectangle(Rect2Dd(x, y, width, height));
 
         // Draw subtle border
         ctx->SetStrokePaint(Color(color.r * 0.8, color.g * 0.8, color.b * 0.8));
         ctx->SetStrokeWidth(1.0f);
-        ctx->DrawRectangle(Rect2Df(x, y, width, height));
+        ctx->DrawRectangle(Rect2Dd(x, y, width, height));
     }
 
     void UltraCanvasPopulationChart::DrawAgeLabel(IRenderContext* ctx,

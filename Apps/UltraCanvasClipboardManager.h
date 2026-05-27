@@ -81,7 +81,7 @@ namespace UltraCanvas {
         Point2D lastMousePos;
 
     public:
-        UltraCanvasClipboardItem(const std::string& id, long x, long y, long w, long h, const ClipboardEntry& clipEntry)
+        UltraCanvasClipboardItem(const std::string& id, float x, float y, float w, float h, const ClipboardEntry& clipEntry)
                 : UltraCanvasUIElement(id, x, y, w, h), properties(id, uid, x, y, w, h), entry(clipEntry) {
             CalculateLayout();
         }
@@ -89,7 +89,7 @@ namespace UltraCanvas {
         ULTRACANVAS_STANDARD_PROPERTIES_ACCESSORS()
 
         void CalculateLayout();
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         void RenderContent();
         void DrawTypeIcon();
         void RenderActionButtons();

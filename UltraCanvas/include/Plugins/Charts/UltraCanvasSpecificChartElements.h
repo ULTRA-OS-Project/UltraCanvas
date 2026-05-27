@@ -62,7 +62,7 @@ namespace UltraCanvas {
         bool HandleChartMouseMove(const Point2Di &mousePos) override;
 
     private:
-        void DrawSmoothLine(IRenderContext *ctx, const std::vector<Point2Df> &points);
+        void DrawSmoothLine(IRenderContext *ctx, const std::vector<Point2Dd> &points);
     };
 
 // =============================================================================

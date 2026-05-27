@@ -55,7 +55,7 @@ namespace UltraCanvas {
         UpdateStrength(password);
     }
 
-    void UltraCanvasPasswordStrengthMeter::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasPasswordStrengthMeter::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         Rect2Di bounds = GetLocalBounds();
 
         // Update animation
@@ -199,7 +199,7 @@ namespace UltraCanvas {
             ctx->SetFontWeight(FontWeight::Bold);
             std::string percentText = std::to_string(static_cast<int>(currentStrength)) + "%";
             Size2Di textSize = ctx->GetTextLineDimensions(percentText);
-            ctx->DrawText(percentText, Point2Df(centerX - textSize.width / 2, centerY - textSize.height / 2));
+            ctx->DrawText(percentText, Point2Dd(centerX - textSize.width / 2, centerY - textSize.height / 2));
         }
 
         // Draw label below
@@ -207,7 +207,7 @@ namespace UltraCanvas {
             ctx->SetFontSize(10);
             ctx->SetFontWeight(FontWeight::Normal);
             int labelWidth = ctx->GetTextLineWidth(strengthLabel);
-            ctx->DrawText(strengthLabel, Point2Df(centerX - labelWidth / 2, centerY + radius + 5));
+            ctx->DrawText(strengthLabel, Point2Dd(centerX - labelWidth / 2, centerY + radius + 5));
         }
     }
 
@@ -226,7 +226,7 @@ namespace UltraCanvas {
 
         if (!displayText.empty()) {
             int textWidth = ctx->GetTextLineWidth(displayText);
-            ctx->DrawText(displayText, Point2Df (finalBounds.x + static_cast<double>(finalBounds.width - textWidth) / 2.0, y));
+            ctx->DrawText(displayText, Point2Dd (finalBounds.x + static_cast<double>(finalBounds.width - textWidth) / 2.0, y));
         }
     }
 }

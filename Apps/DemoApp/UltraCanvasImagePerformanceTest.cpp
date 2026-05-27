@@ -693,7 +693,7 @@ namespace UltraCanvas {
     class CodecComparisonChartElement : public UltraCanvasUIElement {
     public:
         CodecComparisonChartElement(const std::string& identifier,
-                                    long x, long y, long w, long h)
+                                    float x, float y, float w, float h)
                 : UltraCanvasUIElement(identifier, x, y, w, h) {}
 
         void SetCodecNames(const std::vector<std::string>& names) {
@@ -776,7 +776,7 @@ namespace UltraCanvas {
             return UltraCanvasUIElement::OnEvent(event);
         }
 
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override {
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override {
             if (!ctx || !IsVisible()) return;
             Rect2Di bounds = GetLocalBounds();
             if (finalBounds.width < 40 || finalBounds.height < 40) return;
@@ -936,7 +936,7 @@ namespace UltraCanvas {
             const int titleRowTop = finalBounds.y + 4;
             const int titleRowH   = th + 2;
             ctx->DrawText(title,
-                          Point2Df(finalBounds.x + (finalBounds.width - tw) / 2,
+                          Point2Dd(finalBounds.x + (finalBounds.width - tw) / 2,
                           titleRowTop + (titleRowH - th) / 2));
 
             // ---- Legend (lower row) ----
@@ -1281,7 +1281,7 @@ namespace UltraCanvas {
                 int tw = dims.width, th = dims.height;
                 float cx = plot.x + (i + 0.5f) * groupWidth;
                 ctx->DrawText(codecNames[i],
-                              Point2Df(cx - tw / 2,
+                              Point2Dd(cx - tw / 2,
                               plot.y + plot.height + 4));
             }
         }
