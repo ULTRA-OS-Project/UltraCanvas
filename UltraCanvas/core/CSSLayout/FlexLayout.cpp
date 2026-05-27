@@ -401,7 +401,7 @@ namespace UltraCanvas {
                 for (auto& k : e.Children()) {
                     if (!k) continue;
                     if (k->layout.display == DisplayType::NoDisplay) continue;
-                    auto p = k->layoutItem.position;
+                    auto p = k->layoutItem.positionType;
                     if (p != PositionType::Static && p != PositionType::Relative) continue;
                     kids.push_back(k.get());
                 }
@@ -663,7 +663,7 @@ namespace UltraCanvas {
                         iw = it->crossSize;
                         ih = it->mainSize;
                     }
-                    if (it->el->layoutItem.position == PositionType::Relative) {
+                    if (it->el->layoutItem.positionType == PositionType::Relative) {
                         auto [dx, dy] = computeRelativeOffset(*it->el, contentW, contentH, ctx);
                         ix += dx;
                         iy += dy;
@@ -681,7 +681,7 @@ namespace UltraCanvas {
             };
             for (auto& kid : e.Children()) {
                 if (!kid) continue;
-                auto p = kid->layoutItem.position;
+                auto p = kid->layoutItem.positionType;
                 if (p == PositionType::Absolute) {
                     ArrangePositionedChild(*kid, paddingBox, ctx);
                 } else if (p == PositionType::Fixed) {

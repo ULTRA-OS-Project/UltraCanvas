@@ -21,7 +21,7 @@ namespace UltraCanvas {
             // True if this child participates in normal in-flow layout.
             bool isInFlow(const Element& e) {
                 if (e.layout.display == DisplayType::NoDisplay) return false;
-                auto pos = e.layoutItem.position;
+                auto pos = e.layoutItem.positionType;
                 return pos == PositionType::Static || pos == PositionType::Relative;
             }
 
@@ -314,7 +314,7 @@ namespace UltraCanvas {
                 LayoutRect kr{ contentX, cursorY,
                                kid->measured.measuredWidth,
                                kid->measured.measuredHeight };
-                if (kid->layoutItem.position == PositionType::Relative) {
+                if (kid->layoutItem.positionType == PositionType::Relative) {
                     auto [dx, dy] = computeRelativeOffset(*kid, contentW, contentH, ctx);
                     kr.x += dx;
                     kr.y += dy;
@@ -337,7 +337,7 @@ namespace UltraCanvas {
             };
             for (auto& kid : e.Children()) {
                 if (!kid) continue;
-                auto pos = kid->layoutItem.position;
+                auto pos = kid->layoutItem.positionType;
                 if (pos == PositionType::Absolute) {
                     ArrangePositionedChild(*kid, paddingBox, ctx);
                 } else if (pos == PositionType::Fixed) {

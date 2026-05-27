@@ -168,7 +168,7 @@ namespace UltraCanvas {
             auto pad  = resolveEdgeSizes(child.box.padding, containingBlock.width, ctx);
             auto bord = resolveEdgeSizes(child.box.border,  containingBlock.width, ctx);
 
-            AbsoluteItem insets = child.layoutItem.positioned.value_or(AbsoluteItem{});
+            Position insets = child.layoutItem.position.value_or(Position{});
 
             AxisResult xr = solveAbsoluteAxis(
                 containingBlock.width,
@@ -209,8 +209,8 @@ namespace UltraCanvas {
                                                       float cbInline,
                                                       float cbBlock,
                                                       const LayoutContext& ctx) {
-            if (!child.layoutItem.positioned.has_value()) return {0.f, 0.f};
-            const AbsoluteItem& offs = *child.layoutItem.positioned;
+            if (!child.layoutItem.position.has_value()) return {0.f, 0.f};
+            const Position& offs = *child.layoutItem.position;
 
             auto left   = resolveDimension(offs.left,   cbInline, ctx);
             auto right  = resolveDimension(offs.right,  cbInline, ctx);

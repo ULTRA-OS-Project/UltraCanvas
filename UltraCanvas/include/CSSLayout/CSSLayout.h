@@ -177,11 +177,11 @@ namespace UltraCanvas {
         // ---- Positioning (orthogonal to display) ----
         // For position: relative -> top/left/right/bottom act as a post-layout offset.
         // For position: absolute/fixed -> insets define the box against its containing block.
-        struct AbsoluteItem {
-            Dimension left;
+        struct Position {
             Dimension top;
             Dimension right;
             Dimension bottom;
+            Dimension left;
         };
 
         // ---- Measure result (extrinsic; cached per constraints) ----
@@ -255,12 +255,12 @@ namespace UltraCanvas {
         };
 
         struct LayoutItem {
-            PositionType position = PositionType::Static;
+            PositionType positionType = PositionType::Static;
             LayoutItemData data;
             // Populated when position == Relative/Absolute/Fixed.
             // For Relative: left/top/right/bottom act as a post-layout offset.
             // For Absolute/Fixed: insets define the box against the containing block.
-            std::optional<AbsoluteItem> positioned;
+            std::optional<Position> position;
         };
 
         // Note: project-wide Rect2Df is Rect2D<double>; layout engine works in

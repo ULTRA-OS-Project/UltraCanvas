@@ -459,7 +459,7 @@ namespace UltraCanvas {
                 for (auto& k : e.Children()) {
                     if (!k) continue;
                     if (k->layout.display == DisplayType::NoDisplay) continue;
-                    auto p = k->layoutItem.position;
+                    auto p = k->layoutItem.positionType;
                     if (p != PositionType::Static && p != PositionType::Relative) continue;
                     kids.push_back(k.get());
                 }
@@ -606,7 +606,7 @@ namespace UltraCanvas {
 
                 float x = contentX + colX + justifySelfOffset(js, colW, itemW);
                 float y = contentY + rowY + alignSelfOffset (as, rowH, itemH);
-                if (p.el->layoutItem.position == PositionType::Relative) {
+                if (p.el->layoutItem.positionType == PositionType::Relative) {
                     // CB for a grid-item's relative offsets is its grid area.
                     auto [dx, dy] = computeRelativeOffset(*p.el, colW, rowH, ctx);
                     x += dx;
@@ -624,7 +624,7 @@ namespace UltraCanvas {
             };
             for (auto& kid : e.Children()) {
                 if (!kid) continue;
-                auto p = kid->layoutItem.position;
+                auto p = kid->layoutItem.positionType;
                 if (p == PositionType::Absolute) {
                     ArrangePositionedChild(*kid, paddingBox, ctx);
                 } else if (p == PositionType::Fixed) {
