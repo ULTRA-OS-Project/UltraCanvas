@@ -187,6 +187,12 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModalDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLoader.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNewDocumentDialog.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/Dimension.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/LayoutUtils.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/Element.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/AbsoluteLayout.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/FlexLayout.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/GridLayout.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartElementBase.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasSpecificChartElements.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartDataStructures.cpp

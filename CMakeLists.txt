@@ -45,6 +45,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 option(BUILD_TEXTER_APP "Build the texter application" ON)
 option(BUILD_FILEMANAGER_APP "Build the file manager application" OFF) # OFF: source files not yet committed
 option(BUILD_DEMO_APP "Build the demo application" ON)
+option(BUILD_CSSLAYOUT_TESTS "Build the CSSLayout non-UI test harness" ON)
 option(BUILD_TESTS "Build unit tests" OFF)
 option(ULTRACANVAS_PLUGIN_CDR "Build CDR plugin (requires libcdr)" ON)
 option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" ON)
@@ -381,6 +382,13 @@ endif()
 #            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/..
 #    )
 endif ()
+
+if (BUILD_CSSLAYOUT_TESTS)
+    add_executable(CSSLayoutTests Apps/CSSLayoutTests/main.cpp)
+    target_include_directories(CSSLayoutTests PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(CSSLayoutTests PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(CSSLayoutTests PRIVATE cxx_std_20)
+endif()
 
 if (BUILD_FILEMANAGER_APP)
     set(UCFILEMANAGER_SOURCES
