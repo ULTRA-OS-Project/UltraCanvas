@@ -19,7 +19,6 @@
 #include "UltraCanvasTextEditorDialogs.h"
 #include "UltraCanvasTextEditorConfig.h"
 #include "UltraCanvasEncoding.h"
-#include "UltraCanvasBoxLayout.h"
 #include "UltraCanvasSearchBar.h"
 #include <memory>
 #include <string>

@@ -133,6 +133,9 @@ namespace UltraCanvas {
             finalBounds = CSSLayout::LayoutRect{x, y, w, h};
             if (w > 0) size.width  = CSSLayout::Dimension::Px(w);
             if (h > 0) size.height = CSSLayout::Dimension::Px(h);
+            layoutItem.position = CSSLayout::Position();
+            layoutItem.position->left = CSSLayout::Dimension::Px(x);
+            layoutItem.position->top = CSSLayout::Dimension::Px(y);
             stateFlags.Reset();
         }
 

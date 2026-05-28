@@ -2,30 +2,27 @@
 // Container with scrollbars and child management. Child storage lives on
 // CSSLayout::Element (via UltraCanvasUIElement); we iterate it through
 // Children() and static_pointer_cast each element to UltraCanvasUIElement.
-// Version: 3.0.0
+// Version: 4.0.0
 // Last Modified: 2026-05-27
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasApplication.h"
-#include "UltraCanvasLayout.h"
 #include "UltraCanvasElementDebug.h"
 #include <algorithm>
 #include <cmath>
 
 namespace UltraCanvas {
 
+    using namespace CSSLayout;
+
     // Local helper: every child of a Container is actually a UI element.
     static inline UltraCanvasUIElement* asUI(const std::shared_ptr<CSSLayout::Element>& c) {
         return static_cast<UltraCanvasUIElement*>(c.get());
     }
 
-    UltraCanvasContainer::~UltraCanvasContainer() {
-        if (layout) {
-            delete layout;
-        }
-    }
+    UltraCanvasContainer::~UltraCanvasContainer() = default;
 
 // ===== RENDERING IMPLEMENTATION =====
     void UltraCanvasContainer::SetWindow(UltraCanvasWindowBase *win) {
@@ -39,14 +36,34 @@ namespace UltraCanvas {
 
     void UltraCanvasContainer::UpdateGeometry(IRenderContext* ctx) {
         // Perform layout BEFORE children's UpdateGeometry so that children
-        // get their correct bounds from the parent layout before they
-        // process their own nested layouts (fixes first-frame positioning)
+        // get their correct bounds before they process their own nested
+        // layouts (fixes first-frame positioning).
         bool isContainerGeometryUpdated = false;
         if (needsUpdateGeometry || IsLayoutDirty()) {
             SortChildrenByZOrder();
-            if (layout) {
-                layout->PerformLayout();
+
+            // Engine-driven layout when display is Flex or Grid. Block /
+            // Inline / NoDisplay means "no auto-layout" — children keep
+            // whatever bounds the caller set manually (matches the legacy
+            // behavior for containers without a UltraCanvasLayout attached).
+            if (this->layout.display == DisplayType::Flex ||
+                this->layout.display == DisplayType::Grid) {
+                LayoutContext lctx;
+                if (window) {
+                    // TODO: thread em/rem/DPI from window. Viewport defaults
+                    // are acceptable for fixed-px callers; only vw/vh users
+                    // need this populated correctly.
+                    lctx.viewportWidth  = finalBounds.width;
+                    lctx.viewportHeight = finalBounds.height;
+                }
+                MeasureConstraints mc{
+                    { ConstraintMode::Exact, finalBounds.width  },
+                    { ConstraintMode::Exact, finalBounds.height }
+                };
+                this->Measure(mc, lctx);
+                this->Arrange(finalBounds, lctx);
             }
+
             UpdateScrollability();
             layoutDirty = false;
             isContainerGeometryUpdated = true;
@@ -161,15 +178,15 @@ namespace UltraCanvas {
 // ===== PRIVATE IMPLEMENTATION METHODS =====
 
     void UltraCanvasContainer::UpdateScrollability() {
-        int maxRight = 0;
-        int maxBottom = 0;
+        float maxRight = 0;
+        float maxBottom = 0;
 
         for (auto& c : Children()) {
             UltraCanvasUIElement* child = asUI(c);
             if (!child || !child->IsVisible()) continue;
             if (child->isPopup) continue;
 
-            Rect2Di childBounds = child->GetBounds();
+            Rect2Df childBounds = child->GetBounds();
             maxRight  = std::max(maxRight,  childBounds.x + childBounds.width);
             maxBottom = std::max(maxBottom, childBounds.y + childBounds.height);
         }
@@ -349,9 +366,6 @@ namespace UltraCanvas {
         if (!found) return;
 
         child->SetWindow(nullptr);
-        if (layout) {
-            layout->RemoveUIElement(child);
-        }
         CSSLayout::Element::RemoveChild(child.get());
 
         InvalidateLayout();
@@ -362,22 +376,32 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasContainer::ClearChildren() {
-        // Walk a snapshot of the current children so RemoveUIElement/SetWindow
-        // can mutate freely. Engine's ClearChildren wipes parent links + vector
-        // in one go after.
         for (auto& c : Children()) {
-            UltraCanvasUIElement* child = asUI(c);
-            child->SetWindow(nullptr);
-            if (layout) {
-                // Layout expects shared_ptr<UltraCanvasUIElement>; reconstruct one.
-                layout->RemoveUIElement(std::static_pointer_cast<UltraCanvasUIElement>(c));
-            }
+            asUI(c)->SetWindow(nullptr);
         }
         CSSLayout::Element::ClearChildren();
         verticalScrollbar->SetScrollPosition(0);
         horizontalScrollbar->SetScrollPosition(0);
         horizontalScrollbar->SetScrollDimensions(0, 0);
         InvalidateLayout();
+    }
+
+    std::shared_ptr<UltraCanvasSpacer> UltraCanvasContainer::AddSpacer(float size) {
+        // Fixed-size spacer. Works in both row and column flex containers:
+        // for Row, the main-axis (width) is `size`; for Column, the main-axis
+        // (height) is `size`. We set both axes so the spacer is `size` square
+        // regardless of orientation, and the cross axis collapses to whatever
+        // align-items dictates.
+        auto sp = std::make_shared<UltraCanvasSpacer>(size, size, 0.0f);
+        AddChild(sp);
+        return sp;
+    }
+
+    std::shared_ptr<UltraCanvasSpacer> UltraCanvasContainer::AddStretchSpacer(float grow) {
+        // Zero-size, flex-grow=grow. Absorbs main-axis slack.
+        auto sp = std::make_shared<UltraCanvasSpacer>(0.0f, 0.0f, grow);
+        AddChild(sp);
+        return sp;
     }
 
     UltraCanvasUIElement *UltraCanvasContainer::FindChildById(const std::string &id) {
@@ -411,7 +435,7 @@ namespace UltraCanvas {
     }
 
 
-    UltraCanvasUIElement* UltraCanvasContainer::FindElementAtPoint(const Point2Di &pos) {
+    UltraCanvasUIElement* UltraCanvasContainer::FindElementAtPoint(const Point2Df &pos) {
         if (!GetBounds().Contains(pos)) {
             return nullptr;
         }
@@ -530,17 +554,6 @@ namespace UltraCanvas {
 
     bool UltraCanvasContainer::ScrollByVertical(int delta) {
         return verticalScrollbar->ScrollBy(delta);
-    }
-
-    void UltraCanvasContainer::SetLayout(UltraCanvasLayout* newLayout) {
-        if (layout) {
-            delete layout;
-        }
-        if (newLayout) {
-            layout = newLayout;
-            layout->SetParentContainer(this);
-        }
-        InvalidateLayout();
     }
 
     void UltraCanvasContainer::SetBounds(const Rect2Df& bounds) {

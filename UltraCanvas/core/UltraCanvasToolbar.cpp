@@ -56,7 +56,6 @@ namespace UltraCanvas {
         auto button = std::make_shared<UltraCanvasButton>(
                 "btn_" + id, 0, 0, 32, 32
         );
-        button->SetAutoResize(true);
         button->SetText(text);
 
         if (!iconPath.empty()) {
@@ -380,23 +379,15 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasToolbar::CreateLayout() {
-        // Create box layout based on orientation
         if (orientation == ToolbarOrientation::Vertical) {
-            SetPadding(5,3);
-            if (!boxLayout) {
-                boxLayout = CreateVBoxLayout(this);
-            } else {
-                boxLayout->SetDirection(BoxLayoutDirection::Vertical);
-            }
+            SetPadding(5, 3);
+            layout.SetFlexColumn();
         } else {
-            SetPadding(3,5);
-            if (!boxLayout) {
-                boxLayout = CreateHBoxLayout(this);
-            } else {
-                boxLayout->SetDirection(BoxLayoutDirection::Horizontal);
-            }
+            SetPadding(3, 5);
+            layout.SetFlexRow();
         }
-        boxLayout->SetSpacing(static_cast<int>(appearance.itemSpacing));
+        layout.SetFlexGap(appearance.itemSpacing);
+        layout.SetAlignItems(CSSLayout::AlignItems::Center);
     }
 
     void UltraCanvasToolbar::SetOrientation(ToolbarOrientation orient) {
@@ -429,10 +420,7 @@ namespace UltraCanvas {
             SetBorders(1, Color(180, 180, 180, 255));
         }
 
-        // Update layout spacing
-        if (boxLayout) {
-            boxLayout->SetSpacing(static_cast<int>(appearance.itemSpacing));
-        }
+        layout.SetFlexGap(appearance.itemSpacing);
 
         // Update all items
         UpdateItemAppearances();
@@ -466,9 +454,10 @@ namespace UltraCanvas {
         items.push_back(item);
         itemMap[item->GetIdentifier()] = item;
 
-        // Add widget to layout
-        if (item->GetWidget() && boxLayout) {
-            boxLayout->AddUIElement(item->GetWidget(), 0)->SetCrossAlignment(LayoutAlignment::Center);
+        // Add widget as a child; align-items: Center on the container handles
+        // cross-axis centering without per-item alignSelf.
+        if (item->GetWidget()) {
+            AddChild(item->GetWidget());
         }
 
         item->UpdateAppearance(appearance);
@@ -493,10 +482,10 @@ namespace UltraCanvas {
         items.insert(items.begin() + index, item);
         itemMap[item->GetIdentifier()] = item;
 
-        // Add widget to layout at specific index
-        if (item->GetWidget() && boxLayout) {
-            auto elem = boxLayout->InsertUIElement(item->GetWidget(), index);
-            static_cast<UltraCanvasBoxLayoutItem*>(elem)->SetCrossAlignment(LayoutAlignment::Center);
+        // For now, append to children (insertion order matters for flex display
+        // order; honoring `index` would need order-based reordering).
+        if (item->GetWidget()) {
+            AddChild(item->GetWidget());
         }
 
         item->UpdateAppearance(appearance);
@@ -519,9 +508,8 @@ namespace UltraCanvas {
             // Remove from map
             itemMap.erase(it);
 
-            // Remove widget from layout
-            if (item->GetWidget() && boxLayout) {
-                boxLayout->RemoveUIElement(item->GetWidget());
+            if (item->GetWidget()) {
+                RemoveChild(item->GetWidget());
             }
 
             if (onItemRemoved) {
@@ -542,11 +530,7 @@ namespace UltraCanvas {
     void UltraCanvasToolbar::ClearItems() {
         items.clear();
         itemMap.clear();
-
-        if (boxLayout) {
-            boxLayout->ClearItems();
-        }
-
+        ClearChildren();
         InvalidateLayout();
     }
 
@@ -589,17 +573,11 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasToolbar::AddSpacer(int size) {
-        // Use layout's AddSpacing directly instead of creating a widget
-        if ( boxLayout) {
-            boxLayout->AddSpacing(size);
-        }
+        UltraCanvasContainer::AddSpacer(static_cast<float>(size));
     }
 
     void UltraCanvasToolbar::AddStretch(float stretch) {
-        // Use layout's AddStretch directly instead of creating a widget
-        if (boxLayout) {
-            boxLayout->AddStretch(static_cast<int>(stretch));
-        }
+        UltraCanvasContainer::AddStretchSpacer(stretch);
     }
 
     void UltraCanvasToolbar::AddLabel(const std::string& id, const std::string& text) {

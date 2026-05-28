@@ -79,6 +79,8 @@ public:
     UltraCanvasImageElement(const std::string& identifier = "ImageElement",
                            float x = 0, float y = 0, float w = 100, float h = 100);
 
+    UltraCanvasImageElement(const std::string& identifier = "ImageElement");
+
     // ===== IMAGE LOADING =====
     bool LoadFromFile(const std::string& filePath);
     bool LoadFromImage(std::shared_ptr<UCImage> img);

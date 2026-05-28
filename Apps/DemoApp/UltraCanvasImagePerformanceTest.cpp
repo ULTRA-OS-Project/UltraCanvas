@@ -221,13 +221,13 @@
 // encoder is available, and adding either would require core changes.
 // ================================================================================
 
+#include "UltraCanvasLayoutCompat.h"
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
-#include "UltraCanvasBoxLayout.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasModalDialog.h"   // for FileFilter
@@ -1400,7 +1400,6 @@ namespace UltraCanvas {
                 "re-encoded result at 1:1.");
         desc->SetFontSize(11);
         desc->SetWrap(TextWrap::WrapWord);
-        desc->SetAutoResize(true);
         desc->SetTextColor(Color(80, 80, 80, 255));
         mainLayout->AddUIElement(desc)->SetWidthMode(SizeMode::Fill);
 

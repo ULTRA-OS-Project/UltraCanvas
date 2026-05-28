@@ -16,9 +16,6 @@
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasMenu.h"
-#include "UltraCanvasBoxLayout.h"
-#include "UltraCanvasGridLayout.h"
-#include "UltraCanvasFlexLayout.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
@@ -499,8 +496,8 @@ namespace UltraCanvas {
         ToolbarVisibility visibility = ToolbarVisibility::AlwaysVisible;
         ToolbarDragMode dragMode = ToolbarDragMode::DragNone;
 
-        // Layout management
-        UltraCanvasBoxLayout* boxLayout = nullptr;
+        // Layout is configured directly on the inherited CSSLayout::Element::layout
+        // (display = Flex, direction set per orientation). No separate pointer.
 
         // Items
         std::vector<std::shared_ptr<UltraCanvasToolbarItem>> items;

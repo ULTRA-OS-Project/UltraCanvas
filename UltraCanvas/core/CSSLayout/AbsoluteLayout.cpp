@@ -1,8 +1,8 @@
 // core/CSSLayout/AbsoluteLayout.cpp
 // Out-of-flow positioning: position: absolute / fixed (CSS 2.1 §10.3.7, §10.6.4).
 // Position: relative offsets are applied post-layout (§9.4.3).
-// Version: 1.1.0
-// Last Modified: 2026-05-27
+// Version: 1.1.1
+// Last Modified: 2026-05-28
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -198,8 +198,15 @@ namespace UltraCanvas {
             };
             child.Measure(exact, ctx);
 
-            LayoutRect r{ containingBlock.x + xr.position,
-                          containingBlock.y + yr.position,
+            // finalBounds is parent-relative (offset within the DOM parent's
+            // content-box), per the renderer's expectation. xr.position is the
+            // offset within the containing block. This is correct only while
+            // every caller passes its own padding-box as `containingBlock` —
+            // i.e. CB == DOM parent. Cross-ancestor CBs (per CSS 2.1 §10.1)
+            // will need a separate arrange pass against the real CB; see TODO
+            // in ArrangeBlock for the containing-block walk.
+            LayoutRect r{ xr.position,
+                          yr.position,
                           xr.borderBox,
                           yr.borderBox };
             child.Arrange(r, ctx);

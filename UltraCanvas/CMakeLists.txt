@@ -175,10 +175,6 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSegmentedControl.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPasswordStrengthMeter.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPasswordRuleLegend.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasLayout.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBoxLayout.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasGridLayout.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFlexLayout.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasToolbar.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasScrollbar.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlider.cpp
@@ -188,6 +184,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLoader.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNewDocumentDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/Dimension.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/Layout.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/LayoutUtils.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/Element.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/AbsoluteLayout.cpp

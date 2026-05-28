@@ -234,7 +234,6 @@ namespace UltraCanvas {
         );
         descLabel->SetFontSize(11);
         descLabel->SetWrap(TextWrap::WrapWord);
-        descLabel->SetAutoResize(true);
         container->AddChild(descLabel);
 
         // ===== EXAMPLE 1: MARKET SHARE ANALYSIS =====

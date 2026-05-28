@@ -2,7 +2,7 @@
 // Container component with scrollbars and child element management.
 // Children storage lives in CSSLayout::Element (inherited via UltraCanvasUIElement);
 // this class provides typed UI accessors over that storage.
-// Version: 3.0.0
+// Version: 4.0.0
 // Last Modified: 2026-05-27
 // Author: UltraCanvas Framework
 
@@ -13,7 +13,7 @@
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasScrollbar.h"
-#include "UltraCanvasLayout.h"
+#include "UltraCanvasSpacer.h"
 #include <vector>
 #include <memory>
 #include <functional>
@@ -42,8 +42,6 @@ namespace UltraCanvas {
         std::function<void(int, int)> onScrollChanged;
         std::function<void(UltraCanvasUIElement *)> onChildAdded;
         std::function<void(UltraCanvasUIElement *)> onChildRemoved;
-
-        UltraCanvasLayout *layout = nullptr;
     protected:
         // Scrollbar components (using new unified scrollbar)
         std::unique_ptr<UltraCanvasScrollbar> verticalScrollbar;
@@ -83,7 +81,13 @@ namespace UltraCanvas {
         size_t GetChildCount() const { return Children().size(); }
 
         UltraCanvasUIElement *FindChildById(const std::string &id);
-        UltraCanvasUIElement *FindElementAtPoint(const Point2Di &pos);
+        UltraCanvasUIElement *FindElementAtPoint(const Point2Df &pos);
+
+        // ===== SPACERS (replace old AddSpacing / AddStretch) =====
+        // Fixed-size spacer (use as inline gap between specific children).
+        std::shared_ptr<UltraCanvasSpacer> AddSpacer(float size);
+        // Zero-size spacer with flex-grow; absorbs slack on the main axis.
+        std::shared_ptr<UltraCanvasSpacer> AddStretchSpacer(float grow = 1.0f);
 
         // ===== ENHANCED SCROLLING FUNCTIONS =====
         bool ScrollByVertical(int delta);
@@ -143,11 +147,6 @@ namespace UltraCanvas {
         bool OnEvent(const UCEvent &event) override;
 
         virtual void SetWindow(UltraCanvasWindowBase *win) override;
-
-        void SetLayout(UltraCanvasLayout *newLayout);
-
-        UltraCanvasLayout *GetLayout() const { return layout; }
-        bool HasLayout() const { return layout != nullptr; }
 
     private:
         // ===== INTERNAL METHODS =====

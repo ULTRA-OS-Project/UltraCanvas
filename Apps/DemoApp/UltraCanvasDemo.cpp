@@ -4,9 +4,8 @@
 // Last Modified: 2026-05-01
 // Author: UltraCanvas Framework
 
+#include "UltraCanvasLayoutCompat.h"
 #include "UltraCanvasDemo.h"
-#include "UltraCanvasBoxLayout.h"
-#include "UltraCanvasGridLayout.h"
 #include "UltraCanvasTextArea.h"
 #include "Plugins/Text/UltraCanvasMarkdown.h"
 #include <iostream>
@@ -27,7 +26,6 @@ namespace UltraCanvas {
         legendTitle->SetFontSize(12);
         legendTitle->SetFontWeight(FontWeight::Bold);
         legendTitle->SetTextColor(Color(80, 80, 80, 255));
-        legendTitle->SetAutoResize(true);
         AddChild(legendTitle);
 
         // Implemented status (row 1)
@@ -38,7 +36,6 @@ namespace UltraCanvas {
         implementedLabel->SetText("Fully Implemented");
         implementedLabel->SetFontSize(11);
         implementedLabel->SetTextColor(Color(0, 150, 0, 255));
-        implementedLabel->SetAutoResize(true);
         AddChild(implementedLabel);
 
         // Partially implemented status (row 2)
@@ -49,7 +46,6 @@ namespace UltraCanvas {
         partialLabel->SetText("Partially Implemented");
         partialLabel->SetFontSize(11);
         partialLabel->SetTextColor(Color(0x21, 0x96, 0xf3, 255));
-        partialLabel->SetAutoResize(true);
         AddChild(partialLabel);
 
         // Not implemented status (row 3)
@@ -60,7 +56,6 @@ namespace UltraCanvas {
         notImplementedLabel->SetText("Not Implemented Yet");
         notImplementedLabel->SetFontSize(11);
         notImplementedLabel->SetTextColor(Color(200, 0, 0, 255));
-        notImplementedLabel->SetAutoResize(true);
         AddChild(notImplementedLabel);
     }
 
@@ -90,7 +85,6 @@ namespace UltraCanvas {
         titleLabel->SetFontSize(14);
         titleLabel->SetFontWeight(FontWeight::Bold);
         titleLabel->SetText("Demo Title");
-        titleLabel->SetAutoResize(true);
         titleLabel->SetMargin(2,0,0,0);
         //AddChild(titleLabel);
 
@@ -1225,10 +1219,11 @@ namespace UltraCanvas {
         if (item->createExample && item->status != ImplementationStatus::NotImplemented) {
             try {
                 currentDisplayElement = item->createExample();
-                if (currentDisplayElement && displayContainer->GetLayout()) {
-                    ((UltraCanvasBoxLayout*)displayContainer->GetLayout())->AddUIElement(currentDisplayElement)->SetWidthMode(SizeMode::Fill)->SetStretch(1);
-                } else {
+                if (currentDisplayElement) {
                     displayContainer->AddChild(currentDisplayElement);
+                    currentDisplayElement->layoutItem
+                        .SetFlexGrow(1)
+                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
                 }
                 currentSelectedId = itemId;
             } catch (const std::exception& e) {

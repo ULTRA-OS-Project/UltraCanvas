@@ -4,8 +4,8 @@
 // Last Modified: 2026-02-04
 // Author: UltraCanvas Framework
 
+#include "UltraCanvasLayoutCompat.h"
 #include "UltraCanvasTextEditorDialogs.h"
-#include "UltraCanvasBoxLayout.h"
 #include <algorithm>
 
 namespace UltraCanvas {
@@ -110,12 +110,10 @@ namespace UltraCanvas {
 
         findNextButton = std::make_shared<UltraCanvasButton>("FindNext", 0, 0, buttonMinWidth, buttonHeight);
         findNextButton->SetText("Find Next");
-        findNextButton->SetAutoResize(true);        // Auto-expand to fit text
         //findNextButton->SetMinWidth(buttonMinWidth);
 
         findPreviousButton = std::make_shared<UltraCanvasButton>("FindPrev", 0, 0, buttonMinWidth, buttonHeight);
         findPreviousButton->SetText("Find Previous");
-        findPreviousButton->SetAutoResize(true);
         //findPreviousButton->SetMinWidth(buttonMinWidth);
 
         closeButton = std::make_shared<UltraCanvasButton>("CloseBtn", 0, 0, 80, buttonHeight);
@@ -414,17 +412,14 @@ namespace UltraCanvas {
 
         findNextButton = std::make_shared<UltraCanvasButton>("FindNext", 0, 0, buttonMinWidth, buttonHeight);
         findNextButton->SetText("Find Next");
-        findNextButton->SetAutoResize(true);
         //findNextButton->SetMinWidth(buttonMinWidth);
 
         replaceButton = std::make_shared<UltraCanvasButton>("Replace", 0, 0, buttonMinWidth, buttonHeight);
         replaceButton->SetText("Replace");
-        replaceButton->SetAutoResize(true);
         //replaceButton->SetMinWidth(buttonMinWidth);
 
         replaceAllButton = std::make_shared<UltraCanvasButton>("ReplaceAll", 0, 0, buttonMinWidth, buttonHeight);
         replaceAllButton->SetText("Replace All");
-        replaceAllButton->SetAutoResize(true);
         //replaceAllButton->SetMinWidth(buttonMinWidth);
 
         closeButton = std::make_shared<UltraCanvasButton>("CloseBtn", 0, 0, 80, buttonHeight);

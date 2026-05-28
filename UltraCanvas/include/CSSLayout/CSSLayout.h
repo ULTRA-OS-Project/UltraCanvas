@@ -1,6 +1,6 @@
 // include/CSSLayout/CSSLayout.h
 // CSS-compliant layout engine: type model and Element base class.
-// Version: 4.4.0
+// Version: 4.5.0
 // Last Modified: 2026-05-27
 // Author: UltraCanvas Framework
 #pragma once
@@ -253,6 +253,27 @@ namespace UltraCanvas {
         struct Layout {
             DisplayType display = DisplayType::Block;
             LayoutData  data;
+
+            // ---- Flex configuration (initializes data to FlexLayout on first call) ----
+            Layout& SetFlex(FlexDirection d = FlexDirection::Row,
+                            FlexWrap w = FlexWrap::NoWrap);
+            Layout& SetFlexDirection(FlexDirection d);
+            Layout& SetFlexRow()    { return SetFlexDirection(FlexDirection::Row); }
+            Layout& SetFlexColumn() { return SetFlexDirection(FlexDirection::Column); }
+            Layout& SetFlexWrap(FlexWrap w);
+            Layout& SetFlexGap(float gap);                       // both axes
+            Layout& SetFlexGap(float row, float column);
+            Layout& SetJustifyContent(JustifyContent jc);
+            Layout& SetAlignItems(AlignItems ai);
+            Layout& SetAlignContent(AlignContent ac);
+
+            // ---- Grid configuration (initializes data to GridLayout on first call) ----
+            Layout& SetGrid();
+            Layout& SetGridColumns(std::vector<GridTrackSize> tracks);
+            Layout& SetGridRows   (std::vector<GridTrackSize> tracks);
+            Layout& SetGridGap(float gap);
+            Layout& SetGridGap(float row, float column);
+            Layout& SetGridAutoFlow(GridAutoFlow f);
         };
 
         struct LayoutItem {
@@ -262,6 +283,24 @@ namespace UltraCanvas {
             // For Relative: left/top/right/bottom act as a post-layout offset.
             // For Absolute/Fixed: insets define the box against the containing block.
             std::optional<Position> position;
+
+            // ---- Positioning kind / insets ----
+            LayoutItem& SetPositionType(PositionType p) { positionType = p; return *this; }
+            LayoutItem& SetPositionInsets(const Position& insets) { position = insets; return *this; }
+
+            // ---- Flex item properties (initializes data to FlexItem on first call) ----
+            LayoutItem& SetFlexGrow(float g);
+            LayoutItem& SetFlexShrink(float s);
+            LayoutItem& SetFlexBasis(const Dimension& b);
+            LayoutItem& SetFlex(float g, float s, const Dimension& b);
+            LayoutItem& SetAlignSelf(AlignSelf a);
+            LayoutItem& SetOrder(int o);
+
+            // ---- Grid item properties (initializes data to GridItem on first call) ----
+            LayoutItem& SetGridColumn(GridLine start, GridLine end);
+            LayoutItem& SetGridRow   (GridLine start, GridLine end);
+            LayoutItem& SetJustifySelf(JustifySelf j);
+            LayoutItem& SetGridAlignSelf(AlignSelf a);
         };
 
         // Note: project-wide Rect2Dd is Rect2D<double>; layout engine works in

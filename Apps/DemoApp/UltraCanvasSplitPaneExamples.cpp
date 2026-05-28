@@ -4,9 +4,9 @@
 // Last Modified: 2026-05-19
 // Author: UltraCanvas Framework
 
+#include "UltraCanvasLayoutCompat.h"
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasSplitPane.h"
-#include "UltraCanvasBoxLayout.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
@@ -32,8 +32,6 @@ namespace UltraCanvas {
             d->SetTextColor(Color(80, 80, 80, 255));
             d->SetFontSize(12);
             d->SetWrap(TextWrap::WrapWord);
-            d->SetAutoResize(true);
-            d->SetMaxWidth(w);
             return d;
         }
 

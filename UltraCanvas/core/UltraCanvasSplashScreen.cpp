@@ -9,7 +9,6 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasLabel.h"
-#include "UltraCanvasBoxLayout.h"
 #include "UltraCanvasUtils.h"
 
 namespace UltraCanvas {
@@ -42,13 +41,12 @@ namespace UltraCanvas {
             return;
         }
 
-        // Build layout
-        auto layout = CreateVBoxLayout(window.get());
-        layout->SetSpacing(4);
+        // Build layout: column flex, items horizontally stretched to container.
+        window->layout.SetFlexColumn().SetFlexGap(4).SetAlignItems(CSSLayout::AlignItems::Stretch);
         window->SetPadding(20);
         window->SetBorders(1, Colors::Black);
 
-        layout->AddStretch(1);
+        window->AddStretchSpacer(1);
 
         // Logo image
         if (!config.imagePath.empty()) {
@@ -56,7 +54,8 @@ namespace UltraCanvas {
             logo->LoadFromFile(config.imagePath);
             logo->SetFitMode(ImageFitMode::Contain);
             logo->SetMargin(0, 0, 12, 0);
-            layout->AddUIElement(logo)->SetCrossAlignment(LayoutAlignment::Center);
+            window->AddChild(logo);
+            logo->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
         }
 
         // Title
@@ -66,7 +65,7 @@ namespace UltraCanvas {
             titleLabel->SetFontWeight(FontWeight::Bold);
             titleLabel->SetAlignment(TextAlignment::Center);
             titleLabel->SetMargin(0, 0, 4, 0);
-            layout->AddUIElement(titleLabel)->SetWidthMode(SizeMode::Fill);
+            window->AddChild(titleLabel);
         }
 
         // Version
@@ -76,7 +75,7 @@ namespace UltraCanvas {
             versionLabel->SetTextColor(Color(100, 100, 100));
             versionLabel->SetAlignment(TextAlignment::Center);
             versionLabel->SetMargin(0, 0, 10, 0);
-            layout->AddUIElement(versionLabel)->SetWidthMode(SizeMode::Fill);
+            window->AddChild(versionLabel);
         }
 
         // Website URL
@@ -92,10 +91,10 @@ namespace UltraCanvas {
             urlLabel->onClick = [url]() {
                 OpenURL(url);
             };
-            layout->AddUIElement(urlLabel)->SetWidthMode(SizeMode::Fill)->SetCrossAlignment(LayoutAlignment::Center);
+            window->AddChild(urlLabel);
         }
 
-        layout->AddStretch(1);
+        window->AddStretchSpacer(1);
 
         // Click anywhere to dismiss
         window->eventCallback = [this](const UCEvent& event) -> bool {

@@ -4,6 +4,7 @@
 // Last Modified: 2026-05-06
 // Author: UltraCanvas Framework
 
+#include "UltraCanvasLayoutCompat.h"
 #include "UltraCanvasTextEditor.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasToolbar.h"
@@ -3450,7 +3451,6 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         descLabel->SetTextColor(Color(60, 60, 60));
         descLabel->SetAlignment(TextAlignment::Left);
         descLabel->SetWrap(TextWrap::WrapWord);
-        descLabel->SetAutoResize(true);
         descLabel->SetMargin(0, 20, 8, 20);
         mainLayout->AddUIElement(descLabel)->SetWidthMode(SizeMode::Fill);
         

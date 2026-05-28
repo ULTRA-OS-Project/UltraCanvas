@@ -14,6 +14,7 @@
 // - QOI: Colorspace changed from dropdown to checkbox (linearColorspace bool)
 // - Removed metadata options that are commented out in UltraCanvasImage.h
 
+#include "UltraCanvasLayoutCompat.h"
 #include "UltraCanvasImageExportDialog.h"
 #include <algorithm>
 #include <sstream>

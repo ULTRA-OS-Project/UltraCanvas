@@ -1,4 +1,5 @@
 
+#include "UltraCanvasLayoutCompat.h"
 #include <filesystem>
 #include <chrono>
 #include <ctime>
@@ -232,7 +233,6 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
         value->SetTextColor(Color(30, 30, 30));
         value->SetAlignment(TextAlignment::Left);
         value->SetWrap(TextWrap::WrapWord);
-        value->SetAutoResize(true);
 
         grid->AddUIElement(label, row, 0);
         grid->AddUIElement(value, row, 1);

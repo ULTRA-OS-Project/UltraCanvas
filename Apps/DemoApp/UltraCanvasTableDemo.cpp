@@ -4,12 +4,12 @@
 // Last Modified: 2025-11-14
 // Author: UltraCanvas Framework
 
+#include "UltraCanvasLayoutCompat.h"
 #include "UltraCanvasDemo.h"
 #include "Plugins/Charts/UltraCanvasSpecificChartElements.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
-#include "UltraCanvasBoxLayout.h"
 //#include "UltraCanvasModalDialog.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasMenu.h"

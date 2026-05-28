@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 #pragma once
 
+#include "UltraCanvasLayoutCompat.h"
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasLayoutEngine.h"
 #include "UltraCanvasContainer.h"

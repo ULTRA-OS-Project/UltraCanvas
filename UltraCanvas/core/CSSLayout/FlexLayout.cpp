@@ -2,8 +2,8 @@
 // CSS Flexbox layout: https://www.w3.org/TR/css-flexbox-1/#layout-algorithm
 // Implemented: row/column/reverse, wrap, grow, shrink, basis, gap,
 // justify-content, align-items, align-self, align-content (no Baseline).
-// Version: 1.2.0
-// Last Modified: 2026-05-27
+// Version: 1.2.1
+// Last Modified: 2026-05-28
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -103,12 +103,21 @@ namespace UltraCanvas {
                 if (basis.has_value()) return *basis;
 
                 // basis: auto → use the item's own size in main axis, if definite;
-                // else measure with max-content on main (Unbounded), cross from container.
+                // else fall through to intrinsic / max-content measurement.
                 const Dimension& mainSizeDim = axis.isRow ? el.size.width : el.size.height;
                 auto own = resolveDimension(mainSizeDim, mainContent, ctx);
                 if (own.has_value()) return *own;
 
-                // Measure to get max-content main size.
+                // Prefer a published intrinsic.maxContent* (border-box units).
+                // Widgets like UltraCanvasLabel publish this via ComputeIntrinsicSizes;
+                // for those, we skip the otherwise-redundant Measure(Unbounded) pass.
+                if (el.intrinsic.valid) {
+                    float ic = axis.isRow ? el.intrinsic.maxContentWidth
+                                          : el.intrinsic.maxContentHeight;
+                    if (ic > 0) return ic;
+                }
+
+                // Fallback: Measure with Unbounded main, cross from container.
                 MeasureConstraints mc = axis.constraints(
                     ConstraintMode::Unbounded, INFINITY,
                     crossContent.has_value() ? ConstraintMode::AtMost : ConstraintMode::Unbounded,
@@ -563,11 +572,10 @@ namespace UltraCanvas {
             };
             FlexState& s = obtainFlexState(e, exact, ctx);
 
-            // Container content-area origin (border-box in finalRect; strip border+padding).
+            // Container content-area size (border-box in finalRect; strip border+padding).
+            // Positions are computed in the local content-box frame further down.
             auto padIns  = resolveEdgeSizes(e.box.padding, finalRect.width, ctx);
             auto bordIns = resolveEdgeSizes(e.box.border,  finalRect.width, ctx);
-            float contentX = finalRect.x + bordIns.left + padIns.left;
-            float contentY = finalRect.y + bordIns.top  + padIns.top;
             float contentW = std::max(0.f, finalRect.width  - bordIns.horizontal() - padIns.horizontal());
             float contentH = std::max(0.f, finalRect.height - bordIns.vertical()   - padIns.vertical());
             float availMain  = s.axis.isRow ? contentW : contentH;
@@ -647,19 +655,27 @@ namespace UltraCanvas {
             }
 
             // Finally: convert main/cross to x/y and Arrange each item.
+            // Child positions are expressed in this container's content-box
+            // frame (origin = top-left of content area), i.e. parent-relative,
+            // matching the renderer's expectation that finalBounds is offset
+            // from the parent's content-box. So we use border+padding as the
+            // local base, NOT finalRect.x/y (which would inherit the parent's
+            // own position and produce window-absolute coords).
             // position:relative is folded into the rect before Arrange so finalBounds
             // is correct on return; relative does not shift siblings.
+            float localBaseX = bordIns.left + padIns.left;
+            float localBaseY = bordIns.top  + padIns.top;
             for (auto& ln : s.lines) {
                 for (auto* it : ln.items) {
                     float ix, iy, iw, ih;
                     if (s.axis.isRow) {
-                        ix = contentX + it->mainPos;
-                        iy = contentY + it->crossPos;
+                        ix = localBaseX + it->mainPos;
+                        iy = localBaseY + it->crossPos;
                         iw = it->mainSize;
                         ih = it->crossSize;
                     } else {
-                        ix = contentX + it->crossPos;
-                        iy = contentY + it->mainPos;
+                        ix = localBaseX + it->crossPos;
+                        iy = localBaseY + it->mainPos;
                         iw = it->crossSize;
                         ih = it->mainSize;
                     }

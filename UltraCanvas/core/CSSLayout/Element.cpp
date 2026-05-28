@@ -1,7 +1,7 @@
 // core/CSSLayout/Element.cpp
 // Element base: measure-cache wrapper, default block layout, arrange dispatch.
-// Version: 1.2.0
-// Last Modified: 2026-05-27
+// Version: 1.2.1
+// Last Modified: 2026-05-28
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -290,8 +290,13 @@ namespace UltraCanvas {
             auto padIns  = resolveEdgeSizes(e.box.padding, parentInline, ctx);
             auto bordIns = resolveEdgeSizes(e.box.border,  parentInline, ctx);
 
-            float contentX = finalRect.x + bordIns.left + padIns.left;
-            float contentY = finalRect.y + bordIns.top  + padIns.top;
+            // Child positions are expressed in this element's content-box
+            // frame (parent-relative), so the local base is just border+padding;
+            // we must NOT add finalRect.x/y (that would inherit the parent's
+            // own position and yield window-absolute coords). contentW/H still
+            // need the absolute-style size calc because they describe extent.
+            float localBaseX = bordIns.left + padIns.left;
+            float localBaseY = bordIns.top  + padIns.top;
             float contentW = std::max(0.f,
                 finalRect.width  - bordIns.horizontal() - padIns.horizontal());
             float contentH = std::max(0.f,
@@ -301,7 +306,7 @@ namespace UltraCanvas {
             // position: relative shifts the rect we hand to Arrange (so finalBounds
             // is correct the moment Arrange returns) but does NOT advance cursorY —
             // siblings ignore the offset.
-            float cursorY = contentY;
+            float cursorY = localBaseY;
             for (auto& kid : e.Children()) {
                 if (!kid) continue;
                 if (!isInFlow(*kid)) continue;
@@ -315,7 +320,7 @@ namespace UltraCanvas {
                 };
                 kid->Measure(kc, ctx);
 
-                LayoutRect kr{ contentX, cursorY,
+                LayoutRect kr{ localBaseX, cursorY,
                                kid->measured.measuredWidth,
                                kid->measured.measuredHeight };
                 if (kid->layoutItem.positionType == PositionType::Relative) {
@@ -349,7 +354,6 @@ namespace UltraCanvas {
                     ArrangePositionedChild(*kid, viewport, ctx);
                 }
             }
-            (void)contentX; (void)contentY;
         }
 
     }

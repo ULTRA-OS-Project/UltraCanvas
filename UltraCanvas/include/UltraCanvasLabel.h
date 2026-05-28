@@ -1,7 +1,12 @@
 // include/UltraCanvasLabel.h
-// Modern text display label control with styling and alignment options
-// Version: 1.1.0
-// Last Modified: 2026-05-11
+// Modern text display label control with styling and alignment options.
+// Exemplar of the new CSSLayout intrinsic-sizing protocol: overrides
+// MeasureCore (constraint-aware sizing) and ComputeIntrinsicSizes
+// (constraint-free max/min-content) so the engine can place the label
+// without the widget mutating finalBounds itself. UpdateGeometry just
+// keeps the cached ITextLayout in sync with the latest content area.
+// Version: 2.0.0
+// Last Modified: 2026-05-27
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -50,8 +55,6 @@ namespace UltraCanvas {
         // ===== COMPUTED LAYOUT =====
         Rect2Di textArea;
         std::unique_ptr<ITextLayout> textLayout = nullptr;
-        int maxWidth = 0;
-        bool autoResize = false;
         bool isMarkup = false;
 
     public:
@@ -60,7 +63,10 @@ namespace UltraCanvas {
                          const std::string &labelText = "");
 
         explicit UltraCanvasLabel(const std::string &identifier = "Label",
-                                  float w = 100, float h = 25,
+                                  const std::string &labelText = "");
+
+        explicit UltraCanvasLabel(const std::string &identifier,
+                                  float w, float h,
                                   const std::string &labelText = "");
 
         virtual ~UltraCanvasLabel() = default;
@@ -92,6 +98,16 @@ namespace UltraCanvas {
         float GetPreferredWidth() override;
         float GetPreferredHeight() override;
 
+        // ===== ENGINE-DRIVEN LAYOUT =====
+        // Constraint-aware: caller (Flex/Grid/Block) tells us how much room
+        // we have on each axis; we publish measured.measuredWidth/Height.
+        void MeasureCore(const CSSLayout::MeasureConstraints& c,
+                         const CSSLayout::LayoutContext& ctx) override;
+        // Constraint-free: publishes intrinsic min/max-content via the
+        // inherited `intrinsic` cache, in BORDER-BOX units (i.e. including
+        // padding + border) to match what measured.* would return.
+        void ComputeIntrinsicSizes(const CSSLayout::LayoutContext& ctx) override;
+
         // ===== RENDERING =====
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         void UpdateGeometry(IRenderContext *ctx) override;
@@ -109,34 +125,35 @@ namespace UltraCanvas {
         std::function<void(const std::string&)> onTextChanged;
 
     protected:
-        // ===== LAYOUT CALCULATION =====
-//        void CalculateLayout(IRenderContext *ctx);
-        // ===== SIZING =====
-//        void AutoResize(const Size2Di &textDimensions);
-
+        // Build the cached ITextLayout if missing and configure it with the
+        // current font/wrap/alignment. Does NOT set explicit width — callers
+        // (MeasureCore / ComputeIntrinsicSizes / UpdateGeometry) own that.
+        // Returns true if the layout is now valid, false if no render context
+        // is available (in which case callers should bail gracefully).
+        bool EnsureTextLayout();
     };
+
+
 // ===== FACTORY FUNCTIONS =====
-    std::shared_ptr<UltraCanvasLabel> CreateLabel(
-            const std::string& identifier, float x, float y, float w, float h,
-            const std::string& text = "");
+    inline std::shared_ptr<UltraCanvasLabel>
+    CreateLabel(const std::string &identifier, float x, float y, float w, float h,
+                const std::string &text = "") {
+        return std::make_shared<UltraCanvasLabel>(identifier, x, y, w, h, text);
+    }
 
-    std::shared_ptr<UltraCanvasLabel> CreateLabel(
-            const std::string& identifier, float w, float h,
-            const std::string& text = "");
+    inline std::shared_ptr<UltraCanvasLabel>
+    CreateLabel(const std::string &identifier, float w, float h, const std::string &text = "") {
+        return std::make_shared<UltraCanvasLabel>(identifier, 0, 0, w, h, text);
+    }
 
-    std::shared_ptr<UltraCanvasLabel> CreateLabel(const std::string& text);
+    inline std::shared_ptr<UltraCanvasLabel> CreateLabel(const std::string &text) {
+        return std::make_shared<UltraCanvasLabel>("", text);
+    }
 
-    std::shared_ptr<UltraCanvasLabel> CreateAutoLabel(
-            const std::string& identifier, float x, float y,
-            const std::string& text);
-
-    std::shared_ptr<UltraCanvasLabel> CreateHeaderLabel(
-            const std::string& identifier, float x, float y, float w, float h,
-            const std::string& text);
-
-    std::shared_ptr<UltraCanvasLabel> CreateStatusLabel(
-            const std::string& identifier, float x, float y, float w, float h,
-            const std::string& text = "Ready");
+    inline std::shared_ptr<UltraCanvasLabel> CreateLabel(const std::string &identifier,
+                                                  const std::string &text) {
+        return std::make_shared<UltraCanvasLabel>(identifier, text);
+    }
 
 // ===== BUILDER PATTERN =====
     class LabelBuilder {
@@ -144,7 +161,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasLabel> label;
 
     public:
-        LabelBuilder(const std::string& identifier, float x, float y, float w = 100, float h = 25);
+        LabelBuilder(const std::string& identifier);
 
         LabelBuilder& SetText(const std::string& text);
         LabelBuilder& SetFont(const std::string& fontFamily, float fontSize = 12.0f);
@@ -160,10 +177,4 @@ namespace UltraCanvas {
             return label;
         }
     };
-
-// ===== CONVENIENCE BUILDER =====
-    inline LabelBuilder CreateLabelBuilder(const std::string& identifier, float x, float y, float w = 100, float h = 25) {
-        return LabelBuilder(identifier, x, y, w, h);
-    }
-
 } // namespace UltraCanvas

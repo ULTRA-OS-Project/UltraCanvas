@@ -5,8 +5,8 @@
 // MinContent/MaxContent/FitContent, gaps, justify-self / align-self.
 // Deferred (TODO): named lines, named areas, dense packing, subgrid, MinMax
 // proper resolution (currently approximated as Min..Max bounds).
-// Version: 1.2.0
-// Last Modified: 2026-05-27
+// Version: 1.2.1
+// Last Modified: 2026-05-28
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -282,19 +282,29 @@ namespace UltraCanvas {
                                         const LayoutContext& ctx) {
                 (void)gapColTotal; (void)gapRowTotal;
 
-                // Pass 1: single-span items grow their tracks to max-content.
-                for (const auto& p : placements) {
-                    int spanC = p.colEnd - p.colStart;
-                    int spanR = p.rowEnd - p.rowStart;
-
-                    // Measure item with Unbounded → max-content size.
+                // Read the item's max-content dimensions. Prefers the cached
+                // intrinsic (published by widgets like UltraCanvasLabel via
+                // ComputeIntrinsicSizes) so we can skip the otherwise-redundant
+                // Measure(Unbounded) pass. Falls back to Measure when no
+                // intrinsic is available.
+                auto itemMaxContent = [&](Element* el) -> std::pair<float, float> {
+                    if (el->intrinsic.valid &&
+                        (el->intrinsic.maxContentWidth > 0 || el->intrinsic.maxContentHeight > 0)) {
+                        return { el->intrinsic.maxContentWidth, el->intrinsic.maxContentHeight };
+                    }
                     MeasureConstraints mc{
                         { ConstraintMode::Unbounded, INFINITY },
                         { ConstraintMode::Unbounded, INFINITY }
                     };
-                    p.el->Measure(mc, ctx);
-                    float w = p.el->measured.measuredWidth;
-                    float h = p.el->measured.measuredHeight;
+                    el->Measure(mc, ctx);
+                    return { el->measured.measuredWidth, el->measured.measuredHeight };
+                };
+
+                // Pass 1: single-span items grow their tracks to max-content.
+                for (const auto& p : placements) {
+                    int spanC = p.colEnd - p.colStart;
+                    int spanR = p.rowEnd - p.rowStart;
+                    auto [w, h] = itemMaxContent(p.el);
 
                     if (spanC == 1 && cols[p.colStart].intrinsic) {
                         cols[p.colStart].base = std::min(
@@ -308,7 +318,7 @@ namespace UltraCanvas {
                     }
                 }
 
-                // Pass 2: multi-span items - distribute remaining over intrinsic tracks.
+                // Pass 2: multi-span items — distribute remaining over intrinsic tracks.
                 auto distribute = [](std::vector<Track>& tracks, int s, int e, float need) {
                     if (need <= 0) return;
                     float have = 0.f;
@@ -328,13 +338,7 @@ namespace UltraCanvas {
                     int spanC = p.colEnd - p.colStart;
                     int spanR = p.rowEnd - p.rowStart;
                     if (spanC <= 1 && spanR <= 1) continue;
-                    MeasureConstraints mc{
-                        { ConstraintMode::Unbounded, INFINITY },
-                        { ConstraintMode::Unbounded, INFINITY }
-                    };
-                    p.el->Measure(mc, ctx);
-                    float w = p.el->measured.measuredWidth;
-                    float h = p.el->measured.measuredHeight;
+                    auto [w, h] = itemMaxContent(p.el);
                     if (spanC > 1) distribute(cols, p.colStart, p.colEnd, w);
                     if (spanR > 1) distribute(rows, p.rowStart, p.rowEnd, h);
                 }
@@ -547,8 +551,8 @@ namespace UltraCanvas {
 
             auto padIns  = resolveEdgeSizes(e.box.padding, finalRect.width, ctx);
             auto bordIns = resolveEdgeSizes(e.box.border,  finalRect.width, ctx);
-            float contentX = finalRect.x + bordIns.left + padIns.left;
-            float contentY = finalRect.y + bordIns.top  + padIns.top;
+            // Positions are computed in the local content-box frame further down
+            // (using bordIns/padIns directly); finalRect.x/y must not leak in.
 
             // Precompute track origins.
             std::vector<float> colOrigin(s.cols.size() + 1, 0.f);
@@ -604,8 +608,12 @@ namespace UltraCanvas {
                 };
                 p.el->Measure(mc, ctx);
 
-                float x = contentX + colX + justifySelfOffset(js, colW, itemW);
-                float y = contentY + rowY + alignSelfOffset (as, rowH, itemH);
+                // Child positions are in this container's content-box frame
+                // (parent-relative). Use border+padding as the local base;
+                // do NOT add contentX/contentY, which include finalRect.x/y
+                // (the parent's own position in its parent's frame).
+                float x = bordIns.left + padIns.left + colX + justifySelfOffset(js, colW, itemW);
+                float y = bordIns.top  + padIns.top  + rowY + alignSelfOffset (as, rowH, itemH);
                 if (p.el->layoutItem.positionType == PositionType::Relative) {
                     // CB for a grid-item's relative offsets is its grid area.
                     auto [dx, dy] = computeRelativeOffset(*p.el, colW, rowH, ctx);

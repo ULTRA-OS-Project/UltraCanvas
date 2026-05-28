@@ -1,10 +1,28 @@
 // core/UltraCanvasLabel.cpp
-// Implementation of base layout class
-// Version: 1.1.0
-// Last Modified: 2026-05-11
+// Reference implementation of the CSSLayout intrinsic-sizing protocol for
+// a UI widget. The pattern, transcribed for future widget migrations:
+//
+//   1. EnsureTextLayout() builds the underlying text/content cache on
+//      demand. It applies font/wrap/alignment but NOT the explicit width
+//      — width is set by the caller (Measure/Intrinsic/UpdateGeometry).
+//   2. ComputeIntrinsicSizes() publishes min/max-content in BORDER-BOX
+//      units (content + padding + border) so Flex/Grid can short-circuit
+//      the extra Measure(Unbounded) pass.
+//   3. MeasureCore() resolves the constraint to a concrete content width,
+//      asks the text layout for its height at that width, and writes
+//      measured.measuredWidth/Height (border-box).
+//   4. UpdateGeometry() keeps the text layout's explicit width in sync
+//      with finalBounds (set by Arrange). It does NOT mutate finalBounds.
+//   5. Property setters call textLayout.reset() + InvalidateLayout()
+//      (bubbles engine caches up) + RequestRedraw() (damage).
+//
+// Version: 2.0.0
+// Last Modified: 2026-05-27
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasLabel.h"
+#include "CSSLayout/LayoutUtils.h"
+#include <algorithm>
 
 namespace UltraCanvas {
 
@@ -55,10 +73,23 @@ namespace UltraCanvas {
         SetText(labelText);
     }
 
+    UltraCanvasLabel::UltraCanvasLabel(const std::string &identifier, const std::string &labelText)
+            : UltraCanvasUIElement(identifier), text(labelText) {
+
+        // Initialize style
+        style = LabelStyle::DefaultStyle();
+        SetText(labelText);
+    }
+
+    // Property setters: invalidate the text cache (so EnsureTextLayout
+    // rebuilds), invalidate the engine layout cache (so the next Measure
+    // gets fresh dimensions and ancestors that auto-sized to us drop their
+    // own caches), and request a redraw.
     void UltraCanvasLabel::SetText(const std::string &newText) {
         if (text != newText) {
             text = newText;
             textLayout.reset();
+            InvalidateLayout();
             RequestRedraw();
 
             if (onTextChanged) {
@@ -70,6 +101,7 @@ namespace UltraCanvas {
     void UltraCanvasLabel::SetStyle(const LabelStyle &newStyle) {
         style = newStyle;
         textLayout.reset();
+        InvalidateLayout();
         RequestRedraw();
     }
 
@@ -78,22 +110,26 @@ namespace UltraCanvas {
         style.fontStyle.fontSize = fontSize;
         style.fontStyle.fontWeight = weight;
         textLayout.reset();
+        InvalidateLayout();
         RequestRedraw();
     }
 
     void UltraCanvasLabel::SetFontSize(float fontSize) {
         style.fontStyle.fontSize = fontSize;
         textLayout.reset();
+        InvalidateLayout();
         RequestRedraw();
     }
 
     void UltraCanvasLabel::SetFontWeight(const FontWeight w) {
         style.fontStyle.fontWeight = w;
         textLayout.reset();
+        InvalidateLayout();
         RequestRedraw();
     }
 
     void UltraCanvasLabel::SetTextColor(const Color &color) {
+        // Color doesn't affect layout — just damage the paint.
         style.textColor = color;
         RequestRedraw();
     }
@@ -102,45 +138,151 @@ namespace UltraCanvas {
         style.horizontalAlign = horizontal;
         style.verticalAlign = vertical;
         textLayout.reset();
+        InvalidateLayout();
         RequestRedraw();
     }
 
     void UltraCanvasLabel::SetWrap(TextWrap wrap) {
         style.wrap = wrap;
         textLayout.reset();
-        RequestRedraw();
-    }
-
-    void UltraCanvasLabel::SetAutoResize(bool autoRes) {
-        autoResize = autoRes;
-        textLayout.reset();
-        RequestRedraw();
-    }
-
-    void UltraCanvasLabel::SetMaxWidth(int mWidth) {
-        maxWidth = mWidth;
-        textLayout.reset();
+        InvalidateLayout();
         RequestRedraw();
     }
 
     void UltraCanvasLabel::SetTextIsMarkup(bool markup) {
         isMarkup = markup;
         textLayout.reset();
+        InvalidateLayout();
         RequestRedraw();
     }
 
     float UltraCanvasLabel::GetPreferredWidth() {
-        if (!textLayout) {
-            UpdateGeometry(GetRenderContext());
-        }
-        return textLayout->GetLayoutWidth() + GetTotalPaddingHorizontal() + GetTotalBorderHorizontal();
+        if (!EnsureTextLayout()) return 0;
+        textLayout->SetExplicitWidth(-1);  // max-content
+        return (float)textLayout->GetLayoutWidth()
+             + GetTotalPaddingHorizontal() + GetTotalBorderHorizontal();
     }
 
     float UltraCanvasLabel::GetPreferredHeight() {
-        if (!textLayout) {
-            UpdateGeometry(GetRenderContext());
+        if (!EnsureTextLayout()) return 0;
+        textLayout->SetExplicitWidth(-1);
+        return (float)textLayout->GetLayoutHeight()
+             + GetTotalPaddingVertical() + GetTotalBorderVertical();
+    }
+
+    // ===== Internal: ensure the text layout exists and reflects current
+    // style/font/wrap/alignment. Does NOT touch the explicit width — the
+    // caller (Measure/Intrinsic/UpdateGeometry) sets that according to its
+    // own context. Returns false if no render context is reachable yet
+    // (element not attached to a window), in which case callers should
+    // bail gracefully without crashing.
+    bool UltraCanvasLabel::EnsureTextLayout() {
+        if (textLayout) return true;
+        IRenderContext* ctx = GetRenderContext();
+        if (!ctx) return false;
+        textLayout = ctx->CreateTextLayout(text, isMarkup);
+        if (!textLayout) return false;
+        textLayout->SetFontStyle(style.fontStyle);
+        textLayout->SetWrap(style.wrap);
+        textLayout->SetAlignment(style.horizontalAlign);
+        textLayout->SetVerticalAlignment(style.verticalAlign);
+        return true;
+    }
+
+    // ===== Engine entry points =====
+
+    void UltraCanvasLabel::ComputeIntrinsicSizes(const CSSLayout::LayoutContext& /*ctx*/) {
+        if (!EnsureTextLayout()) {
+            intrinsic.minContentWidth = intrinsic.maxContentWidth = 0;
+            intrinsic.minContentHeight = intrinsic.maxContentHeight = 0;
+            return;
         }
-        return textLayout->GetLayoutHeight() + GetTotalPaddingVertical() + GetTotalBorderVertical();
+        // max-content: unbounded width → single-line natural width.
+        textLayout->SetExplicitWidth(-1);
+        const float maxW = (float)textLayout->GetLayoutWidth();
+        const float maxH = (float)textLayout->GetLayoutHeight();
+
+        // min-content (rough): one-line layout height as a lower bound on
+        // width AND height. Proper word-by-word measurement is a follow-up.
+        const float minW = maxH;        // ~one cap-line wide
+        const float minH = maxH;
+
+        const float padH = (float)(GetTotalPaddingHorizontal() + GetTotalBorderHorizontal());
+        const float padV = (float)(GetTotalPaddingVertical()   + GetTotalBorderVertical());
+
+        // Publish in BORDER-BOX units so the engine can use them as-is when
+        // computing flex bases / grid intrinsic tracks.
+        intrinsic.valid = true;
+        intrinsic.maxContentWidth  = maxW + padH;
+        intrinsic.maxContentHeight = maxH + padV;
+        intrinsic.minContentWidth  = minW + padH;
+        intrinsic.minContentHeight = minH + padV;
+    }
+
+    void UltraCanvasLabel::MeasureCore(const CSSLayout::MeasureConstraints& c,
+                                       const CSSLayout::LayoutContext& ctx) {
+        if (!EnsureTextLayout()) {
+            // No render context — fall back to whatever the base would do
+            // (uses size.width/height or constraints).
+            UltraCanvas::CSSLayout::Element::MeasureCore(c, ctx);
+            return;
+        }
+
+        const float padH = (float)(GetTotalPaddingHorizontal() + GetTotalBorderHorizontal());
+        const float padV = (float)(GetTotalPaddingVertical()   + GetTotalBorderVertical());
+
+        // Parent inline size for percentage resolution.
+        std::optional<float> parentInline =
+            (c.horizontal.mode == CSSLayout::ConstraintMode::Unbounded)
+                ? std::nullopt
+                : std::optional<float>{c.horizontal.available};
+
+        // --- Resolve usable content width ---
+        // Priority: explicit size.width > Exact constraint > AtMost (clamped
+        // to max-content) > Unbounded (max-content).
+        float contentW;
+        auto specW = CSSLayout::resolveDimension(size.width, parentInline, ctx);
+        if (specW.has_value()) {
+            float bb = (box.boxSizing == CSSLayout::BoxSizing::BorderBox) ? *specW : (*specW + padH);
+            contentW = std::max(0.f, bb - padH);
+        } else if (c.horizontal.mode == CSSLayout::ConstraintMode::Exact) {
+            contentW = std::max(0.f, c.horizontal.available - padH);
+        } else {
+            // Get max-content width from the text.
+            textLayout->SetExplicitWidth(-1);
+            float maxContent = (float)textLayout->GetLayoutWidth();
+            if (c.horizontal.mode == CSSLayout::ConstraintMode::AtMost) {
+                contentW = std::min(maxContent, std::max(0.f, c.horizontal.available - padH));
+            } else {
+                contentW = maxContent;
+            }
+        }
+
+        // Set the layout's width so its height reflects any wrapping.
+        textLayout->SetExplicitWidth(contentW);
+
+        // --- Resolve content height ---
+        std::optional<float> parentBlock =
+            (c.vertical.mode == CSSLayout::ConstraintMode::Unbounded)
+                ? std::nullopt
+                : std::optional<float>{c.vertical.available};
+        float contentH;
+        auto specH = CSSLayout::resolveDimension(size.height, parentBlock, ctx);
+        if (specH.has_value()) {
+            float bb = (box.boxSizing == CSSLayout::BoxSizing::BorderBox) ? *specH : (*specH + padV);
+            contentH = std::max(0.f, bb - padV);
+        } else if (c.vertical.mode == CSSLayout::ConstraintMode::Exact) {
+            contentH = std::max(0.f, c.vertical.available - padV);
+        } else {
+            contentH = (float)textLayout->GetLayoutHeight();
+        }
+
+        // Clamp to BoxConstraints (min/max).
+        contentW = CSSLayout::clampToConstraints(contentW, constraints, true,  parentInline, ctx);
+        contentH = CSSLayout::clampToConstraints(contentH, constraints, false, parentBlock, ctx);
+
+        measured.measuredWidth  = contentW + padH;
+        measured.measuredHeight = contentH + padV;
     }
 
 //    void UltraCanvasLabel::AutoResize(const Size2Di &textDimensions) {
@@ -235,33 +377,20 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasLabel::UpdateGeometry(IRenderContext* ctx) {
-        // Update layout if needed
-        if (!textLayout) {
-            auto crect = GetContentRect();
-            textLayout = ctx->CreateTextLayout(text, isMarkup);
-            textLayout->SetFontStyle(style.fontStyle);
-            textLayout->SetWrap(style.wrap);
-            textLayout->SetAlignment(style.horizontalAlign);
-            textLayout->SetVerticalAlignment(style.verticalAlign);
-            if (autoResize) {
-                if (maxWidth) {
-                    textLayout->SetExplicitWidth(maxWidth);
-                }
-                auto lsize = textLayout->GetLayoutSize();
-                finalBounds.width = lsize.width + GetTotalBorderHorizontal() + GetTotalPaddingHorizontal();
-                finalBounds.height = lsize.height + GetTotalBorderVertical() + GetTotalPaddingVertical();
-            } else if (GetHeight() == 0 && GetWidth() > 0) {
-                textLayout->SetExplicitWidth(crect.width);
-                finalBounds.height = textLayout->GetLayoutHeight() + GetTotalBorderVertical() + GetTotalPaddingVertical();
-            } else if (GetWidth() == 0 && GetHeight() > 0) {
-                textLayout->SetExplicitHeight(crect.height);
-                finalBounds.width = textLayout->GetLayoutWidth() + GetTotalBorderHorizontal() + GetTotalPaddingHorizontal();
-            } else {
-                textLayout->SetEllipsize(EllipsizeMode::EllipsizeEnd);
-                textLayout->SetExplicitWidth(crect.width);
-                textLayout->SetExplicitHeight(crect.height);
-            }
+    void UltraCanvasLabel::UpdateGeometry(IRenderContext* /*ctx*/) {
+        // finalBounds is owned by the engine (set during Arrange). All we
+        // do here is keep the cached text layout aligned with the latest
+        // content rect — useful when the layout pipeline wasn't engine-
+        // driven (e.g. a parent that just SetBounds() us manually).
+        if (!EnsureTextLayout()) return;
+        auto crect = GetLocalContentRect();
+        // When a non-zero content area exists, point the text layout at it.
+        // Negative or zero collapses to "no explicit width" (max-content).
+        textLayout->SetExplicitWidth(crect.width  > 0 ? crect.width  : -1);
+        textLayout->SetExplicitHeight(crect.height > 0 ? crect.height : -1);
+        // Ellipsize when we'd overflow a fixed width with single-line text.
+        if (style.wrap == TextWrap::WrapNone && crect.width > 0) {
+            textLayout->SetEllipsize(EllipsizeMode::EllipsizeEnd);
         }
     }
 
@@ -285,48 +414,8 @@ namespace UltraCanvas {
         }
     }
 
-
-    std::shared_ptr<UltraCanvasLabel>
-    CreateLabel(const std::string &identifier, float x, float y, float w, float h,
-                const std::string &text) {
-        return std::make_shared<UltraCanvasLabel>(identifier, x, y, w, h, text);
-    }
-
-    std::shared_ptr<UltraCanvasLabel>
-    CreateLabel(const std::string &identifier, float w, float h, const std::string &text) {
-        return std::make_shared<UltraCanvasLabel>(identifier, 0, 0, w, h, text);
-    }
-
-    std::shared_ptr<UltraCanvasLabel> CreateLabel(const std::string &text) {
-        return std::make_shared<UltraCanvasLabel>("", 0, 0, 0, 0, text);
-    }
-
-    std::shared_ptr<UltraCanvasLabel>
-    CreateAutoLabel(const std::string &identifier, float x, float y, const std::string &text) {
-        auto label = std::make_shared<UltraCanvasLabel>(identifier, x, y, 100, 25, text);
-        label->SetAutoResize(true);
-        return label;
-    }
-
-    std::shared_ptr<UltraCanvasLabel>
-    CreateHeaderLabel(const std::string &identifier, float x, float y, float w, float h,
-                      const std::string &text) {
-        auto label = CreateLabel(identifier, x, y, w, h, text);
-        label->SetStyle(LabelStyle::HeaderStyle());
-        return label;
-    }
-
-    std::shared_ptr<UltraCanvasLabel>
-    CreateStatusLabel(const std::string &identifier, float x, float y, float w, float h,
-                      const std::string &text) {
-        auto label = CreateLabel(identifier, x, y, w, h, text);
-        label->SetStyle(LabelStyle::StatusStyle());
-        label->SetPadding(4);
-        return label;
-    }
-
-    LabelBuilder::LabelBuilder(const std::string &identifier, float x, float y, float w, float h) {
-        label = CreateLabel(identifier, x, y, w, h);
+    LabelBuilder::LabelBuilder(const std::string &identifier) {
+        label = CreateLabel(identifier);
     }
 
     LabelBuilder &LabelBuilder::SetText(const std::string &text) {
@@ -357,11 +446,6 @@ namespace UltraCanvas {
 
     LabelBuilder &LabelBuilder::SetPadding(float padding) {
         label->SetPadding(padding);
-        return *this;
-    }
-
-    LabelBuilder &LabelBuilder::SetAutoResize(bool autoResize) {
-        label->SetAutoResize(autoResize);
         return *this;
     }
 

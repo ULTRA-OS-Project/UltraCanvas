@@ -6,7 +6,6 @@
 
 #include "UltraCanvasSearchBar.h"
 #include "UltraCanvasWindow.h"
-#include "UltraCanvasBoxLayout.h"
 #include <string>
 #include <algorithm>
 

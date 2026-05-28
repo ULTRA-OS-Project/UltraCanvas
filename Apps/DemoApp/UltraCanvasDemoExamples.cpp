@@ -130,7 +130,6 @@ namespace UltraCanvas {
         title->SetText("Bitmap Graphics Examples");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
-        title->SetAutoResize(true);
         container->AddChild(title);
 
         auto placeholder = std::make_shared<UltraCanvasLabel>("BitmapPlaceholder", 20, 50, 800, 400);

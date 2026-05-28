@@ -4,6 +4,7 @@
 // Last Modified: 2025-01-27
 // Author: UltraCanvas Framework
 
+#include "UltraCanvasLayoutCompat.h"
 #include "../include/UltraCanvasTemplate.h"
 #include "../include/UltraCanvasButton.h"
 #include "../include/UltraCanvasLabel.h"

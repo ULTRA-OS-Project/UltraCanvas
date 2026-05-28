@@ -12,10 +12,10 @@
 //   Double-click node  — collapse / expand subtree
 //   Ctrl+drag node     — move node manually
 
+#include "UltraCanvasLayoutCompat.h"
 #include "UltraCanvasDemo.h"
 #include "Plugins/Diagrams/UltraCanvasDendrogram.h"
 #include "Plugins/Diagrams/UltraCanvasDendrogramLayout.h"
-#include "UltraCanvasBoxLayout.h"
 #include <unordered_map>
 #include <string>
 #include <vector>

@@ -13,7 +13,6 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasContainer.h"
-#include "UltraCanvasBoxLayout.h"
 
 #ifdef __APPLE__
 #include <OpenGL/gl3.h>

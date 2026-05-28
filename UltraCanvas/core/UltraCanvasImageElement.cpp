@@ -22,6 +22,11 @@ namespace UltraCanvas {
 
     }
 
+    UltraCanvasImageElement::UltraCanvasImageElement(const std::string &identifier)
+            : UltraCanvasUIElement(identifier) {
+
+    }
+
     bool UltraCanvasImageElement::LoadFromFile(const std::string &filePath) {
         loadedImage = UCImage::Get(filePath);
         if (loadedImage) {
