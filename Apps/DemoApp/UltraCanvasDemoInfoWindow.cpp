@@ -184,11 +184,12 @@ namespace UltraCanvas {
         AddChild(infoLabel1_2);
 
         // Create OK button
-        okButton = std::make_shared<UltraCanvasButton>("OkButton", 250, 370, 100, 35);
+        okButton = std::make_shared<UltraCanvasButton>("OkButton", 100, 35);
         okButton->SetText("OK");
         okButton->SetStyle(ButtonStyles::SuccessStyle());
         okButton->SetCornerRadius(4);
         okButton->SetMargin(10);
+        okButton->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
 
         // Set button click handler
         okButton->SetOnClick([this]() {

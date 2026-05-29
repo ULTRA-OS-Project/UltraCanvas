@@ -1,7 +1,7 @@
 // include/UltraCanvasTemplate.h
 // Template system for creating reusable UI component layouts with placement rules
-// Version: 1.0.0
-// Last Modified: 2025-07-15
+// Version: 1.1.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -319,8 +319,14 @@ namespace UltraCanvas {
         std::unordered_map<std::string, std::function<std::shared_ptr<UltraCanvasUIElement>(const TemplateElementDescriptor&)>> elementFactories;
 
     public:
-        // ===== CONSTRUCTOR =====
-        UltraCanvasTemplate(const std::string& identifier = "Template", float x = 0, float y = 0, float w = 200, float h = 32);
+        // ===== CONSTRUCTORS =====
+        UltraCanvasTemplate(const std::string& identifier, float x, float y, float w, float h);
+
+        UltraCanvasTemplate(const std::string& identifier, float w, float h)
+            : UltraCanvasTemplate(identifier, -1, -1, w, h) {}
+
+        explicit UltraCanvasTemplate(const std::string& identifier)
+            : UltraCanvasTemplate(identifier, -1, -1, -1, -1) {}
 
         virtual ~UltraCanvasTemplate() = default;
 

@@ -1,7 +1,7 @@
 // include/UltraCanvasSlideshow.h
 // Timed image slideshow with optional info text panel and selectable indicator styles.
-// Version: 1.0.0
-// Last Modified: 2026-05-16
+// Version: 1.1.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -119,8 +119,15 @@ namespace UltraCanvas {
     // switch on a single enum.
     class UltraCanvasSlideshow : public UltraCanvasContainer {
     public:
-        UltraCanvasSlideshow(const std::string& identifier = "Slideshow",
-                             float x = 0, float y = 0, float w = 800, float h = 450);
+        UltraCanvasSlideshow(const std::string& identifier,
+                             float x, float y, float w, float h);
+
+        UltraCanvasSlideshow(const std::string& identifier, float w, float h)
+            : UltraCanvasSlideshow(identifier, -1, -1, w, h) {}
+
+        explicit UltraCanvasSlideshow(const std::string& identifier)
+            : UltraCanvasSlideshow(identifier, -1, -1, -1, -1) {}
+
         ~UltraCanvasSlideshow() override;
 
         // ===== CONFIGURATION =====

@@ -1,5 +1,6 @@
 // include/UltraCanvasListView.h
 // Model-View-Delegate ListView widget
+// Last Modified: 2026-05-29
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -53,7 +54,14 @@ namespace UltraCanvas {
 
         // Constructor
         UltraCanvasListView(const std::string& identifier,
-                            int x, int y, int w, int h);
+                            float x, float y, float w, float h);
+
+        UltraCanvasListView(const std::string& identifier, float w, float h)
+            : UltraCanvasListView(identifier, -1, -1, w, h) {}
+
+        explicit UltraCanvasListView(const std::string& identifier)
+            : UltraCanvasListView(identifier, -1, -1, -1, -1) {}
+
         virtual ~UltraCanvasListView() = default;
 
         // === Model / Delegate / Selection wiring ===

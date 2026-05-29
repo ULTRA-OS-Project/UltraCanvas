@@ -127,15 +127,31 @@ namespace UltraCanvas {
         std::function<void()> onPopupOpened;
 
         // ===== CONSTRUCTOR AND DESTRUCTOR =====
+        // NOTE: Passing non-zero w/h here stamps a CSS `size.width/height`
+        // on the element. Per CSS spec, an explicit width/height OVERRIDES
+        // parent stretch (grid cell, flex-grow, align-self: Stretch). For
+        // widgets you want the engine to size — children of a flex/grid
+        // container, or any widget that should stretch to its parent — use
+        // the no-size constructor (or pass 0, 0) and let the parent decide.
+        // Pass non-zero w/h only when you genuinely want a fixed-size box.
         UltraCanvasUIElement(const std::string& idstr,
                              float x, float y, float w, float h) {
             id = idstr;
             finalBounds = CSSLayout::LayoutRect{x, y, w, h};
             if (w > 0) size.width  = CSSLayout::Dimension::Px(w);
             if (h > 0) size.height = CSSLayout::Dimension::Px(h);
-            layoutItem.position = CSSLayout::Position();
-            layoutItem.position->left = CSSLayout::Dimension::Px(x);
-            layoutItem.position->top = CSSLayout::Dimension::Px(y);
+            if (x > 0 || y > 0) {
+                // A widget given an explicit non-zero origin is a legacy
+                // absolutely-placed element: it must keep that (x, y) when its
+                // parent runs the layout engine, instead of being re-stacked as an
+                // in-flow child. We only do this for a real offset — flex/grid
+                // children are conventionally built with (0, 0, w, h) and must stay
+                // in flow so the parent's algorithm can place them.
+                layoutItem.position = CSSLayout::Position();
+                layoutItem.position->left = CSSLayout::Dimension::Px(x);
+                layoutItem.position->top = CSSLayout::Dimension::Px(y);
+                layoutItem.SetPositionType(CSSLayout::PositionType::Absolute);
+            }
             stateFlags.Reset();
         }
 
@@ -476,7 +492,20 @@ namespace UltraCanvas {
         IRenderContext* GetRenderContext() const;
         // dirtyRect is in element-local coordinates (matches the translated ctx).
         virtual void Render(IRenderContext* ctx, const Rect2Df& dirtyRect);
-        virtual void UpdateGeometry(IRenderContext* ctx) {};
+        // Legacy geometry-pass entry point, retained as a bridge while widgets
+        // migrate their internal layout work into the engine's Arranged() hook.
+        // The default now simply drives Arranged(), so a widget that overrides
+        // only Arranged() still works when reached through this path (e.g. a
+        // popup the window updates directly). Containers override this to run
+        // the engine and recurse; widgets with their own bespoke UpdateGeometry
+        // body are unaffected.
+        virtual void UpdateGeometry(IRenderContext* ctx) {
+            CSSLayout::LayoutContext lctx;
+            lctx.viewportWidth  = finalBounds.width;
+            lctx.viewportHeight = finalBounds.height;
+            Arranged(lctx);
+            arrangeValid = true;
+        }
 
         // ===== EVENT HANDLING =====
         virtual bool OnEvent(const UCEvent& event);

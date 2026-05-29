@@ -1,7 +1,7 @@
 // core/UltraCanvasNewDocumentDialog.cpp
 // New Document dialog implementation - FIXED version with deferred initialization
-// Version: 1.0.1
-// Last Modified: 2025-12-21
+// Version: 1.1.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasNewDocumentDialog.h"
@@ -14,7 +14,7 @@ namespace UltraCanvas {
 
     UltraCanvasNewDocumentDialog::UltraCanvasNewDocumentDialog(
             const std::string& identifier,
-            int x, int y, int width, int height)
+            float x, float y, float width, float height)
             : UltraCanvasContainer(identifier, x, y, width, height)
     {
         SetBackgroundColor(style.backgroundColor);

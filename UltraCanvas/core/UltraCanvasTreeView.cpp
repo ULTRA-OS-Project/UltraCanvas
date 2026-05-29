@@ -124,8 +124,88 @@ namespace UltraCanvas {
 
     /* UltraCanvasTreeView */
 
-    UltraCanvasTreeView::UltraCanvasTreeView(const std::string &identifier, int x, int y, int w, int h) :
+    UltraCanvasTreeView::UltraCanvasTreeView(const std::string &identifier, float x, float y, float w, float h) :
             UltraCanvasUIElement(identifier, x, y, w, h) {
+
+        // Tree view specific initialization
+        rootNode = nullptr;
+        selectionMode = TreeSelectionMode::Single;
+        lineStyle = TreeLineStyle::Dotted;
+        hoveredNode = nullptr;
+        focusedNode = nullptr;
+
+        // Visual defaults
+        rowHeight = 20;
+        indentSize = 16;
+        iconSpacing = 4;
+        textPadding = 8;
+        showRootLines = true;
+        showExpandButtons = true;
+        showFirstChildOnExpand = false;
+        autoExpandSelectedNode = false;
+
+        // Color defaults
+        selectionColor = Colors::Selection;       // Blue selection
+        hoverColor = Color(0xE5, 0xF3, 0xFF);          // Light blue hover
+        lineColor = Color(0x80, 0x80, 0x80);           // Gray lines
+        textColor = Colors::Black;           // Black text
+
+        // Scrolling defaults
+        scrollOffsetY = 0;
+        maxScrollY = 0;
+        CreateScrollbar();
+
+
+        // Interaction state
+//        isDragging = false;
+//        draggedNode = nullptr;
+
+        SetBackgroundColor(Colors::White);
+        SetBorders(1, Colors::Gray);
+    }
+
+    UltraCanvasTreeView::UltraCanvasTreeView(const std::string &identifier, float w, float h) :
+            UltraCanvasUIElement(identifier, w, h) {
+
+        // Tree view specific initialization
+        rootNode = nullptr;
+        selectionMode = TreeSelectionMode::Single;
+        lineStyle = TreeLineStyle::Dotted;
+        hoveredNode = nullptr;
+        focusedNode = nullptr;
+
+        // Visual defaults
+        rowHeight = 20;
+        indentSize = 16;
+        iconSpacing = 4;
+        textPadding = 8;
+        showRootLines = true;
+        showExpandButtons = true;
+        showFirstChildOnExpand = false;
+        autoExpandSelectedNode = false;
+
+        // Color defaults
+        selectionColor = Colors::Selection;       // Blue selection
+        hoverColor = Color(0xE5, 0xF3, 0xFF);          // Light blue hover
+        lineColor = Color(0x80, 0x80, 0x80);           // Gray lines
+        textColor = Colors::Black;           // Black text
+
+        // Scrolling defaults
+        scrollOffsetY = 0;
+        maxScrollY = 0;
+        CreateScrollbar();
+
+
+        // Interaction state
+//        isDragging = false;
+//        draggedNode = nullptr;
+
+        SetBackgroundColor(Colors::White);
+        SetBorders(1, Colors::Gray);
+    }
+
+    UltraCanvasTreeView::UltraCanvasTreeView(const std::string &identifier) :
+            UltraCanvasUIElement(identifier) {
 
         // Tree view specific initialization
         rootNode = nullptr;

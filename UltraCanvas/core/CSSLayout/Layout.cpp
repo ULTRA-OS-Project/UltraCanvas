@@ -199,6 +199,14 @@ namespace UltraCanvas {
             return *this;
         }
 
+        LayoutItem& LayoutItem::SetGridRowColSimplified(int row, int col, int rowSpan, int colSpan) {
+            CSSLayout::GridLine cs; cs.type = CSSLayout::GridLineKind::Line; cs.index = col + 1;
+            CSSLayout::GridLine rs; rs.type = CSSLayout::GridLineKind::Line; rs.index = row + 1;
+            CSSLayout::GridLine ce; ce.type = CSSLayout::GridLineKind::Span; ce.index = colSpan;
+            CSSLayout::GridLine re; re.type = CSSLayout::GridLineKind::Span; re.index = rowSpan;
+            return SetGridColumn(cs, ce).SetGridRow(rs, re);
+        }
+
         LayoutItem& LayoutItem::SetJustifySelf(JustifySelf j) {
             asGridItem(*this).justifySelf = j;
             return *this;

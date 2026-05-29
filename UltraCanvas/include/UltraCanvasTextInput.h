@@ -1,7 +1,7 @@
 // include/UltraCanvasTextInput.h
 // Advanced text input component with validation, formatting, and feedback systems
-// Version: 1.1.0
-// Last Modified: 2025-01-06
+// Version: 1.2.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -336,9 +336,15 @@ private:
     Color clearButtonHoverColor = Color(200, 50, 50);
     
 public:
-    // ===== CONSTRUCTOR =====
+    // ===== CONSTRUCTORS =====
     UltraCanvasTextInput(const std::string& id, float x, float y, float w, float h);
-    
+
+    UltraCanvasTextInput(const std::string& id, float w, float h)
+        : UltraCanvasTextInput(id, -1, -1, w, h) {}
+
+    explicit UltraCanvasTextInput(const std::string& id)
+        : UltraCanvasTextInput(id, -1, -1, -1, -1) {}
+
     virtual ~UltraCanvasTextInput() = default;
     
     // ===== TEXT MANAGEMENT =====

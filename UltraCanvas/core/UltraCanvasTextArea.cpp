@@ -1,7 +1,7 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.5.2
-// Last Modified: 2026-05-20
+// Version: 3.6.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
@@ -22,8 +22,8 @@ namespace UltraCanvas {
     constexpr int lineShardSoftLimit = 4000;
     constexpr int lineShardHardLimit = 12000;
 
-    UltraCanvasTextArea::UltraCanvasTextArea(const std::string& name, int x, int y,
-                                             int width, int height)
+    UltraCanvasTextArea::UltraCanvasTextArea(const std::string& name, float x, float y,
+                                             float width, float height)
             : UltraCanvasUIElement(name, x, y, width, height),
               horizontalScrollOffset(0),
               verticalScrollOffset(0),

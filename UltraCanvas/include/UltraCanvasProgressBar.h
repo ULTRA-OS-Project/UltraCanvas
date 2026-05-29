@@ -1,7 +1,7 @@
 // include/UltraCanvasProgressBar.h
 // Progress bar component with multiple styles, animations, and advanced progress indication
-// Version: 1.0.0
-// Last Modified: 2024-12-30
+// Version: 1.1.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -111,12 +111,18 @@ public:
     
     UltraCanvasProgressBar(const std::string& elementId, float posX, float posY, float w, float h)
         : UltraCanvasUIElement(elementId, posX, posY, w, h) {
-        
+
         // Auto-detect orientation based on dimensions
         if (w < h) {
             orientation = ProgressOrientation::Vertical;
         }
     }
+
+    UltraCanvasProgressBar(const std::string& elementId, float w, float h)
+        : UltraCanvasProgressBar(elementId, -1, -1, w, h) {}
+
+    explicit UltraCanvasProgressBar(const std::string& elementId)
+        : UltraCanvasProgressBar(elementId, -1, -1, -1, -1) {}
     
     // ===== VALUE MANAGEMENT =====
     void SetValue(float newValue) {

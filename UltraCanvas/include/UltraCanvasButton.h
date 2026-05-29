@@ -136,9 +136,20 @@ namespace UltraCanvas {
 
     public:
         // ===== CONSTRUCTOR =====
-        UltraCanvasButton(const std::string& identifier = "Button",
-                          float x = 0, float y = 0, float w = 100, float h = 30,
+        UltraCanvasButton(const std::string& identifier,
+                          float x, float y, float w, float h,
                           const std::string& buttonText = "Button");
+
+        UltraCanvasButton(const std::string& identifier,
+                          float w, float h,
+                          const std::string& buttonText = "Button")
+            : UltraCanvasButton(identifier, -1, -1, w, h, buttonText) {};
+
+        UltraCanvasButton(const std::string& identifier, const std::string& buttonText)
+            : UltraCanvasButton(identifier, -1, -1, -1, -1, buttonText) {};
+
+        explicit UltraCanvasButton(const std::string& buttonText = "")
+            : UltraCanvasButton("", -1, -1, -1, -1, buttonText) {};
 
         void SetCanToggled(bool tgl) {
             canToggled = tgl;

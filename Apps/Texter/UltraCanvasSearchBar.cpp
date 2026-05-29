@@ -53,7 +53,7 @@ namespace UltraCanvas {
         BuildFindRow(0, GetWidth());
         BuildSettingsMenu();
         WireCallbacks();
-        UpdateLayout();
+        UpdateSearchbarLayout();
 
         SetVisible(false); // hidden until Ctrl+F / Ctrl+H
     }
@@ -62,7 +62,7 @@ namespace UltraCanvas {
 
     void UltraCanvasSearchBar::SetBounds(const Rect2Df& bounds) {
         UltraCanvasContainer::SetBounds(bounds);
-        UpdateLayout();
+        UpdateSearchbarLayout();
     }
 
     // ── Compute shared input width for both rows ──────────────────────────
@@ -77,9 +77,9 @@ namespace UltraCanvas {
         return std::min(MaxInputWidth, std::max(80, available));
     }
 
-    // ── UpdateLayout — reposition all children based on current width ─────
+    // ── UpdateSearchbarLayout — reposition all children based on current width ─────
 
-    void UltraCanvasSearchBar::UpdateLayout() {
+    void UltraCanvasSearchBar::UpdateSearchbarLayout() {
         int w = GetWidth();
         if (w <= 0) return;
 
@@ -464,7 +464,7 @@ namespace UltraCanvas {
             SetSize(GetWidth(), GetBarHeight());
         }
 
-        UpdateLayout();
+        UpdateSearchbarLayout();
         RequestRedraw();
     }
 

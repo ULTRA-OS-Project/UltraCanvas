@@ -1,5 +1,6 @@
 // core/UltraCanvasListView.cpp
 // Model-View-Delegate ListView widget implementation
+// Last Modified: 2026-05-29
 #include "UltraCanvasListView.h"
 #include "UltraCanvasApplication.h"
 #include <algorithm>
@@ -9,7 +10,7 @@ namespace UltraCanvas {
     // ===== CONSTRUCTOR =====
 
     UltraCanvasListView::UltraCanvasListView(const std::string& identifier,
-                                              int x, int y, int w, int h)
+                                              float x, float y, float w, float h)
         : UltraCanvasUIElement(identifier, x, y, w, h) {
 
         // Default delegate and selection

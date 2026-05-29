@@ -78,7 +78,7 @@ namespace UltraCanvas {
         void BuildFindRow(int y, int w);
         void BuildReplaceRow(int y, int w);
         void BuildSettingsMenu();
-        void UpdateLayout();
+        void UpdateSearchbarLayout();
         void WireCallbacks();
         void AddToHistory(std::vector<std::string>& history, const std::string& text);
         void ShowHistoryMenu(bool isReplace);

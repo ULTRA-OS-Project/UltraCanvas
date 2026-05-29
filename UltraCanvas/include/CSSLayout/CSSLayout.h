@@ -1,7 +1,7 @@
 // include/CSSLayout/CSSLayout.h
 // CSS-compliant layout engine: type model and Element base class.
-// Version: 4.5.0
-// Last Modified: 2026-05-27
+// Version: 4.6.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -299,6 +299,7 @@ namespace UltraCanvas {
             // ---- Grid item properties (initializes data to GridItem on first call) ----
             LayoutItem& SetGridColumn(GridLine start, GridLine end);
             LayoutItem& SetGridRow   (GridLine start, GridLine end);
+            LayoutItem& SetGridRowColSimplified(int row, int col, int rowSpan = 1, int colSpan = 1);
             LayoutItem& SetJustifySelf(JustifySelf j);
             LayoutItem& SetGridAlignSelf(AlignSelf a);
         };
@@ -345,6 +346,13 @@ namespace UltraCanvas {
             // caches
             MeasureResult  measured;    // extrinsic, keyed by MeasureConstraints
             IntrinsicSizes intrinsic;   // constraint-independent
+
+            // True once Arrange() has run and finalBounds (plus any subclass
+            // post-layout setup performed in Arranged()) reflect the current
+            // tree. Cleared by InvalidateLayout / InvalidateSubtree and by the
+            // UI layer's RequestUpdateGeometry. The window render loop uses
+            // IsLayoutValid() to decide whether a geometry pass is needed.
+            bool arrangeValid = false;
 
             // Algorithm-specific cached state (e.g. flex line groupings, grid
             // track sizes). Lazily built by the relevant layout algorithm;
@@ -393,6 +401,20 @@ namespace UltraCanvas {
             virtual void MeasureCore(const MeasureConstraints& constraints, const LayoutContext& ctx);
 
             virtual void Arrange(const LayoutRect& finalRect, const LayoutContext& ctx);
+
+            // Post-layout lifecycle hook, invoked at the tail of Arrange() after
+            // finalBounds and all child positions are final. Subclasses perform
+            // internal, geometry-dependent setup here — scrollbar metrics,
+            // z-order sorting, content (re)sizing — instead of in a separate
+            // out-of-band pass. The engine itself is render-agnostic, so this
+            // takes only a LayoutContext; UI subclasses that need a render
+            // context for text measurement fetch it themselves. Default: no-op.
+            virtual void Arranged(const LayoutContext& ctx) {}
+
+            // Whether the most recent Arrange() result is still current (nothing
+            // has invalidated layout since). The window render loop gates its
+            // geometry pass on this.
+            bool IsLayoutValid() const { return arrangeValid; }
 
             // Leaf elements (text, images) override this to publish constraint-independent
             // min/max-content sizes. Default: zero.

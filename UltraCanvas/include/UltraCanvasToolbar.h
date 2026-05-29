@@ -1,7 +1,7 @@
 // include/UltraCanvasToolbar.h
 // Comprehensive cross-platform toolbar component with advanced features
-// Version: 1.1.0
-// Last Modified: 2025-11-13
+// Version: 1.2.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -525,6 +525,13 @@ namespace UltraCanvas {
     public:
         UltraCanvasToolbar(const std::string& identifier, float x, float y,
                            float width, float height);
+
+        UltraCanvasToolbar(const std::string& identifier, float width, float height)
+            : UltraCanvasToolbar(identifier, -1, -1, width, height) {}
+
+        explicit UltraCanvasToolbar(const std::string& identifier)
+            : UltraCanvasToolbar(identifier, -1, -1, -1, -1) {}
+
         virtual ~UltraCanvasToolbar() = default;
 
         // ===== CONFIGURATION =====

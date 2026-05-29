@@ -1,6 +1,7 @@
 // include/UltraCanvasDropdown.h
 // Interactive dropdown/combobox component with icon support and multi-selection
 // Uses ListView popup for rendering dropdown items
+// Last Modified: 2026-05-29
 #pragma once
 
 #include "UltraCanvasUIElement.h"
@@ -162,7 +163,13 @@ namespace UltraCanvas {
         std::shared_ptr<DropdownItemDelegate> dropdownDelegate;
 
     public:
-        UltraCanvasDropdown(const std::string& identifier, float x, float y, float w, float h = 24);
+        UltraCanvasDropdown(const std::string& identifier, float x, float y, float w, float h);
+
+        UltraCanvasDropdown(const std::string& identifier, float w, float h)
+            : UltraCanvasDropdown(identifier, -1, -1, w, h) {}
+
+        explicit UltraCanvasDropdown(const std::string& identifier)
+            : UltraCanvasDropdown(identifier, -1, -1, -1, -1) {}
 
         virtual ~UltraCanvasDropdown() = default;
 

@@ -1,7 +1,7 @@
 // include/UltraCanvasSlider.h
 // Interactive slider control with multiple styles, value display options, and dual-handle range support
-// Version: 3.1.0
-// Last Modified: 2026-04-28
+// Version: 3.2.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -125,8 +125,14 @@ namespace UltraCanvas {
         std::string customText = "";
 
     public:
-        // ===== CONSTRUCTOR (REQUIRED PATTERN) =====
-        UltraCanvasSlider(const std::string& identifier = "Slider", float x = 0, float y = 0, float w = 200, float h = 30);
+        // ===== CONSTRUCTORS (REQUIRED PATTERN) =====
+        UltraCanvasSlider(const std::string& identifier, float x, float y, float w, float h);
+
+        UltraCanvasSlider(const std::string& identifier, float w, float h)
+            : UltraCanvasSlider(identifier, -1, -1, w, h) {}
+
+        explicit UltraCanvasSlider(const std::string& identifier)
+            : UltraCanvasSlider(identifier, -1, -1, -1, -1) {}
 
         // ===== VALUE MANAGEMENT =====
         void SetRange(float min, float max);

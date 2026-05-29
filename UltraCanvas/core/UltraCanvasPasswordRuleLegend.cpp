@@ -1,7 +1,7 @@
 // core/UltraCanvasPasswordRuleLegend.cpp
 // Interactive password requirements checklist component
-// Version: 1.0.0
-// Last Modified: 2025-10-21
+// Version: 1.1.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 #include "UltraCanvasPasswordRuleLegend.h"
 #include <string>
@@ -12,8 +12,8 @@
 
 namespace UltraCanvas {
 
-    UltraCanvasPasswordRuleLegend::UltraCanvasPasswordRuleLegend(const std::string &id, int x, int y, int w,
-                                                                 int h)
+    UltraCanvasPasswordRuleLegend::UltraCanvasPasswordRuleLegend(const std::string &id, float x, float y, float w,
+                                                                 float h)
             : UltraCanvasUIElement(id, x, y, w, h) {
         lastUpdateTime = std::chrono::steady_clock::now();
         SetupDefaultRules();

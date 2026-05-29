@@ -5,8 +5,8 @@
 // (constraint-free max/min-content) so the engine can place the label
 // without the widget mutating finalBounds itself. UpdateGeometry just
 // keeps the cached ITextLayout in sync with the latest content area.
-// Version: 2.0.0
-// Last Modified: 2026-05-27
+// Version: 2.0.1
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -62,12 +62,14 @@ namespace UltraCanvas {
         UltraCanvasLabel(const std::string &identifier, float x, float y, float w, float h,
                          const std::string &labelText = "");
 
-        explicit UltraCanvasLabel(const std::string &identifier = "Label",
-                                  const std::string &labelText = "");
+        UltraCanvasLabel(const std::string &identifier, float w, float h, const std::string &labelText = "")
+                : UltraCanvasLabel(identifier, -1, -1, w, h, labelText) {}
 
-        explicit UltraCanvasLabel(const std::string &identifier,
-                                  float w, float h,
-                                  const std::string &labelText = "");
+        UltraCanvasLabel(const std::string &identifier, const std::string &labelText)
+                : UltraCanvasLabel(identifier, -1, -1, -1, -1, labelText) {}
+
+        explicit UltraCanvasLabel(const std::string &labelText = "")
+                : UltraCanvasLabel("", -1, -1, -1, -1, labelText) {}
 
         virtual ~UltraCanvasLabel() = default;
 

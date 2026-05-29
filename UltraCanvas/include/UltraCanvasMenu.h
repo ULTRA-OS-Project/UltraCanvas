@@ -1,7 +1,7 @@
 // include/UltraCanvasMenu.h
 // Interactive menu component with styling options and submenu support
-// Version: 1.5.0
-// Last Modified: 2026-05-06
+// Version: 1.6.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -239,13 +239,21 @@ namespace UltraCanvas {
             style = MenuStyle::Default();
         }
 
+        UltraCanvasMenu(const std::string& identifier, float w, float h)
+                : UltraCanvasMenu(identifier, -1, -1, w, h) {}
+
+        explicit UltraCanvasMenu(const std::string& identifier)
+                : UltraCanvasMenu(identifier, -1, -1, -1, -1) {}
+
         virtual ~UltraCanvasMenu() {
             CloseAllSubmenus();
         }
 
         // ===== CORE RENDERING =====
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
-        void UpdateGeometry(IRenderContext *ctx) override;
+        // Post-layout: (re)compute menu size from item text. Needs a render
+        // context for text measurement, fetched via GetRenderContext().
+        void Arranged(const CSSLayout::LayoutContext& ctx) override;
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;

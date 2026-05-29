@@ -1,8 +1,8 @@
 // UltraCanvasSwitch.h
 // Toggle switch: pill-shaped track with a circular thumb that snaps between sides.
 // Supports horizontal/vertical orientation, optional thumb icons, and optional ON/OFF state labels.
-// Version: 1.1.0
-// Last Modified: 2026-05-07
+// Version: 1.2.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -105,9 +105,22 @@ namespace UltraCanvas {
         void DrawFocusRingShape(IRenderContext* ctx) override;
 
     public:
-        UltraCanvasSwitch(const std::string& identifier = "",
-                          float x = 0, float y = 0, float w = 200, float h = 30,
+        // ===== CONSTRUCTORS =====
+        UltraCanvasSwitch(const std::string& identifier,
+                          float x, float y, float w, float h,
                           const std::string& labelText = "");
+
+        UltraCanvasSwitch(const std::string& identifier,
+                          float w, float h,
+                          const std::string& labelText = "")
+            : UltraCanvasSwitch(identifier, -1, -1, w, h, labelText) {}
+
+        UltraCanvasSwitch(const std::string& identifier, const std::string& labelText)
+            : UltraCanvasSwitch(identifier, -1, -1, -1, -1, labelText) {}
+
+        explicit UltraCanvasSwitch(const std::string& labelText = "")
+            : UltraCanvasSwitch("", -1, -1, -1, -1, labelText) {}
+
         ~UltraCanvasSwitch() override = default;
 
         // Indeterminate is invalid for switches; clamp to Unchecked.

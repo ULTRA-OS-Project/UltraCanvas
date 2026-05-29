@@ -1,5 +1,6 @@
 // UltraCanvasGLSurface.cpp
 // OpenGL 3D rendering surface implementation
+// Last Modified: 2026-05-29
 #include "UltraCanvasGLSurface.h"
 #include "GL/GLContextManager.h"
 #include "GL/GLFramebuffer.h"
@@ -12,7 +13,7 @@ namespace UltraCanvas {
 
 // Constructors
 UltraCanvasGLSurface::UltraCanvasGLSurface(const std::string& id,
-                                           int x, int y, int width, int height)
+                                           float x, float y, float width, float height)
     : UltraCanvasUIElement(id, width, height)
 {
     SetBounds(Rect2Di(x, y, width, height));
@@ -24,7 +25,7 @@ UltraCanvasGLSurface::UltraCanvasGLSurface(const std::string& id,
 
 UltraCanvasGLSurface::UltraCanvasGLSurface(const GLSurfaceConfig& config,
                                            const std::string& id,
-                                           int x, int y, int width, int height)
+                                           float x, float y, float width, float height)
     : UltraCanvasGLSurface(id, x, y, width, height)
 {
     config_ = config;

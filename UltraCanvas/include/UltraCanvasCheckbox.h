@@ -2,8 +2,8 @@
 // Interactive checkbox component with multiple states and customizable appearance.
 // Visual variants only (Standard/Rounded/Material). Radio and Switch are now
 // separate classes — see UltraCanvasRadio.h and UltraCanvasSwitch.h.
-// Version: 2.0.0
-// Last Modified: 2026-05-07
+// Version: 2.1.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -63,9 +63,22 @@ namespace UltraCanvas {
         const LabeledToggleVisualStyle& GetBaseVisualStyle() const override { return visualStyle.base; }
 
     public:
-        UltraCanvasCheckbox(const std::string& identifier = "",
-                            float x = 0, float y = 0, float w = 150, float h = 24,
+        // ===== CONSTRUCTORS =====
+        UltraCanvasCheckbox(const std::string& identifier,
+                            float x, float y, float w, float h,
                             const std::string& labelText = "");
+
+        UltraCanvasCheckbox(const std::string& identifier,
+                            float w, float h,
+                            const std::string& labelText = "")
+            : UltraCanvasCheckbox(identifier, -1, -1, w, h, labelText) {}
+
+        UltraCanvasCheckbox(const std::string& identifier, const std::string& labelText)
+            : UltraCanvasCheckbox(identifier, -1, -1, -1, -1, labelText) {}
+
+        explicit UltraCanvasCheckbox(const std::string& labelText = "")
+            : UltraCanvasCheckbox("", -1, -1, -1, -1, labelText) {}
+
         ~UltraCanvasCheckbox() override = default;
 
         // ===== STATE =====

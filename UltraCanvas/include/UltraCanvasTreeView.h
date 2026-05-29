@@ -160,8 +160,13 @@ public:
     
     // ===== CONSTRUCTOR =====
     UltraCanvasTreeView(const std::string& identifier, 
-                       int x, int y, int w, int h);
-    
+                       float x, float y, float w, float h);
+
+    UltraCanvasTreeView(const std::string& identifier,
+                        float w, float h);
+
+    UltraCanvasTreeView(const std::string& identifier = "TreeView");
+
     // ===== TREE STRUCTURE MANAGEMENT =====
     TreeNode* SetRootNode(const TreeNodeData& rootData);
     

@@ -1,7 +1,7 @@
 // core/UltraCanvasPasswordStrengthMeter.cpp
 // Visual password strength indicator component
-// Version: 1.0.0
-// Last Modified: 2025-10-21
+// Version: 1.1.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasPasswordStrengthMeter.h"
@@ -10,8 +10,8 @@
 #include <functional>
 
 namespace UltraCanvas {
-    UltraCanvasPasswordStrengthMeter::UltraCanvasPasswordStrengthMeter(const std::string &id, int x, int y,
-                                                                       int w, int h)
+    UltraCanvasPasswordStrengthMeter::UltraCanvasPasswordStrengthMeter(const std::string &id, float x, float y,
+                                                                       float w, float h)
             : UltraCanvasUIElement(id, x, y, w, h) {
         animationStartTime = std::chrono::steady_clock::now();
     }

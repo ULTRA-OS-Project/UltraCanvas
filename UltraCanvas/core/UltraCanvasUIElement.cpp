@@ -90,6 +90,7 @@ namespace UltraCanvas {
 
     void UltraCanvasUIElement::RequestUpdateGeometry() {
         needsUpdateGeometry = true;
+        arrangeValid = false;
         if (!window || this == window) return;
         for (UltraCanvasUIElement* cur = this; cur && cur != window; cur = cur->GetParentContainer()) {
             if (cur->isPopup) {

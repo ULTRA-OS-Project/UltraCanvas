@@ -144,6 +144,7 @@ namespace UltraCanvas {
         void Element::InvalidateLayout() {
             measured.valid  = false;
             intrinsic.valid = false;
+            arrangeValid    = false;
             if (layoutComputed) layoutComputed->valid = false;
             if (parent) parent->InvalidateLayout();
         }
@@ -151,6 +152,7 @@ namespace UltraCanvas {
         void Element::InvalidateSubtree() {
             measured.valid  = false;
             intrinsic.valid = false;
+            arrangeValid    = false;
             if (layoutComputed) layoutComputed->valid = false;
             for (auto& c : children) if (c) c->InvalidateSubtree();
         }
@@ -196,18 +198,23 @@ namespace UltraCanvas {
 
         void Element::Arrange(const LayoutRect& finalRect, const LayoutContext& ctx) {
             finalBounds = finalRect;
-            if (layout.display == DisplayType::NoDisplay) return;
-
-            switch (layout.display) {
-                case DisplayType::Flex:   ArrangeFlex (*this, finalRect, ctx); break;
-                case DisplayType::Grid:   ArrangeGrid (*this, finalRect, ctx); break;
-                case DisplayType::Block:
-                case DisplayType::Inline:
-                case DisplayType::InlineBlock:
-                default:
-                    ArrangeBlock(*this, finalRect, ctx);
-                    break;
+            if (layout.display != DisplayType::NoDisplay) {
+                switch (layout.display) {
+                    case DisplayType::Flex:   ArrangeFlex (*this, finalRect, ctx); break;
+                    case DisplayType::Grid:   ArrangeGrid (*this, finalRect, ctx); break;
+                    case DisplayType::Block:
+                    case DisplayType::Inline:
+                    case DisplayType::InlineBlock:
+                    default:
+                        ArrangeBlock(*this, finalRect, ctx);
+                        break;
+                }
             }
+            // finalBounds and all in-flow / positioned children are now placed.
+            // Mark layout valid and run the post-layout hook so subclasses can
+            // do their internal, geometry-dependent setup.
+            arrangeValid = true;
+            Arranged(ctx);
         }
 
         // -------------------- Block layout --------------------

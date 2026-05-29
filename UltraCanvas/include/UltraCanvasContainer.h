@@ -2,8 +2,8 @@
 // Container component with scrollbars and child element management.
 // Children storage lives in CSSLayout::Element (inherited via UltraCanvasUIElement);
 // this class provides typed UI accessors over that storage.
-// Version: 4.0.0
-// Last Modified: 2026-05-27
+// Version: 4.1.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -55,6 +55,12 @@ namespace UltraCanvas {
                 : UltraCanvasUIElement(id, x, y, w, h) {
             CreateScrollbars();
         }
+
+        UltraCanvasContainer(const std::string &id, float w, float h)
+                : UltraCanvasContainer(id, -1, -1, w, h) {}
+
+        explicit UltraCanvasContainer(const std::string &id)
+                : UltraCanvasContainer(id, -1, -1, -1, -1) {}
 
         virtual ~UltraCanvasContainer();
 
@@ -143,6 +149,10 @@ namespace UltraCanvas {
         // ===== OVERRIDDEN ELEMENT METHODS =====
         void Render(IRenderContext *ctx, const Rect2Df&dirtyRect) override;
         void UpdateGeometry(IRenderContext *ctx) override;
+        // Post-layout setup: z-order sort + scrollbar metrics. Invoked from the
+        // engine (tail of Arrange) for Flex/Grid containers, and directly from
+        // UpdateGeometry for the still-manual Block path.
+        void Arranged(const CSSLayout::LayoutContext& ctx) override;
 
         bool OnEvent(const UCEvent &event) override;
 

@@ -16,8 +16,8 @@
 //   5. Property setters call textLayout.reset() + InvalidateLayout()
 //      (bubbles engine caches up) + RequestRedraw() (damage).
 //
-// Version: 2.0.0
-// Last Modified: 2026-05-27
+// Version: 2.1.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasLabel.h"
@@ -65,21 +65,6 @@ namespace UltraCanvas {
         SetText(labelText);
     }
 
-    UltraCanvasLabel::UltraCanvasLabel(const std::string &identifier, float w, float h, const std::string &labelText)
-            : UltraCanvasUIElement(identifier, w, h), text(labelText) {
-
-        // Initialize style
-        style = LabelStyle::DefaultStyle();
-        SetText(labelText);
-    }
-
-    UltraCanvasLabel::UltraCanvasLabel(const std::string &identifier, const std::string &labelText)
-            : UltraCanvasUIElement(identifier), text(labelText) {
-
-        // Initialize style
-        style = LabelStyle::DefaultStyle();
-        SetText(labelText);
-    }
 
     // Property setters: invalidate the text cache (so EnsureTextLayout
     // rebuilds), invalidate the engine layout cache (so the next Measure
@@ -154,6 +139,13 @@ namespace UltraCanvas {
         textLayout.reset();
         InvalidateLayout();
         RequestRedraw();
+    }
+
+    void UltraCanvasLabel::SetAutoResize(bool /*autoResize*/) {
+        // Legacy no-op: the CSSLayout engine now drives intrinsic sizing via
+        // MeasureCore()/ComputeIntrinsicSizes(), so a label always sizes to its
+        // content unless an explicit width/height is set on the element. This
+        // setter is retained for source compatibility with older call sites.
     }
 
     float UltraCanvasLabel::GetPreferredWidth() {

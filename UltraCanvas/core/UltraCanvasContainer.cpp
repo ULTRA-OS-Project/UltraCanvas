@@ -34,39 +34,54 @@ namespace UltraCanvas {
         verticalScrollbar->SetWindow(win);
     }
 
+    void UltraCanvasContainer::Arranged(const LayoutContext& ctx) {
+        // Post-layout housekeeping (z-order sort, scrollbar dimensions). Gated:
+        // these are not free and only matter when layout actually changed. For
+        // Flex/Grid containers this runs from the tail of Arrange(); for the
+        // still-manual Block path it runs from UpdateGeometry().
+        if (!needsUpdateGeometry && !IsLayoutDirty()) return;
+        SortChildrenByZOrder();
+        UpdateScrollability();
+        layoutDirty = false;
+    }
+
     void UltraCanvasContainer::UpdateGeometry(IRenderContext* ctx) {
-        // Perform layout BEFORE children's UpdateGeometry so that children
-        // get their correct bounds before they process their own nested
-        // layouts (fixes first-frame positioning).
-        bool isContainerGeometryUpdated = false;
-        if (needsUpdateGeometry || IsLayoutDirty()) {
-            SortChildrenByZOrder();
+        // Engine-driven layout for Flex/Grid containers runs UNGATED. The
+        // per-element `layoutComputed` cache (keyed by MeasureConstraints)
+        // makes the dispatch O(1) when nothing changed, so the cost is
+        // negligible; the correctness payoff is that any change to
+        // finalBounds from a parent's Arrange recursion gets re-distributed
+        // to grandchildren on the next UpdateGeometry pass.
+        bool engineDriven = (this->layout.display == DisplayType::Flex ||
+                             this->layout.display == DisplayType::Grid);
 
-            // Engine-driven layout when display is Flex or Grid. Block /
-            // Inline / NoDisplay means "no auto-layout" — children keep
-            // whatever bounds the caller set manually (matches the legacy
-            // behavior for containers without a UltraCanvasLayout attached).
-            if (this->layout.display == DisplayType::Flex ||
-                this->layout.display == DisplayType::Grid) {
-                LayoutContext lctx;
-                if (window) {
-                    // TODO: thread em/rem/DPI from window. Viewport defaults
-                    // are acceptable for fixed-px callers; only vw/vh users
-                    // need this populated correctly.
-                    lctx.viewportWidth  = finalBounds.width;
-                    lctx.viewportHeight = finalBounds.height;
-                }
-                MeasureConstraints mc{
-                    { ConstraintMode::Exact, finalBounds.width  },
-                    { ConstraintMode::Exact, finalBounds.height }
-                };
-                this->Measure(mc, lctx);
-                this->Arrange(finalBounds, lctx);
-            }
+        // Snapshot before Arranged() consumes the dirty flags.
+        bool isContainerGeometryUpdated = needsUpdateGeometry || IsLayoutDirty();
 
-            UpdateScrollability();
-            layoutDirty = false;
-            isContainerGeometryUpdated = true;
+        LayoutContext lctx;
+        if (window) {
+            // TODO: thread em/rem/DPI from window. Viewport defaults
+            // are acceptable for fixed-px callers; only vw/vh users
+            // need this populated correctly.
+            lctx.viewportWidth  = finalBounds.width;
+            lctx.viewportHeight = finalBounds.height;
+        }
+
+        if (engineDriven) {
+            MeasureConstraints mc{
+                { ConstraintMode::Exact, finalBounds.width  },
+                { ConstraintMode::Exact, finalBounds.height }
+            };
+            this->Measure(mc, lctx);
+            // Arrange() places children and, at its tail, calls Arranged()
+            // (z-order sort + scrollbar metrics) and sets arrangeValid.
+            this->Arrange(finalBounds, lctx);
+        } else {
+            // Block container: the engine doesn't own this subtree yet, so
+            // finalBounds were set manually via SetBounds. Run the post-layout
+            // setup directly and publish layout validity.
+            Arranged(lctx);
+            arrangeValid = true;
         }
 
         for (auto& c : Children()) {
@@ -79,14 +94,6 @@ namespace UltraCanvas {
                 child->UpdateGeometry(ctx);
                 child->needsUpdateGeometry = false;
             }
-        }
-
-        if (verticalScrollbar->IsVisible()) {
-            verticalScrollbar->UpdateGeometry(ctx);
-        }
-
-        if (horizontalScrollbar->IsVisible()) {
-            horizontalScrollbar->UpdateGeometry(ctx);
         }
 
         needsUpdateGeometry = false;

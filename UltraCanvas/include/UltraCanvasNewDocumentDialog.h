@@ -1,7 +1,7 @@
 // include/UltraCanvasNewDocumentDialog.h
 // New Document dialog with filterable file type selection
-// Version: 1.0.1
-// Last Modified: 2025-12-21
+// Version: 1.1.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 //
 // IMPORTANT: After creating shared_ptr, call Initialize() to set up callbacks!
@@ -136,7 +136,13 @@ namespace UltraCanvas {
     class UltraCanvasNewDocumentDialog : public UltraCanvasContainer {
     public:
         UltraCanvasNewDocumentDialog(const std::string& identifier,
-                                     int x, int y, int width = 500, int height = 450);
+                                     float x, float y, float width, float height);
+
+        UltraCanvasNewDocumentDialog(const std::string& identifier, float width, float height)
+            : UltraCanvasNewDocumentDialog(identifier, -1, -1, width, height) {}
+
+        explicit UltraCanvasNewDocumentDialog(const std::string& identifier)
+            : UltraCanvasNewDocumentDialog(identifier, -1, -1, -1, -1) {}
 
         virtual ~UltraCanvasNewDocumentDialog() = default;
 

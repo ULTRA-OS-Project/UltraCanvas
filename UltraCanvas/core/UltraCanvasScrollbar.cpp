@@ -1,7 +1,7 @@
 // core/UltraCanvasScrollbar.cpp
 // Platform-independent scrollbar component implementation
-// Version: 1.0.0
-// Last Modified: 2025-08-15
+// Version: 1.1.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasScrollbar.h"
@@ -14,7 +14,7 @@ namespace UltraCanvas {
 // This file is intentionally minimal since most implementation
 // is in the header file using inline methods for better performance.
 // Additional platform-specific optimizations can be added here if needed.
-    UltraCanvasScrollbar::UltraCanvasScrollbar(const std::string& id, int x, int y, int w, int h,
+    UltraCanvasScrollbar::UltraCanvasScrollbar(const std::string& id, float x, float y, float w, float h,
                          ScrollbarOrientation orient)
             : UltraCanvasUIElement(id, x, y, w, h)
             , orientation(orient) {

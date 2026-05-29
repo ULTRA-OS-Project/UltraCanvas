@@ -46,11 +46,13 @@ namespace UltraCanvas {
         debugOutput << "Menu '" << GetIdentifier() << "' hidden.  Visible: " << IsVisible() << std::endl;
     }
 
-    void UltraCanvasMenu::UpdateGeometry(IRenderContext* ctx) {
+    void UltraCanvasMenu::Arranged(const CSSLayout::LayoutContext& /*ctx*/) {
         if (needCalculateSize) {
-            ctx->PushState();
-            CalculateAndUpdateSize(ctx);
-            ctx->PopState();
+            IRenderContext* rc = GetRenderContext();
+            if (!rc) return;
+            rc->PushState();
+            CalculateAndUpdateSize(rc);
+            rc->PopState();
         }
     }
 

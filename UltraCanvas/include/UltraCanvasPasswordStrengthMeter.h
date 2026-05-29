@@ -1,7 +1,7 @@
 // include/UltraCanvasPasswordStrengthMeter.h
 // Visual password strength indicator component
-// Version: 1.0.0
-// Last Modified: 2025-10-21
+// Version: 1.1.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -74,7 +74,13 @@ namespace UltraCanvas {
 
     public:
         // ===== CONSTRUCTOR =====
-        UltraCanvasPasswordStrengthMeter(const std::string& id, int x, int y, int w, int h);
+        UltraCanvasPasswordStrengthMeter(const std::string& id, float x, float y, float w, float h);
+
+        UltraCanvasPasswordStrengthMeter(const std::string& id, float w, float h)
+            : UltraCanvasPasswordStrengthMeter(id, -1, -1, w, h) {}
+
+        explicit UltraCanvasPasswordStrengthMeter(const std::string& id)
+            : UltraCanvasPasswordStrengthMeter(id, -1, -1, -1, -1) {}
 
         virtual ~UltraCanvasPasswordStrengthMeter() = default;
 
@@ -138,7 +144,7 @@ namespace UltraCanvas {
 
 // ===== FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasPasswordStrengthMeter> CreatePasswordStrengthMeter(
-            const std::string& id, int x, int y, int w, int h,
+            const std::string& id, float x, float y, float w, float h,
             StrengthMeterStyle style = StrengthMeterStyle::Bar) {
 
         auto meter = std::make_shared<UltraCanvasPasswordStrengthMeter>(id, x, y, w, h);
@@ -147,12 +153,12 @@ namespace UltraCanvas {
     }
 
     inline std::shared_ptr<UltraCanvasPasswordStrengthMeter> CreateBarStrengthMeter(
-            const std::string& id, int x, int y, int w, int h = 20) {
+            const std::string& id, float x, float y, float w, float h = 20) {
         return CreatePasswordStrengthMeter(id, x, y, w, h, StrengthMeterStyle::Bar);
     }
 
     inline std::shared_ptr<UltraCanvasPasswordStrengthMeter> CreateCircularStrengthMeter(
-            const std::string& id, int x, int y, int size = 80) {
+            const std::string& id, float x, float y, float size = 80) {
         return CreatePasswordStrengthMeter(id, x, y, size, size, StrengthMeterStyle::Circular);
     }
 

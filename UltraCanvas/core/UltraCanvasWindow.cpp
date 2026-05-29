@@ -331,7 +331,7 @@ namespace UltraCanvas {
         }
         if (!ctx) return;
 
-        if (needsUpdateGeometry) {
+        if (!IsLayoutValid()) {
             UpdateGeometry(ctx);
         }
 

@@ -1,7 +1,7 @@
 // include/UltraCanvasSegmentedControl.h
 // Segmented control component for mutually exclusive selection between options
-// Version: 1.0.0
-// Last Modified: 2025-10-19
+// Version: 1.1.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -153,12 +153,18 @@ namespace UltraCanvas {
         std::chrono::steady_clock::time_point animationStartTime;
 
     public:
-        // ===== CONSTRUCTOR =====
-        UltraCanvasSegmentedControl(const std::string &identifier = "SegmentedControl", float x = 0, float y = 0, float w = 300, float h = 32)
+        // ===== CONSTRUCTORS =====
+        UltraCanvasSegmentedControl(const std::string &identifier, float x, float y, float w, float h)
                 : UltraCanvasUIElement(identifier, x, y, w, h) {
 
             mouseCursor = UCMouseCursor::Hand;
         }
+
+        UltraCanvasSegmentedControl(const std::string &identifier, float w, float h)
+                : UltraCanvasSegmentedControl(identifier, -1, -1, w, h) {}
+
+        explicit UltraCanvasSegmentedControl(const std::string &identifier)
+                : UltraCanvasSegmentedControl(identifier, -1, -1, -1, -1) {}
 
         bool AcceptsFocus() const override { return true; }
 

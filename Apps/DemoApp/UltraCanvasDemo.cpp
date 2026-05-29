@@ -79,52 +79,67 @@ namespace UltraCanvas {
     DemoHeaderContainer::DemoHeaderContainer(const std::string& identifier,
                                              float x, float y, float width, float height)
             : UltraCanvasContainer(identifier, x, y, width, height) {
+        layout.SetFlexRow().SetFlexGap(10);
 
         // Create title label (left side)
-        titleLabel = std::make_shared<UltraCanvasLabel>("HeaderTitle", 10, 5, width - 200, 30);
+        titleLabel = std::make_shared<UltraCanvasLabel>("HeaderTitle");
         titleLabel->SetFontSize(14);
         titleLabel->SetFontWeight(FontWeight::Bold);
         titleLabel->SetText("Demo Title");
         titleLabel->SetMargin(2,0,0,0);
-        //AddChild(titleLabel);
+        AddChild(titleLabel);
+
+        AddStretchSpacer(1);
 
         // Create documentation button (right side)
-        docButton = std::make_shared<UltraCanvasImageElement>("DocBtn", width - 90, 5, 21, 21);
+        docButton = std::make_shared<UltraCanvasImageElement>("DocBtn", 21, 21);
         docButton->LoadFromFile(NormalizePath(GetResourcesDir() + "media/icons/text.png"));
         docButton->SetVisible(false);  // Initially disabled
         docButton->SetClickable(true);
         docButton->onClick = [this]() { ShowDocumentationWindow(); };
-        //AddChild(docButton);
+        AddChild(docButton);
 
         // Create source button (right side)
-        sourceButton = std::make_shared<UltraCanvasImageElement>("SourceBtn", width - 40, 5, 21, 28);
+        sourceButton = std::make_shared<UltraCanvasImageElement>("SourceBtn", 21, 28);
         sourceButton->LoadFromFile(NormalizePath(GetResourcesDir() + "media/icons/c-plus-plus-icon.png"));
         sourceButton->SetVisible(false);  // Initially disabled
         sourceButton->SetClickable(true);
         sourceButton->onClick = [this]() { ShowSourceWindow(); };
-        //AddChild(sourceButton);
+        AddChild(sourceButton);
 
-        // Create divider line at the bottom
-        dividerLine = std::make_shared<UltraCanvasContainer>("Divider", 0, 38, width, 2);
+        // Divider line pinned at the bottom of the header. Absolute-positioned
+        // so it doesn't participate in the in-flow flex row (otherwise its
+        // width:100% main-axis hypothetical would push the row into shrink
+        // mode and the stretch spacer above would collapse to 0).
+        dividerLine = std::make_shared<UltraCanvasUIElement>("Divider");
+        dividerLine->size.height = CSSLayout::Dimension::Px(2);
         dividerLine->SetBackgroundColor(Color(200, 200, 200, 255));
-        //AddChild(dividerLine);
+        dividerLine->layoutItem.positionType = CSSLayout::PositionType::Absolute;
+        dividerLine->layoutItem.position = CSSLayout::Position{
+            /*top   */ CSSLayout::Dimension::Auto(),
+            /*right */ CSSLayout::Dimension::Px(0),
+            /*bottom*/ CSSLayout::Dimension::Px(0),
+            /*left  */ CSSLayout::Dimension::Px(0),
+        };
+        AddChild(dividerLine);
 
         // Set container style
         ContainerStyle containerStyle;
         containerStyle.forceShowHorizontalScrollbar = false;
         containerStyle.forceShowVerticalScrollbar = false;
+        containerStyle.autoShowScrollbars = false;
         SetContainerStyle(containerStyle);
 
         SetBackgroundColor(Color(245, 245, 245, 255));
         SetPadding(5,10,5,10);
         SetBorderBottom(2, Colors::Gray);
 
-        auto headerLayout = CreateHBoxLayout(this);
-        headerLayout->SetSpacing(10);
-        headerLayout->AddUIElement(titleLabel)->SetCrossAlignment(LayoutAlignment::Center);
-        headerLayout->AddStretch(1);
-        headerLayout->AddUIElement(docButton)->SetCrossAlignment(LayoutAlignment::Center);
-        headerLayout->AddUIElement(sourceButton)->SetCrossAlignment(LayoutAlignment::Center);
+//        auto headerLayout = CreateHBoxLayout(this);
+//        headerLayout->SetSpacing(10);
+//        headerLayout->AddUIElement(titleLabel)->SetCrossAlignment(LayoutAlignment::Center);
+//        headerLayout->AddStretch(1);
+//        headerLayout->AddUIElement(docButton)->SetCrossAlignment(LayoutAlignment::Center);
+//        headerLayout->AddUIElement(sourceButton)->SetCrossAlignment(LayoutAlignment::Center);
     }
 
     void DemoHeaderContainer::SetDemoTitle(const std::string& title) {
@@ -304,7 +319,7 @@ namespace UltraCanvas {
         const int treeViewWidth = 350;   // Width for both treeview and legend
 
 // Create tree view for categories (left side, reduced height)
-        categoryTreeView = std::make_shared<UltraCanvasTreeView>("CategoryTree", 0, 0, 100, 100);
+        categoryTreeView = std::make_shared<UltraCanvasTreeView>("CategoryTree");
         categoryTreeView->SetRowHeight(24);
         categoryTreeView->SetSelectionMode(TreeSelectionMode::Single);
         categoryTreeView->SetLineStyle(TreeLineStyle::Solid);
@@ -319,13 +334,17 @@ namespace UltraCanvas {
         legendContainer->SetBorderTop(1, Colors::Gray);
         SetupLegendContainer();
 
-        auto categoryContainer = CreateContainer("catcont", 0, 0, 100, 100);
+        // No-size constructor — let the grid cell decide categoryContainer's
+        // dimensions. If we passed 100, 100 here, the engine would treat
+        // size = 100×100 as a CSS-explicit width/height and shrink the
+        // sidebar inside its 350-pixel grid column.
+        auto categoryContainer = std::make_shared<UltraCanvasContainer>("catcont");
 
-        mainContainer = std::make_shared<UltraCanvasContainer>("MainDisplayArea", 0, 0, 1030, 840);
+        mainContainer = std::make_shared<UltraCanvasContainer>("MainDisplayArea");
         mainContainer->SetBorderLeft(1, Colors::Gray);
 
-        // Create header container (inside main container)
-        headerContainer = std::make_shared<DemoHeaderContainer>("HeaderContainer", 0, 0, 1028, 40);
+        // Header sized by its parent row — no explicit w/h.
+        headerContainer = std::make_shared<DemoHeaderContainer>("HeaderContainer", 0, 0, 0, 0);
 
         // Create display container (below header)
         displayContainer = std::make_shared<UltraCanvasContainer>("DisplayArea", 0, 40, 1028, 785);
@@ -348,25 +367,53 @@ namespace UltraCanvas {
             OnTreeNodeSelected(node);
         };
 
-        auto categoryContainerLayout = CreateVBoxLayout(categoryContainer.get());
-        categoryContainerLayout->AddUIElement(categoryTreeView, 1)->SetWidthMode(SizeMode::Fill);
-        categoryContainerLayout->AddUIElement(legendContainer)->SetWidthMode(SizeMode::Fill);
+        categoryContainer->layout.SetFlexColumn();
+        categoryTreeView->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch).SetJustifySelf(CSSLayout::JustifySelf::Stretch);
+        categoryContainer->AddChild(categoryTreeView);
+        categoryContainer->AddChild(legendContainer);
+//        auto categoryContainerLayout = CreateVBoxLayout(categoryContainer.get());
+//        categoryContainerLayout->AddUIElement(categoryTreeView, 1)->SetWidthMode(SizeMode::Fill);
+//        categoryContainerLayout->AddUIElement(legendContainer)->SetWidthMode(SizeMode::Fill);
 
-        auto mainContainerLayout = CreateVBoxLayout(mainContainer.get());
-        mainContainerLayout->AddUIElement(headerContainer)->SetWidthMode(SizeMode::Fill)->SetFixedHeight(40);
-        mainContainerLayout->AddUIElement(displayContainer, 1)->SetWidthMode(SizeMode::Fill);
+        mainContainer->layout.SetFlexColumn();
+        mainContainer->AddChild(headerContainer);
+        displayContainer->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch).SetJustifySelf(CSSLayout::JustifySelf::Stretch);
+        displayContainer->layout.SetFlexColumn();
+        mainContainer->AddChild(displayContainer);
+//        auto mainContainerLayout = CreateVBoxLayout(mainContainer.get());
+//        mainContainerLayout->AddUIElement(headerContainer)->SetWidthMode(SizeMode::Fill)->SetFixedHeight(40);
+//        mainContainerLayout->AddUIElement(displayContainer, 1)->SetWidthMode(SizeMode::Fill);
 
-        auto displayContainerLayout = CreateVBoxLayout(displayContainer.get());
+//        auto displayContainerLayout = CreateVBoxLayout(displayContainer.get());
 
-        auto mainLayout = CreateGridLayout(mainWindow.get(), 2, 2);
-        mainLayout->SetColumnDefinition(0, GridRowColumnDefinition::Fixed(350));
-        mainLayout->SetColumnDefinition(1, GridRowColumnDefinition::Star(1));
-        mainLayout->SetRowDefinition(0, GridRowColumnDefinition::Star(1));
-        mainLayout->SetRowDefinition(1, GridRowColumnDefinition::Fixed(25));
+        mainWindow->layout
+            .SetGrid()
+            .SetGridColumns({CSSLayout::GridTrackSize{.kind=CSSLayout::GridTrackSizeKind::Fixed, .value=CSSLayout::Dimension::Px(350)},
+                             CSSLayout::GridTrackSize{.kind=CSSLayout::GridTrackSizeKind::Auto}})
+             // Row 0 = Fr(1) so it consumes all available vertical space
+             // (otherwise Auto would collapse the sidebar to ~4 tree rows).
+             // Row 1 = the 25-pixel status bar at the bottom.
+             .SetGridRows({CSSLayout::GridTrackSize{.kind=CSSLayout::GridTrackSizeKind::Fr,    .value=CSSLayout::Dimension::Fr(1)},
+                           CSSLayout::GridTrackSize{.kind=CSSLayout::GridTrackSizeKind::Fixed, .value=CSSLayout::Dimension::Px(25)}});
 
-        mainLayout->AddUIElement(categoryContainer, 0, 0)->SetSizeMode(SizeMode::Fill, SizeMode::Fill);
-        mainLayout->AddUIElement(mainContainer, 0, 1)->SetSizeMode(SizeMode::Fill, SizeMode::Fill);
-        mainLayout->AddUIElement(statusLabel, 1, 0, 1, 2)->SetSizeMode(SizeMode::Fill, SizeMode::Fill);
+        categoryContainer->layoutItem.SetGridRowColSimplified(0, 0);
+        mainWindow->AddChild(categoryContainer);
+
+        mainContainer->layoutItem.SetGridRowColSimplified(0, 1);
+        mainWindow->AddChild(mainContainer);
+
+        statusLabel->layoutItem.SetGridRowColSimplified(1, 0, 1, 2);
+        mainWindow->AddChild(statusLabel);
+
+//        auto mainLayout = CreateGridLayout(mainWindow.get(), 2, 2);
+//        mainLayout->SetColumnDefinition(0, GridRowColumnDefinition::Fixed(350));
+//        mainLayout->SetColumnDefinition(1, GridRowColumnDefinition::Star(1));
+//        mainLayout->SetRowDefinition(0, GridRowColumnDefinition::Star(1));
+//        mainLayout->SetRowDefinition(1, GridRowColumnDefinition::Fixed(25));
+//
+//        mainLayout->AddUIElement(categoryContainer, 0, 0)->SetSizeMode(SizeMode::Fill, SizeMode::Fill);
+//        mainLayout->AddUIElement(mainContainer, 0, 1)->SetSizeMode(SizeMode::Fill, SizeMode::Fill);
+//        mainLayout->AddUIElement(statusLabel, 1, 0, 1, 2)->SetSizeMode(SizeMode::Fill, SizeMode::Fill);
 
         debugOutput << "✓ Demo application initialized successfully" << std::endl;
         return true;
@@ -1326,7 +1373,7 @@ namespace UltraCanvas {
         debugOutput << "Select items from the tree view to see implementation examples." << std::endl;
 
         if (mainWindow) {
-            mainWindow->Show();
+            //mainWindow->Show();
             // The application will handle the event loop
         }
 

@@ -1,7 +1,7 @@
 // include/UltraCanvasSplitPane.h
 // Split pane container that divides content into N draggable panes along one axis
-// Version: 1.0.0
-// Last Modified: 2026-05-19
+// Version: 1.1.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -62,6 +62,15 @@ namespace UltraCanvas {
     public:
         UltraCanvasSplitPane(const std::string& id, float x, float y, float w, float h,
                              SplitOrientation orient);
+
+        UltraCanvasSplitPane(const std::string& id, float w, float h, SplitOrientation orient)
+            : UltraCanvasSplitPane(id, -1, -1, w, h, orient) {}
+
+        UltraCanvasSplitPane(const std::string& id, SplitOrientation orient)
+            : UltraCanvasSplitPane(id, -1, -1, -1, -1, orient) {}
+
+        explicit UltraCanvasSplitPane(SplitOrientation orient)
+            : UltraCanvasSplitPane("", -1, -1, -1, -1, orient) {}
 
         // ===== PANE MANAGEMENT =====
         std::shared_ptr<UltraCanvasContainer> AddPane(double weight = 1.0);

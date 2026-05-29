@@ -22,6 +22,11 @@ namespace UltraCanvas {
 
     }
 
+    UltraCanvasImageElement::UltraCanvasImageElement(const std::string &identifier, float w, float h)
+            : UltraCanvasUIElement(identifier, w, h) {
+
+    }
+
     UltraCanvasImageElement::UltraCanvasImageElement(const std::string &identifier)
             : UltraCanvasUIElement(identifier) {
 

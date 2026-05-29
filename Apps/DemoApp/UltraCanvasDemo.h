@@ -121,7 +121,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasLabel> titleLabel;
         std::shared_ptr<UltraCanvasImageElement> sourceButton;
         std::shared_ptr<UltraCanvasImageElement> docButton;
-        std::shared_ptr<UltraCanvasContainer> dividerLine;
+        std::shared_ptr<UltraCanvasUIElement> dividerLine;
         std::shared_ptr<UltraCanvasWindow> sourceWindow;
         std::shared_ptr<UltraCanvasWindow> docWindow;
         std::string currentSourceFile;

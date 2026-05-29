@@ -172,8 +172,15 @@ namespace UltraCanvas {
         std::function<void()> onPathChanged;
 
         // ===== CONSTRUCTORS =====
-        UltraCanvasBreadcrumb(const std::string& identifier = "Breadcrumb",
-                              float x = 0, float y = 0, float w = 400, float h = 28);
+        UltraCanvasBreadcrumb(const std::string& identifier,
+                              float x, float y, float w, float h);
+
+        UltraCanvasBreadcrumb(const std::string& identifier,
+                              float w, float h)
+              : UltraCanvasBreadcrumb(identifier, -1, -1, w, h) {};
+
+        explicit UltraCanvasBreadcrumb(const std::string& identifier = "")
+                : UltraCanvasBreadcrumb(identifier, -1, -1, -1, -1) {};
 
         virtual ~UltraCanvasBreadcrumb() = default;
 

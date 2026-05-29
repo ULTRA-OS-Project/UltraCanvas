@@ -1,7 +1,7 @@
 // include/UltraCanvasScrollbar.h
 // Standalone scrollbar UI control with full interaction support
-// Version: 2.0.0
-// Last Modified: 2025-11-24
+// Version: 2.1.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -199,9 +199,20 @@ namespace UltraCanvas {
         bool layoutDirty = true;
 
     public:
-        // ===== CONSTRUCTOR =====
-        UltraCanvasScrollbar(const std::string& id, int x, int y, int w, int h,
+        // ===== CONSTRUCTORS =====
+        UltraCanvasScrollbar(const std::string& id, float x, float y, float w, float h,
                              ScrollbarOrientation orient = ScrollbarOrientation::Vertical);
+
+        UltraCanvasScrollbar(const std::string& id, float w, float h,
+                             ScrollbarOrientation orient = ScrollbarOrientation::Vertical)
+            : UltraCanvasScrollbar(id, -1, -1, w, h, orient) {}
+
+        UltraCanvasScrollbar(const std::string& id,
+                             ScrollbarOrientation orient = ScrollbarOrientation::Vertical)
+            : UltraCanvasScrollbar(id, -1, -1, -1, -1, orient) {}
+
+        explicit UltraCanvasScrollbar(ScrollbarOrientation orient = ScrollbarOrientation::Vertical)
+            : UltraCanvasScrollbar("", -1, -1, -1, -1, orient) {}
 
         virtual ~UltraCanvasScrollbar() = default;
 
@@ -326,19 +337,19 @@ namespace UltraCanvas {
 
 // ===== FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasScrollbar> CreateScrollbar(
-            const std::string& id, int x, int y, int w, int h,
+            const std::string& id, float x, float y, float w, float h,
             ScrollbarOrientation orientation = ScrollbarOrientation::Vertical) {
         return std::make_shared<UltraCanvasScrollbar>(id, x, y, w, h, orientation);
     }
 
     inline std::shared_ptr<UltraCanvasScrollbar> CreateVerticalScrollbar(
-            const std::string& id, int x, int y, int width, int height) {
+            const std::string& id, float x, float y, float width, float height) {
         return std::make_shared<UltraCanvasScrollbar>(id, x, y, width, height,
                                                       ScrollbarOrientation::Vertical);
     }
 
     inline std::shared_ptr<UltraCanvasScrollbar> CreateHorizontalScrollbar(
-            const std::string& id, int x, int y, int width, int height) {
+            const std::string& id, float x, float y, float width, float height) {
         return std::make_shared<UltraCanvasScrollbar>(id, x, y, width, height,
                                                       ScrollbarOrientation::Horizontal);
     }

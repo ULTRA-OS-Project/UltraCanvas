@@ -3416,7 +3416,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         aboutDialog->SetPadding(20);
 
         // Logo image
-        auto logo = std::make_shared<UltraCanvasImageElement>("AboutLogo",  0, 74, 74);
+        auto logo = std::make_shared<UltraCanvasImageElement>("AboutLogo", 74, 74);
         logo->LoadFromFile(NormalizePath(GetResourcesDir() + "media/Logo_Texter.png"));
         logo->SetFitMode(ImageFitMode::Contain);
         logo->SetMargin(0, 0, 8, 0);
@@ -3465,7 +3465,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         mainLayout->AddUIElement(copyrightLabel)->SetWidthMode(SizeMode::Fill)->SetCrossAlignment(LayoutAlignment::Center)->SetMainAlignment(LayoutAlignment::Center);;
 
         // Clickable URL label
-        auto urlLabel = std::make_shared<UltraCanvasLabel>("AboutURL",  20);
+        auto urlLabel = std::make_shared<UltraCanvasLabel>("AboutURL", "");
         urlLabel->SetText("<span color=\"blue\">www.ultraos.eu</span>");
         urlLabel->SetTextIsMarkup(true);
         urlLabel->SetFontSize(11);

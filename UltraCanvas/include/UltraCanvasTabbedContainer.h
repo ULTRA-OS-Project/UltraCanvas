@@ -1,7 +1,7 @@
 // include/UltraCanvasTabbedContainer.h
 // Enhanced tabbed container component with overflow dropdown, search, drag-out, drag-in
-// Version: 2.0.2
-// Last Modified: 2026-04-24
+// Version: 2.1.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -222,6 +222,12 @@ namespace UltraCanvas {
         std::function<int(const TabTransferData& data, int insertionIndex)> onTabDragIn;
 
         UltraCanvasTabbedContainer(const std::string& elementId, float posX, float posY, float w, float h);
+
+        UltraCanvasTabbedContainer(const std::string& elementId, float w, float h)
+            : UltraCanvasTabbedContainer(elementId, -1, -1, w, h) {}
+
+        explicit UltraCanvasTabbedContainer(const std::string& elementId)
+            : UltraCanvasTabbedContainer(elementId, -1, -1, -1, -1) {}
 
         void InvalidateTabbar() { tabbarLayoutDirty = true; RequestRedraw(); }
 

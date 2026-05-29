@@ -76,8 +76,11 @@ public:
     std::function<void(const Point2Di&)> onImageDragged;
     
     // ===== CONSTRUCTOR =====
-    UltraCanvasImageElement(const std::string& identifier = "ImageElement",
-                           float x = 0, float y = 0, float w = 100, float h = 100);
+    UltraCanvasImageElement(const std::string& identifier,
+                           float x, float y, float w, float h);
+
+    UltraCanvasImageElement(const std::string& identifier,
+                            float w, float h);
 
     UltraCanvasImageElement(const std::string& identifier = "ImageElement");
 

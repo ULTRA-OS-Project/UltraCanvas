@@ -1,7 +1,7 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.5.2
-// Last Modified: 2026-05-01
+// Version: 3.6.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -361,7 +361,14 @@ namespace UltraCanvas {
     class UltraCanvasTextArea : public UltraCanvasUIElement {
     public:
         // Constructor and destructor
-        UltraCanvasTextArea(const std::string& name, int x, int y, int width, int height);
+        UltraCanvasTextArea(const std::string& name, float x, float y, float width, float height);
+
+        UltraCanvasTextArea(const std::string& name, float width, float height)
+            : UltraCanvasTextArea(name, -1, -1, width, height) {}
+
+        explicit UltraCanvasTextArea(const std::string& name)
+            : UltraCanvasTextArea(name, -1, -1, -1, -1) {}
+
         virtual ~UltraCanvasTextArea();
 
         bool AcceptsFocus() const override { return true; }
