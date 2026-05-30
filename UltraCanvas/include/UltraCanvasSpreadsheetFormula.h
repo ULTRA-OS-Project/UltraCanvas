@@ -663,13 +663,25 @@ inline FormulaToken FormulaTokenizer::ReadIdentifier() {
         return FormulaToken::Error(CellErrorType::NAError, startPos);
     }
     
+    // A name immediately followed by '(' is a function call - even when it
+    // contains digits (e.g. LOG10, ATAN2). Cell references are never followed
+    // by '(', so resolve this BEFORE the cell-reference classification below,
+    // otherwise "LOG10" would be misread as column LOG, row 10.
+    if (ident.find('$') == std::string::npos && ident.find('.') == std::string::npos) {
+        size_t look = pos_;
+        while (look < formula_.size() && (formula_[look] == ' ' || formula_[look] == '\t')) ++look;
+        if (look < formula_.size() && formula_[look] == '(') {
+            return FormulaToken(FormulaTokenType::Function, ident, startPos);
+        }
+    }
+
     // Check if it's a cell reference (starts with letter or $, has digit)
     bool hasLetter = false, hasDigit = false;
     for (char c : ident) {
         if (IsAlpha(c)) hasLetter = true;
         if (IsDigit(c)) hasDigit = true;
     }
-    
+
     if (hasLetter && hasDigit) {
         // Looks like cell reference - check if followed by :
         if (pos_ < formula_.size() && formula_[pos_] == ':') {
