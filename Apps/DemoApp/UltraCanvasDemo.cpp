@@ -585,6 +585,14 @@ namespace UltraCanvas {
                 .AddVariant("tableview", "Sortable Columns")
                 .AddVariant("tableview", "Editable Cells");
 
+        extendedBuilder.AddItem("spreadsheet", "Spreadsheet",
+                                "Editable spreadsheet grid with an Open button that loads .ods/.csv files",
+                                ImplementationStatus::FullyImplemented,
+                                [this]() { return CreateSpreadsheetExamples(); },
+                                "Apps/DemoApp/UltraCanvasSpreadsheetExamples.cpp")
+                .AddVariant("spreadsheet", "Sample Data")
+                .AddVariant("spreadsheet", "Open ODS / CSV");
+
         extendedBuilder.AddItem("listview", "List View", "Item lists with custom rendering",
                                 ImplementationStatus::FullyImplemented,
                                 [this]() { return CreateListViewExamples(); },
