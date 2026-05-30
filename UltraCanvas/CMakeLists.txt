@@ -217,6 +217,15 @@ set(ULTRACANVAS_CORE_SOURCES
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartBasicTypes.cpp
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartRenderer.cpp
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasFinancialCharts.cpp
+        # Spreadsheet component (Cell + Types are header-only)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheet.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetComponent.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetSheet.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetFormula.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetFileIO.cpp
+        # Vendored miniz (ZIP support for ODS/XLSX File I/O)
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/miniz/miniz.c
+
         # Add Windows/Mac sources as needed
         #        ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraCanvasWindowsDoubleBuffer.cpp
 )
@@ -348,6 +357,7 @@ target_include_directories(${ULTRACANVAS_LIB_NAME}
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/core
         ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/miniz
         ${FREETYPE_INCLUDE_DIRS}
         ${HARFBUZZ_INCLUDE_DIRS}
 )

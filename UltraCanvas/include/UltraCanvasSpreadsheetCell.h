@@ -941,16 +941,28 @@ inline std::string SpreadsheetCell::FormatNumber(double value) const {
         case NumberFormatCategory::Percentage:
             snprintf(buffer, sizeof(buffer), "%.*f%%", fmt.decimalPlaces, value * 100.0);
             break;
-            
+
         case NumberFormatCategory::Currency:
-            snprintf(buffer, sizeof(buffer), "%s%.*f", 
+            snprintf(buffer, sizeof(buffer), "%s%.*f",
                      fmt.currencySymbol.c_str(), fmt.decimalPlaces, value);
             break;
-            
+
         case NumberFormatCategory::Scientific:
             snprintf(buffer, sizeof(buffer), "%.*e", fmt.decimalPlaces, value);
             break;
-            
+
+        case NumberFormatCategory::General: {
+            // "General": show integers without a decimal point and other
+            // numbers with up to ~10 significant digits, trailing zeros
+            // trimmed (matches typical spreadsheet General behaviour).
+            if (value == std::floor(value) && std::abs(value) < 1e15) {
+                snprintf(buffer, sizeof(buffer), "%.0f", value);
+            } else {
+                snprintf(buffer, sizeof(buffer), "%.10g", value);
+            }
+            break;
+        }
+
         case NumberFormatCategory::Number:
         default:
             if (fmt.decimalPlaces == 0 && value == std::floor(value)) {
@@ -960,7 +972,7 @@ inline std::string SpreadsheetCell::FormatNumber(double value) const {
             }
             break;
     }
-    
+
     return std::string(buffer);
 }
 
