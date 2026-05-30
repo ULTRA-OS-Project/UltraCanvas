@@ -57,6 +57,7 @@ namespace UltraCanvas {
         std::unique_ptr<ITextLayout> textLayout = nullptr;
         bool isMarkup = false;
 
+        bool internalLayoutValid = false;
     public:
         // ===== CONSTRUCTOR =====
         UltraCanvasLabel(const std::string &identifier, float x, float y, float w, float h,
@@ -93,8 +94,6 @@ namespace UltraCanvas {
         void SetTextColor(const Color &color);
         void SetAlignment(TextAlignment horizontal, VerticalAlignment vertical = VerticalAlignment::Top);
         void SetWrap(TextWrap wrap);
-        void SetAutoResize(bool autoResize);
-        void SetMaxWidth(int mWidth);
         void SetTextIsMarkup(bool markup);
 
         float GetPreferredWidth() override;
@@ -105,20 +104,20 @@ namespace UltraCanvas {
         // we have on each axis; we publish measured.measuredWidth/Height.
         void MeasureCore(const CSSLayout::MeasureConstraints& c,
                          const CSSLayout::LayoutContext& ctx) override;
+
         // Constraint-free: publishes intrinsic min/max-content via the
         // inherited `intrinsic` cache, in BORDER-BOX units (i.e. including
         // padding + border) to match what measured.* would return.
         void ComputeIntrinsicSizes(const CSSLayout::LayoutContext& ctx) override;
 
+        void InvalidateLayout() override;
+
         // ===== RENDERING =====
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
-        void UpdateGeometry(IRenderContext *ctx) override;
+        void UpdateInternalLayout(IRenderContext *ctx);
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;
-
-        // ===== SIZE CHANGES =====
-        void SetBounds(const Rect2Df& bounds) override;
 
         // ===== EVENT CALLBACKS =====
         std::function<void()> onClick;
@@ -171,7 +170,6 @@ namespace UltraCanvas {
         LabelBuilder& SetBackgroundColor(const Color& color);
         LabelBuilder& SetAlignment(TextAlignment align);
         LabelBuilder& SetPadding(float padding);
-        LabelBuilder& SetAutoResize(bool autoResize = true);
         LabelBuilder& SetStyle(const LabelStyle& style);
         LabelBuilder& OnClick(std::function<void()> callback);
 

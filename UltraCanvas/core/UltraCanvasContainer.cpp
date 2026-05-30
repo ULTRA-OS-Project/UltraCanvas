@@ -34,70 +34,72 @@ namespace UltraCanvas {
         verticalScrollbar->SetWindow(win);
     }
 
-    void UltraCanvasContainer::Arranged(const LayoutContext& ctx) {
-        // Post-layout housekeeping (z-order sort, scrollbar dimensions). Gated:
-        // these are not free and only matter when layout actually changed. For
-        // Flex/Grid containers this runs from the tail of Arrange(); for the
-        // still-manual Block path it runs from UpdateGeometry().
-        if (!needsUpdateGeometry && !IsLayoutDirty()) return;
+    void UltraCanvasContainer::Arrange(const Rect2Df& finalRect, const LayoutContext& ctx) {
+        UltraCanvasUIElement::Arrange(finalRect, ctx);
+
+        // Post-layout housekeeping (z-order sort, scrollbar dimensions).
         SortChildrenByZOrder();
         UpdateScrollability();
-        layoutDirty = false;
-    }
 
-    void UltraCanvasContainer::UpdateGeometry(IRenderContext* ctx) {
-        // Engine-driven layout for Flex/Grid containers runs UNGATED. The
-        // per-element `layoutComputed` cache (keyed by MeasureConstraints)
-        // makes the dispatch O(1) when nothing changed, so the cost is
-        // negligible; the correctness payoff is that any change to
-        // finalBounds from a parent's Arrange recursion gets re-distributed
-        // to grandchildren on the next UpdateGeometry pass.
-        bool engineDriven = (this->layout.display == DisplayType::Flex ||
-                             this->layout.display == DisplayType::Grid);
-
-        // Snapshot before Arranged() consumes the dirty flags.
-        bool isContainerGeometryUpdated = needsUpdateGeometry || IsLayoutDirty();
-
-        LayoutContext lctx;
-        if (window) {
-            // TODO: thread em/rem/DPI from window. Viewport defaults
-            // are acceptable for fixed-px callers; only vw/vh users
-            // need this populated correctly.
-            lctx.viewportWidth  = finalBounds.width;
-            lctx.viewportHeight = finalBounds.height;
-        }
-
-        if (engineDriven) {
-            MeasureConstraints mc{
-                { ConstraintMode::Exact, finalBounds.width  },
-                { ConstraintMode::Exact, finalBounds.height }
-            };
-            this->Measure(mc, lctx);
-            // Arrange() places children and, at its tail, calls Arranged()
-            // (z-order sort + scrollbar metrics) and sets arrangeValid.
-            this->Arrange(finalBounds, lctx);
-        } else {
-            // Block container: the engine doesn't own this subtree yet, so
-            // finalBounds were set manually via SetBounds. Run the post-layout
-            // setup directly and publish layout validity.
-            Arranged(lctx);
-            arrangeValid = true;
-        }
-
+        // legacy UpdateGeometry for non-container (leaf) childs
         for (auto& c : Children()) {
             UltraCanvasUIElement* child = asUI(c);
             if (!child || !child->IsVisible()) continue;
             if (child->isPopup) continue;
 
             auto containerChild = dynamic_cast<UltraCanvasContainer*>(child);
-            if (isContainerGeometryUpdated || child->needsUpdateGeometry || containerChild) {
-                child->UpdateGeometry(ctx);
+            if (child->needsUpdateGeometry && c->Children().empty()) {
+                child->UpdateGeometry(GetRenderContext());
                 child->needsUpdateGeometry = false;
             }
         }
-
+        internalLayoutValid = true;
         needsUpdateGeometry = false;
     }
+
+//    void UltraCanvasContainer::UpdateGeometry(IRenderContext* ctx) {
+//        // update layout for top-lvel container and all children
+//        // that this container is top-level container (Window or Popup)
+//        UltraCanvasUIElement* topLevel = this;
+//        for (UltraCanvasUIElement* cur = this; cur && cur != window; cur = cur->GetParentContainer()) {
+//            if (cur->isPopup) { topLevel = cur; break; }
+//        }
+//        if (topLevel != this) {
+//            topLevel->UpdateLayout(ctx);
+//            return;
+//        }
+//        LayoutContext lctx;
+//        if (window) {
+//            // TODO: thread em/rem/DPI from window. Viewport defaults
+//            // are acceptable for fixed-px callers; only vw/vh users
+//            // need this populated correctly.
+//            lctx.viewportWidth  = window->GetWidth();
+//            lctx.viewportHeight = window->GetHeight();
+//        }
+//
+//        MeasureConstraints mc{
+//            { ConstraintMode::Exact, finalBounds.width  },
+//            { ConstraintMode::Exact, finalBounds.height }
+//        };
+//        this->Measure(mc, lctx);
+//        // Arrange() places children and, at its tail, calls Arranged()
+//        // (z-order sort + scrollbar metrics) and sets arrangeValid.
+//        this->Arrange(finalBounds, lctx);
+//
+//        for (auto& c : Children()) {
+//            UltraCanvasUIElement* child = asUI(c);
+//            if (!child || !child->IsVisible()) continue;
+//            if (child->isPopup) continue;
+//
+//            auto containerChild = dynamic_cast<UltraCanvasContainer*>(child);
+//            if (child->needsUpdateGeometry || !containerChild) {
+//                child->UpdateGeometry(ctx);
+//                child->needsUpdateGeometry = false;
+//            }
+//        }
+//
+//        needsUpdateGeometry = false;
+//    }
 
     void UltraCanvasContainer::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         UltraCanvasUIElement::Render(ctx, dirtyRect);

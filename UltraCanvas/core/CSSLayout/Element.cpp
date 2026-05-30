@@ -196,7 +196,7 @@ namespace UltraCanvas {
             }
         }
 
-        void Element::Arrange(const LayoutRect& finalRect, const LayoutContext& ctx) {
+        void Element::Arrange(const Rect2Df& finalRect, const LayoutContext& ctx) {
             finalBounds = finalRect;
             if (layout.display != DisplayType::NoDisplay) {
                 switch (layout.display) {
@@ -214,7 +214,6 @@ namespace UltraCanvas {
             // Mark layout valid and run the post-layout hook so subclasses can
             // do their internal, geometry-dependent setup.
             arrangeValid = true;
-            Arranged(ctx);
         }
 
         // -------------------- Block layout --------------------
@@ -289,7 +288,7 @@ namespace UltraCanvas {
         }
 
         void ArrangeBlock(Element& e,
-                          const LayoutRect& finalRect,
+                          const Rect2Df& finalRect,
                           const LayoutContext& ctx) {
             // finalRect is this element's border-box.
             float parentInline = finalRect.width;
@@ -327,7 +326,7 @@ namespace UltraCanvas {
                 };
                 kid->Measure(kc, ctx);
 
-                LayoutRect kr{ localBaseX, cursorY,
+                Rect2Df kr{ localBaseX, cursorY,
                                kid->measured.measuredWidth,
                                kid->measured.measuredHeight };
                 if (kid->layoutItem.positionType == PositionType::Relative) {
@@ -345,7 +344,7 @@ namespace UltraCanvas {
             // 2.1 §10.1). We pass our own padding-box; correctness depends on the
             // caller using this Element as the abspos CB (position != Static).
             // TODO: proper containing-block walk for nested abspos through non-CB parents.
-            LayoutRect paddingBox{
+            Rect2Df paddingBox{
                 finalRect.x + bordIns.left,
                 finalRect.y + bordIns.top,
                 std::max(0.f, finalRect.width  - bordIns.horizontal()),
@@ -357,11 +356,10 @@ namespace UltraCanvas {
                 if (pos == PositionType::Absolute) {
                     ArrangePositionedChild(*kid, paddingBox, ctx);
                 } else if (pos == PositionType::Fixed) {
-                    LayoutRect viewport{ 0, 0, ctx.viewportWidth, ctx.viewportHeight };
+                    Rect2Df viewport{ 0, 0, ctx.viewportWidth, ctx.viewportHeight };
                     ArrangePositionedChild(*kid, viewport, ctx);
                 }
             }
         }
-
     }
 }

@@ -141,13 +141,6 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
-    void UltraCanvasLabel::SetAutoResize(bool /*autoResize*/) {
-        // Legacy no-op: the CSSLayout engine now drives intrinsic sizing via
-        // MeasureCore()/ComputeIntrinsicSizes(), so a label always sizes to its
-        // content unless an explicit width/height is set on the element. This
-        // setter is retained for source compatibility with older call sites.
-    }
-
     float UltraCanvasLabel::GetPreferredWidth() {
         if (!EnsureTextLayout()) return 0;
         textLayout->SetExplicitWidth(-1);  // max-content
@@ -277,50 +270,6 @@ namespace UltraCanvas {
         measured.measuredHeight = contentH + padV;
     }
 
-//    void UltraCanvasLabel::AutoResize(const Size2Di &textDimensions) {
-//        if (text.empty()) {
-//            preferredSize = Size2Di(GetTotalPaddingHorizontal() + GetTotalBorderHorizontal() + 20,
-//                                    GetTotalPaddingVertical() + GetTotalBorderVertical() + style.fontStyle.fontSize +
-//                                    4);
-//        } else {
-//            // Set text style for measurement
-//            if (textDimensions.width > 0) {
-//                preferredSize = Size2Di(
-//                        textDimensions.width + GetTotalPaddingHorizontal() + GetTotalBorderHorizontal(),
-//                        textDimensions.height + GetTotalPaddingVertical() + GetTotalBorderVertical()
-//                );
-//            } else {
-//                preferredSize = GetSize();
-//            }
-//        }
-//
-//        SetSize(preferredSize.width, preferredSize.height);
-//    }
-//
-//    void UltraCanvasLabel::CalculateLayout(IRenderContext *ctx) {
-//        ctx->PushState();
-//        Rect2Di bounds = GetBounds();
-//        ctx->SetFontStyle(style.fontStyle);
-//        ctx->SetTextIsMarkup(isMarkup);
-//        Size2Di textDimensions;
-//        if (autoResize) {
-//            ctx->GetTextDimensions(text, 99999, 0, textDimensions.width, textDimensions.height);
-//            AutoResize(textDimensions);
-//        } else if (GetHeight() == 0 && GetWidth() > 0) {
-//            ctx->GetTextDimensions(text, GetWidth(), 0, textDimensions.width, textDimensions.height);
-//            AutoResize(textDimensions);
-//        } else if (GetWidth() == 0 && GetHeight() > 0) {
-//            ctx->GetTextDimensions(text, 0, GetHeight(), textDimensions.width, textDimensions.height);
-//            AutoResize(textDimensions);
-//        }
-//
-//        // Calculate text area (inside padding and borders)
-//        textArea = GetContentRect();
-//
-//        layoutDirty = false;
-//        ctx->PopState();
-//    }
-
     // ===== EVENT HANDLING =====
     bool UltraCanvasLabel::OnEvent(const UCEvent &event) {
         if (UltraCanvasUIElement::OnEvent(event)) {
@@ -360,21 +309,15 @@ namespace UltraCanvas {
         return false;
     }
 
-    // ===== SIZE CHANGES =====
-    void UltraCanvasLabel::SetBounds(const Rect2Df &bnds) {
-        if (bnds != GetBounds()) {
-            UltraCanvasUIElement::SetBounds(bnds);
-            textLayout.reset();
-            RequestRedraw();
-        }
+    void UltraCanvasLabel::InvalidateLayout() {
+        CSSLayout::Element::InvalidateLayout();
+        internalLayoutValid = false;
     }
 
-    void UltraCanvasLabel::UpdateGeometry(IRenderContext* /*ctx*/) {
-        // finalBounds is owned by the engine (set during Arrange). All we
-        // do here is keep the cached text layout aligned with the latest
-        // content rect — useful when the layout pipeline wasn't engine-
-        // driven (e.g. a parent that just SetBounds() us manually).
+    void UltraCanvasLabel::UpdateInternalLayout(IRenderContext *ctx) {
+        // finalBounds is owned by the engine (set during Arrange).
         if (!EnsureTextLayout()) return;
+
         auto crect = GetLocalContentRect();
         // When a non-zero content area exists, point the text layout at it.
         // Negative or zero collapses to "no explicit width" (max-content).
@@ -384,10 +327,13 @@ namespace UltraCanvas {
         if (style.wrap == TextWrap::WrapNone && crect.width > 0) {
             textLayout->SetEllipsize(EllipsizeMode::EllipsizeEnd);
         }
+        internalLayoutValid = true;
     }
 
     void UltraCanvasLabel::Render(IRenderContext *ctx, const Rect2Df& dirtyRect) {
-        UpdateGeometry(ctx);
+        if (!internalLayoutValid) {
+            UpdateInternalLayout(ctx);
+        }
 
         UltraCanvasUIElement::Render(ctx, dirtyRect);
 

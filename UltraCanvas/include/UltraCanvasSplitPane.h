@@ -100,7 +100,7 @@ namespace UltraCanvas {
         std::function<void(const std::vector<double>&)> onWeightsChanged;
 
         // ===== OVERRIDES =====
-        void UpdateGeometry(IRenderContext* ctx) override;
+        void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
         void SetBounds(const Rect2Df& b) override;
 
         // ===== INTERNAL (called by UltraCanvasSplitter) =====

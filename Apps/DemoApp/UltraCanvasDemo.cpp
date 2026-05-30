@@ -1373,7 +1373,7 @@ namespace UltraCanvas {
         debugOutput << "Select items from the tree view to see implementation examples." << std::endl;
 
         if (mainWindow) {
-            //mainWindow->Show();
+            mainWindow->Show();
             // The application will handle the event loop
         }
 

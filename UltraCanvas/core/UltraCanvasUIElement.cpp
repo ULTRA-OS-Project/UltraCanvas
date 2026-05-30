@@ -57,6 +57,27 @@ namespace UltraCanvas {
         return pos;
     }
 
+    void UltraCanvasUIElement::UpdateLayout() {
+        // update layout for top-lvel container and all children
+        CSSLayout::LayoutContext lctx;
+        if (window) {
+            // TODO: thread em/rem/DPI from window. Viewport defaults
+            // are acceptable for fixed-px callers; only vw/vh users
+            // need this populated correctly.
+            lctx.viewportWidth  = window->GetWidth();
+            lctx.viewportHeight = window->GetHeight();
+        }
+
+        CSSLayout::MeasureConstraints mc{
+                { CSSLayout::ConstraintMode::Exact, finalBounds.width  },
+                { CSSLayout::ConstraintMode::Exact, finalBounds.height }
+        };
+        this->Measure(mc, lctx);
+        // Arrange() places children and, at its tail, calls Arranged()
+        // (z-order sort + scrollbar metrics) and sets arrangeValid.
+        this->Arrange(finalBounds, lctx);
+    }
+
     void UltraCanvasUIElement::InvalidateRect(const Rect2Df& localRect) {
         if (!window || localRect.width <= 0 || localRect.height <= 0) return;
 
@@ -293,10 +314,23 @@ namespace UltraCanvas {
         if (auto* parentCont = GetParentContainer()) {
             parentCont->RequestUpdateGeometry();
         }
-        finalBounds = CSSLayout::LayoutRect{b.x, b.y, b.width, b.height};
+        finalBounds = Rect2Df{b.x, b.y, b.width, b.height};
         // Invalidate union of old+new bounds in parent space — bounds are stored
         // in parent coords, so this is what the parent (or window) needs to repaint.
         Rect2Df damage = oldBounds.Union(b);
+        if (auto* parentCont = GetParentContainer()) {
+            parentCont->InvalidateRect(damage);
+        } else if (window && this != window) {
+            window->AddDirtyRectangle(damage);
+        }
+    }
+
+    void UltraCanvasUIElement::Arrange(const Rect2Df& newFinalRect, const CSSLayout::LayoutContext& ctx) {
+        Rect2Df oldBounds = finalBounds;
+        CSSLayout::Element::Arrange(newFinalRect, ctx);
+
+        Rect2Df damage = oldBounds.Union(finalBounds);
+
         if (auto* parentCont = GetParentContainer()) {
             parentCont->InvalidateRect(damage);
         } else if (window && this != window) {

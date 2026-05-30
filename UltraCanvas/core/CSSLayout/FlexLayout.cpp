@@ -561,7 +561,7 @@ namespace UltraCanvas {
         }
 
         void ArrangeFlex(Element& e,
-                         const LayoutRect& finalRect,
+                         const Rect2Df& finalRect,
                          const LayoutContext& ctx) {
             // The finalRect is now Exact in both axes. If Measure was called
             // with the same constraints the cache hits and we skip the entire
@@ -684,12 +684,12 @@ namespace UltraCanvas {
                         ix += dx;
                         iy += dy;
                     }
-                    it->el->Arrange(LayoutRect{ix, iy, iw, ih}, ctx);
+                    it->el->Arrange(Rect2Df{ix, iy, iw, ih}, ctx);
                 }
             }
 
             // Out-of-flow children (absolute/fixed) handled with the same CB as block flow.
-            LayoutRect paddingBox{
+            Rect2Df paddingBox{
                 finalRect.x + bordIns.left,
                 finalRect.y + bordIns.top,
                 std::max(0.f, finalRect.width  - bordIns.horizontal()),
@@ -701,7 +701,7 @@ namespace UltraCanvas {
                 if (p == PositionType::Absolute) {
                     ArrangePositionedChild(*kid, paddingBox, ctx);
                 } else if (p == PositionType::Fixed) {
-                    LayoutRect viewport{ 0, 0, ctx.viewportWidth, ctx.viewportHeight };
+                    Rect2Df viewport{ 0, 0, ctx.viewportWidth, ctx.viewportHeight };
                     ArrangePositionedChild(*kid, viewport, ctx);
                 }
             }

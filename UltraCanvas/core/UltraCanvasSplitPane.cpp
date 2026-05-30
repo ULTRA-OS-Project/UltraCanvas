@@ -326,11 +326,9 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasSplitPane::UpdateGeometry(IRenderContext* ctx) {
-        if (IsLayoutDirty() || IsNeedsUpdateGeometry()) {
-            PerformLayout();
-        }
-        UltraCanvasContainer::UpdateGeometry(ctx);
+    void UltraCanvasSplitPane::Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) {
+        UltraCanvasContainer::Arrange(finalRect, ctx);
+        PerformLayout();
     }
 
     void UltraCanvasSplitPane::BeginSplitterDrag(size_t splitterIndex) {

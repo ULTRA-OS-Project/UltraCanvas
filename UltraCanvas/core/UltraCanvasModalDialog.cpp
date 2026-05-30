@@ -76,7 +76,6 @@ namespace UltraCanvas {
             iconLabel->SetFontWeight(FontWeight::Bold);
             iconLabel->SetTextColor(Colors::White);
             iconLabel->SetAlignment(TextAlignment::Center);
-            iconLabel->SetAutoResize(false);
             iconLabel->SetSize(style.iconSize, style.iconSize);
 
             iconContainer->AddChild(iconLabel);

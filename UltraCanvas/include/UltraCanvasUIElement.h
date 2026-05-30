@@ -137,7 +137,7 @@ namespace UltraCanvas {
         UltraCanvasUIElement(const std::string& idstr,
                              float x, float y, float w, float h) {
             id = idstr;
-            finalBounds = CSSLayout::LayoutRect{x, y, w, h};
+            finalBounds = Rect2Df{x, y, w, h};
             if (w > 0) size.width  = CSSLayout::Dimension::Px(w);
             if (h > 0) size.height = CSSLayout::Dimension::Px(h);
             if (x > 0 || y > 0) {
@@ -158,7 +158,7 @@ namespace UltraCanvas {
         explicit UltraCanvasUIElement(const std::string& idstr = "",
                              float w = 0, float h = 0) {
             id = idstr;
-            finalBounds = CSSLayout::LayoutRect{0.f, 0.f, w, h};
+            finalBounds = Rect2Df{0.f, 0.f, w, h};
             if (w > 0) size.width  = CSSLayout::Dimension::Px(w);
             if (h > 0) size.height = CSSLayout::Dimension::Px(h);
             stateFlags.Reset();
@@ -493,19 +493,16 @@ namespace UltraCanvas {
         // dirtyRect is in element-local coordinates (matches the translated ctx).
         virtual void Render(IRenderContext* ctx, const Rect2Df& dirtyRect);
         // Legacy geometry-pass entry point, retained as a bridge while widgets
-        // migrate their internal layout work into the engine's Arranged() hook.
-        // The default now simply drives Arranged(), so a widget that overrides
-        // only Arranged() still works when reached through this path (e.g. a
-        // popup the window updates directly). Containers override this to run
-        // the engine and recurse; widgets with their own bespoke UpdateGeometry
-        // body are unaffected.
+        // migrate their internal layout work into the engine's Arrange() hook.
         virtual void UpdateGeometry(IRenderContext* ctx) {
-            CSSLayout::LayoutContext lctx;
-            lctx.viewportWidth  = finalBounds.width;
-            lctx.viewportHeight = finalBounds.height;
-            Arranged(lctx);
             arrangeValid = true;
         }
+
+        // run Measure/Arrange for all its children
+        // this element usually should be top-level (window, popup or have no parent)
+        void UpdateLayout();
+
+        void Arrange(const Rect2Df& newFinalRect, const CSSLayout::LayoutContext& ctx) override;
 
         // ===== EVENT HANDLING =====
         virtual bool OnEvent(const UCEvent& event);

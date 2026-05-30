@@ -46,7 +46,9 @@ namespace UltraCanvas {
         debugOutput << "Menu '" << GetIdentifier() << "' hidden.  Visible: " << IsVisible() << std::endl;
     }
 
-    void UltraCanvasMenu::Arranged(const CSSLayout::LayoutContext& /*ctx*/) {
+    void UltraCanvasMenu::Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) {
+        UltraCanvasUIElement::Arrange(finalRect, ctx);
+
         if (needCalculateSize) {
             IRenderContext* rc = GetRenderContext();
             if (!rc) return;

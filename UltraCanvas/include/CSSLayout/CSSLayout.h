@@ -304,10 +304,6 @@ namespace UltraCanvas {
             LayoutItem& SetGridAlignSelf(AlignSelf a);
         };
 
-        // Note: project-wide Rect2Dd is Rect2D<double>; layout engine works in
-        // single-precision throughout, so we alias to Rect2D<float> explicitly.
-        using LayoutRect = Rect2D<float>;
-
         // Per-element cache for an algorithm's intermediate state (flex line
         // groupings + flex distribution; grid placements + track sizing).
         // Owned by Element; the concrete type lives in the algorithm's .cpp
@@ -361,7 +357,7 @@ namespace UltraCanvas {
             std::unique_ptr<LayoutComputed> layoutComputed;
 
             // computed result
-            LayoutRect finalBounds;
+            Rect2Df finalBounds;
 
             virtual ~Element() = default;
 
@@ -400,16 +396,7 @@ namespace UltraCanvas {
 
             virtual void MeasureCore(const MeasureConstraints& constraints, const LayoutContext& ctx);
 
-            virtual void Arrange(const LayoutRect& finalRect, const LayoutContext& ctx);
-
-            // Post-layout lifecycle hook, invoked at the tail of Arrange() after
-            // finalBounds and all child positions are final. Subclasses perform
-            // internal, geometry-dependent setup here — scrollbar metrics,
-            // z-order sorting, content (re)sizing — instead of in a separate
-            // out-of-band pass. The engine itself is render-agnostic, so this
-            // takes only a LayoutContext; UI subclasses that need a render
-            // context for text measurement fetch it themselves. Default: no-op.
-            virtual void Arranged(const LayoutContext& ctx) {}
+            virtual void Arrange(const Rect2Df& finalRect, const LayoutContext& ctx);
 
             // Whether the most recent Arrange() result is still current (nothing
             // has invalidated layout since). The window render loop gates its
@@ -423,7 +410,7 @@ namespace UltraCanvas {
             // Drop this element's caches and bubble UP — every ancestor whose own
             // measure may have depended on this element drops its cache too. Use
             // this for the common case (this element's content/style changed).
-            void InvalidateLayout();
+            virtual void InvalidateLayout();
 
             // Drop caches across the whole subtree. Use only when something
             // affecting every descendant has changed (LayoutContext, root font
@@ -432,8 +419,7 @@ namespace UltraCanvas {
 
             // TODO: container queries hook (ContainerType + name).
             // TODO: anchor positioning hook.
-
-        private:
+        protected:
             std::vector<std::shared_ptr<Element>> children;
             Element* parent = nullptr;   // non-owning
         };

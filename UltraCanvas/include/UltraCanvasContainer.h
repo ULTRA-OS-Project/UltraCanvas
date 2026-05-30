@@ -36,7 +36,7 @@ namespace UltraCanvas {
     class UltraCanvasContainer : public UltraCanvasUIElement {
     private:
         // Content area management
-        bool layoutDirty = true;
+        bool internalLayoutValid = false;
 
         // Callbacks
         std::function<void(int, int)> onScrollChanged;
@@ -138,21 +138,16 @@ namespace UltraCanvas {
         }
 
         // ===== LAYOUT MANAGEMENT =====
-        void InvalidateLayout() {
-            layoutDirty = true;
+        void InvalidateLayout() override {
+            CSSLayout::Element::InvalidateLayout();
+            internalLayoutValid = false;
             RequestRedraw();
-            RequestUpdateGeometry();
         }
-
-        bool IsLayoutDirty() const { return layoutDirty; }
 
         // ===== OVERRIDDEN ELEMENT METHODS =====
         void Render(IRenderContext *ctx, const Rect2Df&dirtyRect) override;
-        void UpdateGeometry(IRenderContext *ctx) override;
-        // Post-layout setup: z-order sort + scrollbar metrics. Invoked from the
-        // engine (tail of Arrange) for Flex/Grid containers, and directly from
-        // UpdateGeometry for the still-manual Block path.
-        void Arranged(const CSSLayout::LayoutContext& ctx) override;
+
+        void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
         bool OnEvent(const UCEvent &event) override;
 

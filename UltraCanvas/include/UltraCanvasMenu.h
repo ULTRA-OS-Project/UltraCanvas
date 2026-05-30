@@ -251,9 +251,8 @@ namespace UltraCanvas {
 
         // ===== CORE RENDERING =====
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
-        // Post-layout: (re)compute menu size from item text. Needs a render
-        // context for text measurement, fetched via GetRenderContext().
-        void Arranged(const CSSLayout::LayoutContext& ctx) override;
+
+        void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;

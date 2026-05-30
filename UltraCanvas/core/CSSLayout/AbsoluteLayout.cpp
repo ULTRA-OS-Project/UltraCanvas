@@ -151,7 +151,7 @@ namespace UltraCanvas {
         } // namespace
 
         void ArrangePositionedChild(Element& child,
-                                    const LayoutRect& containingBlock,
+                                    const Rect2Df& containingBlock,
                                     const LayoutContext& ctx) {
             // containingBlock is the padding-box rect of the CB (passed by caller).
             // First, measure the child with unbounded constraints to get its
@@ -205,7 +205,7 @@ namespace UltraCanvas {
             // i.e. CB == DOM parent. Cross-ancestor CBs (per CSS 2.1 §10.1)
             // will need a separate arrange pass against the real CB; see TODO
             // in ArrangeBlock for the containing-block walk.
-            LayoutRect r{ xr.position,
+            Rect2Df r{ xr.position,
                           yr.position,
                           xr.borderBox,
                           yr.borderBox };

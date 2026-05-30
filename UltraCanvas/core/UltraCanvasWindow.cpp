@@ -332,7 +332,7 @@ namespace UltraCanvas {
         if (!ctx) return;
 
         if (!IsLayoutValid()) {
-            UpdateGeometry(ctx);
+            UpdateLayout();
         }
 
         // ---- Window content pass: loop once per optimised dirty rect ----
