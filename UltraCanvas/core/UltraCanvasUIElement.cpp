@@ -305,6 +305,8 @@ namespace UltraCanvas {
     void UltraCanvasUIElement::SetElementSize(const Size2Df & sz) {
         size.width  = CSSLayout::Dimension::Px(sz.width);
         size.height = CSSLayout::Dimension::Px(sz.height);
+        finalBounds.width = sz.width;
+        finalBounds.height = sz.height;
         InvalidateLayout();
 //        if (auto* parentCont = GetParentContainer()) {
 //            InvalidateLayout();
