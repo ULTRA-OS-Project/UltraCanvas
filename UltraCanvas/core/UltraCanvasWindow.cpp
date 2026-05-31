@@ -307,7 +307,7 @@ namespace UltraCanvas {
             renderContext->ResizeSurface({config_.width, config_.height});
         }
         DoResizeNative();
-        SetOriginalSize(config_.width, config_.height);
+        SetElementSize({config_.width, config_.height});
 
         if (onWindowResize) onWindowResize(config_.width, config_.height);
 
@@ -331,7 +331,8 @@ namespace UltraCanvas {
         }
         if (!ctx) return;
 
-        if (!IsLayoutValid()) {
+        bool isLayoutValid = IsLayoutValid();
+        if (!isLayoutValid) {
             UpdateLayout();
         }
 
@@ -354,10 +355,10 @@ namespace UltraCanvas {
             auto* p = pe.element;
             if (!p || !p->IsVisible()) continue;
 
-            if (_needsPopupGeometry || p->needsUpdateGeometry) {
-                p->UpdateGeometry(ctx);
-                p->needsUpdateGeometry = false;
-            }
+//            if (_needsPopupGeometry || p->needsUpdateGeometry) {
+//                p->UpdateGeometry(ctx);
+//                p->needsUpdateGeometry = false;
+//            }
 
             Size2Di want = p->GetSize();
             if (want.width <= 0 || want.height <= 0) continue;
@@ -443,7 +444,8 @@ namespace UltraCanvas {
         }
         popupElements.push_back({&elem, settings, {}});
         AddChild(elem.shared_from_this());
-        elem.SetPosition(pos);
+        elem.SetElementAbsolutePosition(pos);
+        //elem.SetPosition(pos);
         elem.SetVisible(true);
         elem.SetZIndex(OverlayZOrder::Popups);
         elem.isPopup = true;

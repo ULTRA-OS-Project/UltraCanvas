@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
-// Version: 1.0.1
-// Last Modified: 2026-05-01
+// Version: 1.0.2
+// Last Modified: 2026-05-31
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasLayoutCompat.h"
@@ -380,6 +380,12 @@ namespace UltraCanvas {
 //        categoryContainerLayout->AddUIElement(legendContainer)->SetWidthMode(SizeMode::Fill);
 
         mainContainer->layout.SetFlexColumn().SetAlignItems(CSSLayout::AlignItems::Stretch);
+        // Fixed top bar: never shrink below its content. Without this the header is a
+        // flex-shrink:1 item, so a tall displayContainer (whose content overflows the
+        // column) would steal negative space from it and clip its top. flex-shrink:0
+        // freezes the header at its content height; displayContainer absorbs the
+        // overflow and scrolls.
+        headerContainer->layoutItem.SetFlexShrink(0);
         mainContainer->AddChild(headerContainer);
         displayContainer->layoutItem.SetFlexGrow(1);
         displayContainer->layout.SetFlexColumn();

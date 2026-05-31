@@ -224,7 +224,10 @@ namespace UltraCanvas {
         void SetPosition(const Point2Df& pos) { SetBounds(pos.x, pos.y, finalBounds.width, finalBounds.height); }
         void SetSize(float w, float h) { SetBounds(finalBounds.x, finalBounds.y, w, h); }
         void SetSize(const Size2Df& sz) { SetBounds(finalBounds.x, finalBounds.y, sz.width, sz.height); }
-        virtual void SetOriginalSize(float w, float h);
+
+        void SetElementAbsolutePosition(const Point2Df& pos);
+        void SetElementSize(const Size2Df & sz);
+
         void SetBounds(float x, float y, float w, float h) {
             SetBounds(Rect2Df(x, y, w, h));
         }

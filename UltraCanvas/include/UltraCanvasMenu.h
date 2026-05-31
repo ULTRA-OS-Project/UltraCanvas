@@ -1,7 +1,7 @@
 // include/UltraCanvasMenu.h
 // Interactive menu component with styling options and submenu support
-// Version: 1.6.0
-// Last Modified: 2026-05-29
+// Version: 1.7.0
+// Last Modified: 2026-05-31
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -205,7 +205,6 @@ namespace UltraCanvas {
         // Navigation state
         int activeIndex = -1;
         int selectedIndex = -1;
-        bool needCalculateSize = true;
 
         PopupElementSettings menuPopupSettings;
 
@@ -254,6 +253,13 @@ namespace UltraCanvas {
 
         void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
+        // Publishes the menu's content-driven desired size into the CSS engine's
+        // measure cache. Runs on every layout pass, so the menu's size stays correct
+        // when the window re-lays-out (e.g. when a submenu opens), instead of being
+        // reset to a stale constructor size.
+        void MeasureCore(const CSSLayout::MeasureConstraints& constraints,
+                         const CSSLayout::LayoutContext& ctx) override;
+
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;
 
@@ -263,14 +269,14 @@ namespace UltraCanvas {
 
         void SetOrientation(MenuOrientation orient) {
             orientation = orient;
-            needCalculateSize = true;
+            InvalidateLayout();
         }
 
         MenuOrientation GetOrientation() const { return orientation; }
 
         void SetStyle(const MenuStyle& menuStyle) {
             style = menuStyle;
-            needCalculateSize = true;
+            InvalidateLayout();
         }
         const MenuStyle& GetStyle() const { return style; }
 
@@ -317,7 +323,14 @@ namespace UltraCanvas {
 
     private:
         // ===== CALCULATION METHODS =====
-        void CalculateAndUpdateSize(IRenderContext* ctx);
+        // Pure measurement: computes the menu's desired (border-box) size from its
+        // items/style and the given constraints. Returns the size instead of mutating
+        // finalBounds, so the CSS engine owns sizing (Measure/Arrange model).
+        Size2Df MeasureMenuContent(IRenderContext* ctx, const CSSLayout::MeasureConstraints& c) const;
+
+        // Clear the CSS `size` (folding any fixed width into style.minWidth) so a
+        // vertical popup/submenu sizes to its content through MeasureCore.
+        void MakeContentSized();
 
         Rect2Di GetItemBounds(int index) const;
 

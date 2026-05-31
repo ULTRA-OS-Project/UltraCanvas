@@ -302,14 +302,24 @@ namespace UltraCanvas {
         window = win;
     }
 
-    void UltraCanvasUIElement::SetOriginalSize(float w, float h) {
-        size.width  = CSSLayout::Dimension::Px(w);
-        size.height = CSSLayout::Dimension::Px(h);
-        if (auto* parentCont = GetParentContainer()) {
-            parentCont->InvalidateLayout();
-        } else {
-            SetSize(w, h);
-        }
+    void UltraCanvasUIElement::SetElementSize(const Size2Df & sz) {
+        size.width  = CSSLayout::Dimension::Px(sz.width);
+        size.height = CSSLayout::Dimension::Px(sz.height);
+        InvalidateLayout();
+//        if (auto* parentCont = GetParentContainer()) {
+//            InvalidateLayout();
+//        } else {
+//            SetSize(sz);
+//        }
+    }
+
+    void UltraCanvasUIElement::SetElementAbsolutePosition(const Point2Df &pos) {
+        layoutItem.SetPositionType(CSSLayout::PositionType::Absolute);
+        layoutItem.SetPositionInsets({CSSLayout::Dimension::Px(pos.y),
+                                      CSSLayout::Dimension::Auto(),
+                                      CSSLayout::Dimension::Auto(),
+                                      CSSLayout::Dimension::Px(pos.x)});
+        InvalidateLayout();
     }
 
     void UltraCanvasUIElement::SetBounds(const Rect2Df &b) {
@@ -355,5 +365,4 @@ namespace UltraCanvas {
         }
         return false;
     }
-
 }

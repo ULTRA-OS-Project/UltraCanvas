@@ -2,7 +2,7 @@
 // Container with scrollbars and child management. Child storage lives on
 // CSSLayout::Element (via UltraCanvasUIElement); we iterate it through
 // Children() and static_pointer_cast each element to UltraCanvasUIElement.
-// Version: 4.1.0
+// Version: 4.1.1
 // Last Modified: 2026-05-31
 // Author: UltraCanvas Framework
 
@@ -193,6 +193,17 @@ namespace UltraCanvas {
 // ===== PRIVATE IMPLEMENTATION METHODS =====
 
     void UltraCanvasContainer::UpdateScrollability() {
+        // Children's finalBounds are in this container's BORDER-BOX frame (the CSS
+        // engine places them at border+padding+pos). The viewport compared against
+        // below (clientRect = GetContentArea()) is the CONTENT box. Measure each
+        // child's extent from the content-box origin so content-size and
+        // viewport-size share a frame; otherwise the top/left border+padding
+        // inflates content-size and a spurious scrollbar appears (the legend's 1px
+        // top border made content 1px taller than the viewport, pushing the bottom
+        // row out and triggering a vertical scrollbar).
+        const float originX = GetBorderLeftWidth() + GetPaddingLeft();
+        const float originY = GetBorderTopWidth()  + GetPaddingTop();
+
         float maxRight = 0;
         float maxBottom = 0;
 
@@ -202,8 +213,8 @@ namespace UltraCanvas {
             if (child->isPopup) continue;
 
             Rect2Df childBounds = child->GetBounds();
-            maxRight  = std::max(maxRight,  childBounds.x + childBounds.width);
-            maxBottom = std::max(maxBottom, childBounds.y + childBounds.height);
+            maxRight  = std::max(maxRight,  (childBounds.x - originX) + childBounds.width);
+            maxBottom = std::max(maxBottom, (childBounds.y - originY) + childBounds.height);
         }
         verticalScrollbar->SetVisible(style.forceShowVerticalScrollbar);
         horizontalScrollbar->SetVisible(style.forceShowHorizontalScrollbar);
