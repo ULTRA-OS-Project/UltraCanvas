@@ -2,8 +2,8 @@
 // Container with scrollbars and child management. Child storage lives on
 // CSSLayout::Element (via UltraCanvasUIElement); we iterate it through
 // Children() and static_pointer_cast each element to UltraCanvasUIElement.
-// Version: 4.0.0
-// Last Modified: 2026-05-27
+// Version: 4.1.0
+// Last Modified: 2026-05-31
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
@@ -113,9 +113,15 @@ namespace UltraCanvas {
             if (!child || !child->IsVisible()) continue;
             if (child->isPopup) continue;
 
+            // Child finalBounds are border-box-relative to this container's own
+            // origin (the CSS engine places in-flow children at border+padding+pos),
+            // so we do NOT re-add the content origin (ca.x/ca.y) here — that would
+            // double-count this container's left/top border+padding. The render ctx
+            // is already translated to this container's top-left; ca is still used
+            // below to clip children to the content area.
             Rect2Di adjustedChildBounds = child->GetBounds();
-            adjustedChildBounds.x = adjustedChildBounds.x - hsroll + ca.x;
-            adjustedChildBounds.y = adjustedChildBounds.y - vsroll + ca.y;
+            adjustedChildBounds.x = adjustedChildBounds.x - hsroll;
+            adjustedChildBounds.y = adjustedChildBounds.y - vsroll;
 
             Rect2Di contentAreaIntersection;
             if (!adjustedChildBounds.Intersects(ca, contentAreaIntersection)) continue;
@@ -468,11 +474,13 @@ namespace UltraCanvas {
             return this;
         }
 
-        auto contentRect = GetContentRect();
-
+        // Children's finalBounds are border-box-relative to this container's origin
+        // (i.e. in localPos's frame). Scroll shifts the children, so test the point
+        // in that frame with the scroll offset added back. Do NOT subtract the content
+        // origin (border+padding) — that lives in each child's finalBounds already.
         Point2Di contentPoint = Point2Di(
-                pos.x - contentRect.x + horizontalScrollbar->GetScrollPosition(),
-                pos.y - contentRect.y + verticalScrollbar->GetScrollPosition()
+                localPos.x + horizontalScrollbar->GetScrollPosition(),
+                localPos.y + verticalScrollbar->GetScrollPosition()
                 );
 
         // Check children in reverse order (topmost first) with proper clipping.
@@ -509,9 +517,11 @@ namespace UltraCanvas {
     Rect2Di UltraCanvasContainer::GetVisibleChildBounds(const Rect2Di& childBounds) {
         auto ca = GetContentArea();
 
+        // childBounds is border-box-relative to this container's origin (same frame
+        // as ca), so only scroll is applied here — the content origin is NOT re-added.
         Rect2Di adjustedChildBounds(
-                childBounds.x - GetHorizontalScrollPosition() + ca.x,
-                childBounds.y - GetVerticalScrollPosition() + ca.y,
+                childBounds.x - GetHorizontalScrollPosition(),
+                childBounds.y - GetVerticalScrollPosition(),
                 childBounds.width,
                 childBounds.height
         );

@@ -270,10 +270,10 @@ namespace UltraCanvas {
         }
 
         void SetPadding(float top, float right, float bottom, float left) {
-            box.padding.left   = CSSLayout::Dimension::Px(left);
             box.padding.top    = CSSLayout::Dimension::Px(top);
             box.padding.right  = CSSLayout::Dimension::Px(right);
             box.padding.bottom = CSSLayout::Dimension::Px(bottom);
+            box.padding.left   = CSSLayout::Dimension::Px(left);
             RequestUpdateGeometry();
         }
 

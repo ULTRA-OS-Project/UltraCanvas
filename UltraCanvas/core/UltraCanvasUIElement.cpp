@@ -1,8 +1,8 @@
 // UltraCanvasUIElement.cpp
 // UI base class implementation; geometry and box model live on
 // UltraCanvas::CSSLayout::Element (the new base).
-// Version: 4.0.0
-// Last Modified: 2026-05-27
+// Version: 4.1.0
+// Last Modified: 2026-05-31
 // Author: UltraCanvas Framework
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasContainer.h"
@@ -28,9 +28,12 @@ namespace UltraCanvas {
         if (auto* parentCont = GetParentContainer()) {
             auto pc = parentCont;
             while(pc) {
-                Rect2Df contentArea = pc->GetContentRect();
-                pos.x = pos.x + contentArea.x - pc->GetHorizontalScrollPosition();
-                pos.y = pos.y + contentArea.y - pc->GetVerticalScrollPosition();
+                // finalBounds is border-box-relative to each parent's own origin,
+                // so accumulate the parent's border-box position (GetBounds), NOT its
+                // content origin (GetContentRect) — the latter double-counts border+padding.
+                Rect2Df parentBounds = pc->GetBounds();
+                pos.x = pos.x + parentBounds.x - pc->GetHorizontalScrollPosition();
+                pos.y = pos.y + parentBounds.y - pc->GetVerticalScrollPosition();
                 if (pc == mapToParent) break;
                 pc = pc->GetParentContainer();
             }
@@ -45,9 +48,11 @@ namespace UltraCanvas {
         if (auto* parentCont = GetParentContainer()) {
             auto pc = parentCont;
             while(pc) {
-                Rect2Df contentArea = pc->GetContentRect();
-                pos.x = pos.x - contentArea.x + pc->GetHorizontalScrollPosition();
-                pos.y = pos.y - contentArea.y + pc->GetVerticalScrollPosition();
+                // Mirror of MapFromLocal: walk by each parent's border-box position
+                // (GetBounds), not its content origin, so border+padding isn't counted twice.
+                Rect2Df parentBounds = pc->GetBounds();
+                pos.x = pos.x - parentBounds.x + pc->GetHorizontalScrollPosition();
+                pos.y = pos.y - parentBounds.y + pc->GetVerticalScrollPosition();
                 if (pc == mapFromParent) break;
                 pc = pc->GetParentContainer();
             }
@@ -211,8 +216,10 @@ namespace UltraCanvas {
         if (auto* parentCont = GetParentContainer()) {
             auto pc = parentCont;
             while(pc) {
-                pos.x += (pc->GetContentRect().x - pc->GetHorizontalScrollPosition());
-                pos.y += (pc->GetContentRect().y - pc->GetVerticalScrollPosition());
+                // finalBounds is border-box-relative to each parent's origin, so add the
+                // parent's border-box position (GetBounds), not its content origin.
+                pos.x += (pc->GetBounds().x - pc->GetHorizontalScrollPosition());
+                pos.y += (pc->GetBounds().y - pc->GetVerticalScrollPosition());
                 pc = pc->GetParentContainer();
             }
         }
@@ -226,7 +233,7 @@ namespace UltraCanvas {
         if (auto* parentCont = GetParentContainer()) {
             auto pc = parentCont;
             while(pc) {
-                pos += (pc->GetContentRect().x - pc->GetHorizontalScrollPosition());
+                pos += (pc->GetBounds().x - pc->GetHorizontalScrollPosition());
                 pc = pc->GetParentContainer();
             }
         }
@@ -238,7 +245,7 @@ namespace UltraCanvas {
         if (auto* parentCont = GetParentContainer()) {
             auto pc = parentCont;
             while(pc) {
-                pos += (pc->GetContentRect().y - pc->GetVerticalScrollPosition());
+                pos += (pc->GetBounds().y - pc->GetVerticalScrollPosition());
                 pc = pc->GetParentContainer();
             }
         }

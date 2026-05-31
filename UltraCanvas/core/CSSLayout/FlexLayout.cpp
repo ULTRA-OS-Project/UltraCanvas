@@ -2,7 +2,7 @@
 // CSS Flexbox layout: https://www.w3.org/TR/css-flexbox-1/#layout-algorithm
 // Implemented: row/column/reverse, wrap, grow, shrink, basis, gap,
 // justify-content, align-items, align-self, align-content (no Baseline).
-// Version: 1.3.0
+// Version: 1.3.1
 // Last Modified: 2026-05-31
 // Author: UltraCanvas Framework
 
@@ -707,9 +707,12 @@ namespace UltraCanvas {
             }
 
             // Out-of-flow children (absolute/fixed) handled with the same CB as block flow.
+            // Padding-box expressed in THIS element's own (border-box) frame: origin = border,
+            // so ArrangePositionedChild produces border-box-relative finalBounds. Must NOT
+            // include finalRect.x/y (that would inherit the parent's position).
             Rect2Df paddingBox{
-                finalRect.x + bordIns.left,
-                finalRect.y + bordIns.top,
+                bordIns.left,
+                bordIns.top,
                 std::max(0.f, finalRect.width  - bordIns.horizontal()),
                 std::max(0.f, finalRect.height - bordIns.vertical())
             };

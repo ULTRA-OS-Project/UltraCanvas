@@ -1,7 +1,7 @@
 // core/CSSLayout/AbsoluteLayout.cpp
 // Out-of-flow positioning: position: absolute / fixed (CSS 2.1 §10.3.7, §10.6.4).
 // Position: relative offsets are applied post-layout (§9.4.3).
-// Version: 1.2.0
+// Version: 1.2.1
 // Last Modified: 2026-05-31
 // Author: UltraCanvas Framework
 
@@ -202,7 +202,9 @@ namespace UltraCanvas {
         void ArrangePositionedChild(Element& child,
                                     const Rect2Df& containingBlock,
                                     const LayoutContext& ctx) {
-            // containingBlock is the padding-box rect of the CB (passed by caller).
+            // containingBlock is the CB's padding-box expressed in the DOM parent's
+            // OWN local (border-box) frame: x/y = the padding-box origin's offset from
+            // the parent's top-left (i.e. the parent's border), width/height = the CB extent.
             Rect2Df box = SolvePositionedBox(child, containingBlock.width,
                                              containingBlock.height, ctx);
 
@@ -214,14 +216,15 @@ namespace UltraCanvas {
             };
             child.Measure(exact, ctx);
 
-            // finalBounds is parent-relative (offset within the DOM parent's
-            // content-box), per the renderer's expectation. box.x/y is the
-            // offset within the containing block. This is correct only while
-            // every caller passes its own padding-box as `containingBlock` —
-            // i.e. CB == DOM parent. Cross-ancestor CBs (per CSS 2.1 §10.1)
-            // will need a separate arrange pass against the real CB; see TODO
-            // in ArrangeBlock for the containing-block walk.
-            child.Arrange(box, ctx);
+            // finalBounds is border-box-relative to the DOM parent's origin (the
+            // renderer's convention). box.x/y is the offset within the CB (padding-box),
+            // so add the CB origin (containingBlock.x/y = the parent's border) to land
+            // in the parent's border-box frame. Correct only while every caller passes
+            // its own padding-box as `containingBlock` (CB == DOM parent). Cross-ancestor
+            // CBs (CSS 2.1 §10.1) need a separate arrange pass; see TODO in ArrangeBlock.
+            child.Arrange(Rect2Df{ containingBlock.x + box.x,
+                                   containingBlock.y + box.y,
+                                   box.width, box.height }, ctx);
         }
 
         Rect2Df MeasureAbsoluteUIBox(Element& child,

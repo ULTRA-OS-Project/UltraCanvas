@@ -79,14 +79,12 @@ namespace UltraCanvas {
 
     DemoHeaderContainer::DemoHeaderContainer(const std::string& identifier)
             : UltraCanvasContainer(identifier) {
-        layout.SetFlexRow().SetFlexGap(10);
 
         // Create title label (left side)
         titleLabel = std::make_shared<UltraCanvasLabel>("HeaderTitle");
         titleLabel->SetFontSize(14);
         titleLabel->SetFontWeight(FontWeight::Bold);
         titleLabel->SetText("Demo Title");
-        titleLabel->SetMargin(2,0,0,0);
         AddChild(titleLabel);
 
         AddStretchSpacer(1);
@@ -111,17 +109,17 @@ namespace UltraCanvas {
         // so it doesn't participate in the in-flow flex row (otherwise its
         // width:100% main-axis hypothetical would push the row into shrink
         // mode and the stretch spacer above would collapse to 0).
-        dividerLine = std::make_shared<UltraCanvasUIElement>("Divider");
-        dividerLine->size.height = CSSLayout::Dimension::Px(2);
-        dividerLine->SetBackgroundColor(Color(200, 200, 200, 255));
-        dividerLine->layoutItem.positionType = CSSLayout::PositionType::Absolute;
-        dividerLine->layoutItem.position = CSSLayout::Position{
-            /*top   */ CSSLayout::Dimension::Auto(),
-            /*right */ CSSLayout::Dimension::Px(0),
-            /*bottom*/ CSSLayout::Dimension::Px(0),
-            /*left  */ CSSLayout::Dimension::Px(0),
-        };
-        AddChild(dividerLine);
+//        dividerLine = std::make_shared<UltraCanvasUIElement>("Divider");
+//        dividerLine->size.height = CSSLayout::Dimension::Px(2);
+//        dividerLine->SetBackgroundColor(Color(200, 200, 200, 255));
+//        dividerLine->layoutItem.positionType = CSSLayout::PositionType::Absolute;
+//        dividerLine->layoutItem.position = CSSLayout::Position{
+//            /*top   */ CSSLayout::Dimension::Auto(),
+//            /*right */ CSSLayout::Dimension::Px(0),
+//            /*bottom*/ CSSLayout::Dimension::Px(0),
+//            /*left  */ CSSLayout::Dimension::Px(0),
+//        };
+//        AddChild(dividerLine);
 
         // Set container style
         ContainerStyle containerStyle;
@@ -133,6 +131,8 @@ namespace UltraCanvas {
         SetBackgroundColor(Color(245, 245, 245, 255));
         SetPadding(5,10,5,10);
         SetBorderBottom(2, Colors::Gray);
+
+        layout.SetFlexRow().SetFlexGap(10).SetAlignItems(CSSLayout::AlignItems::Center);
 
 //        auto headerLayout = CreateHBoxLayout(this);
 //        headerLayout->SetSpacing(10);
@@ -346,14 +346,13 @@ namespace UltraCanvas {
 
         // Header sized by its parent row — no explicit w/h.
         headerContainer = std::make_shared<DemoHeaderContainer>("HeaderContainer");
-        headerContainer->SetPadding(0,0,4,0);
 
         // Create display container (below header)
         displayContainer = std::make_shared<UltraCanvasContainer>("DisplayArea");
         displayContainer->SetBackgroundColor(Colors::White);
 
         // Create status label (bottom left)
-        statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel", 10, 850, 850, 25);
+        statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel");
         statusLabel->SetText("Select a component from the tree view to see examples");
         statusLabel->SetBackgroundColor(Color(240, 240, 240, 255));
         statusLabel->SetPadding(3, 7, 3, 7);

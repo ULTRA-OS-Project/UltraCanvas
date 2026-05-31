@@ -1,6 +1,6 @@
 // core/CSSLayout/Element.cpp
 // Element base: measure-cache wrapper, default block layout, arrange dispatch.
-// Version: 1.3.0
+// Version: 1.3.1
 // Last Modified: 2026-05-31
 // Author: UltraCanvas Framework
 
@@ -366,9 +366,11 @@ namespace UltraCanvas {
             // 2.1 §10.1). We pass our own padding-box; correctness depends on the
             // caller using this Element as the abspos CB (position != Static).
             // TODO: proper containing-block walk for nested abspos through non-CB parents.
+            // Padding-box in this element's own (border-box) frame: origin = border, so
+            // ArrangePositionedChild yields border-box-relative finalBounds. NOT finalRect.x/y.
             Rect2Df paddingBox{
-                finalRect.x + bordIns.left,
-                finalRect.y + bordIns.top,
+                bordIns.left,
+                bordIns.top,
                 std::max(0.f, finalRect.width  - bordIns.horizontal()),
                 std::max(0.f, finalRect.height - bordIns.vertical())
             };

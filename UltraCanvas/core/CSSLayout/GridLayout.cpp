@@ -5,7 +5,7 @@
 // MinContent/MaxContent/FitContent, gaps, justify-self / align-self.
 // Deferred (TODO): named lines, named areas, dense packing, subgrid, MinMax
 // proper resolution (currently approximated as Min..Max bounds).
-// Version: 1.3.0
+// Version: 1.3.1
 // Last Modified: 2026-05-31
 // Author: UltraCanvas Framework
 
@@ -635,10 +635,12 @@ namespace UltraCanvas {
                 p.el->Arrange(Rect2Df{x, y, itemW, itemH}, ctx);
             }
 
-            // Out-of-flow children.
+            // Out-of-flow children. Padding-box in this element's own (border-box) frame:
+            // origin = border, so ArrangePositionedChild yields border-box-relative
+            // finalBounds. NOT finalRect.x/y.
             Rect2Df paddingBox{
-                finalRect.x + bordIns.left,
-                finalRect.y + bordIns.top,
+                bordIns.left,
+                bordIns.top,
                 std::max(0.f, finalRect.width  - bordIns.horizontal()),
                 std::max(0.f, finalRect.height - bordIns.vertical())
             };
