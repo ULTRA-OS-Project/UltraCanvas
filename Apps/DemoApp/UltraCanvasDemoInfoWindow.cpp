@@ -55,8 +55,9 @@ namespace UltraCanvas {
         exampleAppIcon->LoadFromFile(NormalizePath(GetResourcesDir() + "media/appicon/UltraCanvas.png"));
         exampleAppIcon->SetFitMode(ImageFitMode::Contain);
         exampleAppIcon->SetMargin(12,0,6,0);
+        // align-self: center centers the icon on the cross (horizontal) axis of the
+        // flex column. justify-self is grid-only and would wipe this FlexItem.
         exampleAppIcon->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
-        exampleAppIcon->layoutItem.SetJustifySelf(CSSLayout::JustifySelf::Center);
         AddChild(exampleAppIcon);
 
         titleLabel = std::make_shared<UltraCanvasLabel>("InfoTitle");

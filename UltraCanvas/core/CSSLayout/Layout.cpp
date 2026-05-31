@@ -1,10 +1,11 @@
 // core/CSSLayout/Layout.cpp
 // Chainable setters on struct Layout and struct LayoutItem.
-// Version: 1.0.0
-// Last Modified: 2026-05-27
+// Version: 1.1.0
+// Last Modified: 2026-05-31
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
     namespace CSSLayout {
@@ -132,6 +133,12 @@ namespace UltraCanvas {
 
         namespace {
             FlexItem& asFlexItem(LayoutItem& L) {
+                if (std::holds_alternative<GridItem>(L.data)) {
+                    debugOutput << "CSSLayout WARNING: a flex LayoutItem setter "
+                                   "(SetFlexGrow/Shrink/Basis/Order) was called on an item already "
+                                   "configured as a GRID item; its grid settings will be discarded. "
+                                   "Check that the element's parent uses the matching display type." << std::endl;
+                }
                 if (!std::holds_alternative<FlexItem>(L.data)) {
                     L.data = FlexItem{};
                 }
@@ -139,6 +146,13 @@ namespace UltraCanvas {
             }
 
             GridItem& asGridItem(LayoutItem& L) {
+                if (std::holds_alternative<FlexItem>(L.data)) {
+                    debugOutput << "CSSLayout WARNING: a grid LayoutItem setter "
+                                   "(SetGridColumn/Row/JustifySelf/...) was called on an item already "
+                                   "configured as a FLEX item; its flex settings (grow/shrink/basis/"
+                                   "align-self) will be discarded. Check that the element's parent uses "
+                                   "the matching display type." << std::endl;
+                }
                 if (!std::holds_alternative<GridItem>(L.data)) {
                     L.data = GridItem{};
                 }
@@ -208,6 +222,7 @@ namespace UltraCanvas {
         }
 
         LayoutItem& LayoutItem::SetJustifySelf(JustifySelf j) {
+            
             asGridItem(*this).justifySelf = j;
             return *this;
         }

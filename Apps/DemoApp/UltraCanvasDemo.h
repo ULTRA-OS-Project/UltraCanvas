@@ -109,7 +109,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasLabel> notImplementedLabel;
 
     public:
-        DemoLegendContainer(const std::string& identifier, float x, float y, float width, float height);
+        DemoLegendContainer(const std::string& identifier);
         void SetupLegend(const std::string& implementedIconPath,
                          const std::string& partialIconPath,
                          const std::string& notImplementedIconPath);

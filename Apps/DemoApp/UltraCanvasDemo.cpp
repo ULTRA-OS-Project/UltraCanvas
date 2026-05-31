@@ -13,15 +13,16 @@
 #include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
-    DemoLegendContainer::DemoLegendContainer(const std::string& identifier, float x, float y, float width, float height)
-            : UltraCanvasContainer(identifier, x, y, width, height) {
+    DemoLegendContainer::DemoLegendContainer(const std::string& identifier)
+//            : UltraCanvasContainer(identifier, x, y, width, height) {
+        : UltraCanvasContainer(identifier) {
 
         // Set container style
 //        SetBorders(1, Color(200, 200, 200, 255));
         SetBackgroundColor(Color(245, 245, 245, 255));
 
         // Create legend title
-        legendTitle = std::make_shared<UltraCanvasLabel>("LegendTitle", 10, 5, width - 20, 20);
+        legendTitle = std::make_shared<UltraCanvasLabel>("LegendTitle", 10, 5, 0, 0);
         legendTitle->SetText("Component Status Legend");
         legendTitle->SetFontSize(12);
         legendTitle->SetFontWeight(FontWeight::Bold);
@@ -32,7 +33,7 @@ namespace UltraCanvas {
         implementedIcon = std::make_shared<UltraCanvasImageElement>("ImplementedIcon", 10, 30, 16, 16);
         AddChild(implementedIcon);
 
-        implementedLabel = std::make_shared<UltraCanvasLabel>("ImplementedLabel", 32, 28, width - 42, 16);
+        implementedLabel = std::make_shared<UltraCanvasLabel>("ImplementedLabel", 32, 28, 0, 0);
         implementedLabel->SetText("Fully Implemented");
         implementedLabel->SetFontSize(11);
         implementedLabel->SetTextColor(Color(0, 150, 0, 255));
@@ -42,7 +43,7 @@ namespace UltraCanvas {
         partialIcon = std::make_shared<UltraCanvasImageElement>("PartialIcon", 10, 50, 16, 16);
         AddChild(partialIcon);
 
-        partialLabel = std::make_shared<UltraCanvasLabel>("PartialLabel", 32, 48, width - 42, 16);
+        partialLabel = std::make_shared<UltraCanvasLabel>("PartialLabel", 32, 48, 0, 0);
         partialLabel->SetText("Partially Implemented");
         partialLabel->SetFontSize(11);
         partialLabel->SetTextColor(Color(0x21, 0x96, 0xf3, 255));
@@ -52,7 +53,7 @@ namespace UltraCanvas {
         notImplementedIcon = std::make_shared<UltraCanvasImageElement>("NotImplementedIcon", 10, 70, 16, 16);
         AddChild(notImplementedIcon);
 
-        notImplementedLabel = std::make_shared<UltraCanvasLabel>("NotImplementedLabel", 32, 68, width - 42, 16);
+        notImplementedLabel = std::make_shared<UltraCanvasLabel>("NotImplementedLabel", 32, 68, 0, 0);
         notImplementedLabel->SetText("Not Implemented Yet");
         notImplementedLabel->SetFontSize(11);
         notImplementedLabel->SetTextColor(Color(200, 0, 0, 255));
@@ -325,13 +326,14 @@ namespace UltraCanvas {
         categoryTreeView->SetLineStyle(TreeLineStyle::Solid);
         categoryTreeView->SetShowFirstChildOnExpand(true);
         categoryTreeView->SetAutoExpandSelectedNode(true);
-        categoryTreeView->SetPadding(1,3,1,3);
+        //categoryTreeView->SetPadding(1,3,1,3);
 
         debugOutput << "categoryTreeView created" << std::endl;
 
         // Create legend container below tree view
-        legendContainer = std::make_shared<DemoLegendContainer>("LegendContainer", 0, 0, 100, legendHeight);
+        legendContainer = std::make_shared<DemoLegendContainer>("LegendContainer");
         legendContainer->SetBorderTop(1, Colors::Gray);
+        legendContainer->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         SetupLegendContainer();
 
         // No-size constructor — let the grid cell decide categoryContainer's
@@ -368,7 +370,10 @@ namespace UltraCanvas {
         };
 
         categoryContainer->layout.SetFlexColumn();
-        categoryTreeView->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch).SetJustifySelf(CSSLayout::JustifySelf::Stretch);
+        // flex-grow fills the main (vertical) axis; align-self: stretch fills the
+        // cross (horizontal) axis. justify-self is grid-only — adding it here would
+        // convert layoutItem into a GridItem and discard the flex props above.
+        categoryTreeView->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         categoryContainer->AddChild(categoryTreeView);
         categoryContainer->AddChild(legendContainer);
 //        auto categoryContainerLayout = CreateVBoxLayout(categoryContainer.get());
@@ -377,7 +382,7 @@ namespace UltraCanvas {
 
         mainContainer->layout.SetFlexColumn();
         mainContainer->AddChild(headerContainer);
-        displayContainer->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch).SetJustifySelf(CSSLayout::JustifySelf::Stretch);
+        displayContainer->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         displayContainer->layout.SetFlexColumn();
         mainContainer->AddChild(displayContainer);
 //        auto mainContainerLayout = CreateVBoxLayout(mainContainer.get());
