@@ -71,9 +71,10 @@ namespace UltraCanvas {
         AddChild(titleLabel);
 
         // Create divider line 1
-        auto divider = std::make_shared<UltraCanvasUIElement>("Divider", 10, 50, 600, 2);
+        auto divider = std::make_shared<UltraCanvasUIElement>("Divider", 600, 2);
         divider->SetBackgroundColor(Color(200, 200, 200, 255));
         divider->SetMargin(0,10,0,10);
+        divider->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         AddChild(divider);
 
         infoLabel1 = std::make_shared<UltraCanvasLabel>("InfoText1");
@@ -88,9 +89,10 @@ namespace UltraCanvas {
         AddChild(infoLabel1);
 
         // Create divider line 2
-        auto divider2 = std::make_shared<UltraCanvasUIElement>("Divider", 10, 50, 600, 2);
+        auto divider2 = std::make_shared<UltraCanvasUIElement>("Divider", 600, 2);
         divider2->SetBackgroundColor(Color(200, 200, 200, 255));
         divider2->SetMargin(0,10,0,10);
+        divider2->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         AddChild(divider2);
 
 

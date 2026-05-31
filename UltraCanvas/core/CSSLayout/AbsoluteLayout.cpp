@@ -1,8 +1,8 @@
 // core/CSSLayout/AbsoluteLayout.cpp
 // Out-of-flow positioning: position: absolute / fixed (CSS 2.1 §10.3.7, §10.6.4).
 // Position: relative offsets are applied post-layout (§9.4.3).
-// Version: 1.1.1
-// Last Modified: 2026-05-28
+// Version: 1.2.0
+// Last Modified: 2026-05-31
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -148,68 +148,90 @@ namespace UltraCanvas {
                 return r;
             }
 
+            // Solve both axes of a positioned child against a containing block of
+            // the given size (cbWidth x cbHeight — the CB's padding-box extent).
+            // Returns the CB-relative box {position.x, position.y, borderBox.w,
+            // borderBox.h}. Shared by the arrange path (ArrangePositionedChild) and
+            // the AbsoluteUI measure-contribution path (MeasureAbsoluteUIBox) so the
+            // measured size and the arranged position can never diverge.
+            Rect2Df SolvePositionedBox(Element& child,
+                                       float cbWidth,
+                                       float cbHeight,
+                                       const LayoutContext& ctx) {
+                // Measure the child with unbounded constraints to get its intrinsic
+                // preferred size (used when sides/size combine to auto).
+                MeasureConstraints unconstrained{
+                    { ConstraintMode::AtMost, cbWidth },
+                    { ConstraintMode::AtMost, cbHeight }
+                };
+                child.Measure(unconstrained, ctx);
+                float intrinsicW = child.measured.measuredWidth;
+                float intrinsicH = child.measured.measuredHeight;
+
+                // Padding + border totals (resolved against CB inline size).
+                auto pad  = resolveEdgeSizes(child.box.padding, cbWidth, ctx);
+                auto bord = resolveEdgeSizes(child.box.border,  cbWidth, ctx);
+
+                Position insets = child.layoutItem.position.value_or(Position{});
+
+                AxisResult xr = solveAbsoluteAxis(
+                    cbWidth,
+                    insets.left, insets.right, child.size.width,
+                    child.box.boxSizing,
+                    child.box.margin.left, child.box.margin.right,
+                    pad.horizontal(), bord.horizontal(),
+                    intrinsicW,
+                    0.f /* static_pos: TODO - track real static-position from in-flow pass */,
+                    ctx);
+
+                AxisResult yr = solveAbsoluteAxis(
+                    cbHeight,
+                    insets.top, insets.bottom, child.size.height,
+                    child.box.boxSizing,
+                    child.box.margin.top, child.box.margin.bottom,
+                    pad.vertical(), bord.vertical(),
+                    intrinsicH,
+                    0.f /* static_pos */,
+                    ctx);
+
+                return Rect2Df{ xr.position, yr.position, xr.borderBox, yr.borderBox };
+            }
+
         } // namespace
 
         void ArrangePositionedChild(Element& child,
                                     const Rect2Df& containingBlock,
                                     const LayoutContext& ctx) {
             // containingBlock is the padding-box rect of the CB (passed by caller).
-            // First, measure the child with unbounded constraints to get its
-            // intrinsic preferred size (used when sides/size combine to auto).
-            MeasureConstraints unconstrained{
-                { ConstraintMode::AtMost, containingBlock.width },
-                { ConstraintMode::AtMost, containingBlock.height }
-            };
-            child.Measure(unconstrained, ctx);
-            float intrinsicW = child.measured.measuredWidth;
-            float intrinsicH = child.measured.measuredHeight;
-
-            // Padding + border totals (resolved against CB inline size).
-            auto pad  = resolveEdgeSizes(child.box.padding, containingBlock.width, ctx);
-            auto bord = resolveEdgeSizes(child.box.border,  containingBlock.width, ctx);
-
-            Position insets = child.layoutItem.position.value_or(Position{});
-
-            AxisResult xr = solveAbsoluteAxis(
-                containingBlock.width,
-                insets.left, insets.right, child.size.width,
-                child.box.boxSizing,
-                child.box.margin.left, child.box.margin.right,
-                pad.horizontal(), bord.horizontal(),
-                intrinsicW,
-                0.f /* static_pos: TODO - track real static-position from in-flow pass */,
-                ctx);
-
-            AxisResult yr = solveAbsoluteAxis(
-                containingBlock.height,
-                insets.top, insets.bottom, child.size.height,
-                child.box.boxSizing,
-                child.box.margin.top, child.box.margin.bottom,
-                pad.vertical(), bord.vertical(),
-                intrinsicH,
-                0.f /* static_pos */,
-                ctx);
+            Rect2Df box = SolvePositionedBox(child, containingBlock.width,
+                                             containingBlock.height, ctx);
 
             // Re-measure with the exact resolved border-box so the child lays out
             // its own children at the right size.
             MeasureConstraints exact{
-                { ConstraintMode::Exact, xr.borderBox },
-                { ConstraintMode::Exact, yr.borderBox }
+                { ConstraintMode::Exact, box.width },
+                { ConstraintMode::Exact, box.height }
             };
             child.Measure(exact, ctx);
 
             // finalBounds is parent-relative (offset within the DOM parent's
-            // content-box), per the renderer's expectation. xr.position is the
+            // content-box), per the renderer's expectation. box.x/y is the
             // offset within the containing block. This is correct only while
             // every caller passes its own padding-box as `containingBlock` —
             // i.e. CB == DOM parent. Cross-ancestor CBs (per CSS 2.1 §10.1)
             // will need a separate arrange pass against the real CB; see TODO
             // in ArrangeBlock for the containing-block walk.
-            Rect2Df r{ xr.position,
-                          yr.position,
-                          xr.borderBox,
-                          yr.borderBox };
-            child.Arrange(r, ctx);
+            child.Arrange(box, ctx);
+        }
+
+        Rect2Df MeasureAbsoluteUIBox(Element& child,
+                                     float cbWidth,
+                                     float cbHeight,
+                                     const LayoutContext& ctx) {
+            // CB-relative box, computed via the SAME solver as ArrangePositionedChild.
+            // The Measure pass folds (x+width, y+height) into the container's auto
+            // content size. No Exact re-measure here — that is an arrange concern.
+            return SolvePositionedBox(child, cbWidth, cbHeight, ctx);
         }
 
         std::pair<float, float> computeRelativeOffset(const Element& child,

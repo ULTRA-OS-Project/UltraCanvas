@@ -77,9 +77,8 @@ namespace UltraCanvas {
         }
     }
 
-    DemoHeaderContainer::DemoHeaderContainer(const std::string& identifier,
-                                             float x, float y, float width, float height)
-            : UltraCanvasContainer(identifier, x, y, width, height) {
+    DemoHeaderContainer::DemoHeaderContainer(const std::string& identifier)
+            : UltraCanvasContainer(identifier) {
         layout.SetFlexRow().SetFlexGap(10);
 
         // Create title label (left side)
@@ -346,10 +345,11 @@ namespace UltraCanvas {
         mainContainer->SetBorderLeft(1, Colors::Gray);
 
         // Header sized by its parent row — no explicit w/h.
-        headerContainer = std::make_shared<DemoHeaderContainer>("HeaderContainer", 0, 0, 0, 0);
+        headerContainer = std::make_shared<DemoHeaderContainer>("HeaderContainer");
+        headerContainer->SetPadding(0,0,4,0);
 
         // Create display container (below header)
-        displayContainer = std::make_shared<UltraCanvasContainer>("DisplayArea", 0, 40, 1028, 785);
+        displayContainer = std::make_shared<UltraCanvasContainer>("DisplayArea");
         displayContainer->SetBackgroundColor(Colors::White);
 
         // Create status label (bottom left)
@@ -380,9 +380,9 @@ namespace UltraCanvas {
 //        categoryContainerLayout->AddUIElement(categoryTreeView, 1)->SetWidthMode(SizeMode::Fill);
 //        categoryContainerLayout->AddUIElement(legendContainer)->SetWidthMode(SizeMode::Fill);
 
-        mainContainer->layout.SetFlexColumn();
+        mainContainer->layout.SetFlexColumn().SetAlignItems(CSSLayout::AlignItems::Stretch);
         mainContainer->AddChild(headerContainer);
-        displayContainer->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        displayContainer->layoutItem.SetFlexGrow(1);
         displayContainer->layout.SetFlexColumn();
         mainContainer->AddChild(displayContainer);
 //        auto mainContainerLayout = CreateVBoxLayout(mainContainer.get());
@@ -394,7 +394,7 @@ namespace UltraCanvas {
         mainWindow->layout
             .SetGrid()
             .SetGridColumns({CSSLayout::GridTrackSize{.kind=CSSLayout::GridTrackSizeKind::Fixed, .value=CSSLayout::Dimension::Px(350)},
-                             CSSLayout::GridTrackSize{.kind=CSSLayout::GridTrackSizeKind::Auto}})
+                             CSSLayout::GridTrackSize{.kind=CSSLayout::GridTrackSizeKind::Fr, .value=CSSLayout::Dimension::Fr(1)}})
              // Row 0 = Fr(1) so it consumes all available vertical space
              // (otherwise Auto would collapse the sidebar to ~4 tree rows).
              // Row 1 = the 25-pixel status bar at the bottom.

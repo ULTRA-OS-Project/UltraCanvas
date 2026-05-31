@@ -1,7 +1,7 @@
 // include/CSSLayout/CSSLayout.h
 // CSS-compliant layout engine: type model and Element base class.
-// Version: 4.6.0
-// Last Modified: 2026-05-29
+// Version: 4.7.0
+// Last Modified: 2026-05-31
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -109,7 +109,11 @@ namespace UltraCanvas {
 
         enum class DisplayType    { Block, Flex, Grid, Inline, InlineBlock, NoDisplay };
         enum class BoxSizing      { ContentBox, BorderBox };
-        enum class PositionType   { Static, Relative, Absolute, Fixed };
+        // AbsoluteUI: positioned exactly like Absolute (against the padding-box),
+        // but ALSO contributes to the container's measured size during Measure
+        // (the container grows to cover left+width / top+height). Opt-in; plain
+        // Absolute keeps the standard CSS behavior of not affecting parent size.
+        enum class PositionType   { Static, Relative, Absolute, Fixed, AbsoluteUI };
         enum class Overflow       { Visible, Hidden, Scroll, Auto };
         enum class Visibility     { Visible, Hidden };  // Hidden reserves space (unlike NoDisplay)
 

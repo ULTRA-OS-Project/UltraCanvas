@@ -150,7 +150,7 @@ namespace UltraCanvas {
                 layoutItem.position = CSSLayout::Position();
                 layoutItem.position->left = CSSLayout::Dimension::Px(x);
                 layoutItem.position->top = CSSLayout::Dimension::Px(y);
-                layoutItem.SetPositionType(CSSLayout::PositionType::Absolute);
+                layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
             }
             stateFlags.Reset();
         }

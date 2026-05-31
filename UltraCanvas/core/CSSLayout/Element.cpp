@@ -1,7 +1,7 @@
 // core/CSSLayout/Element.cpp
 // Element base: measure-cache wrapper, default block layout, arrange dispatch.
-// Version: 1.2.1
-// Last Modified: 2026-05-28
+// Version: 1.3.0
+// Last Modified: 2026-05-31
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -283,6 +283,28 @@ namespace UltraCanvas {
                     : std::optional<float>{c.vertical.available};
             contentH = clampToConstraints(contentH, e.constraints, false, parentBlock, ctx);
 
+            // AbsoluteUI children contribute to the container's measured size
+            // (unlike plain Absolute). Grow the *auto* content dimension to cover
+            // each child's (left+width, top+height) extent, solved exactly as it
+            // will be positioned. Done after the AtMost/min-max clamps so an
+            // AbsoluteUI child may grow the container past them — mirroring how it
+            // overflows during arrange. The CB-size estimate is the current content
+            // extents (insets resolve against the padding-box; equal to content-box
+            // when padding == 0, the normal UI case). Explicit sizes win: when
+            // own.contentWidth/Height resolved, that value already became contentW/H
+            // and we must not override it.
+            bool widthAuto  = !own.contentWidth.has_value();
+            bool heightAuto = !own.contentHeight.has_value();
+            if (widthAuto || heightAuto) {
+                for (auto& kid : e.Children()) {
+                    if (!kid) continue;
+                    if (kid->layoutItem.positionType != PositionType::AbsoluteUI) continue;
+                    Rect2Df b = MeasureAbsoluteUIBox(*kid, contentW, contentH, ctx);
+                    if (widthAuto)  contentW = std::max(contentW, b.x + b.width);
+                    if (heightAuto) contentH = std::max(contentH, b.y + b.height);
+                }
+            }
+
             e.measured.measuredWidth  = contentW + padH + bordH;
             e.measured.measuredHeight = contentH + padV + bordV;
         }
@@ -353,7 +375,7 @@ namespace UltraCanvas {
             for (auto& kid : e.Children()) {
                 if (!kid) continue;
                 auto pos = kid->layoutItem.positionType;
-                if (pos == PositionType::Absolute) {
+                if (pos == PositionType::Absolute || pos == PositionType::AbsoluteUI) {
                     ArrangePositionedChild(*kid, paddingBox, ctx);
                 } else if (pos == PositionType::Fixed) {
                     Rect2Df viewport{ 0, 0, ctx.viewportWidth, ctx.viewportHeight };

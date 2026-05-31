@@ -128,7 +128,7 @@ namespace UltraCanvas {
         std::string currentDocFile;
 
     public:
-        DemoHeaderContainer(const std::string& identifier, float x, float y, float width, float height);
+        DemoHeaderContainer(const std::string& identifier);
 
         void SetDemoTitle(const std::string& title);
         void SetSourceFile(const std::string& sourceFile);

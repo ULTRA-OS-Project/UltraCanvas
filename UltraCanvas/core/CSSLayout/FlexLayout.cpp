@@ -2,8 +2,8 @@
 // CSS Flexbox layout: https://www.w3.org/TR/css-flexbox-1/#layout-algorithm
 // Implemented: row/column/reverse, wrap, grow, shrink, basis, gap,
 // justify-content, align-items, align-self, align-content (no Baseline).
-// Version: 1.2.1
-// Last Modified: 2026-05-28
+// Version: 1.3.0
+// Last Modified: 2026-05-31
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -551,13 +551,31 @@ namespace UltraCanvas {
             }
             if (s.crossKnown) crossContent = std::max(crossContent, s.availableCross);
 
+            // Map main/cross content + pad/border back to width/height.
+            float contentW, contentH, padH, bordH, padV, bordV;
+            bool widthKnown, heightKnown;
             if (s.axis.isRow) {
-                e.measured.measuredWidth  = mainContent  + s.padMain  + s.bordMain;
-                e.measured.measuredHeight = crossContent + s.padCross + s.bordCross;
+                contentW = mainContent;  padH = s.padMain;  bordH = s.bordMain;  widthKnown  = s.mainKnown;
+                contentH = crossContent; padV = s.padCross; bordV = s.bordCross; heightKnown = s.crossKnown;
             } else {
-                e.measured.measuredHeight = mainContent  + s.padMain  + s.bordMain;
-                e.measured.measuredWidth  = crossContent + s.padCross + s.bordCross;
+                contentH = mainContent;  padV = s.padMain;  bordV = s.bordMain;  heightKnown = s.mainKnown;
+                contentW = crossContent; padH = s.padCross; bordH = s.bordCross; widthKnown  = s.crossKnown;
             }
+
+            // AbsoluteUI children grow the container's *auto* dimensions
+            // (see MeasureBlock for rationale). Explicit/known sizes win.
+            if (!widthKnown || !heightKnown) {
+                for (auto& kid : e.Children()) {
+                    if (!kid) continue;
+                    if (kid->layoutItem.positionType != PositionType::AbsoluteUI) continue;
+                    Rect2Df b = MeasureAbsoluteUIBox(*kid, contentW, contentH, ctx);
+                    if (!widthKnown)  contentW = std::max(contentW, b.x + b.width);
+                    if (!heightKnown) contentH = std::max(contentH, b.y + b.height);
+                }
+            }
+
+            e.measured.measuredWidth  = contentW + padH + bordH;
+            e.measured.measuredHeight = contentH + padV + bordV;
         }
 
         void ArrangeFlex(Element& e,
@@ -698,7 +716,7 @@ namespace UltraCanvas {
             for (auto& kid : e.Children()) {
                 if (!kid) continue;
                 auto p = kid->layoutItem.positionType;
-                if (p == PositionType::Absolute) {
+                if (p == PositionType::Absolute || p == PositionType::AbsoluteUI) {
                     ArrangePositionedChild(*kid, paddingBox, ctx);
                 } else if (p == PositionType::Fixed) {
                     Rect2Df viewport{ 0, 0, ctx.viewportWidth, ctx.viewportHeight };
