@@ -1,10 +1,11 @@
 // core/UltraCanvasSegmentedControl.cpp
 // Implementation of segmented control component
-// Version: 1.0.0
-// Last Modified: 2025-10-19
+// Version: 1.2.0
+// Last Modified: 2026-05-31
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSegmentedControl.h"
+#include "CSSLayout/LayoutUtils.h"
 #include <fmt/os.h>
 #include <algorithm>
 #include <cmath>
@@ -69,9 +70,11 @@ namespace UltraCanvas {
             }
         }
 
-        // Calculate segment rectangles
-        int currentX = finalBounds.x;
-        int segmentY = finalBounds.y;
+        // Calculate segment rectangles in ELEMENT-LOCAL coordinates (origin 0,0):
+        // the render context is translated to the element origin and hit-testing
+        // (Contains / event.pointer) is element-local too.
+        int currentX = 0;
+        int segmentY = 0;
         int segmentHeight = finalBounds.height;
 
         if (style.borderWidth > 0) {
@@ -110,17 +113,116 @@ namespace UltraCanvas {
         return width;
     }
 
-    void UltraCanvasSegmentedControl::UpdateGeometry(IRenderContext* ctx) {
-        // Update layout if needed
-        if (layoutDirty) {
-            ctx->PushState();
-            CalculateLayout(ctx);
-            ctx->PopState();
+    Size2Df UltraCanvasSegmentedControl::MeasureContentSize(IRenderContext* rc) {
+        // Returns the preferred BORDER-BOX size: segment content widths (each
+        // already includes its horizontal padding) + inter-segment spacing +
+        // the control's outer border; height = tallest segment content +
+        // vertical padding + outer border.
+        const float frame = 2.0f * (float)style.borderWidth;
+        if (segments.empty()) {
+            return Size2Df(frame, style.fontSize + style.paddingVertical * 2 + frame);
         }
+
+        float totalW = 0.f;
+        float maxContentH = 0.f;
+        for (auto& segment : segments) {
+            totalW += CalculateSegmentContentWidth(rc, segment);
+
+            float segH = 0.f;
+            if (segment.HasIcon()) segH = std::max(segH, (float)style.iconSize);
+            if (segment.HasText()) {
+                if (ITextLayout* tl = GetOrCreateTextLayout(rc, segment)) {
+                    segH = std::max(segH, (float)tl->GetLayoutSize().height);
+                }
+            }
+            maxContentH = std::max(maxContentH, segH);
+        }
+        totalW += style.segmentSpacing * (float)(segments.size() - 1);
+
+        return Size2Df(totalW + frame,
+                       maxContentH + style.paddingVertical * 2 + frame);
+    }
+
+    void UltraCanvasSegmentedControl::MeasureCore(const CSSLayout::MeasureConstraints& c,
+                                                  const CSSLayout::LayoutContext& ctx) {
+        IRenderContext* rc = GetRenderContext();
+        if (!rc) {
+            // No surface to measure text against yet — let the base resolve from
+            // size.width/height or the incoming constraints.
+            CSSLayout::Element::MeasureCore(c, ctx);
+            return;
+        }
+
+        rc->PushState();
+        Size2Df content = MeasureContentSize(rc);  // already border-box
+        rc->PopState();
+
+        std::optional<float> parentInline =
+            (c.horizontal.mode == CSSLayout::ConstraintMode::Unbounded)
+                ? std::nullopt
+                : std::optional<float>{c.horizontal.available};
+        std::optional<float> parentBlock =
+            (c.vertical.mode == CSSLayout::ConstraintMode::Unbounded)
+                ? std::nullopt
+                : std::optional<float>{c.vertical.available};
+
+        // Width: explicit size.width > Exact constraint > content.
+        float w;
+        auto specW = CSSLayout::resolveDimension(size.width, parentInline, ctx);
+        if (specW.has_value())                                  w = *specW;
+        else if (c.horizontal.mode == CSSLayout::ConstraintMode::Exact) w = c.horizontal.available;
+        else                                                    w = content.width;
+
+        // Height: explicit size.height > Exact constraint > content.
+        float h;
+        auto specH = CSSLayout::resolveDimension(size.height, parentBlock, ctx);
+        if (specH.has_value())                                h = *specH;
+        else if (c.vertical.mode == CSSLayout::ConstraintMode::Exact) h = c.vertical.available;
+        else                                                  h = content.height;
+
+        w = CSSLayout::clampToConstraints(w, constraints, true,  parentInline, ctx);
+        h = CSSLayout::clampToConstraints(h, constraints, false, parentBlock, ctx);
+
+        measured.measuredWidth  = w;
+        measured.measuredHeight = h;
+    }
+
+    void UltraCanvasSegmentedControl::ComputeIntrinsicSizes(const CSSLayout::LayoutContext& /*ctx*/) {
+        IRenderContext* rc = GetRenderContext();
+        if (!rc) {
+            intrinsic.minContentWidth = intrinsic.maxContentWidth = 0;
+            intrinsic.minContentHeight = intrinsic.maxContentHeight = 0;
+            return;
+        }
+        rc->PushState();
+        Size2Df content = MeasureContentSize(rc);  // border-box
+        rc->PopState();
+
+        intrinsic.valid = true;
+        intrinsic.maxContentWidth  = content.width;
+        intrinsic.minContentWidth  = content.width;
+        intrinsic.maxContentHeight = content.height;
+        intrinsic.minContentHeight = content.height;
+    }
+
+    void UltraCanvasSegmentedControl::Arrange(const Rect2Df& finalRect,
+                                              const CSSLayout::LayoutContext& ctx) {
+        // The engine sizes/places us (finalBounds) from MeasureCore; we then lay
+        // out the per-segment rects in local coordinates against the final size.
+        UltraCanvasUIElement::Arrange(finalRect, ctx);
+        CalculateLayout(GetRenderContext());
     }
 // ===== RENDERING IMPLEMENTATION =====
 
     void UltraCanvasSegmentedControl::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
+        // Layout is normally computed in Arrange; recompute lazily here if a
+        // setter invalidated it since (we have a valid render context now).
+        if (layoutDirty || segmentRects.size() != segments.size()) {
+            ctx->PushState();
+            CalculateLayout(ctx);
+            ctx->PopState();
+        }
+
         // Update animation
         if (style.enableAnimation && selectionAnimationProgress < 1.0f) {
             UpdateAnimation();
@@ -156,10 +258,10 @@ namespace UltraCanvas {
             ctx->SetStrokeWidth(style.separatorWidth);
 
             for (size_t i = 1; i < segmentRects.size(); i++) {
-                int x = segmentRects[i].x;
+                int x = segmentRects[i].x;  // element-local
                 ctx->DrawLine(
-                        {static_cast<double>(x), finalBounds.y + style.borderWidth},
-                        {static_cast<double>(x), finalBounds.y + finalBounds.height - style.borderWidth}
+                        {static_cast<double>(x), bounds.y + style.borderWidth},
+                        {static_cast<double>(x), bounds.y + bounds.height - style.borderWidth}
                 );
             }
         }
@@ -507,6 +609,8 @@ namespace UltraCanvas {
     int UltraCanvasSegmentedControl::AddSegment(const std::string &text, TextAlignment alignment) {
         segments.push_back(SegmentData(text, alignment));
         layoutDirty = true;
+        InvalidateLayout();
+        RequestRedraw();
 
         // Select first segment by default in single mode
         if (segments.size() == 1 && !allowNoSelection && selectionMode == SegmentSelectionMode::Single) {
@@ -519,6 +623,8 @@ namespace UltraCanvas {
     int UltraCanvasSegmentedControl::AddSegment(const std::string &text, const std::string &iconPath, TextAlignment alignment) {
         segments.push_back(SegmentData(text, iconPath, alignment));
         layoutDirty = true;
+        InvalidateLayout();
+        RequestRedraw();
 
         if (segments.size() == 1 && !allowNoSelection && selectionMode == SegmentSelectionMode::Single) {
             SetSelectedIndex(0);
@@ -532,6 +638,8 @@ namespace UltraCanvas {
 
         segments.insert(segments.begin() + index, SegmentData(text, alignment));
         layoutDirty = true;
+        InvalidateLayout();
+        RequestRedraw();
 
         // Adjust selected indices
         if (selectionMode == SegmentSelectionMode::Single) {
@@ -558,6 +666,8 @@ namespace UltraCanvas {
 
         segments.erase(segments.begin() + index);
         layoutDirty = true;
+        InvalidateLayout();
+        RequestRedraw();
 
         // Adjust selection for single mode
         if (selectionMode == SegmentSelectionMode::Single) {
@@ -592,12 +702,17 @@ namespace UltraCanvas {
         hoveredIndex = -1;
         pressedIndex = -1;
         layoutDirty = true;
+        InvalidateLayout();
+        RequestRedraw();
     }
 
     void UltraCanvasSegmentedControl::SetSegmentText(int index, const std::string &text) {
         if (index >= 0 && index < static_cast<int>(segments.size())) {
             segments[index].text = text;
+            segments[index].textLayout.reset();  // rebuild cached layout for new text
             layoutDirty = true;
+            InvalidateLayout();
+            RequestRedraw();
         }
     }
 
@@ -612,6 +727,8 @@ namespace UltraCanvas {
         if (index >= 0 && index < static_cast<int>(segments.size())) {
             segments[index].iconPath = iconPath;
             layoutDirty = true;
+            InvalidateLayout();
+            RequestRedraw();
         }
     }
 
@@ -652,6 +769,8 @@ namespace UltraCanvas {
         if (index >= 0 && index < static_cast<int>(segments.size())) {
             segments[index].customWidth = width;
             layoutDirty = true;
+            InvalidateLayout();
+            RequestRedraw();
         }
     }
 
@@ -896,12 +1015,16 @@ namespace UltraCanvas {
     void UltraCanvasSegmentedControl::SetWidthMode(SegmentWidthMode mode) {
         widthMode = mode;
         layoutDirty = true;
+        InvalidateLayout();
         RequestRedraw();
     }
 
     void UltraCanvasSegmentedControl::SetStyle(SegmentedControlStyle st) {
         style = st;
+        // Font lives in the style — drop cached text layouts so they re-measure.
+        for (auto& segment : segments) segment.textLayout.reset();
         layoutDirty = true;
+        InvalidateLayout();
         RequestRedraw();
     }
 

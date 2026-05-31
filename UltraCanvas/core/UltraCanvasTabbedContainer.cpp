@@ -1,7 +1,7 @@
 // core/UltraCanvasTabbedContainer.cpp
 // Enhanced tabbed container component with overflow dropdown and search functionality
-// Version: 1.9.4
-// Last Modified: 2026-05-01
+// Version: 2.0.0
+// Last Modified: 2026-05-31
 // Author: UltraCanvas Framework
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasApplication.h"
@@ -28,22 +28,59 @@ namespace UltraCanvas {
         InvalidateTabbar();
     }
 
-    // Run the tabbar layout pass BEFORE children's UpdateGeometry so that
-    // content widgets (e.g. UltraCanvasTextArea) see their correct bounds when
-    // they compute their own nested layouts — mirrors the pattern in
-    // UltraCanvasContainer::UpdateGeometry that "fixes first-frame positioning".
-    void UltraCanvasTabbedContainer::UpdateGeometry(IRenderContext* ctx) {
-        if (tabbarLayoutDirty) {
-            CalculateLayout();
-            UpdateOverflowDropdown();
-            CalculateLayout();
-            EnsureTabVisible(activeTabIndex);
-            PackTabBar();
-            CalculateLayout();
-            UpdateContentVisibility();
-            tabbarLayoutDirty = false;
+    // CSS layout entry point. The tabbed container is externally sized (explicit
+    // w/h or stretched by its parent), so no MeasureCore is needed. We take our
+    // finalBounds from the engine, then run the tab-bar layout and arrange the
+    // ACTIVE tab's content subtree into the content area. We intentionally do NOT
+    // delegate to the base container's child-flow: tab contents are overlaid (only
+    // one visible), so flowing/stacking all of them would be wrong and would
+    // inflate the container's scroll range.
+    void UltraCanvasTabbedContainer::Arrange(const Rect2Df& finalRect,
+                                             const CSSLayout::LayoutContext& ctx) {
+        // Set our geometry + damage tracking (mirrors UltraCanvasUIElement::Arrange).
+        Rect2Df oldBounds = finalBounds;
+        finalBounds = finalRect;
+        arrangeValid = true;
+        Rect2Df damage = oldBounds.Union(finalBounds);
+        if (auto* parentCont = GetParentContainer()) {
+            parentCont->InvalidateRect(damage);
+        } else if (window && static_cast<UltraCanvasUIElement*>(this) != static_cast<UltraCanvasUIElement*>(window)) {
+            window->AddDirtyRectangle(damage);
         }
-        UltraCanvasContainer::UpdateGeometry(ctx);
+
+        // Deterministic tab-bar layout (GetTabAreaBounds no longer mutates finalBounds).
+        CalculateLayout();
+        UpdateOverflowDropdown();
+        EnsureTabVisible(activeTabIndex);
+        PackTabBar();
+        CalculateLayout();
+        UpdateContentVisibility();
+        PositionOverflowDropdown();
+        tabbarLayoutDirty = false;
+
+        // Arrange ONLY the active tab's content into the content area so its subtree
+        // lays out at the right size. Inactive contents are hidden and skipped.
+        if (activeTabIndex >= 0 && activeTabIndex < (int)tabs.size()) {
+            if (auto* content = tabs[activeTabIndex]->content.get()) {
+                Rect2Di cb = GetContentAreaBounds();
+                CSSLayout::MeasureConstraints mc{
+                        { CSSLayout::ConstraintMode::Exact, (float)cb.width },
+                        { CSSLayout::ConstraintMode::Exact, (float)cb.height } };
+                content->Measure(mc, ctx);
+                content->Arrange(Rect2Df(cb.x, cb.y, cb.width, cb.height), ctx);
+            }
+        }
+
+        // The overflow button is a real child but is painted manually; arrange it
+        // (and any subtree) at the rect PositionOverflowDropdown() just set.
+        if (overflowButton && overflowDropdownVisible) {
+            Rect2Df ob = overflowButton->GetBounds();
+            CSSLayout::MeasureConstraints mc{
+                    { CSSLayout::ConstraintMode::Exact, ob.width },
+                    { CSSLayout::ConstraintMode::Exact, ob.height } };
+            overflowButton->Measure(mc, ctx);
+            overflowButton->Arrange(ob, ctx);
+        }
     }
 
     void UltraCanvasTabbedContainer::SetTabHeight(int th) {
@@ -159,10 +196,11 @@ namespace UltraCanvas {
         activeTabIndex = index;
 
         EnsureTabVisible(index);
-        if (!tabbarLayoutDirty) {
-            CalculateLayout();
-        }
         UpdateContentVisibility();
+        // Re-run layout (arranges the newly active content) AND invalidate the whole
+        // element so the CONTENT region repaints — not just the tab strip. Without
+        // this the header changed but the content area kept the previous tab.
+        InvalidateTabbar();
 
         if (onTabChange) onTabChange(oldIndex, index);
         if (onTabSelect) onTabSelect(index);
@@ -396,21 +434,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTabbedContainer::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
-        // Safety net: UpdateGeometry normally consumes tabbarLayoutDirty,
-        // but something may invalidate between UpdateGeometry and Render in
-        // the same frame (e.g. scrollbar visibility toggles). Re-run the
-        // layout here so content bounds stay in sync before we draw.
-        if (tabbarLayoutDirty) {
-            CalculateLayout();
-            UpdateOverflowDropdown();
-            CalculateLayout();
-            EnsureTabVisible(activeTabIndex);
-            PackTabBar();
-            CalculateLayout();
-            UpdateContentVisibility();
-            tabbarLayoutDirty = false;
-        }
-
+        // Layout is computed deterministically in Arrange(); Render only paints.
         ctx->PushState();
         // ctx is already translated to element origin by the parent container.
         RenderContentArea(ctx, dirtyRect);
@@ -1612,31 +1636,36 @@ namespace UltraCanvas {
     }
 
     Rect2Di UltraCanvasTabbedContainer::GetTabAreaBounds() {
-        Rect2Di bounds = GetTabBarBounds();
+        // Compute the reduced tab strip (the space left for the tabs themselves
+        // after the overflow/scroll/new-tab controls) on a LOCAL COPY. This must
+        // NOT mutate finalBounds — doing so corrupted the element's real geometry
+        // on every layout/render pass (content drift, bottom-tab hit-test misses,
+        // flickering overflow detection).
+        Rect2Di area = GetTabBarBounds();
 
         switch (tabPosition) {
             case TabPosition::Top:
             case TabPosition::Bottom: {
                 // Horizontal tab bar - adjust width
                 if (overflowDropdownVisible && overflowDropdownPosition == OverflowDropdownPosition::Left) {
-                    finalBounds.x += overflowDropdownWidth + tabSpacing;
-                    finalBounds.width -= overflowDropdownWidth + tabSpacing;
+                    area.x += overflowDropdownWidth + tabSpacing;
+                    area.width -= overflowDropdownWidth + tabSpacing;
                 }
 
                 if (showScrollButtons) {
                     bool canPrev = activeTabIndex > 0;
                     bool canNext = activeTabIndex < (int)tabs.size() - 1;
                     if (canPrev) {
-                        finalBounds.x += 24;
-                        finalBounds.width -= 24;
+                        area.x += 24;
+                        area.width -= 24;
                     }
                     if (canNext) {
-                        finalBounds.width -= 24;
+                        area.width -= 24;
                     }
                 }
 
                 if (showNewTabButton && newTabButtonPosition == NewTabButtonPosition::FarRight) {
-                    finalBounds.width -= newTabButtonWidth + tabSpacing;
+                    area.width -= newTabButtonWidth + tabSpacing;
                 }
                 break;
             }
@@ -1645,30 +1674,30 @@ namespace UltraCanvas {
             case TabPosition::Right: {
                 // Vertical tab bar - adjust height
                 if (overflowDropdownVisible && overflowDropdownPosition == OverflowDropdownPosition::Left) {
-                    finalBounds.y += overflowDropdownWidth + tabSpacing;
-                    finalBounds.height -= overflowDropdownWidth + tabSpacing;
+                    area.y += overflowDropdownWidth + tabSpacing;
+                    area.height -= overflowDropdownWidth + tabSpacing;
                 }
 
                 if (showScrollButtons) {
                     bool canPrev = activeTabIndex > 0;
                     bool canNext = activeTabIndex < (int)tabs.size() - 1;
                     if (canPrev) {
-                        finalBounds.y += 24;
-                        finalBounds.height -= 24;
+                        area.y += 24;
+                        area.height -= 24;
                     }
                     if (canNext) {
-                        finalBounds.height -= 24;
+                        area.height -= 24;
                     }
                 }
 
                 if (showNewTabButton && newTabButtonPosition == NewTabButtonPosition::FarRight) {
-                    finalBounds.height -= newTabButtonWidth + tabSpacing;
+                    area.height -= newTabButtonWidth + tabSpacing;
                 }
                 break;
             }
         }
 
-        return bounds;
+        return area;
     }
 
     void UltraCanvasTabbedContainer::RenderTab(int index, IRenderContext *ctx) {

@@ -319,6 +319,8 @@ namespace UltraCanvas {
                                       CSSLayout::Dimension::Auto(),
                                       CSSLayout::Dimension::Auto(),
                                       CSSLayout::Dimension::Px(pos.x)});
+        finalBounds.x = pos.x;
+        finalBounds.y = pos.y;
         InvalidateLayout();
     }
 

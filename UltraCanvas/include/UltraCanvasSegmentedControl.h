@@ -1,7 +1,7 @@
 // include/UltraCanvasSegmentedControl.h
 // Segmented control component for mutually exclusive selection between options
-// Version: 1.1.0
-// Last Modified: 2026-05-29
+// Version: 1.2.0
+// Last Modified: 2026-05-31
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -227,7 +227,14 @@ namespace UltraCanvas {
         // ===== RENDERING =====
 
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
-        void UpdateGeometry(IRenderContext *ctx) override;
+
+        // CSS layout: publish the control's preferred (border-box) size from its
+        // segment content, and place the per-segment rects in Arrange (local
+        // coordinates). The engine owns finalBounds.
+        void MeasureCore(const CSSLayout::MeasureConstraints& c,
+                         const CSSLayout::LayoutContext& ctx) override;
+        void ComputeIntrinsicSizes(const CSSLayout::LayoutContext& ctx) override;
+        void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent &event) override;
@@ -249,6 +256,10 @@ namespace UltraCanvas {
 
         void CalculateLayout(IRenderContext *ctx);
         int CalculateSegmentContentWidth(IRenderContext *ctx, SegmentData &segment);
+        // Content-box preferred size (sum of segment content widths + spacing;
+        // height from text/icon + vertical padding), excluding border. Used by
+        // MeasureCore / ComputeIntrinsicSizes.
+        Size2Df MeasureContentSize(IRenderContext* rc);
         ITextLayout* GetOrCreateTextLayout(IRenderContext* ctx, SegmentData& segment);
 
         // ===== RENDERING HELPERS =====

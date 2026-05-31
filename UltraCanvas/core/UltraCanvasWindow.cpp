@@ -1,7 +1,7 @@
 // UltraCanvasWindowBase.cpp
 // Fixed implementation of cross-platform window management system
-// Version: 1.2.1
-// Last Modified: 2026-04-05
+// Version: 1.2.2
+// Last Modified: 2026-05-31
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWindow.h"

@@ -1,11 +1,12 @@
 // core/UltraCanvasButton.cpp
 // Interactive button component implementation with secondary icon support
-// Version: 2.3.2
-// Last Modified: 2026-04-11
+// Version: 2.4.0
+// Last Modified: 2026-05-31
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasImage.h"
+#include "CSSLayout/LayoutUtils.h"
 #include <algorithm>
 
 namespace UltraCanvas {
@@ -22,45 +23,53 @@ namespace UltraCanvas {
 // ===== SPLIT BUTTON METHODS =====
     void UltraCanvasButton::SetSplitEnabled(bool enabled) {
         style.splitStyle.enabled = enabled;
-        RequestUpdateGeometry();
+        InvalidateLayout();
+        RequestRedraw();
     }
 
     void UltraCanvasButton::SetSplitRatio(float primaryRatio) {
         style.splitStyle.primaryRatio = primaryRatio;
-        RequestUpdateGeometry();
+        InvalidateLayout();
+        RequestRedraw();
     }
 
     void UltraCanvasButton::SetSplitHorizontal(bool horizontal) {
         style.splitStyle.horizontal = horizontal;
-        RequestUpdateGeometry();
+        InvalidateLayout();
+        RequestRedraw();
     }
 
     void UltraCanvasButton::SetSplitSecondaryText(const std::string& secondaryText) {
         style.splitStyle.secondaryText = secondaryText;
-        RequestUpdateGeometry();
+        InvalidateLayout();
+        RequestRedraw();
     }
 
     void UltraCanvasButton::SetSplitSecondaryIcon(const std::string& iconPath,
                                                   ButtonSecondaryIconPosition position) {
         style.splitStyle.secondaryIcon = UCImage::Get(iconPath);
         style.splitStyle.secondaryIconPosition = position;
-        RequestUpdateGeometry();
+        InvalidateLayout();
+        RequestRedraw();
     }
 
     void UltraCanvasButton::SetSplitSecondaryIconSize(int width, int height) {
         style.splitStyle.secondaryIconWidth = width;
         style.splitStyle.secondaryIconHeight = height;
-        RequestUpdateGeometry();
+        InvalidateLayout();
+        RequestRedraw();
     }
 
     void UltraCanvasButton::SetSplitSecondaryIconSpacing(int spacing) {
         style.splitStyle.secondaryIconSpacing = spacing;
-        RequestUpdateGeometry();
+        InvalidateLayout();
+        RequestRedraw();
     }
 
     void UltraCanvasButton::SetSplitSecondaryIconPosition(ButtonSecondaryIconPosition position) {
         style.splitStyle.secondaryIconPosition = position;
-        RequestUpdateGeometry();
+        InvalidateLayout();
+        RequestRedraw();
     }
 
     void UltraCanvasButton::SetSplitSecondaryIconColors(const Color& normal, const Color& hover,
@@ -85,29 +94,34 @@ namespace UltraCanvas {
         style.splitStyle.showSeparator = show;
         style.splitStyle.separatorColor = color;
         style.splitStyle.separatorWidth = width;
-        RequestUpdateGeometry();
+        InvalidateLayout();
+        RequestRedraw();
     }
 
 // ===== TEXT & ICON METHODS =====
     void UltraCanvasButton::SetText(const std::string& buttonText) {
         text = buttonText;
-        RequestUpdateGeometry();
+        InvalidateLayout();
+        RequestRedraw();
     }
 
     void UltraCanvasButton::SetIcon(const std::string& path) {
         icon = UCImage::Get(path);
-        RequestUpdateGeometry();
+        InvalidateLayout();
+        RequestRedraw();
     }
 
     void UltraCanvasButton::SetIconPosition(ButtonIconPosition position) {
         iconPosition = position;
-        RequestUpdateGeometry();
+        InvalidateLayout();
+        RequestRedraw();
     }
 
     void UltraCanvasButton::SetIconSize(int width, int height) {
         iconWidth = width;
         iconHeight = height;
-        RequestUpdateGeometry();
+        InvalidateLayout();
+        RequestRedraw();
     }
     
     void UltraCanvasButton::SetUseIconAsMask(bool useAsMask) {
@@ -170,19 +184,22 @@ namespace UltraCanvas {
         style.borderWidth = width;
         style.borderColor = color;
         SetBorders(static_cast<int>(width), color, style.cornerRadius);
-        RequestUpdateGeometry();
+        InvalidateLayout();
+        RequestRedraw();
     }
 
     void UltraCanvasButton::SetFont(const std::string& family, float size, FontWeight weight) {
         style.fontFamily = family;
         style.fontSize = size;
         style.fontWeight = weight;
-        RequestUpdateGeometry();
+        InvalidateLayout();
+        RequestRedraw();
     }
 
     void UltraCanvasButton::SetFontSize(float size) {
         style.fontSize = size;
-        RequestUpdateGeometry();
+        InvalidateLayout();
+        RequestRedraw();
     }
 
     void UltraCanvasButton::SetTextAlign(TextAlignment align) {
@@ -192,7 +209,8 @@ namespace UltraCanvas {
 
     void UltraCanvasButton::SetIconSpacing(int spacing) {
         style.iconSpacing = spacing;
-        RequestUpdateGeometry();
+        InvalidateLayout();
+        RequestRedraw();
     }
 
     void UltraCanvasButton::SetCornerRadius(float radius) {
@@ -209,75 +227,149 @@ namespace UltraCanvas {
 
     void UltraCanvasButton::SetStyle(const ButtonStyle& newStyle) {
         style = newStyle;
-        RequestUpdateGeometry();
+        InvalidateLayout();
+        RequestRedraw();
     }
 
 // ===== LAYOUT CALCULATION =====
-    void UltraCanvasButton::AutoResize() {
-        if (!autoresize) return;
+    Size2Df UltraCanvasButton::MeasureContentSize(IRenderContext* rc) const {
+        // Returns the CONTENT-box size (no padding/border). Primary section =
+        // text + icon; for a split button, add the secondary section's extent
+        // plus the separator on the split axis.
+        float contentW = 0.f, contentH = 0.f;
 
-        auto ctx = GetRenderContext();
-        if (!ctx) return;
+        rc->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
+        rc->SetFontSize(style.fontSize);
 
-        int newWidth = GetPaddingLeft() + GetPaddingRight();
-        int newHeight = GetPaddingTop() + GetPaddingBottom();
-
-        // Calculate text dimensions
         if (!text.empty()) {
-            ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
-            ctx->SetFontSize(style.fontSize);
-            Size2Di textSize = ctx->GetTextLineDimensions(text);
-            newWidth += textSize.width;
-            newHeight = std::max(newHeight, static_cast<int>(textSize.height + GetPaddingTop() + GetPaddingBottom()));
+            Size2Di textSize = rc->GetTextLineDimensions(text);
+            contentW += textSize.width;
+            contentH = std::max(contentH, (float)textSize.height);
         }
 
-        // Add split button secondary section dimensions
+        // Primary icon
+        if (HasIcon()) {
+            contentW += iconWidth;
+            contentH = std::max(contentH, (float)iconHeight);
+            if (!text.empty() &&
+                (iconPosition == ButtonIconPosition::Left || iconPosition == ButtonIconPosition::Right)) {
+                contentW += style.iconSpacing;
+            }
+        }
+
+        // Split secondary section
         if (style.splitStyle.enabled) {
             const SplitButtonStyle& split = style.splitStyle;
-            int secWidth = 0, secHeight = 0;
+            float secWidth = 0.f, secHeight = 0.f;
 
-            // Calculate secondary text dimensions
             if (!split.secondaryText.empty()) {
-                Size2Di secTextSize = ctx->GetTextLineDimensions(split.secondaryText);
+                Size2Di secTextSize = rc->GetTextLineDimensions(split.secondaryText);
                 secWidth += secTextSize.width;
-                secHeight = std::max(secHeight, secTextSize.height);
+                secHeight = std::max(secHeight, (float)secTextSize.height);
             }
-
-            // Calculate secondary icon dimensions
             if (HasSecondaryIcon()) {
                 secWidth += split.secondaryIconWidth;
-                secHeight = std::max(secHeight, split.secondaryIconHeight);
-
-                // Add spacing between icon and text if both exist
+                secHeight = std::max(secHeight, (float)split.secondaryIconHeight);
                 if (!split.secondaryText.empty()) {
                     secWidth += split.secondaryIconSpacing;
                 }
             }
 
+            // Reserve the secondary section's own horizontal padding (the section
+            // is a self-contained box inside the button).
             if (split.horizontal) {
-                newWidth += secWidth + 10; // Add padding for secondary section
-                if (split.showSeparator) {
-                    newWidth += split.separatorWidth;
-                }
+                contentW += secWidth + GetPaddingLeft() + GetPaddingRight();
+                if (split.showSeparator) contentW += split.separatorWidth;
+                contentH = std::max(contentH, secHeight);
             } else {
-                newHeight += secHeight + 10;
-                if (split.showSeparator) {
-                    newHeight += split.separatorWidth;
-                }
+                contentH += secHeight + GetPaddingTop() + GetPaddingBottom();
+                if (split.showSeparator) contentH += split.separatorWidth;
+                contentW = std::max(contentW, secWidth);
             }
         }
 
-        // Add icon dimensions for primary section
-        if (HasIcon()) {
-            newWidth += iconWidth;
-            newHeight = std::max(newHeight, static_cast<int>(iconHeight + GetPaddingTop() + GetPaddingBottom()));
+        return Size2Df(contentW, contentH);
+    }
 
-            if (!text.empty() && (iconPosition == ButtonIconPosition::Left || iconPosition == ButtonIconPosition::Right)) {
-                newWidth += style.iconSpacing;
-            }
+    void UltraCanvasButton::MeasureCore(const CSSLayout::MeasureConstraints& c,
+                                        const CSSLayout::LayoutContext& ctx) {
+        IRenderContext* rc = GetRenderContext();
+        if (!rc) {
+            // No surface to measure text against yet — let the base resolve from
+            // size.width/height or the incoming constraints.
+            CSSLayout::Element::MeasureCore(c, ctx);
+            return;
         }
 
-        SetSize(newWidth, newHeight);
+        const float padH = GetTotalPaddingHorizontal() + GetTotalBorderHorizontal();
+        const float padV = GetTotalPaddingVertical()   + GetTotalBorderVertical();
+
+        rc->PushState();
+        Size2Df content = MeasureContentSize(rc);
+        rc->PopState();
+
+        std::optional<float> parentInline =
+            (c.horizontal.mode == CSSLayout::ConstraintMode::Unbounded)
+                ? std::nullopt
+                : std::optional<float>{c.horizontal.available};
+        std::optional<float> parentBlock =
+            (c.vertical.mode == CSSLayout::ConstraintMode::Unbounded)
+                ? std::nullopt
+                : std::optional<float>{c.vertical.available};
+
+        // Width: explicit size.width > Exact constraint > content.
+        float contentW;
+        auto specW = CSSLayout::resolveDimension(size.width, parentInline, ctx);
+        if (specW.has_value()) {
+            float bb = (box.boxSizing == CSSLayout::BoxSizing::BorderBox) ? *specW : (*specW + padH);
+            contentW = std::max(0.f, bb - padH);
+        } else if (c.horizontal.mode == CSSLayout::ConstraintMode::Exact) {
+            contentW = std::max(0.f, c.horizontal.available - padH);
+        } else {
+            contentW = content.width;
+        }
+
+        // Height: explicit size.height > Exact constraint > content.
+        float contentH;
+        auto specH = CSSLayout::resolveDimension(size.height, parentBlock, ctx);
+        if (specH.has_value()) {
+            float bb = (box.boxSizing == CSSLayout::BoxSizing::BorderBox) ? *specH : (*specH + padV);
+            contentH = std::max(0.f, bb - padV);
+        } else if (c.vertical.mode == CSSLayout::ConstraintMode::Exact) {
+            contentH = std::max(0.f, c.vertical.available - padV);
+        } else {
+            contentH = content.height;
+        }
+
+        contentW = CSSLayout::clampToConstraints(contentW, constraints, true,  parentInline, ctx);
+        contentH = CSSLayout::clampToConstraints(contentH, constraints, false, parentBlock, ctx);
+
+        measured.measuredWidth  = contentW + padH;
+        measured.measuredHeight = contentH + padV;
+    }
+
+    void UltraCanvasButton::ComputeIntrinsicSizes(const CSSLayout::LayoutContext& /*ctx*/) {
+        IRenderContext* rc = GetRenderContext();
+        if (!rc) {
+            intrinsic.minContentWidth = intrinsic.maxContentWidth = 0;
+            intrinsic.minContentHeight = intrinsic.maxContentHeight = 0;
+            return;
+        }
+
+        const float padH = GetTotalPaddingHorizontal() + GetTotalBorderHorizontal();
+        const float padV = GetTotalPaddingVertical()   + GetTotalBorderVertical();
+
+        rc->PushState();
+        Size2Df content = MeasureContentSize(rc);
+        rc->PopState();
+
+        // A button doesn't wrap, so min-content == max-content. Publish in
+        // border-box units so Flex/Grid can use them directly.
+        intrinsic.valid = true;
+        intrinsic.maxContentWidth  = content.width  + padH;
+        intrinsic.minContentWidth  = content.width  + padH;
+        intrinsic.maxContentHeight = content.height + padV;
+        intrinsic.minContentHeight = content.height + padV;
     }
 
     void UltraCanvasButton::CalculateLayout() {
@@ -379,10 +471,13 @@ namespace UltraCanvas {
                 secondaryWidth -= split.separatorWidth / 2;
             }
 
-            primarySectionRect = Rect2Df(finalBounds.x, finalBounds.y, primaryWidth, finalBounds.height);
-            secondarySectionRect = Rect2Df(finalBounds.x + primaryWidth +
+            // Section rects are in ELEMENT-LOCAL coordinates (origin 0,0): the
+            // render context is translated to the element origin, and hit-testing
+            // (Contains/event.pointer) is element-local too.
+            primarySectionRect = Rect2Df(0, 0, primaryWidth, finalBounds.height);
+            secondarySectionRect = Rect2Df(primaryWidth +
                                            (split.showSeparator ? split.separatorWidth : 0),
-                                           finalBounds.y, secondaryWidth, finalBounds.height);
+                                           0, secondaryWidth, finalBounds.height);
 
             // Text rectangles within sections
             textRect = Rect2Df(primarySectionRect.x + GetPaddingLeft(),
@@ -451,8 +546,9 @@ namespace UltraCanvas {
                 secondaryHeight -= split.separatorWidth / 2;
             }
 
-            primarySectionRect = Rect2Df(finalBounds.x, finalBounds.y, finalBounds.width, primaryHeight);
-            secondarySectionRect = Rect2Df(finalBounds.x, finalBounds.y + primaryHeight +
+            // Element-local coordinates (origin 0,0); see horizontal branch.
+            primarySectionRect = Rect2Df(0, 0, finalBounds.width, primaryHeight);
+            secondarySectionRect = Rect2Df(0, primaryHeight +
                                                      (split.showSeparator ? split.separatorWidth : 0),
                                            finalBounds.width, secondaryHeight);
 
@@ -646,9 +742,11 @@ namespace UltraCanvas {
 
     void UltraCanvasButton::DrawSplitButton(IRenderContext* ctx) {
         const SplitButtonStyle& split = style.splitStyle;
+        // Local draw box, inset by the shadow offset so the button + its shadow
+        // fit within finalBounds. Never mutate finalBounds here (the engine owns it).
         Rect2Df bounds = GetLocalBounds();
-        finalBounds.width -= style.shadowOffset.x;
-        finalBounds.height -= style.shadowOffset.y;
+        bounds.width  -= style.shadowOffset.x;
+        bounds.height -= style.shadowOffset.y;
 
         // Get colors for both sections
         Color primaryBg, primaryText, secondaryBg, secondaryText;
@@ -777,15 +875,12 @@ namespace UltraCanvas {
 
     }
 
-    void UltraCanvasButton::UpdateGeometry(IRenderContext* ctx) {
-        // Update layout if needed
-        if (needsUpdateGeometry) {
-            ctx->PushState();
-            AutoResize();
-            CalculateLayout();
-            ctx->PopState();
-            needsUpdateGeometry = false;
-        }
+    void UltraCanvasButton::Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) {
+        // The engine sizes/places us (finalBounds) from MeasureCore; we just
+        // lay out the internal sub-rects (text/icon/split sections) in local
+        // coordinates against the final size.
+        UltraCanvasUIElement::Arrange(finalRect, ctx);
+        CalculateLayout();
     }
 
 // ===== MAIN RENDER METHOD =====
@@ -797,9 +892,10 @@ namespace UltraCanvas {
             Color bgColor, textColor;
             GetCurrentColors(bgColor, textColor);
 
+            // Local draw box, inset by the shadow offset. Do not mutate finalBounds.
             Rect2Df bounds = GetLocalBounds();
-            finalBounds.width -= style.shadowOffset.x;
-            finalBounds.height -= style.shadowOffset.y;
+            bounds.width  -= style.shadowOffset.x;
+            bounds.height -= style.shadowOffset.y;
 
             // Draw shadow if enabled and not pressed
             if (style.hasShadow && GetPrimaryState() != ElementState::Pressed) {

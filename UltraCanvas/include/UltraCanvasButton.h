@@ -1,7 +1,7 @@
 // include/UltraCanvasButton.h
 // Interactive button component with styling options
-// Version: 2.3.2
-// Last Modified: 2026-04-11
+// Version: 2.4.0
+// Last Modified: 2026-05-31
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -124,7 +124,6 @@ namespace UltraCanvas {
         // State
         bool canToggled = false;
         bool canAcceptFocus = true;
-        bool autoresize = false;
 
         // Cached layout calculations
         Rect2Df iconRect;
@@ -210,11 +209,6 @@ namespace UltraCanvas {
         void SetStyle(const ButtonStyle& newStyle);
         ButtonStyle& GetStyle() { return style; }
 
-        // ===== AUTO-RESIZE =====
-        void SetAutoResize(bool enable) { autoresize = enable; }
-        bool IsAutoResize() const { return autoresize; }
-        void AutoResize();
-
         void SetOnClick(std::function<void()> onClick_) {
             onClick = onClick_;
         };
@@ -230,7 +224,14 @@ namespace UltraCanvas {
 
         // ===== OVERRIDES =====
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
-        void UpdateGeometry(IRenderContext *ctx) override;
+
+        // CSS layout: publish the button's preferred (border-box) size from its
+        // text/icon/split content, and place the internal sub-rects in Arrange.
+        // The engine owns finalBounds; the button no longer resizes itself.
+        void MeasureCore(const CSSLayout::MeasureConstraints& c,
+                         const CSSLayout::LayoutContext& ctx) override;
+        void ComputeIntrinsicSizes(const CSSLayout::LayoutContext& ctx) override;
+        void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
         bool OnEvent(const UCEvent& event) override;
         bool AcceptsFocus() const override { return canAcceptFocus; }
@@ -238,6 +239,9 @@ namespace UltraCanvas {
 
     protected:
         // ===== LAYOUT HELPERS =====
+        // Content-box size (text + primary icon + split secondary section),
+        // excluding padding/border. Used by MeasureCore/ComputeIntrinsicSizes.
+        Size2Df MeasureContentSize(IRenderContext* rc) const;
         void CalculateLayout();
         void CalculateSplitLayout();
         bool IsPointInPrimarySection(int x, int y) const;
@@ -280,8 +284,11 @@ namespace UltraCanvas {
         }
 
         ButtonBuilder& SetPosition(float x, float y) {
-            button->SetX(x);
-            button->SetY(y);
+            button->layoutItem.SetPositionInsets({CSSLayout::Dimension::Px(y),
+                                          CSSLayout::Dimension::Auto(),
+                                          CSSLayout::Dimension::Auto(),
+                                          CSSLayout::Dimension::Px(x)});
+            button->layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
             return *this;
         }
 
@@ -385,8 +392,7 @@ namespace UltraCanvas {
         }
 
         ButtonBuilder& SetSize(float w, float h) {
-            button->SetWidth(w);
-            button->SetHeight(h);
+            button->SetElementSize({w,h});
             return *this;
         }
 

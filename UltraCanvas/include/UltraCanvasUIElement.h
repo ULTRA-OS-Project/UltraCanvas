@@ -138,6 +138,7 @@ namespace UltraCanvas {
                              float x, float y, float w, float h) {
             id = idstr;
             finalBounds = Rect2Df{x, y, w, h};
+            box.boxSizing = CSSLayout::BoxSizing::BorderBox;
             if (w > 0) size.width  = CSSLayout::Dimension::Px(w);
             if (h > 0) size.height = CSSLayout::Dimension::Px(h);
             if (x > 0 || y > 0) {
