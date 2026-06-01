@@ -626,9 +626,15 @@ namespace UltraCanvas {
 
     // ===== OVERRIDES =====
 
-    void UltraCanvasListView::UpdateGeometry(IRenderContext* ctx) {
-        if (verticalScrollbar) {
-            verticalScrollbar->UpdateGeometry(ctx);
+    void UltraCanvasListView::Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) {
+        // The engine has resolved our final bounds (explicit size or parent stretch).
+        UltraCanvasUIElement::Arrange(finalRect, ctx);   // sets finalBounds + damage
+        // finalBounds is now valid — recompute scrollbar visibility/geometry against it.
+        // (Previously UpdateScrollbar only ran from mutators / SetBounds, never from the
+        // engine's resize, so an in-tree ListView could reserve scrollbar space wrongly.)
+        UpdateScrollbar();
+        if (verticalScrollbar && verticalScrollbar->IsVisible()) {
+            verticalScrollbar->UpdateGeometry(GetRenderContext());
         }
     }
 

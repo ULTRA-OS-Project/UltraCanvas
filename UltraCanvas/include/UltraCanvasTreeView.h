@@ -228,9 +228,12 @@ public:
     
     // ===== RENDERING =====
     void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
-    void UpdateGeometry(IRenderContext* ctx) override;
 
-    void SetBounds(const Rect2Df& bounds) override;
+    // ===== LAYOUT (CSS Measure/Arrange) =====
+    // TreeView is externally sized (explicit size or parent stretch); it has no
+    // intrinsic size, so the base block MeasureCore is sufficient. We only hook
+    // Arrange to recompute scrollbar geometry against the resolved finalBounds.
+    void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
 // ==== WINDOW PROPAGATION =====
     void SetWindow(UltraCanvasWindowBase* win) override;

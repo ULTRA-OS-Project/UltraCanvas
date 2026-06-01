@@ -92,14 +92,14 @@ namespace UltraCanvas {
         bool GetAllowIndeterminate() const { return allowIndeterminate; }
 
         // ===== APPEARANCE =====
-        void SetStyle(CheckboxStyle newStyle) { style = newStyle; layoutDirty = true; }
+        void SetStyle(CheckboxStyle newStyle) { style = newStyle; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }
         CheckboxStyle GetStyle() const { return style; }
 
-        void SetVisualStyle(const CheckboxVisualStyle& s) { visualStyle = s; layoutDirty = true; }
+        void SetVisualStyle(const CheckboxVisualStyle& s) { visualStyle = s; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }
         CheckboxVisualStyle& GetVisualStyle() { return visualStyle; }
         const CheckboxVisualStyle& GetVisualStyle() const { return visualStyle; }
 
-        void SetBoxSize(float size) { visualStyle.boxSize = size; layoutDirty = true; }
+        void SetBoxSize(float size) { visualStyle.boxSize = size; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }
         float GetBoxSize() const { return visualStyle.boxSize; }
 
         void SetColors(const Color& box, const Color& checkmark, const Color& text);

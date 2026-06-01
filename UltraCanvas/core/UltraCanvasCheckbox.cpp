@@ -46,12 +46,14 @@ namespace UltraCanvas {
         visualStyle.base.fontSize = size;
         visualStyle.base.fontWeight = weight;
         layoutDirty = true;
+        InvalidateLayout();
         RequestRedraw();
     }
 
     void UltraCanvasCheckbox::SetFontSize(float size) {
         visualStyle.base.fontSize = size;
         layoutDirty = true;
+        InvalidateLayout();
         RequestRedraw();
     }
 

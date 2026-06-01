@@ -272,6 +272,19 @@ namespace UltraCanvas {
         RenderClearButton(ctx);
     }
 
+    void UltraCanvasTextInput::Arrange(const Rect2Df &finalRect, const CSSLayout::LayoutContext &ctx) {
+        float oldWidth = finalBounds.width;
+        // The engine has resolved our final bounds (explicit size or parent stretch).
+        UltraCanvasUIElement::Arrange(finalRect, ctx);
+
+        // Re-clamp horizontal scroll only when our width changed (manual resize or
+        // parent stretch); the text area width feeds UpdateScrollOffset()'s clamp.
+        // Guarding on width avoids a redraw loop (UpdateScrollOffset calls RequestRedraw).
+        if (finalBounds.width != oldWidth) {
+            UpdateScrollOffset();
+        }
+    }
+
     bool UltraCanvasTextInput::OnEvent(const UCEvent &event) {
         if (IsDisabled() || !IsVisible()) return false;;
 
@@ -585,17 +598,18 @@ namespace UltraCanvas {
         ctx->SetStrokeWidth(2.0f);
         ctx->DrawRectangle(bounds);
 
-        // Draw validation icon (simplified)
+        // Draw validation icon (simplified) — element-local coordinates (the ctx is
+        // already translated to our origin, so use bounds, not finalBounds.x/y).
         if (lastValidationResult.state == ValidationState::Valid) {
             // Draw checkmark
-            Point2Di iconPos(finalBounds.x + finalBounds.width - 20, finalBounds.y + finalBounds.height / 2);
+            Point2Di iconPos(bounds.width - 20, bounds.height / 2);
             ctx->SetStrokePaint(style.validBorderColor);
             ctx->SetStrokeWidth(2.0f);
             ctx->DrawLine(iconPos, Point2Di(iconPos.x + 4, iconPos.y + 4));
             ctx->DrawLine(Point2Di(iconPos.x + 4, iconPos.y + 4), Point2Di(iconPos.x + 12, iconPos.y - 4));
         } else if (lastValidationResult.state == ValidationState::Invalid) {
             // Draw X
-            Point2Di iconPos(finalBounds.x + finalBounds.width - 20, finalBounds.y + finalBounds.height / 2 - 6);
+            Point2Di iconPos(bounds.width - 20, bounds.height / 2 - 6);
             ctx->SetStrokePaint(style.invalidBorderColor);
             ctx->SetStrokeWidth(2.0f);
             ctx->DrawLine(iconPos, Point2Di(iconPos.x + 12, iconPos.y + 12));
@@ -628,11 +642,13 @@ namespace UltraCanvas {
     void UltraCanvasTextInput::DrawShadow(const Rect2Di &bounds, IRenderContext* ctx) {
         if (!style.showShadow) return;
 
+        // Element-local coordinates: the ctx is translated to our origin, so the
+        // shadow offset is applied from (0,0), not from finalBounds.x/y.
         Rect2Di shadowRect(
-                finalBounds.x + style.shadowOffset.x,
-                finalBounds.y + style.shadowOffset.y,
-                finalBounds.width,
-                finalBounds.height
+                bounds.x + style.shadowOffset.x,
+                bounds.y + style.shadowOffset.y,
+                bounds.width,
+                bounds.height
         );
 
         ctx->SetStrokePaint(style.shadowColor);

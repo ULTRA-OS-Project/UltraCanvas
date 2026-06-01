@@ -127,7 +127,7 @@ namespace UltraCanvas {
         void SetCheckState(CheckedState state) override;
 
         // ===== APPEARANCE =====
-        void SetVisualStyle(const SwitchVisualStyle& s) { visualStyle = s; layoutDirty = true; }
+        void SetVisualStyle(const SwitchVisualStyle& s) { visualStyle = s; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }
         SwitchVisualStyle& GetVisualStyle() { return visualStyle; }
         const SwitchVisualStyle& GetVisualStyle() const { return visualStyle; }
 
@@ -135,11 +135,15 @@ namespace UltraCanvas {
             visualStyle.trackWidth = width;
             visualStyle.trackHeight = height;
             layoutDirty = true;
+            InvalidateLayout();
+            RequestRedraw();
         }
 
         void SetOrientation(SwitchOrientation o) {
             visualStyle.orientation = o;
             layoutDirty = true;
+            InvalidateLayout();
+            RequestRedraw();
         }
 
         void SetThumbIcons(UCImagePtr onIcon, UCImagePtr offIcon, bool useAsMask = false) {
@@ -155,6 +159,8 @@ namespace UltraCanvas {
             visualStyle.offText = offText;
             visualStyle.stateLabelPosition = position;
             layoutDirty = true;
+            InvalidateLayout();
+            RequestRedraw();
         }
 
         // ===== FACTORY =====

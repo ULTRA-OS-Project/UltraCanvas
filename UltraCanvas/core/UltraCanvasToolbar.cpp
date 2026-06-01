@@ -366,7 +366,7 @@ namespace UltraCanvas {
             : UltraCanvasContainer(identifier, x, y, width, height) {
 
         // Set default background color and border
-        SetBackgroundColor(appearance.backgroundColor);
+        SetBackgroundColor(toolbarAppearance.backgroundColor);
         SetBorders(1, Color(180, 180, 180, 255));
         
         ContainerStyle noScroll;
@@ -379,48 +379,48 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasToolbar::CreateLayout() {
-        if (orientation == ToolbarOrientation::Vertical) {
+        if (toolbarOrientation == ToolbarOrientation::Vertical) {
             SetPadding(5, 3);
             layout.SetFlexColumn();
         } else {
             SetPadding(3, 5);
             layout.SetFlexRow();
         }
-        layout.SetFlexGap(appearance.itemSpacing);
+        layout.SetFlexGap(toolbarAppearance.itemSpacing);
         layout.SetAlignItems(CSSLayout::AlignItems::Center);
     }
 
     void UltraCanvasToolbar::SetOrientation(ToolbarOrientation orient) {
-        if (orientation != orient) {
-            orientation = orient;
+        if (toolbarOrientation != orient) {
+            toolbarOrientation = orient;
             CreateLayout(); // Recreate layout with new orientation
             InvalidateLayout();
         }
     }
 
     void UltraCanvasToolbar::SetToolbarPosition(ToolbarPosition pos) {
-        position = pos;
+        toolbarPosition = pos;
         if (onPositionChanged) {
             onPositionChanged(pos);
         }
     }
 
     void UltraCanvasToolbar::SetAppearance(const ToolbarAppearance& app) {
-        appearance = app;
+        toolbarAppearance = app;
 
         // Update toolbar container appearance
-        SetBackgroundColor(appearance.backgroundColor);
+        SetBackgroundColor(toolbarAppearance.backgroundColor);
 
         // Update border based on appearance
-        if (appearance.style == ToolbarStyle::Flat) {
+        if (toolbarAppearance.style == ToolbarStyle::Flat) {
             SetBorders(0, Colors::Transparent);
-        } else if (appearance.style == ToolbarStyle::Docked) {
+        } else if (toolbarAppearance.style == ToolbarStyle::Docked) {
             SetBorders(1, Color(180, 180, 180, 180), 12);
         } else {
             SetBorders(1, Color(180, 180, 180, 255));
         }
 
-        layout.SetFlexGap(appearance.itemSpacing);
+        layout.SetFlexGap(toolbarAppearance.itemSpacing);
 
         // Update all items
         UpdateItemAppearances();
@@ -432,11 +432,11 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasToolbar::SetVisibility(ToolbarVisibility vis) {
-        visibility = vis;
+        toolbarVisibility = vis;
     }
 
     void UltraCanvasToolbar::SetDragMode(ToolbarDragMode mode) {
-        dragMode = mode;
+        toolbarDragMode = mode;
     }
 
 // ===== ITEM MANAGEMENT =====
@@ -460,7 +460,7 @@ namespace UltraCanvas {
             AddChild(item->GetWidget());
         }
 
-        item->UpdateAppearance(appearance);
+        item->UpdateAppearance(toolbarAppearance);
 
         if (onItemAdded) {
             onItemAdded(item->GetIdentifier());
@@ -488,7 +488,7 @@ namespace UltraCanvas {
             AddChild(item->GetWidget());
         }
 
-        item->UpdateAppearance(appearance);
+        item->UpdateAppearance(toolbarAppearance);
 
         if (onItemAdded) {
             onItemAdded(item->GetIdentifier());
@@ -567,7 +567,7 @@ namespace UltraCanvas {
     void UltraCanvasToolbar::AddSeparator(const std::string& id) {
         auto sep = std::make_shared<UltraCanvasToolbarSeparator>(
                 id.empty() ? "sep_" + std::to_string(items.size()) : id,
-                orientation == ToolbarOrientation::Horizontal
+                toolbarOrientation == ToolbarOrientation::Horizontal
         );
         AddItem(sep);
     }
@@ -610,21 +610,21 @@ namespace UltraCanvas {
 
     void UltraCanvasToolbar::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         // Render shadow if enabled (for Docked style)
-        if (appearance.hasShadow) {
+        if (toolbarAppearance.hasShadow) {
             RenderShadow(ctx);
         }
         // Use base class rendering for background and border
         UltraCanvasContainer::Render(ctx, dirtyRect);
 
         // Render dock magnification effect if enabled
-        if (appearance.enableMagnification && hoveredItemIndex >= 0) {
+        if (toolbarAppearance.enableMagnification && hoveredItemIndex >= 0) {
             RenderDockMagnification(ctx);
         }
     }
 
     bool UltraCanvasToolbar::OnEvent(const UCEvent& event) {
         // Handle auto-hide behavior
-        if (visibility == ToolbarVisibility::AutoHide || visibility == ToolbarVisibility::OnHover) {
+        if (toolbarVisibility == ToolbarVisibility::AutoHide || toolbarVisibility == ToolbarVisibility::OnHover) {
             if (event.type == UCEventType::MouseEnter) {
                 isHovered = true;
                 ShowToolbar();
@@ -635,7 +635,7 @@ namespace UltraCanvas {
         }
 
         // Handle dragging
-        if (dragMode != ToolbarDragMode::DragNone) {
+        if (toolbarDragMode != ToolbarDragMode::DragNone) {
             if (event.type == UCEventType::MouseDown && event.button == UCMouseButton::Left) {
                 BeginDrag(Point2Di(event.pointer.x, event.pointer.y));
                 return true;
@@ -649,7 +649,7 @@ namespace UltraCanvas {
         }
 
         // Track mouse position for magnification
-        if (appearance.enableMagnification && event.type == UCEventType::MouseMove) {
+        if (toolbarAppearance.enableMagnification && event.type == UCEventType::MouseMove) {
             mousePosition = Point2Di(event.pointer.x, event.pointer.y);
             CalculateMagnification();
         }
@@ -660,7 +660,7 @@ namespace UltraCanvas {
 // ===== AUTO-HIDE =====
 
     void UltraCanvasToolbar::ShowToolbar() {
-        if (visibility != ToolbarVisibility::AlwaysVisible) {
+        if (toolbarVisibility != ToolbarVisibility::AlwaysVisible) {
             isAutoHidden = false;
             SetVisible(true);
             if (onToolbarShow) {
@@ -670,7 +670,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasToolbar::HideToolbar() {
-        if (visibility == ToolbarVisibility::AutoHide || visibility == ToolbarVisibility::OnHover) {
+        if (toolbarVisibility == ToolbarVisibility::AutoHide || toolbarVisibility == ToolbarVisibility::OnHover) {
             isAutoHidden = true;
             SetVisible(false);
             if (onToolbarHide) {
@@ -684,7 +684,7 @@ namespace UltraCanvas {
     void UltraCanvasToolbar::EnableItemReordering(bool enable) {
         if (enable) {
             SetDragMode(ToolbarDragMode::ReorderItems);
-        } else if (dragMode == ToolbarDragMode::ReorderItems) {
+        } else if (toolbarDragMode == ToolbarDragMode::ReorderItems) {
             SetDragMode(ToolbarDragMode::DragNone);
         }
     }
@@ -712,7 +712,7 @@ namespace UltraCanvas {
 
     void UltraCanvasToolbar::UpdateItemAppearances() {
         for (auto& item : items) {
-            item->UpdateAppearance(appearance);
+            item->UpdateAppearance(toolbarAppearance);
         }
     }
 
@@ -737,10 +737,10 @@ namespace UltraCanvas {
         Rect2Di bounds = GetLocalBounds();
 
         // Draw shadow
-        ctx->SetFillPaint(appearance.shadowColor);
+        ctx->SetFillPaint(toolbarAppearance.shadowColor);
         ctx->FillRoundedRectangle({
-                                          appearance.shadowOffset.x,
-                                          appearance.shadowOffset.y,
+                                          toolbarAppearance.shadowOffset.x,
+                                          toolbarAppearance.shadowOffset.y,
                                           finalBounds.width,
                                           finalBounds.height
                                   },
@@ -796,7 +796,7 @@ namespace UltraCanvas {
             }
 
             case ToolbarItemType::Separator: {
-                bool vertical = (orientation == ToolbarOrientation::Horizontal);
+                bool vertical = (toolbarOrientation == ToolbarOrientation::Horizontal);
                 item = std::make_shared<UltraCanvasToolbarSeparator>(
                         descriptor.identifier,
                         vertical

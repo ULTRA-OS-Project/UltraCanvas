@@ -59,7 +59,9 @@ namespace UltraCanvas {
 
         // Helpers
         void CalculateLayout(IRenderContext* ctx);
-        void CalculateAutoSize(IRenderContext* ctx);
+        // Measures the natural content size (indicator + spacing + label). Measure
+        // only — must not mutate this element's size (that is MeasureCore's job).
+        Size2Dd MeasureContentSize(IRenderContext* ctx) const;
         void DrawLabel(IRenderContext* ctx);
 
         // Subclass hooks
@@ -85,15 +87,23 @@ namespace UltraCanvas {
         virtual void Toggle();
 
         // ===== TEXT/LAYOUT =====
-        void SetText(const std::string& labelText) { text = labelText; layoutDirty = true; }
+        void SetText(const std::string& labelText) { text = labelText; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }
         std::string GetText() const { return text; }
 
-        void SetAutoSize(bool val) { autoSize = val; layoutDirty = true; }
+        void SetAutoSize(bool val) { autoSize = val; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }
         bool GetAutoSize() const { return autoSize; }
+
+        // ===== LAYOUT (CSS Measure/Arrange) =====
+        // Toggles have intrinsic size (indicator + spacing + label), so we report it
+        // via MeasureCore/ComputeIntrinsicSizes (Button pattern) and position our
+        // sub-rects in Arrange. autoSize forces content sizing; explicit size wins.
+        void MeasureCore(const CSSLayout::MeasureConstraints& c,
+                         const CSSLayout::LayoutContext& ctx) override;
+        void ComputeIntrinsicSizes(const CSSLayout::LayoutContext& ctx) override;
+        void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
         // ===== RENDER/EVENT =====
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
-        void UpdateGeometry(IRenderContext* ctx) override;
         bool OnEvent(const UCEvent& event) override;
 
         // ===== CALLBACKS =====

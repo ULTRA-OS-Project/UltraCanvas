@@ -256,7 +256,7 @@ namespace UltraCanvas {
             const std::string& identifier,
             float x, float y,
             const std::string& text, bool checked) {
-        auto sw = std::make_shared<UltraCanvasSwitch>(identifier, x, y, 200, 30, text);
+        auto sw = std::make_shared<UltraCanvasSwitch>(identifier, x, y, 200, 40, text);
         sw->SetChecked(checked);
         sw->SetAutoSize(true);
         return sw;

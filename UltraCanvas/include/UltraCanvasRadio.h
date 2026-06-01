@@ -70,11 +70,11 @@ namespace UltraCanvas {
         void SetCheckState(CheckedState state) override;
 
         // ===== APPEARANCE =====
-        void SetVisualStyle(const RadioVisualStyle& s) { visualStyle = s; layoutDirty = true; }
+        void SetVisualStyle(const RadioVisualStyle& s) { visualStyle = s; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }
         RadioVisualStyle& GetVisualStyle() { return visualStyle; }
         const RadioVisualStyle& GetVisualStyle() const { return visualStyle; }
 
-        void SetBoxSize(float size) { visualStyle.boxSize = size; layoutDirty = true; }
+        void SetBoxSize(float size) { visualStyle.boxSize = size; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }
         float GetBoxSize() const { return visualStyle.boxSize; }
 
         // ===== FACTORY =====

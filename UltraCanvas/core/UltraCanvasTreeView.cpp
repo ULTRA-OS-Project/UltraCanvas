@@ -432,9 +432,19 @@ namespace UltraCanvas {
         return false;
     }
 
-    void UltraCanvasTreeView::UpdateGeometry(IRenderContext *ctx) {
+    void UltraCanvasTreeView::Arrange(const Rect2Df &finalRect, const CSSLayout::LayoutContext &ctx) {
+        // The engine has resolved our final bounds (explicit size or parent
+        // stretch). Set finalBounds + damage via the base, then recompute the
+        // scrollbar against the now-valid width/height.
+        UltraCanvasUIElement::Arrange(finalRect, ctx);
+
+        // Fix for the right-side gap: scrollbar visibility used to be computed
+        // only from the tree mutators (AddNode/Expand/...), which ran while
+        // finalBounds.height was still 0 and so wrongly marked the scrollbar
+        // visible. Computing it here, with valid bounds, keeps row width correct.
+        UpdateScrollbars();
         if (verticalScrollbar && verticalScrollbar->IsVisible()) {
-            verticalScrollbar->UpdateGeometry(ctx);
+            verticalScrollbar->UpdateGeometry(GetRenderContext());
         }
     }
 
@@ -972,13 +982,5 @@ namespace UltraCanvas {
         };
         verticalScrollbar->SetStyle(scrollbarStyle);
         verticalScrollbar->SetVisible(false);
-    }
-
-    void UltraCanvasTreeView::SetBounds(const Rect2Df &bounds) {
-        if (bounds != GetBounds()) {
-            UltraCanvasUIElement::SetBounds(bounds);
-            UpdateScrollbars();
-            RequestRedraw();
-        }
     }
 }

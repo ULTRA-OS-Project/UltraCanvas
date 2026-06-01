@@ -489,12 +489,12 @@ namespace UltraCanvas {
     class UltraCanvasToolbar : public UltraCanvasContainer {
     private:
         // Configuration
-        ToolbarOrientation orientation = ToolbarOrientation::Horizontal;
-        ToolbarPosition position = ToolbarPosition::Top;
-        ToolbarAppearance appearance;
+        ToolbarOrientation toolbarOrientation = ToolbarOrientation::Horizontal;
+        ToolbarPosition toolbarPosition = ToolbarPosition::Top;
+        ToolbarAppearance toolbarAppearance;
         ToolbarOverflowMode overflowMode = ToolbarOverflowMode::OverflowNone;
-        ToolbarVisibility visibility = ToolbarVisibility::AlwaysVisible;
-        ToolbarDragMode dragMode = ToolbarDragMode::DragNone;
+        ToolbarVisibility toolbarVisibility = ToolbarVisibility::AlwaysVisible;
+        ToolbarDragMode toolbarDragMode = ToolbarDragMode::DragNone;
 
         // Layout is configured directly on the inherited CSSLayout::Element::layout
         // (display = Flex, direction set per orientation). No separate pointer.
@@ -542,9 +542,9 @@ namespace UltraCanvas {
         void SetVisibility(ToolbarVisibility vis);
         void SetDragMode(ToolbarDragMode mode);
 
-        ToolbarOrientation GetOrientation() const { return orientation; }
-        ToolbarPosition GetPosition() const { return position; }
-        const ToolbarAppearance& GetAppearance() const { return appearance; }
+        ToolbarOrientation GetOrientation() const { return toolbarOrientation; }
+        ToolbarPosition GetPosition() const { return toolbarPosition; }
+        const ToolbarAppearance& GetAppearance() const { return toolbarAppearance; }
 
         // ===== ITEM MANAGEMENT =====
         void AddItem(const ToolbarItemDescriptor& descriptor);

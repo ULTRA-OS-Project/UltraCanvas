@@ -88,7 +88,12 @@ namespace UltraCanvas {
         void EnsureRowVisible(int row);
 
         // === Core overrides ===
-        void UpdateGeometry(IRenderContext* ctx) override;
+        // ListView is externally sized (explicit size or parent stretch); the base
+        // block MeasureCore is sufficient. We hook Arrange to recompute the scrollbar
+        // against the resolved finalBounds. SetBounds is kept because dropdown/
+        // autocomplete popups size this view imperatively (SetSize -> SetBounds) and
+        // the window popup pass does not run Measure/Arrange on popups.
+        void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         bool OnEvent(const UCEvent& event) override;
         void SetBounds(const Rect2Df& bounds) override;
