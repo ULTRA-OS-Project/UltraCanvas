@@ -1,7 +1,7 @@
 // UltraCanvasMenu.cpp
 // Interactive menu component with styling options and submenu support
-// Version: 1.7.0
-// Last Modified: 2026-05-31
+// Version: 1.7.1
+// Last Modified: 2026-06-01
 // Author: UltraCanvas Framework
 
 #include <vector>
@@ -754,9 +754,11 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMenu::RenderSeparator(const Rect2Di &bounds, IRenderContext *ctx) {
-        int centerY = finalBounds.y + finalBounds.height / 2;
-        int startX = finalBounds.x + style.paddingLeft;
-        int endX = finalBounds.x + finalBounds.width - style.paddingRight;
+        // bounds is element-local (see GetItemBounds); rendering happens in the
+        // ctx translated to element origin, so use bounds, not finalBounds.
+        int centerY = bounds.y + bounds.height / 2;
+        int startX = bounds.x + style.paddingLeft;
+        int endX = bounds.x + bounds.width - style.paddingRight;
 
         ctx->SetStrokePaint(style.separatorColor);
         ctx->SetStrokeWidth(1.0f);
@@ -770,8 +772,8 @@ namespace UltraCanvas {
 
         Point2Di textSize = ctx->GetTextDimension(item.label);
         int fontHeight = textSize.y;
-        int textX = finalBounds.x + style.paddingLeft;
-        int textY = finalBounds.y + (finalBounds.height - fontHeight) / 2;
+        int textX = bounds.x + style.paddingLeft;
+        int textY = bounds.y + (bounds.height - fontHeight) / 2;
 
         ctx->SetTextPaint(style.headerTextColor);
         ctx->DrawText(item.label, Point2Di(textX, textY));

@@ -76,7 +76,7 @@ namespace UltraCanvas {
         float paddingLeft = 8.0f;
         float paddingRight = 20.0f;
         float itemHeight = 24.0f;
-        int maxItemWidth = 400;
+        float maxItemWidth = 400;
         int maxVisibleItems = 8;
         float arrowSize = 8.0f;
 
@@ -236,7 +236,7 @@ namespace UltraCanvas {
         void WireListViewCallbacks();
         void ApplyStyleToListView();
         void CalculateAndSetPopupSize();
-        Point2Di CalculatePopupPosition();
+        Point2Df CalculatePopupPosition();
 
         void RenderButton(IRenderContext* ctx);
         void RenderDropdownArrow(const Rect2Di& buttonRect, const Color& color, IRenderContext* ctx);

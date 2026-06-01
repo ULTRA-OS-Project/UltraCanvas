@@ -788,9 +788,19 @@ namespace {
 //            if (btn) btn->SetAcceptsFocus(false);
 //        }
 
-        // Wrap toolbar(s) in an HBox container
+        // Wrap toolbar(s) in an HBox container. Origin (0,0): in-flow flex child of the
+        // window column (a non-zero origin would make it AbsoluteUI).
         toolbarContainer = std::make_shared<UltraCanvasContainer>(
-                "ToolbarContainer",  0, toolbarY, GetWidth(), toolbarHeight);
+                "ToolbarContainer",  0, 0, GetWidth(), toolbarHeight);
+        {
+            // Fixed-height bar: never scroll (avoids a spurious scrollbar when the toolbar
+            // content is a hair taller than the 40px bar).
+            ContainerStyle cs = toolbarContainer->GetContainerStyle();
+            cs.autoShowScrollbars = false;
+            cs.forceShowVerticalScrollbar = false;
+            cs.forceShowHorizontalScrollbar = false;
+            toolbarContainer->SetContainerStyle(cs);
+        }
         toolbarContainer->layout.SetFlexRow();
         toolbarContainer->layout.SetFlexGap(0);
         toolbarContainer->AddChild(toolbar); toolbar->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -842,13 +852,21 @@ namespace {
                                 auto btn = markdownToolbar->GetWidget("md-heading");
                                 if (btn) {
                                     auto pos = btn->MapFromLocal({btn->GetWidth(),0});
-                                    headingSubToolbar->SetBounds(Rect2Di(pos.x, pos.y, 200, 36));
+                                    // Absolute overlay: anchor via insets (window-local), not SetBounds.
+                                    headingSubToolbar->size.width  = CSSLayout::Dimension::Px(200);
+                                    headingSubToolbar->size.height = CSSLayout::Dimension::Px(36);
+                                    headingSubToolbar->layoutItem.SetPositionInsets(CSSLayout::Position{
+                                        CSSLayout::Dimension::Px((float)pos.y),    // top
+                                        CSSLayout::Dimension::Auto(),               // right
+                                        CSSLayout::Dimension::Auto(),               // bottom
+                                        CSSLayout::Dimension::Px((float)pos.x)});  // left
                                 }
                             }
                             headingSubToolbar->SetVisible(true);
                             GetWindow()->AddChild(headingSubToolbar);
                         }
-                        //UpdateChildLayout();
+                        InvalidateLayout();
+                        RequestRedraw();
                     })
                 .AddSeparator()
                 .AddButton("md-ul", "", NormalizePath(GetResourcesDir() + "media/icons/texter/md-list-unordered.svg"),
@@ -901,11 +919,18 @@ namespace {
         // clobbers fontSize on every SetAppearance call).
         ApplyHeadingButtonStyles(isDarkTheme);
         headingSubToolbar->SetVisible(false);
+        // The heading flyout is added to the window on demand; keep it out of the window's
+        // flex column by positioning it absolutely (insets set at show time).
+        headingSubToolbar->layoutItem.SetPositionType(CSSLayout::PositionType::Absolute);
 
         markdownToolbar->SetVisible(false);
-
-        AddChild(markdownToolbar);
-
+        // The markdown toolbar is NOT a window child: it is re-parented into the active tab's
+        // editorArea as an in-flow flex-row item (order 0, left). Cross-axis stretch gives it
+        // the full editor height so every button is visible.
+        markdownToolbar->size.width = CSSLayout::Dimension::Px(markdownToolbarWidth);
+        markdownToolbar->layoutItem.SetPositionType(CSSLayout::PositionType::Static)
+                .SetFlexGrow(0).SetFlexShrink(0).SetFlexOrder(0)
+                .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     }
 
     void UltraCanvasTextEditor::SetupTabContainer() {
@@ -916,9 +941,11 @@ namespace {
         int tabAreaHeight = GetHeight() - yPos - (config.showStatusBar ? statusBarHeight : 0);
 
         // Create tabbed container
+        // Origin (0,0): in-flow flex child of the window column (a non-zero origin would
+        // make it AbsoluteUI). The window's flex layout positions it.
         tabContainer = std::make_shared<UltraCanvasTabbedContainer>(
-                "EditorTabs", 
-                0, yPos,
+                "EditorTabs",
+                0, 0,
                 GetWidth(), tabAreaHeight
         );
 
@@ -1079,12 +1106,19 @@ namespace {
         int eolDropdownWidth = 80;
         int zoomDropdownWidth = 80;
         int gap = 4;
-        int xPos = gap;
+
+        // Flex-row container holding the status controls; the window column places it at
+        // the bottom (fixed height). Controls are built at origin (0,0) so they stay in-flow.
+        statusBarContainer = std::make_shared<UltraCanvasContainer>(
+                "StatusBarContainer", -1, -1, -1, statusBarHeight);
+        statusBarContainer->layout.SetFlexRow().SetFlexGap(gap)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        statusBarContainer->SetBackgroundColor(Color(240, 240, 240, 255));
 
         // Create language dropdown (leftmost)
         languageDropdown = std::make_shared<UltraCanvasDropdown>(
                 "LanguageDropdown",
-                xPos, yPos + 2,
+                -1, -1,
                 languageDropdownWidth, statusBarHeight - 4
         );
 
@@ -1140,13 +1174,12 @@ namespace {
             OnLanguageChanged(index, item);
         };
 
-        AddChild(languageDropdown);
-        xPos += languageDropdownWidth + gap;
+        statusBarContainer->AddChild(languageDropdown);
 
         // Create encoding dropdown
         encodingDropdown = std::make_shared<UltraCanvasDropdown>(
                 "EncodingDropdown",
-                xPos, yPos + 2,
+                -1, -1,
                 encodingDropdownWidth, statusBarHeight - 4
         );
 
@@ -1180,13 +1213,11 @@ namespace {
             OnEncodingChanged(index, item);
         };
 
-        AddChild(encodingDropdown);
-        xPos += encodingDropdownWidth + gap;
+        statusBarContainer->AddChild(encodingDropdown);
 
         // Create EOL dropdown
         eolDropdown = std::make_shared<UltraCanvasDropdown>(
                 "EOLDropdown",
-                xPos, yPos + 2,
                 eolDropdownWidth, statusBarHeight - 4
         );
 
@@ -1207,13 +1238,11 @@ namespace {
             OnEOLChanged(index, item);
         };
 
-        AddChild(eolDropdown);
-        xPos += eolDropdownWidth + gap;
+        statusBarContainer->AddChild(eolDropdown);
 
         // Create zoom dropdown
         zoomDropdown = std::make_shared<UltraCanvasDropdown>(
                 "ZoomDropdown",
-                xPos, yPos + 2,
                 zoomDropdownWidth, statusBarHeight - 4
         );
 
@@ -1234,130 +1263,114 @@ namespace {
         };
         zoomDropdown->SetTooltip("Zoom Level");
 
-        AddChild(zoomDropdown);
-        xPos += zoomDropdownWidth + gap;
+        statusBarContainer->AddChild(zoomDropdown);
 
-        // Status label fills remaining space to the right
+        // Status label fills remaining space to the right (flex-grow in the row)
         statusLabel = std::make_shared<UltraCanvasLabel>(
-                "StatusBar", 
-                xPos, yPos + 4,
-                GetWidth() - xPos - 4, statusBarHeight - 8
+                "StatusBar"
         );
         statusLabel->SetText("Ready");
         statusLabel->SetFontSize(10);
         statusLabel->SetTextColor(Color(80, 80, 80, 255));
         statusLabel->SetBackgroundColor(Color(240, 240, 240, 255));
+        statusLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
+        statusLabel->SetPadding(0,5,0,0);
+        statusLabel->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Center);
 
-        AddChild(statusLabel);
+        statusBarContainer->AddChild(statusLabel);
+        AddChild(statusBarContainer);
     }
 
     void UltraCanvasTextEditor::SetupLayout() {
-        // Layout is managed by fixed positioning
-        // Components are positioned in their setup methods
+        // Window root is a CSS flex column: menu / toolbar / tab area (grows) / status bar.
+        // The engine arranges the children; explicit per-control coordinates are gone.
+        layout.SetFlexColumn().SetFlexGap(0).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+
+        if (menuBar) {
+            menuBar->size.height = CSSLayout::Dimension::Px(menuBarHeight);
+            menuBar->layoutItem.SetFlexShrink(0).SetFlexOrder(0)
+                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        }
+        if (toolbarContainer) {
+            toolbarContainer->size.height = CSSLayout::Dimension::Px(toolbarHeight);
+            toolbarContainer->layoutItem.SetFlexShrink(0).SetFlexOrder(1)
+                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+            if (!config.showToolbar) {
+                toolbarContainer->layout.display = CSSLayout::DisplayType::NoDisplay;
+            }
+        }
+        if (tabContainer) {
+            tabContainer->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexOrder(2)
+                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        }
+        if (statusBarContainer) {
+            statusBarContainer->size.height = CSSLayout::Dimension::Px(statusBarHeight);
+            statusBarContainer->layoutItem.SetFlexShrink(0).SetFlexOrder(3)
+                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        }
+        InvalidateLayout();
     }
     void UltraCanvasTextEditor::SetBounds(const Rect2Df& b) {
         UltraCanvasWindow::SetBounds(b);
-        UpdateChildLayout();
+        // The CSS flex engine re-arranges the window's children on the next layout pass.
+        InvalidateLayout();
+        RequestRedraw();
+    }
+
+    void UltraCanvasTextEditor::BuildDocumentContentBox(const std::shared_ptr<DocumentTab>& doc) {
+        if (!doc || !doc->textArea) return;
+        const std::string base = "doc_" + std::to_string(doc->documentId);
+
+        // editorArea: flex ROW [markdownToolbar (left, fixed width), textArea (grows)].
+        // The markdown toolbar is re-parented in (order 0) when this tab is active and
+        // stretches to full height via the row's cross-axis stretch. The container never
+        // scrolls (the text area scrolls internally).
+        doc->editorArea = std::make_shared<UltraCanvasContainer>(base + "_editor", 0, 0, 0, 0);
+        doc->editorArea->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        {
+            ContainerStyle cs = doc->editorArea->GetContainerStyle();
+            cs.autoShowScrollbars = false;
+            cs.forceShowVerticalScrollbar = false;
+            cs.forceShowHorizontalScrollbar = false;
+            doc->editorArea->SetContainerStyle(cs);
+        }
+        doc->textArea->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexOrder(1)
+                .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        doc->editorArea->AddChild(doc->textArea);
+
+        // contentBox: flex column [searchBar (top, when active) , editorArea (grows)].
+        doc->contentBox = std::make_shared<UltraCanvasContainer>(base + "_pane", 0, 0, 0, 0);
+        doc->contentBox->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        {
+            ContainerStyle cs = doc->contentBox->GetContainerStyle();
+            cs.autoShowScrollbars = false;
+            cs.forceShowVerticalScrollbar = false;
+            cs.forceShowHorizontalScrollbar = false;
+            doc->contentBox->SetContainerStyle(cs);
+        }
+        doc->editorArea->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexOrder(1)
+                .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        doc->contentBox->AddChild(doc->editorArea);
+    }
+
+    void UltraCanvasTextEditor::AttachSharedBarsToActiveTab() {
+        auto* doc = GetActiveDocument();
+        if (!doc) return;
+        // Re-parent the shared singletons into the active tab's boxes (AddChild detaches
+        // them from the previously-active tab). Order/position were configured at setup.
+        if (searchBar && doc->contentBox) {
+            doc->contentBox->AddChild(searchBar);
+        }
+        if (markdownToolbar && doc->editorArea) {
+            doc->editorArea->AddChild(markdownToolbar);
+        }
     }
 
     void UltraCanvasTextEditor::UpdateChildLayout() {
-        int w = GetWidth();
-        int h = GetHeight();
-        int yPos = 0;
-
-        // ===== Menu bar =====
-        if (menuBar && config.showMenuBar) {
-            menuBar->SetBounds(Rect2Di(0, yPos, w, menuBarHeight));
-            yPos += menuBarHeight;
-        }
-
-        // ===== Toolbar =====
-        if (toolbarContainer && config.showToolbar) {
-            toolbarContainer->SetBounds(Rect2Di(0, yPos, w, toolbarHeight));
-            yPos += toolbarHeight;
-        }
-
-        // ===== Search bar height =====
-        int searchBarH = (searchBar && searchBar->IsVisible()) ? searchBar->GetBarHeight() : 0;
-
-        // ===== Tab container (fills remaining space minus status bar, always full width) =====
-        int mdToolbarW = (markdownToolbar && markdownToolbar->IsVisible()) ? markdownToolbarWidth : 0;
-        int tabAreaHeight = 0;
-        if (tabContainer) {
-            int reservedBottom = config.showStatusBar ? statusBarHeight : 0;
-            tabAreaHeight = h - yPos - reservedBottom;
-            if (tabAreaHeight < 0) tabAreaHeight = 0;
-            tabContainer->SetBounds(Rect2Di(0, yPos, w, tabAreaHeight));
-            tabContainer->SetContentTopPadding(searchBarH);
-            tabContainer->SetContentLeftPadding(mdToolbarW);
-        }
-
-        // ===== Search bar (below tab strip, above content — full width) =====
-        if (searchBarH > 0) {
-            int barY = yPos + tabBarHeight;
-            searchBar->SetBounds(Rect2Di(0, barY, w, searchBarH));
-        }
-
-        // ===== Markdown toolbar (vertical, overlays left column of tab content area) =====
-        if (markdownToolbar && markdownToolbar->IsVisible()) {
-            int mdY = yPos + tabBarHeight + searchBarH;
-            int mdH = tabAreaHeight - tabBarHeight - searchBarH;
-            if (mdH < 0) mdH = 0;
-            markdownToolbar->SetBounds(Rect2Di(0, mdY, markdownToolbarWidth, mdH));
-        }
-
-        // ===== Status bar =====
-        if (config.showStatusBar) {
-            int statusY = h - statusBarHeight;
-            int langW = 140, encW = 160, eolW = 80, zoomW = 80;
-            int gap = 4;
-            int xPos = gap;
-
-            // Language dropdown: leftmost
-            if (languageDropdown) {
-                languageDropdown->SetBounds(Rect2Di(
-                    xPos, statusY + 2, langW, statusBarHeight - 4
-                ));
-                xPos += langW + gap;
-            }
-
-            // Encoding dropdown
-            if (encodingDropdown) {
-                encodingDropdown->SetBounds(Rect2Di(
-                    xPos, statusY + 2, encW, statusBarHeight - 4
-                ));
-                xPos += encW + gap;
-            }
-
-            // EOL dropdown
-            if (eolDropdown) {
-                eolDropdown->SetBounds(Rect2Di(
-                    xPos, statusY + 2, eolW, statusBarHeight - 4
-                ));
-                xPos += eolW + gap;
-            }
-
-            // Zoom dropdown
-            if (zoomDropdown) {
-                zoomDropdown->SetBounds(Rect2Di(
-                    xPos, statusY + 2, zoomW, statusBarHeight - 4
-                ));
-                xPos += zoomW + gap;
-            }
-
-            // Status label: fills remaining space to the right
-            if (statusLabel) {
-                statusLabel->SetBounds(Rect2Di(
-                    xPos, statusY + 4,
-                    w - xPos - 4, statusBarHeight - 8
-                ));
-            }
-        }
-
-        // Force every document's text area to recompute wrap / visible area /
-        // scrollbars. The implicit chain through tabContainer ->
-        // PositionTabContent -> textArea->SetBounds only reliably reaches the
-        // active tab; inactive tabs keep stale wrap widths until clicked.
+        // Layout is driven by the CSS flex engine now (window column + per-tab content
+        // boxes); just invalidate so it re-runs, and refresh text-area wrap caches.
+        InvalidateLayout();
+        RequestRedraw();
         for (const auto& doc : documents) {
             if (doc && doc->textArea) {
                 doc->textArea->InvalidateAllLineLayouts();
@@ -1552,8 +1565,12 @@ namespace {
         // Setup callbacks for this document
         SetupDocumentCallbacks(docIndex);
 
+        // Build the per-tab flex content (contentBox > editorArea > textArea) and use it
+        // as the tab's content element.
+        BuildDocumentContentBox(doc);
+
         // Add tab
-        int tabIndex = tabContainer->AddTab(doc->fileName, doc->textArea);
+        int tabIndex = tabContainer->AddTab(doc->fileName, doc->contentBox);
 
         // Switch to new document
         activeDocumentIndex = docIndex;
@@ -1564,6 +1581,7 @@ namespace {
         tabContainer->EnsureTabVisible(tabIndex);
         tabContainer->InvalidateTabbar();
 
+        AttachSharedBarsToActiveTab();
         UpdateStatusBar();
         UpdateMarkdownToolbarVisibility();
 
@@ -1834,13 +1852,17 @@ namespace {
         doc->textArea->SetShowLineNumbers(config.showLineNumbers);
         doc->textArea->SetWordWrap(config.wordWrap);
 
+        // Build the per-tab flex content and add it as the tab's content element.
+        BuildDocumentContentBox(doc);
+
         // Add tab to TabbedContainer
-        int tabIndex = tabContainer->AddTab(doc->fileName, doc->textArea);
+        int tabIndex = tabContainer->AddTab(doc->fileName, doc->contentBox);
 
         // Activate the new tab
         activeDocumentIndex = docIndex;
         tabContainer->SetActiveTab(tabIndex);
 
+        AttachSharedBarsToActiveTab();
         UpdateTabBadge(docIndex);
         UpdateTabTitle(docIndex);
         UpdateStatusBar();
@@ -1877,6 +1899,9 @@ namespace {
             }
         }
         doc->textArea->SetFocus(doSetFocus);
+
+        // Move the shared search bar / markdown toolbar into this tab's content boxes.
+        AttachSharedBarsToActiveTab();
 
         // Update status bar and dropdowns
         UpdateStatusBar();
@@ -2586,13 +2611,16 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     void UltraCanvasTextEditor::UpdateMarkdownToolbarVisibility() {
         if (!markdownToolbar) return;
         bool show = IsMarkdownMode() && config.showMarkdownToolbar;
-        if (markdownToolbar->IsVisible() != show) {
-            markdownToolbar->SetVisible(show);
-            if (!show && headingSubToolbar) {
-                headingSubToolbar->SetVisible(false);
-            }
-            UpdateChildLayout();
+        markdownToolbar->SetVisible(show);
+        markdownToolbar->layout.display =
+                show ? CSSLayout::DisplayType::Block : CSSLayout::DisplayType::NoDisplay;
+        if (!show && headingSubToolbar) {
+            headingSubToolbar->SetVisible(false);
         }
+        // No TextArea margin needed: the markdown toolbar is an in-flow flex-row sibling that
+        // naturally sits left of the text area (and collapses out when display:NoDisplay).
+        InvalidateLayout();
+        RequestRedraw();
     }
 
     void UltraCanvasTextEditor::InsertMarkdownSnippet(
@@ -4530,7 +4558,12 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             HideSearchBar();
         };
 
-        AddChild(searchBar);
+        // The search bar is NOT a window child: it is re-parented into the active tab's
+        // content box as the first (top) flex item.
+        searchBar->layoutItem.SetFlexOrder(0).SetFlexShrink(0)
+                .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        searchBar->SetVisible(false);
+        searchBar->layout.display = CSSLayout::DisplayType::NoDisplay;
     }
 
 
@@ -4544,6 +4577,9 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         searchBar->SetReplaceHistory(replaceHistory);
 
         searchBar->SetMode(mode);
+        // Give the flex column a definite height for the bar, and make it occupy space.
+        searchBar->size.height = CSSLayout::Dimension::Px(searchBar->GetBarHeight());
+        searchBar->layout.display = CSSLayout::DisplayType::Block;
         searchBar->SetVisible(true);
 
         // Apply current theme
@@ -4561,14 +4597,16 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
 
         searchBar->FocusSearchInput();
-        UpdateChildLayout();
+        InvalidateLayout();
         RequestRedraw();
     }
 
     void UltraCanvasTextEditor::HideSearchBar() {
         if (!searchBar) return;
         CancelAsyncMatchCount();
+        // Collapse out of the flex column so the text area reclaims the space.
         searchBar->SetVisible(false);
+        searchBar->layout.display = CSSLayout::DisplayType::NoDisplay;
 
         // Return focus to active text area
         auto doc = GetActiveDocument();
@@ -4578,7 +4616,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             doc->textArea->ClearHighlights();
         }
 
-        UpdateChildLayout();
+        InvalidateLayout();
         RequestRedraw();
     }
 

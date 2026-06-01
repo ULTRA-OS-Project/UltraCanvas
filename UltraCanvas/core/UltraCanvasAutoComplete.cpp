@@ -334,7 +334,7 @@ namespace UltraCanvas {
             listWidth = std::min(listWidth, acStyle.maxPopupWidth);
         }
 
-        popupListView->SetSize(listWidth, listHeight);
+        popupListView->SetElementSize(Size2Df(listWidth, listHeight));
     }
 
 } // namespace UltraCanvas

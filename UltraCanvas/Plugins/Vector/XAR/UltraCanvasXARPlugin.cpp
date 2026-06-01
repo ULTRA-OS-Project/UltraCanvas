@@ -2416,8 +2416,7 @@ namespace UltraCanvas {
         auto element = std::make_shared<UltraCanvasXARElement>("XARElement", 0, 0, 400, 400);
         if (element->LoadFromFile(filePath)) {
             if (element->GetDocument()) {
-                element->SetSize(static_cast<int>(element->GetDocument()->GetWidth()),
-                                 static_cast<int>(element->GetDocument()->GetHeight()));
+                element->SetElementSize(Size2Df (element->GetDocument()->GetWidth(), element->GetDocument()->GetHeight()));
             }
             return element;
         }

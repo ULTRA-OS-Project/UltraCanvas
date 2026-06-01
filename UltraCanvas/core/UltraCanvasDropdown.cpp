@@ -484,8 +484,8 @@ namespace UltraCanvas {
             maxTextWidth = std::max(maxTextWidth, textWidth);
         }
 
-        int dropdownWidth = maxTextWidth + static_cast<int>(style.paddingLeft + style.paddingRight);
-        dropdownWidth = std::max(dropdownWidth, static_cast<int>(GetBounds().width));
+        float dropdownWidth = maxTextWidth + style.paddingLeft + style.paddingRight;
+        dropdownWidth = std::max(dropdownWidth, GetBounds().width);
         dropdownWidth = std::min(dropdownWidth, style.maxItemWidth);
 
         // Calculate height
@@ -494,27 +494,27 @@ namespace UltraCanvas {
             ? itemCount
             : std::min(itemCount, style.maxVisibleItems);
 
-        int dropdownHeight = static_cast<int>(visibleItems * style.itemHeight + style.borderWidth * 2);
+        float dropdownHeight = visibleItems * style.itemHeight + style.borderWidth * 2;
 
-        popupListView->SetSize(dropdownWidth, dropdownHeight);
+        popupListView->SetElementSize(Size2Df(dropdownWidth, dropdownHeight));
     }
 
-    Point2Di UltraCanvasDropdown::CalculatePopupPosition() {
-        Point2Di globalPos = GetPositionInWindow();
-        Size2Di buttonSize = GetSize();
+    Point2Df UltraCanvasDropdown::CalculatePopupPosition() {
+        Point2Df globalPos = GetPositionInWindow();
+        Size2Df buttonSize = GetSize();
 
-        int windowHeight = window ? window->GetHeight() : 9999;
-        int windowWidth = window ? window->GetWidth() : 9999;
+        float windowHeight = window ? window->GetHeight() : 9999;
+        float windowWidth = window ? window->GetWidth() : 9999;
 
-        int popupWidth = popupListView->GetBounds().width;
-        int popupHeight = popupListView->GetBounds().height;
+        float popupWidth = popupListView->GetBounds().width;
+        float popupHeight = popupListView->GetBounds().height;
 
         // Calculate available space below and above the button
-        int spaceBelow = windowHeight - (globalPos.y + buttonSize.height);
-        int spaceAbove = globalPos.y;
+        float spaceBelow = windowHeight - (globalPos.y + buttonSize.height);
+        float spaceAbove = globalPos.y;
 
-        int effectiveHeight = popupHeight;
-        int listY;
+        float effectiveHeight = popupHeight;
+        float listY;
 
         if (effectiveHeight <= spaceBelow) {
             // Fits below
@@ -524,26 +524,26 @@ namespace UltraCanvas {
             listY = globalPos.y - effectiveHeight;
         } else if (spaceBelow >= spaceAbove) {
             // More space below — clamp
-            effectiveHeight = std::max(spaceBelow, static_cast<int>(style.itemHeight) + 2);
+            effectiveHeight = std::max(spaceBelow, static_cast<float>(style.itemHeight) + 2);
             listY = globalPos.y + buttonSize.height;
         } else {
             // More space above — clamp
-            effectiveHeight = std::max(spaceAbove, static_cast<int>(style.itemHeight) + 2);
+            effectiveHeight = std::max(spaceAbove, static_cast<float>(style.itemHeight) + 2);
             listY = globalPos.y - effectiveHeight;
         }
 
         // Update popup size if clamped
         if (effectiveHeight != popupHeight) {
-            popupListView->SetSize(popupWidth, effectiveHeight);
+            popupListView->SetElementSize(Size2Df(popupWidth, effectiveHeight));
         }
 
-        int listX = globalPos.x;
+        float listX = globalPos.x;
         // Horizontal adjustment
         if (listX + popupWidth > windowWidth) {
             listX = windowWidth - popupWidth;
         }
 
-        return Point2Di(listX, listY);
+        return Point2Df(listX, listY);
     }
 
     // ===== LISTVIEW SETUP =====

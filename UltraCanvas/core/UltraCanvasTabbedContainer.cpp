@@ -381,7 +381,7 @@ namespace UltraCanvas {
                 break;
         }
 
-        overflowButton->SetSize(overflowDropdownWidth, tabBarBounds.height);
+        overflowButton->SetElementSize(Size2Df(overflowDropdownWidth, tabBarBounds.height));
     }
 
     void UltraCanvasTabbedContainer::ShowSearchAutoComplete() {
