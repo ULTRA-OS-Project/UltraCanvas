@@ -216,6 +216,8 @@ namespace UltraCanvas {
 //        ctx->PushState();
 
         UpdateSliderState();
+        // Externally sized for now (explicit size or parent stretch); the base block
+        // MeasureCore sizes us. TODO: implement MeasureCore for intrinsic sizing.
         Rect2Di bounds = GetLocalBounds();
 //        SetBorders(1, Colors::Black);
 //        UltraCanvasUIElement::Render(ctx, dirtyRect);
@@ -393,10 +395,11 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasSlider::RenderCircularSlider(const Rect2Di &bounds, IRenderContext *ctx) {
-        // Circular/knob style slider
-        int centerX = finalBounds.x + finalBounds.width / 2;
-        int centerY = finalBounds.y + finalBounds.height / 2;
-        float radius = std::min(finalBounds.width, finalBounds.height) / 2.0f - 10.0f;
+        // Circular/knob style slider — element-local coordinates (ctx is translated
+        // to our origin), so use the local bounds, not finalBounds.x/y.
+        int centerX = bounds.x + bounds.width / 2;
+        int centerY = bounds.y + bounds.height / 2;
+        float radius = std::min(bounds.width, bounds.height) / 2.0f - 10.0f;
 
         // Draw outer circle (track)
         ctx->SetStrokePaint(style.trackColor);
@@ -577,11 +580,14 @@ namespace UltraCanvas {
     }
 
     Rect2Di UltraCanvasSlider::GetSliderInteriorRect(const Rect2Di &bounds, bool isVertical) const {
+        // Element-local coordinates: the ctx is translated to our origin and
+        // event.pointer is element-local, so build the interior from the passed-in
+        // local bounds (origin 0,0), not finalBounds.x/y (parent-space).
         if (isVertical) {
-            return Rect2Di(finalBounds.x, finalBounds.y, (int)style.handleSize, finalBounds.height);
+            return Rect2Di(bounds.x, bounds.y, (int)style.handleSize, bounds.height);
         } else {
-            return Rect2Di(finalBounds.x, finalBounds.y + finalBounds.height - (int)style.handleSize,
-                           finalBounds.width, (int)style.handleSize);
+            return Rect2Di(bounds.x, bounds.y + bounds.height - (int)style.handleSize,
+                           bounds.width, (int)style.handleSize);
         }
     }
 
@@ -845,16 +851,17 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasSlider::UpdateValueFromPosition(const Point2Di &pos) {
+        // pos is element-local, so map against local bounds (origin 0,0), not finalBounds.
         Rect2Di bounds = GetLocalBounds();
         float newValue;
 
         if (orientation == SliderOrientation::Vertical) {
-            float ratio = 1.0f - (pos.y - finalBounds.y - style.handleSize / 2) /
-                                 (finalBounds.height - style.handleSize);
+            float ratio = 1.0f - (pos.y - bounds.y - style.handleSize / 2) /
+                                 (bounds.height - style.handleSize);
             newValue = minValue + ratio * (maxValue - minValue);
         } else {
-            float ratio = (pos.x - finalBounds.x - style.handleSize / 2) /
-                          (finalBounds.width - style.handleSize);
+            float ratio = (pos.x - bounds.x - style.handleSize / 2) /
+                          (bounds.width - style.handleSize);
             newValue = minValue + ratio * (maxValue - minValue);
         }
 

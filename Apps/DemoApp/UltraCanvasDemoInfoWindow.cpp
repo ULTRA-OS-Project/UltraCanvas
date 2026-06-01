@@ -1,10 +1,12 @@
 // UltraCanvasDemoInfoWindow.cpp
 // Implementation of info window shown at application startup
-// Version: 1.0.1
-// Last Modified: 2026-05-01
+// Version: 1.0.2
+// Last Modified: 2026-06-01
 // Author: UltraCanvas Framework
 
-#include "UltraCanvasLayoutCompat.h"
+#include "UltraCanvasContainer.h"
+#include "UltraCanvasSpacer.h"
+#include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasDemo.h"
 #include <iostream>
 #include "UltraCanvasDebug.h"
@@ -47,7 +49,6 @@ namespace UltraCanvas {
 
     void InfoWindow::CreateInfoContent() {
         // Create title label
-        //auto layout = CreateVBoxLayout(this);
         layout.SetFlexColumn();
 
         // Example code icon and label
@@ -101,7 +102,6 @@ namespace UltraCanvas {
         infoLabel1_4->SetTextColor(Color(60, 60, 60, 255));
         infoLabel1_4->SetMargin(12,20,5,20);
         AddChild(infoLabel1_4);
-        //layout->AddUIElement(infoLabel1_4);
 
         // Create icon descriptions with actual icons
         int iconSize = 24;
@@ -109,9 +109,7 @@ namespace UltraCanvas {
         // Programmers guide icon and label
         auto doccontainer = CreateContainer("doccont1");
         doccontainer->layout.SetFlexRow();
-        //auto docContainerLayout = CreateHBoxLayout(doccontainer.get());
         doccontainer->SetMargin(10,20,10,20);
-        //layout->AddUIElement(doccontainer)->SetWidthMode(SizeMode::Fill);
         programmersGuideIcon = CreateImageElement("DocIcon", iconSize, iconSize);
         programmersGuideIcon->LoadFromFile(NormalizePath(GetResourcesDir() + "media/icons/text.png"));
         programmersGuideIcon->SetFitMode(ImageFitMode::Contain);
@@ -129,10 +127,8 @@ namespace UltraCanvas {
 
         // Example code icon and label
         auto codeContainer = CreateContainer("codecont1");
-        //auto codeContainerLayout = CreateHBoxLayout(codeContainer.get());
         codeContainer->layout.SetFlexRow();
         codeContainer->SetMargin(0,20,10,20);
-        //layout->AddUIElement(codeContainer)->SetWidthMode(SizeMode::Fill);
 
         exampleCodeIcon = CreateImageElement("CodeIcon", iconSize, iconSize);
         exampleCodeIcon->LoadFromFile(NormalizePath(GetResourcesDir() + "media/icons/c-plus-plus-icon.png"));
@@ -158,7 +154,6 @@ namespace UltraCanvas {
         additionalInfo->SetWrap(TextWrap::WrapWord);
         additionalInfo->SetMargin(10,20);
         AddChild(additionalInfo);
-        //layout->AddUIElement(additionalInfo)->SetWidthMode(SizeMode::Fill);
 
         // link ultraos.eu
         auto openUltraosCallback = []() {

@@ -7,7 +7,9 @@
 #include "UltraCanvasBreadcrumb.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasTooltipManager.h"
+#include "CSSLayout/LayoutUtils.h"
 #include <algorithm>
+#include <optional>
 #include <sstream>
 #include <cmath>
 
@@ -91,7 +93,7 @@ namespace UltraCanvas {
     void UltraCanvasBreadcrumb::AddItem(const BreadcrumbItem& item) {
         items.push_back(item);
         layoutDirty = true;
-        RequestUpdateGeometry();
+        InvalidateLayout(); RequestRedraw();
         NotifyPathChanged();
     }
 
@@ -108,7 +110,7 @@ namespace UltraCanvas {
         if (index > static_cast<int>(items.size())) index = static_cast<int>(items.size());
         items.insert(items.begin() + index, item);
         layoutDirty = true;
-        RequestUpdateGeometry();
+        InvalidateLayout(); RequestRedraw();
         NotifyPathChanged();
     }
 
@@ -119,7 +121,7 @@ namespace UltraCanvas {
             explicitCurrentIndex = -1;
         }
         layoutDirty = true;
-        RequestUpdateGeometry();
+        InvalidateLayout(); RequestRedraw();
         NotifyPathChanged();
         return true;
     }
@@ -138,7 +140,7 @@ namespace UltraCanvas {
             explicitCurrentIndex = -1;
         }
         layoutDirty = true;
-        RequestUpdateGeometry();
+        InvalidateLayout(); RequestRedraw();
         NotifyPathChanged();
     }
 
@@ -149,7 +151,7 @@ namespace UltraCanvas {
         hoveredSlotIdx = -1;
         pressedSlotIdx = -1;
         layoutDirty = true;
-        RequestUpdateGeometry();
+        InvalidateLayout(); RequestRedraw();
         NotifyPathChanged();
     }
 
@@ -198,7 +200,7 @@ namespace UltraCanvas {
         }
 
         layoutDirty = true;
-        RequestUpdateGeometry();
+        InvalidateLayout(); RequestRedraw();
         NotifyPathChanged();
     }
 
@@ -215,7 +217,7 @@ namespace UltraCanvas {
         items = std::move(newItems);
         explicitCurrentIndex = -1;
         layoutDirty = true;
-        RequestUpdateGeometry();
+        InvalidateLayout(); RequestRedraw();
         NotifyPathChanged();
     }
 
@@ -226,7 +228,7 @@ namespace UltraCanvas {
         if (explicitCurrentIndex == index) return;
         explicitCurrentIndex = index;
         layoutDirty = true;
-        RequestUpdateGeometry();
+        InvalidateLayout(); RequestRedraw();
     }
 
     int UltraCanvasBreadcrumb::GetCurrentIndex() const {
@@ -245,21 +247,21 @@ namespace UltraCanvas {
     void UltraCanvasBreadcrumb::SetStyle(const BreadcrumbStyle& newStyle) {
         style = newStyle;
         layoutDirty = true;
-        RequestUpdateGeometry();
+        InvalidateLayout(); RequestRedraw();
     }
 
     void UltraCanvasBreadcrumb::SetSeparatorStyle(BreadcrumbSeparatorStyle s) {
         if (style.separatorStyle == s) return;
         style.separatorStyle = s;
         layoutDirty = true;
-        RequestUpdateGeometry();
+        InvalidateLayout(); RequestRedraw();
     }
 
     void UltraCanvasBreadcrumb::SetCustomSeparatorText(const std::string& text) {
         style.customSeparatorText = text;
         if (style.separatorStyle == BreadcrumbSeparatorStyle::CustomText) {
             layoutDirty = true;
-            RequestUpdateGeometry();
+            InvalidateLayout(); RequestRedraw();
         }
     }
 
@@ -267,7 +269,7 @@ namespace UltraCanvas {
         style.customSeparatorIcon = iconPath.empty() ? nullptr : UCImage::Get(iconPath);
         if (style.separatorStyle == BreadcrumbSeparatorStyle::CustomIcon) {
             layoutDirty = true;
-            RequestUpdateGeometry();
+            InvalidateLayout(); RequestRedraw();
         }
     }
 
@@ -275,14 +277,14 @@ namespace UltraCanvas {
         if (style.itemStyle == s) return;
         style.itemStyle = s;
         layoutDirty = true;
-        RequestUpdateGeometry();
+        InvalidateLayout(); RequestRedraw();
     }
 
     void UltraCanvasBreadcrumb::SetOverflowMode(BreadcrumbOverflowMode mode) {
         if (style.overflowMode == mode) return;
         style.overflowMode = mode;
         layoutDirty = true;
-        RequestUpdateGeometry();
+        InvalidateLayout(); RequestRedraw();
     }
 
     void UltraCanvasBreadcrumb::SetFont(const std::string& family, float size, FontWeight weight) {
@@ -290,14 +292,14 @@ namespace UltraCanvas {
         style.fontStyle.fontSize = size;
         style.fontStyle.fontWeight = weight;
         layoutDirty = true;
-        RequestUpdateGeometry();
+        InvalidateLayout(); RequestRedraw();
     }
 
     void UltraCanvasBreadcrumb::SetMaxItemTextWidth(int maxWidth) {
         if (style.maxItemTextWidth == maxWidth) return;
         style.maxItemTextWidth = maxWidth;
         layoutDirty = true;
-        RequestUpdateGeometry();
+        InvalidateLayout(); RequestRedraw();
     }
 
 // ===== MEASUREMENT HELPERS =====
@@ -626,21 +628,22 @@ namespace UltraCanvas {
         layoutDirty = false;
     }
 
-// ===== UPDATE GEOMETRY =====
-    void UltraCanvasBreadcrumb::UpdateGeometry(IRenderContext* ctx) {
-        if (layoutDirty || needsUpdateGeometry) {
-            RecalculateLayout(ctx);
-            needsUpdateGeometry = false;
-        }
-    }
+// ===== CSS LAYOUT: MEASURE / ARRANGE =====
 
-// ===== PREFERRED SIZE =====
-    float UltraCanvasBreadcrumb::GetPreferredWidth() {
-        auto ctx = GetRenderContext();
-        if (!ctx || items.empty()) return GetTotalPaddingHorizontal() + GetTotalBorderHorizontal();
+    // Natural content size (all items uncollapsed), excluding padding/border.
+    Size2Df UltraCanvasBreadcrumb::MeasureContentSize(IRenderContext* ctx) const {
+        // Height: one row from text/icon height + vertical item padding.
+        int textH = ctx ? ctx->GetTextLineHeight("Mg") : (int)style.fontStyle.fontSize;
+        float contentH = (float)(std::max<int>(textH, style.iconSize) + style.itemPaddingVertical * 2);
+
+        if (!ctx || items.empty()) {
+            return Size2Df(0.f, contentH);
+        }
+
         ctx->PushState();
         ctx->SetFontStyle(style.fontStyle);
-        int sepW = MeasureSeparator(ctx);
+        // MeasureSeparator mutates cached separator layout state; const-cast to reuse it.
+        int sepW = const_cast<UltraCanvasBreadcrumb*>(this)->MeasureSeparator(ctx);
         int currentIdx = ResolvedCurrentIndex();
         int total = 0;
         for (size_t i = 0; i < items.size(); ++i) {
@@ -653,19 +656,86 @@ namespace UltraCanvas {
             }
         }
         ctx->PopState();
-        return total + GetTotalPaddingHorizontal() + GetTotalBorderHorizontal();
+        return Size2Df((float)total, contentH);
     }
 
-    float UltraCanvasBreadcrumb::GetPreferredHeight() {
-        auto ctx = GetRenderContext();
-        if (!ctx) return style.fontStyle.fontSize + style.itemPaddingVertical * 2
-                        + GetTotalPaddingVertical() + GetTotalBorderVertical();
-        ctx->PushState();
-        ctx->SetFontStyle(style.fontStyle);
-        int textH = ctx->GetTextLineHeight("Mg");
-        ctx->PopState();
-        int rowH = std::max<int>(textH, style.iconSize) + style.itemPaddingVertical * 2;
-        return rowH + GetTotalPaddingVertical() + GetTotalBorderVertical();
+    void UltraCanvasBreadcrumb::MeasureCore(const CSSLayout::MeasureConstraints& c,
+                                            const CSSLayout::LayoutContext& ctx) {
+        IRenderContext* rc = GetRenderContext();
+        if (!rc) {
+            CSSLayout::Element::MeasureCore(c, ctx);
+            return;
+        }
+
+        const float padH = GetTotalPaddingHorizontal() + GetTotalBorderHorizontal();
+        const float padV = GetTotalPaddingVertical()   + GetTotalBorderVertical();
+
+        Size2Df content = MeasureContentSize(rc);
+
+        std::optional<float> parentInline =
+            (c.horizontal.mode == CSSLayout::ConstraintMode::Unbounded)
+                ? std::nullopt : std::optional<float>{c.horizontal.available};
+        std::optional<float> parentBlock =
+            (c.vertical.mode == CSSLayout::ConstraintMode::Unbounded)
+                ? std::nullopt : std::optional<float>{c.vertical.available};
+
+        // Width: explicit size.width > Exact constraint > content (all items uncollapsed).
+        float contentW;
+        auto specW = CSSLayout::resolveDimension(size.width, parentInline, ctx);
+        if (specW.has_value()) {
+            float bb = (box.boxSizing == CSSLayout::BoxSizing::BorderBox) ? *specW : (*specW + padH);
+            contentW = std::max(0.f, bb - padH);
+        } else if (c.horizontal.mode == CSSLayout::ConstraintMode::Exact) {
+            contentW = std::max(0.f, c.horizontal.available - padH);
+        } else {
+            contentW = content.width;
+        }
+
+        // Height: explicit size.height > Exact constraint > content (row height).
+        float contentH;
+        auto specH = CSSLayout::resolveDimension(size.height, parentBlock, ctx);
+        if (specH.has_value()) {
+            float bb = (box.boxSizing == CSSLayout::BoxSizing::BorderBox) ? *specH : (*specH + padV);
+            contentH = std::max(0.f, bb - padV);
+        } else if (c.vertical.mode == CSSLayout::ConstraintMode::Exact) {
+            contentH = std::max(0.f, c.vertical.available - padV);
+        } else {
+            contentH = content.height;
+        }
+
+        contentW = CSSLayout::clampToConstraints(contentW, constraints, true,  parentInline, ctx);
+        contentH = CSSLayout::clampToConstraints(contentH, constraints, false, parentBlock, ctx);
+
+        measured.measuredWidth  = contentW + padH;
+        measured.measuredHeight = contentH + padV;
+    }
+
+    void UltraCanvasBreadcrumb::ComputeIntrinsicSizes(const CSSLayout::LayoutContext& /*ctx*/) {
+        IRenderContext* rc = GetRenderContext();
+        if (!rc) {
+            intrinsic.minContentWidth = intrinsic.maxContentWidth = 0;
+            intrinsic.minContentHeight = intrinsic.maxContentHeight = 0;
+            return;
+        }
+        const float padH = GetTotalPaddingHorizontal() + GetTotalBorderHorizontal();
+        const float padV = GetTotalPaddingVertical()   + GetTotalBorderVertical();
+        Size2Df content = MeasureContentSize(rc);
+        // Preferred == max-content (the breadcrumb collapses internally at arrange time).
+        intrinsic.valid = true;
+        intrinsic.maxContentWidth  = content.width  + padH;
+        intrinsic.minContentWidth  = content.width  + padH;
+        intrinsic.maxContentHeight = content.height + padV;
+        intrinsic.minContentHeight = content.height + padV;
+    }
+
+    void UltraCanvasBreadcrumb::Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) {
+        UltraCanvasUIElement::Arrange(finalRect, ctx);   // sets finalBounds + damage
+        // Recompute slots/overflow against the resolved content rect.
+        if (IRenderContext* rc = GetRenderContext()) {
+            RecalculateLayout(rc);
+            layoutDirty = false;
+            needsUpdateGeometry = false;
+        }
     }
 
 // ===== HIT TESTING =====
@@ -685,7 +755,11 @@ namespace UltraCanvas {
 
 // ===== RENDERING =====
     void UltraCanvasBreadcrumb::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
-        UpdateGeometry(ctx);
+        // Layout is normally computed in Arrange(); recompute here only as a safety
+        // net if something dirtied it without an intervening relayout pass.
+        if (layoutDirty) {
+            RecalculateLayout(ctx);
+        }
 
         // Draw the strip background using the base implementation, then our background color.
         UltraCanvasUIElement::Render(ctx, dirtyRect);

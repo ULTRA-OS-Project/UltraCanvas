@@ -234,13 +234,16 @@ namespace UltraCanvas {
 
         // ===== OVERRIDES =====
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
-        void UpdateGeometry(IRenderContext* ctx) override;
         bool OnEvent(const UCEvent& event) override;
         bool AcceptsFocus() const override { return false; }
 
-        // Preferred width = width needed to render all items uncollapsed.
-        float GetPreferredWidth() override;
-        float GetPreferredHeight() override;
+        // ===== LAYOUT (CSS Measure/Arrange) =====
+        // Intrinsic size = size to render all items uncollapsed (Button pattern).
+        // Arrange runs RecalculateLayout (incl. overflow handling) against finalBounds.
+        void MeasureCore(const CSSLayout::MeasureConstraints& c,
+                         const CSSLayout::LayoutContext& ctx) override;
+        void ComputeIntrinsicSizes(const CSSLayout::LayoutContext& ctx) override;
+        void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
     protected:
         // ===== INTERNAL TYPES =====
@@ -290,6 +293,8 @@ namespace UltraCanvas {
         // ===== HELPERS =====
         int ResolvedCurrentIndex() const;
         void RecalculateLayout(IRenderContext* ctx);
+        // Natural content size (all items uncollapsed), excluding padding/border.
+        Size2Df MeasureContentSize(IRenderContext* ctx) const;
         std::unique_ptr<ITextLayout> BuildItemLayout(IRenderContext* ctx, const std::string& text,
                                                     bool bold, int maxWidth) const;
         int ComputeItemSlotWidth(const BreadcrumbItem& item, const Size2Dd& textSize,

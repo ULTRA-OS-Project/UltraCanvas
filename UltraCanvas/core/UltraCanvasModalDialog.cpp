@@ -36,7 +36,7 @@ namespace UltraCanvas {
 
     void UltraCanvasModalDialog::BuildDialogLayout() {
         // Window: vertical flex; content stretches, footer is fixed height.
-        this->layout.SetFlexColumn().SetAlignItems(CSSLayout::AlignItems::Stretch);
+        this->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
         CreateContentSection();
         CreateFooterSection();
@@ -56,7 +56,7 @@ namespace UltraCanvas {
         // Row flex for icon + message.
         contentSection->layout.SetFlexRow()
                               .SetFlexGap(style.iconMessageSpacing)
-                              .SetAlignItems(CSSLayout::AlignItems::Stretch);
+                              .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
         // ===== ICON CONTAINER =====
         if (dialogConfig.dialogType != DialogType::Custom) {
@@ -67,8 +67,8 @@ namespace UltraCanvas {
 
             // Center the icon label inside.
             iconContainer->layout.SetFlexColumn()
-                                 .SetJustifyContent(CSSLayout::JustifyContent::Center)
-                                 .SetAlignItems(CSSLayout::AlignItems::Center);
+                    .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
+                                 .SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
             iconLabel = std::make_shared<UltraCanvasLabel>("IconLabel");
             iconLabel->SetText(GetTypeIcon());
@@ -89,7 +89,7 @@ namespace UltraCanvas {
 
         messageContainer->layout.SetFlexColumn()
                                 .SetFlexGap(style.sectionSpacing / 2)
-                                .SetAlignItems(CSSLayout::AlignItems::Stretch);
+                                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
         messageLabel = std::make_shared<UltraCanvasLabel>("MessageLabel");
         messageLabel->SetText(dialogConfig.message);
@@ -123,9 +123,9 @@ namespace UltraCanvas {
                                   static_cast<int>(style.padding / 2));
 
         footerSection->layout.SetFlexRow()
-                             .SetFlexGap(style.buttonSpacing)
-                             .SetJustifyContent(CSSLayout::JustifyContent::Center)
-                             .SetAlignItems(CSSLayout::AlignItems::Center);
+                .SetFlexGap(style.buttonSpacing)
+                .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
+                             .SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
         CreateDialogButtons();
         for (auto& button : dialogButtons) {
@@ -234,7 +234,7 @@ namespace UltraCanvas {
             footerSection->ClearChildren();
             footerSection->layout.SetFlexRow()
                                  .SetFlexGap(style.buttonSpacing)
-                                 .SetAlignItems(CSSLayout::AlignItems::Center);
+                                 .SetFlexAlignItems(CSSLayout::AlignItems::Center);
             footerSection->AddStretchSpacer(1);
             for (auto& button : dialogButtons) {
                 footerSection->AddChild(button);
@@ -362,7 +362,7 @@ namespace UltraCanvas {
             messageContainer->ClearChildren();
             messageContainer->layout.SetFlexColumn()
                                     .SetFlexGap(style.sectionSpacing / 2)
-                                    .SetAlignItems(CSSLayout::AlignItems::Stretch);
+                                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
             messageContainer->AddChild(messageLabel);
             messageContainer->AddChild(detailsLabel);
             messageContainer->AddStretchSpacer(1);

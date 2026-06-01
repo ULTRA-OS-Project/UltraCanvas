@@ -1,5 +1,12 @@
+// Apps/Texter/UltraCanvasTextEditorInfoFileStatistics.cpp
+// File statistics dialog for the text editor.
+// Version: 1.1.0
+// Last Modified: 2026-06-01
+// Author: UltraCanvas Framework
 
-#include "UltraCanvasLayoutCompat.h"
+#include "UltraCanvasContainer.h"
+#include "UltraCanvasSpacer.h"
+#include "CSSLayout/CSSLayout.h"
 #include <filesystem>
 #include <chrono>
 #include <ctime>
@@ -191,8 +198,8 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
 
     fileStatsDialog = UltraCanvasDialogManager::CreateDialog(dlgConfig);
 
-    auto mainLayout = CreateVBoxLayout(fileStatsDialog.get());
-    mainLayout->SetSpacing(6);
+    fileStatsDialog->layout.SetFlexColumn();
+    fileStatsDialog->layout.SetFlexGap(6);
     fileStatsDialog->SetPadding(20);
 
     // Title
@@ -201,16 +208,18 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
     titleLabel->SetFontWeight(FontWeight::Bold);
     titleLabel->SetAlignment(TextAlignment::Left);
     titleLabel->SetMargin(0, 0, 12, 0);
-    mainLayout->AddUIElement(titleLabel)->SetWidthMode(SizeMode::Fill);
+    fileStatsDialog->AddChild(titleLabel); titleLabel->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     // Grid container for label:value pairs
     auto gridContainer = std::make_shared<UltraCanvasContainer>(
             "StatsGrid", 0, 0, 440, 260);
 
-    auto grid = CreateGridLayout(gridContainer.get(), 9, 2);
-    grid->SetSpacing(6);
-    grid->SetColumnDefinition(0, GridRowColumnDefinition::Fixed(120));
-    grid->SetColumnDefinition(1, GridRowColumnDefinition::Star(1));
+    gridContainer->layout.SetGrid();
+    CSSLayout::GridTrackSize colFixed; colFixed.kind = CSSLayout::GridTrackSizeKind::Fixed; colFixed.value = CSSLayout::Dimension::Px(120);
+    CSSLayout::GridTrackSize colStar;  colStar.kind  = CSSLayout::GridTrackSizeKind::Fr;    colStar.value  = CSSLayout::Dimension::Fr(1);
+    gridContainer->layout.SetGridColumns({colFixed, colStar});
+    gridContainer->layout.SetGridRows(std::vector<CSSLayout::GridTrackSize>(9));
+    gridContainer->layout.SetGridGap(6);
 
     // Helper lambda to add a row
     int row = 0;
@@ -234,8 +243,8 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
         value->SetAlignment(TextAlignment::Left);
         value->SetWrap(TextWrap::WrapWord);
 
-        grid->AddUIElement(label, row, 0);
-        grid->AddUIElement(value, row, 1);
+        gridContainer->AddChild(label); label->layoutItem.SetGridRowColSimplified(row, 0);
+        gridContainer->AddChild(value); value->layoutItem.SetGridRowColSimplified(row, 1);
         row++;
     };
 
@@ -262,10 +271,10 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
         }
     }
 
-    mainLayout->AddUIElement(gridContainer)->SetWidthMode(SizeMode::Fill);
+    fileStatsDialog->AddChild(gridContainer); gridContainer->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     // Push OK button to the bottom
-    mainLayout->AddStretch(1);
+    fileStatsDialog->AddStretchSpacer(1);
 
     // OK button
     auto okButton = std::make_shared<UltraCanvasButton>("StatsOK", 0, 0, 80, 28);
@@ -273,7 +282,7 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
     okButton->onClick = [this]() {
         fileStatsDialog->CloseDialog(DialogResult::OK);
     };
-    mainLayout->AddUIElement(okButton)->SetCrossAlignment(LayoutAlignment::Center);
+    fileStatsDialog->AddChild(okButton); okButton->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
 
     fileStatsDialog->onResult = [this](DialogResult) {
         fileStatsDialog.reset();

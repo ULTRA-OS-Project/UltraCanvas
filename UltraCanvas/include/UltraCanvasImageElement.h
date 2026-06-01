@@ -89,7 +89,7 @@ public:
     bool LoadFromImage(std::shared_ptr<UCImage> img);
 
     // ===== IMAGE PROPERTIES =====
-    void SetFitMode(ImageFitMode mode) { fitMode = mode; }
+    void SetFitMode(ImageFitMode mode) { fitMode = mode; RequestRedraw(); }
     
     ImageFitMode GetFitMode() const { return fitMode; }
     void SetTintColor(const Color& color) { tintColor = color; }
@@ -107,7 +107,7 @@ public:
     }
     
     Point2Di GetImageSize() const {
-        if (loadedImage->IsValid()) {
+        if (loadedImage && loadedImage->IsValid()) {
             return Point2Di(loadedImage->GetWidth(), loadedImage->GetHeight());
         }
         return Point2Di(0, 0);
@@ -124,13 +124,25 @@ public:
     
     void SetDraggable(bool enable) { draggable = enable; }
     
+    // ===== LAYOUT (CSS Measure/Arrange) =====
+    // Intrinsic size = the loaded image's natural pixel dimensions (Button pattern).
+    // Explicit size / parent stretch still win. The image is drawn from
+    // GetLocalBounds() + fitMode, so Arrange has no sub-rects to place.
+    void MeasureCore(const CSSLayout::MeasureConstraints& c,
+                     const CSSLayout::LayoutContext& ctx) override;
+    void ComputeIntrinsicSizes(const CSSLayout::LayoutContext& ctx) override;
+    void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
+
     // ===== RENDERING =====
     void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
-    
+
     // ===== EVENT HANDLING =====
     bool OnEvent(const UCEvent& event) override;
     
 private:
+    // Natural (intrinsic) image size in pixels; {0,0} if no valid image is loaded.
+    Size2Df NaturalImageSize() const;
+
     void SetError(const std::string& message);
 
     void DrawLoadedImage(IRenderContext* ctx);

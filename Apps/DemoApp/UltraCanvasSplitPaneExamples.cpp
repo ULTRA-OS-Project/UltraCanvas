@@ -1,10 +1,12 @@
 // Apps/DemoApp/UltraCanvasSplitPaneExamples.cpp
 // Demonstrates UltraCanvasSplitPane: horizontal, vertical, and nested splits
-// Version: 1.0.0
-// Last Modified: 2026-05-19
+// Version: 1.0.1
+// Last Modified: 2026-06-01
 // Author: UltraCanvas Framework
 
-#include "UltraCanvasLayoutCompat.h"
+#include "UltraCanvasContainer.h"
+#include "UltraCanvasSpacer.h"
+#include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasSplitPane.h"
 #include "UltraCanvasContainer.h"
@@ -244,10 +246,11 @@ namespace UltraCanvas {
         innerBottom->AddChild(MakeInfoLabel("pcInnerO1", 10, 36, 380, "[info] split created with 2 panes"));
         innerBottom->AddChild(MakeInfoLabel("pcInnerO2", 10, 56, 380, "[info] weights normalized"));
 
-        auto outerRightLayout = CreateVBoxLayout(outerRight.get());
-        outerRightLayout->SetSpacing(0);
-        outerRightLayout->AddUIElement(inner, 1)
-                        ->SetCrossAlignment(LayoutAlignment::Fill);
+        outerRight->layout.SetFlexColumn();
+        outerRight->layout.SetFlexGap(0);
+        outerRight->AddChild(inner);
+        inner->layoutItem.SetFlexGrow(1)
+                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         root->AddChild(outer);
         currentY += 320 + 20;

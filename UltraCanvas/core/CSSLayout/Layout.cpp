@@ -64,26 +64,19 @@ namespace UltraCanvas {
             return *this;
         }
 
-        Layout& Layout::SetJustifyContent(JustifyContent jc) {
+        Layout& Layout::SetFlexJustifyContent(JustifyContent jc) {
             display = DisplayType::Flex;
             asFlex(*this).justifyContent = jc;
             return *this;
         }
 
-        Layout& Layout::SetAlignItems(AlignItems ai) {
-            // align-items applies to both Flex and Grid containers. Default to
-            // Flex if the layout hasn't been configured yet.
-            if (std::holds_alternative<GridLayout>(data)) {
-                display = DisplayType::Grid;
-                std::get<GridLayout>(data).alignItems = ai;
-            } else {
-                display = DisplayType::Flex;
-                asFlex(*this).alignItems = ai;
-            }
+        Layout& Layout::SetFlexAlignItems(AlignItems ai) {
+            display = DisplayType::Flex;
+            asFlex(*this).alignItems = ai;
             return *this;
         }
 
-        Layout& Layout::SetAlignContent(AlignContent ac) {
+        Layout& Layout::SetFlexAlignContent(AlignContent ac) {
             display = DisplayType::Flex;
             asFlex(*this).alignContent = ac;
             return *this;
@@ -92,6 +85,12 @@ namespace UltraCanvas {
         Layout& Layout::SetGrid() {
             display = DisplayType::Grid;
             (void)asGrid(*this);
+            return *this;
+        }
+
+        Layout& Layout::SetGridAlignItems(AlignItems ai) {
+            display = DisplayType::Grid;
+            asGrid(*this).alignItems = ai;
             return *this;
         }
 
@@ -194,7 +193,7 @@ namespace UltraCanvas {
             return *this;
         }
 
-        LayoutItem& LayoutItem::SetOrder(int o) {
+        LayoutItem& LayoutItem::SetFlexOrder(int o) {
             asFlexItem(*this).order = o;
             return *this;
         }

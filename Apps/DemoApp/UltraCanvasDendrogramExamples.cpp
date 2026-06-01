@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasDendrogramExamples.cpp
 // Demo — UltraCanvasDendrogram showcase, 6 styles
-// Version: 1.4.0
-// Last Modified: 2026-04-07
+// Version: 1.5.0
+// Last Modified: 2026-06-01
 // Author: UltraCanvas Framework
 //
 // Controls:
@@ -12,7 +12,9 @@
 //   Double-click node  — collapse / expand subtree
 //   Ctrl+drag node     — move node manually
 
-#include "UltraCanvasLayoutCompat.h"
+#include "UltraCanvasContainer.h"
+#include "UltraCanvasSpacer.h"
+#include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasDemo.h"
 #include "Plugins/Diagrams/UltraCanvasDendrogram.h"
 #include "Plugins/Diagrams/UltraCanvasDendrogramLayout.h"
@@ -77,15 +79,15 @@ static std::shared_ptr<UltraCanvasContainer> MakeControlBar(
 {
     auto bar = std::make_shared<UltraCanvasContainer>("ctrl_"+d->GetIdentifier(), 0, 0, w, 36);
     bar->SetBackgroundColor(Color(247,247,250,255));
-    auto layout = CreateHBoxLayout(bar.get());
-    layout->SetSpacing(6);
-    layout->SetDefaultCrossAxisAlignment(LayoutAlignment::Center);
+    bar->layout.SetFlexRow();
+    bar->layout.SetFlexGap(6);
+    bar->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
     auto mkBtn = [&](const std::string& sfx, int bw, const std::string& lbl,
                      std::function<void()> cb) {
         auto btn = std::make_shared<UltraCanvasButton>(sfx+"_"+d->GetIdentifier(), 0, 0, bw, 28, lbl);
         btn->onClick = std::move(cb);
-        layout->AddUIElement(btn);
+        bar->AddChild(btn);
     };
 
     mkBtn("rst",  110, "Reset View",  [d]{ d->ResetView(); });
@@ -99,7 +101,7 @@ static std::shared_ptr<UltraCanvasContainer> MakeControlBar(
                                                    504, 10, w-508, 20, info);
     lbl->SetTextColor(Color(100,100,110,255));
     lbl->SetFontSize(11.0f);
-    layout->AddUIElement(lbl);
+    bar->AddChild(lbl);
     return bar;
 }
 

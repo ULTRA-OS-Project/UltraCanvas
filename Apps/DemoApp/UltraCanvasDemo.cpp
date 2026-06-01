@@ -1,10 +1,12 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
-// Version: 1.0.2
-// Last Modified: 2026-05-31
+// Version: 1.0.3
+// Last Modified: 2026-06-01
 // Author: UltraCanvas Framework
 
-#include "UltraCanvasLayoutCompat.h"
+#include "UltraCanvasContainer.h"
+#include "UltraCanvasSpacer.h"
+#include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasTextArea.h"
 #include "Plugins/Text/UltraCanvasMarkdown.h"
@@ -132,14 +134,7 @@ namespace UltraCanvas {
         SetPadding(5,10,5,10);
         SetBorderBottom(2, Colors::Gray);
 
-        layout.SetFlexRow().SetFlexGap(10).SetAlignItems(CSSLayout::AlignItems::Center);
-
-//        auto headerLayout = CreateHBoxLayout(this);
-//        headerLayout->SetSpacing(10);
-//        headerLayout->AddUIElement(titleLabel)->SetCrossAlignment(LayoutAlignment::Center);
-//        headerLayout->AddStretch(1);
-//        headerLayout->AddUIElement(docButton)->SetCrossAlignment(LayoutAlignment::Center);
-//        headerLayout->AddUIElement(sourceButton)->SetCrossAlignment(LayoutAlignment::Center);
+        layout.SetFlexRow().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     }
 
     void DemoHeaderContainer::SetDemoTitle(const std::string& title) {
@@ -375,11 +370,8 @@ namespace UltraCanvas {
         categoryTreeView->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         categoryContainer->AddChild(categoryTreeView);
         categoryContainer->AddChild(legendContainer);
-//        auto categoryContainerLayout = CreateVBoxLayout(categoryContainer.get());
-//        categoryContainerLayout->AddUIElement(categoryTreeView, 1)->SetWidthMode(SizeMode::Fill);
-//        categoryContainerLayout->AddUIElement(legendContainer)->SetWidthMode(SizeMode::Fill);
 
-        mainContainer->layout.SetFlexColumn().SetAlignItems(CSSLayout::AlignItems::Stretch);
+        mainContainer->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         // Fixed top bar: never shrink below its content. Without this the header is a
         // flex-shrink:1 item, so a tall displayContainer (whose content overflows the
         // column) would steal negative space from it and clip its top. flex-shrink:0
@@ -390,11 +382,6 @@ namespace UltraCanvas {
         displayContainer->layoutItem.SetFlexGrow(1);
         displayContainer->layout.SetFlexColumn();
         mainContainer->AddChild(displayContainer);
-//        auto mainContainerLayout = CreateVBoxLayout(mainContainer.get());
-//        mainContainerLayout->AddUIElement(headerContainer)->SetWidthMode(SizeMode::Fill)->SetFixedHeight(40);
-//        mainContainerLayout->AddUIElement(displayContainer, 1)->SetWidthMode(SizeMode::Fill);
-
-//        auto displayContainerLayout = CreateVBoxLayout(displayContainer.get());
 
         mainWindow->layout
             .SetGrid()
@@ -414,16 +401,6 @@ namespace UltraCanvas {
 
         statusLabel->layoutItem.SetGridRowColSimplified(1, 0, 1, 2);
         mainWindow->AddChild(statusLabel);
-
-//        auto mainLayout = CreateGridLayout(mainWindow.get(), 2, 2);
-//        mainLayout->SetColumnDefinition(0, GridRowColumnDefinition::Fixed(350));
-//        mainLayout->SetColumnDefinition(1, GridRowColumnDefinition::Star(1));
-//        mainLayout->SetRowDefinition(0, GridRowColumnDefinition::Star(1));
-//        mainLayout->SetRowDefinition(1, GridRowColumnDefinition::Fixed(25));
-//
-//        mainLayout->AddUIElement(categoryContainer, 0, 0)->SetSizeMode(SizeMode::Fill, SizeMode::Fill);
-//        mainLayout->AddUIElement(mainContainer, 0, 1)->SetSizeMode(SizeMode::Fill, SizeMode::Fill);
-//        mainLayout->AddUIElement(statusLabel, 1, 0, 1, 2)->SetSizeMode(SizeMode::Fill, SizeMode::Fill);
 
         debugOutput << "✓ Demo application initialized successfully" << std::endl;
         return true;

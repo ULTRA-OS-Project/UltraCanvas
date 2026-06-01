@@ -1,13 +1,11 @@
 // include/UltraCanvasTemplate.h
 // Template system for creating reusable UI component layouts with placement rules
-// Version: 1.1.0
-// Last Modified: 2026-05-29
+// Version: 1.2.0
+// Last Modified: 2026-06-01
 // Author: UltraCanvas Framework
 #pragma once
 
-#include "UltraCanvasLayoutCompat.h"
 #include "UltraCanvasUIElement.h"
-#include "UltraCanvasLayoutEngine.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasCommonTypes.h"
 #include <string>
@@ -24,6 +22,34 @@ namespace UltraCanvas {
     class UltraCanvasLabel;
     class UltraCanvasDropDown;
     class UltraCanvasSeparator;
+
+// ===== TEMPLATE LAYOUT TYPES =====
+// Self-contained layout config types for the template placement engine.
+// (Formerly in UltraCanvasLayoutEngine.h / UltraCanvasLayoutCompat.h; the
+// template system is their only consumer.)
+    enum class TemplateLayoutDirection {
+        Horizontal,
+        Vertical
+    };
+
+    enum class TemplateLayoutDockSide {
+        Left,
+        Right,
+        Top,
+        Bottom,
+        Fill
+    };
+
+    enum class TemplateLayoutAlignment { Start, Center, End, Fill };
+
+    struct TemplateLayoutConstraints {
+        float minWidth = 0.0f;
+        float minHeight = 0.0f;
+        float maxWidth = 0.0f;
+        float maxHeight = 0.0f;
+        float preferredWidth = 0.0f;
+        float preferredHeight = 0.0f;
+    };
 
 // ===== TEMPLATE SIZING MODES =====
     enum class TemplateSizeMode {
@@ -142,9 +168,9 @@ namespace UltraCanvas {
 
     struct TemplatePlacementRule {
         TemplatePlacementType type = TemplatePlacementType::Flow;
-        LayoutDirection direction = LayoutDirection::Horizontal;
-        LayoutAlignment alignment = LayoutAlignment::Start;
-        LayoutAlignment crossAlignment = LayoutAlignment::Center;
+        TemplateLayoutDirection direction = TemplateLayoutDirection::Horizontal;
+        TemplateLayoutAlignment alignment = TemplateLayoutAlignment::Start;
+        TemplateLayoutAlignment crossAlignment = TemplateLayoutAlignment::Center;
 
         // Spacing
         float spacing = 4.0f;
@@ -155,7 +181,7 @@ namespace UltraCanvas {
         int gridRows = 1;
 
         // Dock specific
-        LayoutDockSide dockSide = LayoutDockSide::Top;
+        TemplateLayoutDockSide dockSide = TemplateLayoutDockSide::Top;
 
         // Position offsets
         float offsetX = 0.0f;
@@ -164,7 +190,7 @@ namespace UltraCanvas {
         // Wrapping
         bool allowWrap = false;
 
-        static TemplatePlacementRule Flow(LayoutDirection dir = LayoutDirection::Horizontal, float spacing = 4.0f) {
+        static TemplatePlacementRule Flow(TemplateLayoutDirection dir = TemplateLayoutDirection::Horizontal, float spacing = 4.0f) {
             TemplatePlacementRule rule;
             rule.type = TemplatePlacementType::Flow;
             rule.direction = dir;
@@ -172,7 +198,7 @@ namespace UltraCanvas {
             return rule;
         }
 
-        static TemplatePlacementRule Stack(LayoutDirection dir = LayoutDirection::Vertical, float spacing = 4.0f) {
+        static TemplatePlacementRule Stack(TemplateLayoutDirection dir = TemplateLayoutDirection::Vertical, float spacing = 4.0f) {
             TemplatePlacementRule rule;
             rule.type = TemplatePlacementType::Stack;
             rule.direction = dir;
@@ -189,7 +215,7 @@ namespace UltraCanvas {
             return rule;
         }
 
-        static TemplatePlacementRule Dock(LayoutDockSide side) {
+        static TemplatePlacementRule Dock(TemplateLayoutDockSide side) {
             TemplatePlacementRule rule;
             rule.type = TemplatePlacementType::Dock;
             rule.dockSide = side;
@@ -209,7 +235,7 @@ namespace UltraCanvas {
         std::unordered_map<std::string, std::string> properties;
 
         // Layout constraints for this element
-        LayoutConstraints constraints;
+        TemplateLayoutConstraints constraints;
 
         // Event callbacks
         std::function<void()> onClickCallback;
@@ -271,7 +297,7 @@ namespace UltraCanvas {
 // ===== TEMPLATE DRAG HANDLE =====
     struct TemplateDragHandle {
         bool enabled = false;
-        LayoutDockSide position = LayoutDockSide::Left;
+        TemplateLayoutDockSide position = TemplateLayoutDockSide::Left;
         float width = 8.0f;
         Color handleColor = Color(180, 180, 180);
         Color hoverColor = Color(160, 160, 160);
@@ -281,7 +307,7 @@ namespace UltraCanvas {
         static TemplateDragHandle Left(float width = 8.0f) {
             TemplateDragHandle handle;
             handle.enabled = true;
-            handle.position = LayoutDockSide::Left;
+            handle.position = TemplateLayoutDockSide::Left;
             handle.width = width;
             return handle;
         }
@@ -289,7 +315,7 @@ namespace UltraCanvas {
         static TemplateDragHandle Top(float height = 8.0f) {
             TemplateDragHandle handle;
             handle.enabled = true;
-            handle.position = LayoutDockSide::Top;
+            handle.position = TemplateLayoutDockSide::Top;
             handle.width = height;
             return handle;
         }

@@ -1,10 +1,12 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
-// Version: 2.1.7
-// Last Modified: 2026-05-06
+// Version: 2.1.8
+// Last Modified: 2026-06-01
 // Author: UltraCanvas Framework
 
-#include "UltraCanvasLayoutCompat.h"
+#include "UltraCanvasContainer.h"
+#include "UltraCanvasSpacer.h"
+#include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasTextEditor.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasToolbar.h"
@@ -773,31 +775,25 @@ namespace {
         };
 
         for (auto& entry : toolbarTooltips) {
-            auto item = toolbar->GetItem(entry.id);
-            if (item) {
-                auto btn = std::dynamic_pointer_cast<UltraCanvasButton>(item->GetWidget());
-                if (btn) {
-                    btn->SetTooltip(entry.tip);
-                    btn->SetAcceptsFocus(false);
-                }
+            auto btn = std::dynamic_pointer_cast<UltraCanvasButton>(toolbar->GetWidget(entry.id));
+            if (btn) {
+                btn->SetTooltip(entry.tip);
+                btn->SetAcceptsFocus(false);
             }
         }
 
         // Disable focus on toolbar buttons so they don't steal focus from the text area
 //        for (int i = 0; i < toolbar->GetItemCount(); i++) {
-//            auto item = toolbar->GetItemAt(i);
-//            if (item) {
-//                auto btn = std::dynamic_pointer_cast<UltraCanvasButton>(item->GetWidget());
-//                if (btn) btn->SetAcceptsFocus(false);
-//            }
+//            auto btn = std::dynamic_pointer_cast<UltraCanvasButton>(toolbar->GetWidgetAt(i));
+//            if (btn) btn->SetAcceptsFocus(false);
 //        }
 
         // Wrap toolbar(s) in an HBox container
         toolbarContainer = std::make_shared<UltraCanvasContainer>(
                 "ToolbarContainer",  0, toolbarY, GetWidth(), toolbarHeight);
-        auto* hbox = CreateHBoxLayout(toolbarContainer.get());
-        hbox->SetSpacing(0);
-        hbox->AddUIElement(toolbar)->SetStretch(1)->SetHeightMode(SizeMode::Fill);
+        toolbarContainer->layout.SetFlexRow();
+        toolbarContainer->layout.SetFlexGap(0);
+        toolbarContainer->AddChild(toolbar); toolbar->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         // Build and add the markdown toolbar (initially hidden)
         SetupMarkdownToolbar();
@@ -843,9 +839,8 @@ namespace {
                             GetWindow()->RemoveChild(headingSubToolbar);
                         } else {
                             if (headingSubToolbar && markdownToolbar && markdownToolbar->IsVisible()) {
-                                auto item = markdownToolbar->GetItem("md-heading");
-                                if (item && item->GetWidget()) {
-                                    auto btn = item->GetWidget();
+                                auto btn = markdownToolbar->GetWidget("md-heading");
+                                if (btn) {
                                     auto pos = btn->MapFromLocal({btn->GetWidth(),0});
                                     headingSubToolbar->SetBounds(Rect2Di(pos.x, pos.y, 200, 36));
                                 }
@@ -881,13 +876,10 @@ namespace {
                 .Build();
 
         for (auto& entry : mdTooltips) {
-            auto item = markdownToolbar->GetItem(entry.id);
-            if (item) {
-                auto btn = std::dynamic_pointer_cast<UltraCanvasButton>(item->GetWidget());
-                if (btn) {
-                    btn->SetTooltip(entry.tip);
-                    btn->SetAcceptsFocus(false);
-                }
+            auto btn = std::dynamic_pointer_cast<UltraCanvasButton>(markdownToolbar->GetWidget(entry.id));
+            if (btn) {
+                btn->SetTooltip(entry.tip);
+                btn->SetAcceptsFocus(false);
             }
         }
 
@@ -905,7 +897,7 @@ namespace {
 
         // Style buttons with decreasing font sizes to reflect heading hierarchy.
         // Shared helper is reused by ApplyThemeToAllDocuments() so theme toggles
-        // can reassert these fonts (UltraCanvasToolbarButton::UpdateAppearance()
+        // can reassert these fonts (UltraCanvasToolbar::ApplyButtonAppearance()
         // clobbers fontSize on every SetAppearance call).
         ApplyHeadingButtonStyles(isDarkTheme);
         headingSubToolbar->SetVisible(false);
@@ -3411,8 +3403,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         aboutDialog = UltraCanvasDialogManager::CreateDialog(config);
 
         // Replace default layout with custom vertical layout
-        auto mainLayout = CreateVBoxLayout(aboutDialog.get());
-        mainLayout->SetSpacing(4);
+        aboutDialog->layout.SetFlexColumn();
+        aboutDialog->layout.SetFlexGap(4);
         aboutDialog->SetPadding(20);
 
         // Logo image
@@ -3420,7 +3412,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         logo->LoadFromFile(NormalizePath(GetResourcesDir() + "media/Logo_Texter.png"));
         logo->SetFitMode(ImageFitMode::Contain);
         logo->SetMargin(0, 0, 8, 0);
-        mainLayout->AddUIElement(logo)->SetCrossAlignment(LayoutAlignment::Center);
+        aboutDialog->AddChild(logo); logo->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
 
         // Title
         auto titleLabel = std::make_shared<UltraCanvasLabel>("AboutTitle", 300, 25, "UltraTexter");
@@ -3428,7 +3420,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         titleLabel->SetFontWeight(FontWeight::Bold);
         titleLabel->SetAlignment(TextAlignment::Center);
         titleLabel->SetMargin(0, 0, 4, 0);
-        mainLayout->AddUIElement(titleLabel)->SetWidthMode(SizeMode::Fill);
+        aboutDialog->AddChild(titleLabel); titleLabel->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         // Version
         auto versionLabel = std::make_shared<UltraCanvasLabel>("AboutVersion", 300, 40, "Version " + version + "\nUltraCanvas version " + versionString);
@@ -3436,7 +3428,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         versionLabel->SetTextColor(Color(100, 100, 100));
         versionLabel->SetAlignment(TextAlignment::Center);
         versionLabel->SetMargin(0, 0, 10, 0);
-        mainLayout->AddUIElement(versionLabel)->SetWidthMode(SizeMode::Fill);
+        aboutDialog->AddChild(versionLabel); versionLabel->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         // Description
         auto descLabel = std::make_shared<UltraCanvasLabel>("AboutDesc", 350, 120,
@@ -3452,9 +3444,9 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         descLabel->SetAlignment(TextAlignment::Left);
         descLabel->SetWrap(TextWrap::WrapWord);
         descLabel->SetMargin(0, 20, 8, 20);
-        mainLayout->AddUIElement(descLabel)->SetWidthMode(SizeMode::Fill);
-        
-        mainLayout->AddSpacing(10);
+        aboutDialog->AddChild(descLabel); descLabel->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+        aboutDialog->AddSpacer(10);
 
         // Copyright
         auto copyrightLabel = std::make_shared<UltraCanvasLabel>("AboutCopyright", 350, 20,
@@ -3462,7 +3454,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         copyrightLabel->SetFontSize(10);
         copyrightLabel->SetTextColor(Color(120, 120, 120));
         copyrightLabel->SetAlignment(TextAlignment::Center);
-        mainLayout->AddUIElement(copyrightLabel)->SetWidthMode(SizeMode::Fill)->SetCrossAlignment(LayoutAlignment::Center)->SetMainAlignment(LayoutAlignment::Center);;
+        aboutDialog->AddChild(copyrightLabel); copyrightLabel->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch).SetAlignSelf(CSSLayout::AlignSelf::Center);
 
         // Clickable URL label
         auto urlLabel = std::make_shared<UltraCanvasLabel>("AboutURL", "");
@@ -3475,10 +3467,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             OpenURL("https://www.ultraos.eu/");
         };
         urlLabel->SetMargin(0, 0, 10, 20);
-        mainLayout->AddUIElement(urlLabel)->SetWidthMode(SizeMode::Fill)->SetCrossAlignment(LayoutAlignment::Center);
+        aboutDialog->AddChild(urlLabel); urlLabel->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch).SetAlignSelf(CSSLayout::AlignSelf::Center);
 
         // Push OK button to the bottom
-        mainLayout->AddStretch(1);
+        aboutDialog->AddStretchSpacer(1);
 
         // OK button
         auto okButton = std::make_shared<UltraCanvasButton>("AboutOK",  0, 0, 80, 28);
@@ -3486,7 +3478,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         okButton->onClick = [this]() {
             aboutDialog->CloseDialog(DialogResult::OK);
         };
-        mainLayout->AddUIElement(okButton)->SetCrossAlignment(LayoutAlignment::Center);
+        aboutDialog->AddChild(okButton); okButton->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
 
         aboutDialog->onResult = [this](DialogResult) {
             aboutDialog.reset();
@@ -3685,25 +3677,25 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         //bool canSave = HasUnsavedChanges();
         auto activeDoc = GetActiveDocument();
         bool canSave = (activeDoc && activeDoc->isNewFile) || HasUnsavedChanges();
-        if (auto item = toolbar->GetItem("save")) {
-            item->SetEnabled(canSave);
+        if (auto w = toolbar->GetWidget("save")) {
+            w->SetDisabled(!canSave);
         }
- 
+
         // ── Undo / Redo ──
         bool canUndo = CanUndo();
         bool canRedo = CanRedo();
-        if (auto item = toolbar->GetItem("undo")) {
-            item->SetEnabled(canUndo);
+        if (auto w = toolbar->GetWidget("undo")) {
+            w->SetDisabled(!canUndo);
         }
-        if (auto item = toolbar->GetItem("redo")) {
-            item->SetEnabled(canRedo);
+        if (auto w = toolbar->GetWidget("redo")) {
+            w->SetDisabled(!canRedo);
         }
- 
+
         // ── Paste: disabled when clipboard has no text ──
         std::string clipboardText;
         bool canPaste = GetClipboardText(clipboardText) && !clipboardText.empty();
-        if (auto item = toolbar->GetItem("paste")) {
-            item->SetEnabled(canPaste);
+        if (auto w = toolbar->GetWidget("paste")) {
+            w->SetDisabled(!canPaste);
         }
     }
 
@@ -3733,9 +3725,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         Color textColor     = dark ? Color(220, 220, 220, 255) : Color( 40,  40,  40, 255);
         Color disabledColor = dark ? Color(110, 110, 110, 255) : Color(150, 150, 150, 255);
         for (auto& s : headingStyles) {
-            auto item = headingSubToolbar->GetItem(s.id);
-            if (!item) continue;
-            auto btn = std::dynamic_pointer_cast<UltraCanvasButton>(item->GetWidget());
+            auto btn = std::dynamic_pointer_cast<UltraCanvasButton>(headingSubToolbar->GetWidget(s.id));
             if (!btn) continue;
             btn->SetFont("", s.fontSize, s.weight);
             btn->SetTextColors(textColor, textColor, textColor, disabledColor);
@@ -3808,7 +3798,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 if (markdownToolbar)   markdownToolbar->SetAppearance(app);
                 if (headingSubToolbar) headingSubToolbar->SetAppearance(app);
                 // Re-assert heading font sizes/colors AFTER SetAppearance, which
-                // otherwise clobbers fontSize via UltraCanvasToolbarButton::UpdateAppearance.
+                // otherwise clobbers fontSize via UltraCanvasToolbar::ApplyButtonAppearance.
                 ApplyHeadingButtonStyles(true);
             }
             if (tabContainer) {
@@ -4859,9 +4849,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
 
         // Position below the toolbar button and open
-        auto item = toolbar->GetItem("recent");
-        if (!item) return;
-        auto btn = item->GetWidget();
+        auto btn = toolbar->GetWidget("recent");
         if (!btn) return;
 
         recentFilesPopupMenu->OpenMenu(
@@ -5102,10 +5090,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
         // Update toolbar button states
         auto setChecked = [&](const std::string& id, bool checked) {
-            if (auto item = markdownToolbar->GetItem(id)) {
-                auto btn = std::dynamic_pointer_cast<UltraCanvasToolbarButton>(item);
-                if (btn) btn->SetChecked(checked);
-            }
+            auto btn = std::dynamic_pointer_cast<UltraCanvasButton>(markdownToolbar->GetWidget(id));
+            if (btn) btn->SetPressed(checked);
         };
 
         setChecked("md-bold", isBold);
@@ -5120,10 +5106,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         // Update heading sub-toolbar if visible
         if (headingSubToolbar) {
             auto setHeadingChecked = [&](const std::string& id, bool checked) {
-                if (auto item = headingSubToolbar->GetItem(id)) {
-                    auto btn = std::dynamic_pointer_cast<UltraCanvasToolbarButton>(item);
-                    if (btn) btn->SetChecked(checked);
-                }
+                auto btn = std::dynamic_pointer_cast<UltraCanvasButton>(headingSubToolbar->GetWidget(id));
+                if (btn) btn->SetPressed(checked);
             };
             setHeadingChecked("md-h1", isH1);
             setHeadingChecked("md-h2", isH2);

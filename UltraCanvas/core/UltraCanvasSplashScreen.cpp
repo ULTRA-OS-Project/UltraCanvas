@@ -42,7 +42,7 @@ namespace UltraCanvas {
         }
 
         // Build layout: column flex, items horizontally stretched to container.
-        window->layout.SetFlexColumn().SetFlexGap(4).SetAlignItems(CSSLayout::AlignItems::Stretch);
+        window->layout.SetFlexColumn().SetFlexGap(4).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         window->SetPadding(20);
         window->SetBorders(1, Colors::Black);
 

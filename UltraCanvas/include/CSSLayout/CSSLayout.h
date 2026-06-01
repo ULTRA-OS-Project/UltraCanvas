@@ -267,9 +267,10 @@ namespace UltraCanvas {
             Layout& SetFlexWrap(FlexWrap w);
             Layout& SetFlexGap(float gap);                       // both axes
             Layout& SetFlexGap(float row, float column);
-            Layout& SetJustifyContent(JustifyContent jc);
-            Layout& SetAlignItems(AlignItems ai);
-            Layout& SetAlignContent(AlignContent ac);
+            Layout& SetFlexJustifyContent(JustifyContent jc);
+            Layout& SetFlexAlignItems(AlignItems ai);
+            Layout& SetGridAlignItems(AlignItems ai);
+            Layout& SetFlexAlignContent(AlignContent ac);
 
             // ---- Grid configuration (initializes data to GridLayout on first call) ----
             Layout& SetGrid();
@@ -298,7 +299,7 @@ namespace UltraCanvas {
             LayoutItem& SetFlexBasis(const Dimension& b);
             LayoutItem& SetFlex(float g, float s, const Dimension& b);
             LayoutItem& SetAlignSelf(AlignSelf a);
-            LayoutItem& SetOrder(int o);
+            LayoutItem& SetFlexOrder(int o);
 
             // ---- Grid item properties (initializes data to GridItem on first call) ----
             LayoutItem& SetGridColumn(GridLine start, GridLine end);

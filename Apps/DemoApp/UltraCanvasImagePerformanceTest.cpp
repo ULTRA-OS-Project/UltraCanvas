@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp
 // Bitmap codec comparison benchmark: file size / encode time / decode time per format
-// Version: 2.5.7
-// Last Modified: 2026-05-04
+// Version: 2.5.8
+// Last Modified: 2026-06-01
 // Author: UltraCanvas Framework
 //
 // ================================================================================
@@ -221,7 +221,9 @@
 // encoder is available, and adding either would require core changes.
 // ================================================================================
 
-#include "UltraCanvasLayoutCompat.h"
+#include "UltraCanvasContainer.h"
+#include "UltraCanvasSpacer.h"
+#include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasButton.h"
@@ -1378,8 +1380,8 @@ namespace UltraCanvas {
         root->SetBackgroundColor(Color(255, 255, 255, 255));
         root->SetPadding(12, 12, 12, 12);
 
-        auto mainLayout = CreateVBoxLayout(root.get());
-        mainLayout->SetSpacing(10);
+        root->layout.SetFlexColumn();
+        root->layout.SetFlexGap(10);
 
         // ========== TITLE ==========
         auto title = std::make_shared<UltraCanvasLabel>(
@@ -1388,7 +1390,7 @@ namespace UltraCanvas {
         title->SetFontSize(20);
         title->SetFontWeight(FontWeight::Bold);
         title->SetTextColor(Color(40, 80, 120, 255));
-        mainLayout->AddUIElement(title)->SetWidthMode(SizeMode::Fill)->SetFixedHeight(32);
+        root->AddChild(title); title->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         // ========== DESCRIPTION ==========
         auto desc = std::make_shared<UltraCanvasLabel>(
@@ -1401,7 +1403,7 @@ namespace UltraCanvas {
         desc->SetFontSize(11);
         desc->SetWrap(TextWrap::WrapWord);
         desc->SetTextColor(Color(80, 80, 80, 255));
-        mainLayout->AddUIElement(desc)->SetWidthMode(SizeMode::Fill);
+        root->AddChild(desc); desc->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         // ========== TOOLBAR ==========
         auto toolbar = std::make_shared<UltraCanvasContainer>(
@@ -1410,9 +1412,9 @@ namespace UltraCanvas {
         toolbar->SetBorders(1.0f, Color(200, 210, 220, 255));
         toolbar->SetPadding(6, 6, 6, 6);
 
-        auto toolbarLayout = CreateHBoxLayout(toolbar.get());
-        toolbarLayout->SetSpacing(8);
-        toolbarLayout->SetDefaultCrossAxisAlignment(LayoutAlignment::Center);
+        toolbar->layout.SetFlexRow();
+        toolbar->layout.SetFlexGap(8);
+        toolbar->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
         state->chooseBtn = std::make_shared<UltraCanvasButton>(
                 "PerfChooseBtn", 0, 0, 160, 30);
@@ -1432,27 +1434,27 @@ namespace UltraCanvas {
         state->infoLabel->SetFontSize(11);
         state->infoLabel->SetTextColor(Color(60, 60, 60, 255));
 
-        toolbarLayout->AddUIElement(state->chooseBtn);
-        toolbarLayout->AddSpacing(8);
-        toolbarLayout->AddUIElement(state->includeBmpCheckbox);
-        toolbarLayout->AddSpacing(8);
-        toolbarLayout->AddUIElement(state->infoLabel, 1);   // stretches
+        toolbar->AddChild(state->chooseBtn);
+        toolbar->AddSpacer(8);
+        toolbar->AddChild(state->includeBmpCheckbox);
+        toolbar->AddSpacer(8);
+        toolbar->AddChild(state->infoLabel); state->infoLabel->layoutItem.SetFlexGrow(1);   // stretches
 
-        mainLayout->AddUIElement(toolbar)->SetWidthMode(SizeMode::Fill)->SetFixedHeight(44);
+        root->AddChild(toolbar); toolbar->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         // ========== CHART AREA (fills remaining vertical space) ==========
         auto chartSection = std::make_shared<UltraCanvasContainer>(
                 "PerfChartSection", 0, 0, 0, 420);
         chartSection->SetBackgroundColor(Color(255, 255, 255, 255));
 
-        auto chartLayout = CreateVBoxLayout(chartSection.get());
-        chartLayout->SetSpacing(4);
+        chartSection->layout.SetFlexColumn();
+        chartSection->layout.SetFlexGap(4);
 
         state->chartElem = std::make_shared<CodecComparisonChartElement>(
                 "PerfChartElem", 0, 0, 0, 360);
         state->chartElem->SetCodecNames(state->codecNames);
         state->chartElem->SetThumbnailImages(state->thumbs);
-        chartLayout->AddUIElement(state->chartElem, 1)->SetWidthMode(SizeMode::Fill);
+        chartSection->AddChild(state->chartElem); state->chartElem->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         // Thumbnails row — use AddChild without layout manager.
         state->thumbsRow = std::make_shared<UltraCanvasContainer>(
@@ -1475,24 +1477,24 @@ namespace UltraCanvas {
             state->thumbsRow->AddChild(thumb);
         }
 
-        chartLayout->AddUIElement(state->thumbsRow)->SetWidthMode(SizeMode::Fill)->SetFixedHeight(56);
+        chartSection->AddChild(state->thumbsRow); state->thumbsRow->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-        mainLayout->AddUIElement(chartSection, 1)->SetWidthMode(SizeMode::Fill);
+        root->AddChild(chartSection); chartSection->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         // ========== STATUS ROW ==========
         auto statusRow = std::make_shared<UltraCanvasContainer>(
                 "PerfStatus", 0, 0, 0, 24);
         statusRow->SetBackgroundColor(Color(255, 255, 255, 255));
-        auto statusLayout = CreateHBoxLayout(statusRow.get());
+        statusRow->layout.SetFlexRow();
 
         state->statusLabel = std::make_shared<UltraCanvasLabel>(
                 "PerfStatusLabel", 0, 0, 0, 20);
         state->statusLabel->SetText("Click [Choose Image...] to pick a bitmap.");
         state->statusLabel->SetFontSize(11);
         state->statusLabel->SetTextColor(Color(60, 60, 60, 255));
-        statusLayout->AddUIElement(state->statusLabel, 1);
+        statusRow->AddChild(state->statusLabel); state->statusLabel->layoutItem.SetFlexGrow(1);
 
-        mainLayout->AddUIElement(statusRow)->SetWidthMode(SizeMode::Fill)->SetFixedHeight(24);
+        root->AddChild(statusRow); statusRow->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         // Position each active codec's thumbnail horizontally centered under
         // its bar group, and hide thumbnails for codecs that are not in the
