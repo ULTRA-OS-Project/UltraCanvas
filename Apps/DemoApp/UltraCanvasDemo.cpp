@@ -233,6 +233,7 @@ namespace UltraCanvas {
         } else {
             textArea->ApplyCodeStyle("text");
         }
+        textArea->SetReadOnly(true);
         textArea->SetFontSize(10);
 
         sourceWindow->SetEventCallback([this](const UCEvent& event) {
@@ -263,8 +264,16 @@ namespace UltraCanvas {
             return;
         }
         // Create text area for documentation
-        auto markDownTextArea = std::make_shared<UltraCanvasMarkdownDisplay>("Documentation", 5, 5, 1190, 590);
-        markDownTextArea->SetMarkdownText(content);
+        auto markDownTextArea = std::make_shared<UltraCanvasTextArea>("Documentation");
+        markDownTextArea->layout.display = CSSLayout::DisplayType::Block;
+        markDownTextArea->size.width = CSSLayout::Dimension::Vw(100);
+        markDownTextArea->size.height = CSSLayout::Dimension::Vh(100);
+        markDownTextArea->SetText(content);
+        markDownTextArea->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
+        markDownTextArea->SetReadOnly(true);
+        markDownTextArea->SetWordWrap(true);
+        markDownTextArea->SetCursorPosition(LineColumnIndex::INVALID);
+
 
         docWindow->SetEventCallback([this](const UCEvent& event) {
             if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {

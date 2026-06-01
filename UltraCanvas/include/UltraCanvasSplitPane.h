@@ -126,7 +126,9 @@ namespace UltraCanvas {
 
         void EnsureSplitterCountMatches();
         void RebindSplitterIndices();
-        void PerformLayout();
+        // Lays out panes/splitters through the CSS engine (Measure+Arrange) so each pane's
+        // Container::Arrange runs UpdateScrollability at its real split size.
+        void PerformLayout(const CSSLayout::LayoutContext& ctx);
         std::vector<int> ComputePaneSizes(int availableAxis) const;
         int AxisLength() const;
     };

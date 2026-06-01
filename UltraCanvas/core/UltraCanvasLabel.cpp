@@ -141,20 +141,6 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
-    float UltraCanvasLabel::GetPreferredWidth() {
-        if (!EnsureTextLayout()) return 0;
-        textLayout->SetExplicitWidth(-1);  // max-content
-        return (float)textLayout->GetLayoutWidth()
-             + GetTotalPaddingHorizontal() + GetTotalBorderHorizontal();
-    }
-
-    float UltraCanvasLabel::GetPreferredHeight() {
-        if (!EnsureTextLayout()) return 0;
-        textLayout->SetExplicitWidth(-1);
-        return (float)textLayout->GetLayoutHeight()
-             + GetTotalPaddingVertical() + GetTotalBorderVertical();
-    }
-
     // ===== Internal: ensure the text layout exists and reflects current
     // style/font/wrap/alignment. Does NOT touch the explicit width — the
     // caller (Measure/Intrinsic/UpdateGeometry) sets that according to its

@@ -96,9 +96,6 @@ namespace UltraCanvas {
         void SetWrap(TextWrap wrap);
         void SetTextIsMarkup(bool markup);
 
-        float GetPreferredWidth() override;
-        float GetPreferredHeight() override;
-
         // ===== ENGINE-DRIVEN LAYOUT =====
         // Constraint-aware: caller (Flex/Grid/Block) tells us how much room
         // we have on each axis; we publish measured.measuredWidth/Height.

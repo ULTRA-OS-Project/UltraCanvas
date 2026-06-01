@@ -284,17 +284,16 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMarkdownDocScreen(const std::string& filename) {
-        auto container = std::make_shared<UltraCanvasContainer>("Examples", 0, 0, 1020, 780);
-
-        auto text = std::make_shared<UltraCanvasTextArea>("ExamplesText", 10, 10, 1030, 800);
+        auto text = std::make_shared<UltraCanvasTextArea>("ExamplesText");
+        text->size.width = CSSLayout::Dimension::Pct(100);
+        text->size.height = CSSLayout::Dimension::Pct(100);
         text->SetText(LoadFile(filename));
         text->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
         text->SetReadOnly(true);
         text->SetWordWrap(true);
         text->SetCursorPosition(LineColumnIndex::INVALID);
-        container->AddChild(text);
 
-        return container;
+        return text;
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGPIOExamples() {

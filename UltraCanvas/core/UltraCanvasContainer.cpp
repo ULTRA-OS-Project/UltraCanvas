@@ -42,19 +42,19 @@ namespace UltraCanvas {
         UpdateScrollability();
 
         // legacy UpdateGeometry for non-container (leaf) childs
-        for (auto& c : Children()) {
-            UltraCanvasUIElement* child = asUI(c);
-            if (!child || !child->IsVisible()) continue;
-            if (child->isPopup) continue;
-
-            auto containerChild = dynamic_cast<UltraCanvasContainer*>(child);
-            if (child->needsUpdateGeometry && c->Children().empty()) {
-                child->UpdateGeometry(GetRenderContext());
-                child->needsUpdateGeometry = false;
-            }
-        }
+//        for (auto& c : Children()) {
+//            UltraCanvasUIElement* child = asUI(c);
+//            if (!child || !child->IsVisible()) continue;
+//            if (child->isPopup) continue;
+//
+//            auto containerChild = dynamic_cast<UltraCanvasContainer*>(child);
+//            if (child->needsUpdateGeometry && c->Children().empty()) {
+//                child->UpdateGeometry(GetRenderContext());
+//                child->needsUpdateGeometry = false;
+//            }
+//        }
         internalLayoutValid = true;
-        needsUpdateGeometry = false;
+//        needsUpdateGeometry = false;
     }
 
 //    void UltraCanvasContainer::UpdateGeometry(IRenderContext* ctx) {

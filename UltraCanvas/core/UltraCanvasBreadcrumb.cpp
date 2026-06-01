@@ -734,7 +734,6 @@ namespace UltraCanvas {
         if (IRenderContext* rc = GetRenderContext()) {
             RecalculateLayout(rc);
             layoutDirty = false;
-            needsUpdateGeometry = false;
         }
     }
 

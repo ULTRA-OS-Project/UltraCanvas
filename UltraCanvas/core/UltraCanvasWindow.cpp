@@ -333,7 +333,21 @@ namespace UltraCanvas {
 
         bool isLayoutValid = IsLayoutValid();
         if (!isLayoutValid) {
-            UpdateLayout();
+            CSSLayout::LayoutContext lctx;
+            // TODO: thread em/rem/DPI from window. Viewport defaults
+            // are acceptable for fixed-px callers; only vw/vh users
+            // need this populated correctly.
+            lctx.viewportWidth  = GetWidth();
+            lctx.viewportHeight = GetHeight();
+
+            CSSLayout::MeasureConstraints mc{
+                    { CSSLayout::ConstraintMode::Exact, lctx.viewportWidth  },
+                    { CSSLayout::ConstraintMode::Exact, lctx.viewportHeight }
+            };
+            this->Measure(mc, lctx);
+            // Arrange() places children and, at its tail, calls Arranged()
+            // (z-order sort + scrollbar metrics) and sets arrangeValid.
+            this->Arrange(finalBounds, lctx);
         }
 
         // ---- Window content pass: loop once per optimised dirty rect ----
@@ -365,7 +379,7 @@ namespace UltraCanvas {
 
             if (!p->renderContext) {
                 p->renderContext = CreateRenderContext(want, nativeSurface);
-                p->needsUpdateGeometry = true;
+//                p->needsUpdateGeometry = true;
                 pe.dirtyRectManager.Add(Rect2Di(0, 0, want.width, want.height));
             } else if (p->renderContext->GetSurfaceSize() != want) {
                 p->renderContext->ResizeSurface(want);
@@ -456,7 +470,6 @@ namespace UltraCanvas {
         Size2Di sz = elem.GetSize();
         if (sz.width <= 0 || sz.height <= 0) sz = {1, 1};
         elem.renderContext = CreateRenderContext(sz, nativeSurface);
-        elem.needsUpdateGeometry = true;
 
         // Seed the popup's dirty list so the first frame paints fully.
         popupElements.back().dirtyRectManager.Add(Rect2Di(0, 0, sz.width, sz.height));

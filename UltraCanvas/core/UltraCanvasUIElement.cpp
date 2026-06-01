@@ -62,27 +62,6 @@ namespace UltraCanvas {
         return pos;
     }
 
-    void UltraCanvasUIElement::UpdateLayout() {
-        // update layout for top-lvel container and all children
-        CSSLayout::LayoutContext lctx;
-        if (window) {
-            // TODO: thread em/rem/DPI from window. Viewport defaults
-            // are acceptable for fixed-px callers; only vw/vh users
-            // need this populated correctly.
-            lctx.viewportWidth  = window->GetWidth();
-            lctx.viewportHeight = window->GetHeight();
-        }
-
-        CSSLayout::MeasureConstraints mc{
-                { CSSLayout::ConstraintMode::Exact, finalBounds.width  },
-                { CSSLayout::ConstraintMode::Exact, finalBounds.height }
-        };
-        this->Measure(mc, lctx);
-        // Arrange() places children and, at its tail, calls Arranged()
-        // (z-order sort + scrollbar metrics) and sets arrangeValid.
-        this->Arrange(finalBounds, lctx);
-    }
-
     void UltraCanvasUIElement::InvalidateRect(const Rect2Df& localRect) {
         if (!window || localRect.width <= 0 || localRect.height <= 0) return;
 
@@ -115,16 +94,16 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasUIElement::RequestUpdateGeometry() {
-        needsUpdateGeometry = true;
-        arrangeValid = false;
-        if (!window || this == window) return;
-        for (UltraCanvasUIElement* cur = this; cur && cur != window; cur = cur->GetParentContainer()) {
-            if (cur->isPopup) {
-                window->RequestPopupGeometry();
-                return;
-            }
-        }
-        window->RequestUpdateGeometry();
+//        needsUpdateGeometry = true;
+//        arrangeValid = false;
+//        if (!window || this == window) return;
+//        for (UltraCanvasUIElement* cur = this; cur && cur != window; cur = cur->GetParentContainer()) {
+//            if (cur->isPopup) {
+//                window->RequestPopupGeometry();
+//                return;
+//            }
+//        }
+//        window->RequestUpdateGeometry();
     }
 
     IRenderContext* UltraCanvasUIElement::GetRenderContext() const {
@@ -308,11 +287,12 @@ namespace UltraCanvas {
         finalBounds.width = sz.width;
         finalBounds.height = sz.height;
         InvalidateLayout();
-//        if (auto* parentCont = GetParentContainer()) {
-//            InvalidateLayout();
-//        } else {
-//            SetSize(sz);
-//        }
+    }
+
+    void UltraCanvasUIElement::SetElementSize(const CSSLayout::Dimension &w, const CSSLayout::Dimension &h) {
+        size.width  = w;
+        size.height = h;
+        InvalidateLayout();
     }
 
     void UltraCanvasUIElement::SetElementAbsolutePosition(const Point2Df &pos) {
@@ -329,12 +309,7 @@ namespace UltraCanvas {
     void UltraCanvasUIElement::SetBounds(const Rect2Df &b) {
         Rect2Df oldBounds = GetBounds();
         if (oldBounds == b) return;
-        if (oldBounds.Size() != b.Size()) {
-            RequestUpdateGeometry();
-        }
-        if (auto* parentCont = GetParentContainer()) {
-            parentCont->RequestUpdateGeometry();
-        }
+
         finalBounds = Rect2Df{b.x, b.y, b.width, b.height};
         // Invalidate union of old+new bounds in parent space — bounds are stored
         // in parent coords, so this is what the parent (or window) needs to repaint.

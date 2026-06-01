@@ -104,7 +104,7 @@ namespace UltraCanvas {
     friend UltraCanvasWindowBase;
     friend UltraCanvasContainer;
     protected:
-        bool needsUpdateGeometry = true;
+//        bool needsUpdateGeometry = true;
         bool visible = true;
         bool isPopup = false;
 
@@ -205,15 +205,9 @@ namespace UltraCanvas {
         float GetYInWindow();
 
         float GetWidth() const { return finalBounds.width; }
-        virtual float GetPreferredWidth() { return dimPx(size.width); }
-        virtual float GetMinWidth() const { return 0.0f; }
-        virtual float GetMaxWidth() const { return 10000.0f; }
         void SetWidth(float w) { SetBounds(finalBounds.x, finalBounds.y, w, finalBounds.height); }
 
         float GetHeight() const { return finalBounds.height; }
-        virtual float GetPreferredHeight() { return dimPx(size.height); }
-        virtual float GetMinHeight() const { return 0.0f; }
-        virtual float GetMaxHeight() const { return 10000.0f; }
         void SetHeight(float h) { SetBounds(finalBounds.x, finalBounds.y, finalBounds.width, h); }
 
         float GetX() const { return finalBounds.x; }
@@ -221,18 +215,19 @@ namespace UltraCanvas {
         float GetY() const { return finalBounds.y; }
         void SetY(float y) { SetBounds(finalBounds.x, y, finalBounds.width, finalBounds.height); }
 
+        // if possible dont use these SetSize/SetPosition as it may break layout, use SetElementSize/SetElementAbsolutePosition
         void SetPosition(float x, float y) { SetBounds(x, y, finalBounds.width, finalBounds.height); }
         void SetPosition(const Point2Df& pos) { SetBounds(pos.x, pos.y, finalBounds.width, finalBounds.height); }
         void SetSize(float w, float h) { SetBounds(finalBounds.x, finalBounds.y, w, h); }
         void SetSize(const Size2Df& sz) { SetBounds(finalBounds.x, finalBounds.y, sz.width, sz.height); }
-
-        void SetElementAbsolutePosition(const Point2Df& pos);
-        void SetElementSize(const Size2Df & sz);
-
         void SetBounds(float x, float y, float w, float h) {
             SetBounds(Rect2Df(x, y, w, h));
         }
         virtual void SetBounds(const Rect2Df& b);
+
+        void SetElementAbsolutePosition(const Point2Df& pos);
+        void SetElementSize(const Size2Df & sz);
+        void SetElementSize(const CSSLayout::Dimension &w, const CSSLayout::Dimension &h);
 
         Point2Df GetPositionInWindow() const;
         Rect2Df GetBoundsInWindow() const {
@@ -502,10 +497,6 @@ namespace UltraCanvas {
             arrangeValid = true;
         }
 
-        // run Measure/Arrange for all its children
-        // this element usually should be top-level (window, popup or have no parent)
-        void UpdateLayout();
-
         void Arrange(const Rect2Df& newFinalRect, const CSSLayout::LayoutContext& ctx) override;
 
         // ===== EVENT HANDLING =====
@@ -514,7 +505,7 @@ namespace UltraCanvas {
 
         void SetEventCallback(std::function<bool(const UCEvent&)> callback);
 
-        bool IsNeedsUpdateGeometry() const { return needsUpdateGeometry; }
+//        bool IsNeedsUpdateGeometry() const { return needsUpdateGeometry; }
 
         // Adds localRect (in this element's local coords) to the appropriate
         // dirty-rect manager: the containing popup's, or the window's.

@@ -1,7 +1,7 @@
 // include/CSSLayout/CSSLayout.h
 // CSS-compliant layout engine: type model and Element base class.
-// Version: 4.7.0
-// Last Modified: 2026-05-31
+// Version: 4.8.1
+// Last Modified: 2026-06-01
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -20,7 +20,8 @@ namespace UltraCanvas {
 
         // ---- Length values (CSS <length> / <percentage> / <flex>) ----
 
-        enum class DimensionUnit { Auto, Pixels, Percent, Fr, MinContent, MaxContent, FitContent };
+        enum class DimensionUnit { Auto, Pixels, Percent, Fr, MinContent, MaxContent, FitContent,
+                                   ViewportWidth, ViewportHeight, Em, Rem };
 
         struct Dimension {
             DimensionUnit unit = DimensionUnit::Auto;
@@ -30,6 +31,10 @@ namespace UltraCanvas {
             static Dimension Px(float v);
             static Dimension Pct(float v);
             static Dimension Fr(float v);
+            static Dimension Vw(float v);   // % of viewport width
+            static Dimension Vh(float v);   // % of viewport height
+            static Dimension Em(float v);   // multiple of current font size
+            static Dimension Rem(float v);  // multiple of root font size
 
             bool isAuto() const { return unit == DimensionUnit::Auto; }
         };
@@ -76,6 +81,16 @@ namespace UltraCanvas {
             float fontSizePx     = 16.f;  // for em (per-element; refined as we descend)
             float devicePixelRatio = 1.f;
             TextDirection direction = TextDirection::Ltr;
+
+            bool operator==(const LayoutContext& o) const {
+                return viewportWidth    == o.viewportWidth
+                    && viewportHeight   == o.viewportHeight
+                    && rootFontSizePx   == o.rootFontSizePx
+                    && fontSizePx       == o.fontSizePx
+                    && devicePixelRatio == o.devicePixelRatio
+                    && direction        == o.direction;
+            }
+            bool operator!=(const LayoutContext& o) const { return !(*this == o); }
         };
 
         // ---- Measure constraints (Flutter-style box constraints) ----
@@ -189,9 +204,10 @@ namespace UltraCanvas {
             Dimension left;
         };
 
-        // ---- Measure result (extrinsic; cached per constraints) ----
+        // ---- Measure result (extrinsic; cached per constraints + layout context) ----
         struct MeasureResult {
             MeasureConstraints key;
+            LayoutContext ctxKey;   // measurement also depends on viewport/font/DPI (vw/vh/em/rem)
             bool valid = false;
             float measuredWidth = 0;
             float measuredHeight = 0;

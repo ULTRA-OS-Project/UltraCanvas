@@ -1,7 +1,7 @@
 // core/CSSLayout/LayoutUtils.cpp
 // Shared helpers: dimension resolution, edge resolution, constraint clamping.
-// Version: 1.0.0
-// Last Modified: 2026-05-27
+// Version: 1.1.0
+// Last Modified: 2026-06-01
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/LayoutUtils.h"
@@ -12,13 +12,21 @@ namespace UltraCanvas {
 
         std::optional<float> resolveDimension(const Dimension& dim,
                                               std::optional<float> parentExtent,
-                                              const LayoutContext& /*ctx*/) {
+                                              const LayoutContext& ctx) {
             switch (dim.unit) {
                 case DimensionUnit::Pixels:
                     return dim.value;
                 case DimensionUnit::Percent:
                     if (parentExtent.has_value()) return (*parentExtent) * dim.value / 100.f;
                     return std::nullopt;
+                case DimensionUnit::ViewportWidth:
+                    return ctx.viewportWidth  * dim.value / 100.f;
+                case DimensionUnit::ViewportHeight:
+                    return ctx.viewportHeight * dim.value / 100.f;
+                case DimensionUnit::Em:
+                    return ctx.fontSizePx     * dim.value;
+                case DimensionUnit::Rem:
+                    return ctx.rootFontSizePx * dim.value;
                 case DimensionUnit::Auto:
                 case DimensionUnit::Fr:
                 case DimensionUnit::MinContent:

@@ -37,17 +37,18 @@ namespace UltraCanvas {
     // inflate the container's scroll range.
     void UltraCanvasTabbedContainer::Arrange(const Rect2Df& finalRect,
                                              const CSSLayout::LayoutContext& ctx) {
-        // Set our geometry + damage tracking (mirrors UltraCanvasUIElement::Arrange).
-        Rect2Df oldBounds = finalBounds;
-        finalBounds = finalRect;
-        arrangeValid = true;
-        Rect2Df damage = oldBounds.Union(finalBounds);
-        if (auto* parentCont = GetParentContainer()) {
-            parentCont->InvalidateRect(damage);
-        } else if (window && static_cast<UltraCanvasUIElement*>(this) != static_cast<UltraCanvasUIElement*>(window)) {
-            window->AddDirtyRectangle(damage);
-        }
-
+        UltraCanvasUIElement::Arrange(finalRect, ctx);
+//        // Set our geometry + damage tracking (mirrors UltraCanvasUIElement::Arrange).
+//        Rect2Df oldBounds = finalBounds;
+//        finalBounds = finalRect;
+//        arrangeValid = true;
+//        Rect2Df damage = oldBounds.Union(finalBounds);
+//        if (auto* parentCont = GetParentContainer()) {
+//            parentCont->InvalidateRect(damage);
+//        } else if (window && static_cast<UltraCanvasUIElement*>(this) != static_cast<UltraCanvasUIElement*>(window)) {
+//            window->AddDirtyRectangle(damage);
+//        }
+//
         // Deterministic tab-bar layout (GetTabAreaBounds no longer mutates finalBounds).
         CalculateLayout();
         UpdateOverflowDropdown();
@@ -457,12 +458,6 @@ namespace UltraCanvas {
         if (tabBarColor.a > 0) {
             ctx->DrawFilledRectangle(tabBarBounds, tabBarColor);
         }
-//        if (tabContentBorderColor.a > 0) {
-//            ctx->SetStrokePaint(tabContentBorderColor);
-//            ctx->SetStrokeWidth(1);
-//            ctx->DrawLine(tabBarBounds.BottomLeft(), tabBarBounds.BottomRight());
-//        }
-
 
         Rect2Di tabAreaBounds = GetTabAreaBounds();
 
@@ -487,17 +482,8 @@ namespace UltraCanvas {
             RenderOverflowButton(ctx);
         }
 
-         // V2.0.0: Draw drag insertion indicator
-//         if (isDraggingTab && dragInsertionIndex >= 0) {
-//             RenderDragInsertionIndicator(ctx);
-//         }
-
         ctx->PopState();
 
-//        if (tabBorderColor.a > 0) {
-//            ctx->SetStrokePaint(tabBorderColor);
-//            ctx->DrawRectangle(tabBarBounds);
-//        }
     }
 
     void UltraCanvasTabbedContainer::RenderTabIcon(int index, IRenderContext *ctx) {

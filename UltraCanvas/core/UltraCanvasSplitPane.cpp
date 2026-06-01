@@ -131,7 +131,7 @@ namespace UltraCanvas {
         if (index > panes.size()) index = panes.size();
 
         std::string paneId = GetIdentifier() + "_pane_" + std::to_string(panes.size());
-        auto pane = std::make_shared<UltraCanvasContainer>(paneId, 0, 0, 0, 0);
+        auto pane = std::make_shared<UltraCanvasContainer>(paneId);
 
         PaneSlot slot;
         slot.pane = pane;
@@ -289,7 +289,7 @@ namespace UltraCanvas {
         return sizes;
     }
 
-    void UltraCanvasSplitPane::PerformLayout() {
+    void UltraCanvasSplitPane::PerformLayout(const CSSLayout::LayoutContext& ctx) {
         EnsureSplitterCountMatches();
         RebindSplitterIndices();
 
@@ -301,6 +301,19 @@ namespace UltraCanvas {
 
         auto sizes = ComputePaneSizes(available);
 
+        // Size each child through the CSS engine (Measure+Arrange) rather than SetBounds, so
+        // each pane's Container::Arrange -> UpdateScrollability runs at its real split size and
+        // shows scrollbars when its content overflows.
+        auto arrangeChild = [&ctx](UltraCanvasUIElement* child, const Rect2Di& r) {
+            if (!child) return;
+            Rect2Df rf(r.x, r.y, r.width, r.height);
+            CSSLayout::MeasureConstraints mc{
+                    { CSSLayout::ConstraintMode::Exact, rf.width },
+                    { CSSLayout::ConstraintMode::Exact, rf.height } };
+            child->Measure(mc, ctx);
+            child->Arrange(rf, ctx);
+        };
+
         int axisOffset = 0;
         for (size_t i = 0; i < panes.size(); ++i) {
             int paneAxis = sizes[i];
@@ -310,7 +323,7 @@ namespace UltraCanvas {
             } else {
                 r = Rect2Di(area.x, area.y + axisOffset, crossLen, paneAxis);
             }
-            if (panes[i].pane) panes[i].pane->SetBounds(r);
+            arrangeChild(panes[i].pane.get(), r);
             axisOffset += paneAxis;
 
             if (i < splitters.size()) {
@@ -320,7 +333,7 @@ namespace UltraCanvas {
                 } else {
                     sr = Rect2Di(area.x, area.y + axisOffset, crossLen, splitStyle.splitterThickness);
                 }
-                splitters[i]->SetBounds(sr);
+                arrangeChild(splitters[i].get(), sr);
                 axisOffset += splitStyle.splitterThickness;
             }
         }
@@ -328,7 +341,7 @@ namespace UltraCanvas {
 
     void UltraCanvasSplitPane::Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) {
         UltraCanvasContainer::Arrange(finalRect, ctx);
-        PerformLayout();
+        PerformLayout(ctx);
     }
 
     void UltraCanvasSplitPane::BeginSplitterDrag(size_t splitterIndex) {

@@ -375,9 +375,10 @@ namespace UltraCanvas {
         // Render method
         virtual void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
-        // Drives the per-line layout cache (UpdateLineLayouts) so layouts are ready
-        // before Render runs. Called by the framework when RequestUpdateGeometry() has been set.
-        virtual void UpdateGeometry(IRenderContext* ctx) override;
+        // CSS layout: externally sized (explicit size or parent stretch). The engine sets
+        // finalBounds via Arrange; we flag the visible-area cache for recompute on resize.
+        // (UpdateLineLayouts/CalculateVisibleArea still run lazily in Render via the flag.)
+        void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
         // Override SetBounds to trigger layout recalculation on resize
         void SetBounds(const Rect2Df& b) override {

@@ -1,7 +1,7 @@
 // core/CSSLayout/Element.cpp
 // Element base: measure-cache wrapper, default block layout, arrange dispatch.
-// Version: 1.3.1
-// Last Modified: 2026-05-31
+// Version: 1.4.0
+// Last Modified: 2026-06-01
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -158,13 +158,20 @@ namespace UltraCanvas {
         }
 
         void Element::Measure(const MeasureConstraints& c, const LayoutContext& ctx) {
-            if (measured.valid && measured.key == c) return;
+            // The measured result is a function of BOTH the constraints and the
+            // layout context: viewport/font/DPI feed vw/vh/em/rem resolution. A
+            // height-only window resize keeps the (Exact width, Unbounded height)
+            // child key identical, so without the ctx check a vh child would keep
+            // its stale cached size. (Constraint-only keying was correct only while
+            // resolveDimension ignored ctx.)
+            if (measured.valid && measured.key == c && measured.ctxKey == ctx) return;
             if (!intrinsic.valid) {
                 ComputeIntrinsicSizes(ctx);
                 intrinsic.valid = true;
             }
             MeasureCore(c, ctx);
             measured.key = c;
+            measured.ctxKey = ctx;
             measured.valid = true;
         }
 
