@@ -105,7 +105,7 @@ namespace UltraCanvas {
     friend UltraCanvasContainer;
     protected:
 //        bool needsUpdateGeometry = true;
-        bool visible = true;
+        CSSLayout::DisplayType prevDisplayType = CSSLayout::DisplayType::Block;
         bool isPopup = false;
 
         std::unique_ptr<IRenderContext> renderContext = nullptr;
@@ -448,7 +448,7 @@ namespace UltraCanvas {
         const std::string& GetTooltip() const { return tooltip; }
         void SetTooltip(const std::string& tooltipStr) { tooltip = tooltipStr; }
 
-        bool IsVisible() const { return visible; }
+        bool IsVisible() const { return layout.display != CSSLayout::DisplayType::NoDisplay; }
         void SetVisible(bool visible);
 
         bool IsDisabled() const { return stateFlags.isDisabled; }

@@ -1068,7 +1068,7 @@ namespace UltraCanvas {
             bool isSep = (tbl->layoutType == LineLayoutType::TableSeparatorRow);
             tbl->columnAlignments = alignments;
             int x = 0;
-            double maxCellHeight = 0;
+            float maxCellHeight = 0;
             for (int c = 0; c < colCount; c++) {
                 if (c >= (int)tbl->cellsLayouts.size()) { x += colWidth[c]; continue; }
                 auto& cell = tbl->cellsLayouts[c];
@@ -1184,7 +1184,7 @@ namespace UltraCanvas {
             cl->layout->SetFontStyle(style.fixedFontStyle);
             cl->layout->SetLineSpacing(style.lineHeight);
             if (wordWrap && visibleTextArea.width > 0) {
-                cl->layout->SetExplicitWidth(visibleTextArea.width - style.padding * 2);
+                cl->layout->SetExplicitWidth(visibleTextArea.width - style.textPadding * 2);
                 cl->layout->SetWrap(TextWrap::WrapWordChar);
             }
 
@@ -1224,9 +1224,9 @@ namespace UltraCanvas {
                 }
             }
 
-            cl->bounds.width = cl->layout->GetLayoutWidth() + style.padding * 2;
+            cl->bounds.width = cl->layout->GetLayoutWidth() + style.textPadding * 2;
             cl->bounds.height = std::max(1.0, cl->layout->GetLayoutHeight());
-            cl->layoutShift.x = style.padding;
+            cl->layoutShift.x = style.textPadding;
             // Identity for content (layout text == rawLine); for the closing fence the
             // layout is empty and the source maps to a single zero-width segment.
             int visCp = utf8_length(cl->layout->GetText());
@@ -1639,14 +1639,14 @@ namespace UltraCanvas {
                 cl->layout->SetLineSpacing(style.lineHeight);
                 if (wordWrap && visibleTextArea.width > 0) {
                     cl->layout->SetExplicitWidth(
-                            std::max(1.0f, visibleTextArea.width - style.padding * 2));
+                            std::max(1.0f, visibleTextArea.width - style.textPadding * 2));
                     cl->layout->SetWrap(TextWrap::WrapWordChar);
                 }
                 int indentCp = utf8_byte_to_cp(rawLine, indentBytes);
                 int contentCp = utf8_length(content);
                 cl->cpMap = {{0, indentCp}, {contentCp, indentCp + contentCp}};
-                cl->layoutShift.x = style.padding;
-                cl->bounds.width  = cl->layout->GetLayoutWidth() + style.padding * 2;
+                cl->layoutShift.x = style.textPadding;
+                cl->bounds.width  = cl->layout->GetLayoutWidth() + style.textPadding * 2;
                 cl->bounds.height = std::max(1.0, cl->layout->GetLayoutHeight());
                 return cl;
             }

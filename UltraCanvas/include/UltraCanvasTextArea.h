@@ -209,8 +209,7 @@ namespace UltraCanvas {
         // Background and borders
         Color backgroundColor;
         Color borderColor;
-        float borderWidth;
-        float padding;
+        float textPadding;
 
         // Selection and cursor
         Color selectionColor;
@@ -308,10 +307,10 @@ namespace UltraCanvas {
 
     struct LineLayoutBase {
         LineLayoutType layoutType = LineLayoutType::PlainLine;
-        Rect2Dd bounds = {0,0,0,0};
+        Rect2Df bounds = {0,0,0,0};
         std::vector<MarkdownHitRect> hitRects; // bounds inside layout
         std::unique_ptr<ITextLayout> layout;
-        Point2Dd layoutShift = {0, 0}; // for MD mode some elements render text layout shifted to right or bottom
+        Point2Df layoutShift = {0, 0}; // for MD mode some elements render text layout shifted to right or bottom
         // Visible-cp ↔ source-line-cp mapping. See CpRun. Use VisibleCpToSourceCp /
         // SourceCpToVisibleCp helpers for lookups; do not arithmetically subtract any
         // single offset. The first entry's sourceCp is the block-prefix codepoint count.
@@ -646,7 +645,7 @@ namespace UltraCanvas {
 
     protected:
         // Drawing methods
-        void DrawBackground(IRenderContext* context);
+        void DrawCurrentLineBackground(IRenderContext* context);
         void DrawBorder(IRenderContext* context);
         void DrawLineNumbers(IRenderContext* context);
         void DrawCursor(IRenderContext* context);

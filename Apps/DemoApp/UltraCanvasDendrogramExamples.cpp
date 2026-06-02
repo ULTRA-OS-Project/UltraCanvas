@@ -97,8 +97,8 @@ static std::shared_ptr<UltraCanvasContainer> MakeControlBar(
     mkBtn("col",  120, "Collapse All",[d]{ d->CollapseAll(); });
     mkBtn("rpos", 120, "Reset Pos",    [d]{ d->ResetNodePositions(); });
 
-    auto lbl = std::make_shared<UltraCanvasLabel>("inf_"+d->GetIdentifier(),
-                                                   504, 10, w-508, 20, info);
+    auto lbl = std::make_shared<UltraCanvasLabel>("inf_"+d->GetIdentifier(), info);
+    lbl->SetElementAbsolutePosition({580, 10});
     lbl->SetTextColor(Color(100,100,110,255));
     lbl->SetFontSize(11.0f);
     bar->AddChild(lbl);

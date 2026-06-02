@@ -71,8 +71,7 @@ namespace UltraCanvas {
         style.currentLineHighlightColor = {255, 255, 0, 30};
         style.scrollbarTrackColor = {128, 128, 128, 255};
         style.scrollbarColor = {200, 200, 200, 255};
-        style.borderWidth = 1;
-        style.padding = 5;
+        style.textPadding = 5;
         style.showLineNumbers = false;
         style.highlightSyntax = false;
 
@@ -88,6 +87,8 @@ namespace UltraCanvas {
         style.tokenStyles.constantStyle.color = {0, 0, 128, 255};
         style.tokenStyles.preprocessorStyle.color = {64, 128, 128, 255};
         style.tokenStyles.builtinStyle.color = {128, 0, 255, 255};
+
+        backgroundColor = style.backgroundColor;
     }
 
 // ===== LINE ENDING HELPERS =====
@@ -1030,7 +1031,9 @@ namespace UltraCanvas {
             isCursorMoved = false;
         }
 
-        DrawBackground(ctx);
+        UltraCanvasUIElement::Render(ctx, dirtyRect);
+
+        DrawCurrentLineBackground(ctx);
 
         if (editingMode == TextAreaEditingMode::Hex) {
             DrawHexView(ctx);
@@ -1064,15 +1067,7 @@ namespace UltraCanvas {
 //            }
         }
 
-        DrawBorder(ctx);
         DrawScrollbars(ctx);
-    }
-
-    void UltraCanvasTextArea::DrawBorder(IRenderContext* context) {
-        auto bounds = GetLocalBounds();
-        if (style.borderWidth > 0) {
-            context->DrawFilledRectangle(bounds, Colors::Transparent, style.borderWidth, style.borderColor);
-        }
     }
 
     // DrawPlainText / DrawHighlightedText removed in Step 8 — rendering goes through
@@ -1133,15 +1128,15 @@ namespace UltraCanvas {
     // DrawSelection removed in Step 8 — selection is now rendered as a Pango background-color
     // attribute inside each line's ITextLayout (applied in ApplyLineSelectionBackground).
 
-    void UltraCanvasTextArea::DrawBackground(IRenderContext* context) {
-        auto bounds = GetLocalBounds();
-        context->SetFillPaint(style.backgroundColor);
-        context->FillRectangle(bounds);
+    void UltraCanvasTextArea::DrawCurrentLineBackground(IRenderContext* context) {
+        auto bounds = GetContentRect();
+//        context->SetFillPaint(style.backgroundColor);
+//        context->FillRectangle(bounds);
 
         if (highlightCurrentLine && currentLine) {
-            int highlightX = style.showLineNumbers ? computedLineNumbersWidth : 0;
-            int highlightW = bounds.width - (style.showLineNumbers ? computedLineNumbersWidth : 0);
-            int highlightY = visibleTextArea.y + currentLine->bounds.y - verticalScrollOffset;
+            float highlightX = style.showLineNumbers ? computedLineNumbersWidth : 0;
+            float highlightW = bounds.width - (style.showLineNumbers ? computedLineNumbersWidth : 0);
+            float highlightY = visibleTextArea.y + currentLine->bounds.y - verticalScrollOffset;
             context->PushState();
             context->ClipRect(visibleTextArea);
             context->SetFillPaint(style.currentLineHighlightColor);
@@ -1800,10 +1795,10 @@ namespace UltraCanvas {
 
         // visibleTextArea is in element-local space (ctx is translated to element origin)
         visibleTextArea = GetLocalBounds();
-        visibleTextArea.x += style.padding;
-        visibleTextArea.y += style.padding;
-        visibleTextArea.width -= style.padding * 2;
-        visibleTextArea.height -= style.padding * 2;
+        visibleTextArea.x += style.textPadding;
+        visibleTextArea.y += style.textPadding;
+        visibleTextArea.width -= style.textPadding * 2;
+        visibleTextArea.height -= style.textPadding * 2;
         
         if (style.showLineNumbers) {
             computedLineNumbersWidth = CalculateLineNumbersWidth(ctx);
@@ -2381,6 +2376,8 @@ namespace UltraCanvas {
         style.tokenStyles.builtinStyle.color = {0x4c, 0xbb, 0xc9, 255};
         style.tokenStyles.defaultStyle.color = {210, 210, 210, 255};
 
+        backgroundColor = style.backgroundColor;
+
         SetMarkdownStyle(MarkdownHybridStyle::DarkMode());
         RequestRedraw();
     }
@@ -2411,6 +2408,8 @@ namespace UltraCanvas {
         style.tokenStyles.constantStyle.color = {0, 0, 128, 255};
         style.tokenStyles.preprocessorStyle.color = {64, 128, 128, 255};
         style.tokenStyles.builtinStyle.color = {128, 0, 255, 255};
+
+        backgroundColor = style.backgroundColor;
 
         SetMarkdownStyle(MarkdownHybridStyle::Default());
     }
@@ -3247,8 +3246,8 @@ namespace UltraCanvas {
             if (line->layout) {
                 ctx->SetCurrentPaint(style.fontColor);
                 ctx->DrawTextLayout(*line->layout,
-                    Point2Dd(static_cast<float>(layoutOrigin.x),
-                             static_cast<float>(layoutOrigin.y)));
+                    Point2Dd(layoutOrigin.x,
+                             layoutOrigin.y));
             }
         };
 
@@ -3291,11 +3290,11 @@ namespace UltraCanvas {
                 // measured content width — so contiguous code rows visually merge into one
                 // uniform block regardless of per-line text length.
 
-                double borderTop = (line->layoutType == LineLayoutType::CodeblockStart) ? 1 : 0;
-                double borderBottom = (line->layoutType == LineLayoutType::CodeblockEnd) ? 1 : 0;
-                double y = (line->layoutType == LineLayoutType::CodeblockStart)
+                float borderTop = (line->layoutType == LineLayoutType::CodeblockStart) ? 1 : 0;
+                float borderBottom = (line->layoutType == LineLayoutType::CodeblockEnd) ? 1 : 0;
+                float y = (line->layoutType == LineLayoutType::CodeblockStart)
                         ? (posOrigin.y + line->bounds.height / 2 + 2) : posOrigin.y;
-                double h = (line->layoutType == LineLayoutType::CodeblockEnd || line->layoutType == LineLayoutType::CodeblockStart)
+                float h = (line->layoutType == LineLayoutType::CodeblockEnd || line->layoutType == LineLayoutType::CodeblockStart)
                         ? line->bounds.height / 2 : line->bounds.height;
                 ctx->SetFillPaint(codeBgColor);
                 const Color& cbBorder = markdownStyle.codeBlockBorderColor;

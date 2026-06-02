@@ -256,22 +256,19 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasUIElement::SetVisible(bool vis) {
-        if (visible == vis) {
-            return;
+        if (vis) {
+            if (layout.display != CSSLayout::DisplayType::NoDisplay) return;
+            layout.display = prevDisplayType;
+        } else {
+            if (layout.display == CSSLayout::DisplayType::NoDisplay) return;
+            prevDisplayType = layout.display;
+            layout.display = CSSLayout::DisplayType::NoDisplay;
         }
-        visible = vis;
-        // Invalidate the rect we're about to vacate or occupy, in parent space.
-        Rect2Df b = GetBounds();
-        if (auto* parentCont = GetParentContainer()) {
-            parentCont->InvalidateRect(b);
-            parentCont->InvalidateLayout();
-        } else if (window && this != window) {
-            window->AddDirtyRectangle(b);
-        }
-        if (!visible) {
+        InvalidateLayout();
+        if (!vis) {
             SetFocus(false);
         }
-        RequestUpdateGeometry();
+//        RequestUpdateGeometry();
     }
 
     void UltraCanvasUIElement::SetWindow(UltraCanvasWindowBase *win) {

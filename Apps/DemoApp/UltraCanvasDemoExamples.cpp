@@ -292,7 +292,8 @@ namespace UltraCanvas {
         text->SetReadOnly(true);
         text->SetWordWrap(true);
         text->SetCursorPosition(LineColumnIndex::INVALID);
-
+        text->SetPadding(0,5,0,7);
+        //text->SetBorders(3, Colors::Yellow);
         return text;
     }
 

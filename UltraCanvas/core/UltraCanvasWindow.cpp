@@ -17,7 +17,7 @@ namespace UltraCanvas {
     UltraCanvasWindowBase::UltraCanvasWindowBase()
             : UltraCanvasContainer("Window", 0, 0, 0, 0) {
         // Configure container for window behavior
-        visible = false;
+        _windowVisible = false;
         window = this;
         nativeSurface = nullptr;
     }
@@ -324,7 +324,7 @@ namespace UltraCanvas {
 
 
     void UltraCanvasWindowBase::UpdateAndRender() {
-        if (!visible || !_created) return;
+        if (!_created || !_windowVisible) return;
         auto ctx = GetRenderContext();
         if (IsNeedsResize()) {
             DoResize();

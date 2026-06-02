@@ -99,7 +99,7 @@ namespace UltraCanvas {
         int gapWidth = charW * 2;
 
         // Available width for hex + ASCII content
-        int availWidth = finalBounds.width - style.padding * 2 - hexAddressWidth - gapWidth;
+        int availWidth = finalBounds.width - style.textPadding * 2 - hexAddressWidth - gapWidth;
 
         // Account for vertical scrollbar — compute preliminary row count first,
         // since hexTotalRows from the previous call may be stale (0 on first call)
@@ -109,7 +109,7 @@ namespace UltraCanvas {
             int bprEst = std::max(4, ((availWidth / perByteEst) / 4) * 4);
             int bufSize = static_cast<int>(hexBuffer.size());
             int estTotalRows = (bufSize > 0) ? ((bufSize + bprEst - 1) / bprEst) : 1;
-            int estMaxVisible = std::max(1, (int)((finalBounds.height - style.padding * 2) / hexRowHeight));
+            int estMaxVisible = std::max(1, (int)((finalBounds.height - style.textPadding * 2) / hexRowHeight));
             if (estTotalRows > estMaxVisible) {
                 availWidth -= 15; // scrollbar width
             }
@@ -124,7 +124,7 @@ namespace UltraCanvas {
         hexBytesPerRow = std::max(4, bpr);
 
         // Compute panel positions
-        hexPanelStartX = finalBounds.x + style.padding + hexAddressWidth;
+        hexPanelStartX = finalBounds.x + style.textPadding + hexAddressWidth;
         hexAsciiPanelStartX = hexPanelStartX + hexBytesPerRow * hexByteWidth + gapWidth;
 
         // Compute total rows
@@ -133,10 +133,10 @@ namespace UltraCanvas {
 
         // Visible area
         hexVisibleArea = bounds;
-        hexVisibleArea.x += style.padding;
-        hexVisibleArea.y += style.padding;
-        hexVisibleArea.width -= style.padding * 2;
-        hexVisibleArea.height -= style.padding * 2;
+        hexVisibleArea.x += style.textPadding;
+        hexVisibleArea.y += style.textPadding;
+        hexVisibleArea.width -= style.textPadding * 2;
+        hexVisibleArea.height -= style.textPadding * 2;
 
         // Visible rows
         hexMaxVisibleRows = std::max(1, hexVisibleArea.height / hexRowHeight);
@@ -194,10 +194,10 @@ namespace UltraCanvas {
 
         // Draw address gutter background
         ctx->SetFillPaint(style.lineNumbersBackgroundColor);
-        ctx->FillRectangle(Rect2Dd(finalBounds.x, hexVisibleArea.y, hexAddressWidth + style.padding, hexVisibleArea.height));
+        ctx->FillRectangle(Rect2Dd(finalBounds.x, hexVisibleArea.y, hexAddressWidth + style.textPadding, hexVisibleArea.height));
 
         // Draw separator line
-        int separatorX = finalBounds.x + style.padding + hexAddressWidth - 4;
+        int separatorX = finalBounds.x + style.textPadding + hexAddressWidth - 4;
         ctx->SetStrokePaint(style.borderColor);
         ctx->SetStrokeWidth(1);
         ctx->DrawLine({separatorX, hexVisibleArea.y}, {separatorX, hexVisibleArea.y + hexVisibleArea.height});

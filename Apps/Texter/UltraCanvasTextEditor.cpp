@@ -386,14 +386,14 @@ namespace {
             , activeDocumentIndex(-1)
             , hasCheckedForBackups(false)
             , menuBarHeight(24)
-            , toolbarHeight(cfg.showToolbar ? 40 : 0)
             , markdownToolbarWidth(40)
+            , toolbarHeight(40)
             , statusBarHeight(22)
             , tabBarHeight(26)
     {
         configFile.EnsureConfigDirectory();
         LoadConfig();
-        toolbarHeight = config.showToolbar ? 40 : 0;
+
 
         // Configure autosave
         autosaveManager.SetEnabled(config.enableAutosave);
@@ -738,7 +738,7 @@ namespace {
         toolbar = UltraCanvasToolbarBuilder("EditorToolbar")
                 .SetOrientation(ToolbarOrientation::Horizontal)
                 .SetAppearance(ToolbarAppearance::Flat())
-                .SetDimensions(0, 0, GetWidth(), toolbarHeight)
+                .SetDimensions(0, 0, GetWidth(), 40)
                 .AddButton("new", "", NormalizePath(GetResourcesDir() + "media/icons/texter/add-document.svg"), [this]() { OnFileNew(); })
                 .AddButton("open", "", NormalizePath(GetResourcesDir() + "media/icons/texter/folder-open.svg"), [this]() { OnFileOpen(); })
                 .AddButton("save", "", NormalizePath(GetResourcesDir() + "media/icons/texter/save.svg"), [this]() { OnFileSave(); })
@@ -934,19 +934,11 @@ namespace {
     }
 
     void UltraCanvasTextEditor::SetupTabContainer() {
-        int yPos = 0;
-        if (config.showMenuBar) yPos += menuBarHeight;
-        if (config.showToolbar) yPos += toolbarHeight;
-
-        int tabAreaHeight = GetHeight() - yPos - (config.showStatusBar ? statusBarHeight : 0);
-
         // Create tabbed container
         // Origin (0,0): in-flow flex child of the window column (a non-zero origin would
         // make it AbsoluteUI). The window's flex layout positions it.
         tabContainer = std::make_shared<UltraCanvasTabbedContainer>(
-                "EditorTabs",
-                0, 0,
-                GetWidth(), tabAreaHeight
+                "EditorTabs"
         );
 
         // Configure tab container
@@ -1296,7 +1288,7 @@ namespace {
             toolbarContainer->layoutItem.SetFlexShrink(0).SetFlexOrder(1)
                     .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
             if (!config.showToolbar) {
-                toolbarContainer->layout.display = CSSLayout::DisplayType::NoDisplay;
+                toolbarContainer->SetVisible(false);
             }
         }
         if (tabContainer) {
@@ -1339,7 +1331,7 @@ namespace {
         doc->editorArea->AddChild(doc->textArea);
 
         // contentBox: flex column [searchBar (top, when active) , editorArea (grows)].
-        doc->contentBox = std::make_shared<UltraCanvasContainer>(base + "_pane", 0, 0, 0, 0);
+        doc->contentBox = std::make_shared<UltraCanvasContainer>(base + "_pane");
         doc->contentBox->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         {
             ContainerStyle cs = doc->contentBox->GetContainerStyle();
@@ -3381,6 +3373,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         if (toolbarContainer) {
             toolbarContainer->SetVisible(checked);
         }
+        //InvalidateLayout();
         UpdateToolbarsSubmenu();
         UpdateChildLayout();
         SaveConfig();
