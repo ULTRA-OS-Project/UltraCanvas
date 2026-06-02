@@ -694,9 +694,8 @@ namespace UltraCanvas {
 // ============================================================================
     class CodecComparisonChartElement : public UltraCanvasUIElement {
     public:
-        CodecComparisonChartElement(const std::string& identifier,
-                                    float x, float y, float w, float h)
-                : UltraCanvasUIElement(identifier, x, y, w, h) {}
+        CodecComparisonChartElement(const std::string& identifier)
+                : UltraCanvasUIElement(identifier) {}
 
         void SetCodecNames(const std::vector<std::string>& names) {
             codecNames = names;
@@ -1451,10 +1450,11 @@ namespace UltraCanvas {
         chartSection->layout.SetFlexGap(4);
 
         state->chartElem = std::make_shared<CodecComparisonChartElement>(
-                "PerfChartElem", 0, 0, 0, 360);
+                "PerfChartElem");
         state->chartElem->SetCodecNames(state->codecNames);
         state->chartElem->SetThumbnailImages(state->thumbs);
-        chartSection->AddChild(state->chartElem); state->chartElem->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        state->chartElem->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        chartSection->AddChild(state->chartElem);
 
         // Thumbnails row — use AddChild without layout manager.
         state->thumbsRow = std::make_shared<UltraCanvasContainer>(
@@ -1477,9 +1477,11 @@ namespace UltraCanvas {
             state->thumbsRow->AddChild(thumb);
         }
 
-        chartSection->AddChild(state->thumbsRow); state->thumbsRow->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        state->thumbsRow->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        chartSection->AddChild(state->thumbsRow);
 
-        root->AddChild(chartSection); chartSection->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        chartSection->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        root->AddChild(chartSection);
 
         // ========== STATUS ROW ==========
         auto statusRow = std::make_shared<UltraCanvasContainer>(
@@ -1523,8 +1525,8 @@ namespace UltraCanvas {
                 if (!t) continue;
                 int centerXWin = state->chartElem->GetGroupCenterX(slot);
                 int thumbXRel = centerXWin - hostX - thumbW / 2;
-                t->SetPosition(thumbXRel, thumbYRel);
-                t->SetSize(thumbW, thumbH);
+                t->SetElementAbsolutePosition(Point2Df(thumbXRel, thumbYRel));
+                t->SetElementSize(Size2Df(thumbW, thumbH));
                 isActive[globalIdx] = true;
             }
             // Inactive thumbs: keep them hidden so they don't render off-grid.

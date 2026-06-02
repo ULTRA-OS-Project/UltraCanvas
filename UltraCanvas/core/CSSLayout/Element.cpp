@@ -1,6 +1,10 @@
 // core/CSSLayout/Element.cpp
 // Element base: measure-cache wrapper, default block layout, arrange dispatch.
-// Version: 1.5.0
+// Version: 1.5.1 - resolveOwnContentSize: when the parent fixes BOTH axes, the
+//                 constraint (the used size) overrides the element's explicit
+//                 size, so a stretched/grown container reports and lays out its
+//                 children against its used size. Single-axis Exact (block fill
+//                 hint) still lets an explicit size win.
 // Last Modified: 2026-06-02
 // Author: UltraCanvas Framework
 
@@ -48,6 +52,16 @@ namespace UltraCanvas {
                         ? std::nullopt
                         : std::optional<float>{c.vertical.available};
 
+                // When the parent fixes BOTH axes the constraint IS the element's
+                // used size and overrides any explicit `size` (every Arrange call,
+                // a flex/grid item's final/stretch measure, the root viewport
+                // measure). A single-axis Exact is only a fill hint (e.g. block's
+                // content width with Unbounded height), so there the explicit size
+                // still wins via the fallback branches below.
+                const bool authoritative =
+                    c.horizontal.mode == ConstraintMode::Exact &&
+                    c.vertical.mode   == ConstraintMode::Exact;
+
                 // Resolve padding+border on each axis against parent inline size
                 // (this matches CSS — padding/border percentages always use inline).
                 float padH = 0.f, padV = 0.f, bordH = 0.f, bordV = 0.f;
@@ -63,7 +77,12 @@ namespace UltraCanvas {
                 // Width
                 {
                     auto specW = resolveDimension(e.size.width, parentInline, ctx);
-                    if (specW.has_value()) {
+                    if (authoritative) {
+                        // Used size wins over an explicit width (stretched/grown box).
+                        float cw = borderBoxToContent(c.horizontal.available, padH, bordH);
+                        cw = clampToConstraints(cw, e.constraints, true, parentInline, ctx);
+                        out.contentWidth = std::max(0.f, cw);
+                    } else if (specW.has_value()) {
                         float cw = (e.box.boxSizing == BoxSizing::BorderBox)
                             ? borderBoxToContent(*specW, padH, bordH)
                             : *specW;
@@ -84,7 +103,12 @@ namespace UltraCanvas {
                 // Height
                 {
                     auto specH = resolveDimension(e.size.height, parentBlock, ctx);
-                    if (specH.has_value()) {
+                    if (authoritative) {
+                        // Used size wins over an explicit height (stretched/grown box).
+                        float ch = borderBoxToContent(c.vertical.available, padV, bordV);
+                        ch = clampToConstraints(ch, e.constraints, false, parentBlock, ctx);
+                        out.contentHeight = std::max(0.f, ch);
+                    } else if (specH.has_value()) {
                         float ch = (e.box.boxSizing == BoxSizing::BorderBox)
                             ? borderBoxToContent(*specH, padV, bordV)
                             : *specH;

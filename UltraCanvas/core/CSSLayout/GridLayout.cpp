@@ -5,8 +5,11 @@
 // MinContent/MaxContent/FitContent, gaps, justify-self / align-self.
 // Deferred (TODO): named lines, named areas, dense packing, subgrid, MinMax
 // proper resolution (currently approximated as Min..Max bounds).
-// Version: 1.3.1
-// Last Modified: 2026-05-31
+// Version: 1.3.2 - A fully-constrained (both-axes Exact) grid container now
+//                 derives its content extent from the constraint rather than its
+//                 own explicit size, so a grown/stretched grid lays out its tracks
+//                 against its USED size, not its specified size.
+// Last Modified: 2026-06-02
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -419,10 +422,21 @@ namespace UltraCanvas {
                 s.padH = padIns.horizontal(); s.padV = padIns.vertical();
                 s.bordH = bordIns.horizontal(); s.bordV = bordIns.vertical();
 
+                // When the parent fixes BOTH axes the constraint IS the grid's
+                // used size and overrides any explicit `size` (Arrange, a grid
+                // item's final measure, the root viewport measure). A single-axis
+                // Exact is only a fill hint, so there the explicit size still wins.
+                const bool authoritative =
+                    c.horizontal.mode == ConstraintMode::Exact &&
+                    c.vertical.mode   == ConstraintMode::Exact;
+
                 // Container content extents (when known).
                 auto ownW = resolveDimension(e.size.width,  parentInline, ctx);
                 auto ownH = resolveDimension(e.size.height, parentBlock,  ctx);
-                if (ownW.has_value()) {
+                if (authoritative && parentInline.has_value()) {
+                    s.availW = std::max(0.f, *parentInline - s.padH - s.bordH);
+                    s.widthKnown = true;
+                } else if (ownW.has_value()) {
                     s.availW = std::max(0.f, *ownW
                         - (e.box.boxSizing == BoxSizing::BorderBox ? s.padH + s.bordH : 0.f));
                     s.widthKnown = true;
@@ -436,7 +450,10 @@ namespace UltraCanvas {
                     s.availW = INFINITY;
                     s.widthKnown = false;
                 }
-                if (ownH.has_value()) {
+                if (authoritative && parentBlock.has_value()) {
+                    s.availH = std::max(0.f, *parentBlock - s.padV - s.bordV);
+                    s.heightKnown = true;
+                } else if (ownH.has_value()) {
                     s.availH = std::max(0.f, *ownH
                         - (e.box.boxSizing == BoxSizing::BorderBox ? s.padV + s.bordV : 0.f));
                     s.heightKnown = true;
