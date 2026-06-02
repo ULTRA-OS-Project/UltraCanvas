@@ -253,7 +253,7 @@ namespace UltraCanvas {
                     debugOutput << "Reports clicked" << std::endl;
                 })
                 .Build();
-
+        //dynamic_cast<UltraCanvasButton*>(verticalToolbar->GetWidget("dashboard").get())
         sidebarContainer->AddChild(verticalToolbar);
 
         // Content area label

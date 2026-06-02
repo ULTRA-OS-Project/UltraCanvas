@@ -2,8 +2,9 @@
 // CSS Flexbox layout: https://www.w3.org/TR/css-flexbox-1/#layout-algorithm
 // Implemented: row/column/reverse, wrap, grow, shrink, basis, gap,
 // justify-content, align-items, align-self, align-content (no Baseline).
-// Version: 1.3.1
-// Last Modified: 2026-05-31
+// Version: 1.3.2 - Flex free-space resolution now deducts item margins, so
+//                 grow items no longer absorb their siblings' margin slack.
+// Last Modified: 2026-06-02
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -142,7 +143,14 @@ namespace UltraCanvas {
                                         float mainGap) {
                 if (line.empty()) return;
 
-                float used = mainGap * (float)(line.size() - 1);
+                // Free space = inner main size − Σ(outer flex base sizes) − Σ gaps,
+                // where "outer" includes each item's main-axis margins (CSS Flexbox §9.7).
+                // Margins must be deducted here so grow items don't absorb the margin
+                // slack of their (frozen) siblings and overflow the container.
+                float marginMain = 0.f;
+                for (auto* it : line) marginMain += it->marginMainStart + it->marginMainEnd;
+
+                float used = mainGap * (float)(line.size() - 1) + marginMain;
                 float sumHypo = 0.f;
                 for (auto* it : line) sumHypo += it->hypoMain;
 

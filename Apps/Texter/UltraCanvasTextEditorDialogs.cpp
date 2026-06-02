@@ -677,7 +677,8 @@ namespace UltraCanvas {
         config.width = 350;
         config.height = 140;
         config.resizable = false;
-        config.buttons = DialogButtons::NoButtons;
+        config.dialogType = DialogType::Custom;
+        //config.buttons = DialogButtons::NoButtons;
 
         CreateDialog(config);
         BuildLayout();

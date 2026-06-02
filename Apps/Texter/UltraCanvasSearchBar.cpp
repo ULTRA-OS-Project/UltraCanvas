@@ -29,8 +29,8 @@ namespace UltraCanvas {
 //  Right group: ✕ close button only — right-aligned
 //  ⚙ opens popup menu with: ☑ Case sensitive / ☑ Whole words
 
-    UltraCanvasSearchBar::UltraCanvasSearchBar(const std::string& id, int x, int y, int w)
-            : UltraCanvasContainer(id, x, y, w, RowHeight)
+    UltraCanvasSearchBar::UltraCanvasSearchBar(const std::string& id)
+            : UltraCanvasContainer(id)
     {
     }
 
@@ -54,14 +54,16 @@ namespace UltraCanvas {
         layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
         // Find row: a flex row of controls (built at origin 0,0 so they stay in-flow).
-        findRow = std::make_shared<UltraCanvasContainer>("FindRow", 0, 0, GetWidth(), RowHeight);
+        findRow = std::make_shared<UltraCanvasContainer>("FindRow");
         findRow->SetContainerStyle(cs);
         findRow->SetBackgroundColor(Color(0, 0, 0, 0));
         findRow->layout.SetFlexRow().SetFlexGap(HSpacing)
                 .SetFlexAlignItems(CSSLayout::AlignItems::Center);
         findRow->size.height = CSSLayout::Dimension::Px(RowHeight);
-        findRow->layoutItem.SetFlexOrder(0).SetFlexShrink(0)
+        findRow->constraints->minWidth = CSSLayout::Dimension::Px(400);
+        findRow->layoutItem.SetFlexOrder(0)
                 .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        SetMargin(0,5,0,5);
 
         BuildFindRow(0, GetWidth());
         AddChild(findRow);

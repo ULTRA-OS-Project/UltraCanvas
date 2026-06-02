@@ -1325,7 +1325,7 @@ namespace {
         // The markdown toolbar is re-parented in (order 0) when this tab is active and
         // stretches to full height via the row's cross-axis stretch. The container never
         // scrolls (the text area scrolls internally).
-        doc->editorArea = std::make_shared<UltraCanvasContainer>(base + "_editor", 0, 0, 0, 0);
+        doc->editorArea = std::make_shared<UltraCanvasContainer>(base + "_editor");
         doc->editorArea->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         {
             ContainerStyle cs = doc->editorArea->GetContainerStyle();
@@ -1539,11 +1539,8 @@ namespace {
 
         // Create text area
         doc->textArea = std::make_shared<UltraCanvasTextArea>(
-                "TextArea_" + std::to_string(documents.size()),
-                0, 0,
-                GetWidth(), contentHeight
-        );
-
+                "TextArea_" + std::to_string(documents.size()));
+        doc->textArea->size.height = CSSLayout::Dimension::Px(contentHeight);
         // Configure text area
         doc->textArea->SetHighlightSyntax(false); // Plain text by default
         doc->textArea->ApplyPlainTextStyle();
@@ -3425,7 +3422,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         config.dialogType = DialogType::Custom;
         config.buttons = DialogButtons::NoButtons;
         config.width = 430;
-        config.height = 526;
+        config.height = 476;
 
 
         aboutDialog = UltraCanvasDialogManager::CreateDialog(config);
@@ -3440,7 +3437,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         logo->LoadFromFile(NormalizePath(GetResourcesDir() + "media/Logo_Texter.png"));
         logo->SetFitMode(ImageFitMode::Contain);
         logo->SetMargin(0, 0, 8, 0);
-        aboutDialog->AddChild(logo); logo->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
+        aboutDialog->AddChild(logo);
+        logo->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
 
         // Title
         auto titleLabel = std::make_shared<UltraCanvasLabel>("AboutTitle", 300, 25, "UltraTexter");
@@ -3448,7 +3446,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         titleLabel->SetFontWeight(FontWeight::Bold);
         titleLabel->SetAlignment(TextAlignment::Center);
         titleLabel->SetMargin(0, 0, 4, 0);
-        aboutDialog->AddChild(titleLabel); titleLabel->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        aboutDialog->AddChild(titleLabel);
+        titleLabel->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         // Version
         auto versionLabel = std::make_shared<UltraCanvasLabel>("AboutVersion", 300, 40, "Version " + version + "\nUltraCanvas version " + versionString);
@@ -3456,7 +3455,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         versionLabel->SetTextColor(Color(100, 100, 100));
         versionLabel->SetAlignment(TextAlignment::Center);
         versionLabel->SetMargin(0, 0, 10, 0);
-        aboutDialog->AddChild(versionLabel); versionLabel->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        aboutDialog->AddChild(versionLabel);
+        versionLabel->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         // Description
         auto descLabel = std::make_shared<UltraCanvasLabel>("AboutDesc", 350, 120,
@@ -3472,7 +3472,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         descLabel->SetAlignment(TextAlignment::Left);
         descLabel->SetWrap(TextWrap::WrapWord);
         descLabel->SetMargin(0, 20, 8, 20);
-        aboutDialog->AddChild(descLabel); descLabel->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        aboutDialog->AddChild(descLabel);
+        descLabel->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         aboutDialog->AddSpacer(10);
 
@@ -3495,18 +3496,20 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             OpenURL("https://www.ultraos.eu/");
         };
         urlLabel->SetMargin(0, 0, 10, 20);
-        aboutDialog->AddChild(urlLabel); urlLabel->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch).SetAlignSelf(CSSLayout::AlignSelf::Center);
+        aboutDialog->AddChild(urlLabel);
+        urlLabel->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch).SetAlignSelf(CSSLayout::AlignSelf::Center);
 
         // Push OK button to the bottom
         aboutDialog->AddStretchSpacer(1);
 
         // OK button
-        auto okButton = std::make_shared<UltraCanvasButton>("AboutOK",  0, 0, 80, 28);
+        auto okButton = std::make_shared<UltraCanvasButton>("AboutOK",  80, 28);
         okButton->SetText("OK");
         okButton->onClick = [this]() {
             aboutDialog->CloseDialog(DialogResult::OK);
         };
-        aboutDialog->AddChild(okButton); okButton->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
+        aboutDialog->AddChild(okButton);
+        okButton->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
 
         aboutDialog->onResult = [this](DialogResult) {
             aboutDialog.reset();
@@ -4467,8 +4470,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
     void UltraCanvasTextEditor::SetupSearchBar() {
         searchBar = std::make_shared<UltraCanvasSearchBar>(
-                "SearchBar", 
-                0, 0, GetWidth()
+                "SearchBar"
         );
         searchBar->Initialize();
 

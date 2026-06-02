@@ -90,7 +90,7 @@ namespace UltraCanvas {
         int ComputeInputWidth() const;
 
     public:
-        UltraCanvasSearchBar(const std::string& id, int x, int y, int w);
+        UltraCanvasSearchBar(const std::string& id);
 
         // ===== SETUP =====
         void Initialize();

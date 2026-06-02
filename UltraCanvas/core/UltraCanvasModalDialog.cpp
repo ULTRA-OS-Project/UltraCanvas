@@ -31,7 +31,9 @@ namespace UltraCanvas {
         ApplyTypeDefaults();
 
         // Build layout-based UI structure
-        BuildDialogLayout();
+        if (dialogConfig.dialogType != DialogType::Custom) {
+            BuildDialogLayout();
+        }
     }
 
     void UltraCanvasModalDialog::BuildDialogLayout() {
@@ -49,7 +51,7 @@ namespace UltraCanvas {
 
     void UltraCanvasModalDialog::CreateContentSection() {
         contentSection = std::make_shared<UltraCanvasContainer>(
-                "ContentSection", 0, 0, 0, 0);
+                "ContentSection");
         contentSection->SetBackgroundColor(dialogConfig.backgroundColor);
         contentSection->SetPadding(static_cast<int>(style.padding));
 
@@ -59,33 +61,31 @@ namespace UltraCanvas {
                               .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
         // ===== ICON CONTAINER =====
-        if (dialogConfig.dialogType != DialogType::Custom) {
-            iconContainer = std::make_shared<UltraCanvasContainer>(
-                    "IconContainer", 0, 0,
-                    style.iconSize, style.iconSize);
-            iconContainer->SetBackgroundColor(GetTypeColor());
+        iconContainer = std::make_shared<UltraCanvasContainer>(
+                "IconContainer", 0, 0,
+                style.iconSize, style.iconSize);
+        iconContainer->SetBackgroundColor(GetTypeColor());
 
-            // Center the icon label inside.
-            iconContainer->layout.SetFlexColumn()
-                    .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
-                                 .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        // Center the icon label inside.
+        iconContainer->layout.SetFlexColumn()
+                .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
+                             .SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
-            iconLabel = std::make_shared<UltraCanvasLabel>("IconLabel");
-            iconLabel->SetText(GetTypeIcon());
-            iconLabel->SetFontSize(style.iconFontSize);
-            iconLabel->SetFontWeight(FontWeight::Bold);
-            iconLabel->SetTextColor(Colors::White);
-            iconLabel->SetAlignment(TextAlignment::Center);
-            iconLabel->SetSize(style.iconSize, style.iconSize);
+        iconLabel = std::make_shared<UltraCanvasLabel>("IconLabel");
+        iconLabel->SetText(GetTypeIcon());
+        iconLabel->SetFontSize(style.iconFontSize);
+        iconLabel->SetFontWeight(FontWeight::Bold);
+        iconLabel->SetTextColor(Colors::White);
+        iconLabel->SetAlignment(TextAlignment::Center);
+        iconLabel->SetSize(style.iconSize, style.iconSize);
 
-            iconContainer->AddChild(iconLabel);
-            contentSection->AddChild(iconContainer);
-            iconContainer->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
-        }
+        iconContainer->AddChild(iconLabel);
+        contentSection->AddChild(iconContainer);
+        iconContainer->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
 
         // ===== MESSAGE CONTAINER =====
         messageContainer = std::make_shared<UltraCanvasContainer>(
-                "MessageContainer", 0, 0, 0, 0);
+                "MessageContainer");
 
         messageContainer->layout.SetFlexColumn()
                                 .SetFlexGap(style.sectionSpacing / 2)
