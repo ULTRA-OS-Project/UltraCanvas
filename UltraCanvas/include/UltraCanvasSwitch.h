@@ -88,18 +88,18 @@ namespace UltraCanvas {
 
         // Computes the track sub-rect inside indicatorRect (which may include
         // outside-track label space along the long axis).
-        Rect2Dd GetTrackRect() const;
+        Rect2Df GetTrackRect() const;
 
         // Conservative width estimate for an outside-track label (in long-axis pixels).
         float EstimateStateLabelExtent() const;
 
-        void DrawThumbIcon(IRenderContext* ctx, const Point2Dd& thumbCenter, float thumbRadius);
-        void DrawStateLabelInsideTrack(IRenderContext* ctx, const Rect2Dd& track);
-        void DrawStateLabelOutsideTrack(IRenderContext* ctx, const Rect2Dd& track);
+        void DrawThumbIcon(IRenderContext* ctx, const Point2Df& thumbCenter, float thumbRadius);
+        void DrawStateLabelInsideTrack(IRenderContext* ctx, const Rect2Df& track);
+        void DrawStateLabelOutsideTrack(IRenderContext* ctx, const Rect2Df& track);
 
     protected:
         void DrawIndicator(IRenderContext* ctx) override;
-        Size2Dd GetIndicatorSize() const override;
+        Size2Df GetIndicatorSize() const override;
         void OnActivate() override { Toggle(); }
         const LabeledToggleVisualStyle& GetBaseVisualStyle() const override { return visualStyle.base; }
         void DrawFocusRingShape(IRenderContext* ctx) override;

@@ -1,7 +1,7 @@
 // core/UltraCanvasButton.cpp
 // Interactive button component implementation with secondary icon support
-// Version: 2.4.0
-// Last Modified: 2026-05-31
+// Version: 2.5.0
+// Last Modified: 2026-06-02
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasButton.h"
@@ -291,61 +291,19 @@ namespace UltraCanvas {
         return Size2Df(contentW, contentH);
     }
 
-    void UltraCanvasButton::MeasureCore(const CSSLayout::MeasureConstraints& c,
-                                        const CSSLayout::LayoutContext& ctx) {
+    Size2Df UltraCanvasButton::MeasureOwnContent(std::optional<float> /*definiteContentWidth*/,
+                                                 const CSSLayout::LayoutContext& /*ctx*/) {
         IRenderContext* rc = GetRenderContext();
         if (!rc) {
-            // No surface to measure text against yet — let the base resolve from
-            // size.width/height or the incoming constraints.
-            CSSLayout::Element::MeasureCore(c, ctx);
-            return;
+            // No surface to measure text against yet — report no own content;
+            // the block path resolves from size.width/height or the constraints.
+            return Size2Df(0.f, 0.f);
         }
-
-        const float padH = GetTotalPaddingHorizontal() + GetTotalBorderHorizontal();
-        const float padV = GetTotalPaddingVertical()   + GetTotalBorderVertical();
-
+        // A button doesn't wrap, so the content size is width-independent.
         rc->PushState();
         Size2Df content = MeasureContentSize(rc);
         rc->PopState();
-
-        std::optional<float> parentInline =
-            (c.horizontal.mode == CSSLayout::ConstraintMode::Unbounded)
-                ? std::nullopt
-                : std::optional<float>{c.horizontal.available};
-        std::optional<float> parentBlock =
-            (c.vertical.mode == CSSLayout::ConstraintMode::Unbounded)
-                ? std::nullopt
-                : std::optional<float>{c.vertical.available};
-
-        // Width: explicit size.width > Exact constraint > content.
-        float contentW;
-        auto specW = CSSLayout::resolveDimension(size.width, parentInline, ctx);
-        if (specW.has_value()) {
-            float bb = (box.boxSizing == CSSLayout::BoxSizing::BorderBox) ? *specW : (*specW + padH);
-            contentW = std::max(0.f, bb - padH);
-        } else if (c.horizontal.mode == CSSLayout::ConstraintMode::Exact) {
-            contentW = std::max(0.f, c.horizontal.available - padH);
-        } else {
-            contentW = content.width;
-        }
-
-        // Height: explicit size.height > Exact constraint > content.
-        float contentH;
-        auto specH = CSSLayout::resolveDimension(size.height, parentBlock, ctx);
-        if (specH.has_value()) {
-            float bb = (box.boxSizing == CSSLayout::BoxSizing::BorderBox) ? *specH : (*specH + padV);
-            contentH = std::max(0.f, bb - padV);
-        } else if (c.vertical.mode == CSSLayout::ConstraintMode::Exact) {
-            contentH = std::max(0.f, c.vertical.available - padV);
-        } else {
-            contentH = content.height;
-        }
-
-        contentW = CSSLayout::clampToConstraints(contentW, constraints, true,  parentInline, ctx);
-        contentH = CSSLayout::clampToConstraints(contentH, constraints, false, parentBlock, ctx);
-
-        measured.measuredWidth  = contentW + padH;
-        measured.measuredHeight = contentH + padV;
+        return content;
     }
 
     void UltraCanvasButton::ComputeIntrinsicSizes(const CSSLayout::LayoutContext& /*ctx*/) {
@@ -876,7 +834,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasButton::Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) {
-        // The engine sizes/places us (finalBounds) from MeasureCore; we just
+        // The engine sizes/places us (finalBounds) from the measure pass; we just
         // lay out the internal sub-rects (text/icon/split sections) in local
         // coordinates against the final size.
         UltraCanvasUIElement::Arrange(finalRect, ctx);

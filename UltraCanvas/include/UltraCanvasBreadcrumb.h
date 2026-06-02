@@ -238,10 +238,10 @@ namespace UltraCanvas {
         bool AcceptsFocus() const override { return false; }
 
         // ===== LAYOUT (CSS Measure/Arrange) =====
-        // Intrinsic size = size to render all items uncollapsed (Button pattern).
+        // Content box = size to render all items uncollapsed (Button pattern).
         // Arrange runs RecalculateLayout (incl. overflow handling) against finalBounds.
-        void MeasureCore(const CSSLayout::MeasureConstraints& c,
-                         const CSSLayout::LayoutContext& ctx) override;
+        Size2Df MeasureOwnContent(std::optional<float> definiteContentWidth,
+                                  const CSSLayout::LayoutContext& ctx) override;
         void ComputeIntrinsicSizes(const CSSLayout::LayoutContext& ctx) override;
         void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 

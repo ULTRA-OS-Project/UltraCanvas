@@ -257,8 +257,8 @@ namespace UltraCanvas {
         // measure cache. Runs on every layout pass, so the menu's size stays correct
         // when the window re-lays-out (e.g. when a submenu opens), instead of being
         // reset to a stale constructor size.
-        void MeasureCore(const CSSLayout::MeasureConstraints& constraints,
-                         const CSSLayout::LayoutContext& ctx) override;
+        Size2Df MeasureOwnContent(std::optional<float> definiteContentWidth,
+                                  const CSSLayout::LayoutContext& ctx) override;
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;
@@ -323,13 +323,14 @@ namespace UltraCanvas {
 
     private:
         // ===== CALCULATION METHODS =====
-        // Pure measurement: computes the menu's desired (border-box) size from its
-        // items/style and the given constraints. Returns the size instead of mutating
-        // finalBounds, so the CSS engine owns sizing (Measure/Arrange model).
-        Size2Df MeasureMenuContent(IRenderContext* ctx, const CSSLayout::MeasureConstraints& c) const;
+        // Pure measurement: computes the menu's content-driven size from its
+        // items/style (honoring an explicit menubar width + style min/max).
+        // Returns the size instead of mutating finalBounds, so the CSS engine
+        // owns sizing (Measure/Arrange model).
+        Size2Df MeasureMenuContent(IRenderContext* ctx) const;
 
         // Clear the CSS `size` (folding any fixed width into style.minWidth) so a
-        // vertical popup/submenu sizes to its content through MeasureCore.
+        // vertical popup/submenu sizes to its content through MeasureOwnContent.
         void MakeContentSized();
 
         Rect2Di GetItemBounds(int index) const;

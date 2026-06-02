@@ -1,7 +1,7 @@
 // core/UltraCanvasImageElement.cpp
 // Image display component with loading, caching, and transformation support
-// Version: 1.0.0
-// Last Modified: 2024-12-30
+// Version: 1.1.0
+// Last Modified: 2026-06-02
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImageElement.h"
@@ -63,49 +63,11 @@ namespace UltraCanvas {
         return Size2Df(0.f, 0.f);
     }
 
-    void UltraCanvasImageElement::MeasureCore(const CSSLayout::MeasureConstraints& c,
-                                              const CSSLayout::LayoutContext& ctx) {
-        const float padH = GetTotalPaddingHorizontal() + GetTotalBorderHorizontal();
-        const float padV = GetTotalPaddingVertical()   + GetTotalBorderVertical();
-
-        Size2Df content = NaturalImageSize();
-
-        std::optional<float> parentInline =
-            (c.horizontal.mode == CSSLayout::ConstraintMode::Unbounded)
-                ? std::nullopt : std::optional<float>{c.horizontal.available};
-        std::optional<float> parentBlock =
-            (c.vertical.mode == CSSLayout::ConstraintMode::Unbounded)
-                ? std::nullopt : std::optional<float>{c.vertical.available};
-
-        // Width: explicit size.width > Exact constraint > natural image width.
-        float contentW;
-        auto specW = CSSLayout::resolveDimension(size.width, parentInline, ctx);
-        if (specW.has_value()) {
-            float bb = (box.boxSizing == CSSLayout::BoxSizing::BorderBox) ? *specW : (*specW + padH);
-            contentW = std::max(0.f, bb - padH);
-        } else if (c.horizontal.mode == CSSLayout::ConstraintMode::Exact) {
-            contentW = std::max(0.f, c.horizontal.available - padH);
-        } else {
-            contentW = content.width;
-        }
-
-        // Height: explicit size.height > Exact constraint > natural image height.
-        float contentH;
-        auto specH = CSSLayout::resolveDimension(size.height, parentBlock, ctx);
-        if (specH.has_value()) {
-            float bb = (box.boxSizing == CSSLayout::BoxSizing::BorderBox) ? *specH : (*specH + padV);
-            contentH = std::max(0.f, bb - padV);
-        } else if (c.vertical.mode == CSSLayout::ConstraintMode::Exact) {
-            contentH = std::max(0.f, c.vertical.available - padV);
-        } else {
-            contentH = content.height;
-        }
-
-        contentW = CSSLayout::clampToConstraints(contentW, constraints, true,  parentInline, ctx);
-        contentH = CSSLayout::clampToConstraints(contentH, constraints, false, parentBlock, ctx);
-
-        measured.measuredWidth  = contentW + padH;
-        measured.measuredHeight = contentH + padV;
+    Size2Df UltraCanvasImageElement::MeasureOwnContent(std::optional<float> /*definiteContentWidth*/,
+                                                       const CSSLayout::LayoutContext& /*ctx*/) {
+        // Content box = the image's natural pixel size ({0,0} if none loaded).
+        // The block layout adds padding/border and applies size.*/constraints.
+        return NaturalImageSize();
     }
 
     void UltraCanvasImageElement::ComputeIntrinsicSizes(const CSSLayout::LayoutContext& /*ctx*/) {

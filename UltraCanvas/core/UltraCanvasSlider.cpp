@@ -217,7 +217,7 @@ namespace UltraCanvas {
 
         UpdateSliderState();
         // Externally sized for now (explicit size or parent stretch); the base block
-        // MeasureCore sizes us. TODO: implement MeasureCore for intrinsic sizing.
+        // block measure sizes us. TODO: implement MeasureOwnContent for intrinsic sizing.
         Rect2Di bounds = GetLocalBounds();
 //        SetBorders(1, Colors::Black);
 //        UltraCanvasUIElement::Render(ctx, dirtyRect);

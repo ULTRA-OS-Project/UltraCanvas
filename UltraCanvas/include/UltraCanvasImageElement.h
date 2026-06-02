@@ -125,11 +125,11 @@ public:
     void SetDraggable(bool enable) { draggable = enable; }
     
     // ===== LAYOUT (CSS Measure/Arrange) =====
-    // Intrinsic size = the loaded image's natural pixel dimensions (Button pattern).
+    // Content box = the loaded image's natural pixel dimensions (Button pattern).
     // Explicit size / parent stretch still win. The image is drawn from
     // GetLocalBounds() + fitMode, so Arrange has no sub-rects to place.
-    void MeasureCore(const CSSLayout::MeasureConstraints& c,
-                     const CSSLayout::LayoutContext& ctx) override;
+    Size2Df MeasureOwnContent(std::optional<float> definiteContentWidth,
+                              const CSSLayout::LayoutContext& ctx) override;
     void ComputeIntrinsicSizes(const CSSLayout::LayoutContext& ctx) override;
     void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 

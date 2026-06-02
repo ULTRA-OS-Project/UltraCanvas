@@ -58,7 +58,7 @@ namespace UltraCanvas {
 
     protected:
         void DrawIndicator(IRenderContext* ctx) override;
-        Size2Dd GetIndicatorSize() const override { return {visualStyle.boxSize, visualStyle.boxSize}; }
+        Size2Df GetIndicatorSize() const override { return {visualStyle.boxSize, visualStyle.boxSize}; }
         void OnActivate() override { Toggle(); }
         const LabeledToggleVisualStyle& GetBaseVisualStyle() const override { return visualStyle.base; }
 

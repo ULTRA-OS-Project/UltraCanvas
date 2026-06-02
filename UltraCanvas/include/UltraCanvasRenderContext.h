@@ -458,10 +458,6 @@ namespace UltraCanvas {
             PopState();
         }
 
-        void DrawFilledCircle(const Point2Di& center, float radius, const Color& fillColor) {
-            DrawFilledCircle(Point2Dd(center.x, center.y), radius, fillColor);
-        }
-
     };
 
     /* TEXT LAYOUT */

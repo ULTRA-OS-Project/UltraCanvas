@@ -412,10 +412,20 @@ namespace UltraCanvas {
             const LayoutComputed* ComputedLayout() const { return layoutComputed.get(); }
 
             // ===== TWO-PHASE LAYOUT =====
-            // Cache wrapper. Subclasses override MeasureCore, not this.
+            // Cache wrapper + display-type dispatch (Flex / Grid / Block). Leaf
+            // widgets do NOT override this — they override MeasureOwnContent to
+            // publish their content-box size; the block path folds it in.
             void Measure(const MeasureConstraints& constraints, const LayoutContext& ctx);
 
-            virtual void MeasureCore(const MeasureConstraints& constraints, const LayoutContext& ctx);
+            // Intrinsic content-box size of this element's OWN content (text,
+            // image, internal parts). EXCLUDES padding/border and ignores child
+            // Elements. `definiteContentWidth` is the resolved content width when
+            // known (so wrapping content reports the right height); nullopt asks
+            // for the max-content width. Default {0,0}: no own content (pure
+            // container / leaf base). The block layout combines this with any
+            // child-derived size, then applies size.*, the constraint, and min/max.
+            virtual Size2Df MeasureOwnContent(std::optional<float> definiteContentWidth,
+                                              const LayoutContext& ctx);
 
             virtual void Arrange(const Rect2Df& finalRect, const LayoutContext& ctx);
 

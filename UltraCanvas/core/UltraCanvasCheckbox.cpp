@@ -1,7 +1,7 @@
 // UltraCanvasCheckbox.cpp
 // Checkbox indicator rendering and three-state toggle logic.
-// Version: 2.0.0
-// Last Modified: 2026-05-07
+// Version: 2.1.0
+// Last Modified: 2026-06-02
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasCheckbox.h"
@@ -124,7 +124,7 @@ namespace UltraCanvas {
         Color color = GetCurrentCheckmarkColor();
         float margin = indicatorRect.width * 0.25f;
         float y = indicatorRect.y + indicatorRect.height / 2.0f;
-        Rect2Dd lineRect(indicatorRect.x + margin,
+        Rect2Df lineRect(indicatorRect.x + margin,
                          y - visualStyle.checkmarkThickness / 2.0f,
                          indicatorRect.width - 2 * margin,
                          visualStyle.checkmarkThickness);
@@ -137,7 +137,8 @@ namespace UltraCanvas {
             const std::string& text, bool checked) {
         auto cb = std::make_shared<UltraCanvasCheckbox>(identifier, x, y, w, h, text);
         cb->SetChecked(checked);
-        if (w == 0 || h == 0) cb->SetAutoSize(true);
+        // A zero w/h leaves that axis size = Auto (the ctor only stamps Px when
+        // > 0), so it content-sizes; a non-zero axis stays an explicit size.
         return cb;
     }
 

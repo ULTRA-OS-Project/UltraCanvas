@@ -1,7 +1,7 @@
 // UltraCanvasLabeledToggleBase.cpp
 // Shared layout/event/label/focus plumbing for checkbox, radio, and switch.
-// Version: 1.0.0
-// Last Modified: 2026-05-07
+// Version: 1.1.0
+// Last Modified: 2026-06-02
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasLabeledToggleBase.h"
@@ -65,9 +65,9 @@ namespace UltraCanvas {
         layoutDirty = false;
     }
 
-    Size2Dd UltraCanvasLabeledToggleBase::MeasureContentSize(IRenderContext* ctx) const {
+    Size2Df UltraCanvasLabeledToggleBase::MeasureContentSize(IRenderContext* ctx) const {
         const auto& base = GetBaseVisualStyle();
-        Size2Dd indicatorSize = GetIndicatorSize();
+        Size2Df indicatorSize = GetIndicatorSize();
 
         Size2Di textSize{0, 0};
         if (!text.empty() && ctx) {
@@ -77,10 +77,10 @@ namespace UltraCanvas {
         }
 
         // Natural box = 8px inset each side + indicator + (spacing + label) when present.
-        double totalWidth = 8.0 + indicatorSize.width + (text.empty() ? 0 : base.textSpacing + textSize.width) + 8.0;
-        double totalHeight = std::max(indicatorSize.height + 8.0, static_cast<double>(textSize.height + 8));
+        float totalWidth = 8.0 + indicatorSize.width + (text.empty() ? 0 : base.textSpacing + textSize.width) + 8.0;
+        float totalHeight = std::max(indicatorSize.height + 8, static_cast<float>(textSize.height + 8));
 
-        return Size2Dd(totalWidth, totalHeight);
+        return Size2Df(totalWidth, totalHeight);
     }
 
     void UltraCanvasLabeledToggleBase::DrawLabel(IRenderContext* ctx) {
@@ -93,7 +93,7 @@ namespace UltraCanvas {
         ctx->SetFontSize(base.fontSize);
         ctx->SetTextPaint(color);
 
-        double textY = textRect.y + (textRect.height - ctx->GetTextLineHeight(text)) / 2.0f;
+        float textY = textRect.y + (textRect.height - ctx->GetTextLineHeight(text)) / 2.0f;
         ctx->DrawText(text, Point2Dd(textRect.x, textY));
     }
 
@@ -108,63 +108,21 @@ namespace UltraCanvas {
                                  base.focusRingWidth, base.focusRingColor, 0.0f);
     }
 
-    void UltraCanvasLabeledToggleBase::MeasureCore(const CSSLayout::MeasureConstraints& c,
-                                                   const CSSLayout::LayoutContext& ctx) {
+    Size2Df UltraCanvasLabeledToggleBase::MeasureOwnContent(std::optional<float> /*definiteContentWidth*/,
+                                                            const CSSLayout::LayoutContext& /*ctx*/) {
         IRenderContext* rc = GetRenderContext();
         if (!rc) {
-            // No surface to measure the label against yet — let the base resolve from
-            // size.width/height or the incoming constraints.
-            CSSLayout::Element::MeasureCore(c, ctx);
-            return;
+            // No surface to measure the label against yet — report no own content;
+            // the block path resolves from size.width/height or the constraints.
+            return Size2Df(0.f, 0.f);
         }
-
-        // No CSS padding/border on these widgets (their insets are baked into the
-        // measured content size), so padH/padV are 0 — but compute them generically.
-        const float padH = GetTotalPaddingHorizontal() + GetTotalBorderHorizontal();
-        const float padV = GetTotalPaddingVertical()   + GetTotalBorderVertical();
-
+        // Content box: indicator + spacing + label (their insets are baked in;
+        // these widgets carry no CSS padding/border). The block layout applies
+        // size.*/constraints — leave size = Auto for content sizing.
         rc->PushState();
-        Size2Dd content = MeasureContentSize(rc);
+        Size2Df content = MeasureContentSize(rc);
         rc->PopState();
-
-        std::optional<float> parentInline =
-            (c.horizontal.mode == CSSLayout::ConstraintMode::Unbounded)
-                ? std::nullopt
-                : std::optional<float>{c.horizontal.available};
-        std::optional<float> parentBlock =
-            (c.vertical.mode == CSSLayout::ConstraintMode::Unbounded)
-                ? std::nullopt
-                : std::optional<float>{c.vertical.available};
-
-        // Width: (unless autoSize forces content) explicit size.width > Exact > content.
-        float contentW;
-        auto specW = CSSLayout::resolveDimension(size.width, parentInline, ctx);
-        if (!autoSize && specW.has_value()) {
-            float bb = (box.boxSizing == CSSLayout::BoxSizing::BorderBox) ? *specW : (*specW + padH);
-            contentW = std::max(0.f, bb - padH);
-        } else if (!autoSize && c.horizontal.mode == CSSLayout::ConstraintMode::Exact) {
-            contentW = std::max(0.f, c.horizontal.available - padH);
-        } else {
-            contentW = (float)content.width;
-        }
-
-        // Height: (unless autoSize forces content) explicit size.height > Exact > content.
-        float contentH;
-        auto specH = CSSLayout::resolveDimension(size.height, parentBlock, ctx);
-        if (!autoSize && specH.has_value()) {
-            float bb = (box.boxSizing == CSSLayout::BoxSizing::BorderBox) ? *specH : (*specH + padV);
-            contentH = std::max(0.f, bb - padV);
-        } else if (!autoSize && c.vertical.mode == CSSLayout::ConstraintMode::Exact) {
-            contentH = std::max(0.f, c.vertical.available - padV);
-        } else {
-            contentH = (float)content.height;
-        }
-
-        contentW = CSSLayout::clampToConstraints(contentW, constraints, true,  parentInline, ctx);
-        contentH = CSSLayout::clampToConstraints(contentH, constraints, false, parentBlock, ctx);
-
-        measured.measuredWidth  = contentW + padH;
-        measured.measuredHeight = contentH + padV;
+        return Size2Df((float)content.width, (float)content.height);
     }
 
     void UltraCanvasLabeledToggleBase::ComputeIntrinsicSizes(const CSSLayout::LayoutContext& /*ctx*/) {

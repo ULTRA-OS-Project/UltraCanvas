@@ -315,7 +315,7 @@ namespace UltraCanvas {
         // ===== LAYOUT =====
         void SetBounds(const Rect2Df& b) override;
         // CSS layout: lay out the tab bar + active content in Arrange (the engine
-        // owns finalBounds; the container is externally sized so no MeasureCore).
+        // owns finalBounds; the container is externally sized so no custom measure).
         void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
         // ===== RENDERING =====

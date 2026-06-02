@@ -52,21 +52,20 @@ namespace UltraCanvas {
 
         // Layout
         bool layoutDirty = true;
-        bool autoSize = false;
-        Rect2Dd indicatorRect;  // Position+size of the visual indicator (box, circle, or track)
-        Rect2Dd textRect;
-        Rect2Dd totalBounds;
+        Rect2Df indicatorRect;  // Position+size of the visual indicator (box, circle, or track)
+        Rect2Df textRect;
+        Rect2Df totalBounds;
 
         // Helpers
         void CalculateLayout(IRenderContext* ctx);
         // Measures the natural content size (indicator + spacing + label). Measure
-        // only — must not mutate this element's size (that is MeasureCore's job).
-        Size2Dd MeasureContentSize(IRenderContext* ctx) const;
+        // only — must not mutate this element's size (the block measure owns that).
+        Size2Df MeasureContentSize(IRenderContext* ctx) const;
         void DrawLabel(IRenderContext* ctx);
 
         // Subclass hooks
         virtual void DrawIndicator(IRenderContext* ctx) = 0;
-        virtual Size2Dd GetIndicatorSize() const = 0;
+        virtual Size2Df GetIndicatorSize() const = 0;
         virtual void OnActivate() = 0;
         virtual const LabeledToggleVisualStyle& GetBaseVisualStyle() const = 0;
         virtual void DrawFocusRingShape(IRenderContext* ctx);  // Default: rectangle around indicator.
@@ -90,15 +89,13 @@ namespace UltraCanvas {
         void SetText(const std::string& labelText) { text = labelText; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }
         std::string GetText() const { return text; }
 
-        void SetAutoSize(bool val) { autoSize = val; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }
-        bool GetAutoSize() const { return autoSize; }
-
         // ===== LAYOUT (CSS Measure/Arrange) =====
-        // Toggles have intrinsic size (indicator + spacing + label), so we report it
-        // via MeasureCore/ComputeIntrinsicSizes (Button pattern) and position our
-        // sub-rects in Arrange. autoSize forces content sizing; explicit size wins.
-        void MeasureCore(const CSSLayout::MeasureConstraints& c,
-                         const CSSLayout::LayoutContext& ctx) override;
+        // Toggles have intrinsic size (indicator + spacing + label); we report it
+        // as a content box via MeasureOwnContent (Button pattern) and position our
+        // sub-rects in Arrange. For content sizing, leave size.width/height = Auto
+        // (the default); an explicit size wins per normal CSS.
+        Size2Df MeasureOwnContent(std::optional<float> definiteContentWidth,
+                                  const CSSLayout::LayoutContext& ctx) override;
         void ComputeIntrinsicSizes(const CSSLayout::LayoutContext& ctx) override;
         void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 

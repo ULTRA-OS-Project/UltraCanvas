@@ -1,7 +1,7 @@
 // core/UltraCanvasSegmentedControl.cpp
 // Implementation of segmented control component
-// Version: 1.2.0
-// Last Modified: 2026-05-31
+// Version: 1.3.0
+// Last Modified: 2026-06-02
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSegmentedControl.h"
@@ -143,48 +143,21 @@ namespace UltraCanvas {
                        maxContentH + style.paddingVertical * 2 + frame);
     }
 
-    void UltraCanvasSegmentedControl::MeasureCore(const CSSLayout::MeasureConstraints& c,
-                                                  const CSSLayout::LayoutContext& ctx) {
+    Size2Df UltraCanvasSegmentedControl::MeasureOwnContent(std::optional<float> /*definiteContentWidth*/,
+                                                           const CSSLayout::LayoutContext& /*ctx*/) {
         IRenderContext* rc = GetRenderContext();
         if (!rc) {
-            // No surface to measure text against yet — let the base resolve from
-            // size.width/height or the incoming constraints.
-            CSSLayout::Element::MeasureCore(c, ctx);
-            return;
+            // No surface to measure text against yet — report no own content;
+            // the block path resolves from size.width/height or the constraints.
+            return Size2Df(0.f, 0.f);
         }
-
+        // The control's own frame + per-segment padding are visual style, not
+        // CSS box padding/border (which are zero here), so this full preferred
+        // size IS the content box; the block path adds CSS pad/border (= 0).
         rc->PushState();
-        Size2Df content = MeasureContentSize(rc);  // already border-box
+        Size2Df content = MeasureContentSize(rc);
         rc->PopState();
-
-        std::optional<float> parentInline =
-            (c.horizontal.mode == CSSLayout::ConstraintMode::Unbounded)
-                ? std::nullopt
-                : std::optional<float>{c.horizontal.available};
-        std::optional<float> parentBlock =
-            (c.vertical.mode == CSSLayout::ConstraintMode::Unbounded)
-                ? std::nullopt
-                : std::optional<float>{c.vertical.available};
-
-        // Width: explicit size.width > Exact constraint > content.
-        float w;
-        auto specW = CSSLayout::resolveDimension(size.width, parentInline, ctx);
-        if (specW.has_value())                                  w = *specW;
-        else if (c.horizontal.mode == CSSLayout::ConstraintMode::Exact) w = c.horizontal.available;
-        else                                                    w = content.width;
-
-        // Height: explicit size.height > Exact constraint > content.
-        float h;
-        auto specH = CSSLayout::resolveDimension(size.height, parentBlock, ctx);
-        if (specH.has_value())                                h = *specH;
-        else if (c.vertical.mode == CSSLayout::ConstraintMode::Exact) h = c.vertical.available;
-        else                                                  h = content.height;
-
-        w = CSSLayout::clampToConstraints(w, constraints, true,  parentInline, ctx);
-        h = CSSLayout::clampToConstraints(h, constraints, false, parentBlock, ctx);
-
-        measured.measuredWidth  = w;
-        measured.measuredHeight = h;
+        return content;
     }
 
     void UltraCanvasSegmentedControl::ComputeIntrinsicSizes(const CSSLayout::LayoutContext& /*ctx*/) {
@@ -207,7 +180,7 @@ namespace UltraCanvas {
 
     void UltraCanvasSegmentedControl::Arrange(const Rect2Df& finalRect,
                                               const CSSLayout::LayoutContext& ctx) {
-        // The engine sizes/places us (finalBounds) from MeasureCore; we then lay
+        // The engine sizes/places us (finalBounds) from the measure pass; we then lay
         // out the per-segment rects in local coordinates against the final size.
         UltraCanvasUIElement::Arrange(finalRect, ctx);
         CalculateLayout(GetRenderContext());

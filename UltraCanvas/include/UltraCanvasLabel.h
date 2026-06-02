@@ -1,7 +1,7 @@
 // include/UltraCanvasLabel.h
 // Modern text display label control with styling and alignment options.
 // Exemplar of the new CSSLayout intrinsic-sizing protocol: overrides
-// MeasureCore (constraint-aware sizing) and ComputeIntrinsicSizes
+// MeasureOwnContent (constraint-aware content sizing) and ComputeIntrinsicSizes
 // (constraint-free max/min-content) so the engine can place the label
 // without the widget mutating finalBounds itself. UpdateGeometry just
 // keeps the cached ITextLayout in sync with the latest content area.
@@ -97,10 +97,11 @@ namespace UltraCanvas {
         void SetTextIsMarkup(bool markup);
 
         // ===== ENGINE-DRIVEN LAYOUT =====
-        // Constraint-aware: caller (Flex/Grid/Block) tells us how much room
-        // we have on each axis; we publish measured.measuredWidth/Height.
-        void MeasureCore(const CSSLayout::MeasureConstraints& c,
-                         const CSSLayout::LayoutContext& ctx) override;
+        // Content-box size of the text. nullopt width → max-content width;
+        // a definite width → height at that width (reflects wrapping). The
+        // block layout adds padding/border and applies size.*/constraints.
+        Size2Df MeasureOwnContent(std::optional<float> definiteContentWidth,
+                                  const CSSLayout::LayoutContext& ctx) override;
 
         // Constraint-free: publishes intrinsic min/max-content via the
         // inherited `intrinsic` cache, in BORDER-BOX units (i.e. including
@@ -125,7 +126,7 @@ namespace UltraCanvas {
     protected:
         // Build the cached ITextLayout if missing and configure it with the
         // current font/wrap/alignment. Does NOT set explicit width — callers
-        // (MeasureCore / ComputeIntrinsicSizes / UpdateGeometry) own that.
+        // (MeasureOwnContent / ComputeIntrinsicSizes / UpdateGeometry) own that.
         // Returns true if the layout is now valid, false if no render context
         // is available (in which case callers should bail gracefully).
         bool EnsureTextLayout();

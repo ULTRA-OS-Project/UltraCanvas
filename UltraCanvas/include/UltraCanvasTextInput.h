@@ -447,7 +447,7 @@ public:
     
     // ===== LAYOUT (CSS Measure/Arrange) =====
     // TextInput is externally sized (explicit size or parent stretch); it has no
-    // intrinsic size, so the base block MeasureCore is sufficient. We only hook
+    // intrinsic size, so the base block measure is sufficient. We only hook
     // Arrange to re-clamp the horizontal scroll offset when our width changes.
     void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 

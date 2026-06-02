@@ -29,7 +29,7 @@ namespace UltraCanvas {
     }
 
     // CSS layout entry point. The tabbed container is externally sized (explicit
-    // w/h or stretched by its parent), so no MeasureCore is needed. We take our
+    // w/h or stretched by its parent), so no custom measure is needed. We take our
     // finalBounds from the engine, then run the tab-bar layout and arrange the
     // ACTIVE tab's content subtree into the content area. We intentionally do NOT
     // delegate to the base container's child-flow: tab contents are overlaid (only

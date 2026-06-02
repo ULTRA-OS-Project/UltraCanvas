@@ -42,7 +42,7 @@ namespace UltraCanvas {
 
     protected:
         void DrawIndicator(IRenderContext* ctx) override;
-        Size2Dd GetIndicatorSize() const override { return {visualStyle.boxSize, visualStyle.boxSize}; }
+        Size2Df GetIndicatorSize() const override { return {visualStyle.boxSize, visualStyle.boxSize}; }
         void OnActivate() override { SetChecked(true); }  // Standard UX: clicking selected radio is no-op.
         const LabeledToggleVisualStyle& GetBaseVisualStyle() const override { return visualStyle.base; }
         void DrawFocusRingShape(IRenderContext* ctx) override;

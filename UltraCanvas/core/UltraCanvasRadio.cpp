@@ -1,7 +1,7 @@
 // UltraCanvasRadio.cpp
 // Radio button rendering and exclusive-selection group.
-// Version: 1.0.0
-// Last Modified: 2026-05-07
+// Version: 1.1.0
+// Last Modified: 2026-06-02
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRadio.h"
@@ -33,7 +33,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasRadio::DrawIndicator(IRenderContext* ctx) {
-        Point2Dd center(indicatorRect.x + indicatorRect.width / 2.0f,
+        Point2Df center(indicatorRect.x + indicatorRect.width / 2.0f,
                         indicatorRect.y + indicatorRect.height / 2.0f);
         float radius = indicatorRect.width / 2.0f;
 
@@ -50,7 +50,7 @@ namespace UltraCanvas {
 
     void UltraCanvasRadio::DrawFocusRingShape(IRenderContext* ctx) {
         const auto& base = visualStyle.base;
-        Point2Dd center(indicatorRect.x + indicatorRect.width / 2.0f,
+        Point2Df center(indicatorRect.x + indicatorRect.width / 2.0f,
                         indicatorRect.y + indicatorRect.height / 2.0f);
         float radius = indicatorRect.width / 2.0f + base.focusRingWidth;
         ctx->DrawFilledCircle(center, radius, base.focusRingColor,
@@ -63,7 +63,9 @@ namespace UltraCanvas {
             const std::string& text, bool checked) {
         auto radio = std::make_shared<UltraCanvasRadio>(identifier, x, y, 150, 24, text);
         radio->SetChecked(checked);
-        radio->SetAutoSize(true);
+        // Content-size to indicator + label: clear the ctor-stamped pixel size.
+        radio->size.width  = CSSLayout::Dimension::Auto();
+        radio->size.height = CSSLayout::Dimension::Auto();
         return radio;
     }
 

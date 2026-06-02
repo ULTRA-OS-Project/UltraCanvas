@@ -65,7 +65,7 @@ namespace UltraCanvas {
 
     void UltraCanvasPasswordStrengthMeter::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         // Externally sized for now (explicit size or parent stretch); the base block
-        // MeasureCore sizes us. TODO: implement MeasureCore for intrinsic sizing.
+        // block measure sizes us. TODO: implement MeasureOwnContent for intrinsic sizing.
         Rect2Di bounds = GetLocalBounds();
 
         // Update animation

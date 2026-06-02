@@ -89,7 +89,7 @@ namespace UltraCanvas {
 
         // === Core overrides ===
         // ListView is externally sized (explicit size or parent stretch); the base
-        // block MeasureCore is sufficient. We hook Arrange to recompute the scrollbar
+        // block measure is sufficient. We hook Arrange to recompute the scrollbar
         // against the resolved finalBounds. SetBounds is kept because dropdown/
         // autocomplete popups size this view imperatively (SetSize -> SetBounds) and
         // the window popup pass does not run Measure/Arrange on popups.

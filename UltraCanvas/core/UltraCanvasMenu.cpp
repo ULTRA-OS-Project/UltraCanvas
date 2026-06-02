@@ -1,7 +1,7 @@
 // UltraCanvasMenu.cpp
 // Interactive menu component with styling options and submenu support
-// Version: 1.7.1
-// Last Modified: 2026-06-01
+// Version: 1.8.0
+// Last Modified: 2026-06-02
 // Author: UltraCanvas Framework
 
 #include <vector>
@@ -47,7 +47,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMenu::Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) {
-        // The CSS engine has already sized us from MeasureCore (content-driven) and
+        // The CSS engine has already sized us from the measure pass (content-driven) and
         // placed us at our requested position. Post-layout, clamp the vertical popup
         // to the window (flip above / shift left, add a scrollbar on overflow). This
         // runs on EVERY layout pass and adjusts finalBounds for the current frame only
@@ -206,7 +206,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMenu::MakeContentSized() {
-        // Vertical popups/submenus size to their content via MeasureCore. Any fixed
+        // Vertical popups/submenus size to their content via MeasureOwnContent. Any fixed
         // width stamped by the constructor (e.g. CreateMenu(..., 200, 0)) would
         // otherwise pin the CSS `size`, and the absolute-position solver would reset
         // the menu to that width on every re-layout (shrinking it when a submenu
@@ -235,7 +235,7 @@ namespace UltraCanvas {
         CloseActiveSubmenu();
 
         // Create and show new submenu. No fixed size — it sizes to its content via
-        // MeasureCore (see MakeContentSized in SetMenuType).
+        // MeasureOwnContent (see MakeContentSized in SetMenuType).
         activeSubmenu = std::make_shared<UltraCanvasMenu>(
                 GetIdentifier() + "_submenu_" + std::to_string(itemIndex),
                 0, 0, 0, 0
@@ -376,29 +376,25 @@ namespace UltraCanvas {
         return false;
     }
 
-    void UltraCanvasMenu::MeasureCore(const CSSLayout::MeasureConstraints& c,
-                                      const CSSLayout::LayoutContext& ctx) {
+    Size2Df UltraCanvasMenu::MeasureOwnContent(std::optional<float> /*definiteContentWidth*/,
+                                               const CSSLayout::LayoutContext& /*ctx*/) {
         IRenderContext* rc = GetRenderContext();
         if (!rc) {
-            // No surface to measure text against yet. Keep whatever we last
-            // published (or a minimal default) so the engine has a usable size.
-            if (measured.measuredWidth <= 0 || measured.measuredHeight <= 0) {
-                measured.measuredWidth  = 100;
-                measured.measuredHeight = style.itemHeight;
-            }
-            return;
+            // No surface to measure text against yet — report a usable default so
+            // a menu with no explicit size still gets sane dimensions. (The block
+            // path still honors an explicit size.width/height if one is set.)
+            return Size2Df(100.f, (float)style.itemHeight);
         }
-
+        // MeasureMenuContent returns the full content-driven size (it already
+        // honors an explicit menubar width and its own style min/max). The block
+        // layout adds CSS padding/border (zero here) and applies size.*/constraints.
         rc->PushState();
-        Size2Df desired = MeasureMenuContent(rc, c);
+        Size2Df content = MeasureMenuContent(rc);
         rc->PopState();
-
-        measured.measuredWidth  = desired.width;
-        measured.measuredHeight = desired.height;
+        return content;
     }
 
-    Size2Df UltraCanvasMenu::MeasureMenuContent(IRenderContext *ctx,
-                                                const CSSLayout::MeasureConstraints& c) const {
+    Size2Df UltraCanvasMenu::MeasureMenuContent(IRenderContext *ctx) const {
         ctx->SetFontStyle(style.font);
 
         if (items.empty()) {
@@ -722,12 +718,8 @@ namespace UltraCanvas {
             int submenuWidth = (int)submenu.finalBounds.width;
             int submenuHeight = (int)submenu.finalBounds.height;
             if (IRenderContext* rc = GetRenderContext()) {
-                CSSLayout::MeasureConstraints mc{
-                        { CSSLayout::ConstraintMode::AtMost, (float)windowWidth },
-                        { CSSLayout::ConstraintMode::AtMost, (float)windowHeight }
-                };
                 rc->PushState();
-                Size2Df sz = submenu.MeasureMenuContent(rc, mc);
+                Size2Df sz = submenu.MeasureMenuContent(rc);
                 rc->PopState();
                 submenuWidth = (int)sz.width;
                 submenuHeight = (int)sz.height;
@@ -1239,7 +1231,7 @@ namespace UltraCanvas {
     // scrollbar when we'd run off the bottom of the window. We mutate finalBounds
     // directly (frame-local) rather than calling SetElementSize/SetElementAbsolutePosition
     // — those would invalidate layout and re-run this every frame. Because Arrange()
-    // re-derives the full size from MeasureCore each pass, recomputing the clamp here
+    // re-derives the full size from the measure pass each time, recomputing the clamp here
     // is stable and survives window resizes.
     void UltraCanvasMenu::ClampMenuToWindow() {
         if (orientation != MenuOrientation::Vertical) return;

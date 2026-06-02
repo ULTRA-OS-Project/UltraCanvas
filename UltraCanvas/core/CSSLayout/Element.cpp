@@ -1,7 +1,7 @@
 // core/CSSLayout/Element.cpp
 // Element base: measure-cache wrapper, default block layout, arrange dispatch.
-// Version: 1.4.0
-// Last Modified: 2026-06-01
+// Version: 1.5.0
+// Last Modified: 2026-06-02
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -169,7 +169,28 @@ namespace UltraCanvas {
                 ComputeIntrinsicSizes(ctx);
                 intrinsic.valid = true;
             }
-            MeasureCore(c, ctx);
+
+            // Dispatch by display type. Leaf widgets do NOT hook in here; they
+            // feed their content-box size through MeasureOwnContent, which the
+            // block path (MeasureBlock) folds into the auto size.
+            if (visibility == Visibility::Hidden && layout.display == DisplayType::NoDisplay) {
+                measured.measuredWidth = measured.measuredHeight = 0;
+            } else {
+                switch (layout.display) {
+                    case DisplayType::Flex:   MeasureFlex (*this, c, ctx); break;
+                    case DisplayType::Grid:   MeasureGrid (*this, c, ctx); break;
+                    case DisplayType::NoDisplay:
+                        measured.measuredWidth = measured.measuredHeight = 0;
+                        break;
+                    case DisplayType::Block:
+                    case DisplayType::Inline:       // TODO: real inline formatting context
+                    case DisplayType::InlineBlock:  // TODO: shrink-to-fit subtlety
+                    default:
+                        MeasureBlock(*this, c, ctx);
+                        break;
+                }
+            }
+
             measured.key = c;
             measured.ctxKey = ctx;
             measured.valid = true;
@@ -183,24 +204,11 @@ namespace UltraCanvas {
             intrinsic.maxContentHeight = 0;
         }
 
-        void Element::MeasureCore(const MeasureConstraints& c, const LayoutContext& ctx) {
-            if (visibility == Visibility::Hidden && layout.display == DisplayType::NoDisplay) {
-                measured.measuredWidth = measured.measuredHeight = 0;
-                return;
-            }
-            switch (layout.display) {
-                case DisplayType::Flex:   MeasureFlex (*this, c, ctx); return;
-                case DisplayType::Grid:   MeasureGrid (*this, c, ctx); return;
-                case DisplayType::NoDisplay:
-                    measured.measuredWidth = measured.measuredHeight = 0;
-                    return;
-                case DisplayType::Block:
-                case DisplayType::Inline:       // TODO: real inline formatting context
-                case DisplayType::InlineBlock:  // TODO: shrink-to-fit subtlety
-                default:
-                    MeasureBlock(*this, c, ctx);
-                    return;
-            }
+        Size2Df Element::MeasureOwnContent(std::optional<float> /*definiteContentWidth*/,
+                                           const LayoutContext& /*ctx*/) {
+            // Base Element has no own content; leaf widgets (label, image, ...)
+            // override to report their content-box size.
+            return Size2Df(0.f, 0.f);
         }
 
         void Element::Arrange(const Rect2Df& finalRect, const LayoutContext& ctx) {
@@ -276,14 +284,27 @@ namespace UltraCanvas {
                 maxChildWidth  = std::max(maxChildWidth, kid->measured.measuredWidth);
             }
 
-            float contentW = own.contentWidth.value_or(maxChildWidth);
+            bool widthAuto  = !own.contentWidth.has_value();
+            bool heightAuto = !own.contentHeight.has_value();
+
+            // Leaf widgets (text, image, ...) publish their content-box size via
+            // MeasureOwnContent; it folds into the *auto* basis alongside any
+            // child-derived size. Pure containers return {0,0} ⇒ no effect. Only
+            // query when an axis is auto. Width first (max-content), then height
+            // at the resolved content width so wrapping content reports correctly.
+            float ownMaxContentW = widthAuto ? e.MeasureOwnContent(std::nullopt, ctx).width : 0.f;
+
+            float contentW = own.contentWidth.value_or(std::max(maxChildWidth, ownMaxContentW));
             if (c.horizontal.mode == ConstraintMode::AtMost) {
                 float maxContent = std::max(0.f, c.horizontal.available - padH - bordH);
                 contentW = std::min(contentW, maxContent);
             }
             contentW = clampToConstraints(contentW, e.constraints, true, parentInline, ctx);
 
-            float contentH = own.contentHeight.value_or(stackedHeight);
+            float ownContentH = heightAuto
+                ? e.MeasureOwnContent(std::optional<float>{contentW}, ctx).height : 0.f;
+
+            float contentH = own.contentHeight.value_or(std::max(stackedHeight, ownContentH));
             std::optional<float> parentBlock =
                 (c.vertical.mode == ConstraintMode::Unbounded)
                     ? std::nullopt
@@ -299,9 +320,7 @@ namespace UltraCanvas {
             // extents (insets resolve against the padding-box; equal to content-box
             // when padding == 0, the normal UI case). Explicit sizes win: when
             // own.contentWidth/Height resolved, that value already became contentW/H
-            // and we must not override it.
-            bool widthAuto  = !own.contentWidth.has_value();
-            bool heightAuto = !own.contentHeight.has_value();
+            // and we must not override it. (widthAuto/heightAuto computed above.)
             if (widthAuto || heightAuto) {
                 for (auto& kid : e.Children()) {
                     if (!kid) continue;

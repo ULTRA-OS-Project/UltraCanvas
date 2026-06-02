@@ -228,11 +228,11 @@ namespace UltraCanvas {
 
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
-        // CSS layout: publish the control's preferred (border-box) size from its
+        // CSS layout: publish the control's preferred content-box size from its
         // segment content, and place the per-segment rects in Arrange (local
         // coordinates). The engine owns finalBounds.
-        void MeasureCore(const CSSLayout::MeasureConstraints& c,
-                         const CSSLayout::LayoutContext& ctx) override;
+        Size2Df MeasureOwnContent(std::optional<float> definiteContentWidth,
+                                  const CSSLayout::LayoutContext& ctx) override;
         void ComputeIntrinsicSizes(const CSSLayout::LayoutContext& ctx) override;
         void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
@@ -258,7 +258,7 @@ namespace UltraCanvas {
         int CalculateSegmentContentWidth(IRenderContext *ctx, SegmentData &segment);
         // Content-box preferred size (sum of segment content widths + spacing;
         // height from text/icon + vertical padding), excluding border. Used by
-        // MeasureCore / ComputeIntrinsicSizes.
+        // MeasureOwnContent / ComputeIntrinsicSizes.
         Size2Df MeasureContentSize(IRenderContext* rc);
         ITextLayout* GetOrCreateTextLayout(IRenderContext* ctx, SegmentData& segment);
 

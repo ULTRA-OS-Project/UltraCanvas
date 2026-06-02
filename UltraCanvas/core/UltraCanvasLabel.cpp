@@ -8,16 +8,16 @@
 //   2. ComputeIntrinsicSizes() publishes min/max-content in BORDER-BOX
 //      units (content + padding + border) so Flex/Grid can short-circuit
 //      the extra Measure(Unbounded) pass.
-//   3. MeasureCore() resolves the constraint to a concrete content width,
-//      asks the text layout for its height at that width, and writes
-//      measured.measuredWidth/Height (border-box).
+//   3. MeasureOwnContent() returns the text's content-box size: nullopt
+//      width → max-content width; a definite width → height at that width
+//      (wrapping). The block layout adds padding/border + size.*/constraints.
 //   4. UpdateGeometry() keeps the text layout's explicit width in sync
 //      with finalBounds (set by Arrange). It does NOT mutate finalBounds.
 //   5. Property setters call textLayout.reset() + InvalidateLayout()
 //      (bubbles engine caches up) + RequestRedraw() (damage).
 //
-// Version: 2.1.0
-// Last Modified: 2026-05-29
+// Version: 2.2.0
+// Last Modified: 2026-06-02
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasLabel.h"
@@ -190,70 +190,25 @@ namespace UltraCanvas {
         intrinsic.minContentHeight = minH + padV;
     }
 
-    void UltraCanvasLabel::MeasureCore(const CSSLayout::MeasureConstraints& c,
-                                       const CSSLayout::LayoutContext& ctx) {
+    Size2Df UltraCanvasLabel::MeasureOwnContent(std::optional<float> definiteContentWidth,
+                                                const CSSLayout::LayoutContext& /*ctx*/) {
         if (!EnsureTextLayout()) {
-            // No render context — fall back to whatever the base would do
-            // (uses size.width/height or constraints).
-            UltraCanvas::CSSLayout::Element::MeasureCore(c, ctx);
-            return;
+            // No render context — report no own content; the block path then
+            // sizes from size.*/constraints (matching the old base fallback).
+            return Size2Df(0.f, 0.f);
         }
 
-        const float padH = (float)(GetTotalPaddingHorizontal() + GetTotalBorderHorizontal());
-        const float padV = (float)(GetTotalPaddingVertical()   + GetTotalBorderVertical());
-
-        // Parent inline size for percentage resolution.
-        std::optional<float> parentInline =
-            (c.horizontal.mode == CSSLayout::ConstraintMode::Unbounded)
-                ? std::nullopt
-                : std::optional<float>{c.horizontal.available};
-
-        // --- Resolve usable content width ---
-        // Priority: explicit size.width > Exact constraint > AtMost (clamped
-        // to max-content) > Unbounded (max-content).
-        float contentW;
-        auto specW = CSSLayout::resolveDimension(size.width, parentInline, ctx);
-        if (specW.has_value()) {
-            float bb = (box.boxSizing == CSSLayout::BoxSizing::BorderBox) ? *specW : (*specW + padH);
-            contentW = std::max(0.f, bb - padH);
-        } else if (c.horizontal.mode == CSSLayout::ConstraintMode::Exact) {
-            contentW = std::max(0.f, c.horizontal.available - padH);
-        } else {
-            // Get max-content width from the text.
-            textLayout->SetExplicitWidth(-1);
-            float maxContent = (float)textLayout->GetLayoutWidth();
-            if (c.horizontal.mode == CSSLayout::ConstraintMode::AtMost) {
-                contentW = std::min(maxContent, std::max(0.f, c.horizontal.available - padH));
-            } else {
-                contentW = maxContent;
-            }
+        if (definiteContentWidth.has_value()) {
+            // Height at the resolved content width (reflects any wrapping).
+            float w = std::max(0.f, *definiteContentWidth);
+            textLayout->SetExplicitWidth(w);
+            return Size2Df(w, (float)textLayout->GetLayoutHeight());
         }
 
-        // Set the layout's width so its height reflects any wrapping.
-        textLayout->SetExplicitWidth(contentW);
-
-        // --- Resolve content height ---
-        std::optional<float> parentBlock =
-            (c.vertical.mode == CSSLayout::ConstraintMode::Unbounded)
-                ? std::nullopt
-                : std::optional<float>{c.vertical.available};
-        float contentH;
-        auto specH = CSSLayout::resolveDimension(size.height, parentBlock, ctx);
-        if (specH.has_value()) {
-            float bb = (box.boxSizing == CSSLayout::BoxSizing::BorderBox) ? *specH : (*specH + padV);
-            contentH = std::max(0.f, bb - padV);
-        } else if (c.vertical.mode == CSSLayout::ConstraintMode::Exact) {
-            contentH = std::max(0.f, c.vertical.available - padV);
-        } else {
-            contentH = (float)textLayout->GetLayoutHeight();
-        }
-
-        // Clamp to BoxConstraints (min/max).
-        contentW = CSSLayout::clampToConstraints(contentW, constraints, true,  parentInline, ctx);
-        contentH = CSSLayout::clampToConstraints(contentH, constraints, false, parentBlock, ctx);
-
-        measured.measuredWidth  = contentW + padH;
-        measured.measuredHeight = contentH + padV;
+        // Max-content: natural (unwrapped) width and its height.
+        textLayout->SetExplicitWidth(-1);
+        float w = (float)textLayout->GetLayoutWidth();
+        return Size2Df(w, (float)textLayout->GetLayoutHeight());
     }
 
     // ===== EVENT HANDLING =====

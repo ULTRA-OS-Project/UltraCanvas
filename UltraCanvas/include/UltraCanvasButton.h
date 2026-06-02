@@ -225,11 +225,11 @@ namespace UltraCanvas {
         // ===== OVERRIDES =====
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
-        // CSS layout: publish the button's preferred (border-box) size from its
+        // CSS layout: publish the button's preferred content-box size from its
         // text/icon/split content, and place the internal sub-rects in Arrange.
         // The engine owns finalBounds; the button no longer resizes itself.
-        void MeasureCore(const CSSLayout::MeasureConstraints& c,
-                         const CSSLayout::LayoutContext& ctx) override;
+        Size2Df MeasureOwnContent(std::optional<float> definiteContentWidth,
+                                  const CSSLayout::LayoutContext& ctx) override;
         void ComputeIntrinsicSizes(const CSSLayout::LayoutContext& ctx) override;
         void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
@@ -240,7 +240,7 @@ namespace UltraCanvas {
     protected:
         // ===== LAYOUT HELPERS =====
         // Content-box size (text + primary icon + split secondary section),
-        // excluding padding/border. Used by MeasureCore/ComputeIntrinsicSizes.
+        // excluding padding/border. Used by MeasureOwnContent/ComputeIntrinsicSizes.
         Size2Df MeasureContentSize(IRenderContext* rc) const;
         void CalculateLayout();
         void CalculateSplitLayout();
