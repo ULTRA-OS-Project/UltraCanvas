@@ -8,6 +8,7 @@
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasApplication.h"
 #include "Plugins/Charts/UltraCanvasChartElementBase.h"
 #include "Plugins/Charts/UltraCanvasChartDataStructures.h"
 #include <vector>
@@ -154,6 +155,7 @@ namespace UltraCanvas {
             enablePan = true;
             rootNode = std::make_shared<TreeMapNode>("Root", 0.0);
             currentNode = rootNode;
+            fontFamily = UltraCanvasApplication::GetInstance()->GetSystemFontStyle().fontFamily;
         }
 
         void SetRootNode(std::shared_ptr<TreeMapNode> root) {

@@ -459,9 +459,9 @@ namespace UltraCanvas {
                     resolveItemMargins(it, s.axis, inlineAvail.value_or(0.f), ctx);
 
                     // Resolve min/max main constraints (using container main as basis).
-                    if (it.el->constraints.has_value()) {
-                        const Dimension& minD = s.axis.isRow ? it.el->constraints->minWidth  : it.el->constraints->minHeight;
-                        const Dimension& maxD = s.axis.isRow ? it.el->constraints->maxWidth  : it.el->constraints->maxHeight;
+                    if (it.el->boxConstraints.has_value()) {
+                        const Dimension& minD = s.axis.isRow ? it.el->boxConstraints->minWidth : it.el->boxConstraints->minHeight;
+                        const Dimension& maxD = s.axis.isRow ? it.el->boxConstraints->maxWidth : it.el->boxConstraints->maxHeight;
                         it.minMain = resolveMinMax(minD, mainBasis, ctx, 0.f);
                         it.maxMain = resolveMinMax(maxD, mainBasis, ctx, INFINITY);
                     }

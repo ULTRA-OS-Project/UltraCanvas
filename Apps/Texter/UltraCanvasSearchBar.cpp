@@ -60,7 +60,7 @@ namespace UltraCanvas {
         findRow->layout.SetFlexRow().SetFlexGap(HSpacing)
                 .SetFlexAlignItems(CSSLayout::AlignItems::Center);
         findRow->size.height = CSSLayout::Dimension::Px(RowHeight);
-        findRow->constraints->minWidth = CSSLayout::Dimension::Px(400);
+        findRow->boxConstraints->minWidth = CSSLayout::Dimension::Px(400);
         findRow->layoutItem.SetFlexOrder(0)
                 .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         SetMargin(0,5,0,5);

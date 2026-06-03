@@ -80,18 +80,18 @@ namespace UltraCanvas {
                     if (authoritative) {
                         // Used size wins over an explicit width (stretched/grown box).
                         float cw = borderBoxToContent(c.horizontal.available, padH, bordH);
-                        cw = clampToConstraints(cw, e.constraints, true, parentInline, ctx);
+                        cw = clampToConstraints(cw, e.boxConstraints, true, parentInline, ctx);
                         out.contentWidth = std::max(0.f, cw);
                     } else if (specW.has_value()) {
                         float cw = (e.box.boxSizing == BoxSizing::BorderBox)
                             ? borderBoxToContent(*specW, padH, bordH)
                             : *specW;
-                        cw = clampToConstraints(cw, e.constraints, true, parentInline, ctx);
+                        cw = clampToConstraints(cw, e.boxConstraints, true, parentInline, ctx);
                         out.contentWidth = std::max(0.f, cw);
                     } else if (c.horizontal.mode == ConstraintMode::Exact) {
                         float bb = c.horizontal.available;
                         float cw = borderBoxToContent(bb, padH, bordH);
-                        cw = clampToConstraints(cw, e.constraints, true, parentInline, ctx);
+                        cw = clampToConstraints(cw, e.boxConstraints, true, parentInline, ctx);
                         out.contentWidth = std::max(0.f, cw);
                     } else {
                         // AtMost / Unbounded → derive from children, but clamp later
@@ -106,18 +106,18 @@ namespace UltraCanvas {
                     if (authoritative) {
                         // Used size wins over an explicit height (stretched/grown box).
                         float ch = borderBoxToContent(c.vertical.available, padV, bordV);
-                        ch = clampToConstraints(ch, e.constraints, false, parentBlock, ctx);
+                        ch = clampToConstraints(ch, e.boxConstraints, false, parentBlock, ctx);
                         out.contentHeight = std::max(0.f, ch);
                     } else if (specH.has_value()) {
                         float ch = (e.box.boxSizing == BoxSizing::BorderBox)
                             ? borderBoxToContent(*specH, padV, bordV)
                             : *specH;
-                        ch = clampToConstraints(ch, e.constraints, false, parentBlock, ctx);
+                        ch = clampToConstraints(ch, e.boxConstraints, false, parentBlock, ctx);
                         out.contentHeight = std::max(0.f, ch);
                     } else if (c.vertical.mode == ConstraintMode::Exact) {
                         float bb = c.vertical.available;
                         float ch = borderBoxToContent(bb, padV, bordV);
-                        ch = clampToConstraints(ch, e.constraints, false, parentBlock, ctx);
+                        ch = clampToConstraints(ch, e.boxConstraints, false, parentBlock, ctx);
                         out.contentHeight = std::max(0.f, ch);
                     } else {
                         out.contentHeight = std::nullopt;
@@ -166,6 +166,9 @@ namespace UltraCanvas {
         }
 
         void Element::InvalidateLayout() {
+            if (!measured.valid && !arrangeValid) {
+                return;
+            }
             measured.valid  = false;
             intrinsic.valid = false;
             arrangeValid    = false;
@@ -197,22 +200,22 @@ namespace UltraCanvas {
             // Dispatch by display type. Leaf widgets do NOT hook in here; they
             // feed their content-box size through MeasureOwnContent, which the
             // block path (MeasureBlock) folds into the auto size.
-            if (visibility == Visibility::Hidden && layout.display == DisplayType::NoDisplay) {
-                measured.measuredWidth = measured.measuredHeight = 0;
-            } else {
-                switch (layout.display) {
-                    case DisplayType::Flex:   MeasureFlex (*this, c, ctx); break;
-                    case DisplayType::Grid:   MeasureGrid (*this, c, ctx); break;
-                    case DisplayType::NoDisplay:
-                        measured.measuredWidth = measured.measuredHeight = 0;
-                        break;
-                    case DisplayType::Block:
-                    case DisplayType::Inline:       // TODO: real inline formatting context
-                    case DisplayType::InlineBlock:  // TODO: shrink-to-fit subtlety
-                    default:
-                        MeasureBlock(*this, c, ctx);
-                        break;
-                }
+            switch (layout.display) {
+                case DisplayType::Flex:
+                    MeasureFlex (*this, c, ctx);
+                    break;
+                case DisplayType::Grid:
+                    MeasureGrid (*this, c, ctx);
+                    break;
+                case DisplayType::NoDisplay:
+                    measured.measuredWidth = measured.measuredHeight = 0;
+                    break;
+                case DisplayType::Block:
+                case DisplayType::Inline:       // TODO: real inline formatting context
+                case DisplayType::InlineBlock:  // TODO: shrink-to-fit subtlety
+                default:
+                    MeasureBlock(*this, c, ctx);
+                    break;
             }
 
             measured.key = c;
@@ -323,7 +326,7 @@ namespace UltraCanvas {
                 float maxContent = std::max(0.f, c.horizontal.available - padH - bordH);
                 contentW = std::min(contentW, maxContent);
             }
-            contentW = clampToConstraints(contentW, e.constraints, true, parentInline, ctx);
+            contentW = clampToConstraints(contentW, e.boxConstraints, true, parentInline, ctx);
 
             float ownContentH = heightAuto
                 ? e.MeasureOwnContent(std::optional<float>{contentW}, ctx).height : 0.f;
@@ -333,7 +336,7 @@ namespace UltraCanvas {
                 (c.vertical.mode == ConstraintMode::Unbounded)
                     ? std::nullopt
                     : std::optional<float>{c.vertical.available};
-            contentH = clampToConstraints(contentH, e.constraints, false, parentBlock, ctx);
+            contentH = clampToConstraints(contentH, e.boxConstraints, false, parentBlock, ctx);
 
             // AbsoluteUI children contribute to the container's measured size
             // (unlike plain Absolute). Grow the *auto* content dimension to cover

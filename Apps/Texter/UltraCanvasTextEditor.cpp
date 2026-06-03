@@ -38,7 +38,7 @@
 #include "UltraCanvasUtilsUtf8.h"
 
 namespace UltraCanvas {
-    std::string UltraCanvasTextEditor::version = "0.1.33";
+    std::string UltraCanvasTextEditor::version = "0.1.34";
     
 namespace {
     std::string GetAppDataDirectory() {

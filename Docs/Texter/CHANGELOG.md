@@ -1,3 +1,6 @@
+#### 2026-06-03 *0.1.34*
+- Make Texter compliant with CSS layout support.
+
 #### 2026-05-18 *0.1.33*
 - Added an **"Open recent folder"** submenu placed directly under **File → Open...**
 

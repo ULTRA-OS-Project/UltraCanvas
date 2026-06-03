@@ -1,7 +1,7 @@
 // core/UltraCanvasButton.cpp
 // Interactive button component implementation with secondary icon support
-// Version: 2.5.0
-// Last Modified: 2026-06-02
+// Version: 2.5.1
+// Last Modified: 2026-06-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasButton.h"
@@ -404,9 +404,15 @@ namespace UltraCanvas {
                 int contentWidth = 0;
                 auto ctx = GetRenderContext();
 
-                if (!split.secondaryText.empty()) {
+                if (ctx && !split.secondaryText.empty()) {
+                    // Measure inside a saved state: SetFontFace mutates the shared
+                    // context's persistent font state, and this runs in the
+                    // (unbracketed) layout pass — without Push/PopState the weight
+                    // would leak to later-rendered elements (e.g. the nav TreeView).
+                    ctx->PushState();
                     ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
                     Size2Di textSize = ctx->GetTextLineDimensions(split.secondaryText);
+                    ctx->PopState();
                     contentWidth += textSize.width;
                 }
 

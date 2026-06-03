@@ -41,65 +41,8 @@ namespace UltraCanvas {
         SortChildrenByZOrder();
         UpdateScrollability();
 
-        // legacy UpdateGeometry for non-container (leaf) childs
-//        for (auto& c : Children()) {
-//            UltraCanvasUIElement* child = asUI(c);
-//            if (!child || !child->IsVisible()) continue;
-//            if (child->isPopup) continue;
-//
-//            auto containerChild = dynamic_cast<UltraCanvasContainer*>(child);
-//            if (child->needsUpdateGeometry && c->Children().empty()) {
-//                child->UpdateGeometry(GetRenderContext());
-//                child->needsUpdateGeometry = false;
-//            }
-//        }
         internalLayoutValid = true;
-//        needsUpdateGeometry = false;
     }
-
-//    void UltraCanvasContainer::UpdateGeometry(IRenderContext* ctx) {
-//        // update layout for top-lvel container and all children
-//        // that this container is top-level container (Window or Popup)
-//        UltraCanvasUIElement* topLevel = this;
-//        for (UltraCanvasUIElement* cur = this; cur && cur != window; cur = cur->GetParentContainer()) {
-//            if (cur->isPopup) { topLevel = cur; break; }
-//        }
-//        if (topLevel != this) {
-//            topLevel->UpdateLayout(ctx);
-//            return;
-//        }
-//        LayoutContext lctx;
-//        if (window) {
-//            // TODO: thread em/rem/DPI from window. Viewport defaults
-//            // are acceptable for fixed-px callers; only vw/vh users
-//            // need this populated correctly.
-//            lctx.viewportWidth  = window->GetWidth();
-//            lctx.viewportHeight = window->GetHeight();
-//        }
-//
-//        MeasureConstraints mc{
-//            { ConstraintMode::Exact, finalBounds.width  },
-//            { ConstraintMode::Exact, finalBounds.height }
-//        };
-//        this->Measure(mc, lctx);
-//        // Arrange() places children and, at its tail, calls Arranged()
-//        // (z-order sort + scrollbar metrics) and sets arrangeValid.
-//        this->Arrange(finalBounds, lctx);
-//
-//        for (auto& c : Children()) {
-//            UltraCanvasUIElement* child = asUI(c);
-//            if (!child || !child->IsVisible()) continue;
-//            if (child->isPopup) continue;
-//
-//            auto containerChild = dynamic_cast<UltraCanvasContainer*>(child);
-//            if (child->needsUpdateGeometry || !containerChild) {
-//                child->UpdateGeometry(ctx);
-//                child->needsUpdateGeometry = false;
-//            }
-//        }
-//
-//        needsUpdateGeometry = false;
-//    }
 
     void UltraCanvasContainer::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         UltraCanvasUIElement::Render(ctx, dirtyRect);

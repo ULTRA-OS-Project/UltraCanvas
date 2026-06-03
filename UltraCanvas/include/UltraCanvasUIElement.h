@@ -238,13 +238,13 @@ namespace UltraCanvas {
         void SetMargin(float all) {
             auto px = CSSLayout::Dimension::Px(all);
             box.margin.left = box.margin.right = box.margin.top = box.margin.bottom = px;
-            RequestUpdateGeometry();
+            InvalidateLayout();
         }
 
         void SetMargin(float vertical, float horizontal) {
             box.margin.left   = box.margin.right  = CSSLayout::Dimension::Px(horizontal);
             box.margin.top    = box.margin.bottom = CSSLayout::Dimension::Px(vertical);
-            RequestUpdateGeometry();
+            InvalidateLayout();
         }
 
         void SetMargin(float top, float right, float bottom, float left) {
@@ -252,20 +252,20 @@ namespace UltraCanvas {
             box.margin.top    = CSSLayout::Dimension::Px(top);
             box.margin.right  = CSSLayout::Dimension::Px(right);
             box.margin.bottom = CSSLayout::Dimension::Px(bottom);
-            RequestUpdateGeometry();
+            InvalidateLayout();
         }
 
         // ===== PADDING SETTERS (write through to BoxModel::padding) =====
         void SetPadding(float all) {
             auto px = CSSLayout::Dimension::Px(all);
             box.padding.left = box.padding.right = box.padding.top = box.padding.bottom = px;
-            RequestUpdateGeometry();
+            InvalidateLayout();
         }
 
         void SetPadding(float horizontal, float vertical) {
             box.padding.left   = box.padding.right  = CSSLayout::Dimension::Px(horizontal);
             box.padding.top    = box.padding.bottom = CSSLayout::Dimension::Px(vertical);
-            RequestUpdateGeometry();
+            InvalidateLayout();
         }
 
         void SetPadding(float top, float right, float bottom, float left) {
@@ -273,7 +273,7 @@ namespace UltraCanvas {
             box.padding.right  = CSSLayout::Dimension::Px(right);
             box.padding.bottom = CSSLayout::Dimension::Px(bottom);
             box.padding.left   = CSSLayout::Dimension::Px(left);
-            RequestUpdateGeometry();
+            InvalidateLayout();
         }
 
         // ===== BORDER SETTERS =====
@@ -299,7 +299,7 @@ namespace UltraCanvas {
             bordersVisual->left.color = color;
             bordersVisual->left.radius = borderRadius;
             bordersVisual->left.dashPattern = dash;
-            RequestUpdateGeometry();
+            InvalidateLayout();
         }
 
         void SetBorderRight(float width, const Color& color = Colors::Black, float borderRadius = 0.0f, const UCDashPattern& dash = UCDashPattern()) {
@@ -308,7 +308,7 @@ namespace UltraCanvas {
             bordersVisual->right.color = color;
             bordersVisual->right.radius = borderRadius;
             bordersVisual->right.dashPattern = dash;
-            RequestUpdateGeometry();
+            InvalidateLayout();
         }
 
         void SetBorderTop(float width, const Color& color = Colors::Black, float borderRadius = 0.0f, const UCDashPattern& dash = UCDashPattern()) {
@@ -317,7 +317,7 @@ namespace UltraCanvas {
             bordersVisual->top.color = color;
             bordersVisual->top.radius = borderRadius;
             bordersVisual->top.dashPattern = dash;
-            RequestUpdateGeometry();
+            InvalidateLayout();
         }
 
         void SetBorderBottom(float width, const Color& color = Colors::Black, float borderRadius = 0.0f, const UCDashPattern& dash = UCDashPattern()) {
@@ -326,7 +326,7 @@ namespace UltraCanvas {
             bordersVisual->bottom.color = color;
             bordersVisual->bottom.radius = borderRadius;
             bordersVisual->bottom.dashPattern = dash;
-            RequestUpdateGeometry();
+            InvalidateLayout();
         }
 
         void SetBackgroundColor(const Color& color) {
@@ -511,10 +511,6 @@ namespace UltraCanvas {
         // dirty-rect manager: the containing popup's, or the window's.
         virtual void InvalidateRect(const Rect2Df& localRect);
         void RequestRedraw();
-        // TODO: when the CSSLayout engine takes over the UpdateGeometry/Render
-        // pipeline, this should also call InvalidateLayout() so the engine
-        // caches drop.
-        void RequestUpdateGeometry();
 
         // ===== UTILITY METHODS =====
         UltraCanvasContainer* GetRootContainer();

@@ -274,6 +274,9 @@ namespace UltraCanvas {
             DisplayType display = DisplayType::Block;
             LayoutData  data;
 
+            // need for Show/Hide to restore correct display
+            DisplayType prevDisplay = DisplayType::Block;
+
             // ---- Flex configuration (initializes data to FlexLayout on first call) ----
             Layout& SetFlex(FlexDirection d = FlexDirection::Row,
                             FlexWrap w = FlexWrap::NoWrap);
@@ -295,6 +298,9 @@ namespace UltraCanvas {
             Layout& SetGridGap(float gap);
             Layout& SetGridGap(float row, float column);
             Layout& SetGridAutoFlow(GridAutoFlow f);
+            Layout& SetDisplay(DisplayType dt);
+            Layout& Show();
+            Layout& Hide();
         };
 
         struct LayoutItem {
@@ -347,7 +353,7 @@ namespace UltraCanvas {
 
             // sizing
             BoxSize size;
-            std::optional<BoxConstraints> constraints;
+            std::optional<BoxConstraints> boxConstraints;
 
             float aspectRatio = 0.0f;
             // TODO: replaced-element intrinsic size (images/video) — supply via subclass.

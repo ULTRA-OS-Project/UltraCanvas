@@ -93,19 +93,6 @@ namespace UltraCanvas {
         InvalidateRect(GetLocalBounds());
     }
 
-    void UltraCanvasUIElement::RequestUpdateGeometry() {
-//        needsUpdateGeometry = true;
-//        arrangeValid = false;
-//        if (!window || this == window) return;
-//        for (UltraCanvasUIElement* cur = this; cur && cur != window; cur = cur->GetParentContainer()) {
-//            if (cur->isPopup) {
-//                window->RequestPopupGeometry();
-//                return;
-//            }
-//        }
-//        window->RequestUpdateGeometry();
-    }
-
     IRenderContext* UltraCanvasUIElement::GetRenderContext() const {
         if (renderContext) {
             return renderContext.get();
@@ -257,18 +244,16 @@ namespace UltraCanvas {
 
     void UltraCanvasUIElement::SetVisible(bool vis) {
         if (vis) {
-            if (layout.display != CSSLayout::DisplayType::NoDisplay) return;
-            layout.display = prevDisplayType;
+            if (IsVisible()) return;
+            layout.Show();
         } else {
-            if (layout.display == CSSLayout::DisplayType::NoDisplay) return;
-            prevDisplayType = layout.display;
-            layout.display = CSSLayout::DisplayType::NoDisplay;
+            if (!IsVisible()) return;
+            layout.Hide();
         }
         InvalidateLayout();
         if (!vis) {
             SetFocus(false);
         }
-//        RequestUpdateGeometry();
     }
 
     void UltraCanvasUIElement::SetWindow(UltraCanvasWindowBase *win) {

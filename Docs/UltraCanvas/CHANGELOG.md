@@ -1,3 +1,6 @@
+#### 2026-06-03 *0.2.1*
+- Major update. Implemented CSS Flex/Grid/Absolute layout support.
+ 
 #### 2026-05-20 *0.1.39*
 - Show cursor and allow selection in the TextArea in read-only mode
 - Autodetext syntax highlighting rules by filename with auto fallbask to extension
