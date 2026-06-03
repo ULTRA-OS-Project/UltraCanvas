@@ -127,8 +127,6 @@ namespace UltraCanvas {
     bool UltraCanvasScrollbar::OnEvent(const UCEvent &event) {
         if (IsDisabled() || !ShouldBeVisible()) return false;
 
-        UpdateGeometry(GetRenderContext());
-
         switch (event.type) {
             case UCEventType::MouseDown:
                 return HandleMouseDown(event);

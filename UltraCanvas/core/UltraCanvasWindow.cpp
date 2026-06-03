@@ -369,17 +369,12 @@ namespace UltraCanvas {
             auto* p = pe.element;
             if (!p || !p->IsVisible()) continue;
 
-//            if (_needsPopupGeometry || p->needsUpdateGeometry) {
-//                p->UpdateGeometry(ctx);
-//                p->needsUpdateGeometry = false;
-//            }
 
             Size2Di want = p->GetSize();
             if (want.width <= 0 || want.height <= 0) continue;
 
             if (!p->renderContext) {
                 p->renderContext = CreateRenderContext(want, nativeSurface);
-//                p->needsUpdateGeometry = true;
                 pe.dirtyRectManager.Add(Rect2Di(0, 0, want.width, want.height));
             } else if (p->renderContext->GetSurfaceSize() != want) {
                 p->renderContext->ResizeSurface(want);

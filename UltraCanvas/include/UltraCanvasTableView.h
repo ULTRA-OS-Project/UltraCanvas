@@ -545,16 +545,13 @@ public:
         return data;
     }
 
-    void UpdateGeometry(IRenderContext *ctx) override {
-        // Update scroll bounds if needed
+    // ===== RENDERING =====
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override {
         if (needsScrollUpdate) {
             UpdateScrollBounds();
             needsScrollUpdate = false;
         }
-    };
 
-    // ===== RENDERING =====
-    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override {
         ctx->PushState();
         
 

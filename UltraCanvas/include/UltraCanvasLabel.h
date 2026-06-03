@@ -3,8 +3,7 @@
 // Exemplar of the new CSSLayout intrinsic-sizing protocol: overrides
 // MeasureOwnContent (constraint-aware content sizing) and ComputeIntrinsicSizes
 // (constraint-free max/min-content) so the engine can place the label
-// without the widget mutating finalBounds itself. UpdateGeometry just
-// keeps the cached ITextLayout in sync with the latest content area.
+// without the widget mutating finalBounds itself.
 // Version: 2.0.1
 // Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
@@ -126,7 +125,7 @@ namespace UltraCanvas {
     protected:
         // Build the cached ITextLayout if missing and configure it with the
         // current font/wrap/alignment. Does NOT set explicit width — callers
-        // (MeasureOwnContent / ComputeIntrinsicSizes / UpdateGeometry) own that.
+        // (MeasureOwnContent / ComputeIntrinsicSizes) own that.
         // Returns true if the layout is now valid, false if no render context
         // is available (in which case callers should bail gracefully).
         bool EnsureTextLayout();

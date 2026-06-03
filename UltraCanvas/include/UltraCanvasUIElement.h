@@ -104,7 +104,6 @@ namespace UltraCanvas {
     friend UltraCanvasWindowBase;
     friend UltraCanvasContainer;
     protected:
-//        bool needsUpdateGeometry = true;
         CSSLayout::DisplayType prevDisplayType = CSSLayout::DisplayType::Block;
         bool isPopup = false;
 
@@ -491,11 +490,6 @@ namespace UltraCanvas {
         IRenderContext* GetRenderContext() const;
         // dirtyRect is in element-local coordinates (matches the translated ctx).
         virtual void Render(IRenderContext* ctx, const Rect2Df& dirtyRect);
-        // Legacy geometry-pass entry point, retained as a bridge while widgets
-        // migrate their internal layout work into the engine's Arrange() hook.
-        virtual void UpdateGeometry(IRenderContext* ctx) {
-            arrangeValid = true;
-        }
 
         void Arrange(const Rect2Df& newFinalRect, const CSSLayout::LayoutContext& ctx) override;
 
@@ -504,8 +498,6 @@ namespace UltraCanvas {
         virtual bool OnEventFilter(const UCEvent& event) { return false; };
 
         void SetEventCallback(std::function<bool(const UCEvent&)> callback);
-
-//        bool IsNeedsUpdateGeometry() const { return needsUpdateGeometry; }
 
         // Adds localRect (in this element's local coords) to the appropriate
         // dirty-rect manager: the containing popup's, or the window's.

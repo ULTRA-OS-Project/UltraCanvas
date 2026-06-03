@@ -443,9 +443,6 @@ namespace UltraCanvas {
         // finalBounds.height was still 0 and so wrongly marked the scrollbar
         // visible. Computing it here, with valid bounds, keeps row width correct.
         UpdateScrollbars();
-        if (verticalScrollbar && verticalScrollbar->IsVisible()) {
-            verticalScrollbar->UpdateGeometry(GetRenderContext());
-        }
     }
 
     void UltraCanvasTreeView::Render(IRenderContext *ctx, const Rect2Df& dirtyRect) {
