@@ -7,7 +7,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(UltraCanvasDemoApp
-    VERSION 0.1.29
+    VERSION 0.1.39
     DESCRIPTION "UltraCanvas Framework Demo Application"
     LANGUAGES CXX
 )
@@ -45,6 +45,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 option(BUILD_TEXTER_APP "Build the texter application" ON)
 option(BUILD_FILEMANAGER_APP "Build the file manager application" OFF) # OFF: source files not yet committed
 option(BUILD_DEMO_APP "Build the demo application" ON)
+option(BUILD_CSSLAYOUT_TESTS "Build the CSSLayout non-UI test harness" ON)
 option(BUILD_TESTS "Build unit tests" OFF)
 option(ULTRACANVAS_PLUGIN_CDR "Build CDR plugin (requires libcdr)" ON)
 option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" ON)
@@ -90,6 +91,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasSliderExamples.cpp
             Apps/DemoApp/UltraCanvasSVGExamples.cpp
             Apps/DemoApp/UltraCanvasTabExamples.cpp
+            Apps/DemoApp/UltraCanvasSplitPaneExamples.cpp
             Apps/DemoApp/UltraCanvasTextAreaExamples.cpp
             Apps/DemoApp/UltraCanvasTextInputExamples.cpp
             Apps/DemoApp/UltraCanvasTreeViewExamples.cpp
@@ -101,13 +103,26 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasCheckboxExamples.cpp
             Apps/DemoApp/UltraCanvasDemoInfoWindow.cpp
             Apps/DemoApp/UltraCanvasSankeyExamples.cpp
+            Apps/DemoApp/UltraCanvasTreeMapExamples.cpp
+            Apps/DemoApp/UltraCanvasVennDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasDendrogramExamples.cpp
+            Apps/DemoApp/UltraCanvasBlockDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasNodeDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasFlowChartExamples.cpp
+            Apps/DemoApp/UltraCanvasGourceTreeExamples.cpp
+            Apps/DemoApp/UltraCanvasJitterPlotExamples.cpp
             Apps/DemoApp/UltraCanvasPopulationChartExamples.cpp
             Apps/DemoApp/UltraCanvasSegmentedControlExamples.cpp
+            Apps/DemoApp/UltraCanvasBreadcrumbExamples.cpp
             Apps/DemoApp/UltraCanvasLayoutExamples.cpp
             Apps/DemoApp/UltraCanvasToolbarExamples.cpp
             Apps/DemoApp/UltraCanvasTabExamples.cpp
             Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp
             Apps/DemoApp/UltraCanvasTextRenderingExamples.cpp
+            Apps/DemoApp/UltraCanvasPieChartExamples.cpp
+            Apps/DemoApp/UltraCanvasAdjacencyDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasArcDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasSlideshowExamples.cpp
     )
 
     # These files depend on libvips
@@ -317,7 +332,6 @@ if (BUILD_TEXTER_APP)
             Apps/Texter/UltraCanvasEncoding.cpp
             Apps/Texter/main.cpp
             Apps/Texter/UltraCanvasSearchBar.cpp
-            Apps/Texter/UltraCanvasSearchBar.h
     )
 
     # Include directories
@@ -368,6 +382,13 @@ endif()
 #            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/..
 #    )
 endif ()
+
+if (BUILD_CSSLAYOUT_TESTS)
+    add_executable(CSSLayoutTests Apps/CSSLayoutTests/main.cpp)
+    target_include_directories(CSSLayoutTests PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(CSSLayoutTests PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(CSSLayoutTests PRIVATE cxx_std_20)
+endif()
 
 if (BUILD_FILEMANAGER_APP)
     set(UCFILEMANAGER_SOURCES

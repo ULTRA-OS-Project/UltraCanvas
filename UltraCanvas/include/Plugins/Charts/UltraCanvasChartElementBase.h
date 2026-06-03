@@ -66,6 +66,7 @@ namespace UltraCanvas {
         // Chart styling
         Color backgroundColor = Color(255, 255, 255, 255);
         Color plotAreaColor = Color(250, 250, 250, 255);
+        bool showBackground = true;
         bool showGrid = true;
         bool showAxes = true;
         Color gridColor = Color(220, 220, 220, 255);
@@ -101,8 +102,8 @@ namespace UltraCanvas {
         ValueLabelPosition valueLabelPosition = ValueLabelPosition::LabelAbove;
 
     public:
-        UltraCanvasChartElementBase(const std::string& id, long uid, int x, int y, int width, int height) :
-                UltraCanvasUIElement(id, uid, x, y, width, height) {};
+        UltraCanvasChartElementBase(const std::string& id, int x, int y, int width, int height) :
+                UltraCanvasUIElement(id, x, y, width, height) {};
 
         virtual ~UltraCanvasChartElementBase() = default;
 
@@ -257,13 +258,13 @@ namespace UltraCanvas {
         // RENDERING OVERRIDE FROM UIELEM
         // =============================================================================
 
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
         // =============================================================================
         // EVENT HANDLING OVERRIDE
         // =============================================================================
 
-        bool OnEvent(const UCEvent& event);
+        bool OnEvent(const UCEvent& event) override;
 
         // =============================================================================
         // PROTECTED RENDERING HELPERS (COMMON)
@@ -327,10 +328,10 @@ namespace UltraCanvas {
         virtual void RenderAxisLabels(IRenderContext* ctx);
 //        virtual void RenderXAxisLabelsWithMode(IRenderContext* ctx); // New method for X-axis label handling
 
-        void RenderValueLabels(IRenderContext *ctx, const std::vector<Point2Df> &screenPositions);
-        Point2Df CalculateValueLabelPosition(const Point2Df &pointPos, size_t index, size_t totalPoints);
+        void RenderValueLabels(IRenderContext *ctx, const std::vector<Point2Dd> &screenPositions);
+        Point2Dd CalculateValueLabelPosition(const Point2Dd &pointPos, size_t index, size_t totalPoints);
 
-        virtual float GetXAxisLabelPosition(size_t dataIndex, size_t totalPoints);
+        virtual double GetXAxisLabelPosition(size_t dataIndex, size_t totalPoints);
 
         std::string FormatAxisLabel(double value);
         void DrawSelectionIndicators(IRenderContext* ctx);
@@ -342,7 +343,7 @@ namespace UltraCanvas {
         bool HandleMouseWheel(const UCEvent& event);
 
         // Helper method to get screen position for a data point
-        Point2Df GetDataPointScreenPosition(size_t index, const ChartDataPoint& point) {
+        Point2Dd GetDataPointScreenPosition(size_t index, const ChartDataPoint& point) {
             if (useIndexBasedPositioning && dataSource) {
                 // Use index-based positioning (for categorical data with labels)
                 size_t totalPoints = dataSource->GetPointCount();
@@ -350,12 +351,12 @@ namespace UltraCanvas {
                     // Single point - center it
                     float x = cachedPlotArea.x + cachedPlotArea.width / 2;
                     ChartCoordinateTransform transform(cachedPlotArea, cachedDataBounds);
-                    return Point2Df(x, transform.DataToScreen(point.x, point.y).y);
+                    return Point2Dd(x, transform.DataToScreen(point.x, point.y).y);
                 } else {
                     // Multiple points - distribute evenly
                     float x = cachedPlotArea.x + (index * cachedPlotArea.width / (totalPoints - 1));
                     ChartCoordinateTransform transform(cachedPlotArea, cachedDataBounds);
-                    return Point2Df(x, transform.DataToScreen(point.x, point.y).y);
+                    return Point2Dd(x, transform.DataToScreen(point.x, point.y).y);
                 }
             } else {
                 // Use actual x coordinate positioning (for numeric data)
@@ -407,10 +408,10 @@ namespace UltraCanvas {
 // Generic Chart Factory with Data
     template<typename ChartElementType>
     std::shared_ptr<ChartElementType> CreateChartElementWithData(
-            const std::string& id, long uid, int x, int y, int width, int height,
+            const std::string& id, int x, int y, int width, int height,
             std::shared_ptr<IChartDataSource> data, const std::string& title = "") {
 
-        auto element = std::make_shared<ChartElementType>(id, uid, x, y, width, height);
+        auto element = std::make_shared<ChartElementType>(id, x, y, width, height);
         element->SetDataSource(data);
         if (!title.empty()) {
             element->SetTitle(title);

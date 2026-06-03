@@ -1,17 +1,19 @@
 // OS/MacOS/UltraCanvasMacOSApplication.mm
 // Complete macOS application implementation with Cocoa/Cairo support
-// Version: 2.1.2 - Install NSApplicationDelegate opting into secure restorable state
-// Last Modified: 2026-05-07
+// Version: 2.2.0 - Bundled DejaVu Sans Mono as monospace default (CoreText registration)
+// Last Modified: 2026-05-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMacOSApplication.h"
 
 #import <Cocoa/Cocoa.h>
 #import <QuartzCore/QuartzCore.h>
+#import <CoreText/CoreText.h>
 
 #include <iostream>
 #include <thread>
 #include <chrono>
+#include <filesystem>
 #include "UltraCanvasDebug.h"
 
 // Minimal NSApplicationDelegate. Its only job is to opt the app into the
@@ -643,15 +645,6 @@ static UltraCanvasAppDelegate* g_appDelegate = nil;
                 result.fontFamily = [[sysFont familyName] UTF8String];
                 result.fontSize = static_cast<float>([sysFont pointSize]);
                 if (result.fontSize <= 0) result.fontSize = 12.0f;
-
-//                NSFontTraitMask traits = [[NSFontManager sharedFontManager]
-//                                          traitsOfFont:sysFont];
-//                if (traits & NSBoldFontMask) {
-//                    result.fontWeight = FontWeight::Bold;
-//                }
-//                if (traits & NSItalicFontMask) {
-//                    result.fontSlant = FontSlant::Italic;
-//                }
             }
 
             // Private system font names (e.g. ".AppleSystemUIFont", ".SF NS")
@@ -667,29 +660,41 @@ static UltraCanvasAppDelegate* g_appDelegate = nil;
 
     FontStyle UltraCanvasMacOSApplication::DetectMonospacedFontStyleNative() {
         FontStyle result;
+        result.fontFamily = "Ubuntu Mono";
+        result.fontSize = 12.0f;
+        return result;
+    }
 
+    void UltraCanvasMacOSApplication::LoadBundledFontsNative() {
+        // macOS keeps the system proportional font; only the monospace family
+        // is replaced with DejaVu Sans Mono. Register the four mono variants
+        // process-privately via CoreText.
         @autoreleasepool {
-            NSFont* monoFont = nil;
-
-            // Available on macOS 10.15+
-            if (@available(macOS 10.15, *)) {
-                monoFont = [NSFont monospacedSystemFontOfSize:0 weight:NSFontWeightRegular];
-            }
-
-            if (monoFont) {
-                result.fontFamily = [[monoFont familyName] UTF8String];
-                result.fontSize = static_cast<float>([monoFont pointSize]);
-                if (result.fontSize <= 0) result.fontSize = 12.0f;
-            }
-
-            // Private font names cannot be resolved by Pango/Cairo
-            if (result.fontFamily.empty() || result.fontFamily[0] == '.') {
-                result.fontFamily = "Menlo";
-                if (result.fontSize <= 0) result.fontSize = 12.0f;
+            const std::string dir = GetBundledFontsDir();
+            for (size_t i = 0; i < kEmbeddedAllFontsCount; ++i) {
+                std::string path = dir + kEmbeddedAllFonts[i];
+                if (!std::filesystem::exists(path)) {
+                    debugOutput << "UltraCanvas: bundled font missing: " << path << std::endl;
+                    continue;
+                }
+                NSURL* url = [NSURL fileURLWithPath:[NSString stringWithUTF8String:path.c_str()]];
+                CFErrorRef err = nullptr;
+                if (!CTFontManagerRegisterFontsForURL(
+                        (__bridge CFURLRef)url,
+                        kCTFontManagerScopeProcess,
+                        &err)) {
+                    // kCTFontManagerErrorAlreadyRegistered is benign on re-init.
+                    if (err) {
+                        CFIndex code = CFErrorGetCode(err);
+                        if (code != kCTFontManagerErrorAlreadyRegistered) {
+                            debugOutput << "UltraCanvas: CTFontManagerRegisterFontsForURL failed for "
+                                        << path << " (code " << (long)code << ")" << std::endl;
+                        }
+                    }
+                }
+                if (err) CFRelease(err);
             }
         }
-
-        return result;
     }
 
 } // namespace UltraCanvas

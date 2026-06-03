@@ -1,11 +1,13 @@
 // Apps/Texter/UltraCanvasTextEditorDialogs.cpp
 // Implementation of custom dialogs for Find and Replace
-// Version: 1.1.0
-// Last Modified: 2026-02-04
+// Version: 1.2.0
+// Last Modified: 2026-06-01
 // Author: UltraCanvas Framework
 
+#include "UltraCanvasContainer.h"
+#include "UltraCanvasSpacer.h"
+#include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasTextEditorDialogs.h"
-#include "UltraCanvasBoxLayout.h"
 #include <algorithm>
 
 namespace UltraCanvas {
@@ -33,102 +35,100 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFindDialog::BuildLayout() {
-        auto mainLayout = CreateVBoxLayout(this);
-        mainLayout->SetSpacing(12);
+        layout.SetFlexColumn();
+        layout.SetFlexGap(12);
         SetPadding(16);
 
         // ===== CONTENT SECTION =====
-        contentSection = std::make_shared<UltraCanvasContainer>("FindContent", 3000, 0, 0, 420, 100);
-        auto contentLayout = CreateVBoxLayout(contentSection.get());
-        contentLayout->SetSpacing(8);
+        contentSection = std::make_shared<UltraCanvasContainer>("FindContent", 0, 0, 420, 100);
+        contentSection->layout.SetFlexColumn();
+        contentSection->layout.SetFlexGap(8);
 
         // Search input row — with history dropdown button
-        auto searchRow = std::make_shared<UltraCanvasContainer>("SearchRow", 3001, 0, 0, 420, 30);
-        auto searchRowLayout = CreateHBoxLayout(searchRow.get());
-        searchRowLayout->SetSpacing(4);
+        auto searchRow = std::make_shared<UltraCanvasContainer>("SearchRow", 0, 0, 420, 30);
+        searchRow->layout.SetFlexRow();
+        searchRow->layout.SetFlexGap(4);
 
-        searchLabel = std::make_shared<UltraCanvasLabel>("SearchLabel", 3002, 0, 0, 80, 25);
+        searchLabel = std::make_shared<UltraCanvasLabel>("SearchLabel", 0, 0, 80, 25);
         searchLabel->SetText("Find what:");
         searchLabel->SetFontSize(11);
 
-        searchInput = std::make_shared<UltraCanvasTextInput>("SearchInput", 3003, 0, 0, 290, 25);
+        searchInput = std::make_shared<UltraCanvasTextInput>("SearchInput", 0, 0, 290, 25);
         searchInput->SetPlaceholder("Enter search text...");
 
         // *** FIX: Disable the validation checkmark icon ***
         searchInput->SetShowValidationState(false);
 
         // History dropdown button (small arrow button)
-        auto historyButton = std::make_shared<UltraCanvasButton>("SearchHistoryBtn", 3004, 0, 0, 22, 25);
+        auto historyButton = std::make_shared<UltraCanvasButton>("SearchHistoryBtn", 0, 0, 22, 25);
         historyButton->SetText("▼");
         historyButton->SetFontSize(8);
         historyButton->onClick = [this]() { ShowSearchHistory(); };
 
-        searchRowLayout->AddUIElement(searchLabel);
-        searchRowLayout->AddUIElement(searchInput);
-        searchRowLayout->AddUIElement(historyButton);
+        searchRow->AddChild(searchLabel);
+        searchRow->AddChild(searchInput);
+        searchRow->AddChild(historyButton);
 
-        contentLayout->AddUIElement(searchRow);
+        contentSection->AddChild(searchRow);
 
         // Options row
-        auto optionsRow = std::make_shared<UltraCanvasContainer>("OptionsRow", 3005, 0, 0, 420, 25);
-        auto optionsLayout = CreateHBoxLayout(optionsRow.get());
-        optionsLayout->SetSpacing(20);
+        auto optionsRow = std::make_shared<UltraCanvasContainer>("OptionsRow", 0, 0, 420, 25);
+        optionsRow->layout.SetFlexRow();
+        optionsRow->layout.SetFlexGap(20);
 
-        caseSensitiveCheck = std::make_shared<UltraCanvasCheckbox>("CaseSensitive", 3006, 0, 0, 130, 20);
+        caseSensitiveCheck = std::make_shared<UltraCanvasCheckbox>("CaseSensitive", 0, 0, 130, 20);
         caseSensitiveCheck->SetText("Case sensitive");
         caseSensitiveCheck->SetFontSize(11);
 
-        wholeWordCheck = std::make_shared<UltraCanvasCheckbox>("WholeWord", 3007, 0, 0, 130, 20);
+        wholeWordCheck = std::make_shared<UltraCanvasCheckbox>("WholeWord", 0, 0, 130, 20);
         wholeWordCheck->SetText("Whole word");
         wholeWordCheck->SetFontSize(11);
 
-        optionsLayout->AddUIElement(caseSensitiveCheck);
-        optionsLayout->AddUIElement(wholeWordCheck);
+        optionsRow->AddChild(caseSensitiveCheck);
+        optionsRow->AddChild(wholeWordCheck);
 
-        contentLayout->AddUIElement(optionsRow);
+        contentSection->AddChild(optionsRow);
 
         // Status label (from previous change set)
-        statusLabel = std::make_shared<UltraCanvasLabel>("FindStatus", 3020, 0, 0, 420, 20);
+        statusLabel = std::make_shared<UltraCanvasLabel>("FindStatus", 0, 0, 420, 20);
         statusLabel->SetText("");
         statusLabel->SetFontSize(11);
         statusLabel->SetTextColor(Color(100, 100, 100));
         statusLabel->SetAlignment(TextAlignment::Left);
-        contentLayout->AddUIElement(statusLabel);
+        contentSection->AddChild(statusLabel);
 
-        mainLayout->AddUIElement(contentSection);
+        AddChild(contentSection);
 
         // ===== BUTTON SECTION =====
         // *** FIX: Use wider minimum button width for i18n ***
         const int buttonMinWidth = 120;  // Was 80-100, now 120 for German/Russian
         const int buttonHeight = 28;
 
-        buttonSection = std::make_shared<UltraCanvasContainer>("ButtonSection", 3010, 0, 0, 420, 35);
-        auto buttonLayout = CreateHBoxLayout(buttonSection.get());
-        buttonLayout->SetSpacing(8);
+        buttonSection = std::make_shared<UltraCanvasContainer>("ButtonSection", 0, 0, 420, 35);
+        buttonSection->layout.SetFlexRow();
+        buttonSection->layout.SetFlexGap(8);
 
-        buttonLayout->AddStretch(1);
+        buttonSection->AddStretchSpacer(1);
 
-        findNextButton = std::make_shared<UltraCanvasButton>("FindNext", 3011, 0, 0, buttonMinWidth, buttonHeight);
+        findNextButton = std::make_shared<UltraCanvasButton>("FindNext", 0, 0, buttonMinWidth, buttonHeight);
         findNextButton->SetText("Find Next");
-        findNextButton->SetAutoResize(true);        // Auto-expand to fit text
         //findNextButton->SetMinWidth(buttonMinWidth);
 
-        findPreviousButton = std::make_shared<UltraCanvasButton>("FindPrev", 3012, 0, 0, buttonMinWidth, buttonHeight);
+        findPreviousButton = std::make_shared<UltraCanvasButton>("FindPrev", 0, 0, buttonMinWidth, buttonHeight);
         findPreviousButton->SetText("Find Previous");
-        findPreviousButton->SetAutoResize(true);
         //findPreviousButton->SetMinWidth(buttonMinWidth);
 
-        closeButton = std::make_shared<UltraCanvasButton>("CloseBtn", 3013, 0, 0, 80, buttonHeight);
+        closeButton = std::make_shared<UltraCanvasButton>("CloseBtn", 0, 0, 80, buttonHeight);
         closeButton->SetText("Close");
 
-        buttonLayout->AddUIElement(findPreviousButton);
-        buttonLayout->AddUIElement(findNextButton);
-        buttonLayout->AddUIElement(closeButton);
+        buttonSection->AddChild(findPreviousButton);
+        buttonSection->AddChild(findNextButton);
+        buttonSection->AddChild(closeButton);
 
-        mainLayout->AddUIElement(buttonSection);
+        AddChild(buttonSection);
 
         // Create the history dropdown (hidden initially, positioned on demand)
-        historyDropdown = std::make_shared<UltraCanvasDropdown>("SearchHistoryDropdown", 3030, 0, 0, 290, 24);
+        historyDropdown = std::make_shared<UltraCanvasDropdown>("SearchHistoryDropdown", 0, 0, 290, 24);
         historyDropdown->SetVisible(false);
         AddChild(historyDropdown);
     }
@@ -310,139 +310,136 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasReplaceDialog::BuildLayout() {
-        auto mainLayout = CreateVBoxLayout(this);
-        mainLayout->SetSpacing(12);
+        layout.SetFlexColumn();
+        layout.SetFlexGap(12);
         SetPadding(16);
 
         // ===== CONTENT SECTION =====
-        contentSection = std::make_shared<UltraCanvasContainer>("ReplaceContent", 4000, 0, 0, 470, 150);
-        auto contentLayout = CreateVBoxLayout(contentSection.get());
-        contentLayout->SetSpacing(8);
+        contentSection = std::make_shared<UltraCanvasContainer>("ReplaceContent", 0, 0, 470, 150);
+        contentSection->layout.SetFlexColumn();
+        contentSection->layout.SetFlexGap(8);
 
         // ----- Find input row with history button -----
-        auto findRow = std::make_shared<UltraCanvasContainer>("FindRow", 4001, 0, 0, 470, 30);
-        auto findRowLayout = CreateHBoxLayout(findRow.get());
-        findRowLayout->SetSpacing(4);
+        auto findRow = std::make_shared<UltraCanvasContainer>("FindRow", 0, 0, 470, 30);
+        findRow->layout.SetFlexRow();
+        findRow->layout.SetFlexGap(4);
 
-        findLabel = std::make_shared<UltraCanvasLabel>("FindLabel", 4002, 0, 0, 80, 25);
+        findLabel = std::make_shared<UltraCanvasLabel>("FindLabel", 0, 0, 80, 25);
         findLabel->SetText("Find what:");
         findLabel->SetFontSize(11);
 
-        findInput = std::make_shared<UltraCanvasTextInput>("FindInput", 4003, 0, 0, 330, 25);
+        findInput = std::make_shared<UltraCanvasTextInput>("FindInput", 0, 0, 330, 25);
         findInput->SetPlaceholder("Enter search text...");
 
         // *** FIX: Disable the validation checkmark icon ***
         findInput->SetShowValidationState(false);
 
         // History dropdown button
-        auto findHistoryBtn = std::make_shared<UltraCanvasButton>("FindHistoryBtn", 4004, 0, 0, 22, 25);
+        auto findHistoryBtn = std::make_shared<UltraCanvasButton>("FindHistoryBtn", 0, 0, 22, 25);
         findHistoryBtn->SetText("▼");
         findHistoryBtn->SetFontSize(8);
         findHistoryBtn->onClick = [this]() { ShowFindHistory(); };
 
-        findRowLayout->AddUIElement(findLabel);
-        findRowLayout->AddUIElement(findInput);
-        findRowLayout->AddUIElement(findHistoryBtn);
+        findRow->AddChild(findLabel);
+        findRow->AddChild(findInput);
+        findRow->AddChild(findHistoryBtn);
 
-        contentLayout->AddUIElement(findRow);
+        contentSection->AddChild(findRow);
 
         // ----- Replace input row with history button -----
-        auto replaceRow = std::make_shared<UltraCanvasContainer>("ReplaceRow", 4005, 0, 0, 470, 30);
-        auto replaceRowLayout = CreateHBoxLayout(replaceRow.get());
-        replaceRowLayout->SetSpacing(4);
+        auto replaceRow = std::make_shared<UltraCanvasContainer>("ReplaceRow", 0, 0, 470, 30);
+        replaceRow->layout.SetFlexRow();
+        replaceRow->layout.SetFlexGap(4);
 
-        replaceLabel = std::make_shared<UltraCanvasLabel>("ReplaceLabel", 4006, 0, 0, 80, 25);
+        replaceLabel = std::make_shared<UltraCanvasLabel>("ReplaceLabel", 0, 0, 80, 25);
         replaceLabel->SetText("Replace:");
         replaceLabel->SetFontSize(11);
 
-        replaceInput = std::make_shared<UltraCanvasTextInput>("ReplaceInput", 4007, 0, 0, 330, 25);
+        replaceInput = std::make_shared<UltraCanvasTextInput>("ReplaceInput", 0, 0, 330, 25);
         replaceInput->SetPlaceholder("Enter replacement text...");
 
         // *** FIX: Disable the validation checkmark icon ***
         replaceInput->SetShowValidationState(false);
 
         // History dropdown button
-        auto replaceHistoryBtn = std::make_shared<UltraCanvasButton>("ReplaceHistoryBtn", 4008, 0, 0, 22, 25);
+        auto replaceHistoryBtn = std::make_shared<UltraCanvasButton>("ReplaceHistoryBtn", 0, 0, 22, 25);
         replaceHistoryBtn->SetText("▼");
         replaceHistoryBtn->SetFontSize(8);
         replaceHistoryBtn->onClick = [this]() { ShowReplaceHistory(); };
 
-        replaceRowLayout->AddUIElement(replaceLabel);
-        replaceRowLayout->AddUIElement(replaceInput);
-        replaceRowLayout->AddUIElement(replaceHistoryBtn);
+        replaceRow->AddChild(replaceLabel);
+        replaceRow->AddChild(replaceInput);
+        replaceRow->AddChild(replaceHistoryBtn);
 
-        contentLayout->AddUIElement(replaceRow);
+        contentSection->AddChild(replaceRow);
 
         // ----- Options row -----
-        auto optionsRow = std::make_shared<UltraCanvasContainer>("OptionsRow", 4009, 0, 0, 470, 25);
-        auto optionsLayout = CreateHBoxLayout(optionsRow.get());
-        optionsLayout->SetSpacing(20);
+        auto optionsRow = std::make_shared<UltraCanvasContainer>("OptionsRow", 0, 0, 470, 25);
+        optionsRow->layout.SetFlexRow();
+        optionsRow->layout.SetFlexGap(20);
 
-        caseSensitiveCheck = std::make_shared<UltraCanvasCheckbox>("CaseSensitive", 4010, 0, 0, 130, 20);
+        caseSensitiveCheck = std::make_shared<UltraCanvasCheckbox>("CaseSensitive", 0, 0, 130, 20);
         caseSensitiveCheck->SetText("Case sensitive");
         caseSensitiveCheck->SetFontSize(11);
 
-        wholeWordCheck = std::make_shared<UltraCanvasCheckbox>("WholeWord", 4011, 0, 0, 130, 20);
+        wholeWordCheck = std::make_shared<UltraCanvasCheckbox>("WholeWord", 0, 0, 130, 20);
         wholeWordCheck->SetText("Whole word");
         wholeWordCheck->SetFontSize(11);
 
-        optionsLayout->AddUIElement(caseSensitiveCheck);
-        optionsLayout->AddUIElement(wholeWordCheck);
+        optionsRow->AddChild(caseSensitiveCheck);
+        optionsRow->AddChild(wholeWordCheck);
 
-        contentLayout->AddUIElement(optionsRow);
+        contentSection->AddChild(optionsRow);
 
         // ----- Status label -----
-        statusLabel = std::make_shared<UltraCanvasLabel>("ReplaceStatus", 4020, 0, 0, 470, 20);
+        statusLabel = std::make_shared<UltraCanvasLabel>("ReplaceStatus", 0, 0, 470, 20);
         statusLabel->SetText("");
         statusLabel->SetFontSize(11);
         statusLabel->SetTextColor(Color(100, 100, 100));
         statusLabel->SetAlignment(TextAlignment::Left);
-        contentLayout->AddUIElement(statusLabel);
+        contentSection->AddChild(statusLabel);
 
-        mainLayout->AddUIElement(contentSection);
+        AddChild(contentSection);
 
         // ===== BUTTON SECTION =====
         // *** FIX: Use wider buttons for German/Russian translations ***
         const int buttonMinWidth = 120;  // Fits "Nächstes suchen", "Alle ersetzen", "Заменить все"
         const int buttonHeight = 28;
 
-        buttonSection = std::make_shared<UltraCanvasContainer>("ButtonSection", 4030, 0, 0, 490, 35);
-        auto buttonLayout = CreateHBoxLayout(buttonSection.get());
-        buttonLayout->SetSpacing(8);
+        buttonSection = std::make_shared<UltraCanvasContainer>("ButtonSection", 0, 0, 490, 35);
+        buttonSection->layout.SetFlexRow();
+        buttonSection->layout.SetFlexGap(8);
 
-        buttonLayout->AddStretch(1);
+        buttonSection->AddStretchSpacer(1);
 
-        findNextButton = std::make_shared<UltraCanvasButton>("FindNext", 4031, 0, 0, buttonMinWidth, buttonHeight);
+        findNextButton = std::make_shared<UltraCanvasButton>("FindNext", 0, 0, buttonMinWidth, buttonHeight);
         findNextButton->SetText("Find Next");
-        findNextButton->SetAutoResize(true);
         //findNextButton->SetMinWidth(buttonMinWidth);
 
-        replaceButton = std::make_shared<UltraCanvasButton>("Replace", 4032, 0, 0, buttonMinWidth, buttonHeight);
+        replaceButton = std::make_shared<UltraCanvasButton>("Replace", 0, 0, buttonMinWidth, buttonHeight);
         replaceButton->SetText("Replace");
-        replaceButton->SetAutoResize(true);
         //replaceButton->SetMinWidth(buttonMinWidth);
 
-        replaceAllButton = std::make_shared<UltraCanvasButton>("ReplaceAll", 4033, 0, 0, buttonMinWidth, buttonHeight);
+        replaceAllButton = std::make_shared<UltraCanvasButton>("ReplaceAll", 0, 0, buttonMinWidth, buttonHeight);
         replaceAllButton->SetText("Replace All");
-        replaceAllButton->SetAutoResize(true);
         //replaceAllButton->SetMinWidth(buttonMinWidth);
 
-        closeButton = std::make_shared<UltraCanvasButton>("CloseBtn", 4034, 0, 0, 80, buttonHeight);
+        closeButton = std::make_shared<UltraCanvasButton>("CloseBtn", 0, 0, 80, buttonHeight);
         closeButton->SetText("Close");
 
-        buttonLayout->AddUIElement(findNextButton);
-        buttonLayout->AddUIElement(replaceButton);
-        buttonLayout->AddUIElement(replaceAllButton);
-        buttonLayout->AddUIElement(closeButton);
+        buttonSection->AddChild(findNextButton);
+        buttonSection->AddChild(replaceButton);
+        buttonSection->AddChild(replaceAllButton);
+        buttonSection->AddChild(closeButton);
 
-        mainLayout->AddUIElement(buttonSection);
+        AddChild(buttonSection);
 
         // Create history dropdowns (hidden, positioned on demand)
-        findHistoryDropdown = std::make_shared<UltraCanvasDropdown>("FindHistoryDrop", 4050, 0, 0, 330, 24);
+        findHistoryDropdown = std::make_shared<UltraCanvasDropdown>("FindHistoryDrop", 0, 0, 330, 24);
         findHistoryDropdown->SetVisible(false);
         AddChild(findHistoryDropdown);
 
-        replaceHistoryDropdown = std::make_shared<UltraCanvasDropdown>("ReplaceHistoryDrop", 4051, 0, 0, 330, 24);
+        replaceHistoryDropdown = std::make_shared<UltraCanvasDropdown>("ReplaceHistoryDrop", 0, 0, 330, 24);
         replaceHistoryDropdown->SetVisible(false);
         AddChild(replaceHistoryDropdown);
     }
@@ -680,7 +677,8 @@ namespace UltraCanvas {
         config.width = 350;
         config.height = 140;
         config.resizable = false;
-        config.buttons = DialogButtons::NoButtons;
+        config.dialogType = DialogType::Custom;
+        //config.buttons = DialogButtons::NoButtons;
 
         CreateDialog(config);
         BuildLayout();
@@ -689,54 +687,54 @@ namespace UltraCanvas {
 
     void UltraCanvasGoToLineDialog::BuildLayout() {
         // Create main vertical layout
-        auto mainLayout = CreateVBoxLayout(this);
-        mainLayout->SetSpacing(12);
+        layout.SetFlexColumn();
+        layout.SetFlexGap(12);
         SetPadding(16);
 
         // ===== CONTENT SECTION =====
-        contentSection = std::make_shared<UltraCanvasContainer>("GoToLineContent", 5000, 0, 0, 300, 50);
-        auto contentLayout = CreateVBoxLayout(contentSection.get());
-        contentLayout->SetSpacing(8);
+        contentSection = std::make_shared<UltraCanvasContainer>("GoToLineContent", 0, 0, 300, 50);
+        contentSection->layout.SetFlexColumn();
+        contentSection->layout.SetFlexGap(8);
 
         // Line input row
-        auto lineRow = std::make_shared<UltraCanvasContainer>("LineRow", 5001, 0, 0, 300, 30);
-        auto lineRowLayout = CreateHBoxLayout(lineRow.get());
-        lineRowLayout->SetSpacing(8);
+        auto lineRow = std::make_shared<UltraCanvasContainer>("LineRow", 0, 0, 300, 30);
+        lineRow->layout.SetFlexRow();
+        lineRow->layout.SetFlexGap(8);
 
-        lineLabel = std::make_shared<UltraCanvasLabel>("LineLabel", 5002, 0, 0, 100, 25);
+        lineLabel = std::make_shared<UltraCanvasLabel>("LineLabel", 0, 0, 100, 25);
         lineLabel->SetText("Line number:");
         lineLabel->SetFontSize(11);
         // lineLabel->SetTextVerticalAlignment(TextVerticalAlignment::Middle);
 
-        lineInput = std::make_shared<UltraCanvasTextInput>("LineInput", 5003, 0, 0, 180, 25);
+        lineInput = std::make_shared<UltraCanvasTextInput>("LineInput", 0, 0, 180, 25);
         lineInput->SetInputType(TextInputType::Number);
         lineInput->SetPlaceholder("1");
         lineInput->SetText(std::to_string(lineNumber));
 
-        lineRowLayout->AddUIElement(lineLabel)->SetCrossAlignment(LayoutAlignment::Center);
-        lineRowLayout->AddUIElement(lineInput)->SetStretch(1);
+        lineRow->AddChild(lineLabel); lineLabel->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
+        lineRow->AddChild(lineInput); lineInput->layoutItem.SetFlexGrow(1);
 
-        contentLayout->AddUIElement(lineRow);
+        contentSection->AddChild(lineRow);
 
-        mainLayout->AddUIElement(contentSection);
+        AddChild(contentSection);
 
         // ===== BUTTON SECTION =====
-        buttonSection = std::make_shared<UltraCanvasContainer>("ButtonSection", 5010, 0, 0, 300, 35);
-        auto buttonLayout = CreateHBoxLayout(buttonSection.get());
-        buttonLayout->SetSpacing(10);
+        buttonSection = std::make_shared<UltraCanvasContainer>("ButtonSection", 0, 0, 300, 35);
+        buttonSection->layout.SetFlexRow();
+        buttonSection->layout.SetFlexGap(10);
 
-        buttonLayout->AddStretch(1);
+        buttonSection->AddStretchSpacer(1);
 
-        goButton = std::make_shared<UltraCanvasButton>("GoBtn", 5011, 0, 0, 80, 28);
+        goButton = std::make_shared<UltraCanvasButton>("GoBtn", 0, 0, 80, 28);
         goButton->SetText("Go");
 
-        cancelButton = std::make_shared<UltraCanvasButton>("CancelBtn", 5012, 0, 0, 80, 28);
+        cancelButton = std::make_shared<UltraCanvasButton>("CancelBtn", 0, 0, 80, 28);
         cancelButton->SetText("Cancel");
 
-        buttonLayout->AddUIElement(goButton);
-        buttonLayout->AddUIElement(cancelButton);
+        buttonSection->AddChild(goButton);
+        buttonSection->AddChild(cancelButton);
 
-        mainLayout->AddUIElement(buttonSection);
+        AddChild(buttonSection);
     }
 
     void UltraCanvasGoToLineDialog::WireCallbacks() {

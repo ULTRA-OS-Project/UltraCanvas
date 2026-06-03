@@ -1,15 +1,17 @@
 // Apps/DemoApp/UltraCanvasDomainTableDemo.cpp
 // Domain management table demonstration with embedded sparkline charts and interactive features
-// Version: 1.0.0
-// Last Modified: 2025-11-14
+// Version: 1.0.1
+// Last Modified: 2026-06-01
 // Author: UltraCanvas Framework
 
+#include "UltraCanvasContainer.h"
+#include "UltraCanvasSpacer.h"
+#include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasDemo.h"
 #include "Plugins/Charts/UltraCanvasSpecificChartElements.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
-#include "UltraCanvasBoxLayout.h"
 //#include "UltraCanvasModalDialog.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasMenu.h"
@@ -57,8 +59,8 @@ namespace UltraCanvas {
         std::function<void(const std::string&)> onDomainClick;
         std::function<void()> onUSAIDInfoClick;
 
-        DomainRowComponent(const std::string& identifier, long id, const DomainEntry& entry, int rowHeight)
-                : UltraCanvasContainer(identifier, id, 0, 0, 958, rowHeight),
+        DomainRowComponent(const std::string& identifier, const DomainEntry& entry, int rowHeight)
+                : UltraCanvasContainer(identifier, 0, 0, 958, rowHeight),
                   domainUrl(entry.domain),
                   isUSAIDDomain(entry.isUSAID) {
 
@@ -69,7 +71,7 @@ namespace UltraCanvas {
             int yOffset = 5;
 
             // Column 1: Domain (clickable link style)
-            domainLabel = std::make_shared<UltraCanvasLabel>(identifier + "_domain", id + 1,
+            domainLabel = std::make_shared<UltraCanvasLabel>(identifier + "_domain",
                                                              currentX, yOffset, 200, labelHeight);
             domainLabel->SetText(entry.domain);
             domainLabel->SetFontSize(11);
@@ -79,7 +81,7 @@ namespace UltraCanvas {
             currentX += 210;
 
             // Column 2: Status (with icon)
-            statusLabel = std::make_shared<UltraCanvasLabel>(identifier + "_status", id + 2,
+            statusLabel = std::make_shared<UltraCanvasLabel>(identifier + "_status",
                                                              currentX, yOffset, 100, labelHeight);
             statusLabel->SetText("✓ " + entry.status);
             statusLabel->SetFontSize(10);
@@ -89,7 +91,7 @@ namespace UltraCanvas {
             currentX += 110;
 
             // Column 3: Security Insights (button)
-            securityButton = std::make_shared<UltraCanvasButton>(identifier + "_security", id + 3,
+            securityButton = std::make_shared<UltraCanvasButton>(identifier + "_security",
                                                                  currentX, yOffset + 2, 80, labelHeight - 4);
             securityButton->SetText(entry.securityInsights);
             securityButton->SetFontSize(9);
@@ -102,7 +104,7 @@ namespace UltraCanvas {
 
             // Column 4: Traffic Sparkline Chart
             sparklineChart = std::make_shared<UltraCanvasLineChartElement>(
-                    identifier + "_sparkline", id + 4, currentX, yOffset, 180, labelHeight);
+                    identifier + "_sparkline", currentX, yOffset, 180, labelHeight);
 
             // Create chart data from visitor data
             auto chartData = std::make_shared<ChartDataVector>();
@@ -129,7 +131,7 @@ namespace UltraCanvas {
             currentX += 190;
 
             // Column 5: Visitor Count
-            visitorLabel = std::make_shared<UltraCanvasLabel>(identifier + "_visitors", id + 5,
+            visitorLabel = std::make_shared<UltraCanvasLabel>(identifier + "_visitors",
                                                               currentX, yOffset, 100, labelHeight);
             visitorLabel->SetText(entry.visitorCount);
             visitorLabel->SetFontSize(11);
@@ -140,7 +142,7 @@ namespace UltraCanvas {
             currentX += 110;
 
             // Column 6: Plan
-            planLabel = std::make_shared<UltraCanvasLabel>(identifier + "_plan", id + 6,
+            planLabel = std::make_shared<UltraCanvasLabel>(identifier + "_plan",
                                                            currentX, yOffset, 60, labelHeight);
             planLabel->SetText(entry.plan);
             planLabel->SetFontSize(10);
@@ -150,7 +152,7 @@ namespace UltraCanvas {
             currentX += 70;
 
             // Column 7: More Options (three dots button)
-            moreButton = std::make_shared<UltraCanvasButton>(identifier + "_more", id + 7,
+            moreButton = std::make_shared<UltraCanvasButton>(identifier + "_more",
                                                              currentX, yOffset + 2, 30, labelHeight - 4);
             moreButton->SetText("⋮");
             moreButton->SetFontSize(14);
@@ -160,7 +162,6 @@ namespace UltraCanvas {
 
             itemMenu = std::make_shared<UltraCanvasMenu>(
                     "ItemMenu",
-                    130,
                     0, 0, 150, 0
             );
             itemMenu->SetMenuType(MenuType::PopupMenu);
@@ -266,13 +267,13 @@ namespace UltraCanvas {
 //
 //        void CreateCustomContent() {
 //            // USAID Logo Image (top of dialog)
-//            usaidImage = std::make_shared<UltraCanvasImageElement>("USAIDImage", 9001, 150, 50, 250, 150);
+//            usaidImage = std::make_shared<UltraCanvasImageElement>("USAIDImage", 150, 50, 250, 150);
 //            usaidImage->SetScaleMode(ImageScaleMode::Uniform);
 //            usaidImage->LoadFromFile("/mnt/user-data/uploads/usaid.png");
 //            AddChild(usaidImage);
 //
 //            // Information Text
-//            infoText = std::make_shared<UltraCanvasLabel>("USAIDInfo", 9002, 30, 220, 490, 140);
+//            infoText = std::make_shared<UltraCanvasLabel>("USAIDInfo", 30, 220, 490, 140);
 //            infoText->SetText(
 //                    "USAID was closed by Elon Musk and Donald Trump under the \"America First\" agenda.\n\n"
 //                    "The United States Agency for International Development (USAID) was a former agency of the "
@@ -289,7 +290,7 @@ namespace UltraCanvas {
 //            AddChild(infoText);
 //
 //            // More Info Button
-//            moreInfoButton = std::make_shared<UltraCanvasButton>("MoreInfoBtn", 9003, 150, 380, 120, 35);
+//            moreInfoButton = std::make_shared<UltraCanvasButton>("MoreInfoBtn", 150, 380, 120, 35);
 //            moreInfoButton->SetText("More infos");
 //            moreInfoButton->SetFontSize(12);
 //            moreInfoButton->SetBackgroundColor(Color(0, 102, 204, 255));
@@ -306,7 +307,7 @@ namespace UltraCanvas {
 //            AddChild(moreInfoButton);
 //
 //            // Close Button
-//            closeButton = std::make_shared<UltraCanvasButton>("CloseBtn", 9004, 280, 380, 120, 35);
+//            closeButton = std::make_shared<UltraCanvasButton>("CloseBtn", 280, 380, 120, 35);
 //            closeButton->SetText("Close");
 //            closeButton->SetFontSize(12);
 //            closeButton->SetBackgroundColor(Color(150, 150, 150, 255));
@@ -338,11 +339,11 @@ namespace UltraCanvas {
 
 // ===== CREATE DOMAIN TABLE DEMO =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDomainTableDemo() {
-        auto mainContainer = std::make_shared<UltraCanvasContainer>("DomainTableDemo", 8000, 0, 0, 1000, 800);
+        auto mainContainer = std::make_shared<UltraCanvasContainer>("DomainTableDemo", 0, 0, 1000, 800);
         mainContainer->SetBackgroundColor(Color(245, 245, 245, 255));
 
         // Title
-        auto titleLabel = std::make_shared<UltraCanvasLabel>("DomainTableTitle", 8001, 20, 10, 960, 40);
+        auto titleLabel = std::make_shared<UltraCanvasLabel>("DomainTableTitle", 20, 10, 960, 40);
         titleLabel->SetText("Domain Management Dashboard - Interactive Table with Sparkline Charts");
         titleLabel->SetFontSize(18);
         titleLabel->SetFontWeight(FontWeight::Bold);
@@ -353,7 +354,7 @@ namespace UltraCanvas {
         mainContainer->AddChild(titleLabel);
 
         // Description
-        auto descLabel = std::make_shared<UltraCanvasLabel>("DomainTableDesc", 8002, 20, 60, 960, 35);
+        auto descLabel = std::make_shared<UltraCanvasLabel>("DomainTableDesc", 20, 60, 960, 35);
         descLabel->SetText("Click on domain names to visit websites.");
         descLabel->SetFontSize(11);
 //        descLabel->SetTextColor(Color(80, 80, 80, 255));
@@ -362,22 +363,23 @@ namespace UltraCanvas {
         mainContainer->AddChild(descLabel);
 
         // Column Headers Container
-        auto headerContainer = std::make_shared<UltraCanvasContainer>("HeaderContainer", 8003, 20, 105, 960, 35);
+        auto headerContainer = std::make_shared<UltraCanvasContainer>("HeaderContainer", 20, 105, 960, 35);
         headerContainer->SetBackgroundColor(Color(230, 230, 230, 255));
         headerContainer->SetBorders(1.0f);
         headerContainer->SetPadding(0, 10);
-        auto headerContainerLayout = CreateHBoxLayout(headerContainer.get());
-        headerContainerLayout->SetSpacing(10);
+        headerContainer->layout.SetFlexRow();
+        headerContainer->layout.SetFlexGap(10);
 
         int headerX = 10;
-        auto createHeader = [&](const std::string& text, int width, long id) {
+        auto createHeader = [&](const std::string& text, int width) {
             auto header = std::make_shared<UltraCanvasLabel>("Header_" + text, id, headerX, 7, width, 18);
             header->SetText(text);
             header->SetFontSize(10);
             header->SetFontWeight(FontWeight::Bold);
             header->SetTextColor(Color(40, 40, 40, 255));
             header->SetAlignment(width > 100 ? TextAlignment::Left : TextAlignment::Center);
-            headerContainerLayout->AddUIElement(header)->SetCrossAlignment(LayoutAlignment::Center);
+            headerContainer->AddChild(header);
+            header->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
             headerX += width + 10;
         };
 
@@ -387,9 +389,9 @@ namespace UltraCanvas {
         createHeader("Status", 100, 8011);
         createHeader("Security insights", 180, 8012);
         createHeader("Unique visitors", 180, 8013);
-        headerContainerLayout->AddSpacing(2);
+        headerContainer->AddSpacer(2);
         createHeader("Plan", 60, 8015);
-        headerContainerLayout->AddSpacing(30);
+        headerContainer->AddSpacer(30);
 
         mainContainer->AddChild(headerContainer);
 
@@ -420,7 +422,7 @@ namespace UltraCanvas {
         };
 
         // Rows Container (scrollable area)
-        auto rowsContainer = std::make_shared<UltraCanvasContainer>("RowsContainer", 8004, 20, 140, 960, 540);
+        auto rowsContainer = std::make_shared<UltraCanvasContainer>("RowsContainer", 20, 140, 960, 540);
         rowsContainer->SetBackgroundColor(Color(255, 255, 255, 255));
         rowsContainer->SetBorderLeft(1.0f);
         rowsContainer->SetBorderRight(1.0f);
@@ -471,7 +473,7 @@ namespace UltraCanvas {
         mainContainer->AddChild(rowsContainer);
 
         // Footer with info
-        auto footerLabel = std::make_shared<UltraCanvasLabel>("FooterInfo", 8005, 20, 690, 960, 30);
+        auto footerLabel = std::make_shared<UltraCanvasLabel>("FooterInfo", 20, 690, 960, 30);
         footerLabel->SetText("✨ Demonstration of UltraCanvas table templates with embedded charts, clickable links, and interactive dialogs");
         footerLabel->SetFontSize(10);
         footerLabel->SetTextColor(Color(100, 100, 100, 255));

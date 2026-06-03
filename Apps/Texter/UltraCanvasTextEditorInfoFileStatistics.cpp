@@ -1,4 +1,12 @@
+// Apps/Texter/UltraCanvasTextEditorInfoFileStatistics.cpp
+// File statistics dialog for the text editor.
+// Version: 1.1.0
+// Last Modified: 2026-06-01
+// Author: UltraCanvas Framework
 
+#include "UltraCanvasContainer.h"
+#include "UltraCanvasSpacer.h"
+#include "CSSLayout/CSSLayout.h"
 #include <filesystem>
 #include <chrono>
 #include <ctime>
@@ -190,8 +198,8 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
 
     fileStatsDialog = UltraCanvasDialogManager::CreateDialog(dlgConfig);
 
-    auto mainLayout = CreateVBoxLayout(fileStatsDialog.get());
-    mainLayout->SetSpacing(6);
+    fileStatsDialog->layout.SetFlexColumn();
+    fileStatsDialog->layout.SetFlexGap(6);
     fileStatsDialog->SetPadding(20);
 
     // Title
@@ -200,16 +208,18 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
     titleLabel->SetFontWeight(FontWeight::Bold);
     titleLabel->SetAlignment(TextAlignment::Left);
     titleLabel->SetMargin(0, 0, 12, 0);
-    mainLayout->AddUIElement(titleLabel)->SetWidthMode(SizeMode::Fill);
+    fileStatsDialog->AddChild(titleLabel); titleLabel->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     // Grid container for label:value pairs
     auto gridContainer = std::make_shared<UltraCanvasContainer>(
-            "StatsGrid", 501, 0, 0, 440, 260);
+            "StatsGrid", 0, 0, 440, 260);
 
-    auto grid = CreateGridLayout(gridContainer.get(), 9, 2);
-    grid->SetSpacing(6);
-    grid->SetColumnDefinition(0, GridRowColumnDefinition::Fixed(120));
-    grid->SetColumnDefinition(1, GridRowColumnDefinition::Star(1));
+    gridContainer->layout.SetGrid();
+    CSSLayout::GridTrackSize colFixed; colFixed.kind = CSSLayout::GridTrackSizeKind::Fixed; colFixed.value = CSSLayout::Dimension::Px(120);
+    CSSLayout::GridTrackSize colStar;  colStar.kind  = CSSLayout::GridTrackSizeKind::Fr;    colStar.value  = CSSLayout::Dimension::Fr(1);
+    gridContainer->layout.SetGridColumns({colFixed, colStar});
+    gridContainer->layout.SetGridRows(std::vector<CSSLayout::GridTrackSize>(9));
+    gridContainer->layout.SetGridGap(6);
 
     // Helper lambda to add a row
     int row = 0;
@@ -217,7 +227,7 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
 
     auto addRow = [&](const std::string &labelText, const std::string &valueText) {
         auto label = std::make_shared<UltraCanvasLabel>(
-                "StatLabel" + std::to_string(row), labelId++, 0, 0, 120, 20);
+                "StatLabel" + std::to_string(row), 0, 0, 120, 20);
         label->SetText(labelText);
         label->SetFontSize(11);
         label->SetFontWeight(FontWeight::Bold);
@@ -226,16 +236,15 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
         label->SetMargin(0, 8, 0, 0);
 
         auto value = std::make_shared<UltraCanvasLabel>(
-                "StatValue" + std::to_string(row), labelId++, 0, 0, 300, 20);
+                "StatValue" + std::to_string(row), 0, 0, 300, 20);
         value->SetText(valueText);
         value->SetFontSize(11);
         value->SetTextColor(Color(30, 30, 30));
         value->SetAlignment(TextAlignment::Left);
         value->SetWrap(TextWrap::WrapWord);
-        value->SetAutoResize(true);
 
-        grid->AddUIElement(label, row, 0);
-        grid->AddUIElement(value, row, 1);
+        gridContainer->AddChild(label); label->layoutItem.SetGridRowColSimplified(row, 0);
+        gridContainer->AddChild(value); value->layoutItem.SetGridRowColSimplified(row, 1);
         row++;
     };
 
@@ -262,18 +271,18 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
         }
     }
 
-    mainLayout->AddUIElement(gridContainer)->SetWidthMode(SizeMode::Fill);
+    fileStatsDialog->AddChild(gridContainer); gridContainer->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     // Push OK button to the bottom
-    mainLayout->AddStretch(1);
+    fileStatsDialog->AddStretchSpacer(1);
 
     // OK button
-    auto okButton = std::make_shared<UltraCanvasButton>("StatsOK", 550, 0, 0, 80, 28);
+    auto okButton = std::make_shared<UltraCanvasButton>("StatsOK", 0, 0, 80, 28);
     okButton->SetText("OK");
     okButton->onClick = [this]() {
         fileStatsDialog->CloseDialog(DialogResult::OK);
     };
-    mainLayout->AddUIElement(okButton)->SetCrossAlignment(LayoutAlignment::Center);
+    fileStatsDialog->AddChild(okButton); okButton->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
 
     fileStatsDialog->onResult = [this](DialogResult) {
         fileStatsDialog.reset();

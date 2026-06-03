@@ -7,9 +7,9 @@
 #include "UltraCanvasTooltipManager.h"
 
 namespace UltraCanvas {
-    UltraCanvasSankeyDiagram::UltraCanvasSankeyDiagram(const std::string &id, long uid, long x, long y,
-                                                       long w, long h)
-            : UltraCanvasUIElement(id, uid, x, y, w, h) {
+    UltraCanvasSankeyDiagram::UltraCanvasSankeyDiagram(const std::string &id, float x, float y,
+                                                       float w, float h)
+            : UltraCanvasUIElement(id, x, y, w, h) {
         nodeWidth = 15.0f;  // Slightly thinner to give more space for labels
         nodePadding = 8.0f;
         linkCurvature = 0.5f;
@@ -140,8 +140,8 @@ namespace UltraCanvas {
         auto bounds = GetLocalBounds();
         file << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
         file << "<svg xmlns=\"http://www.w3.org/2000/svg\" ";
-        file << "width=\"" << bounds.width << "\" ";
-        file << "height=\"" << bounds.height << "\">\n";
+        file << "width=\"" << finalBounds.width << "\" ";
+        file << "height=\"" << finalBounds.height << "\">\n";
 
         // Write links
         for (const auto &link: links) {
@@ -235,7 +235,7 @@ namespace UltraCanvas {
         needsLayout = false;
     }
 
-    void UltraCanvasSankeyDiagram::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasSankeyDiagram::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         if (!IsVisible()) return;
 
         auto bounds = GetLocalBounds();
@@ -467,7 +467,7 @@ namespace UltraCanvas {
         }
 
         // Calculate horizontal spacing between columns
-        float availableWidth = bounds.width - nodeWidth - leftPadding - rightPadding;
+        float availableWidth = finalBounds.width - nodeWidth - leftPadding - rightPadding;
         float xStep = availableWidth / std::max(1, maxDepth);
 
         // Ensure minimum spacing between columns
@@ -484,11 +484,11 @@ namespace UltraCanvas {
         }
 
         // Use available height minus padding for nodes
-        float availableHeight = bounds.height - 2 * nodePadding;
+        float availableHeight = finalBounds.height - 2 * nodePadding;
 
         // Position nodes at each depth
         for (auto& [depth, nodeIds] : nodesByDepth) {
-            float x = bounds.x + leftPadding + depth * xStep;
+            float x = finalBounds.x + leftPadding + depth * xStep;
 
             // Calculate total value for this depth
             float totalValue = 0;
@@ -510,7 +510,7 @@ namespace UltraCanvas {
             float columnHeight = totalValue * scale + columnPadding;
 
             // Center the column vertically
-            float y = bounds.y + nodePadding + (availableHeight - columnHeight) / 2.0f;
+            float y = finalBounds.y + nodePadding + (availableHeight - columnHeight) / 2.0f;
 
             // Position each node in the column
             for (const auto& id : nodeIds) {
@@ -636,8 +636,8 @@ namespace UltraCanvas {
                     float newY = targetY / weightSum - node.height / 2.0f;
                     auto bounds = GetLocalBounds();
                     node.y = std::clamp(newY,
-                                        bounds.y + nodePadding,
-                                        bounds.y + bounds.height - node.height - nodePadding);
+                                        finalBounds.y + nodePadding,
+                                        finalBounds.y + finalBounds.height - node.height - nodePadding);
                 }
             }
 
@@ -682,8 +682,8 @@ namespace UltraCanvas {
                     float newY = targetY / weightSum - node.height / 2.0f;
                     auto bounds = GetLocalBounds();
                     node.y = std::clamp(newY,
-                                        bounds.y + nodePadding,
-                                        bounds.y + bounds.height - node.height - nodePadding);
+                                        finalBounds.y + nodePadding,
+                                        finalBounds.y + finalBounds.height - node.height - nodePadding);
                 }
             }
 
@@ -715,7 +715,7 @@ namespace UltraCanvas {
 
         // Ensure nodes stay within bounds
         auto bounds = GetLocalBounds();
-        float maxY = bounds.y + bounds.height - nodePadding;
+        float maxY = finalBounds.y + finalBounds.height - nodePadding;
 
         for (auto it = sortedIds.rbegin(); it != sortedIds.rend(); ++it) {
             auto& node = nodes[*it];
@@ -729,13 +729,13 @@ namespace UltraCanvas {
     void UltraCanvasSankeyDiagram::DrawNode(IRenderContext *ctx, const SankeyNode &node) {
         // Draw node rectangle
         ctx->SetFillPaint(node.color);
-        ctx->FillRectangle(Rect2Df(node.x, node.y, nodeWidth, node.height));
+        ctx->FillRectangle(Rect2Dd(node.x, node.y, nodeWidth, node.height));
 
         // Draw node border
         if (style.nodeStrokeWidth > 0) {
             ctx->SetStrokePaint(style.nodeStrokeColor);
             ctx->SetStrokeWidth(style.nodeStrokeWidth);
-            ctx->DrawRectangle(Rect2Df(node.x, node.y, nodeWidth, node.height));
+            ctx->DrawRectangle(Rect2Dd(node.x, node.y, nodeWidth, node.height));
         }
 
         // Draw label
@@ -824,8 +824,8 @@ namespace UltraCanvas {
                 nodeIt->second.y = mousePos.y - dragOffset.y;
                 auto bounds = GetLocalBounds();
                 nodeIt->second.y = std::clamp(nodeIt->second.y,
-                                              bounds.y + nodePadding,
-                                              bounds.y + bounds.height - nodeIt->second.height - nodePadding);
+                                              finalBounds.y + nodePadding,
+                                              finalBounds.y + finalBounds.height - nodeIt->second.height - nodePadding);
                 ComputeLinkBreadths();
                 RequestRedraw();
             }

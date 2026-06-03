@@ -32,6 +32,11 @@ namespace UltraCanvas {
         // ===== MODE =====
         SearchBarMode mode = SearchBarMode::Find;
 
+        // ===== ROWS (flex) =====
+        std::shared_ptr<UltraCanvasContainer>   findRow;        // flex row (search controls)
+        std::shared_ptr<UltraCanvasContainer>   findSpacer;     // flex-grow gap before close (✕)
+        std::shared_ptr<UltraCanvasContainer>   replaceSpacer;  // flex-grow gap on replace row
+
         // ===== FIND ROW COMPONENTS =====
         std::shared_ptr<UltraCanvasButton>       searchIconButton;
         std::shared_ptr<UltraCanvasTextInput>   searchInput;
@@ -69,7 +74,7 @@ namespace UltraCanvas {
         static constexpr int RowPadding    = 4;   // vertical inset per row
         static constexpr int HSpacing      = 4;
         static constexpr int IconBtnSize   = 28;
-        static constexpr int CountLabelW   = 72;
+        static constexpr int CountLabelW   = 110;
         static constexpr int ReplaceBtnW   = 110;
         static constexpr int MaxInputWidth  = 400;
         static constexpr int SearchIconW    = 28;
@@ -78,18 +83,18 @@ namespace UltraCanvas {
         void BuildFindRow(int y, int w);
         void BuildReplaceRow(int y, int w);
         void BuildSettingsMenu();
-        void UpdateLayout();
+        void UpdateSearchbarLayout();
         void WireCallbacks();
         void AddToHistory(std::vector<std::string>& history, const std::string& text);
         void ShowHistoryMenu(bool isReplace);
         int ComputeInputWidth() const;
 
     public:
-        UltraCanvasSearchBar(const std::string& id, long uid, int x, int y, int w);
+        UltraCanvasSearchBar(const std::string& id);
 
         // ===== SETUP =====
         void Initialize();
-        void SetBounds(const Rect2Di& bounds) override;
+        void SetBounds(const Rect2Df& bounds) override;
 
         // ===== MODE CONTROL =====
         void SetMode(SearchBarMode newMode);

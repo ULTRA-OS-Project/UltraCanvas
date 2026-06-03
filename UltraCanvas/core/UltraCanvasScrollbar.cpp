@@ -1,7 +1,7 @@
 // core/UltraCanvasScrollbar.cpp
 // Platform-independent scrollbar component implementation
-// Version: 1.0.0
-// Last Modified: 2025-08-15
+// Version: 1.1.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasScrollbar.h"
@@ -14,9 +14,9 @@ namespace UltraCanvas {
 // This file is intentionally minimal since most implementation
 // is in the header file using inline methods for better performance.
 // Additional platform-specific optimizations can be added here if needed.
-    UltraCanvasScrollbar::UltraCanvasScrollbar(const std::string& id, long uid, int x, int y, int w, int h,
+    UltraCanvasScrollbar::UltraCanvasScrollbar(const std::string& id, float x, float y, float w, float h,
                          ScrollbarOrientation orient)
-            : UltraCanvasUIElement(id, uid, x, y, w, h)
+            : UltraCanvasUIElement(id, x, y, w, h)
             , orientation(orient) {
         mouseCursor = (orient == ScrollbarOrientation::Vertical)
                   ? UCMouseCursor::SizeNS
@@ -56,8 +56,8 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
-    void UltraCanvasScrollbar::SetBounds(const Rect2Di& b) {
-        if (b != bounds) {
+    void UltraCanvasScrollbar::SetBounds(const Rect2Df& b) {
+        if (b != GetBounds()) {
             UltraCanvasUIElement::SetBounds(b);
             layoutDirty = true;
             RequestRedraw();
@@ -86,7 +86,7 @@ namespace UltraCanvas {
         return false;
     }
 
-    void UltraCanvasScrollbar::Render(IRenderContext *ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasScrollbar::Render(IRenderContext *ctx, const Rect2Df& dirtyRect) {
         if (!ctx || !ShouldBeVisible()) return;
 
         if (layoutDirty) {
@@ -153,12 +153,12 @@ namespace UltraCanvas {
     void UltraCanvasScrollbar::UpdateVerticalLayout(const Rect2Di &bounds) {
         if (style.arrowButtonSize > 0) {
             // With arrow buttons
-            upArrowRect = Rect2Di(bounds.x, bounds.y,
-                                  bounds.width, style.arrowButtonSize);
-            downArrowRect = Rect2Di(bounds.x, bounds.y + bounds.height - style.arrowButtonSize,
-                                    bounds.width, style.arrowButtonSize);
-            trackRect = Rect2Di(bounds.x, bounds.y + style.arrowButtonSize,
-                                bounds.width, bounds.height - 2 * style.arrowButtonSize);
+            upArrowRect = Rect2Di(finalBounds.x, finalBounds.y,
+                                  finalBounds.width, style.arrowButtonSize);
+            downArrowRect = Rect2Di(finalBounds.x, finalBounds.y + finalBounds.height - style.arrowButtonSize,
+                                    finalBounds.width, style.arrowButtonSize);
+            trackRect = Rect2Di(finalBounds.x, finalBounds.y + style.arrowButtonSize,
+                                finalBounds.width, finalBounds.height - 2 * style.arrowButtonSize);
         } else {
             // No arrow buttons
             trackRect = bounds;
@@ -170,12 +170,12 @@ namespace UltraCanvas {
     void UltraCanvasScrollbar::UpdateHorizontalLayout(const Rect2Di &bounds) {
         if (style.arrowButtonSize > 0) {
             // With arrow buttons
-            upArrowRect = Rect2Di(bounds.x, bounds.y,
-                                  style.arrowButtonSize, bounds.height);
-            downArrowRect = Rect2Di(bounds.x + bounds.width - style.arrowButtonSize, bounds.y,
-                                    style.arrowButtonSize, bounds.height);
-            trackRect = Rect2Di(bounds.x + style.arrowButtonSize, bounds.y,
-                                bounds.width - 2 * style.arrowButtonSize, bounds.height);
+            upArrowRect = Rect2Di(finalBounds.x, finalBounds.y,
+                                  style.arrowButtonSize, finalBounds.height);
+            downArrowRect = Rect2Di(finalBounds.x + finalBounds.width - style.arrowButtonSize, finalBounds.y,
+                                    style.arrowButtonSize, finalBounds.height);
+            trackRect = Rect2Di(finalBounds.x + style.arrowButtonSize, finalBounds.y,
+                                finalBounds.width - 2 * style.arrowButtonSize, finalBounds.height);
         } else {
             // No arrow buttons
             trackRect = bounds;
@@ -257,30 +257,30 @@ namespace UltraCanvas {
         if (IsVertical()) {
             if (isUpOrLeft) {
                 // Up arrow
-                ctx->DrawLine(Point2Df(cx - arrowSize, cy + arrowSize / 2),
-                              Point2Df(cx, cy - arrowSize / 2));
-                ctx->DrawLine(Point2Df(cx, cy - arrowSize / 2),
-                              Point2Df(cx + arrowSize, cy + arrowSize / 2));
+                ctx->DrawLine(Point2Dd(cx - arrowSize, cy + arrowSize / 2),
+                              Point2Dd(cx, cy - arrowSize / 2));
+                ctx->DrawLine(Point2Dd(cx, cy - arrowSize / 2),
+                              Point2Dd(cx + arrowSize, cy + arrowSize / 2));
             } else {
                 // Down arrow
-                ctx->DrawLine(Point2Df(cx - arrowSize, cy - arrowSize / 2),
-                              Point2Df(cx, cy + arrowSize / 2));
-                ctx->DrawLine(Point2Df(cx, cy + arrowSize / 2),
-                              Point2Df(cx + arrowSize, cy - arrowSize / 2));
+                ctx->DrawLine(Point2Dd(cx - arrowSize, cy - arrowSize / 2),
+                              Point2Dd(cx, cy + arrowSize / 2));
+                ctx->DrawLine(Point2Dd(cx, cy + arrowSize / 2),
+                              Point2Dd(cx + arrowSize, cy - arrowSize / 2));
             }
         } else {
             if (isUpOrLeft) {
                 // Left arrow
-                ctx->DrawLine(Point2Df(cx + arrowSize / 2, cy - arrowSize),
-                              Point2Df(cx - arrowSize / 2, cy));
-                ctx->DrawLine(Point2Df(cx - arrowSize / 2, cy),
-                              Point2Df(cx + arrowSize / 2, cy + arrowSize));
+                ctx->DrawLine(Point2Dd(cx + arrowSize / 2, cy - arrowSize),
+                              Point2Dd(cx - arrowSize / 2, cy));
+                ctx->DrawLine(Point2Dd(cx - arrowSize / 2, cy),
+                              Point2Dd(cx + arrowSize / 2, cy + arrowSize));
             } else {
                 // Right arrow
-                ctx->DrawLine(Point2Df(cx - arrowSize / 2, cy - arrowSize),
-                              Point2Df(cx + arrowSize / 2, cy));
-                ctx->DrawLine(Point2Df(cx + arrowSize / 2, cy),
-                              Point2Df(cx - arrowSize / 2, cy + arrowSize));
+                ctx->DrawLine(Point2Dd(cx - arrowSize / 2, cy - arrowSize),
+                              Point2Dd(cx + arrowSize / 2, cy));
+                ctx->DrawLine(Point2Dd(cx + arrowSize / 2, cy),
+                              Point2Dd(cx - arrowSize / 2, cy + arrowSize));
             }
         }
     }

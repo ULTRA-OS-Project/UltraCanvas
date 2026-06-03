@@ -1,7 +1,7 @@
 // include/UltraCanvasImage.h
 // Base interface for cross-platform image handling in UltraCanvas
-// Version: 1.0.0
-// Last Modified: 2025-10-24
+// Version: 1.1.0
+// Last Modified: 2026-05-11
 // Author: UltraCanvas Framework
 #pragma once
 #ifndef ULTRACANVASIMAGE_H
@@ -44,7 +44,40 @@ namespace UltraCanvas {
         SVG,
         BMP,
         QOI,
-        ICO
+        ICO,
+        // ===== Phase 1 additions (load-side) =====
+        // Raster formats with native libvips or magicksave dispatch
+        TGA,
+        PCX,
+        PNM,
+        PGM,
+        PBM,
+        PFM,
+        HDR,        // Radiance HDR
+        EXR,        // OpenEXR
+        DPX,        // SMPTE DPX
+        CIN,        // Cineon
+        FITS,       // Flexible Image Transport System
+        PSD,        // Photoshop
+        SGI,
+        FARBFELD,
+        // Other raster (LOAD only — extension mapping for auto-detect)
+        DDS,
+        FAX,
+        FLIF,
+        JBIG,
+        JNG,
+        JXR,
+        MNG,
+        XPM,
+        XBM,
+        CUR,
+        // Camera RAW (LOAD only)
+        ARW, CR2, CRW, DCR, DNG, MRW, NEF, NRW, ORF, PEF, RAF, RW2, SR2, SRF, X3F,
+        // Medical (LOAD only)
+        DCM,
+        // Vector / docs (LOAD only)
+        AI, DJVU, DOT, EMF, WMF, HPGL, CUT, MAT
     };
 
     enum UCImageSaveFormat {
@@ -61,7 +94,21 @@ namespace UltraCanvas {
         AVIF,
         BMP,
         QOI,
-        ICO
+        ICO,
+        // ===== Phase 1 additions (save-side) =====
+        TGA,
+        PCX,
+        PGM,
+        PBM,
+        PFM,
+        HDR,        // Radiance HDR (radsave)
+        EXR,        // OpenEXR via magicksave
+        DPX,        // via magicksave
+        CIN,        // via magicksave
+        FITS,       // fitssave
+        PSD,        // via magicksave
+        SGI,        // via magicksave
+        FARBFELD    // via magicksave
     };
 
     namespace UCImageSave {
@@ -187,11 +234,47 @@ namespace UltraCanvas {
 //            bool preserveExif = true;
         };
 
-//        struct ExrExportOptions {
-//            enum class Compression { None, RLE, ZIP, PIZ };
-//            Compression compression = Compression::ZIP;
-//            ColorDepth colorDepth = ColorDepth::RGBA_32bit;
-//        };
+        // ===== Phase 1 additions =====
+        struct PcxExportOptions {
+            bool rleCompression = true;
+        };
+
+        struct PnmExportOptions {
+            bool binary = true;     // false → ASCII PNM
+        };
+
+        struct HdrExportOptions {
+            // Radiance HDR is uncompressed float — no user knobs
+        };
+
+        struct ExrExportOptions {
+            enum class Compression { NoCompression, RLE, ZIP, PIZ, PXR24, B44 };
+            Compression compression = Compression::ZIP;
+        };
+
+        struct DpxExportOptions {
+            int bitDepth = 10;      // 8, 10, 12, or 16
+        };
+
+        struct CinExportOptions {
+            int bitDepth = 10;
+        };
+
+        struct FitsExportOptions {
+            // No user-tunable knobs
+        };
+
+        struct PsdExportOptions {
+            bool compressed = true; // RLE compression on PSD layers
+        };
+
+        struct SgiExportOptions {
+            bool rleCompression = false;
+        };
+
+        struct FarbfeldExportOptions {
+            // No knobs
+        };
 // ============================================================================
 // UNIFIED IMAGE EXPORT OPTIONS
 // ============================================================================
@@ -217,7 +300,17 @@ namespace UltraCanvas {
             QoiExportOptions qoi;
             Jpeg2000ExportOptions jpeg2000;
             JxlExportOptions jxl;
-//            ExrExportOptions exr;
+            // ===== Phase 1 additions =====
+            PcxExportOptions pcx;
+            PnmExportOptions pnm;
+            HdrExportOptions hdr;
+            ExrExportOptions exr;
+            DpxExportOptions dpx;
+            CinExportOptions cin;
+            FitsExportOptions fits;
+            PsdExportOptions psd;
+            SgiExportOptions sgi;
+            FarbfeldExportOptions farbfeld;
         };
     };
 };

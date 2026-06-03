@@ -1,16 +1,26 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
-// Version: 1.1.1
-// Last Modified: 2026-05-01
+// Version: 1.4.2 - PANGO_BACKEND=fontconfig env so MSYS2 Pango uses FC instead of Win32 backend
+// Last Modified: 2026-05-10
 // Author: UltraCanvas Framework
 
 #include <algorithm>
 #include <iostream>
+#include <fstream>
+#include <sstream>
 #include <filesystem>
+#include <cstdlib>
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasTooltipManager.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasConfig.h"
+#include "UltraCanvasUtils.h"
+#include "UltraCanvasDebug.h"
+
+#if !defined(__APPLE__)
+#include <fontconfig/fontconfig.h>
+#endif
 
 #if defined(__linux__) || defined(__unix__)
 #include <unistd.h>
@@ -26,34 +36,35 @@
 
 namespace UltraCanvas {
 
+    const char* const kEmbeddedAllFonts[] = {
+        "Ubuntu-R.ttf", "Ubuntu-B.ttf",
+        "Ubuntu-RI.ttf", "Ubuntu-BI.ttf",
+        "Ubuntu-C.ttf", "Ubuntu-L.ttf",
+        "Ubuntu-M.ttf", "Ubuntu-LI.ttf",
+        "Ubuntu-MI.ttf", "Ubuntu-Th.ttf",
+        "UbuntuMono-R.ttf", "UbuntuMono-B.ttf",
+        "UbuntuMono-RI.ttf", "UbuntuMono-BI.ttf",
+        "OpenSans-Bold.ttf", "OpenSans-BoldItalic.ttf",
+//        "OpenSans-Italic.ttf", "OpenSans-Regular.ttf",
+//        "OpenSans-Bold.ttf", "OpenSans-BoldItalic.ttf",
+//        "OpenSans-CondBold.ttf", "OpenSans-CondLight.ttf",
+//        "OpenSans-CondLightItalic.ttf", "OpenSans-ExtraBold.ttf",
+//        "OpenSans-Light.ttf", "OpenSans-LightItalic.ttf",
+//        "OpenSans-Semibold.ttf", "OpenSans-SemiboldItalic.ttf",
+    };
+    const size_t kEmbeddedAllFontsCount = sizeof(kEmbeddedAllFonts) / sizeof(kEmbeddedAllFonts[0]);
 
-//    void UltraCanvasApplicationBase::MoveWindowEventFilters(UltraCanvasWindowBase* winFrom, UltraCanvasUIElement* elem) {
-//        if (!elem) return;
-//
-//        std::vector<UCEventType> interestedEvents;
-//        if (winFrom) {
-//            if (!winFrom->eventFilters.empty()) {
-//                for(auto &ef : winFrom->eventFilters) {
-//                    auto &elems = ef.second;
-//                    if (elems.find(elem) != elems.end()) {
-//                        interestedEvents.push_back(ef.first);
-//                        elems.erase(elem);
-//                    }
-//                }
-//            }
-//        } else {
-//            if (!pendingUnassignedEventFilters.empty()) {
-//                auto found = pendingUnassignedEventFilters.find(elem);
-//                if (found != pendingUnassignedEventFilters.end()) {
-//                    interestedEvents = found->second;
-//                    pendingUnassignedEventFilters.erase(elem);
-//                }
-//            }
-//        }
-//        if (!interestedEvents.empty()) {
-//            UltraCanvasApplicationBase::InstallWindowEventFilter(elem, interestedEvents);
-//        }
-//    }
+    const char* const kEmbeddedMonoFonts[] = {
+            "UbuntuMono-R.ttf", "UbuntuMono-B.ttf",
+            "UbuntuMono-RI.ttf", "UbuntuMono-BI.ttf",
+    };
+    const size_t kEmbeddedMonoFontsCount = sizeof(kEmbeddedMonoFonts) / sizeof(kEmbeddedMonoFonts[0]);
+
+    std::string GetBundledFontsDir() {
+        std::string p = NormalizePath(GetResourcesDir() + "media/fonts/");
+        return p;
+    }
+
 
     FontStyle UltraCanvasApplicationBase::GetSystemFontStyle() {
         if (!cachedSystemFontStyle_.has_value()) {
@@ -75,12 +86,17 @@ namespace UltraCanvas {
         UCImage::InitializeImageSubsysterm(appName.c_str());
 
         if (InitializeNative()) {
+            // Register bundled DejaVu fonts before any text rendering / default
+            // detection runs, so platform Detect*FontStyleNative() can return
+            // the just-registered families.
+            LoadBundledFontsNative();
+
             if (!InitializeClipboard()) {
                 debugOutput << "UltraCanvas: Failed to initialize clipboard" << std::endl;
             }
 
             // Auto-set default window icon if available
-            std::string iconPath = NormalizePath(GetResourcesDir() + UC_DEFAULT_ICON_SUBPATH);
+            std::string iconPath = GetDefaultIcon();
             if (std::filesystem::exists(iconPath)) {
                 SetDefaultWindowIcon(iconPath);
                 debugOutput << "UltraCanvas: Default window icon set to: " << iconPath << std::endl;
@@ -145,20 +161,6 @@ namespace UltraCanvas {
 //                    debugOutput << "window w=" << window << " nativeh=" << window->GetNativeHandle() << " visible=" << window->IsVisible() << " needredraw=" << window->IsNeedsRedraw() << " ctx=" << window->GetRenderContext() << std::endl;
                     if (window->IsVisible()) {
                         window->UpdateAndRender();
-//                        auto ctx = window->GetRenderContext();
-//                        if (window->IsNeedsResize()) {
-//                            window->DoResize();
-//                        }
-//                        if (ctx) {
-//                            if (window->IsNeedsUpdateGeometry() || window->IsNeedsRedraw()) {
-//                                window->UpdateGeometry(ctx);
-//                            }
-//                            if (window->IsNeedsRedraw()) {
-////                                debugOutput << "Redraw window w=" << window << " nativeh=" << window->GetNativeHandle() << std::endl;
-//                                window->Render(ctx);
-//                                window->Flush();
-//                            }
-//                        }
                     }
 
                 }
@@ -323,6 +325,22 @@ namespace UltraCanvas {
             draggedElement = nullptr;
         }
         debugOutput << "UltraCanvas: window found and unregistered successfully" << std::endl;
+    }
+
+    void UltraCanvasApplicationBase::CleanupElementReferences(UltraCanvasUIElement* elem) {
+        if (capturedElement == elem) {
+            ReleaseMouse(elem);
+        }
+        if (hoveredElement == elem) {
+            hoveredElement = nullptr;
+        }
+        if (draggedElement == elem) {
+            draggedElement = nullptr;
+        }
+        auto win = elem->GetWindow();
+        if (win && win->IsCreated() && win->GetState() != WindowState::Closing &&  win->GetState() != WindowState::Closed && win->GetFocusedElement() == elem) {
+            win->SetFocusedElement(nullptr);
+        }
     }
 
     // ===== MODAL WINDOW MANAGEMENT =====

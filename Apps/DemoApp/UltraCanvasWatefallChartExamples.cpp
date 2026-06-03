@@ -21,12 +21,12 @@ namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateWaterfallChartExamples() {
         // Main container
         auto container = std::make_shared<UltraCanvasContainer>(
-                "WaterfallChartDemo", 3000, 0, 0, 1000, 780
+                "WaterfallChartDemo", 0, 0, 1000, 780
         );
 
         // Title label
         auto titleLabel = std::make_shared<UltraCanvasLabel>(
-                "WaterfallTitle", 3001, 20, 10, 960, 30
+                "WaterfallTitle", 20, 10, 960, 30
         );
         titleLabel->SetText("Waterfall Chart Examples");
         titleLabel->SetFontSize(16);
@@ -48,7 +48,7 @@ namespace UltraCanvas {
         revenueData->AddWaterfallPoint("Total", 0.0, true, false);
 
         auto revenueChart = CreateWaterfallChartWithData(
-                "revenue_chart", 3010, 10, 50, 500, 300,
+                "revenue_chart", 10, 50, 500, 300,
                 revenueData, "Revenue Flow ($K)"
         );
 
@@ -80,7 +80,7 @@ namespace UltraCanvas {
         cashFlowData->AddWaterfallPoint("Final", 0.0, false, true);
 
         auto cashFlowChart = CreateWaterfallChartWithData(
-                "cashflow_chart", 3020, 480, 50, 540, 300,
+                "cashflow_chart", 480, 50, 540, 300,
                 cashFlowData, "Cash Flow ($K)"
         );
 
@@ -111,7 +111,7 @@ namespace UltraCanvas {
         performanceData->AddWaterfallPoint("Final", 0.0, false, true);
 
         auto performanceChart = CreateWaterfallChartWithData(
-                "performance_chart", 3030, 10, 340, 520, 300,
+                "performance_chart", 10, 340, 520, 300,
                 performanceData, "Performance Impact"
         );
 
@@ -134,7 +134,7 @@ namespace UltraCanvas {
 
         // Style toggle button
         auto btnToggleStyle = std::make_shared<UltraCanvasButton>(
-                "btnToggleStyle", 3040, 520, 380, 200, 40
+                "btnToggleStyle", 520, 380, 200, 40
         );
         btnToggleStyle->SetText("Toggle Bar Style");
 
@@ -158,7 +158,7 @@ namespace UltraCanvas {
 
         // Random data button
         auto btnRandomData = std::make_shared<UltraCanvasButton>(
-                "btnRandomData", 3041, 520, 430, 200, 40
+                "btnRandomData", 520, 430, 200, 40
         );
         btnRandomData->SetText("Generate Random Data");
 
@@ -183,7 +183,7 @@ namespace UltraCanvas {
 
         // Info label
         auto infoLabel = std::make_shared<UltraCanvasLabel>(
-                "WaterfallInfo", 3050, 520, 490, 460, 190
+                "WaterfallInfo", 520, 490, 460, 190
         );
         infoLabel->SetText(
                 "Waterfall Chart Features:\n\n"

@@ -1,7 +1,7 @@
 // include/UltraCanvasPasswordRuleLegend.h
 // Interactive password requirements checklist component
-// Version: 1.0.0
-// Last Modified: 2025-10-21
+// Version: 1.1.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -76,7 +76,13 @@ namespace UltraCanvas {
 
     public:
         // ===== CONSTRUCTOR =====
-        UltraCanvasPasswordRuleLegend(const std::string& id, long uid, int x, int y, int w, int h);
+        UltraCanvasPasswordRuleLegend(const std::string& id, float x, float y, float w, float h);
+
+        UltraCanvasPasswordRuleLegend(const std::string& id, float w, float h)
+            : UltraCanvasPasswordRuleLegend(id, -1, -1, w, h) {}
+
+        explicit UltraCanvasPasswordRuleLegend(const std::string& id)
+            : UltraCanvasPasswordRuleLegend(id, -1, -1, -1, -1) {}
 
         virtual ~UltraCanvasPasswordRuleLegend() = default;
 
@@ -126,7 +132,7 @@ namespace UltraCanvas {
 
     protected:
         // ===== CORE RENDERING =====
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
     private:
         // ===== RULES UPDATE =====
@@ -145,17 +151,17 @@ namespace UltraCanvas {
 
 // ===== FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasPasswordRuleLegend> CreatePasswordRuleLegend(
-            const std::string& id, long uid, int x, int y, int w, int h,
+            const std::string& id, float x, float y, float w, float h,
             LegendStyle style = LegendStyle::Checklist) {
 
-        auto legend = std::make_shared<UltraCanvasPasswordRuleLegend>(id, uid, x, y, w, h);
+        auto legend = std::make_shared<UltraCanvasPasswordRuleLegend>(id, x, y, w, h);
         legend->SetStyle(style);
         return legend;
     }
 
     inline std::shared_ptr<UltraCanvasPasswordRuleLegend> CreateChecklistLegend(
-            const std::string& id, long uid, int x, int y, int w, int h) {
-        return CreatePasswordRuleLegend(id, uid, x, y, w, h, LegendStyle::Checklist);
+            const std::string& id, float x, float y, float w, float h) {
+        return CreatePasswordRuleLegend(id, x, y, w, h, LegendStyle::Checklist);
     }
 
 } // namespace UltraCanvas

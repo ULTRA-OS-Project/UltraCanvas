@@ -24,7 +24,7 @@ namespace UltraCanvas {
     struct VectorRenderOptions {
         bool EnableAntialiasing = true;
         float CurveTolerance = 0.25f;
-        Rect2Df ViewportBounds;
+        Rect2Dd ViewportBounds;
         bool ClipToViewport = true;
         bool EnableCulling = true;
         bool RenderInvisibleElements = false;
@@ -84,19 +84,19 @@ namespace UltraCanvas {
         void ApplyStroke(const StrokeData& stroke);
         void ApplyTransform(const Matrix3x3& transform);
 
-        void SetupGradient(const GradientData& gradient, const Rect2Df& bounds);
-        void SetupLinearGradient(const LinearGradientData& grad, const Rect2Df& bounds);
-        void SetupRadialGradient(const RadialGradientData& grad, const Rect2Df& bounds);
+        void SetupGradient(const GradientData& gradient, const Rect2Dd& bounds);
+        void SetupLinearGradient(const LinearGradientData& grad, const Rect2Dd& bounds);
+        void SetupRadialGradient(const RadialGradientData& grad, const Rect2Dd& bounds);
 
         void BuildPath(const PathData& pathData);
         bool IsVisible(const VectorElement& element) const;
-        bool IsInViewport(const Rect2Df& bounds) const;
-        void RenderDebugBounds(const Rect2Df& bounds);
+        bool IsInViewport(const Rect2Dd& bounds) const;
+        void RenderDebugBounds(const Rect2Dd& bounds);
     };
 
 // Utility functions
-    bool HitTestElement(const VectorElement& element, const Point2Df& point);
-    std::vector<const VectorElement*> HitTestDocument(const VectorDocument& document, const Point2Df& point);
-    Rect2Df CalculateDocumentBounds(const VectorDocument& document);
+    bool HitTestElement(const VectorElement& element, const Point2Dd& point);
+    std::vector<const VectorElement*> HitTestDocument(const VectorDocument& document, const Point2Dd& point);
+    Rect2Dd CalculateDocumentBounds(const VectorDocument& document);
 
 } // namespace UltraCanvas

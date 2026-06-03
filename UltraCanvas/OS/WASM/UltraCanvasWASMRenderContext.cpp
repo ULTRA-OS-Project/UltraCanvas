@@ -397,7 +397,7 @@ void UltraCanvasWASMRenderContext::DrawLine(float x1, float y1, float x2, float 
     }, canvasId.c_str(), x1, y1, x2, y2);
 }
 
-void UltraCanvasWASMRenderContext::DrawRectangle(const Rect2Df& rect) {
+void UltraCanvasWASMRenderContext::DrawRectangle(const Rect2Dd& rect) {
     ApplyDrawingStyle();
 
     EM_ASM({

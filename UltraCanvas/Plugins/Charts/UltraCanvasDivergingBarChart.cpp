@@ -6,9 +6,9 @@
 #include "Plugins/Charts/UltraCanvasDivergingBarChart.h"
 
 namespace UltraCanvas {
-    UltraCanvasDivergingBarChart::UltraCanvasDivergingBarChart(const std::string &id, long uid, int x,
+    UltraCanvasDivergingBarChart::UltraCanvasDivergingBarChart(const std::string &id, int x,
                                                                             int y, int width, int height)
-            : UltraCanvasChartElementBase(id, uid, x, y, width, height) {
+            : UltraCanvasChartElementBase(id, x, y, width, height) {
         enableTooltips = true;
 
         // Initialize diverging data source
@@ -263,7 +263,7 @@ namespace UltraCanvas {
                     }
 
                     ctx->SetFillPaint(fillColor);
-                    ctx->FillRectangle(Rect2Df(x, y, barWidth, actualBarHeight));
+                    ctx->FillRectangle(Rect2Dd(x, y, barWidth, actualBarHeight));
 
                     negativeOffset += barWidth;
                 }
@@ -286,7 +286,7 @@ namespace UltraCanvas {
                     }
 
                     ctx->SetFillPaint(fillColor);
-                    ctx->FillRectangle(Rect2Df(x, y, barWidth, actualBarHeight));
+                    ctx->FillRectangle(Rect2Dd(x, y, barWidth, actualBarHeight));
 
                     positiveOffset += barWidth;
                 }
@@ -344,13 +344,13 @@ namespace UltraCanvas {
                     if (category.isPositive) {
                         barWidth = (value / totalPos) * availableWidth * animScale;
                         // Draw on right side
-                        ctx->FillRectangle(Rect2Df(rightOffset, y, barWidth, actualBarHeight));
+                        ctx->FillRectangle(Rect2Dd(rightOffset, y, barWidth, actualBarHeight));
                         rightOffset += barWidth;
                     } else {
                         barWidth = (value / totalNeg) * availableWidth * animScale;
                         // Draw on left side
                         leftOffset -= barWidth;
-                        ctx->FillRectangle(Rect2Df(leftOffset, y, barWidth, actualBarHeight));
+                        ctx->FillRectangle(Rect2Dd(leftOffset, y, barWidth, actualBarHeight));
                     }
                 }
             }
@@ -406,10 +406,10 @@ namespace UltraCanvas {
 
             if (netValue < 0) {
                 // Draw on left side
-                ctx->FillRectangle(Rect2Df(centerX - centerGap/2 - barWidth, y, barWidth, actualBarHeight));
+                ctx->FillRectangle(Rect2Dd(centerX - centerGap/2 - barWidth, y, barWidth, actualBarHeight));
             } else {
                 // Draw on right side
-                ctx->FillRectangle(Rect2Df(centerX + centerGap/2, y, barWidth, actualBarHeight));
+                ctx->FillRectangle(Rect2Dd(centerX + centerGap/2, y, barWidth, actualBarHeight));
             }
         }
     }
@@ -460,7 +460,7 @@ namespace UltraCanvas {
                 }
 
                 ctx->SetFillPaint(leftColor);
-                ctx->FillRectangle(Rect2Df(centerX - centerGap/2 - barWidth, y, barWidth, actualBarHeight));
+                ctx->FillRectangle(Rect2Dd(centerX - centerGap/2 - barWidth, y, barWidth, actualBarHeight));
             }
 
             // Right bar (positive values)
@@ -475,7 +475,7 @@ namespace UltraCanvas {
                 }
 
                 ctx->SetFillPaint(rightColor);
-                ctx->FillRectangle(Rect2Df(centerX + centerGap/2, y + actualBarHeight, barWidth, actualBarHeight));
+                ctx->FillRectangle(Rect2Dd(centerX + centerGap/2, y + actualBarHeight, barWidth, actualBarHeight));
             }
         }
     }

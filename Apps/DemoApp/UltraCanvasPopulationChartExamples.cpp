@@ -13,10 +13,10 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePopulationChartExamples() {
         // Create main container
-        auto container = std::make_shared<UltraCanvasContainer>("PopulationChartContainer", 5000, 0, 0, 1000, 780);
+        auto container = std::make_shared<UltraCanvasContainer>("PopulationChartContainer", 0, 0, 1000, 780);
 
         // Title Label
-        auto titleLabel = std::make_shared<UltraCanvasLabel>("TitleLabel", 5001, 20, 10, 960, 30);
+        auto titleLabel = std::make_shared<UltraCanvasLabel>("TitleLabel", 20, 10, 960, 30);
         titleLabel->SetText("Population Pyramid Charts - Germany vs Russia Comparison");
         titleLabel->SetFontSize(18);
         titleLabel->SetFontWeight(FontWeight::Bold);
@@ -24,7 +24,7 @@ namespace UltraCanvas {
         container->AddChild(titleLabel);
 
         // Description Label
-        auto descLabel = std::make_shared<UltraCanvasLabel>("DescLabel", 5002, 20, 45, 960, 20);
+        auto descLabel = std::make_shared<UltraCanvasLabel>("DescLabel", 20, 45, 960, 20);
         descLabel->SetText("Demographic comparison showing age and gender distribution (Data: 2024-2025)");
         descLabel->SetFontSize(12);
         descLabel->SetTextColor(Color(100, 100, 100));
@@ -32,7 +32,7 @@ namespace UltraCanvas {
         container->AddChild(descLabel);
 
         // ===== GERMANY POPULATION CHART =====
-        auto germanyChart = std::make_shared<UltraCanvasPopulationChart>("GermanyChart", 5010, 20, 75, 480, 640);
+        auto germanyChart = std::make_shared<UltraCanvasPopulationChart>("GermanyChart", 20, 75, 480, 640);
         germanyChart->SetTitle("Germany");
         germanyChart->SetSubtitle("2024");
         germanyChart->SetAxisLabel("Population (millions)");
@@ -84,7 +84,7 @@ namespace UltraCanvas {
         container->AddChild(germanyChart);
 
         // ===== RUSSIA POPULATION CHART =====
-        auto russiaChart = std::make_shared<UltraCanvasPopulationChart>("RussiaChart", 5020, 510, 75, 480, 640);
+        auto russiaChart = std::make_shared<UltraCanvasPopulationChart>("RussiaChart", 510, 75, 480, 640);
         russiaChart->SetTitle("Russia");
         russiaChart->SetSubtitle("2024");
         russiaChart->SetAxisLabel("Population (millions)");
@@ -136,14 +136,14 @@ namespace UltraCanvas {
         container->AddChild(russiaChart);
 
         // ===== STATISTICS PANEL =====
-        auto statsLabel = std::make_shared<UltraCanvasLabel>("StatsLabel", 5030, 20, 720, 960, 20);
+        auto statsLabel = std::make_shared<UltraCanvasLabel>("StatsLabel", 20, 720, 960, 20);
         statsLabel->SetText("Key Statistics: Germany (83.6M, 49.1% M / 50.9% F, Median Age 45.5) | Russia (144M, 46.4% M / 53.6% F, Median Age 40.3)");
         statsLabel->SetFontSize(11);
         statsLabel->SetTextColor(Color(60, 60, 60));
         statsLabel->SetAlignment(TextAlignment::Center);
         container->AddChild(statsLabel);
 
-        auto insightsLabel = std::make_shared<UltraCanvasLabel>("InsightsLabel", 5031, 20, 740, 960, 20);
+        auto insightsLabel = std::make_shared<UltraCanvasLabel>("InsightsLabel", 20, 740, 960, 20);
         insightsLabel->SetText("Notable: Russia has 72% more population but Germany has older age structure. Russia shows significant female surplus in 30+ age groups.");
         insightsLabel->SetFontSize(10);
         insightsLabel->SetTextColor(Color(80, 80, 80));

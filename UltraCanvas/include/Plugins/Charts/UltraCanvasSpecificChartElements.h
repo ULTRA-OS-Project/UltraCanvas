@@ -25,8 +25,8 @@ namespace UltraCanvas {
         bool enableSmoothing = false;
 
     public:
-        UltraCanvasLineChartElement(const std::string &id, long uid, int x, int y, int width, int height)
-                : UltraCanvasChartElementBase(id, uid, x, y, width, height) {
+        UltraCanvasLineChartElement(const std::string &id, int x, int y, int width, int height)
+                : UltraCanvasChartElementBase(id, x, y, width, height) {
             enableZoom = true;
             enablePan = true;
         }
@@ -62,7 +62,7 @@ namespace UltraCanvas {
         bool HandleChartMouseMove(const Point2Di &mousePos) override;
 
     private:
-        void DrawSmoothLine(IRenderContext *ctx, const std::vector<Point2Df> &points);
+        void DrawSmoothLine(IRenderContext *ctx, const std::vector<Point2Dd> &points);
     };
 
 // =============================================================================
@@ -78,8 +78,8 @@ namespace UltraCanvas {
         float barSpacing = 0.1f; // 10% of bar width
 
     public:
-        UltraCanvasBarChartElement(const std::string &id, long uid, int x, int y, int width, int height)
-                : UltraCanvasChartElementBase(id, uid, x, y, width, height) {
+        UltraCanvasBarChartElement(const std::string &id, int x, int y, int width, int height)
+                : UltraCanvasChartElementBase(id, x, y, width, height) {
         }
 
 //    ChartType GetChartType() const override {
@@ -97,18 +97,18 @@ namespace UltraCanvas {
             RequestRedraw();
         }
 
-        void SetBarBorderWidth(float width) {
+        void SetBarBorderWidth(double width) {
             barBorderWidth = width;
             RequestRedraw();
         }
 
-        void SetBarSpacing(float spacing) {
-            barSpacing = std::clamp(spacing, 0.0f, 0.9f);
+        void SetBarSpacing(double spacing) {
+            barSpacing = std::clamp(spacing, 0.0, 0.9);
             RequestRedraw();
         }
 
         void RenderChart(IRenderContext *ctx) override;
-        float GetXAxisLabelPosition(size_t dataIndex, size_t totalPoints) override;
+        double GetXAxisLabelPosition(size_t dataIndex, size_t totalPoints) override;
         bool HandleChartMouseMove(const Point2Di &mousePos) override;
     };
 
@@ -120,15 +120,15 @@ namespace UltraCanvas {
     private:
         // Scatter-specific properties
         Color pointColor = Color(0, 102, 204, 255);
-        float pointSize = 6.0f;
+        double pointSize = 6.0f;
 
     public:
         enum class PointShape {
             Circle, Square, Triangle, Diamond
         } pointShape = PointShape::Circle;
 
-        UltraCanvasScatterPlotElement(const std::string &id, long uid, int x, int y, int width, int height)
-                : UltraCanvasChartElementBase(id, uid, x, y, width, height) {
+        UltraCanvasScatterPlotElement(const std::string &id, int x, int y, int width, int height)
+                : UltraCanvasChartElementBase(id, x, y, width, height) {
             enableZoom = true;
             enablePan = true;
             enableSelection = true;
@@ -144,7 +144,7 @@ namespace UltraCanvas {
             RequestRedraw();
         }
 
-        void SetPointSize(float size) {
+        void SetPointSize(double size) {
             pointSize = size;
             RequestRedraw();
         }
@@ -159,151 +159,6 @@ namespace UltraCanvas {
         bool HandleChartMouseMove(const Point2Di &mousePos) override;
     };
 
-// =============================================================================
-// PIE CHART ELEMENT
-// =============================================================================
-
-    class UltraCanvasPieChartElement : public UltraCanvasChartElementBase {
-    private:
-        // Pie-specific properties
-        std::vector<Color> colorPalette = {
-                Color(54, 162, 235, 255),   // Blue
-                Color(255, 99, 132, 255),   // Red
-                Color(255, 205, 86, 255),   // Yellow
-                Color(75, 192, 192, 255),   // Teal
-                Color(153, 102, 255, 255),  // Purple
-                Color(255, 159, 64, 255),   // Orange
-                Color(199, 199, 199, 255),  // Grey
-                Color(83, 102, 255, 255)    // Light Blue
-        };
-        Color borderColor = Color(255, 255, 255, 255);
-        float borderWidth = 2.0f;
-
-    public:
-        UltraCanvasPieChartElement(const std::string &id, long uid, int x, int y, int width, int height)
-                : UltraCanvasChartElementBase(id, uid, x, y, width, height) {
-        }
-
-//    ChartType GetChartType() const override {
-//        return ChartType::Pie;
-//    }
-
-        // Pie chart specific configuration
-        void SetColorPalette(const std::vector<Color> &colors) {
-            colorPalette = colors;
-            RequestRedraw();
-        }
-
-        void SetBordersColor(const Color &color) {
-            borderColor = color;
-            RequestRedraw();
-        }
-
-        void SetBorderWidth(float width) {
-            borderWidth = width;
-            RequestRedraw();
-        }
-
-        void RenderChart(IRenderContext *ctx) override {
-            if (!ctx || !dataSource || dataSource->GetPointCount() == 0) return;
-
-            // Calculate total for percentages
-            double total = 0.0;
-            for (size_t i = 0; i < dataSource->GetPointCount(); ++i) {
-                auto point = dataSource->GetPoint(i);
-                total += point.y;
-            }
-
-            if (total <= 0) return;
-
-            // Calculate center and radius
-            Point2Df center(cachedPlotArea.x + cachedPlotArea.width / 2,
-                            cachedPlotArea.y + cachedPlotArea.height / 2);
-            float radius = std::min(cachedPlotArea.width, cachedPlotArea.height) / 2 * 0.8f;
-
-            float currentAngle = 0.0f;
-            const float fullCircle = 2.0f * M_PI;
-
-            for (size_t i = 0; i < dataSource->GetPointCount(); ++i) {
-                auto point = dataSource->GetPoint(i);
-
-                // Calculate slice angle
-                float sliceAngle = static_cast<float>((point.y / total) * fullCircle);
-
-                // Set color from palette
-                Color sliceColor = GetColorFromPalette(i);
-                ctx->SetFillPaint(sliceColor);
-
-                // Use existing FillArc function
-                ctx->FillArc(center.x, center.y, radius, currentAngle, currentAngle + sliceAngle);
-
-                // Draw slice border using existing DrawArc
-                if (borderWidth > 0) {
-                    ctx->SetStrokePaint(borderColor);
-                    ctx->SetStrokeWidth(borderWidth);
-                    ctx->DrawArc(center.x, center.y, radius, currentAngle, currentAngle + sliceAngle);
-                }
-
-                currentAngle += sliceAngle;
-            }
-        }
-
-        bool HandleChartMouseMove(const Point2Di &mousePos) override {
-            if (!enableTooltips) {
-                HideTooltip();
-                return false;
-            }
-
-            // Calculate center and radius
-            Point2Df center(cachedPlotArea.x + cachedPlotArea.width / 2,
-                            cachedPlotArea.y + cachedPlotArea.height / 2);
-            float radius = std::min(cachedPlotArea.width, cachedPlotArea.height) / 2 * 0.8f;
-
-            // Check if mouse is within pie radius
-            float dx = mousePos.x - center.x;
-            float dy = mousePos.y - center.y;
-            float distance = std::sqrt(dx * dx + dy * dy);
-
-            if (distance > radius) {
-                HideTooltip();
-                return false;
-            }
-
-            // Calculate angle from center
-            float angle = std::atan2(dy, dx);
-            if (angle < 0) angle += 2.0f * M_PI;
-
-            // Find which slice the mouse is over
-            double total = 0.0;
-            for (size_t i = 0; i < dataSource->GetPointCount(); ++i) {
-                auto point = dataSource->GetPoint(i);
-                total += point.y;
-            }
-
-            float currentAngle = 0.0f;
-            const float fullCircle = 2.0f * M_PI;
-
-            for (size_t i = 0; i < dataSource->GetPointCount(); ++i) {
-                auto point = dataSource->GetPoint(i);
-                float sliceAngle = static_cast<float>((point.y / total) * fullCircle);
-
-                if (angle >= currentAngle && angle <= currentAngle + sliceAngle) {
-                    ShowChartPointTooltip(mousePos, point, i);
-                    return true;
-                }
-
-                currentAngle += sliceAngle;
-            }
-
-            HideTooltip();
-            return false;
-        }
-
-    private:
-        Color GetColorFromPalette(size_t index) {
-            return colorPalette[index % colorPalette.size()];
-        }
-    };
 
 // =============================================================================
 // AREA CHART ELEMENT
@@ -314,7 +169,7 @@ namespace UltraCanvas {
         // Area-specific properties
         Color fillColor = Color(0, 102, 204, 128);  // Semi-transparent
         Color lineColor = Color(0, 102, 204, 255);
-        float lineWidth = 2.0f;
+        double lineWidth = 2.0f;
         bool showDataPoints = false;
         Color pointColor = Color(0, 102, 204, 255);
 
@@ -325,8 +180,8 @@ namespace UltraCanvas {
         Color gradientEndColor = Color(0, 102, 204, 50);
 
     public:
-        UltraCanvasAreaChartElement(const std::string &id, long uid, int x, int y, int width, int height)
-                : UltraCanvasChartElementBase(id, uid, x, y, width, height) {
+        UltraCanvasAreaChartElement(const std::string &id, int x, int y, int width, int height)
+                : UltraCanvasChartElementBase(id, x, y, width, height) {
             enableZoom = true;
             enablePan = true;
         }
@@ -346,7 +201,7 @@ namespace UltraCanvas {
             RequestRedraw();
         }
 
-        void SetLineWidth(float width) {
+        void SetLineWidth(double width) {
             lineWidth = width;
             RequestRedraw();
         }
@@ -390,32 +245,26 @@ namespace UltraCanvas {
 
 // Line Chart Factory
     inline std::shared_ptr<UltraCanvasLineChartElement> CreateLineChartElement(
-            const std::string &id, long uid, int x, int y, int width, int height) {
-        return std::make_shared<UltraCanvasLineChartElement>(id, uid, x, y, width, height);
+            const std::string &id, int x, int y, int width, int height) {
+        return std::make_shared<UltraCanvasLineChartElement>(id, x, y, width, height);
     }
 
 // Bar Chart Factory
     inline std::shared_ptr<UltraCanvasBarChartElement> CreateBarChartElement(
-            const std::string &id, long uid, int x, int y, int width, int height) {
-        return std::make_shared<UltraCanvasBarChartElement>(id, uid, x, y, width, height);
+            const std::string &id, int x, int y, int width, int height) {
+        return std::make_shared<UltraCanvasBarChartElement>(id, x, y, width, height);
     }
 
 // Scatter Plot Factory
     inline std::shared_ptr<UltraCanvasScatterPlotElement> CreateScatterPlotElement(
-            const std::string &id, long uid, int x, int y, int width, int height) {
-        return std::make_shared<UltraCanvasScatterPlotElement>(id, uid, x, y, width, height);
+            const std::string &id, int x, int y, int width, int height) {
+        return std::make_shared<UltraCanvasScatterPlotElement>(id, x, y, width, height);
     }
-
-//// Pie Chart Factory
-//inline std::shared_ptr<UltraCanvasPieChartElement> CreatePieChartElement(
-//    const std::string& id, long uid, int x, int y, int width, int height) {
-//    return std::make_shared<UltraCanvasPieChartElement>(id, uid, x, y, width, height);
-//}
 
 // Area Chart Factory
     inline std::shared_ptr<UltraCanvasAreaChartElement> CreateAreaChartElement(
-            const std::string &id, long uid, int x, int y, int width, int height) {
-        return std::make_shared<UltraCanvasAreaChartElement>(id, uid, x, y, width, height);
+            const std::string &id, int x, int y, int width, int height) {
+        return std::make_shared<UltraCanvasAreaChartElement>(id, x, y, width, height);
     }
 
 } // namespace UltraCanvas

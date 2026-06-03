@@ -1,7 +1,7 @@
 // core/UltraCanvasTabbedContainer.cpp
 // Enhanced tabbed container component with overflow dropdown and search functionality
-// Version: 1.9.4
-// Last Modified: 2026-05-01
+// Version: 2.0.0
+// Last Modified: 2026-05-31
 // Author: UltraCanvas Framework
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasApplication.h"
@@ -17,33 +17,71 @@
 
 namespace UltraCanvas {
 
-    UltraCanvasTabbedContainer::UltraCanvasTabbedContainer(const std::string &elementId, long uniqueId, long posX,
-                                                           long posY, long w, long h)
-            : UltraCanvasContainer(elementId, uniqueId, posX, posY, w, h) {
+    UltraCanvasTabbedContainer::UltraCanvasTabbedContainer(const std::string &elementId, float posX,
+                                                           float posY, float w, float h)
+            : UltraCanvasContainer(elementId, posX, posY, w, h) {
         InitializeOverflowDropdown();
     }
 
-    void UltraCanvasTabbedContainer::SetBounds(const Rect2Di& b) {
+    void UltraCanvasTabbedContainer::SetBounds(const Rect2Df& b) {
         UltraCanvasContainer::SetBounds(b);
         InvalidateTabbar();
     }
 
-    // Run the tabbar layout pass BEFORE children's UpdateGeometry so that
-    // content widgets (e.g. UltraCanvasTextArea) see their correct bounds when
-    // they compute their own nested layouts — mirrors the pattern in
-    // UltraCanvasContainer::UpdateGeometry that "fixes first-frame positioning".
-    void UltraCanvasTabbedContainer::UpdateGeometry(IRenderContext* ctx) {
-        if (tabbarLayoutDirty) {
-            CalculateLayout();
-            UpdateOverflowDropdown();
-            CalculateLayout();
-            EnsureTabVisible(activeTabIndex);
-            PackTabBar();
-            CalculateLayout();
-            UpdateContentVisibility();
-            tabbarLayoutDirty = false;
+    // CSS layout entry point. The tabbed container is externally sized (explicit
+    // w/h or stretched by its parent), so no custom measure is needed. We take our
+    // finalBounds from the engine, then run the tab-bar layout and arrange the
+    // ACTIVE tab's content subtree into the content area. We intentionally do NOT
+    // delegate to the base container's child-flow: tab contents are overlaid (only
+    // one visible), so flowing/stacking all of them would be wrong and would
+    // inflate the container's scroll range.
+    void UltraCanvasTabbedContainer::Arrange(const Rect2Df& finalRect,
+                                             const CSSLayout::LayoutContext& ctx) {
+        UltraCanvasUIElement::Arrange(finalRect, ctx);
+//        // Set our geometry + damage tracking (mirrors UltraCanvasUIElement::Arrange).
+//        Rect2Df oldBounds = finalBounds;
+//        finalBounds = finalRect;
+//        arrangeValid = true;
+//        Rect2Df damage = oldBounds.Union(finalBounds);
+//        if (auto* parentCont = GetParentContainer()) {
+//            parentCont->InvalidateRect(damage);
+//        } else if (window && static_cast<UltraCanvasUIElement*>(this) != static_cast<UltraCanvasUIElement*>(window)) {
+//            window->AddDirtyRectangle(damage);
+//        }
+//
+        // Deterministic tab-bar layout (GetTabAreaBounds no longer mutates finalBounds).
+        CalculateLayout();
+        UpdateOverflowDropdown();
+        EnsureTabVisible(activeTabIndex);
+        PackTabBar();
+        CalculateLayout();
+        UpdateContentVisibility();
+        PositionOverflowDropdown();
+        tabbarLayoutDirty = false;
+
+        // Arrange ONLY the active tab's content into the content area so its subtree
+        // lays out at the right size. Inactive contents are hidden and skipped.
+        if (activeTabIndex >= 0 && activeTabIndex < (int)tabs.size()) {
+            if (auto* content = tabs[activeTabIndex]->content.get()) {
+                Rect2Di cb = GetContentAreaBounds();
+                CSSLayout::MeasureConstraints mc{
+                        { CSSLayout::ConstraintMode::Exact, (float)cb.width },
+                        { CSSLayout::ConstraintMode::Exact, (float)cb.height } };
+                content->Measure(mc, ctx);
+                content->Arrange(Rect2Df(cb.x, cb.y, cb.width, cb.height), ctx);
+            }
         }
-        UltraCanvasContainer::UpdateGeometry(ctx);
+
+        // The overflow button is a real child but is painted manually; arrange it
+        // (and any subtree) at the rect PositionOverflowDropdown() just set.
+        if (overflowButton && overflowDropdownVisible) {
+            Rect2Df ob = overflowButton->GetBounds();
+            CSSLayout::MeasureConstraints mc{
+                    { CSSLayout::ConstraintMode::Exact, ob.width },
+                    { CSSLayout::ConstraintMode::Exact, ob.height } };
+            overflowButton->Measure(mc, ctx);
+            overflowButton->Arrange(ob, ctx);
+        }
     }
 
     void UltraCanvasTabbedContainer::SetTabHeight(int th) {
@@ -138,16 +176,17 @@ namespace UltraCanvas {
             activeTabIndex = (int)tabs.size() - 1;
         }
 
+        InvalidateTabbar();
+
         if (activeTabIndex >= 0) {
             for (int i = activeTabIndex; i >= 0; i--) {
                 if (tabs[i]->enabled) {
-                    activeTabIndex = i;
+                    SetActiveTab(i);
                     break;
                 }
             }
         }
 
-        InvalidateTabbar();
         UpdateOverflowDropdown();
     }
 
@@ -157,11 +196,12 @@ namespace UltraCanvas {
         int oldIndex = activeTabIndex;
         activeTabIndex = index;
 
-        if (!tabbarLayoutDirty) {
-            EnsureTabVisible(index);
-            CalculateLayout();
-            UpdateContentVisibility();
-        }
+        EnsureTabVisible(index);
+        UpdateContentVisibility();
+        // Re-run layout (arranges the newly active content) AND invalidate the whole
+        // element so the CONTENT region repaints — not just the tab strip. Without
+        // this the header changed but the content area kept the previous tab.
+        InvalidateTabbar();
 
         if (onTabChange) onTabChange(oldIndex, index);
         if (onTabSelect) onTabSelect(index);
@@ -222,7 +262,7 @@ namespace UltraCanvas {
 
     void UltraCanvasTabbedContainer::InitializeOverflowDropdown() {
         overflowButton = std::make_shared<UltraCanvasButton>(
-                GetIdentifier() + "_overflow", 0, 0, 0, overflowDropdownWidth, tabHeight, "");
+                GetIdentifier() + "_overflow", 0, 0, overflowDropdownWidth, tabHeight, "");
         overflowButton->SetIcon(NormalizePath(GetResourcesDir()+"media/icons/arrow_down_solid.svg"));
         AddChild(overflowButton);
         overflowButton->SetVisible(false);
@@ -234,7 +274,7 @@ namespace UltraCanvas {
 
         // Create AutoComplete for tab search
         searchAutoComplete = std::make_shared<UltraCanvasAutoComplete>(
-                GetIdentifier() + "_search", 0, 0, 0, 200, 28);
+                GetIdentifier() + "_search", 0, 0, 200, 28);
         searchAutoComplete->SetPlaceholder("Search tabs...");
         searchAutoComplete->SetMinCharsToTrigger(0);
         searchAutoComplete->SetShowPlaceholderAlways(true);
@@ -341,7 +381,7 @@ namespace UltraCanvas {
                 break;
         }
 
-        overflowButton->SetSize(overflowDropdownWidth, tabBarBounds.height);
+        overflowButton->SetElementSize(Size2Df(overflowDropdownWidth, tabBarBounds.height));
     }
 
     void UltraCanvasTabbedContainer::ShowSearchAutoComplete() {
@@ -394,22 +434,8 @@ namespace UltraCanvas {
         searchAutoComplete->SetItems(items);
     }
 
-    void UltraCanvasTabbedContainer::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
-        // Safety net: UpdateGeometry normally consumes tabbarLayoutDirty,
-        // but something may invalidate between UpdateGeometry and Render in
-        // the same frame (e.g. scrollbar visibility toggles). Re-run the
-        // layout here so content bounds stay in sync before we draw.
-        if (tabbarLayoutDirty) {
-            CalculateLayout();
-            UpdateOverflowDropdown();
-            CalculateLayout();
-            EnsureTabVisible(activeTabIndex);
-            PackTabBar();
-            CalculateLayout();
-            UpdateContentVisibility();
-            tabbarLayoutDirty = false;
-        }
-
+    void UltraCanvasTabbedContainer::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
+        // Layout is computed deterministically in Arrange(); Render only paints.
         ctx->PushState();
         // ctx is already translated to element origin by the parent container.
         RenderContentArea(ctx, dirtyRect);
@@ -432,12 +458,6 @@ namespace UltraCanvas {
         if (tabBarColor.a > 0) {
             ctx->DrawFilledRectangle(tabBarBounds, tabBarColor);
         }
-//        if (tabContentBorderColor.a > 0) {
-//            ctx->SetStrokePaint(tabContentBorderColor);
-//            ctx->SetStrokeWidth(1);
-//            ctx->DrawLine(tabBarBounds.BottomLeft(), tabBarBounds.BottomRight());
-//        }
-
 
         Rect2Di tabAreaBounds = GetTabAreaBounds();
 
@@ -462,17 +482,8 @@ namespace UltraCanvas {
             RenderOverflowButton(ctx);
         }
 
-         // V2.0.0: Draw drag insertion indicator
-//         if (isDraggingTab && dragInsertionIndex >= 0) {
-//             RenderDragInsertionIndicator(ctx);
-//         }
-
         ctx->PopState();
 
-//        if (tabBorderColor.a > 0) {
-//            ctx->SetStrokePaint(tabBorderColor);
-//            ctx->DrawRectangle(tabBarBounds);
-//        }
     }
 
     void UltraCanvasTabbedContainer::RenderTabIcon(int index, IRenderContext *ctx) {
@@ -485,7 +496,7 @@ namespace UltraCanvas {
         int iconX = tabBounds.x + tabPadding;
         int iconY = tabBounds.y + (tabBounds.height - iconSize) / 2;
 
-        ctx->DrawImage(tab->iconPath, Rect2Df(iconX, iconY, iconSize, iconSize), ImageFitMode::Contain);
+        ctx->DrawImage(tab->iconPath, Rect2Dd(iconX, iconY, iconSize, iconSize), ImageFitMode::Contain);
     }
 
     void UltraCanvasTabbedContainer::RenderTabBadge(int index, IRenderContext *ctx) {
@@ -511,7 +522,7 @@ namespace UltraCanvas {
 //        ctx->GetTextLineDimensions(badgeText, txtW, txtH);
         ctx->SetTextAlignment(TextAlignment::Center);
         ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-        ctx->DrawTextInRect(tab->badgeText, Rect2Df(badgeX, badgeY, tab->badgeWidth, tab->badgeHeight));
+        ctx->DrawTextInRect(tab->badgeText, Rect2Dd(badgeX, badgeY, tab->badgeWidth, tab->badgeHeight));
         ctx->PopState();
     }
 
@@ -529,10 +540,10 @@ namespace UltraCanvas {
         ctx->SetStrokeWidth(isActiveTab ? 1.0f : 2.0f);
         ctx->SetLineCap(LineCap::Round);
         ctx->SetStrokePaint(buttonColor);
-        ctx->DrawLine(Point2Df(center.x - halfSize, center.y - halfSize),
-                      Point2Df(center.x + halfSize, center.y + halfSize));
-        ctx->DrawLine(Point2Df(center.x + halfSize, center.y - halfSize),
-                      Point2Df(center.x - halfSize, center.y + halfSize));
+        ctx->DrawLine(Point2Dd(center.x - halfSize, center.y - halfSize),
+                      Point2Dd(center.x + halfSize, center.y + halfSize));
+        ctx->DrawLine(Point2Dd(center.x + halfSize, center.y - halfSize),
+                      Point2Dd(center.x - halfSize, center.y + halfSize));
         ctx->SetStrokeWidth(1.0f); // Restore default   
     }
 
@@ -665,8 +676,14 @@ namespace UltraCanvas {
                 // Translate to child's origin — content widgets now draw from (0,0) in their local space
                 ctx->PushState();
                 auto cb = content->GetBounds();
+                ctx->ClipRect(cb);
                 ctx->Translate(Point2Di(cb.x, cb.y));
-                content->Render(ctx, dirtyRect);
+                // Translate dirtyRect into the child's local space — must use the
+                // same compound offset we just translated ctx by.
+                Rect2Di childDirty(dirtyRect.x - cb.x,
+                                   dirtyRect.y - cb.y,
+                                   dirtyRect.width, dirtyRect.height);
+                content->Render(ctx, childDirty);
                 ctx->PopState();
             }
         }
@@ -688,8 +705,8 @@ namespace UltraCanvas {
         int size = 8;
 
         ctx->SetStrokePaint(newTabButtonIconColor);
-        ctx->DrawLine(Point2Df(center.x - size/2, center.y), Point2Df(center.x + size/2, center.y));
-        ctx->DrawLine(Point2Df(center.x, center.y - size/2), Point2Df(center.x, center.y + size/2));
+        ctx->DrawLine(Point2Dd(center.x - size/2, center.y), Point2Dd(center.x + size/2, center.y));
+        ctx->DrawLine(Point2Dd(center.x, center.y - size/2), Point2Dd(center.x, center.y + size/2));
     }
 
     void UltraCanvasTabbedContainer::RenderOverflowButton(IRenderContext* ctx) {
@@ -1496,20 +1513,20 @@ namespace UltraCanvas {
         int verticalTabWidth;
         switch (tabPosition) {
             case TabPosition::Top:
-                return Rect2Di(0, 0, bounds.width, tabHeight);
+                return Rect2Di(0, 0, finalBounds.width, tabHeight);
 
             case TabPosition::Bottom:
-                return Rect2Di(0, bounds.height - tabHeight, bounds.width, tabHeight);
+                return Rect2Di(0, finalBounds.height - tabHeight, finalBounds.width, tabHeight);
 
             case TabPosition::Left:
-                return Rect2Di(0, 0, CalculateMaxTabWidth(), bounds.height);
+                return Rect2Di(0, 0, CalculateMaxTabWidth(), finalBounds.height);
 
             case TabPosition::Right:
                 verticalTabWidth = CalculateMaxTabWidth();
-                return Rect2Di(bounds.width - verticalTabWidth, 0, verticalTabWidth, bounds.height);
+                return Rect2Di(finalBounds.width - verticalTabWidth, 0, verticalTabWidth, finalBounds.height);
 
             default:
-                return Rect2Di(0, 0, bounds.width, tabHeight);
+                return Rect2Di(0, 0, finalBounds.width, tabHeight);
         }
     }
 
@@ -1520,29 +1537,29 @@ namespace UltraCanvas {
         switch (tabPosition) {
             case TabPosition::Top:
                 return Rect2Di(contentLeftPadding, tabHeight + contentTopPadding,
-                               bounds.width - contentLeftPadding,
-                               bounds.height - tabHeight - contentTopPadding);
+                               finalBounds.width - contentLeftPadding,
+                               finalBounds.height - tabHeight - contentTopPadding);
 
             case TabPosition::Bottom:
                 return Rect2Di(contentLeftPadding, contentTopPadding,
-                               bounds.width - contentLeftPadding,
-                               bounds.height - tabHeight - contentTopPadding);
+                               finalBounds.width - contentLeftPadding,
+                               finalBounds.height - tabHeight - contentTopPadding);
 
             case TabPosition::Left:
                 verticalTabWidth = CalculateMaxTabWidth();
                 return Rect2Di(verticalTabWidth + contentLeftPadding, contentTopPadding,
-                               bounds.width - verticalTabWidth - contentLeftPadding,
-                               bounds.height - contentTopPadding);
+                               finalBounds.width - verticalTabWidth - contentLeftPadding,
+                               finalBounds.height - contentTopPadding);
 
             case TabPosition::Right:
                 return Rect2Di(contentLeftPadding, contentTopPadding,
-                               bounds.width - CalculateMaxTabWidth() - contentLeftPadding,
-                               bounds.height - contentTopPadding);
+                               finalBounds.width - CalculateMaxTabWidth() - contentLeftPadding,
+                               finalBounds.height - contentTopPadding);
 
             default:
                 return Rect2Di(contentLeftPadding, tabHeight + contentTopPadding,
-                               bounds.width - contentLeftPadding,
-                               bounds.height - tabHeight - contentTopPadding);
+                               finalBounds.width - contentLeftPadding,
+                               finalBounds.height - tabHeight - contentTopPadding);
         }
     }
 
@@ -1568,7 +1585,7 @@ namespace UltraCanvas {
                     return Rect2Di(xOffset, 0, tabWidth, tabHeight);
                 } else {
                     Rect2Di bounds = GetBounds();
-                    return Rect2Di(xOffset, bounds.height - tabHeight, tabWidth, tabHeight);
+                    return Rect2Di(xOffset, finalBounds.height - tabHeight, tabWidth, tabHeight);
                 }
             }
 
@@ -1587,7 +1604,7 @@ namespace UltraCanvas {
                     return Rect2Di(0, yOffset, verticalTabWidth, tabHeight);  // Swapped: width first, then height
                 } else {
                     Rect2Di bounds = GetBounds();
-                    return Rect2Di(bounds.width - verticalTabWidth, yOffset, verticalTabWidth, tabHeight);
+                    return Rect2Di(finalBounds.width - verticalTabWidth, yOffset, verticalTabWidth, tabHeight);
                 }
             }
 
@@ -1605,31 +1622,36 @@ namespace UltraCanvas {
     }
 
     Rect2Di UltraCanvasTabbedContainer::GetTabAreaBounds() {
-        Rect2Di bounds = GetTabBarBounds();
+        // Compute the reduced tab strip (the space left for the tabs themselves
+        // after the overflow/scroll/new-tab controls) on a LOCAL COPY. This must
+        // NOT mutate finalBounds — doing so corrupted the element's real geometry
+        // on every layout/render pass (content drift, bottom-tab hit-test misses,
+        // flickering overflow detection).
+        Rect2Di area = GetTabBarBounds();
 
         switch (tabPosition) {
             case TabPosition::Top:
             case TabPosition::Bottom: {
                 // Horizontal tab bar - adjust width
                 if (overflowDropdownVisible && overflowDropdownPosition == OverflowDropdownPosition::Left) {
-                    bounds.x += overflowDropdownWidth + tabSpacing;
-                    bounds.width -= overflowDropdownWidth + tabSpacing;
+                    area.x += overflowDropdownWidth + tabSpacing;
+                    area.width -= overflowDropdownWidth + tabSpacing;
                 }
 
                 if (showScrollButtons) {
                     bool canPrev = activeTabIndex > 0;
                     bool canNext = activeTabIndex < (int)tabs.size() - 1;
                     if (canPrev) {
-                        bounds.x += 24;
-                        bounds.width -= 24;
+                        area.x += 24;
+                        area.width -= 24;
                     }
                     if (canNext) {
-                        bounds.width -= 24;
+                        area.width -= 24;
                     }
                 }
 
                 if (showNewTabButton && newTabButtonPosition == NewTabButtonPosition::FarRight) {
-                    bounds.width -= newTabButtonWidth + tabSpacing;
+                    area.width -= newTabButtonWidth + tabSpacing;
                 }
                 break;
             }
@@ -1638,30 +1660,30 @@ namespace UltraCanvas {
             case TabPosition::Right: {
                 // Vertical tab bar - adjust height
                 if (overflowDropdownVisible && overflowDropdownPosition == OverflowDropdownPosition::Left) {
-                    bounds.y += overflowDropdownWidth + tabSpacing;
-                    bounds.height -= overflowDropdownWidth + tabSpacing;
+                    area.y += overflowDropdownWidth + tabSpacing;
+                    area.height -= overflowDropdownWidth + tabSpacing;
                 }
 
                 if (showScrollButtons) {
                     bool canPrev = activeTabIndex > 0;
                     bool canNext = activeTabIndex < (int)tabs.size() - 1;
                     if (canPrev) {
-                        bounds.y += 24;
-                        bounds.height -= 24;
+                        area.y += 24;
+                        area.height -= 24;
                     }
                     if (canNext) {
-                        bounds.height -= 24;
+                        area.height -= 24;
                     }
                 }
 
                 if (showNewTabButton && newTabButtonPosition == NewTabButtonPosition::FarRight) {
-                    bounds.height -= newTabButtonWidth + tabSpacing;
+                    area.height -= newTabButtonWidth + tabSpacing;
                 }
                 break;
             }
         }
 
-        return bounds;
+        return area;
     }
 
     void UltraCanvasTabbedContainer::RenderTab(int index, IRenderContext *ctx) {
@@ -2052,7 +2074,7 @@ namespace UltraCanvas {
                     tabCornerRadius
             );
         } else {
-            ctx->DrawRectangle(Rect2Df(ghostX, ghostY, tabBounds.width, tabBounds.height));
+            ctx->DrawRectangle(Rect2Dd(ghostX, ghostY, tabBounds.width, tabBounds.height));
         }
 
         // Tab title text on ghost

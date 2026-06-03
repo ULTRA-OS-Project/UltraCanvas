@@ -159,9 +159,14 @@ public:
     std::function<void(TreeNode*)> onNodeRightClicked;
     
     // ===== CONSTRUCTOR =====
-    UltraCanvasTreeView(const std::string& identifier, long id, 
-                       int x, int y, int w, int h);
-    
+    UltraCanvasTreeView(const std::string& identifier, 
+                       float x, float y, float w, float h);
+
+    UltraCanvasTreeView(const std::string& identifier,
+                        float w, float h);
+
+    UltraCanvasTreeView(const std::string& identifier = "TreeView");
+
     // ===== TREE STRUCTURE MANAGEMENT =====
     TreeNode* SetRootNode(const TreeNodeData& rootData);
     
@@ -222,10 +227,13 @@ public:
     bool OnEvent(const UCEvent& event) override;
     
     // ===== RENDERING =====
-    void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
-    void UpdateGeometry(IRenderContext* ctx) override;
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
-    void SetBounds(const Rect2Di& bounds) override;
+    // ===== LAYOUT (CSS Measure/Arrange) =====
+    // TreeView is externally sized (explicit size or parent stretch); it has no
+    // intrinsic size, so the base block measure is sufficient. We only hook
+    // Arrange to recompute scrollbar geometry against the resolved finalBounds.
+    void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
 // ==== WINDOW PROPAGATION =====
     void SetWindow(UltraCanvasWindowBase* win) override;
@@ -270,8 +278,8 @@ private:
 
 // ===== FACTORY FUNCTIONS =====
 //std::shared_ptr<UltraCanvasTreeView> CreateTreeView(
-//    const std::string& identifier, long id, long x, long y, long w, long h) {
-//    return std::make_shared<UltraCanvasTreeView>(identifier, id, x, y, w, h);
+//    const std::string& identifier, float x, float y, float w, float h) {
+//    return std::make_shared<UltraCanvasTreeView>(identifier, x, y, w, h);
 //}
 
 // ===== CONVENIENCE BUILDER CLASS =====
@@ -280,9 +288,9 @@ private:
     std::shared_ptr<UltraCanvasTreeView> treeView;
     
 public:
-    TreeViewBuilder(const std::string& identifier, long id, long x, long y, long w, long h) {
-        treeView = std::make_shared<UltraCanvasTreeView>(identifier, id, x, y, w, h);
-        //treeView = CreateTreeView(identifier, id, x, y, w, h);
+    TreeViewBuilder(const std::string& identifier, float x, float y, float w, float h) {
+        treeView = std::make_shared<UltraCanvasTreeView>(identifier, x, y, w, h);
+        //treeView = CreateTreeView(identifier, x, y, w, h);
     }
     
     TreeViewBuilder& SetRowHeight(int height) {

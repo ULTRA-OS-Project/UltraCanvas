@@ -54,7 +54,7 @@ namespace UltraCanvas {
         std::shared_ptr<VectorStorage::VectorDocument> document;
         std::unique_ptr<VectorRenderer> renderer;
         float zoomLevel = 1.0f;
-        Point2Df panOffset{0.0f, 0.0f};
+        Point2Dd panOffset{0.0f, 0.0f};
         VectorStorage::Matrix3x3 viewTransform;
         bool isPanning = false;
         Point2Di lastMousePos{0, 0};
@@ -86,7 +86,7 @@ namespace UltraCanvas {
         void ZoomToActualSize();
 
         void SetPan(float x, float y);
-        Point2Df GetPan() const { return panOffset; }
+        Point2Dd GetPan() const { return panOffset; }
         void Pan(float dx, float dy);
         void CenterDocument();
         void ResetView();
@@ -108,7 +108,7 @@ namespace UltraCanvas {
         void ClearSelection();
         std::shared_ptr<VectorStorage::VectorElement> GetSelectedElement() const;
 
-        Point2Df ScreenToDocument(int screenX, int screenY) const;
+        Point2Dd ScreenToDocument(int screenX, int screenY) const;
         Point2Di DocumentToScreen(float docX, float docY) const;
 
         void SetOnLoadCallback(VectorLoadCallback cb) { onLoad = cb; }
@@ -117,14 +117,14 @@ namespace UltraCanvas {
         void SetOnZoomChangeCallback(VectorZoomCallback cb) { onZoomChange = cb; }
         void SetOnPanChangeCallback(VectorPanCallback cb) { onPanChange = cb; }
 
-        Size2Df GetDocumentSize() const;
-        Rect2Df GetDocumentViewBox() const;
+        Size2Dd GetDocumentSize() const;
+        Rect2Dd GetDocumentViewBox() const;
         size_t GetLayerCount() const;
         std::vector<std::string> GetLayerNames() const;
         void SetLayerVisible(const std::string& layerName, bool visible);
         bool IsLayerVisible(const std::string& layerName) const;
 
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         bool OnEvent(const UCEvent& event) override;
         VectorRenderer* GetRenderer() const { return renderer.get(); }
 

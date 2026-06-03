@@ -1,7 +1,7 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
-// Version: 1.1.0
-// Last Modified: 2026-04-06
+// Version: 1.4.0
+// Last Modified: 2026-05-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -22,6 +22,31 @@
 
 namespace UltraCanvas {
     class UltraCanvasWindowBase;
+
+    // Bundled DejaVu font registration tables. Defined in UltraCanvasApplication.cpp.
+    extern const char* const kEmbeddedAllFonts[];
+    extern const size_t kEmbeddedAllFontsCount;
+    extern const char* const kEmbeddedMonoFonts[];
+    extern const size_t kEmbeddedMonoFontsCount;
+
+    // Returns absolute path to media/fonts/dejavu/ in the resources dir.
+    std::string GetBundledFontsDir();
+
+    // Pins hinting / antialias / autohint / lcdfilter defaults for the bundled
+    // DejaVu families so system fontconfig (which differs between MSYS2 and
+    // Linux distros) cannot change how the framework's text looks. Pass the
+    // current FcConfig* as void* to keep this header free of fontconfig.h;
+    // implemented on Linux + Windows, no-op elsewhere. Returns true on success.
+//    bool LoadDejaVuFcRules(void* fcConfig);
+
+    // Writes a runtime fonts.conf (with the absolute path to the bundled
+    // DejaVu directory baked in) and sets the FONTCONFIG_FILE env variable so
+    // the next FcInit() call has a valid config regardless of how broken the
+    // system default is (notably on packaged MSYS2 Windows builds run outside
+    // the mingw shell). On Linux the generated config <include>s the system
+    // fonts.conf so apps still see non-DejaVu system fonts via FC. No-op on
+    // macOS. Honours an externally-set FONTCONFIG_FILE — does not override.
+    void SetupBundledFontconfig();
 
     class UltraCanvasApplicationBase {
     friend UltraCanvasWindowBase;
@@ -141,7 +166,10 @@ namespace UltraCanvas {
         bool IsInitialized() const { return initialized; }
         bool IsRunning() const { return running; }
 
-//        bool HandleFocusedWindowChange(UltraCanvasWindow* window);
+        void CleanupElementReferences(UltraCanvasUIElement* elem);
+
+
+        //        bool HandleFocusedWindowChange(UltraCanvasWindow* window);
         virtual bool SelectMouseCursorNative(UltraCanvasWindowBase *win, UCMouseCursor ptr) = 0;
         virtual bool SelectMouseCursorNative(UltraCanvasWindowBase *win, UCMouseCursor ptr, const char* filename, int hotspotX, int hotspotY) = 0;
         
@@ -167,6 +195,12 @@ namespace UltraCanvas {
         // Platform-specific system font detection
         virtual FontStyle DetectSystemFontStyleNative() = 0;
         virtual FontStyle DetectMonospacedFontStyleNative() = 0;
+
+        // Register the bundled DejaVu fonts (process-private) so they are
+        // available as the framework defaults on every platform. Implemented
+        // per-platform via FontConfig + GDI (Windows) / FontConfig (Linux) /
+        // CoreText (macOS, monospace only).
+        virtual void LoadBundledFontsNative() = 0;
 
         // Platform-specific wakeup mechanism for cross-thread signaling
         virtual void WakeUpEventLoop() = 0;

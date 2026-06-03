@@ -52,14 +52,15 @@ namespace UltraCanvas {
 
         // Layout
         bool layoutDirty = true;
-        bool autoSize = false;
         Rect2Df indicatorRect;  // Position+size of the visual indicator (box, circle, or track)
         Rect2Df textRect;
         Rect2Df totalBounds;
 
         // Helpers
         void CalculateLayout(IRenderContext* ctx);
-        void CalculateAutoSize(IRenderContext* ctx);
+        // Measures the natural content size (indicator + spacing + label). Measure
+        // only — must not mutate this element's size (the block measure owns that).
+        Size2Df MeasureContentSize(IRenderContext* ctx) const;
         void DrawLabel(IRenderContext* ctx);
 
         // Subclass hooks
@@ -70,8 +71,8 @@ namespace UltraCanvas {
         virtual void DrawFocusRingShape(IRenderContext* ctx);  // Default: rectangle around indicator.
 
     public:
-        UltraCanvasLabeledToggleBase(const std::string& identifier, long id,
-                                     long x, long y, long w, long h,
+        UltraCanvasLabeledToggleBase(const std::string& identifier,
+                                     float x, float y, float w, float h,
                                      const std::string& labelText);
         virtual ~UltraCanvasLabeledToggleBase() = default;
 
@@ -85,15 +86,21 @@ namespace UltraCanvas {
         virtual void Toggle();
 
         // ===== TEXT/LAYOUT =====
-        void SetText(const std::string& labelText) { text = labelText; layoutDirty = true; }
+        void SetText(const std::string& labelText) { text = labelText; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }
         std::string GetText() const { return text; }
 
-        void SetAutoSize(bool val) { autoSize = val; layoutDirty = true; }
-        bool GetAutoSize() const { return autoSize; }
+        // ===== LAYOUT (CSS Measure/Arrange) =====
+        // Toggles have intrinsic size (indicator + spacing + label); we report it
+        // as a content box via MeasureOwnContent (Button pattern) and position our
+        // sub-rects in Arrange. For content sizing, leave size.width/height = Auto
+        // (the default); an explicit size wins per normal CSS.
+        Size2Df MeasureOwnContent(std::optional<float> definiteContentWidth,
+                                  const CSSLayout::LayoutContext& ctx) override;
+        void ComputeIntrinsicSizes(const CSSLayout::LayoutContext& ctx) override;
+        void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
         // ===== RENDER/EVENT =====
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
-        void UpdateGeometry(IRenderContext* ctx) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         bool OnEvent(const UCEvent& event) override;
 
         // ===== CALLBACKS =====

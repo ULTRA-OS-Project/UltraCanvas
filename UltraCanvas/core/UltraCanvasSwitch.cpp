@@ -1,7 +1,7 @@
 // UltraCanvasSwitch.cpp
 // Toggle switch rendering with optional orientation, thumb icons, and state labels.
-// Version: 1.1.0
-// Last Modified: 2026-05-07
+// Version: 1.2.0
+// Last Modified: 2026-06-02
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSwitch.h"
@@ -9,10 +9,10 @@
 
 namespace UltraCanvas {
 
-    UltraCanvasSwitch::UltraCanvasSwitch(const std::string& identifier, long id,
-                                         long x, long y, long w, long h,
+    UltraCanvasSwitch::UltraCanvasSwitch(const std::string& identifier,
+                                         float x, float y, float w, float h,
                                          const std::string& labelText)
-            : UltraCanvasLabeledToggleBase(identifier, id, x, y, w, h, labelText) {}
+            : UltraCanvasLabeledToggleBase(identifier, x, y, w, h, labelText) {}
 
     void UltraCanvasSwitch::SetCheckState(CheckedState state) {
         if (state == CheckedState::Indeterminate) state = CheckedState::Unchecked;
@@ -253,22 +253,14 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasSwitch> UltraCanvasSwitch::Create(
-            const std::string& identifier, long id,
-            long x, long y,
-            const std::string& text, bool checked) {
-        auto sw = std::make_shared<UltraCanvasSwitch>(identifier, id, x, y, 200, 30, text);
-        sw->SetChecked(checked);
-        sw->SetAutoSize(true);
-        return sw;
-    }
-
-    std::shared_ptr<UltraCanvasSwitch> UltraCanvasSwitch::Create(
             const std::string& identifier,
-            long x, long y,
+            float x, float y,
             const std::string& text, bool checked) {
-        auto sw = std::make_shared<UltraCanvasSwitch>(identifier, 0, x, y, 200, 30, text);
+        auto sw = std::make_shared<UltraCanvasSwitch>(identifier, x, y, 200, 40, text);
         sw->SetChecked(checked);
-        sw->SetAutoSize(true);
+        // Content-size to track + label: clear the ctor-stamped pixel size.
+        sw->size.width  = CSSLayout::Dimension::Auto();
+        sw->size.height = CSSLayout::Dimension::Auto();
         return sw;
     }
 

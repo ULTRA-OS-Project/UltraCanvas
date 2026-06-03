@@ -1,14 +1,14 @@
 # UltraCanvas/CMakeLists.txt
 # UltraCanvas Core Library - Builds as separate static library with optional plugins
-# Version: 1.3.0
-# Last Modified: 2026-02-01
+# Version: 1.4.0
+# Last Modified: 2026-05-10
 # Author: UltraCanvas Framework
 
 cmake_minimum_required(VERSION 3.16)
 include(FetchContent)
 
 # ===== LIBRARY DEFINITION =====
-set(ULTRACANVAS_VERSION "0.1.29")
+set(ULTRACANVAS_VERSION "0.1.39")
 set(ULTRACANVAS_LIB_NAME "UltraCanvas")
 
 message(STATUS "")
@@ -68,6 +68,11 @@ pkg_check_modules(CAIRO REQUIRED cairo)
 # Pango - Text Layout
 pkg_check_modules(PANGO REQUIRED pango pangocairo)
 
+# FontConfig - bundled-font registration (Linux always; Windows when Pango is built with the FontConfig backend)
+if(NOT APPLE)
+    pkg_check_modules(FONTCONFIG REQUIRED fontconfig)
+endif()
+
 pkg_check_modules(HARFBUZZ REQUIRED harfbuzz)
 pkg_check_modules(GLIB REQUIRED glib-2.0)
 pkg_check_modules(TINYXML2 REQUIRED tinyxml2)
@@ -112,6 +117,7 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     find_library(COCOA_FRAMEWORK Cocoa REQUIRED)
     find_library(QUARTZ_FRAMEWORK QuartzCore REQUIRED)
     find_library(OPENGL_FRAMEWORK OpenGL REQUIRED)
+    find_library(CORETEXT_FRAMEWORK CoreText REQUIRED)
     if(ULTRACANVAS_ENABLE_GL)
         set(ULTRACANVAS_HAS_CGL TRUE)
     endif()
@@ -143,6 +149,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasClipboard.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasElementDebug.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasContainer.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSplitPane.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDirtyRectManager.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea_Markdown.cpp
@@ -157,6 +164,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasListSelection.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTabbedContainer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasButton.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBreadcrumb.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasLabel.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSyntaxTokenizer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasLabeledToggleBase.cpp
@@ -167,16 +175,21 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSegmentedControl.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPasswordStrengthMeter.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPasswordRuleLegend.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasLayout.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBoxLayout.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasGridLayout.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFlexLayout.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasToolbar.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasScrollbar.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlider.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSplashScreen.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlideshow.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModalDialog.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLoader.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNewDocumentDialog.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/Dimension.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/Layout.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/LayoutUtils.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/Element.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/AbsoluteLayout.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/FlexLayout.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/GridLayout.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartElementBase.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasSpecificChartElements.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartDataStructures.cpp
@@ -184,9 +197,23 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasDivergingBarChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasWaterfallChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasPopulationChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasJitterPlotElement.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasPieChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasArcDiagram.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasAdjacencyDiagram.cpp
 
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/SVG/UltraCanvasSVGPlugin.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasSankey.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasVennDiagram.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasDendrogram.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasDendrogramLayout.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasBlockDiagram.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasFlowChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasNodeDiagram.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasGourceTree.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasTreeMapElement.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasFlowChartPalette.cpp
+
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Text/UltraCanvasMarkdown.cpp
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartElement.cpp
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartCoreRendering.cpp
@@ -296,7 +323,6 @@ set(ULTRACANVAS_ALL_SOURCES
     ${ULTRACANVAS_LIBSPECIFIC_SOURCES}
     ${ULTRACANVAS_TEXT_SOURCES}
     ${ULTRACANVAS_CHARTS_SOURCES}
-        OS/MacOS/UltraCanvasMacOSShortcutFormat.h
         #        dialogs/PixelFXExportDialog.cpp
 #        dialogs/PixelFXExportDialog.h
 )
@@ -333,6 +359,11 @@ target_include_directories(${ULTRACANVAS_LIB_NAME}
 foreach(_inc_dir ${CAIRO_INCLUDE_DIRS} ${PANGO_INCLUDE_DIRS} ${GLIB_INCLUDE_DIRS} ${TINYXML2_INCLUDE_DIRS})
     target_include_directories(${ULTRACANVAS_LIB_NAME} PUBLIC $<BUILD_INTERFACE:${_inc_dir}>)
 endforeach()
+if(NOT APPLE AND FONTCONFIG_FOUND)
+    foreach(_inc_dir ${FONTCONFIG_INCLUDE_DIRS})
+        target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${_inc_dir})
+    endforeach()
+endif()
 if(LIBVIPS_FOUND)
     foreach(_inc_dir ${LIBVIPS_INCLUDE_DIRS})
         target_include_directories(${ULTRACANVAS_LIB_NAME} PUBLIC $<BUILD_INTERFACE:${_inc_dir}>)
@@ -362,7 +393,6 @@ target_link_libraries(${ULTRACANVAS_LIB_NAME}
         ${LIBVIPS_LIBRARIES}
         ${GLIB_LIBRARIES}
         ${TINYXML2_LIBRARIES}
-        ${GTK3_INCLUDE_DIRS}
 )
 
 # Platform-specific libraries
@@ -370,6 +400,7 @@ if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
             ${X11_LIBRARIES}
             ${GTK3_LIBRARIES}
+            ${FONTCONFIG_LIBRARIES}
             #        ${OPENGL_LIBRARIES}
             pthread
             dl
@@ -397,6 +428,7 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
             comctl32
             imm32
             dwmapi
+            ${FONTCONFIG_LIBRARIES}
     )
     if(ULTRACANVAS_ENABLE_GL)
         target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
@@ -407,6 +439,7 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
             ${COCOA_FRAMEWORK}
             ${QUARTZ_FRAMEWORK}
+            ${CORETEXT_FRAMEWORK}
             #        ${OPENGL_FRAMEWORK}
     )
     if(ULTRACANVAS_ENABLE_GL)

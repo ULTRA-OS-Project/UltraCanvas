@@ -1,12 +1,13 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
-// Version: 1.0.1
-// Last Modified: 2026-05-01
+// Version: 1.0.3
+// Last Modified: 2026-06-01
 // Author: UltraCanvas Framework
 
+#include "UltraCanvasContainer.h"
+#include "UltraCanvasSpacer.h"
+#include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasDemo.h"
-#include "UltraCanvasBoxLayout.h"
-#include "UltraCanvasGridLayout.h"
 #include "UltraCanvasTextArea.h"
 #include "Plugins/Text/UltraCanvasMarkdown.h"
 #include <iostream>
@@ -14,53 +15,50 @@
 #include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
-    DemoLegendContainer::DemoLegendContainer(const std::string& identifier, long id, long x, long y, long width, long height)
-            : UltraCanvasContainer(identifier, id, x, y, width, height) {
+    DemoLegendContainer::DemoLegendContainer(const std::string& identifier)
+//            : UltraCanvasContainer(identifier, x, y, width, height) {
+        : UltraCanvasContainer(identifier) {
 
         // Set container style
 //        SetBorders(1, Color(200, 200, 200, 255));
         SetBackgroundColor(Color(245, 245, 245, 255));
 
         // Create legend title
-        legendTitle = std::make_shared<UltraCanvasLabel>("LegendTitle", id + 1, 10, 5, width - 20, 20);
+        legendTitle = std::make_shared<UltraCanvasLabel>("LegendTitle", 10, 5, 0, 0);
         legendTitle->SetText("Component Status Legend");
         legendTitle->SetFontSize(12);
         legendTitle->SetFontWeight(FontWeight::Bold);
         legendTitle->SetTextColor(Color(80, 80, 80, 255));
-        legendTitle->SetAutoResize(true);
         AddChild(legendTitle);
 
         // Implemented status (row 1)
-        implementedIcon = std::make_shared<UltraCanvasImageElement>("ImplementedIcon", id + 2, 10, 30, 16, 16);
+        implementedIcon = std::make_shared<UltraCanvasImageElement>("ImplementedIcon", 10, 30, 16, 16);
         AddChild(implementedIcon);
 
-        implementedLabel = std::make_shared<UltraCanvasLabel>("ImplementedLabel", id + 3, 32, 28, width - 42, 16);
+        implementedLabel = std::make_shared<UltraCanvasLabel>("ImplementedLabel", 32, 28, 0, 0);
         implementedLabel->SetText("Fully Implemented");
         implementedLabel->SetFontSize(11);
         implementedLabel->SetTextColor(Color(0, 150, 0, 255));
-        implementedLabel->SetAutoResize(true);
         AddChild(implementedLabel);
 
         // Partially implemented status (row 2)
-        partialIcon = std::make_shared<UltraCanvasImageElement>("PartialIcon", id + 4, 10, 50, 16, 16);
+        partialIcon = std::make_shared<UltraCanvasImageElement>("PartialIcon", 10, 50, 16, 16);
         AddChild(partialIcon);
 
-        partialLabel = std::make_shared<UltraCanvasLabel>("PartialLabel", id + 5, 32, 48, width - 42, 16);
+        partialLabel = std::make_shared<UltraCanvasLabel>("PartialLabel", 32, 48, 0, 0);
         partialLabel->SetText("Partially Implemented");
         partialLabel->SetFontSize(11);
         partialLabel->SetTextColor(Color(0x21, 0x96, 0xf3, 255));
-        partialLabel->SetAutoResize(true);
         AddChild(partialLabel);
 
         // Not implemented status (row 3)
-        notImplementedIcon = std::make_shared<UltraCanvasImageElement>("NotImplementedIcon", id + 6, 10, 70, 16, 16);
+        notImplementedIcon = std::make_shared<UltraCanvasImageElement>("NotImplementedIcon", 10, 70, 16, 16);
         AddChild(notImplementedIcon);
 
-        notImplementedLabel = std::make_shared<UltraCanvasLabel>("NotImplementedLabel", id + 7, 32, 68, width - 42, 16);
+        notImplementedLabel = std::make_shared<UltraCanvasLabel>("NotImplementedLabel", 32, 68, 0, 0);
         notImplementedLabel->SetText("Not Implemented Yet");
         notImplementedLabel->SetFontSize(11);
         notImplementedLabel->SetTextColor(Color(200, 0, 0, 255));
-        notImplementedLabel->SetAutoResize(true);
         AddChild(notImplementedLabel);
     }
 
@@ -81,56 +79,62 @@ namespace UltraCanvas {
         }
     }
 
-    DemoHeaderContainer::DemoHeaderContainer(const std::string& identifier, long id,
-                                             long x, long y, long width, long height)
-            : UltraCanvasContainer(identifier, id, x, y, width, height) {
+    DemoHeaderContainer::DemoHeaderContainer(const std::string& identifier)
+            : UltraCanvasContainer(identifier) {
 
         // Create title label (left side)
-        titleLabel = std::make_shared<UltraCanvasLabel>("HeaderTitle", id + 1, 10, 5, width - 200, 30);
+        titleLabel = std::make_shared<UltraCanvasLabel>("HeaderTitle");
         titleLabel->SetFontSize(14);
         titleLabel->SetFontWeight(FontWeight::Bold);
         titleLabel->SetText("Demo Title");
-        titleLabel->SetAutoResize(true);
-        titleLabel->SetMargin(2,0,0,0);
-        //AddChild(titleLabel);
+        AddChild(titleLabel);
+
+        AddStretchSpacer(1);
 
         // Create documentation button (right side)
-        docButton = std::make_shared<UltraCanvasImageElement>("DocBtn", id + 3, width - 90, 5, 21, 21);
+        docButton = std::make_shared<UltraCanvasImageElement>("DocBtn", 21, 21);
         docButton->LoadFromFile(NormalizePath(GetResourcesDir() + "media/icons/text.png"));
         docButton->SetVisible(false);  // Initially disabled
         docButton->SetClickable(true);
         docButton->onClick = [this]() { ShowDocumentationWindow(); };
-        //AddChild(docButton);
+        AddChild(docButton);
 
         // Create source button (right side)
-        sourceButton = std::make_shared<UltraCanvasImageElement>("SourceBtn", id + 2, width - 40, 5, 21, 28);
+        sourceButton = std::make_shared<UltraCanvasImageElement>("SourceBtn", 21, 28);
         sourceButton->LoadFromFile(NormalizePath(GetResourcesDir() + "media/icons/c-plus-plus-icon.png"));
         sourceButton->SetVisible(false);  // Initially disabled
         sourceButton->SetClickable(true);
         sourceButton->onClick = [this]() { ShowSourceWindow(); };
-        //AddChild(sourceButton);
+        AddChild(sourceButton);
 
-        // Create divider line at the bottom
-        dividerLine = std::make_shared<UltraCanvasContainer>("Divider", id + 4, 0, 38, width, 2);
-        dividerLine->SetBackgroundColor(Color(200, 200, 200, 255));
-        //AddChild(dividerLine);
+        // Divider line pinned at the bottom of the header. Absolute-positioned
+        // so it doesn't participate in the in-flow flex row (otherwise its
+        // width:100% main-axis hypothetical would push the row into shrink
+        // mode and the stretch spacer above would collapse to 0).
+//        dividerLine = std::make_shared<UltraCanvasUIElement>("Divider");
+//        dividerLine->size.height = CSSLayout::Dimension::Px(2);
+//        dividerLine->SetBackgroundColor(Color(200, 200, 200, 255));
+//        dividerLine->layoutItem.positionType = CSSLayout::PositionType::Absolute;
+//        dividerLine->layoutItem.position = CSSLayout::Position{
+//            /*top   */ CSSLayout::Dimension::Auto(),
+//            /*right */ CSSLayout::Dimension::Px(0),
+//            /*bottom*/ CSSLayout::Dimension::Px(0),
+//            /*left  */ CSSLayout::Dimension::Px(0),
+//        };
+//        AddChild(dividerLine);
 
         // Set container style
         ContainerStyle containerStyle;
         containerStyle.forceShowHorizontalScrollbar = false;
         containerStyle.forceShowVerticalScrollbar = false;
+        containerStyle.autoShowScrollbars = false;
         SetContainerStyle(containerStyle);
 
         SetBackgroundColor(Color(245, 245, 245, 255));
         SetPadding(5,10,5,10);
         SetBorderBottom(2, Colors::Gray);
 
-        auto headerLayout = CreateHBoxLayout(this);
-        headerLayout->SetSpacing(10);
-        headerLayout->AddUIElement(titleLabel)->SetCrossAlignment(LayoutAlignment::Center);
-        headerLayout->AddStretch(1);
-        headerLayout->AddUIElement(docButton)->SetCrossAlignment(LayoutAlignment::Center);
-        headerLayout->AddUIElement(sourceButton)->SetCrossAlignment(LayoutAlignment::Center);
+        layout.SetFlexRow().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     }
 
     void DemoHeaderContainer::SetDemoTitle(const std::string& title) {
@@ -216,7 +220,7 @@ namespace UltraCanvas {
         }
 
         // Create text area for source code with syntax highlighting
-        auto textArea = std::make_shared<UltraCanvasTextArea>("SourceCode", 1000, 5, 5, 1190, 590);
+        auto textArea = std::make_shared<UltraCanvasTextArea>("SourceCode", 5, 5, 1190, 590);
         textArea->SetText(content);
         //textArea->SetReadOnly(true);
         textArea->SetShowLineNumbers(true);
@@ -229,6 +233,7 @@ namespace UltraCanvas {
         } else {
             textArea->ApplyCodeStyle("text");
         }
+        textArea->SetReadOnly(true);
         textArea->SetFontSize(10);
 
         sourceWindow->SetEventCallback([this](const UCEvent& event) {
@@ -259,8 +264,16 @@ namespace UltraCanvas {
             return;
         }
         // Create text area for documentation
-        auto markDownTextArea = std::make_shared<UltraCanvasMarkdownDisplay>("Documentation", 2000, 5, 5, 1190, 590);
-        markDownTextArea->SetMarkdownText(content);
+        auto markDownTextArea = std::make_shared<UltraCanvasTextArea>("Documentation");
+        markDownTextArea->layout.display = CSSLayout::DisplayType::Block;
+        markDownTextArea->size.width = CSSLayout::Dimension::Vw(100);
+        markDownTextArea->size.height = CSSLayout::Dimension::Vh(100);
+        markDownTextArea->SetText(content);
+        markDownTextArea->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
+        markDownTextArea->SetReadOnly(true);
+        markDownTextArea->SetWordWrap(true);
+        markDownTextArea->SetCursorPosition(LineColumnIndex::INVALID);
+
 
         docWindow->SetEventCallback([this](const UCEvent& event) {
             if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
@@ -310,35 +323,40 @@ namespace UltraCanvas {
         const int treeViewWidth = 350;   // Width for both treeview and legend
 
 // Create tree view for categories (left side, reduced height)
-        categoryTreeView = std::make_shared<UltraCanvasTreeView>("CategoryTree", 2, 0, 0, 100, 100);
+        categoryTreeView = std::make_shared<UltraCanvasTreeView>("CategoryTree");
         categoryTreeView->SetRowHeight(24);
         categoryTreeView->SetSelectionMode(TreeSelectionMode::Single);
         categoryTreeView->SetLineStyle(TreeLineStyle::Solid);
         categoryTreeView->SetShowFirstChildOnExpand(true);
         categoryTreeView->SetAutoExpandSelectedNode(true);
-        categoryTreeView->SetPadding(1,3,1,3);
+        //categoryTreeView->SetPadding(1,3,1,3);
 
         debugOutput << "categoryTreeView created" << std::endl;
 
         // Create legend container below tree view
-        legendContainer = std::make_shared<DemoLegendContainer>("LegendContainer", 6, 0, 0, 100, legendHeight);
+        legendContainer = std::make_shared<DemoLegendContainer>("LegendContainer");
         legendContainer->SetBorderTop(1, Colors::Gray);
+        legendContainer->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         SetupLegendContainer();
 
-        auto categoryContainer = CreateContainer("catcont", 0, 0, 0, 100, 100);
+        // No-size constructor — let the grid cell decide categoryContainer's
+        // dimensions. If we passed 100, 100 here, the engine would treat
+        // size = 100×100 as a CSS-explicit width/height and shrink the
+        // sidebar inside its 350-pixel grid column.
+        auto categoryContainer = std::make_shared<UltraCanvasContainer>("catcont");
 
-        mainContainer = std::make_shared<UltraCanvasContainer>("MainDisplayArea", 3, 0, 0, 1030, 840);
+        mainContainer = std::make_shared<UltraCanvasContainer>("MainDisplayArea");
         mainContainer->SetBorderLeft(1, Colors::Gray);
 
-        // Create header container (inside main container)
-        headerContainer = std::make_shared<DemoHeaderContainer>("HeaderContainer", 4, 0, 0, 1028, 40);
+        // Header sized by its parent row — no explicit w/h.
+        headerContainer = std::make_shared<DemoHeaderContainer>("HeaderContainer");
 
         // Create display container (below header)
-        displayContainer = std::make_shared<UltraCanvasContainer>("DisplayArea", 5, 0, 40, 1028, 785);
+        displayContainer = std::make_shared<UltraCanvasContainer>("DisplayArea");
         displayContainer->SetBackgroundColor(Colors::White);
 
         // Create status label (bottom left)
-        statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel", 4, 10, 850, 850, 25);
+        statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel");
         statusLabel->SetText("Select a component from the tree view to see examples");
         statusLabel->SetBackgroundColor(Color(240, 240, 240, 255));
         statusLabel->SetPadding(3, 7, 3, 7);
@@ -354,25 +372,44 @@ namespace UltraCanvas {
             OnTreeNodeSelected(node);
         };
 
-        auto categoryContainerLayout = CreateVBoxLayout(categoryContainer.get());
-        categoryContainerLayout->AddUIElement(categoryTreeView, 1)->SetWidthMode(SizeMode::Fill);
-        categoryContainerLayout->AddUIElement(legendContainer)->SetWidthMode(SizeMode::Fill);
+        categoryContainer->layout.SetFlexColumn();
+        // flex-grow fills the main (vertical) axis; align-self: stretch fills the
+        // cross (horizontal) axis. justify-self is grid-only — adding it here would
+        // convert layoutItem into a GridItem and discard the flex props above.
+        categoryTreeView->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        categoryContainer->AddChild(categoryTreeView);
+        categoryContainer->AddChild(legendContainer);
 
-        auto mainContainerLayout = CreateVBoxLayout(mainContainer.get());
-        mainContainerLayout->AddUIElement(headerContainer)->SetWidthMode(SizeMode::Fill)->SetFixedHeight(40);
-        mainContainerLayout->AddUIElement(displayContainer, 1)->SetWidthMode(SizeMode::Fill);
+        mainContainer->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        // Fixed top bar: never shrink below its content. Without this the header is a
+        // flex-shrink:1 item, so a tall displayContainer (whose content overflows the
+        // column) would steal negative space from it and clip its top. flex-shrink:0
+        // freezes the header at its content height; displayContainer absorbs the
+        // overflow and scrolls.
+        headerContainer->layoutItem.SetFlexShrink(0);
+        mainContainer->AddChild(headerContainer);
+        displayContainer->layoutItem.SetFlexGrow(1);
+        displayContainer->layout.SetFlexColumn();
+        mainContainer->AddChild(displayContainer);
 
-        auto displayContainerLayout = CreateVBoxLayout(displayContainer.get());
+        mainWindow->layout
+            .SetGrid()
+            .SetGridColumns({CSSLayout::GridTrackSize{.kind=CSSLayout::GridTrackSizeKind::Fixed, .value=CSSLayout::Dimension::Px(350)},
+                             CSSLayout::GridTrackSize{.kind=CSSLayout::GridTrackSizeKind::Fr, .value=CSSLayout::Dimension::Fr(1)}})
+             // Row 0 = Fr(1) so it consumes all available vertical space
+             // (otherwise Auto would collapse the sidebar to ~4 tree rows).
+             // Row 1 = the 25-pixel status bar at the bottom.
+             .SetGridRows({CSSLayout::GridTrackSize{.kind=CSSLayout::GridTrackSizeKind::Fr,    .value=CSSLayout::Dimension::Fr(1)},
+                           CSSLayout::GridTrackSize{.kind=CSSLayout::GridTrackSizeKind::Fixed, .value=CSSLayout::Dimension::Px(25)}});
 
-        auto mainLayout = CreateGridLayout(mainWindow.get(), 2, 2);
-        mainLayout->SetColumnDefinition(0, GridRowColumnDefinition::Fixed(350));
-        mainLayout->SetColumnDefinition(1, GridRowColumnDefinition::Star(1));
-        mainLayout->SetRowDefinition(0, GridRowColumnDefinition::Star(1));
-        mainLayout->SetRowDefinition(1, GridRowColumnDefinition::Fixed(25));
+        categoryContainer->layoutItem.SetGridRowColSimplified(0, 0);
+        mainWindow->AddChild(categoryContainer);
 
-        mainLayout->AddUIElement(categoryContainer, 0, 0)->SetSizeMode(SizeMode::Fill, SizeMode::Fill);
-        mainLayout->AddUIElement(mainContainer, 0, 1)->SetSizeMode(SizeMode::Fill, SizeMode::Fill);
-        mainLayout->AddUIElement(statusLabel, 1, 0, 1, 2)->SetSizeMode(SizeMode::Fill, SizeMode::Fill);
+        mainContainer->layoutItem.SetGridRowColSimplified(0, 1);
+        mainWindow->AddChild(mainContainer);
+
+        statusLabel->layoutItem.SetGridRowColSimplified(1, 0, 1, 2);
+        mainWindow->AddChild(statusLabel);
 
         debugOutput << "✓ Demo application initialized successfully" << std::endl;
         return true;
@@ -411,7 +448,9 @@ namespace UltraCanvas {
 
         basicBuilder.AddItem("toolbar", "Toolbar", "Tool and action bars",
                              ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateToolbarExamples(); })
+                             [this]() { return CreateToolbarExamples(); },
+                             "Apps/DemoApp/UltraCanvasToolbarExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasToolbarExamples.md")
                 .AddVariant("toolbar", "Horizontal Toolbar")
                 .AddVariant("toolbar", "Vertical Toolbar")
                 .AddVariant("toolbar", "Ribbon Style");
@@ -424,6 +463,16 @@ namespace UltraCanvas {
                 .AddVariant("tabs", "Top Tabs")
                 .AddVariant("tabs", "Side Tabs")
                 .AddVariant("tabs", "Closable Tabs");
+
+        basicBuilder.AddItem("splitpane", "Split Pane",
+                             "Resizable horizontal/vertical pane splitter (VSCode-style)",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateSplitPaneExamples(); },
+                             "Apps/DemoApp/UltraCanvasSplitPaneExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasSplitPane.md")
+                .AddVariant("splitpane", "Horizontal Split")
+                .AddVariant("splitpane", "Vertical Split")
+                .AddVariant("splitpane", "Nested Splits");
 
         basicBuilder.AddItem("layouts", "Layout System",
                              "Box, Grid, and Flex layout examples",
@@ -441,7 +490,7 @@ namespace UltraCanvas {
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateSegmentedControlExamples(); },
                              "Apps/DemoApp/UltraCanvasSegmentedControlExamples.cpp",
-                             "Docs/UltraCanvas/UltraCanvasSegmentedControl.md")
+                             "Docs/UltraCanvas/UltraCanvasSegmentedControlExamples.md")
                 .AddVariant("segmentedcontrol", "Bordered Style")
                 .AddVariant("segmentedcontrol", "iOS Style")
                 .AddVariant("segmentedcontrol", "Flat Style")
@@ -489,7 +538,7 @@ namespace UltraCanvas {
                 .AddVariant("button", "Toggle Button")
                 .AddVariant("button", "Three-Section Button");
 
-        basicBuilder.AddItem("dropdown", "Dropdown/ComboBox", "Dropdown selection controls",
+        basicBuilder.AddItem("dropdown", "Dropdown / ComboBox", "Dropdown selection controls",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateDropdownExamples(); },
                             "DemoApp/UltraCanvasDropDownExamples.cpp",
@@ -499,7 +548,7 @@ namespace UltraCanvas {
                 .AddVariant("dropdown", "Multi-Select");
 
         basicBuilder
-                .AddItem("checkbox", "Checkbox/Radio/Switch",
+                .AddItem("checkbox", "Checkbox / Radio / Switch",
                          "Interactive checkbox controls with multiple states and styles",
                          ImplementationStatus::FullyImplemented,
                          [this]() { return CreateCheckboxExamples(); },
@@ -518,6 +567,30 @@ namespace UltraCanvas {
                 .AddVariant("slider", "Horizontal Slider")
                 .AddVariant("slider", "Vertical Slider")
                 .AddVariant("slider", "Range Slider");
+
+        basicBuilder.AddItem("breadcrumb", "Breadcrumb",
+                             "Hierarchical path navigation with clickable segments",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateBreadcrumbExamples(); },
+                             "Apps/DemoApp/UltraCanvasBreadcrumbExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasBreadcrumbExamples.md")
+                .AddVariant("breadcrumb", "Default Style")
+                .AddVariant("breadcrumb", "Compact Style")
+                .AddVariant("breadcrumb", "Pills Style")
+                .AddVariant("breadcrumb", "File Explorer Style")
+                .AddVariant("breadcrumb", "Web Docs Style")
+                .AddVariant("breadcrumb", "Separator Styles")
+                .AddVariant("breadcrumb", "Dropdown Items")
+                .AddVariant("breadcrumb", "Icons")
+                .AddVariant("breadcrumb", "Live Navigation")
+                .AddVariant("breadcrumb", "Collapse Overflow")
+                .AddVariant("breadcrumb", "Ellipsize Overflow")
+                .AddVariant("breadcrumb", "ShrinkText Overflow")
+                .AddVariant("breadcrumb", "Rounded Strip");
+
+        basicBuilder.AddItem("gauges", "Gauges", "Gauges",
+                             ImplementationStatus::PartiallyImplemented,
+                             [this]() { return CreatePartiallyImplementedExamples("Gauges is not ready yet"); });
 
         // ===== EXTENDED FUNCTIONALITY =====
         auto extendedBuilder = DemoCategoryBuilder(this, DemoCategory::ExtendedFunctionality);
@@ -551,7 +624,9 @@ namespace UltraCanvas {
 
         extendedBuilder.AddItem("listview", "List View", "Item lists with custom rendering",
                                 ImplementationStatus::FullyImplemented,
-                                [this]() { return CreateListViewExamples(); })
+                                [this]() { return CreateListViewExamples(); },
+                                "Apps/DemoApp/UltraCanvasListViewExamples.cpp",
+                                "Docs/UltraCanvas/UltraCanvasListViewExamples.md")
                 .AddVariant("listview", "Simple List")
                 .AddVariant("listview", "Icon List")
                 .AddVariant("listview", "Detail View");
@@ -634,6 +709,14 @@ namespace UltraCanvas {
                               "DemoApp/UltraCanvasBitmapFormatDemo.cpp",
                               "Docs/UltraCanvas/UltraCanvasBitmapExamples.md");
 
+        // PSP Images (Paint Shop Pro native format with layers and vector objects)
+//        bitmapBuilder.AddItem("pspimages", "PSP Images",
+//                              "PSP Paint Shop Pro native layered image format",
+//                              ImplementationStatus::FullyImplemented,
+//                              [this]() { return CreateBitmapFormatDemoPage("PSP", NormalizePath(GetResourcesDir() + "media/images/dice.pspimage")); },
+//                              "DemoApp/UltraCanvasBitmapFormatDemo.cpp",
+//                              "Docs/UltraCanvas/UltraCanvasBitmapExamples.md");
+
         bitmapBuilder.AddItem("imageperformance", "Image Performance Test",
                               "Benchmark image loading, decompression, and rendering speed",
                               ImplementationStatus::FullyImplemented,
@@ -658,7 +741,9 @@ namespace UltraCanvas {
 #ifdef ULTRACANVAS_HAS_CDR_PLUGIN
         vectorBuilder.AddItem("cdrimages", "CDR Images", "CDR (CorelDraw) images display and manipulation",
                               ImplementationStatus::FullyImplemented,
-                              [this]() { return CreateCDRVectorExamples(); });
+                              [this]() { return CreateCDRVectorExamples(); },
+                              "Apps/DemoApp/UltraCanvasCDRExamples.cpp",
+                              "Docs/UltraCanvas/UltraCanvasCDRExamples.md");
 #endif
 #ifdef ULTRACANVAS_HAS_XAR_PLUGIN
         vectorBuilder.AddItem("xarimages", "XAR Images", "XAR Image display and manipulation",
@@ -697,6 +782,12 @@ namespace UltraCanvas {
                              "DemoApp/UltraCanvasBasicChartsExamples.cpp",
                              "Docs/UltraCanvas/UltraCanvasAreaChartElement.md");
 
+        chartBuilder.AddItem("piecharts", "Pie Chart", "Pie chart data visualization",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreatePieChartExamples(); },
+                             "DemoApp/UltraCanvasPieChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasPieChartExamples.md");
+
         chartBuilder.AddItem("financialcharts", "Candlestick Chart", "Stock market OHLC and candlestick charts",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateFinancialChartExamples(); },
@@ -729,8 +820,8 @@ namespace UltraCanvas {
         chartBuilder.AddItem("populationcharts", "Population Chart", "Population chart data visualization",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreatePopulationChartExamples(); },
-                             "DemoApp/UltraCanvasPopulationChartsExamples.cpp",
-                             "Docs/UltraCanvas/UltraCanvasPopulationChartElement.md");
+                             "DemoApp/UltraCanvasPopulationChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasPopulationChartExamples.md");
 
         chartBuilder.AddItem("sunburstcharts", "Sunburst Chart", "Sunburst Chart",
                              ImplementationStatus::PartiallyImplemented,
@@ -757,8 +848,10 @@ namespace UltraCanvas {
                              [this]() { return CreatePartiallyImplementedExamples("HeatMap Chart is not ready yet"); });
 
         chartBuilder.AddItem("jitterchart", "Jitter chart", "Jitter chart",
-                             ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples("Jitter Chart is not ready yet"); });
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateJitterPlotExamples(); },
+                             "Apps/DemoApp/UltraCanvasJitterPlotExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasJitterPlotExamples.md");
 
         chartBuilder.AddItem("dumbbell", "Dumbbell chart", "Dumbbell chart",
                              ImplementationStatus::PartiallyImplemented,
@@ -772,17 +865,21 @@ namespace UltraCanvas {
                              ImplementationStatus::PartiallyImplemented,
                              [this]() { return CreatePartiallyImplementedExamples("Bubble Chart is not ready yet"); });
 
+        chartBuilder.AddItem("contourplot", "Contour plot", "Contour plot",
+                             ImplementationStatus::NotImplemented,
+                             [this]() { return CreatePartiallyImplementedExamples("Contour plot is not ready yet"); });
+
         // ===== DIAGRAMS =====
         auto diagramBuilder = DemoCategoryBuilder(this, DemoCategory::Diagrams);
 
         diagramBuilder.AddItem(
                         "sankey",
-                        "Sankey Diagram",
+                        "Sankey Flow",
                         "Interactive flow diagrams showing relationships and value distributions",
                         ImplementationStatus::FullyImplemented,
                         [this]() { return CreateSankeyExamples(); },
                         "DemoApp/UltraCanvasSankeyExamples.cpp",
-                        "Docs/UltraCanvas/UltraCanvasSankeyDiagram.md"
+                        "Docs/UltraCanvas/UltraCanvasSankeyExamples.md"
                 )
                 .AddVariant("sankey", "Energy Flow")
                 .AddVariant("sankey", "Financial Flow")
@@ -790,36 +887,99 @@ namespace UltraCanvas {
                 .AddVariant("sankey", "Custom Data")
                 .AddVariant("sankey", "Performance Test");
 
-        diagramBuilder.AddItem("plantuml", "PlantUML", "UML and diagram generation",
+//        diagramBuilder.AddItem("plantuml", "PlantUML", "UML and diagram generation",
+//                               ImplementationStatus::NotImplemented,
+//                               [this]() { return CreateDiagramExamples(); })
+//                .AddVariant("plantuml", "Class Diagrams")
+//                .AddVariant("plantuml", "Sequence Diagrams")
+//                .AddVariant("plantuml", "Activity Diagrams");
+
+        diagramBuilder.AddItem("flowchart", "Flow chart", "Interactive flowchart with decision points",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateFlowChartExamples(); },
+                               "Apps/DemoApp/UltraCanvasFlowChartExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasFlowChartExamples.md");
+
+        diagramBuilder.AddItem("venndiagram", "Venn Diagram", "Interactive Venn diagram for set visualization",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateVennDiagramExamples(); },
+                               "Apps/DemoApp/UltraCanvasVennDiagramExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasVennDiagramExamples.md");
+
+        diagramBuilder.AddItem("dendrogram", "Dendrogram", "Interactive dendrogram / phylogenetic tree visualization",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateDendrogramExamples(); },
+                               "Apps/DemoApp/UltraCanvasDendrogramExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasDendrogramExamples.md");
+
+        diagramBuilder.AddItem("treemap", "TreeMap", "Hierarchical TreeMap data visualization",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateTreeMapExamples(); },
+                               "Apps/DemoApp/UltraCanvasTreeMapExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasTreeMapExamples.md");
+
+    diagramBuilder.AddItem("blockdiagram", "Block Diagram", "Interactive block diagram with shapes and connections",
+                           ImplementationStatus::FullyImplemented,
+                           [this]() { return CreateBlockDiagramExamples(); },
+                           "Apps/DemoApp/UltraCanvasBlockDiagramExamples.cpp",
+                           "Docs/UltraCanvas/UltraCanvasBlockDiagramExamples.md");
+
+    diagramBuilder.AddItem("nodediagram", "Node Diagram", "Network/graph visualization with nodes and edges",
+                           ImplementationStatus::FullyImplemented,
+                           [this]() { return CreateNodeDiagramExamples(); },
+                           "Apps/DemoApp/UltraCanvasNodeDiagramExamples.cpp",
+                           "Docs/UltraCanvas/UltraCanvasNodeDiagramExamples.md");
+
+    diagramBuilder.AddItem("gourcetree", "Force-Directed Tree", "Radial tree visualization for file systems inspired by Gource",
+                           ImplementationStatus::FullyImplemented,
+                           [this]() { return CreateGourceTreeExamples(); },
+                           "Apps/DemoApp/UltraCanvasGourceTreeExamples.cpp",
+                           "Docs/UltraCanvas/UltraCanvasGourceTreeExamples.md");
+    diagramBuilder.AddItem("adjacencydiagrams", "Adjacency Diagram", "Architectural Adjacency Diagram",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateAdjacencyDiagramExamples(); },
+                               "Apps/DemoApp/UltraCanvasAdjacencyDiagramExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasAdjacencyDiagramExamples.md");
+    diagramBuilder.AddItem("arcdiagrams", "Arc Diagram", "Arc Diagram",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateArcDiagramExamples(); },
+                               "Apps/DemoApp/UltraCanvasArcDiagramExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasArcDiagramExamples.md");
+    diagramBuilder.AddItem("mindmap", "MindMap", "MindMap",
                                ImplementationStatus::NotImplemented,
-                               [this]() { return CreateDiagramExamples(); })
-                .AddVariant("plantuml", "Class Diagrams")
-                .AddVariant("plantuml", "Sequence Diagrams")
-                .AddVariant("plantuml", "Activity Diagrams");
-
-        diagramBuilder.AddItem("nodediagram", "Node diagram", "Node diagram",
-                               ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("Node diagram is not ready yet"); });
-
-        diagramBuilder.AddItem("flowchart", "Flow chart", "Flow chart",
-                               ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("Flow chart is not ready yet"); });
-
-        diagramBuilder.AddItem("venndiagram", "Venn diagram", "Venn diagram",
-                               ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("Venn is not ready yet"); });
-
-        diagramBuilder.AddItem("dendogram", "Dendogram", "Dendogram",
-                               ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("Dendogram is not ready yet"); });
-
-        diagramBuilder.AddItem("blockdiagram", "Block diagram", "Block diagram",
+                               [this]() { return CreatePartiallyImplementedExamples("MindMap is not ready yet"); });
+    diagramBuilder.AddItem("kanbandiagram", "Kanban Diagram", "Kanban Diagram",
                                ImplementationStatus::NotImplemented,
-                               [this]() { return nullptr; });
-
-        diagramBuilder.AddItem("mermaid", "Mermaid", "Mermaid",
+                               [this]() { return CreatePartiallyImplementedExamples("Kanban Diagram is not ready yet"); });
+    diagramBuilder.AddItem("packetdiagram", "Packet Diagram", "Packet Diagram",
                                ImplementationStatus::NotImplemented,
-                               [this]() { return nullptr; });
+                               [this]() { return CreatePartiallyImplementedExamples("Packet Diagram is not ready yet"); });
+    diagramBuilder.AddItem("gitgraph", "Git Graph", "Git Graph",
+                               ImplementationStatus::NotImplemented,
+                               [this]() { return CreatePartiallyImplementedExamples("Git Graph is not ready yet"); });
+    diagramBuilder.AddItem("erdiagram", "ER Diagram", "ER Diagram",
+                               ImplementationStatus::NotImplemented,
+                               [this]() { return CreatePartiallyImplementedExamples("ER Diagram is not ready yet"); });
+    diagramBuilder.AddItem("sequencediagram", "Sequence Diagram", "Sequence Diagram",
+                               ImplementationStatus::NotImplemented,
+                               [this]() { return CreatePartiallyImplementedExamples("Sequence Diagram is not ready yet"); });
+    diagramBuilder.AddItem("classdiagram", "Class Diagram", "Class Diagram",
+                               ImplementationStatus::NotImplemented,
+                               [this]() { return CreatePartiallyImplementedExamples("Class Diagram is not ready yet"); });
+    diagramBuilder.AddItem("quadrantdiagram", "Quadrant Chart (diagram)", "Quadrant Chart (diagram)",
+                               ImplementationStatus::NotImplemented,
+                               [this]() { return CreatePartiallyImplementedExamples("Quadrant Chart (diagram) is not ready yet"); });
+    diagramBuilder.AddItem("requirementdiagram", "Requirement Diagram", "Requirement Diagram",
+                               ImplementationStatus::NotImplemented,
+                               [this]() { return CreatePartiallyImplementedExamples("Requirement Diagram is not ready yet"); });
+    diagramBuilder.AddItem("timelinediagram", "Timeline Diagram", "Timeline Diagram",
+                               ImplementationStatus::NotImplemented,
+                               [this]() { return CreatePartiallyImplementedExamples("Timeline Diagram is not ready yet"); });
+
+
+//        diagramBuilder.AddItem("mermaid", "Mermaid", "Mermaid",
+//                               ImplementationStatus::NotImplemented,
+//                               [this]() { return nullptr; });
 
 
 
@@ -845,10 +1005,6 @@ namespace UltraCanvas {
                             ImplementationStatus::PartiallyImplemented,
                             [this]() { return CreatePartiallyImplementedExamples("Waves info graphic is not ready yet"); });
 
-        infoBuilder.AddItem("treemap", "Treemap", "Treemap",
-                            ImplementationStatus::PartiallyImplemented,
-                            [this]() { return CreatePartiallyImplementedExamples("Treemap is not ready yet"); });
-
         infoBuilder.AddItem("matrix", "Matrix", "Matrix",
                             ImplementationStatus::PartiallyImplemented,
                             [this]() { return CreatePartiallyImplementedExamples("Matrix is not ready yet"); });
@@ -872,7 +1028,8 @@ namespace UltraCanvas {
         graphics3DBuilder.AddItem("glsurface", "OpenGL Surface", "Hardware-accelerated OpenGL 3D rendering surface",
                                   ImplementationStatus::FullyImplemented,
                                   [this]() { return CreateGLSurfaceExamples(); },
-                                  "Apps/DemoApp/UltraCanvasGLSurfaceExamples.cpp");
+                                  "Apps/DemoApp/UltraCanvasGLSurfaceExamples.cpp",
+                                  "Docs/UltraCanvas/UltraCanvasGLSurfaceExamples.md");
 #endif
 
         // ===== VIDEO ELEMENTS =====
@@ -890,7 +1047,7 @@ namespace UltraCanvas {
 
         textDocBuilder.AddItem("markdown", "Markdown", "Markdown document rendering",
                                ImplementationStatus::FullyImplemented,
-                               [this]() { return CreateMarkdownExamples(); });
+                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"media/MarkdownExample.md")); });
 
 //        textDocBuilder.AddItem("codeeditor", "Code Editor", "Syntax highlighting text editor",
 //                               ImplementationStatus::PartiallyImplemented,
@@ -954,24 +1111,40 @@ namespace UltraCanvas {
                              "Configure text antialiasing, hinting style, and hint metrics",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateTextRenderingSettingsExamples(); },
-                             "Apps/DemoApp/UltraCanvasTextRenderingExamples.cpp");
+                             "Apps/DemoApp/UltraCanvasTextRenderingExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasTextRenderingExamples.md");
 
         auto modulesBuilder = DemoCategoryBuilder(this, DemoCategory::Modules);
-        modulesBuilder.AddItem("pixelfx", "Pixel FX", "Pixel FX",
-                             ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreatePixeLXExamples(); });
+        modulesBuilder.AddItem("audiofx", "Audio FX", "Audio FX",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/AudioFX/README.md")); });
         modulesBuilder.AddItem("fileloader", "File Loader", "File Loader",
-                             ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreateFileLoaderExamples(); });
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/FileLoader/README.md")); });
+        modulesBuilder.AddItem("iodevicemanager", "IODeviceManager support", "IODeviceManager support",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/IODeviceManager/README.md")); });
+        modulesBuilder.AddItem("pixelfx", "Pixel FX", "Pixel FX",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/PixelFX/README.md")); });
+        modulesBuilder.AddItem("smarthome", "Smart Home module", "UltraCanvas Smart Home Module",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/Smarthome/README.md")); });
+        modulesBuilder.AddItem("ultraai", "Ultra AI", "Ultra AI Module",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/UltraAI/README.md")); });
+        modulesBuilder.AddItem("ultranet", "Ultra Net", "Ultra Net Module",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/UltraNet/README.md")); });
+        modulesBuilder.AddItem("videofx", "VideoFX", "VideoFX Module",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/VideoFX/README.md")); });
+        modulesBuilder.AddItem("virtualfs", "VirtualFS", "VirtualFS Module",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/VirtualFS/README.md")); });
         modulesBuilder.AddItem("gpio", "GPIO support", "GPIO support",
                              ImplementationStatus::PartiallyImplemented,
                              [this]() { return CreatePartiallyImplementedExamples("## GPIO support"); });
-        modulesBuilder.AddItem("iodevicemanager", "IODeviceManager support", "IODeviceManager support",
-                               ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreateIODeviceManagerExamples(); });
-        modulesBuilder.AddItem("smarthome", "Smart Home module", "UltraCanvas Smart Home Module",
-                               ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreateSmartHomeExamples(); });
 
         auto widgetsBuilder = DemoCategoryBuilder(this, DemoCategory::Widgets);
         widgetsBuilder.AddItem("datepicker", "Date Picker", "Date Picker",
@@ -984,6 +1157,19 @@ namespace UltraCanvas {
         widgetsBuilder.AddItem("photovideoviewer", "Photo/Video viewer", "Photo/Video viewer",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("Photo/Video viewer"); });
+
+        widgetsBuilder.AddItem("slideshow", "Slideshow",
+                               "Timed image diashow with info text panel and selectable indicator styles",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateSlideshowExamples(); },
+                               "Apps/DemoApp/UltraCanvasSlideshowExamples.cpp")
+                .AddVariant("slideshow", "Bars Indicator")
+                .AddVariant("slideshow", "Dots Indicator")
+                .AddVariant("slideshow", "Progress Bar")
+                .AddVariant("slideshow", "Story Bars")
+                .AddVariant("slideshow", "Counter")
+                .AddVariant("slideshow", "Thumbnails")
+                .AddVariant("slideshow", "Labels");
 
         debugOutput << "✓ Registered " << demoItems.size() << " demo items across "
                   << categoryItems.size() << " categories" << std::endl;
@@ -1027,7 +1213,11 @@ namespace UltraCanvas {
             for (const std::string& itemId : items) {
                 const auto& demoItem = demoItems[itemId];
                 TreeNodeData itemData(itemId, demoItem->displayName);
-                itemData.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/document.svg"), 16, 16);
+                if (demoItem->id == "imageperformance") {
+                    itemData.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/clock-five.svg"), 16, 16);
+                } else {
+                    itemData.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/document.svg"), 16, 16);
+                }
                 itemData.rightIcon = TreeNodeIcon(GetStatusIcon(demoItem->status), 12, 12);
                 categoryTreeView->AddNode(categoryData.nodeId, itemData);
             }
@@ -1072,10 +1262,11 @@ namespace UltraCanvas {
         if (item->createExample && item->status != ImplementationStatus::NotImplemented) {
             try {
                 currentDisplayElement = item->createExample();
-                if (currentDisplayElement && displayContainer->GetLayout()) {
-                    ((UltraCanvasBoxLayout*)displayContainer->GetLayout())->AddUIElement(currentDisplayElement)->SetWidthMode(SizeMode::Fill)->SetStretch(1);
-                } else {
+                if (currentDisplayElement) {
                     displayContainer->AddChild(currentDisplayElement);
+                    currentDisplayElement->layoutItem
+                        .SetFlexGrow(1)
+                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
                 }
                 currentSelectedId = itemId;
             } catch (const std::exception& e) {
@@ -1083,7 +1274,7 @@ namespace UltraCanvas {
             }
         } else {
             // Show placeholder for not implemented items
-            auto placeholder = std::make_shared<UltraCanvasLabel>("placeholder", 999, 20, 20, 600, 200);
+            auto placeholder = std::make_shared<UltraCanvasLabel>("placeholder", 20, 20, 600, 200);
             placeholder->SetText("This component is not yet implemented.\nPlanned for future release.");
             placeholder->SetAlignment(TextAlignment::Center);
             placeholder->SetBackgroundColor(Color(255, 255, 200, 100));

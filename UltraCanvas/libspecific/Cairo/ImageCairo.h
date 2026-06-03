@@ -1,7 +1,7 @@
 // libspecific/Cairo/ImageCairo.h
 // Base interface for cross-platform image handling in UltraCanvas
-// Version: 1.0.0
-// Last Modified: 2025-10-24
+// Version: 1.1.0
+// Last Modified: 2026-05-11
 // Author: UltraCanvas Framework
 #pragma once
 #ifndef IMAGECAIRO_H
@@ -143,6 +143,12 @@ namespace UltraCanvas {
 #ifdef HAS_LIBVIPS
     std::shared_ptr<UCPixmapCairo> CreatePixmapFromVImage(vips::VImage vipsImage);
     std::string ExportVImage(vips::VImage vImg, const std::string &imagePath, const UCImageSave::ImageExportOptions& opts);
+
+    // Runtime probes against the installed libvips build. Pass extensions
+    // with leading dot (".png", ".exr"). Return true if the local libvips
+    // build has a saver/loader compiled in for that extension.
+    bool VipsCanSave(const std::string& extensionWithDot);
+    bool VipsCanLoad(const std::string& extensionWithDot);
 #endif
 }
 #endif

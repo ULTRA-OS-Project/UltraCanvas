@@ -17,6 +17,8 @@
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasApplication.h"
+#include "Plugins/Diagrams/UltraCanvasNodeDiagram.h"
+#include "Plugins/Diagrams/UltraCanvasGourceTree.h"
 #include <memory>
 #include <map>
 #include <functional>
@@ -107,7 +109,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasLabel> notImplementedLabel;
 
     public:
-        DemoLegendContainer(const std::string& identifier, long id, long x, long y, long width, long height);
+        DemoLegendContainer(const std::string& identifier);
         void SetupLegend(const std::string& implementedIconPath,
                          const std::string& partialIconPath,
                          const std::string& notImplementedIconPath);
@@ -119,14 +121,14 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasLabel> titleLabel;
         std::shared_ptr<UltraCanvasImageElement> sourceButton;
         std::shared_ptr<UltraCanvasImageElement> docButton;
-        std::shared_ptr<UltraCanvasContainer> dividerLine;
+        std::shared_ptr<UltraCanvasUIElement> dividerLine;
         std::shared_ptr<UltraCanvasWindow> sourceWindow;
         std::shared_ptr<UltraCanvasWindow> docWindow;
         std::string currentSourceFile;
         std::string currentDocFile;
 
     public:
-        DemoHeaderContainer(const std::string& identifier, long id, long x, long y, long width, long height);
+        DemoHeaderContainer(const std::string& identifier);
 
         void SetDemoTitle(const std::string& title);
         void SetSourceFile(const std::string& sourceFile);
@@ -210,6 +212,9 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateCheckboxExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateToolbarExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateTabExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateSplitPaneExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateBreadcrumbExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateSlideshowExamples();
 
         // Extended Functionality
         std::shared_ptr<UltraCanvasUIElement> CreateTreeViewExamples();
@@ -241,8 +246,6 @@ namespace UltraCanvas {
 
         // Document Elements
         std::shared_ptr<UltraCanvasUIElement> CreateTextDocumentExamples();
-        std::shared_ptr<UltraCanvasUIElement> CreateMarkdownExamples();
-        std::shared_ptr<UltraCanvasUIElement> CreateCodeEditorExamples();
         std::shared_ptr<UltraCanvasUIElement> CreatePartiallyImplementedExamples(const std::string& text);
         std::shared_ptr<UltraCanvasUIElement> CreateDomainTableDemo();
 
@@ -259,17 +262,41 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateAreaChartsExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateFinancialChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreatePopulationChartExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreatePieChartExamples();
 
+        std::shared_ptr<UltraCanvasUIElement> CreateContinentsPopulationExample();
+        std::shared_ptr<UltraCanvasUIElement> CreateBrazilSchoolScoresExample();
+        std::shared_ptr<UltraCanvasUIElement> CreateJitterPlotExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateRaincloudPlotExample();
+        std::shared_ptr<UltraCanvasUIElement> CreateScientificCrossMeansExample();
+        std::shared_ptr<UltraCanvasUIElement> CreateBoxPlotOverlayExample();
+        std::shared_ptr<UltraCanvasUIElement> CreateMarketCapitalizationExample();
 
         std::shared_ptr<UltraCanvasUIElement> CreateDivergingChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateInfoGraphicsExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateWaterfallChartExamples();
 
+        std::shared_ptr<UltraCanvasUIElement> CreateVennDiagramExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateDendrogramExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateBlockDiagramExamples();
+
+        std::shared_ptr<UltraCanvasUIElement> CreateFlowChartExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateNodeDiagramExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateGourceTreeExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateAdjacencyDiagramExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateArcDiagramExamples();
+        std::shared_ptr<UltraCanvasContainer> CreateExampleDiagramSection();
+
+        std::shared_ptr<UltraCanvasUIElement> CreateFlowchartExample();
+        std::shared_ptr<UltraCanvasUIElement> CreateSystemArchitectureExample();
+
+        std::shared_ptr<UltraCanvasUIElement> CreateTreeMapExamples();
+
 //        std::shared_ptr<UltraCanvasUIElement> CreatePDFExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSVGVectorExamples();
 
         std::shared_ptr<UltraCanvasUIElement> CreateFileLoaderExamples();
-        std::shared_ptr<UltraCanvasUIElement> CreatePixeLXExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateMarkdownDocScreen(const std::string& filename);
         std::shared_ptr<UltraCanvasUIElement> CreateQRCodeExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateGPIOExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateScannerSupportExamples();

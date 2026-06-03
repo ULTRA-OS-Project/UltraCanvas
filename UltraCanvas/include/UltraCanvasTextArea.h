@@ -1,7 +1,7 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.5.2
-// Last Modified: 2026-05-01
+// Version: 3.6.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -209,8 +209,7 @@ namespace UltraCanvas {
         // Background and borders
         Color backgroundColor;
         Color borderColor;
-        int borderWidth;
-        int padding;
+        float textPadding;
 
         // Selection and cursor
         Color selectionColor;
@@ -361,19 +360,27 @@ namespace UltraCanvas {
     class UltraCanvasTextArea : public UltraCanvasUIElement {
     public:
         // Constructor and destructor
-        UltraCanvasTextArea(const std::string& name, int id, int x, int y, int width, int height);
+        UltraCanvasTextArea(const std::string& name, float x, float y, float width, float height);
+
+        UltraCanvasTextArea(const std::string& name, float width, float height)
+            : UltraCanvasTextArea(name, -1, -1, width, height) {}
+
+        explicit UltraCanvasTextArea(const std::string& name)
+            : UltraCanvasTextArea(name, -1, -1, -1, -1) {}
+
         virtual ~UltraCanvasTextArea();
 
         bool AcceptsFocus() const override { return true; }
         // Render method
-        virtual void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        virtual void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
-        // Drives the per-line layout cache (UpdateLineLayouts) so layouts are ready
-        // before Render runs. Called by the framework when RequestUpdateGeometry() has been set.
-        virtual void UpdateGeometry(IRenderContext* ctx) override;
+        // CSS layout: externally sized (explicit size or parent stretch). The engine sets
+        // finalBounds via Arrange; we flag the visible-area cache for recompute on resize.
+        // (UpdateLineLayouts/CalculateVisibleArea still run lazily in Render via the flag.)
+        void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
         // Override SetBounds to trigger layout recalculation on resize
-        void SetBounds(const Rect2Di& b) override {
+        void SetBounds(const Rect2Df& b) override {
             if (b.width != GetWidth() || b.height != GetHeight()) {
                 isNeedRecalculateVisibleArea = true;
             }
@@ -638,7 +645,7 @@ namespace UltraCanvas {
 
     protected:
         // Drawing methods
-        void DrawBackground(IRenderContext* context);
+        void DrawCurrentLineBackground(IRenderContext* context);
         void DrawBorder(IRenderContext* context);
         void DrawLineNumbers(IRenderContext* context);
         void DrawCursor(IRenderContext* context);
@@ -661,7 +668,7 @@ namespace UltraCanvas {
         int CalculateLineNumbersWidth(IRenderContext* ctx);
         void RebuildText();
         const TokenStyle& GetStyleForTokenType(TokenType type) const;
-        int GetContentHeight();
+        float GetContentHeight();
 
         // Initialization
         void ApplyDefaultStyle();
@@ -757,18 +764,18 @@ namespace UltraCanvas {
         std::unique_ptr<LineLayoutBase> currentLine;
 
         // Cursor / selection state is LineColumnIndex (codepoint-based); see fields above.
-        int computedLineHeight = 12;
-        int computedLineNumbersWidth = 40;
+        float computedLineHeight = 12;
+        float computedLineNumbersWidth = 40;
 
         // Scrolling
-        int horizontalScrollOffset;
-        int verticalScrollOffset;
+        float horizontalScrollOffset;
+        float verticalScrollOffset;
         // firstVisibleLine / maxVisibleLines removed in Step 8b — pixel-based verticalScrollOffset
         // is now the authoritative scroll state.
         int maxLineWidth;
-        Rect2Di visibleTextArea;
-        Rect2Di horizontalScrollThumb;
-        Rect2Di verticalScrollThumb;
+        Rect2Df visibleTextArea;
+        Rect2Df horizontalScrollThumb;
+        Rect2Df verticalScrollThumb;
         Point2Di dragStartOffset;
         bool isDraggingHorizontalThumb = false;
         bool isDraggingVerticalThumb = false;

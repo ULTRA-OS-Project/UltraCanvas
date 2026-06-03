@@ -676,7 +676,7 @@ namespace UltraCanvas {
         bool hasLine = false;
         bool hasTransparency = false;
 
-        Rect2Df bounds;
+        Rect2Dd bounds;
         bool boundsCached = false;
 
         virtual ~XARNode() = default;
@@ -686,7 +686,7 @@ namespace UltraCanvas {
         }
 
         void AddChild(XARNodePtr child) { children.push_back(child); }
-        Rect2Df CalculateBounds() const;
+        Rect2Dd CalculateBounds() const;
     };
 
     class XARGroupNode : public XARNode {
@@ -747,7 +747,7 @@ namespace UltraCanvas {
         XARMatrix transform;
         XARPolygonNode() { type = XARNodeType::Polygon; }
         void Render(IRenderContext* ctx, float scale = 1.0f) override;
-        std::vector<Point2Df> GeneratePolygonPoints(float scale) const;
+        std::vector<Point2Dd> GeneratePolygonPoints(float scale) const;
     };
 
     class XARTextStoryNode : public XARNode {
@@ -939,8 +939,8 @@ namespace UltraCanvas {
 
 // ===== HELPERS =====
 
-    inline Point2Df MillipointsToPixels(const Point2Di& mp, float scale = 1.0f) {
-        return Point2Df(
+    inline Point2Dd MillipointsToPixels(const Point2Di& mp, float scale = 1.0f) {
+        return Point2Dd(
             static_cast<float>(mp.x) * XARConstants::MILLIPOINTS_TO_PIXELS * scale,
             static_cast<float>(mp.y) * XARConstants::MILLIPOINTS_TO_PIXELS * scale);
     }
@@ -957,7 +957,7 @@ namespace UltraCanvas {
 
         float GetWidth() const { return width; }
         float GetHeight() const { return height; }
-        Rect2Df GetViewBox() const { return Rect2Df(0, 0, width, height); }
+        Rect2Dd GetViewBox() const { return Rect2Dd(0, 0, width, height); }
 
         XARNodePtr GetRoot() const { return root; }
 
@@ -1089,7 +1089,7 @@ namespace UltraCanvas {
         float height = 0.0f;
         int32_t spreadWidthMP = 0;
         int32_t spreadHeightMP = 0;
-        Rect2Df viewport;
+        Rect2Dd viewport;
         bool haveViewport = false;
         bool haveSpreadInfo = false;
 
@@ -1106,7 +1106,7 @@ namespace UltraCanvas {
         std::unordered_map<int32_t, std::shared_ptr<XARPathNode>> pathsBySequence;
 
         int32_t currentSequenceNumber = 0;
-        Rect2Df pendingObjectBounds;
+        Rect2Dd pendingObjectBounds;
         bool havePendingBounds = false;
 
         std::string fileType;
@@ -1121,14 +1121,14 @@ namespace UltraCanvas {
 
     class UltraCanvasXARElement : public UltraCanvasUIElement {
     public:
-        UltraCanvasXARElement(const std::string& identifier, long id,
-                              long x, long y, long w, long h);
+        UltraCanvasXARElement(const std::string& identifier,
+                              float x, float y, float w, float h);
         virtual ~UltraCanvasXARElement() = default;
 
         bool LoadFromFile(const std::string& filepath);
         bool LoadFromMemory(const uint8_t* data, size_t size);
 
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
         void SetScale(float s) { scale = s; }
         float GetScale() const { return scale; }
@@ -1190,7 +1190,6 @@ namespace UltraCanvas {
     class XARElementBuilder {
     private:
         std::string identifier = "XARElement";
-        long id = 0;
         long x = 0, y = 0, w = 400, h = 400;
         std::string filePath;
         float scale = 1.0f;
@@ -1198,7 +1197,6 @@ namespace UltraCanvas {
 
     public:
         XARElementBuilder& SetIdentifier(const std::string& s) { identifier = s; return *this; }
-        XARElementBuilder& SetID(long i) { id = i; return *this; }
         XARElementBuilder& SetPosition(long px, long py) { x = px; y = py; return *this; }
         XARElementBuilder& SetSize(long ww, long hh) { w = ww; h = hh; return *this; }
         XARElementBuilder& SetFilePath(const std::string& p) { filePath = p; return *this; }
@@ -1206,7 +1204,7 @@ namespace UltraCanvas {
         XARElementBuilder& SetPreserveAspectRatio(bool p) { preserveAspectRatio = p; return *this; }
 
         std::shared_ptr<UltraCanvasXARElement> Build() {
-            auto element = std::make_shared<UltraCanvasXARElement>(identifier, id, x, y, w, h);
+            auto element = std::make_shared<UltraCanvasXARElement>(identifier, x, y, w, h);
             element->SetScale(scale);
             element->SetPreserveAspectRatio(preserveAspectRatio);
             if (!filePath.empty()) element->LoadFromFile(filePath);

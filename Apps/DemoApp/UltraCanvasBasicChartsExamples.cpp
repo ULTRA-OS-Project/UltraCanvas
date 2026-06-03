@@ -72,10 +72,10 @@ static struct ChartControls {
         }
         randomData->LoadFromArray(randomPoints);
 
-        auto container = std::make_shared<UltraCanvasContainer>("LineChartExamples", 100, 0, 0, 950, 700);
+        auto container = std::make_shared<UltraCanvasContainer>("LineChartExamples", 0, 0, 950, 700);
 
         // Add description label
-        auto descLabel = std::make_shared<UltraCanvasLabel>("LineChartDescription", 2001, 50, 20, 700, 60);
+        auto descLabel = std::make_shared<UltraCanvasLabel>("LineChartDescription", 50, 20, 700, 60);
         descLabel->SetText("Line Chart Example - Visualizes trends over time with smooth lines and data points.\n"
                            "Perfect for showing continuous data changes like sales, temperature, or stock prices.\n"
                            "Features: Interactive zooming, panning, tooltips, and customizable appearance.");
@@ -85,7 +85,7 @@ static struct ChartControls {
 
         // Create line chart
         std::shared_ptr<UltraCanvasLineChartElement> lineChart =
-                CreateLineChartElement("salesLineChart", 1001, 50, 100, 600, 400);
+                CreateLineChartElement("salesLineChart", 50, 100, 600, 400);
 
         lineChart->SetDataSource(salesData);
         lineChart->SetChartTitle("Monthly Sales Trend");
@@ -106,12 +106,12 @@ static struct ChartControls {
         // Button group positioning
         int buttonY = 520;
         int buttonX = 50;
-        int buttonWidth = 120;
+        int buttonWidth = 140;
         int buttonHeight = 35;
         int buttonSpacing = 10;
 
         // Load Revenue button
-        auto btnLoadRevenue = std::make_shared<UltraCanvasButton>("btnLoadRevenue", 3001,
+        auto btnLoadRevenue = std::make_shared<UltraCanvasButton>("btnLoadRevenue",
                                                                   buttonX, buttonY, buttonWidth, buttonHeight);
         btnLoadRevenue->SetText("Load Revenue");
         btnLoadRevenue->onClick = [lineChart, revenueData]() {
@@ -123,7 +123,7 @@ static struct ChartControls {
 
         // Load Sales button
         buttonX += buttonWidth + buttonSpacing;
-        auto btnLoadSales = std::make_shared<UltraCanvasButton>("btnLoadSales", 3002,
+        auto btnLoadSales = std::make_shared<UltraCanvasButton>("btnLoadSales",
                                                                 buttonX, buttonY, buttonWidth, buttonHeight);
         btnLoadSales->SetText("Load Sales");
         btnLoadSales->onClick = [lineChart, salesData]() {
@@ -135,7 +135,7 @@ static struct ChartControls {
 
         // Load Random button
         buttonX += buttonWidth + buttonSpacing;
-        auto btnLoadRandom = std::make_shared<UltraCanvasButton>("btnLoadRandom", 3003,
+        auto btnLoadRandom = std::make_shared<UltraCanvasButton>("btnLoadRandom",
                                                                  buttonX, buttonY, buttonWidth, buttonHeight);
         btnLoadRandom->SetText("Load Random");
         btnLoadRandom->onClick = [lineChart]() {
@@ -158,7 +158,7 @@ static struct ChartControls {
 
         // Toggle Data Points button
         buttonX += buttonWidth + buttonSpacing;
-        auto btnTogglePoints = std::make_shared<UltraCanvasButton>("btnTogglePoints", 3004,
+        auto btnTogglePoints = std::make_shared<UltraCanvasButton>("btnTogglePoints",
                                                                    buttonX, buttonY, buttonWidth, buttonHeight);
         btnTogglePoints->SetText("Toggle Points");
         btnTogglePoints->onClick = [lineChart]()  {
@@ -170,7 +170,7 @@ static struct ChartControls {
 
         // Toggle Smoothing button
         buttonX += buttonWidth + buttonSpacing;
-        auto btnToggleSmoothing = std::make_shared<UltraCanvasButton>("btnToggleSmoothing", 3005,
+        auto btnToggleSmoothing = std::make_shared<UltraCanvasButton>("btnToggleSmoothing",
                                                                       buttonX, buttonY, buttonWidth, buttonHeight);
         btnToggleSmoothing->SetText("Toggle Smooth");
         btnToggleSmoothing->onClick = [lineChart]()  {
@@ -182,7 +182,7 @@ static struct ChartControls {
 
         buttonX += buttonWidth + buttonSpacing;
 
-        auto btnToggleValueLabels = std::make_shared<UltraCanvasButton>("btnToggleValueLabels", 3005,
+        auto btnToggleValueLabels = std::make_shared<UltraCanvasButton>("btnToggleValueLabels",
                                                                       buttonX, buttonY, buttonWidth, buttonHeight);
         btnToggleValueLabels->SetText("Toggle Labels");
         btnToggleValueLabels->onClick = [lineChart]()  {
@@ -243,10 +243,10 @@ static struct ChartControls {
         };
         performanceData->LoadFromArray(performance);
 
-        auto container = std::make_shared<UltraCanvasContainer>("BarChartExamples", 100, 0, 0, 800, 700);
+        auto container = std::make_shared<UltraCanvasContainer>("BarChartExamples", 0, 0, 800, 700);
 
         // Add description label
-        auto descLabel = std::make_shared<UltraCanvasLabel>("BarChartDescription", 2002, 50, 20, 700, 60);
+        auto descLabel = std::make_shared<UltraCanvasLabel>("BarChartDescription", 50, 20, 700, 60);
         descLabel->SetText("Bar Chart Example - Displays categorical data with rectangular bars.\n"
                            "Ideal for comparing discrete values across categories like quarterly performance or regional sales.\n"
                            "Features: Customizable colors, borders, spacing, and interactive tooltips.");
@@ -256,7 +256,7 @@ static struct ChartControls {
 
         // Create bar chart
         std::shared_ptr<UltraCanvasBarChartElement> barChart =
-                CreateBarChartElement("performanceBarChart", 1002, 50, 100, 600, 400);
+                CreateBarChartElement("performanceBarChart", 50, 100, 600, 400);
 
         // Configure Bar Chart
         barChart->SetDataSource(performanceData);
@@ -273,12 +273,12 @@ static struct ChartControls {
         // Button group positioning
         int buttonY = 520;
         int buttonX = 50;
-        int buttonWidth = 120;
+        int buttonWidth = 140;
         int buttonHeight = 35;
         int buttonSpacing = 10;
 
         // Load Revenue button
-        auto btnLoadRevenue = std::make_shared<UltraCanvasButton>("btnLoadRevenue", 3011,
+        auto btnLoadRevenue = std::make_shared<UltraCanvasButton>("btnLoadRevenue",
                                                                   buttonX, buttonY, buttonWidth, buttonHeight);
         btnLoadRevenue->SetText("Load Revenue");
         btnLoadRevenue->onClick = [barChart, revenueData]() {
@@ -290,7 +290,7 @@ static struct ChartControls {
 
         // Load Sales button
         buttonX += buttonWidth + buttonSpacing;
-        auto btnLoadSales = std::make_shared<UltraCanvasButton>("btnLoadSales", 3012,
+        auto btnLoadSales = std::make_shared<UltraCanvasButton>("btnLoadSales",
                                                                 buttonX, buttonY, buttonWidth, buttonHeight);
         btnLoadSales->SetText("Load Sales");
         btnLoadSales->SetOnClick([barChart, salesData]() {
@@ -302,7 +302,7 @@ static struct ChartControls {
 
         // Load Random button
         buttonX += buttonWidth + buttonSpacing;
-        auto btnLoadRandom = std::make_shared<UltraCanvasButton>("btnLoadRandom", 3013,
+        auto btnLoadRandom = std::make_shared<UltraCanvasButton>("btnLoadRandom",
                                                                  buttonX, buttonY, buttonWidth, buttonHeight);
         btnLoadRandom->SetText("Load Random");
         btnLoadRandom->SetOnClick([barChart]() {
@@ -347,10 +347,10 @@ static struct ChartControls {
         }
         correlationData->LoadFromArray(correlation);
 
-        auto container = std::make_shared<UltraCanvasContainer>("ScatterPlotExamples", 100, 0, 0, 800, 700);
+        auto container = std::make_shared<UltraCanvasContainer>("ScatterPlotExamples", 0, 0, 800, 700);
 
         // Add description label
-        auto descLabel = std::make_shared<UltraCanvasLabel>("ScatterPlotDescription", 2003, 50, 20, 700, 60);
+        auto descLabel = std::make_shared<UltraCanvasLabel>("ScatterPlotDescription", 50, 20, 700, 60);
         descLabel->SetText("Scatter Plot Example - Shows relationships between two continuous variables.\n"
                            "Excellent for identifying correlations, clusters, and outliers in datasets.\n"
                            "Features: Multiple point shapes, selection capability, zoom, pan, and interactive tooltips.");
@@ -360,7 +360,7 @@ static struct ChartControls {
 
         // Create scatter plot for correlation analysis
         std::shared_ptr<UltraCanvasScatterPlotElement> scatterPlot =
-                CreateScatterPlotElement("correlationScatter", 1003, 50, 100, 600, 400);
+                CreateScatterPlotElement("correlationScatter", 50, 100, 600, 400);
 
         // Configure Scatter Plot
         scatterPlot->SetDataSource(correlationData);
@@ -378,11 +378,11 @@ static struct ChartControls {
         // Button for cycling scatter plot shapes
         int buttonY = 520;
         int buttonX = 50;
-        int buttonWidth = 180;
+        int buttonWidth = 220;
         int buttonHeight = 35;
 
         // Cycle Scatter Plot Shapes button
-        auto btnCycleShapes = std::make_shared<UltraCanvasButton>("btnCycleShapes", 3021,
+        auto btnCycleShapes = std::make_shared<UltraCanvasButton>("btnCycleShapes",
                                                                   buttonX, buttonY, buttonWidth, buttonHeight);
         btnCycleShapes->SetText("Cycle Scatter Shapes");
 
@@ -440,10 +440,10 @@ static struct ChartControls {
         };
         salesData->LoadFromArray(sales);
 
-        auto container = std::make_shared<UltraCanvasContainer>("AreaChartExamples", 100, 0, 0, 900, 700);
+        auto container = std::make_shared<UltraCanvasContainer>("AreaChartExamples", 0, 0, 900, 700);
 
         // Add description label
-        auto descLabel = std::make_shared<UltraCanvasLabel>("AreaChartDescription", 2004, 50, 20, 800, 60);
+        auto descLabel = std::make_shared<UltraCanvasLabel>("AreaChartDescription", 50, 20, 800, 60);
         descLabel->SetText("Area Chart Example - Emphasizes magnitude of change over time with filled areas.\n"
                            "Perfect for showing cumulative values, trends, and volume data like revenue or resource usage.\n"
                            "Features: Gradient fills, transparency, smooth curves, data points, zoom, and pan capabilities.");
@@ -453,7 +453,7 @@ static struct ChartControls {
 
         // Create area chart
         std::shared_ptr<UltraCanvasAreaChartElement> areaChart =
-                CreateAreaChartElement("revenueAreaChart", 1004, 50, 100, 600, 400);
+                CreateAreaChartElement("revenueAreaChart", 50, 100, 600, 400);
 
         // Configure Area Chart
         areaChart->SetDataSource(revenueData);
@@ -480,12 +480,12 @@ static struct ChartControls {
         // Button group positioning
         int buttonY = 520;
         int buttonX = 50;
-        int buttonWidth = 120;
+        int buttonWidth = 140;
         int buttonHeight = 35;
         int buttonSpacing = 10;
 
         // Load Revenue button
-        auto btnLoadRevenue = std::make_shared<UltraCanvasButton>("btnLoadRevenue", 3031,
+        auto btnLoadRevenue = std::make_shared<UltraCanvasButton>("btnLoadRevenue",
                                                                   buttonX, buttonY, buttonWidth, buttonHeight);
         btnLoadRevenue->SetText("Load Revenue");
         btnLoadRevenue->SetOnClick([areaChart, revenueData]() {
@@ -497,7 +497,7 @@ static struct ChartControls {
 
         // Load Sales button
         buttonX += buttonWidth + buttonSpacing;
-        auto btnLoadSales = std::make_shared<UltraCanvasButton>("btnLoadSales", 3032,
+        auto btnLoadSales = std::make_shared<UltraCanvasButton>("btnLoadSales",
                                                                 buttonX, buttonY, buttonWidth, buttonHeight);
         btnLoadSales->SetText("Load Sales");
         btnLoadSales->SetOnClick([areaChart, salesData]() {
@@ -509,7 +509,7 @@ static struct ChartControls {
 
         // Load Random button
         buttonX += buttonWidth + buttonSpacing;
-        auto btnLoadRandom = std::make_shared<UltraCanvasButton>("btnLoadRandom", 3033,
+        auto btnLoadRandom = std::make_shared<UltraCanvasButton>("btnLoadRandom",
                                                                  buttonX, buttonY, buttonWidth, buttonHeight);
         btnLoadRandom->SetText("Load Random");
         btnLoadRandom->SetOnClick([areaChart]() {
@@ -532,7 +532,7 @@ static struct ChartControls {
 
         // Toggle Data Points button
         buttonX += buttonWidth + buttonSpacing;
-        auto btnTogglePoints = std::make_shared<UltraCanvasButton>("btnTogglePoints", 3034,
+        auto btnTogglePoints = std::make_shared<UltraCanvasButton>("btnTogglePoints",
                                                                    buttonX, buttonY, buttonWidth, buttonHeight);
         btnTogglePoints->SetText("Toggle Points");
         btnTogglePoints->SetOnClick([areaChart]() {
@@ -544,7 +544,7 @@ static struct ChartControls {
 
         // Toggle Smoothing button
         buttonX += buttonWidth + buttonSpacing;
-        auto btnToggleSmoothing = std::make_shared<UltraCanvasButton>("btnToggleSmoothing", 3035,
+        auto btnToggleSmoothing = std::make_shared<UltraCanvasButton>("btnToggleSmoothing",
                                                                       buttonX, buttonY, buttonWidth, buttonHeight);
         btnToggleSmoothing->SetText("Toggle Smooth");
         btnToggleSmoothing->SetOnClick([areaChart]() {
@@ -555,7 +555,7 @@ static struct ChartControls {
         container->AddChild(btnToggleSmoothing);
 
         buttonX += buttonWidth + buttonSpacing;
-        auto btnToggleValueLabels = std::make_shared<UltraCanvasButton>("btnToggleValueLabels", 3005,
+        auto btnToggleValueLabels = std::make_shared<UltraCanvasButton>("btnToggleValueLabels",
                                                                         buttonX, buttonY, buttonWidth, buttonHeight);
         btnToggleValueLabels->SetText("Toggle Labels");
         btnToggleValueLabels->onClick = [areaChart]()  {

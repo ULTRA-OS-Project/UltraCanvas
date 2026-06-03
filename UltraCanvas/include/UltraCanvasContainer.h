@@ -1,7 +1,9 @@
 // include/UltraCanvasContainer.h
-// Container component with scrollbars and child element management - ENHANCED
-// Version: 2.0.0
-// Last Modified: 2025-08-24
+// Container component with scrollbars and child element management.
+// Children storage lives in CSSLayout::Element (inherited via UltraCanvasUIElement);
+// this class provides typed UI accessors over that storage.
+// Version: 4.1.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -11,7 +13,7 @@
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasScrollbar.h"
-#include "UltraCanvasLayout.h"
+#include "UltraCanvasSpacer.h"
 #include <vector>
 #include <memory>
 #include <functional>
@@ -33,53 +35,65 @@ namespace UltraCanvas {
 
     class UltraCanvasContainer : public UltraCanvasUIElement {
     private:
-        std::vector<std::shared_ptr<UltraCanvasUIElement>> children;
-
         // Content area management
-        bool layoutDirty = true;
+        bool internalLayoutValid = false;
 
         // Callbacks
         std::function<void(int, int)> onScrollChanged;
         std::function<void(UltraCanvasUIElement *)> onChildAdded;
         std::function<void(UltraCanvasUIElement *)> onChildRemoved;
-
-        UltraCanvasLayout *layout = nullptr;
     protected:
         // Scrollbar components (using new unified scrollbar)
         std::unique_ptr<UltraCanvasScrollbar> verticalScrollbar;
         std::unique_ptr<UltraCanvasScrollbar> horizontalScrollbar;
 
         ContainerStyle style;
-        //ScrollState scrollState;
 
     public:
         // ===== CONSTRUCTOR & DESTRUCTOR =====
-        UltraCanvasContainer(const std::string &id, long x, long y, long w, long h)
+        UltraCanvasContainer(const std::string &id, float x, float y, float w, float h)
                 : UltraCanvasUIElement(id, x, y, w, h) {
-//            UpdateLayout();
             CreateScrollbars();
         }
 
-        UltraCanvasContainer(const std::string &id, long uid, long x, long y, long w, long h)
-                : UltraCanvasUIElement(id, x, y, w, h) {
-//            UpdateLayout();
-            CreateScrollbars();
-        }
+        UltraCanvasContainer(const std::string &id, float w, float h)
+                : UltraCanvasContainer(id, -1, -1, w, h) {}
+
+        explicit UltraCanvasContainer(const std::string &id)
+                : UltraCanvasContainer(id, -1, -1, -1, -1) {}
 
         virtual ~UltraCanvasContainer();
 
-        // ===== ENHANCED CHILD MANAGEMENT =====
+        // ===== CHILD MANAGEMENT =====
         void AddChild(std::shared_ptr<UltraCanvasUIElement> child);
         void RemoveChild(std::shared_ptr<UltraCanvasUIElement> child);
         void ClearChildren();
         bool HasChild(UltraCanvasUIElement* elem);
 
-        const std::vector<std::shared_ptr<UltraCanvasUIElement>> &GetChildren() const { return children; }
+        // Materializes a typed view over the engine's children vector.
+        // One allocation per call; intended for occasional iteration and
+        // legacy code. Performance-sensitive code should iterate
+        // CSSLayout::Element::Children() directly with static_pointer_cast.
+        std::vector<std::shared_ptr<UltraCanvasUIElement>> GetChildren() const {
+            const auto& src = Children();
+            std::vector<std::shared_ptr<UltraCanvasUIElement>> out;
+            out.reserve(src.size());
+            for (auto& c : src) {
+                out.push_back(std::static_pointer_cast<UltraCanvasUIElement>(c));
+            }
+            return out;
+        }
 
-        size_t GetChildCount() const { return children.size(); }
+        size_t GetChildCount() const { return Children().size(); }
 
         UltraCanvasUIElement *FindChildById(const std::string &id);
-        UltraCanvasUIElement *FindElementAtPoint(const Point2Di &pos);
+        UltraCanvasUIElement *FindElementAtPoint(const Point2Df &pos);
+
+        // ===== SPACERS (replace old AddSpacing / AddStretch) =====
+        // Fixed-size spacer (use as inline gap between specific children).
+        std::shared_ptr<UltraCanvasSpacer> AddSpacer(float size);
+        // Zero-size spacer with flex-grow; absorbs slack on the main axis.
+        std::shared_ptr<UltraCanvasSpacer> AddStretchSpacer(float grow = 1.0f);
 
         // ===== ENHANCED SCROLLING FUNCTIONS =====
         bool ScrollByVertical(int delta);
@@ -101,7 +115,7 @@ namespace UltraCanvas {
         Rect2Di GetVisibleChildBounds(const Rect2Di &childBounds);
         bool IsChildVisible(UltraCanvasUIElement *child);
 
-        void SetBounds(const Rect2Di &bounds) override;
+        void SetBounds(const Rect2Df &bounds) override;
 
         Rect2Di GetContentArea(); // zero based rectangle without container offset
 
@@ -124,47 +138,33 @@ namespace UltraCanvas {
         }
 
         // ===== LAYOUT MANAGEMENT =====
-        void InvalidateLayout() {
-            layoutDirty = true;
+        void InvalidateLayout() override {
+            CSSLayout::Element::InvalidateLayout();
+            internalLayoutValid = false;
             RequestRedraw();
-            RequestUpdateGeometry();
         }
 
-        bool IsLayoutDirty() const { return layoutDirty; }
-
         // ===== OVERRIDDEN ELEMENT METHODS =====
-        void Render(IRenderContext *ctx, const Rect2Di &dirtyRect) override;
-        void UpdateGeometry(IRenderContext *ctx) override;
+        void Render(IRenderContext *ctx, const Rect2Df&dirtyRect) override;
+
+        void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
         bool OnEvent(const UCEvent &event) override;
 
         virtual void SetWindow(UltraCanvasWindowBase *win) override;
 
-        void SetLayout(UltraCanvasLayout *newLayout);
-
-        // Get layout manager (non-owning pointer)
-        UltraCanvasLayout *GetLayout() const { return layout; }
-
-        // Check if container has a layout
-        bool HasLayout() const { return layout != nullptr; }
-
     private:
         // ===== INTERNAL METHODS =====
         void UpdateScrollability();
-
         void UpdateContentSize();
-
-//        void UpdateScrollbarPositions();
-//        void UpdateScrollAnimation();
-//        void UpdateHoverStates(const UCEvent& event);
 
         // Event handling helpers
         bool HandleScrollbarEvents(const UCEvent &event);
-
         bool HandleScrollWheel(const UCEvent &event);
 
         // Scrolling helpers
         void OnScrollChanged();
+
         // ===== SCROLLBAR CREATION =====
         void CreateScrollbars();
         void ApplyStyleToScrollbars();
@@ -178,19 +178,14 @@ namespace UltraCanvas {
 
 // ===== ENHANCED FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasContainer> CreateContainer(
-            const std::string& id, long uid, long x, long y, long w, long h) {
-        return std::make_shared<UltraCanvasContainer>(id, uid, x, y, w, h);
-    }
-
-    inline std::shared_ptr<UltraCanvasContainer> CreateContainer(
-            const std::string& id, long x = 0, long y = 0, long w = 0, long h = 0) {
-        return std::make_shared<UltraCanvasContainer>(id, 0, x, y, w, h);
+            const std::string& id, float x = 0, float y = 0, float w = 0, float h = 0) {
+        return std::make_shared<UltraCanvasContainer>(id, x, y, w, h);
     }
 
     inline std::shared_ptr<UltraCanvasContainer> CreateScrollableContainer(
-            const std::string& id, long uid, long x, long y, long w, long h,
+            const std::string& id, float x, float y, float w, float h,
             bool enableVertical = true, bool enableHorizontal = false) {
-        auto container = std::make_shared<UltraCanvasContainer>(id, uid, x, y, w, h);
+        auto container = std::make_shared<UltraCanvasContainer>(id, x, y, w, h);
 
         ContainerStyle style = container->GetContainerStyle();
         style.forceShowVerticalScrollbar = enableVertical;

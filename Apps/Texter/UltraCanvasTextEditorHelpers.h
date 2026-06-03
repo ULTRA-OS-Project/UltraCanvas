@@ -34,7 +34,7 @@
 // * @return Configured status bar toolbar ready to display
 // *
 // * @example
-// * auto editor = CreateCodeEditor("editor", 1, 0, 0, 800, 570);
+// * auto editor = CreateCodeEditor("editor", 0, 0, 800, 570);
 // * auto statusBar = CreateTextEditorStatusBar("statusBar", 2, editor);
 // * statusBar->SetBounds(Rect2Di(0, 570, 800, 24));
 // */

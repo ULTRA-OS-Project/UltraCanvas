@@ -28,20 +28,20 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasRadioGroup> themeRadioGroup;
         std::shared_ptr<UltraCanvasRadioGroup> qualityRadioGroup;
 
-        CheckboxExamplesContainer(const std::string& id, long uid, long x, long y, long w, long h)
-                : UltraCanvasContainer(id, uid, x, y, w, h) {}
+        CheckboxExamplesContainer(const std::string& id, float x, float y, float w, float h)
+                : UltraCanvasContainer(id, x, y, w, h) {}
     };
 
 // Helper function to create a separator line
-    std::shared_ptr<UltraCanvasContainer> CreateSeparatorLine(long id, long x, long y, long width) {
-        auto separator = std::make_shared<UltraCanvasContainer>("Separator" + std::to_string(id), id, x, y, width, 2);
+    std::shared_ptr<UltraCanvasContainer> CreateSeparatorLine(float x, float y, float width) {
+        auto separator = std::make_shared<UltraCanvasContainer>("Separator" + std::to_string(x), x, y, width, 2);
         separator->SetBackgroundColor(Color(200, 200, 200, 255));
         return separator;
     }
 
 // Helper function to create a section title
-    std::shared_ptr<UltraCanvasLabel> CreateSectionTitle(long id, long x, long y, const std::string& text) {
-        auto title = std::make_shared<UltraCanvasLabel>("SectionTitle" + std::to_string(id), id, x, y, 600, 25);
+    std::shared_ptr<UltraCanvasLabel> CreateSectionTitle(float x, float y, const std::string& text) {
+        auto title = std::make_shared<UltraCanvasLabel>("SectionTitle" + std::to_string(x), x, y, 600, 25);
         title->SetText(text);
         title->SetFontSize(14);
         title->SetFontWeight(FontWeight::Bold);
@@ -51,19 +51,19 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateCheckboxExamples() {
         // Main container for all checkbox examples (custom subclass owns the radio groups)
-        auto mainContainer = std::make_shared<CheckboxExamplesContainer>("CheckboxMainContainer", 3000, 0, 0, 1020, 1600);
+        auto mainContainer = std::make_shared<CheckboxExamplesContainer>("CheckboxMainContainer", 0, 0, 1020, 1600);
         mainContainer->SetBackgroundColor(Colors::White);
         mainContainer->SetPadding(0,0,10,0);
 
         // Title
-        auto mainTitle = std::make_shared<UltraCanvasLabel>("CheckboxMainTitle", 3001, 20, 10, 900, 30);
+        auto mainTitle = std::make_shared<UltraCanvasLabel>("CheckboxMainTitle", 20, 10, 900, 30);
         mainTitle->SetText("UltraCanvas Checkbox Component Examples");
         mainTitle->SetFontSize(18);
         mainTitle->SetFontWeight(FontWeight::Bold);
         mainContainer->AddChild(mainTitle);
 
         // Description
-        auto description = std::make_shared<UltraCanvasLabel>("CheckboxDescription", 3002, 20, 45, 960, 40);
+        auto description = std::make_shared<UltraCanvasLabel>("CheckboxDescription", 20, 45, 960, 40);
         description->SetText("Demonstrates various checkbox styles, states, and configurations");
         description->SetWrap(TextWrap::WrapWord);
         description->SetTextColor(Color(80, 80, 80, 255));
@@ -72,11 +72,11 @@ namespace UltraCanvas {
         long currentY = 100;
 
         // ===== SECTION 1: Basic Checkboxes =====
-        mainContainer->AddChild(CreateSectionTitle(3010, 20, currentY, "Basic Checkboxes"));
+        mainContainer->AddChild(CreateSectionTitle(20, currentY, "Basic Checkboxes"));
         currentY += 35;
 
         // Standard checkbox - unchecked
-        auto basicCheckbox1 = std::make_shared<UltraCanvasCheckbox>("BasicCheckbox1", 3011, 30, currentY, 200, 24, "Standard Checkbox");
+        auto basicCheckbox1 = std::make_shared<UltraCanvasCheckbox>("BasicCheckbox1", 30, currentY, 200, 24, "Standard Checkbox");
         basicCheckbox1->SetChecked(false);
         basicCheckbox1->onChecked = []() {
             debugOutput << "Basic checkbox checked!" << std::endl;
@@ -87,39 +87,39 @@ namespace UltraCanvas {
         mainContainer->AddChild(basicCheckbox1);
 
         // Standard checkbox - checked
-        auto basicCheckbox2 = std::make_shared<UltraCanvasCheckbox>("BasicCheckbox2", 3012, 250, currentY, 200, 24, "Pre-checked Box");
+        auto basicCheckbox2 = std::make_shared<UltraCanvasCheckbox>("BasicCheckbox2", 250, currentY, 200, 24, "Pre-checked Box");
         basicCheckbox2->SetChecked(true);
         mainContainer->AddChild(basicCheckbox2);
 
         // Disabled checkbox - unchecked
-        auto disabledCheckbox1 = std::make_shared<UltraCanvasCheckbox>("DisabledCheckbox1", 3013, 470, currentY, 200, 24, "Disabled Unchecked");
+        auto disabledCheckbox1 = std::make_shared<UltraCanvasCheckbox>("DisabledCheckbox1", 470, currentY, 200, 24, "Disabled Unchecked");
         disabledCheckbox1->SetChecked(false);
         disabledCheckbox1->SetDisabled(true);
         mainContainer->AddChild(disabledCheckbox1);
 
         // Disabled checkbox - checked
-        auto disabledCheckbox2 = std::make_shared<UltraCanvasCheckbox>("DisabledCheckbox2", 3014, 690, currentY, 200, 24, "Disabled Checked");
+        auto disabledCheckbox2 = std::make_shared<UltraCanvasCheckbox>("DisabledCheckbox2", 690, currentY, 200, 24, "Disabled Checked");
         disabledCheckbox2->SetChecked(true);
         disabledCheckbox2->SetDisabled(true);
         mainContainer->AddChild(disabledCheckbox2);
 
         currentY += 40;
-        mainContainer->AddChild(CreateSeparatorLine(3015, 20, currentY, 960));
+        mainContainer->AddChild(CreateSeparatorLine(20, currentY, 960));
         currentY += 20;
 
         // ===== SECTION 2: Tri-State Checkboxes =====
-        mainContainer->AddChild(CreateSectionTitle(3020, 20, currentY, "Tri-State Checkboxes (Indeterminate)"));
+        mainContainer->AddChild(CreateSectionTitle(20, currentY, "Tri-State Checkboxes (Indeterminate)"));
         currentY += 35;
 
         // Tri-state checkbox
-        auto triStateCheckbox = std::make_shared<UltraCanvasCheckbox>("TriStateCheckbox", 3021, 30, currentY, 250, 24, "Select All Items");
+        auto triStateCheckbox = std::make_shared<UltraCanvasCheckbox>("TriStateCheckbox", 30, currentY, 250, 24, "Select All Items");
         triStateCheckbox->SetAllowIndeterminate(true);
         triStateCheckbox->SetCheckState(CheckedState::Indeterminate);
 
         // Sub-items for tri-state demonstration
-        auto subItem1 = std::make_shared<UltraCanvasCheckbox>("SubItem1", 3022, 60, currentY + 30, 200, 24, "Item 1");
-        auto subItem2 = std::make_shared<UltraCanvasCheckbox>("SubItem2", 3023, 60, currentY + 55, 200, 24, "Item 2");
-        auto subItem3 = std::make_shared<UltraCanvasCheckbox>("SubItem3", 3024, 60, currentY + 80, 200, 24, "Item 3");
+        auto subItem1 = std::make_shared<UltraCanvasCheckbox>("SubItem1", 60, currentY + 30, 200, 24, "Item 1");
+        auto subItem2 = std::make_shared<UltraCanvasCheckbox>("SubItem2", 60, currentY + 55, 200, 24, "Item 2");
+        auto subItem3 = std::make_shared<UltraCanvasCheckbox>("SubItem3", 60, currentY + 80, 200, 24, "Item 3");
 
         subItem1->SetChecked(true);
         subItem2->SetChecked(false);
@@ -165,7 +165,7 @@ namespace UltraCanvas {
         mainContainer->AddChild(subItem3);
 
         // Status display for tri-state
-        auto triStateStatus = std::make_shared<UltraCanvasLabel>("TriStateStatus", 3025, 300, currentY + 40, 300, 24);
+        auto triStateStatus = std::make_shared<UltraCanvasLabel>("TriStateStatus", 300, currentY + 40, 300, 24);
         triStateStatus->SetText("State: Indeterminate (2 of 3 selected)");
         triStateStatus->SetTextColor(Color(100, 100, 100, 255));
         mainContainer->AddChild(triStateStatus);
@@ -199,28 +199,28 @@ namespace UltraCanvas {
         };
 
         currentY += 120;
-        mainContainer->AddChild(CreateSeparatorLine(3026, 20, currentY, 960));
+        mainContainer->AddChild(CreateSeparatorLine(20, currentY, 960));
         currentY += 20;
 
         // ===== SECTION 3: Switch Style Checkboxes =====
-        mainContainer->AddChild(CreateSectionTitle(3030, 20, currentY, "Switch Style Toggles"));
+        mainContainer->AddChild(CreateSectionTitle(20, currentY, "Switch Style Toggles"));
         currentY += 35;
 
         // Create switches
-        auto switch1 = UltraCanvasSwitch::Create("Switch1", 3031, 30, currentY, "Enable Notifications", true);
-        auto switch2 = UltraCanvasSwitch::Create("Switch2", 3032, 30, currentY + 35, "Dark Mode", false);
-        auto switch3 = UltraCanvasSwitch::Create("Switch3", 3033, 30, currentY + 70, "Auto-Save", true);
+        auto switch1 = UltraCanvasSwitch::Create("Switch1", 30, currentY, "Enable Notifications", true);
+        auto switch2 = UltraCanvasSwitch::Create("Switch2", 30, currentY + 35, "Dark Mode", false);
+        auto switch3 = UltraCanvasSwitch::Create("Switch3", 30, currentY + 70, "Auto-Save", true);
 
         // Switch status labels
-        auto switchStatus1 = std::make_shared<UltraCanvasLabel>("SwitchStatus1", 3034, 250, currentY, 100, 24);
+        auto switchStatus1 = std::make_shared<UltraCanvasLabel>("SwitchStatus1", 250, currentY, 100, 24);
         switchStatus1->SetText("ON");
         switchStatus1->SetTextColor(Color(0, 150, 0, 255));
 
-        auto switchStatus2 = std::make_shared<UltraCanvasLabel>("SwitchStatus2", 3035, 250, currentY + 35, 100, 24);
+        auto switchStatus2 = std::make_shared<UltraCanvasLabel>("SwitchStatus2", 250, currentY + 35, 100, 24);
         switchStatus2->SetText("OFF");
         switchStatus2->SetTextColor(Color(150, 0, 0, 255));
 
-        auto switchStatus3 = std::make_shared<UltraCanvasLabel>("SwitchStatus3", 3036, 250, currentY + 70, 100, 24);
+        auto switchStatus3 = std::make_shared<UltraCanvasLabel>("SwitchStatus3", 250, currentY + 70, 100, 24);
         switchStatus3->SetText("ON");
         switchStatus3->SetTextColor(Color(0, 150, 0, 255));
 
@@ -271,13 +271,13 @@ namespace UltraCanvas {
         currentY += 115;
 
         // ----- Switch with built-in check icon (Check style) -----
-        auto switchCheck = UltraCanvasSwitch::Create("SwitchCheck", 3081, 30, currentY, "Wi-Fi", true);
+        auto switchCheck = UltraCanvasSwitch::Create("SwitchCheck", 30, currentY, "Wi-Fi", true);
         switchCheck->GetVisualStyle().thumbIconStyle = SwitchThumbIconStyle::Check;
         switchCheck->GetVisualStyle().thumbIconOnColor = Color(76, 175, 80, 255);
         switchCheck->onStateChanged = [](CheckedState, CheckedState newState) {
             debugOutput << "Wi-Fi " << (newState == CheckedState::Checked ? "on" : "off") << std::endl;
         };
-        auto switchCheckHint = std::make_shared<UltraCanvasLabel>("SwitchCheckHint", 3082, 250, currentY, 400, 24);
+        auto switchCheckHint = std::make_shared<UltraCanvasLabel>("SwitchCheckHint", 250, currentY, 400, 24);
         switchCheckHint->SetText("Built-in checkmark icon (drawn via path API)");
         switchCheckHint->SetTextColor(Color(100, 100, 100, 255));
         mainContainer->AddChild(switchCheck);
@@ -288,13 +288,13 @@ namespace UltraCanvas {
         UCImagePtr iconCheckOn = UCImage::Load(NormalizePath(GetResourcesDir() + "media/icons/check.png"), false);
         UCImagePtr iconCheckOff = UCImage::Load(NormalizePath(GetResourcesDir() + "media/icons/x.png"), false);
 
-        auto switchImg = UltraCanvasSwitch::Create("SwitchImg", 3083, 30, currentY, "Bluetooth", true);
+        auto switchImg = UltraCanvasSwitch::Create("SwitchImg", 30, currentY, "Bluetooth", true);
         switchImg->SetTrackSize(48.0f, 26.0f);
         switchImg->SetThumbIcons(iconCheckOn, iconCheckOff);
         switchImg->onStateChanged = [](CheckedState, CheckedState newState) {
             debugOutput << "Bluetooth " << (newState == CheckedState::Checked ? "on" : "off") << std::endl;
         };
-        auto switchImgHint = std::make_shared<UltraCanvasLabel>("SwitchImgHint", 3084, 250, currentY + 3, 400, 24);
+        auto switchImgHint = std::make_shared<UltraCanvasLabel>("SwitchImgHint", 250, currentY + 3, 400, 24);
         switchImgHint->SetText("Custom image icons (check.png / x.png) inside thumb");
         switchImgHint->SetTextColor(Color(100, 100, 100, 255));
         mainContainer->AddChild(switchImg);
@@ -302,13 +302,13 @@ namespace UltraCanvas {
         currentY += 40;
 
         // ----- Switch with custom ON icon only (demonstrates plain-circle fallback for OFF) -----
-        auto switchImgFallback = UltraCanvasSwitch::Create("SwitchImgFallback", 3085, 30, currentY, "Sync", false);
+        auto switchImgFallback = UltraCanvasSwitch::Create("SwitchImgFallback", 30, currentY, "Sync", false);
         switchImgFallback->SetTrackSize(48.0f, 26.0f);
         switchImgFallback->SetThumbIcons(iconCheckOn, nullptr);  // OFF icon missing → plain circle
         switchImgFallback->onStateChanged = [](CheckedState, CheckedState newState) {
             debugOutput << "Sync " << (newState == CheckedState::Checked ? "on" : "off") << std::endl;
         };
-        auto switchImgFallbackHint = std::make_shared<UltraCanvasLabel>("SwitchImgFallbackHint", 3086, 250, currentY + 3, 500, 24);
+        auto switchImgFallbackHint = std::make_shared<UltraCanvasLabel>("SwitchImgFallbackHint", 250, currentY + 3, 500, 24);
         switchImgFallbackHint->SetText("Only ON icon supplied — OFF state falls back to plain circle");
         switchImgFallbackHint->SetTextColor(Color(100, 100, 100, 255));
         mainContainer->AddChild(switchImgFallback);
@@ -316,13 +316,13 @@ namespace UltraCanvas {
         currentY += 40;
 
         // ----- Switch with ON/OFF labels INSIDE the track -----
-        auto switchInside = UltraCanvasSwitch::Create("SwitchInside", 3087, 30, currentY, "Power", true);
+        auto switchInside = UltraCanvasSwitch::Create("SwitchInside", 30, currentY, "Power", true);
         switchInside->SetTrackSize(60.0f, 24.0f);
         switchInside->SetStateLabels("ON", "OFF", SwitchStateLabelPosition::InsideTrack);
         switchInside->onStateChanged = [](CheckedState, CheckedState newState) {
             debugOutput << "Power " << (newState == CheckedState::Checked ? "on" : "off") << std::endl;
         };
-        auto switchInsideHint = std::make_shared<UltraCanvasLabel>("SwitchInsideHint", 3088, 280, currentY + 2, 400, 24);
+        auto switchInsideHint = std::make_shared<UltraCanvasLabel>("SwitchInsideHint", 280, currentY + 2, 400, 24);
         switchInsideHint->SetText("ON/OFF text inside track, opposite the thumb");
         switchInsideHint->SetTextColor(Color(100, 100, 100, 255));
         mainContainer->AddChild(switchInside);
@@ -330,14 +330,14 @@ namespace UltraCanvas {
         currentY += 40;
 
         // ----- Switch with ON/OFF labels OUTSIDE the track -----
-        auto switchOutside = UltraCanvasSwitch::Create("SwitchOutside", 3089, 30, currentY, "Sound", false);
+        auto switchOutside = UltraCanvasSwitch::Create("SwitchOutside", 30, currentY, "Sound", false);
         switchOutside->SetStateLabels("On", "Off", SwitchStateLabelPosition::OutsideTrack);
         switchOutside->GetVisualStyle().onTextColor = Color(0, 130, 0, 255);
         switchOutside->GetVisualStyle().offTextColor = Color(150, 0, 0, 255);
         switchOutside->onStateChanged = [](CheckedState, CheckedState newState) {
             debugOutput << "Sound " << (newState == CheckedState::Checked ? "on" : "off") << std::endl;
         };
-        auto switchOutsideHint = std::make_shared<UltraCanvasLabel>("SwitchOutsideHint", 3090, 280, currentY, 400, 24);
+        auto switchOutsideHint = std::make_shared<UltraCanvasLabel>("SwitchOutsideHint", 280, currentY, 400, 24);
         switchOutsideHint->SetText("State text drawn outside the track (between track and main label)");
         switchOutsideHint->SetTextColor(Color(100, 100, 100, 255));
         mainContainer->AddChild(switchOutside);
@@ -345,14 +345,14 @@ namespace UltraCanvas {
         currentY += 40;
 
         // ----- Vertical orientation (plain + with check icon, side by side) -----
-        auto switchVertical = UltraCanvasSwitch::Create("SwitchVertical", 3091, 30, currentY, "Volume", true);
+        auto switchVertical = UltraCanvasSwitch::Create("SwitchVertical", 30, currentY, "Volume", true);
         switchVertical->SetOrientation(SwitchOrientation::Vertical);
         switchVertical->SetTrackSize(40.0f, 18.0f);  // long axis = 40, short axis = 18
         switchVertical->onStateChanged = [](CheckedState, CheckedState newState) {
             debugOutput << "Volume " << (newState == CheckedState::Checked ? "on" : "off") << std::endl;
         };
 
-        auto switchVerticalCheck = UltraCanvasSwitch::Create("SwitchVerticalCheck", 3092, 180, currentY, "Mic", true);
+        auto switchVerticalCheck = UltraCanvasSwitch::Create("SwitchVerticalCheck", 180, currentY, "Mic", true);
         switchVerticalCheck->SetOrientation(SwitchOrientation::Vertical);
         switchVerticalCheck->SetTrackSize(40.0f, 22.0f);
         switchVerticalCheck->GetVisualStyle().thumbIconStyle = SwitchThumbIconStyle::Check;
@@ -360,7 +360,7 @@ namespace UltraCanvas {
             debugOutput << "Mic " << (newState == CheckedState::Checked ? "on" : "off") << std::endl;
         };
 
-        auto switchVerticalHint = std::make_shared<UltraCanvasLabel>("SwitchVerticalHint", 3093, 320, currentY + 12, 600, 24);
+        auto switchVerticalHint = std::make_shared<UltraCanvasLabel>("SwitchVerticalHint", 320, currentY + 12, 600, 24);
         switchVerticalHint->SetText("Vertical orientation (ON = top). Plain on left, with check icon on right.");
         switchVerticalHint->SetTextColor(Color(100, 100, 100, 255));
 
@@ -369,19 +369,19 @@ namespace UltraCanvas {
         mainContainer->AddChild(switchVerticalHint);
         currentY += 65;
 
-        mainContainer->AddChild(CreateSeparatorLine(3037, 20, currentY, 960));
+        mainContainer->AddChild(CreateSeparatorLine(20, currentY, 960));
         currentY += 20;
 
         // ===== SECTION 4: Radio Buttons =====
-        mainContainer->AddChild(CreateSectionTitle(3040, 20, currentY, "Radio Button Groups"));
+        mainContainer->AddChild(CreateSectionTitle(20, currentY, "Radio Button Groups"));
         currentY += 35;
 
         // Create radio button group for themes (owned by the container so it survives function exit)
         mainContainer->themeRadioGroup = std::make_shared<UltraCanvasRadioGroup>();
 
-        auto radioTheme1 = UltraCanvasRadio::Create("RadioTheme1", 3041, 30, currentY, "Light Theme", true);
-        auto radioTheme2 = UltraCanvasRadio::Create("RadioTheme2", 3042, 30, currentY + 30, "Dark Theme", false);
-        auto radioTheme3 = UltraCanvasRadio::Create("RadioTheme3", 3043, 30, currentY + 60, "Auto Theme", false);
+        auto radioTheme1 = UltraCanvasRadio::Create("RadioTheme1", 30, currentY, "Light Theme", true);
+        auto radioTheme2 = UltraCanvasRadio::Create("RadioTheme2", 30, currentY + 30, "Dark Theme", false);
+        auto radioTheme3 = UltraCanvasRadio::Create("RadioTheme3", 30, currentY + 60, "Auto Theme", false);
 
         mainContainer->themeRadioGroup->AddRadioButton(radioTheme1);
         mainContainer->themeRadioGroup->AddRadioButton(radioTheme2);
@@ -390,20 +390,20 @@ namespace UltraCanvas {
         // Create radio button group for quality (owned by the container so it survives function exit)
         mainContainer->qualityRadioGroup = std::make_shared<UltraCanvasRadioGroup>();
 
-        auto radioQuality1 = UltraCanvasRadio::Create("RadioQuality1", 3044, 250, currentY, "Low Quality", false);
-        auto radioQuality2 = UltraCanvasRadio::Create("RadioQuality2", 3045, 250, currentY + 30, "Medium Quality", true);
-        auto radioQuality3 = UltraCanvasRadio::Create("RadioQuality3", 3046, 250, currentY + 60, "High Quality", false);
+        auto radioQuality1 = UltraCanvasRadio::Create("RadioQuality1", 250, currentY, "Low Quality", false);
+        auto radioQuality2 = UltraCanvasRadio::Create("RadioQuality2", 250, currentY + 30, "Medium Quality", true);
+        auto radioQuality3 = UltraCanvasRadio::Create("RadioQuality3", 250, currentY + 60, "High Quality", false);
 
         mainContainer->qualityRadioGroup->AddRadioButton(radioQuality1);
         mainContainer->qualityRadioGroup->AddRadioButton(radioQuality2);
         mainContainer->qualityRadioGroup->AddRadioButton(radioQuality3);
 
         // Selected option display
-        auto selectedTheme = std::make_shared<UltraCanvasLabel>("SelectedTheme", 3047, 470, currentY + 20, 300, 24);
+        auto selectedTheme = std::make_shared<UltraCanvasLabel>("SelectedTheme", 470, currentY + 20, 300, 24);
         selectedTheme->SetText("Selected Theme: Light");
         selectedTheme->SetTextColor(Color(0, 100, 200, 255));
 
-        auto selectedQuality = std::make_shared<UltraCanvasLabel>("SelectedQuality", 3048, 470, currentY + 50, 300, 24);
+        auto selectedQuality = std::make_shared<UltraCanvasLabel>("SelectedQuality", 470, currentY + 50, 300, 24);
         selectedQuality->SetText("Selected Quality: Medium");
         selectedQuality->SetTextColor(Color(0, 100, 200, 255));
 
@@ -434,28 +434,28 @@ namespace UltraCanvas {
         mainContainer->AddChild(selectedQuality);
 
         currentY += 100;
-        mainContainer->AddChild(CreateSeparatorLine(3049, 20, currentY, 960));
+        mainContainer->AddChild(CreateSeparatorLine(20, currentY, 960));
         currentY += 20;
 
         // ===== SECTION 5: Styled Checkboxes =====
-        mainContainer->AddChild(CreateSectionTitle(3050, 20, currentY, "Custom Styled Checkboxes"));
+        mainContainer->AddChild(CreateSectionTitle(20, currentY, "Custom Styled Checkboxes"));
         currentY += 35;
 
         // Material style checkbox
-        auto materialCheckbox = std::make_shared<UltraCanvasCheckbox>("MaterialCheckbox", 3051, 30, currentY, 200, 30, "Material Design");
+        auto materialCheckbox = std::make_shared<UltraCanvasCheckbox>("MaterialCheckbox", 30, currentY, 200, 30, "Material Design");
         materialCheckbox->SetStyle(CheckboxStyle::Material);
         materialCheckbox->GetVisualStyle().boxColor = Color(33, 150, 243, 255);  // Material Blue
         materialCheckbox->GetVisualStyle().checkmarkColor = Color(255, 255, 255, 255);
         materialCheckbox->GetVisualStyle().boxSize = 20.0f;
 
         // Rounded style checkbox
-        auto roundedCheckbox = std::make_shared<UltraCanvasCheckbox>("RoundedCheckbox", 3052, 250, currentY, 200, 30, "Rounded Corners");
+        auto roundedCheckbox = std::make_shared<UltraCanvasCheckbox>("RoundedCheckbox", 250, currentY, 200, 30, "Rounded Corners");
         roundedCheckbox->SetStyle(CheckboxStyle::Rounded);
         roundedCheckbox->GetVisualStyle().cornerRadius = 5.0f;
         roundedCheckbox->GetVisualStyle().boxColor = Color(100, 200, 100, 255);
 
         // Custom colored checkbox
-        auto customColorCheckbox = std::make_shared<UltraCanvasCheckbox>("CustomColorCheckbox", 3053, 470, currentY, 200, 30, "Custom Colors");
+        auto customColorCheckbox = std::make_shared<UltraCanvasCheckbox>("CustomColorCheckbox", 470, currentY, 200, 30, "Custom Colors");
         customColorCheckbox->SetColors(
                 Color(255, 100, 100, 255),  // Red box
                 Color(255, 255, 0, 255),     // Yellow checkmark
@@ -463,7 +463,7 @@ namespace UltraCanvas {
         );
 
         // Large checkbox
-        auto largeCheckbox = std::make_shared<UltraCanvasCheckbox>("LargeCheckbox", 3054, 690, currentY, 250, 40, "Large Size");
+        auto largeCheckbox = std::make_shared<UltraCanvasCheckbox>("LargeCheckbox", 690, currentY, 250, 40, "Large Size");
         largeCheckbox->SetBoxSize(28.0f);
         largeCheckbox->SetFont("Arial", 16.0f, FontWeight::Bold);
 
@@ -473,32 +473,32 @@ namespace UltraCanvas {
         mainContainer->AddChild(largeCheckbox);
 
         currentY += 50;
-        mainContainer->AddChild(CreateSeparatorLine(3055, 20, currentY, 960));
+        mainContainer->AddChild(CreateSeparatorLine(20, currentY, 960));
         currentY += 20;
 
         // ===== SECTION 6: Interactive Demo =====
-        mainContainer->AddChild(CreateSectionTitle(3060, 20, currentY, "Interactive Feature Demo"));
+        mainContainer->AddChild(CreateSectionTitle(20, currentY, "Interactive Feature Demo"));
         currentY += 35;
 
         // Feature checkboxes
-        auto featureContainer = std::make_shared<UltraCanvasContainer>("FeatureContainer", 3061, 30, currentY, 400, 150);
+        auto featureContainer = std::make_shared<UltraCanvasContainer>("FeatureContainer", 30, currentY, 400, 150);
         featureContainer->SetBackgroundColor(Color(230, 240, 250, 255));
         featureContainer->SetBorders(1, Color(180, 180, 180, 255));
 
-        auto featureTitle = std::make_shared<UltraCanvasLabel>("FeatureTitle", 3062, 10, 10, 200, 20);
+        auto featureTitle = std::make_shared<UltraCanvasLabel>("FeatureTitle", 10, 10, 200, 20);
         featureTitle->SetText("Enable Features:");
         featureTitle->SetFontWeight(FontWeight::Bold);
         featureContainer->AddChild(featureTitle);
 
-        auto feature1 = std::make_shared<UltraCanvasCheckbox>("Feature1", 3063, 20, 35, 180, 24, "Spell Check");
-        auto feature2 = std::make_shared<UltraCanvasCheckbox>("Feature2", 3064, 20, 60, 180, 24, "Auto-Complete");
-        auto feature3 = std::make_shared<UltraCanvasCheckbox>("Feature3", 3065, 20, 85, 180, 24, "Syntax Highlighting");
-        auto feature4 = std::make_shared<UltraCanvasCheckbox>("Feature4", 3066, 20, 110, 180, 24, "Line Numbers");
+        auto feature1 = std::make_shared<UltraCanvasCheckbox>("Feature1", 20, 35, 180, 24, "Spell Check");
+        auto feature2 = std::make_shared<UltraCanvasCheckbox>("Feature2", 20, 60, 180, 24, "Auto-Complete");
+        auto feature3 = std::make_shared<UltraCanvasCheckbox>("Feature3", 20, 85, 180, 24, "Syntax Highlighting");
+        auto feature4 = std::make_shared<UltraCanvasCheckbox>("Feature4", 20, 110, 180, 24, "Line Numbers");
 
-        auto feature5 = std::make_shared<UltraCanvasCheckbox>("Feature5", 3067, 210, 35, 180, 24, "Word Wrap");
-        auto feature6 = std::make_shared<UltraCanvasCheckbox>("Feature6", 3068, 210, 60, 180, 24, "Auto-Indent");
-        auto feature7 = std::make_shared<UltraCanvasCheckbox>("Feature7", 3069, 210, 85, 180, 24, "Show Whitespace");
-        auto feature8 = std::make_shared<UltraCanvasCheckbox>("Feature8", 3070, 210, 110, 180, 24, "Code Folding");
+        auto feature5 = std::make_shared<UltraCanvasCheckbox>("Feature5", 210, 35, 180, 24, "Word Wrap");
+        auto feature6 = std::make_shared<UltraCanvasCheckbox>("Feature6", 210, 60, 180, 24, "Auto-Indent");
+        auto feature7 = std::make_shared<UltraCanvasCheckbox>("Feature7", 210, 85, 180, 24, "Show Whitespace");
+        auto feature8 = std::make_shared<UltraCanvasCheckbox>("Feature8", 210, 110, 180, 24, "Code Folding");
 
         featureContainer->AddChild(feature1);
         featureContainer->AddChild(feature2);
@@ -512,7 +512,7 @@ namespace UltraCanvas {
         mainContainer->AddChild(featureContainer);
 
         // Control buttons
-        auto selectAllBtn = std::make_shared<UltraCanvasButton>("SelectAllBtn", 3071, 450, currentY, 120, 30);
+        auto selectAllBtn = std::make_shared<UltraCanvasButton>("SelectAllBtn", 450, currentY, 120, 30);
         selectAllBtn->SetText("Select All");
         selectAllBtn->SetOnClick([feature1, feature2, feature3, feature4, feature5, feature6, feature7, feature8]() {
             feature1->SetChecked(true);
@@ -526,7 +526,7 @@ namespace UltraCanvas {
             debugOutput << "All features selected" << std::endl;
         });
 
-        auto clearAllBtn = std::make_shared<UltraCanvasButton>("ClearAllBtn", 3072, 580, currentY, 120, 30);
+        auto clearAllBtn = std::make_shared<UltraCanvasButton>("ClearAllBtn", 580, currentY, 120, 30);
         clearAllBtn->SetText("Clear All");
         clearAllBtn->SetOnClick([feature1, feature2, feature3, feature4, feature5, feature6, feature7, feature8]() {
             feature1->SetChecked(false);
@@ -540,7 +540,7 @@ namespace UltraCanvas {
             debugOutput << "All features cleared" << std::endl;
         });
 
-        auto toggleAllBtn = std::make_shared<UltraCanvasButton>("ToggleAllBtn", 3073, 710, currentY, 120, 30);
+        auto toggleAllBtn = std::make_shared<UltraCanvasButton>("ToggleAllBtn", 710, currentY, 120, 30);
         toggleAllBtn->SetText("Toggle All");
         toggleAllBtn->SetOnClick([feature1, feature2, feature3, feature4, feature5, feature6, feature7, feature8]() {
             feature1->Toggle();
@@ -555,7 +555,7 @@ namespace UltraCanvas {
         });
 
         // Feature status display
-        auto featureStatus = std::make_shared<UltraCanvasLabel>("FeatureStatus", 3074, 450, currentY + 45, 380, 60);
+        auto featureStatus = std::make_shared<UltraCanvasLabel>("FeatureStatus", 450, currentY + 45, 380, 60);
         featureStatus->SetText("Selected Features:\nNone");
         featureStatus->SetWrap(TextWrap::WrapWord);
         featureStatus->SetBackgroundColor(Color(255, 255, 255, 255));
@@ -603,12 +603,12 @@ namespace UltraCanvas {
 
         // Info panel at bottom
         currentY += 170;
-        auto infoPanel = std::make_shared<UltraCanvasContainer>("InfoPanel", 3075, 20, currentY, 960, 60);
+        auto infoPanel = std::make_shared<UltraCanvasContainer>("InfoPanel", 20, currentY, 960, 60);
         infoPanel->SetBackgroundColor(Color(240, 248, 255, 255));
         infoPanel->SetBorders(1.0f);
         //infoPanel->SetBorderColor(Color(100, 150, 200, 255));
 
-        auto infoText = std::make_shared<UltraCanvasLabel>("InfoText", 3076, 10, 10, 940, 40);
+        auto infoText = std::make_shared<UltraCanvasLabel>("InfoText", 10, 10, 940, 40);
         infoText->SetText("ℹ️ This demo showcases the UltraCanvasCheckbox component with various styles and configurations. "
                           "Click checkboxes to see console output. Try the interactive controls to manipulate checkbox states programmatically.");
         infoText->SetWrap(TextWrap::WrapWord);

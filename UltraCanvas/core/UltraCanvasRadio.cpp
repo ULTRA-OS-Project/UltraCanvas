@@ -1,7 +1,7 @@
 // UltraCanvasRadio.cpp
 // Radio button rendering and exclusive-selection group.
-// Version: 1.0.0
-// Last Modified: 2026-05-07
+// Version: 1.1.0
+// Last Modified: 2026-06-02
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRadio.h"
@@ -9,10 +9,10 @@
 
 namespace UltraCanvas {
 
-    UltraCanvasRadio::UltraCanvasRadio(const std::string& identifier, long id,
-                                       long x, long y, long w, long h,
+    UltraCanvasRadio::UltraCanvasRadio(const std::string& identifier,
+                                       float x, float y, float w, float h,
                                        const std::string& labelText)
-            : UltraCanvasLabeledToggleBase(identifier, id, x, y, w, h, labelText) {}
+            : UltraCanvasLabeledToggleBase(identifier, x, y, w, h, labelText) {}
 
     void UltraCanvasRadio::SetCheckState(CheckedState state) {
         if (state == CheckedState::Indeterminate) state = CheckedState::Unchecked;
@@ -58,12 +58,14 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasRadio> UltraCanvasRadio::Create(
-            const std::string& identifier, long id,
-            long x, long y,
+            const std::string& identifier,
+            float x, float y,
             const std::string& text, bool checked) {
-        auto radio = std::make_shared<UltraCanvasRadio>(identifier, id, x, y, 150, 24, text);
+        auto radio = std::make_shared<UltraCanvasRadio>(identifier, x, y, 150, 24, text);
         radio->SetChecked(checked);
-        radio->SetAutoSize(true);
+        // Content-size to indicator + label: clear the ctor-stamped pixel size.
+        radio->size.width  = CSSLayout::Dimension::Auto();
+        radio->size.height = CSSLayout::Dimension::Auto();
         return radio;
     }
 

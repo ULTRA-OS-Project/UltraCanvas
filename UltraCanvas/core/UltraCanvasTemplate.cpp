@@ -1,7 +1,7 @@
 // UltraCanvasTemplate.cpp
 // Template system implementation for creating reusable UI component layouts
-// Version: 1.0.0
-// Last Modified: 2025-01-27
+// Version: 1.1.0
+// Last Modified: 2026-06-01
 // Author: UltraCanvas Framework
 
 #include "../include/UltraCanvasTemplate.h"
@@ -10,16 +10,14 @@
 #include "../include/UltraCanvasDropdown.h"
 #include "../include/UltraCanvasSeparator.h"
 #include "../include/UltraCanvasRenderContext.h"
-#include "../include/UltraCanvasLayoutEngine.h"
 #include <algorithm>
 #include <cstdlib>
 
 namespace UltraCanvas {
 
 // ===== CONSTRUCTOR =====
-    UltraCanvasTemplate::UltraCanvasTemplate(const std::string& identifier,
-                                             long id, long x, long y, long w, long h)
-            : UltraCanvasContainer(identifier, id, x, y, w, h),
+    UltraCanvasTemplate::UltraCanvasTemplate(const std::string& identifier, float x, float y, float w, float h)
+            : UltraCanvasContainer(identifier, x, y, w, h),
               isDirty(true),
               isDragging(false),
               dragStartPosition(0.0f, 0.0f),
@@ -186,9 +184,9 @@ namespace UltraCanvas {
     }
 
 // ===== SIZE CALCULATION =====
-    Point2Df UltraCanvasTemplate::CalculateRequiredSize() const {
+    Point2Dd UltraCanvasTemplate::CalculateRequiredSize() const {
         if (templateElements.empty()) {
-            return Point2Df(dimensions.fixedWidth, dimensions.fixedHeight);
+            return Point2Dd(dimensions.fixedWidth, dimensions.fixedHeight);
         }
 
         float totalWidth = appearance.paddingLeft + appearance.paddingRight;
@@ -197,7 +195,7 @@ namespace UltraCanvas {
         switch (placementRule.type) {
             case TemplatePlacementType::Flow:
             case TemplatePlacementType::Stack: {
-                if (placementRule.direction == LayoutDirection::Horizontal) {
+                if (placementRule.direction == TemplateLayoutDirection::Horizontal) {
                     float maxHeight = 0;
                     float currentRowWidth = appearance.paddingLeft;
                     float currentRowHeight = 0;
@@ -314,16 +312,16 @@ namespace UltraCanvas {
         totalWidth = std::max(dimensions.minWidth, std::min(totalWidth, dimensions.maxWidth));
         totalHeight = std::max(dimensions.minHeight, std::min(totalHeight, dimensions.maxHeight));
 
-        return Point2Df(totalWidth, totalHeight);
+        return Point2Dd(totalWidth, totalHeight);
     }
 
     void UltraCanvasTemplate::FitToContent() {
-        Point2Df requiredSize = CalculateRequiredSize();
+        Point2Dd requiredSize = CalculateRequiredSize();
         SetWidth(static_cast<long>(requiredSize.x));
         SetHeight(static_cast<long>(requiredSize.y));
     }
 
-    void UltraCanvasTemplate::ApplyToContainer(const Rect2Df& containerRect) {
+    void UltraCanvasTemplate::ApplyToContainer(const Rect2Dd& containerRect) {
         SetX(static_cast<long>(containerRect.x + appearance.marginLeft));
         SetY(static_cast<long>(containerRect.y + appearance.marginTop));
         SetWidth(static_cast<long>(containerRect.width - appearance.marginLeft - appearance.marginRight));
@@ -340,7 +338,7 @@ namespace UltraCanvas {
     }
 
 // ===== RENDERING =====
-    void UltraCanvasTemplate::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasTemplate::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         // Draw template background
         DrawTemplateBackground();
 
@@ -362,7 +360,7 @@ namespace UltraCanvas {
         }
 
         // Render container children (the template elements)
-        UltraCanvasContainer::Render(IRenderContext* ctx, const Rect2Di& dirtyRect);
+        UltraCanvasContainer::Render(IRenderContext* ctx, const Rect2Df& dirtyRect);
 
         // Restore clipping
         if (scrollSettings.horizontal != TemplateScrollMode::Off ||
@@ -377,30 +375,30 @@ namespace UltraCanvas {
 
         // Handle drag functionality
         if (dragHandle.enabled) {
-            Point2Df mousePos(static_cast<float>(event.mouse.x), static_cast<float>(event.mouse.y));
+            Point2Dd mousePos(static_cast<float>(event.mouse.x), static_cast<float>(event.mouse.y));
 
             switch (event.type) {
                 case UCEventType::MouseDown:
                     if (event.mouse.button == UCMouseButton::Left) {
                         // Check if click is on drag handle
-                        Rect2Df handleRect;
+                        Rect2Dd handleRect;
                         float x = static_cast<float>(GetX());
                         float y = static_cast<float>(GetY());
                         float w = static_cast<float>(GetWidth());
                         float h = static_cast<float>(GetHeight());
 
                         switch (dragHandle.position) {
-                            case LayoutDockSide::Left:
-                                handleRect = Rect2Df(x, y, dragHandle.width, h);
+                            case TemplateLayoutDockSide::Left:
+                                handleRect = Rect2Dd(x, y, dragHandle.width, h);
                                 break;
-                            case LayoutDockSide::Right:
-                                handleRect = Rect2Df(x + w - dragHandle.width, y, dragHandle.width, h);
+                            case TemplateLayoutDockSide::Right:
+                                handleRect = Rect2Dd(x + w - dragHandle.width, y, dragHandle.width, h);
                                 break;
-                            case LayoutDockSide::Top:
-                                handleRect = Rect2Df(x, y, w, dragHandle.width);
+                            case TemplateLayoutDockSide::Top:
+                                handleRect = Rect2Dd(x, y, w, dragHandle.width);
                                 break;
-                            case LayoutDockSide::Bottom:
-                                handleRect = Rect2Df(x, y + h - dragHandle.width, w, dragHandle.width);
+                            case TemplateLayoutDockSide::Bottom:
+                                handleRect = Rect2Dd(x, y + h - dragHandle.width, w, dragHandle.width);
                                 break;
                             default:
                                 break;
@@ -437,13 +435,13 @@ namespace UltraCanvas {
     }
 
 // ===== DRAG FUNCTIONALITY =====
-    void UltraCanvasTemplate::StartDrag(const Point2Df& startPosition) {
+    void UltraCanvasTemplate::StartDrag(const Point2Dd& startPosition) {
         isDragging = true;
         dragStartPosition = startPosition;
-        dragOffset = Point2Df(startPosition.x - GetX(), startPosition.y - GetY());
+        dragOffset = Point2Dd(startPosition.x - GetX(), startPosition.y - GetY());
     }
 
-    void UltraCanvasTemplate::UpdateDrag(const Point2Df& currentPosition) {
+    void UltraCanvasTemplate::UpdateDrag(const Point2Dd& currentPosition) {
         if (isDragging) {
             SetX(static_cast<long>(currentPosition.x - dragOffset.x));
             SetY(static_cast<long>(currentPosition.y - dragOffset.y));
@@ -504,7 +502,7 @@ namespace UltraCanvas {
 
         switch (placementRule.type) {
             case TemplatePlacementType::Flow: {
-                if (placementRule.direction == LayoutDirection::Horizontal) {
+                if (placementRule.direction == TemplateLayoutDirection::Horizontal) {
                     float rowHeight = 0;
                     float availableWidth = GetWidth() - appearance.paddingLeft - appearance.paddingRight;
 
@@ -548,12 +546,12 @@ namespace UltraCanvas {
                         float elementY = currentY;
 
                         // Apply alignment
-                        if (placementRule.direction == LayoutDirection::Horizontal) {
+                        if (placementRule.direction == TemplateLayoutDirection::Horizontal) {
                             switch (placementRule.crossAlignment) {
-                                case LayoutAlignment::Center:
+                                case TemplateLayoutAlignment::Center:
                                     elementY = baseY + (GetHeight() - appearance.paddingTop - appearance.paddingBottom - element->GetHeight()) / 2;
                                     break;
-                                case LayoutAlignment::End:
+                                case TemplateLayoutAlignment::End:
                                     elementY = GetY() + GetHeight() - appearance.paddingBottom - element->GetHeight();
                                     break;
                                 default:
@@ -564,10 +562,10 @@ namespace UltraCanvas {
                             currentX += element->GetWidth() + placementRule.spacing;
                         } else {
                             switch (placementRule.crossAlignment) {
-                                case LayoutAlignment::Center:
+                                case TemplateLayoutAlignment::Center:
                                     elementX = baseX + (GetWidth() - appearance.paddingLeft - appearance.paddingRight - element->GetWidth()) / 2;
                                     break;
-                                case LayoutAlignment::End:
+                                case TemplateLayoutAlignment::End:
                                     elementX = GetX() + GetWidth() - appearance.paddingRight - element->GetWidth();
                                     break;
                                 default:
@@ -614,14 +612,14 @@ namespace UltraCanvas {
 
             case TemplatePlacementType::Dock: {
                 // Dock elements to specified sides
-                Rect2Df availableRect(baseX, baseY,
+                Rect2Dd availableRect(baseX, baseY,
                                       GetWidth() - appearance.paddingLeft - appearance.paddingRight,
                                       GetHeight() - appearance.paddingTop - appearance.paddingBottom);
 
                 for (auto& element : templateElements) {
                     if (element && element->IsVisible()) {
                         switch (placementRule.dockSide) {
-                            case LayoutDockSide::Left:
+                            case TemplateLayoutDockSide::Left:
                                 element->SetX(static_cast<long>(availableRect.x));
                                 element->SetY(static_cast<long>(availableRect.y));
                                 element->SetHeight(static_cast<long>(availableRect.height));
@@ -629,14 +627,14 @@ namespace UltraCanvas {
                                 availableRect.width -= element->GetWidth() + placementRule.spacing;
                                 break;
 
-                            case LayoutDockSide::Right:
+                            case TemplateLayoutDockSide::Right:
                                 element->SetX(static_cast<long>(availableRect.x + availableRect.width - element->GetWidth()));
                                 element->SetY(static_cast<long>(availableRect.y));
                                 element->SetHeight(static_cast<long>(availableRect.height));
                                 availableRect.width -= element->GetWidth() + placementRule.spacing;
                                 break;
 
-                            case LayoutDockSide::Top:
+                            case TemplateLayoutDockSide::Top:
                                 element->SetX(static_cast<long>(availableRect.x));
                                 element->SetY(static_cast<long>(availableRect.y));
                                 element->SetWidth(static_cast<long>(availableRect.width));
@@ -644,14 +642,14 @@ namespace UltraCanvas {
                                 availableRect.height -= element->GetHeight() + placementRule.spacing;
                                 break;
 
-                            case LayoutDockSide::Bottom:
+                            case TemplateLayoutDockSide::Bottom:
                                 element->SetX(static_cast<long>(availableRect.x));
                                 element->SetY(static_cast<long>(availableRect.y + availableRect.height - element->GetHeight()));
                                 element->SetWidth(static_cast<long>(availableRect.width));
                                 availableRect.height -= element->GetHeight() + placementRule.spacing;
                                 break;
 
-                            case LayoutDockSide::Fill:
+                            case TemplateLayoutDockSide::Fill:
                                 element->SetX(static_cast<long>(availableRect.x));
                                 element->SetY(static_cast<long>(availableRect.y));
                                 element->SetWidth(static_cast<long>(availableRect.width));
@@ -700,7 +698,7 @@ namespace UltraCanvas {
                         element->SetY(static_cast<long>(currentY + placementRule.offsetY));
 
                         // Update position for next element
-                        if (placementRule.direction == LayoutDirection::Horizontal) {
+                        if (placementRule.direction == TemplateLayoutDirection::Horizontal) {
                             currentX = element->GetX() + element->GetWidth() + placementRule.spacing;
                         } else {
                             currentY = element->GetY() + element->GetHeight() + placementRule.spacing;
@@ -721,19 +719,19 @@ namespace UltraCanvas {
         float w = static_cast<float>(GetWidth());
         float h = static_cast<float>(GetHeight());
 
-        Rect2Df handleRect;
+        Rect2Dd handleRect;
         switch (dragHandle.position) {
-            case LayoutDockSide::Left:
-                handleRect = Rect2Df(x, y, dragHandle.width, h);
+            case TemplateLayoutDockSide::Left:
+                handleRect = Rect2Dd(x, y, dragHandle.width, h);
                 break;
-            case LayoutDockSide::Right:
-                handleRect = Rect2Df(x + w - dragHandle.width, y, dragHandle.width, h);
+            case TemplateLayoutDockSide::Right:
+                handleRect = Rect2Dd(x + w - dragHandle.width, y, dragHandle.width, h);
                 break;
-            case LayoutDockSide::Top:
-                handleRect = Rect2Df(x, y, w, dragHandle.width);
+            case TemplateLayoutDockSide::Top:
+                handleRect = Rect2Dd(x, y, w, dragHandle.width);
                 break;
-            case LayoutDockSide::Bottom:
-                handleRect = Rect2Df(x, y + h - dragHandle.width, w, dragHandle.width);
+            case TemplateLayoutDockSide::Bottom:
+                handleRect = Rect2Dd(x, y + h - dragHandle.width, w, dragHandle.width);
                 break;
             default:
                 return;
@@ -756,7 +754,7 @@ namespace UltraCanvas {
             ctx->SetFillPaint(Color(80, 80, 80));
             for (int i = -2; i <= 2; ++i) {
                 for (int j = -1; j <= 1; ++j) {
-                    if (dragHandle.position == LayoutDockSide::Top || dragHandle.position == LayoutDockSide::Bottom) {
+                    if (dragHandle.position == TemplateLayoutDockSide::Top || dragHandle.position == TemplateLayoutDockSide::Bottom) {
                         ctx->FillCircle(centerX + i * 8, centerY + j * 4, 1.5f);
                     } else {
                         ctx->FillCircle(centerX + j * 4, centerY + i * 8, 1.5f);
@@ -766,7 +764,7 @@ namespace UltraCanvas {
         } else if (dragHandle.gripPattern == "lines") {
             // Draw line pattern
             for (int i = -2; i <= 2; ++i) {
-                if (dragHandle.position == LayoutDockSide::Top || dragHandle.position == LayoutDockSide::Bottom) {
+                if (dragHandle.position == TemplateLayoutDockSide::Top || dragHandle.position == TemplateLayoutDockSide::Bottom) {
                     float lineX = centerX + i * 6;
                     ctx->DrawLine({lineX, handleRect.y + 2}, {lineX, handleRect.y + handleRect.height - 2});
                 } else {
@@ -777,12 +775,12 @@ namespace UltraCanvas {
         } else if (dragHandle.gripPattern == "bars") {
             // Draw bar pattern
             for (int i = -1; i <= 1; ++i) {
-                if (dragHandle.position == LayoutDockSide::Top || dragHandle.position == LayoutDockSide::Bottom) {
+                if (dragHandle.position == TemplateLayoutDockSide::Top || dragHandle.position == TemplateLayoutDockSide::Bottom) {
                     float barX = centerX + i * 10 - 3;
-                    ctx->FillRectangle(Rect2Df(barX, handleRect.y + 2, 6, handleRect.height - 4));
+                    ctx->FillRectangle(Rect2Dd(barX, handleRect.y + 2, 6, handleRect.height - 4));
                 } else {
                     float barY = centerY + i * 10 - 3;
-                    ctx->FillRectangle(Rect2Df(handleRect.x + 2, barY, handleRect.width - 4, 6));
+                    ctx->FillRectangle(Rect2Dd(handleRect.x + 2, barY, handleRect.width - 4, 6));
                 }
             }
         }
@@ -807,7 +805,7 @@ namespace UltraCanvas {
                                                   w, h, appearance.cornerRadius
                                           });
             } else {
-                ctx->FillRectangle(Rect2Df(
+                ctx->FillRectangle(Rect2Dd(
                         x + appearance.shadowOffset.x,
                         y + appearance.shadowOffset.y,
                         w, h
@@ -821,7 +819,7 @@ namespace UltraCanvas {
             if (appearance.cornerRadius > 0) {
                 ctx->FillRoundedRectangle({x, y, w, h}, appearance.cornerRadius);
             } else {
-                ctx->FillRectangle(Rect2Df(x, y, w, h));
+                ctx->FillRectangle(Rect2Dd(x, y, w, h));
             }
         }
 
@@ -832,7 +830,7 @@ namespace UltraCanvas {
             if (appearance.cornerRadius > 0) {
                 ctx->DrawRoundedRectangle(x, y, w, h, appearance.cornerRadius);
             } else {
-                ctx->DrawRectangle(Rect2Df(x, y, w, h));
+                ctx->DrawRectangle(Rect2Dd(x, y, w, h));
             }
         }
     }
@@ -1041,7 +1039,7 @@ namespace UltraCanvas {
 
             builder.SetAppearance(appearance)
                     .SetDimensions(TemplateDimensions::Fixed(0, 40)) // Width will be set by container
-                    .SetPlacementRule(TemplatePlacementRule::Flow(LayoutDirection::Horizontal, 2.0f));
+                    .SetPlacementRule(TemplatePlacementRule::Flow(TemplateLayoutDirection::Horizontal, 2.0f));
 
             return builder.Build();
         }
@@ -1057,7 +1055,7 @@ namespace UltraCanvas {
 
             builder.SetAppearance(appearance)
                     .SetDimensions(TemplateDimensions::Fixed(200, 0)) // Height will be set by container
-                    .SetPlacementRule(TemplatePlacementRule::Stack(LayoutDirection::Vertical, 4.0f))
+                    .SetPlacementRule(TemplatePlacementRule::Stack(TemplateLayoutDirection::Vertical, 4.0f))
                     .SetScrollSettings(TemplateScrollSettings{TemplateScrollMode::Off, TemplateScrollMode::Auto});
 
             return builder.Build();
@@ -1077,7 +1075,7 @@ namespace UltraCanvas {
 
             builder.SetAppearance(appearance)
                     .SetDimensions(TemplateDimensions::Fixed(0, 24))
-                    .SetPlacementRule(TemplatePlacementRule::Flow(LayoutDirection::Horizontal, 16.0f));
+                    .SetPlacementRule(TemplatePlacementRule::Flow(TemplateLayoutDirection::Horizontal, 16.0f));
 
             return builder.Build();
         }
@@ -1093,7 +1091,7 @@ namespace UltraCanvas {
 
             builder.SetAppearance(appearance)
                     .SetDimensions(TemplateDimensions::Fixed(0, 120))
-                    .SetPlacementRule(TemplatePlacementRule::Flow(LayoutDirection::Horizontal, 8.0f));
+                    .SetPlacementRule(TemplatePlacementRule::Flow(TemplateLayoutDirection::Horizontal, 8.0f));
 
             return builder.Build();
         }
@@ -1111,7 +1109,7 @@ namespace UltraCanvas {
 
             builder.SetAppearance(appearance)
                     .SetDimensions(TemplateDimensions::Fixed(250, 0))
-                    .SetPlacementRule(TemplatePlacementRule::Stack(LayoutDirection::Vertical, 8.0f))
+                    .SetPlacementRule(TemplatePlacementRule::Stack(TemplateLayoutDirection::Vertical, 8.0f))
                     .SetDragHandle(handle)
                     .SetScrollSettings(TemplateScrollSettings{TemplateScrollMode::Off, TemplateScrollMode::Auto});
 

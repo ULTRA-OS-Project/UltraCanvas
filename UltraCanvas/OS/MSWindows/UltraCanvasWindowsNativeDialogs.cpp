@@ -202,7 +202,7 @@ namespace UltraCanvas {
             const std::string& title, const std::vector<FileFilter>& filters,
             const std::string& initialDir, UltraCanvasWindowBase*  parent) {
 
-        NativeFileDialogOptions options;
+        FileDialogOptions options;
         options.title = title;
         options.filters = filters;
         options.initialDirectory = initialDir;
@@ -210,7 +210,7 @@ namespace UltraCanvas {
         return OpenFile(options);
     }
 
-    std::string UltraCanvasNativeDialogs::OpenFile(const NativeFileDialogOptions& options) {
+    std::string UltraCanvasNativeDialogs::OpenFile(const FileDialogOptions& options) {
         IFileOpenDialog* pDialog = nullptr;
         HRESULT hr = CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_ALL,
             IID_PPV_ARGS(&pDialog));
@@ -263,17 +263,16 @@ namespace UltraCanvas {
             const std::string& title, const std::vector<FileFilter>& filters,
             const std::string& initialDir, UltraCanvasWindowBase*  parent) {
 
-        NativeFileDialogOptions options;
+        FileDialogOptions options;
         options.title = title;
         options.filters = filters;
         options.initialDirectory = initialDir;
         options.parentWindow = parent;
-        options.allowMultiSelect = true;
         return OpenMultipleFiles(options);
     }
 
     std::vector<std::string> UltraCanvasNativeDialogs::OpenMultipleFiles(
-            const NativeFileDialogOptions& options) {
+            const FileDialogOptions& options) {
         std::vector<std::string> results;
 
         IFileOpenDialog* pDialog = nullptr;
@@ -342,7 +341,7 @@ namespace UltraCanvas {
             const std::string& initialDir, const std::string& defaultFileName,
             UltraCanvasWindowBase*  parent) {
 
-        NativeFileDialogOptions options;
+        FileDialogOptions options;
         options.title = title;
         options.filters = filters;
         options.initialDirectory = initialDir;
@@ -351,7 +350,7 @@ namespace UltraCanvas {
         return SaveFile(options);
     }
 
-    std::string UltraCanvasNativeDialogs::SaveFile(const NativeFileDialogOptions& options) {
+    std::string UltraCanvasNativeDialogs::SaveFile(const FileDialogOptions& options) {
         IFileSaveDialog* pDialog = nullptr;
         HRESULT hr = CoCreateInstance(CLSID_FileSaveDialog, nullptr, CLSCTX_ALL,
             IID_PPV_ARGS(&pDialog));

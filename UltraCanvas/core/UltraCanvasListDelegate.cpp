@@ -27,7 +27,7 @@ namespace UltraCanvas {
         if (!iconPath.empty()) {
             int iconY = cellY + (cellH - iconSize) / 2;
             ctx->DrawImage(iconPath,
-                          Rect2Df(static_cast<float>(textX), static_cast<float>(iconY),
+                          Rect2Dd(static_cast<float>(textX), static_cast<float>(iconY),
                                   static_cast<float>(iconSize), static_cast<float>(iconSize)),
                           ImageFitMode::Contain);
             textX += iconSize + iconSpacing;
@@ -48,7 +48,7 @@ namespace UltraCanvas {
                 ctx->SetTextPaint(textColor);
             }
 
-            ctx->DrawTextInRect(text, Rect2Df(textX, cellY, availableWidth, cellH));
+            ctx->DrawTextInRect(text, Rect2Dd(textX, cellY, availableWidth, cellH));
         }
     }
 

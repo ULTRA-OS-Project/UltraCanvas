@@ -73,7 +73,7 @@ public:
     void GetSize(int& width, int& height) const override;
     
     // ===== RENDERING =====
-    void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
     void RequestRedraw() override;
 
     // ===== CANVAS ACCESS =====

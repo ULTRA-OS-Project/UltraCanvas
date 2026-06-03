@@ -136,14 +136,14 @@ namespace UltraCanvas {
         Color ParseColor(const librevenge::RVNGPropertyList& propList, const char* prefix);
         Color ParseColorValue(const std::string& colorStr);
         float ParseUnit(const librevenge::RVNGProperty* prop, float defaultValue = 0.0f);
-        std::vector<Point2Df> ParsePathData(const librevenge::RVNGPropertyListVector* path);
+        std::vector<Point2Dd> ParsePathData(const librevenge::RVNGPropertyListVector* path);
         void ApplyStyleToContext(IRenderContext* ctx, const CDRStyleState& style);
         void FillAndStroke(IRenderContext* ctx, const CDRStyleState& style);
 
         std::string ParseGradientStyle(const librevenge::RVNGPropertyList& propList, const char* prefix);
         std::shared_ptr<IPaintPattern> CreateGradientPattern(IRenderContext* ctx,
                                                              const std::string& gradientId,
-                                                             const Rect2Df& bounds);
+                                                             const Rect2Dd& bounds);
         // Style lookup helpers
         CDRParagraphStyle* GetParagraphStyle(const std::string& name);
         CDRCharacterStyle* GetCharacterStyle(const std::string& name);

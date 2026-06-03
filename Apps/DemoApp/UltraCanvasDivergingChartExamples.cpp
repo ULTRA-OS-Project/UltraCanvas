@@ -14,18 +14,18 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDivergingChartExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("DivergingChartExamples", 2500, 0, 0, 1000, 600);
+        auto container = std::make_shared<UltraCanvasContainer>("DivergingChartExamples", 0, 0, 1000, 600);
         container->SetPadding(0,0,10,0);
 
         // Title
-        auto title = std::make_shared<UltraCanvasLabel>("DivergingChartTitle", 2501, 10, 10, 350, 30);
+        auto title = std::make_shared<UltraCanvasLabel>("DivergingChartTitle", 10, 10, 350, 30);
         title->SetText("Diverging Bar Chart Examples");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
         container->AddChild(title);
 
         // Create tabbed container for the three chart types
-        auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("divergingChartTabs", 2502, 10, 50, 700, 500);
+        auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("divergingChartTabs", 10, 50, 700, 500);
         tabbedContainer->SetTabHeight(35);
         tabbedContainer->SetTabStyle(TabStyle::Modern);
 
@@ -59,8 +59,8 @@ namespace UltraCanvas {
         categories.emplace_back("Strongly Agree", Color(33, 102, 172, 255), true);
 
         // Create Likert Scale chart
-        auto likertContainer = std::make_shared<UltraCanvasContainer>("likertContainer", 2520, 0, 0, 700, 450);
-        auto likertChart = std::make_shared<UltraCanvasDivergingBarChart>("likertChart", 2521, 0, 0, 700, 450);
+        auto likertContainer = std::make_shared<UltraCanvasContainer>("likertContainer", 0, 0, 700, 450);
+        auto likertChart = std::make_shared<UltraCanvasDivergingBarChart>("likertChart", 0, 0, 700, 450);
         likertChart->SetChartTitle("Likert Scale Survey Responses");
         likertChart->SetChartStyle(DivergingChartStyle::LikertScale);
         likertChart->SetBarHeight(0.85f);
@@ -76,8 +76,8 @@ namespace UltraCanvas {
         likertContainer->AddChild(likertChart);
 
         // Create Population Pyramid chart
-        auto pyramidContainer = std::make_shared<UltraCanvasContainer>("pyramidContainer", 2530, 0, 0, 700, 450);
-        auto pyramidChart = std::make_shared<UltraCanvasDivergingBarChart>("pyramidChart", 2531, 0, 0, 700, 450);
+        auto pyramidContainer = std::make_shared<UltraCanvasContainer>("pyramidContainer", 0, 0, 700, 450);
+        auto pyramidChart = std::make_shared<UltraCanvasDivergingBarChart>("pyramidChart", 0, 0, 700, 450);
         pyramidChart->SetChartTitle("Population Pyramid Distribution");
         pyramidChart->SetChartStyle(DivergingChartStyle::PopulationPyramid);
         pyramidChart->SetBarHeight(0.85f);
@@ -93,8 +93,8 @@ namespace UltraCanvas {
         pyramidContainer->AddChild(pyramidChart);
 
         // Create Tornado chart
-        auto tornadoContainer = std::make_shared<UltraCanvasContainer>("tornadoContainer", 2540, 0, 0, 700, 450);
-        auto tornadoChart = std::make_shared<UltraCanvasDivergingBarChart>("tornadoChart", 2541, 0, 0, 700, 450);
+        auto tornadoContainer = std::make_shared<UltraCanvasContainer>("tornadoContainer", 0, 0, 700, 450);
+        auto tornadoChart = std::make_shared<UltraCanvasDivergingBarChart>("tornadoChart", 0, 0, 700, 450);
         tornadoChart->SetChartTitle("Tornado Chart Analysis");
         tornadoChart->SetChartStyle(DivergingChartStyle::TornadoChart);
         tornadoChart->SetBarHeight(0.85f);
@@ -125,7 +125,7 @@ namespace UltraCanvas {
         int currentX = 10;
 
         // Toggle buttons
-        auto btnToggleGrid = std::make_shared<UltraCanvasButton>("btnGrid", 2506, currentX, buttonY, buttonWidth, buttonHeight);
+        auto btnToggleGrid = std::make_shared<UltraCanvasButton>("btnGrid", currentX, buttonY, buttonWidth, buttonHeight);
         btnToggleGrid->SetText("Toggle Grid");
         btnToggleGrid->SetColors(Color(70, 130, 180, 255), Color(90, 150, 200, 255), Color(50, 100, 160, 255), Color(150, 200, 240, 255));
         btnToggleGrid->SetTextColors(Colors::White, Colors::White, Colors::White, Colors::White);
@@ -139,7 +139,7 @@ namespace UltraCanvas {
         container->AddChild(btnToggleGrid);
         currentX += buttonWidth + buttonSpacing;
 
-        auto btnGenerateData = std::make_shared<UltraCanvasButton>("btnGenerate", 2507, currentX, buttonY, buttonWidth, buttonHeight);
+        auto btnGenerateData = std::make_shared<UltraCanvasButton>("btnGenerate", currentX, buttonY, buttonWidth, buttonHeight);
         btnGenerateData->SetText("Random Data");
         btnGenerateData->SetColors(Color(70, 130, 180, 255), Color(90, 150, 200, 255), Color(50, 100, 160, 255), Color(150, 200, 240, 255));
         btnGenerateData->SetTextColors(Colors::White, Colors::White, Colors::White, Colors::White);
@@ -189,7 +189,7 @@ namespace UltraCanvas {
         container->AddChild(btnGenerateData);
 
         // Info label
-        auto infoLabel = std::make_shared<UltraCanvasLabel>("DivergingChartInfo", 2508, 740, 60, 250, 350);
+        auto infoLabel = std::make_shared<UltraCanvasLabel>("DivergingChartInfo", 740, 60, 250, 350);
         infoLabel->SetText("Diverging Bar Chart Features:\n\n• Likert scale visualization\n• Population pyramid style\n• Tornado chart format\n• Interactive controls\n• Multiple data categories\n• Customizable colors\n• Grid and center line options\n• Dynamic data updates\n\nClick the buttons below to:\nn• Toggle grid display\n• Generate random data");
         infoLabel->SetFontSize(11);
         infoLabel->SetTextColor(Color(80, 80, 80, 255));

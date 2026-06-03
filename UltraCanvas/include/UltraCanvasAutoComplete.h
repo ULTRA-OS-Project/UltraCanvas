@@ -1,7 +1,7 @@
 // include/UltraCanvasAutoComplete.h
 // AutoComplete text input with popup suggestion list (inherits TextInput, uses ListView popup)
-// Version: 4.0.0
-// Last Modified: 2026-03-29
+// Version: 4.1.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -81,9 +81,15 @@ namespace UltraCanvas {
         bool autoSelectFirst = false;
 
     public:
-        // ===== CONSTRUCTOR =====
-        UltraCanvasAutoComplete(const std::string& identifier, long id,
-                                long x, long y, long w, long h = 28);
+        // ===== CONSTRUCTORS =====
+        UltraCanvasAutoComplete(const std::string& identifier,
+                                float x, float y, float w, float h);
+
+        UltraCanvasAutoComplete(const std::string& identifier, float w, float h)
+            : UltraCanvasAutoComplete(identifier, -1, -1, w, h) {}
+
+        explicit UltraCanvasAutoComplete(const std::string& identifier)
+            : UltraCanvasAutoComplete(identifier, -1, -1, -1, -1) {}
 
         // ===== ITEM MANAGEMENT (STATIC MODE) =====
         void AddItem(const std::string& text);
@@ -140,8 +146,8 @@ namespace UltraCanvas {
 
 // ===== FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasAutoComplete> CreateAutoComplete(
-            const std::string& identifier, long id, long x, long y, long w, long h = 28) {
-        return std::make_shared<UltraCanvasAutoComplete>(identifier, id, x, y, w, h);
+            const std::string& identifier, float x, float y, float w, float h = 28) {
+        return std::make_shared<UltraCanvasAutoComplete>(identifier, x, y, w, h);
     }
 
 } // namespace UltraCanvas

@@ -115,7 +115,7 @@ namespace UltraCanvas {
         ChartPlotArea volumeAxisArea;  // Separate area for volume Y-axis labels
 
     public:
-        UltraCanvasFinancialChartElement(const std::string& id, long uid, int x, int y, int width, int height);
+        UltraCanvasFinancialChartElement(const std::string& id, int x, int y, int width, int height);
 
         // =============================================================================
         // FINANCIAL CHART CONFIGURATION
@@ -289,16 +289,16 @@ namespace UltraCanvas {
 // =============================================================================
 
     inline std::shared_ptr<UltraCanvasFinancialChartElement> CreateFinancialChartElement(
-            const std::string& id, long uid, int x, int y, int width, int height) {
-        return std::make_shared<UltraCanvasFinancialChartElement>(id, uid, x, y, width, height);
+            const std::string& id, int x, int y, int width, int height) {
+        return std::make_shared<UltraCanvasFinancialChartElement>(id, x, y, width, height);
     }
 
     // Helper factory for financial chart with data
     inline std::shared_ptr<UltraCanvasFinancialChartElement> CreateFinancialChartWithData(
-            const std::string& id, long uid, int x, int y, int width, int height,
+            const std::string& id, int x, int y, int width, int height,
             std::shared_ptr<FinancialChartDataVector> data, const std::string& title = "") {
 
-        auto chart = CreateFinancialChartElement(id, uid, x, y, width, height);
+        auto chart = CreateFinancialChartElement(id, x, y, width, height);
         chart->SetFinancialDataSource(data);
         if (!title.empty()) {
             chart->SetChartTitle(title);

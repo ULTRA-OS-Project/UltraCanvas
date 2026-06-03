@@ -19,7 +19,6 @@
 #include "UltraCanvasTextEditorDialogs.h"
 #include "UltraCanvasTextEditorConfig.h"
 #include "UltraCanvasEncoding.h"
-#include "UltraCanvasBoxLayout.h"
 #include "UltraCanvasSearchBar.h"
 #include <memory>
 #include <string>
@@ -108,6 +107,11 @@ namespace UltraCanvas {
         std::string filePath;              // Full file path (empty for new/unsaved files)
         std::string fileName;              // Display name
         std::shared_ptr<UltraCanvasTextArea> textArea;  // Text editor component
+        // CSS-flex tab content: contentBox (column) holds [searchBar(when active), editorArea];
+        // editorArea (column) holds the textArea (flex-grow) with the markdown toolbar overlaid
+        // at its left. searchBar/markdownToolbar are shared singletons re-parented on tab switch.
+        std::shared_ptr<UltraCanvasContainer> contentBox;
+        std::shared_ptr<UltraCanvasContainer> editorArea;
         std::string language;              // Syntax highlighting language
         bool isSaved;                      // Has unsaved changes
         bool isModified;                   // Has unsaved changes
@@ -190,7 +194,7 @@ namespace UltraCanvas {
  * - Font size adjustment
  *
  * @example
- * auto editor = CreateTextEditor("MyEditor", 1, 0, 0, 1024, 768);
+ * auto editor = CreateTextEditor("MyEditor", 0, 0, 1024, 768);
  * editor->OpenFile("/path/to/file.cpp");
  * window->AddChild(editor);
  */
@@ -206,6 +210,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasToolbar> toolbar;
         std::shared_ptr<UltraCanvasToolbar> markdownToolbar;
         std::shared_ptr<UltraCanvasTabbedContainer> tabContainer;
+        std::shared_ptr<UltraCanvasContainer> statusBarContainer;  // flex-row wrapper for status controls
         std::shared_ptr<UltraCanvasLabel> statusLabel;
         std::shared_ptr<UltraCanvasDropdown> languageDropdown;
         std::shared_ptr<UltraCanvasDropdown> encodingDropdown;
@@ -386,6 +391,10 @@ namespace UltraCanvas {
 
         // Layout
         void UpdateChildLayout();
+        // Builds the per-tab flex content (contentBox > editorArea > textArea) for a document.
+        void BuildDocumentContentBox(const std::shared_ptr<DocumentTab>& doc);
+        // Re-parents the shared searchBar + markdownToolbar into the active tab's content boxes.
+        void AttachSharedBarsToActiveTab();
 
         // ===== ASYNC MATCH COUNTING =====
         std::thread              matchCountThread;
@@ -430,11 +439,11 @@ namespace UltraCanvas {
         void PromptCrashRecovery();
 
         // ===== RENDERING =====
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;
-        void SetBounds(const Rect2Di& b) override;
+        void SetBounds(const Rect2Df& b) override;
         // ===== FILE OPERATIONS (PUBLIC API) =====
 
         /**

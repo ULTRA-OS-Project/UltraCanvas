@@ -12,7 +12,6 @@
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
-#include "UltraCanvasBoxLayout.h"
 #include "UltraCanvasEvent.h"
 #include <string>
 #include <vector>
@@ -274,19 +273,7 @@ namespace UltraCanvas {
         bool validateNames = true;
         bool addToRecent = true;
 
-        FileDialogConfig() : DialogConfig() {
-            buttons = DialogButtons::OKCancel;
-            width = 600;
-            height = 450;
-            resizable = true;
-            // Default filters
-            filters = {
-                    FileFilter("All Files", "*"),
-                    FileFilter("Text Files", {"txt", "log", "md"}),
-                    FileFilter("Image Files", {"png", "jpg", "jpeg", "gif", "bmp"}),
-                    FileFilter("Document Files", {"pdf", "doc", "docx", "rtf"})
-            };
-        }
+        FileDialogConfig();
 
         // Add a filter
         void AddFilter(const FileFilter& filter) {
@@ -310,41 +297,7 @@ namespace UltraCanvas {
         }
 
         // Set filters from pipe-separated string: "Text files (*.txt)|*.txt|All files (*.*)|*.*"
-        void SetFiltersFromString(const std::string& filterString) {
-            filters.clear();
-            selectedFilterIndex = 0;
-
-            if (filterString.empty()) return;
-
-            std::vector<std::string> parts;
-            std::stringstream ss(filterString);
-            std::string part;
-            while (std::getline(ss, part, '|')) {
-                parts.push_back(part);
-            }
-
-            for (size_t i = 0; i + 1 < parts.size(); i += 2) {
-                std::string desc = parts[i];
-                std::string extPattern = parts[i + 1];
-
-                std::vector<std::string> extensions;
-                std::stringstream extSs(extPattern);
-                std::string ext;
-                while (std::getline(extSs, ext, ';')) {
-                    // Remove "*." prefix if present
-                    if (ext.substr(0, 2) == "*.") {
-                        ext = ext.substr(2);
-                    }
-                    if (!ext.empty()) {
-                        extensions.push_back(ext);
-                    }
-                }
-
-                if (!extensions.empty()) {
-                    filters.emplace_back(desc, extensions);
-                }
-            }
-        }
+        void SetFiltersFromString(const std::string& filterString);
     };
 
 // ===== MODAL DIALOG CLASS =====
@@ -475,11 +428,11 @@ namespace UltraCanvas {
 
         static void ShowMessage(const std::string& message, const std::string& title,
                                 DialogType type, DialogButtons buttons,
-                                std::function<void(DialogResult)> onResult,
+                                std::function<void(DialogResult)> onResult = nullptr,
                                 UltraCanvasWindowBase* parent = nullptr);
 
         static void ShowInformation(const std::string& message, const std::string& title,
-                                    std::function<void(DialogResult)> onResult,
+                                    std::function<void(DialogResult)> onResult = nullptr,
                                     UltraCanvasWindowBase* parent = nullptr);
 
         static void ShowQuestion(const std::string& message, const std::string& title,
@@ -487,11 +440,11 @@ namespace UltraCanvas {
                                  UltraCanvasWindowBase* parent = nullptr);
 
         static void ShowWarning(const std::string& message, const std::string& title,
-                                std::function<void(DialogResult)> onResult,
+                                std::function<void(DialogResult)> onResult = nullptr,
                                 UltraCanvasWindowBase* parent = nullptr);
 
         static void ShowError(const std::string& message, const std::string& title,
-                              std::function<void(DialogResult)> onResult,
+                              std::function<void(DialogResult)> onResult = nullptr,
                               UltraCanvasWindowBase* parent = nullptr);
 
         static void ShowConfirmation(const std::string& message, const std::string& title,
@@ -503,30 +456,8 @@ namespace UltraCanvas {
                                     std::function<void(DialogResult, const std::string&)> onResult,
                                     UltraCanvasWindowBase* parent = nullptr);
 
-        static void ShowOpenFileDialog(const std::string& title,
-                                       const std::vector<FileFilter>& filters,
-                                       const std::string& initialDir,
-                                       std::function<void(DialogResult, const std::string&)> onResult,
-                                       UltraCanvasWindowBase* parent = nullptr);
-
-        static void ShowSaveFileDialog(const std::string& title,
-                                       const std::vector<FileFilter>& filters,
-                                       const std::string& initialDir,
-                                       const std::string& defaultName,
-                                       std::function<void(DialogResult, const std::string&)> onResult,
-                                       UltraCanvasWindowBase* parent = nullptr);
-
-        static void ShowSelectFolderDialog(const std::string& title,
-                                           const std::string& initialDir,
-                                           std::function<void(DialogResult, const std::string&)> onResult,
-                                           UltraCanvasWindowBase* parent = nullptr);
-
-        static void ShowOpenMultipleFilesDialog(
-             const std::string& title,
-             const std::vector<FileFilter>& filters,
-             const std::string& initialDir,
-             std::function<void(DialogResult, const std::vector<std::string>&)> onResult,
-             UltraCanvasWindowBase* parent = nullptr);
+        // File-selection dialogs (Open/Save/SelectFolder/OpenMultiple) live on
+        // UltraCanvasFileLoader — see include/UltraCanvasFileLoader.h.
 
         // ===== CUSTOM DIALOGS =====
         static std::shared_ptr<UltraCanvasModalDialog> CreateDialog(const DialogConfig& config);

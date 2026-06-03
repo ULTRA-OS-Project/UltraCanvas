@@ -1,7 +1,7 @@
 // include/UltraCanvasToolbar.h
 // Comprehensive cross-platform toolbar component with advanced features
-// Version: 1.1.0
-// Last Modified: 2025-11-13
+// Version: 1.3.0
+// Last Modified: 2026-06-01
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -14,12 +14,9 @@
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextInput.h"
-#include "UltraCanvasCheckbox.h"
+#include "UltraCanvasSpacer.h"
+#include "UltraCanvasSeparator.h"
 #include "UltraCanvasMenu.h"
-#include "UltraCanvasBoxLayout.h"
-#include "UltraCanvasGridLayout.h"
-#include "UltraCanvasFlexLayout.h"
-#include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
 #include <memory>
@@ -32,11 +29,6 @@ namespace UltraCanvas {
 
 // ===== FORWARD DECLARATIONS =====
     class UltraCanvasToolbar;
-    class UltraCanvasToolbarItem;
-    class UltraCanvasToolbarSeparator;
-    class UltraCanvasToolbarButton;
-    class UltraCanvasToolbarDropdown;
-    class UltraCanvasToolbarLabel;
 
 // ===== TOOLBAR ENUMERATIONS =====
 
@@ -61,23 +53,6 @@ namespace UltraCanvas {
         Ribbon = 4,        // Ribbon-style with multiple rows
         StatusBar = 5,     // Status bar at bottom
         Sidebar = 6        // Vertical sidebar
-    };
-
-    enum class ToolbarItemType {
-        Button = 0,
-        ToggleButton = 1,
-        DropdownButton = 2,
-        SplitButton = 3,
-        Separator = 4,
-        Spacer = 5,
-        Label = 6,
-        TextInput = 7,
-        Dropdown = 8,
-        Checkbox = 9,
-        RadioButton = 10,
-        CustomWidget = 11,
-        ButtonGroup = 12,
-        SearchBox = 13
     };
 
     enum class ToolbarOverflowMode {
@@ -204,312 +179,29 @@ namespace UltraCanvas {
         }
     };
 
-// ===== TOOLBAR ITEM DESCRIPTOR =====
-
-    struct ToolbarItemDescriptor {
-        ToolbarItemType type = ToolbarItemType::Button;
-        std::string identifier;
-        std::string text;
-        std::string iconPath;
-        std::string tooltip;
-
-        // Button properties
-        bool isToggle = false;
-        bool isChecked = false;
-        bool isEnabled = true;
-        bool isVisible = true;
-
-        // Priority for overflow handling
-        int visibilityPriority = 0; // Higher = stays visible longer
-
-        // Dropdown items (for dropdown buttons/menus)
-        std::vector<std::string> dropdownItems;
-
-        // Callbacks
-        std::function<void()> onClick;
-        std::function<void(bool)> onToggle;
-        std::function<void(const std::string&)> onDropdownSelect;
-        std::function<void(const std::string&)> onTextChange;
-
-        // Layout constraints
-        int minWidth = 0;
-        int maxWidth = 0;
-        int fixedWidth = 0;
-        float stretch = 0.0f;
-
-        // Badge/notification
-        bool hasBadge = false;
-        std::string badgeText;
-        Color badgeColor = Color(255, 0, 0, 255);
-
-        // Factory methods
-        static ToolbarItemDescriptor CreateButton(
-                const std::string& id,
-                const std::string& text,
-                const std::string& icon = "",
-                std::function<void()> onClick = nullptr
-        ) {
-            ToolbarItemDescriptor desc;
-            desc.type = ToolbarItemType::Button;
-            desc.identifier = id;
-            desc.text = text;
-            desc.iconPath = icon;
-            desc.onClick = onClick;
-            return desc;
-        }
-
-        static ToolbarItemDescriptor CreateToggleButton(
-                const std::string& id,
-                const std::string& text,
-                const std::string& icon = "",
-                std::function<void(bool)> onToggle = nullptr
-        ) {
-            ToolbarItemDescriptor desc;
-            desc.type = ToolbarItemType::ToggleButton;
-            desc.identifier = id;
-            desc.text = text;
-            desc.iconPath = icon;
-            desc.isToggle = true;
-            desc.onToggle = onToggle;
-            return desc;
-        }
-
-        static ToolbarItemDescriptor CreateDropdown(
-                const std::string& id,
-                const std::string& text,
-                const std::vector<std::string>& items,
-                std::function<void(const std::string&)> onSelect = nullptr
-        ) {
-            ToolbarItemDescriptor desc;
-            desc.type = ToolbarItemType::Dropdown;
-            desc.identifier = id;
-            desc.text = text;
-            desc.dropdownItems = items;
-            desc.onDropdownSelect = onSelect;
-            return desc;
-        }
-
-        static ToolbarItemDescriptor CreateSeparator(const std::string& id = "") {
-            ToolbarItemDescriptor desc;
-            desc.type = ToolbarItemType::Separator;
-            desc.identifier = id.empty() ? "sep_" + std::to_string(rand()) : id;
-            return desc;
-        }
-
-        static ToolbarItemDescriptor CreateSpacer(int size = 8) {
-            ToolbarItemDescriptor desc;
-            desc.type = ToolbarItemType::Spacer;
-            desc.identifier = "spacer_" + std::to_string(rand());
-            desc.fixedWidth = size;
-            return desc;
-        }
-
-        static ToolbarItemDescriptor CreateFlexSpacer(float stretch = 1.0f) {
-            ToolbarItemDescriptor desc;
-            desc.type = ToolbarItemType::Spacer;
-            desc.identifier = "flexspacer_" + std::to_string(rand());
-            desc.stretch = stretch;
-            return desc;
-        }
-
-        static ToolbarItemDescriptor CreateLabel(
-                const std::string& id,
-                const std::string& text
-        ) {
-            ToolbarItemDescriptor desc;
-            desc.type = ToolbarItemType::Label;
-            desc.identifier = id;
-            desc.text = text;
-            return desc;
-        }
-    };
-
-// ===== TOOLBAR ITEM BASE CLASS =====
-
-    class UltraCanvasToolbarItem {
-    friend UltraCanvasToolbar;
-    protected:
-        ToolbarItemType itemType;
-        std::string identifier;
-        std::shared_ptr<UltraCanvasUIElement> widget;
-        bool isEnabled = true;
-        bool isVisible = true;
-        int visibilityPriority = 0;
-
-    public:
-        UltraCanvasToolbarItem(ToolbarItemType type, const std::string& id)
-                : itemType(type), identifier(id) {}
-
-        virtual ~UltraCanvasToolbarItem() = default;
-
-        ToolbarItemType GetType() const { return itemType; }
-        const std::string& GetIdentifier() const { return identifier; }
-        std::shared_ptr<UltraCanvasUIElement> GetWidget() { return widget; }
-
-        bool IsEnabled() const { return isEnabled; }
-        void SetEnabled(bool enabled) {
-            isEnabled = enabled;
-            if (widget) {
-                widget->SetDisabled(!enabled);
-            }
-        }
-
-        bool IsVisible() const { return isVisible; }
-        void SetVisible(bool visible) {
-            isVisible = visible;
-            if (widget) {
-                widget->SetVisible(visible);
-            }
-        }
-
-        int GetVisibilityPriority() const { return visibilityPriority; }
-        void SetVisibilityPriority(int priority) { visibilityPriority = priority; }
-
-        virtual void UpdateAppearance(const ToolbarAppearance& appearance) = 0;
-        virtual int GetPreferredWidth() const = 0;
-        virtual int GetPreferredHeight() const = 0;
-    };
-
-// ===== TOOLBAR SEPARATOR =====
-// Simplified to use UltraCanvasUIElement directly instead of UltraCanvasContainer
-
-    class UltraCanvasToolbarSeparator : public UltraCanvasToolbarItem {
-    private:
-        bool isVertical = true;
-        Color color = Color(200, 200, 200, 255);
-        int thickness = 1;
-        int length = 24;
-
-    public:
-        UltraCanvasToolbarSeparator(const std::string& id, bool vertical);
-
-        void SetColor(const Color& c) { color = c; }
-        void SetThickness(int t) { thickness = t; }
-        void SetLength(int l) { length = l; }
-
-        void UpdateAppearance(const ToolbarAppearance& appearance) override;
-        int GetPreferredWidth() const override;
-        int GetPreferredHeight() const override;
-    };
-
-// ===== TOOLBAR BUTTON =====
-
-    class UltraCanvasToolbarButton : public UltraCanvasToolbarItem {
-    private:
-        std::string text;
-        std::string iconPath;
-        std::string tooltip;
-        bool isToggle = false;
-        bool isChecked = false;
-
-        // Badge
-        bool hasBadge = false;
-        std::string badgeText;
-        Color badgeColor = Color(255, 0, 0, 255);
-
-        // Callbacks
-        std::function<void()> onClickCallback;
-        std::function<void(bool)> onToggleCallback;
-
-    public:
-        UltraCanvasToolbarButton(const std::string& id, const std::string& txt,
-                                 const std::string& icon = "");
-
-        void SetText(const std::string& txt);
-        void SetIcon(const std::string& icon);
-        void SetTooltip(const std::string& tip);
-        void SetToggleMode(bool toggle);
-        void SetChecked(bool checked);
-        void SetOnClick(std::function<void()> callback);
-        void SetOnToggle(std::function<void(bool)> callback);
-        void SetBadge(const std::string& text, const Color& color = Color(255, 0, 0, 255));
-        void ClearBadge();
-
-        const std::string& GetText() const { return text; }
-        bool IsToggle() const { return isToggle; }
-        bool IsChecked() const { return isChecked; }
-        bool HasBadge() const { return hasBadge; }
-
-        void UpdateAppearance(const ToolbarAppearance& appearance) override;
-        int GetPreferredWidth() const override;
-        int GetPreferredHeight() const override;
-    };
-
-// ===== TOOLBAR DROPDOWN =====
-
-    class UltraCanvasToolbarDropdown : public UltraCanvasToolbarItem {
-    private:
-        std::string text;
-        std::vector<std::string> items;
-        int selectedIndex = -1;
-        std::function<void(const std::string&)> onSelectCallback;
-
-    public:
-        UltraCanvasToolbarDropdown(const std::string& id, const std::string& txt);
-
-        void SetText(const std::string& txt);
-        void AddItem(const std::string& item);
-        void SetItems(const std::vector<std::string>& itemList);
-        void SetSelectedIndex(int index);
-        void SetOnSelect(std::function<void(const std::string&)> callback);
-
-        const std::vector<std::string>& GetItems() const { return items; }
-        int GetSelectedIndex() const { return selectedIndex; }
-
-        void UpdateAppearance(const ToolbarAppearance& appearance) override;
-        int GetPreferredWidth() const override;
-        int GetPreferredHeight() const override;
-    };
-
-// ===== TOOLBAR LABEL =====
-
-    class UltraCanvasToolbarLabel : public UltraCanvasToolbarItem {
-    private:
-        std::string text;
-        TextAlignment alignment = TextAlignment::Left;
-        Color textColor = Color(0, 0, 0, 255);
-        float fontSize = 12.0f;
-        FontWeight fontWeight = FontWeight::Normal;
-
-    public:
-        UltraCanvasToolbarLabel(const std::string& id, const std::string& txt);
-
-        void SetText(const std::string& txt);
-        void SetAlignment(TextAlignment align);
-        void SetTextColor(const Color& color);
-        void SetFontSize(float size);
-        void SetFontWeight(FontWeight weight);
-
-        const std::string& GetText() const { return text; }
-
-        void UpdateAppearance(const ToolbarAppearance& appearance) override;
-        int GetPreferredWidth() const override;
-        int GetPreferredHeight() const override;
-    };
-
 // ===== MAIN TOOLBAR CLASS =====
 
     class UltraCanvasToolbar : public UltraCanvasContainer {
     private:
         // Configuration
-        ToolbarOrientation orientation = ToolbarOrientation::Horizontal;
-        ToolbarPosition position = ToolbarPosition::Top;
-        ToolbarAppearance appearance;
+        ToolbarOrientation toolbarOrientation = ToolbarOrientation::Horizontal;
+        ToolbarPosition toolbarPosition = ToolbarPosition::Top;
+        ToolbarAppearance toolbarAppearance;
         ToolbarOverflowMode overflowMode = ToolbarOverflowMode::OverflowNone;
-        ToolbarVisibility visibility = ToolbarVisibility::AlwaysVisible;
-        ToolbarDragMode dragMode = ToolbarDragMode::DragNone;
+        ToolbarVisibility toolbarVisibility = ToolbarVisibility::AlwaysVisible;
+        ToolbarDragMode toolbarDragMode = ToolbarDragMode::DragNone;
 
-        // Layout management
-        UltraCanvasBoxLayout* boxLayout = nullptr;
+        // Layout is configured directly on the inherited CSSLayout::Element::layout
+        // (display = Flex, direction set per orientation). No separate pointer.
 
-        // Items
-        std::vector<std::shared_ptr<UltraCanvasToolbarItem>> items;
-        std::unordered_map<std::string, std::shared_ptr<UltraCanvasToolbarItem>> itemMap;
+        // Widgets are stored as real children (CSSLayout::Element::Children()).
+        // This map provides id-based lookup for GetWidget(id); only identified
+        // widgets are mapped (anonymous spacers/separators are not).
+        std::unordered_map<std::string, std::shared_ptr<UltraCanvasUIElement>> widgetMap;
 
         // Overflow management
         std::shared_ptr<UltraCanvasMenu> overflowMenu;
         std::shared_ptr<UltraCanvasButton> overflowButton;
-        std::vector<std::shared_ptr<UltraCanvasToolbarItem>> overflowItems;
 
         // Auto-hide state
         bool isAutoHidden = false;
@@ -526,8 +218,15 @@ namespace UltraCanvas {
         Point2Di mousePosition;
 
     public:
-        UltraCanvasToolbar(const std::string& identifier, long id, long x, long y,
-                           long width, long height);
+        UltraCanvasToolbar(const std::string& identifier, float x, float y,
+                           float width, float height);
+
+        UltraCanvasToolbar(const std::string& identifier, float width, float height)
+            : UltraCanvasToolbar(identifier, -1, -1, width, height) {}
+
+        explicit UltraCanvasToolbar(const std::string& identifier)
+            : UltraCanvasToolbar(identifier, -1, -1, -1, -1) {}
+
         virtual ~UltraCanvasToolbar() = default;
 
         // ===== CONFIGURATION =====
@@ -538,44 +237,48 @@ namespace UltraCanvas {
         void SetVisibility(ToolbarVisibility vis);
         void SetDragMode(ToolbarDragMode mode);
 
-        ToolbarOrientation GetOrientation() const { return orientation; }
-        ToolbarPosition GetPosition() const { return position; }
-        const ToolbarAppearance& GetAppearance() const { return appearance; }
+        ToolbarOrientation GetOrientation() const { return toolbarOrientation; }
+        ToolbarPosition GetPosition() const { return toolbarPosition; }
+        const ToolbarAppearance& GetAppearance() const { return toolbarAppearance; }
 
         // ===== ITEM MANAGEMENT =====
-        void AddItem(const ToolbarItemDescriptor& descriptor);
-        void AddItem(std::shared_ptr<UltraCanvasToolbarItem> item);
-        void InsertItem(int index, const ToolbarItemDescriptor& descriptor);
-        void InsertItem(int index, std::shared_ptr<UltraCanvasToolbarItem> item);
+        // The toolbar is a facade over its flex children: each Add* creates a
+        // real widget and adds it as a child. Removal works by id or index.
         void RemoveItem(const std::string& identifier);
         void RemoveItemAt(int index);
         void ClearItems();
 
-        // Item access
-        std::shared_ptr<UltraCanvasToolbarItem> GetItem(const std::string& identifier);
-        std::shared_ptr<UltraCanvasToolbarItem> GetItemAt(int index);
-        int GetItemCount() const { return static_cast<int>(items.size()); }
+        // Widget access. GetWidget(id) returns the widget registered under id;
+        // GetWidgetAt(index) returns the child at the given position.
+        std::shared_ptr<UltraCanvasUIElement> GetWidget(const std::string& identifier);
+        std::shared_ptr<UltraCanvasUIElement> GetWidgetAt(int index);
+        int GetItemCount() const { return static_cast<int>(GetChildCount()); }
 
-        // Convenience methods
-        void AddButton(const std::string& id, const std::string& text,
-                       const std::string& icon = "", std::function<void()> onClick = nullptr);
-        void AddToggleButton(const std::string& id, const std::string& text,
-                             const std::string& icon = "", std::function<void(bool)> onToggle = nullptr);
-        void AddDropdownButton(const std::string& id, const std::string& text,
-                               const std::vector<std::string>& items,
-                               std::function<void(const std::string&)> onSelect = nullptr);
-        void AddSeparator(const std::string& id = "");
-        void AddSpacer(int size = 8);
-        void AddStretch(float stretch = 1.0f);
-        void AddLabel(const std::string& id, const std::string& text);
-        void AddSearchBox(const std::string& id, const std::string& placeholder = "Search...",
-                          std::function<void(const std::string&)> onTextChange = nullptr);
+        // Convenience builders — each creates a real widget, adds it as a child,
+        // and returns the typed shared_ptr for inline configuration.
+        std::shared_ptr<UltraCanvasButton> AddButton(
+                const std::string& id, const std::string& text,
+                const std::string& icon = "", std::function<void()> onClick = nullptr);
+        std::shared_ptr<UltraCanvasButton> AddToggleButton(
+                const std::string& id, const std::string& text,
+                const std::string& icon = "", std::function<void(bool)> onToggle = nullptr);
+        std::shared_ptr<UltraCanvasDropdown> AddDropdownButton(
+                const std::string& id, const std::string& text,
+                const std::vector<std::string>& items,
+                std::function<void(const std::string&)> onSelect = nullptr);
+        std::shared_ptr<UltraCanvasSeparator> AddSeparator(const std::string& id = "");
+        std::shared_ptr<UltraCanvasSpacer> AddSpacer(int size = 8);
+        std::shared_ptr<UltraCanvasSpacer> AddStretch(float stretch = 1.0f);
+        std::shared_ptr<UltraCanvasLabel> AddLabel(const std::string& id, const std::string& text);
+        std::shared_ptr<UltraCanvasTextInput> AddSearchBox(
+                const std::string& id, const std::string& placeholder = "Search...",
+                std::function<void(const std::string&)> onTextChange = nullptr);
 
         // ===== LAYOUT =====
         void HandleOverflow();
 
         // ===== RENDERING =====
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         bool OnEvent(const UCEvent& event) override;
 
         // ===== AUTO-HIDE =====
@@ -601,15 +304,18 @@ namespace UltraCanvas {
     private:
         // Internal helpers
         void CreateLayout();
-        void UpdateItemAppearances();
+        // Add `w` as a child and, if `id` is non-empty, register it for lookup.
+        std::shared_ptr<UltraCanvasUIElement> RegisterWidget(
+                const std::string& id, std::shared_ptr<UltraCanvasUIElement> w);
+        // Apply the toolbar appearance (style/colors/icon size) to one button.
+        void ApplyButtonAppearance(const std::shared_ptr<UltraCanvasButton>& button);
+        // Re-apply the toolbar appearance across all current children.
+        void ApplyAppearanceToChildren();
         void CreateOverflowMenu();
         void UpdateOverflowButton();
         void CalculateMagnification();
         void RenderDockMagnification(IRenderContext* ctx);
         void RenderShadow(IRenderContext* ctx);
-
-        std::shared_ptr<UltraCanvasToolbarItem> CreateToolbarItem(
-                const ToolbarItemDescriptor& descriptor);
     };
 
 // ===== TOOLBAR BUILDER =====

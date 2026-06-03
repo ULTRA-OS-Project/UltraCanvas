@@ -2,8 +2,8 @@
 // Interactive checkbox component with multiple states and customizable appearance.
 // Visual variants only (Standard/Rounded/Material). Radio and Switch are now
 // separate classes — see UltraCanvasRadio.h and UltraCanvasSwitch.h.
-// Version: 2.0.0
-// Last Modified: 2026-05-07
+// Version: 2.1.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -63,9 +63,22 @@ namespace UltraCanvas {
         const LabeledToggleVisualStyle& GetBaseVisualStyle() const override { return visualStyle.base; }
 
     public:
-        UltraCanvasCheckbox(const std::string& identifier = "", long id = 0,
-                            long x = 0, long y = 0, long w = 150, long h = 24,
+        // ===== CONSTRUCTORS =====
+        UltraCanvasCheckbox(const std::string& identifier,
+                            float x, float y, float w, float h,
                             const std::string& labelText = "");
+
+        UltraCanvasCheckbox(const std::string& identifier,
+                            float w, float h,
+                            const std::string& labelText = "")
+            : UltraCanvasCheckbox(identifier, -1, -1, w, h, labelText) {}
+
+        UltraCanvasCheckbox(const std::string& identifier, const std::string& labelText)
+            : UltraCanvasCheckbox(identifier, -1, -1, -1, -1, labelText) {}
+
+        explicit UltraCanvasCheckbox(const std::string& labelText = "")
+            : UltraCanvasCheckbox("", -1, -1, -1, -1, labelText) {}
+
         ~UltraCanvasCheckbox() override = default;
 
         // ===== STATE =====
@@ -79,14 +92,14 @@ namespace UltraCanvas {
         bool GetAllowIndeterminate() const { return allowIndeterminate; }
 
         // ===== APPEARANCE =====
-        void SetStyle(CheckboxStyle newStyle) { style = newStyle; layoutDirty = true; }
+        void SetStyle(CheckboxStyle newStyle) { style = newStyle; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }
         CheckboxStyle GetStyle() const { return style; }
 
-        void SetVisualStyle(const CheckboxVisualStyle& s) { visualStyle = s; layoutDirty = true; }
+        void SetVisualStyle(const CheckboxVisualStyle& s) { visualStyle = s; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }
         CheckboxVisualStyle& GetVisualStyle() { return visualStyle; }
         const CheckboxVisualStyle& GetVisualStyle() const { return visualStyle; }
 
-        void SetBoxSize(float size) { visualStyle.boxSize = size; layoutDirty = true; }
+        void SetBoxSize(float size) { visualStyle.boxSize = size; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }
         float GetBoxSize() const { return visualStyle.boxSize; }
 
         void SetColors(const Color& box, const Color& checkmark, const Color& text);
@@ -95,8 +108,8 @@ namespace UltraCanvas {
 
         // ===== FACTORY =====
         static std::shared_ptr<UltraCanvasCheckbox> CreateCheckbox(
-                const std::string& identifier, long id,
-                long x, long y, long w, long h,
+                const std::string& identifier,
+                float x, float y, float w, float h,
                 const std::string& text = "",
                 bool checked = false);
     };

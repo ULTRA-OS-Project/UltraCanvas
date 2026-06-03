@@ -15,8 +15,8 @@
 
 namespace UltraCanvas {
 
-    UltraCanvasSlider::UltraCanvasSlider(const std::string &identifier, long id, long x, long y, long w, long h)
-            : UltraCanvasUIElement(identifier, id, x, y, w, h) {
+    UltraCanvasSlider::UltraCanvasSlider(const std::string &identifier, float x, float y, float w, float h)
+            : UltraCanvasUIElement(identifier, x, y, w, h) {
 
         // Initialize standard properties
         mouseCursor = UCMouseCursor::Hand;
@@ -212,10 +212,12 @@ namespace UltraCanvas {
         style.handleColor = handle;
     }
 
-    void UltraCanvasSlider::Render(IRenderContext *ctx, const Rect2Di &dirtyRect) {
-        ctx->PushState();
+    void UltraCanvasSlider::Render(IRenderContext *ctx, const Rect2Df&dirtyRect) {
+//        ctx->PushState();
 
         UpdateSliderState();
+        // Externally sized for now (explicit size or parent stretch); the base block
+        // block measure sizes us. TODO: implement MeasureOwnContent for intrinsic sizing.
         Rect2Di bounds = GetLocalBounds();
 //        SetBorders(1, Colors::Black);
 //        UltraCanvasUIElement::Render(ctx, dirtyRect);
@@ -248,7 +250,7 @@ namespace UltraCanvas {
         if (ShouldShowValueText()) {
             RenderValueDisplay(bounds, ctx);
         }
-        ctx->PopState();
+//        ctx->PopState();
     }
 
     bool UltraCanvasSlider::OnEvent(const UCEvent &event) {
@@ -393,7 +395,8 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasSlider::RenderCircularSlider(const Rect2Di &bounds, IRenderContext *ctx) {
-        // Circular/knob style slider
+        // Circular/knob style slider — element-local coordinates (ctx is translated
+        // to our origin), so use the local bounds, not finalBounds.x/y.
         int centerX = bounds.x + bounds.width / 2;
         int centerY = bounds.y + bounds.height / 2;
         float radius = std::min(bounds.width, bounds.height) / 2.0f - 10.0f;
@@ -485,10 +488,10 @@ namespace UltraCanvas {
 
             case SliderHandleShape::Triangle: {
                 // Create triangle points (pointing up)
-                std::vector<Point2Df> triangle = {
-                        Point2Df(position.x, position.y - handleRadius),                    // Top
-                        Point2Df(position.x - handleRadius, position.y + handleRadius),    // Bottom left
-                        Point2Df(position.x + handleRadius, position.y + handleRadius)     // Bottom right
+                std::vector<Point2Dd> triangle = {
+                        Point2Dd(position.x, position.y - handleRadius),                    // Top
+                        Point2Dd(position.x - handleRadius, position.y + handleRadius),    // Bottom left
+                        Point2Dd(position.x + handleRadius, position.y + handleRadius)     // Bottom right
                 };
                 // Draw filled triangle
                 ctx->FillLinePath(triangle);
@@ -499,11 +502,11 @@ namespace UltraCanvas {
 
             case SliderHandleShape::Diamond: {
                 // Create diamond points
-                std::vector<Point2Df> diamond = {
-                        Point2Df(position.x, position.y - handleRadius),                   // Top
-                        Point2Df(position.x + handleRadius, position.y),                   // Right
-                        Point2Df(position.x, position.y + handleRadius),                   // Bottom
-                        Point2Df(position.x - handleRadius, position.y)                    // Left
+                std::vector<Point2Dd> diamond = {
+                        Point2Dd(position.x, position.y - handleRadius),                   // Top
+                        Point2Dd(position.x + handleRadius, position.y),                   // Right
+                        Point2Dd(position.x, position.y + handleRadius),                   // Bottom
+                        Point2Dd(position.x - handleRadius, position.y)                    // Left
                 };
                 // Draw filled diamond
                 ctx->FillLinePath(diamond);
@@ -577,6 +580,9 @@ namespace UltraCanvas {
     }
 
     Rect2Di UltraCanvasSlider::GetSliderInteriorRect(const Rect2Di &bounds, bool isVertical) const {
+        // Element-local coordinates: the ctx is translated to our origin and
+        // event.pointer is element-local, so build the interior from the passed-in
+        // local bounds (origin 0,0), not finalBounds.x/y (parent-space).
         if (isVertical) {
             return Rect2Di(bounds.x, bounds.y, (int)style.handleSize, bounds.height);
         } else {
@@ -845,6 +851,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasSlider::UpdateValueFromPosition(const Point2Di &pos) {
+        // pos is element-local, so map against local bounds (origin 0,0), not finalBounds.
         Rect2Di bounds = GetLocalBounds();
         float newValue;
 

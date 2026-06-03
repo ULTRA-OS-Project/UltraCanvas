@@ -48,11 +48,11 @@ namespace UltraCanvas {
 
 // ===== FINANCIAL CHART EXAMPLES =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateFinancialChartExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("FinancialChartContainer", 1000, 0, 0, 1000, 780);
+        auto container = std::make_shared<UltraCanvasContainer>("FinancialChartContainer", 0, 0, 1000, 780);
         container->SetPadding(0,0,10,0);
 
         // Create title label
-        auto titleLabel = std::make_shared<UltraCanvasLabel>("TitleLabel", 1001, 20, 10, 960, 30);
+        auto titleLabel = std::make_shared<UltraCanvasLabel>("TitleLabel", 20, 10, 960, 30);
         titleLabel->SetText("Candlestick Chart Components - Stock Market Data Visualization");
         titleLabel->SetFontSize(18);
         titleLabel->SetFontWeight(FontWeight::Bold);
@@ -66,7 +66,7 @@ namespace UltraCanvas {
         auto forexData = GenerateSampleForexData("EUR/USD", 30);  // 30 days of forex data
 
         // ===== MAIN FINANCIAL CHART (Stock Market) =====
-        auto stockChart = CreateFinancialChartElement("StockChart", 1002, 20, 50, 980, 400);
+        auto stockChart = CreateFinancialChartElement("StockChart", 20, 50, 980, 400);
         stockChart->SetFinancialDataSource(stockData);
         stockChart->SetChartTitle("FCHI - Fantasy Chart Inc. (90 Day Chart)");
         stockChart->SetCandleDisplayStyle(financialChartControls.candleStyle);
@@ -82,7 +82,7 @@ namespace UltraCanvas {
         container->AddChild(stockChart);
 
         // ===== CRYPTOCURRENCY CHART =====
-//        auto cryptoChart = CreateFinancialChartElement("CryptoChart", 1003, 720, 50, 260, 200);
+//        auto cryptoChart = CreateFinancialChartElement("CryptoChart", 720, 50, 260, 200);
 //        cryptoChart->SetFinancialDataSource(cryptoData);
 //        cryptoChart->SetChartTitle("BTC/USD - Bitcoin");
 //        cryptoChart->SetCandleDisplayStyle(UltraCanvasFinancialChartElement::CandleDisplayStyle::Candlestick);
@@ -92,7 +92,7 @@ namespace UltraCanvas {
 //        container->AddChild(cryptoChart);
 
         // ===== FOREX CHART =====
-//        auto forexChart = CreateFinancialChartElement("ForexChart", 1004, 720, 260, 260, 190);
+//        auto forexChart = CreateFinancialChartElement("ForexChart", 720, 260, 260, 190);
 //        forexChart->SetFinancialDataSource(forexData);
 //        forexChart->SetChartTitle("EUR/USD - Forex");
 //        forexChart->SetCandleDisplayStyle(UltraCanvasFinancialChartElement::CandleDisplayStyle::OHLCBars);
@@ -105,12 +105,12 @@ namespace UltraCanvas {
         CreateFinancialChartControlPanel(container, stockChart, 20, 470);
 
         // ===== INFORMATION PANEL =====
-        auto infoPanel = std::make_shared<UltraCanvasContainer>("InfoPanel", 1020, 720, 470, 260, 280);
+        auto infoPanel = std::make_shared<UltraCanvasContainer>("InfoPanel", 720, 470, 260, 280);
         infoPanel->SetBackgroundColor(Color(250, 250, 250, 255));
         infoPanel->SetBorders(1, Color(200, 200, 200, 255));
 
         // Add info labels
-        auto infoTitle = std::make_shared<UltraCanvasLabel>("InfoTitle", 1021, 10, 10, 240, 25);
+        auto infoTitle = std::make_shared<UltraCanvasLabel>("InfoTitle", 10, 10, 240, 25);
         infoTitle->SetText("Financial Chart Features:");
         infoTitle->SetFontWeight(FontWeight::Bold);
         infoPanel->AddChild(infoTitle);
@@ -131,7 +131,7 @@ namespace UltraCanvas {
         int yPos = 40;
         for (size_t i = 0; i < features.size(); i++) {
             auto featureLabel = std::make_shared<UltraCanvasLabel>(
-                    "Feature" + std::to_string(i), 1030 + i, 10, yPos, 240, 20
+                    "Feature" + std::to_string(i), 10, yPos, 240, 20
             );
             featureLabel->SetText(features[i]);
             featureLabel->SetFontSize(11);
@@ -151,23 +151,23 @@ namespace UltraCanvas {
             int x, int y) {
 
         // Create control panel container
-        auto controlPanel = std::make_shared<UltraCanvasContainer>("ControlPanel", 1050, x, y, 680, 280);
+        auto controlPanel = std::make_shared<UltraCanvasContainer>("ControlPanel", x, y, 680, 280);
         controlPanel->SetBackgroundColor(Color(245, 245, 245, 255));
         controlPanel->SetBorders(1, Color(200, 200, 200, 255));
 
         // Panel title
-        auto panelTitle = std::make_shared<UltraCanvasLabel>("PanelTitle", 1051, 10, 10, 660, 25);
+        auto panelTitle = std::make_shared<UltraCanvasLabel>("PanelTitle", 10, 10, 660, 25);
         panelTitle->SetText("Chart Controls");
         panelTitle->SetFontWeight(FontWeight::Bold);
         panelTitle->SetAlignment(TextAlignment::Center);
         controlPanel->AddChild(panelTitle);
 
         // ===== STYLE SELECTION DROPDOWN =====
-        auto styleLabel = std::make_shared<UltraCanvasLabel>("StyleLabel", 1052, 20, 45, 100, 25);
+        auto styleLabel = std::make_shared<UltraCanvasLabel>("StyleLabel", 20, 45, 100, 25);
         styleLabel->SetText("Chart Style:");
         controlPanel->AddChild(styleLabel);
 
-        auto styleDropdown = std::make_shared<UltraCanvasDropdown>("StyleDropdown", 1053, 130, 45, 150, 30);
+        auto styleDropdown = std::make_shared<UltraCanvasDropdown>("StyleDropdown", 130, 45, 150, 30);
         styleDropdown->AddItem("Candlestick");
         styleDropdown->AddItem("OHLC Bars");
         styleDropdown->AddItem("Heikin-Ashi");
@@ -189,7 +189,7 @@ namespace UltraCanvas {
         controlPanel->AddChild(styleDropdown);
 
         // ===== VOLUME PANEL TOGGLE =====
-        auto volumeCheckbox = std::make_shared<UltraCanvasCheckbox>("VolumeCheckbox", 1054, 300, 45, 150, 30);
+        auto volumeCheckbox = std::make_shared<UltraCanvasCheckbox>("VolumeCheckbox", 300, 45, 150, 30);
         volumeCheckbox->SetText("Show Volume");
         volumeCheckbox->SetChecked(true);
         volumeCheckbox->onStateChanged = [chart](CheckedState oldState, CheckedState newState) {
@@ -199,7 +199,7 @@ namespace UltraCanvas {
         controlPanel->AddChild(volumeCheckbox);
 
         // ===== MOVING AVERAGE TOGGLE =====
-        auto maCheckbox = std::make_shared<UltraCanvasCheckbox>("MACheckbox", 1055, 470, 45, 180, 30);
+        auto maCheckbox = std::make_shared<UltraCanvasCheckbox>("MACheckbox", 470, 45, 180, 30);
         maCheckbox->SetText("Moving Average (20)");
         maCheckbox->SetChecked(true);
         maCheckbox->onStateChanged = [chart](CheckedState oldState, CheckedState newState) {
@@ -209,11 +209,11 @@ namespace UltraCanvas {
         controlPanel->AddChild(maCheckbox);
 
         // ===== CANDLE WIDTH SLIDER =====
-        auto widthLabel = std::make_shared<UltraCanvasLabel>("WidthLabel", 1056, 20, 85, 100, 25);
+        auto widthLabel = std::make_shared<UltraCanvasLabel>("WidthLabel", 20, 85, 100, 25);
         widthLabel->SetText("Candle Width:");
         controlPanel->AddChild(widthLabel);
 
-        auto widthSlider = std::make_shared<UltraCanvasSlider>("WidthSlider", 1057, 130, 85, 200, 30);
+        auto widthSlider = std::make_shared<UltraCanvasSlider>("WidthSlider", 130, 85, 200, 30);
         widthSlider->SetRange(0.3f, 1.0f);
         widthSlider->SetValue(0.8f);
         widthSlider->onValueChanged = [chart, widthLabel](float value) {
@@ -226,7 +226,7 @@ namespace UltraCanvas {
         controlPanel->AddChild(widthSlider);
 
         // ===== GRID TOGGLE =====
-        auto gridCheckbox = std::make_shared<UltraCanvasCheckbox>("GridCheckbox", 1058, 350, 85, 100, 30);
+        auto gridCheckbox = std::make_shared<UltraCanvasCheckbox>("GridCheckbox", 350, 85, 100, 30);
         gridCheckbox->SetText("Show Grid");
         gridCheckbox->SetChecked(true);
         gridCheckbox->onStateChanged = [chart](CheckedState oldState, CheckedState newState) {
@@ -236,7 +236,7 @@ namespace UltraCanvas {
         controlPanel->AddChild(gridCheckbox);
 
         // ===== TOOLTIPS TOGGLE =====
-        auto tooltipsCheckbox = std::make_shared<UltraCanvasCheckbox>("TooltipsCheckbox", 1059, 470, 85, 150, 30);
+        auto tooltipsCheckbox = std::make_shared<UltraCanvasCheckbox>("TooltipsCheckbox", 470, 85, 150, 30);
         tooltipsCheckbox->SetText("Show Tooltips");
         tooltipsCheckbox->SetChecked(true);
         tooltipsCheckbox->onStateChanged = [chart](CheckedState oldState, CheckedState newState) {
@@ -247,7 +247,7 @@ namespace UltraCanvas {
 
         // ===== TIME PERIOD BUTTONS =====
         /*
-        auto periodLabel = std::make_shared<UltraCanvasLabel>("PeriodLabel", 1060, 20, 125, 100, 25);
+        auto periodLabel = std::make_shared<UltraCanvasLabel>("PeriodLabel", 20, 125, 100, 25);
         periodLabel->SetText("Time Period:");
         controlPanel->AddChild(periodLabel);
 
@@ -258,7 +258,7 @@ namespace UltraCanvas {
         int btnX = 130;
         for (size_t i = 0; i < periods.size(); i++) {
             auto periodBtn = std::make_shared<UltraCanvasButton>(
-                    "Period" + periods[i].first, 1070 + i, btnX, 125, 60, 30
+                    "Period" + periods[i].first,  btnX, 125, 60, 30
             );
             periodBtn->SetText(periods[i].first);
 
@@ -275,7 +275,7 @@ namespace UltraCanvas {
 */
         /*
         // ===== ACTION BUTTONS =====
-        auto resetBtn = std::make_shared<UltraCanvasButton>("ResetBtn", 1080, 150, 165, 120, 35);
+        auto resetBtn = std::make_shared<UltraCanvasButton>("ResetBtn", 150, 165, 120, 35);
         resetBtn->SetText("Reset View");
         resetBtn->SetOnClick([chart]() {
 //            chart->ResetZoomAndPan();
@@ -283,7 +283,7 @@ namespace UltraCanvas {
         });
         controlPanel->AddChild(resetBtn);
 
-        auto exportBtn = std::make_shared<UltraCanvasButton>("ExportBtn", 1081, 280, 165, 120, 35);
+        auto exportBtn = std::make_shared<UltraCanvasButton>("ExportBtn", 280, 165, 120, 35);
         exportBtn->SetText("Export PNG");
         exportBtn->SetOnClick([chart]() {
             debugOutput << "Exporting chart to PNG..." << std::endl;
@@ -291,7 +291,7 @@ namespace UltraCanvas {
         });
         controlPanel->AddChild(exportBtn);
 
-        auto dataBtn = std::make_shared<UltraCanvasButton>("DataBtn", 1082, 410, 165, 120, 35);
+        auto dataBtn = std::make_shared<UltraCanvasButton>("DataBtn", 410, 165, 120, 35);
         dataBtn->SetText("Load CSV");
         dataBtn->SetOnClick([chart]() {
             debugOutput << "Loading data from CSV..." << std::endl;
@@ -300,11 +300,11 @@ namespace UltraCanvas {
         controlPanel->AddChild(dataBtn);
 */
         // ===== COLOR CUSTOMIZATION =====
-        auto colorLabel = std::make_shared<UltraCanvasLabel>("ColorLabel", 1090, 20, 210, 120, 25);
+        auto colorLabel = std::make_shared<UltraCanvasLabel>("ColorLabel", 20, 210, 120, 25);
         colorLabel->SetText("Color Scheme:");
         controlPanel->AddChild(colorLabel);
 
-        auto greenRedBtn = std::make_shared<UltraCanvasButton>("GreenRedBtn", 1091, 150, 210, 120, 30);
+        auto greenRedBtn = std::make_shared<UltraCanvasButton>("GreenRedBtn", 150, 210, 120, 30);
         greenRedBtn->SetText("Green/Red");
         greenRedBtn->SetOnClick([chart]() {
             chart->SetBullishCandleColor(Color(0, 180, 0, 255));
@@ -313,7 +313,7 @@ namespace UltraCanvas {
         });
         controlPanel->AddChild(greenRedBtn);
 
-        auto blueOrangeBtn = std::make_shared<UltraCanvasButton>("BlueOrangeBtn", 1092, 280, 210, 120, 30);
+        auto blueOrangeBtn = std::make_shared<UltraCanvasButton>("BlueOrangeBtn", 280, 210, 120, 30);
         blueOrangeBtn->SetText("Blue/Orange");
         blueOrangeBtn->SetOnClick([chart]() {
             chart->SetBullishCandleColor(Color(0, 120, 200, 255));
@@ -322,7 +322,7 @@ namespace UltraCanvas {
         });
         controlPanel->AddChild(blueOrangeBtn);
 
-        auto monochrome = std::make_shared<UltraCanvasButton>("MonochromeBtn", 1093, 410, 210, 120, 30);
+        auto monochrome = std::make_shared<UltraCanvasButton>("MonochromeBtn", 410, 210, 120, 30);
         monochrome->SetText("Monochrome");
         monochrome->SetOnClick([chart]() {
             chart->SetBullishCandleColor(Color(255, 255, 255, 255));
@@ -333,11 +333,11 @@ namespace UltraCanvas {
 
         // ===== REAL-TIME UPDATE SIMULATION =====
         /*
-        auto updateLabel = std::make_shared<UltraCanvasLabel>("UpdateLabel", 1094, 20, 250, 150, 25);
+        auto updateLabel = std::make_shared<UltraCanvasLabel>("UpdateLabel", 20, 250, 150, 25);
         updateLabel->SetText("Live Updates:");
         controlPanel->AddChild(updateLabel);
 
-        auto liveToggle = std::make_shared<UltraCanvasCheckbox>("LiveToggle", 1095, 130, 250, 150, 25);
+        auto liveToggle = std::make_shared<UltraCanvasCheckbox>("LiveToggle", 130, 250, 150, 25);
         liveToggle->SetText("Simulate Live Data");
         liveToggle->SetChecked(false);
         liveToggle->onStateChanged = [chart](CheckboxState oldState, CheckboxState newState) {

@@ -15,10 +15,10 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateButtonExamples() {
-            auto mainButtonsContainer = std::make_shared<UltraCanvasContainer>("ButtonExamples", 100, 0, 0, 1000, 800);
+            auto mainButtonsContainer = std::make_shared<UltraCanvasContainer>("ButtonExamples", 0, 0, 1000, 800);
 
             // ===== PAGE TITLE =====
-            auto title = std::make_shared<UltraCanvasLabel>("ButtonTitle", 101, 20, 10, 760, 35);
+            auto title = std::make_shared<UltraCanvasLabel>("ButtonTitle", 20, 10, 760, 35);
             title->SetText("UltraCanvas Button Component Showcase");
             title->SetFontSize(18);
             title->SetFontWeight(FontWeight::Bold);
@@ -26,14 +26,14 @@ namespace UltraCanvas {
             mainButtonsContainer->AddChild(title);
 
 
-            auto subtitle = std::make_shared<UltraCanvasLabel>("ButtonSubtitle", 102, 20, 45, 800, 25);
+            auto subtitle = std::make_shared<UltraCanvasLabel>("ButtonSubtitle", 20, 45, 800, 25);
             subtitle->SetText("Demonstrating all button styles, states, and the new split button feature");
             subtitle->SetFontSize(12);
             subtitle->SetTextColor(Color(100, 100, 100, 255));
             mainButtonsContainer->AddChild(subtitle);
 
             // Status label for button feedback
-            auto statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel", 103, 600, 10, 380, 60);
+            auto statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel", 600, 10, 380, 60);
             statusLabel->SetText("Click any button to see feedback here");
             statusLabel->SetFontSize(11);
             statusLabel->SetBackgroundColor(Color(245, 245, 245, 255));
@@ -47,7 +47,7 @@ namespace UltraCanvas {
             // ========================================
             // SECTION 1: BASIC BUTTON STYLES
             // ========================================
-            auto section1Label = std::make_shared<UltraCanvasLabel>("Section1", 110, 20, yOffset, 300, 25);
+            auto section1Label = std::make_shared<UltraCanvasLabel>("Section1", 20, yOffset, 300, 25);
             section1Label->SetText("Basic Button Styles");
             section1Label->SetFontWeight(FontWeight::Bold);
             section1Label->SetTextColor(Color(0, 100, 200, 255));
@@ -55,14 +55,14 @@ namespace UltraCanvas {
             yOffset += 35;
 
             // Standard Button
-            auto standardBtn = CreateButton("StandardButton", 111, 20, yOffset, 120, 35, "Standard");
+            auto standardBtn = CreateButton("StandardButton", 20, yOffset, 120, 35, "Standard");
             standardBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Standard button clicked\nDefault style with hover and press effects");
             };
             mainButtonsContainer->AddChild(standardBtn);
 
             // Primary Style Button
-            auto primaryBtn = CreateButton("PrimaryButton", 112, 150, yOffset, 120, 35, "Primary");
+            auto primaryBtn = CreateButton("PrimaryButton", 150, yOffset, 120, 35, "Primary");
             primaryBtn->SetStyle(ButtonStyles::PrimaryStyle());
             primaryBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Primary button clicked\nUsing PrimaryStyle() - blue theme");
@@ -70,7 +70,7 @@ namespace UltraCanvas {
             mainButtonsContainer->AddChild(primaryBtn);
 
             // Secondary Style Button
-            auto secondaryBtn = CreateButton("SecondaryButton", 113, 280, yOffset, 120, 35, "Secondary");
+            auto secondaryBtn = CreateButton("SecondaryButton", 280, yOffset, 120, 35, "Secondary");
             secondaryBtn->SetStyle(ButtonStyles::SecondaryStyle());
             secondaryBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Secondary button clicked\nUsing SecondaryStyle() - bordered");
@@ -78,7 +78,7 @@ namespace UltraCanvas {
             mainButtonsContainer->AddChild(secondaryBtn);
 
             // Danger Style Button
-            auto dangerBtn = CreateButton("DangerButton", 114, 410, yOffset, 120, 35, "Danger");
+            auto dangerBtn = CreateButton("DangerButton", 410, yOffset, 120, 35, "Danger");
             dangerBtn->SetStyle(ButtonStyles::DangerStyle());
             dangerBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Danger button clicked\nUsing DangerStyle() - red theme");
@@ -86,7 +86,7 @@ namespace UltraCanvas {
             mainButtonsContainer->AddChild(dangerBtn);
 
             // Success Style Button
-            auto successBtn = CreateButton("SuccessButton", 115, 540, yOffset, 120, 35, "Success");
+            auto successBtn = CreateButton("SuccessButton", 540, yOffset, 120, 35, "Success");
             successBtn->SetStyle(ButtonStyles::SuccessStyle());
             successBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Success button clicked\nUsing SuccessStyle() - green theme");
@@ -98,7 +98,7 @@ namespace UltraCanvas {
             // ========================================
             // SECTION 2: BUTTON STATES
             // ========================================
-            auto section2Label = std::make_shared<UltraCanvasLabel>("Section2", 120, 20, yOffset, 300, 25);
+            auto section2Label = std::make_shared<UltraCanvasLabel>("Section2", 20, yOffset, 300, 25);
             section2Label->SetText("Button States");
             section2Label->SetFontWeight(FontWeight::Bold);
             section2Label->SetTextColor(Color(0, 100, 200, 255));
@@ -106,19 +106,19 @@ namespace UltraCanvas {
             yOffset += 35;
 
             // Normal State
-            auto normalBtn = CreateButton("NormalBtn", 121, 20, yOffset, 120, 35, "Normal");
+            auto normalBtn = CreateButton("NormalBtn", 20, yOffset, 120, 35, "Normal");
             normalBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Normal state button\nEnabled and ready for interaction");
             };
             mainButtonsContainer->AddChild(normalBtn);
 
             // Disabled State
-            auto disabledBtn = CreateButton("DisabledBtn", 122, 150, yOffset, 120, 35, "Disabled");
+            auto disabledBtn = CreateButton("DisabledBtn", 150, yOffset, 120, 35, "Disabled");
             disabledBtn->SetDisabled(true);
             mainButtonsContainer->AddChild(disabledBtn);
 
             // Focused State (simulated)
-            auto focusedBtn = CreateButton("FocusedBtn", 123, 280, yOffset, 120, 35, "Focused");
+            auto focusedBtn = CreateButton("FocusedBtn", 280, yOffset, 120, 35, "Focused");
             focusedBtn->SetFocus();
             focusedBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Focused button clicked\nShows focus ring when selected");
@@ -130,7 +130,7 @@ namespace UltraCanvas {
             // ========================================
             // SECTION 3: ICONS & TEXT
             // ========================================
-            auto section3Label = std::make_shared<UltraCanvasLabel>("Section3", 130, 20, yOffset, 300, 25);
+            auto section3Label = std::make_shared<UltraCanvasLabel>("Section3", 20, yOffset, 300, 25);
             section3Label->SetText("Icons & Text");
             section3Label->SetFontWeight(FontWeight::Bold);
             section3Label->SetTextColor(Color(0, 100, 200, 255));
@@ -139,14 +139,14 @@ namespace UltraCanvas {
 
             // Text Only
             // Text Only
-            auto textOnlyBtn = CreateButton("TextOnly", 131, 20, yOffset, 100, 35, "Text Only");
+            auto textOnlyBtn = CreateButton("TextOnly", 20, yOffset, 100, 35, "Text Only");
             textOnlyBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Text-only button clicked");
             };
             mainButtonsContainer->AddChild(textOnlyBtn);
 
             // Icon Left
-            auto iconLeftBtn = CreateButton("IconLeft", 132, 130, yOffset, 120, 35, "Save");
+            auto iconLeftBtn = CreateButton("IconLeft", 130, yOffset, 120, 35, "Save");
             iconLeftBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/save.png"));
             iconLeftBtn->SetIconPosition(ButtonIconPosition::Left);
             iconLeftBtn->onClick = [statusLabel]() {
@@ -155,7 +155,7 @@ namespace UltraCanvas {
             mainButtonsContainer->AddChild(iconLeftBtn);
 
             // Icon Right
-            auto iconRightBtn = CreateButton("IconRight", 133, 260, yOffset, 120, 35, "Next");
+            auto iconRightBtn = CreateButton("IconRight", 260, yOffset, 120, 35, "Next");
             iconRightBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/arrow-chevron-right.png"));
             iconRightBtn->SetIconPosition(ButtonIconPosition::Right);
             iconRightBtn->onClick = [statusLabel]() {
@@ -164,7 +164,7 @@ namespace UltraCanvas {
             mainButtonsContainer->AddChild(iconRightBtn);
 
             // Icon Only
-//            auto iconOnlyBtn = CreateButton("IconOnly", 134, 390, yOffset, 40, 35, "");
+//            auto iconOnlyBtn = CreateButton("IconOnly", 390, yOffset, 40, 35, "");
 //            iconOnlyBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/settings.png"));
 //            iconOnlyBtn->SetStyle(ButtonStyles::IconOnlyStyle());
 ////            iconOnlyBtn->SetTooltip("Settings");
@@ -174,7 +174,7 @@ namespace UltraCanvas {
 //            mainButtonsContainer->AddChild(iconOnlyBtn);
 
             // Icon Top
-            auto iconTopBtn = CreateButton("IconTop", 135, 390, yOffset, 80, 62, "Upload");
+            auto iconTopBtn = CreateButton("IconTop", 390, yOffset, 80, 62, "Upload");
             iconTopBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/upload.png"));
             iconTopBtn->SetIconPosition(ButtonIconPosition::Top);
             iconTopBtn->onClick = [statusLabel]() {
@@ -183,7 +183,7 @@ namespace UltraCanvas {
             mainButtonsContainer->AddChild(iconTopBtn);
 
             // Icon Bottom
-            auto iconBottomBtn = CreateButton("IconBottom", 136, 480, yOffset, 100, 62, "Download");
+            auto iconBottomBtn = CreateButton("IconBottom", 480, yOffset, 100, 62, "Download");
             iconBottomBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/download_34px.png"));
             iconBottomBtn->SetIconPosition(ButtonIconPosition::Bottom);
             iconBottomBtn->SetIconSize(41,34);
@@ -192,7 +192,7 @@ namespace UltraCanvas {
             };
             mainButtonsContainer->AddChild(iconBottomBtn);
 
-            auto iconRightBtn2 = CreateButton("IconRight", 133, 590, yOffset, 260, 35, "Continue with UltraCanvas");
+            auto iconRightBtn2 = CreateButton("IconRight", 590, yOffset, 260, 35, "Continue with UltraCanvas");
             iconRightBtn2->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/ultracanvas_20px.png"));
             iconRightBtn2->SetIconSize(20, 20);
             iconRightBtn2->SetIconPosition(ButtonIconPosition::Left);
@@ -207,7 +207,7 @@ namespace UltraCanvas {
             // ========================================
             // SECTION 4: SPLIT BUTTONS (NEW FEATURE)
             // ========================================
-            auto section4Label = std::make_shared<UltraCanvasLabel>("Section4", 140, 20, yOffset, 400, 25);
+            auto section4Label = std::make_shared<UltraCanvasLabel>("Section4", 20, yOffset, 400, 25);
             section4Label->SetText("Split Buttons - New Feature!");
             section4Label->SetFontWeight(FontWeight::Bold);
             section4Label->SetTextColor(Color(200, 50, 50, 255));
@@ -215,7 +215,7 @@ namespace UltraCanvas {
             yOffset += 35;
 
             // Basic Split Button
-            auto splitBtn = CreateButton("SplitButton", 141, 20, yOffset, 130, 35, "Action");
+            auto splitBtn = CreateButton("SplitButton", 20, yOffset, 130, 35, "Action");
             splitBtn->SetSplitEnabled(true);
             splitBtn->SetSplitSecondaryText("▼");
             splitBtn->onClick = [statusLabel]() {
@@ -227,7 +227,7 @@ namespace UltraCanvas {
             mainButtonsContainer->AddChild(splitBtn);
 
             // Badge Style (Sponsors)
-            auto sponsorBtn = CreateButton("SponsorButton", 142, 160, yOffset, 140, 35, "Sponsors");
+            auto sponsorBtn = CreateButton("SponsorButton", 160, yOffset, 140, 35, "Sponsors");
             sponsorBtn->SetStyle(ButtonStyles::BadgeButtonStyle());
             sponsorBtn->SetSplitSecondaryText("31");
             sponsorBtn->SetSplitColors(
@@ -242,7 +242,7 @@ namespace UltraCanvas {
             mainButtonsContainer->AddChild(sponsorBtn);
 
             // Badge Style (Patreon)
-            auto patreonBtn = CreateButton("PatreonButton", 143, 310, yOffset, 140, 35, "Patreon");
+            auto patreonBtn = CreateButton("PatreonButton", 310, yOffset, 140, 35, "Patreon");
             patreonBtn->SetSplitEnabled(true);
             patreonBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/patreon.png"));
             patreonBtn->SetIconPosition(ButtonIconPosition::Left);
@@ -261,7 +261,7 @@ namespace UltraCanvas {
             mainButtonsContainer->AddChild(patreonBtn);
 
             // Badge Style (Liberapay)
-            auto liberapayBtn = CreateButton("LiberapayButton", 144, 460, yOffset, 140, 35, "Liberapay");
+            auto liberapayBtn = CreateButton("LiberapayButton", 460, yOffset, 140, 35, "Liberapay");
             liberapayBtn->SetSplitEnabled(true);
             liberapayBtn->SetSplitSecondaryText("5");
             liberapayBtn->SetSplitColors(
@@ -276,7 +276,7 @@ namespace UltraCanvas {
             mainButtonsContainer->AddChild(liberapayBtn);
 
             // PayPal Style
-            auto paypalBtn = CreateButton("PaypalButton", 145, 610, yOffset, 140, 35, "Paypal");
+            auto paypalBtn = CreateButton("PaypalButton", 610, yOffset, 140, 35, "Paypal");
             paypalBtn->SetSplitEnabled(true);
             paypalBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/paypal.png"));
             paypalBtn->SetIconPosition(ButtonIconPosition::Left);
@@ -297,7 +297,7 @@ namespace UltraCanvas {
             yOffset += 50;
 
             // Counter Style Split Buttons
-            auto counterBtn = CreateButton("CounterButton", 146, 20, yOffset, 130, 35, "Likes");
+            auto counterBtn = CreateButton("CounterButton", 20, yOffset, 130, 35, "Likes");
             counterBtn->SetStyle(ButtonStyles::CounterButtonStyle());
             counterBtn->SetSplitSecondaryText("1.2k");
             counterBtn->onClick = [statusLabel]() {
@@ -308,7 +308,7 @@ namespace UltraCanvas {
             };
             mainButtonsContainer->AddChild(counterBtn);
 
-        auto vertSplitMenu = std::make_shared<UltraCanvasMenu>("vertSplitMenu", 116, 0, 0, 200, 0);
+        auto vertSplitMenu = std::make_shared<UltraCanvasMenu>("vertSplitMenu", 0, 0, 200, 0);
         vertSplitMenu->SetMenuType(MenuType::PopupMenu);
 
         vertSplitMenu->AddItem(MenuItemData::Action("New file", []() {
@@ -330,7 +330,7 @@ namespace UltraCanvas {
 
 
         // Vertical Split Button
-            auto vertSplitBtn = CreateButton("VertSplitButton", 147, 160, yOffset, 100, 50, "File");
+            auto vertSplitBtn = CreateButton("VertSplitButton", 160, yOffset, 100, 50, "File");
             vertSplitBtn->SetSplitEnabled(true);
             vertSplitBtn->SetSplitHorizontal(false); // Vertical
             vertSplitBtn->SetSplitRatio(0.6);
@@ -350,7 +350,7 @@ namespace UltraCanvas {
             // ========================================
             // SECTION 5: CUSTOM STYLING
             // ========================================
-            auto section5Label = std::make_shared<UltraCanvasLabel>("Section5", 150, 20, yOffset, 300, 25);
+            auto section5Label = std::make_shared<UltraCanvasLabel>("Section5", 20, yOffset, 300, 25);
             section5Label->SetText("Custom Styling");
             section5Label->SetFontWeight(FontWeight::Bold);
             section5Label->SetTextColor(Color(0, 100, 200, 255));
@@ -358,7 +358,7 @@ namespace UltraCanvas {
             yOffset += 35;
 
             // Flat Button
-            auto flatBtn = CreateButton("FlatButton", 151, 20, yOffset, 100, 35, "Flat");
+            auto flatBtn = CreateButton("FlatButton", 20, yOffset, 100, 35, "Flat");
             flatBtn->SetStyle(ButtonStyles::FlatStyle());
             flatBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Flat button clicked\nNo background, minimal style");
@@ -366,7 +366,7 @@ namespace UltraCanvas {
             mainButtonsContainer->AddChild(flatBtn);
 
             // Rounded Button
-            auto roundedBtn = CreateButton("RoundedButton", 152, 130, yOffset, 100, 35, "Rounded");
+            auto roundedBtn = CreateButton("RoundedButton", 130, yOffset, 100, 35, "Rounded");
             roundedBtn->SetCornerRadius(18.0f);
             roundedBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Rounded button clicked\nCustom corner radius applied");
@@ -374,7 +374,7 @@ namespace UltraCanvas {
             mainButtonsContainer->AddChild(roundedBtn);
 
             // Custom Colors
-            auto customColorBtn = CreateButton("CustomColor", 153, 240, yOffset, 120, 35, "Custom");
+            auto customColorBtn = CreateButton("CustomColor", 240, yOffset, 120, 35, "Custom");
             customColorBtn->SetColors(
                     Color(255, 215, 0, 255),   // Gold normal
                     Color(255, 200, 0, 255),   // Gold hover
@@ -393,7 +393,7 @@ namespace UltraCanvas {
             mainButtonsContainer->AddChild(customColorBtn);
 
             // Shadow Button
-            auto shadowBtn = CreateButton("ShadowButton", 154, 370, yOffset, 120, 38, "Shadow");
+            auto shadowBtn = CreateButton("ShadowButton", 370, yOffset, 120, 38, "Shadow");
             shadowBtn->SetShadow(true, Color(0, 0, 0, 128), Point2Di(3, 3));
             shadowBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Shadow button clicked\nCustom shadow effect applied");
@@ -401,7 +401,7 @@ namespace UltraCanvas {
             mainButtonsContainer->AddChild(shadowBtn);
 
             // Large Button
-            auto largeBtn = CreateButton("LargeButton", 155, 500, yOffset, 150, 50, "Large");
+            auto largeBtn = CreateButton("LargeButton", 500, yOffset, 150, 50, "Large");
             largeBtn->SetFont("Sans", 16, FontWeight::Bold);
             largeBtn->SetPadding(10, 20, 10, 20);
             largeBtn->onClick = [statusLabel]() {
@@ -414,7 +414,7 @@ namespace UltraCanvas {
             // ========================================
             // SECTION 6: INTERACTIVE EXAMPLES
             // ========================================
-            auto section6Label = std::make_shared<UltraCanvasLabel>("Section6", 160, 20, yOffset, 300, 25);
+            auto section6Label = std::make_shared<UltraCanvasLabel>("Section6", 20, yOffset, 300, 25);
             section6Label->SetText("Interactive Examples");
             section6Label->SetFontWeight(FontWeight::Bold);
             section6Label->SetTextColor(Color(0, 100, 200, 255));
@@ -422,7 +422,7 @@ namespace UltraCanvas {
             yOffset += 35;
 
             // Toggle Example
-            auto toggleBtn = CreateButton("ToggleButton", 161, 20, yOffset, 120, 35, "Toggle: OFF");
+            auto toggleBtn = CreateButton("ToggleButton", 20, yOffset, 120, 35, "Toggle: OFF");
             bool* toggleState = new bool(false);
             toggleBtn->onClick = [toggleBtn, toggleState, statusLabel]() {
                 *toggleState = !*toggleState;
@@ -440,7 +440,7 @@ namespace UltraCanvas {
             mainButtonsContainer->AddChild(toggleBtn);
 
             // Counter Example
-            auto counterExampleBtn = CreateButton("CounterExample", 162, 150, yOffset, 140, 35, "Clicks: 0");
+            auto counterExampleBtn = CreateButton("CounterExample", 150, yOffset, 140, 35, "Clicks: 0");
             int* clickCount = new int(0);
             counterExampleBtn->SetSplitEnabled(true);
             counterExampleBtn->SetSplitRatio(0);
@@ -463,7 +463,7 @@ namespace UltraCanvas {
             mainButtonsContainer->AddChild(counterExampleBtn);
 
             // Multi-Action Button
-            auto multiBtn = CreateButton("MultiAction", 163, 300, yOffset, 170, 35, "Save");
+            auto multiBtn = CreateButton("MultiAction", 300, yOffset, 170, 35, "Save");
             multiBtn->SetSplitEnabled(true);
             multiBtn->SetSplitRatio(0);
 //            multiBtn->SetSplitSecondaryText("");
@@ -482,7 +482,7 @@ namespace UltraCanvas {
             // ========================================
             // SECTION 7: BUTTON BUILDER EXAMPLE
             // ========================================
-            auto section7Label = std::make_shared<UltraCanvasLabel>("Section7", 170, 20, yOffset, 400, 25);
+            auto section7Label = std::make_shared<UltraCanvasLabel>("Section7", 20, yOffset, 400, 25);
             section7Label->SetText("Button Builder Pattern");
             section7Label->SetFontWeight(FontWeight::Bold);
             section7Label->SetTextColor(Color(0, 100, 200, 255));
@@ -490,7 +490,7 @@ namespace UltraCanvas {
             yOffset += 35;
 
             // Create button using builder pattern
-            auto builderBtn = ButtonBuilder("BuilderButton", 171)
+            auto builderBtn = ButtonBuilder("BuilderButton")
                     .SetStyle(ButtonStyles::PrimaryStyle())
                     .SetPosition(20, yOffset)
                     .SetSize(240, 40)
@@ -514,7 +514,7 @@ namespace UltraCanvas {
             mainButtonsContainer->AddChild(builderBtn);
 
             // Another builder example - complex configuration
-            auto complexBuilderBtn = ButtonBuilder("ComplexBuilder", 172)
+            auto complexBuilderBtn = ButtonBuilder("ComplexBuilder")
                     .SetPosition(280, yOffset)
                     .SetSize(180, 40)
                     .SetText("Complex")

@@ -77,7 +77,7 @@ namespace UltraCanvas {
         SVGTransform transform;
 
         virtual ~SVGGradient() = default;
-        virtual std::shared_ptr<IPaintPattern> CreatePattern(IRenderContext* ctx, const Rect2Df& bounds) = 0;
+        virtual std::shared_ptr<IPaintPattern> CreatePattern(IRenderContext* ctx, const Rect2Dd& bounds) = 0;
     };
 
 // Linear gradient
@@ -85,7 +85,7 @@ namespace UltraCanvas {
     public:
         float x1{0}, y1{0}, x2{1}, y2{0};
 
-        std::shared_ptr<IPaintPattern> CreatePattern(IRenderContext* ctx, const Rect2Df& bounds) override;
+        std::shared_ptr<IPaintPattern> CreatePattern(IRenderContext* ctx, const Rect2Dd& bounds) override;
     };
 
 // Radial gradient
@@ -94,7 +94,7 @@ namespace UltraCanvas {
         float cx{0.5f}, cy{0.5f}, r{0.5f};
         float fx{0.5f}, fy{0.5f}, fr{0};
 
-        std::shared_ptr<IPaintPattern> CreatePattern(IRenderContext* ctx, const Rect2Df& bounds) override;
+        std::shared_ptr<IPaintPattern> CreatePattern(IRenderContext* ctx, const Rect2Dd& bounds) override;
     };
 
 // Filter effect base
@@ -118,10 +118,10 @@ namespace UltraCanvas {
     public:
         std::string id;
         std::vector<std::unique_ptr<SVGFilterEffect>> effects;
-        Rect2Df filterRegion;
+        Rect2Dd filterRegion;
         std::string filterUnits{"objectBoundingBox"};
 
-        void Apply(IRenderContext* ctx, const Rect2Df& bounds);
+        void Apply(IRenderContext* ctx, const Rect2Dd& bounds);
     };
 
 // Path command for SVG path parsing
@@ -152,7 +152,7 @@ namespace UltraCanvas {
 
         float GetWidth() const { return width; }
         float GetHeight() const { return height; }
-        Rect2Df GetViewBox() const { return viewBox; }
+        Rect2Dd GetViewBox() const { return viewBox; }
 
         // Resource management
         void AddGradient(std::unique_ptr<SVGGradient> gradient);
@@ -170,7 +170,7 @@ namespace UltraCanvas {
         tinyxml2::XMLElement* root{nullptr};
 
         float width{0}, height{0};
-        Rect2Df viewBox;
+        Rect2Dd viewBox;
 
         // Resource definitions
         std::unordered_map<std::string, std::unique_ptr<SVGGradient>> gradients;
@@ -193,7 +193,7 @@ namespace UltraCanvas {
         SVGElementRenderer(const SVGDocument& doc, IRenderContext* ctx);
         ~SVGElementRenderer();
 
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect);
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect);
         void RenderElement(tinyxml2::XMLElement* elem);
 
     private:
@@ -225,29 +225,29 @@ namespace UltraCanvas {
 //        void PopTransform();
 //        void ApplyStyle(const SVGStyle& style);
 
-        void ApplyFill(const SVGStyle& style, const Rect2Df & bounds);
-        void ApplyStroke(const SVGStyle& style, const Rect2Df& bounds);
-        void FillAndStroke(const SVGStyle& style, const Rect2Df& bounds);
+        void ApplyFill(const SVGStyle& style, const Rect2Dd & bounds);
+        void ApplyStroke(const SVGStyle& style, const Rect2Dd& bounds);
+        void FillAndStroke(const SVGStyle& style, const Rect2Dd& bounds);
 
         SVGStyle ParseStyle(tinyxml2::XMLElement* elem);
         SVGTransform ParseTransform(const std::string& transformStr);
-        std::vector<Point2Df> ParsePoints(const std::string& pointsStr);
+        std::vector<Point2Dd> ParsePoints(const std::string& pointsStr);
         Color ParseColor(const std::string& colorStr);
         float ParseLength(const std::string& lengthStr, float reference = 100.0f);
 
-        Rect2Df GetElementBounds(tinyxml2::XMLElement* elem);
+        Rect2Dd GetElementBounds(tinyxml2::XMLElement* elem);
     };
 
 // UltraCanvasSVGElement - UI element wrapper for SVG
     class UltraCanvasSVGElement : public UltraCanvasUIElement {
     public:
-        UltraCanvasSVGElement(const std::string& identifier, long id, long x, long y, long w, long h);
+        UltraCanvasSVGElement(const std::string& identifier, float x, float y, float w, float h);
         virtual ~UltraCanvasSVGElement() = default;
 
         bool LoadFromFile(const std::string& filepath);
         bool LoadFromString(const std::string& svgContent);
 
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
         void SetScale(float scale) { this->scale = scale; }
         float GetScale() const { return scale; }

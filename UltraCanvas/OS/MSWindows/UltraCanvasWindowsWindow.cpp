@@ -1,7 +1,7 @@
 // OS/MSWindows/UltraCanvasWindowsWindow.cpp
 // Complete Windows window implementation with Cairo rendering
-// Version: 1.0.1
-// Last Modified: 2026-04-05
+// Version: 1.0.2 - Pin cairo image surface fallback DPI to 96 for cross-platform text-width parity
+// Last Modified: 2026-05-10
 // Author: UltraCanvas Framework
 
 #include "../../include/UltraCanvasWindow.h"
@@ -224,6 +224,11 @@ namespace UltraCanvas {
             return false;
         }
 
+        // Pin the surface fallback DPI to 96. Cairo image surfaces default to
+        // 72 DPI, which would let Pango's draw-time pango_cairo_update_layout()
+        // resync to a different scale than the cairo-xlib surface on Linux.
+        cairo_surface_set_fallback_resolution(static_cast<cairo_surface_t *>(nativeSurface), 96.0, 96.0);
+
         cairo_status_t status = cairo_surface_status(static_cast<cairo_surface_t *>(nativeSurface));
         if (status != CAIRO_STATUS_SUCCESS) {
             debugOutput << "UltraCanvas Windows: Cairo surface error: "
@@ -269,6 +274,7 @@ namespace UltraCanvas {
             debugOutput << "UltraCanvas Windows: Failed to recreate Cairo surface on resize" << std::endl;
             return;
         }
+        cairo_surface_set_fallback_resolution(static_cast<cairo_surface_t *>(nativeSurface), 96.0, 96.0);
 
 //        if (renderContext) {
 //            renderContext->SetTargetSurface(cairoSurface, w, h);
@@ -423,20 +429,20 @@ namespace UltraCanvas {
 // ===== WINDOW OPERATIONS =====
 
     void UltraCanvasWindowsWindow::Show() {
-        if (!_created || visible) return;
+        if (!_created || _windowVisible) return;
         ShowWindow(hwnd, SW_SHOW);
         UpdateWindow(hwnd);
 
-        visible = true;
+        _windowVisible = true;
 
         if (onWindowShow) onWindowShow();
     }
 
     void UltraCanvasWindowsWindow::Hide() {
-        if (!_created || !visible) return;
+        if (!_created || !_windowVisible) return;
         ShowWindow(hwnd, SW_HIDE);
 
-        visible = false;
+        _windowVisible = false;
 
         if (onWindowHide) onWindowHide();
     }
@@ -662,7 +668,7 @@ namespace UltraCanvas {
     void UltraCanvasWindowsWindow::InvalidateWindowNative() {
         if (!renderContext || !nativeSurface || !hwnd) return;
         // Trigger a synchronous WM_PAINT to blit the image surface to the window
-        InvalidateRect(hwnd, NULL, FALSE);
+        ::InvalidateRect(hwnd, NULL, FALSE);
         UpdateWindow(hwnd);
     }
 

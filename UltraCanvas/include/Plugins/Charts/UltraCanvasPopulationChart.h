@@ -130,7 +130,6 @@ namespace UltraCanvas {
     public:
         // Constructor
         UltraCanvasPopulationChart(const std::string& identifier = "PopulationChart",
-                                   long id = 0,
                                    int x = 0, int y = 0,
                                    int w = 600, int h = 700);
 
@@ -198,7 +197,7 @@ namespace UltraCanvas {
         double GetTotalPopulation() const;
 
         // Override base class rendering
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         bool OnEvent(const UCEvent& event) override;
     };
 

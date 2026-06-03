@@ -1,5 +1,6 @@
 // UltraCanvasGLSurface.cpp
 // OpenGL 3D rendering surface implementation
+// Last Modified: 2026-05-29
 #include "UltraCanvasGLSurface.h"
 #include "GL/GLContextManager.h"
 #include "GL/GLFramebuffer.h"
@@ -12,7 +13,7 @@ namespace UltraCanvas {
 
 // Constructors
 UltraCanvasGLSurface::UltraCanvasGLSurface(const std::string& id,
-                                           int x, int y, int width, int height)
+                                           float x, float y, float width, float height)
     : UltraCanvasUIElement(id, width, height)
 {
     SetBounds(Rect2Di(x, y, width, height));
@@ -24,7 +25,7 @@ UltraCanvasGLSurface::UltraCanvasGLSurface(const std::string& id,
 
 UltraCanvasGLSurface::UltraCanvasGLSurface(const GLSurfaceConfig& config,
                                            const std::string& id,
-                                           int x, int y, int width, int height)
+                                           float x, float y, float width, float height)
     : UltraCanvasGLSurface(id, x, y, width, height)
 {
     config_ = config;
@@ -134,7 +135,7 @@ void* UltraCanvasGLSurface::GetNativeGLContext() const {
 }
 
 // UltraCanvasUIElement overrides
-void UltraCanvasGLSurface::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+void UltraCanvasGLSurface::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
     if (!IsVisible()) return;
 
     // Initialize GL on first render
@@ -143,7 +144,7 @@ void UltraCanvasGLSurface::Render(IRenderContext* ctx, const Rect2Di& dirtyRect)
             // Draw error indicator (element-local coordinates)
             ctx->SetFillPaint(Color(200, 50, 50, 255));
             Rect2Di b = GetLocalBounds();
-            ctx->FillRectangle(Rect2Df{static_cast<float>(b.x), static_cast<float>(b.y),
+            ctx->FillRectangle(Rect2Dd{static_cast<float>(b.x), static_cast<float>(b.y),
                               static_cast<float>(b.width), static_cast<float>(b.height)});
             return;
         }
@@ -181,7 +182,7 @@ bool UltraCanvasGLSurface::OnEvent(const UCEvent& event) {
     return false;
 }
 
-void UltraCanvasGLSurface::SetBounds(const Rect2Di& newBounds) {
+void UltraCanvasGLSurface::SetBounds(const Rect2Df& newBounds) {
     Rect2Di oldBounds = GetBounds();
     UltraCanvasUIElement::SetBounds(newBounds);
 

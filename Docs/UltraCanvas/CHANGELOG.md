@@ -1,3 +1,57 @@
+#### 2026-05-20 *0.1.39*
+- Show cursor and allow selection in the TextArea in read-only mode
+- Autodetext syntax highlighting rules by filename with auto fallbask to extension
+- Fix possible bug in menu and tooltips rendering (wrong color)
+
+#### 2026-05-19 *0.1.38*
+- Implemented the SplitPane element
+- Fix bug when scrollbar of outer container overlap with inner container's elements or scrollbar (mouse events incorrectly goes to inner container instead of outer container's scrollbar)
+
+#### 2026-05-18 *0.1.37*
+- Arc diagram improvement
+- Change layout of "Bitmap elements" screen in the Demo app
+- Use TextArea instead of Markdown element in the "Text Document/Markdown" screen in the Demo app
+- Replace DejaVu default embedded font by Ubuntu font
+
+#### 2026-05-17 *0.1.36*
+- Change the Breadcrumbs element demo
+- Make more Docs for different controls 
+- Added Slideshow example in Widgets/Slideshow section of Demo app
+- Fix for Pie Chart labels
+
+#### 2026-05-15 *0.1.35*
+- Remove JXL from Image Performance test as JXL format does not supported by currently used libvips
+- Fix buttons size to fit text
+- Fix bug when element is deleted but capturing the mouse or focused then app may crash
+- Implemented Breadcrumbs element demo
+
+#### 2026-05-15 *0.1.34*
+- Use TextArea to show Markdown info in the Modules section
+- Add more modules description to Modules section
+- Implement Breadcrumb demo
+- 
+#### 2026-05-14 *0.1.33*
+- Implemented new Image performance demo
+- Fix problem with AltGr+key in Windows
+- Fix ordered list content offset in MD-mode in TextArea
+- Implemented Pie Chart element
+- Implemented Adjacency Diagram element
+- Implemented Arc Diagram element
+- Implemented Breadcrumb element
+
+#### 2026-05-12 *0.1.32*
+- Implemented UltraCanvasFileLoader
+- Implemented OS Recent files support (add opened files to OS Recent files list)
+- Fix wrong calculation of mouse coordinates and bounds in the some diagrams 
+
+#### 2026-05-10 *0.1.31*
+- Fixed font rendering, now Windows and Linux will rendered using same included DejaVue fonts
+
+#### 2026-05-09 *0.1.30*
+- Implemented more different diagrams
+- Implemented JitterChart
+- Attempt to fix menu crash on MacOS
+
 #### 2026-05-06 *0.1.29*
 - Refactor Checkbox code, split to Checkbox/Redio/Switch
 - Implemented more visual styles for Switch

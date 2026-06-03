@@ -16,7 +16,7 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
-    void UltraCanvasChartElementBase::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasChartElementBase::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         // Check if we have data
         if (!dataSource || dataSource->GetPointCount() == 0) {
             DrawEmptyState(ctx);
@@ -100,16 +100,18 @@ namespace UltraCanvas {
         if (!ctx) return;
 
         // Draw overall background using existing functions
-        ctx->DrawFilledRectangle(GetLocalBounds(), backgroundColor);
+        if (showBackground) {
+            ctx->DrawFilledRectangle(GetLocalBounds(), backgroundColor);
 
-        // Draw plot area background using existing functions
-        ctx->SetFillPaint(plotAreaColor);
-        ctx->FillRectangle(cachedPlotArea.ToRect2D());
+            // Draw plot area background using existing functions
+            ctx->SetFillPaint(plotAreaColor);
+            ctx->FillRectangle(cachedPlotArea.ToRect2D());
 
-        // Draw plot area border using existing functions
-        ctx->SetStrokePaint(Color(180, 180, 180, 255));
-        ctx->SetStrokeWidth(1.0f);
-        ctx->DrawRectangle(cachedPlotArea.ToRect2D());
+            // Draw plot area border using existing functions
+            ctx->SetStrokePaint(Color(180, 180, 180, 255));
+            ctx->SetStrokeWidth(1.0f);
+            ctx->DrawRectangle(cachedPlotArea.ToRect2D());
+        }
 
         // Draw grid if enabled using existing functions
         if (showGrid) {
@@ -128,34 +130,30 @@ namespace UltraCanvas {
 
             // Calculate center position (simplified)
             double titleX = static_cast<double>(GetWidth()) / 2 - chartTitle.length() * 5;
-            ctx->DrawText(chartTitle, Point2Df(titleX, 0));
+            ctx->DrawText(chartTitle, Point2Dd(titleX, 0));
         }
     }
 
     void UltraCanvasChartElementBase::RenderGrid(IRenderContext* ctx) {
-        if (!ctx) return;
-
         ctx->SetStrokePaint(gridColor);
         ctx->SetStrokeWidth(1.0f);
 
         // Vertical grid lines using existing DrawLine
         int numVerticalLines = 10;
         for (int i = 1; i < numVerticalLines; ++i) {
-            float x = cachedPlotArea.x + (i * cachedPlotArea.width / numVerticalLines);
+            double x = cachedPlotArea.x + (i * cachedPlotArea.width / numVerticalLines);
             ctx->DrawLine({x, cachedPlotArea.y}, { x, cachedPlotArea.y + cachedPlotArea.height});
         }
 
         // Horizontal grid lines using existing DrawLine
         int numHorizontalLines = 8;
         for (int i = 1; i < numHorizontalLines; ++i) {
-            float y = cachedPlotArea.y + (i * cachedPlotArea.height / numHorizontalLines);
+            double y = cachedPlotArea.y + (i * cachedPlotArea.height / numHorizontalLines);
             ctx->DrawLine({cachedPlotArea.x, y}, { cachedPlotArea.x + cachedPlotArea.width, y});
         }
     }
 
     void UltraCanvasChartElementBase::RenderAxes(IRenderContext* ctx) {
-        if (!ctx) return;
-
         // Set axis style using existing functions
         ctx->SetStrokePaint(Color(0, 0, 0, 255));
         ctx->SetStrokeWidth(1.0f);
@@ -199,7 +197,7 @@ namespace UltraCanvas {
 //        }
 //    }
 
-    float UltraCanvasChartElementBase::GetXAxisLabelPosition(size_t dataIndex, size_t totalPoints) {
+    double UltraCanvasChartElementBase::GetXAxisLabelPosition(size_t dataIndex, size_t totalPoints) {
         // Default implementation for line, scatter, area charts
         if (totalPoints == 1) {
             return cachedPlotArea.x + cachedPlotArea.width / 2;
@@ -230,9 +228,9 @@ namespace UltraCanvas {
                 auto point = dataSource->GetPoint(i);
 
                 // Calculate X position - must match GetDataPointScreenPosition logic
-                float x = GetXAxisLabelPosition(i, dataPointCount);
+                double x = GetXAxisLabelPosition(i, dataPointCount);
 
-                float tickY = cachedPlotArea.y + cachedPlotArea.height;
+                double tickY = cachedPlotArea.y + cachedPlotArea.height;
 
                 // Draw tick mark
                 ctx->DrawLine({x, tickY}, { x, tickY + 5});
@@ -276,7 +274,7 @@ namespace UltraCanvas {
                     ctx->DrawText(label, {0, 0});
                     ctx->PopState();
                 } else {
-                    ctx->DrawText(label, Point2Df (x - 4, tickY + 8));
+                    ctx->DrawText(label, Point2Dd (x - 4, tickY + 8));
                 }
             }
         }
@@ -293,11 +291,11 @@ namespace UltraCanvas {
             double labelValue = cachedDataBounds.minY + (i * (cachedDataBounds.maxY - cachedDataBounds.minY) / numYTicks);
             std::string label = FormatAxisLabel(labelValue);
             Size2Di txtSize = ctx->GetTextLineDimensions(label);
-            ctx->DrawText(label, Point2Df (tickX - txtSize.width - 8, y - (static_cast<double>(txtSize.height) / 2)));
+            ctx->DrawText(label, Point2Dd (tickX - txtSize.width - 8, y - (static_cast<double>(txtSize.height) / 2)));
         }
     }
 
-    void UltraCanvasChartElementBase::RenderValueLabels(IRenderContext* ctx, const std::vector<Point2Df>& screenPositions) {
+    void UltraCanvasChartElementBase::RenderValueLabels(IRenderContext* ctx, const std::vector<Point2Dd>& screenPositions) {
         if (!dataSource) return;
 
         ctx->SetTextPaint(valueLabelColor);
@@ -305,7 +303,7 @@ namespace UltraCanvas {
 
         for (size_t i = 0; i < dataSource->GetPointCount() && i < screenPositions.size(); ++i) {
             auto point = dataSource->GetPoint(i);
-            Point2Df labelPos = CalculateValueLabelPosition(screenPositions[i], i, dataSource->GetPointCount());
+            Point2Dd labelPos = CalculateValueLabelPosition(screenPositions[i], i, dataSource->GetPointCount());
 
             // Format the value - use the formatted value from ChartDataPoint if available
             std::string valueText;
@@ -342,8 +340,8 @@ namespace UltraCanvas {
         }
     }
 
-    Point2Df UltraCanvasChartElementBase::CalculateValueLabelPosition(const Point2Df& pointPos, size_t index, size_t totalPoints) {
-        Point2Df labelPos = pointPos;
+    Point2Dd UltraCanvasChartElementBase::CalculateValueLabelPosition(const Point2Dd& pointPos, size_t index, size_t totalPoints) {
+        Point2Dd labelPos = pointPos;
 
         switch (valueLabelPosition) {
             case ValueLabelPosition::LabelAbove:

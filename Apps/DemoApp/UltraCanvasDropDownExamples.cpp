@@ -16,15 +16,15 @@
 namespace UltraCanvas {
 
 // Helper function to create section separator
-    std::shared_ptr<UltraCanvasContainer> CreateDropdownSeparator(long id, long x, long y, long width) {
-        auto separator = std::make_shared<UltraCanvasContainer>("DropdownSep" + std::to_string(id), id, x, y, width, 2);
+    std::shared_ptr<UltraCanvasContainer> CreateDropdownSeparator(float x, float y, float width) {
+        auto separator = std::make_shared<UltraCanvasContainer>("DropdownSep" + std::to_string(x), x, y, width, 2);
         separator->SetBackgroundColor(Color(200, 200, 200, 255));
         return separator;
     }
 
 // Helper function to create section title
-    std::shared_ptr<UltraCanvasLabel> CreateDropdownSectionTitle(long id, long x, long y, const std::string& text) {
-        auto title = std::make_shared<UltraCanvasLabel>("DropdownSecTitle" + std::to_string(id), id, x, y, 400, 25);
+    std::shared_ptr<UltraCanvasLabel> CreateDropdownSectionTitle(float x, float y, const std::string& text) {
+        auto title = std::make_shared<UltraCanvasLabel>("DropdownSecTitle" + std::to_string(x), x, y, 400, 25);
         title->SetText(text);
         title->SetFontSize(14);
         title->SetFontWeight(FontWeight::Bold);
@@ -33,14 +33,14 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDropdownExamples() {
-        auto mainContainer = std::make_shared<UltraCanvasContainer>("DropdownExamples", 300, 0, 0, 1020, 1000);
+        auto mainContainer = std::make_shared<UltraCanvasContainer>("DropdownExamples", 0, 0, 1020, 1000);
         mainContainer->SetBackgroundColor(Colors::White);
         mainContainer->SetPadding(0,0,10,0);
 
         long currentY = 10;
 
         // ===== MAIN TITLE =====
-        auto mainTitle = std::make_shared<UltraCanvasLabel>("DropdownMainTitle", 301, 20, currentY, 900, 30);
+        auto mainTitle = std::make_shared<UltraCanvasLabel>("DropdownMainTitle", 20, currentY, 900, 30);
         mainTitle->SetText("UltraCanvas Dropdown Component Examples");
         mainTitle->SetFontSize(18);
         mainTitle->SetFontWeight(FontWeight::Bold);
@@ -49,7 +49,7 @@ namespace UltraCanvas {
         currentY += 40;
 
         // Description
-        auto description = std::make_shared<UltraCanvasLabel>("DropdownDesc", 302, 20, currentY, 960, 40);
+        auto description = std::make_shared<UltraCanvasLabel>("DropdownDesc", 20, currentY, 960, 40);
         description->SetText("Comprehensive dropdown examples showcasing icons, multi-selection, and various configurations");
         description->SetWrap(TextWrap::WrapWord);
         description->SetTextColor(Color(80, 80, 80, 255));
@@ -58,18 +58,18 @@ namespace UltraCanvas {
         currentY += 30;
 
         // ===== SECTION 1: BASIC DROPDOWNS =====
-        mainContainer->AddChild(CreateDropdownSectionTitle(310, 20, currentY, "Basic Dropdowns"));
+        mainContainer->AddChild(CreateDropdownSectionTitle(20, currentY, "Basic Dropdowns"));
         currentY += 35;
 
         // Simple Dropdown
-        auto simpleDropdown = std::make_shared<UltraCanvasDropdown>("SimpleDropdown", 311, 30, currentY, 220, 30);
+        auto simpleDropdown = std::make_shared<UltraCanvasDropdown>("SimpleDropdown", 30, currentY, 220, 30);
         simpleDropdown->AddItem("Option 1");
         simpleDropdown->AddItem("Option 2");
         simpleDropdown->AddItem("Option 3");
         simpleDropdown->AddItem("Very Long Option Text That Extends");
         simpleDropdown->SetSelectedIndex(0);
 
-        auto simpleLabel = std::make_shared<UltraCanvasLabel>("SimpleLabel", 312, 270, currentY + 5, 300, 20);
+        auto simpleLabel = std::make_shared<UltraCanvasLabel>("SimpleLabel", 270, currentY + 5, 300, 20);
         simpleLabel->SetText("Simple dropdown with text items");
         simpleLabel->SetFontSize(12);
 
@@ -79,7 +79,7 @@ namespace UltraCanvas {
         currentY += 45;
 
         // Dropdown with separators
-        auto separatorDropdown = std::make_shared<UltraCanvasDropdown>("SeparatorDropdown", 313, 30, currentY, 220, 30);
+        auto separatorDropdown = std::make_shared<UltraCanvasDropdown>("SeparatorDropdown", 30, currentY, 220, 30);
         separatorDropdown->AddItem("File Operations");
         separatorDropdown->AddItem("Open", "open");
         separatorDropdown->AddItem("Save", "save");
@@ -89,7 +89,7 @@ namespace UltraCanvas {
         separatorDropdown->AddItem("Paste", "paste");
         separatorDropdown->SetSelectedIndex(1);
 
-        auto separatorLabel = std::make_shared<UltraCanvasLabel>("SeparatorLabel", 314, 270, currentY + 5, 300, 20);
+        auto separatorLabel = std::make_shared<UltraCanvasLabel>("SeparatorLabel", 270, currentY + 5, 300, 20);
         separatorLabel->SetText("Dropdown with separators");
         separatorLabel->SetFontSize(12);
 
@@ -97,22 +97,22 @@ namespace UltraCanvas {
         mainContainer->AddChild(separatorLabel);
 
         currentY += 45;
-        mainContainer->AddChild(CreateDropdownSeparator(315, 20, currentY, 960));
+        mainContainer->AddChild(CreateDropdownSeparator(20, currentY, 960));
         currentY += 20;
 
         // ===== SECTION 2: DROPDOWNS WITH ICONS =====
-        mainContainer->AddChild(CreateDropdownSectionTitle(320, 20, currentY, "Dropdowns with Icons"));
+        mainContainer->AddChild(CreateDropdownSectionTitle(20, currentY, "Dropdowns with Icons"));
         currentY += 35;
 
         // File types dropdown with icons
-        auto fileTypesDropdown = std::make_shared<UltraCanvasDropdown>("FileTypesDropdown", 321, 30, currentY, 220, 30);
+        auto fileTypesDropdown = std::make_shared<UltraCanvasDropdown>("FileTypesDropdown", 30, currentY, 220, 30);
         fileTypesDropdown->AddItem("Text Document", "txt", NormalizePath(GetResourcesDir() + "media/icons/document.png"));
         fileTypesDropdown->AddItem("PDF Document", "pdf", NormalizePath(GetResourcesDir() + "media/icons/pdf.png"));
         fileTypesDropdown->AddItem("Image File", "img", NormalizePath(GetResourcesDir() + "media/icons/image.png"));
         fileTypesDropdown->AddItem("Video File", "vid", NormalizePath(GetResourcesDir() + "media/icons/video.png"));
         fileTypesDropdown->SetSelectedIndex(0);
 
-        auto fileTypesLabel = std::make_shared<UltraCanvasLabel>("FileTypesLabel", 322, 270, currentY + 5, 250, 20);
+        auto fileTypesLabel = std::make_shared<UltraCanvasLabel>("FileTypesLabel", 270, currentY + 5, 250, 20);
         fileTypesLabel->SetText("File types with document icons");
         fileTypesLabel->SetFontSize(12);
 
@@ -122,7 +122,7 @@ namespace UltraCanvas {
         currentY += 45;
 
         // Actions dropdown with icons
-        auto actionsDropdown = std::make_shared<UltraCanvasDropdown>("ActionsDropdown", 323, 30, currentY, 220, 30);
+        auto actionsDropdown = std::make_shared<UltraCanvasDropdown>("ActionsDropdown", 30, currentY, 220, 30);
         actionsDropdown->AddItem("New File", "new", NormalizePath(GetResourcesDir() + "media/icons/new.png"));
         actionsDropdown->AddItem("Open File", "open", NormalizePath(GetResourcesDir() + "media/icons/folder.png"));
         actionsDropdown->AddItem("Save File", "save", NormalizePath(GetResourcesDir() + "media/icons/save.png"));
@@ -130,7 +130,7 @@ namespace UltraCanvas {
         actionsDropdown->AddItem("Settings", "settings", NormalizePath(GetResourcesDir() + "media/icons/settings.png"));
         actionsDropdown->SetSelectedIndex(0);
 
-        auto actionsLabel = std::make_shared<UltraCanvasLabel>("ActionsLabel", 324, 270, currentY + 5, 250, 20);
+        auto actionsLabel = std::make_shared<UltraCanvasLabel>("ActionsLabel", 270, currentY + 5, 250, 20);
         actionsLabel->SetText("Actions with icon indicators");
         actionsLabel->SetFontSize(12);
 
@@ -138,15 +138,15 @@ namespace UltraCanvas {
         mainContainer->AddChild(actionsLabel);
 
         currentY += 45;
-        mainContainer->AddChild(CreateDropdownSeparator(325, 20, currentY, 960));
+        mainContainer->AddChild(CreateDropdownSeparator(20, currentY, 960));
         currentY += 20;
 
         // ===== SECTION 3: COUNTRY FLAGS DROPDOWN =====
-        mainContainer->AddChild(CreateDropdownSectionTitle(330, 20, currentY, "Country Selection with Flags"));
+        mainContainer->AddChild(CreateDropdownSectionTitle(20, currentY, "Country Selection with Flags"));
         currentY += 35;
 
         // Countries dropdown with flags
-        auto countriesDropdown = std::make_shared<UltraCanvasDropdown>("CountriesDropdown", 331, 30, currentY, 280, 30);
+        auto countriesDropdown = std::make_shared<UltraCanvasDropdown>("CountriesDropdown", 30, currentY, 280, 30);
 
         // Add countries with their flag icons (ISO 3166-1 alpha-2 codes)
         countriesDropdown->AddItem("United States", "US", NormalizePath(GetResourcesDir() + "media/flags/US.png"));
@@ -173,7 +173,7 @@ namespace UltraCanvas {
         countriesDropdown->SetSelectedIndex(0);
 
         // Country selection status label
-        auto countryStatusLabel = std::make_shared<UltraCanvasLabel>("CountryStatus", 332, 330, currentY + 5, 400, 20);
+        auto countryStatusLabel = std::make_shared<UltraCanvasLabel>("CountryStatus", 330, currentY + 5, 400, 20);
         countryStatusLabel->SetText("Selected: United States (US)");
         countryStatusLabel->SetFontSize(12);
         countryStatusLabel->SetTextColor(Color(0, 100, 0, 255));
@@ -188,15 +188,15 @@ namespace UltraCanvas {
         mainContainer->AddChild(countryStatusLabel);
 
         currentY += 45;
-        mainContainer->AddChild(CreateDropdownSeparator(337, 20, currentY, 960));
+        mainContainer->AddChild(CreateDropdownSeparator(20, currentY, 960));
         currentY += 20;
 
         // ===== SECTION 4: MULTI-SELECTION DROPDOWNS =====
-        mainContainer->AddChild(CreateDropdownSectionTitle(340, 20, currentY, "Multi-Selection Dropdowns"));
+        mainContainer->AddChild(CreateDropdownSectionTitle(20, currentY, "Multi-Selection Dropdowns"));
         currentY += 35;
 
         // Programming languages multi-select
-        auto languagesDropdown = std::make_shared<UltraCanvasDropdown>("LanguagesDropdown", 341, 30, currentY, 250, 30);
+        auto languagesDropdown = std::make_shared<UltraCanvasDropdown>("LanguagesDropdown", 30, currentY, 250, 30);
         languagesDropdown->SetMultiSelectEnabled(true);
         languagesDropdown->AddItem("C++", "cpp", NormalizePath(GetResourcesDir() + "media/icons/cpp.png"));
         languagesDropdown->AddItem("Python", "py", NormalizePath(GetResourcesDir() + "media/icons/python.png"));
@@ -209,7 +209,7 @@ namespace UltraCanvas {
         languagesDropdown->SetItemSelected(0, true); // C++
         languagesDropdown->SetItemSelected(1, true); // Python
 
-        auto languagesStatus = std::make_shared<UltraCanvasLabel>("LanguagesStatus", 342, 300, currentY + 5, 400, 60);
+        auto languagesStatus = std::make_shared<UltraCanvasLabel>("LanguagesStatus", 300, currentY + 5, 400, 60);
         languagesStatus->SetText("Selected: C++, Python");
         languagesStatus->SetWrap(TextWrap::WrapWord);
         languagesStatus->SetFontSize(12);
@@ -236,7 +236,7 @@ namespace UltraCanvas {
         currentY += 75;
 
         // Fruit multi-select (no icons)
-        auto fruitsDropdown = std::make_shared<UltraCanvasDropdown>("FruitsDropdown", 343, 30, currentY, 250, 30);
+        auto fruitsDropdown = std::make_shared<UltraCanvasDropdown>("FruitsDropdown", 30, currentY, 250, 30);
         fruitsDropdown->SetMultiSelectEnabled(true);
         fruitsDropdown->AddItem("Apple", "apple");
         fruitsDropdown->AddItem("Banana", "banana");
@@ -247,7 +247,7 @@ namespace UltraCanvas {
         fruitsDropdown->AddItem("Pineapple", "pineapple");
         fruitsDropdown->AddItem("Watermelon", "watermelon");
 
-        auto fruitsLabel = std::make_shared<UltraCanvasLabel>("FruitsLabel", 344, 300, currentY + 5, 400, 20);
+        auto fruitsLabel = std::make_shared<UltraCanvasLabel>("FruitsLabel", 300, currentY + 5, 400, 20);
         fruitsLabel->SetText("Multi-select fruits (with checkboxes)");
         fruitsLabel->SetFontSize(12);
 
@@ -257,21 +257,21 @@ namespace UltraCanvas {
         currentY += 45;
 
         // Control buttons for fruits dropdown
-        auto selectAllBtn = std::make_shared<UltraCanvasButton>("SelectAllFruits", 345, 30, currentY, 100, 30);
+        auto selectAllBtn = std::make_shared<UltraCanvasButton>("SelectAllFruits", 30, currentY, 100, 30);
         selectAllBtn->SetText("Select All");
         selectAllBtn->SetOnClick([fruitsDropdown]() {
             fruitsDropdown->SelectAll();
             debugOutput << "Selected all fruits" << std::endl;
         });
 
-        auto deselectAllBtn = std::make_shared<UltraCanvasButton>("DeselectAllFruits", 346, 140, currentY, 100, 30);
+        auto deselectAllBtn = std::make_shared<UltraCanvasButton>("DeselectAllFruits", 140, currentY, 100, 30);
         deselectAllBtn->SetText("Clear All");
         deselectAllBtn->SetOnClick([fruitsDropdown]() {
             fruitsDropdown->DeselectAll();
             debugOutput << "Cleared all fruit selections" << std::endl;
         });
 
-        auto getSelectedBtn = std::make_shared<UltraCanvasButton>("GetSelectedFruits", 347, 250, currentY, 120, 30);
+        auto getSelectedBtn = std::make_shared<UltraCanvasButton>("GetSelectedFruits", 250, currentY, 120, 30);
         getSelectedBtn->SetText("Get Selected");
         getSelectedBtn->SetOnClick([fruitsDropdown]() {
             auto selected = fruitsDropdown->GetSelectedItems();
@@ -287,15 +287,15 @@ namespace UltraCanvas {
         mainContainer->AddChild(getSelectedBtn);
 
         currentY += 45;
-        mainContainer->AddChild(CreateDropdownSeparator(348, 20, currentY, 960));
+        mainContainer->AddChild(CreateDropdownSeparator(20, currentY, 960));
         currentY += 20;
 
         // ===== SECTION 5: MULTI-SELECT COUNTRIES WITH FLAGS =====
-        mainContainer->AddChild(CreateDropdownSectionTitle(350, 20, currentY, "Multi-Select Countries (Travel Destinations)"));
+        mainContainer->AddChild(CreateDropdownSectionTitle(20, currentY, "Multi-Select Countries (Travel Destinations)"));
         currentY += 35;
 
         // Travel destinations multi-select with flags
-        auto travelDropdown = std::make_shared<UltraCanvasDropdown>("TravelDropdown", 351, 30, currentY, 280, 30);
+        auto travelDropdown = std::make_shared<UltraCanvasDropdown>("TravelDropdown", 30, currentY, 280, 30);
         travelDropdown->SetMultiSelectEnabled(true);
         travelDropdown->AddItem("France", "FR", NormalizePath(GetResourcesDir() + "media/flags/FR.png"));
         travelDropdown->AddItem("Italy", "IT", NormalizePath(GetResourcesDir() + "media/flags/IT.png"));
@@ -308,7 +308,7 @@ namespace UltraCanvas {
         travelDropdown->AddItem("Greece", "GR", NormalizePath(GetResourcesDir() + "media/flags/GR.png"));
         travelDropdown->AddItem("Switzerland", "CH", NormalizePath(GetResourcesDir() + "media/flags/CH.png"));
 
-        auto travelStatus = std::make_shared<UltraCanvasLabel>("TravelStatus", 352, 330, currentY + 5, 500, 60);
+        auto travelStatus = std::make_shared<UltraCanvasLabel>("TravelStatus", 330, currentY + 5, 500, 60);
         travelStatus->SetText("Select your travel destinations");
         travelStatus->SetWrap(TextWrap::WrapWord);
         travelStatus->SetFontSize(12);
@@ -340,15 +340,15 @@ namespace UltraCanvas {
         mainContainer->AddChild(travelStatus);
 
         currentY += 75;
-        mainContainer->AddChild(CreateDropdownSeparator(353, 20, currentY, 960));
+        mainContainer->AddChild(CreateDropdownSeparator(20, currentY, 960));
         currentY += 20;
 
         // ===== SECTION 6: INTERACTIVE DEMO =====
-        mainContainer->AddChild(CreateDropdownSectionTitle(370, 20, currentY, "Interactive Demo"));
+        mainContainer->AddChild(CreateDropdownSectionTitle(20, currentY, "Interactive Demo"));
         currentY += 35;
 
         // Create interactive demo with event logging
-        auto interactiveDropdown = std::make_shared<UltraCanvasDropdown>("InteractiveDropdown", 371, 30, currentY, 250, 30);
+        auto interactiveDropdown = std::make_shared<UltraCanvasDropdown>("InteractiveDropdown", 30, currentY, 250, 30);
         interactiveDropdown->AddItem("Monitor Events", "monitor");
         interactiveDropdown->AddItem("Selection Changed", "selection");
         interactiveDropdown->AddItem("Item Hovered", "hover");
@@ -356,7 +356,7 @@ namespace UltraCanvas {
         interactiveDropdown->AddItem("Dropdown Closed", "closed");
         interactiveDropdown->SetSelectedIndex(0);
 
-        auto eventLog = std::make_shared<UltraCanvasLabel>("EventLog", 372, 300, currentY, 500, 80);
+        auto eventLog = std::make_shared<UltraCanvasLabel>("EventLog", 300, currentY, 500, 80);
         eventLog->SetText("Event log: No events yet");
         eventLog->SetWrap(TextWrap::WrapWord);
         eventLog->SetFontSize(11);

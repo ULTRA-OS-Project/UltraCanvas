@@ -1,11 +1,13 @@
 // core/UltraCanvasImageElement.cpp
 // Image display component with loading, caching, and transformation support
-// Version: 1.0.0
-// Last Modified: 2024-12-30
+// Version: 1.1.0
+// Last Modified: 2026-06-02
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasImage.h"
+#include "CSSLayout/LayoutUtils.h"
+#include <optional>
 #include <string>
 #include <vector>
 #include <functional>
@@ -16,14 +18,27 @@
 
 namespace UltraCanvas {
 
-    UltraCanvasImageElement::UltraCanvasImageElement(const std::string &identifier, long id, long x, long y, long w,
-                                                     long h)
-            : UltraCanvasUIElement(identifier, id, x, y, w, h) {
+    UltraCanvasImageElement::UltraCanvasImageElement(const std::string &identifier, float x, float y, float w,
+                                                     float h)
+            : UltraCanvasUIElement(identifier, x, y, w, h) {
+
+    }
+
+    UltraCanvasImageElement::UltraCanvasImageElement(const std::string &identifier, float w, float h)
+            : UltraCanvasUIElement(identifier, w, h) {
+
+    }
+
+    UltraCanvasImageElement::UltraCanvasImageElement(const std::string &identifier)
+            : UltraCanvasUIElement(identifier) {
 
     }
 
     bool UltraCanvasImageElement::LoadFromFile(const std::string &filePath) {
         loadedImage = UCImage::Get(filePath);
+        // Intrinsic size changed — re-measure (for auto-sized elements) and repaint.
+        InvalidateLayout();
+        RequestRedraw();
         if (loadedImage) {
             return true;
         }
@@ -32,77 +47,56 @@ namespace UltraCanvas {
 
     bool UltraCanvasImageElement::LoadFromImage(std::shared_ptr<UCImage> img) {
         loadedImage = img;
+        // Intrinsic size changed — re-measure (for auto-sized elements) and repaint.
+        InvalidateLayout();
+        RequestRedraw();
         if (loadedImage) {
             return true;
         }
         return false;
     }
 
-//    bool UltraCanvasImageElement::LoadFromMemory(const std::vector<uint8_t> &data, ImageFormat format) {
-//        imagePath.clear();
-//        imageData = data;
-//        loadState = ImageLoadState::Loading;
-//        errorMessage.clear();
-//
-//        if (data.empty()) {
-//            SetError("Empty image data");
-//            return false;
-//        }
-//
-//        // Auto-detect format if not specified
-//        if (format == ImageFormat::Unknown) {
-//            format = DetectFormatFromData(data);
-//        }
-//
-//        if (format == ImageFormat::Unknown) {
-//            SetError("Cannot determine image format");
-//            return false;
-//        }
-//
-//        return ProcessImageData(format);
-//    }
-//
-//    bool UltraCanvasImageElement::LoadFromMemory(const uint8_t *data, size_t size, ImageFormat format) {
-//        if (!data || size == 0) {
-//            SetError("Invalid image data");
-//            return false;
-//        }
-//
-//        std::vector<uint8_t> dataVector(data, data + size);
-//        return LoadFromMemory(dataVector, format);
-//    }
-//
-//    ImageFormat UltraCanvasImageElement::DetectFormatFromPath(const std::string &path) {
-//        // Get file extension
-//        size_t dotPos = path.find_last_of('.');
-//        if (dotPos == std::string::npos) return ImageFormat::Unknown;
-//
-//        std::string ext = path.substr(dotPos + 1);
-//        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-//
-//        if (ext == "png") return ImageFormat::PNG;
-//        if (ext == "jpg" || ext == "jpeg") return ImageFormat::JPEG;
-//        if (ext == "bmp") return ImageFormat::BMP;
-//        if (ext == "gif") return ImageFormat::GIF;
-//        if (ext == "tiff" || ext == "tif") return ImageFormat::TIFF;
-//        if (ext == "webp") return ImageFormat::WEBP;
-//        if (ext == "svg") return ImageFormat::SVG;
-//        if (ext == "ico") return ImageFormat::ICO;
-//        if (ext == "avif") return ImageFormat::AVIF;
-//
-//        return ImageFormat::Unknown;
-//    }
+    Size2Df UltraCanvasImageElement::NaturalImageSize() const {
+        if (loadedImage && loadedImage->IsValid()) {
+            return Size2Df((float)loadedImage->GetWidth(), (float)loadedImage->GetHeight());
+        }
+        return Size2Df(0.f, 0.f);
+    }
 
-    void UltraCanvasImageElement::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
-        if (!IsVisible() || bounds.width == 0 || bounds.height == 0) return;
+    Size2Df UltraCanvasImageElement::MeasureOwnContent(std::optional<float> /*definiteContentWidth*/,
+                                                       const CSSLayout::LayoutContext& /*ctx*/) {
+        // Content box = the image's natural pixel size ({0,0} if none loaded).
+        // The block layout adds padding/border and applies size.*/constraints.
+        return NaturalImageSize();
+    }
+
+    void UltraCanvasImageElement::ComputeIntrinsicSizes(const CSSLayout::LayoutContext& /*ctx*/) {
+        const float padH = GetTotalPaddingHorizontal() + GetTotalBorderHorizontal();
+        const float padV = GetTotalPaddingVertical()   + GetTotalBorderVertical();
+        Size2Df content = NaturalImageSize();
+        intrinsic.valid = true;
+        intrinsic.maxContentWidth  = content.width  + padH;
+        intrinsic.minContentWidth  = content.width  + padH;
+        intrinsic.maxContentHeight = content.height + padV;
+        intrinsic.minContentHeight = content.height + padV;
+    }
+
+    void UltraCanvasImageElement::Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) {
+        // No sub-rects to position: the image is drawn from GetLocalBounds() + fitMode at
+        // render time. The base sets finalBounds + damage tracking.
+        UltraCanvasUIElement::Arrange(finalRect, ctx);
+    }
+
+    void UltraCanvasImageElement::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
+        if (!IsVisible() || finalBounds.width == 0 || finalBounds.height == 0) return;
 
         ctx->PushState();
 
-        if (loadedImage->IsValid()) {
+        if (loadedImage && loadedImage->IsValid()) {
             DrawLoadedImage(ctx);
 //        } else if (loadedImage->IsLoading()) {
 //            DrawLoadingPlaceholder(ctx);
-        } else if (!loadedImage->errorMessage.empty() && showErrorPlaceholder) {
+        } else if (loadedImage && !loadedImage->errorMessage.empty() && showErrorPlaceholder) {
             DrawErrorPlaceholder(ctx);
         }
         ctx->PopState();
@@ -130,72 +124,6 @@ namespace UltraCanvas {
         return false;
     }
 
-//    ImageFormat UltraCanvasImageElement::DetectFormatFromData(const std::vector<uint8_t> &data) {
-//        if (data.size() < 4) return ImageFormat::Unknown;
-//
-//        // PNG signature
-//        if (data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47) {
-//            return ImageFormat::PNG;
-//        }
-//
-//        // JPEG signature
-//        if (data[0] == 0xFF && data[1] == 0xD8) {
-//            return ImageFormat::JPEG;
-//        }
-//
-//        // BMP signature
-//        if (data[0] == 0x42 && data[1] == 0x4D) {
-//            return ImageFormat::BMP;
-//        }
-//
-//        // GIF signature
-//        if (data.size() >= 6) {
-//            if ((data[0] == 0x47 && data[1] == 0x49 && data[2] == 0x46 &&
-//                 data[3] == 0x38 && (data[4] == 0x37 || data[4] == 0x39) && data[5] == 0x61)) {
-//                return ImageFormat::GIF;
-//            }
-//        }
-//
-//        // WebP signature
-//        if (data.size() >= 12) {
-//            if (data[0] == 0x52 && data[1] == 0x49 && data[2] == 0x46 && data[3] == 0x46 &&
-//                data[8] == 0x57 && data[9] == 0x45 && data[10] == 0x42 && data[11] == 0x50) {
-//                return ImageFormat::WEBP;
-//            }
-//        }
-//
-//        return ImageFormat::Unknown;
-//    }
-
-//    bool UltraCanvasImageElement::ProcessImageData(ImageFormat format) {
-//        try {
-//            // For now, we'll use the unified rendering system to load images
-//            // The actual decoding would be handled by the platform-specific implementation
-//
-//            // Create a simple image data structure
-//            loadedImage.format = format;
-//            loadedImage.rawData = imageData;
-//
-//            // For demonstration, set some default values
-//            // In a real implementation, this would decode the actual image
-//            loadedImage.width = GetWidth();
-//            loadedImage.height = GetHeight();
-//            loadedImage.channels = 4; // RGBA
-//            loadedImage.isValid = true;
-//
-//            loadState = ImageLoadState::Loaded;
-//
-//            if (onImageLoaded) {
-//                onImageLoaded();
-//            }
-//
-//            return true;
-//
-//        } catch (const std::exception& e) {
-//            SetError("Failed to process image: " + std::string(e.what()));
-//            return false;
-//        }
-//    }
 
     void UltraCanvasImageElement::SetError(const std::string &message) {
         errorMessage = message;
@@ -254,7 +182,7 @@ namespace UltraCanvas {
             ctx->SetTextPaint(Colors::Red);
             ctx->SetFontStyle({.fontSize=10});
 
-            Rect2Df textRect = GetLocalBounds();
+            Rect2Dd textRect = GetLocalBounds();
             textRect.y += static_cast<double>(GetHeight()) / 2.0f + 10;
             textRect.height = 20;
 
@@ -282,73 +210,6 @@ namespace UltraCanvas {
         );
         ctx->DrawText(text, textPos);
     }
-
-//    Rect2Di UltraCanvasImageElement::CalculateDisplayRect() {
-//        Rect2Di bounds = GetBounds();
-//
-//        if (!loadedImage->IsValid()) {
-//            return bounds;
-//        }
-//
-//        float imageWidth = static_cast<float>(loadedImage->width);
-//        float imageHeight = static_cast<float>(loadedImage->height);
-//
-//        switch (scaleMode) {
-//            case ImageScaleMode::NoScale:
-//                return Rect2Di(bounds.x, bounds.y, imageWidth, imageHeight);
-//
-//            case ImageScaleMode::Stretch:
-//                return bounds;
-//
-//            case ImageScaleMode::Uniform: {
-//                float scaleX = bounds.width / imageWidth;
-//                float scaleY = bounds.height / imageHeight;
-//                float uniformScale = std::min(scaleX, scaleY);
-//
-//                float scaledWidth = imageWidth * uniformScale;
-//                float scaledHeight = imageHeight * uniformScale;
-//
-//                return Rect2Di(
-//                        bounds.x + (bounds.width - scaledWidth) / 2,
-//                        bounds.y + (bounds.height - scaledHeight) / 2,
-//                        scaledWidth,
-//                        scaledHeight
-//                );
-//            }
-//
-//            case ImageScaleMode::UniformToFill: {
-//                float scaleX = bounds.width / imageWidth;
-//                float scaleY = bounds.height / imageHeight;
-//                float uniformScale = std::max(scaleX, scaleY);
-//
-//                float scaledWidth = imageWidth * uniformScale;
-//                float scaledHeight = imageHeight * uniformScale;
-//
-//                return Rect2Di(
-//                        bounds.x + (bounds.width - scaledWidth) / 2,
-//                        bounds.y + (bounds.height - scaledHeight) / 2,
-//                        scaledWidth,
-//                        scaledHeight
-//                );
-//            }
-//
-//            case ImageScaleMode::Center:
-//                return Rect2Di(
-//                        bounds.x + (bounds.width - imageWidth) / 2,
-//                        bounds.y + (bounds.height - imageHeight) / 2,
-//                        imageWidth,
-//                        imageHeight
-//                );
-//
-//            case ImageScaleMode::Tile:
-//                // For tiling, we'd need to draw multiple instances
-//                // For now, just return the bounds
-//                return bounds;
-//
-//            default:
-//                return bounds;
-//        }
-//    }
 
     void UltraCanvasImageElement::HandleMouseDown(const UCEvent &event) {
         if (!Contains(event.pointer)) return;

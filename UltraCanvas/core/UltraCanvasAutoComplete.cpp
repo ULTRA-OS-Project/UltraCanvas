@@ -11,9 +11,9 @@
 
 namespace UltraCanvas {
 
-    UltraCanvasAutoComplete::UltraCanvasAutoComplete(const std::string& identifier, long id,
-                                                     long x, long y, long w, long h)
-        : UltraCanvasTextInput(identifier, id, x, y, w, h) {
+    UltraCanvasAutoComplete::UltraCanvasAutoComplete(const std::string& identifier,
+                                                     float x, float y, float w, float h)
+        : UltraCanvasTextInput(identifier, x, y, w, h) {
         SetShowValidationState(false);
         CreatePopupListView();
         WireListViewCallbacks();
@@ -255,7 +255,7 @@ namespace UltraCanvas {
 
     void UltraCanvasAutoComplete::CreatePopupListView() {
         popupListView = std::make_shared<UltraCanvasListView>(
-            GetIdentifier() + "_popup_lv", 0, 0, 0, 200, 100);
+            GetIdentifier() + "_popup_lv", 0, 0, 200, 100);
         popupListView->SetModel(&listModel);
         popupListView->SetShowHeader(false);
 
@@ -329,12 +329,12 @@ namespace UltraCanvas {
         int listHeight = visibleItems * static_cast<int>(acStyle.itemHeight);
         listHeight += static_cast<int>(acStyle.borderWidth) * 2;
 
-        int listWidth = std::max(GetBounds().width, 100);
+        int listWidth = std::max(static_cast<int>(GetBounds().width), 100);
         if (acStyle.maxPopupWidth > 0) {
             listWidth = std::min(listWidth, acStyle.maxPopupWidth);
         }
 
-        popupListView->SetSize(listWidth, listHeight);
+        popupListView->SetElementSize(Size2Df(listWidth, listHeight));
     }
 
 } // namespace UltraCanvas
