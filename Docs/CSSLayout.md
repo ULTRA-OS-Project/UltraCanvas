@@ -41,14 +41,14 @@ The engine implements a useful subset of CSS, not the whole specification.
 
 ```mermaid
 flowchart TD
-    A["UltraCanvasUIElement : public CSSLayout::Element"] --> B["Window render loop<br/>(dirty + visible window)"]
+    A["UltraCanvasUIElement<br/>(: public CSSLayout::Element)"] --> B["Window render loop<br/>(dirty + visible window)"]
     B --> C["Measure(constraints, ctx)"]
-    C -->|"leaf widgets report size via"| D["MeasureOwnContent()"]
+    C -->|"leaf reports size via"| D["MeasureOwnContent()"]
     C --> E["Arrange(finalRect, ctx)"]
-    E -->|"dispatch by layout.display"| F["ArrangeBlock / ArrangeFlex / ArrangeGrid"]
-    F --> G["sets finalBounds (border-box)"]
-    G -->|"widget override does internal placement"| H["Widget::Arrange() → CalculateLayout()"]
-    G --> I["Render() paints using finalBounds"]
+    E -->|"dispatch by layout.display"| F["ArrangeBlock / Flex / Grid"]
+    F --> G["sets finalBounds<br/>(border-box)"]
+    G -->|"internal placement"| H["Widget::Arrange() override"]
+    G --> I["Render() uses finalBounds"]
 ```
 
 The window calls `Measure()` then `Arrange()` on the root each frame for visible, dirty
@@ -126,13 +126,13 @@ sequenceDiagram
     participant L as Leaf widget
     participant A as Element.Arrange (top-down)
     W->>E: Measure(constraints, ctx)
-    Note over E: cached by (constraints + ctx);<br/>dispatch by layout.display
+    Note over E: cached by constraints + ctx, then dispatch by layout.display
     E->>L: MeasureOwnContent(width?, ctx)
     L-->>E: content-box size
     E-->>W: measured size
     W->>A: Arrange(finalRect, ctx)
-    Note over A: sets finalBounds (border-box);<br/>ArrangeBlock / Flex / Grid
-    A->>L: Widget::Arrange override → place sub-rects
+    Note over A: sets finalBounds = border-box, then ArrangeBlock / Flex / Grid
+    A->>L: Widget::Arrange override places sub-rects
 ```
 
 - **Measure** (`Element::Measure`, `Element.cpp:187`) computes each node's content-box size
