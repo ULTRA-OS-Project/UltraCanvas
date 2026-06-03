@@ -110,7 +110,7 @@ namespace UltraCanvas {
             ctx->SetFontSize(16.0f);
 
             // Calculate center position (simplified)
-            int titleX = GetX() + GetWidth() / 2 - chartTitle.length() * 5;
+            float titleX = GetX() + GetWidth() / 2 - chartTitle.length() * 5;
             ctx->DrawText(chartTitle, {titleX, GetY()});
         }
     }

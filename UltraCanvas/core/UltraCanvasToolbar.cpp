@@ -418,12 +418,12 @@ namespace UltraCanvas {
 
         // Draw shadow
         ctx->SetFillPaint(toolbarAppearance.shadowColor);
-        ctx->FillRoundedRectangle({
+        ctx->FillRoundedRectangle(Rect2Dd(
                                           toolbarAppearance.shadowOffset.x,
                                           toolbarAppearance.shadowOffset.y,
                                           finalBounds.width,
                                           finalBounds.height
-                                  },
+                                  ),
                 GetBorderTopWidth()
         );
     }

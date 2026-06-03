@@ -342,15 +342,15 @@ namespace UltraCanvas {
         int numGridLines = 5;
         for (int i = 1; i <= numGridLines; i++) {
             double value = (maxAxisValue / numGridLines) * i;
-            int pixelPos = static_cast<int>(ValueToPixels(value));
+            double pixelPos = ValueToPixels(value);
 
             // Left side grid line
-            int leftX = centerX - pixelPos;
+            double leftX = centerX - pixelPos;
             ctx->DrawLine({leftX, chartPaddingTop},
                           {leftX, GetHeight() - chartPaddingBottom});
 
             // Right side grid line
-            int rightX = centerX + pixelPos;
+            double rightX = centerX + pixelPos;
             ctx->DrawLine({rightX, chartPaddingTop},
                           {rightX, GetHeight() - chartPaddingBottom});
         }
@@ -408,8 +408,8 @@ namespace UltraCanvas {
     void UltraCanvasPopulationChart::RenderCenterLine(IRenderContext* ctx) {
         ctx->SetStrokePaint(axisColor);
         ctx->SetStrokeWidth(2.0f);
-        ctx->DrawLine({centerX, chartPaddingTop},
-                      {centerX, GetHeight() - chartPaddingBottom});
+        ctx->DrawLine(Point2Dd(centerX, chartPaddingTop),
+                      Point2Dd(centerX, GetHeight() - chartPaddingBottom));
     }
 
     void UltraCanvasPopulationChart::RenderLegend(IRenderContext* ctx) {
@@ -442,8 +442,8 @@ namespace UltraCanvas {
     }
 
 // ===== HELPER METHODS =====
-    void UltraCanvasPopulationChart::DrawHorizontalBar(IRenderContext* ctx, int x, int y,
-                                                       int width, int height,
+    void UltraCanvasPopulationChart::DrawHorizontalBar(IRenderContext* ctx, float x, float y,
+                                                       float width, float height,
                                                        const Color& color, bool rightSide) {
         ctx->SetFillPaint(color);
         ctx->FillRectangle(Rect2Dd(x, y, width, height));
@@ -455,14 +455,14 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasPopulationChart::DrawAgeLabel(IRenderContext* ctx,
-                                                  const std::string& label, int y) {
+                                                  const std::string& label, float y) {
         ctx->SetTextPaint(textColor);
         ctx->SetFontSize(fontSize);
         ctx->DrawText(label, {chartPaddingLeft - 50, y});
     }
 
     void UltraCanvasPopulationChart::DrawAxisValue(IRenderContext* ctx, double value,
-                                                   int x, int y) {
+                                                   float x, float y) {
         std::string valueStr = PopulationChartUtils::FormatPopulation(value);
         int textWidth = ctx->GetTextLineWidth(valueStr);
         ctx->DrawText(valueStr, {x - textWidth / 2, y});

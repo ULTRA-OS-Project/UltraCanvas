@@ -110,7 +110,7 @@ namespace UltraCanvas {
         // Shadow (for Docked style)
         bool hasShadow = false;
         Color shadowColor = Color(0, 0, 0, 60);
-        Point2Di shadowOffset = Point2Di(0, 2);
+        Point2Df shadowOffset = Point2Df(0, 2);
         float shadowBlur = 4.0f;
 
         // Animation
