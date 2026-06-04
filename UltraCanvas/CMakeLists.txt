@@ -213,6 +213,11 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasGourceTree.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasTreeMapElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasFlowChartPalette.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasGaugeDiagramElement.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasCompositorDiagram.cpp
+
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/QRCode/UltraCanvasQRCode.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/QRCode/third_party/qrcodegen.cpp
 
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Text/UltraCanvasMarkdown.cpp
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartElement.cpp
@@ -264,15 +269,6 @@ if(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     )
 endif()
 
-# Built-in plugins (always included)
-file(GLOB ULTRACANVAS_TEXT_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Text/*.cpp
-)
-
-file(GLOB ULTRACANVAS_CHARTS_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/*.cpp
-)
-
 set(ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/ImageCairo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/RenderContextCairo.cpp
@@ -321,10 +317,6 @@ set(ULTRACANVAS_ALL_SOURCES
     ${ULTRACANVAS_CORE_SOURCES}
     ${ULTRACANVAS_PLATFORM_SOURCES}
     ${ULTRACANVAS_LIBSPECIFIC_SOURCES}
-    ${ULTRACANVAS_TEXT_SOURCES}
-    ${ULTRACANVAS_CHARTS_SOURCES}
-        #        dialogs/PixelFXExportDialog.cpp
-#        dialogs/PixelFXExportDialog.h
 )
 
 # ===== BUILD CORE LIBRARY =====

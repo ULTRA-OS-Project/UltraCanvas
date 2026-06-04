@@ -945,6 +945,17 @@ namespace UltraCanvas {
                                [this]() { return CreateArcDiagramExamples(); },
                                "Apps/DemoApp/UltraCanvasArcDiagramExamples.cpp",
                                "Docs/UltraCanvas/UltraCanvasArcDiagramExamples.md");
+    diagramBuilder.AddItem("compositor", "Compositor Diagram", "Node-based compositor with subgraph, visual scripting, and feature playground",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateCompositorDiagramExamples(); },
+                               "DemoApp/UltraCanvasCompositorDiagramExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasCompositorDiagramExamples.md")
+                .AddVariant("compositor", "Image Compositor")
+                .AddVariant("compositor", "Subgraph / Groups")
+                .AddVariant("compositor", "Visual Scripting")
+                .AddVariant("compositor", "Feature Playground")
+                .AddVariant("compositor", "Logic Diagram")
+                .AddVariant("compositor", "Marketing Funnel");
     diagramBuilder.AddItem("mindmap", "MindMap", "MindMap",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("MindMap is not ready yet"); });
@@ -1089,10 +1100,9 @@ namespace UltraCanvas {
 
         auto toolsBuilder = DemoCategoryBuilder(this, DemoCategory::Tools);
 
-        toolsBuilder.AddItem("qrcode", "QR code", "QR code scanner",
-                             ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples("## QR code\n"
-                                                                                  "Not ready yet"); });
+        toolsBuilder.AddItem("qrcode", "QR code", "QR code generator and decoder",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateQRCodeExamples(); });
 
         toolsBuilder.AddItem("barcode", "Bar code", "Bar code",
                                ImplementationStatus::PartiallyImplemented,
@@ -1142,9 +1152,9 @@ namespace UltraCanvas {
         modulesBuilder.AddItem("virtualfs", "VirtualFS", "VirtualFS Module",
                                ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/VirtualFS/README.md")); });
-        modulesBuilder.AddItem("gpio", "GPIO support", "GPIO support",
-                             ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples("## GPIO support"); });
+//        modulesBuilder.AddItem("gpio", "GPIO support", "GPIO support",
+//                             ImplementationStatus::PartiallyImplemented,
+//                             [this]() { return CreatePartiallyImplementedExamples("## GPIO support"); });
 
         auto widgetsBuilder = DemoCategoryBuilder(this, DemoCategory::Widgets);
         widgetsBuilder.AddItem("datepicker", "Date Picker", "Date Picker",
@@ -1196,7 +1206,7 @@ namespace UltraCanvas {
                 {DemoCategory::AudioElements, "Audio Elements"},
                 {DemoCategory::Widgets, "Widgets"},
                 {DemoCategory::Tools, "Tools"},
-                {DemoCategory::Modules, "Modules"}
+                {DemoCategory::Modules, "ULTRA OS modules"}
         };
 
 

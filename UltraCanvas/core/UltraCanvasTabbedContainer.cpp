@@ -1,7 +1,7 @@
 // core/UltraCanvasTabbedContainer.cpp
 // Enhanced tabbed container component with overflow dropdown and search functionality
-// Version: 2.0.0
-// Last Modified: 2026-05-31
+// Version: 2.0.1
+// Last Modified: 2026-06-04
 // Author: UltraCanvas Framework
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasApplication.h"
@@ -64,6 +64,12 @@ namespace UltraCanvas {
         if (activeTabIndex >= 0 && activeTabIndex < (int)tabs.size()) {
             if (auto* content = tabs[activeTabIndex]->content.get()) {
                 Rect2Di cb = GetContentAreaBounds();
+                // Drop any stale (indefinite-height) measurement / grid-track state cached on
+                // this subtree during the base block pass or a previous tab activation, so the
+                // Exact re-measure below actually recomputes. (InvalidateLayout only bubbles
+                // UP, never down to the tab content, so a switched-to grid/flex tab would
+                // otherwise reuse collapsed rows and render its children stacked at the origin.)
+                content->InvalidateSubtree();
                 CSSLayout::MeasureConstraints mc{
                         { CSSLayout::ConstraintMode::Exact, (float)cb.width },
                         { CSSLayout::ConstraintMode::Exact, (float)cb.height } };
@@ -198,6 +204,30 @@ namespace UltraCanvas {
 
         EnsureTabVisible(index);
         UpdateContentVisibility();
+
+        // Lay out the newly-active content immediately. A deferred window relayout
+        // does not reliably re-arrange a nested TabbedContainer on a mere tab switch
+        // (the InvalidateLayout bubble does not trigger an Arrange of this subtree),
+        // so the new tab's content would otherwise stay at its un-arranged constructor
+        // positions and render blank. Doing it here guarantees a correct layout the
+        // instant the tab changes, against the current content-area bounds.
+        if (auto* content = tabs[index]->content.get()) {
+            if (GetWidth() > 0 && GetHeight() > 0) {
+                content->InvalidateSubtree();
+                CSSLayout::LayoutContext lctx;
+                if (auto* w = GetWindow()) {
+                    lctx.viewportWidth  = (float)w->GetWidth();
+                    lctx.viewportHeight = (float)w->GetHeight();
+                }
+                Rect2Di cb = GetContentAreaBounds();
+                CSSLayout::MeasureConstraints mc{
+                        { CSSLayout::ConstraintMode::Exact, (float)cb.width },
+                        { CSSLayout::ConstraintMode::Exact, (float)cb.height } };
+                content->Measure(mc, lctx);
+                content->Arrange(Rect2Df(cb.x, cb.y, cb.width, cb.height), lctx);
+            }
+        }
+
         // Re-run layout (arranges the newly active content) AND invalidate the whole
         // element so the CONTENT region repaints — not just the tab strip. Without
         // this the header changed but the content area kept the previous tab.
