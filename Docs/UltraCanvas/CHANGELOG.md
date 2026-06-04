@@ -1,6 +1,9 @@
 #### 2026-06-04 *0.2.2*
 - Added Gauges, Compositor diagram, QR code
 - Fixed Tabbed container and inner tabs layout
+- Implemented SortChildNodes method and autoSortChildren property in the TreeView
+- Fix label layout resize bug
+- Make Arc diagram and Architectural Adjacency Diagram use Grid layout instead of fixed elements positions
 
 #### 2026-06-03 *0.2.1*
 - Major update. Implemented CSS Flex/Grid/Absolute layout support.

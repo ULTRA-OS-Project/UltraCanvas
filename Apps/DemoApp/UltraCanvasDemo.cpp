@@ -589,8 +589,8 @@ namespace UltraCanvas {
                 .AddVariant("breadcrumb", "Rounded Strip");
 
         basicBuilder.AddItem("gauges", "Gauges", "Gauges",
-                             ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples("Gauges is not ready yet"); });
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateGaugeExamples(); });
 
         // ===== EXTENDED FUNCTIONALITY =====
         auto extendedBuilder = DemoCategoryBuilder(this, DemoCategory::ExtendedFunctionality);
@@ -1230,6 +1230,9 @@ namespace UltraCanvas {
                 }
                 itemData.rightIcon = TreeNodeIcon(GetStatusIcon(demoItem->status), 12, 12);
                 categoryTreeView->AddNode(categoryData.nodeId, itemData);
+            }
+            if (category == DemoCategory::Charts || category == DemoCategory::Diagrams || category == DemoCategory::InfoGraphics) {
+                categoryNode->SortChildNodes();
             }
         }
 

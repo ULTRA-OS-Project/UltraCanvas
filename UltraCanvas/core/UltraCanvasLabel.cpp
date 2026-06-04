@@ -14,8 +14,8 @@
 //   4. Property setters call textLayout.reset() + InvalidateLayout()
 //      (bubbles engine caches up) + RequestRedraw() (damage).
 //
-// Version: 2.2.0
-// Last Modified: 2026-06-02
+// Version: 2.2.1
+// Last Modified: 2026-06-04
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasLabel.h"
@@ -251,6 +251,19 @@ namespace UltraCanvas {
     void UltraCanvasLabel::InvalidateLayout() {
         CSSLayout::Element::InvalidateLayout();
         internalLayoutValid = false;
+    }
+
+    void UltraCanvasLabel::Arrange(const Rect2Df& finalRect,
+                                   const CSSLayout::LayoutContext& ctx) {
+        // Capture BEFORE the base call overwrites finalBounds.
+        const bool sizeChanged = (finalRect.width  != finalBounds.width) ||
+                                 (finalRect.height != finalBounds.height);
+        UltraCanvasUIElement::Arrange(finalRect, ctx);
+        // The text layout's wrap width is derived from finalBounds in
+        // UpdateInternalLayout(); when the engine re-arranges us to a new size
+        // (e.g. a window resize growing a grid/flex cell) the cached layout
+        // must be re-synced, or the text keeps its previous wrap width.
+        if (sizeChanged) internalLayoutValid = false;
     }
 
     void UltraCanvasLabel::UpdateInternalLayout(IRenderContext *ctx) {

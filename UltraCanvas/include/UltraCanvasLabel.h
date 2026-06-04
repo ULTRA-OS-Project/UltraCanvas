@@ -4,8 +4,8 @@
 // MeasureOwnContent (constraint-aware content sizing) and ComputeIntrinsicSizes
 // (constraint-free max/min-content) so the engine can place the label
 // without the widget mutating finalBounds itself.
-// Version: 2.0.1
-// Last Modified: 2026-05-29
+// Version: 2.0.2
+// Last Modified: 2026-06-04
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -108,6 +108,11 @@ namespace UltraCanvas {
         void ComputeIntrinsicSizes(const CSSLayout::LayoutContext& ctx) override;
 
         void InvalidateLayout() override;
+
+        // Re-sync the cached text layout when the engine re-arranges us to a
+        // new size (e.g. a window resize growing a grid/flex cell); otherwise
+        // wrapped text keeps its previous wrap width.
+        void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
         // ===== RENDERING =====
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
