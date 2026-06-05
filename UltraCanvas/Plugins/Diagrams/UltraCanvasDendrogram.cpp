@@ -1,8 +1,15 @@
 // UltraCanvasDendrogram.cpp
 // Interactive dendrogram / phylogenetic tree diagram element
-// Version: 1.4.1
-// Last Modified: 2026-05-09
+// Version: 1.4.2
+// Last Modified: 2026-06-05
 // Author: UltraCanvas Framework
+//
+// Changelog:
+//   v1.4.2 (2026-06-05):
+//     - Re-fit the tree layout when the element is resized. Render() now compares
+//       the current width/height to the size used by the last RebuildLayout() and
+//       flips layoutDirty on a change, so a flex/stretch parent (which resizes us
+//       via SetBounds without touching layoutDirty) makes the diagram reflow.
 
 #include "Plugins/Diagrams/UltraCanvasDendrogram.h"
 #include <cmath>
@@ -281,7 +288,9 @@ static constexpr float kPi = 3.14159265f;
                 n->py = pos.y;
             }
         }
-        
+
+        lastLayoutWidth  = GetWidth();
+        lastLayoutHeight = GetHeight();
         layoutDirty = false;
     }
 
@@ -354,6 +363,10 @@ static constexpr float kPi = 3.14159265f;
         if (!IsVisible()) return;
 
         try {
+            // Flex/stretch parents resize us via SetBounds without flipping
+            // layoutDirty; re-fit the tree when our size actually changed.
+            if (GetWidth() != lastLayoutWidth || GetHeight() != lastLayoutHeight)
+                layoutDirty = true;
             if (layoutDirty) RebuildLayout();
 
             if (!dataSource || dataSource->GetNodeCount() == 0) {
