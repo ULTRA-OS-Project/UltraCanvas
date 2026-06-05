@@ -519,8 +519,6 @@ namespace UltraCanvas {
         bottomRightRadius *= scale;
         bottomLeftRadius *= scale;
 
-        cairo_save(cairo);
-
         // Create the rounded rectangle path
         cairo_new_path(cairo);
 
