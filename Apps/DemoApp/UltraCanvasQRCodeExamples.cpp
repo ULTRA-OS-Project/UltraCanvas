@@ -383,18 +383,23 @@ namespace UltraCanvas {
             hint->SetTextColor(Color(110, 110, 110, 255));
             page->AddChild(hint);
 
+            auto openBtn = std::make_shared<UltraCanvasButton>(
+                "DecOpen", 20, 72, 160, 32, "Open image\u2026");
+            openBtn->SetFontSize(12);
+            // Use SetColors (not SetBackgroundColor) so the button's normal/
+            // hover/pressed style colors are set \u2014 otherwise it keeps the
+            // default light ButtonFace and white text looks disabled.
+            openBtn->SetColors(Color(40, 167, 69), Color(34, 142, 59),
+                               Color(28, 117, 49), Color(40, 167, 69));
+            openBtn->SetTextColors(Colors::White, Colors::White,
+                                   Colors::White, Colors::White);
+            page->AddChild(openBtn);
+
             auto preview = std::make_shared<UltraCanvasImageElement>(
-                "DecPreview", 20, 80, 480, 480);
+                "DecPreview", 20, 116, 480, 444);
             preview->SetFitMode(ImageFitMode::Contain);
             page->AddChild(preview);
             auto* previewPtr = preview.get();
-
-            auto openBtn = std::make_shared<UltraCanvasButton>(
-                "DecOpen", 20, 575, 160, 32, "Open image\u2026");
-            openBtn->SetFontSize(12);
-            openBtn->SetBackgroundColor(Color(76, 175, 80));
-            openBtn->SetTextColors(Colors::White);
-            page->AddChild(openBtn);
 
             auto resultsTitle = std::make_shared<UltraCanvasLabel>(
                 "DecResultsTitle", 520, 80, 560, 22);
@@ -413,7 +418,7 @@ namespace UltraCanvas {
             auto* resultsPtr = resultsBody.get();
 
             auto status = std::make_shared<UltraCanvasLabel>(
-                "DecStatus", 200, 580, 880, 22);
+                "DecStatus", 196, 77, 884, 22);
             status->SetText("");
             status->SetFontSize(11);
             status->SetTextColor(Color(120, 120, 120, 255));
