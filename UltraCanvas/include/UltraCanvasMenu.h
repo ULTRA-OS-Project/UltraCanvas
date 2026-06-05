@@ -171,7 +171,6 @@ namespace UltraCanvas {
 
         // Submenu
         int submenuDelay = 300;  // milliseconds
-        int submenuOffset = 2;
 
         // Animation
         bool enableAnimations = false;
@@ -498,7 +497,6 @@ namespace UltraCanvas {
         style.iconSize = 16;
         style.iconSpacing = 6;
         style.shortcutSpacing = 20;
-        style.submenuOffset = 2;
         style.separatorHeight = 1;
         style.borderWidth = 1;
         style.borderRadius = 0;

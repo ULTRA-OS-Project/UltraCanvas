@@ -315,13 +315,13 @@ namespace UltraCanvas {
         infoPanel->SetPadding(10,15,10,15);
         infoPanel->SetBorders(1, Color(200, 200, 200, 255));
 
-        auto infoTitle = std::make_shared<UltraCanvasLabel>("InfoTitle", 0, 0, 250, 25);
+        auto infoTitle = std::make_shared<UltraCanvasLabel>("InfoTitle", 15, 10, 0, 25);
         infoTitle->SetText("SVG Features:");
         infoTitle->SetFontSize(14);
         infoTitle->SetFontWeight(FontWeight::Bold);
         infoPanel->AddChild(infoTitle);
 
-        auto infoText = std::make_shared<UltraCanvasLabel>("InfoText", 0, 45, 240, 230);
+        auto infoText = std::make_shared<UltraCanvasLabel>("InfoText", 15, 45, 0, 0);
         infoText->SetText(
                 "• Scalable Vector Graphics support\n"
                 "• Load from file or string\n"
