@@ -1104,10 +1104,25 @@ namespace UltraCanvas {
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateQRCodeExamples(); });
 
-        toolsBuilder.AddItem("barcode", "Bar code", "Bar code",
-                               ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("## Bar code\n"
-                                                                                    "Not ready yet"); });
+        toolsBuilder.AddItem("barcode", "Bar code",
+                               "1D barcode widget — 12 symbologies (Code 39/93/128, GS1-128, "
+                               "EAN-13/8, UPC-A/E, ISBN, ITF, ITF-14, Std 2 of 5, Codabar, MSI, "
+                               "Pharmacode)",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateBarcodeExamples(); },
+                               "Apps/DemoApp/UltraCanvasBarcodeExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasBarcodeElement.md")
+                .AddVariant("barcode", "Code 39")
+                .AddVariant("barcode", "Code 93")
+                .AddVariant("barcode", "Code 128 / GS1-128")
+                .AddVariant("barcode", "EAN-13 / EAN-8")
+                .AddVariant("barcode", "UPC-A / UPC-E")
+                .AddVariant("barcode", "ISBN-13")
+                .AddVariant("barcode", "ITF / ITF-14")
+                .AddVariant("barcode", "Standard 2 of 5")
+                .AddVariant("barcode", "Codabar")
+                .AddVariant("barcode", "MSI Plessey")
+                .AddVariant("barcode", "Pharmacode");
 
         toolsBuilder.AddItem("ocr", "OCR", "OCR",
                              ImplementationStatus::NotImplemented,

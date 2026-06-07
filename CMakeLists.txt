@@ -126,6 +126,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasCompositorDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasGaugeExamples.cpp
             Apps/DemoApp/UltraCanvasQRCodeExamples.cpp
+            Apps/DemoApp/UltraCanvasBarcodeExamples.cpp
     )
 
     # These files depend on libvips

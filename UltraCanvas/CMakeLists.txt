@@ -223,7 +223,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasFlowChartPalette.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasGaugeDiagramElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasCompositorDiagram.cpp
-
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Barcode/*.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Barcode/Encoders/*.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/QRCode/UltraCanvasQRCode.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/QRCode/third_party/qrcodegen.cpp
 
