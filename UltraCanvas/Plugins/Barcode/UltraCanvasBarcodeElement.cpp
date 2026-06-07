@@ -4,9 +4,11 @@
 // HRI text uses the standard text layout path. Rotation is performed by
 // transforming the context around the widget center.
 //
-// Version: 1.0.0
-// Last Modified: 2026-05-19
+// Version: 1.1.0
+// Last Modified: 2026-06-07
 // Author: UltraCanvas Framework
+// V1.1.0: CSS Measure/Arrange migration — GetPreferredWidth/Height replaced by
+//   MeasureOwnContent/ComputeIntrinsicSizes; Render/RenderError now take Rect2Df.
 
 #include "Plugins/Barcode/UltraCanvasBarcodeElement.h"
 #include <algorithm>
@@ -171,15 +173,47 @@ namespace UltraCanvas {
         return {(int)w, (int)h};
     }
 
-    int UltraCanvasBarcodeElement::GetPreferredWidth() {
-        const_cast<UltraCanvasBarcodeElement*>(this)->EnsureEncoded();
-        return GetNaturalSize().width
-               + GetTotalPaddingHorizontal() + GetTotalBorderHorizontal();
+    // ===== LAYOUT (CSS Measure/Arrange) =====
+    Size2Df UltraCanvasBarcodeElement::MeasureOwnContent(
+            std::optional<float> /*definiteContentWidth*/,
+            const CSSLayout::LayoutContext& /*ctx*/) {
+        // Content box = the encoded symbol's natural pixel size (no padding/border).
+        // GetNaturalSize() reads `pattern`, so the stream must be encoded first.
+        EnsureEncoded();
+        Size2Di n = GetNaturalSize();
+        return Size2Df((float)n.width, (float)n.height);
     }
-    int UltraCanvasBarcodeElement::GetPreferredHeight() {
-        const_cast<UltraCanvasBarcodeElement*>(this)->EnsureEncoded();
-        return GetNaturalSize().height
-               + GetTotalPaddingVertical() + GetTotalBorderVertical();
+
+    void UltraCanvasBarcodeElement::ComputeIntrinsicSizes(
+            const CSSLayout::LayoutContext& /*ctx*/) {
+        EnsureEncoded();
+        const float padH = GetTotalPaddingHorizontal() + GetTotalBorderHorizontal();
+        const float padV = GetTotalPaddingVertical()   + GetTotalBorderVertical();
+        Size2Di n = GetNaturalSize();
+        fprintf(stderr, "[BCDBG-NAT] %-16s natural=%dx%d\n", GetIdentifier().c_str(), n.width, n.height); // BCDBG temp
+        // Max-content (preferred) = the natural symbol size, in BORDER-box units.
+        intrinsic.valid = true;
+        intrinsic.maxContentWidth  = (float)n.width  + padH;
+        intrinsic.maxContentHeight = (float)n.height + padV;
+        if (style.autoFitToBounds) {
+            // The symbol scales to its bounds, so it can shrink well below natural
+            // size. Report a small min-content floor (NOT the full width) so flex/grid
+            // can size us down — otherwise a container narrower than the natural width
+            // would be forced to overflow (horizontal scroll).
+            intrinsic.minContentWidth  = padH + 32.f;
+            intrinsic.minContentHeight = padV + 16.f;
+        } else {
+            // Fixed-size symbol: min-content == max-content (non-shrinkable).
+            intrinsic.minContentWidth  = (float)n.width  + padH;
+            intrinsic.minContentHeight = (float)n.height + padV;
+        }
+    }
+
+    void UltraCanvasBarcodeElement::Arrange(const Rect2Df& finalRect,
+                                            const CSSLayout::LayoutContext& ctx) {
+        // No sub-rects: the symbol is drawn from GetLocalContentRect() + autoFit at
+        // render time. The base sets finalBounds + damage tracking.
+        UltraCanvasUIElement::Arrange(finalRect, ctx);
     }
 
     // ===== LAYOUT =====
@@ -249,9 +283,9 @@ namespace UltraCanvas {
     }
 
     // ===== RENDER =====
-    void UltraCanvasBarcodeElement::Render(IRenderContext* ctx, const Rect2Di& /*dirtyRect*/) {
+    void UltraCanvasBarcodeElement::Render(IRenderContext* ctx, const Rect2Df& /*dirtyRect*/) {
         EnsureEncoded();
-        Rect2Di local = GetLocalContentRect();
+        Rect2Df local = GetLocalContentRect();
 
         // Element background + border (handled by base if we delegate).
         UltraCanvasUIElement::Render(ctx, local);
@@ -399,7 +433,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasBarcodeElement::RenderError(IRenderContext* ctx, const Rect2Di& local) {
+    void UltraCanvasBarcodeElement::RenderError(IRenderContext* ctx, const Rect2Df& local) {
         // Diagonal cross + message in the error color, on the configured
         // background. Lets users immediately see something is wrong.
         ctx->PushState();

@@ -223,8 +223,17 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasFlowChartPalette.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasGaugeDiagramElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasCompositorDiagram.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Barcode/*.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Barcode/Encoders/*.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Barcode/UltraCanvasBarcodeElement.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Barcode/UltraCanvasBarcodeEncoders.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Barcode/Encoders/CodabarEncoder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Barcode/Encoders/Code128Encoder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Barcode/Encoders/Code39Encoder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Barcode/Encoders/Code93Encoder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Barcode/Encoders/EANUPCEncoder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Barcode/Encoders/ITFEncoder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Barcode/Encoders/MSIEncoder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Barcode/Encoders/PharmacodeEncoder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Barcode/Encoders/Standard25Encoder.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/QRCode/UltraCanvasQRCode.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/QRCode/third_party/qrcodegen.cpp
 

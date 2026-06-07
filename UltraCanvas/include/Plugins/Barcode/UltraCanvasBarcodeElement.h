@@ -3,9 +3,12 @@
 // renders bars + human-readable interpretation via the existing Cairo
 // render context. Encoders are pure-C++20, no external dependencies.
 //
-// Version: 1.0.0
-// Last Modified: 2026-05-19
+// Version: 1.1.0
+// Last Modified: 2026-06-07
 // Author: UltraCanvas Framework
+// V1.1.0: Migrated to the CSS Measure/Arrange layout API — replaced the old
+//   GetPreferredWidth/Height overrides with MeasureOwnContent/ComputeIntrinsicSizes
+//   (Image-element pattern) and fixed the Render/RenderError signatures to Rect2Df.
 
 #pragma once
 
@@ -16,6 +19,7 @@
 #include "UltraCanvasCommonTypes.h"
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 
 namespace UltraCanvas {
@@ -122,16 +126,23 @@ namespace UltraCanvas {
         // Re-encode now (data + symbology + options). Normally automatic.
         void Reencode();
 
-        // ===== PREFERRED SIZE =====
-        // Returns the natural size needed to render at the configured
-        // moduleWidth + barHeight (no scaling). Useful for layout planning.
-        int GetPreferredWidth() override;
-        int GetPreferredHeight() override;
-
+        // Natural pixel size needed to render at the configured moduleWidth +
+        // barHeight (no scaling). Content box only — excludes padding/border.
         Size2Di GetNaturalSize() const;
 
+        // ===== LAYOUT (CSS Measure/Arrange) =====
+        // Content box = the encoded symbol's natural pixel size (no padding/border).
+        // Fixed-intrinsic leaf, like the Image element. EnsureEncoded() runs first
+        // because the natural size depends on the encoded module stream. The symbol
+        // is drawn from GetLocalContentRect() + autoFitToBounds at render time, so
+        // Arrange has no sub-rects to place.
+        Size2Df MeasureOwnContent(std::optional<float> definiteContentWidth,
+                                  const CSSLayout::LayoutContext& ctx) override;
+        void ComputeIntrinsicSizes(const CSSLayout::LayoutContext& ctx) override;
+        void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
+
         // ===== RENDERING =====
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
         // ===== EVENTS =====
         bool OnEvent(const UCEvent& event) override;
@@ -173,7 +184,7 @@ namespace UltraCanvas {
         LayoutMetrics ComputeMetrics(IRenderContext* ctx, float availW, float availH) const;
 
         void RenderUnrotated(IRenderContext* ctx, const LayoutMetrics& m);
-        void RenderError(IRenderContext* ctx, const Rect2Di& local);
+        void RenderError(IRenderContext* ctx, const Rect2Df& local);
     };
 
     // ===== FACTORIES =====

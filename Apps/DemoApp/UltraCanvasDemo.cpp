@@ -1105,9 +1105,7 @@ namespace UltraCanvas {
                              [this]() { return CreateQRCodeExamples(); });
 
         toolsBuilder.AddItem("barcode", "Bar code",
-                               "1D barcode widget — 12 symbologies (Code 39/93/128, GS1-128, "
-                               "EAN-13/8, UPC-A/E, ISBN, ITF, ITF-14, Std 2 of 5, Codabar, MSI, "
-                               "Pharmacode)",
+                               "1D barcode widget — 12 symbologies",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateBarcodeExamples(); },
                                "Apps/DemoApp/UltraCanvasBarcodeExamples.cpp",

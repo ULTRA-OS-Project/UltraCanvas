@@ -1,7 +1,8 @@
 #### 2026-06-07 *0.2.3*
 - QR code decoder fixed (installed missing lib and configured github build)
 - Merged branch "UltraCanvas QR demo field visibility bug"
- 
+- Merged branch "Barcode widget for UltraCanvas" and fix barcode widget and its demo
+
 #### 2026-06-04 *0.2.2*
 - Added Gauges, Compositor diagram, QR code
 - Fixed Tabbed container and inner tabs layout
