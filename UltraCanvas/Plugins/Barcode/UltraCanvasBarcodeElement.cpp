@@ -190,7 +190,6 @@ namespace UltraCanvas {
         const float padH = GetTotalPaddingHorizontal() + GetTotalBorderHorizontal();
         const float padV = GetTotalPaddingVertical()   + GetTotalBorderVertical();
         Size2Di n = GetNaturalSize();
-        fprintf(stderr, "[BCDBG-NAT] %-16s natural=%dx%d\n", GetIdentifier().c_str(), n.width, n.height); // BCDBG temp
         // Max-content (preferred) = the natural symbol size, in BORDER-box units.
         intrinsic.valid = true;
         intrinsic.maxContentWidth  = (float)n.width  + padH;

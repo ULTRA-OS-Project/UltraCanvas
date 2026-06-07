@@ -307,15 +307,6 @@ namespace UltraCanvas {
         Rect2Df oldBounds = finalBounds;
         CSSLayout::Element::Arrange(newFinalRect, ctx);
 
-        { // BCDBG (temporary)
-            const std::string& id = GetIdentifier();
-            if (id == "BarcodeExamples" || id == "Playground" || id == "PlayControls" ||
-                id == "Gallery" || id == "DataInput" || id == "LiveBc" ||
-                id == "BarcodeCard_Code 39" || id == "Bc_Code 39" || id == "BarcodeSub")
-                fprintf(stderr, "[BCDBG] %-20s final=(%.0f,%.0f %0.fx%.0f)\n", id.c_str(),
-                        finalBounds.x, finalBounds.y, finalBounds.width, finalBounds.height);
-        }
-
         Rect2Df damage = oldBounds.Union(finalBounds);
 
         if (auto* parentCont = GetParentContainer()) {

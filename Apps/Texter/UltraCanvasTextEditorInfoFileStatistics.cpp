@@ -1,12 +1,16 @@
 // Apps/Texter/UltraCanvasTextEditorInfoFileStatistics.cpp
 // File statistics dialog for the text editor.
-// Version: 1.1.0
-// Last Modified: 2026-06-01
+// Version: 1.2.0
+// Last Modified: 2026-06-07
 // Author: UltraCanvas Framework
+// V1.2.0: Migrated from the removed legacy layout-manager API (CreateVBoxLayout /
+//   CreateGridLayout / GridRowColumnDefinition) to the CSS layout API — the dialog
+//   is a flex column and the table is a CSS grid.
 
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasSpacer.h"
 #include "CSSLayout/CSSLayout.h"
+#include <vector>
 #include <filesystem>
 #include <chrono>
 #include <ctime>
@@ -228,7 +232,7 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
     // Clamp dialog height to a reasonable max (window is non-scrollable for now).
     const int maxVisibleRows = 16;
     const int visibleRows = std::min(std::max(rowCount, 1), maxVisibleRows);
-    const int gridHeight = headerHeight + visibleRows * rowHeight;
+    const int gridHeight = headerHeight + 2 + visibleRows * (rowHeight + 1);
 
     int dialogHeight = dialogPadding * 2
                        + titleHeight + spacing
@@ -246,8 +250,8 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
 
     fileStatsDialog = UltraCanvasDialogManager::CreateDialog(dlgConfig);
 
-    auto mainLayout = CreateVBoxLayout(fileStatsDialog.get());
-    mainLayout->SetSpacing(spacing);
+    fileStatsDialog->layout.SetFlexColumn().SetFlexGap(spacing)
+                          .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     fileStatsDialog->SetPadding(dialogPadding);
 
     // ===== TITLE =====
@@ -260,7 +264,9 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
     titleLabel->SetFontSize(15);
     titleLabel->SetFontWeight(FontWeight::Bold);
     titleLabel->SetAlignment(TextAlignment::Left);
-    mainLayout->AddUIElement(titleLabel)->SetWidthMode(SizeMode::Fill);
+    fileStatsDialog->AddChild(titleLabel);
+    titleLabel->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    titleLabel->size.height = CSSLayout::Dimension::Px(titleHeight);
 
     // ===== TABLE =====
     auto gridContainer = std::make_shared<UltraCanvasContainer>(
@@ -268,22 +274,32 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
     gridContainer->SetBackgroundColor(Color(220, 220, 224));
     gridContainer->SetBorders(1, Color(180, 180, 188));
 
-    auto grid = CreateGridLayout(gridContainer.get(), gridRowCount, 8);
-    grid->SetSpacing(1);  // 1px gaps act as grid lines via container bg color
+    using CSSLayout::GridTrackSize;
+    using CSSLayout::GridTrackSizeKind;
+    using CSSLayout::Dimension;
 
-    grid->SetColumnDefinition(0, GridRowColumnDefinition::Fixed(colMarker));
-    grid->SetColumnDefinition(1, GridRowColumnDefinition::Star(1));      // name expands
-    grid->SetColumnDefinition(2, GridRowColumnDefinition::Fixed(colSize));
-    grid->SetColumnDefinition(3, GridRowColumnDefinition::Fixed(colCharset));
-    grid->SetColumnDefinition(4, GridRowColumnDefinition::Fixed(colWords));
-    grid->SetColumnDefinition(5, GridRowColumnDefinition::Fixed(colChars));
-    grid->SetColumnDefinition(6, GridRowColumnDefinition::Fixed(colModified));
-    grid->SetColumnDefinition(7, GridRowColumnDefinition::Fixed(colStatus));
-
-    grid->SetRowDefinition(0, GridRowColumnDefinition::Fixed(headerHeight));
-    for (int r = 1; r < gridRowCount; r++) {
-        grid->SetRowDefinition(r, GridRowColumnDefinition::Fixed(rowHeight));
+    // 8 columns: marker, name (expands), size, charset, words, chars, modified, status.
+    std::vector<GridTrackSize> cols = {
+            {GridTrackSizeKind::Fixed, Dimension::Px(colMarker)},
+            {GridTrackSizeKind::Fr,    Dimension::Fr(1)},          // File Name expands
+            {GridTrackSizeKind::Fixed, Dimension::Px(colSize)},
+            {GridTrackSizeKind::Fixed, Dimension::Px(colCharset)},
+            {GridTrackSizeKind::Fixed, Dimension::Px(colWords)},
+            {GridTrackSizeKind::Fixed, Dimension::Px(colChars)},
+            {GridTrackSizeKind::Fixed, Dimension::Px(colModified)},
+            {GridTrackSizeKind::Fixed, Dimension::Px(colStatus)},
+    };
+    // Row 0 = header; rows 1..N = one per document.
+    std::vector<GridTrackSize> rows;
+    rows.push_back({GridTrackSizeKind::Fixed, Dimension::Px(headerHeight)});
+    for (int r = 1; r < gridRowCount; ++r) {
+        rows.push_back({GridTrackSizeKind::Fixed, Dimension::Px(rowHeight)});
     }
+
+    gridContainer->layout.SetGrid()
+                        .SetGridColumns(cols)
+                        .SetGridRows(rows)
+                        .SetGridGap(1);  // 1px gaps act as grid lines via container bg color
 
     // ----- Header row -----
     auto addHeaderCell = [&](int col, const std::string &title, TextAlignment align) {
@@ -296,7 +312,9 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
         label->SetBackgroundColor(Color(235, 235, 240));
         label->SetAlignment(align, VerticalAlignment::Middle);
         label->SetPadding(0, 8, 0, 8);
-        grid->AddUIElement(label, 0, col);
+        gridContainer->AddChild(label);
+        label->layoutItem.SetGridRowColSimplified(0, col);
+        label->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     };
 
     addHeaderCell(0, "",         TextAlignment::Center);
@@ -317,7 +335,9 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
         empty->SetTextColor(Color(120, 120, 120));
         empty->SetBackgroundColor(Colors::White);
         empty->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
-        grid->AddUIElement(empty, 1, 0)->SetColumnSpan(8);
+        gridContainer->AddChild(empty);
+        empty->layoutItem.SetGridRowColSimplified(1, 0, 1, 8);  // span all 8 columns
+        empty->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     } else {
         for (int i = 0; i < rowCount; i++) {
             const FileStatRow &s = stats[i];
@@ -342,7 +362,9 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
                 label->SetAlignment(align, VerticalAlignment::Middle);
                 label->SetPadding(0, 6, 0, 6);
                 if (!tooltip.empty()) label->SetTooltip(tooltip);
-                grid->AddUIElement(label, rowIdx, col);
+                gridContainer->AddChild(label);
+                label->layoutItem.SetGridRowColSimplified(rowIdx, col);
+                label->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
             };
 
             addCell(0, s.isActive ? "▶" : "",
@@ -372,10 +394,9 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
         }
     }
 
-    mainLayout->AddUIElement(gridContainer)
-              ->SetWidthMode(SizeMode::Fill)
-              ->SetHeightMode(SizeMode::Fixed)
-              ->SetFixedHeight(gridHeight);
+    fileStatsDialog->AddChild(gridContainer);
+    gridContainer->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    gridContainer->size.height = CSSLayout::Dimension::Px(gridHeight);
 
     // ===== SUMMARY FOOTER =====
     std::ostringstream summary;
@@ -392,7 +413,9 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
     summaryLabel->SetFontWeight(FontWeight::Bold);
     summaryLabel->SetTextColor(Color(60, 60, 60));
     summaryLabel->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
-    mainLayout->AddUIElement(summaryLabel)->SetWidthMode(SizeMode::Fill);
+    fileStatsDialog->AddChild(summaryLabel);
+    summaryLabel->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    summaryLabel->size.height = CSSLayout::Dimension::Px(summaryHeight);
 
     // ===== OK BUTTON =====
     auto okButton = std::make_shared<UltraCanvasButton>("StatsOK", 0, 0, 80, buttonHeight);
@@ -400,7 +423,10 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
     okButton->onClick = [this]() {
         fileStatsDialog->CloseDialog(DialogResult::OK);
     };
-    fileStatsDialog->AddChild(okButton); okButton->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
+    fileStatsDialog->AddChild(okButton);
+    okButton->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
+    okButton->size.width  = CSSLayout::Dimension::Px(80);
+    okButton->size.height = CSSLayout::Dimension::Px(buttonHeight);
 
     fileStatsDialog->onResult = [this](DialogResult) {
         fileStatsDialog.reset();

@@ -1,3 +1,6 @@
+#### 2026-06-07 *0.1.35*
+- Fix UltraCanvasTextEditorInfoFileStatistics layout (migrate from old layout)
+
 #### 2026-06-03 *0.1.34*
 - Make Texter compliant with CSS layout support.
 
