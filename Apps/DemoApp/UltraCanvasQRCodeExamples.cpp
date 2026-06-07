@@ -402,14 +402,14 @@ namespace UltraCanvas {
             auto* previewPtr = preview.get();
 
             auto resultsTitle = std::make_shared<UltraCanvasLabel>(
-                "DecResultsTitle", 520, 80, 560, 22);
+                "DecResultsTitle", 520, 100, 560, 22);
             resultsTitle->SetText("Scan result");
             resultsTitle->SetFontSize(13);
             resultsTitle->SetFontWeight(FontWeight::Bold);
             page->AddChild(resultsTitle);
 
             auto resultsBody = std::make_shared<UltraCanvasLabel>(
-                "DecResultsBody", 520, 110, 560, 450);
+                "DecResultsBody", 520, 130, 560, 450);
             resultsBody->SetText("(no image scanned yet)");
             resultsBody->SetFontSize(11);
             resultsBody->SetTextColor(Color(70, 70, 70, 255));

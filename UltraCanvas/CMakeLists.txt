@@ -80,6 +80,14 @@ pkg_check_modules(TINYXML2 REQUIRED tinyxml2)
 # libvips - Image processing
 pkg_check_modules(LIBVIPS REQUIRED vips vips-cpp)
 
+# zbar - QR/barcode decoder (optional)
+pkg_check_modules(ZBAR zbar)
+if(ZBAR_FOUND)
+    message(STATUS "  zbar: ${ZBAR_VERSION} (QR decoder enabled)")
+else()
+    message(STATUS "  zbar: NOT FOUND (QR decoder disabled)")
+endif()
+
 # FreeType - Font Rendering
 # On Windows with vcpkg, use pkg-config since FindFreetype may not locate vcpkg's install
 if(WIN32 AND PKG_CONFIG_FOUND)
@@ -362,6 +370,12 @@ if(LIBVIPS_FOUND)
     endforeach()
 endif()
 
+if(ZBAR_FOUND)
+    foreach(_inc_dir ${ZBAR_INCLUDE_DIRS})
+        target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${_inc_dir})
+    endforeach()
+endif()
+
 # Platform-specific includes
 if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
     target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE
@@ -450,6 +464,7 @@ target_link_libraries(${ULTRACANVAS_LIB_NAME}
         ${LIBVIPS_LIBRARIES}
         ${GLIB_LIBRARIES}
         ${TINYXML2_LIBRARIES}
+        ${ZBAR_LIBRARIES}
         fmt::fmt
     # PRIVATE
     #     grapheme
@@ -463,6 +478,7 @@ target_compile_definitions(${ULTRACANVAS_LIB_NAME}
         ULTRACANVAS_VERSION="${ULTRACANVAS_VERSION}"
         ULTRACANVAS_PLATFORM_${ULTRACANVAS_PLATFORM}=1
         $<$<BOOL:${LIBVIPS_FOUND}>:HAS_LIBVIPS=1>
+        $<$<BOOL:${ZBAR_FOUND}>:ULTRACANVAS_QRCODE_HAS_DECODER=1>
         $<$<CXX_COMPILER_ID:MSVC>:_USE_MATH_DEFINES>
         $<$<CXX_COMPILER_ID:MSVC>:NOMINMAX>
         $<$<BOOL:${WIN32}>:WIN32_LEAN_AND_MEAN>
