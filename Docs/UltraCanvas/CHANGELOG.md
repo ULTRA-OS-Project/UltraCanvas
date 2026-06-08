@@ -1,3 +1,6 @@
+#### 2026-06-07 *0.2.4*
+- Fix QRCode examples page (fix wrong charcater and change the default QR Code generation)
+
 #### 2026-06-07 *0.2.3*
 - QR code decoder fixed (installed missing lib and configured github build)
 - Merged branch "UltraCanvas QR demo field visibility bug"

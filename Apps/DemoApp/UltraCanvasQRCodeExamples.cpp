@@ -98,20 +98,23 @@ namespace UltraCanvas {
 
             auto qr = std::make_shared<UltraCanvasQRCode>("qr-encode", 30, 50, 420, 420);
             qr->SetContent("https://ultracanvas.dev");
+            qr->SetLogo(UCImage::Get(NormalizePath(GetResourcesDir()+"media/images/UOS_logo_white.png")), 0.25f);
+            qr->SetLogoStyle(QRLogoStyle::CenterRounded);
+            qr->SetGradient(QRGradientType::Diagonal, Color(0,102,204), Color(102,204,255));
             page->AddChild(qr);
             auto* qrPtr = qr.get();
 
-            auto contentLbl = std::make_shared<UltraCanvasLabel>("ContentLbl", 30, 480, 200, 22);
+            auto contentLbl = std::make_shared<UltraCanvasLabel>("ContentLbl", 30, 490, 200, 22);
             contentLbl->SetText("Content:");
             contentLbl->SetFontSize(12);
             contentLbl->SetFontWeight(FontWeight::Bold);
             page->AddChild(contentLbl);
 
-            auto contentInput = std::make_shared<UltraCanvasTextInput>("ContentInput", 30, 504, 420, 32);
+            auto contentInput = std::make_shared<UltraCanvasTextInput>("ContentInput", 30, 513, 420, 32);
             contentInput->SetText("https://ultracanvas.dev");
             page->AddChild(contentInput);
 
-            auto status = std::make_shared<UltraCanvasLabel>("EncStatus", 30, 542, 420, 22);
+            auto status = std::make_shared<UltraCanvasLabel>("EncStatus", 30, 552, 420, 22);
             status->SetText("");
             status->SetFontSize(11);
             status->SetTextColor(Color(120, 120, 120, 255));
@@ -122,7 +125,7 @@ namespace UltraCanvas {
                 std::ostringstream ss;
                 if (qrPtr->IsValid()) {
                     ss << "Version " << qrPtr->GetVersion()
-                       << "  •  " << qrPtr->GetModuleCount() << "\xd7"
+                       << "  •  " << qrPtr->GetModuleCount() << "x"
                        << qrPtr->GetModuleCount() << " modules";
                 } else if (!qrPtr->GetErrorMessage().empty()) {
                     ss << "Error: " << qrPtr->GetErrorMessage();

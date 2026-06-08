@@ -1,5 +1,6 @@
 #### 2026-06-07 *0.1.35*
 - Fix UltraCanvasTextEditorInfoFileStatistics layout (migrate from old layout)
+- Fixed crash-recovery naming so recovered tabs derive their names from actual content instead of showing stale Recovered1 … RecoveredX.
 
 #### 2026-06-03 *0.1.34*
 - Make Texter compliant with CSS layout support.

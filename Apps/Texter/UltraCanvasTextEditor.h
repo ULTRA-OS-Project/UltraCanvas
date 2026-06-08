@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.h
 // Complete text editor application with multi-file tabs, autosave, and enhanced features
-// Version: 2.1.1
-// Last Modified: 2026-05-01
+// Version: 2.1.2
+// Last Modified: 2026-06-07
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -506,6 +506,11 @@ namespace UltraCanvas {
          * line has no usable content; callers treat that as "no suggestion".
          */
         std::string SuggestFileNameFromFirstLine(const std::string& firstLine) const;
+
+        // Re-derive the auto-proposed display name of an unsaved tab from the first
+        // line of its current content and refresh the tab + window title. No-op for
+        // saved documents. Shared by the live-rename (onTextChanged) and recovery paths.
+        void RefreshAutoDisplayName(int docIndex);
 
 
         void PerformAutosave(bool force = false);

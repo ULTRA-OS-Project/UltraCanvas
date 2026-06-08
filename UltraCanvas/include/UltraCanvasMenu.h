@@ -406,6 +406,13 @@ namespace UltraCanvas {
         return menu;
     }
 
+    inline std::shared_ptr<UltraCanvasMenu> CreateMenuBar(
+            const std::string& identifier) {
+        auto menu = CreateMenu(identifier, -1, -1, -1, 32);
+        menu->SetMenuType(MenuType::Menubar);
+        return menu;
+    }
+
 // ===== BUILDER PATTERN =====
     class MenuBuilder {
     private:

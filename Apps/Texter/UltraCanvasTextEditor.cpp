@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
-// Version: 2.1.8
-// Last Modified: 2026-06-01
+// Version: 2.1.9
+// Last Modified: 2026-06-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
@@ -38,7 +38,7 @@
 #include "UltraCanvasUtilsUtf8.h"
 
 namespace UltraCanvas {
-    std::string UltraCanvasTextEditor::version = "0.1.34";
+    std::string UltraCanvasTextEditor::version = "0.1.35";
     
 namespace {
     std::string GetAppDataDirectory() {
@@ -1500,6 +1500,26 @@ namespace {
         }
     }
 
+    void UltraCanvasTextEditor::RefreshAutoDisplayName(int docIndex) {
+        if (docIndex < 0 || docIndex >= static_cast<int>(documents.size())) return;
+        auto d = documents[docIndex];
+        if (!d || !d->textArea) return;
+        // Only auto-name unsaved tabs; saved files keep their on-disk filename.
+        if (!(d->isNewFile && d->filePath.empty())) return;
+        if (d->textArea->GetLineCount() <= 0) return;
+
+        std::string suggestion = SuggestFileNameFromFirstLine(d->textArea->GetLine(0));
+        // Sticky: keep the existing name if the first line yields nothing usable
+        // (preserves the "RecoveredN"/"UntitledN" fallback for blank first lines).
+        if (suggestion.empty() || suggestion == d->fileName) return;
+
+        d->fileName = suggestion;
+        UpdateTabTitle(docIndex);
+        if (docIndex == activeDocumentIndex) {
+            UpdateTitle();
+        }
+    }
+
     int UltraCanvasTextEditor::CreateNewDocument(const std::string& fileName) {
         // Create new document tab
         auto doc = std::make_shared<DocumentTab>();
@@ -2441,11 +2461,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 if (!autosaveManager.LoadBackup(sd.backupPath, content, origPath, enc, lang)) {
                     continue;
                 }
-                // Use the stored display name (e.g. "Recovered1", "Untitled3")
-                // or fall back to a fresh unique Recovered name.
-                std::string name = !sd.displayName.empty()
-                                   ? sd.displayName
-                                   : GenerateUniqueDocumentName("Recovered");
+                // Start from a fresh "RecoveredN" placeholder; the persisted
+                // displayName may be a stale "RecoveredN" itself, and
+                // RecoverBackupIntoDocument re-derives the real name from the
+                // recovered content below.
+                std::string name = GenerateUniqueDocumentName("Recovered");
                 docIndex = CreateNewDocument(name);
                 RecoverBackupIntoDocument(docIndex, sd.backupPath,
                                           content,
@@ -2545,6 +2565,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 doc->textArea->SetProgrammingLanguage(language);
             }
         }
+
+        // Recovery never fires onTextChanged (SetText was called with
+        // runNotifications=false), so re-derive the tab name from the recovered
+        // content here — fixes stale "RecoveredN" names on unsaved tabs.
+        RefreshAutoDisplayName(docIndex);
 
         UpdateTabTitle(docIndex);
         UpdateTabBadge(docIndex);
@@ -3961,19 +3986,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 // before they ever hit Save As. Intentionally sticky: if the first
                 // line later becomes empty we keep the last suggestion to avoid
                 // jitter.
-                auto d = documents[currentIndex];
-                if (d->isNewFile && d->filePath.empty() && d->textArea &&
-                    d->textArea->GetLineCount() > 0) {
-                    std::string suggestion =
-                        SuggestFileNameFromFirstLine(d->textArea->GetLine(0));
-                    if (!suggestion.empty() && suggestion != d->fileName) {
-                        d->fileName = suggestion;
-                        UpdateTabTitle(currentIndex);
-                        if (currentIndex == activeDocumentIndex) {
-                            UpdateTitle();
-                        }
-                    }
-                }
+                RefreshAutoDisplayName(currentIndex);
             }
             UpdateStatusBar();
         };
