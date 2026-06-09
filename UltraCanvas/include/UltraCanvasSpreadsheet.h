@@ -124,30 +124,29 @@ private:
     Color sheetTabActiveColor_ = Colors::White;
     Color sheetTabInactiveColor_ = Color(230, 230, 230);
     Color formulaBarBackgroundColor_ = Colors::White;
+
+    float formulaBarHeight_ = 28;
+    float sheetTabHeight_ = 24;
+    float scrollbarSize_ = 16;
     
-    int formulaBarHeight_ = 28;
-    int sheetTabHeight_ = 24;
-    int scrollbarSize_ = 16;
-    
-    Rect2Di formulaBarBounds_;
-    Rect2Di gridBounds_;
-    Rect2Di sheetTabsBounds_;
-    Rect2Di horizontalScrollBounds_;
-    Rect2Di verticalScrollBounds_;
+    Rect2Df formulaBarBounds_;
+    Rect2Df gridBounds_;
+    Rect2Df sheetTabsBounds_;
+    Rect2Df horizontalScrollBounds_;
+    Rect2Df verticalScrollBounds_;
     
 public:
     // ===== CONSTRUCTORS =====
     UltraCanvasSpreadsheet();
-    UltraCanvasSpreadsheet(const std::string& id, int x, int y, int width, int height);
-    virtual ~UltraCanvasSpreadsheet();
+    UltraCanvasSpreadsheet(const std::string& id, float x, float y, float width, float height);
 
     UltraCanvasSpreadsheet(const UltraCanvasSpreadsheet&) = delete;
     UltraCanvasSpreadsheet& operator=(const UltraCanvasSpreadsheet&) = delete;
 
     // ===== UIELEMENT INTERFACE =====
-    void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
     bool OnEvent(const UCEvent& event) override;
-    void SetBounds(const Rect2Di& b) override;   // recompute layout on resize
+    void Arrange(const UltraCanvas::Rect2Df &newFinalRect, const CSSLayout::LayoutContext &ctx) override;
     bool AcceptsFocus() const override { return true; }
     bool SetFocus(bool focus = true) override;   // commit edit on focus loss
     
@@ -435,8 +434,12 @@ private:
 // UI elements derive from std::enable_shared_from_this, so create them as
 // shared_ptr (matches CreateButton/CreateLabel and other framework factories).
 inline std::shared_ptr<UltraCanvasSpreadsheet> CreateSpreadsheetElement(
-    const std::string& id, int x, int y, int width, int height) {
+    const std::string& id, float x, float y, float width, float height) {
     return std::make_shared<UltraCanvasSpreadsheet>(id, x, y, width, height);
+}
+inline std::shared_ptr<UltraCanvasSpreadsheet> CreateSpreadsheetElement(
+        const std::string& id, float width, float height) {
+    return std::make_shared<UltraCanvasSpreadsheet>(id, -1, -1, width, height);
 }
 
 } // namespace UltraCanvas

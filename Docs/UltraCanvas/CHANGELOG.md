@@ -1,3 +1,6 @@
+#### 2026-06-09 *0.2.7*
+- Merged and fixed the "# Spreadsheet support for UltraCanvas"
+
 #### 2026-06-09 *0.2.6*
 - Merged and fixed the "OpenGL 3D showcase demo"
 

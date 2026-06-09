@@ -1,14 +1,19 @@
 # UltraCanvas/CMakeLists.txt
 # UltraCanvas Core Library - Builds as separate static library with optional plugins
-# Version: 1.4.0
-# Last Modified: 2026-05-10
+# Version: 1.4.1
+# Last Modified: 2026-06-09
 # Author: UltraCanvas Framework
 
 cmake_minimum_required(VERSION 3.16)
 include(FetchContent)
 
+# Enable the C language: third_party/miniz/miniz.c is C (the only C source in the
+# project) and provides ZIP support for ODS/XLSX File I/O. Without this, a CXX-only
+# project silently skips compiling .c files, causing undefined references to mz_zip_*.
+enable_language(C)
+
 # ===== LIBRARY DEFINITION =====
-set(ULTRACANVAS_VERSION "0.2.6")
+set(ULTRACANVAS_VERSION "0.2.7")
 set(ULTRACANVAS_LIB_NAME "UltraCanvas")
 
 message(STATUS "")

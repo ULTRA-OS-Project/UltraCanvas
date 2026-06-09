@@ -25,7 +25,7 @@ UltraCanvasSpreadsheet::UltraCanvasSpreadsheet()
 
 UltraCanvasSpreadsheet::UltraCanvasSpreadsheet(
     const std::string& id,
-    int x, int y, int width, int height)
+    float x, float y, float width, float height)
     : UltraCanvasUIElement(id, x, y, width, height)
 {
     formulaEngine_ = std::make_unique<SpreadsheetFormulaEngine>();
@@ -34,13 +34,12 @@ UltraCanvasSpreadsheet::UltraCanvasSpreadsheet(
     UpdateLayout();
 }
 
-UltraCanvasSpreadsheet::~UltraCanvasSpreadsheet() = default;
 
 // ============================================================================
 // UIELEMENT INTERFACE - RENDER
 // ============================================================================
 
-void UltraCanvasSpreadsheet::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+void UltraCanvasSpreadsheet::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
     if (!ctx) return;
 
     ctx->PushState();
@@ -1172,10 +1171,9 @@ Rect2Di UltraCanvasSpreadsheet::GetCellBounds(int row, int col) const {
 // RESIZE
 // ============================================================================
 
-void UltraCanvasSpreadsheet::SetBounds(const Rect2Di& b) {
-    UltraCanvasUIElement::SetBounds(b);
+void UltraCanvasSpreadsheet::Arrange(const UltraCanvas::Rect2Df &newFinalRect, const CSSLayout::LayoutContext &ctx) {
+    UltraCanvasUIElement::Arrange(newFinalRect, ctx);
     UpdateLayout();
-    RequestRedraw();
 }
 
 void UltraCanvasSpreadsheet::UpdateLayout() {
@@ -1183,8 +1181,8 @@ void UltraCanvasSpreadsheet::UpdateLayout() {
 }
 
 void UltraCanvasSpreadsheet::CalculateBounds() {
-    int x = 0, y = 0;
-    int w = GetWidth(), h = GetHeight();
+    float x = 0, y = 0;
+    float w = GetWidth(), h = GetHeight();
     
     if (showFormulaBar_) {
         formulaBarBounds_ = Rect2Di(x, y, w, formulaBarHeight_);
