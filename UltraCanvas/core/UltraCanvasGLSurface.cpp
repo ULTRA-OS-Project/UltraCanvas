@@ -6,6 +6,7 @@
 #include "GL/GLFramebuffer.h"
 #include "GL/ICompositeStrategy.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasApplication.h"
 
 #include <iostream>
 
@@ -166,7 +167,11 @@ void UltraCanvasGLSurface::Render(IRenderContext* ctx, const Rect2Df& dirtyRect)
 
     // Keep the animation loop alive; expensive work is gated by ShouldRender()
     if (renderMode_ == RenderMode::Continuous || renderMode_ == RenderMode::TimedUpdate) {
-        RequestRedraw();
+        UltraCanvasApplication::GetInstance()->PushEvent(UCEvent{
+            .type=UCEventType::Redraw,
+            .targetElement=this,
+            .targetWindow=GetWindow()
+        });
     }
 }
 
