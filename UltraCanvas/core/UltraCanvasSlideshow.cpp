@@ -694,7 +694,7 @@ namespace UltraCanvas {
             titleFs.fontWeight = FontWeight::Bold;
             ctx->SetFontStyle(titleFs);
             ctx->SetTextWrap(TextWrap::WrapWord);
-            int titleH = static_cast<int>(config.titleFontSize * 2.5f);
+            int titleH = static_cast<int>(config.titleFontSize * 3.0f);
             Rect2Di titleRect(textArea.x, textArea.y, textArea.width, titleH);
             ctx->DrawTextInRect(title, Rect2Dd(titleRect));
             textArea.y += titleH + 8;

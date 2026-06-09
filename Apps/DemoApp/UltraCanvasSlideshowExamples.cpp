@@ -70,6 +70,7 @@ namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSlideshowExamples() {
         auto root = std::make_shared<UltraCanvasContainer>("SlideshowExamples", 0, 0, 1000, 990);
 
+        root->SetPadding(0,5,5,0);
         // Title
         auto title = std::make_shared<UltraCanvasLabel>("SlideshowTitle", 20, 10, 800, 30);
         title->SetText("UltraCanvas Slideshow — Subaru-style diashow with selectable indicators");
@@ -254,7 +255,8 @@ namespace UltraCanvas {
         };
 
         int layoutTitleY = 712;
-        auto layoutTitle = std::make_shared<UltraCanvasLabel>("LayoutTitle", 20, layoutTitleY, 300, 22);
+        auto layoutTitle = std::make_shared<UltraCanvasLabel>("LayoutTitle");
+        layoutTitle->SetElementAbsolutePosition(Point2Df(20, layoutTitleY));
         layoutTitle->SetText("Info-panel layout (split = own region, overlay = on the image):");
         layoutTitle->SetFontSize(12);
         layoutTitle->SetFontWeight(FontWeight::Bold);
@@ -305,7 +307,7 @@ namespace UltraCanvas {
         int ex = 150;
         for (const auto& ec : edges) {
             auto eb = std::make_shared<UltraCanvasButton>(
-                    std::string("edge_") + ec.label, ex, edgeY, 80, 26, ec.label);
+                    std::string("edge_") + ec.label, ex, edgeY, 110, 26, ec.label);
             eb->SetFontSize(11);
             auto edgeVal = ec.edge;
             eb->SetOnClick([showPtr, edgeVal]() {
@@ -314,7 +316,7 @@ namespace UltraCanvas {
                 showPtr->SetIndicatorStyle(is);
             });
             root->AddChild(eb);
-            ex += 88;
+            ex += 118;
         }
 
         // ===== Image fit picker (auto-zoom/crop policy for mismatched images) =====
@@ -331,7 +333,7 @@ namespace UltraCanvas {
         fitTitle->SetFontSize(12);
         fitTitle->SetFontWeight(FontWeight::Bold);
         root->AddChild(fitTitle);
-        int fx2 = 110;
+        int fx2 = 150;
         for (const auto& fc : fits) {
             auto fb2 = std::make_shared<UltraCanvasButton>(
                     std::string("fit_") + fc.label, fx2, fitY, 110, 26, fc.label);
@@ -360,7 +362,7 @@ namespace UltraCanvas {
         focTitle->SetFontSize(12);
         focTitle->SetFontWeight(FontWeight::Bold);
         root->AddChild(focTitle);
-        int focX = 110;
+        int focX = 150;
         for (const auto& foc : focuses) {
             auto fob = std::make_shared<UltraCanvasButton>(
                     std::string("focus_") + foc.label, focX, focY, 110, 26, foc.label);
@@ -389,7 +391,7 @@ namespace UltraCanvas {
         gapTitle->SetFontSize(12);
         gapTitle->SetFontWeight(FontWeight::Bold);
         root->AddChild(gapTitle);
-        int gx = 110;
+        int gx = 150;
         for (const auto& gc : gaps) {
             auto gb = std::make_shared<UltraCanvasButton>(
                     std::string("gap_") + gc.label, gx, gapY, 110, 26, gc.label);

@@ -2,8 +2,8 @@
 // Container with scrollbars and child management. Child storage lives on
 // CSSLayout::Element (via UltraCanvasUIElement); we iterate it through
 // Children() and static_pointer_cast each element to UltraCanvasUIElement.
-// Version: 4.1.1
-// Last Modified: 2026-05-31
+// Version: 4.1.2
+// Last Modified: 2026-06-09
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
@@ -172,13 +172,25 @@ namespace UltraCanvas {
 
             auto newClientRect = GetContentArea();
             if (newClientRect != clientRect) {
-                horizontalScrollbar->SetScrollDimensions(clientRect.width, maxRight);
-                verticalScrollbar->SetScrollDimensions(clientRect.height, maxBottom);
+                horizontalScrollbar->SetScrollDimensions(newClientRect.width, maxRight);
+                verticalScrollbar->SetScrollDimensions(newClientRect.height, maxBottom);
 
                 verticalScrollbar->SetVisible(verticalScrollbar->IsScrollable());
                 horizontalScrollbar->SetVisible(horizontalScrollbar->IsScrollable());
             }
         }
+
+        // Lock the scroll ranges to the FINAL content area (i.e. with the final
+        // scrollbar visibility applied). When one scrollbar appears it shrinks the
+        // cross-axis viewport by trackSize; if the other scrollbar then appears as a
+        // consequence, the first one's viewport was measured before that happened and
+        // is trackSize too large. Recomputing here keeps each scrollbar's range in sync
+        // with what GetContentArea() returns at render time, so the last trackSize px of
+        // content can scroll out from behind the opposite scrollbar instead of staying
+        // hidden under it.
+        auto finalRect = GetContentArea();
+        horizontalScrollbar->SetScrollDimensions(finalRect.width, maxRight);
+        verticalScrollbar->SetScrollDimensions(finalRect.height, maxBottom);
 
         int trackSize = style.scrollbarStyle.trackSize;
         int contentWidth  = GetWidth()  - GetTotalBorderHorizontal() - GetTotalPaddingHorizontal();
