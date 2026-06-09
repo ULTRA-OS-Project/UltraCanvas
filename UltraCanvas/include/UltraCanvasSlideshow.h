@@ -1,6 +1,6 @@
 // include/UltraCanvasSlideshow.h
 // Timed image slideshow with optional info text panel and selectable indicator styles.
-// Version: 1.2.0
+// Version: 1.3.0
 // Last Modified: 2026-06-09
 // Author: UltraCanvas Framework
 #pragma once
@@ -104,6 +104,21 @@ namespace UltraCanvas {
         }
     }
 
+    // ===== HOW MISMATCHED IMAGES ARE FITTED INTO THE IMAGE AREA =====
+    // Reuses the framework's ImageFitMode for the actual scaling policy:
+    //   Cover     — auto-zoom + auto-crop to fill (no gaps, crops overflow)
+    //   Contain   — fit entirely inside, preserving aspect (leaves gaps)
+    //   Fill      — stretch to the exact area (distorts aspect)
+    //   ScaleDown — like Contain but never upscale
+    //   NoScale   — native pixel size, centered by the focal point
+    // The focal point (0..1) chooses which part survives a crop / where a
+    // smaller image sits. GapFill decides what shows behind letterboxed images.
+    enum class SlideshowGapFill {
+        BackgroundColor,  // reuse config.backgroundColor
+        LetterboxColor,   // use config.letterboxColor
+        BlurredImage      // a zoomed copy of the same image, softened by a scrim
+    };
+
     // ===== INDICATOR SHAPE CATALOG =====
     // Matches the eight styles surveyed for the Subaru-style slideshow.
     // (Hidden instead of None because X11 defines None as a macro.)
@@ -171,6 +186,18 @@ namespace UltraCanvas {
 
         SlideshowFadeStyle fadeStyle = SlideshowFadeStyle::CrossFade;
         SlideshowTextMode  textMode  = SlideshowTextMode::PerSlide;
+
+        // ===== IMAGE FITTING =====
+        // How each slide is auto-sized into the image area when its dimensions
+        // don't match the layout. Defaults to Cover (auto-zoom + auto-crop).
+        ImageFitMode imageFit = ImageFitMode::Cover;
+        // Focal point in 0..1 image space. For a crop (Cover) it picks which part
+        // survives; for a smaller image (Contain/NoScale) it picks the placement.
+        // (0,0) = top-left, (0.5,0.5) = centered, (1,1) = bottom-right.
+        Point2Df imageFocus{0.5f, 0.5f};
+        // What fills the gaps left by Contain / ScaleDown / NoScale.
+        SlideshowGapFill gapFill = SlideshowGapFill::BackgroundColor;
+        Color letterboxColor = Color(0, 0, 0, 255);  // used when gapFill == LetterboxColor
 
         // ===== INFO PANEL LAYOUT =====
         SlideshowInfoLayout infoLayout = SlideshowInfoLayout::SplitRight;
@@ -335,12 +362,17 @@ namespace UltraCanvas {
         // Returns -1 if no indicator was hit.
         int IndicatorAt(const Point2Di& localPoint) const;
 
-        // One image-fade pass, with opacity already chosen by caller.
+        // One image-fade pass, with opacity already chosen by caller. Applies the
+        // configured fit mode + focal point, then the transition offset/zoom.
         // offsetX/offsetY translate the image (slide transitions); scale > 1
         // enlarges it around its center (zoom transition).
         void DrawSlideAt(IRenderContext* ctx, size_t slideIdx,
                          const Rect2Dd& rect, float alpha,
                          float offsetX, float offsetY = 0.0f, float scale = 1.0f);
+
+        // Fills the area behind a letterboxed image per config.gapFill.
+        void DrawGapFill(IRenderContext* ctx, size_t slideIdx,
+                         const Rect2Dd& rect, float alpha);
 
         std::string LabelForSlide(size_t idx) const;
     };

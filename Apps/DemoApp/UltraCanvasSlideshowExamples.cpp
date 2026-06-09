@@ -68,7 +68,7 @@ namespace UltraCanvas {
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSlideshowExamples() {
-        auto root = std::make_shared<UltraCanvasContainer>("SlideshowExamples", 0, 0, 1000, 860);
+        auto root = std::make_shared<UltraCanvasContainer>("SlideshowExamples", 0, 0, 1000, 990);
 
         // Title
         auto title = std::make_shared<UltraCanvasLabel>("SlideshowTitle", 20, 10, 800, 30);
@@ -315,6 +315,94 @@ namespace UltraCanvas {
             });
             root->AddChild(eb);
             ex += 88;
+        }
+
+        // ===== Image fit picker (auto-zoom/crop policy for mismatched images) =====
+        struct FitChoice { const char* label; ImageFitMode fit; };
+        const FitChoice fits[] = {
+            { "Cover (crop)",  ImageFitMode::Cover },
+            { "Contain",       ImageFitMode::Contain },
+            { "Fill (stretch)",ImageFitMode::Fill },
+            { "Scale Down",    ImageFitMode::ScaleDown },
+        };
+        int fitY = edgeY + 40;
+        auto fitTitle = std::make_shared<UltraCanvasLabel>("FitTitle", 20, fitY + 4, 130, 22);
+        fitTitle->SetText("Image fit:");
+        fitTitle->SetFontSize(12);
+        fitTitle->SetFontWeight(FontWeight::Bold);
+        root->AddChild(fitTitle);
+        int fx2 = 110;
+        for (const auto& fc : fits) {
+            auto fb2 = std::make_shared<UltraCanvasButton>(
+                    std::string("fit_") + fc.label, fx2, fitY, 110, 26, fc.label);
+            fb2->SetFontSize(11);
+            auto fitVal = fc.fit;
+            fb2->SetOnClick([showPtr, fitVal]() {
+                SlideshowConfig c = showPtr->GetConfig();
+                c.imageFit = fitVal;
+                showPtr->SetConfig(c);
+                showPtr->Play();
+            });
+            root->AddChild(fb2);
+            fx2 += 118;
+        }
+
+        // ===== Focal point (which part survives a Cover crop) =====
+        struct FocusChoice { const char* label; float x; float y; };
+        const FocusChoice focuses[] = {
+            { "Focus TL",     0.0f, 0.0f },
+            { "Focus Center", 0.5f, 0.5f },
+            { "Focus BR",     1.0f, 1.0f },
+        };
+        int focY = fitY + 36;
+        auto focTitle = std::make_shared<UltraCanvasLabel>("FocusTitle", 20, focY + 4, 130, 22);
+        focTitle->SetText("Crop focus:");
+        focTitle->SetFontSize(12);
+        focTitle->SetFontWeight(FontWeight::Bold);
+        root->AddChild(focTitle);
+        int focX = 110;
+        for (const auto& foc : focuses) {
+            auto fob = std::make_shared<UltraCanvasButton>(
+                    std::string("focus_") + foc.label, focX, focY, 110, 26, foc.label);
+            fob->SetFontSize(11);
+            float vx = foc.x, vy = foc.y;
+            fob->SetOnClick([showPtr, vx, vy]() {
+                SlideshowConfig c = showPtr->GetConfig();
+                c.imageFocus = Point2Df(vx, vy);
+                showPtr->SetConfig(c);
+                showPtr->Play();
+            });
+            root->AddChild(fob);
+            focX += 118;
+        }
+
+        // ===== Gap fill (what shows behind Contain / ScaleDown letterboxing) =====
+        struct GapChoice { const char* label; SlideshowGapFill gap; };
+        const GapChoice gaps[] = {
+            { "Gap: Bg",    SlideshowGapFill::BackgroundColor },
+            { "Gap: Black", SlideshowGapFill::LetterboxColor },
+            { "Gap: Image", SlideshowGapFill::BlurredImage },
+        };
+        int gapY = focY + 36;
+        auto gapTitle = std::make_shared<UltraCanvasLabel>("GapTitle", 20, gapY + 4, 130, 22);
+        gapTitle->SetText("Letterbox fill:");
+        gapTitle->SetFontSize(12);
+        gapTitle->SetFontWeight(FontWeight::Bold);
+        root->AddChild(gapTitle);
+        int gx = 110;
+        for (const auto& gc : gaps) {
+            auto gb = std::make_shared<UltraCanvasButton>(
+                    std::string("gap_") + gc.label, gx, gapY, 110, 26, gc.label);
+            gb->SetFontSize(11);
+            auto gapVal = gc.gap;
+            gb->SetOnClick([showPtr, gapVal]() {
+                SlideshowConfig c = showPtr->GetConfig();
+                c.gapFill = gapVal;
+                showPtr->SetConfig(c);
+                showPtr->Play();
+            });
+            root->AddChild(gb);
+            gx += 118;
         }
 
         return root;

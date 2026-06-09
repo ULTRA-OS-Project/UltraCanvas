@@ -1,6 +1,6 @@
 // core/UltraCanvasSlideshow.cpp
 // Timed image slideshow with selectable info-panel layouts and indicator styles.
-// Version: 1.2.0
+// Version: 1.3.0
 // Last Modified: 2026-06-09
 // Author: UltraCanvas Framework
 
@@ -483,6 +483,36 @@ namespace UltraCanvas {
         ctx->FillRectangle(Rect2Dd(img));
     }
 
+    void UltraCanvasSlideshow::DrawGapFill(IRenderContext* ctx, size_t slideIdx,
+                                           const Rect2Dd& rect, float alpha) {
+        ctx->PushState();
+        ctx->ClipRect(rect);
+        ctx->SetAlpha(std::max(0.0f, std::min(1.0f, alpha)));
+        switch (config.gapFill) {
+            case SlideshowGapFill::LetterboxColor:
+                ctx->SetFillPaint(config.letterboxColor);
+                ctx->FillRectangle(rect);
+                break;
+            case SlideshowGapFill::BlurredImage: {
+                // Zoomed copy of the same image fills the gaps; a translucent
+                // scrim softens it so it reads as a backdrop, not a second photo.
+                if (slideIdx < slides.size()) {
+                    auto img = UCImage::Get(slides[slideIdx].imagePath);
+                    if (img) ctx->DrawImage(*img, rect, ImageFitMode::Cover);
+                }
+                ctx->SetFillPaint(Color(0, 0, 0, 120));
+                ctx->FillRectangle(rect);
+                break;
+            }
+            case SlideshowGapFill::BackgroundColor:
+            default:
+                ctx->SetFillPaint(config.backgroundColor);
+                ctx->FillRectangle(rect);
+                break;
+        }
+        ctx->PopState();
+    }
+
     void UltraCanvasSlideshow::DrawSlideAt(IRenderContext* ctx, size_t slideIdx,
                                            const Rect2Dd& rect, float alpha,
                                            float offsetX, float offsetY, float scale) {
@@ -492,23 +522,70 @@ namespace UltraCanvas {
         auto img = UCImage::Get(slide.imagePath);
         if (!img) return;
 
-        ctx->PushState();
-        Rect2Dd clipR = rect;
-        ctx->ClipRect(clipR);
-        ctx->SetAlpha(std::max(0.0f, std::min(1.0f, alpha)));
+        int iw = img->GetWidth();
+        int ih = img->GetHeight();
+        const double rw = rect.width, rh = rect.height;
 
-        Rect2Dd dst = rect;
-        if (scale != 1.0f) {
-            double dw = dst.width * (scale - 1.0);
-            double dh = dst.height * (scale - 1.0);
-            dst.x -= dw / 2.0;
-            dst.y -= dh / 2.0;
-            dst.width += dw;
-            dst.height += dh;
+        // Base destination size for the chosen fit (aspect preserved except Fill).
+        double dstW = rw, dstH = rh;
+        bool leavesGaps = false;
+        if (iw > 0 && ih > 0 && rw > 0 && rh > 0) {
+            switch (config.imageFit) {
+                case ImageFitMode::Cover: {
+                    double s = std::max(rw / iw, rh / ih);
+                    dstW = iw * s; dstH = ih * s;
+                    break;
+                }
+                case ImageFitMode::Contain: {
+                    double s = std::min(rw / iw, rh / ih);
+                    dstW = iw * s; dstH = ih * s;
+                    leavesGaps = true;
+                    break;
+                }
+                case ImageFitMode::ScaleDown: {
+                    double s = std::min(1.0, std::min(rw / iw, rh / ih));
+                    dstW = iw * s; dstH = ih * s;
+                    leavesGaps = true;
+                    break;
+                }
+                case ImageFitMode::NoScale: {
+                    dstW = iw; dstH = ih;
+                    leavesGaps = true;
+                    break;
+                }
+                case ImageFitMode::Fill:
+                default:
+                    dstW = rw; dstH = rh;   // stretch to the area
+                    break;
+            }
         }
-        dst.x += offsetX;
-        dst.y += offsetY;
-        ctx->DrawImage(*img, dst, ImageFitMode::Cover);
+
+        // Place by focal point. With this formula fx=0 keeps the left/top edge
+        // (cropping the opposite side on overflow, left-aligning on underflow),
+        // fx=1 keeps the right/bottom edge, 0.5 centers — for both cases.
+        double fx = std::max(0.0f, std::min(1.0f, config.imageFocus.x));
+        double fy = std::max(0.0f, std::min(1.0f, config.imageFocus.y));
+        double dstX = rect.x + (rw - dstW) * fx;
+        double dstY = rect.y + (rh - dstH) * fy;
+
+        // Transition zoom (around the destination center) and slide translation.
+        if (scale != 1.0f) {
+            double dw = dstW * (scale - 1.0);
+            double dh = dstH * (scale - 1.0);
+            dstX -= dw / 2.0; dstY -= dh / 2.0;
+            dstW += dw;       dstH += dh;
+        }
+        dstX += offsetX;
+        dstY += offsetY;
+
+        ctx->PushState();
+        ctx->ClipRect(rect);
+        if (leavesGaps) DrawGapFill(ctx, slideIdx, rect, alpha);
+        ctx->SetAlpha(std::max(0.0f, std::min(1.0f, alpha)));
+        // dst already encodes the aspect-correct size, so Fill maps the image to
+        // it exactly without further distortion (and genuinely stretches for the
+        // Fill fit mode, where dst == rect).
+        ctx->DrawImage(*img, Rect2Dd(dstX, dstY, dstW, dstH), ImageFitMode::Fill);
         ctx->PopState();
     }
 
