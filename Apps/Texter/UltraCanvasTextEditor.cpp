@@ -1418,7 +1418,7 @@ namespace {
                        c == '/' || c == '\\' || c == '|' || c == '?' || c == '*') {
                 out.push_back('_');
             } else if (c == ' ' || c == '\t') {
-                out.push_back('_');
+                out.push_back(' ');
             } else {
                 out.push_back(static_cast<char>(c));
             }
