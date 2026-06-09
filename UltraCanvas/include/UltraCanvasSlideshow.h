@@ -1,7 +1,7 @@
 // include/UltraCanvasSlideshow.h
 // Timed image slideshow with optional info text panel and selectable indicator styles.
-// Version: 1.1.0
-// Last Modified: 2026-05-29
+// Version: 1.2.0
+// Last Modified: 2026-06-09
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -31,7 +31,9 @@ namespace UltraCanvas {
         NoFade,           // Instant swap
         CrossFade,        // Both layers visible, sums to 1.0
         FadeOutIn,        // Old fades fully out, then new fades in
-        SlideHorizontal   // Old slides left while new slides in from the right
+        SlideHorizontal,  // Old slides left while new slides in from the right
+        SlideVertical,    // Old slides up while new slides in from the bottom
+        ZoomFade          // New slide zooms in from slightly enlarged while cross-fading
     };
 
     // ===== HOW THE INFO PANEL TEXT BEHAVES =====
@@ -39,6 +41,68 @@ namespace UltraCanvas {
         Static,    // infoTitle/infoBody set once, never animated
         PerSlide   // Text swaps with each slide, fades with the image
     };
+
+    // ===== WHERE / HOW THE INFO PANEL SITS RELATIVE TO THE IMAGE =====
+    // "Split" layouts give the panel its own region and shrink the image to the
+    // remainder. "Overlay" layouts float the panel on top of a full-bleed image
+    // with a translucent scrim behind the text.
+    enum class SlideshowInfoLayout {
+        Hidden,             // No info panel — full-bleed image
+
+        // Split — panel owns its region, image takes the rest
+        SplitLeft,          // Panel left,   image right
+        SplitRight,         // Panel right,  image left  (legacy default look)
+        SplitTop,           // Panel top,    image below
+        SplitBottom,        // Panel bottom, image above
+
+        // Overlay edges — panel spans one edge of the image
+        OverlayLeft,
+        OverlayRight,
+        OverlayTop,
+        OverlayBottom,
+
+        // Overlay corners — panel is a floating box anchored in a corner
+        OverlayTopLeft,
+        OverlayTopRight,
+        OverlayBottomLeft,
+        OverlayBottomRight,
+
+        // Overlay center / full
+        OverlayCenter,      // Floating box centered over the image
+        OverlayFull         // Scrim across the whole image
+    };
+
+    // True for layouts that float on top of a full-bleed image.
+    inline bool SlideshowLayoutIsOverlay(SlideshowInfoLayout l) {
+        switch (l) {
+            case SlideshowInfoLayout::OverlayLeft:
+            case SlideshowInfoLayout::OverlayRight:
+            case SlideshowInfoLayout::OverlayTop:
+            case SlideshowInfoLayout::OverlayBottom:
+            case SlideshowInfoLayout::OverlayTopLeft:
+            case SlideshowInfoLayout::OverlayTopRight:
+            case SlideshowInfoLayout::OverlayBottomLeft:
+            case SlideshowInfoLayout::OverlayBottomRight:
+            case SlideshowInfoLayout::OverlayCenter:
+            case SlideshowInfoLayout::OverlayFull:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    // True for layouts that carve out their own region beside the image.
+    inline bool SlideshowLayoutIsSplit(SlideshowInfoLayout l) {
+        switch (l) {
+            case SlideshowInfoLayout::SplitLeft:
+            case SlideshowInfoLayout::SplitRight:
+            case SlideshowInfoLayout::SplitTop:
+            case SlideshowInfoLayout::SplitBottom:
+                return true;
+            default:
+                return false;
+        }
+    }
 
     // ===== INDICATOR SHAPE CATALOG =====
     // Matches the eight styles surveyed for the Subaru-style slideshow.
@@ -52,6 +116,15 @@ namespace UltraCanvas {
         Counter,      // Plain "3 / 7" text
         Thumbnails,   // Tiny preview of each slide's image
         Labels        // Per-slide text label, tab-style underline on active
+    };
+
+    // ===== WHICH EDGE THE INDICATOR STRIP HUGS =====
+    // Top/Bottom lay the items out in a row; Left/Right stack them in a column.
+    enum class SlideshowIndicatorEdge {
+        Bottom,   // default
+        Top,
+        Left,
+        Right
     };
 
     struct SlideshowIndicatorStyle {
@@ -69,8 +142,16 @@ namespace UltraCanvas {
         Color hoverColor    = Color(140, 140, 140, 255);
         Color textColor     = Color(60, 60, 60, 255);   // counter / labels
 
-        // Placement inside the slideshow bounds
-        VerticalAlignment vertical = VerticalAlignment::Bottom;  // Top / Bottom
+        // Placement inside the image area.
+        // `edge` is the primary control (any of the four sides). `vertical` is
+        // kept for source compatibility: if `edge` is left at its Bottom default
+        // it is derived from `vertical` (Top -> Top edge), so old code that only
+        // set `vertical` keeps working.
+        SlideshowIndicatorEdge edge = SlideshowIndicatorEdge::Bottom;
+        VerticalAlignment vertical = VerticalAlignment::Bottom;  // legacy Top / Bottom
+        // Alignment along the strip: for Top/Bottom edges this is the horizontal
+        // alignment of the row; for Left/Right edges it selects Top/Center/Bottom
+        // of the column (Left->Top, Right->Bottom, Center->Center).
         TextAlignment     horizontal = TextAlignment::Center;
         int marginFromEdge = 12;     // distance from the chosen edge in pixels
 
@@ -91,7 +172,29 @@ namespace UltraCanvas {
         SlideshowFadeStyle fadeStyle = SlideshowFadeStyle::CrossFade;
         SlideshowTextMode  textMode  = SlideshowTextMode::PerSlide;
 
-        float imagePanelRatio = 0.66f;     // left image / right info split (1.0 = no info panel)
+        // ===== INFO PANEL LAYOUT =====
+        SlideshowInfoLayout infoLayout = SlideshowInfoLayout::SplitRight;
+
+        // For SPLIT layouts: fraction of the slideshow given to the IMAGE along
+        // the split axis (SplitLeft/Right -> width, SplitTop/Bottom -> height).
+        // The info panel takes the remainder. (1.0 = no panel, like Hidden.)
+        // Kept named `imagePanelRatio` for source compatibility.
+        float imagePanelRatio = 0.66f;
+
+        // For EDGE overlays (OverlayLeft/Right/Top/Bottom): fraction of the image
+        // spanned by the floating panel along the overlay axis.
+        float overlaySizeRatio = 0.34f;
+
+        // For CORNER / CENTER overlays: size of the floating box as a fraction of
+        // the image, plus the gap kept from the image edges.
+        float overlayBoxWidthRatio  = 0.42f;
+        float overlayBoxHeightRatio = 0.5f;
+        int   overlayMargin         = 20;
+
+        // Background painted behind overlay text (translucent so the image shows
+        // through). Ignored by split layouts, which use infoPanelColor.
+        Color overlayScrimColor = Color(0, 0, 0, 140);
+
         bool autoPlay        = true;
         bool pauseOnHover    = true;
         bool loop            = true;
@@ -195,9 +298,12 @@ namespace UltraCanvas {
         int hoveredIndicator = -1;
 
         // ===== INTERNAL HELPERS =====
-        Rect2Di GetImagePanelRect() const;
-        Rect2Di GetInfoPanelRect() const;
+        Rect2Di GetImagePanelRect() const;   // region the image is drawn into
+        Rect2Di GetInfoPanelRect() const;    // region the info panel occupies (0 if hidden)
         Rect2Di GetIndicatorPanelRect() const;
+
+        SlideshowIndicatorEdge EffectiveIndicatorEdge() const;
+        bool IndicatorIsVertical() const;    // true for Left/Right edges
 
         void StartTransitionTo(size_t newIndex);
         void FinishTransition();
@@ -229,10 +335,12 @@ namespace UltraCanvas {
         // Returns -1 if no indicator was hit.
         int IndicatorAt(const Point2Di& localPoint) const;
 
-        // One image-fade pass, with opacity already chosen by caller
+        // One image-fade pass, with opacity already chosen by caller.
+        // offsetX/offsetY translate the image (slide transitions); scale > 1
+        // enlarges it around its center (zoom transition).
         void DrawSlideAt(IRenderContext* ctx, size_t slideIdx,
                          const Rect2Dd& rect, float alpha,
-                         float horizontalOffsetPx);
+                         float offsetX, float offsetY = 0.0f, float scale = 1.0f);
 
         std::string LabelForSlide(size_t idx) const;
     };

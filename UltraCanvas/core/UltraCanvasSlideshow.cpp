@@ -1,7 +1,7 @@
 // core/UltraCanvasSlideshow.cpp
-// Timed image slideshow with selectable indicator styles.
-// Version: 1.0.0
-// Last Modified: 2026-05-16
+// Timed image slideshow with selectable info-panel layouts and indicator styles.
+// Version: 1.2.0
+// Last Modified: 2026-06-09
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSlideshow.h"
@@ -273,20 +273,129 @@ namespace UltraCanvas {
     // ===== GEOMETRY =====
     Rect2Di UltraCanvasSlideshow::GetImagePanelRect() const {
         auto bnds = GetLocalBounds();
-        if (config.imagePanelRatio >= 0.999f) {
-            return bnds;
+        const int ox = bnds.x, oy = bnds.y, W = bnds.width, H = bnds.height;
+        const auto layout = config.infoLayout;
+
+        // Overlay layouts and Hidden draw a full-bleed image.
+        if (layout == SlideshowInfoLayout::Hidden || SlideshowLayoutIsOverlay(layout)) {
+            return Rect2Di(ox, oy, W, H);
         }
-        int imgW = static_cast<int>(bnds.width * config.imagePanelRatio);
-        return Rect2Di(0, 0, imgW, bnds.height);
+
+        // Split layouts: a ratio of ~1 means there is effectively no panel.
+        float r = std::max(0.0f, std::min(1.0f, config.imagePanelRatio));
+        if (r >= 0.999f) return Rect2Di(ox, oy, W, H);
+
+        switch (layout) {
+            case SlideshowInfoLayout::SplitRight: {
+                int imgW = static_cast<int>(W * r);
+                return Rect2Di(ox, oy, imgW, H);
+            }
+            case SlideshowInfoLayout::SplitLeft: {
+                int imgW = static_cast<int>(W * r);
+                return Rect2Di(ox + W - imgW, oy, imgW, H);
+            }
+            case SlideshowInfoLayout::SplitBottom: {
+                int imgH = static_cast<int>(H * r);
+                return Rect2Di(ox, oy, W, imgH);
+            }
+            case SlideshowInfoLayout::SplitTop: {
+                int imgH = static_cast<int>(H * r);
+                return Rect2Di(ox, oy + H - imgH, W, imgH);
+            }
+            default:
+                return Rect2Di(ox, oy, W, H);
+        }
     }
 
     Rect2Di UltraCanvasSlideshow::GetInfoPanelRect() const {
         auto bnds = GetLocalBounds();
-        if (config.imagePanelRatio >= 0.999f) {
-            return Rect2Di(0, 0, 0, 0);
+        const int ox = bnds.x, oy = bnds.y, W = bnds.width, H = bnds.height;
+        const auto layout = config.infoLayout;
+
+        if (layout == SlideshowInfoLayout::Hidden) return Rect2Di(0, 0, 0, 0);
+
+        // Split: the panel is the complement of the image region.
+        if (SlideshowLayoutIsSplit(layout)) {
+            float r = std::max(0.0f, std::min(1.0f, config.imagePanelRatio));
+            if (r >= 0.999f) return Rect2Di(0, 0, 0, 0);
+            switch (layout) {
+                case SlideshowInfoLayout::SplitRight: {
+                    int imgW = static_cast<int>(W * r);
+                    return Rect2Di(ox + imgW, oy, W - imgW, H);
+                }
+                case SlideshowInfoLayout::SplitLeft: {
+                    int imgW = static_cast<int>(W * r);
+                    return Rect2Di(ox, oy, W - imgW, H);
+                }
+                case SlideshowInfoLayout::SplitBottom: {
+                    int imgH = static_cast<int>(H * r);
+                    return Rect2Di(ox, oy + imgH, W, H - imgH);
+                }
+                case SlideshowInfoLayout::SplitTop: {
+                    int imgH = static_cast<int>(H * r);
+                    return Rect2Di(ox, oy, W, H - imgH);
+                }
+                default: return Rect2Di(0, 0, 0, 0);
+            }
         }
-        int imgW = static_cast<int>(bnds.width * config.imagePanelRatio);
-        return Rect2Di(imgW, 0, bnds.width - imgW, bnds.height);
+
+        // Edge overlays span one whole side of the image.
+        float es = std::max(0.05f, std::min(1.0f, config.overlaySizeRatio));
+        switch (layout) {
+            case SlideshowInfoLayout::OverlayFull:
+                return Rect2Di(ox, oy, W, H);
+            case SlideshowInfoLayout::OverlayLeft: {
+                int w = static_cast<int>(W * es);
+                return Rect2Di(ox, oy, w, H);
+            }
+            case SlideshowInfoLayout::OverlayRight: {
+                int w = static_cast<int>(W * es);
+                return Rect2Di(ox + W - w, oy, w, H);
+            }
+            case SlideshowInfoLayout::OverlayTop: {
+                int h = static_cast<int>(H * es);
+                return Rect2Di(ox, oy, W, h);
+            }
+            case SlideshowInfoLayout::OverlayBottom: {
+                int h = static_cast<int>(H * es);
+                return Rect2Di(ox, oy + H - h, W, h);
+            }
+            default:
+                break;  // corner / center fall through
+        }
+
+        // Corner / center floating box.
+        int m = std::max(0, config.overlayMargin);
+        int bw = std::max(40, static_cast<int>(W * config.overlayBoxWidthRatio));
+        int bh = std::max(30, static_cast<int>(H * config.overlayBoxHeightRatio));
+        bw = std::min(bw, std::max(1, W - 2 * m));
+        bh = std::min(bh, std::max(1, H - 2 * m));
+        int x = ox + m, y = oy + m;
+        switch (layout) {
+            case SlideshowInfoLayout::OverlayTopLeft:     x = ox + m;            y = oy + m;            break;
+            case SlideshowInfoLayout::OverlayTopRight:    x = ox + W - m - bw;   y = oy + m;            break;
+            case SlideshowInfoLayout::OverlayBottomLeft:  x = ox + m;            y = oy + H - m - bh;   break;
+            case SlideshowInfoLayout::OverlayBottomRight: x = ox + W - m - bw;   y = oy + H - m - bh;   break;
+            case SlideshowInfoLayout::OverlayCenter:      x = ox + (W - bw) / 2; y = oy + (H - bh) / 2; break;
+            default: break;
+        }
+        return Rect2Di(x, y, bw, bh);
+    }
+
+    SlideshowIndicatorEdge UltraCanvasSlideshow::EffectiveIndicatorEdge() const {
+        const auto& s = config.indicators;
+        // Back-compat: if `edge` is left at its Bottom default but the legacy
+        // `vertical` field asks for Top, honor the old field.
+        if (s.edge == SlideshowIndicatorEdge::Bottom &&
+            s.vertical == VerticalAlignment::Top) {
+            return SlideshowIndicatorEdge::Top;
+        }
+        return s.edge;
+    }
+
+    bool UltraCanvasSlideshow::IndicatorIsVertical() const {
+        auto e = EffectiveIndicatorEdge();
+        return e == SlideshowIndicatorEdge::Left || e == SlideshowIndicatorEdge::Right;
     }
 
     Rect2Di UltraCanvasSlideshow::GetIndicatorPanelRect() const {
@@ -295,21 +404,45 @@ namespace UltraCanvas {
         if (s.shape == SlideshowIndicatorShape::Hidden) {
             return Rect2Di(0, 0, 0, 0);
         }
-        // Reserve a strip at the top or bottom of the image panel
-        int reservedH = static_cast<int>(s.itemHeight) + s.marginFromEdge * 2;
-        // Thumbnails need more space
-        if (s.shape == SlideshowIndicatorShape::Thumbnails) {
-            reservedH = static_cast<int>(s.itemHeight) + s.marginFromEdge * 2 + 4;
+
+        const bool vert = IndicatorIsVertical();
+        const int margin = s.marginFromEdge;
+
+        // Content extent across the strip (the thin dimension).
+        float cross;
+        switch (s.shape) {
+            case SlideshowIndicatorShape::Dots:
+                cross = std::max(s.itemHeight, 6.0f);
+                break;
+            case SlideshowIndicatorShape::Thumbnails:
+                cross = (vert ? std::max(s.itemWidth, 32.0f)
+                              : std::max(s.itemHeight, 20.0f)) + 4.0f;
+                break;
+            case SlideshowIndicatorShape::Counter:
+                cross = vert ? 48.0f : 18.0f;
+                break;
+            case SlideshowIndicatorShape::Labels:
+                cross = vert ? std::max(s.itemWidth, 80.0f) : 18.0f;
+                break;
+            default:  // Bars, ProgressBar, StoryBars
+                cross = std::max(s.itemHeight, 3.0f);
+                break;
         }
-        // Labels / Counter need text room
-        if (s.shape == SlideshowIndicatorShape::Labels ||
-            s.shape == SlideshowIndicatorShape::Counter) {
-            reservedH = 22 + s.marginFromEdge * 2;
+        int contentCross = static_cast<int>(cross);
+        auto edge = EffectiveIndicatorEdge();
+
+        if (!vert) {
+            // Horizontal strip along the top or bottom of the image.
+            int y = (edge == SlideshowIndicatorEdge::Top)
+                    ? imgRect.y + margin
+                    : imgRect.y + imgRect.height - margin - contentCross;
+            return Rect2Di(imgRect.x + 8, y, imgRect.width - 16, contentCross);
         }
-        int y = (s.vertical == VerticalAlignment::Top)
-                ? imgRect.y + s.marginFromEdge
-                : imgRect.y + imgRect.height - reservedH + s.marginFromEdge;
-        return Rect2Di(imgRect.x + 8, y, imgRect.width - 16, reservedH - s.marginFromEdge * 2);
+        // Vertical strip along the left or right of the image.
+        int x = (edge == SlideshowIndicatorEdge::Left)
+                ? imgRect.x + margin
+                : imgRect.x + imgRect.width - margin - contentCross;
+        return Rect2Di(x, imgRect.y + 8, contentCross, imgRect.height - 16);
     }
 
     // ===== RENDER =====
@@ -352,7 +485,7 @@ namespace UltraCanvas {
 
     void UltraCanvasSlideshow::DrawSlideAt(IRenderContext* ctx, size_t slideIdx,
                                            const Rect2Dd& rect, float alpha,
-                                           float horizontalOffsetPx) {
+                                           float offsetX, float offsetY, float scale) {
         if (slideIdx >= slides.size()) return;
         const auto& slide = slides[slideIdx];
         if (slide.imagePath.empty()) return;
@@ -365,7 +498,16 @@ namespace UltraCanvas {
         ctx->SetAlpha(std::max(0.0f, std::min(1.0f, alpha)));
 
         Rect2Dd dst = rect;
-        dst.x += horizontalOffsetPx;
+        if (scale != 1.0f) {
+            double dw = dst.width * (scale - 1.0);
+            double dh = dst.height * (scale - 1.0);
+            dst.x -= dw / 2.0;
+            dst.y -= dh / 2.0;
+            dst.width += dw;
+            dst.height += dh;
+        }
+        dst.x += offsetX;
+        dst.y += offsetY;
         ctx->DrawImage(*img, dst, ImageFitMode::Cover);
         ctx->PopState();
     }
@@ -405,6 +547,20 @@ namespace UltraCanvas {
                 DrawSlideAt(ctx, currentIndex,  imgRect, 1.0f, (1.0f - p) * w);
                 break;
             }
+            case SlideshowFadeStyle::SlideVertical: {
+                float h = imgRect.height;
+                DrawSlideAt(ctx, previousIndex, imgRect, 1.0f, 0.0f, -p * h);
+                DrawSlideAt(ctx, currentIndex,  imgRect, 1.0f, 0.0f, (1.0f - p) * h);
+                break;
+            }
+            case SlideshowFadeStyle::ZoomFade: {
+                // Previous holds steady and fades out; new zooms in from slightly
+                // enlarged while fading in.
+                DrawSlideAt(ctx, previousIndex, imgRect, 1.0f - p, 0.0f, 0.0f, 1.0f);
+                float scale = 1.08f - 0.08f * p;
+                DrawSlideAt(ctx, currentIndex,  imgRect, p, 0.0f, 0.0f, scale);
+                break;
+            }
         }
     }
 
@@ -412,7 +568,10 @@ namespace UltraCanvas {
         Rect2Di info = GetInfoPanelRect();
         if (info.width <= 0 || info.height <= 0) return;
 
-        ctx->SetFillPaint(config.infoPanelColor);
+        // Split layouts paint an opaque panel; overlays paint a translucent scrim
+        // so the image stays visible behind the text.
+        bool overlay = SlideshowLayoutIsOverlay(config.infoLayout);
+        ctx->SetFillPaint(overlay ? config.overlayScrimColor : config.infoPanelColor);
         ctx->FillRectangle(Rect2Dd(info));
 
         // Choose source text
@@ -500,55 +659,82 @@ namespace UltraCanvas {
         }
     }
 
-    // Common helper: where does a row of `count` items, each `itemW` wide,
-    // separated by `spacing`, start on x given the panel and horizontal alignment.
-    static int RowStartX(const Rect2Di& panel, int count,
-                         float itemW, float spacing,
-                         TextAlignment align) {
-        float total = count * itemW + (count - 1) * spacing;
-        switch (align) {
-            case TextAlignment::Left:   return panel.x;
-            case TextAlignment::Right:  return panel.x + panel.width - static_cast<int>(total);
-            case TextAlignment::Center:
-            case TextAlignment::Justify:
-            default:                    return panel.x + (panel.width - static_cast<int>(total)) / 2;
+    namespace {
+        // Orientation-aware placement inside an indicator strip. For a Top/Bottom
+        // strip the "main" axis is X and the "cross" axis is Y; for a Left/Right
+        // strip they swap, so the same renderer code lays items out as a column.
+        struct StripAxis {
+            bool vertical;
+            Rect2Di panel;
+            int MainSize() const { return vertical ? panel.height : panel.width; }
+            // Rect for an item `mainLen` long along the strip and `crossLen` thick,
+            // starting `mainStart` into the strip and centered on the cross axis.
+            Rect2Di Cell(int mainStart, int mainLen, int crossLen) const {
+                if (vertical) {
+                    int x = panel.x + (panel.width - crossLen) / 2;
+                    return Rect2Di(x, panel.y + mainStart, crossLen, mainLen);
+                }
+                int y = panel.y + (panel.height - crossLen) / 2;
+                return Rect2Di(panel.x + mainStart, y, mainLen, crossLen);
+            }
+        };
+
+        // Start offset along the main axis for a run of `total` length given the
+        // alignment field. For a vertical strip Left maps to top, Right to bottom.
+        int StripStart(int mainSize, int total, TextAlignment align) {
+            switch (align) {
+                case TextAlignment::Left:   return 0;
+                case TextAlignment::Right:  return mainSize - total;
+                case TextAlignment::Center:
+                case TextAlignment::Justify:
+                default:                    return (mainSize - total) / 2;
+            }
+        }
+
+        // Expand a hit rect on the cross axis so thin indicators are easy to click.
+        Rect2Di ExpandHit(const Rect2Di& r, bool vertical, int pad) {
+            if (vertical) return Rect2Di(r.x - pad, r.y, r.width + pad * 2, r.height);
+            return Rect2Di(r.x, r.y - pad, r.width, r.height + pad * 2);
         }
     }
 
     void UltraCanvasSlideshow::DrawIndicatorsDots(IRenderContext* ctx, const Rect2Di& panel) {
         const auto& s = config.indicators;
         int count = static_cast<int>(slides.size());
-        float diameter = std::max(s.itemHeight, 6.0f);
+        StripAxis ax{IndicatorIsVertical(), panel};
+        int diameter = static_cast<int>(std::max(s.itemHeight, 6.0f));
         float radius = diameter / 2.0f;
-        int startX = RowStartX(panel, count, diameter, s.spacing, s.horizontal);
-        int centerY = panel.y + panel.height / 2;
+        int step = diameter + static_cast<int>(s.spacing);
+        int total = count * diameter + (count - 1) * static_cast<int>(s.spacing);
+        int start = StripStart(ax.MainSize(), total, s.horizontal);
 
         for (int i = 0; i < count; ++i) {
-            float cx = startX + i * (diameter + s.spacing) + radius;
-            Rect2Di hit(static_cast<int>(cx - radius), static_cast<int>(centerY - radius),
-                        static_cast<int>(diameter), static_cast<int>(diameter));
-            indicatorHitRects.push_back(hit);
+            Rect2Di cell = ax.Cell(start + i * step, diameter, diameter);
+            indicatorHitRects.push_back(cell);
 
             Color fill = (i == static_cast<int>(currentIndex)) ? s.activeColor : s.inactiveColor;
             if (s.hoverHighlight && i == hoveredIndicator && i != static_cast<int>(currentIndex)) {
                 fill = s.hoverColor;
             }
-            ctx->DrawFilledCircle(Point2Dd(cx, static_cast<float>(centerY)), radius, fill);
+            Point2Dd center(cell.x + cell.width / 2.0f, cell.y + cell.height / 2.0f);
+            ctx->DrawFilledCircle(center, radius, fill);
         }
     }
 
     void UltraCanvasSlideshow::DrawIndicatorsBars(IRenderContext* ctx, const Rect2Di& panel) {
         const auto& s = config.indicators;
         int count = static_cast<int>(slides.size());
-        int startX = RowStartX(panel, count, s.itemWidth, s.spacing, s.horizontal);
-        int y = panel.y + (panel.height - static_cast<int>(s.itemHeight)) / 2;
+        bool vert = IndicatorIsVertical();
+        StripAxis ax{vert, panel};
+        int mainLen  = static_cast<int>(s.itemWidth);   // bar length along the strip
+        int crossLen = static_cast<int>(s.itemHeight);  // bar thickness
+        int step = mainLen + static_cast<int>(s.spacing);
+        int total = count * mainLen + (count - 1) * static_cast<int>(s.spacing);
+        int start = StripStart(ax.MainSize(), total, s.horizontal);
 
         for (int i = 0; i < count; ++i) {
-            Rect2Di r(startX + i * static_cast<int>(s.itemWidth + s.spacing), y,
-                      static_cast<int>(s.itemWidth), static_cast<int>(s.itemHeight));
-            // Expand hit area vertically for easier clicking
-            Rect2Di hit(r.x, r.y - 6, r.width, r.height + 12);
-            indicatorHitRects.push_back(hit);
+            Rect2Di r = ax.Cell(start + i * step, mainLen, crossLen);
+            indicatorHitRects.push_back(ExpandHit(r, vert, 6));
 
             Color fill = (i == static_cast<int>(currentIndex)) ? s.activeColor : s.inactiveColor;
             if (s.hoverHighlight && i == hoveredIndicator && i != static_cast<int>(currentIndex)) {
@@ -560,37 +746,38 @@ namespace UltraCanvas {
 
     void UltraCanvasSlideshow::DrawIndicatorsProgressBar(IRenderContext* ctx, const Rect2Di& panel) {
         const auto& s = config.indicators;
-        // Single bar spanning the panel; one hit rect for "click to next"
-        Rect2Di full(panel.x, panel.y + (panel.height - static_cast<int>(s.itemHeight)) / 2,
-                     panel.width, static_cast<int>(s.itemHeight));
+        bool vert = IndicatorIsVertical();
+        StripAxis ax{vert, panel};
+        int crossLen = static_cast<int>(s.itemHeight);
+        int mainSize = ax.MainSize();
 
+        // Single bar spanning the strip; one hit rect for "click to next".
+        Rect2Di full = ax.Cell(0, mainSize, crossLen);
         ctx->DrawFilledRectangle(Rect2Dd(full), s.inactiveColor, 0.0f, Colors::Transparent, s.cornerRadius);
 
-        float progress = transitioning ? Smoothstep(transitionProgress)
-                                       : slideElapsed;
-        int filledW = std::max(0, std::min(full.width, static_cast<int>(full.width * progress)));
-        Rect2Di filled(full.x, full.y, filledW, full.height);
+        float progress = transitioning ? Smoothstep(transitionProgress) : slideElapsed;
+        int filledMain = std::max(0, std::min(mainSize, static_cast<int>(mainSize * progress)));
+        Rect2Di filled = ax.Cell(0, filledMain, crossLen);
         ctx->DrawFilledRectangle(Rect2Dd(filled), s.activeColor, 0.0f, Colors::Transparent, s.cornerRadius);
 
-        // Single hit rect covering the whole bar — clicking it advances to next.
-        Rect2Di hit(full.x, full.y - 6, full.width, full.height + 12);
-        indicatorHitRects.push_back(hit);
+        indicatorHitRects.push_back(ExpandHit(full, vert, 6));
     }
 
     void UltraCanvasSlideshow::DrawIndicatorsStoryBars(IRenderContext* ctx, const Rect2Di& panel) {
         const auto& s = config.indicators;
         int count = static_cast<int>(slides.size());
         if (count <= 0) return;
-        // Each bar takes an equal share of panel width
+        bool vert = IndicatorIsVertical();
+        StripAxis ax{vert, panel};
+        int crossLen = static_cast<int>(s.itemHeight);
+        // Each bar takes an equal share of the strip's main axis.
         int totalSpacing = (count - 1) * static_cast<int>(s.spacing);
-        int barW = std::max(1, (panel.width - totalSpacing) / count);
-        int y = panel.y + (panel.height - static_cast<int>(s.itemHeight)) / 2;
+        int barMain = std::max(1, (ax.MainSize() - totalSpacing) / count);
 
         for (int i = 0; i < count; ++i) {
-            int x = panel.x + i * (barW + static_cast<int>(s.spacing));
-            Rect2Di r(x, y, barW, static_cast<int>(s.itemHeight));
-            Rect2Di hit(r.x, r.y - 6, r.width, r.height + 12);
-            indicatorHitRects.push_back(hit);
+            int mainStart = i * (barMain + static_cast<int>(s.spacing));
+            Rect2Di r = ax.Cell(mainStart, barMain, crossLen);
+            indicatorHitRects.push_back(ExpandHit(r, vert, 6));
 
             // Background
             ctx->DrawFilledRectangle(Rect2Dd(r), s.inactiveColor, 0.0f, Colors::Transparent, s.cornerRadius);
@@ -601,8 +788,7 @@ namespace UltraCanvas {
             else if (i == static_cast<int>(currentIndex)) fillFrac = transitioning ? 1.0f : slideElapsed;
 
             if (fillFrac > 0.0f) {
-                Rect2Di filled(r.x, r.y,
-                               static_cast<int>(r.width * fillFrac), r.height);
+                Rect2Di filled = ax.Cell(mainStart, static_cast<int>(barMain * fillFrac), crossLen);
                 ctx->DrawFilledRectangle(Rect2Dd(filled), s.activeColor, 0.0f, Colors::Transparent, s.cornerRadius);
             }
         }
@@ -620,14 +806,21 @@ namespace UltraCanvas {
         ctx->SetFontStyle(fs);
 
         Size2Di textSize = ctx->GetTextLineDimensions(txt);
-        int x = panel.x;
-        switch (s.horizontal) {
-            case TextAlignment::Left:   x = panel.x; break;
-            case TextAlignment::Right:  x = panel.x + panel.width - textSize.width; break;
-            case TextAlignment::Center:
-            default:                    x = panel.x + (panel.width - textSize.width) / 2; break;
+        int x, y;
+        if (IndicatorIsVertical()) {
+            // Centered horizontally in the narrow column; `horizontal` selects the
+            // vertical position (Left->top, Right->bottom, Center->middle).
+            x = panel.x + (panel.width - textSize.width) / 2;
+            y = panel.y + StripStart(panel.height, textSize.height, s.horizontal);
+        } else {
+            switch (s.horizontal) {
+                case TextAlignment::Left:   x = panel.x; break;
+                case TextAlignment::Right:  x = panel.x + panel.width - textSize.width; break;
+                case TextAlignment::Center:
+                default:                    x = panel.x + (panel.width - textSize.width) / 2; break;
+            }
+            y = panel.y + (panel.height - textSize.height) / 2;
         }
-        int y = panel.y + (panel.height - textSize.height) / 2;
         ctx->DrawText(txt, Point2Dd(static_cast<float>(x), static_cast<float>(y)));
 
         // No hit rects — counter is informational only
@@ -638,14 +831,19 @@ namespace UltraCanvas {
         int count = static_cast<int>(slides.size());
         // Thumbnails: width is itemWidth, height is itemHeight (caller usually
         // sets both larger than for bars)
-        float thumbW = std::max(s.itemWidth, 32.0f);
-        float thumbH = std::max(s.itemHeight, 20.0f);
-        int startX = RowStartX(panel, count, thumbW, s.spacing, s.horizontal);
-        int y = panel.y + (panel.height - static_cast<int>(thumbH)) / 2;
+        int thumbW = static_cast<int>(std::max(s.itemWidth, 32.0f));
+        int thumbH = static_cast<int>(std::max(s.itemHeight, 20.0f));
+        bool vert = IndicatorIsVertical();
+        StripAxis ax{vert, panel};
+        // Along the strip a thumbnail occupies its width (row) or height (column).
+        int mainLen  = vert ? thumbH : thumbW;
+        int crossLen = vert ? thumbW : thumbH;
+        int step = mainLen + static_cast<int>(s.spacing);
+        int total = count * mainLen + (count - 1) * static_cast<int>(s.spacing);
+        int start = StripStart(ax.MainSize(), total, s.horizontal);
 
         for (int i = 0; i < count; ++i) {
-            Rect2Di r(startX + i * static_cast<int>(thumbW + s.spacing), y,
-                      static_cast<int>(thumbW), static_cast<int>(thumbH));
+            Rect2Di r = ax.Cell(start + i * step, mainLen, crossLen);
             indicatorHitRects.push_back(r);
 
             // Frame
@@ -689,54 +887,59 @@ namespace UltraCanvas {
         fs.fontWeight = FontWeight::Bold;
         ctx->SetFontStyle(fs);
 
-        // Measure each label; layout left-to-right with spacing
-        std::vector<int> widths(count);
-        int totalW = 0;
         const int labelHPad = 12;
-        for (int i = 0; i < count; ++i) {
-            Size2Di sz = ctx->GetTextLineDimensions(LabelForSlide(i));
-            widths[i] = std::max(static_cast<int>(s.itemWidth), sz.width + labelHPad * 2);
-            totalW += widths[i];
-        }
-        totalW += static_cast<int>(s.spacing) * (count - 1);
-
-        int x;
-        switch (s.horizontal) {
-            case TextAlignment::Left:   x = panel.x; break;
-            case TextAlignment::Right:  x = panel.x + panel.width - totalW; break;
-            case TextAlignment::Center:
-            default:                    x = panel.x + (panel.width - totalW) / 2; break;
-        }
-
         int textH = ctx->GetTextLineHeight("Mg");
         int underlineH = 2;
         int rowH = textH + underlineH + 4;
-        int y = panel.y + (panel.height - rowH) / 2;
+        int spacing = static_cast<int>(s.spacing);
+        bool vert = IndicatorIsVertical();
 
+        // Per-label box size along the strip (measured text + padding).
+        std::vector<int> widths(count);
         for (int i = 0; i < count; ++i) {
-            Rect2Di cell(x, y, widths[i], rowH);
-            Rect2Di hit(cell.x, cell.y - 4, cell.width, cell.height + 8);
-            indicatorHitRects.push_back(hit);
+            Size2Di sz = ctx->GetTextLineDimensions(LabelForSlide(i));
+            widths[i] = std::max(static_cast<int>(s.itemWidth), sz.width + labelHPad * 2);
+        }
+
+        // Draws one label cell and records its hit rect / active underline.
+        auto drawCell = [&](int i, const Rect2Di& cell) {
+            indicatorHitRects.push_back(Rect2Di(cell.x, cell.y - 4, cell.width, cell.height + 8));
 
             bool isActive = (i == static_cast<int>(currentIndex));
             Color textColor = isActive ? s.activeColor :
                               (i == hoveredIndicator ? s.activeColor : s.textColor);
-
             ctx->SetTextPaint(textColor);
             std::string label = LabelForSlide(i);
             Size2Di sz = ctx->GetTextLineDimensions(label);
             int tx = cell.x + (cell.width - sz.width) / 2;
             ctx->DrawText(label, Point2Dd(static_cast<float>(tx), static_cast<float>(cell.y)));
 
-            // Underline for active tab
             if (isActive) {
                 Rect2Di under(cell.x + labelHPad / 2, cell.y + textH + 2,
                               cell.width - labelHPad, underlineH);
                 ctx->DrawFilledRectangle(Rect2Dd(under), s.activeColor, 0.0f,
                                          Colors::Transparent, 0.0f);
             }
+        };
 
-            x += widths[i] + static_cast<int>(s.spacing);
+        if (!vert) {
+            // Row of labels along the bottom/top edge.
+            int totalW = spacing * (count - 1);
+            for (int w : widths) totalW += w;
+            int x = panel.x + StripStart(panel.width, totalW, s.horizontal);
+            int y = panel.y + (panel.height - rowH) / 2;
+            for (int i = 0; i < count; ++i) {
+                drawCell(i, Rect2Di(x, y, widths[i], rowH));
+                x += widths[i] + spacing;
+            }
+        } else {
+            // Stacked column of labels along the left/right edge.
+            int totalH = count * rowH + (count - 1) * spacing;
+            int y = panel.y + StripStart(panel.height, totalH, s.horizontal);
+            for (int i = 0; i < count; ++i) {
+                drawCell(i, Rect2Di(panel.x, y, panel.width, rowH));
+                y += rowH + spacing;
+            }
         }
     }
 
