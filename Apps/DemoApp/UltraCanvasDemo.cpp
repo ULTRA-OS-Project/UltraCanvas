@@ -1036,7 +1036,7 @@ namespace UltraCanvas {
                 .AddVariant("models3d", "OBJ Models");
 
 #ifdef ULTRACANVAS_ENABLE_GL
-        graphics3DBuilder.AddItem("glsurface", "OpenGL Surface", "Hardware-accelerated OpenGL 3D rendering surface",
+        graphics3DBuilder.AddItem("glsurface", "OpenGL 3D Showcase", "3D models, shader playground, and a Zarch-style simulation",
                                   ImplementationStatus::FullyImplemented,
                                   [this]() { return CreateGLSurfaceExamples(); },
                                   "Apps/DemoApp/UltraCanvasGLSurfaceExamples.cpp",

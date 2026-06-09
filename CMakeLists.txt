@@ -139,7 +139,12 @@ if(BUILD_DEMO_APP)
 
     # Only include GL examples if GL support is enabled
     if(ULTRACANVAS_ENABLE_GL)
-        list(APPEND DEMO_SOURCES Apps/DemoApp/UltraCanvasGLSurfaceExamples.cpp)
+        list(APPEND DEMO_SOURCES
+            Apps/DemoApp/UltraCanvasGLSurfaceExamples.cpp
+            Apps/DemoApp/UltraCanvasGLModelsTab.cpp
+            Apps/DemoApp/UltraCanvasGLShaderTab.cpp
+            Apps/DemoApp/UltraCanvasGLZarchTab.cpp
+        )
     endif()
 
     # Only include plugin examples if the plugins are actually built
