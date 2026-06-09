@@ -1,7 +1,8 @@
 // Apps/DemoApp/UltraCanvasSlideshowExamples.cpp
-// Demonstration of UltraCanvasSlideshow with every supported indicator style.
-// Version: 1.0.0
-// Last Modified: 2026-05-16
+// Demonstration of UltraCanvasSlideshow: indicator styles, info-panel layouts,
+// indicator edges and transition styles.
+// Version: 1.1.0
+// Last Modified: 2026-06-09
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -67,7 +68,7 @@ namespace UltraCanvas {
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSlideshowExamples() {
-        auto root = std::make_shared<UltraCanvasContainer>("SlideshowExamples", 0, 0, 1000, 720);
+        auto root = std::make_shared<UltraCanvasContainer>("SlideshowExamples", 0, 0, 1000, 990);
 
         // Title
         auto title = std::make_shared<UltraCanvasLabel>("SlideshowTitle", 20, 10, 800, 30);
@@ -78,8 +79,9 @@ namespace UltraCanvas {
         root->AddChild(title);
 
         auto subtitle = std::make_shared<UltraCanvasLabel>("SlideshowSubtitle", 20, 42, 900, 22);
-        subtitle->SetText("Image on the left cross-fades on a timer; info text on the right. "
-                          "Switch indicator style with the buttons below, hover the slideshow to pause.");
+        subtitle->SetText("Image cross-fades on a timer with an info panel beside or over it. "
+                          "Pick the indicator style, info-panel layout, indicator edge and transition "
+                          "with the buttons below; hover the slideshow to pause.");
         subtitle->SetFontSize(11);
         subtitle->SetTextColor(Color(110, 110, 110, 255));
         root->AddChild(subtitle);
@@ -205,7 +207,9 @@ namespace UltraCanvas {
         const FadeChoice fades[] = {
             { "CrossFade", SlideshowFadeStyle::CrossFade },
             { "FadeOut/In", SlideshowFadeStyle::FadeOutIn },
-            { "Slide",     SlideshowFadeStyle::SlideHorizontal },
+            { "Slide H",   SlideshowFadeStyle::SlideHorizontal },
+            { "Slide V",   SlideshowFadeStyle::SlideVertical },
+            { "Zoom",      SlideshowFadeStyle::ZoomFade },
             { "Instant",   SlideshowFadeStyle::NoFade },
         };
         int fbX = 310;
@@ -227,6 +231,178 @@ namespace UltraCanvas {
             });
             root->AddChild(fb);
             fbX += 100;
+        }
+
+        // ===== Info-panel layout picker (split / overlay positions) =====
+        struct LayoutChoice { const char* label; SlideshowInfoLayout layout; };
+        const LayoutChoice layouts[] = {
+            { "Split R",      SlideshowInfoLayout::SplitRight },
+            { "Split L",      SlideshowInfoLayout::SplitLeft },
+            { "Split Top",    SlideshowInfoLayout::SplitTop },
+            { "Split Bot",    SlideshowInfoLayout::SplitBottom },
+            { "Ovl Left",     SlideshowInfoLayout::OverlayLeft },
+            { "Ovl Right",    SlideshowInfoLayout::OverlayRight },
+            { "Ovl Top",      SlideshowInfoLayout::OverlayTop },
+            { "Ovl Bottom",   SlideshowInfoLayout::OverlayBottom },
+            { "Ovl TL",       SlideshowInfoLayout::OverlayTopLeft },
+            { "Ovl TR",       SlideshowInfoLayout::OverlayTopRight },
+            { "Ovl BL",       SlideshowInfoLayout::OverlayBottomLeft },
+            { "Ovl BR",       SlideshowInfoLayout::OverlayBottomRight },
+            { "Ovl Center",   SlideshowInfoLayout::OverlayCenter },
+            { "Ovl Full",     SlideshowInfoLayout::OverlayFull },
+            { "No Panel",     SlideshowInfoLayout::Hidden },
+        };
+
+        int layoutTitleY = 712;
+        auto layoutTitle = std::make_shared<UltraCanvasLabel>("LayoutTitle", 20, layoutTitleY, 300, 22);
+        layoutTitle->SetText("Info-panel layout (split = own region, overlay = on the image):");
+        layoutTitle->SetFontSize(12);
+        layoutTitle->SetFontWeight(FontWeight::Bold);
+        root->AddChild(layoutTitle);
+
+        int lx = 20, ly = 738;
+        const int lBtnW = 92, lBtnH = 26, lGap = 5;
+        for (const auto& lc : layouts) {
+            if (lx + lBtnW > 980) { lx = 20; ly += lBtnH + lGap; }
+            auto lb = std::make_shared<UltraCanvasButton>(
+                    std::string("layout_") + lc.label, lx, ly, lBtnW, lBtnH, lc.label);
+            lb->SetFontSize(10);
+            auto layoutVal = lc.layout;
+            lb->SetOnClick([showPtr, layoutVal]() {
+                SlideshowConfig c = showPtr->GetConfig();
+                c.infoLayout = layoutVal;
+                // Pick readable text colors for the chosen layout: light text on
+                // the translucent overlay scrim, dark text on the opaque split panel.
+                if (SlideshowLayoutIsOverlay(layoutVal)) {
+                    c.titleColor = Color(255, 255, 255, 255);
+                    c.bodyColor  = Color(235, 235, 235, 255);
+                } else {
+                    c.titleColor = Color(20, 20, 22, 255);
+                    c.bodyColor  = Color(70, 70, 70, 255);
+                }
+                showPtr->SetConfig(c);
+                showPtr->Play();
+            });
+            root->AddChild(lb);
+            lx += lBtnW + lGap;
+        }
+
+        // ===== Indicator edge picker (which side the strip hugs) =====
+        struct EdgeChoice { const char* label; SlideshowIndicatorEdge edge; };
+        const EdgeChoice edges[] = {
+            { "Bottom", SlideshowIndicatorEdge::Bottom },
+            { "Top",    SlideshowIndicatorEdge::Top },
+            { "Left",   SlideshowIndicatorEdge::Left },
+            { "Right",  SlideshowIndicatorEdge::Right },
+        };
+        int edgeY = ly + lBtnH + 14;
+        auto edgeTitle = std::make_shared<UltraCanvasLabel>("EdgeTitle", 20, edgeY + 4, 130, 22);
+        edgeTitle->SetText("Indicator edge:");
+        edgeTitle->SetFontSize(12);
+        edgeTitle->SetFontWeight(FontWeight::Bold);
+        root->AddChild(edgeTitle);
+
+        int ex = 150;
+        for (const auto& ec : edges) {
+            auto eb = std::make_shared<UltraCanvasButton>(
+                    std::string("edge_") + ec.label, ex, edgeY, 80, 26, ec.label);
+            eb->SetFontSize(11);
+            auto edgeVal = ec.edge;
+            eb->SetOnClick([showPtr, edgeVal]() {
+                SlideshowIndicatorStyle is = showPtr->GetIndicatorStyle();
+                is.edge = edgeVal;
+                showPtr->SetIndicatorStyle(is);
+            });
+            root->AddChild(eb);
+            ex += 88;
+        }
+
+        // ===== Image fit picker (auto-zoom/crop policy for mismatched images) =====
+        struct FitChoice { const char* label; ImageFitMode fit; };
+        const FitChoice fits[] = {
+            { "Cover (crop)",  ImageFitMode::Cover },
+            { "Contain",       ImageFitMode::Contain },
+            { "Fill (stretch)",ImageFitMode::Fill },
+            { "Scale Down",    ImageFitMode::ScaleDown },
+        };
+        int fitY = edgeY + 40;
+        auto fitTitle = std::make_shared<UltraCanvasLabel>("FitTitle", 20, fitY + 4, 130, 22);
+        fitTitle->SetText("Image fit:");
+        fitTitle->SetFontSize(12);
+        fitTitle->SetFontWeight(FontWeight::Bold);
+        root->AddChild(fitTitle);
+        int fx2 = 110;
+        for (const auto& fc : fits) {
+            auto fb2 = std::make_shared<UltraCanvasButton>(
+                    std::string("fit_") + fc.label, fx2, fitY, 110, 26, fc.label);
+            fb2->SetFontSize(11);
+            auto fitVal = fc.fit;
+            fb2->SetOnClick([showPtr, fitVal]() {
+                SlideshowConfig c = showPtr->GetConfig();
+                c.imageFit = fitVal;
+                showPtr->SetConfig(c);
+                showPtr->Play();
+            });
+            root->AddChild(fb2);
+            fx2 += 118;
+        }
+
+        // ===== Focal point (which part survives a Cover crop) =====
+        struct FocusChoice { const char* label; float x; float y; };
+        const FocusChoice focuses[] = {
+            { "Focus TL",     0.0f, 0.0f },
+            { "Focus Center", 0.5f, 0.5f },
+            { "Focus BR",     1.0f, 1.0f },
+        };
+        int focY = fitY + 36;
+        auto focTitle = std::make_shared<UltraCanvasLabel>("FocusTitle", 20, focY + 4, 130, 22);
+        focTitle->SetText("Crop focus:");
+        focTitle->SetFontSize(12);
+        focTitle->SetFontWeight(FontWeight::Bold);
+        root->AddChild(focTitle);
+        int focX = 110;
+        for (const auto& foc : focuses) {
+            auto fob = std::make_shared<UltraCanvasButton>(
+                    std::string("focus_") + foc.label, focX, focY, 110, 26, foc.label);
+            fob->SetFontSize(11);
+            float vx = foc.x, vy = foc.y;
+            fob->SetOnClick([showPtr, vx, vy]() {
+                SlideshowConfig c = showPtr->GetConfig();
+                c.imageFocus = Point2Df(vx, vy);
+                showPtr->SetConfig(c);
+                showPtr->Play();
+            });
+            root->AddChild(fob);
+            focX += 118;
+        }
+
+        // ===== Gap fill (what shows behind Contain / ScaleDown letterboxing) =====
+        struct GapChoice { const char* label; SlideshowGapFill gap; };
+        const GapChoice gaps[] = {
+            { "Gap: Bg",    SlideshowGapFill::BackgroundColor },
+            { "Gap: Black", SlideshowGapFill::LetterboxColor },
+            { "Gap: Image", SlideshowGapFill::BlurredImage },
+        };
+        int gapY = focY + 36;
+        auto gapTitle = std::make_shared<UltraCanvasLabel>("GapTitle", 20, gapY + 4, 130, 22);
+        gapTitle->SetText("Letterbox fill:");
+        gapTitle->SetFontSize(12);
+        gapTitle->SetFontWeight(FontWeight::Bold);
+        root->AddChild(gapTitle);
+        int gx = 110;
+        for (const auto& gc : gaps) {
+            auto gb = std::make_shared<UltraCanvasButton>(
+                    std::string("gap_") + gc.label, gx, gapY, 110, 26, gc.label);
+            gb->SetFontSize(11);
+            auto gapVal = gc.gap;
+            gb->SetOnClick([showPtr, gapVal]() {
+                SlideshowConfig c = showPtr->GetConfig();
+                c.gapFill = gapVal;
+                showPtr->SetConfig(c);
+                showPtr->Play();
+            });
+            root->AddChild(gb);
+            gx += 118;
         }
 
         return root;
