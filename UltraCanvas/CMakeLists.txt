@@ -32,8 +32,10 @@ else()
     option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin" OFF)
 endif ()
 
-# OpenGL surface support (Linux only)
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+# OpenGL surface support (Linux, macOS and Windows)
+# On Windows the WGL backend additionally requires GLEW to load modern GL
+# entry points; if GLEW is not found below, GL support is disabled there.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR APPLE OR WIN32)
     option(ULTRACANVAS_ENABLE_GL "Enable OpenGL 3D surface support" ON)
 else()
     set(ULTRACANVAS_ENABLE_GL OFF CACHE BOOL "Enable OpenGL 3D surface support" FORCE)
@@ -123,8 +125,19 @@ if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
     endif()
 elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
     # Windows SDK provides most dependencies
+    # WGL needs GLEW to load modern (GL 3.x/4.x) entry points, since
+    # opengl32.dll only exports OpenGL 1.1.
     if(ULTRACANVAS_ENABLE_GL)
-        set(ULTRACANVAS_HAS_WGL TRUE)
+        pkg_check_modules(GLEW glew)
+        if(GLEW_FOUND)
+            set(ULTRACANVAS_HAS_WGL TRUE)
+            message(STATUS "  GLEW: ${GLEW_VERSION} (WGL GL function loader)")
+        else()
+            message(WARNING "  GLEW NOT FOUND - disabling OpenGL surface support on Windows "
+                            "(install mingw-w64-x86_64-glew)")
+            # Force the cache so the parent scope (demo GL sources) sees it too.
+            set(ULTRACANVAS_ENABLE_GL OFF CACHE BOOL "Enable OpenGL 3D surface support" FORCE)
+        endif()
     endif()
 elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     find_library(COCOA_FRAMEWORK Cocoa REQUIRED)
@@ -286,11 +299,11 @@ if(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     file(GLOB ULTRACANVAS_OBJCPP_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/*.mm
     )
-    if(NOT ULTRACANVAS_ENABLE_GL)
-        list(REMOVE_ITEM ULTRACANVAS_OBJCPP_SOURCES
-            ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/GLContextManagerCGL_MacOS.mm
-        )
-    endif()
+    # The CGL context manager is added conditionally by the OpenGL section below
+    # (guarded by ULTRACANVAS_HAS_CGL); remove it here to avoid a duplicate source.
+    list(REMOVE_ITEM ULTRACANVAS_OBJCPP_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/GLContextManagerCGL_MacOS.mm
+    )
     list(APPEND ULTRACANVAS_PLATFORM_SOURCES ${ULTRACANVAS_OBJCPP_SOURCES})
 
     set_source_files_properties(
@@ -339,6 +352,12 @@ if(ULTRACANVAS_ENABLE_GL)
         if(ULTRACANVAS_HAS_CGL)
             list(APPEND ULTRACANVAS_PLATFORM_SOURCES
                 ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/GLContextManagerCGL_MacOS.mm
+            )
+        endif()
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
+        if(ULTRACANVAS_HAS_WGL)
+            list(APPEND ULTRACANVAS_PLATFORM_SOURCES
+                ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/GLContextManagerWGL_MSWindows.cpp
             )
         endif()
     endif()
@@ -413,6 +432,15 @@ if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
             ${EGL_INCLUDE_DIRS}
         )
     endif()
+elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
+    if(ULTRACANVAS_ENABLE_GL AND GLEW_FOUND)
+        target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE
+            ${GLEW_INCLUDE_DIRS}
+        )
+        target_link_directories(${ULTRACANVAS_LIB_NAME} PRIVATE
+            ${GLEW_LIBRARY_DIRS}
+        )
+    endif()
 endif()
 
 # ===== LINK LIBRARIES =====
@@ -463,6 +491,7 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
     )
     if(ULTRACANVAS_ENABLE_GL)
         target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
+            ${GLEW_LIBRARIES}
             opengl32
         )
     endif()
@@ -525,6 +554,9 @@ if(ULTRACANVAS_ENABLE_GL)
     endif()
     if(ULTRACANVAS_HAS_CGL)
         target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_CGL=1)
+        # macOS deprecated OpenGL in 10.14; silence the per-call warnings so the
+        # GL surface code (which intentionally still uses it) builds cleanly.
+        target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE GL_SILENCE_DEPRECATION=1)
     endif()
     if(ULTRACANVAS_HAS_WGL)
         target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_WGL=1)
