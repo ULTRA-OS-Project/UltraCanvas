@@ -21,8 +21,11 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLZarchTab();
 
 #ifdef ULTRACANVAS_ENABLE_GL
 
-#ifdef __APPLE__
+#if defined(__APPLE__)
 #include <OpenGL/gl3.h>
+#elif defined(_WIN32)
+// Windows: modern GL entry points are provided by GLEW (opengl32 is GL 1.1 only).
+#include <GL/glew.h>
 #else
 #define GL_GLEXT_PROTOTYPES
 #include <GL/gl.h>
