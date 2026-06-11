@@ -1,3 +1,6 @@
+#### 2026-06-11
+- OpenGL surface support enabled on macOS: completed the CGL context manager (honors the requested GL version/profile and color/depth/stencil config, real extension querying via `glGetStringi`) and let `ULTRACANVAS_ENABLE_GL` default ON for macOS as well as Linux. Windows (WGL) is still unimplemented.
+
 #### 2026-06-09 *0.2.7*
 - Merged and fixed the "# Spreadsheet support for UltraCanvas"
 

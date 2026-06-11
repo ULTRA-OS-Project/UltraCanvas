@@ -32,8 +32,9 @@ else()
     option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin" OFF)
 endif ()
 
-# OpenGL surface support (Linux only)
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+# OpenGL surface support (Linux and macOS)
+# Windows (WGL) has no context-manager implementation yet, so it stays disabled.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR APPLE)
     option(ULTRACANVAS_ENABLE_GL "Enable OpenGL 3D surface support" ON)
 else()
     set(ULTRACANVAS_ENABLE_GL OFF CACHE BOOL "Enable OpenGL 3D surface support" FORCE)
@@ -286,11 +287,11 @@ if(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     file(GLOB ULTRACANVAS_OBJCPP_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/*.mm
     )
-    if(NOT ULTRACANVAS_ENABLE_GL)
-        list(REMOVE_ITEM ULTRACANVAS_OBJCPP_SOURCES
-            ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/GLContextManagerCGL_MacOS.mm
-        )
-    endif()
+    # The CGL context manager is added conditionally by the OpenGL section below
+    # (guarded by ULTRACANVAS_HAS_CGL); remove it here to avoid a duplicate source.
+    list(REMOVE_ITEM ULTRACANVAS_OBJCPP_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/GLContextManagerCGL_MacOS.mm
+    )
     list(APPEND ULTRACANVAS_PLATFORM_SOURCES ${ULTRACANVAS_OBJCPP_SOURCES})
 
     set_source_files_properties(
