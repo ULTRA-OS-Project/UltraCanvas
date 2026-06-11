@@ -554,6 +554,9 @@ if(ULTRACANVAS_ENABLE_GL)
     endif()
     if(ULTRACANVAS_HAS_CGL)
         target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_CGL=1)
+        # macOS deprecated OpenGL in 10.14; silence the per-call warnings so the
+        # GL surface code (which intentionally still uses it) builds cleanly.
+        target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE GL_SILENCE_DEPRECATION=1)
     endif()
     if(ULTRACANVAS_HAS_WGL)
         target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_WGL=1)
