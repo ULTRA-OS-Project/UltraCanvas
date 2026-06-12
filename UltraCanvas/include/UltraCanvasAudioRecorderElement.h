@@ -63,6 +63,11 @@ public:
                     AudioFormat format = AudioFormat::WAV);
     void DiscardRecording();
 
+    // Opens the platform's native save dialog (via UltraCanvasFileLoader),
+    // pre-filled with sensible WAV filters, and writes the captured buffer
+    // to the chosen path. Async: result delivered via onSaved / onSaveCancelled.
+    void ShowSaveDialog();
+
     // ===== CONFIG =====
     void SetCaptureConfig(const AudioCaptureConfig& cfg);
     const AudioCaptureConfig& GetCaptureConfig() const;
@@ -81,6 +86,7 @@ public:
     std::function<void()> onRecordStopped;
     std::function<void(std::shared_ptr<UCAudio>)> onBufferReady;
     std::function<void(const std::string& filePath)> onSaved;
+    std::function<void()> onSaveCancelled;
     std::function<void()> onDiscarded;
     std::function<void(MicrophonePermission)> onPermissionChanged;
 
@@ -120,7 +126,13 @@ private:
     void DrawSaveDiscardButtons(IRenderContext* ctx);
     void HookRecorderCallbacks();
     void RefreshEmbeddedPlayer();
+    void OpenDevicePicker();
     static std::string FormatTime(double seconds);
+
+    // Cached label for the device chip
+    std::string currentDeviceLabel = "Default mic";
+    // Held to keep the popup menu alive while it's open
+    std::shared_ptr<class UltraCanvasMenu> devicePopupMenu;
 };
 
 // ===== FACTORIES =====

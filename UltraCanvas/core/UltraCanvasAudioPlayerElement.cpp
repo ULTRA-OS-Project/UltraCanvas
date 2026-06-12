@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasAudioPlayerElement.h"
+#include "UltraCanvasFileLoader.h"
 #include <algorithm>
 #include <cstdio>
 
@@ -45,6 +46,31 @@ bool UltraCanvasAudioPlayerElement::LoadFromAudio(std::shared_ptr<UCAudio> audio
     bool ok = player->LoadFromAudio(std::move(audio));
     RequestRedraw();
     return ok;
+}
+
+void UltraCanvasAudioPlayerElement::ShowOpenDialog() {
+    FileDialogOptions opts;
+    opts.SetTitle("Open Audio File")
+        .AddFilter("Audio files",
+                   std::vector<std::string>{"wav", "mp3", "flac", "ogg", "oga"})
+        .AddFilter("Wave audio (*.wav)", "wav")
+        .AddFilter("MP3 audio (*.mp3)", "mp3")
+        .AddFilter("FLAC audio (*.flac)", "flac")
+        .AddFilter("Ogg Vorbis (*.ogg)", "ogg")
+        .AddFilter("All files (*.*)", "*")
+        .SetParentWindow(GetWindow());
+
+    auto self = this;
+    UltraCanvasFileLoader::OpenFileDialog(opts,
+        [self](DialogResult result, const std::string& path) {
+            if (result == DialogResult::OK && !path.empty()) {
+                if (self->LoadFromFile(path)) {
+                    if (self->onFileOpened) self->onFileOpened(path);
+                }
+            } else {
+                if (self->onOpenCancelled) self->onOpenCancelled();
+            }
+        });
 }
 
 void UltraCanvasAudioPlayerElement::Play()   { player->Play();   if (onPlay)  onPlay(); }

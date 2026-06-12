@@ -48,6 +48,11 @@ public:
     bool LoadFromFile(const std::string& filePath);
     bool LoadFromAudio(std::shared_ptr<UCAudio> audio);
 
+    // Opens the platform's native open dialog (via UltraCanvasFileLoader)
+    // pre-filled with audio format filters and loads the chosen file.
+    // Async: result delivered via onLoaded / onLoadCancelled.
+    void ShowOpenDialog();
+
     // ===== TRANSPORT (proxies to underlying player) =====
     void Play();
     void Pause();
@@ -70,6 +75,8 @@ public:
     std::function<void()> onStop;
     std::function<void(double)> onSeek;
     std::function<void()> onEnded;
+    std::function<void(const std::string& filePath)> onFileOpened;
+    std::function<void()> onOpenCancelled;
 
     // ===== UIElement OVERRIDES =====
     void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;

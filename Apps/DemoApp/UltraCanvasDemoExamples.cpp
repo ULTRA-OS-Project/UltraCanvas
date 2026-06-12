@@ -291,10 +291,16 @@ namespace UltraCanvas {
         auto player = CreateAudioPlayer("DemoPlayer", 10, 120, 600, 56);
         container->AddChild(player);
 
-        auto loadBtn = CreateButton("LoadAudio", 620, 130, 110, 36, "Load WAV...");
-        loadBtn->onClick = [player, status]() {
-            // Hook up to native file dialog; for now suggest the user picks a file.
-            status->SetText("Use player->LoadFromFile(path) from code.");
+        auto loadBtn = CreateButton("LoadAudio", 620, 130, 110, 36, "Open...");
+        player->onFileOpened = [status](const std::string& path) {
+            status->SetText("Loaded: " + path);
+        };
+        player->onOpenCancelled = [status]() {
+            status->SetText("Open cancelled.");
+        };
+        auto playerWeak = std::weak_ptr<UltraCanvasAudioPlayerElement>(player);
+        loadBtn->onClick = [playerWeak]() {
+            if (auto p = playerWeak.lock()) p->ShowOpenDialog();
         };
         container->AddChild(loadBtn);
 
@@ -310,14 +316,16 @@ namespace UltraCanvas {
         recorder->onRecordStopped = [status]() { status->SetText("Recording stopped."); };
         container->AddChild(recorder);
 
-        auto saveBtn = CreateButton("SaveRec", 620, 244, 110, 36, "Save WAV");
-        saveBtn->onClick = [recorder, status]() {
-            const std::string path = "/tmp/ultracanvas_recording.wav";
-            if (recorder->SaveToFile(path, AudioFormat::WAV)) {
-                status->SetText("Saved to " + path);
-            } else {
-                status->SetText("Save failed (no backend or empty buffer).");
-            }
+        auto saveBtn = CreateButton("SaveRec", 620, 244, 110, 36, "Save WAV...");
+        recorder->onSaved = [status](const std::string& path) {
+            status->SetText("Saved to " + path);
+        };
+        recorder->onSaveCancelled = [status]() {
+            status->SetText("Save cancelled or no recording available.");
+        };
+        auto recWeak = std::weak_ptr<UltraCanvasAudioRecorderElement>(recorder);
+        saveBtn->onClick = [recWeak]() {
+            if (auto r = recWeak.lock()) r->ShowSaveDialog();
         };
         container->AddChild(saveBtn);
 

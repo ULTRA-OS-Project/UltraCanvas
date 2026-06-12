@@ -6,6 +6,9 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasAudioRecorderElement.h"
+#include "UltraCanvasFileLoader.h"
+#include "UltraCanvasMenu.h"
+#include "UltraCanvasAudioDevices.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -79,6 +82,33 @@ void UltraCanvasAudioRecorderElement::DiscardRecording() {
     recorder->Discard();
     if (onDiscarded) onDiscarded();
     RequestRedraw();
+}
+
+void UltraCanvasAudioRecorderElement::ShowSaveDialog() {
+    if (recorder->GetState() != AudioRecordingState::Stopped ||
+        recorder->GetSampleCount() == 0) {
+        if (onSaveCancelled) onSaveCancelled();
+        return;
+    }
+
+    FileDialogOptions opts;
+    opts.SetTitle("Save Recording")
+        .SetDefaultFileName("recording.wav")
+        .AddFilter("Wave audio (*.wav)", "wav")
+        .AddFilter("All files (*.*)", "*")
+        .SetParentWindow(GetWindow());
+
+    auto self = this;
+    UltraCanvasFileLoader::SaveFileDialog(opts,
+        [self](DialogResult result, const std::string& path) {
+            if (result == DialogResult::OK && !path.empty()) {
+                if (self->SaveToFile(path, AudioFormat::WAV)) {
+                    // onSaved is already fired by SaveToFile; nothing more needed.
+                }
+            } else {
+                if (self->onSaveCancelled) self->onSaveCancelled();
+            }
+        });
 }
 
 void UltraCanvasAudioRecorderElement::SetCaptureConfig(const AudioCaptureConfig& cfg) {
@@ -355,16 +385,62 @@ void UltraCanvasAudioRecorderElement::DrawWaveformStrip(IRenderContext* ctx) {
 }
 
 void UltraCanvasAudioRecorderElement::DrawDeviceSelect(IRenderContext* ctx) {
-    // Pseudo-dropdown rectangle. Hooking it into UltraCanvasDropdown for real
-    // device picking is a follow-up.
     ctx->DrawFilledRectangle(
         Rect2Df(deviceSelectRect.x, deviceSelectRect.y,
                 deviceSelectRect.width, deviceSelectRect.height),
         Color(255, 255, 255), 1.0f, style.borderColor, 3);
     ctx->SetFontSize(10);
     ctx->SetTextPaint(style.textColor);
-    ctx->DrawText("Default mic ▾",
+    // Truncate label if it overflows the chip
+    std::string label = currentDeviceLabel;
+    size_t maxChars = std::max<size_t>(4, (deviceSelectRect.width - 24) / 6);
+    if (label.size() > maxChars) label = label.substr(0, maxChars - 1) + "…";
+    ctx->DrawText(label + " ▾",
                   Point2Df(deviceSelectRect.x + 6, deviceSelectRect.y + 16));
+}
+
+void UltraCanvasAudioRecorderElement::OpenDevicePicker() {
+    auto* window = GetWindow();
+    if (!window) return;
+
+    auto devices = UltraCanvasAudioDevices::ListInputDevices();
+    if (devices.empty()) {
+        // No real backend / no devices — still let user keep the default.
+        AudioDeviceInfo placeholder;
+        placeholder.name = "(no devices found)";
+        devices.push_back(placeholder);
+    }
+
+    auto menu = std::make_shared<UltraCanvasMenu>(
+        GetIdentifier() + ".DevicePicker", 0, 0, 220, 0);
+
+    auto self = this;
+    // Default-device entry always first
+    menu->AddItem(MenuItemData("System default",
+        [self]() {
+            self->currentDeviceLabel = "Default mic";
+            self->recorder->SetInputDevice("");
+            self->RequestRedraw();
+        }));
+
+    for (const auto& dev : devices) {
+        std::string label = dev.name + (dev.isDefault ? "  (default)" : "");
+        std::string id = dev.id;
+        std::string display = dev.name;
+        menu->AddItem(MenuItemData(label,
+            [self, id, display]() {
+                self->currentDeviceLabel = display;
+                self->recorder->SetInputDevice(id);
+                self->RequestRedraw();
+            }));
+    }
+
+    Point2Di anchor(GetXInWindow() + deviceSelectRect.x,
+                    GetYInWindow() + deviceSelectRect.y + deviceSelectRect.height);
+    PopupElementSettings settings;
+    menu->OpenMenu(anchor, *window, settings);
+
+    devicePopupMenu = menu;   // keep alive until the menu closes itself
 }
 
 void UltraCanvasAudioRecorderElement::DrawSaveDiscardButtons(IRenderContext* ctx) {
@@ -407,13 +483,16 @@ bool UltraCanvasAudioRecorderElement::OnEvent(const UCEvent& event) {
             }
             if (Hit(saveButtonRect, p) &&
                 recorder->GetState() == AudioRecordingState::Stopped) {
-                // Default save location. Apps that want a dialog should hook onSaved.
-                SaveToFile("/tmp/ultracanvas_recording.wav", AudioFormat::WAV);
+                ShowSaveDialog();
                 return true;
             }
             if (Hit(discardButtonRect, p) &&
                 recorder->GetState() == AudioRecordingState::Stopped) {
                 DiscardRecording();
+                return true;
+            }
+            if (Hit(deviceSelectRect, p)) {
+                OpenDevicePicker();
                 return true;
             }
             if (Hit(gainSliderRect, p)) {
