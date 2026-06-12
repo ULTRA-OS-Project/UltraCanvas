@@ -1,13 +1,13 @@
 // core/UltraCanvasAudio.cpp
-// UCAudio resource implementation. Decoding/encoding is currently a stub;
-// real format support will land via Plugins/Audio/{WAV,MP3,OGG,...}.
+// UCAudio resource implementation. Decode/encode is delegated to the active
+// IAudioBackend (miniaudio when ULTRACANVAS_ENABLE_AUDIO=ON; null otherwise).
 // Version: 0.1.0
 // Last Modified: 2026-06-12
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasAudio.h"
+#include "../libspecific/Audio/IAudioBackend.h"
 #include <cstring>
-#include <fstream>
 
 namespace UltraCanvas {
 
@@ -23,16 +23,22 @@ size_t AudioBufferInfo::BytesPerSample() const {
 
 std::shared_ptr<UCAudio> UCAudio::LoadFromFile(const std::string& filePath,
                                                AudioFormat /*hint*/) {
-    // TODO: dispatch to format decoder plugins (WAV native; MP3/OGG/FLAC via plugin)
-    auto audio = std::make_shared<UCAudio>();
-    audio->sourcePath = filePath;
+    auto* backend = GetAudioBackend();
+    if (!backend) return std::make_shared<UCAudio>();
+    auto audio = backend->DecodeFile(filePath);
+    if (!audio) {
+        audio = std::make_shared<UCAudio>();
+    }
+    audio->SetSourcePath(filePath);
     return audio;
 }
 
-std::shared_ptr<UCAudio> UCAudio::LoadFromMemory(const uint8_t* /*data*/, size_t /*size*/,
+std::shared_ptr<UCAudio> UCAudio::LoadFromMemory(const uint8_t* data, size_t size,
                                                  AudioFormat /*hint*/) {
-    // TODO: dispatch to format decoder plugins
-    return std::make_shared<UCAudio>();
+    auto* backend = GetAudioBackend();
+    if (!backend) return std::make_shared<UCAudio>();
+    auto audio = backend->DecodeMemory(data, size);
+    return audio ? audio : std::make_shared<UCAudio>();
 }
 
 std::shared_ptr<UCAudio> UCAudio::FromRawPCM(const void* samples, size_t bytes,
@@ -48,9 +54,10 @@ std::shared_ptr<UCAudio> UCAudio::FromRawPCM(const void* samples, size_t bytes,
     return audio;
 }
 
-bool UCAudio::SaveToFile(const std::string& /*filePath*/, AudioFormat /*format*/) const {
-    // TODO: WAV writer (built-in); other encoders via plugin
-    return false;
+bool UCAudio::SaveToFile(const std::string& filePath, AudioFormat format) const {
+    auto* backend = GetAudioBackend();
+    if (!backend) return false;
+    return backend->EncodeFile(filePath, *this, format);
 }
 
 } // namespace UltraCanvas

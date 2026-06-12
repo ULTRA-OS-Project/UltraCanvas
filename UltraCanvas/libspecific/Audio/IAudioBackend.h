@@ -74,6 +74,13 @@ public:
 
     virtual std::unique_ptr<IAudioStream> OpenOutputStream(const AudioStreamConfig& cfg) = 0;
     virtual std::unique_ptr<IAudioStream> OpenInputStream(const AudioStreamConfig& cfg) = 0;
+
+    // Decoding / encoding. Implementations may return null/false when format
+    // support isn't compiled in. The null backend always returns null/false.
+    virtual std::shared_ptr<UCAudio> DecodeFile(const std::string& path) = 0;
+    virtual std::shared_ptr<UCAudio> DecodeMemory(const uint8_t* data, size_t size) = 0;
+    virtual bool EncodeFile(const std::string& path, const UCAudio& audio,
+                            AudioFormat format) = 0;
 };
 
 // ===== ACCESSOR =====

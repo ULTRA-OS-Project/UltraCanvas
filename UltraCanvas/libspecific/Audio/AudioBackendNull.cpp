@@ -58,6 +58,10 @@ public:
     std::unique_ptr<IAudioStream> OpenInputStream(const AudioStreamConfig& cfg) override {
         return std::make_unique<NullStream>(cfg, AudioStreamDirection::Input);
     }
+
+    std::shared_ptr<UCAudio> DecodeFile(const std::string&) override { return nullptr; }
+    std::shared_ptr<UCAudio> DecodeMemory(const uint8_t*, size_t) override { return nullptr; }
+    bool EncodeFile(const std::string&, const UCAudio&, AudioFormat) override { return false; }
 };
 
 } // namespace

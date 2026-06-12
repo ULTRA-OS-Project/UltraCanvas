@@ -9,6 +9,10 @@
 //#include "UltraCanvasButton3Sections.h"
 #include "Plugins/Charts/UltraCanvasDivergingBarChart.h"
 #include "UltraCanvasTextArea.h"
+#include "UltraCanvasAudioPlayerElement.h"
+#include "UltraCanvasAudioRecorderElement.h"
+#include "UltraCanvasAudioDevices.h"
+#include "UltraCanvasButton.h"
 #include <sstream>
 #include <random>
 #include <map>
@@ -258,20 +262,77 @@ namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAudioExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("AudioExamples", 0, 0, 1000, 600);
 
-        auto title = std::make_shared<UltraCanvasLabel>("AudioTitle", 10, 10, 300, 30);
-        title->SetText("Audio Player Examples");
+        auto title = std::make_shared<UltraCanvasLabel>("AudioTitle", 10, 10, 600, 30);
+        title->SetText("Audio Player & Recorder");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
         container->AddChild(title);
 
-        auto placeholder = std::make_shared<UltraCanvasLabel>("AudioPlaceholder", 20, 50, 800, 400);
-        placeholder->SetText("Audio Player Component - Not Implemented\n\nPlanned Features:\n• FLAC lossless audio support\n• MP3, WAV, OGG playback\n• Waveform visualization\n• Spectrum analyzer\n• Playback controls (play/pause/stop)\n• Volume and position sliders\n• Playlist management\n• Audio effects and filters\n• Recording capabilities\n• Audio format conversion\n• Metadata display (ID3 tags)");
-        placeholder->SetAlignment(TextAlignment::Left);
-        placeholder->SetBackgroundColor(Color(255, 200, 200, 100));
-//        placeholder->SetBorderStyle(BorderStyle::Dashed);
-        placeholder->SetBorders(2.0f);
-        placeholder->SetPadding(20.0f);
-        container->AddChild(placeholder);
+        auto status = std::make_shared<UltraCanvasLabel>("AudioStatus", 10, 45, 980, 25);
+        if (UltraCanvasAudioDevices::IsAvailable()) {
+            status->SetText("Backend: " + UltraCanvasAudioDevices::GetBackendName() +
+                            " — ready");
+            status->SetTextColor(Color(40, 120, 40));
+        } else {
+            status->SetText("Audio backend not compiled in. "
+                            "Rebuild with -DULTRACANVAS_ENABLE_AUDIO=ON.");
+            status->SetTextColor(Color(180, 60, 60));
+        }
+        status->SetFontSize(11);
+        container->AddChild(status);
+
+        // ----- Playback section -----
+        auto playbackLabel = std::make_shared<UltraCanvasLabel>("PlaybackLabel", 10, 90, 400, 22);
+        playbackLabel->SetText("Playback");
+        playbackLabel->SetFontWeight(FontWeight::Bold);
+        playbackLabel->SetTextColor(Color(0, 100, 200));
+        container->AddChild(playbackLabel);
+
+        auto player = CreateAudioPlayer("DemoPlayer", 10, 120, 600, 56);
+        container->AddChild(player);
+
+        auto loadBtn = CreateButton("LoadAudio", 620, 130, 110, 36, "Load WAV...");
+        loadBtn->onClick = [player, status]() {
+            // Hook up to native file dialog; for now suggest the user picks a file.
+            status->SetText("Use player->LoadFromFile(path) from code.");
+        };
+        container->AddChild(loadBtn);
+
+        // ----- Recording section -----
+        auto recLabel = std::make_shared<UltraCanvasLabel>("RecLabel", 10, 200, 400, 22);
+        recLabel->SetText("Recording");
+        recLabel->SetFontWeight(FontWeight::Bold);
+        recLabel->SetTextColor(Color(200, 60, 60));
+        container->AddChild(recLabel);
+
+        auto recorder = CreateAudioRecorder("DemoRecorder", 10, 230, 600, 72);
+        recorder->onRecordStarted = [status]() { status->SetText("Recording..."); };
+        recorder->onRecordStopped = [status]() { status->SetText("Recording stopped."); };
+        container->AddChild(recorder);
+
+        auto saveBtn = CreateButton("SaveRec", 620, 244, 110, 36, "Save WAV");
+        saveBtn->onClick = [recorder, status]() {
+            const std::string path = "/tmp/ultracanvas_recording.wav";
+            if (recorder->SaveToFile(path, AudioFormat::WAV)) {
+                status->SetText("Saved to " + path);
+            } else {
+                status->SetText("Save failed (no backend or empty buffer).");
+            }
+        };
+        container->AddChild(saveBtn);
+
+        auto playRecBtn = CreateButton("PlayRec", 620, 286, 110, 36, "Play back");
+        playRecBtn->onClick = [player, recorder, status]() {
+            auto audio = recorder->TakeBuffer();
+            if (audio && audio->IsValid()) {
+                player->LoadFromAudio(audio);
+                player->Play();
+                status->SetText("Playing back recording.");
+            } else {
+                status->SetText("No recording captured yet.");
+            }
+        };
+        container->AddChild(playRecBtn);
 
         return container;
     }

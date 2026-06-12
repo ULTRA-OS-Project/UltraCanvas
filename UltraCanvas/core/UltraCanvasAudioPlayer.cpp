@@ -8,6 +8,8 @@
 #include "UltraCanvasAudioPlayer.h"
 #include "../libspecific/Audio/IAudioBackend.h"
 #include <algorithm>
+#include <atomic>
+#include <cstring>
 
 namespace UltraCanvas {
 
@@ -17,8 +19,13 @@ struct UltraCanvasAudioPlayer::Impl {
     std::shared_ptr<UCAudio> audio;
     std::unique_ptr<IAudioStream> stream;
 
-    double position = 0.0;
-    size_t playCursorFrames = 0;
+    // Audio-thread-touched state. Use atomics so the UI thread can read safely.
+    std::atomic<double> position{0.0};
+    std::atomic<size_t> playCursorFrames{0};
+    std::atomic<bool> reachedEnd{false};
+    // Throttling: emit onPositionChanged at most positionUpdateHz
+    std::atomic<size_t> framesSinceLastPosUpdate{0};
+
     std::string lastError;
 
     UltraCanvasAudioPlayer* owner = nullptr;
@@ -56,11 +63,67 @@ struct UltraCanvasAudioPlayer::Impl {
         return true;
     }
 
-    size_t FillOutput(void* /*out*/, size_t frames) {
-        // TODO: copy from audio->GetData() at playCursorFrames, advance cursor,
-        //       handle looping, emit onPositionChanged at config.positionUpdateHz,
-        //       emit onEnded when reaching the end with !loop.
-        return frames;
+    size_t FillOutput(void* out, size_t frames) {
+        // Called on the backend audio thread. Must be lock-free and brief.
+        if (!audio || !audio->IsValid() || frames == 0) {
+            std::memset(out, 0, frames * audio->GetInfo().BytesPerFrame());
+            return frames;
+        }
+        const AudioBufferInfo& info = audio->GetInfo();
+        const size_t bpf = info.BytesPerFrame();
+        const uint8_t* src = audio->GetData();
+        const size_t totalFrames = info.frameCount;
+
+        uint8_t* dst = static_cast<uint8_t*>(out);
+        size_t cursor = playCursorFrames.load(std::memory_order_relaxed);
+        size_t framesWritten = 0;
+
+        while (framesWritten < frames) {
+            if (cursor >= totalFrames) {
+                if (config.loop) {
+                    cursor = 0;
+                } else {
+                    // Pad remainder with silence and signal end-of-stream
+                    size_t remaining = frames - framesWritten;
+                    std::memset(dst + framesWritten * bpf, 0, remaining * bpf);
+                    framesWritten = frames;
+                    reachedEnd.store(true, std::memory_order_release);
+                    break;
+                }
+            }
+            size_t available = totalFrames - cursor;
+            size_t want = frames - framesWritten;
+            size_t copy = available < want ? available : want;
+            std::memcpy(dst + framesWritten * bpf, src + cursor * bpf, copy * bpf);
+            cursor += copy;
+            framesWritten += copy;
+        }
+
+        playCursorFrames.store(cursor, std::memory_order_relaxed);
+        double newPos = info.sampleRate > 0
+            ? static_cast<double>(cursor) / info.sampleRate : 0.0;
+        position.store(newPos, std::memory_order_relaxed);
+
+        // Rate-limit onPositionChanged emission
+        size_t since = framesSinceLastPosUpdate.fetch_add(frames, std::memory_order_relaxed) + frames;
+        int hz = config.positionUpdateHz > 0 ? config.positionUpdateHz : 10;
+        size_t framesPerTick = info.sampleRate / hz;
+        if (since >= framesPerTick) {
+            framesSinceLastPosUpdate.store(0, std::memory_order_relaxed);
+            // Note: invoking user callbacks from the audio thread. Callers
+            // should marshal to the UI thread if their callback touches UI.
+            if (owner && owner->onPositionChanged) owner->onPositionChanged(newPos);
+        }
+
+        if (reachedEnd.load(std::memory_order_acquire)) {
+            reachedEnd.store(false, std::memory_order_relaxed);
+            playCursorFrames.store(0, std::memory_order_relaxed);
+            position.store(0.0, std::memory_order_relaxed);
+            SetState(AudioPlaybackState::Stopped);
+            if (owner && owner->onEnded) owner->onEnded();
+        }
+
+        return framesWritten;
     }
 };
 
@@ -105,8 +168,8 @@ bool UltraCanvasAudioPlayer::LoadFromAudio(std::shared_ptr<UCAudio> audio) {
 void UltraCanvasAudioPlayer::Unload() {
     if (impl->stream) { impl->stream->Stop(); impl->stream.reset(); }
     impl->audio.reset();
-    impl->position = 0.0;
-    impl->playCursorFrames = 0;
+    impl->position.store(0.0);
+    impl->playCursorFrames.store(0);
     impl->state = AudioPlaybackState::Idle;
 }
 
@@ -128,8 +191,8 @@ bool UltraCanvasAudioPlayer::Pause() {
 
 bool UltraCanvasAudioPlayer::Stop() {
     if (impl->stream) impl->stream->Stop();
-    impl->position = 0.0;
-    impl->playCursorFrames = 0;
+    impl->position.store(0.0);
+    impl->playCursorFrames.store(0);
     impl->SetState(AudioPlaybackState::Stopped);
     return true;
 }
@@ -137,15 +200,17 @@ bool UltraCanvasAudioPlayer::Stop() {
 bool UltraCanvasAudioPlayer::Seek(double seconds) {
     if (!impl->audio) return false;
     double dur = impl->audio->GetDuration();
-    impl->position = std::clamp(seconds, 0.0, dur);
-    impl->playCursorFrames = static_cast<size_t>(impl->position * impl->audio->GetSampleRate());
-    if (onPositionChanged) onPositionChanged(impl->position);
+    double clamped = std::clamp(seconds, 0.0, dur);
+    impl->position.store(clamped);
+    impl->playCursorFrames.store(
+        static_cast<size_t>(clamped * impl->audio->GetSampleRate()));
+    if (onPositionChanged) onPositionChanged(clamped);
     return true;
 }
 
 // ===== STATE =====
 AudioPlaybackState UltraCanvasAudioPlayer::GetState() const { return impl->state; }
-double UltraCanvasAudioPlayer::GetPosition() const { return impl->position; }
+double UltraCanvasAudioPlayer::GetPosition() const { return impl->position.load(); }
 double UltraCanvasAudioPlayer::GetDuration() const {
     return impl->audio ? impl->audio->GetDuration() : 0.0;
 }

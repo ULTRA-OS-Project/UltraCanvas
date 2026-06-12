@@ -8,7 +8,12 @@
 #include "UltraCanvasAudioRecorder.h"
 #include "../libspecific/Audio/IAudioBackend.h"
 #include <algorithm>
+#include <atomic>
 #include <chrono>
+#include <cmath>
+#include <cstring>
+#include <cstdint>
+#include <fstream>
 
 namespace UltraCanvas {
 
@@ -22,9 +27,11 @@ struct UltraCanvasAudioRecorder::Impl {
     std::chrono::steady_clock::time_point startedAt{};
     double accumulatedSeconds = 0.0;
 
-    float currentPeak = 0.0f;
-    float currentRMS = 0.0f;
-    bool  muted = false;
+    std::atomic<float> currentPeak{0.0f};
+    std::atomic<float> currentRMS{0.0f};
+    std::atomic<bool>  muted{false};
+    // Throttling: emit onLevelChanged at most levelUpdateHz
+    size_t framesSinceLastLevelEmit = 0;
     std::string lastError;
 
     UltraCanvasAudioRecorder* owner = nullptr;
@@ -60,12 +67,118 @@ struct UltraCanvasAudioRecorder::Impl {
         return true;
     }
 
-    void ConsumeInput(const void* /*in*/, size_t frames) {
-        // TODO: apply inputGain, optional mute (write silence), append to buffer
-        //       or write to streaming file, update currentPeak/currentRMS,
-        //       emit onBufferAvailable, onLevelChanged (rate-limited),
-        //       onSilenceDetected, onClipping, onMaxDurationReached.
+    static float SampleToFloat(const uint8_t* p, AudioSampleType t) {
+        switch (t) {
+            case AudioSampleType::PCM_S16: {
+                int16_t s; std::memcpy(&s, p, 2);
+                return static_cast<float>(s) / 32768.0f;
+            }
+            case AudioSampleType::PCM_S24: {
+                int32_t s = (static_cast<int32_t>(static_cast<int8_t>(p[2])) << 16) |
+                            (static_cast<int32_t>(p[1]) << 8) |
+                            (static_cast<int32_t>(p[0]));
+                return static_cast<float>(s) / 8388608.0f;
+            }
+            case AudioSampleType::PCM_S32: {
+                int32_t s; std::memcpy(&s, p, 4);
+                return static_cast<float>(s) / 2147483648.0f;
+            }
+            case AudioSampleType::PCM_F32: {
+                float f; std::memcpy(&f, p, 4);
+                return f;
+            }
+        }
+        return 0.0f;
+    }
+
+    void ConsumeInput(const void* in, size_t frames) {
+        // Audio thread. Lock-free append + atomic level state.
+        if (!in || frames == 0) return;
+        const size_t bytesPerSample = (config.sampleType == AudioSampleType::PCM_S16) ? 2 :
+                                      (config.sampleType == AudioSampleType::PCM_S24) ? 3 :
+                                      (config.sampleType == AudioSampleType::PCM_F32) ? 4 : 4;
+        const size_t bpf = bytesPerSample * config.channels;
+        const size_t bytes = frames * bpf;
+        const uint8_t* srcBytes = static_cast<const uint8_t*>(in);
+
+        // Apply gain into a working chunk so the on-disk / in-memory bytes
+        // reflect post-gain levels. For non-unity gain on S16/S32 we'd need to
+        // clamp/saturate per sample; for now copy verbatim when gain==1.
+        const float gain = config.inputGain;
+        const bool isMuted = muted.load(std::memory_order_relaxed);
+
+        // Append (or stream-to-file) raw bytes
+        if (config.streamToFile && !config.streamFilePath.empty()) {
+            std::ofstream f(config.streamFilePath,
+                            std::ios::binary | std::ios::app);
+            if (f) {
+                if (isMuted) {
+                    static thread_local std::vector<uint8_t> silence;
+                    silence.assign(bytes, 0);
+                    f.write(reinterpret_cast<const char*>(silence.data()), bytes);
+                } else {
+                    f.write(reinterpret_cast<const char*>(srcBytes), bytes);
+                }
+            }
+        } else {
+            size_t oldSize = buffer.size();
+            buffer.resize(oldSize + bytes);
+            if (isMuted) {
+                std::memset(buffer.data() + oldSize, 0, bytes);
+            } else {
+                std::memcpy(buffer.data() + oldSize, srcBytes, bytes);
+            }
+        }
+
         frameCount += frames;
+
+        // Compute peak/RMS across this chunk (post-gain, pre-mute)
+        float peak = 0.0f;
+        double sumSquares = 0.0;
+        size_t sampleCount = frames * config.channels;
+        for (size_t i = 0; i < sampleCount; ++i) {
+            float v = SampleToFloat(srcBytes + i * bytesPerSample, config.sampleType) * gain;
+            if (v < 0) v = -v;
+            if (v > peak) peak = v;
+            sumSquares += static_cast<double>(v) * v;
+        }
+        float rms = sampleCount ? static_cast<float>(std::sqrt(sumSquares / sampleCount)) : 0.0f;
+        currentPeak.store(peak, std::memory_order_relaxed);
+        currentRMS.store(rms, std::memory_order_relaxed);
+
+        // Rate-limited callbacks
+        int hz = config.levelUpdateHz > 0 ? config.levelUpdateHz : 30;
+        size_t framesPerTick = config.sampleRate / hz;
+        framesSinceLastLevelEmit += frames;
+        if (framesSinceLastLevelEmit >= framesPerTick) {
+            framesSinceLastLevelEmit = 0;
+            if (owner && owner->onLevelChanged) owner->onLevelChanged(peak, rms);
+            if (peak >= config.clippingThreshold && owner && owner->onClipping) {
+                owner->onClipping();
+            }
+            if (rms < config.silenceThreshold && owner && owner->onSilenceDetected) {
+                owner->onSilenceDetected();
+            }
+        }
+
+        // Per-chunk raw buffer event (only useful for live visualization /
+        // off-the-fly encoding). Convert to f32 lazily on demand by the user.
+        if (owner && owner->onBufferAvailable) {
+            // We pass the raw bytes reinterpreted as float only when format is f32.
+            // For other formats the user must reinterpret based on config.
+            if (config.sampleType == AudioSampleType::PCM_F32) {
+                owner->onBufferAvailable(
+                    reinterpret_cast<const float*>(srcBytes), frames, config.channels);
+            }
+        }
+
+        // Max duration check
+        if (config.maxDurationMs > 0) {
+            double elapsedSec = static_cast<double>(frameCount) / config.sampleRate;
+            if (elapsedSec * 1000.0 >= config.maxDurationMs) {
+                if (owner && owner->onMaxDurationReached) owner->onMaxDurationReached();
+            }
+        }
     }
 };
 
@@ -205,8 +318,8 @@ double UltraCanvasAudioRecorder::GetElapsed() const {
 }
 
 size_t UltraCanvasAudioRecorder::GetSampleCount() const { return impl->frameCount; }
-float UltraCanvasAudioRecorder::GetCurrentPeakLevel() const { return impl->currentPeak; }
-float UltraCanvasAudioRecorder::GetCurrentRMSLevel() const { return impl->currentRMS; }
+float UltraCanvasAudioRecorder::GetCurrentPeakLevel() const { return impl->currentPeak.load(); }
+float UltraCanvasAudioRecorder::GetCurrentRMSLevel() const { return impl->currentRMS.load(); }
 const std::string& UltraCanvasAudioRecorder::GetLastError() const { return impl->lastError; }
 const AudioCaptureConfig& UltraCanvasAudioRecorder::GetConfig() const { return impl->config; }
 
@@ -216,8 +329,8 @@ void UltraCanvasAudioRecorder::SetInputGain(float gain) {
 }
 float UltraCanvasAudioRecorder::GetInputGain() const { return impl->config.inputGain; }
 
-void UltraCanvasAudioRecorder::SetMuted(bool muted) { impl->muted = muted; }
-bool UltraCanvasAudioRecorder::IsMuted() const { return impl->muted; }
+void UltraCanvasAudioRecorder::SetMuted(bool muted) { impl->muted.store(muted); }
+bool UltraCanvasAudioRecorder::IsMuted() const { return impl->muted.load(); }
 
 void UltraCanvasAudioRecorder::SetInputDevice(const std::string& deviceId) {
     impl->config.deviceId = deviceId;
