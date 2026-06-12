@@ -120,12 +120,12 @@ namespace UltraCanvas {
     };
 
     // ===== INDICATOR SHAPE CATALOG =====
-    // Matches the eight styles surveyed for the Subaru-style slideshow.
+    // Matches the eight indicator styles offered by the slideshow widget.
     // (Hidden instead of None because X11 defines None as a macro.)
     enum class SlideshowIndicatorShape {
         Hidden,       // Indicators hidden
         Dots,         // Classic round dots (filled = active)
-        Bars,         // Short rectangles / pill bars — Subaru default
+        Bars,         // Short rectangles / pill bars — default
         ProgressBar,  // Single bar that grows across slideDuration
         StoryBars,    // One bar per slide, each fills over its own slot (Instagram Stories)
         Counter,      // Plain "3 / 7" text

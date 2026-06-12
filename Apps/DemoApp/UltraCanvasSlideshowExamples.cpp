@@ -35,7 +35,7 @@ namespace UltraCanvas {
         // Tuned defaults for each indicator style so the demo button switches
         // produce a visually distinct result without further tweaking.
         const StyleChoice kStyles[] = {
-            { "Bars (Subaru)",  SlideshowIndicatorShape::Bars,        30.0f, 3.0f,  6.0f, 0.0f },
+            { "Bars",           SlideshowIndicatorShape::Bars,        30.0f, 3.0f,  6.0f, 0.0f },
             { "Dots",           SlideshowIndicatorShape::Dots,         9.0f, 9.0f, 10.0f, 0.0f },
             { "Progress Bar",   SlideshowIndicatorShape::ProgressBar, 30.0f, 3.0f,  0.0f, 1.5f },
             { "Story Bars",     SlideshowIndicatorShape::StoryBars,   30.0f, 3.0f,  4.0f, 1.5f },
@@ -80,7 +80,7 @@ namespace UltraCanvas {
         root->SetPadding(0,5,5,0);
         // Title
         auto title = std::make_shared<UltraCanvasLabel>("SlideshowTitle", 20, 10, 800, 30);
-        title->SetText("UltraCanvas Slideshow — Subaru-style diashow with selectable indicators");
+        title->SetText("UltraCanvas Slideshow widget");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
         title->SetTextColor(Color(50, 50, 150, 255));
@@ -95,13 +95,13 @@ namespace UltraCanvas {
         root->AddChild(subtitle);
 
         // Slideshow itself
-        auto show = CreateSlideshow("solterra-slideshow", 20, 80, 920, 480);
+        auto show = CreateSlideshow("ultracanvas-slideshow", 20, 80, 920, 480);
 
         SlideshowConfig cfg = MakeBaseConfig();
 
         // Build slide list from images that ship in media/. We pair each image
-        // with descriptive German text echoing the Subaru Solterra page so the
-        // visual matches the reference screenshot closely.
+        // with descriptive German text about a generic electric vehicle so the
+        // info panel has realistic, varied content to lay out.
         const std::string mediaRoot = NormalizePath(GetResourcesDir() + "media/images/");
 
         show->AddSlide({mediaRoot + "landscape.jpg",
@@ -130,7 +130,7 @@ namespace UltraCanvas {
                         "Notbremsassistent arbeiten Hand in Hand."});
 
         show->AddSlide({mediaRoot + "screenshot.png",
-                        "SUBARU Care App",
+                        "Care App",
                         "Bleiben Sie immer verbunden mit Ihrem Fahrzeug — Status, "
                         "Ladestand und Servicetermine direkt auf Ihrem Smartphone."});
 
