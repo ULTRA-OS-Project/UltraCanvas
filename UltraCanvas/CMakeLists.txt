@@ -25,6 +25,7 @@ else()
     option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" ON)
     option(ULTRACANVAS_PLUGIN_SVG "Build SVG plugin" OFF)
     option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin" OFF)
+    option(ULTRACANVAS_ENABLE_AUDIO "Enable audio playback & recording (requires backend lib)" OFF)
 endif ()
 
 # OpenGL surface support (Linux only)
@@ -278,6 +279,27 @@ if(LIBVIPS_FOUND)
     list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsQOILoader.cpp
     )
+endif()
+
+# Audio sources (always-compiled API surface; backend is a stub unless
+# ULTRACANVAS_ENABLE_AUDIO is ON, in which case a real backend replaces the null one).
+list(APPEND ULTRACANVAS_CORE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudio.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioDevices.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioPlayer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioRecorder.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioPlayerElement.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioRecorderElement.cpp
+)
+list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Audio/AudioBackendNull.cpp
+)
+if(ULTRACANVAS_ENABLE_AUDIO)
+    # TODO: select & link a real backend (miniaudio recommended: single-header,
+    # cross-platform, MIT). Linux fallbacks: pkg_check_modules(PULSE libpulse).
+    # macOS: AudioToolbox / AVFoundation frameworks.
+    # Windows: WASAPI is in the platform SDK (mmdevapi.lib).
+    message(STATUS "ULTRACANVAS_ENABLE_AUDIO=ON but no real backend wired yet — using null backend stub")
 endif()
 
 # OpenGL surface sources
