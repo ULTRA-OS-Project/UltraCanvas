@@ -193,6 +193,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlider.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSplashScreen.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlideshow.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAlbum.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModalDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLoader.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNewDocumentDialog.cpp
