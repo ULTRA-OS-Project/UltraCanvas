@@ -89,7 +89,8 @@ namespace UltraCanvas {
 
         auto subtitle = std::make_shared<UltraCanvasLabel>("SlideshowSubtitle", 20, 42, 900, 20);
         subtitle->SetText("The framed area below is the live widget; the controls beneath it are "
-                          "demo-only options for trying out its settings.");
+                          "demo-only options. Click the widget, then use the arrow keys to change "
+                          "slides (Left/Down = previous, Right/Up = next).");
         subtitle->SetFontSize(11);
         subtitle->SetTextColor(Color(110, 110, 110, 255));
         root->AddChild(subtitle);

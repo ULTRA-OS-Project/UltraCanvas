@@ -1,7 +1,7 @@
 // core/UltraCanvasSlideshow.cpp
 // Timed image slideshow with selectable info-panel layouts and indicator styles.
-// Version: 1.3.0
-// Last Modified: 2026-06-09
+// Version: 1.4.0
+// Last Modified: 2026-06-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSlideshow.h"
@@ -1093,19 +1093,43 @@ namespace UltraCanvas {
             }
             case UCEventType::MouseDown: {
                 if (event.button != UCMouseButton::Left) return false;
-                if (!config.indicators.clickable) return false;
-                Point2Di p(event.pointer.x, event.pointer.y);
-                int idx = IndicatorAt(p);
-                if (idx < 0) return false;
-
-                // ProgressBar uses one hit rect = "advance one"
-                if (config.indicators.shape == SlideshowIndicatorShape::ProgressBar) {
-                    Next();
-                } else if (idx != static_cast<int>(currentIndex) &&
-                           idx < static_cast<int>(slides.size())) {
-                    StartTransitionTo(static_cast<size_t>(idx));
+                // A click anywhere on the slideshow grabs keyboard focus so the
+                // arrow keys can drive manual navigation.
+                SetFocus(true);
+                if (config.indicators.clickable) {
+                    Point2Di p(event.pointer.x, event.pointer.y);
+                    int idx = IndicatorAt(p);
+                    if (idx >= 0) {
+                        // ProgressBar uses one hit rect = "advance one"
+                        if (config.indicators.shape == SlideshowIndicatorShape::ProgressBar) {
+                            Next();
+                        } else if (idx != static_cast<int>(currentIndex) &&
+                                   idx < static_cast<int>(slides.size())) {
+                            StartTransitionTo(static_cast<size_t>(idx));
+                        }
+                    }
                 }
                 return true;
+            }
+            case UCEventType::KeyDown: {
+                // Manual navigation once the slideshow has focus. Per the
+                // requested mapping: Left == Down (previous), Right == Up (next).
+                switch (event.virtualKey) {
+                    case UCKeys::Left:
+                    case UCKeys::Down:
+                    case UCKeys::NumPadLeft:
+                    case UCKeys::NumPadDown:
+                        Previous();
+                        return true;
+                    case UCKeys::Right:
+                    case UCKeys::Up:
+                    case UCKeys::NumPadRight:
+                    case UCKeys::NumPadUp:
+                        Next();
+                        return true;
+                    default:
+                        return false;
+                }
             }
             default:
                 break;

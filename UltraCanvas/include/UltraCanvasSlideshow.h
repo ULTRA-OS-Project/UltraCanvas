@@ -1,7 +1,7 @@
 // include/UltraCanvasSlideshow.h
 // Timed image slideshow with optional info text panel and selectable indicator styles.
-// Version: 1.3.0
-// Last Modified: 2026-06-09
+// Version: 1.4.0
+// Last Modified: 2026-06-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -291,6 +291,10 @@ namespace UltraCanvas {
         // ===== OVERRIDES =====
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         bool OnEvent(const UCEvent& event) override;
+
+        // The slideshow takes keyboard focus on click so the arrow keys can
+        // drive manual navigation (Left/Down = previous, Right/Up = next).
+        bool AcceptsFocus() const override { return true; }
 
     private:
         // ===== STATE =====
