@@ -1,7 +1,7 @@
 // include/UltraCanvasSlideshow.h
 // Timed image slideshow with optional info text panel and selectable indicator styles.
-// Version: 1.3.0
-// Last Modified: 2026-06-09
+// Version: 1.4.0
+// Last Modified: 2026-06-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -120,12 +120,12 @@ namespace UltraCanvas {
     };
 
     // ===== INDICATOR SHAPE CATALOG =====
-    // Matches the eight styles surveyed for the Subaru-style slideshow.
+    // Matches the eight indicator styles offered by the slideshow widget.
     // (Hidden instead of None because X11 defines None as a macro.)
     enum class SlideshowIndicatorShape {
         Hidden,       // Indicators hidden
         Dots,         // Classic round dots (filled = active)
-        Bars,         // Short rectangles / pill bars — Subaru default
+        Bars,         // Short rectangles / pill bars — default
         ProgressBar,  // Single bar that grows across slideDuration
         StoryBars,    // One bar per slide, each fills over its own slot (Instagram Stories)
         Counter,      // Plain "3 / 7" text
@@ -291,6 +291,10 @@ namespace UltraCanvas {
         // ===== OVERRIDES =====
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         bool OnEvent(const UCEvent& event) override;
+
+        // The slideshow takes keyboard focus on click so the arrow keys can
+        // drive manual navigation (Left/Down = previous, Right/Up = next).
+        bool AcceptsFocus() const override { return true; }
 
     private:
         // ===== STATE =====
