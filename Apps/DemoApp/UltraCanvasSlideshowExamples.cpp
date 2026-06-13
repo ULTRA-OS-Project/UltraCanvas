@@ -3,9 +3,10 @@
 // indicator edges and transition styles. The option buttons are laid out in a
 // labelled-row grid (label column on the left, wrapping option buttons on the
 // right) grouped Controls / Indicator / Fade / Panel layout / Image / Letterbox,
-// with the active choice highlighted like a radio group.
-// Version: 1.2.0
-// Last Modified: 2026-06-12
+// with the active choice highlighted like a radio group. The live widget is
+// framed and captioned to separate it from the programmer-facing options.
+// Version: 1.3.0
+// Last Modified: 2026-06-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -75,7 +76,7 @@ namespace UltraCanvas {
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSlideshowExamples() {
-        auto root = std::make_shared<UltraCanvasContainer>("SlideshowExamples", 0, 0, 1000, 1070);
+        auto root = std::make_shared<UltraCanvasContainer>("SlideshowExamples", 0, 0, 1000, 1140);
 
         root->SetPadding(0,5,5,0);
         // Title
@@ -86,16 +87,15 @@ namespace UltraCanvas {
         title->SetTextColor(Color(50, 50, 150, 255));
         root->AddChild(title);
 
-        auto subtitle = std::make_shared<UltraCanvasLabel>("SlideshowSubtitle", 20, 42, 900, 22);
-        subtitle->SetText("Image cross-fades on a timer with an info panel beside or over it. "
-                          "Pick the indicator style, info-panel layout, indicator edge and transition "
-                          "with the buttons below; hover the slideshow to pause.");
+        auto subtitle = std::make_shared<UltraCanvasLabel>("SlideshowSubtitle", 20, 42, 900, 20);
+        subtitle->SetText("The framed area below is the live widget; the controls beneath it are "
+                          "demo-only options for trying out its settings.");
         subtitle->SetFontSize(11);
         subtitle->SetTextColor(Color(110, 110, 110, 255));
         root->AddChild(subtitle);
 
         // Slideshow itself
-        auto show = CreateSlideshow("ultracanvas-slideshow", 20, 80, 920, 480);
+        auto show = CreateSlideshow("ultracanvas-slideshow", 20, 84, 920, 480);
 
         SlideshowConfig cfg = MakeBaseConfig();
 
@@ -136,10 +136,29 @@ namespace UltraCanvas {
 
         show->SetConfig(cfg);
         show->Play();
+
+        // ---- Frame the live widget so the page makes clear which part is the
+        //      actual widget and which are the programmer-facing options below.
+        //      Added before the slideshow so it sits behind it. ----
+        auto widgetFrame = std::make_shared<UltraCanvasUIElement>(
+                "SlideshowWidgetFrame", 12, 72, 936, 504);
+        widgetFrame->SetBackgroundColor(Colors::Transparent);
+        widgetFrame->SetBorders(1.5f, Color(120, 120, 130, 255), 6.0f);
+        root->AddChild(widgetFrame);
         root->AddChild(show);
 
+        // Caption on the frame's top-left edge, like a fieldset legend.
+        auto widgetCaption = std::make_shared<UltraCanvasLabel>(
+                "SlideshowWidgetCaption", 26, 62, 170, 20);
+        widgetCaption->SetText("  Slideshow widget  ");
+        widgetCaption->SetFontSize(13);
+        widgetCaption->SetFontWeight(FontWeight::Bold);
+        widgetCaption->SetTextColor(Color(40, 40, 60, 255));
+        widgetCaption->SetBackgroundColor(Color(255, 255, 255, 255));
+        root->AddChild(widgetCaption);
+
         // Status label — updated when a slide changes
-        auto statusLabel = std::make_shared<UltraCanvasLabel>("SlideStatus", 20, 575, 920, 22);
+        auto statusLabel = std::make_shared<UltraCanvasLabel>("SlideStatus", 20, 588, 920, 20);
         statusLabel->SetText("Slide 1 / 5");
         statusLabel->SetFontSize(11);
         statusLabel->SetTextColor(Color(120, 120, 120, 255));
@@ -153,6 +172,21 @@ namespace UltraCanvas {
                 << " — " << showPtr->GetSlides()[idx].infoTitle;
             statusPtr->SetText(oss.str());
         };
+
+        // ---- Options section heading: everything below is programmer-facing. ----
+        auto optionsHeading = std::make_shared<UltraCanvasLabel>(
+                "SlideshowOptionsHeading", 20, 622, 400, 24);
+        optionsHeading->SetText("Slideshow widget options");
+        optionsHeading->SetFontSize(14);
+        optionsHeading->SetFontWeight(FontWeight::Bold);
+        optionsHeading->SetTextColor(Color(40, 40, 60, 255));
+        root->AddChild(optionsHeading);
+        {
+            auto headRule = std::make_shared<UltraCanvasSeparator>(
+                    false, 1, 960, Color(0, 0, 0, 38));
+            headRule->SetElementAbsolutePosition(Point2Df(20.0f, 648.0f));
+            root->AddChild(headRule);
+        }
 
         // ====================================================================
         // Options panel — a labelled-row grid mirroring the reference layout:
@@ -276,7 +310,7 @@ namespace UltraCanvas {
             y += tight ? 8 : 12;
         };
 
-        int y = 600;
+        int y = 656;
 
         // ----- Controls -----
         addLabel("Controls", kLabelX, y + 4, 120, 12.0f, false, kLabelColor);
