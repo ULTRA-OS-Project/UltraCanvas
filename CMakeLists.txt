@@ -85,6 +85,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasDemoExamples.cpp
             Apps/DemoApp/UltraCanvasButtonExamples.cpp
             Apps/DemoApp/UltraCanvasDropDownExamples.cpp
+            Apps/DemoApp/UltraCanvasDatePickerExamples.cpp
             Apps/DemoApp/UltraCanvasAutoCompleteExamples.cpp
             Apps/DemoApp/UltraCanvasLabelExamples.cpp
             Apps/DemoApp/UltraCanvasMenuExamples.cpp

@@ -547,6 +547,18 @@ namespace UltraCanvas {
                 .AddVariant("dropdown", "Editable ComboBox")
                 .AddVariant("dropdown", "Multi-Select");
 
+        basicBuilder.AddItem("datepicker", "Date Picker / Calendar",
+                             "Calendar widgets covering single, range, multiple and week selection",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateDatePickerExamples(); },
+                             "Apps/DemoApp/UltraCanvasDatePickerExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasDatePicker.md")
+                .AddVariant("datepicker", "Dropdown Calendar")
+                .AddVariant("datepicker", "Inline Calendar")
+                .AddVariant("datepicker", "Date Range")
+                .AddVariant("datepicker", "Multiple Dates")
+                .AddVariant("datepicker", "Keyboard / Text Entry");
+
         basicBuilder
                 .AddItem("checkbox", "Checkbox / Radio / Switch",
                          "Interactive checkbox controls with multiple states and styles",
