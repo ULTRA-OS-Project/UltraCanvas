@@ -2,6 +2,7 @@
 // Implementation of UCDate, UltraCanvasCalendarView and UltraCanvasDatePicker.
 #include "UltraCanvasDatePicker.h"
 #include "UltraCanvasWindow.h"
+#include "UltraCanvasLabel.h"
 #include <ctime>
 #include <cstdio>
 #include <cctype>
@@ -290,8 +291,61 @@ namespace UltraCanvas {
         if (!d.IsValid()) return false;
         if (minDate.IsValid() && d < minDate) return false;
         if (maxDate.IsValid() && d > maxDate) return false;
+        if (IsDateBlocked(d)) return false;
         if (dateEnabledPredicate && !dateEnabledPredicate(d)) return false;
         return true;
+    }
+
+    // ---- blocked dates ----------------------------------------------
+
+    void UltraCanvasCalendarView::SetBlockedDates(const std::vector<UCDate>& dates) {
+        blockedOrdinals.clear();
+        for (const auto& d : dates)
+            if (d.IsValid()) blockedOrdinals.insert(d.ToOrdinal());
+        RequestRedraw();
+    }
+
+    void UltraCanvasCalendarView::AddBlockedDate(const UCDate& d) {
+        if (d.IsValid()) { blockedOrdinals.insert(d.ToOrdinal()); RequestRedraw(); }
+    }
+
+    void UltraCanvasCalendarView::BlockDateRange(const UCDate& start, const UCDate& end) {
+        if (!start.IsValid() || !end.IsValid()) return;
+        long a = start.ToOrdinal(), b = end.ToOrdinal();
+        if (b < a) std::swap(a, b);
+        for (long o = a; o <= b; ++o) blockedOrdinals.insert(o);
+        RequestRedraw();
+    }
+
+    void UltraCanvasCalendarView::ClearBlockedDates() {
+        blockedOrdinals.clear();
+        RequestRedraw();
+    }
+
+    bool UltraCanvasCalendarView::IsDateBlocked(const UCDate& d) const {
+        return d.IsValid() && blockedOrdinals.count(d.ToOrdinal()) > 0;
+    }
+
+    bool UltraCanvasCalendarView::RangeHasBlocked(const UCDate& a, const UCDate& b) const {
+        long lo = a.ToOrdinal(), hi = b.ToOrdinal();
+        if (hi < lo) std::swap(lo, hi);
+        for (long o = lo; o <= hi; ++o)
+            if (!IsDateSelectable(UCDate::FromOrdinal(o))) return true;
+        return false;
+    }
+
+    UCDate UltraCanvasCalendarView::ClampRangeEnd(const UCDate& start, const UCDate& target) const {
+        if (!start.IsValid()) return target;
+        if (target == start) return start;
+        int dir = (target < start) ? -1 : 1;
+        UCDate cur = start, last = start;
+        while (!(cur == target)) {
+            UCDate nxt = cur.AddDays(dir);
+            if (!IsDateSelectable(nxt)) break;
+            last = nxt;
+            cur = nxt;
+        }
+        return last;
     }
 
     UCDate UltraCanvasCalendarView::FirstVisibleCell() const {
@@ -526,6 +580,15 @@ namespace UltraCanvas {
             else                     tc = style.cellTextColor;
 
             DrawCenteredText(ctx, std::to_string(d.day), cell, tc, style.fontSize, FontWeight::Normal);
+
+            // Strike through explicitly-blocked (unavailable) days.
+            if (IsDateBlocked(d) && (inMonth || showAdjacentDays)) {
+                float my = cell.y + cell.height / 2.0f;
+                float inset = std::min(l.cellW, l.cellH) * 0.30f;
+                ctx->SetStrokePaint(style.blockedStrikeColor);
+                ctx->SetStrokeWidth(1.2f);
+                ctx->DrawLine(Point2Dd(cell.x + inset, my), Point2Dd(cell.Right() - inset, my));
+            }
         }
     }
 
@@ -630,10 +693,19 @@ namespace UltraCanvas {
                 } else {
                     UCDate s = rangeStart, e = d;
                     if (e < s) std::swap(s, e);
-                    rangeStart = s;
-                    rangeEnd = e;
-                    selectingRange = false;
-                    if (onRangeSelected) onRangeSelected(s, e);
+                    if (RangeHasBlocked(s, e)) {
+                        // The span would cross an unavailable date — start over
+                        // from the new click instead of selecting across it.
+                        rangeStart = d;
+                        rangeEnd = UCDate();
+                        rangeHoverEnd = d;
+                        selectingRange = true;
+                    } else {
+                        rangeStart = s;
+                        rangeEnd = e;
+                        selectingRange = false;
+                        if (onRangeSelected) onRangeSelected(s, e);
+                    }
                 }
                 break;
 
@@ -817,9 +889,13 @@ namespace UltraCanvas {
                 hoverNavRegion = region;
                 hoverDate = newHover;
                 hoverCellIndex = newHoverIndex;
-                if (selectingRange && newHover.IsValid() && !(newHover == rangeHoverEnd)) {
-                    rangeHoverEnd = newHover;
-                    changed = true;
+                if (selectingRange && newHover.IsValid()) {
+                    // Cap the live preview so it cannot stretch across a blocked date.
+                    UCDate capped = ClampRangeEnd(rangeStart, newHover);
+                    if (!(capped == rangeHoverEnd)) {
+                        rangeHoverEnd = capped;
+                        changed = true;
+                    }
                 }
                 bool overClickable = region != 0 || newHover.IsValid() || newHoverIndex >= 0;
                 SetMouseCursor(overClickable ? UCMouseCursor::Hand : UCMouseCursor::Default);
@@ -1290,6 +1366,343 @@ namespace UltraCanvas {
         }
         RequestRedraw();
         return r;
+    }
+
+// =====================================================================
+//  UltraCanvasDateRangePicker
+// =====================================================================
+
+    UltraCanvasDateRangePicker::UltraCanvasDateRangePicker(const std::string& identifier,
+                                                           float x, float y, float w, float h)
+            : UltraCanvasContainer(identifier, x, y, w, h) {
+        Rebuild();
+    }
+
+    std::vector<UCDate> UltraCanvasDateRangePicker::BlockedList() const {
+        std::vector<UCDate> v;
+        v.reserve(blockedOrdinals.size());
+        for (long o : blockedOrdinals) v.push_back(UCDate::FromOrdinal(o));
+        return v;
+    }
+
+    bool UltraCanvasDateRangePicker::BaseSelectable(const UCDate& d) const {
+        if (!d.IsValid()) return false;
+        if (minDate.IsValid() && d < minDate) return false;
+        if (maxDate.IsValid() && d > maxDate) return false;
+        if (blockedOrdinals.count(d.ToOrdinal()) > 0) return false;
+        if (userPredicate && !userPredicate(d)) return false;
+        return true;
+    }
+
+    bool UltraCanvasDateRangePicker::IntervalAllSelectable(const UCDate& a, const UCDate& b) const {
+        long lo = a.ToOrdinal(), hi = b.ToOrdinal();
+        if (hi < lo) std::swap(lo, hi);
+        for (long o = lo; o <= hi; ++o)
+            if (!BaseSelectable(UCDate::FromOrdinal(o))) return false;
+        return true;
+    }
+
+    void UltraCanvasDateRangePicker::Rebuild() {
+        ClearChildren();
+        startPicker = endPicker = singlePicker = nullptr;
+        sepLabel = nullptr;
+
+        if (mode == DateRangePickerMode::TwoFields) {
+            startPicker = std::make_shared<UltraCanvasDatePicker>(GetIdentifier() + "_start", 0, 0, 10, 10);
+            startPicker->SetSelectionMode(DateSelectionMode::Single);
+            startPicker->SetDateFormat(dateFormat);
+            startPicker->SetPlaceholder(startLabel);
+            startPicker->onDateChanged = [this](const UCDate& d) {
+                if (d.IsEmpty()) {
+                    startDate = UCDate();
+                    if (onStartChanged) onStartChanged(UCDate());
+                } else {
+                    HandleStartChosen(d);
+                }
+            };
+
+            endPicker = std::make_shared<UltraCanvasDatePicker>(GetIdentifier() + "_end", 0, 0, 10, 10);
+            endPicker->SetSelectionMode(DateSelectionMode::Single);
+            endPicker->SetDateFormat(dateFormat);
+            endPicker->SetPlaceholder(endLabel);
+            endPicker->onDateChanged = [this](const UCDate& d) {
+                if (d.IsEmpty()) {
+                    endDate = UCDate();
+                    if (onEndChanged) onEndChanged(UCDate());
+                } else {
+                    HandleEndChosen(d);
+                }
+            };
+
+            auto sep = std::make_shared<UltraCanvasLabel>(GetIdentifier() + "_sep", 0, 0, 10, 10);
+            sep->SetText("\xE2\x86\x92"); // → (UTF-8)
+            sep->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
+            sep->SetTextColor(Color(120, 120, 120, 255));
+            sepLabel = sep;
+
+            AddChild(startPicker);
+            AddChild(sepLabel);
+            AddChild(endPicker);
+        } else {
+            singlePicker = std::make_shared<UltraCanvasDatePicker>(GetIdentifier() + "_single", 0, 0, 10, 10);
+            singlePicker->SetSelectionMode(DateSelectionMode::Range);
+            singlePicker->SetDateFormat(dateFormat);
+            singlePicker->SetPlaceholder(startLabel + " - " + endLabel);
+            singlePicker->onRangeChanged = [this](const UCDate& s, const UCDate& e) {
+                HandleSingleRange(s, e);
+            };
+            AddChild(singlePicker);
+        }
+
+        ApplyConstraintsToCalendars();
+        LayoutFields();
+
+        // Restore current values into the freshly built fields.
+        if (startPicker && startDate.IsValid()) startPicker->SetSelectedDate(startDate, false);
+        if (endPicker && endDate.IsValid()) endPicker->SetSelectedDate(endDate, false);
+        if (singlePicker && startDate.IsValid() && endDate.IsValid())
+            singlePicker->SetRange(startDate, endDate, false);
+    }
+
+    void UltraCanvasDateRangePicker::LayoutFields() {
+        float w = GetWidth();
+        float h = GetHeight();
+        if (w <= 0) w = 320;
+        if (h <= 0) h = 28;
+
+        if (mode == DateRangePickerMode::TwoFields) {
+            float sepW = 26.0f;
+            float fieldW = (w - sepW) / 2.0f;
+            if (fieldW < 1.0f) fieldW = 1.0f;
+            if (startPicker) {
+                startPicker->SetElementSize(Size2Df(fieldW, h));
+                startPicker->SetElementAbsolutePosition(Point2Df(0, 0));
+            }
+            if (sepLabel) {
+                sepLabel->SetElementSize(Size2Df(sepW, h));
+                sepLabel->SetElementAbsolutePosition(Point2Df(fieldW, 0));
+            }
+            if (endPicker) {
+                endPicker->SetElementSize(Size2Df(fieldW, h));
+                endPicker->SetElementAbsolutePosition(Point2Df(fieldW + sepW, 0));
+            }
+        } else if (singlePicker) {
+            singlePicker->SetElementSize(Size2Df(w, h));
+            singlePicker->SetElementAbsolutePosition(Point2Df(0, 0));
+        }
+    }
+
+    void UltraCanvasDateRangePicker::ApplyConstraintsToCalendars() {
+        std::vector<UCDate> blocked = BlockedList();
+
+        if (singlePicker) {
+            singlePicker->SetMinDate(minDate);
+            singlePicker->SetMaxDate(maxDate);
+            singlePicker->SetFirstDayOfWeek(firstDayOfWeek);
+            singlePicker->SetBlockedDates(blocked);
+            singlePicker->SetDateEnabledPredicate(userPredicate ? userPredicate : std::function<bool(const UCDate&)>());
+        }
+        if (startPicker) {
+            startPicker->SetMinDate(minDate);
+            startPicker->SetMaxDate(maxDate);
+            startPicker->SetFirstDayOfWeek(firstDayOfWeek);
+            startPicker->SetBlockedDates(blocked);
+            startPicker->SetDateEnabledPredicate(userPredicate ? userPredicate : std::function<bool(const UCDate&)>());
+        }
+        if (endPicker) {
+            endPicker->SetMaxDate(maxDate);
+            endPicker->SetFirstDayOfWeek(firstDayOfWeek);
+            endPicker->SetBlockedDates(blocked);
+            // End candidate is valid only if the whole stay [start, end] is free
+            // and within the nights bounds.
+            endPicker->SetDateEnabledPredicate([this](const UCDate& e) {
+                if (!BaseSelectable(e)) return false;
+                if (!startDate.IsValid()) return true;
+                long nights = e.ToOrdinal() - startDate.ToOrdinal();
+                if (nights < minNights) return false;
+                if (maxNights > 0 && nights > maxNights) return false;
+                return IntervalAllSelectable(startDate, e);
+            });
+            if (startDate.IsValid())
+                endPicker->SetMinDate(startDate.AddDays(minNights > 0 ? minNights : 0));
+            else
+                endPicker->SetMinDate(minDate);
+        }
+    }
+
+    void UltraCanvasDateRangePicker::HandleStartChosen(const UCDate& d) {
+        startDate = d;
+
+        // Invalidate an end that no longer forms a legal stay.
+        if (endDate.IsValid()) {
+            long nights = endDate.ToOrdinal() - startDate.ToOrdinal();
+            bool ok = nights >= minNights &&
+                      (maxNights <= 0 || nights <= maxNights) &&
+                      IntervalAllSelectable(startDate, endDate);
+            if (!ok) {
+                endDate = UCDate();
+                if (endPicker) endPicker->Clear(false);
+            }
+        }
+
+        // Refresh the end field's constraints and point it near the start.
+        ApplyConstraintsToCalendars();
+        if (endPicker) endPicker->GetCalendar()->SetVisibleMonth(d.year, d.month);
+
+        if (onStartChanged) onStartChanged(d);
+        FireRangeIfComplete();
+    }
+
+    void UltraCanvasDateRangePicker::HandleEndChosen(const UCDate& d) {
+        endDate = d;
+        if (onEndChanged) onEndChanged(d);
+        FireRangeIfComplete();
+    }
+
+    void UltraCanvasDateRangePicker::HandleSingleRange(const UCDate& s, const UCDate& e) {
+        startDate = s;
+        endDate = e;
+        if (onStartChanged) onStartChanged(s);
+        if (onEndChanged) onEndChanged(e);
+        FireRangeIfComplete();
+    }
+
+    void UltraCanvasDateRangePicker::FireRangeIfComplete() {
+        if (startDate.IsValid() && endDate.IsValid() && onRangeChanged)
+            onRangeChanged(startDate, endDate);
+    }
+
+    // ---- public configuration ---------------------------------------
+
+    void UltraCanvasDateRangePicker::SetMode(DateRangePickerMode m) {
+        if (m == mode && (startPicker || singlePicker)) return;
+        mode = m;
+        Rebuild();
+        RequestRedraw();
+    }
+
+    void UltraCanvasDateRangePicker::SetStartDate(const UCDate& d, bool runCallbacks) {
+        startDate = d;
+        if (startPicker) startPicker->SetSelectedDate(d, false);
+        if (singlePicker && endDate.IsValid()) singlePicker->SetRange(d, endDate, false);
+        ApplyConstraintsToCalendars();
+        if (runCallbacks && onStartChanged) onStartChanged(d);
+        if (runCallbacks) FireRangeIfComplete();
+        RequestRedraw();
+    }
+
+    void UltraCanvasDateRangePicker::SetEndDate(const UCDate& d, bool runCallbacks) {
+        endDate = d;
+        if (endPicker) endPicker->SetSelectedDate(d, false);
+        if (singlePicker && startDate.IsValid()) singlePicker->SetRange(startDate, d, false);
+        if (runCallbacks && onEndChanged) onEndChanged(d);
+        if (runCallbacks) FireRangeIfComplete();
+        RequestRedraw();
+    }
+
+    void UltraCanvasDateRangePicker::SetRange(const UCDate& start, const UCDate& end, bool runCallbacks) {
+        startDate = start;
+        endDate = end;
+        if (startPicker) startPicker->SetSelectedDate(start, false);
+        if (endPicker) endPicker->SetSelectedDate(end, false);
+        if (singlePicker) singlePicker->SetRange(start, end, false);
+        ApplyConstraintsToCalendars();
+        if (runCallbacks) {
+            if (onStartChanged) onStartChanged(start);
+            if (onEndChanged) onEndChanged(end);
+            FireRangeIfComplete();
+        }
+        RequestRedraw();
+    }
+
+    void UltraCanvasDateRangePicker::Clear(bool runCallbacks) {
+        startDate = endDate = UCDate();
+        if (startPicker) startPicker->Clear(false);
+        if (endPicker) endPicker->Clear(false);
+        if (singlePicker) singlePicker->Clear(false);
+        ApplyConstraintsToCalendars();
+        if (runCallbacks) {
+            if (onStartChanged) onStartChanged(UCDate());
+            if (onEndChanged) onEndChanged(UCDate());
+        }
+        RequestRedraw();
+    }
+
+    void UltraCanvasDateRangePicker::SetDateFormat(const std::string& fmt) {
+        dateFormat = fmt;
+        if (startPicker) startPicker->SetDateFormat(fmt);
+        if (endPicker) endPicker->SetDateFormat(fmt);
+        if (singlePicker) singlePicker->SetDateFormat(fmt);
+        RequestRedraw();
+    }
+
+    void UltraCanvasDateRangePicker::SetFieldLabels(const std::string& startLbl, const std::string& endLbl) {
+        startLabel = startLbl;
+        endLabel = endLbl;
+        if (startPicker) startPicker->SetPlaceholder(startLabel);
+        if (endPicker) endPicker->SetPlaceholder(endLabel);
+        if (singlePicker) singlePicker->SetPlaceholder(startLabel + " - " + endLabel);
+        RequestRedraw();
+    }
+
+    void UltraCanvasDateRangePicker::SetMinNights(int n) { minNights = n < 0 ? 0 : n; ApplyConstraintsToCalendars(); }
+    void UltraCanvasDateRangePicker::SetMaxNights(int n) { maxNights = n; ApplyConstraintsToCalendars(); }
+
+    void UltraCanvasDateRangePicker::SetFirstDayOfWeek(int dow) {
+        firstDayOfWeek = ((dow % 7) + 7) % 7;
+        ApplyConstraintsToCalendars();
+    }
+
+    void UltraCanvasDateRangePicker::SetMinDate(const UCDate& d) { minDate = d; ApplyConstraintsToCalendars(); }
+    void UltraCanvasDateRangePicker::SetMaxDate(const UCDate& d) { maxDate = d; ApplyConstraintsToCalendars(); }
+
+    void UltraCanvasDateRangePicker::SetDateEnabledPredicate(std::function<bool(const UCDate&)> pred) {
+        userPredicate = std::move(pred);
+        ApplyConstraintsToCalendars();
+    }
+
+    void UltraCanvasDateRangePicker::SetBlockedDates(const std::vector<UCDate>& dates) {
+        blockedOrdinals.clear();
+        for (const auto& d : dates)
+            if (d.IsValid()) blockedOrdinals.insert(d.ToOrdinal());
+        ApplyConstraintsToCalendars();
+        RequestRedraw();
+    }
+
+    void UltraCanvasDateRangePicker::AddBlockedDate(const UCDate& d) {
+        if (d.IsValid()) {
+            blockedOrdinals.insert(d.ToOrdinal());
+            ApplyConstraintsToCalendars();
+            RequestRedraw();
+        }
+    }
+
+    void UltraCanvasDateRangePicker::BlockDateRange(const UCDate& start, const UCDate& end) {
+        if (!start.IsValid() || !end.IsValid()) return;
+        long a = start.ToOrdinal(), b = end.ToOrdinal();
+        if (b < a) std::swap(a, b);
+        for (long o = a; o <= b; ++o) blockedOrdinals.insert(o);
+        ApplyConstraintsToCalendars();
+        RequestRedraw();
+    }
+
+    void UltraCanvasDateRangePicker::ClearBlockedDates() {
+        blockedOrdinals.clear();
+        ApplyConstraintsToCalendars();
+        RequestRedraw();
+    }
+
+    void UltraCanvasDateRangePicker::SetStyle(const DatePickerStyle& s) {
+        style = s;
+        if (startPicker) startPicker->SetStyle(s);
+        if (endPicker) endPicker->SetStyle(s);
+        if (singlePicker) singlePicker->SetStyle(s);
+        RequestRedraw();
+    }
+
+    void UltraCanvasDateRangePicker::SetBounds(const Rect2Df& b) {
+        UltraCanvasContainer::SetBounds(b);
+        LayoutFields();
     }
 
 } // namespace UltraCanvas

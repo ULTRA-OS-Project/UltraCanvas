@@ -206,6 +206,60 @@ namespace UltraCanvas {
             "the dark theme shows full style customisation."));
         y += 44;
 
+        root->AddChild(DPSeparator(20, y, 960));
+        y += 16;
+
+        // ============================================================
+        // SECTION 5: Range picking (hotel stay) + blocked dates
+        // ============================================================
+        root->AddChild(DPSectionTitle(20, y, "5. Date Range Picking (hotel stay) with blocked dates"));
+        y += 30;
+
+        // A block of already-booked, unavailable nights.
+        UCDate today = UCDate::Today();
+        std::vector<UCDate> booked;
+        for (int i = 0; i < 3; ++i) booked.push_back(today.AddDays(6 + i));
+
+        // Mode A: separate check-in / check-out fields.
+        auto twoField = CreateDateRangePicker("RangeTwo", 30, y, 320, 28, DateRangePickerMode::TwoFields);
+        twoField->SetMinDate(today);
+        twoField->SetMinNights(1);
+        twoField->SetBlockedDates(booked);
+        auto twoResult = std::make_shared<UltraCanvasLabel>("RangeTwoResult", 370, y + 4, 380, 20);
+        twoResult->SetText("Mode A: pick check-in, then check-out");
+        twoResult->SetFontSize(12);
+        twoField->onRangeChanged = [twoResult](const UCDate& s, const UCDate& e) {
+            long nights = e.ToOrdinal() - s.ToOrdinal();
+            twoResult->SetText("Stay: " + s.Format("yyyy-MM-dd") + " -> " + e.Format("yyyy-MM-dd") +
+                               "  (" + std::to_string(nights) + " night(s))");
+        };
+        root->AddChild(twoField);
+        root->AddChild(twoResult);
+        y += 40;
+
+        // Mode B: single field, both endpoints chosen in one calendar.
+        auto oneField = CreateDateRangePicker("RangeOne", 30, y, 320, 28, DateRangePickerMode::SingleField);
+        oneField->SetMinDate(today);
+        oneField->SetBlockedDates(booked);
+        auto oneResult = std::make_shared<UltraCanvasLabel>("RangeOneResult", 370, y + 4, 380, 20);
+        oneResult->SetText("Mode B: click start then end in one calendar");
+        oneResult->SetFontSize(12);
+        oneField->onRangeChanged = [oneResult](const UCDate& s, const UCDate& e) {
+            long nights = e.ToOrdinal() - s.ToOrdinal();
+            oneResult->SetText("Stay: " + s.Format("yyyy-MM-dd") + " -> " + e.Format("yyyy-MM-dd") +
+                               "  (" + std::to_string(nights) + " night(s))");
+        };
+        root->AddChild(oneField);
+        root->AddChild(oneResult);
+        y += 40;
+
+        root->AddChild(DPHint(30, y, 800,
+            "The 3 struck-through days are blocked (already booked): they cannot be selected, and a "
+            "stay cannot span them - the live highlight stops at the first unavailable night. "
+            "Mode A uses separate check-in/check-out fields (the end field only allows legal "
+            "check-outs); Mode B selects both endpoints in one process."));
+        y += 52;
+
         root->SetSize(1020, y + 20);
         return root;
     }

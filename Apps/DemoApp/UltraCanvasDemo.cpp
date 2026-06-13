@@ -557,7 +557,8 @@ namespace UltraCanvas {
                 .AddVariant("datepicker", "Inline Calendar")
                 .AddVariant("datepicker", "Date Range")
                 .AddVariant("datepicker", "Multiple Dates")
-                .AddVariant("datepicker", "Keyboard / Text Entry");
+                .AddVariant("datepicker", "Keyboard / Text Entry")
+                .AddVariant("datepicker", "Hotel Stay / Blocked Dates");
 
         basicBuilder
                 .AddItem("checkbox", "Checkbox / Radio / Switch",

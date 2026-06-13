@@ -132,7 +132,55 @@ Appearance: `SetStyle(CalendarStyle)` with predefined `CalendarStyles::Default()
 metric on `CalendarStyle` directly. `SetShowFooter`, `SetShowAdjacentMonthDays`,
 `SetWeekdayNames`, `SetMonthNames`, `SetWeekendDays` cover the rest.
 
-## 6. Keyboard reference (day grid)
+## 6. Date range picking & blocked dates
+
+Ranges (a hotel stay, a report period) are entered through
+`UltraCanvasDateRangePicker`, which offers the **two interaction philosophies**
+users expect:
+
+* `DateRangePickerMode::TwoFields` — separate **check-in** and **check-out**
+  fields, each with its own pop-up calendar. The endpoints are entered with
+  separate gestures; the end field only offers legal check-outs.
+* `DateRangePickerMode::SingleField` — one field whose calendar is in `Range`
+  mode, so the start and end are chosen **in one process** (click start, click
+  end, with a live highlight band in between).
+
+```cpp
+auto stay = CreateDateRangePicker("stay", 30, 30, 320, 28,
+                                  DateRangePickerMode::TwoFields);
+stay->SetMinDate(UCDate::Today());      // no past dates
+stay->SetMinNights(1);                  // check-out strictly after check-in
+stay->SetBlockedDates(alreadyBooked);   // unavailable nights
+stay->onRangeChanged = [](const UCDate& in, const UCDate& out) { /* ... */ };
+```
+
+`SetMinNights` / `SetMaxNights` bound the stay length; `onStartChanged`,
+`onEndChanged` and `onRangeChanged` report progress. The two modes are
+interchangeable at runtime via `SetMode`.
+
+### Blocking dates from selection
+
+Every calendar supports an explicit set of **blocked / unavailable dates**, in
+addition to `SetMinDate`/`SetMaxDate` and the arbitrary `SetDateEnabledPredicate`:
+
+```cpp
+calendar->SetBlockedDates({ ... });          // replace the whole set
+calendar->AddBlockedDate(UCDate(2026, 7, 4));
+calendar->BlockDateRange(start, end);        // e.g. an existing reservation
+calendar->ClearBlockedDates();
+```
+
+Blocked dates are **struck through**, cannot be selected, and — the key rule
+for stays — **a range may not stretch across a blocked date**. While the user
+drags the second endpoint the highlight is capped at the last available day
+before the first blocked night (`ClampRangeEnd`); clicking past a blocked date
+simply starts a new range. The same blocking API is exposed on
+`UltraCanvasDatePicker` and `UltraCanvasDateRangePicker`, which propagate it to
+their internal calendars. In the two-field mode the check-out field's
+availability is derived from the chosen check-in so that the whole stay stays on
+free nights.
+
+## 7. Keyboard reference (day grid)
 
 | Key | Action |
 |---|---|
@@ -145,9 +193,11 @@ metric on `CalendarStyle` directly. `SetShowFooter`, `SetShowAdjacentMonthDays`,
 | Esc | Close the pop-up (date picker) |
 | Mouse wheel | Step the visible month |
 
-## 7. Demo
+## 8. Demo
 
 `Apps/DemoApp/UltraCanvasDatePickerExamples.cpp` (Basic UI → *Date Picker /
 Calendar*) shows: dropdown picker with text entry, US & European formats, an
 inline calendar, range + week calendars with week numbers, multiple-date
-selection, and a min/max + predicate-constrained dark-themed calendar.
+selection, a min/max + predicate-constrained dark-themed calendar, and a
+hotel-style range section demonstrating both two-field and single-field range
+picking with blocked (already-booked) dates.

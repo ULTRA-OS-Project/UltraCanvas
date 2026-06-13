@@ -24,6 +24,7 @@
 #pragma once
 
 #include "UltraCanvasUIElement.h"
+#include "UltraCanvasContainer.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasRenderContext.h"
@@ -136,6 +137,7 @@ namespace UltraCanvas {
         Color focusBorderColor      = Color(120, 170, 255, 255);
         Color rangeFillColor        = Color(224, 238, 255, 255);
         Color weekNumberColor       = Color(170, 170, 170, 255);
+        Color blockedStrikeColor    = Color(200, 110, 110, 200);  // strike over blocked days
 
         // Footer (Today / Clear shortcuts)
         Color footerTextColor       = Colors::Selection;
@@ -205,6 +207,21 @@ namespace UltraCanvas {
         void SetMaxDate(const UCDate& d) { maxDate = d; RequestRedraw(); }
         void SetDateEnabledPredicate(std::function<bool(const UCDate&)> pred) { dateEnabledPredicate = std::move(pred); RequestRedraw(); }
         bool IsDateSelectable(const UCDate& d) const;
+
+        // ===== BLOCKED DATES =====
+        // An explicit set of unavailable dates (e.g. already-booked nights).
+        // Blocked dates cannot be selected, and — crucially for range/week
+        // selection — a span may not stretch across a blocked date.
+        void SetBlockedDates(const std::vector<UCDate>& dates);
+        void AddBlockedDate(const UCDate& d);
+        void BlockDateRange(const UCDate& start, const UCDate& end);
+        void ClearBlockedDates();
+        bool IsDateBlocked(const UCDate& d) const;
+        // True if any date in the closed interval [a, b] is not selectable.
+        bool RangeHasBlocked(const UCDate& a, const UCDate& b) const;
+        // Furthest date reachable from 'start' toward 'target' without crossing
+        // an unselectable/blocked day (used to cap a range's live preview).
+        UCDate ClampRangeEnd(const UCDate& start, const UCDate& target) const;
 
         // ===== LOCALISATION / APPEARANCE =====
         // firstDayOfWeek: 0 = Sunday (default), 1 = Monday, ...
@@ -300,6 +317,7 @@ namespace UltraCanvas {
 
         UCDate minDate, maxDate;             // empty = unbounded
         std::function<bool(const UCDate&)> dateEnabledPredicate;
+        std::set<long> blockedOrdinals;      // explicitly unavailable dates
 
         int firstDayOfWeek = 0;              // 0 = Sunday
         int weekendDay1 = 0;                 // Sunday
@@ -387,6 +405,13 @@ namespace UltraCanvas {
         void SetDateEnabledPredicate(std::function<bool(const UCDate&)> pred) { calendar->SetDateEnabledPredicate(std::move(pred)); }
         void SetFirstDayOfWeek(int dow) { calendar->SetFirstDayOfWeek(dow); }
 
+        // Blocked / unavailable dates (forwarded to the calendar). For a Range
+        // picker these also prevent a span from crossing a blocked date.
+        void SetBlockedDates(const std::vector<UCDate>& v) { calendar->SetBlockedDates(v); }
+        void AddBlockedDate(const UCDate& d) { calendar->AddBlockedDate(d); }
+        void BlockDateRange(const UCDate& s, const UCDate& e) { calendar->BlockDateRange(s, e); }
+        void ClearBlockedDates() { calendar->ClearBlockedDates(); }
+
         UltraCanvasCalendarView* GetCalendar() const { return calendar.get(); }
 
         // ===== POPUP STATE =====
@@ -436,10 +461,104 @@ namespace UltraCanvas {
         DatePickerStyle style;
     };
 
+// ===== DATE RANGE PICKER =====
+// How a from-to span (e.g. a hotel stay) is entered.
+    enum class DateRangePickerMode {
+        SingleField,   // one field; start and end chosen in one process (two clicks in one calendar)
+        TwoFields      // separate check-in and check-out fields, each with its own calendar
+    };
+
+// A composite from-to picker built on top of UltraCanvasDatePicker. It links
+// the endpoints (end >= start + minNights, capped by maxNights) and honours a
+// shared set of blocked dates so a stay can never span an unavailable night.
+    class UltraCanvasDateRangePicker : public UltraCanvasContainer {
+    public:
+        std::function<void(const UCDate&)> onStartChanged;
+        std::function<void(const UCDate&)> onEndChanged;
+        std::function<void(const UCDate&, const UCDate&)> onRangeChanged; // both endpoints valid
+
+        UltraCanvasDateRangePicker(const std::string& identifier, float x, float y, float w, float h);
+        UltraCanvasDateRangePicker(const std::string& identifier, float w, float h)
+            : UltraCanvasDateRangePicker(identifier, -1, -1, w, h) {}
+        ~UltraCanvasDateRangePicker() override = default;
+
+        // ===== MODE =====
+        void SetMode(DateRangePickerMode m);
+        DateRangePickerMode GetMode() const { return mode; }
+
+        // ===== VALUES =====
+        void SetStartDate(const UCDate& d, bool runCallbacks = false);
+        void SetEndDate(const UCDate& d, bool runCallbacks = false);
+        void SetRange(const UCDate& start, const UCDate& end, bool runCallbacks = false);
+        UCDate GetStartDate() const { return startDate; }
+        UCDate GetEndDate() const { return endDate; }
+        void Clear(bool runCallbacks = false);
+
+        // ===== CONFIG =====
+        void SetDateFormat(const std::string& fmt);
+        void SetFieldLabels(const std::string& startLbl, const std::string& endLbl);
+        void SetMinNights(int n);             // end >= start + n (default 1)
+        void SetMaxNights(int n);             // <= 0 means unlimited
+        void SetFirstDayOfWeek(int dow);
+
+        // ===== CONSTRAINTS / BLOCKED DATES =====
+        void SetMinDate(const UCDate& d);
+        void SetMaxDate(const UCDate& d);
+        void SetDateEnabledPredicate(std::function<bool(const UCDate&)> pred);
+        void SetBlockedDates(const std::vector<UCDate>& dates);
+        void AddBlockedDate(const UCDate& d);
+        void BlockDateRange(const UCDate& start, const UCDate& end);
+        void ClearBlockedDates();
+
+        // ===== STYLE =====
+        void SetStyle(const DatePickerStyle& s);
+
+        // ===== OVERRIDES =====
+        void SetBounds(const Rect2Df& b) override;
+
+    private:
+        void Rebuild();
+        void LayoutFields();
+        void ApplyConstraintsToCalendars();
+        bool BaseSelectable(const UCDate& d) const;     // min/max + blocked + user predicate
+        bool IntervalAllSelectable(const UCDate& a, const UCDate& b) const;
+        std::vector<UCDate> BlockedList() const;
+        void HandleStartChosen(const UCDate& d);
+        void HandleEndChosen(const UCDate& d);
+        void HandleSingleRange(const UCDate& s, const UCDate& e);
+        void FireRangeIfComplete();
+
+        DateRangePickerMode mode = DateRangePickerMode::TwoFields;
+        UCDate startDate, endDate;
+        UCDate minDate, maxDate;
+        int minNights = 1;
+        int maxNights = 0;        // <= 0 = unlimited
+        int firstDayOfWeek = 0;
+        std::string dateFormat = "yyyy-MM-dd";
+        std::string startLabel = "Check-in";
+        std::string endLabel = "Check-out";
+        std::set<long> blockedOrdinals;
+        std::function<bool(const UCDate&)> userPredicate;
+        DatePickerStyle style;
+
+        std::shared_ptr<UltraCanvasDatePicker> startPicker;
+        std::shared_ptr<UltraCanvasDatePicker> endPicker;
+        std::shared_ptr<UltraCanvasDatePicker> singlePicker;
+        std::shared_ptr<UltraCanvasUIElement> sepLabel;
+    };
+
 // ===== FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasDatePicker> CreateDatePicker(
             const std::string& identifier, float x, float y, float w, float h = 26) {
         return std::make_shared<UltraCanvasDatePicker>(identifier, x, y, w, h);
+    }
+
+    inline std::shared_ptr<UltraCanvasDateRangePicker> CreateDateRangePicker(
+            const std::string& identifier, float x, float y, float w, float h = 28,
+            DateRangePickerMode mode = DateRangePickerMode::TwoFields) {
+        auto p = std::make_shared<UltraCanvasDateRangePicker>(identifier, x, y, w, h);
+        p->SetMode(mode);
+        return p;
     }
 
     inline std::shared_ptr<UltraCanvasCalendarView> CreateCalendarView(
