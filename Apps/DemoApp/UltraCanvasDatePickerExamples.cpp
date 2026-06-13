@@ -260,6 +260,42 @@ namespace UltraCanvas {
             "check-outs); Mode B selects both endpoints in one process."));
         y += 52;
 
+        root->AddChild(DPSeparator(20, y, 960));
+        y += 16;
+
+        // ============================================================
+        // SECTION 6: Multi-month blocks & scroll navigation
+        // ============================================================
+        root->AddChild(DPSectionTitle(20, y, "6. Multi-Month Blocks & Scroll Navigation"));
+        y += 30;
+
+        // Two months side-by-side (horizontal), paged with the chevrons.
+        auto hCal = std::make_shared<UltraCanvasCalendarView>("Cal_Horiz2", 30, y, 0, 0);
+        hCal->SetMonthsPerView(2);
+        hCal->SetOrientation(CalendarOrientation::Horizontal);
+        hCal->SetSelectionMode(DateSelectionMode::Range);
+        hCal->SetElementSize(hCal->GetPreferredSize());
+
+        // Two months stacked (vertical) with a scrollbar instead of paging.
+        float vX = 30 + hCal->GetPreferredSize().width + 50;
+        auto vCal = std::make_shared<UltraCanvasCalendarView>("Cal_VertScroll", vX, y, 0, 0);
+        vCal->SetMonthsPerView(2);
+        vCal->SetOrientation(CalendarOrientation::Vertical);
+        vCal->SetNavigationMode(CalendarNavMode::Scrolling);
+        vCal->SetElementSize(vCal->GetPreferredSize());
+
+        root->AddChild(hCal);
+        root->AddChild(vCal);
+        float blockH = std::max(hCal->GetPreferredSize().height, vCal->GetPreferredSize().height);
+        y += blockH + 14;
+
+        root->AddChild(DPHint(30, y, 820,
+            "Left: SetMonthsPerView(2) with Horizontal orientation - two months side by side, paged "
+            "with the chevrons (range selection spans both). Right: the same two-month block in "
+            "Vertical orientation with Scrolling navigation - a scrollbar (and mouse wheel) moves "
+            "continuously through months; the chevrons still work too."));
+        y += 52;
+
         root->SetSize(1020, y + 20);
         return root;
     }

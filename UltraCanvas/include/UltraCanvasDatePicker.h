@@ -101,6 +101,18 @@ namespace UltraCanvas {
         Years       // year grid for one decade
     };
 
+// ===== MONTH NAVIGATION MODE =====
+    enum class CalendarNavMode {
+        Paged,      // a fixed block of months; chevrons step forward/back
+        Scrolling   // a scrollable strip of months driven by a scrollbar (chevrons kept too)
+    };
+
+// ===== MULTI-MONTH LAYOUT ORIENTATION =====
+    enum class CalendarOrientation {
+        Vertical,   // months stacked top-to-bottom (vertical scrollbar)
+        Horizontal  // months side-by-side left-to-right (horizontal scrollbar)
+    };
+
 // ===== TRIGGER PHILOSOPHY (UltraCanvasDatePicker) =====
     enum class DatePickerVariant {
         DropdownCalendar    // editable text field + button -> popup calendar
@@ -235,6 +247,23 @@ namespace UltraCanvas {
         void SetShowFooter(bool show) { showFooter = show; RequestRedraw(); }
         void SetWeekendDays(int dow1, int dow2) { weekendDay1 = dow1; weekendDay2 = dow2; RequestRedraw(); }
 
+        // ===== MULTI-MONTH / SCROLL NAVIGATION =====
+        // Number of month panels shown in one display block (default 1). With
+        // n > 1, or with Scrolling navigation, the calendar renders a strip of
+        // month panels laid out per the orientation.
+        void SetMonthsPerView(int n);
+        int GetMonthsPerView() const { return monthsPerView; }
+        // Paged: chevrons step the block. Scrolling: a scrollbar moves through
+        // the month range (chevrons are kept as an extra control).
+        void SetNavigationMode(CalendarNavMode m);
+        CalendarNavMode GetNavigationMode() const { return navMode; }
+        // Orientation of the month strip / scroll axis.
+        void SetOrientation(CalendarOrientation o);
+        CalendarOrientation GetOrientation() const { return orientation; }
+        // Explicit month range for Scrolling mode (defaults to min/max date, or
+        // the visible month +/- 5 years when those are unbounded).
+        void SetScrollMonthRange(const UCDate& from, const UCDate& to);
+
         // ===== STYLE =====
         void SetStyle(const CalendarStyle& s) { style = s; RequestRedraw(); }
         const CalendarStyle& GetStyle() const { return style; }
@@ -283,6 +312,48 @@ namespace UltraCanvas {
         void DrawFooter(IRenderContext* ctx, const Layout& l);
         void DrawCenteredText(IRenderContext* ctx, const std::string& text,
                               const Rect2Df& rect, const Color& color, float fontSize, FontWeight weight);
+        // Shared day-cell renderer (single- and multi-month). visY/visM identify
+        // the panel's month so out-of-month days can be dimmed.
+        void DrawDayCell(IRenderContext* ctx, const Rect2Df& cell, const UCDate& d,
+                         int visY, int visM, float cellW, float cellH);
+
+        // ----- multi-month / scrolling -----
+        bool UsesMultiMonth() const { return monthsPerView > 1 || navMode == CalendarNavMode::Scrolling; }
+        static long MonthIndex(int y, int m) { return static_cast<long>(y) * 12 + (m - 1); }
+        static void FromMonthIndex(long idx, int& y, int& m) {
+            y = static_cast<int>(idx / 12); m = static_cast<int>(idx % 12);
+            if (m < 0) { m += 12; --y; } ++m;
+        }
+        void GetScrollRange(long& fromIdx, long& toIdx) const;
+
+        struct PanelLayout {
+            Rect2Df title, weekdayRow;
+            float gridX = 0, gridY = 0, cellW = 0, cellH = 0, weekColW = 0;
+        };
+        PanelLayout PanelLayoutFor(const Rect2Df& panel) const;
+
+        struct MultiLayout {
+            Rect2Df panelsArea;
+            Rect2Df footer, todayButton, clearButton;
+            Rect2Df scrollTrack;
+            bool hasScrollbar = false;
+            float panelMain = 0;
+        };
+        MultiLayout ComputeMultiLayout() const;
+        Rect2Df PanelRectAt(const MultiLayout& ml, float mainPos, float mainLen) const;
+        float ViewportMain(const MultiLayout& ml) const;
+        float ContentMain(const MultiLayout& ml) const;
+        std::vector<std::pair<Rect2Df, long>> VisiblePanels(const MultiLayout& ml) const;
+        Rect2Df ThumbRect(const MultiLayout& ml) const;
+        void ClampScroll(const MultiLayout& ml);
+        UCDate FirstCellFor(int year, int month) const;
+        void DrawMonthPanel(IRenderContext* ctx, const Rect2Df& panel, int year, int month,
+                            bool firstChevron, bool lastChevron);
+        void DrawMultiMonth(IRenderContext* ctx);
+        void DrawChevron(IRenderContext* ctx, const Rect2Df& r, bool left, bool hovered);
+        bool OnEventMultiMonth(const UCEvent& event);
+        void NavigateMulti(int monthDelta);
+        void ScrollToMonth(int year, int month);
 
         bool InRangeHighlight(const UCDate& d) const;   // for fill between endpoints
         bool IsRangeEndpoint(const UCDate& d) const;
@@ -325,6 +396,16 @@ namespace UltraCanvas {
         bool showWeekNumbers = false;
         bool showAdjacentDays = true;
         bool showFooter = true;
+
+        // multi-month / scrolling
+        int monthsPerView = 1;
+        CalendarNavMode navMode = CalendarNavMode::Paged;
+        CalendarOrientation orientation = CalendarOrientation::Vertical;
+        float scrollOffset = 0.0f;           // pixels along the scroll axis
+        UCDate scrollFrom, scrollTo;         // explicit scroll range (empty = derive)
+        bool draggingThumb = false;
+        float dragStartOffset = 0.0f;
+        Point2Df dragStartPos;
 
         std::vector<std::string> weekdayNames;   // Sunday-first, short
         std::vector<std::string> monthNamesLong;

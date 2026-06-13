@@ -193,11 +193,21 @@ namespace UltraCanvas {
     }
 
     Size2Df UltraCanvasCalendarView::GetPreferredSize() const {
-        float gridW = (showWeekNumbers ? style.weekNumberColumnWidth : 0.0f) + 7.0f * style.cellWidth;
-        float w = gridW + style.panelPadding * 2.0f;
-        float h = style.panelPadding * 2.0f + style.headerHeight + style.weekdayRowHeight
-                  + 6.0f * style.cellHeight + (showFooter ? style.footerHeight : 0.0f);
-        return Size2Df(w, h);
+        float panelW = (showWeekNumbers ? style.weekNumberColumnWidth : 0.0f) + 7.0f * style.cellWidth;
+        float panelH = style.headerHeight + style.weekdayRowHeight + 6.0f * style.cellHeight;
+        float pad = style.panelPadding * 2.0f;
+        float footer = showFooter ? style.footerHeight : 0.0f;
+
+        if (!UsesMultiMonth()) {
+            return Size2Df(panelW + pad, pad + panelH + footer);
+        }
+
+        int n = monthsPerView < 1 ? 1 : monthsPerView;
+        float scrollbar = (navMode == CalendarNavMode::Scrolling) ? 12.0f : 0.0f;
+        if (orientation == CalendarOrientation::Vertical) {
+            return Size2Df(panelW + pad + scrollbar, pad + n * panelH + footer);
+        }
+        return Size2Df(pad + n * panelW + scrollbar, pad + panelH + footer);
     }
 
     void UltraCanvasCalendarView::SetSelectionMode(DateSelectionMode mode) {
@@ -478,23 +488,24 @@ namespace UltraCanvas {
                          style.headerFontSize, FontWeight::Bold);
 
         // Navigation chevrons
-        auto drawChevron = [&](const Rect2Df& r, bool left, bool hovered) {
-            Color c = hovered ? style.navArrowHoverColor : style.navArrowColor;
-            ctx->SetStrokePaint(c);
-            ctx->SetStrokeWidth(1.6f);
-            float cx = r.x + r.width / 2.0f;
-            float cy = r.y + r.height / 2.0f;
-            float s = 4.0f;
-            if (left) {
-                ctx->DrawLine(Point2Dd(cx + s * 0.5, cy - s), Point2Dd(cx - s * 0.5, cy));
-                ctx->DrawLine(Point2Dd(cx - s * 0.5, cy), Point2Dd(cx + s * 0.5, cy + s));
-            } else {
-                ctx->DrawLine(Point2Dd(cx - s * 0.5, cy - s), Point2Dd(cx + s * 0.5, cy));
-                ctx->DrawLine(Point2Dd(cx + s * 0.5, cy), Point2Dd(cx - s * 0.5, cy + s));
-            }
-        };
-        drawChevron(l.prevButton, true, hoverNavRegion == 1);
-        drawChevron(l.nextButton, false, hoverNavRegion == 2);
+        DrawChevron(ctx, l.prevButton, true, hoverNavRegion == 1);
+        DrawChevron(ctx, l.nextButton, false, hoverNavRegion == 2);
+    }
+
+    void UltraCanvasCalendarView::DrawChevron(IRenderContext* ctx, const Rect2Df& r, bool left, bool hovered) {
+        Color c = hovered ? style.navArrowHoverColor : style.navArrowColor;
+        ctx->SetStrokePaint(c);
+        ctx->SetStrokeWidth(1.6f);
+        float cx = r.x + r.width / 2.0f;
+        float cy = r.y + r.height / 2.0f;
+        float s = 4.0f;
+        if (left) {
+            ctx->DrawLine(Point2Dd(cx + s * 0.5, cy - s), Point2Dd(cx - s * 0.5, cy));
+            ctx->DrawLine(Point2Dd(cx - s * 0.5, cy), Point2Dd(cx + s * 0.5, cy + s));
+        } else {
+            ctx->DrawLine(Point2Dd(cx - s * 0.5, cy - s), Point2Dd(cx + s * 0.5, cy));
+            ctx->DrawLine(Point2Dd(cx + s * 0.5, cy), Point2Dd(cx - s * 0.5, cy + s));
+        }
     }
 
     void UltraCanvasCalendarView::DrawFooter(IRenderContext* ctx, const Layout& l) {
@@ -541,54 +552,63 @@ namespace UltraCanvas {
 
             int col = i % 7, row = i / 7;
             Rect2Df cell(l.gridOriginX + col * l.cellW, l.gridOriginY + row * l.cellH, l.cellW, l.cellH);
+            DrawDayCell(ctx, cell, d, visibleYear, visibleMonth, l.cellW, l.cellH);
+        }
+    }
 
-            bool selectable = IsDateSelectable(d);
-            bool selected = IsSelected(d);
-            bool inRange = InRangeHighlight(d);
-            bool isToday = (d == today);
-            bool isFocus = hasFocusCell && d == focusedDate && IsFocused();
-            bool isHover = (d == hoverDate);
+    UCDate UltraCanvasCalendarView::FirstCellFor(int year, int month) const {
+        UCDate first(year, month, 1);
+        int offset = (first.DayOfWeek() - firstDayOfWeek + 7) % 7;
+        return first.AddDays(-offset);
+    }
 
-            // Continuous range band fills the whole cell.
-            if (inRange && !selected) {
-                ctx->DrawFilledRectangle(cell, style.rangeFillColor, 0.0f, Colors::Transparent, 0.0f);
-            }
+    void UltraCanvasCalendarView::DrawDayCell(IRenderContext* ctx, const Rect2Df& cell, const UCDate& d,
+                                              int visY, int visM, float cellW, float cellH) {
+        bool inMonth = (d.month == visM && d.year == visY);
+        if (!inMonth && !showAdjacentDays) return;
 
-            // Centred rounded highlight for selected / hover / today / focus.
-            float side = std::min(l.cellW, l.cellH) - 4.0f;
-            if (side < 6.0f) side = std::min(l.cellW, l.cellH);
-            Rect2Df hi(cell.x + (cell.width - side) / 2.0f, cell.y + (cell.height - side) / 2.0f, side, side);
+        bool selectable = IsDateSelectable(d);
+        bool selected = IsSelected(d);
+        bool inRange = InRangeHighlight(d);
+        bool isToday = (d == UCDate::Today());
+        bool isFocus = hasFocusCell && d == focusedDate && IsFocused();
+        bool isHover = (d == hoverDate);
 
-            if (selected) {
-                ctx->DrawFilledRectangle(hi, style.selectedColor, 0.0f, Colors::Transparent, style.cellCornerRadius);
-            } else if (isHover && selectable) {
-                ctx->DrawFilledRectangle(hi, style.hoverColor, 0.0f, Colors::Transparent, style.cellCornerRadius);
-            }
-            if (isToday && !selected) {
-                ctx->DrawFilledRectangle(hi, Colors::Transparent, 1.0f, style.todayBorderColor, style.cellCornerRadius);
-            }
-            if (isFocus && !selected) {
-                ctx->DrawFilledRectangle(hi, Colors::Transparent, 1.0f, style.focusBorderColor, style.cellCornerRadius);
-            }
+        if (inRange && !selected) {
+            ctx->DrawFilledRectangle(cell, style.rangeFillColor, 0.0f, Colors::Transparent, 0.0f);
+        }
 
-            // Text colour
-            Color tc;
-            if (selected)            tc = style.selectedTextColor;
-            else if (!selectable)    tc = style.disabledTextColor;
-            else if (!inMonth)       tc = style.adjacentMonthColor;
-            else if (IsWeekend(d.DayOfWeek())) tc = style.weekendTextColor;
-            else                     tc = style.cellTextColor;
+        float side = std::min(cellW, cellH) - 4.0f;
+        if (side < 6.0f) side = std::min(cellW, cellH);
+        Rect2Df hi(cell.x + (cell.width - side) / 2.0f, cell.y + (cell.height - side) / 2.0f, side, side);
 
-            DrawCenteredText(ctx, std::to_string(d.day), cell, tc, style.fontSize, FontWeight::Normal);
+        if (selected) {
+            ctx->DrawFilledRectangle(hi, style.selectedColor, 0.0f, Colors::Transparent, style.cellCornerRadius);
+        } else if (isHover && selectable) {
+            ctx->DrawFilledRectangle(hi, style.hoverColor, 0.0f, Colors::Transparent, style.cellCornerRadius);
+        }
+        if (isToday && !selected) {
+            ctx->DrawFilledRectangle(hi, Colors::Transparent, 1.0f, style.todayBorderColor, style.cellCornerRadius);
+        }
+        if (isFocus && !selected) {
+            ctx->DrawFilledRectangle(hi, Colors::Transparent, 1.0f, style.focusBorderColor, style.cellCornerRadius);
+        }
 
-            // Strike through explicitly-blocked (unavailable) days.
-            if (IsDateBlocked(d) && (inMonth || showAdjacentDays)) {
-                float my = cell.y + cell.height / 2.0f;
-                float inset = std::min(l.cellW, l.cellH) * 0.30f;
-                ctx->SetStrokePaint(style.blockedStrikeColor);
-                ctx->SetStrokeWidth(1.2f);
-                ctx->DrawLine(Point2Dd(cell.x + inset, my), Point2Dd(cell.Right() - inset, my));
-            }
+        Color tc;
+        if (selected)            tc = style.selectedTextColor;
+        else if (!selectable)    tc = style.disabledTextColor;
+        else if (!inMonth)       tc = style.adjacentMonthColor;
+        else if (IsWeekend(d.DayOfWeek())) tc = style.weekendTextColor;
+        else                     tc = style.cellTextColor;
+
+        DrawCenteredText(ctx, std::to_string(d.day), cell, tc, style.fontSize, FontWeight::Normal);
+
+        if (IsDateBlocked(d) && (inMonth || showAdjacentDays)) {
+            float my = cell.y + cell.height / 2.0f;
+            float inset = std::min(cellW, cellH) * 0.30f;
+            ctx->SetStrokePaint(style.blockedStrikeColor);
+            ctx->SetStrokeWidth(1.2f);
+            ctx->DrawLine(Point2Dd(cell.x + inset, my), Point2Dd(cell.Right() - inset, my));
         }
     }
 
@@ -650,6 +670,11 @@ namespace UltraCanvas {
     void UltraCanvasCalendarView::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         Rect2Df b = GetLocalBounds();
         ctx->DrawFilledRectangle(b, style.backgroundColor, style.borderWidth, style.borderColor, style.cornerRadius);
+
+        if (UsesMultiMonth()) {
+            DrawMultiMonth(ctx);
+            return;
+        }
 
         Layout l = ComputeLayout();
         DrawHeader(ctx, l);
@@ -744,6 +769,21 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasCalendarView::EnsureFocusVisible() {
+        if (navMode == CalendarNavMode::Scrolling) {
+            ScrollToMonth(focusedDate.year, focusedDate.month);
+            return;
+        }
+        if (UsesMultiMonth()) {
+            // Keep the focused month within the visible block of panels.
+            long fIdx = MonthIndex(focusedDate.year, focusedDate.month);
+            long vIdx = MonthIndex(visibleYear, visibleMonth);
+            if (fIdx < vIdx) SetVisibleMonth(focusedDate.year, focusedDate.month);
+            else if (fIdx > vIdx + monthsPerView - 1) {
+                int y, m; FromMonthIndex(fIdx - (monthsPerView - 1), y, m);
+                SetVisibleMonth(y, m);
+            }
+            return;
+        }
         if (focusedDate.year != visibleYear || focusedDate.month != visibleMonth) {
             SetVisibleMonth(focusedDate.year, focusedDate.month);
         }
@@ -826,6 +866,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasCalendarView::OnEvent(const UCEvent& event) {
+        if (UsesMultiMonth()) return OnEventMultiMonth(event);
         switch (event.type) {
             case UCEventType::MouseDown: {
                 Layout l = ComputeLayout();
@@ -918,6 +959,416 @@ namespace UltraCanvas {
                 else if (event.wheelDelta < 0) NavigateNext();
                 return true;
             }
+
+            case UCEventType::KeyDown:
+                return HandleKeyDown(event);
+
+            default:
+                return false;
+        }
+    }
+
+    // ---- multi-month / scrolling ------------------------------------
+
+    void UltraCanvasCalendarView::SetMonthsPerView(int n) {
+        monthsPerView = n < 1 ? 1 : n;
+        scrollOffset = 0.0f;
+        RequestRedraw();
+    }
+
+    void UltraCanvasCalendarView::SetNavigationMode(CalendarNavMode m) {
+        navMode = m;
+        scrollOffset = 0.0f;
+        if (m == CalendarNavMode::Scrolling) level = CalendarViewLevel::Days;
+        RequestRedraw();
+    }
+
+    void UltraCanvasCalendarView::SetOrientation(CalendarOrientation o) {
+        orientation = o;
+        scrollOffset = 0.0f;
+        RequestRedraw();
+    }
+
+    void UltraCanvasCalendarView::SetScrollMonthRange(const UCDate& from, const UCDate& to) {
+        scrollFrom = from;
+        scrollTo = to;
+        scrollOffset = 0.0f;
+        RequestRedraw();
+    }
+
+    void UltraCanvasCalendarView::GetScrollRange(long& fromIdx, long& toIdx) const {
+        if (scrollFrom.IsValid() && scrollTo.IsValid()) {
+            fromIdx = MonthIndex(scrollFrom.year, scrollFrom.month);
+            toIdx = MonthIndex(scrollTo.year, scrollTo.month);
+        } else {
+            long center = MonthIndex(visibleYear, visibleMonth);
+            fromIdx = minDate.IsValid() ? MonthIndex(minDate.year, minDate.month) : center - 60;
+            toIdx = maxDate.IsValid() ? MonthIndex(maxDate.year, maxDate.month) : center + 60;
+        }
+        if (toIdx < fromIdx) toIdx = fromIdx;
+    }
+
+    UltraCanvasCalendarView::MultiLayout UltraCanvasCalendarView::ComputeMultiLayout() const {
+        MultiLayout ml;
+        Rect2Df b = GetLocalBounds();
+        float pad = style.panelPadding;
+        float innerX = pad, innerY = pad;
+        float innerW = b.width - pad * 2.0f;
+        float innerH = b.height - pad * 2.0f;
+        float footerH = showFooter ? style.footerHeight : 0.0f;
+
+        ml.footer = Rect2Df(innerX, b.height - pad - footerH, innerW, footerH);
+        ml.todayButton = Rect2Df(ml.footer.x, ml.footer.y, ml.footer.width / 2.0f, ml.footer.height);
+        ml.clearButton = Rect2Df(ml.footer.x + ml.footer.width / 2.0f, ml.footer.y,
+                                 ml.footer.width / 2.0f, ml.footer.height);
+
+        Rect2Df area(innerX, innerY, innerW, innerH - footerH);
+        ml.hasScrollbar = (navMode == CalendarNavMode::Scrolling);
+        float t = 12.0f;
+        if (ml.hasScrollbar) {
+            if (orientation == CalendarOrientation::Vertical) {
+                ml.scrollTrack = Rect2Df(area.Right() - t, area.y, t, area.height);
+                ml.panelsArea = Rect2Df(area.x, area.y, area.width - t, area.height);
+            } else {
+                ml.scrollTrack = Rect2Df(area.x, area.Bottom() - t, area.width, t);
+                ml.panelsArea = Rect2Df(area.x, area.y, area.width, area.height - t);
+            }
+        } else {
+            ml.panelsArea = area;
+        }
+
+        int n = monthsPerView < 1 ? 1 : monthsPerView;
+        ml.panelMain = (orientation == CalendarOrientation::Vertical)
+                       ? ml.panelsArea.height / n
+                       : ml.panelsArea.width / n;
+        return ml;
+    }
+
+    Rect2Df UltraCanvasCalendarView::PanelRectAt(const MultiLayout& ml, float mainPos, float mainLen) const {
+        if (orientation == CalendarOrientation::Vertical)
+            return Rect2Df(ml.panelsArea.x, ml.panelsArea.y + mainPos, ml.panelsArea.width, mainLen);
+        return Rect2Df(ml.panelsArea.x + mainPos, ml.panelsArea.y, mainLen, ml.panelsArea.height);
+    }
+
+    float UltraCanvasCalendarView::ViewportMain(const MultiLayout& ml) const {
+        return (orientation == CalendarOrientation::Vertical) ? ml.panelsArea.height : ml.panelsArea.width;
+    }
+
+    float UltraCanvasCalendarView::ContentMain(const MultiLayout& ml) const {
+        long fromIdx, toIdx;
+        GetScrollRange(fromIdx, toIdx);
+        long total = toIdx - fromIdx + 1;
+        if (total < 1) total = 1;
+        return total * ml.panelMain;
+    }
+
+    void UltraCanvasCalendarView::ClampScroll(const MultiLayout& ml) {
+        float maxOff = std::max(0.0f, ContentMain(ml) - ViewportMain(ml));
+        if (scrollOffset < 0.0f) scrollOffset = 0.0f;
+        if (scrollOffset > maxOff) scrollOffset = maxOff;
+    }
+
+    std::vector<std::pair<Rect2Df, long>> UltraCanvasCalendarView::VisiblePanels(const MultiLayout& ml) const {
+        std::vector<std::pair<Rect2Df, long>> out;
+        if (navMode == CalendarNavMode::Paged) {
+            long start = MonthIndex(visibleYear, visibleMonth);
+            int n = monthsPerView < 1 ? 1 : monthsPerView;
+            for (int i = 0; i < n; ++i)
+                out.emplace_back(PanelRectAt(ml, i * ml.panelMain, ml.panelMain), start + i);
+        } else {
+            long fromIdx, toIdx;
+            GetScrollRange(fromIdx, toIdx);
+            long total = toIdx - fromIdx + 1;
+            float vp = ViewportMain(ml);
+            int first = (ml.panelMain > 0) ? static_cast<int>(scrollOffset / ml.panelMain) : 0;
+            if (first < 0) first = 0;
+            for (long i = first; i < total; ++i) {
+                float pos = i * ml.panelMain - scrollOffset;
+                if (pos >= vp) break;
+                if (pos + ml.panelMain <= 0) continue;
+                out.emplace_back(PanelRectAt(ml, pos, ml.panelMain), fromIdx + i);
+            }
+        }
+        return out;
+    }
+
+    Rect2Df UltraCanvasCalendarView::ThumbRect(const MultiLayout& ml) const {
+        float vp = ViewportMain(ml), content = ContentMain(ml);
+        float trackLen = (orientation == CalendarOrientation::Vertical) ? ml.scrollTrack.height : ml.scrollTrack.width;
+        if (content <= vp || trackLen <= 0) return ml.scrollTrack;
+        float thumbLen = std::max(24.0f, trackLen * vp / content);
+        float maxOff = content - vp;
+        float t = (maxOff > 0) ? (scrollOffset / maxOff) * (trackLen - thumbLen) : 0.0f;
+        if (orientation == CalendarOrientation::Vertical)
+            return Rect2Df(ml.scrollTrack.x + 1, ml.scrollTrack.y + t, ml.scrollTrack.width - 2, thumbLen);
+        return Rect2Df(ml.scrollTrack.x + t, ml.scrollTrack.y + 1, thumbLen, ml.scrollTrack.height - 2);
+    }
+
+    UltraCanvasCalendarView::PanelLayout UltraCanvasCalendarView::PanelLayoutFor(const Rect2Df& panel) const {
+        PanelLayout p;
+        float titleH = style.headerHeight;
+        float wkH = style.weekdayRowHeight;
+        p.weekColW = showWeekNumbers ? style.weekNumberColumnWidth : 0.0f;
+        p.title = Rect2Df(panel.x, panel.y, panel.width, titleH);
+        p.weekdayRow = Rect2Df(panel.x, panel.y + titleH, panel.width, wkH);
+        float gridTop = panel.y + titleH + wkH;
+        float gridH = panel.Bottom() - gridTop;
+        p.gridX = panel.x + p.weekColW;
+        p.gridY = gridTop;
+        p.cellW = (panel.width - p.weekColW) / 7.0f;
+        p.cellH = gridH / 6.0f;
+        return p;
+    }
+
+    void UltraCanvasCalendarView::DrawMonthPanel(IRenderContext* ctx, const Rect2Df& panel,
+                                                 int year, int month, bool firstChevron, bool lastChevron) {
+        PanelLayout p = PanelLayoutFor(panel);
+
+        // Title
+        std::string mn = (month >= 1 && month <= 12) ? monthNamesLong[month - 1] : "";
+        DrawCenteredText(ctx, mn + " " + std::to_string(year), p.title,
+                         style.headerTextColor, style.headerFontSize, FontWeight::Bold);
+
+        // Chevrons live on the first/last visible panels.
+        float ch = p.title.height;
+        if (firstChevron)
+            DrawChevron(ctx, Rect2Df(p.title.x, p.title.y, ch, ch), true, hoverNavRegion == 1);
+        if (lastChevron)
+            DrawChevron(ctx, Rect2Df(p.title.Right() - ch, p.title.y, ch, ch), false, hoverNavRegion == 2);
+
+        // Weekday row
+        for (int col = 0; col < 7; ++col) {
+            int dow = (firstDayOfWeek + col) % 7;
+            Rect2Df r(p.gridX + col * p.cellW, p.weekdayRow.y, p.cellW, p.weekdayRow.height);
+            Color c = IsWeekend(dow) ? style.weekendWeekdayColor : style.weekdayTextColor;
+            DrawCenteredText(ctx, weekdayNames[dow], r, c, style.fontSize, FontWeight::Normal);
+        }
+
+        UCDate firstCell = FirstCellFor(year, month);
+
+        // Week numbers
+        if (showWeekNumbers) {
+            for (int row = 0; row < 6; ++row) {
+                UCDate d = firstCell.AddDays(row * 7);
+                Rect2Df r(panel.x, p.gridY + row * p.cellH, p.weekColW, p.cellH);
+                DrawCenteredText(ctx, std::to_string(d.ISOWeek()), r, style.weekNumberColor,
+                                 style.fontSize - 1.0f, FontWeight::Normal);
+            }
+        }
+
+        // Day cells
+        for (int i = 0; i < 42; ++i) {
+            UCDate d = firstCell.AddDays(i);
+            int col = i % 7, row = i / 7;
+            Rect2Df cell(p.gridX + col * p.cellW, p.gridY + row * p.cellH, p.cellW, p.cellH);
+            DrawDayCell(ctx, cell, d, year, month, p.cellW, p.cellH);
+        }
+    }
+
+    void UltraCanvasCalendarView::DrawMultiMonth(IRenderContext* ctx) {
+        MultiLayout ml = ComputeMultiLayout();
+        if (navMode == CalendarNavMode::Scrolling) ClampScroll(ml);
+
+        auto panels = VisiblePanels(ml);
+
+        ctx->PushState();
+        ctx->ClipRect(Rect2Dd(ml.panelsArea.x, ml.panelsArea.y, ml.panelsArea.width, ml.panelsArea.height));
+        for (size_t k = 0; k < panels.size(); ++k) {
+            int y, m;
+            FromMonthIndex(panels[k].second, y, m);
+            DrawMonthPanel(ctx, panels[k].first, y, m, k == 0, k + 1 == panels.size());
+        }
+        ctx->PopState();
+
+        // Scrollbar
+        if (ml.hasScrollbar) {
+            ctx->DrawFilledRectangle(ml.scrollTrack, style.footerHoverColor, 0.0f, Colors::Transparent, 4.0f);
+            ctx->DrawFilledRectangle(ThumbRect(ml), style.navArrowColor, 0.0f, Colors::Transparent, 4.0f);
+        }
+
+        // Footer
+        if (showFooter && ml.footer.height > 0) {
+            ctx->SetStrokePaint(style.footerSeparatorColor);
+            ctx->SetStrokeWidth(1.0f);
+            ctx->DrawLine(Point2Dd(ml.footer.x, ml.footer.y), Point2Dd(ml.footer.Right(), ml.footer.y));
+            if (hoverNavRegion == 4)
+                ctx->DrawFilledRectangle(ml.todayButton, style.footerHoverColor, 0.0f, Colors::Transparent, style.cellCornerRadius);
+            if (hoverNavRegion == 5)
+                ctx->DrawFilledRectangle(ml.clearButton, style.footerHoverColor, 0.0f, Colors::Transparent, style.cellCornerRadius);
+            DrawCenteredText(ctx, "Today", ml.todayButton, style.footerTextColor, style.fontSize, FontWeight::Normal);
+            DrawCenteredText(ctx, "Clear", ml.clearButton, style.footerTextColor, style.fontSize, FontWeight::Normal);
+        }
+    }
+
+    void UltraCanvasCalendarView::NavigateMulti(int monthDelta) {
+        if (navMode == CalendarNavMode::Paged) {
+            SetVisibleMonth(visibleYear, visibleMonth + monthDelta);
+        } else {
+            MultiLayout ml = ComputeMultiLayout();
+            scrollOffset += monthDelta * ml.panelMain;
+            ClampScroll(ml);
+            RequestRedraw();
+        }
+    }
+
+    void UltraCanvasCalendarView::ScrollToMonth(int year, int month) {
+        if (navMode != CalendarNavMode::Scrolling) {
+            SetVisibleMonth(year, month);
+            return;
+        }
+        long fromIdx, toIdx;
+        GetScrollRange(fromIdx, toIdx);
+        long idx = MonthIndex(year, month);
+        if (idx < fromIdx) idx = fromIdx;
+        if (idx > toIdx) idx = toIdx;
+        MultiLayout ml = ComputeMultiLayout();
+        float target = (idx - fromIdx) * ml.panelMain;
+        float vp = ViewportMain(ml);
+        if (target < scrollOffset) scrollOffset = target;
+        else if (target + ml.panelMain > scrollOffset + vp) scrollOffset = target + ml.panelMain - vp;
+        ClampScroll(ml);
+        RequestRedraw();
+    }
+
+    bool UltraCanvasCalendarView::OnEventMultiMonth(const UCEvent& event) {
+        MultiLayout ml = ComputeMultiLayout();
+        if (navMode == CalendarNavMode::Scrolling) ClampScroll(ml);
+        Point2Df p(static_cast<float>(event.pointer.x), static_cast<float>(event.pointer.y));
+
+        // Helper: resolve a date under the pointer across the visible panels.
+        auto dateAtPoint = [&](UCDate& outDate) -> bool {
+            auto panels = VisiblePanels(ml);
+            for (auto& pr : panels) {
+                int y, m;
+                FromMonthIndex(pr.second, y, m);
+                PanelLayout pl = PanelLayoutFor(pr.first);
+                if (p.x >= pl.gridX && p.y >= pl.gridY) {
+                    int col = static_cast<int>((p.x - pl.gridX) / pl.cellW);
+                    int row = static_cast<int>((p.y - pl.gridY) / pl.cellH);
+                    if (col >= 0 && col < 7 && row >= 0 && row < 6) {
+                        UCDate d = FirstCellFor(y, m).AddDays(row * 7 + col);
+                        if (showAdjacentDays || (d.month == m && d.year == y)) { outDate = d; return true; }
+                    }
+                }
+            }
+            return false;
+        };
+
+        switch (event.type) {
+            case UCEventType::MouseDown: {
+                if (showFooter && ml.footer.height > 0) {
+                    if (ml.todayButton.Contains(p)) {
+                        UCDate t = UCDate::Today();
+                        ScrollToMonth(t.year, t.month);
+                        HandleDayClick(t);
+                        return true;
+                    }
+                    if (ml.clearButton.Contains(p)) { ClearSelection(true); return true; }
+                }
+
+                auto panels = VisiblePanels(ml);
+                if (!panels.empty()) {
+                    PanelLayout pf = PanelLayoutFor(panels.front().first);
+                    if (Rect2Df(pf.title.x, pf.title.y, pf.title.height, pf.title.height).Contains(p)) {
+                        NavigateMulti(-1); return true;
+                    }
+                    PanelLayout plast = PanelLayoutFor(panels.back().first);
+                    if (Rect2Df(plast.title.Right() - plast.title.height, plast.title.y,
+                                plast.title.height, plast.title.height).Contains(p)) {
+                        NavigateMulti(1); return true;
+                    }
+                }
+
+                if (ml.hasScrollbar) {
+                    Rect2Df thumb = ThumbRect(ml);
+                    if (thumb.Contains(p)) {
+                        draggingThumb = true;
+                        dragStartPos = p;
+                        dragStartOffset = scrollOffset;
+                        return true;
+                    }
+                    if (ml.scrollTrack.Contains(p)) {
+                        float vp = ViewportMain(ml);
+                        bool after = (orientation == CalendarOrientation::Vertical)
+                                     ? (p.y > thumb.y + thumb.height) : (p.x > thumb.x + thumb.width);
+                        scrollOffset += after ? vp : -vp;
+                        ClampScroll(ml);
+                        RequestRedraw();
+                        return true;
+                    }
+                }
+
+                UCDate d;
+                if (dateAtPoint(d)) { HandleDayClick(d); return true; }
+                return false;
+            }
+
+            case UCEventType::MouseMove: {
+                if (draggingThumb) {
+                    float vp = ViewportMain(ml), content = ContentMain(ml);
+                    float trackLen = (orientation == CalendarOrientation::Vertical)
+                                     ? ml.scrollTrack.height : ml.scrollTrack.width;
+                    float thumbLen = std::max(24.0f, trackLen * vp / std::max(vp, content));
+                    float delta = (orientation == CalendarOrientation::Vertical)
+                                  ? (p.y - dragStartPos.y) : (p.x - dragStartPos.x);
+                    float maxOff = std::max(0.0f, content - vp);
+                    float denom = (trackLen - thumbLen);
+                    if (denom <= 0) denom = 1.0f;
+                    scrollOffset = dragStartOffset + delta * (maxOff / denom);
+                    ClampScroll(ml);
+                    RequestRedraw();
+                    return true;
+                }
+
+                int region = 0;
+                UCDate newHover;
+                auto panels = VisiblePanels(ml);
+                if (!panels.empty()) {
+                    PanelLayout pf = PanelLayoutFor(panels.front().first);
+                    PanelLayout plast = PanelLayoutFor(panels.back().first);
+                    if (Rect2Df(pf.title.x, pf.title.y, pf.title.height, pf.title.height).Contains(p)) region = 1;
+                    else if (Rect2Df(plast.title.Right() - plast.title.height, plast.title.y,
+                                     plast.title.height, plast.title.height).Contains(p)) region = 2;
+                }
+                if (region == 0 && showFooter) {
+                    if (ml.todayButton.Contains(p)) region = 4;
+                    else if (ml.clearButton.Contains(p)) region = 5;
+                }
+                if (region == 0) dateAtPoint(newHover);
+
+                bool changed = (region != hoverNavRegion) || (newHover != hoverDate);
+                hoverNavRegion = region;
+                hoverDate = newHover;
+                if (selectingRange && newHover.IsValid()) {
+                    UCDate capped = ClampRangeEnd(rangeStart, newHover);
+                    if (!(capped == rangeHoverEnd)) { rangeHoverEnd = capped; changed = true; }
+                }
+                SetMouseCursor((region != 0 || newHover.IsValid()) ? UCMouseCursor::Hand : UCMouseCursor::Default);
+                if (changed) RequestRedraw();
+                return false;
+            }
+
+            case UCEventType::MouseUp:
+                if (draggingThumb) { draggingThumb = false; return true; }
+                return false;
+
+            case UCEventType::MouseLeave:
+                if (hoverNavRegion != 0 || hoverDate.IsValid()) {
+                    hoverNavRegion = 0;
+                    hoverDate = UCDate();
+                    RequestRedraw();
+                }
+                return false;
+
+            case UCEventType::MouseWheel:
+                if (navMode == CalendarNavMode::Scrolling) {
+                    scrollOffset -= (event.wheelDelta > 0 ? 1.0f : -1.0f) * (ml.panelMain * 0.34f);
+                    ClampScroll(ml);
+                    RequestRedraw();
+                } else {
+                    NavigateMulti(event.wheelDelta > 0 ? -1 : 1);
+                }
+                return true;
 
             case UCEventType::KeyDown:
                 return HandleKeyDown(event);

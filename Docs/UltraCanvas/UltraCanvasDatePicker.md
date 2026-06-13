@@ -180,6 +180,36 @@ their internal calendars. In the two-field mode the check-out field's
 availability is derived from the chosen check-in so that the whole stay stays on
 free nights.
 
+## 6b. Multi-month blocks & scroll navigation
+
+By default the calendar shows **one** month navigated with the `‹ ›` chevrons.
+Two parameters change how many months are shown and how you move between them:
+
+```cpp
+cal->SetMonthsPerView(2);                          // months in one display block (default 1)
+cal->SetOrientation(CalendarOrientation::Horizontal); // or Vertical (default)
+cal->SetNavigationMode(CalendarNavMode::Scrolling);   // scrollbar instead of paging
+cal->SetScrollMonthRange(from, to);                // optional bounds for the scroll strip
+cal->SetElementSize(cal->GetPreferredSize());      // re-size after configuring
+```
+
+* **`SetMonthsPerView(n)`** — render `n` month panels in one block (e.g. the
+  classic 2-up booking layout). `1` keeps the original single-month view.
+* **Orientation** — `Vertical` stacks the panels (vertical scrollbar);
+  `Horizontal` lays them side by side (horizontal scrollbar).
+* **Navigation mode** — `Paged` (default) steps a block of months with the
+  chevrons; `Scrolling` shows a scrollbar and lets the wheel/thumb move
+  continuously through the month range. **The chevrons are kept in both
+  modes**, and in scroll mode they nudge by one month.
+* **Scroll range** — defaults to `min`/`max` date when set, otherwise the
+  visible month ±5 years; override with `SetScrollMonthRange`.
+
+`GetPreferredSize()` accounts for the months-per-view, orientation and
+scrollbar, so re-applying it after configuration sizes the widget correctly.
+The drill-up months/years grids remain available only in the single-month
+paged view; multi-month/scroll blocks are day grids. The same configuration is
+reachable on a pop-up picker via `datePicker->GetCalendar()->SetMonthsPerView(...)`.
+
 ## 7. Keyboard reference (day grid)
 
 | Key | Action |
@@ -198,6 +228,7 @@ free nights.
 `Apps/DemoApp/UltraCanvasDatePickerExamples.cpp` (Basic UI → *Date Picker /
 Calendar*) shows: dropdown picker with text entry, US & European formats, an
 inline calendar, range + week calendars with week numbers, multiple-date
-selection, a min/max + predicate-constrained dark-themed calendar, and a
+selection, a min/max + predicate-constrained dark-themed calendar, a
 hotel-style range section demonstrating both two-field and single-field range
-picking with blocked (already-booked) dates.
+picking with blocked (already-booked) dates, and a multi-month section showing a
+horizontal paged two-up block and a vertical scrolling block.
