@@ -11,6 +11,9 @@
 #include "UltraCanvasFileLoader.h"
 #include <array>
 #include <sstream>
+#include <vector>
+#include <functional>
+#include <cctype>
 
 namespace UltraCanvas {
 
@@ -57,7 +60,7 @@ namespace UltraCanvas {
 
         struct PresetChoice { const char* label; std::string (*build)(); };
         const PresetChoice kPresets[] = {
-            { "URL",   []() { return QRCodeUtils::CreateURLContent("https://ultracanvas.dev"); } },
+            { "URL",   []() { return QRCodeUtils::CreateURLContent("https://ultraos.eu"); } },
             { "Email", []() { return QRCodeUtils::CreateEmailContent("info@ultraos.org", "Hello", "Sent from UltraCanvas demo"); } },
             { "SMS",   []() { return QRCodeUtils::CreateSMSContent("+15551234567", "Hi from UltraCanvas"); } },
             { "WiFi",  []() { return QRCodeUtils::CreateWiFiContent("UltraOS-Net", "supersecret", "WPA"); } },
@@ -97,7 +100,7 @@ namespace UltraCanvas {
             page->AddChild(title);
 
             auto qr = std::make_shared<UltraCanvasQRCode>("qr-encode", 30, 50, 420, 420);
-            qr->SetContent("https://ultracanvas.dev");
+            qr->SetContent("https://ultraos.eu");
             qr->SetLogo(UCImage::Get(NormalizePath(GetResourcesDir()+"media/images/UOS_logo_white.png")), 0.25f);
             qr->SetLogoStyle(QRLogoStyle::CenterRounded);
             qr->SetGradient(QRGradientType::Diagonal, Color(0,102,204), Color(102,204,255));
@@ -111,7 +114,7 @@ namespace UltraCanvas {
             page->AddChild(contentLbl);
 
             auto contentInput = std::make_shared<UltraCanvasTextInput>("ContentInput", 30, 513, 420, 32);
-            contentInput->SetText("https://ultracanvas.dev");
+            contentInput->SetText("https://ultraos.eu");
             page->AddChild(contentInput);
 
             auto status = std::make_shared<UltraCanvasLabel>("EncStatus", 30, 552, 420, 22);
@@ -120,6 +123,12 @@ namespace UltraCanvas {
             status->SetTextColor(Color(120, 120, 120, 255));
             page->AddChild(status);
             auto* statusPtr = status.get();
+
+            // Tracks which content preset is currently active so the matching
+            // button can be highlighted and the export file name can reflect
+            // the selected content type (e.g. "ultracanvas_url.png").
+            auto activeSlug      = std::make_shared<std::string>("url");
+            auto setActivePreset = std::make_shared<std::function<void(int)>>();
 
             auto refresh = [qrPtr, statusPtr]() {
                 std::ostringstream ss;
@@ -135,8 +144,12 @@ namespace UltraCanvas {
                 statusPtr->SetText(ss.str());
             };
 
-            contentInput->onTextChanged = [qrPtr, refresh](const std::string& s) {
+            contentInput->onTextChanged = [qrPtr, refresh, setActivePreset, activeSlug](const std::string& s) {
                 qrPtr->SetContent(s);
+                // Manual editing no longer matches a preset, so drop the
+                // highlight and fall back to a generic export name.
+                if (*setActivePreset) (*setActivePreset)(-1);
+                *activeSlug = "qr";
                 refresh();
             };
 
@@ -156,22 +169,62 @@ namespace UltraCanvas {
 
             header("Content presets");
             {
+                // Highlight colours for the active preset vs. the idle ones.
+                const Color kPresetIdle (225, 225, 225, 255);
+                const Color kPresetIdleH(210, 210, 210, 255);
+                const Color kPresetSel  ( 40, 110, 215, 255);
+                const Color kPresetSelH ( 30,  95, 190, 255);
+
+                auto buttons = std::make_shared<std::vector<UltraCanvasButton*>>();
+
                 int x = ctrlX;
                 for (const auto& p : kPresets) {
                     auto b = std::make_shared<UltraCanvasButton>(
                         std::string("preset_") + p.label, x, ctrlY, 88, 28, p.label);
                     b->SetFontSize(11);
+                    b->SetColors(kPresetIdle, kPresetIdleH);
+                    b->SetTextColors(Colors::TextDefault);
+
+                    int idx = static_cast<int>(buttons->size());
+                    buttons->push_back(b.get());
+
+                    // Lowercase the label for use as an export file-name slug.
+                    std::string slug;
+                    for (char c : std::string(p.label))
+                        slug += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
                     auto build = p.build;
                     auto* inputPtr = contentInput.get();
-                    b->SetOnClick([qrPtr, inputPtr, build, refresh]() {
+                    b->SetOnClick([qrPtr, inputPtr, build, refresh,
+                                   setActivePreset, activeSlug, slug, idx]() {
                         std::string s = build();
                         inputPtr->SetText(s);
                         qrPtr->SetContent(s);
+                        if (*setActivePreset) (*setActivePreset)(idx);
+                        *activeSlug = slug;
                         refresh();
                     });
                     page->AddChild(b);
                     x += 92;
                 }
+
+                *setActivePreset = [buttons, kPresetIdle, kPresetIdleH,
+                                    kPresetSel, kPresetSelH](int active) {
+                    for (int i = 0; i < static_cast<int>(buttons->size()); ++i) {
+                        auto* btn = (*buttons)[i];
+                        if (i == active) {
+                            btn->SetColors(kPresetSel, kPresetSelH, kPresetSel, kPresetSel);
+                            btn->SetTextColors(Colors::White);
+                        } else {
+                            btn->SetColors(kPresetIdle, kPresetIdleH);
+                            btn->SetTextColors(Colors::TextDefault);
+                        }
+                    }
+                };
+
+                // The default content is a URL, so highlight that preset.
+                (*setActivePreset)(0);
+
                 ctrlY += 36;
             }
 
@@ -219,10 +272,17 @@ namespace UltraCanvas {
             }
 
             header("Foreground gradient");
+            UltraCanvasDropdown* gradPtr = nullptr;
             {
                 auto dd = std::make_shared<UltraCanvasDropdown>("grad_dd", ctrlX, ctrlY, 220, 28);
                 for (const auto& g : kGradients) dd->AddItem(g.label);
-                dd->SetSelectedIndex(0, false);
+                gradPtr = dd.get();
+                // The QR code is created with a Diagonal gradient above, so the
+                // dropdown must start on that entry to reflect the actual state.
+                int gradDefault = 0;
+                for (int i = 0; i < static_cast<int>(std::size(kGradients)); ++i)
+                    if (kGradients[i].type == QRGradientType::Diagonal) { gradDefault = i; break; }
+                dd->SetSelectedIndex(gradDefault, false);
                 dd->onSelectionChanged = [qrPtr](int idx, const DropdownItem&) {
                     if (idx < 0 || idx >= static_cast<int>(std::size(kGradients))) return;
                     const auto& g = kGradients[idx];
@@ -256,9 +316,12 @@ namespace UltraCanvas {
                     b->SetColors(s.color);
                     b->SetTextColors(Colors::White);
                     auto col = s.color;
-                    b->SetOnClick([qrPtr, col]() {
+                    b->SetOnClick([qrPtr, col, gradPtr]() {
                         qrPtr->ClearGradient();
                         qrPtr->SetForegroundColor(col);
+                        // A solid colour overrides the gradient; keep the
+                        // gradient dropdown in sync by resetting it to "None".
+                        if (gradPtr) gradPtr->SetSelectedIndex(0, false);
                     });
                     page->AddChild(b);
                     x += 64;
@@ -329,13 +392,13 @@ namespace UltraCanvas {
                     "save_btn", ctrlX + 190, ctrlY, 110, 30, "Save\u2026");
                 saveBtn->SetFontSize(11);
                 auto* fmtPtr = formatDD.get();
-                saveBtn->SetOnClick([qrPtr, fmtPtr, statusPtr]() {
+                saveBtn->SetOnClick([qrPtr, fmtPtr, statusPtr, activeSlug]() {
                     int idx = fmtPtr->GetSelectedIndex();
                     if (idx < 0 || idx >= static_cast<int>(std::size(kFormats))) return;
                     const auto& f = kFormats[idx];
                     FileDialogOptions opts;
                     opts.SetTitle("Save QR code")
-                        .SetDefaultFileName(std::string("ultracanvas_qr.") + f.extension)
+                        .SetDefaultFileName(std::string("ultracanvas_") + *activeSlug + "." + f.extension)
                         .AddFilter(f.label, f.extension);
                     std::string path = UltraCanvasNativeDialogs::SaveFile(opts);
                     if (path.empty()) return;
@@ -348,10 +411,10 @@ namespace UltraCanvas {
                 auto svgBtn = std::make_shared<UltraCanvasButton>(
                     "save_svg", ctrlX + 310, ctrlY, 110, 30, "Save SVG\u2026");
                 svgBtn->SetFontSize(11);
-                svgBtn->SetOnClick([qrPtr, statusPtr]() {
+                svgBtn->SetOnClick([qrPtr, statusPtr, activeSlug]() {
                     FileDialogOptions opts;
                     opts.SetTitle("Save QR code (SVG)")
-                        .SetDefaultFileName("ultracanvas_qr.svg")
+                        .SetDefaultFileName(std::string("ultracanvas_") + *activeSlug + ".svg")
                         .AddFilter("SVG", "svg");
                     std::string path = UltraCanvasNativeDialogs::SaveFile(opts);
                     if (path.empty()) return;
