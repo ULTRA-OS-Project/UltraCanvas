@@ -70,13 +70,35 @@ namespace UltraCanvas {
             debugOutput << "Delete action triggered" << std::endl;
         }));
 
-        // Set right-click handler for button
-        contextMenuBtn->onClick = [contextMenu, contextMenuBtn, container]() {
+        // "You clicked the wrong button" popup, shown on left-click as a
+        // cheeky reminder that this button expects a right-click.
+        auto contextWrongClickPopup = std::make_shared<UltraCanvasContainer>(
+                "ContextWrongClickPopup", 0, 0, 340, 64);
+        contextWrongClickPopup->SetBackgroundColor(Color(255, 255, 225, 255));
+        contextWrongClickPopup->SetBorders(1, Color(118, 118, 118, 255), 3.0f);
+
+        auto contextWrongClickIcon = std::make_shared<UltraCanvasImageElement>(
+                "ContextWrongClickIcon", 12, 12, 40, 40);
+        contextWrongClickIcon->LoadFromFile(NormalizePath(GetResourcesDir() + "media/icons/face-awesome.svg"));
+        contextWrongClickIcon->SetFitMode(ImageFitMode::Contain);
+        contextWrongClickPopup->AddChild(contextWrongClickIcon);
+
+        auto contextWrongClickText = std::make_shared<UltraCanvasLabel>(
+                "ContextWrongClickText", 62, 10, 268, 44);
+        contextWrongClickText->SetTextIsMarkup(true);
+        contextWrongClickText->SetWrap(TextWrap::WrapWord);
+        contextWrongClickText->SetText("Can't you read? I said <b>Right click</b> not <b>Left click</b>!");
+        contextWrongClickPopup->AddChild(contextWrongClickText);
+
+        // Set click handler for button: right-click opens the menu, left-click scolds.
+        contextMenuBtn->onClick = [contextMenu, contextWrongClickPopup, contextMenuBtn, container]() {
             auto ev = UltraCanvasApplication::GetInstance()->GetCurrentEvent();
             if (ev.button == UCMouseButton::Right) {
                 // move menu to window container
 //                container->GetWindow()->AddChild(contextMenu);
                 contextMenu->OpenMenu(ev.pointerWindow, *container->GetWindow(), PopupElementSettings());
+            } else if (ev.button == UCMouseButton::Left) {
+                container->GetWindow()->OpenPopup(ev.pointerWindow, *contextWrongClickPopup, PopupElementSettings());
             }
         };
 
@@ -290,11 +312,33 @@ namespace UltraCanvas {
                 debugOutput << "Delete item " << (i + 1) << std::endl;
             }));
 
-            // Set right-click handler
-            itemLabel->onClick = [itemMenu, itemLabel, container]() {
+            // "You clicked the wrong button" popup, shown on left-click as a
+            // cheeky reminder that these items expect a right-click.
+            auto wrongClickPopup = std::make_shared<UltraCanvasContainer>(
+                    "WrongClickPopup" + std::to_string(i), 0, 0, 340, 64);
+            wrongClickPopup->SetBackgroundColor(Color(255, 255, 225, 255));
+            wrongClickPopup->SetBorders(1, Color(118, 118, 118, 255), 3.0f);
+
+            auto wrongClickIcon = std::make_shared<UltraCanvasImageElement>(
+                    "WrongClickIcon" + std::to_string(i), 12, 12, 40, 40);
+            wrongClickIcon->LoadFromFile(NormalizePath(GetResourcesDir() + "media/icons/face-awesome.svg"));
+            wrongClickIcon->SetFitMode(ImageFitMode::Contain);
+            wrongClickPopup->AddChild(wrongClickIcon);
+
+            auto wrongClickText = std::make_shared<UltraCanvasLabel>(
+                    "WrongClickText" + std::to_string(i), 62, 10, 268, 44);
+            wrongClickText->SetTextIsMarkup(true);
+            wrongClickText->SetWrap(TextWrap::WrapWord);
+            wrongClickText->SetText("Can't you read? I said <b>Right click</b> not <b>Left click</b>!");
+            wrongClickPopup->AddChild(wrongClickText);
+
+            // Set click handler: right-click opens the menu, left-click scolds.
+            itemLabel->onClick = [itemMenu, wrongClickPopup, itemLabel, container]() {
                 auto ev = UltraCanvasApplication::GetInstance()->GetCurrentEvent();
                 if (ev.button == UCMouseButton::Right) {
                     itemMenu->OpenMenu(ev.pointerWindow, *container->GetWindow(), PopupElementSettings());
+                } else if (ev.button == UCMouseButton::Left) {
+                    container->GetWindow()->OpenPopup(ev.pointerWindow, *wrongClickPopup, PopupElementSettings());
                 }
             };
 
