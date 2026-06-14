@@ -1202,6 +1202,19 @@ namespace UltraCanvas {
                 .AddVariant("slideshow", "Thumbnails")
                 .AddVariant("slideshow", "Labels");
 
+        widgetsBuilder.AddItem("album", "Album",
+                               "Photo / video / music album with selectable layout designs, "
+                               "crop / zoom / stretch fitting, action icons and visitor / edit / admin modes",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateAlbumExamples(); },
+                               "Apps/DemoApp/UltraCanvasAlbumExamples.cpp")
+                .AddVariant("album", "Uniform Grid")
+                .AddVariant("album", "Justified")
+                .AddVariant("album", "Masonry")
+                .AddVariant("album", "Mosaic")
+                .AddVariant("album", "Filmstrip")
+                .AddVariant("album", "Cards");
+
         debugOutput << "✓ Registered " << demoItems.size() << " demo items across "
                   << categoryItems.size() << " categories" << std::endl;
     }
