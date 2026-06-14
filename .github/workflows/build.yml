@@ -2,9 +2,12 @@ name: Build
 
 on:
   push:
-    branches: [main]
+    # 'claude/**' lets feature branches validate the 3-OS build before merge;
+    # tighten or drop once the OpenGL work has landed on main.
+    branches: [main, 'claude/**']
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -83,6 +86,7 @@ jobs:
             mingw-w64-x86_64-libiconv
             mingw-w64-x86_64-zlib
             mingw-w64-x86_64-libvips
+            mingw-w64-x86_64-glew
             mingw-w64-x86_64-fmt
             mingw-w64-x86_64-imagemagick
             mingw-w64-x86_64-libheif
@@ -97,12 +101,12 @@ jobs:
       # ===== Configure & Build =====
       - name: Configure CMake (Windows)
         if: runner.os == 'Windows'
-        run: >
-          cmake -B build -G Ninja
-          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-          -DBUILD_DEMO_APP=ON
-          -DULTRACANVAS_PLUGIN_CDR=OFF
-          -DULTRACANVAS_PLUGIN_XAR=ON
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DBUILD_DEMO_APP=ON \
+            -DULTRACANVAS_PLUGIN_CDR=OFF \
+            -DULTRACANVAS_PLUGIN_XAR=ON 2>&1 | tee configure.log
 
       - name: Configure CMake (macOS/Linux)
         if: runner.os != 'Windows'
@@ -111,7 +115,28 @@ jobs:
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
             -DBUILD_DEMO_APP=ON \
             -DULTRACANVAS_PLUGIN_CDR=ON \
-            -DULTRACANVAS_PLUGIN_XAR=ON
+            -DULTRACANVAS_PLUGIN_XAR=ON 2>&1 | tee configure.log
+
+      # Fail loudly if the OpenGL surface backend was silently disabled
+      # (e.g. a missing GLEW on Windows) so a green build can't hide it.
+      - name: Verify OpenGL backend enabled
+        shell: bash
+        run: |
+          set -eu
+          if ! grep -q "OpenGL Surface: ENABLED" configure.log; then
+            echo "::error::OpenGL surface support was not enabled during configure"
+            exit 1
+          fi
+          case "${{ runner.os }}" in
+            Windows) backend="WGL" ;;
+            macOS)   backend="CGL" ;;
+            Linux)   backend="EGL|GLX" ;;
+          esac
+          if ! grep -qE "($backend) backend: YES" configure.log; then
+            echo "::error::Expected GL backend ($backend) not active on ${{ runner.os }}"
+            exit 1
+          fi
+          echo "OpenGL backend verified on ${{ runner.os }}"
 
       - name: Build
         run: cmake --build build --config ${{ matrix.build_type }} --parallel 2

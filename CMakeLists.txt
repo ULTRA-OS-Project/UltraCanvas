@@ -280,6 +280,8 @@ if(BUILD_DEMO_APP)
         UCAPP_ICON_PATH="media/appicon/Demo.png"
         $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
         $<$<BOOL:${ULTRACANVAS_ENABLE_GL}>:ULTRACANVAS_ENABLE_GL=1>
+        # macOS deprecated OpenGL in 10.14; silence per-call warnings in the GL demo code.
+        $<$<AND:$<BOOL:${ULTRACANVAS_ENABLE_GL}>,$<BOOL:${APPLE}>>:GL_SILENCE_DEPRECATION=1>
     )
 
     # Embed app icon in .exe (Windows only)
