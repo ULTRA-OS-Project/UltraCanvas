@@ -875,6 +875,23 @@ namespace UltraCanvas {
             ctx->DrawFilledRectangle(bounds, bgColor, IsFocused() ? style.borderWidth + 1 : style.borderWidth,
                                      (IsFocused() ? style.focusedColor : style.borderColor), style.cornerRadius);
 
+            // Optional background gradient overlay (e.g. "unsaved" indicator)
+            if (!style.backgroundGradient.empty()) {
+                ctx->PushState();
+                auto pattern = ctx->CreateLinearGradientPattern(
+                        bounds.x, bounds.y, bounds.x, bounds.y + bounds.height,
+                        style.backgroundGradient);
+                if (style.cornerRadius > 0) {
+                    ctx->RoundedRect(bounds.x, bounds.y, bounds.width, bounds.height, style.cornerRadius);
+                } else {
+                    ctx->Rect(bounds.x, bounds.y, bounds.width, bounds.height);
+                }
+                ctx->SetFillPaint(pattern);
+                ctx->FillPathPreserve();
+                ctx->ClearPath();
+                ctx->PopState();
+            }
+
             // Draw icon and text
             DrawIcon(ctx);
             DrawText(ctx);

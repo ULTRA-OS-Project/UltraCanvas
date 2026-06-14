@@ -266,10 +266,16 @@ namespace UltraCanvas {
         style.normalTextColor = toolbarAppearance.foregroundColor;
         style.hoverTextColor = toolbarAppearance.foregroundColor;
         style.disabledColor = toolbarAppearance.disabledBackgroundColor;
-        style.disabledTextColor = toolbarAppearance.disabledBackgroundColor;
+        // Grey the icon/text itself when disabled instead of reusing the
+        // background colour, so inactive icons read as greyed-out rather than
+        // staying full-strength black.
+        style.disabledTextColor = toolbarAppearance.disabledForegroundColor;
         style.useIconAsMask = true;
         if (toolbarAppearance.style == ToolbarStyle::Flat) {
             style.normalColor = Colors::Transparent;
+            // Flat toolbars have no button box; keep disabled buttons flat too so
+            // inactive icons don't sit on a darker background patch.
+            style.disabledColor = Colors::Transparent;
         }
         button->SetStyle(style);
         button->SetIconSize(20, 20);
