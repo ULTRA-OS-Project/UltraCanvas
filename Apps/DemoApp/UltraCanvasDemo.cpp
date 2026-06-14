@@ -1192,9 +1192,6 @@ namespace UltraCanvas {
 //                             [this]() { return CreatePartiallyImplementedExamples("## GPIO support"); });
 
         auto widgetsBuilder = DemoCategoryBuilder(this, DemoCategory::Widgets);
-        widgetsBuilder.AddItem("datepicker", "Date Picker", "Date Picker",
-                               ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("## Date picker"); });
         widgetsBuilder.AddItem("colorpicker", "Color Picker", "Color Picker",
                                ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("## Color picker"); });
