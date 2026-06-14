@@ -547,6 +547,20 @@ namespace UltraCanvas {
                 .AddVariant("dropdown", "Editable ComboBox")
                 .AddVariant("dropdown", "Multi-Select");
 
+        basicBuilder.AddItem("datepicker", "Date Picker / Calendar",
+                             "Calendar widgets covering single, range, multiple and week selection",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateDatePickerExamples(); },
+                             "Apps/DemoApp/UltraCanvasDatePickerExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasDatePicker.md")
+                .AddVariant("datepicker", "Dropdown Calendar")
+                .AddVariant("datepicker", "Inline Calendar")
+                .AddVariant("datepicker", "Date Range")
+                .AddVariant("datepicker", "Multiple Dates")
+                .AddVariant("datepicker", "Keyboard / Text Entry")
+                .AddVariant("datepicker", "Hotel Stay / Blocked Dates")
+                .AddVariant("datepicker", "Multi-Month / Scroll");
+
         basicBuilder
                 .AddItem("checkbox", "Checkbox / Radio / Switch",
                          "Interactive checkbox controls with multiple states and styles",
@@ -1178,9 +1192,6 @@ namespace UltraCanvas {
 //                             [this]() { return CreatePartiallyImplementedExamples("## GPIO support"); });
 
         auto widgetsBuilder = DemoCategoryBuilder(this, DemoCategory::Widgets);
-        widgetsBuilder.AddItem("datepicker", "Date Picker", "Date Picker",
-                               ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("## Date picker"); });
         widgetsBuilder.AddItem("colorpicker", "Color Picker", "Color Picker",
                                ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("## Color picker"); });
