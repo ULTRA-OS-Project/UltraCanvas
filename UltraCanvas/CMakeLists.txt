@@ -13,7 +13,7 @@ include(FetchContent)
 enable_language(C)
 
 # ===== LIBRARY DEFINITION =====
-set(ULTRACANVAS_VERSION "0.2.7")
+set(ULTRACANVAS_VERSION "0.2.9")
 set(ULTRACANVAS_LIB_NAME "UltraCanvas")
 
 message(STATUS "")
@@ -31,15 +31,16 @@ else()
     option(ULTRACANVAS_PLUGIN_SVG "Build SVG plugin" OFF)
     option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin" OFF)
 endif ()
+option(ULTRACANVAS_ENABLE_GL "Enable OpenGL 3D surface support" ON)
 
 # OpenGL surface support (Linux, macOS and Windows)
 # On Windows the WGL backend additionally requires GLEW to load modern GL
 # entry points; if GLEW is not found below, GL support is disabled there.
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR APPLE OR WIN32)
-    option(ULTRACANVAS_ENABLE_GL "Enable OpenGL 3D surface support" ON)
-else()
-    set(ULTRACANVAS_ENABLE_GL OFF CACHE BOOL "Enable OpenGL 3D surface support" FORCE)
-endif()
+#if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR APPLE OR WIN32)
+#    option(ULTRACANVAS_ENABLE_GL "Enable OpenGL 3D surface support" ON)
+#else()
+#    set(ULTRACANVAS_ENABLE_GL OFF CACHE BOOL "Enable OpenGL 3D surface support" FORCE)
+#endif()
 
 # ===== DETECT PLATFORM =====
 if(WIN32)
