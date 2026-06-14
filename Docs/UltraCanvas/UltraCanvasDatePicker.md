@@ -207,8 +207,24 @@ cal->SetElementSize(cal->GetPreferredSize());      // re-size after configuring
 `GetPreferredSize()` accounts for the months-per-view, orientation and
 scrollbar, so re-applying it after configuration sizes the widget correctly.
 The drill-up months/years grids remain available only in the single-month
-paged view; multi-month/scroll blocks are day grids. The same configuration is
-reachable on a pop-up picker via `datePicker->GetCalendar()->SetMonthsPerView(...)`.
+paged view; multi-month/scroll blocks are day grids.
+
+The same layout is available on the pop-up widgets directly — the popup is
+sized from the calendar's preferred size, so it adapts automatically:
+
+```cpp
+datePicker->SetMonthsPerView(2);
+datePicker->SetCalendarNavigationMode(CalendarNavMode::Scrolling);
+
+// On a hotel range picker, a two-month scrolling pop-up is the natural layout:
+stay->SetMonthsPerView(2);
+stay->SetCalendarNavigationMode(CalendarNavMode::Scrolling);
+```
+
+`UltraCanvasDatePicker` also exposes `SetCalendarOrientation` and
+`SetScrollMonthRange`; `UltraCanvasDateRangePicker` exposes `SetMonthsPerView`,
+`SetCalendarOrientation` and `SetCalendarNavigationMode`, applied to all of its
+internal calendars.
 
 ## 7. Keyboard reference (day grid)
 

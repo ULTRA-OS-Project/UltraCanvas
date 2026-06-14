@@ -493,6 +493,13 @@ namespace UltraCanvas {
         void BlockDateRange(const UCDate& s, const UCDate& e) { calendar->BlockDateRange(s, e); }
         void ClearBlockedDates() { calendar->ClearBlockedDates(); }
 
+        // Multi-month / scroll configuration of the pop-up calendar. The popup
+        // is sized from the calendar's preferred size, so it adapts automatically.
+        void SetMonthsPerView(int n) { calendar->SetMonthsPerView(n); }
+        void SetCalendarOrientation(CalendarOrientation o) { calendar->SetOrientation(o); }
+        void SetCalendarNavigationMode(CalendarNavMode m) { calendar->SetNavigationMode(m); }
+        void SetScrollMonthRange(const UCDate& from, const UCDate& to) { calendar->SetScrollMonthRange(from, to); }
+
         UltraCanvasCalendarView* GetCalendar() const { return calendar.get(); }
 
         // ===== POPUP STATE =====
@@ -582,6 +589,12 @@ namespace UltraCanvas {
         void SetMaxNights(int n);             // <= 0 means unlimited
         void SetFirstDayOfWeek(int dow);
 
+        // Multi-month / scroll configuration applied to the pop-up calendars.
+        // A 2-month scrolling calendar is the typical hotel-stay layout.
+        void SetMonthsPerView(int n);
+        void SetCalendarOrientation(CalendarOrientation o);
+        void SetCalendarNavigationMode(CalendarNavMode m);
+
         // ===== CONSTRAINTS / BLOCKED DATES =====
         void SetMinDate(const UCDate& d);
         void SetMaxDate(const UCDate& d);
@@ -615,6 +628,9 @@ namespace UltraCanvas {
         int minNights = 1;
         int maxNights = 0;        // <= 0 = unlimited
         int firstDayOfWeek = 0;
+        int calMonthsPerView = 1;
+        CalendarOrientation calOrientation = CalendarOrientation::Vertical;
+        CalendarNavMode calNavMode = CalendarNavMode::Paged;
         std::string dateFormat = "yyyy-MM-dd";
         std::string startLabel = "Check-in";
         std::string endLabel = "Check-out";

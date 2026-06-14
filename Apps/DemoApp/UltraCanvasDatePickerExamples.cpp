@@ -241,6 +241,9 @@ namespace UltraCanvas {
         auto oneField = CreateDateRangePicker("RangeOne", 30, y, 320, 28, DateRangePickerMode::SingleField);
         oneField->SetMinDate(today);
         oneField->SetBlockedDates(booked);
+        // Hotel-style: the pop-up shows two months and scrolls.
+        oneField->SetMonthsPerView(2);
+        oneField->SetCalendarNavigationMode(CalendarNavMode::Scrolling);
         auto oneResult = std::make_shared<UltraCanvasLabel>("RangeOneResult", 370, y + 4, 380, 20);
         oneResult->SetText("Mode B: click start then end in one calendar");
         oneResult->SetFontSize(12);

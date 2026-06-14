@@ -1946,6 +1946,18 @@ namespace UltraCanvas {
     void UltraCanvasDateRangePicker::ApplyConstraintsToCalendars() {
         std::vector<UCDate> blocked = BlockedList();
 
+        // Multi-month / scroll layout of the pop-up calendars.
+        auto applyView = [&](UltraCanvasDatePicker* p) {
+            if (!p) return;
+            auto* c = p->GetCalendar();
+            c->SetMonthsPerView(calMonthsPerView);
+            c->SetOrientation(calOrientation);
+            c->SetNavigationMode(calNavMode);
+        };
+        applyView(singlePicker.get());
+        applyView(startPicker.get());
+        applyView(endPicker.get());
+
         if (singlePicker) {
             singlePicker->SetMinDate(minDate);
             singlePicker->SetMaxDate(maxDate);
@@ -2101,6 +2113,21 @@ namespace UltraCanvas {
 
     void UltraCanvasDateRangePicker::SetFirstDayOfWeek(int dow) {
         firstDayOfWeek = ((dow % 7) + 7) % 7;
+        ApplyConstraintsToCalendars();
+    }
+
+    void UltraCanvasDateRangePicker::SetMonthsPerView(int n) {
+        calMonthsPerView = n < 1 ? 1 : n;
+        ApplyConstraintsToCalendars();
+    }
+
+    void UltraCanvasDateRangePicker::SetCalendarOrientation(CalendarOrientation o) {
+        calOrientation = o;
+        ApplyConstraintsToCalendars();
+    }
+
+    void UltraCanvasDateRangePicker::SetCalendarNavigationMode(CalendarNavMode m) {
+        calNavMode = m;
         ApplyConstraintsToCalendars();
     }
 
