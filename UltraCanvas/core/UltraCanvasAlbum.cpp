@@ -1,8 +1,10 @@
 // core/UltraCanvasAlbum.cpp
 // Photo / video / music album widget with selectable layout designs, per-item
 // crop / zoom / stretch fitting, action icons and visitor / edit / admin modes.
-// Version: 1.0.0
-// Last Modified: 2026-06-13
+// Version: 1.0.1
+// Last Modified: 2026-06-14
+// V1.0.1: EnsureLayout() now reflows the tile layout when the content area
+//   changes size, so the grid responds to window resize / flex-driven growth.
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasAlbum.h"
@@ -194,6 +196,15 @@ namespace UltraCanvas {
     void UltraCanvasAlbum::InvalidateAlbumLayout() { layoutValid = false; }
 
     void UltraCanvasAlbum::EnsureLayout() {
+        // Reflow when the content area changed size (e.g. the window resized or
+        // the album was grown by a flex parent) — the album has no child
+        // elements, so nothing else invalidates the tile layout on resize.
+        Rect2Di area = ContentBounds();
+        if (area.width != lastAreaW || area.height != lastAreaH) {
+            lastAreaW = area.width;
+            lastAreaH = area.height;
+            layoutValid = false;
+        }
         if (!layoutValid) RecomputeLayout();
     }
 

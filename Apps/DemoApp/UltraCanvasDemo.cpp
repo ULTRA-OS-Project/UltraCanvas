@@ -1,7 +1,11 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
-// Version: 1.0.3
-// Last Modified: 2026-06-01
+// Version: 1.0.4
+// Last Modified: 2026-06-14
+// V1.0.4: mainContainer scrollbars disabled (it is a pure layout wrapper and must
+//   never scroll the header away); displayContainer is now the explicit single
+//   scroll region (flex-grow:1, flex-shrink:1) and inserted examples are clamped
+//   with flex-shrink:1 so they can't overflow the right-side area.
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
@@ -347,6 +351,17 @@ namespace UltraCanvas {
 
         mainContainer = std::make_shared<UltraCanvasContainer>("MainDisplayArea");
         mainContainer->SetBorderLeft(1, Colors::Gray);
+        // mainContainer is a pure layout wrapper (header + display); it must never
+        // scroll itself, or the header would scroll away with the content. Only the
+        // displayContainer below is allowed to scroll. Disable its scrollbars so an
+        // oversized example can never turn the whole right side into a scroll area.
+        {
+            ContainerStyle mcStyle;
+            mcStyle.autoShowScrollbars           = false;
+            mcStyle.forceShowVerticalScrollbar   = false;
+            mcStyle.forceShowHorizontalScrollbar = false;
+            mainContainer->SetContainerStyle(mcStyle);
+        }
 
         // Header sized by its parent row — no explicit w/h.
         headerContainer = std::make_shared<DemoHeaderContainer>("HeaderContainer");
@@ -388,7 +403,12 @@ namespace UltraCanvas {
         // overflow and scrolls.
         headerContainer->layoutItem.SetFlexShrink(0);
         mainContainer->AddChild(headerContainer);
-        displayContainer->layoutItem.SetFlexGrow(1);
+        // displayContainer is the single scroll region: it grows into the space
+        // the header leaves and shrinks (flex-shrink:1) to the available height so
+        // mainContainer never overflows — its own auto scrollbars then scroll the
+        // example content. Shrink is the default, but make it explicit so a future
+        // edit can't silently drop it and reintroduce the overflow.
+        displayContainer->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
         displayContainer->layout.SetFlexColumn();
         mainContainer->AddChild(displayContainer);
 
@@ -1322,8 +1342,12 @@ namespace UltraCanvas {
                 currentDisplayElement = item->createExample();
                 if (currentDisplayElement) {
                     displayContainer->AddChild(currentDisplayElement);
+                    // Grow to fill, but also shrink (flex-shrink:1) so an example
+                    // that sets a large explicit size is clamped into displayContainer
+                    // (which then scrolls) instead of overflowing it.
                     currentDisplayElement->layoutItem
                         .SetFlexGrow(1)
+                        .SetFlexShrink(1)
                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
                 }
                 currentSelectedId = itemId;

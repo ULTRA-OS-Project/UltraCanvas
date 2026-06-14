@@ -2,8 +2,13 @@
 // Demonstration of UltraCanvasAlbum: layout designs, image-fit modes, action-icon
 // display options and visitor / user-edit / admin modes for a mixed photo / video
 // / music album.
-// Version: 1.0.0
-// Last Modified: 2026-06-13
+// Version: 2.0.0
+// Last Modified: 2026-06-14
+// V2.0.0: Rebuilt with a Flex-column layout (per the project layout guideline)
+//   instead of a fixed 1000x990 absolutely-positioned root. The header and the
+//   control rows are pinned; the album grows to fill the remaining space and
+//   scrolls its own tiles internally. This removes the spurious horizontal
+//   scrollbar and stops the whole example scrolling as one block.
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -17,47 +22,96 @@
 namespace UltraCanvas {
 
     namespace {
-        // A small row-of-buttons helper so each option group reads the same way.
+        // A plain flex layout wrapper that must never scroll itself — the album
+        // is the single scroll region. Disabling scrollbars keeps these wrappers
+        // from ever showing a (spurious) scrollbar of their own.
+        std::shared_ptr<UltraCanvasContainer> MakeLayoutBox(const std::string& id) {
+            auto c = std::make_shared<UltraCanvasContainer>(id);
+            ContainerStyle st;
+            st.autoShowScrollbars           = false;
+            st.forceShowVerticalScrollbar   = false;
+            st.forceShowHorizontalScrollbar = false;
+            c->SetContainerStyle(st);
+            return c;
+        }
+
+        // A horizontal control line: shrink:0, stretched on the cross axis.
+        std::shared_ptr<UltraCanvasContainer> MakeRow(const std::string& id) {
+            auto row = MakeLayoutBox(id);
+            row->layout.SetFlexRow().SetFlexGap(6)
+                       .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+            row->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+            return row;
+        }
+
+        // Append a bold label followed by a row of fixed-size buttons into `row`.
+        // onPick(i) fires for button i. Buttons keep their pixel size (grow/shrink 0).
         template <typename Fn>
-        int MakeButtonRow(std::shared_ptr<UltraCanvasContainer>& root,
-                          const std::string& idPrefix, int x, int y, int btnW, int btnH,
-                          const std::vector<const char*>& labels, Fn onPick) {
-            int bx = x;
+        void AppendLabeledButtons(const std::shared_ptr<UltraCanvasContainer>& row,
+                                  const std::string& idPrefix, const char* labelText,
+                                  int labelW, int btnW, int btnH,
+                                  const std::vector<const char*>& labels, Fn onPick) {
+            auto lbl = std::make_shared<UltraCanvasLabel>(idPrefix + "lbl", 0, 0, labelW, btnH);
+            lbl->SetText(labelText);
+            lbl->SetFontSize(12);
+            lbl->SetFontWeight(FontWeight::Bold);
+            lbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            row->AddChild(lbl);
+
             for (size_t i = 0; i < labels.size(); ++i) {
                 auto b = std::make_shared<UltraCanvasButton>(
-                        idPrefix + std::to_string(i), bx, y, btnW, btnH, labels[i]);
+                        idPrefix + std::to_string(i), 0, 0, btnW, btnH, labels[i]);
                 b->SetFontSize(11);
                 b->SetCornerRadius(4.0f);
                 int idx = static_cast<int>(i);
                 b->SetOnClick([idx, onPick]() { onPick(idx); });
-                root->AddChild(b);
-                bx += btnW + 6;
+                b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+                row->AddChild(b);
             }
-            return bx;
         }
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAlbumExamples() {
-        auto root = std::make_shared<UltraCanvasContainer>("AlbumExamples", 0, 0, 1000, 990);
-        root->SetPadding(0, 5, 5, 0);
+        // Root: a flex column that fills the display area (DisplayDemoItem assigns
+        // it flex-grow + stretch). Header and controls are pinned (flex-shrink:0);
+        // the album grows to fill the middle and scrolls its tiles internally.
+        auto root = MakeLayoutBox("AlbumExamples");
+        root->layout.SetFlexColumn().SetFlexGap(8)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        root->SetPadding(10, 12, 10, 12);
 
-        auto title = std::make_shared<UltraCanvasLabel>("AlbumTitle", 20, 10, 900, 30);
+        // ===== Header (pinned) =====
+        auto header = MakeLayoutBox("AlbumHeader");
+        header->layout.SetFlexColumn().SetFlexGap(4)
+                      .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        header->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+        auto title = std::make_shared<UltraCanvasLabel>("AlbumTitle", 0, 0, 0, 28);
         title->SetText("UltraCanvas Album — photo / video / music gallery with selectable designs");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
         title->SetTextColor(Color(50, 50, 150, 255));
-        root->AddChild(title);
+        title->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        header->AddChild(title);
 
-        auto subtitle = std::make_shared<UltraCanvasLabel>("AlbumSubtitle", 20, 42, 940, 36);
+        auto subtitle = std::make_shared<UltraCanvasLabel>("AlbumSubtitle", 0, 0, 0, 38);
         subtitle->SetText("Switch the layout design, image-fit mode, viewer mode and action-icon "
                           "display with the buttons. In Edit / Admin mode drag a tile to reorder; "
                           "right-click (or the kebab icon) opens the action menu.");
         subtitle->SetFontSize(11);
         subtitle->SetTextColor(Color(110, 110, 110, 255));
-        root->AddChild(subtitle);
+        subtitle->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        header->AddChild(subtitle);
+        root->AddChild(header);
 
-        // ===== The album itself =====
-        auto album = CreateAlbum("media-album", 20, 86, 940, 560);
+        // ===== The album itself (grows to fill, scrolls internally) =====
+        // No explicit size — flex sizes it. An explicit w/h would override the
+        // flex-grow / align-self: stretch the engine applies below.
+        auto album = CreateAlbum("media-album", 0, 0, 0, 0);
+        album->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         AlbumConfig cfg;
         cfg.layout        = AlbumLayout::UniformGrid;
@@ -105,6 +159,19 @@ namespace UltraCanvas {
             album->AddItem(it);
         }
 
+        auto* albumPtr = album.get();
+        root->AddChild(album);
+
+        // ===== Status (pinned) =====
+        auto status = std::make_shared<UltraCanvasLabel>("AlbumStatus", 0, 0, 0, 22);
+        status->SetText("Mode: Display · Layout: Uniform Grid · click a tile, hover for actions");
+        status->SetFontSize(11);
+        status->SetTextColor(Color(120, 120, 120, 255));
+        status->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        root->AddChild(status);
+        auto* statusPtr = status.get();
+
         // ===== Actions (gated per mode) =====
         AlbumAction open;
         open.id = "open"; open.label = "Open";
@@ -118,17 +185,6 @@ namespace UltraCanvas {
         AlbumAction hide;
         hide.id = "moderate"; hide.label = "Hide (admin)";
         hide.inDisplay = false; hide.inUserEdit = false; hide.inAdmin = true; // admin only
-
-        auto* albumPtr = album.get();
-        root->AddChild(album);
-
-        // Status label.
-        auto status = std::make_shared<UltraCanvasLabel>("AlbumStatus", 20, 652, 940, 22);
-        status->SetText("Mode: Display · Layout: Uniform Grid · click a tile, hover for actions");
-        status->SetFontSize(11);
-        status->SetTextColor(Color(120, 120, 120, 255));
-        root->AddChild(status);
-        auto* statusPtr = status.get();
 
         open.onTrigger = [albumPtr, statusPtr](size_t i) {
             std::ostringstream o; o << "Open: " << albumPtr->GetItems()[i].title;
@@ -161,18 +217,22 @@ namespace UltraCanvas {
             statusPtr->SetText(o.str());
         };
 
-        // ===== Layout picker =====
-        int y = 684;
-        auto layoutTitle = std::make_shared<UltraCanvasLabel>("AlbumLayoutLbl", 20, y + 4, 90, 22);
-        layoutTitle->SetText("Layout:");
-        layoutTitle->SetFontSize(12);
-        layoutTitle->SetFontWeight(FontWeight::Bold);
-        root->AddChild(layoutTitle);
+        // ===== Controls (pinned) =====
+        auto controls = MakeLayoutBox("AlbumControls");
+        controls->layout.SetFlexColumn().SetFlexGap(6)
+                        .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        controls->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+        const int kLabelW = 85;
+
+        // ----- Layout picker -----
         const AlbumLayout layoutVals[] = {
             AlbumLayout::UniformGrid, AlbumLayout::Justified, AlbumLayout::Masonry,
             AlbumLayout::Mosaic, AlbumLayout::Filmstrip, AlbumLayout::Cards
         };
-        MakeButtonRow(root, "album_layout_", 110, y, 110, 28,
+        auto layoutRow = MakeRow("album_layout_row");
+        AppendLabeledButtons(layoutRow, "album_layout_", "Layout:", kLabelW, 110, 28,
                       {"Uniform Grid", "Justified", "Masonry", "Mosaic", "Filmstrip", "Cards"},
                       [albumPtr, statusPtr, layoutVals](int i) {
                           albumPtr->SetLayout(layoutVals[i]);
@@ -181,31 +241,23 @@ namespace UltraCanvas {
                           std::ostringstream o; o << "Layout: " << names[i];
                           statusPtr->SetText(o.str());
                       });
+        controls->AddChild(layoutRow);
 
-        // ===== Image-fit picker =====
-        y += 36;
-        auto fitTitle = std::make_shared<UltraCanvasLabel>("AlbumFitLbl", 20, y + 4, 90, 22);
-        fitTitle->SetText("Image fit:");
-        fitTitle->SetFontSize(12);
-        fitTitle->SetFontWeight(FontWeight::Bold);
-        root->AddChild(fitTitle);
+        // ----- Image-fit picker -----
         const AlbumImageDisplay fitVals[] = {
             AlbumImageDisplay::Crop, AlbumImageDisplay::Zoom,
             AlbumImageDisplay::Stretch, AlbumImageDisplay::Fit
         };
-        MakeButtonRow(root, "album_fit_", 110, y, 110, 28,
+        auto fitRow = MakeRow("album_fit_row");
+        AppendLabeledButtons(fitRow, "album_fit_", "Image fit:", kLabelW, 110, 28,
                       {"Crop (focus)", "Zoom", "Stretch", "Fit"},
                       [albumPtr, fitVals](int i) { albumPtr->SetImageDisplay(fitVals[i]); });
+        controls->AddChild(fitRow);
 
-        // ===== Mode picker =====
-        y += 36;
-        auto modeTitle = std::make_shared<UltraCanvasLabel>("AlbumModeLbl", 20, y + 4, 90, 22);
-        modeTitle->SetText("Mode:");
-        modeTitle->SetFontSize(12);
-        modeTitle->SetFontWeight(FontWeight::Bold);
-        root->AddChild(modeTitle);
+        // ----- Mode picker -----
         const AlbumMode modeVals[] = { AlbumMode::Display, AlbumMode::UserEdit, AlbumMode::Admin };
-        MakeButtonRow(root, "album_mode_", 110, y, 130, 28,
+        auto modeRow = MakeRow("album_mode_row");
+        AppendLabeledButtons(modeRow, "album_mode_", "Mode:", kLabelW, 130, 28,
                       {"Display (visitor)", "User edit", "Admin"},
                       [albumPtr, statusPtr, modeVals](int i) {
                           albumPtr->SetMode(modeVals[i]);
@@ -218,15 +270,11 @@ namespace UltraCanvas {
                             << (i == 0 ? " — view only" : " — drag to reorder, right-click for actions");
                           statusPtr->SetText(o.str());
                       });
+        controls->AddChild(modeRow);
 
-        // ===== Action-icon display picker =====
-        y += 36;
-        auto actTitle = std::make_shared<UltraCanvasLabel>("AlbumActLbl", 20, y + 4, 90, 22);
-        actTitle->SetText("Actions:");
-        actTitle->SetFontSize(12);
-        actTitle->SetFontWeight(FontWeight::Bold);
-        root->AddChild(actTitle);
-        MakeButtonRow(root, "album_act_", 110, y, 130, 28,
+        // ----- Action-icon display picker -----
+        auto actRow = MakeRow("album_act_row");
+        AppendLabeledButtons(actRow, "album_act_", "Actions:", kLabelW, 130, 28,
                       {"Always", "On hover", "Menu (+icon)", "Menu (no icon)", "Hidden"},
                       [albumPtr](int i) {
                           AlbumConfig c = albumPtr->GetConfig();
@@ -239,24 +287,15 @@ namespace UltraCanvas {
                           }
                           albumPtr->SetConfig(c);
                       });
+        controls->AddChild(actRow);
 
-        // ===== Sizing + captions toggles =====
-        y += 36;
-        auto sizeTitle = std::make_shared<UltraCanvasLabel>("AlbumSizeLbl", 20, y + 4, 90, 22);
-        sizeTitle->SetText("Per row:");
-        sizeTitle->SetFontSize(12);
-        sizeTitle->SetFontWeight(FontWeight::Bold);
-        root->AddChild(sizeTitle);
-        MakeButtonRow(root, "album_cols_", 110, y, 64, 28,
+        // ----- Sizing + captions on one line -----
+        auto sizeRow = MakeRow("album_size_row");
+        AppendLabeledButtons(sizeRow, "album_cols_", "Per row:", kLabelW, 64, 28,
                       {"3", "4", "5", "6"},
                       [albumPtr](int i) { albumPtr->SetItemsPerRow(3 + i); });
-
-        auto capTitle = std::make_shared<UltraCanvasLabel>("AlbumCapLbl", 380, y + 4, 70, 22);
-        capTitle->SetText("Caption:");
-        capTitle->SetFontSize(12);
-        capTitle->SetFontWeight(FontWeight::Bold);
-        root->AddChild(capTitle);
-        MakeButtonRow(root, "album_cap_", 450, y, 92, 28,
+        sizeRow->AddSpacer(24);
+        AppendLabeledButtons(sizeRow, "album_cap_", "Caption:", 70, 92, 28,
                       {"Below", "Overlay", "Hidden"},
                       [albumPtr](int i) {
                           AlbumConfig c = albumPtr->GetConfig();
@@ -265,6 +304,9 @@ namespace UltraCanvas {
                                                         : AlbumCaptionPlacement::Hidden;
                           albumPtr->SetConfig(c);
                       });
+        controls->AddChild(sizeRow);
+
+        root->AddChild(controls);
 
         return root;
     }

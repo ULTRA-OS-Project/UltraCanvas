@@ -277,6 +277,12 @@ namespace UltraCanvas {
         int  contentWidth  = 0;   // used by Filmstrip (horizontal scroll)
         int  contentHeight = 0;   // used by the vertical layouts
 
+        // Content-area size the tiles were last laid out for. The album has no
+        // child elements (it self-renders), so it has no Arrange override to
+        // react to resize; instead EnsureLayout() reflows when this changes.
+        int  lastAreaW = -1;
+        int  lastAreaH = -1;
+
         // Scrolling — handled manually so the self-render is independent of the
         // container's child-driven scrollbars (the album has no child elements).
         int  scrollOffsetX = 0;
