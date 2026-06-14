@@ -1190,7 +1190,7 @@ namespace UltraCanvas {
                                [this]() { return CreatePartiallyImplementedExamples("Photo/Video viewer"); });
 
         widgetsBuilder.AddItem("slideshow", "Slideshow",
-                               "Timed image diashow with info text panel and selectable indicator styles",
+                               "Timed image slideshow with info text panel and selectable indicator styles",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateSlideshowExamples(); },
                                "Apps/DemoApp/UltraCanvasSlideshowExamples.cpp")
