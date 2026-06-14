@@ -547,6 +547,20 @@ namespace UltraCanvas {
                 .AddVariant("dropdown", "Editable ComboBox")
                 .AddVariant("dropdown", "Multi-Select");
 
+        basicBuilder.AddItem("datepicker", "Date Picker / Calendar",
+                             "Calendar widgets covering single, range, multiple and week selection",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateDatePickerExamples(); },
+                             "Apps/DemoApp/UltraCanvasDatePickerExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasDatePicker.md")
+                .AddVariant("datepicker", "Dropdown Calendar")
+                .AddVariant("datepicker", "Inline Calendar")
+                .AddVariant("datepicker", "Date Range")
+                .AddVariant("datepicker", "Multiple Dates")
+                .AddVariant("datepicker", "Keyboard / Text Entry")
+                .AddVariant("datepicker", "Hotel Stay / Blocked Dates")
+                .AddVariant("datepicker", "Multi-Month / Scroll");
+
         basicBuilder
                 .AddItem("checkbox", "Checkbox / Radio / Switch",
                          "Interactive checkbox controls with multiple states and styles",
@@ -1178,9 +1192,6 @@ namespace UltraCanvas {
 //                             [this]() { return CreatePartiallyImplementedExamples("## GPIO support"); });
 
         auto widgetsBuilder = DemoCategoryBuilder(this, DemoCategory::Widgets);
-        widgetsBuilder.AddItem("datepicker", "Date Picker", "Date Picker",
-                               ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("## Date picker"); });
         widgetsBuilder.AddItem("colorpicker", "Color Picker", "Color Picker",
                                ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("## Color picker"); });
@@ -1190,7 +1201,7 @@ namespace UltraCanvas {
                                [this]() { return CreatePartiallyImplementedExamples("Photo/Video viewer"); });
 
         widgetsBuilder.AddItem("slideshow", "Slideshow",
-                               "Timed image diashow with info text panel and selectable indicator styles",
+                               "Timed image slideshow with info text panel and selectable indicator styles",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateSlideshowExamples(); },
                                "Apps/DemoApp/UltraCanvasSlideshowExamples.cpp")
@@ -1201,6 +1212,19 @@ namespace UltraCanvas {
                 .AddVariant("slideshow", "Counter")
                 .AddVariant("slideshow", "Thumbnails")
                 .AddVariant("slideshow", "Labels");
+
+        widgetsBuilder.AddItem("album", "Album",
+                               "Photo / video / music album with selectable layout designs, "
+                               "crop / zoom / stretch fitting, action icons and visitor / edit / admin modes",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateAlbumExamples(); },
+                               "Apps/DemoApp/UltraCanvasAlbumExamples.cpp")
+                .AddVariant("album", "Uniform Grid")
+                .AddVariant("album", "Justified")
+                .AddVariant("album", "Masonry")
+                .AddVariant("album", "Mosaic")
+                .AddVariant("album", "Filmstrip")
+                .AddVariant("album", "Cards");
 
         debugOutput << "✓ Registered " << demoItems.size() << " demo items across "
                   << categoryItems.size() << " categories" << std::endl;

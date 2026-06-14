@@ -85,6 +85,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasDemoExamples.cpp
             Apps/DemoApp/UltraCanvasButtonExamples.cpp
             Apps/DemoApp/UltraCanvasDropDownExamples.cpp
+            Apps/DemoApp/UltraCanvasDatePickerExamples.cpp
             Apps/DemoApp/UltraCanvasAutoCompleteExamples.cpp
             Apps/DemoApp/UltraCanvasLabelExamples.cpp
             Apps/DemoApp/UltraCanvasMenuExamples.cpp
@@ -124,6 +125,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasAdjacencyDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasArcDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasSlideshowExamples.cpp
+            Apps/DemoApp/UltraCanvasAlbumExamples.cpp
             Apps/DemoApp/UltraCanvasCompositorDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasGaugeExamples.cpp
             Apps/DemoApp/UltraCanvasQRCodeExamples.cpp

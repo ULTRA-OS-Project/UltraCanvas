@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <circle cx="256" cy="256" r="240" fill="#ffd43b" stroke="#f59f00" stroke-width="16"/>
+  <!-- raised, "are you serious?" eyebrows -->
+  <path d="M120 168 q40 -34 96 -8" fill="none" stroke="#5c3d00" stroke-width="20" stroke-linecap="round"/>
+  <path d="M296 160 q40 -26 96 8" fill="none" stroke="#5c3d00" stroke-width="20" stroke-linecap="round"/>
+  <!-- eyes -->
+  <circle cx="168" cy="224" r="26" fill="#5c3d00"/>
+  <circle cx="344" cy="224" r="26" fill="#5c3d00"/>
+  <!-- flat, unimpressed mouth -->
+  <path d="M168 356 q88 -36 176 0" fill="none" stroke="#5c3d00" stroke-width="22" stroke-linecap="round"/>
+</svg>
