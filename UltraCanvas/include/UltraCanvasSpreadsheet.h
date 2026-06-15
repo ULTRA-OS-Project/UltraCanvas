@@ -99,7 +99,10 @@ private:
     std::stack<SpreadsheetUndoAction> undoStack_;
     std::stack<SpreadsheetUndoAction> redoStack_;
     bool recordingUndo_ = true;
-    
+
+    // Reason for the most recent failed Load*/Save* (see GetLastError()).
+    std::string lastError_;
+
     bool mouseDown_ = false;
     Point2Di mouseDownPos_;
     CellAddress mouseDownCell_;
@@ -350,7 +353,12 @@ public:
     bool LoadCSVWithOptions(const std::string& filePath, const CSVImportOptions& options,
                             int sheetIndex = 0);
     bool SaveCSV(const std::string& filePath, int sheetIndex = -1);
-    
+
+    // After any Load*/Save* call that returns false, this holds a human-readable
+    // reason (e.g. "file locked by another application", "unsupported format").
+    // Empty after a successful operation.
+    const std::string& GetLastError() const { return lastError_; }
+
     // ===== PRINT =====
     PrintSettings& GetPrintSettings();
     const PrintSettings& GetPrintSettings() const;

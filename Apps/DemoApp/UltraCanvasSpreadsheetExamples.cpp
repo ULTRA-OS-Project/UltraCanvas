@@ -138,8 +138,7 @@ namespace UltraCanvas {
                     if (sheet->LoadFromFile(path)) {
                         status->SetText("Loaded: " + path);
                     } else {
-                        status->SetText("Failed to load: " + path +
-                                        "  (only .ods and .csv/.tsv are supported)");
+                        status->SetText("Could not open file: " + sheet->GetLastError());
                     }
                     sheet->RequestRedraw();
                     status->RequestRedraw();
@@ -163,12 +162,20 @@ namespace UltraCanvas {
                         status->RequestRedraw();
                         return;
                     }
+                    // Surface a clear reason (locked / no permission / missing)
+                    // instead of opening the dialog onto an empty preview.
+                    std::string openError = CSVDescribeOpenError(path);
+                    if (!openError.empty()) {
+                        status->SetText("Could not open file: " + openError);
+                        status->RequestRedraw();
+                        return;
+                    }
                     ShowCSVImportDialog(path,
                         [sheet, status, path](const CSVImportOptions& options) {
                             if (sheet->LoadCSVWithOptions(path, options)) {
                                 status->SetText("Imported: " + path);
                             } else {
-                                status->SetText("Failed to import: " + path);
+                                status->SetText("Could not import file: " + sheet->GetLastError());
                             }
                             sheet->RequestRedraw();
                             status->RequestRedraw();

@@ -15,8 +15,12 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <cerrno>
 #include <fstream>
 #include <sstream>
+#include <filesystem>
 #include <initializer_list>
 
 namespace UltraCanvas {
@@ -165,10 +169,62 @@ inline std::string CSVDecodeToUtf8(const std::string& raw, CSVImportOptions::Enc
     return out;
 }
 
+// Produce a human-readable explanation for why a file cannot be opened for
+// reading. Returns an empty string when the file opens fine. Distinguishes the
+// common cases (missing, folder, locked/in-use, permission denied) instead of
+// surfacing a generic "failed" so callers can show an actionable message.
+inline std::string CSVDescribeOpenError(const std::string& path) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+
+    if (path.empty()) return "No file name was given.";
+    if (!fs::exists(path, ec)) return "File not found: " + path;
+    if (fs::is_directory(path, ec)) return "This is a folder, not a file: " + path;
+
+    // Actually try to open it: this is what reveals locks and permission issues.
+    errno = 0;
+    std::FILE* f = std::fopen(path.c_str(), "rb");
+    if (f) { std::fclose(f); return std::string(); }  // opens fine
+
+    int e = errno;
+    switch (e) {
+        case EACCES:
+            return "Access denied — the file may be open or locked by another "
+                   "application, or you do not have permission to read it: " + path;
+#ifdef EBUSY
+        case EBUSY:
+            return "The file is in use or locked by another application: " + path;
+#endif
+        case ENOENT:
+            return "File not found: " + path;
+#ifdef EISDIR
+        case EISDIR:
+            return "This is a folder, not a file: " + path;
+#endif
+#ifdef EMFILE
+        case EMFILE:
+#endif
+#ifdef ENFILE
+        case ENFILE:
+#endif
+            return "Too many files are open; cannot open: " + path;
+        default: {
+            const char* sys = std::strerror(e);
+            return std::string("Cannot open file (") + (sys ? sys : "unknown error") +
+                   "): " + path;
+        }
+    }
+}
+
 // Read a whole file into memory (binary) so encoding detection sees the BOM.
-inline bool CSVReadFileRaw(const std::string& path, std::string& out) {
+// On failure 'error' (when provided) receives a descriptive reason.
+inline bool CSVReadFileRaw(const std::string& path, std::string& out,
+                           std::string* error = nullptr) {
     std::ifstream file(path, std::ios::binary);
-    if (!file.is_open()) return false;
+    if (!file.is_open()) {
+        if (error) *error = CSVDescribeOpenError(path);
+        return false;
+    }
     std::ostringstream ss;
     ss << file.rdbuf();
     out = ss.str();

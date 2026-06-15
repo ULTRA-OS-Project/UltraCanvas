@@ -166,47 +166,63 @@ private:
     UltraCanvasSpreadsheet* spreadsheet_;
     mz_zip_archive zip_;
     std::map<std::string, CellStyle> styles_;
-    
+    std::string error_;
+
 public:
     ODSLoader(UltraCanvasSpreadsheet* spreadsheet) : spreadsheet_(spreadsheet) {
         memset(&zip_, 0, sizeof(zip_));
     }
-    
+
     ~ODSLoader() {
         mz_zip_reader_end(&zip_);
     }
-    
+
+    const std::string& GetError() const { return error_; }
+
     bool Load(const std::string& filePath) {
-        // Open ZIP archive
+        // Open ZIP archive. ODS files are ZIP containers, so a failure here is
+        // either a file-access problem (locked / no permission / missing) or the
+        // file simply is not a valid OpenDocument archive — tell them which.
         if (!mz_zip_reader_init_file(&zip_, filePath.c_str(), 0)) {
+            std::string openError = CSVDescribeOpenError(filePath);
+            error_ = openError.empty()
+                ? "The file is not a valid OpenDocument spreadsheet (.ods): " + filePath
+                : openError;
             return false;
         }
-        
+
         // Verify mimetype
         std::string mimetype = ReadFileFromZip("mimetype");
         if (mimetype.find("opendocument.spreadsheet") == std::string::npos) {
+            error_ = "This file is not an OpenDocument spreadsheet (.ods): " + filePath;
             return false;
         }
-        
+
         // Load styles first
         std::string stylesXml = ReadFileFromZip(ODS::STYLES_XML);
         if (!stylesXml.empty()) {
             ParseStyles(stylesXml);
         }
-        
+
         // Load content.xml (main data)
         std::string contentXml = ReadFileFromZip(ODS::CONTENT_XML);
         if (contentXml.empty()) {
+            error_ = "The spreadsheet file is corrupt (missing content): " + filePath;
             return false;
         }
-        
+
         // Also parse automatic styles from content.xml
         ParseContentStyles(contentXml);
-        
+
         // Parse spreadsheet content
-        return ParseContent(contentXml);
+        if (!ParseContent(contentXml)) {
+            if (error_.empty())
+                error_ = "The spreadsheet content could not be read: " + filePath;
+            return false;
+        }
+        return true;
     }
-    
+
 private:
     std::string ReadFileFromZip(const std::string& filename) {
         int index = mz_zip_reader_locate_file(&zip_, filename.c_str(), nullptr, 0);
@@ -916,9 +932,10 @@ public:
     // control encoding, separators, the start row and number recognition. When
     // 'detect' is true the options are auto-detected from the file first.
     static bool Load(const std::string& filePath, SpreadsheetSheet* sheet,
-                     const CSVImportOptions& options, bool detect = false) {
+                     const CSVImportOptions& options, bool detect = false,
+                     std::string* error = nullptr) {
         std::string raw;
-        if (!CSVReadFileRaw(filePath, raw)) return false;
+        if (!CSVReadFileRaw(filePath, raw, error)) return false;
 
         CSVImportOptions opt = options;
         if (detect) {
@@ -1005,8 +1022,21 @@ public:
 // ============================================================================
 
 bool UltraCanvasSpreadsheet::LoadFromFile(const std::string& filePath) {
+    lastError_.clear();
+
+    // Report file-level problems (missing / locked / no permission) up front so
+    // the message is meaningful even before we know the format.
+    std::string openError = CSVDescribeOpenError(filePath);
+    if (!openError.empty()) {
+        lastError_ = openError;
+        return false;
+    }
+
     size_t dot = filePath.find_last_of('.');
-    if (dot == std::string::npos) return false;   // no extension -> unknown format
+    if (dot == std::string::npos) {
+        lastError_ = "The file has no extension, so its format is unknown: " + filePath;
+        return false;
+    }
     std::string ext = filePath.substr(dot);
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
@@ -1019,7 +1049,9 @@ bool UltraCanvasSpreadsheet::LoadFromFile(const std::string& filePath) {
     } else if (ext == ".tsv") {
         return LoadCSV(filePath, 0);  // TSV uses tab delimiter
     }
-    
+
+    lastError_ = "Unsupported file type '" + ext +
+                 "'. Supported formats are .ods, .csv and .tsv: " + filePath;
     return false;
 }
 
@@ -1043,11 +1075,15 @@ bool UltraCanvasSpreadsheet::SaveToFile(const std::string& filePath) {
 }
 
 bool UltraCanvasSpreadsheet::LoadODS(const std::string& filePath) {
+    lastError_.clear();
     ODSLoader loader(this);
     bool result = loader.Load(filePath);
     if (result) {
         Recalculate();
         Invalidate();
+    } else {
+        lastError_ = loader.GetError();
+        if (lastError_.empty()) lastError_ = "Could not read the spreadsheet: " + filePath;
     }
     return result;
 }
@@ -1060,7 +1096,9 @@ bool UltraCanvasSpreadsheet::SaveODS(const std::string& filePath) {
 bool UltraCanvasSpreadsheet::LoadXLSX(const std::string& filePath) {
     // XLSX format implementation would follow similar pattern
     // Using Office Open XML format (also ZIP-based with XML files)
-    // For now, return false - to be implemented
+    // For now, report a clear reason instead of a silent failure.
+    lastError_ = "Excel (.xlsx) import is not supported yet. "
+                 "Please convert the file to .ods or .csv: " + filePath;
     return false;
 }
 
@@ -1088,12 +1126,13 @@ SpreadsheetSheet* UltraCanvasSpreadsheet::PrepareCSVSheet(int sheetIndex) {
 }
 
 bool UltraCanvasSpreadsheet::LoadCSV(const std::string& filePath, int sheetIndex) {
+    lastError_.clear();
     SpreadsheetSheet* sheet = PrepareCSVSheet(sheetIndex);
-    if (!sheet) return false;
+    if (!sheet) { lastError_ = "Could not create a sheet to import into."; return false; }
 
     // Auto-detect encoding/separators/decimal so European (semicolon) files and
     // tab-separated files load into proper columns instead of one cell.
-    bool result = CSVLoader::Load(filePath, sheet, CSVImportOptions{}, /*detect*/true);
+    bool result = CSVLoader::Load(filePath, sheet, CSVImportOptions{}, /*detect*/true, &lastError_);
     if (result) {
         SetActiveSheet(0);
         Recalculate();
@@ -1105,10 +1144,11 @@ bool UltraCanvasSpreadsheet::LoadCSV(const std::string& filePath, int sheetIndex
 bool UltraCanvasSpreadsheet::LoadCSVWithOptions(const std::string& filePath,
                                                 const CSVImportOptions& options,
                                                 int sheetIndex) {
+    lastError_.clear();
     SpreadsheetSheet* sheet = PrepareCSVSheet(sheetIndex);
-    if (!sheet) return false;
+    if (!sheet) { lastError_ = "Could not create a sheet to import into."; return false; }
 
-    bool result = CSVLoader::Load(filePath, sheet, options, /*detect*/false);
+    bool result = CSVLoader::Load(filePath, sheet, options, /*detect*/false, &lastError_);
     if (result) {
         SetActiveSheet(0);
         Recalculate();
