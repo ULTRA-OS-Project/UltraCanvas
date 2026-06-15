@@ -2,8 +2,11 @@
 // Demonstration of UltraCanvasAlbum: layout designs, image-fit modes, action-icon
 // display options and visitor / user-edit / admin modes for a mixed photo / video
 // / music album.
-// Version: 2.1.0
+// Version: 2.2.0
 // Last Modified: 2026-06-15
+// V2.2.0: Added a photo-only "View full size" action (and double-click) that
+//   opens the image in a lightbox window with a related-text panel (title,
+//   subtitle and a longer per-photo description).
 // V2.1.0: Action icons use SVG art (edit / add_text / delete) with hover
 //   tooltips; option labels dropped the trailing ":" and are vertically
 //   centred; the image-fit "Crop" button is plain and a "Crop focus" row was
@@ -20,6 +23,8 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasImageElement.h"
+#include "UltraCanvasWindow.h"
 #include <sstream>
 #include <vector>
 
@@ -82,6 +87,103 @@ namespace UltraCanvas {
             }
             return buttons;
         }
+
+        // A lightbox-style viewer: opens the photo at full size in its own window
+        // with a related-text panel (title, subtitle and the longer description).
+        // One instance is shared by the album so re-opening reuses the window.
+        class AlbumPhotoViewer {
+        public:
+            void Show(const AlbumItem& item) {
+                // Reuse a single window: just refresh its contents if it is open.
+                if (window) {
+                    window->Close();
+                    window.reset();
+                }
+
+                WindowConfig cfg;
+                cfg.title     = item.title.empty() ? "Photo" : item.title;
+                cfg.width     = 1040;
+                cfg.height    = 720;
+                cfg.type      = WindowType::Standard;
+                cfg.resizable = true;
+                window = CreateWindow(cfg);
+                if (!window) return;
+                window->SetBackgroundColor(Color(22, 22, 26, 255));
+
+                // Column: the image fills the top, the text panel is pinned below.
+                window->layout.SetFlexColumn()
+                              .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+
+                auto image = std::make_shared<UltraCanvasImageElement>("ViewerImage", 0, 0, 0, 0);
+                image->SetFitMode(ImageFitMode::Contain);
+                image->LoadFromFile(item.mediaPath.empty() ? item.thumbnailPath : item.mediaPath);
+                image->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                                 .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+                window->AddChild(image);
+
+                // Related-text panel.
+                auto panel = std::make_shared<UltraCanvasContainer>("ViewerTextPanel");
+                panel->SetBackgroundColor(Color(30, 30, 36, 255));
+                panel->layout.SetFlexColumn().SetFlexGap(4)
+                             .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+                panel->SetPadding(14, 18, 14, 18);
+                panel->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                                 .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+                auto titleLbl = std::make_shared<UltraCanvasLabel>("ViewerTitle", 0, 0, 0, 26);
+                titleLbl->SetText(item.title);
+                titleLbl->SetFontSize(18);
+                titleLbl->SetFontWeight(FontWeight::Bold);
+                titleLbl->SetTextColor(Color(245, 245, 248, 255));
+                titleLbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+                panel->AddChild(titleLbl);
+
+                if (!item.subtitle.empty()) {
+                    auto subLbl = std::make_shared<UltraCanvasLabel>("ViewerSubtitle", 0, 0, 0, 18);
+                    subLbl->SetText(item.subtitle);
+                    subLbl->SetFontSize(12);
+                    subLbl->SetTextColor(Color(170, 170, 178, 255));
+                    subLbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+                    panel->AddChild(subLbl);
+                }
+
+                // The related text (falls back to a generic line if none supplied).
+                std::string related = item.description.empty()
+                        ? "No additional description for this photo."
+                        : item.description;
+                auto descLbl = std::make_shared<UltraCanvasLabel>("ViewerDescription", 0, 0, 0, 48);
+                descLbl->SetText(related);
+                descLbl->SetFontSize(13);
+                descLbl->SetTextColor(Color(214, 214, 220, 255));
+                descLbl->SetWrap(TextWrap::WrapWord);
+                descLbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+                panel->AddChild(descLbl);
+
+                auto hint = std::make_shared<UltraCanvasLabel>("ViewerHint", 0, 0, 0, 16);
+                hint->SetText("Press ESC to close");
+                hint->SetFontSize(10);
+                hint->SetTextColor(Color(120, 120, 128, 255));
+                hint->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+                panel->AddChild(hint);
+
+                window->AddChild(panel);
+
+                // ESC closes the viewer.
+                window->eventCallback = [this](const UCEvent& event) {
+                    if (event.type == UCEventType::KeyUp &&
+                        event.virtualKey == UCKeys::Escape) {
+                        if (window) { window->Close(); window.reset(); }
+                        return true;
+                    }
+                    return false;
+                };
+
+                window->Show();
+            }
+
+        private:
+            std::shared_ptr<UltraCanvasWindow> window;
+        };
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAlbumExamples() {
@@ -110,8 +212,9 @@ namespace UltraCanvas {
 
         auto subtitle = std::make_shared<UltraCanvasLabel>("AlbumSubtitle", 0, 0, 0, 38);
         subtitle->SetText("Switch the layout design, image-fit mode, viewer mode and action-icon "
-                          "display with the buttons. In Edit / Admin mode drag a tile to reorder; "
-                          "right-click (or the kebab icon) opens the action menu.");
+                          "display with the buttons. Double-click a photo (or use its View icon) "
+                          "to open it full size with its description; in Edit / Admin mode drag a "
+                          "tile to reorder; right-click (or the kebab icon) opens the action menu.");
         subtitle->SetFontSize(11);
         subtitle->SetTextColor(Color(110, 110, 110, 255));
         subtitle->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
@@ -145,27 +248,43 @@ namespace UltraCanvas {
         const std::string mediaRoot = NormalizePath(GetResourcesDir() + "media/images/");
         struct Seed {
             const char* file; const char* title; const char* subtitle;
-            AlbumMediaType type; bool featured;
+            AlbumMediaType type; bool featured; const char* description;
         };
         const Seed seeds[] = {
-            { "landscape.jpg",   "Mountain Dawn",    "Photo · 2024",        AlbumMediaType::Photo, true  },
-            { "portrait.jpg",    "Studio Portrait",  "Photo · 50mm",        AlbumMediaType::Photo, false },
-            { "sample_photo.jpg","City Lights",      "Video · 1:24",        AlbumMediaType::Video, false },
-            { "ship.jpg",        "Harbour",          "Photo · golden hour", AlbumMediaType::Photo, false },
-            { "sample_hq.jpg",   "Summer Mix",       "Music · 42 tracks",   AlbumMediaType::Music, false },
-            { "screenshot.png",  "Tutorial Clip",    "Video · 3:08",        AlbumMediaType::Video, false },
-            { "dice.jpg",        "Game Night",       "Photo · 2023",        AlbumMediaType::Photo, false },
-            { "3d-boxes.png",    "Renders",          "Photo · Blender",     AlbumMediaType::Photo, false },
-            { "sample_logo.png", "Brand Reel",       "Video · 0:30",        AlbumMediaType::Video, false },
-            { "test_small.png",  "Chill Beats",      "Music · 18 tracks",   AlbumMediaType::Music, false },
-            { "png_68.png",      "Field Notes",      "Photo · film",        AlbumMediaType::Photo, false },
-            { "webp_68.png",     "Roadtrip",         "Photo · 2022",        AlbumMediaType::Photo, false },
+            { "landscape.jpg",   "Mountain Dawn",    "Photo · 2024",        AlbumMediaType::Photo, true,
+              "First light spilling over the ridge line. Shot handheld just after "
+              "sunrise, the low sun rakes across the slopes and pulls out every fold "
+              "in the terrain." },
+            { "portrait.jpg",    "Studio Portrait",  "Photo · 50mm",        AlbumMediaType::Photo, false,
+              "A classic studio headshot taken with a fast 50mm lens and a single "
+              "softbox to camera-left for soft, directional light." },
+            { "sample_photo.jpg","City Lights",      "Video · 1:24",        AlbumMediaType::Video, false, "" },
+            { "ship.jpg",        "Harbour",          "Photo · golden hour", AlbumMediaType::Photo, false,
+              "Boats resting in the harbour during the golden hour, the warm light "
+              "reflecting off the still water." },
+            { "sample_hq.jpg",   "Summer Mix",       "Music · 42 tracks",   AlbumMediaType::Music, false, "" },
+            { "screenshot.png",  "Tutorial Clip",    "Video · 3:08",        AlbumMediaType::Video, false, "" },
+            { "dice.jpg",        "Game Night",       "Photo · 2023",        AlbumMediaType::Photo, false,
+              "Coloured dice mid-roll on game night — a quick macro grab to freeze "
+              "the action on the table." },
+            { "3d-boxes.png",    "Renders",          "Photo · Blender",     AlbumMediaType::Photo, false,
+              "A set of stacked 3D boxes rendered in Blender to test material and "
+              "lighting setups." },
+            { "sample_logo.png", "Brand Reel",       "Video · 0:30",        AlbumMediaType::Video, false, "" },
+            { "test_small.png",  "Chill Beats",      "Music · 18 tracks",   AlbumMediaType::Music, false, "" },
+            { "png_68.png",      "Field Notes",      "Photo · film",        AlbumMediaType::Photo, false,
+              "Scanned 35mm film frame from a walk in the field — grainy, warm and "
+              "full of character." },
+            { "webp_68.png",     "Roadtrip",         "Photo · 2022",        AlbumMediaType::Photo, false,
+              "A snapshot from the 2022 summer road trip, somewhere along an open "
+              "stretch of highway." },
         };
         for (const auto& s : seeds) {
             AlbumItem it;
             it.mediaPath = mediaRoot + s.file;
             it.title = s.title;
             it.subtitle = s.subtitle;
+            it.description = s.description;
             it.mediaType = s.type;
             it.featured = s.featured;
             album->AddItem(it);
@@ -188,6 +307,31 @@ namespace UltraCanvas {
         // Each action carries an SVG icon (drawn on the overlay button and in the
         // context menu) and a label that doubles as the icon's hover tooltip.
         const std::string iconRoot = NormalizePath(GetResourcesDir() + "media/icons/");
+
+        // Shared full-size photo viewer used by the "View" action and double-click.
+        auto viewer = std::make_shared<AlbumPhotoViewer>();
+        auto openViewer = [albumPtr, statusPtr, viewer](size_t i) {
+            const AlbumItem& it = albumPtr->GetItems()[i];
+            if (it.mediaType != AlbumMediaType::Photo) {
+                std::ostringstream o; o << "Full-size view is available for photos only: "
+                                        << it.title;
+                statusPtr->SetText(o.str());
+                return;
+            }
+            std::ostringstream o; o << "View full size: " << it.title;
+            statusPtr->SetText(o.str());
+            viewer->Show(it);
+        };
+
+        // "View full size" — photos only (gated by media type, so the icon is not
+        // drawn on video / music tiles) and available in every mode.
+        AlbumAction view;
+        view.id = "view"; view.label = "View full size";
+        view.iconPath = iconRoot + "view.svg";
+        view.mediaTypes = { AlbumMediaType::Photo };
+        view.inDisplay = true; view.inUserEdit = true; view.inAdmin = true;
+        view.onTrigger = openViewer;
+        album->AddAction(view);
 
         AlbumAction comment;
         comment.id = "comment"; comment.label = "Add comment";
@@ -219,10 +363,8 @@ namespace UltraCanvas {
         album->AddAction(edit);
         album->AddAction(del);
 
-        album->onItemActivated = [albumPtr, statusPtr](size_t i) {
-            std::ostringstream o; o << "Activated (open/play): " << albumPtr->GetItems()[i].title;
-            statusPtr->SetText(o.str());
-        };
+        // Double-click opens the same full-size photo viewer (open / play).
+        album->onItemActivated = openViewer;
         album->onItemsReordered = [statusPtr](size_t from, size_t to) {
             std::ostringstream o; o << "Reordered item " << from << " -> " << to;
             statusPtr->SetText(o.str());

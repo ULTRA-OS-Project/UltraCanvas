@@ -101,6 +101,7 @@ namespace UltraCanvas {
         std::string thumbnailPath;  // explicit cover/poster; falls back to mediaPath
         std::string title;          // primary caption line
         std::string subtitle;       // secondary line (artist, date, duration, ...)
+        std::string description;    // longer related text (shown in a full-size view)
         std::string id;             // optional stable id passed back to callbacks
 
         AlbumMediaType mediaType = AlbumMediaType::Photo;
@@ -130,6 +131,10 @@ namespace UltraCanvas {
         bool inDisplay  = true;
         bool inUserEdit = true;
         bool inAdmin    = true;
+
+        // Restrict the action to specific media types (e.g. a "View full size"
+        // action that only applies to photos). Empty = available for every type.
+        std::vector<AlbumMediaType> mediaTypes;
 
         // index is the position of the item in the album's item vector.
         std::function<void(size_t /*index*/)> onTrigger;
@@ -337,7 +342,9 @@ namespace UltraCanvas {
         double ItemAspect(const AlbumItem& item) const;   // width / height
         std::string ThumbPathFor(const AlbumItem& item) const;
         bool   ActionVisibleInMode(const AlbumAction& a) const;
-        std::vector<int> VisibleActionIndices() const;
+        // Action indices offered for a given item: gated by the current mode and
+        // by the action's optional media-type filter.
+        std::vector<int> VisibleActionIndices(size_t itemIndex) const;
         int    MaxScrollY() const;
         int    MaxScrollX() const;
         void   ClampScroll();

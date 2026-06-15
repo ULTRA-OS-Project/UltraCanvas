@@ -1,8 +1,11 @@
 // core/UltraCanvasAlbum.cpp
 // Photo / video / music album widget with selectable layout designs, per-item
 // crop / zoom / stretch fitting, action icons and visitor / edit / admin modes.
-// Version: 1.0.2
+// Version: 1.0.3
 // Last Modified: 2026-06-15
+// V1.0.3: Per-item action gating by media type (AlbumAction::mediaTypes), so an
+//   action can be offered for photos only; AlbumItem gained a description field
+//   for richer detail / full-size views.
 // V1.0.2: Caption title/subtitle block is now vertically centred inside the
 //   caption strip; action icons show a hover tooltip (their label); added
 //   SetAllItemsFocus() so a single control can set the crop focus point.
@@ -194,10 +197,18 @@ namespace UltraCanvas {
         return false;
     }
 
-    std::vector<int> UltraCanvasAlbum::VisibleActionIndices() const {
+    std::vector<int> UltraCanvasAlbum::VisibleActionIndices(size_t itemIndex) const {
         std::vector<int> out;
+        const AlbumMediaType type = (itemIndex < items.size())
+                ? items[itemIndex].mediaType : AlbumMediaType::Photo;
         for (int i = 0; i < static_cast<int>(actions.size()); ++i) {
-            if (ActionVisibleInMode(actions[i])) out.push_back(i);
+            const AlbumAction& a = actions[i];
+            if (!ActionVisibleInMode(a)) continue;
+            if (!a.mediaTypes.empty() &&
+                std::find(a.mediaTypes.begin(), a.mediaTypes.end(), type) == a.mediaTypes.end()) {
+                continue;  // action filtered out for this item's media type
+            }
+            out.push_back(i);
         }
         return out;
     }
@@ -816,7 +827,7 @@ namespace UltraCanvas {
                                            bool hovered) {
         if (config.actionDisplay == AlbumActionDisplay::Hidden) return;
 
-        std::vector<int> vis = VisibleActionIndices();
+        std::vector<int> vis = VisibleActionIndices(tile.itemIndex);
 
         // ContextMenu mode: optionally a single kebab icon; the menu itself opens
         // on right-click or when the kebab is clicked.
@@ -970,7 +981,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasAlbum::OpenItemContextMenu(size_t itemIndex, const Point2Di& localPoint) {
-        std::vector<int> vis = VisibleActionIndices();
+        std::vector<int> vis = VisibleActionIndices(itemIndex);
         if (vis.empty()) return;
         auto win = GetWindow();
         if (!win) return;
