@@ -14,7 +14,7 @@ detected at configure time, the real backend is compiled in and replaces it.
 | Platform | Native backend | Playback | Recording |
 |----------|----------------|----------|-----------|
 | Linux    | **GStreamer** (V4L2 cameras / VA-API decode) | video + audio | video + audio |
-| Windows  | **Media Foundation** (Media Session + sample-grabber + SAR; SourceReader/SinkWriter) | video + audio | video (H.264/MP4) |
+| Windows  | **Media Foundation** (Media Session + sample-grabber + SAR; aggregate-source SourceReader → SinkWriter) | video + audio | video + audio |
 | macOS    | **AVFoundation** (AVPlayer; AVCaptureSession) | video + audio | video + audio |
 
 The backend is selected by platform at configure time. On Linux it is detected
@@ -133,11 +133,12 @@ sudo apt install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
   that element isn't present in the local GStreamer install. Hardware-accelerated
   decode happens transparently when GStreamer selects a VA-API / NVDEC / d3d11
   decoder.
-- **Windows (Media Foundation):** the `.mm`-free C++ backend links
-  `mf mfplat mfreadwrite mfuuid ole32 shlwapi`. Recording currently encodes the
-  **video** track (H.264/MP4) via `IMFSinkWriter`; muxing the microphone track
-  is the next step (a second `IMFSourceReader` on the audio device feeding an
-  AAC stream on the same sink writer).
+- **Windows (Media Foundation):** the C++ backend links
+  `mf mfplat mfreadwrite mfuuid ole32 shlwapi`. Recording aggregates the camera
+  and microphone into one `IMFMediaSource` (`MFCreateAggregateSource`) so a
+  single `IMFSourceReader` yields A/V samples on one synchronized timeline,
+  which an `IMFSinkWriter` encodes to H.264 video + AAC audio in an MP4. Set
+  `VideoCaptureConfig::captureAudio = false` for a video-only file.
 - **macOS (AVFoundation):** the backend is Objective-C++ (`.mm`, built with
   `-fobjc-arc`) and links `AVFoundation CoreMedia CoreVideo Foundation`.
   `AVCaptureMovieFileOutput` records video **and** audio. Camera access requires

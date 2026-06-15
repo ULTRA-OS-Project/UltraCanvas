@@ -352,7 +352,7 @@ private:
     float rate = 1.0f;
 };
 
-// ---- Capture session (SourceReader preview + SinkWriter recording) --------
+// ---- Capture session (aggregate camera+mic SourceReader → SinkWriter) -----
 
 class MFCaptureSession : public IVideoCaptureSession {
 public:
@@ -361,48 +361,84 @@ public:
 
     bool Open() override {
         if (opened) return true;
-        // Resolve the camera media source by symbolic link (id) or first device.
-        ComPtr<IMFAttributes> attrs;
-        MFCreateAttributes(&attrs, 1);
-        attrs->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
-                       MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID);
 
         ComPtr<IMFMediaSource> camSource;
-        if (!params.cameraId.empty()) {
-            attrs->SetString(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK,
-                             Widen(params.cameraId).c_str());
-            if (FAILED(MFCreateDeviceSource(attrs.Get(), &camSource))) { Fail("Camera open failed"); return false; }
-        } else {
-            IMFActivate** devs = nullptr; UINT32 count = 0;
-            if (FAILED(MFEnumDeviceSources(attrs.Get(), &devs, &count)) || count == 0) {
-                if (devs) CoTaskMemFree(devs);
-                Fail("No camera found"); return false;
-            }
-            devs[0]->ActivateObject(IID_PPV_ARGS(&camSource));
-            for (UINT32 i = 0; i < count; ++i) devs[i]->Release();
-            CoTaskMemFree(devs);
+        if (!CreateDeviceSource(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID,
+                                MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK,
+                                params.cameraId, camSource)) {
+            Fail("No camera found"); return false;
         }
-        if (!camSource) { Fail("Camera activate failed"); return false; }
 
-        if (FAILED(MFCreateSourceReaderFromMediaSource(camSource.Get(), nullptr, &reader))) {
+        // Optionally capture the microphone and aggregate it with the camera so
+        // a single reader yields A/V samples on one synchronized timeline.
+        ComPtr<IMFMediaSource> micSource;
+        hasAudio = false;
+        if (params.captureAudio) {
+            if (CreateDeviceSource(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_AUDCAP_GUID,
+                                   MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_AUDCAP_ENDPOINT_ID,
+                                   params.audioDeviceId, micSource)) {
+                hasAudio = true;
+            }
+        }
+
+        ComPtr<IMFMediaSource> source = camSource;
+        if (hasAudio) {
+            ComPtr<IMFCollection> coll;
+            MFCreateCollection(&coll);
+            coll->AddElement(camSource.Get());
+            coll->AddElement(micSource.Get());
+            ComPtr<IMFMediaSource> agg;
+            if (SUCCEEDED(MFCreateAggregateSource(coll.Get(), &agg))) {
+                source = agg;
+            } else {
+                hasAudio = false;   // fall back to video-only
+            }
+        }
+
+        if (FAILED(MFCreateSourceReaderFromMediaSource(source.Get(), nullptr, &reader))) {
             Fail("SourceReader create failed"); return false;
         }
-        // Request RGB32 output on the first video stream.
+
+        // Identify which reader stream is video vs audio.
+        FindStreamIndices();
+        if (videoReaderIdx == (DWORD)-1) { Fail("Camera has no video stream"); return false; }
+
+        // Request RGB32 on the video stream.
         ComPtr<IMFMediaType> rgb;
         MFCreateMediaType(&rgb);
         rgb->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
         rgb->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
-        if (FAILED(reader->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM,
-                                               nullptr, rgb.Get()))) {
+        if (FAILED(reader->SetCurrentMediaType(videoReaderIdx, nullptr, rgb.Get()))) {
             Fail("RGB32 not supported by camera"); return false;
         }
-        // Learn the negotiated size.
         ComPtr<IMFMediaType> cur;
-        reader->GetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, &cur);
+        reader->GetCurrentMediaType(videoReaderIdx, &cur);
         UINT32 w = 0, h = 0;
         if (cur) MFGetAttributeSize(cur.Get(), MF_MT_FRAME_SIZE, &w, &h);
         camW = (int)(w ? w : params.width);
         camH = (int)(h ? h : params.height);
+
+        // Request 16-bit PCM on the audio stream and remember the negotiated type.
+        if (hasAudio && audioReaderIdx != (DWORD)-1) {
+            ComPtr<IMFMediaType> pcm;
+            MFCreateMediaType(&pcm);
+            pcm->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
+            pcm->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_PCM);
+            pcm->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 16);
+            pcm->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, 44100);
+            pcm->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, 2);
+            if (SUCCEEDED(reader->SetCurrentMediaType(audioReaderIdx, nullptr, pcm.Get()))) {
+                reader->GetCurrentMediaType(audioReaderIdx, &audioInputType);
+            } else {
+                hasAudio = false;
+            }
+        }
+
+        // Enable exactly the streams we consume.
+        reader->SetStreamSelection((DWORD)MF_SOURCE_READER_ALL_STREAMS, FALSE);
+        reader->SetStreamSelection(videoReaderIdx, TRUE);
+        if (hasAudio && audioReaderIdx != (DWORD)-1)
+            reader->SetStreamSelection(audioReaderIdx, TRUE);
 
         opened = true;
         running = true;
@@ -416,6 +452,7 @@ public:
         if (worker.joinable()) worker.join();
         FinalizeWriter();
         reader.Reset();
+        audioInputType.Reset();
         opened = false;
     }
     bool IsOpen() const override { return opened; }
@@ -453,45 +490,102 @@ private:
     }
     void Fail(const std::string& msg) { if (onError) onError(msg); }
 
+    // Activate a capture device source for the given device class. Uses the
+    // supplied symbolic-link/endpoint id when set, otherwise the first device.
+    bool CreateDeviceSource(REFGUID sourceTypeGuid, REFGUID idAttrGuid,
+                            const std::string& deviceId, ComPtr<IMFMediaSource>& out) {
+        ComPtr<IMFAttributes> attrs;
+        if (FAILED(MFCreateAttributes(&attrs, 2))) return false;
+        attrs->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE, sourceTypeGuid);
+        if (!deviceId.empty()) {
+            attrs->SetString(idAttrGuid, Widen(deviceId).c_str());
+            return SUCCEEDED(MFCreateDeviceSource(attrs.Get(), &out));
+        }
+        IMFActivate** devs = nullptr; UINT32 count = 0;
+        if (FAILED(MFEnumDeviceSources(attrs.Get(), &devs, &count)) || count == 0) {
+            if (devs) CoTaskMemFree(devs);
+            return false;
+        }
+        HRESULT hr = devs[0]->ActivateObject(IID_PPV_ARGS(&out));
+        for (UINT32 i = 0; i < count; ++i) devs[i]->Release();
+        CoTaskMemFree(devs);
+        return SUCCEEDED(hr) && out;
+    }
+
+    void FindStreamIndices() {
+        videoReaderIdx = (DWORD)-1;
+        audioReaderIdx = (DWORD)-1;
+        for (DWORD i = 0; ; ++i) {
+            ComPtr<IMFMediaType> t;
+            HRESULT hr = reader->GetNativeMediaType(i, 0, &t);
+            if (hr == MF_E_INVALIDSTREAMNUMBER) break;
+            if (FAILED(hr) || !t) continue;
+            GUID major = GUID_NULL;
+            t->GetGUID(MF_MT_MAJOR_TYPE, &major);
+            if (major == MFMediaType_Video && videoReaderIdx == (DWORD)-1) videoReaderIdx = i;
+            else if (major == MFMediaType_Audio && audioReaderIdx == (DWORD)-1) audioReaderIdx = i;
+        }
+    }
+
     bool InitWriter() {
         std::lock_guard<std::mutex> lk(writerMutex);
         if (FAILED(MFCreateSinkWriterFromURL(Widen(params.outputPath).c_str(),
                                              nullptr, nullptr, &writer)))
             { Fail("SinkWriter create failed"); return false; }
 
-        // Output (encoded) H.264 type
-        ComPtr<IMFMediaType> outType;
-        MFCreateMediaType(&outType);
-        outType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-        outType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264);
-        outType->SetUINT32(MF_MT_AVG_BITRATE,
-                           params.videoBitRate ? params.videoBitRate : 4000000);
-        outType->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
-        MFSetAttributeSize(outType.Get(), MF_MT_FRAME_SIZE, camW, camH);
-        MFSetAttributeRatio(outType.Get(), MF_MT_FRAME_RATE,
+        // ----- Video: H.264 output, RGB32 input -----
+        ComPtr<IMFMediaType> vOut;
+        MFCreateMediaType(&vOut);
+        vOut->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+        vOut->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264);
+        vOut->SetUINT32(MF_MT_AVG_BITRATE,
+                        params.videoBitRate ? params.videoBitRate : 4000000);
+        vOut->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+        MFSetAttributeSize(vOut.Get(), MF_MT_FRAME_SIZE, camW, camH);
+        MFSetAttributeRatio(vOut.Get(), MF_MT_FRAME_RATE,
                             (UINT32)(params.frameRate > 0 ? params.frameRate : 30), 1);
-        MFSetAttributeRatio(outType.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
-        if (FAILED(writer->AddStream(outType.Get(), &videoStreamIndex))) {
-            Fail("AddStream failed"); writer.Reset(); return false;
+        MFSetAttributeRatio(vOut.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
+        if (FAILED(writer->AddStream(vOut.Get(), &videoSinkIdx))) {
+            Fail("AddStream(video) failed"); writer.Reset(); return false;
+        }
+        ComPtr<IMFMediaType> vIn;
+        MFCreateMediaType(&vIn);
+        vIn->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+        vIn->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
+        vIn->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+        MFSetAttributeSize(vIn.Get(), MF_MT_FRAME_SIZE, camW, camH);
+        MFSetAttributeRatio(vIn.Get(), MF_MT_FRAME_RATE,
+                            (UINT32)(params.frameRate > 0 ? params.frameRate : 30), 1);
+        MFSetAttributeRatio(vIn.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
+        if (FAILED(writer->SetInputMediaType(videoSinkIdx, vIn.Get(), nullptr))) {
+            Fail("SetInputMediaType(video) failed"); writer.Reset(); return false;
         }
 
-        // Input (uncompressed) RGB32 type
-        ComPtr<IMFMediaType> inType;
-        MFCreateMediaType(&inType);
-        inType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-        inType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
-        inType->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
-        MFSetAttributeSize(inType.Get(), MF_MT_FRAME_SIZE, camW, camH);
-        MFSetAttributeRatio(inType.Get(), MF_MT_FRAME_RATE,
-                            (UINT32)(params.frameRate > 0 ? params.frameRate : 30), 1);
-        MFSetAttributeRatio(inType.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
-        if (FAILED(writer->SetInputMediaType(videoStreamIndex, inType.Get(), nullptr))) {
-            Fail("SetInputMediaType failed"); writer.Reset(); return false;
+        // ----- Audio: AAC output, negotiated PCM input -----
+        audioSinkIdx = (DWORD)-1;
+        if (hasAudio && audioInputType) {
+            UINT32 sr = 44100, ch = 2;
+            audioInputType->GetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, &sr);
+            audioInputType->GetUINT32(MF_MT_AUDIO_NUM_CHANNELS, &ch);
+
+            ComPtr<IMFMediaType> aOut;
+            MFCreateMediaType(&aOut);
+            aOut->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
+            aOut->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_AAC);
+            aOut->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 16);
+            aOut->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, sr);
+            aOut->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, ch);
+            aOut->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, 16000);   // 128 kbps
+            if (SUCCEEDED(writer->AddStream(aOut.Get(), &audioSinkIdx))) {
+                if (FAILED(writer->SetInputMediaType(audioSinkIdx, audioInputType.Get(), nullptr)))
+                    audioSinkIdx = (DWORD)-1;   // give up on audio, keep video
+            } else {
+                audioSinkIdx = (DWORD)-1;
+            }
         }
 
         if (FAILED(writer->BeginWriting())) { Fail("BeginWriting failed"); writer.Reset(); return false; }
-        writeStartHns = 0;
-        rtStart = 0;
+        rtStart = -1;
         return true;
     }
 
@@ -500,14 +594,14 @@ private:
         if (writer) { writer->Finalize(); writer.Reset(); }
     }
 
-    void WriteFrame(IMFSample* sample, LONGLONG sampleTime) {
+    // Offset the sample onto the recording timeline (shared zero across A/V) and
+    // write it to the given sink stream.
+    void WriteSample(DWORD sinkStream, IMFSample* sample, LONGLONG sampleTime) {
         std::lock_guard<std::mutex> lk(writerMutex);
-        if (!writer) return;
-        if (rtStart == 0) rtStart = sampleTime;
+        if (!writer || sinkStream == (DWORD)-1) return;
+        if (rtStart < 0) rtStart = sampleTime;
         sample->SetSampleTime(sampleTime - rtStart);
-        LONGLONG dur = (LONGLONG)(kHnsPerSecond / (params.frameRate > 0 ? params.frameRate : 30));
-        sample->SetSampleDuration(dur);
-        writer->WriteSample(videoStreamIndex, sample);
+        writer->WriteSample(sinkStream, sample);
     }
 
     void ReadLoop() {
@@ -515,40 +609,48 @@ private:
             DWORD streamIndex = 0, flags = 0;
             LONGLONG timestamp = 0;
             ComPtr<IMFSample> sample;
-            HRESULT hr = reader->ReadSample((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM,
+            HRESULT hr = reader->ReadSample((DWORD)MF_SOURCE_READER_ANY_STREAM,
                                             0, &streamIndex, &flags, &timestamp, &sample);
             if (FAILED(hr)) break;
-            if (!sample) continue;
+            if (flags & MF_SOURCE_READERF_ENDOFSTREAM) break;
+            if (!sample) continue;   // e.g. stream tick
 
-            // Preview frame
-            ComPtr<IMFMediaBuffer> buf;
-            if (SUCCEEDED(sample->ConvertToContiguousBuffer(&buf)) && buf) {
-                BYTE* data = nullptr; DWORD maxLen = 0, curLen = 0;
-                if (SUCCEEDED(buf->Lock(&data, &maxLen, &curLen))) {
-                    double pts = (double)timestamp / kHnsPerSecond;
-                    if (auto f = FrameFromRGB32(data, camW, camH, camW * 4, pts)) {
-                        if (onPreviewFrame) onPreviewFrame(std::move(f));
+            if (streamIndex == videoReaderIdx) {
+                ComPtr<IMFMediaBuffer> buf;
+                if (SUCCEEDED(sample->ConvertToContiguousBuffer(&buf)) && buf) {
+                    BYTE* data = nullptr; DWORD maxLen = 0, curLen = 0;
+                    if (SUCCEEDED(buf->Lock(&data, &maxLen, &curLen))) {
+                        double pts = (double)timestamp / kHnsPerSecond;
+                        if (auto f = FrameFromRGB32(data, camW, camH, camW * 4, pts)) {
+                            if (onPreviewFrame) onPreviewFrame(std::move(f));
+                        }
+                        buf->Unlock();
                     }
-                    buf->Unlock();
                 }
+                if (recording) WriteSample(videoSinkIdx, sample.Get(), timestamp);
+            } else if (streamIndex == audioReaderIdx) {
+                if (recording) WriteSample(audioSinkIdx, sample.Get(), timestamp);
             }
-            if (recording) WriteFrame(sample.Get(), timestamp);
         }
     }
 
     VideoCaptureParams params;
     ComPtr<IMFSourceReader> reader;
     ComPtr<IMFSinkWriter> writer;
+    ComPtr<IMFMediaType> audioInputType;   // negotiated PCM type for the writer
     std::mutex writerMutex;
-    DWORD videoStreamIndex = 0;
+    DWORD videoReaderIdx = (DWORD)-1;
+    DWORD audioReaderIdx = (DWORD)-1;
+    DWORD videoSinkIdx = 0;
+    DWORD audioSinkIdx = (DWORD)-1;
     std::thread worker;
     std::atomic<bool> running{false};
     std::atomic<bool> recording{false};
     bool opened = false;
+    bool hasAudio = false;
     int camW = 0, camH = 0;
     ULONGLONG startTime = 0;
-    LONGLONG writeStartHns = 0;
-    LONGLONG rtStart = 0;
+    LONGLONG rtStart = -1;            // recording-timeline zero, shared A/V
 };
 
 // ---- Backend --------------------------------------------------------------
