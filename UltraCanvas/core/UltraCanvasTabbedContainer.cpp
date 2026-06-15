@@ -895,8 +895,6 @@ namespace UltraCanvas {
 
     bool UltraCanvasTabbedContainer::HandleMouseUp(const UCEvent &event) {
         if (draggingTabIndex >= 0) {
-            UltraCanvasApplication::GetInstance()->ReleaseMouse(this);
-
             // Tab was dragged outside the bar — fire drag-out on drop
             if (isDraggingTab && dragOutTriggered && allowTabDragOut && onTabDragOut) {
                 int tabIdx = draggingTabIndex;

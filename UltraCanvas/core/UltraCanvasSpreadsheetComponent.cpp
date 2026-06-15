@@ -105,7 +105,7 @@ SpreadsheetSheet* UltraCanvasSpreadsheet::InsertSheet(int index, const std::stri
 
 void UltraCanvasSpreadsheet::RemoveSheet(int index) {
     if (index < 0 || index >= (int)sheets_.size()) return;
-    if (sheets_.size() <= 1) return;  // Always keep at least one sheet.
+    //if (sheets_.size() <= 1) return;  // Always keep at least one sheet.
 
     sheets_.erase(sheets_.begin() + index);
 

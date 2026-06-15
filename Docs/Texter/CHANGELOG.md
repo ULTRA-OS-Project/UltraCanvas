@@ -1,3 +1,6 @@
+#### 2026-06-15 *0.1.36*
+- Merge changes from "Texter inactive icon rendering"
+
 #### 2026-06-07 *0.1.35*
 - Fix UltraCanvasTextEditorInfoFileStatistics layout (migrate from old layout)
 - Fixed crash-recovery naming so recovered tabs derive their names from actual content instead of showing stale Recovered1 … RecoveredX.

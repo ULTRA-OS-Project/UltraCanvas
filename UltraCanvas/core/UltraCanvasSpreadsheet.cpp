@@ -1,10 +1,11 @@
 // core/UltraCanvasSpreadsheet.cpp
 // Main spreadsheet UI component implementation
-// Version: 1.0.0
-// Last Modified: 2026-01-09
+// Version: 1.1.0
+// Last Modified: 2026-06-15
 // Author: UltraCanvas Framework
 
 #include <stdexcept>
+#include "UltraCanvasApplication.h"
 #include "UltraCanvasSpreadsheet.h"
 #include <algorithm>
 #include <cmath>
@@ -329,7 +330,27 @@ void UltraCanvasSpreadsheet::RenderCell(IRenderContext* ctx, int row, int col, c
     if (!sheet) return;
     
     const SpreadsheetCell* cell = sheet->GetCellIfExists(row, col);
-    
+
+    // In-cell editing: draw the live edit buffer over a clean background instead
+    // of the committed value. The caret is drawn separately by RenderEditCursor.
+    if (editMode_ == SpreadsheetEditMode::InCellEditing &&
+        row == editingCell_.row && col == editingCell_.col) {
+        ctx->SetFillPaint(Colors::White);
+        ctx->FillRectangle(Rect2Df(bounds.x, bounds.y, bounds.width, bounds.height));
+
+        ctx->SetFontFace("Arial", FontWeight::Normal, FontSlant::Normal);
+        ctx->SetFontSize(11);
+        ctx->SetTextPaint(Colors::Black);
+
+        int padding = 3;
+        int textY = bounds.y + (bounds.height - ctx->GetTextLineHeight(editBuffer_)) / 2;
+        ctx->PushState();
+        ctx->ClipRect(Rect2Df(bounds.x + 1, bounds.y + 1, bounds.width - 2, bounds.height - 2));
+        ctx->DrawText(editBuffer_, Point2Df(bounds.x + padding, textY));
+        ctx->PopState();
+        return;
+    }
+
     // Cell background
     if (cell && cell->HasCustomStyle()) {
         const auto& style = cell->GetStyle();
@@ -571,28 +592,68 @@ void UltraCanvasSpreadsheet::RenderScrollbars(IRenderContext* ctx) {
     ctx->DrawRectangle(Rect2Df(verticalScrollBounds_.x, verticalScrollBounds_.y,
                   verticalScrollBounds_.width, verticalScrollBounds_.height));
 
-    // Scrollbar thumb would be calculated based on scroll position
-    // Placeholder for now
+    // Thumb geometry: size proportional to the visible fraction of the used
+    // range, position proportional to the scroll offset (consistent with the
+    // ScrollRowFromTrackY/ScrollColumnFromTrackX drag mapping).
     auto* sheet = GetActiveSheet();
     if (sheet) {
-        // Horizontal thumb
-        float hRatio = static_cast<float>(sheet->GetScrollColumn()) / SpreadsheetLimits::MaxColumns;
-        int hThumbX = horizontalScrollBounds_.x + static_cast<int>(hRatio * (horizontalScrollBounds_.width - 40));
+        CellRange visible = GetVisibleRange();
         ctx->SetFillPaint(Color(180, 180, 180));
-        ctx->FillRectangle(Rect2Df(hThumbX, horizontalScrollBounds_.y + 2, 40, horizontalScrollBounds_.height - 4));
+
+        // Horizontal thumb
+        int maxCol = GetMaxScrollColumn();
+        int visibleCols = std::max(1, visible.end.col - visible.start.col + 1);
+        float hTrack = horizontalScrollBounds_.width;
+        float hThumbW = (maxCol > 0)
+            ? std::max(24.0f, hTrack * visibleCols / static_cast<float>(maxCol + visibleCols))
+            : hTrack;
+        float hFrac = (maxCol > 0) ? static_cast<float>(sheet->GetScrollColumn()) / maxCol : 0.0f;
+        float hThumbX = horizontalScrollBounds_.x + hFrac * (hTrack - hThumbW);
+        ctx->FillRectangle(Rect2Df(hThumbX, horizontalScrollBounds_.y + 2,
+                                   hThumbW, horizontalScrollBounds_.height - 4));
 
         // Vertical thumb
-        float vRatio = static_cast<float>(sheet->GetScrollRow()) / SpreadsheetLimits::MaxRows;
-        int vThumbY = verticalScrollBounds_.y + static_cast<int>(vRatio * (verticalScrollBounds_.height - 40));
-        ctx->FillRectangle(Rect2Df(verticalScrollBounds_.x + 2, vThumbY, verticalScrollBounds_.width - 4, 40));
+        int maxRow = GetMaxScrollRow();
+        int visibleRows = std::max(1, visible.end.row - visible.start.row + 1);
+        float vTrack = verticalScrollBounds_.height;
+        float vThumbH = (maxRow > 0)
+            ? std::max(24.0f, vTrack * visibleRows / static_cast<float>(maxRow + visibleRows))
+            : vTrack;
+        float vFrac = (maxRow > 0) ? static_cast<float>(sheet->GetScrollRow()) / maxRow : 0.0f;
+        float vThumbY = verticalScrollBounds_.y + vFrac * (vTrack - vThumbH);
+        ctx->FillRectangle(Rect2Df(verticalScrollBounds_.x + 2, vThumbY,
+                                   verticalScrollBounds_.width - 4, vThumbH));
     }
 }
 
 void UltraCanvasSpreadsheet::RenderEditCursor(IRenderContext* ctx) {
     if (!IsEditing()) return;
-    
-    // Draw blinking cursor in active cell or formula bar
-    // Implementation depends on edit mode
+
+    // Match the font used to render the edit text so the caret X lines up.
+    ctx->SetFontFace("Arial", FontWeight::Normal, FontSlant::Normal);
+    ctx->SetFontSize(11);
+
+    int caretChars = std::max(0, std::min(editCursorPos_, static_cast<int>(editBuffer_.length())));
+    int textWidth = ctx->GetTextLineWidth(editBuffer_.substr(0, caretChars));
+
+    int caretX, caretTop, caretBottom;
+    if (editMode_ == SpreadsheetEditMode::InCellEditing) {
+        Rect2Di bounds = GetCellBounds(editingCell_.row, editingCell_.col);
+        int padding = 3;
+        caretX = bounds.x + padding + textWidth;
+        caretTop = bounds.y + 3;
+        caretBottom = bounds.y + bounds.height - 3;
+    } else {
+        // Formula bar editing: text origin matches RenderFormulaBar.
+        int nameBoxWidth = 80;
+        caretX = formulaBarBounds_.x + nameBoxWidth + 10 + textWidth;
+        caretTop = formulaBarBounds_.y + 4;
+        caretBottom = formulaBarBounds_.y + formulaBarBounds_.height - 4;
+    }
+
+    ctx->SetStrokePaint(Colors::Black);
+    ctx->SetStrokeWidth(1.0f);
+    ctx->DrawLine(Point2Df(caretX, caretTop), Point2Df(caretX, caretBottom));
 }
 
 void UltraCanvasSpreadsheet::RenderClipboardIndicator(IRenderContext* ctx) {
@@ -663,6 +724,10 @@ bool UltraCanvasSpreadsheet::OnEvent(const UCEvent& event) {
 }
 
 void UltraCanvasSpreadsheet::HandleMouseDown(const UCEvent& event) {
+    // Become the focused element so keyboard navigation/editing events are
+    // routed here (the window only delivers KeyDown to the focused element).
+    SetFocus(true);
+
     mouseDown_ = true;
     mouseDownPos_ = Point2Di(event.pointer.x, event.pointer.y);
 
@@ -749,7 +814,29 @@ void UltraCanvasSpreadsheet::HandleMouseDown(const UCEvent& event) {
             editMode_ = SpreadsheetEditMode::AutoFilling;
             break;
         }
-        
+
+        case HitArea::HorizontalScrollbar: {
+            if (auto* sheet = GetActiveSheet()) {
+                draggingHScrollbar_ = true;
+                UltraCanvasApplication::GetInstance()->CaptureMouse(this);
+                sheet->SetScrollPosition(sheet->GetScrollRow(),
+                                         ScrollColumnFromTrackX(event.pointer.x));
+                Invalidate();
+            }
+            break;
+        }
+
+        case HitArea::VerticalScrollbar: {
+            if (auto* sheet = GetActiveSheet()) {
+                draggingVScrollbar_ = true;
+                UltraCanvasApplication::GetInstance()->CaptureMouse(this);
+                sheet->SetScrollPosition(ScrollRowFromTrackY(event.pointer.y),
+                                         sheet->GetScrollColumn());
+                Invalidate();
+            }
+            break;
+        }
+
         default:
             break;
     }
@@ -760,37 +847,74 @@ void UltraCanvasSpreadsheet::HandleMouseUp(const UCEvent& event) {
         resizingColumn_ = -1;
         resizingRow_ = -1;
     }
-    
+
+    draggingHScrollbar_ = false;
+    draggingVScrollbar_ = false;
     mouseDown_ = false;
-    editMode_ = SpreadsheetEditMode::Normal;
+
+    // Preserve an active editing session (e.g. started by double-click or by
+    // typing); only reset transient modes like Selecting/Resizing.
+    if (!IsEditing()) {
+        editMode_ = SpreadsheetEditMode::Normal;
+    }
 }
 
 void UltraCanvasSpreadsheet::HandleMouseMove(const UCEvent& event) {
-    if (!mouseDown_) return;
-    
-    if (editMode_ == SpreadsheetEditMode::Selecting) {
-        HitTestResult hit = HitTest(event.pointer.x, event.pointer.y);
-        if (hit.area == HitArea::Cell) {
-            CellAddress current(hit.row, hit.col);
-            if (auto* sheet = GetActiveSheet()) {
-                sheet->SelectRange(CellRange(mouseDownCell_, current));
+    // Scrollbar dragging (button held down).
+    if (draggingHScrollbar_) {
+        if (auto* sheet = GetActiveSheet()) {
+            sheet->SetScrollPosition(sheet->GetScrollRow(),
+                                     ScrollColumnFromTrackX(event.pointer.x));
+            Invalidate();
+        }
+        return;
+    }
+    if (draggingVScrollbar_) {
+        if (auto* sheet = GetActiveSheet()) {
+            sheet->SetScrollPosition(ScrollRowFromTrackY(event.pointer.y),
+                                     sheet->GetScrollColumn());
+            Invalidate();
+        }
+        return;
+    }
+
+    if (mouseDown_) {
+        if (editMode_ == SpreadsheetEditMode::Selecting) {
+            HitTestResult hit = HitTest(event.pointer.x, event.pointer.y);
+            if (hit.area == HitArea::Cell) {
+                CellAddress current(hit.row, hit.col);
+                if (auto* sheet = GetActiveSheet()) {
+                    sheet->SelectRange(CellRange(mouseDownCell_, current));
+                    Invalidate();
+                }
+            }
+        }
+        else if (editMode_ == SpreadsheetEditMode::Resizing) {
+            if (resizingColumn_ >= 0) {
+                int delta = event.pointer.x - resizeStartPos_;
+                int newWidth = std::max(10, resizeStartSize_ + delta);
+                SetColumnWidth(resizingColumn_, newWidth);
+                Invalidate();
+            }
+            else if (resizingRow_ >= 0) {
+                int delta = event.pointer.y - resizeStartPos_;
+                int newHeight = std::max(5, resizeStartSize_ + delta);
+                SetRowHeight(resizingRow_, newHeight);
                 Invalidate();
             }
         }
+        return;
     }
-    else if (editMode_ == SpreadsheetEditMode::Resizing) {
-        if (resizingColumn_ >= 0) {
-            int delta = event.pointer.x - resizeStartPos_;
-            int newWidth = std::max(10, resizeStartSize_ + delta);
-            SetColumnWidth(resizingColumn_, newWidth);
-            Invalidate();
-        }
-        else if (resizingRow_ >= 0) {
-            int delta = event.pointer.y - resizeStartPos_;
-            int newHeight = std::max(5, resizeStartSize_ + delta);
-            SetRowHeight(resizingRow_, newHeight);
-            Invalidate();
-        }
+
+    // No button held: update the mouse cursor so the user can discover that
+    // column/row boundaries are draggable (the application applies the hovered
+    // element's cursor automatically).
+    HitTestResult hit = HitTest(event.pointer.x, event.pointer.y);
+    switch (hit.area) {
+        case HitArea::ColumnResizer: SetMouseCursor(UCMouseCursor::SizeWE); break;
+        case HitArea::RowResizer:    SetMouseCursor(UCMouseCursor::SizeNS); break;
+        case HitArea::FormulaBar:    SetMouseCursor(UCMouseCursor::Text);   break;
+        default:                     SetMouseCursor(UCMouseCursor::Default); break;
     }
 }
 
@@ -834,21 +958,60 @@ void UltraCanvasSpreadsheet::HandleMouseWheel(const UCEvent& event) {
 
 void UltraCanvasSpreadsheet::HandleKeyDown(const UCEvent& event) {
     if (IsEditing()) {
-        // Handle editing keys
+        // Handle editing keys, operating on editBuffer_ / editCursorPos_.
+        int len = static_cast<int>(editBuffer_.length());
         switch (event.virtualKey) {
             case UCKeys::Enter:
                 StopEditing(true);
-                MoveActiveCell(1, 0);
-                break;
+                MoveActiveCell(event.shift ? -1 : 1, 0);
+                return;
             case UCKeys::Tab:
                 StopEditing(true);
-                MoveActiveCell(0, 1);
-                break;
+                MoveActiveCell(0, event.shift ? -1 : 1);
+                return;
             case UCKeys::Escape:
                 CancelEditing();
-                break;
+                return;
+            case UCKeys::Backspace:
+                if (editCursorPos_ > 0) {
+                    editBuffer_.erase(editCursorPos_ - 1, 1);
+                    --editCursorPos_;
+                    if (onFormulaBarChange) onFormulaBarChange();
+                }
+                Invalidate();
+                return;
+            case UCKeys::Delete:
+                if (editCursorPos_ < len) {
+                    editBuffer_.erase(editCursorPos_, 1);
+                    if (onFormulaBarChange) onFormulaBarChange();
+                }
+                Invalidate();
+                return;
+            case UCKeys::Left:
+                editCursorPos_ = std::max(0, editCursorPos_ - 1);
+                Invalidate();
+                return;
+            case UCKeys::Right:
+                editCursorPos_ = std::min(len, editCursorPos_ + 1);
+                Invalidate();
+                return;
+            case UCKeys::Home:
+                editCursorPos_ = 0;
+                Invalidate();
+                return;
+            case UCKeys::End:
+                editCursorPos_ = len;
+                Invalidate();
+                return;
             default:
                 break;
+        }
+        // Printable character: insert at caret (Linux delivers the character
+        // on the KeyDown event; there is no separate KeyChar event).
+        if (!event.ctrl && !event.alt && !event.meta &&
+            event.character >= 32 && event.character < 127) {
+            InsertTextAtCursor(std::string(1, static_cast<char>(event.character)));
+            Invalidate();
         }
         return;
     }
@@ -856,6 +1019,18 @@ void UltraCanvasSpreadsheet::HandleKeyDown(const UCEvent& event) {
     // Navigation keys
     bool shift = event.shift;
     bool ctrl = event.ctrl;
+
+    // A printable character starts editing the active cell directly (Excel-style),
+    // replacing its previous content with the typed character.
+    if (!ctrl && !event.alt && !event.meta &&
+        event.character >= 32 && event.character < 127) {
+        StartInCellEditing();
+        editBuffer_ = std::string(1, static_cast<char>(event.character));
+        editCursorPos_ = 1;
+        if (onFormulaBarChange) onFormulaBarChange();
+        Invalidate();
+        return;
+    }
 
     switch (event.virtualKey) {
         case UCKeys::Up:
@@ -1163,8 +1338,43 @@ Rect2Di UltraCanvasSpreadsheet::GetCellBounds(int row, int col) const {
     Point2Di topLeft = CellToScreen(row, col);
     int width = sheet->GetColumnWidth(col);
     int height = sheet->GetRowHeight(row);
-    
+
     return Rect2Di(topLeft.x, topLeft.y, width, height);
+}
+
+// ============================================================================
+// SCROLLBAR GEOMETRY / MAPPING
+// ============================================================================
+
+// Scrolling is bounded to the used data range so the thumb stays usable
+// (mapping the full grid of MaxRows/MaxColumns would make it effectively
+// immovable). At max scroll the last used row/column reaches the top/left.
+int UltraCanvasSpreadsheet::GetMaxScrollRow() const {
+    auto* sheet = GetActiveSheet();
+    if (!sheet) return 0;
+    return std::max(0, sheet->GetUsedRange().end.row);
+}
+
+int UltraCanvasSpreadsheet::GetMaxScrollColumn() const {
+    auto* sheet = GetActiveSheet();
+    if (!sheet) return 0;
+    return std::max(0, sheet->GetUsedRange().end.col);
+}
+
+int UltraCanvasSpreadsheet::ScrollRowFromTrackY(int y) const {
+    int maxRow = GetMaxScrollRow();
+    if (maxRow <= 0 || verticalScrollBounds_.height <= 0) return 0;
+    float frac = (y - verticalScrollBounds_.y) / verticalScrollBounds_.height;
+    frac = std::max(0.0f, std::min(1.0f, frac));
+    return static_cast<int>(frac * maxRow + 0.5f);
+}
+
+int UltraCanvasSpreadsheet::ScrollColumnFromTrackX(int x) const {
+    int maxCol = GetMaxScrollColumn();
+    if (maxCol <= 0 || horizontalScrollBounds_.width <= 0) return 0;
+    float frac = (x - horizontalScrollBounds_.x) / horizontalScrollBounds_.width;
+    frac = std::max(0.0f, std::min(1.0f, frac));
+    return static_cast<int>(frac * maxCol + 0.5f);
 }
 
 // ============================================================================

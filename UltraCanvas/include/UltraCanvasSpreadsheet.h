@@ -1,7 +1,7 @@
 // include/UltraCanvasSpreadsheet.h
 // Main spreadsheet UI component with multi-sheet support
-// Version: 1.0.0
-// Last Modified: 2026-01-09
+// Version: 1.1.0
+// Last Modified: 2026-06-15
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -106,6 +106,8 @@ private:
     int resizingRow_ = -1;
     int resizeStartSize_ = 0;
     int resizeStartPos_ = 0;
+    bool draggingHScrollbar_ = false;
+    bool draggingVScrollbar_ = false;
     
     bool showGridlines_ = true;
     bool showRowHeaders_ = true;
@@ -425,6 +427,12 @@ private:
     CellAddress ScreenToCell(int x, int y) const;
     CellRange GetVisibleRange() const;
     bool IsCellVisible(int row, int col) const;
+
+    // Scrollbar geometry/mapping (shared by RenderScrollbars and drag handling)
+    int GetMaxScrollRow() const;
+    int GetMaxScrollColumn() const;
+    int ScrollRowFromTrackY(int y) const;
+    int ScrollColumnFromTrackX(int x) const;
 };
 
 // ============================================================================

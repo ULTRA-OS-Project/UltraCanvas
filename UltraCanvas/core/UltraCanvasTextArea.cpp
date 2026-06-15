@@ -1243,13 +1243,11 @@ namespace UltraCanvas {
                 case UCEventType::MouseUp:
                     if (isDraggingVerticalThumb) {
                         isDraggingVerticalThumb = false;
-                        UltraCanvasApplication::GetInstance()->ReleaseMouse(this);
                         return true;
                     }
                     if (hexIsSelectingWithMouse) {
                         hexIsSelectingWithMouse = false;
                         hexSelectionAnchor = -1;
-                        UltraCanvasApplication::GetInstance()->ReleaseMouse(this);
                         RequestRedraw();
                     }
                     return true;
@@ -1529,7 +1527,6 @@ namespace UltraCanvas {
         if (isDraggingVerticalThumb || isDraggingHorizontalThumb) {
             isDraggingVerticalThumb = false;
             isDraggingHorizontalThumb = false;
-            UltraCanvasApplication::GetInstance()->ReleaseMouse(this);
             return true;
         }
 
@@ -1537,7 +1534,6 @@ namespace UltraCanvas {
         if (isSelectingText) {
             isSelectingText = false;
             selectionAnchor = LineColumnIndex::INVALID;
-            UltraCanvasApplication::GetInstance()->ReleaseMouse(this);
 
             // If start equals end, there's no real selection — clear it
             if (selectionStart.lineIndex >= 0 &&

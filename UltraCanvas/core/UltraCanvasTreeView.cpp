@@ -825,7 +825,6 @@ namespace UltraCanvas {
 
     bool UltraCanvasTreeView::HandleMouseUp(const UCEvent &event) {
 //        if (isDragging)  {
-//            UltraCanvasApplication::GetInstance()->ReleaseMouse(this);
 //            isDragging = false;
 //            return true;
 //        }

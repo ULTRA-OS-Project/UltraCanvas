@@ -350,12 +350,6 @@ namespace UltraCanvas {
                               interactionState.downArrowPressed ||
                               interactionState.trackPressed;
 
-        if (interactionState.isDragging) {
-            if (auto* app = UltraCanvasApplication::GetInstance()) {
-                app->ReleaseMouse(this);
-            }
-        }
-
         interactionState.isDragging = false;
         interactionState.thumbPressed = false;
         interactionState.upArrowPressed = false;

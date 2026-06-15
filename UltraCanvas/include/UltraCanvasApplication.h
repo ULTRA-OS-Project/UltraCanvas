@@ -76,7 +76,7 @@ namespace UltraCanvas {
         std::vector<std::function<bool(const UCEvent&)>> globalEventHandlers;
         std::function<void()> eventLoopCallback;
 
-        UCEvent lastMouseEvent;
+        UCMouseButton capturedMouseButtonDown = UCMouseButton::NoneButton;
         UCEvent currentEvent;
         std::chrono::steady_clock::time_point lastClickTime;
         const float DOUBLE_CLICK_TIME = 0;
@@ -148,7 +148,7 @@ namespace UltraCanvas {
 
         // ===== MOUSE CAPTURE =====
         void CaptureMouse(UltraCanvasUIElement* element);
-        void ReleaseMouse(UltraCanvasUIElement* element);
+        void ReleaseMouse();
 
         // System font detection
         FontStyle GetSystemFontStyle();
@@ -184,7 +184,6 @@ namespace UltraCanvas {
         virtual void ReleaseMouseNative() = 0;
 
 
-        bool IsDoubleClick(const UCEvent &event);
         void CleanupWindowReferences(UltraCanvasWindowBase* window);
         virtual void CollectAndProcessNativeEvents() = 0;
 
