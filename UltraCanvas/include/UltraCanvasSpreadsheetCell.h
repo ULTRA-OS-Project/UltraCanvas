@@ -933,23 +933,52 @@ inline void SpreadsheetCell::UpdateDisplayValue() const {
 
 inline std::string SpreadsheetCell::FormatNumber(double value) const {
     const NumberFormat& fmt = GetStyle().numberFormat;
-    
-    // Simple formatting - a full implementation would use the format string
+
     char buffer[64];
-    
+
+    // Insert thousands separators into the integer part of a (non-negative)
+    // numeric string, preserving any fractional ".xx" tail.
+    auto groupThousands = [](const std::string& number) -> std::string {
+        std::string intPart = number;
+        std::string fracPart;
+        auto dot = number.find('.');
+        if (dot != std::string::npos) {
+            intPart = number.substr(0, dot);
+            fracPart = number.substr(dot);  // includes the '.'
+        }
+        std::string out;
+        int n = static_cast<int>(intPart.size());
+        for (int i = 0; i < n; ++i) {
+            if (i > 0 && (n - i) % 3 == 0) out.push_back(',');
+            out.push_back(intPart[i]);
+        }
+        return out + fracPart;
+    };
+
     switch (fmt.category) {
         case NumberFormatCategory::Percentage:
-            snprintf(buffer, sizeof(buffer), "%.*f%%", fmt.decimalPlaces, value * 100.0);
-            break;
-
-        case NumberFormatCategory::Currency:
-            snprintf(buffer, sizeof(buffer), "%s%.*f",
-                     fmt.currencySymbol.c_str(), fmt.decimalPlaces, value);
-            break;
+            snprintf(buffer, sizeof(buffer), "%.*f", fmt.decimalPlaces, value * 100.0);
+            return std::string(buffer) + "%";
 
         case NumberFormatCategory::Scientific:
             snprintf(buffer, sizeof(buffer), "%.*e", fmt.decimalPlaces, value);
-            break;
+            return std::string(buffer);
+
+        case NumberFormatCategory::Currency:
+        case NumberFormatCategory::Accounting: {
+            bool negative = value < 0.0;
+            snprintf(buffer, sizeof(buffer), "%.*f", fmt.decimalPlaces, std::fabs(value));
+            std::string num = fmt.useThousandsSeparator ? groupThousands(buffer)
+                                                        : std::string(buffer);
+            std::string body = fmt.currencySymbolAfter
+                ? num + " " + fmt.currencySymbol
+                : fmt.currencySymbol + num;
+            if (!negative) return body;
+            // Accounting wraps negatives in parentheses; currency uses a sign.
+            return (fmt.category == NumberFormatCategory::Accounting)
+                ? "(" + body + ")"
+                : "-" + body;
+        }
 
         case NumberFormatCategory::General: {
             // "General": show integers without a decimal point and other
@@ -960,20 +989,23 @@ inline std::string SpreadsheetCell::FormatNumber(double value) const {
             } else {
                 snprintf(buffer, sizeof(buffer), "%.10g", value);
             }
-            break;
+            return std::string(buffer);
         }
 
         case NumberFormatCategory::Number:
-        default:
-            if (fmt.decimalPlaces == 0 && value == std::floor(value)) {
-                snprintf(buffer, sizeof(buffer), "%.0f", value);
+        default: {
+            bool negative = value < 0.0;
+            double mag = std::fabs(value);
+            if (fmt.decimalPlaces == 0 && mag == std::floor(mag)) {
+                snprintf(buffer, sizeof(buffer), "%.0f", mag);
             } else {
-                snprintf(buffer, sizeof(buffer), "%.*f", fmt.decimalPlaces, value);
+                snprintf(buffer, sizeof(buffer), "%.*f", fmt.decimalPlaces, mag);
             }
-            break;
+            std::string num = fmt.useThousandsSeparator ? groupThousands(buffer)
+                                                        : std::string(buffer);
+            return negative ? "-" + num : num;
+        }
     }
-
-    return std::string(buffer);
 }
 
 inline std::string SpreadsheetCell::FormatDate(const DateTimeValue& value) const {

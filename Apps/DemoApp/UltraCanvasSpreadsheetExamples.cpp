@@ -16,40 +16,66 @@ namespace UltraCanvas {
 
     namespace {
         // Seed the grid with a little sample data so the element is meaningful
-        // before the user loads a file of their own.
+        // before the user loads a file of their own. It also exercises the
+        // formatting features: per-column widths, a taller header row, currency
+        // and percentage number formats, and a SUM whose covered area is
+        // highlighted when the totals cell is selected.
         void SeedSampleData(UltraCanvasSpreadsheet* sheet) {
             if (!sheet) return;
 
-            const char* headers[] = { "Class", "Assignment", "Status", "Grade", "Weight" };
+            // Currency formatted like the European samples: "28,869.80 €".
+            const NumberFormat euro = NumberFormat::Currency("€", 2, /*symbolAfter*/true);
+            const NumberFormat pct  = NumberFormat::Percentage(2);
+
+            // --- Column widths and a taller, wrapped header row ---
+            const int widths[] = { 120, 90, 130, 110, 90 };
+            for (int c = 0; c < 5; ++c) sheet->SetColumnWidth(c, widths[c]);
+            sheet->SetRowHeight(0, 28);
+
+            const char* headers[] = { "Month", "Refunds", "Sales", "Chargebacks", "CBK %" };
             for (int c = 0; c < 5; ++c) {
                 sheet->SetCellValue(0, c, std::string(headers[c]));
                 sheet->GetCell(0, c)->SetBold(true);
             }
 
-            struct Row { const char* cls; const char* asg; const char* status; const char* grade; double weight; };
+            struct Row { const char* month; int refunds; double sales; double chargebacks; double cbkPct; };
             const Row rows[] = {
-                { "Calculus 1",        "Module 03 content",  "In Progress", "A",  0.10 },
-                { "Quantum Mechanics", "Final project",      "Not Started", "B+", 0.25 },
-                { "Algebra",           "Midterm Exam",       "In Progress", "C",  0.15 },
-                { "History + Theory",  "Presentation",       "On Hold",     "A+", 0.10 },
-                { "Fluid Dynamics",    "Module 02 content",  "In Progress", "B",  0.50 },
+                { "06.2016", 22, 28869.80, 278.80, 0.0097 },
+                { "07.2016", 21, 32788.00, 327.00, 0.0100 },
+                { "08.2016", 42, 30913.90, 444.80, 0.0144 },
+                { "09.2016", 27, 30877.25, 855.80, 0.0277 },
+                { "10.2016", 36, 27515.40,  25.90, 0.0009 },
+                { "11.2016", 27, 26412.90, 304.00, 0.0115 },
+                { "12.2016",  8, 22282.30, 1035.0, 0.0464 },
             };
 
             int r = 1;
             for (const auto& row : rows) {
-                sheet->SetCellValue(r, 0, std::string(row.cls));
-                sheet->SetCellValue(r, 1, std::string(row.asg));
-                sheet->SetCellValue(r, 2, std::string(row.status));
-                sheet->SetCellValue(r, 3, std::string(row.grade));
-                // Percentage weight (0.10 -> 10%)
-                sheet->GetCell(r, 4)->SetPercentage(row.weight);
+                sheet->SetCellValue(r, 0, std::string(row.month));
+                sheet->GetCell(r, 1)->SetNumber(row.refunds);
+                sheet->GetCell(r, 2)->SetNumber(row.sales);
+                sheet->GetCell(r, 2)->SetNumberFormat(euro);
+                sheet->GetCell(r, 3)->SetNumber(row.chargebacks);
+                sheet->GetCell(r, 3)->SetNumberFormat(euro);
+                sheet->GetCell(r, 4)->SetNumber(row.cbkPct);
+                sheet->GetCell(r, 4)->SetNumberFormat(pct);
                 ++r;
             }
 
-            // A simple formula cell demonstrating the engine.
-            sheet->SetCellValue(7, 0, std::string("Total weight"));
-            sheet->GetCell(7, 0)->SetBold(true);
-            sheet->SetCellFormula(7, 4, "=SUM(E2:E6)");
+            // Totals row: SUM formulas. Selecting one of these cells highlights
+            // the range of cells it covers (e.g. C2:C8 for Sales).
+            const int totalRow = r + 1;  // leave a blank spacer row
+            sheet->SetCellValue(totalRow, 0, std::string("07 to 12/2016"));
+            sheet->GetCell(totalRow, 0)->SetBold(true);
+
+            sheet->SetCellFormula(totalRow, 1, "=SUM(B2:B8)");
+            sheet->SetCellFormula(totalRow, 2, "=SUM(C2:C8)");
+            sheet->GetCell(totalRow, 2)->SetNumberFormat(euro);
+            sheet->SetCellFormula(totalRow, 3, "=SUM(D2:D8)");
+            sheet->GetCell(totalRow, 3)->SetNumberFormat(euro);
+            // Overall CBK %: chargebacks total over sales total.
+            sheet->SetCellFormula(totalRow, 4, "=SUM(D2:D8)/SUM(C2:C8)");
+            sheet->GetCell(totalRow, 4)->SetNumberFormat(pct);
 
             sheet->Recalculate();
         }

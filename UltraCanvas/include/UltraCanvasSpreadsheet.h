@@ -385,6 +385,7 @@ private:
     void RenderCells(IRenderContext* ctx);
     void RenderCell(IRenderContext* ctx, int row, int col, const Rect2Di& bounds);
     void RenderSelection(IRenderContext* ctx);
+    void RenderFormulaRangeHighlights(IRenderContext* ctx);
     void RenderFreezeLines(IRenderContext* ctx);
     void RenderSheetTabs(IRenderContext* ctx);
     void RenderScrollbars(IRenderContext* ctx);
