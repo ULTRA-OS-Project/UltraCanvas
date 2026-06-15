@@ -2,8 +2,11 @@
 // Demonstration of UltraCanvasAlbum: layout designs, image-fit modes, action-icon
 // display options and visitor / user-edit / admin modes for a mixed photo / video
 // / music album.
-// Version: 2.2.0
+// Version: 2.3.0
 // Last Modified: 2026-06-15
+// V2.3.0: Option buttons are now radio groups that highlight the active choice
+//   (gold border + warm fill), matching the slideshow example, so the page
+//   always shows which album options are currently selected.
 // V2.2.0: Added a photo-only "View full size" action (and double-click) that
 //   opens the image in a lightbox window with a related-text panel (title,
 //   subtitle and a longer per-photo description).
@@ -54,15 +57,32 @@ namespace UltraCanvas {
             return row;
         }
 
-        // Append a bold label followed by a row of fixed-size buttons into `row`.
-        // onPick(i) fires for button i. Buttons keep their pixel size (grow/shrink 0).
-        // Returns the created buttons so callers can enable / disable them.
+        // Paint an option button in its normal or selected state. Mirrors the
+        // slideshow example: the active choice gets a gold border + warm fill so
+        // the page always shows which option is currently applied.
+        inline void StyleOptionButton(UltraCanvasButton* b, bool selected) {
+            const Color baseBg(255, 255, 255, 255);
+            const Color selBg(246, 214, 158, 255);     // warm highlight
+            const Color baseBorder(0, 0, 0, 77);
+            const Color selBorder(201, 143, 46, 255);  // #C98F2E gold
+            const Color text(40, 40, 40, 255);
+            b->SetColors(selected ? selBg : baseBg, selBg);
+            b->SetTextColors(text);
+            b->SetBorder(selected ? 2.0f : 1.0f, selected ? selBorder : baseBorder);
+        }
+
+        // Append a bold label followed by a radio row of fixed-size buttons into
+        // `row`. onPick(i) fires for button i; clicking a button highlights it and
+        // clears its siblings, so the row always reflects the current selection.
+        // `selectedIndex` marks the initially-active button (-1 = none). Returns
+        // the created buttons so callers can enable / disable them.
         template <typename Fn>
         std::vector<std::shared_ptr<UltraCanvasButton>> AppendLabeledButtons(
                                   const std::shared_ptr<UltraCanvasContainer>& row,
                                   const std::string& idPrefix, const char* labelText,
                                   int labelW, int btnW, int btnH,
-                                  const std::vector<const char*>& labels, Fn onPick) {
+                                  const std::vector<const char*>& labels, Fn onPick,
+                                  int selectedIndex = -1) {
             auto lbl = std::make_shared<UltraCanvasLabel>(idPrefix + "lbl", 0, 0, labelW, btnH);
             lbl->SetText(labelText);
             lbl->SetFontSize(12);
@@ -73,16 +93,24 @@ namespace UltraCanvas {
             lbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
             row->AddChild(lbl);
 
+            // Shared list of the row's buttons so a click can restyle siblings.
+            auto group = std::make_shared<std::vector<UltraCanvasButton*>>();
             std::vector<std::shared_ptr<UltraCanvasButton>> buttons;
             for (size_t i = 0; i < labels.size(); ++i) {
                 auto b = std::make_shared<UltraCanvasButton>(
                         idPrefix + std::to_string(i), 0, 0, btnW, btnH, labels[i]);
                 b->SetFontSize(11);
                 b->SetCornerRadius(4.0f);
+                StyleOptionButton(b.get(), static_cast<int>(i) == selectedIndex);
                 int idx = static_cast<int>(i);
-                b->SetOnClick([idx, onPick]() { onPick(idx); });
+                auto* raw = b.get();
+                b->SetOnClick([idx, onPick, group, raw]() {
+                    for (auto* gb : *group) StyleOptionButton(gb, gb == raw);
+                    onPick(idx);
+                });
                 b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
                 row->AddChild(b);
+                group->push_back(raw);
                 buttons.push_back(b);
             }
             return buttons;
@@ -393,7 +421,7 @@ namespace UltraCanvas {
                                                  "Mosaic","Filmstrip","Cards"};
                           std::ostringstream o; o << "Layout: " << names[i];
                           statusPtr->SetText(o.str());
-                      });
+                      }, 0);  // UniformGrid is the default
         controls->AddChild(layoutRow);
 
         // ----- Crop-focus picker (built first so the image-fit callback can
@@ -406,7 +434,7 @@ namespace UltraCanvas {
                       [albumPtr](int i) {
                           const Point2Df fv[] = {{0.0f, 0.0f}, {0.5f, 0.5f}, {1.0f, 1.0f}};
                           albumPtr->SetAllItemsFocus(fv[i]);
-                      });
+                      }, 1);  // Center is the default focus
         auto setFocusEnabled = [focusBtns](bool enabled) {
             for (auto& b : focusBtns) b->SetDisabled(!enabled);
         };
@@ -424,7 +452,7 @@ namespace UltraCanvas {
                           // Crop focus applies to the Crop (and Zoom) fits only.
                           setFocusEnabled(fitVals[i] == AlbumImageDisplay::Crop ||
                                           fitVals[i] == AlbumImageDisplay::Zoom);
-                      });
+                      }, 0);  // Crop is the default image fit
         controls->AddChild(fitRow);
 
         // Crop is the default image fit, so the focus picker starts enabled.
@@ -446,7 +474,7 @@ namespace UltraCanvas {
                           o << "Mode: " << names[i]
                             << (i == 0 ? " — view only" : " — drag to reorder, right-click for actions");
                           statusPtr->SetText(o.str());
-                      });
+                      }, 0);  // Display (visitor) is the default
         controls->AddChild(modeRow);
 
         // ----- Action-icon display picker -----
@@ -463,14 +491,14 @@ namespace UltraCanvas {
                               default: c.actionDisplay = AlbumActionDisplay::Hidden; break;
                           }
                           albumPtr->SetConfig(c);
-                      });
+                      }, 1);  // On hover is the default
         controls->AddChild(actRow);
 
         // ----- Sizing + captions on one line -----
         auto sizeRow = MakeRow("album_size_row");
         AppendLabeledButtons(sizeRow, "album_cols_", "Per row", kLabelW, 64, 28,
                       {"3", "4", "5", "6"},
-                      [albumPtr](int i) { albumPtr->SetItemsPerRow(3 + i); });
+                      [albumPtr](int i) { albumPtr->SetItemsPerRow(3 + i); }, 1);  // 4 per row
         sizeRow->AddSpacer(24);
         AppendLabeledButtons(sizeRow, "album_cap_", "Caption", 70, 92, 28,
                       {"Below", "Overlay", "Hidden"},
@@ -480,7 +508,7 @@ namespace UltraCanvas {
                                              : (i == 1) ? AlbumCaptionPlacement::OverlayBottom
                                                         : AlbumCaptionPlacement::Hidden;
                           albumPtr->SetConfig(c);
-                      });
+                      }, 0);  // Below is the default
         controls->AddChild(sizeRow);
 
         root->AddChild(controls);
