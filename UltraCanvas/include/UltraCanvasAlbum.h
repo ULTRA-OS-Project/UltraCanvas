@@ -223,6 +223,11 @@ namespace UltraCanvas {
         void SetImageDisplay(AlbumImageDisplay d);
         void SetActionDisplay(AlbumActionDisplay d);
 
+        // Set the crop / zoom focus point (0..1) on every item at once. Used by
+        // the "Crop focus" control: it only has a visible effect under the Crop /
+        // Zoom image-fit modes, which place the image by each item's focus point.
+        void SetAllItemsFocus(const Point2Df& focus);
+
         // Sizing helpers
         void SetItemsPerRow(int count);
         void SetTargetImageSize(int width, int height);
@@ -290,6 +295,12 @@ namespace UltraCanvas {
 
         // Hover / interaction
         int  hoveredItem = -1;
+
+        // Which action icon the cursor currently sits on, so a tooltip is shown
+        // once on enter rather than re-issued on every mouse move. Mirrors the
+        // ActionAt() return convention: -2 = none, -1 = the kebab/menu icon.
+        int    hoveredActionIndex = -2;
+        size_t hoveredActionItem  = 0;
 
         // Action-button hit rects recomputed each frame.
         struct ActionHit {

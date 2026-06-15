@@ -2,8 +2,12 @@
 // Demonstration of UltraCanvasAlbum: layout designs, image-fit modes, action-icon
 // display options and visitor / user-edit / admin modes for a mixed photo / video
 // / music album.
-// Version: 2.0.0
-// Last Modified: 2026-06-14
+// Version: 2.1.0
+// Last Modified: 2026-06-15
+// V2.1.0: Action icons use SVG art (edit / add_text / delete) with hover
+//   tooltips; option labels dropped the trailing ":" and are vertically
+//   centred; the image-fit "Crop" button is plain and a "Crop focus" row was
+//   added that activates only under the Crop / Zoom fits.
 // V2.0.0: Rebuilt with a Flex-column layout (per the project layout guideline)
 //   instead of a fixed 1000x990 absolutely-positioned root. The header and the
 //   control rows are pinned; the album grows to fill the remaining space and
@@ -47,8 +51,10 @@ namespace UltraCanvas {
 
         // Append a bold label followed by a row of fixed-size buttons into `row`.
         // onPick(i) fires for button i. Buttons keep their pixel size (grow/shrink 0).
+        // Returns the created buttons so callers can enable / disable them.
         template <typename Fn>
-        void AppendLabeledButtons(const std::shared_ptr<UltraCanvasContainer>& row,
+        std::vector<std::shared_ptr<UltraCanvasButton>> AppendLabeledButtons(
+                                  const std::shared_ptr<UltraCanvasContainer>& row,
                                   const std::string& idPrefix, const char* labelText,
                                   int labelW, int btnW, int btnH,
                                   const std::vector<const char*>& labels, Fn onPick) {
@@ -56,9 +62,13 @@ namespace UltraCanvas {
             lbl->SetText(labelText);
             lbl->SetFontSize(12);
             lbl->SetFontWeight(FontWeight::Bold);
+            // Vertically centre the label text against the buttons (matches the
+            // slideshow example, where option labels are mid-aligned to their row).
+            lbl->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
             lbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
             row->AddChild(lbl);
 
+            std::vector<std::shared_ptr<UltraCanvasButton>> buttons;
             for (size_t i = 0; i < labels.size(); ++i) {
                 auto b = std::make_shared<UltraCanvasButton>(
                         idPrefix + std::to_string(i), 0, 0, btnW, btnH, labels[i]);
@@ -68,7 +78,9 @@ namespace UltraCanvas {
                 b->SetOnClick([idx, onPick]() { onPick(idx); });
                 b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
                 row->AddChild(b);
+                buttons.push_back(b);
             }
+            return buttons;
         }
     } // namespace
 
@@ -173,25 +185,29 @@ namespace UltraCanvas {
         auto* statusPtr = status.get();
 
         // ===== Actions (gated per mode) =====
-        AlbumAction open;
-        open.id = "open"; open.label = "Open";
-        open.inDisplay = true; open.inUserEdit = true; open.inAdmin = true;
-        AlbumAction fav;
-        fav.id = "fav"; fav.label = "Favourite";
-        fav.inDisplay = true; fav.inUserEdit = true; fav.inAdmin = true;
+        // Each action carries an SVG icon (drawn on the overlay button and in the
+        // context menu) and a label that doubles as the icon's hover tooltip.
+        const std::string iconRoot = NormalizePath(GetResourcesDir() + "media/icons/");
+
+        AlbumAction comment;
+        comment.id = "comment"; comment.label = "Add comment";
+        comment.iconPath = iconRoot + "add_text.svg";
+        comment.inDisplay = true; comment.inUserEdit = true; comment.inAdmin = true;
+        AlbumAction edit;
+        edit.id = "edit"; edit.label = "Edit";
+        edit.iconPath = iconRoot + "edit.svg";
+        edit.inDisplay = false; edit.inUserEdit = true; edit.inAdmin = true;  // hidden from visitors
         AlbumAction del;
         del.id = "delete"; del.label = "Delete";
-        del.inDisplay = false; del.inUserEdit = true; del.inAdmin = true;  // hidden from visitors
-        AlbumAction hide;
-        hide.id = "moderate"; hide.label = "Hide (admin)";
-        hide.inDisplay = false; hide.inUserEdit = false; hide.inAdmin = true; // admin only
+        del.iconPath = iconRoot + "delete.svg";
+        del.inDisplay = false; del.inUserEdit = true; del.inAdmin = true;     // hidden from visitors
 
-        open.onTrigger = [albumPtr, statusPtr](size_t i) {
-            std::ostringstream o; o << "Open: " << albumPtr->GetItems()[i].title;
+        comment.onTrigger = [albumPtr, statusPtr](size_t i) {
+            std::ostringstream o; o << "Add comment: " << albumPtr->GetItems()[i].title;
             statusPtr->SetText(o.str());
         };
-        fav.onTrigger = [albumPtr, statusPtr](size_t i) {
-            std::ostringstream o; o << "Favourited: " << albumPtr->GetItems()[i].title;
+        edit.onTrigger = [albumPtr, statusPtr](size_t i) {
+            std::ostringstream o; o << "Edit: " << albumPtr->GetItems()[i].title;
             statusPtr->SetText(o.str());
         };
         del.onTrigger = [albumPtr, statusPtr](size_t i) {
@@ -199,14 +215,9 @@ namespace UltraCanvas {
             statusPtr->SetText(o.str());
             albumPtr->RemoveItem(i);
         };
-        hide.onTrigger = [albumPtr, statusPtr](size_t i) {
-            std::ostringstream o; o << "Hidden by admin: " << albumPtr->GetItems()[i].title;
-            statusPtr->SetText(o.str());
-        };
-        album->AddAction(open);
-        album->AddAction(fav);
+        album->AddAction(comment);
+        album->AddAction(edit);
         album->AddAction(del);
-        album->AddAction(hide);
 
         album->onItemActivated = [albumPtr, statusPtr](size_t i) {
             std::ostringstream o; o << "Activated (open/play): " << albumPtr->GetItems()[i].title;
@@ -232,7 +243,7 @@ namespace UltraCanvas {
             AlbumLayout::Mosaic, AlbumLayout::Filmstrip, AlbumLayout::Cards
         };
         auto layoutRow = MakeRow("album_layout_row");
-        AppendLabeledButtons(layoutRow, "album_layout_", "Layout:", kLabelW, 110, 28,
+        AppendLabeledButtons(layoutRow, "album_layout_", "Layout", kLabelW, 110, 28,
                       {"Uniform Grid", "Justified", "Masonry", "Mosaic", "Filmstrip", "Cards"},
                       [albumPtr, statusPtr, layoutVals](int i) {
                           albumPtr->SetLayout(layoutVals[i]);
@@ -243,21 +254,45 @@ namespace UltraCanvas {
                       });
         controls->AddChild(layoutRow);
 
+        // ----- Crop-focus picker (built first so the image-fit callback can
+        //       enable / disable it). The focus point only has a visible effect
+        //       under the Crop / Zoom fits, so it is greyed out otherwise. -----
+        auto focusRow = MakeRow("album_focus_row");
+        auto focusBtns = AppendLabeledButtons(focusRow, "album_focus_", "Crop focus",
+                      kLabelW, 110, 28,
+                      {"Top-left", "Center", "Bottom-right"},
+                      [albumPtr](int i) {
+                          const Point2Df fv[] = {{0.0f, 0.0f}, {0.5f, 0.5f}, {1.0f, 1.0f}};
+                          albumPtr->SetAllItemsFocus(fv[i]);
+                      });
+        auto setFocusEnabled = [focusBtns](bool enabled) {
+            for (auto& b : focusBtns) b->SetDisabled(!enabled);
+        };
+
         // ----- Image-fit picker -----
         const AlbumImageDisplay fitVals[] = {
             AlbumImageDisplay::Crop, AlbumImageDisplay::Zoom,
             AlbumImageDisplay::Stretch, AlbumImageDisplay::Fit
         };
         auto fitRow = MakeRow("album_fit_row");
-        AppendLabeledButtons(fitRow, "album_fit_", "Image fit:", kLabelW, 110, 28,
-                      {"Crop (focus)", "Zoom", "Stretch", "Fit"},
-                      [albumPtr, fitVals](int i) { albumPtr->SetImageDisplay(fitVals[i]); });
+        AppendLabeledButtons(fitRow, "album_fit_", "Image fit", kLabelW, 110, 28,
+                      {"Crop", "Zoom", "Stretch", "Fit"},
+                      [albumPtr, fitVals, setFocusEnabled](int i) {
+                          albumPtr->SetImageDisplay(fitVals[i]);
+                          // Crop focus applies to the Crop (and Zoom) fits only.
+                          setFocusEnabled(fitVals[i] == AlbumImageDisplay::Crop ||
+                                          fitVals[i] == AlbumImageDisplay::Zoom);
+                      });
         controls->AddChild(fitRow);
+
+        // Crop is the default image fit, so the focus picker starts enabled.
+        setFocusEnabled(true);
+        controls->AddChild(focusRow);
 
         // ----- Mode picker -----
         const AlbumMode modeVals[] = { AlbumMode::Display, AlbumMode::UserEdit, AlbumMode::Admin };
         auto modeRow = MakeRow("album_mode_row");
-        AppendLabeledButtons(modeRow, "album_mode_", "Mode:", kLabelW, 130, 28,
+        AppendLabeledButtons(modeRow, "album_mode_", "Mode", kLabelW, 130, 28,
                       {"Display (visitor)", "User edit", "Admin"},
                       [albumPtr, statusPtr, modeVals](int i) {
                           albumPtr->SetMode(modeVals[i]);
@@ -274,7 +309,7 @@ namespace UltraCanvas {
 
         // ----- Action-icon display picker -----
         auto actRow = MakeRow("album_act_row");
-        AppendLabeledButtons(actRow, "album_act_", "Actions:", kLabelW, 130, 28,
+        AppendLabeledButtons(actRow, "album_act_", "Actions", kLabelW, 130, 28,
                       {"Always", "On hover", "Menu (+icon)", "Menu (no icon)", "Hidden"},
                       [albumPtr](int i) {
                           AlbumConfig c = albumPtr->GetConfig();
@@ -291,11 +326,11 @@ namespace UltraCanvas {
 
         // ----- Sizing + captions on one line -----
         auto sizeRow = MakeRow("album_size_row");
-        AppendLabeledButtons(sizeRow, "album_cols_", "Per row:", kLabelW, 64, 28,
+        AppendLabeledButtons(sizeRow, "album_cols_", "Per row", kLabelW, 64, 28,
                       {"3", "4", "5", "6"},
                       [albumPtr](int i) { albumPtr->SetItemsPerRow(3 + i); });
         sizeRow->AddSpacer(24);
-        AppendLabeledButtons(sizeRow, "album_cap_", "Caption:", 70, 92, 28,
+        AppendLabeledButtons(sizeRow, "album_cap_", "Caption", 70, 92, 28,
                       {"Below", "Overlay", "Hidden"},
                       [albumPtr](int i) {
                           AlbumConfig c = albumPtr->GetConfig();
