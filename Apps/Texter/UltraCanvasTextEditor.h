@@ -125,6 +125,12 @@ namespace UltraCanvas {
         bool hasBOM;                           // Whether the file had a BOM
         LineEndingType eolType = UltraCanvasTextArea::GetSystemDefaultLineEnding(); // Line ending type
 
+        // Hash of the in-memory content (UltraCanvasTextArea::GetText) at the last
+        // saved/loaded clean state. Used to re-derive the modified flag on every
+        // edit, so that undoing/redoing back to the saved content clears the
+        // "unsaved" status (and vice-versa).
+        size_t savedContentHash = 0;
+
         DocumentTab()
                 : documentId(-1)
                 , isModified(false)
@@ -313,6 +319,11 @@ namespace UltraCanvas {
         const DocumentTab* GetActiveDocument() const;
         int FindDocumentIndexById(int documentId) const;
         void SetDocumentModified(int index, bool modified);
+        // Record the current content as the clean baseline (call after load/save).
+        void CaptureSavedContentBaseline(DocumentTab* doc);
+        // Re-derive the modified flag by comparing the given content to the saved
+        // baseline; updates the toolbar save icon and tab status marker.
+        void RefreshModifiedStateFromContent(int index, const std::string& currentContent);
         void UpdateTabTitle(int index);
         void UpdateTabBadge(int index);
 
