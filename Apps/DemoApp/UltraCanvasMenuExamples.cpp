@@ -87,15 +87,13 @@ namespace UltraCanvas {
                 "ContextWrongClickText", 62, 10, 268, 44);
         contextWrongClickText->SetTextIsMarkup(true);
         contextWrongClickText->SetWrap(TextWrap::WrapWord);
-        contextWrongClickText->SetText("Can't you read? I said <b>Right click</b> not <b>Left click</b>!");
+        contextWrongClickText->SetText("Can't you read?\nI said <b>Right click</b> not <b>Left click</b>!");
         contextWrongClickPopup->AddChild(contextWrongClickText);
 
         // Set click handler for button: right-click opens the menu, left-click scolds.
         contextMenuBtn->onClick = [contextMenu, contextWrongClickPopup, contextMenuBtn, container]() {
             auto ev = UltraCanvasApplication::GetInstance()->GetCurrentEvent();
             if (ev.button == UCMouseButton::Right) {
-                // move menu to window container
-//                container->GetWindow()->AddChild(contextMenu);
                 contextMenu->OpenMenu(ev.pointerWindow, *container->GetWindow(), PopupElementSettings());
             } else if (ev.button == UCMouseButton::Left) {
                 container->GetWindow()->OpenPopup(ev.pointerWindow, *contextWrongClickPopup, PopupElementSettings());
