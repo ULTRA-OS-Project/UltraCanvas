@@ -912,30 +912,58 @@ private:
 
 class CSVLoader {
 public:
+    // Load a CSV file into the sheet using the shared import module. The options
+    // control encoding, separators, the start row and number recognition. When
+    // 'detect' is true the options are auto-detected from the file first.
     static bool Load(const std::string& filePath, SpreadsheetSheet* sheet,
-                     char delimiter = ',', char quote = '"', bool hasHeader = false) {
-        std::ifstream file(filePath);
-        if (!file.is_open()) return false;
-        
-        std::string line;
-        int row = 0;
-        
-        while (std::getline(file, line) && row < SpreadsheetLimits::MaxRows) {
-            std::vector<std::string> fields = ParseCSVLine(line, delimiter, quote);
-            
-            for (int col = 0; col < static_cast<int>(fields.size()) && col < SpreadsheetLimits::MaxColumns; ++col) {
-                const std::string& value = fields[col];
-                if (!value.empty()) {
-                    SpreadsheetCell* cell = sheet->GetCell(row, col);
-                    cell->SetValueFromString(value);
-                }
-            }
-            ++row;
+                     const CSVImportOptions& options, bool detect = false) {
+        std::string raw;
+        if (!CSVReadFileRaw(filePath, raw)) return false;
+
+        CSVImportOptions opt = options;
+        if (detect) {
+            CSVImportOptions detected =
+                CSVDetectOptions(raw.substr(0, std::min<size_t>(raw.size(), 64 * 1024)));
+            // Keep the caller's encoding only if they forced one via 'options';
+            // otherwise adopt every detected setting.
+            opt = detected;
         }
-        
+
+        CSVGrid grid = CSVParse(CSVDecodeToUtf8(raw, opt.encoding), opt);
+        PopulateSheet(sheet, grid, opt);
         return true;
     }
-    
+
+    // Apply an already-parsed grid to a sheet, honouring number recognition and
+    // the "quoted values are text" option.
+    static void PopulateSheet(SpreadsheetSheet* sheet, const CSVGrid& grid,
+                              const CSVImportOptions& opt) {
+        for (int row = 0; row < static_cast<int>(grid.size())
+                          && row < SpreadsheetLimits::MaxRows; ++row) {
+            const CSVRow& fields = grid[row];
+            for (int col = 0; col < static_cast<int>(fields.size())
+                              && col < SpreadsheetLimits::MaxColumns; ++col) {
+                const CSVField& f = fields[col];
+                if (f.text.empty()) continue;
+
+                SpreadsheetCell* cell = sheet->GetCell(row, col);
+                if (!cell) continue;
+
+                // Quoted values stay text when requested; formulas always honour '='.
+                bool forceText = opt.quotedAsText && f.quoted;
+                double num = 0.0;
+                bool isPercent = false;
+                if (!forceText && f.text[0] != '=' &&
+                    CSVTryParseNumber(f.text, opt, num, isPercent)) {
+                    if (isPercent) cell->SetPercentage(num);
+                    else cell->SetNumber(num);
+                } else {
+                    cell->SetValueFromString(f.text);
+                }
+            }
+        }
+    }
+
     static bool Save(const std::string& filePath, const SpreadsheetSheet* sheet,
                      char delimiter = ',', char quote = '"') {
         std::ofstream file(filePath);
@@ -969,42 +997,6 @@ public:
         }
         
         return true;
-    }
-    
-private:
-    static std::vector<std::string> ParseCSVLine(const std::string& line, char delimiter, char quote) {
-        std::vector<std::string> fields;
-        std::string field;
-        bool inQuotes = false;
-        
-        for (size_t i = 0; i < line.size(); ++i) {
-            char c = line[i];
-            
-            if (inQuotes) {
-                if (c == quote) {
-                    if (i + 1 < line.size() && line[i + 1] == quote) {
-                        field += quote;
-                        ++i;
-                    } else {
-                        inQuotes = false;
-                    }
-                } else {
-                    field += c;
-                }
-            } else {
-                if (c == quote) {
-                    inQuotes = true;
-                } else if (c == delimiter) {
-                    fields.push_back(field);
-                    field.clear();
-                } else {
-                    field += c;
-                }
-            }
-        }
-        fields.push_back(field);
-        
-        return fields;
     }
 };
 
@@ -1078,11 +1070,10 @@ bool UltraCanvasSpreadsheet::SaveXLSX(const std::string& filePath) {
     return false;
 }
 
-bool UltraCanvasSpreadsheet::LoadCSV(const std::string& filePath, int sheetIndex) {
+SpreadsheetSheet* UltraCanvasSpreadsheet::PrepareCSVSheet(int sheetIndex) {
     SpreadsheetSheet* sheet = nullptr;
-    
     if (sheetIndex < 0 || sheetIndex >= GetSheetCount()) {
-        // Clear and use first sheet
+        // Clear and use a fresh first sheet.
         while (GetSheetCount() > 0) {
             RemoveSheet(0);
         }
@@ -1093,12 +1084,34 @@ bool UltraCanvasSpreadsheet::LoadCSV(const std::string& filePath, int sheetIndex
             sheet->ClearAll();
         }
     }
-    
+    return sheet;
+}
+
+bool UltraCanvasSpreadsheet::LoadCSV(const std::string& filePath, int sheetIndex) {
+    SpreadsheetSheet* sheet = PrepareCSVSheet(sheetIndex);
     if (!sheet) return false;
-    
-    bool result = CSVLoader::Load(filePath, sheet);
+
+    // Auto-detect encoding/separators/decimal so European (semicolon) files and
+    // tab-separated files load into proper columns instead of one cell.
+    bool result = CSVLoader::Load(filePath, sheet, CSVImportOptions{}, /*detect*/true);
     if (result) {
         SetActiveSheet(0);
+        Recalculate();
+        Invalidate();
+    }
+    return result;
+}
+
+bool UltraCanvasSpreadsheet::LoadCSVWithOptions(const std::string& filePath,
+                                                const CSVImportOptions& options,
+                                                int sheetIndex) {
+    SpreadsheetSheet* sheet = PrepareCSVSheet(sheetIndex);
+    if (!sheet) return false;
+
+    bool result = CSVLoader::Load(filePath, sheet, options, /*detect*/false);
+    if (result) {
+        SetActiveSheet(0);
+        Recalculate();
         Invalidate();
     }
     return result;

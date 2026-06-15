@@ -10,6 +10,7 @@
 #include "UltraCanvasSpreadsheetCell.h"
 #include "UltraCanvasSpreadsheetSheet.h"
 #include "UltraCanvasSpreadsheetFormula.h"
+#include "UltraCanvasCSVImport.h"
 #include <string>
 #include <vector>
 #include <memory>
@@ -342,7 +343,12 @@ public:
     bool SaveODS(const std::string& filePath);
     bool LoadXLSX(const std::string& filePath);
     bool SaveXLSX(const std::string& filePath);
+    // Load a CSV/TSV file. The single-argument form auto-detects the encoding,
+    // field separator and decimal separator (see CSVDetectOptions); use the
+    // WithOptions form to apply settings chosen in the import dialog.
     bool LoadCSV(const std::string& filePath, int sheetIndex = 0);
+    bool LoadCSVWithOptions(const std::string& filePath, const CSVImportOptions& options,
+                            int sheetIndex = 0);
     bool SaveCSV(const std::string& filePath, int sheetIndex = -1);
     
     // ===== PRINT =====
@@ -420,6 +426,9 @@ private:
     void ApplyUndo(const SpreadsheetUndoAction& action);
     
     void InitializeDefaultSheet();
+    // Clear/select the target sheet for a CSV import (creating Sheet1 when the
+    // index is out of range). Shared by LoadCSV and LoadCSVWithOptions.
+    SpreadsheetSheet* PrepareCSVSheet(int sheetIndex);
     void SetupSheetCallbacks(SpreadsheetSheet* sheet);
     std::string GenerateUniqueSheetName() const;
     void UpdateFormulaBar();

@@ -10,6 +10,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasSpreadsheet.h"
+#include "UltraCanvasCSVImportDialog.h"
 #include "UltraCanvasFileLoader.h"
 
 namespace UltraCanvas {
@@ -95,12 +96,16 @@ namespace UltraCanvas {
         title->SetFontWeight(FontWeight::Bold);
         root->AddChild(title);
 
-        // ===== TOOLBAR: Open button + status label =====
+        // ===== TOOLBAR: Open button, manual CSV import button + status label =====
         auto openBtn = std::make_shared<UltraCanvasButton>("ssOpenBtn", 20, 50, 200, 30,
                                                            "Open Spreadsheet File…");
         root->AddChild(openBtn);
 
-        auto status = std::make_shared<UltraCanvasLabel>("ssStatus", 235, 56, 760, 22);
+        auto importBtn = std::make_shared<UltraCanvasButton>("ssImportBtn", 228, 50, 180, 30,
+                                                             "Import CSV…");
+        root->AddChild(importBtn);
+
+        auto status = std::make_shared<UltraCanvasLabel>("ssStatus", 420, 56, 580, 22);
         status->SetText("Loaded: (sample data) — supported formats: .ods, .csv");
         status->SetFontSize(12);
         status->SetTextColor(Color(90, 90, 90, 255));
@@ -138,6 +143,36 @@ namespace UltraCanvas {
                     }
                     sheet->RequestRedraw();
                     status->RequestRedraw();
+                });
+        };
+
+        // ===== IMPORT CSV -> file dialog -> manual "Text Import" options dialog =====
+        // Pick a CSV/TSV file, then open the options dialog (charset, separators,
+        // start row, number recognition) with a live preview. On accept the grid
+        // is loaded with exactly the chosen settings.
+        importBtn->onClick = [sheet, status]() {
+            FileDialogOptions opts;
+            opts.SetTitle("Select CSV / TSV File")
+                .AddFilter("CSV / TSV", std::vector<std::string>{ "csv", "tsv", "txt" })
+                .AddFilter("All files", "*");
+
+            UltraCanvasFileLoader::OpenFileDialog(opts,
+                [sheet, status](DialogResult result, const std::string& path) {
+                    if (result != DialogResult::OK || path.empty()) {
+                        status->SetText("Import cancelled.");
+                        status->RequestRedraw();
+                        return;
+                    }
+                    ShowCSVImportDialog(path,
+                        [sheet, status, path](const CSVImportOptions& options) {
+                            if (sheet->LoadCSVWithOptions(path, options)) {
+                                status->SetText("Imported: " + path);
+                            } else {
+                                status->SetText("Failed to import: " + path);
+                            }
+                            sheet->RequestRedraw();
+                            status->RequestRedraw();
+                        });
                 });
         };
 
