@@ -11,15 +11,17 @@ links and runs unchanged (`UltraCanvasVideoDevices::IsAvailable()` returns
 `false`). When `ULTRACANVAS_ENABLE_VIDEO=ON` *and* a platform media framework is
 detected at configure time, the real backend is compiled in and replaces it.
 
-| Platform | Native backend | State |
-|----------|----------------|-------|
-| Linux    | **GStreamer** (dispatches to V4L2 cameras / VA-API decode) | Implemented |
-| Windows  | Media Foundation | TODO (interface in place) |
-| macOS    | AVFoundation | TODO (interface in place) |
+| Platform | Native backend | Playback | Recording |
+|----------|----------------|----------|-----------|
+| Linux    | **GStreamer** (V4L2 cameras / VA-API decode) | video + audio | video + audio |
+| Windows  | **Media Foundation** (Media Session + sample-grabber + SAR; SourceReader/SinkWriter) | video + audio | video (H.264/MP4) |
+| macOS    | **AVFoundation** (AVPlayer; AVCaptureSession) | video + audio | video + audio |
 
-GStreamer is detected via `pkg-config` (`gstreamer-1.0`, `-app-1.0`,
-`-video-1.0`, `-pbutils-1.0`). If the dev packages are absent the null backend is
-used and a CMake status message says so.
+The backend is selected by platform at configure time. On Linux it is detected
+via `pkg-config` (`gstreamer-1.0`, `-app-1.0`, `-video-1.0`, `-pbutils-1.0`); if
+the dev packages are absent the null backend is used and a CMake status message
+says so. On Windows and macOS the system frameworks are always present, so the
+native backend is always compiled in when `ULTRACANVAS_ENABLE_VIDEO=ON`.
 
 ## Architecture
 
@@ -127,9 +129,19 @@ sudo apt install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
 
 ## Notes / follow-ups
 
-- Recording AAC audio uses `voaacenc`; swap to `avenc_aac`/`faac` if that
-  element isn't present in the local GStreamer install.
-- Windows (Media Foundation) and macOS (AVFoundation) backends implement the
-  same `IVideoBackend` interface and are the next platform targets.
-- Hardware-accelerated decode happens transparently when GStreamer selects a
-  VA-API / NVDEC / d3d11 decoder for the source.
+- **Linux:** recording AAC audio uses `voaacenc`; swap to `avenc_aac`/`faac` if
+  that element isn't present in the local GStreamer install. Hardware-accelerated
+  decode happens transparently when GStreamer selects a VA-API / NVDEC / d3d11
+  decoder.
+- **Windows (Media Foundation):** the `.mm`-free C++ backend links
+  `mf mfplat mfreadwrite mfuuid ole32 shlwapi`. Recording currently encodes the
+  **video** track (H.264/MP4) via `IMFSinkWriter`; muxing the microphone track
+  is the next step (a second `IMFSourceReader` on the audio device feeding an
+  AAC stream on the same sink writer).
+- **macOS (AVFoundation):** the backend is Objective-C++ (`.mm`, built with
+  `-fobjc-arc`) and links `AVFoundation CoreMedia CoreVideo Foundation`.
+  `AVCaptureMovieFileOutput` records video **and** audio. Camera access requires
+  an `NSCameraUsageDescription` (and `NSMicrophoneUsageDescription`) entry in the
+  app's Info.plist.
+- All three backends report frames as `VideoPixelFormat::BGRA32`, matching
+  Cairo's `ARGB32` byte layout, so the UI uploads them without a swizzle.

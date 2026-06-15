@@ -380,20 +380,37 @@ list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
 )
 set(ULTRACANVAS_VIDEO_BACKEND_FOUND OFF)
 if(ULTRACANVAS_ENABLE_VIDEO)
-    find_package(PkgConfig QUIET)
-    if(PkgConfig_FOUND)
-        pkg_check_modules(GSTREAMER QUIET
-            gstreamer-1.0 gstreamer-app-1.0 gstreamer-video-1.0 gstreamer-pbutils-1.0)
-    endif()
-    if(GSTREAMER_FOUND)
+    if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
+        find_package(PkgConfig QUIET)
+        if(PkgConfig_FOUND)
+            pkg_check_modules(GSTREAMER QUIET
+                gstreamer-1.0 gstreamer-app-1.0 gstreamer-video-1.0 gstreamer-pbutils-1.0)
+        endif()
+        if(GSTREAMER_FOUND)
+            list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
+                ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Video/VideoBackendGStreamer.cpp
+            )
+            set(ULTRACANVAS_VIDEO_BACKEND_FOUND ON)
+            message(STATUS "Video backend: GStreamer (${GSTREAMER_VERSION})")
+        else()
+            message(STATUS "Video backend: null (GStreamer dev packages not found; "
+                           "install gstreamer-1.0 + app/video/pbutils plugins for playback & capture)")
+        endif()
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
         list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
-            ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Video/VideoBackendGStreamer.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Video/VideoBackendMediaFoundation.cpp
         )
         set(ULTRACANVAS_VIDEO_BACKEND_FOUND ON)
-        message(STATUS "Video backend: GStreamer (${GSTREAMER_VERSION})")
-    else()
-        message(STATUS "Video backend: null (GStreamer dev packages not found; "
-                       "install gstreamer-1.0 + app/video/pbutils plugins for playback & capture)")
+        message(STATUS "Video backend: Media Foundation")
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
+        list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Video/VideoBackendAVFoundation.mm
+        )
+        set_source_files_properties(
+            ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Video/VideoBackendAVFoundation.mm
+            PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+        set(ULTRACANVAS_VIDEO_BACKEND_FOUND ON)
+        message(STATUS "Video backend: AVFoundation")
     endif()
 endif()
 
@@ -669,6 +686,19 @@ if(ULTRACANVAS_ENABLE_VIDEO AND ULTRACANVAS_VIDEO_BACKEND_FOUND)
         target_link_directories(${ULTRACANVAS_LIB_NAME} PUBLIC ${GSTREAMER_LIBRARY_DIRS})
         target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${GSTREAMER_LIBRARIES})
         target_compile_options(${ULTRACANVAS_LIB_NAME} PRIVATE ${GSTREAMER_CFLAGS_OTHER})
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
+        # Media Foundation playback + capture + encode
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
+            mf mfplat mfreadwrite mfuuid ole32 shlwapi)
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
+        find_library(AVFOUNDATION_FRAMEWORK AVFoundation REQUIRED)
+        find_library(COREMEDIA_FRAMEWORK CoreMedia REQUIRED)
+        find_library(COREVIDEO_FRAMEWORK CoreVideo REQUIRED)
+        find_library(COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
+        find_library(FOUNDATION_FRAMEWORK Foundation REQUIRED)
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
+            ${AVFOUNDATION_FRAMEWORK} ${COREMEDIA_FRAMEWORK} ${COREVIDEO_FRAMEWORK}
+            ${COREFOUNDATION_FRAMEWORK} ${FOUNDATION_FRAMEWORK})
     endif()
 endif()
 
