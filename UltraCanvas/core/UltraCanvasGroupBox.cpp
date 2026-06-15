@@ -5,10 +5,11 @@
 // border line, padding and caption strip are kept in sync through
 // RecalculatePadding() so the inherited container lays the children out
 // inside the visible frame, below the caption.
-// Version: 1.0.0
+// Version: 1.1.0
 // Last Modified: 2026-06-15
 // Author: UltraCanvas Framework
 #include "UltraCanvasGroupBox.h"
+#include "UltraCanvasTooltipManager.h"
 #include <algorithm>
 #include <cmath>
 
@@ -120,11 +121,12 @@ namespace UltraCanvas {
         RecalculatePadding();
     }
 
-// ===== CHECKABLE =====
+// ===== ACTIVATOR =====
     void UltraCanvasGroupBox::SetCheckable(bool value) {
         if (checkable == value) return;
         checkable = value;
         ApplyCheckStateToChildren();
+        RecalculatePadding();
         RequestRedraw();
     }
 
@@ -136,12 +138,50 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    void UltraCanvasGroupBox::SetActivatorStyle(GroupBoxActivatorStyle style) {
+        if (activatorStyle == style) return;
+        activatorStyle = style;
+        RequestRedraw();
+    }
+
+    void UltraCanvasGroupBox::SetActivatorSide(GroupBoxIndicatorSide side) {
+        if (activatorSide == side) return;
+        activatorSide = side;
+        RequestRedraw();
+    }
+
+    void UltraCanvasGroupBox::EnableActivatorSwitch(GroupBoxIndicatorSide side) {
+        activatorStyle = GroupBoxActivatorStyle::Switch;
+        activatorSide = side;
+        SetCheckable(true);
+    }
+
     void UltraCanvasGroupBox::ApplyCheckStateToChildren() {
         // Only a checkable box gates its children; otherwise leave them alone.
         bool disable = checkable && !checked;
         for (auto& c : Children()) {
             asUI(c)->SetDisabled(disable);
         }
+    }
+
+// ===== INFO ICON / HELP TEXT =====
+    void UltraCanvasGroupBox::SetInfoIcon(bool show) {
+        if (showInfoIcon == show) return;
+        showInfoIcon = show;
+        RecalculatePadding();
+        RequestRedraw();
+    }
+
+    void UltraCanvasGroupBox::SetInfoIconSide(GroupBoxIndicatorSide side) {
+        if (infoIconSide == side) return;
+        infoIconSide = side;
+        RequestRedraw();
+    }
+
+    void UltraCanvasGroupBox::SetHelpText(const std::string& text) {
+        helpText = text;
+        SetInfoIcon(!text.empty());
+        RequestRedraw();
     }
 
 // ===== COLLAPSIBLE =====
@@ -151,6 +191,7 @@ namespace UltraCanvas {
         if (!collapsible && collapsed) {
             SetCollapsed(false);
         }
+        RecalculatePadding();
         RequestRedraw();
     }
 
@@ -174,15 +215,22 @@ namespace UltraCanvas {
         return frameStyle == GroupBoxFrameStyle::Flat ? 0.0f : visualStyle.borderWidth;
     }
 
+    bool UltraCanvasGroupBox::HasTitleContent() const {
+        return !title.empty() || checkable || collapsible || showInfoIcon;
+    }
+
     float UltraCanvasGroupBox::TitleAreaHeight() const {
-        // No caption → the strip is just the (top) border.
-        if (title.empty() && !checkable && !collapsible) {
+        if (!HasTitleContent()) {
             return EffectiveBorderWidth();
         }
         // Approximate text height from the font size (avoids needing a render
-        // context here); padding is added above and below.
+        // context here); padding is added above and below. The strip must also
+        // fit a switch-style activator if one is in use.
         float textHeight = std::ceil(visualStyle.titleFont.fontSize * 1.35f);
         float h = textHeight + 2.0f * visualStyle.titleVerticalPadding;
+        if (checkable && activatorStyle == GroupBoxActivatorStyle::Switch) {
+            h = std::max(h, ActivatorSize().height + 2.0f * visualStyle.titleVerticalPadding);
+        }
         return std::max(h, EffectiveBorderWidth() + 2.0f);
     }
 
@@ -191,15 +239,22 @@ namespace UltraCanvas {
     }
 
     float UltraCanvasGroupBox::IndicatorSize() const {
-        return std::max(10.0f, static_cast<float>(std::round(visualStyle.titleFont.fontSize)));
+        return std::max(12.0f, std::round(static_cast<float>(visualStyle.titleFont.fontSize)));
+    }
+
+    Size2Df UltraCanvasGroupBox::ActivatorSize() const {
+        float s = IndicatorSize();
+        if (activatorStyle == GroupBoxActivatorStyle::Switch) {
+            float hgt = std::round(s * 0.95f);
+            return Size2Df(std::round(hgt * 1.8f), hgt);
+        }
+        return Size2Df(s, s);
     }
 
     void UltraCanvasGroupBox::RecalculatePadding() {
         const float bw  = EffectiveBorderWidth();
         const float cp  = visualStyle.contentPadding;
-        const float top = (title.empty() && !checkable && !collapsible)
-                          ? (bw + cp)
-                          : (TitleAreaHeight() + cp);
+        const float top = HasTitleContent() ? (TitleAreaHeight() + cp) : (bw + cp);
 
         // Fold the visual border thickness into the padding so children sit
         // inside the frame. The engine border stays at zero (the frame is drawn
@@ -215,16 +270,56 @@ namespace UltraCanvas {
     UltraCanvasGroupBox::TitleLayout
     UltraCanvasGroupBox::ComputeTitleLayout(IRenderContext* ctx) const {
         TitleLayout tl;
-        tl.hasTitle = !title.empty() || checkable || collapsible;
-        if (!tl.hasTitle) return tl;
+        tl.hasContent = HasTitleContent();
+        if (!tl.hasContent) return tl;
 
         const float bw = EffectiveBorderWidth();
         const float th = TitleAreaHeight();
         const float centerY = th * 0.5f;
-        const float spacing = 4.0f;
+        const float spacing = 6.0f;
         const float indSize = IndicatorSize();
+        const Size2Df actSize = ActivatorSize();
+        const float w = GetWidth();
 
-        // Measure the caption text with the title font.
+        const float leftEdge  = bw + visualStyle.titleIndent;
+        const float rightEdge = w - bw - visualStyle.titleIndent;
+
+        auto vcenter = [&](float h) { return centerY - h * 0.5f; };
+
+        // ----- Left cluster (disclosure arrow, then a left-side activator/info) -----
+        float lx = leftEdge;
+        if (collapsible) {
+            tl.hasArrow = true;
+            tl.arrowRect = Rect2Df(lx, vcenter(indSize), indSize, indSize);
+            lx += indSize + spacing;
+        }
+        if (checkable && activatorSide == GroupBoxIndicatorSide::Left) {
+            tl.hasActivator = true;
+            tl.activatorRect = Rect2Df(lx, vcenter(actSize.height), actSize.width, actSize.height);
+            lx += actSize.width + spacing;
+        }
+        if (showInfoIcon && infoIconSide == GroupBoxIndicatorSide::Left) {
+            tl.hasInfo = true;
+            tl.infoRect = Rect2Df(lx, vcenter(indSize), indSize, indSize);
+            lx += indSize + spacing;
+        }
+
+        // ----- Right cluster (right-side activator and/or info icon) -----
+        float rx = rightEdge;
+        if (checkable && activatorSide == GroupBoxIndicatorSide::Right) {
+            rx -= actSize.width;
+            tl.hasActivator = true;
+            tl.activatorRect = Rect2Df(rx, vcenter(actSize.height), actSize.width, actSize.height);
+            rx -= spacing;
+        }
+        if (showInfoIcon && infoIconSide == GroupBoxIndicatorSide::Right) {
+            rx -= indSize;
+            tl.hasInfo = true;
+            tl.infoRect = Rect2Df(rx, vcenter(indSize), indSize, indSize);
+            rx -= spacing;
+        }
+
+        // ----- Caption text between the two clusters -----
         Size2Di textSize{0, 0};
         if (!title.empty()) {
             ctx->SetFontStyle(visualStyle.titleFont);
@@ -232,41 +327,38 @@ namespace UltraCanvas {
         }
         tl.textSize = textSize;
 
-        float contentW = 0.0f;
-        if (collapsible) contentW += indSize + spacing;
-        if (checkable)   contentW += indSize + spacing;
-        contentW += static_cast<float>(textSize.width);
+        const float gap = visualStyle.titleGap;
+        float regionStart = lx;
+        float regionEnd   = rx;
+        float avail = std::max(0.0f, regionEnd - regionStart);
+        float textW = std::min(static_cast<float>(textSize.width), avail);
 
-        // Resolve the leading X according to alignment.
-        const float w = GetWidth();
-        float leadingX;
+        float textX;
         switch (titleAlignment) {
             case GroupBoxTitleAlignment::Center:
-                leadingX = (w - contentW) * 0.5f;
+                textX = regionStart + (avail - textW) * 0.5f;
                 break;
             case GroupBoxTitleAlignment::Right:
-                leadingX = w - bw - visualStyle.titleIndent - visualStyle.titleGap - contentW;
+                textX = regionEnd - textW - gap;
                 break;
             case GroupBoxTitleAlignment::Left:
             default:
-                leadingX = bw + visualStyle.titleIndent + visualStyle.titleGap;
+                textX = regionStart + (lx > leftEdge ? 0.0f : gap);
                 break;
         }
-        leadingX = std::max(leadingX, bw + visualStyle.titleGap);
+        textX = std::max(textX, regionStart);
+        tl.textPos = Point2Df(textX, centerY - textSize.height * 0.5f);
 
-        float x = leadingX;
-        if (collapsible) {
-            tl.arrowRect = Rect2Df(x, centerY - indSize * 0.5f, indSize, indSize);
-            x += indSize + spacing;
+        // ----- Border gaps (Framed): one per on-border item, then merged -----
+        if (frameStyle == GroupBoxFrameStyle::Framed) {
+            auto addGap = [&](float x0, float x1) {
+                if (x1 > x0) tl.borderGaps.emplace_back(x0 - gap, x1 + gap);
+            };
+            if (tl.hasArrow)     addGap(tl.arrowRect.x, tl.arrowRect.Right());
+            if (tl.hasActivator) addGap(tl.activatorRect.x, tl.activatorRect.Right());
+            if (tl.hasInfo)      addGap(tl.infoRect.x, tl.infoRect.Right());
+            if (textW > 0)       addGap(textX, textX + textW);
         }
-        if (checkable) {
-            tl.checkRect = Rect2Df(x, centerY - indSize * 0.5f, indSize, indSize);
-            x += indSize + spacing;
-        }
-        tl.textPos = Point2Df(x, centerY - textSize.height * 0.5f);
-
-        tl.gapX0 = leadingX - visualStyle.titleGap;
-        tl.gapX1 = leadingX + contentW + visualStyle.titleGap;
         return tl;
     }
 
@@ -300,7 +392,7 @@ namespace UltraCanvas {
         const float half = bw * 0.5f;
         float frameLeft   = half;
         float frameRight  = w - half;
-        float frameTop    = (framed && tl.hasTitle) ? th * 0.5f : half;
+        float frameTop    = (framed && tl.hasContent) ? th * 0.5f : half;
         float frameBottom = h - half;
         float frameW = std::max(0.0f, frameRight - frameLeft);
         float frameH = std::max(0.0f, frameBottom - frameTop);
@@ -314,7 +406,7 @@ namespace UltraCanvas {
         }
 
         // ----- Header strip background (Header style) -----
-        if (frameStyle == GroupBoxFrameStyle::Header && tl.hasTitle &&
+        if (frameStyle == GroupBoxFrameStyle::Header && tl.hasContent &&
             visualStyle.headerBackgroundColor.a > 0) {
             ctx->SetFillPaint(visualStyle.headerBackgroundColor);
             ctx->FillRectangle(Rect2Dd(frameLeft + half, frameTop + half,
@@ -327,35 +419,59 @@ namespace UltraCanvas {
             ctx->SetStrokePaint(visualStyle.borderColor);
             ctx->SetStrokeWidth(bw);
 
-            bool drawGap = framed && tl.hasTitle &&
-                           tl.gapX1 > tl.gapX0 && r >= 0.0f;
-            // Keep the gap within the straight part of the top edge.
-            float gx0 = std::max(tl.gapX0, frameLeft + r);
-            float gx1 = std::min(tl.gapX1, frameRight - r);
-            drawGap = drawGap && (gx1 > gx0);
-
-            if (drawGap) {
-                // Open rounded-rect path with a gap cut into the top edge for the
-                // caption. Walk clockwise from the right side of the gap.
+            // Rounded corners as individual arc strokes (so the top edge can be
+            // broken into several segments for the caption gap(s)).
+            auto strokeCorner = [&](Point2Dd a, Point2Dd corner, Point2Dd b) {
                 ctx->ClearPath();
-                ctx->MoveTo(gx1, frameTop);
-                ctx->LineTo(frameRight - r, frameTop);
-                ctx->ArcTo(frameRight, frameTop, frameRight, frameTop + r, r);
-                ctx->LineTo(frameRight, frameBottom - r);
-                ctx->ArcTo(frameRight, frameBottom, frameRight - r, frameBottom, r);
-                ctx->LineTo(frameLeft + r, frameBottom);
-                ctx->ArcTo(frameLeft, frameBottom, frameLeft, frameBottom - r, r);
-                ctx->LineTo(frameLeft, frameTop + r);
-                ctx->ArcTo(frameLeft, frameTop, frameLeft + r, frameTop, r);
-                ctx->LineTo(gx0, frameTop);
+                ctx->MoveTo(a.x, a.y);
+                ctx->ArcTo(corner.x, corner.y, b.x, b.y, r);
                 ctx->Stroke();
                 ctx->ClearPath();
-            } else {
-                ctx->DrawRoundedRectangle(Rect2Dd(frameLeft, frameTop, frameW, frameH), r);
+            };
+            if (r > 0.0f) {
+                strokeCorner({frameLeft, frameTop + r}, {frameLeft, frameTop}, {frameLeft + r, frameTop});           // TL
+                strokeCorner({frameRight - r, frameTop}, {frameRight, frameTop}, {frameRight, frameTop + r});         // TR
+                strokeCorner({frameRight, frameBottom - r}, {frameRight, frameBottom}, {frameRight - r, frameBottom}); // BR
+                strokeCorner({frameLeft + r, frameBottom}, {frameLeft, frameBottom}, {frameLeft, frameBottom - r});    // BL
+            }
+
+            // Left / right / bottom straight edges.
+            ctx->DrawLine(Point2Dd(frameLeft, frameTop + r),  Point2Dd(frameLeft, frameBottom - r));
+            ctx->DrawLine(Point2Dd(frameRight, frameTop + r), Point2Dd(frameRight, frameBottom - r));
+            ctx->DrawLine(Point2Dd(frameLeft + r, frameBottom), Point2Dd(frameRight - r, frameBottom));
+
+            // Top edge, skipping the caption gap intervals.
+            const float segStart = frameLeft + r;
+            const float segEnd   = frameRight - r;
+            std::vector<std::pair<float, float>> gaps;
+            for (auto g : tl.borderGaps) {
+                float x0 = std::max(g.first, segStart);
+                float x1 = std::min(g.second, segEnd);
+                if (x1 > x0) gaps.emplace_back(x0, x1);
+            }
+            std::sort(gaps.begin(), gaps.end());
+            // Merge overlapping intervals.
+            std::vector<std::pair<float, float>> merged;
+            for (auto& g : gaps) {
+                if (!merged.empty() && g.first <= merged.back().second) {
+                    merged.back().second = std::max(merged.back().second, g.second);
+                } else {
+                    merged.push_back(g);
+                }
+            }
+            float cursor = segStart;
+            for (auto& g : merged) {
+                if (g.first > cursor) {
+                    ctx->DrawLine(Point2Dd(cursor, frameTop), Point2Dd(g.first, frameTop));
+                }
+                cursor = std::max(cursor, g.second);
+            }
+            if (cursor < segEnd) {
+                ctx->DrawLine(Point2Dd(cursor, frameTop), Point2Dd(segEnd, frameTop));
             }
 
             // Header separator under the caption strip.
-            if (frameStyle == GroupBoxFrameStyle::Header && tl.hasTitle &&
+            if (frameStyle == GroupBoxFrameStyle::Header && tl.hasContent &&
                 visualStyle.showHeaderSeparator) {
                 ctx->SetStrokePaint(visualStyle.borderColor);
                 ctx->SetStrokeWidth(bw);
@@ -364,7 +480,7 @@ namespace UltraCanvas {
         }
 
         // Flat style: optional separator below the caption strip.
-        if (flat && tl.hasTitle && visualStyle.showHeaderSeparator &&
+        if (flat && tl.hasContent && visualStyle.showHeaderSeparator &&
             visualStyle.borderColor.a > 0) {
             ctx->SetStrokePaint(visualStyle.borderColor);
             ctx->SetStrokeWidth(std::max(1.0f, visualStyle.borderWidth));
@@ -373,17 +489,24 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasGroupBox::DrawTitle(IRenderContext* ctx, const TitleLayout& tl) {
-        if (!tl.hasTitle) return;
+        if (!tl.hasContent) return;
 
         const Color titleColor = (checkable && !checked)
                                  ? visualStyle.disabledTitleColor
                                  : visualStyle.titleColor;
 
-        if (collapsible) {
+        if (tl.hasArrow) {
             DrawDisclosureArrow(ctx, tl.arrowRect);
         }
-        if (checkable) {
-            DrawCheckIndicator(ctx, tl.checkRect);
+        if (tl.hasActivator) {
+            if (activatorStyle == GroupBoxActivatorStyle::Switch) {
+                DrawSwitchIndicator(ctx, tl.activatorRect);
+            } else {
+                DrawCheckIndicator(ctx, tl.activatorRect);
+            }
+        }
+        if (tl.hasInfo) {
+            DrawInfoIcon(ctx, tl.infoRect);
         }
         if (!title.empty()) {
             ctx->SetFontStyle(visualStyle.titleFont);
@@ -413,6 +536,41 @@ namespace UltraCanvas {
         }
     }
 
+    void UltraCanvasGroupBox::DrawSwitchIndicator(IRenderContext* ctx, const Rect2Df& rect) {
+        // Pill-shaped track with a circular knob that slides on/off.
+        const float radius = rect.height * 0.5f;
+        const Color trackColor = checked ? visualStyle.activatorOnColor
+                                         : visualStyle.activatorOffColor;
+        ctx->SetFillPaint(trackColor);
+        ctx->FillRoundedRectangle(Rect2Dd(rect.x, rect.y, rect.width, rect.height), radius);
+
+        const float knobR = radius - 2.0f;
+        const float knobY = rect.y + radius;
+        const float knobX = checked ? (rect.Right() - radius) : (rect.x + radius);
+        ctx->DrawFilledCircle(Point2Dd(knobX, knobY), knobR,
+                              visualStyle.activatorKnobColor,
+                              Color(0, 0, 0, 30), 1.0f);
+    }
+
+    void UltraCanvasGroupBox::DrawInfoIcon(IRenderContext* ctx, const Rect2Df& rect) {
+        const Color color = infoIconHovered ? visualStyle.infoIconHoverColor
+                                            : visualStyle.infoIconColor;
+        const float cx = rect.x + rect.width * 0.5f;
+        const float cy = rect.y + rect.height * 0.5f;
+        const float radius = rect.width * 0.5f - 0.5f;
+
+        // Outlined circle.
+        ctx->DrawFilledCircle(Point2Dd(cx, cy), radius, Colors::Transparent, color, 1.5f);
+
+        // Lowercase "i": a dot and a stem.
+        ctx->SetFillPaint(color);
+        float dotR = std::max(1.0f, rect.width * 0.07f);
+        ctx->FillCircle(Point2Dd(cx, cy - radius * 0.42f), dotR);
+        float stemW = std::max(1.5f, rect.width * 0.12f);
+        ctx->FillRectangle(Rect2Dd(cx - stemW * 0.5f, cy - radius * 0.12f,
+                                   stemW, radius * 0.78f));
+    }
+
     void UltraCanvasGroupBox::DrawDisclosureArrow(IRenderContext* ctx, const Rect2Df& rect) {
         ctx->SetFillPaint(visualStyle.titleColor);
         ctx->ClearPath();
@@ -440,13 +598,57 @@ namespace UltraCanvas {
         ctx->ClearPath();
     }
 
+// ===== HELP TOOLTIP =====
+    void UltraCanvasGroupBox::ShowHelpTooltip() {
+        if (helpText.empty() || !GetWindow()) return;
+        IRenderContext* ctx = GetRenderContext();
+        if (!ctx) return;
+        TitleLayout tl = ComputeTitleLayout(ctx);
+        if (!tl.hasInfo) return;
+
+        Point2Df winPos = GetPositionInWindow();
+        Point2Di at(static_cast<int>(winPos.x + tl.infoRect.x),
+                    static_cast<int>(winPos.y + tl.infoRect.Bottom()));
+        UltraCanvasTooltipManager::UpdateAndShowTooltip(GetWindow(), helpText, at);
+    }
+
+    void UltraCanvasGroupBox::HideHelpTooltip() {
+        UltraCanvasTooltipManager::HideTooltip();
+    }
+
 // ===== EVENT HANDLING =====
     bool UltraCanvasGroupBox::OnEvent(const UCEvent& event) {
+        if (event.type == UCEventType::MouseLeave) {
+            if (infoIconHovered) {
+                infoIconHovered = false;
+                HideHelpTooltip();
+                RequestRedraw();
+            }
+        }
+
         if (event.type == UCEventType::MouseMove) {
-            bool nowHovered = TitleBarRect().Contains(Point2Df(event.pointer.x, event.pointer.y));
+            Point2Df p(event.pointer.x, event.pointer.y);
+
+            bool nowHovered = TitleBarRect().Contains(p);
             if (nowHovered != titleHovered) {
                 titleHovered = nowHovered;
                 if (collapsible || checkable) RequestRedraw();
+            }
+
+            // Info-icon hover → reveal/hide the help tooltip.
+            if (showInfoIcon) {
+                IRenderContext* ctx = GetRenderContext();
+                bool overInfo = false;
+                if (ctx) {
+                    TitleLayout tl = ComputeTitleLayout(ctx);
+                    overInfo = tl.hasInfo && tl.infoRect.Contains(p);
+                }
+                if (overInfo != infoIconHovered) {
+                    infoIconHovered = overInfo;
+                    if (overInfo) ShowHelpTooltip();
+                    else          HideHelpTooltip();
+                    RequestRedraw();
+                }
             }
         }
 
@@ -458,8 +660,12 @@ namespace UltraCanvas {
             IRenderContext* ctx = GetRenderContext();
             if (ctx) {
                 TitleLayout tl = ComputeTitleLayout(ctx);
-                if (checkable && tl.checkRect.Contains(p)) {
+                if (tl.hasActivator && tl.activatorRect.Contains(p)) {
                     SetChecked(!checked);
+                    return true;
+                }
+                if (tl.hasInfo && tl.infoRect.Contains(p)) {
+                    ShowHelpTooltip();
                     return true;
                 }
             }

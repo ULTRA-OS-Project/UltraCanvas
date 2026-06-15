@@ -2,9 +2,10 @@
 // Titled container ("group box" / "fieldset") that frames a set of child
 // elements under a caption. Extends UltraCanvasContainer, so it inherits the
 // full child-management / scrolling / layout machinery; this class adds the
-// titled frame, optional checkable caption (enables/disables the contents) and
-// optional collapsible behaviour.
-// Version: 1.0.0
+// titled frame, an optional activator (checkbox or switch, on either side of
+// the title bar) that enables/disables the contents, an optional info icon
+// with help text, and optional collapsible behaviour.
+// Version: 1.1.0
 // Last Modified: 2026-06-15
 // Author: UltraCanvas Framework
 #pragma once
@@ -14,6 +15,8 @@
 #include "UltraCanvasEvent.h"
 #include <string>
 #include <functional>
+#include <vector>
+#include <utility>
 
 namespace UltraCanvas {
 
@@ -29,6 +32,18 @@ namespace UltraCanvas {
         Framed,   // Classic fieldset: caption embedded in a gap in the top border line.
         Header,   // Caption sits in a header strip above the content, full border + separator.
         Flat      // No border; caption strip on top of an (optionally) filled background.
+    };
+
+// ===== ACTIVATOR (enable/disable toggle) =====
+    enum class GroupBoxActivatorStyle {
+        Checkbox,   // Square checkbox with a checkmark.
+        Switch      // Sliding on/off switch (iOS-like pill).
+    };
+
+// ===== TITLE-BAR INDICATOR SIDE =====
+    enum class GroupBoxIndicatorSide {
+        Left,
+        Right
     };
 
 // ===== VISUAL STYLE =====
@@ -49,6 +64,15 @@ namespace UltraCanvas {
         // ----- Header style extras -----
         Color headerBackgroundColor = Colors::Transparent;
         bool  showHeaderSeparator   = true;
+
+        // ----- Activator (switch/checkbox) -----
+        Color activatorOnColor  = Color(52, 199, 89, 255);   // switch track when on (iOS green)
+        Color activatorOffColor = Color(200, 200, 200, 255); // switch track when off
+        Color activatorKnobColor = Colors::White;
+
+        // ----- Info icon -----
+        Color infoIconColor      = Color(120, 130, 150, 255);
+        Color infoIconHoverColor = Color(60, 110, 220, 255);
 
         // ----- Content -----
         float contentPadding = 8.0f;                      // padding inside the frame, around the children
@@ -103,13 +127,33 @@ namespace UltraCanvas {
         void SetGroupBackgroundColor(const Color& color);
         void SetContentPadding(float padding);
 
-        // ===== CHECKABLE =====
-        // A checkable group box draws a checkbox before its caption; unchecking it
-        // disables (greys out) the contained children.
+        // ===== ACTIVATOR (enable/disable toggle) =====
+        // A checkable group box draws an activator (checkbox or switch) in its
+        // title bar; switching it off disables (greys out) the contained
+        // children. The activator can sit on either side of the title bar.
         void SetCheckable(bool checkable);
         bool IsCheckable() const { return checkable; }
         void SetChecked(bool checked);
         bool IsChecked() const { return checked; }
+
+        void SetActivatorStyle(GroupBoxActivatorStyle style);   // Checkbox (default) or Switch
+        GroupBoxActivatorStyle GetActivatorStyle() const { return activatorStyle; }
+        void SetActivatorSide(GroupBoxIndicatorSide side);      // Left (default) or Right
+        GroupBoxIndicatorSide GetActivatorSide() const { return activatorSide; }
+
+        // Convenience: enable a switch-style activator on the given side in one call.
+        void EnableActivatorSwitch(GroupBoxIndicatorSide side = GroupBoxIndicatorSide::Right);
+
+        // ===== INFO ICON / HELP TEXT =====
+        // An optional "ⓘ" icon in the title bar that reveals help text as a
+        // tooltip on hover. Defaults to the right side.
+        void SetInfoIcon(bool show);
+        bool HasInfoIcon() const { return showInfoIcon; }
+        void SetInfoIconSide(GroupBoxIndicatorSide side);
+        GroupBoxIndicatorSide GetInfoIconSide() const { return infoIconSide; }
+        // Sets the help text and shows the info icon (pass an empty string to hide).
+        void SetHelpText(const std::string& text);
+        const std::string& GetHelpText() const { return helpText; }
 
         // ===== COLLAPSIBLE =====
         // A collapsible group box draws a disclosure arrow before its caption;
@@ -135,6 +179,14 @@ namespace UltraCanvas {
 
         bool checkable = false;
         bool checked   = true;
+        GroupBoxActivatorStyle activatorStyle = GroupBoxActivatorStyle::Checkbox;
+        GroupBoxIndicatorSide  activatorSide  = GroupBoxIndicatorSide::Left;
+
+        bool showInfoIcon = false;
+        GroupBoxIndicatorSide infoIconSide = GroupBoxIndicatorSide::Right;
+        std::string helpText;
+        bool infoIconHovered = false;
+
         bool collapsible = false;
         bool collapsed   = false;
         bool titleHovered = false;
@@ -144,19 +196,26 @@ namespace UltraCanvas {
         CSSLayout::Dimension expandedHeight;
 
         // ----- Geometry helpers (element-local coordinates) -----
-        float TitleAreaHeight() const;            // height reserved for the caption strip
-        Rect2Df TitleBarRect() const;             // clickable caption region
-        float EffectiveBorderWidth() const;       // 0 for Flat, borderWidth otherwise
-        float IndicatorSize() const;              // checkbox / arrow box size
+        bool  HasTitleContent() const;           // any caption / indicator present
+        float TitleAreaHeight() const;           // height reserved for the caption strip
+        Rect2Df TitleBarRect() const;            // clickable caption region
+        float EffectiveBorderWidth() const;      // 0 for Flat, borderWidth otherwise
+        float IndicatorSize() const;             // base checkbox / arrow / info box size
+        Size2Df ActivatorSize() const;           // checkbox vs switch dimensions
 
         // Resolved layout of the caption row, computed against a render context.
         struct TitleLayout {
-            bool   hasTitle = false;
-            float  gapX0 = 0.0f, gapX1 = 0.0f;    // border-gap extents (Framed)
+            bool   hasContent = false;
+            bool   hasArrow = false;
+            bool   hasActivator = false;
+            bool   hasInfo = false;
             Rect2Df arrowRect;                    // disclosure arrow (collapsible)
-            Rect2Df checkRect;                    // checkbox (checkable)
+            Rect2Df activatorRect;                // checkbox / switch
+            Rect2Df infoRect;                     // info icon
             Point2Df textPos;                     // caption text top-left
             Size2Di textSize;
+            // Top-border gap intervals (Framed style) covering on-border items.
+            std::vector<std::pair<float, float>> borderGaps;
         };
         TitleLayout ComputeTitleLayout(IRenderContext* ctx) const;
 
@@ -164,11 +223,15 @@ namespace UltraCanvas {
         void DrawFrame(IRenderContext* ctx, const TitleLayout& tl);
         void DrawTitle(IRenderContext* ctx, const TitleLayout& tl);
         void DrawCheckIndicator(IRenderContext* ctx, const Rect2Df& rect);
+        void DrawSwitchIndicator(IRenderContext* ctx, const Rect2Df& rect);
+        void DrawInfoIcon(IRenderContext* ctx, const Rect2Df& rect);
         void DrawDisclosureArrow(IRenderContext* ctx, const Rect2Df& rect);
 
         // ----- State plumbing -----
         void RecalculatePadding();                // fold border + caption into box padding
         void ApplyCheckStateToChildren();         // enable/disable children to match `checked`
+        void ShowHelpTooltip();                   // surface helpText near the info icon
+        void HideHelpTooltip();
     };
 
 // ===== FACTORY FUNCTIONS =====

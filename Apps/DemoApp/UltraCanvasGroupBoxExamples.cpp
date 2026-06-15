@@ -111,20 +111,23 @@ namespace UltraCanvas {
             mainContainer->AddChild(gb);
         }
 
-        // ===== 6. CARD PRESET =====
+        // ===== 6. CARD PRESET + INFO ICON =====
         {
             auto gb = CreateGroupBox("gbCard", colX[1], rowY, boxW, boxH, "GROUPBOX");
             gb->SetFrameStyle(GroupBoxFrameStyle::Header);
             gb->SetVisualStyle(GroupBoxVisualStyle::Card());
+            // Info icon on the right reveals help text on hover.
+            gb->SetHelpText("This card uses the GroupBoxVisualStyle::Card() preset:\n"
+                            "filled rounded background, bold header and a separator.");
             gb->AddChild(ContentLabel("gbCard1", "iOS-like grouped card preset."));
-            gb->AddChild(ContentLabel("gbCard2", "Filled rounded background."));
+            gb->AddChild(ContentLabel("gbCard2", "Hover the ⓘ icon for help."));
             mainContainer->AddChild(gb);
         }
         rowY += boxH + 20.0f;
 
-        // ===== 7. CHECKABLE =====
+        // ===== 7. CHECKABLE — CHECKBOX ACTIVATOR (left) =====
         {
-            auto gb = CreateGroupBox("gbCheckable", colX[0], rowY, boxW, boxH, "Checkable group");
+            auto gb = CreateGroupBox("gbCheckable", colX[0], rowY, boxW, boxH, "Checkable (checkbox, left)");
             gb->SetCheckable(true);
             gb->SetChecked(true);
             auto cb1 = std::make_shared<UltraCanvasCheckbox>("gbChkA", 240.0f, 24.0f, "Enable notifications");
@@ -135,16 +138,37 @@ namespace UltraCanvas {
             gb->AddChild(cb2);
             gb->onCheckedChanged = [statusLabel](bool checked) {
                 std::ostringstream oss;
-                oss << "Checkable group " << (checked ? "enabled" : "disabled")
+                oss << "Checkbox group " << (checked ? "enabled" : "disabled")
                     << " — its contents are " << (checked ? "active." : "greyed out.");
                 statusLabel->SetText(oss.str());
             };
             mainContainer->AddChild(gb);
         }
 
-        // ===== 8. COLLAPSIBLE =====
+        // ===== 8. ACTIVATED BY A SWITCH (right) + INFO ICON =====
         {
-            auto gb = CreateGroupBox("gbCollapsible", colX[1], rowY, boxW, boxH, "Collapsible group");
+            auto gb = CreateGroupBox("gbSwitch", colX[1], rowY, boxW, boxH, "Settings");
+            gb->SetFrameStyle(GroupBoxFrameStyle::Header);
+            // Switch-style activator on the RIGHT side of the title bar.
+            gb->EnableActivatorSwitch(GroupBoxIndicatorSide::Right);
+            gb->SetChecked(true);
+            // Info icon on the LEFT (so it doesn't collide with the switch).
+            gb->SetInfoIconSide(GroupBoxIndicatorSide::Left);
+            gb->SetHelpText("Toggle the switch on the right to enable or disable\n"
+                            "this section. The contents grey out when off.");
+            gb->AddChild(ContentLabel("gbSw1", "Private account"));
+            gb->AddChild(ContentLabel("gbSw2", "Show activity status"));
+            gb->onCheckedChanged = [statusLabel](bool on) {
+                statusLabel->SetText(on ? "Switch ON — settings enabled."
+                                        : "Switch OFF — settings disabled.");
+            };
+            mainContainer->AddChild(gb);
+        }
+        rowY += boxH + 20.0f;
+
+        // ===== 9. COLLAPSIBLE =====
+        {
+            auto gb = CreateGroupBox("gbCollapsible", colX[0], rowY, boxW, boxH, "Collapsible group");
             gb->SetCollapsible(true);
             gb->AddChild(ContentLabel("gbCol1", "Click the title to collapse."));
             gb->AddChild(ContentLabel("gbCol2", "The arrow shows the state."));

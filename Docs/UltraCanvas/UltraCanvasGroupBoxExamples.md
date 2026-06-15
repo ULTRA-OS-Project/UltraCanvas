@@ -24,8 +24,11 @@ interactive behaviour.
   `GroupBoxVisualStyle`.
 - **Style Presets**: `GroupBoxVisualStyle::Default()` and
   `GroupBoxVisualStyle::Card()` (iOS-like grouped card).
-- **Checkable**: a checkbox before the caption enables/disables (greys out) the
-  contained children.
+- **Activator (checkbox or switch)**: an optional checkbox- or switch-style
+  toggle in the title bar that enables/disables (greys out) the contained
+  children. It can be placed on the **left or right** side of the title bar.
+- **Info icon + help text**: an optional "ⓘ" icon (left or right) that reveals
+  help text as a tooltip on hover.
 - **Collapsible**: a disclosure arrow collapses the box down to its title bar.
 - **Standard Container**: children are added with `AddChild()` and laid out by the
   CSS layout engine inside the frame, below the caption.
@@ -73,6 +76,13 @@ void SetContentPadding(float padding);
 void SetCheckable(bool checkable);
 void SetChecked(bool checked);
 bool IsChecked() const;
+void SetActivatorStyle(GroupBoxActivatorStyle style);   // Checkbox / Switch
+void SetActivatorSide(GroupBoxIndicatorSide side);      // Left / Right
+void EnableActivatorSwitch(GroupBoxIndicatorSide side = GroupBoxIndicatorSide::Right);
+
+void SetInfoIcon(bool show);
+void SetInfoIconSide(GroupBoxIndicatorSide side);       // Left / Right
+void SetHelpText(const std::string& text);              // shows the info icon
 
 void SetCollapsible(bool collapsible);
 void SetCollapsed(bool collapsed);
@@ -105,6 +115,18 @@ auto gb = CreateGroupBox("notify", 20, 20, 300, 120, "Notifications");
 gb->SetCheckable(true);
 gb->SetChecked(true);
 gb->AddChild(std::make_shared<UltraCanvasCheckbox>("snd", 240, 24, "Play sound"));
+gb->onCheckedChanged = [](bool on) { /* ... */ };
+```
+
+### Switch-activated section with an info icon
+
+```cpp
+auto gb = CreateGroupBox("settings", 20, 20, 300, 130, "Settings");
+gb->SetFrameStyle(GroupBoxFrameStyle::Header);
+gb->EnableActivatorSwitch(GroupBoxIndicatorSide::Right);  // switch on the right
+gb->SetInfoIconSide(GroupBoxIndicatorSide::Left);         // ⓘ on the left
+gb->SetHelpText("Toggle the switch to enable or disable this section.");
+gb->AddChild(/* ... */);
 gb->onCheckedChanged = [](bool on) { /* ... */ };
 ```
 
