@@ -79,7 +79,7 @@ public:
     std::function<void()> onOpenCancelled;
 
     // ===== UIElement OVERRIDES =====
-    void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
     bool OnEvent(const UCEvent& event) override;
 
 private:

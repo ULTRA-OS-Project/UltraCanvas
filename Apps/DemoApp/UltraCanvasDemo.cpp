@@ -1134,7 +1134,7 @@ namespace UltraCanvas {
         auto audioBuilder = DemoCategoryBuilder(this, DemoCategory::AudioElements);
 
         audioBuilder.AddItem("audio", "Audio Player", "Audio playback and waveform display",
-                             ImplementationStatus::NotImplemented,
+                             ImplementationStatus::FullyImplemented,
                              [this]() { return CreateAudioExamples(); })
                 .AddVariant("audio", "FLAC Support")
                 .AddVariant("audio", "MP3 Playback")

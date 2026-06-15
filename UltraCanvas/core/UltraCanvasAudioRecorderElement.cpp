@@ -30,9 +30,8 @@ namespace {
 }
 
 UltraCanvasAudioRecorderElement::UltraCanvasAudioRecorderElement(
-        const std::string& identifier, long x, long y, long w, long h)
-    : UltraCanvasUIElement(identifier, static_cast<int>(x), static_cast<int>(y),
-                           static_cast<int>(w), static_cast<int>(h)) {
+        const std::string& identifier, float x, float y, float w, float h)
+    : UltraCanvasUIElement(identifier, x, y, w, h) {
     recorder = std::make_shared<UltraCanvasAudioRecorder>();
     waveformHistory.assign(kWaveformHistory, 0.0f);
     HookRecorderCallbacks();
@@ -244,7 +243,7 @@ std::string UltraCanvasAudioRecorderElement::FormatTime(double seconds) {
     return std::string(buf);
 }
 
-void UltraCanvasAudioRecorderElement::Render(IRenderContext* ctx, const Rect2Di& /*dirtyRect*/) {
+void UltraCanvasAudioRecorderElement::Render(IRenderContext* ctx, const Rect2Df& /*dirtyRect*/) {
     if (!ctx) return;
     Rect2Di b = GetLocalBounds();
     Relayout();
@@ -299,10 +298,10 @@ void UltraCanvasAudioRecorderElement::DrawRecordButton(IRenderContext* ctx) {
         ctx->SetFillPaint(pcolor);
         if (state == AudioRecordingState::Paused) {
             // Resume (▶)
-            std::vector<Point2Df> tri = {
-                Point2Df(px - pr * 0.6f, py - pr),
-                Point2Df(px - pr * 0.6f, py + pr),
-                Point2Df(px + pr,        py)
+            std::vector<Point2Dd> tri = {
+                Point2Dd(px - pr * 0.6f, py - pr),
+                Point2Dd(px - pr * 0.6f, py + pr),
+                Point2Dd(px + pr,        py)
             };
             ctx->FillLinePath(tri);
         } else {
@@ -464,8 +463,7 @@ void UltraCanvasAudioRecorderElement::DrawSaveDiscardButtons(IRenderContext* ctx
 bool UltraCanvasAudioRecorderElement::OnEvent(const UCEvent& event) {
     if (!IsVisible() || IsDisabled()) return false;
 
-    Point2Di p(event.pointer.x - GetXInWindow(),
-               event.pointer.y - GetYInWindow());
+    Point2Di p = event.pointer;
 
     switch (event.type) {
         case UCEventType::MouseDown: {
@@ -497,7 +495,7 @@ bool UltraCanvasAudioRecorderElement::OnEvent(const UCEvent& event) {
             }
             if (Hit(gainSliderRect, p)) {
                 float pct = static_cast<float>(p.x - gainSliderRect.x) /
-                            std::max(1, gainSliderRect.width);
+                            std::max(1.0f, gainSliderRect.width);
                 recorder->SetInputGain(std::clamp(pct, 0.0f, 1.0f) * 2.0f);
                 RequestRedraw();
                 return true;

@@ -30,7 +30,7 @@ else()
     option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" ON)
     option(ULTRACANVAS_PLUGIN_SVG "Build SVG plugin" OFF)
     option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin" OFF)
-    option(ULTRACANVAS_ENABLE_AUDIO "Enable audio playback & recording (requires backend lib)" OFF)
+    option(ULTRACANVAS_ENABLE_AUDIO "Enable audio playback & recording (requires backend lib)" ON)
 endif ()
 option(ULTRACANVAS_ENABLE_GL "Enable OpenGL 3D surface support" ON)
 
@@ -220,6 +220,14 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/AbsoluteLayout.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/FlexLayout.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/GridLayout.cpp
+
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudio.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioDevices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioPlayer.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioRecorder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioPlayerElement.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioRecorderElement.cpp
+
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartElementBase.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasSpecificChartElements.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartDataStructures.cpp
@@ -274,6 +282,7 @@ set(ULTRACANVAS_CORE_SOURCES
         # Vendored miniz (ZIP support for ODS/XLSX File I/O)
         ${CMAKE_CURRENT_SOURCE_DIR}/third_party/miniz/miniz.c
 
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetFileIO.cpp
         # Add Windows/Mac sources as needed
         #        ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraCanvasWindowsDoubleBuffer.cpp
 )
@@ -332,27 +341,19 @@ endif()
 # Audio sources (always-compiled API surface; backend is a stub unless
 # ULTRACANVAS_ENABLE_AUDIO is ON, in which case the miniaudio backend replaces
 # the null one).
-list(APPEND ULTRACANVAS_CORE_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudio.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioDevices.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioPlayer.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioRecorder.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioPlayerElement.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioRecorderElement.cpp
-)
 list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Audio/AudioBackendNull.cpp
 )
 if(ULTRACANVAS_ENABLE_AUDIO)
     # Fetch miniaudio (single-header, MIT-0 / public-domain, cross-platform).
     # Pinned to a release tag for reproducibility.
-    FetchContent_Declare(
-        miniaudio
-        GIT_REPOSITORY https://github.com/mackron/miniaudio
-        GIT_TAG        0.11.21
-        GIT_SHALLOW    TRUE
-    )
-    FetchContent_MakeAvailable(miniaudio)
+#    FetchContent_Declare(
+#        miniaudio
+#        GIT_REPOSITORY https://github.com/mackron/miniaudio
+#        GIT_TAG        0.11.21
+#        GIT_SHALLOW    TRUE
+#    )
+#    FetchContent_MakeAvailable(miniaudio)
 
     list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Audio/AudioBackendMiniaudio.cpp
@@ -403,6 +404,7 @@ set(ULTRACANVAS_ALL_SOURCES
     ${ULTRACANVAS_CORE_SOURCES}
     ${ULTRACANVAS_PLATFORM_SOURCES}
     ${ULTRACANVAS_LIBSPECIFIC_SOURCES}
+        libspecific/Audio/miniaudio.h
 )
 
 # ===== BUILD CORE LIBRARY =====

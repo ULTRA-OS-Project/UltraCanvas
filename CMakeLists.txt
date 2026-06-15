@@ -49,6 +49,7 @@ option(BUILD_CSSLAYOUT_TESTS "Build the CSSLayout non-UI test harness" ON)
 option(BUILD_TESTS "Build unit tests" OFF)
 option(ULTRACANVAS_PLUGIN_CDR "Build CDR plugin (requires libcdr)" ON)
 option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" ON)
+option(ULTRACANVAS_ENABLE_AUDIO "Build audio backend" ON)
 option(ULTRACANVAS_PLUGIN_VECTOR "Build Vector plugin" OFF)
 option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin (requires poppler)" OFF)
 
@@ -130,6 +131,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasGaugeExamples.cpp
             Apps/DemoApp/UltraCanvasQRCodeExamples.cpp
             Apps/DemoApp/UltraCanvasBarcodeExamples.cpp
+            Apps/DemoApp/UltraCanvasAudioExamples.cpp
     )
 
     # These files depend on libvips

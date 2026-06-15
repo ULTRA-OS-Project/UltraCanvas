@@ -47,7 +47,7 @@ struct AudioRecorderStyle {
 class UltraCanvasAudioRecorderElement : public UltraCanvasUIElement {
 public:
     UltraCanvasAudioRecorderElement(const std::string& identifier = "AudioRecorder",
-                                    long x = 0, long y = 0, long w = 400, long h = 72);
+                                    float x = 0, float y = 0, float w = 400, float h = 72);
     ~UltraCanvasAudioRecorderElement() override;
 
     // ===== TRANSPORT (proxies to underlying recorder) =====
@@ -91,7 +91,7 @@ public:
     std::function<void(MicrophonePermission)> onPermissionChanged;
 
     // ===== UIElement OVERRIDES =====
-    void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
     bool OnEvent(const UCEvent& event) override;
 
 private:
@@ -100,15 +100,15 @@ private:
     AudioRecorderStyle style;
 
     // Cached UI rects
-    Rect2Di recordButtonRect;
-    Rect2Di pauseButtonRect;
-    Rect2Di levelMeterRect;
-    Rect2Di timeLabelRect;
-    Rect2Di deviceSelectRect;
-    Rect2Di gainSliderRect;
-    Rect2Di saveButtonRect;
-    Rect2Di discardButtonRect;
-    Rect2Di waveformRect;
+    Rect2Df recordButtonRect;
+    Rect2Df pauseButtonRect;
+    Rect2Df levelMeterRect;
+    Rect2Df timeLabelRect;
+    Rect2Df deviceSelectRect;
+    Rect2Df gainSliderRect;
+    Rect2Df saveButtonRect;
+    Rect2Df discardButtonRect;
+    Rect2Df waveformRect;
 
     // Live state for the meter / waveform
     float lastPeakLevel = 0.0f;
@@ -137,12 +137,12 @@ private:
 
 // ===== FACTORIES =====
 inline std::shared_ptr<UltraCanvasAudioRecorderElement> CreateAudioRecorder(
-        const std::string& identifier, long x, long y, long w, long h) {
+        const std::string& identifier, float x, float y, float w, float h) {
     return UltraCanvasUIElementFactory::Create<UltraCanvasAudioRecorderElement>(identifier, x, y, w, h);
 }
 
 inline std::shared_ptr<UltraCanvasAudioRecorderElement> CreateCompactAudioRecorder(
-        const std::string& identifier, long x, long y, long w, long h) {
+        const std::string& identifier, float x, float y, float w, float h) {
     auto el = CreateAudioRecorder(identifier, x, y, w, h);
     AudioRecorderStyle s = el->GetStyle();
     s.compact = true;
@@ -154,7 +154,7 @@ inline std::shared_ptr<UltraCanvasAudioRecorderElement> CreateCompactAudioRecord
 }
 
 inline std::shared_ptr<UltraCanvasAudioRecorderElement> CreateAudioRecorderWithPlayback(
-        const std::string& identifier, long x, long y, long w, long h) {
+        const std::string& identifier, float x, float y, float w, float h) {
     auto el = CreateAudioRecorder(identifier, x, y, w, h);
     AudioRecorderStyle s = el->GetStyle();
     s.showEmbeddedPlayer = true;

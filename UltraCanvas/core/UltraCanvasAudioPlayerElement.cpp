@@ -162,13 +162,13 @@ std::string UltraCanvasAudioPlayerElement::FormatTime(double seconds) {
     return std::string(buf);
 }
 
-void UltraCanvasAudioPlayerElement::Render(IRenderContext* ctx, const Rect2Di& /*dirtyRect*/) {
+void UltraCanvasAudioPlayerElement::Render(IRenderContext* ctx, const Rect2Df& /*dirtyRect*/) {
     if (!ctx) return;
     Rect2Di b = GetLocalBounds();
     Relayout();
 
     // Background panel
-    ctx->DrawFilledRectangle(Rect2Df(b.x, b.y, b.width, b.height),
+    ctx->DrawFilledRectangle(Rect2Dd(b.x, b.y, b.width, b.height),
                              style.backgroundColor, 1.0f,
                              style.borderColor, style.cornerRadius);
 
@@ -181,7 +181,7 @@ void UltraCanvasAudioPlayerElement::Render(IRenderContext* ctx, const Rect2Di& /
 void UltraCanvasAudioPlayerElement::DrawTransportButtons(IRenderContext* ctx) {
     // ----- Play / Pause -----
     Color btnColor = hoverPlay ? style.iconHoverColor : style.iconColor;
-    ctx->DrawFilledRectangle(Rect2Df(playButtonRect.x, playButtonRect.y,
+    ctx->DrawFilledRectangle(Rect2Dd(playButtonRect.x, playButtonRect.y,
                                      playButtonRect.width, playButtonRect.height),
                              Color(255, 255, 255, 0), 0.0f,
                              Color(0, 0, 0, 0), style.cornerRadius);
@@ -194,14 +194,14 @@ void UltraCanvasAudioPlayerElement::DrawTransportButtons(IRenderContext* ctx) {
         // Pause icon: two vertical bars
         int bw = r / 2;
         int gap = bw / 2;
-        ctx->FillRectangle(Rect2Df(cx - gap - bw, cy - r, bw, r * 2));
-        ctx->FillRectangle(Rect2Df(cx + gap,      cy - r, bw, r * 2));
+        ctx->FillRectangle(Rect2Dd(cx - gap - bw, cy - r, bw, r * 2));
+        ctx->FillRectangle(Rect2Dd(cx + gap,      cy - r, bw, r * 2));
     } else {
         // Play icon: right-pointing triangle
-        std::vector<Point2Df> tri = {
-            Point2Df(cx - r * 0.6f, cy - r),
-            Point2Df(cx - r * 0.6f, cy + r),
-            Point2Df(cx + r,        cy)
+        std::vector<Point2Dd> tri = {
+            Point2Dd(cx - r * 0.6f, cy - r),
+            Point2Dd(cx - r * 0.6f, cy + r),
+            Point2Dd(cx + r,        cy)
         };
         ctx->FillLinePath(tri);
     }
@@ -212,7 +212,7 @@ void UltraCanvasAudioPlayerElement::DrawTransportButtons(IRenderContext* ctx) {
         int sy = stopButtonRect.y + stopButtonRect.height / 2;
         int sr = stopButtonRect.width / 3;
         ctx->SetFillPaint(style.iconColor);
-        ctx->FillRectangle(Rect2Df(sx - sr, sy - sr, sr * 2, sr * 2));
+        ctx->FillRectangle(Rect2Dd(sx - sr, sy - sr, sr * 2, sr * 2));
     }
 
     // ----- Mute toggle -----
@@ -222,20 +222,20 @@ void UltraCanvasAudioPlayerElement::DrawTransportButtons(IRenderContext* ctx) {
         int mr = muteButtonRect.width / 3;
         // Speaker body (trapezoid approximated as triangle + rect)
         ctx->SetFillPaint(style.iconColor);
-        ctx->FillRectangle(Rect2Df(mx - mr, my - mr / 2, mr, mr));
-        std::vector<Point2Df> cone = {
-            Point2Df(mx,      my - mr),
-            Point2Df(mx + mr, my - mr),
-            Point2Df(mx + mr, my + mr),
-            Point2Df(mx,      my + mr)
+        ctx->FillRectangle(Rect2Dd(mx - mr, my - mr / 2, mr, mr));
+        std::vector<Point2Dd> cone = {
+            Point2Dd(mx,      my - mr),
+            Point2Dd(mx + mr, my - mr),
+            Point2Dd(mx + mr, my + mr),
+            Point2Dd(mx,      my + mr)
         };
         ctx->FillLinePath(cone);
         if (player->IsMuted()) {
             // Red "X" through the speaker
             ctx->SetStrokePaint(Color(220, 30, 30));
             ctx->SetStrokeWidth(2.0f);
-            ctx->DrawLine(Point2Df(mx - mr, my - mr), Point2Df(mx + mr, my + mr));
-            ctx->DrawLine(Point2Df(mx + mr, my - mr), Point2Df(mx - mr, my + mr));
+            ctx->DrawLine(Point2Dd(mx - mr, my - mr), Point2Dd(mx + mr, my + mr));
+            ctx->DrawLine(Point2Dd(mx + mr, my - mr), Point2Dd(mx - mr, my + mr));
         }
     }
 }
@@ -243,7 +243,7 @@ void UltraCanvasAudioPlayerElement::DrawTransportButtons(IRenderContext* ctx) {
 void UltraCanvasAudioPlayerElement::DrawSeekBar(IRenderContext* ctx) {
     // Track
     ctx->DrawFilledRectangle(
-        Rect2Df(seekBarRect.x, seekBarRect.y,
+        Rect2Dd(seekBarRect.x, seekBarRect.y,
                 seekBarRect.width, seekBarRect.height),
         style.progressTrackColor, 0.0f, Color(0, 0, 0, 0),
         seekBarRect.height / 2);
@@ -256,7 +256,7 @@ void UltraCanvasAudioPlayerElement::DrawSeekBar(IRenderContext* ctx) {
     int fillW = static_cast<int>(seekBarRect.width * pct);
     if (fillW > 0) {
         ctx->DrawFilledRectangle(
-            Rect2Df(seekBarRect.x, seekBarRect.y,
+            Rect2Dd(seekBarRect.x, seekBarRect.y,
                     fillW, seekBarRect.height),
             style.progressFillColor, 0.0f, Color(0, 0, 0, 0),
             seekBarRect.height / 2);
@@ -266,15 +266,15 @@ void UltraCanvasAudioPlayerElement::DrawSeekBar(IRenderContext* ctx) {
     int knobX = seekBarRect.x + fillW;
     int knobY = seekBarRect.y + seekBarRect.height / 2;
     ctx->SetFillPaint(style.knobColor);
-    ctx->FillCircle(Point2Df(knobX, knobY), kSeekKnobR);
+    ctx->FillCircle(Point2Dd(knobX, knobY), kSeekKnobR);
     ctx->SetStrokePaint(style.knobBorderColor);
     ctx->SetStrokeWidth(1.0f);
-    ctx->DrawCircle(Point2Df(knobX, knobY), kSeekKnobR);
+    ctx->DrawCircle(Point2Dd(knobX, knobY), kSeekKnobR);
 }
 
 void UltraCanvasAudioPlayerElement::DrawVolumeBar(IRenderContext* ctx) {
     ctx->DrawFilledRectangle(
-        Rect2Df(volumeBarRect.x, volumeBarRect.y,
+        Rect2Dd(volumeBarRect.x, volumeBarRect.y,
                 volumeBarRect.width, volumeBarRect.height),
         style.progressTrackColor, 0.0f, Color(0, 0, 0, 0),
         volumeBarRect.height / 2);
@@ -283,7 +283,7 @@ void UltraCanvasAudioPlayerElement::DrawVolumeBar(IRenderContext* ctx) {
     int fillW = static_cast<int>(volumeBarRect.width * v);
     if (fillW > 0) {
         ctx->DrawFilledRectangle(
-            Rect2Df(volumeBarRect.x, volumeBarRect.y,
+            Rect2Dd(volumeBarRect.x, volumeBarRect.y,
                     fillW, volumeBarRect.height),
             style.progressFillColor, 0.0f, Color(0, 0, 0, 0),
             volumeBarRect.height / 2);
@@ -291,10 +291,10 @@ void UltraCanvasAudioPlayerElement::DrawVolumeBar(IRenderContext* ctx) {
     int knobX = volumeBarRect.x + fillW;
     int knobY = volumeBarRect.y + volumeBarRect.height / 2;
     ctx->SetFillPaint(style.knobColor);
-    ctx->FillCircle(Point2Df(knobX, knobY), kVolumeKnobR);
+    ctx->FillCircle(Point2Dd(knobX, knobY), kVolumeKnobR);
     ctx->SetStrokePaint(style.knobBorderColor);
     ctx->SetStrokeWidth(1.0f);
-    ctx->DrawCircle(Point2Df(knobX, knobY), kVolumeKnobR);
+    ctx->DrawCircle(Point2Dd(knobX, knobY), kVolumeKnobR);
 }
 
 void UltraCanvasAudioPlayerElement::DrawTimeLabels(IRenderContext* ctx) {
@@ -302,15 +302,14 @@ void UltraCanvasAudioPlayerElement::DrawTimeLabels(IRenderContext* ctx) {
                         FormatTime(player->GetDuration());
     ctx->SetFontSize(11);
     ctx->SetTextPaint(style.textColor);
-    ctx->DrawText(label, Point2Df(timeLabelRect.x, timeLabelRect.y + 12));
+    ctx->DrawText(label, Point2Dd(timeLabelRect.x, timeLabelRect.y + 12));
 }
 
 bool UltraCanvasAudioPlayerElement::OnEvent(const UCEvent& event) {
     if (!IsVisible() || IsDisabled()) return false;
 
     // Pointer is in window-local coords; subtract our origin to get local.
-    Point2Di p(event.pointer.x - GetXInWindow(),
-               event.pointer.y - GetYInWindow());
+    Point2Di p = event.pointer;
 
     switch (event.type) {
         case UCEventType::MouseEnter:
