@@ -176,6 +176,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasClipboard.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasElementDebug.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasContainer.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasGroupBox.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSplitPane.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDirtyRectManager.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea.cpp

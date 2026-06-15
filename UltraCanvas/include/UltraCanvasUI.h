@@ -20,6 +20,7 @@
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasGroupBox.h"
 #include "UltraCanvasTooltipManager.h"
 #include "UltraCanvasMenu.h"
 //#include "UltraCanvasStyledText.h"
