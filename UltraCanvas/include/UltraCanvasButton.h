@@ -11,6 +11,7 @@
 #include "UltraCanvasEvent.h"
 #include <string>
 #include <functional>
+#include <vector>
 
 namespace UltraCanvas {
 
@@ -100,6 +101,12 @@ namespace UltraCanvas {
         float cornerRadius = 3.0f;
 
         bool useIconAsMask = false;
+
+        // Optional vertical background gradient, drawn over the state background
+        // (top = stop position 0.0, bottom = stop position 1.0). Used for state
+        // indicators such as the "unsaved" marker on a save button. Leave empty
+        // to disable.
+        std::vector<GradientStop> backgroundGradient;
 
         // Effects
         bool hasShadow = false;

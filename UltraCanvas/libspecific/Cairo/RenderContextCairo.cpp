@@ -1619,8 +1619,13 @@ namespace UltraCanvas {
 
         // Set the image as source and paint
         if (drawMasked) {
-            cairo_set_source_rgb(cairo, 1.0, 1.0, 1.0);
-            cairo_set_operator(cairo, CAIRO_OPERATOR_DIFFERENCE);
+            // Recolor the icon: use the pixmap's alpha channel as a mask for a
+            // solid color source so the SVG/icon is tinted with `c` (e.g. theme
+            // foreground, or a grey for disabled/inactive icons). Honors the
+            // global alpha so callers can dim via SetAlpha().
+            cairo_set_source_rgba(cairo,
+                                  c.r / 255.0, c.g / 255.0, c.b / 255.0,
+                                  (c.a / 255.0) * alpha);
             cairo_mask_surface(cairo, pixmap.GetSurface(), 0, 0);
         } else {
             cairo_set_source_surface(cairo, pixmap.GetSurface(), 0, 0);

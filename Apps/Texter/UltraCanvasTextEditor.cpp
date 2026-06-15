@@ -69,13 +69,15 @@ namespace {
     }
 
     // Build a Flat-style ToolbarAppearance tinted for either light or dark mode.
-    // NOTE: Icons in media/icons/texter/*.svg are drawn as-is — icon tinting is a
-    // framework TODO (see UltraCanvas/core/UltraCanvasButton.cpp DrawIcon). Existing
-    // dark-ink icons will render dark-on-dark in dark mode until that is addressed,
-    // either by shipping a light-variant icon set or implementing tinting.
+    // Icons in media/icons/texter/*.svg are recoloured to foregroundColor via the
+    // icon-mask path (ButtonStyle::useIconAsMask -> IRenderContext::DrawMask), so a
+    // single dark-ink icon set renders correctly in both light and dark themes.
     ToolbarAppearance BuildToolbarAppearance(bool dark) {
         if (!dark) {
-            return ToolbarAppearance::Flat();
+            ToolbarAppearance app = ToolbarAppearance::Flat();
+            app.foregroundColor = Color(40, 40, 40, 255);     // dark ink on light bar
+            app.disabledForegroundColor = Color(170, 170, 170, 255); // greyed icons
+            return app;
         }
         ToolbarAppearance app;
         app.style = ToolbarStyle::Flat;
@@ -86,6 +88,7 @@ namespace {
         app.hoverBackgroundColor      = Color(65, 65, 65, 255);
         app.activeBackgroundColor     = Color(80, 80, 80, 255);
         app.disabledBackgroundColor   = Color(55, 55, 55, 255);
+        app.disabledForegroundColor   = Color(110, 110, 110, 255); // greyed icons on dark bar
         return app;
     }
 } // anonymous namespace
@@ -3728,6 +3731,22 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         bool canSave = (activeDoc && activeDoc->isNewFile) || HasUnsavedChanges();
         if (auto w = toolbar->GetWidget("save")) {
             w->SetDisabled(!canSave);
+            if (auto saveBtn = std::dynamic_pointer_cast<UltraCanvasButton>(w)) {
+                ButtonStyle s = saveBtn->GetStyle();
+                if (HasUnsavedChanges()) {
+                    // Unsaved indicator: red shading on the button background,
+                    // strong red at the bottom fading quickly to a faint (~10%)
+                    // red toward the top.
+                    s.backgroundGradient = {
+                        GradientStop(0.0, Color(210, 40, 40,  20)),  // top: ~8% red
+                        GradientStop(0.55, Color(208, 36, 36, 70)),  // fades in slowly
+                        GradientStop(1.0, Color(205, 30, 30, 235)),  // bottom: strong red
+                    };
+                } else {
+                    s.backgroundGradient.clear();
+                }
+                saveBtn->SetStyle(s);
+            }
         }
 
         // ── Undo / Redo ──
