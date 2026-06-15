@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasPDFPlugin.h"
+#include "UltraCanvasFileError.h"
 #include <iostream>
 #include <fstream>
 #include <algorithm>
@@ -61,7 +62,14 @@ bool PopplerPDFEngine::LoadDocument(const std::string& filePath, const std::stri
         // Load document using Poppler
         auto popplerDoc = poppler::document::load_from_file(filePath, password);
         if (!popplerDoc) {
-            debugOutput << "Failed to load PDF document: " << filePath << std::endl;
+            // Distinguish a file-access problem from a damaged/encrypted PDF.
+            std::string access = DescribeFileReadError(filePath);
+            debugOutput << "Failed to load PDF document: "
+                        << (access.empty()
+                              ? ("the file is not a valid or readable PDF (it may be "
+                                 "damaged or password-protected): " + filePath)
+                              : access)
+                        << std::endl;
             return false;
         }
         

@@ -7,6 +7,7 @@
 #include "UltraCanvasCDRPlugin.h"
 #include "UltraCanvasCDRPluginImpl.h"
 #include "UltraCanvasUtils.h"
+#include "UltraCanvasFileError.h"
 #include <iostream>
 #include <fstream>
 #include <cmath>
@@ -1742,13 +1743,20 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasCDRElement::LoadFromFile(const std::string& filePath) {
+        lastError.clear();
         bool result = cdrRenderer.LoadFromFile(filePath);
 
         if (result && onLoadComplete) {
             onLoadComplete();
         }
-        if (!result && onLoadError) {
-            onLoadError("Failed to parse CDR file: " + filePath);
+        if (!result) {
+            // Distinguish a file-access problem (missing / locked / no permission)
+            // from a valid-but-unparseable CorelDRAW file.
+            std::string access = DescribeFileReadError(filePath);
+            lastError = !access.empty()
+                ? access
+                : ("The file is not a valid CorelDRAW (.cdr) drawing: " + filePath);
+            if (onLoadError) onLoadError(lastError);
         }
 
         RequestRedraw();

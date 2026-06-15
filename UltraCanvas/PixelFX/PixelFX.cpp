@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "PixelFX/PixelFX.h"
+#include "UltraCanvasFileError.h"
 #include "../libspecific/Cairo/VipsQoiLoader.h"
 #include <algorithm>
 #include <cmath>
@@ -83,7 +84,13 @@ namespace PixelFX {
                                                      vips::VImage::option()->set("access", (int)access)));
             return img;
         } catch (const vips::VError& e) {
-            throw PixelFXException("Failed to load image: " + std::string(e.what()));
+            // Prefer a clear file-access reason (missing / locked / no permission);
+            // otherwise report an unsupported/damaged format with the vips detail.
+            std::string access = UltraCanvas::DescribeFileReadError(filename);
+            throw PixelFXException(!access.empty()
+                ? access
+                : ("The image format is not supported or the file is damaged: "
+                   + filename + " (" + e.what() + ")"));
         }
     }
 
@@ -212,12 +219,20 @@ namespace PixelFX {
 
         bool Save(const PFXImage& image, const std::string& filename) {
             try { image.write_to_file(filename.c_str()); return true; }
-            catch (const vips::VError& e) { throw PixelFXException("Failed to save image: " + std::string(e.what())); }
+            catch (const vips::VError& e) {
+                std::string w = UltraCanvas::DescribeFileWriteError(filename);
+                throw PixelFXException(!w.empty() ? w
+                    : ("Could not save image: " + std::string(e.what())));
+            }
         }
 
         bool SaveWithOptions(const PFXImage& image, const std::string& filename, vips::VOption* options) {
             try { image.write_to_file(filename.c_str(), options); return true; }
-            catch (const vips::VError& e) { throw PixelFXException("Failed to save image: " + std::string(e.what())); }
+            catch (const vips::VError& e) {
+                std::string w = UltraCanvas::DescribeFileWriteError(filename);
+                throw PixelFXException(!w.empty() ? w
+                    : ("Could not save image: " + std::string(e.what())));
+            }
         }
 
         std::vector<uint8_t> SaveToBuffer(const PFXImage& image, const std::string& format) {

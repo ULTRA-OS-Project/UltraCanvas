@@ -48,6 +48,10 @@ public:
     bool LoadFromFile(const std::string& filePath);
     bool LoadFromAudio(std::shared_ptr<UCAudio> audio);
 
+    // Human-readable reason for the most recent failed load (forwarded from the
+    // underlying player): e.g. file locked, missing, or unsupported format.
+    const std::string& GetLastError() const { return player->GetLastError(); }
+
     // Opens the platform's native open dialog (via UltraCanvasFileLoader)
     // pre-filled with audio format filters and loads the chosen file.
     // Async: result delivered via onLoaded / onLoadCancelled.

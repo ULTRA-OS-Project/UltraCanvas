@@ -1056,8 +1056,13 @@ bool UltraCanvasSpreadsheet::LoadFromFile(const std::string& filePath) {
 }
 
 bool UltraCanvasSpreadsheet::SaveToFile(const std::string& filePath) {
+    lastError_.clear();
+
     size_t dot = filePath.find_last_of('.');
-    if (dot == std::string::npos) return false;   // no extension -> unknown format
+    if (dot == std::string::npos) {
+        lastError_ = "The file has no extension, so the save format is unknown: " + filePath;
+        return false;
+    }
     std::string ext = filePath.substr(dot);
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
@@ -1070,7 +1075,9 @@ bool UltraCanvasSpreadsheet::SaveToFile(const std::string& filePath) {
     } else if (ext == ".tsv") {
         return SaveCSV(filePath, -1);  // Current sheet with tab delimiter
     }
-    
+
+    lastError_ = "Unsupported save format '" + ext +
+                 "'. Supported formats are .ods, .csv and .tsv: " + filePath;
     return false;
 }
 
@@ -1089,8 +1096,16 @@ bool UltraCanvasSpreadsheet::LoadODS(const std::string& filePath) {
 }
 
 bool UltraCanvasSpreadsheet::SaveODS(const std::string& filePath) {
+    lastError_.clear();
     ODSSaver saver(this);
-    return saver.Save(filePath);
+    if (!saver.Save(filePath)) {
+        std::string writeError = DescribeFileWriteError(filePath);
+        lastError_ = writeError.empty()
+            ? ("Could not write the spreadsheet: " + filePath)
+            : writeError;
+        return false;
+    }
+    return true;
 }
 
 bool UltraCanvasSpreadsheet::LoadXLSX(const std::string& filePath) {
@@ -1103,8 +1118,9 @@ bool UltraCanvasSpreadsheet::LoadXLSX(const std::string& filePath) {
 }
 
 bool UltraCanvasSpreadsheet::SaveXLSX(const std::string& filePath) {
-    // XLSX format implementation would follow similar pattern
-    // For now, return false - to be implemented
+    // XLSX writing is not implemented yet; report a clear reason.
+    lastError_ = "Saving to Excel (.xlsx) is not supported yet. "
+                 "Please save as .ods or .csv: " + filePath;
     return false;
 }
 
@@ -1158,17 +1174,25 @@ bool UltraCanvasSpreadsheet::LoadCSVWithOptions(const std::string& filePath,
 }
 
 bool UltraCanvasSpreadsheet::SaveCSV(const std::string& filePath, int sheetIndex) {
+    lastError_.clear();
     const SpreadsheetSheet* sheet = nullptr;
-    
+
     if (sheetIndex < 0) {
         sheet = GetActiveSheet();
     } else {
         sheet = GetSheet(sheetIndex);
     }
-    
-    if (!sheet) return false;
-    
-    return CSVLoader::Save(filePath, sheet);
+
+    if (!sheet) { lastError_ = "There is no sheet to save."; return false; }
+
+    if (!CSVLoader::Save(filePath, sheet)) {
+        std::string writeError = DescribeFileWriteError(filePath);
+        lastError_ = writeError.empty()
+            ? ("Could not write the file: " + filePath)
+            : writeError;
+        return false;
+    }
+    return true;
 }
 
 } // namespace UltraCanvas
