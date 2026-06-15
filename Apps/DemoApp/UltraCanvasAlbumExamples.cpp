@@ -463,7 +463,7 @@ namespace UltraCanvas {
         const AlbumMode modeVals[] = { AlbumMode::Display, AlbumMode::UserEdit, AlbumMode::Admin };
         auto modeRow = MakeRow("album_mode_row");
         AppendLabeledButtons(modeRow, "album_mode_", "Mode", kLabelW, 130, 28,
-                      {"Display (visitor)", "User edit", "Admin"},
+                      {"Visitor", "User", "Admin"},
                       [albumPtr, statusPtr, modeVals](int i) {
                           albumPtr->SetMode(modeVals[i]);
                           AlbumConfig c = albumPtr->GetConfig();
