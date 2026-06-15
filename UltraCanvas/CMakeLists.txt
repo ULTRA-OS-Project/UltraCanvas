@@ -30,6 +30,7 @@ else()
     option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" ON)
     option(ULTRACANVAS_PLUGIN_SVG "Build SVG plugin" OFF)
     option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin" OFF)
+    option(ULTRACANVAS_ENABLE_AUDIO "Enable audio playback & recording (requires backend lib)" OFF)
 endif ()
 option(ULTRACANVAS_ENABLE_GL "Enable OpenGL 3D surface support" ON)
 
@@ -328,6 +329,37 @@ if(LIBVIPS_FOUND)
     )
 endif()
 
+# Audio sources (always-compiled API surface; backend is a stub unless
+# ULTRACANVAS_ENABLE_AUDIO is ON, in which case the miniaudio backend replaces
+# the null one).
+list(APPEND ULTRACANVAS_CORE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudio.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioDevices.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioPlayer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioRecorder.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioPlayerElement.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioRecorderElement.cpp
+)
+list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Audio/AudioBackendNull.cpp
+)
+if(ULTRACANVAS_ENABLE_AUDIO)
+    # Fetch miniaudio (single-header, MIT-0 / public-domain, cross-platform).
+    # Pinned to a release tag for reproducibility.
+    FetchContent_Declare(
+        miniaudio
+        GIT_REPOSITORY https://github.com/mackron/miniaudio
+        GIT_TAG        0.11.21
+        GIT_SHALLOW    TRUE
+    )
+    FetchContent_MakeAvailable(miniaudio)
+
+    list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Audio/AudioBackendMiniaudio.cpp
+    )
+    message(STATUS "Audio backend: miniaudio (${miniaudio_SOURCE_DIR})")
+endif()
+
 # OpenGL surface sources
 if(ULTRACANVAS_ENABLE_GL)
     list(APPEND ULTRACANVAS_CORE_SOURCES
@@ -563,6 +595,29 @@ if(ULTRACANVAS_ENABLE_GL)
     endif()
     if(ULTRACANVAS_HAS_WGL)
         target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_WGL=1)
+    endif()
+endif()
+
+# Audio compile definitions + include path + libs
+if(ULTRACANVAS_ENABLE_AUDIO)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_ENABLE_AUDIO=1)
+    target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE
+        $<BUILD_INTERFACE:${miniaudio_SOURCE_DIR}>
+    )
+    # miniaudio links dl + pthread on Linux, and uses AudioToolbox/CoreFoundation
+    # on macOS. On Windows it's header-only and links the SDK that's already
+    # pulled in via gdi32/ole32/etc.
+    if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC dl pthread m)
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
+        find_library(AUDIOTOOLBOX_FRAMEWORK AudioToolbox REQUIRED)
+        find_library(COREAUDIO_FRAMEWORK CoreAudio REQUIRED)
+        find_library(COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
+            ${AUDIOTOOLBOX_FRAMEWORK}
+            ${COREAUDIO_FRAMEWORK}
+            ${COREFOUNDATION_FRAMEWORK}
+        )
     endif()
 endif()
 
