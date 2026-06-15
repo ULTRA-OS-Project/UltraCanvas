@@ -1,0 +1,135 @@
+# UltraCanvas Video
+
+Cross-platform video **playback** and **recording** for UltraCanvas. Mirrors the
+three-layer design of UltraCanvas Audio: a frame resource, non-visual engines,
+and composite UI elements, all behind a pluggable platform backend.
+
+## Status
+
+API + UI implemented. The default build compiles a **null backend** so app code
+links and runs unchanged (`UltraCanvasVideoDevices::IsAvailable()` returns
+`false`). When `ULTRACANVAS_ENABLE_VIDEO=ON` *and* a platform media framework is
+detected at configure time, the real backend is compiled in and replaces it.
+
+| Platform | Native backend | State |
+|----------|----------------|-------|
+| Linux    | **GStreamer** (dispatches to V4L2 cameras / VA-API decode) | Implemented |
+| Windows  | Media Foundation | TODO (interface in place) |
+| macOS    | AVFoundation | TODO (interface in place) |
+
+GStreamer is detected via `pkg-config` (`gstreamer-1.0`, `-app-1.0`,
+`-video-1.0`, `-pbutils-1.0`). If the dev packages are absent the null backend is
+used and a CMake status message says so.
+
+## Architecture
+
+```
+UCVideoFrame  (UltraCanvasVideo.h)          packed BGRA frame + metadata
+   ▲
+UltraCanvasVideoPlayer  / UltraCanvasVideoRecorder      non-visual engines
+   ▲                          ▲
+UltraCanvasVideoPlayerElement / ...RecorderElement      UI controls
+   ▲
+IVideoBackend (libspecific/Video/)          OpenDecoder / OpenCapture / cameras
+   └─ VideoBackendGStreamer.cpp · VideoBackendNull.cpp
+```
+
+Frame flow: the backend decodes/captures on its own thread and hands `UCVideoFrame`s
+up through session callbacks; the engine caches the latest frame behind a mutex.
+Each UI element runs a periodic **main-thread timer** (`Application::StartTimer`,
+~30 fps) that pulls the latest frame, uploads it into a Cairo `UCPixmap`, and
+calls `RequestRedraw()`. Audio (for playback) is handled by the backend's own
+audio sink, so A/V sync is automatic.
+
+## Public API surface
+
+### Frame resource — `UltraCanvasVideo.h`
+
+`UCVideoFrame` holds one decoded frame as packed 32-bit pixels (BGRA from the
+GStreamer path, which matches Cairo's `ARGB32` byte layout) plus `VideoFrameInfo`.
+`VideoStreamInfo` carries width/height/fps/duration/codec.
+
+### Playback (non-visual) — `UltraCanvasVideoPlayer.h`
+
+```cpp
+auto p = std::make_shared<UltraCanvasVideoPlayer>();
+p->LoadFromFile("clip.mp4");
+p->onEnded = []{ /* ... */ };
+p->Play();
+// UI thread, each tick:
+if (auto f = p->GetCurrentFrame()) { /* upload f to a pixmap */ }
+```
+
+Transport: `Play / Pause / Stop / Seek(seconds)`.
+Properties: `Volume`, `Mute`, `Loop`, `PlaybackRate`.
+Frame access: `GetCurrentFrame()` (thread-safe).
+Callbacks: `onLoaded`, `onPlaybackStateChanged`, `onFrameReady`,
+`onPositionChanged`, `onEnded`, `onError`.
+
+### Recording (non-visual) — `UltraCanvasVideoRecorder.h`
+
+```cpp
+VideoCaptureConfig cfg;
+cfg.outputPath = "out.mp4";
+cfg.codec = VideoCodec::H264;
+auto r = std::make_shared<UltraCanvasVideoRecorder>(cfg);
+r->Open();    // starts the live preview
+r->Start();   // begins muxing to outputPath
+// ...
+r->Stop();    // finalizes the file
+```
+
+`Open` starts a preview-only pipeline; `Start/Pause/Resume/Stop` gate a valved
+record branch so the file contains only footage between `Start()` and `Stop()`.
+Preview frames: `GetPreviewFrame()`.
+Callbacks: `onRecordingStateChanged`, `onPreviewFrame`, `onSaved`,
+`onMaxDurationReached`, `onError`, `onPermissionChanged`.
+
+### UI elements
+
+`UltraCanvasVideoPlayerElement` — video surface (aspect-fit letterbox) with an
+auto-hiding overlay transport bar: play/pause, seek, mute, volume, time labels.
+`ShowOpenDialog()` opens the native file picker.
+
+`UltraCanvasVideoRecorderElement` — live camera preview with a REC/stop button,
+elapsed-time readout, blinking record indicator, and a camera picker popup.
+`OpenCamera()`, `StartRecording()/StopRecording()`, `ShowSaveDialog()`.
+
+```cpp
+auto player = CreateVideoPlayer("player", 10, 10, 640, 400);
+player->LoadFromFile("clip.mp4");
+player->Play();
+
+auto rec = CreateVideoRecorder("rec", 10, 10, 640, 420);
+rec->OpenCamera();
+rec->ShowSaveDialog();   // pick a path, then records to it
+```
+
+### Devices — `UltraCanvasVideoDevices.h`
+
+`ListCameras()`, `GetDefaultCamera()`, `GetCameraPermission()`,
+`RequestCameraPermission()`, `GetBackendName()`, `IsAvailable()`.
+
+## Build
+
+```
+cmake -DULTRACANVAS_ENABLE_VIDEO=ON ...
+```
+
+On Debian/Ubuntu, the GStreamer backend needs:
+
+```
+sudo apt install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+                 gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav
+```
+
+(`-plugins-bad`/`-libav` provide H.264/H.265 encode + MP4 mux for recording.)
+
+## Notes / follow-ups
+
+- Recording AAC audio uses `voaacenc`; swap to `avenc_aac`/`faac` if that
+  element isn't present in the local GStreamer install.
+- Windows (Media Foundation) and macOS (AVFoundation) backends implement the
+  same `IVideoBackend` interface and are the next platform targets.
+- Hardware-accelerated decode happens transparently when GStreamer selects a
+  VA-API / NVDEC / d3d11 decoder for the source.

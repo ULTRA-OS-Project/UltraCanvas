@@ -31,6 +31,7 @@ else()
     option(ULTRACANVAS_PLUGIN_SVG "Build SVG plugin" OFF)
     option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin" OFF)
     option(ULTRACANVAS_ENABLE_AUDIO "Enable audio playback & recording (requires backend lib)" ON)
+    option(ULTRACANVAS_ENABLE_VIDEO "Enable video playback & recording (requires platform media framework)" ON)
 endif ()
 option(ULTRACANVAS_ENABLE_GL "Enable OpenGL 3D surface support" ON)
 
@@ -228,6 +229,13 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioPlayerElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioRecorderElement.cpp
 
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideo.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoDevices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoPlayer.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoRecorder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoPlayerElement.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoRecorderElement.cpp
+
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartElementBase.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasSpecificChartElements.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartDataStructures.cpp
@@ -359,6 +367,34 @@ if(ULTRACANVAS_ENABLE_AUDIO)
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Audio/AudioBackendMiniaudio.cpp
     )
     message(STATUS "Audio backend: miniaudio (${miniaudio_SOURCE_DIR})")
+endif()
+
+# Video sources (always-compiled API surface; backend is a stub unless
+# ULTRACANVAS_ENABLE_VIDEO is ON and a platform media framework is found, in
+# which case the platform-native backend replaces the null one).
+#   Linux  : GStreamer (which dispatches to V4L2 / VA-API under the hood)
+#   macOS  : AVFoundation   (TODO)
+#   Windows: Media Foundation (TODO)
+list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Video/VideoBackendNull.cpp
+)
+set(ULTRACANVAS_VIDEO_BACKEND_FOUND OFF)
+if(ULTRACANVAS_ENABLE_VIDEO)
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(GSTREAMER QUIET
+            gstreamer-1.0 gstreamer-app-1.0 gstreamer-video-1.0 gstreamer-pbutils-1.0)
+    endif()
+    if(GSTREAMER_FOUND)
+        list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Video/VideoBackendGStreamer.cpp
+        )
+        set(ULTRACANVAS_VIDEO_BACKEND_FOUND ON)
+        message(STATUS "Video backend: GStreamer (${GSTREAMER_VERSION})")
+    else()
+        message(STATUS "Video backend: null (GStreamer dev packages not found; "
+                       "install gstreamer-1.0 + app/video/pbutils plugins for playback & capture)")
+    endif()
 endif()
 
 # OpenGL surface sources
@@ -620,6 +656,19 @@ if(ULTRACANVAS_ENABLE_AUDIO)
             ${COREAUDIO_FRAMEWORK}
             ${COREFOUNDATION_FRAMEWORK}
         )
+    endif()
+endif()
+
+# Video compile definitions + include path + libs. The API surface always
+# compiles; ULTRACANVAS_ENABLE_VIDEO=1 is only defined when a real platform
+# backend was found, so the null backend's GetVideoBackend() is used otherwise.
+if(ULTRACANVAS_ENABLE_VIDEO AND ULTRACANVAS_VIDEO_BACKEND_FOUND)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_ENABLE_VIDEO=1)
+    if(GSTREAMER_FOUND)
+        target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${GSTREAMER_INCLUDE_DIRS})
+        target_link_directories(${ULTRACANVAS_LIB_NAME} PUBLIC ${GSTREAMER_LIBRARY_DIRS})
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${GSTREAMER_LIBRARIES})
+        target_compile_options(${ULTRACANVAS_LIB_NAME} PRIVATE ${GSTREAMER_CFLAGS_OTHER})
     endif()
 endif()
 

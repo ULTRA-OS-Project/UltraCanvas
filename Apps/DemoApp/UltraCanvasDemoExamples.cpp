@@ -169,26 +169,9 @@ namespace UltraCanvas {
         return container;
     }
 
-    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVideoExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("VideoExamples", 0, 0, 1000, 600);
-
-        auto title = std::make_shared<UltraCanvasLabel>("VideoTitle", 10, 10, 300, 30);
-        title->SetText("Video Player Examples");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
-
-        auto placeholder = std::make_shared<UltraCanvasLabel>("VideoPlaceholder", 20, 50, 800, 400);
-        placeholder->SetText("Video Player Component - Not Implemented\n\nPlanned Features:\n• MP4, AVI, MOV playback\n• Hardware accelerated decoding\n• Custom playback controls\n• Fullscreen mode\n• Volume and timeline controls\n• Subtitle support\n• Frame-by-frame stepping\n• Video filters and effects\n• Streaming protocol support\n• Audio track selection");
-        placeholder->SetAlignment(TextAlignment::Left);
-        placeholder->SetBackgroundColor(Color(255, 200, 200, 100));
-//        placeholder->SetBorderStyle(BorderStyle::Dashed);
-        placeholder->SetBorders(2.0f);
-        placeholder->SetPadding(20.0f);
-        container->AddChild(placeholder);
-
-        return container;
-    }
+    // CreateVideoExamples() now lives in UltraCanvasVideoExamples.cpp — a real
+    // player + recorder demo backed by UltraCanvasVideoPlayerElement /
+    // UltraCanvasVideoRecorderElement.
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTextDocumentExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("TextDocumentExamples", 0, 0, 1000, 600);
