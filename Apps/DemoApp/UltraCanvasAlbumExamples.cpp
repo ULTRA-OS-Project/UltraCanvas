@@ -479,7 +479,7 @@ namespace UltraCanvas {
 
         // ----- Action-icon display picker -----
         auto actRow = MakeRow("album_act_row");
-        AppendLabeledButtons(actRow, "album_act_", "Actions", kLabelW, 130, 28,
+        AppendLabeledButtons(actRow, "album_act_", "Show menu", kLabelW, 130, 28,
                       {"Always", "On hover", "Menu (+icon)", "Menu (no icon)", "Hidden"},
                       [albumPtr](int i) {
                           AlbumConfig c = albumPtr->GetConfig();
