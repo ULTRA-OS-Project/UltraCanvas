@@ -17,6 +17,7 @@
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasTextArea.h"
 
 #include <memory>
 #include <vector>
@@ -402,6 +403,47 @@ void main(){
     return fx;
 }
 
+// For effects derived from an iconic original (a Twigl one-liner, a p5.js
+// sketch, a closed-form intensity, an ODE system) this returns that original as
+// a comment header, shown in the source viewer above the running GLSL so a
+// reader sees the inspiration alongside the implementation. Empty for the
+// stock effects, whose GLSL body is itself the "formula".
+std::string EffectFormula(const std::string& label) {
+    if (label == "Borg Sphere (Twigl)")
+        return R"(// Source — Twigl / つぶやきGLSL "geek-mode" one-liner:
+// for(float i,d,s;++i<1e2;){
+//   vec3 p=vec3((FC.xy*2.-r.xy)/r.y*d*rotate2D(t/2.),d-8.);
+//   p.yz*=rotate2D(t/2.);
+//   d+=s=.01+.1*abs(max(cos(dot(sin(ceil(p/.3)),cos(ceil(p/.6)).yzx)),
+//                       length(ceil(p))-4.)-i/1e2);
+//   o.rgb+=max(1.3*sin(p*vec3(1,2,3)+i*.8)/s,-length(p*p));
+// } o=tanh(o*o/1e6);)";
+    if (label == "Pulse (Twigl)")
+        return R"(// Source — Twigl / つぶやきGLSL one-liner:
+// vec3 p,v;for(float i,z,d;i++<5e1;o+=vec4(3,z,6,1)/d/z)
+//   p=z*normalize(2.*FC.rgb-r.xyy),p.z+=9.,
+//   p=dot(v=normalize(cos((t+i)/2.+vec3(6,1,4))),p)*v+cross(v,p),
+//   z+=d=.2*length(p.xy/vec2(1,9));
+// o=tanh(o/2e2);)";
+    if (label == "Ball Surface (p5.js port)")
+        return R"(// Source — p5.js generative sketch "Ball Surface":
+// f=0,d=200,draw=o=>{for(f||createCanvas(W=400,W),
+//   noStroke(background(0,20)),
+//   q=o=>{for(i=0;i<TAU;i+=PI/1024)r=120*cos(i+f/2),
+//     F=sqrt(noise(2*sin(i+f+o),7*cos(i+f+o))+2*sin(o+i)),
+//     fill(W,9*F),circle(sin(i+F)*r+d,120*cos(i+F)+d,3)},
+//   k=4;k--;)q(k);f-=.01};)";
+    if (label == "Mandala (12-wave)")
+        return R"(// Source — 12-wave interference intensity:
+//   I(r) ∝ | Σ_{i=1..12} A·e^{ i (k·r + φ_i) } |² ,   |k| ∈ [24, 32])";
+    if (label == "Rössler Attractor")
+        return R"(// Source — Rössler attractor ODEs (classic a=b=0.2, c=5.7):
+//   dx/dt = -y - z
+//   dy/dt =  x + a*y
+//   dz/dt =  b + z*(x - c))";
+    return "";
+}
+
 struct ShaderState {
     int currentIndex = 0;
     int activeProgram = -1;     // program currently bound's matching index
@@ -454,7 +496,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     cfg.glVersionMajor = 3; cfg.glVersionMinor = 3; cfg.coreProfile = true;
     cfg.depthBits = 0; cfg.samples = 1;
 
-    auto surface = std::make_shared<UltraCanvasGLSurface>(cfg, "ShaderSurface", 16, 40, 660, 560);
+    auto surface = std::make_shared<UltraCanvasGLSurface>(cfg, "ShaderSurface", 16, 40, 660, 360);
     surface->SetRenderMode(RenderMode::Continuous);
 
     surface->SetInitCallback([glRes, effects]() {
@@ -517,6 +559,34 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     });
 
     root->AddChild(surface);
+
+    // ------------------------------------------------ generating-source viewer
+    // Builds the read-only text shown under the surface: the original formula /
+    // snippet (if any) as a comment header, followed by the live GLSL body.
+    auto sourceFor = [effects](int i) -> std::string {
+        if (i < 0 || i >= (int)effects->size()) return "";
+        const ShaderEffect& fx = (*effects)[i];
+        std::string head = EffectFormula(fx.label);
+        return head.empty() ? fx.body : head + "\n" + fx.body;
+    };
+
+    auto codeTitle = std::make_shared<UltraCanvasLabel>("ShaderSrcTitle", 16, 406, 660, 18);
+    codeTitle->SetText("Generating source (read-only) — original formula + live GLSL");
+    codeTitle->SetFontSize(12);
+    codeTitle->SetFontWeight(FontWeight::Bold);
+    codeTitle->SetTextColor(Color(40, 40, 120, 255));
+    root->AddChild(codeTitle);
+
+    auto codeArea = std::make_shared<UltraCanvasTextArea>("ShaderSource", 16, 428, 660, 252);
+    codeArea->SetHighlightSyntax(true);
+    codeArea->SetProgrammingLanguage("C++");     // GLSL is C-like; C++ rules fit well
+    codeArea->ApplyDarkTheme();
+    codeArea->SetReadOnly(true);
+    codeArea->SetShowLineNumbers(true);
+    codeArea->SetWordWrap(false);
+    codeArea->SetFontSize(12.0f);
+    codeArea->SetText(sourceFor(0));
+    root->AddChild(codeArea);
 
     // ---------------------------------------------------------- control panel
     auto panel = std::make_shared<UltraCanvasContainer>("ShaderControls", 690, 40, 296, 560);
@@ -631,9 +701,10 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
 
     // Now that the groups exist, wire dropdown selection to reveal the right one.
     fxDrop->onSelectionChanged =
-        [state, surface, rosslerGroup, ballGroup, pulseGroup, mandalaGroup,
-         rosslerIdx, ballIdx, pulseIdx, mandalaIdx](int idx, const DropdownItem&) {
+        [state, surface, codeArea, sourceFor, rosslerGroup, ballGroup, pulseGroup,
+         mandalaGroup, rosslerIdx, ballIdx, pulseIdx, mandalaIdx](int idx, const DropdownItem&) {
             state->currentIndex = idx;
+            codeArea->SetText(sourceFor(idx));
             rosslerGroup->SetVisible(idx == rosslerIdx);
             ballGroup->SetVisible(idx == ballIdx);
             pulseGroup->SetVisible(idx == pulseIdx);
@@ -645,7 +716,10 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     info->SetText(
         "Each effect is a single fragment\n"
         "shader over one full-screen triangle\n"
-        "— no geometry, no textures.\n\n"
+        "— no geometry, no textures. The\n"
+        "syntax-highlighted source viewer below\n"
+        "the canvas shows the original formula\n"
+        "and the live GLSL for the chosen effect.\n\n"
         "Effects: Plasma, Raymarched Scene,\n"
         "Julia Fractal, Tunnel, Warp Starfield,\n"
         "Borg Sphere (Twigl one-liner),\n"
