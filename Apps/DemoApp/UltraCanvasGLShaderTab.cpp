@@ -2,9 +2,11 @@
 // "Shaders" tab of the OpenGL showcase: a full-screen quad driven entirely by
 // animated fragment shaders. A dropdown switches between several procedural
 // effects (plasma, raymarched scene, Julia fractal, tunnel, warp starfield,
-// two Twigl/つぶやきGLSL "geek-mode" one-liners ("Borg Sphere" lattice and
-// "Pulse" ray-fold), a numerically-integrated Rössler strange attractor, a
-// p5.js "Ball Surface" port, and a 12-wave "Mandala" interference pattern).
+// three Twigl/つぶやきGLSL "geek-mode" one-liners ("Borg Sphere" lattice,
+// "Pulse" ray-fold and "Fragments" tube turbulence), a numerically-integrated
+// Rössler strange attractor, a p5.js "Ball Surface" port, and a 12-wave
+// "Mandala" interference pattern). The generating source for each effect is
+// shown in a GLSL-syntax-highlighted, read-only text area below the canvas.
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -400,6 +402,31 @@ void main(){
 }
 )"});
 
+    // ------------------------------------------------------------------------
+    // "Fragments" — another Twigl / つぶやきGLSL "geek-mode" one-liner. A ray is
+    // marched (z = distance); at each step the sample point p is folded a few
+    // times by a quantised sine turbulence (the inner loop), then density f is
+    // taken from a wobbling tube SDF and tinted glow is accumulated; tanh tone-
+    // maps the result. PI/PI2 (Twigl globals) are supplied locally here.
+    fx.push_back({"Fragments (Twigl)", R"(
+void main(){
+    vec2 r = uResolution;
+    vec3 FC = vec3(vUV * r, 0.0);          // gl_FragCoord (z = 0)
+    float t = uTime;
+    vec4 o = vec4(0.0);
+    const float PI = 3.14159265, PI2 = 6.28318530;
+    vec3 p;
+    for(float i=0.0, z=0.0, f=0.0; i++ < 3e1;
+        z += f = 0.003 + abs(length(p.xy) - 5.0 + dot(cos(p), sin(p).yzx))/8.0,
+        o += (1.0 + sin(i*0.3 + z + t + vec4(6.0, 1.0, 2.0, 0.0)))/f){
+        for(p = z*normalize(FC.rgb*2.0 - r.xyy), p.z -= t, f = 1.0; f++ < 6.0;
+            p += sin(round(p.yxz*PI2)/PI*f)/f);
+    }
+    o = tanh(o/1e3);
+    FragColor = vec4(o.rgb, 1.0);
+}
+)"});
+
     return fx;
 }
 
@@ -433,6 +460,15 @@ std::string EffectFormula(const std::string& label) {
 //     F=sqrt(noise(2*sin(i+f+o),7*cos(i+f+o))+2*sin(o+i)),
 //     fill(W,9*F),circle(sin(i+F)*r+d,120*cos(i+F)+d,3)},
 //   k=4;k--;)q(k);f-=.01};)";
+    if (label == "Fragments (Twigl)")
+        return R"(// Source — Twigl / つぶやきGLSL one-liner:
+// vec3 p;
+// for(float i,z,f;i++<3e1;
+//     z+=f=.003+abs(length(p.xy)-5.+dot(cos(p),sin(p).yzx))/8.,
+//     o+=(1.+sin(i*.3+z+t+vec4(6,1,2,0)))/f)
+//   for(p=z*normalize(FC.rgb*2.-r.xyy),p.z-=t,f=1.;f++<6.;
+//       p+=sin(round(p.yxz*PI2)/PI*f)/f);
+// o=tanh(o/1e3);)";
     if (label == "Mandala (12-wave)")
         return R"(// Source — 12-wave interference intensity:
 //   I(r) ∝ | Σ_{i=1..12} A·e^{ i (k·r + φ_i) } |² ,   |k| ∈ [24, 32])";
@@ -579,7 +615,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
 
     auto codeArea = std::make_shared<UltraCanvasTextArea>("ShaderSource", 16, 428, 660, 252);
     codeArea->SetHighlightSyntax(true);
-    codeArea->SetProgrammingLanguage("C++");     // GLSL is C-like; C++ rules fit well
+    codeArea->SetProgrammingLanguage("GLSL");    // dedicated GLSL grammar
     codeArea->ApplyDarkTheme();
     codeArea->SetReadOnly(true);
     codeArea->SetShowLineNumbers(true);
@@ -726,7 +762,8 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         "Rössler Attractor (integrated ODEs),\n"
         "Ball Surface (p5.js port),\n"
         "Pulse (Twigl ray-fold),\n"
-        "Mandala (12-wave interference).\n\n"
+        "Mandala (12-wave interference),\n"
+        "Fragments (Twigl tube turbulence).\n\n"
         "The speed slider scales time. Select\n"
         "Rössler, Ball Surface, Pulse or\n"
         "Mandala to reveal live parameter\n"
