@@ -319,6 +319,13 @@ namespace UltraCanvas {
 
         // ----- multi-month / scrolling -----
         bool UsesMultiMonth() const { return monthsPerView > 1 || navMode == CalendarNavMode::Scrolling; }
+        // Whether out-of-month ("adjacent") days should be drawn / be selectable.
+        // In multi-month layouts adjacent days are always suppressed: the same
+        // date would otherwise appear in two panels (as an in-month day in one
+        // and a faded adjacent day in the other), so a selection or range would
+        // visibly highlight the day twice. Each panel therefore shows only its
+        // own month's days.
+        bool ShowAdjacentDaysEffective() const { return showAdjacentDays && !UsesMultiMonth(); }
         static long MonthIndex(int y, int m) { return static_cast<long>(y) * 12 + (m - 1); }
         static void FromMonthIndex(long idx, int& y, int& m) {
             y = static_cast<int>(idx / 12); m = static_cast<int>(idx % 12);
