@@ -518,6 +518,19 @@ namespace UltraCanvas {
                 .AddVariant("segmentedcontrol", "Toggle Mode")
                 .AddVariant("segmentedcontrol", "FitContent Width");
 
+        basicBuilder.AddItem("groupbox", "Group Box",
+                             "Titled container that frames a set of child elements",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateGroupBoxExamples(); },
+                             "Apps/DemoApp/UltraCanvasGroupBoxExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasGroupBoxExamples.md")
+                .AddVariant("groupbox", "Framed Style")
+                .AddVariant("groupbox", "Header Style")
+                .AddVariant("groupbox", "Flat Style")
+                .AddVariant("groupbox", "Title Alignment")
+                .AddVariant("groupbox", "Checkable Group")
+                .AddVariant("groupbox", "Collapsible Group");
+
         basicBuilder.AddItem("textinput", "Text Input", "Text input fields with validation and formatting",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateTextInputExamples(); },
