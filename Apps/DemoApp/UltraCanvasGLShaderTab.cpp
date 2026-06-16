@@ -673,6 +673,9 @@ struct ShaderState {
     float fragFold = 6.0f;      // Fragments inner fold count
     float fragRadius = 5.0f;    // Fragments tube radius
     float circlesFrame = 0.0f;  // Circles network animation frame counter
+    float circlesNodes = 180.0f;// Circles node count
+    float circlesLink = 50.0f;  // Circles link distance threshold
+    float circlesGrowth = 1.4f; // Circles ring growth base (pow(base, degree))
 };
 
 struct ShaderGLResources {
@@ -722,13 +725,14 @@ inline void AppendDisk(std::vector<float>& vtx, float cx, float cy, float r){
 // Draws the "Circles" sketch: 180 noise-placed nodes (drifting with `frame`),
 // links between nodes closer than 50 units, and rings whose radius grows as
 // pow(1.4, neighbour count) — links, dark ring bases, bg interiors, dark dots.
-inline void RenderCirclesNetwork(ShaderGLResources& g, int W, int H, float frame){
+inline void RenderCirclesNetwork(ShaderGLResources& g, int W, int H, float frame,
+                                 int nodes, float linkDist, float growth){
     glDisable(GL_DEPTH_TEST);
     glClearColor(239.0f/255.0f, 239.0f/255.0f, 239.0f/255.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
     if (!g.cProg) return;
 
-    const int N = 180;
+    const int N = std::max(2, std::min(nodes, 600));   // bound the O(N^2) pass
     std::vector<float> px(N), py(N);
     std::vector<int> cnt(N, 0);
     uint32_t rng = 39u;                          // ofSeedRandom(39), reset per frame
@@ -747,7 +751,7 @@ inline void RenderCirclesNetwork(ShaderGLResources& g, int W, int H, float frame
         for (int k = 0; k < N; ++k){
             if (i == k) continue;
             float dx = px[i]-px[k], dy = py[i]-py[k];
-            if (dx*dx + dy*dy < 50.0f*50.0f){
+            if (dx*dx + dy*dy < linkDist*linkDist){
                 lines.push_back(px[i]); lines.push_back(py[i]);
                 lines.push_back(px[k]); lines.push_back(py[k]);
                 cnt[i]++;
@@ -755,7 +759,7 @@ inline void RenderCirclesNetwork(ShaderGLResources& g, int W, int H, float frame
         }
     std::vector<float> ringDisks, bgDisks, dots;
     for (int i = 0; i < N; ++i){
-        float r = std::pow(1.4f, float(cnt[i]));
+        float r = std::pow(growth, float(cnt[i]));
         AppendDisk(ringDisks, px[i], py[i], r);
         AppendDisk(bgDisks,   px[i], py[i], r - 1.5f);
         AppendDisk(dots,      px[i], py[i], 2.0f);
@@ -864,7 +868,9 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         // Custom (non-shader) effects render their own GL geometry.
         if (idx >= 0 && idx < (int)effects->size() && (*effects)[idx].customRender) {
             state->circlesFrame += float(info.deltaTime) * 25.0f * state->speed;
-            RenderCirclesNetwork(*glRes, info.width, info.height, state->circlesFrame);
+            RenderCirclesNetwork(*glRes, info.width, info.height, state->circlesFrame,
+                                 (int)(state->circlesNodes + 0.5f), state->circlesLink,
+                                 state->circlesGrowth);
             return;
         }
         if (idx < 0 || idx >= (int)glRes->programs.size() || glRes->programs[idx] == 0) {
@@ -968,13 +974,14 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     // ----------------------------------------- per-effect parameter sliders
     // Locate the effects that carry live uniforms so the matching slider group
     // can be revealed only when that effect is selected.
-    int rosslerIdx = -1, ballIdx = -1, pulseIdx = -1, mandalaIdx = -1, fragIdx = -1;
+    int rosslerIdx = -1, ballIdx = -1, pulseIdx = -1, mandalaIdx = -1, fragIdx = -1, circlesIdx = -1;
     for (int i = 0; i < (int)effects->size(); ++i) {
         if ((*effects)[i].label == "Rössler Attractor")         rosslerIdx = i;
         if ((*effects)[i].label == "Ball Surface (p5.js port)")  ballIdx = i;
         if ((*effects)[i].label == "Pulse (Twigl)")              pulseIdx = i;
         if ((*effects)[i].label == "Mandala (12-wave)")          mandalaIdx = i;
         if ((*effects)[i].label == "Fragments (Twigl)")          fragIdx = i;
+        if ((*effects)[i].label == "Circles (openFrameworks)")   circlesIdx = i;
     }
 
     auto addSlider = [](std::shared_ptr<UltraCanvasContainer>& group, const char* id,
@@ -1060,11 +1067,27 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     fragGroup->SetVisible(false);
     panel->AddChild(fragGroup);
 
+    // Circles — node count, link distance and ring growth shape the network.
+    auto circlesGroup = std::make_shared<UltraCanvasContainer>("CirclesParams", 10, 128, 276, 180);
+    circlesGroup->SetBackgroundColor(Color(246, 246, 248, 255));
+    addCaption(circlesGroup, "CI_title", "Circles controls", 0, true);
+    addCaption(circlesGroup, "CI_nL", "Node count", 26);
+    addSlider(circlesGroup, "CI_n", 44, 30.0f, 400.0f, 180.0f,
+              [state](float v){ state->circlesNodes = v; }, 1.0f, "%.0f");
+    addCaption(circlesGroup, "CI_dL", "Link distance", 74);
+    addSlider(circlesGroup, "CI_d", 92, 20.0f, 100.0f, 50.0f,
+              [state](float v){ state->circlesLink = v; }, 0.0f, "%.0f");
+    addCaption(circlesGroup, "CI_gL", "Ring growth (pow base)", 122);
+    addSlider(circlesGroup, "CI_g", 140, 1.1f, 1.6f, 1.4f,
+              [state](float v){ state->circlesGrowth = v; });
+    circlesGroup->SetVisible(false);
+    panel->AddChild(circlesGroup);
+
     // Now that the groups exist, wire dropdown selection to reveal the right one.
     fxDrop->onSelectionChanged =
         [state, surface, codeArea, sourceFor, rosslerGroup, ballGroup, pulseGroup,
-         mandalaGroup, fragGroup, rosslerIdx, ballIdx, pulseIdx, mandalaIdx, fragIdx]
-        (int idx, const DropdownItem&) {
+         mandalaGroup, fragGroup, circlesGroup, rosslerIdx, ballIdx, pulseIdx,
+         mandalaIdx, fragIdx, circlesIdx](int idx, const DropdownItem&) {
             state->currentIndex = idx;
             codeArea->SetText(sourceFor(idx));
             rosslerGroup->SetVisible(idx == rosslerIdx);
@@ -1072,17 +1095,18 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
             pulseGroup->SetVisible(idx == pulseIdx);
             mandalaGroup->SetVisible(idx == mandalaIdx);
             fragGroup->SetVisible(idx == fragIdx);
+            circlesGroup->SetVisible(idx == circlesIdx);
             surface->RequestRender();
         };
 
     auto info = std::make_shared<UltraCanvasLabel>("ShaderInfo", 10, 318, 270, 232);
     info->SetText(
-        "Each effect is a single fragment\n"
+        "Most effects are a single fragment\n"
         "shader over one full-screen triangle\n"
-        "— no geometry, no textures. The\n"
-        "syntax-highlighted source viewer below\n"
-        "the canvas shows the original formula\n"
-        "and the live GLSL for the chosen effect.\n\n"
+        "(Circles is 2D geometry). The syntax-\n"
+        "highlighted source viewer below the\n"
+        "canvas shows the original formula and\n"
+        "the live source for the chosen effect.\n\n"
         "Effects: Plasma, Raymarched Scene,\n"
         "Julia Fractal, Tunnel, Warp Starfield,\n"
         "Borg Sphere (Twigl one-liner),\n"
@@ -1096,12 +1120,12 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         "Protostar2 (Twigl glowing core),\n"
         "Circles (openFrameworks network).\n\n"
         "The speed slider scales time. Select\n"
-        "Rössler, Ball Surface, Pulse, Mandala\n"
-        "or Fragments to reveal live parameter\n"
-        "sliders above — e.g. sweep Rössler c\n"
-        "from 4 to 9 to watch it period-double\n"
-        "into chaos, or change the Mandala's\n"
-        "fold symmetry from 3 to 12.\n\n"
+        "Rössler, Ball Surface, Pulse, Mandala,\n"
+        "Fragments or Circles to reveal live\n"
+        "parameter sliders above — e.g. sweep\n"
+        "Rössler c from 4 to 9 to watch it\n"
+        "period-double into chaos, or change\n"
+        "the Circles node count and link range.\n\n"
         "Click the ⛶ icon or double-click the\n"
         "canvas to maximize it; press Esc or\n"
         "click once to restore."
