@@ -2,10 +2,10 @@
 // "Shaders" tab of the OpenGL showcase: a full-screen quad driven entirely by
 // animated fragment shaders. A dropdown switches between several procedural
 // effects (plasma, raymarched scene, Julia fractal, tunnel, warp starfield,
-// eight Twigl/つぶやきGLSL "geek-mode" snippets ("Borg Sphere" lattice,
+// seven Twigl/つぶやきGLSL "geek-mode" snippets ("Borg Sphere" lattice,
 // "Pulse" ray-fold, "Fragments" tube turbulence, "Mountains" fractal terrain,
-// "Horizon" turbulent landscape, "Protostar2" glowing core, "Plasma Orb" warped
-// field and an animated "ULTRA OS Logo" ring), a numerically-
+// "Horizon" turbulent landscape, "Protostar2" glowing core and "Plasma Orb"
+// warped field), a procedural animated "ULTRA OS Logo" brand mark, a numerically-
 // integrated Rössler strange attractor, p5.js "Ball Surface" and "Alien
 // Caterpillar" ports, a 12-wave "Mandala" pattern, and an openFrameworks
 // "Circles" node-link network — the last two drawn as native 2D GL geometry
@@ -563,22 +563,50 @@ void main(){
 )"});
 
     // ------------------------------------------------------------------------
-    // "ULTRA OS Logo" — a Twigl / つぶやきGLSL ring (|p| = 0.5) with a hyperbolic
-    // warp 0.01/(p.x-p.y) that pinches it along the diagonal. The original is
-    // static; here it is gently animated: the pinch axis spins (uLogoSpin), the
-    // radius breathes (uLogoPulse), and the glow takes a slowly shifting tint.
-    fx.push_back({"ULTRA OS Logo (Twigl)", R"(
-uniform float uLogoSpin;    // rotation speed of the diagonal pinch
-uniform float uLogoPulse;   // ring radius breathing amount
+    // "ULTRA OS Logo" — a procedural recreation of the brand mark: a glossy red
+    // orb framed by silver "eye" arcs above and below, with a dark horizontal
+    // divider, on black. Animated: the orb's specular gloss orbits, a sheen
+    // sweeps along the arcs (uLogoSpin), and a red glow breathes (uLogoPulse).
+    fx.push_back({"ULTRA OS Logo", R"(
+uniform float uLogoSpin;    // sheen / specular motion speed
+uniform float uLogoPulse;   // orb glow breathing amount
 void main(){
     vec2 r = uResolution;
-    vec2 FC = vUV * r;                     // gl_FragCoord.xy
-    vec2 p = (FC.xy*2.0 - r)/r.y;
-    vec2 q = rot(uTime*uLogoSpin) * p;     // spin the pinch axis
-    float radius = 0.5 + uLogoPulse*sin(uTime*1.3);
-    float g = 0.1/abs(length(p) - radius + 0.01/(q.x - q.y));
-    vec3 tint = 0.6 + 0.4*cos(vec3(0.0,2.0,4.0) + uTime + atan(p.y, p.x));
-    FragColor = vec4(g*tint, 1.0);         // bright core stays white; glow shifts hue
+    vec2 FC = vUV * r;
+    vec2 p = (FC*2.0 - r)/r.y;             // y in [-1,1], centred
+    float t = uTime;
+    vec3 col = vec3(0.0);                  // black background
+
+    // --- silver "eye" arcs (almond envelope; orb sits inside, never covers them)
+    float arcX = 0.95, arcH = 0.60;
+    float env = arcH * pow(max(0.0, 1.0 - (p.x/arcX)*(p.x/arcX)), 0.65);
+    float arcDist = abs(abs(p.y) - env);                       // both top & bottom
+    float arcMask = smoothstep(0.016, 0.006, arcDist)
+                  * smoothstep(arcX, arcX*0.78, abs(p.x));     // taper to the tips
+    float sheen = 0.55 + 0.45*sin(p.x*3.0 - t*1.5*uLogoSpin);
+    col = mix(col, mix(vec3(0.27,0.28,0.30), vec3(0.92,0.93,0.95), sheen), arcMask);
+
+    // --- red orb
+    float rad = 0.42, dC = length(p);
+    float pulse = 1.0 + uLogoPulse*4.0*sin(t*1.5);
+    col += vec3(0.55,0.06,0.07) * exp(-max(dC-rad,0.0)*9.0) * 0.5 * pulse;   // glow
+    vec2 sp = p/rad;
+    float zz = sqrt(max(0.0, 1.0 - dot(sp,sp)));               // fake sphere z
+    vec3 n = vec3(sp, zz);
+    vec3 red = mix(vec3(0.24,0.02,0.03), vec3(0.80,0.10,0.12),
+                   clamp(0.5 + 0.6*p.y/rad, 0.0, 1.0));        // top brighter
+    red *= (0.45 + 0.55*zz);                                   // shade toward rim
+    float ang = t*0.6*uLogoSpin;
+    vec3 L = normalize(vec3(0.30*cos(ang) + 0.12, 0.55, 0.85));
+    float nl = max(dot(n, L), 0.0);
+    vec3 orbCol = red + (0.7*pow(nl,30.0) + 0.22*pow(nl,6.0))*vec3(1.0,0.96,0.94);
+    col = mix(col, orbCol, smoothstep(rad, rad-0.005, dC));    // AA orb edge
+
+    // --- dark horizontal divider, in front of the orb
+    float hl = smoothstep(0.024, 0.012, abs(p.y)) * smoothstep(0.90, 0.86, abs(p.x));
+    col = mix(col, vec3(0.16,0.16,0.17), hl);
+
+    FragColor = vec4(col, 1.0);
 }
 )"});
 
@@ -670,11 +698,13 @@ std::string EffectFormula(const std::string& label) {
 // for(float i;i++<8.;o+=(sin(v.xyyx)+1.)*abs(v.x-v.y)*.2)
 //   v+=cos(v.yx*i+vec2(0,i)+t)/i+.7;
 // o=tanh(exp(p.y*vec4(1,-1,-2,0))*exp(-4.*l.x)/o);)";
-    if (label == "ULTRA OS Logo (Twigl)")
-        return R"(// Source — Twigl / つぶやきGLSL expression (here animated):
-// vec2 p=(FC.xy*2.-r)/r.y;
-// o+=.1/abs(length(p)-.5+.01/(p.x-p.y));
-// // added: spin the (p.x-p.y) axis over time, breathe the radius, tint the glow)";
+    if (label == "ULTRA OS Logo")
+        return R"(// Procedural recreation of the ULTRA OS brand mark (animated):
+//   - glossy red orb (fake-sphere shading + orbiting specular gloss)
+//   - silver "eye" arcs above & below (almond envelope, sweeping sheen)
+//   - dark horizontal divider in front of the orb, on black.
+// Seeded by the Twigl ring: o += .1/abs(length(p)-.5 + .01/(p.x-p.y));
+// uLogoSpin = sheen/specular speed,  uLogoPulse = glow breathing.)";
     if (label == "Alien Caterpillar (p5.js port)")
         return R"(// Source — p5.js generative sketch (drawn here as GL_POINTS):
 // a=(x,y,d=mag(k=(4+sin(y*2-t)*3)*cos(x/29),e=y/8-13))=>
@@ -743,8 +773,8 @@ struct ShaderState {
     float circlesLink = 50.0f;  // Circles link distance threshold
     float circlesGrowth = 1.4f; // Circles ring growth base (pow(base, degree))
     float caterT = 0.0f;        // Alien Caterpillar animation time
-    float logoSpin = 0.3f;      // ULTRA OS Logo pinch-axis spin speed
-    float logoPulse = 0.05f;    // ULTRA OS Logo radius breathing amount
+    float logoSpin = 0.6f;      // ULTRA OS Logo sheen / specular speed
+    float logoPulse = 0.06f;    // ULTRA OS Logo glow breathing amount
 };
 
 struct ShaderGLResources {
@@ -1111,7 +1141,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         if ((*effects)[i].label == "Mandala (12-wave)")          mandalaIdx = i;
         if ((*effects)[i].label == "Fragments (Twigl)")          fragIdx = i;
         if ((*effects)[i].label == "Circles (openFrameworks)")   circlesIdx = i;
-        if ((*effects)[i].label == "ULTRA OS Logo (Twigl)")      logoIdx = i;
+        if ((*effects)[i].label == "ULTRA OS Logo")              logoIdx = i;
     }
 
     auto addSlider = [](std::shared_ptr<UltraCanvasContainer>& group, const char* id,
@@ -1217,10 +1247,10 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     auto logoGroup = std::make_shared<UltraCanvasContainer>("LogoParams", 10, 128, 276, 140);
     logoGroup->SetBackgroundColor(Color(246, 246, 248, 255));
     addCaption(logoGroup, "LO_title", "ULTRA OS Logo controls", 0, true);
-    addCaption(logoGroup, "LO_spinL", "Spin speed", 26);
-    addSlider(logoGroup, "LO_spin", 44, 0.0f, 2.0f, 0.3f, [state](float v){ state->logoSpin = v; });
-    addCaption(logoGroup, "LO_pulseL", "Radius breathing", 74);
-    addSlider(logoGroup, "LO_pulse", 92, 0.0f, 0.2f, 0.05f, [state](float v){ state->logoPulse = v; });
+    addCaption(logoGroup, "LO_spinL", "Sheen / gloss speed", 26);
+    addSlider(logoGroup, "LO_spin", 44, 0.0f, 2.0f, 0.6f, [state](float v){ state->logoSpin = v; });
+    addCaption(logoGroup, "LO_pulseL", "Glow breathing", 74);
+    addSlider(logoGroup, "LO_pulse", 92, 0.0f, 0.2f, 0.06f, [state](float v){ state->logoPulse = v; });
     logoGroup->SetVisible(false);
     panel->AddChild(logoGroup);
 
@@ -1261,7 +1291,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         "Horizon (Twigl turbulent landscape),\n"
         "Protostar2 (Twigl glowing core),\n"
         "Plasma Orb (Twigl warped field),\n"
-        "ULTRA OS Logo (animated ring),\n"
+        "ULTRA OS Logo (animated brand mark),\n"
         "Circles (openFrameworks network),\n"
         "Alien Caterpillar (p5.js points).\n\n"
         "The speed slider scales time. Select\n"
