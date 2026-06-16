@@ -2,7 +2,8 @@
 // "Shaders" tab of the OpenGL showcase: a full-screen quad driven entirely by
 // animated fragment shaders. A dropdown switches between several procedural
 // effects (plasma, raymarched scene, Julia fractal, tunnel, warp starfield,
-// a Twigl/つぶやきGLSL "geek-mode" chaotic lattice, and a p5.js noise-bloom port).
+// a Twigl/つぶやきGLSL "geek-mode" chaotic lattice, a numerically-integrated
+// Rössler strange attractor, and a p5.js noise-bloom port).
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -226,6 +227,57 @@ void main(){
 )"});
 
     // ------------------------------------------------------------------------
+    // The Rössler strange attractor — the nonlinear system the snippet above
+    // was *captioned* as (but does not implement). Here the actual ODEs are
+    // Euler-integrated each frame into a trajectory that is accumulated as
+    // additive glow; an orbiting camera makes the folded band read as 3D.
+    //   dx/dt = -y - z
+    //   dy/dt =  x + a*y
+    //   dz/dt =  b + z*(x - c)         classic params a = b = 0.2, c = 5.7
+    fx.push_back({"Rössler Attractor", R"(
+void main(){
+    vec2 uv = (vUV*2.0 - 1.0);
+    uv.x *= uResolution.x/uResolution.y;
+
+    const float a = 0.2, b = 0.2, c = 5.7;   // classic Rössler parameters
+    const float dt = 0.02;
+    const int   STEPS = 650;
+
+    // Integrate a transient first so we start on the attractor, not at the seed.
+    vec3 P = vec3(0.1, 0.0, 0.0);
+    for(int i=0;i<300;i++){
+        vec3 dP = vec3(-P.y - P.z, P.x + a*P.y, b + P.z*(P.x - c));
+        P += dP*dt;
+    }
+
+    mat2 yaw = rot(uTime*0.25);               // orbiting camera
+    mat2 tilt = rot(0.5);                      // fixed 3/4 view tilt
+    vec3 center = vec3(0.0, 0.0, 2.0);         // rough centroid of the band
+    float zoom = 0.085;
+
+    vec3 col = vec3(0.0);
+    for(int i=0;i<STEPS;i++){
+        vec3 dP = vec3(-P.y - P.z, P.x + a*P.y, b + P.z*(P.x - c));
+        P += dP*dt;
+
+        vec3 q = (P - center) * zoom;
+        q.xz = yaw * q.xz;
+        q.yz = tilt * q.yz;
+
+        vec2 s = q.xy / (q.z + 2.2);           // perspective projection
+        float dist = length(uv - s);
+        float ti = float(i)/float(STEPS);
+        vec3 tint = 0.5 + 0.5*cos(6.2831*(vec3(0.0,0.33,0.67) + ti));
+        col += tint * 0.0009 / (dist*dist + 0.0008);
+    }
+
+    col = col / (col + 1.0);                    // Reinhard tone map
+    col = pow(col, vec3(0.4545));               // gamma
+    FragColor = vec4(col, 1.0);
+}
+)"});
+
+    // ------------------------------------------------------------------------
     // Port of a p5.js generative sketch: four curves of alpha-blended circles
     // splatted along Perlin-noise-warped rings over a fading-trail background.
     // p5 has no GLSL equivalent in this app, so we reproduce the steady-state
@@ -394,6 +446,10 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         "• Chaotic Lattice — a Twigl /\n"
         "  つぶやきGLSL geek-mode one-liner\n"
         "  raymarching a cosine cell field\n"
+        "• Rössler Attractor — the real\n"
+        "  ODE system (a=b=0.2, c=5.7)\n"
+        "  Euler-integrated into a glowing\n"
+        "  orbiting 3D trajectory\n"
         "• Noise Bloom — port of a p5.js\n"
         "  sketch: noise-warped rings of\n"
         "  alpha-blended splats\n\n"
