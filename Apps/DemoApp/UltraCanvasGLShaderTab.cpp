@@ -3,7 +3,7 @@
 // animated fragment shaders. A dropdown switches between several procedural
 // effects (plasma, raymarched scene, Julia fractal, tunnel, warp starfield,
 // a Twigl/つぶやきGLSL "geek-mode" chaotic lattice, a numerically-integrated
-// Rössler strange attractor, and a p5.js noise-bloom port).
+// Rössler strange attractor, and a p5.js "Ball Surface" port).
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -278,12 +278,15 @@ void main(){
 )"});
 
     // ------------------------------------------------------------------------
-    // Port of a p5.js generative sketch: four curves of alpha-blended circles
-    // splatted along Perlin-noise-warped rings over a fading-trail background.
-    // p5 has no GLSL equivalent in this app, so we reproduce the steady-state
-    // image directly: a GLSL value-noise stands in for p5's noise(), and each
-    // pixel accumulates the same per-angle white splats the sketch draws.
-    fx.push_back({"Noise Bloom (p5.js port)", R"(
+    // "Ball Surface" — port of a p5.js generative sketch. The original draws
+    // four overlaid rings (o = 0..3) of 2048 white circles each; every circle's
+    // angle i sets a noise-warped radius F, and fill(W, 9*F) makes brightness
+    // scale with F over a fading-trail background. p5 has no GLSL runtime here,
+    // so each pixel re-accumulates the same per-angle splats: a GLSL value-noise
+    // stands in for p5's noise(), brightness is weighted by F (with a constant
+    // folding in the trail's steady-state amplification ~255/20), and angles
+    // whose radicand is negative are skipped just as p5 skips a NaN circle.
+    fx.push_back({"Ball Surface (p5.js port)", R"(
 float vnoise(vec2 p){
     vec2 ip = floor(p), fp = fract(p);
     vec2 u = fp*fp*(3.0 - 2.0*fp);
@@ -300,15 +303,18 @@ void main(){
     float f = -uTime*0.3;              // sketch advances f by -0.01 per frame
     float acc = 0.0;
     const float TAU = 6.28318530718;
-    for(int o=0;o<4;o++){
+    for(int o=0;o<4;o++){             // four overlaid layers: q(3),q(2),q(1),q(0)
         float of = float(o);
-        for(float a=0.0;a<TAU;a+=0.06){
+        for(float a=0.0;a<TAU;a+=0.02){              // denser ~314 samples/layer
+            float rad = vnoise(vec2(2.0*sin(a+f+of), 7.0*cos(a+f+of)))
+                        + 2.0*sin(of+a);
+            if(rad < 0.0) continue;                  // p5 sqrt(NaN): circle skipped
+            float F = sqrt(rad);
             float rr = 120.0*cos(a + f*0.5);
-            float F = sqrt(max(
-                vnoise(vec2(2.0*sin(a+f+of), 7.0*cos(a+f+of)))
-                + 2.0*sin(of+a), 0.0));
             vec2 c = vec2(sin(a+F)*rr + 200.0, 120.0*cos(a+F) + 200.0);
-            acc += 0.035 * smoothstep(2.2, 0.0, length(P - c));
+            // fill(W, 9*F): brightness ~ F; *0.4 folds in the trail's steady
+            // accumulation. Splat radius ~1.7px matches the 3px-diameter circle.
+            acc += 0.4 * F * smoothstep(1.7, 0.0, length(P - c));
         }
     }
     vec3 col = vec3(clamp(acc, 0.0, 1.0));
@@ -450,9 +456,9 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         "  ODE system (a=b=0.2, c=5.7)\n"
         "  Euler-integrated into a glowing\n"
         "  orbiting 3D trajectory\n"
-        "• Noise Bloom — port of a p5.js\n"
-        "  sketch: noise-warped rings of\n"
-        "  alpha-blended splats\n\n"
+        "• Ball Surface — port of a p5.js\n"
+        "  sketch: four noise-warped rings\n"
+        "  of F-weighted white splats\n\n"
         "uTime and uResolution are the only\n"
         "inputs; the speed slider scales time."
     );
