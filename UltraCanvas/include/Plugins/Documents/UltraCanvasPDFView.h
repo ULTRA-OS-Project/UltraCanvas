@@ -47,7 +47,7 @@ struct PDFViewStyle {
 class UltraCanvasPDFView : public UltraCanvasUIElement {
 public:
     UltraCanvasPDFView(const std::string& id = "PDFView",
-                       int x = 0, int y = 0, int w = 600, int h = 800);
+                       float x = 0, float y = 0, float w = 600, float h = 800);
     ~UltraCanvasPDFView() override;
 
     // ----- Document -----
@@ -110,9 +110,9 @@ public:
     std::function<void()>                                onDocumentChanged;
 
     // ----- UltraCanvasUIElement overrides -----
-    void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
     bool OnEvent(const UCEvent& event) override;
-    void SetBounds(const Rect2Di& b) override;
+    void SetBounds(const Rect2Df& b) override;
 
 private:
     // ----- internal -----

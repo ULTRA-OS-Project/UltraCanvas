@@ -29,7 +29,7 @@ else()
     option(ULTRACANVAS_PLUGIN_VECTOR, "Build Vector plugin" OFF)
     option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" ON)
     option(ULTRACANVAS_PLUGIN_SVG "Build SVG plugin" OFF)
-    option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin" OFF)
+    option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin" ON)
     option(ULTRACANVAS_ENABLE_AUDIO "Enable audio playback & recording (requires backend lib)" ON)
 endif ()
 option(ULTRACANVAS_ENABLE_GL "Enable OpenGL 3D surface support" ON)
@@ -701,6 +701,13 @@ if(ULTRACANVAS_PLUGIN_PDF)
     find_library(GUMBO_LIBRARY       NAMES gumbo)
     find_library(MUJS_LIBRARY        NAMES mujs)
     find_library(HARFBUZZ_LIB        NAMES harfbuzz)
+    # MuPDF on MSYS2/MinGW is built against the system FreeType/JPEG/zlib
+    # (USE_SYSTEM_LIBS), so these must be linked explicitly AFTER libmupdf.a.
+    # Full paths from find_library (not "-lfreetype") avoid CMake de-duplicating
+    # them back to their earlier, pre-mupdf position on the link line.
+    find_library(FREETYPE_LIB NAMES freetype)
+    find_library(JPEG_LIB     NAMES jpeg libjpeg)
+    find_library(ZLIB_LIB     NAMES z zlib)
 
     if(MUPDF_INCLUDE_DIR AND MUPDF_LIBRARY AND MUPDF_THIRD_LIBRARY)
         set(MUPDF_FOUND TRUE)
@@ -708,41 +715,36 @@ if(ULTRACANVAS_PLUGIN_PDF)
         set(MUPDF_FOUND FALSE)
     endif()
 
-    if(MUPDF_FOUND)
-        list(APPEND ULTRACANVAS_CORE_SOURCES
-            ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/UltraCanvasPDF_MuPDF.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/UltraCanvasPDFView.cpp
-        )
-        # Rebuild the library source list since we just appended.
-        target_sources(${ULTRACANVAS_LIB_NAME} PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/UltraCanvasPDF_MuPDF.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/UltraCanvasPDFView.cpp
-        )
-        target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE
-            ${MUPDF_INCLUDE_DIR}
-        )
-        target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC
-            ULTRACANVAS_PLUGIN_PDF=1
-            ULTRACANVAS_PDF_MUPDF=1
-        )
-        # Linking the static archives in the right order matters: dependents
-        # before dependencies.
-        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
-            ${MUPDF_LIBRARY}
-            ${MUPDF_THIRD_LIBRARY}
-        )
-        foreach(_extra_lib
-                MUJS_LIBRARY GUMBO_LIBRARY JBIG2DEC_LIBRARY OPENJP2_LIBRARY
-                HARFBUZZ_LIB)
-            if(${_extra_lib})
-                target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${${_extra_lib}})
-            endif()
-        endforeach()
-        message(STATUS "  [✓] PDF Plugin - ENABLED (MuPDF at ${MUPDF_LIBRARY})")
-    else()
-        message(STATUS "  [✗] PDF Plugin - DISABLED (libmupdf not found; "
-                       "install libmupdf-dev / mupdf-tools)")
-    endif()
+    list(APPEND ULTRACANVAS_CORE_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/UltraCanvasPDF_MuPDF.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/UltraCanvasPDFView.cpp
+    )
+    # Rebuild the library source list since we just appended.
+    target_sources(${ULTRACANVAS_LIB_NAME} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/UltraCanvasPDF_MuPDF.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/UltraCanvasPDFView.cpp
+    )
+    target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE
+        ${MUPDF_INCLUDE_DIR}
+    )
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC
+        ULTRACANVAS_PLUGIN_PDF=1
+        ULTRACANVAS_PDF_MUPDF=1
+    )
+    # Linking the static archives in the right order matters: dependents
+    # before dependencies.
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
+        ${MUPDF_LIBRARY}
+        ${MUPDF_THIRD_LIBRARY}
+    )
+    foreach(_extra_lib
+            MUJS_LIBRARY GUMBO_LIBRARY JBIG2DEC_LIBRARY OPENJP2_LIBRARY
+            HARFBUZZ_LIB FREETYPE_LIB JPEG_LIB ZLIB_LIB)
+        if(${_extra_lib})
+            target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${${_extra_lib}})
+        endif()
+    endforeach()
+    message(STATUS "  [✓] PDF Plugin - ENABLED (MuPDF at ${MUPDF_LIBRARY})")
 else()
     message(STATUS "  [−] PDF Plugin - SKIPPED (disabled by option)")
 endif()

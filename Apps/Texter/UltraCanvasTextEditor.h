@@ -225,6 +225,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasToolbar> toolbar;
         std::shared_ptr<UltraCanvasToolbar> markdownToolbar;
         std::shared_ptr<UltraCanvasTabbedContainer> tabContainer;
+        std::shared_ptr<UltraCanvasContainer> statusBarContainer;  // flex-row wrapper for status controls
         std::shared_ptr<UltraCanvasLabel> statusLabel;
         std::shared_ptr<UltraCanvasDropdown> languageDropdown;
         std::shared_ptr<UltraCanvasDropdown> encodingDropdown;
@@ -408,6 +409,10 @@ namespace UltraCanvas {
 
         // Layout
         void UpdateChildLayout();
+        // Builds the per-tab flex content (contentBox > editorArea > textArea) for a document.
+        void BuildDocumentContentBox(const std::shared_ptr<DocumentTab>& doc);
+        // Re-parents the shared searchBar + markdownToolbar into the active tab's content boxes.
+        void AttachSharedBarsToActiveTab();
 
         // ===== ASYNC MATCH COUNTING =====
         std::thread              matchCountThread;
@@ -452,11 +457,11 @@ namespace UltraCanvas {
         void PromptCrashRecovery();
 
         // ===== RENDERING =====
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;
-        void SetBounds(const Rect2Di& b) override;
+        void SetBounds(const Rect2Df& b) override;
         // ===== FILE OPERATIONS (PUBLIC API) =====
 
         /**
@@ -519,6 +524,11 @@ namespace UltraCanvas {
          * line has no usable content; callers treat that as "no suggestion".
          */
         std::string SuggestFileNameFromFirstLine(const std::string& firstLine) const;
+
+        // Re-derive the auto-proposed display name of an unsaved tab from the first
+        // line of its current content and refresh the tab + window title. No-op for
+        // saved documents. Shared by the live-rename (onTextChanged) and recovery paths.
+        void RefreshAutoDisplayName(int docIndex);
 
 
         void PerformAutosave(bool force = false);

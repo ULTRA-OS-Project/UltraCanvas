@@ -8,7 +8,7 @@
 
 #ifdef ULTRACANVAS_PLUGIN_PDF
 
-#include "libspecific/Cairo/ImageCairo.h"  // UCPixmapCairo
+#include "../libspecific//Cairo/ImageCairo.h"  // UCPixmapCairo
 
 #include <algorithm>
 #include <cstring>
@@ -18,7 +18,7 @@ namespace UltraCanvas {
 // ===== ctor / dtor =====
 
 UltraCanvasPDFView::UltraCanvasPDFView(const std::string& id,
-                                       int x, int y, int w, int h)
+                                       float x, float y, float w, float h)
     : UltraCanvasUIElement(id, x, y, w, h) {
     backgroundColor = style_.background;
 }
@@ -340,7 +340,7 @@ UltraCanvasPDFView::EnsureThumbnail(int page) {
 
 // ===== Render =====
 
-void UltraCanvasPDFView::Render(IRenderContext* ctx, const Rect2Di& /*dirty*/) {
+void UltraCanvasPDFView::Render(IRenderContext* ctx, const Rect2Df& /*dirty*/) {
     if (!IsVisible()) return;
     const Rect2Di b = GetBounds();
 
@@ -580,7 +580,7 @@ bool UltraCanvasPDFView::OnEvent(const UCEvent& event) {
     return UltraCanvasUIElement::OnEvent(event);
 }
 
-void UltraCanvasPDFView::SetBounds(const Rect2Di& b) {
+void UltraCanvasPDFView::SetBounds(const Rect2Df& b) {
     UltraCanvasUIElement::SetBounds(b);
     InvalidateCaches();
 }
