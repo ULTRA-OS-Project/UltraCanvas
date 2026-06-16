@@ -20,6 +20,7 @@
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasTextArea.h"
+#include "UltraCanvasButton.h"
 
 #include <memory>
 #include <vector>
@@ -816,8 +817,9 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         "from 4 to 9 to watch it period-double\n"
         "into chaos, or change the Mandala's\n"
         "fold symmetry from 3 to 12.\n\n"
-        "Double-click the canvas to maximize it;\n"
-        "press Esc or click once to restore."
+        "Click the ⛶ icon or double-click the\n"
+        "canvas to maximize it; press Esc or\n"
+        "click once to restore."
     );
     info->SetFontSize(11);
     info->SetAlignment(TextAlignment::Left);
@@ -827,49 +829,75 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     root->AddChild(panel);
 
     // ---------------------------------------------------- maximize / zoom view
-    // Double-click the canvas to expand it over the whole tab (hiding the
-    // controls and source viewer); press Esc or single-click to restore.
-    // Raw pointers are captured deliberately: the surface owns this callback and
-    // every element here outlives it via `root`, so capturing shared_ptrs would
-    // form a reference cycle that leaks the whole tab.
+    // A "⛶" icon button overlays the top-right of the canvas (the GL surface
+    // composites into the 2D layer, so a later sibling draws on top of it).
+    // It maximizes the canvas over the whole tab, hiding the controls and
+    // source viewer; double-clicking the canvas does the same, and Esc or a
+    // single click restores. The button stays visible so it can toggle back.
+    const Point2Df btnHome{644.0f, 46.0f};
+    auto zoomBtn = std::make_shared<UltraCanvasButton>(
+        "ShaderZoomBtn", btnHome.x, btnHome.y, 28.0f, 24.0f, "⛶");
+    zoomBtn->SetFontSize(15.0f);
+    zoomBtn->SetBackgroundColor(Color(0, 0, 0, 120));
+    zoomBtn->SetTextColors(Color(255, 255, 255, 255));
+    zoomBtn->SetCornerRadius(4.0f);
+    zoomBtn->SetTooltip("Maximize canvas (or double-click it; Esc to restore)");
+    root->AddChild(zoomBtn);
+
+    // Raw pointers are captured deliberately: the surface/button own the
+    // callbacks below and every element here outlives them via `root`, so
+    // capturing shared_ptrs would form a reference cycle that leaks the tab.
     auto zoomActive = std::make_shared<bool>(false);
     UltraCanvasGLSurface* surf = surface.get();
     UltraCanvasContainer* rootPtr = root.get();
+    UltraCanvasButton* btnPtr = zoomBtn.get();
     std::vector<UltraCanvasUIElement*> chrome = {
         title.get(), codeTitle.get(), codeArea.get(), panel.get()
     };
     const Point2Df homePos{16.0f, 40.0f};
     const float homeW = 660.0f, homeH = 360.0f;
 
-    surf->SetEventCallback(
-        [zoomActive, surf, rootPtr, chrome, homePos, homeW, homeH](const UCEvent& e) -> bool {
-            if (!*zoomActive) {
-                if (e.type == UCEventType::MouseDoubleClick) {
-                    *zoomActive = true;
-                    for (auto* el : chrome) el->SetVisible(false);
-                    auto area = rootPtr->GetContentArea();
-                    surf->SetElementAbsolutePosition({0.0f, 0.0f});
-                    surf->SetElementSize(CSSLayout::Dimension::Px((float)area.width),
-                                         CSSLayout::Dimension::Px((float)area.height));
-                    surf->SetFocus(true);   // route Esc (sent to the focused element) here
-                    surf->RequestRender();
-                    return true;
-                }
-                return false;
-            }
-            // Maximized: a single click or Esc returns to the normal layout.
-            if (e.type == UCEventType::MouseDown ||
-                (e.type == UCEventType::KeyDown && e.virtualKey == UCKeys::Escape)) {
-                *zoomActive = false;
-                surf->SetElementAbsolutePosition(homePos);
-                surf->SetElementSize(CSSLayout::Dimension::Px(homeW),
-                                     CSSLayout::Dimension::Px(homeH));
-                for (auto* el : chrome) el->SetVisible(true);
-                surf->RequestRender();
-                return true;
-            }
+    // Shared toggle, called by both the button and the canvas gestures.
+    auto toggleZoom = std::make_shared<std::function<void()>>();
+    *toggleZoom = [zoomActive, surf, rootPtr, btnPtr, chrome, homePos, homeW, homeH, btnHome]() {
+        if (!*zoomActive) {
+            *zoomActive = true;
+            for (auto* el : chrome) el->SetVisible(false);
+            auto area = rootPtr->GetContentArea();
+            surf->SetElementAbsolutePosition({0.0f, 0.0f});
+            surf->SetElementSize(CSSLayout::Dimension::Px((float)area.width),
+                                 CSSLayout::Dimension::Px((float)area.height));
+            btnPtr->SetElementAbsolutePosition({(float)area.width - 36.0f, 8.0f});
+            btnPtr->SetTooltip("Restore canvas (Esc or click)");
+            surf->SetFocus(true);   // route Esc (sent to the focused element) here
+            surf->RequestRender();
+        } else {
+            *zoomActive = false;
+            surf->SetElementAbsolutePosition(homePos);
+            surf->SetElementSize(CSSLayout::Dimension::Px(homeW),
+                                 CSSLayout::Dimension::Px(homeH));
+            btnPtr->SetElementAbsolutePosition(btnHome);
+            btnPtr->SetTooltip("Maximize canvas (or double-click it; Esc to restore)");
+            for (auto* el : chrome) el->SetVisible(true);
+            surf->RequestRender();
+        }
+    };
+
+    zoomBtn->SetOnClick([toggleZoom]() { (*toggleZoom)(); });
+
+    surf->SetEventCallback([zoomActive, toggleZoom](const UCEvent& e) -> bool {
+        if (!*zoomActive) {
+            if (e.type == UCEventType::MouseDoubleClick) { (*toggleZoom)(); return true; }
             return false;
-        });
+        }
+        // Maximized: a single click or Esc returns to the normal layout.
+        if (e.type == UCEventType::MouseDown ||
+            (e.type == UCEventType::KeyDown && e.virtualKey == UCKeys::Escape)) {
+            (*toggleZoom)();
+            return true;
+        }
+        return false;
+    });
 
     return root;
 }
