@@ -2,8 +2,9 @@
 // "Shaders" tab of the OpenGL showcase: a full-screen quad driven entirely by
 // animated fragment shaders. A dropdown switches between several procedural
 // effects (plasma, raymarched scene, Julia fractal, tunnel, warp starfield,
-// a Twigl/つぶやきGLSL "geek-mode" "Borg Sphere" lattice, a numerically-
-// integrated Rössler strange attractor, and a p5.js "Ball Surface" port).
+// two Twigl/つぶやきGLSL "geek-mode" one-liners ("Borg Sphere" lattice and
+// "Pulse" ray-fold), a numerically-integrated Rössler strange attractor, and a
+// p5.js "Ball Surface" port).
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -335,6 +336,32 @@ void main(){
 }
 )"});
 
+    // ------------------------------------------------------------------------
+    // "Pulse" — another Twigl / つぶやきGLSL "geek-mode" one-liner. Each pixel
+    // walks a ray (z is the marched distance), repeatedly reflecting the sample
+    // point about a time-varying axis v (the dot/cross term is a Rodrigues-style
+    // fold) and accumulating tinted glow weighted by 1/d/z; tanh tone-maps the
+    // result. Mapped onto the tab's uniforms: r->uResolution, FC->vUV*res,
+    // t->uTime, o->FragColor accumulator.
+    fx.push_back({"Pulse (Twigl)", R"(
+void main(){
+    vec2 r = uResolution;
+    vec3 FC = vec3(vUV * r, 0.0);          // gl_FragCoord (z = 0)
+    float t = uTime;
+    vec4 o = vec4(0.0);
+    vec3 p, v;
+    for(float i=0.0, z=0.0, d=0.0; i++ < 5e1; o += vec4(3.0, z, 6.0, 1.0)/d/z){
+        p = z * normalize(2.0*FC.rgb - r.xyy);
+        p.z += 9.0;
+        v = normalize(cos((t + i)/2.0 + vec3(6.0, 1.0, 4.0)));
+        p = dot(v, p)*v + cross(v, p);     // fold the sample about axis v
+        z += d = 0.2*length(p.xy/vec2(1.0, 9.0));
+    }
+    o = tanh(o/2e2);
+    FragColor = vec4(o.rgb, 1.0);
+}
+)"});
+
     return fx;
 }
 
@@ -537,7 +564,8 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         "Julia Fractal, Tunnel, Warp Starfield,\n"
         "Borg Sphere (Twigl one-liner),\n"
         "Rössler Attractor (integrated ODEs),\n"
-        "Ball Surface (p5.js port).\n\n"
+        "Ball Surface (p5.js port),\n"
+        "Pulse (Twigl ray-fold).\n\n"
         "The speed slider scales time. Select\n"
         "Rössler or Ball Surface to reveal\n"
         "live parameter sliders above — e.g.\n"
