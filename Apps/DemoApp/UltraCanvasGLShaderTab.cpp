@@ -2,10 +2,10 @@
 // "Shaders" tab of the OpenGL showcase: a full-screen quad driven entirely by
 // animated fragment shaders. A dropdown switches between several procedural
 // effects (plasma, raymarched scene, Julia fractal, tunnel, warp starfield,
-// seven Twigl/つぶやきGLSL "geek-mode" snippets ("Borg Sphere" lattice,
+// eight Twigl/つぶやきGLSL "geek-mode" snippets ("Borg Sphere" lattice,
 // "Pulse" ray-fold, "Fragments" tube turbulence, "Mountains" fractal terrain,
-// "Horizon" turbulent landscape, "Protostar2" glowing core and a static
-// "ULTRA OS Logo" ring), a numerically-
+// "Horizon" turbulent landscape, "Protostar2" glowing core, "Plasma Orb" warped
+// field and an animated "ULTRA OS Logo" ring), a numerically-
 // integrated Rössler strange attractor, p5.js "Ball Surface" and "Alien
 // Caterpillar" ports, a 12-wave "Mandala" pattern, and an openFrameworks
 // "Circles" node-link network — the last two drawn as native 2D GL geometry
@@ -542,17 +542,43 @@ void main(){
 )"});
 
     // ------------------------------------------------------------------------
-    // "ULTRA OS Logo" — a tiny static Twigl / つぶやきGLSL expression: a glowing
-    // ring (|p| = 0.5) with a hyperbolic warp 0.01/(p.x-p.y) that pinches it
-    // along the diagonal. No loop, no time; the 1/abs(...) gives the bright glow.
-    fx.push_back({"ULTRA OS Logo (Twigl)", R"(
+    // "Plasma Orb" — a Twigl / つぶやきGLSL one-liner. A domain-warped field v is
+    // iterated through eight cos octaves and accumulated into o; the result is
+    // tinted by a vertical exp() gradient and a radial exp(-l) falloff, then
+    // tanh tone-mapped — a glowing plasma sphere.
+    fx.push_back({"Plasma Orb (Twigl)", R"(
 void main(){
     vec2 r = uResolution;
     vec2 FC = vUV * r;                     // gl_FragCoord.xy
+    float t = uTime;
     vec4 o = vec4(0.0);
     vec2 p = (FC.xy*2.0 - r)/r.y;
-    o += 0.1/abs(length(p) - 0.5 + 0.01/(p.x - p.y));
+    vec2 l = vec2(0.0);
+    vec2 v = p*(1.0 - (l += abs(0.7 - dot(p, p))))/0.2;
+    for(float i = 0.0; i++ < 8.0; o += (sin(v.xyyx) + 1.0)*abs(v.x - v.y)*0.2)
+        v += cos(v.yx*i + vec2(0.0, i) + t)/i + 0.7;
+    o = tanh(exp(p.y*vec4(1.0,-1.0,-2.0,0.0)) * exp(-4.0*l.x) / o);
     FragColor = vec4(o.rgb, 1.0);
+}
+)"});
+
+    // ------------------------------------------------------------------------
+    // "ULTRA OS Logo" — a Twigl / つぶやきGLSL ring (|p| = 0.5) with a hyperbolic
+    // warp 0.01/(p.x-p.y) that pinches it along the diagonal. The original is
+    // static; here it is gently animated: the pinch axis spins (uLogoSpin), the
+    // radius breathes (uLogoPulse), and the glow takes a slowly shifting tint.
+    fx.push_back({"ULTRA OS Logo (Twigl)", R"(
+uniform float uLogoSpin;    // rotation speed of the diagonal pinch
+uniform float uLogoPulse;   // ring radius breathing amount
+void main(){
+    vec2 r = uResolution;
+    vec2 FC = vUV * r;                     // gl_FragCoord.xy
+    vec2 p = (FC.xy*2.0 - r)/r.y;
+    vec2 q = rot(uTime*uLogoSpin) * p;     // spin the pinch axis
+    float radius = 0.5 + uLogoPulse*sin(uTime*1.3);
+    float g = 0.1/abs(length(p) - radius + 0.01/(q.x - q.y));
+    vec3 tint = 0.6 + 0.4*cos(vec3(0.0,2.0,4.0) + uTime + atan(p.y, p.x));
+    FragColor = vec4(g*tint, 1.0);         // bright core stays white; glow shifts hue
 }
 )"});
 
@@ -638,10 +664,17 @@ std::string EffectFormula(const std::string& label) {
 //   for(p=z*normalize(FC.rgb*2.-r.xyy),p.z-=t,f=1.;f++<6.;
 //       p+=sin(round(p.yxz*PI2)/PI*f)/f);
 // o=tanh(o/1e3);)";
+    if (label == "Plasma Orb (Twigl)")
+        return R"(// Source — Twigl / つぶやきGLSL one-liner:
+// vec2 p=(FC.xy*2.-r)/r.y,l,v=p*(1.-(l+=abs(.7-dot(p,p))))/.2;
+// for(float i;i++<8.;o+=(sin(v.xyyx)+1.)*abs(v.x-v.y)*.2)
+//   v+=cos(v.yx*i+vec2(0,i)+t)/i+.7;
+// o=tanh(exp(p.y*vec4(1,-1,-2,0))*exp(-4.*l.x)/o);)";
     if (label == "ULTRA OS Logo (Twigl)")
-        return R"(// Source — Twigl / つぶやきGLSL expression:
+        return R"(// Source — Twigl / つぶやきGLSL expression (here animated):
 // vec2 p=(FC.xy*2.-r)/r.y;
-// o+=.1/abs(length(p)-.5+.01/(p.x-p.y));)";
+// o+=.1/abs(length(p)-.5+.01/(p.x-p.y));
+// // added: spin the (p.x-p.y) axis over time, breathe the radius, tint the glow)";
     if (label == "Alien Caterpillar (p5.js port)")
         return R"(// Source — p5.js generative sketch (drawn here as GL_POINTS):
 // a=(x,y,d=mag(k=(4+sin(y*2-t)*3)*cos(x/29),e=y/8-13))=>
@@ -710,6 +743,8 @@ struct ShaderState {
     float circlesLink = 50.0f;  // Circles link distance threshold
     float circlesGrowth = 1.4f; // Circles ring growth base (pow(base, degree))
     float caterT = 0.0f;        // Alien Caterpillar animation time
+    float logoSpin = 0.3f;      // ULTRA OS Logo pinch-axis spin speed
+    float logoPulse = 0.05f;    // ULTRA OS Logo radius breathing amount
 };
 
 struct ShaderGLResources {
@@ -724,6 +759,7 @@ struct ShaderGLResources {
     std::vector<GLint> pStepLoc, pPhaseLoc;     // Pulse uPulseStep/uPulsePhase
     std::vector<GLint> mKLoc, mWavesLoc, mSpreadLoc;  // Mandala uniforms
     std::vector<GLint> fFoldLoc, fRadiusLoc;          // Fragments uniforms
+    std::vector<GLint> lSpinLoc, lPulseLoc;           // ULTRA OS Logo uniforms
     // "Circles" effect: a flat-colour 2D program with one dynamic vertex buffer.
     GLuint cProg = 0, cVao = 0, cVbo = 0;
     GLint cScaleLoc = -1, cColorLoc = -1;
@@ -925,6 +961,8 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
             glRes->mSpreadLoc.push_back(prog ? glGetUniformLocation(prog, "uMandalaSpread") : -1);
             glRes->fFoldLoc.push_back(prog ? glGetUniformLocation(prog, "uFragFold") : -1);
             glRes->fRadiusLoc.push_back(prog ? glGetUniformLocation(prog, "uFragRadius") : -1);
+            glRes->lSpinLoc.push_back(prog ? glGetUniformLocation(prog, "uLogoSpin") : -1);
+            glRes->lPulseLoc.push_back(prog ? glGetUniformLocation(prog, "uLogoPulse") : -1);
         }
 
         // Set up the flat-colour 2D program + dynamic buffer for "Circles".
@@ -985,6 +1023,8 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         glUniform1f(glRes->mSpreadLoc[idx], state->mandalaSpread);
         glUniform1f(glRes->fFoldLoc[idx], state->fragFold);
         glUniform1f(glRes->fRadiusLoc[idx], state->fragRadius);
+        glUniform1f(glRes->lSpinLoc[idx], state->logoSpin);
+        glUniform1f(glRes->lPulseLoc[idx], state->logoPulse);
         glBindVertexArray(glRes->vao);
         glDrawArrays(GL_TRIANGLES, 0, 3);
         glBindVertexArray(0);
@@ -1062,7 +1102,8 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     // ----------------------------------------- per-effect parameter sliders
     // Locate the effects that carry live uniforms so the matching slider group
     // can be revealed only when that effect is selected.
-    int rosslerIdx = -1, ballIdx = -1, pulseIdx = -1, mandalaIdx = -1, fragIdx = -1, circlesIdx = -1;
+    int rosslerIdx = -1, ballIdx = -1, pulseIdx = -1, mandalaIdx = -1, fragIdx = -1,
+        circlesIdx = -1, logoIdx = -1;
     for (int i = 0; i < (int)effects->size(); ++i) {
         if ((*effects)[i].label == "Rössler Attractor")         rosslerIdx = i;
         if ((*effects)[i].label == "Ball Surface (p5.js port)")  ballIdx = i;
@@ -1070,6 +1111,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         if ((*effects)[i].label == "Mandala (12-wave)")          mandalaIdx = i;
         if ((*effects)[i].label == "Fragments (Twigl)")          fragIdx = i;
         if ((*effects)[i].label == "Circles (openFrameworks)")   circlesIdx = i;
+        if ((*effects)[i].label == "ULTRA OS Logo (Twigl)")      logoIdx = i;
     }
 
     auto addSlider = [](std::shared_ptr<UltraCanvasContainer>& group, const char* id,
@@ -1171,11 +1213,22 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     circlesGroup->SetVisible(false);
     panel->AddChild(circlesGroup);
 
+    // ULTRA OS Logo — spin speed of the pinch axis and radius breathing amount.
+    auto logoGroup = std::make_shared<UltraCanvasContainer>("LogoParams", 10, 128, 276, 140);
+    logoGroup->SetBackgroundColor(Color(246, 246, 248, 255));
+    addCaption(logoGroup, "LO_title", "ULTRA OS Logo controls", 0, true);
+    addCaption(logoGroup, "LO_spinL", "Spin speed", 26);
+    addSlider(logoGroup, "LO_spin", 44, 0.0f, 2.0f, 0.3f, [state](float v){ state->logoSpin = v; });
+    addCaption(logoGroup, "LO_pulseL", "Radius breathing", 74);
+    addSlider(logoGroup, "LO_pulse", 92, 0.0f, 0.2f, 0.05f, [state](float v){ state->logoPulse = v; });
+    logoGroup->SetVisible(false);
+    panel->AddChild(logoGroup);
+
     // Now that the groups exist, wire dropdown selection to reveal the right one.
     fxDrop->onSelectionChanged =
         [state, surface, codeArea, sourceFor, rosslerGroup, ballGroup, pulseGroup,
-         mandalaGroup, fragGroup, circlesGroup, rosslerIdx, ballIdx, pulseIdx,
-         mandalaIdx, fragIdx, circlesIdx](int idx, const DropdownItem&) {
+         mandalaGroup, fragGroup, circlesGroup, logoGroup, rosslerIdx, ballIdx, pulseIdx,
+         mandalaIdx, fragIdx, circlesIdx, logoIdx](int idx, const DropdownItem&) {
             state->currentIndex = idx;
             codeArea->SetText(sourceFor(idx));
             rosslerGroup->SetVisible(idx == rosslerIdx);
@@ -1184,6 +1237,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
             mandalaGroup->SetVisible(idx == mandalaIdx);
             fragGroup->SetVisible(idx == fragIdx);
             circlesGroup->SetVisible(idx == circlesIdx);
+            logoGroup->SetVisible(idx == logoIdx);
             surface->RequestRender();
         };
 
@@ -1206,7 +1260,8 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         "Mountains (Twigl fractal terrain),\n"
         "Horizon (Twigl turbulent landscape),\n"
         "Protostar2 (Twigl glowing core),\n"
-        "ULTRA OS Logo (Twigl ring),\n"
+        "Plasma Orb (Twigl warped field),\n"
+        "ULTRA OS Logo (animated ring),\n"
         "Circles (openFrameworks network),\n"
         "Alien Caterpillar (p5.js points).\n\n"
         "The speed slider scales time. Select\n"
