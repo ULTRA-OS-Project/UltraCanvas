@@ -2,10 +2,11 @@
 // "Shaders" tab of the OpenGL showcase: a full-screen quad driven entirely by
 // animated fragment shaders. A dropdown switches between several procedural
 // effects (plasma, raymarched scene, Julia fractal, tunnel, warp starfield,
-// five Twigl/つぶやきGLSL "geek-mode" one-liners ("Borg Sphere" lattice,
-// "Pulse" ray-fold, "Fragments" tube turbulence, "Mountains" fractal terrain
-// and "Horizon" turbulent landscape), a numerically-integrated Rössler strange
-// attractor, a p5.js "Ball Surface" port, and a 12-wave "Mandala" pattern). The
+// six Twigl/つぶやきGLSL "geek-mode" one-liners ("Borg Sphere" lattice,
+// "Pulse" ray-fold, "Fragments" tube turbulence, "Mountains" fractal terrain,
+// "Horizon" turbulent landscape and "Protostar2" glowing core), a numerically-
+// integrated Rössler strange attractor, a p5.js "Ball Surface" port, and a
+// 12-wave "Mandala" pattern). The
 // generating source for each effect is shown in a GLSL-syntax-highlighted,
 // read-only text area below the canvas.
 // Author: UltraCanvas Framework
@@ -497,6 +498,33 @@ void main(){
 }
 )"});
 
+    // ------------------------------------------------------------------------
+    // "Protostar2" — a Twigl / つぶやきGLSL "geek-mode" one-liner. A ray marches a
+    // glowing volumetric core: each sample point p is folded about a time- and
+    // field-varying axis a (the a*dot - cross term is a Rodrigues-style twist),
+    // an inner octave loop accretes cos turbulence into a, and the step size and
+    // colour come from the resulting field length s; tanh tone-maps the glow.
+    fx.push_back({"Protostar2 (Twigl)", R"(
+void main(){
+    vec2 r = uResolution;
+    vec3 FC = vec3(vUV * r, 0.0);          // gl_FragCoord (z = 0)
+    float t = uTime;
+    vec4 o = vec4(0.0);
+    float i = 0.0, z = 0.0, d = 0.0, s = 0.0;
+    for(; i++ < 2e2; o += (cos(s/0.6 + vec4(0,1,2,0)) + 1.1)/d){
+        vec3 p = z*normalize(FC.rgb*2.0 - r.xyy);
+        vec3 a = normalize(cos(vec3(0,1,0) + t - 0.4*s));
+        p.z += 9.0;
+        a = a*dot(a, p) - cross(a, p);     // twist p about axis a
+        for(d = 1.0; d++ < 6.0; )
+            s = length(a += cos(a*d + t).yzx/d);
+        z += d = 0.1*(abs(sin(s - t)) + abs(a.y)/6.0);
+    }
+    o = tanh(o*o/2e7);
+    FragColor = vec4(o.rgb, 1.0);
+}
+)"});
+
     return fx;
 }
 
@@ -530,6 +558,16 @@ std::string EffectFormula(const std::string& label) {
 //     F=sqrt(noise(2*sin(i+f+o),7*cos(i+f+o))+2*sin(o+i)),
 //     fill(W,9*F),circle(sin(i+F)*r+d,120*cos(i+F)+d,3)},
 //   k=4;k--;)q(k);f-=.01};)";
+    if (label == "Protostar2 (Twigl)")
+        return R"(// Source — Twigl / つぶやきGLSL one-liner:
+// for(float i,z,d,s;i++<2e2;o+=(cos(s/.6+vec4(0,1,2,0))+1.1)/d){
+//   vec3 p=z*normalize(FC.rgb*2.-r.xyy),
+//        a=normalize(cos(vec3(0,1,0)+t-.4*s));
+//   p.z+=9.,a=a*dot(a,p)-cross(a,p);
+//   for(d=1.;d++<6.;)s=length(a+=cos(a*d+t).yzx/d);
+//   z+=d=.1*(abs(sin(s-t))+abs(a.y)/6.);
+// }
+// o=tanh(o*o/2e7);)";
     if (label == "Horizon (Twigl)")
         return R"(// Source — Twigl / つぶやきGLSL one-liner:
 // vec3 c,p;
@@ -888,7 +926,8 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         "Mandala (12-wave interference),\n"
         "Fragments (Twigl tube turbulence),\n"
         "Mountains (Twigl fractal terrain),\n"
-        "Horizon (Twigl turbulent landscape).\n\n"
+        "Horizon (Twigl turbulent landscape),\n"
+        "Protostar2 (Twigl glowing core).\n\n"
         "The speed slider scales time. Select\n"
         "Rössler, Ball Surface, Pulse, Mandala\n"
         "or Fragments to reveal live parameter\n"
