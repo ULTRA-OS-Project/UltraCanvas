@@ -409,6 +409,8 @@ void main(){
     // taken from a wobbling tube SDF and tinted glow is accumulated; tanh tone-
     // maps the result. PI/PI2 (Twigl globals) are supplied locally here.
     fx.push_back({"Fragments (Twigl)", R"(
+uniform float uFragFold;     // inner turbulence fold count (was the literal 6.)
+uniform float uFragRadius;   // tube radius (was the literal 5.)
 void main(){
     vec2 r = uResolution;
     vec3 FC = vec3(vUV * r, 0.0);          // gl_FragCoord (z = 0)
@@ -417,9 +419,10 @@ void main(){
     const float PI = 3.14159265, PI2 = 6.28318530;
     vec3 p;
     for(float i=0.0, z=0.0, f=0.0; i++ < 3e1;
-        z += f = 0.003 + abs(length(p.xy) - 5.0 + dot(cos(p), sin(p).yzx))/8.0,
+        z += f = 0.003 + abs(length(p.xy) - uFragRadius + dot(cos(p), sin(p).yzx))/8.0,
         o += (1.0 + sin(i*0.3 + z + t + vec4(6.0, 1.0, 2.0, 0.0)))/f){
-        for(p = z*normalize(FC.rgb*2.0 - r.xyy), p.z -= t, f = 1.0; f++ < 6.0;
+        for(p = z*normalize(FC.rgb*2.0 - r.xyy), p.z -= t, f = 1.0;
+            f++ < uFragFold && f < 16.0;
             p += sin(round(p.yxz*PI2)/PI*f)/f);
     }
     o = tanh(o/1e3);
@@ -469,6 +472,15 @@ std::string EffectFormula(const std::string& label) {
 //   for(p=z*normalize(FC.rgb*2.-r.xyy),p.z-=t,f=1.;f++<6.;
 //       p+=sin(round(p.yxz*PI2)/PI*f)/f);
 // o=tanh(o/1e3);)";
+    if (label == "Fragments (Twigl)")
+        return R"(// Source — Twigl / つぶやきGLSL one-liner:
+// vec3 p;
+// for(float i,z,f;i++<3e1;
+//     z+=f=.003+abs(length(p.xy)-5.+dot(cos(p),sin(p).yzx))/8.,
+//     o+=(1.+sin(i*.3+z+t+vec4(6,1,2,0)))/f)
+//   for(p=z*normalize(FC.rgb*2.-r.xyy),p.z-=t,f=1.;f++<6.;
+//       p+=sin(round(p.yxz*PI2)/PI*f)/f);
+// o=tanh(o/1e3);)";
     if (label == "Mandala (12-wave)")
         return R"(// Source — 12-wave interference intensity:
 //   I(r) ∝ | Σ_{i=1..12} A·e^{ i (k·r + φ_i) } |² ,   |k| ∈ [24, 32])";
@@ -479,6 +491,17 @@ std::string EffectFormula(const std::string& label) {
 //   dz/dt =  b + z*(x - c))";
     return "";
 }
+
+// A GL surface that can take keyboard focus, so it receives the Escape key
+// (delivered by the app to the focused element) used to leave the maximized
+// "zoom" view. Behaviour is otherwise identical to UltraCanvasGLSurface.
+class ZoomableGLSurface : public UltraCanvasGLSurface {
+public:
+    ZoomableGLSurface(const GLSurfaceConfig& cfg, const std::string& id,
+                      float x, float y, float w, float h)
+        : UltraCanvasGLSurface(cfg, id, x, y, w, h) {}
+    bool AcceptsFocus() const override { return true; }
+};
 
 struct ShaderState {
     int currentIndex = 0;
@@ -496,6 +519,8 @@ struct ShaderState {
     float mandalaK = 28.0f;     // Mandala |k| wave number
     float mandalaWaves = 12.0f; // Mandala wave count / fold symmetry
     float mandalaSpread = 0.0f; // Mandala per-wave phase spread
+    float fragFold = 6.0f;      // Fragments inner fold count
+    float fragRadius = 5.0f;    // Fragments tube radius
 };
 
 struct ShaderGLResources {
@@ -509,6 +534,7 @@ struct ShaderGLResources {
     std::vector<GLint> brightLoc, splatLoc;     // Ball Surface uBright/uSplat
     std::vector<GLint> pStepLoc, pPhaseLoc;     // Pulse uPulseStep/uPulsePhase
     std::vector<GLint> mKLoc, mWavesLoc, mSpreadLoc;  // Mandala uniforms
+    std::vector<GLint> fFoldLoc, fRadiusLoc;          // Fragments uniforms
     bool ready = false;
 };
 
@@ -532,7 +558,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     cfg.glVersionMajor = 3; cfg.glVersionMinor = 3; cfg.coreProfile = true;
     cfg.depthBits = 0; cfg.samples = 1;
 
-    auto surface = std::make_shared<UltraCanvasGLSurface>(cfg, "ShaderSurface", 16, 40, 660, 360);
+    auto surface = std::make_shared<ZoomableGLSurface>(cfg, "ShaderSurface", 16, 40, 660, 360);
     surface->SetRenderMode(RenderMode::Continuous);
 
     surface->SetInitCallback([glRes, effects]() {
@@ -553,6 +579,8 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
             glRes->mKLoc.push_back(prog ? glGetUniformLocation(prog, "uMandalaK") : -1);
             glRes->mWavesLoc.push_back(prog ? glGetUniformLocation(prog, "uMandalaWaves") : -1);
             glRes->mSpreadLoc.push_back(prog ? glGetUniformLocation(prog, "uMandalaSpread") : -1);
+            glRes->fFoldLoc.push_back(prog ? glGetUniformLocation(prog, "uFragFold") : -1);
+            glRes->fRadiusLoc.push_back(prog ? glGetUniformLocation(prog, "uFragRadius") : -1);
         }
         glRes->ready = true;
     });
@@ -582,6 +610,8 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         glUniform1f(glRes->mKLoc[idx], state->mandalaK);
         glUniform1f(glRes->mWavesLoc[idx], state->mandalaWaves);
         glUniform1f(glRes->mSpreadLoc[idx], state->mandalaSpread);
+        glUniform1f(glRes->fFoldLoc[idx], state->fragFold);
+        glUniform1f(glRes->fRadiusLoc[idx], state->fragRadius);
         glBindVertexArray(glRes->vao);
         glDrawArrays(GL_TRIANGLES, 0, 3);
         glBindVertexArray(0);
@@ -656,12 +686,13 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     // ----------------------------------------- per-effect parameter sliders
     // Locate the effects that carry live uniforms so the matching slider group
     // can be revealed only when that effect is selected.
-    int rosslerIdx = -1, ballIdx = -1, pulseIdx = -1, mandalaIdx = -1;
+    int rosslerIdx = -1, ballIdx = -1, pulseIdx = -1, mandalaIdx = -1, fragIdx = -1;
     for (int i = 0; i < (int)effects->size(); ++i) {
         if ((*effects)[i].label == "Rössler Attractor")         rosslerIdx = i;
         if ((*effects)[i].label == "Ball Surface (p5.js port)")  ballIdx = i;
         if ((*effects)[i].label == "Pulse (Twigl)")              pulseIdx = i;
         if ((*effects)[i].label == "Mandala (12-wave)")          mandalaIdx = i;
+        if ((*effects)[i].label == "Fragments (Twigl)")          fragIdx = i;
     }
 
     auto addSlider = [](std::shared_ptr<UltraCanvasContainer>& group, const char* id,
@@ -735,16 +766,30 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     mandalaGroup->SetVisible(false);
     panel->AddChild(mandalaGroup);
 
+    // Fragments — inner fold count and tube radius shape the crystalline burst.
+    auto fragGroup = std::make_shared<UltraCanvasContainer>("FragmentsParams", 10, 128, 276, 140);
+    fragGroup->SetBackgroundColor(Color(246, 246, 248, 255));
+    addCaption(fragGroup, "FR_title", "Fragments controls", 0, true);
+    addCaption(fragGroup, "FR_foldL", "Fold count (turbulence)", 26);
+    addSlider(fragGroup, "FR_fold", 44, 2.0f, 10.0f, 6.0f,
+              [state](float v){ state->fragFold = v; }, 1.0f, "%.0f");
+    addCaption(fragGroup, "FR_radL", "Tube radius (core size)", 74);
+    addSlider(fragGroup, "FR_rad", 92, 1.0f, 12.0f, 5.0f, [state](float v){ state->fragRadius = v; });
+    fragGroup->SetVisible(false);
+    panel->AddChild(fragGroup);
+
     // Now that the groups exist, wire dropdown selection to reveal the right one.
     fxDrop->onSelectionChanged =
         [state, surface, codeArea, sourceFor, rosslerGroup, ballGroup, pulseGroup,
-         mandalaGroup, rosslerIdx, ballIdx, pulseIdx, mandalaIdx](int idx, const DropdownItem&) {
+         mandalaGroup, fragGroup, rosslerIdx, ballIdx, pulseIdx, mandalaIdx, fragIdx]
+        (int idx, const DropdownItem&) {
             state->currentIndex = idx;
             codeArea->SetText(sourceFor(idx));
             rosslerGroup->SetVisible(idx == rosslerIdx);
             ballGroup->SetVisible(idx == ballIdx);
             pulseGroup->SetVisible(idx == pulseIdx);
             mandalaGroup->SetVisible(idx == mandalaIdx);
+            fragGroup->SetVisible(idx == fragIdx);
             surface->RequestRender();
         };
 
@@ -765,12 +810,14 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         "Mandala (12-wave interference),\n"
         "Fragments (Twigl tube turbulence).\n\n"
         "The speed slider scales time. Select\n"
-        "Rössler, Ball Surface, Pulse or\n"
-        "Mandala to reveal live parameter\n"
+        "Rössler, Ball Surface, Pulse, Mandala\n"
+        "or Fragments to reveal live parameter\n"
         "sliders above — e.g. sweep Rössler c\n"
         "from 4 to 9 to watch it period-double\n"
         "into chaos, or change the Mandala's\n"
-        "fold symmetry from 3 to 12."
+        "fold symmetry from 3 to 12.\n\n"
+        "Double-click the canvas to maximize it;\n"
+        "press Esc or click once to restore."
     );
     info->SetFontSize(11);
     info->SetAlignment(TextAlignment::Left);
@@ -778,6 +825,52 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     panel->AddChild(info);
 
     root->AddChild(panel);
+
+    // ---------------------------------------------------- maximize / zoom view
+    // Double-click the canvas to expand it over the whole tab (hiding the
+    // controls and source viewer); press Esc or single-click to restore.
+    // Raw pointers are captured deliberately: the surface owns this callback and
+    // every element here outlives it via `root`, so capturing shared_ptrs would
+    // form a reference cycle that leaks the whole tab.
+    auto zoomActive = std::make_shared<bool>(false);
+    UltraCanvasGLSurface* surf = surface.get();
+    UltraCanvasContainer* rootPtr = root.get();
+    std::vector<UltraCanvasUIElement*> chrome = {
+        title.get(), codeTitle.get(), codeArea.get(), panel.get()
+    };
+    const Point2Df homePos{16.0f, 40.0f};
+    const float homeW = 660.0f, homeH = 360.0f;
+
+    surf->SetEventCallback(
+        [zoomActive, surf, rootPtr, chrome, homePos, homeW, homeH](const UCEvent& e) -> bool {
+            if (!*zoomActive) {
+                if (e.type == UCEventType::MouseDoubleClick) {
+                    *zoomActive = true;
+                    for (auto* el : chrome) el->SetVisible(false);
+                    auto area = rootPtr->GetContentArea();
+                    surf->SetElementAbsolutePosition({0.0f, 0.0f});
+                    surf->SetElementSize(CSSLayout::Dimension::Px((float)area.width),
+                                         CSSLayout::Dimension::Px((float)area.height));
+                    surf->SetFocus(true);   // route Esc (sent to the focused element) here
+                    surf->RequestRender();
+                    return true;
+                }
+                return false;
+            }
+            // Maximized: a single click or Esc returns to the normal layout.
+            if (e.type == UCEventType::MouseDown ||
+                (e.type == UCEventType::KeyDown && e.virtualKey == UCKeys::Escape)) {
+                *zoomActive = false;
+                surf->SetElementAbsolutePosition(homePos);
+                surf->SetElementSize(CSSLayout::Dimension::Px(homeW),
+                                     CSSLayout::Dimension::Px(homeH));
+                for (auto* el : chrome) el->SetVisible(true);
+                surf->RequestRender();
+                return true;
+            }
+            return false;
+        });
+
     return root;
 }
 
