@@ -5,10 +5,11 @@
 // six Twigl/つぶやきGLSL "geek-mode" one-liners ("Borg Sphere" lattice,
 // "Pulse" ray-fold, "Fragments" tube turbulence, "Mountains" fractal terrain,
 // "Horizon" turbulent landscape and "Protostar2" glowing core), a numerically-
-// integrated Rössler strange attractor, a p5.js "Ball Surface" port, a 12-wave
-// "Mandala" pattern, and an openFrameworks "Circles" node-link network drawn as
-// native 2D GL geometry rather than a fragment shader). The generating source
-// for each effect is shown in a GLSL-syntax-highlighted text area below.
+// integrated Rössler strange attractor, p5.js "Ball Surface" and "Alien
+// Caterpillar" ports, a 12-wave "Mandala" pattern, and an openFrameworks
+// "Circles" node-link network — the last two drawn as native 2D GL geometry
+// rather than fragment shaders). The generating source for each effect is shown
+// in a GLSL-syntax-highlighted text area below.
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -59,7 +60,7 @@ float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
 struct ShaderEffect {
     std::string label;
     std::string body;     // fragment-shader main(), appended to kFragHeader
-    bool customRender = false;  // true => not a fragment shader; drawn by custom GL
+    int customKind = 0;   // 0 => fragment shader; 1 => Circles; 2 => Alien Caterpillar
 };
 
 // Flat-colour 2D program for the openFrameworks "Circles" effect (lines + disks
@@ -541,9 +542,13 @@ void main(){
 
     // ------------------------------------------------------------------------
     // "Circles" — an openFrameworks (C++) generative sketch, not a fragment
-    // shader. Marked customRender so the surface draws it with native 2D GL
-    // geometry (see RenderCirclesNetwork). The body is empty (no program).
-    fx.push_back({"Circles (openFrameworks)", "", true});
+    // shader. customKind 1 => the surface draws it with native 2D GL geometry
+    // (see RenderCirclesNetwork). The body is empty (no program).
+    fx.push_back({"Circles (openFrameworks)", "", 1});
+
+    // "Alien Caterpillar" — a p5.js point-cloud sketch (10000 parametric points).
+    // customKind 2 => drawn as GL_POINTS by RenderCaterpillar.
+    fx.push_back({"Alien Caterpillar (p5.js port)", "", 2});
 
     return fx;
 }
@@ -617,6 +622,14 @@ std::string EffectFormula(const std::string& label) {
 //   for(p=z*normalize(FC.rgb*2.-r.xyy),p.z-=t,f=1.;f++<6.;
 //       p+=sin(round(p.yxz*PI2)/PI*f)/f);
 // o=tanh(o/1e3);)";
+    if (label == "Alien Caterpillar (p5.js port)")
+        return R"(// Source — p5.js generative sketch (drawn here as GL_POINTS):
+// a=(x,y,d=mag(k=(4+sin(y*2-t)*3)*cos(x/29),e=y/8-13))=>
+//   point((q=3*sin(k*2)+.3/k+sin(y/25)*k*(9+4*sin(e*9-d*3+t*2)))
+//          +30*cos(c=d-t)+200,
+//         q*sin(c)+d*39-220)
+// t=0,draw=$=>{t||createCanvas(w=400,w);background(9).stroke(w,96);
+//   for(t+=PI/240,i=1e4;i--;)a(i,i/235)})";
     if (label == "Circles (openFrameworks)")
         return R"(// Source — openFrameworks (C++); drawn as native 2D geometry, not a shader:
 // ofSeedRandom(39);                          // deterministic each frame
@@ -676,6 +689,7 @@ struct ShaderState {
     float circlesNodes = 180.0f;// Circles node count
     float circlesLink = 50.0f;  // Circles link distance threshold
     float circlesGrowth = 1.4f; // Circles ring growth base (pow(base, degree))
+    float caterT = 0.0f;        // Alien Caterpillar animation time
 };
 
 struct ShaderGLResources {
@@ -796,6 +810,55 @@ inline void RenderCirclesNetwork(ShaderGLResources& g, int W, int H, float frame
     glUseProgram(0);
 }
 
+// Draws the p5.js "Alien Caterpillar" sketch: 10000 points placed by a
+// parametric formula over i (the loop index) and y=i/235, animated by t, drawn
+// white with low alpha over a dark background — a fresh point cloud each frame.
+inline void RenderCaterpillar(ShaderGLResources& g, int W, int H, float t){
+    glDisable(GL_DEPTH_TEST);
+    glClearColor(9.0f/255.0f, 9.0f/255.0f, 9.0f/255.0f, 1.0f);   // background(9)
+    glClear(GL_COLOR_BUFFER_BIT);
+    if (!g.cProg) return;
+
+    const int N = 10000;
+    std::vector<float> pts;
+    pts.reserve(N*2);
+    for (int i = N; i > 0; --i){
+        float x = float(i), y = float(i)/235.0f;
+        float k = (4.0f + std::sin(y*2.0f - t)*3.0f) * std::cos(x/29.0f);
+        float e = y/8.0f - 13.0f;
+        float d = std::sqrt(k*k + e*e);                              // mag(k,e)
+        float q = 3.0f*std::sin(k*2.0f) + 0.3f/k
+                + std::sin(y/25.0f)*k*(9.0f + 4.0f*std::sin(e*9.0f - d*3.0f + t*2.0f));
+        float c = d - t;
+        float xp = q + 30.0f*std::cos(c) + 200.0f;                  // p5 point x
+        float yp = q*std::sin(c) + d*39.0f - 220.0f;                // p5 point y
+        pts.push_back(xp - 200.0f);     // centre on the 400x400 canvas
+        pts.push_back(yp - 200.0f);
+    }
+
+    // p5 canvas half-extent ~200; uScale.y negative keeps p5's y-down orientation.
+    float view = 200.0f, sx2, sy2;
+    if (W >= H){ sy2 = 1.0f/view; sx2 = sy2 * float(H)/float(W); }
+    else       { sx2 = 1.0f/view; sy2 = sx2 * float(W)/float(H); }
+
+    glUseProgram(g.cProg);
+    glUniform2f(g.cScaleLoc, sx2, -sy2);
+    glUniform4f(g.cColorLoc, 1.0f, 1.0f, 1.0f, 96.0f/255.0f);       // stroke(w,96)
+    glBindVertexArray(g.cVao);
+    glBindBuffer(GL_ARRAY_BUFFER, g.cVbo);
+    glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(pts.size()*sizeof(float)),
+                 pts.data(), GL_DYNAMIC_DRAW);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glPointSize(1.0f);
+    glDrawArrays(GL_POINTS, 0, (GLsizei)(pts.size()/2));
+    glDisable(GL_BLEND);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+    glUseProgram(0);
+}
+
 } // namespace
 
 std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
@@ -822,8 +885,8 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     surface->SetInitCallback([glRes, effects]() {
         glGenVertexArrays(1, &glRes->vao);   // bound but empty; vertices from gl_VertexID
         for (const auto& fx : *effects) {
-            GLuint prog = 0;                 // customRender effects have no shader program
-            if (!fx.customRender) {
+            GLuint prog = 0;                 // custom (non-shader) effects have no program
+            if (fx.customKind == 0) {
                 std::string fs = std::string(kFragHeader) + fx.body;
                 prog = LinkProgram(kFullscreenVS, fs.c_str());
             }
@@ -866,11 +929,16 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         if (!glRes->ready) return;
         int idx = state->currentIndex;
         // Custom (non-shader) effects render their own GL geometry.
-        if (idx >= 0 && idx < (int)effects->size() && (*effects)[idx].customRender) {
-            state->circlesFrame += float(info.deltaTime) * 25.0f * state->speed;
-            RenderCirclesNetwork(*glRes, info.width, info.height, state->circlesFrame,
-                                 (int)(state->circlesNodes + 0.5f), state->circlesLink,
-                                 state->circlesGrowth);
+        if (idx >= 0 && idx < (int)effects->size() && (*effects)[idx].customKind != 0) {
+            if ((*effects)[idx].customKind == 1) {
+                state->circlesFrame += float(info.deltaTime) * 25.0f * state->speed;
+                RenderCirclesNetwork(*glRes, info.width, info.height, state->circlesFrame,
+                                     (int)(state->circlesNodes + 0.5f), state->circlesLink,
+                                     state->circlesGrowth);
+            } else {  // customKind 2 => Alien Caterpillar
+                state->caterT += float(info.deltaTime) * 0.8f * state->speed;
+                RenderCaterpillar(*glRes, info.width, info.height, state->caterT);
+            }
             return;
         }
         if (idx < 0 || idx >= (int)glRes->programs.size() || glRes->programs[idx] == 0) {
@@ -1118,7 +1186,8 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         "Mountains (Twigl fractal terrain),\n"
         "Horizon (Twigl turbulent landscape),\n"
         "Protostar2 (Twigl glowing core),\n"
-        "Circles (openFrameworks network).\n\n"
+        "Circles (openFrameworks network),\n"
+        "Alien Caterpillar (p5.js points).\n\n"
         "The speed slider scales time. Select\n"
         "Rössler, Ball Surface, Pulse, Mandala,\n"
         "Fragments or Circles to reveal live\n"
