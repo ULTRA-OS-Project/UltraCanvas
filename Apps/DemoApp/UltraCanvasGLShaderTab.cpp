@@ -372,21 +372,26 @@ void main(){
     // intensity. Equal directions + a common animated phase give the classic
     // 12-fold "quasicrystal" mandala; |k| breathes across the [24,32] range.
     fx.push_back({"Mandala (12-wave)", R"(
+uniform float uMandalaK;        // |k| wave number   (slider 24..32)
+uniform float uMandalaWaves;    // wave count / fold symmetry (slider 3..12)
+uniform float uMandalaSpread;   // per-wave phase spread (breaks symmetry)
 void main(){
     vec2 uv = (vUV*2.0 - 1.0);
     uv.x *= uResolution.x/uResolution.y;
 
-    const float N = 12.0;
-    float k = 28.0 + 4.0*sin(uTime*0.2);          // |k| sweeps [24, 32]
-    float phi = uTime*0.5;                          // common phase φ_i
-    vec2 sum = vec2(0.0);                            // complex accumulator (re, im)
-    for(int n=0;n<12;n++){
-        float a = 6.28318530718 * float(n)/N;       // evenly-spaced directions
+    int   waves = int(uMandalaWaves + 0.5);
+    float Nf  = float(waves);
+    float k   = uMandalaK;                           // |k| ∈ [24, 32]
+    float phi = uTime*0.5;                            // animated common phase
+    vec2 sum = vec2(0.0);                             // complex accumulator (re, im)
+    for(int n=0;n<32;n++){                            // fixed bound; break at waves
+        if(n >= waves) break;
+        float a = 6.28318530718 * float(n)/Nf;        // evenly-spaced directions
         vec2 kdir = vec2(cos(a), sin(a));
-        float ph = k*dot(kdir, uv) + phi;           // k·r + φ_i   (A = 1)
-        sum += vec2(cos(ph), sin(ph));              // A · e^{i ph}
+        float ph = k*dot(kdir, uv) + phi + uMandalaSpread*float(n);  // k·r + φ_i
+        sum += vec2(cos(ph), sin(ph));               // A · e^{i ph},  A = 1
     }
-    float I = dot(sum, sum)/(N*N);                  // |Σ|² , normalised to [0,1]
+    float I = dot(sum, sum)/(Nf*Nf);                 // |Σ|² , normalised to [0,1]
 
     vec3 col = 0.5 + 0.5*cos(6.28318530718*(vec3(0.0,0.33,0.67) + I*1.5 + uTime*0.05));
     col *= pow(I, 0.7);                              // shape the falloff
@@ -410,6 +415,9 @@ struct ShaderState {
     float ballSplat = 1.7f;     // Ball Surface splat radius (px)
     float pulseStep = 0.2f;     // Pulse march-step scale
     float pulsePhase = 0.0f;    // Pulse fold-axis phase
+    float mandalaK = 28.0f;     // Mandala |k| wave number
+    float mandalaWaves = 12.0f; // Mandala wave count / fold symmetry
+    float mandalaSpread = 0.0f; // Mandala per-wave phase spread
 };
 
 struct ShaderGLResources {
@@ -422,6 +430,7 @@ struct ShaderGLResources {
     std::vector<GLint> aLoc, bLoc, cLoc;        // Rössler uA/uB/uC
     std::vector<GLint> brightLoc, splatLoc;     // Ball Surface uBright/uSplat
     std::vector<GLint> pStepLoc, pPhaseLoc;     // Pulse uPulseStep/uPulsePhase
+    std::vector<GLint> mKLoc, mWavesLoc, mSpreadLoc;  // Mandala uniforms
     bool ready = false;
 };
 
@@ -463,6 +472,9 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
             glRes->splatLoc.push_back(prog ? glGetUniformLocation(prog, "uSplat") : -1);
             glRes->pStepLoc.push_back(prog ? glGetUniformLocation(prog, "uPulseStep") : -1);
             glRes->pPhaseLoc.push_back(prog ? glGetUniformLocation(prog, "uPulsePhase") : -1);
+            glRes->mKLoc.push_back(prog ? glGetUniformLocation(prog, "uMandalaK") : -1);
+            glRes->mWavesLoc.push_back(prog ? glGetUniformLocation(prog, "uMandalaWaves") : -1);
+            glRes->mSpreadLoc.push_back(prog ? glGetUniformLocation(prog, "uMandalaSpread") : -1);
         }
         glRes->ready = true;
     });
@@ -489,6 +501,9 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         glUniform1f(glRes->splatLoc[idx], state->ballSplat);
         glUniform1f(glRes->pStepLoc[idx], state->pulseStep);
         glUniform1f(glRes->pPhaseLoc[idx], state->pulsePhase);
+        glUniform1f(glRes->mKLoc[idx], state->mandalaK);
+        glUniform1f(glRes->mWavesLoc[idx], state->mandalaWaves);
+        glUniform1f(glRes->mSpreadLoc[idx], state->mandalaSpread);
         glBindVertexArray(glRes->vao);
         glDrawArrays(GL_TRIANGLES, 0, 3);
         glBindVertexArray(0);
@@ -535,21 +550,24 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     // ----------------------------------------- per-effect parameter sliders
     // Locate the effects that carry live uniforms so the matching slider group
     // can be revealed only when that effect is selected.
-    int rosslerIdx = -1, ballIdx = -1, pulseIdx = -1;
+    int rosslerIdx = -1, ballIdx = -1, pulseIdx = -1, mandalaIdx = -1;
     for (int i = 0; i < (int)effects->size(); ++i) {
         if ((*effects)[i].label == "Rössler Attractor")         rosslerIdx = i;
         if ((*effects)[i].label == "Ball Surface (p5.js port)")  ballIdx = i;
         if ((*effects)[i].label == "Pulse (Twigl)")              pulseIdx = i;
+        if ((*effects)[i].label == "Mandala (12-wave)")          mandalaIdx = i;
     }
 
     auto addSlider = [](std::shared_ptr<UltraCanvasContainer>& group, const char* id,
                         int y, float lo, float hi, float val,
-                        std::function<void(float)> cb) {
+                        std::function<void(float)> cb,
+                        float step = 0.0f, const char* fmt = "%.2f") {
         auto s = std::make_shared<UltraCanvasSlider>(id, 0, y, 270, 22);
         s->SetRange(lo, hi);
+        if (step > 0.0f) s->SetStep(step);
         s->SetValue(val);
         s->SetValueDisplay(SliderValueDisplay::Number);
-        s->SetValueFormat("%.2f");
+        s->SetValueFormat(fmt);
         s->onValueChanged = std::move(cb);
         group->AddChild(s);
     };
@@ -597,14 +615,29 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     pulseGroup->SetVisible(false);
     panel->AddChild(pulseGroup);
 
+    // Mandala — wave number |k|, fold symmetry (wave count), and phase spread.
+    auto mandalaGroup = std::make_shared<UltraCanvasContainer>("MandalaParams", 10, 128, 276, 180);
+    mandalaGroup->SetBackgroundColor(Color(246, 246, 248, 255));
+    addCaption(mandalaGroup, "MA_title", "Mandala controls", 0, true);
+    addCaption(mandalaGroup, "MA_kL", "Wave number |k| (24..32)", 26);
+    addSlider(mandalaGroup, "MA_k", 44, 24.0f, 32.0f, 28.0f, [state](float v){ state->mandalaK = v; });
+    addCaption(mandalaGroup, "MA_wL", "Symmetry (wave count)", 74);
+    addSlider(mandalaGroup, "MA_w", 92, 3.0f, 12.0f, 12.0f,
+              [state](float v){ state->mandalaWaves = v; }, 1.0f, "%.0f");
+    addCaption(mandalaGroup, "MA_sL", "Phase spread (breaks symmetry)", 122);
+    addSlider(mandalaGroup, "MA_s", 140, 0.0f, 3.1416f, 0.0f, [state](float v){ state->mandalaSpread = v; });
+    mandalaGroup->SetVisible(false);
+    panel->AddChild(mandalaGroup);
+
     // Now that the groups exist, wire dropdown selection to reveal the right one.
     fxDrop->onSelectionChanged =
-        [state, surface, rosslerGroup, ballGroup, pulseGroup,
-         rosslerIdx, ballIdx, pulseIdx](int idx, const DropdownItem&) {
+        [state, surface, rosslerGroup, ballGroup, pulseGroup, mandalaGroup,
+         rosslerIdx, ballIdx, pulseIdx, mandalaIdx](int idx, const DropdownItem&) {
             state->currentIndex = idx;
             rosslerGroup->SetVisible(idx == rosslerIdx);
             ballGroup->SetVisible(idx == ballIdx);
             pulseGroup->SetVisible(idx == pulseIdx);
+            mandalaGroup->SetVisible(idx == mandalaIdx);
             surface->RequestRender();
         };
 
@@ -621,10 +654,12 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         "Pulse (Twigl ray-fold),\n"
         "Mandala (12-wave interference).\n\n"
         "The speed slider scales time. Select\n"
-        "Rössler, Ball Surface or Pulse to\n"
-        "reveal live parameter sliders above —\n"
-        "e.g. sweep Rössler c from 4 to 9 to\n"
-        "watch it period-double into chaos."
+        "Rössler, Ball Surface, Pulse or\n"
+        "Mandala to reveal live parameter\n"
+        "sliders above — e.g. sweep Rössler c\n"
+        "from 4 to 9 to watch it period-double\n"
+        "into chaos, or change the Mandala's\n"
+        "fold symmetry from 3 to 12."
     );
     info->SetFontSize(11);
     info->SetAlignment(TextAlignment::Left);
