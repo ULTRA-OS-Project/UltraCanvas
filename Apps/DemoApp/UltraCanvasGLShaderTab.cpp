@@ -2,9 +2,10 @@
 // "Shaders" tab of the OpenGL showcase: a full-screen quad driven entirely by
 // animated fragment shaders. A dropdown switches between several procedural
 // effects (plasma, raymarched scene, Julia fractal, tunnel, warp starfield,
-// six Twigl/つぶやきGLSL "geek-mode" one-liners ("Borg Sphere" lattice,
+// seven Twigl/つぶやきGLSL "geek-mode" snippets ("Borg Sphere" lattice,
 // "Pulse" ray-fold, "Fragments" tube turbulence, "Mountains" fractal terrain,
-// "Horizon" turbulent landscape and "Protostar2" glowing core), a numerically-
+// "Horizon" turbulent landscape, "Protostar2" glowing core and a static
+// "ULTRA OS Logo" ring), a numerically-
 // integrated Rössler strange attractor, p5.js "Ball Surface" and "Alien
 // Caterpillar" ports, a 12-wave "Mandala" pattern, and an openFrameworks
 // "Circles" node-link network — the last two drawn as native 2D GL geometry
@@ -541,6 +542,21 @@ void main(){
 )"});
 
     // ------------------------------------------------------------------------
+    // "ULTRA OS Logo" — a tiny static Twigl / つぶやきGLSL expression: a glowing
+    // ring (|p| = 0.5) with a hyperbolic warp 0.01/(p.x-p.y) that pinches it
+    // along the diagonal. No loop, no time; the 1/abs(...) gives the bright glow.
+    fx.push_back({"ULTRA OS Logo (Twigl)", R"(
+void main(){
+    vec2 r = uResolution;
+    vec2 FC = vUV * r;                     // gl_FragCoord.xy
+    vec4 o = vec4(0.0);
+    vec2 p = (FC.xy*2.0 - r)/r.y;
+    o += 0.1/abs(length(p) - 0.5 + 0.01/(p.x - p.y));
+    FragColor = vec4(o.rgb, 1.0);
+}
+)"});
+
+    // ------------------------------------------------------------------------
     // "Circles" — an openFrameworks (C++) generative sketch, not a fragment
     // shader. customKind 1 => the surface draws it with native 2D GL geometry
     // (see RenderCirclesNetwork). The body is empty (no program).
@@ -622,6 +638,10 @@ std::string EffectFormula(const std::string& label) {
 //   for(p=z*normalize(FC.rgb*2.-r.xyy),p.z-=t,f=1.;f++<6.;
 //       p+=sin(round(p.yxz*PI2)/PI*f)/f);
 // o=tanh(o/1e3);)";
+    if (label == "ULTRA OS Logo (Twigl)")
+        return R"(// Source — Twigl / つぶやきGLSL expression:
+// vec2 p=(FC.xy*2.-r)/r.y;
+// o+=.1/abs(length(p)-.5+.01/(p.x-p.y));)";
     if (label == "Alien Caterpillar (p5.js port)")
         return R"(// Source — p5.js generative sketch (drawn here as GL_POINTS):
 // a=(x,y,d=mag(k=(4+sin(y*2-t)*3)*cos(x/29),e=y/8-13))=>
@@ -1186,6 +1206,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         "Mountains (Twigl fractal terrain),\n"
         "Horizon (Twigl turbulent landscape),\n"
         "Protostar2 (Twigl glowing core),\n"
+        "ULTRA OS Logo (Twigl ring),\n"
         "Circles (openFrameworks network),\n"
         "Alien Caterpillar (p5.js points).\n\n"
         "The speed slider scales time. Select\n"
