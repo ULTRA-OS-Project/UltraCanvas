@@ -1,7 +1,8 @@
 // Apps/DemoApp/UltraCanvasGLShaderTab.cpp
 // "Shaders" tab of the OpenGL showcase: a full-screen quad driven entirely by
 // animated fragment shaders. A dropdown switches between several procedural
-// effects (plasma, raymarched scene, Julia fractal, tunnel, warp starfield).
+// effects (plasma, raymarched scene, Julia fractal, tunnel, warp starfield,
+// a Twigl/つぶやきGLSL "geek-mode" chaotic lattice, and a p5.js noise-bloom port).
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -197,6 +198,72 @@ void main(){
 }
 )"});
 
+    // ------------------------------------------------------------------------
+    // Twigl / つぶやきGLSL "geek-mode" one-liner, ported to the tab's uniforms.
+    // The original implicit variables map as: r->uResolution, FC->gl_FragCoord
+    // (reconstructed as vUV*uResolution), t->uTime, o->FragColor accumulator,
+    // rotate2D->rot. It raymarches a chaotic cosine lattice (ceil()-quantised
+    // cells) and tone-maps the accumulated glow with tanh().
+    fx.push_back({"Chaotic Lattice (Twigl)", R"(
+void main(){
+    vec2 r = uResolution;
+    vec2 FC = vUV * r;                 // gl_FragCoord-equivalent pixel position
+    float t = uTime;
+    vec4 o = vec4(0.0);
+    float i = 0.0, d = 0.0, s = 0.0;
+    for(; ++i < 1e2; ){
+        vec3 p = vec3((FC.xy*2.0 - r.xy)/r.y * d * rot(t*0.5), d - 8.0);
+        p.yz *= rot(t*0.5);
+        s = 0.01 + 0.1*abs(max(
+                cos(dot(sin(ceil(p/0.3)), cos(ceil(p/0.6)).yzx)),
+                length(ceil(p)) - 4.0) - i/1e2);
+        d += s;
+        o.rgb += max(1.3*sin(p*vec3(1.0,2.0,3.0) + i*0.8)/s, vec3(-length(p*p)));
+    }
+    o = tanh(o*o/1e6);
+    FragColor = vec4(o.rgb, 1.0);
+}
+)"});
+
+    // ------------------------------------------------------------------------
+    // Port of a p5.js generative sketch: four curves of alpha-blended circles
+    // splatted along Perlin-noise-warped rings over a fading-trail background.
+    // p5 has no GLSL equivalent in this app, so we reproduce the steady-state
+    // image directly: a GLSL value-noise stands in for p5's noise(), and each
+    // pixel accumulates the same per-angle white splats the sketch draws.
+    fx.push_back({"Noise Bloom (p5.js port)", R"(
+float vnoise(vec2 p){
+    vec2 ip = floor(p), fp = fract(p);
+    vec2 u = fp*fp*(3.0 - 2.0*fp);
+    float a = hash(ip + vec2(0.0,0.0));
+    float b = hash(ip + vec2(1.0,0.0));
+    float c = hash(ip + vec2(0.0,1.0));
+    float dd = hash(ip + vec2(1.0,1.0));
+    return mix(mix(a,b,u.x), mix(c,dd,u.x), u.y);
+}
+void main(){
+    // Map the surface to the sketch's 400x400 space, centred and aspect-fit.
+    float S = min(uResolution.x, uResolution.y);
+    vec2 P = (vUV*uResolution - 0.5*uResolution)/S * 400.0 + vec2(200.0);
+    float f = -uTime*0.3;              // sketch advances f by -0.01 per frame
+    float acc = 0.0;
+    const float TAU = 6.28318530718;
+    for(int o=0;o<4;o++){
+        float of = float(o);
+        for(float a=0.0;a<TAU;a+=0.06){
+            float rr = 120.0*cos(a + f*0.5);
+            float F = sqrt(max(
+                vnoise(vec2(2.0*sin(a+f+of), 7.0*cos(a+f+of)))
+                + 2.0*sin(of+a), 0.0));
+            vec2 c = vec2(sin(a+F)*rr + 200.0, 120.0*cos(a+F) + 200.0);
+            acc += 0.035 * smoothstep(2.2, 0.0, length(P - c));
+        }
+    }
+    vec3 col = vec3(clamp(acc, 0.0, 1.0));
+    FragColor = vec4(col, 1.0);
+}
+)"});
+
     return fx;
 }
 
@@ -323,7 +390,13 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         "• Julia Fractal — animated escape-\n"
         "  time set with smooth colouring\n"
         "• Tunnel — polar checkerboard\n"
-        "• Warp Starfield — layered parallax\n\n"
+        "• Warp Starfield — layered parallax\n"
+        "• Chaotic Lattice — a Twigl /\n"
+        "  つぶやきGLSL geek-mode one-liner\n"
+        "  raymarching a cosine cell field\n"
+        "• Noise Bloom — port of a p5.js\n"
+        "  sketch: noise-warped rings of\n"
+        "  alpha-blended splats\n\n"
         "uTime and uResolution are the only\n"
         "inputs; the speed slider scales time."
     );
