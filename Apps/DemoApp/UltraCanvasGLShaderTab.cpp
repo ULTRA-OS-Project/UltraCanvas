@@ -2,11 +2,12 @@
 // "Shaders" tab of the OpenGL showcase: a full-screen quad driven entirely by
 // animated fragment shaders. A dropdown switches between several procedural
 // effects (plasma, raymarched scene, Julia fractal, tunnel, warp starfield,
-// three Twigl/つぶやきGLSL "geek-mode" one-liners ("Borg Sphere" lattice,
-// "Pulse" ray-fold and "Fragments" tube turbulence), a numerically-integrated
-// Rössler strange attractor, a p5.js "Ball Surface" port, and a 12-wave
-// "Mandala" interference pattern). The generating source for each effect is
-// shown in a GLSL-syntax-highlighted, read-only text area below the canvas.
+// four Twigl/つぶやきGLSL "geek-mode" one-liners ("Borg Sphere" lattice,
+// "Pulse" ray-fold, "Fragments" tube turbulence and "Mountains" fractal
+// terrain), a numerically-integrated Rössler strange attractor, a p5.js
+// "Ball Surface" port, and a 12-wave "Mandala" interference pattern). The
+// generating source for each effect is shown in a GLSL-syntax-highlighted,
+// read-only text area below the canvas.
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -431,6 +432,39 @@ void main(){
 }
 )"});
 
+    // ------------------------------------------------------------------------
+    // "Mountains" — a Twigl / つぶやきGLSL "geek-mode" one-liner. A ray marches a
+    // log-polar fractal terrain: each step accumulates HSV-tinted glow, then an
+    // inner octave loop (s doubling) sums a sin/cos turbulence used to advance.
+    // Twigl's built-in hsv() is supplied locally; the implicit FC/r/t/o map onto
+    // the tab's vUV*res / uResolution / uTime / FragColor. (No final tone-map in
+    // the original, so the accumulated colour is written straight out.)
+    fx.push_back({"Mountains (Twigl)", R"(
+vec3 hsv(float h, float s, float v){
+    vec3 rgb = clamp(abs(mod(h*6.0 + vec3(0.0,4.0,2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+    return v * mix(vec3(1.0), rgb, s);
+}
+void main(){
+    vec2 r = uResolution;
+    vec2 FC = vUV * r;                      // gl_FragCoord.xy
+    float t = uTime;
+    vec4 o = vec4(0.0);
+    float i=0.0, e=0.0, g=0.0, R=0.0, s=0.0;
+    vec3 q=vec3(0.0), p=vec3(0.0), d=vec3((FC.xy - 0.5*r)/r, 0.8);
+    for(q.yz -= 1.0; i++ < 99.0; ){
+        e += i/2e4;
+        o.rgb += hsv(p.y, 0.5, dot(e, i*0.015));
+        s = 4.0;
+        p = q += d*e*R*0.3;
+        g += p.z;
+        p = vec3(log2(R = length(p)) - t*0.2, exp2(mod(-p.z, s)/R) - 0.2, p);
+        for(e = --p.y; s < 1e4; s += s)
+            e += -abs(dot(sin(p.yzx*s), cos(p.xzy*s))/s*0.5);
+    }
+    FragColor = vec4(o.rgb, 1.0);
+}
+)"});
+
     return fx;
 }
 
@@ -464,15 +498,17 @@ std::string EffectFormula(const std::string& label) {
 //     F=sqrt(noise(2*sin(i+f+o),7*cos(i+f+o))+2*sin(o+i)),
 //     fill(W,9*F),circle(sin(i+F)*r+d,120*cos(i+F)+d,3)},
 //   k=4;k--;)q(k);f-=.01};)";
-    if (label == "Fragments (Twigl)")
+    if (label == "Mountains (Twigl)")
         return R"(// Source — Twigl / つぶやきGLSL one-liner:
-// vec3 p;
-// for(float i,z,f;i++<3e1;
-//     z+=f=.003+abs(length(p.xy)-5.+dot(cos(p),sin(p).yzx))/8.,
-//     o+=(1.+sin(i*.3+z+t+vec4(6,1,2,0)))/f)
-//   for(p=z*normalize(FC.rgb*2.-r.xyy),p.z-=t,f=1.;f++<6.;
-//       p+=sin(round(p.yxz*PI2)/PI*f)/f);
-// o=tanh(o/1e3);)";
+// float i,e,g,R,s;vec3 q,p,d=vec3((FC.xy-.5*r)/r,.8);
+// for(q.yz--;i++<99.;){
+//   e+=i/2e4;
+//   o.rgb+=hsv(p.y,.5,dot(e,i*.015));
+//   s=4.;p=q+=d*e*R*.3;g+=p.z;
+//   p=vec3(log2(R=length(p))-t*.2,exp2(mod(-p.z,s)/R)-.2,p);
+//   for(e=--p.y;s<1e4;s+=s)
+//     e+=-abs(dot(sin(p.yzx*s),cos(p.xzy*s))/s*.5);
+// })";
     if (label == "Fragments (Twigl)")
         return R"(// Source — Twigl / つぶやきGLSL one-liner:
 // vec3 p;
@@ -809,7 +845,8 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         "Ball Surface (p5.js port),\n"
         "Pulse (Twigl ray-fold),\n"
         "Mandala (12-wave interference),\n"
-        "Fragments (Twigl tube turbulence).\n\n"
+        "Fragments (Twigl tube turbulence),\n"
+        "Mountains (Twigl fractal terrain).\n\n"
         "The speed slider scales time. Select\n"
         "Rössler, Ball Surface, Pulse, Mandala\n"
         "or Fragments to reveal live parameter\n"
