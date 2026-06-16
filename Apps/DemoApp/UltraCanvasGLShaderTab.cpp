@@ -20,6 +20,7 @@
 #include <memory>
 #include <vector>
 #include <string>
+#include <functional>
 
 namespace UltraCanvas {
 
@@ -235,11 +236,14 @@ void main(){
     //   dy/dt =  x + a*y
     //   dz/dt =  b + z*(x - c)         classic params a = b = 0.2, c = 5.7
     fx.push_back({"Rössler Attractor", R"(
+uniform float uA;   // Rössler a  (slider: bifurcations as it varies)
+uniform float uB;   // Rössler b
+uniform float uC;   // Rössler c  (sweep ~4..9 to watch period-doubling)
 void main(){
     vec2 uv = (vUV*2.0 - 1.0);
     uv.x *= uResolution.x/uResolution.y;
 
-    const float a = 0.2, b = 0.2, c = 5.7;   // classic Rössler parameters
+    float a = uA, b = uB, c = uC;            // live Rössler parameters
     const float dt = 0.02;
     const int   STEPS = 650;
 
@@ -287,6 +291,8 @@ void main(){
     // folding in the trail's steady-state amplification ~255/20), and angles
     // whose radicand is negative are skipped just as p5 skips a NaN circle.
     fx.push_back({"Ball Surface (p5.js port)", R"(
+uniform float uBright;   // overall splat brightness (p5 fill alpha + trail gain)
+uniform float uSplat;    // splat radius in sketch pixels (circle size)
 float vnoise(vec2 p){
     vec2 ip = floor(p), fp = fract(p);
     vec2 u = fp*fp*(3.0 - 2.0*fp);
@@ -312,9 +318,9 @@ void main(){
             float F = sqrt(rad);
             float rr = 120.0*cos(a + f*0.5);
             vec2 c = vec2(sin(a+F)*rr + 200.0, 120.0*cos(a+F) + 200.0);
-            // fill(W, 9*F): brightness ~ F; *0.4 folds in the trail's steady
-            // accumulation. Splat radius ~1.7px matches the 3px-diameter circle.
-            acc += 0.4 * F * smoothstep(1.7, 0.0, length(P - c));
+            // fill(W, 9*F): brightness ~ F; uBright folds in the trail's steady
+            // accumulation. uSplat is the splat radius (~1.7px ≈ 3px-dia circle).
+            acc += uBright * F * smoothstep(uSplat, 0.0, length(P - c));
         }
     }
     vec3 col = vec3(clamp(acc, 0.0, 1.0));
@@ -330,6 +336,12 @@ struct ShaderState {
     int activeProgram = -1;     // program currently bound's matching index
     float speed = 1.0f;
     float clock = 0.0f;
+    // Live, slider-driven effect parameters (ignored by effects that lack them).
+    float rosslerA = 0.2f;      // Rössler a
+    float rosslerB = 0.2f;      // Rössler b
+    float rosslerC = 5.7f;      // Rössler c
+    float ballBright = 0.4f;    // Ball Surface splat brightness
+    float ballSplat = 1.7f;     // Ball Surface splat radius (px)
 };
 
 struct ShaderGLResources {
@@ -337,6 +349,10 @@ struct ShaderGLResources {
     std::vector<GLuint> programs;
     std::vector<GLint> timeLoc;
     std::vector<GLint> resLoc;
+    // Optional per-effect uniforms; -1 where an effect doesn't declare them.
+    // glUniform1f(-1, ...) is a silent no-op, so these can be set every frame.
+    std::vector<GLint> aLoc, bLoc, cLoc;        // Rössler uA/uB/uC
+    std::vector<GLint> brightLoc, splatLoc;     // Ball Surface uBright/uSplat
     bool ready = false;
 };
 
@@ -371,6 +387,11 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
             glRes->programs.push_back(prog);
             glRes->timeLoc.push_back(prog ? glGetUniformLocation(prog, "uTime") : -1);
             glRes->resLoc.push_back(prog ? glGetUniformLocation(prog, "uResolution") : -1);
+            glRes->aLoc.push_back(prog ? glGetUniformLocation(prog, "uA") : -1);
+            glRes->bLoc.push_back(prog ? glGetUniformLocation(prog, "uB") : -1);
+            glRes->cLoc.push_back(prog ? glGetUniformLocation(prog, "uC") : -1);
+            glRes->brightLoc.push_back(prog ? glGetUniformLocation(prog, "uBright") : -1);
+            glRes->splatLoc.push_back(prog ? glGetUniformLocation(prog, "uSplat") : -1);
         }
         glRes->ready = true;
     });
@@ -389,6 +410,12 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         glUseProgram(glRes->programs[idx]);
         glUniform1f(glRes->timeLoc[idx], state->clock);
         glUniform2f(glRes->resLoc[idx], float(info.width), float(info.height));
+        // Optional per-effect uniforms (no-ops where the location is -1).
+        glUniform1f(glRes->aLoc[idx], state->rosslerA);
+        glUniform1f(glRes->bLoc[idx], state->rosslerB);
+        glUniform1f(glRes->cLoc[idx], state->rosslerC);
+        glUniform1f(glRes->brightLoc[idx], state->ballBright);
+        glUniform1f(glRes->splatLoc[idx], state->ballSplat);
         glBindVertexArray(glRes->vao);
         glDrawArrays(GL_TRIANGLES, 0, 3);
         glBindVertexArray(0);
@@ -418,11 +445,8 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     auto fxDrop = std::make_shared<UltraCanvasDropdown>("ShaderDropdown", 10, 36, 270, 28);
     for (const auto& fx : *effects) fxDrop->AddItem(fx.label);
     fxDrop->SetSelectedIndex(0, false);
-    fxDrop->onSelectionChanged = [state, surface](int idx, const DropdownItem&) {
-        state->currentIndex = idx;
-        surface->RequestRender();
-    };
-    panel->AddChild(fxDrop);
+    panel->AddChild(fxDrop);   // onSelectionChanged is wired up once the slider
+                               // groups below exist (it toggles their visibility).
 
     auto speedLabel = std::make_shared<UltraCanvasLabel>("ShaderSpeedLabel", 10, 78, 270, 18);
     speedLabel->SetText("Animation Speed");
@@ -435,32 +459,83 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     speedSlider->onValueChanged = [state](float v) { state->speed = v; };
     panel->AddChild(speedSlider);
 
-    auto info = std::make_shared<UltraCanvasLabel>("ShaderInfo", 10, 140, 270, 400);
+    // ----------------------------------------- per-effect parameter sliders
+    // Locate the effects that carry live uniforms so the matching slider group
+    // can be revealed only when that effect is selected.
+    int rosslerIdx = -1, ballIdx = -1;
+    for (int i = 0; i < (int)effects->size(); ++i) {
+        if ((*effects)[i].label == "Rössler Attractor")         rosslerIdx = i;
+        if ((*effects)[i].label == "Ball Surface (p5.js port)")  ballIdx = i;
+    }
+
+    auto addSlider = [](std::shared_ptr<UltraCanvasContainer>& group, const char* id,
+                        int y, float lo, float hi, float val,
+                        std::function<void(float)> cb) {
+        auto s = std::make_shared<UltraCanvasSlider>(id, 0, y, 270, 22);
+        s->SetRange(lo, hi);
+        s->SetValue(val);
+        s->SetValueDisplay(SliderValueDisplay::Number);
+        s->SetValueFormat("%.2f");
+        s->onValueChanged = std::move(cb);
+        group->AddChild(s);
+    };
+    auto addCaption = [](std::shared_ptr<UltraCanvasContainer>& group, const char* id,
+                         const char* text, int y, bool bold = false) {
+        auto l = std::make_shared<UltraCanvasLabel>(id, 0, y, 270, 16);
+        l->SetText(text);
+        l->SetFontSize(bold ? 12 : 11);
+        if (bold) l->SetFontWeight(FontWeight::Bold);
+        group->AddChild(l);
+    };
+
+    // Rössler a/b/c — watch the strange attractor bifurcate as c sweeps 4..9.
+    auto rosslerGroup = std::make_shared<UltraCanvasContainer>("RosslerParams", 10, 128, 276, 180);
+    rosslerGroup->SetBackgroundColor(Color(246, 246, 248, 255));
+    addCaption(rosslerGroup, "RA_title", "Rössler parameters", 0, true);
+    addCaption(rosslerGroup, "RA_aL", "a — y-coupling", 26);
+    addSlider(rosslerGroup, "RA_a", 44, 0.0f, 0.4f, 0.2f, [state](float v){ state->rosslerA = v; });
+    addCaption(rosslerGroup, "RA_bL", "b — z-offset", 74);
+    addSlider(rosslerGroup, "RA_b", 92, 0.0f, 2.0f, 0.2f, [state](float v){ state->rosslerB = v; });
+    addCaption(rosslerGroup, "RA_cL", "c — sweep 4..9 (period-doubling)", 122);
+    addSlider(rosslerGroup, "RA_c", 140, 4.0f, 9.0f, 5.7f, [state](float v){ state->rosslerC = v; });
+    rosslerGroup->SetVisible(false);
+    panel->AddChild(rosslerGroup);
+
+    // Ball Surface — brightness and splat radius shape the dotted rings.
+    auto ballGroup = std::make_shared<UltraCanvasContainer>("BallParams", 10, 128, 276, 140);
+    ballGroup->SetBackgroundColor(Color(246, 246, 248, 255));
+    addCaption(ballGroup, "BS_title", "Ball Surface controls", 0, true);
+    addCaption(ballGroup, "BS_bL", "Brightness", 26);
+    addSlider(ballGroup, "BS_b", 44, 0.05f, 1.5f, 0.4f, [state](float v){ state->ballBright = v; });
+    addCaption(ballGroup, "BS_sL", "Splat radius (px)", 74);
+    addSlider(ballGroup, "BS_s", 92, 0.5f, 5.0f, 1.7f, [state](float v){ state->ballSplat = v; });
+    ballGroup->SetVisible(false);
+    panel->AddChild(ballGroup);
+
+    // Now that the groups exist, wire dropdown selection to reveal the right one.
+    fxDrop->onSelectionChanged =
+        [state, surface, rosslerGroup, ballGroup, rosslerIdx, ballIdx](int idx, const DropdownItem&) {
+            state->currentIndex = idx;
+            rosslerGroup->SetVisible(idx == rosslerIdx);
+            ballGroup->SetVisible(idx == ballIdx);
+            surface->RequestRender();
+        };
+
+    auto info = std::make_shared<UltraCanvasLabel>("ShaderInfo", 10, 318, 270, 232);
     info->SetText(
         "Each effect is a single fragment\n"
-        "shader rendered over one full-screen\n"
-        "triangle — no geometry, no textures.\n\n"
-        "Included effects:\n"
-        "• Plasma — classic additive sines\n"
-        "• Raymarched Scene — SDF spheres\n"
-        "  with soft shadows on a checker\n"
-        "  floor and distance fog\n"
-        "• Julia Fractal — animated escape-\n"
-        "  time set with smooth colouring\n"
-        "• Tunnel — polar checkerboard\n"
-        "• Warp Starfield — layered parallax\n"
-        "• Chaotic Lattice — a Twigl /\n"
-        "  つぶやきGLSL geek-mode one-liner\n"
-        "  raymarching a cosine cell field\n"
-        "• Rössler Attractor — the real\n"
-        "  ODE system (a=b=0.2, c=5.7)\n"
-        "  Euler-integrated into a glowing\n"
-        "  orbiting 3D trajectory\n"
-        "• Ball Surface — port of a p5.js\n"
-        "  sketch: four noise-warped rings\n"
-        "  of F-weighted white splats\n\n"
-        "uTime and uResolution are the only\n"
-        "inputs; the speed slider scales time."
+        "shader over one full-screen triangle\n"
+        "— no geometry, no textures.\n\n"
+        "Effects: Plasma, Raymarched Scene,\n"
+        "Julia Fractal, Tunnel, Warp Starfield,\n"
+        "Chaotic Lattice (Twigl one-liner),\n"
+        "Rössler Attractor (integrated ODEs),\n"
+        "Ball Surface (p5.js port).\n\n"
+        "The speed slider scales time. Select\n"
+        "Rössler or Ball Surface to reveal\n"
+        "live parameter sliders above — e.g.\n"
+        "sweep Rössler c from 4 to 9 to watch\n"
+        "the attractor period-double into chaos."
     );
     info->SetFontSize(11);
     info->SetAlignment(TextAlignment::Left);
