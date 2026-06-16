@@ -5,10 +5,10 @@
 // six Twigl/つぶやきGLSL "geek-mode" one-liners ("Borg Sphere" lattice,
 // "Pulse" ray-fold, "Fragments" tube turbulence, "Mountains" fractal terrain,
 // "Horizon" turbulent landscape and "Protostar2" glowing core), a numerically-
-// integrated Rössler strange attractor, a p5.js "Ball Surface" port, and a
-// 12-wave "Mandala" pattern). The
-// generating source for each effect is shown in a GLSL-syntax-highlighted,
-// read-only text area below the canvas.
+// integrated Rössler strange attractor, a p5.js "Ball Surface" port, a 12-wave
+// "Mandala" pattern, and an openFrameworks "Circles" node-link network drawn as
+// native 2D GL geometry rather than a fragment shader). The generating source
+// for each effect is shown in a GLSL-syntax-highlighted text area below.
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -59,7 +59,21 @@ float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
 struct ShaderEffect {
     std::string label;
     std::string body;     // fragment-shader main(), appended to kFragHeader
+    bool customRender = false;  // true => not a fragment shader; drawn by custom GL
 };
+
+// Flat-colour 2D program for the openFrameworks "Circles" effect (lines + disks
+// in a world space that maps to clip via uScale; one solid colour per draw).
+const char* kCircles2DVS = R"(#version 330 core
+layout(location=0) in vec2 aPos;
+uniform vec2 uScale;
+void main(){ gl_Position = vec4(aPos*uScale, 0.0, 1.0); }
+)";
+const char* kCircles2DFS = R"(#version 330 core
+out vec4 FragColor;
+uniform vec4 uColor;
+void main(){ FragColor = uColor; }
+)";
 
 std::vector<ShaderEffect> BuildEffects() {
     std::vector<ShaderEffect> fx;
@@ -525,6 +539,12 @@ void main(){
 }
 )"});
 
+    // ------------------------------------------------------------------------
+    // "Circles" — an openFrameworks (C++) generative sketch, not a fragment
+    // shader. Marked customRender so the surface draws it with native 2D GL
+    // geometry (see RenderCirclesNetwork). The body is empty (no program).
+    fx.push_back({"Circles (openFrameworks)", "", true});
+
     return fx;
 }
 
@@ -597,6 +617,21 @@ std::string EffectFormula(const std::string& label) {
 //   for(p=z*normalize(FC.rgb*2.-r.xyy),p.z-=t,f=1.;f++<6.;
 //       p+=sin(round(p.yxz*PI2)/PI*f)/f);
 // o=tanh(o/1e3);)";
+    if (label == "Circles (openFrameworks)")
+        return R"(// Source — openFrameworks (C++); drawn as native 2D geometry, not a shader:
+// ofSeedRandom(39);                          // deterministic each frame
+// for (int i = 0; i < 180; i++) {            // 180 Perlin-noise-placed nodes
+//   auto loc = glm::vec2(
+//     ofMap(ofNoise(ofRandom(1000), ofGetFrameNum()*0.0035), 0,1, -300,300),
+//     ofMap(ofNoise(ofRandom(1000), ofGetFrameNum()*0.0035), 0,1, -300,300));
+//   location_list.push_back(loc);
+// }
+// for (i) for (k != i)                       // link nodes closer than 50px
+//   if (glm::distance(loc[i], loc[k]) < 50) {
+//     mesh.addVertex(loc[i]); mesh.addVertex(loc[k]); near_count++;
+//   }
+// circle.z = pow(1.4, near_count);           // ring radius grows with degree
+// // draw: wireframe links, ring outlines, white interiors (r-1), dark dots (r=2))";
     if (label == "Mandala (12-wave)")
         return R"(// Source — 12-wave interference intensity:
 //   I(r) ∝ | Σ_{i=1..12} A·e^{ i (k·r + φ_i) } |² ,   |k| ∈ [24, 32])";
@@ -637,6 +672,7 @@ struct ShaderState {
     float mandalaSpread = 0.0f; // Mandala per-wave phase spread
     float fragFold = 6.0f;      // Fragments inner fold count
     float fragRadius = 5.0f;    // Fragments tube radius
+    float circlesFrame = 0.0f;  // Circles network animation frame counter
 };
 
 struct ShaderGLResources {
@@ -651,8 +687,110 @@ struct ShaderGLResources {
     std::vector<GLint> pStepLoc, pPhaseLoc;     // Pulse uPulseStep/uPulsePhase
     std::vector<GLint> mKLoc, mWavesLoc, mSpreadLoc;  // Mandala uniforms
     std::vector<GLint> fFoldLoc, fRadiusLoc;          // Fragments uniforms
+    // "Circles" effect: a flat-colour 2D program with one dynamic vertex buffer.
+    GLuint cProg = 0, cVao = 0, cVbo = 0;
+    GLint cScaleLoc = -1, cColorLoc = -1;
     bool ready = false;
 };
+
+// ---------------------------------------------------- "Circles" 2D network ---
+// CPU value noise (an ofNoise stand-in) and a triangle-fan disk builder, used to
+// reproduce the openFrameworks node-link sketch as native 2D GL geometry.
+inline float cFract(float x){ return x - std::floor(x); }
+inline float cHash2(float x, float y){
+    return cFract(std::sin(x*127.1f + y*311.7f) * 43758.5453f);
+}
+inline float cVNoise(float x, float y){
+    float xi = std::floor(x), yi = std::floor(y), xf = x - xi, yf = y - yi;
+    float u = xf*xf*(3.0f - 2.0f*xf), v = yf*yf*(3.0f - 2.0f*yf);
+    float a = cHash2(xi, yi),       b = cHash2(xi+1.0f, yi);
+    float c = cHash2(xi, yi+1.0f),  d = cHash2(xi+1.0f, yi+1.0f);
+    return a + (b-a)*u + (c-a)*v + (a-b-c+d)*u*v;     // ~[0,1]
+}
+inline void AppendDisk(std::vector<float>& vtx, float cx, float cy, float r){
+    if (r <= 0.0f) return;
+    const int S = 28;
+    const float TAU = 6.2831853f;
+    for (int s = 0; s < S; ++s){
+        float a0 = TAU*float(s)/float(S), a1 = TAU*float(s+1)/float(S);
+        vtx.push_back(cx);                 vtx.push_back(cy);
+        vtx.push_back(cx + r*std::cos(a0)); vtx.push_back(cy + r*std::sin(a0));
+        vtx.push_back(cx + r*std::cos(a1)); vtx.push_back(cy + r*std::sin(a1));
+    }
+}
+
+// Draws the "Circles" sketch: 180 noise-placed nodes (drifting with `frame`),
+// links between nodes closer than 50 units, and rings whose radius grows as
+// pow(1.4, neighbour count) — links, dark ring bases, bg interiors, dark dots.
+inline void RenderCirclesNetwork(ShaderGLResources& g, int W, int H, float frame){
+    glDisable(GL_DEPTH_TEST);
+    glClearColor(239.0f/255.0f, 239.0f/255.0f, 239.0f/255.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    if (!g.cProg) return;
+
+    const int N = 180;
+    std::vector<float> px(N), py(N);
+    std::vector<int> cnt(N, 0);
+    uint32_t rng = 39u;                          // ofSeedRandom(39), reset per frame
+    auto rnd = [&]() -> float {                  // ~ ofRandom(0,1)
+        rng = rng*1664525u + 1013904223u;
+        return float(rng >> 8) * (1.0f/16777216.0f);
+    };
+    float t2 = frame * 0.0035f;                  // ofGetFrameNum()*0.0035 drift
+    for (int i = 0; i < N; ++i){
+        float sx = rnd()*1000.0f, sy = rnd()*1000.0f;   // ofRandom(1000) seeds
+        px[i] = cVNoise(sx, t2)*600.0f - 300.0f;        // ofMap(noise,0,1,-300,300)
+        py[i] = cVNoise(sy, t2)*600.0f - 300.0f;
+    }
+    std::vector<float> lines;
+    for (int i = 0; i < N; ++i)
+        for (int k = 0; k < N; ++k){
+            if (i == k) continue;
+            float dx = px[i]-px[k], dy = py[i]-py[k];
+            if (dx*dx + dy*dy < 50.0f*50.0f){
+                lines.push_back(px[i]); lines.push_back(py[i]);
+                lines.push_back(px[k]); lines.push_back(py[k]);
+                cnt[i]++;
+            }
+        }
+    std::vector<float> ringDisks, bgDisks, dots;
+    for (int i = 0; i < N; ++i){
+        float r = std::pow(1.4f, float(cnt[i]));
+        AppendDisk(ringDisks, px[i], py[i], r);
+        AppendDisk(bgDisks,   px[i], py[i], r - 1.5f);
+        AppendDisk(dots,      px[i], py[i], 2.0f);
+    }
+
+    // World [-360,360] -> clip; uniform scale keeps circles round and fits the view.
+    float view = 360.0f, sx2, sy2;
+    if (W >= H){ sy2 = 1.0f/view; sx2 = sy2 * float(H)/float(W); }
+    else       { sx2 = 1.0f/view; sy2 = sx2 * float(W)/float(H); }
+
+    glUseProgram(g.cProg);
+    glUniform2f(g.cScaleLoc, sx2, -sy2);
+    glBindVertexArray(g.cVao);
+    glBindBuffer(GL_ARRAY_BUFFER, g.cVbo);
+
+    const float dark[4] = {39.0f/255.0f, 39.0f/255.0f, 39.0f/255.0f, 1.0f};
+    const float bg[4]   = {239.0f/255.0f, 239.0f/255.0f, 239.0f/255.0f, 1.0f};
+    auto drawBatch = [&](const std::vector<float>& v, GLenum mode, const float* col){
+        if (v.empty()) return;
+        glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(v.size()*sizeof(float)),
+                     v.data(), GL_DYNAMIC_DRAW);
+        glUniform4fv(g.cColorLoc, 1, col);
+        glDrawArrays(mode, 0, (GLsizei)(v.size()/2));
+    };
+
+    glLineWidth(1.0f);
+    drawBatch(lines,     GL_LINES,     dark);   // links
+    drawBatch(ringDisks, GL_TRIANGLES, dark);   // ring bases
+    drawBatch(bgDisks,   GL_TRIANGLES, bg);     // carve interiors -> leaves ring
+    drawBatch(dots,      GL_TRIANGLES, dark);   // centre dots
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+    glUseProgram(0);
+}
 
 } // namespace
 
@@ -680,8 +818,11 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     surface->SetInitCallback([glRes, effects]() {
         glGenVertexArrays(1, &glRes->vao);   // bound but empty; vertices from gl_VertexID
         for (const auto& fx : *effects) {
-            std::string fs = std::string(kFragHeader) + fx.body;
-            GLuint prog = LinkProgram(kFullscreenVS, fs.c_str());
+            GLuint prog = 0;                 // customRender effects have no shader program
+            if (!fx.customRender) {
+                std::string fs = std::string(kFragHeader) + fx.body;
+                prog = LinkProgram(kFullscreenVS, fs.c_str());
+            }
             glRes->programs.push_back(prog);
             glRes->timeLoc.push_back(prog ? glGetUniformLocation(prog, "uTime") : -1);
             glRes->resLoc.push_back(prog ? glGetUniformLocation(prog, "uResolution") : -1);
@@ -698,12 +839,34 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
             glRes->fFoldLoc.push_back(prog ? glGetUniformLocation(prog, "uFragFold") : -1);
             glRes->fRadiusLoc.push_back(prog ? glGetUniformLocation(prog, "uFragRadius") : -1);
         }
+
+        // Set up the flat-colour 2D program + dynamic buffer for "Circles".
+        glRes->cProg = LinkProgram(kCircles2DVS, kCircles2DFS);
+        if (glRes->cProg) {
+            glRes->cScaleLoc = glGetUniformLocation(glRes->cProg, "uScale");
+            glRes->cColorLoc = glGetUniformLocation(glRes->cProg, "uColor");
+        }
+        glGenVertexArrays(1, &glRes->cVao);
+        glGenBuffers(1, &glRes->cVbo);
+        glBindVertexArray(glRes->cVao);
+        glBindBuffer(GL_ARRAY_BUFFER, glRes->cVbo);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+        glBindVertexArray(0);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+
         glRes->ready = true;
     });
 
-    surface->SetRenderCallback([glRes, state](const RenderSurfaceInfo& info) {
+    surface->SetRenderCallback([glRes, state, effects](const RenderSurfaceInfo& info) {
         if (!glRes->ready) return;
         int idx = state->currentIndex;
+        // Custom (non-shader) effects render their own GL geometry.
+        if (idx >= 0 && idx < (int)effects->size() && (*effects)[idx].customRender) {
+            state->circlesFrame += float(info.deltaTime) * 25.0f * state->speed;
+            RenderCirclesNetwork(*glRes, info.width, info.height, state->circlesFrame);
+            return;
+        }
         if (idx < 0 || idx >= (int)glRes->programs.size() || glRes->programs[idx] == 0) {
             glClearColor(0.1f, 0.0f, 0.0f, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT);
@@ -737,6 +900,9 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     surface->SetCleanupCallback([glRes]() {
         for (GLuint p : glRes->programs) if (p) glDeleteProgram(p);
         if (glRes->vao) glDeleteVertexArrays(1, &glRes->vao);
+        if (glRes->cProg) glDeleteProgram(glRes->cProg);
+        if (glRes->cVao) glDeleteVertexArrays(1, &glRes->cVao);
+        if (glRes->cVbo) glDeleteBuffers(1, &glRes->cVbo);
         *glRes = ShaderGLResources{};
     });
 
@@ -927,7 +1093,8 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         "Fragments (Twigl tube turbulence),\n"
         "Mountains (Twigl fractal terrain),\n"
         "Horizon (Twigl turbulent landscape),\n"
-        "Protostar2 (Twigl glowing core).\n\n"
+        "Protostar2 (Twigl glowing core),\n"
+        "Circles (openFrameworks network).\n\n"
         "The speed slider scales time. Select\n"
         "Rössler, Ball Surface, Pulse, Mandala\n"
         "or Fragments to reveal live parameter\n"
