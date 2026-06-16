@@ -3,8 +3,8 @@
 // animated fragment shaders. A dropdown switches between several procedural
 // effects (plasma, raymarched scene, Julia fractal, tunnel, warp starfield,
 // two Twigl/つぶやきGLSL "geek-mode" one-liners ("Borg Sphere" lattice and
-// "Pulse" ray-fold), a numerically-integrated Rössler strange attractor, and a
-// p5.js "Ball Surface" port).
+// "Pulse" ray-fold), a numerically-integrated Rössler strange attractor, a
+// p5.js "Ball Surface" port, and a 12-wave "Mandala" interference pattern).
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -344,6 +344,8 @@ void main(){
     // result. Mapped onto the tab's uniforms: r->uResolution, FC->vUV*res,
     // t->uTime, o->FragColor accumulator.
     fx.push_back({"Pulse (Twigl)", R"(
+uniform float uPulseStep;    // march step scale (was the literal 0.2)
+uniform float uPulsePhase;   // phase added to the fold axis (was vec3(6,1,4))
 void main(){
     vec2 r = uResolution;
     vec3 FC = vec3(vUV * r, 0.0);          // gl_FragCoord (z = 0)
@@ -353,12 +355,42 @@ void main(){
     for(float i=0.0, z=0.0, d=0.0; i++ < 5e1; o += vec4(3.0, z, 6.0, 1.0)/d/z){
         p = z * normalize(2.0*FC.rgb - r.xyy);
         p.z += 9.0;
-        v = normalize(cos((t + i)/2.0 + vec3(6.0, 1.0, 4.0)));
+        v = normalize(cos((t + i)/2.0 + vec3(6.0, 1.0, 4.0) + uPulsePhase));
         p = dot(v, p)*v + cross(v, p);     // fold the sample about axis v
-        z += d = 0.2*length(p.xy/vec2(1.0, 9.0));
+        z += d = uPulseStep*length(p.xy/vec2(1.0, 9.0));
     }
     o = tanh(o/2e2);
     FragColor = vec4(o.rgb, 1.0);
+}
+)"});
+
+    // ------------------------------------------------------------------------
+    // "Mandala" — the 12-wave interference intensity
+    //     I(r) ∝ | Σ_{i=1..12} A · e^{ i (k·r + φ_i) } |²,   |k| ∈ [24, 32]
+    // Twelve plane waves with evenly-spaced wavevectors k_i (equal amplitude A)
+    // are summed as complex phasors; the squared magnitude of the sum is the
+    // intensity. Equal directions + a common animated phase give the classic
+    // 12-fold "quasicrystal" mandala; |k| breathes across the [24,32] range.
+    fx.push_back({"Mandala (12-wave)", R"(
+void main(){
+    vec2 uv = (vUV*2.0 - 1.0);
+    uv.x *= uResolution.x/uResolution.y;
+
+    const float N = 12.0;
+    float k = 28.0 + 4.0*sin(uTime*0.2);          // |k| sweeps [24, 32]
+    float phi = uTime*0.5;                          // common phase φ_i
+    vec2 sum = vec2(0.0);                            // complex accumulator (re, im)
+    for(int n=0;n<12;n++){
+        float a = 6.28318530718 * float(n)/N;       // evenly-spaced directions
+        vec2 kdir = vec2(cos(a), sin(a));
+        float ph = k*dot(kdir, uv) + phi;           // k·r + φ_i   (A = 1)
+        sum += vec2(cos(ph), sin(ph));              // A · e^{i ph}
+    }
+    float I = dot(sum, sum)/(N*N);                  // |Σ|² , normalised to [0,1]
+
+    vec3 col = 0.5 + 0.5*cos(6.28318530718*(vec3(0.0,0.33,0.67) + I*1.5 + uTime*0.05));
+    col *= pow(I, 0.7);                              // shape the falloff
+    FragColor = vec4(col, 1.0);
 }
 )"});
 
@@ -376,6 +408,8 @@ struct ShaderState {
     float rosslerC = 5.7f;      // Rössler c
     float ballBright = 0.4f;    // Ball Surface splat brightness
     float ballSplat = 1.7f;     // Ball Surface splat radius (px)
+    float pulseStep = 0.2f;     // Pulse march-step scale
+    float pulsePhase = 0.0f;    // Pulse fold-axis phase
 };
 
 struct ShaderGLResources {
@@ -387,6 +421,7 @@ struct ShaderGLResources {
     // glUniform1f(-1, ...) is a silent no-op, so these can be set every frame.
     std::vector<GLint> aLoc, bLoc, cLoc;        // Rössler uA/uB/uC
     std::vector<GLint> brightLoc, splatLoc;     // Ball Surface uBright/uSplat
+    std::vector<GLint> pStepLoc, pPhaseLoc;     // Pulse uPulseStep/uPulsePhase
     bool ready = false;
 };
 
@@ -426,6 +461,8 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
             glRes->cLoc.push_back(prog ? glGetUniformLocation(prog, "uC") : -1);
             glRes->brightLoc.push_back(prog ? glGetUniformLocation(prog, "uBright") : -1);
             glRes->splatLoc.push_back(prog ? glGetUniformLocation(prog, "uSplat") : -1);
+            glRes->pStepLoc.push_back(prog ? glGetUniformLocation(prog, "uPulseStep") : -1);
+            glRes->pPhaseLoc.push_back(prog ? glGetUniformLocation(prog, "uPulsePhase") : -1);
         }
         glRes->ready = true;
     });
@@ -450,6 +487,8 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         glUniform1f(glRes->cLoc[idx], state->rosslerC);
         glUniform1f(glRes->brightLoc[idx], state->ballBright);
         glUniform1f(glRes->splatLoc[idx], state->ballSplat);
+        glUniform1f(glRes->pStepLoc[idx], state->pulseStep);
+        glUniform1f(glRes->pPhaseLoc[idx], state->pulsePhase);
         glBindVertexArray(glRes->vao);
         glDrawArrays(GL_TRIANGLES, 0, 3);
         glBindVertexArray(0);
@@ -496,10 +535,11 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     // ----------------------------------------- per-effect parameter sliders
     // Locate the effects that carry live uniforms so the matching slider group
     // can be revealed only when that effect is selected.
-    int rosslerIdx = -1, ballIdx = -1;
+    int rosslerIdx = -1, ballIdx = -1, pulseIdx = -1;
     for (int i = 0; i < (int)effects->size(); ++i) {
         if ((*effects)[i].label == "Rössler Attractor")         rosslerIdx = i;
         if ((*effects)[i].label == "Ball Surface (p5.js port)")  ballIdx = i;
+        if ((*effects)[i].label == "Pulse (Twigl)")              pulseIdx = i;
     }
 
     auto addSlider = [](std::shared_ptr<UltraCanvasContainer>& group, const char* id,
@@ -546,12 +586,25 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     ballGroup->SetVisible(false);
     panel->AddChild(ballGroup);
 
+    // Pulse — step scale (march density) and fold-axis phase shape the motion.
+    auto pulseGroup = std::make_shared<UltraCanvasContainer>("PulseParams", 10, 128, 276, 140);
+    pulseGroup->SetBackgroundColor(Color(246, 246, 248, 255));
+    addCaption(pulseGroup, "PU_title", "Pulse controls", 0, true);
+    addCaption(pulseGroup, "PU_stepL", "Step scale", 26);
+    addSlider(pulseGroup, "PU_step", 44, 0.05f, 0.6f, 0.2f, [state](float v){ state->pulseStep = v; });
+    addCaption(pulseGroup, "PU_phL", "Fold phase", 74);
+    addSlider(pulseGroup, "PU_ph", 92, 0.0f, 6.2832f, 0.0f, [state](float v){ state->pulsePhase = v; });
+    pulseGroup->SetVisible(false);
+    panel->AddChild(pulseGroup);
+
     // Now that the groups exist, wire dropdown selection to reveal the right one.
     fxDrop->onSelectionChanged =
-        [state, surface, rosslerGroup, ballGroup, rosslerIdx, ballIdx](int idx, const DropdownItem&) {
+        [state, surface, rosslerGroup, ballGroup, pulseGroup,
+         rosslerIdx, ballIdx, pulseIdx](int idx, const DropdownItem&) {
             state->currentIndex = idx;
             rosslerGroup->SetVisible(idx == rosslerIdx);
             ballGroup->SetVisible(idx == ballIdx);
+            pulseGroup->SetVisible(idx == pulseIdx);
             surface->RequestRender();
         };
 
@@ -565,12 +618,13 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         "Borg Sphere (Twigl one-liner),\n"
         "Rössler Attractor (integrated ODEs),\n"
         "Ball Surface (p5.js port),\n"
-        "Pulse (Twigl ray-fold).\n\n"
+        "Pulse (Twigl ray-fold),\n"
+        "Mandala (12-wave interference).\n\n"
         "The speed slider scales time. Select\n"
-        "Rössler or Ball Surface to reveal\n"
-        "live parameter sliders above — e.g.\n"
-        "sweep Rössler c from 4 to 9 to watch\n"
-        "the attractor period-double into chaos."
+        "Rössler, Ball Surface or Pulse to\n"
+        "reveal live parameter sliders above —\n"
+        "e.g. sweep Rössler c from 4 to 9 to\n"
+        "watch it period-double into chaos."
     );
     info->SetFontSize(11);
     info->SetAlignment(TextAlignment::Left);
