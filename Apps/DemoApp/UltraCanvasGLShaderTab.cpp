@@ -2,10 +2,10 @@
 // "Shaders" tab of the OpenGL showcase: a full-screen quad driven entirely by
 // animated fragment shaders. A dropdown switches between several procedural
 // effects (plasma, raymarched scene, Julia fractal, tunnel, warp starfield,
-// four Twigl/つぶやきGLSL "geek-mode" one-liners ("Borg Sphere" lattice,
-// "Pulse" ray-fold, "Fragments" tube turbulence and "Mountains" fractal
-// terrain), a numerically-integrated Rössler strange attractor, a p5.js
-// "Ball Surface" port, and a 12-wave "Mandala" interference pattern). The
+// five Twigl/つぶやきGLSL "geek-mode" one-liners ("Borg Sphere" lattice,
+// "Pulse" ray-fold, "Fragments" tube turbulence, "Mountains" fractal terrain
+// and "Horizon" turbulent landscape), a numerically-integrated Rössler strange
+// attractor, a p5.js "Ball Surface" port, and a 12-wave "Mandala" pattern). The
 // generating source for each effect is shown in a GLSL-syntax-highlighted,
 // read-only text area below the canvas.
 // Author: UltraCanvas Framework
@@ -465,6 +465,38 @@ void main(){
 }
 )"});
 
+    // ------------------------------------------------------------------------
+    // "Horizon" — a Twigl / つぶやきGLSL "geek-mode" one-liner. A ray marches a
+    // turbulent landscape under a glowing sky; each step adds warm glow weighted
+    // by 1/f and the radial distance, an inner octave loop warps the sample, and
+    // the step size f comes from a folded terrain height. The original packs the
+    // height into one chained min/max assignment whose result depends on
+    // left-to-right argument evaluation (unspecified in GLSL); it is expanded
+    // here into sequential statements so the behaviour is deterministic.
+    fx.push_back({"Horizon (Twigl)", R"(
+void main(){
+    vec2 r = uResolution;
+    vec3 FC = vec3(vUV * r, 0.0);          // gl_FragCoord (z = 0)
+    float t = uTime;
+    vec4 o = vec4(0.0);
+    vec3 c = vec3(0.0), p = vec3(0.0);
+    float i = 0.0, z = 0.1, f = 0.0;
+    for(; i++ < 1e2; o += vec4(9.0,4.0,2.0,0.0)/f/length(c.xy/z)){
+        p = c = z*normalize(FC.rgb*2.0 - r.xyy);
+        for(p.x *= f = 0.6; f++ < 9.0; p += sin(p.yzx*f + 0.5*z - t/4.0)/f);
+        // z += f = .03+.1*max(f=6.-.2*z+min(f=(p+c).y,-f*.2),-f*.6);
+        float A = (p + c).y;
+        float B = min(A, -0.2*A);
+        float C = 6.0 - 0.2*z + B;
+        float D = max(C, -0.6*C);
+        f = 0.03 + 0.1*D;
+        z += f;
+    }
+    o = tanh(o*o/9e8);
+    FragColor = vec4(o.rgb, 1.0);
+}
+)"});
+
     return fx;
 }
 
@@ -498,6 +530,15 @@ std::string EffectFormula(const std::string& label) {
 //     F=sqrt(noise(2*sin(i+f+o),7*cos(i+f+o))+2*sin(o+i)),
 //     fill(W,9*F),circle(sin(i+F)*r+d,120*cos(i+F)+d,3)},
 //   k=4;k--;)q(k);f-=.01};)";
+    if (label == "Horizon (Twigl)")
+        return R"(// Source — Twigl / つぶやきGLSL one-liner:
+// vec3 c,p;
+// for(float i,z=.1,f;i++<1e2;o+=vec4(9,4,2,0)/f/length(c.xy/z)){
+//   p=c=z*normalize(FC.rgb*2.-r.xyy);
+//   for(p.x*=f=.6;f++<9.;p+=sin(p.yzx*f+.5*z-t/4.)/f);
+//   z+=f=.03+.1*max(f=6.-.2*z+min(f=(p+c).y,-f*.2),-f*.6);
+// }
+// o=tanh(o*o/9e8);)";
     if (label == "Mountains (Twigl)")
         return R"(// Source — Twigl / つぶやきGLSL one-liner:
 // float i,e,g,R,s;vec3 q,p,d=vec3((FC.xy-.5*r)/r,.8);
@@ -846,7 +887,8 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         "Pulse (Twigl ray-fold),\n"
         "Mandala (12-wave interference),\n"
         "Fragments (Twigl tube turbulence),\n"
-        "Mountains (Twigl fractal terrain).\n\n"
+        "Mountains (Twigl fractal terrain),\n"
+        "Horizon (Twigl turbulent landscape).\n\n"
         "The speed slider scales time. Select\n"
         "Rössler, Ball Surface, Pulse, Mandala\n"
         "or Fragments to reveal live parameter\n"
