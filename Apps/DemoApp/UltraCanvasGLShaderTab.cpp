@@ -2,8 +2,8 @@
 // "Shaders" tab of the OpenGL showcase: a full-screen quad driven entirely by
 // animated fragment shaders. A dropdown switches between several procedural
 // effects (plasma, raymarched scene, Julia fractal, tunnel, warp starfield,
-// a Twigl/つぶやきGLSL "geek-mode" chaotic lattice, a numerically-integrated
-// Rössler strange attractor, and a p5.js "Ball Surface" port).
+// a Twigl/つぶやきGLSL "geek-mode" "Borg Sphere" lattice, a numerically-
+// integrated Rössler strange attractor, and a p5.js "Ball Surface" port).
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -201,12 +201,13 @@ void main(){
 )"});
 
     // ------------------------------------------------------------------------
-    // Twigl / つぶやきGLSL "geek-mode" one-liner, ported to the tab's uniforms.
-    // The original implicit variables map as: r->uResolution, FC->gl_FragCoord
-    // (reconstructed as vUV*uResolution), t->uTime, o->FragColor accumulator,
-    // rotate2D->rot. It raymarches a chaotic cosine lattice (ceil()-quantised
-    // cells) and tone-maps the accumulated glow with tanh().
-    fx.push_back({"Chaotic Lattice (Twigl)", R"(
+    // "Borg Sphere" — a Twigl / つぶやきGLSL "geek-mode" one-liner, ported to the
+    // tab's uniforms. The original implicit variables map as: r->uResolution,
+    // FC->gl_FragCoord (reconstructed as vUV*uResolution), t->uTime,
+    // o->FragColor accumulator, rotate2D->rot. It raymarches a chaotic cosine
+    // lattice of ceil()-quantised cells (the cubic, hull-like "Borg" structure)
+    // and tone-maps the accumulated glow with tanh().
+    fx.push_back({"Borg Sphere (Twigl)", R"(
 void main(){
     vec2 r = uResolution;
     vec2 FC = vUV * r;                 // gl_FragCoord-equivalent pixel position
@@ -246,12 +247,18 @@ void main(){
     float a = uA, b = uB, c = uC;            // live Rössler parameters
     const float dt = 0.02;
     const int   STEPS = 650;
+    // Clamp the state to a generous box so divergent parameter regimes (very
+    // low c, large b, ...) stay on-screen instead of exploding to NaN/Inf under
+    // the fixed-step Euler integrator. The box is far outside the normal
+    // attractor (|x|,|y| < ~12, z < ~25), so it never distorts stable orbits.
+    const vec3 BMIN = vec3(-30.0, -30.0,  -8.0);
+    const vec3 BMAX = vec3( 30.0,  30.0,  45.0);
 
     // Integrate a transient first so we start on the attractor, not at the seed.
     vec3 P = vec3(0.1, 0.0, 0.0);
     for(int i=0;i<300;i++){
         vec3 dP = vec3(-P.y - P.z, P.x + a*P.y, b + P.z*(P.x - c));
-        P += dP*dt;
+        P = clamp(P + dP*dt, BMIN, BMAX);    // bounded Euler step
     }
 
     mat2 yaw = rot(uTime*0.25);               // orbiting camera
@@ -262,7 +269,7 @@ void main(){
     vec3 col = vec3(0.0);
     for(int i=0;i<STEPS;i++){
         vec3 dP = vec3(-P.y - P.z, P.x + a*P.y, b + P.z*(P.x - c));
-        P += dP*dt;
+        P = clamp(P + dP*dt, BMIN, BMAX);    // keep the drawn trajectory bounded
 
         vec3 q = (P - center) * zoom;
         q.xz = yaw * q.xz;
@@ -528,7 +535,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         "— no geometry, no textures.\n\n"
         "Effects: Plasma, Raymarched Scene,\n"
         "Julia Fractal, Tunnel, Warp Starfield,\n"
-        "Chaotic Lattice (Twigl one-liner),\n"
+        "Borg Sphere (Twigl one-liner),\n"
         "Rössler Attractor (integrated ODEs),\n"
         "Ball Surface (p5.js port).\n\n"
         "The speed slider scales time. Select\n"
