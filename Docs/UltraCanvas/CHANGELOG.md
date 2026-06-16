@@ -1,3 +1,8 @@
+#### 2026-06-16 *0.2.11*
+- Gauge: added the programmer's guide `Docs/UltraCanvas/UltraCanvasGaugeDiagramElement.md` covering all 17 gauge modes, the value/range/threshold/sub-dial model, and copy-paste usage examples for every mode
+- Gauge demo: wired the Source and Doc buttons (example source + new guide) into the "Gauges" demo entry and added per-mode variants, matching the other UltraCanvas elements
+- Gauge: fixed the `LinearBar` rounded-bar fill collapsing into a circle/lens shape at low values (under ~10%) — the corner radius is now clamped to the fill's smaller dimension
+
 #### 2026-06-15 *0.2.10*
 - Fix the spreadsheet component, editing, keys navigation, cell size changing, scrolling, loading files
 

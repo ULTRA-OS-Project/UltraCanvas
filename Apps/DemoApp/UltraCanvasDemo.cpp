@@ -635,9 +635,29 @@ namespace UltraCanvas {
                 .AddVariant("breadcrumb", "ShrinkText Overflow")
                 .AddVariant("breadcrumb", "Rounded Strip");
 
-        basicBuilder.AddItem("gauges", "Gauges", "Gauges",
+        basicBuilder.AddItem("gauges", "Gauges",
+                             "Multi-mode gauge widget — 17 analog, progress & specialized styles",
                              ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateGaugeExamples(); });
+                             [this]() { return CreateGaugeExamples(); },
+                             "Apps/DemoApp/UltraCanvasGaugeExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasGaugeDiagramElement.md")
+                .AddVariant("gauges", "Speedometer")
+                .AddVariant("gauges", "Semicircular")
+                .AddVariant("gauges", "Quadrant")
+                .AddVariant("gauges", "Compass")
+                .AddVariant("gauges", "Analog Clock")
+                .AddVariant("gauges", "Stopwatch")
+                .AddVariant("gauges", "Linear Bar")
+                .AddVariant("gauges", "LED VU Meter")
+                .AddVariant("gauges", "Segmented Brick")
+                .AddVariant("gauges", "Multi-Pointer")
+                .AddVariant("gauges", "Linear With Arrow")
+                .AddVariant("gauges", "Linear Scale")
+                .AddVariant("gauges", "Circular Ring")
+                .AddVariant("gauges", "Battery")
+                .AddVariant("gauges", "Thermometer")
+                .AddVariant("gauges", "Cylinder")
+                .AddVariant("gauges", "Digital");
 
         // ===== EXTENDED FUNCTIONALITY =====
         auto extendedBuilder = DemoCategoryBuilder(this, DemoCategory::ExtendedFunctionality);
