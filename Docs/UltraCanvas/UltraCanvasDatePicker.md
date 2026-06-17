@@ -209,6 +209,14 @@ scrollbar, so re-applying it after configuration sizes the widget correctly.
 The drill-up months/years grids remain available only in the single-month
 paged view; multi-month/scroll blocks are day grids.
 
+In a multi-month layout each panel shows **only its own month's days** — the
+leading/trailing "adjacent" days from the previous and next month are always
+suppressed (regardless of `SetShowAdjacentMonthDays`). This avoids the same
+calendar date appearing in two neighbouring panels at once, which is especially
+important for selection and range modes where a shared day would otherwise be
+highlighted twice. The single-month view is unaffected and still honours
+`SetShowAdjacentMonthDays`.
+
 The same layout is available on the pop-up widgets directly — the popup is
 sized from the calendar's preferred size, so it adapts automatically:
 

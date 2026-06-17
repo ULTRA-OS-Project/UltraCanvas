@@ -565,7 +565,7 @@ namespace UltraCanvas {
     void UltraCanvasCalendarView::DrawDayCell(IRenderContext* ctx, const Rect2Df& cell, const UCDate& d,
                                               int visY, int visM, float cellW, float cellH) {
         bool inMonth = (d.month == visM && d.year == visY);
-        if (!inMonth && !showAdjacentDays) return;
+        if (!inMonth && !ShowAdjacentDaysEffective()) return;
 
         bool selectable = IsDateSelectable(d);
         bool selected = IsSelected(d);
@@ -603,7 +603,7 @@ namespace UltraCanvas {
 
         DrawCenteredText(ctx, std::to_string(d.day), cell, tc, style.fontSize, FontWeight::Normal);
 
-        if (IsDateBlocked(d) && (inMonth || showAdjacentDays)) {
+        if (IsDateBlocked(d) && (inMonth || ShowAdjacentDaysEffective())) {
             float my = cell.y + cell.height / 2.0f;
             float inset = std::min(cellW, cellH) * 0.30f;
             ctx->SetStrokePaint(style.blockedStrikeColor);
@@ -1247,7 +1247,7 @@ namespace UltraCanvas {
                     int row = static_cast<int>((p.y - pl.gridY) / pl.cellH);
                     if (col >= 0 && col < 7 && row >= 0 && row < 6) {
                         UCDate d = FirstCellFor(y, m).AddDays(row * 7 + col);
-                        if (showAdjacentDays || (d.month == m && d.year == y)) { outDate = d; return true; }
+                        if (ShowAdjacentDaysEffective() || (d.month == m && d.year == y)) { outDate = d; return true; }
                     }
                 }
             }
