@@ -1,3 +1,6 @@
+#### 2026-06-17 *0.2.11*
+- Merge "PDF support", implemented PDF demo (viewer in the demo app)
+
 #### 2026-06-15 *0.2.10*
 - Fix the spreadsheet component, editing, keys navigation, cell size changing, scrolling, loading files
 

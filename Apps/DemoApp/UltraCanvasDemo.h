@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasDemo.h
 // Comprehensive demonstration program showing all UltraCanvas display elements
-// Version: 1.0.0
-// Last Modified: 2024-12-19
+// Version: 1.0.1
+// Last Modified: 2026-06-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -298,7 +298,9 @@ namespace UltraCanvas {
 
         std::shared_ptr<UltraCanvasUIElement> CreateTreeMapExamples();
 
-//        std::shared_ptr<UltraCanvasUIElement> CreatePDFExamples();
+#ifdef ULTRACANVAS_PLUGIN_PDF
+        std::shared_ptr<UltraCanvasUIElement> CreatePDFExamples();
+#endif
         std::shared_ptr<UltraCanvasUIElement> CreateSVGVectorExamples();
 
         std::shared_ptr<UltraCanvasUIElement> CreateFileLoaderExamples();

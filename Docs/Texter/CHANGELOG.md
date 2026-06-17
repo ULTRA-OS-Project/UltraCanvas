@@ -1,3 +1,6 @@
+#### 2026-06-17 *0.1.37*
+- Merge "PDF support", implemented PDF support in Texter
+
 #### 2026-06-15 *0.1.36*
 - Merge changes from "Texter inactive icon rendering"
 

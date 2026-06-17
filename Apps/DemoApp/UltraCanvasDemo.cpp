@@ -1116,9 +1116,17 @@ namespace UltraCanvas {
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreateTextDocumentExamples(); });
 
+#ifdef ULTRACANVAS_PLUGIN_PDF
+        textDocBuilder.AddItem("textdocuments_pdf", "PDF Documents",
+                               "PDF document viewing, navigation, zoom & search",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreatePDFExamples(); },
+                               "Apps/DemoApp/UltraCanvasPDFExamples.cpp");
+#else
         textDocBuilder.AddItem("textdocuments_pdf", "PDF Documents", "PDF document support",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreateTextDocumentExamples(); });
+#endif
 
         textDocBuilder.AddItem("textdocuments_odf", "ODF Documents", "ODF document support",
                                ImplementationStatus::NotImplemented,
