@@ -1,3 +1,8 @@
+#### 2026-06-17 *0.2.12*
+- Fix two bugs in the OpenGL "Zarch" 3D demo:
+  - The application could not be closed while an animated (Continuous) GL surface was on screen, and the debug log kept spinning. `UltraCanvasGLSurface::Render` re-posted a full-window `Redraw` event every frame; it now invalidates only the surface's own region and stops re-arming once the window is closing/closed/hidden, so sibling widgets no longer repaint at the animation frame rate and the event loop can shut down.
+  - The release build crashed when opening the Zarch tab (before any 3D was drawn) while the debug build did not. The terrain/tree hash (`Hash2`) multiplied signed `int`s past `INT_MAX`, which is undefined behaviour that an optimised (`-O3`) build is free to miscompile; it now uses well-defined unsigned arithmetic. The Models/Shaders tabs do not use this hash, which is why only Zarch was affected.
+
 #### 2026-06-17 *0.2.11*
 - Merge "PDF support", implemented PDF demo (viewer in the demo app)
 - Merge "Datepicker multi-month display"

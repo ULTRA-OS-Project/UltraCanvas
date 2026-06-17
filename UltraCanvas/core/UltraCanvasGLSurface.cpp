@@ -165,13 +165,36 @@ void UltraCanvasGLSurface::Render(IRenderContext* ctx, const Rect2Df& dirtyRect)
     // Always composite — skips glReadPixels when no new frame, but always redraws cached pixels
     CompositeToSurface(ctx, didRender);
 
-    // Keep the animation loop alive; expensive work is gated by ShouldRender()
+    // Keep the animation loop alive; expensive work is gated by ShouldRender().
+    //
+    // Only re-arm while the surface is actually on-screen and its window is
+    // still alive. A continuously-rendering surface re-posts a redraw event for
+    // itself every frame, and PushEvent() wakes the event loop — so if we kept
+    // doing this for a window that is closing/closed (or for a hidden tab) the
+    // application would spin forever and never finish shutting down. This is
+    // what made the app impossible to close while the animated GL demo was open.
     if (renderMode_ == RenderMode::Continuous || renderMode_ == RenderMode::TimedUpdate) {
-        UltraCanvasApplication::GetInstance()->PushEvent(UCEvent{
-            .type=UCEventType::Redraw,
-            .targetElement=this,
-            .targetWindow=GetWindow()
-        });
+        UltraCanvasWindowBase* win = GetWindow();
+        if (win && IsVisible()) {
+            WindowState ws = win->GetState();
+            if (ws != WindowState::Closing && ws != WindowState::Closed &&
+                ws != WindowState::Minimized && ws != WindowState::Hidden) {
+                // Invalidate only this surface's region rather than the whole
+                // window. Posting a Redraw with no damage rect forces a full
+                // window repaint every frame, so every sibling widget (buttons,
+                // labels, ...) was being redrawn at the animation frame rate.
+                Point2Df p = GetPositionInWindow();
+                Rect2Di b = GetBounds();
+                UCEvent ev{};
+                ev.type = UCEventType::Redraw;
+                ev.targetElement = this;
+                ev.targetWindow = win;
+                ev.pointerWindow = Point2Di(static_cast<int>(p.x), static_cast<int>(p.y));
+                ev.width = b.width;
+                ev.height = b.height;
+                UltraCanvasApplication::GetInstance()->PushEvent(ev);
+            }
+        }
     }
 }
 
