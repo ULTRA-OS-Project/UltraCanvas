@@ -51,9 +51,13 @@ Vec3 BiomeColor(float h, int checker) {
 }
 
 float Hash2(int x, int y) {
-    int n = x * 374761393 + y * 668265263;
-    n = (n ^ (n >> 13)) * 1274126177;
-    return float((n ^ (n >> 16)) & 0x7fffffff) / float(0x7fffffff);
+    // Use unsigned arithmetic throughout: the grid indices reach well past the
+    // point where these large multipliers overflow a signed int, and signed
+    // overflow is undefined behaviour. With -O0 it happens to wrap, but an
+    // optimised (release) build is free to miscompile it.
+    uint32_t n = (uint32_t)x * 374761393u + (uint32_t)y * 668265263u;
+    n = (n ^ (n >> 13)) * 1274126177u;
+    return float((n ^ (n >> 16)) & 0x7fffffffu) / float(0x7fffffff);
 }
 
 // --------------------------------------------------------------- shaders
