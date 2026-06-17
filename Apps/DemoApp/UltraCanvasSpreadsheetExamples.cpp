@@ -11,7 +11,10 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasSpreadsheet.h"
 #include "UltraCanvasCSVImportDialog.h"
+#include "UltraCanvasCSVExportDialog.h"
 #include "UltraCanvasFileLoader.h"
+#include <algorithm>
+#include <string>
 
 namespace UltraCanvas {
 
@@ -96,16 +99,20 @@ namespace UltraCanvas {
         title->SetFontWeight(FontWeight::Bold);
         root->AddChild(title);
 
-        // ===== TOOLBAR: Open button, manual CSV import button + status label =====
-        auto openBtn = std::make_shared<UltraCanvasButton>("ssOpenBtn", 20, 50, 200, 30,
+        // ===== TOOLBAR: Open / Import / Save buttons + status label =====
+        auto openBtn = std::make_shared<UltraCanvasButton>("ssOpenBtn", 20, 50, 190, 30,
                                                            "Open Spreadsheet File…");
         root->AddChild(openBtn);
 
-        auto importBtn = std::make_shared<UltraCanvasButton>("ssImportBtn", 228, 50, 180, 30,
+        auto importBtn = std::make_shared<UltraCanvasButton>("ssImportBtn", 218, 50, 150, 30,
                                                              "Import CSV…");
         root->AddChild(importBtn);
 
-        auto status = std::make_shared<UltraCanvasLabel>("ssStatus", 420, 56, 580, 22);
+        auto saveBtn = std::make_shared<UltraCanvasButton>("ssSaveBtn", 376, 50, 110, 30,
+                                                           "Save…");
+        root->AddChild(saveBtn);
+
+        auto status = std::make_shared<UltraCanvasLabel>("ssStatus", 496, 56, 510, 22);
         status->SetText("Loaded: (sample data) — supported formats: .ods, .csv");
         status->SetFontSize(12);
         status->SetTextColor(Color(90, 90, 90, 255));
@@ -180,6 +187,65 @@ namespace UltraCanvas {
                             sheet->RequestRedraw();
                             status->RequestRedraw();
                         });
+                });
+        };
+
+        // ===== SAVE -> file dialog (all supported formats) =====
+        // Offer every format the engine can write: OpenDocument (.ods) and
+        // CSV / TSV. When the chosen name ends in .csv or .tsv we open the CSV
+        // export options dialog (separator, quoting, charset, line ending) so the
+        // text file is written exactly as the user wants; .ods saves directly.
+        saveBtn->onClick = [sheet, status]() {
+            FileDialogOptions opts;
+            opts.SetTitle("Save Spreadsheet As")
+                .SetDefaultFileName("spreadsheet.ods")
+                .AddFilter("OpenDocument Spreadsheet", "ods")
+                .AddFilter("CSV (comma separated)", "csv")
+                .AddFilter("TSV (tab separated)", "tsv")
+                .AddFilter("All files", "*");
+
+            UltraCanvasFileLoader::SaveFileDialog(opts,
+                [sheet, status](DialogResult result, const std::string& path) {
+                    if (result != DialogResult::OK || path.empty()) {
+                        status->SetText("Save cancelled.");
+                        status->RequestRedraw();
+                        return;
+                    }
+
+                    // Pick the format from the extension; default to .ods when none.
+                    std::string ext;
+                    size_t dot = path.find_last_of('.');
+                    size_t sep = path.find_last_of("/\\");
+                    if (dot != std::string::npos && (sep == std::string::npos || dot > sep)) {
+                        ext = path.substr(dot);
+                        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+                    }
+
+                    if (ext == ".csv" || ext == ".tsv") {
+                        // Seed the dialog with sensible defaults for the format.
+                        CSVExportOptions initial;
+                        if (ext == ".tsv") initial.fieldSeparator = '\t';
+
+                        ShowCSVExportDialog(sheet.get(), initial,
+                            [sheet, status, path](const CSVExportOptions& options) {
+                                if (sheet->SaveCSVWithOptions(path, options)) {
+                                    status->SetText("Saved: " + path);
+                                } else {
+                                    status->SetText("Could not save file: " + sheet->GetLastError());
+                                }
+                                status->RequestRedraw();
+                            });
+                        return;
+                    }
+
+                    // ODS (or no extension -> default to .ods).
+                    std::string savePath = ext.empty() ? path + ".ods" : path;
+                    if (sheet->SaveToFile(savePath)) {
+                        status->SetText("Saved: " + savePath);
+                    } else {
+                        status->SetText("Could not save file: " + sheet->GetLastError());
+                    }
+                    status->RequestRedraw();
                 });
         };
 

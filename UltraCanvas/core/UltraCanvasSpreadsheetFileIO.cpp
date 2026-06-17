@@ -981,39 +981,57 @@ public:
         }
     }
 
-    static bool Save(const std::string& filePath, const SpreadsheetSheet* sheet,
-                     char delimiter = ',', char quote = '"') {
-        std::ofstream file(filePath);
-        if (!file.is_open()) return false;
-        
+    // Build the CSV/TSV text (UTF-8, before charset encoding) honouring the
+    // separator, quote character, quoting policy and line ending.
+    static std::string Build(const SpreadsheetSheet* sheet, const CSVExportOptions& opt) {
+        std::string out;
+        const char delimiter = opt.fieldSeparator;
+        const char quote = opt.textDelimiter;
+        const bool quoting = quote != 0;
+        const std::string eol =
+            (opt.lineEnding == CSVExportOptions::LineEnding::CRLF) ? "\r\n" : "\n";
+
         CellRange used = sheet->GetUsedRange();
-        
+
         for (int row = used.start.row; row <= used.end.row; ++row) {
             for (int col = used.start.col; col <= used.end.col; ++col) {
-                if (col > used.start.col) file << delimiter;
-                
+                if (col > used.start.col) out += delimiter;
+
                 const SpreadsheetCell* cell = sheet->GetCellIfExists(row, col);
-                if (cell) {
-                    std::string value = cell->GetDisplayValue();
-                    // Quote if contains delimiter, quote, or newline
-                    if (value.find(delimiter) != std::string::npos ||
-                        value.find(quote) != std::string::npos ||
-                        value.find('\n') != std::string::npos) {
-                        file << quote;
-                        for (char c : value) {
-                            if (c == quote) file << quote;
-                            file << c;
-                        }
-                        file << quote;
-                    } else {
-                        file << value;
+                if (!cell) continue;
+                std::string value = cell->GetDisplayValue();
+
+                bool needsQuote = quoting && (opt.quoteAllFields ||
+                    value.find(delimiter) != std::string::npos ||
+                    value.find(quote) != std::string::npos ||
+                    value.find('\n') != std::string::npos ||
+                    value.find('\r') != std::string::npos);
+
+                if (needsQuote) {
+                    out += quote;
+                    for (char c : value) {
+                        if (c == quote) out += quote;  // double the quote to escape
+                        out += c;
                     }
+                    out += quote;
+                } else {
+                    out += value;
                 }
             }
-            file << "\n";
+            out += eol;
         }
-        
-        return true;
+
+        return out;
+    }
+
+    static bool Save(const std::string& filePath, const SpreadsheetSheet* sheet,
+                     const CSVExportOptions& opt) {
+        std::ofstream file(filePath, std::ios::binary);
+        if (!file.is_open()) return false;
+
+        std::string text = CSVEncodeFromUtf8(Build(sheet, opt), opt.encoding, opt.writeBOM);
+        file.write(text.data(), static_cast<std::streamsize>(text.size()));
+        return file.good();
     }
 };
 
@@ -1073,7 +1091,9 @@ bool UltraCanvasSpreadsheet::SaveToFile(const std::string& filePath) {
     } else if (ext == ".csv") {
         return SaveCSV(filePath);
     } else if (ext == ".tsv") {
-        return SaveCSV(filePath, -1);  // Current sheet with tab delimiter
+        CSVExportOptions tsv;
+        tsv.fieldSeparator = '\t';
+        return SaveCSVWithOptions(filePath, tsv);  // Current sheet, tab delimited
     }
 
     lastError_ = "Unsupported save format '" + ext +
@@ -1174,18 +1194,20 @@ bool UltraCanvasSpreadsheet::LoadCSVWithOptions(const std::string& filePath,
 }
 
 bool UltraCanvasSpreadsheet::SaveCSV(const std::string& filePath, int sheetIndex) {
-    lastError_.clear();
-    const SpreadsheetSheet* sheet = nullptr;
+    // Default comma-separated export; SaveCSVWithOptions handles the rest.
+    return SaveCSVWithOptions(filePath, CSVExportOptions{}, sheetIndex);
+}
 
-    if (sheetIndex < 0) {
-        sheet = GetActiveSheet();
-    } else {
-        sheet = GetSheet(sheetIndex);
-    }
+bool UltraCanvasSpreadsheet::SaveCSVWithOptions(const std::string& filePath,
+                                                const CSVExportOptions& options,
+                                                int sheetIndex) {
+    lastError_.clear();
+    const SpreadsheetSheet* sheet =
+        (sheetIndex < 0) ? GetActiveSheet() : GetSheet(sheetIndex);
 
     if (!sheet) { lastError_ = "There is no sheet to save."; return false; }
 
-    if (!CSVLoader::Save(filePath, sheet)) {
+    if (!CSVLoader::Save(filePath, sheet, options)) {
         std::string writeError = DescribeFileWriteError(filePath);
         lastError_ = writeError.empty()
             ? ("Could not write the file: " + filePath)
@@ -1193,6 +1215,14 @@ bool UltraCanvasSpreadsheet::SaveCSV(const std::string& filePath, int sheetIndex
         return false;
     }
     return true;
+}
+
+std::string UltraCanvasSpreadsheet::ExportCSVToString(const CSVExportOptions& options,
+                                                      int sheetIndex) const {
+    const SpreadsheetSheet* sheet =
+        (sheetIndex < 0) ? GetActiveSheet() : GetSheet(sheetIndex);
+    if (!sheet) return std::string();
+    return CSVLoader::Build(sheet, options);
 }
 
 } // namespace UltraCanvas
