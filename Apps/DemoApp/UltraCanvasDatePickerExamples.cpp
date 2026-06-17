@@ -122,11 +122,15 @@ namespace UltraCanvas {
         root->AddChild(DPSectionTitle(20, y, "3. Range and Week Selection"));
         y += 30;
 
+        // The info labels sit on their own row above the calendars so they are
+        // never hidden behind the (taller) calendar widgets.
+        const float infoRowH = 22;
+
         // Range calendar
-        auto rangeCal = CreateCalendarView("Cal_Range", 30, y);
+        auto rangeCal = CreateCalendarView("Cal_Range", 30, y + infoRowH);
         rangeCal->SetSelectionMode(DateSelectionMode::Range);
         rangeCal->SetShowWeekNumbers(true);
-        auto rangeResult = std::make_shared<UltraCanvasLabel>("Cal_RangeResult", 30, y - 2, 320, 20);
+        auto rangeResult = std::make_shared<UltraCanvasLabel>("Cal_RangeResult", 30, y, 320, 20);
         rangeResult->SetText("Range: click start, then end");
         rangeResult->SetFontSize(12);
         rangeCal->onRangeSelected = [rangeResult](const UCDate& s, const UCDate& e) {
@@ -137,10 +141,10 @@ namespace UltraCanvas {
 
         // Week calendar
         float weekX = 30 + rangeCal->GetPreferredSize().width + 60;
-        auto weekCal = CreateCalendarView("Cal_Week", weekX, y);
+        auto weekCal = CreateCalendarView("Cal_Week", weekX, y + infoRowH);
         weekCal->SetSelectionMode(DateSelectionMode::Week);
         weekCal->SetFirstDayOfWeek(1);
-        auto weekResult = std::make_shared<UltraCanvasLabel>("Cal_WeekResult", weekX, y - 2, 320, 20);
+        auto weekResult = std::make_shared<UltraCanvasLabel>("Cal_WeekResult", weekX, y, 320, 20);
         weekResult->SetText("Week: click any day");
         weekResult->SetFontSize(12);
         weekCal->onRangeSelected = [weekResult](const UCDate& s, const UCDate& e) {
@@ -151,7 +155,7 @@ namespace UltraCanvas {
         root->AddChild(weekResult);
         root->AddChild(rangeCal);
         root->AddChild(weekCal);
-        y += rangeCal->GetPreferredSize().height + 20;
+        y += infoRowH + rangeCal->GetPreferredSize().height + 20;
 
         root->AddChild(DPHint(30, y, 700,
             "Left: contiguous range with a live highlight band and ISO week numbers. "
@@ -167,10 +171,13 @@ namespace UltraCanvas {
         root->AddChild(DPSectionTitle(20, y, "4. Multiple Dates, Constraints & Theming"));
         y += 30;
 
+        // As in section 3, the info labels get their own row above the calendars.
+        const float infoRowH4 = 22;
+
         // Multiple discrete dates
-        auto multiCal = CreateCalendarView("Cal_Multiple", 30, y);
+        auto multiCal = CreateCalendarView("Cal_Multiple", 30, y + infoRowH4);
         multiCal->SetSelectionMode(DateSelectionMode::Multiple);
-        auto multiResult = std::make_shared<UltraCanvasLabel>("Cal_MultiResult", 30, y - 2, 320, 20);
+        auto multiResult = std::make_shared<UltraCanvasLabel>("Cal_MultiResult", 30, y, 320, 20);
         multiResult->SetText("Multiple: toggle individual days");
         multiResult->SetFontSize(12);
         multiCal->onMultipleChanged = [multiResult](const std::vector<UCDate>& dates) {
@@ -179,7 +186,7 @@ namespace UltraCanvas {
 
         // Constrained + dark themed: only weekdays in the next 60 days selectable.
         float darkX = 30 + multiCal->GetPreferredSize().width + 60;
-        auto darkCal = CreateCalendarView("Cal_Dark", darkX, y);
+        auto darkCal = CreateCalendarView("Cal_Dark", darkX, y + infoRowH4);
         darkCal->SetStyle(CalendarStyles::Dark());
         darkCal->SetMinDate(UCDate::Today());
         darkCal->SetMaxDate(UCDate::Today().AddDays(60));
@@ -187,7 +194,7 @@ namespace UltraCanvas {
             int dow = d.DayOfWeek();
             return dow != 0 && dow != 6; // weekdays only
         });
-        auto darkResult = std::make_shared<UltraCanvasLabel>("Cal_DarkResult", darkX, y - 2, 340, 20);
+        auto darkResult = std::make_shared<UltraCanvasLabel>("Cal_DarkResult", darkX, y, 340, 20);
         darkResult->SetText("Dark theme: weekdays, next 60 days only");
         darkResult->SetFontSize(12);
         darkCal->onDateSelected = [darkResult](const UCDate& d) {
@@ -198,7 +205,7 @@ namespace UltraCanvas {
         root->AddChild(darkResult);
         root->AddChild(multiCal);
         root->AddChild(darkCal);
-        y += multiCal->GetPreferredSize().height + 20;
+        y += infoRowH4 + multiCal->GetPreferredSize().height + 20;
 
         root->AddChild(DPHint(30, y, 760,
             "Left: a set of independent dates (click to toggle). Right: min/max bounds plus a "
