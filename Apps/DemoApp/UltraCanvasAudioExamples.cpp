@@ -45,14 +45,30 @@ namespace UltraCanvas {
         auto player = CreateAudioPlayer("DemoPlayer", 10, 120, 600, 56);
         container->AddChild(player);
 
+        // Shows the name of the file currently loaded into the player.
+        auto fileLabel = std::make_shared<UltraCanvasLabel>("PlaybackFile", 10, 180, 720, 18);
+        fileLabel->SetText("No file loaded.");
+        fileLabel->SetFontSize(11);
+        fileLabel->SetTextColor(Color(90, 90, 90));
+        container->AddChild(fileLabel);
+
+        // Strip any directory part so we display just the file name.
+        auto baseName = [](const std::string& p) -> std::string {
+            size_t slash = p.find_last_of("/\\");
+            return slash == std::string::npos ? p : p.substr(slash + 1);
+        };
+
         auto loadBtn = CreateButton("LoadAudio", 620, 130, 110, 36, "Open...");
-        player->onFileOpened = [status](const std::string& path) {
-            status->SetText("Loaded: " + path);
+        auto playerWeak = std::weak_ptr<UltraCanvasAudioPlayerElement>(player);
+        player->onFileOpened = [status, fileLabel, playerWeak, baseName](const std::string& path) {
+            std::string name = baseName(path);
+            fileLabel->SetText("File: " + name);
+            if (auto p = playerWeak.lock()) p->SetTrackTitle(name);
+            status->SetText("Loaded: " + name);
         };
         player->onOpenCancelled = [status]() {
             status->SetText("Open cancelled.");
         };
-        auto playerWeak = std::weak_ptr<UltraCanvasAudioPlayerElement>(player);
         loadBtn->onClick = [playerWeak]() {
             if (auto p = playerWeak.lock()) p->ShowOpenDialog();
         };
@@ -83,11 +99,13 @@ namespace UltraCanvas {
         };
         container->AddChild(saveBtn);
 
-        auto playRecBtn = CreateButton("PlayRec", 620, 286, 110, 36, "Play back");
-        playRecBtn->onClick = [player, recorder, status]() {
+        auto playRecBtn = CreateButton("PlayRec", 740, 244, 110, 36, "Play back");
+        playRecBtn->onClick = [player, recorder, status, fileLabel]() {
             auto audio = recorder->TakeBuffer();
             if (audio && audio->IsValid()) {
                 player->LoadFromAudio(audio);
+                player->SetTrackTitle("(just recorded)");
+                fileLabel->SetText("File: (just recorded)");
                 player->Play();
                 status->SetText("Playing back recording.");
             } else {

@@ -19,7 +19,7 @@ namespace {
     constexpr int kPadding = 8;
     constexpr int kGap = 8;
     constexpr int kTimeWidth = 56;
-    constexpr int kSaveBtnWidth = 60;
+    constexpr int kSaveBtnWidth = 70;
     constexpr int kWaveformHistory = 200;
 
     inline bool Hit(const Rect2Di& r, const Point2Di& p) {
@@ -448,12 +448,20 @@ void UltraCanvasAudioRecorderElement::DrawSaveDiscardButtons(IRenderContext* ctx
                    recorder->GetSampleCount() > 0;
 
     auto drawBtn = [&](const Rect2Di& r, const std::string& label, const Color& bg) {
+        if (r.width <= 0) return;
         ctx->DrawFilledRectangle(Rect2Df(r.x, r.y, r.width, r.height),
                                  enabled ? bg : style.disabledColor,
                                  1.0f, style.borderColor, 3);
+        // Center the label inside the button the same way UltraCanvasButton does,
+        // instead of anchoring it at a fixed offset. PushState/PopState keeps the
+        // alignment change from leaking into other elements' rendering.
+        ctx->PushState();
         ctx->SetFontSize(11);
         ctx->SetTextPaint(Color(255, 255, 255));
-        ctx->DrawText(label, Point2Df(r.x + 8, r.y + r.height / 2 + 4));
+        ctx->SetTextAlignment(TextAlignment::Center);
+        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
+        ctx->DrawTextInRect(label, Rect2Df(r.x, r.y, r.width, r.height));
+        ctx->PopState();
     };
 
     drawBtn(saveButtonRect,    "Save",    style.levelMeterLowColor);
