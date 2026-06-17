@@ -1995,10 +1995,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     std::string UltraCanvasTextEditor::FormatFullTabTooltip(int index) {
         auto& doc = documents[index];
         std::string tooltipText;
-        if (doc->isNewFile) {
-            tooltipText = "<span weight=\"900\">Never saved</span>";   // ● red  (colour is visual only — text says it)
-        } else if (doc->isModified) {
-            tooltipText = "<span weight=\"900\">Unsaved</span>";  // ● orange
+        if (doc->isModified) {
+            tooltipText = "<span weight=\"900\">Unsaved</span>";  // ● red
+        } else if (doc->isNewFile) {
+            tooltipText = "<span weight=\"900\">Never saved</span>";   // ● orange (colour is visual only — text says it)
         } else if (doc->isSaved) {
             tooltipText = "<span>Saved</span>";            // ● green
         }
@@ -2061,12 +2061,15 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             doc->isModified = doc->pdfView->GetDocument()->IsDirty();
         }
         bool showMarker = true;
-        if (doc->isNewFile) {
-            // Never been saved — orange marker
-            tabContainer->SetTabMarkerColor(index, Color(255, 165, 0, 255));
-        } else if (doc->isModified) {
-            // Modified since last save — red marker
+        if (doc->isModified) {
+            // Has unsaved edits — red marker. Checked before isNewFile so that a
+            // brand-new file that has been typed into switches from the orange
+            // "never saved" marker to the red "unsaved" marker (matches the
+            // toolbar save icon, which keys off isModified).
             tabContainer->SetTabMarkerColor(index, Color(195, 30, 3, 255));
+        } else if (doc->isNewFile) {
+            // Never been saved and not yet edited — orange marker
+            tabContainer->SetTabMarkerColor(index, Color(255, 165, 0, 255));
         } else if (doc->isSaved){
             // Saved and clean — green marker
             tabContainer->SetTabMarkerColor(index, Color(40, 167, 69, 255));
