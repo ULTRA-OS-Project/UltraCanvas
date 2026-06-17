@@ -1,8 +1,14 @@
 // core/UltraCanvasAlbum.cpp
 // Photo / video / music album widget with selectable layout designs, per-item
 // crop / zoom / stretch fitting, action icons and visitor / edit / admin modes.
-// Version: 1.0.1
-// Last Modified: 2026-06-14
+// Version: 1.0.3
+// Last Modified: 2026-06-15
+// V1.0.3: Per-item action gating by media type (AlbumAction::mediaTypes), so an
+//   action can be offered for photos only; AlbumItem gained a description field
+//   for richer detail / full-size views.
+// V1.0.2: Caption title/subtitle block is now vertically centred inside the
+//   caption strip; action icons show a hover tooltip (their label); added
+//   SetAllItemsFocus() so a single control can set the crop focus point.
 // V1.0.1: EnsureLayout() now reflows the tile layout when the content area
 //   changes size, so the grid responds to window resize / flex-driven growth.
 // Author: UltraCanvas Framework
@@ -12,6 +18,7 @@
 #include "UltraCanvasImage.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasWindow.h"
+#include "UltraCanvasTooltipManager.h"
 #include <algorithm>
 #include <cmath>
 
@@ -73,6 +80,12 @@ namespace UltraCanvas {
 
     void UltraCanvasAlbum::SetActionDisplay(AlbumActionDisplay d) {
         config.actionDisplay = d;
+        RequestRedraw();
+    }
+
+    void UltraCanvasAlbum::SetAllItemsFocus(const Point2Df& focus) {
+        config.defaultFocus = focus;
+        for (auto& it : items) it.focusPoint = focus;
         RequestRedraw();
     }
 
@@ -184,10 +197,18 @@ namespace UltraCanvas {
         return false;
     }
 
-    std::vector<int> UltraCanvasAlbum::VisibleActionIndices() const {
+    std::vector<int> UltraCanvasAlbum::VisibleActionIndices(size_t itemIndex) const {
         std::vector<int> out;
+        const AlbumMediaType type = (itemIndex < items.size())
+                ? items[itemIndex].mediaType : AlbumMediaType::Photo;
         for (int i = 0; i < static_cast<int>(actions.size()); ++i) {
-            if (ActionVisibleInMode(actions[i])) out.push_back(i);
+            const AlbumAction& a = actions[i];
+            if (!ActionVisibleInMode(a)) continue;
+            if (!a.mediaTypes.empty() &&
+                std::find(a.mediaTypes.begin(), a.mediaTypes.end(), type) == a.mediaTypes.end()) {
+                continue;  // action filtered out for this item's media type
+            }
+            out.push_back(i);
         }
         return out;
     }
@@ -267,10 +288,17 @@ namespace UltraCanvas {
 
     namespace {
         // Height of the caption-below strip for a given config (0 if not Below).
+        // Generous enough that the title + subtitle block can sit vertically
+        // centred inside the strip (DrawCaption centres it, so the strip must be
+        // at least as tall as the real line heights plus top/bottom padding).
+        constexpr int kCaptionVPad   = 6;   // padding above and below the block
+        constexpr int kCaptionLineGap = 3;  // gap between the title and subtitle
         int CaptionBelowHeight(const AlbumConfig& c) {
             if (c.captionPlacement != AlbumCaptionPlacement::BelowImage) return 0;
-            int h = static_cast<int>(c.titleFontSize) + 10;
-            h += static_cast<int>(c.subtitleFontSize) + 4;
+            int h = 2 * kCaptionVPad;
+            h += static_cast<int>(std::lround(c.titleFontSize * 1.3));
+            h += kCaptionLineGap;
+            h += static_cast<int>(std::lround(c.subtitleFontSize * 1.3));
             return h;
         }
     }
@@ -734,10 +762,33 @@ namespace UltraCanvas {
         if (item.title.empty() && item.subtitle.empty()) return;
 
         bool overlay = (config.captionPlacement == AlbumCaptionPlacement::OverlayBottom);
+
+        // Measure the real line heights so the title + subtitle block can be
+        // centred vertically inside the caption strip (previously the text was
+        // pinned to the top, leaving it visually off-centre / partly clipped).
+        FontStyle titleFs;
+        titleFs.fontFamily = config.fontFamily;
+        titleFs.fontSize   = config.titleFontSize;
+        titleFs.fontWeight = FontWeight::Bold;
+        FontStyle subFs;
+        subFs.fontFamily = config.fontFamily;
+        subFs.fontSize   = config.subtitleFontSize;
+
+        int titleH = 0, subH = 0;
+        if (!item.title.empty()) {
+            ctx->SetFontStyle(titleFs);
+            titleH = ctx->GetTextLineDimensions(item.title).height;
+        }
+        if (!item.subtitle.empty()) {
+            ctx->SetFontStyle(subFs);
+            subH = ctx->GetTextLineDimensions(item.subtitle).height;
+        }
+        int innerGap = (titleH > 0 && subH > 0) ? kCaptionLineGap : 0;
+        int blockH = titleH + subH + innerGap;
+
         Rect2Di area;
         if (overlay) {
-            int h = static_cast<int>(config.titleFontSize) + 12;
-            if (!item.subtitle.empty()) h += static_cast<int>(config.subtitleFontSize) + 2;
+            int h = blockH + 2 * kCaptionVPad;
             area = Rect2Di(tile.imageRect.x, tile.imageRect.y + tile.imageRect.height - h,
                            tile.imageRect.width, h);
             ctx->SetFillPaint(config.overlayScrimColor);
@@ -751,26 +802,19 @@ namespace UltraCanvas {
 
         int pad = 8;
         int tx = area.x + pad;
-        int ty = area.y + (overlay ? 5 : 6);
+        int ty = area.y + std::max(0, (area.height - blockH) / 2);
 
         if (!item.title.empty()) {
-            FontStyle fs;
-            fs.fontFamily = config.fontFamily;
-            fs.fontSize = config.titleFontSize;
-            fs.fontWeight = FontWeight::Bold;
-            ctx->SetFontStyle(fs);
+            ctx->SetFontStyle(titleFs);
             ctx->SetTextPaint(overlay ? Color(255, 255, 255, 255) : config.captionColor);
             ctx->PushState();
             ctx->ClipRect(Rect2Dd(area));
             ctx->DrawText(item.title, Point2Dd(tx, ty));
             ctx->PopState();
-            ty += static_cast<int>(config.titleFontSize) + 4;
+            ty += titleH + innerGap;
         }
         if (!item.subtitle.empty()) {
-            FontStyle fs;
-            fs.fontFamily = config.fontFamily;
-            fs.fontSize = config.subtitleFontSize;
-            ctx->SetFontStyle(fs);
+            ctx->SetFontStyle(subFs);
             ctx->SetTextPaint(overlay ? Color(230, 230, 230, 255) : config.subtitleColor);
             ctx->PushState();
             ctx->ClipRect(Rect2Dd(area));
@@ -783,7 +827,7 @@ namespace UltraCanvas {
                                            bool hovered) {
         if (config.actionDisplay == AlbumActionDisplay::Hidden) return;
 
-        std::vector<int> vis = VisibleActionIndices();
+        std::vector<int> vis = VisibleActionIndices(tile.itemIndex);
 
         // ContextMenu mode: optionally a single kebab icon; the menu itself opens
         // on right-click or when the kebab is clicked.
@@ -937,7 +981,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasAlbum::OpenItemContextMenu(size_t itemIndex, const Point2Di& localPoint) {
-        std::vector<int> vis = VisibleActionIndices();
+        std::vector<int> vis = VisibleActionIndices(itemIndex);
         if (vis.empty()) return;
         auto win = GetWindow();
         if (!win) return;
@@ -988,6 +1032,10 @@ namespace UltraCanvas {
         switch (event.type) {
             case UCEventType::MouseLeave: {
                 if (hoveredItem != -1) { hoveredItem = -1; RequestRedraw(); }
+                if (hoveredActionIndex != -2) {
+                    hoveredActionIndex = -2;
+                    UltraCanvasTooltipManager::HideTooltip();
+                }
                 dragArmed = false;
                 return true;
             }
@@ -1017,6 +1065,26 @@ namespace UltraCanvas {
                 if (dragging || newHover != hoveredItem) {
                     hoveredItem = newHover;
                     RequestRedraw();
+                }
+
+                // Tooltip for the action icon under the cursor (Delete / Edit /
+                // Add comment / ...). Show it once when the cursor enters an icon.
+                size_t tipItem = 0;
+                bool   tipIsMenu = false;
+                int    tipAction = ActionAt(local, tipItem, tipIsMenu);
+                if (tipAction != hoveredActionIndex || tipItem != hoveredActionItem) {
+                    hoveredActionIndex = tipAction;
+                    hoveredActionItem  = tipItem;
+                    auto win = GetWindow();
+                    if (win && tipAction >= 0 &&
+                        tipAction < static_cast<int>(actions.size()) &&
+                        !actions[tipAction].label.empty()) {
+                        UltraCanvasTooltipManager::UpdateAndShowTooltip(
+                                win, actions[tipAction].label,
+                                Point2Di(event.pointerWindow.x, event.pointerWindow.y));
+                    } else {
+                        UltraCanvasTooltipManager::HideTooltip();
+                    }
                 }
                 return false;
             }
