@@ -1599,6 +1599,10 @@ namespace {
 
         doc->textArea->SetFocus(true);
         doc->textArea->SetCursorPosition({0,0});
+
+        // Empty new document is its own clean baseline (so typing then undoing
+        // back to empty restores the saved status).
+        CaptureSavedContentBaseline(doc.get());
         return docIndex;
     }
 
@@ -1715,6 +1719,8 @@ namespace {
             doc->textArea->SetText(tpl.content, false);
             doc->isModified = false;
             doc->isSaved = false;
+            // Template content is the clean baseline for this new document.
+            CaptureSavedContentBaseline(doc.get());
         }
 
         UpdateTabTitle(docIndex);
@@ -1963,6 +1969,27 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         if (index == activeDocumentIndex) {
             UpdateMenuStates();
         }
+    }
+
+    void UltraCanvasTextEditor::CaptureSavedContentBaseline(DocumentTab* doc) {
+        if (!doc) return;
+        const std::string content = doc->textArea ? doc->textArea->GetText() : std::string();
+        doc->savedContentHash = std::hash<std::string>{}(content);
+    }
+
+    void UltraCanvasTextEditor::RefreshModifiedStateFromContent(int index, const std::string& currentContent) {
+        if (index < 0 || index >= static_cast<int>(documents.size())) {
+            return;
+        }
+        auto doc = documents[index];
+        if (!doc) return;
+
+        // Compare current content against the saved baseline so that undo/redo
+        // back to the saved state clears the modified flag (and editing away
+        // from it sets it). SetDocumentModified updates the tab marker and,
+        // for the active document, the toolbar save icon.
+        size_t currentHash = std::hash<std::string>{}(currentContent);
+        SetDocumentModified(index, currentHash != doc->savedContentHash);
     }
 
     std::string UltraCanvasTextEditor::FormatFullTabTooltip(int index) {
@@ -2222,6 +2249,9 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 doc->language = doc->textArea->GetCurrentProgrammingLanguage();
             }
 
+            // Freshly loaded file content is the clean baseline.
+            CaptureSavedContentBaseline(doc.get());
+
             UpdateTabTitle(docIndex);
             UpdateTabBadge(docIndex);
             UpdateTitle();
@@ -2453,6 +2483,9 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             // Clear raw bytes cache since we just saved a fresh version
             doc->originalRawBytes.clear();
 
+            // Content just written to disk becomes the new clean baseline, so a
+            // subsequent edit-then-undo correctly returns to the saved status.
+            CaptureSavedContentBaseline(doc.get());
             SetDocumentModified(docIndex, false);
 
             // Delete autosave backup
@@ -3776,6 +3809,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 doc->encoding = newEncoding;
                 doc->textArea->SetText(utf8Text, false);
                 doc->isModified = false;
+                // Re-interpreted content is unmodified; reset the clean baseline.
+                CaptureSavedContentBaseline(doc);
                 UpdateTabBadge(activeDocumentIndex);
             } else {
                 // Conversion failed: revert dropdown selection
@@ -4096,7 +4131,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 //     documents[currentIndex]->originalRawBytes.clear();
                 //     documents[currentIndex]->originalRawBytes.shrink_to_fit();
                 // }
-                SetDocumentModified(currentIndex, true);
+                // Derive modified flag by comparing against the saved baseline so
+                // that undo/redo back to the saved content marks the document as
+                // saved again (updates save icon + tab status marker). Uses the
+                // text already delivered to the callback to avoid re-copying it.
+                RefreshModifiedStateFromContent(currentIndex, text);
 
                 // For brand-new unsaved documents, keep the tab title in sync with
                 // the first line of content so the user can see a meaningful name
