@@ -8,6 +8,8 @@
 #include "UltraCanvasAudioPlayerElement.h"
 #include "UltraCanvasAudioRecorderElement.h"
 #include "UltraCanvasAudioDevices.h"
+#include "UltraCanvasFileLoader.h"
+#include "UltraCanvasAudio.h"
 #include "UltraCanvasButton.h"
 #include <sstream>
 #include <random>
@@ -60,17 +62,36 @@ namespace UltraCanvas {
 
         auto loadBtn = CreateButton("LoadAudio", 620, 130, 110, 36, "Open...");
         auto playerWeak = std::weak_ptr<UltraCanvasAudioPlayerElement>(player);
-        player->onFileOpened = [status, fileLabel, playerWeak, baseName](const std::string& path) {
-            std::string name = baseName(path);
-            fileLabel->SetText("File: " + name);
-            if (auto p = playerWeak.lock()) p->SetTrackTitle(name);
-            status->SetText("Loaded: " + name);
-        };
-        player->onOpenCancelled = [status]() {
-            status->SetText("Open cancelled.");
-        };
-        loadBtn->onClick = [playerWeak]() {
-            if (auto p = playerWeak.lock()) p->ShowOpenDialog();
+        // Open through the shared FileLoader facade: it shows the native dialog
+        // (with default audio filters) and hands back a decoded UCAudio buffer,
+        // which we then feed straight into the player element.
+        loadBtn->onClick = [playerWeak, fileLabel, status, baseName]() {
+            auto p = playerWeak.lock();
+            if (!p) return;
+
+            FileDialogOptions opts;
+            opts.SetTitle("Open Audio File")
+                .SetParentWindow(p->GetWindow());
+
+            UltraCanvasFileLoader::OpenAudio(opts,
+                [playerWeak, fileLabel, status, baseName](
+                        const FileLoadResult& res, std::shared_ptr<UCAudio> audio) {
+                    if (res.dialogResult != DialogResult::OK) {
+                        status->SetText("Open cancelled.");
+                        return;
+                    }
+                    if (!res.IsSuccess() || !audio) {
+                        status->SetText("Load failed: " + res.loadError);
+                        return;
+                    }
+                    auto pl = playerWeak.lock();
+                    if (!pl) return;
+                    pl->LoadFromAudio(audio);
+                    std::string name = baseName(audio->GetSourcePath());
+                    fileLabel->SetText("File: " + name);
+                    pl->SetTrackTitle(name);
+                    status->SetText("Loaded: " + name);
+                });
         };
         container->AddChild(loadBtn);
 
