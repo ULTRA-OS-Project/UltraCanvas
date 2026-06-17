@@ -282,6 +282,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetFileIO.cpp
         # CSV/TSV "Text Import" options dialog (depends on the spreadsheet element)
         ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasCSVImportDialog.cpp
+        # CSV/TSV "Text Export" options dialog (depends on the spreadsheet element)
+        ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasCSVExportDialog.cpp
         # Vendored miniz (ZIP support for ODS/XLSX File I/O)
         ${CMAKE_CURRENT_SOURCE_DIR}/third_party/miniz/miniz.c
 

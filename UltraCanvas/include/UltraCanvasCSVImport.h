@@ -79,6 +79,34 @@ struct CSVImportOptions {
 };
 
 // ============================================================================
+// CSV EXPORT OPTIONS
+// ============================================================================
+
+// Mirrors the fields of a typical "Text Export" dialog: target character set,
+// the single field separator, the text delimiter (quote character) and quoting
+// policy, plus the line ending. Reuses CSVImportOptions::Encoding so the same
+// charset list serves both directions.
+struct CSVExportOptions {
+    CSVImportOptions::Encoding encoding = CSVImportOptions::Encoding::UTF8;
+
+    // Single field separator ("Feldtrenner"). One character.
+    char fieldSeparator = ',';
+
+    // Text delimiter / quote character ("Texttrenner"). 0 disables quoting.
+    char textDelimiter = '"';
+
+    // Quote every field, otherwise quote only when the value contains the
+    // separator, the quote character or a line break ("Alle Textzellen zitieren").
+    bool quoteAllFields = false;
+
+    enum class LineEnding { LF, CRLF };
+    LineEnding lineEnding = LineEnding::LF;
+
+    // Prefix the output with a byte-order mark (helps Excel detect UTF-8/UTF-16).
+    bool writeBOM = false;
+};
+
+// ============================================================================
 // ENCODING HELPERS
 // ============================================================================
 
@@ -164,6 +192,109 @@ inline std::string CSVDecodeToUtf8(const std::string& raw, CSVImportOptions::Enc
             size_t i = 0;
             if (startsWith({0xEF, 0xBB, 0xBF})) i = 3;  // strip UTF-8 BOM
             out.assign(raw.begin() + i, raw.end());
+            break;
+        }
+    }
+    return out;
+}
+
+namespace CSVDetail {
+
+// Decode one UTF-8 sequence starting at s[i]; advance i past it and return the
+// code point. Invalid bytes are passed through as Latin-1 so we never lose data.
+inline uint32_t NextUtf8(const std::string& s, size_t& i) {
+    unsigned char c = static_cast<unsigned char>(s[i]);
+    if (c < 0x80) { ++i; return c; }
+    int extra = 0; uint32_t cp = 0;
+    if      ((c & 0xE0) == 0xC0) { extra = 1; cp = c & 0x1F; }
+    else if ((c & 0xF0) == 0xE0) { extra = 2; cp = c & 0x0F; }
+    else if ((c & 0xF8) == 0xF0) { extra = 3; cp = c & 0x07; }
+    else { ++i; return c; }  // stray continuation byte
+    if (i + extra >= s.size()) { ++i; return c; }
+    for (int k = 0; k < extra; ++k) {
+        unsigned char cc = static_cast<unsigned char>(s[i + 1 + k]);
+        if ((cc & 0xC0) != 0x80) { ++i; return c; }  // malformed
+        cp = (cp << 6) | (cc & 0x3F);
+    }
+    i += extra + 1;
+    return cp;
+}
+
+// Reverse of Cp1252ToUnicode for the 0x80-0x9F specials; returns 0 if 'cp' has
+// no CP1252 representation in that range.
+inline unsigned char UnicodeToCp1252Special(uint32_t cp) {
+    switch (cp) {
+        case 0x20AC: return 0x80; case 0x201A: return 0x82; case 0x0192: return 0x83;
+        case 0x201E: return 0x84; case 0x2026: return 0x85; case 0x2020: return 0x86;
+        case 0x2021: return 0x87; case 0x02C6: return 0x88; case 0x2030: return 0x89;
+        case 0x0160: return 0x8A; case 0x2039: return 0x8B; case 0x0152: return 0x8C;
+        case 0x017D: return 0x8E; case 0x2018: return 0x91; case 0x2019: return 0x92;
+        case 0x201C: return 0x93; case 0x201D: return 0x94; case 0x2022: return 0x95;
+        case 0x2013: return 0x96; case 0x2014: return 0x97; case 0x02DC: return 0x98;
+        case 0x2122: return 0x99; case 0x0161: return 0x9A; case 0x203A: return 0x9B;
+        case 0x0153: return 0x9C; case 0x017E: return 0x9E; case 0x0178: return 0x9F;
+        default:     return 0;
+    }
+}
+
+} // namespace CSVDetail
+
+// Convert UTF-8 text to the requested output encoding, optionally prefixing a
+// byte-order mark. Code points with no representation in a single-byte target
+// are written as '?'. UTF-8 is passed through (BOM optional). Symmetric with
+// CSVDecodeToUtf8, so a round-trip preserves the text.
+inline std::string CSVEncodeFromUtf8(const std::string& utf8,
+                                     CSVImportOptions::Encoding enc,
+                                     bool writeBOM = false) {
+    using E = CSVImportOptions::Encoding;
+    std::string out;
+
+    switch (enc) {
+        case E::UTF16LE:
+        case E::UTF16BE: {
+            bool be = (enc == E::UTF16BE);
+            auto put16 = [&](uint32_t u) {
+                unsigned char hi = (u >> 8) & 0xFF, lo = u & 0xFF;
+                if (be) { out.push_back(hi); out.push_back(lo); }
+                else    { out.push_back(lo); out.push_back(hi); }
+            };
+            if (writeBOM) put16(0xFEFF);
+            for (size_t i = 0; i < utf8.size();) {
+                uint32_t cp = CSVDetail::NextUtf8(utf8, i);
+                if (cp <= 0xFFFF) {
+                    put16(cp);
+                } else {  // surrogate pair
+                    cp -= 0x10000;
+                    put16(0xD800 | (cp >> 10));
+                    put16(0xDC00 | (cp & 0x3FF));
+                }
+            }
+            break;
+        }
+        case E::Latin1: {
+            for (size_t i = 0; i < utf8.size();) {
+                uint32_t cp = CSVDetail::NextUtf8(utf8, i);
+                out.push_back(cp <= 0xFF ? static_cast<char>(cp) : '?');
+            }
+            break;
+        }
+        case E::Windows1252: {
+            for (size_t i = 0; i < utf8.size();) {
+                uint32_t cp = CSVDetail::NextUtf8(utf8, i);
+                if (cp <= 0x7F || (cp >= 0xA0 && cp <= 0xFF)) {
+                    out.push_back(static_cast<char>(cp));
+                } else if (unsigned char sp = CSVDetail::UnicodeToCp1252Special(cp)) {
+                    out.push_back(static_cast<char>(sp));
+                } else {
+                    out.push_back('?');
+                }
+            }
+            break;
+        }
+        case E::UTF8:
+        default: {
+            if (writeBOM) { out.push_back('\xEF'); out.push_back('\xBB'); out.push_back('\xBF'); }
+            out += utf8;
             break;
         }
     }

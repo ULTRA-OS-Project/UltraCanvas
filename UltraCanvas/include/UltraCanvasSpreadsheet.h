@@ -353,6 +353,14 @@ public:
     bool LoadCSVWithOptions(const std::string& filePath, const CSVImportOptions& options,
                             int sheetIndex = 0);
     bool SaveCSV(const std::string& filePath, int sheetIndex = -1);
+    // Save a sheet as CSV/TSV using explicit export settings (separator, quote
+    // character, quoting policy, encoding and line ending). sheetIndex < 0 saves
+    // the active sheet.
+    bool SaveCSVWithOptions(const std::string& filePath, const CSVExportOptions& options,
+                            int sheetIndex = -1);
+    // Build the CSV/TSV text for a sheet (UTF-8, before charset encoding) using
+    // the given options. Used by the export dialog for a live preview.
+    std::string ExportCSVToString(const CSVExportOptions& options, int sheetIndex = -1) const;
 
     // After any Load*/Save* call that returns false, this holds a human-readable
     // reason (e.g. "file locked by another application", "unsupported format").
