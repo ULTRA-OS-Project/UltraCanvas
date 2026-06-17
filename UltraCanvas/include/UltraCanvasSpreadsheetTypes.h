@@ -474,12 +474,14 @@ struct NumberFormat {
     int decimalPlaces = 2;
     bool useThousandsSeparator = false;
     std::string currencySymbol = "$";
+    bool currencySymbolAfter = false;  // place symbol after the amount, e.g. "1,234.00 €"
     bool negativeRed = false;
-    
+
     // Predefined formats
     static NumberFormat General() { return NumberFormat(); }
     static NumberFormat Number(int decimals = 2, bool thousands = false);
-    static NumberFormat Currency(const std::string& symbol = "$", int decimals = 2);
+    static NumberFormat Currency(const std::string& symbol = "$", int decimals = 2,
+                                 bool symbolAfter = false);
     static NumberFormat Percentage(int decimals = 0);
     static NumberFormat Date(const std::string& format = "YYYY-MM-DD");
     static NumberFormat Time(const std::string& format = "HH:MM:SS");
@@ -1118,15 +1120,19 @@ inline NumberFormat NumberFormat::Number(int decimals, bool thousands) {
     return fmt;
 }
 
-inline NumberFormat NumberFormat::Currency(const std::string& symbol, int decimals) {
+inline NumberFormat NumberFormat::Currency(const std::string& symbol, int decimals,
+                                           bool symbolAfter) {
     NumberFormat fmt;
     fmt.category = NumberFormatCategory::Currency;
     fmt.currencySymbol = symbol;
+    fmt.currencySymbolAfter = symbolAfter;
     fmt.decimalPlaces = decimals;
-    fmt.formatCode = symbol + "#,##0";
+    fmt.useThousandsSeparator = true;
+    std::string number = "#,##0";
     if (decimals > 0) {
-        fmt.formatCode += "." + std::string(decimals, '0');
+        number += "." + std::string(decimals, '0');
     }
+    fmt.formatCode = symbolAfter ? (number + " " + symbol) : (symbol + number);
     return fmt;
 }
 

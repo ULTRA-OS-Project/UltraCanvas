@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasXARPlugin.h"
+#include "UltraCanvasFileError.h"
 #include <fstream>
 #include <cstring>
 #include <cmath>
@@ -2363,13 +2364,30 @@ namespace UltraCanvas {
         : UltraCanvasUIElement(identifier, x, y, w, h) {}
 
     bool UltraCanvasXARElement::LoadFromFile(const std::string& filepath) {
+        lastError.clear();
         document = std::make_unique<XARDocument>();
-        return document->LoadFromFile(filepath);
+        if (!document->LoadFromFile(filepath)) {
+            // Distinguish a file-access problem (missing / locked / no permission)
+            // from a valid-but-unparseable XAR file.
+            std::string access = DescribeFileReadError(filepath);
+            lastError = !access.empty()
+                ? access
+                : ("The file is not a valid Xara (.xar) drawing: " + filepath);
+            document.reset();
+            return false;
+        }
+        return true;
     }
 
     bool UltraCanvasXARElement::LoadFromMemory(const uint8_t* data, size_t size) {
+        lastError.clear();
         document = std::make_unique<XARDocument>();
-        return document->LoadFromMemory(data, size);
+        if (!document->LoadFromMemory(data, size)) {
+            lastError = "The data is not a valid Xara (.xar) drawing.";
+            document.reset();
+            return false;
+        }
+        return true;
     }
 
     void UltraCanvasXARElement::Render(IRenderContext* ctx, const Rect2Df& /*dirtyRect*/) {

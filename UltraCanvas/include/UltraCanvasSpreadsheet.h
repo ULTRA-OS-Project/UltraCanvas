@@ -10,6 +10,7 @@
 #include "UltraCanvasSpreadsheetCell.h"
 #include "UltraCanvasSpreadsheetSheet.h"
 #include "UltraCanvasSpreadsheetFormula.h"
+#include "UltraCanvasCSVImport.h"
 #include <string>
 #include <vector>
 #include <memory>
@@ -98,7 +99,10 @@ private:
     std::stack<SpreadsheetUndoAction> undoStack_;
     std::stack<SpreadsheetUndoAction> redoStack_;
     bool recordingUndo_ = true;
-    
+
+    // Reason for the most recent failed Load*/Save* (see GetLastError()).
+    std::string lastError_;
+
     bool mouseDown_ = false;
     Point2Di mouseDownPos_;
     CellAddress mouseDownCell_;
@@ -342,9 +346,19 @@ public:
     bool SaveODS(const std::string& filePath);
     bool LoadXLSX(const std::string& filePath);
     bool SaveXLSX(const std::string& filePath);
+    // Load a CSV/TSV file. The single-argument form auto-detects the encoding,
+    // field separator and decimal separator (see CSVDetectOptions); use the
+    // WithOptions form to apply settings chosen in the import dialog.
     bool LoadCSV(const std::string& filePath, int sheetIndex = 0);
+    bool LoadCSVWithOptions(const std::string& filePath, const CSVImportOptions& options,
+                            int sheetIndex = 0);
     bool SaveCSV(const std::string& filePath, int sheetIndex = -1);
-    
+
+    // After any Load*/Save* call that returns false, this holds a human-readable
+    // reason (e.g. "file locked by another application", "unsupported format").
+    // Empty after a successful operation.
+    const std::string& GetLastError() const { return lastError_; }
+
     // ===== PRINT =====
     PrintSettings& GetPrintSettings();
     const PrintSettings& GetPrintSettings() const;
@@ -385,6 +399,7 @@ private:
     void RenderCells(IRenderContext* ctx);
     void RenderCell(IRenderContext* ctx, int row, int col, const Rect2Di& bounds);
     void RenderSelection(IRenderContext* ctx);
+    void RenderFormulaRangeHighlights(IRenderContext* ctx);
     void RenderFreezeLines(IRenderContext* ctx);
     void RenderSheetTabs(IRenderContext* ctx);
     void RenderScrollbars(IRenderContext* ctx);
@@ -419,6 +434,9 @@ private:
     void ApplyUndo(const SpreadsheetUndoAction& action);
     
     void InitializeDefaultSheet();
+    // Clear/select the target sheet for a CSV import (creating Sheet1 when the
+    // index is out of range). Shared by LoadCSV and LoadCSVWithOptions.
+    SpreadsheetSheet* PrepareCSVSheet(int sheetIndex);
     void SetupSheetCallbacks(SpreadsheetSheet* sheet);
     std::string GenerateUniqueSheetName() const;
     void UpdateFormulaBar();

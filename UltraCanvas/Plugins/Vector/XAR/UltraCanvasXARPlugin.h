@@ -1128,6 +1128,10 @@ namespace UltraCanvas {
         bool LoadFromFile(const std::string& filepath);
         bool LoadFromMemory(const uint8_t* data, size_t size);
 
+        // Reason for the most recent failed load (locked / missing / not a valid
+        // XAR file). Empty after a successful load.
+        const std::string& GetLastError() const { return lastError; }
+
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
         void SetScale(float s) { scale = s; }
@@ -1139,6 +1143,7 @@ namespace UltraCanvas {
 
     private:
         std::unique_ptr<XARDocument> document;
+        std::string lastError;
         float scale = 1.0f;
         bool preserveAspectRatio = true;
     };

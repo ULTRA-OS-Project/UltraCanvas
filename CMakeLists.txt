@@ -7,7 +7,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(UltraCanvasDemoApp
-    VERSION 0.2.10
+    VERSION 0.2.11
     DESCRIPTION "UltraCanvas Framework Demo Application"
     LANGUAGES CXX
 )
@@ -51,7 +51,7 @@ option(ULTRACANVAS_PLUGIN_CDR "Build CDR plugin (requires libcdr)" ON)
 option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" ON)
 option(ULTRACANVAS_ENABLE_AUDIO "Build audio backend" ON)
 option(ULTRACANVAS_PLUGIN_VECTOR "Build Vector plugin" OFF)
-option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin (requires poppler)" OFF)
+option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin (requires MuPDF / libmupdf-dev)" ON)
 
 include(FetchContent)
 include(cmake/UltraCanvasAppIcon.cmake)
@@ -133,6 +133,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasQRCodeExamples.cpp
             Apps/DemoApp/UltraCanvasBarcodeExamples.cpp
             Apps/DemoApp/UltraCanvasAudioExamples.cpp
+            Apps/DemoApp/UltraCanvasPDFExamples.cpp
     )
 
     # These files depend on libvips

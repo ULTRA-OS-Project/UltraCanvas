@@ -166,47 +166,63 @@ private:
     UltraCanvasSpreadsheet* spreadsheet_;
     mz_zip_archive zip_;
     std::map<std::string, CellStyle> styles_;
-    
+    std::string error_;
+
 public:
     ODSLoader(UltraCanvasSpreadsheet* spreadsheet) : spreadsheet_(spreadsheet) {
         memset(&zip_, 0, sizeof(zip_));
     }
-    
+
     ~ODSLoader() {
         mz_zip_reader_end(&zip_);
     }
-    
+
+    const std::string& GetError() const { return error_; }
+
     bool Load(const std::string& filePath) {
-        // Open ZIP archive
+        // Open ZIP archive. ODS files are ZIP containers, so a failure here is
+        // either a file-access problem (locked / no permission / missing) or the
+        // file simply is not a valid OpenDocument archive — tell them which.
         if (!mz_zip_reader_init_file(&zip_, filePath.c_str(), 0)) {
+            std::string openError = CSVDescribeOpenError(filePath);
+            error_ = openError.empty()
+                ? "The file is not a valid OpenDocument spreadsheet (.ods): " + filePath
+                : openError;
             return false;
         }
-        
+
         // Verify mimetype
         std::string mimetype = ReadFileFromZip("mimetype");
         if (mimetype.find("opendocument.spreadsheet") == std::string::npos) {
+            error_ = "This file is not an OpenDocument spreadsheet (.ods): " + filePath;
             return false;
         }
-        
+
         // Load styles first
         std::string stylesXml = ReadFileFromZip(ODS::STYLES_XML);
         if (!stylesXml.empty()) {
             ParseStyles(stylesXml);
         }
-        
+
         // Load content.xml (main data)
         std::string contentXml = ReadFileFromZip(ODS::CONTENT_XML);
         if (contentXml.empty()) {
+            error_ = "The spreadsheet file is corrupt (missing content): " + filePath;
             return false;
         }
-        
+
         // Also parse automatic styles from content.xml
         ParseContentStyles(contentXml);
-        
+
         // Parse spreadsheet content
-        return ParseContent(contentXml);
+        if (!ParseContent(contentXml)) {
+            if (error_.empty())
+                error_ = "The spreadsheet content could not be read: " + filePath;
+            return false;
+        }
+        return true;
     }
-    
+
 private:
     std::string ReadFileFromZip(const std::string& filename) {
         int index = mz_zip_reader_locate_file(&zip_, filename.c_str(), nullptr, 0);
@@ -912,30 +928,59 @@ private:
 
 class CSVLoader {
 public:
+    // Load a CSV file into the sheet using the shared import module. The options
+    // control encoding, separators, the start row and number recognition. When
+    // 'detect' is true the options are auto-detected from the file first.
     static bool Load(const std::string& filePath, SpreadsheetSheet* sheet,
-                     char delimiter = ',', char quote = '"', bool hasHeader = false) {
-        std::ifstream file(filePath);
-        if (!file.is_open()) return false;
-        
-        std::string line;
-        int row = 0;
-        
-        while (std::getline(file, line) && row < SpreadsheetLimits::MaxRows) {
-            std::vector<std::string> fields = ParseCSVLine(line, delimiter, quote);
-            
-            for (int col = 0; col < static_cast<int>(fields.size()) && col < SpreadsheetLimits::MaxColumns; ++col) {
-                const std::string& value = fields[col];
-                if (!value.empty()) {
-                    SpreadsheetCell* cell = sheet->GetCell(row, col);
-                    cell->SetValueFromString(value);
-                }
-            }
-            ++row;
+                     const CSVImportOptions& options, bool detect = false,
+                     std::string* error = nullptr) {
+        std::string raw;
+        if (!CSVReadFileRaw(filePath, raw, error)) return false;
+
+        CSVImportOptions opt = options;
+        if (detect) {
+            CSVImportOptions detected =
+                CSVDetectOptions(raw.substr(0, std::min<size_t>(raw.size(), 64 * 1024)));
+            // Keep the caller's encoding only if they forced one via 'options';
+            // otherwise adopt every detected setting.
+            opt = detected;
         }
-        
+
+        CSVGrid grid = CSVParse(CSVDecodeToUtf8(raw, opt.encoding), opt);
+        PopulateSheet(sheet, grid, opt);
         return true;
     }
-    
+
+    // Apply an already-parsed grid to a sheet, honouring number recognition and
+    // the "quoted values are text" option.
+    static void PopulateSheet(SpreadsheetSheet* sheet, const CSVGrid& grid,
+                              const CSVImportOptions& opt) {
+        for (int row = 0; row < static_cast<int>(grid.size())
+                          && row < SpreadsheetLimits::MaxRows; ++row) {
+            const CSVRow& fields = grid[row];
+            for (int col = 0; col < static_cast<int>(fields.size())
+                              && col < SpreadsheetLimits::MaxColumns; ++col) {
+                const CSVField& f = fields[col];
+                if (f.text.empty()) continue;
+
+                SpreadsheetCell* cell = sheet->GetCell(row, col);
+                if (!cell) continue;
+
+                // Quoted values stay text when requested; formulas always honour '='.
+                bool forceText = opt.quotedAsText && f.quoted;
+                double num = 0.0;
+                bool isPercent = false;
+                if (!forceText && f.text[0] != '=' &&
+                    CSVTryParseNumber(f.text, opt, num, isPercent)) {
+                    if (isPercent) cell->SetPercentage(num);
+                    else cell->SetNumber(num);
+                } else {
+                    cell->SetValueFromString(f.text);
+                }
+            }
+        }
+    }
+
     static bool Save(const std::string& filePath, const SpreadsheetSheet* sheet,
                      char delimiter = ',', char quote = '"') {
         std::ofstream file(filePath);
@@ -970,42 +1015,6 @@ public:
         
         return true;
     }
-    
-private:
-    static std::vector<std::string> ParseCSVLine(const std::string& line, char delimiter, char quote) {
-        std::vector<std::string> fields;
-        std::string field;
-        bool inQuotes = false;
-        
-        for (size_t i = 0; i < line.size(); ++i) {
-            char c = line[i];
-            
-            if (inQuotes) {
-                if (c == quote) {
-                    if (i + 1 < line.size() && line[i + 1] == quote) {
-                        field += quote;
-                        ++i;
-                    } else {
-                        inQuotes = false;
-                    }
-                } else {
-                    field += c;
-                }
-            } else {
-                if (c == quote) {
-                    inQuotes = true;
-                } else if (c == delimiter) {
-                    fields.push_back(field);
-                    field.clear();
-                } else {
-                    field += c;
-                }
-            }
-        }
-        fields.push_back(field);
-        
-        return fields;
-    }
 };
 
 // ============================================================================
@@ -1013,8 +1022,21 @@ private:
 // ============================================================================
 
 bool UltraCanvasSpreadsheet::LoadFromFile(const std::string& filePath) {
+    lastError_.clear();
+
+    // Report file-level problems (missing / locked / no permission) up front so
+    // the message is meaningful even before we know the format.
+    std::string openError = CSVDescribeOpenError(filePath);
+    if (!openError.empty()) {
+        lastError_ = openError;
+        return false;
+    }
+
     size_t dot = filePath.find_last_of('.');
-    if (dot == std::string::npos) return false;   // no extension -> unknown format
+    if (dot == std::string::npos) {
+        lastError_ = "The file has no extension, so its format is unknown: " + filePath;
+        return false;
+    }
     std::string ext = filePath.substr(dot);
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
@@ -1027,13 +1049,20 @@ bool UltraCanvasSpreadsheet::LoadFromFile(const std::string& filePath) {
     } else if (ext == ".tsv") {
         return LoadCSV(filePath, 0);  // TSV uses tab delimiter
     }
-    
+
+    lastError_ = "Unsupported file type '" + ext +
+                 "'. Supported formats are .ods, .csv and .tsv: " + filePath;
     return false;
 }
 
 bool UltraCanvasSpreadsheet::SaveToFile(const std::string& filePath) {
+    lastError_.clear();
+
     size_t dot = filePath.find_last_of('.');
-    if (dot == std::string::npos) return false;   // no extension -> unknown format
+    if (dot == std::string::npos) {
+        lastError_ = "The file has no extension, so the save format is unknown: " + filePath;
+        return false;
+    }
     std::string ext = filePath.substr(dot);
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
@@ -1046,43 +1075,59 @@ bool UltraCanvasSpreadsheet::SaveToFile(const std::string& filePath) {
     } else if (ext == ".tsv") {
         return SaveCSV(filePath, -1);  // Current sheet with tab delimiter
     }
-    
+
+    lastError_ = "Unsupported save format '" + ext +
+                 "'. Supported formats are .ods, .csv and .tsv: " + filePath;
     return false;
 }
 
 bool UltraCanvasSpreadsheet::LoadODS(const std::string& filePath) {
+    lastError_.clear();
     ODSLoader loader(this);
     bool result = loader.Load(filePath);
     if (result) {
         Recalculate();
         Invalidate();
+    } else {
+        lastError_ = loader.GetError();
+        if (lastError_.empty()) lastError_ = "Could not read the spreadsheet: " + filePath;
     }
     return result;
 }
 
 bool UltraCanvasSpreadsheet::SaveODS(const std::string& filePath) {
+    lastError_.clear();
     ODSSaver saver(this);
-    return saver.Save(filePath);
+    if (!saver.Save(filePath)) {
+        std::string writeError = DescribeFileWriteError(filePath);
+        lastError_ = writeError.empty()
+            ? ("Could not write the spreadsheet: " + filePath)
+            : writeError;
+        return false;
+    }
+    return true;
 }
 
 bool UltraCanvasSpreadsheet::LoadXLSX(const std::string& filePath) {
     // XLSX format implementation would follow similar pattern
     // Using Office Open XML format (also ZIP-based with XML files)
-    // For now, return false - to be implemented
+    // For now, report a clear reason instead of a silent failure.
+    lastError_ = "Excel (.xlsx) import is not supported yet. "
+                 "Please convert the file to .ods or .csv: " + filePath;
     return false;
 }
 
 bool UltraCanvasSpreadsheet::SaveXLSX(const std::string& filePath) {
-    // XLSX format implementation would follow similar pattern
-    // For now, return false - to be implemented
+    // XLSX writing is not implemented yet; report a clear reason.
+    lastError_ = "Saving to Excel (.xlsx) is not supported yet. "
+                 "Please save as .ods or .csv: " + filePath;
     return false;
 }
 
-bool UltraCanvasSpreadsheet::LoadCSV(const std::string& filePath, int sheetIndex) {
+SpreadsheetSheet* UltraCanvasSpreadsheet::PrepareCSVSheet(int sheetIndex) {
     SpreadsheetSheet* sheet = nullptr;
-    
     if (sheetIndex < 0 || sheetIndex >= GetSheetCount()) {
-        // Clear and use first sheet
+        // Clear and use a fresh first sheet.
         while (GetSheetCount() > 0) {
             RemoveSheet(0);
         }
@@ -1093,29 +1138,61 @@ bool UltraCanvasSpreadsheet::LoadCSV(const std::string& filePath, int sheetIndex
             sheet->ClearAll();
         }
     }
-    
-    if (!sheet) return false;
-    
-    bool result = CSVLoader::Load(filePath, sheet);
+    return sheet;
+}
+
+bool UltraCanvasSpreadsheet::LoadCSV(const std::string& filePath, int sheetIndex) {
+    lastError_.clear();
+    SpreadsheetSheet* sheet = PrepareCSVSheet(sheetIndex);
+    if (!sheet) { lastError_ = "Could not create a sheet to import into."; return false; }
+
+    // Auto-detect encoding/separators/decimal so European (semicolon) files and
+    // tab-separated files load into proper columns instead of one cell.
+    bool result = CSVLoader::Load(filePath, sheet, CSVImportOptions{}, /*detect*/true, &lastError_);
     if (result) {
         SetActiveSheet(0);
+        Recalculate();
+        Invalidate();
+    }
+    return result;
+}
+
+bool UltraCanvasSpreadsheet::LoadCSVWithOptions(const std::string& filePath,
+                                                const CSVImportOptions& options,
+                                                int sheetIndex) {
+    lastError_.clear();
+    SpreadsheetSheet* sheet = PrepareCSVSheet(sheetIndex);
+    if (!sheet) { lastError_ = "Could not create a sheet to import into."; return false; }
+
+    bool result = CSVLoader::Load(filePath, sheet, options, /*detect*/false, &lastError_);
+    if (result) {
+        SetActiveSheet(0);
+        Recalculate();
         Invalidate();
     }
     return result;
 }
 
 bool UltraCanvasSpreadsheet::SaveCSV(const std::string& filePath, int sheetIndex) {
+    lastError_.clear();
     const SpreadsheetSheet* sheet = nullptr;
-    
+
     if (sheetIndex < 0) {
         sheet = GetActiveSheet();
     } else {
         sheet = GetSheet(sheetIndex);
     }
-    
-    if (!sheet) return false;
-    
-    return CSVLoader::Save(filePath, sheet);
+
+    if (!sheet) { lastError_ = "There is no sheet to save."; return false; }
+
+    if (!CSVLoader::Save(filePath, sheet)) {
+        std::string writeError = DescribeFileWriteError(filePath);
+        lastError_ = writeError.empty()
+            ? ("Could not write the file: " + filePath)
+            : writeError;
+        return false;
+    }
+    return true;
 }
 
 } // namespace UltraCanvas

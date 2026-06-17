@@ -38,7 +38,7 @@
 #include "UltraCanvasUtilsUtf8.h"
 
 namespace UltraCanvas {
-    std::string UltraCanvasTextEditor::version = "0.1.36";
+    std::string UltraCanvasTextEditor::version = "0.1.37";
     
 namespace {
     std::string GetAppDataDirectory() {
@@ -1736,13 +1736,19 @@ namespace {
         std::filesystem::path p(filePath);
         int docIndex = CreateNewDocument(p.filename().string());
 
-        // Load file content
-        if (!LoadFileIntoDocument(docIndex, filePath)) {
-            // Failed to load - close the document
+        // PDFs take a separate codepath: the tab's textArea is swapped out
+        // for a UltraCanvasPDFView. Detect by extension (case-insensitive).
+        std::string ext = p.extension().string();
+        if (!ext.empty() && ext[0] == '.') ext = ext.substr(1);
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+        const bool ok = (ext == "pdf")
+            ? LoadPDFIntoDocument(docIndex, filePath)
+            : LoadFileIntoDocument(docIndex, filePath);
+
+        if (!ok) {
             CloseDocument(docIndex);
             return -1;
         }
-
         return docIndex;
     }
 
@@ -2022,6 +2028,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
 
         auto doc = documents[index];
+        // For PDFs the engine owns the dirty bit; sync it before deciding
+        // which marker colour to show.
+        if (doc->IsPdf() && doc->pdfView && doc->pdfView->GetDocument()) {
+            doc->isModified = doc->pdfView->GetDocument()->IsDirty();
+        }
         bool showMarker = true;
         if (doc->isNewFile) {
             // Never been saved — orange marker
@@ -2039,6 +2050,71 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     }
 
 // ===== FILE OPERATIONS =====
+
+    bool UltraCanvasTextEditor::LoadPDFIntoDocument(int docIndex,
+                                                    const std::string& filePath) {
+        if (docIndex < 0 || docIndex >= static_cast<int>(documents.size())) {
+            return false;
+        }
+        auto doc = documents[docIndex];
+
+        // Build the PDF view at the same logical size as the textArea slot.
+        // The container will resize it on layout passes.
+        auto view = UltraCanvas::CreatePDFView(
+            "PDFView_" + std::to_string(doc->documentId),
+            0, 0,
+            doc->textArea ? doc->textArea->GetWidth()  : GetWidth(),
+            doc->textArea ? doc->textArea->GetHeight() : GetHeight());
+
+        if (!view->LoadFromPath(filePath)) {
+            debugOutput << "Failed to load PDF: " << filePath << std::endl;
+            return false;
+        }
+
+        // Wire status-bar updates on page change.
+        view->onPageChanged = [this, docIndex](int cur, int total) {
+            if (docIndex == activeDocumentIndex) {
+                UpdateStatusBar();
+            }
+            (void)cur; (void)total;
+        };
+        view->onError = [this](const std::string& msg) {
+            debugOutput << "[PDF] " << msg << std::endl;
+        };
+
+        std::filesystem::path p(filePath);
+        doc->fileName     = p.filename().string();
+        doc->filePath     = filePath;
+        doc->isNewFile    = false;
+        doc->isModified   = false;
+        doc->isSaved      = true;
+        doc->kind         = DocumentKind::Pdf;
+        doc->language     = "PDF";
+        doc->encoding     = "BINARY";
+        doc->hasBOM       = false;
+        doc->originalRawBytes.clear();
+        doc->pdfView      = view;
+        doc->lastSaveTime = std::chrono::steady_clock::now();
+
+        // Swap the tab's content from the placeholder textArea to the PDF view.
+        // The textArea stays alive (still referenced via doc->textArea) so the
+        // existing null-checked textArea accesses elsewhere keep working, but
+        // it's no longer in the tab's child tree.
+        if (tabContainer) {
+            tabContainer->SetTabContent(docIndex, view);
+        }
+
+        UpdateTabTitle(docIndex);
+        UpdateTabBadge(docIndex);
+        UpdateTitle();
+        UpdateLanguageDropdown();
+        UpdateEncodingDropdown();
+        UpdateMarkdownToolbarVisibility();
+
+        lastOpenedDirectory = p.parent_path().string();
+        AddToRecentFiles(filePath);
+        return true;
+    }
 
     bool UltraCanvasTextEditor::LoadFileIntoDocument(int docIndex, const std::string& filePath) {
         if (docIndex < 0 || docIndex >= static_cast<int>(documents.size())) {
@@ -2191,8 +2267,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 "mp4", "avi", "mkv", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg",
                 // Archives
                 "zip", "tar", "gz", "bz2", "xz", "7z", "rar", "zst", "lz4",
-                // Documents (binary formats — NOT rtf/html/odt source which is text/xml)
-                "pdf", "doc", "xls", "ppt",
+                // Documents (binary formats — NOT rtf/html/odt source which is text/xml).
+                // PDF is intentionally excluded: PDFs route to UltraCanvasPDFView
+                // via LoadPDFIntoDocument before IsBinaryFile is ever consulted.
+                "doc", "xls", "ppt",
                 // Office Open XML (ZIP-based binary containers)
                 "docx", "xlsx", "pptx", "odt", "ods",
                 // Fonts
@@ -2262,6 +2340,26 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
         try {
             auto doc = documents[docIndex];
+
+            // PDF documents save via the MuPDF engine, not the text encoder.
+            if (doc->IsPdf() && doc->pdfView) {
+                if (!doc->pdfView->SaveAs(filePath)) {
+                    debugOutput << "Failed to save PDF: " << filePath << std::endl;
+                    return false;
+                }
+                doc->filePath     = filePath;
+                std::filesystem::path p(filePath);
+                doc->fileName     = p.filename().string();
+                doc->isModified   = false;
+                doc->isSaved      = true;
+                doc->isNewFile    = false;
+                doc->lastSaveTime = std::chrono::steady_clock::now();
+                UpdateTabTitle(docIndex);
+                UpdateTabBadge(docIndex);
+                UpdateTitle();
+                AddToRecentFiles(filePath);
+                return true;
+            }
 
             // In hex mode, save raw bytes directly — no encoding conversion, no BOM
             if (doc->textArea->IsHexMode()) {

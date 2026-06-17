@@ -682,14 +682,7 @@ namespace UltraCanvas {
                 .AddVariant("treeview", "Multi-Selection Tree")
                 .AddVariant("treeview", "Checkable Nodes");
 
-        extendedBuilder.AddItem("tableview", "Spreadsheet View", "Data grid with sorting and editing",
-                                ImplementationStatus::NotImplemented,
-                                [this]() { return CreateTableViewExamples(); })
-                .AddVariant("tableview", "Basic Data Grid")
-                .AddVariant("tableview", "Sortable Columns")
-                .AddVariant("tableview", "Editable Cells");
-
-        extendedBuilder.AddItem("spreadsheet", "Spreadsheet",
+        extendedBuilder.AddItem("spreadsheet", "Spreadsheet engine",
                                 "Editable spreadsheet grid with an Open button that loads .ods/.csv files",
                                 ImplementationStatus::FullyImplemented,
                                 [this]() { return CreateSpreadsheetExamples(); },
@@ -1103,15 +1096,8 @@ namespace UltraCanvas {
         // ===== 3D ELEMENTS =====
         auto graphics3DBuilder = DemoCategoryBuilder(this, DemoCategory::Graphics3D);
 
-        graphics3DBuilder.AddItem("models3d", "3D Models", "3D model display and interaction",
-                                  ImplementationStatus::NotImplemented,
-                                  [this]() { return Create3DExamples(); })
-                .AddVariant("models3d", "3DS Models")
-                .AddVariant("models3d", "3DM Models")
-                .AddVariant("models3d", "OBJ Models");
-
 #ifdef ULTRACANVAS_ENABLE_GL
-        graphics3DBuilder.AddItem("glsurface", "OpenGL 3D Showcase", "3D models, shader playground, and a Zarch-style simulation",
+        graphics3DBuilder.AddItem("glsurface", "OpenGL 3D support", "3D models, shader playground, and a Zarch-style simulation",
                                   ImplementationStatus::FullyImplemented,
                                   [this]() { return CreateGLSurfaceExamples(); },
                                   "Apps/DemoApp/UltraCanvasGLSurfaceExamples.cpp",
@@ -1150,9 +1136,17 @@ namespace UltraCanvas {
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreateTextDocumentExamples(); });
 
+#ifdef ULTRACANVAS_PLUGIN_PDF
+        textDocBuilder.AddItem("textdocuments_pdf", "PDF Documents",
+                               "PDF document viewing, navigation, zoom & search",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreatePDFExamples(); },
+                               "Apps/DemoApp/UltraCanvasPDFExamples.cpp");
+#else
         textDocBuilder.AddItem("textdocuments_pdf", "PDF Documents", "PDF document support",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreateTextDocumentExamples(); });
+#endif
 
         textDocBuilder.AddItem("textdocuments_odf", "ODF Documents", "ODF document support",
                                ImplementationStatus::NotImplemented,

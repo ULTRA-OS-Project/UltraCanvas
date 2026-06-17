@@ -13,7 +13,7 @@ include(FetchContent)
 enable_language(C)
 
 # ===== LIBRARY DEFINITION =====
-set(ULTRACANVAS_VERSION "0.2.10")
+set(ULTRACANVAS_VERSION "0.2.11")
 set(ULTRACANVAS_LIB_NAME "UltraCanvas")
 
 message(STATUS "")
@@ -29,7 +29,7 @@ else()
     option(ULTRACANVAS_PLUGIN_VECTOR, "Build Vector plugin" OFF)
     option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" ON)
     option(ULTRACANVAS_PLUGIN_SVG "Build SVG plugin" OFF)
-    option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin" OFF)
+    option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin" ON)
     option(ULTRACANVAS_ENABLE_AUDIO "Enable audio playback & recording (requires backend lib)" ON)
 endif ()
 option(ULTRACANVAS_ENABLE_GL "Enable OpenGL 3D surface support" ON)
@@ -280,6 +280,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetSheet.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetFormula.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetFileIO.cpp
+        # CSV/TSV "Text Import" options dialog (depends on the spreadsheet element)
+        ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasCSVImportDialog.cpp
         # Vendored miniz (ZIP support for ODS/XLSX File I/O)
         ${CMAKE_CURRENT_SOURCE_DIR}/third_party/miniz/miniz.c
 
@@ -684,32 +686,65 @@ else()
     message(STATUS "  [−] VECTOR Plugin - SKIPPED (disabled by option)")
 endif()
 
-# PDF Plugin
+# PDF Plugin (MuPDF-backed)
+# MuPDF ships as a static library on most distros and has no .pc file, so
+# probe via find_path / find_library. On Windows the vcpkg port exposes the
+# same names.
 if(ULTRACANVAS_PLUGIN_PDF)
-    if(NOT WIN32)
-        pkg_check_modules(POPPLER poppler-cpp)
+    find_path(MUPDF_INCLUDE_DIR mupdf/fitz.h)
+    find_library(MUPDF_LIBRARY      NAMES mupdf libmupdf)
+    find_library(MUPDF_THIRD_LIBRARY NAMES mupdf-third libmupdf-third)
+    # Companion libs MuPDF statically depends on. Most distros bundle them
+    # into libmupdf-third, but some (Ubuntu 24.04+) require explicit linkage.
+    find_library(JBIG2DEC_LIBRARY    NAMES jbig2dec)
+    find_library(OPENJP2_LIBRARY     NAMES openjp2)
+    find_library(GUMBO_LIBRARY       NAMES gumbo)
+    find_library(MUJS_LIBRARY        NAMES mujs)
+    find_library(HARFBUZZ_LIB        NAMES harfbuzz)
+    # MuPDF on MSYS2/MinGW is built against the system FreeType/JPEG/zlib
+    # (USE_SYSTEM_LIBS), so these must be linked explicitly AFTER libmupdf.a.
+    # Full paths from find_library (not "-lfreetype") avoid CMake de-duplicating
+    # them back to their earlier, pre-mupdf position on the link line.
+    find_library(FREETYPE_LIB NAMES freetype)
+    find_library(JPEG_LIB     NAMES jpeg libjpeg)
+    find_library(ZLIB_LIB     NAMES z zlib)
+
+    if(MUPDF_INCLUDE_DIR AND MUPDF_LIBRARY AND MUPDF_THIRD_LIBRARY)
+        set(MUPDF_FOUND TRUE)
     else()
-        # On Windows, try find_package instead
-        find_package(poppler CONFIG)
-        if(poppler_FOUND)
-            set(POPPLER_FOUND TRUE)
-        else()
-            set(POPPLER_FOUND FALSE)
-        endif()
+        set(MUPDF_FOUND FALSE)
     endif()
-    if(POPPLER_FOUND)
-        if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/PDF/CMakeLists.txt)
-            add_subdirectory(Plugins/Documents/PDF)
-            if(ULTRACANVAS_PDF_PLUGIN_FOUND)
-                list(APPEND ULTRACANVAS_PLUGIN_TARGETS ${ULTRACANVAS_PDF_PLUGIN_TARGET})
-                message(STATUS "  [✓] PDF Plugin - ENABLED")
-            endif()
-        else()
-            message(STATUS "  [−] PDF Plugin - NOT FOUND (CMakeLists.txt missing)")
+
+    list(APPEND ULTRACANVAS_CORE_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/UltraCanvasPDF_MuPDF.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/UltraCanvasPDFView.cpp
+    )
+    # Rebuild the library source list since we just appended.
+    target_sources(${ULTRACANVAS_LIB_NAME} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/UltraCanvasPDF_MuPDF.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/UltraCanvasPDFView.cpp
+    )
+    target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE
+        ${MUPDF_INCLUDE_DIR}
+    )
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC
+        ULTRACANVAS_PLUGIN_PDF=1
+        ULTRACANVAS_PDF_MUPDF=1
+    )
+    # Linking the static archives in the right order matters: dependents
+    # before dependencies.
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
+        ${MUPDF_LIBRARY}
+        ${MUPDF_THIRD_LIBRARY}
+    )
+    foreach(_extra_lib
+            MUJS_LIBRARY GUMBO_LIBRARY JBIG2DEC_LIBRARY OPENJP2_LIBRARY
+            HARFBUZZ_LIB FREETYPE_LIB JPEG_LIB ZLIB_LIB)
+        if(${_extra_lib})
+            target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${${_extra_lib}})
         endif()
-    else()
-        message(STATUS "  [✗] PDF Plugin - DISABLED (missing poppler)")
-    endif()
+    endforeach()
+    message(STATUS "  [✓] PDF Plugin - ENABLED (MuPDF at ${MUPDF_LIBRARY})")
 else()
     message(STATUS "  [−] PDF Plugin - SKIPPED (disabled by option)")
 endif()

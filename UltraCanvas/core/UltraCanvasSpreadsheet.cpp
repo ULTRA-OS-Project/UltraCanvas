@@ -66,6 +66,7 @@ void UltraCanvasSpreadsheet::Render(IRenderContext* ctx, const Rect2Df& dirtyRec
 
     RenderCells(ctx);
     RenderSelection(ctx);
+    RenderFormulaRangeHighlights(ctx);
 
     if (HasFrozenPanes()) {
         RenderFreezeLines(ctx);
@@ -482,6 +483,82 @@ void UltraCanvasSpreadsheet::RenderSelection(IRenderContext* ctx) {
     ctx->SetStrokePaint(selectionBorderColor_);
     ctx->SetStrokeWidth(2.0f);
     ctx->DrawRectangle(Rect2Df(activeTopLeft.x, activeTopLeft.y, activeBounds.width, activeBounds.height));
+
+    ctx->PopState();
+}
+
+void UltraCanvasSpreadsheet::RenderFormulaRangeHighlights(IRenderContext* ctx) {
+    auto* sheet = GetActiveSheet();
+    if (!sheet) return;
+
+    // Collect the cells and ranges referenced by the formula we want to trace:
+    // either the formula currently being typed in-cell, or, when not editing,
+    // the committed formula sitting in the active cell. This lets the user see
+    // exactly which cells a calculation such as =SUM(E2:E6) covers.
+    std::vector<CellRange> ranges;
+    std::vector<CellAddress> cells;
+
+    auto collect = [&](const std::shared_ptr<SpreadsheetFormula>& formula) {
+        if (!formula || !formula->IsValid()) return;
+        for (const auto& r : formula->GetRangeDependencies()) ranges.push_back(r);
+        for (const auto& c : formula->GetDependencies()) cells.push_back(c);
+    };
+
+    if (editMode_ == SpreadsheetEditMode::InCellEditing &&
+        !editBuffer_.empty() && editBuffer_[0] == '=') {
+        auto live = std::make_shared<SpreadsheetFormula>(editBuffer_, editingCell_);
+        live->Parse();
+        collect(live);
+    } else {
+        const auto& selection = sheet->GetSelection();
+        const SpreadsheetCell* cell =
+            sheet->GetCellIfExists(selection.activeCell.row, selection.activeCell.col);
+        if (cell && cell->HasFormula()) {
+            collect(cell->GetFormula());
+        }
+    }
+
+    if (ranges.empty() && cells.empty()) return;
+
+    int startX = gridBounds_.x + (showRowHeaders_ ? SpreadsheetLimits::RowHeaderWidth : 0);
+    int startY = gridBounds_.y + (showColumnHeaders_ ? SpreadsheetLimits::HeaderRowHeight : 0);
+
+    // Clip to the cell area so highlights never spill over the headers.
+    ctx->PushState();
+    ctx->ClipRect(Rect2Df(startX, startY,
+                  gridBounds_.width - (showRowHeaders_ ? SpreadsheetLimits::RowHeaderWidth : 0),
+                  gridBounds_.height - (showColumnHeaders_ ? SpreadsheetLimits::HeaderRowHeight : 0)));
+
+    // A small palette so multiple referenced ranges read as distinct, mirroring
+    // the coloured precedents desktop spreadsheets draw while editing a formula.
+    static const Color palette[] = {
+        Color(0, 120, 215), Color(216, 80, 0), Color(16, 124, 16),
+        Color(136, 23, 152), Color(193, 0, 90)
+    };
+    const int paletteSize = static_cast<int>(sizeof(palette) / sizeof(palette[0]));
+    int colorIndex = 0;
+
+    auto drawRange = [&](const CellRange& range) {
+        Color base = palette[colorIndex % paletteSize];
+        ++colorIndex;
+
+        Point2Di topLeft = CellToScreen(range.start.row, range.start.col);
+        Point2Di bottomRight = CellToScreen(range.end.row + 1, range.end.col + 1);
+        Rect2Df rect(topLeft.x, topLeft.y,
+                     bottomRight.x - topLeft.x, bottomRight.y - topLeft.y);
+
+        Color fill = base;
+        fill.a = 36;  // translucent tint over the covered cells
+        ctx->SetFillPaint(fill);
+        ctx->FillRectangle(rect);
+
+        ctx->SetStrokePaint(base);
+        ctx->SetStrokeWidth(1.5f);
+        ctx->DrawRectangle(rect);
+    };
+
+    for (const auto& r : ranges) drawRange(r);
+    for (const auto& c : cells) drawRange(CellRange(c));
 
     ctx->PopState();
 }

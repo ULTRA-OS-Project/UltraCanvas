@@ -88,6 +88,10 @@ public:
     bool LoadFromFile(const std::string& filePath);
     bool LoadFromImage(std::shared_ptr<UCImage> img);
 
+    // Human-readable reason for the most recent failed LoadFromFile (e.g. the
+    // file was locked, missing, or the format is unsupported). Empty on success.
+    const std::string& GetLastError() const { return errorMessage; }
+
     // ===== IMAGE PROPERTIES =====
     void SetFitMode(ImageFitMode mode) { fitMode = mode; RequestRedraw(); }
     

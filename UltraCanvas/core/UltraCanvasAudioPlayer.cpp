@@ -6,6 +6,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasAudioPlayer.h"
+#include "UltraCanvasFileError.h"
 #include "../libspecific/Audio/IAudioBackend.h"
 #include <algorithm>
 #include <atomic>
@@ -147,7 +148,12 @@ bool UltraCanvasAudioPlayer::LoadFromFile(const std::string& filePath) {
     impl->SetState(AudioPlaybackState::Loading);
     auto a = UCAudio::LoadFromFile(filePath);
     if (!a || !a->IsValid()) {
-        impl->EmitError("failed to load: " + filePath);
+        // Prefer a clear file-access reason (missing / locked / no permission);
+        // otherwise the file opened but the audio format is unsupported/damaged.
+        std::string reason = DescribeFileReadError(filePath);
+        if (reason.empty())
+            reason = "The audio format is not supported or the file is damaged: " + filePath;
+        impl->EmitError(reason);
         return false;
     }
     return LoadFromAudio(a);
