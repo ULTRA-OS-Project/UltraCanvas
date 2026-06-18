@@ -1087,12 +1087,12 @@ namespace UltraCanvas {
         // ===== VIDEO ELEMENTS =====
         auto videoBuilder = DemoCategoryBuilder(this, DemoCategory::VideoElements);
 
-        videoBuilder.AddItem("video", "Video Player", "Video playback and controls",
-                             ImplementationStatus::NotImplemented,
+        videoBuilder.AddItem("video", "Video Player", "Video playback and recording",
+                             ImplementationStatus::FullyImplemented,
                              [this]() { return CreateVideoExamples(); })
                 .AddVariant("video", "MP4 Playback")
-                .AddVariant("video", "Custom Controls")
-                .AddVariant("video", "Streaming Support");
+                .AddVariant("video", "Camera Recording")
+                .AddVariant("video", "Custom Controls");
 
         // ===== TEXT DOCUMENTS =====
         auto textDocBuilder = DemoCategoryBuilder(this, DemoCategory::TextDocuments);

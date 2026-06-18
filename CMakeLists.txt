@@ -134,6 +134,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasBarcodeExamples.cpp
             Apps/DemoApp/UltraCanvasAudioExamples.cpp
             Apps/DemoApp/UltraCanvasPDFExamples.cpp
+            Apps/DemoApp/UltraCanvasVideoExamples.cpp
     )
 
     # These files depend on libvips
