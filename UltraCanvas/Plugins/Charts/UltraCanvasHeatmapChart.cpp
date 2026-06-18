@@ -250,6 +250,11 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    void UltraCanvasHeatmapChartElement::SetColumnLabelsOnTop(bool on) {
+        columnLabelsOnTop = on;
+        RequestRedraw();
+    }
+
     void UltraCanvasHeatmapChartElement::SetAxisTitles(const std::string& xTitle, const std::string& yTitle) {
         xAxisTitle = xTitle;
         yAxisTitle = yTitle;
@@ -393,7 +398,10 @@ namespace UltraCanvas {
         }
         if (!yAxisTitle.empty()) left += lineH + 4.0;
 
-        if (showColumnLabels && cols > 0) bottom += lineH + 8.0;
+        if (showColumnLabels && cols > 0) {
+            if (columnLabelsOnTop) top += lineH + 6.0;
+            else                   bottom += lineH + 8.0;
+        }
         if (!xAxisTitle.empty()) bottom += lineH + 4.0;
 
         if (showColorBar) {
@@ -579,29 +587,38 @@ namespace UltraCanvas {
         double cellW = heatmapArea.width / cols;
         double cellH = heatmapArea.height / rows;
 
-        // Column labels (bottom), stepping to avoid overlap.
+        // Column labels. Draw every non-empty label that does not overlap the
+        // previous one. This thins dense numeric axes automatically while still
+        // honouring sparse labels (e.g. month names on a calendar heatmap).
         if (showColumnLabels) {
-            int maxLabels = std::max(1, static_cast<int>(heatmapArea.width / 40.0));
-            int step = std::max(1, (cols + maxLabels - 1) / maxLabels);
-            double y = heatmapArea.GetBottom() + 4.0;
-            for (int c = 0; c < cols; c += step) {
+            double y = columnLabelsOnTop ? (heatmapArea.y - lineH - 2.0)
+                                         : (heatmapArea.GetBottom() + 4.0);
+            double lastRight = -1e9;
+            for (int c = 0; c < cols; ++c) {
                 std::string label = ColumnLabel(c);
+                if (label.empty()) continue;
                 Size2Di sz = ctx->GetTextLineDimensions(label);
                 double cx = heatmapArea.x + (c + 0.5) * cellW;
-                ctx->DrawText(label, Point2Dd(cx - sz.width / 2.0, y));
+                double x = cx - sz.width / 2.0;
+                if (x < lastRight + 4.0) continue;
+                ctx->DrawText(label, Point2Dd(x, y));
+                lastRight = x + sz.width;
             }
         }
 
-        // Row labels (left), stepping to avoid overlap.
+        // Row labels (left), with the same overlap avoidance vertically.
         if (showRowLabels) {
-            int maxLabels = std::max(1, static_cast<int>(heatmapArea.height / (lineH + 2)));
-            int step = std::max(1, (rows + maxLabels - 1) / maxLabels);
-            for (int r = 0; r < rows; r += step) {
-                int displayRow = (rowOrder == HeatmapRowOrder::TopDown) ? r : (rows - 1 - r);
+            double lastBottom = -1e9;
+            for (int r = 0; r < rows; ++r) {
                 std::string label = RowLabel(r);
+                if (label.empty()) continue;
+                int displayRow = (rowOrder == HeatmapRowOrder::TopDown) ? r : (rows - 1 - r);
                 Size2Di sz = ctx->GetTextLineDimensions(label);
                 double cy = heatmapArea.y + (displayRow + 0.5) * cellH;
-                ctx->DrawText(label, Point2Dd(heatmapArea.x - sz.width - 6.0, cy - sz.height / 2.0));
+                double y = cy - sz.height / 2.0;
+                if (y < lastBottom + 2.0) continue;
+                ctx->DrawText(label, Point2Dd(heatmapArea.x - sz.width - 6.0, y));
+                lastBottom = y + sz.height;
             }
         }
 

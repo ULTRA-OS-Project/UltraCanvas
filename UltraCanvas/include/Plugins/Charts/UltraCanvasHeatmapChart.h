@@ -119,6 +119,7 @@ namespace UltraCanvas {
         std::vector<std::string> rowLabels;
         bool showColumnLabels = true;
         bool showRowLabels = true;
+        bool columnLabelsOnTop = false;   // draw column labels above the grid
         std::string xAxisTitle;
         std::string yAxisTitle;
 
@@ -187,6 +188,7 @@ namespace UltraCanvas {
         void SetRowLabels(const std::vector<std::string>& labels);
         void SetShowColumnLabels(bool on);
         void SetShowRowLabels(bool on);
+        void SetColumnLabelsOnTop(bool on);
         void SetAxisTitles(const std::string& xTitle, const std::string& yTitle);
 
         // ---- Colour bar ----
@@ -197,17 +199,22 @@ namespace UltraCanvas {
         void RenderChart(IRenderContext* ctx) override;
         bool HandleChartMouseMove(const Point2Di& mousePos) override;
 
+    protected:
+        // Layout / label rendering hooks (override in specialized subclasses,
+        // e.g. the calendar heatmap).
+        virtual ChartPlotArea ComputeHeatmapArea(IRenderContext* ctx);
+        virtual void RenderGridLabels(IRenderContext* ctx);
+        const ChartPlotArea& GetHeatmapArea() const { return heatmapArea; }
+
     private:
         void RecomputeAutoRange();
         void InvalidateRaster();
         double NormalizeValue(double v) const;         // -> [0,1], NaN passthrough
         Color ColorAtT(double t) const;                // colour-map lookup (handles reverse)
-        ChartPlotArea ComputeHeatmapArea(IRenderContext* ctx);
         bool EffectiveUseImageMode() const;
         void BuildPixmap();
         void RenderCells(IRenderContext* ctx);
         void RenderImage(IRenderContext* ctx);
-        void RenderGridLabels(IRenderContext* ctx);
         void RenderColorBar(IRenderContext* ctx);
         bool CellAtScreen(const Point2Di& pos, int& outCol, int& outRow) const;
 
