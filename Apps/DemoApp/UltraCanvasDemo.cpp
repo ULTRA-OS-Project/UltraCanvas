@@ -891,9 +891,15 @@ namespace UltraCanvas {
                              ImplementationStatus::PartiallyImplemented,
                              [this]() { return CreatePartiallyImplementedExamples("Polar Chart is not ready yet"); });
 
-        chartBuilder.AddItem("heatmapchart", "Heat map", "Heat map",
-                             ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples("HeatMap Chart is not ready yet"); });
+        chartBuilder.AddItem("heatmapchart", "Heat map", "Heatmap, spectrogram, calendar & hexbin variants",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateHeatmapExamples(); },
+                             "Apps/DemoApp/UltraCanvasHeatmapExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasHeatmapChart.md")
+                .AddVariant("heatmapchart", "Interactive Heatmap")
+                .AddVariant("heatmapchart", "Spectrogram (STFT)")
+                .AddVariant("heatmapchart", "Calendar Heatmap")
+                .AddVariant("heatmapchart", "Hexbin Density");
 
         chartBuilder.AddItem("jitterchart", "Jitter chart", "Jitter chart",
                              ImplementationStatus::FullyImplemented,
