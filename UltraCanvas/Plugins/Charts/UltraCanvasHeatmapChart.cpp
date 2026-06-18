@@ -472,10 +472,7 @@ namespace UltraCanvas {
         ctx->DrawRectangle(heatmapArea.ToRect2D());
 
         RenderGridLabels(ctx);
-
-        if (showColorBar) {
-            RenderColorBar(ctx);
-        }
+        RenderColorBar(ctx);
     }
 
     void UltraCanvasHeatmapChartElement::RenderCells(IRenderContext* ctx) {
@@ -639,6 +636,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasHeatmapChartElement::RenderColorBar(IRenderContext* ctx) {
+        if (!showColorBar) return;
         double barX = heatmapArea.GetRight() + colorBarGap;
         double barY = heatmapArea.y;
         double barW = colorBarWidth;

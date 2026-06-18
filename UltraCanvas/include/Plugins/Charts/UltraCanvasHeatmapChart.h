@@ -204,6 +204,7 @@ namespace UltraCanvas {
         // e.g. the calendar heatmap).
         virtual ChartPlotArea ComputeHeatmapArea(IRenderContext* ctx);
         virtual void RenderGridLabels(IRenderContext* ctx);
+        void RenderColorBar(IRenderContext* ctx);   // reusable by subclasses
         const ChartPlotArea& GetHeatmapArea() const { return heatmapArea; }
 
     private:
@@ -215,7 +216,6 @@ namespace UltraCanvas {
         void BuildPixmap();
         void RenderCells(IRenderContext* ctx);
         void RenderImage(IRenderContext* ctx);
-        void RenderColorBar(IRenderContext* ctx);
         bool CellAtScreen(const Point2Di& pos, int& outCol, int& outRow) const;
 
         std::string ColumnLabel(int col) const;
