@@ -1,7 +1,7 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.6.0
-// Last Modified: 2026-05-29
+// Version: 3.7.0
+// Last Modified: 2026-06-18
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
@@ -3409,6 +3409,42 @@ namespace UltraCanvas {
                                          static_cast<float>(by)),
                                 tableBorderColor);
                     }
+                }
+                return;
+            }
+            case LineLayoutType::MarkdownImage: {
+                // Block image (layout == nullptr). Draw the decoded bitmap at the layout origin
+                // (which already includes the indent + padding via layoutShift), or a placeholder
+                // box with the alt text / url when the image is missing, invalid, or remote.
+                auto* il = dynamic_cast<ImageLineLayout*>(line);
+                if (!il) { drawLayout(); return; }
+                Rect2Dd dst(static_cast<double>(layoutOrigin.x),
+                            static_cast<double>(layoutOrigin.y),
+                            static_cast<double>(line->bounds.width  - 2 * style.textPadding),
+                            static_cast<double>(line->bounds.height - 2 * il->layoutShift.y));
+                if (il->isValid) {
+                    ctx->DrawImage(il->resolvedPath, dst, ImageFitMode::Contain);
+                } else {
+                    ctx->DrawFilledRectangle(dst, markdownStyle.imagePlaceholderBackground,
+                                             1.0f, markdownStyle.imagePlaceholderBorderColor);
+                    std::string label = !il->altText.empty()
+                            ? il->altText
+                            : ((il->isRemote ? std::string("\xF0\x9F\x8C\x90 ")    // 🌐
+                                             : std::string("\xE2\x9A\xA0 "))       // ⚠
+                               + il->sourceUrl);
+                    ctx->PushState();
+                    ctx->SetFontStyle(style.fontStyle);
+                    ctx->SetTextPaint(markdownStyle.imagePlaceholderTextColor);
+                    float tw = static_cast<float>(ctx->GetTextLineWidth(label));
+                    int lh = computedLineHeight > 0
+                             ? computedLineHeight
+                             : static_cast<int>(style.fontStyle.fontSize * 1.3f);
+                    float tx = static_cast<float>(dst.x) +
+                               std::max(0.0f, (static_cast<float>(dst.width) - tw) / 2.0f);
+                    float ty = static_cast<float>(dst.y) +
+                               std::max(0.0f, (static_cast<float>(dst.height) - lh) / 2.0f);
+                    ctx->DrawText(label, Point2Dd(tx, ty));
+                    ctx->PopState();
                 }
                 return;
             }
