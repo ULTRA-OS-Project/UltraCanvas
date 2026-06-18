@@ -1438,14 +1438,22 @@ void UltraCanvasGaugeDiagramElement::RenderLinearBar(IRenderContext* ctx) {
     if (vertical) {
         float fillH = static_cast<float>(barH * ratio);
         if (fillH > 1.0f) {
+            // Clamp the corner radius to half of the smaller dimension so a
+            // short fill renders as a proper pill instead of overlapping arcs
+            // (which collapse into a circle for small values).
+            float radius = std::min(barW, fillH) / 2.0f;
             ctx->FillRoundedRectangle(
-                Rect2Df(barX, barY + barH - fillH, barW, fillH), barW / 2.0f);
+                Rect2Df(barX, barY + barH - fillH, barW, fillH), radius);
         }
     } else {
         float fillW = static_cast<float>(barW * ratio);
         if (fillW > 1.0f) {
+            // Clamp the corner radius to half of the smaller dimension so a
+            // short fill renders as a proper pill instead of overlapping arcs
+            // (which collapse into a circle for small values).
+            float radius = std::min(fillW, barH) / 2.0f;
             ctx->FillRoundedRectangle(
-                Rect2Df(barX, barY, fillW, barH), barH / 2.0f);
+                Rect2Df(barX, barY, fillW, barH), radius);
         }
     }
 
