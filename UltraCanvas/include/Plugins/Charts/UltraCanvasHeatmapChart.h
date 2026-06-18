@@ -11,6 +11,7 @@
 
 #include "UltraCanvasChartElementBase.h"
 #include "UltraCanvasImage.h"
+#include "Plugins/Charts/UltraCanvasColormap.h"
 #include <vector>
 #include <string>
 #include <memory>
@@ -22,18 +23,7 @@ namespace UltraCanvas {
 // ENUMS
 // =============================================================================
 
-// Built-in perceptual / classic colour maps. Custom uses SetCustomColormap().
-    enum class HeatmapColormap {
-        Grayscale,
-        Viridis,
-        Inferno,   // good default for audio spectrograms
-        Magma,
-        Plasma,
-        Jet,
-        Hot,
-        Cool,
-        Custom
-    };
+// HeatmapColormap (the available colour maps) is defined in UltraCanvasColormap.h.
 
 // How a raw value is mapped onto the normalized [0,1] colour-map position.
     enum class HeatmapScale {
@@ -61,6 +51,22 @@ namespace UltraCanvas {
         Image
     };
 
+// Shape drawn for each cell in Cells render mode.
+    enum class HeatmapCellShape {
+        Rectangle,
+        RoundedRectangle,
+        Circle           // dot heatmap
+    };
+
+// Show only part of a (square) matrix, e.g. for correlation matrices.
+    enum class HeatmapTriangularMask {
+        NoMask,          // show all cells (named to avoid the X11 'None' macro)
+        Lower,           // col <= row
+        LowerNoDiagonal, // col <  row
+        Upper,           // col >= row
+        UpperNoDiagonal  // col >  row
+    };
+
 // =============================================================================
 // HEATMAP CHART ELEMENT
 // =============================================================================
@@ -79,17 +85,28 @@ namespace UltraCanvas {
         double valueMax = 1.0;
         HeatmapScale scaleMode = HeatmapScale::Linear;
 
+        // Diverging normalization (centre a midpoint on the colour-map middle)
+        bool divergingEnabled = false;
+        double divergingMidpoint = 0.0;
+
         // Colour mapping
         HeatmapColormap colormap = HeatmapColormap::Viridis;
         std::vector<Color> customColormap;
         bool reverseColormap = false;
+        int colorLevels = 0;            // 0 = continuous; >= 2 = quantized bands
         Color nanColor = Colors::Transparent;
+
+        // Masking (square matrices, e.g. correlation)
+        HeatmapTriangularMask triangularMask = HeatmapTriangularMask::NoMask;
 
         // Orientation / render strategy
         HeatmapRowOrder rowOrder = HeatmapRowOrder::TopDown;
         HeatmapRenderMode renderMode = HeatmapRenderMode::Auto;
 
-        // Cell decoration (Cells mode only)
+        // Cell decoration / geometry (Cells mode only)
+        HeatmapCellShape cellShape = HeatmapCellShape::Rectangle;
+        double cellGap = 0.0;           // padding as a fraction [0, 0.9] of the cell
+        double cellCornerRadius = 0.0;  // px for RoundedRectangle (<=0 => auto)
         bool showCellBorders = false;
         Color cellBorderColor = Color(255, 255, 255, 255);
         float cellBorderWidth = 1.0f;
@@ -138,18 +155,29 @@ namespace UltraCanvas {
         double GetValueMin() const { return valueMin; }
         double GetValueMax() const { return valueMax; }
 
+        // Centre `midpoint` on the colour-map middle (great for correlation /
+        // deviation data; pair with a diverging colour map). Linear scale only.
+        void SetDiverging(bool on, double midpoint = 0.0);
+
         // ---- Colour map ----
         void SetColormap(HeatmapColormap c);
         void SetCustomColormap(const std::vector<Color>& colors); // >=2 evenly spaced anchors
         void SetReverseColormap(bool on);
+        void SetColorLevels(int levels);   // 0 = continuous; >= 2 = discrete bands
         void SetNaNColor(const Color& c);
         Color MapValueToColor(double value) const;
+
+        // ---- Masking ----
+        void SetTriangularMask(HeatmapTriangularMask mask);
 
         // ---- Orientation / render strategy ----
         void SetRowOrder(HeatmapRowOrder o);
         void SetRenderMode(HeatmapRenderMode m);
 
-        // ---- Cell decoration ----
+        // ---- Cell decoration / geometry ----
+        void SetCellShape(HeatmapCellShape shape);
+        void SetCellGap(double fraction);          // [0, 0.9] padding between cells
+        void SetCellCornerRadius(double radiusPx); // for RoundedRectangle (<=0 => auto)
         void SetShowCellBorders(bool on, const Color& color = Color(255, 255, 255, 255), float width = 1.0f);
         void SetShowCellValues(bool on);
         void SetCellValueStyle(const Color& color, float fontSize);
@@ -186,9 +214,8 @@ namespace UltraCanvas {
         std::string ColumnLabel(int col) const;
         std::string RowLabel(int row) const;
         std::string FormatValue(double v) const;
+        bool IsCellVisible(int col, int row) const;    // triangular mask test
 
-        static std::vector<Color> BuiltinColormapAnchors(HeatmapColormap c);
-        static Color InterpolateAnchors(const std::vector<Color>& anchors, double t);
         static uint32_t ColorToPixel(const Color& c);  // -> premultiplied ARGB32
     };
 

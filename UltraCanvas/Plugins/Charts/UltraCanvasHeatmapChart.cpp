@@ -126,6 +126,13 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    void UltraCanvasHeatmapChartElement::SetDiverging(bool on, double midpoint) {
+        divergingEnabled = on;
+        divergingMidpoint = midpoint;
+        InvalidateRaster();
+        RequestRedraw();
+    }
+
 // =============================================================================
 // COLOUR MAP
 // =============================================================================
@@ -149,8 +156,20 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    void UltraCanvasHeatmapChartElement::SetColorLevels(int levels) {
+        colorLevels = (levels < 2) ? 0 : levels;
+        InvalidateRaster();
+        RequestRedraw();
+    }
+
     void UltraCanvasHeatmapChartElement::SetNaNColor(const Color& c) {
         nanColor = c;
+        InvalidateRaster();
+        RequestRedraw();
+    }
+
+    void UltraCanvasHeatmapChartElement::SetTriangularMask(HeatmapTriangularMask mask) {
+        triangularMask = mask;
         InvalidateRaster();
         RequestRedraw();
     }
@@ -173,6 +192,21 @@ namespace UltraCanvas {
 // =============================================================================
 // CELL DECORATION
 // =============================================================================
+
+    void UltraCanvasHeatmapChartElement::SetCellShape(HeatmapCellShape shape) {
+        cellShape = shape;
+        RequestRedraw();
+    }
+
+    void UltraCanvasHeatmapChartElement::SetCellGap(double fraction) {
+        cellGap = std::clamp(fraction, 0.0, 0.9);
+        RequestRedraw();
+    }
+
+    void UltraCanvasHeatmapChartElement::SetCellCornerRadius(double radiusPx) {
+        cellCornerRadius = std::max(0.0, radiusPx);
+        RequestRedraw();
+    }
 
     void UltraCanvasHeatmapChartElement::SetShowCellBorders(bool on, const Color& color, float width) {
         showCellBorders = on;
@@ -259,6 +293,10 @@ namespace UltraCanvas {
     double UltraCanvasHeatmapChartElement::NormalizeValue(double v) const {
         if (std::isnan(v)) return std::numeric_limits<double>::quiet_NaN();
 
+        if (divergingEnabled) {
+            return DivergingNorm(v, valueMin, divergingMidpoint, valueMax);
+        }
+
         double lo = valueMin;
         double hi = valueMax;
         double t;
@@ -278,12 +316,8 @@ namespace UltraCanvas {
     }
 
     Color UltraCanvasHeatmapChartElement::ColorAtT(double t) const {
-        t = std::clamp(t, 0.0, 1.0);
-        if (reverseColormap) t = 1.0 - t;
-        if (colormap == HeatmapColormap::Custom && customColormap.size() >= 2) {
-            return InterpolateAnchors(customColormap, t);
-        }
-        return InterpolateAnchors(BuiltinColormapAnchors(colormap), t);
+        t = QuantizeNorm(std::clamp(t, 0.0, 1.0), colorLevels);
+        return SampleColormap(colormap, customColormap, t, reverseColormap);
     }
 
     Color UltraCanvasHeatmapChartElement::MapValueToColor(double value) const {
@@ -299,68 +333,6 @@ namespace UltraCanvas {
         uint32_t g = static_cast<uint32_t>(c.g) * a / 255;
         uint32_t b = static_cast<uint32_t>(c.b) * a / 255;
         return (a << 24) | (r << 16) | (g << 8) | b;
-    }
-
-    Color UltraCanvasHeatmapChartElement::InterpolateAnchors(const std::vector<Color>& anchors, double t) {
-        if (anchors.empty()) return Colors::Black;
-        if (anchors.size() == 1) return anchors[0];
-        t = std::clamp(t, 0.0, 1.0);
-        double scaled = t * (anchors.size() - 1);
-        int i = static_cast<int>(std::floor(scaled));
-        if (i >= static_cast<int>(anchors.size()) - 1) return anchors.back();
-        double f = scaled - i;
-        const Color& a = anchors[i];
-        const Color& b = anchors[i + 1];
-        auto lerp = [](uint8_t x, uint8_t y, double f) -> uint8_t {
-            return static_cast<uint8_t>(std::lround(x + (y - x) * f));
-        };
-        return Color(lerp(a.r, b.r, f), lerp(a.g, b.g, f), lerp(a.b, b.b, f), 255);
-    }
-
-    std::vector<Color> UltraCanvasHeatmapChartElement::BuiltinColormapAnchors(HeatmapColormap c) {
-        switch (c) {
-            case HeatmapColormap::Grayscale:
-                return { Color(0, 0, 0), Color(255, 255, 255) };
-            case HeatmapColormap::Viridis:
-                return {
-                    Color(68, 1, 84),   Color(72, 40, 120),  Color(62, 73, 137),
-                    Color(49, 104, 142),Color(38, 130, 142), Color(31, 158, 137),
-                    Color(53, 183, 121),Color(110, 206, 88), Color(181, 222, 43),
-                    Color(253, 231, 37)
-                };
-            case HeatmapColormap::Inferno:
-                return {
-                    Color(0, 0, 4),     Color(31, 12, 72),   Color(85, 15, 109),
-                    Color(136, 34, 106),Color(186, 54, 85),  Color(227, 89, 51),
-                    Color(249, 140, 10),Color(249, 201, 50), Color(252, 255, 164)
-                };
-            case HeatmapColormap::Magma:
-                return {
-                    Color(0, 0, 4),     Color(28, 16, 68),   Color(79, 18, 123),
-                    Color(129, 37, 129),Color(181, 54, 122), Color(229, 80, 100),
-                    Color(251, 135, 97),Color(254, 194, 135),Color(252, 253, 191)
-                };
-            case HeatmapColormap::Plasma:
-                return {
-                    Color(13, 8, 135),  Color(75, 3, 161),   Color(125, 3, 168),
-                    Color(168, 34, 150),Color(203, 70, 121), Color(229, 107, 93),
-                    Color(248, 148, 65),Color(253, 195, 40), Color(240, 249, 33)
-                };
-            case HeatmapColormap::Jet:
-                return {
-                    Color(0, 0, 128),   Color(0, 0, 255),    Color(0, 255, 255),
-                    Color(255, 255, 0), Color(255, 0, 0),    Color(128, 0, 0)
-                };
-            case HeatmapColormap::Hot:
-                return {
-                    Color(0, 0, 0), Color(255, 0, 0), Color(255, 255, 0), Color(255, 255, 255)
-                };
-            case HeatmapColormap::Cool:
-                return { Color(0, 255, 255), Color(255, 0, 255) };
-            case HeatmapColormap::Custom:
-            default:
-                return { Color(0, 0, 0), Color(255, 255, 255) };
-        }
     }
 
     std::string UltraCanvasHeatmapChartElement::ColumnLabel(int col) const {
@@ -382,6 +354,17 @@ namespace UltraCanvas {
             std::snprintf(buf, sizeof(buf), "%.3g", v);
         }
         return std::string(buf);
+    }
+
+    bool UltraCanvasHeatmapChartElement::IsCellVisible(int col, int row) const {
+        switch (triangularMask) {
+            case HeatmapTriangularMask::Lower:           return col <= row;
+            case HeatmapTriangularMask::LowerNoDiagonal: return col <  row;
+            case HeatmapTriangularMask::Upper:           return col >= row;
+            case HeatmapTriangularMask::UpperNoDiagonal: return col >  row;
+            case HeatmapTriangularMask::NoMask:
+            default:                                     return true;
+        }
     }
 
 // =============================================================================
@@ -491,32 +474,64 @@ namespace UltraCanvas {
         double cellW = heatmapArea.width / cols;
         double cellH = heatmapArea.height / rows;
 
+        double gx = cellW * cellGap * 0.5;
+        double gy = cellH * cellGap * 0.5;
+        // Overlap adjacent rectangles by 1px to hide hairline seams, but only
+        // when cells are truly contiguous (no gap, no borders, plain rects).
+        bool seamless = (cellGap <= 0.0 && cellShape == HeatmapCellShape::Rectangle && !showCellBorders);
+
         ctx->SetFontSize(cellValueFontSize);
 
         for (int r = 0; r < rows; ++r) {
             int displayRow = (rowOrder == HeatmapRowOrder::TopDown) ? r : (rows - 1 - r);
             for (int c = 0; c < cols; ++c) {
+                if (!IsCellVisible(c, r)) continue;
+
                 double v = values[static_cast<size_t>(r) * cols + c];
                 Color color = MapValueToColor(v);
 
                 double x = heatmapArea.x + c * cellW;
                 double y = heatmapArea.y + displayRow * cellH;
-                // +1 to avoid hairline seams from rounding between adjacent cells.
-                Rect2Dd cellRect(x, y, cellW + 1.0, cellH + 1.0);
 
-                if (color.a > 0) {
-                    ctx->DrawFilledRectangle(cellRect, color);
+                double innerX = x + gx;
+                double innerY = y + gy;
+                double innerW = cellW - 2.0 * gx + (seamless ? 1.0 : 0.0);
+                double innerH = cellH - 2.0 * gy + (seamless ? 1.0 : 0.0);
+                if (innerW <= 0.0 || innerH <= 0.0) continue;
+                Rect2Dd inner(innerX, innerY, innerW, innerH);
+
+                Color border = (showCellBorders && cellBorderWidth > 0.0f)
+                               ? cellBorderColor : Colors::Transparent;
+                float bw = (border.a > 0) ? cellBorderWidth : 0.0f;
+
+                switch (cellShape) {
+                    case HeatmapCellShape::Circle: {
+                        double rad = std::min(innerW, innerH) * 0.5;
+                        Point2Dd center(innerX + innerW * 0.5, innerY + innerH * 0.5);
+                        if (color.a > 0 || bw > 0) {
+                            ctx->DrawFilledCircle(center, static_cast<float>(rad), color, border, bw);
+                        }
+                        break;
+                    }
+                    case HeatmapCellShape::RoundedRectangle: {
+                        double rad = (cellCornerRadius > 0.0) ? cellCornerRadius
+                                                              : std::min(innerW, innerH) * 0.25;
+                        rad = std::min(rad, std::min(innerW, innerH) * 0.5);
+                        ctx->DrawFilledRectangle(inner, color, bw, border, static_cast<float>(rad));
+                        break;
+                    }
+                    case HeatmapCellShape::Rectangle:
+                    default:
+                        ctx->DrawFilledRectangle(inner, color, bw, border);
+                        break;
                 }
-                if (showCellBorders && cellBorderWidth > 0.0f) {
-                    ctx->DrawFilledRectangle(Rect2Dd(x, y, cellW, cellH), Colors::Transparent,
-                                             cellBorderWidth, cellBorderColor);
-                }
-                if (showCellValues && !std::isnan(v) && cellW > 14.0 && cellH > 10.0) {
+
+                if (showCellValues && !std::isnan(v) && innerW > 14.0 && innerH > 10.0) {
                     std::string text = FormatValue(v);
                     Size2Di sz = ctx->GetTextLineDimensions(text);
                     ctx->SetTextPaint(cellValueColor);
-                    ctx->DrawText(text, Point2Dd(x + (cellW - sz.width) / 2.0,
-                                                 y + (cellH - sz.height) / 2.0));
+                    ctx->DrawText(text, Point2Dd(innerX + (innerW - sz.width) / 2.0,
+                                                 innerY + (innerH - sz.height) / 2.0));
                 }
             }
         }
@@ -535,8 +550,10 @@ namespace UltraCanvas {
             int pixRow = (rowOrder == HeatmapRowOrder::TopDown) ? r : (rows - 1 - r);
             uint32_t* line = px + static_cast<size_t>(pixRow) * cols;
             for (int c = 0; c < cols; ++c) {
-                double v = values[static_cast<size_t>(r) * cols + c];
-                line[c] = ColorToPixel(MapValueToColor(v));
+                Color color = IsCellVisible(c, r)
+                              ? MapValueToColor(values[static_cast<size_t>(r) * cols + c])
+                              : nanColor;
+                line[c] = ColorToPixel(color);
             }
         }
         cellPixmap->MarkDirty();
@@ -627,9 +644,14 @@ namespace UltraCanvas {
         ctx->SetTextPaint(Color(40, 40, 40, 255));
         std::string maxLabel = FormatValue(valueMax);
         std::string minLabel = FormatValue(valueMin);
-        double midValue = (scaleMode == HeatmapScale::Logarithmic)
-                          ? std::sqrt(std::max(valueMin, 0.0) * std::max(valueMax, 0.0))
-                          : (valueMin + valueMax) / 2.0;
+        double midValue;
+        if (divergingEnabled) {
+            midValue = divergingMidpoint;
+        } else if (scaleMode == HeatmapScale::Logarithmic) {
+            midValue = std::sqrt(std::max(valueMin, 0.0) * std::max(valueMax, 0.0));
+        } else {
+            midValue = (valueMin + valueMax) / 2.0;
+        }
         std::string midLabel = FormatValue(midValue);
         double labelX = barX + barW + 5.0;
         Size2Di sz = ctx->GetTextLineDimensions(maxLabel);

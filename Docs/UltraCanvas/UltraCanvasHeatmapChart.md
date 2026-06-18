@@ -75,8 +75,16 @@ heatmap->SetScale(UltraCanvas::HeatmapScale::Logarithmic); // good for magnitude
 
 ## Colour maps
 
-Built-in maps: `Grayscale`, `Viridis`, `Inferno`, `Magma`, `Plasma`, `Jet`,
-`Hot`, `Cool`. `Inferno`/`Magma` give the classic spectrogram look.
+Built-in maps (defined in `UltraCanvasColormap.h`):
+
+- **Sequential, perceptual**: `Viridis`, `Inferno`, `Magma`, `Plasma`,
+  `Cividis`, `Turbo`, `Grayscale`
+- **Sequential, classic / single-hue**: `Jet`, `Hot`, `Cool`, `Blues`,
+  `Greens`, `Reds`, `Oranges`
+- **Diverging**: `Spectral`, `RdBu`, `RdYlBu`, `RdYlGn`, `Coolwarm`
+
+`Inferno`/`Magma` give the classic spectrogram look; the diverging maps pair
+well with `SetDiverging()` for correlation/deviation data.
 
 ```cpp
 heatmap->SetColormap(UltraCanvas::HeatmapColormap::Inferno);
@@ -85,6 +93,58 @@ heatmap->SetReverseColormap(true);
 // Or supply your own evenly spaced anchors (>= 2):
 heatmap->SetCustomColormap({ Color(0,0,0), Color(0,128,255), Color(255,255,255) });
 ```
+
+### Discrete colour levels
+
+Quantize the colour map into N equal bands (e.g. GitHub's Less→More buckets).
+`0` (default) is continuous.
+
+```cpp
+heatmap->SetColorLevels(5);   // 5 discrete colour buckets
+```
+
+### Diverging colour mapping
+
+Centre a midpoint on the middle of the colour map, so values above/below it read
+as two opposing colours regardless of how asymmetric the range is. Linear scale
+only.
+
+```cpp
+heatmap->SetColormap(UltraCanvas::HeatmapColormap::RdBu);
+heatmap->SetDiverging(true, 0.0);   // 0 maps to the neutral centre colour
+```
+
+The colour-map utilities are also available standalone (UI-free) via
+`UltraCanvasColormap.h`: `SampleColormap()`, `ColormapAnchors()`,
+`QuantizeNorm()`, `DivergingNorm()`, `IsDivergingColormap()`.
+
+## Cell shape and spacing
+
+By default cells are contiguous rectangles. They can be styled for calendar-style
+grids or dot heatmaps (these apply in `Cells` render mode):
+
+```cpp
+heatmap->SetCellShape(UltraCanvas::HeatmapCellShape::RoundedRectangle); // or Circle
+heatmap->SetCellGap(0.15);          // padding as a fraction [0, 0.9] of the cell
+heatmap->SetCellCornerRadius(4.0);  // px (RoundedRectangle; <=0 => auto)
+```
+
+| Shape | Use |
+|---|---|
+| `Rectangle` | Default matrix look. |
+| `RoundedRectangle` | Calendar / contribution-graph style. |
+| `Circle` | Dot heatmap. |
+
+## Triangular masking
+
+Show only half of a (square) matrix — handy for correlation matrices:
+
+```cpp
+heatmap->SetTriangularMask(UltraCanvas::HeatmapTriangularMask::LowerNoDiagonal);
+```
+
+Options: `NoMask` (default), `Lower`, `LowerNoDiagonal`, `Upper`,
+`UpperNoDiagonal`. Masked cells are painted with the NaN colour.
 
 ## Orientation and render strategy
 
