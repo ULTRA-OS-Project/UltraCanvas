@@ -71,6 +71,29 @@ enum class GaugeBatteryStyle {
     LedPointer
 };
 
+// ===== ROUND-GAUGE (CircularRing) STYLE ENUMS =====
+
+// How the progress indicator around a circular ring is drawn.
+enum class GaugeRingStyle {
+    SolidArc,       // one smooth continuous arc (the classic ring)
+    Segmented,      // a series of discrete chunks separated by small gaps
+    Dashed          // many fine ticks/dashes around the circle (tachymeter look)
+};
+
+// Shape of an individual segment when GaugeRingStyle is Segmented or Dashed.
+enum class GaugeRingSegmentStyle {
+    Bars,           // thin radial bars / ticks (e.g. the "62% ON TRACK" reference)
+    Dots,           // rounded dots spaced around the ring
+    Blocks          // chunky rounded arc blocks (e.g. the activity-ring look)
+};
+
+// Optional liquid-style fill that covers the disc surface inside the ring.
+enum class GaugeFillStyle {
+    NoFill,         // empty centre (classic ring)
+    StraightLevel,  // flat liquid surface rising with the value
+    WavedLevel      // wavy liquid surface (e.g. the "18 %" battery reference)
+};
+
 // =============================================================================
 // GAUGE DATA STRUCTURES
 // =============================================================================
@@ -160,6 +183,20 @@ public:
     void SetBatteryStyle(GaugeBatteryStyle s);
     GaugeBatteryStyle GetBatteryStyle() const { return batteryStyle; }
 
+    // ===== ROUND-GAUGE (CircularRing) STYLE =====
+    void SetRingThickness(float t);
+    float GetRingThickness() const { return ringThickness; }
+    void SetRingStyle(GaugeRingStyle s);
+    GaugeRingStyle GetRingStyle() const { return ringStyle; }
+    void SetRingSegmentStyle(GaugeRingSegmentStyle s);
+    GaugeRingSegmentStyle GetRingSegmentStyle() const { return ringSegmentStyle; }
+    void SetRingSegmentCount(int count);
+    int GetRingSegmentCount() const { return ringSegmentCount; }
+    void SetFillStyle(GaugeFillStyle s);
+    GaugeFillStyle GetFillStyle() const { return fillStyle; }
+    void SetTrackColor(const Color& c);
+    const Color& GetTrackColor() const { return trackColor; }
+
     // ===== ARC ANGLES =====
     void SetArcAngles(double startDeg, double endDeg);
     double GetArcStartAngle() const { return arcStartDeg; }
@@ -233,6 +270,14 @@ private:
     GaugeOrientation orientation = GaugeOrientation::Horizontal;
     GaugeBatteryStyle batteryStyle = GaugeBatteryStyle::BarPointer;
 
+    // Round-gauge (CircularRing) styling
+    float ringThickness = 6.0f;
+    GaugeRingStyle ringStyle = GaugeRingStyle::SolidArc;
+    GaugeRingSegmentStyle ringSegmentStyle = GaugeRingSegmentStyle::Blocks;
+    int ringSegmentCount = 36;
+    GaugeFillStyle fillStyle = GaugeFillStyle::NoFill;
+    Color trackColor = Color(220, 221, 230, 255);
+
     std::string title;
     std::string unit;
 
@@ -282,6 +327,9 @@ private:
     void RenderLinearWithArrow(IRenderContext* ctx);
     void RenderLinearScale(IRenderContext* ctx);
     void RenderCircularRing(IRenderContext* ctx, const Point2Df& center, float radius);
+    // CircularRing sub-renderers (round-gauge style system)
+    void DrawRingTrackAndValue(IRenderContext* ctx, const Point2Df& center, float radius);
+    void DrawRingLiquidFill(IRenderContext* ctx, const Point2Df& center, float innerRadius);
     void RenderBattery(IRenderContext* ctx);
     void RenderThermometer(IRenderContext* ctx);
     void RenderCylinder(IRenderContext* ctx);
