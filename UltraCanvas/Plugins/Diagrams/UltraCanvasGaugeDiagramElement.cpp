@@ -1,8 +1,13 @@
 // Plugins/Diagrams/UltraCanvasGaugeDiagramElement.cpp
 // Implementation of comprehensive gauge element with 17 visual modes
-// Version: 2.6.3
-// Last Modified: 2026-05-26
+// Version: 2.7.0
+// Last Modified: 2026-06-18
 // Author: UltraCanvas Framework
+// V2.7.0 changelog: Round-gauge (CircularRing) style system for the new "Round
+//   Gauges" demo tab. Adds configurable ring thickness, indicator style
+//   (SolidArc / Segmented / Dashed), segment shape (Bars / Dots / Blocks),
+//   liquid disc fill (NoFill / StraightLevel / WavedLevel) and a track colour.
+//   RenderCircularRing rewritten around DrawRingTrackAndValue + DrawRingLiquidFill.
 // V2.6.3 changelog: Speedometer value display normalized to match other cards
 //   - Removed the dark LCD box + "0" inside the disc.
 //   - Value + unit now render below the disc in the standard card style
@@ -192,6 +197,13 @@ void UltraCanvasGaugeDiagramElement::SetNeedleStyle(GaugeNeedleStyle s) { needle
 void UltraCanvasGaugeDiagramElement::SetTickPosition(GaugeTickPosition p) { tickPos = p; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetOrientation(GaugeOrientation o) { orientation = o; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetBatteryStyle(GaugeBatteryStyle s) { batteryStyle = s; RequestRedraw(); }
+
+void UltraCanvasGaugeDiagramElement::SetRingThickness(float t) { ringThickness = std::max(1.0f, t); RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetRingStyle(GaugeRingStyle s) { ringStyle = s; RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetRingSegmentStyle(GaugeRingSegmentStyle s) { ringSegmentStyle = s; RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetRingSegmentCount(int count) { ringSegmentCount = std::max(4, count); RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetFillStyle(GaugeFillStyle s) { fillStyle = s; RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetTrackColor(const Color& c) { trackColor = c; RequestRedraw(); }
 
 void UltraCanvasGaugeDiagramElement::SetArcAngles(double startDeg, double endDeg) {
     arcStartDeg = startDeg;
@@ -1914,19 +1926,29 @@ void UltraCanvasGaugeDiagramElement::RenderLinearScale(IRenderContext* ctx) {
                   13.0f, textColor);
 }
 
+// V2.7.0: Configurable round-gauge renderer.
+//   The CircularRing now honours a small style system so a dedicated demo tab can
+//   showcase the breadth of round gauges:
+//     * ringThickness     — width of the indicator (slider-driven)
+//     * ringStyle         — SolidArc | Segmented | Dashed
+//     * ringSegmentStyle  — Bars | Dots | Blocks (shape of each segment)
+//     * fillStyle         — NoFill | StraightLevel | WavedLevel (liquid disc fill)
+//     * trackColor        — colour of the unfilled portion
+//   Order of drawing: liquid fill (behind) → track → value indicator → centre text.
 void UltraCanvasGaugeDiagramElement::RenderCircularRing(
     IRenderContext* ctx, const Point2Df& center, float radius) {
     const auto b = GetLocalBounds();
-    float startRad = -static_cast<float>(M_PI / 2.0);
-    float endRad = static_cast<float>(3.0 * M_PI / 2.0);
 
-    DrawArcSection(ctx, center, radius, startRad, endRad, Color(200, 200, 215, 255), 3.0f);
+    // Liquid fill sits on the disc surface, inside the indicator ring.
+    if (fillStyle != GaugeFillStyle::NoFill) {
+        float innerR = std::max(6.0f, radius - ringThickness - 3.0f);
+        DrawRingLiquidFill(ctx, center, innerR);
+    }
 
-    double ratio = ValueToRatio(currentValue);
-    float fillEnd = startRad + static_cast<float>(ratio * (endRad - startRad));
-    Color fillC = GetColorForValue(currentValue);
-    DrawArcSection(ctx, center, radius, startRad, fillEnd, fillC, 3.0f);
+    DrawRingTrackAndValue(ctx, center, radius);
 
+    // Centre value text. When a liquid fill covers the disc the configured
+    // textColor is used as-is (the demo picks a contrasting colour per card).
     {
         std::string label = FormatValue(currentValue) + (unit.empty() ? "" : unit);
         ctx->SetFontFamily("Sans");
@@ -1940,6 +1962,134 @@ void UltraCanvasGaugeDiagramElement::RenderCircularRing(
     if (!title.empty()) {
         DrawTitleText(ctx, Point2Df(center.x, static_cast<float>(b.y) + kPaddingTop - kTitleRaise));
     }
+}
+
+// Draws the unfilled track plus the value indicator using the active ring style.
+void UltraCanvasGaugeDiagramElement::DrawRingTrackAndValue(
+    IRenderContext* ctx, const Point2Df& center, float radius) {
+    const float startRad = -static_cast<float>(M_PI / 2.0);   // 12 o'clock
+    const float endRad   =  static_cast<float>(3.0 * M_PI / 2.0);
+    const float sweep    = endRad - startRad;                 // full 360°
+    const double ratio   = std::max(0.0, std::min(1.0, ValueToRatio(currentValue)));
+    const Color fillC    = GetColorForValue(currentValue);
+    const float thickness = ringThickness;
+
+    if (ringStyle == GaugeRingStyle::SolidArc) {
+        // Continuous track + rounded value arc.
+        DrawArcSection(ctx, center, radius, startRad, endRad, trackColor, thickness);
+        if (ratio > 0.0001) {
+            float fillEnd = startRad + static_cast<float>(ratio * sweep);
+            ctx->ClearPath();
+            ctx->Arc(center.x, center.y, radius, startRad, fillEnd);
+            ctx->SetStrokePaint(fillC);
+            ctx->SetStrokeWidth(thickness);
+            ctx->SetLineCap(LineCap::Round);
+            ctx->Stroke();
+        }
+        return;
+    }
+
+    // ----- Segmented / Dashed: a series of discrete marks around the circle -----
+    int count = std::max(4, ringSegmentCount);
+    int litCount = static_cast<int>(std::ceil(ratio * count - 1e-6));
+
+    if (ringSegmentStyle == GaugeRingSegmentStyle::Blocks) {
+        // Chunky rounded arc blocks with a small gap between them.
+        float gapFrac = (ringStyle == GaugeRingStyle::Dashed) ? 0.55f : 0.25f;
+        float segSweep = sweep / static_cast<float>(count);
+        float gap = segSweep * gapFrac;
+        for (int i = 0; i < count; i++) {
+            float s = startRad + i * segSweep + gap * 0.5f;
+            float e = startRad + (i + 1) * segSweep - gap * 0.5f;
+            const Color& c = (i < litCount) ? fillC : trackColor;
+            ctx->ClearPath();
+            ctx->Arc(center.x, center.y, radius, s, e);
+            ctx->SetStrokePaint(c);
+            ctx->SetStrokeWidth(thickness);
+            ctx->SetLineCap(LineCap::Round);
+            ctx->Stroke();
+        }
+    } else if (ringSegmentStyle == GaugeRingSegmentStyle::Bars) {
+        // Thin radial bars / ticks (tachymeter look). Bars straddle the radius.
+        float halfLen = thickness * 0.5f + 4.0f;
+        float barW = std::max(1.5f, (2.0f * static_cast<float>(M_PI) * radius)
+                                    / static_cast<float>(count) * 0.45f);
+        for (int i = 0; i < count; i++) {
+            float a = startRad + (i + 0.5f) * (sweep / static_cast<float>(count));
+            float cosA = std::cos(a), sinA = std::sin(a);
+            float ix = center.x + (radius - halfLen) * cosA;
+            float iy = center.y + (radius - halfLen) * sinA;
+            float ox = center.x + (radius + halfLen) * cosA;
+            float oy = center.y + (radius + halfLen) * sinA;
+            const Color& c = (i < litCount) ? fillC : trackColor;
+            ctx->SetStrokePaint(c);
+            ctx->SetStrokeWidth(barW);
+            ctx->SetLineCap(LineCap::Butt);
+            ctx->ClearPath();
+            ctx->MoveTo(ix, iy);
+            ctx->LineTo(ox, oy);
+            ctx->Stroke();
+        }
+    } else { // Dots
+        float dotR = std::max(2.0f, thickness * 0.5f);
+        for (int i = 0; i < count; i++) {
+            float a = startRad + (i + 0.5f) * (sweep / static_cast<float>(count));
+            Point2Df p(center.x + radius * std::cos(a), center.y + radius * std::sin(a));
+            ctx->SetFillPaint((i < litCount) ? fillC : trackColor);
+            ctx->FillCircle(p, dotR);
+        }
+    }
+}
+
+// Fills the disc surface up to the current value, clipped to a circle, with either
+// a flat (StraightLevel) or sinusoidal (WavedLevel) surface — the liquid-gauge look.
+void UltraCanvasGaugeDiagramElement::DrawRingLiquidFill(
+    IRenderContext* ctx, const Point2Df& center, float innerRadius) {
+    double ratio = std::max(0.0, std::min(1.0, ValueToRatio(currentValue)));
+    Color fillC = GetColorForValue(currentValue);
+
+    ctx->PushState();
+    // Clip everything that follows to the inner disc.
+    ctx->ClearPath();
+    ctx->Circle(center.x, center.y, innerRadius);
+    ctx->ClipPath();
+
+    // Soft track behind the liquid so an empty area still reads as a disc.
+    Color discBg = trackColor;
+    discBg.a = 60;
+    ctx->SetFillPaint(discBg);
+    ctx->FillCircle(center, innerRadius);
+
+    float top = center.y - innerRadius;
+    float bottom = center.y + innerRadius;
+    float level = bottom - static_cast<float>(ratio) * (bottom - top);
+    float left = center.x - innerRadius - 4.0f;
+    float right = center.x + innerRadius + 4.0f;
+
+    float amp = (fillStyle == GaugeFillStyle::WavedLevel)
+                ? std::max(3.0f, innerRadius * 0.10f) : 0.0f;
+    float wavelength = std::max(20.0f, innerRadius); // ~2 crests across the disc
+
+    ctx->SetFillPaint(fillC);
+    ctx->ClearPath();
+    ctx->MoveTo(left, bottom + 4.0f);
+    ctx->LineTo(left, level);
+    if (amp > 0.0f) {
+        const int steps = 48;
+        for (int i = 0; i <= steps; i++) {
+            float x = left + (right - left) * (static_cast<float>(i) / steps);
+            float phase = (x - left) / wavelength * 2.0f * static_cast<float>(M_PI);
+            float y = level + amp * std::sin(phase);
+            ctx->LineTo(x, y);
+        }
+    } else {
+        ctx->LineTo(right, level);
+    }
+    ctx->LineTo(right, bottom + 4.0f);
+    ctx->ClosePath();
+    ctx->Fill();
+
+    ctx->PopState();
 }
 
 // V2.1 FIX: Battery title at top with reserved space, bolt + percent visible
