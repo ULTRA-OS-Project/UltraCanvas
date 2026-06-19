@@ -2,7 +2,7 @@
 // PDF viewer demo for the UltraCanvas demo app: loads a bundled sample document
 // into an UltraCanvasPDFView with a navigation / zoom / search toolbar.
 // Programmer's guide: Docs/UltraCanvas/UltraCanvasPDFExamples.md
-// Version: 1.3.0
+// Version: 1.4.0
 // Last Modified: 2026-06-19
 // Author: UltraCanvas Framework
 
@@ -39,6 +39,15 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
     title->SetTextColor(Color(50, 50, 150, 255));
     title->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     root->AddChild(title);
+
+    // ----- Attribution / info line -----
+    auto info = std::make_shared<UltraCanvasLabel>("PDFInfo", 0, 0, 0, 18);
+    info->SetText("UltraCanvas support for PDF files is based on the MuPDF "
+                  "library \xE2\x80\x94 https://mupdf.com/");
+    info->SetFontSize(11);
+    info->SetTextColor(Color(110, 110, 110, 255));
+    info->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    root->AddChild(info);
 
     // ----- The viewer (created first so the toolbar can capture it) -----
     auto view = CreatePDFView("DemoPDFView", 0, 0, 0, 0);
