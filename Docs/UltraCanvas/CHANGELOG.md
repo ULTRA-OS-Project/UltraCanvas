@@ -1,3 +1,8 @@
+#### 2026-06-19 *0.2.14*
+- Merge "PDF Text demo page layout" fix
+- Merge heatmap implementation
+- Merge "Shader graphics for demo" (more shader examples)
+
 #### 2026-06-18 *0.2.13*
 - Fix the Gauge element's linear/progress "rounded bar" rendering at low values. `RenderLinearBar` drew the value fill with a corner radius of half the bar's thickness regardless of the fill length. `FillRoundedRectangle` does not clamp the radius, so once the fill became shorter than the bar's thickness (roughly under 10% on a wide bar) the four corner arcs overlapped and collapsed the fill into a perfect circle. The radius is now clamped to half of the fill's smaller dimension, so short fills render as a proper pill that stays inside the track.
 
