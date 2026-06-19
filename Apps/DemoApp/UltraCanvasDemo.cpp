@@ -1196,31 +1196,31 @@ namespace UltraCanvas {
         auto modulesBuilder = DemoCategoryBuilder(this, DemoCategory::Modules);
         modulesBuilder.AddItem("audiofx", "Audio FX", "Audio FX",
                                ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/AudioFX/README.md")); });
+                               [this]() { return CreateModuleDocScreen("Docs/Modules/AudioFX"); });
         modulesBuilder.AddItem("fileloader", "File Loader", "File Loader",
                                ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/FileLoader/README.md")); });
+                               [this]() { return CreateModuleDocScreen("Docs/Modules/FileLoader"); });
         modulesBuilder.AddItem("iodevicemanager", "IODeviceManager support", "IODeviceManager support",
                                ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/IODeviceManager/README.md")); });
+                               [this]() { return CreateModuleDocScreen("Docs/Modules/IODeviceManager"); });
         modulesBuilder.AddItem("pixelfx", "Pixel FX", "Pixel FX",
                                ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/PixelFX/README.md")); });
+                               [this]() { return CreateModuleDocScreen("Docs/Modules/PixelFX"); });
         modulesBuilder.AddItem("smarthome", "Smart Home module", "UltraCanvas Smart Home Module",
                                ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/Smarthome/README.md")); });
+                               [this]() { return CreateModuleDocScreen("Docs/Modules/Smarthome"); });
         modulesBuilder.AddItem("ultraai", "Ultra AI", "Ultra AI Module",
                                ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/UltraAI/README.md")); });
+                               [this]() { return CreateModuleDocScreen("Docs/Modules/UltraAI"); });
         modulesBuilder.AddItem("ultranet", "Ultra Net", "Ultra Net Module",
                                ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/UltraNet/README.md")); });
+                               [this]() { return CreateModuleDocScreen("Docs/Modules/UltraNet"); });
         modulesBuilder.AddItem("videofx", "VideoFX", "VideoFX Module",
                                ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/VideoFX/README.md")); });
+                               [this]() { return CreateModuleDocScreen("Docs/Modules/VideoFX"); });
         modulesBuilder.AddItem("virtualfs", "VirtualFS", "VirtualFS Module",
                                ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/VirtualFS/README.md")); });
+                               [this]() { return CreateModuleDocScreen("Docs/Modules/VirtualFS"); });
 //        modulesBuilder.AddItem("gpio", "GPIO support", "GPIO support",
 //                             ImplementationStatus::PartiallyImplemented,
 //                             [this]() { return CreatePartiallyImplementedExamples("## GPIO support"); });

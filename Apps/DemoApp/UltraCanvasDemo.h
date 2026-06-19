@@ -306,6 +306,13 @@ namespace UltraCanvas {
 
         std::shared_ptr<UltraCanvasUIElement> CreateFileLoaderExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateMarkdownDocScreen(const std::string& filename);
+        // Composite module documentation screen: short intro (Markdown) on top, an
+        // optional rendered SVG module diagram in the middle, and the full README
+        // (Markdown) scrolling below. moduleDir is a folder under the resources dir
+        // (e.g. "Docs/Modules/UltraAI") that may contain intro.md, diagram.svg and
+        // README.md. Missing intro.md / diagram.svg are skipped gracefully, so the
+        // screen degrades to a plain README view until those assets are added.
+        std::shared_ptr<UltraCanvasUIElement> CreateModuleDocScreen(const std::string& moduleDir);
         std::shared_ptr<UltraCanvasUIElement> CreateBarcodeExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateQRCodeExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateGPIOExamples();

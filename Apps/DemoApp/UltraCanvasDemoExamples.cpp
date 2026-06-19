@@ -263,6 +263,73 @@ namespace UltraCanvas {
         return text;
     }
 
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModuleDocScreen(const std::string& moduleDir) {
+        const std::string base   = NormalizePath(GetResourcesDir() + moduleDir + "/");
+        const std::string introPath   = base + "intro.md";
+        const std::string svgPath      = base + "diagram.svg";
+        const std::string readmePath = base + "README.md";
+
+        // Root is a vertical stack: intro (top) -> diagram (middle) -> docs (fills).
+        auto root = std::make_shared<UltraCanvasContainer>("ModuleDocScreen");
+        root->size.width  = CSSLayout::Dimension::Pct(100);
+        root->size.height = CSSLayout::Dimension::Pct(100);
+        root->layout.SetFlexColumn();
+
+        // 1) Short intro (Markdown). Skipped when intro.md is missing/empty so the
+        //    screen degrades to a plain README view.
+        std::string introText = LoadFile(introPath);
+        if (introText.find_first_not_of(" \t\r\n") != std::string::npos) {
+            auto intro = std::make_shared<UltraCanvasTextArea>("ModuleIntro");
+            intro->size.width  = CSSLayout::Dimension::Pct(100);
+            intro->size.height = CSSLayout::Dimension::Px(170);
+            intro->SetText(introText);
+            intro->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
+            intro->SetReadOnly(true);
+            intro->SetWordWrap(true);
+            intro->SetCursorPosition(LineColumnIndex::INVALID);
+            intro->SetPadding(0, 5, 0, 7);
+            // Fixed band at the top: don't grow or shrink.
+            intro->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            root->AddChild(intro);
+        }
+
+        // 2) Rendered SVG module diagram, centered. Only added when the file loads,
+        //    so a not-yet-uploaded diagram.svg simply leaves no empty box behind.
+        auto svg = std::make_shared<UltraCanvasImageElement>("ModuleDiagram", 0, 0, 820, 300);
+        if (svg->LoadFromFile(svgPath)) {
+            svg->SetFitMode(ImageFitMode::Contain);   // preserve the diagram's aspect ratio
+            auto diagramBox = std::make_shared<UltraCanvasContainer>("ModuleDiagramBox");
+            diagramBox->size.width  = CSSLayout::Dimension::Pct(100);
+            diagramBox->size.height = CSSLayout::Dimension::Px(320);
+            diagramBox->SetBackgroundColor(Color(250, 250, 250, 255));
+            diagramBox->layout.SetFlexRow();
+            diagramBox->layout.SetFlexJustifyContent(CSSLayout::JustifyContent::Center);
+            diagramBox->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+            diagramBox->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            diagramBox->AddChild(svg);
+            root->AddChild(diagramBox);
+        } else {
+            debugOutput << "Module diagram not loaded (" << svgPath
+                        << "): " << svg->GetLastError() << std::endl;
+        }
+
+        // 3) Full documentation (existing behaviour): fills the remaining height and
+        //    scrolls internally, exactly as the plain markdown screen does today.
+        auto docs = std::make_shared<UltraCanvasTextArea>("ModuleDocs");
+        docs->size.width  = CSSLayout::Dimension::Pct(100);
+        docs->size.height = CSSLayout::Dimension::Pct(100);
+        docs->SetText(LoadFile(readmePath));
+        docs->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
+        docs->SetReadOnly(true);
+        docs->SetWordWrap(true);
+        docs->SetCursorPosition(LineColumnIndex::INVALID);
+        docs->SetPadding(0, 5, 0, 7);
+        docs->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        root->AddChild(docs);
+
+        return root;
+    }
+
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGPIOExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("GPIOExamples", 0, 0, 1020, 780);
 
