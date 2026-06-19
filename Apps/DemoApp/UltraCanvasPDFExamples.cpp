@@ -2,7 +2,7 @@
 // PDF viewer demo for the UltraCanvas demo app: loads a bundled sample document
 // into an UltraCanvasPDFView with a navigation / zoom / search toolbar.
 // Programmer's guide: Docs/UltraCanvas/UltraCanvasPDFExamples.md
-// Version: 1.4.0
+// Version: 1.5.0
 // Last Modified: 2026-06-19
 // Author: UltraCanvas Framework
 
@@ -245,6 +245,21 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
                                     : "Nothing selected to copy");
         }
     });
+
+    // Toggle thumbnail page-number style (caption beneath <-> big overlay).
+    auto numBtn = CreateButton("PDFThumbNum", 0, 0, 100, 30, "#: Under");
+    numBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    std::weak_ptr<UltraCanvasButton> numWeak = numBtn;
+    numBtn->onClick = [viewWeak, numWeak]() {
+        auto v = viewWeak.lock();
+        auto b = numWeak.lock();
+        if (!v || !b) return;
+        using TNS = UltraCanvasPDFView::ThumbnailNumberStyle;
+        const bool toOverlay = v->GetThumbnailNumberStyle() == TNS::Caption;
+        v->SetThumbnailNumberStyle(toOverlay ? TNS::Overlay : TNS::Caption);
+        b->SetText(toOverlay ? "#: On Page" : "#: Under");
+    };
+    toolbar->AddChild(numBtn);
 
     pageLabel->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
     pageLabel->layoutItem.SetFlexGrow(1).SetFlexShrink(0);

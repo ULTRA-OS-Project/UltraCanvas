@@ -1,6 +1,6 @@
 // Plugins/Documents/UltraCanvasPDFView.cpp
 // UI element rendering a PDF document via the IPDFDocument backend.
-// Version: 1.4.0
+// Version: 1.5.0
 // Last Modified: 2026-06-19
 // Author: UltraCanvas Framework
 
@@ -452,6 +452,12 @@ void UltraCanvasPDFView::SetShowThumbnailStrip(bool show) {
     Repaint();
 }
 
+void UltraCanvasPDFView::SetThumbnailNumberStyle(ThumbnailNumberStyle s) {
+    if (s == thumbNumberStyle_) return;
+    thumbNumberStyle_ = s;
+    Repaint();   // overlay is drawn on top of cached thumbnails; no cache wipe
+}
+
 void UltraCanvasPDFView::SetStyle(const PDFViewStyle& s) {
     style_ = s;
     backgroundColor = style_.background;
@@ -712,10 +718,20 @@ void UltraCanvasPDFView::DrawThumbStrip(IRenderContext* ctx,
         ctx->SetStrokeWidth(active ? 2.0 : 1.0);
         ctx->DrawRectangle(slot);
 
-        // Page number label
-        ctx->SetFillPaint(style_.thumbLabelColor);
-        ctx->DrawText(std::to_string(p),
-                      Point2Df(slot.x + 4, slot.y + slot.height + 12));
+        // Page number — either a small caption beneath, or a large translucent
+        // number overlaid on the page.
+        const std::string num = std::to_string(p);
+        if (thumbNumberStyle_ == ThumbnailNumberStyle::Overlay) {
+            const float fontPx = std::max(
+                8.0f, style_.thumbHeight * style_.thumbOverlayNumberHeight);
+            ctx->SetFontSize(fontPx);
+            ctx->SetFillPaint(style_.thumbOverlayNumberColor);
+            ctx->DrawText(num, ctx->CalculateCenteredTextPosition(num, slot));
+            ctx->SetFontSize(11.0f);   // restore for the next slot's measuring
+        } else {
+            ctx->SetFillPaint(style_.thumbLabelColor);
+            ctx->DrawText(num, Point2Df(slot.x + 4, slot.y + slot.height + 12));
+        }
 
         y += style_.thumbHeight + style_.thumbSpacing + 16;
     }

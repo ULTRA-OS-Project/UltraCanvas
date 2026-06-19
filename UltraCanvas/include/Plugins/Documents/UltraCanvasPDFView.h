@@ -1,7 +1,7 @@
 // include/Plugins/Documents/UltraCanvasPDFView.h
 // UI element that displays a PDF document with a thumbnail strip,
 // scrollable page render, and search-hit overlay.
-// Version: 1.4.0
+// Version: 1.5.0
 // Last Modified: 2026-06-19
 // Author: UltraCanvas Framework
 #pragma once
@@ -31,6 +31,9 @@ struct PDFViewStyle {
     Color thumbBorder      = Color(80, 80, 80, 255);
     Color thumbBorderActive = Color(70, 140, 220, 255);
     Color thumbLabelColor  = Color(200, 200, 200, 255);
+    // Large translucent page number drawn over each thumbnail (Overlay style).
+    Color thumbOverlayNumberColor = Color(20, 20, 20, 90);
+    float thumbOverlayNumberHeight = 0.30f;   // fraction of thumb height
     Color hitFill          = Color(255, 235, 59, 120);  // translucent yellow
     Color hitFillActive    = Color(255, 152, 0,   180);
     Color selectionFill    = Color(70, 130, 220, 90);   // text selection overlay
@@ -129,6 +132,13 @@ public:
     void SetShowThumbnailStrip(bool show);
     bool GetShowThumbnailStrip() const { return showThumbs_; }
 
+    // How the page number is shown on each thumbnail:
+    //   Caption  - small label beneath the thumbnail (default)
+    //   Overlay  - large translucent number centred over the page
+    enum class ThumbnailNumberStyle { Caption, Overlay };
+    void SetThumbnailNumberStyle(ThumbnailNumberStyle s);
+    ThumbnailNumberStyle GetThumbnailNumberStyle() const { return thumbNumberStyle_; }
+
     // ----- Style -----
     void SetStyle(const PDFViewStyle& s);
     const PDFViewStyle& GetStyle() const { return style_; }
@@ -215,6 +225,7 @@ private:
     int     thumbScroll_ = 0;
 
     bool    showThumbs_  = true;
+    ThumbnailNumberStyle thumbNumberStyle_ = ThumbnailNumberStyle::Caption;
 
     std::string                                            query_;
     std::vector<PDFTextRun>                                hits_;

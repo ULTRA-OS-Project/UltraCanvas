@@ -202,13 +202,25 @@ view->ExportTextToFile("/tmp/page.txt", /*selectionOnly=*/true);
 void SetShowThumbnailStrip(bool show);
 bool GetShowThumbnailStrip() const;
 
+// How the page number appears on each thumbnail.
+enum class ThumbnailNumberStyle { Caption, Overlay };
+void SetThumbnailNumberStyle(ThumbnailNumberStyle s);   // default: Caption
+ThumbnailNumberStyle GetThumbnailNumberStyle() const;
+
 void SetStyle(const PDFViewStyle& s);
 const PDFViewStyle& GetStyle() const;
 ```
 
+`ThumbnailNumberStyle::Caption` draws a small label beneath each thumbnail (the
+default); `Overlay` draws a large translucent page number centred over the page.
+The overlay's size and colour come from `PDFViewStyle::thumbOverlayNumberHeight`
+(a fraction of the thumbnail height, default `0.30`) and
+`thumbOverlayNumberColor`.
+
 `PDFViewStyle` exposes colors (background, page, shadow, thumb strip/border,
-search-hit fill, scrollbar) and metrics (`thumbStripWidth`, `thumbHeight`,
-`thumbSpacing`, `pageMargin`, `pageShadowSize`, `scrollbarWidth`, `defaultDpi`).
+search-hit fill, selection fill, thumbnail overlay number, scrollbar) and
+metrics (`thumbStripWidth`, `thumbHeight`, `thumbSpacing`, `pageMargin`,
+`pageShadowSize`, `scrollbarWidth`, `defaultDpi`, `thumbOverlayNumberHeight`).
 
 ### Editing passthroughs
 
