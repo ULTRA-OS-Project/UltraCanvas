@@ -140,6 +140,9 @@ make
     how local / parent / window frames work, the rules for drawing and
     hit‑testing in custom elements, and a "don't do" list (e.g. avoid
     `GetBounds()` in `Render()`).
+-   [PDF Element Guide](UltraCanvasPDFExamples.md) - the `UltraCanvasPDFView`
+    viewer widget and the headless `IPDFDocument` engine (rendering, search,
+    text/image extraction, page ops, editing), with examples from the PDF demo.
 -   [Bitmap Handling Architecture](BitmapHandlingArchitecture.md)
 
 ----------

@@ -1,6 +1,7 @@
 // Apps/DemoApp/UltraCanvasPDFExamples.cpp
 // PDF viewer demo for the UltraCanvas demo app: loads a bundled sample document
 // into an UltraCanvasPDFView with a navigation / zoom / search toolbar.
+// Programmer's guide: Docs/UltraCanvas/UltraCanvasPDFExamples.md
 // Version: 1.1.0
 // Last Modified: 2026-06-19
 // Author: UltraCanvas Framework
