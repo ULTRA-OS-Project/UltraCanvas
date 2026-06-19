@@ -1,0 +1,3 @@
+# PixelFX
+
+The professional bitmap engine for UltraCanvas, with 300+ operations across 14 categories. Filter, transform, enhance, composite, and analyze images of any size, including color-space conversion, morphology, frequency-domain work, and artistic effects. A streaming architecture processes multi-gigabyte images with minimal memory, and the same API runs on every platform. Built on libvips, supporting PNG, JPEG, WebP, AVIF, HEIC, TIFF, GIF, RAW, and more.

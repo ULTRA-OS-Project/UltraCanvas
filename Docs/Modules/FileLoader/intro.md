@@ -1,0 +1,3 @@
+# FileLoader
+
+The unified one-stop loader for images, vector graphics, 3D models, audio, video, text, and spreadsheets. Instead of juggling separate libraries, programmers call one consistent interface that reuses each file plug-in's own save and load logic. Loading and saving stay simple and predictable across formats, and a virus check runs automatically every time a file is loaded, keeping applications safe without any extra code.
