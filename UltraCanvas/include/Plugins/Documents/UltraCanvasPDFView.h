@@ -1,7 +1,7 @@
 // include/Plugins/Documents/UltraCanvasPDFView.h
 // UI element that displays a PDF document with a thumbnail strip,
 // scrollable page render, and search-hit overlay.
-// Version: 1.3.0
+// Version: 1.4.0
 // Last Modified: 2026-06-19
 // Author: UltraCanvas Framework
 #pragma once
@@ -108,13 +108,14 @@ public:
 
     // ----- Text selection & export -----
     // Left-drag behaviour: Pan (default, scrolls the page) or SelectText
-    // (marquee-selects the text lines under the drag).
+    // (character-level selection from the caret under the drag start to the
+    // caret under the drag end).
     enum class MouseMode { Pan, SelectText };
     void      SetMouseMode(MouseMode m);
     MouseMode GetMouseMode() const { return mouseMode_; }
 
     bool        HasTextSelection() const { return hasSelection_; }
-    // Selected text (lines that intersect the selection), joined by '\n'.
+    // Selected text; a newline is inserted between characters on different lines.
     std::string GetSelectedText();
     void        ClearTextSelection();
     void        SelectAllText();            // selects all text on the current page
@@ -180,9 +181,10 @@ private:
     void   FireActiveHitChanged();
     void   FireSelectionChanged();
     // Text-selection helpers (page units == PDF user units, top-left origin).
-    void    EnsurePageRuns();                                  // cache lines of current page
+    void    EnsurePageChars();                                 // cache chars+lines of current page
     bool    LocalToPage(const Point2Di& local, Point2Df& outPage) const;
-    Rect2Df SelectionRectPage() const;                         // normalized, page units
+    // Caret position (0..N) nearest to a point in page units.
+    int     CaretAtPage(const Point2Df& pagePt) const;
     void    PromptExportText(bool selectionOnly);              // save-dialog + write
     // Effective scale (1.0 == actual size) that fits the page into contentW/H.
     // widthOnly fits to width; otherwise fits the whole page.
@@ -224,15 +226,20 @@ private:
     // Held while the right-click context menu popup is open.
     std::shared_ptr<UltraCanvasMenu>                       imageMenu_;
 
-    // ----- Text selection -----
-    MouseMode mouseMode_   = MouseMode::Pan;
-    bool      selecting_   = false;        // a drag-select is in progress
+    // ----- Text selection (caret-level) -----
+    // A run of characters on one line; [first, last] are inclusive indices into
+    // pageChars_, and [y0, y1] is the line's vertical extent in page units.
+    struct CharLine { int first; int last; float y0; float y1; };
+
+    MouseMode mouseMode_    = MouseMode::Pan;
+    bool      selecting_    = false;       // a drag-select is in progress
     bool      hasSelection_ = false;
-    int       selPage_     = 0;            // page the selection belongs to
-    Point2Df  selAnchorPage_{};            // drag start, in PDF user units
-    Point2Df  selCurrentPage_{};           // drag current, in PDF user units
-    std::vector<PDFTextRun> pageRuns_;     // cached line runs for pageRunsPage_
-    int       pageRunsPage_ = -1;
+    int       selPage_      = 0;           // page the selection belongs to
+    int       selAnchorChar_ = 0;          // caret where the drag started (0..N)
+    int       selCaretChar_  = 0;          // caret at the drag's current point
+    std::vector<PDFTextChar> pageChars_;   // cached chars for pageCharsPage_
+    std::vector<CharLine>    pageLines_;   // line ranges over pageChars_
+    int       pageCharsPage_ = -1;
 
     // pageNumber → rendered pixmap. Keyed plain by page; on zoom/size change
     // we wipe the cache.

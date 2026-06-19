@@ -36,9 +36,10 @@ The whole subsystem is gated behind the `ULTRACANVAS_PLUGIN_PDF` build option
   built-in context menu, preserving the original embedded format
   (JPEG/PNG/JPX/…); only images stored with a PDF-internal filter fall back to
   PNG. Also drivable programmatically.
-- **Text selection & export**: switch to select mode, drag to marquee-select
-  text lines, then copy (Ctrl+C) or export the selection / whole page to a
-  `.txt` file from the right-click menu. Ctrl+A selects all text on the page.
+- **Text selection & export**: switch to select mode, drag to select text
+  (character-precise, caret to caret), then copy (Ctrl+C) or export the
+  selection / whole page to a `.txt` file from the right-click menu. Ctrl+A
+  selects all text on the page.
 - **Editing** (via the engine): delete / move / insert pages, replace text
   (redact-and-overlay), manage annotations, save.
 - **Callbacks** for page, search, active-hit, zoom, error, and document changes.
@@ -172,12 +173,17 @@ std::string GetCurrentPageText();
 bool        ExportTextToFile(const std::string& path, bool selectionOnly);
 ```
 
-In `SelectText` mode a left-drag marquee-selects the text **lines** that
-intersect the drag (selection is line-granular, since the engine exposes text at
-line level). Selected lines are highlighted; `onSelectionChanged(charCount)`
-fires as the selection changes. The right-click menu offers **Copy**, **Export
-Selected Text…**, **Select All Text**, and **Export Page Text…**; exports go
-through a native save dialog and report via `onTextExported`.
+In `SelectText` mode a left-drag selects text **character by character** — the
+drag start and end map to the nearest caret position, and the characters between
+them are highlighted with a per-line band (like a normal text editor).
+`onSelectionChanged(charCount)` fires as the selection changes. The right-click
+menu offers **Copy**, **Export Selected Text…**, **Select All Text**, and
+**Export Page Text…**; exports go through a native save dialog and report via
+`onTextExported`.
+
+Caret-level selection is backed by `IPDFDocument::ExtractTextChars(page)`, which
+returns each character with its bounding box (in PDF user units) and a reading-
+order line index.
 
 ```cpp
 view->SetMouseMode(UltraCanvasPDFView::MouseMode::SelectText);
@@ -373,8 +379,9 @@ PDFRenderedPage thumb = doc->RenderThumbnail(1, /*maxDim*/ 180);
 ### Text & search
 
 ```cpp
-std::string             text  = doc->GetPageText(1);
-std::vector<PDFTextRun> runs  = doc->ExtractTextRuns(1);   // text + bbox (PDF user units)
+std::string              text  = doc->GetPageText(1);
+std::vector<PDFTextRun>  runs  = doc->ExtractTextRuns(1);    // one run per line + bbox
+std::vector<PDFTextChar> chars = doc->ExtractTextChars(1);   // per-char + bbox + lineIndex
 
 PDFSearchOptions opts; opts.caseSensitive = false; opts.maxHits = 5000;
 std::vector<PDFTextRun> hits = doc->Search("invoice", opts);

@@ -1,6 +1,6 @@
 // Plugins/Documents/UltraCanvasPDFView.cpp
 // UI element rendering a PDF document via the IPDFDocument backend.
-// Version: 1.3.0
+// Version: 1.4.0
 // Last Modified: 2026-06-19
 // Author: UltraCanvas Framework
 
@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <cstring>
 #include <fstream>
+#include <limits>
 
 namespace UltraCanvas {
 
@@ -58,8 +59,10 @@ void UltraCanvasPDFView::SetDocument(std::unique_ptr<IPDFDocument> doc) {
     effectiveZoom_ = 1.0f;
     selecting_ = false;
     hasSelection_ = false;
-    pageRuns_.clear();
-    pageRunsPage_ = -1;
+    selAnchorChar_ = selCaretChar_ = 0;
+    pageChars_.clear();
+    pageLines_.clear();
+    pageCharsPage_ = -1;
     query_.clear();
     hits_.clear();
     activeHit_ = -1;
@@ -98,10 +101,10 @@ void UltraCanvasPDFView::GoToPage(int page) {
     if (page == currentPage_) return;
     currentPage_ = page;
     scrollX_ = scrollY_ = 0;
-    // The selection and cached text runs belong to the previous page.
+    // The selection and cached text belong to the previous page.
     selecting_ = false;
     hasSelection_ = false;
-    pageRunsPage_ = -1;
+    pageCharsPage_ = -1;
     FireSelectionChanged();
     FirePageChanged();
     Repaint();
@@ -240,11 +243,26 @@ void UltraCanvasPDFView::SetMouseMode(MouseMode m) {
     Repaint();
 }
 
-void UltraCanvasPDFView::EnsurePageRuns() {
-    if (!doc_) { pageRuns_.clear(); pageRunsPage_ = -1; return; }
-    if (pageRunsPage_ == currentPage_) return;
-    pageRuns_ = doc_->ExtractTextRuns(currentPage_);
-    pageRunsPage_ = currentPage_;
+void UltraCanvasPDFView::EnsurePageChars() {
+    if (!doc_) { pageChars_.clear(); pageLines_.clear(); pageCharsPage_ = -1; return; }
+    if (pageCharsPage_ == currentPage_) return;
+    pageChars_ = doc_->ExtractTextChars(currentPage_);
+    pageCharsPage_ = currentPage_;
+
+    // Group consecutive chars by line index, recording each line's index range
+    // and vertical extent for caret hit-testing.
+    pageLines_.clear();
+    for (int i = 0; i < static_cast<int>(pageChars_.size()); ++i) {
+        const PDFTextChar& c = pageChars_[i];
+        if (pageLines_.empty() || pageChars_[pageLines_.back().last].lineIndex != c.lineIndex) {
+            pageLines_.push_back(CharLine{i, i, c.bbox.y, c.bbox.y + c.bbox.height});
+        } else {
+            CharLine& L = pageLines_.back();
+            L.last = i;
+            L.y0 = std::min(L.y0, c.bbox.y);
+            L.y1 = std::max(L.y1, c.bbox.y + c.bbox.height);
+        }
+    }
 }
 
 bool UltraCanvasPDFView::LocalToPage(const Point2Di& local,
@@ -259,24 +277,41 @@ bool UltraCanvasPDFView::LocalToPage(const Point2Di& local,
     return true;
 }
 
-Rect2Df UltraCanvasPDFView::SelectionRectPage() const {
-    const float x0 = std::min(selAnchorPage_.x, selCurrentPage_.x);
-    const float y0 = std::min(selAnchorPage_.y, selCurrentPage_.y);
-    const float x1 = std::max(selAnchorPage_.x, selCurrentPage_.x);
-    const float y1 = std::max(selAnchorPage_.y, selCurrentPage_.y);
-    return Rect2Df(x0, y0, x1 - x0, y1 - y0);
+int UltraCanvasPDFView::CaretAtPage(const Point2Df& p) const {
+    if (pageChars_.empty() || pageLines_.empty()) return 0;
+
+    // Pick the line containing p.y, else the one whose centre is nearest.
+    int li = 0;
+    float bestDist = std::numeric_limits<float>::max();
+    for (int i = 0; i < static_cast<int>(pageLines_.size()); ++i) {
+        const CharLine& L = pageLines_[i];
+        if (p.y >= L.y0 && p.y <= L.y1) { li = i; bestDist = -1.0f; break; }
+        const float d = std::abs(p.y - 0.5f * (L.y0 + L.y1));
+        if (d < bestDist) { bestDist = d; li = i; }
+    }
+
+    // Within the line, the caret falls before the first char whose horizontal
+    // midpoint is to the right of p.x; otherwise after the last char.
+    const CharLine& L = pageLines_[li];
+    for (int i = L.first; i <= L.last; ++i) {
+        const Rect2Df& bb = pageChars_[i].bbox;
+        if (p.x < bb.x + bb.width * 0.5f) return i;
+    }
+    return L.last + 1;
 }
 
 std::string UltraCanvasPDFView::GetSelectedText() {
     if (!hasSelection_ || selPage_ != currentPage_) return {};
-    EnsurePageRuns();
-    const Rect2Df sel = SelectionRectPage();
+    EnsurePageChars();
+    const int n  = static_cast<int>(pageChars_.size());
+    const int lo = std::clamp(std::min(selAnchorChar_, selCaretChar_), 0, n);
+    const int hi = std::clamp(std::max(selAnchorChar_, selCaretChar_), 0, n);
     std::string out;
-    for (const auto& run : pageRuns_) {
-        if (run.text.empty()) continue;
-        if (!run.bbox.Intersects(sel)) continue;
-        if (!out.empty()) out.push_back('\n');
-        out += run.text;
+    for (int i = lo; i < hi; ++i) {
+        if (i > lo && pageChars_[i].lineIndex != pageChars_[i - 1].lineIndex) {
+            out.push_back('\n');
+        }
+        out += pageChars_[i].text;
     }
     return out;
 }
@@ -291,15 +326,13 @@ void UltraCanvasPDFView::ClearTextSelection() {
 
 void UltraCanvasPDFView::SelectAllText() {
     if (!doc_) return;
-    EnsurePageRuns();
-    if (pageRuns_.empty()) return;
-    PDFPageInfo pi = doc_->GetPageInfo(currentPage_);
-    if (pi.widthPt <= 0 || pi.heightPt <= 0) return;
-    selAnchorPage_  = Point2Df(0.0f, 0.0f);
-    selCurrentPage_ = Point2Df(pi.widthPt, pi.heightPt);
-    selPage_ = currentPage_;
-    hasSelection_ = true;
-    selecting_ = false;
+    EnsurePageChars();
+    if (pageChars_.empty()) return;
+    selAnchorChar_ = 0;
+    selCaretChar_  = static_cast<int>(pageChars_.size());
+    selPage_       = currentPage_;
+    hasSelection_  = true;
+    selecting_     = false;
     FireSelectionChanged();
     Repaint();
 }
@@ -769,21 +802,37 @@ void UltraCanvasPDFView::DrawPageWithOverlays(IRenderContext* ctx,
         }
     }
 
-    // Text selection overlay (line runs intersecting the marquee).
+    // Text selection overlay: one highlight band per spanned line, covering the
+    // selected characters on that line.
     if (hasSelection_ && selPage_ == currentPage_) {
-        EnsurePageRuns();
+        EnsurePageChars();
         PDFPageInfo pi = doc_->GetPageInfo(currentPage_);
-        if (pi.widthPt > 0 && pi.heightPt > 0) {
+        if (pi.widthPt > 0 && pi.heightPt > 0 && !pageChars_.empty()) {
             const float sx = pageRect.width  / pi.widthPt;
             const float sy = pageRect.height / pi.heightPt;
-            const Rect2Df sel = SelectionRectPage();
+            const int n  = static_cast<int>(pageChars_.size());
+            const int lo = std::clamp(std::min(selAnchorChar_, selCaretChar_), 0, n);
+            const int hi = std::clamp(std::max(selAnchorChar_, selCaretChar_), 0, n);
             ctx->SetFillPaint(style_.selectionFill);
-            for (const auto& run : pageRuns_) {
-                if (run.text.empty() || !run.bbox.Intersects(sel)) continue;
-                ctx->FillRectangle(Rect2Df(pageRect.x + run.bbox.x * sx,
-                                           pageRect.y + run.bbox.y * sy,
-                                           run.bbox.width  * sx,
-                                           run.bbox.height * sy));
+            int i = lo;
+            while (i < hi) {
+                // Union the bboxes of the run of selected chars sharing a line.
+                const int line = pageChars_[i].lineIndex;
+                Rect2Df band = pageChars_[i].bbox;
+                int j = i + 1;
+                for (; j < hi && pageChars_[j].lineIndex == line; ++j) {
+                    const Rect2Df& b = pageChars_[j].bbox;
+                    const float x0 = std::min(band.x, b.x);
+                    const float y0 = std::min(band.y, b.y);
+                    const float x1 = std::max(band.x + band.width,  b.x + b.width);
+                    const float y1 = std::max(band.y + band.height, b.y + b.height);
+                    band = Rect2Df(x0, y0, x1 - x0, y1 - y0);
+                }
+                ctx->FillRectangle(Rect2Df(pageRect.x + band.x * sx,
+                                           pageRect.y + band.y * sy,
+                                           band.width  * sx,
+                                           band.height * sy));
+                i = j;
             }
         }
     }
@@ -868,10 +917,12 @@ bool UltraCanvasPDFView::OnEvent(const UCEvent& event) {
                                       event.pointer.x >= style_.thumbStripWidth;
                 if (mouseMode_ == MouseMode::SelectText && overPage &&
                     LocalToPage(event.pointer, pg)) {
-                    selecting_      = true;
-                    selAnchorPage_  = pg;
-                    selCurrentPage_ = pg;
-                    selPage_        = currentPage_;
+                    EnsurePageChars();
+                    const int caret = CaretAtPage(pg);
+                    selecting_     = true;
+                    selAnchorChar_ = caret;
+                    selCaretChar_  = caret;
+                    selPage_       = currentPage_;
                     if (hasSelection_) { hasSelection_ = false; FireSelectionChanged(); }
                     Repaint();
                     return true;
@@ -890,10 +941,13 @@ bool UltraCanvasPDFView::OnEvent(const UCEvent& event) {
             if (selecting_) {
                 Point2Df pg;
                 if (LocalToPage(event.pointer, pg)) {
-                    selCurrentPage_ = pg;
-                    hasSelection_   = true;
-                    FireSelectionChanged();
-                    Repaint();
+                    const int caret = CaretAtPage(pg);
+                    if (caret != selCaretChar_) {
+                        selCaretChar_ = caret;
+                        hasSelection_ = (selCaretChar_ != selAnchorChar_);
+                        FireSelectionChanged();
+                        Repaint();
+                    }
                 }
                 return true;
             }

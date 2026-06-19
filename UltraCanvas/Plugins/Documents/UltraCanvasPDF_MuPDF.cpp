@@ -1,7 +1,7 @@
 // Plugins/Documents/UltraCanvasPDF_MuPDF.cpp
 // MuPDF-backed implementation of IPDFDocument.
 // Built when ULTRACANVAS_PLUGIN_PDF and ULTRACANVAS_PDF_MUPDF are both enabled.
-// Version: 1.1.0
+// Version: 1.2.0
 // Last Modified: 2026-06-19
 // Author: UltraCanvas Framework
 
@@ -119,6 +119,7 @@ public:
     // Text
     std::string             GetPageText(int pageNumber) override;
     std::vector<PDFTextRun> ExtractTextRuns(int pageNumber) override;
+    std::vector<PDFTextChar> ExtractTextChars(int pageNumber) override;
     std::vector<PDFTextRun> Search(const std::string& query,
                                    const PDFSearchOptions& opts) override;
 
@@ -587,6 +588,34 @@ std::vector<PDFTextRun> MuPDFDocument::ExtractTextRuns(int pageNumber) {
     }
     fz_drop_stext_page(ctx_, st);
     return runs;
+}
+
+std::vector<PDFTextChar> MuPDFDocument::ExtractTextChars(int pageNumber) {
+    std::lock_guard<std::mutex> lock(mu_);
+    std::vector<PDFTextChar> chars;
+    fz_stext_page* st = MakeStextPage(pageNumber);
+    if (!st) return chars;
+
+    int lineIndex = 0;
+    for (fz_stext_block* b = st->first_block; b; b = b->next) {
+        if (b->type != FZ_STEXT_BLOCK_TEXT) continue;
+        for (fz_stext_line* line = b->u.t.first_line; line; line = line->next) {
+            bool lineHadChars = false;
+            for (fz_stext_char* ch = line->first_char; ch; ch = ch->next) {
+                PDFTextChar pc;
+                pc.pageNumber = pageNumber;
+                pc.lineIndex  = lineIndex;
+                pc.bbox       = ToRect(ch->quad);
+                AppendUtf8(pc.text, ch->c);
+                if (pc.text.empty()) continue;
+                chars.push_back(std::move(pc));
+                lineHadChars = true;
+            }
+            if (lineHadChars) ++lineIndex;
+        }
+    }
+    fz_drop_stext_page(ctx_, st);
+    return chars;
 }
 
 std::vector<PDFTextRun> MuPDFDocument::Search(const std::string& query,
