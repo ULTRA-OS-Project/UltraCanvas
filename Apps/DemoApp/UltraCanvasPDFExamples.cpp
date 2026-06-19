@@ -1,8 +1,8 @@
 // Apps/DemoApp/UltraCanvasPDFExamples.cpp
 // PDF viewer demo for the UltraCanvas demo app: loads a bundled sample document
 // into an UltraCanvasPDFView with a navigation / zoom / search toolbar.
-// Version: 1.0.0
-// Last Modified: 2026-06-17
+// Version: 1.1.0
+// Last Modified: 2026-06-19
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -14,9 +14,11 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasDropdown.h"
 #include "UltraCanvasConfig.h"   // GetResourcesDir
 #include "UltraCanvasUtils.h"    // NormalizePath
 
+#include <cmath>
 #include <string>
 
 namespace UltraCanvas {
@@ -54,7 +56,15 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
                          "to jump, F3 finds next.");
     statusLabel->SetFontSize(11);
     statusLabel->SetTextColor(Color(110, 110, 110, 255));
-    statusLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    statusLabel->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+
+    // Zoom level read-out, shown below the view at the right edge.
+    auto zoomLabel = std::make_shared<UltraCanvasLabel>("PDFZoomLabel", 0, 0, 80, 22);
+    zoomLabel->SetText("100%");
+    zoomLabel->SetFontSize(11);
+    zoomLabel->SetTextColor(Color(110, 110, 110, 255));
+    zoomLabel->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
+    zoomLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
 
     // Wire callbacks before loading so the initial page is reflected immediately.
     view->onPageChanged = [pageLabel](int cur, int total) {
@@ -64,6 +74,16 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
         statusLabel->SetTextColor(Color(110, 110, 110, 255));
         statusLabel->SetText(hits > 0 ? (std::to_string(hits) + " match(es) found")
                                       : "No matches found");
+    };
+    view->onActiveHitChanged = [statusLabel](int active, int total) {
+        if (total > 0) {
+            statusLabel->SetTextColor(Color(110, 110, 110, 255));
+            statusLabel->SetText("Match " + std::to_string(active) + " of " +
+                                 std::to_string(total));
+        }
+    };
+    view->onZoomChanged = [zoomLabel](float percent) {
+        zoomLabel->SetText(std::to_string(static_cast<int>(std::lround(percent))) + "%");
     };
     view->onError = [statusLabel](const std::string& msg) {
         statusLabel->SetTextColor(Color(180, 60, 60, 255));
@@ -99,9 +119,38 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
     addToolbarButton("PDFZoomIn", "Zoom +", 70, [viewWeak]() {
         if (auto v = viewWeak.lock()) v->ZoomIn();
     });
-    addToolbarButton("PDFZoomFit", "Fit", 50, [viewWeak]() {
-        if (auto v = viewWeak.lock()) v->ZoomToFit();
-    });
+
+    // Zoom presets: fit-page / fit-width plus a few fixed levels.
+    auto zoomDropdown = CreateDropdown("PDFZoomMode", 0, 0, 120, 30);
+    zoomDropdown->AddItem("Fit Page");
+    zoomDropdown->AddItem("Fit Width");
+    zoomDropdown->AddItem("Actual Size");
+    zoomDropdown->AddItem("50%");
+    zoomDropdown->AddItem("75%");
+    zoomDropdown->AddItem("100%");
+    zoomDropdown->AddItem("125%");
+    zoomDropdown->AddItem("150%");
+    zoomDropdown->AddItem("200%");
+    zoomDropdown->SetSelectedIndex(0, false);   // Fit Page (the view's default)
+    zoomDropdown->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    zoomDropdown->onSelectionChanged =
+        [viewWeak](int index, const DropdownItem&) {
+            auto v = viewWeak.lock();
+            if (!v) return;
+            switch (index) {
+                case 0: v->ZoomToFit();      break;  // Fit Page
+                case 1: v->ZoomToWidth();    break;  // Fit Width
+                case 2: v->ZoomActualSize(); break;  // 100%
+                case 3: v->SetZoom(0.50f);   break;
+                case 4: v->SetZoom(0.75f);   break;
+                case 5: v->SetZoom(1.00f);   break;
+                case 6: v->SetZoom(1.25f);   break;
+                case 7: v->SetZoom(1.50f);   break;
+                case 8: v->SetZoom(2.00f);   break;
+                default: break;
+            }
+        };
+    toolbar->AddChild(zoomDropdown);
 
     auto searchInput = CreateTextInput("PDFSearch", 0, 0, 180, 30);
     searchInput->SetPlaceholder("Search...");
@@ -116,18 +165,31 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
     searchInput->onEnterPressed = [doSearch](const std::string&) { doSearch(); return true; };
     toolbar->AddChild(searchInput);
 
-    addToolbarButton("PDFFind", "Find", 60, doSearch);
-    addToolbarButton("PDFNextHit", "Next hit", 80, [viewWeak]() {
+    addToolbarButton("PDFSearchBtn", "Search", 70, doSearch);
+    // Up / down arrows step through the search results.
+    addToolbarButton("PDFPrevHit", "\xE2\x96\xB2", 36, [viewWeak]() {  // U+25B2 ▲
+        if (auto v = viewWeak.lock()) v->PrevHit();
+    });
+    addToolbarButton("PDFNextHit", "\xE2\x96\xBC", 36, [viewWeak]() {  // U+25BC ▼
         if (auto v = viewWeak.lock()) v->NextHit();
     });
 
     pageLabel->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
+    pageLabel->layoutItem.SetFlexGrow(1).SetFlexShrink(0);
     toolbar->AddChild(pageLabel);
+
+    // ----- Status row below the view: hint text (left) + zoom level (right) -----
+    auto statusRow = std::make_shared<UltraCanvasContainer>("PDFStatusRow", 0, 0, 0, 22);
+    statusRow->layout.SetFlexRow().SetFlexGap(8)
+                     .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    statusRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    statusRow->AddChild(statusLabel);
+    statusRow->AddChild(zoomLabel);
 
     // ----- Assemble in visual order: title, toolbar, viewer, status -----
     root->AddChild(toolbar);
     root->AddChild(view);
-    root->AddChild(statusLabel);
+    root->AddChild(statusRow);
 
     return root;
 }

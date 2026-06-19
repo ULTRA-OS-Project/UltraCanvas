@@ -1,8 +1,8 @@
 // include/Plugins/Documents/UltraCanvasPDFView.h
 // UI element that displays a PDF document with a thumbnail strip,
 // scrollable page render, and search-hit overlay.
-// Version: 1.0.0
-// Last Modified: 2026-05-18
+// Version: 1.1.0
+// Last Modified: 2026-06-19
 // Author: UltraCanvas Framework
 #pragma once
 #ifndef ULTRACANVAS_PDF_VIEW_H
@@ -66,11 +66,23 @@ public:
     int  GetPageCount()   const;
 
     // ----- Zoom -----
-    void  SetZoom(float zoom);   // 1.0 = fit-page
-    float GetZoom() const { return userZoom_; }
-    void  ZoomIn()   { SetZoom(userZoom_ * 1.25f); }
-    void  ZoomOut()  { SetZoom(userZoom_ / 1.25f); }
-    void  ZoomToFit() { SetZoom(1.0f); }
+    // userZoom_ / effective zoom is an absolute scale where 1.0 == actual size
+    // (100%). Fit modes recompute the effective scale from the viewport on every
+    // render so the page keeps fitting when the view is resized.
+    enum class ZoomMode { FitPage, FitWidth, Custom };
+
+    void     SetZoom(float scale);            // absolute scale; switches to Custom
+    float    GetZoom() const { return effectiveZoom_; }
+    void     SetZoomMode(ZoomMode mode);
+    ZoomMode GetZoomMode() const { return zoomMode_; }
+    void     ZoomIn();
+    void     ZoomOut();
+    void     ZoomToFit()      { SetZoomMode(ZoomMode::FitPage); }   // fit whole page
+    void     ZoomToWidth()    { SetZoomMode(ZoomMode::FitWidth); }  // fit page width
+    void     ZoomActualSize() { SetZoom(1.0f); }                    // 100%
+    // Effective on-screen scale as a percentage of actual size (valid after the
+    // first render; fit modes resolve their scale during rendering).
+    float    GetZoomPercent() const { return effectiveZoom_ * 100.0f; }
 
     // ----- Search -----
     int  SetSearchQuery(const std::string& query);  // returns hit count
@@ -108,6 +120,9 @@ public:
     std::function<void(int hitCount)>                    onSearchResults;
     std::function<void(const std::string&)>              onError;
     std::function<void()>                                onDocumentChanged;
+    std::function<void(float zoomPercent)>               onZoomChanged;
+    // Fired whenever the active search hit changes (1-based index, total hits).
+    std::function<void(int activeHit, int totalHits)>    onActiveHitChanged;
 
     // ----- UltraCanvasUIElement overrides -----
     void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
@@ -123,10 +138,14 @@ private:
     void   InvalidateCaches();
     void   FireDocumentChanged();
     void   FirePageChanged();
+    void   FireZoomChanged();
+    void   FireActiveHitChanged();
+    // Effective scale (1.0 == actual size) that fits the page into contentW/H.
+    // widthOnly fits to width; otherwise fits the whole page.
+    float  ComputeFitScale(int contentW, int contentH, bool widthOnly) const;
     std::shared_ptr<UCPixmapCairo> EnsurePageRendered(int page, float dpi);
     std::shared_ptr<UCPixmapCairo> EnsureThumbnail(int page);
     std::shared_ptr<UCPixmapCairo> MakePixmapFromRGBA(const PDFRenderedPage&);
-    void   RecomputeFitDpi(int contentW, int contentH);
     void   DrawThumbStrip(IRenderContext* ctx, const Rect2Di& strip);
     void   DrawPageWithOverlays(IRenderContext* ctx, const Rect2Di& contentArea);
     int    HitTestThumb(const Point2Di& p) const;  // returns 1-based page or 0
@@ -138,9 +157,10 @@ private:
     std::unique_ptr<IPDFDocument> doc_;
     PDFViewStyle style_;
 
-    int     currentPage_ = 1;
-    float   userZoom_    = 1.0f;
-    float   fitDpi_      = 96.0f;       // dpi that fits current page in viewport
+    int      currentPage_ = 1;
+    ZoomMode zoomMode_     = ZoomMode::FitPage;
+    float    userZoom_     = 1.0f;      // custom scale (used when zoomMode_ == Custom)
+    float    effectiveZoom_ = 1.0f;     // last applied scale (renderDpi / defaultDpi)
     int     scrollX_     = 0;
     int     scrollY_     = 0;
     int     thumbScroll_ = 0;

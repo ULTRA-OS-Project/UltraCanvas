@@ -1,7 +1,7 @@
 // Plugins/Documents/UltraCanvasPDFView.cpp
 // UI element rendering a PDF document via the IPDFDocument backend.
-// Version: 1.0.0
-// Last Modified: 2026-05-18
+// Version: 1.1.0
+// Last Modified: 2026-06-19
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/UltraCanvasPDFView.h"
@@ -31,7 +31,9 @@ void UltraCanvasPDFView::SetDocument(std::unique_ptr<IPDFDocument> doc) {
     doc_ = std::move(doc);
     currentPage_ = 1;
     scrollX_ = scrollY_ = thumbScroll_ = 0;
+    zoomMode_ = ZoomMode::FitPage;
     userZoom_ = 1.0f;
+    effectiveZoom_ = 1.0f;
     query_.clear();
     hits_.clear();
     activeHit_ = -1;
@@ -82,13 +84,26 @@ void UltraCanvasPDFView::GoToLastPage() {
 
 // ===== Zoom =====
 
-void UltraCanvasPDFView::SetZoom(float zoom) {
-    zoom = std::clamp(zoom, 0.1f, 16.0f);
-    if (std::abs(zoom - userZoom_) < 0.001f) return;
-    userZoom_ = zoom;
+void UltraCanvasPDFView::SetZoom(float scale) {
+    scale = std::clamp(scale, 0.1f, 16.0f);
+    zoomMode_ = ZoomMode::Custom;
+    userZoom_ = scale;
     InvalidateCaches();      // page cache keyed by dpi; zoom changes dpi.
     Repaint();
 }
+
+void UltraCanvasPDFView::SetZoomMode(ZoomMode mode) {
+    // Re-selecting Custom is a no-op; fit modes are re-resolved at render time.
+    if (mode == zoomMode_) return;
+    zoomMode_ = mode;
+    InvalidateCaches();
+    Repaint();
+}
+
+// Zoom in/out around the current effective scale so the step is continuous even
+// when leaving a fit mode.
+void UltraCanvasPDFView::ZoomIn()  { SetZoom(effectiveZoom_ * 1.25f); }
+void UltraCanvasPDFView::ZoomOut() { SetZoom(effectiveZoom_ / 1.25f); }
 
 // ===== Search =====
 
@@ -106,6 +121,7 @@ int UltraCanvasPDFView::SetSearchQuery(const std::string& query) {
         }
     }
     if (onSearchResults) onSearchResults(static_cast<int>(hits_.size()));
+    FireActiveHitChanged();
     Repaint();
     return static_cast<int>(hits_.size());
 }
@@ -115,6 +131,7 @@ void UltraCanvasPDFView::ClearSearch() {
     hits_.clear();
     activeHit_ = -1;
     if (onSearchResults) onSearchResults(0);
+    FireActiveHitChanged();
     Repaint();
 }
 
@@ -122,6 +139,7 @@ void UltraCanvasPDFView::NextHit() {
     if (hits_.empty()) return;
     activeHit_ = (activeHit_ + 1) % static_cast<int>(hits_.size());
     GoToPage(hits_[activeHit_].pageNumber);
+    FireActiveHitChanged();
     Repaint();
 }
 
@@ -130,6 +148,7 @@ void UltraCanvasPDFView::PrevHit() {
     activeHit_ = (activeHit_ - 1 + static_cast<int>(hits_.size()))
                % static_cast<int>(hits_.size());
     GoToPage(hits_[activeHit_].pageNumber);
+    FireActiveHitChanged();
     Repaint();
 }
 
@@ -222,18 +241,21 @@ bool UltraCanvasPDFView::DeleteAnnotation(int indexOnCurrentPage) {
 
 // ===== Geometry =====
 
+// Geometry is expressed in element-LOCAL coordinates (origin 0,0 == the view's
+// top-left). The render context is already translated to the element origin
+// before Render() runs, and incoming event.pointer values are mapped to local
+// space, so both rendering and hit-testing share this frame.
 Rect2Di UltraCanvasPDFView::ThumbStripArea() const {
-    Rect2Di b = GetBounds();
-    if (!showThumbs_) return Rect2Di(b.x, b.y, 0, 0);
-    return Rect2Di(b.x, b.y, style_.thumbStripWidth, b.height);
+    if (!showThumbs_) return Rect2Di(0, 0, 0, 0);
+    return Rect2Di(0, 0, style_.thumbStripWidth,
+                   static_cast<int>(GetHeight()));
 }
 
 Rect2Di UltraCanvasPDFView::PageContentArea() const {
-    Rect2Di b = GetBounds();
-    int left = b.x + (showThumbs_ ? style_.thumbStripWidth : 0);
-    return Rect2Di(left, b.y,
-                   b.width - (showThumbs_ ? style_.thumbStripWidth : 0),
-                   b.height);
+    const int left = showThumbs_ ? style_.thumbStripWidth : 0;
+    return Rect2Di(left, 0,
+                   static_cast<int>(GetWidth()) - left,
+                   static_cast<int>(GetHeight()));
 }
 
 Rect2Df UltraCanvasPDFView::ComputePageDrawRect(int pageW, int pageH,
@@ -248,18 +270,19 @@ Rect2Df UltraCanvasPDFView::ComputePageDrawRect(int pageW, int pageH,
     return Rect2Df(x, y, pageW, pageH);
 }
 
-void UltraCanvasPDFView::RecomputeFitDpi(int contentW, int contentH) {
-    if (!doc_) { fitDpi_ = style_.defaultDpi; return; }
+float UltraCanvasPDFView::ComputeFitScale(int contentW, int contentH,
+                                          bool widthOnly) const {
+    if (!doc_) return 1.0f;
     PDFPageInfo pi = doc_->GetPageInfo(currentPage_);
-    if (pi.widthPt <= 0 || pi.heightPt <= 0) {
-        fitDpi_ = style_.defaultDpi;
-        return;
-    }
+    if (pi.widthPt <= 0 || pi.heightPt <= 0) return 1.0f;
     const float availW = std::max(1, contentW - 2 * style_.pageMargin);
     const float availH = std::max(1, contentH - 2 * style_.pageMargin);
-    const float dpiW = (availW * 72.0f) / pi.widthPt;
-    const float dpiH = (availH * 72.0f) / pi.heightPt;
-    fitDpi_ = std::min(dpiW, dpiH);
+    // Page size in pixels at actual size (100% == defaultDpi).
+    const float pageW = pi.widthPt  * style_.defaultDpi / 72.0f;
+    const float pageH = pi.heightPt * style_.defaultDpi / 72.0f;
+    const float scaleW = availW / pageW;
+    const float scaleH = availH / pageH;
+    return widthOnly ? scaleW : std::min(scaleW, scaleH);
 }
 
 // ===== Caching =====
@@ -342,7 +365,10 @@ UltraCanvasPDFView::EnsureThumbnail(int page) {
 
 void UltraCanvasPDFView::Render(IRenderContext* ctx, const Rect2Df& /*dirty*/) {
     if (!IsVisible()) return;
-    const Rect2Di b = GetBounds();
+    // Local frame: the render context is already translated to this element's
+    // top-left, so draw from the origin rather than from GetBounds().
+    const Rect2Di b(0, 0, static_cast<int>(GetWidth()),
+                    static_cast<int>(GetHeight()));
 
     ctx->PushState();
     ctx->SetFillPaint(style_.background);
@@ -425,8 +451,20 @@ void UltraCanvasPDFView::DrawPageWithOverlays(IRenderContext* ctx,
         return;
     }
 
-    RecomputeFitDpi(area.width, area.height);
-    const float renderDpi = std::max(8.0f, fitDpi_ * userZoom_);
+    // Resolve the effective scale for the current zoom mode. Fit modes depend on
+    // the live viewport, so they are recomputed here every frame.
+    float ez;
+    switch (zoomMode_) {
+        case ZoomMode::FitPage:  ez = ComputeFitScale(area.width, area.height, false); break;
+        case ZoomMode::FitWidth: ez = ComputeFitScale(area.width, area.height, true);  break;
+        default:                 ez = userZoom_; break;
+    }
+    ez = std::clamp(ez, 0.1f, 16.0f);
+    if (std::abs(ez - effectiveZoom_) > 0.001f) {
+        effectiveZoom_ = ez;
+        FireZoomChanged();   // only fires on change, so this settles in one frame
+    }
+    const float renderDpi = std::max(8.0f, style_.defaultDpi * ez);
     auto pm = EnsurePageRendered(currentPage_, renderDpi);
     if (!pm || !pm->IsValid()) {
         ctx->SetFillPaint(Color(220, 80, 80, 255));
@@ -472,14 +510,21 @@ void UltraCanvasPDFView::DrawPageWithOverlays(IRenderContext* ctx,
         }
     }
 
-    // Page number indicator
+    // Page number indicator, pinned to the top-right of the page content area.
+    // The pill is sized to the label and the text is centered inside it so the
+    // two always stay aligned (DrawText positions text by its top-left).
+    ctx->SetFontSize(12);
+    const std::string pageStr =
+        std::to_string(currentPage_) + " / " + std::to_string(total);
+    const Size2Di textSz = ctx->GetTextLineDimensions(pageStr);
+    const float padX = 12.0f, badgeH = 24.0f, badgeMargin = 12.0f;
+    const float badgeW = std::max(48.0f, textSz.width + 2 * padX);
+    const Rect2Df badge(area.x + area.width - badgeW - badgeMargin,
+                        area.y + badgeMargin, badgeW, badgeH);
     ctx->SetFillPaint(Color(0, 0, 0, 160));
-    Rect2Df badge(area.x + area.width - 90, area.y + 12, 80, 24);
     ctx->FillRoundedRectangle(badge, 4.0);
     ctx->SetFillPaint(Color(255, 255, 255, 255));
-    ctx->SetFontSize(12);
-    ctx->DrawText(std::to_string(currentPage_) + " / " + std::to_string(total),
-                  Point2Df(badge.x + 16, badge.y + 16));
+    ctx->DrawText(pageStr, ctx->CalculateCenteredTextPosition(pageStr, badge));
 
     ctx->PopState();
 }
@@ -514,10 +559,9 @@ void UltraCanvasPDFView::ScrollThumbsBy(int delta) {
 bool UltraCanvasPDFView::OnEvent(const UCEvent& event) {
     switch (event.type) {
         case UCEventType::MouseWheel: {
-            const Point2Di local(event.pointer.x - GetX(),
-                                 event.pointer.y - GetY());
+            // event.pointer is already in element-local coordinates.
             const bool inThumbs = showThumbs_ &&
-                                  local.x < style_.thumbStripWidth;
+                                  event.pointer.x < style_.thumbStripWidth;
             if (event.ctrl && !inThumbs) {
                 if (event.wheelDelta > 0) ZoomIn(); else ZoomOut();
                 return true;
@@ -596,6 +640,17 @@ void UltraCanvasPDFView::FireDocumentChanged() {
 void UltraCanvasPDFView::FirePageChanged() {
     if (onPageChanged) {
         onPageChanged(currentPage_, doc_ ? doc_->GetPageCount() : 0);
+    }
+}
+
+void UltraCanvasPDFView::FireZoomChanged() {
+    if (onZoomChanged) onZoomChanged(effectiveZoom_ * 100.0f);
+}
+
+void UltraCanvasPDFView::FireActiveHitChanged() {
+    if (onActiveHitChanged) {
+        onActiveHitChanged(activeHit_ >= 0 ? activeHit_ + 1 : 0,
+                           static_cast<int>(hits_.size()));
     }
 }
 
