@@ -330,6 +330,54 @@ namespace UltraCanvas {
         return root;
     }
 
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateUltraOSInfoScreen() {
+        // Overview page shown when the "ULTRA OS modules" category itself is selected.
+        // Mirrors CreateModuleDocScreen but pulls the diagram straight from the shared
+        // media folder (media/diagrams/ULTRA-OS.svg) so the asset is not duplicated.
+        const std::string svgPath    = NormalizePath(GetResourcesDir() + "media/diagrams/ULTRA-OS.svg");
+        const std::string readmePath = NormalizePath(GetResourcesDir() + "Docs/Modules/ULTRA-OS/README.md");
+
+        auto root = std::make_shared<UltraCanvasContainer>("UltraOSInfoScreen");
+        root->size.width  = CSSLayout::Dimension::Pct(100);
+        root->size.height = CSSLayout::Dimension::Pct(100);
+        root->layout.SetFlexColumn();
+
+        // Rendered ULTRA OS overview diagram, centered. Only added when the file
+        // loads, so a missing diagram simply leaves no empty box behind.
+        auto svg = std::make_shared<UltraCanvasImageElement>("UltraOSDiagram", 0, 0, 820, 300);
+        if (svg->LoadFromFile(svgPath)) {
+            svg->SetFitMode(ImageFitMode::Contain);   // preserve the diagram's aspect ratio
+            auto diagramBox = std::make_shared<UltraCanvasContainer>("UltraOSDiagramBox");
+            diagramBox->size.width  = CSSLayout::Dimension::Pct(100);
+            diagramBox->size.height = CSSLayout::Dimension::Px(340);
+            diagramBox->SetBackgroundColor(Color(250, 250, 250, 255));
+            diagramBox->layout.SetFlexRow();
+            diagramBox->layout.SetFlexJustifyContent(CSSLayout::JustifyContent::Center);
+            diagramBox->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+            diagramBox->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            diagramBox->AddChild(svg);
+            root->AddChild(diagramBox);
+        } else {
+            debugOutput << "ULTRA OS diagram not loaded (" << svgPath
+                        << "): " << svg->GetLastError() << std::endl;
+        }
+
+        // Descriptive overview text. Fills the remaining height and scrolls internally.
+        auto docs = std::make_shared<UltraCanvasTextArea>("UltraOSDocs");
+        docs->size.width  = CSSLayout::Dimension::Pct(100);
+        docs->size.height = CSSLayout::Dimension::Pct(100);
+        docs->SetText(LoadFile(readmePath));
+        docs->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
+        docs->SetReadOnly(true);
+        docs->SetWordWrap(true);
+        docs->SetCursorPosition(LineColumnIndex::INVALID);
+        docs->SetPadding(0, 5, 0, 7);
+        docs->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        root->AddChild(docs);
+
+        return root;
+    }
+
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGPIOExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("GPIOExamples", 0, 0, 1020, 780);
 

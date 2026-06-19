@@ -313,6 +313,9 @@ namespace UltraCanvas {
         // README.md. Missing intro.md / diagram.svg are skipped gracefully, so the
         // screen degrades to a plain README view until those assets are added.
         std::shared_ptr<UltraCanvasUIElement> CreateModuleDocScreen(const std::string& moduleDir);
+        // Overview page for the "ULTRA OS modules" category node itself: the ULTRA OS
+        // diagram (media/diagrams/ULTRA-OS.svg) plus the descriptive overview text.
+        std::shared_ptr<UltraCanvasUIElement> CreateUltraOSInfoScreen();
         std::shared_ptr<UltraCanvasUIElement> CreateBarcodeExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateQRCodeExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateGPIOExamples();
