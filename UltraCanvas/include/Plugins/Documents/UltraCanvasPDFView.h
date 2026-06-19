@@ -1,7 +1,7 @@
 // include/Plugins/Documents/UltraCanvasPDFView.h
 // UI element that displays a PDF document with a thumbnail strip,
 // scrollable page render, and search-hit overlay.
-// Version: 1.1.0
+// Version: 1.2.0
 // Last Modified: 2026-06-19
 // Author: UltraCanvas Framework
 #pragma once
@@ -20,6 +20,8 @@
 #include <vector>
 
 namespace UltraCanvas {
+
+class UltraCanvasMenu;   // for the built-in image context menu (popup)
 
 struct PDFViewStyle {
     Color background       = Color(48, 48, 48, 255);
@@ -92,6 +94,16 @@ public:
     void PrevHit();
     const std::string& GetSearchQuery() const { return query_; }
 
+    // ----- Images -----
+    // Images on the current page, in document order (delegates to the engine).
+    std::vector<PDFImageRef> ImagesOnCurrentPage();
+    // Index of the image under a point given in element-LOCAL coordinates, or
+    // -1 if none. Topmost (last-drawn) image wins on overlap.
+    int  ImageIndexAt(const Point2Di& localPt);
+    // Extract image #indexOnPage of the current page to `path`. The engine
+    // encodes extracted images as PNG, so `path` should end in ".png".
+    bool ExtractImageToFile(int indexOnPage, const std::string& path);
+
     // ----- Layout toggles -----
     void SetShowThumbnailStrip(bool show);
     bool GetShowThumbnailStrip() const { return showThumbs_; }
@@ -123,6 +135,8 @@ public:
     std::function<void(float zoomPercent)>               onZoomChanged;
     // Fired whenever the active search hit changes (1-based index, total hits).
     std::function<void(int activeHit, int totalHits)>    onActiveHitChanged;
+    // Fired after the built-in "Extract Image" context-menu action completes.
+    std::function<void(const std::string& path, bool ok)> onImageExtracted;
 
     // ----- UltraCanvasUIElement overrides -----
     void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
@@ -149,6 +163,8 @@ private:
     void   DrawThumbStrip(IRenderContext* ctx, const Rect2Di& strip);
     void   DrawPageWithOverlays(IRenderContext* ctx, const Rect2Di& contentArea);
     int    HitTestThumb(const Point2Di& p) const;  // returns 1-based page or 0
+    // Build + open the right-click context menu for the image at imageIndex.
+    void   ShowImageContextMenu(int imageIndex, const Point2Di& windowPos);
     void   ScrollBy(int deltaX, int deltaY);
     void   ScrollThumbsBy(int delta);
     void   Repaint();
@@ -170,6 +186,12 @@ private:
     std::string                                            query_;
     std::vector<PDFTextRun>                                hits_;
     int                                                    activeHit_ = -1;
+
+    // Page rect (element-local) of the page drawn in the last frame; used to map
+    // a click back to PDF user units for image hit-testing.
+    Rect2Df                                                pageRect_{};
+    // Held while the image context menu popup is open.
+    std::shared_ptr<UltraCanvasMenu>                       imageMenu_;
 
     // pageNumber → rendered pixmap. Keyed plain by page; on zoom/size change
     // we wipe the cache.

@@ -2,7 +2,7 @@
 // PDF viewer demo for the UltraCanvas demo app: loads a bundled sample document
 // into an UltraCanvasPDFView with a navigation / zoom / search toolbar.
 // Programmer's guide: Docs/UltraCanvas/UltraCanvasPDFExamples.md
-// Version: 1.1.0
+// Version: 1.2.0
 // Last Modified: 2026-06-19
 // Author: UltraCanvas Framework
 
@@ -54,7 +54,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
 
     auto statusLabel = std::make_shared<UltraCanvasLabel>("PDFStatusLabel", 0, 0, 0, 22);
     statusLabel->SetText("Mouse-wheel scrolls, Ctrl+wheel zooms, click a thumbnail "
-                         "to jump, F3 finds next.");
+                         "to jump, F3 finds next, right-click an image to extract it.");
     statusLabel->SetFontSize(11);
     statusLabel->SetTextColor(Color(110, 110, 110, 255));
     statusLabel->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
@@ -85,6 +85,12 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
     };
     view->onZoomChanged = [zoomLabel](float percent) {
         zoomLabel->SetText(std::to_string(static_cast<int>(std::lround(percent))) + "%");
+    };
+    view->onImageExtracted = [statusLabel](const std::string& path, bool ok) {
+        statusLabel->SetTextColor(ok ? Color(60, 140, 60, 255)
+                                     : Color(180, 60, 60, 255));
+        statusLabel->SetText(ok ? ("Image extracted to " + path)
+                                : "Failed to extract image");
     };
     view->onError = [statusLabel](const std::string& msg) {
         statusLabel->SetTextColor(Color(180, 60, 60, 255));

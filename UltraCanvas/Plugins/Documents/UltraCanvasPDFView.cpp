@@ -1,6 +1,6 @@
 // Plugins/Documents/UltraCanvasPDFView.cpp
 // UI element rendering a PDF document via the IPDFDocument backend.
-// Version: 1.1.0
+// Version: 1.2.0
 // Last Modified: 2026-06-19
 // Author: UltraCanvas Framework
 
@@ -9,9 +9,12 @@
 #ifdef ULTRACANVAS_PLUGIN_PDF
 
 #include "../libspecific//Cairo/ImageCairo.h"  // UCPixmapCairo
+#include "UltraCanvasMenu.h"                    // built-in image context menu
+#include "UltraCanvasFileLoader.h"             // SaveFileDialog for "Extract Image"
 
 #include <algorithm>
 #include <cstring>
+#include <fstream>
 
 namespace UltraCanvas {
 
@@ -150,6 +153,89 @@ void UltraCanvasPDFView::PrevHit() {
     GoToPage(hits_[activeHit_].pageNumber);
     FireActiveHitChanged();
     Repaint();
+}
+
+// ===== Images =====
+
+std::vector<PDFImageRef> UltraCanvasPDFView::ImagesOnCurrentPage() {
+    if (!doc_) return {};
+    return doc_->ListImages(currentPage_);
+}
+
+int UltraCanvasPDFView::ImageIndexAt(const Point2Di& p) {
+    if (!doc_ || pageRect_.width <= 0 || pageRect_.height <= 0) return -1;
+    PDFPageInfo pi = doc_->GetPageInfo(currentPage_);
+    if (pi.widthPt <= 0 || pi.heightPt <= 0) return -1;
+
+    // Image bboxes are in PDF user units (top-left origin), the same space as
+    // search hits, so they map to the page rect with the same scale factors.
+    const float sx = pageRect_.width  / pi.widthPt;
+    const float sy = pageRect_.height / pi.heightPt;
+
+    auto images = doc_->ListImages(currentPage_);
+    int found = -1;
+    for (int i = 0; i < static_cast<int>(images.size()); ++i) {
+        const Rect2Df& bb = images[i].bboxOnPage;
+        const Rect2Df r(pageRect_.x + bb.x * sx,
+                        pageRect_.y + bb.y * sy,
+                        bb.width  * sx,
+                        bb.height * sy);
+        if (r.Contains(static_cast<float>(p.x), static_cast<float>(p.y))) {
+            found = i;   // keep last match → topmost (drawn last) wins
+        }
+    }
+    return found;
+}
+
+bool UltraCanvasPDFView::ExtractImageToFile(int indexOnPage,
+                                            const std::string& path) {
+    if (!doc_ || path.empty()) return false;
+    auto images = doc_->ListImages(currentPage_);
+    if (indexOnPage < 0 || indexOnPage >= static_cast<int>(images.size()))
+        return false;
+    std::vector<uint8_t> bytes = doc_->ExtractImageBytes(images[indexOnPage]);
+    if (bytes.empty()) return false;
+
+    std::ofstream f(path, std::ios::binary);
+    if (!f) return false;
+    f.write(reinterpret_cast<const char*>(bytes.data()),
+            static_cast<std::streamsize>(bytes.size()));
+    return f.good();
+}
+
+void UltraCanvasPDFView::ShowImageContextMenu(int imageIndex,
+                                              const Point2Di& windowPos) {
+    auto win = GetWindow();
+    if (!win || imageIndex < 0) return;
+
+    imageMenu_ = std::make_shared<UltraCanvasMenu>("PDFImageContextMenu",
+                                                   0, 0, 220, 0);
+    imageMenu_->SetMenuType(MenuType::PopupMenu);
+
+    auto self = std::static_pointer_cast<UltraCanvasPDFView>(shared_from_this());
+    std::weak_ptr<UltraCanvasPDFView> weakSelf = self;
+    const int page = currentPage_;
+
+    imageMenu_->AddItem(MenuItemData::Action("Extract Image\xE2\x80\xA6",
+        [weakSelf, imageIndex, page, win]() {
+            auto v = weakSelf.lock();
+            if (!v) return;
+            FileDialogOptions opts;
+            opts.SetTitle("Extract Image")
+                .SetDefaultFileName("image_p" + std::to_string(page) + "_" +
+                                    std::to_string(imageIndex + 1) + ".png")
+                .AddFilter("PNG image", "png")
+                .SetParentWindow(win);
+            UltraCanvasFileLoader::SaveFileDialog(opts,
+                [weakSelf, imageIndex](DialogResult res, const std::string& chosen) {
+                    auto v = weakSelf.lock();
+                    if (!v || res != DialogResult::OK || chosen.empty()) return;
+                    const bool ok = v->ExtractImageToFile(imageIndex, chosen);
+                    if (v->onImageExtracted) v->onImageExtracted(chosen, ok);
+                });
+        }));
+
+    imageMenu_->OpenMenu(windowPos, *win, PopupElementSettings());
 }
 
 // ===== Layout toggles =====
@@ -476,6 +562,7 @@ void UltraCanvasPDFView::DrawPageWithOverlays(IRenderContext* ctx,
 
     const Rect2Df pageRect = ComputePageDrawRect(pm->GetWidth(),
                                                  pm->GetHeight(), area);
+    pageRect_ = pageRect;   // remembered for image hit-testing in OnEvent
 
     // Drop shadow
     ctx->SetFillPaint(style_.pageShadowColor);
@@ -575,6 +662,15 @@ bool UltraCanvasPDFView::OnEvent(const UCEvent& event) {
         }
 
         case UCEventType::MouseDown: {
+            if (event.button == UCMouseButton::Right) {
+                // Right-click over an image offers to extract it.
+                int img = ImageIndexAt(event.pointer);
+                if (img >= 0) {
+                    ShowImageContextMenu(img, event.pointerWindow);
+                    return true;
+                }
+                break;
+            }
             if (event.button == UCMouseButton::Left) {
                 int p = HitTestThumb(event.pointer);
                 if (p > 0) { GoToPage(p); return true; }

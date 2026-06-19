@@ -32,6 +32,8 @@ The whole subsystem is gated behind the `ULTRACANVAS_PLUGIN_PDF` build option
 - **Search**: case/whole-word/page-range options, hit overlays, active-hit
   highlight, next/prev stepping (F3 / Shift+F3).
 - **Interaction**: mouse-wheel scroll, click-drag panning, on-page page badge.
+- **Image extraction**: right-click an image on the page to extract it to a
+  PNG file via a built-in context menu (or drive it programmatically).
 - **Editing** (via the engine): delete / move / insert pages, replace text
   (redact-and-overlay), manage annotations, save.
 - **Callbacks** for page, search, active-hit, zoom, error, and document changes.
@@ -119,6 +121,34 @@ void PrevHit();
 const std::string& GetSearchQuery() const;
 ```
 
+### Images
+
+```cpp
+std::vector<PDFImageRef> ImagesOnCurrentPage();          // engine order
+int  ImageIndexAt(const Point2Di& localPt);             // image under a local point, or -1
+bool ExtractImageToFile(int indexOnPage, const std::string& path);   // writes PNG
+```
+
+Right-clicking an image on the page opens a built-in **Extract Image…** context
+menu that prompts for a path (native save dialog) and writes the image as PNG.
+The result is reported via `onImageExtracted`. The same can be done
+programmatically with the calls above (extracted images are always PNG, so use a
+`.png` path).
+
+```cpp
+view->onImageExtracted = [](const std::string& path, bool ok) {
+    // ok == true → image written to `path`
+};
+
+// Headless equivalent (no UI):
+if (view->ImageIndexAt(localPoint) is >= 0) /* … */;
+view->ExtractImageToFile(0, "/tmp/page-image.png");
+```
+
+`event.pointer` passed to `ImageIndexAt` is in element-local coordinates (see the
+Coordinate System guide). Hit-testing uses the page rect from the last render,
+so it reflects the current zoom/scroll.
+
 ### Layout & style
 
 ```cpp
@@ -153,10 +183,11 @@ bool DeleteAnnotation(int indexOnCurrentPage);
 ```cpp
 std::function<void(int currentPage, int totalPages)> onPageChanged;
 std::function<void(int hitCount)>                    onSearchResults;
-std::function<void(int activeHit, int totalHits)>    onActiveHitChanged;
-std::function<void(float zoomPercent)>               onZoomChanged;
-std::function<void(const std::string&)>              onError;
-std::function<void()>                                onDocumentChanged;
+std::function<void(int activeHit, int totalHits)>     onActiveHitChanged;
+std::function<void(float zoomPercent)>                onZoomChanged;
+std::function<void(const std::string& path, bool ok)> onImageExtracted;
+std::function<void(const std::string&)>               onError;
+std::function<void()>                                 onDocumentChanged;
 ```
 
 Wire callbacks **before** `LoadFromPath` so the initial page/zoom are reflected
@@ -170,6 +201,7 @@ immediately.
 | Ctrl + wheel | Zoom in / out |
 | Click-drag on page | Pan |
 | Click thumbnail | Jump to that page |
+| Right-click an image | Open the **Extract Image…** context menu |
 | PageUp/Down, ↑/↓ | Prev / next page |
 | Home / End | First / last page |
 | F3 / Shift+F3 | Next / previous search hit |
