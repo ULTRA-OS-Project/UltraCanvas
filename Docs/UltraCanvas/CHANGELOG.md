@@ -1,3 +1,6 @@
+#### 2026-06-19 *0.2.15*
+- Added intro description for different Modules
+
 #### 2026-06-19 *0.2.14*
 - Merge "PDF Text demo page layout" fix
 - Merge heatmap implementation
