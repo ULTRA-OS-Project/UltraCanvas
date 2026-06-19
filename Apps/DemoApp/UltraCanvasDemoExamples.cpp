@@ -332,9 +332,10 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateUltraOSInfoScreen() {
         // Overview page shown when the "ULTRA OS modules" category itself is selected.
-        // Mirrors CreateModuleDocScreen but pulls the diagram straight from the shared
-        // media folder (media/diagrams/ULTRA-OS.svg) so the asset is not duplicated.
-        const std::string svgPath    = NormalizePath(GetResourcesDir() + "media/diagrams/ULTRA-OS.svg");
+        // The whole page is a single Markdown view: the descriptive overview text with
+        // the ULTRA-OS.svg diagram embedded at the bottom via a Markdown image tag.
+        // The relative image path (media/diagrams/ULTRA-OS.svg) is resolved against the
+        // markdown base directory set below, so the shared asset is not duplicated.
         const std::string readmePath = NormalizePath(GetResourcesDir() + "Docs/Modules/ULTRA-OS/README.md");
 
         auto root = std::make_shared<UltraCanvasContainer>("UltraOSInfoScreen");
@@ -342,30 +343,12 @@ namespace UltraCanvas {
         root->size.height = CSSLayout::Dimension::Pct(100);
         root->layout.SetFlexColumn();
 
-        // Rendered ULTRA OS overview diagram, centered. Only added when the file
-        // loads, so a missing diagram simply leaves no empty box behind.
-        auto svg = std::make_shared<UltraCanvasImageElement>("UltraOSDiagram", 0, 0, 820, 300);
-        if (svg->LoadFromFile(svgPath)) {
-            svg->SetFitMode(ImageFitMode::Contain);   // preserve the diagram's aspect ratio
-            auto diagramBox = std::make_shared<UltraCanvasContainer>("UltraOSDiagramBox");
-            diagramBox->size.width  = CSSLayout::Dimension::Pct(100);
-            diagramBox->size.height = CSSLayout::Dimension::Px(340);
-            diagramBox->SetBackgroundColor(Color(250, 250, 250, 255));
-            diagramBox->layout.SetFlexRow();
-            diagramBox->layout.SetFlexJustifyContent(CSSLayout::JustifyContent::Center);
-            diagramBox->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
-            diagramBox->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-            diagramBox->AddChild(svg);
-            root->AddChild(diagramBox);
-        } else {
-            debugOutput << "ULTRA OS diagram not loaded (" << svgPath
-                        << "): " << svg->GetLastError() << std::endl;
-        }
-
-        // Descriptive overview text. Fills the remaining height and scrolls internally.
         auto docs = std::make_shared<UltraCanvasTextArea>("UltraOSDocs");
         docs->size.width  = CSSLayout::Dimension::Pct(100);
         docs->size.height = CSSLayout::Dimension::Pct(100);
+        // Resolve relative markdown image paths against the resources dir (which holds
+        // media/), so ![ULTRA OS](media/diagrams/ULTRA-OS.svg) renders the diagram.
+        docs->SetMarkdownBaseDirectory(GetResourcesDir());
         docs->SetText(LoadFile(readmePath));
         docs->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
         docs->SetReadOnly(true);

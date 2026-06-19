@@ -16,3 +16,5 @@ for professional-grade performance.
 Besides the technical implementation ULTRA OS focuses also on the ecosystem to
 create a competition to the current mainstream OS that dominate the market. The
 intention is to create new marketplaces for all.
+
+![ULTRA OS](media/diagrams/ULTRA-OS.svg)
