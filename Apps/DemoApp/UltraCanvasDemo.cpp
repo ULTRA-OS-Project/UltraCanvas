@@ -839,7 +839,8 @@ namespace UltraCanvas {
         chartBuilder.AddItem("radarcharts", "Radar Chart", "Radar / spider chart data visualization",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateRadarChartExamples(); },
-                             "DemoApp/UltraCanvasRadarChartExamples.cpp");
+                             "DemoApp/UltraCanvasRadarChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasRadarChartElement.md");
 
         chartBuilder.AddItem("financialcharts", "Candlestick Chart", "Stock market OHLC and candlestick charts",
                              ImplementationStatus::FullyImplemented,
