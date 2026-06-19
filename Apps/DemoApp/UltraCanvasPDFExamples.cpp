@@ -40,14 +40,30 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
     title->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     root->AddChild(title);
 
-    // ----- Attribution / info line -----
+    // ----- Attribution / info line (with a clickable MuPDF link) -----
+    auto infoRow = std::make_shared<UltraCanvasContainer>("PDFInfoRow", 0, 0, 0, 18);
+    infoRow->layout.SetFlexRow().SetFlexGap(4)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    infoRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+
     auto info = std::make_shared<UltraCanvasLabel>("PDFInfo", 0, 0, 0, 18);
     info->SetText("UltraCanvas support for PDF files is based on the MuPDF "
-                  "library \xE2\x80\x94 https://mupdf.com/");
+                  "library \xE2\x80\x94");
     info->SetFontSize(11);
     info->SetTextColor(Color(110, 110, 110, 255));
     info->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    root->AddChild(info);
+    infoRow->AddChild(info);
+
+    auto link = std::make_shared<UltraCanvasLabel>("PDFMuPDFLink", 0, 0, 0, 18);
+    link->SetTextIsMarkup(true);
+    link->SetText("<span color=\"blue\" underline=\"single\">https://mupdf.com/</span>");
+    link->SetFontSize(11);
+    link->SetMouseCursor(UCMouseCursor::Hand);
+    link->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    link->onClick = []() { OpenURL("https://mupdf.com/"); };
+    infoRow->AddChild(link);
+
+    root->AddChild(infoRow);
 
     // ----- The viewer (created first so the toolbar can capture it) -----
     auto view = CreatePDFView("DemoPDFView", 0, 0, 0, 0);
