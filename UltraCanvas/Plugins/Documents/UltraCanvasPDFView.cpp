@@ -18,6 +18,24 @@
 
 namespace UltraCanvas {
 
+namespace {
+// File extension + dialog filter description for an image MIME type. The engine
+// preserves the original format when it can, so the save dialog should offer the
+// matching extension; anything unrecognized defaults to PNG (the fallback).
+struct ImageFormat { const char* ext; const char* desc; };
+ImageFormat FormatForMime(const std::string& mime) {
+    if (mime == "image/jpeg")                return {"jpg",  "JPEG image"};
+    if (mime == "image/jp2")                 return {"jp2",  "JPEG 2000 image"};
+    if (mime == "image/bmp")                 return {"bmp",  "BMP image"};
+    if (mime == "image/gif")                 return {"gif",  "GIF image"};
+    if (mime == "image/tiff")                return {"tiff", "TIFF image"};
+    if (mime == "image/vnd.ms-photo")        return {"jxr",  "JPEG XR image"};
+    if (mime == "image/x-portable-anymap")   return {"pnm",  "PNM image"};
+    if (mime == "image/vnd.adobe.photoshop") return {"psd",  "Photoshop image"};
+    return {"png", "PNG image"};
+}
+} // namespace
+
 // ===== ctor / dtor =====
 
 UltraCanvasPDFView::UltraCanvasPDFView(const std::string& id,
@@ -216,15 +234,23 @@ void UltraCanvasPDFView::ShowImageContextMenu(int imageIndex,
     std::weak_ptr<UltraCanvasPDFView> weakSelf = self;
     const int page = currentPage_;
 
+    // Pick the default extension from the image's actual (preserved) format.
+    auto images = doc_ ? doc_->ListImages(currentPage_) : std::vector<PDFImageRef>{};
+    const std::string mime =
+        (imageIndex < static_cast<int>(images.size())) ? images[imageIndex].mimeType
+                                                       : std::string("image/png");
+    const ImageFormat fmt = FormatForMime(mime);
+    const std::string ext = fmt.ext, desc = fmt.desc;
+
     imageMenu_->AddItem(MenuItemData::Action("Extract Image\xE2\x80\xA6",
-        [weakSelf, imageIndex, page, win]() {
+        [weakSelf, imageIndex, page, win, ext, desc]() {
             auto v = weakSelf.lock();
             if (!v) return;
             FileDialogOptions opts;
             opts.SetTitle("Extract Image")
                 .SetDefaultFileName("image_p" + std::to_string(page) + "_" +
-                                    std::to_string(imageIndex + 1) + ".png")
-                .AddFilter("PNG image", "png")
+                                    std::to_string(imageIndex + 1) + "." + ext)
+                .AddFilter(desc, ext)
                 .SetParentWindow(win);
             UltraCanvasFileLoader::SaveFileDialog(opts,
                 [weakSelf, imageIndex](DialogResult res, const std::string& chosen) {

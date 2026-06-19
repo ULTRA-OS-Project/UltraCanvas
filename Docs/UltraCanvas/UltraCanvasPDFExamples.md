@@ -32,8 +32,10 @@ The whole subsystem is gated behind the `ULTRACANVAS_PLUGIN_PDF` build option
 - **Search**: case/whole-word/page-range options, hit overlays, active-hit
   highlight, next/prev stepping (F3 / Shift+F3).
 - **Interaction**: mouse-wheel scroll, click-drag panning, on-page page badge.
-- **Image extraction**: right-click an image on the page to extract it to a
-  PNG file via a built-in context menu (or drive it programmatically).
+- **Image extraction**: right-click an image on the page to save it via a
+  built-in context menu, preserving the original embedded format
+  (JPEG/PNG/JPX/…); only images stored with a PDF-internal filter fall back to
+  PNG. Also drivable programmatically.
 - **Editing** (via the engine): delete / move / insert pages, replace text
   (redact-and-overlay), manage annotations, save.
 - **Callbacks** for page, search, active-hit, zoom, error, and document changes.
@@ -126,14 +128,16 @@ const std::string& GetSearchQuery() const;
 ```cpp
 std::vector<PDFImageRef> ImagesOnCurrentPage();          // engine order
 int  ImageIndexAt(const Point2Di& localPt);             // image under a local point, or -1
-bool ExtractImageToFile(int indexOnPage, const std::string& path);   // writes PNG
+bool ExtractImageToFile(int indexOnPage, const std::string& path);
 ```
 
 Right-clicking an image on the page opens a built-in **Extract Image…** context
-menu that prompts for a path (native save dialog) and writes the image as PNG.
-The result is reported via `onImageExtracted`. The same can be done
-programmatically with the calls above (extracted images are always PNG, so use a
-`.png` path).
+menu that prompts for a path (native save dialog) and writes the image. The
+**original embedded format is preserved** — JPEG stays JPEG, PNG stays PNG, etc.
+(the save dialog defaults to the matching extension). Images stored with a
+PDF-internal filter that has no standalone file form (Flate/LZW/CCITT/raw) are
+re-encoded to PNG. The format is reported per image as `PDFImageRef::mimeType`,
+and the result of a save via `onImageExtracted`.
 
 ```cpp
 view->onImageExtracted = [](const std::string& path, bool ok) {
@@ -141,8 +145,8 @@ view->onImageExtracted = [](const std::string& path, bool ok) {
 };
 
 // Headless equivalent (no UI):
-if (view->ImageIndexAt(localPoint) is >= 0) /* … */;
-view->ExtractImageToFile(0, "/tmp/page-image.png");
+auto images = view->ImagesOnCurrentPage();   // each carries .mimeType
+view->ExtractImageToFile(0, "/tmp/page-image.jpg");   // bytes are the native format
 ```
 
 `event.pointer` passed to `ImageIndexAt` is in element-local coordinates (see the
