@@ -2,7 +2,7 @@
 // PDF viewer demo for the UltraCanvas demo app: loads a bundled sample document
 // into an UltraCanvasPDFView with a navigation / zoom / search toolbar.
 // Programmer's guide: Docs/UltraCanvas/UltraCanvasPDFExamples.md
-// Version: 1.2.0
+// Version: 1.3.0
 // Last Modified: 2026-06-19
 // Author: UltraCanvas Framework
 
@@ -53,8 +53,9 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
     pageLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
 
     auto statusLabel = std::make_shared<UltraCanvasLabel>("PDFStatusLabel", 0, 0, 0, 22);
-    statusLabel->SetText("Mouse-wheel scrolls, Ctrl+wheel zooms, click a thumbnail "
-                         "to jump, F3 finds next, right-click an image to extract it.");
+    statusLabel->SetText("Mouse-wheel scrolls, Ctrl+wheel zooms, F3 finds next, "
+                         "\"Select\" then drag to select text, right-click to "
+                         "copy/export or extract an image.");
     statusLabel->SetFontSize(11);
     statusLabel->SetTextColor(Color(110, 110, 110, 255));
     statusLabel->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
@@ -91,6 +92,19 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
                                      : Color(180, 60, 60, 255));
         statusLabel->SetText(ok ? ("Image extracted to " + path)
                                 : "Failed to extract image");
+    };
+    view->onSelectionChanged = [statusLabel](int chars) {
+        if (chars > 0) {
+            statusLabel->SetTextColor(Color(110, 110, 110, 255));
+            statusLabel->SetText(std::to_string(chars) + " character(s) selected"
+                                 " — Ctrl+C to copy, right-click to export");
+        }
+    };
+    view->onTextExported = [statusLabel](const std::string& path, bool ok) {
+        statusLabel->SetTextColor(ok ? Color(60, 140, 60, 255)
+                                     : Color(180, 60, 60, 255));
+        statusLabel->SetText(ok ? ("Text exported to " + path)
+                                : "Failed to export text");
     };
     view->onError = [statusLabel](const std::string& msg) {
         statusLabel->SetTextColor(Color(180, 60, 60, 255));
@@ -179,6 +193,32 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
     });
     addToolbarButton("PDFNextHit", "\xE2\x96\xBC", 36, [viewWeak]() {  // U+25BC ▼
         if (auto v = viewWeak.lock()) v->NextHit();
+    });
+
+    // Text-selection mode toggle (Pan <-> Select) and a Copy button.
+    auto modeBtn = CreateButton("PDFSelectMode", 0, 0, 80, 30, "Select");
+    modeBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    std::weak_ptr<UltraCanvasButton> modeWeak = modeBtn;
+    modeBtn->onClick = [viewWeak, modeWeak]() {
+        auto v = viewWeak.lock();
+        auto b = modeWeak.lock();
+        if (!v || !b) return;
+        const bool toSelect =
+            v->GetMouseMode() == UltraCanvasPDFView::MouseMode::Pan;
+        v->SetMouseMode(toSelect ? UltraCanvasPDFView::MouseMode::SelectText
+                                 : UltraCanvasPDFView::MouseMode::Pan);
+        b->SetText(toSelect ? "Pan" : "Select");
+    };
+    toolbar->AddChild(modeBtn);
+
+    addToolbarButton("PDFCopy", "Copy", 60, [viewWeak, statusLabel]() {
+        if (auto v = viewWeak.lock()) {
+            const bool ok = v->CopySelectionToClipboard();
+            statusLabel->SetTextColor(ok ? Color(60, 140, 60, 255)
+                                         : Color(110, 110, 110, 255));
+            statusLabel->SetText(ok ? "Selection copied to clipboard"
+                                    : "Nothing selected to copy");
+        }
     });
 
     pageLabel->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);

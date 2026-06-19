@@ -36,6 +36,9 @@ The whole subsystem is gated behind the `ULTRACANVAS_PLUGIN_PDF` build option
   built-in context menu, preserving the original embedded format
   (JPEG/PNG/JPX/…); only images stored with a PDF-internal filter fall back to
   PNG. Also drivable programmatically.
+- **Text selection & export**: switch to select mode, drag to marquee-select
+  text lines, then copy (Ctrl+C) or export the selection / whole page to a
+  `.txt` file from the right-click menu. Ctrl+A selects all text on the page.
 - **Editing** (via the engine): delete / move / insert pages, replace text
   (redact-and-overlay), manage annotations, save.
 - **Callbacks** for page, search, active-hit, zoom, error, and document changes.
@@ -153,6 +156,40 @@ view->ExtractImageToFile(0, "/tmp/page-image.jpg");   // bytes are the native fo
 Coordinate System guide). Hit-testing uses the page rect from the last render,
 so it reflects the current zoom/scroll.
 
+### Text selection & export
+
+```cpp
+enum class MouseMode { Pan, SelectText };
+void      SetMouseMode(MouseMode m);     // Pan (default) or SelectText
+MouseMode GetMouseMode() const;
+
+bool        HasTextSelection() const;
+std::string GetSelectedText();           // selected lines, joined by '\n'
+void        ClearTextSelection();
+void        SelectAllText();             // all text on the current page
+bool        CopySelectionToClipboard();  // copies GetSelectedText()
+std::string GetCurrentPageText();
+bool        ExportTextToFile(const std::string& path, bool selectionOnly);
+```
+
+In `SelectText` mode a left-drag marquee-selects the text **lines** that
+intersect the drag (selection is line-granular, since the engine exposes text at
+line level). Selected lines are highlighted; `onSelectionChanged(charCount)`
+fires as the selection changes. The right-click menu offers **Copy**, **Export
+Selected Text…**, **Select All Text**, and **Export Page Text…**; exports go
+through a native save dialog and report via `onTextExported`.
+
+```cpp
+view->SetMouseMode(UltraCanvasPDFView::MouseMode::SelectText);
+view->onSelectionChanged = [](int chars) { /* update a status line */ };
+view->onTextExported     = [](const std::string& path, bool ok) { /* … */ };
+
+// Headless: pull text without any UI.
+std::string all = view->GetCurrentPageText();        // whole page
+view->SelectAllText();
+view->ExportTextToFile("/tmp/page.txt", /*selectionOnly=*/true);
+```
+
 ### Layout & style
 
 ```cpp
@@ -190,6 +227,8 @@ std::function<void(int hitCount)>                    onSearchResults;
 std::function<void(int activeHit, int totalHits)>     onActiveHitChanged;
 std::function<void(float zoomPercent)>                onZoomChanged;
 std::function<void(const std::string& path, bool ok)> onImageExtracted;
+std::function<void(int selectedChars)>                onSelectionChanged;
+std::function<void(const std::string& path, bool ok)> onTextExported;
 std::function<void(const std::string&)>               onError;
 std::function<void()>                                 onDocumentChanged;
 ```
@@ -205,7 +244,9 @@ immediately.
 | Ctrl + wheel | Zoom in / out |
 | Click-drag on page | Pan |
 | Click thumbnail | Jump to that page |
-| Right-click an image | Open the **Extract Image…** context menu |
+| Drag (in select mode) | Marquee-select text lines |
+| Ctrl+C / Ctrl+A | Copy selection / select all text on the page |
+| Right-click | Context menu: extract image and/or copy & export text |
 | PageUp/Down, ↑/↓ | Prev / next page |
 | Home / End | First / last page |
 | F3 / Shift+F3 | Next / previous search hit |

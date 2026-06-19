@@ -1,7 +1,7 @@
 // include/Plugins/Documents/UltraCanvasPDFView.h
 // UI element that displays a PDF document with a thumbnail strip,
 // scrollable page render, and search-hit overlay.
-// Version: 1.2.0
+// Version: 1.3.0
 // Last Modified: 2026-06-19
 // Author: UltraCanvas Framework
 #pragma once
@@ -33,6 +33,7 @@ struct PDFViewStyle {
     Color thumbLabelColor  = Color(200, 200, 200, 255);
     Color hitFill          = Color(255, 235, 59, 120);  // translucent yellow
     Color hitFillActive    = Color(255, 152, 0,   180);
+    Color selectionFill    = Color(70, 130, 220, 90);   // text selection overlay
     Color scrollbarTrack   = Color(40, 40, 40, 255);
     Color scrollbarThumb   = Color(140, 140, 140, 255);
     Color toolbarText      = Color(220, 220, 220, 255);
@@ -101,8 +102,27 @@ public:
     // -1 if none. Topmost (last-drawn) image wins on overlap.
     int  ImageIndexAt(const Point2Di& localPt);
     // Extract image #indexOnPage of the current page to `path`. The engine
-    // encodes extracted images as PNG, so `path` should end in ".png".
+    // preserves the original image format, so prefer the extension matching
+    // PDFImageRef::mimeType (the extraction context menu does this for you).
     bool ExtractImageToFile(int indexOnPage, const std::string& path);
+
+    // ----- Text selection & export -----
+    // Left-drag behaviour: Pan (default, scrolls the page) or SelectText
+    // (marquee-selects the text lines under the drag).
+    enum class MouseMode { Pan, SelectText };
+    void      SetMouseMode(MouseMode m);
+    MouseMode GetMouseMode() const { return mouseMode_; }
+
+    bool        HasTextSelection() const { return hasSelection_; }
+    // Selected text (lines that intersect the selection), joined by '\n'.
+    std::string GetSelectedText();
+    void        ClearTextSelection();
+    void        SelectAllText();            // selects all text on the current page
+    bool        CopySelectionToClipboard(); // copies GetSelectedText(); false if empty
+    std::string GetCurrentPageText();       // full text of the current page
+    // Write text to `path`: the selection if selectionOnly, else the whole
+    // current page. Returns true on success.
+    bool        ExportTextToFile(const std::string& path, bool selectionOnly);
 
     // ----- Layout toggles -----
     void SetShowThumbnailStrip(bool show);
@@ -137,6 +157,10 @@ public:
     std::function<void(int activeHit, int totalHits)>    onActiveHitChanged;
     // Fired after the built-in "Extract Image" context-menu action completes.
     std::function<void(const std::string& path, bool ok)> onImageExtracted;
+    // Fired as the text selection changes (number of selected characters).
+    std::function<void(int selectedChars)>                onSelectionChanged;
+    // Fired after a text export ("Export … Text") completes.
+    std::function<void(const std::string& path, bool ok)> onTextExported;
 
     // ----- UltraCanvasUIElement overrides -----
     void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
@@ -154,6 +178,12 @@ private:
     void   FirePageChanged();
     void   FireZoomChanged();
     void   FireActiveHitChanged();
+    void   FireSelectionChanged();
+    // Text-selection helpers (page units == PDF user units, top-left origin).
+    void    EnsurePageRuns();                                  // cache lines of current page
+    bool    LocalToPage(const Point2Di& local, Point2Df& outPage) const;
+    Rect2Df SelectionRectPage() const;                         // normalized, page units
+    void    PromptExportText(bool selectionOnly);              // save-dialog + write
     // Effective scale (1.0 == actual size) that fits the page into contentW/H.
     // widthOnly fits to width; otherwise fits the whole page.
     float  ComputeFitScale(int contentW, int contentH, bool widthOnly) const;
@@ -163,8 +193,9 @@ private:
     void   DrawThumbStrip(IRenderContext* ctx, const Rect2Di& strip);
     void   DrawPageWithOverlays(IRenderContext* ctx, const Rect2Di& contentArea);
     int    HitTestThumb(const Point2Di& p) const;  // returns 1-based page or 0
-    // Build + open the right-click context menu for the image at imageIndex.
-    void   ShowImageContextMenu(int imageIndex, const Point2Di& windowPos);
+    // Build + open the right-click context menu. imageIndex >= 0 adds an
+    // "Extract Image" item; text actions are added based on the selection.
+    void   ShowContextMenu(int imageIndex, const Point2Di& windowPos);
     void   ScrollBy(int deltaX, int deltaY);
     void   ScrollThumbsBy(int delta);
     void   Repaint();
@@ -190,8 +221,18 @@ private:
     // Page rect (element-local) of the page drawn in the last frame; used to map
     // a click back to PDF user units for image hit-testing.
     Rect2Df                                                pageRect_{};
-    // Held while the image context menu popup is open.
+    // Held while the right-click context menu popup is open.
     std::shared_ptr<UltraCanvasMenu>                       imageMenu_;
+
+    // ----- Text selection -----
+    MouseMode mouseMode_   = MouseMode::Pan;
+    bool      selecting_   = false;        // a drag-select is in progress
+    bool      hasSelection_ = false;
+    int       selPage_     = 0;            // page the selection belongs to
+    Point2Df  selAnchorPage_{};            // drag start, in PDF user units
+    Point2Df  selCurrentPage_{};           // drag current, in PDF user units
+    std::vector<PDFTextRun> pageRuns_;     // cached line runs for pageRunsPage_
+    int       pageRunsPage_ = -1;
 
     // pageNumber → rendered pixmap. Keyed plain by page; on zoom/size change
     // we wipe the cache.

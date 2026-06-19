@@ -1,6 +1,6 @@
 // Plugins/Documents/UltraCanvasPDFView.cpp
 // UI element rendering a PDF document via the IPDFDocument backend.
-// Version: 1.2.0
+// Version: 1.3.0
 // Last Modified: 2026-06-19
 // Author: UltraCanvas Framework
 
@@ -9,8 +9,9 @@
 #ifdef ULTRACANVAS_PLUGIN_PDF
 
 #include "../libspecific//Cairo/ImageCairo.h"  // UCPixmapCairo
-#include "UltraCanvasMenu.h"                    // built-in image context menu
-#include "UltraCanvasFileLoader.h"             // SaveFileDialog for "Extract Image"
+#include "UltraCanvasMenu.h"                    // built-in context menu
+#include "UltraCanvasFileLoader.h"             // SaveFileDialog for extract/export
+#include "UltraCanvasClipboard.h"              // SetClipboardText for "Copy"
 
 #include <algorithm>
 #include <cstring>
@@ -55,6 +56,10 @@ void UltraCanvasPDFView::SetDocument(std::unique_ptr<IPDFDocument> doc) {
     zoomMode_ = ZoomMode::FitPage;
     userZoom_ = 1.0f;
     effectiveZoom_ = 1.0f;
+    selecting_ = false;
+    hasSelection_ = false;
+    pageRuns_.clear();
+    pageRunsPage_ = -1;
     query_.clear();
     hits_.clear();
     activeHit_ = -1;
@@ -93,6 +98,11 @@ void UltraCanvasPDFView::GoToPage(int page) {
     if (page == currentPage_) return;
     currentPage_ = page;
     scrollX_ = scrollY_ = 0;
+    // The selection and cached text runs belong to the previous page.
+    selecting_ = false;
+    hasSelection_ = false;
+    pageRunsPage_ = -1;
+    FireSelectionChanged();
     FirePageChanged();
     Repaint();
 }
@@ -221,45 +231,181 @@ bool UltraCanvasPDFView::ExtractImageToFile(int indexOnPage,
     return f.good();
 }
 
-void UltraCanvasPDFView::ShowImageContextMenu(int imageIndex,
-                                              const Point2Di& windowPos) {
-    auto win = GetWindow();
-    if (!win || imageIndex < 0) return;
+// ===== Text selection & export =====
 
-    imageMenu_ = std::make_shared<UltraCanvasMenu>("PDFImageContextMenu",
-                                                   0, 0, 220, 0);
+void UltraCanvasPDFView::SetMouseMode(MouseMode m) {
+    if (m == mouseMode_) return;
+    mouseMode_ = m;
+    selecting_ = false;
+    Repaint();
+}
+
+void UltraCanvasPDFView::EnsurePageRuns() {
+    if (!doc_) { pageRuns_.clear(); pageRunsPage_ = -1; return; }
+    if (pageRunsPage_ == currentPage_) return;
+    pageRuns_ = doc_->ExtractTextRuns(currentPage_);
+    pageRunsPage_ = currentPage_;
+}
+
+bool UltraCanvasPDFView::LocalToPage(const Point2Di& local,
+                                     Point2Df& outPage) const {
+    if (!doc_ || pageRect_.width <= 0 || pageRect_.height <= 0) return false;
+    PDFPageInfo pi = doc_->GetPageInfo(currentPage_);
+    if (pi.widthPt <= 0 || pi.heightPt <= 0) return false;
+    const float sx = pageRect_.width  / pi.widthPt;
+    const float sy = pageRect_.height / pi.heightPt;
+    outPage.x = (local.x - pageRect_.x) / sx;
+    outPage.y = (local.y - pageRect_.y) / sy;
+    return true;
+}
+
+Rect2Df UltraCanvasPDFView::SelectionRectPage() const {
+    const float x0 = std::min(selAnchorPage_.x, selCurrentPage_.x);
+    const float y0 = std::min(selAnchorPage_.y, selCurrentPage_.y);
+    const float x1 = std::max(selAnchorPage_.x, selCurrentPage_.x);
+    const float y1 = std::max(selAnchorPage_.y, selCurrentPage_.y);
+    return Rect2Df(x0, y0, x1 - x0, y1 - y0);
+}
+
+std::string UltraCanvasPDFView::GetSelectedText() {
+    if (!hasSelection_ || selPage_ != currentPage_) return {};
+    EnsurePageRuns();
+    const Rect2Df sel = SelectionRectPage();
+    std::string out;
+    for (const auto& run : pageRuns_) {
+        if (run.text.empty()) continue;
+        if (!run.bbox.Intersects(sel)) continue;
+        if (!out.empty()) out.push_back('\n');
+        out += run.text;
+    }
+    return out;
+}
+
+void UltraCanvasPDFView::ClearTextSelection() {
+    if (!hasSelection_ && !selecting_) return;
+    selecting_ = false;
+    hasSelection_ = false;
+    FireSelectionChanged();
+    Repaint();
+}
+
+void UltraCanvasPDFView::SelectAllText() {
+    if (!doc_) return;
+    EnsurePageRuns();
+    if (pageRuns_.empty()) return;
+    PDFPageInfo pi = doc_->GetPageInfo(currentPage_);
+    if (pi.widthPt <= 0 || pi.heightPt <= 0) return;
+    selAnchorPage_  = Point2Df(0.0f, 0.0f);
+    selCurrentPage_ = Point2Df(pi.widthPt, pi.heightPt);
+    selPage_ = currentPage_;
+    hasSelection_ = true;
+    selecting_ = false;
+    FireSelectionChanged();
+    Repaint();
+}
+
+bool UltraCanvasPDFView::CopySelectionToClipboard() {
+    const std::string text = GetSelectedText();
+    if (text.empty()) return false;
+    return SetClipboardText(text);
+}
+
+std::string UltraCanvasPDFView::GetCurrentPageText() {
+    return doc_ ? doc_->GetPageText(currentPage_) : std::string();
+}
+
+bool UltraCanvasPDFView::ExportTextToFile(const std::string& path,
+                                          bool selectionOnly) {
+    if (path.empty()) return false;
+    const std::string text = selectionOnly ? GetSelectedText()
+                                            : GetCurrentPageText();
+    if (text.empty()) return false;
+    std::ofstream f(path, std::ios::binary);
+    if (!f) return false;
+    f.write(text.data(), static_cast<std::streamsize>(text.size()));
+    return f.good();
+}
+
+void UltraCanvasPDFView::PromptExportText(bool selectionOnly) {
+    auto win = GetWindow();
+    FileDialogOptions opts;
+    opts.SetTitle(selectionOnly ? "Export Selected Text" : "Export Page Text")
+        .SetDefaultFileName(selectionOnly
+                                ? "selection.txt"
+                                : ("page_" + std::to_string(currentPage_) + ".txt"))
+        .AddFilter("Text file", "txt")
+        .SetParentWindow(win);
+    std::weak_ptr<UltraCanvasPDFView> weakSelf =
+        std::static_pointer_cast<UltraCanvasPDFView>(shared_from_this());
+    UltraCanvasFileLoader::SaveFileDialog(opts,
+        [weakSelf, selectionOnly](DialogResult res, const std::string& chosen) {
+            auto v = weakSelf.lock();
+            if (!v || res != DialogResult::OK || chosen.empty()) return;
+            const bool ok = v->ExportTextToFile(chosen, selectionOnly);
+            if (v->onTextExported) v->onTextExported(chosen, ok);
+        });
+}
+
+// ===== Context menu =====
+
+void UltraCanvasPDFView::ShowContextMenu(int imageIndex,
+                                         const Point2Di& windowPos) {
+    auto win = GetWindow();
+    if (!win) return;
+
+    imageMenu_ = std::make_shared<UltraCanvasMenu>("PDFContextMenu", 0, 0, 240, 0);
     imageMenu_->SetMenuType(MenuType::PopupMenu);
 
-    auto self = std::static_pointer_cast<UltraCanvasPDFView>(shared_from_this());
-    std::weak_ptr<UltraCanvasPDFView> weakSelf = self;
+    std::weak_ptr<UltraCanvasPDFView> weakSelf =
+        std::static_pointer_cast<UltraCanvasPDFView>(shared_from_this());
     const int page = currentPage_;
+    bool needSeparator = false;
 
-    // Pick the default extension from the image's actual (preserved) format.
-    auto images = doc_ ? doc_->ListImages(currentPage_) : std::vector<PDFImageRef>{};
-    const std::string mime =
-        (imageIndex < static_cast<int>(images.size())) ? images[imageIndex].mimeType
-                                                       : std::string("image/png");
-    const ImageFormat fmt = FormatForMime(mime);
-    const std::string ext = fmt.ext, desc = fmt.desc;
+    // --- Image item (only when right-clicking over an image) ---
+    if (imageIndex >= 0 && doc_) {
+        auto images = doc_->ListImages(currentPage_);
+        const std::string mime =
+            (imageIndex < static_cast<int>(images.size()))
+                ? images[imageIndex].mimeType : std::string("image/png");
+        const ImageFormat fmt = FormatForMime(mime);
+        const std::string ext = fmt.ext, desc = fmt.desc;
+        imageMenu_->AddItem(MenuItemData::Action("Extract Image\xE2\x80\xA6",
+            [weakSelf, imageIndex, page, win, ext, desc]() {
+                auto v = weakSelf.lock();
+                if (!v) return;
+                FileDialogOptions opts;
+                opts.SetTitle("Extract Image")
+                    .SetDefaultFileName("image_p" + std::to_string(page) + "_" +
+                                        std::to_string(imageIndex + 1) + "." + ext)
+                    .AddFilter(desc, ext)
+                    .SetParentWindow(win);
+                UltraCanvasFileLoader::SaveFileDialog(opts,
+                    [weakSelf, imageIndex](DialogResult res, const std::string& chosen) {
+                        auto v = weakSelf.lock();
+                        if (!v || res != DialogResult::OK || chosen.empty()) return;
+                        const bool ok = v->ExtractImageToFile(imageIndex, chosen);
+                        if (v->onImageExtracted) v->onImageExtracted(chosen, ok);
+                    });
+            }));
+        needSeparator = true;
+    }
 
-    imageMenu_->AddItem(MenuItemData::Action("Extract Image\xE2\x80\xA6",
-        [weakSelf, imageIndex, page, win, ext, desc]() {
-            auto v = weakSelf.lock();
-            if (!v) return;
-            FileDialogOptions opts;
-            opts.SetTitle("Extract Image")
-                .SetDefaultFileName("image_p" + std::to_string(page) + "_" +
-                                    std::to_string(imageIndex + 1) + "." + ext)
-                .AddFilter(desc, ext)
-                .SetParentWindow(win);
-            UltraCanvasFileLoader::SaveFileDialog(opts,
-                [weakSelf, imageIndex](DialogResult res, const std::string& chosen) {
-                    auto v = weakSelf.lock();
-                    if (!v || res != DialogResult::OK || chosen.empty()) return;
-                    const bool ok = v->ExtractImageToFile(imageIndex, chosen);
-                    if (v->onImageExtracted) v->onImageExtracted(chosen, ok);
-                });
-        }));
+    // --- Selection-dependent text items ---
+    if (!GetSelectedText().empty()) {
+        if (needSeparator) imageMenu_->AddItem(MenuItemData::Separator());
+        imageMenu_->AddItem(MenuItemData::Action("Copy",
+            [weakSelf]() { if (auto v = weakSelf.lock()) v->CopySelectionToClipboard(); }));
+        imageMenu_->AddItem(MenuItemData::Action("Export Selected Text\xE2\x80\xA6",
+            [weakSelf]() { if (auto v = weakSelf.lock()) v->PromptExportText(true); }));
+        needSeparator = true;
+    }
+
+    // --- Always-available text items ---
+    if (needSeparator) imageMenu_->AddItem(MenuItemData::Separator());
+    imageMenu_->AddItem(MenuItemData::Action("Select All Text",
+        [weakSelf]() { if (auto v = weakSelf.lock()) v->SelectAllText(); }));
+    imageMenu_->AddItem(MenuItemData::Action("Export Page Text\xE2\x80\xA6",
+        [weakSelf]() { if (auto v = weakSelf.lock()) v->PromptExportText(false); }));
 
     imageMenu_->OpenMenu(windowPos, *win, PopupElementSettings());
 }
@@ -623,6 +769,25 @@ void UltraCanvasPDFView::DrawPageWithOverlays(IRenderContext* ctx,
         }
     }
 
+    // Text selection overlay (line runs intersecting the marquee).
+    if (hasSelection_ && selPage_ == currentPage_) {
+        EnsurePageRuns();
+        PDFPageInfo pi = doc_->GetPageInfo(currentPage_);
+        if (pi.widthPt > 0 && pi.heightPt > 0) {
+            const float sx = pageRect.width  / pi.widthPt;
+            const float sy = pageRect.height / pi.heightPt;
+            const Rect2Df sel = SelectionRectPage();
+            ctx->SetFillPaint(style_.selectionFill);
+            for (const auto& run : pageRuns_) {
+                if (run.text.empty() || !run.bbox.Intersects(sel)) continue;
+                ctx->FillRectangle(Rect2Df(pageRect.x + run.bbox.x * sx,
+                                           pageRect.y + run.bbox.y * sy,
+                                           run.bbox.width  * sx,
+                                           run.bbox.height * sy));
+            }
+        }
+    }
+
     // Page number indicator, pinned to the top-right of the page content area.
     // The pill is sized to the label and the text is centered inside it so the
     // two always stay aligned (DrawText positions text by its top-left).
@@ -689,17 +854,29 @@ bool UltraCanvasPDFView::OnEvent(const UCEvent& event) {
 
         case UCEventType::MouseDown: {
             if (event.button == UCMouseButton::Right) {
-                // Right-click over an image offers to extract it.
-                int img = ImageIndexAt(event.pointer);
-                if (img >= 0) {
-                    ShowImageContextMenu(img, event.pointerWindow);
-                    return true;
-                }
-                break;
+                // Context menu: image extraction (if over an image) + text actions.
+                ShowContextMenu(ImageIndexAt(event.pointer), event.pointerWindow);
+                return true;
             }
             if (event.button == UCMouseButton::Left) {
                 int p = HitTestThumb(event.pointer);
                 if (p > 0) { GoToPage(p); return true; }
+
+                // In select-text mode, a left-drag over the page selects text.
+                Point2Df pg;
+                const bool overPage = !showThumbs_ ||
+                                      event.pointer.x >= style_.thumbStripWidth;
+                if (mouseMode_ == MouseMode::SelectText && overPage &&
+                    LocalToPage(event.pointer, pg)) {
+                    selecting_      = true;
+                    selAnchorPage_  = pg;
+                    selCurrentPage_ = pg;
+                    selPage_        = currentPage_;
+                    if (hasSelection_) { hasSelection_ = false; FireSelectionChanged(); }
+                    Repaint();
+                    return true;
+                }
+
                 panning_   = true;
                 panAnchor_ = event.pointer;
                 panScrollX_ = scrollX_;
@@ -710,6 +887,16 @@ bool UltraCanvasPDFView::OnEvent(const UCEvent& event) {
         }
 
         case UCEventType::MouseMove: {
+            if (selecting_) {
+                Point2Df pg;
+                if (LocalToPage(event.pointer, pg)) {
+                    selCurrentPage_ = pg;
+                    hasSelection_   = true;
+                    FireSelectionChanged();
+                    Repaint();
+                }
+                return true;
+            }
             if (panning_) {
                 scrollX_ = panScrollX_ - (event.pointer.x - panAnchor_.x);
                 scrollY_ = panScrollY_ - (event.pointer.y - panAnchor_.y);
@@ -720,6 +907,16 @@ bool UltraCanvasPDFView::OnEvent(const UCEvent& event) {
         }
 
         case UCEventType::MouseUp: {
+            if (selecting_) {
+                selecting_ = false;
+                // A click with no drag clears the selection.
+                if (GetSelectedText().empty()) {
+                    hasSelection_ = false;
+                    FireSelectionChanged();
+                }
+                Repaint();
+                return true;
+            }
             if (panning_) { panning_ = false; return true; }
             break;
         }
@@ -737,6 +934,12 @@ bool UltraCanvasPDFView::OnEvent(const UCEvent& event) {
                 case UCKeys::F3:
                     if (event.shift) PrevHit(); else NextHit();
                     return true;
+                case UCKeys::C:
+                    if (event.ctrl) { CopySelectionToClipboard(); return true; }
+                    break;
+                case UCKeys::A:
+                    if (event.ctrl) { SelectAllText(); return true; }
+                    break;
                 default: break;
             }
             break;
@@ -762,6 +965,12 @@ void UltraCanvasPDFView::FireDocumentChanged() {
 void UltraCanvasPDFView::FirePageChanged() {
     if (onPageChanged) {
         onPageChanged(currentPage_, doc_ ? doc_->GetPageCount() : 0);
+    }
+}
+
+void UltraCanvasPDFView::FireSelectionChanged() {
+    if (onSelectionChanged) {
+        onSelectionChanged(static_cast<int>(GetSelectedText().size()));
     }
 }
 
