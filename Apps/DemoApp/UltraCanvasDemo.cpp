@@ -1127,7 +1127,8 @@ namespace UltraCanvas {
                                "PDF document viewing, navigation, zoom & search",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreatePDFExamples(); },
-                               "Apps/DemoApp/UltraCanvasPDFExamples.cpp");
+                               "Apps/DemoApp/UltraCanvasPDFExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasPDFExamples.md");
 #else
         textDocBuilder.AddItem("textdocuments_pdf", "PDF Documents", "PDF document support",
                                ImplementationStatus::NotImplemented,

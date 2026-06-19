@@ -1,8 +1,8 @@
 // include/Plugins/Documents/UltraCanvasPDF.h
 // PDF document interface — read, write, page operations, content editing.
 // Backed by MuPDF when ULTRACANVAS_PLUGIN_PDF is enabled.
-// Version: 1.0.0
-// Last Modified: 2026-05-18
+// Version: 1.1.0
+// Last Modified: 2026-06-19
 // Author: UltraCanvas Framework
 #pragma once
 #ifndef ULTRACANVAS_PDF_H
@@ -75,6 +75,16 @@ struct PDFTextRun {
     int     pageNumber = 0;
     Rect2Df bbox;            // in PDF user units (origin top-left)
     std::string text;
+};
+
+// A single character with its bounding box, used for caret-level text
+// selection. Characters are returned in reading order; `lineIndex` increments
+// per text line so callers can insert line breaks and group selection by line.
+struct PDFTextChar {
+    int     pageNumber = 0;
+    int     lineIndex  = 0;   // 0-based, in reading order
+    Rect2Df bbox;             // in PDF user units (origin top-left)
+    std::string text;         // the character as UTF-8 (may be multi-byte)
 };
 
 struct PDFSearchOptions {
@@ -154,6 +164,9 @@ public:
     // ----- Text -----
     virtual std::string             GetPageText(int pageNumber) = 0;
     virtual std::vector<PDFTextRun> ExtractTextRuns(int pageNumber) = 0;
+    // Per-character text + bounding boxes, in reading order (for caret-level
+    // selection). Each entry holds a single character.
+    virtual std::vector<PDFTextChar> ExtractTextChars(int pageNumber) = 0;
     virtual std::vector<PDFTextRun> Search(const std::string& query,
                                            const PDFSearchOptions& opts = {}) = 0;
 

@@ -1,8 +1,8 @@
 // Plugins/Documents/UltraCanvasPDF_MuPDF.cpp
 // MuPDF-backed implementation of IPDFDocument.
 // Built when ULTRACANVAS_PLUGIN_PDF and ULTRACANVAS_PDF_MUPDF are both enabled.
-// Version: 1.0.0
-// Last Modified: 2026-05-18
+// Version: 1.2.0
+// Last Modified: 2026-06-19
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/UltraCanvasPDF.h"
@@ -64,6 +64,28 @@ void AppendUtf8(std::string& out, int c) {
     out.push_back(static_cast<char>(0x80 |  (c        & 0x3F)));
 }
 
+// MIME type for an image's *native* compressed stream, when that stream is a
+// self-contained file format we can write verbatim. Returns "" when the image
+// has no compressed buffer or uses a PDF-internal filter (Flate/LZW/CCITT/raw/…)
+// that isn't a standalone file — callers then re-encode to PNG.
+const char* NativeImageMime(fz_context* ctx, fz_image* image) {
+    if (!image) return "";
+    fz_compressed_buffer* cb = fz_compressed_image_buffer(ctx, image);
+    if (!cb || !cb->buffer) return "";
+    switch (cb->params.type) {
+        case FZ_IMAGE_JPEG: return "image/jpeg";
+        case FZ_IMAGE_PNG:  return "image/png";
+        case FZ_IMAGE_JPX:  return "image/jp2";
+        case FZ_IMAGE_JXR:  return "image/vnd.ms-photo";
+        case FZ_IMAGE_BMP:  return "image/bmp";
+        case FZ_IMAGE_GIF:  return "image/gif";
+        case FZ_IMAGE_TIFF: return "image/tiff";
+        case FZ_IMAGE_PNM:  return "image/x-portable-anymap";
+        case FZ_IMAGE_PSD:  return "image/vnd.adobe.photoshop";
+        default:            return "";   // FAX/FLATE/LZW/RLD/RAW/JBIG2/UNKNOWN
+    }
+}
+
 } // namespace
 
 // ===== MuPDF implementation =====
@@ -97,6 +119,7 @@ public:
     // Text
     std::string             GetPageText(int pageNumber) override;
     std::vector<PDFTextRun> ExtractTextRuns(int pageNumber) override;
+    std::vector<PDFTextChar> ExtractTextChars(int pageNumber) override;
     std::vector<PDFTextRun> Search(const std::string& query,
                                    const PDFSearchOptions& opts) override;
 
@@ -567,6 +590,34 @@ std::vector<PDFTextRun> MuPDFDocument::ExtractTextRuns(int pageNumber) {
     return runs;
 }
 
+std::vector<PDFTextChar> MuPDFDocument::ExtractTextChars(int pageNumber) {
+    std::lock_guard<std::mutex> lock(mu_);
+    std::vector<PDFTextChar> chars;
+    fz_stext_page* st = MakeStextPage(pageNumber);
+    if (!st) return chars;
+
+    int lineIndex = 0;
+    for (fz_stext_block* b = st->first_block; b; b = b->next) {
+        if (b->type != FZ_STEXT_BLOCK_TEXT) continue;
+        for (fz_stext_line* line = b->u.t.first_line; line; line = line->next) {
+            bool lineHadChars = false;
+            for (fz_stext_char* ch = line->first_char; ch; ch = ch->next) {
+                PDFTextChar pc;
+                pc.pageNumber = pageNumber;
+                pc.lineIndex  = lineIndex;
+                pc.bbox       = ToRect(ch->quad);
+                AppendUtf8(pc.text, ch->c);
+                if (pc.text.empty()) continue;
+                chars.push_back(std::move(pc));
+                lineHadChars = true;
+            }
+            if (lineHadChars) ++lineIndex;
+        }
+    }
+    fz_drop_stext_page(ctx_, st);
+    return chars;
+}
+
 std::vector<PDFTextRun> MuPDFDocument::Search(const std::string& query,
                                               const PDFSearchOptions& opts) {
     std::vector<PDFTextRun> results;
@@ -645,7 +696,10 @@ std::vector<PDFImageRef> MuPDFDocument::ListImages(int pageNumber) {
             r.widthPx  = b->u.i.image->w;
             r.heightPx = b->u.i.image->h;
         }
-        r.mimeType = "image/x-raw";  // resolved precisely in ExtractImageBytes
+        // Report the format ExtractImageBytes will actually produce: the native
+        // stream format when it's self-contained, else PNG (re-encoded).
+        const char* mime = NativeImageMime(ctx_, b->u.i.image);
+        r.mimeType = (mime && *mime) ? mime : "image/png";
         refs.push_back(std::move(r));
     }
     fz_drop_stext_page(ctx_, st);
@@ -682,7 +736,25 @@ std::vector<uint8_t> MuPDFDocument::ExtractImageBytes(const PDFImageRef& ref) {
         return out;
     }
 
-    // Re-encode as PNG via fz_buffer for a universal exchange format.
+    // Preferred path: return the image's original embedded stream verbatim when
+    // it is a self-contained file format (JPEG/PNG/JPX/…), preserving the exact
+    // bytes and format that were stored in the PDF.
+    if (*NativeImageMime(ctx_, target)) {
+        fz_compressed_buffer* cb = fz_compressed_image_buffer(ctx_, target);
+        if (cb && cb->buffer) {
+            unsigned char* data = nullptr;
+            size_t n = fz_buffer_storage(ctx_, cb->buffer, &data);
+            if (data && n > 0) out.assign(data, data + n);
+        }
+        if (!out.empty()) {
+            fz_drop_stext_page(ctx_, st);
+            return out;
+        }
+        // fall through to PNG re-encode if the buffer was unexpectedly empty
+    }
+
+    // Fallback: images stored with a PDF-internal filter (Flate/LZW/CCITT/raw)
+    // have no standalone file form, so re-encode the decoded pixels as PNG.
     fz_pixmap* pix = nullptr;
     fz_buffer* buf = nullptr;
     fz_var(pix);
