@@ -9,6 +9,7 @@
 #include "UltraCanvasVideoRecorderElement.h"
 #include "UltraCanvasVideoDevices.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasDropdown.h"
 
 namespace UltraCanvas {
 
@@ -26,9 +27,15 @@ namespace UltraCanvas {
             status->SetText("Backend: " + UltraCanvasVideoDevices::GetBackendName() + " — ready");
             status->SetTextColor(Color(40, 120, 40));
         } else {
-            status->SetText("Video backend not compiled in. Install the platform media "
-                            "framework (GStreamer on Linux) and rebuild with "
-                            "-DULTRACANVAS_ENABLE_VIDEO=ON.");
+#if defined(_WIN32)
+            const char* framework = "Media Foundation (ships with Windows)";
+#elif defined(__APPLE__)
+            const char* framework = "AVFoundation (ships with macOS)";
+#else
+            const char* framework = "GStreamer (gstreamer-1.0 + app/video/pbutils plugins)";
+#endif
+            status->SetText(std::string("Video backend not available. Install/enable ") +
+                            framework + " and rebuild with -DULTRACANVAS_ENABLE_VIDEO=ON.");
             status->SetTextColor(Color(180, 60, 60));
         }
         status->SetFontSize(11);
@@ -81,6 +88,27 @@ namespace UltraCanvas {
             if (auto r = recWeak.lock()) r->ShowSaveDialog();
         };
         container->AddChild(recBtn);
+
+        // ----- Camera selection -----
+        // Lists the auto-selected default plus every other camera the backend
+        // reports, and switches the recorder's input device on change.
+        auto camSelLabel = std::make_shared<UltraCanvasLabel>("VCamSelLabel", 520, 478, 62, 22);
+        camSelLabel->SetText("Camera:");
+        container->AddChild(camSelLabel);
+
+        auto camDrop = CreateDropdown("CameraSelect", 586, 474, 394, 28);
+        camDrop->AddItem("Default camera (auto-selected)", "");
+        for (const auto& cam : UltraCanvasVideoDevices::ListCameras()) {
+            camDrop->AddItem(cam.name + (cam.isDefault ? "  (auto-selected)" : ""), cam.id);
+        }
+        camDrop->SetSelectedIndex(0, false);
+        camDrop->onSelectionChanged = [recWeak](int, const DropdownItem& item) {
+            if (auto r = recWeak.lock()) {
+                std::string label = item.value.empty() ? "Default camera" : item.text;
+                r->SelectCamera(item.value, label);
+            }
+        };
+        container->AddChild(camDrop);
 
         return container;
     }
