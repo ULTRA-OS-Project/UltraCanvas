@@ -134,6 +134,16 @@ make
 
 ----------
 
+## Developer Guides
+
+-   [Coordinate System & Positioning Guide](UltraCanvasCoordinateSystemGuide.md) -
+    how local / parent / window frames work, the rules for drawing and
+    hit‑testing in custom elements, and a "don't do" list (e.g. avoid
+    `GetBounds()` in `Render()`).
+-   [Bitmap Handling Architecture](BitmapHandlingArchitecture.md)
+
+----------
+
 ## Planned Features
 
 The following features are planned for future releases:
