@@ -246,6 +246,15 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasPopulationChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasJitterPlotElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasPieChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasColormap.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasHeatmapChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasCalendarHeatmap.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasHexbinChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasSTFT.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasSpectrogram.cpp
+        # Vendored KissFFT (BSD-3-Clause) - real-input FFT for the spectrogram
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/FFT/kiss_fft.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/FFT/kiss_fftr.c
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasArcDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasAdjacencyDiagram.cpp
 
