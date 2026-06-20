@@ -137,9 +137,11 @@ done
 #         echo "  Copied gdk-pixbuf loaders"
 #     fi
 # fi
-mkdir -p $DIST_DIR/Resources/Examples
+mkdir -p $DIST_DIR/Resources/DemoApp
 cp -r media Docs $DIST_DIR/Resources
-cp -r Apps/DemoApp/*.cpp $DIST_DIR/Resources/Examples/
+# Demo "View Source" loads files from Resources/DemoApp/ (see GetResourcesDir()
+# + the "DemoApp/..." paths registered in UltraCanvasDemo.cpp).
+cp -r Apps/DemoApp/*.cpp $DIST_DIR/Resources/DemoApp/
 
 cd $DIST_DIR
 zip -r ../$PACKAGE_ZIP *
