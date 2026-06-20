@@ -276,6 +276,17 @@ public:
     void SetShowLabels(bool show);
     bool GetShowLabels() const { return showLabels; }
 
+    // ===== DIGITAL DISPLAY =====
+    // When enabled (Digital mode), the panel shows the live wall-clock time
+    // (HH:MM:SS) instead of the value, ticking once a second.
+    void SetDigitalClock(bool en);
+    bool GetDigitalClock() const { return digitalClock; }
+    // Font family used by the Digital panel. Accepts a comma-separated fallback
+    // list (e.g. "DSEG7 Classic,Monospace") so an LED-style font is used when
+    // installed and a guaranteed family is used otherwise.
+    void SetDigitalFontFamily(const std::string& family);
+    const std::string& GetDigitalFontFamily() const { return digitalFontFamily; }
+
     // ===== STOPWATCH CONTROLS =====
     void StopwatchStart();
     void StopwatchStop();
@@ -340,6 +351,8 @@ private:
     GaugeSubDial subDial;
 
     int decimalPlaces = 0;
+    bool digitalClock = false;
+    std::string digitalFontFamily = "Sans";
     bool showGlow = true;
     bool showBolt = false;
     bool showLabels = true;
@@ -400,6 +413,10 @@ private:
     void DrawThresholdMarkers(IRenderContext* ctx, const Point2Df& center, float radius);
 
     std::string FormatValue(double val) const;
+
+    // Starts/stops the 1-second redraw timer needed by live displays
+    // (AnalogClock, and Digital when in clock mode) based on current state.
+    void UpdateClockTimer();
 };
 
 // =============================================================================

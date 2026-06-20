@@ -419,7 +419,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildSpecializedTab(float w, float 
     SetVBox(tab, 10);
 
     auto title = std::make_shared<UltraCanvasLabel>("SpecTitle", 0, 0, w - 24, 28);
-    title->SetText("Specialized Gauges - Battery, Thermometer, Cylinder, Ring, Digital");
+    title->SetText("Specialized Gauges - Battery, Thermometer, Cylinder, Digital Clock, Digital");
     title->SetFontSize(16);
     title->SetFontWeight(FontWeight::Bold);
     title->SetTextColor(Color(50, 50, 75, 255));
@@ -468,14 +468,32 @@ static std::shared_ptr<UltraCanvasContainer> BuildSpecializedTab(float w, float 
     auto cylCard = CreateGaugeCard("cyl_c", kCardW, kCardH, cyl, 0.0f, 1000.0f, 1000.0f, "ml");
     AddGrid(gridContainer, cylCard, 1, 0);
 
-    // --- Circular Ring ---
-    auto ring = CreateGaugeDiagramElement("ring", 0, 0, kCardW, kCardH);
-    ring->SetMode(GaugeMode::CircularRing);
-    ring->SetTitle("Completion");
-    ring->SetUnit("%");
-    ring->SetGaugeColor(Color(0, 200, 140, 255));
-    auto ringCard = CreateGaugeCard("ring_c", kCardW, kCardH, ring, 0.0f, 100.0f, 75.0f, "%");
-    AddGrid(gridContainer, ringCard, 1, 1);
+    // --- Digital Clock (LED-style live clock) ---
+    auto dclock = CreateGaugeDiagramElement("dclock", 0, 0, kCardW, kCardH);
+    dclock->SetMode(GaugeMode::Digital);
+    dclock->SetTitle("Clock");
+    dclock->SetDigitalClock(true);
+    // Prefer an LED-style font if installed; fall back to Monospace otherwise.
+    dclock->SetDigitalFontFamily("DSEG7 Classic,DSEG7 Modern,Digital-7,Monospace");
+    dclock->SetGaugeColor(Color(0, 230, 80, 255)); // classic LED green
+    auto dclockCard = std::make_shared<UltraCanvasContainer>("dclock_c", 0, 0, kCardW, kCardH);
+    dclockCard->SetBackgroundColor(Color(255, 255, 255, 255));
+    dclockCard->SetBorders(1.0f, Color(218, 219, 228, 255));
+    dclockCard->SetPadding(kCardPadding);
+    SetVBox(dclockCard, 8);
+    {
+        auto dclockWrap = std::make_shared<UltraCanvasContainer>("dclock_GW", 0, 0, 0, 0);
+        SetVBox(dclockWrap, 0);
+        AddFlex(dclockWrap, dclock, 1);
+        AddFlex(dclockCard, dclockWrap, 1);
+        auto dclockInfo = std::make_shared<UltraCanvasLabel>("dclock_V", 0, 0, 0, kValueLabelH);
+        dclockInfo->SetAlignment(TextAlignment::Center);
+        dclockInfo->SetFontSize(11);
+        dclockInfo->SetTextColor(Color(100, 100, 115, 255));
+        dclockInfo->SetText("Live HH:MM:SS");
+        AddFlex(dclockCard, dclockInfo, 0);
+    }
+    AddGrid(gridContainer, dclockCard, 1, 1);
 
     // --- Digital LED ---
     auto digital = CreateGaugeDiagramElement("digital", 0, 0, kCardW, kCardH);

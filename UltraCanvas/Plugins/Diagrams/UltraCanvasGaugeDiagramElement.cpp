@@ -111,11 +111,6 @@ UltraCanvasGaugeDiagramElement::~UltraCanvasGaugeDiagramElement() {
 
 void UltraCanvasGaugeDiagramElement::SetMode(GaugeMode m) {
     if (auto* app = UltraCanvasApplication::GetInstance()) {
-        // Stop clock timer if leaving AnalogClock mode
-        if (mode == GaugeMode::AnalogClock && m != GaugeMode::AnalogClock && clockTimerId) {
-            app->StopTimer(clockTimerId);
-            clockTimerId = 0;
-        }
         // Stop stopwatch timer if leaving Stopwatch mode
         if (mode == GaugeMode::Stopwatch && m != GaugeMode::Stopwatch && stopwatchTimerId) {
             app->StopTimer(stopwatchTimerId);
@@ -141,15 +136,26 @@ void UltraCanvasGaugeDiagramElement::SetMode(GaugeMode m) {
         arcStartDeg = 0.0;
         arcEndDeg = 360.0;
     }
-    // Start 1-second timer for AnalogClock
-    if (m == GaugeMode::AnalogClock && !clockTimerId) {
-        if (auto* app = UltraCanvasApplication::GetInstance()) {
-            clockTimerId = app->StartTimer(1000, true, [this](TimerId) {
-                if (IsVisible()) RequestRedraw();
-            });
-        }
-    }
+    // Start/stop the 1-second redraw timer for live displays.
+    UpdateClockTimer();
     RequestRedraw();
+}
+
+// Starts the shared 1-second timer when a live display is active (AnalogClock,
+// or Digital in clock mode) and stops it otherwise.
+void UltraCanvasGaugeDiagramElement::UpdateClockTimer() {
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) return;
+    bool needTimer = (mode == GaugeMode::AnalogClock) ||
+                     (mode == GaugeMode::Digital && digitalClock);
+    if (needTimer && !clockTimerId) {
+        clockTimerId = app->StartTimer(1000, true, [this](TimerId) {
+            if (IsVisible()) RequestRedraw();
+        });
+    } else if (!needTimer && clockTimerId) {
+        app->StopTimer(clockTimerId);
+        clockTimerId = 0;
+    }
 }
 
 void UltraCanvasGaugeDiagramElement::SetValue(double val) {
@@ -249,6 +255,10 @@ void UltraCanvasGaugeDiagramElement::SetDecimalPlaces(int places) { decimalPlace
 void UltraCanvasGaugeDiagramElement::SetShowGlow(bool glow) { showGlow = glow; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetShowBolt(bool show) { showBolt = show; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetShowLabels(bool show) { showLabels = show; RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetDigitalClock(bool en) { digitalClock = en; UpdateClockTimer(); RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetDigitalFontFamily(const std::string& family) {
+    digitalFontFamily = family.empty() ? "Sans" : family; RequestRedraw();
+}
 void UltraCanvasGaugeDiagramElement::SetMajorTickCount(int count) { majorTickCount = std::max(1, count); RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetMinorTickCount(int count) { minorTickCount = std::max(0, count); RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetSegmentCount(int count) { segmentCount = std::max(2, count); RequestRedraw(); }
@@ -2454,16 +2464,30 @@ void UltraCanvasGaugeDiagramElement::RenderDigital(IRenderContext* ctx) {
         ctx->FillRoundedRectangle(Rect2Df(dispX + 2.0f, dispY + 2.0f, dispW - 4.0f, dispH - 4.0f), 4.0f);
     }
 
-    std::string displayText = FormatValue(currentValue);
-    if (!unit.empty()) displayText += " " + unit;
+    std::string displayText;
+    if (digitalClock) {
+        std::time_t now = std::time(nullptr);
+        std::tm* lt = std::localtime(&now);
+        std::ostringstream css;
+        css << std::setfill('0')
+            << std::setw(2) << lt->tm_hour << ":"
+            << std::setw(2) << lt->tm_min << ":"
+            << std::setw(2) << lt->tm_sec;
+        displayText = css.str();
+    } else {
+        displayText = FormatValue(currentValue);
+        if (!unit.empty()) displayText += " " + unit;
+    }
 
     Color dispColor = GetColorForValue(currentValue);
-    if (ranges.empty()) dispColor = Color(0, 180, 255, 255);
+    // No ranges: clock uses the configured gauge colour (so an LED green/red can
+    // be picked); a plain numeric readout keeps the classic cyan.
+    if (ranges.empty()) dispColor = digitalClock ? gaugeColor : Color(0, 180, 255, 255);
 
     // V2.1 FIX: Better font sizing logic with title space reservation
     float titleSpace = title.empty() ? 0.0f : 18.0f;
     float fontSize = std::min(dispH - 24.0f - titleSpace, 44.0f);
-    ctx->SetFontFamily("Sans");
+    ctx->SetFontFamily(digitalFontFamily);
     ctx->SetFontSize(fontSize);
     ctx->SetFontWeight(FontWeight::Light);
     ctx->SetTextPaint(dispColor);
