@@ -77,7 +77,24 @@ enum class GaugeBatteryStyle {
 enum class GaugeRingStyle {
     SolidArc,       // one smooth continuous arc (the classic ring)
     Segmented,      // a series of discrete chunks separated by small gaps
-    Dashed          // many fine ticks/dashes around the circle (tachymeter look)
+    Dashed,         // many fine ticks/dashes around the circle (tachymeter look)
+    SegmentedRing   // a few chunky arc segments around the circle with a large
+                    // centre value and an optional icon/text label (battery look).
+                    // Honours ringSegmentCount, ringSegmentRounded, ringBorder and
+                    // the ring centre-content options below.
+};
+
+// Content shown in the centre of a round gauge, beneath the value.
+enum class GaugeRingCenterContent {
+    NoContent,      // value only ('None' avoided — X11 #defines None as a macro)
+    TextLabel,      // a short text label (e.g. "Battery")
+    Icon            // a small icon glyph (e.g. a battery or bolt)
+};
+
+// Built-in icon glyphs usable as round-gauge centre content.
+enum class GaugeRingIcon {
+    Battery,        // horizontal battery body with a terminal and a level fill
+    Bolt            // lightning bolt
 };
 
 // Shape of an individual segment when GaugeRingStyle is Segmented or Dashed.
@@ -192,10 +209,24 @@ public:
     GaugeRingSegmentStyle GetRingSegmentStyle() const { return ringSegmentStyle; }
     void SetRingSegmentCount(int count);
     int GetRingSegmentCount() const { return ringSegmentCount; }
+    void SetRingSegmentRounded(bool rounded);
+    bool GetRingSegmentRounded() const { return ringSegmentRounded; }
+    void SetRingBorder(bool enabled);
+    bool GetRingBorder() const { return ringBorder; }
+    void SetRingBorderColor(const Color& c);
+    const Color& GetRingBorderColor() const { return ringBorderColor; }
     void SetFillStyle(GaugeFillStyle s);
     GaugeFillStyle GetFillStyle() const { return fillStyle; }
     void SetTrackColor(const Color& c);
     const Color& GetTrackColor() const { return trackColor; }
+
+    // Centre content for round gauges (value-only, text label or icon glyph).
+    void SetRingCenterContent(GaugeRingCenterContent c);
+    GaugeRingCenterContent GetRingCenterContent() const { return ringCenterContent; }
+    void SetRingCenterLabel(const std::string& label);
+    const std::string& GetRingCenterLabel() const { return ringCenterLabel; }
+    void SetRingCenterIcon(GaugeRingIcon icon);
+    GaugeRingIcon GetRingCenterIcon() const { return ringCenterIcon; }
 
     // ===== ARC ANGLES =====
     void SetArcAngles(double startDeg, double endDeg);
@@ -275,8 +306,16 @@ private:
     GaugeRingStyle ringStyle = GaugeRingStyle::SolidArc;
     GaugeRingSegmentStyle ringSegmentStyle = GaugeRingSegmentStyle::Blocks;
     int ringSegmentCount = 36;
+    bool ringSegmentRounded = true;                  // rounded vs sharp segment ends
+    bool ringBorder = false;                         // draw an outline around segments
+    Color ringBorderColor = Color(40, 40, 50, 255);  // colour of that outline
     GaugeFillStyle fillStyle = GaugeFillStyle::NoFill;
     Color trackColor = Color(220, 221, 230, 255);
+
+    // Round-gauge centre content (drawn beneath the centre value).
+    GaugeRingCenterContent ringCenterContent = GaugeRingCenterContent::NoContent;
+    std::string ringCenterLabel;
+    GaugeRingIcon ringCenterIcon = GaugeRingIcon::Battery;
 
     std::string title;
     std::string unit;
@@ -330,6 +369,7 @@ private:
     // CircularRing sub-renderers (round-gauge style system)
     void DrawRingTrackAndValue(IRenderContext* ctx, const Point2Df& center, float radius);
     void DrawRingLiquidFill(IRenderContext* ctx, const Point2Df& center, float innerRadius);
+    void DrawRingCenterIcon(IRenderContext* ctx, const Point2Df& center, float size);
     void RenderBattery(IRenderContext* ctx);
     void RenderThermometer(IRenderContext* ctx);
     void RenderCylinder(IRenderContext* ctx);

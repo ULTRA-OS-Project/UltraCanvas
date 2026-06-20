@@ -202,8 +202,14 @@ void UltraCanvasGaugeDiagramElement::SetRingThickness(float t) { ringThickness =
 void UltraCanvasGaugeDiagramElement::SetRingStyle(GaugeRingStyle s) { ringStyle = s; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetRingSegmentStyle(GaugeRingSegmentStyle s) { ringSegmentStyle = s; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetRingSegmentCount(int count) { ringSegmentCount = std::max(4, count); RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetRingSegmentRounded(bool rounded) { ringSegmentRounded = rounded; RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetRingBorder(bool enabled) { ringBorder = enabled; RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetRingBorderColor(const Color& c) { ringBorderColor = c; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetFillStyle(GaugeFillStyle s) { fillStyle = s; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetTrackColor(const Color& c) { trackColor = c; RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetRingCenterContent(GaugeRingCenterContent c) { ringCenterContent = c; RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetRingCenterLabel(const std::string& label) { ringCenterLabel = label; RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetRingCenterIcon(GaugeRingIcon icon) { ringCenterIcon = icon; RequestRedraw(); }
 
 void UltraCanvasGaugeDiagramElement::SetArcAngles(double startDeg, double endDeg) {
     arcStartDeg = startDeg;
@@ -1964,7 +1970,26 @@ void UltraCanvasGaugeDiagramElement::RenderCircularRing(
         ctx->SetTextPaint(textColor);
         ctx->SetFontWeight(FontWeight::Light);
         Size2Di d = ctx->GetTextLineDimensions(label);
-        ctx->DrawText(label, Point2Df(center.x - d.width / 2.0f, center.y - d.height / 2.0f));
+
+        // When a centre icon/label is shown the value is lifted to make room,
+        // so the value + content read as a single vertically-centred stack.
+        bool hasContent =
+            (ringCenterContent == GaugeRingCenterContent::TextLabel && !ringCenterLabel.empty()) ||
+            (ringCenterContent == GaugeRingCenterContent::Icon);
+        float valueTop = center.y - d.height / 2.0f;
+        if (hasContent) valueTop -= d.height * 0.32f;
+        ctx->DrawText(label, Point2Df(center.x - d.width / 2.0f, valueTop));
+
+        if (ringCenterContent == GaugeRingCenterContent::TextLabel && !ringCenterLabel.empty()) {
+            ctx->SetFontSize(13.0f);
+            ctx->SetFontWeight(FontWeight::Bold);
+            ctx->SetTextPaint(textColor);
+            Size2Di ld = ctx->GetTextLineDimensions(ringCenterLabel);
+            ctx->DrawText(ringCenterLabel,
+                          Point2Df(center.x - ld.width / 2.0f, valueTop + d.height + 6.0f));
+        } else if (ringCenterContent == GaugeRingCenterContent::Icon) {
+            DrawRingCenterIcon(ctx, Point2Df(center.x, valueTop + d.height + 12.0f), 13.0f);
+        }
     }
 
     if (!title.empty()) {
@@ -1992,6 +2017,39 @@ void UltraCanvasGaugeDiagramElement::DrawRingTrackAndValue(
             ctx->SetStrokePaint(fillC);
             ctx->SetStrokeWidth(thickness);
             ctx->SetLineCap(LineCap::Round);
+            ctx->Stroke();
+        }
+        return;
+    }
+
+    if (ringStyle == GaugeRingStyle::SegmentedRing) {
+        // A few chunky arc segments around the circle (the battery / activity-ring
+        // look). Honours: segment count, rounded vs sharp ends, and an optional
+        // border drawn as a slightly wider outline beneath each segment.
+        int count = std::max(2, ringSegmentCount);
+        int litCount = static_cast<int>(std::ceil(ratio * count - 1e-6));
+        LineCap cap = ringSegmentRounded ? LineCap::Round : LineCap::Butt;
+        float gapFrac = 0.30f;                       // generous gaps between chunks
+        float segSweep = sweep / static_cast<float>(count);
+        float gap = segSweep * gapFrac;
+        float borderW = ringBorder ? std::max(1.5f, thickness * 0.16f) : 0.0f;
+        for (int i = 0; i < count; i++) {
+            float s = startRad + i * segSweep + gap * 0.5f;
+            float e = startRad + (i + 1) * segSweep - gap * 0.5f;
+            const Color& c = (i < litCount) ? fillC : trackColor;
+            if (borderW > 0.0f) {
+                ctx->ClearPath();
+                ctx->Arc(center.x, center.y, radius, s, e);
+                ctx->SetStrokePaint(ringBorderColor);
+                ctx->SetStrokeWidth(thickness + 2.0f * borderW);
+                ctx->SetLineCap(cap);
+                ctx->Stroke();
+            }
+            ctx->ClearPath();
+            ctx->Arc(center.x, center.y, radius, s, e);
+            ctx->SetStrokePaint(c);
+            ctx->SetStrokeWidth(thickness);
+            ctx->SetLineCap(cap);
             ctx->Stroke();
         }
         return;
@@ -2098,6 +2156,53 @@ void UltraCanvasGaugeDiagramElement::DrawRingLiquidFill(
     ctx->Fill();
 
     ctx->PopState();
+}
+
+// Draws a small built-in icon glyph centred at `center`, sized so its height is
+// roughly `size` pixels. Used as round-gauge centre content beneath the value.
+// The glyph is tinted with the current value colour to match the indicator.
+void UltraCanvasGaugeDiagramElement::DrawRingCenterIcon(
+    IRenderContext* ctx, const Point2Df& center, float size) {
+    Color c = GetColorForValue(currentValue);
+
+    if (ringCenterIcon == GaugeRingIcon::Battery) {
+        // Horizontal battery: body outline + terminal nub + a level fill that
+        // tracks the current value.
+        float h = size;
+        float w = h * 2.0f;
+        float x = center.x - (w + 3.0f) / 2.0f;  // include the terminal in centring
+        float y = center.y - h / 2.0f;
+        float termW = std::max(2.0f, h * 0.22f);
+        float termH = h * 0.5f;
+
+        ctx->SetStrokePaint(c);
+        ctx->SetStrokeWidth(std::max(1.2f, h * 0.12f));
+        ctx->DrawRoundedRectangle(Rect2Df(x, y, w, h), std::max(1.5f, h * 0.16f));
+
+        ctx->SetFillPaint(c);
+        ctx->FillRectangle(Rect2Df(x + w + 1.0f, y + (h - termH) / 2.0f, termW, termH));
+
+        float pad = std::max(1.5f, h * 0.18f);
+        double ratio = std::max(0.0, std::min(1.0, ValueToRatio(currentValue)));
+        float fillW = (w - 2.0f * pad) * static_cast<float>(ratio);
+        if (fillW > 0.5f) {
+            ctx->SetFillPaint(c);
+            ctx->FillRectangle(Rect2Df(x + pad, y + pad, fillW, h - 2.0f * pad));
+        }
+    } else { // Bolt
+        float cx = center.x, cy = center.y;
+        float s = size / 12.0f;  // scale relative to the original 24px bolt
+        ctx->SetFillPaint(c);
+        ctx->ClearPath();
+        ctx->MoveTo(cx - 5.0f * s, cy - 12.0f * s);
+        ctx->LineTo(cx + 3.0f * s, cy - 2.0f * s);
+        ctx->LineTo(cx - 1.0f * s, cy);
+        ctx->LineTo(cx + 5.0f * s, cy + 12.0f * s);
+        ctx->LineTo(cx - 3.0f * s, cy + 2.0f * s);
+        ctx->LineTo(cx + 1.0f * s, cy);
+        ctx->ClosePath();
+        ctx->Fill();
+    }
 }
 
 // V2.1 FIX: Battery title at top with reserved space, bolt + percent visible
