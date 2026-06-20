@@ -532,7 +532,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     SetVBox(tab, 10);
 
     auto title = std::make_shared<UltraCanvasLabel>("RoundTitle", 0, 0, w - 24, 28);
-    title->SetText("Round Gauges - configurable ring width, indicator style, segment style & surface fill");
+    title->SetText("Round Gauges - ring width, indicator/segment style, surface fill, centre content & faded colours");
     title->SetFontSize(16);
     title->SetFontWeight(FontWeight::Bold);
     title->SetTextColor(Color(50, 50, 75, 255));
@@ -687,6 +687,21 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     };
     AddFlex(panel, centerDrop, 0);
 
+    // --- Faded colours dropdown ---
+    auto fadeCap = MakeCaption("round_fade_cap", "Faded colours");
+    AddFlex(panel, fadeCap, 0);
+    auto fadeDrop = std::make_shared<UltraCanvasDropdown>("round_fade", 0, 0, 0, 26);
+    fadeDrop->AddItem("Off");
+    fadeDrop->AddItem("Ring");
+    fadeDrop->AddItem("Fill");
+    fadeDrop->AddItem("Ring + Fill");
+    fadeDrop->SetSelectedIndex(0);
+    fadeDrop->onSelectionChanged = [gPtr](int idx, const DropdownItem&) {
+        gPtr->SetRingFaded(idx == 1 || idx == 3);
+        gPtr->SetFillFaded(idx == 2 || idx == 3);
+    };
+    AddFlex(panel, fadeDrop, 0);
+
     // --- Segment style dropdown ---
     auto segCap = MakeCaption("round_seg_cap", "Segment style (when segmented)");
     AddFlex(panel, segCap, 0);
@@ -763,19 +778,21 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     g4->SetUnit("%");
     AddGrid(grid, CreateGaugeCard("rp4_c", kCardW, kCardH, g4, 0.0f, 100.0f, 55.0f, "%"), 1, 0);
 
-    // 5) Straight liquid fill
+    // 5) Straight liquid fill with faded fill colour
     auto g5 = CreateGaugeDiagramElement("rp5", 0, 0, kCardW, kCardH);
     ApplyRoundPreset(g5, GaugeRingStyle::SolidArc, GaugeRingSegmentStyle::Blocks,
                      GaugeFillStyle::StraightLevel, 8.0f, 36, Color(0, 150, 230, 255));
-    g5->SetTitle("Straight Fill");
+    g5->SetFillFaded(true);
+    g5->SetTitle("Straight Fill (faded)");
     g5->SetUnit("%");
     AddGrid(grid, CreateGaugeCard("rp5_c", kCardW, kCardH, g5, 0.0f, 100.0f, 60.0f, "%"), 1, 1);
 
-    // 6) Waved liquid fill (battery look)
+    // 6) Waved liquid fill (battery look) with faded fill colour
     auto g6 = CreateGaugeDiagramElement("rp6", 0, 0, kCardW, kCardH);
     ApplyRoundPreset(g6, GaugeRingStyle::SolidArc, GaugeRingSegmentStyle::Blocks,
                      GaugeFillStyle::WavedLevel, 8.0f, 36, Color(255, 90, 30, 255));
-    g6->SetTitle("Waved Fill");
+    g6->SetFillFaded(true);
+    g6->SetTitle("Waved Fill (faded)");
     g6->SetUnit("%");
     AddGrid(grid, CreateGaugeCard("rp6_c", kCardW, kCardH, g6, 0.0f, 100.0f, 18.0f, "%"), 1, 2);
 
@@ -798,6 +815,16 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     g8->SetRingCenterContent(GaugeRingCenterContent::TextLabel);
     g8->SetTitle("Segmented Ring + Label");
     AddGrid(grid, CreateGaugeCard("rp8_c", kCardW, kCardH, g8, 0.0f, 100.0f, 75.0f, ""), 2, 1);
+
+    // 9) Faded ring colour (soft two-tone gradient sweep)
+    auto g9 = CreateGaugeDiagramElement("rp9", 0, 0, kCardW, kCardH);
+    ApplyRoundPreset(g9, GaugeRingStyle::SolidArc, GaugeRingSegmentStyle::Blocks,
+                     GaugeFillStyle::NoFill, 14.0f, 36, Color(120, 200, 40, 255));
+    g9->SetRingFaded(true);
+    g9->SetTrackColor(Color(60, 70, 35, 255));
+    g9->SetTitle("Faded Ring");
+    g9->SetUnit("%");
+    AddGrid(grid, CreateGaugeCard("rp9_c", kCardW, kCardH, g9, 0.0f, 100.0f, 47.0f, "%"), 2, 2);
 
     AddFlex(body, grid, 1);
     AddFlex(tab, body, 1);

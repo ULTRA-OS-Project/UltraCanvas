@@ -207,6 +207,8 @@ void UltraCanvasGaugeDiagramElement::SetRingBorder(bool enabled) { ringBorder = 
 void UltraCanvasGaugeDiagramElement::SetRingBorderColor(const Color& c) { ringBorderColor = c; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetFillStyle(GaugeFillStyle s) { fillStyle = s; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetTrackColor(const Color& c) { trackColor = c; RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetRingFaded(bool faded) { ringFaded = faded; RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetFillFaded(bool faded) { fillFaded = faded; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetRingCenterContent(GaugeRingCenterContent c) { ringCenterContent = c; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetRingCenterLabel(const std::string& label) { ringCenterLabel = label; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetRingCenterIcon(GaugeRingIcon icon) { ringCenterIcon = icon; RequestRedraw(); }
@@ -2007,6 +2009,16 @@ void UltraCanvasGaugeDiagramElement::DrawRingTrackAndValue(
     const Color fillC    = GetColorForValue(currentValue);
     const float thickness = ringThickness;
 
+    // When faded, lit portions of the indicator use a soft lightened gradient
+    // instead of the flat colour; the track stays as configured.
+    std::shared_ptr<IPaintPattern> fadePat = ringFaded ? MakeFadedPaint(ctx, fillC) : nullptr;
+    auto setLitStroke = [&]() {
+        if (fadePat) ctx->SetStrokePaint(fadePat); else ctx->SetStrokePaint(fillC);
+    };
+    auto setLitFill = [&]() {
+        if (fadePat) ctx->SetFillPaint(fadePat); else ctx->SetFillPaint(fillC);
+    };
+
     if (ringStyle == GaugeRingStyle::SolidArc) {
         // Continuous track + rounded value arc.
         DrawArcSection(ctx, center, radius, startRad, endRad, trackColor, thickness);
@@ -2014,7 +2026,7 @@ void UltraCanvasGaugeDiagramElement::DrawRingTrackAndValue(
             float fillEnd = startRad + static_cast<float>(ratio * sweep);
             ctx->ClearPath();
             ctx->Arc(center.x, center.y, radius, startRad, fillEnd);
-            ctx->SetStrokePaint(fillC);
+            setLitStroke();
             ctx->SetStrokeWidth(thickness);
             ctx->SetLineCap(LineCap::Round);
             ctx->Stroke();
@@ -2036,7 +2048,7 @@ void UltraCanvasGaugeDiagramElement::DrawRingTrackAndValue(
         for (int i = 0; i < count; i++) {
             float s = startRad + i * segSweep + gap * 0.5f;
             float e = startRad + (i + 1) * segSweep - gap * 0.5f;
-            const Color& c = (i < litCount) ? fillC : trackColor;
+            bool lit = (i < litCount);
             if (borderW > 0.0f) {
                 ctx->ClearPath();
                 ctx->Arc(center.x, center.y, radius, s, e);
@@ -2047,7 +2059,7 @@ void UltraCanvasGaugeDiagramElement::DrawRingTrackAndValue(
             }
             ctx->ClearPath();
             ctx->Arc(center.x, center.y, radius, s, e);
-            ctx->SetStrokePaint(c);
+            if (lit) setLitStroke(); else ctx->SetStrokePaint(trackColor);
             ctx->SetStrokeWidth(thickness);
             ctx->SetLineCap(cap);
             ctx->Stroke();
@@ -2067,10 +2079,9 @@ void UltraCanvasGaugeDiagramElement::DrawRingTrackAndValue(
         for (int i = 0; i < count; i++) {
             float s = startRad + i * segSweep + gap * 0.5f;
             float e = startRad + (i + 1) * segSweep - gap * 0.5f;
-            const Color& c = (i < litCount) ? fillC : trackColor;
             ctx->ClearPath();
             ctx->Arc(center.x, center.y, radius, s, e);
-            ctx->SetStrokePaint(c);
+            if (i < litCount) setLitStroke(); else ctx->SetStrokePaint(trackColor);
             ctx->SetStrokeWidth(thickness);
             ctx->SetLineCap(LineCap::Round);
             ctx->Stroke();
@@ -2087,8 +2098,7 @@ void UltraCanvasGaugeDiagramElement::DrawRingTrackAndValue(
             float iy = center.y + (radius - halfLen) * sinA;
             float ox = center.x + (radius + halfLen) * cosA;
             float oy = center.y + (radius + halfLen) * sinA;
-            const Color& c = (i < litCount) ? fillC : trackColor;
-            ctx->SetStrokePaint(c);
+            if (i < litCount) setLitStroke(); else ctx->SetStrokePaint(trackColor);
             ctx->SetStrokeWidth(barW);
             ctx->SetLineCap(LineCap::Butt);
             ctx->ClearPath();
@@ -2101,7 +2111,7 @@ void UltraCanvasGaugeDiagramElement::DrawRingTrackAndValue(
         for (int i = 0; i < count; i++) {
             float a = startRad + (i + 0.5f) * (sweep / static_cast<float>(count));
             Point2Df p(center.x + radius * std::cos(a), center.y + radius * std::sin(a));
-            ctx->SetFillPaint((i < litCount) ? fillC : trackColor);
+            if (i < litCount) setLitFill(); else ctx->SetFillPaint(trackColor);
             ctx->FillCircle(p, dotR);
         }
     }
@@ -2113,6 +2123,8 @@ void UltraCanvasGaugeDiagramElement::DrawRingLiquidFill(
     IRenderContext* ctx, const Point2Df& center, float innerRadius) {
     double ratio = std::max(0.0, std::min(1.0, ValueToRatio(currentValue)));
     Color fillC = GetColorForValue(currentValue);
+    // Faded fill: a pale, lightened tint of the value colour (soft liquid look).
+    if (fillFaded) fillC = fillC.Lighten(0.55f);
 
     ctx->PushState();
     // Clip everything that follows to the inner disc.
@@ -2203,6 +2215,23 @@ void UltraCanvasGaugeDiagramElement::DrawRingCenterIcon(
         ctx->ClosePath();
         ctx->Fill();
     }
+}
+
+// Builds a soft diagonal linear gradient that runs from a lightened tint of the
+// base colour to the full colour across the element bounds. Used for the "faded"
+// ring look — strokes/segments at different positions pick up different shades,
+// giving a gentle two-tone sweep around the ring.
+std::shared_ptr<IPaintPattern> UltraCanvasGaugeDiagramElement::MakeFadedPaint(
+    IRenderContext* ctx, const Color& base) const {
+    const auto b = GetLocalBounds();
+    std::vector<GradientStop> stops{
+        GradientStop(0.0, base.Lighten(0.60f)),
+        GradientStop(1.0, base),
+    };
+    return ctx->CreateLinearGradientPattern(
+        static_cast<double>(b.x), static_cast<double>(b.y),
+        static_cast<double>(b.x + b.width), static_cast<double>(b.y + b.height),
+        stops);
 }
 
 // V2.1 FIX: Battery title at top with reserved space, bolt + percent visible

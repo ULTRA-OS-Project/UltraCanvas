@@ -219,6 +219,11 @@ public:
     GaugeFillStyle GetFillStyle() const { return fillStyle; }
     void SetTrackColor(const Color& c);
     const Color& GetTrackColor() const { return trackColor; }
+    // Faded (soft, lightened) colours for the indicator ring and the centre fill.
+    void SetRingFaded(bool faded);
+    bool GetRingFaded() const { return ringFaded; }
+    void SetFillFaded(bool faded);
+    bool GetFillFaded() const { return fillFaded; }
 
     // Centre content for round gauges (value-only, text label or icon glyph).
     void SetRingCenterContent(GaugeRingCenterContent c);
@@ -311,6 +316,8 @@ private:
     Color ringBorderColor = Color(40, 40, 50, 255);  // colour of that outline
     GaugeFillStyle fillStyle = GaugeFillStyle::NoFill;
     Color trackColor = Color(220, 221, 230, 255);
+    bool ringFaded = false;   // draw the indicator with a soft lightened gradient
+    bool fillFaded = false;   // draw the centre fill with a pale lightened tint
 
     // Round-gauge centre content (drawn beneath the centre value).
     GaugeRingCenterContent ringCenterContent = GaugeRingCenterContent::NoContent;
@@ -370,6 +377,9 @@ private:
     void DrawRingTrackAndValue(IRenderContext* ctx, const Point2Df& center, float radius);
     void DrawRingLiquidFill(IRenderContext* ctx, const Point2Df& center, float innerRadius);
     void DrawRingCenterIcon(IRenderContext* ctx, const Point2Df& center, float size);
+    // Builds a soft "faded" linear-gradient paint (lightened tint -> full colour)
+    // spanning the element bounds, used when ringFaded is enabled.
+    std::shared_ptr<IPaintPattern> MakeFadedPaint(IRenderContext* ctx, const Color& base) const;
     void RenderBattery(IRenderContext* ctx);
     void RenderThermometer(IRenderContext* ctx);
     void RenderCylinder(IRenderContext* ctx);
