@@ -1,7 +1,7 @@
 // core/UltraCanvasBreadcrumb.cpp
 // Hierarchical breadcrumb navigation control implementation
-// Version: 1.2.0
-// Last Modified: 2026-06-02
+// Version: 1.2.1
+// Last Modified: 2026-06-20
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasBreadcrumb.h"
@@ -565,12 +565,17 @@ namespace UltraCanvas {
                 oslot.isOverflow = true;
                 Size2Dd oTextSize = overflowLayout ? overflowLayout->GetLayoutSize() : Size2Dd();
                 int textW = static_cast<int>(oTextSize.width);
-                int textH = static_cast<int>(oTextSize.height);
                 int oWidth = style.itemPaddingHorizontal * 2 + textW
                              + style.dropdownChevronSpacing + style.dropdownChevronSize;
                 oslot.rect = Rect2Di(x, centerY - slotHeight / 2, oWidth, slotHeight);
                 int innerX = x + style.itemPaddingHorizontal;
-                oslot.textRect = Rect2Di(innerX, centerY - textH / 2, textW, textH);
+                // Center the glyphs vertically via the text layout itself (full
+                // precision) so they share the exact center line of separators/icons.
+                if (overflowLayout) {
+                    overflowLayout->SetVerticalAlignment(VerticalAlignment::Middle);
+                    overflowLayout->SetExplicitHeight(static_cast<double>(slotHeight));
+                }
+                oslot.textRect = Rect2Di(innerX, oslot.rect.y, textW, slotHeight);
                 innerX += textW + style.dropdownChevronSpacing;
                 oslot.dropdownRect = Rect2Di(innerX,
                                              centerY - style.dropdownChevronSize / 2,
@@ -607,8 +612,16 @@ namespace UltraCanvas {
             }
             if (sizes[i].width > 0.0f) {
                 int textW = static_cast<int>(sizes[i].width);
-                int textH = static_cast<int>(sizes[i].height);
-                slot.textRect = Rect2Di(innerX, centerY - textH / 2, textW, textH);
+                // Delegate vertical centering to the text layout (VerticalAlignment::Middle
+                // over the full slot height). This keeps the glyphs on the exact same
+                // center line as the separators and icons; the previous hand-rolled
+                // "centerY - (int)textH / 2" truncated the half-height to an integer and
+                // drifted the text ~1px off-center against the item/strip backgrounds.
+                if (layouts[i]) {
+                    layouts[i]->SetVerticalAlignment(VerticalAlignment::Middle);
+                    layouts[i]->SetExplicitHeight(static_cast<double>(slotHeight));
+                }
+                slot.textRect = Rect2Di(innerX, slot.rect.y, textW, slotHeight);
                 innerX += textW;
             }
             if (items[i].hasDropdown) {
@@ -847,7 +860,13 @@ namespace UltraCanvas {
                 if (style.underlineOnHover && isHovered && clickable) drawUnderline = true;
             }
             if (drawUnderline) {
-                int y = slot.textRect.y + slot.textRect.height + 1;
+                // textRect spans the full slot height (text is centered inside it by the
+                // layout), so derive the glyph bottom from the layout's vertical offset
+                // rather than the rect bottom to keep the underline hugging the text.
+                int textBottom = slot.textRect.y
+                                 + static_cast<int>(slot.textLayout->GetLayoutVerticalOffset())
+                                 + static_cast<int>(slot.textSize.height);
+                int y = textBottom + 1;
                 ctx->SetStrokePaint(textColor);
                 ctx->SetStrokeWidth(1.0f);
                 ctx->DrawLine(Point2Dd(slot.textRect.x, y),

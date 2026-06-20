@@ -1,7 +1,7 @@
 // libspecific/Cairo/UCTextLayout.cpp
 // Pango text layout wrapper for UltraCanvas Framework
-// Version: 1.1.0
-// Last Modified: 2026-04-12
+// Version: 1.1.1
+// Last Modified: 2026-06-20
 // Author: UltraCanvas Framework
 
 #include "UCTextLayout.h"
@@ -502,38 +502,25 @@ namespace UltraCanvas {
 
         double offset = -ext.logical.y;
         if (explicitHeight > 0) {
-            // Pango splits the font's external line-leading half above and half below
-            // the baseline. The top half (baseline - ascent) is platform/font-specific
-            // padding that would push visible text down if we naively centered the
-            // whole logical box. Subtract it for Middle alignment so visible text is
-            // centered consistently. Subtraction is done in Pango units (then rounded
-            // to the nearest pixel) because truncating each operand to int pixels
-            // before subtracting loses the sub-pixel offset that Pango itself honours
-            // when placing glyphs — which regressed centering on e.g. Segoe UI 12pt.
-/*
-            int topLeadingPad = 0;
-            if (cachedAscentPU > 0) {
-                const double layoutBaselinePU = pango_layout_get_baseline(layout);
-                const double padPU = layoutBaselinePU - cachedAscentPU;
-                if (padPU > 0) {
-                    topLeadingPad = (padPU + PANGO_SCALE_D / 2.0) / PANGO_SCALE_D;
-                }
-            }
-*/
             if (valign == VerticalAlignment::Middle) {
-//                offset = (explicitHeight - ext.logical.height) / 2 - ext.logical.y - topLeadingPad;
-                offset = (explicitHeight - ext.logical.height) / 2 - ext.logical.y;
+                // Pango splits the font's external line-leading half above and half below
+                // the baseline. The top half (baseline - typographic ascent) is
+                // platform/font-specific padding that pushes visible text down if we
+                // naively center the whole logical box — negligible for DejaVu/FreeSans
+                // on Linux (baseline == ascent), but several pixels for e.g. Segoe UI on
+                // Windows. Subtract it so the *visible* text is centered consistently.
+                // The subtraction stays in Pango units (one final divide by PANGO_SCALE_D)
+                // so we keep the sub-pixel offset Pango honours when placing glyphs;
+                // truncating each operand to int pixels first regressed Segoe UI 12pt.
+                double topLeadingPad = 0.0;
+                if (cachedAscentPU > 0) {
+                    const double padPU = pango_layout_get_baseline(layout) - cachedAscentPU;
+                    if (padPU > 0) topLeadingPad = padPU / PANGO_SCALE_D;
+                }
+                offset = (explicitHeight - ext.logical.height) / 2.0 - ext.logical.y - topLeadingPad;
             } else if (valign == VerticalAlignment::Bottom) {
                 offset = explicitHeight - ext.logical.height - ext.logical.y;
             }
-
-//            debugOutput << "UCTextLayout::GetLayoutVerticalOffset"
-//                        << " H=" << explicitHeight
-//                        << " logical.h=" << ext.logical.height
-//                        << " ascentPU=" << cachedAscentPU
-//                        << " baselinePU=" << pango_layout_get_baseline(layout)
-//                        << " topLeadingPad=" << topLeadingPad
-//                        << " offset=" << offset << std::endl;
         }
         return offset;
     }
