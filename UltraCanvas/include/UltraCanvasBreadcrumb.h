@@ -1,6 +1,6 @@
 // include/UltraCanvasBreadcrumb.h
 // Hierarchical breadcrumb navigation control with overflow handling and per-item dropdowns
-// Version: 1.2.0
+// Version: 1.3.0
 // Last Modified: 2026-06-20
 // Author: UltraCanvas Framework
 #pragma once
@@ -50,7 +50,16 @@ namespace UltraCanvas {
         Pill,           // Each item drawn with rounded background
         Underline,      // Text with hover underline
         Tab,            // Tab-like with bottom border
-        Arrow           // Interlocking right-pointing arrow/chevron segments ("steps")
+        Arrow,          // Interlocking right-pointing arrow/chevron segments ("steps")
+        Parallelogram   // Interlocking slanted (skewed) segments
+    };
+
+// ===== LEVEL INDICATOR =====
+// Optional leading badge that shows each item's level number (1-based).
+    enum class BreadcrumbLevelIndicatorBackground {
+        NoBackground,   // Number only, no background fill (named to avoid X11's `None` macro)
+        Round,          // Number inside a filled circle
+        Rectangle       // Number inside a filled rounded rectangle
     };
 
 // ===== BREADCRUMB ITEM =====
@@ -134,7 +143,17 @@ namespace UltraCanvas {
         int itemPaddingHorizontal = 6;
         int itemPaddingVertical = 3;
         int itemCornerRadius = 3;
-        int arrowSize = 10;                     // Depth of the arrow tip / left notch (Arrow item style)
+        int arrowSize = 10;                     // Depth of the arrow tip / slant (Arrow & Parallelogram styles)
+
+        // Level indicator (leading numbered badge, e.g. step "1", "2", ...)
+        bool showLevelIndicator = false;
+        BreadcrumbLevelIndicatorBackground levelIndicatorBackground = BreadcrumbLevelIndicatorBackground::Round;
+        bool levelIndicatorBorder = false;      // Outline the indicator background
+        int levelIndicatorSize = 20;            // Diameter / box size in pixels
+        Color levelIndicatorColor = Color(0, 120, 215, 255);        // Background fill
+        Color levelIndicatorTextColor = Colors::White;              // Number color
+        Color levelIndicatorBorderColor = Color(255, 255, 255, 255);
+        float levelIndicatorBorderWidth = 2.0f;
         int iconSize = 16;
         int iconTextSpacing = 4;
         int dropdownChevronSize = 6;
@@ -159,6 +178,8 @@ namespace UltraCanvas {
         static BreadcrumbStyle FileExplorer();
         static BreadcrumbStyle WebDocs();
         static BreadcrumbStyle Arrow();
+        static BreadcrumbStyle Parallelogram();
+        static BreadcrumbStyle Steps();        // Arrow segments + round numbered indicators
     };
 
 // ===== MAIN BREADCRUMB CLASS =====
@@ -253,6 +274,7 @@ namespace UltraCanvas {
         struct ItemSlot {
             int itemIndex = -1;           // -1 means this is the overflow placeholder
             Rect2Di rect;                 // Slot rect (whole clickable item box)
+            Rect2Di indicatorRect;        // Level-indicator badge (empty if disabled)
             Rect2Di iconRect;
             Rect2Di textRect;
             Rect2Di dropdownRect;         // Empty if no dropdown
@@ -315,6 +337,12 @@ namespace UltraCanvas {
         // pointed wedge past the right edge so it nests into the next item's notch.
         void RenderArrowBackground(IRenderContext* ctx, const Rect2Di& rect,
                                    bool leftNotch, bool rightTip, const Color& fillColor);
+        // Fills a slanted segment for the Parallelogram item style. leftSlant/rightSlant
+        // pick which edges are skewed (outer edges of the first/last item stay vertical).
+        void RenderParallelogramBackground(IRenderContext* ctx, const Rect2Di& rect,
+                                           bool leftSlant, bool rightSlant, const Color& fillColor);
+        // Draws the leading numbered level badge for an item slot.
+        void RenderLevelIndicator(IRenderContext* ctx, const ItemSlot& slot);
         void RenderSeparator(IRenderContext* ctx, int x, int centerY);
         void RenderDropdownChevron(IRenderContext* ctx, const Rect2Di& rect, const Color& color);
 

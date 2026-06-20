@@ -1,6 +1,6 @@
 // core/UltraCanvasBreadcrumb.cpp
 // Hierarchical breadcrumb navigation control implementation
-// Version: 1.2.2
+// Version: 1.3.0
 // Last Modified: 2026-06-20
 // Author: UltraCanvas Framework
 
@@ -84,6 +84,53 @@ namespace UltraCanvas {
         s.itemPaddingHorizontal = 12;
         s.itemPaddingVertical = 5;
         s.separatorSpacing = 0;
+        return s;
+    }
+
+    BreadcrumbStyle BreadcrumbStyle::Parallelogram() {
+        BreadcrumbStyle s;
+        s.itemStyle = BreadcrumbItemStyle::Parallelogram;
+        s.separatorStyle = BreadcrumbSeparatorStyle::NoSeparator;
+        s.overflowMode = BreadcrumbOverflowMode::Clip;
+        s.itemBackgroundColor = Color(244, 122, 32, 255);
+        s.itemHoverBackgroundColor = Color(255, 150, 70, 255);
+        s.itemPressedBackgroundColor = Color(225, 105, 20, 255);
+        s.currentItemBackgroundColor = Color(250, 170, 110, 255);
+        s.itemTextColor = Colors::White;
+        s.currentItemTextColor = Colors::White;
+        s.currentItemBold = false;
+        s.currentItemClickable = true;
+        s.separatorColor = Color(255, 255, 255, 255);   // thin seam between segments
+        s.separatorThickness = 2.0f;
+        s.arrowSize = 14;
+        s.itemPaddingHorizontal = 14;
+        s.itemPaddingVertical = 6;
+        s.separatorSpacing = 0;
+        return s;
+    }
+
+    BreadcrumbStyle BreadcrumbStyle::Steps() {
+        BreadcrumbStyle s = BreadcrumbStyle::Arrow();
+        // Dark "wizard step" strip with round numbered badges.
+        s.backgroundColor = Color(32, 33, 36, 255);
+        s.cornerRadius = 6.0f;
+        s.itemBackgroundColor = Color(60, 63, 68, 255);
+        s.itemHoverBackgroundColor = Color(80, 84, 90, 255);
+        s.itemPressedBackgroundColor = Color(50, 53, 58, 255);
+        s.currentItemBackgroundColor = Color(40, 110, 235, 255);
+        s.itemTextColor = Color(210, 212, 216, 255);
+        s.currentItemTextColor = Colors::White;
+        s.separatorColor = Color(32, 33, 36, 255);
+        s.separatorThickness = 2.0f;
+        s.showLevelIndicator = true;
+        s.levelIndicatorBackground = BreadcrumbLevelIndicatorBackground::Round;
+        s.levelIndicatorBorder = true;
+        s.levelIndicatorSize = 22;
+        s.levelIndicatorColor = Color(28, 30, 34, 255);
+        s.levelIndicatorTextColor = Colors::White;
+        s.levelIndicatorBorderColor = Color(120, 150, 245, 255);
+        s.levelIndicatorBorderWidth = 2.0f;
+        s.itemPaddingHorizontal = 12;
         return s;
     }
 
@@ -397,6 +444,10 @@ namespace UltraCanvas {
         bool hasIcon = item.icon != nullptr;
         bool hasText = textSize.width > 0.0f;
 
+        if (style.showLevelIndicator) {
+            width += style.levelIndicatorSize;
+            if (hasIcon || hasText) width += style.iconTextSpacing;
+        }
         if (hasIcon) width += style.iconSize;
         if (hasIcon && hasText) width += style.iconTextSpacing;
         if (hasText) width += static_cast<int>(textSize.width);
@@ -573,10 +624,12 @@ namespace UltraCanvas {
         int contentBottom = content.y + content.height;
         int centerY = (contentTop + contentBottom) / 2;
 
-        // Arrow item style: segments butt against each other (no separator/gap) and each
-        // non-first segment reserves a left notch so its text clears the previous tip.
-        const bool arrowStyle = (style.itemStyle == BreadcrumbItemStyle::Arrow);
-        const int arrowDepth = arrowStyle ? std::max(0, style.arrowSize) : 0;
+        // Arrow/Parallelogram styles: segments butt against each other (no separator/gap)
+        // and each non-first segment reserves a left inset so its content clears the
+        // previous segment's tip/slant.
+        const bool segmentStyle = (style.itemStyle == BreadcrumbItemStyle::Arrow
+                                   || style.itemStyle == BreadcrumbItemStyle::Parallelogram);
+        const int arrowDepth = segmentStyle ? std::max(0, style.arrowSize) : 0;
 
         bool overflowEmitted = false;
 
@@ -619,7 +672,7 @@ namespace UltraCanvas {
 
             if (!visible[i]) continue;
 
-            if (!slots.empty() && !arrowStyle) {
+            if (!slots.empty() && !segmentStyle) {
                 x += style.separatorSpacing;
                 x += separatorWidth + style.separatorSpacing;
             }
@@ -628,13 +681,19 @@ namespace UltraCanvas {
             slot.itemIndex = static_cast<int>(i);
             slot.displayText = items[i].text;
             slot.isCurrent = (static_cast<int>(i) == currentIdx);
-            // Non-first arrow segments carve a left notch; widen the body and push the
+            // Non-first segments carve a left notch/slant; widen the body and push the
             // content right by that depth so text/icons never sit under the wedge.
-            int leftNotch = (arrowStyle && !slots.empty()) ? arrowDepth : 0;
+            int leftNotch = (segmentStyle && !slots.empty()) ? arrowDepth : 0;
             int width = itemWidths[i] + leftNotch;
             slot.rect = Rect2Di(x, centerY - slotHeight / 2, width, slotHeight);
 
             int innerX = x + style.itemPaddingHorizontal + leftNotch;
+            if (style.showLevelIndicator) {
+                slot.indicatorRect = Rect2Di(innerX, centerY - style.levelIndicatorSize / 2,
+                                             style.levelIndicatorSize, style.levelIndicatorSize);
+                innerX += style.levelIndicatorSize;
+                if (items[i].icon || sizes[i].width > 0.0f) innerX += style.iconTextSpacing;
+            }
             if (items[i].icon) {
                 slot.iconRect = Rect2Di(innerX, centerY - style.iconSize / 2,
                                         style.iconSize, style.iconSize);
@@ -853,17 +912,27 @@ namespace UltraCanvas {
         }
 
         if (drawBackground) {
+            bool isLastSlot = (slotIdx == (int)slots.size() - 1);
             if (style.itemStyle == BreadcrumbItemStyle::Arrow) {
                 // First segment has a flat left edge; every segment grows a right tip
                 // that nests into the next segment's notch (the last one's tip trails off).
                 RenderArrowBackground(ctx, slot.rect, /*leftNotch*/ slotIdx > 0,
                                       /*rightTip*/ true, bgColor);
+            } else if (style.itemStyle == BreadcrumbItemStyle::Parallelogram) {
+                // Outer edges of the first/last segment stay vertical; inner edges slant.
+                RenderParallelogramBackground(ctx, slot.rect, /*leftSlant*/ slotIdx > 0,
+                                              /*rightSlant*/ !isLastSlot, bgColor);
             } else {
                 Rect2Di r = slot.rect;
                 ctx->DrawFilledRectangle(Rect2Dd(r.x, r.y, r.width, r.height),
                                          bgColor, 0.0f, Colors::Transparent,
                                          static_cast<float>(style.itemCornerRadius));
             }
+        }
+
+        // Leading level indicator badge
+        if (style.showLevelIndicator && !isOverflow && slot.indicatorRect.width > 0) {
+            RenderLevelIndicator(ctx, slot);
         }
 
         // Tab-style underline strip
@@ -952,6 +1021,71 @@ namespace UltraCanvas {
             ctx->StrokePathPreserve();
         }
         ctx->ClearPath();
+    }
+
+    void UltraCanvasBreadcrumb::RenderParallelogramBackground(IRenderContext* ctx, const Rect2Di& rect,
+                                                              bool leftSlant, bool rightSlant,
+                                                              const Color& fillColor) {
+        const double s = std::max(0, style.arrowSize);
+        const double left = rect.x;
+        const double right = rect.x + rect.width;
+        const double top = rect.y;
+        const double bottom = rect.y + rect.height;
+
+        // Slanted edges shift the top corners right by the skew; the previous segment's
+        // right slant exactly fills this segment's left slant, so they tessellate.
+        ctx->ClearPath();
+        ctx->MoveTo(leftSlant ? left + s : left, top);
+        ctx->LineTo(rightSlant ? right + s : right, top);
+        ctx->LineTo(right, bottom);
+        ctx->LineTo(left, bottom);
+        ctx->ClosePath();
+
+        ctx->SetFillPaint(fillColor);
+        ctx->FillPathPreserve();
+        if (style.separatorColor.a > 0 && style.separatorThickness > 0.0f) {
+            ctx->SetStrokePaint(style.separatorColor);
+            ctx->SetStrokeWidth(style.separatorThickness);
+            ctx->SetLineJoin(LineJoin::Miter);
+            ctx->StrokePathPreserve();
+        }
+        ctx->ClearPath();
+    }
+
+    void UltraCanvasBreadcrumb::RenderLevelIndicator(IRenderContext* ctx, const ItemSlot& slot) {
+        const Rect2Di& r = slot.indicatorRect;
+        Point2Dd center(r.x + r.width / 2.0, r.y + r.height / 2.0);
+
+        const Color border = style.levelIndicatorBorder ? style.levelIndicatorBorderColor
+                                                         : Colors::Transparent;
+        const float borderW = style.levelIndicatorBorder ? style.levelIndicatorBorderWidth : 0.0f;
+
+        switch (style.levelIndicatorBackground) {
+            case BreadcrumbLevelIndicatorBackground::Round:
+                ctx->DrawFilledCircle(center, r.width / 2.0f,
+                                      style.levelIndicatorColor, border, borderW);
+                break;
+            case BreadcrumbLevelIndicatorBackground::Rectangle:
+                ctx->DrawFilledRectangle(Rect2Dd(r.x, r.y, r.width, r.height),
+                                         style.levelIndicatorColor, borderW, border,
+                                         std::max(2.0f, r.width * 0.22f));
+                break;
+            case BreadcrumbLevelIndicatorBackground::NoBackground:
+                break;  // number only
+        }
+
+        // Centered level number (1-based).
+        ctx->PushState();
+        FontStyle fs = style.fontStyle;
+        fs.fontSize = std::max(8.0f, r.height * 0.58f);
+        fs.fontWeight = FontWeight::Bold;
+        ctx->SetFontStyle(fs);
+        ctx->SetTextAlignment(TextAlignment::Center);
+        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
+        ctx->SetTextPaint(style.levelIndicatorTextColor);
+        ctx->DrawTextInRect(std::to_string(slot.itemIndex + 1),
+                            Rect2Dd(r.x, r.y, r.width, r.height));
+        ctx->PopState();
     }
 
     void UltraCanvasBreadcrumb::RenderSeparator(IRenderContext* ctx, int x, int centerY) {

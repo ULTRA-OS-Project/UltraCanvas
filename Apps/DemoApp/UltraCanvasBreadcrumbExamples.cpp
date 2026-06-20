@@ -16,7 +16,7 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBreadcrumbExamples() {
-        auto mainContainer = std::make_shared<UltraCanvasContainer>("BreadcrumbExamples", 0, 0, 1000, 1380);
+        auto mainContainer = std::make_shared<UltraCanvasContainer>("BreadcrumbExamples", 0, 0, 1000, 1620);
 
         // Shared palette — matches the other demo pages.
         const Color titleColor(50, 50, 150, 255);
@@ -440,6 +440,98 @@ namespace UltraCanvas {
         };
         mainContainer->AddChild(bcArrow);
         yOffset += rowStep;
+
+        // ========================================
+        // SECTION 15: NUMBERED STEPS (dark wizard)
+        // ========================================
+        addDescription("BC_Section15", yOffset,
+                       "15. Numbered steps",
+                       "Steps() preset: arrow segments + round numbered indicators");
+
+        auto bcSteps = CreateBreadcrumb("bc_steps", rightX, yOffset + 4, rightWidth, 34);
+        bcSteps->SetStyle(BreadcrumbStyle::Steps());
+        bcSteps->AddItem("Bio");
+        bcSteps->AddItem("Links");
+        bcSteps->AddItem("Music");
+        bcSteps->AddItem("Contact");
+        bcSteps->SetCurrentIndex(0);   // highlight the active step
+        bcSteps->onItemClicked = [reportClick](int idx, const BreadcrumbItem& item) {
+            reportClick("Steps", idx, item);
+        };
+        mainContainer->AddChild(bcSteps);
+        yOffset += rowStep;
+
+        // ========================================
+        // SECTION 16: PARALLELOGRAM STYLE
+        // ========================================
+        addDescription("BC_Section16", yOffset,
+                       "16. Parallelogram",
+                       "Parallelogram() preset: slanted interlocking segments");
+
+        auto bcPara = CreateBreadcrumb("bc_para", rightX, yOffset + 4, 360, 32);
+        bcPara->SetStyle(BreadcrumbStyle::Parallelogram());
+        bcPara->AddItem("Level 1");
+        bcPara->AddItem("Level 2");
+        bcPara->AddItem("Level 3");
+        bcPara->onItemClicked = [reportClick](int idx, const BreadcrumbItem& item) {
+            reportClick("Parallelogram", idx, item);
+        };
+        mainContainer->AddChild(bcPara);
+        yOffset += rowStep;
+
+        // ========================================
+        // SECTION 17: LEVEL INDICATOR BACKGROUNDS
+        // ========================================
+        addDescription("BC_Section17", yOffset,
+                       "17. Level indicators",
+                       "Indicator background: round / rectangle / none / bordered");
+
+        struct IndEntry {
+            BreadcrumbLevelIndicatorBackground background;
+            bool border;
+            const char* label;
+        };
+        const IndEntry indEntries[] = {
+            {BreadcrumbLevelIndicatorBackground::Round,        false, "Round"},
+            {BreadcrumbLevelIndicatorBackground::Rectangle,    false, "Rectangle"},
+            {BreadcrumbLevelIndicatorBackground::NoBackground, false, "None"},
+            {BreadcrumbLevelIndicatorBackground::Round,        true,  "Bordered"},
+        };
+
+        int indY = yOffset;
+        for (const auto& entry : indEntries) {
+            auto lbl = std::make_shared<UltraCanvasLabel>(std::string("BC_IndLbl_") + entry.label,
+                                                          rightX, indY + 4, 90, 22);
+            lbl->SetText(entry.label);
+            lbl->SetFontSize(11);
+            lbl->SetTextColor(descColor);
+            mainContainer->AddChild(lbl);
+
+            BreadcrumbStyle st = BreadcrumbStyle::Default();
+            st.showLevelIndicator = true;
+            st.levelIndicatorBackground = entry.background;
+            st.levelIndicatorBorder = entry.border;
+            st.levelIndicatorSize = 18;
+            st.levelIndicatorColor = Color(0, 120, 215, 255);
+            st.levelIndicatorBorderColor = Color(0, 90, 170, 255);
+            // Number only (no fill) needs a dark glyph to read on the page background.
+            st.levelIndicatorTextColor =
+                (entry.background == BreadcrumbLevelIndicatorBackground::NoBackground)
+                    ? Color(40, 40, 40, 255) : Colors::White;
+
+            auto bc = CreateBreadcrumb(std::string("bc_ind_") + entry.label,
+                                       rightX + 100, indY, rightWidth - 100, 26);
+            bc->SetStyle(st);
+            bc->AddItem("Home");
+            bc->AddItem("Library");
+            bc->AddItem("Album");
+            bc->onItemClicked = [reportClick, name = std::string(entry.label)](int idx, const BreadcrumbItem& item) {
+                reportClick(std::string("Indicator/") + name, idx, item);
+            };
+            mainContainer->AddChild(bc);
+            indY += 32;
+        }
+        yOffset = indY + 15;
 
         return mainContainer;
     }
