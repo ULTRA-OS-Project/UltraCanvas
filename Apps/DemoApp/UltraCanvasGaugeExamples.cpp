@@ -601,7 +601,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     // --- Segment count slider ---
     auto countSlider = std::make_shared<UltraCanvasSlider>("round_count", 0, 0, 0, kSliderH);
     countSlider->SetOrientation(SliderOrientation::Horizontal);
-    countSlider->SetRange(8.0f, 72.0f);
+    countSlider->SetRange(4.0f, 72.0f);
     countSlider->SetValue(36.0f);
     countSlider->SetStep(1.0f);
     auto countCap = MakeCaption("round_count_cap", "Segment count: 36");
@@ -633,8 +633,25 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     };
     AddFlex(panel, styleDrop, 0);
 
-    // --- Segment ends dropdown (segmented ring) ---
-    auto endsCap = MakeCaption("round_ends_cap", "Segment ends (segmented ring)");
+    // --- Segment style dropdown (Segmented / Dashed) ---
+    auto segCap = MakeCaption("round_seg_cap", "Segment style (Segmented / Dashed)");
+    AddFlex(panel, segCap, 0);
+    auto segDrop = std::make_shared<UltraCanvasDropdown>("round_seg", 0, 0, 0, 26);
+    segDrop->AddItem("Blocks (rounded chunks)");
+    segDrop->AddItem("Bars (radial ticks)");
+    segDrop->AddItem("Dots");
+    segDrop->SetSelectedIndex(0);
+    segDrop->onSelectionChanged = [gPtr](int idx, const DropdownItem&) {
+        switch (idx) {
+            case 1: gPtr->SetRingSegmentStyle(GaugeRingSegmentStyle::Bars); break;
+            case 2: gPtr->SetRingSegmentStyle(GaugeRingSegmentStyle::Dots); break;
+            default: gPtr->SetRingSegmentStyle(GaugeRingSegmentStyle::Blocks); break;
+        }
+    };
+    AddFlex(panel, segDrop, 0);
+
+    // --- Segment ends dropdown (Segmented ring) ---
+    auto endsCap = MakeCaption("round_ends_cap", "Segment ends (Segmented ring)");
     AddFlex(panel, endsCap, 0);
     auto endsDrop = std::make_shared<UltraCanvasDropdown>("round_ends", 0, 0, 0, 26);
     endsDrop->AddItem("Rounded");
@@ -645,8 +662,8 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     };
     AddFlex(panel, endsDrop, 0);
 
-    // --- Border dropdown (segmented ring) ---
-    auto borderCap = MakeCaption("round_border_cap", "Segment border");
+    // --- Border dropdown (Segmented ring) ---
+    auto borderCap = MakeCaption("round_border_cap", "Segment border (Segmented ring)");
     AddFlex(panel, borderCap, 0);
     auto borderDrop = std::make_shared<UltraCanvasDropdown>("round_border", 0, 0, 0, 26);
     borderDrop->AddItem("Off");
@@ -656,6 +673,23 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
         gPtr->SetRingBorder(idx == 1);
     };
     AddFlex(panel, borderDrop, 0);
+
+    // --- Surface fill dropdown ---
+    auto fillCap = MakeCaption("round_fill_cap", "Surface fill");
+    AddFlex(panel, fillCap, 0);
+    auto fillDrop = std::make_shared<UltraCanvasDropdown>("round_fill", 0, 0, 0, 26);
+    fillDrop->AddItem("None (open centre)");
+    fillDrop->AddItem("Straight liquid line");
+    fillDrop->AddItem("Waved liquid line");
+    fillDrop->SetSelectedIndex(0);
+    fillDrop->onSelectionChanged = [gPtr](int idx, const DropdownItem&) {
+        switch (idx) {
+            case 1: gPtr->SetFillStyle(GaugeFillStyle::StraightLevel); break;
+            case 2: gPtr->SetFillStyle(GaugeFillStyle::WavedLevel); break;
+            default: gPtr->SetFillStyle(GaugeFillStyle::NoFill); break;
+        }
+    };
+    AddFlex(panel, fillDrop, 0);
 
     // --- Centre content dropdown ---
     auto centerCap = MakeCaption("round_center_cap", "Centre content");
@@ -702,40 +736,6 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     };
     AddFlex(panel, fadeDrop, 0);
 
-    // --- Segment style dropdown ---
-    auto segCap = MakeCaption("round_seg_cap", "Segment style (when segmented)");
-    AddFlex(panel, segCap, 0);
-    auto segDrop = std::make_shared<UltraCanvasDropdown>("round_seg", 0, 0, 0, 26);
-    segDrop->AddItem("Blocks (rounded chunks)");
-    segDrop->AddItem("Bars (radial ticks)");
-    segDrop->AddItem("Dots");
-    segDrop->SetSelectedIndex(0);
-    segDrop->onSelectionChanged = [gPtr](int idx, const DropdownItem&) {
-        switch (idx) {
-            case 1: gPtr->SetRingSegmentStyle(GaugeRingSegmentStyle::Bars); break;
-            case 2: gPtr->SetRingSegmentStyle(GaugeRingSegmentStyle::Dots); break;
-            default: gPtr->SetRingSegmentStyle(GaugeRingSegmentStyle::Blocks); break;
-        }
-    };
-    AddFlex(panel, segDrop, 0);
-
-    // --- Surface fill dropdown ---
-    auto fillCap = MakeCaption("round_fill_cap", "Surface fill");
-    AddFlex(panel, fillCap, 0);
-    auto fillDrop = std::make_shared<UltraCanvasDropdown>("round_fill", 0, 0, 0, 26);
-    fillDrop->AddItem("None (open centre)");
-    fillDrop->AddItem("Straight liquid line");
-    fillDrop->AddItem("Waved liquid line");
-    fillDrop->SetSelectedIndex(0);
-    fillDrop->onSelectionChanged = [gPtr](int idx, const DropdownItem&) {
-        switch (idx) {
-            case 1: gPtr->SetFillStyle(GaugeFillStyle::StraightLevel); break;
-            case 2: gPtr->SetFillStyle(GaugeFillStyle::WavedLevel); break;
-            default: gPtr->SetFillStyle(GaugeFillStyle::NoFill); break;
-        }
-    };
-    AddFlex(panel, fillDrop, 0);
-
     AddFlex(body, panel, 0);
 
     // ---------------------------------------------------------------------
@@ -744,19 +744,20 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     auto grid = std::make_shared<UltraCanvasContainer>("RoundGrid", 0, 0, 0, 0);
     SetGrid3x3(grid, 12);
 
-    // 1) Classic solid line ring
+    // 1) Thick solid round gauge
     auto g1 = CreateGaugeDiagramElement("rp1", 0, 0, kCardW, kCardH);
     ApplyRoundPreset(g1, GaugeRingStyle::SolidArc, GaugeRingSegmentStyle::Blocks,
-                     GaugeFillStyle::NoFill, 6.0f, 36, Color(0, 200, 140, 255));
+                     GaugeFillStyle::NoFill, 16.0f, 36, Color(160, 230, 40, 255));
     g1->SetTitle("Solid Arc");
     g1->SetUnit("%");
+    g1->SetTrackColor(Color(50, 60, 30, 255));
     AddGrid(grid, CreateGaugeCard("rp1_c", kCardW, kCardH, g1, 0.0f, 100.0f, 74.0f, "%"), 0, 0);
 
-    // 2) Segmented rounded blocks (activity-ring look)
+    // 2) Segmented rounded blocks (clearly separated chunks)
     auto g2 = CreateGaugeDiagramElement("rp2", 0, 0, kCardW, kCardH);
     ApplyRoundPreset(g2, GaugeRingStyle::Segmented, GaugeRingSegmentStyle::Blocks,
-                     GaugeFillStyle::NoFill, 16.0f, 24, Color(160, 230, 40, 255));
-    g2->SetTitle("Segmented Blocks");
+                     GaugeFillStyle::NoFill, 16.0f, 12, Color(160, 230, 40, 255));
+    g2->SetTitle("Segmented");
     g2->SetUnit("%");
     g2->SetTrackColor(Color(50, 60, 30, 255));
     AddGrid(grid, CreateGaugeCard("rp2_c", kCardW, kCardH, g2, 0.0f, 100.0f, 47.0f, "%"), 0, 1);
@@ -842,10 +843,10 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGaugeExa
     tabs->SetTabStyle(TabStyle::Rounded);
     tabs->SetTabHeight(32);
 
-    tabs->AddTab("Analog", BuildAnalogTab(920, 810));
+    tabs->AddTab("Round Gauges", BuildRoundGaugesTab(920, 810));
     tabs->AddTab("Progress & Linear", BuildProgressTab(920, 810));
     tabs->AddTab("Specialized", BuildSpecializedTab(920, 810));
-    tabs->AddTab("Round Gauges", BuildRoundGaugesTab(920, 810));
+    tabs->AddTab("Analog", BuildAnalogTab(920, 810));
     tabs->SetActiveTab(0);
 
     return tabs;
