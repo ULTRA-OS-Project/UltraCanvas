@@ -1,6 +1,6 @@
 // core/UltraCanvasBreadcrumb.cpp
 // Hierarchical breadcrumb navigation control implementation
-// Version: 1.2.1
+// Version: 1.2.2
 // Last Modified: 2026-06-20
 // Author: UltraCanvas Framework
 
@@ -61,6 +61,29 @@ namespace UltraCanvas {
         s.borderColor = Color(210, 210, 215, 255);
         s.borderWidth = 1.0f;
         s.cornerRadius = 3.0f;
+        return s;
+    }
+
+    BreadcrumbStyle BreadcrumbStyle::Arrow() {
+        BreadcrumbStyle s;
+        s.itemStyle = BreadcrumbItemStyle::Arrow;
+        s.separatorStyle = BreadcrumbSeparatorStyle::NoSeparator;
+        s.overflowMode = BreadcrumbOverflowMode::Clip;
+        s.itemBackgroundColor = Color(228, 230, 233, 255);
+        s.itemHoverBackgroundColor = Color(210, 224, 245, 255);
+        s.itemPressedBackgroundColor = Color(190, 212, 240, 255);
+        s.currentItemBackgroundColor = Color(0, 120, 215, 255);
+        s.currentItemTextColor = Colors::White;
+        s.itemTextColor = Color(60, 60, 60, 255);
+        s.currentItemBold = false;
+        s.currentItemClickable = true;
+        // Thin light gap drawn along each segment outline so neighbours stay distinct.
+        s.separatorColor = Color(255, 255, 255, 255);
+        s.separatorThickness = 1.0f;
+        s.arrowSize = 10;
+        s.itemPaddingHorizontal = 12;
+        s.itemPaddingVertical = 5;
+        s.separatorSpacing = 0;
         return s;
     }
 
@@ -550,6 +573,11 @@ namespace UltraCanvas {
         int contentBottom = content.y + content.height;
         int centerY = (contentTop + contentBottom) / 2;
 
+        // Arrow item style: segments butt against each other (no separator/gap) and each
+        // non-first segment reserves a left notch so its text clears the previous tip.
+        const bool arrowStyle = (style.itemStyle == BreadcrumbItemStyle::Arrow);
+        const int arrowDepth = arrowStyle ? std::max(0, style.arrowSize) : 0;
+
         bool overflowEmitted = false;
 
         for (size_t i = 0; i < items.size(); ++i) {
@@ -591,7 +619,7 @@ namespace UltraCanvas {
 
             if (!visible[i]) continue;
 
-            if (!slots.empty()) {
+            if (!slots.empty() && !arrowStyle) {
                 x += style.separatorSpacing;
                 x += separatorWidth + style.separatorSpacing;
             }
@@ -600,10 +628,13 @@ namespace UltraCanvas {
             slot.itemIndex = static_cast<int>(i);
             slot.displayText = items[i].text;
             slot.isCurrent = (static_cast<int>(i) == currentIdx);
-            int width = itemWidths[i];
+            // Non-first arrow segments carve a left notch; widen the body and push the
+            // content right by that depth so text/icons never sit under the wedge.
+            int leftNotch = (arrowStyle && !slots.empty()) ? arrowDepth : 0;
+            int width = itemWidths[i] + leftNotch;
             slot.rect = Rect2Di(x, centerY - slotHeight / 2, width, slotHeight);
 
-            int innerX = x + style.itemPaddingHorizontal;
+            int innerX = x + style.itemPaddingHorizontal + leftNotch;
             if (items[i].icon) {
                 slot.iconRect = Rect2Di(innerX, centerY - style.iconSize / 2,
                                         style.iconSize, style.iconSize);
@@ -803,7 +834,8 @@ namespace UltraCanvas {
         Color bgColor = Colors::Transparent;
         bool drawBackground = false;
         if (style.itemStyle == BreadcrumbItemStyle::Pill
-            || style.itemStyle == BreadcrumbItemStyle::Tab) {
+            || style.itemStyle == BreadcrumbItemStyle::Tab
+            || style.itemStyle == BreadcrumbItemStyle::Arrow) {
             if (isCurrent && style.currentItemBackgroundColor.a > 0) {
                 bgColor = style.currentItemBackgroundColor;
                 drawBackground = true;
@@ -821,10 +853,17 @@ namespace UltraCanvas {
         }
 
         if (drawBackground) {
-            Rect2Di r = slot.rect;
-            ctx->DrawFilledRectangle(Rect2Dd(r.x, r.y, r.width, r.height),
-                                     bgColor, 0.0f, Colors::Transparent,
-                                     static_cast<float>(style.itemCornerRadius));
+            if (style.itemStyle == BreadcrumbItemStyle::Arrow) {
+                // First segment has a flat left edge; every segment grows a right tip
+                // that nests into the next segment's notch (the last one's tip trails off).
+                RenderArrowBackground(ctx, slot.rect, /*leftNotch*/ slotIdx > 0,
+                                      /*rightTip*/ true, bgColor);
+            } else {
+                Rect2Di r = slot.rect;
+                ctx->DrawFilledRectangle(Rect2Dd(r.x, r.y, r.width, r.height),
+                                         bgColor, 0.0f, Colors::Transparent,
+                                         static_cast<float>(style.itemCornerRadius));
+            }
         }
 
         // Tab-style underline strip
@@ -878,6 +917,41 @@ namespace UltraCanvas {
         if (slot.dropdownRect.width > 0) {
             RenderDropdownChevron(ctx, slot.dropdownRect, textColor);
         }
+    }
+
+    void UltraCanvasBreadcrumb::RenderArrowBackground(IRenderContext* ctx, const Rect2Di& rect,
+                                                      bool leftNotch, bool rightTip,
+                                                      const Color& fillColor) {
+        const double a = std::max(0, style.arrowSize);
+        const double left = rect.x;
+        const double right = rect.x + rect.width;
+        const double top = rect.y;
+        const double bottom = rect.y + rect.height;
+        const double midY = rect.y + rect.height / 2.0;
+
+        // Outline clockwise from the top-left corner.
+        ctx->ClearPath();
+        ctx->MoveTo(left, top);
+        ctx->LineTo(right, top);
+        if (rightTip && a > 0.0) {
+            ctx->LineTo(right + a, midY);   // pointed tip past the right edge
+        }
+        ctx->LineTo(right, bottom);
+        ctx->LineTo(left, bottom);
+        if (leftNotch && a > 0.0) {
+            ctx->LineTo(left + a, midY);    // concave wedge matching the previous tip
+        }
+        ctx->ClosePath();
+
+        ctx->SetFillPaint(fillColor);
+        ctx->FillPathPreserve();
+        if (style.separatorColor.a > 0 && style.separatorThickness > 0.0f) {
+            ctx->SetStrokePaint(style.separatorColor);
+            ctx->SetStrokeWidth(style.separatorThickness);
+            ctx->SetLineJoin(LineJoin::Miter);
+            ctx->StrokePathPreserve();
+        }
+        ctx->ClearPath();
     }
 
     void UltraCanvasBreadcrumb::RenderSeparator(IRenderContext* ctx, int x, int centerY) {

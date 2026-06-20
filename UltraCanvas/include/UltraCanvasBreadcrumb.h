@@ -1,7 +1,7 @@
 // include/UltraCanvasBreadcrumb.h
 // Hierarchical breadcrumb navigation control with overflow handling and per-item dropdowns
-// Version: 1.1.0
-// Last Modified: 2026-05-17
+// Version: 1.2.0
+// Last Modified: 2026-06-20
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -49,7 +49,8 @@ namespace UltraCanvas {
         Plain,          // Text only (default), background only on hover/press
         Pill,           // Each item drawn with rounded background
         Underline,      // Text with hover underline
-        Tab             // Tab-like with bottom border
+        Tab,            // Tab-like with bottom border
+        Arrow           // Interlocking right-pointing arrow/chevron segments ("steps")
     };
 
 // ===== BREADCRUMB ITEM =====
@@ -133,6 +134,7 @@ namespace UltraCanvas {
         int itemPaddingHorizontal = 6;
         int itemPaddingVertical = 3;
         int itemCornerRadius = 3;
+        int arrowSize = 10;                     // Depth of the arrow tip / left notch (Arrow item style)
         int iconSize = 16;
         int iconTextSpacing = 4;
         int dropdownChevronSize = 6;
@@ -156,6 +158,7 @@ namespace UltraCanvas {
         static BreadcrumbStyle Pills();
         static BreadcrumbStyle FileExplorer();
         static BreadcrumbStyle WebDocs();
+        static BreadcrumbStyle Arrow();
     };
 
 // ===== MAIN BREADCRUMB CLASS =====
@@ -307,6 +310,11 @@ namespace UltraCanvas {
         // Rendering.
         void RenderBackground(IRenderContext* ctx);
         void RenderSlot(IRenderContext* ctx, const ItemSlot& slot, int slotIdx);
+        // Fills an interlocking arrow/chevron segment for the Arrow item style.
+        // leftNotch carves a matching concave wedge on the left; rightTip extends a
+        // pointed wedge past the right edge so it nests into the next item's notch.
+        void RenderArrowBackground(IRenderContext* ctx, const Rect2Di& rect,
+                                   bool leftNotch, bool rightTip, const Color& fillColor);
         void RenderSeparator(IRenderContext* ctx, int x, int centerY);
         void RenderDropdownChevron(IRenderContext* ctx, const Rect2Di& rect, const Color& color);
 

@@ -16,7 +16,7 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBreadcrumbExamples() {
-        auto mainContainer = std::make_shared<UltraCanvasContainer>("BreadcrumbExamples", 0, 0, 1000, 1300);
+        auto mainContainer = std::make_shared<UltraCanvasContainer>("BreadcrumbExamples", 0, 0, 1000, 1380);
 
         // Shared palette — matches the other demo pages.
         const Color titleColor(50, 50, 150, 255);
@@ -422,6 +422,24 @@ namespace UltraCanvas {
             sepY += 30;
         }
         yOffset = sepY + 15;
+
+        // ========================================
+        // SECTION 14: ARROW / STEPPER STYLE
+        // ========================================
+        addDescription("BC_Section14", yOffset,
+                       "14. Arrow steps",
+                       "Interlocking arrow segments; current step highlighted");
+
+        auto bcArrow = CreateBreadcrumb("bc_arrow", rightX, yOffset + 4, rightWidth, 30);
+        bcArrow->SetStyle(BreadcrumbStyle::Arrow());
+        bcArrow->AddItem("PlantUML");
+        bcArrow->AddItem("Language specification");
+        bcArrow->AddItem("Yaml Diagram");
+        bcArrow->onItemClicked = [reportClick](int idx, const BreadcrumbItem& item) {
+            reportClick("Arrow", idx, item);
+        };
+        mainContainer->AddChild(bcArrow);
+        yOffset += rowStep;
 
         return mainContainer;
     }
