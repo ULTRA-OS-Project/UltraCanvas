@@ -215,7 +215,7 @@ void UploadMesh(ModelGLResources& gl, const Mesh& mesh) {
 } // namespace
 
 std::shared_ptr<UltraCanvasUIElement> CreateGLModelsTab() {
-    auto root = std::make_shared<UltraCanvasContainer>("GLModelsTab", 0, 0, 1000, 700);
+    auto root = std::make_shared<UltraCanvasContainer>("GLModelsTab", 0, 0, 1004, 692);
 
     auto title = std::make_shared<UltraCanvasLabel>("GLModelsTitle", 16, 8, 700, 24);
     title->SetText("Complex 3D Models — Wavefront OBJ loaded into the GL surface");

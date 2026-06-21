@@ -948,7 +948,7 @@ inline void RenderCaterpillar(ShaderGLResources& g, int W, int H, float t){
 } // namespace
 
 std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
-    auto root = std::make_shared<UltraCanvasContainer>("GLShaderTab", 0, 0, 1000, 700);
+    auto root = std::make_shared<UltraCanvasContainer>("GLShaderTab", 0, 0, 1004, 692);
 
     auto title = std::make_shared<UltraCanvasLabel>("GLShaderTitle", 16, 8, 700, 24);
     title->SetText("Shader Playground — full-screen procedural fragment shaders");
