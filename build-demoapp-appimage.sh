@@ -23,7 +23,7 @@ rm -rf $OUTPUTDIR/AppDir \
 && sed -i -e 's#/usr#././#g'  $OUTPUTDIR/AppDir/usr/lib/libMagickCore-6.Q16.so.6 \
 && mkdir $OUTPUTDIR/AppDir/usr/share/UltraCanvas \
 && cp -r media Docs $OUTPUTDIR/AppDir/usr/share/UltraCanvas \
-&& mkdir $OUTPUTDIR/AppDir/usr/share/UltraCanvas/Examples \
-&& cp -r Apps/DemoApp/*.cpp $OUTPUTDIR/AppDir/usr/share/UltraCanvas/Examples/ \
+&& mkdir $OUTPUTDIR/AppDir/usr/share/UltraCanvas/DemoApp \
+&& cp -r Apps/DemoApp/*.cpp $OUTPUTDIR/AppDir/usr/share/UltraCanvas/DemoApp/ \
 && cd $OUTPUTDIR \
 && appimagetool --runtime-file $PROJECTDIR/appimage/runtime-x86_64 AppDir UCDemo-Linux-$VERSION-x86_64.AppImage
