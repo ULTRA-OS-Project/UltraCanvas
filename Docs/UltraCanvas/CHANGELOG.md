@@ -15,7 +15,8 @@
 - Merged "Add Radar Chart element"
 - Fix Radar Chart rendering and animation
 - Show ULTRA OS overview page when "ULTRA OS modules" tree node is selected
-
+- Merge "Add rounded corner label examples and fix resource paths"
+- Merge "Add digital clock, segmented ring, centre content, and faded colours to gauges"
 
 #### 2026-06-19 *0.2.15*
 - Added intro description for different Modules
