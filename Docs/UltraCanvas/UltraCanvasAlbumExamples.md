@@ -192,7 +192,8 @@ middle of the tile. The frame is the outer bound, so for fully square images set
 Give an item a `link` and its subtitle row is drawn as a clickable link
 (`linkColor`, underlined when `linkUnderline`). Clicking the link fires
 `onLinkClicked(index)` instead of selecting the tile, and the cursor turns into a
-hand over it.
+hand over it. An optional `linkIconPath` paints an icon (e.g. a YouTube badge)
+before the link text; the icon is part of the clickable hit area.
 
 ```cpp
 AlbumItem it;
@@ -200,6 +201,15 @@ it.title    = "Mountain Dawn";
 it.subtitle = "naturepix.example";                 // shown as a link…
 it.link     = "https://naturepix.example/dawn";    // …because link is set
 album->AddItem(it);
+
+// A video linking to YouTube, with a YouTube badge before the link text:
+AlbumItem yt;
+yt.title        = "Lola Lexy - NO kinks";
+yt.subtitle     = "youtube.com";
+yt.mediaType    = AlbumMediaType::Video;
+yt.link         = "https://www.youtube.com/watch?v=Tl15Os47lG0";
+yt.linkIconPath = "media/icons/youtube.svg";
+album->AddItem(yt);
 
 album->onLinkClicked = [album](size_t i){
     OpenInBrowser(album->GetItems()[i].link);

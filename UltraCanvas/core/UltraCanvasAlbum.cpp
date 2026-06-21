@@ -1,8 +1,10 @@
 // core/UltraCanvasAlbum.cpp
 // Photo / video / music album widget with selectable layout designs, per-item
 // crop / zoom / stretch fitting, action icons and visitor / edit / admin modes.
-// Version: 1.2.0
+// Version: 1.3.0
 // Last Modified: 2026-06-21
+// V1.3.0: AlbumItem::linkIconPath paints an icon before the subtitle link text
+//   (e.g. a YouTube badge), included in the link's clickable hit area.
 // V1.2.0: Action-icon background shape is configurable (AlbumActionIconBackground
 //   — round / square / rounded-square) with a configurable backing colour
 //   (AlbumConfig::actionIconBgColor).
@@ -852,20 +854,34 @@ namespace UltraCanvas {
             ctx->SetTextPaint(subColor);
             ctx->PushState();
             ctx->ClipRect(Rect2Dd(area));
-            ctx->DrawText(item.subtitle, Point2Dd(tx, ty));
+
+            // Optional link icon (e.g. a YouTube badge) before the link text.
+            int textX = tx;
+            int iconW = 0;
+            if (isLink && !item.linkIconPath.empty()) {
+                auto icon = UCImage::Get(item.linkIconPath);
+                if (icon && icon->GetWidth() > 0) {
+                    int isz = std::max(1, subH);   // square, matched to the line height
+                    ctx->DrawImage(*icon, Rect2Dd(tx, ty, isz, isz), ImageFitMode::Contain);
+                    iconW = isz + 4;               // icon + gap before the text
+                    textX = tx + iconW;
+                }
+            }
+
+            ctx->DrawText(item.subtitle, Point2Dd(textX, ty));
             if (isLink) {
                 int tw = ctx->GetTextLineWidth(item.subtitle);
-                int maxW = area.width - 2 * pad;
+                int maxW = area.width - 2 * pad - iconW;
                 if (maxW > 0 && tw > maxW) tw = maxW;
                 if (config.linkUnderline) {
                     double uy = ty + subH - 1.0;
                     ctx->SetStrokePaint(config.linkColor);
                     ctx->SetStrokeWidth(1.0f);
-                    ctx->DrawLine(Point2Dd(tx, uy), Point2Dd(tx + tw, uy));
+                    ctx->DrawLine(Point2Dd(textX, uy), Point2Dd(textX + tw, uy));
                 }
-                // Hit rect recorded in content space (matched against scrolled
-                // local coordinates by LinkAt, mirroring the action-icon hits).
-                linkHits.push_back({ Rect2Di(tx, ty, std::max(1, tw),
+                // Hit rect (icon + text) recorded in content space (matched against
+                // scrolled local coordinates by LinkAt, like the action-icon hits).
+                linkHits.push_back({ Rect2Di(tx, ty, iconW + std::max(1, tw),
                                              std::max(1, subH)), tile.itemIndex });
             }
             ctx->PopState();

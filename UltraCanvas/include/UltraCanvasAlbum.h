@@ -2,8 +2,10 @@
 // Photo / video / music album widget: a self-rendered media grid with selectable
 // layout designs, per-item crop / zoom / stretch fitting, action icons and
 // visitor / user-edit / admin modes. A companion to UltraCanvasSlideshow.
-// Version: 1.2.0
+// Version: 1.3.0
 // Last Modified: 2026-06-21
+// V1.3.0: AlbumItem::linkIconPath draws an icon (e.g. a YouTube badge) before
+//   the subtitle link text.
 // V1.2.0: AlbumActionIconBackground (round / square / rounded-square) plus
 //   actionIconBgColor for the action-icon backing.
 // V1.1.0: AlbumActionAnchor (8 image / text-block corners) for action-icon
@@ -136,6 +138,8 @@ namespace UltraCanvas {
         std::string link;           // optional link target for the subtitle row; when
                                     // set, the subtitle is drawn as a clickable link
                                     // and onLinkClicked fires instead of a tile click
+        std::string linkIconPath;   // optional icon drawn before the link text (e.g.
+                                    // a YouTube badge); only used when `link` is set
         std::string id;             // optional stable id passed back to callbacks
 
         AlbumMediaType mediaType = AlbumMediaType::Photo;

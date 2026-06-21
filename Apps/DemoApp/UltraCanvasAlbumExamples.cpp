@@ -2,8 +2,10 @@
 // Demonstration of UltraCanvasAlbum: layout designs, image-fit modes, action-icon
 // display options and visitor / user-edit / admin modes for a mixed photo / video
 // / music album.
-// Version: 2.5.0
+// Version: 2.6.0
 // Last Modified: 2026-06-21
+// V2.6.0: Added a YouTube video tile whose second row links to YouTube, preceded
+//   by a YouTube icon (AlbumItem::linkIconPath + media/icons/youtube.svg).
 // V2.5.0: Compact action icons (actionButtonSize 20) and an "Icon bg" option
 //   row (round / square / rounded-square) exercising AlbumActionIconBackground.
 // V2.4.0: Photo tiles now show their source on the second caption row as a
@@ -333,6 +335,21 @@ namespace UltraCanvas {
             it.featured = s.featured;
             it.link = s.link;
             album->AddItem(it);
+        }
+
+        // A YouTube video entry: no local thumbnail is bundled, so the tile shows
+        // the video placeholder. Its second row links to YouTube and is preceded
+        // by a YouTube icon (AlbumItem::linkIconPath).
+        {
+            AlbumItem yt;
+            yt.mediaPath   = mediaRoot + "Lola Lexy - NO kinks.mp4";  // not bundled
+            yt.title       = "Lola Lexy - NO kinks";
+            yt.subtitle    = "youtube.com";
+            yt.description  = "Linked from YouTube.";
+            yt.mediaType   = AlbumMediaType::Video;
+            yt.link        = "https://www.youtube.com/watch?v=Tl15Os47lG0";
+            yt.linkIconPath = NormalizePath(GetResourcesDir() + "media/icons/youtube.svg");
+            album->AddItem(yt);
         }
 
         auto* albumPtr = album.get();
