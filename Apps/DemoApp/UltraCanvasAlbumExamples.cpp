@@ -4,8 +4,9 @@
 // / music album.
 // Version: 2.6.0
 // Last Modified: 2026-06-21
-// V2.6.0: Added a YouTube video tile whose second row links to YouTube, preceded
-//   by a YouTube icon (AlbumItem::linkIconPath + media/icons/youtube.svg).
+// V2.6.0: Added a YouTube video tile (media/videos/Lola Lexy - No kings.mp4)
+//   whose second row links to YouTube, preceded by a YouTube icon
+//   (AlbumItem::linkIconPath + media/icons/youtube.svg).
 // V2.5.0: Compact action icons (actionButtonSize 20) and an "Icon bg" option
 //   row (round / square / rounded-square) exercising AlbumActionIconBackground.
 // V2.4.0: Photo tiles now show their source on the second caption row as a
@@ -337,13 +338,14 @@ namespace UltraCanvas {
             album->AddItem(it);
         }
 
-        // A YouTube video entry: no local thumbnail is bundled, so the tile shows
-        // the video placeholder. Its second row links to YouTube and is preceded
-        // by a YouTube icon (AlbumItem::linkIconPath).
+        // A YouTube video entry pointing at the bundled clip in media/videos.
+        // No poster image is supplied, so the tile shows the video placeholder;
+        // its second row links to YouTube, preceded by a YouTube icon
+        // (AlbumItem::linkIconPath).
         {
             AlbumItem yt;
-            yt.mediaPath   = mediaRoot + "Lola Lexy - NO kinks.mp4";  // not bundled
-            yt.title       = "Lola Lexy - NO kinks";
+            yt.mediaPath   = NormalizePath(GetResourcesDir() + "media/videos/Lola Lexy - No kings.mp4");
+            yt.title       = "Lola Lexy - No kings";
             yt.subtitle    = "youtube.com";
             yt.description  = "Linked from YouTube.";
             yt.mediaType   = AlbumMediaType::Video;

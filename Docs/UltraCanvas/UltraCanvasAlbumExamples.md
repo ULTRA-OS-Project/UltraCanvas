@@ -204,9 +204,10 @@ album->AddItem(it);
 
 // A video linking to YouTube, with a YouTube badge before the link text:
 AlbumItem yt;
-yt.title        = "Lola Lexy - NO kinks";
+yt.title        = "Lola Lexy - No kings";
 yt.subtitle     = "youtube.com";
 yt.mediaType    = AlbumMediaType::Video;
+yt.mediaPath    = "media/videos/Lola Lexy - No kings.mp4";
 yt.link         = "https://www.youtube.com/watch?v=Tl15Os47lG0";
 yt.linkIconPath = "media/icons/youtube.svg";
 album->AddItem(yt);
