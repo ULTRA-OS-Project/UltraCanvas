@@ -1,11 +1,12 @@
 // Plugins/Charts/UltraCanvasRadarChartElement.cpp
 // Comprehensive radar chart implementation with multi-axis visualization
-// Version: 2.0.0
-// Last Modified: 2026-06-19
+// Version: 2.1.0
+// Last Modified: 2026-06-21
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasRadarChartElement.h"
 #include "UltraCanvasTooltipManager.h"
+#include "UltraCanvasApplication.h"
 #include <cmath>
 #include <algorithm>
 #include <limits>
@@ -109,6 +110,10 @@ namespace UltraCanvas {
         }
     }
 
+    UltraCanvasRadarChartElement::~UltraCanvasRadarChartElement() {
+        StopAnimationTimer();
+    }
+
     void UltraCanvasRadarChartElement::UpdateAnimationProgress() {
         if (!enableAnimation) {
             animationProgress = 1.0f;
@@ -122,10 +127,53 @@ namespace UltraCanvas {
         if (elapsed >= animationDurationMs) {
             animationProgress = 1.0f;
         } else {
-            // Smoothstep easing
+            // Smoothstep easing. The periodic animation timer (StartAnimation /
+            // OnAnimationTick) drives successive frames; this method only computes the
+            // progress value for the current frame.
             float t = static_cast<float>(elapsed) / static_cast<float>(animationDurationMs);
             animationProgress = t * t * (3.0f - 2.0f * t);
-            RequestRedraw(); // Continue animation
+        }
+    }
+
+    void UltraCanvasRadarChartElement::StartAnimation() {
+        // Cancel any in-flight timer so repeated AddSeries()/restart calls begin cleanly.
+        StopAnimationTimer();
+
+        if (!enableAnimation) {
+            animationProgress = 1.0f;
+            RequestRedraw();
+            return;
+        }
+
+        radarAnimationStart = std::chrono::steady_clock::now();
+        animationProgress = 0.0f;
+
+        // Drive the grow-out with a ~60fps periodic timer. RequestRedraw() alone cannot
+        // advance the animation: the event loop blocks until a native event or a timer
+        // wakes it, so the timer is what produces successive frames.
+        if (auto* app = UltraCanvasApplication::GetInstance()) {
+            animationTimerId = app->StartTimer(16, true, [this](TimerId) {
+                OnAnimationTick();
+            });
+        }
+
+        RequestRedraw();
+    }
+
+    void UltraCanvasRadarChartElement::OnAnimationTick() {
+        UpdateAnimationProgress();
+        if (!enableAnimation || animationProgress >= 1.0f) {
+            StopAnimationTimer();
+        }
+        RequestRedraw();
+    }
+
+    void UltraCanvasRadarChartElement::StopAnimationTimer() {
+        if (animationTimerId != 0) {
+            if (auto* app = UltraCanvasApplication::GetInstance()) {
+                app->StopTimer(animationTimerId);
+            }
+            animationTimerId = 0;
         }
     }
 

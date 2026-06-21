@@ -917,10 +917,6 @@ namespace UltraCanvas {
                              ImplementationStatus::PartiallyImplemented,
                              [this]() { return CreatePartiallyImplementedExamples("Dumbbell Chart is not ready yet"); });
 
-        chartBuilder.AddItem("radarcharts", "Radar Chart", "Radar Chart",
-                             ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples("Radar Chart is not ready yet"); });
-
         chartBuilder.AddItem("bubblecharts", "Bubble Chart", "Bubble Chart",
                              ImplementationStatus::PartiallyImplemented,
                              [this]() { return CreatePartiallyImplementedExamples("Bubble Chart is not ready yet"); });

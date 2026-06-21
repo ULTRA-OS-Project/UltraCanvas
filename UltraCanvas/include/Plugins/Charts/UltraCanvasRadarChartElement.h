@@ -1,12 +1,13 @@
 // include/Plugins/Charts/UltraCanvasRadarChartElement.h
 // Comprehensive radar chart element with multi-axis, multi-series visualization
-// Version: 2.0.0
-// Last Modified: 2026-06-19
+// Version: 2.1.0
+// Last Modified: 2026-06-21
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasChartElementBase.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasTimer.h"
 #include <vector>
 #include <string>
 #include <utility>
@@ -84,6 +85,7 @@ namespace UltraCanvas {
         float animationProgress;
         std::chrono::steady_clock::time_point radarAnimationStart;
         int animationDurationMs;
+        TimerId animationTimerId = 0;   // periodic frame driver while the grow-out animation runs
 
     public:
         UltraCanvasRadarChartElement(const std::string& id, int x, int y, int width, int height)
@@ -94,7 +96,7 @@ namespace UltraCanvas {
                   axisLabelFont("Arial"), axisLabelFontSize(12.0f),
                   showLegend(true), legendPosition(Point2Df(0, 0)),
                   legendBackgroundColor(Color(255, 255, 255, 200)), legendTextColor(Color(64, 64, 64, 255)),
-                  enableAnimation(true), animationProgress(0.0f), animationDurationMs(1000) {
+                  enableAnimation(false), animationProgress(1.0f), animationDurationMs(1000) {
 
             // Sensible base-class defaults for a radar chart
             showGrid = true;
@@ -107,6 +109,8 @@ namespace UltraCanvas {
             enablePan = false;         // radar charts typically don't pan
             enableSelection = true;
         }
+
+        ~UltraCanvasRadarChartElement() override;
 
         // =============================================================================
         // AXIS MANAGEMENT
@@ -245,15 +249,9 @@ namespace UltraCanvas {
 
         bool GetAnimationEnabled() const { return enableAnimation; }
 
-        void StartAnimation() {
-            if (!enableAnimation) {
-                animationProgress = 1.0f;
-                return;
-            }
-            radarAnimationStart = std::chrono::steady_clock::now();
-            animationProgress = 0.0f;
-            RequestRedraw();
-        }
+        // Starts (or restarts) the grow-out animation. Defined in the .cpp because it
+        // drives frames through the application timer system.
+        void StartAnimation();
 
         // =============================================================================
         // CORE OVERRIDES
@@ -273,6 +271,8 @@ namespace UltraCanvas {
 
         void RecalculateLayout();
         void UpdateAnimationProgress();
+        void OnAnimationTick();      // periodic timer callback: advance progress and repaint
+        void StopAnimationTimer();   // cancels the running frame-driver timer, if any
 
         // Convert axis index + value to (angleDegrees, radius)
         Point2Df ValueToPolarCoordinate(size_t axisIndex, double value) const;

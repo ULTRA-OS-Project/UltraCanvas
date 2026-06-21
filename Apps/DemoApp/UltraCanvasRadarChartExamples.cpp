@@ -19,7 +19,7 @@ namespace UltraCanvas {
         bool showGrid = true;
         bool showLegend = true;
         bool showValueLabels = false;
-        bool animationEnabled = true;
+        bool animationEnabled = false;
     } radarChartControls;
 
     using RadarChartPtr = std::shared_ptr<UltraCanvasRadarChartElement>;
@@ -160,7 +160,7 @@ namespace UltraCanvas {
         skillsRadar->SetAxisLabels(true, Color(40, 80, 40, 255), "Arial", 12.0f);
         skillsRadar->SetRadarOrientation(-90.0f, true); // Start at the top, clockwise
         skillsRadar->SetLegendDisplay(true);
-        skillsRadar->SetAnimationEnabled(true, 1000);
+        //skillsRadar->SetAnimationEnabled(true, 1000);
 
         skillsRadar->AddAxis("Programming", 0, 10);
         skillsRadar->AddAxis("Design", 0, 10);
@@ -188,7 +188,7 @@ namespace UltraCanvas {
         multiSeriesRadar->SetGridDisplay(true, Color(240, 240, 240, 255), 1.0f);
         multiSeriesRadar->SetAxisLabels(true, Color(50, 50, 50, 255), "Arial", 10.0f);
         multiSeriesRadar->SetLegendDisplay(true);
-        multiSeriesRadar->SetAnimationEnabled(true, 1500);
+        //multiSeriesRadar->SetAnimationEnabled(true, 1500);
 
         multiSeriesRadar->AddAxis("Performance", 0, 100);
         multiSeriesRadar->AddAxis("Features", 0, 100);
@@ -222,7 +222,7 @@ namespace UltraCanvas {
         teamRadar->SetAxisLabels(true, Color(50, 50, 70, 255), "Arial", 10.0f);
         teamRadar->SetValueLabels(true, Color(40, 40, 60, 255), 10.0f);
         teamRadar->SetLegendDisplay(true);
-        teamRadar->SetAnimationEnabled(true, 1300);
+        //teamRadar->SetAnimationEnabled(true, 1300);
 
         teamRadar->AddAxis("Planning", 0, 100);
         teamRadar->AddAxis("Execution", 0, 100);
