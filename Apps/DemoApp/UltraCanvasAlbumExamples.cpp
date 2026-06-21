@@ -2,8 +2,13 @@
 // Demonstration of UltraCanvasAlbum: layout designs, image-fit modes, action-icon
 // display options and visitor / user-edit / admin modes for a mixed photo / video
 // / music album.
-// Version: 2.3.0
-// Last Modified: 2026-06-15
+// Version: 2.4.0
+// Last Modified: 2026-06-21
+// V2.4.0: Photo tiles now show their source on the second caption row as a
+//   clickable link (blue + underline); clicking it fires onLinkClicked rather
+//   than selecting the tile. Added "Icon corner" (8 image / text-block anchors)
+//   and "Image corners" (square / rounded) option rows to exercise the new
+//   AlbumActionAnchor and imageCornerRadius config.
 // V2.3.0: Option buttons are now radio groups that highlight the active choice
 //   (gold border + warm fill), matching the slideshow example, so the page
 //   always shows which album options are currently selected.
@@ -239,10 +244,12 @@ namespace UltraCanvas {
         header->AddChild(title);
 
         auto subtitle = std::make_shared<UltraCanvasLabel>("AlbumSubtitle", 0, 0, 0, 38);
-        subtitle->SetText("Switch the layout design, image-fit mode, viewer mode and action-icon "
-                          "display with the buttons. Double-click a photo (or use its View icon) "
-                          "to open it full size with its description; in Edit / Admin mode drag a "
-                          "tile to reorder; right-click (or the kebab icon) opens the action menu.");
+        subtitle->SetText("Switch the layout design, image-fit mode, viewer mode, action-icon "
+                          "display / corner and image corners with the buttons. Photo tiles show "
+                          "their source on the second row as a clickable link. Double-click a photo "
+                          "(or use its View icon) to open it full size with its description; in "
+                          "Edit / Admin mode drag a tile to reorder; right-click (or the kebab "
+                          "icon) opens the action menu.");
         subtitle->SetFontSize(11);
         subtitle->SetTextColor(Color(110, 110, 110, 255));
         subtitle->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
@@ -277,35 +284,40 @@ namespace UltraCanvas {
         struct Seed {
             const char* file; const char* title; const char* subtitle;
             AlbumMediaType type; bool featured; const char* description;
+            const char* link;   // when set, the subtitle row is a clickable link
         };
+        // Photo tiles carry a source domain on the second row, shown as a link
+        // (matching a search-results / gallery "image · source" layout); video /
+        // music tiles keep a plain metadata subtitle with no link.
         const Seed seeds[] = {
-            { "landscape.jpg",   "Mountain Dawn",    "Photo · 2024",        AlbumMediaType::Photo, true,
+            { "landscape.jpg",   "Mountain Dawn",    "naturepix.example",   AlbumMediaType::Photo, true,
               "First light spilling over the ridge line. Shot handheld just after "
               "sunrise, the low sun rakes across the slopes and pulls out every fold "
-              "in the terrain." },
-            { "portrait.jpg",    "Studio Portrait",  "Photo · 50mm",        AlbumMediaType::Photo, false,
+              "in the terrain.", "https://naturepix.example/mountain-dawn" },
+            { "portrait.jpg",    "Studio Portrait",  "studioshots.example", AlbumMediaType::Photo, false,
               "A classic studio headshot taken with a fast 50mm lens and a single "
-              "softbox to camera-left for soft, directional light." },
-            { "sample_photo.jpg","City Lights",      "Video · 1:24",        AlbumMediaType::Video, false, "" },
-            { "ship.jpg",        "Harbour",          "Photo · golden hour", AlbumMediaType::Photo, false,
+              "softbox to camera-left for soft, directional light.",
+              "https://studioshots.example/portrait" },
+            { "sample_photo.jpg","City Lights",      "Video · 1:24",        AlbumMediaType::Video, false, "", "" },
+            { "ship.jpg",        "Harbour",          "harbourlife.example", AlbumMediaType::Photo, false,
               "Boats resting in the harbour during the golden hour, the warm light "
-              "reflecting off the still water." },
-            { "sample_hq.jpg",   "Summer Mix",       "Music · 42 tracks",   AlbumMediaType::Music, false, "" },
-            { "screenshot.png",  "Tutorial Clip",    "Video · 3:08",        AlbumMediaType::Video, false, "" },
-            { "dice.jpg",        "Game Night",       "Photo · 2023",        AlbumMediaType::Photo, false,
+              "reflecting off the still water.", "https://harbourlife.example/golden-hour" },
+            { "sample_hq.jpg",   "Summer Mix",       "Music · 42 tracks",   AlbumMediaType::Music, false, "", "" },
+            { "screenshot.png",  "Tutorial Clip",    "Video · 3:08",        AlbumMediaType::Video, false, "", "" },
+            { "dice.jpg",        "Game Night",       "boardgames.example",  AlbumMediaType::Photo, false,
               "Coloured dice mid-roll on game night — a quick macro grab to freeze "
-              "the action on the table." },
-            { "3d-boxes.png",    "Renders",          "Photo · Blender",     AlbumMediaType::Photo, false,
+              "the action on the table.", "https://boardgames.example/game-night" },
+            { "3d-boxes.png",    "Renders",          "blenderhub.example",  AlbumMediaType::Photo, false,
               "A set of stacked 3D boxes rendered in Blender to test material and "
-              "lighting setups." },
-            { "sample_logo.png", "Brand Reel",       "Video · 0:30",        AlbumMediaType::Video, false, "" },
-            { "test_small.png",  "Chill Beats",      "Music · 18 tracks",   AlbumMediaType::Music, false, "" },
-            { "png_68.png",      "Field Notes",      "Photo · film",        AlbumMediaType::Photo, false,
+              "lighting setups.", "https://blenderhub.example/renders" },
+            { "sample_logo.png", "Brand Reel",       "Video · 0:30",        AlbumMediaType::Video, false, "", "" },
+            { "test_small.png",  "Chill Beats",      "Music · 18 tracks",   AlbumMediaType::Music, false, "", "" },
+            { "png_68.png",      "Field Notes",      "filmdiary.example",   AlbumMediaType::Photo, false,
               "Scanned 35mm film frame from a walk in the field — grainy, warm and "
-              "full of character." },
-            { "webp_68.png",     "Roadtrip",         "Photo · 2022",        AlbumMediaType::Photo, false,
+              "full of character.", "https://filmdiary.example/field-notes" },
+            { "webp_68.png",     "Roadtrip",         "openroad.example",    AlbumMediaType::Photo, false,
               "A snapshot from the 2022 summer road trip, somewhere along an open "
-              "stretch of highway." },
+              "stretch of highway.", "https://openroad.example/roadtrip" },
         };
         for (const auto& s : seeds) {
             AlbumItem it;
@@ -315,6 +327,7 @@ namespace UltraCanvas {
             it.description = s.description;
             it.mediaType = s.type;
             it.featured = s.featured;
+            it.link = s.link;
             album->AddItem(it);
         }
 
@@ -390,6 +403,14 @@ namespace UltraCanvas {
         album->AddAction(comment);
         album->AddAction(edit);
         album->AddAction(del);
+
+        // Clicking the second-row source link (blue, underlined) reports the
+        // target rather than selecting the tile.
+        album->onLinkClicked = [albumPtr, statusPtr](size_t i) {
+            const AlbumItem& it = albumPtr->GetItems()[i];
+            std::ostringstream o; o << "Open link: " << it.link;
+            statusPtr->SetText(o.str());
+        };
 
         // Double-click opens the same full-size photo viewer (open / play).
         album->onItemActivated = openViewer;
@@ -494,6 +515,24 @@ namespace UltraCanvas {
                       }, 1);  // On hover is the default
         controls->AddChild(actRow);
 
+        // ----- Action-icon corner picker (image vs caption text-block) -----
+        const AlbumActionAnchor anchorVals[] = {
+            AlbumActionAnchor::TopLeftImage,     AlbumActionAnchor::TopRightImage,
+            AlbumActionAnchor::BottomLeftImage,  AlbumActionAnchor::BottomRightImage,
+            AlbumActionAnchor::TopLeftTextBlock, AlbumActionAnchor::TopRightTextBlock,
+            AlbumActionAnchor::BottomLeftTextBlock, AlbumActionAnchor::BottomRightTextBlock
+        };
+        auto anchorRow = MakeRow("album_anchor_row");
+        AppendLabeledButtons(anchorRow, "album_anchor_", "Icon corner", kLabelW, 70, 28,
+                      {"Img TL", "Img TR", "Img BL", "Img BR",
+                       "Txt TL", "Txt TR", "Txt BL", "Txt BR"},
+                      [albumPtr, anchorVals](int i) {
+                          AlbumConfig c = albumPtr->GetConfig();
+                          c.actionAnchor = anchorVals[i];
+                          albumPtr->SetConfig(c);
+                      }, 1);  // Top-right of the image is the default
+        controls->AddChild(anchorRow);
+
         // ----- Sizing + captions on one line -----
         auto sizeRow = MakeRow("album_size_row");
         AppendLabeledButtons(sizeRow, "album_cols_", "Per row", kLabelW, 64, 28,
@@ -509,6 +548,17 @@ namespace UltraCanvas {
                                                         : AlbumCaptionPlacement::Hidden;
                           albumPtr->SetConfig(c);
                       }, 0);  // Below is the default
+        sizeRow->AddSpacer(24);
+        AppendLabeledButtons(sizeRow, "album_imgcorner_", "Corners", 64, 86, 28,
+                      {"Square", "Rounded"},
+                      [albumPtr](int i) {
+                          AlbumConfig c = albumPtr->GetConfig();
+                          // Square: flatten both the frame and the image corners.
+                          // Rounded: a rounded frame with the image following it.
+                          c.cornerRadius      = (i == 0) ? 0.0f : 6.0f;
+                          c.imageCornerRadius = (i == 0) ? 0.0f : -1.0f;
+                          albumPtr->SetConfig(c);
+                      }, 1);  // Rounded is the default
         controls->AddChild(sizeRow);
 
         root->AddChild(controls);

@@ -1,8 +1,13 @@
 // core/UltraCanvasAlbum.cpp
 // Photo / video / music album widget with selectable layout designs, per-item
 // crop / zoom / stretch fitting, action icons and visitor / edit / admin modes.
-// Version: 1.0.3
-// Last Modified: 2026-06-15
+// Version: 1.1.0
+// Last Modified: 2026-06-21
+// V1.1.0: Action icons can anchor to any corner of the image or the caption
+//   text-block (AlbumConfig::actionAnchor); image corners are now configurable
+//   independently of the tile frame (AlbumConfig::imageCornerRadius — square or
+//   rounded); the subtitle row can be a clickable link (AlbumItem::link +
+//   onLinkClicked, painted in linkColor and underlined).
 // V1.0.3: Per-item action gating by media type (AlbumAction::mediaTypes), so an
 //   action can be offered for photos only; AlbumItem gained a description field
 //   for richer detail / full-size views.
@@ -573,6 +578,7 @@ namespace UltraCanvas {
         }
 
         actionHits.clear();
+        linkHits.clear();
 
         // Translate the whole content by the scroll offset.
         ctx->PushState();
@@ -608,12 +614,28 @@ namespace UltraCanvas {
             ctx->FillRoundedRectangle(sh, radius);
         }
 
-        // Tile background + rounded clip for everything inside.
+        // Tile background.
         ctx->SetFillPaint(config.itemBackgroundColor);
         ctx->FillRoundedRectangle(rect, radius);
 
+        // Master clip: keeps every painted part within the tile silhouette so a
+        // square image can never spill past a rounded frame.
         ctx->PushState();
         ctx->ClipRoundedRectangle(rect, radius, radius, radius, radius);
+
+        // The image gets its own rounded clip nested inside the master one, so
+        // its corners can be rounded more than the tile frame (or, with a square
+        // image radius and a square frame, left square). Only the corners that
+        // touch the tile edge are rounded; when a caption strip sits below the
+        // image, the image's lower corners stay square so the rounding is not cut
+        // into the middle of the tile.
+        bool overlay    = (config.captionPlacement == AlbumCaptionPlacement::OverlayBottom);
+        bool belowStrip = (config.captionPlacement == AlbumCaptionPlacement::BelowImage);
+        double imgR  = ResolveImageRadius();
+        double imgBR = belowStrip ? 0.0 : imgR;   // bottom corners square under a strip
+
+        ctx->PushState();
+        ctx->ClipRoundedRectangle(Rect2Dd(tile.imageRect), imgR, imgR, imgBR, imgBR);
 
         // Image (or placeholder for video/music with no thumbnail).
         float zoomExtra = 1.0f;
@@ -632,8 +654,13 @@ namespace UltraCanvas {
         }
 
         DrawMediaBadge(ctx, item, tile.imageRect);
-        DrawCaption(ctx, item, tile);
-        ctx->PopState();
+        // An overlay caption is painted on the image, so it belongs inside the
+        // image clip; a below-image strip is drawn after, outside it.
+        if (overlay) DrawCaption(ctx, item, tile);
+        ctx->PopState();   // image clip
+
+        if (!overlay) DrawCaption(ctx, item, tile);  // BelowImage / Hidden (no-op)
+        ctx->PopState();   // master clip
 
         // Border frame on top (outside the clip so it isn't cut).
         if (config.showBorder && config.borderWidth > 0) {
@@ -814,13 +841,63 @@ namespace UltraCanvas {
             ty += titleH + innerGap;
         }
         if (!item.subtitle.empty()) {
+            bool isLink = !item.link.empty();
             ctx->SetFontStyle(subFs);
-            ctx->SetTextPaint(overlay ? Color(230, 230, 230, 255) : config.subtitleColor);
+            Color subColor = isLink ? config.linkColor
+                                    : (overlay ? Color(230, 230, 230, 255)
+                                               : config.subtitleColor);
+            ctx->SetTextPaint(subColor);
             ctx->PushState();
             ctx->ClipRect(Rect2Dd(area));
             ctx->DrawText(item.subtitle, Point2Dd(tx, ty));
+            if (isLink) {
+                int tw = ctx->GetTextLineWidth(item.subtitle);
+                int maxW = area.width - 2 * pad;
+                if (maxW > 0 && tw > maxW) tw = maxW;
+                if (config.linkUnderline) {
+                    double uy = ty + subH - 1.0;
+                    ctx->SetStrokePaint(config.linkColor);
+                    ctx->SetStrokeWidth(1.0f);
+                    ctx->DrawLine(Point2Dd(tx, uy), Point2Dd(tx + tw, uy));
+                }
+                // Hit rect recorded in content space (matched against scrolled
+                // local coordinates by LinkAt, mirroring the action-icon hits).
+                linkHits.push_back({ Rect2Di(tx, ty, std::max(1, tw),
+                                             std::max(1, subH)), tile.itemIndex });
+            }
             ctx->PopState();
         }
+    }
+
+    float UltraCanvasAlbum::ResolveImageRadius() const {
+        return config.imageCornerRadius < 0.0f ? config.cornerRadius
+                                               : config.imageCornerRadius;
+    }
+
+    Rect2Di UltraCanvasAlbum::TextBlockRect(const TileLayout& tile) const {
+        if (config.captionPlacement == AlbumCaptionPlacement::BelowImage) {
+            int y = tile.imageRect.y + tile.imageRect.height;
+            int h = (tile.rect.y + tile.rect.height) - y;
+            if (h > 0) return Rect2Di(tile.rect.x, y, tile.rect.width, h);
+        }
+        // No below-image strip (overlay / hidden captions): fall back to the image.
+        return tile.imageRect;
+    }
+
+    Rect2Di UltraCanvasAlbum::ActionAnchorRect(const TileLayout& tile,
+                                               bool& fromLeft, bool& fromTop) const {
+        bool textBlock = false;
+        switch (config.actionAnchor) {
+            case AlbumActionAnchor::TopLeftImage:         fromLeft = true;  fromTop = true;  break;
+            case AlbumActionAnchor::TopRightImage:        fromLeft = false; fromTop = true;  break;
+            case AlbumActionAnchor::BottomLeftImage:      fromLeft = true;  fromTop = false; break;
+            case AlbumActionAnchor::BottomRightImage:     fromLeft = false; fromTop = false; break;
+            case AlbumActionAnchor::TopLeftTextBlock:     fromLeft = true;  fromTop = true;  textBlock = true; break;
+            case AlbumActionAnchor::TopRightTextBlock:    fromLeft = false; fromTop = true;  textBlock = true; break;
+            case AlbumActionAnchor::BottomLeftTextBlock:  fromLeft = true;  fromTop = false; textBlock = true; break;
+            case AlbumActionAnchor::BottomRightTextBlock: fromLeft = false; fromTop = false; textBlock = true; break;
+        }
+        return textBlock ? TextBlockRect(tile) : tile.imageRect;
     }
 
     void UltraCanvasAlbum::DrawActionIcons(IRenderContext* ctx, const TileLayout& tile,
@@ -829,14 +906,21 @@ namespace UltraCanvas {
 
         std::vector<int> vis = VisibleActionIndices(tile.itemIndex);
 
+        // Resolve the corner the icons hug, and the rect they anchor inside.
+        bool fromLeft = false, fromTop = true;
+        Rect2Di anchor = ActionAnchorRect(tile, fromLeft, fromTop);
+        int sz  = static_cast<int>(config.actionButtonSize);
+        int pad = 6;
+        int bx  = fromLeft ? anchor.x + pad
+                           : anchor.x + anchor.width - pad - sz;
+        int by  = fromTop  ? anchor.y + pad
+                           : anchor.y + anchor.height - pad - sz;
+
         // ContextMenu mode: optionally a single kebab icon; the menu itself opens
         // on right-click or when the kebab is clicked.
         if (config.actionDisplay == AlbumActionDisplay::ContextMenu) {
             if (!config.showMenuIcon || vis.empty()) return;
-            int sz = static_cast<int>(config.actionButtonSize);
-            int pad = 6;
-            Rect2Di btn(tile.imageRect.x + tile.imageRect.width - pad - sz,
-                        tile.imageRect.y + pad, sz, sz);
+            Rect2Di btn(bx, by, sz, sz);
             Point2Dd c(btn.x + sz / 2.0, btn.y + sz / 2.0);
             ctx->DrawFilledCircle(c, sz / 2.0f, Color(0, 0, 0, 120));
             // Three vertical dots.
@@ -850,23 +934,23 @@ namespace UltraCanvas {
             return;
         }
 
-        // Always / OnHover: a row of icon buttons in the top-right of the image.
+        // Always / OnHover: a row of icon buttons growing away from the corner.
         if (config.actionDisplay == AlbumActionDisplay::OnHover && !hovered) return;
         if (vis.empty()) return;
 
-        int sz = static_cast<int>(config.actionButtonSize);
-        int pad = 6;
-        int gap = 4;
-        int x = tile.imageRect.x + tile.imageRect.width - pad - sz;
-        int y = tile.imageRect.y + pad;
+        int gap  = 4;
+        int step = sz + gap;
+        int x = bx;
         for (int idx : vis) {
-            Rect2Di btn(x, y, sz, sz);
-            if (btn.x < tile.imageRect.x) break;  // ran out of room
+            Rect2Di btn(x, by, sz, sz);
+            // Stop once a button would spill past the far edge of the anchor rect.
+            if (fromLeft) { if (btn.x + sz > anchor.x + anchor.width) break; }
+            else          { if (btn.x < anchor.x) break; }
             Point2Dd c(btn.x + sz / 2.0, btn.y + sz / 2.0);
             ctx->DrawFilledCircle(c, sz / 2.0f, Color(0, 0, 0, 120));
             DrawIconGlyph(ctx, &actions[idx], btn);
             actionHits.push_back({btn, tile.itemIndex, idx});
-            x -= (sz + gap);
+            x += fromLeft ? step : -step;
         }
     }
 
@@ -975,6 +1059,17 @@ namespace UltraCanvas {
         return -2;  // -2 = nothing; -1 is reserved for the kebab/menu hit
     }
 
+    int UltraCanvasAlbum::LinkAt(const Point2Di& localPoint) const {
+        // linkHits are in content space; compare against scrolled local coords,
+        // matching ActionAt's convention.
+        for (const auto& h : linkHits) {
+            Rect2Di screenRect(h.rect.x - scrollOffsetX, h.rect.y - scrollOffsetY,
+                               h.rect.width, h.rect.height);
+            if (screenRect.Contains(localPoint)) return static_cast<int>(h.itemIndex);
+        }
+        return -1;
+    }
+
     void UltraCanvasAlbum::TriggerAction(int actionIndex, size_t itemIndex) {
         if (actionIndex < 0 || actionIndex >= static_cast<int>(actions.size())) return;
         if (actions[actionIndex].onTrigger) actions[actionIndex].onTrigger(itemIndex);
@@ -1067,6 +1162,14 @@ namespace UltraCanvas {
                     RequestRedraw();
                 }
 
+                // Hand cursor while hovering a clickable subtitle link.
+                int linkHover = LinkAt(local);
+                if (linkHover != hoveredLinkItem) {
+                    hoveredLinkItem = linkHover;
+                    SetMouseCursor(linkHover >= 0 ? UCMouseCursor::Hand
+                                                  : UCMouseCursor::Default);
+                }
+
                 // Tooltip for the action icon under the cursor (Delete / Edit /
                 // Add comment / ...). Show it once when the cursor enters an icon.
                 size_t tipItem = 0;
@@ -1108,6 +1211,13 @@ namespace UltraCanvas {
                 if (act != -2) {
                     if (isMenu) OpenItemContextMenu(hitItem, local);
                     else        TriggerAction(act, hitItem);
+                    return true;
+                }
+
+                // Subtitle link row: takes precedence over a plain tile click.
+                int linkItem = LinkAt(local);
+                if (linkItem >= 0) {
+                    if (onLinkClicked) onLinkClicked(static_cast<size_t>(linkItem));
                     return true;
                 }
 

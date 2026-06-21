@@ -105,6 +105,7 @@ cfg.gap           = 10;
 cfg.imageDisplay  = AlbumImageDisplay::Crop;        // Crop | Zoom | Stretch | Fit
 cfg.zoomFactor    = 1.25f;                          // extra magnification for Zoom
 cfg.actionDisplay = AlbumActionDisplay::OnHover;    // AlwaysVisible | OnHover | ContextMenu | Hidden
+cfg.actionAnchor  = AlbumActionAnchor::TopRightImage;     // which corner the icons hug (see below)
 cfg.showMenuIcon  = true;                           // ContextMenu: draw a kebab (⋮)
 cfg.captionPlacement = AlbumCaptionPlacement::BelowImage;  // BelowImage | OverlayBottom | Hidden
 cfg.backgroundColor     = Color(245, 245, 247, 255);
@@ -112,7 +113,10 @@ cfg.itemBackgroundColor = Color(255, 255, 255, 255);
 cfg.showBorder    = true;
 cfg.borderColor   = Color(208, 208, 214, 255);
 cfg.borderWidth   = 1.0f;
-cfg.cornerRadius  = 6.0f;
+cfg.cornerRadius  = 6.0f;          // tile frame corner radius
+cfg.imageCornerRadius = -1.0f;     // image corners: <0 follow tile · 0 square · >0 explicit
+cfg.linkColor     = Color(26, 115, 232, 255);  // subtitle-link colour (items with a `link`)
+cfg.linkUnderline = true;
 cfg.dropShadow    = true;
 album->SetConfig(cfg);
 ```
@@ -155,6 +159,45 @@ album->AddAction(del);
 `AlwaysVisible` (always painted), `OnHover` (shown while hovered),
 `ContextMenu` (right-click popup, with an optional kebab icon via
 `showMenuIcon`), or `Hidden`.
+
+`AlbumActionAnchor` (`cfg.actionAnchor`) chooses which corner the kebab / action
+buttons hug. Four anchors sit on the **image** and four on the **caption text
+block** beneath it; a button row grows horizontally away from the anchored
+corner. The text-block anchors fall back to the image when there is no
+below-image caption strip (overlay / hidden captions).
+
+| Image | Text block |
+| --- | --- |
+| `TopLeftImage` · `TopRightImage` | `TopLeftTextBlock` · `TopRightTextBlock` |
+| `BottomLeftImage` · `BottomRightImage` | `BottomLeftTextBlock` · `BottomRightTextBlock` |
+
+### Image corners
+
+`cfg.cornerRadius` rounds the tile frame; `cfg.imageCornerRadius` rounds the
+image independently: `< 0` follows the tile radius (default), `0` gives **square**
+image corners, `> 0` sets an explicit radius. When a caption strip sits below the
+image, only the image's top corners are rounded so the curve is not cut into the
+middle of the tile. The frame is the outer bound, so for fully square images set
+`cornerRadius = 0` as well (the demo's "Square" option flattens both).
+
+### Subtitle links
+
+Give an item a `link` and its subtitle row is drawn as a clickable link
+(`linkColor`, underlined when `linkUnderline`). Clicking the link fires
+`onLinkClicked(index)` instead of selecting the tile, and the cursor turns into a
+hand over it.
+
+```cpp
+AlbumItem it;
+it.title    = "Mountain Dawn";
+it.subtitle = "naturepix.example";                 // shown as a link…
+it.link     = "https://naturepix.example/dawn";    // …because link is set
+album->AddItem(it);
+
+album->onLinkClicked = [album](size_t i){
+    OpenInBrowser(album->GetItems()[i].link);
+};
+```
 
 ### Events
 
