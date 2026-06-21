@@ -935,7 +935,13 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
                         int y, float lo, float hi, float val,
                         std::function<void(float)> cb,
                         float step = 0.0f, const char* fmt = "%.2f") {
-        auto s = std::make_shared<UltraCanvasSlider>(id, 0, y, 270, 22);
+        // Height must leave room for the always-on Number value display: the slider
+        // pins its track to the bottom `handleSize` (16px) of its bounds and draws
+        // the value text just above that track. With a short height the text spills
+        // above the slider's top edge and lands on the caption placed above it. 36px
+        // = handle (16) + a value-text row (~16) + margin keeps the number inside the
+        // slider, below the caption. Do not shrink this without re-checking the overlap.
+        auto s = std::make_shared<UltraCanvasSlider>(id, 0, y, 270, 36);
         s->SetRange(lo, hi);
         if (step > 0.0f) s->SetStep(step);
         s->SetValue(val);
@@ -954,51 +960,51 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     };
 
     // Ball Surface — brightness and splat radius shape the dotted rings.
-    auto ballGroup = std::make_shared<UltraCanvasContainer>("BallParams", 10, 128, 276, 140);
+    auto ballGroup = std::make_shared<UltraCanvasContainer>("BallParams", 10, 128, 276, 132);
     ballGroup->SetBackgroundColor(Color(246, 246, 248, 255));
     addCaption(ballGroup, "BS_title", "Ball Surface controls", 0, true);
-    addCaption(ballGroup, "BS_bL", "Brightness", 26);
-    addSlider(ballGroup, "BS_b", 44, 0.05f, 1.5f, 0.4f, [state](float v){ state->ballBright = v; });
-    addCaption(ballGroup, "BS_sL", "Splat radius (px)", 74);
+    addCaption(ballGroup, "BS_bL", "Brightness", 20);
+    addSlider(ballGroup, "BS_b", 36, 0.05f, 1.5f, 0.4f, [state](float v){ state->ballBright = v; });
+    addCaption(ballGroup, "BS_sL", "Splat radius (px)", 76);
     addSlider(ballGroup, "BS_s", 92, 0.5f, 5.0f, 1.7f, [state](float v){ state->ballSplat = v; });
     ballGroup->SetVisible(false);
     panel->AddChild(ballGroup);
 
     // Pulse — step scale (march density) and fold-axis phase shape the motion.
-    auto pulseGroup = std::make_shared<UltraCanvasContainer>("PulseParams", 10, 128, 276, 140);
+    auto pulseGroup = std::make_shared<UltraCanvasContainer>("PulseParams", 10, 128, 276, 132);
     pulseGroup->SetBackgroundColor(Color(246, 246, 248, 255));
     addCaption(pulseGroup, "PU_title", "Pulse controls", 0, true);
-    addCaption(pulseGroup, "PU_stepL", "Step scale", 26);
-    addSlider(pulseGroup, "PU_step", 44, 0.05f, 0.6f, 0.2f, [state](float v){ state->pulseStep = v; });
-    addCaption(pulseGroup, "PU_phL", "Fold phase", 74);
+    addCaption(pulseGroup, "PU_stepL", "Step scale", 20);
+    addSlider(pulseGroup, "PU_step", 36, 0.05f, 0.6f, 0.2f, [state](float v){ state->pulseStep = v; });
+    addCaption(pulseGroup, "PU_phL", "Fold phase", 76);
     addSlider(pulseGroup, "PU_ph", 92, 0.0f, 6.2832f, 0.0f, [state](float v){ state->pulsePhase = v; });
     pulseGroup->SetVisible(false);
     panel->AddChild(pulseGroup);
 
     // Fragments — inner fold count and tube radius shape the crystalline burst.
-    auto fragGroup = std::make_shared<UltraCanvasContainer>("FragmentsParams", 10, 128, 276, 140);
+    auto fragGroup = std::make_shared<UltraCanvasContainer>("FragmentsParams", 10, 128, 276, 132);
     fragGroup->SetBackgroundColor(Color(246, 246, 248, 255));
     addCaption(fragGroup, "FR_title", "Fragments controls", 0, true);
-    addCaption(fragGroup, "FR_foldL", "Fold count (turbulence)", 26);
-    addSlider(fragGroup, "FR_fold", 44, 2.0f, 10.0f, 6.0f,
+    addCaption(fragGroup, "FR_foldL", "Fold count (turbulence)", 20);
+    addSlider(fragGroup, "FR_fold", 36, 2.0f, 10.0f, 6.0f,
               [state](float v){ state->fragFold = v; }, 1.0f, "%.0f");
-    addCaption(fragGroup, "FR_radL", "Tube radius (core size)", 74);
+    addCaption(fragGroup, "FR_radL", "Tube radius (core size)", 76);
     addSlider(fragGroup, "FR_rad", 92, 1.0f, 12.0f, 5.0f, [state](float v){ state->fragRadius = v; });
     fragGroup->SetVisible(false);
     panel->AddChild(fragGroup);
 
     // Circles — node count, link distance and ring growth shape the network.
-    auto circlesGroup = std::make_shared<UltraCanvasContainer>("CirclesParams", 10, 128, 276, 180);
+    auto circlesGroup = std::make_shared<UltraCanvasContainer>("CirclesParams", 10, 128, 276, 188);
     circlesGroup->SetBackgroundColor(Color(246, 246, 248, 255));
     addCaption(circlesGroup, "CI_title", "Circles controls", 0, true);
-    addCaption(circlesGroup, "CI_nL", "Node count", 26);
-    addSlider(circlesGroup, "CI_n", 44, 30.0f, 400.0f, 180.0f,
+    addCaption(circlesGroup, "CI_nL", "Node count", 20);
+    addSlider(circlesGroup, "CI_n", 36, 30.0f, 400.0f, 180.0f,
               [state](float v){ state->circlesNodes = v; }, 1.0f, "%.0f");
-    addCaption(circlesGroup, "CI_dL", "Link distance", 74);
+    addCaption(circlesGroup, "CI_dL", "Link distance", 76);
     addSlider(circlesGroup, "CI_d", 92, 20.0f, 100.0f, 50.0f,
               [state](float v){ state->circlesLink = v; }, 0.0f, "%.0f");
-    addCaption(circlesGroup, "CI_gL", "Ring growth (pow base)", 122);
-    addSlider(circlesGroup, "CI_g", 140, 1.1f, 1.6f, 1.4f,
+    addCaption(circlesGroup, "CI_gL", "Ring growth (pow base)", 132);
+    addSlider(circlesGroup, "CI_g", 148, 1.1f, 1.6f, 1.4f,
               [state](float v){ state->circlesGrowth = v; });
     circlesGroup->SetVisible(false);
     panel->AddChild(circlesGroup);
