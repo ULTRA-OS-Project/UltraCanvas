@@ -1,7 +1,7 @@
 # UltraCanvas/CMakeLists.txt
 # UltraCanvas Core Library - Builds as separate static library with optional plugins
-# Version: 1.4.1
-# Last Modified: 2026-06-09
+# Version: 1.4.2
+# Last Modified: 2026-06-21
 # Author: UltraCanvas Framework
 
 cmake_minimum_required(VERSION 3.16)
@@ -801,7 +801,10 @@ if(ULTRACANVAS_PLUGIN_PDF)
     find_library(JPEG_LIB     NAMES jpeg libjpeg)
     find_library(ZLIB_LIB     NAMES z zlib)
 
-    if(MUPDF_INCLUDE_DIR AND MUPDF_LIBRARY AND MUPDF_THIRD_LIBRARY)
+    # MUPDF_THIRD_LIBRARY is intentionally NOT required here: it is absent for
+    # DLL/import-lib MuPDF builds (MSYS2/MinGW), where the third-party deps live
+    # inside the DLL. It is still linked below when present (static Linux builds).
+    if(MUPDF_INCLUDE_DIR AND MUPDF_LIBRARY)
         set(MUPDF_FOUND TRUE)
     else()
         set(MUPDF_FOUND FALSE)
@@ -827,8 +830,13 @@ if(ULTRACANVAS_PLUGIN_PDF)
     # before dependencies.
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
         ${MUPDF_LIBRARY}
-        ${MUPDF_THIRD_LIBRARY}
     )
+    # libmupdf-third only exists for static MuPDF builds (Linux). A DLL/import-lib
+    # build (MSYS2/MinGW) folds the third-party deps into the DLL, so it is absent
+    # there — link it only when present.
+    if(MUPDF_THIRD_LIBRARY)
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${MUPDF_THIRD_LIBRARY})
+    endif()
     foreach(_extra_lib
             MUJS_LIBRARY GUMBO_LIBRARY JBIG2DEC_LIBRARY OPENJP2_LIBRARY
             HARFBUZZ_LIB FREETYPE_LIB JPEG_LIB ZLIB_LIB)
