@@ -1,15 +1,14 @@
 // Apps/DemoApp/UltraCanvasGLShaderTab.cpp
 // "Shaders" tab of the OpenGL showcase: a full-screen quad driven entirely by
 // animated fragment shaders. A dropdown switches between several procedural
-// effects (plasma, raymarched scene, Julia fractal, tunnel, warp starfield,
+// effects (plasma, raymarched scene, Julia fractal, tunnel,
 // seven Twigl/つぶやきGLSL "geek-mode" snippets ("Borg Sphere" lattice,
 // "Pulse" ray-fold, "Fragments" tube turbulence, "Mountains" fractal terrain,
 // "Horizon" turbulent landscape, "Protostar2" glowing core and "Plasma Orb"
-// warped field), a procedural animated "ULTRA OS Logo" brand mark, a numerically-
-// integrated Rössler strange attractor, p5.js "Ball Surface" and "Alien
-// Caterpillar" ports, a 12-wave "Mandala" pattern, and an openFrameworks
-// "Circles" node-link network — the last two drawn as native 2D GL geometry
-// rather than fragment shaders). The generating source for each effect is shown
+// warped field), p5.js "Ball Surface" and "Alien Caterpillar" ports, and an
+// openFrameworks "Circles" node-link network — the "Circles" network and the
+// "Alien Caterpillar" point cloud are drawn as native 2D GL geometry rather
+// than fragment shaders). The generating source for each effect is shown
 // in a GLSL-syntax-highlighted text area below.
 // Author: UltraCanvas Framework
 
@@ -79,6 +78,86 @@ void main(){ FragColor = uColor; }
 
 std::vector<ShaderEffect> BuildEffects() {
     std::vector<ShaderEffect> fx;
+
+    // ------------------------------------------------------------------------
+    // "Horizon" — a Twigl / つぶやきGLSL "geek-mode" one-liner. A ray marches a
+    // turbulent landscape under a glowing sky; each step adds warm glow weighted
+    // by 1/f and the radial distance, an inner octave loop warps the sample, and
+    // the step size f comes from a folded terrain height. The original packs the
+    // height into one chained min/max assignment whose result depends on
+    // left-to-right argument evaluation (unspecified in GLSL); it is expanded
+    // here into sequential statements so the behaviour is deterministic.
+    fx.push_back({"Horizon (Twigl)", R"(
+void main(){
+    vec2 r = uResolution;
+    vec3 FC = vec3(vUV * r, 0.0);          // gl_FragCoord (z = 0)
+    float t = uTime;
+    vec4 o = vec4(0.0);
+    vec3 c = vec3(0.0), p = vec3(0.0);
+    float i = 0.0, z = 0.1, f = 0.0;
+    for(; i++ < 1e2; o += vec4(9.0,4.0,2.0,0.0)/f/length(c.xy/z)){
+        p = c = z*normalize(FC.rgb*2.0 - r.xyy);
+        for(p.x *= f = 0.6; f++ < 9.0; p += sin(p.yzx*f + 0.5*z - t/4.0)/f);
+        // z += f = .03+.1*max(f=6.-.2*z+min(f=(p+c).y,-f*.2),-f*.6);
+        float A = (p + c).y;
+        float B = min(A, -0.2*A);
+        float C = 6.0 - 0.2*z + B;
+        float D = max(C, -0.6*C);
+        f = 0.03 + 0.1*D;
+        z += f;
+    }
+    o = tanh(o*o/9e8);
+    FragColor = vec4(o.rgb, 1.0);
+}
+)"});
+
+    // ------------------------------------------------------------------------
+    // "Protostar2" — a Twigl / つぶやきGLSL "geek-mode" one-liner. A ray marches a
+    // glowing volumetric core: each sample point p is folded about a time- and
+    // field-varying axis a (the a*dot - cross term is a Rodrigues-style twist),
+    // an inner octave loop accretes cos turbulence into a, and the step size and
+    // colour come from the resulting field length s; tanh tone-maps the glow.
+    fx.push_back({"Protostar2 (Twigl)", R"(
+void main(){
+    vec2 r = uResolution;
+    vec3 FC = vec3(vUV * r, 0.0);          // gl_FragCoord (z = 0)
+    float t = uTime;
+    vec4 o = vec4(0.0);
+    float i = 0.0, z = 0.0, d = 0.0, s = 0.0;
+    for(; i++ < 2e2; o += (cos(s/0.6 + vec4(0,1,2,0)) + 1.1)/d){
+        vec3 p = z*normalize(FC.rgb*2.0 - r.xyy);
+        vec3 a = normalize(cos(vec3(0,1,0) + t - 0.4*s));
+        p.z += 9.0;
+        a = a*dot(a, p) - cross(a, p);     // twist p about axis a
+        for(d = 1.0; d++ < 6.0; )
+            s = length(a += cos(a*d + t).yzx/d);
+        z += d = 0.1*(abs(sin(s - t)) + abs(a.y)/6.0);
+    }
+    o = tanh(o*o/2e7);
+    FragColor = vec4(o.rgb, 1.0);
+}
+)"});
+
+    // ------------------------------------------------------------------------
+    // "Plasma Orb" — a Twigl / つぶやきGLSL one-liner. A domain-warped field v is
+    // iterated through eight cos octaves and accumulated into o; the result is
+    // tinted by a vertical exp() gradient and a radial exp(-l) falloff, then
+    // tanh tone-mapped — a glowing plasma sphere.
+    fx.push_back({"Plasma Orb (Twigl)", R"(
+void main(){
+    vec2 r = uResolution;
+    vec2 FC = vUV * r;                     // gl_FragCoord.xy
+    float t = uTime;
+    vec4 o = vec4(0.0);
+    vec2 p = (FC.xy*2.0 - r)/r.y;
+    vec2 l = vec2(0.0);
+    vec2 v = p*(1.0 - (l += abs(0.7 - dot(p, p))))/0.2;
+    for(float i = 0.0; i++ < 8.0; o += (sin(v.xyyx) + 1.0)*abs(v.x - v.y)*0.2)
+        v += cos(v.yx*i + vec2(0.0, i) + t)/i + 0.7;
+    o = tanh(exp(p.y*vec4(1.0,-1.0,-2.0,0.0)) * exp(-4.0*l.x) / o);
+    FragColor = vec4(o.rgb, 1.0);
+}
+)"});
 
     fx.push_back({"Plasma", R"(
 void main(){
@@ -200,29 +279,6 @@ void main(){
 }
 )"});
 
-    fx.push_back({"Warp Starfield", R"(
-void main(){
-    vec2 uv = (vUV*2.0-1.0);
-    uv.x *= uResolution.x/uResolution.y;
-    vec3 col = vec3(0.0);
-    for(int l=0;l<3;l++){
-        float depth = float(l);
-        float t = uTime*(0.4+depth*0.3);
-        vec2 p = uv * (1.0 + depth*0.6);
-        p *= rot(depth*0.5);
-        vec2 g = floor(p*8.0);
-        float rnd = hash(g + depth*23.0);
-        vec2 cell = fract(p*8.0) - 0.5;
-        float tw = 0.5 + 0.5*sin(t*3.0 + rnd*30.0);
-        float star = smoothstep(0.12, 0.0, length(cell)) * step(0.92, rnd) * tw;
-        vec3 tint = 0.6 + 0.4*cos(vec3(0.0,2.0,4.0) + rnd*10.0);
-        col += star * tint * (1.0 - depth*0.25);
-    }
-    float vig = 1.0 - 0.4*dot(uv,uv);
-    FragColor = vec4(col*vig, 1.0);
-}
-)"});
-
     // ------------------------------------------------------------------------
     // "Borg Sphere" — a Twigl / つぶやきGLSL "geek-mode" one-liner, ported to the
     // tab's uniforms. The original implicit variables map as: r->uResolution,
@@ -248,66 +304,6 @@ void main(){
     }
     o = tanh(o*o/1e6);
     FragColor = vec4(o.rgb, 1.0);
-}
-)"});
-
-    // ------------------------------------------------------------------------
-    // The Rössler strange attractor — the nonlinear system the snippet above
-    // was *captioned* as (but does not implement). Here the actual ODEs are
-    // Euler-integrated each frame into a trajectory that is accumulated as
-    // additive glow; an orbiting camera makes the folded band read as 3D.
-    //   dx/dt = -y - z
-    //   dy/dt =  x + a*y
-    //   dz/dt =  b + z*(x - c)         classic params a = b = 0.2, c = 5.7
-    fx.push_back({"Rössler Attractor", R"(
-uniform float uA;   // Rössler a  (slider: bifurcations as it varies)
-uniform float uB;   // Rössler b
-uniform float uC;   // Rössler c  (sweep ~4..9 to watch period-doubling)
-void main(){
-    vec2 uv = (vUV*2.0 - 1.0);
-    uv.x *= uResolution.x/uResolution.y;
-
-    float a = uA, b = uB, c = uC;            // live Rössler parameters
-    const float dt = 0.02;
-    const int   STEPS = 650;
-    // Clamp the state to a generous box so divergent parameter regimes (very
-    // low c, large b, ...) stay on-screen instead of exploding to NaN/Inf under
-    // the fixed-step Euler integrator. The box is far outside the normal
-    // attractor (|x|,|y| < ~12, z < ~25), so it never distorts stable orbits.
-    const vec3 BMIN = vec3(-30.0, -30.0,  -8.0);
-    const vec3 BMAX = vec3( 30.0,  30.0,  45.0);
-
-    // Integrate a transient first so we start on the attractor, not at the seed.
-    vec3 P = vec3(0.1, 0.0, 0.0);
-    for(int i=0;i<300;i++){
-        vec3 dP = vec3(-P.y - P.z, P.x + a*P.y, b + P.z*(P.x - c));
-        P = clamp(P + dP*dt, BMIN, BMAX);    // bounded Euler step
-    }
-
-    mat2 yaw = rot(uTime*0.25);               // orbiting camera
-    mat2 tilt = rot(0.5);                      // fixed 3/4 view tilt
-    vec3 center = vec3(0.0, 0.0, 2.0);         // rough centroid of the band
-    float zoom = 0.085;
-
-    vec3 col = vec3(0.0);
-    for(int i=0;i<STEPS;i++){
-        vec3 dP = vec3(-P.y - P.z, P.x + a*P.y, b + P.z*(P.x - c));
-        P = clamp(P + dP*dt, BMIN, BMAX);    // keep the drawn trajectory bounded
-
-        vec3 q = (P - center) * zoom;
-        q.xz = yaw * q.xz;
-        q.yz = tilt * q.yz;
-
-        vec2 s = q.xy / (q.z + 2.2);           // perspective projection
-        float dist = length(uv - s);
-        float ti = float(i)/float(STEPS);
-        vec3 tint = 0.5 + 0.5*cos(6.2831*(vec3(0.0,0.33,0.67) + ti));
-        col += tint * 0.0009 / (dist*dist + 0.0008);
-    }
-
-    col = col / (col + 1.0);                    // Reinhard tone map
-    col = pow(col, vec3(0.4545));               // gamma
-    FragColor = vec4(col, 1.0);
 }
 )"});
 
@@ -387,41 +383,6 @@ void main(){
 )"});
 
     // ------------------------------------------------------------------------
-    // "Mandala" — the 12-wave interference intensity
-    //     I(r) ∝ | Σ_{i=1..12} A · e^{ i (k·r + φ_i) } |²,   |k| ∈ [24, 32]
-    // Twelve plane waves with evenly-spaced wavevectors k_i (equal amplitude A)
-    // are summed as complex phasors; the squared magnitude of the sum is the
-    // intensity. Equal directions + a common animated phase give the classic
-    // 12-fold "quasicrystal" mandala; |k| breathes across the [24,32] range.
-    fx.push_back({"Mandala (12-wave)", R"(
-uniform float uMandalaK;        // |k| wave number   (slider 24..32)
-uniform float uMandalaWaves;    // wave count / fold symmetry (slider 3..12)
-uniform float uMandalaSpread;   // per-wave phase spread (breaks symmetry)
-void main(){
-    vec2 uv = (vUV*2.0 - 1.0);
-    uv.x *= uResolution.x/uResolution.y;
-
-    int   waves = int(uMandalaWaves + 0.5);
-    float Nf  = float(waves);
-    float k   = uMandalaK;                           // |k| ∈ [24, 32]
-    float phi = uTime*0.5;                            // animated common phase
-    vec2 sum = vec2(0.0);                             // complex accumulator (re, im)
-    for(int n=0;n<32;n++){                            // fixed bound; break at waves
-        if(n >= waves) break;
-        float a = 6.28318530718 * float(n)/Nf;        // evenly-spaced directions
-        vec2 kdir = vec2(cos(a), sin(a));
-        float ph = k*dot(kdir, uv) + phi + uMandalaSpread*float(n);  // k·r + φ_i
-        sum += vec2(cos(ph), sin(ph));               // A · e^{i ph},  A = 1
-    }
-    float I = dot(sum, sum)/(Nf*Nf);                 // |Σ|² , normalised to [0,1]
-
-    vec3 col = 0.5 + 0.5*cos(6.28318530718*(vec3(0.0,0.33,0.67) + I*1.5 + uTime*0.05));
-    col *= pow(I, 0.7);                              // shape the falloff
-    FragColor = vec4(col, 1.0);
-}
-)"});
-
-    // ------------------------------------------------------------------------
     // "Fragments" — another Twigl / つぶやきGLSL "geek-mode" one-liner. A ray is
     // marched (z = distance); at each step the sample point p is folded a few
     // times by a quantised sine turbulence (the inner loop), then density f is
@@ -479,134 +440,6 @@ void main(){
             e += -abs(dot(sin(p.yzx*s), cos(p.xzy*s))/s*0.5);
     }
     FragColor = vec4(o.rgb, 1.0);
-}
-)"});
-
-    // ------------------------------------------------------------------------
-    // "Horizon" — a Twigl / つぶやきGLSL "geek-mode" one-liner. A ray marches a
-    // turbulent landscape under a glowing sky; each step adds warm glow weighted
-    // by 1/f and the radial distance, an inner octave loop warps the sample, and
-    // the step size f comes from a folded terrain height. The original packs the
-    // height into one chained min/max assignment whose result depends on
-    // left-to-right argument evaluation (unspecified in GLSL); it is expanded
-    // here into sequential statements so the behaviour is deterministic.
-    fx.push_back({"Horizon (Twigl)", R"(
-void main(){
-    vec2 r = uResolution;
-    vec3 FC = vec3(vUV * r, 0.0);          // gl_FragCoord (z = 0)
-    float t = uTime;
-    vec4 o = vec4(0.0);
-    vec3 c = vec3(0.0), p = vec3(0.0);
-    float i = 0.0, z = 0.1, f = 0.0;
-    for(; i++ < 1e2; o += vec4(9.0,4.0,2.0,0.0)/f/length(c.xy/z)){
-        p = c = z*normalize(FC.rgb*2.0 - r.xyy);
-        for(p.x *= f = 0.6; f++ < 9.0; p += sin(p.yzx*f + 0.5*z - t/4.0)/f);
-        // z += f = .03+.1*max(f=6.-.2*z+min(f=(p+c).y,-f*.2),-f*.6);
-        float A = (p + c).y;
-        float B = min(A, -0.2*A);
-        float C = 6.0 - 0.2*z + B;
-        float D = max(C, -0.6*C);
-        f = 0.03 + 0.1*D;
-        z += f;
-    }
-    o = tanh(o*o/9e8);
-    FragColor = vec4(o.rgb, 1.0);
-}
-)"});
-
-    // ------------------------------------------------------------------------
-    // "Protostar2" — a Twigl / つぶやきGLSL "geek-mode" one-liner. A ray marches a
-    // glowing volumetric core: each sample point p is folded about a time- and
-    // field-varying axis a (the a*dot - cross term is a Rodrigues-style twist),
-    // an inner octave loop accretes cos turbulence into a, and the step size and
-    // colour come from the resulting field length s; tanh tone-maps the glow.
-    fx.push_back({"Protostar2 (Twigl)", R"(
-void main(){
-    vec2 r = uResolution;
-    vec3 FC = vec3(vUV * r, 0.0);          // gl_FragCoord (z = 0)
-    float t = uTime;
-    vec4 o = vec4(0.0);
-    float i = 0.0, z = 0.0, d = 0.0, s = 0.0;
-    for(; i++ < 2e2; o += (cos(s/0.6 + vec4(0,1,2,0)) + 1.1)/d){
-        vec3 p = z*normalize(FC.rgb*2.0 - r.xyy);
-        vec3 a = normalize(cos(vec3(0,1,0) + t - 0.4*s));
-        p.z += 9.0;
-        a = a*dot(a, p) - cross(a, p);     // twist p about axis a
-        for(d = 1.0; d++ < 6.0; )
-            s = length(a += cos(a*d + t).yzx/d);
-        z += d = 0.1*(abs(sin(s - t)) + abs(a.y)/6.0);
-    }
-    o = tanh(o*o/2e7);
-    FragColor = vec4(o.rgb, 1.0);
-}
-)"});
-
-    // ------------------------------------------------------------------------
-    // "Plasma Orb" — a Twigl / つぶやきGLSL one-liner. A domain-warped field v is
-    // iterated through eight cos octaves and accumulated into o; the result is
-    // tinted by a vertical exp() gradient and a radial exp(-l) falloff, then
-    // tanh tone-mapped — a glowing plasma sphere.
-    fx.push_back({"Plasma Orb (Twigl)", R"(
-void main(){
-    vec2 r = uResolution;
-    vec2 FC = vUV * r;                     // gl_FragCoord.xy
-    float t = uTime;
-    vec4 o = vec4(0.0);
-    vec2 p = (FC.xy*2.0 - r)/r.y;
-    vec2 l = vec2(0.0);
-    vec2 v = p*(1.0 - (l += abs(0.7 - dot(p, p))))/0.2;
-    for(float i = 0.0; i++ < 8.0; o += (sin(v.xyyx) + 1.0)*abs(v.x - v.y)*0.2)
-        v += cos(v.yx*i + vec2(0.0, i) + t)/i + 0.7;
-    o = tanh(exp(p.y*vec4(1.0,-1.0,-2.0,0.0)) * exp(-4.0*l.x) / o);
-    FragColor = vec4(o.rgb, 1.0);
-}
-)"});
-
-    // ------------------------------------------------------------------------
-    // "ULTRA OS Logo" — a procedural recreation of the brand mark: a glossy red
-    // orb framed by silver "eye" arcs above and below, with a dark horizontal
-    // divider, on black. Animated: the orb's specular gloss orbits, a sheen
-    // sweeps along the arcs (uLogoSpin), and a red glow breathes (uLogoPulse).
-    fx.push_back({"ULTRA OS Logo", R"(
-uniform float uLogoSpin;    // sheen / specular motion speed
-uniform float uLogoPulse;   // orb glow breathing amount
-void main(){
-    vec2 r = uResolution;
-    vec2 FC = vUV * r;
-    vec2 p = (FC*2.0 - r)/r.y;             // y in [-1,1], centred
-    float t = uTime;
-    vec3 col = vec3(0.0);                  // black background
-
-    // --- silver "eye" arcs (almond envelope; orb sits inside, never covers them)
-    float arcX = 0.95, arcH = 0.60;
-    float env = arcH * pow(max(0.0, 1.0 - (p.x/arcX)*(p.x/arcX)), 0.65);
-    float arcDist = abs(abs(p.y) - env);                       // both top & bottom
-    float arcMask = smoothstep(0.016, 0.006, arcDist)
-                  * smoothstep(arcX, arcX*0.78, abs(p.x));     // taper to the tips
-    float sheen = 0.55 + 0.45*sin(p.x*3.0 - t*1.5*uLogoSpin);
-    col = mix(col, mix(vec3(0.27,0.28,0.30), vec3(0.92,0.93,0.95), sheen), arcMask);
-
-    // --- red orb
-    float rad = 0.42, dC = length(p);
-    float pulse = 1.0 + uLogoPulse*4.0*sin(t*1.5);
-    col += vec3(0.55,0.06,0.07) * exp(-max(dC-rad,0.0)*9.0) * 0.5 * pulse;   // glow
-    vec2 sp = p/rad;
-    float zz = sqrt(max(0.0, 1.0 - dot(sp,sp)));               // fake sphere z
-    vec3 n = vec3(sp, zz);
-    vec3 red = mix(vec3(0.24,0.02,0.03), vec3(0.80,0.10,0.12),
-                   clamp(0.5 + 0.6*p.y/rad, 0.0, 1.0));        // top brighter
-    red *= (0.45 + 0.55*zz);                                   // shade toward rim
-    float ang = t*0.6*uLogoSpin;
-    vec3 L = normalize(vec3(0.30*cos(ang) + 0.12, 0.55, 0.85));
-    float nl = max(dot(n, L), 0.0);
-    vec3 orbCol = red + (0.7*pow(nl,30.0) + 0.22*pow(nl,6.0))*vec3(1.0,0.96,0.94);
-    col = mix(col, orbCol, smoothstep(rad, rad-0.005, dC));    // AA orb edge
-
-    // --- dark horizontal divider, in front of the orb
-    float hl = smoothstep(0.024, 0.012, abs(p.y)) * smoothstep(0.90, 0.86, abs(p.x));
-    col = mix(col, vec3(0.16,0.16,0.17), hl);
-
-    FragColor = vec4(col, 1.0);
 }
 )"});
 
@@ -698,13 +531,6 @@ std::string EffectFormula(const std::string& label) {
 // for(float i;i++<8.;o+=(sin(v.xyyx)+1.)*abs(v.x-v.y)*.2)
 //   v+=cos(v.yx*i+vec2(0,i)+t)/i+.7;
 // o=tanh(exp(p.y*vec4(1,-1,-2,0))*exp(-4.*l.x)/o);)";
-    if (label == "ULTRA OS Logo")
-        return R"(// Procedural recreation of the ULTRA OS brand mark (animated):
-//   - glossy red orb (fake-sphere shading + orbiting specular gloss)
-//   - silver "eye" arcs above & below (almond envelope, sweeping sheen)
-//   - dark horizontal divider in front of the orb, on black.
-// Seeded by the Twigl ring: o += .1/abs(length(p)-.5 + .01/(p.x-p.y));
-// uLogoSpin = sheen/specular speed,  uLogoPulse = glow breathing.)";
     if (label == "Alien Caterpillar (p5.js port)")
         return R"(// Source — p5.js generative sketch (drawn here as GL_POINTS):
 // a=(x,y,d=mag(k=(4+sin(y*2-t)*3)*cos(x/29),e=y/8-13))=>
@@ -728,14 +554,6 @@ std::string EffectFormula(const std::string& label) {
 //   }
 // circle.z = pow(1.4, near_count);           // ring radius grows with degree
 // // draw: wireframe links, ring outlines, white interiors (r-1), dark dots (r=2))";
-    if (label == "Mandala (12-wave)")
-        return R"(// Source — 12-wave interference intensity:
-//   I(r) ∝ | Σ_{i=1..12} A·e^{ i (k·r + φ_i) } |² ,   |k| ∈ [24, 32])";
-    if (label == "Rössler Attractor")
-        return R"(// Source — Rössler attractor ODEs (classic a=b=0.2, c=5.7):
-//   dx/dt = -y - z
-//   dy/dt =  x + a*y
-//   dz/dt =  b + z*(x - c))";
     return "";
 }
 
@@ -756,16 +574,10 @@ struct ShaderState {
     float speed = 1.0f;
     float clock = 0.0f;
     // Live, slider-driven effect parameters (ignored by effects that lack them).
-    float rosslerA = 0.2f;      // Rössler a
-    float rosslerB = 0.2f;      // Rössler b
-    float rosslerC = 5.7f;      // Rössler c
     float ballBright = 0.4f;    // Ball Surface splat brightness
     float ballSplat = 1.7f;     // Ball Surface splat radius (px)
     float pulseStep = 0.2f;     // Pulse march-step scale
     float pulsePhase = 0.0f;    // Pulse fold-axis phase
-    float mandalaK = 28.0f;     // Mandala |k| wave number
-    float mandalaWaves = 12.0f; // Mandala wave count / fold symmetry
-    float mandalaSpread = 0.0f; // Mandala per-wave phase spread
     float fragFold = 6.0f;      // Fragments inner fold count
     float fragRadius = 5.0f;    // Fragments tube radius
     float circlesFrame = 0.0f;  // Circles network animation frame counter
@@ -773,8 +585,6 @@ struct ShaderState {
     float circlesLink = 50.0f;  // Circles link distance threshold
     float circlesGrowth = 1.4f; // Circles ring growth base (pow(base, degree))
     float caterT = 0.0f;        // Alien Caterpillar animation time
-    float logoSpin = 0.6f;      // ULTRA OS Logo sheen / specular speed
-    float logoPulse = 0.06f;    // ULTRA OS Logo glow breathing amount
 };
 
 struct ShaderGLResources {
@@ -784,12 +594,9 @@ struct ShaderGLResources {
     std::vector<GLint> resLoc;
     // Optional per-effect uniforms; -1 where an effect doesn't declare them.
     // glUniform1f(-1, ...) is a silent no-op, so these can be set every frame.
-    std::vector<GLint> aLoc, bLoc, cLoc;        // Rössler uA/uB/uC
     std::vector<GLint> brightLoc, splatLoc;     // Ball Surface uBright/uSplat
     std::vector<GLint> pStepLoc, pPhaseLoc;     // Pulse uPulseStep/uPulsePhase
-    std::vector<GLint> mKLoc, mWavesLoc, mSpreadLoc;  // Mandala uniforms
-    std::vector<GLint> fFoldLoc, fRadiusLoc;          // Fragments uniforms
-    std::vector<GLint> lSpinLoc, lPulseLoc;           // ULTRA OS Logo uniforms
+    std::vector<GLint> fFoldLoc, fRadiusLoc;    // Fragments uniforms
     // "Circles" effect: a flat-colour 2D program with one dynamic vertex buffer.
     GLuint cProg = 0, cVao = 0, cVbo = 0;
     GLint cScaleLoc = -1, cColorLoc = -1;
@@ -979,20 +786,12 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
             glRes->programs.push_back(prog);
             glRes->timeLoc.push_back(prog ? glGetUniformLocation(prog, "uTime") : -1);
             glRes->resLoc.push_back(prog ? glGetUniformLocation(prog, "uResolution") : -1);
-            glRes->aLoc.push_back(prog ? glGetUniformLocation(prog, "uA") : -1);
-            glRes->bLoc.push_back(prog ? glGetUniformLocation(prog, "uB") : -1);
-            glRes->cLoc.push_back(prog ? glGetUniformLocation(prog, "uC") : -1);
             glRes->brightLoc.push_back(prog ? glGetUniformLocation(prog, "uBright") : -1);
             glRes->splatLoc.push_back(prog ? glGetUniformLocation(prog, "uSplat") : -1);
             glRes->pStepLoc.push_back(prog ? glGetUniformLocation(prog, "uPulseStep") : -1);
             glRes->pPhaseLoc.push_back(prog ? glGetUniformLocation(prog, "uPulsePhase") : -1);
-            glRes->mKLoc.push_back(prog ? glGetUniformLocation(prog, "uMandalaK") : -1);
-            glRes->mWavesLoc.push_back(prog ? glGetUniformLocation(prog, "uMandalaWaves") : -1);
-            glRes->mSpreadLoc.push_back(prog ? glGetUniformLocation(prog, "uMandalaSpread") : -1);
             glRes->fFoldLoc.push_back(prog ? glGetUniformLocation(prog, "uFragFold") : -1);
             glRes->fRadiusLoc.push_back(prog ? glGetUniformLocation(prog, "uFragRadius") : -1);
-            glRes->lSpinLoc.push_back(prog ? glGetUniformLocation(prog, "uLogoSpin") : -1);
-            glRes->lPulseLoc.push_back(prog ? glGetUniformLocation(prog, "uLogoPulse") : -1);
         }
 
         // Set up the flat-colour 2D program + dynamic buffer for "Circles".
@@ -1041,20 +840,12 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         glUniform1f(glRes->timeLoc[idx], state->clock);
         glUniform2f(glRes->resLoc[idx], float(info.width), float(info.height));
         // Optional per-effect uniforms (no-ops where the location is -1).
-        glUniform1f(glRes->aLoc[idx], state->rosslerA);
-        glUniform1f(glRes->bLoc[idx], state->rosslerB);
-        glUniform1f(glRes->cLoc[idx], state->rosslerC);
         glUniform1f(glRes->brightLoc[idx], state->ballBright);
         glUniform1f(glRes->splatLoc[idx], state->ballSplat);
         glUniform1f(glRes->pStepLoc[idx], state->pulseStep);
         glUniform1f(glRes->pPhaseLoc[idx], state->pulsePhase);
-        glUniform1f(glRes->mKLoc[idx], state->mandalaK);
-        glUniform1f(glRes->mWavesLoc[idx], state->mandalaWaves);
-        glUniform1f(glRes->mSpreadLoc[idx], state->mandalaSpread);
         glUniform1f(glRes->fFoldLoc[idx], state->fragFold);
         glUniform1f(glRes->fRadiusLoc[idx], state->fragRadius);
-        glUniform1f(glRes->lSpinLoc[idx], state->logoSpin);
-        glUniform1f(glRes->lPulseLoc[idx], state->logoPulse);
         glBindVertexArray(glRes->vao);
         glDrawArrays(GL_TRIANGLES, 0, 3);
         glBindVertexArray(0);
@@ -1132,16 +923,12 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     // ----------------------------------------- per-effect parameter sliders
     // Locate the effects that carry live uniforms so the matching slider group
     // can be revealed only when that effect is selected.
-    int rosslerIdx = -1, ballIdx = -1, pulseIdx = -1, mandalaIdx = -1, fragIdx = -1,
-        circlesIdx = -1, logoIdx = -1;
+    int ballIdx = -1, pulseIdx = -1, fragIdx = -1, circlesIdx = -1;
     for (int i = 0; i < (int)effects->size(); ++i) {
-        if ((*effects)[i].label == "Rössler Attractor")         rosslerIdx = i;
         if ((*effects)[i].label == "Ball Surface (p5.js port)")  ballIdx = i;
         if ((*effects)[i].label == "Pulse (Twigl)")              pulseIdx = i;
-        if ((*effects)[i].label == "Mandala (12-wave)")          mandalaIdx = i;
         if ((*effects)[i].label == "Fragments (Twigl)")          fragIdx = i;
         if ((*effects)[i].label == "Circles (openFrameworks)")   circlesIdx = i;
-        if ((*effects)[i].label == "ULTRA OS Logo")              logoIdx = i;
     }
 
     auto addSlider = [](std::shared_ptr<UltraCanvasContainer>& group, const char* id,
@@ -1166,19 +953,6 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         group->AddChild(l);
     };
 
-    // Rössler a/b/c — watch the strange attractor bifurcate as c sweeps 4..9.
-    auto rosslerGroup = std::make_shared<UltraCanvasContainer>("RosslerParams", 10, 128, 276, 180);
-    rosslerGroup->SetBackgroundColor(Color(246, 246, 248, 255));
-    addCaption(rosslerGroup, "RA_title", "Rössler parameters", 0, true);
-    addCaption(rosslerGroup, "RA_aL", "a — y-coupling", 26);
-    addSlider(rosslerGroup, "RA_a", 44, 0.0f, 0.4f, 0.2f, [state](float v){ state->rosslerA = v; });
-    addCaption(rosslerGroup, "RA_bL", "b — z-offset", 74);
-    addSlider(rosslerGroup, "RA_b", 92, 0.0f, 2.0f, 0.2f, [state](float v){ state->rosslerB = v; });
-    addCaption(rosslerGroup, "RA_cL", "c — sweep 4..9 (period-doubling)", 122);
-    addSlider(rosslerGroup, "RA_c", 140, 4.0f, 9.0f, 5.7f, [state](float v){ state->rosslerC = v; });
-    rosslerGroup->SetVisible(false);
-    panel->AddChild(rosslerGroup);
-
     // Ball Surface — brightness and splat radius shape the dotted rings.
     auto ballGroup = std::make_shared<UltraCanvasContainer>("BallParams", 10, 128, 276, 140);
     ballGroup->SetBackgroundColor(Color(246, 246, 248, 255));
@@ -1200,20 +974,6 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     addSlider(pulseGroup, "PU_ph", 92, 0.0f, 6.2832f, 0.0f, [state](float v){ state->pulsePhase = v; });
     pulseGroup->SetVisible(false);
     panel->AddChild(pulseGroup);
-
-    // Mandala — wave number |k|, fold symmetry (wave count), and phase spread.
-    auto mandalaGroup = std::make_shared<UltraCanvasContainer>("MandalaParams", 10, 128, 276, 180);
-    mandalaGroup->SetBackgroundColor(Color(246, 246, 248, 255));
-    addCaption(mandalaGroup, "MA_title", "Mandala controls", 0, true);
-    addCaption(mandalaGroup, "MA_kL", "Wave number |k| (24..32)", 26);
-    addSlider(mandalaGroup, "MA_k", 44, 24.0f, 32.0f, 28.0f, [state](float v){ state->mandalaK = v; });
-    addCaption(mandalaGroup, "MA_wL", "Symmetry (wave count)", 74);
-    addSlider(mandalaGroup, "MA_w", 92, 3.0f, 12.0f, 12.0f,
-              [state](float v){ state->mandalaWaves = v; }, 1.0f, "%.0f");
-    addCaption(mandalaGroup, "MA_sL", "Phase spread (breaks symmetry)", 122);
-    addSlider(mandalaGroup, "MA_s", 140, 0.0f, 3.1416f, 0.0f, [state](float v){ state->mandalaSpread = v; });
-    mandalaGroup->SetVisible(false);
-    panel->AddChild(mandalaGroup);
 
     // Fragments — inner fold count and tube radius shape the crystalline burst.
     auto fragGroup = std::make_shared<UltraCanvasContainer>("FragmentsParams", 10, 128, 276, 140);
@@ -1243,31 +1003,17 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     circlesGroup->SetVisible(false);
     panel->AddChild(circlesGroup);
 
-    // ULTRA OS Logo — spin speed of the pinch axis and radius breathing amount.
-    auto logoGroup = std::make_shared<UltraCanvasContainer>("LogoParams", 10, 128, 276, 140);
-    logoGroup->SetBackgroundColor(Color(246, 246, 248, 255));
-    addCaption(logoGroup, "LO_title", "ULTRA OS Logo controls", 0, true);
-    addCaption(logoGroup, "LO_spinL", "Sheen / gloss speed", 26);
-    addSlider(logoGroup, "LO_spin", 44, 0.0f, 2.0f, 0.6f, [state](float v){ state->logoSpin = v; });
-    addCaption(logoGroup, "LO_pulseL", "Glow breathing", 74);
-    addSlider(logoGroup, "LO_pulse", 92, 0.0f, 0.2f, 0.06f, [state](float v){ state->logoPulse = v; });
-    logoGroup->SetVisible(false);
-    panel->AddChild(logoGroup);
-
     // Now that the groups exist, wire dropdown selection to reveal the right one.
     fxDrop->onSelectionChanged =
-        [state, surface, codeArea, sourceFor, rosslerGroup, ballGroup, pulseGroup,
-         mandalaGroup, fragGroup, circlesGroup, logoGroup, rosslerIdx, ballIdx, pulseIdx,
-         mandalaIdx, fragIdx, circlesIdx, logoIdx](int idx, const DropdownItem&) {
+        [state, surface, codeArea, sourceFor, ballGroup, pulseGroup,
+         fragGroup, circlesGroup, ballIdx, pulseIdx,
+         fragIdx, circlesIdx](int idx, const DropdownItem&) {
             state->currentIndex = idx;
             codeArea->SetText(sourceFor(idx));
-            rosslerGroup->SetVisible(idx == rosslerIdx);
             ballGroup->SetVisible(idx == ballIdx);
             pulseGroup->SetVisible(idx == pulseIdx);
-            mandalaGroup->SetVisible(idx == mandalaIdx);
             fragGroup->SetVisible(idx == fragIdx);
             circlesGroup->SetVisible(idx == circlesIdx);
-            logoGroup->SetVisible(idx == logoIdx);
             surface->RequestRender();
         };
 
@@ -1279,28 +1025,23 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         "highlighted source viewer below the\n"
         "canvas shows the original formula and\n"
         "the live source for the chosen effect.\n\n"
-        "Effects: Plasma, Raymarched Scene,\n"
-        "Julia Fractal, Tunnel, Warp Starfield,\n"
+        "Effects: Horizon (Twigl turbulent\n"
+        "landscape), Protostar2 (Twigl glowing\n"
+        "core), Plasma Orb (Twigl warped field),\n"
+        "Plasma, Raymarched Scene, Julia\n"
+        "Fractal, Tunnel,\n"
         "Borg Sphere (Twigl one-liner),\n"
-        "Rössler Attractor (integrated ODEs),\n"
         "Ball Surface (p5.js port),\n"
         "Pulse (Twigl ray-fold),\n"
-        "Mandala (12-wave interference),\n"
         "Fragments (Twigl tube turbulence),\n"
         "Mountains (Twigl fractal terrain),\n"
-        "Horizon (Twigl turbulent landscape),\n"
-        "Protostar2 (Twigl glowing core),\n"
-        "Plasma Orb (Twigl warped field),\n"
-        "ULTRA OS Logo (animated brand mark),\n"
         "Circles (openFrameworks network),\n"
         "Alien Caterpillar (p5.js points).\n\n"
         "The speed slider scales time. Select\n"
-        "Rössler, Ball Surface, Pulse, Mandala,\n"
-        "Fragments or Circles to reveal live\n"
-        "parameter sliders above — e.g. sweep\n"
-        "Rössler c from 4 to 9 to watch it\n"
-        "period-double into chaos, or change\n"
-        "the Circles node count and link range.\n\n"
+        "Ball Surface, Pulse, Fragments or\n"
+        "Circles to reveal live parameter\n"
+        "sliders above — e.g. change the\n"
+        "Circles node count and link range.\n\n"
         "Click the ⛶ icon or double-click the\n"
         "canvas to maximize it; press Esc or\n"
         "click once to restore."
