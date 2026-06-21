@@ -14,6 +14,7 @@
 - Fixes Gstreamer (video player) and native dialogs crash in Linux
 - Merged "Add Radar Chart element"
 - Fix Radar Chart rendering and animation
+- Show ULTRA OS overview page when "ULTRA OS modules" tree node is selected
 
 
 #### 2026-06-19 *0.2.15*
