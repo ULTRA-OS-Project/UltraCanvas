@@ -633,6 +633,18 @@ namespace UltraCanvas {
                 .AddVariant("slider", "Vertical Slider")
                 .AddVariant("slider", "Range Slider");
 
+        basicBuilder.AddItem("colorpicker", "Colour Picker",
+                             "HSV colour wheel with saturation/value square, preview "
+                             "swatches, hex input, HSV/HSL/RGB channel sliders and alpha",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateColorPickerExamples(); },
+                             "DemoApp/UltraCanvasColorPickerExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasColorPicker.md")
+                .AddVariant("colorpicker", "Full Picker (Wheel + Sliders)")
+                .AddVariant("colorpicker", "Compact (Sliders Only)")
+                .AddVariant("colorpicker", "HSV / HSL / RGB Modes")
+                .AddVariant("colorpicker", "Alpha / Hex Input");
+
         basicBuilder.AddItem("scrollbars", "Scrollbars",
                              "Standalone scrollbars: preset styles, colour options, "
                              "corner-radius / end-shape control and a custom SVG handle",
