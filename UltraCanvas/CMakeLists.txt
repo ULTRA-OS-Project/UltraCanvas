@@ -34,6 +34,10 @@ else()
     option(ULTRACANVAS_ENABLE_VIDEO "Enable video playback & recording (requires platform media framework)" ON)
 endif ()
 option(ULTRACANVAS_ENABLE_GL "Enable OpenGL 3D surface support" ON)
+# Scoped/categorized memory accounting (per-tab usage, task-manager stats).
+# ON by default so the public MemoryStats API carries real data; turn OFF for a
+# zero-overhead release build (element factory falls back to make_shared).
+option(ULTRACANVAS_ENABLE_MEMORY_STATS "Enable scoped memory usage statistics" ON)
 
 # OpenGL surface support (Linux, macOS and Windows)
 # On Windows the WGL backend additionally requires GLEW to load modern GL
@@ -168,6 +172,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasConfig.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUtils.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUtilsUtf8.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMemoryStats.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMemoryStatsPanel.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasApplication.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRenderInterface.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTooltipManager.cpp
@@ -646,6 +652,13 @@ target_compile_definitions(${ULTRACANVAS_LIB_NAME}
     PRIVATE
         $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
 )
+
+# Memory statistics compile definition (public switch consumed by headers).
+if(ULTRACANVAS_ENABLE_MEMORY_STATS)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC UC_ENABLE_MEMORY_STATS=1)
+else()
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC UC_ENABLE_MEMORY_STATS=0)
+endif()
 
 # GL surface compile definitions
 if(ULTRACANVAS_ENABLE_GL)

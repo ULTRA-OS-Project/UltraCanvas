@@ -14,6 +14,7 @@
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasConfig.h"
+#include "UltraCanvasMemoryStats.h"
 #include "CSSLayout/CSSLayout.h"
 #include <iostream>
 #include <string>
@@ -534,9 +535,33 @@ namespace UltraCanvas {
 // ===== FACTORY SYSTEM =====
     class UltraCanvasUIElementFactory {
     public:
+        // Default creation. When memory stats are enabled, the element (and its
+        // shared control block) are attributed to the ambient scope under the
+        // UIElement category; otherwise this is a plain make_shared.
         template<typename ElementType, typename... Args>
         static std::shared_ptr<ElementType> Create(Args&&... args) {
+            return CreateTagged<ElementType>(
+                MemoryTag{MemoryCategory::UIElement, kUseAmbientScope},
+                std::forward<Args>(args)...);
+        }
+
+        // Explicit attribution: override the category and/or pin the allocation
+        // to a specific scope instead of inheriting the ambient one.
+        template<typename ElementType, typename... Args>
+        static std::shared_ptr<ElementType> CreateTagged(MemoryTag tag, Args&&... args) {
+#if UC_ENABLE_MEMORY_STATS
+            // Resolve the ambient scope to a concrete id NOW, while we are still
+            // inside the creating scope guard. The allocator carries that fixed
+            // id so the destructor's free (which may run under a different
+            // ambient scope, or none) is attributed to the same scope.
+            if (tag.scope == kUseAmbientScope)
+                tag.scope = UltraCanvasMemoryTracker::Get().CurrentScope();
+            return std::allocate_shared<ElementType>(
+                TrackedAllocator<ElementType>(tag), std::forward<Args>(args)...);
+#else
+            (void)tag;
             return std::make_shared<ElementType>(std::forward<Args>(args)...);
+#endif
         }
     };
 } // namespace UltraCanvas
