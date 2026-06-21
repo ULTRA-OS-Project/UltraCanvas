@@ -24,6 +24,8 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasConfig.h"
+#include "UltraCanvasUtils.h"
 
 #include <memory>
 #include <vector>
@@ -1060,17 +1062,27 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     root->AddChild(panel);
 
     // ---------------------------------------------------- maximize / zoom view
-    // A "⛶" icon button overlays the top-right of the canvas (the GL surface
-    // composites into the 2D layer, so a later sibling draws on top of it).
-    // It maximizes the canvas over the whole tab, hiding the controls and
+    // A maximize icon button overlays the top-right corner of the canvas (the GL
+    // surface composites into the 2D layer, so a later sibling draws on top of
+    // it). It maximizes the canvas over the whole tab, hiding the controls and
     // source viewer; double-clicking the canvas does the same, and Esc or a
     // single click restores. The button stays visible so it can toggle back.
-    const Point2Df btnHome{644.0f, 46.0f};
+    const Point2Df homePos{16.0f, 40.0f};
+    const float homeW = 660.0f, homeH = 360.0f;
+    const float btnSize = 28.0f, btnMargin = 8.0f;
+
     auto zoomBtn = std::make_shared<UltraCanvasButton>(
-        "ShaderZoomBtn", btnHome.x, btnHome.y, 28.0f, 24.0f, "⛶");
-    zoomBtn->SetFontSize(15.0f);
+        "ShaderZoomBtn",
+        homePos.x + homeW - btnSize - btnMargin, homePos.y + btnMargin,
+        btnSize, btnSize, "");
+    // The SVG is a single black shape on transparent; render it as a mask filled
+    // with the (white) text colour so it reads on the dark translucent button.
+    zoomBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/maximise.svg"));
+    zoomBtn->SetIconPosition(ButtonIconPosition::Center);
+    zoomBtn->SetIconSize(16, 16);
+    zoomBtn->SetUseIconAsMask(true);
     zoomBtn->SetBackgroundColor(Color(0, 0, 0, 120));
-    zoomBtn->SetTextColors(Color(255, 255, 255, 255));
+    zoomBtn->SetTextColors(Color(255, 255, 255, 255));   // mask fill colour
     zoomBtn->SetCornerRadius(4.0f);
     zoomBtn->SetTooltip("Maximize canvas (or double-click it; Esc to restore)");
     root->AddChild(zoomBtn);
@@ -1085,29 +1097,34 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     std::vector<UltraCanvasUIElement*> chrome = {
         title.get(), codeTitle.get(), codeArea.get(), panel.get()
     };
-    const Point2Df homePos{16.0f, 40.0f};
-    const float homeW = 660.0f, homeH = 360.0f;
+
+    // Pin the button to the top-right corner of the surface's current bounds.
+    auto placeButton = [btnPtr, surf, btnSize, btnMargin]() {
+        Rect2Df b = surf->GetBounds();
+        btnPtr->SetBounds(Rect2Df(b.x + b.width - btnSize - btnMargin,
+                                  b.y + btnMargin, btnSize, btnSize));
+    };
 
     // Shared toggle, called by both the button and the canvas gestures.
+    // We resize the surface with SetBounds rather than SetElementSize: the GL
+    // surface only grows its framebuffer from its SetBounds override, and the tab
+    // content is absolutely positioned (no layout pass re-applies a CSS size), so
+    // SetElementSize alone left the canvas at its original size.
     auto toggleZoom = std::make_shared<std::function<void()>>();
-    *toggleZoom = [zoomActive, surf, rootPtr, btnPtr, chrome, homePos, homeW, homeH, btnHome]() {
+    *toggleZoom = [zoomActive, surf, rootPtr, chrome, homePos, homeW, homeH, placeButton, btnPtr]() {
         if (!*zoomActive) {
             *zoomActive = true;
             for (auto* el : chrome) el->SetVisible(false);
-            auto area = rootPtr->GetContentArea();
-            surf->SetElementAbsolutePosition({0.0f, 0.0f});
-            surf->SetElementSize(CSSLayout::Dimension::Px((float)area.width),
-                                 CSSLayout::Dimension::Px((float)area.height));
-            btnPtr->SetElementAbsolutePosition({(float)area.width - 36.0f, 8.0f});
+            Rect2Di area = rootPtr->GetContentArea();
+            surf->SetBounds(Rect2Df(0.0f, 0.0f, (float)area.width, (float)area.height));
+            placeButton();
             btnPtr->SetTooltip("Restore canvas (Esc or click)");
             surf->SetFocus(true);   // route Esc (sent to the focused element) here
             surf->RequestRender();
         } else {
             *zoomActive = false;
-            surf->SetElementAbsolutePosition(homePos);
-            surf->SetElementSize(CSSLayout::Dimension::Px(homeW),
-                                 CSSLayout::Dimension::Px(homeH));
-            btnPtr->SetElementAbsolutePosition(btnHome);
+            surf->SetBounds(Rect2Df(homePos.x, homePos.y, homeW, homeH));
+            placeButton();
             btnPtr->SetTooltip("Maximize canvas (or double-click it; Esc to restore)");
             for (auto* el : chrome) el->SetVisible(true);
             surf->RequestRender();
