@@ -68,6 +68,54 @@ Frame access: `GetCurrentFrame()` (thread-safe).
 Callbacks: `onLoaded`, `onPlaybackStateChanged`, `onFrameReady`,
 `onPositionChanged`, `onEnded`, `onError`.
 
+### Thumbnails / poster frames — `UltraCanvasVideoThumbnail.h`
+
+One-call extraction of a single representative frame from a video file or URL —
+for gallery covers (`UltraCanvasAlbum`), list previews, or a "poster" shown
+before playback starts.
+
+```cpp
+#include "UltraCanvasVideoThumbnail.h"
+
+VideoThumbnailRequest req;
+req.timeSeconds = 3.0;   // grab at 3s; omit / set < 0 for an automatic position
+req.maxWidth    = 320;   // optional: downscale to fit within 320x240,
+req.maxHeight   = 240;   //   preserving aspect ratio
+
+// (a) as a raw decoded frame
+if (auto frame = CaptureVideoThumbnail("clip.mp4", req)) { /* upload / inspect */ }
+
+// (b) as a ready-to-draw pixmap
+auto pm = CaptureVideoThumbnailPixmap("clip.mp4", req);
+
+// (c) straight to a PNG on disk — handy for Album thumbnailPath
+SaveVideoThumbnail("clip.mp4", "clip_thumb.png", req);
+```
+
+All three are **synchronous** (they open the source and decode one frame, which
+can take up to a few seconds), so call them off the UI thread. They are safe
+no-ops returning null / `false` when no real backend is compiled in or the
+source can't be decoded.
+
+Under the hood the engine prefers the backend's dedicated single-frame grab
+(`IVideoBackend::GrabThumbnail` — implemented on Linux/GStreamer as a throwaway
+`uridecodebin` pipeline that prerolls to PAUSED, seeks accurately and pulls the
+preroll sample, never touching audio). Backends that don't implement it fall
+back to a generic decode-session path (open → mute → seek → capture first
+frame), so a thumbnail is produced wherever decoding works.
+
+Feeding an album:
+
+```cpp
+SaveVideoThumbnail("clip.mp4", "covers/clip.png", { /*auto time*/ });
+
+AlbumItem item;
+item.mediaType     = AlbumMediaType::Video;
+item.mediaPath     = "clip.mp4";
+item.thumbnailPath = "covers/clip.png";   // the generated poster frame
+album->AddItem(item);
+```
+
 ### Recording (non-visual) — `UltraCanvasVideoRecorder.h`
 
 ```cpp
