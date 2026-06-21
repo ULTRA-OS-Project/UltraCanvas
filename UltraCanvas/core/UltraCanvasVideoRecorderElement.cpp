@@ -96,6 +96,19 @@ const VideoCaptureConfig& UltraCanvasVideoRecorderElement::GetConfig() const { r
 void UltraCanvasVideoRecorderElement::SetOutputPath(const std::string& path) { recorder->SetOutputPath(path); }
 void UltraCanvasVideoRecorderElement::SetCamera(const std::string& deviceId) { recorder->SetCamera(deviceId); }
 
+void UltraCanvasVideoRecorderElement::SelectCamera(const std::string& deviceId,
+                                                   const std::string& displayLabel) {
+    currentCameraLabel = displayLabel.empty() ? "Default camera" : displayLabel;
+    recorder->SetCamera(deviceId);
+    // SetCamera only takes effect on the next Open(); restart a running preview
+    // so the switch is visible immediately (but never interrupt a recording).
+    if (recorder->IsOpen() && recorder->GetState() != VideoRecordingState::Recording) {
+        CloseCamera();
+        OpenCamera();
+    }
+    RequestRedraw();
+}
+
 void UltraCanvasVideoRecorderElement::SetStyle(const VideoRecorderStyle& s) {
     style = s; Relayout(); RequestRedraw();
 }
@@ -298,9 +311,7 @@ void UltraCanvasVideoRecorderElement::OpenCameraPicker() {
         GetIdentifier() + ".CameraPicker", 0, 0, 220, 0);
     auto self = this;
     menu->AddItem(MenuItemData("System default", [self]() {
-        self->currentCameraLabel = "Default camera";
-        self->recorder->SetCamera("");
-        self->RequestRedraw();
+        self->SelectCamera("", "Default camera");
     }));
     if (cameras.empty()) {
         menu->AddItem(MenuItemData("(no cameras found)", []() {}));
@@ -309,9 +320,7 @@ void UltraCanvasVideoRecorderElement::OpenCameraPicker() {
         std::string id = cam.id, display = cam.name;
         menu->AddItem(MenuItemData(cam.name + (cam.isDefault ? "  (default)" : ""),
             [self, id, display]() {
-                self->currentCameraLabel = display;
-                self->recorder->SetCamera(id);
-                self->RequestRedraw();
+                self->SelectCamera(id, display);
             }));
     }
     Point2Di anchor(GetXInWindow() + cameraSelectRect.x,
