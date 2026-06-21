@@ -1291,6 +1291,7 @@ namespace UltraCanvas {
         };
 
 
+        TreeNode* modulesNode = nullptr;
         for (const auto& [category, catName] : categoryNames) {
             TreeNodeData categoryData(
                     "cat_" + std::to_string(static_cast<int>(category)),
@@ -1299,6 +1300,9 @@ namespace UltraCanvas {
             auto items = categoryItems[category];
             categoryData.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/folder.png"), 16, 16);
             TreeNode* categoryNode = categoryTreeView->AddNode("root", categoryData);
+            if (category == DemoCategory::Modules) {
+                modulesNode = categoryNode;
+            }
 
             // Add items for this category
             for (const std::string& itemId : items) {
@@ -1321,6 +1325,13 @@ namespace UltraCanvas {
         rootNode->Expand();
         rootNode->FirstChild()->Expand();
         rootNode->FirstChild()->FirstChild()->Expand();
+        // Keep the "ULTRA OS modules" node expanded by default. Because the tree
+        // auto-expands (and selects the first child of) a collapsed node on click,
+        // an already-expanded node is selected without jumping to its first child —
+        // so clicking the label shows the ULTRA OS overview page instead.
+        if (modulesNode) {
+            modulesNode->Expand();
+        }
         categoryTreeView->SelectNode(rootNode->FirstChild()->FirstChild());
         OnTreeNodeSelected(rootNode->FirstChild()->FirstChild());
     }
@@ -1331,11 +1342,30 @@ namespace UltraCanvas {
 
         std::string nodeId = node->data.nodeId;
 
+        const std::string modulesNodeId =
+                "cat_" + std::to_string(static_cast<int>(DemoCategory::Modules));
+
         // Check if this is a demo item (not a category)
         if (demoItems.find(nodeId) != demoItems.end()) {
             DisplayDemoItem(nodeId);
             UpdateStatusDisplay(nodeId);
             UpdateHeaderDisplay(nodeId);
+        } else if (nodeId == modulesNodeId) {
+            // "ULTRA OS modules" category: show the ULTRA OS overview page instead of
+            // clearing the display / jumping to the first module example.
+            ClearDisplay();
+            currentDisplayElement = CreateUltraOSInfoScreen();
+            if (currentDisplayElement) {
+                displayContainer->AddChild(currentDisplayElement);
+                currentDisplayElement->layoutItem
+                    .SetFlexGrow(1)
+                    .SetFlexShrink(1)
+                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+            }
+            statusLabel->SetText("ULTRA OS");
+            headerContainer->SetDemoTitle("ULTRA OS");
+            headerContainer->SetSourceFile("");
+            headerContainer->SetDocFile("");
         } else {
             // Category selected - clear display
             ClearDisplay();
