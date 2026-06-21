@@ -19,6 +19,17 @@
 #include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
+    // Demo-wide scrollbar look: round ("pill") ends and a track 70% of the
+    // framework default thickness (integer-truncated). Applied to the demo's
+    // scroll regions so the app's scrollbars share one slim, rounded style.
+    static ScrollbarStyle DemoScrollbarStyle() {
+        ScrollbarStyle s;                          // default trackSize = 16
+        s.trackSize = (s.trackSize * 70) / 100;    // 70%, truncated → 11
+        s.thumbCornerRadius = s.trackSize / 2;     // fully rounded ends
+        s.trackCornerRadius = s.trackSize / 2;
+        return s;
+    }
+
     DemoLegendContainer::DemoLegendContainer(const std::string& identifier)
 //            : UltraCanvasContainer(identifier, x, y, width, height) {
         : UltraCanvasContainer(identifier) {
@@ -369,6 +380,13 @@ namespace UltraCanvas {
         // Create display container (below header)
         displayContainer = std::make_shared<UltraCanvasContainer>("DisplayArea");
         displayContainer->SetBackgroundColor(Colors::White);
+        // displayContainer is the demo's main scroll region — give its scrollbars
+        // the shared slim, round-ended demo style.
+        {
+            ContainerStyle dcStyle = displayContainer->GetContainerStyle();
+            dcStyle.scrollbarStyle = DemoScrollbarStyle();
+            displayContainer->SetContainerStyle(dcStyle);
+        }
 
         // Create status label (bottom left)
         statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel");
@@ -614,6 +632,18 @@ namespace UltraCanvas {
                 .AddVariant("slider", "Horizontal Slider")
                 .AddVariant("slider", "Vertical Slider")
                 .AddVariant("slider", "Range Slider");
+
+        basicBuilder.AddItem("scrollbars", "Scrollbars",
+                             "Standalone scrollbars: preset styles, colour options, "
+                             "corner-radius / end-shape control and a custom SVG handle",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateScrollbarExamples(); },
+                             "DemoApp/UltraCanvasScrollbarExamples.cpp")
+                .AddVariant("scrollbars", "Preset Styles")
+                .AddVariant("scrollbars", "Colour Options")
+                .AddVariant("scrollbars", "Corner Radius / End Shape")
+                .AddVariant("scrollbars", "Custom SVG Handle")
+                .AddVariant("scrollbars", "Horizontal Orientation");
 
         basicBuilder.AddItem("breadcrumb", "Breadcrumb",
                              "Hierarchical path navigation with clickable segments",

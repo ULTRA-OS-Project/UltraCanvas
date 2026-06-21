@@ -510,6 +510,9 @@ namespace UltraCanvas {
 
     void UltraCanvasContainer::SetContainerStyle(const ContainerStyle &newStyle) {
         style = newStyle;
+        // Propagate the (possibly changed) scrollbarStyle to the live scrollbar
+        // objects; otherwise styling set after construction would be ignored.
+        ApplyStyleToScrollbars();
         InvalidateLayout();
     }
 
