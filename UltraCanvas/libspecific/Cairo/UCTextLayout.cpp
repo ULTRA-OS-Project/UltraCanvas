@@ -1,7 +1,7 @@
 // libspecific/Cairo/UCTextLayout.cpp
 // Pango text layout wrapper for UltraCanvas Framework
-// Version: 1.1.0
-// Last Modified: 2026-04-12
+// Version: 1.1.1
+// Last Modified: 2026-06-20
 // Author: UltraCanvas Framework
 
 #include "UCTextLayout.h"
@@ -525,14 +525,6 @@ namespace UltraCanvas {
             } else if (valign == VerticalAlignment::Bottom) {
                 offset = explicitHeight - ext.logical.height - ext.logical.y;
             }
-
-//            debugOutput << "UCTextLayout::GetLayoutVerticalOffset"
-//                        << " H=" << explicitHeight
-//                        << " logical.h=" << ext.logical.height
-//                        << " ascentPU=" << cachedAscentPU
-//                        << " baselinePU=" << pango_layout_get_baseline(layout)
-//                        << " topLeadingPad=" << topLeadingPad
-//                        << " offset=" << offset << std::endl;
         }
         return offset;
     }
