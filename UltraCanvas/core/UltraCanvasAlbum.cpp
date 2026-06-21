@@ -1,8 +1,11 @@
 // core/UltraCanvasAlbum.cpp
 // Photo / video / music album widget with selectable layout designs, per-item
 // crop / zoom / stretch fitting, action icons and visitor / edit / admin modes.
-// Version: 1.1.0
+// Version: 1.2.0
 // Last Modified: 2026-06-21
+// V1.2.0: Action-icon background shape is configurable (AlbumActionIconBackground
+//   — round / square / rounded-square) with a configurable backing colour
+//   (AlbumConfig::actionIconBgColor).
 // V1.1.0: Action icons can anchor to any corner of the image or the caption
 //   text-block (AlbumConfig::actionAnchor); image corners are now configurable
 //   independently of the tile frame (AlbumConfig::imageCornerRadius — square or
@@ -900,6 +903,27 @@ namespace UltraCanvas {
         return textBlock ? TextBlockRect(tile) : tile.imageRect;
     }
 
+    void UltraCanvasAlbum::DrawActionButtonBg(IRenderContext* ctx, const Rect2Di& button) {
+        switch (config.actionIconBackground) {
+            case AlbumActionIconBackground::Square:
+                ctx->SetFillPaint(config.actionIconBgColor);
+                ctx->FillRectangle(Rect2Dd(button));
+                break;
+            case AlbumActionIconBackground::RoundedSquare: {
+                double r = std::min(button.width, button.height) * 0.28;
+                ctx->SetFillPaint(config.actionIconBgColor);
+                ctx->FillRoundedRectangle(Rect2Dd(button), r);
+                break;
+            }
+            case AlbumActionIconBackground::Round:
+            default: {
+                Point2Dd c(button.x + button.width / 2.0, button.y + button.height / 2.0);
+                ctx->DrawFilledCircle(c, button.width / 2.0f, config.actionIconBgColor);
+                break;
+            }
+        }
+    }
+
     void UltraCanvasAlbum::DrawActionIcons(IRenderContext* ctx, const TileLayout& tile,
                                            bool hovered) {
         if (config.actionDisplay == AlbumActionDisplay::Hidden) return;
@@ -921,8 +945,8 @@ namespace UltraCanvas {
         if (config.actionDisplay == AlbumActionDisplay::ContextMenu) {
             if (!config.showMenuIcon || vis.empty()) return;
             Rect2Di btn(bx, by, sz, sz);
+            DrawActionButtonBg(ctx, btn);
             Point2Dd c(btn.x + sz / 2.0, btn.y + sz / 2.0);
-            ctx->DrawFilledCircle(c, sz / 2.0f, Color(0, 0, 0, 120));
             // Three vertical dots.
             ctx->SetFillPaint(Color(255, 255, 255, 230));
             double dot = sz * 0.09;
@@ -946,8 +970,7 @@ namespace UltraCanvas {
             // Stop once a button would spill past the far edge of the anchor rect.
             if (fromLeft) { if (btn.x + sz > anchor.x + anchor.width) break; }
             else          { if (btn.x < anchor.x) break; }
-            Point2Dd c(btn.x + sz / 2.0, btn.y + sz / 2.0);
-            ctx->DrawFilledCircle(c, sz / 2.0f, Color(0, 0, 0, 120));
+            DrawActionButtonBg(ctx, btn);
             DrawIconGlyph(ctx, &actions[idx], btn);
             actionHits.push_back({btn, tile.itemIndex, idx});
             x += fromLeft ? step : -step;

@@ -2,8 +2,10 @@
 // Demonstration of UltraCanvasAlbum: layout designs, image-fit modes, action-icon
 // display options and visitor / user-edit / admin modes for a mixed photo / video
 // / music album.
-// Version: 2.4.0
+// Version: 2.5.0
 // Last Modified: 2026-06-21
+// V2.5.0: Compact action icons (actionButtonSize 20) and an "Icon bg" option
+//   row (round / square / rounded-square) exercising AlbumActionIconBackground.
 // V2.4.0: Photo tiles now show their source on the second caption row as a
 //   clickable link (blue + underline); clicking it fires onLinkClicked rather
 //   than selecting the tile. Added "Icon corner" (8 image / text-block anchors)
@@ -272,6 +274,8 @@ namespace UltraCanvas {
         cfg.outerPadding  = 12;
         cfg.imageDisplay  = AlbumImageDisplay::Crop;
         cfg.actionDisplay = AlbumActionDisplay::OnHover;
+        cfg.actionButtonSize = 20.0f;   // compact action icons (default is 28)
+        cfg.actionIconBackground = AlbumActionIconBackground::Round;
         cfg.captionPlacement = AlbumCaptionPlacement::BelowImage;
         cfg.showMediaBadges  = true;
         cfg.dropShadow    = true;
@@ -531,6 +535,19 @@ namespace UltraCanvas {
                           c.actionAnchor = anchorVals[i];
                           albumPtr->SetConfig(c);
                       }, 1);  // Top-right of the image is the default
+        anchorRow->AddSpacer(24);
+        const AlbumActionIconBackground iconBgVals[] = {
+            AlbumActionIconBackground::Round,
+            AlbumActionIconBackground::Square,
+            AlbumActionIconBackground::RoundedSquare
+        };
+        AppendLabeledButtons(anchorRow, "album_iconbg_", "Icon bg", 56, 84, 28,
+                      {"Round", "Square", "Rounded"},
+                      [albumPtr, iconBgVals](int i) {
+                          AlbumConfig c = albumPtr->GetConfig();
+                          c.actionIconBackground = iconBgVals[i];
+                          albumPtr->SetConfig(c);
+                      }, 0);  // Round is the default
         controls->AddChild(anchorRow);
 
         // ----- Sizing + captions on one line -----

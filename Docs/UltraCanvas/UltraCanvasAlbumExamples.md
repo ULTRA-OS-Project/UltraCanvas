@@ -106,6 +106,9 @@ cfg.imageDisplay  = AlbumImageDisplay::Crop;        // Crop | Zoom | Stretch | F
 cfg.zoomFactor    = 1.25f;                          // extra magnification for Zoom
 cfg.actionDisplay = AlbumActionDisplay::OnHover;    // AlwaysVisible | OnHover | ContextMenu | Hidden
 cfg.actionAnchor  = AlbumActionAnchor::TopRightImage;     // which corner the icons hug (see below)
+cfg.actionButtonSize = 28.0f;                       // diameter / side of each action button (px)
+cfg.actionIconBackground = AlbumActionIconBackground::Round;  // Round | Square | RoundedSquare
+cfg.actionIconBgColor = Color(0, 0, 0, 120);        // backing colour behind the glyph
 cfg.showMenuIcon  = true;                           // ContextMenu: draw a kebab (⋮)
 cfg.captionPlacement = AlbumCaptionPlacement::BelowImage;  // BelowImage | OverlayBottom | Hidden
 cfg.backgroundColor     = Color(245, 245, 247, 255);
@@ -170,6 +173,10 @@ below-image caption strip (overlay / hidden captions).
 | --- | --- |
 | `TopLeftImage` · `TopRightImage` | `TopLeftTextBlock` · `TopRightTextBlock` |
 | `BottomLeftImage` · `BottomRightImage` | `BottomLeftTextBlock` · `BottomRightTextBlock` |
+
+Each icon's size is `cfg.actionButtonSize` (px). The translucent backing behind
+the glyph is set by `cfg.actionIconBackground` — `Round` (circle), `Square`, or
+`RoundedSquare` — in `cfg.actionIconBgColor`.
 
 ### Image corners
 

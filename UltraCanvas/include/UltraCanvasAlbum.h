@@ -2,8 +2,10 @@
 // Photo / video / music album widget: a self-rendered media grid with selectable
 // layout designs, per-item crop / zoom / stretch fitting, action icons and
 // visitor / user-edit / admin modes. A companion to UltraCanvasSlideshow.
-// Version: 1.1.0
+// Version: 1.2.0
 // Last Modified: 2026-06-21
+// V1.2.0: AlbumActionIconBackground (round / square / rounded-square) plus
+//   actionIconBgColor for the action-icon backing.
 // V1.1.0: AlbumActionAnchor (8 image / text-block corners) for action-icon
 //   placement; AlbumConfig::imageCornerRadius for square / rounded image
 //   corners independent of the tile frame; AlbumItem::link + onLinkClicked for
@@ -108,6 +110,14 @@ namespace UltraCanvas {
         BottomRightTextBlock
     };
 
+    // ===== SHAPE OF THE ACTION-ICON BACKGROUND =====
+    // The translucent backing drawn behind each kebab / action glyph.
+    enum class AlbumActionIconBackground {
+        Round,         // a circle (the classic overlay look)
+        Square,        // a plain square
+        RoundedSquare  // a square with rounded corners
+    };
+
     // ===== WHERE THE TITLE / SUBTITLE STRIP SITS =====
     // (BelowImage rather than "Below" because X11/X.h #defines Below.)
     enum class AlbumCaptionPlacement {
@@ -188,7 +198,10 @@ namespace UltraCanvas {
         AlbumActionDisplay actionDisplay = AlbumActionDisplay::OnHover;
         AlbumActionAnchor  actionAnchor  = AlbumActionAnchor::TopRightImage;
         bool showMenuIcon = true;       // ContextMenu mode: draw a kebab (⋮) icon
-        float actionButtonSize = 28.0f;
+        float actionButtonSize = 28.0f; // diameter / side of each action button (px)
+        // Background drawn behind each action glyph (shape + colour).
+        AlbumActionIconBackground actionIconBackground = AlbumActionIconBackground::Round;
+        Color actionIconBgColor = Color(0, 0, 0, 120);
 
         // ----- Appearance -----
         Color backgroundColor     = Color(245, 245, 247, 255);
@@ -416,6 +429,8 @@ namespace UltraCanvas {
         void DrawCaption(IRenderContext* ctx, const AlbumItem& item,
                          const TileLayout& tile);
         void DrawActionIcons(IRenderContext* ctx, const TileLayout& tile, bool hovered);
+        // The translucent backing behind an action glyph (round / square / rounded).
+        void DrawActionButtonBg(IRenderContext* ctx, const Rect2Di& button);
         void DrawIconGlyph(IRenderContext* ctx, const AlbumAction* action,
                            const Rect2Di& button);
         void DrawScrollbar(IRenderContext* ctx);
