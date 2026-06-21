@@ -63,6 +63,15 @@ namespace {
                  .SetGridRows({fr(), fr()})
                  .SetGridGap(gap);
     }
+    // 3-column x 3-row equal (1fr) grid.
+    inline void SetGrid3x3(const std::shared_ptr<UltraCanvasContainer>& c, float gap) {
+        using namespace CSSLayout;
+        auto fr = [] { return GridTrackSize{GridTrackSizeKind::Fr, Dimension::Fr(1)}; };
+        c->layout.SetGrid()
+                 .SetGridColumns({fr(), fr(), fr()})
+                 .SetGridRows({fr(), fr(), fr()})
+                 .SetGridGap(gap);
+    }
     inline void AddGrid(const std::shared_ptr<UltraCanvasContainer>& parent,
                         const std::shared_ptr<UltraCanvasUIElement>& child, int row, int col) {
         child->layoutItem.SetGridRowColSimplified(row, col);
@@ -410,7 +419,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildSpecializedTab(float w, float 
     SetVBox(tab, 10);
 
     auto title = std::make_shared<UltraCanvasLabel>("SpecTitle", 0, 0, w - 24, 28);
-    title->SetText("Specialized Gauges - Battery, Thermometer, Cylinder, Ring, Digital");
+    title->SetText("Specialized Gauges - Battery, Thermometer, Cylinder, Digital Clock, Digital");
     title->SetFontSize(16);
     title->SetFontWeight(FontWeight::Bold);
     title->SetTextColor(Color(50, 50, 75, 255));
@@ -459,14 +468,32 @@ static std::shared_ptr<UltraCanvasContainer> BuildSpecializedTab(float w, float 
     auto cylCard = CreateGaugeCard("cyl_c", kCardW, kCardH, cyl, 0.0f, 1000.0f, 1000.0f, "ml");
     AddGrid(gridContainer, cylCard, 1, 0);
 
-    // --- Circular Ring ---
-    auto ring = CreateGaugeDiagramElement("ring", 0, 0, kCardW, kCardH);
-    ring->SetMode(GaugeMode::CircularRing);
-    ring->SetTitle("Completion");
-    ring->SetUnit("%");
-    ring->SetGaugeColor(Color(0, 200, 140, 255));
-    auto ringCard = CreateGaugeCard("ring_c", kCardW, kCardH, ring, 0.0f, 100.0f, 75.0f, "%");
-    AddGrid(gridContainer, ringCard, 1, 1);
+    // --- Digital Clock (LED-style live clock) ---
+    auto dclock = CreateGaugeDiagramElement("dclock", 0, 0, kCardW, kCardH);
+    dclock->SetMode(GaugeMode::Digital);
+    dclock->SetTitle("Clock");
+    dclock->SetDigitalClock(true);
+    // Prefer an LED-style font if installed; fall back to Monospace otherwise.
+    dclock->SetDigitalFontFamily("DSEG7 Classic,DSEG7 Modern,Digital-7,Monospace");
+    dclock->SetGaugeColor(Color(0, 230, 80, 255)); // classic LED green
+    auto dclockCard = std::make_shared<UltraCanvasContainer>("dclock_c", 0, 0, kCardW, kCardH);
+    dclockCard->SetBackgroundColor(Color(255, 255, 255, 255));
+    dclockCard->SetBorders(1.0f, Color(218, 219, 228, 255));
+    dclockCard->SetPadding(kCardPadding);
+    SetVBox(dclockCard, 8);
+    {
+        auto dclockWrap = std::make_shared<UltraCanvasContainer>("dclock_GW", 0, 0, 0, 0);
+        SetVBox(dclockWrap, 0);
+        AddFlex(dclockWrap, dclock, 1);
+        AddFlex(dclockCard, dclockWrap, 1);
+        auto dclockInfo = std::make_shared<UltraCanvasLabel>("dclock_V", 0, 0, 0, kValueLabelH);
+        dclockInfo->SetAlignment(TextAlignment::Center);
+        dclockInfo->SetFontSize(11);
+        dclockInfo->SetTextColor(Color(100, 100, 115, 255));
+        dclockInfo->SetText("Live HH:MM:SS");
+        AddFlex(dclockCard, dclockInfo, 0);
+    }
+    AddGrid(gridContainer, dclockCard, 1, 1);
 
     // --- Digital LED ---
     auto digital = CreateGaugeDiagramElement("digital", 0, 0, kCardW, kCardH);
@@ -523,7 +550,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     SetVBox(tab, 10);
 
     auto title = std::make_shared<UltraCanvasLabel>("RoundTitle", 0, 0, w - 24, 28);
-    title->SetText("Round Gauges - configurable ring width, indicator style, segment style & surface fill");
+    title->SetText("Round Gauges - ring width, indicator/segment style, surface fill, centre content & faded colours");
     title->SetFontSize(16);
     title->SetFontWeight(FontWeight::Bold);
     title->SetTextColor(Color(50, 50, 75, 255));
@@ -592,7 +619,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     // --- Segment count slider ---
     auto countSlider = std::make_shared<UltraCanvasSlider>("round_count", 0, 0, 0, kSliderH);
     countSlider->SetOrientation(SliderOrientation::Horizontal);
-    countSlider->SetRange(8.0f, 72.0f);
+    countSlider->SetRange(4.0f, 72.0f);
     countSlider->SetValue(36.0f);
     countSlider->SetStep(1.0f);
     auto countCap = MakeCaption("round_count_cap", "Segment count: 36");
@@ -612,18 +639,20 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     styleDrop->AddItem("Solid line arc");
     styleDrop->AddItem("Segmented");
     styleDrop->AddItem("Dashed / ticks");
+    styleDrop->AddItem("Segmented ring (chunky)");
     styleDrop->SetSelectedIndex(0);
     styleDrop->onSelectionChanged = [gPtr](int idx, const DropdownItem&) {
         switch (idx) {
             case 1: gPtr->SetRingStyle(GaugeRingStyle::Segmented); break;
             case 2: gPtr->SetRingStyle(GaugeRingStyle::Dashed); break;
+            case 3: gPtr->SetRingStyle(GaugeRingStyle::SegmentedRing); break;
             default: gPtr->SetRingStyle(GaugeRingStyle::SolidArc); break;
         }
     };
     AddFlex(panel, styleDrop, 0);
 
-    // --- Segment style dropdown ---
-    auto segCap = MakeCaption("round_seg_cap", "Segment style (when segmented)");
+    // --- Segment style dropdown (Segmented / Dashed) ---
+    auto segCap = MakeCaption("round_seg_cap", "Segment style (Segmented / Dashed)");
     AddFlex(panel, segCap, 0);
     auto segDrop = std::make_shared<UltraCanvasDropdown>("round_seg", 0, 0, 0, 26);
     segDrop->AddItem("Blocks (rounded chunks)");
@@ -638,6 +667,30 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
         }
     };
     AddFlex(panel, segDrop, 0);
+
+    // --- Segment ends dropdown (Segmented ring) ---
+    auto endsCap = MakeCaption("round_ends_cap", "Segment ends (Segmented ring)");
+    AddFlex(panel, endsCap, 0);
+    auto endsDrop = std::make_shared<UltraCanvasDropdown>("round_ends", 0, 0, 0, 26);
+    endsDrop->AddItem("Rounded");
+    endsDrop->AddItem("Sharp");
+    endsDrop->SetSelectedIndex(0);
+    endsDrop->onSelectionChanged = [gPtr](int idx, const DropdownItem&) {
+        gPtr->SetRingSegmentRounded(idx == 0);
+    };
+    AddFlex(panel, endsDrop, 0);
+
+    // --- Border dropdown (Segmented ring) ---
+    auto borderCap = MakeCaption("round_border_cap", "Segment border (Segmented ring)");
+    AddFlex(panel, borderCap, 0);
+    auto borderDrop = std::make_shared<UltraCanvasDropdown>("round_border", 0, 0, 0, 26);
+    borderDrop->AddItem("Off");
+    borderDrop->AddItem("On");
+    borderDrop->SetSelectedIndex(0);
+    borderDrop->onSelectionChanged = [gPtr](int idx, const DropdownItem&) {
+        gPtr->SetRingBorder(idx == 1);
+    };
+    AddFlex(panel, borderDrop, 0);
 
     // --- Surface fill dropdown ---
     auto fillCap = MakeCaption("round_fill_cap", "Surface fill");
@@ -656,27 +709,73 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     };
     AddFlex(panel, fillDrop, 0);
 
+    // --- Centre content dropdown ---
+    auto centerCap = MakeCaption("round_center_cap", "Centre content");
+    AddFlex(panel, centerCap, 0);
+    auto centerDrop = std::make_shared<UltraCanvasDropdown>("round_center", 0, 0, 0, 26);
+    centerDrop->AddItem("Value only");
+    centerDrop->AddItem("Text label");
+    centerDrop->AddItem("Battery icon");
+    centerDrop->AddItem("Bolt icon");
+    centerDrop->SetSelectedIndex(0);
+    centerDrop->onSelectionChanged = [gPtr](int idx, const DropdownItem&) {
+        switch (idx) {
+            case 1:
+                gPtr->SetRingCenterLabel("Battery");
+                gPtr->SetRingCenterContent(GaugeRingCenterContent::TextLabel);
+                break;
+            case 2:
+                gPtr->SetRingCenterIcon(GaugeRingIcon::Battery);
+                gPtr->SetRingCenterContent(GaugeRingCenterContent::Icon);
+                break;
+            case 3:
+                gPtr->SetRingCenterIcon(GaugeRingIcon::Bolt);
+                gPtr->SetRingCenterContent(GaugeRingCenterContent::Icon);
+                break;
+            default:
+                gPtr->SetRingCenterContent(GaugeRingCenterContent::NoContent);
+                break;
+        }
+    };
+    AddFlex(panel, centerDrop, 0);
+
+    // --- Faded colours dropdown ---
+    auto fadeCap = MakeCaption("round_fade_cap", "Faded colours");
+    AddFlex(panel, fadeCap, 0);
+    auto fadeDrop = std::make_shared<UltraCanvasDropdown>("round_fade", 0, 0, 0, 26);
+    fadeDrop->AddItem("Off");
+    fadeDrop->AddItem("Ring");
+    fadeDrop->AddItem("Fill");
+    fadeDrop->AddItem("Ring + Fill");
+    fadeDrop->SetSelectedIndex(0);
+    fadeDrop->onSelectionChanged = [gPtr](int idx, const DropdownItem&) {
+        gPtr->SetRingFaded(idx == 1 || idx == 3);
+        gPtr->SetFillFaded(idx == 2 || idx == 3);
+    };
+    AddFlex(panel, fadeDrop, 0);
+
     AddFlex(body, panel, 0);
 
     // ---------------------------------------------------------------------
     // RIGHT: showcase grid of style presets (each a value-controllable card)
     // ---------------------------------------------------------------------
     auto grid = std::make_shared<UltraCanvasContainer>("RoundGrid", 0, 0, 0, 0);
-    SetGrid2x3(grid, 12);
+    SetGrid3x3(grid, 12);
 
-    // 1) Classic solid line ring
+    // 1) Thick solid round gauge
     auto g1 = CreateGaugeDiagramElement("rp1", 0, 0, kCardW, kCardH);
     ApplyRoundPreset(g1, GaugeRingStyle::SolidArc, GaugeRingSegmentStyle::Blocks,
-                     GaugeFillStyle::NoFill, 6.0f, 36, Color(0, 200, 140, 255));
+                     GaugeFillStyle::NoFill, 16.0f, 36, Color(160, 230, 40, 255));
     g1->SetTitle("Solid Arc");
     g1->SetUnit("%");
+    g1->SetTrackColor(Color(50, 60, 30, 255));
     AddGrid(grid, CreateGaugeCard("rp1_c", kCardW, kCardH, g1, 0.0f, 100.0f, 74.0f, "%"), 0, 0);
 
-    // 2) Segmented rounded blocks (activity-ring look)
+    // 2) Segmented rounded blocks (clearly separated chunks)
     auto g2 = CreateGaugeDiagramElement("rp2", 0, 0, kCardW, kCardH);
     ApplyRoundPreset(g2, GaugeRingStyle::Segmented, GaugeRingSegmentStyle::Blocks,
-                     GaugeFillStyle::NoFill, 16.0f, 24, Color(160, 230, 40, 255));
-    g2->SetTitle("Segmented Blocks");
+                     GaugeFillStyle::NoFill, 16.0f, 12, Color(160, 230, 40, 255));
+    g2->SetTitle("Segmented");
     g2->SetUnit("%");
     g2->SetTrackColor(Color(50, 60, 30, 255));
     AddGrid(grid, CreateGaugeCard("rp2_c", kCardW, kCardH, g2, 0.0f, 100.0f, 47.0f, "%"), 0, 1);
@@ -698,21 +797,53 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     g4->SetUnit("%");
     AddGrid(grid, CreateGaugeCard("rp4_c", kCardW, kCardH, g4, 0.0f, 100.0f, 55.0f, "%"), 1, 0);
 
-    // 5) Straight liquid fill
+    // 5) Straight liquid fill with faded fill colour
     auto g5 = CreateGaugeDiagramElement("rp5", 0, 0, kCardW, kCardH);
     ApplyRoundPreset(g5, GaugeRingStyle::SolidArc, GaugeRingSegmentStyle::Blocks,
                      GaugeFillStyle::StraightLevel, 8.0f, 36, Color(0, 150, 230, 255));
-    g5->SetTitle("Straight Fill");
+    g5->SetFillFaded(true);
+    g5->SetTitle("Straight Fill (faded)");
     g5->SetUnit("%");
     AddGrid(grid, CreateGaugeCard("rp5_c", kCardW, kCardH, g5, 0.0f, 100.0f, 60.0f, "%"), 1, 1);
 
-    // 6) Waved liquid fill (battery look)
+    // 6) Waved liquid fill (battery look) with faded fill colour
     auto g6 = CreateGaugeDiagramElement("rp6", 0, 0, kCardW, kCardH);
     ApplyRoundPreset(g6, GaugeRingStyle::SolidArc, GaugeRingSegmentStyle::Blocks,
                      GaugeFillStyle::WavedLevel, 8.0f, 36, Color(255, 90, 30, 255));
-    g6->SetTitle("Waved Fill");
+    g6->SetFillFaded(true);
+    g6->SetTitle("Waved Fill (faded)");
     g6->SetUnit("%");
     AddGrid(grid, CreateGaugeCard("rp6_c", kCardW, kCardH, g6, 0.0f, 100.0f, 18.0f, "%"), 1, 2);
+
+    // 7) Segmented ring, rounded ends + battery icon centre (reference image 1)
+    auto g7 = CreateGaugeDiagramElement("rp7", 0, 0, kCardW, kCardH);
+    ApplyRoundPreset(g7, GaugeRingStyle::SegmentedRing, GaugeRingSegmentStyle::Blocks,
+                     GaugeFillStyle::NoFill, 18.0f, 8, Color(0, 220, 0, 255));
+    g7->SetRingSegmentRounded(true);
+    g7->SetRingCenterIcon(GaugeRingIcon::Battery);
+    g7->SetRingCenterContent(GaugeRingCenterContent::Icon);
+    g7->SetTitle("Segmented Ring + Icon");
+    AddGrid(grid, CreateGaugeCard("rp7_c", kCardW, kCardH, g7, 0.0f, 100.0f, 75.0f, ""), 2, 0);
+
+    // 8) Segmented ring, sharp ends + text label centre (reference image 2)
+    auto g8 = CreateGaugeDiagramElement("rp8", 0, 0, kCardW, kCardH);
+    ApplyRoundPreset(g8, GaugeRingStyle::SegmentedRing, GaugeRingSegmentStyle::Blocks,
+                     GaugeFillStyle::NoFill, 18.0f, 8, Color(0, 220, 0, 255));
+    g8->SetRingSegmentRounded(false);
+    g8->SetRingCenterLabel("Battery");
+    g8->SetRingCenterContent(GaugeRingCenterContent::TextLabel);
+    g8->SetTitle("Segmented Ring + Label");
+    AddGrid(grid, CreateGaugeCard("rp8_c", kCardW, kCardH, g8, 0.0f, 100.0f, 75.0f, ""), 2, 1);
+
+    // 9) Faded ring colour (soft two-tone gradient sweep)
+    auto g9 = CreateGaugeDiagramElement("rp9", 0, 0, kCardW, kCardH);
+    ApplyRoundPreset(g9, GaugeRingStyle::SolidArc, GaugeRingSegmentStyle::Blocks,
+                     GaugeFillStyle::NoFill, 14.0f, 36, Color(120, 200, 40, 255));
+    g9->SetRingFaded(true);
+    g9->SetTrackColor(Color(60, 70, 35, 255));
+    g9->SetTitle("Faded Ring");
+    g9->SetUnit("%");
+    AddGrid(grid, CreateGaugeCard("rp9_c", kCardW, kCardH, g9, 0.0f, 100.0f, 47.0f, "%"), 2, 2);
 
     AddFlex(body, grid, 1);
     AddFlex(tab, body, 1);
@@ -730,10 +861,10 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGaugeExa
     tabs->SetTabStyle(TabStyle::Rounded);
     tabs->SetTabHeight(32);
 
-    tabs->AddTab("Analog", BuildAnalogTab(920, 810));
+    tabs->AddTab("Round Gauges", BuildRoundGaugesTab(920, 810));
     tabs->AddTab("Progress & Linear", BuildProgressTab(920, 810));
     tabs->AddTab("Specialized", BuildSpecializedTab(920, 810));
-    tabs->AddTab("Round Gauges", BuildRoundGaugesTab(920, 810));
+    tabs->AddTab("Analog", BuildAnalogTab(920, 810));
     tabs->SetActiveTab(0);
 
     return tabs;

@@ -77,7 +77,24 @@ enum class GaugeBatteryStyle {
 enum class GaugeRingStyle {
     SolidArc,       // one smooth continuous arc (the classic ring)
     Segmented,      // a series of discrete chunks separated by small gaps
-    Dashed          // many fine ticks/dashes around the circle (tachymeter look)
+    Dashed,         // many fine ticks/dashes around the circle (tachymeter look)
+    SegmentedRing   // a few chunky arc segments around the circle with a large
+                    // centre value and an optional icon/text label (battery look).
+                    // Honours ringSegmentCount, ringSegmentRounded, ringBorder and
+                    // the ring centre-content options below.
+};
+
+// Content shown in the centre of a round gauge, beneath the value.
+enum class GaugeRingCenterContent {
+    NoContent,      // value only ('None' avoided — X11 #defines None as a macro)
+    TextLabel,      // a short text label (e.g. "Battery")
+    Icon            // a small icon glyph (e.g. a battery or bolt)
+};
+
+// Built-in icon glyphs usable as round-gauge centre content.
+enum class GaugeRingIcon {
+    Battery,        // horizontal battery body with a terminal and a level fill
+    Bolt            // lightning bolt
 };
 
 // Shape of an individual segment when GaugeRingStyle is Segmented or Dashed.
@@ -192,10 +209,29 @@ public:
     GaugeRingSegmentStyle GetRingSegmentStyle() const { return ringSegmentStyle; }
     void SetRingSegmentCount(int count);
     int GetRingSegmentCount() const { return ringSegmentCount; }
+    void SetRingSegmentRounded(bool rounded);
+    bool GetRingSegmentRounded() const { return ringSegmentRounded; }
+    void SetRingBorder(bool enabled);
+    bool GetRingBorder() const { return ringBorder; }
+    void SetRingBorderColor(const Color& c);
+    const Color& GetRingBorderColor() const { return ringBorderColor; }
     void SetFillStyle(GaugeFillStyle s);
     GaugeFillStyle GetFillStyle() const { return fillStyle; }
     void SetTrackColor(const Color& c);
     const Color& GetTrackColor() const { return trackColor; }
+    // Faded (soft, lightened) colours for the indicator ring and the centre fill.
+    void SetRingFaded(bool faded);
+    bool GetRingFaded() const { return ringFaded; }
+    void SetFillFaded(bool faded);
+    bool GetFillFaded() const { return fillFaded; }
+
+    // Centre content for round gauges (value-only, text label or icon glyph).
+    void SetRingCenterContent(GaugeRingCenterContent c);
+    GaugeRingCenterContent GetRingCenterContent() const { return ringCenterContent; }
+    void SetRingCenterLabel(const std::string& label);
+    const std::string& GetRingCenterLabel() const { return ringCenterLabel; }
+    void SetRingCenterIcon(GaugeRingIcon icon);
+    GaugeRingIcon GetRingCenterIcon() const { return ringCenterIcon; }
 
     // ===== ARC ANGLES =====
     void SetArcAngles(double startDeg, double endDeg);
@@ -240,6 +276,17 @@ public:
     void SetShowLabels(bool show);
     bool GetShowLabels() const { return showLabels; }
 
+    // ===== DIGITAL DISPLAY =====
+    // When enabled (Digital mode), the panel shows the live wall-clock time
+    // (HH:MM:SS) instead of the value, ticking once a second.
+    void SetDigitalClock(bool en);
+    bool GetDigitalClock() const { return digitalClock; }
+    // Font family used by the Digital panel. Accepts a comma-separated fallback
+    // list (e.g. "DSEG7 Classic,Monospace") so an LED-style font is used when
+    // installed and a guaranteed family is used otherwise.
+    void SetDigitalFontFamily(const std::string& family);
+    const std::string& GetDigitalFontFamily() const { return digitalFontFamily; }
+
     // ===== STOPWATCH CONTROLS =====
     void StopwatchStart();
     void StopwatchStop();
@@ -275,8 +322,18 @@ private:
     GaugeRingStyle ringStyle = GaugeRingStyle::SolidArc;
     GaugeRingSegmentStyle ringSegmentStyle = GaugeRingSegmentStyle::Blocks;
     int ringSegmentCount = 36;
+    bool ringSegmentRounded = true;                  // rounded vs sharp segment ends
+    bool ringBorder = false;                         // draw an outline around segments
+    Color ringBorderColor = Color(40, 40, 50, 255);  // colour of that outline
     GaugeFillStyle fillStyle = GaugeFillStyle::NoFill;
     Color trackColor = Color(220, 221, 230, 255);
+    bool ringFaded = false;   // draw the indicator with a soft lightened gradient
+    bool fillFaded = false;   // draw the centre fill with a pale lightened tint
+
+    // Round-gauge centre content (drawn beneath the centre value).
+    GaugeRingCenterContent ringCenterContent = GaugeRingCenterContent::NoContent;
+    std::string ringCenterLabel;
+    GaugeRingIcon ringCenterIcon = GaugeRingIcon::Battery;
 
     std::string title;
     std::string unit;
@@ -294,6 +351,8 @@ private:
     GaugeSubDial subDial;
 
     int decimalPlaces = 0;
+    bool digitalClock = false;
+    std::string digitalFontFamily = "Sans";
     bool showGlow = true;
     bool showBolt = false;
     bool showLabels = true;
@@ -330,6 +389,10 @@ private:
     // CircularRing sub-renderers (round-gauge style system)
     void DrawRingTrackAndValue(IRenderContext* ctx, const Point2Df& center, float radius);
     void DrawRingLiquidFill(IRenderContext* ctx, const Point2Df& center, float innerRadius);
+    void DrawRingCenterIcon(IRenderContext* ctx, const Point2Df& center, float size);
+    // Builds a soft "faded" linear-gradient paint (lightened tint -> full colour)
+    // spanning the element bounds, used when ringFaded is enabled.
+    std::shared_ptr<IPaintPattern> MakeFadedPaint(IRenderContext* ctx, const Color& base) const;
     void RenderBattery(IRenderContext* ctx);
     void RenderThermometer(IRenderContext* ctx);
     void RenderCylinder(IRenderContext* ctx);
@@ -350,6 +413,10 @@ private:
     void DrawThresholdMarkers(IRenderContext* ctx, const Point2Df& center, float radius);
 
     std::string FormatValue(double val) const;
+
+    // Starts/stops the 1-second redraw timer needed by live displays
+    // (AnalogClock, and Digital when in clock mode) based on current state.
+    void UpdateClockTimer();
 };
 
 // =============================================================================

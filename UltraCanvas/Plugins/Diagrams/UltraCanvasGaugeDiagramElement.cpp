@@ -111,11 +111,6 @@ UltraCanvasGaugeDiagramElement::~UltraCanvasGaugeDiagramElement() {
 
 void UltraCanvasGaugeDiagramElement::SetMode(GaugeMode m) {
     if (auto* app = UltraCanvasApplication::GetInstance()) {
-        // Stop clock timer if leaving AnalogClock mode
-        if (mode == GaugeMode::AnalogClock && m != GaugeMode::AnalogClock && clockTimerId) {
-            app->StopTimer(clockTimerId);
-            clockTimerId = 0;
-        }
         // Stop stopwatch timer if leaving Stopwatch mode
         if (mode == GaugeMode::Stopwatch && m != GaugeMode::Stopwatch && stopwatchTimerId) {
             app->StopTimer(stopwatchTimerId);
@@ -141,15 +136,26 @@ void UltraCanvasGaugeDiagramElement::SetMode(GaugeMode m) {
         arcStartDeg = 0.0;
         arcEndDeg = 360.0;
     }
-    // Start 1-second timer for AnalogClock
-    if (m == GaugeMode::AnalogClock && !clockTimerId) {
-        if (auto* app = UltraCanvasApplication::GetInstance()) {
-            clockTimerId = app->StartTimer(1000, true, [this](TimerId) {
-                if (IsVisible()) RequestRedraw();
-            });
-        }
-    }
+    // Start/stop the 1-second redraw timer for live displays.
+    UpdateClockTimer();
     RequestRedraw();
+}
+
+// Starts the shared 1-second timer when a live display is active (AnalogClock,
+// or Digital in clock mode) and stops it otherwise.
+void UltraCanvasGaugeDiagramElement::UpdateClockTimer() {
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) return;
+    bool needTimer = (mode == GaugeMode::AnalogClock) ||
+                     (mode == GaugeMode::Digital && digitalClock);
+    if (needTimer && !clockTimerId) {
+        clockTimerId = app->StartTimer(1000, true, [this](TimerId) {
+            if (IsVisible()) RequestRedraw();
+        });
+    } else if (!needTimer && clockTimerId) {
+        app->StopTimer(clockTimerId);
+        clockTimerId = 0;
+    }
 }
 
 void UltraCanvasGaugeDiagramElement::SetValue(double val) {
@@ -202,8 +208,16 @@ void UltraCanvasGaugeDiagramElement::SetRingThickness(float t) { ringThickness =
 void UltraCanvasGaugeDiagramElement::SetRingStyle(GaugeRingStyle s) { ringStyle = s; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetRingSegmentStyle(GaugeRingSegmentStyle s) { ringSegmentStyle = s; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetRingSegmentCount(int count) { ringSegmentCount = std::max(4, count); RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetRingSegmentRounded(bool rounded) { ringSegmentRounded = rounded; RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetRingBorder(bool enabled) { ringBorder = enabled; RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetRingBorderColor(const Color& c) { ringBorderColor = c; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetFillStyle(GaugeFillStyle s) { fillStyle = s; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetTrackColor(const Color& c) { trackColor = c; RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetRingFaded(bool faded) { ringFaded = faded; RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetFillFaded(bool faded) { fillFaded = faded; RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetRingCenterContent(GaugeRingCenterContent c) { ringCenterContent = c; RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetRingCenterLabel(const std::string& label) { ringCenterLabel = label; RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetRingCenterIcon(GaugeRingIcon icon) { ringCenterIcon = icon; RequestRedraw(); }
 
 void UltraCanvasGaugeDiagramElement::SetArcAngles(double startDeg, double endDeg) {
     arcStartDeg = startDeg;
@@ -241,6 +255,10 @@ void UltraCanvasGaugeDiagramElement::SetDecimalPlaces(int places) { decimalPlace
 void UltraCanvasGaugeDiagramElement::SetShowGlow(bool glow) { showGlow = glow; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetShowBolt(bool show) { showBolt = show; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetShowLabels(bool show) { showLabels = show; RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetDigitalClock(bool en) { digitalClock = en; UpdateClockTimer(); RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetDigitalFontFamily(const std::string& family) {
+    digitalFontFamily = family.empty() ? "Sans" : family; RequestRedraw();
+}
 void UltraCanvasGaugeDiagramElement::SetMajorTickCount(int count) { majorTickCount = std::max(1, count); RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetMinorTickCount(int count) { minorTickCount = std::max(0, count); RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetSegmentCount(int count) { segmentCount = std::max(2, count); RequestRedraw(); }
@@ -1964,7 +1982,26 @@ void UltraCanvasGaugeDiagramElement::RenderCircularRing(
         ctx->SetTextPaint(textColor);
         ctx->SetFontWeight(FontWeight::Light);
         Size2Di d = ctx->GetTextLineDimensions(label);
-        ctx->DrawText(label, Point2Df(center.x - d.width / 2.0f, center.y - d.height / 2.0f));
+
+        // When a centre icon/label is shown the value is lifted to make room,
+        // so the value + content read as a single vertically-centred stack.
+        bool hasContent =
+            (ringCenterContent == GaugeRingCenterContent::TextLabel && !ringCenterLabel.empty()) ||
+            (ringCenterContent == GaugeRingCenterContent::Icon);
+        float valueTop = center.y - d.height / 2.0f;
+        if (hasContent) valueTop -= d.height * 0.32f;
+        ctx->DrawText(label, Point2Df(center.x - d.width / 2.0f, valueTop));
+
+        if (ringCenterContent == GaugeRingCenterContent::TextLabel && !ringCenterLabel.empty()) {
+            ctx->SetFontSize(13.0f);
+            ctx->SetFontWeight(FontWeight::Bold);
+            ctx->SetTextPaint(textColor);
+            Size2Di ld = ctx->GetTextLineDimensions(ringCenterLabel);
+            ctx->DrawText(ringCenterLabel,
+                          Point2Df(center.x - ld.width / 2.0f, valueTop + d.height + 6.0f));
+        } else if (ringCenterContent == GaugeRingCenterContent::Icon) {
+            DrawRingCenterIcon(ctx, Point2Df(center.x, valueTop + d.height + 12.0f), 13.0f);
+        }
     }
 
     if (!title.empty()) {
@@ -1982,6 +2019,16 @@ void UltraCanvasGaugeDiagramElement::DrawRingTrackAndValue(
     const Color fillC    = GetColorForValue(currentValue);
     const float thickness = ringThickness;
 
+    // When faded, lit portions of the indicator use a soft lightened gradient
+    // instead of the flat colour; the track stays as configured.
+    std::shared_ptr<IPaintPattern> fadePat = ringFaded ? MakeFadedPaint(ctx, fillC) : nullptr;
+    auto setLitStroke = [&]() {
+        if (fadePat) ctx->SetStrokePaint(fadePat); else ctx->SetStrokePaint(fillC);
+    };
+    auto setLitFill = [&]() {
+        if (fadePat) ctx->SetFillPaint(fadePat); else ctx->SetFillPaint(fillC);
+    };
+
     if (ringStyle == GaugeRingStyle::SolidArc) {
         // Continuous track + rounded value arc.
         DrawArcSection(ctx, center, radius, startRad, endRad, trackColor, thickness);
@@ -1989,9 +2036,42 @@ void UltraCanvasGaugeDiagramElement::DrawRingTrackAndValue(
             float fillEnd = startRad + static_cast<float>(ratio * sweep);
             ctx->ClearPath();
             ctx->Arc(center.x, center.y, radius, startRad, fillEnd);
-            ctx->SetStrokePaint(fillC);
+            setLitStroke();
             ctx->SetStrokeWidth(thickness);
             ctx->SetLineCap(LineCap::Round);
+            ctx->Stroke();
+        }
+        return;
+    }
+
+    if (ringStyle == GaugeRingStyle::SegmentedRing) {
+        // A few chunky arc segments around the circle (the battery / activity-ring
+        // look). Honours: segment count, rounded vs sharp ends, and an optional
+        // border drawn as a slightly wider outline beneath each segment.
+        int count = std::max(2, ringSegmentCount);
+        int litCount = static_cast<int>(std::ceil(ratio * count - 1e-6));
+        LineCap cap = ringSegmentRounded ? LineCap::Round : LineCap::Butt;
+        float gapFrac = 0.30f;                       // generous gaps between chunks
+        float segSweep = sweep / static_cast<float>(count);
+        float gap = segSweep * gapFrac;
+        float borderW = ringBorder ? std::max(1.5f, thickness * 0.16f) : 0.0f;
+        for (int i = 0; i < count; i++) {
+            float s = startRad + i * segSweep + gap * 0.5f;
+            float e = startRad + (i + 1) * segSweep - gap * 0.5f;
+            bool lit = (i < litCount);
+            if (borderW > 0.0f) {
+                ctx->ClearPath();
+                ctx->Arc(center.x, center.y, radius, s, e);
+                ctx->SetStrokePaint(ringBorderColor);
+                ctx->SetStrokeWidth(thickness + 2.0f * borderW);
+                ctx->SetLineCap(cap);
+                ctx->Stroke();
+            }
+            ctx->ClearPath();
+            ctx->Arc(center.x, center.y, radius, s, e);
+            if (lit) setLitStroke(); else ctx->SetStrokePaint(trackColor);
+            ctx->SetStrokeWidth(thickness);
+            ctx->SetLineCap(cap);
             ctx->Stroke();
         }
         return;
@@ -2009,10 +2089,9 @@ void UltraCanvasGaugeDiagramElement::DrawRingTrackAndValue(
         for (int i = 0; i < count; i++) {
             float s = startRad + i * segSweep + gap * 0.5f;
             float e = startRad + (i + 1) * segSweep - gap * 0.5f;
-            const Color& c = (i < litCount) ? fillC : trackColor;
             ctx->ClearPath();
             ctx->Arc(center.x, center.y, radius, s, e);
-            ctx->SetStrokePaint(c);
+            if (i < litCount) setLitStroke(); else ctx->SetStrokePaint(trackColor);
             ctx->SetStrokeWidth(thickness);
             ctx->SetLineCap(LineCap::Round);
             ctx->Stroke();
@@ -2029,8 +2108,7 @@ void UltraCanvasGaugeDiagramElement::DrawRingTrackAndValue(
             float iy = center.y + (radius - halfLen) * sinA;
             float ox = center.x + (radius + halfLen) * cosA;
             float oy = center.y + (radius + halfLen) * sinA;
-            const Color& c = (i < litCount) ? fillC : trackColor;
-            ctx->SetStrokePaint(c);
+            if (i < litCount) setLitStroke(); else ctx->SetStrokePaint(trackColor);
             ctx->SetStrokeWidth(barW);
             ctx->SetLineCap(LineCap::Butt);
             ctx->ClearPath();
@@ -2043,7 +2121,7 @@ void UltraCanvasGaugeDiagramElement::DrawRingTrackAndValue(
         for (int i = 0; i < count; i++) {
             float a = startRad + (i + 0.5f) * (sweep / static_cast<float>(count));
             Point2Df p(center.x + radius * std::cos(a), center.y + radius * std::sin(a));
-            ctx->SetFillPaint((i < litCount) ? fillC : trackColor);
+            if (i < litCount) setLitFill(); else ctx->SetFillPaint(trackColor);
             ctx->FillCircle(p, dotR);
         }
     }
@@ -2055,6 +2133,8 @@ void UltraCanvasGaugeDiagramElement::DrawRingLiquidFill(
     IRenderContext* ctx, const Point2Df& center, float innerRadius) {
     double ratio = std::max(0.0, std::min(1.0, ValueToRatio(currentValue)));
     Color fillC = GetColorForValue(currentValue);
+    // Faded fill: a pale, lightened tint of the value colour (soft liquid look).
+    if (fillFaded) fillC = fillC.Lighten(0.55f);
 
     ctx->PushState();
     // Clip everything that follows to the inner disc.
@@ -2098,6 +2178,70 @@ void UltraCanvasGaugeDiagramElement::DrawRingLiquidFill(
     ctx->Fill();
 
     ctx->PopState();
+}
+
+// Draws a small built-in icon glyph centred at `center`, sized so its height is
+// roughly `size` pixels. Used as round-gauge centre content beneath the value.
+// The glyph is tinted with the current value colour to match the indicator.
+void UltraCanvasGaugeDiagramElement::DrawRingCenterIcon(
+    IRenderContext* ctx, const Point2Df& center, float size) {
+    Color c = GetColorForValue(currentValue);
+
+    if (ringCenterIcon == GaugeRingIcon::Battery) {
+        // Horizontal battery: body outline + terminal nub + a level fill that
+        // tracks the current value.
+        float h = size;
+        float w = h * 2.0f;
+        float x = center.x - (w + 3.0f) / 2.0f;  // include the terminal in centring
+        float y = center.y - h / 2.0f;
+        float termW = std::max(2.0f, h * 0.22f);
+        float termH = h * 0.5f;
+
+        ctx->SetStrokePaint(c);
+        ctx->SetStrokeWidth(std::max(1.2f, h * 0.12f));
+        ctx->DrawRoundedRectangle(Rect2Df(x, y, w, h), std::max(1.5f, h * 0.16f));
+
+        ctx->SetFillPaint(c);
+        ctx->FillRectangle(Rect2Df(x + w + 1.0f, y + (h - termH) / 2.0f, termW, termH));
+
+        float pad = std::max(1.5f, h * 0.18f);
+        double ratio = std::max(0.0, std::min(1.0, ValueToRatio(currentValue)));
+        float fillW = (w - 2.0f * pad) * static_cast<float>(ratio);
+        if (fillW > 0.5f) {
+            ctx->SetFillPaint(c);
+            ctx->FillRectangle(Rect2Df(x + pad, y + pad, fillW, h - 2.0f * pad));
+        }
+    } else { // Bolt
+        float cx = center.x, cy = center.y;
+        float s = size / 12.0f;  // scale relative to the original 24px bolt
+        ctx->SetFillPaint(c);
+        ctx->ClearPath();
+        ctx->MoveTo(cx - 5.0f * s, cy - 12.0f * s);
+        ctx->LineTo(cx + 3.0f * s, cy - 2.0f * s);
+        ctx->LineTo(cx - 1.0f * s, cy);
+        ctx->LineTo(cx + 5.0f * s, cy + 12.0f * s);
+        ctx->LineTo(cx - 3.0f * s, cy + 2.0f * s);
+        ctx->LineTo(cx + 1.0f * s, cy);
+        ctx->ClosePath();
+        ctx->Fill();
+    }
+}
+
+// Builds a soft diagonal linear gradient that runs from a lightened tint of the
+// base colour to the full colour across the element bounds. Used for the "faded"
+// ring look — strokes/segments at different positions pick up different shades,
+// giving a gentle two-tone sweep around the ring.
+std::shared_ptr<IPaintPattern> UltraCanvasGaugeDiagramElement::MakeFadedPaint(
+    IRenderContext* ctx, const Color& base) const {
+    const auto b = GetLocalBounds();
+    std::vector<GradientStop> stops{
+        GradientStop(0.0, base.Lighten(0.60f)),
+        GradientStop(1.0, base),
+    };
+    return ctx->CreateLinearGradientPattern(
+        static_cast<double>(b.x), static_cast<double>(b.y),
+        static_cast<double>(b.x + b.width), static_cast<double>(b.y + b.height),
+        stops);
 }
 
 // V2.1 FIX: Battery title at top with reserved space, bolt + percent visible
@@ -2320,16 +2464,30 @@ void UltraCanvasGaugeDiagramElement::RenderDigital(IRenderContext* ctx) {
         ctx->FillRoundedRectangle(Rect2Df(dispX + 2.0f, dispY + 2.0f, dispW - 4.0f, dispH - 4.0f), 4.0f);
     }
 
-    std::string displayText = FormatValue(currentValue);
-    if (!unit.empty()) displayText += " " + unit;
+    std::string displayText;
+    if (digitalClock) {
+        std::time_t now = std::time(nullptr);
+        std::tm* lt = std::localtime(&now);
+        std::ostringstream css;
+        css << std::setfill('0')
+            << std::setw(2) << lt->tm_hour << ":"
+            << std::setw(2) << lt->tm_min << ":"
+            << std::setw(2) << lt->tm_sec;
+        displayText = css.str();
+    } else {
+        displayText = FormatValue(currentValue);
+        if (!unit.empty()) displayText += " " + unit;
+    }
 
     Color dispColor = GetColorForValue(currentValue);
-    if (ranges.empty()) dispColor = Color(0, 180, 255, 255);
+    // No ranges: clock uses the configured gauge colour (so an LED green/red can
+    // be picked); a plain numeric readout keeps the classic cyan.
+    if (ranges.empty()) dispColor = digitalClock ? gaugeColor : Color(0, 180, 255, 255);
 
     // V2.1 FIX: Better font sizing logic with title space reservation
     float titleSpace = title.empty() ? 0.0f : 18.0f;
     float fontSize = std::min(dispH - 24.0f - titleSpace, 44.0f);
-    ctx->SetFontFamily("Sans");
+    ctx->SetFontFamily(digitalFontFamily);
     ctx->SetFontSize(fontSize);
     ctx->SetFontWeight(FontWeight::Light);
     ctx->SetTextPaint(dispColor);
