@@ -150,6 +150,9 @@ namespace UltraCanvas {
         bool LoadFromFile(const std::string& filepath);
         bool LoadFromString(const std::string& svgContent);
 
+        // Reason for the most recent failed load. Empty after a successful load.
+        const std::string& GetLastError() const { return lastError; }
+
         float GetWidth() const { return width; }
         float GetHeight() const { return height; }
         Rect2Dd GetViewBox() const { return viewBox; }
@@ -168,6 +171,7 @@ namespace UltraCanvas {
     private:
         tinyxml2::XMLDocument xmlDoc;
         tinyxml2::XMLElement* root{nullptr};
+        std::string lastError;
 
         float width{0}, height{0};
         Rect2Dd viewBox;
@@ -247,6 +251,9 @@ namespace UltraCanvas {
         bool LoadFromFile(const std::string& filepath);
         bool LoadFromString(const std::string& svgContent);
 
+        // Reason for the most recent failed load (locked / missing / not valid SVG).
+        const std::string& GetLastError() const { return lastError; }
+
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
         void SetScale(float scale) { this->scale = scale; }
@@ -260,6 +267,7 @@ namespace UltraCanvas {
         }
     private:
         std::unique_ptr<SVGDocument> document;
+        std::string lastError;
         float scale{1.0f};
         bool preserveAspectRatio{true};
     };

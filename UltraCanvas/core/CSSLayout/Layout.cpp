@@ -14,6 +14,7 @@ namespace UltraCanvas {
 
         namespace {
             FlexLayout& asFlex(Layout& L) {
+                L.display = DisplayType::Flex;
                 if (!std::holds_alternative<FlexLayout>(L.data)) {
                     L.data = FlexLayout{};
                 }
@@ -21,6 +22,7 @@ namespace UltraCanvas {
             }
 
             GridLayout& asGrid(Layout& L) {
+                L.display = DisplayType::Grid;
                 if (!std::holds_alternative<GridLayout>(L.data)) {
                     L.data = GridLayout{};
                 }
@@ -28,8 +30,27 @@ namespace UltraCanvas {
             }
         }
 
+        Layout& Layout::SetDisplay(DisplayType dt) {
+            if (dt == DisplayType::NoDisplay) {
+                prevDisplay = display;
+            }
+            display = dt;
+            return *this;
+        }
+
+        Layout& Layout::Show() {
+            display = prevDisplay;
+            if (display == DisplayType::NoDisplay) display = DisplayType::Block; // fallback
+            return *this;
+        }
+
+        Layout& Layout::Hide() {
+            prevDisplay = display;
+            display = DisplayType::NoDisplay;
+            return *this;
+        }
+
         Layout& Layout::SetFlex(FlexDirection d, FlexWrap w) {
-            display = DisplayType::Flex;
             auto& fl = asFlex(*this);
             fl.direction = d;
             fl.wrap = w;
@@ -37,19 +58,16 @@ namespace UltraCanvas {
         }
 
         Layout& Layout::SetFlexDirection(FlexDirection d) {
-            display = DisplayType::Flex;
             asFlex(*this).direction = d;
             return *this;
         }
 
         Layout& Layout::SetFlexWrap(FlexWrap w) {
-            display = DisplayType::Flex;
             asFlex(*this).wrap = w;
             return *this;
         }
 
         Layout& Layout::SetFlexGap(float gap) {
-            display = DisplayType::Flex;
             auto& fl = asFlex(*this);
             fl.gap.row    = Dimension::Px(gap);
             fl.gap.column = Dimension::Px(gap);
@@ -57,7 +75,6 @@ namespace UltraCanvas {
         }
 
         Layout& Layout::SetFlexGap(float row, float column) {
-            display = DisplayType::Flex;
             auto& fl = asFlex(*this);
             fl.gap.row    = Dimension::Px(row);
             fl.gap.column = Dimension::Px(column);
@@ -65,49 +82,41 @@ namespace UltraCanvas {
         }
 
         Layout& Layout::SetFlexJustifyContent(JustifyContent jc) {
-            display = DisplayType::Flex;
             asFlex(*this).justifyContent = jc;
             return *this;
         }
 
         Layout& Layout::SetFlexAlignItems(AlignItems ai) {
-            display = DisplayType::Flex;
             asFlex(*this).alignItems = ai;
             return *this;
         }
 
         Layout& Layout::SetFlexAlignContent(AlignContent ac) {
-            display = DisplayType::Flex;
             asFlex(*this).alignContent = ac;
             return *this;
         }
 
         Layout& Layout::SetGrid() {
-            display = DisplayType::Grid;
             (void)asGrid(*this);
             return *this;
         }
 
         Layout& Layout::SetGridAlignItems(AlignItems ai) {
-            display = DisplayType::Grid;
             asGrid(*this).alignItems = ai;
             return *this;
         }
 
         Layout& Layout::SetGridColumns(std::vector<GridTrackSize> tracks) {
-            display = DisplayType::Grid;
             asGrid(*this).columns.tracks = std::move(tracks);
             return *this;
         }
 
         Layout& Layout::SetGridRows(std::vector<GridTrackSize> tracks) {
-            display = DisplayType::Grid;
             asGrid(*this).rows.tracks = std::move(tracks);
             return *this;
         }
 
         Layout& Layout::SetGridGap(float gap) {
-            display = DisplayType::Grid;
             auto& gl = asGrid(*this);
             gl.rowGap    = Dimension::Px(gap);
             gl.columnGap = Dimension::Px(gap);
@@ -115,7 +124,6 @@ namespace UltraCanvas {
         }
 
         Layout& Layout::SetGridGap(float row, float column) {
-            display = DisplayType::Grid;
             auto& gl = asGrid(*this);
             gl.rowGap    = Dimension::Px(row);
             gl.columnGap = Dimension::Px(column);
@@ -123,7 +131,6 @@ namespace UltraCanvas {
         }
 
         Layout& Layout::SetGridAutoFlow(GridAutoFlow f) {
-            display = DisplayType::Grid;
             asGrid(*this).autoFlow = f;
             return *this;
         }

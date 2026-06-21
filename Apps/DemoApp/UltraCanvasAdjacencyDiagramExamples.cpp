@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasAdjacencyDiagramExamples.cpp
 // Demo examples for UltraCanvasAdjacencyDiagram — architectural space-planning
-// Version: 1.0.0
-// Last Modified: 2025-05-10
+// Version: 1.1.1
+// Last Modified: 2026-06-04
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -256,23 +256,48 @@ namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement>
     UltraCanvasDemoApplication::CreateAdjacencyDiagramExamples()
     {
-        auto main = std::make_shared<UltraCanvasContainer>(
-                "AdjDiagExamples", 0, 0, 1030, 800);
+        // No fixed size: the host display area stretches `main` (it applies
+        // flex-grow + align-self:stretch), so the Fr content column grows with
+        // the window and the subtitle re-wraps on resize.
+        auto main = std::make_shared<UltraCanvasContainer>("AdjDiagExamples");
+        main->SetPadding(5,5,0,5);
 
-        auto title = std::make_shared<UltraCanvasLabel>("AdjDiagTitle", 20, 10, 600, 32);
+        // 3-row × 2-column grid: title/subtitle in the left column, status box in
+        // the right column spanning both top rows, tabs filling the bottom row.
+        // Fixed pixel heights on the label rows (Auto rows measure unwrapped text
+        // and would clip the subtitle's second wrapped line).
+        main->layout.SetGrid()
+                .SetGridColumns({
+                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fr,
+                                                 .value = CSSLayout::Dimension::Fr(1)},
+                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fixed,
+                                                 .value = CSSLayout::Dimension::Px(350)}})
+                .SetGridRows({
+                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fixed,
+                                                 .value = CSSLayout::Dimension::Px(34)},  // title row
+                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fixed,
+                                                 .value = CSSLayout::Dimension::Px(44)},  // subtitle (room for 2 lines)
+                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fr,
+                                                 .value = CSSLayout::Dimension::Fr(1)}})   // tabs fill
+                .SetGridGap(6);
+
+        auto title = std::make_shared<UltraCanvasLabel>("AdjDiagTitle");
         title->SetText("Architectural Adjacency Diagram");
         title->SetFontSize(18);
         title->SetFontWeight(FontWeight::Bold);
         title->SetTextColor(Color(40, 100, 60));
         main->AddChild(title);
+        title->layoutItem.SetGridRowColSimplified(0, 0);
 
-        auto subtitle = std::make_shared<UltraCanvasLabel>("AdjDiagSub", 20, 44, 900, 20);
+        auto subtitle = std::make_shared<UltraCanvasLabel>("AdjDiagSub");
         subtitle->SetText("Rooms as area-proportional circles, colored by function. Solid = direct adjacency, dashed = secondary, dotted = service");
         subtitle->SetFontSize(11);
+        subtitle->SetWrap(TextWrap::WrapWord);
         subtitle->SetTextColor(Color(90, 90, 90));
         main->AddChild(subtitle);
+        subtitle->layoutItem.SetGridRowColSimplified(1, 0);
 
-        auto statusLabel = std::make_shared<UltraCanvasLabel>("AdjDiagStatus", 680, 10, 340, 56);
+        auto statusLabel = std::make_shared<UltraCanvasLabel>("AdjDiagStatus");
         statusLabel->SetText("Click a room to inspect.\nDrag rooms to reposition — pan with empty-space drag.");
         statusLabel->SetFontSize(10);
         statusLabel->SetBackgroundColor(Color(245, 245, 245));
@@ -280,9 +305,9 @@ namespace UltraCanvas {
         statusLabel->SetPadding(6.0f);
         statusLabel->SetAlignment(TextAlignment::Center);
         main->AddChild(statusLabel);
+        statusLabel->layoutItem.SetGridRowColSimplified(0, 1, 2, 1);
 
-        auto tabs = std::make_shared<UltraCanvasTabbedContainer>(
-                "AdjDiagTabs", 10, 72, 1020, 720);
+        auto tabs = std::make_shared<UltraCanvasTabbedContainer>("AdjDiagTabs");
         tabs->SetTabPosition(TabPosition::Top);
         tabs->SetTabStyle(TabStyle::Modern);
 
@@ -291,6 +316,7 @@ namespace UltraCanvas {
         tabs->AddTab("Design studio",     MakeOfficeTab(statusLabel));
 
         main->AddChild(tabs);
+        tabs->layoutItem.SetGridRowColSimplified(2, 0, 1, 2);
         return main;
     }
 

@@ -16,7 +16,7 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBreadcrumbExamples() {
-        auto mainContainer = std::make_shared<UltraCanvasContainer>("BreadcrumbExamples", 0, 0, 1000, 1300);
+        auto mainContainer = std::make_shared<UltraCanvasContainer>("BreadcrumbExamples", 0, 0, 1000, 1620);
 
         // Shared palette — matches the other demo pages.
         const Color titleColor(50, 50, 150, 255);
@@ -136,10 +136,102 @@ namespace UltraCanvas {
         yOffset += rowStep;
 
         // ========================================
+        // SECTION 4: NUMBERED STEPS (dark wizard)
+        // ========================================
+        addDescription("BC_Section15", yOffset,
+                       "4. Numbered steps",
+                       "Steps() preset: arrow segments + round numbered indicators");
+
+        auto bcSteps = CreateBreadcrumb("bc_steps", rightX, yOffset + 4, rightWidth, 34);
+        bcSteps->SetStyle(BreadcrumbStyle::Steps());
+        bcSteps->AddItem("Bio");
+        bcSteps->AddItem("Links");
+        bcSteps->AddItem("Music");
+        bcSteps->AddItem("Contact");
+        bcSteps->SetCurrentIndex(0);   // highlight the active step
+        bcSteps->onItemClicked = [reportClick](int idx, const BreadcrumbItem& item) {
+            reportClick("Steps", idx, item);
+        };
+        mainContainer->AddChild(bcSteps);
+        yOffset += rowStep;
+
+        // ========================================
+        // SECTION 5: PARALLELOGRAM STYLE
+        // ========================================
+        addDescription("BC_Section16", yOffset,
+                       "5. Parallelogram",
+                       "Parallelogram() preset: slanted interlocking segments");
+
+        auto bcPara = CreateBreadcrumb("bc_para", rightX, yOffset + 4, 360, 32);
+        bcPara->SetStyle(BreadcrumbStyle::Parallelogram());
+        bcPara->AddItem("Level 1");
+        bcPara->AddItem("Level 2");
+        bcPara->AddItem("Level 3");
+        bcPara->onItemClicked = [reportClick](int idx, const BreadcrumbItem& item) {
+            reportClick("Parallelogram", idx, item);
+        };
+        mainContainer->AddChild(bcPara);
+        yOffset += rowStep;
+
+        // ========================================
+        // SECTION 6: LEVEL INDICATOR BACKGROUNDS
+        // ========================================
+        addDescription("BC_Section17", yOffset,
+                       "6. Level indicators",
+                       "Indicator background: round / rectangle / none / bordered");
+
+        struct IndEntry {
+            BreadcrumbLevelIndicatorBackground background;
+            bool border;
+            const char* label;
+        };
+        const IndEntry indEntries[] = {
+            {BreadcrumbLevelIndicatorBackground::Round,        false, "Round"},
+            {BreadcrumbLevelIndicatorBackground::Rectangle,    false, "Rectangle"},
+            {BreadcrumbLevelIndicatorBackground::NoBackground, false, "None"},
+            {BreadcrumbLevelIndicatorBackground::Round,        true,  "Bordered"},
+        };
+
+        int indY = yOffset;
+        for (const auto& entry : indEntries) {
+            auto lbl = std::make_shared<UltraCanvasLabel>(std::string("BC_IndLbl_") + entry.label,
+                                                          rightX, indY + 4, 90, 22);
+            lbl->SetText(entry.label);
+            lbl->SetFontSize(11);
+            lbl->SetTextColor(descColor);
+            mainContainer->AddChild(lbl);
+
+            BreadcrumbStyle st = BreadcrumbStyle::Default();
+            st.showLevelIndicator = true;
+            st.levelIndicatorBackground = entry.background;
+            st.levelIndicatorBorder = entry.border;
+            st.levelIndicatorSize = 18;
+            st.levelIndicatorColor = Color(0, 120, 215, 255);
+            st.levelIndicatorBorderColor = Color(0, 90, 170, 255);
+            // Number only (no fill) needs a dark glyph to read on the page background.
+            st.levelIndicatorTextColor =
+                (entry.background == BreadcrumbLevelIndicatorBackground::NoBackground)
+                    ? Color(40, 40, 40, 255) : Colors::White;
+
+            auto bc = CreateBreadcrumb(std::string("bc_ind_") + entry.label,
+                                       rightX + 100, indY, rightWidth - 100, 26);
+            bc->SetStyle(st);
+            bc->AddItem("Home");
+            bc->AddItem("Library");
+            bc->AddItem("Album");
+            bc->onItemClicked = [reportClick, name = std::string(entry.label)](int idx, const BreadcrumbItem& item) {
+                reportClick(std::string("Indicator/") + name, idx, item);
+            };
+            mainContainer->AddChild(bc);
+            indY += 32;
+        }
+        yOffset = indY + 15;
+
+        // ========================================
         // SECTION 4: FILE EXPLORER STYLE
         // ========================================
         addDescription("BC_Section4", yOffset,
-                       "4. File explorer style",
+                       "7. File explorer style",
                        "Built from a path string via SetPath");
 
         auto bcExplorer = CreateBreadcrumb("bc_explorer", rightX, yOffset + 4, rightWidth, 28);
@@ -155,7 +247,7 @@ namespace UltraCanvas {
         // SECTION 5: WEB DOCS STYLE
         // ========================================
         addDescription("BC_Section5", yOffset,
-                       "5. Web docs style",
+                       "8. Web docs style",
                        "Slash separators, underline-on-hover, link colors");
 
         auto bcWeb = CreateBreadcrumb("bc_web", rightX, yOffset + 4, rightWidth, 26);
@@ -175,7 +267,7 @@ namespace UltraCanvas {
         // SECTION 7: ITEM WITH DROPDOWN
         // ========================================
         addDescription("BC_Section6", yOffset,
-                       "6. Item with dropdown",
+                       "9. Item with dropdown",
                        "Click the small chevron next to 'Projects' to open the menu");
 
         auto bcDropdown = CreateBreadcrumb("bc_dropdown", rightX, yOffset + 4, rightWidth, 30);
@@ -213,7 +305,7 @@ namespace UltraCanvas {
         // SECTION 8: ICONS
         // ========================================
         addDescription("BC_Section7", yOffset,
-                       "7. Icons",
+                       "10. Icons",
                        "Per-item leading icons via WithIcon / IconOnly");
 
         const std::string iconsRoot = NormalizePath(GetResourcesDir() + "media/icons/");
@@ -232,7 +324,7 @@ namespace UltraCanvas {
         // SECTION 9: LIVE NAVIGATION
         // ========================================
         addDescription("BC_Section8", yOffset,
-                       "8. Live navigation",
+                       "11. Live navigation",
                        "Clicking a segment truncates the path — try it!");
 
         const std::string initialNavPath = "/home/user/projects/ultracanvas/Apps/DemoApp";
@@ -285,7 +377,7 @@ namespace UltraCanvas {
         // SECTION 10: COLLAPSE OVERFLOW
         // ========================================
         addDescription("BC_Section9", yOffset,
-                       "9. Collapse overflow",
+                       "12. Collapse overflow",
                        "Middle items hidden behind a '...' menu (narrow width)");
 
         auto bcCollapse = CreateBreadcrumb("bc_collapse", rightX, yOffset + 4, 360, 30);
@@ -312,7 +404,7 @@ namespace UltraCanvas {
         // SECTION 11: ELLIPSIZE OVERFLOW
         // ========================================
         addDescription("BC_Section10", yOffset,
-                       "10. Ellipsize overflow",
+                       "13. Ellipsize overflow",
                        "Per-item text trimmed via maxItemTextWidth=60");
 
         auto bcEllipsize = CreateBreadcrumb("bc_ellipsize", rightX, yOffset + 4, rightWidth, 30);
@@ -332,7 +424,7 @@ namespace UltraCanvas {
         // SECTION 12: SHRINK-TEXT OVERFLOW
         // ========================================
         addDescription("BC_Section11", yOffset,
-                       "11. ShrinkText overflow",
+                       "14. ShrinkText overflow",
                        "Per-item width auto-reduces until everything fits");
 
         auto bcShrink = CreateBreadcrumb("bc_shrink", rightX, yOffset + 4, 420, 30);
@@ -352,7 +444,7 @@ namespace UltraCanvas {
         // SECTION 13: ROUNDED STRIP
         // ========================================
         addDescription("BC_Section12", yOffset,
-                       "12. Rounded strip",
+                       "15. Rounded strip",
                        "Light gray rounded background, uniform clickable segments");
 
         auto bcStrip = CreateBreadcrumb("bc_strip", rightX, yOffset + 4, 420, 32);
@@ -381,7 +473,7 @@ namespace UltraCanvas {
         // SECTION 6: SEPARATOR GALLERY
         // ========================================
         addDescription("BC_Section13", yOffset,
-                   "13. Separator gallery",
+                   "16. Separator gallery",
                    "One row per BreadcrumbSeparatorStyle");
 
         struct SepEntry {
@@ -422,6 +514,24 @@ namespace UltraCanvas {
             sepY += 30;
         }
         yOffset = sepY + 15;
+
+        // ========================================
+        // SECTION 14: ARROW / STEPPER STYLE
+        // ========================================
+        addDescription("BC_Section14", yOffset,
+                       "17. Arrow steps",
+                       "Interlocking arrow segments; current step highlighted");
+
+        auto bcArrow = CreateBreadcrumb("bc_arrow", rightX, yOffset + 4, rightWidth, 30);
+        bcArrow->SetStyle(BreadcrumbStyle::Arrow());
+        bcArrow->AddItem("PlantUML");
+        bcArrow->AddItem("Language specification");
+        bcArrow->AddItem("Yaml Diagram");
+        bcArrow->onItemClicked = [reportClick](int idx, const BreadcrumbItem& item) {
+            reportClick("Arrow", idx, item);
+        };
+        mainContainer->AddChild(bcArrow);
+        yOffset += rowStep;
 
         return mainContainer;
     }

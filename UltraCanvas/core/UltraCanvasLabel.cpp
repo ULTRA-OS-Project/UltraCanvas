@@ -4,20 +4,18 @@
 //
 //   1. EnsureTextLayout() builds the underlying text/content cache on
 //      demand. It applies font/wrap/alignment but NOT the explicit width
-//      — width is set by the caller (Measure/Intrinsic/UpdateGeometry).
+//      — width is set by the caller (Measure/Intrinsic).
 //   2. ComputeIntrinsicSizes() publishes min/max-content in BORDER-BOX
 //      units (content + padding + border) so Flex/Grid can short-circuit
 //      the extra Measure(Unbounded) pass.
 //   3. MeasureOwnContent() returns the text's content-box size: nullopt
 //      width → max-content width; a definite width → height at that width
 //      (wrapping). The block layout adds padding/border + size.*/constraints.
-//   4. UpdateGeometry() keeps the text layout's explicit width in sync
-//      with finalBounds (set by Arrange). It does NOT mutate finalBounds.
-//   5. Property setters call textLayout.reset() + InvalidateLayout()
+//   4. Property setters call textLayout.reset() + InvalidateLayout()
 //      (bubbles engine caches up) + RequestRedraw() (damage).
 //
-// Version: 2.2.0
-// Last Modified: 2026-06-02
+// Version: 2.2.1
+// Last Modified: 2026-06-04
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasLabel.h"
@@ -143,7 +141,7 @@ namespace UltraCanvas {
 
     // ===== Internal: ensure the text layout exists and reflects current
     // style/font/wrap/alignment. Does NOT touch the explicit width — the
-    // caller (Measure/Intrinsic/UpdateGeometry) sets that according to its
+    // caller (Measure/Intrinsic) sets that according to its
     // own context. Returns false if no render context is reachable yet
     // (element not attached to a window), in which case callers should
     // bail gracefully without crashing.
@@ -253,6 +251,19 @@ namespace UltraCanvas {
     void UltraCanvasLabel::InvalidateLayout() {
         CSSLayout::Element::InvalidateLayout();
         internalLayoutValid = false;
+    }
+
+    void UltraCanvasLabel::Arrange(const Rect2Df& finalRect,
+                                   const CSSLayout::LayoutContext& ctx) {
+        // Capture BEFORE the base call overwrites finalBounds.
+        const bool sizeChanged = (finalRect.width  != finalBounds.width) ||
+                                 (finalRect.height != finalBounds.height);
+        UltraCanvasUIElement::Arrange(finalRect, ctx);
+        // The text layout's wrap width is derived from finalBounds in
+        // UpdateInternalLayout(); when the engine re-arranges us to a new size
+        // (e.g. a window resize growing a grid/flex cell) the cached layout
+        // must be re-synced, or the text keeps its previous wrap width.
+        if (sizeChanged) internalLayoutValid = false;
     }
 
     void UltraCanvasLabel::UpdateInternalLayout(IRenderContext *ctx) {

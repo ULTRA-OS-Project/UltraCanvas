@@ -1,7 +1,7 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.6.0
-// Last Modified: 2026-05-29
+// Version: 3.7.0
+// Last Modified: 2026-06-18
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -26,6 +26,8 @@ namespace UltraCanvas {
     // Forward declarations
     class SyntaxTokenizer;
     enum class TokenType;
+    // UltraCanvasWindow (a typedef for the platform window) is available transitively via
+    // UltraCanvasUI.h; used by the built-in fullscreen markdown-image viewer.
 
     // ===== HIT RECT FOR CLICKABLE ELEMENTS =====
     // Tracks clickable regions for links and images
@@ -290,7 +292,8 @@ namespace UltraCanvas {
         DefinitionContinuation,
         TableHederRow,
         TableSeparatorRow,
-        TableRow
+        TableRow,
+        MarkdownImage   // image-only line: custom-drawn decoded bitmap (layout == nullptr)
     };
 
     // Maps one contiguous visible-text segment back to its source-line position.
@@ -344,6 +347,20 @@ namespace UltraCanvas {
         // other rows in the group so every row can render with the correct alignment.
         std::vector<TextAlignment> columnAlignments;
         std::vector<std::unique_ptr<LineLayoutBase>> cellsLayouts;
+    };
+
+    // Image-only markdown line: the whole (block-stripped) payload is a single ![alt](url).
+    // Rendered as a decoded bitmap (or a placeholder box when missing/remote) via the
+    // MarkdownImage branch in RenderLineLayout; `layout` is null. Dimensions are resolved once
+    // at build time (header-only load) and cached here so render doesn't re-probe every frame.
+    struct ImageLineLayout : LineLayoutBase {
+        std::string resolvedPath;   // absolute/joined local path (empty/unused if remote)
+        std::string sourceUrl;      // original ![](url) target — passed to onMarkdownImageClick
+        std::string altText;
+        int  naturalWidth  = 0;
+        int  naturalHeight = 0;
+        bool isValid  = false;      // local file, header loaded, dims > 0
+        bool isRemote = false;      // http/https/data: — placeholder only
     };
 
     // Inline styling run emitted by the markdown/plain-text parser and consumed by MakeLineLayout
@@ -691,6 +708,16 @@ namespace UltraCanvas {
         // for state like open fenced-code-block and returns the appropriate derived LineLayoutBase.
         std::unique_ptr<LineLayoutBase> MakeMarkdownLineLayout(IRenderContext* ctx, int lineIndex);
 
+        // Resolve a markdown image url against the base directory (markdownBaseDirectory override,
+        // else the directory of documentFilePath, else GetResourcesDir()). Sets outIsRemote for
+        // http(s)/data:/ftp schemes (left unresolved). Returns the local path otherwise.
+        std::string ResolveMarkdownImagePath(const std::string& url, bool& outIsRemote) const;
+
+        // Open a (valid, local) image full size in a built-in fullscreen viewer window. Closes
+        // on Esc or click. Default action for an image click unless onMarkdownImageClick is set
+        // or markdownImageFullscreenEnabled is false.
+        void OpenMarkdownImageViewer(const std::string& imagePath, const std::string& title);
+
         // Doc-wide pre-scan: populates markdownAbbreviations, markdownFootnotes, markdownAnchors,
         // and markdownAnchorBacklinks. Run lazily when markdownIndexDirty is true — which
         // RebuildText() and SetText() both raise.
@@ -912,6 +939,18 @@ namespace UltraCanvas {
         void SetDocumentFilePath(const std::string& path) { documentFilePath = path; }
         std::string GetDocumentFilePath() const { return documentFilePath; }
 
+        // Base directory for resolving relative markdown image paths. When empty, the directory
+        // of documentFilePath is used; if that is also empty, GetResourcesDir() is the fallback.
+        void SetMarkdownBaseDirectory(const std::string& dir) {
+            markdownBaseDirectory = dir; isNeedRebuildLineLayouts = true; RequestRedraw();
+        }
+        std::string GetMarkdownBaseDirectory() const { return markdownBaseDirectory; }
+
+        // When true (default), clicking a rendered markdown image opens it full size in a
+        // built-in fullscreen viewer (unless a custom onMarkdownImageClick handler is set).
+        void SetMarkdownImageFullscreenEnabled(bool enabled) { markdownImageFullscreenEnabled = enabled; }
+        bool IsMarkdownImageFullscreenEnabled() const { return markdownImageFullscreenEnabled; }
+
         // ===== EDITING MODE PUBLIC API =====
         void SetEditingMode(TextAreaEditingMode mode);
         bool IsHexMode() const { return editingMode == TextAreaEditingMode::Hex; }
@@ -1023,6 +1062,12 @@ namespace UltraCanvas {
         std::vector<std::string> definitionMergedText;
         // Path of the currently loaded document (for resolving relative image paths)
         std::string documentFilePath;
+        // Optional explicit base directory for relative markdown image paths (overrides the
+        // directory derived from documentFilePath when set). See SetMarkdownBaseDirectory.
+        std::string markdownBaseDirectory;
+        // Built-in fullscreen image viewer (owns its window for its lifetime; reset on close).
+        std::shared_ptr<UltraCanvasWindow> markdownImageViewerWindow;
+        bool markdownImageFullscreenEnabled = true;
         // Per-display-line cumulative Y offset from block images (rebuilt each frame)
         std::vector<int> markdownLineYOffsets;
 

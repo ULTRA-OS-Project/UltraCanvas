@@ -17,6 +17,7 @@ namespace UltraCanvas {
 
     class UCImageRaster;
     using UCImage = UCImageRaster;
+    class UCAudio;
 
     struct FileDialogOptions {
         std::string title;
@@ -78,6 +79,14 @@ namespace UltraCanvas {
         // ===== TYPED OBJECT LOADERS =====
         static void OpenImage(const FileDialogOptions& opts,
                               std::function<void(const FileLoadResult&, std::shared_ptr<UCImage>)> onResult);
+
+        // Opens the native file dialog and decodes the chosen file into a UCAudio
+        // PCM buffer (WAV/MP3/FLAC/Vorbis, via the active audio backend). If the
+        // caller supplies no filters, a sensible set of audio filters is added.
+        // On cancel, onResult fires with dialogResult == Cancel and a null audio;
+        // on decode failure, loadError is populated and the audio is null/invalid.
+        static void OpenAudio(const FileDialogOptions& opts,
+                              std::function<void(const FileLoadResult&, std::shared_ptr<UCAudio>)> onResult);
     };
 
 } // namespace UltraCanvas

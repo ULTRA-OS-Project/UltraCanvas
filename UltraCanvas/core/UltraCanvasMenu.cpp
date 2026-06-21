@@ -698,12 +698,12 @@ namespace UltraCanvas {
 
         if (orientation == MenuOrientation::Vertical) {
             // Position to the right of the item
-            submenuPos.x = GetXInWindow() + GetWidth() + style.submenuOffset;
+            submenuPos.x = GetXInWindow() + GetWidth();
             submenuPos.y = GetYInWindow() + GetItemY(itemIndex) - style.paddingTop;
         } else {
             // Position below the item
             submenuPos.x = GetXInWindow() + GetItemX(itemIndex);
-            submenuPos.y = GetYInWindow() + GetHeight() + style.submenuOffset;
+            submenuPos.y = GetYInWindow() + GetHeight();
         }
 
         // Adjust for window boundaries
@@ -728,7 +728,7 @@ namespace UltraCanvas {
             // Horizontal: flip to left side if overflows right edge
             if (submenuPos.x + submenuWidth > windowWidth) {
                 if (orientation == MenuOrientation::Vertical) {
-                    submenuPos.x = GetXInWindow() - submenuWidth - style.submenuOffset;
+                    submenuPos.x = GetXInWindow() - submenuWidth;
                 } else {
                     submenuPos.x = windowWidth - submenuWidth;
                 }

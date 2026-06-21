@@ -1013,7 +1013,6 @@ namespace UltraCanvas {
         if (isDraggingThumb) {
             isDraggingThumb = false;
             wasHandled = true;
-            UltraCanvasApplication::GetInstance()->ReleaseMouse(this);
         }
 
         // Handle link clicks

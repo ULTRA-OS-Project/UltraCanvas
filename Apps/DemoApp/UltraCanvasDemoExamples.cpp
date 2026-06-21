@@ -9,6 +9,10 @@
 //#include "UltraCanvasButton3Sections.h"
 #include "Plugins/Charts/UltraCanvasDivergingBarChart.h"
 #include "UltraCanvasTextArea.h"
+#include "UltraCanvasAudioPlayerElement.h"
+#include "UltraCanvasAudioRecorderElement.h"
+#include "UltraCanvasAudioDevices.h"
+#include "UltraCanvasButton.h"
 #include <sstream>
 #include <random>
 #include <map>
@@ -165,26 +169,9 @@ namespace UltraCanvas {
         return container;
     }
 
-    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVideoExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("VideoExamples", 0, 0, 1000, 600);
-
-        auto title = std::make_shared<UltraCanvasLabel>("VideoTitle", 10, 10, 300, 30);
-        title->SetText("Video Player Examples");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
-
-        auto placeholder = std::make_shared<UltraCanvasLabel>("VideoPlaceholder", 20, 50, 800, 400);
-        placeholder->SetText("Video Player Component - Not Implemented\n\nPlanned Features:\n• MP4, AVI, MOV playback\n• Hardware accelerated decoding\n• Custom playback controls\n• Fullscreen mode\n• Volume and timeline controls\n• Subtitle support\n• Frame-by-frame stepping\n• Video filters and effects\n• Streaming protocol support\n• Audio track selection");
-        placeholder->SetAlignment(TextAlignment::Left);
-        placeholder->SetBackgroundColor(Color(255, 200, 200, 100));
-//        placeholder->SetBorderStyle(BorderStyle::Dashed);
-        placeholder->SetBorders(2.0f);
-        placeholder->SetPadding(20.0f);
-        container->AddChild(placeholder);
-
-        return container;
-    }
+    // CreateVideoExamples() now lives in UltraCanvasVideoExamples.cpp — a real
+    // player + recorder demo backed by UltraCanvasVideoPlayerElement /
+    // UltraCanvasVideoRecorderElement.
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTextDocumentExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("TextDocumentExamples", 0, 0, 1000, 600);
@@ -219,27 +206,6 @@ namespace UltraCanvas {
 //
 //        return text;
 //    }
-
-    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAudioExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("AudioExamples", 0, 0, 1000, 600);
-
-        auto title = std::make_shared<UltraCanvasLabel>("AudioTitle", 10, 10, 300, 30);
-        title->SetText("Audio Player Examples");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
-
-        auto placeholder = std::make_shared<UltraCanvasLabel>("AudioPlaceholder", 20, 50, 800, 400);
-        placeholder->SetText("Audio Player Component - Not Implemented\n\nPlanned Features:\n• FLAC lossless audio support\n• MP3, WAV, OGG playback\n• Waveform visualization\n• Spectrum analyzer\n• Playback controls (play/pause/stop)\n• Volume and position sliders\n• Playlist management\n• Audio effects and filters\n• Recording capabilities\n• Audio format conversion\n• Metadata display (ID3 tags)");
-        placeholder->SetAlignment(TextAlignment::Left);
-        placeholder->SetBackgroundColor(Color(255, 200, 200, 100));
-//        placeholder->SetBorderStyle(BorderStyle::Dashed);
-        placeholder->SetBorders(2.0f);
-        placeholder->SetPadding(20.0f);
-        container->AddChild(placeholder);
-
-        return container;
-    }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDiagramExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("DiagramExamples", 0, 0, 1000, 600);
@@ -295,6 +261,104 @@ namespace UltraCanvas {
         text->SetPadding(0,5,0,7);
         //text->SetBorders(3, Colors::Yellow);
         return text;
+    }
+
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModuleDocScreen(const std::string& moduleDir) {
+        const std::string base   = NormalizePath(GetResourcesDir() + moduleDir + "/");
+        const std::string introPath   = base + "intro.md";
+        const std::string svgPath      = base + "diagram.svg";
+        const std::string readmePath = base + "README.md";
+
+        // Root is a vertical stack: intro (top) -> diagram (middle) -> docs (fills).
+        auto root = std::make_shared<UltraCanvasContainer>("ModuleDocScreen");
+        root->size.width  = CSSLayout::Dimension::Pct(100);
+        root->size.height = CSSLayout::Dimension::Pct(100);
+        root->layout.SetFlexColumn();
+
+        // 1) Short intro (Markdown). Skipped when intro.md is missing/empty so the
+        //    screen degrades to a plain README view.
+        std::string introText = LoadFile(introPath);
+        if (introText.find_first_not_of(" \t\r\n") != std::string::npos) {
+            auto intro = std::make_shared<UltraCanvasTextArea>("ModuleIntro");
+            intro->size.width  = CSSLayout::Dimension::Pct(100);
+            intro->size.height = CSSLayout::Dimension::Px(170);
+            intro->SetText(introText);
+            intro->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
+            intro->SetReadOnly(true);
+            intro->SetWordWrap(true);
+            intro->SetCursorPosition(LineColumnIndex::INVALID);
+            intro->SetPadding(0, 5, 0, 7);
+            // Fixed band at the top: don't grow or shrink.
+            intro->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            root->AddChild(intro);
+        }
+
+        // 2) Rendered SVG module diagram, centered. Only added when the file loads,
+        //    so a not-yet-uploaded diagram.svg simply leaves no empty box behind.
+        auto svg = std::make_shared<UltraCanvasImageElement>("ModuleDiagram", 0, 0, 820, 300);
+        if (svg->LoadFromFile(svgPath)) {
+            svg->SetFitMode(ImageFitMode::Contain);   // preserve the diagram's aspect ratio
+            auto diagramBox = std::make_shared<UltraCanvasContainer>("ModuleDiagramBox");
+            diagramBox->size.width  = CSSLayout::Dimension::Pct(100);
+            diagramBox->size.height = CSSLayout::Dimension::Px(320);
+            diagramBox->SetBackgroundColor(Color(250, 250, 250, 255));
+            diagramBox->layout.SetFlexRow();
+            diagramBox->layout.SetFlexJustifyContent(CSSLayout::JustifyContent::Center);
+            diagramBox->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+            diagramBox->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            diagramBox->AddChild(svg);
+            root->AddChild(diagramBox);
+        } else {
+            debugOutput << "Module diagram not loaded (" << svgPath
+                        << "): " << svg->GetLastError() << std::endl;
+        }
+
+        // 3) Full documentation (existing behaviour): fills the remaining height and
+        //    scrolls internally, exactly as the plain markdown screen does today.
+        auto docs = std::make_shared<UltraCanvasTextArea>("ModuleDocs");
+        docs->size.width  = CSSLayout::Dimension::Pct(100);
+        docs->size.height = CSSLayout::Dimension::Pct(100);
+        docs->SetText(LoadFile(readmePath));
+        docs->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
+        docs->SetReadOnly(true);
+        docs->SetWordWrap(true);
+        docs->SetCursorPosition(LineColumnIndex::INVALID);
+        docs->SetPadding(0, 5, 0, 7);
+        docs->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        root->AddChild(docs);
+
+        return root;
+    }
+
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateUltraOSInfoScreen() {
+        // Overview page shown when the "ULTRA OS modules" category itself is selected.
+        // The whole page is a single Markdown view: the descriptive overview text with
+        // the ULTRA-OS.svg diagram embedded at the bottom via a Markdown image tag.
+        // The relative image path (media/diagrams/ULTRA-OS.svg) is resolved against the
+        // markdown base directory set below, so the shared asset is not duplicated.
+        const std::string readmePath = NormalizePath(GetResourcesDir() + "Docs/Modules/ULTRA-OS/README.md");
+
+        auto root = std::make_shared<UltraCanvasContainer>("UltraOSInfoScreen");
+        root->size.width  = CSSLayout::Dimension::Pct(100);
+        root->size.height = CSSLayout::Dimension::Pct(100);
+        root->layout.SetFlexColumn();
+
+        auto docs = std::make_shared<UltraCanvasTextArea>("UltraOSDocs");
+        docs->size.width  = CSSLayout::Dimension::Pct(100);
+        docs->size.height = CSSLayout::Dimension::Pct(100);
+        // Resolve relative markdown image paths against the resources dir (which holds
+        // media/), so ![ULTRA OS](media/diagrams/ULTRA-OS.svg) renders the diagram.
+        docs->SetMarkdownBaseDirectory(GetResourcesDir());
+        docs->SetText(LoadFile(readmePath));
+        docs->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
+        docs->SetReadOnly(true);
+        docs->SetWordWrap(true);
+        docs->SetCursorPosition(LineColumnIndex::INVALID);
+        docs->SetPadding(0, 5, 0, 7);
+        docs->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        root->AddChild(docs);
+
+        return root;
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGPIOExamples() {

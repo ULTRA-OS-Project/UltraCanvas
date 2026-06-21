@@ -20,6 +20,7 @@
 #include "UltraCanvasTextEditorConfig.h"
 #include "UltraCanvasEncoding.h"
 #include "UltraCanvasSearchBar.h"
+#include "Plugins/Documents/UltraCanvasPDFView.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -92,6 +93,7 @@ namespace UltraCanvas {
                 FileFilter("Web Files", {"html", "htm", "css", "xml", "json"}),
                 FileFilter("Data / Config", {"json", "jsonc", "json5", "geojson", "webmanifest", "xml", "xsd", "xsl", "xslt", "yaml", "yml", "toml", "ini", "cfg", "pom", "rss", "atom", "kml"}),
                 FileFilter("Vector Graphics (Text)", std::vector<std::string>{"svg", "svgz"}),
+                FileFilter("PDF Documents", std::vector<std::string>{"pdf"}),
                 FileFilter("Script Files", {"sh", "bash", "bat", "cmd", "ps1"})
         };
 
@@ -102,6 +104,11 @@ namespace UltraCanvas {
 /**
  * @brief Data structure for each open file/document
  */
+    enum class DocumentKind {
+        Text,   // Backed by textArea (normal editor flow)
+        Pdf,    // Backed by pdfView (read-only display + page ops + save)
+    };
+
     struct DocumentTab {
         int documentId;                    // Stable unique ID (survives index shifts)
         std::string filePath;              // Full file path (empty for new/unsaved files)
@@ -112,6 +119,12 @@ namespace UltraCanvas {
         // at its left. searchBar/markdownToolbar are shared singletons re-parented on tab switch.
         std::shared_ptr<UltraCanvasContainer> contentBox;
         std::shared_ptr<UltraCanvasContainer> editorArea;
+        // For Pdf documents the tab swaps in this widget in place of textArea
+        // via tabContainer->SetTabContent. textArea is left allocated but
+        // detached from the tab so the rest of the editor's null-checked
+        // textArea accesses still work without changes.
+        std::shared_ptr<UltraCanvas::UltraCanvasPDFView> pdfView;
+        DocumentKind kind = DocumentKind::Text;
         std::string language;              // Syntax highlighting language
         bool isSaved;                      // Has unsaved changes
         bool isModified;                   // Has unsaved changes
@@ -125,6 +138,12 @@ namespace UltraCanvas {
         bool hasBOM;                           // Whether the file had a BOM
         LineEndingType eolType = UltraCanvasTextArea::GetSystemDefaultLineEnding(); // Line ending type
 
+        // Hash of the in-memory content (UltraCanvasTextArea::GetText) at the last
+        // saved/loaded clean state. Used to re-derive the modified flag on every
+        // edit, so that undoing/redoing back to the saved content clears the
+        // "unsaved" status (and vice-versa).
+        size_t savedContentHash = 0;
+
         DocumentTab()
                 : documentId(-1)
                 , isModified(false)
@@ -135,6 +154,8 @@ namespace UltraCanvas {
                 , lastSaveTime(std::chrono::steady_clock::now())
                 , lastModifiedTime(std::chrono::steady_clock::now())
         {}
+
+        bool IsPdf() const { return kind == DocumentKind::Pdf; }
     };
 
 /**
@@ -313,11 +334,19 @@ namespace UltraCanvas {
         const DocumentTab* GetActiveDocument() const;
         int FindDocumentIndexById(int documentId) const;
         void SetDocumentModified(int index, bool modified);
+        // Record the current content as the clean baseline (call after load/save).
+        void CaptureSavedContentBaseline(DocumentTab* doc);
+        // Re-derive the modified flag by comparing the given content to the saved
+        // baseline; updates the toolbar save icon and tab status marker.
+        void RefreshModifiedStateFromContent(int index, const std::string& currentContent);
         void UpdateTabTitle(int index);
         void UpdateTabBadge(int index);
 
         // ===== FILE OPERATIONS =====
         bool LoadFileIntoDocument(int docIndex, const std::string& filePath);
+        // Convert the tab at docIndex into a PDF tab and load the file.
+        // Swaps in a UltraCanvasPDFView via tabContainer->SetTabContent.
+        bool LoadPDFIntoDocument(int docIndex, const std::string& filePath);
         bool SaveDocument(int docIndex);
         bool SaveDocumentAs(int docIndex, const std::string& filePath);
         bool IsBinaryFile(const std::vector<uint8_t>& rawBytes, const std::string& extension) const;
@@ -506,6 +535,11 @@ namespace UltraCanvas {
          * line has no usable content; callers treat that as "no suggestion".
          */
         std::string SuggestFileNameFromFirstLine(const std::string& firstLine) const;
+
+        // Re-derive the auto-proposed display name of an unsaved tab from the first
+        // line of its current content and refresh the tab + window title. No-op for
+        // saved documents. Shared by the live-rename (onTextChanged) and recovery paths.
+        void RefreshAutoDisplayName(int docIndex);
 
 
         void PerformAutosave(bool force = false);

@@ -98,10 +98,12 @@ namespace UltraCanvas {
         Color hoverBackgroundColor = Color(225, 235, 255, 255);
         Color activeBackgroundColor = Color(204, 228, 247, 255);
         Color disabledBackgroundColor = Color(220, 220, 220, 255);
+        // Foreground (icon/text) color for disabled/inactive items. Used to grey
+        // out icons rather than reusing the background color for the foreground.
+        Color disabledForegroundColor = Color(150, 150, 150, 255);
 
 //        Color hoverForegroundColor = Colors::Black;
 //        Color activeForegroundColor = Colors::Black;
-//        Color disabledForegroundColor = Color(80,80,80, 255);
 
         // Spacing
         float itemSpacing = 4.0f;
@@ -110,7 +112,7 @@ namespace UltraCanvas {
         // Shadow (for Docked style)
         bool hasShadow = false;
         Color shadowColor = Color(0, 0, 0, 60);
-        Point2Di shadowOffset = Point2Di(0, 2);
+        Point2Df shadowOffset = Point2Df(0, 2);
         float shadowBlur = 4.0f;
 
         // Animation

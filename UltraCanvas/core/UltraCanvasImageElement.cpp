@@ -6,6 +6,7 @@
 
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasImage.h"
+#include "UltraCanvasFileError.h"
 #include "CSSLayout/LayoutUtils.h"
 #include <optional>
 #include <string>
@@ -35,13 +36,25 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasImageElement::LoadFromFile(const std::string &filePath) {
+        errorMessage.clear();
         loadedImage = UCImage::Get(filePath);
         // Intrinsic size changed — re-measure (for auto-sized elements) and repaint.
         InvalidateLayout();
         RequestRedraw();
-        if (loadedImage) {
+        if (loadedImage && loadedImage->IsValid()) {
+            if (onImageLoaded) onImageLoaded();
             return true;
         }
+
+        // Surface the real reason: prefer the loader's message, fall back to a
+        // file-access diagnosis (missing / locked / no permission).
+        std::string reason;
+        if (loadedImage && !loadedImage->errorMessage.empty()) {
+            reason = loadedImage->errorMessage;
+        }
+        if (reason.empty()) reason = DescribeFileReadError(filePath);
+        if (reason.empty()) reason = "Could not load image: " + filePath;
+        SetError(reason);  // resets loadedImage and fires onImageLoadFailed
         return false;
     }
 

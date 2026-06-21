@@ -519,8 +519,6 @@ namespace UltraCanvas {
         bottomRightRadius *= scale;
         bottomLeftRadius *= scale;
 
-        cairo_save(cairo);
-
         // Create the rounded rectangle path
         cairo_new_path(cairo);
 
@@ -1096,21 +1094,62 @@ namespace UltraCanvas {
     }
 
     void RenderContextCairo::ArcTo(double x1, double y1, double x2, double y2, double radius) {
-        // Cairo doesn't have arc_to, so we approximate
-        double cx, cy;
-        cairo_get_current_point(cairo, &cx, &cy);
+        // Cairo has no arc_to, so emulate the HTML5-canvas semantics: draw a line
+        // from the current point toward the corner (x1,y1), then a circular arc of
+        // the given radius that is tangent to both the incoming segment
+        // (current->corner) and the outgoing segment (corner->(x2,y2)). The arc
+        // centre is inset from the corner along the angle bisector — it is NOT the
+        // corner itself.
+        double x0, y0;
+        cairo_get_current_point(cairo, &x0, &y0);
 
-        // Calculate the center of the arc
-        double dx1 = x1 - cx;
-        double dy1 = y1 - cy;
-        double dx2 = x2 - x1;
-        double dy2 = y2 - y1;
+        // Unit vectors from the corner back to the current point and on to (x2,y2).
+        double v1x = x0 - x1, v1y = y0 - y1;
+        double v2x = x2 - x1, v2y = y2 - y1;
+        double len1 = std::hypot(v1x, v1y);
+        double len2 = std::hypot(v2x, v2y);
 
-        double a1 = atan2(dy1, dx1);
-        double a2 = atan2(dy2, dx2);
+        const double eps = 1e-9;
+        if (len1 < eps || len2 < eps || radius <= 0.0) {
+            cairo_line_to(cairo, x1, y1);
+            return;
+        }
+        v1x /= len1; v1y /= len1;
+        v2x /= len2; v2y /= len2;
 
-        cairo_arc(cairo, x1, y1, radius, a1, a2);
-        cairo_line_to(cairo, x2, y2);
+        // Half-angle between the two segments at the corner.
+        double cosTheta = std::max(-1.0, std::min(1.0, v1x * v2x + v1y * v2y));
+        double theta = std::acos(cosTheta);
+        double sinHalf = std::sin(theta * 0.5);
+        if (sinHalf < eps) {            // collinear: nothing to round
+            cairo_line_to(cairo, x1, y1);
+            return;
+        }
+
+        // Tangent points along each segment and the arc centre on the bisector.
+        double tanHalf = std::tan(theta * 0.5);
+        double tangentDist = radius / tanHalf;
+        double t1x = x1 + v1x * tangentDist, t1y = y1 + v1y * tangentDist;
+        double t2x = x1 + v2x * tangentDist, t2y = y1 + v2y * tangentDist;
+
+        double bx = v1x + v2x, by = v1y + v2y;
+        double blen = std::hypot(bx, by);
+        bx /= blen; by /= blen;
+        double centreDist = radius / sinHalf;
+        double cx = x1 + bx * centreDist;
+        double cy = y1 + by * centreDist;
+
+        double startAngle = std::atan2(t1y - cy, t1x - cx);
+        double endAngle   = std::atan2(t2y - cy, t2x - cx);
+
+        cairo_line_to(cairo, t1x, t1y);
+        // Sweep along the minor arc; the cross product picks the turn direction.
+        double cross = v1x * v2y - v1y * v2x;
+        if (cross < 0.0) {
+            cairo_arc(cairo, cx, cy, radius, startAngle, endAngle);
+        } else {
+            cairo_arc_negative(cairo, cx, cy, radius, startAngle, endAngle);
+        }
     }
 
     void RenderContextCairo::Ellipse(double cx, double cy, double rx, double ry, double rotation) {
@@ -1621,8 +1660,13 @@ namespace UltraCanvas {
 
         // Set the image as source and paint
         if (drawMasked) {
-            cairo_set_source_rgb(cairo, 1.0, 1.0, 1.0);
-            cairo_set_operator(cairo, CAIRO_OPERATOR_DIFFERENCE);
+            // Recolor the icon: use the pixmap's alpha channel as a mask for a
+            // solid color source so the SVG/icon is tinted with `c` (e.g. theme
+            // foreground, or a grey for disabled/inactive icons). Honors the
+            // global alpha so callers can dim via SetAlpha().
+            cairo_set_source_rgba(cairo,
+                                  c.r / 255.0, c.g / 255.0, c.b / 255.0,
+                                  (c.a / 255.0) * alpha);
             cairo_mask_surface(cairo, pixmap.GetSurface(), 0, 0);
         } else {
             cairo_set_source_surface(cairo, pixmap.GetSurface(), 0, 0);

@@ -52,6 +52,13 @@ namespace UltraCanvas {
         bool showTrackBorder = false;
         bool showThumbBorder = false;
 
+        // Custom handle (thumb) image. When thumbImagePath is non-empty the thumb is
+        // drawn from this image (PNG or SVG) instead of the solid rounded rectangle,
+        // scaled into the thumb rect using thumbImageFit. Leave empty for the default
+        // solid thumb. SVG handles scale crisply; use Fill to stretch to the thumb.
+        std::string thumbImagePath;
+        ImageFitMode thumbImageFit = ImageFitMode::Fill;
+
         // Behavior
         bool autoHide = false;
         int scrollSpeed = 20;       // Pixels per scroll step

@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasDemo.h
 // Comprehensive demonstration program showing all UltraCanvas display elements
-// Version: 1.0.0
-// Last Modified: 2024-12-19
+// Version: 1.0.1
+// Last Modified: 2026-06-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -207,18 +207,23 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateTextInputExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateDropdownExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateAutoCompleteExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateDatePickerExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSliderExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateScrollbarExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateLabelExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateCheckboxExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateToolbarExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateTabExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSplitPaneExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateGroupBoxExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateBreadcrumbExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSlideshowExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateAlbumExamples();
 
         // Extended Functionality
         std::shared_ptr<UltraCanvasUIElement> CreateTreeViewExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateTableViewExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateSpreadsheetExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateListViewExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateMenuExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateDialogExamples();
@@ -263,6 +268,9 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateFinancialChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreatePopulationChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreatePieChartExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateRadarChartExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateHeatmapExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateGaugeExamples();
 
         std::shared_ptr<UltraCanvasUIElement> CreateContinentsPopulationExample();
         std::shared_ptr<UltraCanvasUIElement> CreateBrazilSchoolScoresExample();
@@ -286,17 +294,31 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateAdjacencyDiagramExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateArcDiagramExamples();
         std::shared_ptr<UltraCanvasContainer> CreateExampleDiagramSection();
+        std::shared_ptr<UltraCanvasUIElement> CreateCompositorDiagramExamples();
 
         std::shared_ptr<UltraCanvasUIElement> CreateFlowchartExample();
         std::shared_ptr<UltraCanvasUIElement> CreateSystemArchitectureExample();
 
         std::shared_ptr<UltraCanvasUIElement> CreateTreeMapExamples();
 
-//        std::shared_ptr<UltraCanvasUIElement> CreatePDFExamples();
+#ifdef ULTRACANVAS_PLUGIN_PDF
+        std::shared_ptr<UltraCanvasUIElement> CreatePDFExamples();
+#endif
         std::shared_ptr<UltraCanvasUIElement> CreateSVGVectorExamples();
 
         std::shared_ptr<UltraCanvasUIElement> CreateFileLoaderExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateMarkdownDocScreen(const std::string& filename);
+        // Composite module documentation screen: short intro (Markdown) on top, an
+        // optional rendered SVG module diagram in the middle, and the full README
+        // (Markdown) scrolling below. moduleDir is a folder under the resources dir
+        // (e.g. "Docs/Modules/UltraAI") that may contain intro.md, diagram.svg and
+        // README.md. Missing intro.md / diagram.svg are skipped gracefully, so the
+        // screen degrades to a plain README view until those assets are added.
+        std::shared_ptr<UltraCanvasUIElement> CreateModuleDocScreen(const std::string& moduleDir);
+        // Overview page for the "ULTRA OS modules" category node itself: the ULTRA OS
+        // diagram (media/diagrams/ULTRA-OS.svg) plus the descriptive overview text.
+        std::shared_ptr<UltraCanvasUIElement> CreateUltraOSInfoScreen();
+        std::shared_ptr<UltraCanvasUIElement> CreateBarcodeExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateQRCodeExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateGPIOExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateScannerSupportExamples();

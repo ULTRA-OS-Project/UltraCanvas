@@ -2,8 +2,8 @@
 // Container with scrollbars and child management. Child storage lives on
 // CSSLayout::Element (via UltraCanvasUIElement); we iterate it through
 // Children() and static_pointer_cast each element to UltraCanvasUIElement.
-// Version: 4.1.1
-// Last Modified: 2026-05-31
+// Version: 4.1.2
+// Last Modified: 2026-06-09
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
@@ -41,65 +41,8 @@ namespace UltraCanvas {
         SortChildrenByZOrder();
         UpdateScrollability();
 
-        // legacy UpdateGeometry for non-container (leaf) childs
-//        for (auto& c : Children()) {
-//            UltraCanvasUIElement* child = asUI(c);
-//            if (!child || !child->IsVisible()) continue;
-//            if (child->isPopup) continue;
-//
-//            auto containerChild = dynamic_cast<UltraCanvasContainer*>(child);
-//            if (child->needsUpdateGeometry && c->Children().empty()) {
-//                child->UpdateGeometry(GetRenderContext());
-//                child->needsUpdateGeometry = false;
-//            }
-//        }
         internalLayoutValid = true;
-//        needsUpdateGeometry = false;
     }
-
-//    void UltraCanvasContainer::UpdateGeometry(IRenderContext* ctx) {
-//        // update layout for top-lvel container and all children
-//        // that this container is top-level container (Window or Popup)
-//        UltraCanvasUIElement* topLevel = this;
-//        for (UltraCanvasUIElement* cur = this; cur && cur != window; cur = cur->GetParentContainer()) {
-//            if (cur->isPopup) { topLevel = cur; break; }
-//        }
-//        if (topLevel != this) {
-//            topLevel->UpdateLayout(ctx);
-//            return;
-//        }
-//        LayoutContext lctx;
-//        if (window) {
-//            // TODO: thread em/rem/DPI from window. Viewport defaults
-//            // are acceptable for fixed-px callers; only vw/vh users
-//            // need this populated correctly.
-//            lctx.viewportWidth  = window->GetWidth();
-//            lctx.viewportHeight = window->GetHeight();
-//        }
-//
-//        MeasureConstraints mc{
-//            { ConstraintMode::Exact, finalBounds.width  },
-//            { ConstraintMode::Exact, finalBounds.height }
-//        };
-//        this->Measure(mc, lctx);
-//        // Arrange() places children and, at its tail, calls Arranged()
-//        // (z-order sort + scrollbar metrics) and sets arrangeValid.
-//        this->Arrange(finalBounds, lctx);
-//
-//        for (auto& c : Children()) {
-//            UltraCanvasUIElement* child = asUI(c);
-//            if (!child || !child->IsVisible()) continue;
-//            if (child->isPopup) continue;
-//
-//            auto containerChild = dynamic_cast<UltraCanvasContainer*>(child);
-//            if (child->needsUpdateGeometry || !containerChild) {
-//                child->UpdateGeometry(ctx);
-//                child->needsUpdateGeometry = false;
-//            }
-//        }
-//
-//        needsUpdateGeometry = false;
-//    }
 
     void UltraCanvasContainer::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         UltraCanvasUIElement::Render(ctx, dirtyRect);
@@ -229,13 +172,25 @@ namespace UltraCanvas {
 
             auto newClientRect = GetContentArea();
             if (newClientRect != clientRect) {
-                horizontalScrollbar->SetScrollDimensions(clientRect.width, maxRight);
-                verticalScrollbar->SetScrollDimensions(clientRect.height, maxBottom);
+                horizontalScrollbar->SetScrollDimensions(newClientRect.width, maxRight);
+                verticalScrollbar->SetScrollDimensions(newClientRect.height, maxBottom);
 
                 verticalScrollbar->SetVisible(verticalScrollbar->IsScrollable());
                 horizontalScrollbar->SetVisible(horizontalScrollbar->IsScrollable());
             }
         }
+
+        // Lock the scroll ranges to the FINAL content area (i.e. with the final
+        // scrollbar visibility applied). When one scrollbar appears it shrinks the
+        // cross-axis viewport by trackSize; if the other scrollbar then appears as a
+        // consequence, the first one's viewport was measured before that happened and
+        // is trackSize too large. Recomputing here keeps each scrollbar's range in sync
+        // with what GetContentArea() returns at render time, so the last trackSize px of
+        // content can scroll out from behind the opposite scrollbar instead of staying
+        // hidden under it.
+        auto finalRect = GetContentArea();
+        horizontalScrollbar->SetScrollDimensions(finalRect.width, maxRight);
+        verticalScrollbar->SetScrollDimensions(finalRect.height, maxBottom);
 
         int trackSize = style.scrollbarStyle.trackSize;
         int contentWidth  = GetWidth()  - GetTotalBorderHorizontal() - GetTotalPaddingHorizontal();
@@ -555,6 +510,9 @@ namespace UltraCanvas {
 
     void UltraCanvasContainer::SetContainerStyle(const ContainerStyle &newStyle) {
         style = newStyle;
+        // Propagate the (possibly changed) scrollbarStyle to the live scrollbar
+        // objects; otherwise styling set after construction would be ignored.
+        ApplyStyleToScrollbars();
         InvalidateLayout();
     }
 

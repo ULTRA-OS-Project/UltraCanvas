@@ -1,7 +1,7 @@
 // UltraCanvasDendrogram.h
 // Interactive dendrogram / phylogenetic tree diagram element
-// Version: 1.4.1
-// Last Modified: 2026-05-09
+// Version: 1.4.2
+// Last Modified: 2026-06-05
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -248,6 +248,10 @@ namespace UltraCanvas {
         DendrogramScaleMode   scaleMode   = DendrogramScaleMode::Proportional;
 
         bool layoutDirty = true;
+        // Size used by the last RebuildLayout(); lets Render() detect a resize
+        // from a flex/stretch parent (which never flips layoutDirty) and re-fit.
+        float lastLayoutWidth  = -1.0f;
+        float lastLayoutHeight = -1.0f;
 
         // Zoom / pan
         double   zoom      = 1.0f;

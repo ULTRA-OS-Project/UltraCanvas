@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
-// Version: 2.1.8
-// Last Modified: 2026-06-01
+// Version: 2.1.9
+// Last Modified: 2026-06-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
@@ -38,7 +38,7 @@
 #include "UltraCanvasUtilsUtf8.h"
 
 namespace UltraCanvas {
-    std::string UltraCanvasTextEditor::version = "0.1.33";
+    std::string UltraCanvasTextEditor::version = "0.1.38";
     
 namespace {
     std::string GetAppDataDirectory() {
@@ -69,13 +69,15 @@ namespace {
     }
 
     // Build a Flat-style ToolbarAppearance tinted for either light or dark mode.
-    // NOTE: Icons in media/icons/texter/*.svg are drawn as-is — icon tinting is a
-    // framework TODO (see UltraCanvas/core/UltraCanvasButton.cpp DrawIcon). Existing
-    // dark-ink icons will render dark-on-dark in dark mode until that is addressed,
-    // either by shipping a light-variant icon set or implementing tinting.
+    // Icons in media/icons/texter/*.svg are recoloured to foregroundColor via the
+    // icon-mask path (ButtonStyle::useIconAsMask -> IRenderContext::DrawMask), so a
+    // single dark-ink icon set renders correctly in both light and dark themes.
     ToolbarAppearance BuildToolbarAppearance(bool dark) {
         if (!dark) {
-            return ToolbarAppearance::Flat();
+            ToolbarAppearance app = ToolbarAppearance::Flat();
+            app.foregroundColor = Color(40, 40, 40, 255);     // dark ink on light bar
+            app.disabledForegroundColor = Color(170, 170, 170, 255); // greyed icons
+            return app;
         }
         ToolbarAppearance app;
         app.style = ToolbarStyle::Flat;
@@ -86,6 +88,7 @@ namespace {
         app.hoverBackgroundColor      = Color(65, 65, 65, 255);
         app.activeBackgroundColor     = Color(80, 80, 80, 255);
         app.disabledBackgroundColor   = Color(55, 55, 55, 255);
+        app.disabledForegroundColor   = Color(110, 110, 110, 255); // greyed icons on dark bar
         return app;
     }
 } // anonymous namespace
@@ -1418,7 +1421,7 @@ namespace {
                        c == '/' || c == '\\' || c == '|' || c == '?' || c == '*') {
                 out.push_back('_');
             } else if (c == ' ' || c == '\t') {
-                out.push_back('_');
+                out.push_back(' ');
             } else {
                 out.push_back(static_cast<char>(c));
             }
@@ -1500,6 +1503,26 @@ namespace {
         }
     }
 
+    void UltraCanvasTextEditor::RefreshAutoDisplayName(int docIndex) {
+        if (docIndex < 0 || docIndex >= static_cast<int>(documents.size())) return;
+        auto d = documents[docIndex];
+        if (!d || !d->textArea) return;
+        // Only auto-name unsaved tabs; saved files keep their on-disk filename.
+        if (!(d->isNewFile && d->filePath.empty())) return;
+        if (d->textArea->GetLineCount() <= 0) return;
+
+        std::string suggestion = SuggestFileNameFromFirstLine(d->textArea->GetLine(0));
+        // Sticky: keep the existing name if the first line yields nothing usable
+        // (preserves the "RecoveredN"/"UntitledN" fallback for blank first lines).
+        if (suggestion.empty() || suggestion == d->fileName) return;
+
+        d->fileName = suggestion;
+        UpdateTabTitle(docIndex);
+        if (docIndex == activeDocumentIndex) {
+            UpdateTitle();
+        }
+    }
+
     int UltraCanvasTextEditor::CreateNewDocument(const std::string& fileName) {
         // Create new document tab
         auto doc = std::make_shared<DocumentTab>();
@@ -1576,6 +1599,10 @@ namespace {
 
         doc->textArea->SetFocus(true);
         doc->textArea->SetCursorPosition({0,0});
+
+        // Empty new document is its own clean baseline (so typing then undoing
+        // back to empty restores the saved status).
+        CaptureSavedContentBaseline(doc.get());
         return docIndex;
     }
 
@@ -1692,6 +1719,8 @@ namespace {
             doc->textArea->SetText(tpl.content, false);
             doc->isModified = false;
             doc->isSaved = false;
+            // Template content is the clean baseline for this new document.
+            CaptureSavedContentBaseline(doc.get());
         }
 
         UpdateTabTitle(docIndex);
@@ -1713,13 +1742,19 @@ namespace {
         std::filesystem::path p(filePath);
         int docIndex = CreateNewDocument(p.filename().string());
 
-        // Load file content
-        if (!LoadFileIntoDocument(docIndex, filePath)) {
-            // Failed to load - close the document
+        // PDFs take a separate codepath: the tab's textArea is swapped out
+        // for a UltraCanvasPDFView. Detect by extension (case-insensitive).
+        std::string ext = p.extension().string();
+        if (!ext.empty() && ext[0] == '.') ext = ext.substr(1);
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+        const bool ok = (ext == "pdf")
+            ? LoadPDFIntoDocument(docIndex, filePath)
+            : LoadFileIntoDocument(docIndex, filePath);
+
+        if (!ok) {
             CloseDocument(docIndex);
             return -1;
         }
-
         return docIndex;
     }
 
@@ -1936,13 +1971,34 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
     }
 
+    void UltraCanvasTextEditor::CaptureSavedContentBaseline(DocumentTab* doc) {
+        if (!doc) return;
+        const std::string content = doc->textArea ? doc->textArea->GetText() : std::string();
+        doc->savedContentHash = std::hash<std::string>{}(content);
+    }
+
+    void UltraCanvasTextEditor::RefreshModifiedStateFromContent(int index, const std::string& currentContent) {
+        if (index < 0 || index >= static_cast<int>(documents.size())) {
+            return;
+        }
+        auto doc = documents[index];
+        if (!doc) return;
+
+        // Compare current content against the saved baseline so that undo/redo
+        // back to the saved state clears the modified flag (and editing away
+        // from it sets it). SetDocumentModified updates the tab marker and,
+        // for the active document, the toolbar save icon.
+        size_t currentHash = std::hash<std::string>{}(currentContent);
+        SetDocumentModified(index, currentHash != doc->savedContentHash);
+    }
+
     std::string UltraCanvasTextEditor::FormatFullTabTooltip(int index) {
         auto& doc = documents[index];
         std::string tooltipText;
-        if (doc->isNewFile) {
-            tooltipText = "<span weight=\"900\">Never saved</span>";   // ● red  (colour is visual only — text says it)
-        } else if (doc->isModified) {
-            tooltipText = "<span weight=\"900\">Unsaved</span>";  // ● orange
+        if (doc->isModified) {
+            tooltipText = "<span weight=\"900\">Unsaved</span>";  // ● red
+        } else if (doc->isNewFile) {
+            tooltipText = "<span weight=\"900\">Never saved</span>";   // ● orange (colour is visual only — text says it)
         } else if (doc->isSaved) {
             tooltipText = "<span>Saved</span>";            // ● green
         }
@@ -1999,13 +2055,21 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
 
         auto doc = documents[index];
+        // For PDFs the engine owns the dirty bit; sync it before deciding
+        // which marker colour to show.
+        if (doc->IsPdf() && doc->pdfView && doc->pdfView->GetDocument()) {
+            doc->isModified = doc->pdfView->GetDocument()->IsDirty();
+        }
         bool showMarker = true;
-        if (doc->isNewFile) {
-            // Never been saved — orange marker
-            tabContainer->SetTabMarkerColor(index, Color(255, 165, 0, 255));
-        } else if (doc->isModified) {
-            // Modified since last save — red marker
+        if (doc->isModified) {
+            // Has unsaved edits — red marker. Checked before isNewFile so that a
+            // brand-new file that has been typed into switches from the orange
+            // "never saved" marker to the red "unsaved" marker (matches the
+            // toolbar save icon, which keys off isModified).
             tabContainer->SetTabMarkerColor(index, Color(195, 30, 3, 255));
+        } else if (doc->isNewFile) {
+            // Never been saved and not yet edited — orange marker
+            tabContainer->SetTabMarkerColor(index, Color(255, 165, 0, 255));
         } else if (doc->isSaved){
             // Saved and clean — green marker
             tabContainer->SetTabMarkerColor(index, Color(40, 167, 69, 255));
@@ -2016,6 +2080,71 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     }
 
 // ===== FILE OPERATIONS =====
+
+    bool UltraCanvasTextEditor::LoadPDFIntoDocument(int docIndex,
+                                                    const std::string& filePath) {
+        if (docIndex < 0 || docIndex >= static_cast<int>(documents.size())) {
+            return false;
+        }
+        auto doc = documents[docIndex];
+
+        // Build the PDF view at the same logical size as the textArea slot.
+        // The container will resize it on layout passes.
+        auto view = UltraCanvas::CreatePDFView(
+            "PDFView_" + std::to_string(doc->documentId),
+            0, 0,
+            doc->textArea ? doc->textArea->GetWidth()  : GetWidth(),
+            doc->textArea ? doc->textArea->GetHeight() : GetHeight());
+
+        if (!view->LoadFromPath(filePath)) {
+            debugOutput << "Failed to load PDF: " << filePath << std::endl;
+            return false;
+        }
+
+        // Wire status-bar updates on page change.
+        view->onPageChanged = [this, docIndex](int cur, int total) {
+            if (docIndex == activeDocumentIndex) {
+                UpdateStatusBar();
+            }
+            (void)cur; (void)total;
+        };
+        view->onError = [this](const std::string& msg) {
+            debugOutput << "[PDF] " << msg << std::endl;
+        };
+
+        std::filesystem::path p(filePath);
+        doc->fileName     = p.filename().string();
+        doc->filePath     = filePath;
+        doc->isNewFile    = false;
+        doc->isModified   = false;
+        doc->isSaved      = true;
+        doc->kind         = DocumentKind::Pdf;
+        doc->language     = "PDF";
+        doc->encoding     = "BINARY";
+        doc->hasBOM       = false;
+        doc->originalRawBytes.clear();
+        doc->pdfView      = view;
+        doc->lastSaveTime = std::chrono::steady_clock::now();
+
+        // Swap the tab's content from the placeholder textArea to the PDF view.
+        // The textArea stays alive (still referenced via doc->textArea) so the
+        // existing null-checked textArea accesses elsewhere keep working, but
+        // it's no longer in the tab's child tree.
+        if (tabContainer) {
+            tabContainer->SetTabContent(docIndex, view);
+        }
+
+        UpdateTabTitle(docIndex);
+        UpdateTabBadge(docIndex);
+        UpdateTitle();
+        UpdateLanguageDropdown();
+        UpdateEncodingDropdown();
+        UpdateMarkdownToolbarVisibility();
+
+        lastOpenedDirectory = p.parent_path().string();
+        AddToRecentFiles(filePath);
+        return true;
+    }
 
     bool UltraCanvasTextEditor::LoadFileIntoDocument(int docIndex, const std::string& filePath) {
         if (docIndex < 0 || docIndex >= static_cast<int>(documents.size())) {
@@ -2123,6 +2252,9 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 doc->language = doc->textArea->GetCurrentProgrammingLanguage();
             }
 
+            // Freshly loaded file content is the clean baseline.
+            CaptureSavedContentBaseline(doc.get());
+
             UpdateTabTitle(docIndex);
             UpdateTabBadge(docIndex);
             UpdateTitle();
@@ -2168,8 +2300,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 "mp4", "avi", "mkv", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg",
                 // Archives
                 "zip", "tar", "gz", "bz2", "xz", "7z", "rar", "zst", "lz4",
-                // Documents (binary formats — NOT rtf/html/odt source which is text/xml)
-                "pdf", "doc", "xls", "ppt",
+                // Documents (binary formats — NOT rtf/html/odt source which is text/xml).
+                // PDF is intentionally excluded: PDFs route to UltraCanvasPDFView
+                // via LoadPDFIntoDocument before IsBinaryFile is ever consulted.
+                "doc", "xls", "ppt",
                 // Office Open XML (ZIP-based binary containers)
                 "docx", "xlsx", "pptx", "odt", "ods",
                 // Fonts
@@ -2239,6 +2373,26 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
         try {
             auto doc = documents[docIndex];
+
+            // PDF documents save via the MuPDF engine, not the text encoder.
+            if (doc->IsPdf() && doc->pdfView) {
+                if (!doc->pdfView->SaveAs(filePath)) {
+                    debugOutput << "Failed to save PDF: " << filePath << std::endl;
+                    return false;
+                }
+                doc->filePath     = filePath;
+                std::filesystem::path p(filePath);
+                doc->fileName     = p.filename().string();
+                doc->isModified   = false;
+                doc->isSaved      = true;
+                doc->isNewFile    = false;
+                doc->lastSaveTime = std::chrono::steady_clock::now();
+                UpdateTabTitle(docIndex);
+                UpdateTabBadge(docIndex);
+                UpdateTitle();
+                AddToRecentFiles(filePath);
+                return true;
+            }
 
             // In hex mode, save raw bytes directly — no encoding conversion, no BOM
             if (doc->textArea->IsHexMode()) {
@@ -2332,6 +2486,9 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             // Clear raw bytes cache since we just saved a fresh version
             doc->originalRawBytes.clear();
 
+            // Content just written to disk becomes the new clean baseline, so a
+            // subsequent edit-then-undo correctly returns to the saved status.
+            CaptureSavedContentBaseline(doc.get());
             SetDocumentModified(docIndex, false);
 
             // Delete autosave backup
@@ -2441,11 +2598,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 if (!autosaveManager.LoadBackup(sd.backupPath, content, origPath, enc, lang)) {
                     continue;
                 }
-                // Use the stored display name (e.g. "Recovered1", "Untitled3")
-                // or fall back to a fresh unique Recovered name.
-                std::string name = !sd.displayName.empty()
-                                   ? sd.displayName
-                                   : GenerateUniqueDocumentName("Recovered");
+                // Start from a fresh "RecoveredN" placeholder; the persisted
+                // displayName may be a stale "RecoveredN" itself, and
+                // RecoverBackupIntoDocument re-derives the real name from the
+                // recovered content below.
+                std::string name = GenerateUniqueDocumentName("Recovered");
                 docIndex = CreateNewDocument(name);
                 RecoverBackupIntoDocument(docIndex, sd.backupPath,
                                           content,
@@ -2545,6 +2702,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 doc->textArea->SetProgrammingLanguage(language);
             }
         }
+
+        // Recovery never fires onTextChanged (SetText was called with
+        // runNotifications=false), so re-derive the tab name from the recovered
+        // content here — fixes stale "RecoveredN" names on unsaved tabs.
+        RefreshAutoDisplayName(docIndex);
 
         UpdateTabTitle(docIndex);
         UpdateTabBadge(docIndex);
@@ -3650,6 +3812,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 doc->encoding = newEncoding;
                 doc->textArea->SetText(utf8Text, false);
                 doc->isModified = false;
+                // Re-interpreted content is unmodified; reset the clean baseline.
+                CaptureSavedContentBaseline(doc);
                 UpdateTabBadge(activeDocumentIndex);
             } else {
                 // Conversion failed: revert dropdown selection
@@ -3703,6 +3867,22 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         bool canSave = (activeDoc && activeDoc->isNewFile) || HasUnsavedChanges();
         if (auto w = toolbar->GetWidget("save")) {
             w->SetDisabled(!canSave);
+            if (auto saveBtn = std::dynamic_pointer_cast<UltraCanvasButton>(w)) {
+                ButtonStyle s = saveBtn->GetStyle();
+                if (HasUnsavedChanges()) {
+                    // Unsaved indicator: red shading on the button background,
+                    // strong red at the bottom fading quickly to a faint (~10%)
+                    // red toward the top.
+                    s.backgroundGradient = {
+                        GradientStop(0.0, Color(210, 40, 40,  20)),  // top: ~8% red
+                        GradientStop(0.55, Color(208, 36, 36, 70)),  // fades in slowly
+                        GradientStop(1.0, Color(205, 30, 30, 235)),  // bottom: strong red
+                    };
+                } else {
+                    s.backgroundGradient.clear();
+                }
+                saveBtn->SetStyle(s);
+            }
         }
 
         // ── Undo / Redo ──
@@ -3954,26 +4134,18 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 //     documents[currentIndex]->originalRawBytes.clear();
                 //     documents[currentIndex]->originalRawBytes.shrink_to_fit();
                 // }
-                SetDocumentModified(currentIndex, true);
+                // Derive modified flag by comparing against the saved baseline so
+                // that undo/redo back to the saved content marks the document as
+                // saved again (updates save icon + tab status marker). Uses the
+                // text already delivered to the callback to avoid re-copying it.
+                RefreshModifiedStateFromContent(currentIndex, text);
 
                 // For brand-new unsaved documents, keep the tab title in sync with
                 // the first line of content so the user can see a meaningful name
                 // before they ever hit Save As. Intentionally sticky: if the first
                 // line later becomes empty we keep the last suggestion to avoid
                 // jitter.
-                auto d = documents[currentIndex];
-                if (d->isNewFile && d->filePath.empty() && d->textArea &&
-                    d->textArea->GetLineCount() > 0) {
-                    std::string suggestion =
-                        SuggestFileNameFromFirstLine(d->textArea->GetLine(0));
-                    if (!suggestion.empty() && suggestion != d->fileName) {
-                        d->fileName = suggestion;
-                        UpdateTabTitle(currentIndex);
-                        if (currentIndex == activeDocumentIndex) {
-                            UpdateTitle();
-                        }
-                    }
-                }
+                RefreshAutoDisplayName(currentIndex);
             }
             UpdateStatusBar();
         };

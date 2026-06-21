@@ -633,9 +633,6 @@ namespace UltraCanvas {
         // (Previously UpdateScrollbar only ran from mutators / SetBounds, never from the
         // engine's resize, so an in-tree ListView could reserve scrollbar space wrongly.)
         UpdateScrollbar();
-        if (verticalScrollbar && verticalScrollbar->IsVisible()) {
-            verticalScrollbar->UpdateGeometry(GetRenderContext());
-        }
     }
 
     void UltraCanvasListView::SetBounds(const Rect2Df& bounds) {

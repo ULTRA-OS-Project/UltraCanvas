@@ -127,8 +127,6 @@ namespace UltraCanvas {
     bool UltraCanvasScrollbar::OnEvent(const UCEvent &event) {
         if (IsDisabled() || !ShouldBeVisible()) return false;
 
-        UpdateGeometry(GetRenderContext());
-
         switch (event.type) {
             case UCEventType::MouseDown:
                 return HandleMouseDown(event);
@@ -219,6 +217,14 @@ namespace UltraCanvas {
 
     void UltraCanvasScrollbar::RenderThumb(IRenderContext *ctx) {
         if (thumbRect.width <= 0 || thumbRect.height <= 0) return;
+
+        // Custom handle image (SVG/PNG) takes precedence over the solid thumb.
+        if (!style.thumbImagePath.empty()) {
+            ctx->DrawImage(style.thumbImagePath,
+                           Rect2Dd(thumbRect.x, thumbRect.y, thumbRect.width, thumbRect.height),
+                           style.thumbImageFit);
+            return;
+        }
 
         // Determine thumb color based on state
         Color thumbColor = style.thumbColor;
@@ -351,12 +357,6 @@ namespace UltraCanvas {
                               interactionState.upArrowPressed ||
                               interactionState.downArrowPressed ||
                               interactionState.trackPressed;
-
-        if (interactionState.isDragging) {
-            if (auto* app = UltraCanvasApplication::GetInstance()) {
-                app->ReleaseMouse(this);
-            }
-        }
 
         interactionState.isDragging = false;
         interactionState.thumbPressed = false;

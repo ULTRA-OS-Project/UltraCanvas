@@ -185,12 +185,17 @@ namespace UltraCanvas {
     private:
         UltraCanvasCDRRenderer cdrRenderer;
         int currentPageIndex = 0;
+        std::string lastError;
         void RenderPlaceholder(IRenderContext* ctx, const std::string& message);
 
     public:
         UltraCanvasCDRElement(const std::string& identifier,
                               int x, int y, int width, int height);
         ~UltraCanvasCDRElement() override = default;
+
+        // Reason for the most recent failed load (locked / missing / not a valid
+        // CDR file). Empty after a successful load.
+        const std::string& GetLastError() const { return lastError; }
 
         // Load CDR file
         bool LoadFromFile(const std::string& filePath);

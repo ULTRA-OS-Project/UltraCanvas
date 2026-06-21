@@ -1,10 +1,19 @@
 // Apps/DemoApp/UltraCanvasGourceTreeExamples.cpp
 // Interactive Gource Tree diagram demonstration page
-// Version: 1.0.1
-// Last Modified: 2026-05-02
+// Version: 1.0.2
+// Last Modified: 2026-06-05
 // Author: UltraCanvas Framework
 //
 // Changelog:
+//   v1.0.2 (2026-06-05):
+//     - Fixed collapsed Project/Storage toolbar rows. Converted projectControls
+//       and depthControls to flex-row layout (SetFlexRow + Center align-items)
+//       and zeroed each toolbar child's constructor Y so they stay in-flow flex
+//       items — a non-zero X/Y promotes an element to AbsoluteUI, which the flex
+//       algorithm skips, leaving every control pinned at x=0 (the collapse).
+//     - Replaced the manual LayoutToolbarRow() positioning with AddStretchSpacer
+//       to push the right-hand button group flush right. Removed the now-unused
+//       LayoutToolbarRow()/ToolbarItem helper.
 //   v1.0.1 (2026-05-02):
 //     - Made the demo layout fully responsive to parent window resize.
 //       Introduced a private ResponsiveGourceDemoContainer subclass that
@@ -67,61 +76,6 @@ public:
         return handled;
     }
 };
-
-// ============================================================================
-// PRIVATE: Toolbar row layout helper
-// ============================================================================
-// Distributes left-aligned and right-aligned control groups across a row of
-// totalWidth pixels. Each control is described by its UI element pointer plus
-// the width to assign to it; an internal gap of innerGap pixels is inserted
-// between adjacent controls in the same group, and the spacer between the two
-// groups absorbs any leftover horizontal space.
-//
-// All controls keep their original Y and Height; only X and Width are touched.
-// If totalWidth is smaller than the minimum required to show every control,
-// the right group is pushed past the right edge — scroll fallback.
-struct ToolbarItem {
-    std::shared_ptr<UltraCanvasUIElement> element;
-    int width;
-};
-
-void LayoutToolbarRow(const std::vector<ToolbarItem>& leftGroup,
-                      const std::vector<ToolbarItem>& rightGroup,
-                      int totalWidth,
-                      int leftPadding = 8,
-                      int rightPadding = 8,
-                      int innerGap = 8) {
-    // Layout left group from leftPadding rightwards.
-    int x = leftPadding;
-    for (size_t i = 0; i < leftGroup.size(); ++i) {
-        const auto& it = leftGroup[i];
-        if (it.element) {
-            it.element->SetWidth(it.width);
-            it.element->SetPosition(x, it.element->GetY());
-        }
-        x += it.width;
-        if (i + 1 < leftGroup.size()) x += innerGap;
-    }
-
-    // Compute right group total width.
-    int rightTotal = 0;
-    for (size_t i = 0; i < rightGroup.size(); ++i) {
-        rightTotal += rightGroup[i].width;
-        if (i + 1 < rightGroup.size()) rightTotal += innerGap;
-    }
-
-    // Layout right group ending at (totalWidth - rightPadding).
-    int xRight = totalWidth - rightPadding - rightTotal;
-    for (size_t i = 0; i < rightGroup.size(); ++i) {
-        const auto& it = rightGroup[i];
-        if (it.element) {
-            it.element->SetWidth(it.width);
-            it.element->SetPosition(xRight, it.element->GetY());
-        }
-        xRight += it.width;
-        if (i + 1 < rightGroup.size()) xRight += innerGap;
-    }
-}
 
 constexpr int kMinWidth = 940;
 constexpr int kDefaultWidth = 1030;
@@ -399,16 +353,17 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
         "ProjectControls", 10, 40, kDefaultWidth - 50, 45
     );
     projectControls->SetBackgroundColor(Color(248, 248, 252));
+    projectControls->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
     auto themeLabel = std::make_shared<UltraCanvasLabel>(
-        "ThemeLabel", 0, 12, 50, 20
+        "ThemeLabel", 0, 0, 50, 20
     );
     themeLabel->SetText("Theme:");
     themeLabel->SetFontSize(11);
     projectControls->AddChild(themeLabel);
 
     auto themeDropdown = std::make_shared<UltraCanvasDropdown>(
-        "ThemeDropdown", 0, 8, 110, 28
+        "ThemeDropdown", 0, 0, 110, 28
     );
     themeDropdown->AddItem("Dark");
     themeDropdown->AddItem("Light");
@@ -418,14 +373,14 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     projectControls->AddChild(themeDropdown);
 
     auto layoutLabel = std::make_shared<UltraCanvasLabel>(
-        "LayoutLabel", 0, 12, 50, 20
+        "LayoutLabel", 0, 0, 50, 20
     );
     layoutLabel->SetText("Layout:");
     layoutLabel->SetFontSize(11);
     projectControls->AddChild(layoutLabel);
 
     auto layoutDropdown = std::make_shared<UltraCanvasDropdown>(
-        "LayoutDropdown", 0, 8, 110, 28
+        "LayoutDropdown", 0, 0, 110, 28
     );
     layoutDropdown->AddItem("Static");
     layoutDropdown->AddItem("Animated");
@@ -434,21 +389,21 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     projectControls->AddChild(layoutDropdown);
 
     auto fileSizeCheck = std::make_shared<UltraCanvasCheckbox>(
-        "FileSizeCheck", 0, 12, 130, 20
+        "FileSizeCheck", 0, 0, 130, 20
     );
     fileSizeCheck->SetText("Show File Size");
     fileSizeCheck->SetChecked(true);
     //projectControls->AddChild(fileSizeCheck);
 
     auto highlightLabel = std::make_shared<UltraCanvasLabel>(
-        "HighlightLabel", 0, 12, 65, 20
+        "HighlightLabel", 0, 0, 65, 20
     );
     highlightLabel->SetText("Highlight:");
     highlightLabel->SetFontSize(11);
     projectControls->AddChild(highlightLabel);
 
     auto highlightDropdown = std::make_shared<UltraCanvasDropdown>(
-        "HighlightDropdown", 0, 8, 150, 28
+        "HighlightDropdown", 0, 0, 150, 28
     );
     highlightDropdown->AddItem("None");
     highlightDropdown->AddItem("Last Access");
@@ -458,32 +413,35 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     highlightDropdown->SetSelectedIndex(0);
     projectControls->AddChild(highlightDropdown);
 
+    // Stretch spacer pushes the zoom / Fit / Expand / Collapse group flush right.
+    projectControls->AddStretchSpacer(1.0f);
+
     auto zoomInBtn = std::make_shared<UltraCanvasButton>(
-        "ZoomInBtn", 0, 8, 36, 28
+        "ZoomInBtn", 0, 0, 36, 28
     );
     zoomInBtn->SetText("+");
     projectControls->AddChild(zoomInBtn);
 
     auto zoomOutBtn = std::make_shared<UltraCanvasButton>(
-        "ZoomOutBtn", 0, 8, 36, 28
+        "ZoomOutBtn", 0, 0, 36, 28
     );
     zoomOutBtn->SetText("-");
     projectControls->AddChild(zoomOutBtn);
 
     auto zoomFitBtn = std::make_shared<UltraCanvasButton>(
-        "ZoomFitBtn", 0, 8, 50, 28
+        "ZoomFitBtn", 0, 0, 50, 28
     );
     zoomFitBtn->SetText("Fit");
     projectControls->AddChild(zoomFitBtn);
 
     auto expandAllBtn = std::make_shared<UltraCanvasButton>(
-        "ExpandAllBtn", 0, 8, 80, 28
+        "ExpandAllBtn", 0, 0, 80, 28
     );
     expandAllBtn->SetText("Expand");
     projectControls->AddChild(expandAllBtn);
 
     auto collapseAllBtn = std::make_shared<UltraCanvasButton>(
-        "CollapseAllBtn", 0, 8, 90, 28
+        "CollapseAllBtn", 0, 0, 90, 28
     );
     collapseAllBtn->SetText("Collapse");
     projectControls->AddChild(collapseAllBtn);
@@ -499,6 +457,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     projectTree->SetLayoutMode(GourceLayoutMode::Hybrid);
     projectTree->SetShowFileSizeArea(true);
     projectTree->PerformLayout();
+    projectTree->ZoomToFit();
 
     projectTree->onNodeClick = [statusLabel](const std::string& nodeId) {
         statusLabel->SetText("Selected: " + nodeId);
@@ -567,16 +526,17 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
         "DepthControls", 10, 40, kDefaultWidth - 50, 45
     );
     depthControls->SetBackgroundColor(Color(248, 248, 252));
+    depthControls->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
     auto depthLabel = std::make_shared<UltraCanvasLabel>(
-        "DepthLabel", 0, 12, 80, 20
+        "DepthLabel", 0, 0, 80, 20
     );
     depthLabel->SetText("Max Depth:");
     depthLabel->SetFontSize(11);
     depthControls->AddChild(depthLabel);
 
     auto depthSlider = std::make_shared<UltraCanvasSlider>(
-        "DepthSlider", 0, 10, 150, 25
+        "DepthSlider", 0, 0, 150, 25
     );
     depthSlider->SetRange(1, 10);
     depthSlider->SetValue(5);
@@ -584,39 +544,42 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     depthControls->AddChild(depthSlider);
 
     auto depthValueLabel = std::make_shared<UltraCanvasLabel>(
-        "DepthValue", 0, 12, 30, 20
+        "DepthValue", 0, 0, 30, 20
     );
     depthValueLabel->SetText("5");
     depthValueLabel->SetFontSize(11);
     depthControls->AddChild(depthValueLabel);
 
     auto unlimitedCheck = std::make_shared<UltraCanvasCheckbox>(
-        "UnlimitedCheck", 0, 12, 100, 20
+        "UnlimitedCheck", 0, 0, 100, 20
     );
     unlimitedCheck->SetText("Unlimited");
     unlimitedCheck->SetChecked(false);
     depthControls->AddChild(unlimitedCheck);
 
+    // Stretch spacer pushes the highlight / Reset / Export group flush right.
+    depthControls->AddStretchSpacer(1.0f);
+
     auto showOldBtn = std::make_shared<UltraCanvasButton>(
-        "ShowOldBtn", 0, 8, 150, 28
+        "ShowOldBtn", 0, 0, 170, 28
     );
     showOldBtn->SetText("Highlight Old Files");
     depthControls->AddChild(showOldBtn);
 
     auto showRecentBtn = std::make_shared<UltraCanvasButton>(
-        "ShowRecentBtn", 0, 8, 145, 28
+        "ShowRecentBtn", 0, 0, 165, 28
     );
     showRecentBtn->SetText("Highlight Recent");
     depthControls->AddChild(showRecentBtn);
 
     auto resetStorageBtn = std::make_shared<UltraCanvasButton>(
-        "ResetStorageBtn", 0, 8, 80, 28
+        "ResetStorageBtn", 0, 0, 80, 28
     );
     resetStorageBtn->SetText("Reset");
     depthControls->AddChild(resetStorageBtn);
 
     auto exportBtn = std::make_shared<UltraCanvasButton>(
-        "ExportBtn", 0, 8, 105, 28
+        "ExportBtn", 0, 0, 110, 28
     );
     exportBtn->SetText("Export SVG");
     depthControls->AddChild(exportBtn);
@@ -681,288 +644,288 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
 
     storageContainer->AddChild(storageTree);
 
-    // ========================================
-    // TAB 3: PERFORMANCE TEST
-    // ========================================
-    auto perfContainer = std::make_shared<UltraCanvasContainer>(
-        "PerfTab", 0, 0, kDefaultWidth - 30, 640
-    );
-
-    auto perfDesc = std::make_shared<UltraCanvasLabel>(
-        "PerfDesc", 10, 10, kDefaultWidth - 50, 25
-    );
-    perfDesc->SetText("Performance Test: Render large file system trees with thousands of nodes");
-    perfDesc->SetFontSize(11);
-    perfContainer->AddChild(perfDesc);
-
-    auto perfControls = std::make_shared<UltraCanvasContainer>(
-        "PerfControls", 10, 40, kDefaultWidth - 50, 45
-    );
-    perfControls->SetBackgroundColor(Color(248, 248, 252));
-
-    auto sizeBtn500 = std::make_shared<UltraCanvasButton>(
-        "Size500Btn", 0, 8, 130, 28
-    );
-    sizeBtn500->SetText("~500 nodes");
-    perfControls->AddChild(sizeBtn500);
-
-    auto sizeBtn2k = std::make_shared<UltraCanvasButton>(
-        "Size2kBtn", 0, 8, 100, 28
-    );
-    sizeBtn2k->SetText("~2000 nodes");
-    perfControls->AddChild(sizeBtn2k);
-
-    auto sizeBtn5k = std::make_shared<UltraCanvasButton>(
-        "Size5kBtn", 0, 8, 100, 28
-    );
-    sizeBtn5k->SetText("~5000 nodes");
-    perfControls->AddChild(sizeBtn5k);
-
-    auto staticModeBtn = std::make_shared<UltraCanvasButton>(
-        "StaticModeBtn", 0, 8, 90, 28
-    );
-    staticModeBtn->SetText("Static");
-    perfControls->AddChild(staticModeBtn);
-
-    auto animatedModeBtn = std::make_shared<UltraCanvasButton>(
-        "AnimatedModeBtn", 0, 8, 130, 28
-    );
-    animatedModeBtn->SetText("Animated");
-    perfControls->AddChild(animatedModeBtn);
-
-    auto nodeCountLabel = std::make_shared<UltraCanvasLabel>(
-        "NodeCount", 0, 12, 200, 20
-    );
-    nodeCountLabel->SetText("Click a button to generate");
-    nodeCountLabel->SetFontSize(11);
-    perfControls->AddChild(nodeCountLabel);
-
-    perfContainer->AddChild(perfControls);
-
-    auto perfTree = std::make_shared<UltraCanvasGourceTree>(
-        "PerfTree", 10, 90, kDefaultWidth - 50, 540
-    );
-
-    perfTree->SetRootNode("root", "EmptyProject", "/empty");
-    perfTree->SetLayoutMode(GourceLayoutMode::Hybrid);
-    perfTree->PerformLayout();
-
-    auto perfTreePtr = perfTree.get();
-    auto perfHandler = [perfTreePtr, statusLabel, nodeCountLabel](int depth, int filesPerDir) {
-        perfTreePtr->ClearAll();
-
-        auto startTime = std::chrono::high_resolution_clock::now();
-        GenerateLargeFileSystem(perfTreePtr, depth, filesPerDir);
-        perfTreePtr->PerformLayout();
-        auto endTime = std::chrono::high_resolution_clock::now();
-
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
-
-        std::stringstream ss;
-        ss << "Generated and laid out in " << duration << "ms";
-        statusLabel->SetText(ss.str());
-
-        nodeCountLabel->SetText("Layout time: " + std::to_string(duration) + "ms");
-    };
-
-    sizeBtn500->onClick = [perfHandler]() { perfHandler(3, 10); };
-    sizeBtn2k->onClick   = [perfHandler]() { perfHandler(4, 12); };
-    sizeBtn5k->onClick   = [perfHandler]() { perfHandler(5, 15); };
-
-    staticModeBtn->onClick = [perfTree, statusLabel]() {
-        perfTree->SetLayoutMode(GourceLayoutMode::Static);
-        perfTree->PerformLayout();
-        statusLabel->SetText("Switched to Static layout mode");
-    };
-    animatedModeBtn->onClick = [perfTree, statusLabel]() {
-        perfTree->SetLayoutMode(GourceLayoutMode::Animated);
-        perfTree->PerformLayout();
-        statusLabel->SetText("Switched to Animated layout mode");
-    };
-
-    perfContainer->AddChild(perfTree);
-
-    // ========================================
-    // TAB 4: CUSTOM BUILDER
-    // ========================================
-    auto customContainer = std::make_shared<UltraCanvasContainer>(
-        "CustomTab", 0, 0, kDefaultWidth - 30, 640
-    );
-
-    auto customDesc = std::make_shared<UltraCanvasLabel>(
-        "CustomDesc", 10, 10, kDefaultWidth - 50, 25
-    );
-    customDesc->SetText("Custom Builder: Create your own file tree by adding nodes manually");
-    customDesc->SetFontSize(11);
-    customContainer->AddChild(customDesc);
-
-    auto customControls = std::make_shared<UltraCanvasContainer>(
-        "CustomControls", 10, 40, kDefaultWidth - 50, 80
-    );
-    customControls->SetBackgroundColor(Color(248, 248, 252));
-
-    // ----- ROW 1 (y=8..36, labels y=12) -----
-    auto parentLabel = std::make_shared<UltraCanvasLabel>(
-        "ParentLabel", 0, 12, 50, 20
-    );
-    parentLabel->SetText("Parent:");
-    parentLabel->SetFontSize(11);
-    customControls->AddChild(parentLabel);
-
-    auto parentInput = std::make_shared<UltraCanvasTextInput>(
-        "ParentInput", 0, 8, 110, 28
-    );
-    parentInput->SetText("root");
-    customControls->AddChild(parentInput);
-
-    auto nameLabel = std::make_shared<UltraCanvasLabel>(
-        "NameLabel", 0, 12, 50, 20
-    );
-    nameLabel->SetText("Name:");
-    nameLabel->SetFontSize(11);
-    customControls->AddChild(nameLabel);
-
-    auto nameInput = std::make_shared<UltraCanvasTextInput>(
-        "NameInput", 0, 8, 140, 28
-    );
-    customControls->AddChild(nameInput);
-
-    auto typeLabel = std::make_shared<UltraCanvasLabel>(
-        "TypeLabel", 0, 12, 40, 20
-    );
-    typeLabel->SetText("Type:");
-    typeLabel->SetFontSize(11);
-    customControls->AddChild(typeLabel);
-
-    auto typeDropdown = std::make_shared<UltraCanvasDropdown>(
-        "TypeDropdown", 0, 8, 90, 28
-    );
-    typeDropdown->AddItem("File");
-    typeDropdown->AddItem("Folder");
-    typeDropdown->SetSelectedIndex(0);
-    customControls->AddChild(typeDropdown);
-
-    auto sizeLabel = std::make_shared<UltraCanvasLabel>(
-        "SizeLabel", 0, 12, 65, 20
-    );
-    sizeLabel->SetText("Size (KB):");
-    sizeLabel->SetFontSize(11);
-    customControls->AddChild(sizeLabel);
-
-    auto sizeInput = std::make_shared<UltraCanvasTextInput>(
-        "SizeInput", 0, 8, 70, 28
-    );
-    sizeInput->SetText("10");
-    customControls->AddChild(sizeInput);
-
-    auto addNodeBtn = std::make_shared<UltraCanvasButton>(
-        "AddNodeBtn", 0, 8, 70, 28
-    );
-    addNodeBtn->SetText("Add");
-    customControls->AddChild(addNodeBtn);
-
-    auto clearBtn = std::make_shared<UltraCanvasButton>(
-        "ClearBtn", 0, 8, 70, 28
-    );
-    clearBtn->SetText("Clear");
-    customControls->AddChild(clearBtn);
-
-    // ----- ROW 2 (y=46..72, labels y=50) -----
-    auto presetLabel = std::make_shared<UltraCanvasLabel>(
-        "PresetLabel", 0, 50, 60, 20
-    );
-    presetLabel->SetText("Presets:");
-    presetLabel->SetFontSize(11);
-    customControls->AddChild(presetLabel);
-
-    auto presetProjectBtn = std::make_shared<UltraCanvasButton>(
-        "PresetProjectBtn", 0, 46, 90, 26
-    );
-    presetProjectBtn->SetText("Project");
-    customControls->AddChild(presetProjectBtn);
-
-    auto presetStorageBtn = std::make_shared<UltraCanvasButton>(
-        "PresetStorageBtn", 0, 46, 90, 26
-    );
-    presetStorageBtn->SetText("Storage");
-    customControls->AddChild(presetStorageBtn);
-
-    customContainer->AddChild(customControls);
-
-    auto customTree = std::make_shared<UltraCanvasGourceTree>(
-        "CustomTree", 10, 125, kDefaultWidth - 50, 505
-    );
-
-    customTree->SetRootNode("root", "CustomRoot", "/custom");
-    customTree->SetLayoutMode(GourceLayoutMode::Hybrid);
-    customTree->SetShowFileSizeArea(true);
-    customTree->PerformLayout();
-
-    customTree->onNodeClick = [statusLabel, parentInput](const std::string& nodeId) {
-        statusLabel->SetText("Selected: " + nodeId);
-        parentInput->SetText(nodeId);
-    };
-
-    addNodeBtn->onClick = [customTree, parentInput, nameInput, typeDropdown, sizeInput, statusLabel]() {
-        std::string parent = parentInput->GetText();
-        std::string name = nameInput->GetText();
-        bool isFolder = (typeDropdown->GetSelectedIndex() == 1);
-
-        if (name.empty()) {
-            statusLabel->SetText("Please enter a name!");
-            return;
-        }
-
-        std::string nodeId = parent + "/" + name;
-
-        if (isFolder) {
-            customTree->AddDirectory(parent, nodeId, name);
-            statusLabel->SetText("Added folder: " + name);
-        } else {
-            GourceFileInfo info;
-            try {
-                info.fileSize = std::stoi(sizeInput->GetText()) * 1024;
-            } catch (...) {
-                info.fileSize = 10240;
-            }
-            info.creationTime = time(nullptr);
-            info.lastAccessTime = time(nullptr);
-            customTree->AddFile(parent, nodeId, name, info);
-            statusLabel->SetText("Added file: " + name);
-        }
-
-        customTree->PerformLayout();
-        nameInput->SetText("");
-    };
-
-    clearBtn->onClick = [customTree, statusLabel]() {
-        customTree->ClearAll();
-        customTree->SetRootNode("root", "CustomRoot", "/custom");
-        customTree->PerformLayout();
-        statusLabel->SetText("Tree cleared");
-    };
-
-    presetProjectBtn->onClick = [customTree, statusLabel]() {
-        customTree->ClearAll();
-        GenerateSampleFileSystem(customTree.get());
-        customTree->PerformLayout();
-        statusLabel->SetText("Loaded Project preset");
-    };
-
-    presetStorageBtn->onClick = [customTree, statusLabel]() {
-        customTree->ClearAll();
-        GenerateStorageDeviceData(customTree.get());
-        customTree->PerformLayout();
-        statusLabel->SetText("Loaded Storage preset");
-    };
-
-    customContainer->AddChild(customTree);
+//    // ========================================
+//    // TAB 3: PERFORMANCE TEST
+//    // ========================================
+//    auto perfContainer = std::make_shared<UltraCanvasContainer>(
+//        "PerfTab", 0, 0, kDefaultWidth - 30, 640
+//    );
+//
+//    auto perfDesc = std::make_shared<UltraCanvasLabel>(
+//        "PerfDesc", 10, 10, kDefaultWidth - 50, 25
+//    );
+//    perfDesc->SetText("Performance Test: Render large file system trees with thousands of nodes");
+//    perfDesc->SetFontSize(11);
+//    perfContainer->AddChild(perfDesc);
+//
+//    auto perfControls = std::make_shared<UltraCanvasContainer>(
+//        "PerfControls", 10, 40, kDefaultWidth - 50, 45
+//    );
+//    perfControls->SetBackgroundColor(Color(248, 248, 252));
+//
+//    auto sizeBtn500 = std::make_shared<UltraCanvasButton>(
+//        "Size500Btn", 0, 8, 130, 28
+//    );
+//    sizeBtn500->SetText("~500 nodes");
+//    perfControls->AddChild(sizeBtn500);
+//
+//    auto sizeBtn2k = std::make_shared<UltraCanvasButton>(
+//        "Size2kBtn", 0, 8, 100, 28
+//    );
+//    sizeBtn2k->SetText("~2000 nodes");
+//    perfControls->AddChild(sizeBtn2k);
+//
+//    auto sizeBtn5k = std::make_shared<UltraCanvasButton>(
+//        "Size5kBtn", 0, 8, 100, 28
+//    );
+//    sizeBtn5k->SetText("~5000 nodes");
+//    perfControls->AddChild(sizeBtn5k);
+//
+//    auto staticModeBtn = std::make_shared<UltraCanvasButton>(
+//        "StaticModeBtn", 0, 8, 90, 28
+//    );
+//    staticModeBtn->SetText("Static");
+//    perfControls->AddChild(staticModeBtn);
+//
+//    auto animatedModeBtn = std::make_shared<UltraCanvasButton>(
+//        "AnimatedModeBtn", 0, 8, 130, 28
+//    );
+//    animatedModeBtn->SetText("Animated");
+//    perfControls->AddChild(animatedModeBtn);
+//
+//    auto nodeCountLabel = std::make_shared<UltraCanvasLabel>(
+//        "NodeCount", 0, 12, 200, 20
+//    );
+//    nodeCountLabel->SetText("Click a button to generate");
+//    nodeCountLabel->SetFontSize(11);
+//    perfControls->AddChild(nodeCountLabel);
+//
+//    perfContainer->AddChild(perfControls);
+//
+//    auto perfTree = std::make_shared<UltraCanvasGourceTree>(
+//        "PerfTree", 10, 90, kDefaultWidth - 50, 540
+//    );
+//
+//    perfTree->SetRootNode("root", "EmptyProject", "/empty");
+//    perfTree->SetLayoutMode(GourceLayoutMode::Hybrid);
+//    perfTree->PerformLayout();
+//
+//    auto perfTreePtr = perfTree.get();
+//    auto perfHandler = [perfTreePtr, statusLabel, nodeCountLabel](int depth, int filesPerDir) {
+//        perfTreePtr->ClearAll();
+//
+//        auto startTime = std::chrono::high_resolution_clock::now();
+//        GenerateLargeFileSystem(perfTreePtr, depth, filesPerDir);
+//        perfTreePtr->PerformLayout();
+//        auto endTime = std::chrono::high_resolution_clock::now();
+//
+//        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
+//
+//        std::stringstream ss;
+//        ss << "Generated and laid out in " << duration << "ms";
+//        statusLabel->SetText(ss.str());
+//
+//        nodeCountLabel->SetText("Layout time: " + std::to_string(duration) + "ms");
+//    };
+//
+//    sizeBtn500->onClick = [perfHandler]() { perfHandler(3, 10); };
+//    sizeBtn2k->onClick   = [perfHandler]() { perfHandler(4, 12); };
+//    sizeBtn5k->onClick   = [perfHandler]() { perfHandler(5, 15); };
+//
+//    staticModeBtn->onClick = [perfTree, statusLabel]() {
+//        perfTree->SetLayoutMode(GourceLayoutMode::Static);
+//        perfTree->PerformLayout();
+//        statusLabel->SetText("Switched to Static layout mode");
+//    };
+//    animatedModeBtn->onClick = [perfTree, statusLabel]() {
+//        perfTree->SetLayoutMode(GourceLayoutMode::Animated);
+//        perfTree->PerformLayout();
+//        statusLabel->SetText("Switched to Animated layout mode");
+//    };
+//
+//    perfContainer->AddChild(perfTree);
+//
+//    // ========================================
+//    // TAB 4: CUSTOM BUILDER
+//    // ========================================
+//    auto customContainer = std::make_shared<UltraCanvasContainer>(
+//        "CustomTab", 0, 0, kDefaultWidth - 30, 640
+//    );
+//
+//    auto customDesc = std::make_shared<UltraCanvasLabel>(
+//        "CustomDesc", 10, 10, kDefaultWidth - 50, 25
+//    );
+//    customDesc->SetText("Custom Builder: Create your own file tree by adding nodes manually");
+//    customDesc->SetFontSize(11);
+//    customContainer->AddChild(customDesc);
+//
+//    auto customControls = std::make_shared<UltraCanvasContainer>(
+//        "CustomControls", 10, 40, kDefaultWidth - 50, 80
+//    );
+//    customControls->SetBackgroundColor(Color(248, 248, 252));
+//
+//    // ----- ROW 1 (y=8..36, labels y=12) -----
+//    auto parentLabel = std::make_shared<UltraCanvasLabel>(
+//        "ParentLabel", 0, 12, 50, 20
+//    );
+//    parentLabel->SetText("Parent:");
+//    parentLabel->SetFontSize(11);
+//    customControls->AddChild(parentLabel);
+//
+//    auto parentInput = std::make_shared<UltraCanvasTextInput>(
+//        "ParentInput", 0, 8, 110, 28
+//    );
+//    parentInput->SetText("root");
+//    customControls->AddChild(parentInput);
+//
+//    auto nameLabel = std::make_shared<UltraCanvasLabel>(
+//        "NameLabel", 0, 12, 50, 20
+//    );
+//    nameLabel->SetText("Name:");
+//    nameLabel->SetFontSize(11);
+//    customControls->AddChild(nameLabel);
+//
+//    auto nameInput = std::make_shared<UltraCanvasTextInput>(
+//        "NameInput", 0, 8, 140, 28
+//    );
+//    customControls->AddChild(nameInput);
+//
+//    auto typeLabel = std::make_shared<UltraCanvasLabel>(
+//        "TypeLabel", 0, 12, 40, 20
+//    );
+//    typeLabel->SetText("Type:");
+//    typeLabel->SetFontSize(11);
+//    customControls->AddChild(typeLabel);
+//
+//    auto typeDropdown = std::make_shared<UltraCanvasDropdown>(
+//        "TypeDropdown", 0, 8, 90, 28
+//    );
+//    typeDropdown->AddItem("File");
+//    typeDropdown->AddItem("Folder");
+//    typeDropdown->SetSelectedIndex(0);
+//    customControls->AddChild(typeDropdown);
+//
+//    auto sizeLabel = std::make_shared<UltraCanvasLabel>(
+//        "SizeLabel", 0, 12, 65, 20
+//    );
+//    sizeLabel->SetText("Size (KB):");
+//    sizeLabel->SetFontSize(11);
+//    customControls->AddChild(sizeLabel);
+//
+//    auto sizeInput = std::make_shared<UltraCanvasTextInput>(
+//        "SizeInput", 0, 8, 70, 28
+//    );
+//    sizeInput->SetText("10");
+//    customControls->AddChild(sizeInput);
+//
+//    auto addNodeBtn = std::make_shared<UltraCanvasButton>(
+//        "AddNodeBtn", 0, 8, 70, 28
+//    );
+//    addNodeBtn->SetText("Add");
+//    customControls->AddChild(addNodeBtn);
+//
+//    auto clearBtn = std::make_shared<UltraCanvasButton>(
+//        "ClearBtn", 0, 8, 70, 28
+//    );
+//    clearBtn->SetText("Clear");
+//    customControls->AddChild(clearBtn);
+//
+//    // ----- ROW 2 (y=46..72, labels y=50) -----
+//    auto presetLabel = std::make_shared<UltraCanvasLabel>(
+//        "PresetLabel", 0, 50, 60, 20
+//    );
+//    presetLabel->SetText("Presets:");
+//    presetLabel->SetFontSize(11);
+//    customControls->AddChild(presetLabel);
+//
+//    auto presetProjectBtn = std::make_shared<UltraCanvasButton>(
+//        "PresetProjectBtn", 0, 46, 90, 26
+//    );
+//    presetProjectBtn->SetText("Project");
+//    customControls->AddChild(presetProjectBtn);
+//
+//    auto presetStorageBtn = std::make_shared<UltraCanvasButton>(
+//        "PresetStorageBtn", 0, 46, 90, 26
+//    );
+//    presetStorageBtn->SetText("Storage");
+//    customControls->AddChild(presetStorageBtn);
+//
+//    customContainer->AddChild(customControls);
+//
+//    auto customTree = std::make_shared<UltraCanvasGourceTree>(
+//        "CustomTree", 10, 125, kDefaultWidth - 50, 505
+//    );
+//
+//    customTree->SetRootNode("root", "CustomRoot", "/custom");
+//    customTree->SetLayoutMode(GourceLayoutMode::Hybrid);
+//    customTree->SetShowFileSizeArea(true);
+//    customTree->PerformLayout();
+//
+//    customTree->onNodeClick = [statusLabel, parentInput](const std::string& nodeId) {
+//        statusLabel->SetText("Selected: " + nodeId);
+//        parentInput->SetText(nodeId);
+//    };
+//
+//    addNodeBtn->onClick = [customTree, parentInput, nameInput, typeDropdown, sizeInput, statusLabel]() {
+//        std::string parent = parentInput->GetText();
+//        std::string name = nameInput->GetText();
+//        bool isFolder = (typeDropdown->GetSelectedIndex() == 1);
+//
+//        if (name.empty()) {
+//            statusLabel->SetText("Please enter a name!");
+//            return;
+//        }
+//
+//        std::string nodeId = parent + "/" + name;
+//
+//        if (isFolder) {
+//            customTree->AddDirectory(parent, nodeId, name);
+//            statusLabel->SetText("Added folder: " + name);
+//        } else {
+//            GourceFileInfo info;
+//            try {
+//                info.fileSize = std::stoi(sizeInput->GetText()) * 1024;
+//            } catch (...) {
+//                info.fileSize = 10240;
+//            }
+//            info.creationTime = time(nullptr);
+//            info.lastAccessTime = time(nullptr);
+//            customTree->AddFile(parent, nodeId, name, info);
+//            statusLabel->SetText("Added file: " + name);
+//        }
+//
+//        customTree->PerformLayout();
+//        nameInput->SetText("");
+//    };
+//
+//    clearBtn->onClick = [customTree, statusLabel]() {
+//        customTree->ClearAll();
+//        customTree->SetRootNode("root", "CustomRoot", "/custom");
+//        customTree->PerformLayout();
+//        statusLabel->SetText("Tree cleared");
+//    };
+//
+//    presetProjectBtn->onClick = [customTree, statusLabel]() {
+//        customTree->ClearAll();
+//        GenerateSampleFileSystem(customTree.get());
+//        customTree->PerformLayout();
+//        statusLabel->SetText("Loaded Project preset");
+//    };
+//
+//    presetStorageBtn->onClick = [customTree, statusLabel]() {
+//        customTree->ClearAll();
+//        GenerateStorageDeviceData(customTree.get());
+//        customTree->PerformLayout();
+//        statusLabel->SetText("Loaded Storage preset");
+//    };
+//
+//    customContainer->AddChild(customTree);
 
     // ===== ADD TABS =====
     tabbedContainer->AddTab("Project", projectContainer);
     tabbedContainer->AddTab("Storage", storageContainer);
-    tabbedContainer->AddTab("Performance", perfContainer);
-    tabbedContainer->AddTab("Custom", customContainer);
+//    tabbedContainer->AddTab("Performance", perfContainer);
+//    tabbedContainer->AddTab("Custom", customContainer);
 
     // ========================================
     // RESPONSIVE RELAYOUT
@@ -996,90 +959,20 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
         depthControls->SetSize(barW, 45);
         storageTree->SetSize(barW, 540);
 
-        perfContainer->SetSize(tabW, 640);
-        perfDesc->SetWidth(barW);
-        perfControls->SetSize(barW, 45);
-        perfTree->SetSize(barW, 540);
+//        perfContainer->SetSize(tabW, 640);
+//        perfDesc->SetWidth(barW);
+//        perfControls->SetSize(barW, 45);
+//        perfTree->SetSize(barW, 540);
+//
+//        customContainer->SetSize(tabW, 640);
+//        customDesc->SetWidth(barW);
+//        customControls->SetSize(barW, 80);
+//        customTree->SetSize(barW, 505);
 
-        customContainer->SetSize(tabW, 640);
-        customDesc->SetWidth(barW);
-        customControls->SetSize(barW, 80);
-        customTree->SetSize(barW, 505);
-
-        // --- Project toolbar ---
-        // Left group: Theme, Layout, Show File Size, Highlight
-        // Right group: + - Fit Expand Collapse
-        std::vector<ToolbarItem> projLeft = {
-            {themeLabel,        60},
-            {themeDropdown,    110},
-            {layoutLabel,       60},
-            {layoutDropdown,   110},
-//            {fileSizeCheck,    130},
-            {highlightLabel,    70},
-            {highlightDropdown,140},
-        };
-        std::vector<ToolbarItem> projRight = {
-            {zoomInBtn,         36},
-            {zoomOutBtn,        36},
-            {zoomFitBtn,        50},
-            {expandAllBtn,      80},
-            {collapseAllBtn,    90},
-        };
-        LayoutToolbarRow(projLeft, projRight, barW);
-
-        // --- Storage toolbar ---
-        std::vector<ToolbarItem> storLeft = {
-            {depthLabel,        80},
-            {depthSlider,      150},
-            {depthValueLabel,   30},
-            {unlimitedCheck,   100},
-        };
-        std::vector<ToolbarItem> storRight = {
-            {showOldBtn,       170},
-            {showRecentBtn,    165},
-            {resetStorageBtn,   80},
-            {exportBtn,        110},
-        };
-        LayoutToolbarRow(storLeft, storRight, barW);
-
-        // --- Performance toolbar ---
-        std::vector<ToolbarItem> perfLeft = {
-            {sizeBtn500,       120},
-            {sizeBtn2k,        140},
-            {sizeBtn5k,        140},
-            {staticModeBtn,     90},
-            {animatedModeBtn,  120},
-        };
-        std::vector<ToolbarItem> perfRight = {
-            {nodeCountLabel,   220},
-        };
-        LayoutToolbarRow(perfLeft, perfRight, barW);
-
-        // --- Custom toolbar ROW 1 ---
-        std::vector<ToolbarItem> custRow1Left = {
-            {parentLabel,       70},
-            {parentInput,      110},
-            {nameLabel,         50},
-            {nameInput,        140},
-            {typeLabel,         40},
-            {typeDropdown,      90},
-            {sizeLabel,         75},
-            {sizeInput,         70},
-        };
-        std::vector<ToolbarItem> custRow1Right = {
-            {addNodeBtn,        70},
-            {clearBtn,          70},
-        };
-        LayoutToolbarRow(custRow1Left, custRow1Right, barW);
-
-        // --- Custom toolbar ROW 2 (presets) — left aligned only ---
-        std::vector<ToolbarItem> custRow2Left = {
-            {presetLabel,       60},
-            {presetProjectBtn,  90},
-            {presetStorageBtn,  90},
-        };
-        std::vector<ToolbarItem> custRow2Right; // empty — no right group
-        LayoutToolbarRow(custRow2Left, custRow2Right, barW);
+        // Toolbar children are laid out automatically by each control
+        // container's flex-row layout (configured at construction). Resizing
+        // the containers above re-runs that flex pass, so the stretch spacer
+        // re-absorbs the slack and the right-hand button group stays flush right.
     };
 
     // Initial layout

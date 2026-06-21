@@ -274,6 +274,9 @@ namespace UltraCanvas {
             DisplayType display = DisplayType::Block;
             LayoutData  data;
 
+            // need for Show/Hide to restore correct display
+            DisplayType prevDisplay = DisplayType::Block;
+
             // ---- Flex configuration (initializes data to FlexLayout on first call) ----
             Layout& SetFlex(FlexDirection d = FlexDirection::Row,
                             FlexWrap w = FlexWrap::NoWrap);
@@ -295,6 +298,9 @@ namespace UltraCanvas {
             Layout& SetGridGap(float gap);
             Layout& SetGridGap(float row, float column);
             Layout& SetGridAutoFlow(GridAutoFlow f);
+            Layout& SetDisplay(DisplayType dt);
+            Layout& Show();
+            Layout& Hide();
         };
 
         struct LayoutItem {
@@ -347,7 +353,7 @@ namespace UltraCanvas {
 
             // sizing
             BoxSize size;
-            std::optional<BoxConstraints> constraints;
+            std::optional<BoxConstraints> boxConstraints;
 
             float aspectRatio = 0.0f;
             // TODO: replaced-element intrinsic size (images/video) — supply via subclass.
@@ -366,9 +372,9 @@ namespace UltraCanvas {
 
             // True once Arrange() has run and finalBounds (plus any subclass
             // post-layout setup performed in Arranged()) reflect the current
-            // tree. Cleared by InvalidateLayout / InvalidateSubtree and by the
-            // UI layer's RequestUpdateGeometry. The window render loop uses
-            // IsLayoutValid() to decide whether a geometry pass is needed.
+            // tree. Cleared by InvalidateLayout / InvalidateSubtree
+            // The window render loop uses IsLayoutValid() to decide whether
+            // a geometry pass is needed.
             bool arrangeValid = false;
 
             // Algorithm-specific cached state (e.g. flex line groupings, grid

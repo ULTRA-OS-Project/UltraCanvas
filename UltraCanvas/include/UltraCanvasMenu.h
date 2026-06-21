@@ -171,7 +171,6 @@ namespace UltraCanvas {
 
         // Submenu
         int submenuDelay = 300;  // milliseconds
-        int submenuOffset = 2;
 
         // Animation
         bool enableAnimations = false;
@@ -407,6 +406,13 @@ namespace UltraCanvas {
         return menu;
     }
 
+    inline std::shared_ptr<UltraCanvasMenu> CreateMenuBar(
+            const std::string& identifier) {
+        auto menu = CreateMenu(identifier, -1, -1, -1, 32);
+        menu->SetMenuType(MenuType::Menubar);
+        return menu;
+    }
+
 // ===== BUILDER PATTERN =====
     class MenuBuilder {
     private:
@@ -498,7 +504,6 @@ namespace UltraCanvas {
         style.iconSize = 16;
         style.iconSpacing = 6;
         style.shortcutSpacing = 20;
-        style.submenuOffset = 2;
         style.separatorHeight = 1;
         style.borderWidth = 1;
         style.borderRadius = 0;

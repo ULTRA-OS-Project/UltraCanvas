@@ -1,5 +1,6 @@
 // core/UltraCanvasTreeView.cpp
 // Hierarchical tree view with icons and text for each row
+// Last Modified: 2026-06-04
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasApplication.h"
 #include <vector>
@@ -7,6 +8,8 @@
 #include <memory>
 #include <functional>
 #include <unordered_map>
+#include <algorithm>
+#include <cctype>
 
 namespace UltraCanvas {
     TreeNode::TreeNode(const TreeNodeData &nodeData, TreeNode *parentNode)
@@ -119,6 +122,33 @@ namespace UltraCanvas {
             }
         }
         return visible;
+    }
+
+    namespace {
+        // Case-insensitive lexicographic less-than (ASCII), matching the
+        // std::tolower idiom used elsewhere in the framework.
+        bool CaseInsensitiveTextLess(const std::string &a, const std::string &b) {
+            return std::lexicographical_compare(
+                    a.begin(), a.end(), b.begin(), b.end(),
+                    [](unsigned char c1, unsigned char c2) {
+                        return std::tolower(c1) < std::tolower(c2);
+                    });
+        }
+    }
+
+    void TreeNode::SortChildNodes(bool recursive, bool ascending) {
+        std::sort(children.begin(), children.end(),
+                  [ascending](const std::unique_ptr<TreeNode> &a,
+                              const std::unique_ptr<TreeNode> &b) {
+                      return ascending
+                             ? CaseInsensitiveTextLess(a->data.text, b->data.text)
+                             : CaseInsensitiveTextLess(b->data.text, a->data.text);
+                  });
+        if (recursive) {
+            for (auto &child: children) {
+                child->SortChildNodes(true, ascending);
+            }
+        }
     }
 
 
@@ -258,7 +288,11 @@ namespace UltraCanvas {
         TreeNode *parent = rootNode->FindDescendant(parentId);
         if (parent) {
             TreeNode *newNode = parent->AddChild(nodeData);
+            if (autoSortChildren) {
+                parent->SortChildNodes(false, autoSortAscending);  // only this parent's row changed
+            }
             UpdateScrollbars();
+            return newNode;
         }
 
         return nullptr;
@@ -286,6 +320,34 @@ namespace UltraCanvas {
 
     TreeNode *UltraCanvasTreeView::FindNode(const std::string &nodeId) {
         return rootNode ? rootNode->FindDescendant(nodeId) : nullptr;
+    }
+
+    void UltraCanvasTreeView::SetAutoSortChildren(bool enable, bool ascending) {
+        autoSortChildren = enable;
+        autoSortAscending = ascending;
+        if (enable && rootNode) {              // sort existing tree immediately
+            rootNode->SortChildNodes(true, ascending);
+            UpdateScrollbars();
+            RequestRedraw();
+        }
+    }
+
+    void UltraCanvasTreeView::SortNodeChildren(const std::string &nodeId, bool recursive, bool ascending) {
+        SortNodeChildren(FindNode(nodeId), recursive, ascending);
+    }
+
+    void UltraCanvasTreeView::SortNodeChildren(TreeNode *node, bool recursive, bool ascending) {
+        if (!node) return;
+        node->SortChildNodes(recursive, ascending);
+        UpdateScrollbars();
+        RequestRedraw();
+    }
+
+    void UltraCanvasTreeView::SortAllNodes(bool ascending) {
+        if (!rootNode) return;
+        rootNode->SortChildNodes(true, ascending);
+        UpdateScrollbars();
+        RequestRedraw();
     }
 
     void UltraCanvasTreeView::SelectNode(TreeNode *node, bool addToSelection) {
@@ -443,9 +505,6 @@ namespace UltraCanvas {
         // finalBounds.height was still 0 and so wrongly marked the scrollbar
         // visible. Computing it here, with valid bounds, keeps row width correct.
         UpdateScrollbars();
-        if (verticalScrollbar && verticalScrollbar->IsVisible()) {
-            verticalScrollbar->UpdateGeometry(GetRenderContext());
-        }
     }
 
     void UltraCanvasTreeView::Render(IRenderContext *ctx, const Rect2Df& dirtyRect) {
@@ -766,7 +825,6 @@ namespace UltraCanvas {
 
     bool UltraCanvasTreeView::HandleMouseUp(const UCEvent &event) {
 //        if (isDragging)  {
-//            UltraCanvasApplication::GetInstance()->ReleaseMouse(this);
 //            isDragging = false;
 //            return true;
 //        }

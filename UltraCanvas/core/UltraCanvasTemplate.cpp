@@ -329,16 +329,14 @@ namespace UltraCanvas {
         RefreshLayout();
     }
 
-    void UltraCanvasTemplate::UpdateGeometry(IRenderContext* ctx) {
+// ===== RENDERING =====
+    void UltraCanvasTemplate::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         if (isDirty) {
             ctx->PushState();
             RebuildTemplate();
             ctx->PopState();
         }
-    }
 
-// ===== RENDERING =====
-    void UltraCanvasTemplate::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         // Draw template background
         DrawTemplateBackground();
 

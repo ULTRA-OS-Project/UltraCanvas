@@ -1,7 +1,7 @@
 // OS/MacOS/UltraCanvasMacOSWindow.h
 // macOS window implementation with Cocoa/Cairo support
-// Version: 2.1.0
-// Last Modified: 2026-05-03
+// Version: 2.1.1
+// Last Modified: 2026-06-03
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -10,8 +10,9 @@
 #define ULTRACANVAS_MACOS_WINDOW_H
 
 // ===== CORE INCLUDES =====
+// NOTE: Do NOT include UltraCanvasWindow.h here - it creates a circular dependency.
+// UltraCanvasWindow.h includes this header after defining UltraCanvasWindowBase.
 #include "../../libspecific/Cairo/RenderContextCairo.h"
-#include "../../include/UltraCanvasWindow.h"
 
 // ===== MACOS PLATFORM INCLUDES =====
 #ifdef __OBJC__

@@ -1,7 +1,11 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
-// Version: 1.0.3
-// Last Modified: 2026-06-01
+// Version: 1.0.4
+// Last Modified: 2026-06-14
+// V1.0.4: mainContainer scrollbars disabled (it is a pure layout wrapper and must
+//   never scroll the header away); displayContainer is now the explicit single
+//   scroll region (flex-grow:1, flex-shrink:1) and inserted examples are clamped
+//   with flex-shrink:1 so they can't overflow the right-side area.
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
@@ -15,6 +19,17 @@
 #include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
+    // Demo-wide scrollbar look: round ("pill") ends and a track 70% of the
+    // framework default thickness (integer-truncated). Applied to the demo's
+    // scroll regions so the app's scrollbars share one slim, rounded style.
+    static ScrollbarStyle DemoScrollbarStyle() {
+        ScrollbarStyle s;                          // default trackSize = 16
+        s.trackSize = (s.trackSize * 70) / 100;    // 70%, truncated → 11
+        s.thumbCornerRadius = s.trackSize / 2;     // fully rounded ends
+        s.trackCornerRadius = s.trackSize / 2;
+        return s;
+    }
+
     DemoLegendContainer::DemoLegendContainer(const std::string& identifier)
 //            : UltraCanvasContainer(identifier, x, y, width, height) {
         : UltraCanvasContainer(identifier) {
@@ -347,6 +362,17 @@ namespace UltraCanvas {
 
         mainContainer = std::make_shared<UltraCanvasContainer>("MainDisplayArea");
         mainContainer->SetBorderLeft(1, Colors::Gray);
+        // mainContainer is a pure layout wrapper (header + display); it must never
+        // scroll itself, or the header would scroll away with the content. Only the
+        // displayContainer below is allowed to scroll. Disable its scrollbars so an
+        // oversized example can never turn the whole right side into a scroll area.
+        {
+            ContainerStyle mcStyle;
+            mcStyle.autoShowScrollbars           = false;
+            mcStyle.forceShowVerticalScrollbar   = false;
+            mcStyle.forceShowHorizontalScrollbar = false;
+            mainContainer->SetContainerStyle(mcStyle);
+        }
 
         // Header sized by its parent row — no explicit w/h.
         headerContainer = std::make_shared<DemoHeaderContainer>("HeaderContainer");
@@ -354,6 +380,13 @@ namespace UltraCanvas {
         // Create display container (below header)
         displayContainer = std::make_shared<UltraCanvasContainer>("DisplayArea");
         displayContainer->SetBackgroundColor(Colors::White);
+        // displayContainer is the demo's main scroll region — give its scrollbars
+        // the shared slim, round-ended demo style.
+        {
+            ContainerStyle dcStyle = displayContainer->GetContainerStyle();
+            dcStyle.scrollbarStyle = DemoScrollbarStyle();
+            displayContainer->SetContainerStyle(dcStyle);
+        }
 
         // Create status label (bottom left)
         statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel");
@@ -388,7 +421,12 @@ namespace UltraCanvas {
         // overflow and scrolls.
         headerContainer->layoutItem.SetFlexShrink(0);
         mainContainer->AddChild(headerContainer);
-        displayContainer->layoutItem.SetFlexGrow(1);
+        // displayContainer is the single scroll region: it grows into the space
+        // the header leaves and shrinks (flex-shrink:1) to the available height so
+        // mainContainer never overflows — its own auto scrollbars then scroll the
+        // example content. Shrink is the default, but make it explicit so a future
+        // edit can't silently drop it and reintroduce the overflow.
+        displayContainer->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
         displayContainer->layout.SetFlexColumn();
         mainContainer->AddChild(displayContainer);
 
@@ -449,7 +487,7 @@ namespace UltraCanvas {
         basicBuilder.AddItem("toolbar", "Toolbar", "Tool and action bars",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateToolbarExamples(); },
-                             "Apps/DemoApp/UltraCanvasToolbarExamples.cpp",
+                             "DemoApp/UltraCanvasToolbarExamples.cpp",
                              "Docs/UltraCanvas/UltraCanvasToolbarExamples.md")
                 .AddVariant("toolbar", "Horizontal Toolbar")
                 .AddVariant("toolbar", "Vertical Toolbar")
@@ -468,7 +506,7 @@ namespace UltraCanvas {
                              "Resizable horizontal/vertical pane splitter (VSCode-style)",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateSplitPaneExamples(); },
-                             "Apps/DemoApp/UltraCanvasSplitPaneExamples.cpp",
+                             "DemoApp/UltraCanvasSplitPaneExamples.cpp",
                              "Docs/UltraCanvas/UltraCanvasSplitPane.md")
                 .AddVariant("splitpane", "Horizontal Split")
                 .AddVariant("splitpane", "Vertical Split")
@@ -478,7 +516,7 @@ namespace UltraCanvas {
                              "Box, Grid, and Flex layout examples",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateLayoutExamples(); },
-                             "Apps/DemoApp/UltraCanvasLayoutExamples.cpp",
+                             "DemoApp/UltraCanvasLayoutExamples.cpp",
                              "Docs/UltraCanvas/UltraCanvasLayoutExamples.md")
                 .AddVariant("layouts", "Vertical Box Layout")
                 .AddVariant("layouts", "Horizontal Box Layout")
@@ -489,7 +527,7 @@ namespace UltraCanvas {
                              "Compact control for selecting between mutually exclusive options",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateSegmentedControlExamples(); },
-                             "Apps/DemoApp/UltraCanvasSegmentedControlExamples.cpp",
+                             "DemoApp/UltraCanvasSegmentedControlExamples.cpp",
                              "Docs/UltraCanvas/UltraCanvasSegmentedControlExamples.md")
                 .AddVariant("segmentedcontrol", "Bordered Style")
                 .AddVariant("segmentedcontrol", "iOS Style")
@@ -497,6 +535,19 @@ namespace UltraCanvas {
                 .AddVariant("segmentedcontrol", "Bar Style")
                 .AddVariant("segmentedcontrol", "Toggle Mode")
                 .AddVariant("segmentedcontrol", "FitContent Width");
+
+        basicBuilder.AddItem("groupbox", "Group Box",
+                             "Titled container that frames a set of child elements",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateGroupBoxExamples(); },
+                             "DemoApp/UltraCanvasGroupBoxExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasGroupBoxExamples.md")
+                .AddVariant("groupbox", "Framed Style")
+                .AddVariant("groupbox", "Header Style")
+                .AddVariant("groupbox", "Flat Style")
+                .AddVariant("groupbox", "Title Alignment")
+                .AddVariant("groupbox", "Checkable Group")
+                .AddVariant("groupbox", "Collapsible Group");
 
         basicBuilder.AddItem("textinput", "Text Input", "Text input fields with validation and formatting",
                              ImplementationStatus::FullyImplemented,
@@ -512,7 +563,7 @@ namespace UltraCanvas {
         basicBuilder.AddItem("autocomplete", "AutoComplete", "Text input with auto-complete suggestions",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateAutoCompleteExamples(); },
-                             "Apps/DemoApp/UltraCanvasAutoCompleteExamples.cpp",
+                             "DemoApp/UltraCanvasAutoCompleteExamples.cpp",
                              "Docs/UltraCanvas/UltraCanvasAutoCompleteExamples.md")
                 .AddVariant("autocomplete", "Static Items")
                 .AddVariant("autocomplete", "Dynamic Provider")
@@ -547,12 +598,26 @@ namespace UltraCanvas {
                 .AddVariant("dropdown", "Editable ComboBox")
                 .AddVariant("dropdown", "Multi-Select");
 
+        basicBuilder.AddItem("datepicker", "Date Picker / Calendar",
+                             "Calendar widgets covering single, range, multiple and week selection",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateDatePickerExamples(); },
+                             "DemoApp/UltraCanvasDatePickerExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasDatePicker.md")
+                .AddVariant("datepicker", "Dropdown Calendar")
+                .AddVariant("datepicker", "Inline Calendar")
+                .AddVariant("datepicker", "Date Range")
+                .AddVariant("datepicker", "Multiple Dates")
+                .AddVariant("datepicker", "Keyboard / Text Entry")
+                .AddVariant("datepicker", "Hotel Stay / Blocked Dates")
+                .AddVariant("datepicker", "Multi-Month / Scroll");
+
         basicBuilder
                 .AddItem("checkbox", "Checkbox / Radio / Switch",
                          "Interactive checkbox controls with multiple states and styles",
                          ImplementationStatus::FullyImplemented,
                          [this]() { return CreateCheckboxExamples(); },
-                         "Apps/DemoApp/UltraCanvasCheckboxExamples.cpp",
+                         "DemoApp/UltraCanvasCheckboxExamples.cpp",
                          "Docs/UltraCanvas/UltraCanvasCheckbox.md")
                 .AddVariant("checkbox", "Standard Checkbox")
                 .AddVariant("checkbox", "Tri-State Checkbox")
@@ -568,11 +633,23 @@ namespace UltraCanvas {
                 .AddVariant("slider", "Vertical Slider")
                 .AddVariant("slider", "Range Slider");
 
+        basicBuilder.AddItem("scrollbars", "Scrollbars",
+                             "Standalone scrollbars: preset styles, colour options, "
+                             "corner-radius / end-shape control and a custom SVG handle",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateScrollbarExamples(); },
+                             "DemoApp/UltraCanvasScrollbarExamples.cpp")
+                .AddVariant("scrollbars", "Preset Styles")
+                .AddVariant("scrollbars", "Colour Options")
+                .AddVariant("scrollbars", "Corner Radius / End Shape")
+                .AddVariant("scrollbars", "Custom SVG Handle")
+                .AddVariant("scrollbars", "Horizontal Orientation");
+
         basicBuilder.AddItem("breadcrumb", "Breadcrumb",
                              "Hierarchical path navigation with clickable segments",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateBreadcrumbExamples(); },
-                             "Apps/DemoApp/UltraCanvasBreadcrumbExamples.cpp",
+                             "DemoApp/UltraCanvasBreadcrumbExamples.cpp",
                              "Docs/UltraCanvas/UltraCanvasBreadcrumbExamples.md")
                 .AddVariant("breadcrumb", "Default Style")
                 .AddVariant("breadcrumb", "Compact Style")
@@ -589,8 +666,8 @@ namespace UltraCanvas {
                 .AddVariant("breadcrumb", "Rounded Strip");
 
         basicBuilder.AddItem("gauges", "Gauges", "Gauges",
-                             ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples("Gauges is not ready yet"); });
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateGaugeExamples(); });
 
         // ===== EXTENDED FUNCTIONALITY =====
         auto extendedBuilder = DemoCategoryBuilder(this, DemoCategory::ExtendedFunctionality);
@@ -615,17 +692,18 @@ namespace UltraCanvas {
                 .AddVariant("treeview", "Multi-Selection Tree")
                 .AddVariant("treeview", "Checkable Nodes");
 
-        extendedBuilder.AddItem("tableview", "Spreadsheet View", "Data grid with sorting and editing",
-                                ImplementationStatus::NotImplemented,
-                                [this]() { return CreateTableViewExamples(); })
-                .AddVariant("tableview", "Basic Data Grid")
-                .AddVariant("tableview", "Sortable Columns")
-                .AddVariant("tableview", "Editable Cells");
+        extendedBuilder.AddItem("spreadsheet", "Spreadsheet engine",
+                                "Editable spreadsheet grid with an Open button that loads .ods/.csv files",
+                                ImplementationStatus::FullyImplemented,
+                                [this]() { return CreateSpreadsheetExamples(); },
+                                "DemoApp/UltraCanvasSpreadsheetExamples.cpp")
+                .AddVariant("spreadsheet", "Sample Data")
+                .AddVariant("spreadsheet", "Open ODS / CSV");
 
         extendedBuilder.AddItem("listview", "List View", "Item lists with custom rendering",
                                 ImplementationStatus::FullyImplemented,
                                 [this]() { return CreateListViewExamples(); },
-                                "Apps/DemoApp/UltraCanvasListViewExamples.cpp",
+                                "DemoApp/UltraCanvasListViewExamples.cpp",
                                 "Docs/UltraCanvas/UltraCanvasListViewExamples.md")
                 .AddVariant("listview", "Simple List")
                 .AddVariant("listview", "Icon List")
@@ -721,7 +799,7 @@ namespace UltraCanvas {
                               "Benchmark image loading, decompression, and rendering speed",
                               ImplementationStatus::FullyImplemented,
                               [this]() { return CreateImagePerformanceTest(); },
-                              "Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp",
+                              "DemoApp/UltraCanvasImagePerformanceTest.cpp",
                               "Docs/UltraCanvas/UltraCanvasImagePerformanceTest.md")
                 .AddVariant("imageperformance", "Full Pipeline Test")
                 .AddVariant("imageperformance", "Decompress + Draw Test")
@@ -742,7 +820,7 @@ namespace UltraCanvas {
         vectorBuilder.AddItem("cdrimages", "CDR Images", "CDR (CorelDraw) images display and manipulation",
                               ImplementationStatus::FullyImplemented,
                               [this]() { return CreateCDRVectorExamples(); },
-                              "Apps/DemoApp/UltraCanvasCDRExamples.cpp",
+                              "DemoApp/UltraCanvasCDRExamples.cpp",
                               "Docs/UltraCanvas/UltraCanvasCDRExamples.md");
 #endif
 #ifdef ULTRACANVAS_HAS_XAR_PLUGIN
@@ -787,6 +865,12 @@ namespace UltraCanvas {
                              [this]() { return CreatePieChartExamples(); },
                              "DemoApp/UltraCanvasPieChartExamples.cpp",
                              "Docs/UltraCanvas/UltraCanvasPieChartExamples.md");
+
+        chartBuilder.AddItem("radarcharts", "Radar Chart", "Radar / spider chart data visualization",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateRadarChartExamples(); },
+                             "DemoApp/UltraCanvasRadarChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasRadarChartElement.md");
 
         chartBuilder.AddItem("financialcharts", "Candlestick Chart", "Stock market OHLC and candlestick charts",
                              ImplementationStatus::FullyImplemented,
@@ -843,23 +927,25 @@ namespace UltraCanvas {
                              ImplementationStatus::PartiallyImplemented,
                              [this]() { return CreatePartiallyImplementedExamples("Polar Chart is not ready yet"); });
 
-        chartBuilder.AddItem("heatmapchart", "Heat map", "Heat map",
-                             ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples("HeatMap Chart is not ready yet"); });
+        chartBuilder.AddItem("heatmapchart", "Heat map", "Heatmap, spectrogram, calendar & hexbin variants",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateHeatmapExamples(); },
+                             "DemoApp/UltraCanvasHeatmapExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasHeatmapChart.md")
+                .AddVariant("heatmapchart", "Interactive Heatmap")
+                .AddVariant("heatmapchart", "Spectrogram (STFT)")
+                .AddVariant("heatmapchart", "Calendar Heatmap")
+                .AddVariant("heatmapchart", "Hexbin Density");
 
         chartBuilder.AddItem("jitterchart", "Jitter chart", "Jitter chart",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateJitterPlotExamples(); },
-                             "Apps/DemoApp/UltraCanvasJitterPlotExamples.cpp",
+                             "DemoApp/UltraCanvasJitterPlotExamples.cpp",
                              "Docs/UltraCanvas/UltraCanvasJitterPlotExamples.md");
 
         chartBuilder.AddItem("dumbbell", "Dumbbell chart", "Dumbbell chart",
                              ImplementationStatus::PartiallyImplemented,
                              [this]() { return CreatePartiallyImplementedExamples("Dumbbell Chart is not ready yet"); });
-
-        chartBuilder.AddItem("radarcharts", "Radar Chart", "Radar Chart",
-                             ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples("Radar Chart is not ready yet"); });
 
         chartBuilder.AddItem("bubblecharts", "Bubble Chart", "Bubble Chart",
                              ImplementationStatus::PartiallyImplemented,
@@ -897,54 +983,65 @@ namespace UltraCanvas {
         diagramBuilder.AddItem("flowchart", "Flow chart", "Interactive flowchart with decision points",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateFlowChartExamples(); },
-                               "Apps/DemoApp/UltraCanvasFlowChartExamples.cpp",
+                               "DemoApp/UltraCanvasFlowChartExamples.cpp",
                                "Docs/UltraCanvas/UltraCanvasFlowChartExamples.md");
 
         diagramBuilder.AddItem("venndiagram", "Venn Diagram", "Interactive Venn diagram for set visualization",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateVennDiagramExamples(); },
-                               "Apps/DemoApp/UltraCanvasVennDiagramExamples.cpp",
+                               "DemoApp/UltraCanvasVennDiagramExamples.cpp",
                                "Docs/UltraCanvas/UltraCanvasVennDiagramExamples.md");
 
         diagramBuilder.AddItem("dendrogram", "Dendrogram", "Interactive dendrogram / phylogenetic tree visualization",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateDendrogramExamples(); },
-                               "Apps/DemoApp/UltraCanvasDendrogramExamples.cpp",
+                               "DemoApp/UltraCanvasDendrogramExamples.cpp",
                                "Docs/UltraCanvas/UltraCanvasDendrogramExamples.md");
 
         diagramBuilder.AddItem("treemap", "TreeMap", "Hierarchical TreeMap data visualization",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateTreeMapExamples(); },
-                               "Apps/DemoApp/UltraCanvasTreeMapExamples.cpp",
+                               "DemoApp/UltraCanvasTreeMapExamples.cpp",
                                "Docs/UltraCanvas/UltraCanvasTreeMapExamples.md");
 
     diagramBuilder.AddItem("blockdiagram", "Block Diagram", "Interactive block diagram with shapes and connections",
                            ImplementationStatus::FullyImplemented,
                            [this]() { return CreateBlockDiagramExamples(); },
-                           "Apps/DemoApp/UltraCanvasBlockDiagramExamples.cpp",
+                           "DemoApp/UltraCanvasBlockDiagramExamples.cpp",
                            "Docs/UltraCanvas/UltraCanvasBlockDiagramExamples.md");
 
     diagramBuilder.AddItem("nodediagram", "Node Diagram", "Network/graph visualization with nodes and edges",
                            ImplementationStatus::FullyImplemented,
                            [this]() { return CreateNodeDiagramExamples(); },
-                           "Apps/DemoApp/UltraCanvasNodeDiagramExamples.cpp",
+                           "DemoApp/UltraCanvasNodeDiagramExamples.cpp",
                            "Docs/UltraCanvas/UltraCanvasNodeDiagramExamples.md");
 
     diagramBuilder.AddItem("gourcetree", "Force-Directed Tree", "Radial tree visualization for file systems inspired by Gource",
                            ImplementationStatus::FullyImplemented,
                            [this]() { return CreateGourceTreeExamples(); },
-                           "Apps/DemoApp/UltraCanvasGourceTreeExamples.cpp",
+                           "DemoApp/UltraCanvasGourceTreeExamples.cpp",
                            "Docs/UltraCanvas/UltraCanvasGourceTreeExamples.md");
     diagramBuilder.AddItem("adjacencydiagrams", "Adjacency Diagram", "Architectural Adjacency Diagram",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateAdjacencyDiagramExamples(); },
-                               "Apps/DemoApp/UltraCanvasAdjacencyDiagramExamples.cpp",
+                               "DemoApp/UltraCanvasAdjacencyDiagramExamples.cpp",
                                "Docs/UltraCanvas/UltraCanvasAdjacencyDiagramExamples.md");
     diagramBuilder.AddItem("arcdiagrams", "Arc Diagram", "Arc Diagram",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateArcDiagramExamples(); },
-                               "Apps/DemoApp/UltraCanvasArcDiagramExamples.cpp",
+                               "DemoApp/UltraCanvasArcDiagramExamples.cpp",
                                "Docs/UltraCanvas/UltraCanvasArcDiagramExamples.md");
+    diagramBuilder.AddItem("compositor", "Compositor Diagram", "Node-based compositor with subgraph, visual scripting, and feature playground",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateCompositorDiagramExamples(); },
+                               "DemoApp/UltraCanvasCompositorDiagramExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasCompositorDiagramExamples.md")
+                .AddVariant("compositor", "Image Compositor")
+                .AddVariant("compositor", "Subgraph / Groups")
+                .AddVariant("compositor", "Visual Scripting")
+                .AddVariant("compositor", "Feature Playground")
+                .AddVariant("compositor", "Logic Diagram")
+                .AddVariant("compositor", "Marketing Funnel");
     diagramBuilder.AddItem("mindmap", "MindMap", "MindMap",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("MindMap is not ready yet"); });
@@ -1017,30 +1114,23 @@ namespace UltraCanvas {
         // ===== 3D ELEMENTS =====
         auto graphics3DBuilder = DemoCategoryBuilder(this, DemoCategory::Graphics3D);
 
-        graphics3DBuilder.AddItem("models3d", "3D Models", "3D model display and interaction",
-                                  ImplementationStatus::NotImplemented,
-                                  [this]() { return Create3DExamples(); })
-                .AddVariant("models3d", "3DS Models")
-                .AddVariant("models3d", "3DM Models")
-                .AddVariant("models3d", "OBJ Models");
-
 #ifdef ULTRACANVAS_ENABLE_GL
-        graphics3DBuilder.AddItem("glsurface", "OpenGL Surface", "Hardware-accelerated OpenGL 3D rendering surface",
+        graphics3DBuilder.AddItem("glsurface", "OpenGL 3D support", "3D models, shader playground, and a Zarch-style simulation",
                                   ImplementationStatus::FullyImplemented,
                                   [this]() { return CreateGLSurfaceExamples(); },
-                                  "Apps/DemoApp/UltraCanvasGLSurfaceExamples.cpp",
+                                  "DemoApp/UltraCanvasGLSurfaceExamples.cpp",
                                   "Docs/UltraCanvas/UltraCanvasGLSurfaceExamples.md");
 #endif
 
         // ===== VIDEO ELEMENTS =====
         auto videoBuilder = DemoCategoryBuilder(this, DemoCategory::VideoElements);
 
-        videoBuilder.AddItem("video", "Video Player", "Video playback and controls",
-                             ImplementationStatus::NotImplemented,
+        videoBuilder.AddItem("video", "Video Player", "Video playback and recording",
+                             ImplementationStatus::FullyImplemented,
                              [this]() { return CreateVideoExamples(); })
                 .AddVariant("video", "MP4 Playback")
-                .AddVariant("video", "Custom Controls")
-                .AddVariant("video", "Streaming Support");
+                .AddVariant("video", "Camera Recording")
+                .AddVariant("video", "Custom Controls");
 
         // ===== TEXT DOCUMENTS =====
         auto textDocBuilder = DemoCategoryBuilder(this, DemoCategory::TextDocuments);
@@ -1064,9 +1154,18 @@ namespace UltraCanvas {
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreateTextDocumentExamples(); });
 
+#ifdef ULTRACANVAS_PLUGIN_PDF
+        textDocBuilder.AddItem("textdocuments_pdf", "PDF Documents",
+                               "PDF document viewing, navigation, zoom & search",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreatePDFExamples(); },
+                               "DemoApp/UltraCanvasPDFExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasPDFExamples.md");
+#else
         textDocBuilder.AddItem("textdocuments_pdf", "PDF Documents", "PDF document support",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreateTextDocumentExamples(); });
+#endif
 
         textDocBuilder.AddItem("textdocuments_odf", "ODF Documents", "ODF document support",
                                ImplementationStatus::NotImplemented,
@@ -1081,7 +1180,7 @@ namespace UltraCanvas {
         auto audioBuilder = DemoCategoryBuilder(this, DemoCategory::AudioElements);
 
         audioBuilder.AddItem("audio", "Audio Player", "Audio playback and waveform display",
-                             ImplementationStatus::NotImplemented,
+                             ImplementationStatus::FullyImplemented,
                              [this]() { return CreateAudioExamples(); })
                 .AddVariant("audio", "FLAC Support")
                 .AddVariant("audio", "MP3 Playback")
@@ -1089,15 +1188,27 @@ namespace UltraCanvas {
 
         auto toolsBuilder = DemoCategoryBuilder(this, DemoCategory::Tools);
 
-        toolsBuilder.AddItem("qrcode", "QR code", "QR code scanner",
-                             ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples("## QR code\n"
-                                                                                  "Not ready yet"); });
+        toolsBuilder.AddItem("qrcode", "QR code", "QR code generator and decoder",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateQRCodeExamples(); });
 
-        toolsBuilder.AddItem("barcode", "Bar code", "Bar code",
-                               ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("## Bar code\n"
-                                                                                    "Not ready yet"); });
+        toolsBuilder.AddItem("barcode", "Bar code",
+                               "1D barcode widget — 12 symbologies",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateBarcodeExamples(); },
+                               "DemoApp/UltraCanvasBarcodeExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasBarcodeElement.md")
+                .AddVariant("barcode", "Code 39")
+                .AddVariant("barcode", "Code 93")
+                .AddVariant("barcode", "Code 128 / GS1-128")
+                .AddVariant("barcode", "EAN-13 / EAN-8")
+                .AddVariant("barcode", "UPC-A / UPC-E")
+                .AddVariant("barcode", "ISBN-13")
+                .AddVariant("barcode", "ITF / ITF-14")
+                .AddVariant("barcode", "Standard 2 of 5")
+                .AddVariant("barcode", "Codabar")
+                .AddVariant("barcode", "MSI Plessey")
+                .AddVariant("barcode", "Pharmacode");
 
         toolsBuilder.AddItem("ocr", "OCR", "OCR",
                              ImplementationStatus::NotImplemented,
@@ -1111,45 +1222,42 @@ namespace UltraCanvas {
                              "Configure text antialiasing, hinting style, and hint metrics",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateTextRenderingSettingsExamples(); },
-                             "Apps/DemoApp/UltraCanvasTextRenderingExamples.cpp",
+                             "DemoApp/UltraCanvasTextRenderingExamples.cpp",
                              "Docs/UltraCanvas/UltraCanvasTextRenderingExamples.md");
 
         auto modulesBuilder = DemoCategoryBuilder(this, DemoCategory::Modules);
         modulesBuilder.AddItem("audiofx", "Audio FX", "Audio FX",
                                ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/AudioFX/README.md")); });
+                               [this]() { return CreateModuleDocScreen("Docs/Modules/AudioFX"); });
         modulesBuilder.AddItem("fileloader", "File Loader", "File Loader",
                                ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/FileLoader/README.md")); });
+                               [this]() { return CreateModuleDocScreen("Docs/Modules/FileLoader"); });
         modulesBuilder.AddItem("iodevicemanager", "IODeviceManager support", "IODeviceManager support",
                                ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/IODeviceManager/README.md")); });
+                               [this]() { return CreateModuleDocScreen("Docs/Modules/IODeviceManager"); });
         modulesBuilder.AddItem("pixelfx", "Pixel FX", "Pixel FX",
                                ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/PixelFX/README.md")); });
+                               [this]() { return CreateModuleDocScreen("Docs/Modules/PixelFX"); });
         modulesBuilder.AddItem("smarthome", "Smart Home module", "UltraCanvas Smart Home Module",
                                ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/Smarthome/README.md")); });
+                               [this]() { return CreateModuleDocScreen("Docs/Modules/Smarthome"); });
         modulesBuilder.AddItem("ultraai", "Ultra AI", "Ultra AI Module",
                                ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/UltraAI/README.md")); });
+                               [this]() { return CreateModuleDocScreen("Docs/Modules/UltraAI"); });
         modulesBuilder.AddItem("ultranet", "Ultra Net", "Ultra Net Module",
                                ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/UltraNet/README.md")); });
+                               [this]() { return CreateModuleDocScreen("Docs/Modules/UltraNet"); });
         modulesBuilder.AddItem("videofx", "VideoFX", "VideoFX Module",
                                ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/VideoFX/README.md")); });
+                               [this]() { return CreateModuleDocScreen("Docs/Modules/VideoFX"); });
         modulesBuilder.AddItem("virtualfs", "VirtualFS", "VirtualFS Module",
                                ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/VirtualFS/README.md")); });
-        modulesBuilder.AddItem("gpio", "GPIO support", "GPIO support",
-                             ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples("## GPIO support"); });
+                               [this]() { return CreateModuleDocScreen("Docs/Modules/VirtualFS"); });
+//        modulesBuilder.AddItem("gpio", "GPIO support", "GPIO support",
+//                             ImplementationStatus::PartiallyImplemented,
+//                             [this]() { return CreatePartiallyImplementedExamples("## GPIO support"); });
 
         auto widgetsBuilder = DemoCategoryBuilder(this, DemoCategory::Widgets);
-        widgetsBuilder.AddItem("datepicker", "Date Picker", "Date Picker",
-                               ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("## Date picker"); });
         widgetsBuilder.AddItem("colorpicker", "Color Picker", "Color Picker",
                                ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("## Color picker"); });
@@ -1159,10 +1267,10 @@ namespace UltraCanvas {
                                [this]() { return CreatePartiallyImplementedExamples("Photo/Video viewer"); });
 
         widgetsBuilder.AddItem("slideshow", "Slideshow",
-                               "Timed image diashow with info text panel and selectable indicator styles",
+                               "Timed image slideshow with info text panel and selectable indicator styles",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateSlideshowExamples(); },
-                               "Apps/DemoApp/UltraCanvasSlideshowExamples.cpp")
+                               "DemoApp/UltraCanvasSlideshowExamples.cpp")
                 .AddVariant("slideshow", "Bars Indicator")
                 .AddVariant("slideshow", "Dots Indicator")
                 .AddVariant("slideshow", "Progress Bar")
@@ -1170,6 +1278,19 @@ namespace UltraCanvas {
                 .AddVariant("slideshow", "Counter")
                 .AddVariant("slideshow", "Thumbnails")
                 .AddVariant("slideshow", "Labels");
+
+        widgetsBuilder.AddItem("album", "Album",
+                               "Photo / video / music album with selectable layout designs, "
+                               "crop / zoom / stretch fitting, action icons and visitor / edit / admin modes",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateAlbumExamples(); },
+                               "DemoApp/UltraCanvasAlbumExamples.cpp")
+                .AddVariant("album", "Uniform Grid")
+                .AddVariant("album", "Justified")
+                .AddVariant("album", "Masonry")
+                .AddVariant("album", "Mosaic")
+                .AddVariant("album", "Filmstrip")
+                .AddVariant("album", "Cards");
 
         debugOutput << "✓ Registered " << demoItems.size() << " demo items across "
                   << categoryItems.size() << " categories" << std::endl;
@@ -1196,10 +1317,11 @@ namespace UltraCanvas {
                 {DemoCategory::AudioElements, "Audio Elements"},
                 {DemoCategory::Widgets, "Widgets"},
                 {DemoCategory::Tools, "Tools"},
-                {DemoCategory::Modules, "Modules"}
+                {DemoCategory::Modules, "ULTRA OS modules"}
         };
 
 
+        TreeNode* modulesNode = nullptr;
         for (const auto& [category, catName] : categoryNames) {
             TreeNodeData categoryData(
                     "cat_" + std::to_string(static_cast<int>(category)),
@@ -1208,6 +1330,9 @@ namespace UltraCanvas {
             auto items = categoryItems[category];
             categoryData.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/folder.png"), 16, 16);
             TreeNode* categoryNode = categoryTreeView->AddNode("root", categoryData);
+            if (category == DemoCategory::Modules) {
+                modulesNode = categoryNode;
+            }
 
             // Add items for this category
             for (const std::string& itemId : items) {
@@ -1221,12 +1346,22 @@ namespace UltraCanvas {
                 itemData.rightIcon = TreeNodeIcon(GetStatusIcon(demoItem->status), 12, 12);
                 categoryTreeView->AddNode(categoryData.nodeId, itemData);
             }
+            if (category == DemoCategory::Charts || category == DemoCategory::Diagrams || category == DemoCategory::InfoGraphics) {
+                categoryNode->SortChildNodes();
+            }
         }
 
         // Expand root node
         rootNode->Expand();
         rootNode->FirstChild()->Expand();
         rootNode->FirstChild()->FirstChild()->Expand();
+        // Keep the "ULTRA OS modules" node expanded by default. Because the tree
+        // auto-expands (and selects the first child of) a collapsed node on click,
+        // an already-expanded node is selected without jumping to its first child —
+        // so clicking the label shows the ULTRA OS overview page instead.
+        if (modulesNode) {
+            modulesNode->Expand();
+        }
         categoryTreeView->SelectNode(rootNode->FirstChild()->FirstChild());
         OnTreeNodeSelected(rootNode->FirstChild()->FirstChild());
     }
@@ -1237,11 +1372,30 @@ namespace UltraCanvas {
 
         std::string nodeId = node->data.nodeId;
 
+        const std::string modulesNodeId =
+                "cat_" + std::to_string(static_cast<int>(DemoCategory::Modules));
+
         // Check if this is a demo item (not a category)
         if (demoItems.find(nodeId) != demoItems.end()) {
             DisplayDemoItem(nodeId);
             UpdateStatusDisplay(nodeId);
             UpdateHeaderDisplay(nodeId);
+        } else if (nodeId == modulesNodeId) {
+            // "ULTRA OS modules" category: show the ULTRA OS overview page instead of
+            // clearing the display / jumping to the first module example.
+            ClearDisplay();
+            currentDisplayElement = CreateUltraOSInfoScreen();
+            if (currentDisplayElement) {
+                displayContainer->AddChild(currentDisplayElement);
+                currentDisplayElement->layoutItem
+                    .SetFlexGrow(1)
+                    .SetFlexShrink(1)
+                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+            }
+            statusLabel->SetText("ULTRA OS");
+            headerContainer->SetDemoTitle("ULTRA OS");
+            headerContainer->SetSourceFile("");
+            headerContainer->SetDocFile("");
         } else {
             // Category selected - clear display
             ClearDisplay();
@@ -1264,8 +1418,12 @@ namespace UltraCanvas {
                 currentDisplayElement = item->createExample();
                 if (currentDisplayElement) {
                     displayContainer->AddChild(currentDisplayElement);
+                    // Grow to fill, but also shrink (flex-shrink:1) so an example
+                    // that sets a large explicit size is clamped into displayContainer
+                    // (which then scrolls) instead of overflowing it.
                     currentDisplayElement->layoutItem
                         .SetFlexGrow(1)
+                        .SetFlexShrink(1)
                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
                 }
                 currentSelectedId = itemId;

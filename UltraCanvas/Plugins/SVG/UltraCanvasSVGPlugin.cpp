@@ -6,6 +6,7 @@
 
 #include "Plugins/SVG/UltraCanvasSVGPlugin.h"
 #include "UltraCanvasUtils.h"
+#include "UltraCanvasFileError.h"
 #include <cmath>
 #include <algorithm>
 #include <cctype>
@@ -692,12 +693,21 @@ namespace UltraCanvas {
     SVGDocument::~SVGDocument() {}
 
     bool SVGDocument::LoadFromFile(const std::string& filepath) {
+        lastError.clear();
         if (xmlDoc.LoadFile(filepath.c_str()) != tinyxml2::XML_SUCCESS) {
+            // tinyxml2 fails both for unreadable files and malformed XML; prefer
+            // a clear file-access reason (missing / locked / no permission).
+            std::string access = DescribeFileReadError(filepath);
+            lastError = !access.empty()
+                ? access
+                : ("The file is not valid SVG/XML: " + filepath +
+                   " (" + xmlDoc.ErrorStr() + ")");
             return false;
         }
 
         root = xmlDoc.FirstChildElement("svg");
         if (!root) {
+            lastError = "The file is not an SVG image (no <svg> root): " + filepath;
             return false;
         }
 
@@ -1448,11 +1458,23 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasSVGElement::LoadFromFile(const std::string& filepath) {
-        return document->LoadFromFile(filepath);
+        lastError.clear();
+        if (!document->LoadFromFile(filepath)) {
+            lastError = document->GetLastError();
+            if (lastError.empty()) lastError = "Could not load SVG: " + filepath;
+            return false;
+        }
+        return true;
     }
 
     bool UltraCanvasSVGElement::LoadFromString(const std::string& svgContent) {
-        return document->LoadFromString(svgContent);
+        lastError.clear();
+        if (!document->LoadFromString(svgContent)) {
+            lastError = document->GetLastError();
+            if (lastError.empty()) lastError = "Could not parse SVG content.";
+            return false;
+        }
+        return true;
     }
 
     void UltraCanvasSVGElement::Render(IRenderContext* context, const Rect2Df& dirtyRect) {

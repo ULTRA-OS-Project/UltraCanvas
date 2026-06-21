@@ -1,8 +1,17 @@
 // Apps/DemoApp/UltraCanvasDendrogramExamples.cpp
 // Demo — UltraCanvasDendrogram showcase, 6 styles
-// Version: 1.5.0
-// Last Modified: 2026-06-01
+// Version: 1.6.0
+// Last Modified: 2026-06-05
 // Author: UltraCanvas Framework
+//
+// Changelog:
+//   v1.6.0 (2026-06-05):
+//     - Migrated the page from absolute positioning to flex layout. The page is
+//       a stretchable flex column (title, subtitle, tabs) that fills the host and
+//       grows with the window; each tab is a flex column whose UltraCanvasDendrogram
+//       takes all remaining space and re-fits on resize. No manual resize handler.
+//     - MakeControlBar is now a two-line flex layout: a row of buttons on line 1
+//       and the info label on line 2 (it previously overflowed a single row).
 //
 // Controls:
 //   Scroll wheel       — zoom in/out toward cursor
@@ -75,19 +84,28 @@ static std::shared_ptr<DendrogramDataVector> BuildTree(
 // =============================================================================
 
 static std::shared_ptr<UltraCanvasContainer> MakeControlBar(
-    long& uid, int w, std::shared_ptr<UltraCanvasDendrogram> d, const std::string& info)
+    long& uid, std::shared_ptr<UltraCanvasDendrogram> d, const std::string& info)
 {
-    auto bar = std::make_shared<UltraCanvasContainer>("ctrl_"+d->GetIdentifier(), 0, 0, w, 36);
+    // Two-line flex column: a row of buttons (line 1) and the info label (line 2).
+    // Auto width (stretches to the tab body); fixed height.
+    auto bar = std::make_shared<UltraCanvasContainer>("ctrl_"+d->GetIdentifier(), 0, 0, 0, 62);
     bar->SetBackgroundColor(Color(247,247,250,255));
-    bar->layout.SetFlexRow();
-    bar->layout.SetFlexGap(6);
-    bar->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    bar->layout.SetFlexColumn().SetFlexGap(2)
+               .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    bar->SetPadding(4, 6);
+
+    // Line 1 — button row.
+    auto btnRow = std::make_shared<UltraCanvasContainer>("ctrlrow_"+d->GetIdentifier(), 0, 0, 0, 30);
+    btnRow->layout.SetFlexRow().SetFlexGap(6)
+                  .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    btnRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    bar->AddChild(btnRow);
 
     auto mkBtn = [&](const std::string& sfx, int bw, const std::string& lbl,
                      std::function<void()> cb) {
         auto btn = std::make_shared<UltraCanvasButton>(sfx+"_"+d->GetIdentifier(), 0, 0, bw, 28, lbl);
         btn->onClick = std::move(cb);
-        bar->AddChild(btn);
+        btnRow->AddChild(btn);
     };
 
     mkBtn("rst",  110, "Reset View",  [d]{ d->ResetView(); });
@@ -97,10 +115,11 @@ static std::shared_ptr<UltraCanvasContainer> MakeControlBar(
     mkBtn("col",  120, "Collapse All",[d]{ d->CollapseAll(); });
     mkBtn("rpos", 120, "Reset Pos",    [d]{ d->ResetNodePositions(); });
 
+    // Line 2 — info label.
     auto lbl = std::make_shared<UltraCanvasLabel>("inf_"+d->GetIdentifier(), info);
-    lbl->SetElementAbsolutePosition({580, 10});
     lbl->SetTextColor(Color(100,100,110,255));
     lbl->SetFontSize(11.0f);
+    lbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     bar->AddChild(lbl);
     return bar;
 }
@@ -109,7 +128,7 @@ static std::shared_ptr<UltraCanvasContainer> MakeControlBar(
 // DEMO 1 — Top-Down hierarchical clustering
 // =============================================================================
 
-static std::shared_ptr<UltraCanvasContainer> MakeDemo1(long& uid, int w, int h)
+static std::shared_ptr<UltraCanvasContainer> MakeDemo1(long& uid)
 {
     std::vector<NodeSpec> specs = {
         {"root",  "All Species",    "",     "",       1.00},
@@ -168,8 +187,9 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo1(long& uid, int w, int h)
     };
 
     auto data  = BuildTree(specs, groups);
-    auto outer = std::make_shared<UltraCanvasContainer>("o1",0,0,w,h);
-    auto d     = std::make_shared<UltraCanvasDendrogram>("D1",0,36,w,h-36);
+    auto outer = std::make_shared<UltraCanvasContainer>("o1");
+    outer->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    auto d     = std::make_shared<UltraCanvasDendrogram>("D1",0,0,0,0);
     d->SetDataSource(data);
     d->SetOrientation(DendrogramOrientation::TopDown);
     d->SetScaleMode(DendrogramScaleMode::Proportional);
@@ -215,8 +235,13 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo1(long& uid, int w, int h)
     d->onLeafClicked         = [](const std::string& id){ };
     d->onInternalNodeClicked = [](const std::string& id){ };
 
-    outer->AddChild(MakeControlBar(uid,w,d,
-        "Top-Down | Proportional | 29 taxa | Colored clades | Double-click = collapse"));
+    auto bar = MakeControlBar(uid, d,
+        "Top-Down | Proportional | 29 taxa | Colored clades | Double-click = collapse");
+    bar->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    outer->AddChild(bar);
+
+    d->layoutItem.SetFlex(1, 1, CSSLayout::Dimension::Px(0))
+                 .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     outer->AddChild(d);
     return outer;
 }
@@ -225,7 +250,7 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo1(long& uid, int w, int h)
 // DEMO 2 — Left-Right curved
 // =============================================================================
 
-static std::shared_ptr<UltraCanvasContainer> MakeDemo2(long& uid, int w, int h)
+static std::shared_ptr<UltraCanvasContainer> MakeDemo2(long& uid)
 {
     std::vector<NodeSpec> specs = {
         {"flare",     "flare",              "",           "",  1.00},
@@ -247,8 +272,9 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo2(long& uid, int w, int h)
     };
 
     auto data  = BuildTree(specs,{});
-    auto outer = std::make_shared<UltraCanvasContainer>("o2",0,0,w,h);
-    auto d     = std::make_shared<UltraCanvasDendrogram>("D2",0,36,w,h-36);
+    auto outer = std::make_shared<UltraCanvasContainer>("o2");
+    outer->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    auto d     = std::make_shared<UltraCanvasDendrogram>("D2",0,0,0,0);
     d->SetDataSource(data);
     d->SetOrientation(DendrogramOrientation::LeftRight);
     d->SetScaleMode(DendrogramScaleMode::Cladogram);
@@ -277,8 +303,13 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo2(long& uid, int w, int h)
     s.marginRight  = 20;
     d->SetStyle(s);
 
-    outer->AddChild(MakeControlBar(uid,w,d,
-        "Left-Right | Cladogram | Curved S-curves | DblClick=collapse | Ctrl+drag=move"));
+    auto bar = MakeControlBar(uid, d,
+        "Left-Right | Cladogram | Curved S-curves | DblClick=collapse | Ctrl+drag=move");
+    bar->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    outer->AddChild(bar);
+
+    d->layoutItem.SetFlex(1, 1, CSSLayout::Dimension::Px(0))
+                 .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     outer->AddChild(d);
     return outer;
 }
@@ -287,7 +318,7 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo2(long& uid, int w, int h)
 // DEMO 3 — Radial Tree of Life
 // =============================================================================
 
-static std::shared_ptr<UltraCanvasContainer> MakeDemo3(long& uid, int w, int h)
+static std::shared_ptr<UltraCanvasContainer> MakeDemo3(long& uid)
 {
     std::vector<NodeSpec> specs = {
         {"LUCA",   "LUCA",            "",        "",          1.00},
@@ -328,8 +359,9 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo3(long& uid, int w, int h)
     };
 
     auto data  = BuildTree(specs,groups);
-    auto outer = std::make_shared<UltraCanvasContainer>("o3",0,0,w,h);
-    auto d     = std::make_shared<UltraCanvasDendrogram>("D3",0,36,w,h-36);
+    auto outer = std::make_shared<UltraCanvasContainer>("o3");
+    outer->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    auto d     = std::make_shared<UltraCanvasDendrogram>("D3",0,0,0,0);
     d->SetDataSource(data);
     d->SetOrientation(DendrogramOrientation::Radial);
     d->SetScaleMode(DendrogramScaleMode::Proportional);
@@ -354,8 +386,13 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo3(long& uid, int w, int h)
     s.marginLeft   = 70; s.marginRight  = 70;
     d->SetStyle(s);
 
-    outer->AddChild(MakeControlBar(uid,w,d,
-        "Radial | Tree of Life | Angular arcs | DblClick=collapse | Ctrl+drag=move"));
+    auto bar = MakeControlBar(uid, d,
+        "Radial | Tree of Life | Angular arcs | DblClick=collapse | Ctrl+drag=move");
+    bar->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    outer->AddChild(bar);
+
+    d->layoutItem.SetFlex(1, 1, CSSLayout::Dimension::Px(0))
+                 .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     outer->AddChild(d);
     return outer;
 }
@@ -364,7 +401,7 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo3(long& uid, int w, int h)
 // DEMO 4 — Left-Right proportional phylogenetic
 // =============================================================================
 
-static std::shared_ptr<UltraCanvasContainer> MakeDemo4(long& uid, int w, int h)
+static std::shared_ptr<UltraCanvasContainer> MakeDemo4(long& uid)
 {
     std::vector<NodeSpec> specs = {
         {"root",    "Amniota",           "",        "",            1.00},
@@ -399,8 +436,9 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo4(long& uid, int w, int h)
     };
 
     auto data  = BuildTree(specs,groups);
-    auto outer = std::make_shared<UltraCanvasContainer>("o4",0,0,w,h);
-    auto d     = std::make_shared<UltraCanvasDendrogram>("D4",0,36,w,h-36);
+    auto outer = std::make_shared<UltraCanvasContainer>("o4");
+    outer->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    auto d     = std::make_shared<UltraCanvasDendrogram>("D4",0,0,0,0);
     d->SetDataSource(data);
     d->SetOrientation(DendrogramOrientation::LeftRight);
     d->SetScaleMode(DendrogramScaleMode::Proportional);
@@ -457,8 +495,13 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo4(long& uid, int w, int h)
     s.marginRight  = 40;
     d->SetStyle(s);
 
-    outer->AddChild(MakeControlBar(uid,w,d,
-        "Phylogenetic | Curved branches | Group coloring | Click branch to show clade name"));
+    auto bar = MakeControlBar(uid, d,
+        "Phylogenetic | Curved branches | Group coloring | Click branch to show clade name");
+    bar->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    outer->AddChild(bar);
+
+    d->layoutItem.SetFlex(1, 1, CSSLayout::Dimension::Px(0))
+                 .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     outer->AddChild(d);
     return outer;
 }
@@ -467,7 +510,7 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo4(long& uid, int w, int h)
 // DEMO 5 — Radial circular sectors
 // =============================================================================
 
-static std::shared_ptr<UltraCanvasContainer> MakeDemo5(long& uid, int w, int h)
+static std::shared_ptr<UltraCanvasContainer> MakeDemo5(long& uid)
 {
     std::vector<NodeSpec> specs = {
         {"root",    "Root",              "",       "",         1.00},
@@ -499,8 +542,9 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo5(long& uid, int w, int h)
     };
 
     auto data  = BuildTree(specs,groups);
-    auto outer = std::make_shared<UltraCanvasContainer>("o5",0,0,w,h);
-    auto d     = std::make_shared<UltraCanvasDendrogram>("D5",0,36,w,h-36);
+    auto outer = std::make_shared<UltraCanvasContainer>("o5");
+    outer->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    auto d     = std::make_shared<UltraCanvasDendrogram>("D5",0,0,0,0);
     d->SetDataSource(data);
     d->SetOrientation(DendrogramOrientation::Radial);
     d->SetScaleMode(DendrogramScaleMode::Proportional);
@@ -525,8 +569,13 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo5(long& uid, int w, int h)
     s.marginLeft   = 65; s.marginRight  = 65;
     d->SetStyle(s);
 
-    outer->AddChild(MakeControlBar(uid,w,d,
-        "Circular | Sectors | DblClick=collapse | Ctrl+drag=move"));
+    auto bar = MakeControlBar(uid, d,
+        "Circular | Sectors | DblClick=collapse | Ctrl+drag=move");
+    bar->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    outer->AddChild(bar);
+
+    d->layoutItem.SetFlex(1, 1, CSSLayout::Dimension::Px(0))
+                 .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     outer->AddChild(d);
     return outer;
 }
@@ -535,7 +584,7 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo5(long& uid, int w, int h)
 // DEMO 6 — Rate gradient
 // =============================================================================
 
-static std::shared_ptr<UltraCanvasContainer> MakeDemo6(long& uid, int w, int h)
+static std::shared_ptr<UltraCanvasContainer> MakeDemo6(long& uid)
 {
     std::vector<NodeSpec> specs = {
         {"root", "Root",          "",     "", 1.0},
@@ -553,8 +602,9 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo6(long& uid, int w, int h)
     };
 
     auto data  = BuildTree(specs,{});
-    auto outer = std::make_shared<UltraCanvasContainer>("o6",0,0,w,h);
-    auto d     = std::make_shared<UltraCanvasDendrogram>("D6",0,36,w,h-36);
+    auto outer = std::make_shared<UltraCanvasContainer>("o6");
+    outer->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    auto d     = std::make_shared<UltraCanvasDendrogram>("D6",0,0,0,0);
     d->SetDataSource(data);
     d->SetOrientation(DendrogramOrientation::LeftRight);
     d->SetScaleMode(DendrogramScaleMode::Proportional);
@@ -583,8 +633,13 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo6(long& uid, int w, int h)
     s.marginRight  = 20;
     d->SetStyle(s);
 
-    outer->AddChild(MakeControlBar(uid,w,d,
-        "Rate Gradient | Blue→Red | DblClick=collapse | Ctrl+drag=move"));
+    auto bar = MakeControlBar(uid, d,
+        "Rate Gradient | Blue→Red | DblClick=collapse | Ctrl+drag=move");
+    bar->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    outer->AddChild(bar);
+
+    d->layoutItem.SetFlex(1, 1, CSSLayout::Dimension::Px(0))
+                 .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     outer->AddChild(d);
     return outer;
 }
@@ -595,40 +650,47 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo6(long& uid, int w, int h)
 
 namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDendrogramExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("DendrogramExamples", 0, 0, 1220, 860);
+        // Stretchable flex column: title + subtitle (fixed height) and the tabs
+        // (grow to fill). Auto size so the host's flex-grow/stretch sizes us to the
+        // display area and the window resize propagates down via Measure/Arrange.
+        auto container = std::make_shared<UltraCanvasContainer>("DendrogramExamples");
         container->SetBackgroundColor(Color(255,255,255,255));
-        
-        const int headerH = 62;
-        
-        auto titleLbl = std::make_shared<UltraCanvasLabel>("DendrogramTitle", 10, 0, 1172, 34, "Dendrogram Analysis Suite");
+        container->layout.SetFlexColumn().SetFlexGap(6)
+                 .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        container->SetPadding(8, 10);
+        container->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+        auto titleLbl = std::make_shared<UltraCanvasLabel>("DendrogramTitle", 0, 0, 0, 34, "Dendrogram Analysis Suite");
         titleLbl->SetFontSize(22.0f);
         titleLbl->SetFontWeight(FontWeight::Bold);
         titleLbl->SetTextColor(Color(20,20,30,255));
+        titleLbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         container->AddChild(titleLbl);
-        
-        auto subLbl = std::make_shared<UltraCanvasLabel>("DendrogramSub", 10, 40, 1172, 20,
+
+        auto subLbl = std::make_shared<UltraCanvasLabel>("DendrogramSub", 0, 0, 0, 20,
             "Interactive visualization of hierarchical data - Scroll to zoom, drag to pan, double-click to collapse");
         subLbl->SetFontSize(12.0f);
         subLbl->SetTextColor(Color(100,100,110,255));
+        subLbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         container->AddChild(subLbl);
-        
-        auto tabs = std::make_shared<UltraCanvasTabbedContainer>("DendrogramTabs", 10, headerH, 1220, 860-headerH);
+
+        auto tabs = std::make_shared<UltraCanvasTabbedContainer>("DendrogramTabs", 0, 0, 0, 0);
         tabs->SetTabPosition(TabPosition::Top);
         tabs->SetTabStyle(TabStyle::Modern);
-        
+        tabs->layoutItem.SetFlex(1, 1, CSSLayout::Dimension::Px(0))
+                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
         long uid = 2000L;
-        int tw = 1220;
-        int th = 860 - headerH - 30;
-        
-        tabs->AddTab("Top-Down (E)",           MakeDemo1(uid,tw,th));
-        tabs->AddTab("Left-Right Curved (F)", MakeDemo2(uid,tw,th));
-        tabs->AddTab("Radial Tree of Life (G)", MakeDemo3(uid,tw,th));
-        tabs->AddTab("Phylogenetic (H)",      MakeDemo4(uid,tw,th));
-        tabs->AddTab("Circular Sectors (L)",  MakeDemo5(uid,tw,th));
-        tabs->AddTab("Rate Gradient",         MakeDemo6(uid,tw,th));
-        
+
+        tabs->AddTab("Top-Down (E)",           MakeDemo1(uid));
+        tabs->AddTab("Left-Right Curved (F)", MakeDemo2(uid));
+        tabs->AddTab("Radial Tree of Life (G)", MakeDemo3(uid));
+        tabs->AddTab("Phylogenetic (H)",      MakeDemo4(uid));
+        tabs->AddTab("Circular Sectors (L)",  MakeDemo5(uid));
+        tabs->AddTab("Rate Gradient",         MakeDemo6(uid));
+
         container->AddChild(tabs);
-        
+
         return container;
     }
 }

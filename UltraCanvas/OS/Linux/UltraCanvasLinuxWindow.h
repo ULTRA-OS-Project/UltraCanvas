@@ -10,7 +10,6 @@
 
 // ===== CORE INCLUDES =====
 #include "UltraCanvasRenderContext.h"
-#include "UltraCanvasLinuxDragDrop.h"
 
 // ===== LINUX PLATFORM INCLUDES =====
 #include <X11/Xlib.h>
@@ -21,6 +20,8 @@
 #include <cairo/cairo.h>
 #include <cairo/cairo-xlib.h>
 #include <pango/pangocairo.h>
+
+#include "UltraCanvasLinuxDragDrop.h"
 
 // ===== STANDARD INCLUDES =====
 #include <memory>

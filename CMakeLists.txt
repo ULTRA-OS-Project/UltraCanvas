@@ -7,7 +7,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(UltraCanvasDemoApp
-    VERSION 0.1.39
+    VERSION 0.2.18
     DESCRIPTION "UltraCanvas Framework Demo Application"
     LANGUAGES CXX
 )
@@ -49,8 +49,9 @@ option(BUILD_CSSLAYOUT_TESTS "Build the CSSLayout non-UI test harness" ON)
 option(BUILD_TESTS "Build unit tests" OFF)
 option(ULTRACANVAS_PLUGIN_CDR "Build CDR plugin (requires libcdr)" ON)
 option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" ON)
+option(ULTRACANVAS_ENABLE_AUDIO "Build audio backend" ON)
 option(ULTRACANVAS_PLUGIN_VECTOR "Build Vector plugin" OFF)
-option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin (requires poppler)" OFF)
+option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin (requires MuPDF / libmupdf-dev)" ON)
 
 include(FetchContent)
 include(cmake/UltraCanvasAppIcon.cmake)
@@ -85,16 +86,20 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasDemoExamples.cpp
             Apps/DemoApp/UltraCanvasButtonExamples.cpp
             Apps/DemoApp/UltraCanvasDropDownExamples.cpp
+            Apps/DemoApp/UltraCanvasDatePickerExamples.cpp
             Apps/DemoApp/UltraCanvasAutoCompleteExamples.cpp
             Apps/DemoApp/UltraCanvasLabelExamples.cpp
             Apps/DemoApp/UltraCanvasMenuExamples.cpp
             Apps/DemoApp/UltraCanvasSliderExamples.cpp
+            Apps/DemoApp/UltraCanvasScrollbarExamples.cpp
             Apps/DemoApp/UltraCanvasSVGExamples.cpp
             Apps/DemoApp/UltraCanvasTabExamples.cpp
             Apps/DemoApp/UltraCanvasSplitPaneExamples.cpp
+            Apps/DemoApp/UltraCanvasGroupBoxExamples.cpp
             Apps/DemoApp/UltraCanvasTextAreaExamples.cpp
             Apps/DemoApp/UltraCanvasTextInputExamples.cpp
             Apps/DemoApp/UltraCanvasTreeViewExamples.cpp
+            Apps/DemoApp/UltraCanvasSpreadsheetExamples.cpp
             Apps/DemoApp/UltraCanvasListViewExamples.cpp
             Apps/DemoApp/UltraCanvasBasicChartsExamples.cpp
             Apps/DemoApp/UltraCanvasDivergingChartExamples.cpp
@@ -120,9 +125,19 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp
             Apps/DemoApp/UltraCanvasTextRenderingExamples.cpp
             Apps/DemoApp/UltraCanvasPieChartExamples.cpp
+            Apps/DemoApp/UltraCanvasRadarChartExamples.cpp
+            Apps/DemoApp/UltraCanvasHeatmapExamples.cpp
             Apps/DemoApp/UltraCanvasAdjacencyDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasArcDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasSlideshowExamples.cpp
+            Apps/DemoApp/UltraCanvasAlbumExamples.cpp
+            Apps/DemoApp/UltraCanvasCompositorDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasGaugeExamples.cpp
+            Apps/DemoApp/UltraCanvasQRCodeExamples.cpp
+            Apps/DemoApp/UltraCanvasBarcodeExamples.cpp
+            Apps/DemoApp/UltraCanvasAudioExamples.cpp
+            Apps/DemoApp/UltraCanvasPDFExamples.cpp
+            Apps/DemoApp/UltraCanvasVideoExamples.cpp
     )
 
     # These files depend on libvips
@@ -135,7 +150,12 @@ if(BUILD_DEMO_APP)
 
     # Only include GL examples if GL support is enabled
     if(ULTRACANVAS_ENABLE_GL)
-        list(APPEND DEMO_SOURCES Apps/DemoApp/UltraCanvasGLSurfaceExamples.cpp)
+        list(APPEND DEMO_SOURCES
+            Apps/DemoApp/UltraCanvasGLSurfaceExamples.cpp
+            Apps/DemoApp/UltraCanvasGLModelsTab.cpp
+            Apps/DemoApp/UltraCanvasGLShaderTab.cpp
+            Apps/DemoApp/UltraCanvasGLZarchTab.cpp
+        )
     endif()
 
     # Only include plugin examples if the plugins are actually built
@@ -268,6 +288,8 @@ if(BUILD_DEMO_APP)
         UCAPP_ICON_PATH="media/appicon/Demo.png"
         $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
         $<$<BOOL:${ULTRACANVAS_ENABLE_GL}>:ULTRACANVAS_ENABLE_GL=1>
+        # macOS deprecated OpenGL in 10.14; silence per-call warnings in the GL demo code.
+        $<$<AND:$<BOOL:${ULTRACANVAS_ENABLE_GL}>,$<BOOL:${APPLE}>>:GL_SILENCE_DEPRECATION=1>
     )
 
     # Embed app icon in .exe (Windows only)

@@ -515,12 +515,12 @@ void UltraCanvasGourceTree::ZoomToFit() {
     
     if (minX >= maxX || minY >= maxY) return;
     
-    Rect2Di bounds = GetBounds();
+    Rect2Di bounds = GetContentRect();
     float nodeWidth = maxX - minX;
     float nodeHeight = maxY - minY;
     
-    float zoomX = (finalBounds.width - 40) / nodeWidth;
-    float zoomY = (finalBounds.height - 40) / nodeHeight;
+    float zoomX = (bounds.width - 80) / nodeWidth;
+    float zoomY = (bounds.height - 80) / nodeHeight;
     
     zoomLevel = std::min(zoomX, zoomY);
     zoomLevel = std::clamp(zoomLevel, minZoom, maxZoom);
@@ -529,8 +529,8 @@ void UltraCanvasGourceTree::ZoomToFit() {
     float centerNodeX = (minX + maxX) / 2.0f;
     float centerNodeY = (minY + maxY) / 2.0f;
     
-    panX = finalBounds.width / 2.0f - centerNodeX * zoomLevel;
-    panY = finalBounds.height / 2.0f - centerNodeY * zoomLevel;
+    panX = bounds.width / 2.0f - centerNodeX * zoomLevel;
+    panY = bounds.height / 2.0f - centerNodeY * zoomLevel;
     
     RequestRedraw();
 }
@@ -552,9 +552,9 @@ void UltraCanvasGourceTree::CenterOnNode(const std::string& nodeId) {
     auto nodeIt = nodes.find(nodeId);
     if (nodeIt == nodes.end()) return;
     
-    Rect2Di bounds = GetBounds();
-    panX = finalBounds.width / 2.0f - nodeIt->second.x * zoomLevel;
-    panY = finalBounds.height / 2.0f - nodeIt->second.y * zoomLevel;
+    Rect2Di bounds = GetContentRect();
+    panX = bounds.width / 2.0f - nodeIt->second.x * zoomLevel;
+    panY = bounds.height / 2.0f - nodeIt->second.y * zoomLevel;
     
     RequestRedraw();
 }
@@ -565,9 +565,9 @@ void UltraCanvasGourceTree::PerformLayout() {
     if (nodes.empty() || rootNodeId.empty()) return;
     
     // Update center point
-    Rect2Di bounds = GetBounds();
-    style.centerX = finalBounds.width / 2.0f;
-    style.centerY = finalBounds.height / 2.0f;
+    Rect2Di bounds = GetContentRect();
+    style.centerX = bounds.width / 2.0f;
+    style.centerY = bounds.height / 2.0f;
     
     // Update visibility based on expanded state
     UpdateVisibility();

@@ -77,9 +77,6 @@ namespace UltraCanvas {
             case UCEventType::MouseUp:
                 if (dragging) {
                     dragging = false;
-                    if (auto* app = UltraCanvasApplication::GetInstance()) {
-                        app->ReleaseMouse(this);
-                    }
                     if (owner) owner->EndSplitterDrag(index);
                     RequestRedraw();
                     return true;

@@ -1,5 +1,6 @@
 // include/UltraCanvasTreeView.h
 // Hierarchical tree view with icons and text for each row
+// Last Modified: 2026-06-04
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -88,6 +89,10 @@ public:
 
     TreeNode* FirstChild() { return children.empty() ? nullptr : children[0].get(); };
 
+    // Sort direct children alphabetically (case-insensitive) by data.text.
+    // recursive=true also sorts every descendant level. ascending=false reverses.
+    void SortChildNodes(bool recursive = false, bool ascending = true);
+
     // ===== STATE MANAGEMENT =====
     void Expand();
     
@@ -127,7 +132,9 @@ private:
     bool showExpandButtons;        // Show +/- buttons
     bool showFirstChildOnExpand;   // auto open first child on expand node
     bool autoExpandSelectedNode;  // auto expand selected node
-    
+    bool autoSortChildren = false; // keep children sorted alphabetically on insert
+    bool autoSortAscending = true; // direction used by auto-sort
+
     // Colors
     Color backgroundColor;       // Tree background color
     Color selectionColor;       // Selected row background
@@ -218,7 +225,19 @@ public:
     void SetHoverColor(const Color &color) { hoverColor = color; }
     void SetLineColor(const Color &color) { lineColor = color; }
     void SetTextColor(const Color &color) { textColor = color; }
-    
+
+    // ===== SORTING =====
+    // Persistent option: keep children alphabetically sorted as nodes are added.
+    void SetAutoSortChildren(bool enable, bool ascending = true);
+    bool GetAutoSortChildren() const { return autoSortChildren; }
+
+    // On-demand sort of a specified node's children (no-op if not found / null).
+    void SortNodeChildren(const std::string& nodeId, bool recursive = false, bool ascending = true);
+    void SortNodeChildren(TreeNode* node, bool recursive = false, bool ascending = true);
+
+    // Convenience: sort the entire tree from the root, recursively.
+    void SortAllNodes(bool ascending = true);
+
     // ===== SCROLLING =====
     void ScrollTo(TreeNode* node);
     void ScrollBy(int deltaY);
@@ -312,7 +331,12 @@ public:
         treeView->SetLineStyle(style);
         return *this;
     }
-    
+
+    TreeViewBuilder& SetAutoSortChildren(bool enable, bool ascending = true) {
+        treeView->SetAutoSortChildren(enable, ascending);
+        return *this;
+    }
+
     TreeViewBuilder& SetColors(const Color& bg, const Color& selection, const Color& hover, const Color& text) {
         treeView->SetBackgroundColor(bg);
         treeView->SetSelectionColor(selection);

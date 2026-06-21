@@ -273,6 +273,10 @@ namespace UltraCanvas {
                 break;
             }
             DispatchEvent(event);
+
+            if (event.type == UCEventType::MouseUp && capturedMouseButtonDown == event.button) {
+                ReleaseMouse();
+            }
         }
     }
 
@@ -329,7 +333,7 @@ namespace UltraCanvas {
 
     void UltraCanvasApplicationBase::CleanupElementReferences(UltraCanvasUIElement* elem) {
         if (capturedElement == elem) {
-            ReleaseMouse(elem);
+            ReleaseMouse();
         }
         if (hoveredElement == elem) {
             hoveredElement = nullptr;
@@ -439,27 +443,6 @@ namespace UltraCanvas {
             return focusedWindow->GetFocusedElement();
         }
         return nullptr;
-    }
-
-    bool UltraCanvasApplicationBase::IsDoubleClick(const UCEvent &event) {
-        auto now = std::chrono::steady_clock::now();
-        auto timeDiff = std::chrono::duration<float>(now - lastClickTime).count();
-
-        bool isDoubleClick = false;
-        if (timeDiff <= DOUBLE_CLICK_TIME) {
-            int dx = event.pointer.x - lastMouseEvent.pointer.x;
-            int dy = event.pointer.y - lastMouseEvent.pointer.y;
-            int distance = static_cast<int>(std::sqrt(dx * dx + dy * dy));
-
-            if (distance <= DOUBLE_CLICK_DISTANCE) {
-                isDoubleClick = true;
-            }
-        }
-
-        lastMouseEvent = event;
-        lastClickTime = now;
-
-        return isDoubleClick;
     }
 
     void UltraCanvasApplicationBase::DispatchEvent(const UCEvent& event) {
@@ -798,15 +781,17 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasApplicationBase::CaptureMouse(UltraCanvasUIElement *element) {
-        CaptureMouseNative();
+        capturedMouseButtonDown = currentEvent.button;
         capturedElement = element;
+        CaptureMouseNative();
     }
 
-    void UltraCanvasApplicationBase::ReleaseMouse(UltraCanvasUIElement *element) {
-        if (element && element == capturedElement) {
-            capturedElement = nullptr;
+    void UltraCanvasApplicationBase::ReleaseMouse() {
+        if (capturedElement) {
+            ReleaseMouseNative();
         }
-        ReleaseMouseNative();
+        capturedElement = nullptr;
+        capturedMouseButtonDown = UCMouseButton::NoneButton;
     }
 
     // ===== TIMER SYSTEM =====

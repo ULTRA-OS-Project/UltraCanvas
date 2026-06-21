@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "../include/UltraCanvasWebMVideo.h"
+#include "UltraCanvasFileError.h"
 #include "../include/UltraCanvasDrawingSurface.h"
 #include "../include/UltraCanvasRect.h"
 #include "../include/UltraCanvasPoint.h"
@@ -113,15 +114,24 @@ void UltraCanvasWebMVideo::CleanupDecoder() {
 }
 
 bool UltraCanvasWebMVideo::LoadFromFile(const std::string& filePath) {
+    // Report file-access problems first (missing / locked / no permission) so a
+    // locked file isn't misreported as "not a valid WebM format".
+    std::string accessError = DescribeFileReadError(filePath);
+    if (!accessError.empty()) {
+        NotifyError(accessError);
+        return false;
+    }
+
     if (!IsWebMFile(filePath)) {
         NotifyError("File is not a valid WebM format: " + filePath);
         return false;
     }
-    
+
     // Read file into memory
     std::ifstream file(filePath, std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
-        NotifyError("Cannot open WebM file: " + filePath);
+        std::string reason = DescribeFileReadError(filePath);
+        NotifyError(reason.empty() ? ("Cannot open WebM file: " + filePath) : reason);
         return false;
     }
     

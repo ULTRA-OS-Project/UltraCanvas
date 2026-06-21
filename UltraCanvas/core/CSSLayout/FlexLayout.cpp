@@ -2,11 +2,17 @@
 // CSS Flexbox layout: https://www.w3.org/TR/css-flexbox-1/#layout-algorithm
 // Implemented: row/column/reverse, wrap, grow, shrink, basis, gap,
 // justify-content, align-items, align-self, align-content (no Baseline).
+// Version: 1.3.4 - NoWrap lines are clamped to the container's definite cross
+//                 extent in ArrangeFlex, so a child whose max-content cross
+//                 exceeds the container (e.g. a long unwrapped label in a
+//                 stretch column) overflows/wraps inside the item instead of
+//                 stretching the item — and its container — past the available
+//                 cross size.
 // Version: 1.3.3 - A fully-constrained (both-axes Exact) container now derives
 //                 its content extent from the constraint rather than its own
 //                 explicit size, so a grown/stretched flex container lays out
 //                 its children against its USED size, not its flex-basis.
-// Last Modified: 2026-06-02
+// Last Modified: 2026-06-14
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -459,9 +465,9 @@ namespace UltraCanvas {
                     resolveItemMargins(it, s.axis, inlineAvail.value_or(0.f), ctx);
 
                     // Resolve min/max main constraints (using container main as basis).
-                    if (it.el->constraints.has_value()) {
-                        const Dimension& minD = s.axis.isRow ? it.el->constraints->minWidth  : it.el->constraints->minHeight;
-                        const Dimension& maxD = s.axis.isRow ? it.el->constraints->maxWidth  : it.el->constraints->maxHeight;
+                    if (it.el->boxConstraints.has_value()) {
+                        const Dimension& minD = s.axis.isRow ? it.el->boxConstraints->minWidth : it.el->boxConstraints->minHeight;
+                        const Dimension& maxD = s.axis.isRow ? it.el->boxConstraints->maxWidth : it.el->boxConstraints->maxHeight;
                         it.minMain = resolveMinMax(minD, mainBasis, ctx, 0.f);
                         it.maxMain = resolveMinMax(maxD, mainBasis, ctx, INFINITY);
                     }
@@ -642,6 +648,17 @@ namespace UltraCanvas {
                 crossFree = 0.f;
             } else {
                 for (auto& ln : s.lines) ln.lineCrossSize = ln.crossSize;
+            }
+
+            // A NoWrap line cannot exceed the container's own (definite) cross
+            // extent — availCross is exact here (ArrangeFlex's finalRect is Exact
+            // in both axes). Without this clamp, a child whose max-content cross is
+            // larger than the container (e.g. a long unwrapped label in a stretch
+            // column) would stretch its line — and every align-self:stretch sibling
+            // — past the container instead of wrapping / overflowing inside it.
+            if (s.fl.wrap == FlexWrap::NoWrap) {
+                for (auto& ln : s.lines)
+                    ln.lineCrossSize = std::min(ln.lineCrossSize, availCross);
             }
 
             // Distribute cross free space among lines per align-content.
