@@ -61,6 +61,12 @@ public:
     void SetOutputPath(const std::string& path);
     void SetCamera(const std::string& deviceId);
 
+    // Select a camera by backend id (empty = system default) and update the
+    // on-screen label. If the preview is already live (and not mid-recording),
+    // it is restarted on the newly chosen device.
+    void SelectCamera(const std::string& deviceId, const std::string& displayLabel);
+    const std::string& GetCameraLabel() const { return currentCameraLabel; }
+
     // ===== STYLE =====
     void SetStyle(const VideoRecorderStyle& s);
     const VideoRecorderStyle& GetStyle() const { return style; }

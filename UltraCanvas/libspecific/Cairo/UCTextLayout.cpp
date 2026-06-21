@@ -503,21 +503,25 @@ namespace UltraCanvas {
         double offset = -ext.logical.y;
         if (explicitHeight > 0) {
             if (valign == VerticalAlignment::Middle) {
-                // Pango splits the font's external line-leading half above and half below
-                // the baseline. The top half (baseline - typographic ascent) is
-                // platform/font-specific padding that pushes visible text down if we
-                // naively center the whole logical box — negligible for DejaVu/FreeSans
-                // on Linux (baseline == ascent), but several pixels for e.g. Segoe UI on
-                // Windows. Subtract it so the *visible* text is centered consistently.
-                // The subtraction stays in Pango units (one final divide by PANGO_SCALE_D)
-                // so we keep the sub-pixel offset Pango honours when placing glyphs;
-                // truncating each operand to int pixels first regressed Segoe UI 12pt.
-                double topLeadingPad = 0.0;
-                if (cachedAscentPU > 0) {
-                    const double padPU = pango_layout_get_baseline(layout) - cachedAscentPU;
-                    if (padPU > 0) topLeadingPad = padPU / PANGO_SCALE_D;
+                // Centering the *logical* line box looks correct only when the
+                // font's external leading is small and symmetric. On Windows UI
+                // fonts (e.g. Segoe UI) the logical line box is much taller than
+                // the visible glyphs and the extra space sits above the text, so
+                // box-centering pushed single-line labels to the top of buttons.
+                //
+                // For a single line, center the font's actual ascent+descent
+                // band instead: solve for the offset that places the baseline at
+                //   (H - (ascent + descent)) / 2 + ascent
+                // This is tight, content-independent and matches across platforms.
+                const double ascent  = cachedAscentPU  / PANGO_SCALE_D;
+                const double descent = cachedDescentPU / PANGO_SCALE_D;
+                const bool singleLine = (pango_layout_get_line_count(layout) <= 1);
+                if (singleLine && ascent > 0 && descent > 0) {
+                    const double baseline = pango_layout_get_baseline(layout) / PANGO_SCALE_D;
+                    offset = (explicitHeight - (ascent + descent)) / 2.0 + ascent - baseline;
+                } else {
+                    offset = (explicitHeight - ext.logical.height) / 2 - ext.logical.y;
                 }
-                offset = (explicitHeight - ext.logical.height) / 2.0 - ext.logical.y - topLeadingPad;
             } else if (valign == VerticalAlignment::Bottom) {
                 offset = explicitHeight - ext.logical.height - ext.logical.y;
             }

@@ -25,14 +25,14 @@ message(STATUS "========================================")
 if (BUILD_DEMO_APP)
 else()
     option(ULTRACANVAS_BUILD_SHARED "Build shared library instead of static" OFF)
-    option(ULTRACANVAS_PLUGIN_CDR "Build CorelDRAW CDR plugin" ON)
-    option(ULTRACANVAS_PLUGIN_VECTOR, "Build Vector plugin" OFF)
-    option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" ON)
-    option(ULTRACANVAS_PLUGIN_SVG "Build SVG plugin" OFF)
-    option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin" ON)
-    option(ULTRACANVAS_ENABLE_AUDIO "Enable audio playback & recording (requires backend lib)" ON)
-    option(ULTRACANVAS_ENABLE_VIDEO "Enable video playback & recording (requires platform media framework)" ON)
 endif ()
+option(ULTRACANVAS_PLUGIN_CDR "Build CorelDRAW CDR plugin" ON)
+option(ULTRACANVAS_PLUGIN_VECTOR, "Build Vector plugin" OFF)
+option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" ON)
+option(ULTRACANVAS_PLUGIN_SVG "Build SVG plugin" OFF)
+option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin" ON)
+option(ULTRACANVAS_ENABLE_AUDIO "Enable audio playback & recording (requires backend lib)" ON)
+option(ULTRACANVAS_ENABLE_VIDEO "Enable video playback & recording (requires platform media framework)" ON)
 option(ULTRACANVAS_ENABLE_GL "Enable OpenGL 3D surface support" ON)
 
 # OpenGL surface support (Linux, macOS and Windows)
@@ -246,6 +246,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasPopulationChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasJitterPlotElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasPieChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasRadarChartElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasColormap.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasHeatmapChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasCalendarHeatmap.cpp
@@ -394,10 +395,11 @@ list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
 )
 set(ULTRACANVAS_VIDEO_BACKEND_FOUND OFF)
 if(ULTRACANVAS_ENABLE_VIDEO)
+    message(STATUS "Video enabled in ${ULTRACANVAS_PLATFORM}")
     if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
-        find_package(PkgConfig QUIET)
+        find_package(PkgConfig)
         if(PkgConfig_FOUND)
-            pkg_check_modules(GSTREAMER QUIET
+            pkg_check_modules(GSTREAMER
                 gstreamer-1.0 gstreamer-app-1.0 gstreamer-video-1.0 gstreamer-pbutils-1.0)
         endif()
         if(GSTREAMER_FOUND)

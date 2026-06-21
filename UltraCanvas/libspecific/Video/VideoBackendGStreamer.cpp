@@ -10,8 +10,8 @@
 // frames are converted to packed BGRA and handed up via the session callbacks;
 // the engine buffers the latest frame for the UI thread to upload to a pixmap.
 //
-// Version: 0.1.0
-// Last Modified: 2026-06-15
+// Version: 0.1.1
+// Last Modified: 2026-06-21
 // Author: UltraCanvas Framework
 
 #include "IVideoBackend.h"
@@ -32,11 +32,16 @@ namespace {
 
 // ---- One-time GStreamer init + shared main loop thread -------------------
 
-// We run the GLib *default* main context on our own thread (UltraCanvas drives
-// its own X11/native loop on Linux, so the default GLib context is otherwise
-// unused). Sessions therefore attach their bus watches with gst_bus_add_watch()
-// — which targets the default context — and those callbacks fire on this thread.
+// We run a *private* GLib main context on our own thread. Crucially we do NOT
+// use the GLib default context: on Linux that context is owned by GTK, whose
+// native file dialogs pump it from the UI thread via gtk_dialog_run(). Two
+// threads iterating the same GMainContext corrupts GObject refcount/disposal
+// state (observed as a heap double-free inside gtk_dialog_run). By owning a
+// dedicated context here — and attaching every bus watch to it explicitly (see
+// gst_bus_create_watch + g_source_attach in the sessions) — GStreamer's GLib
+// activity stays fully isolated from GTK. Bus callbacks fire on this thread.
 struct GstRuntime {
+    GMainContext* ctx = nullptr;   // private context, isolated from GTK's default
     GMainLoop* loop = nullptr;
     std::thread thread;
     std::atomic<bool> running{false};
@@ -48,9 +53,16 @@ struct GstRuntime {
             if (err) g_error_free(err);
             return false;
         }
-        loop = g_main_loop_new(nullptr, FALSE);
+        ctx = g_main_context_new();
+        loop = g_main_loop_new(ctx, FALSE);
         running.store(true);
-        thread = std::thread([this]() { g_main_loop_run(loop); });
+        thread = std::thread([this]() {
+            // Make our context the thread-default so any sources GStreamer
+            // creates internally on this thread also land off the GTK default.
+            g_main_context_push_thread_default(ctx);
+            g_main_loop_run(loop);
+            g_main_context_pop_thread_default(ctx);
+        });
         return true;
     }
 
@@ -60,7 +72,10 @@ struct GstRuntime {
         if (loop) g_main_loop_quit(loop);
         if (thread.joinable()) thread.join();
         if (loop) { g_main_loop_unref(loop); loop = nullptr; }
+        if (ctx) { g_main_context_unref(ctx); ctx = nullptr; }
     }
+
+    GMainContext* Context() { return ctx; }
 
     ~GstRuntime() { Stop(); }
 };
@@ -142,7 +157,12 @@ public:
         g_free(uri);
 
         bus = gst_element_get_bus(pipeline);
-        busWatchId = gst_bus_add_watch(bus, &GstDecodeSession::OnBus, this);
+        // Attach the bus watch to our private context (NOT the default one GTK
+        // owns). gst_bus_add_watch() only ever targets the default context, so
+        // we build the GSource ourselves and attach it explicitly.
+        busSource = gst_bus_create_watch(bus);
+        g_source_set_callback(busSource, (GSourceFunc)&GstDecodeSession::OnBus, this, nullptr);
+        g_source_attach(busSource, Runtime().Context());
 
         // Preroll to PAUSED so duration/caps become queryable.
         gst_element_set_state(pipeline, GST_STATE_PAUSED);
@@ -257,7 +277,9 @@ private:
     }
 
     void Teardown() {
-        if (busWatchId) { g_source_remove(busWatchId); busWatchId = 0; }
+        // Source was attached to a private context, so g_source_remove() (which
+        // only searches the default context) won't find it — destroy via ptr.
+        if (busSource) { g_source_destroy(busSource); g_source_unref(busSource); busSource = nullptr; }
         if (pipeline) {
             gst_element_set_state(pipeline, GST_STATE_NULL);
             gst_object_unref(pipeline);   // also drops the embedded appsink
@@ -271,7 +293,7 @@ private:
     GstElement* pipeline = nullptr;
     GstElement* appsink = nullptr;
     GstBus* bus = nullptr;
-    guint busWatchId = 0;
+    GSource* busSource = nullptr;
     VideoStreamInfo streamInfo;
     std::atomic<bool> infoReady{false};
     bool   looping = false;
@@ -325,7 +347,10 @@ public:
         recValve = gst_bin_get_by_name(GST_BIN(pipeline), "recvalve");
 
         bus = gst_element_get_bus(pipeline);
-        busWatchId = gst_bus_add_watch(bus, &GstCaptureSession::OnBus, this);
+        // Attach to our private context, not GTK's default one (see GstRuntime).
+        busSource = gst_bus_create_watch(bus);
+        g_source_set_callback(busSource, (GSourceFunc)&GstCaptureSession::OnBus, this, nullptr);
+        g_source_attach(busSource, Runtime().Context());
 
         if (gst_element_set_state(pipeline, GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE) {
             if (onError) onError("Failed to start camera preview");
@@ -338,7 +363,7 @@ public:
 
     void Close() override {
         recording = false;
-        if (busWatchId) { g_source_remove(busWatchId); busWatchId = 0; }
+        if (busSource) { g_source_destroy(busSource); g_source_unref(busSource); busSource = nullptr; }
         if (recValve) { gst_object_unref(recValve); recValve = nullptr; }
         if (pipeline) {
             gst_element_set_state(pipeline, GST_STATE_NULL);
@@ -432,7 +457,7 @@ private:
     GstElement* pipeline = nullptr;
     GstElement* recValve = nullptr;
     GstBus* bus = nullptr;
-    guint busWatchId = 0;
+    GSource* busSource = nullptr;
     bool opened = false;
     std::atomic<bool> recording{false};
     gint64 startTime = 0;
