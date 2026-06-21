@@ -1,4 +1,11 @@
 #### 2026-06-19 *0.2.15*
+- Fixes Gstreamer build in Linux
+- Fixes Gstreamer (video player) and native dialogs crash in Linux
+- Merged "Add Radar Chart element"
+- Fix Radar Chart rendering and animation
+
+
+#### 2026-06-19 *0.2.15*
 - Added intro description for different Modules
 
 #### 2026-06-19 *0.2.14*
