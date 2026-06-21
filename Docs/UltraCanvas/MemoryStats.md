@@ -103,7 +103,33 @@ Other entry points:
 > GPU memory (`MemoryCategory::GLResource`) is reported on a **separate axis**
 > (`gpuBytes` / `GpuTotalBytes`) because it is device memory, not host heap.
 
-## Ready-made panel widget
+## Task-manager dialog
+
+The primary, ready-made way to view memory usage is the dialog
+(`UltraCanvasMemoryStatsDialog`, in `UltraCanvas/dialogs/`). It opens as a window —
+like a browser's task manager — with a Refresh and a Close button:
+
+```cpp
+#include "dialogs/UltraCanvasMemoryStatsDialog.h"
+
+// One-liner: build and show.
+UltraCanvasMemoryStatsDialog::Show(parentWindow);
+
+// Or configure first:
+MemoryStatsDialogConfig cfg;
+cfg.title = "Task Manager";
+cfg.showTypeBreakdown = true;          // also list concrete C++ types
+auto dlg = CreateMemoryStatsDialog(cfg);
+UltraCanvasDialogManager::ShowDialog(dlg, nullptr, parentWindow);
+```
+
+The dialog re-snapshots when its window repaints and on the **Refresh** button; an
+application that wants live updates can call `dlg->RefreshNow()` on a timer.
+
+### Embeddable panel element
+
+The dialog is built on `UltraCanvasMemoryStatsPanel`, a drawing element you can also
+embed directly (e.g. in a sidebar) if you don't want a separate window:
 
 ```cpp
 auto panel = CreateMemoryStatsPanel("memPanel", 0, 0, 320, 480);
@@ -112,7 +138,7 @@ window->AddChild(panel);
 
 The panel polls `Generation()`, renders one row per scope with a usage bar and a
 category breakdown, and (optionally, via `SetShowTypeBreakdown(true)`) the concrete
-C++ types. It works in any UltraCanvas app with no extra wiring.
+C++ types.
 
 ## Notes
 
