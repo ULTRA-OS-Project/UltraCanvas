@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" viewBox="0 0 680 794" role="img" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">
+<title>VideoFX module overview</title>
+<desc>VideoFX media processing module organised as capability blocks (API surface, pipeline core, effects and codecs, GPU acceleration) sitting on top of a shared third-party dependency layer.</desc>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+<style>
+.th{font-size:14px;font-weight:500}
+.ts{font-size:12px;font-weight:400}
+.blue-fill{fill:#E6F1FB;stroke:#185FA5}
+.blue-t{fill:#0C447C}.blue-s{fill:#185FA5}
+.teal-fill{fill:#E1F5EE;stroke:#0F6E56}
+.teal-sub{fill:#9FE1CB;stroke:#0F6E56}
+.teal-t{fill:#085041}.teal-s{fill:#0F6E56}
+.coral-fill{fill:#FAECE7;stroke:#993C1D}
+.coral-sub{fill:#F2C9BB;stroke:#993C1D}
+.coral-t{fill:#712B13}.coral-s{fill:#993C1D}
+.amber-fill{fill:#FAEEDA;stroke:#854F0B}
+.amber-t{fill:#633806}.amber-s{fill:#854F0B}
+.purple-fill{fill:#EEEDFE;stroke:#534AB7}
+.purple-sub{fill:#CECBF6;stroke:#534AB7}
+.purple-t{fill:#3C3489}.purple-s{fill:#534AB7}
+.arr{stroke:#73726c;stroke-width:1.5;fill:none}
+</style>
+</defs>
+
+<rect class="blue-fill" x="40" y="30" width="600" height="56" rx="10" stroke-width="0.5"/>
+<text class="th blue-t" x="340" y="52" text-anchor="middle" dominant-baseline="central">VideoFX_* API surface</text>
+<text class="ts blue-s" x="340" y="70" text-anchor="middle" dominant-baseline="central">C-style entrypoints · opaque handles · sync + async · VideoFXResult</text>
+
+<rect class="teal-fill" x="40" y="104" width="600" height="148" rx="10" stroke-width="0.5"/>
+<text class="th teal-t" x="60" y="126" dominant-baseline="central">Pipeline core</text>
+<rect class="teal-sub" x="58" y="142" width="182" height="50" rx="6" stroke-width="0.5"/>
+<text class="th teal-t" x="149" y="160" text-anchor="middle" dominant-baseline="central">Demux / Mux</text>
+<text class="ts teal-s" x="149" y="178" text-anchor="middle" dominant-baseline="central">Container read / write</text>
+<rect class="teal-sub" x="249" y="142" width="182" height="50" rx="6" stroke-width="0.5"/>
+<text class="th teal-t" x="340" y="160" text-anchor="middle" dominant-baseline="central">Frame graph</text>
+<text class="ts teal-s" x="340" y="178" text-anchor="middle" dominant-baseline="central">Filter chain scheduler</text>
+<rect class="teal-sub" x="440" y="142" width="182" height="50" rx="6" stroke-width="0.5"/>
+<text class="th teal-t" x="531" y="160" text-anchor="middle" dominant-baseline="central">A/V sync</text>
+<text class="ts teal-s" x="531" y="178" text-anchor="middle" dominant-baseline="central">PTS / DTS · clocks</text>
+<rect class="teal-sub" x="58" y="200" width="182" height="44" rx="6" stroke-width="0.5"/>
+<text class="th teal-t" x="149" y="222" text-anchor="middle" dominant-baseline="central">Frame buffers</text>
+<rect class="teal-sub" x="249" y="200" width="182" height="44" rx="6" stroke-width="0.5"/>
+<text class="th teal-t" x="340" y="222" text-anchor="middle" dominant-baseline="central">Color / pixel fmt</text>
+<rect class="teal-sub" x="440" y="200" width="182" height="44" rx="6" stroke-width="0.5"/>
+<text class="th teal-t" x="531" y="222" text-anchor="middle" dominant-baseline="central">Timeline / seek</text>
+
+<rect class="coral-fill" x="40" y="270" width="600" height="206" rx="10" stroke-width="0.5"/>
+<text class="th coral-t" x="60" y="292" dominant-baseline="central">Effects &amp; codecs</text>
+<rect class="coral-sub" x="58" y="308" width="182" height="50" rx="6" stroke-width="0.5"/>
+<text class="th coral-t" x="149" y="326" text-anchor="middle" dominant-baseline="central">Transform</text>
+<text class="ts coral-s" x="149" y="344" text-anchor="middle" dominant-baseline="central">Scale, crop, rotate, warp</text>
+<rect class="coral-sub" x="249" y="308" width="182" height="50" rx="6" stroke-width="0.5"/>
+<text class="th coral-t" x="340" y="326" text-anchor="middle" dominant-baseline="central">Color grading</text>
+<text class="ts coral-s" x="340" y="344" text-anchor="middle" dominant-baseline="central">LUT, curves, HDR tone</text>
+<rect class="coral-sub" x="440" y="308" width="182" height="50" rx="6" stroke-width="0.5"/>
+<text class="th coral-t" x="531" y="326" text-anchor="middle" dominant-baseline="central">Compositing</text>
+<text class="ts coral-s" x="531" y="344" text-anchor="middle" dominant-baseline="central">Blend, alpha, layers</text>
+<rect class="coral-sub" x="58" y="366" width="182" height="50" rx="6" stroke-width="0.5"/>
+<text class="th coral-t" x="149" y="384" text-anchor="middle" dominant-baseline="central">Filters</text>
+<text class="ts coral-s" x="149" y="402" text-anchor="middle" dominant-baseline="central">Blur, sharpen, denoise</text>
+<rect class="coral-sub" x="249" y="366" width="182" height="50" rx="6" stroke-width="0.5"/>
+<text class="th coral-t" x="340" y="384" text-anchor="middle" dominant-baseline="central">Transitions</text>
+<text class="ts coral-s" x="340" y="402" text-anchor="middle" dominant-baseline="central">Fade, wipe, dissolve</text>
+<rect class="coral-sub" x="440" y="366" width="182" height="50" rx="6" stroke-width="0.5"/>
+<text class="th coral-t" x="531" y="384" text-anchor="middle" dominant-baseline="central">Codecs</text>
+<text class="ts coral-s" x="531" y="402" text-anchor="middle" dominant-baseline="central">H.264/265, AV1, VP9</text>
+<text class="ts coral-s" x="60" y="436" dominant-baseline="central">IVideoFXEffectPlugin — core binary unchanged</text>
+<text class="ts coral-s" x="60" y="458" dominant-baseline="central">Keying · Stabilize · Motion blur · Overlays / text · Particles · Audio FX</text>
+
+<rect class="amber-fill" x="40" y="494" width="600" height="60" rx="10" stroke-width="0.5"/>
+<text class="th amber-t" x="60" y="516" dominant-baseline="central">GPU acceleration</text>
+<text class="ts amber-s" x="60" y="536" dominant-baseline="central">Vulkan · Metal · D3D12 compute · CUDA / NVENC · VA-API · QuickSync — CPU fallback</text>
+
+<line x1="340" y1="554" x2="340" y2="594" class="arr" marker-end="url(#arrow)"/>
+
+<rect class="purple-fill" x="40" y="596" width="600" height="190" rx="10" stroke-width="0.5"/>
+<text class="th purple-t" x="60" y="618" dominant-baseline="central">Third-party dependencies</text>
+<rect class="purple-sub" x="58" y="636" width="182" height="50" rx="6" stroke-width="0.5"/>
+<text class="th purple-t" x="149" y="654" text-anchor="middle" dominant-baseline="central">FFmpeg / libav</text>
+<text class="ts purple-s" x="149" y="672" text-anchor="middle" dominant-baseline="central">Demux, decode, encode</text>
+<rect class="purple-sub" x="249" y="636" width="182" height="50" rx="6" stroke-width="0.5"/>
+<text class="th purple-t" x="340" y="654" text-anchor="middle" dominant-baseline="central">libvpx / dav1d</text>
+<text class="ts purple-s" x="340" y="672" text-anchor="middle" dominant-baseline="central">VP9 · AV1 codecs</text>
+<rect class="purple-sub" x="440" y="636" width="182" height="50" rx="6" stroke-width="0.5"/>
+<text class="th purple-t" x="531" y="654" text-anchor="middle" dominant-baseline="central">x264 / x265</text>
+<text class="ts purple-s" x="531" y="672" text-anchor="middle" dominant-baseline="central">H.264 · H.265 encode</text>
+<rect class="purple-sub" x="58" y="694" width="182" height="50" rx="6" stroke-width="0.5"/>
+<text class="th purple-t" x="149" y="712" text-anchor="middle" dominant-baseline="central">Vulkan / Metal SDK</text>
+<text class="ts purple-s" x="149" y="730" text-anchor="middle" dominant-baseline="central">GPU compute shaders</text>
+<rect class="purple-sub" x="249" y="694" width="182" height="50" rx="6" stroke-width="0.5"/>
+<text class="th purple-t" x="340" y="712" text-anchor="middle" dominant-baseline="central">zimg / libplacebo</text>
+<text class="ts purple-s" x="340" y="730" text-anchor="middle" dominant-baseline="central">Scaling · color · HDR</text>
+<rect class="purple-sub" x="440" y="694" width="182" height="50" rx="6" stroke-width="0.5"/>
+<text class="th purple-t" x="531" y="712" text-anchor="middle" dominant-baseline="central">Cairo / UltraCanvas</text>
+<text class="ts purple-s" x="531" y="730" text-anchor="middle" dominant-baseline="central">Overlay raster · preview</text>
+<text class="ts purple-s" x="60" y="766" dominant-baseline="central">Platform glue — Linux · macOS · Windows · ULTRA OS native</text>
+</svg>
