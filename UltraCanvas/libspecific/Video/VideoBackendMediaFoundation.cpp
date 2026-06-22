@@ -605,6 +605,10 @@ private:
     }
 
     void ReadLoop() {
+        // This worker drives the synchronous SourceReader and touches COM/MF
+        // objects, so it needs its own apartment. The thread that created the
+        // backend is an STA (see MFBackend::Initialize); give the worker an MTA.
+        HRESULT comHr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
         while (running) {
             DWORD streamIndex = 0, flags = 0;
             LONGLONG timestamp = 0;
@@ -632,6 +636,7 @@ private:
                 if (recording) WriteSample(audioSinkIdx, sample.Get(), timestamp);
             }
         }
+        if (SUCCEEDED(comHr)) CoUninitialize();
     }
 
     VideoCaptureParams params;
@@ -659,15 +664,30 @@ class MFBackend : public IVideoBackend {
 public:
     bool Initialize() override {
         if (initialized) return true;
-        if (FAILED(CoInitializeEx(nullptr, COINIT_MULTITHREADED))) return false;
-        if (FAILED(MFStartup(MF_VERSION, MFSTARTUP_FULL))) { CoUninitialize(); return false; }
+        // The host app usually initializes COM on this (UI) thread first:
+        // UltraCanvas calls OleInitialize() for drag-drop and the native file
+        // dialogs, which joins an *apartment-threaded* (STA) apartment. A later
+        // CoInitializeEx(COINIT_MULTITHREADED) on the same thread then returns
+        // RPC_E_CHANGED_MODE — COM is perfectly usable, we simply stayed in the
+        // existing apartment and must NOT balance it with CoUninitialize().
+        // Treating that as a hard failure is what silently dropped the whole
+        // backend to the null stub on Windows ("video backend not compiled in").
+        HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        ownsCom = (hr == S_OK || hr == S_FALSE);   // we added a ref to balance
+        if (FAILED(hr) && hr != RPC_E_CHANGED_MODE) return false;
+        if (FAILED(MFStartup(MF_VERSION, MFSTARTUP_FULL))) {
+            if (ownsCom) CoUninitialize();
+            ownsCom = false;
+            return false;
+        }
         initialized = true;
         return true;
     }
     void Shutdown() override {
         if (!initialized) return;
         MFShutdown();
-        CoUninitialize();
+        if (ownsCom) CoUninitialize();
+        ownsCom = false;
         initialized = false;
     }
     std::string GetName() const override { return "mediafoundation"; }
@@ -735,6 +755,7 @@ private:
         return s;
     }
     bool initialized = false;
+    bool ownsCom = false;   // true only when this backend ref-counted COM itself
 };
 
 } // namespace

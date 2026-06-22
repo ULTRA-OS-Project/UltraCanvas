@@ -40,6 +40,11 @@ jobs:
               sudo apt-get install -y libx11-dev libxcursor-dev libgl1-mesa-dev libgtk-3-dev
               sudo apt-get install -y libcdr-dev librevenge-dev zlib1g-dev
               sudo apt-get install -y libzbar-dev libmupdf-dev
+              # MuPDF third-party deps: Ubuntu's libmupdf.a is built with
+              # USE_SYSTEM_LIBS and ships no libmupdf-third, so jbig2dec/mujs/gumbo
+              # must be linked from system -dev packages (find_library needs the .so).
+              sudo apt-get install -y libjbig2dec0-dev libmujs-dev libgumbo-dev libopenjp2-7-dev
+              sudo apt-get install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
           - os: windows-latest
             arch_label: x86_64
 

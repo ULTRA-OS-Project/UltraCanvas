@@ -218,6 +218,14 @@ namespace UltraCanvas {
     void UltraCanvasScrollbar::RenderThumb(IRenderContext *ctx) {
         if (thumbRect.width <= 0 || thumbRect.height <= 0) return;
 
+        // Custom handle image (SVG/PNG) takes precedence over the solid thumb.
+        if (!style.thumbImagePath.empty()) {
+            ctx->DrawImage(style.thumbImagePath,
+                           Rect2Dd(thumbRect.x, thumbRect.y, thumbRect.width, thumbRect.height),
+                           style.thumbImageFit);
+            return;
+        }
+
         // Determine thumb color based on state
         Color thumbColor = style.thumbColor;
         if (interactionState.thumbPressed || interactionState.isDragging) {

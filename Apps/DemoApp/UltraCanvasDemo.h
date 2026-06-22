@@ -209,6 +209,8 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateAutoCompleteExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateDatePickerExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSliderExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateColorPickerExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateScrollbarExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateLabelExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateCheckboxExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateToolbarExamples();
@@ -267,6 +269,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateFinancialChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreatePopulationChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreatePieChartExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateRadarChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateHeatmapExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateGaugeExamples();
 
@@ -314,6 +317,9 @@ namespace UltraCanvas {
         // diagram is skipped gracefully, so the screen degrades to a plain README
         // view until those assets are added.
         std::shared_ptr<UltraCanvasUIElement> CreateModuleDocScreen(const std::string& moduleDir);
+        // Overview page for the "ULTRA OS modules" category node itself: the ULTRA OS
+        // diagram (media/diagrams/ULTRA-OS.svg) plus the descriptive overview text.
+        std::shared_ptr<UltraCanvasUIElement> CreateUltraOSInfoScreen();
         std::shared_ptr<UltraCanvasUIElement> CreateBarcodeExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateQRCodeExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateGPIOExamples();

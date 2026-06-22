@@ -305,7 +305,7 @@ private:
 } // namespace
 
 std::shared_ptr<UltraCanvasUIElement> CreateGLZarchTab() {
-    auto root = std::make_shared<UltraCanvasContainer>("GLZarchTab", 0, 0, 1000, 700);
+    auto root = std::make_shared<UltraCanvasContainer>("GLZarchTab", 0, 0, 1004, 692);
 
     auto title = std::make_shared<UltraCanvasLabel>("GLZarchTitle", 16, 8, 760, 24);
     title->SetText("Zarch — a low-poly hover-ship simulation over scrolling biome terrain");

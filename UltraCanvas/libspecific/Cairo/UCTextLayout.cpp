@@ -1,7 +1,7 @@
 // libspecific/Cairo/UCTextLayout.cpp
 // Pango text layout wrapper for UltraCanvas Framework
-// Version: 1.1.0
-// Last Modified: 2026-04-12
+// Version: 1.1.1
+// Last Modified: 2026-06-20
 // Author: UltraCanvas Framework
 
 #include "UCTextLayout.h"
@@ -502,38 +502,29 @@ namespace UltraCanvas {
 
         double offset = -ext.logical.y;
         if (explicitHeight > 0) {
-            // Pango splits the font's external line-leading half above and half below
-            // the baseline. The top half (baseline - ascent) is platform/font-specific
-            // padding that would push visible text down if we naively centered the
-            // whole logical box. Subtract it for Middle alignment so visible text is
-            // centered consistently. Subtraction is done in Pango units (then rounded
-            // to the nearest pixel) because truncating each operand to int pixels
-            // before subtracting loses the sub-pixel offset that Pango itself honours
-            // when placing glyphs — which regressed centering on e.g. Segoe UI 12pt.
-/*
-            int topLeadingPad = 0;
-            if (cachedAscentPU > 0) {
-                const double layoutBaselinePU = pango_layout_get_baseline(layout);
-                const double padPU = layoutBaselinePU - cachedAscentPU;
-                if (padPU > 0) {
-                    topLeadingPad = (padPU + PANGO_SCALE_D / 2.0) / PANGO_SCALE_D;
-                }
-            }
-*/
             if (valign == VerticalAlignment::Middle) {
-//                offset = (explicitHeight - ext.logical.height) / 2 - ext.logical.y - topLeadingPad;
-                offset = (explicitHeight - ext.logical.height) / 2 - ext.logical.y;
+                // Centering the *logical* line box looks correct only when the
+                // font's external leading is small and symmetric. On Windows UI
+                // fonts (e.g. Segoe UI) the logical line box is much taller than
+                // the visible glyphs and the extra space sits above the text, so
+                // box-centering pushed single-line labels to the top of buttons.
+                //
+                // For a single line, center the font's actual ascent+descent
+                // band instead: solve for the offset that places the baseline at
+                //   (H - (ascent + descent)) / 2 + ascent
+                // This is tight, content-independent and matches across platforms.
+                const double ascent  = cachedAscentPU  / PANGO_SCALE_D;
+                const double descent = cachedDescentPU / PANGO_SCALE_D;
+                const bool singleLine = (pango_layout_get_line_count(layout) <= 1);
+                if (singleLine && ascent > 0 && descent > 0) {
+                    const double baseline = pango_layout_get_baseline(layout) / PANGO_SCALE_D;
+                    offset = (explicitHeight - (ascent + descent)) / 2.0 + ascent - baseline;
+                } else {
+                    offset = (explicitHeight - ext.logical.height) / 2 - ext.logical.y;
+                }
             } else if (valign == VerticalAlignment::Bottom) {
                 offset = explicitHeight - ext.logical.height - ext.logical.y;
             }
-
-//            debugOutput << "UCTextLayout::GetLayoutVerticalOffset"
-//                        << " H=" << explicitHeight
-//                        << " logical.h=" << ext.logical.height
-//                        << " ascentPU=" << cachedAscentPU
-//                        << " baselinePU=" << pango_layout_get_baseline(layout)
-//                        << " topLeadingPad=" << topLeadingPad
-//                        << " offset=" << offset << std::endl;
         }
         return offset;
     }

@@ -1,23 +1,2 @@
-<?xml version="1.0" standalone="no"?>
-<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
-<!--Generator: Xara Designer (www.xara.com), SVG filter version: 6.7.0.0-->
-<svg fill="none" fill-rule="evenodd" stroke="black" stroke-width="0.501" stroke-linejoin="bevel" stroke-miterlimit="10" font-family="Times New Roman" font-size="16" style="font-variant-ligatures:none" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" version="1.1" overflow="visible" width="69.022pt" height="80.86pt" viewBox="182.252 -380.516 69.022 80.86">
- <defs>
-  <marker id="DefaultArrowScaled" markerUnits="strokeWidth" viewBox="0 0 1 1" markerWidth="6" markerHeight="6" overflow="visible" orient="auto">
-   <!-- REF_ARROW_ROUNDED -->
-   <g transform="scale(0.0092592592)">
-    <path d="M -9,0 L -9,-45 C -9,-51.708 2.808,-56.580 9,-54 L 117,-9 C 120.916,-7.369 126.000,-4.242 126,0 C 126,4.242 120.916,7.369 117,9 L 9,54 C 2.808,56.580 -9,51.708 -9,45 z"/>
-   </g>
-  </marker>
-  <marker id="DefaultArrowScaled_1" markerUnits="strokeWidth" viewBox="0 0 1 1" markerWidth="6" markerHeight="6" overflow="visible" orient="auto">
-   <!-- REF_ARROW_ROUNDED -->
-   <g transform="scale(0.0092592592)">
-    <path d="M -9,0 L -9,-45 C -9,-51.708 2.808,-56.580 9,-54 L 117,-9 C 120.916,-7.369 126.000,-4.242 126,0 C 126,4.242 120.916,7.369 117,9 L 9,54 C 2.808,56.580 -9,51.708 -9,45 z"/>
-   </g>
-  </marker>
- </defs>
- <g id="Layer 1" transform="scale(1 -1)">
-  <path d="M 198.426,368.505 L 184.252,368.505 L 184.252,311.812 L 198.426,311.812" fill="none" stroke-width="4" marker-end="url(#DefaultArrowScaled)" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="M 235.1,311.667 L 249.274,311.667 L 249.274,368.36 L 235.1,368.36" fill="none" stroke-width="4" marker-end="url(#DefaultArrowScaled_1)" stroke-linejoin="round" stroke-linecap="round"/>
- </g>
-</svg>
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" id="Layer_1" data-name="Layer 1" viewBox="0 0 24 24" width="512" height="512"><path d="M11,19.49s0,0,0,0,0,0,0,0c0,.5-.19,1-.58,1.38l-2.57,2.52c-.1,.09-.22,.14-.35,.14s-.26-.05-.36-.15c-.19-.2-.19-.51,0-.71l2.57-2.51c.06-.06,.1-.12,.14-.18H4.5c-1.93,0-3.5-1.57-3.5-3.5v-3c0-.28,.22-.5,.5-.5s.5,.22,.5,.5v3c0,1.38,1.12,2.5,2.5,2.5h5.36c-.04-.07-.09-.13-.15-.19l-2.57-2.51c-.2-.19-.2-.51,0-.71s.51-.2,.71,0l2.57,2.51c.38,.38,.58,.89,.58,1.39Zm2.58-13.59l2.57,2.51c.1,.09,.22,.14,.35,.14s.26-.05,.36-.15c.19-.2,.19-.51,0-.71l-2.57-2.51c-.06-.06-.11-.12-.15-.19h5.36c1.38,0,2.5,1.12,2.5,2.5v3c0,.28,.22,.5,.5,.5s.5-.22,.5-.5v-3c0-1.93-1.57-3.5-3.5-3.5h-5.36c.04-.07,.09-.13,.14-.18l2.57-2.51c.2-.19,.2-.51,0-.71-.19-.2-.51-.2-.71,0l-2.57,2.52c-.38,.38-.57,.88-.58,1.38,0,0,0,0,0,0s0,0,0,0c0,.5,.2,1,.58,1.39Zm10.42,10.6v4c0,1.93-1.57,3.5-3.5,3.5h-4c-1.93,0-3.5-1.57-3.5-3.5v-4c0-1.93,1.57-3.5,3.5-3.5h4c1.93,0,3.5,1.57,3.5,3.5Zm-1,0c0-1.38-1.12-2.5-2.5-2.5h-4c-1.38,0-2.5,1.12-2.5,2.5v4c0,1.38,1.12,2.5,2.5,2.5h4c1.38,0,2.5-1.12,2.5-2.5v-4ZM11,3.5V7.5c0,1.93-1.57,3.5-3.5,3.5H3.5c-1.93,0-3.5-1.57-3.5-3.5V3.5C0,1.57,1.57,0,3.5,0H7.5c1.93,0,3.5,1.57,3.5,3.5Zm-1,0c0-1.38-1.12-2.5-2.5-2.5H3.5c-1.38,0-2.5,1.12-2.5,2.5V7.5c0,1.38,1.12,2.5,2.5,2.5H7.5c1.38,0,2.5-1.12,2.5-2.5V3.5Z"/></svg>

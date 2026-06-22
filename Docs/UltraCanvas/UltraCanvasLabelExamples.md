@@ -364,6 +364,56 @@ multiLabel->SetBorderWidth(1.0f);
 multiLabel->SetPadding(10.0f);
 ```
 
+### Rounded Corner Labels
+
+Rounded corners are produced by passing a **border radius** as the third
+argument to `SetBorders(width, color, radius)`. The radius is applied to the
+background fill as well as the border stroke, so labels can be rounded **with**
+a visible border or **without** one (by making the border color transparent).
+
+```cpp
+// Rounded WITH a visible border (filled).
+auto roundedFilled = std::make_shared<UltraCanvasLabel>(
+    "roundedFilled", 20, 350, 200, 32);
+roundedFilled->SetText("Rounded + Border");
+roundedFilled->SetBackgroundColor(Color(225, 240, 255));
+roundedFilled->SetTextColor(Color(0, 90, 170));
+roundedFilled->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
+roundedFilled->SetBorders(1.5f, Color(0, 120, 215), 10.0f); // width, color, radius
+
+// Outline-only pill: transparent background, visible border, large radius.
+auto roundedOutline = std::make_shared<UltraCanvasLabel>(
+    "roundedOutline", 240, 350, 200, 32);
+roundedOutline->SetText("Outlined Pill");
+roundedOutline->SetTextColor(Color(120, 60, 160));
+roundedOutline->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
+roundedOutline->SetBorders(2.0f, Color(150, 90, 200), 16.0f); // radius >= h/2 -> pill
+
+// Rounded WITHOUT a visible border: use a transparent border color so the
+// rounded fill is kept but no stroke is drawn.
+auto pillSuccess = std::make_shared<UltraCanvasLabel>(
+    "pillSuccess", 20, 420, 150, 28);
+pillSuccess->SetText("✓ Success");
+pillSuccess->SetBackgroundColor(Color(76, 175, 80));
+pillSuccess->SetTextColor(Colors::White);
+pillSuccess->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
+pillSuccess->SetBorders(1.0f, Colors::Transparent, 14.0f);
+
+// Rounded multi-line card with a soft fill and no visible border.
+auto roundedCard = std::make_shared<UltraCanvasLabel>(
+    "roundedCard", 490, 470, 450, 90);
+roundedCard->SetText("This rounded card has no visible border —\n"
+                     "just a soft filled background with rounded corners.");
+roundedCard->SetWrap(TextWrap::WrapWord);
+roundedCard->SetBackgroundColor(Color(232, 244, 253));
+roundedCard->SetBorders(1.0f, Colors::Transparent, 12.0f);
+roundedCard->SetPadding(12.0f);
+```
+
+> **Tip:** A radius equal to or greater than half the label height produces a
+> fully rounded "pill" shape. The renderer automatically clamps the radius so
+> corners never overlap.
+
 ### Dynamic Label with Auto-Resize
 ```cpp
 auto dynamicLabel = CreateAutoLabel("dynamic", 7, 10, 250, "");

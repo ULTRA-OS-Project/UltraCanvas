@@ -333,6 +333,37 @@ namespace UltraCanvas {
         return root;
     }
 
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateUltraOSInfoScreen() {
+        // Overview page shown when the "ULTRA OS modules" category itself is selected.
+        // The whole page is a single Markdown view: the descriptive overview text with
+        // the ULTRA-OS.svg diagram embedded at the bottom via a Markdown image tag.
+        // The relative image path (media/diagrams/ULTRA-OS.svg) is resolved against the
+        // markdown base directory set below, so the shared asset is not duplicated.
+        const std::string readmePath = NormalizePath(GetResourcesDir() + "Docs/Modules/ULTRA-OS/README.md");
+
+        auto root = std::make_shared<UltraCanvasContainer>("UltraOSInfoScreen");
+        root->size.width  = CSSLayout::Dimension::Pct(100);
+        root->size.height = CSSLayout::Dimension::Pct(100);
+        root->layout.SetFlexColumn();
+
+        auto docs = std::make_shared<UltraCanvasTextArea>("UltraOSDocs");
+        docs->size.width  = CSSLayout::Dimension::Pct(100);
+        docs->size.height = CSSLayout::Dimension::Pct(100);
+        // Resolve relative markdown image paths against the resources dir (which holds
+        // media/), so ![ULTRA OS](media/diagrams/ULTRA-OS.svg) renders the diagram.
+        docs->SetMarkdownBaseDirectory(GetResourcesDir());
+        docs->SetText(LoadFile(readmePath));
+        docs->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
+        docs->SetReadOnly(true);
+        docs->SetWordWrap(true);
+        docs->SetCursorPosition(LineColumnIndex::INVALID);
+        docs->SetPadding(0, 5, 0, 7);
+        docs->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        root->AddChild(docs);
+
+        return root;
+    }
+
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGPIOExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("GPIOExamples", 0, 0, 1020, 780);
 
