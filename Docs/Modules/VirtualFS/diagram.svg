@@ -1,82 +1,82 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 640" width="860" height="640" font-family="Segoe UI, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 660" width="820" height="660" font-family="Segoe UI, Arial, sans-serif">
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#5b6470"/>
     </marker>
   </defs>
 
-  <rect x="0" y="0" width="860" height="640" fill="#ffffff"/>
+  <rect x="0" y="0" width="820" height="660" fill="#ffffff"/>
 
-  <!-- App / Module -->
-  <rect x="280" y="24" width="300" height="62" rx="10" fill="#e8f0fe" stroke="#4169e1" stroke-width="2"/>
-  <text x="430" y="50" text-anchor="middle" font-size="17" font-weight="bold" fill="#1f3a8a">App / Module</text>
-  <text x="430" y="71" text-anchor="middle" font-size="12" fill="#3a3a3a">UltraCanvas · FileDialog · Texter · UltraFiler · …</text>
+  <!-- ============ App / Module ============ -->
+  <rect x="250" y="20" width="320" height="56" rx="10" fill="#e8f0fe" stroke="#4169e1" stroke-width="2"/>
+  <text x="410" y="45" text-anchor="middle" font-size="17" font-weight="bold" fill="#1f3a8a">App / Module</text>
+  <text x="410" y="65" text-anchor="middle" font-size="12" fill="#3a3a3a">UltraCanvas · FileDialog · Texter · UltraFiler · …</text>
 
-  <!-- Public C-style API -->
-  <rect x="230" y="118" width="400" height="66" rx="10" fill="#e6f7f4" stroke="#1aa085" stroke-width="2"/>
-  <text x="430" y="145" text-anchor="middle" font-size="16" font-weight="bold" fill="#0c6b58">VirtualFS_*  ·  C-style API</text>
-  <text x="430" y="167" text-anchor="middle" font-size="12" fill="#3a3a3a">ListDirectory · ReadFile · ExtractAll · CreateArchive</text>
+  <!-- ============ Public C-style API (grouped) ============ -->
+  <rect x="150" y="108" width="380" height="96" rx="10" fill="#e6f7f4" stroke="#1aa085" stroke-width="2"/>
+  <text x="340" y="130" text-anchor="middle" font-size="15" font-weight="bold" fill="#0c6b58">Public C-style API · VirtualFS_*</text>
+  <rect x="164" y="140" width="352" height="24" rx="5" fill="#f3fbf9" stroke="#bfe6dd" stroke-width="1"/>
+  <text x="340" y="156" text-anchor="middle" font-size="12" fill="#3a3a3a">VirtualFS_ListDirectory · VirtualFS_ReadFile</text>
+  <rect x="164" y="170" width="352" height="24" rx="5" fill="#f3fbf9" stroke="#bfe6dd" stroke-width="1"/>
+  <text x="340" y="186" text-anchor="middle" font-size="12" fill="#3a3a3a">VirtualFS_ExtractAll · VirtualFS_CreateArchive</text>
 
-  <!-- UltraCanvas bridge -->
-  <rect x="652" y="121" width="186" height="60" rx="10" fill="#eaf7ea" stroke="#2e9e44" stroke-width="2"/>
-  <text x="745" y="146" text-anchor="middle" font-size="14" font-weight="bold" fill="#1d6e2c">UCVFSBridge</text>
-  <text x="745" y="165" text-anchor="middle" font-size="11" fill="#3a3a3a">Zstd · LZ4 compress / decompress</text>
+  <!-- ============ UCVFSBridge (grouped) ============ -->
+  <rect x="560" y="108" width="230" height="96" rx="10" fill="#eaf7ea" stroke="#2e9e44" stroke-width="2"/>
+  <text x="675" y="128" text-anchor="middle" font-size="14" font-weight="bold" fill="#1d6e2c">UCVFSBridge</text>
+  <rect x="574" y="138" width="202" height="26" rx="5" fill="#f3faf3" stroke="#cfeacf" stroke-width="1"/>
+  <text x="675" y="155" text-anchor="middle" font-size="11" fill="#3a3a3a">Zstd compress / decompress</text>
+  <rect x="574" y="170" width="202" height="26" rx="5" fill="#f3faf3" stroke="#cfeacf" stroke-width="1"/>
+  <text x="675" y="187" text-anchor="middle" font-size="11" fill="#3a3a3a">LZ4 · Deflate · DecompressAuto</text>
 
-  <!-- Manager -->
-  <rect x="280" y="216" width="300" height="66" rx="10" fill="#f0e9fb" stroke="#7c4dcc" stroke-width="2"/>
-  <text x="430" y="243" text-anchor="middle" font-size="16" font-weight="bold" fill="#5a2ea6">VirtualFSManager</text>
-  <text x="430" y="265" text-anchor="middle" font-size="12" fill="#3a3a3a">singleton · entry caching · password / progress callbacks</text>
+  <!-- ============ Manager ============ -->
+  <rect x="250" y="240" width="320" height="68" rx="10" fill="#f0e9fb" stroke="#7c4dcc" stroke-width="2"/>
+  <text x="410" y="267" text-anchor="middle" font-size="16" font-weight="bold" fill="#5a2ea6">VirtualFSManager</text>
+  <text x="410" y="289" text-anchor="middle" font-size="12" fill="#3a3a3a">singleton · entry caching · password / progress callbacks</text>
 
-  <!-- Platform glue -->
-  <rect x="652" y="219" width="186" height="60" rx="10" fill="#f1f3f5" stroke="#5b6470" stroke-width="2"/>
-  <text x="745" y="244" text-anchor="middle" font-size="14" font-weight="bold" fill="#333">Platform glue</text>
-  <text x="745" y="263" text-anchor="middle" font-size="11" fill="#555">Linux · Win · macOS · UltraOS</text>
+  <!-- ============ VirtualFSPath ============ -->
+  <rect x="70" y="350" width="280" height="68" rx="10" fill="#e6f7f4" stroke="#1aa085" stroke-width="2"/>
+  <text x="210" y="377" text-anchor="middle" font-size="16" font-weight="bold" fill="#0c6b58">VirtualFSPath</text>
+  <text x="210" y="399" text-anchor="middle" font-size="12" fill="#3a3a3a">path parsing · archive detection · nesting</text>
 
-  <!-- VirtualFSPath -->
-  <rect x="60" y="320" width="280" height="66" rx="10" fill="#e6f7f4" stroke="#1aa085" stroke-width="2"/>
-  <text x="200" y="347" text-anchor="middle" font-size="16" font-weight="bold" fill="#0c6b58">VirtualFSPath</text>
-  <text x="200" y="369" text-anchor="middle" font-size="12" fill="#3a3a3a">path parsing · archive detection · nesting</text>
+  <!-- ============ IVirtualFSProvider (grouped, horizontal rows) ============ -->
+  <rect x="430" y="350" width="320" height="158" rx="10" fill="#f0e9fb" stroke="#7c4dcc" stroke-width="2"/>
+  <text x="590" y="372" text-anchor="middle" font-size="15" font-weight="bold" fill="#5a2ea6">IVirtualFSProvider</text>
+  <text x="590" y="389" text-anchor="middle" font-size="11" fill="#7a6aa0">pluggable format handlers</text>
+  <rect x="444" y="398" width="292" height="32" rx="5" fill="#f7f3fd" stroke="#ddd0f2" stroke-width="1"/>
+  <text x="590" y="418" text-anchor="middle" font-size="12" fill="#3a3a3a"><tspan font-weight="bold">LibArchive</tspan>  ·  ZIP · 7z · TAR · CAB · ISO · 40+</text>
+  <rect x="444" y="436" width="292" height="32" rx="5" fill="#f7f3fd" stroke="#ddd0f2" stroke-width="1"/>
+  <text x="590" y="456" text-anchor="middle" font-size="12" fill="#3a3a3a"><tspan font-weight="bold">CHM</tspan>  ·  libmspack</text>
+  <rect x="444" y="474" width="292" height="32" rx="5" fill="#f7f3fd" stroke="#ddd0f2" stroke-width="1"/>
+  <text x="590" y="494" text-anchor="middle" font-size="12" fill="#3a3a3a"><tspan font-weight="bold">WIM</tspan>  ·  wimlib</text>
 
-  <!-- IVirtualFSProvider -->
-  <rect x="480" y="320" width="300" height="66" rx="10" fill="#f0e9fb" stroke="#7c4dcc" stroke-width="2"/>
-  <text x="630" y="347" text-anchor="middle" font-size="16" font-weight="bold" fill="#5a2ea6">IVirtualFSProvider</text>
-  <text x="630" y="369" text-anchor="middle" font-size="12" fill="#3a3a3a">pluggable format-handler interface</text>
+  <!-- ============ Platform / OS layer (lowest level, horizontal row) ============ -->
+  <rect x="70" y="556" width="680" height="80" rx="10" fill="#f1f3f5" stroke="#5b6470" stroke-width="2"/>
+  <text x="410" y="578" text-anchor="middle" font-size="14" font-weight="bold" fill="#333">Platform / OS layer</text>
+  <rect x="88" y="588" width="150" height="34" rx="5" fill="#ffffff" stroke="#d4d8dd" stroke-width="1"/>
+  <text x="163" y="610" text-anchor="middle" font-size="12" fill="#333">Linux</text>
+  <rect x="250" y="588" width="150" height="34" rx="5" fill="#ffffff" stroke="#d4d8dd" stroke-width="1"/>
+  <text x="325" y="610" text-anchor="middle" font-size="12" fill="#333">Windows</text>
+  <rect x="412" y="588" width="150" height="34" rx="5" fill="#ffffff" stroke="#d4d8dd" stroke-width="1"/>
+  <text x="487" y="610" text-anchor="middle" font-size="12" fill="#333">macOS</text>
+  <rect x="574" y="588" width="158" height="34" rx="5" fill="#ffffff" stroke="#d4d8dd" stroke-width="1"/>
+  <text x="653" y="610" text-anchor="middle" font-size="12" fill="#333">UltraOS</text>
 
-  <!-- Provider implementations -->
-  <rect x="298" y="452" width="214" height="78" rx="10" fill="#f1f3f5" stroke="#5b6470" stroke-width="2"/>
-  <text x="405" y="482" text-anchor="middle" font-size="13" font-weight="bold" fill="#333">LibArchiveProvider</text>
-  <text x="405" y="501" text-anchor="middle" font-size="11" fill="#555">ZIP · 7z · TAR · CAB</text>
-  <text x="405" y="517" text-anchor="middle" font-size="11" fill="#555">ISO · RPM · 40+ formats</text>
-
-  <rect x="528" y="452" width="150" height="78" rx="10" fill="#f1f3f5" stroke="#5b6470" stroke-width="2"/>
-  <text x="603" y="487" text-anchor="middle" font-size="13" font-weight="bold" fill="#333">CHMProvider</text>
-  <text x="603" y="507" text-anchor="middle" font-size="11" fill="#555">CHM · libmspack</text>
-
-  <rect x="694" y="452" width="150" height="78" rx="10" fill="#f1f3f5" stroke="#5b6470" stroke-width="2"/>
-  <text x="769" y="487" text-anchor="middle" font-size="13" font-weight="bold" fill="#333">WIMProvider</text>
-  <text x="769" y="507" text-anchor="middle" font-size="11" fill="#555">WIM · wimlib</text>
-
-  <!-- Backends note -->
-  <text x="430" y="582" text-anchor="middle" font-size="12" fill="#888">Backends: libarchive · zlib · libzstd · liblz4 · libmspack · wimlib · libbrotli</text>
-
-  <!-- Arrows -->
+  <!-- ============ Arrows ============ -->
   <!-- App -> API -->
-  <path d="M430,86 L430,114" fill="none" stroke="#5b6470" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M395,76 C370,90 355,98 348,104" fill="none" stroke="#5b6470" stroke-width="2" marker-end="url(#arrow)"/>
   <!-- App -> Bridge -->
-  <path d="M580,58 C640,72 660,100 700,117" fill="none" stroke="#5b6470" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M560,52 C615,70 650,88 668,104" fill="none" stroke="#5b6470" stroke-width="2" marker-end="url(#arrow)"/>
   <!-- API -> Manager -->
-  <path d="M430,184 L430,212" fill="none" stroke="#5b6470" stroke-width="2" marker-end="url(#arrow)"/>
-  <!-- Manager -> Platform glue -->
-  <path d="M580,249 L648,249" fill="none" stroke="#5b6470" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M350,204 C380,218 398,228 408,236" fill="none" stroke="#5b6470" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- Bridge -> Manager -->
+  <path d="M668,204 C600,228 560,238 574,260" fill="none" stroke="#5b6470" stroke-width="2" marker-end="url(#arrow)"/>
   <!-- Manager -> Path -->
-  <path d="M310,282 C250,300 230,300 205,316" fill="none" stroke="#5b6470" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M300,308 C240,326 225,330 213,346" fill="none" stroke="#5b6470" stroke-width="2" marker-end="url(#arrow)"/>
   <!-- Manager -> Provider -->
-  <path d="M550,282 C610,300 625,300 630,316" fill="none" stroke="#5b6470" stroke-width="2" marker-end="url(#arrow)"/>
-  <!-- Provider -> LibArchive -->
-  <path d="M600,386 C500,418 430,420 410,448" fill="none" stroke="#5b6470" stroke-width="2" marker-end="url(#arrow)"/>
-  <!-- Provider -> CHM -->
-  <path d="M628,386 C615,410 608,420 605,448" fill="none" stroke="#5b6470" stroke-width="2" marker-end="url(#arrow)"/>
-  <!-- Provider -> WIM -->
-  <path d="M660,386 C730,416 758,420 766,448" fill="none" stroke="#5b6470" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M520,308 C575,326 585,330 590,346" fill="none" stroke="#5b6470" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- Path -> Platform -->
+  <path d="M210,418 L210,552" fill="none" stroke="#5b6470" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- Provider -> Platform -->
+  <path d="M590,508 L590,552" fill="none" stroke="#5b6470" stroke-width="2" marker-end="url(#arrow)"/>
 </svg>
