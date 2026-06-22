@@ -265,8 +265,11 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModuleDocScreen(const std::string& moduleDir) {
         const std::string base   = NormalizePath(GetResourcesDir() + moduleDir + "/");
+        // Diagram is named after the module (e.g. "UltraAI.svg"), living alongside the
+        // module's intro.md / README.md in its Docs/Modules/<Module>/ folder.
+        const std::string moduleName  = moduleDir.substr(moduleDir.find_last_of("/\\") + 1);
         const std::string introPath   = base + "intro.md";
-        const std::string svgPath      = base + "diagram.svg";
+        const std::string svgPath      = base + moduleName + ".svg";
         const std::string readmePath = base + "README.md";
 
         // Root is a vertical stack: intro (top) -> diagram (middle) -> docs (fills).
@@ -294,7 +297,7 @@ namespace UltraCanvas {
         }
 
         // 2) Rendered SVG module diagram, centered. Only added when the file loads,
-        //    so a not-yet-uploaded diagram.svg simply leaves no empty box behind.
+        //    so a not-yet-uploaded <Module>.svg simply leaves no empty box behind.
         auto svg = std::make_shared<UltraCanvasImageElement>("ModuleDiagram", 0, 0, 820, 300);
         if (svg->LoadFromFile(svgPath)) {
             svg->SetFitMode(ImageFitMode::Contain);   // preserve the diagram's aspect ratio
