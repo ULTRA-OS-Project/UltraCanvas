@@ -1,7 +1,7 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.7.0
-// Last Modified: 2026-06-18
+// Version: 3.7.1
+// Last Modified: 2026-06-22
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -521,6 +521,14 @@ namespace UltraCanvas {
         void FindFirst();
         void FindNext();
         void FindPrevious();
+
+        /// Capture the current caret (or selection start) as the anchor for an
+        /// incremental "search as you type" session.
+        void BeginIncrementalSearch();
+        /// Select the first match at/after the incremental anchor (inclusive),
+        /// WITHOUT advancing — so the selection stays put while the user types.
+        void IncrementalFind(const std::string& searchText, bool caseSensitive = false);
+
         void ReplaceText(const std::string& findText, const std::string& replaceText, bool all = false);
         void HighlightMatches(const std::string& searchText);
         void ClearHighlights();
@@ -879,6 +887,7 @@ namespace UltraCanvas {
         std::string lastSearchText;
         int lastSearchPosition;
         bool lastSearchCaseSensitive;
+        int incrementalSearchAnchor = -1;  // caret anchor for IncrementalFind (grapheme; byte in hex)
         
         // Search highlights (grapheme positions: start, end)
         std::vector<std::pair<int, int>> searchHighlights;

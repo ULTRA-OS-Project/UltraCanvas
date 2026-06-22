@@ -1,7 +1,7 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.7.0
-// Last Modified: 2026-06-18
+// Version: 3.7.1
+// Last Modified: 2026-06-22
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
@@ -1062,9 +1062,9 @@ namespace UltraCanvas {
             }
             ctx->PopState();
 
-//            if (IsFocused() && cursorVisible && !isReadOnly) {
+            if (IsFocused() && cursorVisible) {
                 DrawCursor(ctx);
-//            }
+            }
         }
 
         DrawScrollbars(ctx);
@@ -2454,6 +2454,32 @@ namespace UltraCanvas {
 
     void UltraCanvasTextArea::FindFirst() {
         lastSearchPosition = -1;
+        FindNext();
+    }
+
+    // Capture the current caret (or selection start) as the anchor for an
+    // incremental "search as you type" session. Mirrors SetTextToFind's anchor
+    // logic so a subsequent IncrementalFind starts from the same place each time.
+    void UltraCanvasTextArea::BeginIncrementalSearch() {
+        if (editingMode == TextAreaEditingMode::Hex) {
+            incrementalSearchAnchor = (hexSelectionStart >= 0) ? hexSelectionStart
+                                                               : hexCursorByteOffset;
+        } else {
+            int selMin = GetSelectionMinGrapheme();
+            incrementalSearchAnchor = (selMin >= 0)
+                ? selMin
+                : GetPositionFromLineColumn(cursorPosition.lineIndex, cursorPosition.columnIndex);
+        }
+    }
+
+    // Select the first match at/after the incremental anchor (inclusive) WITHOUT
+    // advancing. Re-applying the fixed anchor each keystroke keeps the selection on
+    // the first match from the search start while the user types.
+    void UltraCanvasTextArea::IncrementalFind(const std::string& searchText, bool caseSensitive) {
+        lastSearchText = searchText;
+        lastSearchCaseSensitive = caseSensitive;
+        int anchor = (incrementalSearchAnchor >= 0) ? incrementalSearchAnchor : 0;
+        lastSearchPosition = anchor - 1;   // FindNext() searches from +1 → inclusive of anchor
         FindNext();
     }
 
