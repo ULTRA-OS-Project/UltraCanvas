@@ -1367,11 +1367,12 @@ namespace UltraCanvas {
         rootNode->Expand();
         rootNode->FirstChild()->Expand();
         rootNode->FirstChild()->FirstChild()->Expand();
-        // Keep the "ULTRA OS modules" node expanded by default. Because the tree
-        // auto-expands (and selects the first child of) a collapsed node on click,
-        // an already-expanded node is selected without jumping to its first child —
-        // so clicking the label shows the ULTRA OS overview page instead.
+        // The "ULTRA OS modules" node carries its own overview page, so disable the
+        // tree's "jump to first entry" behaviour for it: clicking the label keeps the
+        // selection on the node itself (showing the ULTRA OS overview) instead of
+        // jumping to the first module. Expanded by default for convenience.
         if (modulesNode) {
+            modulesNode->data.showFirstChildOnExpand = false;
             modulesNode->Expand();
         }
         categoryTreeView->SelectNode(rootNode->FirstChild()->FirstChild());
