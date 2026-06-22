@@ -23,6 +23,7 @@
 #include "UltraCanvasGroupBox.h"
 #include "UltraCanvasTooltipManager.h"
 #include "UltraCanvasMenu.h"
+#include "UltraCanvasColorPicker.h"
 //#include "UltraCanvasStyledText.h"
 //#include "UltraCanvasShapePrimitives.h"
 
