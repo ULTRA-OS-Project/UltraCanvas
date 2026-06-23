@@ -287,6 +287,13 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/QRCode/UltraCanvasQRCode.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/QRCode/third_party/qrcodegen.cpp
 
+        # STL 3D model loader/saver (self-contained, no external deps).
+        # The GL-backed viewer in UltraCanvasSTLElement.cpp compiles to a 2D
+        # fallback automatically when ULTRACANVAS_ENABLE_GL is off.
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Models/STL/UltraCanvasSTLLoader.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Models/STL/UltraCanvasSTLElement.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Models/STL/UltraCanvasSTLPlugin.cpp
+
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Text/UltraCanvasMarkdown.cpp
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartElement.cpp
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartCoreRendering.cpp
