@@ -5,14 +5,28 @@
 // UltraCanvasListView multi-column element.
 //
 // The table is organised by function: the first column names the component /
-// purpose (e.g. "Native windowing & cursors") and each OS column lists the
-// third-party libraries used for that purpose on Linux, macOS and Windows.
-// Each library is shown on its OWN line inside the cell (a custom item delegate
-// splits the cell text on '\n' and draws one line per library), so no status
-// bar / pop-up is needed to read the full per-OS list. "(bundled)" = vendored
-// in-tree, "(optional)" = built only when present, "(core only)" = no extra
-// third party. Applicability mirrors the build files.
-// Version: 3.0.0
+// purpose and each OS column lists the third-party libraries used for that
+// purpose on Linux, macOS and Windows, one library PER LINE (a custom item
+// delegate splits the cell text on '\n').
+//
+// Compiled from a full scan of every CMakeLists.txt (root, UltraCanvas core,
+// Plugins/Vector/{CDR,XAR}) and the third-party #include statements across the
+// source tree:
+//   core      : Cairo, Pango/PangoCairo, HarfBuzz, FreeType, FontConfig, GLib,
+//               TinyXML2, fmt, libvips (+ libpng/libjpeg-turbo/libtiff/libwebp/
+//               giflib/libheif image codecs and the ImageMagick coder bridge)
+//   bundled   : miniaudio, miniz, KissFFT, qrcodegen, qoi.h
+//   optional  : GStreamer / AVFoundation / Media Foundation (video),
+//               OpenGL+EGL/GLX/CGL/GLEW (3D), zbar (QR decode)
+//   plugins   : MuPDF (+mujs/gumbo/jbig2dec/openjp2) PDF, libcdr+librevenge
+//               (+librevenge-stream, LCMS2, ICU) CDR, libvips+zlib XAR,
+//               jsoncpp (demo), ImageMagick `magick` (Windows .exe icon tool)
+//   modules   : FFmpeg/libsndfile/FFTW3 (AudioFX), libvips (PixelFX),
+//               libcurl/OpenSSL (UltraNet), FFmpeg (VideoFX),
+//               libarchive/libmspack/wimlib + zlib/libzstd/liblz4/libbrotli
+//               (VirtualFS); FileLoader/SmartHome/UltraAI use the core only.
+// "(bundled)" = vendored in-tree, "(optional)" = built only when present.
+// Version: 4.0.0
 // Last Modified: 2026-06-23
 // Author: UltraCanvas Framework
 
@@ -23,8 +37,8 @@
 namespace UltraCanvas {
 
     // ===== MULTI-LINE CELL DELEGATE =====
-    // Draws each newline-separated entry of a cell on its own line, top-anchored
-    // within the (taller) uniform row. Used so every library used for a given
+    // Draws each newline-separated entry of a cell on its own line, vertically
+    // centred within the (taller) uniform row, so every library used for a given
     // component appears on a separate line in the OS column.
     class DependencyCellDelegate : public IItemDelegate {
     public:
@@ -107,8 +121,8 @@ namespace UltraCanvas {
 
         // Subtitle
         auto subtitle = std::make_shared<UltraCanvasLabel>("DepSubtitle", 20, 45, 940, 25);
-        subtitle->SetText("Organised by function: each row is a component / purpose; the OS columns list one "
-                          "library per line.  (bundled) = vendored, (optional) = feature-gated.");
+        subtitle->SetText("By function: each row is a component / purpose; OS columns list one library per line.  "
+                          "(bundled) = vendored, (optional) = feature-gated.  Image codecs are provided via libvips.");
         subtitle->SetFontSize(12);
         subtitle->SetTextColor(Color(120, 120, 120, 255));
         container->AddChild(subtitle);
@@ -120,35 +134,45 @@ namespace UltraCanvas {
         // delegate renders each on its own line.
         // ============================================================
         auto model = std::make_shared<UltraCanvasMultiColumnListModel>();
-        model->AddColumn(ListColumnDef("Component / Purpose", 190, TextAlignment::Left));
-        model->AddColumn(ListColumnDef("Linux", 240, TextAlignment::Left));
-        model->AddColumn(ListColumnDef("macOS", 235, TextAlignment::Left));
-        model->AddColumn(ListColumnDef("Windows", 235, TextAlignment::Left));
+        model->AddColumn(ListColumnDef("Component / Purpose", 215, TextAlignment::Left));
+        model->AddColumn(ListColumnDef("Linux", 230, TextAlignment::Left));
+        model->AddColumn(ListColumnDef("macOS", 225, TextAlignment::Left));
+        model->AddColumn(ListColumnDef("Windows", 225, TextAlignment::Left));
 
-        // ----- UltraCanvas core -----
+        // ----- UltraCanvas core: rendering, text, windowing -----
         model->AddItem(MultiColumnListItem({"2D graphics rendering", "Cairo", "Cairo", "Cairo"}));
         model->AddItem(MultiColumnListItem({"Text layout & shaping", "Pango\nHarfBuzz\nFreeType", "Pango\nHarfBuzz\nFreeType", "Pango\nHarfBuzz\nFreeType"}));
         model->AddItem(MultiColumnListItem({"Font discovery", "FontConfig", "CoreText", "FontConfig"}));
         model->AddItem(MultiColumnListItem({"Native windowing & cursors", "X11\nXcursor", "Cocoa\nQuartzCore", "Win32 (gdi32)\nWin32 (user32)"}));
         model->AddItem(MultiColumnListItem({"Native dialogs & printing", "GTK 3", "Cocoa (AppKit)", "Win32 (comdlg32)"}));
-        model->AddItem(MultiColumnListItem({"Image processing", "libvips", "libvips", "libvips"}));
-        model->AddItem(MultiColumnListItem({"XML parsing (SVG/config/ODS)", "TinyXML2", "TinyXML2", "TinyXML2"}));
         model->AddItem(MultiColumnListItem({"Core utilities", "GLib", "GLib", "GLib"}));
+        model->AddItem(MultiColumnListItem({"XML parsing (SVG/config/ODS)", "TinyXML2", "TinyXML2", "TinyXML2"}));
         model->AddItem(MultiColumnListItem({"String formatting", "fmt", "fmt", "fmt"}));
+
+        // ----- UltraCanvas core: image loading / processing (via libvips) -----
+        model->AddItem(MultiColumnListItem({"Image processing & resize", "libvips", "libvips", "libvips"}));
+        model->AddItem(MultiColumnListItem({"Bitmap codecs (via libvips)", "libpng\nlibjpeg-turbo\nlibtiff\nlibwebp", "libpng\nlibjpeg-turbo\nlibtiff\nlibwebp", "libpng\nlibjpeg-turbo\nlibtiff\nlibwebp"}));
+        model->AddItem(MultiColumnListItem({"GIF / HEIF / AVIF (via libvips)", "giflib\nlibheif", "giflib\nlibheif", "giflib\nlibheif"}));
+        model->AddItem(MultiColumnListItem({"BMP / PCX coders (via libvips)", "ImageMagick", "ImageMagick", "ImageMagick"}));
+        model->AddItem(MultiColumnListItem({"QOI image format", "qoi.h (bundled)", "qoi.h (bundled)", "qoi.h (bundled)"}));
+
+        // ----- UltraCanvas core: audio / video / 3D (optional) -----
         model->AddItem(MultiColumnListItem({"Audio playback & capture", "miniaudio (bundled)", "miniaudio (bundled)", "miniaudio (bundled)"}));
         model->AddItem(MultiColumnListItem({"Video playback & capture", "GStreamer (optional)", "AVFoundation (optional)", "Media Foundation (optional)"}));
         model->AddItem(MultiColumnListItem({"OpenGL 3D surface", "OpenGL\nEGL / GLX (optional)", "OpenGL\nCGL (optional)", "OpenGL\nGLEW / WGL (optional)"}));
-        model->AddItem(MultiColumnListItem({"QR / barcode decoding", "zbar (optional)", "zbar (optional)", "zbar (optional)"}));
 
         // ----- Bundled (vendored) third-party sources -----
+        model->AddItem(MultiColumnListItem({"QR / barcode decoding", "zbar (optional)", "zbar (optional)", "zbar (optional)"}));
         model->AddItem(MultiColumnListItem({"QR code generation", "qrcodegen (bundled)", "qrcodegen (bundled)", "qrcodegen (bundled)"}));
         model->AddItem(MultiColumnListItem({"ZIP for ODS / XLSX I/O", "miniz (bundled)", "miniz (bundled)", "miniz (bundled)"}));
         model->AddItem(MultiColumnListItem({"FFT / spectrogram", "KissFFT (bundled)", "KissFFT (bundled)", "KissFFT (bundled)"}));
 
         // ----- Optional plugins -----
-        model->AddItem(MultiColumnListItem({"PDF rendering (plugin)", "MuPDF\nmujs\ngumbo\njbig2dec", "MuPDF\nmujs\ngumbo", "MuPDF\nmujs\ngumbo"}));
-        model->AddItem(MultiColumnListItem({"CorelDRAW import (plugin)", "libcdr\nlibrevenge", "libcdr\nlibrevenge", "– (not available)"}));
+        model->AddItem(MultiColumnListItem({"PDF rendering (plugin)", "MuPDF\nmujs\ngumbo\njbig2dec / openjp2", "MuPDF\nmujs\ngumbo", "MuPDF\nmujs\ngumbo"}));
+        model->AddItem(MultiColumnListItem({"CorelDRAW import (plugin)", "libcdr\nlibrevenge\nlibrevenge-stream\nLCMS2, ICU (optional)", "libcdr\nlibrevenge\nlibrevenge-stream\nLCMS2, ICU (optional)", "– (not available)"}));
+        model->AddItem(MultiColumnListItem({"XARA (XAR) import (plugin)", "libvips\nzlib", "libvips\nzlib", "libvips\nzlib"}));
         model->AddItem(MultiColumnListItem({"JSON parsing (demo app)", "jsoncpp", "jsoncpp", "jsoncpp"}));
+        model->AddItem(MultiColumnListItem({"App icon embedding (build tool)", "– (Windows only)", "– (Windows only)", "ImageMagick (magick CLI)"}));
 
         // ----- Additional ULTRA OS modules -----
         model->AddItem(MultiColumnListItem({"AudioFX module", "FFmpeg\nlibsndfile\nFFTW3", "FFmpeg\nlibsndfile\nFFTW3", "FFmpeg\nlibsndfile\nFFTW3"}));
@@ -165,7 +189,7 @@ namespace UltraCanvas {
         // ============================================================
         // The UltraCanvasListView table itself
         // ============================================================
-        // The tallest cell carries 4 libraries, so size every row for 4 lines.
+        // The tallest cells carry 4 libraries, so size every row for 4 lines.
         const int lineHeight = 16;
         const int maxLines = 4;
         const int rowHeight = lineHeight * maxLines + 8;   // 72 px
