@@ -677,9 +677,17 @@ namespace UltraCanvas {
                 .AddVariant("breadcrumb", "ShrinkText Overflow")
                 .AddVariant("breadcrumb", "Rounded Strip");
 
-        basicBuilder.AddItem("gauges", "Gauges", "Gauges",
+        basicBuilder.AddItem("gauges", "Gauges",
+                             "Mode-driven gauges: analog dials, progress/LED bars, "
+                             "circular rings, batteries, thermometers, clocks and digital panels",
                              ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateGaugeExamples(); });
+                             [this]() { return CreateGaugeExamples(); },
+                             "DemoApp/UltraCanvasGaugeExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasGaugeExamples.md")
+                .AddVariant("gauges", "Round Gauges")
+                .AddVariant("gauges", "Progress & Linear")
+                .AddVariant("gauges", "Specialized")
+                .AddVariant("gauges", "Analog");
 
         // ===== EXTENDED FUNCTIONALITY =====
         auto extendedBuilder = DemoCategoryBuilder(this, DemoCategory::ExtendedFunctionality);
