@@ -6,6 +6,8 @@
 
 #include "UltraCanvasAudioPlayerElement.h"
 #include "UltraCanvasFileLoader.h"
+#include "UltraCanvasConfig.h"
+#include "UltraCanvasUtils.h"
 #include <algorithm>
 #include <cstdio>
 
@@ -22,6 +24,13 @@ namespace {
     inline bool Hit(const Rect2Di& r, const Point2Di& p) {
         return p.x >= r.x && p.x < r.x + r.width &&
                p.y >= r.y && p.y < r.y + r.height;
+    }
+
+    // Resource path for the speaker/volume icon shipped with the framework.
+    const std::string& VolumeIconPath() {
+        static const std::string path =
+            NormalizePath(GetResourcesDir() + "media/icons/volume.svg");
+        return path;
     }
 }
 
@@ -220,16 +229,15 @@ void UltraCanvasAudioPlayerElement::DrawTransportButtons(IRenderContext* ctx) {
         int mx = muteButtonRect.x + muteButtonRect.width / 2;
         int my = muteButtonRect.y + muteButtonRect.height / 2;
         int mr = muteButtonRect.width / 3;
-        // Speaker body (trapezoid approximated as triangle + rect)
-        ctx->SetFillPaint(style.iconColor);
-        ctx->FillRectangle(Rect2Dd(mx - mr, my - mr / 2, mr, mr));
-        std::vector<Point2Dd> cone = {
-            Point2Dd(mx,      my - mr),
-            Point2Dd(mx + mr, my - mr),
-            Point2Dd(mx + mr, my + mr),
-            Point2Dd(mx,      my + mr)
-        };
-        ctx->FillLinePath(cone);
+
+        // Speaker icon rendered from media/icons/volume.svg, tinted to match
+        // the player's icon color (DrawMask uses the SVG alpha as a stencil).
+        int iconSize = mr * 2;
+        Rect2Dd iconRect(mx - iconSize / 2.0, my - iconSize / 2.0,
+                         iconSize, iconSize);
+        ctx->DrawMask(style.iconColor, VolumeIconPath(), iconRect,
+                      ImageFitMode::Contain);
+
         if (player->IsMuted()) {
             // Red "X" through the speaker
             ctx->SetStrokePaint(Color(220, 30, 30));
