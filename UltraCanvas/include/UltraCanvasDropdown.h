@@ -93,7 +93,7 @@ namespace UltraCanvas {
         float fontSize = 11.0f;
 
         // Scrollbar style
-        ScrollbarStyle scrollbarStyle;
+        ScrollbarStyle scrollbarStyle = GetDefaultScrollbarStyleOr(ScrollbarStyle::DropDown());
     };
 
 // ===== DROPDOWN LIST MODEL (adapter over vector<DropdownItem>) =====

@@ -183,7 +183,7 @@ namespace UltraCanvas {
         int shadowBlur = 4;
 
         // Scrollbar (for overflow menus)
-        ScrollbarStyle scrollbarStyle;
+        ScrollbarStyle scrollbarStyle = GetDefaultScrollbarStyleOr(ScrollbarStyle::Default());
 
         static MenuStyle Default();
         static MenuStyle Dark();
