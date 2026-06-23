@@ -7,18 +7,92 @@
 // The table is organised by function: the first column names the component /
 // purpose (e.g. "Native windowing & cursors") and each OS column lists the
 // third-party libraries used for that purpose on Linux, macOS and Windows.
-// Cross-platform libraries repeat across the three OS columns; platform-specific
-// ones appear only under their OS. "(bundled)" = vendored in-tree, "(optional)"
-// = built only when the dependency / feature is present, "(core only)" = needs
-// no extra third party. Applicability mirrors the build files.
-// Version: 2.0.0
+// Each library is shown on its OWN line inside the cell (a custom item delegate
+// splits the cell text on '\n' and draws one line per library), so no status
+// bar / pop-up is needed to read the full per-OS list. "(bundled)" = vendored
+// in-tree, "(optional)" = built only when present, "(core only)" = no extra
+// third party. Applicability mirrors the build files.
+// Version: 3.0.0
 // Last Modified: 2026-06-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasListView.h"
+#include <vector>
 
 namespace UltraCanvas {
+
+    // ===== MULTI-LINE CELL DELEGATE =====
+    // Draws each newline-separated entry of a cell on its own line, top-anchored
+    // within the (taller) uniform row. Used so every library used for a given
+    // component appears on a separate line in the OS column.
+    class DependencyCellDelegate : public IItemDelegate {
+    public:
+        DependencyCellDelegate(float font, int lineH, int pad)
+            : fontSize(font), lineHeight(lineH), padding(pad) {}
+
+        void RenderItem(IRenderContext* ctx, const IListModel* model,
+                        int row, int column,
+                        const ListItemStyleOption& option) override {
+            if (!ctx || !model) return;
+
+            ListIndex idx{row, column};
+            std::string text = GetStringValue(model->GetData(idx, ListDataRole::DisplayRole));
+            if (text.empty()) return;
+
+            // Split the cell text into one entry per line.
+            std::vector<std::string> lines;
+            size_t start = 0;
+            while (true) {
+                size_t nl = text.find('\n', start);
+                lines.push_back(nl == std::string::npos ? text.substr(start)
+                                                        : text.substr(start, nl - start));
+                if (nl == std::string::npos) break;
+                start = nl + 1;
+            }
+
+            int textX = option.columnX + padding;
+            int availW = option.columnWidth - padding * 2;
+            if (availW <= 0) return;
+
+            ctx->SetFontSize(fontSize);
+            ctx->SetTextWrap(TextWrap::WrapNone);
+            ctx->SetTextAlignment(option.columnAlignment);
+            ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
+            ctx->SetTextPaint(option.isSelected ? selectedTextColor : textColor);
+
+            // Vertically centre the block of lines within the row.
+            int blockH = static_cast<int>(lines.size()) * lineHeight;
+            int lineY = option.rect.y + (option.rect.height - blockH) / 2;
+            if (lineY < option.rect.y) lineY = option.rect.y;
+
+            for (const auto& line : lines) {
+                if (!line.empty()) {
+                    ctx->DrawTextInRect(line, Rect2Dd(static_cast<float>(textX),
+                                                      static_cast<float>(lineY),
+                                                      static_cast<float>(availW),
+                                                      static_cast<float>(lineHeight)));
+                }
+                lineY += lineHeight;
+            }
+        }
+
+        int GetRowHeight(const IListModel* /*model*/, int /*row*/) const override {
+            return rowHeight;
+        }
+
+        void SetRowHeight(int h) { rowHeight = h; }
+        void SetTextColor(const Color& c) { textColor = c; }
+        void SetSelectedTextColor(const Color& c) { selectedTextColor = c; }
+
+    private:
+        float fontSize;
+        int lineHeight;
+        int padding;
+        int rowHeight = 24;
+        Color textColor = Colors::TextDefault;
+        Color selectedTextColor = Colors::White;
+    };
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDependenciesExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("DependenciesExamples", 0, 0, 1000, 900);
@@ -33,8 +107,8 @@ namespace UltraCanvas {
 
         // Subtitle
         auto subtitle = std::make_shared<UltraCanvasLabel>("DepSubtitle", 20, 45, 940, 25);
-        subtitle->SetText("Organised by function: each row is a component / purpose; the OS columns list "
-                          "the libraries used on each platform.  (bundled) = vendored, (optional) = feature-gated.");
+        subtitle->SetText("Organised by function: each row is a component / purpose; the OS columns list one "
+                          "library per line.  (bundled) = vendored, (optional) = feature-gated.");
         subtitle->SetFontSize(12);
         subtitle->SetTextColor(Color(120, 120, 120, 255));
         container->AddChild(subtitle);
@@ -42,6 +116,8 @@ namespace UltraCanvas {
         // ============================================================
         // Build the multi-column model:
         //   Component / Purpose | Linux | macOS | Windows
+        // Multiple libraries in one OS cell are separated by '\n' so the custom
+        // delegate renders each on its own line.
         // ============================================================
         auto model = std::make_shared<UltraCanvasMultiColumnListModel>();
         model->AddColumn(ListColumnDef("Component / Purpose", 190, TextAlignment::Left));
@@ -51,9 +127,9 @@ namespace UltraCanvas {
 
         // ----- UltraCanvas core -----
         model->AddItem(MultiColumnListItem({"2D graphics rendering", "Cairo", "Cairo", "Cairo"}));
-        model->AddItem(MultiColumnListItem({"Text layout & shaping", "Pango, HarfBuzz, FreeType", "Pango, HarfBuzz, FreeType", "Pango, HarfBuzz, FreeType"}));
+        model->AddItem(MultiColumnListItem({"Text layout & shaping", "Pango\nHarfBuzz\nFreeType", "Pango\nHarfBuzz\nFreeType", "Pango\nHarfBuzz\nFreeType"}));
         model->AddItem(MultiColumnListItem({"Font discovery", "FontConfig", "CoreText", "FontConfig"}));
-        model->AddItem(MultiColumnListItem({"Native windowing & cursors", "X11, Xcursor", "Cocoa, QuartzCore", "Win32 (gdi32, user32)"}));
+        model->AddItem(MultiColumnListItem({"Native windowing & cursors", "X11\nXcursor", "Cocoa\nQuartzCore", "Win32 (gdi32)\nWin32 (user32)"}));
         model->AddItem(MultiColumnListItem({"Native dialogs & printing", "GTK 3", "Cocoa (AppKit)", "Win32 (comdlg32)"}));
         model->AddItem(MultiColumnListItem({"Image processing", "libvips", "libvips", "libvips"}));
         model->AddItem(MultiColumnListItem({"XML parsing (SVG/config/ODS)", "TinyXML2", "TinyXML2", "TinyXML2"}));
@@ -61,7 +137,7 @@ namespace UltraCanvas {
         model->AddItem(MultiColumnListItem({"String formatting", "fmt", "fmt", "fmt"}));
         model->AddItem(MultiColumnListItem({"Audio playback & capture", "miniaudio (bundled)", "miniaudio (bundled)", "miniaudio (bundled)"}));
         model->AddItem(MultiColumnListItem({"Video playback & capture", "GStreamer (optional)", "AVFoundation (optional)", "Media Foundation (optional)"}));
-        model->AddItem(MultiColumnListItem({"OpenGL 3D surface", "OpenGL + EGL/GLX (opt.)", "OpenGL / CGL (opt.)", "OpenGL + GLEW/WGL (opt.)"}));
+        model->AddItem(MultiColumnListItem({"OpenGL 3D surface", "OpenGL\nEGL / GLX (optional)", "OpenGL\nCGL (optional)", "OpenGL\nGLEW / WGL (optional)"}));
         model->AddItem(MultiColumnListItem({"QR / barcode decoding", "zbar (optional)", "zbar (optional)", "zbar (optional)"}));
 
         // ----- Bundled (vendored) third-party sources -----
@@ -70,62 +146,48 @@ namespace UltraCanvas {
         model->AddItem(MultiColumnListItem({"FFT / spectrogram", "KissFFT (bundled)", "KissFFT (bundled)", "KissFFT (bundled)"}));
 
         // ----- Optional plugins -----
-        model->AddItem(MultiColumnListItem({"PDF rendering (plugin)", "MuPDF (+mujs, gumbo, jbig2dec)", "MuPDF (+mujs, gumbo)", "MuPDF (+mujs, gumbo)"}));
-        model->AddItem(MultiColumnListItem({"CorelDRAW import (plugin)", "libcdr, librevenge", "libcdr, librevenge", "– (not available)"}));
+        model->AddItem(MultiColumnListItem({"PDF rendering (plugin)", "MuPDF\nmujs\ngumbo\njbig2dec", "MuPDF\nmujs\ngumbo", "MuPDF\nmujs\ngumbo"}));
+        model->AddItem(MultiColumnListItem({"CorelDRAW import (plugin)", "libcdr\nlibrevenge", "libcdr\nlibrevenge", "– (not available)"}));
         model->AddItem(MultiColumnListItem({"JSON parsing (demo app)", "jsoncpp", "jsoncpp", "jsoncpp"}));
 
         // ----- Additional ULTRA OS modules -----
-        model->AddItem(MultiColumnListItem({"AudioFX module", "FFmpeg, libsndfile, FFTW3", "FFmpeg, libsndfile, FFTW3", "FFmpeg, libsndfile, FFTW3"}));
+        model->AddItem(MultiColumnListItem({"AudioFX module", "FFmpeg\nlibsndfile\nFFTW3", "FFmpeg\nlibsndfile\nFFTW3", "FFmpeg\nlibsndfile\nFFTW3"}));
         model->AddItem(MultiColumnListItem({"FileLoader module", "(core only)", "(core only)", "(core only)"}));
-        model->AddItem(MultiColumnListItem({"IODeviceManager module", "SANE, V4L2, CUPS", "ICA, AVFoundation", "WIA, TWAIN, Media Foundation"}));
+        model->AddItem(MultiColumnListItem({"IODeviceManager module", "SANE\nV4L2\nCUPS", "ICA\nAVFoundation", "WIA\nTWAIN\nMedia Foundation"}));
         model->AddItem(MultiColumnListItem({"PixelFX module", "libvips", "libvips", "libvips"}));
         model->AddItem(MultiColumnListItem({"Smart Home module", "(core only)", "(core only)", "(core only)"}));
         model->AddItem(MultiColumnListItem({"Ultra AI module", "(core only)", "(core only)", "(core only)"}));
-        model->AddItem(MultiColumnListItem({"Ultra Net module", "libcurl, OpenSSL", "libcurl, OpenSSL", "libcurl, OpenSSL"}));
+        model->AddItem(MultiColumnListItem({"Ultra Net module", "libcurl\nOpenSSL", "libcurl\nOpenSSL", "libcurl\nOpenSSL"}));
         model->AddItem(MultiColumnListItem({"VideoFX module", "FFmpeg", "FFmpeg", "FFmpeg"}));
-        model->AddItem(MultiColumnListItem({"VirtualFS – archive formats", "libarchive, libmspack, wimlib", "libarchive, libmspack, wimlib", "libarchive, libmspack, wimlib"}));
-        model->AddItem(MultiColumnListItem({"VirtualFS – compression", "zlib, libzstd, liblz4, brotli", "zlib, libzstd, liblz4, brotli", "zlib, libzstd, liblz4, brotli"}));
+        model->AddItem(MultiColumnListItem({"VirtualFS – archive formats", "libarchive\nlibmspack\nwimlib", "libarchive\nlibmspack\nwimlib", "libarchive\nlibmspack\nwimlib"}));
+        model->AddItem(MultiColumnListItem({"VirtualFS – compression", "zlib\nlibzstd\nliblz4\nlibbrotli", "zlib\nlibzstd\nliblz4\nlibbrotli", "zlib\nlibzstd\nliblz4\nlibbrotli"}));
 
         // ============================================================
         // The UltraCanvasListView table itself
         // ============================================================
+        // The tallest cell carries 4 libraries, so size every row for 4 lines.
+        const int lineHeight = 16;
+        const int maxLines = 4;
+        const int rowHeight = lineHeight * maxLines + 8;   // 72 px
+
         auto listView = std::make_shared<UltraCanvasListView>("DependenciesListView", 20, 80, 920, 790);
         listView->SetModel(model.get());
 
         ListViewStyle style;
         style.showHeader = true;
         style.showGridLines = true;
-        style.headerHeight = 26;
+        style.headerHeight = 28;
         style.headerFontSize = 11;
-        style.rowHeight = 22;
+        style.rowHeight = rowHeight;
         style.alternateRowColors = true;
         style.alternateRowColor = Color(244, 246, 250);
         listView->SetStyle(style);
 
-        auto delegate = std::make_shared<UltraCanvasDefaultListDelegate>();
-        delegate->SetFontSize(11);
+        auto delegate = std::make_shared<DependencyCellDelegate>(11.0f, lineHeight, 8);
+        delegate->SetRowHeight(rowHeight);
         listView->SetDelegate(delegate);
 
-        // Status feedback label updated on row click (shows the full per-OS lists,
-        // which may be ellipsized inside the narrower table columns).
-        auto statusLabel = std::make_shared<UltraCanvasLabel>("DepStatusLabel", 20, 870, 920, 22);
-        statusLabel->SetText("Functional areas listed: " + std::to_string(model->GetRowCount()) +
-                             "   |   Click a row for the full per-platform library list");
-        statusLabel->SetFontSize(11);
-        statusLabel->SetTextColor(Color(120, 120, 120, 255));
-
-        listView->onItemClicked = [statusLabel, model](int row) {
-            const auto& item = model->GetItem(row);
-            if (item.labels.size() >= 4) {
-                statusLabel->SetText(item.labels[0] +
-                                     "   |   Linux: " + item.labels[1] +
-                                     "   |   macOS: " + item.labels[2] +
-                                     "   |   Windows: " + item.labels[3]);
-            }
-        };
-
         container->AddChild(listView);
-        container->AddChild(statusLabel);
 
         return container;
     }
