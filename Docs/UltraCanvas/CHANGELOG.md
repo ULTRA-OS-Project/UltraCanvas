@@ -1,4 +1,7 @@
-#### 2026-06-21 *0.2.24*
+#### 2026-06-23 *0.2.25*
+- Fix Windows video playback: the player loaded a file and played audio but showed no picture, and the play/pause/stop transport misbehaved (multiple clicks to stop, no resume after pause). Media Foundation's sample-grabber video sink rejected the session's rate control (`MF_E_UNSUPPORTED_RATE`) and never delivered a single frame, which also corrupted the session and scrambled the transport state. `MFDecodeSession` now decodes video through an `IMFSourceReader` (RGB32, advanced video processing) paced to the audio clock, with an audio-only Media Session providing sound + the master clock (video-only files fall back to a wall clock). Also force opaque alpha on MF RGB32 frames — the unused "X" byte was 0, which rendered fully transparent in the premultiplied Cairo `ARGB32` pixmap. Linux/GStreamer playback is unchanged.
+
+#### 2026-06-23 *0.2.24*
 - Merge "Color picker widget for UltraCanvas" and fix layout errors.
 - Fix toolbar button width (make it auto)
 - Fixed incremental search in TextArea (stop advance on each typed matched character)
