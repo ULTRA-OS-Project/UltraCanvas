@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
-// Version: 2.1.9
-// Last Modified: 2026-06-07
+// Version: 2.2.0
+// Last Modified: 2026-06-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
@@ -38,7 +38,7 @@
 #include "UltraCanvasUtilsUtf8.h"
 
 namespace UltraCanvas {
-    std::string UltraCanvasTextEditor::version = "0.1.38";
+    std::string UltraCanvasTextEditor::version = "0.1.39";
     
 namespace {
     std::string GetAppDataDirectory() {
@@ -4663,6 +4663,23 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             StartAsyncMatchCount(text, cs, selPos);
         };
 
+        // ── Incremental (live) find: first match at/after the caret anchor, no advance ──
+        searchBar->onIncrementalFind = [this](const std::string& text, bool cs, bool ww) {
+            auto doc = GetActiveDocument();
+            if (!doc || !doc->textArea) return;
+            doc->textArea->HighlightMatches(text);
+            doc->textArea->IncrementalFind(text, cs);
+            bool hex = doc->textArea->GetEditingMode() == TextAreaEditingMode::Hex;
+            int selPos = hex ? doc->textArea->GetHexCursorByteOffset() : doc->textArea->GetSelectionMinGrapheme();
+            StartAsyncMatchCount(text, cs, selPos);
+        };
+
+        // ── Re-anchor incremental search when the search input regains focus ──
+        searchBar->onSearchInputFocused = [this]() {
+            auto doc = GetActiveDocument();
+            if (doc && doc->textArea) doc->textArea->BeginIncrementalSearch();
+        };
+
         // ── Find Previous ──
         searchBar->onFindPrevious = [this](const std::string& text, bool cs, bool ww) {
             auto doc = GetActiveDocument();
@@ -4753,13 +4770,17 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         if (isDarkTheme) searchBar->ApplyDarkTheme();
         else             searchBar->ApplyLightTheme();
 
-        // Pre-fill with selected text if any
+        // Capture the caret as the incremental-search anchor (before the pre-fill
+        // SetSearchText triggers a live search), then pre-fill with selected text.
         auto doc = GetActiveDocument();
-        if (doc && doc->textArea && doc->textArea->HasSelection()) {
-            std::string sel = doc->textArea->GetSelectedText();
-            // Only pre-fill if single-line selection
-            if (sel.find('\n') == std::string::npos && !sel.empty()) {
-                searchBar->SetSearchText(sel);
+        if (doc && doc->textArea) {
+            doc->textArea->BeginIncrementalSearch();
+            if (doc->textArea->HasSelection()) {
+                std::string sel = doc->textArea->GetSelectedText();
+                // Only pre-fill if single-line selection
+                if (sel.find('\n') == std::string::npos && !sel.empty()) {
+                    searchBar->SetSearchText(sel);
+                }
             }
         }
 

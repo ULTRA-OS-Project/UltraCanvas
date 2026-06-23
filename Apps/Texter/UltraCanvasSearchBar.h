@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasSearchBar.h
 // Inline search and replace bar — embedded panel in the editor (VS Code style)
-// Version: 1.0.0
-// Last Modified: 2026-03-14
+// Version: 1.1.0
+// Last Modified: 2026-06-23
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -142,6 +142,13 @@ namespace UltraCanvas {
         std::function<void(const std::string&, bool caseSensitive, bool wholeWord)> onFindNext;
         std::function<void(const std::string&, bool caseSensitive, bool wholeWord)> onFindPrevious;
         std::function<void(const std::string&, bool caseSensitive, bool wholeWord)> onFindFirst;
+        // Invoked when a search is (re)started or refined (typing, option toggle,
+        // history pick) — should select the first match from the search anchor
+        // WITHOUT advancing. Falls back to onFindNext if unset.
+        std::function<void(const std::string&, bool caseSensitive, bool wholeWord)> onIncrementalFind;
+        // Fired when the search input regains keyboard focus — lets the host
+        // re-capture the incremental-search anchor at the caret's current position.
+        std::function<void()> onSearchInputFocused;
         std::function<void(const std::string& find, const std::string& replace, bool cs, bool ww)> onReplace;
         std::function<void(const std::string& find, const std::string& replace, bool cs, bool ww)> onReplaceAll;
         std::function<void()> onClose;

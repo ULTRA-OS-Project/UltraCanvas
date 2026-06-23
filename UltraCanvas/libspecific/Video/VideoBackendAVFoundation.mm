@@ -9,8 +9,8 @@
 //   Capture  : AVCaptureSession with an AVCaptureVideoDataOutput (live preview)
 //              and an AVCaptureMovieFileOutput (records video + audio to file).
 //
-// Version: 0.1.0
-// Last Modified: 2026-06-15
+// Version: 0.1.1
+// Last Modified: 2026-06-21
 // Author: UltraCanvas Framework
 
 #include "IVideoBackend.h"
@@ -148,7 +148,7 @@ public:
     bool Stop() override  { [player pause]; [player seekToTime:kCMTimeZero]; return true; }
     bool Seek(double seconds) override {
         CMTime t = CMTimeMakeWithSeconds(seconds, 600);
-        [player seekToTime:t toleranceBefore:kCMTimeZero afterTolerance:kCMTimeZero];
+        [player seekToTime:t toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
         return true;
     }
 

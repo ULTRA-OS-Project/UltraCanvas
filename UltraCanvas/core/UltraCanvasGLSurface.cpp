@@ -151,6 +151,28 @@ void UltraCanvasGLSurface::Render(IRenderContext* ctx, const Rect2Df& dirtyRect)
         }
     }
 
+    // Keep the render/framebuffer size in sync with the element's *actual* bounds,
+    // however they were last changed. SetBounds() updates surfaceWidth_/Height_
+    // directly, but a layout-driven Arrange (flex/grid stretch, a parent resize,
+    // SetElementSize, a window resize, ...) writes finalBounds without routing
+    // through our SetBounds override. Without this sync the framebuffer would stay
+    // at its previous size and the GL content would not follow the element when it
+    // is resized by the layout engine.
+    {
+        Rect2Di lb = GetLocalBounds();
+        if (lb.width > 0 && lb.height > 0 &&
+            (lb.width != surfaceWidth_ || lb.height != surfaceHeight_)) {
+            surfaceWidth_  = lb.width;
+            surfaceHeight_ = lb.height;
+            needsResize_   = true;
+            // Force a content re-render this pass: EnsureFramebuffer() clears
+            // needsResize_ before ShouldRender() is evaluated, so an OnDemand
+            // surface would otherwise composite a freshly-resized but un-rendered
+            // (garbage) framebuffer.
+            renderRequested_ = true;
+        }
+    }
+
     // Ensure framebuffer exists and is correct size
     if (!EnsureFramebuffer()) {
         return;

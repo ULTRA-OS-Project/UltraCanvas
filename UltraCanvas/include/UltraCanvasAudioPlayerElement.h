@@ -1,19 +1,59 @@
 // include/UltraCanvasAudioPlayerElement.h
-// Composite UI control wrapping UltraCanvasAudioPlayer with play/pause, seek, volume
-// Version: 0.1.0
-// Last Modified: 2026-06-12
+// Composite UI control wrapping UltraCanvasAudioPlayer, built from child widgets
+// (icon buttons, sliders, label) arranged by a flex row layout so the framework
+// owns alignment/centering instead of hand-computed draw offsets.
+// Version: 0.3.0
+// Last Modified: 2026-06-23
 // Author: UltraCanvas Framework
 #pragma once
 
-#include "UltraCanvasUIElement.h"
+#include "UltraCanvasContainer.h"
+#include "UltraCanvasButton.h"
+#include "UltraCanvasSlider.h"
+#include "UltraCanvasLabel.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasAudioPlayer.h"
+#include "UltraCanvasConfig.h"
+#include "UltraCanvasTimer.h"
 #include <string>
 #include <memory>
 #include <functional>
 
 namespace UltraCanvas {
+
+// ===== TRANSPORT ICON HELPERS (shared by player & recorder) =====
+// Resolve a transport icon (SVG) under the framework resources dir.
+inline std::string AudioIconPath(const std::string& name) {
+    return NormalizePath(GetResourcesDir() + "media/icons/" + name);
+}
+
+// Build a borderless, icon-only button whose SVG icon is tinted via the
+// icon-as-mask path (the mask colour follows the button's text colour, so
+// re-tinting later is just SetTextColors()).
+inline std::shared_ptr<UltraCanvasButton> MakeAudioIconButton(
+        const std::string& id, int boxSize, int iconSize,
+        const std::string& svg, const Color& tint) {
+    auto b = std::make_shared<UltraCanvasButton>(id, -1.0f, -1.0f,
+                                                 static_cast<float>(boxSize),
+                                                 static_cast<float>(boxSize), "");
+    ButtonStyle st = b->GetStyle();
+    st.normalColor      = Color(0, 0, 0, 0);    // borderless / transparent
+    st.hoverColor       = Color(0, 0, 0, 20);   // subtle hover affordance
+    st.pressedColor     = Color(0, 0, 0, 35);
+    st.disabledColor    = Color(0, 0, 0, 0);
+    st.borderWidth      = 0.0f;
+    st.useIconAsMask    = true;                 // tint the icon with the text colour
+    st.normalTextColor  = tint;
+    st.hoverTextColor   = tint;
+    st.pressedTextColor = tint;
+    b->SetStyle(st);
+    b->SetIcon(AudioIconPath(svg));
+    b->SetIconSize(iconSize, iconSize);
+    b->SetIconPosition(ButtonIconPosition::Center);
+    b->SetAcceptsFocus(false);
+    return b;
+}
 
 // ===== VISUAL STYLE =====
 struct AudioPlayerStyle {
@@ -38,7 +78,7 @@ struct AudioPlayerStyle {
 };
 
 // ===== AUDIO PLAYER UI ELEMENT =====
-class UltraCanvasAudioPlayerElement : public UltraCanvasUIElement {
+class UltraCanvasAudioPlayerElement : public UltraCanvasContainer {
 public:
     UltraCanvasAudioPlayerElement(const std::string& identifier = "AudioPlayer",
                                   long x = 0, long y = 0, long w = 400, long h = 56);
@@ -83,32 +123,38 @@ public:
     std::function<void()> onOpenCancelled;
 
     // ===== UIElement OVERRIDES =====
+    // Render paints the background panel, then the container renders the child
+    // widgets. Events are routed to the children by UltraCanvasContainer, so no
+    // OnEvent override / manual hit-testing is needed.
     void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
-    bool OnEvent(const UCEvent& event) override;
 
 private:
     std::shared_ptr<UltraCanvasAudioPlayer> player;
     AudioPlayerStyle style;
     std::string trackTitle;
 
-    // Cached hit-test regions (recomputed on layout change)
-    Rect2Di playButtonRect;
-    Rect2Di stopButtonRect;
-    Rect2Di seekBarRect;
-    Rect2Di volumeBarRect;
-    Rect2Di muteButtonRect;
-    Rect2Di loopButtonRect;
-    Rect2Di timeLabelRect;
+    // Child widgets (composited UI, arranged by a flex row). The transport
+    // buttons are plain UltraCanvasButtons carrying SVG icons (play/pause/stop,
+    // volume on/off) tinted via the icon-as-mask path.
+    std::shared_ptr<UltraCanvasButton> playButton;
+    std::shared_ptr<UltraCanvasButton> stopButton;
+    std::shared_ptr<UltraCanvasSlider> seekSlider;
+    std::shared_ptr<UltraCanvasLabel>  timeLabel;
+    std::shared_ptr<UltraCanvasButton> muteButton;
+    std::shared_ptr<UltraCanvasSlider> volumeSlider;
 
-    bool draggingSeek = false;
-    bool draggingVolume = false;
-    bool hoverPlay = false;
+    TimerId posTimerId = InvalidTimerId;
+    // Guards the SetValue()->onValueChanged feedback loop when we push playback
+    // position into the seek slider (see UltraCanvasSlider::SetValue).
+    bool suppressSeekCallback = false;
 
-    void Relayout();
-    void DrawTransportButtons(IRenderContext* ctx);
-    void DrawSeekBar(IRenderContext* ctx);
-    void DrawVolumeBar(IRenderContext* ctx);
-    void DrawTimeLabels(IRenderContext* ctx);
+    void BuildChildren();
+    void ApplyStyleToChildren();   // visibility + colors derived from `style`
+    void UpdatePlayIcon();
+    void UpdateMuteIcon();
+    void SyncTimeAndSeek();
+    void StartPosTimer();
+    void StopPosTimer();
     void HookPlayerCallbacks();
     static std::string FormatTime(double seconds);
 };

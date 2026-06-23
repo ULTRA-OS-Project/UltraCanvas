@@ -1,6 +1,8 @@
+#### 2026-06-22 *0.1.39*
+- Fix Texter Search. No advance on each typed character
+
 #### 2026-06-18 *0.1.38*
 - Implemented show inline images in Markdown mode
-- 
 #### 2026-06-17 *0.1.37*
 - Merge "PDF support", implemented PDF support in Texter
 

@@ -1,11 +1,13 @@
 // core/UltraCanvasAudioPlayerElement.cpp
-// Composite UI control wrapping UltraCanvasAudioPlayer with play/pause, seek, volume
-// Version: 0.2.0
-// Last Modified: 2026-06-12
+// Composite UI control wrapping UltraCanvasAudioPlayer, built from child widgets
+// (icon buttons, sliders, label) arranged by a flex row layout.
+// Version: 0.3.0
+// Last Modified: 2026-06-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasAudioPlayerElement.h"
 #include "UltraCanvasFileLoader.h"
+#include "UltraCanvasApplication.h"
 #include <algorithm>
 #include <cstdio>
 
@@ -16,34 +18,208 @@ namespace {
     constexpr int kGap = 8;
     constexpr int kTimeWidth = 90;     // "00:00 / 00:00"
     constexpr int kVolumeWidth = 90;
-    constexpr int kVolumeKnobR = 5;
-    constexpr int kSeekKnobR = 6;
-
-    inline bool Hit(const Rect2Di& r, const Point2Di& p) {
-        return p.x >= r.x && p.x < r.x + r.width &&
-               p.y >= r.y && p.y < r.y + r.height;
-    }
+    constexpr int kCtrlHeight = 20;    // height of sliders/label inside the row
+    constexpr int kIconSize = 18;      // transport icon size inside the buttons
 }
 
 UltraCanvasAudioPlayerElement::UltraCanvasAudioPlayerElement(
         const std::string& identifier, long x, long y, long w, long h)
-    : UltraCanvasUIElement(identifier, static_cast<int>(x), static_cast<int>(y),
-                           static_cast<int>(w), static_cast<int>(h)) {
+    : UltraCanvasContainer(identifier, static_cast<float>(x), static_cast<float>(y),
+                           static_cast<float>(w), static_cast<float>(h)) {
     player = std::make_shared<UltraCanvasAudioPlayer>();
+
+    // Fixed-height bar: never show scrollbars.
+    ContainerStyle cs;
+    cs.autoShowScrollbars = false;
+    cs.forceShowVerticalScrollbar = false;
+    cs.forceShowHorizontalScrollbar = false;
+    SetContainerStyle(cs);
+
+    // Horizontal flex row with all children vertically centred — this is what
+    // makes the time label and controls line up without hand-tuned offsets.
+    SetPadding(static_cast<float>(kPadding));
+    layout.SetFlexRow().SetFlexGap(static_cast<float>(kGap))
+          .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+
+    BuildChildren();
     HookPlayerCallbacks();
-    Relayout();
+    ApplyStyleToChildren();
+    UpdatePlayIcon();
+    UpdateMuteIcon();
+    SyncTimeAndSeek();
 }
 
-UltraCanvasAudioPlayerElement::~UltraCanvasAudioPlayerElement() = default;
+UltraCanvasAudioPlayerElement::~UltraCanvasAudioPlayerElement() {
+    StopPosTimer();
+}
+
+void UltraCanvasAudioPlayerElement::BuildChildren() {
+    const int btn = style.buttonSize;
+    auto fixed = [](const std::shared_ptr<UltraCanvasUIElement>& e) {
+        e->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                     .SetAlignSelf(CSSLayout::AlignSelf::Center);
+    };
+
+    // ----- Play / Pause -----
+    playButton = MakeAudioIconButton(GetIdentifier() + ".Play", btn, kIconSize,
+                                     "play.svg", style.iconColor);
+    playButton->onClick = [this]() { TogglePlayPause(); };
+    fixed(playButton);
+    AddChild(playButton);
+
+    // ----- Stop -----
+    stopButton = MakeAudioIconButton(GetIdentifier() + ".Stop", btn, kIconSize,
+                                     "circle-stop.svg", style.iconColor);
+    stopButton->onClick = [this]() { Stop(); };
+    fixed(stopButton);
+    AddChild(stopButton);
+
+    // ----- Seek bar (absorbs the slack) -----
+    seekSlider = std::make_shared<UltraCanvasSlider>(GetIdentifier() + ".Seek", 0, 0, 0, kCtrlHeight - 4);
+    seekSlider->SetSliderStyle(SliderStyle::Horizontal);
+    seekSlider->SetRange(0.0f, 1.0f);
+    seekSlider->SetStep(0.0f);            // continuous (default step 1.0 would snap to ends)
+    seekSlider->SetValue(0.0f);
+    seekSlider->SetTrackHeight(static_cast<float>(style.sliderHeight));
+    seekSlider->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                          .SetFlexBasis(CSSLayout::Dimension::Px(0))
+                          .SetAlignSelf(CSSLayout::AlignSelf::Center);
+    {
+        auto cb = [this](float v) {
+            if (suppressSeekCallback) return;
+            double dur = player->GetDuration();
+            if (dur > 0.0) Seek(v * dur);
+        };
+        seekSlider->onValueChanging = cb;
+        seekSlider->onValueChanged  = cb;
+    }
+    AddChild(seekSlider);
+
+    // ----- Time label -----
+    timeLabel = std::make_shared<UltraCanvasLabel>(GetIdentifier() + ".Time",
+                                                   0, 0, kTimeWidth, kCtrlHeight, "0:00 / 0:00");
+    timeLabel->SetFontSize(11);
+    timeLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
+    fixed(timeLabel);
+    AddChild(timeLabel);
+
+    // ----- Mute toggle -----
+    muteButton = MakeAudioIconButton(GetIdentifier() + ".Mute", btn, kIconSize,
+                                     "volume-2.svg", style.iconColor);
+    muteButton->onClick = [this]() {
+        player->SetMute(!player->IsMuted());
+        UpdateMuteIcon();
+        RequestRedraw();
+    };
+    fixed(muteButton);
+    AddChild(muteButton);
+
+    // ----- Volume bar -----
+    volumeSlider = std::make_shared<UltraCanvasSlider>(GetIdentifier() + ".Vol",
+                                                       0, 0, kVolumeWidth, kCtrlHeight - 4);
+    volumeSlider->SetSliderStyle(SliderStyle::Horizontal);
+    volumeSlider->SetRange(0.0f, 1.0f);
+    volumeSlider->SetStep(0.0f);
+    volumeSlider->SetValue(player->GetVolume());
+    volumeSlider->SetTrackHeight(static_cast<float>(style.sliderHeight));
+    {
+        auto cb = [this](float v) {
+            player->SetVolume(v);
+            if (player->IsMuted() && v > 0.0f) { player->SetMute(false); UpdateMuteIcon(); }
+        };
+        volumeSlider->onValueChanging = cb;
+        volumeSlider->onValueChanged  = cb;
+    }
+    fixed(volumeSlider);
+    AddChild(volumeSlider);
+}
+
+void UltraCanvasAudioPlayerElement::ApplyStyleToChildren() {
+    // Visibility from style toggles. SetVisible(false) drops the child from flex
+    // flow, so the seek slider re-absorbs the freed space automatically.
+    if (stopButton)   stopButton->SetVisible(!style.compact);
+    if (timeLabel)    timeLabel->SetVisible(style.showTimeLabels);
+    const bool showVol = style.showVolumeSlider && !style.compact;
+    if (muteButton)   muteButton->SetVisible(showVol);
+    if (volumeSlider) volumeSlider->SetVisible(showVol);
+
+    // Colors from style. The icon buttons tint via their (masked) text colour.
+    if (playButton)   playButton->SetTextColors(style.iconColor, style.iconColor);
+    if (stopButton)   stopButton->SetTextColors(style.iconColor, style.iconColor);
+    if (muteButton)   muteButton->SetTextColors(style.iconColor, style.iconColor);
+    if (timeLabel)    timeLabel->SetTextColor(style.textColor);
+    if (seekSlider)   seekSlider->SetColors(style.progressTrackColor,
+                                            style.progressFillColor, style.knobColor);
+    if (volumeSlider) volumeSlider->SetColors(style.progressTrackColor,
+                                              style.progressFillColor, style.knobColor);
+    InvalidateLayout();
+}
+
+void UltraCanvasAudioPlayerElement::UpdatePlayIcon() {
+    if (playButton)
+        playButton->SetIcon(AudioIconPath(player->IsPlaying() ? "pause.svg" : "play.svg"));
+}
+
+void UltraCanvasAudioPlayerElement::UpdateMuteIcon() {
+    if (muteButton)
+        muteButton->SetIcon(AudioIconPath(player->IsMuted() ? "volume-x.svg" : "volume-2.svg"));
+}
+
+void UltraCanvasAudioPlayerElement::SyncTimeAndSeek() {
+    double pos = player->GetPosition();
+    double dur = player->GetDuration();
+    if (timeLabel) timeLabel->SetText(FormatTime(pos) + " / " + FormatTime(dur));
+    // Don't fight the user's drag, and suppress the re-entrant Seek that SetValue
+    // would otherwise trigger via onValueChanged.
+    if (seekSlider && !seekSlider->IsDragging()) {
+        suppressSeekCallback = true;
+        seekSlider->SetValue(dur > 0.0 ? static_cast<float>(pos / dur) : 0.0f);
+        suppressSeekCallback = false;
+    }
+}
+
+void UltraCanvasAudioPlayerElement::StartPosTimer() {
+    if (posTimerId != InvalidTimerId) return;
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) return;
+    posTimerId = app->StartTimer(200, true, [this](TimerId) { SyncTimeAndSeek(); });
+}
+
+void UltraCanvasAudioPlayerElement::StopPosTimer() {
+    if (posTimerId == InvalidTimerId) return;
+    if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(posTimerId);
+    posTimerId = InvalidTimerId;
+}
+
+void UltraCanvasAudioPlayerElement::HookPlayerCallbacks() {
+    player->onPlaybackStateChanged = [this](AudioPlaybackState) {
+        UpdatePlayIcon();
+        if (player->IsPlaying()) StartPosTimer(); else StopPosTimer();
+        SyncTimeAndSeek();
+        RequestRedraw();
+    };
+    player->onPositionChanged = [this](double) { SyncTimeAndSeek(); };
+    player->onEnded = [this]() {
+        StopPosTimer();
+        UpdatePlayIcon();
+        SyncTimeAndSeek();
+        if (onEnded) onEnded();
+        RequestRedraw();
+    };
+}
 
 bool UltraCanvasAudioPlayerElement::LoadFromFile(const std::string& filePath) {
     bool ok = player->LoadFromFile(filePath);
+    if (volumeSlider) volumeSlider->SetValue(player->GetVolume());
+    SyncTimeAndSeek();
     RequestRedraw();
     return ok;
 }
 
 bool UltraCanvasAudioPlayerElement::LoadFromAudio(std::shared_ptr<UCAudio> audio) {
     bool ok = player->LoadFromAudio(std::move(audio));
+    if (volumeSlider) volumeSlider->SetValue(player->GetVolume());
+    SyncTimeAndSeek();
     RequestRedraw();
     return ok;
 }
@@ -84,72 +260,13 @@ void UltraCanvasAudioPlayerElement::TogglePlayPause() {
 
 void UltraCanvasAudioPlayerElement::SetStyle(const AudioPlayerStyle& s) {
     style = s;
-    Relayout();
+    ApplyStyleToChildren();
     RequestRedraw();
 }
 
 void UltraCanvasAudioPlayerElement::SetTrackTitle(const std::string& title) {
     trackTitle = title;
     RequestRedraw();
-}
-
-void UltraCanvasAudioPlayerElement::HookPlayerCallbacks() {
-    auto self = this;
-    player->onPlaybackStateChanged = [self](AudioPlaybackState) { self->RequestRedraw(); };
-    player->onPositionChanged = [self](double) { self->RequestRedraw(); };
-    player->onEnded = [self]() {
-        if (self->onEnded) self->onEnded();
-        self->RequestRedraw();
-    };
-}
-
-void UltraCanvasAudioPlayerElement::Relayout() {
-    Rect2Di b = GetLocalBounds();
-    int btn = style.buttonSize;
-    int cy = b.y + b.height / 2;
-
-    int x = b.x + kPadding;
-
-    // Play / Pause (always)
-    playButtonRect = Rect2Di(x, cy - btn / 2, btn, btn);
-    x += btn + kGap;
-
-    // Stop (only when not compact)
-    if (!style.compact) {
-        stopButtonRect = Rect2Di(x, cy - btn / 2, btn, btn);
-        x += btn + kGap;
-    } else {
-        stopButtonRect = Rect2Di();
-    }
-
-    int rightX = b.x + b.width - kPadding;
-
-    // Volume bar on the right
-    if (style.showVolumeSlider && !style.compact) {
-        volumeBarRect = Rect2Di(rightX - kVolumeWidth,
-                                cy - style.sliderHeight / 2,
-                                kVolumeWidth, style.sliderHeight);
-        muteButtonRect = Rect2Di(volumeBarRect.x - btn - kGap,
-                                 cy - btn / 2, btn, btn);
-        rightX = muteButtonRect.x - kGap;
-    } else {
-        volumeBarRect = Rect2Di();
-        muteButtonRect = Rect2Di();
-    }
-
-    // Time labels
-    if (style.showTimeLabels) {
-        timeLabelRect = Rect2Di(rightX - kTimeWidth, cy - 8, kTimeWidth, 16);
-        rightX = timeLabelRect.x - kGap;
-    } else {
-        timeLabelRect = Rect2Di();
-    }
-
-    // Seek bar fills remaining space
-    int seekW = rightX - x;
-    if (seekW < 20) seekW = 20;
-    seekBarRect = Rect2Di(x, cy - style.sliderHeight / 2,
-                          seekW, style.sliderHeight);
 }
 
 std::string UltraCanvasAudioPlayerElement::FormatTime(double seconds) {
@@ -162,235 +279,17 @@ std::string UltraCanvasAudioPlayerElement::FormatTime(double seconds) {
     return std::string(buf);
 }
 
-void UltraCanvasAudioPlayerElement::Render(IRenderContext* ctx, const Rect2Df& /*dirtyRect*/) {
+void UltraCanvasAudioPlayerElement::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
     if (!ctx) return;
-    Rect2Di b = GetLocalBounds();
-    Relayout();
+    Rect2Df b = GetLocalBounds();
 
-    // Background panel
+    // Background panel (rounded, with border) drawn before the children.
     ctx->DrawFilledRectangle(Rect2Dd(b.x, b.y, b.width, b.height),
                              style.backgroundColor, 1.0f,
                              style.borderColor, style.cornerRadius);
 
-    DrawTransportButtons(ctx);
-    DrawSeekBar(ctx);
-    if (style.showTimeLabels) DrawTimeLabels(ctx);
-    if (style.showVolumeSlider && !style.compact) DrawVolumeBar(ctx);
-}
-
-void UltraCanvasAudioPlayerElement::DrawTransportButtons(IRenderContext* ctx) {
-    // ----- Play / Pause -----
-    Color btnColor = hoverPlay ? style.iconHoverColor : style.iconColor;
-    ctx->DrawFilledRectangle(Rect2Dd(playButtonRect.x, playButtonRect.y,
-                                     playButtonRect.width, playButtonRect.height),
-                             Color(255, 255, 255, 0), 0.0f,
-                             Color(0, 0, 0, 0), style.cornerRadius);
-    int cx = playButtonRect.x + playButtonRect.width / 2;
-    int cy = playButtonRect.y + playButtonRect.height / 2;
-    int r = playButtonRect.width / 3;
-
-    ctx->SetFillPaint(btnColor);
-    if (player->IsPlaying()) {
-        // Pause icon: two vertical bars
-        int bw = r / 2;
-        int gap = bw / 2;
-        ctx->FillRectangle(Rect2Dd(cx - gap - bw, cy - r, bw, r * 2));
-        ctx->FillRectangle(Rect2Dd(cx + gap,      cy - r, bw, r * 2));
-    } else {
-        // Play icon: right-pointing triangle
-        std::vector<Point2Dd> tri = {
-            Point2Dd(cx - r * 0.6f, cy - r),
-            Point2Dd(cx - r * 0.6f, cy + r),
-            Point2Dd(cx + r,        cy)
-        };
-        ctx->FillLinePath(tri);
-    }
-
-    // ----- Stop -----
-    if (stopButtonRect.width > 0) {
-        int sx = stopButtonRect.x + stopButtonRect.width / 2;
-        int sy = stopButtonRect.y + stopButtonRect.height / 2;
-        int sr = stopButtonRect.width / 3;
-        ctx->SetFillPaint(style.iconColor);
-        ctx->FillRectangle(Rect2Dd(sx - sr, sy - sr, sr * 2, sr * 2));
-    }
-
-    // ----- Mute toggle -----
-    if (muteButtonRect.width > 0) {
-        int mx = muteButtonRect.x + muteButtonRect.width / 2;
-        int my = muteButtonRect.y + muteButtonRect.height / 2;
-        int mr = muteButtonRect.width / 3;
-        // Speaker body (trapezoid approximated as triangle + rect)
-        ctx->SetFillPaint(style.iconColor);
-        ctx->FillRectangle(Rect2Dd(mx - mr, my - mr / 2, mr, mr));
-        std::vector<Point2Dd> cone = {
-            Point2Dd(mx,      my - mr),
-            Point2Dd(mx + mr, my - mr),
-            Point2Dd(mx + mr, my + mr),
-            Point2Dd(mx,      my + mr)
-        };
-        ctx->FillLinePath(cone);
-        if (player->IsMuted()) {
-            // Red "X" through the speaker
-            ctx->SetStrokePaint(Color(220, 30, 30));
-            ctx->SetStrokeWidth(2.0f);
-            ctx->DrawLine(Point2Dd(mx - mr, my - mr), Point2Dd(mx + mr, my + mr));
-            ctx->DrawLine(Point2Dd(mx + mr, my - mr), Point2Dd(mx - mr, my + mr));
-        }
-    }
-}
-
-void UltraCanvasAudioPlayerElement::DrawSeekBar(IRenderContext* ctx) {
-    // Track
-    ctx->DrawFilledRectangle(
-        Rect2Dd(seekBarRect.x, seekBarRect.y,
-                seekBarRect.width, seekBarRect.height),
-        style.progressTrackColor, 0.0f, Color(0, 0, 0, 0),
-        seekBarRect.height / 2);
-
-    double dur = player->GetDuration();
-    double pos = player->GetPosition();
-    float pct = (dur > 0.0) ? static_cast<float>(pos / dur) : 0.0f;
-    pct = std::clamp(pct, 0.0f, 1.0f);
-
-    int fillW = static_cast<int>(seekBarRect.width * pct);
-    if (fillW > 0) {
-        ctx->DrawFilledRectangle(
-            Rect2Dd(seekBarRect.x, seekBarRect.y,
-                    fillW, seekBarRect.height),
-            style.progressFillColor, 0.0f, Color(0, 0, 0, 0),
-            seekBarRect.height / 2);
-    }
-
-    // Knob
-    int knobX = seekBarRect.x + fillW;
-    int knobY = seekBarRect.y + seekBarRect.height / 2;
-    ctx->SetFillPaint(style.knobColor);
-    ctx->FillCircle(Point2Dd(knobX, knobY), kSeekKnobR);
-    ctx->SetStrokePaint(style.knobBorderColor);
-    ctx->SetStrokeWidth(1.0f);
-    ctx->DrawCircle(Point2Dd(knobX, knobY), kSeekKnobR);
-}
-
-void UltraCanvasAudioPlayerElement::DrawVolumeBar(IRenderContext* ctx) {
-    ctx->DrawFilledRectangle(
-        Rect2Dd(volumeBarRect.x, volumeBarRect.y,
-                volumeBarRect.width, volumeBarRect.height),
-        style.progressTrackColor, 0.0f, Color(0, 0, 0, 0),
-        volumeBarRect.height / 2);
-
-    float v = player->IsMuted() ? 0.0f : player->GetVolume();
-    int fillW = static_cast<int>(volumeBarRect.width * v);
-    if (fillW > 0) {
-        ctx->DrawFilledRectangle(
-            Rect2Dd(volumeBarRect.x, volumeBarRect.y,
-                    fillW, volumeBarRect.height),
-            style.progressFillColor, 0.0f, Color(0, 0, 0, 0),
-            volumeBarRect.height / 2);
-    }
-    int knobX = volumeBarRect.x + fillW;
-    int knobY = volumeBarRect.y + volumeBarRect.height / 2;
-    ctx->SetFillPaint(style.knobColor);
-    ctx->FillCircle(Point2Dd(knobX, knobY), kVolumeKnobR);
-    ctx->SetStrokePaint(style.knobBorderColor);
-    ctx->SetStrokeWidth(1.0f);
-    ctx->DrawCircle(Point2Dd(knobX, knobY), kVolumeKnobR);
-}
-
-void UltraCanvasAudioPlayerElement::DrawTimeLabels(IRenderContext* ctx) {
-    std::string label = FormatTime(player->GetPosition()) + " / " +
-                        FormatTime(player->GetDuration());
-    ctx->SetFontSize(11);
-    ctx->SetTextPaint(style.textColor);
-    ctx->DrawText(label, Point2Dd(timeLabelRect.x, timeLabelRect.y + 12));
-}
-
-bool UltraCanvasAudioPlayerElement::OnEvent(const UCEvent& event) {
-    if (!IsVisible() || IsDisabled()) return false;
-
-    // Pointer is in window-local coords; subtract our origin to get local.
-    Point2Di p = event.pointer;
-
-    switch (event.type) {
-        case UCEventType::MouseEnter:
-            return true;
-
-        case UCEventType::MouseLeave:
-            hoverPlay = false;
-            draggingSeek = false;
-            draggingVolume = false;
-            RequestRedraw();
-            return true;
-
-        case UCEventType::MouseDown: {
-            if (event.button != UCMouseButton::Left) return false;
-            if (Hit(playButtonRect, p)) {
-                TogglePlayPause();
-                RequestRedraw();
-                return true;
-            }
-            if (stopButtonRect.width > 0 && Hit(stopButtonRect, p)) {
-                Stop();
-                RequestRedraw();
-                return true;
-            }
-            if (muteButtonRect.width > 0 && Hit(muteButtonRect, p)) {
-                player->SetMute(!player->IsMuted());
-                RequestRedraw();
-                return true;
-            }
-            if (Hit(seekBarRect, p)) {
-                draggingSeek = true;
-                float pct = static_cast<float>(p.x - seekBarRect.x) /
-                            std::max(1, seekBarRect.width);
-                pct = std::clamp(pct, 0.0f, 1.0f);
-                Seek(pct * player->GetDuration());
-                RequestRedraw();
-                return true;
-            }
-            if (volumeBarRect.width > 0 && Hit(volumeBarRect, p)) {
-                draggingVolume = true;
-                float pct = static_cast<float>(p.x - volumeBarRect.x) /
-                            std::max(1, volumeBarRect.width);
-                player->SetVolume(std::clamp(pct, 0.0f, 1.0f));
-                RequestRedraw();
-                return true;
-            }
-            return false;
-        }
-
-        case UCEventType::MouseMove: {
-            bool newHoverPlay = Hit(playButtonRect, p);
-            if (newHoverPlay != hoverPlay) {
-                hoverPlay = newHoverPlay;
-                RequestRedraw();
-            }
-            if (draggingSeek) {
-                float pct = static_cast<float>(p.x - seekBarRect.x) /
-                            std::max(1, seekBarRect.width);
-                pct = std::clamp(pct, 0.0f, 1.0f);
-                Seek(pct * player->GetDuration());
-                RequestRedraw();
-                return true;
-            }
-            if (draggingVolume) {
-                float pct = static_cast<float>(p.x - volumeBarRect.x) /
-                            std::max(1, volumeBarRect.width);
-                player->SetVolume(std::clamp(pct, 0.0f, 1.0f));
-                RequestRedraw();
-                return true;
-            }
-            return false;
-        }
-
-        case UCEventType::MouseUp:
-            draggingSeek = false;
-            draggingVolume = false;
-            return false;
-
-        default:
-            return false;
-    }
+    // Container renders the child widgets (with clipping + translation).
+    UltraCanvasContainer::Render(ctx, dirtyRect);
 }
 
 } // namespace UltraCanvas

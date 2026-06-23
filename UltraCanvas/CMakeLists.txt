@@ -1,7 +1,7 @@
 # UltraCanvas/CMakeLists.txt
 # UltraCanvas Core Library - Builds as separate static library with optional plugins
-# Version: 1.4.1
-# Last Modified: 2026-06-09
+# Version: 1.4.2
+# Last Modified: 2026-06-21
 # Author: UltraCanvas Framework
 
 cmake_minimum_required(VERSION 3.16)
@@ -13,7 +13,7 @@ include(FetchContent)
 enable_language(C)
 
 # ===== LIBRARY DEFINITION =====
-set(ULTRACANVAS_VERSION "0.2.18")
+set(ULTRACANVAS_VERSION "0.2.24")
 set(ULTRACANVAS_LIB_NAME "UltraCanvas")
 
 message(STATUS "")
@@ -209,6 +209,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasToolbar.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasScrollbar.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlider.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColorPicker.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSplashScreen.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlideshow.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAlbum.cpp
@@ -286,6 +287,13 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Barcode/Encoders/Standard25Encoder.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/QRCode/UltraCanvasQRCode.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/QRCode/third_party/qrcodegen.cpp
+
+        # STL 3D model loader/saver (self-contained, no external deps).
+        # The GL-backed viewer in UltraCanvasSTLElement.cpp compiles to a 2D
+        # fallback automatically when ULTRACANVAS_ENABLE_GL is off.
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Models/STL/UltraCanvasSTLLoader.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Models/STL/UltraCanvasSTLElement.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Models/STL/UltraCanvasSTLPlugin.cpp
 
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Text/UltraCanvasMarkdown.cpp
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartElement.cpp
@@ -806,7 +814,10 @@ if(ULTRACANVAS_PLUGIN_PDF)
     find_library(JPEG_LIB     NAMES jpeg libjpeg)
     find_library(ZLIB_LIB     NAMES z zlib)
 
-    if(MUPDF_INCLUDE_DIR AND MUPDF_LIBRARY AND MUPDF_THIRD_LIBRARY)
+    # MUPDF_THIRD_LIBRARY is intentionally NOT required here: it is absent for
+    # DLL/import-lib MuPDF builds (MSYS2/MinGW), where the third-party deps live
+    # inside the DLL. It is still linked below when present (static Linux builds).
+    if(MUPDF_INCLUDE_DIR AND MUPDF_LIBRARY)
         set(MUPDF_FOUND TRUE)
     else()
         set(MUPDF_FOUND FALSE)
@@ -832,8 +843,13 @@ if(ULTRACANVAS_PLUGIN_PDF)
     # before dependencies.
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
         ${MUPDF_LIBRARY}
-        ${MUPDF_THIRD_LIBRARY}
     )
+    # libmupdf-third only exists for static MuPDF builds (Linux). A DLL/import-lib
+    # build (MSYS2/MinGW) folds the third-party deps into the DLL, so it is absent
+    # there — link it only when present.
+    if(MUPDF_THIRD_LIBRARY)
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${MUPDF_THIRD_LIBRARY})
+    endif()
     foreach(_extra_lib
             MUJS_LIBRARY GUMBO_LIBRARY JBIG2DEC_LIBRARY OPENJP2_LIBRARY
             HARFBUZZ_LIB FREETYPE_LIB JPEG_LIB ZLIB_LIB)

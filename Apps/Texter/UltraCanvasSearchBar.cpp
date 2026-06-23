@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasSearchBar.cpp
 // Inline search and replace bar implementation
-// Version: 1.2.1
-// Last Modified: 2026-05-01
+// Version: 1.3.0
+// Last Modified: 2026-06-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSearchBar.h"
@@ -198,15 +198,17 @@ namespace UltraCanvas {
         settingsMenu->AddItem(MenuItemData::Separator());
         settingsMenu->AddItem(MenuItemData::Checkbox("Case sensitive", caseSensitive, [this](bool checked) {
             caseSensitive = checked;
-            if (!searchText.empty() && onFindNext) {
-                onFindNext(searchText, caseSensitive, wholeWord);
+            if (!searchText.empty()) {
+                if (onIncrementalFind) onIncrementalFind(searchText, caseSensitive, wholeWord);
+                else if (onFindNext)   onFindNext(searchText, caseSensitive, wholeWord);
             }
         }));
 
         settingsMenu->AddItem(MenuItemData::Checkbox("Whole words", wholeWord, [this](bool checked) {
             wholeWord = checked;
-            if (!searchText.empty() && onFindNext) {
-                onFindNext(searchText, caseSensitive, wholeWord);
+            if (!searchText.empty()) {
+                if (onIncrementalFind) onIncrementalFind(searchText, caseSensitive, wholeWord);
+                else if (onFindNext)   onFindNext(searchText, caseSensitive, wholeWord);
             }
         }));
     }
@@ -292,9 +294,10 @@ namespace UltraCanvas {
             if (firstMatchButton) firstMatchButton->SetDisabled(!hasText);
             if (!hasText && countLabel) countLabel->SetText("");
             if (onSearchTextChanged) onSearchTextChanged(text);
-            // Live search as user types
-            if (hasText && onFindNext) {
-                onFindNext(searchText, caseSensitive, wholeWord);
+            // Live search as user types — anchor to the caret, do NOT advance.
+            if (hasText) {
+                if (onIncrementalFind) onIncrementalFind(searchText, caseSensitive, wholeWord);
+                else if (onFindNext)   onFindNext(searchText, caseSensitive, wholeWord);
             }
         };
 
@@ -306,6 +309,12 @@ namespace UltraCanvas {
                 return true;
             }
             return false;
+        };
+
+        // Search input regained focus → let the host re-anchor incremental search
+        // at the caret's current position (e.g. after the user clicked into the text).
+        searchInput->onFocusGained = [this]() {
+            if (onSearchInputFocused) onSearchInputFocused();
         };
 
         // Replace input text changed
@@ -588,7 +597,8 @@ namespace UltraCanvas {
                 } else {
                     SetSearchText(item);
                     if (onSearchTextChanged) onSearchTextChanged(item);
-                    if (onFindNext) onFindNext(item, caseSensitive, wholeWord);
+                    if (onIncrementalFind) onIncrementalFind(item, caseSensitive, wholeWord);
+                    else if (onFindNext)   onFindNext(item, caseSensitive, wholeWord);
                 }
             }));
         }

@@ -19,7 +19,7 @@
 namespace UltraCanvas {
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGLSurfaceExamples() {
-    auto mainContainer = std::make_shared<UltraCanvasContainer>("GLSurfaceExamples", 0, 0, 1000, 760);
+    auto mainContainer = std::make_shared<UltraCanvasContainer>("GLSurfaceExamples", 0, 0, 1024, 800);
 
     auto title = std::make_shared<UltraCanvasLabel>("GLSurfaceTitle", 16, 8, 900, 28);
     title->SetText("OpenGL 3D Showcase — Hardware-Accelerated Rendering");
@@ -34,7 +34,12 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGLSurfac
     subtitle->SetTextColor(Color(100, 100, 100, 255));
     mainContainer->AddChild(subtitle);
 
-    auto tabs = std::make_shared<UltraCanvasTabbedContainer>("GLShowcaseTabs", 12, 62, 980, 690);
+    // Sized so the per-tab content area (width × height-tabHeight) comfortably
+    // contains every tab's children: the control panel reaches x≈986 and the
+    // Shaders tab's source viewer reaches y≈680, so the content area must be at
+    // least ~986 × ~680. 1004 × (726-34=692) clears both with margin and still
+    // fits inside the demo's display column, so no tab ever shows scrollbars.
+    auto tabs = std::make_shared<UltraCanvasTabbedContainer>("GLShowcaseTabs", 12, 62, 1004, 726);
     tabs->SetTabHeight(34);
     tabs->SetTabMinWidth(150);
     tabs->AddTab("3D Models", CreateGLModelsTab());

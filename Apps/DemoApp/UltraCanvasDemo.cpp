@@ -633,6 +633,18 @@ namespace UltraCanvas {
                 .AddVariant("slider", "Vertical Slider")
                 .AddVariant("slider", "Range Slider");
 
+        basicBuilder.AddItem("colorpicker", "Colour Picker",
+                             "HSV colour wheel with saturation/value square, preview "
+                             "swatches, hex input, HSV/HSL/RGB channel sliders and alpha",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateColorPickerExamples(); },
+                             "DemoApp/UltraCanvasColorPickerExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasColorPicker.md")
+                .AddVariant("colorpicker", "Full Picker (Wheel + Sliders)")
+                .AddVariant("colorpicker", "Compact (Sliders Only)")
+                .AddVariant("colorpicker", "HSV / HSL / RGB Modes")
+                .AddVariant("colorpicker", "Alpha / Hex Input");
+
         basicBuilder.AddItem("scrollbars", "Scrollbars",
                              "Standalone scrollbars: preset styles, colour options, "
                              "corner-radius / end-shape control and a custom SVG handle",
@@ -1258,9 +1270,9 @@ namespace UltraCanvas {
 //                             [this]() { return CreatePartiallyImplementedExamples("## GPIO support"); });
 
         auto widgetsBuilder = DemoCategoryBuilder(this, DemoCategory::Widgets);
-        widgetsBuilder.AddItem("colorpicker", "Color Picker", "Color Picker",
-                               ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("## Color picker"); });
+//        widgetsBuilder.AddItem("colorpicker", "Color Picker", "Color Picker",
+//                               ImplementationStatus::PartiallyImplemented,
+//                               [this]() { return CreatePartiallyImplementedExamples("## Color picker"); });
 
         widgetsBuilder.AddItem("photovideoviewer", "Photo/Video viewer", "Photo/Video viewer",
                                ImplementationStatus::NotImplemented,
@@ -1355,11 +1367,12 @@ namespace UltraCanvas {
         rootNode->Expand();
         rootNode->FirstChild()->Expand();
         rootNode->FirstChild()->FirstChild()->Expand();
-        // Keep the "ULTRA OS modules" node expanded by default. Because the tree
-        // auto-expands (and selects the first child of) a collapsed node on click,
-        // an already-expanded node is selected without jumping to its first child —
-        // so clicking the label shows the ULTRA OS overview page instead.
+        // The "ULTRA OS modules" node carries its own overview page, so disable the
+        // tree's "jump to first entry" behaviour for it: clicking the label keeps the
+        // selection on the node itself (showing the ULTRA OS overview) instead of
+        // jumping to the first module. Expanded by default for convenience.
         if (modulesNode) {
+            modulesNode->data.showFirstChildOnExpand = false;
             modulesNode->Expand();
         }
         categoryTreeView->SelectNode(rootNode->FirstChild()->FirstChild());

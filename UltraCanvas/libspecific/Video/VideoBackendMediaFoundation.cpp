@@ -3,20 +3,24 @@
 // Compiled when ULTRACANVAS_ENABLE_VIDEO is ON and the platform is Windows;
 // otherwise the null backend is used.
 //
-//   Playback : IMFMediaSession driving a topology with a *sample-grabber sink*
-//              on the video stream (RGB32 frames delivered to us) and the
-//              Streaming Audio Renderer (SAR) on the audio stream. The session
-//              owns the clock, so audio renders and A/V stays in sync while we
-//              receive decoded video frames.
+//   Playback : audio (and the master clock) plays through an IMFMediaSession with
+//              just the Streaming Audio Renderer (SAR); video frames are pulled
+//              from a separate IMFSourceReader (RGB32) on a worker thread and
+//              released at their presentation time so A/V stays in sync. A
+//              sample-grabber video sink in the session is unusable here — it
+//              rejects the session's rate control (MF_E_UNSUPPORTED_RATE) and never
+//              delivers a sample. Video-only files use a wall clock instead.
 //   Capture  : IMFSourceReader pulls RGB32 webcam frames on a worker thread for
 //              the live preview, and (while recording) feeds them to an
 //              IMFSinkWriter encoding H.264/MP4.
 //
 // RGB32 in MF memory order is B,G,R,A, matching Cairo's ARGB32 layout, so frames
-// are delivered as VideoPixelFormat::BGRA32 and need no swizzle.
+// are delivered as VideoPixelFormat::BGRA32 and need no swizzle. RGB32's high byte
+// is an unused "X" channel, so frames are forced to opaque alpha on delivery (the
+// premultiplied ARGB32 pixmap would otherwise treat them as fully transparent).
 //
-// Version: 0.1.0
-// Last Modified: 2026-06-15
+// Version: 0.2.0
+// Last Modified: 2026-06-23
 // Author: UltraCanvas Framework
 
 #include "IVideoBackend.h"
@@ -31,6 +35,7 @@
 #include <wrl/client.h>
 
 #include <atomic>
+#include <chrono>
 #include <mutex>
 #include <thread>
 
@@ -55,63 +60,22 @@ UCVideoFramePtr FrameFromRGB32(const uint8_t* data, int width, int height,
     out.resize((size_t)fi.stride * height);
     const int srcStride = (stride != 0) ? stride : width * 4;
     for (int y = 0; y < height; ++y) {
-        memcpy(out.data() + (size_t)y * fi.stride,
-               data + (size_t)y * srcStride, (size_t)width * 4);
+        uint8_t* dr = out.data() + (size_t)y * fi.stride;
+        const uint8_t* sr = data + (size_t)y * srcStride;
+        memcpy(dr, sr, (size_t)width * 4);
+        // MFVideoFormat_RGB32 is the X8R8G8B8 layout: the high byte is an unused
+        // "X" channel that the decoder/video-processor leaves at 0. The frame is
+        // blitted into a premultiplied CAIRO_FORMAT_ARGB32 surface, where alpha 0
+        // means fully transparent — so without this the video renders invisible on
+        // Windows even though it decodes and plays audio. Video is opaque: force it.
+        for (int x = 0; x < width; ++x)
+            dr[x * 4 + 3] = 0xFF;
     }
     frame->SetInfo(fi);
     return frame;
 }
 
-// ---- Sample-grabber callback: receives decoded RGB32 video frames ---------
-
-class GrabberCallback : public IMFSampleGrabberSinkCallback {
-public:
-    GrabberCallback(int w, int h) : width(w), height(h) {}
-
-    std::function<void(UCVideoFramePtr)> onFrame;
-
-    // IUnknown
-    STDMETHODIMP QueryInterface(REFIID riid, void** ppv) override {
-        if (!ppv) return E_POINTER;
-        if (riid == IID_IUnknown || riid == __uuidof(IMFSampleGrabberSinkCallback)) {
-            *ppv = static_cast<IMFSampleGrabberSinkCallback*>(this); AddRef(); return S_OK;
-        }
-        if (riid == __uuidof(IMFClockStateSink)) {
-            *ppv = static_cast<IMFClockStateSink*>(this); AddRef(); return S_OK;
-        }
-        *ppv = nullptr; return E_NOINTERFACE;
-    }
-    STDMETHODIMP_(ULONG) AddRef() override { return ++ref; }
-    STDMETHODIMP_(ULONG) Release() override {
-        ULONG c = --ref; if (c == 0) delete this; return c;
-    }
-
-    // IMFClockStateSink (required by the sink callback interface)
-    STDMETHODIMP OnClockStart(MFTIME, LONGLONG) override { return S_OK; }
-    STDMETHODIMP OnClockStop(MFTIME) override { return S_OK; }
-    STDMETHODIMP OnClockPause(MFTIME) override { return S_OK; }
-    STDMETHODIMP OnClockRestart(MFTIME) override { return S_OK; }
-    STDMETHODIMP OnClockSetRate(MFTIME, float) override { return S_OK; }
-
-    // IMFSampleGrabberSinkCallback
-    STDMETHODIMP OnSetPresentationClock(IMFPresentationClock*) override { return S_OK; }
-    STDMETHODIMP OnShutdown() override { return S_OK; }
-    STDMETHODIMP OnProcessSample(REFGUID, DWORD, LONGLONG llSampleTime, LONGLONG,
-                                 const BYTE* pSampleBuffer, DWORD dwSampleSize) override {
-        if (onFrame && pSampleBuffer && dwSampleSize >= (DWORD)(width * height * 4)) {
-            double pts = (double)llSampleTime / kHnsPerSecond;
-            if (auto f = FrameFromRGB32(pSampleBuffer, width, height, width * 4, pts))
-                onFrame(std::move(f));
-        }
-        return S_OK;
-    }
-
-private:
-    std::atomic<ULONG> ref{1};
-    int width, height;
-};
-
-// ---- Decode session (Media Session + sample grabber + SAR) ----------------
+// ---- Decode session (audio via Media Session/SAR + video via SourceReader) -
 
 class MFDecodeSession : public IMFAsyncCallback, public IVideoDecodeSession {
 public:
@@ -133,7 +97,7 @@ public:
     STDMETHODIMP GetParameters(DWORD*, DWORD*) override { return E_NOTIMPL; }
 
     bool Build() {
-        std::wstring wsrc = Widen(sourceStr);
+        wsrc = Widen(sourceStr);
 
         if (FAILED(MFCreateMediaSession(nullptr, &session))) return false;
 
@@ -146,43 +110,100 @@ public:
             return false;
         if (FAILED(srcUnk.As(&mediaSource))) return false;
 
-        if (!BuildTopology()) return false;
+        // Audio (and the master clock) plays through the Media Session; the video
+        // frames are pulled separately by an IMFSourceReader. The session's
+        // sample-grabber video sink rejects the session's rate control with
+        // MF_E_UNSUPPORTED_RATE and never delivers a single sample, so it is no
+        // longer part of the topology.
+        BuildTopology();      // adds the audio renderer if present; sets hasAudio
+        SetupVideoReader();   // RGB32 IMFSourceReader on the video stream
+
+        if (!hasAudio && !haveVideoReader) return false;   // nothing playable
 
         closeEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
 
-        // Begin the async event loop, then set the topology.
-        session->BeginGetEvent(this, nullptr);
-        return SUCCEEDED(session->SetTopology(0, topology.Get()));
+        if (hasAudio) {
+            // Begin the async event loop, then set the audio topology.
+            session->BeginGetEvent(this, nullptr);
+            if (FAILED(session->SetTopology(0, topology.Get()))) return false;
+        }
+
+        // Start the video pump (it idles until Play()).
+        if (haveVideoReader) {
+            running = true;
+            videoWorker = std::thread([this]() { VideoReadLoop(); });
+        }
+        return true;
     }
 
     bool Play() override {
-        PROPVARIANT v; PropVariantInit(&v);
-        HRESULT hr = session ? session->Start(&GUID_NULL, &v) : E_FAIL;
-        PropVariantClear(&v);
-        return SUCCEEDED(hr);
+        if (hasAudio && session) {
+            PROPVARIANT v; PropVariantInit(&v);
+            HRESULT hr = session->Start(&GUID_NULL, &v);   // resumes from current pos
+            PropVariantClear(&v);
+            if (FAILED(hr)) return false;
+        } else {
+            std::lock_guard<std::mutex> lk(clockMutex);
+            manualStart = std::chrono::steady_clock::now();
+            manualPlaying = true;
+        }
+        playing = true;
+        return true;
     }
-    bool Pause() override { return session && SUCCEEDED(session->Pause()); }
-    bool Stop() override  { return session && SUCCEEDED(session->Stop()); }
+    bool Pause() override {
+        playing = false;
+        if (hasAudio && session) return SUCCEEDED(session->Pause());
+        std::lock_guard<std::mutex> lk(clockMutex);
+        if (manualPlaying) {
+            manualBase += std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - manualStart).count();
+            manualPlaying = false;
+        }
+        return true;
+    }
+    bool Stop() override {
+        playing = false;
+        seekTarget = 0.0; seekPending = true;   // rewind the video reader
+        if (hasAudio && session) return SUCCEEDED(session->Stop());
+        std::lock_guard<std::mutex> lk(clockMutex);
+        manualBase = 0.0; manualPlaying = false;
+        return true;
+    }
 
     bool Seek(double seconds) override {
-        if (!session) return false;
-        PROPVARIANT v; PropVariantInit(&v);
-        v.vt = VT_I8;
-        v.hVal.QuadPart = (LONGLONG)(seconds * kHnsPerSecond);
-        HRESULT hr = session->Start(&GUID_NULL, &v);
-        PropVariantClear(&v);
-        return SUCCEEDED(hr);
+        seconds = (seconds > 0.0) ? seconds : 0.0;
+        seekTarget = seconds; seekPending = true;   // worker repositions the reader
+        if (hasAudio && session) {
+            PROPVARIANT v; PropVariantInit(&v);
+            v.vt = VT_I8;
+            v.hVal.QuadPart = (LONGLONG)(seconds * kHnsPerSecond);
+            HRESULT hr = session->Start(&GUID_NULL, &v);
+            PropVariantClear(&v);
+            return SUCCEEDED(hr);
+        }
+        std::lock_guard<std::mutex> lk(clockMutex);
+        manualBase = seconds;
+        manualStart = std::chrono::steady_clock::now();
+        return true;
     }
 
     double GetPosition() const override {
-        if (!session) return 0.0;
-        ComPtr<IMFClock> clock;
-        if (FAILED(session->GetClock(&clock)) || !clock) return 0.0;
-        ComPtr<IMFPresentationClock> pc;
-        if (FAILED(clock.As(&pc))) return 0.0;
-        MFTIME t = 0;
-        if (FAILED(pc->GetTime(&t))) return 0.0;
-        return (double)t / kHnsPerSecond;
+        if (hasAudio && session) {
+            ComPtr<IMFClock> clock;
+            if (FAILED(session->GetClock(&clock)) || !clock) return 0.0;
+            ComPtr<IMFPresentationClock> pc;
+            if (FAILED(clock.As(&pc))) return 0.0;
+            MFTIME t = 0;
+            if (FAILED(pc->GetTime(&t))) return 0.0;
+            return (double)t / kHnsPerSecond;
+        }
+        // Video-only: we keep our own playback clock.
+        std::lock_guard<std::mutex> lk(clockMutex);
+        double pos = manualBase;
+        if (manualPlaying)
+            pos += std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - manualStart).count();
+        return pos;
     }
     double GetDuration() const override { return durationSeconds; }
     const VideoStreamInfo& GetStreamInfo() const override { return streamInfo; }
@@ -202,6 +223,10 @@ public:
     void SetLoop(bool loop) override { looping = loop; }
     void SetPlaybackRate(float r) override {
         rate = (r > 0.01f) ? r : 1.0f;
+        // Don't touch the session's rate control for the default 1x: some sinks
+        // (e.g. the sample grabber) reject rate control with MF_E_UNSUPPORTED_RATE,
+        // and there is nothing to change for normal-speed playback anyway.
+        if (rate > 0.99f && rate < 1.01f) return;
         ComPtr<IMFRateControl> rc;
         if (session && SUCCEEDED(MFGetService(session.Get(), MF_RATE_CONTROL_SERVICE,
                                               IID_PPV_ARGS(&rc))))
@@ -218,16 +243,22 @@ public:
         ev->GetType(&met);
         if (met == MESessionEnded) {
             if (looping) { Seek(0.0); Play(); }
-            else if (onEnded) onEnded();
+            else { playing = false; if (onEnded) onEnded(); }
         } else if (met == MESessionTopologyStatus) {
             UINT32 status = 0;
             ev->GetUINT32(MF_EVENT_TOPOLOGY_STATUS, &status);
-            if (status == MF_TOPOSTATUS_READY) {
+            if (status == MF_TOPOSTATUS_READY && !loadedFired.exchange(true)) {
                 ReadDurationAndInfo();
                 if (onLoaded) onLoaded();
             }
         } else if (met == MEError) {
-            if (onError) onError("Media Foundation session error");
+            HRESULT st = S_OK;
+            ev->GetStatus(&st);
+            // A rate-control rejection is not fatal — audio and the clock keep
+            // running — so don't tear the session down for it.
+            if (st != MF_E_UNSUPPORTED_RATE && st != MF_E_UNSUPPORTED_RATE_TRANSITION) {
+                if (onError) onError("Media Foundation session error");
+            }
         }
 
         if (met == MESessionClosed) {
@@ -254,7 +285,6 @@ private:
 
         DWORD cStreams = 0;
         presDesc->GetStreamDescriptorCount(&cStreams);
-        bool anyVideo = false;
         for (DWORD i = 0; i < cStreams; ++i) {
             BOOL selected = FALSE;
             ComPtr<IMFStreamDescriptor> sd;
@@ -268,27 +298,19 @@ private:
 
             ComPtr<IMFActivate> sinkActivate;
             if (major == MFMediaType_Video) {
+                // No video sink in the session: the sample-grabber rejects the
+                // session's rate control (MF_E_UNSUPPORTED_RATE) and never delivers
+                // samples. Record the native frame size for stream info; the actual
+                // RGB32 frames are pulled by the IMFSourceReader (see VideoReadLoop).
                 ComPtr<IMFMediaType> nativeType;
                 handler->GetCurrentMediaType(&nativeType);
                 UINT32 w = 0, h = 0;
                 if (nativeType) MFGetAttributeSize(nativeType.Get(), MF_MT_FRAME_SIZE, &w, &h);
-                if (w == 0 || h == 0) { w = 1280; h = 720; }
-                videoW = (int)w; videoH = (int)h;
-
-                ComPtr<IMFMediaType> grabType;
-                MFCreateMediaType(&grabType);
-                grabType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-                grabType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
-                MFSetAttributeSize(grabType.Get(), MF_MT_FRAME_SIZE, w, h);
-                grabType->SetUINT32(MF_MT_DEFAULT_STRIDE, (UINT32)(w * 4)); // top-down
-
-                grabber = new GrabberCallback((int)w, (int)h);
-                grabber->onFrame = [this](UCVideoFramePtr f) { if (onFrame) onFrame(std::move(f)); };
-                if (FAILED(MFCreateSampleGrabberSinkActivate(grabType.Get(), grabber, &sinkActivate)))
-                    continue;
-                anyVideo = true;
+                if (w && h) { videoW = (int)w; videoH = (int)h; }
+                continue;
             } else if (major == MFMediaType_Audio) {
                 if (FAILED(MFCreateAudioRendererActivate(&sinkActivate))) continue;
+                hasAudio = true;
             } else {
                 continue;
             }
@@ -308,7 +330,100 @@ private:
             topology->AddNode(outNode.Get());
             srcNode->ConnectOutput(0, outNode.Get(), 0);
         }
-        return anyVideo;
+        return hasAudio;
+    }
+
+    // Configure an IMFSourceReader that decodes the file's video stream to top-down
+    // RGB32 (advanced video processing handles YUV->RGB + orientation). The worker
+    // thread pulls frames from it and paces them to the playback clock.
+    void SetupVideoReader() {
+        ComPtr<IMFAttributes> attrs;
+        if (SUCCEEDED(MFCreateAttributes(&attrs, 1)))
+            attrs->SetUINT32(MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING, TRUE);
+        if (FAILED(MFCreateSourceReaderFromURL(wsrc.c_str(), attrs.Get(), &videoReader))) {
+            videoReader.Reset();
+            return;
+        }
+        videoReader->SetStreamSelection((DWORD)MF_SOURCE_READER_ALL_STREAMS, FALSE);
+        videoReader->SetStreamSelection((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, TRUE);
+
+        ComPtr<IMFMediaType> rgb;
+        MFCreateMediaType(&rgb);
+        rgb->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+        rgb->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
+        if (FAILED(videoReader->SetCurrentMediaType(
+                (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, rgb.Get()))) {
+            videoReader.Reset();
+            return;
+        }
+        ComPtr<IMFMediaType> cur;
+        if (SUCCEEDED(videoReader->GetCurrentMediaType(
+                (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, &cur)) && cur) {
+            UINT32 w = 0, h = 0;
+            MFGetAttributeSize(cur.Get(), MF_MT_FRAME_SIZE, &w, &h);
+            if (w && h) { videoW = (int)w; videoH = (int)h; }
+        }
+        haveVideoReader = true;
+    }
+
+    // Video pump: pulls RGB32 frames and releases each at its presentation time so
+    // video stays in step with the audio clock. Idles while not playing.
+    void VideoReadLoop() {
+        HRESULT comHr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        while (running.load()) {
+            if (seekPending.exchange(false)) {
+                PROPVARIANT pv; PropVariantInit(&pv);
+                pv.vt = VT_I8;
+                pv.hVal.QuadPart = (LONGLONG)(seekTarget.load() * kHnsPerSecond);
+                videoReader->SetCurrentPosition(GUID_NULL, pv);
+                PropVariantClear(&pv);
+            }
+            if (!playing.load()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(15));
+                continue;
+            }
+
+            DWORD streamIndex = 0, flags = 0;
+            LONGLONG ts = 0;
+            ComPtr<IMFSample> sample;
+            HRESULT hr = videoReader->ReadSample((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM,
+                                                 0, &streamIndex, &flags, &ts, &sample);
+            if (FAILED(hr)) { std::this_thread::sleep_for(std::chrono::milliseconds(10)); continue; }
+            if (flags & MF_SOURCE_READERF_ENDOFSTREAM) {
+                // End of video; the audio session drives MESessionEnded/looping.
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                continue;
+            }
+            if (!sample) continue;
+
+            ComPtr<IMFMediaBuffer> buf;
+            if (FAILED(sample->ConvertToContiguousBuffer(&buf)) || !buf) continue;
+            BYTE* data = nullptr; DWORD maxLen = 0, curLen = 0;
+            if (FAILED(buf->Lock(&data, &maxLen, &curLen))) continue;
+            double pts = (double)ts / kHnsPerSecond;
+            UCVideoFramePtr frame;
+            if (curLen >= (DWORD)(videoW * videoH * 4))
+                frame = FrameFromRGB32(data, videoW, videoH, videoW * 4, pts);
+            buf->Unlock();
+
+            // Fire onLoaded once if the audio topology didn't already.
+            if (!loadedFired.exchange(true)) {
+                ReadDurationAndInfo();
+                if (onLoaded) onLoaded();
+            }
+
+            // Pace to the playback clock.
+            while (running.load() && playing.load() && !seekPending.load()) {
+                double now = GetPosition();
+                if (now + 0.005 >= pts) break;     // due now (or already late)
+                double waitS = pts - now;
+                if (waitS > 0.05) waitS = 0.05;    // cap so pause/seek stay responsive
+                std::this_thread::sleep_for(std::chrono::duration<double>(waitS));
+            }
+            if (frame && onFrame && running.load() && !seekPending.load())
+                onFrame(std::move(frame));
+        }
+        if (SUCCEEDED(comHr)) CoUninitialize();
     }
 
     void ReadDurationAndInfo() {
@@ -323,33 +438,55 @@ private:
     }
 
     void Teardown() {
+        // Stop the video pump first so it no longer touches the reader or onFrame.
+        running = false;
+        playing = false;
+        if (videoWorker.joinable()) videoWorker.join();
+        videoReader.Reset();
+
         if (session) {
-            // Close() is async; wait for MESessionClosed (handled in Invoke) so
-            // Media Foundation releases all its references to this callback
-            // before we free the object.
+            // Close() is async; when we ran an audio topology, wait for
+            // MESessionClosed (handled in Invoke) so Media Foundation releases all
+            // its references to this callback before we free the object.
             session->Close();
-            if (closeEvent) WaitForSingleObject(closeEvent, 5000);
+            if (hasAudio && closeEvent) WaitForSingleObject(closeEvent, 5000);
             session->Shutdown();
         }
         if (mediaSource) mediaSource->Shutdown();
-        if (grabber) { grabber->Release(); grabber = nullptr; }
         session.Reset(); mediaSource.Reset(); topology.Reset(); presDesc.Reset();
         if (closeEvent) { CloseHandle(closeEvent); closeEvent = nullptr; }
     }
 
     std::atomic<ULONG> ref{1};
     std::string sourceStr;
+    std::wstring wsrc;
     HANDLE closeEvent = nullptr;
     ComPtr<IMFMediaSession> session;
     ComPtr<IMFMediaSource> mediaSource;
     ComPtr<IMFTopology> topology;
     ComPtr<IMFPresentationDescriptor> presDesc;
-    GrabberCallback* grabber = nullptr;   // owned by the sink activate; we keep one ref
     VideoStreamInfo streamInfo;
     double durationSeconds = 0.0;
     int videoW = 0, videoH = 0;
     bool looping = false;
     float rate = 1.0f;
+    bool hasAudio = false;
+
+    // Video pump (IMFSourceReader on the video stream, paced to the clock).
+    ComPtr<IMFSourceReader> videoReader;
+    std::thread videoWorker;
+    bool haveVideoReader = false;
+    std::atomic<bool> running{false};
+    std::atomic<bool> playing{false};
+    std::atomic<bool> seekPending{false};
+    std::atomic<double> seekTarget{0.0};
+    std::atomic<bool> loadedFired{false};
+
+    // Playback clock used only for video-only files (no audio renderer/clock).
+    mutable std::mutex clockMutex;
+    double manualBase = 0.0;
+    std::chrono::steady_clock::time_point manualStart;
+    bool manualPlaying = false;
 };
 
 // ---- Capture session (aggregate camera+mic SourceReader → SinkWriter) -----
