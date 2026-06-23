@@ -20,15 +20,9 @@
 
 #include <cairo/cairo.h>
 
-// QOI encoder. The implementation lives in libspecific/Cairo/VipsQOILoader.cpp,
-// but that translation unit is only compiled when libvips is present. To keep
-// QOI thumbnails available regardless of libvips, compile the (header-only)
-// implementation into this TU when libvips is absent; otherwise just take the
-// declarations and link against the existing qoi_write symbol (defining
-// QOI_IMPLEMENTATION in both TUs would be a duplicate-symbol clash).
-#ifndef HAS_LIBVIPS
-#define QOI_IMPLEMENTATION
-#endif
+// QOI encoder declarations. The codec implementation is owned by the standalone,
+// always-compiled libspecific/Cairo/qoi.cpp (independent of libvips), so we just
+// include the header for the prototypes and link against those symbols.
 #include "../libspecific/Cairo/qoi.h"
 
 namespace UltraCanvas {

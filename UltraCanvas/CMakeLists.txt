@@ -355,8 +355,12 @@ set(ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/ImageCairo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/RenderContextCairo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/UCTextLayout.cpp
+        # Standalone QOI codec — dependency free, always compiled so qoi_encode/
+        # qoi_decode/qoi_read/qoi_write are available without libvips.
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/qoi.cpp
 )
 if(LIBVIPS_FOUND)
+    # vips foreign loader for QOI — consumes the codec symbols above.
     list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsQOILoader.cpp
     )
