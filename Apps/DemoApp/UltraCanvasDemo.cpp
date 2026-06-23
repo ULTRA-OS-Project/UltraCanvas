@@ -650,7 +650,8 @@ namespace UltraCanvas {
                              "corner-radius / end-shape control and a custom SVG handle",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateScrollbarExamples(); },
-                             "DemoApp/UltraCanvasScrollbarExamples.cpp")
+                             "DemoApp/UltraCanvasScrollbarExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasScrollbarExamples.md")
                 .AddVariant("scrollbars", "Preset Styles")
                 .AddVariant("scrollbars", "Colour Options")
                 .AddVariant("scrollbars", "Corner Radius / End Shape")
@@ -677,9 +678,17 @@ namespace UltraCanvas {
                 .AddVariant("breadcrumb", "ShrinkText Overflow")
                 .AddVariant("breadcrumb", "Rounded Strip");
 
-        basicBuilder.AddItem("gauges", "Gauges", "Gauges",
+        basicBuilder.AddItem("gauges", "Gauges",
+                             "Mode-driven gauges: analog dials, progress/LED bars, "
+                             "circular rings, batteries, thermometers, clocks and digital panels",
                              ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateGaugeExamples(); });
+                             [this]() { return CreateGaugeExamples(); },
+                             "DemoApp/UltraCanvasGaugeExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasGaugeExamples.md")
+                .AddVariant("gauges", "Round Gauges")
+                .AddVariant("gauges", "Progress & Linear")
+                .AddVariant("gauges", "Specialized")
+                .AddVariant("gauges", "Analog");
 
         // ===== EXTENDED FUNCTIONALITY =====
         auto extendedBuilder = DemoCategoryBuilder(this, DemoCategory::ExtendedFunctionality);
@@ -708,7 +717,8 @@ namespace UltraCanvas {
                                 "Editable spreadsheet grid with an Open button that loads .ods/.csv files",
                                 ImplementationStatus::FullyImplemented,
                                 [this]() { return CreateSpreadsheetExamples(); },
-                                "DemoApp/UltraCanvasSpreadsheetExamples.cpp")
+                                "DemoApp/UltraCanvasSpreadsheetExamples.cpp",
+                                "Docs/UltraCanvas/UltraCanvasSpreadsheetExamples.md")
                 .AddVariant("spreadsheet", "Sample Data")
                 .AddVariant("spreadsheet", "Open ODS / CSV");
 
@@ -838,7 +848,9 @@ namespace UltraCanvas {
 #ifdef ULTRACANVAS_HAS_XAR_PLUGIN
         vectorBuilder.AddItem("xarimages", "XAR Images", "XAR Image display and manipulation",
                               ImplementationStatus::PartiallyImplemented,
-                              [this]() { return CreateXARVectorExamples(); });
+                              [this]() { return CreateXARVectorExamples(); },
+                              "DemoApp/UltraCanvasXARExamples.cpp",
+                              "Docs/UltraCanvas/UltraCanvasXARExamples.md");
 #endif
 
         vectorBuilder.AddItem("drawing", "Drawing Surface", "Vector drawing and primitives",
@@ -1139,7 +1151,9 @@ namespace UltraCanvas {
 
         videoBuilder.AddItem("video", "Video Player", "Video playback and recording",
                              ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateVideoExamples(); })
+                             [this]() { return CreateVideoExamples(); },
+                             "DemoApp/UltraCanvasVideoExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasVideo.md")
                 .AddVariant("video", "MP4 Playback")
                 .AddVariant("video", "Camera Recording")
                 .AddVariant("video", "Custom Controls");
@@ -1193,7 +1207,9 @@ namespace UltraCanvas {
 
         audioBuilder.AddItem("audio", "Audio Player", "Audio playback and waveform display",
                              ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateAudioExamples(); })
+                             [this]() { return CreateAudioExamples(); },
+                             "DemoApp/UltraCanvasAudioExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasAudio.md")
                 .AddVariant("audio", "FLAC Support")
                 .AddVariant("audio", "MP3 Playback")
                 .AddVariant("audio", "Waveform Visualization");
@@ -1202,7 +1218,9 @@ namespace UltraCanvas {
 
         toolsBuilder.AddItem("qrcode", "QR code", "QR code generator and decoder",
                              ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateQRCodeExamples(); });
+                             [this]() { return CreateQRCodeExamples(); },
+                             "DemoApp/UltraCanvasQRCodeExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasQRCodeExamples.md");
 
         toolsBuilder.AddItem("barcode", "Bar code",
                                "1D barcode widget — 12 symbologies",
@@ -1282,7 +1300,8 @@ namespace UltraCanvas {
                                "Timed image slideshow with info text panel and selectable indicator styles",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateSlideshowExamples(); },
-                               "DemoApp/UltraCanvasSlideshowExamples.cpp")
+                               "DemoApp/UltraCanvasSlideshowExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasSlideshowExamples.md")
                 .AddVariant("slideshow", "Bars Indicator")
                 .AddVariant("slideshow", "Dots Indicator")
                 .AddVariant("slideshow", "Progress Bar")
@@ -1296,7 +1315,8 @@ namespace UltraCanvas {
                                "crop / zoom / stretch fitting, action icons and visitor / edit / admin modes",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateAlbumExamples(); },
-                               "DemoApp/UltraCanvasAlbumExamples.cpp")
+                               "DemoApp/UltraCanvasAlbumExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasAlbumExamples.md")
                 .AddVariant("album", "Uniform Grid")
                 .AddVariant("album", "Justified")
                 .AddVariant("album", "Masonry")
