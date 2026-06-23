@@ -572,7 +572,8 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
 
     auto playGauge = CreateGaugeDiagramElement("round_play", 0, 0, kCardW, kCardH);
     playGauge->SetMode(GaugeMode::CircularRing);
-    playGauge->SetTitle("Completion");
+    // No title on the playground gauge: it lets the ring use the full panel
+    // height so the main gauge stays clearly the largest one on the tab.
     playGauge->SetUnit("%");
     playGauge->SetGaugeColor(Color(0, 200, 140, 255));
     playGauge->SetRingThickness(10.0f);

@@ -1,8 +1,13 @@
 // Plugins/Diagrams/UltraCanvasGaugeDiagramElement.cpp
 // Implementation of comprehensive gauge element with 17 visual modes
-// Version: 2.7.0
-// Last Modified: 2026-06-18
+// Version: 2.7.1
+// Last Modified: 2026-06-23
 // Author: UltraCanvas Framework
+// V2.7.1 changelog: Fixed CircularRing (round gauge) sizing — the value is drawn
+//   in the centre of the ring, so the layout no longer reserves a value/unit zone
+//   below it (and trims tick clearance), letting the ring grow to fill its card
+//   (~2x larger). The centre value text now scales to the inner ring diameter and
+//   shrinks to fit, so it never spills outside the ring on small gauges.
 // V2.7.0 changelog: Round-gauge (CircularRing) style system for the new "Round
 //   Gauges" demo tab. Adds configurable ring thickness, indicator style
 //   (SolidArc / Segmented / Dashed), segment shape (Bars / Dots / Blocks),
@@ -296,7 +301,12 @@ Point2Df UltraCanvasGaugeDiagramElement::AngleToPoint(
 Point2Df UltraCanvasGaugeDiagramElement::GetGaugeCenter() const {
     const auto b = GetLocalBounds();
     float titleSpace = title.empty() ? 0.0f : kTitleHeight;
-    float bottomSpace = kValueHeight + (unit.empty() ? 0.0f : (kUnitHeight + kValueUnitGap));
+    // V2.7.1: CircularRing draws the value in the centre of the ring, not in a
+    // separate zone below it, so it must not reserve bottomSpace — doing so was
+    // shrinking the ring (height-limited) and pushing the value text out of it.
+    float bottomSpace = (mode == GaugeMode::CircularRing)
+        ? 0.0f
+        : kValueHeight + (unit.empty() ? 0.0f : (kUnitHeight + kValueUnitGap));
     // V2.5.1: Match the clearance used in GetGaugeRadius so center is consistent
     // V2.5.2: Speedometer back to base clearance — was being made too small.
     //         Compass uses 36 and looks great with proper size, so Speedometer
@@ -304,6 +314,8 @@ Point2Df UltraCanvasGaugeDiagramElement::GetGaugeCenter() const {
     float tickLabelClearance = 0.0f;
     if (mode == GaugeMode::Semicircular || mode == GaugeMode::Compass) {
         tickLabelClearance = 36.0f;
+    } else if (mode == GaugeMode::CircularRing) {
+        tickLabelClearance = 8.0f;  // V2.7.1: keep consistent with GetGaugeRadius
     }
     float availH = static_cast<float>(b.height) - titleSpace - bottomSpace
                    - kPaddingTop - kPaddingBottom - tickLabelClearance;
@@ -321,7 +333,11 @@ Point2Df UltraCanvasGaugeDiagramElement::GetGaugeCenter() const {
 float UltraCanvasGaugeDiagramElement::GetGaugeRadius() const {
     const auto b = GetLocalBounds();
     float titleSpace = title.empty() ? 0.0f : kTitleHeight;
-    float bottomSpace = kValueHeight + (unit.empty() ? 0.0f : (kUnitHeight + kValueUnitGap));
+    // V2.7.1: CircularRing centres its value inside the ring, so it reserves no
+    // bottom value/unit zone — this lets the ring grow to fill the card.
+    float bottomSpace = (mode == GaugeMode::CircularRing)
+        ? 0.0f
+        : kValueHeight + (unit.empty() ? 0.0f : (kUnitHeight + kValueUnitGap));
 
     // V2.4: Modes that draw tick labels OUTSIDE the arc need extra room
     // V2.4.1: Added Speedometer — its tick labels (120, 150) at the top of the
@@ -333,6 +349,8 @@ float UltraCanvasGaugeDiagramElement::GetGaugeRadius() const {
     float tickLabelClearance = 20.0f;  // base safety
     if (mode == GaugeMode::Semicircular || mode == GaugeMode::Compass) {
         tickLabelClearance = 36.0f;  // labels at radius+18 stick out further
+    } else if (mode == GaugeMode::CircularRing) {
+        tickLabelClearance = 8.0f;   // V2.7.1: no external labels, only short radial bars
     }
 
     float availH = static_cast<float>(b.height) - titleSpace - bottomSpace
@@ -1978,10 +1996,22 @@ void UltraCanvasGaugeDiagramElement::RenderCircularRing(
     {
         std::string label = FormatValue(currentValue) + (unit.empty() ? "" : unit);
         ctx->SetFontFamily("Sans");
-        ctx->SetFontSize(30.0f);
         ctx->SetTextPaint(textColor);
         ctx->SetFontWeight(FontWeight::Light);
+
+        // V2.7.1: Scale the value text to the ring so it always fits inside the
+        // open centre. Start from a radius-proportional size, then measure and
+        // shrink if the rendered width would spill past the inner diameter.
+        float innerR   = std::max(8.0f, radius - ringThickness);
+        float fontSize = std::min(40.0f, std::max(10.0f, innerR * 0.78f));
+        ctx->SetFontSize(fontSize);
         Size2Di d = ctx->GetTextLineDimensions(label);
+        float maxTextW = innerR * 1.7f;   // fit within the inner circle with margin
+        if (d.width > maxTextW && d.width > 0) {
+            fontSize = std::max(8.0f, fontSize * (maxTextW / static_cast<float>(d.width)));
+            ctx->SetFontSize(fontSize);
+            d = ctx->GetTextLineDimensions(label);
+        }
 
         // When a centre icon/label is shown the value is lifted to make room,
         // so the value + content read as a single vertically-centred stack.
@@ -1993,7 +2023,7 @@ void UltraCanvasGaugeDiagramElement::RenderCircularRing(
         ctx->DrawText(label, Point2Df(center.x - d.width / 2.0f, valueTop));
 
         if (ringCenterContent == GaugeRingCenterContent::TextLabel && !ringCenterLabel.empty()) {
-            ctx->SetFontSize(13.0f);
+            ctx->SetFontSize(std::min(13.0f, std::max(9.0f, fontSize * 0.5f)));
             ctx->SetFontWeight(FontWeight::Bold);
             ctx->SetTextPaint(textColor);
             Size2Di ld = ctx->GetTextLineDimensions(ringCenterLabel);
