@@ -40,7 +40,7 @@ In the v2.x codebase all three variants present the same benchmark UI; the diffe
 #include "UltraCanvasApplication.h"
 
 // QOI third-party header — provides qoi_write / qoi_read; do NOT define
-// QOI_IMPLEMENTATION here, it is defined in libspecific/Cairo/VipsQOILoader.cpp.
+// QOI_IMPLEMENTATION here, it is defined in the standalone libspecific/Cairo/qoi.cpp.
 #include "../../UltraCanvas/libspecific/Cairo/qoi.h"
 ```
 

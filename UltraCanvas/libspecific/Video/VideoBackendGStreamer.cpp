@@ -21,6 +21,7 @@
 #include <gst/video/video.h>
 #include <gst/pbutils/pbutils.h>
 
+#include <algorithm>
 #include <atomic>
 #include <mutex>
 #include <thread>
@@ -125,6 +126,97 @@ UCVideoFramePtr SampleToFrame(GstSample* sample) {
     frame->SetInfo(fi);
     gst_buffer_unmap(buf, &map);
     return frame;
+}
+
+// ---- One-shot thumbnail grab ---------------------------------------------
+
+// Decode a single frame at a chosen timestamp using a throwaway pipeline that
+// only touches the video track. We preroll to PAUSED (cheap; no audio sink, no
+// rendering), seek accurately to the target time, then pull the preroll sample.
+// Fully synchronous and self-contained: no main-loop thread or bus watch needed
+// because every step here blocks until GStreamer reports completion.
+UCVideoFramePtr GstGrabThumbnail(const std::string& source, const VideoThumbnailRequest& req) {
+    if (!gst_is_initialized()) {
+        if (!gst_init_check(nullptr, nullptr, nullptr)) return nullptr;
+    }
+
+    gchar* uri = gst_uri_is_valid(source.c_str())
+                     ? g_strdup(source.c_str())
+                     : gst_filename_to_uri(source.c_str(), nullptr);
+    if (!uri) return nullptr;
+
+    // uridecodebin auto-plugs a demuxer + (hardware) decoder and exposes a
+    // video pad that parse-launch delay-links to videoconvert. Any audio pad is
+    // simply left unlinked. videoscale is a no-op here (we scale in software
+    // afterwards) but keeps the caps negotiable across odd pixel-aspect ratios.
+    GError* err = nullptr;
+    GstElement* pipeline = gst_parse_launch(
+        "uridecodebin name=ucthumb-dec ! videoconvert ! videoscale ! "
+        "video/x-raw,format=BGRA,pixel-aspect-ratio=1/1 ! "
+        "appsink name=ucthumb-sink sync=false max-buffers=1 drop=false",
+        &err);
+    if (err) g_error_free(err);
+    if (!pipeline) { g_free(uri); return nullptr; }
+
+    GstElement* dec  = gst_bin_get_by_name(GST_BIN(pipeline), "ucthumb-dec");
+    GstElement* sink = gst_bin_get_by_name(GST_BIN(pipeline), "ucthumb-sink");
+    if (dec) { g_object_set(dec, "uri", uri, nullptr); }
+    g_free(uri);
+
+    UCVideoFramePtr result;
+    auto cleanup = [&]() {
+        if (pipeline) {
+            gst_element_set_state(pipeline, GST_STATE_NULL);
+            gst_object_unref(pipeline);
+        }
+        if (dec)  gst_object_unref(dec);
+        if (sink) gst_object_unref(sink);
+    };
+
+    if (!dec || !sink) { cleanup(); return result; }
+
+    // Preroll. Blocks until the first frame is decoded and held, or failure.
+    if (gst_element_set_state(pipeline, GST_STATE_PAUSED) == GST_STATE_CHANGE_FAILURE) {
+        cleanup(); return result;
+    }
+    if (gst_element_get_state(pipeline, nullptr, nullptr, 8 * GST_SECOND)
+            != GST_STATE_CHANGE_SUCCESS) {
+        cleanup(); return result;
+    }
+
+    // Decide where to grab. Default to a short way in (skip black/title frames),
+    // clamped inside the clip.
+    double target = req.timeSeconds;
+    if (target < 0.0) {
+        gint64 dur = 0;
+        if (gst_element_query_duration(pipeline, GST_FORMAT_TIME, &dur) && dur > 0) {
+            double durSec = static_cast<double>(dur) / GST_SECOND;
+            target = std::min(durSec * 0.1, durSec > 1.0 ? 1.0 : durSec * 0.5);
+        } else {
+            target = 0.0;
+        }
+    }
+
+    if (target > 0.0) {
+        gint64 pos = static_cast<gint64>(target * GST_SECOND);
+        if (gst_element_seek_simple(
+                pipeline, GST_FORMAT_TIME,
+                static_cast<GstSeekFlags>(GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_ACCURATE),
+                pos)) {
+            // Wait for the post-seek preroll to settle so pull_preroll returns
+            // the frame at the requested position rather than the old one.
+            gst_element_get_state(pipeline, nullptr, nullptr, 8 * GST_SECOND);
+        }
+    }
+
+    GstSample* sample = gst_app_sink_pull_preroll(GST_APP_SINK(sink));
+    if (sample) {
+        result = SampleToFrame(sample);
+        gst_sample_unref(sample);
+    }
+
+    cleanup();
+    return result;
 }
 
 // ---- Decode session (playbin + BGRA appsink) -----------------------------
@@ -519,6 +611,11 @@ public:
     }
     std::unique_ptr<IVideoCaptureSession> OpenCapture(const VideoCaptureParams& p) override {
         return std::make_unique<GstCaptureSession>(p);
+    }
+
+    UCVideoFramePtr GrabThumbnail(const std::string& source,
+                                 const VideoThumbnailRequest& req) override {
+        return GstGrabThumbnail(source, req);
     }
 };
 

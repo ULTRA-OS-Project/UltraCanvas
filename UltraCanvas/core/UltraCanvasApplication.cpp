@@ -764,9 +764,9 @@ namespace UltraCanvas {
             debugOutput << "UltraCanvasApplicationBase::DispatchEventToElement window == null for elem=" << elem << std::ends;
             return false;
         }
-        if (event.type != UCEventType::MouseMove) {
-            debugOutput << "DispatchEventToElement ev=" << event.ToString() << " target elem=" << elem << " target win=" << elem->GetWindow() << " focused=" << focusedWindow << std::endl;
-        }
+//        if (event.type != UCEventType::MouseMove) {
+//            debugOutput << "DispatchEventToElement ev=" << event.ToString() << " target elem=" << elem << " target win=" << elem->GetWindow() << " focused=" << focusedWindow << std::endl;
+//        }
         if (event.IsMouseEvent() || event.IsDragEvent() || event.type == UCEventType::MouseEnter) {
             event.pointer = elem->MapToLocal(event.pointerWindow, nullptr);
         }

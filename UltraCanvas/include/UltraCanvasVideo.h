@@ -68,6 +68,17 @@ struct VideoStreamInfo {
     int    bitRate  = 0;          // bits/sec (0 if unknown)
 };
 
+// ===== THUMBNAIL REQUEST =====
+// Parameters for grabbing a single representative frame (poster / thumbnail)
+// from a video source without starting full playback.
+struct VideoThumbnailRequest {
+    double timeSeconds = -1.0;   // position to grab; < 0 = automatic (a short
+                                 // way into the clip so we skip black intros)
+    int    maxWidth    = 0;      // 0 = native size; otherwise the frame is
+    int    maxHeight   = 0;      //   downscaled to fit within this box,
+                                 //   preserving aspect ratio
+};
+
 // ===== UCVIDEOFRAME RESOURCE =====
 // A single decoded RGBA frame plus its metadata. Parallels UCAudio / UCImage.
 // Cheap to move; the engine recycles these between the decode thread and the

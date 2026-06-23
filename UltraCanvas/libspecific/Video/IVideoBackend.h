@@ -103,6 +103,21 @@ public:
     // Returns null when the source can't be opened / format isn't supported.
     virtual std::unique_ptr<IVideoDecodeSession> OpenDecoder(const std::string& source) = 0;
     virtual std::unique_ptr<IVideoCaptureSession> OpenCapture(const VideoCaptureParams& params) = 0;
+
+    // Synchronously decode a single representative frame (poster / thumbnail)
+    // from a file or URL, WITHOUT starting full playback or touching audio.
+    // Honours req.timeSeconds (or picks an automatic position when < 0) and may
+    // pre-scale to req.maxWidth/maxHeight. Returns null when the source can't be
+    // opened, decoded, or the backend doesn't implement a fast grab path.
+    //
+    // This is an opt-in capability: the default returns null so existing
+    // backends keep compiling. UltraCanvas provides a generic decode-session
+    // fallback (see UltraCanvasVideoThumbnail.h) for backends that don't
+    // override it, so a thumbnail is still produced wherever decoding works.
+    virtual UCVideoFramePtr GrabThumbnail(const std::string& /*source*/,
+                                          const VideoThumbnailRequest& /*req*/) {
+        return nullptr;
+    }
 };
 
 // ===== ACCESSOR =====

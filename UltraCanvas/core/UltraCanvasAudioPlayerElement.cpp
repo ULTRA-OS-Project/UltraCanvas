@@ -75,7 +75,7 @@ void UltraCanvasAudioPlayerElement::BuildChildren() {
     AddChild(stopButton);
 
     // ----- Seek bar (absorbs the slack) -----
-    seekSlider = std::make_shared<UltraCanvasSlider>(GetIdentifier() + ".Seek", 0, 0, 0, kCtrlHeight);
+    seekSlider = std::make_shared<UltraCanvasSlider>(GetIdentifier() + ".Seek", 0, 0, 0, kCtrlHeight - 4);
     seekSlider->SetSliderStyle(SliderStyle::Horizontal);
     seekSlider->SetRange(0.0f, 1.0f);
     seekSlider->SetStep(0.0f);            // continuous (default step 1.0 would snap to ends)
@@ -116,7 +116,7 @@ void UltraCanvasAudioPlayerElement::BuildChildren() {
 
     // ----- Volume bar -----
     volumeSlider = std::make_shared<UltraCanvasSlider>(GetIdentifier() + ".Vol",
-                                                       0, 0, kVolumeWidth, kCtrlHeight);
+                                                       0, 0, kVolumeWidth, kCtrlHeight - 4);
     volumeSlider->SetSliderStyle(SliderStyle::Horizontal);
     volumeSlider->SetRange(0.0f, 1.0f);
     volumeSlider->SetStep(0.0f);

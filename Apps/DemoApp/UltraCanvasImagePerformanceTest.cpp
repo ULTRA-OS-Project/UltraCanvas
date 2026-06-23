@@ -214,8 +214,8 @@
 //       (via UCImage::Save -> libvips)
 //   QOI
 //       (via bundled qoi.h / qoi_encode from libspecific/Cairo/qoi.h;
-//        QOI_IMPLEMENTATION is already provided by VipsQOILoader.cpp,
-//        so we only include the header and link against those symbols)
+//        QOI_IMPLEMENTATION is provided by the standalone libspecific/Cairo/
+//        qoi.cpp, so we only include the header and link against those symbols)
 //
 // TGA is not benchmarked: neither UCImageSaveFormat::TGA nor a bundled TGA
 // encoder is available, and adding either would require core changes.
@@ -238,8 +238,9 @@
 #include "UltraCanvasDebug.h"
 
 // QOI third-party header. IMPORTANT: Do NOT define QOI_IMPLEMENTATION here;
-// it is already defined in libspecific/Cairo/VipsQOILoader.cpp, which provides
-// the qoi_encode / qoi_decode symbols for the whole program via the linker.
+// it is already defined in the standalone libspecific/Cairo/qoi.cpp, which
+// provides the qoi_encode / qoi_decode symbols for the whole program via the
+// linker.
 #include "../../UltraCanvas/libspecific/Cairo/qoi.h"
 
 #ifdef HAS_LIBVIPS
