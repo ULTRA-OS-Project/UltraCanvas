@@ -142,7 +142,7 @@ namespace UltraCanvas {
 
         const float hexFieldW = std::min(120.0f, innerW * 0.45f);
         hexFieldRect = Rect2Df(rightEdge - hexFieldW, cursorY + rh + gap, hexFieldW, rh);
-        hexLabelRect = Rect2Df(hexFieldRect.x - 36.0f, hexFieldRect.y, 32.0f, rh);
+        hexLabelRect = Rect2Df(hexFieldRect.x - 40.0f, hexFieldRect.y, 34.0f, rh);
 
         cursorY += previewRowH + gap;
 

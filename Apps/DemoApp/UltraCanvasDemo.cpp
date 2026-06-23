@@ -1270,9 +1270,9 @@ namespace UltraCanvas {
 //                             [this]() { return CreatePartiallyImplementedExamples("## GPIO support"); });
 
         auto widgetsBuilder = DemoCategoryBuilder(this, DemoCategory::Widgets);
-        widgetsBuilder.AddItem("colorpicker", "Color Picker", "Color Picker",
-                               ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("## Color picker"); });
+//        widgetsBuilder.AddItem("colorpicker", "Color Picker", "Color Picker",
+//                               ImplementationStatus::PartiallyImplemented,
+//                               [this]() { return CreatePartiallyImplementedExamples("## Color picker"); });
 
         widgetsBuilder.AddItem("photovideoviewer", "Photo/Video viewer", "Photo/Video viewer",
                                ImplementationStatus::NotImplemented,

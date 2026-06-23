@@ -34,7 +34,7 @@ namespace UltraCanvas {
         // Live read-out of the selected colour.
         auto swatch = CreateLabel("ColorReadout", 340, 75, 240, 40);
         swatch->SetText(picker->GetColor().ToHexStringWithAlpha());
-        swatch->SetAlignment(TextAlignment::Center);
+        swatch->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
         swatch->SetBackgroundColor(picker->GetColor());
         container->AddChild(swatch);
 
@@ -50,6 +50,7 @@ namespace UltraCanvas {
         };
         updateReadout(picker->GetColor());
         rgbLabel->SetFontSize(12);
+        rgbLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
         container->AddChild(rgbLabel);
 
         picker->onColorChanging = updateReadout;

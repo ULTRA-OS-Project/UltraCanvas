@@ -1,7 +1,7 @@
 // include/UltraCanvasSlider.h
 // Interactive slider control with multiple styles, value display options, and dual-handle range support
-// Version: 3.2.0
-// Last Modified: 2026-05-29
+// Version: 3.3.0
+// Last Modified: 2026-06-23
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -152,6 +152,11 @@ namespace UltraCanvas {
 
         void SetStep(float stepValue) { step = std::max(0.0f, stepValue); }
         float GetStep() const { return step; }
+
+        // True while the user is actively dragging the handle. Lets owners
+        // suppress programmatic SetValue() feedback (e.g. a media element pushing
+        // playback position) from fighting the user's drag.
+        bool IsDragging() const { return isDragging; }
 
         // ===== RANGE MODE MANAGEMENT =====
         void SetRangeMode(bool enabled);

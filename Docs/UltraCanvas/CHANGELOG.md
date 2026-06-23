@@ -1,3 +1,9 @@
+#### 2026-06-21 *0.2.24*
+- Merge "Color picker widget for UltraCanvas" and fix layout errors.
+- Fix toolbar button width (make it auto)
+- Fixed incremental search in TextArea (stop advance on each typed matched character)
+- Refactor Audio element. Use composite widget instead manual draw. Use SVG icons for play/pause/etc.. buttons
+  
 #### 2026-06-21 *0.2.23*
 - `UltraCanvasGLSurface` now resizes its render target / framebuffer to follow the element's actual bounds on every render, however the bounds were changed. Previously the framebuffer size (`surfaceWidth_`/`surfaceHeight_`) was only updated from the `SetBounds` override, so a layout-driven resize — flex/grid stretch, a parent resize, `SetElementSize`, a window resize — left the GL content stuck at its old size (it wrote `finalBounds` without routing through `SetBounds`). `Render()` now syncs the framebuffer size from `GetLocalBounds()` and forces a content re-render that pass, so GL surfaces resize correctly under any layout path (this is what made the Shaders-tab "maximize" need an explicit `SetBounds`; flexible/maximized GL surfaces now grow on their own).
 
