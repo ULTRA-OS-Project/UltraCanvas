@@ -50,7 +50,7 @@ namespace UltraCanvas {
         float fontSize = 11.0f;
 
         // Scrollbar
-        ScrollbarStyle scrollbarStyle = ScrollbarStyle::DropDown();
+        ScrollbarStyle scrollbarStyle = GetDefaultScrollbarStyleOr(ScrollbarStyle::DropDown());
     };
 
 // ===== AUTOCOMPLETE COMPONENT =====

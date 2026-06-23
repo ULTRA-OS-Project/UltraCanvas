@@ -29,7 +29,7 @@ namespace UltraCanvas {
         bool forceShowVerticalScrollbar = false;
         bool forceShowHorizontalScrollbar = false;
 
-        ScrollbarStyle scrollbarStyle;
+        ScrollbarStyle scrollbarStyle = GetDefaultScrollbarStyleOr(ScrollbarStyle::Default());
     };
 
 

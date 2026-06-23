@@ -127,6 +127,21 @@ namespace UltraCanvas {
         }
     };
 
+// ===== APPLICATION-WIDE DEFAULT SCROLLBAR STYLE =====
+// An application may set a single default scrollbar style that every element
+// owning a scrollbar (containers, tree/list views, menus, dropdowns, ...) adopts
+// for a consistent app-wide look. Element style structs initialise their
+// scrollbarStyle from GetDefaultScrollbarStyleOr(<their own default>), so the
+// default is only applied to elements and never to standalone UltraCanvasScrollbar
+// instances created with an explicit style (e.g. the scrollbar showcase page).
+// No default is set until an app calls SetDefaultScrollbarStyle, so framework
+// behaviour is unchanged for callers that never opt in.
+    void SetDefaultScrollbarStyle(const ScrollbarStyle& style);
+    void ClearDefaultScrollbarStyle();
+    bool HasDefaultScrollbarStyle();
+    // Returns the app-wide default style if one has been set, otherwise fallback.
+    ScrollbarStyle GetDefaultScrollbarStyleOr(const ScrollbarStyle& fallback);
+
 // ===== SCROLLBAR INTERACTION STATE =====
     struct ScrollbarInteractionState {
         // Hover states

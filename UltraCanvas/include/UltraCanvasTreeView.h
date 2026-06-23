@@ -146,7 +146,7 @@ private:
     Color lineColor;            // Connecting line color
     Color textColor;            // Default text color
 
-    ScrollbarStyle scrollbarStyle;
+    ScrollbarStyle scrollbarStyle = GetDefaultScrollbarStyleOr(ScrollbarStyle::Default());
 
     // Scrolling (using unified scrollbar)
     std::shared_ptr<UltraCanvasScrollbar> verticalScrollbar;

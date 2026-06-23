@@ -11,6 +11,29 @@
 
 namespace UltraCanvas {
 
+// ===== APPLICATION-WIDE DEFAULT SCROLLBAR STYLE =====
+    namespace {
+        bool g_hasDefaultScrollbarStyle = false;
+        ScrollbarStyle g_defaultScrollbarStyle;
+    }
+
+    void SetDefaultScrollbarStyle(const ScrollbarStyle& style) {
+        g_defaultScrollbarStyle = style;
+        g_hasDefaultScrollbarStyle = true;
+    }
+
+    void ClearDefaultScrollbarStyle() {
+        g_hasDefaultScrollbarStyle = false;
+    }
+
+    bool HasDefaultScrollbarStyle() {
+        return g_hasDefaultScrollbarStyle;
+    }
+
+    ScrollbarStyle GetDefaultScrollbarStyleOr(const ScrollbarStyle& fallback) {
+        return g_hasDefaultScrollbarStyle ? g_defaultScrollbarStyle : fallback;
+    }
+
 // This file is intentionally minimal since most implementation
 // is in the header file using inline methods for better performance.
 // Additional platform-specific optimizations can be added here if needed.

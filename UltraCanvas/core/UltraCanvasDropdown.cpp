@@ -158,7 +158,7 @@ namespace UltraCanvas {
     UltraCanvasDropdown::UltraCanvasDropdown(const std::string &identifier, float x, float y,
                                              float w, float h)
             : UltraCanvasUIElement(identifier, x, y, w, h) {
-        style.scrollbarStyle = ScrollbarStyle::DropDown();
+        style.scrollbarStyle = GetDefaultScrollbarStyleOr(ScrollbarStyle::DropDown());
         CreatePopupListView();
         WireListViewCallbacks();
     }

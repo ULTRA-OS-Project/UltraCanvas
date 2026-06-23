@@ -19,13 +19,18 @@
 #include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
-    // Demo-wide scrollbar look: round ("pill") ends and a track 70% of the
-    // framework default thickness (integer-truncated). Applied to the demo's
-    // scroll regions so the app's scrollbars share one slim, rounded style.
+    // Demo-wide scrollbar look: the "Blue" style from the Scrollbar showcase page —
+    // a light-blue track carrying a blue, round-ended ("pill") thumb. Registered as
+    // the application-wide default scrollbar style in Initialize() so every element's
+    // scrollbars (the content area, the navigation tree, list/tree/menu examples, …)
+    // share this one blue style.
     static ScrollbarStyle DemoScrollbarStyle() {
-        ScrollbarStyle s;                          // default trackSize = 16
-        s.trackSize = (s.trackSize * 70) / 100;    // 70%, truncated → 11
-        s.thumbCornerRadius = s.trackSize / 2;     // fully rounded ends
+        ScrollbarStyle s;                               // default trackSize = 16
+        s.trackColor        = Color(225, 232, 245, 255);
+        s.thumbColor        = Color(90, 140, 220, 255);
+        s.thumbHoverColor   = Color(70, 120, 200, 255);
+        s.thumbPressedColor = Color(50, 100, 180, 255);
+        s.thumbCornerRadius = s.trackSize / 2;          // fully rounded ends
         s.trackCornerRadius = s.trackSize / 2;
         return s;
     }
@@ -316,6 +321,12 @@ namespace UltraCanvas {
 // ===== INITIALIZATION =====
     bool UltraCanvasDemoApplication::Initialize() {
         debugOutput << "Initializing UltraCanvas Demo Application..." << std::endl;
+
+        // Register the demo's blue scrollbar style as the application-wide default
+        // before any elements are created, so every element that owns a scrollbar
+        // (containers, the navigation tree, list/tree/menu/dropdown examples, …)
+        // adopts it for a consistent blue look.
+        SetDefaultScrollbarStyle(DemoScrollbarStyle());
 
         // Create main window using proper configuration
         WindowConfig config;

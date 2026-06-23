@@ -38,7 +38,7 @@ namespace UltraCanvas {
         Color selectionBackgroundColor = Colors::Selection;
         Color hoverBackgroundColor = Colors::SelectionHover;
 
-        ScrollbarStyle scrollbarStyle = ScrollbarStyle::Modern();
+        ScrollbarStyle scrollbarStyle = GetDefaultScrollbarStyleOr(ScrollbarStyle::Modern());
     };
 
     // ===== LIST VIEW WIDGET =====
