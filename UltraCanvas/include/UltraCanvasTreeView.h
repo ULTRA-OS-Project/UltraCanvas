@@ -54,6 +54,10 @@ struct TreeNodeData {
     TreeNodeIcon rightIcon;       // Optional icon on right side
     bool enabled = true;          // Can be interacted with
     bool visible = true;          // Should be displayed
+    bool showFirstChildOnExpand = true; // Per-node override of the tree's "jump to
+                                        // first entry" behaviour: when false, selecting
+                                        // /expanding this node does not jump to its first
+                                        // child, so the node itself stays selected.
     Color textColor = Colors::Black;     // Text color (ARGB)
     Color backgroundColor = Colors::Transparent; // Background color (transparent by default)
     std::string tooltip;          // Tooltip text

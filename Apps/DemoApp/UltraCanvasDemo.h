@@ -312,9 +312,10 @@ namespace UltraCanvas {
         // Composite module documentation screen: short intro (Markdown) on top, an
         // optional rendered SVG module diagram in the middle, and the full README
         // (Markdown) scrolling below. moduleDir is a folder under the resources dir
-        // (e.g. "Docs/Modules/UltraAI") that may contain intro.md, diagram.svg and
-        // README.md. Missing intro.md / diagram.svg are skipped gracefully, so the
-        // screen degrades to a plain README view until those assets are added.
+        // (e.g. "Docs/Modules/UltraAI") that may contain intro.md, a diagram named
+        // after the module (e.g. "UltraAI.svg") and README.md. A missing intro.md /
+        // diagram is skipped gracefully, so the screen degrades to a plain README
+        // view until those assets are added.
         std::shared_ptr<UltraCanvasUIElement> CreateModuleDocScreen(const std::string& moduleDir);
         // Overview page for the "ULTRA OS modules" category node itself: the ULTRA OS
         // diagram (media/diagrams/ULTRA-OS.svg) plus the descriptive overview text.

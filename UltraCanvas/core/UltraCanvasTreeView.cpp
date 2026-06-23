@@ -1020,6 +1020,9 @@ namespace UltraCanvas {
 
     void UltraCanvasTreeView::ExpandFirstChildNode(TreeNode *node) {
         if (!node || !node->HasChildren()) return;
+        // Per-node opt-out: nodes that carry their own content (e.g. an overview page)
+        // keep the selection on themselves instead of jumping to the first child.
+        if (!node->data.showFirstChildOnExpand) return;
         SelectNode(node->FirstChild(), false);
     }
 
