@@ -88,8 +88,10 @@ if (auto frame = CaptureVideoThumbnail("clip.mp4", req)) { /* upload / inspect *
 // (b) as a ready-to-draw pixmap
 auto pm = CaptureVideoThumbnailPixmap("clip.mp4", req);
 
-// (c) straight to a PNG on disk — handy for Album thumbnailPath
+// (c) straight to a file on disk — handy for Album thumbnailPath.
+//     The encoder follows the extension: ".qoi" -> QOI, else PNG.
 SaveVideoThumbnail("clip.mp4", "clip_thumb.png", req);
+SaveVideoThumbnail("clip.mp4", "clip_thumb.qoi", req);   // QOI
 ```
 
 All three are **synchronous** (they open the source and decode one frame, which
@@ -103,6 +105,10 @@ Under the hood the engine prefers the backend's dedicated single-frame grab
 preroll sample, never touching audio). Backends that don't implement it fall
 back to a generic decode-session path (open → mute → seek → capture first
 frame), so a thumbnail is produced wherever decoding works.
+
+`SaveVideoThumbnail` picks its encoder from the output extension — `.qoi`
+writes QOI, anything else writes PNG. Both are always available (PNG via Cairo,
+QOI via the bundled encoder) and need no libvips.
 
 Feeding an album:
 

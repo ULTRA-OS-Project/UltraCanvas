@@ -40,10 +40,11 @@ UCVideoFramePtr CaptureVideoThumbnail(const std::string& source,
 std::shared_ptr<UCPixmap> CaptureVideoThumbnailPixmap(const std::string& source,
                                                       const VideoThumbnailRequest& req = {});
 
-// Convenience: capture and write the frame to an image file on disk as PNG
-// (suitable for UltraCanvasAlbum::AddItem thumbnailPath). The output is always
-// PNG-encoded regardless of the path's extension, so name it ".png". Returns
-// true on success.
+// Convenience: capture and write the frame to an image file on disk (suitable
+// for UltraCanvasAlbum::AddItem thumbnailPath). The encoder is chosen from the
+// output path's extension: ".qoi" writes QOI, anything else (or no extension)
+// writes PNG. Both are always available (PNG via Cairo, QOI via the bundled
+// encoder) and need no libvips. Returns true on success.
 bool SaveVideoThumbnail(const std::string& source,
                         const std::string& outputImagePath,
                         const VideoThumbnailRequest& req = {});

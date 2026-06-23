@@ -10,12 +10,26 @@
 #include "../libspecific/Video/IVideoBackend.h"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <condition_variable>
 #include <cstring>
 #include <mutex>
+#include <string>
+#include <vector>
 
 #include <cairo/cairo.h>
+
+// QOI encoder. The implementation lives in libspecific/Cairo/VipsQOILoader.cpp,
+// but that translation unit is only compiled when libvips is present. To keep
+// QOI thumbnails available regardless of libvips, compile the (header-only)
+// implementation into this TU when libvips is absent; otherwise just take the
+// declarations and link against the existing qoi_write symbol (defining
+// QOI_IMPLEMENTATION in both TUs would be a duplicate-symbol clash).
+#ifndef HAS_LIBVIPS
+#define QOI_IMPLEMENTATION
+#endif
+#include "../libspecific/Cairo/qoi.h"
 
 namespace UltraCanvas {
 
@@ -127,6 +141,68 @@ UCVideoFramePtr GrabViaDecodeSession(IVideoBackend* backend,
     return captured;
 }
 
+// Lowercased file extension including the leading dot, or "" if none.
+std::string LowerExtension(const std::string& path) {
+    auto slash = path.find_last_of("/\\");
+    auto dot = path.find_last_of('.');
+    if (dot == std::string::npos || (slash != std::string::npos && dot < slash))
+        return {};
+    std::string ext = path.substr(dot);
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return ext;
+}
+
+// Encode a frame to PNG via Cairo (always available — Cairo is a hard dep).
+bool SaveFrameAsPng(const UCVideoFramePtr& frame, const std::string& path) {
+    const int w = frame->GetWidth();
+    const int h = frame->GetHeight();
+    cairo_surface_t* surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
+    if (cairo_surface_status(surf) != CAIRO_STATUS_SUCCESS) {
+        cairo_surface_destroy(surf);
+        return false;
+    }
+    uint8_t* dst = cairo_image_surface_get_data(surf);
+    const int dstStride = cairo_image_surface_get_stride(surf);
+    const uint8_t* src = frame->GetData();
+    const int srcStride = frame->GetStride();
+    const int rowBytes = w * 4;
+    for (int y = 0; y < h; ++y) {
+        uint8_t* drow = dst + static_cast<size_t>(y) * dstStride;
+        std::memcpy(drow, src + static_cast<size_t>(y) * srcStride, rowBytes);
+        for (int x = 0; x < w; ++x) drow[x * 4 + 3] = 0xFF;   // force opaque
+    }
+    cairo_surface_mark_dirty(surf);
+    cairo_status_t st = cairo_surface_write_to_png(surf, path.c_str());
+    cairo_surface_destroy(surf);
+    return st == CAIRO_STATUS_SUCCESS;
+}
+
+// Encode a frame to QOI. Frames are tightly-packed BGRA; QOI wants RGB(A), so
+// repack into opaque 3-channel RGB (swizzling B<->R) and hand it to qoi_write.
+bool SaveFrameAsQoi(const UCVideoFramePtr& frame, const std::string& path) {
+    const int w = frame->GetWidth();
+    const int h = frame->GetHeight();
+    std::vector<uint8_t> rgb(static_cast<size_t>(w) * h * 3);
+    const uint8_t* src = frame->GetData();
+    const int srcStride = frame->GetStride();
+    for (int y = 0; y < h; ++y) {
+        const uint8_t* srow = src + static_cast<size_t>(y) * srcStride;
+        uint8_t* drow = rgb.data() + static_cast<size_t>(y) * w * 3;
+        for (int x = 0; x < w; ++x) {
+            drow[x * 3 + 0] = srow[x * 4 + 2];   // R <- src R (BGRA byte 2)
+            drow[x * 3 + 1] = srow[x * 4 + 1];   // G
+            drow[x * 3 + 2] = srow[x * 4 + 0];   // B <- src B (BGRA byte 0)
+        }
+    }
+    qoi_desc desc;
+    desc.width = static_cast<unsigned int>(w);
+    desc.height = static_cast<unsigned int>(h);
+    desc.channels = 3;
+    desc.colorspace = QOI_SRGB;
+    return qoi_write(path.c_str(), rgb.data(), &desc) != 0;
+}
+
 } // namespace
 
 UCVideoFramePtr CaptureVideoThumbnail(const std::string& source,
@@ -181,29 +257,11 @@ bool SaveVideoThumbnail(const std::string& source,
     UCVideoFramePtr frame = CaptureVideoThumbnail(source, req);
     if (!frame) return false;
 
-    const int w = frame->GetWidth();
-    const int h = frame->GetHeight();
-    cairo_surface_t* surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
-    if (cairo_surface_status(surf) != CAIRO_STATUS_SUCCESS) {
-        cairo_surface_destroy(surf);
-        return false;
-    }
-
-    uint8_t* dst = cairo_image_surface_get_data(surf);
-    const int dstStride = cairo_image_surface_get_stride(surf);
-    const uint8_t* src = frame->GetData();
-    const int srcStride = frame->GetStride();
-    const int rowBytes = w * 4;
-    for (int y = 0; y < h; ++y) {
-        uint8_t* drow = dst + static_cast<size_t>(y) * dstStride;
-        std::memcpy(drow, src + static_cast<size_t>(y) * srcStride, rowBytes);
-        for (int x = 0; x < w; ++x) drow[x * 4 + 3] = 0xFF;   // opaque
-    }
-    cairo_surface_mark_dirty(surf);
-
-    cairo_status_t st = cairo_surface_write_to_png(surf, outputImagePath.c_str());
-    cairo_surface_destroy(surf);
-    return st == CAIRO_STATUS_SUCCESS;
+    // Pick the encoder from the output extension: .qoi → QOI, anything else
+    // (including no extension) → PNG.
+    if (LowerExtension(outputImagePath) == ".qoi")
+        return SaveFrameAsQoi(frame, outputImagePath);
+    return SaveFrameAsPng(frame, outputImagePath);
 }
 
 } // namespace UltraCanvas
