@@ -210,6 +210,15 @@ yt.mediaType    = AlbumMediaType::Video;
 yt.mediaPath    = "media/videos/Lola Lexy - No kings.mp4";
 yt.link         = "https://www.youtube.com/watch?v=Tl15Os47lG0";
 yt.linkIconPath = "media/icons/youtube.svg";
+
+// Give the video tile a real cover by extracting a poster frame once
+// (see UltraCanvasVideoThumbnail). The encoder is picked from the extension
+// — ".qoi" writes QOI, otherwise PNG.
+VideoThumbnailRequest req;
+req.maxWidth = 640; req.maxHeight = 480;
+if (SaveVideoThumbnail(yt.mediaPath, "media/videos/Lola Lexy - No kings.qoi", req))
+    yt.thumbnailPath = "media/videos/Lola Lexy - No kings.qoi";
+
 album->AddItem(yt);
 
 album->onLinkClicked = [album](size_t i){

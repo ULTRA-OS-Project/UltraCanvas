@@ -2,8 +2,11 @@
 // Demonstration of UltraCanvasAlbum: layout designs, image-fit modes, action-icon
 // display options and visitor / user-edit / admin modes for a mixed photo / video
 // / music album.
-// Version: 2.6.0
+// Version: 2.7.0
 // Last Modified: 2026-06-21
+// V2.7.0: The video tile now extracts a poster frame via SaveVideoThumbnail
+//   (cached as a QOI) for its cover when the UltraCanvasVideoThumbnail module is
+//   present; otherwise it falls back to the video placeholder.
 // V2.6.0: Added a YouTube video tile (media/videos/Lola Lexy - No kings.mp4)
 //   whose second row links to YouTube, preceded by a YouTube icon
 //   (AlbumItem::linkIconPath + media/icons/youtube.svg).
@@ -38,8 +41,19 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasWindow.h"
+#include <fstream>
 #include <sstream>
 #include <vector>
+
+// Video poster-frame extraction (UltraCanvasVideoThumbnail) lives in its own
+// module; use it when present so video tiles get a real cover, otherwise fall
+// back to the built-in video placeholder.
+#if defined(__has_include)
+#  if __has_include("UltraCanvasVideoThumbnail.h")
+#    include "UltraCanvasVideoThumbnail.h"
+#    define ULTRACANVAS_DEMO_HAVE_VIDEO_THUMBNAIL 1
+#  endif
+#endif
 
 namespace UltraCanvas {
 
@@ -339,18 +353,34 @@ namespace UltraCanvas {
         }
 
         // A YouTube video entry pointing at the bundled clip in media/videos.
-        // No poster image is supplied, so the tile shows the video placeholder;
-        // its second row links to YouTube, preceded by a YouTube icon
-        // (AlbumItem::linkIconPath).
+        // A poster frame is extracted once via SaveVideoThumbnail (cached as a
+        // QOI next to the clip) and used as the tile cover; if the thumbnail
+        // module or a video backend is unavailable the tile shows the built-in
+        // video placeholder instead. Its second row links to YouTube, preceded
+        // by a YouTube icon (AlbumItem::linkIconPath).
         {
             AlbumItem yt;
-            yt.mediaPath   = NormalizePath(GetResourcesDir() + "media/videos/Lola Lexy - No kings.mp4");
+            const std::string videoPath =
+                    NormalizePath(GetResourcesDir() + "media/videos/Lola Lexy - No kings.mp4");
+            yt.mediaPath   = videoPath;
             yt.title       = "Lola Lexy - No kings";
             yt.subtitle    = "youtube.com";
             yt.description  = "Linked from YouTube.";
             yt.mediaType   = AlbumMediaType::Video;
             yt.link        = "https://www.youtube.com/watch?v=Tl15Os47lG0";
             yt.linkIconPath = NormalizePath(GetResourcesDir() + "media/icons/youtube.svg");
+#ifdef ULTRACANVAS_DEMO_HAVE_VIDEO_THUMBNAIL
+            const std::string posterPath =
+                    NormalizePath(GetResourcesDir() + "media/videos/Lola Lexy - No kings.qoi");
+            bool havePoster = std::ifstream(posterPath, std::ios::binary).good();
+            if (!havePoster) {
+                VideoThumbnailRequest req;
+                req.maxWidth  = 640;   // downscale the poster to a sensible cover size
+                req.maxHeight = 480;
+                havePoster = SaveVideoThumbnail(videoPath, posterPath, req);
+            }
+            if (havePoster) yt.thumbnailPath = posterPath;
+#endif
             album->AddItem(yt);
         }
 
