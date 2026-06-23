@@ -216,7 +216,7 @@ void main(){
         t += d;
         if(t > 30.0) break;
     }
-    vec3 col = vec3(0.05,0.07,0.11) + 0.15*rd.y;
+    vec3 col = vec3(0.0);   // black horizon (no sky / fog environment)
     if(hit){
         vec3 p = ro + rd*t;
         vec3 n = calcNormal(p);
@@ -235,8 +235,6 @@ void main(){
             ? vec3(0.2,0.25,0.3)*(0.5+0.5*mod(floor(p.x)+floor(p.z),2.0))
             : vec3(0.9,0.4,0.3);
         col = base*(0.2 + diff*shadow) + spec*shadow;
-        float fog = exp(-0.02*t*t);
-        col = mix(vec3(0.05,0.07,0.11), col, fog);
     }
     col = pow(col, vec3(0.4545));
     FragColor = vec4(col,1.0);
@@ -774,7 +772,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     cfg.glVersionMajor = 3; cfg.glVersionMinor = 3; cfg.coreProfile = true;
     cfg.depthBits = 0; cfg.samples = 1;
 
-    auto surface = std::make_shared<ZoomableGLSurface>(cfg, "ShaderSurface", 16, 40, 660, 360);
+    auto surface = std::make_shared<ZoomableGLSurface>(cfg, "ShaderSurface", 16, 36, 660, 360);
     surface->SetRenderMode(RenderMode::Continuous);
 
     surface->SetInitCallback([glRes, effects]() {
@@ -875,14 +873,14 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         return head.empty() ? fx.body : head + "\n" + fx.body;
     };
 
-    auto codeTitle = std::make_shared<UltraCanvasLabel>("ShaderSrcTitle", 16, 406, 660, 18);
+    auto codeTitle = std::make_shared<UltraCanvasLabel>("ShaderSrcTitle", 16, 400, 660, 18);
     codeTitle->SetText("Generating source (read-only) — original formula + live GLSL");
     codeTitle->SetFontSize(12);
     codeTitle->SetFontWeight(FontWeight::Bold);
     codeTitle->SetTextColor(Color(40, 40, 120, 255));
     root->AddChild(codeTitle);
 
-    auto codeArea = std::make_shared<UltraCanvasTextArea>("ShaderSource", 16, 428, 660, 252);
+    auto codeArea = std::make_shared<UltraCanvasTextArea>("ShaderSource", 16, 420, 660, 266);
     codeArea->SetHighlightSyntax(true);
     codeArea->SetProgrammingLanguage("GLSL");    // dedicated GLSL grammar
     codeArea->ApplyDarkTheme();
@@ -894,7 +892,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     root->AddChild(codeArea);
 
     // ---------------------------------------------------------- control panel
-    auto panel = std::make_shared<UltraCanvasContainer>("ShaderControls", 690, 40, 296, 560);
+    auto panel = std::make_shared<UltraCanvasContainer>("ShaderControls", 690, 36, 310, 650);
     panel->SetBackgroundColor(Color(246, 246, 248, 255));
     panel->SetBorders(1.0f);
     panel->SetPadding(10.0f);
@@ -1067,22 +1065,23 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     // it). It maximizes the canvas over the whole tab, hiding the controls and
     // source viewer; double-clicking the canvas does the same, and Esc or a
     // single click restores. The button stays visible so it can toggle back.
-    const Point2Df homePos{16.0f, 40.0f};
+    const Point2Df homePos{16.0f, 36.0f};
     const float homeW = 660.0f, homeH = 360.0f;
-    const float btnSize = 28.0f, btnMargin = 8.0f;
+    const float btnSize = 28.0f, btnMargin = 4.0f;
 
     auto zoomBtn = std::make_shared<UltraCanvasButton>(
         "ShaderZoomBtn",
         homePos.x + homeW - btnSize - btnMargin, homePos.y + btnMargin,
         btnSize, btnSize, "");
     // The SVG is a single black shape on transparent; render it as a mask filled
-    // with the (white) text colour so it reads on the dark translucent button.
+    // with a black text colour over a light translucent button so the icon reads
+    // clearly (a white icon on the dark canvas was hard to see).
     zoomBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/maximise.svg"));
     zoomBtn->SetIconPosition(ButtonIconPosition::Center);
     zoomBtn->SetIconSize(16, 16);
     zoomBtn->SetUseIconAsMask(true);
-    zoomBtn->SetBackgroundColor(Color(0, 0, 0, 120));
-    zoomBtn->SetTextColors(Color(255, 255, 255, 255));   // mask fill colour
+    zoomBtn->SetBackgroundColor(Color(255, 255, 255, 190));
+    zoomBtn->SetTextColors(Color(0, 0, 0, 255));   // mask fill colour (black icon)
     zoomBtn->SetCornerRadius(4.0f);
     zoomBtn->SetTooltip("Maximize canvas (or double-click it; Esc to restore)");
     root->AddChild(zoomBtn);
