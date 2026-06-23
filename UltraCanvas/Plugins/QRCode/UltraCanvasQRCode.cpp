@@ -902,16 +902,51 @@ namespace UltraCanvas {
         }
     }
 
+    // Largest fraction of the QR *width* that the logo together with its
+    // margin/border may occupy while the chosen error-correction level can
+    // still reconstruct the obscured modules. The obscured region is a single
+    // contiguous block in the centre (all data modules), so these limits are
+    // kept conservatively below the theoretical Reed-Solomon recovery rates
+    // (L 7%, M 15%, Q 25%, H 30%). The linear limits below correspond roughly
+    // to a covered *area* of 9% / 16% / 25% / 30% of the symbol.
+    static float MaxLogoCoverWidthFraction(QRErrorCorrection ecl) {
+        switch (ecl) {
+            case QRErrorCorrection::Low:      return 0.30f;
+            case QRErrorCorrection::Medium:   return 0.40f;
+            case QRErrorCorrection::Quartile: return 0.50f;
+            case QRErrorCorrection::High:     return 0.55f;
+        }
+        return 0.40f;
+    }
+
     void UltraCanvasQRCode::DrawLogo(IRenderContext* ctx, const Rect2Df& qrRect) const {
         const auto& st = config_.style;
         if (st.logoStyle == QRLogoStyle::None || !st.logoImage) return;
 
-        float side    = qrRect.width * st.logoScale;
+        // The logo and its margin hide QR modules in the centre. If they hide
+        // more than the error correction can recover, the code stops scanning.
+        // Clamp the *combined* footprint (logo + margin) to the safe budget for
+        // the level that was actually encoded (data_.errorCorrection already
+        // accounts for any boost applied during generation). The margin is
+        // sacrificed first, then the logo itself, so the rendered code can
+        // never be made unscannable from the UI controls.
+        const float maxCover = qrRect.width *
+                               MaxLogoCoverWidthFraction(data_.errorCorrection);
+
+        float pad  = std::max(0.0f, st.logoBorderWidth);
+        float side = qrRect.width * std::clamp(st.logoScale, 0.0f, 1.0f);
+
+        if (side > maxCover) {            // logo alone overflows: shrink it, no margin
+            side = maxCover;
+            pad  = 0.0f;
+        } else if (side + 2.0f * pad > maxCover) {   // trim the margin to fit
+            pad = (maxCover - side) * 0.5f;
+        }
+
         float logoX   = qrRect.x + (qrRect.width  - side) * 0.5f;
         float logoY   = qrRect.y + (qrRect.height - side) * 0.5f;
         Rect2Df logo(logoX, logoY, side, side);
 
-        float pad = st.logoBorderWidth;
         Rect2Df frame(logo.x - pad, logo.y - pad,
                       logo.width + 2 * pad, logo.height + 2 * pad);
 
