@@ -176,7 +176,7 @@ namespace UltraCanvas {
         dep("Bitmap codecs (via libvips)", "libpng\nlibjpeg-turbo\nlibtiff\nlibwebp", "libpng\nlibjpeg-turbo\nlibtiff\nlibwebp", "libpng\nlibjpeg-turbo\nlibtiff\nlibwebp");
         dep("GIF / HEIF / AVIF (via libvips)", "giflib\nlibheif", "giflib\nlibheif", "giflib\nlibheif");
         dep("BMP / PCX coders (via libvips)", "ImageMagick", "ImageMagick", "ImageMagick");
-        dep("Audio playback & capture", "miniaudio (bundled)", "miniaudio (bundled)", "miniaudio (bundled)");
+        dep("Audio playback & capture", "miniaudio (bundled)\n→ ALSA / PulseAudio", "miniaudio (bundled)\n→ CoreAudio", "miniaudio (bundled)\n→ WASAPI");
         dep("Video playback & capture", "GStreamer (optional)", "AVFoundation (optional)", "Media Foundation (optional)");
         dep("OpenGL 3D surface", "OpenGL\nEGL / GLX (optional)", "OpenGL\nCGL (optional)", "OpenGL\nGLEW / WGL (optional)");
         dep("QR / barcode decoding", "zbar (optional)", "zbar (optional)", "zbar (optional)");
@@ -216,7 +216,9 @@ namespace UltraCanvas {
         dep("No additional third party", "(core only)", "(core only)", "(core only)");
 
         header("Ultra Net module");
-        dep("Networking / TLS", "libcurl\nOpenSSL", "libcurl\nOpenSSL", "libcurl\nOpenSSL");
+        dep("Core protocols (HTTP/WS/FTP/TLS/DNS)", "libcurl\nOpenSSL", "libcurl\nOpenSSL", "libcurl\nOpenSSL");
+        dep("Native sockets / platform glue", "POSIX sockets (glibc)", "BSD sockets\nNetwork.framework", "Winsock2 (ws2_32)");
+        dep("Extra protocols (SMTP/MQTT/SSH/gRPC/…)", "plugin-supplied\n(libs tracked separately)", "plugin-supplied\n(libs tracked separately)", "plugin-supplied\n(libs tracked separately)");
 
         header("VideoFX module");
         dep("Video effects / transcode", "FFmpeg", "FFmpeg", "FFmpeg");
