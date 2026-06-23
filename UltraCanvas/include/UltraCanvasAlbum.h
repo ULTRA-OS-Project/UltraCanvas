@@ -2,8 +2,16 @@
 // Photo / video / music album widget: a self-rendered media grid with selectable
 // layout designs, per-item crop / zoom / stretch fitting, action icons and
 // visitor / user-edit / admin modes. A companion to UltraCanvasSlideshow.
-// Version: 1.0.0
-// Last Modified: 2026-06-13
+// Version: 1.3.0
+// Last Modified: 2026-06-21
+// V1.3.0: AlbumItem::linkIconPath draws an icon (e.g. a YouTube badge) before
+//   the subtitle link text.
+// V1.2.0: AlbumActionIconBackground (round / square / rounded-square) plus
+//   actionIconBgColor for the action-icon backing.
+// V1.1.0: AlbumActionAnchor (8 image / text-block corners) for action-icon
+//   placement; AlbumConfig::imageCornerRadius for square / rounded image
+//   corners independent of the tile frame; AlbumItem::link + onLinkClicked for
+//   a clickable subtitle (link-styled) row.
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -87,6 +95,31 @@ namespace UltraCanvas {
         Hidden          // no actions surfaced
     };
 
+    // ===== WHICH CORNER THE ACTION ICON(S) ANCHOR TO =====
+    // The kebab / action buttons sit in one corner of either the image area or
+    // the caption "text block" beneath it. A row of buttons grows horizontally
+    // away from the anchored corner (rightward from a *Left corner, leftward
+    // from a *Right one). The TextBlock anchors fall back to the image area when
+    // there is no below-image caption strip (overlay / hidden captions).
+    enum class AlbumActionAnchor {
+        TopLeftImage,
+        TopRightImage,
+        BottomLeftImage,
+        BottomRightImage,
+        TopLeftTextBlock,
+        TopRightTextBlock,
+        BottomLeftTextBlock,
+        BottomRightTextBlock
+    };
+
+    // ===== SHAPE OF THE ACTION-ICON BACKGROUND =====
+    // The translucent backing drawn behind each kebab / action glyph.
+    enum class AlbumActionIconBackground {
+        Round,         // a circle (the classic overlay look)
+        Square,        // a plain square
+        RoundedSquare  // a square with rounded corners
+    };
+
     // ===== WHERE THE TITLE / SUBTITLE STRIP SITS =====
     // (BelowImage rather than "Below" because X11/X.h #defines Below.)
     enum class AlbumCaptionPlacement {
@@ -102,6 +135,11 @@ namespace UltraCanvas {
         std::string title;          // primary caption line
         std::string subtitle;       // secondary line (artist, date, duration, ...)
         std::string description;    // longer related text (shown in a full-size view)
+        std::string link;           // optional link target for the subtitle row; when
+                                    // set, the subtitle is drawn as a clickable link
+                                    // and onLinkClicked fires instead of a tile click
+        std::string linkIconPath;   // optional icon drawn before the link text (e.g.
+                                    // a YouTube badge); only used when `link` is set
         std::string id;             // optional stable id passed back to callbacks
 
         AlbumMediaType mediaType = AlbumMediaType::Photo;
@@ -162,8 +200,12 @@ namespace UltraCanvas {
 
         // ----- Actions -----
         AlbumActionDisplay actionDisplay = AlbumActionDisplay::OnHover;
+        AlbumActionAnchor  actionAnchor  = AlbumActionAnchor::TopRightImage;
         bool showMenuIcon = true;       // ContextMenu mode: draw a kebab (⋮) icon
-        float actionButtonSize = 28.0f;
+        float actionButtonSize = 28.0f; // diameter / side of each action button (px)
+        // Background drawn behind each action glyph (shape + colour).
+        AlbumActionIconBackground actionIconBackground = AlbumActionIconBackground::Round;
+        Color actionIconBgColor = Color(0, 0, 0, 120);
 
         // ----- Appearance -----
         Color backgroundColor     = Color(245, 245, 247, 255);
@@ -171,7 +213,15 @@ namespace UltraCanvas {
         bool  showBorder   = true;
         Color borderColor  = Color(208, 208, 214, 255);
         float borderWidth  = 1.0f;
-        float cornerRadius = 6.0f;
+        float cornerRadius = 6.0f;        // tile (frame / background) corner radius
+        // Image corner rounding, independent of the tile frame:
+        //   < 0  -> follow cornerRadius (the image inherits the tile rounding)
+        //   == 0 -> square image corners
+        //   > 0  -> an explicit image corner radius
+        // Only the corners that meet the tile edge are rounded; when a caption
+        // strip sits below the image, the image's lower corners stay square so
+        // the rounding is not cut into the middle of the tile.
+        float imageCornerRadius = -1.0f;
         bool  dropShadow   = false;
         Color shadowColor  = Color(0, 0, 0, 40);
 
@@ -183,6 +233,12 @@ namespace UltraCanvas {
         float titleFontSize    = 14.0f;
         float subtitleFontSize = 11.0f;
         std::string fontFamily;            // empty = system default
+
+        // Subtitle-as-link styling. When an item has a non-empty `link`, its
+        // subtitle row is drawn in linkColor (and optionally underlined); a
+        // click on that row fires onLinkClicked instead of selecting the tile.
+        Color linkColor     = Color(26, 115, 232, 255);  // #1A73E8
+        bool  linkUnderline = true;
 
         // ----- Media-type badges -----
         bool  showMediaBadges = true;      // play icon (video) / note icon (music)
@@ -260,6 +316,7 @@ namespace UltraCanvas {
 
         // ===== EVENTS =====
         std::function<void(size_t)> onItemClicked;        // single click / tap
+        std::function<void(size_t)> onLinkClicked;        // subtitle link row clicked
         std::function<void(size_t)> onItemActivated;      // double-click: open / play
         std::function<void(size_t, size_t)> onItemsReordered;  // (from, to) — edit modes
         std::function<void(size_t)> onItemRemoved;        // after RemoveItem
@@ -315,6 +372,14 @@ namespace UltraCanvas {
         };
         std::vector<ActionHit> actionHits;
 
+        // Subtitle-link hit rects recomputed each frame (items with a `link`).
+        struct LinkHit {
+            Rect2Di rect;
+            size_t  itemIndex;
+        };
+        std::vector<LinkHit> linkHits;
+        int hoveredLinkItem = -1;   // item whose link the cursor is over, or -1
+
         // Drag-reorder state (UserEdit / Admin).
         bool   dragging = false;
         bool   dragArmed = false;
@@ -345,6 +410,14 @@ namespace UltraCanvas {
         // Action indices offered for a given item: gated by the current mode and
         // by the action's optional media-type filter.
         std::vector<int> VisibleActionIndices(size_t itemIndex) const;
+        // The caption / text-block rect beneath the image (falls back to the
+        // image rect when there is no below-image caption strip).
+        Rect2Di TextBlockRect(const TileLayout& tile) const;
+        // The rect the action icons anchor inside, plus which corner they hug.
+        Rect2Di ActionAnchorRect(const TileLayout& tile,
+                                 bool& fromLeft, bool& fromTop) const;
+        // Effective image corner radius for a tile (resolves imageCornerRadius).
+        float   ResolveImageRadius() const;
         int    MaxScrollY() const;
         int    MaxScrollX() const;
         void   ClampScroll();
@@ -360,6 +433,8 @@ namespace UltraCanvas {
         void DrawCaption(IRenderContext* ctx, const AlbumItem& item,
                          const TileLayout& tile);
         void DrawActionIcons(IRenderContext* ctx, const TileLayout& tile, bool hovered);
+        // The translucent backing behind an action glyph (round / square / rounded).
+        void DrawActionButtonBg(IRenderContext* ctx, const Rect2Di& button);
         void DrawIconGlyph(IRenderContext* ctx, const AlbumAction* action,
                            const Rect2Di& button);
         void DrawScrollbar(IRenderContext* ctx);
@@ -369,6 +444,7 @@ namespace UltraCanvas {
         // localPoint is element-local (already scroll-compensated by the caller).
         int  TileAt(const Point2Di& contentPoint) const;       // -> item index or -1
         int  ActionAt(const Point2Di& localPoint, size_t& outItem, bool& outIsMenu) const;
+        int  LinkAt(const Point2Di& localPoint) const;         // -> item index or -1
         Point2Di ToContentPoint(const Point2Di& localPoint) const;
 
         void OpenItemContextMenu(size_t itemIndex, const Point2Di& localPoint);

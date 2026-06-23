@@ -105,6 +105,10 @@ cfg.gap           = 10;
 cfg.imageDisplay  = AlbumImageDisplay::Crop;        // Crop | Zoom | Stretch | Fit
 cfg.zoomFactor    = 1.25f;                          // extra magnification for Zoom
 cfg.actionDisplay = AlbumActionDisplay::OnHover;    // AlwaysVisible | OnHover | ContextMenu | Hidden
+cfg.actionAnchor  = AlbumActionAnchor::TopRightImage;     // which corner the icons hug (see below)
+cfg.actionButtonSize = 28.0f;                       // diameter / side of each action button (px)
+cfg.actionIconBackground = AlbumActionIconBackground::Round;  // Round | Square | RoundedSquare
+cfg.actionIconBgColor = Color(0, 0, 0, 120);        // backing colour behind the glyph
 cfg.showMenuIcon  = true;                           // ContextMenu: draw a kebab (⋮)
 cfg.captionPlacement = AlbumCaptionPlacement::BelowImage;  // BelowImage | OverlayBottom | Hidden
 cfg.backgroundColor     = Color(245, 245, 247, 255);
@@ -112,7 +116,10 @@ cfg.itemBackgroundColor = Color(255, 255, 255, 255);
 cfg.showBorder    = true;
 cfg.borderColor   = Color(208, 208, 214, 255);
 cfg.borderWidth   = 1.0f;
-cfg.cornerRadius  = 6.0f;
+cfg.cornerRadius  = 6.0f;          // tile frame corner radius
+cfg.imageCornerRadius = -1.0f;     // image corners: <0 follow tile · 0 square · >0 explicit
+cfg.linkColor     = Color(26, 115, 232, 255);  // subtitle-link colour (items with a `link`)
+cfg.linkUnderline = true;
 cfg.dropShadow    = true;
 album->SetConfig(cfg);
 ```
@@ -155,6 +162,69 @@ album->AddAction(del);
 `AlwaysVisible` (always painted), `OnHover` (shown while hovered),
 `ContextMenu` (right-click popup, with an optional kebab icon via
 `showMenuIcon`), or `Hidden`.
+
+`AlbumActionAnchor` (`cfg.actionAnchor`) chooses which corner the kebab / action
+buttons hug. Four anchors sit on the **image** and four on the **caption text
+block** beneath it; a button row grows horizontally away from the anchored
+corner. The text-block anchors fall back to the image when there is no
+below-image caption strip (overlay / hidden captions).
+
+| Image | Text block |
+| --- | --- |
+| `TopLeftImage` · `TopRightImage` | `TopLeftTextBlock` · `TopRightTextBlock` |
+| `BottomLeftImage` · `BottomRightImage` | `BottomLeftTextBlock` · `BottomRightTextBlock` |
+
+Each icon's size is `cfg.actionButtonSize` (px). The translucent backing behind
+the glyph is set by `cfg.actionIconBackground` — `Round` (circle), `Square`, or
+`RoundedSquare` — in `cfg.actionIconBgColor`.
+
+### Image corners
+
+`cfg.cornerRadius` rounds the tile frame; `cfg.imageCornerRadius` rounds the
+image independently: `< 0` follows the tile radius (default), `0` gives **square**
+image corners, `> 0` sets an explicit radius. When a caption strip sits below the
+image, only the image's top corners are rounded so the curve is not cut into the
+middle of the tile. The frame is the outer bound, so for fully square images set
+`cornerRadius = 0` as well (the demo's "Square" option flattens both).
+
+### Subtitle links
+
+Give an item a `link` and its subtitle row is drawn as a clickable link
+(`linkColor`, underlined when `linkUnderline`). Clicking the link fires
+`onLinkClicked(index)` instead of selecting the tile, and the cursor turns into a
+hand over it. An optional `linkIconPath` paints an icon (e.g. a YouTube badge)
+before the link text; the icon is part of the clickable hit area.
+
+```cpp
+AlbumItem it;
+it.title    = "Mountain Dawn";
+it.subtitle = "naturepix.example";                 // shown as a link…
+it.link     = "https://naturepix.example/dawn";    // …because link is set
+album->AddItem(it);
+
+// A video linking to YouTube, with a YouTube badge before the link text:
+AlbumItem yt;
+yt.title        = "Lola Lexy - No kings";
+yt.subtitle     = "youtube.com";
+yt.mediaType    = AlbumMediaType::Video;
+yt.mediaPath    = "media/videos/Lola Lexy - No kings.mp4";
+yt.link         = "https://www.youtube.com/watch?v=Tl15Os47lG0";
+yt.linkIconPath = "media/icons/youtube.svg";
+
+// Give the video tile a real cover by extracting a poster frame once
+// (see UltraCanvasVideoThumbnail). The encoder is picked from the extension
+// — ".qoi" writes QOI, otherwise PNG.
+VideoThumbnailRequest req;
+req.maxWidth = 640; req.maxHeight = 480;
+if (SaveVideoThumbnail(yt.mediaPath, "media/videos/Lola Lexy - No kings.qoi", req))
+    yt.thumbnailPath = "media/videos/Lola Lexy - No kings.qoi";
+
+album->AddItem(yt);
+
+album->onLinkClicked = [album](size_t i){
+    OpenInBrowser(album->GetItems()[i].link);
+};
+```
 
 ### Events
 
