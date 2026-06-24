@@ -1,7 +1,7 @@
 // include/UltraCanvasVideoPlayerElement.h
 // Composite UI control wrapping UltraCanvasVideoPlayer: video surface + transport bar
-// Version: 0.1.0
-// Last Modified: 2026-06-15
+// Version: 0.1.2
+// Last Modified: 2026-06-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -88,9 +88,17 @@ private:
     UCVideoFramePtr shownFrame;        // keeps the uploaded frame alive
     bool haveFrame = false;
     int  frameW = 0, frameH = 0;
+    int  lastShownSecond = -1;         // OnFrameTick early-out: last second drawn
 
     // Frame/redraw timer (main thread)
     TimerId frameTimerId = InvalidTimerId;
+
+    // Scrub-seek throttle: coalesce per-MouseMove seeks to one per interval (the
+    // backend flushes the audio sink per seek; a storm stalls its clock). The
+    // last target is held and applied on MouseUp / next eligible tick.
+    bool   pendingScrubSeek = false;
+    double pendingScrubSeconds = 0.0;
+    double lastScrubSeekTime = 0.0;
 
     // Cached hit-test regions
     Rect2Di videoRect;

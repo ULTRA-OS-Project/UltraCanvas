@@ -1,7 +1,7 @@
 // core/UltraCanvasVideoPlayerElement.cpp
 // Composite UI control wrapping UltraCanvasVideoPlayer: video surface + transport bar
-// Version: 0.1.0
-// Last Modified: 2026-06-15
+// Version: 0.1.3
+// Last Modified: 2026-06-24
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVideoPlayerElement.h"
@@ -22,6 +22,11 @@ namespace {
     constexpr int kVolumeWidth = 80;
     constexpr int kSeekKnobR = 6;
     constexpr double kControlsIdleHideSec = 2.5;
+    // Throttle scrub seeks: each flushing seek flushes+refills the audio sink,
+    // and a per-MouseMove storm of them eventually stalls the PulseAudio clock
+    // (whole-pipeline freeze). Issue at most one per interval; the final drag
+    // position is always applied on MouseUp.
+    constexpr double kScrubSeekIntervalSec = 0.20;
 
     inline bool Hit(const Rect2Di& r, const Point2Di& p) {
         return r.width > 0 && r.height > 0 &&
@@ -49,6 +54,7 @@ UltraCanvasVideoPlayerElement::~UltraCanvasVideoPlayerElement() {
 
 bool UltraCanvasVideoPlayerElement::LoadFromFile(const std::string& filePath) {
     bool ok = player->LoadFromFile(filePath);
+    if (ok) StartFrameTimer();          // timer runs while a source is loaded
     lastInteractionTime = NowSeconds();
     RequestRedraw();
     return ok;
@@ -56,6 +62,7 @@ bool UltraCanvasVideoPlayerElement::LoadFromFile(const std::string& filePath) {
 
 bool UltraCanvasVideoPlayerElement::LoadFromUrl(const std::string& url) {
     bool ok = player->LoadFromUrl(url);
+    if (ok) StartFrameTimer();          // timer runs while a source is loaded
     RequestRedraw();
     return ok;
 }
@@ -86,8 +93,11 @@ void UltraCanvasVideoPlayerElement::ShowOpenDialog() {
 }
 
 void UltraCanvasVideoPlayerElement::Play() {
+    // The frame timer's lifetime is tied to a loaded source (started in
+    // LoadFrom*, stopped in the destructor), not to playback state, so the time
+    // readout keeps tracking the audio clock even when our optimistic engine
+    // state lags the real pipeline.
     player->Play();
-    StartFrameTimer();
     lastInteractionTime = NowSeconds();
     if (onPlay) onPlay();
 }
@@ -118,8 +128,9 @@ void UltraCanvasVideoPlayerElement::SetStyle(const VideoPlayerStyle& s) {
 
 void UltraCanvasVideoPlayerElement::HookPlayerCallbacks() {
     auto self = this;
-    player->onPlaybackStateChanged = [self](VideoPlaybackState st) {
-        if (st != VideoPlaybackState::Playing) self->StopFrameTimer();
+    player->onPlaybackStateChanged = [self](VideoPlaybackState) {
+        // Timer lifetime is tied to a loaded source (see LoadFrom*), not state.
+        // Here we only refresh the play/pause icon.
         self->RequestRedraw();
     };
     player->onEnded = [self]() {
@@ -148,8 +159,21 @@ void UltraCanvasVideoPlayerElement::StopFrameTimer() {
 
 void UltraCanvasVideoPlayerElement::OnFrameTick() {
     if (!IsVisible()) return;
+    // Flush a throttled scrub target that stopped moving without a MouseUp yet.
+    if (pendingScrubSeek && (NowSeconds() - lastScrubSeekTime) >= kScrubSeekIntervalSec) {
+        lastScrubSeekTime = NowSeconds();
+        pendingScrubSeek = false;
+        Seek(pendingScrubSeconds);
+    }
+    // Only repaint when something actually changed, so a paused/idle player
+    // (timer now runs for the whole loaded lifetime) doesn't repaint every tick.
+    UCVideoFramePtr before = shownFrame;
     UploadCurrentFrame();
-    RequestRedraw();
+    bool frameChanged = (shownFrame != before);
+    int sec = static_cast<int>(player->GetPosition());
+    bool timeChanged = (sec != lastShownSecond);
+    lastShownSecond = sec;
+    if (frameChanged || timeChanged) RequestRedraw();
 }
 
 void UltraCanvasVideoPlayerElement::UploadCurrentFrame() {
@@ -384,6 +408,8 @@ bool UltraCanvasVideoPlayerElement::OnEvent(const UCEvent& event) {
             }
             if (Hit(seekBarRect, p)) {
                 draggingSeek = true;
+                lastScrubSeekTime = NowSeconds();   // initial click seeks now; reset throttle
+                pendingScrubSeek = false;
                 float pct = std::clamp(static_cast<float>(p.x - seekBarRect.x) /
                                        std::max(1, seekBarRect.width), 0.0f, 1.0f);
                 Seek(pct * player->GetDuration());
@@ -396,7 +422,11 @@ bool UltraCanvasVideoPlayerElement::OnEvent(const UCEvent& event) {
                 player->SetVolume(pct); RequestRedraw();
                 return true;
             }
-            // Click on the video surface toggles playback.
+            // Clicks on the control-bar background (anything not a control above)
+            // must not toggle playback — consume them. Only the video surface
+            // above the bar toggles. When controls are auto-hidden, the whole
+            // surface is clickable.
+            if (ControlsVisible() && Hit(controlBarRect, p)) return true;
             if (Hit(videoRect, p)) { TogglePlayPause(); return true; }
             return false;
         }
@@ -408,7 +438,17 @@ bool UltraCanvasVideoPlayerElement::OnEvent(const UCEvent& event) {
             if (draggingSeek) {
                 float pct = std::clamp(static_cast<float>(p.x - seekBarRect.x) /
                                        std::max(1, seekBarRect.width), 0.0f, 1.0f);
-                Seek(pct * player->GetDuration());
+                double target = pct * player->GetDuration();
+                pendingScrubSeconds = target;
+                pendingScrubSeek = true;
+                double now = NowSeconds();
+                if (now - lastScrubSeekTime >= kScrubSeekIntervalSec) {
+                    lastScrubSeekTime = now;
+                    pendingScrubSeek = false;
+                    Seek(target);                 // throttled: at most one per interval
+                } else {
+                    RequestRedraw();              // keep the knob tracking the cursor
+                }
                 return true;
             }
             if (draggingVolume) {
@@ -421,6 +461,12 @@ bool UltraCanvasVideoPlayerElement::OnEvent(const UCEvent& event) {
         }
 
         case UCEventType::MouseUp:
+            // Always land the exact release position, even if the last move fell
+            // inside the throttle window.
+            if (draggingSeek && pendingScrubSeek) {
+                pendingScrubSeek = false;
+                Seek(pendingScrubSeconds);
+            }
             draggingSeek = draggingVolume = false;
             return false;
 

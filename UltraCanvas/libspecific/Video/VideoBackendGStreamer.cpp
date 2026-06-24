@@ -10,8 +10,8 @@
 // frames are converted to packed BGRA and handed up via the session callbacks;
 // the engine buffers the latest frame for the UI thread to upload to a pixmap.
 //
-// Version: 0.1.1
-// Last Modified: 2026-06-21
+// Version: 0.1.7
+// Last Modified: 2026-06-24
 // Author: UltraCanvas Framework
 
 #include "IVideoBackend.h"
@@ -23,6 +23,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <future>
 #include <mutex>
 #include <thread>
 #include <cstring>
@@ -84,6 +85,34 @@ struct GstRuntime {
 GstRuntime& Runtime() {
     static GstRuntime rt;
     return rt;
+}
+
+// Detach + destroy a bus watch GSource safely. The source is attached to the
+// runtime's private GMainContext, which is being iterated on the loop thread;
+// mutating its source list from another (UI) thread races GLib and corrupts the
+// list. So we marshal the destroy onto the loop thread and wait. If the loop has
+// already stopped (backend shutdown) we're single-threaded and can destroy here.
+void DestroyBusSource(GSource* src) {
+    if (!src) return;
+    if (Runtime().running.load()) {
+        std::promise<void> done;
+        auto fut = done.get_future();
+        struct C { GSource* s; std::promise<void>* p; } c{ src, &done };
+        g_main_context_invoke_full(
+            Runtime().Context(), G_PRIORITY_DEFAULT,
+            [](gpointer p) -> gboolean {
+                auto* c = static_cast<C*>(p);
+                g_source_destroy(c->s);
+                g_source_unref(c->s);
+                c->p->set_value();
+                return G_SOURCE_REMOVE;
+            },
+            &c, nullptr);
+        fut.wait();
+    } else {
+        g_source_destroy(src);
+        g_source_unref(src);
+    }
 }
 
 // Build a UCVideoFrame from a GstSample whose caps are video/x-raw,format=BGRA.
@@ -240,9 +269,42 @@ public:
                      "sync", TRUE, "max-buffers", 2, "drop", TRUE, nullptr);
         gst_caps_unref(caps);
         g_signal_connect(appsink, "new-sample", G_CALLBACK(&GstDecodeSession::OnNewSample), this);
+        // While PAUSED (e.g. a paused scrub) the appsink emits new-preroll, not
+        // new-sample, so without this the shown frame wouldn't refresh on a
+        // paused seek.
+        g_signal_connect(appsink, "new-preroll", G_CALLBACK(&GstDecodeSession::OnNewPreroll), this);
 
         // Route playbin's video through our appsink; audio uses the auto sink.
         g_object_set(pipeline, "video-sink", appsink, nullptr);
+
+        // Pin the pipeline to the monotonic system clock. pulsesink's provided
+        // GstAudioClock can latch a constant (garbage) value after a flushing
+        // seek on PulseAudio, killing the pipeline clock so every sync=TRUE sink
+        // (our video appsink + pulsesink) freezes forever on gst_clock_id_wait().
+        // With the system clock forced, pulsesink runs slaved (skew) and a
+        // misbehaving PA clock can no longer stall rendering. Set before the
+        // first state change so clock distribution uses it from the start.
+        GstClock* sysClock = gst_system_clock_obtain();
+        gst_pipeline_use_clock(GST_PIPELINE(pipeline), sysClock);
+        gst_object_unref(sysClock);
+
+        // Audio sink. With the pipeline pinned to the system clock, pulsesink
+        // runs as a clock SLAVE. The audio path's fixed device latency
+        // (~buffer-time) is a constant ~67ms offset the system clock can't model;
+        // the default slave-method=skew re-"corrects" that fixed offset every
+        // cycle (thousands of "correct clock skew" warnings) until audio dies.
+        // slave-method=none renders at the device's natural rate and treats the
+        // offset as a constant (sub-perceptual) lip-sync delta — FLUSH|ACCURATE
+        // seeks re-anchor audio+video together so it never compounds.
+        // provide-clock=false also makes pulsesink unselectable as the pipeline
+        // clock, so the post-flush garbage-clock freeze can't recur.
+        if (GstElement* asink = gst_element_factory_make("pulsesink", "ucvideo-asink")) {
+            g_object_set(asink,
+                         "slave-method", 2,      // GST_AUDIO_BASE_SINK_SLAVE_NONE
+                         "provide-clock", FALSE, nullptr);
+            g_object_set(pipeline, "audio-sink", asink, nullptr);  // playbin takes the ref
+        }
+        // else: pulsesink unavailable (rare) → leave playbin's autoaudiosink default.
 
         gchar* uri = MakeUri(sourceUri);
         g_object_set(pipeline, "uri", uri, nullptr);
@@ -261,21 +323,28 @@ public:
         return true;
     }
 
-    bool Play() override  { return SetState(GST_STATE_PLAYING); }
-    bool Pause() override { return SetState(GST_STATE_PAUSED); }
+    bool Play() override  { return RequestState(GST_STATE_PLAYING); }
+    bool Pause() override { return RequestState(GST_STATE_PAUSED); }
     bool Stop() override {
-        bool ok = SetState(GST_STATE_PAUSED);
+        bool ok = RequestState(GST_STATE_PAUSED);
         Seek(0.0);
         return ok;
     }
 
     bool Seek(double seconds) override {
         if (!pipeline) return false;
-        gint64 pos = static_cast<gint64>(seconds * GST_SECOND);
-        return gst_element_seek(pipeline, rate, GST_FORMAT_TIME,
-                                static_cast<GstSeekFlags>(GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_KEY_UNIT),
-                                GST_SEEK_TYPE_SET, pos,
-                                GST_SEEK_TYPE_NONE, GST_CLOCK_TIME_NONE) == TRUE;
+        {
+            std::lock_guard<std::mutex> lk(seekMutex);
+            ReleaseStaleSeekLocked();           // don't stay wedged on a lost ASYNC_DONE
+            if (seekInFlight) {                 // coalesce to newest target
+                pendingSeekSeconds = seconds;
+                seekPending = true;
+                return true;
+            }
+            seekInFlight = true;
+            seekIssuedUs = g_get_monotonic_time();
+        }
+        return DoSeek(seconds);                 // issue outside the lock
     }
 
     double GetPosition() const override {
@@ -317,9 +386,78 @@ private:
         return gst_element_set_state(pipeline, s) != GST_STATE_CHANGE_FAILURE;
     }
 
+    // Apply a play/pause state, but defer it if a flushing seek is still in
+    // flight: changing state mid-seek makes the pipeline compute base-time
+    // against a stale running-time (→ fast catch-up playback) and can drop the
+    // request. The deferred state is applied from the ASYNC_DONE handler once
+    // the in-flight (and any coalesced) seek has fully settled.
+    bool RequestState(GstState s) {
+        if (!pipeline) return false;
+        {
+            std::lock_guard<std::mutex> lk(seekMutex);
+            targetState = s;
+            ReleaseStaleSeekLocked();           // let play/pause through to recover a wedged pipeline
+            if (seekInFlight) { statePending = true; return true; }
+        }
+        return SetState(s);
+    }
+
+    // Caller must hold seekMutex. If a flushing seek has been "in flight" far
+    // longer than any real seek takes, its ASYNC_DONE was lost (e.g. the clock
+    // stalled mid-seek). Free the slot so subsequent seeks / play-pause aren't
+    // deferred forever — a Play/Pause that gets through re-bases the clock and
+    // recovers the pipeline. The window is generous so it never preempts a seek
+    // that is merely still settling (which would re-introduce overlap wedges).
+    void ReleaseStaleSeekLocked() {
+        if (seekInFlight && (g_get_monotonic_time() - seekIssuedUs) > kSeekStallUs) {
+            seekInFlight = false;
+            seekPending  = false;
+        }
+    }
+
+    // Issues the actual flushing seek. The caller must have already claimed the
+    // in-flight slot (seekInFlight == true). On success the slot is released
+    // when the pipeline posts ASYNC_DONE (see OnBus); on outright refusal it is
+    // released here so we don't wait for an ASYNC_DONE that will never come.
+    // Never call this while holding seekMutex — gst_element_seek may block.
+    bool DoSeek(double seconds) {
+        gint64 pos = static_cast<gint64>(seconds * GST_SECOND);
+        // ACCURATE (not KEY_UNIT): land the video pad on the exact requested
+        // time so it matches where the audio pad — which owns the pipeline clock
+        // — lands. KEY_UNIT snaps video to the preceding keyframe, leaving it
+        // behind the audio clock so it races to catch up (fast playback) or
+        // stalls against a clock it can't reach (frozen frame, audio plays on).
+        gboolean ok = gst_element_seek(
+            pipeline, rate, GST_FORMAT_TIME,
+            static_cast<GstSeekFlags>(GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_ACCURATE),
+            GST_SEEK_TYPE_SET, pos, GST_SEEK_TYPE_NONE, GST_CLOCK_TIME_NONE);
+        if (!ok) {
+            std::lock_guard<std::mutex> lk(seekMutex);
+            seekInFlight = false;
+            seekPending  = false;
+        }
+        return ok == TRUE;
+    }
+
     static GstFlowReturn OnNewSample(GstAppSink* sink, gpointer user) {
         auto* self = static_cast<GstDecodeSession*>(user);
         GstSample* sample = gst_app_sink_pull_sample(sink);
+        if (!sample) return GST_FLOW_OK;
+        if (auto frame = SampleToFrame(sample)) {
+            if (!self->infoReady) self->PopulateStreamInfo(sample);
+            if (self->onFrame) self->onFrame(std::move(frame));
+        }
+        gst_sample_unref(sample);
+        return GST_FLOW_OK;
+    }
+
+    // Mirrors OnNewSample for the preroll path: while PAUSED the appsink holds a
+    // prerolled buffer (e.g. the target frame after a paused seek) and emits
+    // new-preroll instead of new-sample. A buffer is delivered through preroll
+    // OR sample, never both, so this can't double-deliver.
+    static GstFlowReturn OnNewPreroll(GstAppSink* sink, gpointer user) {
+        auto* self = static_cast<GstDecodeSession*>(user);
+        GstSample* sample = gst_app_sink_pull_preroll(sink);
         if (!sample) return GST_FLOW_OK;
         if (auto frame = SampleToFrame(sample)) {
             if (!self->infoReady) self->PopulateStreamInfo(sample);
@@ -350,7 +488,7 @@ private:
             case GST_MESSAGE_EOS:
                 if (self->looping) {
                     self->Seek(0.0);
-                    self->SetState(GST_STATE_PLAYING);
+                    self->RequestState(GST_STATE_PLAYING);   // defer behind the seek
                 } else if (self->onEnded) {
                     self->onEnded();
                 }
@@ -363,17 +501,62 @@ private:
                 g_free(dbg);
                 break;
             }
+            case GST_MESSAGE_CLOCK_LOST:
+                // The selected (audio) clock became invalid. The documented
+                // recovery is to drop to PAUSED and back to PLAYING so the
+                // pipeline re-selects/redistributes a clock.
+                if (self->pipeline) {
+                    self->SetState(GST_STATE_PAUSED);
+                    self->SetState(GST_STATE_PLAYING);
+                }
+                break;
+            case GST_MESSAGE_ASYNC_DONE:
+                // Only the whole pipeline's ASYNC_DONE marks a completed seek
+                // (child elements post their own, which we must ignore). Release
+                // the in-flight slot, or issue the coalesced pending target.
+                if (GST_MESSAGE_SRC(msg) == GST_OBJECT(self->pipeline)) {
+                    double next = 0.0; bool issue = false;
+                    bool applyState = false; GstState apply = GST_STATE_PAUSED;
+                    {
+                        std::lock_guard<std::mutex> lk(self->seekMutex);
+                        if (self->seekPending) {
+                            self->seekPending = false;
+                            next = self->pendingSeekSeconds;
+                            self->seekIssuedUs = g_get_monotonic_time();  // restart stall window
+                            issue = true;          // keep seekInFlight == true
+                        } else {
+                            self->seekInFlight = false;
+                            if (self->statePending) {   // a Play/Pause was deferred
+                                self->statePending = false;
+                                applyState = true;
+                                apply = self->targetState;
+                            }
+                        }
+                    }
+                    // Outside the lock: re-issue the coalesced seek, or apply the
+                    // play/pause that was deferred until the seek finished.
+                    if (issue)           self->DoSeek(next);
+                    else if (applyState) self->SetState(apply);
+                }
+                break;
             default: break;
         }
         return TRUE;
     }
 
     void Teardown() {
-        // Source was attached to a private context, so g_source_remove() (which
-        // only searches the default context) won't find it — destroy via ptr.
-        if (busSource) { g_source_destroy(busSource); g_source_unref(busSource); busSource = nullptr; }
+        // Order matters. (1) Stop dataflow and JOIN the streaming threads first
+        // so no appsink callback or bus message can fire into this object during
+        // teardown. (2) Only then remove the bus watch, and do it on the loop
+        // thread that owns its context (DestroyBusSource) — tearing the GSource
+        // down from the UI thread while the loop iterates the context corrupts
+        // GLib's source list. (3) Finally drop the refs.
         if (pipeline) {
             gst_element_set_state(pipeline, GST_STATE_NULL);
+            gst_element_get_state(pipeline, nullptr, nullptr, GST_CLOCK_TIME_NONE);
+        }
+        if (busSource) { DestroyBusSource(busSource); busSource = nullptr; }
+        if (pipeline) {
             gst_object_unref(pipeline);   // also drops the embedded appsink
             pipeline = nullptr;
             appsink = nullptr;
@@ -390,6 +573,23 @@ private:
     std::atomic<bool> infoReady{false};
     bool   looping = false;
     gdouble rate = 1.0;
+
+    // Seek serialization: a flushing seek must not be issued while a previous
+    // one is still settling (ASYNC_DONE not yet received). Overlapping flushing
+    // seeks corrupt the pipeline base-time/clock and wedge the appsink so it
+    // stops emitting new-sample. Keep at most one seek in flight; coalesce rapid
+    // scrub-drag seeks to the latest target and issue it on ASYNC_DONE.
+    // Play/pause requests are also deferred behind an in-flight seek (see
+    // RequestState) and applied from the ASYNC_DONE handler, so a Play issued
+    // mid-seek can't race the flush and trigger fast catch-up playback.
+    static constexpr gint64 kSeekStallUs = 2500000;  // 2.5s: lost-ASYNC_DONE watchdog window
+    std::mutex seekMutex;
+    bool       seekInFlight = false;   // a flushing seek awaits ASYNC_DONE
+    bool       seekPending  = false;   // a newer seek target arrived mid-flight
+    double     pendingSeekSeconds = 0.0;
+    gint64     seekIssuedUs = 0;       // monotonic time the in-flight seek was issued
+    GstState   targetState  = GST_STATE_PAUSED;  // latest requested play/pause state
+    bool       statePending = false;             // a state change deferred behind a seek
 };
 
 // ---- Capture session (camera + optional mic → tee → preview + file) -------
@@ -455,10 +655,15 @@ public:
 
     void Close() override {
         recording = false;
-        if (busSource) { g_source_destroy(busSource); g_source_unref(busSource); busSource = nullptr; }
-        if (recValve) { gst_object_unref(recValve); recValve = nullptr; }
+        // Stop dataflow + join streaming threads first, then remove the bus
+        // watch on its owning loop thread (see DestroyBusSource), then drop refs.
         if (pipeline) {
             gst_element_set_state(pipeline, GST_STATE_NULL);
+            gst_element_get_state(pipeline, nullptr, nullptr, GST_CLOCK_TIME_NONE);
+        }
+        if (busSource) { DestroyBusSource(busSource); busSource = nullptr; }
+        if (recValve) { gst_object_unref(recValve); recValve = nullptr; }
+        if (pipeline) {
             gst_object_unref(pipeline);
             pipeline = nullptr;
         }
