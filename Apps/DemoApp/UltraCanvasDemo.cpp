@@ -1298,6 +1298,17 @@ namespace UltraCanvas {
 //                             ImplementationStatus::PartiallyImplemented,
 //                             [this]() { return CreatePartiallyImplementedExamples("## GPIO support"); });
 
+        // ===== DEPENDENCIES & THIRD PARTY =====
+        // Single entry rendering the full dependency / third-party library table for
+        // the UltraCanvas core and every additional ULTRA OS module, built with the
+        // UltraCanvasListView multi-column element.
+        auto dependenciesBuilder = DemoCategoryBuilder(this, DemoCategory::Dependencies);
+        dependenciesBuilder.AddItem("dependencies", "Dependencies & Third Party",
+                               "Third-party libraries used by UltraCanvas and its modules",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateDependenciesExamples(); },
+                               "DemoApp/UltraCanvasDependenciesExamples.cpp");
+
         auto widgetsBuilder = DemoCategoryBuilder(this, DemoCategory::Widgets);
 //        widgetsBuilder.AddItem("colorpicker", "Color Picker", "Color Picker",
 //                               ImplementationStatus::PartiallyImplemented,
@@ -1360,7 +1371,8 @@ namespace UltraCanvas {
                 {DemoCategory::AudioElements, "Audio Elements"},
                 {DemoCategory::Widgets, "Widgets"},
                 {DemoCategory::Tools, "Tools"},
-                {DemoCategory::Modules, "ULTRA OS modules"}
+                {DemoCategory::Modules, "ULTRA OS modules"},
+                {DemoCategory::Dependencies, "Dependencies & Third Party"}
         };
 
 

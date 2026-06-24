@@ -40,7 +40,8 @@ namespace UltraCanvas {
         AudioElements,
         Tools,
         Widgets,
-        Modules
+        Modules,
+        Dependencies
     };
 
 // ===== IMPLEMENTATION STATUS =====
@@ -320,6 +321,8 @@ namespace UltraCanvas {
         // Overview page for the "ULTRA OS modules" category node itself: the ULTRA OS
         // diagram (media/diagrams/ULTRA-OS.svg) plus the descriptive overview text.
         std::shared_ptr<UltraCanvasUIElement> CreateUltraOSInfoScreen();
+        // Dependencies & Third Party libraries table (UltraCanvasListView-based)
+        std::shared_ptr<UltraCanvasUIElement> CreateDependenciesExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateBarcodeExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateQRCodeExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateGPIOExamples();
