@@ -679,6 +679,13 @@ namespace UltraCanvas {
                 .AddVariant("listview", "Icon List")
                 .AddVariant("listview", "Detail View");
 
+        extendedBuilder.AddItem("memorystats", "Memory Statistics",
+                                "Scoped/per-tab memory usage with a live task-manager panel and dialog",
+                                ImplementationStatus::FullyImplemented,
+                                [this]() { return CreateMemoryStatsExamples(); },
+                                "Apps/DemoApp/UltraCanvasMemoryStatsExamples.cpp",
+                                "Docs/UltraCanvas/MemoryStats.md");
+
         // ===== BITMAP ELEMENTS =====
         auto bitmapBuilder = DemoCategoryBuilder(this, DemoCategory::BitmapElements);
 
