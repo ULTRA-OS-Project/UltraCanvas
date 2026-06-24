@@ -894,7 +894,8 @@ namespace UltraCanvas {
         bool drawBackground = false;
         if (style.itemStyle == BreadcrumbItemStyle::Pill
             || style.itemStyle == BreadcrumbItemStyle::Tab
-            || style.itemStyle == BreadcrumbItemStyle::Arrow) {
+            || style.itemStyle == BreadcrumbItemStyle::Arrow
+            || style.itemStyle == BreadcrumbItemStyle::Parallelogram) {
             if (isCurrent && style.currentItemBackgroundColor.a > 0) {
                 bgColor = style.currentItemBackgroundColor;
                 drawBackground = true;
