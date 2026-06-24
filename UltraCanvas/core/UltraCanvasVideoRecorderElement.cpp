@@ -1,7 +1,7 @@
 // core/UltraCanvasVideoRecorderElement.cpp
 // Composite UI control wrapping UltraCanvasVideoRecorder: camera preview + REC controls
-// Version: 0.1.0
-// Last Modified: 2026-06-15
+// Version: 0.1.1
+// Last Modified: 2026-06-24
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVideoRecorderElement.h"
@@ -287,8 +287,12 @@ void UltraCanvasVideoRecorderElement::DrawControlBar(IRenderContext* ctx) {
     if (timeLabelRect.width > 0) {
         ctx->SetFontSize(12);
         ctx->SetTextPaint(style.textColor);
-        ctx->DrawText(FormatTime(recorder->GetElapsed()),
-                      Point2Dd(timeLabelRect.x, timeLabelRect.y + 12));
+        ctx->SetTextAlignment(TextAlignment::Left);
+        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
+        ctx->DrawTextInRect(FormatTime(recorder->GetElapsed()),
+                            Rect2Dd(timeLabelRect.x, timeLabelRect.y,
+                                    timeLabelRect.width, timeLabelRect.height));
+        ctx->SetTextVerticalAlignment(VerticalAlignment::Top);
     }
 
     if (cameraSelectRect.width > 0) {
@@ -297,8 +301,12 @@ void UltraCanvasVideoRecorderElement::DrawControlBar(IRenderContext* ctx) {
                                  Color(60, 60, 60), 1.0f, Color(120, 120, 120), 3);
         ctx->SetFontSize(11);
         ctx->SetTextPaint(style.textColor);
-        ctx->DrawText(currentCameraLabel,
-                      Point2Dd(cameraSelectRect.x + 8, cameraSelectRect.y + 16));
+        ctx->SetTextAlignment(TextAlignment::Left);
+        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
+        ctx->DrawTextInRect(currentCameraLabel,
+                            Rect2Dd(cameraSelectRect.x + 8, cameraSelectRect.y,
+                                    cameraSelectRect.width - 8, cameraSelectRect.height));
+        ctx->SetTextVerticalAlignment(VerticalAlignment::Top);
     }
 }
 

@@ -1,12 +1,14 @@
 // core/UltraCanvasVideoPlayerElement.cpp
 // Composite UI control wrapping UltraCanvasVideoPlayer: video surface + transport bar
-// Version: 0.1.3
+// Version: 0.1.4
 // Last Modified: 2026-06-24
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVideoPlayerElement.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasFileLoader.h"
+#include "UltraCanvasConfig.h"
+#include "UltraCanvasUtils.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -36,6 +38,10 @@ namespace {
     double NowSeconds() {
         using namespace std::chrono;
         return duration<double>(steady_clock::now().time_since_epoch()).count();
+    }
+    // Resolve a transport icon (SVG) under the framework resources dir.
+    std::string VideoIconPath(const std::string& name) {
+        return NormalizePath(GetResourcesDir() + "media/icons/" + name);
     }
 }
 
@@ -348,18 +354,13 @@ void UltraCanvasVideoPlayerElement::DrawControlBar(IRenderContext* ctx) {
     ctx->SetFillPaint(style.knobColor);
     ctx->FillCircle(Point2Dd(seekBarRect.x + fillW, seekBarRect.y + seekBarRect.height / 2), kSeekKnobR);
 
-    // Mute icon
+    // Mute / volume icon (SVG, tinted via the icon-as-mask path)
     if (muteButtonRect.width > 0) {
-        int mx = muteButtonRect.x + muteButtonRect.width / 2;
-        int my = muteButtonRect.y + muteButtonRect.height / 2;
-        int mr = muteButtonRect.width / 3;
-        ctx->SetFillPaint(style.iconColor);
-        ctx->FillRectangle(Rect2Dd(mx - mr, my - mr / 2, mr, mr));
-        if (player->IsMuted()) {
-            ctx->SetStrokePaint(Color(220, 60, 60));
-            ctx->SetStrokeWidth(2.0f);
-            ctx->DrawLine(Point2Dd(mx - mr, my - mr), Point2Dd(mx + mr, my + mr));
-        }
+        const std::string icon = player->IsMuted() ? "volume-x.svg" : "volume.svg";
+        int isz = 18;
+        Rect2Dd ir(muteButtonRect.x + (muteButtonRect.width - isz) / 2,
+                   muteButtonRect.y + (muteButtonRect.height - isz) / 2, isz, isz);
+        ctx->DrawMask(style.iconColor, VideoIconPath(icon), ir, ImageFitMode::Contain);
     }
 
     // Volume bar
@@ -380,7 +381,11 @@ void UltraCanvasVideoPlayerElement::DrawControlBar(IRenderContext* ctx) {
         std::string label = FormatTime(pos) + " / " + FormatTime(dur);
         ctx->SetFontSize(11);
         ctx->SetTextPaint(style.textColor);
-        ctx->DrawText(label, Point2Dd(timeLabelRect.x, timeLabelRect.y + 12));
+        ctx->SetTextAlignment(TextAlignment::Left);
+        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
+        ctx->DrawTextInRect(label, Rect2Dd(timeLabelRect.x, timeLabelRect.y,
+                                           timeLabelRect.width, timeLabelRect.height));
+        ctx->SetTextVerticalAlignment(VerticalAlignment::Top);
     }
 }
 
