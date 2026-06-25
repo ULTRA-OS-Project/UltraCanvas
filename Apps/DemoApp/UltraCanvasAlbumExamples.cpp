@@ -2,8 +2,13 @@
 // Demonstration of UltraCanvasAlbum: layout designs, image-fit modes, action-icon
 // display options and visitor / user-edit / admin modes for a mixed photo / video
 // / music album.
-// Version: 2.8.0
+// Version: 2.9.0
 // Last Modified: 2026-06-25
+// V2.9.0: Refreshed the sample media — tile 3 is now a real bundled clip
+//   (media/videos/Video A more competition.mp4), tile 6 is the YouTube clip
+//   (moved inline from the old trailing entry), and tiles 7 / 11 use new images.
+//   The seed table can now carry a real video file (poster extracted) and a link
+//   icon, so every tile — including the videos — is built in one ordered loop.
 // V2.8.0: Video tiles now play in their own window — a "Play" action icon (video
 //   only) and a double-click both open the clip in a UltraCanvasVideoPlayerElement
 //   window. Control buttons are more compact and the header is shorter so the
@@ -351,7 +356,11 @@ namespace UltraCanvas {
         struct Seed {
             const char* file; const char* title; const char* subtitle;
             AlbumMediaType type; bool featured; const char* description;
-            const char* link;   // when set, the subtitle row is a clickable link
+            const char* link;      // when set, the subtitle row is a clickable link
+            const char* linkIcon;  // optional icon (under media/icons/) before the link
+            bool isVideoFile;      // true: `file` is a real clip under media/videos/
+                                   // (its mediaPath plays, and a poster frame is
+                                   // extracted for the tile cover)
         };
         // Photo tiles carry a source domain on the second row, shown as a link
         // (matching a search-results / gallery "image · source" layout); video /
@@ -365,13 +374,15 @@ namespace UltraCanvas {
               "A classic studio headshot taken with a fast 50mm lens and a single "
               "softbox to camera-left for soft, directional light.",
               "https://studioshots.example/portrait" },
-            { "sample_photo.jpg","City Lights",      "Video · 1:24",        AlbumMediaType::Video, false, "", "" },
+            { "Video A more competition.mp4", "Competition", "Video", AlbumMediaType::Video, false,
+              "A short competition clip bundled in media/videos.", "", "", true },
             { "ship.jpg",        "Harbour",          "harbourlife.example", AlbumMediaType::Photo, false,
               "Boats resting in the harbour during the golden hour, the warm light "
               "reflecting off the still water.", "https://harbourlife.example/golden-hour" },
             { "sample_hq.jpg",   "Summer Mix",       "Music · 42 tracks",   AlbumMediaType::Music, false, "", "" },
-            { "screenshot.png",  "Tutorial Clip",    "Video · 3:08",        AlbumMediaType::Video, false, "", "" },
-            { "dice.jpg",        "Game Night",       "boardgames.example",  AlbumMediaType::Photo, false,
+            { "Lola Lexy - No kings.mp4", "Lola Lexy - No kings", "youtube.com", AlbumMediaType::Video, false,
+              "Linked from YouTube.", "https://www.youtube.com/watch?v=Tl15Os47lG0", "youtube.svg", true },
+            { "freepicOIP-3521821688.jpg", "Game Night",  "boardgames.example",  AlbumMediaType::Photo, false,
               "Coloured dice mid-roll on game night — a quick macro grab to freeze "
               "the action on the table.", "https://boardgames.example/game-night" },
             { "3d-boxes.png",    "Renders",          "blenderhub.example",  AlbumMediaType::Photo, false,
@@ -379,55 +390,52 @@ namespace UltraCanvas {
               "lighting setups.", "https://blenderhub.example/renders" },
             { "sample_logo.png", "Brand Reel",       "Video · 0:30",        AlbumMediaType::Video, false, "", "" },
             { "test_small.png",  "Chill Beats",      "Music · 18 tracks",   AlbumMediaType::Music, false, "", "" },
-            { "png_68.png",      "Field Notes",      "filmdiary.example",   AlbumMediaType::Photo, false,
+            { "testcard_rgba.qoi", "Field Notes",    "filmdiary.example",   AlbumMediaType::Photo, false,
               "Scanned 35mm film frame from a walk in the field — grainy, warm and "
               "full of character.", "https://filmdiary.example/field-notes" },
             { "webp_68.png",     "Roadtrip",         "openroad.example",    AlbumMediaType::Photo, false,
               "A snapshot from the 2022 summer road trip, somewhere along an open "
               "stretch of highway.", "https://openroad.example/roadtrip" },
         };
+        // Video tiles backed by a real clip (Seed::isVideoFile) point mediaPath at
+        // media/videos and get a poster frame extracted once via SaveVideoThumbnail
+        // (cached as a QOI next to the clip) for their cover; if the thumbnail
+        // module or a video backend is unavailable the tile shows the built-in
+        // video placeholder instead. A double-click (or the Play icon) plays them.
         for (const auto& s : seeds) {
             AlbumItem it;
-            it.mediaPath = mediaRoot + s.file;
+            if (s.isVideoFile) {
+                const std::string videoPath =
+                        NormalizePath(GetResourcesDir() + "media/videos/" + s.file);
+                it.mediaPath = videoPath;
+#ifdef ULTRACANVAS_DEMO_HAVE_VIDEO_THUMBNAIL
+                // Cache the poster next to the clip, swapping the extension to .qoi.
+                std::string posterPath = videoPath;
+                const auto dot = posterPath.find_last_of('.');
+                if (dot != std::string::npos)
+                    posterPath.replace(dot, std::string::npos, ".qoi");
+                bool havePoster = std::ifstream(posterPath, std::ios::binary).good();
+                if (!havePoster) {
+                    VideoThumbnailRequest req;
+                    req.maxWidth  = 640;   // downscale the poster to a sensible cover size
+                    req.maxHeight = 480;
+                    havePoster = SaveVideoThumbnail(videoPath, posterPath, req);
+                }
+                if (havePoster) it.thumbnailPath = posterPath;
+#endif
+            } else {
+                it.mediaPath = mediaRoot + s.file;
+            }
             it.title = s.title;
             it.subtitle = s.subtitle;
             it.description = s.description;
             it.mediaType = s.type;
             it.featured = s.featured;
             it.link = s.link;
-            album->AddItem(it);
-        }
-
-        // A YouTube video entry pointing at the bundled clip in media/videos.
-        // A poster frame is extracted once via SaveVideoThumbnail (cached as a
-        // QOI next to the clip) and used as the tile cover; if the thumbnail
-        // module or a video backend is unavailable the tile shows the built-in
-        // video placeholder instead. Its second row links to YouTube, preceded
-        // by a YouTube icon (AlbumItem::linkIconPath).
-        {
-            AlbumItem yt;
-            const std::string videoPath =
-                    NormalizePath(GetResourcesDir() + "media/videos/Lola Lexy - No kings.mp4");
-            yt.mediaPath   = videoPath;
-            yt.title       = "Lola Lexy - No kings";
-            yt.subtitle    = "youtube.com";
-            yt.description  = "Linked from YouTube.";
-            yt.mediaType   = AlbumMediaType::Video;
-            yt.link        = "https://www.youtube.com/watch?v=Tl15Os47lG0";
-            yt.linkIconPath = NormalizePath(GetResourcesDir() + "media/icons/youtube.svg");
-#ifdef ULTRACANVAS_DEMO_HAVE_VIDEO_THUMBNAIL
-            const std::string posterPath =
-                    NormalizePath(GetResourcesDir() + "media/videos/Lola Lexy - No kings.qoi");
-            bool havePoster = std::ifstream(posterPath, std::ios::binary).good();
-            if (!havePoster) {
-                VideoThumbnailRequest req;
-                req.maxWidth  = 640;   // downscale the poster to a sensible cover size
-                req.maxHeight = 480;
-                havePoster = SaveVideoThumbnail(videoPath, posterPath, req);
+            if (s.linkIcon && *s.linkIcon) {
+                it.linkIconPath = NormalizePath(GetResourcesDir() + "media/icons/" + s.linkIcon);
             }
-            if (havePoster) yt.thumbnailPath = posterPath;
-#endif
-            album->AddItem(yt);
+            album->AddItem(it);
         }
 
         auto* albumPtr = album.get();
