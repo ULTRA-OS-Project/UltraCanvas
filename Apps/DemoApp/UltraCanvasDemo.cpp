@@ -652,9 +652,7 @@ namespace UltraCanvas {
                              "DemoApp/UltraCanvasColorPickerExamples.cpp",
                              "Docs/UltraCanvas/UltraCanvasColorPicker.md")
                 .AddVariant("colorpicker", "Full Picker (Wheel + Sliders)")
-                .AddVariant("colorpicker", "Compact (Sliders Only)")
-                .AddVariant("colorpicker", "HSV / HSL / RGB Modes")
-                .AddVariant("colorpicker", "Alpha / Hex Input");
+                .AddVariant("colorpicker", "HSV / HSL / RGB Modes");
 
         basicBuilder.AddItem("scrollbars", "Scrollbars",
                              "Standalone scrollbars: preset styles, colour options, "
