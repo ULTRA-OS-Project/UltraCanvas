@@ -40,6 +40,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasImageElement.h"
+#include "UltraCanvasImageViewer.h"
 #include "UltraCanvasWindow.h"
 #include <fstream>
 #include <sstream>
@@ -141,100 +142,28 @@ namespace UltraCanvas {
         }
 
         // A lightbox-style viewer: opens the photo at full size in its own window
-        // with a related-text panel (title, subtitle and the longer description).
-        // One instance is shared by the album so re-opening reuses the window.
+        // with a related-text panel (title, subtitle and the longer description),
+        // zoomable with the wheel and pannable by dragging. Backed by the shared
+        // UltraCanvasImageViewer so the Album and the markdown renderer use one
+        // implementation. One instance reuses its window across opens.
         class AlbumPhotoViewer {
         public:
-            void Show(const AlbumItem& item) {
-                // Reuse a single window: just refresh its contents if it is open.
-                if (window) {
-                    window->Close();
-                    window.reset();
-                }
-
-                WindowConfig cfg;
-                cfg.title     = item.title.empty() ? "Photo" : item.title;
-                cfg.width     = 1040;
-                cfg.height    = 720;
-                cfg.type      = WindowType::Standard;
-                cfg.resizable = true;
-                window = CreateWindow(cfg);
-                if (!window) return;
-                window->SetBackgroundColor(Color(22, 22, 26, 255));
-
-                // Column: the image fills the top, the text panel is pinned below.
-                window->layout.SetFlexColumn()
-                              .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-
-                auto image = std::make_shared<UltraCanvasImageElement>("ViewerImage", 0, 0, 0, 0);
-                image->SetFitMode(ImageFitMode::Contain);
-                image->LoadFromFile(item.mediaPath.empty() ? item.thumbnailPath : item.mediaPath);
-                image->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                                 .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-                window->AddChild(image);
-
-                // Related-text panel.
-                auto panel = std::make_shared<UltraCanvasContainer>("ViewerTextPanel");
-                panel->SetBackgroundColor(Color(30, 30, 36, 255));
-                panel->layout.SetFlexColumn().SetFlexGap(4)
-                             .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-                panel->SetPadding(14, 18, 14, 18);
-                panel->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                                 .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-
-                auto titleLbl = std::make_shared<UltraCanvasLabel>("ViewerTitle", 0, 0, 0, 26);
-                titleLbl->SetText(item.title);
-                titleLbl->SetFontSize(18);
-                titleLbl->SetFontWeight(FontWeight::Bold);
-                titleLbl->SetTextColor(Color(245, 245, 248, 255));
-                titleLbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                panel->AddChild(titleLbl);
-
-                if (!item.subtitle.empty()) {
-                    auto subLbl = std::make_shared<UltraCanvasLabel>("ViewerSubtitle", 0, 0, 0, 18);
-                    subLbl->SetText(item.subtitle);
-                    subLbl->SetFontSize(12);
-                    subLbl->SetTextColor(Color(170, 170, 178, 255));
-                    subLbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                    panel->AddChild(subLbl);
-                }
-
-                // The related text (falls back to a generic line if none supplied).
-                std::string related = item.description.empty()
+            void Show(const AlbumItem& item, UltraCanvasWindowBase* host = nullptr) {
+                ImageViewerInfo info;
+                info.title       = item.title;
+                info.subtitle    = item.subtitle;
+                info.description = item.description.empty()
                         ? "No additional description for this photo."
                         : item.description;
-                auto descLbl = std::make_shared<UltraCanvasLabel>("ViewerDescription", 0, 0, 0, 48);
-                descLbl->SetText(related);
-                descLbl->SetFontSize(13);
-                descLbl->SetTextColor(Color(214, 214, 220, 255));
-                descLbl->SetWrap(TextWrap::WrapWord);
-                descLbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                panel->AddChild(descLbl);
-
-                auto hint = std::make_shared<UltraCanvasLabel>("ViewerHint", 0, 0, 0, 16);
-                hint->SetText("Press ESC to close");
-                hint->SetFontSize(10);
-                hint->SetTextColor(Color(120, 120, 128, 255));
-                hint->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                panel->AddChild(hint);
-
-                window->AddChild(panel);
-
-                // ESC closes the viewer.
-                window->eventCallback = [this](const UCEvent& event) {
-                    if (event.type == UCEventType::KeyUp &&
-                        event.virtualKey == UCKeys::Escape) {
-                        if (window) { window->Close(); window.reset(); }
-                        return true;
-                    }
-                    return false;
-                };
-
-                window->Show();
+                // A dark canvas keeps the gallery look for opaque photos (matches
+                // the window chrome); the markdown viewer uses a white canvas for
+                // diagrams that rely on transparency.
+                viewer.Show(item.mediaPath.empty() ? item.thumbnailPath : item.mediaPath,
+                            info, host, Color(22, 22, 26, 255));
             }
 
         private:
-            std::shared_ptr<UltraCanvasWindow> window;
+            UltraCanvasImageViewer viewer;
         };
     } // namespace
 
@@ -414,7 +343,7 @@ namespace UltraCanvas {
             }
             std::ostringstream o; o << "View full size: " << it.title;
             statusPtr->SetText(o.str());
-            viewer->Show(it);
+            viewer->Show(it, albumPtr->GetWindow());
         };
 
         // "View full size" — photos only (gated by media type, so the icon is not

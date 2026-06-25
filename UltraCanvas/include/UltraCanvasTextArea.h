@@ -26,8 +26,10 @@ namespace UltraCanvas {
     // Forward declarations
     class SyntaxTokenizer;
     enum class TokenType;
-    // UltraCanvasWindow (a typedef for the platform window) is available transitively via
-    // UltraCanvasUI.h; used by the built-in fullscreen markdown-image viewer.
+    // The built-in image-click action opens the shared lightbox viewer
+    // (UltraCanvasImageViewer, defined in UltraCanvasImageViewer.h). Held by
+    // shared_ptr so a forward declaration suffices here.
+    class UltraCanvasImageViewer;
 
     // ===== HIT RECT FOR CLICKABLE ELEMENTS =====
     // Tracks clickable regions for links and images
@@ -1079,8 +1081,9 @@ namespace UltraCanvas {
         // Optional explicit base directory for relative markdown image paths (overrides the
         // directory derived from documentFilePath when set). See SetMarkdownBaseDirectory.
         std::string markdownBaseDirectory;
-        // Built-in fullscreen image viewer (owns its window for its lifetime; reset on close).
-        std::shared_ptr<UltraCanvasWindow> markdownImageViewerWindow;
+        // Built-in lightbox image viewer (shared component; owns its window and
+        // reuses it across opens). Lazily created on first image click.
+        std::shared_ptr<UltraCanvasImageViewer> markdownImageViewer;
         bool markdownImageFullscreenEnabled = true;
         // Per-display-line cumulative Y offset from block images (rebuilt each frame)
         std::vector<int> markdownLineYOffsets;
