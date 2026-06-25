@@ -295,6 +295,11 @@ private:
     TreeNode* GetNextVisibleNode(TreeNode* current);
     TreeNode* GetLastVisibleNode();
 
+    // When a parent node (one that has children) is the bottom-most visible row,
+    // nudge the scroll position down by a single row so the user can see that
+    // more entries exist below it. Leaf nodes (no children) are left untouched.
+    void ScrollDownIfLastVisibleParent(TreeNode* node);
+
     void ExpandFirstChildNode(TreeNode *node);
     void BuildVisibleNodeList(TreeNode* node, std::vector<TreeNode*>& list);
 };

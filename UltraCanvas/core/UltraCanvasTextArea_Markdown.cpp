@@ -14,7 +14,7 @@
 #include "Plugins/Text/UltraCanvasMarkdown.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasImage.h"
-#include "UltraCanvasImageElement.h"
+#include "UltraCanvasImageViewer.h"
 #include "UltraCanvasWindow.h"
 #include <algorithm>
 #include <sstream>
@@ -1870,7 +1870,7 @@ namespace UltraCanvas {
                 if (!remote) {
                     auto img = UCImage::Get(path);
                     if (img && img->IsValid()) {
-                        OpenMarkdownImageViewer(path, hit->altText);
+                        OpenMarkdownImageViewer(path, hit->altText, hit->url);
                         return true;
                     }
                 }
@@ -1893,61 +1893,28 @@ namespace UltraCanvas {
         return false;
     }
 
-    // Open a local image at full size in a fullscreen viewer window. Reuses the lightbox pattern
-    // from the Album demo (UltraCanvasImageElement + CreateWindow). Dismisses on Esc or click.
+    // Open a local image in the shared lightbox viewer (UltraCanvasImageViewer):
+    // the image fills the top (wheel to zoom, drag to pan, double-click to reset)
+    // above a dark info panel showing the title and source path. The window opens
+    // over the host app window and closes on Esc. displayPath (the original
+    // markdown URL) is shown as the path; empty falls back to imagePath.
     void UltraCanvasTextArea::OpenMarkdownImageViewer(const std::string& imagePath,
-                                                      const std::string& title) {
-        // Reuse a single viewer — close any previous one before opening a new image.
-        if (markdownImageViewerWindow) {
-            markdownImageViewerWindow->Close();
-            markdownImageViewerWindow.reset();
+                                                      const std::string& title,
+                                                      const std::string& displayPath) {
+        ImageViewerInfo info;
+        info.title    = title;
+        info.subtitle = displayPath.empty() ? imagePath : displayPath;
+        // Title falls back to the file name when there is no alt text.
+        if (info.title.empty()) {
+            const size_t slash = imagePath.find_last_of("/\\");
+            info.title = (slash == std::string::npos) ? imagePath
+                                                       : imagePath.substr(slash + 1);
         }
 
-        WindowConfig cfg;
-        cfg.title     = title.empty() ? "Image" : title;
-        cfg.type      = WindowType::Fullscreen;
-        cfg.resizable = true;
-        if (auto* win = GetWindow()) {
-            cfg.width  = std::max(320, (int)win->GetWidth());
-            cfg.height = std::max(240, (int)win->GetHeight());
-        } else {
-            cfg.width  = 1280;
-            cfg.height = 800;
+        if (!markdownImageViewer) {
+            markdownImageViewer = std::make_shared<UltraCanvasImageViewer>();
         }
-        auto viewer = CreateWindow(cfg);
-        if (!viewer) return;
-        viewer->SetBackgroundColor(Color(16, 16, 18, 255));
-        viewer->layout.SetFlexColumn()
-                      .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-
-        auto image = std::make_shared<UltraCanvasImageElement>("MarkdownImageViewer", 0, 0, 0, 0);
-        image->SetFitMode(ImageFitMode::Contain);
-        image->LoadFromFile(imagePath);
-        image->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        // Click the image to dismiss the viewer.
-        image->onClick = [this]() {
-            if (markdownImageViewerWindow) {
-                markdownImageViewerWindow->Close();
-                markdownImageViewerWindow.reset();
-            }
-        };
-        viewer->AddChild(image);
-
-        // Esc closes the viewer.
-        viewer->eventCallback = [this](const UCEvent& event) {
-            if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
-                if (markdownImageViewerWindow) {
-                    markdownImageViewerWindow->Close();
-                    markdownImageViewerWindow.reset();
-                }
-                return true;
-            }
-            return false;
-        };
-
-        markdownImageViewerWindow = viewer;
-        viewer->Show();
+        markdownImageViewer->Show(imagePath, info, GetWindow());
     }
 
     // ---------------------------------------------------------------

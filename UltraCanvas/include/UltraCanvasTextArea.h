@@ -26,8 +26,10 @@ namespace UltraCanvas {
     // Forward declarations
     class SyntaxTokenizer;
     enum class TokenType;
-    // UltraCanvasWindow (a typedef for the platform window) is available transitively via
-    // UltraCanvasUI.h; used by the built-in fullscreen markdown-image viewer.
+    // The built-in image-click action opens the shared lightbox viewer
+    // (UltraCanvasImageViewer, defined in UltraCanvasImageViewer.h). Held by
+    // shared_ptr so a forward declaration suffices here.
+    class UltraCanvasImageViewer;
 
     // ===== HIT RECT FOR CLICKABLE ELEMENTS =====
     // Tracks clickable regions for links and images
@@ -721,10 +723,15 @@ namespace UltraCanvas {
         // http(s)/data:/ftp schemes (left unresolved). Returns the local path otherwise.
         std::string ResolveMarkdownImagePath(const std::string& url, bool& outIsRemote) const;
 
-        // Open a (valid, local) image full size in a built-in fullscreen viewer window. Closes
-        // on Esc or click. Default action for an image click unless onMarkdownImageClick is set
-        // or markdownImageFullscreenEnabled is false.
-        void OpenMarkdownImageViewer(const std::string& imagePath, const std::string& title);
+        // Open a (valid, local) image full size in a built-in lightbox viewer window,
+        // styled like the Album photo viewer: the image fills the top (zoomable with
+        // the wheel, pannable by dragging) above a dark info panel showing the title,
+        // the source path and a hint. Closes on Esc. Default action for an image click
+        // unless onMarkdownImageClick is set or markdownImageFullscreenEnabled is false.
+        // displayPath is shown in the panel (the original markdown URL); empty falls
+        // back to imagePath.
+        void OpenMarkdownImageViewer(const std::string& imagePath, const std::string& title,
+                                     const std::string& displayPath = "");
 
         // Doc-wide pre-scan: populates markdownAbbreviations, markdownFootnotes, markdownAnchors,
         // and markdownAnchorBacklinks. Run lazily when markdownIndexDirty is true — which
@@ -1074,8 +1081,9 @@ namespace UltraCanvas {
         // Optional explicit base directory for relative markdown image paths (overrides the
         // directory derived from documentFilePath when set). See SetMarkdownBaseDirectory.
         std::string markdownBaseDirectory;
-        // Built-in fullscreen image viewer (owns its window for its lifetime; reset on close).
-        std::shared_ptr<UltraCanvasWindow> markdownImageViewerWindow;
+        // Built-in lightbox image viewer (shared component; owns its window and
+        // reuses it across opens). Lazily created on first image click.
+        std::shared_ptr<UltraCanvasImageViewer> markdownImageViewer;
         bool markdownImageFullscreenEnabled = true;
         // Per-display-line cumulative Y offset from block images (rebuilt each frame)
         std::vector<int> markdownLineYOffsets;

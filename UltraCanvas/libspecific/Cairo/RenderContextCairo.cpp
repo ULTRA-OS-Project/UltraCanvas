@@ -1331,39 +1331,50 @@ namespace UltraCanvas {
                      {xPos, y + height - bottomLeftRadius});
         }
 
-        // Draw rounded corners with borders
+        // Draw rounded corners with borders.
+        // The path used for ClipPath() above follows the outer edge of the
+        // rounded rectangle, so a corner arc drawn at the full corner radius is
+        // centred on the clip boundary and has its outer half clipped away,
+        // making the corners look thinner than the straight edges. Inset each
+        // arc radius by half its stroke width so the stroke's outer edge lines
+        // up with the clip boundary, matching how the straight borders above are
+        // inset by half their width.
         if (topLeftRadius > 0) {
             const Color avgColor = borderLeftColor.Blend(borderTopColor, 0.5);
             double avgWidth = (borderLeftWidth + borderTopWidth) / 2.0;
+            double arcRadius = std::max(0.0, topLeftRadius - avgWidth / 2.0);
             SetStrokeWidth(avgWidth);
             SetStrokePaint(avgColor);
-            DrawArc(x + topLeftRadius, y + topLeftRadius, topLeftRadius,
+            DrawArc(x + topLeftRadius, y + topLeftRadius, arcRadius,
                 M_PI, 3 * M_PI / 2);
         }
         if (topRightRadius > 0) {
             const Color avgColor = borderTopColor.Blend(borderRightColor, 0.5);
             double avgWidth = (borderTopWidth + borderRightWidth) / 2.0;
+            double arcRadius = std::max(0.0, topRightRadius - avgWidth / 2.0);
             SetStrokeWidth(avgWidth);
             SetStrokePaint(avgColor);
-            DrawArc(x + width - topRightRadius, y + topRightRadius, topRightRadius,
+            DrawArc(x + width - topRightRadius, y + topRightRadius, arcRadius,
                 3 * M_PI / 2, 2 * M_PI);
         }
 
         if (bottomRightRadius > 0) {
             const Color avgColor = borderBottomColor.Blend(borderRightColor, 0.5);
             double avgWidth = (borderRightWidth +  borderBottomWidth) / 2.0;
+            double arcRadius = std::max(0.0, bottomRightRadius - avgWidth / 2.0);
             SetStrokeWidth(avgWidth);
             SetStrokePaint(avgColor);
             DrawArc(x + width - bottomRightRadius, y + height - bottomRightRadius,
-                bottomRightRadius, 0, M_PI / 2);
+                arcRadius, 0, M_PI / 2);
         }
 
         if (bottomLeftRadius > 0) {
             const Color avgColor = borderBottomColor.Blend(borderLeftColor, 0.5);
             double avgWidth = (borderBottomWidth + borderLeftWidth) / 2.0;
+            double arcRadius = std::max(0.0, bottomLeftRadius - avgWidth / 2.0);
             SetStrokeWidth(avgWidth);
             SetStrokePaint(avgColor);
-            DrawArc(x + bottomLeftRadius, y + height - bottomLeftRadius, bottomLeftRadius,
+            DrawArc(x + bottomLeftRadius, y + height - bottomLeftRadius, arcRadius,
                 M_PI / 2, M_PI);
         }
         PopState();
