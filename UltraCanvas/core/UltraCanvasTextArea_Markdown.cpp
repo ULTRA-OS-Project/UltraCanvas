@@ -15,7 +15,10 @@
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasImageElement.h"
+#include "UltraCanvasContainer.h"
+#include "UltraCanvasLabel.h"
 #include "UltraCanvasWindow.h"
+#include "UltraCanvasApplication.h"
 #include <algorithm>
 #include <sstream>
 #include <cmath>
@@ -1870,7 +1873,7 @@ namespace UltraCanvas {
                 if (!remote) {
                     auto img = UCImage::Get(path);
                     if (img && img->IsValid()) {
-                        OpenMarkdownImageViewer(path, hit->altText);
+                        OpenMarkdownImageViewer(path, hit->altText, hit->url);
                         return true;
                     }
                 }
@@ -1893,60 +1896,228 @@ namespace UltraCanvas {
         return false;
     }
 
-    // Open a local image at full size in a viewer window overlaid on the host app
-    // window. Reuses the lightbox pattern from the Album demo (UltraCanvasImageElement
-    // + CreateWindow). Dismisses on Esc or click.
+    namespace {
+        // A zoomable / pannable image surface used by the markdown lightbox viewer.
+        // The image starts fit-to-view; the mouse wheel zooms about the cursor and
+        // dragging pans. A light canvas is painted first so images that rely on
+        // transparency (SVG diagrams, logos) composite the same way they do on the
+        // white document page rather than over the dark viewer chrome. The image is
+        // re-rasterized at the displayed size each frame, so SVGs stay crisp at any
+        // zoom level.
+        class ZoomPanImageElement : public UltraCanvasUIElement {
+        public:
+            explicit ZoomPanImageElement(const std::string& elemId)
+                : UltraCanvasUIElement(elemId, 0.0f, 0.0f, 0.0f, 0.0f) {
+                SetMouseCursor(UCMouseCursor::SizeAll);
+            }
+
+            void SetImage(std::shared_ptr<UCImage> img) {
+                image = std::move(img);
+                needsFit = true;
+                RequestRedraw();
+            }
+
+            void Render(IRenderContext* ctx, const Rect2Df& /*dirty*/) override {
+                if (!IsVisible()) return;
+                const Rect2Df b = GetLocalBounds();
+                if (b.width <= 0 || b.height <= 0) return;
+
+                ctx->PushState();
+                ctx->ClipRect(Rect2Dd(b.x, b.y, b.width, b.height));
+                ctx->DrawFilledRectangle(Rect2Dd(b.x, b.y, b.width, b.height),
+                                         Color(255, 255, 255, 255), 0.0f);
+
+                if (image && image->IsValid()) {
+                    const double iw = std::max(1, image->GetWidth());
+                    const double ih = std::max(1, image->GetHeight());
+                    const double fit = std::min(b.width / iw, b.height / ih);
+                    if (needsFit) { zoom = 1.0; panX = panY = 0.0; needsFit = false; }
+                    const double s     = fit * zoom;
+                    const double dispW = iw * s;
+                    const double dispH = ih * s;
+                    const double left  = b.width  * 0.5 + panX - dispW * 0.5;
+                    const double top   = b.height * 0.5 + panY - dispH * 0.5;
+                    ctx->DrawImage(*image, Rect2Dd(left, top, dispW, dispH),
+                                   ImageFitMode::Fill);
+                }
+                ctx->PopState();
+            }
+
+            bool OnEvent(const UCEvent& event) override {
+                switch (event.type) {
+                    case UCEventType::MouseWheel:
+                        return HandleZoom(event);
+                    case UCEventType::MouseDown:
+                        if (Contains(event.pointer)) {
+                            dragging = true;
+                            lastX = event.pointer.x;
+                            lastY = event.pointer.y;
+                            // Capture so the drag keeps tracking even when the
+                            // pointer leaves the element bounds.
+                            if (auto* app = UltraCanvasApplication::GetInstance()) {
+                                app->CaptureMouse(this);
+                            }
+                            return true;
+                        }
+                        return false;
+                    case UCEventType::MouseMove:
+                        if (dragging) {
+                            panX += event.pointer.x - lastX;
+                            panY += event.pointer.y - lastY;
+                            lastX = event.pointer.x;
+                            lastY = event.pointer.y;
+                            RequestRedraw();
+                            return true;
+                        }
+                        return false;
+                    case UCEventType::MouseUp:
+                        if (dragging) {
+                            dragging = false;
+                            if (auto* app = UltraCanvasApplication::GetInstance()) {
+                                app->ReleaseMouse();
+                            }
+                            return true;
+                        }
+                        return false;
+                    case UCEventType::MouseDoubleClick:
+                        needsFit = true;   // reset to fit-to-view
+                        RequestRedraw();
+                        return true;
+                    default:
+                        return false;
+                }
+            }
+
+        private:
+            bool HandleZoom(const UCEvent& event) {
+                if (!image || !image->IsValid()) return false;
+                const Rect2Df b = GetLocalBounds();
+                const double iw = std::max(1, image->GetWidth());
+                const double ih = std::max(1, image->GetHeight());
+                const double fit = std::min(b.width / iw, b.height / ih);
+                if (fit <= 0.0) return false;
+
+                const double sOld   = fit * zoom;
+                const double leftOld = b.width  * 0.5 + panX - iw * sOld * 0.5;
+                const double topOld  = b.height * 0.5 + panY - ih * sOld * 0.5;
+                // Image-space point under the cursor — kept fixed across the zoom.
+                const double imgX = (event.pointer.x - leftOld) / sOld;
+                const double imgY = (event.pointer.y - topOld)  / sOld;
+
+                const double step = (event.wheelDelta > 0) ? 1.15 : (1.0 / 1.15);
+                double newZoom = std::max(1.0, std::min(zoom * step, 40.0));
+                // Cap the rasterized size so very large SVG zooms stay responsive.
+                const double maxDim = 8000.0;
+                if (iw * fit * newZoom > maxDim || ih * fit * newZoom > maxDim) {
+                    newZoom = std::max(1.0,
+                                       std::min(maxDim / (iw * fit), maxDim / (ih * fit)));
+                }
+                if (newZoom == zoom) return true;
+                zoom = newZoom;
+
+                const double sNew = fit * zoom;
+                panX = (event.pointer.x - b.width  * 0.5) - (imgX * sNew - iw * sNew * 0.5);
+                panY = (event.pointer.y - b.height * 0.5) - (imgY * sNew - ih * sNew * 0.5);
+                RequestRedraw();
+                return true;
+            }
+
+            std::shared_ptr<UCImage> image;
+            bool   needsFit = true;
+            double zoom = 1.0;            // multiple of the fit scale (1.0 == fit)
+            double panX = 0.0, panY = 0.0;
+            bool   dragging = false;
+            double lastX = 0.0, lastY = 0.0;
+        };
+    } // namespace
+
+    // Open a local image in a lightbox viewer window styled like the Album photo
+    // viewer: the image fills the top (wheel to zoom, drag to pan, double-click to
+    // reset) above a dark info panel showing the title and source path. The window
+    // is created over the host app window. Dismisses on Esc.
     void UltraCanvasTextArea::OpenMarkdownImageViewer(const std::string& imagePath,
-                                                      const std::string& title) {
+                                                      const std::string& title,
+                                                      const std::string& displayPath) {
         // Reuse a single viewer — close any previous one before opening a new image.
         if (markdownImageViewerWindow) {
             markdownImageViewerWindow->Close();
             markdownImageViewerWindow.reset();
         }
 
+        const std::string shownPath = displayPath.empty() ? imagePath : displayPath;
+        // Title: the markdown alt text, else the file name from the path.
+        std::string shownTitle = title;
+        if (shownTitle.empty()) {
+            const size_t slash = imagePath.find_last_of("/\\");
+            shownTitle = (slash == std::string::npos) ? imagePath
+                                                      : imagePath.substr(slash + 1);
+        }
+
         WindowConfig cfg;
-        cfg.title     = title.empty() ? "Image" : title;
-        cfg.type      = WindowType::Fullscreen;
+        cfg.title     = shownTitle.empty() ? "Image" : shownTitle;
+        cfg.type      = WindowType::Standard;   // an explicit, movable/resizable window
         cfg.resizable = true;
-        // Position the viewer directly over the host window. Without an explicit
-        // position a borderless/popup window lands at the screen origin (top-left)
-        // instead of over the app, which is the intended location.
+        // Position the viewer over the host window so it opens where the user is
+        // looking rather than at the screen origin.
         UltraCanvasWindowBase* host = GetWindow();
         if (host) {
-            cfg.width  = std::max(320, (int)host->GetWidth());
-            cfg.height = std::max(240, (int)host->GetHeight());
+            cfg.width  = std::max(640, (int)host->GetWidth());
+            cfg.height = std::max(480, (int)host->GetHeight());
             int hx = 0, hy = 0;
             host->GetScreenPosition(hx, hy);
             cfg.x = hx;
             cfg.y = hy;
             cfg.parentWindow = host;
         } else {
-            cfg.width  = 1280;
-            cfg.height = 800;
+            cfg.width  = 1040;
+            cfg.height = 720;
         }
         auto viewer = CreateWindow(cfg);
         if (!viewer) return;
-        // A light backdrop: diagrams and logos are authored for a white document
-        // background and rely on transparency and semi-transparent (often light)
-        // fills. A dark backdrop makes those composite to muddy, wrong-looking
-        // colours and a seemingly opaque logo, so match the page's white instead.
-        viewer->SetBackgroundColor(Color(255, 255, 255, 255));
+        viewer->SetBackgroundColor(Color(22, 22, 26, 255));
         viewer->layout.SetFlexColumn()
                       .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-        auto image = std::make_shared<UltraCanvasImageElement>("MarkdownImageViewer", 0, 0, 0, 0);
-        image->SetFitMode(ImageFitMode::Contain);
-        image->LoadFromFile(imagePath);
+        // Image area: fills the top, zoom + pan enabled.
+        auto image = std::make_shared<ZoomPanImageElement>("MarkdownImageViewer");
+        image->SetImage(UCImage::Get(imagePath));
         image->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        // Click the image to dismiss the viewer.
-        image->onClick = [this]() {
-            if (markdownImageViewerWindow) {
-                markdownImageViewerWindow->Close();
-                markdownImageViewerWindow.reset();
-            }
-        };
         viewer->AddChild(image);
+
+        // Info panel pinned below the image (Album viewer style).
+        auto panel = std::make_shared<UltraCanvasContainer>("MarkdownViewerPanel");
+        panel->SetBackgroundColor(Color(30, 30, 36, 255));
+        panel->layout.SetFlexColumn().SetFlexGap(4)
+                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        panel->SetPadding(12, 18, 12, 18);
+        panel->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+        auto titleLbl = std::make_shared<UltraCanvasLabel>("MarkdownViewerTitle", 0, 0, 0, 26);
+        titleLbl->SetText(shownTitle);
+        titleLbl->SetFontSize(18);
+        titleLbl->SetFontWeight(FontWeight::Bold);
+        titleLbl->SetTextColor(Color(245, 245, 248, 255));
+        titleLbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        panel->AddChild(titleLbl);
+
+        auto pathLbl = std::make_shared<UltraCanvasLabel>("MarkdownViewerPath", 0, 0, 0, 18);
+        pathLbl->SetText(shownPath);
+        pathLbl->SetFontSize(12);
+        pathLbl->SetTextColor(Color(170, 170, 178, 255));
+        pathLbl->SetWrap(TextWrap::WrapWord);
+        pathLbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        panel->AddChild(pathLbl);
+
+        auto hint = std::make_shared<UltraCanvasLabel>("MarkdownViewerHint", 0, 0, 0, 16);
+        hint->SetText("Scroll to zoom · drag to pan · double-click to reset · Esc to close");
+        hint->SetFontSize(10);
+        hint->SetTextColor(Color(120, 120, 128, 255));
+        hint->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        panel->AddChild(hint);
+
+        viewer->AddChild(panel);
 
         // Esc closes the viewer.
         viewer->eventCallback = [this](const UCEvent& event) {
