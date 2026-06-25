@@ -48,7 +48,7 @@ Creates a list view at the given position and size. Until a model is attached th
 ### Model / Delegate / Selection wiring
 
 ```cpp
-void SetModel(IListModel* model);
+void SetModel(std::shared_ptr<IListModel> model);
 IListModel* GetModel() const;
 
 void SetDelegate(std::shared_ptr<IItemDelegate> delegate);
