@@ -1,3 +1,11 @@
+#### 2026-06-24 *0.2.29*
+- Merge "Waveform chart UltraCanvas integration"
+- Merge "UltraCanvas Heatmap demo optimization"
+- Merge "UltraCanvas treeview auto-scroll"
+- Merge "Module infos MD diagram/image viewer"
+- Changelog link on startup info page
+- Merge "UltraCanvas demo Modules info pages"
+
 #### 2026-06-24 *0.2.28*
 - Fixed crash in the UltraCanvasDependenciesExamples demo screen
 - In the UltraCanvasListView change model pointer to shared_ptr instead of raw pointer, prevent possible crashes

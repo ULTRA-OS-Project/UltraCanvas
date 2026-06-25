@@ -290,6 +290,7 @@ namespace UltraCanvas {
 
         private:
             UltraCanvasImageViewer viewer;
+            std::shared_ptr<UltraCanvasWindow> window;
         };
     } // namespace
 
