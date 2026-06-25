@@ -1,9 +1,11 @@
 // Apps/DemoApp/UltraCanvasHeatmapExamples.cpp
-// Comprehensive heatmap demonstration: an interactive heatmap driven by a panel
-// of dropdowns / checkboxes / sliders that exercise every option, plus showcases
-// of the spectrogram, calendar and hexbin variants.
-// Version: 1.0.0
-// Last Modified: 2026-06-18
+// Comprehensive heatmap demonstration. Each variant lives on its own tab so it
+// gets the full display area: an interactive heatmap driven by a panel of
+// dropdowns / checkboxes / sliders that exercises every option, the spectrogram,
+// calendar and hexbin variants, plus a "Job Gains & Losses" tab that recreates a
+// NYT-style dot-density chart purely with the heatmap API.
+// Version: 2.0.0
+// Last Modified: 2026-06-25
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -16,6 +18,7 @@
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasTabbedContainer.h"
 
 #include <random>
 #include <cmath>
@@ -23,6 +26,8 @@
 #include <string>
 #include <memory>
 #include <functional>
+#include <algorithm>
+#include <limits>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -133,61 +138,114 @@ namespace UltraCanvas {
         }
     }
 
+// ===== "JOB GAINS & LOSSES" RECREATION (NYT-style dot-density chart) =====
+// Demonstrates that the dot-density "winners and losers" chart can be built
+// purely with the heatmap engine: one grid column per month, sectors stacked
+// above/below a zero baseline as circular cells, coloured by their monthly
+// percentage change through a diverging red->beige->green->blue ramp. Empty grid
+// slots are left transparent (NaN), which yields the irregular column heights.
+    static std::shared_ptr<UltraCanvasHeatmapChartElement> BuildJobGainsLosses(const std::string& id) {
+        const int COLS   = 108;             // Jan 2007 .. Dec 2015 (9 years)
+        const int MAXR   = 20;              // up to 20 sectors per side
+        const int ROWS   = 2 * MAXR + 1;    // 41 rows, zero baseline in the middle
+        const int center = MAXR;
+        const double NaNv = std::numeric_limits<double>::quiet_NaN();
+
+        std::vector<double> v(COLS * ROWS, NaNv);
+
+        std::mt19937 rng(2024);
+        std::normal_distribution<double> noise(0.0, 0.45);
+
+        // Smooth recession dip centred on early 2009 (~month 24), a few months wide.
+        auto recession = [](int m) {
+            double d = (m - 24.0) / 8.0;
+            return std::exp(-0.5 * d * d);
+        };
+
+        for (int m = 0; m < COLS; ++m) {
+            double sentiment = 0.45 - 1.55 * recession(m);   // strongly negative in the slump
+            const int nSectors = 16;
+            std::vector<double> pos, neg;
+            for (int k = 0; k < nSectors; ++k) {
+                double change = sentiment + noise(rng);      // monthly % change for this sector
+                if (change >= 0) pos.push_back(change);
+                else             neg.push_back(change);
+            }
+            std::sort(pos.begin(), pos.end());                        // smallest gain nearest the baseline
+            std::sort(neg.begin(), neg.end(), std::greater<double>()); // smallest loss nearest the baseline
+
+            int up = std::min(static_cast<int>(pos.size()), MAXR);
+            int dn = std::min(static_cast<int>(neg.size()), MAXR);
+            for (int i = 0; i < up; ++i) v[(center - 1 - i) * COLS + m] = pos[i]; // sectors rising
+            for (int i = 0; i < dn; ++i) v[(center + 1 + i) * COLS + m] = neg[i]; // sectors falling
+        }
+
+        auto hm = CreateHeatmapChartElement(id, 0, 0, 940, 480);
+        hm->SetData(v, COLS, ROWS);
+
+        // Diverging colour scale resembling the NYT red -> beige -> green -> blue ramp.
+        hm->SetCustomColormap({
+            Color(165, 0, 38),    Color(215, 48, 39),   Color(244, 109, 67),
+            Color(253, 174, 97),  Color(255, 255, 191),                       // middle ~ 0 %
+            Color(217, 239, 139), Color(166, 217, 106),
+            Color(102, 189, 99),  Color(44, 123, 182),
+        });
+        hm->SetValueRange(-1.6, 1.6);
+        hm->SetDiverging(true, 0.0);              // centre 0 % on the middle of the ramp
+        hm->SetCellShape(HeatmapCellShape::Circle);
+        hm->SetCellGap(0.18);
+        hm->SetRenderMode(HeatmapRenderMode::Cells);
+        hm->SetNaNColor(Colors::Transparent);     // empty grid slots disappear
+        hm->SetShowColorBar(true);
+        hm->SetShowRowLabels(false);
+
+        // Year labels along the axis (only at each January).
+        std::vector<std::string> cols(COLS, "");
+        for (int m = 0; m < COLS; m += 12) cols[m] = std::to_string(2007 + m / 12);
+        hm->SetColumnLabels(cols);
+        hm->SetAxisTitles("", "sectors falling   <   0   >   sectors rising");
+        return hm;
+    }
+
 // ===== SMALL HELPERS =====
-    static std::shared_ptr<UltraCanvasLabel> MakeHeading(const std::string& id, const std::string& text,
-                                                         int x, int y, int w, int fontSize = 13) {
-        auto lbl = std::make_shared<UltraCanvasLabel>(id, x, y, w, 22);
+    static std::shared_ptr<UltraCanvasLabel> MakeTabDescription(const std::string& id, const std::string& text) {
+        auto lbl = std::make_shared<UltraCanvasLabel>(id, 0, 0, 0, 44);
         lbl->SetText(text);
-        lbl->SetFontSize(fontSize);
-        lbl->SetFontWeight(FontWeight::Bold);
+        lbl->SetFontSize(11);
+        lbl->SetWrap(TextWrap::WrapWord);
+        lbl->SetTextColor(Color(70, 70, 80, 255));
         return lbl;
     }
 
-// ===== MAIN CREATOR =====
-    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateHeatmapExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("HeatmapContainer", 0, 0, 1200, 820);
+    // Stretch a flex child on the cross axis and give it the requested grow factor.
+    static void AddFlexChild(const std::shared_ptr<UltraCanvasContainer>& parent,
+                             const std::shared_ptr<UltraCanvasUIElement>& child, float grow) {
+        child->layoutItem.SetFlexGrow(grow).SetFlexShrink(grow > 0 ? 1.f : 0.f)
+                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        parent->AddChild(child);
+    }
 
-        // --- Title + description ---
-        auto title = std::make_shared<UltraCanvasLabel>("HmTitle", 20, 10, 1160, 32);
-        title->SetText("Heatmap Charts - Interactive Options & Variants");
-        title->SetFontSize(18);
-        title->SetFontWeight(FontWeight::Bold);
-        title->SetAlignment(TextAlignment::Center);
-        title->SetBackgroundColor(Color(240, 240, 250, 255));
-        container->AddChild(title);
-
-        auto desc = std::make_shared<UltraCanvasLabel>("HmDesc", 20, 48, 1160, 40);
-        desc->SetText("Use the panel on the left to explore every heatmap option live. Below: the spectrogram, "
-                      "calendar and hexbin variants built on the same engine. (Tip: pick the Correlation preset, "
-                      "then enable Diverging + an RdBu colour map + a triangular mask.)");
-        desc->SetFontSize(11);
-        desc->SetWrap(TextWrap::WrapWord);
-        container->AddChild(desc);
-
-        // --- The main interactive heatmap ---
-        container->AddChild(MakeHeading("HmMainTitle", "Interactive Heatmap", 310, 96, 400));
-        auto hm = CreateHeatmapChartElement("HmMain", 310, 120, 560, 360);
-        hm->SetColormap(HeatmapColormap::Viridis);
-        hm->SetShowColorBar(true);
-        ApplyPreset(hm, 0);
-        container->AddChild(hm);
-
-        // =====================================================================
-        // CONTROL PANEL (left)
-        // =====================================================================
-        const int px = 20, pw = 270;
-        int y = 96;
+    // Build the interactive option panel (dropdowns / checkboxes / sliders) into
+    // `panel`, wiring every control to the supplied heatmap.
+    static void BuildHeatmapControlPanel(const std::shared_ptr<UltraCanvasContainer>& panel,
+                                         const std::shared_ptr<UltraCanvasHeatmapChartElement>& hm) {
+        const int px = 14, pw = 272;
         const int ctrlH = 26;
+        int y = 12;
 
-        container->AddChild(MakeHeading("HmCtrlHeading", "Options", px, y, pw, 14));
-        y += 26;
+        auto heading = std::make_shared<UltraCanvasLabel>("HmCtrlHeading", px, y, pw, 22);
+        heading->SetText("Options");
+        heading->SetFontSize(14);
+        heading->SetFontWeight(FontWeight::Bold);
+        panel->AddChild(heading);
+        y += 28;
 
         auto addLabel = [&](const std::string& id, const std::string& text) {
             auto l = std::make_shared<UltraCanvasLabel>(id, px, y, pw, 18);
             l->SetText(text);
             l->SetFontSize(11);
             l->SetFontWeight(FontWeight::Bold);
-            container->AddChild(l);
+            panel->AddChild(l);
             y += 19;
         };
 
@@ -200,7 +258,7 @@ namespace UltraCanvas {
         presetDd->onSelectionChanged = [hm](int index, const DropdownItem&) {
             ApplyPreset(hm, index);
         };
-        container->AddChild(presetDd);
+        panel->AddChild(presetDd);
         y += ctrlH + 8;
 
         // Colour map dropdown
@@ -213,7 +271,7 @@ namespace UltraCanvas {
             if (index >= 0 && index < static_cast<int>(menu.size()))
                 hm->SetColormap(menu[index].second);
         };
-        container->AddChild(cmapDd);
+        panel->AddChild(cmapDd);
         y += ctrlH + 8;
 
         // Render mode dropdown
@@ -226,7 +284,7 @@ namespace UltraCanvas {
                               : index == 2 ? HeatmapRenderMode::Image
                                            : HeatmapRenderMode::Auto);
         };
-        container->AddChild(modeDd);
+        panel->AddChild(modeDd);
         y += ctrlH + 8;
 
         // Cell shape dropdown
@@ -239,7 +297,7 @@ namespace UltraCanvas {
                              : index == 2 ? HeatmapCellShape::Circle
                                           : HeatmapCellShape::Rectangle);
         };
-        container->AddChild(shapeDd);
+        panel->AddChild(shapeDd);
         y += ctrlH + 8;
 
         // Scale dropdown
@@ -250,7 +308,7 @@ namespace UltraCanvas {
         scaleDd->onSelectionChanged = [hm](int index, const DropdownItem&) {
             hm->SetScale(index == 1 ? HeatmapScale::Logarithmic : HeatmapScale::Linear);
         };
-        container->AddChild(scaleDd);
+        panel->AddChild(scaleDd);
         y += ctrlH + 8;
 
         // Triangular mask dropdown
@@ -270,7 +328,7 @@ namespace UltraCanvas {
             }
             hm->SetTriangularMask(m);
         };
-        container->AddChild(maskDd);
+        panel->AddChild(maskDd);
         y += ctrlH + 10;
 
         // Checkboxes
@@ -282,7 +340,7 @@ namespace UltraCanvas {
             cb->onStateChanged = [apply](CheckedState, CheckedState ns) {
                 apply(ns == CheckedState::Checked);
             };
-            container->AddChild(cb);
+            panel->AddChild(cb);
             y += 24;
         };
 
@@ -301,7 +359,7 @@ namespace UltraCanvas {
         levelsSlider->SetStep(1.0);
         levelsSlider->SetValue(0.0);
         levelsSlider->onValueChanged = [hm](double v) { hm->SetColorLevels(static_cast<int>(v)); };
-        container->AddChild(levelsSlider);
+        panel->AddChild(levelsSlider);
         y += ctrlH + 8;
 
         addLabel("HmGapLbl", "Cell gap:");
@@ -310,16 +368,74 @@ namespace UltraCanvas {
         gapSlider->SetStep(0.05);
         gapSlider->SetValue(0.0);
         gapSlider->onValueChanged = [hm](double v) { hm->SetCellGap(v); };
-        container->AddChild(gapSlider);
-        y += ctrlH + 8;
+        panel->AddChild(gapSlider);
+    }
 
-        // =====================================================================
-        // VARIANT SHOWCASES
-        // =====================================================================
+// ===== MAIN CREATOR =====
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateHeatmapExamples() {
+        const int CONTAINER_W = 1180;
+        const int CONTAINER_H = 800;
+        const int PAD = 16;
 
-        // Spectrogram (top right) - synthetic signal (two tones + a chirp)
-        container->AddChild(MakeHeading("HmSpecTitle", "Spectrogram (STFT)", 890, 96, 300));
-        auto spec = CreateSpectrogramElement("HmSpec", 890, 120, 290, 360);
+        // Root flex column: title / description / tabs (tabs grow to fill).
+        auto root = std::make_shared<UltraCanvasContainer>("HeatmapRoot", 0, 0, CONTAINER_W, CONTAINER_H);
+        root->SetBackgroundColor(Color(250, 250, 252, 255));
+        root->SetPadding(PAD);
+        root->layout.SetFlexColumn().SetFlexGap(8)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+
+        auto title = std::make_shared<UltraCanvasLabel>("HmTitle", 0, 0, 0, 30);
+        title->SetText("Heatmap Charts - Interactive Options & Variants");
+        title->SetFontSize(18);
+        title->SetFontWeight(FontWeight::Bold);
+        title->SetTextColor(Color(40, 50, 120, 255));
+        AddFlexChild(root, title, 0);
+
+        auto desc = std::make_shared<UltraCanvasLabel>("HmDesc", 0, 0, 0, 22);
+        desc->SetText("Each variant has its own tab so it can use the full area. "
+                      "Tip: on the Interactive tab pick the Correlation preset, then enable "
+                      "Diverging + an RdBu colour map + a triangular mask.");
+        desc->SetFontSize(11);
+        desc->SetWrap(TextWrap::WrapWord);
+        desc->SetTextColor(Color(90, 90, 100, 255));
+        AddFlexChild(root, desc, 0);
+
+        // ===== Tabbed container (grows to fill the rest of the page) =====
+        auto tabs = std::make_shared<UltraCanvasTabbedContainer>("HeatmapTabs", 0, 0, CONTAINER_W - 2 * PAD, 700);
+        tabs->SetTabStyle(TabStyle::Rounded);
+        tabs->SetTabHeight(30);
+        tabs->SetTabCornerRadius(8.0f);
+
+        const int INNER_W = CONTAINER_W - 2 * PAD - 8;
+        const int INNER_H = 660;
+
+        // ---- Tab 1: Interactive Heatmap (control panel + large heatmap) ----
+        auto tab1 = std::make_shared<UltraCanvasContainer>("HmTabInteractive", 0, 0, INNER_W, INNER_H);
+        tab1->SetBackgroundColor(Color(255, 255, 255, 255));
+        tab1->layout.SetFlexRow().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+
+        auto panel = std::make_shared<UltraCanvasContainer>("HmPanel", 0, 0, 300, INNER_H);
+        panel->SetBackgroundColor(Color(247, 247, 250, 255));
+        panel->size.width = CSSLayout::Dimension::Px(300);
+
+        auto hm = CreateHeatmapChartElement("HmMain", 0, 0, 760, INNER_H);
+        hm->SetColormap(HeatmapColormap::Viridis);
+        hm->SetShowColorBar(true);
+        ApplyPreset(hm, 0);
+
+        BuildHeatmapControlPanel(panel, hm);
+
+        AddFlexChild(tab1, panel, 0);   // fixed-width panel
+        AddFlexChild(tab1, hm, 1);      // heatmap fills the remaining width
+
+        // ---- Tab 2: Spectrogram (STFT) ----
+        auto tab2 = std::make_shared<UltraCanvasContainer>("HmTabSpec", 0, 0, INNER_W, INNER_H);
+        tab2->SetBackgroundColor(Color(255, 255, 255, 255));
+        tab2->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        AddFlexChild(tab2, MakeTabDescription("HmSpecDesc",
+                     "Short-Time Fourier Transform of a synthetic signal (two steady tones + a rising chirp). "
+                     "The same heatmap engine renders each STFT frame as a column."), 0);
+        auto spec = CreateSpectrogramElement("HmSpec", 0, 0, INNER_W, INNER_H - 50);
         {
             const double sr = 8000.0;
             const int N = 24000; // 3 s
@@ -335,11 +451,16 @@ namespace UltraCanvas {
             spec->SetFFTSize(512);
             spec->SetHopSize(128);
         }
-        container->AddChild(spec);
+        AddFlexChild(tab2, spec, 1);
 
-        // Calendar heatmap (bottom, wide) - a year of synthetic activity
-        container->AddChild(MakeHeading("HmCalTitle", "Calendar heatmap (contribution graph)", 310, 496, 600));
-        auto cal = CreateCalendarHeatmapElement("HmCal", 310, 520, 560, 200);
+        // ---- Tab 3: Calendar Heatmap ----
+        auto tab3 = std::make_shared<UltraCanvasContainer>("HmTabCal", 0, 0, INNER_W, INNER_H);
+        tab3->SetBackgroundColor(Color(255, 255, 255, 255));
+        tab3->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        AddFlexChild(tab3, MakeTabDescription("HmCalDesc",
+                     "Calendar (contribution-graph) heatmap: a full year of synthetic daily activity, "
+                     "one cell per day arranged by weekday and week."), 0);
+        auto cal = CreateCalendarHeatmapElement("HmCal", 0, 0, INNER_W, INNER_H - 50);
         {
             std::mt19937 rng(7);
             std::uniform_real_distribution<double> uni(0.0, 1.0);
@@ -350,11 +471,16 @@ namespace UltraCanvas {
             }
             cal->SetDailyValues(2023, 1, 1, daily);
         }
-        container->AddChild(cal);
+        AddFlexChild(tab3, cal, 1);
 
-        // Hexbin (bottom right) - binned clustered points
-        container->AddChild(MakeHeading("HmHexTitle", "Hexbin density", 890, 496, 290));
-        auto hex = CreateHexbinChartElement("HmHex", 890, 520, 290, 200);
+        // ---- Tab 4: Hexbin Density ----
+        auto tab4 = std::make_shared<UltraCanvasContainer>("HmTabHex", 0, 0, INNER_W, INNER_H);
+        tab4->SetBackgroundColor(Color(255, 255, 255, 255));
+        tab4->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        AddFlexChild(tab4, MakeTabDescription("HmHexDesc",
+                     "Hexbin density: 6000 clustered points binned into a hexagonal lattice, "
+                     "each bin coloured by point count."), 0);
+        auto hex = CreateHexbinChartElement("HmHex", 0, 0, INNER_W, INNER_H - 50);
         {
             std::mt19937 rng(99);
             std::normal_distribution<double> g1x(35, 12), g1y(40, 10);
@@ -366,9 +492,30 @@ namespace UltraCanvas {
             hex->SetBinnedData(pts, 26, 18, 0, 100, 0, 100);
             hex->SetColormap(HeatmapColormap::Turbo);
         }
-        container->AddChild(hex);
+        AddFlexChild(tab4, hex, 1);
 
-        return container;
+        // ---- Tab 5: "Job Gains & Losses" recreation ----
+        auto tab5 = std::make_shared<UltraCanvasContainer>("HmTabJobs", 0, 0, INNER_W, INNER_H);
+        tab5->SetBackgroundColor(Color(255, 255, 255, 255));
+        tab5->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        AddFlexChild(tab5, MakeTabDescription("HmJobsDesc",
+                     "Winners & Losers (NYT-style): proof that a dot-density \"sectors rising / falling\" "
+                     "chart is just a heatmap. One column per month (2007-2015); each sector is a circular "
+                     "cell stacked above/below the zero baseline, coloured by its % change through a diverging "
+                     "red -> beige -> green -> blue ramp. Empty grid slots are transparent (NaN), so the "
+                     "columns take their natural irregular heights, with the 2008-09 slump showing as a red mass below zero."), 0);
+        auto jobs = BuildJobGainsLosses("HmJobs");
+        AddFlexChild(tab5, jobs, 1);
+
+        tabs->AddTab("Interactive Heatmap", tab1);
+        tabs->AddTab("Spectrogram (STFT)", tab2);
+        tabs->AddTab("Calendar Heatmap", tab3);
+        tabs->AddTab("Hexbin Density", tab4);
+        tabs->AddTab("Job Gains & Losses", tab5);
+        tabs->SetActiveTab(0);
+
+        AddFlexChild(root, tabs, 1);
+        return root;
     }
 
 } // namespace UltraCanvas
