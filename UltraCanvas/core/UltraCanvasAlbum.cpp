@@ -1,8 +1,11 @@
 // core/UltraCanvasAlbum.cpp
 // Photo / video / music album widget with selectable layout designs, per-item
 // crop / zoom / stretch fitting, action icons and visitor / edit / admin modes.
-// Version: 1.3.0
-// Last Modified: 2026-06-21
+// Version: 1.4.0
+// Last Modified: 2026-06-25
+// V1.4.0: The self-rendered scrollbar reacts to the mouse — drag the thumb or
+//   click the track to scroll (DrawScrollbar and the event handler now share
+//   ScrollbarGeometry so a click hits exactly what is drawn).
 // V1.3.0: AlbumItem::linkIconPath paints an icon before the subtitle link text
 //   (e.g. a YouTube badge), included in the link's clickable hit area.
 // V1.2.0: Action-icon background shape is configurable (AlbumActionIconBackground
@@ -557,6 +560,51 @@ namespace UltraCanvas {
         scrollOffsetX = clampi(scrollOffsetX, 0, MaxScrollX());
     }
 
+    UltraCanvasAlbum::ScrollbarGeom UltraCanvasAlbum::ScrollbarGeometry() const {
+        ScrollbarGeom g;
+        auto b = GetLocalBounds();
+        constexpr int kBarThickness = 6;
+        constexpr int kMinThumb     = 30;
+        if (IsHorizontal()) {
+            int maxX = MaxScrollX();
+            if (maxX <= 0) return g;
+            int y = static_cast<int>(b.y + b.height) - kBarThickness - 2;
+            double frac = static_cast<double>(b.width) / std::max(1, contentWidth);
+            int thumbW = std::max(kMinThumb, static_cast<int>(b.width * frac));
+            int travel = std::max(0, static_cast<int>(b.width) - thumbW);
+            int tx = static_cast<int>(b.x) + (maxX > 0 ? travel * scrollOffsetX / maxX : 0);
+            g.active = true; g.horizontal = true; g.travel = travel; g.maxScroll = maxX;
+            g.track = Rect2Di(static_cast<int>(b.x), y, static_cast<int>(b.width), kBarThickness);
+            g.thumb = Rect2Di(tx, y, thumbW, kBarThickness);
+        } else {
+            int maxY = MaxScrollY();
+            if (maxY <= 0) return g;
+            int x = static_cast<int>(b.x + b.width) - kBarThickness - 2;
+            double frac = static_cast<double>(b.height) / std::max(1, contentHeight);
+            int thumbH = std::max(kMinThumb, static_cast<int>(b.height * frac));
+            int travel = std::max(0, static_cast<int>(b.height) - thumbH);
+            int ty = static_cast<int>(b.y) + (maxY > 0 ? travel * scrollOffsetY / maxY : 0);
+            g.active = true; g.horizontal = false; g.travel = travel; g.maxScroll = maxY;
+            g.track = Rect2Di(x, static_cast<int>(b.y), kBarThickness, static_cast<int>(b.height));
+            g.thumb = Rect2Di(x, ty, kBarThickness, thumbH);
+        }
+        return g;
+    }
+
+    void UltraCanvasAlbum::ScrollThumbTo(int thumbLeadPx) {
+        ScrollbarGeom g = ScrollbarGeometry();
+        if (!g.active || g.travel <= 0) return;
+        auto b = GetLocalBounds();
+        if (g.horizontal) {
+            int rel = clampi(thumbLeadPx - static_cast<int>(b.x), 0, g.travel);
+            scrollOffsetX = rel * g.maxScroll / g.travel;
+        } else {
+            int rel = clampi(thumbLeadPx - static_cast<int>(b.y), 0, g.travel);
+            scrollOffsetY = rel * g.maxScroll / g.travel;
+        }
+        ClampScroll();
+    }
+
     // ===== RENDER =====
     void UltraCanvasAlbum::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         // Container background + borders.
@@ -1020,36 +1068,22 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasAlbum::DrawScrollbar(IRenderContext* ctx) {
-        auto b = GetLocalBounds();
-        if (IsHorizontal()) {
-            int maxX = MaxScrollX();
-            if (maxX <= 0) return;
-            int trackH = 6;
-            int y = static_cast<int>(b.y + b.height) - trackH - 2;
-            double frac = static_cast<double>(b.width) / std::max(1, contentWidth);
-            int thumbW = std::max(30, static_cast<int>(b.width * frac));
-            int travel = static_cast<int>(b.width) - thumbW;
-            int tx = static_cast<int>(b.x) +
-                     (maxX > 0 ? travel * scrollOffsetX / maxX : 0);
+        ScrollbarGeom g = ScrollbarGeometry();
+        if (!g.active) return;
+        // The thumb brightens while it is being dragged so the grab is visible.
+        Color thumbColor = draggingScrollbar ? Color(70, 70, 78, 220)
+                                             : Color(90, 90, 96, 180);
+        if (g.horizontal) {
             ctx->SetFillPaint(Color(0, 0, 0, 30));
-            ctx->FillRoundedRectangle(Rect2Dd(b.x + 2, y, b.width - 4, trackH), 3);
-            ctx->SetFillPaint(Color(90, 90, 96, 180));
-            ctx->FillRoundedRectangle(Rect2Dd(tx, y, thumbW, trackH), 3);
+            ctx->FillRoundedRectangle(Rect2Dd(g.track.x + 2, g.track.y,
+                                              g.track.width - 4, g.track.height), 3);
         } else {
-            int maxY = MaxScrollY();
-            if (maxY <= 0) return;
-            int trackW = 6;
-            int x = static_cast<int>(b.x + b.width) - trackW - 2;
-            double frac = static_cast<double>(b.height) / std::max(1, contentHeight);
-            int thumbH = std::max(30, static_cast<int>(b.height * frac));
-            int travel = static_cast<int>(b.height) - thumbH;
-            int ty = static_cast<int>(b.y) +
-                     (maxY > 0 ? travel * scrollOffsetY / maxY : 0);
             ctx->SetFillPaint(Color(0, 0, 0, 30));
-            ctx->FillRoundedRectangle(Rect2Dd(x, b.y + 2, trackW, b.height - 4), 3);
-            ctx->SetFillPaint(Color(90, 90, 96, 180));
-            ctx->FillRoundedRectangle(Rect2Dd(x, ty, trackW, thumbH), 3);
+            ctx->FillRoundedRectangle(Rect2Dd(g.track.x, g.track.y + 2,
+                                              g.track.width, g.track.height - 4), 3);
         }
+        ctx->SetFillPaint(thumbColor);
+        ctx->FillRoundedRectangle(Rect2Dd(g.thumb), 3);
     }
 
     void UltraCanvasAlbum::DrawDragGhost(IRenderContext* ctx) {
@@ -1171,6 +1205,7 @@ namespace UltraCanvas {
                     UltraCanvasTooltipManager::HideTooltip();
                 }
                 dragArmed = false;
+                draggingScrollbar = false;
                 return true;
             }
             case UCEventType::MouseWheel: {
@@ -1188,6 +1223,15 @@ namespace UltraCanvas {
             case UCEventType::MouseMove: {
                 Point2Di local(event.pointer.x, event.pointer.y);
                 dragCurrent = local;
+
+                // Dragging the scrollbar thumb tracks the cursor.
+                if (draggingScrollbar) {
+                    ScrollThumbTo((IsHorizontal() ? local.x : local.y)
+                                  - scrollbarGrabOffset);
+                    RequestRedraw();
+                    return true;
+                }
+
                 if (dragArmed && !dragging) {
                     int dx = local.x - dragStart.x;
                     int dy = local.y - dragStart.y;
@@ -1243,6 +1287,33 @@ namespace UltraCanvas {
                 }
                 if (event.button != UCMouseButton::Left) return false;
 
+                // Scrollbar interaction takes precedence over the tiles beneath it.
+                {
+                    ScrollbarGeom g = ScrollbarGeometry();
+                    if (g.active) {
+                        // Expand the thin visual track into a comfortable target.
+                        Rect2Di hit = g.track;
+                        if (g.horizontal) { hit.y -= 6; hit.height += 8; }
+                        else              { hit.x -= 6; hit.width  += 8; }
+                        if (hit.Contains(local)) {
+                            if (g.thumb.Contains(local)) {
+                                scrollbarGrabOffset = g.horizontal ? (local.x - g.thumb.x)
+                                                                   : (local.y - g.thumb.y);
+                            } else {
+                                // Clicked the track: centre the thumb on the
+                                // cursor, then keep dragging from there.
+                                scrollbarGrabOffset =
+                                        (g.horizontal ? g.thumb.width : g.thumb.height) / 2;
+                                ScrollThumbTo((g.horizontal ? local.x : local.y)
+                                              - scrollbarGrabOffset);
+                            }
+                            draggingScrollbar = true;
+                            RequestRedraw();
+                            return true;
+                        }
+                    }
+                }
+
                 // Action buttons take precedence over the tile.
                 size_t hitItem = 0;
                 bool isMenu = false;
@@ -1273,6 +1344,11 @@ namespace UltraCanvas {
             }
             case UCEventType::MouseUp: {
                 if (event.button != UCMouseButton::Left) return false;
+                if (draggingScrollbar) {
+                    draggingScrollbar = false;
+                    RequestRedraw();
+                    return true;
+                }
                 if (dragging) { FinishDrag(); return true; }
 
                 if (dragItem >= 0) {
