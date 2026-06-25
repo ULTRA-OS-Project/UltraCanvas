@@ -2,8 +2,13 @@
 // Demonstration of UltraCanvasAlbum: layout designs, image-fit modes, action-icon
 // display options and visitor / user-edit / admin modes for a mixed photo / video
 // / music album.
-// Version: 2.9.0
+// Version: 2.10.0
 // Last Modified: 2026-06-25
+// V2.10.0: Tile 5 is now a real bundled audio track
+//   (media/audios/the_mountain-cinematic-489998.mp3) with a Pixabay artist
+//   credit on its caption link; the required Pixabay attribution is kept as a
+//   "Media credits" comment by the seed table. The seed table gained an
+//   isAudioFile flag (mediaPath under media/audios/, music-placeholder cover).
 // V2.9.0: Refreshed the sample media — tile 3 is now a real bundled clip
 //   (media/videos/Video A more competition.mp4), tile 6 is the YouTube clip
 //   (moved inline from the old trailing entry), and tiles 7 / 11 use new images.
@@ -361,7 +366,13 @@ namespace UltraCanvas {
             bool isVideoFile;      // true: `file` is a real clip under media/videos/
                                    // (its mediaPath plays, and a poster frame is
                                    // extracted for the tile cover)
+            bool isAudioFile;      // true: `file` is a real track under media/audios/
+                                   // (its mediaPath is the audio; the tile shows the
+                                   // music placeholder as its cover)
         };
+        // Media credits (Pixabay Content License — attribution kept here):
+        //   Tile 5 audio — media/audios/the_mountain-cinematic-489998.mp3:
+        //   Music by <a href="https://pixabay.com/users/the_mountain-3616498/?utm_source=link-attribution&utm_medium=referral&utm_campaign=music&utm_content=489998">Dmitrii Kolesnikov</a> from <a href="https://pixabay.com/music//?utm_source=link-attribution&utm_medium=referral&utm_campaign=music&utm_content=489998">Pixabay</a>
         // Photo tiles carry a source domain on the second row, shown as a link
         // (matching a search-results / gallery "image · source" layout); video /
         // music tiles keep a plain metadata subtitle with no link.
@@ -379,7 +390,11 @@ namespace UltraCanvas {
             { "ship.jpg",        "Harbour",          "harbourlife.example", AlbumMediaType::Photo, false,
               "Boats resting in the harbour during the golden hour, the warm light "
               "reflecting off the still water.", "https://harbourlife.example/golden-hour" },
-            { "sample_hq.jpg",   "Summer Mix",       "Music · 42 tracks",   AlbumMediaType::Music, false, "", "" },
+            { "the_mountain-cinematic-489998.mp3", "The Mountain", "Music by Dmitrii Kolesnikov · Pixabay",
+              AlbumMediaType::Music, false,
+              "Cinematic track \"The Mountain\". Music by Dmitrii Kolesnikov from Pixabay.",
+              "https://pixabay.com/users/the_mountain-3616498/?utm_source=link-attribution&utm_medium=referral&utm_campaign=music&utm_content=489998",
+              "", false, true },
             { "Lola Lexy - No kings.mp4", "Lola Lexy - No kings", "youtube.com", AlbumMediaType::Video, false,
               "Linked from YouTube.", "https://www.youtube.com/watch?v=Tl15Os47lG0", "youtube.svg", true },
             { "freepicOIP-3521821688.jpg", "Game Night",  "boardgames.example",  AlbumMediaType::Photo, false,
@@ -423,6 +438,8 @@ namespace UltraCanvas {
                 }
                 if (havePoster) it.thumbnailPath = posterPath;
 #endif
+            } else if (s.isAudioFile) {
+                it.mediaPath = NormalizePath(GetResourcesDir() + "media/audios/" + s.file);
             } else {
                 it.mediaPath = mediaRoot + s.file;
             }
