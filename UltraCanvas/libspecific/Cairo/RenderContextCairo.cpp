@@ -519,40 +519,42 @@ namespace UltraCanvas {
         bottomRightRadius *= scale;
         bottomLeftRadius *= scale;
 
-        // Create the rounded rectangle path
+        // Create the rounded rectangle path. Trace it clockwise as
+        // edge-then-corner so any mix of zero / non-zero radii stays a closed
+        // rectangle: a zero radius simply collapses its arc to the corner point
+        // (the surrounding line_to calls still draw the full edges). The previous
+        // form let a zero-radius corner draw the *next* edge instead of its own,
+        // which cut a diagonal across the clip whenever only some corners were
+        // rounded (e.g. an image rounded on top but square under a caption strip).
         cairo_new_path(cairo);
 
-        // Top left corner
-        if (topLeftRadius > 0) {
-            cairo_arc(cairo, x + topLeftRadius, y + topLeftRadius,
-                      topLeftRadius, M_PI, 3 * M_PI / 2);
-        } else {
-            cairo_move_to(cairo, x, y);
-            cairo_line_to(cairo, x + width - topRightRadius, y);
-        }
-
-        // Top right corner
+        // Start just after the top-left corner and run along the top edge.
+        cairo_move_to(cairo, x + topLeftRadius, y);
+        cairo_line_to(cairo, x + width - topRightRadius, y);
         if (topRightRadius > 0) {
             cairo_arc(cairo, x + width - topRightRadius, y + topRightRadius,
-                      topRightRadius, 3 * M_PI / 2, 0);
-        } else {
-            cairo_line_to(cairo, x + width, y + height - bottomRightRadius);
+                      topRightRadius, -M_PI / 2, 0);
         }
 
-        // Bottom right corner
+        // Right edge -> bottom-right corner.
+        cairo_line_to(cairo, x + width, y + height - bottomRightRadius);
         if (bottomRightRadius > 0) {
             cairo_arc(cairo, x + width - bottomRightRadius, y + height - bottomRightRadius,
                       bottomRightRadius, 0, M_PI / 2);
-        } else {
-            cairo_line_to(cairo, x + bottomLeftRadius, y + height);
         }
 
-        // Bottom left corner
+        // Bottom edge -> bottom-left corner.
+        cairo_line_to(cairo, x + bottomLeftRadius, y + height);
         if (bottomLeftRadius > 0) {
             cairo_arc(cairo, x + bottomLeftRadius, y + height - bottomLeftRadius,
                       bottomLeftRadius, M_PI / 2, M_PI);
-        } else {
-            cairo_line_to(cairo, x, y + topLeftRadius);
+        }
+
+        // Left edge -> back up into the top-left corner.
+        cairo_line_to(cairo, x, y + topLeftRadius);
+        if (topLeftRadius > 0) {
+            cairo_arc(cairo, x + topLeftRadius, y + topLeftRadius,
+                      topLeftRadius, M_PI, 3 * M_PI / 2);
         }
 
         cairo_close_path(cairo);
@@ -1225,40 +1227,41 @@ namespace UltraCanvas {
 
         PushState();
 
-        // Create the rounded rectangle path
+        // Create the rounded rectangle path. Trace it clockwise as
+        // edge-then-corner so any mix of zero / non-zero radii stays a closed
+        // rectangle (a zero radius collapses its arc to the corner point while
+        // the line_to calls still draw the full edges). The earlier form let a
+        // zero-radius corner draw the *next* edge, cutting a diagonal across the
+        // fill whenever only some corners were rounded.
         ClearPath();
 
-        // Top left corner
-        if (topLeftRadius > 0) {
-            Arc(x + topLeftRadius, y + topLeftRadius,
-                      topLeftRadius, M_PI, 3 * M_PI / 2);
-        } else {
-            MoveTo(x, y);
-            LineTo(x + width - topRightRadius, y);
-        }
-
-        // Top right corner
+        // Start just after the top-left corner and run along the top edge.
+        MoveTo(x + topLeftRadius, y);
+        LineTo(x + width - topRightRadius, y);
         if (topRightRadius > 0) {
             Arc(x + width - topRightRadius, y + topRightRadius,
-                      topRightRadius, 3 * M_PI / 2, 0);
-        } else {
-            LineTo(x + width, y + height - bottomRightRadius);
+                      topRightRadius, -M_PI / 2, 0);
         }
 
-        // Bottom right corner
+        // Right edge -> bottom-right corner.
+        LineTo(x + width, y + height - bottomRightRadius);
         if (bottomRightRadius > 0) {
             Arc(x + width - bottomRightRadius, y + height - bottomRightRadius,
                       bottomRightRadius, 0, M_PI / 2);
-        } else {
-            LineTo(x + bottomLeftRadius, y + height);
         }
 
-        // Bottom left corner
+        // Bottom edge -> bottom-left corner.
+        LineTo(x + bottomLeftRadius, y + height);
         if (bottomLeftRadius > 0) {
             Arc(x + bottomLeftRadius, y + height - bottomLeftRadius,
                       bottomLeftRadius, M_PI / 2, M_PI);
-        } else {
-            LineTo(x, y + topLeftRadius);
+        }
+
+        // Left edge -> back up into the top-left corner.
+        LineTo(x, y + topLeftRadius);
+        if (topLeftRadius > 0) {
+            Arc(x + topLeftRadius, y + topLeftRadius,
+                      topLeftRadius, M_PI, 3 * M_PI / 2);
         }
 
         ClosePath();

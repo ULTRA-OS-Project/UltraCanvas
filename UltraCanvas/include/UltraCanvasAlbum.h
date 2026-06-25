@@ -2,8 +2,11 @@
 // Photo / video / music album widget: a self-rendered media grid with selectable
 // layout designs, per-item crop / zoom / stretch fitting, action icons and
 // visitor / user-edit / admin modes. A companion to UltraCanvasSlideshow.
-// Version: 1.3.0
-// Last Modified: 2026-06-21
+// Version: 1.4.0
+// Last Modified: 2026-06-25
+// V1.4.0: The self-rendered scrollbar is now interactive — its thumb can be
+//   dragged and a click on the track jumps the thumb to the cursor (previously
+//   only the mouse wheel scrolled the album).
 // V1.3.0: AlbumItem::linkIconPath draws an icon (e.g. a YouTube badge) before
 //   the subtitle link text.
 // V1.2.0: AlbumActionIconBackground (round / square / rounded-square) plus
@@ -355,6 +358,12 @@ namespace UltraCanvas {
         int  scrollOffsetX = 0;
         int  scrollOffsetY = 0;
 
+        // Scrollbar drag state: while the thumb is grabbed, `scrollbarGrabOffset`
+        // is the distance from the cursor to the thumb's leading edge so the thumb
+        // tracks the cursor without jumping.
+        bool draggingScrollbar = false;
+        int  scrollbarGrabOffset = 0;
+
         // Hover / interaction
         int  hoveredItem = -1;
 
@@ -421,6 +430,21 @@ namespace UltraCanvas {
         int    MaxScrollY() const;
         int    MaxScrollX() const;
         void   ClampScroll();
+
+        // Scrollbar geometry (vertical for the scrolling layouts, horizontal for
+        // the filmstrip), shared by the renderer and the event handler so a click
+        // hits exactly what is drawn. `active` is false when nothing overflows.
+        struct ScrollbarGeom {
+            bool    active = false;
+            bool    horizontal = false;
+            Rect2Di track;   // clickable track region
+            Rect2Di thumb;   // draggable thumb
+            int     travel = 0;   // pixels the thumb can move
+            int     maxScroll = 0;
+        };
+        ScrollbarGeom ScrollbarGeometry() const;
+        // Map a thumb leading-edge pixel back to a scroll offset and apply it.
+        void   ScrollThumbTo(int thumbLeadPx);
 
         // ===== DRAWING =====
         void DrawTile(IRenderContext* ctx, const TileLayout& tile, bool hovered);
