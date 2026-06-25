@@ -14,6 +14,7 @@ namespace UltraCanvas {
     UltraCanvasAutoComplete::UltraCanvasAutoComplete(const std::string& identifier,
                                                      float x, float y, float w, float h)
         : UltraCanvasTextInput(identifier, x, y, w, h) {
+        listModel = std::make_shared<UltraCanvasSimpleListModel>();
         SetShowValidationState(false);
         CreatePopupListView();
         WireListViewCallbacks();
@@ -256,7 +257,7 @@ namespace UltraCanvas {
     void UltraCanvasAutoComplete::CreatePopupListView() {
         popupListView = std::make_shared<UltraCanvasListView>(
             GetIdentifier() + "_popup_lv", 0, 0, 200, 100);
-        popupListView->SetModel(&listModel);
+        popupListView->SetModel(listModel);
         popupListView->SetShowHeader(false);
 
         auto delegate = std::make_shared<UltraCanvasDefaultListDelegate>();
@@ -318,7 +319,7 @@ namespace UltraCanvas {
         for (const auto& acItem : filteredItems) {
             items.emplace_back(acItem.text);
         }
-        listModel.SetItems(items);
+        listModel->SetItems(items);
 
         CalculateAndSetPopupSize();
     }

@@ -67,7 +67,7 @@ namespace UltraCanvas {
 
     private:
         std::shared_ptr<UltraCanvasListView> popupListView;
-        UltraCanvasSimpleListModel listModel;
+        std::shared_ptr<UltraCanvasSimpleListModel> listModel;
 
         std::vector<AutoCompleteItem> allItems;         // Full static list
         std::vector<AutoCompleteItem> filteredItems;    // Currently displayed (post-filter)

@@ -65,7 +65,7 @@ namespace UltraCanvas {
         virtual ~UltraCanvasListView() = default;
 
         // === Model / Delegate / Selection wiring ===
-        void SetModel(IListModel* model);
+        void SetModel(std::shared_ptr<IListModel> model);
         IListModel* GetModel() const;
 
         void SetDelegate(std::shared_ptr<IItemDelegate> delegate);
@@ -102,7 +102,7 @@ namespace UltraCanvas {
 
     private:
         // Model / Delegate / Selection
-        IListModel* model = nullptr;
+        std::shared_ptr<IListModel> model;
         std::shared_ptr<IItemDelegate> delegate;
         std::shared_ptr<IListSelection> selection;
 

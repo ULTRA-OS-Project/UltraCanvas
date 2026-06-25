@@ -1,3 +1,7 @@
+#### 2026-06-24 *0.2.28*
+- Fixed crash in the UltraCanvasDependenciesExamples demo screen
+- In the UltraCanvasListView change model pointer to shared_ptr instead of raw pointer, prevent possible crashes
+
 #### 2026-06-23 *0.2.27*
 - Fixes Video Player issues (freeze video/audio mainly in Linux)
 - Fix Video Player layout issues, wrong aligned text, use icons instead of manual drawing

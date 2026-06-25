@@ -159,7 +159,7 @@ namespace UltraCanvas {
 
         // ListView popup components
         std::shared_ptr<UltraCanvasListView> popupListView;
-        DropdownListModel dropdownModel;
+        std::shared_ptr<DropdownListModel> dropdownModel;
         std::shared_ptr<DropdownItemDelegate> dropdownDelegate;
 
     public:

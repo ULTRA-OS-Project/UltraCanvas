@@ -288,7 +288,7 @@ simpleModel->AddItem(ListItem("Cherry", "", "Small red stone fruit"));
 simpleModel->AddItem(ListItem("Date",   "", "Sweet desert fruit"));
 
 auto simpleList = std::make_shared<UltraCanvasListView>("SimpleListView", 20, 125, 460, 225);
-simpleList->SetModel(simpleModel.get());
+simpleList->SetModel(simpleModel);
 simpleList->SetRowHeight(22);
 
 simpleList->onItemClicked = [statusLabel, simpleModel](int row) {
@@ -319,7 +319,7 @@ multiModel->AddItem(MultiColumnListItem({"README.md",  "Markdown",    "3.8 KB", 
 multiModel->AddItem(MultiColumnListItem({"Makefile",   "Build Script","0.9 KB",  "2025-02-28"}));
 
 auto multiList = std::make_shared<UltraCanvasListView>("MultiColumnListView", 500, 125, 480, 225);
-multiList->SetModel(multiModel.get());
+multiList->SetModel(multiMode);
 
 ListViewStyle multiStyle;
 multiStyle.headerFontSize = 10;
@@ -359,7 +359,7 @@ styledModel->AddItem("Forest Green");
 styledModel->AddItem("Sky Blue");
 
 auto styledList = std::make_shared<UltraCanvasListView>("StyledListView", 20, 420, 460, 160);
-styledList->SetModel(styledModel.get());
+styledList->SetModel(styledModel);
 
 ListViewStyle styledStyle;
 styledStyle.backgroundColor          = Color(252, 252, 255);
@@ -402,7 +402,7 @@ iconModel->AddItem(ListItem("JavaScript", iconsDir + "javascript.png", "Web scri
 iconModel->AddItem(ListItem("Rust",       iconsDir + "rust.png",       "Memory-safe systems language"));
 
 auto iconList = std::make_shared<UltraCanvasListView>("IconListView", 500, 420, 480, 160);
-iconList->SetModel(iconModel.get());
+iconList->SetModel(iconModel);
 iconList->SetRowHeight(28);
 
 auto iconDelegate = std::make_shared<UltraCanvasDefaultListDelegate>();

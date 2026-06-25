@@ -159,6 +159,7 @@ namespace UltraCanvas {
                                              float w, float h)
             : UltraCanvasUIElement(identifier, x, y, w, h) {
         style.scrollbarStyle = GetDefaultScrollbarStyleOr(ScrollbarStyle::DropDown());
+        dropdownModel = std::make_shared<DropdownListModel>();
         CreatePopupListView();
         WireListViewCallbacks();
     }
@@ -167,22 +168,22 @@ namespace UltraCanvas {
 
     void UltraCanvasDropdown::AddItem(const std::string &text) {
         items.emplace_back(text);
-        dropdownModel.DataChanged();
+        dropdownModel->DataChanged();
     }
 
     void UltraCanvasDropdown::AddItem(const std::string &text, const std::string &value) {
         items.emplace_back(text, value);
-        dropdownModel.DataChanged();
+        dropdownModel->DataChanged();
     }
 
     void UltraCanvasDropdown::AddItem(const std::string &text, const std::string &value, const std::string &iconPath) {
         items.emplace_back(text, value, iconPath);
-        dropdownModel.DataChanged();
+        dropdownModel->DataChanged();
     }
 
     void UltraCanvasDropdown::AddItem(const DropdownItem &item) {
         items.push_back(item);
-        dropdownModel.DataChanged();
+        dropdownModel->DataChanged();
     }
 
     void UltraCanvasDropdown::AddSeparator() {
@@ -190,14 +191,14 @@ namespace UltraCanvas {
         separator.separator = true;
         separator.enabled = false;
         items.push_back(separator);
-        dropdownModel.DataChanged();
+        dropdownModel->DataChanged();
     }
 
     void UltraCanvasDropdown::ClearItems() {
         items.clear();
         selectedIndex = -1;
         selectedIndices.clear();
-        dropdownModel.DataChanged();
+        dropdownModel->DataChanged();
     }
 
     void UltraCanvasDropdown::RemoveItem(int index) {
@@ -224,7 +225,7 @@ namespace UltraCanvas {
                 selectedIndices = newSelectedIndices;
             }
 
-            dropdownModel.DataChanged();
+            dropdownModel->DataChanged();
         }
     }
 
@@ -293,7 +294,7 @@ namespace UltraCanvas {
 
             // Update delegate and selection model
             dropdownDelegate->SetMultiSelectEnabled(enabled);
-            dropdownModel.DataChanged();
+            dropdownModel->DataChanged();
             RequestRedraw();
         }
     }
@@ -322,7 +323,7 @@ namespace UltraCanvas {
         }
 
         if (changed) {
-            dropdownModel.DataChanged();
+            dropdownModel->DataChanged();
 
             if (onMultiSelectionChanged) {
                 std::vector<int> indices(selectedIndices.begin(), selectedIndices.end());
@@ -355,7 +356,7 @@ namespace UltraCanvas {
             }
         }
 
-        dropdownModel.DataChanged();
+        dropdownModel->DataChanged();
 
         if (onMultiSelectionChanged) {
             std::vector<int> indices(selectedIndices.begin(), selectedIndices.end());
@@ -375,7 +376,7 @@ namespace UltraCanvas {
             item.selected = false;
         }
 
-        dropdownModel.DataChanged();
+        dropdownModel->DataChanged();
 
         if (onMultiSelectionChanged) {
             std::vector<int> empty;
@@ -417,7 +418,7 @@ namespace UltraCanvas {
     void UltraCanvasDropdown::OpenDropdown() {
         if (!isPopup && !items.empty() && window) {
             dropdownOpen = true;
-            dropdownModel.DataChanged();
+            dropdownModel->DataChanged();
             CalculateAndSetPopupSize();
 
             Point2Di pos = CalculatePopupPosition();
@@ -552,8 +553,8 @@ namespace UltraCanvas {
         popupListView = std::make_shared<UltraCanvasListView>(
             GetIdentifier() + "_popup_lv", 0, 0, 200, 100);
 
-        dropdownModel.SetItems(&items);
-        popupListView->SetModel(&dropdownModel);
+        dropdownModel->SetItems(&items);
+        popupListView->SetModel(dropdownModel);
         popupListView->SetShowHeader(false);
 
         dropdownDelegate = std::make_shared<DropdownItemDelegate>();

@@ -32,7 +32,7 @@ namespace UltraCanvas {
 
     // ===== MODEL / DELEGATE / SELECTION WIRING =====
 
-    void UltraCanvasListView::SetModel(IListModel* newModel) {
+    void UltraCanvasListView::SetModel(std::shared_ptr<IListModel> newModel) {
         DisconnectModelSignals();
         model = newModel;
         if (model) {
@@ -47,7 +47,7 @@ namespace UltraCanvas {
     }
 
     IListModel* UltraCanvasListView::GetModel() const {
-        return model;
+        return model.get();
     }
 
     void UltraCanvasListView::SetDelegate(std::shared_ptr<IItemDelegate> newDelegate) {
@@ -355,7 +355,7 @@ namespace UltraCanvas {
                 opt.columnX = viewport.x;
                 opt.columnWidth = viewport.width;
 
-                delegate->RenderItem(ctx, model, row, 0, opt);
+                delegate->RenderItem(ctx, model.get(), row, 0, opt);
             } else {
                 // Multi-column mode: iterate columns
                 int colX = viewport.x;
@@ -377,7 +377,7 @@ namespace UltraCanvas {
 
                     ctx->PushState();
                     ctx->ClipRect({colX, rowY, colDef.width, viewStyle.rowHeight});
-                    delegate->RenderItem(ctx, model, row, col, opt);
+                    delegate->RenderItem(ctx, model.get(), row, col, opt);
                     ctx->PopState();
 
                     // Grid line between columns

@@ -126,7 +126,7 @@ namespace UltraCanvas {
     };
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDependenciesExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("DependenciesExamples", 0, 0, 1000, 900);
+        auto container = std::make_shared<UltraCanvasContainer>("DependenciesExamples");
 
         // Title
         auto title = std::make_shared<UltraCanvasLabel>("DepTitle", 20, 10, 700, 35);
@@ -157,9 +157,8 @@ namespace UltraCanvas {
         auto header = [&](const std::string& moduleName) {
             model->AddItem(MultiColumnListItem({moduleName, "", "", ""}));
         };
-        auto dep = [&](const std::string& purpose, const std::string& linux,
-                       const std::string& mac, const std::string& win) {
-            model->AddItem(MultiColumnListItem({purpose, linux, mac, win}));
+        auto dep = [&](const std::string& purpose, const std::string& lnux, const std::string& mac, const std::string& win) {
+            model->AddItem(MultiColumnListItem({purpose, lnux, mac, win}));
         };
 
         // ===== UltraCanvas (core) =====
@@ -235,8 +234,8 @@ namespace UltraCanvas {
         const int maxLines = 4;
         const int rowHeight = lineHeight * maxLines + 8;   // 72 px
 
-        auto listView = std::make_shared<UltraCanvasListView>("DependenciesListView", 20, 80, 920, 790);
-        listView->SetModel(model.get());
+        auto listView = std::make_shared<UltraCanvasListView>("DependenciesListView", 20, 80, 920, 730);
+        listView->SetModel(model);
 
         ListViewStyle style;
         style.showHeader = true;
