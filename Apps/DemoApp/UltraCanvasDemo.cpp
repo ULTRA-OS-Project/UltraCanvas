@@ -970,7 +970,8 @@ namespace UltraCanvas {
                 .AddVariant("heatmapchart", "Interactive Heatmap")
                 .AddVariant("heatmapchart", "Spectrogram (STFT)")
                 .AddVariant("heatmapchart", "Calendar Heatmap")
-                .AddVariant("heatmapchart", "Hexbin Density");
+                .AddVariant("heatmapchart", "Hexbin Density")
+                .AddVariant("heatmapchart", "Job Gains & Losses");
 
         chartBuilder.AddItem("jitterchart", "Jitter chart", "Jitter chart",
                              ImplementationStatus::FullyImplemented,
