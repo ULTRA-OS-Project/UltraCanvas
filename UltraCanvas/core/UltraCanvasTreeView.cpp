@@ -793,6 +793,10 @@ namespace UltraCanvas {
                     ExpandFirstChildNode(focusedNode);
                 }
             }
+
+            // If a parent node sitting at the bottom of the view was clicked,
+            // nudge the scroll down one row to reveal that more entries follow.
+            ScrollDownIfLastVisibleParent(clickedNode);
         } else {
             ClearSelection();
             focusedNode = nullptr;
@@ -987,6 +991,25 @@ namespace UltraCanvas {
         BuildVisibleNodeList(rootNode.get(), visibleNodes);
 
         return visibleNodes.empty() ? nullptr : visibleNodes.back();
+    }
+
+    void UltraCanvasTreeView::ScrollDownIfLastVisibleParent(TreeNode *node) {
+        // Only parent nodes hint at hidden content; leaves are ignored so a
+        // childless row at the bottom does not move the view.
+        if (!node || !node->HasChildren()) return;
+
+        // Nothing below to reveal: already scrolled to the bottom.
+        if (scrollOffsetY >= maxScrollY) return;
+
+        int nodeY = GetNodeDisplayY(node);
+        int visibleBottom = scrollOffsetY + GetHeight();
+
+        // The node counts as the last visible row when the row directly beneath
+        // it would not fully fit inside the current viewport. In that case scroll
+        // down exactly one row so the next entry peeks into view.
+        if (nodeY + 2 * rowHeight > visibleBottom) {
+            ScrollBy(rowHeight);
+        }
     }
 
     TreeNode *UltraCanvasTreeView::GetNextVisibleNode(TreeNode *current) {
