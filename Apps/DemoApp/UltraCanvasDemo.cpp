@@ -1225,6 +1225,17 @@ namespace UltraCanvas {
                 .AddVariant("audio", "MP3 Playback")
                 .AddVariant("audio", "Waveform Visualization");
 
+        audioBuilder.AddItem("waveform", "Waveform Chart",
+                             "Amplitude min/max envelope with RMS overlay and a playhead "
+                             "synced to the audio player",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateWaveformExamples(); },
+                             "DemoApp/UltraCanvasWaveformExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasWaveformElement.md")
+                .AddVariant("waveform", "Filled / Outline / Bars")
+                .AddVariant("waveform", "RMS Overlay")
+                .AddVariant("waveform", "Click-to-seek Playhead");
+
         auto toolsBuilder = DemoCategoryBuilder(this, DemoCategory::Tools);
 
         toolsBuilder.AddItem("qrcode", "QR code", "QR code generator and decoder",
