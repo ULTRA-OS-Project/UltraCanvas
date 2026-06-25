@@ -2,8 +2,11 @@
 // Demonstration of UltraCanvasAlbum: layout designs, image-fit modes, action-icon
 // display options and visitor / user-edit / admin modes for a mixed photo / video
 // / music album.
-// Version: 2.10.0
+// Version: 2.11.0
 // Last Modified: 2026-06-25
+// V2.11.0: Music tiles now play — a double-click (or the Play icon, now also
+//   drawn on music tiles) opens a small window with audio transport controls
+//   (UltraCanvasAudioPlayerElement: play / pause / stop, seek bar, volume).
 // V2.10.0: Tile 5 is now a real bundled audio track
 //   (media/audios/the_mountain-cinematic-489998.mp3) with a Pixabay artist
 //   credit on its caption link; the required Pixabay attribution is kept as a
@@ -55,6 +58,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasVideoPlayerElement.h"
+#include "UltraCanvasAudioPlayerElement.h"
 #include "UltraCanvasWindow.h"
 #include <fstream>
 #include <sstream>
@@ -293,6 +297,68 @@ namespace UltraCanvas {
                 player->Play();
             }
 
+            // Play a music item in a small window with transport controls (an
+            // UltraCanvasAudioPlayerElement: play / pause / stop, a seek bar with
+            // time labels and a volume slider). Reuses the single shared window.
+            void ShowAudio(const AlbumItem& item) {
+                if (window) {
+                    window->Close();
+                    window.reset();
+                }
+
+                WindowConfig cfg;
+                cfg.title     = item.title.empty() ? "Audio" : item.title;
+                cfg.width     = 460;
+                cfg.height    = 168;
+                cfg.type      = WindowType::Standard;
+                cfg.resizable = true;
+                window = CreateWindow(cfg);
+                if (!window) return;
+                window->SetBackgroundColor(Color(245, 245, 247, 255));
+                window->layout.SetFlexColumn().SetFlexGap(8)
+                              .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+                window->SetPadding(16, 18, 16, 18);
+
+                auto titleLbl = std::make_shared<UltraCanvasLabel>("AudioTitle", 0, 0, 0, 24);
+                titleLbl->SetText(item.title.empty() ? "Audio" : item.title);
+                titleLbl->SetFontSize(16);
+                titleLbl->SetFontWeight(FontWeight::Bold);
+                titleLbl->SetTextColor(Color(30, 30, 40, 255));
+                titleLbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+                window->AddChild(titleLbl);
+
+                if (!item.subtitle.empty()) {
+                    auto subLbl = std::make_shared<UltraCanvasLabel>("AudioSubtitle", 0, 0, 0, 16);
+                    subLbl->SetText(item.subtitle);
+                    subLbl->SetFontSize(11);
+                    subLbl->SetTextColor(Color(110, 110, 110, 255));
+                    subLbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+                    window->AddChild(subLbl);
+                }
+
+                auto player = CreateAudioPlayer("AlbumAudioPlayer", 0, 0, 0, 56);
+                player->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                                  .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+                const std::string path =
+                        item.mediaPath.empty() ? item.thumbnailPath : item.mediaPath;
+                player->LoadFromFile(path);
+                player->SetTrackTitle(item.title);
+                window->AddChild(player);
+
+                // ESC closes the viewer.
+                window->eventCallback = [this](const UCEvent& event) {
+                    if (event.type == UCEventType::KeyUp &&
+                        event.virtualKey == UCKeys::Escape) {
+                        if (window) { window->Close(); window.reset(); }
+                        return true;
+                    }
+                    return false;
+                };
+
+                window->Show();
+                player->Play();
+            }
+
         private:
             std::shared_ptr<UltraCanvasWindow> window;
         };
@@ -474,7 +540,8 @@ namespace UltraCanvas {
         const std::string iconRoot = NormalizePath(GetResourcesDir() + "media/icons/");
 
         // Shared media viewer used by the "View" / "Play" actions and double-click:
-        // photos open full size in a lightbox, videos play in their own window.
+        // photos open full size in a lightbox, videos play in their own window and
+        // music opens a small window with audio transport controls.
         auto viewer = std::make_shared<AlbumPhotoViewer>();
         auto openMedia = [albumPtr, statusPtr, viewer](size_t i) {
             const AlbumItem& it = albumPtr->GetItems()[i];
@@ -484,10 +551,10 @@ namespace UltraCanvas {
                 viewer->ShowVideo(it);
                 return;
             }
-            if (it.mediaType != AlbumMediaType::Photo) {
-                std::ostringstream o; o << "Open / play is wired for photos and video: "
-                                        << it.title;
+            if (it.mediaType == AlbumMediaType::Music) {
+                std::ostringstream o; o << "Playing audio: " << it.title;
                 statusPtr->SetText(o.str());
+                viewer->ShowAudio(it);
                 return;
             }
             std::ostringstream o; o << "View full size: " << it.title;
@@ -505,13 +572,14 @@ namespace UltraCanvas {
         view.onTrigger = openMedia;
         album->AddAction(view);
 
-        // "Play" — videos only (gated by media type, so the play icon is drawn on
-        // video tiles only), available in every mode. Clicking it opens the clip
-        // in its own player window (same path as a double-click on the tile).
+        // "Play" — video / music tiles (gated by media type, so the play icon is
+        // not drawn on photos), available in every mode. Clicking it opens the clip
+        // in its own player window — a video surface for video, a small transport
+        // window for audio — the same path as a double-click on the tile.
         AlbumAction play;
-        play.id = "play"; play.label = "Play video";
+        play.id = "play"; play.label = "Play";
         play.iconPath = iconRoot + "play.svg";
-        play.mediaTypes = { AlbumMediaType::Video };
+        play.mediaTypes = { AlbumMediaType::Video, AlbumMediaType::Music };
         play.inDisplay = true; play.inUserEdit = true; play.inAdmin = true;
         play.onTrigger = openMedia;
         album->AddAction(play);
