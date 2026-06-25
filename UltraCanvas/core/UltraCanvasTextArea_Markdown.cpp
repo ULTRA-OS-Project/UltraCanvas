@@ -1893,8 +1893,9 @@ namespace UltraCanvas {
         return false;
     }
 
-    // Open a local image at full size in a fullscreen viewer window. Reuses the lightbox pattern
-    // from the Album demo (UltraCanvasImageElement + CreateWindow). Dismisses on Esc or click.
+    // Open a local image at full size in a viewer window overlaid on the host app
+    // window. Reuses the lightbox pattern from the Album demo (UltraCanvasImageElement
+    // + CreateWindow). Dismisses on Esc or click.
     void UltraCanvasTextArea::OpenMarkdownImageViewer(const std::string& imagePath,
                                                       const std::string& title) {
         // Reuse a single viewer — close any previous one before opening a new image.
@@ -1907,16 +1908,29 @@ namespace UltraCanvas {
         cfg.title     = title.empty() ? "Image" : title;
         cfg.type      = WindowType::Fullscreen;
         cfg.resizable = true;
-        if (auto* win = GetWindow()) {
-            cfg.width  = std::max(320, (int)win->GetWidth());
-            cfg.height = std::max(240, (int)win->GetHeight());
+        // Position the viewer directly over the host window. Without an explicit
+        // position a borderless/popup window lands at the screen origin (top-left)
+        // instead of over the app, which is the intended location.
+        UltraCanvasWindowBase* host = GetWindow();
+        if (host) {
+            cfg.width  = std::max(320, (int)host->GetWidth());
+            cfg.height = std::max(240, (int)host->GetHeight());
+            int hx = 0, hy = 0;
+            host->GetScreenPosition(hx, hy);
+            cfg.x = hx;
+            cfg.y = hy;
+            cfg.parentWindow = host;
         } else {
             cfg.width  = 1280;
             cfg.height = 800;
         }
         auto viewer = CreateWindow(cfg);
         if (!viewer) return;
-        viewer->SetBackgroundColor(Color(16, 16, 18, 255));
+        // A light backdrop: diagrams and logos are authored for a white document
+        // background and rely on transparency and semi-transparent (often light)
+        // fills. A dark backdrop makes those composite to muddy, wrong-looking
+        // colours and a seemingly opaque logo, so match the page's white instead.
+        viewer->SetBackgroundColor(Color(255, 255, 255, 255));
         viewer->layout.SetFlexColumn()
                       .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
@@ -1948,6 +1962,12 @@ namespace UltraCanvas {
 
         markdownImageViewerWindow = viewer;
         viewer->Show();
+        // Reassert the position after Show: some X11 window managers ignore the
+        // create-time coordinates for top-level windows, so move it over the host
+        // window explicitly once it exists.
+        if (host) {
+            viewer->SetWindowPosition(cfg.x, cfg.y);
+        }
     }
 
     // ---------------------------------------------------------------
