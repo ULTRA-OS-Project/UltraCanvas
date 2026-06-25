@@ -337,9 +337,15 @@ namespace UltraCanvas {
         // screenAngle(deg) = hue + 180, measured in screen space (y points down).
         const int step = 2;
         const float r0 = ringInner, r1 = ringOuter;
+        // Each wedge is filled separately, so anti-aliasing along the shared
+        // edge between neighbouring wedges leaves a partially-covered seam that
+        // lets the background bleed through. Extend every wedge slightly past
+        // its end angle so consecutive (opaque) wedges overlap and the seam is
+        // covered. The overlap is sub-pixel in colour and never visible.
+        const float overlap = 0.5f * (float)M_PI / 180.0f;
         for (int i = 0; i < 360; i += step) {
             float a0 = (i + 180.0f) * (float)M_PI / 180.0f;
-            float a1 = (i + step + 180.0f) * (float)M_PI / 180.0f;
+            float a1 = (i + step + 180.0f) * (float)M_PI / 180.0f + overlap;
             std::vector<Point2Dd> quad = {
                 Point2Dd(wheelCenter.x + r0 * std::cos(a0), wheelCenter.y + r0 * std::sin(a0)),
                 Point2Dd(wheelCenter.x + r1 * std::cos(a0), wheelCenter.y + r1 * std::sin(a0)),
