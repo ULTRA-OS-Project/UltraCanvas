@@ -181,6 +181,19 @@ namespace UltraCanvas {
         infoLabel1_2->onClick = openGitHubCallback;
         AddChild(infoLabel1_2);
 
+        // link Changelog
+        infoLabel1_3 = std::make_shared<UltraCanvasLabel>();
+        infoLabel1_3->SetText("Changelog: <span color=\"blue\">view what's new in this version</span>");
+        infoLabel1_3->SetFontSize(10);
+        infoLabel1_3->SetTextColor(Color(60, 60, 60, 255));
+        infoLabel1_3->SetMargin(2,20);
+        infoLabel1_3->SetTextIsMarkup(true);
+        auto openChangelogCallback = []() {
+            OpenURL("https://github.com/ULTRA-OS-Project/UltraCanvas/blob/main/Docs/UltraCanvas/CHANGELOG.md");
+        };
+        infoLabel1_3->onClick = openChangelogCallback;
+        AddChild(infoLabel1_3);
+
         // Create OK button
         okButton = std::make_shared<UltraCanvasButton>("OkButton", 100, 35);
         okButton->SetText("OK");
