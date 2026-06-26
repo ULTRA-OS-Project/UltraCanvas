@@ -1,8 +1,13 @@
 // Apps/DemoApp/UltraCanvasGaugeExamples.cpp
 // Comprehensive examples of gauge element modes using UltraCanvas layout managers
-// Version: 2.4.0
-// Last Modified: 2026-06-18
+// Version: 2.5.0
+// Last Modified: 2026-06-26
 // Author: UltraCanvas Framework
+// V2.5.0 changelog: Round Gauges playground packed tighter — panel row gap
+//   8->2 and panel slider boxes 22->16px (handle height) so slider-to-title
+//   spacing matches the dropdowns and the gauge-to-first-label margin is 2px.
+//   The reclaimed vertical space lets the playground ring flex-grow, more than
+//   doubling its radius (height-limited radius ~30px -> ~100px).
 // V2.4.0 changelog: Added a dedicated "Round Gauges" tab — an interactive
 //   playground (value/width/segment-count sliders + indicator-style,
 //   segment-style and surface-fill dropdowns) plus a 2x3 showcase of round-gauge
@@ -740,7 +745,19 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     panel->SetBackgroundColor(Color(255, 255, 255, 255));
     panel->SetBorders(1.0f, Color(218, 219, 228, 255));
     panel->SetPadding(kCardPadding);
-    SetVBox(panel, 8);
+    // Tight 2px row gap: it both makes the caption-to-control spacing uniform
+    // (sliders no longer sit farther from their titles than the dropdowns do)
+    // and frees the vertical space that lets the gauge below grow — the gauge
+    // wrap flex-grows into the reclaimed room, more than doubling the ring
+    // radius. The 2px gap also gives the gauge-to-first-label margin asked for.
+    SetVBox(panel, 2);
+
+    // Panel sliders use a box height equal to the slider handle (16px) instead
+    // of kSliderH (22px). At 22px the 16px handle was vertically centred, adding
+    // ~3px of dead space above it that made each slider sit lower than its
+    // caption; at 16px the handle fills the box, so slider-to-title spacing
+    // matches the dropdown-to-title spacing exactly.
+    constexpr float kPanelSliderH = 16.0f;
 
     auto playGauge = CreateGaugeDiagramElement("round_play", 0, 0, kCardW, kCardH);
     playGauge->SetMode(GaugeMode::CircularRing);
@@ -779,7 +796,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     gaugeWrap->AddChild(codeBtn);
 
     // --- Value slider ---
-    auto valSlider = std::make_shared<UltraCanvasSlider>("round_val", 0, 0, 0, kSliderH);
+    auto valSlider = std::make_shared<UltraCanvasSlider>("round_val", 0, 0, 0, kPanelSliderH);
     valSlider->SetOrientation(SliderOrientation::Horizontal);
     valSlider->SetRange(0.0f, 100.0f);
     valSlider->SetValue(74.0f);
@@ -794,7 +811,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     AddFlex(panel, valSlider, 0);
 
     // --- Indicator width slider ---
-    auto widthSlider = std::make_shared<UltraCanvasSlider>("round_width", 0, 0, 0, kSliderH);
+    auto widthSlider = std::make_shared<UltraCanvasSlider>("round_width", 0, 0, 0, kPanelSliderH);
     widthSlider->SetOrientation(SliderOrientation::Horizontal);
     widthSlider->SetRange(2.0f, 24.0f);
     widthSlider->SetValue(10.0f);
@@ -831,7 +848,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     AddFlex(panel, segGroupHeader, 0);
 
     // --- Segment count slider ---
-    auto countSlider = std::make_shared<UltraCanvasSlider>("round_count", 0, 0, 0, kSliderH);
+    auto countSlider = std::make_shared<UltraCanvasSlider>("round_count", 0, 0, 0, kPanelSliderH);
     countSlider->SetOrientation(SliderOrientation::Horizontal);
     countSlider->SetRange(4.0f, 72.0f);
     countSlider->SetValue(36.0f);
