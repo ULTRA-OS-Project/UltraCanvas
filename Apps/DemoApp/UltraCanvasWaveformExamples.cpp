@@ -1,8 +1,8 @@
 // Apps/DemoApp/UltraCanvasWaveformExamples.cpp
 // Demo page for the amplitude Waveform chart (UltraCanvasWaveformElement),
 // wired to an audio player that ships with a sample track pre-selected.
-// Version: 1.0.0
-// Last Modified: 2026-06-25
+// Version: 1.1.0
+// Last Modified: 2026-06-26
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -138,7 +138,7 @@ namespace UltraCanvas {
         auto player = CreateAudioPlayer("WaveformPlayer", 10, 330, 640, 56);
         container->AddChild(player);
 
-        auto fileLabel = std::make_shared<UltraCanvasLabel>("WaveformFile", 10, 394, 960, 18);
+        auto fileLabel = std::make_shared<UltraCanvasLabel>("WaveformFile", 10, 452, 960, 18);
         fileLabel->SetFontSize(11);
         fileLabel->SetTextColor(Color(90, 90, 90));
         container->AddChild(fileLabel);
@@ -243,6 +243,30 @@ namespace UltraCanvas {
             }
         };
         container->AddChild(overlayDrop);
+
+        // ----- Display-range picker -----
+        // Limits the visible portion of the track to a trailing window that
+        // scrolls with the playhead, or shows the whole track ("All audio").
+        auto rangeLabel = std::make_shared<UltraCanvasLabel>("WaveformRangeLabel", 670, 388, 150, 22);
+        rangeLabel->SetText("Display range:");
+        rangeLabel->SetFontSize(11);
+        container->AddChild(rangeLabel);
+
+        auto rangeDrop = CreateDropdown("WaveformRangeDrop", 670, 410, 150, 30);
+        rangeDrop->AddItem("Last 10 seconds");
+        rangeDrop->AddItem("Last 60 seconds");
+        rangeDrop->AddItem("All audio");
+        rangeDrop->SetSelectedIndex(2);   // default: whole track
+        rangeDrop->onSelectionChanged = [waveformWeak](int index, const DropdownItem&) {
+            auto w = waveformWeak.lock();
+            if (!w) return;
+            switch (index) {
+                case 0:  w->SetVisibleWindowSeconds(10.0); break;
+                case 1:  w->SetVisibleWindowSeconds(60.0); break;
+                default: w->SetVisibleWindowSeconds(0.0);  break;   // all
+            }
+        };
+        container->AddChild(rangeDrop);
 
         return container;
     }

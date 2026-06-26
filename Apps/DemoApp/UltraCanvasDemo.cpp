@@ -977,6 +977,18 @@ namespace UltraCanvas {
                              "DemoApp/UltraCanvasJitterPlotExamples.cpp",
                              "Docs/UltraCanvas/UltraCanvasJitterPlotExamples.md");
 
+        chartBuilder.AddItem("waveform", "Waveform Chart",
+                             "Audio amplitude min/max envelope with RMS overlay, a "
+                             "click-to-seek playhead, and a selectable display range",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateWaveformExamples(); },
+                             "DemoApp/UltraCanvasWaveformExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasWaveformElement.md")
+                .AddVariant("waveform", "Filled / Outline / Bars")
+                .AddVariant("waveform", "RMS Overlay")
+                .AddVariant("waveform", "Display Range")
+                .AddVariant("waveform", "Click-to-seek Playhead");
+
         chartBuilder.AddItem("dumbbell", "Dumbbell chart", "Dumbbell chart",
                              ImplementationStatus::PartiallyImplemented,
                              [this]() { return CreatePartiallyImplementedExamples("Dumbbell Chart is not ready yet"); });
@@ -1223,17 +1235,6 @@ namespace UltraCanvas {
                 .AddVariant("audio", "FLAC Support")
                 .AddVariant("audio", "MP3 Playback")
                 .AddVariant("audio", "Waveform Visualization");
-
-        audioBuilder.AddItem("waveform", "Waveform Chart",
-                             "Amplitude min/max envelope with RMS overlay and a playhead "
-                             "synced to the audio player",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateWaveformExamples(); },
-                             "DemoApp/UltraCanvasWaveformExamples.cpp",
-                             "Docs/UltraCanvas/UltraCanvasWaveformElement.md")
-                .AddVariant("waveform", "Filled / Outline / Bars")
-                .AddVariant("waveform", "RMS Overlay")
-                .AddVariant("waveform", "Click-to-seek Playhead");
 
         auto toolsBuilder = DemoCategoryBuilder(this, DemoCategory::Tools);
 

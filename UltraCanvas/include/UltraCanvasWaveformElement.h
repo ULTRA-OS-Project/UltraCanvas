@@ -1,7 +1,7 @@
 // UltraCanvasWaveformElement.h
 // Amplitude waveform display with min/max envelope, optional RMS overlay, and playhead
-// Version: 1.0.0
-// Last Modified: 2026-06-22
+// Version: 1.1.0
+// Last Modified: 2026-06-26
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -129,6 +129,13 @@ namespace UltraCanvas {
         void SetInteractiveSeek(bool enabled) { interactiveSeek = enabled; }
         bool IsInteractiveSeek() const { return interactiveSeek; }
 
+        // ===== VISIBLE RANGE =====
+        // Restrict the rendered/seekable view to a trailing time window that
+        // follows the playhead (e.g. "last 10 seconds" of audio). A value <= 0,
+        // or one >= the track duration, shows the whole track.
+        void SetVisibleWindowSeconds(double seconds);
+        double GetVisibleWindowSeconds() const { return visibleWindowSeconds; }
+
         // ===== CALLBACKS (base-verb form) =====
         std::function<void(double)> onSeek;          // user-initiated seek (seconds)
         std::function<void(double)> onPlayheadMove;  // playhead position changed (seconds)
@@ -158,10 +165,16 @@ namespace UltraCanvas {
         bool interactiveSeek = true;
         bool isSeeking = false;
 
+        // Visible range: trailing window length in seconds; <= 0 means "all".
+        double visibleWindowSeconds = 0.0;
+
         // Helpers
         double TimeFromX(float localX) const;     // map x within bounds -> seconds
         float  XFromTime(double seconds) const;   // map seconds -> local x
         void   ApplySeekFromX(float localX);      // compute seek time + fire onSeek
+        // Resolve the [start, end] seconds currently in view (honours the
+        // visible window and clamps the trailing window to the track).
+        void   GetVisibleRange(double& startSec, double& endSec) const;
     };
 
 // =============================================================================

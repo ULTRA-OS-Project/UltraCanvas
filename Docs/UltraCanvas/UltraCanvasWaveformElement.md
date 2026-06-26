@@ -39,9 +39,17 @@ wf->SetOverlay(WaveformOverlay::RMSAndZeroAxis);  // None | RMS | ZeroAxis | RMS
 wf->SetPlayheadTime(seconds);             // move the cursor (clamped to duration)
 wf->SetInteractiveSeek(true);             // click/drag to seek
 
+wf->SetVisibleWindowSeconds(10.0);        // show only the last 10s, scrolling
+wf->SetVisibleWindowSeconds(0.0);         // 0 (or >= duration) shows the whole track
+
 wf->onSeek         = [](double s){ /* user clicked/dragged */ };
 wf->onPlayheadMove = [](double s){ /* playhead position changed */ };
 ```
+
+`SetVisibleWindowSeconds()` restricts the rendered and seekable view to a
+trailing window that ends at the playhead and scrolls with it (e.g. "last 10
+seconds"). The window keeps a constant length, clamped to the track bounds; a
+value `<= 0` — or one at least as long as the track — shows the whole waveform.
 
 Colours are configurable: `SetWaveColor`, `SetRMSColor`, `SetBackgroundColor`,
 `SetPlayheadColor`, `SetZeroAxisColor`.
