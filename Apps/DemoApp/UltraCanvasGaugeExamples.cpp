@@ -1,8 +1,14 @@
 // Apps/DemoApp/UltraCanvasGaugeExamples.cpp
 // Comprehensive examples of gauge element modes using UltraCanvas layout managers
-// Version: 2.5.0
+// Version: 2.6.0
 // Last Modified: 2026-06-26
 // Author: UltraCanvas Framework
+// V2.6.0 changelog: Round Gauges showcase grid — dropped the redundant value
+//   label under each card's slider (round gauges already show the value in the
+//   ring centre), moved the slider to the card bottom and tightened the card
+//   padding so the nine gauges roughly double in radius. The Dots preset now
+//   uses 12 bordered dots, with its null/zero position at the bottom of the
+//   circle and dot colour driven by the value (green->yellow->orange->red).
 // V2.5.0 changelog: Round Gauges playground packed tighter — panel row gap
 //   8->2 and panel slider boxes 22->16px (handle height) so slider-to-title
 //   spacing matches the dropdowns and the gauge-to-first-label margin is 2px.
@@ -100,14 +106,17 @@ static std::shared_ptr<UltraCanvasContainer> CreateGaugeCard(
     float sliderMin, float sliderMax, float sliderInit,
     const std::string& valueSuffix,
     int decimals = 0,
-    float sliderStep = -1.0f) {
+    float sliderStep = -1.0f,
+    bool showValueLabel = true) {
 
     auto card = std::make_shared<UltraCanvasContainer>(id, 0, 0, w, h);
     card->SetBackgroundColor(Color(255, 255, 255, 255));
     card->SetBorders(1.0f, Color(218, 219, 228, 255));
-    card->SetPadding(kCardPadding);
+    // Label-less showcase cards use tighter padding/row-gap so the enlarged gauge
+    // gets the maximum possible diameter.
+    card->SetPadding(showValueLabel ? kCardPadding : 6.0f);
 
-    SetVBox(card, 8);
+    SetVBox(card, showValueLabel ? 8.0f : 6.0f);
 
     // Gauge takes the upper portion (grows); the engine sizes it to its flex cell.
     auto gaugeWrap = std::make_shared<UltraCanvasContainer>(id + "_GW", 0, 0, 0, 0);
@@ -115,7 +124,8 @@ static std::shared_ptr<UltraCanvasContainer> CreateGaugeCard(
     AddFlex(gaugeWrap, gauge, 1);
     AddFlex(card, gaugeWrap, 1);
 
-    // Slider for interactive control
+    // Slider for interactive control. When the value label is hidden the slider
+    // becomes the card's bottom row, so the gauge above reclaims that space.
     auto slider = std::make_shared<UltraCanvasSlider>(id + "_Sl", 0, 0, 0, kSliderH);
     slider->SetOrientation(SliderOrientation::Horizontal);
     slider->SetRange(sliderMin, sliderMax);
@@ -123,23 +133,29 @@ static std::shared_ptr<UltraCanvasContainer> CreateGaugeCard(
     if (sliderStep >= 0.0f) slider->SetStep(sliderStep);
     AddFlex(card, slider, 0);
 
-    // Value display label below slider
-    auto valueLabel = std::make_shared<UltraCanvasLabel>(id + "_V", 0, 0, 0, kValueLabelH);
-    valueLabel->SetAlignment(TextAlignment::Center);
-    valueLabel->SetFontSize(11);
-    valueLabel->SetTextColor(Color(100, 100, 115, 255));
-    std::ostringstream initVal;
-    initVal << std::fixed << std::setprecision(decimals) << sliderInit << " " << valueSuffix;
-    valueLabel->SetText(initVal.str());
-    AddFlex(card, valueLabel, 0);
+    // Value display label below slider (optional — round gauges already draw the
+    // value in their centre, so the showcase cards drop it to enlarge the gauge).
+    std::shared_ptr<UltraCanvasLabel> valueLabel;
+    if (showValueLabel) {
+        valueLabel = std::make_shared<UltraCanvasLabel>(id + "_V", 0, 0, 0, kValueLabelH);
+        valueLabel->SetAlignment(TextAlignment::Center);
+        valueLabel->SetFontSize(11);
+        valueLabel->SetTextColor(Color(100, 100, 115, 255));
+        std::ostringstream initVal;
+        initVal << std::fixed << std::setprecision(decimals) << sliderInit << " " << valueSuffix;
+        valueLabel->SetText(initVal.str());
+        AddFlex(card, valueLabel, 0);
+    }
 
     auto gaugePtr = gauge.get();
-    auto labelPtr = valueLabel.get();
+    auto labelPtr = valueLabel ? valueLabel.get() : nullptr;
     slider->onValueChanged = [gaugePtr, labelPtr, valueSuffix, decimals](float val) {
         gaugePtr->SetValue(static_cast<double>(val));
-        std::ostringstream oss;
-        oss << std::fixed << std::setprecision(decimals) << val << " " << valueSuffix;
-        labelPtr->SetText(oss.str());
+        if (labelPtr) {
+            std::ostringstream oss;
+            oss << std::fixed << std::setprecision(decimals) << val << " " << valueSuffix;
+            labelPtr->SetText(oss.str());
+        }
     };
 
     gauge->SetValue(static_cast<double>(sliderInit));
@@ -1005,7 +1021,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     g1->SetTitle("Solid Arc");
     g1->SetUnit("%");
     g1->SetTrackColor(Color(50, 60, 30, 255));
-    AddGrid(grid, CreateGaugeCard("rp1_c", kCardW, kCardH, g1, 0.0f, 100.0f, 74.0f, "%"), 0, 0);
+    AddGrid(grid, CreateGaugeCard("rp1_c", kCardW, kCardH, g1, 0.0f, 100.0f, 74.0f, "%", 0, -1.0f, false), 0, 0);
 
     // 2) Spectrum fade through 100 colours (maximum-indication option)
     auto g2 = CreateGaugeDiagramElement("rp2", 0, 0, kCardW, kCardH);
@@ -1014,7 +1030,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     g2->SetRingGradientColors(MakeSpectrumColors(100));  // up to 100 colour stops
     g2->SetTitle("Spectrum (100 colours)");
     g2->SetUnit("%");
-    AddGrid(grid, CreateGaugeCard("rp2_c", kCardW, kCardH, g2, 0.0f, 100.0f, 72.0f, "%"), 0, 1);
+    AddGrid(grid, CreateGaugeCard("rp2_c", kCardW, kCardH, g2, 0.0f, 100.0f, 72.0f, "%", 0, -1.0f, false), 0, 1);
 
     // 3) Dashed radial bars (tachymeter)
     auto g3 = CreateGaugeDiagramElement("rp3", 0, 0, kCardW, kCardH);
@@ -1023,17 +1039,19 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     g3->SetTitle("Dashed Bars");
     g3->SetUnit("%");
     g3->SetTrackColor(Color(40, 46, 60, 255));
-    AddGrid(grid, CreateGaugeCard("rp3_c", kCardW, kCardH, g3, 0.0f, 100.0f, 62.0f, "%"), 0, 2);
+    AddGrid(grid, CreateGaugeCard("rp3_c", kCardW, kCardH, g3, 0.0f, 100.0f, 62.0f, "%", 0, -1.0f, false), 0, 2);
 
-    // 4) Dots ring
+    // 4) Dots ring — 12 dots, each with a small border, the null (zero) position
+    // at the bottom of the circle, and dot colour driven by the current value
+    // (green when high, fading through yellow/orange to red when low).
     auto g4 = CreateGaugeDiagramElement("rp4", 0, 0, kCardW, kCardH);
-    // 24 dots (was 40): at 40 the dots packed tight enough to merge into a solid
-    // ring; fewer dots keep clear gaps so it reads as a dotted ring.
     ApplyRoundPreset(g4, GaugeRingStyle::Segmented, GaugeRingSegmentStyle::Dots,
-                     GaugeFillStyle::NoFill, 12.0f, 24, Color(120, 90, 240, 255));
+                     GaugeFillStyle::NoFill, 12.0f, 12, Color(120, 90, 240, 255));
+    g4->SetRingStartAngleDeg(90.0f);     // value 0 sits at the bottom (6 o'clock)
+    g4->SetRingValueColorBands(true);    // green -> yellow -> orange -> red by value
     g4->SetTitle("Dots");
     g4->SetUnit("%");
-    AddGrid(grid, CreateGaugeCard("rp4_c", kCardW, kCardH, g4, 0.0f, 100.0f, 55.0f, "%"), 1, 0);
+    AddGrid(grid, CreateGaugeCard("rp4_c", kCardW, kCardH, g4, 0.0f, 100.0f, 55.0f, "%", 0, -1.0f, false), 1, 0);
 
     // 5) Straight liquid fill with faded fill colour
     auto g5 = CreateGaugeDiagramElement("rp5", 0, 0, kCardW, kCardH);
@@ -1042,7 +1060,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     g5->SetFillFaded(true);
     g5->SetTitle("Straight Fill (faded)");
     g5->SetUnit("%");
-    AddGrid(grid, CreateGaugeCard("rp5_c", kCardW, kCardH, g5, 0.0f, 100.0f, 60.0f, "%"), 1, 1);
+    AddGrid(grid, CreateGaugeCard("rp5_c", kCardW, kCardH, g5, 0.0f, 100.0f, 60.0f, "%", 0, -1.0f, false), 1, 1);
 
     // 6) Waved liquid fill (battery look) with faded fill colour
     auto g6 = CreateGaugeDiagramElement("rp6", 0, 0, kCardW, kCardH);
@@ -1051,7 +1069,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     g6->SetFillFaded(true);
     g6->SetTitle("Waved Fill (faded)");
     g6->SetUnit("%");
-    AddGrid(grid, CreateGaugeCard("rp6_c", kCardW, kCardH, g6, 0.0f, 100.0f, 18.0f, "%"), 1, 2);
+    AddGrid(grid, CreateGaugeCard("rp6_c", kCardW, kCardH, g6, 0.0f, 100.0f, 18.0f, "%", 0, -1.0f, false), 1, 2);
 
     // 7) Segmented ring, rounded ends + battery icon centre (reference image 1)
     auto g7 = CreateGaugeDiagramElement("rp7", 0, 0, kCardW, kCardH);
@@ -1061,7 +1079,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     g7->SetRingCenterIcon(GaugeRingIcon::Battery);
     g7->SetRingCenterContent(GaugeRingCenterContent::Icon);
     g7->SetTitle("Segmented Ring + Icon");
-    AddGrid(grid, CreateGaugeCard("rp7_c", kCardW, kCardH, g7, 0.0f, 100.0f, 75.0f, ""), 2, 0);
+    AddGrid(grid, CreateGaugeCard("rp7_c", kCardW, kCardH, g7, 0.0f, 100.0f, 75.0f, "", 0, -1.0f, false), 2, 0);
 
     // 8) Segmented ring, sharp ends + text label centre (reference image 2)
     auto g8 = CreateGaugeDiagramElement("rp8", 0, 0, kCardW, kCardH);
@@ -1071,7 +1089,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     g8->SetRingCenterLabel("Battery");
     g8->SetRingCenterContent(GaugeRingCenterContent::TextLabel);
     g8->SetTitle("Segmented Ring + Label");
-    AddGrid(grid, CreateGaugeCard("rp8_c", kCardW, kCardH, g8, 0.0f, 100.0f, 75.0f, ""), 2, 1);
+    AddGrid(grid, CreateGaugeCard("rp8_c", kCardW, kCardH, g8, 0.0f, 100.0f, 75.0f, "", 0, -1.0f, false), 2, 1);
 
     // 9) Faded ring colour (soft two-tone gradient sweep)
     auto g9 = CreateGaugeDiagramElement("rp9", 0, 0, kCardW, kCardH);
@@ -1081,7 +1099,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     g9->SetTrackColor(Color(60, 70, 35, 255));
     g9->SetTitle("Faded Ring");
     g9->SetUnit("%");
-    AddGrid(grid, CreateGaugeCard("rp9_c", kCardW, kCardH, g9, 0.0f, 100.0f, 47.0f, "%"), 2, 2);
+    AddGrid(grid, CreateGaugeCard("rp9_c", kCardW, kCardH, g9, 0.0f, 100.0f, 47.0f, "%", 0, -1.0f, false), 2, 2);
 
     AddFlex(body, grid, 1);
     AddFlex(tab, body, 1);
