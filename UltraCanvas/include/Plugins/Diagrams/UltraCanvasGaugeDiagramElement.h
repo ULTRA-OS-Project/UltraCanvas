@@ -390,9 +390,12 @@ private:
     void DrawRingTrackAndValue(IRenderContext* ctx, const Point2Df& center, float radius);
     void DrawRingLiquidFill(IRenderContext* ctx, const Point2Df& center, float innerRadius);
     void DrawRingCenterIcon(IRenderContext* ctx, const Point2Df& center, float size);
-    // Builds a soft "faded" linear-gradient paint (lightened tint -> full colour)
-    // spanning the element bounds, used when ringFaded is enabled.
-    std::shared_ptr<IPaintPattern> MakeFadedPaint(IRenderContext* ctx, const Color& base) const;
+    // Builds a soft "faded" two-tone linear-gradient paint (light tint -> darker
+    // shade) spanning the gauge circle, used when ringFaded / fillFaded is enabled.
+    // The gradient is sized to the circle (center +/- radius) so the full light->dark
+    // sweep is visible across the ring/disc rather than washed out over the whole card.
+    std::shared_ptr<IPaintPattern> MakeFadedPaint(IRenderContext* ctx, const Color& base,
+                                                  const Point2Df& center, float radius) const;
     void RenderBattery(IRenderContext* ctx);
     void RenderThermometer(IRenderContext* ctx);
     void RenderCylinder(IRenderContext* ctx);

@@ -2064,7 +2064,7 @@ void UltraCanvasGaugeDiagramElement::DrawRingTrackAndValue(
 
     // When faded, lit portions of the indicator use a soft lightened gradient
     // instead of the flat colour; the track stays as configured.
-    std::shared_ptr<IPaintPattern> fadePat = ringFaded ? MakeFadedPaint(ctx, fillC) : nullptr;
+    std::shared_ptr<IPaintPattern> fadePat = ringFaded ? MakeFadedPaint(ctx, fillC, center, radius) : nullptr;
     auto setLitStroke = [&]() {
         if (fadePat) ctx->SetStrokePaint(fadePat); else ctx->SetStrokePaint(fillC);
     };
@@ -2176,8 +2176,11 @@ void UltraCanvasGaugeDiagramElement::DrawRingLiquidFill(
     IRenderContext* ctx, const Point2Df& center, float innerRadius) {
     double ratio = std::max(0.0, std::min(1.0, ValueToRatio(currentValue)));
     Color fillC = GetColorForValue(currentValue);
-    // Faded fill: a pale, lightened tint of the value colour (soft liquid look).
-    if (fillFaded) fillC = fillC.Lighten(0.55f);
+    // Faded fill: a soft two-tone gradient across the disc (light tint -> darker
+    // shade) so the liquid clearly reads as faded. A flat lightened colour (the
+    // old behaviour) showed no visible fading.
+    std::shared_ptr<IPaintPattern> fillFadePat =
+        fillFaded ? MakeFadedPaint(ctx, fillC, center, innerRadius) : nullptr;
 
     ctx->PushState();
     // Clip everything that follows to the inner disc.
@@ -2201,7 +2204,7 @@ void UltraCanvasGaugeDiagramElement::DrawRingLiquidFill(
                 ? std::max(3.0f, innerRadius * 0.10f) : 0.0f;
     float wavelength = std::max(20.0f, innerRadius); // ~2 crests across the disc
 
-    ctx->SetFillPaint(fillC);
+    if (fillFadePat) ctx->SetFillPaint(fillFadePat); else ctx->SetFillPaint(fillC);
     ctx->ClearPath();
     ctx->MoveTo(left, bottom + 4.0f);
     ctx->LineTo(left, level);
@@ -2275,15 +2278,18 @@ void UltraCanvasGaugeDiagramElement::DrawRingCenterIcon(
 // ring look — strokes/segments at different positions pick up different shades,
 // giving a gentle two-tone sweep around the ring.
 std::shared_ptr<IPaintPattern> UltraCanvasGaugeDiagramElement::MakeFadedPaint(
-    IRenderContext* ctx, const Color& base) const {
-    const auto b = GetLocalBounds();
+    IRenderContext* ctx, const Color& base, const Point2Df& center, float radius) const {
+    // A diagonal two-tone sweep from a pale tint to a darker shade of the base
+    // colour. The gradient spans the gauge circle (not the whole element), so the
+    // full light->dark range is actually visible across the ring/disc — spanning
+    // the element bounds previously left only a near-uniform sliver on the ring.
     std::vector<GradientStop> stops{
-        GradientStop(0.0, base.Lighten(0.60f)),
-        GradientStop(1.0, base),
+        GradientStop(0.0, base.Lighten(0.70f)),
+        GradientStop(1.0, base.Darken(0.30f)),
     };
     return ctx->CreateLinearGradientPattern(
-        static_cast<double>(b.x), static_cast<double>(b.y),
-        static_cast<double>(b.x + b.width), static_cast<double>(b.y + b.height),
+        static_cast<double>(center.x - radius), static_cast<double>(center.y - radius),
+        static_cast<double>(center.x + radius), static_cast<double>(center.y + radius),
         stops);
 }
 
