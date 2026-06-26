@@ -651,6 +651,28 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     AddFlex(panel, widthCap, 0);
     AddFlex(panel, widthSlider, 0);
 
+    // --- Indicator style dropdown ---
+    // (Determines whether the segment-options group below is active.)
+    auto styleCap = MakeCaption("round_style_cap", "Indicator style");
+    AddFlex(panel, styleCap, 0);
+    auto styleDrop = std::make_shared<UltraCanvasDropdown>("round_style", 0, 0, 0, 26);
+    styleDrop->AddItem("Solid line arc");
+    styleDrop->AddItem("Segmented");
+    styleDrop->AddItem("Dashed / ticks");
+    styleDrop->AddItem("Segmented ring (chunky)");
+    styleDrop->AddItem("Spectrum (100 colours)");
+    styleDrop->SetSelectedIndex(0);
+    AddFlex(panel, styleDrop, 0);   // onSelectionChanged wired up once the group exists
+
+    // ===== Segment-options group =====
+    // These controls only affect the segmented indicator styles (Segmented,
+    // Dashed and Segmented ring). They are grouped here under one header and
+    // disabled together whenever a non-segmented style (Solid arc / Spectrum)
+    // is selected.
+    auto segGroupHeader = MakeCaption("round_seg_group", "Segment options");
+    segGroupHeader->SetFontWeight(FontWeight::Bold);
+    AddFlex(panel, segGroupHeader, 0);
+
     // --- Segment count slider ---
     auto countSlider = std::make_shared<UltraCanvasSlider>("round_count", 0, 0, 0, kSliderH);
     countSlider->SetOrientation(SliderOrientation::Horizontal);
@@ -666,27 +688,6 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     };
     AddFlex(panel, countCap, 0);
     AddFlex(panel, countSlider, 0);
-
-    // --- Indicator style dropdown ---
-    auto styleCap = MakeCaption("round_style_cap", "Indicator style");
-    AddFlex(panel, styleCap, 0);
-    auto styleDrop = std::make_shared<UltraCanvasDropdown>("round_style", 0, 0, 0, 26);
-    styleDrop->AddItem("Solid line arc");
-    styleDrop->AddItem("Segmented");
-    styleDrop->AddItem("Dashed / ticks");
-    styleDrop->AddItem("Segmented ring (chunky)");
-    styleDrop->AddItem("Spectrum (100 colours)");
-    styleDrop->SetSelectedIndex(0);
-    styleDrop->onSelectionChanged = [gPtr](int idx, const DropdownItem&) {
-        switch (idx) {
-            case 1: gPtr->SetRingStyle(GaugeRingStyle::Segmented); break;
-            case 2: gPtr->SetRingStyle(GaugeRingStyle::Dashed); break;
-            case 3: gPtr->SetRingStyle(GaugeRingStyle::SegmentedRing); break;
-            case 4: gPtr->SetRingStyle(GaugeRingStyle::Spectrum); break;
-            default: gPtr->SetRingStyle(GaugeRingStyle::SolidArc); break;
-        }
-    };
-    AddFlex(panel, styleDrop, 0);
 
     // --- Segment style dropdown (Segmented / Dashed) ---
     auto segCap = MakeCaption("round_seg_cap", "Segment style (Segmented / Dashed)");
@@ -728,6 +729,30 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
         gPtr->SetRingBorder(idx == 1);
     };
     AddFlex(panel, borderDrop, 0);
+
+    // Enable/disable the whole segment-options group from the indicator style.
+    std::vector<UltraCanvasUIElement*> segGroup = {
+        segGroupHeader.get(), countCap.get(), countSlider.get(),
+        segCap.get(), segDrop.get(), endsCap.get(), endsDrop.get(),
+        borderCap.get(), borderDrop.get()
+    };
+    auto setSegGroupEnabled = [segGroup](bool en) {
+        for (auto* e : segGroup) e->SetDisabled(!en);
+    };
+    // Segmented (1), Dashed (2) and Segmented ring (3) use the segment options;
+    // Solid arc (0) and Spectrum (4) do not.
+    styleDrop->onSelectionChanged = [gPtr, setSegGroupEnabled](int idx, const DropdownItem&) {
+        switch (idx) {
+            case 1: gPtr->SetRingStyle(GaugeRingStyle::Segmented); break;
+            case 2: gPtr->SetRingStyle(GaugeRingStyle::Dashed); break;
+            case 3: gPtr->SetRingStyle(GaugeRingStyle::SegmentedRing); break;
+            case 4: gPtr->SetRingStyle(GaugeRingStyle::Spectrum); break;
+            default: gPtr->SetRingStyle(GaugeRingStyle::SolidArc); break;
+        }
+        setSegGroupEnabled(idx == 1 || idx == 2 || idx == 3);
+    };
+    // Initial style is Solid arc, so the segment options start disabled.
+    setSegGroupEnabled(false);
 
     // --- Surface fill dropdown ---
     auto fillCap = MakeCaption("round_fill_cap", "Surface fill");
