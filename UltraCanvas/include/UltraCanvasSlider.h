@@ -13,6 +13,7 @@
 #include <functional>
 #include <cmath>
 #include <memory>
+#include <vector>
 
 namespace UltraCanvas {
 
@@ -124,6 +125,11 @@ namespace UltraCanvas {
         std::string valueFormat = "%.1f";
         std::string customText = "";
 
+        // ===== OPTIONAL TRACK GRADIENT =====
+        // When non-empty the linear track is painted with this colour gradient
+        // (e.g. a full hue palette) instead of the solid track/active-track fill.
+        std::vector<GradientStop> trackGradientStops;
+
     public:
         // ===== CONSTRUCTORS (REQUIRED PATTERN) =====
         UltraCanvasSlider(const std::string& identifier, float x, float y, float w, float h);
@@ -207,6 +213,17 @@ namespace UltraCanvas {
 
         void SetValueFormat(const std::string& format) { valueFormat = format; }
         void SetCustomText(const std::string& text) { customText = text; }
+
+        // ===== TRACK GRADIENT (e.g. colour palette inside the bar) =====
+        void SetTrackGradient(const std::vector<GradientStop>& stops) {
+            trackGradientStops = stops;
+            RequestRedraw();
+        }
+        void ClearTrackGradient() {
+            trackGradientStops.clear();
+            RequestRedraw();
+        }
+        bool HasTrackGradient() const { return !trackGradientStops.empty(); }
 
         SliderVisualStyle& GetStyle() { return style; }
         const SliderVisualStyle& GetStyle() const { return style; }

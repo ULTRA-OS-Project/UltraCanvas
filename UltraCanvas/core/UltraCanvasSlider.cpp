@@ -352,14 +352,33 @@ namespace UltraCanvas {
         // Calculate track rectangle
         Rect2Di trackRect = GetTrackRect(bounds, isVertical);
 
-        // Draw track background
-        ctx->DrawFilledRectangle(trackRect, GetCurrentTrackColor(), 1.0, style.handleBorderColor);
+        if (!trackGradientStops.empty()) {
+            // Paint the whole track with the supplied colour gradient (e.g. a full
+            // hue palette). The active-track overlay is skipped so the palette
+            // stays visible across the entire bar.
+            std::shared_ptr<IPaintPattern> grad = isVertical
+                ? ctx->CreateLinearGradientPattern(trackRect.x, trackRect.y + trackRect.height,
+                                                   trackRect.x, trackRect.y, trackGradientStops)
+                : ctx->CreateLinearGradientPattern(trackRect.x, trackRect.y,
+                                                   trackRect.x + trackRect.width, trackRect.y,
+                                                   trackGradientStops);
+            ctx->SetFillPaint(grad);
+            ctx->FillRectangle(trackRect);
 
-        // Calculate and draw active track
-        Rect2Di activeRect = GetActiveTrackRect(trackRect, isVertical);
-        if ((isVertical && activeRect.height > 0) || (!isVertical && activeRect.width > 0)) {
-            ctx->SetFillPaint(style.activeTrackColor);
-            ctx->FillRectangle(activeRect);
+            // Outline so the bar reads as a discrete control.
+            ctx->SetStrokePaint(style.handleBorderColor);
+            ctx->SetStrokeWidth(style.borderWidth);
+            ctx->DrawRectangle(trackRect);
+        } else {
+            // Draw track background
+            ctx->DrawFilledRectangle(trackRect, GetCurrentTrackColor(), 1.0, style.handleBorderColor);
+
+            // Calculate and draw active track
+            Rect2Di activeRect = GetActiveTrackRect(trackRect, isVertical);
+            if ((isVertical && activeRect.height > 0) || (!isVertical && activeRect.width > 0)) {
+                ctx->SetFillPaint(style.activeTrackColor);
+                ctx->FillRectangle(activeRect);
+            }
         }
 
         // Draw handle
