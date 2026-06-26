@@ -22,8 +22,13 @@
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasTextArea.h"
+#include "UltraCanvasWindow.h"
 #include <sstream>
 #include <iomanip>
+#include <vector>
+#include <cmath>
+#include <string>
 
 namespace UltraCanvas {
 
@@ -519,13 +524,180 @@ static std::shared_ptr<UltraCanvasContainer> BuildSpecializedTab(float w, float 
 
 namespace {
     // A small captioned label above a control, packed into a fixed-height block.
+    // Height is 18 (not 14): an 11px font needs ~15-16px for ascenders + descenders,
+    // and the text layout clips its line to the label's explicit height — at 14px the
+    // descenders (y, g) were cut off and overdrawn by the control below.
     inline std::shared_ptr<UltraCanvasLabel> MakeCaption(const std::string& id,
                                                          const std::string& text) {
-        auto lbl = std::make_shared<UltraCanvasLabel>(id, 0, 0, 0, 14);
+        auto lbl = std::make_shared<UltraCanvasLabel>(id, 0, 0, 0, 18);
         lbl->SetText(text);
         lbl->SetFontSize(11);
         lbl->SetTextColor(Color(90, 90, 110, 255));
         return lbl;
+    }
+
+    // Build `n` evenly spaced spectrum colours (blue -> cyan -> green -> yellow ->
+    // red). Used to demo the Spectrum ring's up-to-100-colour fade: low values read
+    // "cold" blue, high values "hot" red, with fine colour resolution in between.
+    std::vector<Color> MakeSpectrumColors(int n) {
+        auto hsv = [](float h, float s, float v) -> Color {
+            float c = v * s;
+            float x = c * (1.0f - std::fabs(std::fmod(h / 60.0f, 2.0f) - 1.0f));
+            float m = v - c;
+            float r = 0, g = 0, b = 0;
+            if (h <  60)      { r = c; g = x; b = 0; }
+            else if (h < 120) { r = x; g = c; b = 0; }
+            else if (h < 180) { r = 0; g = c; b = x; }
+            else if (h < 240) { r = 0; g = x; b = c; }
+            else if (h < 300) { r = x; g = 0; b = c; }
+            else              { r = c; g = 0; b = x; }
+            return Color(static_cast<uint8_t>((r + m) * 255.0f),
+                         static_cast<uint8_t>((g + m) * 255.0f),
+                         static_cast<uint8_t>((b + m) * 255.0f), 255);
+        };
+        std::vector<Color> out;
+        out.reserve(std::max(1, n));
+        for (int i = 0; i < n; i++) {
+            float t = (n <= 1) ? 0.0f : static_cast<float>(i) / static_cast<float>(n - 1);
+            out.push_back(hsv(240.0f * (1.0f - t), 0.90f, 0.95f));  // 240 (blue) -> 0 (red)
+        }
+        return out;
+    }
+
+    // ---- C++ code generation for the interactive playground gauge -------------
+    // These turn the live gauge configuration into copy-pasteable source so the
+    // "Code" button can show exactly how to reproduce the current choices.
+    inline std::string ColorCode(const Color& c) {
+        std::ostringstream o;
+        o << "Color(" << (int)c.r << ", " << (int)c.g << ", " << (int)c.b << ", " << (int)c.a << ")";
+        return o.str();
+    }
+    inline std::string FloatCode(float v) {
+        std::ostringstream o; o << std::fixed << std::setprecision(1) << v << "f"; return o.str();
+    }
+    inline const char* RingStyleName(GaugeRingStyle s) {
+        switch (s) {
+            case GaugeRingStyle::SolidArc:      return "GaugeRingStyle::SolidArc";
+            case GaugeRingStyle::Segmented:     return "GaugeRingStyle::Segmented";
+            case GaugeRingStyle::Dashed:        return "GaugeRingStyle::Dashed";
+            case GaugeRingStyle::SegmentedRing: return "GaugeRingStyle::SegmentedRing";
+            case GaugeRingStyle::Spectrum:      return "GaugeRingStyle::Spectrum";
+        }
+        return "GaugeRingStyle::SolidArc";
+    }
+    inline const char* SegStyleName(GaugeRingSegmentStyle s) {
+        switch (s) {
+            case GaugeRingSegmentStyle::Bars:   return "GaugeRingSegmentStyle::Bars";
+            case GaugeRingSegmentStyle::Dots:   return "GaugeRingSegmentStyle::Dots";
+            case GaugeRingSegmentStyle::Blocks: return "GaugeRingSegmentStyle::Blocks";
+        }
+        return "GaugeRingSegmentStyle::Blocks";
+    }
+    inline const char* FillStyleName(GaugeFillStyle s) {
+        switch (s) {
+            case GaugeFillStyle::NoFill:        return "GaugeFillStyle::NoFill";
+            case GaugeFillStyle::StraightLevel: return "GaugeFillStyle::StraightLevel";
+            case GaugeFillStyle::WavedLevel:    return "GaugeFillStyle::WavedLevel";
+        }
+        return "GaugeFillStyle::NoFill";
+    }
+    inline const char* CenterContentName(GaugeRingCenterContent c) {
+        switch (c) {
+            case GaugeRingCenterContent::TextLabel: return "GaugeRingCenterContent::TextLabel";
+            case GaugeRingCenterContent::Icon:      return "GaugeRingCenterContent::Icon";
+            case GaugeRingCenterContent::NoContent: return "GaugeRingCenterContent::NoContent";
+        }
+        return "GaugeRingCenterContent::NoContent";
+    }
+    inline const char* RingIconName(GaugeRingIcon i) {
+        return i == GaugeRingIcon::Bolt ? "GaugeRingIcon::Bolt" : "GaugeRingIcon::Battery";
+    }
+
+    // Emit C++ that recreates the round gauge for the current playground choices.
+    std::string GenerateGaugeCode(const UltraCanvasGaugeDiagramElement* g) {
+        const GaugeRingStyle style = g->GetRingStyle();
+        std::ostringstream o;
+        o << "// C++ generated from the current Round Gauges playground choices.\n";
+        o << "// Drop this into a function that returns/adds the gauge element.\n\n";
+        o << "auto gauge = CreateGaugeDiagramElement(\"gauge\", 0, 0, 272, 374);\n";
+        o << "gauge->SetMode(GaugeMode::CircularRing);\n";
+        o << "gauge->SetRingStyle(" << RingStyleName(style) << ");\n";
+        o << "gauge->SetRingThickness(" << FloatCode(g->GetRingThickness()) << ");\n";
+
+        if (style == GaugeRingStyle::Segmented || style == GaugeRingStyle::Dashed) {
+            o << "gauge->SetRingSegmentStyle(" << SegStyleName(g->GetRingSegmentStyle()) << ");\n";
+            o << "gauge->SetRingSegmentCount(" << g->GetRingSegmentCount() << ");\n";
+        } else if (style == GaugeRingStyle::SegmentedRing) {
+            o << "gauge->SetRingSegmentCount(" << g->GetRingSegmentCount() << ");\n";
+            o << "gauge->SetRingSegmentRounded(" << (g->GetRingSegmentRounded() ? "true" : "false") << ");\n";
+            o << "gauge->SetRingBorder(" << (g->GetRingBorder() ? "true" : "false") << ");\n";
+        }
+
+        o << "gauge->SetFillStyle(" << FillStyleName(g->GetFillStyle()) << ");\n";
+        o << "gauge->SetGaugeColor(" << ColorCode(g->GetGaugeColor()) << ");\n";
+        o << "gauge->SetTrackColor(" << ColorCode(g->GetTrackColor()) << ");\n";
+        o << "gauge->SetRingFaded(" << (g->GetRingFaded() ? "true" : "false") << ");\n";
+        o << "gauge->SetFillFaded(" << (g->GetFillFaded() ? "true" : "false") << ");\n";
+
+        if (style == GaugeRingStyle::Spectrum) {
+            const auto& cols = g->GetRingGradientColors();
+            o << "\nstd::vector<Color> spectrum = {\n";
+            for (size_t i = 0; i < cols.size(); i++) {
+                o << (i % 4 == 0 ? "    " : " ") << ColorCode(cols[i]) << ",";
+                if (i % 4 == 3) o << "\n";
+            }
+            if (cols.size() % 4 != 0) o << "\n";
+            o << "};\n";
+            o << "gauge->SetRingGradientColors(spectrum);  // up to 100 colours\n\n";
+        }
+
+        const GaugeRingCenterContent cc = g->GetRingCenterContent();
+        if (cc == GaugeRingCenterContent::TextLabel) {
+            o << "gauge->SetRingCenterLabel(\"" << g->GetRingCenterLabel() << "\");\n";
+        } else if (cc == GaugeRingCenterContent::Icon) {
+            o << "gauge->SetRingCenterIcon(" << RingIconName(g->GetRingCenterIcon()) << ");\n";
+        }
+        o << "gauge->SetRingCenterContent(" << CenterContentName(cc) << ");\n";
+
+        if (!g->GetUnit().empty()) o << "gauge->SetUnit(\"" << g->GetUnit() << "\");\n";
+        o << "gauge->SetValue(" << g->GetValue() << ");\n";
+        return o.str();
+    }
+
+    // Open a popup window showing `code` in an editable, syntax-highlighted text
+    // area. The window is kept alive by a static handle (one popup at a time) and
+    // closes on Escape.
+    void ShowGaugeCodePopup(const std::string& code) {
+        static std::shared_ptr<UltraCanvasWindow> codeWindow;
+        WindowConfig wc;
+        wc.title = "Generated C++ - Round Gauge";
+        wc.width = 760;
+        wc.height = 560;
+        wc.resizable = true;
+        wc.type = WindowType::Standard;
+        codeWindow = CreateWindow(wc);
+        if (!codeWindow || !codeWindow->IsCreated()) return;
+
+        auto editor = std::make_shared<UltraCanvasTextArea>("GaugeCodeEditor");
+        editor->layout.display = CSSLayout::DisplayType::Block;
+        editor->size.width = CSSLayout::Dimension::Vw(100);
+        editor->size.height = CSSLayout::Dimension::Vh(100);
+        editor->SetText(code);
+        editor->SetShowLineNumbers(true);
+        editor->SetHighlightSyntax(true);
+        editor->SetProgrammingLanguageByExtension("cpp");
+        editor->SetFontSize(12);
+        // Editable on purpose (not read-only) so the code can be tweaked/copied.
+
+        codeWindow->SetEventCallback([](const UCEvent& event) {
+            if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
+                if (event.targetWindow) ((UltraCanvasWindow*)event.targetWindow)->Close();
+                return true;
+            }
+            return false;
+        });
+        codeWindow->AddChild(editor);
+        codeWindow->Show();
     }
 
     // Apply a named style preset to a CircularRing gauge (used by the showcase cards).
@@ -578,6 +750,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     playGauge->SetGaugeColor(Color(0, 200, 140, 255));
     playGauge->SetRingThickness(10.0f);
     playGauge->SetRingStyle(GaugeRingStyle::SolidArc);
+    playGauge->SetRingGradientColors(MakeSpectrumColors(100));  // used by the Spectrum style
     playGauge->SetValue(74.0);
 
     auto gaugeWrap = std::make_shared<UltraCanvasContainer>("round_play_GW", 0, 0, 0, 0);
@@ -586,6 +759,24 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     AddFlex(panel, gaugeWrap, 1);
 
     auto gPtr = playGauge.get();
+
+    // "Code" button — a small bordered button overlaid at the bottom-right of the
+    // gauge display (over the choices below). It generates the C++ for the current
+    // choices and shows it in a popup window with an editable text area.
+    auto codeBtn = std::make_shared<UltraCanvasButton>("round_codebtn", 0, 0, 50, 20);
+    codeBtn->SetText("Code");
+    codeBtn->SetFontSize(10.0f);
+    codeBtn->SetBorder(1.0f, Color(150, 150, 165, 255));
+    codeBtn->SetColors(Color(255, 255, 255, 235), Color(235, 238, 245, 255));
+    codeBtn->SetTextColors(Color(70, 70, 90, 255));
+    codeBtn->layoutItem.SetPositionType(CSSLayout::PositionType::Absolute)
+                       .SetPositionInsets(CSSLayout::Position{
+                           CSSLayout::Dimension::Auto(),   // top
+                           CSSLayout::Dimension::Px(6),    // right
+                           CSSLayout::Dimension::Px(6),    // bottom
+                           CSSLayout::Dimension::Auto()}); // left
+    codeBtn->SetOnClick([gPtr]() { ShowGaugeCodePopup(GenerateGaugeCode(gPtr)); });
+    gaugeWrap->AddChild(codeBtn);
 
     // --- Value slider ---
     auto valSlider = std::make_shared<UltraCanvasSlider>("round_val", 0, 0, 0, kSliderH);
@@ -617,6 +808,28 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     AddFlex(panel, widthCap, 0);
     AddFlex(panel, widthSlider, 0);
 
+    // --- Indicator style dropdown ---
+    // (Determines whether the segment-options group below is active.)
+    auto styleCap = MakeCaption("round_style_cap", "Indicator style");
+    AddFlex(panel, styleCap, 0);
+    auto styleDrop = std::make_shared<UltraCanvasDropdown>("round_style", 0, 0, 0, 26);
+    styleDrop->AddItem("Solid line arc");
+    styleDrop->AddItem("Segmented");
+    styleDrop->AddItem("Dashed / ticks");
+    styleDrop->AddItem("Segmented ring (chunky)");
+    styleDrop->AddItem("Spectrum (100 colours)");
+    styleDrop->SetSelectedIndex(0);
+    AddFlex(panel, styleDrop, 0);   // onSelectionChanged wired up once the group exists
+
+    // ===== Segment-options group =====
+    // These controls only affect the segmented indicator styles (Segmented,
+    // Dashed and Segmented ring). They are grouped here under one header and
+    // disabled together whenever a non-segmented style (Solid arc / Spectrum)
+    // is selected.
+    auto segGroupHeader = MakeCaption("round_seg_group", "Segment options");
+    segGroupHeader->SetFontWeight(FontWeight::Bold);
+    AddFlex(panel, segGroupHeader, 0);
+
     // --- Segment count slider ---
     auto countSlider = std::make_shared<UltraCanvasSlider>("round_count", 0, 0, 0, kSliderH);
     countSlider->SetOrientation(SliderOrientation::Horizontal);
@@ -632,25 +845,6 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     };
     AddFlex(panel, countCap, 0);
     AddFlex(panel, countSlider, 0);
-
-    // --- Indicator style dropdown ---
-    auto styleCap = MakeCaption("round_style_cap", "Indicator style");
-    AddFlex(panel, styleCap, 0);
-    auto styleDrop = std::make_shared<UltraCanvasDropdown>("round_style", 0, 0, 0, 26);
-    styleDrop->AddItem("Solid line arc");
-    styleDrop->AddItem("Segmented");
-    styleDrop->AddItem("Dashed / ticks");
-    styleDrop->AddItem("Segmented ring (chunky)");
-    styleDrop->SetSelectedIndex(0);
-    styleDrop->onSelectionChanged = [gPtr](int idx, const DropdownItem&) {
-        switch (idx) {
-            case 1: gPtr->SetRingStyle(GaugeRingStyle::Segmented); break;
-            case 2: gPtr->SetRingStyle(GaugeRingStyle::Dashed); break;
-            case 3: gPtr->SetRingStyle(GaugeRingStyle::SegmentedRing); break;
-            default: gPtr->SetRingStyle(GaugeRingStyle::SolidArc); break;
-        }
-    };
-    AddFlex(panel, styleDrop, 0);
 
     // --- Segment style dropdown (Segmented / Dashed) ---
     auto segCap = MakeCaption("round_seg_cap", "Segment style (Segmented / Dashed)");
@@ -692,6 +886,30 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
         gPtr->SetRingBorder(idx == 1);
     };
     AddFlex(panel, borderDrop, 0);
+
+    // Enable/disable the whole segment-options group from the indicator style.
+    std::vector<UltraCanvasUIElement*> segGroup = {
+        segGroupHeader.get(), countCap.get(), countSlider.get(),
+        segCap.get(), segDrop.get(), endsCap.get(), endsDrop.get(),
+        borderCap.get(), borderDrop.get()
+    };
+    auto setSegGroupEnabled = [segGroup](bool en) {
+        for (auto* e : segGroup) e->SetDisabled(!en);
+    };
+    // Segmented (1), Dashed (2) and Segmented ring (3) use the segment options;
+    // Solid arc (0) and Spectrum (4) do not.
+    styleDrop->onSelectionChanged = [gPtr, setSegGroupEnabled](int idx, const DropdownItem&) {
+        switch (idx) {
+            case 1: gPtr->SetRingStyle(GaugeRingStyle::Segmented); break;
+            case 2: gPtr->SetRingStyle(GaugeRingStyle::Dashed); break;
+            case 3: gPtr->SetRingStyle(GaugeRingStyle::SegmentedRing); break;
+            case 4: gPtr->SetRingStyle(GaugeRingStyle::Spectrum); break;
+            default: gPtr->SetRingStyle(GaugeRingStyle::SolidArc); break;
+        }
+        setSegGroupEnabled(idx == 1 || idx == 2 || idx == 3);
+    };
+    // Initial style is Solid arc, so the segment options start disabled.
+    setSegGroupEnabled(false);
 
     // --- Surface fill dropdown ---
     auto fillCap = MakeCaption("round_fill_cap", "Surface fill");
@@ -772,14 +990,14 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     g1->SetTrackColor(Color(50, 60, 30, 255));
     AddGrid(grid, CreateGaugeCard("rp1_c", kCardW, kCardH, g1, 0.0f, 100.0f, 74.0f, "%"), 0, 0);
 
-    // 2) Segmented rounded blocks (clearly separated chunks)
+    // 2) Spectrum fade through 100 colours (maximum-indication option)
     auto g2 = CreateGaugeDiagramElement("rp2", 0, 0, kCardW, kCardH);
-    ApplyRoundPreset(g2, GaugeRingStyle::Segmented, GaugeRingSegmentStyle::Blocks,
+    ApplyRoundPreset(g2, GaugeRingStyle::Spectrum, GaugeRingSegmentStyle::Blocks,
                      GaugeFillStyle::NoFill, 16.0f, 12, Color(160, 230, 40, 255));
-    g2->SetTitle("Segmented");
+    g2->SetRingGradientColors(MakeSpectrumColors(100));  // up to 100 colour stops
+    g2->SetTitle("Spectrum (100 colours)");
     g2->SetUnit("%");
-    g2->SetTrackColor(Color(50, 60, 30, 255));
-    AddGrid(grid, CreateGaugeCard("rp2_c", kCardW, kCardH, g2, 0.0f, 100.0f, 47.0f, "%"), 0, 1);
+    AddGrid(grid, CreateGaugeCard("rp2_c", kCardW, kCardH, g2, 0.0f, 100.0f, 72.0f, "%"), 0, 1);
 
     // 3) Dashed radial bars (tachymeter)
     auto g3 = CreateGaugeDiagramElement("rp3", 0, 0, kCardW, kCardH);
@@ -792,8 +1010,10 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
 
     // 4) Dots ring
     auto g4 = CreateGaugeDiagramElement("rp4", 0, 0, kCardW, kCardH);
+    // 24 dots (was 40): at 40 the dots packed tight enough to merge into a solid
+    // ring; fewer dots keep clear gaps so it reads as a dotted ring.
     ApplyRoundPreset(g4, GaugeRingStyle::Segmented, GaugeRingSegmentStyle::Dots,
-                     GaugeFillStyle::NoFill, 12.0f, 40, Color(120, 90, 240, 255));
+                     GaugeFillStyle::NoFill, 12.0f, 24, Color(120, 90, 240, 255));
     g4->SetTitle("Dots");
     g4->SetUnit("%");
     AddGrid(grid, CreateGaugeCard("rp4_c", kCardW, kCardH, g4, 0.0f, 100.0f, 55.0f, "%"), 1, 0);

@@ -87,8 +87,9 @@ namespace {
     constexpr float kValueUnitGap  = 14.0f;   // V2.3: Increased from 4 to give real separation
     constexpr float kPaddingSide   = 12.0f;
     constexpr float kPaddingTop    = 32.0f;
-    constexpr float kTitleRaise    = 22.0f;   // raise title above the gauge center offset
+    constexpr float kTitleRaise    = 34.0f;   // V2.8: title raised a further 12px (was 22) to free room for the larger gauge
     constexpr float kPaddingBottom = 22.0f;
+    constexpr float kGaugeScale    = 1.30f;   // V2.8: enlarge round example gauges by 30%
 }
 
 // =============================================================================
@@ -220,6 +221,11 @@ void UltraCanvasGaugeDiagramElement::SetFillStyle(GaugeFillStyle s) { fillStyle 
 void UltraCanvasGaugeDiagramElement::SetTrackColor(const Color& c) { trackColor = c; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetRingFaded(bool faded) { ringFaded = faded; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetFillFaded(bool faded) { fillFaded = faded; RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetRingGradientColors(const std::vector<Color>& colors) {
+    ringGradientColors = colors;
+    if (ringGradientColors.size() > 100) ringGradientColors.resize(100);  // cap at 100 stops
+    RequestRedraw();
+}
 void UltraCanvasGaugeDiagramElement::SetRingCenterContent(GaugeRingCenterContent c) { ringCenterContent = c; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetRingCenterLabel(const std::string& label) { ringCenterLabel = label; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetRingCenterIcon(GaugeRingIcon icon) { ringCenterIcon = icon; RequestRedraw(); }
@@ -357,6 +363,18 @@ float UltraCanvasGaugeDiagramElement::GetGaugeRadius() const {
                    - kPaddingTop - kPaddingBottom - tickLabelClearance;
     float availW = static_cast<float>(b.width) - 2.0f * kPaddingSide - 40.0f; // V2.4: 30 → 40 (more side room for labels)
     float r = std::min(availW, availH) / 2.0f;
+
+    // V2.8: Enlarge every round example gauge by 30%. The previous size left the
+    // segmented-ring centre content (battery icon / "Battery" label) sitting too
+    // close to the outer ring, so it overlapped the bottom segments. A bigger ring
+    // gives the centred value + icon/label real breathing room inside the circle.
+    r *= kGaugeScale;
+    // Clamp so the enlarged gauge can grow into the reserved margins but never
+    // spills past the card's padding box (width or the title-adjusted height).
+    float hardMaxR = std::min(
+        (static_cast<float>(b.width)  - 2.0f * kPaddingSide) / 2.0f,
+        (static_cast<float>(b.height) - kPaddingTop - kPaddingBottom - titleSpace) / 2.0f);
+    r = std::min(r, hardMaxR);
     return std::max(20.0f, r);
 }
 
@@ -2051,7 +2069,7 @@ void UltraCanvasGaugeDiagramElement::DrawRingTrackAndValue(
 
     // When faded, lit portions of the indicator use a soft lightened gradient
     // instead of the flat colour; the track stays as configured.
-    std::shared_ptr<IPaintPattern> fadePat = ringFaded ? MakeFadedPaint(ctx, fillC) : nullptr;
+    std::shared_ptr<IPaintPattern> fadePat = ringFaded ? MakeFadedPaint(ctx, fillC, center, radius) : nullptr;
     auto setLitStroke = [&]() {
         if (fadePat) ctx->SetStrokePaint(fadePat); else ctx->SetStrokePaint(fillC);
     };
@@ -2074,11 +2092,46 @@ void UltraCanvasGaugeDiagramElement::DrawRingTrackAndValue(
         return;
     }
 
+    if (ringStyle == GaugeRingStyle::Spectrum) {
+        // A smooth fade through up to 100 user colours. The whole ring shows the
+        // colour scale faintly (the available indication range); the arc up to the
+        // current value is drawn at full opacity, so the leading-edge colour
+        // pinpoints the value among up to 100 distinct levels.
+        const int stopCount = std::max(2, static_cast<int>(ringGradientColors.size()));
+        const int steps = std::max(stopCount, 120);   // enough sub-arcs for a smooth blend
+        const float segSweep = sweep / static_cast<float>(steps);
+        const float overlap  = segSweep * 0.6f;        // overlap butt-capped arcs to hide seams
+        for (int i = 0; i < steps; i++) {
+            float s = startRad + i * segSweep;
+            float e = s + segSweep + overlap;
+            double t = (i + 0.5) / static_cast<double>(steps);
+            Color col = SampleGradientColor(t);
+            if (t > ratio) col.a = static_cast<uint8_t>(col.a * 0.20f);  // faint scale past the value
+            ctx->ClearPath();
+            ctx->Arc(center.x, center.y, radius, s, e);
+            ctx->SetStrokePaint(col);
+            ctx->SetStrokeWidth(thickness);
+            ctx->SetLineCap(LineCap::Butt);
+            ctx->Stroke();
+        }
+        // Round the lit leading edge so the value tip reads cleanly.
+        if (ratio > 0.0001) {
+            float tipEnd = startRad + static_cast<float>(ratio * sweep);
+            ctx->ClearPath();
+            ctx->Arc(center.x, center.y, radius, std::max(startRad, tipEnd - segSweep), tipEnd);
+            ctx->SetStrokePaint(SampleGradientColor(ratio));
+            ctx->SetStrokeWidth(thickness);
+            ctx->SetLineCap(LineCap::Round);
+            ctx->Stroke();
+        }
+        return;
+    }
+
     if (ringStyle == GaugeRingStyle::SegmentedRing) {
         // A few chunky arc segments around the circle (the battery / activity-ring
         // look). Honours: segment count, rounded vs sharp ends, and an optional
         // border drawn as a slightly wider outline beneath each segment.
-        int count = std::max(2, ringSegmentCount);
+        int count = std::max(4, ringSegmentCount);   // floor of 4 (matches SetRingSegmentCount)
         int litCount = static_cast<int>(std::ceil(ratio * count - 1e-6));
         LineCap cap = ringSegmentRounded ? LineCap::Round : LineCap::Butt;
         float gapFrac = 0.30f;                       // generous gaps between chunks
@@ -2163,8 +2216,11 @@ void UltraCanvasGaugeDiagramElement::DrawRingLiquidFill(
     IRenderContext* ctx, const Point2Df& center, float innerRadius) {
     double ratio = std::max(0.0, std::min(1.0, ValueToRatio(currentValue)));
     Color fillC = GetColorForValue(currentValue);
-    // Faded fill: a pale, lightened tint of the value colour (soft liquid look).
-    if (fillFaded) fillC = fillC.Lighten(0.55f);
+    // Faded fill: a soft two-tone gradient across the disc (light tint -> darker
+    // shade) so the liquid clearly reads as faded. A flat lightened colour (the
+    // old behaviour) showed no visible fading.
+    std::shared_ptr<IPaintPattern> fillFadePat =
+        fillFaded ? MakeFadedPaint(ctx, fillC, center, innerRadius) : nullptr;
 
     ctx->PushState();
     // Clip everything that follows to the inner disc.
@@ -2188,7 +2244,7 @@ void UltraCanvasGaugeDiagramElement::DrawRingLiquidFill(
                 ? std::max(3.0f, innerRadius * 0.10f) : 0.0f;
     float wavelength = std::max(20.0f, innerRadius); // ~2 crests across the disc
 
-    ctx->SetFillPaint(fillC);
+    if (fillFadePat) ctx->SetFillPaint(fillFadePat); else ctx->SetFillPaint(fillC);
     ctx->ClearPath();
     ctx->MoveTo(left, bottom + 4.0f);
     ctx->LineTo(left, level);
@@ -2262,16 +2318,38 @@ void UltraCanvasGaugeDiagramElement::DrawRingCenterIcon(
 // ring look — strokes/segments at different positions pick up different shades,
 // giving a gentle two-tone sweep around the ring.
 std::shared_ptr<IPaintPattern> UltraCanvasGaugeDiagramElement::MakeFadedPaint(
-    IRenderContext* ctx, const Color& base) const {
-    const auto b = GetLocalBounds();
+    IRenderContext* ctx, const Color& base, const Point2Df& center, float radius) const {
+    // A diagonal two-tone sweep from a pale tint to a darker shade of the base
+    // colour. The gradient spans the gauge circle (not the whole element), so the
+    // full light->dark range is actually visible across the ring/disc — spanning
+    // the element bounds previously left only a near-uniform sliver on the ring.
     std::vector<GradientStop> stops{
-        GradientStop(0.0, base.Lighten(0.60f)),
-        GradientStop(1.0, base),
+        GradientStop(0.0, base.Lighten(0.70f)),
+        GradientStop(1.0, base.Darken(0.30f)),
     };
     return ctx->CreateLinearGradientPattern(
-        static_cast<double>(b.x), static_cast<double>(b.y),
-        static_cast<double>(b.x + b.width), static_cast<double>(b.y + b.height),
+        static_cast<double>(center.x - radius), static_cast<double>(center.y - radius),
+        static_cast<double>(center.x + radius), static_cast<double>(center.y + radius),
         stops);
+}
+
+// Linear-interpolates the Spectrum colour list at t in [0,1]. With N colours the
+// stops sit at 0, 1/(N-1), ... 1, so the ring fades smoothly through all of them.
+Color UltraCanvasGaugeDiagramElement::SampleGradientColor(double t) const {
+    if (ringGradientColors.empty()) return gaugeColor;
+    if (ringGradientColors.size() == 1) return ringGradientColors.front();
+    t = std::max(0.0, std::min(1.0, t));
+    const int last = static_cast<int>(ringGradientColors.size()) - 1;
+    double pos = t * last;
+    int i = static_cast<int>(std::floor(pos));
+    if (i >= last) return ringGradientColors.back();
+    double f = pos - i;
+    const Color& a = ringGradientColors[i];
+    const Color& b = ringGradientColors[i + 1];
+    auto lerp = [f](uint8_t x, uint8_t y) {
+        return static_cast<uint8_t>(std::lround(x + (static_cast<double>(y) - x) * f));
+    };
+    return Color(lerp(a.r, b.r), lerp(a.g, b.g), lerp(a.b, b.b), lerp(a.a, b.a));
 }
 
 // V2.1 FIX: Battery title at top with reserved space, bolt + percent visible

@@ -738,6 +738,11 @@ namespace UltraCanvas {
     // ===== EVENT HANDLING =====
 
     bool UltraCanvasDropdown::OnEvent(const UCEvent &event) {
+        // A disabled dropdown ignores all input (it still renders greyed out).
+        if (IsDisabled()) {
+            if (dropdownOpen) CloseDropdown();
+            return false;
+        }
         switch (event.type) {
             case UCEventType::MouseDown:
                 return HandleMouseDown(event);
