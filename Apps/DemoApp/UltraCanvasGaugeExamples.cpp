@@ -22,10 +22,13 @@
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasTextArea.h"
+#include "UltraCanvasWindow.h"
 #include <sstream>
 #include <iomanip>
 #include <vector>
 #include <cmath>
+#include <string>
 
 namespace UltraCanvas {
 
@@ -561,6 +564,142 @@ namespace {
         return out;
     }
 
+    // ---- C++ code generation for the interactive playground gauge -------------
+    // These turn the live gauge configuration into copy-pasteable source so the
+    // "Code" button can show exactly how to reproduce the current choices.
+    inline std::string ColorCode(const Color& c) {
+        std::ostringstream o;
+        o << "Color(" << (int)c.r << ", " << (int)c.g << ", " << (int)c.b << ", " << (int)c.a << ")";
+        return o.str();
+    }
+    inline std::string FloatCode(float v) {
+        std::ostringstream o; o << std::fixed << std::setprecision(1) << v << "f"; return o.str();
+    }
+    inline const char* RingStyleName(GaugeRingStyle s) {
+        switch (s) {
+            case GaugeRingStyle::SolidArc:      return "GaugeRingStyle::SolidArc";
+            case GaugeRingStyle::Segmented:     return "GaugeRingStyle::Segmented";
+            case GaugeRingStyle::Dashed:        return "GaugeRingStyle::Dashed";
+            case GaugeRingStyle::SegmentedRing: return "GaugeRingStyle::SegmentedRing";
+            case GaugeRingStyle::Spectrum:      return "GaugeRingStyle::Spectrum";
+        }
+        return "GaugeRingStyle::SolidArc";
+    }
+    inline const char* SegStyleName(GaugeRingSegmentStyle s) {
+        switch (s) {
+            case GaugeRingSegmentStyle::Bars:   return "GaugeRingSegmentStyle::Bars";
+            case GaugeRingSegmentStyle::Dots:   return "GaugeRingSegmentStyle::Dots";
+            case GaugeRingSegmentStyle::Blocks: return "GaugeRingSegmentStyle::Blocks";
+        }
+        return "GaugeRingSegmentStyle::Blocks";
+    }
+    inline const char* FillStyleName(GaugeFillStyle s) {
+        switch (s) {
+            case GaugeFillStyle::NoFill:        return "GaugeFillStyle::NoFill";
+            case GaugeFillStyle::StraightLevel: return "GaugeFillStyle::StraightLevel";
+            case GaugeFillStyle::WavedLevel:    return "GaugeFillStyle::WavedLevel";
+        }
+        return "GaugeFillStyle::NoFill";
+    }
+    inline const char* CenterContentName(GaugeRingCenterContent c) {
+        switch (c) {
+            case GaugeRingCenterContent::TextLabel: return "GaugeRingCenterContent::TextLabel";
+            case GaugeRingCenterContent::Icon:      return "GaugeRingCenterContent::Icon";
+            case GaugeRingCenterContent::NoContent: return "GaugeRingCenterContent::NoContent";
+        }
+        return "GaugeRingCenterContent::NoContent";
+    }
+    inline const char* RingIconName(GaugeRingIcon i) {
+        return i == GaugeRingIcon::Bolt ? "GaugeRingIcon::Bolt" : "GaugeRingIcon::Battery";
+    }
+
+    // Emit C++ that recreates the round gauge for the current playground choices.
+    std::string GenerateGaugeCode(const UltraCanvasGaugeDiagramElement* g) {
+        const GaugeRingStyle style = g->GetRingStyle();
+        std::ostringstream o;
+        o << "// C++ generated from the current Round Gauges playground choices.\n";
+        o << "// Drop this into a function that returns/adds the gauge element.\n\n";
+        o << "auto gauge = CreateGaugeDiagramElement(\"gauge\", 0, 0, 272, 374);\n";
+        o << "gauge->SetMode(GaugeMode::CircularRing);\n";
+        o << "gauge->SetRingStyle(" << RingStyleName(style) << ");\n";
+        o << "gauge->SetRingThickness(" << FloatCode(g->GetRingThickness()) << ");\n";
+
+        if (style == GaugeRingStyle::Segmented || style == GaugeRingStyle::Dashed) {
+            o << "gauge->SetRingSegmentStyle(" << SegStyleName(g->GetRingSegmentStyle()) << ");\n";
+            o << "gauge->SetRingSegmentCount(" << g->GetRingSegmentCount() << ");\n";
+        } else if (style == GaugeRingStyle::SegmentedRing) {
+            o << "gauge->SetRingSegmentCount(" << g->GetRingSegmentCount() << ");\n";
+            o << "gauge->SetRingSegmentRounded(" << (g->GetRingSegmentRounded() ? "true" : "false") << ");\n";
+            o << "gauge->SetRingBorder(" << (g->GetRingBorder() ? "true" : "false") << ");\n";
+        }
+
+        o << "gauge->SetFillStyle(" << FillStyleName(g->GetFillStyle()) << ");\n";
+        o << "gauge->SetGaugeColor(" << ColorCode(g->GetGaugeColor()) << ");\n";
+        o << "gauge->SetTrackColor(" << ColorCode(g->GetTrackColor()) << ");\n";
+        o << "gauge->SetRingFaded(" << (g->GetRingFaded() ? "true" : "false") << ");\n";
+        o << "gauge->SetFillFaded(" << (g->GetFillFaded() ? "true" : "false") << ");\n";
+
+        if (style == GaugeRingStyle::Spectrum) {
+            const auto& cols = g->GetRingGradientColors();
+            o << "\nstd::vector<Color> spectrum = {\n";
+            for (size_t i = 0; i < cols.size(); i++) {
+                o << (i % 4 == 0 ? "    " : " ") << ColorCode(cols[i]) << ",";
+                if (i % 4 == 3) o << "\n";
+            }
+            if (cols.size() % 4 != 0) o << "\n";
+            o << "};\n";
+            o << "gauge->SetRingGradientColors(spectrum);  // up to 100 colours\n\n";
+        }
+
+        const GaugeRingCenterContent cc = g->GetRingCenterContent();
+        if (cc == GaugeRingCenterContent::TextLabel) {
+            o << "gauge->SetRingCenterLabel(\"" << g->GetRingCenterLabel() << "\");\n";
+        } else if (cc == GaugeRingCenterContent::Icon) {
+            o << "gauge->SetRingCenterIcon(" << RingIconName(g->GetRingCenterIcon()) << ");\n";
+        }
+        o << "gauge->SetRingCenterContent(" << CenterContentName(cc) << ");\n";
+
+        if (!g->GetUnit().empty()) o << "gauge->SetUnit(\"" << g->GetUnit() << "\");\n";
+        o << "gauge->SetValue(" << g->GetValue() << ");\n";
+        return o.str();
+    }
+
+    // Open a popup window showing `code` in an editable, syntax-highlighted text
+    // area. The window is kept alive by a static handle (one popup at a time) and
+    // closes on Escape.
+    void ShowGaugeCodePopup(const std::string& code) {
+        static std::shared_ptr<UltraCanvasWindow> codeWindow;
+        WindowConfig wc;
+        wc.title = "Generated C++ - Round Gauge";
+        wc.width = 760;
+        wc.height = 560;
+        wc.resizable = true;
+        wc.type = WindowType::Standard;
+        codeWindow = CreateWindow(wc);
+        if (!codeWindow || !codeWindow->IsCreated()) return;
+
+        auto editor = std::make_shared<UltraCanvasTextArea>("GaugeCodeEditor");
+        editor->layout.display = CSSLayout::DisplayType::Block;
+        editor->size.width = CSSLayout::Dimension::Vw(100);
+        editor->size.height = CSSLayout::Dimension::Vh(100);
+        editor->SetText(code);
+        editor->SetShowLineNumbers(true);
+        editor->SetHighlightSyntax(true);
+        editor->SetProgrammingLanguageByExtension("cpp");
+        editor->SetFontSize(12);
+        // Editable on purpose (not read-only) so the code can be tweaked/copied.
+
+        codeWindow->SetEventCallback([](const UCEvent& event) {
+            if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
+                if (event.targetWindow) ((UltraCanvasWindow*)event.targetWindow)->Close();
+                return true;
+            }
+            return false;
+        });
+        codeWindow->AddChild(editor);
+        codeWindow->Show();
+    }
+
     // Apply a named style preset to a CircularRing gauge (used by the showcase cards).
     void ApplyRoundPreset(const std::shared_ptr<UltraCanvasGaugeDiagramElement>& g,
                           GaugeRingStyle rs, GaugeRingSegmentStyle ss,
@@ -620,6 +759,24 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     AddFlex(panel, gaugeWrap, 1);
 
     auto gPtr = playGauge.get();
+
+    // "Code" button — a small bordered button overlaid at the bottom-right of the
+    // gauge display (over the choices below). It generates the C++ for the current
+    // choices and shows it in a popup window with an editable text area.
+    auto codeBtn = std::make_shared<UltraCanvasButton>("round_codebtn", 0, 0, 50, 20);
+    codeBtn->SetText("Code");
+    codeBtn->SetFontSize(10.0f);
+    codeBtn->SetBorder(1.0f, Color(150, 150, 165, 255));
+    codeBtn->SetColors(Color(255, 255, 255, 235), Color(235, 238, 245, 255));
+    codeBtn->SetTextColors(Color(70, 70, 90, 255));
+    codeBtn->layoutItem.SetPositionType(CSSLayout::PositionType::Absolute)
+                       .SetPositionInsets(CSSLayout::Position{
+                           CSSLayout::Dimension::Auto(),   // top
+                           CSSLayout::Dimension::Px(6),    // right
+                           CSSLayout::Dimension::Px(6),    // bottom
+                           CSSLayout::Dimension::Auto()}); // left
+    codeBtn->SetOnClick([gPtr]() { ShowGaugeCodePopup(GenerateGaugeCode(gPtr)); });
+    gaugeWrap->AddChild(codeBtn);
 
     // --- Value slider ---
     auto valSlider = std::make_shared<UltraCanvasSlider>("round_val", 0, 0, 0, kSliderH);
