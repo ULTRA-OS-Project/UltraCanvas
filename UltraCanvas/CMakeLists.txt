@@ -13,7 +13,7 @@ include(FetchContent)
 enable_language(C)
 
 # ===== LIBRARY DEFINITION =====
-set(ULTRACANVAS_VERSION "0.2.29")
+set(ULTRACANVAS_VERSION "0.2.30")
 set(ULTRACANVAS_LIB_NAME "UltraCanvas")
 
 message(STATUS "")
