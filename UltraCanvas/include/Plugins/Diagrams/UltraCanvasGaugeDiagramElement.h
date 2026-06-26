@@ -243,6 +243,18 @@ public:
     void SetRingCenterIcon(GaugeRingIcon icon);
     GaugeRingIcon GetRingCenterIcon() const { return ringCenterIcon; }
 
+    // Start angle of the round-gauge ring, in degrees, screen convention
+    // (0 = 3 o'clock, +90 = 6 o'clock / bottom, -90 = 12 o'clock / top). The
+    // value-zero ("null") position sits here and the indicator fills clockwise
+    // from it. Defaults to -90 (top) to match the classic round gauge.
+    void SetRingStartAngleDeg(float deg);
+    float GetRingStartAngleDeg() const { return ringStartAngleDeg; }
+    // When enabled, the lit indicator colour is derived from the current value
+    // as a health band (green high -> yellow -> orange -> red low) instead of
+    // the flat gauge colour. Useful for battery / dot-ring style indicators.
+    void SetRingValueColorBands(bool enabled);
+    bool GetRingValueColorBands() const { return ringValueColorBands; }
+
     // ===== ARC ANGLES =====
     void SetArcAngles(double startDeg, double endDeg);
     double GetArcStartAngle() const { return arcStartDeg; }
@@ -339,6 +351,8 @@ private:
     Color trackColor = Color(220, 221, 230, 255);
     bool ringFaded = false;   // draw the indicator with a soft lightened gradient
     bool fillFaded = false;   // draw the centre fill with a pale lightened tint
+    float ringStartAngleDeg = -90.0f;  // ring zero/null position (-90 = top)
+    bool ringValueColorBands = false;  // colour the indicator by value (green->red)
     std::vector<Color> ringGradientColors;  // Spectrum-style colour stops (<=100)
 
     // Round-gauge centre content (drawn beneath the centre value).

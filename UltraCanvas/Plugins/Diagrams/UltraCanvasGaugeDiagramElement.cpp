@@ -1,8 +1,17 @@
 // Plugins/Diagrams/UltraCanvasGaugeDiagramElement.cpp
 // Implementation of comprehensive gauge element with 17 visual modes
-// Version: 2.7.1
-// Last Modified: 2026-06-23
+// Version: 2.9.0
+// Last Modified: 2026-06-26
 // Author: UltraCanvas Framework
+// V2.9.0 changelog: Round-gauge (CircularRing) enhancements:
+//   - Configurable ring start/null angle (SetRingStartAngleDeg) so the zero
+//     position can sit anywhere (e.g. the bottom of the circle); the indicator
+//     still fills a full 360° clockwise from there.
+//   - Value-driven indicator colour bands (SetRingValueColorBands): green when
+//     high, fading through yellow then orange to red when low.
+//   - Dots indicator style now draws a small border around each dot.
+//   - CircularRing reclaims the dial-mode top/bottom padding (it has no external
+//     tick labels), letting the ring roughly double in compact cards.
 // V2.7.1 changelog: Fixed CircularRing (round gauge) sizing — the value is drawn
 //   in the centre of the ring, so the layout no longer reserves a value/unit zone
 //   below it (and trims tick clearance), letting the ring grow to fill its card
@@ -229,6 +238,8 @@ void UltraCanvasGaugeDiagramElement::SetRingGradientColors(const std::vector<Col
 void UltraCanvasGaugeDiagramElement::SetRingCenterContent(GaugeRingCenterContent c) { ringCenterContent = c; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetRingCenterLabel(const std::string& label) { ringCenterLabel = label; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetRingCenterIcon(GaugeRingIcon icon) { ringCenterIcon = icon; RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetRingStartAngleDeg(float deg) { ringStartAngleDeg = deg; RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetRingValueColorBands(bool enabled) { ringValueColorBands = enabled; RequestRedraw(); }
 
 void UltraCanvasGaugeDiagramElement::SetArcAngles(double startDeg, double endDeg) {
     arcStartDeg = startDeg;
@@ -323,11 +334,17 @@ Point2Df UltraCanvasGaugeDiagramElement::GetGaugeCenter() const {
     } else if (mode == GaugeMode::CircularRing) {
         tickLabelClearance = 8.0f;  // V2.7.1: keep consistent with GetGaugeRadius
     }
+    // V2.9: CircularRing has no external tick labels, so it needs far less top/
+    // bottom breathing than the dial modes (kPaddingTop=32 exists to clear the
+    // tick numbers the dials draw above the arc). Reclaiming it lets the ring
+    // roughly double in the compact showcase cards.
+    float padTop    = (mode == GaugeMode::CircularRing) ? 12.0f : kPaddingTop;
+    float padBottom = (mode == GaugeMode::CircularRing) ? 10.0f : kPaddingBottom;
     float availH = static_cast<float>(b.height) - titleSpace - bottomSpace
-                   - kPaddingTop - kPaddingBottom - tickLabelClearance;
+                   - padTop - padBottom - tickLabelClearance;
     // Center the gauge in the available (clearance-adjusted) space, with the clearance
     // half going to the TOP (between title and arc) — this is the side that needs the gap
-    float cy = static_cast<float>(b.y) + kPaddingTop + titleSpace
+    float cy = static_cast<float>(b.y) + padTop + titleSpace
                + tickLabelClearance + availH / 2.0f;
     return Point2Df(static_cast<float>(b.x + b.width / 2), cy);
 }
@@ -359,9 +376,15 @@ float UltraCanvasGaugeDiagramElement::GetGaugeRadius() const {
         tickLabelClearance = 8.0f;   // V2.7.1: no external labels, only short radial bars
     }
 
+    // V2.9: CircularRing reclaims the dial top/bottom padding (see GetGaugeCenter)
+    // and needs only stroke-overhang room on the sides, not the dials' 40px tick-
+    // label allowance — so the ring fills the card.
+    float padTop    = (mode == GaugeMode::CircularRing) ? 12.0f : kPaddingTop;
+    float padBottom = (mode == GaugeMode::CircularRing) ? 10.0f : kPaddingBottom;
+    float sideExtra = (mode == GaugeMode::CircularRing) ? 18.0f : 40.0f;
     float availH = static_cast<float>(b.height) - titleSpace - bottomSpace
-                   - kPaddingTop - kPaddingBottom - tickLabelClearance;
-    float availW = static_cast<float>(b.width) - 2.0f * kPaddingSide - 40.0f; // V2.4: 30 → 40 (more side room for labels)
+                   - padTop - padBottom - tickLabelClearance;
+    float availW = static_cast<float>(b.width) - 2.0f * kPaddingSide - sideExtra;
     float r = std::min(availW, availH) / 2.0f;
 
     // V2.8: Enlarge every round example gauge by 30%. The previous size left the
@@ -373,7 +396,7 @@ float UltraCanvasGaugeDiagramElement::GetGaugeRadius() const {
     // spills past the card's padding box (width or the title-adjusted height).
     float hardMaxR = std::min(
         (static_cast<float>(b.width)  - 2.0f * kPaddingSide) / 2.0f,
-        (static_cast<float>(b.height) - kPaddingTop - kPaddingBottom - titleSpace) / 2.0f);
+        (static_cast<float>(b.height) - padTop - padBottom - titleSpace) / 2.0f);
     r = std::min(r, hardMaxR);
     return std::max(20.0f, r);
 }
@@ -2057,14 +2080,38 @@ void UltraCanvasGaugeDiagramElement::RenderCircularRing(
     }
 }
 
+// Health-band colour for a 0..1 value ratio: green (high) -> yellow -> orange
+// -> red (low). The 30%..70% band fades smoothly between yellow and green so
+// the indicator "turns into yellow" as the value drops.
+static Color RingValueBandColor(double ratio) {
+    auto lerp = [](const Color& a, const Color& b, float t) {
+        return Color(static_cast<uint8_t>(a.r + (b.r - a.r) * t),
+                     static_cast<uint8_t>(a.g + (b.g - a.g) * t),
+                     static_cast<uint8_t>(a.b + (b.b - a.b) * t), 255);
+    };
+    const Color green (40, 200, 80, 255);
+    const Color yellow(240, 210, 40, 255);
+    const Color orange(245, 150, 40, 255);
+    const Color red   (230, 55, 45, 255);
+    double pct = ratio * 100.0;
+    if (pct >= 70.0) return green;                                   // 100..70%
+    if (pct >= 30.0) return lerp(yellow, green,
+                                 static_cast<float>((pct - 30.0) / 40.0)); // 69..30%
+    if (pct >= 11.0) return orange;                                 // 29..11%
+    return red;                                                     // <=10%
+}
+
 // Draws the unfilled track plus the value indicator using the active ring style.
 void UltraCanvasGaugeDiagramElement::DrawRingTrackAndValue(
     IRenderContext* ctx, const Point2Df& center, float radius) {
-    const float startRad = -static_cast<float>(M_PI / 2.0);   // 12 o'clock
-    const float endRad   =  static_cast<float>(3.0 * M_PI / 2.0);
-    const float sweep    = endRad - startRad;                 // full 360°
+    // Ring zero/null position is configurable (default -90° = 12 o'clock); the
+    // indicator always fills a full 360° clockwise from there.
+    const float startRad = static_cast<float>(ringStartAngleDeg * M_PI / 180.0);
+    const float sweep    = static_cast<float>(2.0 * M_PI);     // full 360°
+    const float endRad   = startRad + sweep;
     const double ratio   = std::max(0.0, std::min(1.0, ValueToRatio(currentValue)));
-    const Color fillC    = GetColorForValue(currentValue);
+    const Color fillC    = ringValueColorBands ? RingValueBandColor(ratio)
+                                               : GetColorForValue(currentValue);
     const float thickness = ringThickness;
 
     // When faded, lit portions of the indicator use a soft lightened gradient
@@ -2072,9 +2119,6 @@ void UltraCanvasGaugeDiagramElement::DrawRingTrackAndValue(
     std::shared_ptr<IPaintPattern> fadePat = ringFaded ? MakeFadedPaint(ctx, fillC, center, radius) : nullptr;
     auto setLitStroke = [&]() {
         if (fadePat) ctx->SetStrokePaint(fadePat); else ctx->SetStrokePaint(fillC);
-    };
-    auto setLitFill = [&]() {
-        if (fadePat) ctx->SetFillPaint(fadePat); else ctx->SetFillPaint(fillC);
     };
 
     if (ringStyle == GaugeRingStyle::SolidArc) {
@@ -2201,11 +2245,14 @@ void UltraCanvasGaugeDiagramElement::DrawRingTrackAndValue(
         }
     } else { // Dots
         float dotR = std::max(2.0f, thickness * 0.5f);
+        // A small outline around each dot makes them read crisply, especially
+        // the lit value-coloured dots against the pale track dots.
+        float borderW = std::max(1.0f, dotR * 0.22f);
         for (int i = 0; i < count; i++) {
             float a = startRad + (i + 0.5f) * (sweep / static_cast<float>(count));
             Point2Df p(center.x + radius * std::cos(a), center.y + radius * std::sin(a));
-            if (i < litCount) setLitFill(); else ctx->SetFillPaint(trackColor);
-            ctx->FillCircle(p, dotR);
+            Color dotColor = (i < litCount) ? fillC : trackColor;
+            ctx->DrawFilledCircle(p, dotR, dotColor, ringBorderColor, borderW);
         }
     }
 }
