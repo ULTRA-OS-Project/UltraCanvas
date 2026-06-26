@@ -78,10 +78,15 @@ enum class GaugeRingStyle {
     SolidArc,       // one smooth continuous arc (the classic ring)
     Segmented,      // a series of discrete chunks separated by small gaps
     Dashed,         // many fine ticks/dashes around the circle (tachymeter look)
-    SegmentedRing   // a few chunky arc segments around the circle with a large
+    SegmentedRing,  // a few chunky arc segments around the circle with a large
                     // centre value and an optional icon/text label (battery look).
                     // Honours ringSegmentCount, ringSegmentRounded, ringBorder and
                     // the ring centre-content options below.
+    Spectrum        // a smooth fade through up to 100 user colours (see
+                    // SetRingGradientColors). The whole ring shows the colour
+                    // scale faintly; the arc up to the value is drawn at full
+                    // opacity, so the leading-edge colour pinpoints the value
+                    // among up to 100 distinct levels (maximum-indication option).
 };
 
 // Content shown in the centre of a round gauge, beneath the value.
@@ -224,6 +229,11 @@ public:
     bool GetRingFaded() const { return ringFaded; }
     void SetFillFaded(bool faded);
     bool GetFillFaded() const { return fillFaded; }
+    // Colour stops for the Spectrum ring style — set up to 100 colours that the
+    // ring fades through (evenly spaced across the value range). More colours give
+    // finer value indication. Lists longer than 100 are truncated.
+    void SetRingGradientColors(const std::vector<Color>& colors);
+    const std::vector<Color>& GetRingGradientColors() const { return ringGradientColors; }
 
     // Centre content for round gauges (value-only, text label or icon glyph).
     void SetRingCenterContent(GaugeRingCenterContent c);
@@ -329,6 +339,7 @@ private:
     Color trackColor = Color(220, 221, 230, 255);
     bool ringFaded = false;   // draw the indicator with a soft lightened gradient
     bool fillFaded = false;   // draw the centre fill with a pale lightened tint
+    std::vector<Color> ringGradientColors;  // Spectrum-style colour stops (<=100)
 
     // Round-gauge centre content (drawn beneath the centre value).
     GaugeRingCenterContent ringCenterContent = GaugeRingCenterContent::NoContent;
@@ -396,6 +407,9 @@ private:
     // sweep is visible across the ring/disc rather than washed out over the whole card.
     std::shared_ptr<IPaintPattern> MakeFadedPaint(IRenderContext* ctx, const Color& base,
                                                   const Point2Df& center, float radius) const;
+    // Samples the Spectrum colour list at t in [0,1] (linear interpolation between
+    // adjacent stops). Falls back to gaugeColor when no colours are configured.
+    Color SampleGradientColor(double t) const;
     void RenderBattery(IRenderContext* ctx);
     void RenderThermometer(IRenderContext* ctx);
     void RenderCylinder(IRenderContext* ctx);

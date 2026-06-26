@@ -24,6 +24,8 @@
 #include "UltraCanvasApplication.h"
 #include <sstream>
 #include <iomanip>
+#include <vector>
+#include <cmath>
 
 namespace UltraCanvas {
 
@@ -528,6 +530,34 @@ namespace {
         return lbl;
     }
 
+    // Build `n` evenly spaced spectrum colours (blue -> cyan -> green -> yellow ->
+    // red). Used to demo the Spectrum ring's up-to-100-colour fade: low values read
+    // "cold" blue, high values "hot" red, with fine colour resolution in between.
+    std::vector<Color> MakeSpectrumColors(int n) {
+        auto hsv = [](float h, float s, float v) -> Color {
+            float c = v * s;
+            float x = c * (1.0f - std::fabs(std::fmod(h / 60.0f, 2.0f) - 1.0f));
+            float m = v - c;
+            float r = 0, g = 0, b = 0;
+            if (h <  60)      { r = c; g = x; b = 0; }
+            else if (h < 120) { r = x; g = c; b = 0; }
+            else if (h < 180) { r = 0; g = c; b = x; }
+            else if (h < 240) { r = 0; g = x; b = c; }
+            else if (h < 300) { r = x; g = 0; b = c; }
+            else              { r = c; g = 0; b = x; }
+            return Color(static_cast<uint8_t>((r + m) * 255.0f),
+                         static_cast<uint8_t>((g + m) * 255.0f),
+                         static_cast<uint8_t>((b + m) * 255.0f), 255);
+        };
+        std::vector<Color> out;
+        out.reserve(std::max(1, n));
+        for (int i = 0; i < n; i++) {
+            float t = (n <= 1) ? 0.0f : static_cast<float>(i) / static_cast<float>(n - 1);
+            out.push_back(hsv(240.0f * (1.0f - t), 0.90f, 0.95f));  // 240 (blue) -> 0 (red)
+        }
+        return out;
+    }
+
     // Apply a named style preset to a CircularRing gauge (used by the showcase cards).
     void ApplyRoundPreset(const std::shared_ptr<UltraCanvasGaugeDiagramElement>& g,
                           GaugeRingStyle rs, GaugeRingSegmentStyle ss,
@@ -578,6 +608,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     playGauge->SetGaugeColor(Color(0, 200, 140, 255));
     playGauge->SetRingThickness(10.0f);
     playGauge->SetRingStyle(GaugeRingStyle::SolidArc);
+    playGauge->SetRingGradientColors(MakeSpectrumColors(100));  // used by the Spectrum style
     playGauge->SetValue(74.0);
 
     auto gaugeWrap = std::make_shared<UltraCanvasContainer>("round_play_GW", 0, 0, 0, 0);
@@ -641,12 +672,14 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     styleDrop->AddItem("Segmented");
     styleDrop->AddItem("Dashed / ticks");
     styleDrop->AddItem("Segmented ring (chunky)");
+    styleDrop->AddItem("Spectrum (100 colours)");
     styleDrop->SetSelectedIndex(0);
     styleDrop->onSelectionChanged = [gPtr](int idx, const DropdownItem&) {
         switch (idx) {
             case 1: gPtr->SetRingStyle(GaugeRingStyle::Segmented); break;
             case 2: gPtr->SetRingStyle(GaugeRingStyle::Dashed); break;
             case 3: gPtr->SetRingStyle(GaugeRingStyle::SegmentedRing); break;
+            case 4: gPtr->SetRingStyle(GaugeRingStyle::Spectrum); break;
             default: gPtr->SetRingStyle(GaugeRingStyle::SolidArc); break;
         }
     };
@@ -772,14 +805,14 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     g1->SetTrackColor(Color(50, 60, 30, 255));
     AddGrid(grid, CreateGaugeCard("rp1_c", kCardW, kCardH, g1, 0.0f, 100.0f, 74.0f, "%"), 0, 0);
 
-    // 2) Segmented rounded blocks (clearly separated chunks)
+    // 2) Spectrum fade through 100 colours (maximum-indication option)
     auto g2 = CreateGaugeDiagramElement("rp2", 0, 0, kCardW, kCardH);
-    ApplyRoundPreset(g2, GaugeRingStyle::Segmented, GaugeRingSegmentStyle::Blocks,
+    ApplyRoundPreset(g2, GaugeRingStyle::Spectrum, GaugeRingSegmentStyle::Blocks,
                      GaugeFillStyle::NoFill, 16.0f, 12, Color(160, 230, 40, 255));
-    g2->SetTitle("Segmented");
+    g2->SetRingGradientColors(MakeSpectrumColors(100));  // up to 100 colour stops
+    g2->SetTitle("Spectrum (100 colours)");
     g2->SetUnit("%");
-    g2->SetTrackColor(Color(50, 60, 30, 255));
-    AddGrid(grid, CreateGaugeCard("rp2_c", kCardW, kCardH, g2, 0.0f, 100.0f, 47.0f, "%"), 0, 1);
+    AddGrid(grid, CreateGaugeCard("rp2_c", kCardW, kCardH, g2, 0.0f, 100.0f, 72.0f, "%"), 0, 1);
 
     // 3) Dashed radial bars (tachymeter)
     auto g3 = CreateGaugeDiagramElement("rp3", 0, 0, kCardW, kCardH);
