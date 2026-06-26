@@ -87,8 +87,9 @@ namespace {
     constexpr float kValueUnitGap  = 14.0f;   // V2.3: Increased from 4 to give real separation
     constexpr float kPaddingSide   = 12.0f;
     constexpr float kPaddingTop    = 32.0f;
-    constexpr float kTitleRaise    = 22.0f;   // raise title above the gauge center offset
+    constexpr float kTitleRaise    = 34.0f;   // V2.8: title raised a further 12px (was 22) to free room for the larger gauge
     constexpr float kPaddingBottom = 22.0f;
+    constexpr float kGaugeScale    = 1.30f;   // V2.8: enlarge round example gauges by 30%
 }
 
 // =============================================================================
@@ -357,6 +358,18 @@ float UltraCanvasGaugeDiagramElement::GetGaugeRadius() const {
                    - kPaddingTop - kPaddingBottom - tickLabelClearance;
     float availW = static_cast<float>(b.width) - 2.0f * kPaddingSide - 40.0f; // V2.4: 30 → 40 (more side room for labels)
     float r = std::min(availW, availH) / 2.0f;
+
+    // V2.8: Enlarge every round example gauge by 30%. The previous size left the
+    // segmented-ring centre content (battery icon / "Battery" label) sitting too
+    // close to the outer ring, so it overlapped the bottom segments. A bigger ring
+    // gives the centred value + icon/label real breathing room inside the circle.
+    r *= kGaugeScale;
+    // Clamp so the enlarged gauge can grow into the reserved margins but never
+    // spills past the card's padding box (width or the title-adjusted height).
+    float hardMaxR = std::min(
+        (static_cast<float>(b.width)  - 2.0f * kPaddingSide) / 2.0f,
+        (static_cast<float>(b.height) - kPaddingTop - kPaddingBottom - titleSpace) / 2.0f);
+    r = std::min(r, hardMaxR);
     return std::max(20.0f, r);
 }
 
