@@ -121,6 +121,16 @@ namespace UltraCanvas {
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;
 
+        // A label with a click handler behaves like a hyperlink, so it reports
+        // the hand/pointer cursor automatically. An explicit SetMouseCursor()
+        // (i.e. a non-Default cursor) always takes precedence.
+        UCMouseCursor GetMouseCursor() const override {
+            if (mouseCursor == UCMouseCursor::Default && onClick) {
+                return UCMouseCursor::Hand;
+            }
+            return mouseCursor;
+        }
+
         // ===== EVENT CALLBACKS =====
         std::function<void()> onClick;
         std::function<void()> onHoverEnter;

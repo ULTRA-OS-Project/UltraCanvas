@@ -165,7 +165,6 @@ namespace UltraCanvas {
         infoLabel1_1->SetTextColor(Color(60, 60, 60, 255));
         infoLabel1_1->SetTextIsMarkup(true);
         infoLabel1_1->SetMargin(2,20);
-        infoLabel1_1->SetMouseCursor(UCMouseCursor::Hand);
         infoLabel1_1->onClick = openUltraosCallback;
         AddChild(infoLabel1_1);
 
@@ -176,7 +175,6 @@ namespace UltraCanvas {
         infoLabel1_2->SetTextColor(Color(60, 60, 60, 255));
         infoLabel1_2->SetMargin(2,20);
         infoLabel1_2->SetTextIsMarkup(true);
-        infoLabel1_2->SetMouseCursor(UCMouseCursor::Hand);
         auto openGitHubCallback = []() {
             OpenURL("https://github.com/ULTRA-OS-Project/UltraCanvas");
         };
@@ -190,7 +188,6 @@ namespace UltraCanvas {
         infoLabel1_3->SetTextColor(Color(60, 60, 60, 255));
         infoLabel1_3->SetMargin(2,20);
         infoLabel1_3->SetTextIsMarkup(true);
-        infoLabel1_3->SetMouseCursor(UCMouseCursor::Hand);
         auto openChangelogCallback = []() {
             // Open the changelog from the local docs folder (shipped under the
             // resources dir as Docs/UltraCanvas/CHANGELOG.md) instead of GitHub.

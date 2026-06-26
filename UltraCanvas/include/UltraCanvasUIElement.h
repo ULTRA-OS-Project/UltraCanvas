@@ -436,7 +436,9 @@ namespace UltraCanvas {
         Point2Df MapFromLocal(const Point2Df &localPos, UltraCanvasContainer* mapToParent = nullptr);
         Point2Df MapToLocal(const Point2Df &globalPos, UltraCanvasContainer* mapFromParent = nullptr);
 
-        UCMouseCursor GetMouseCursor() const { return mouseCursor; }
+        // Virtual so interactive widgets (e.g. link labels) can resolve a
+        // context-dependent cursor without the caller setting one explicitly.
+        virtual UCMouseCursor GetMouseCursor() const { return mouseCursor; }
         void SetMouseCursor(UCMouseCursor cur) { mouseCursor = cur; }
 
         // ===== Z-INDEX (wraps inherited Element::zIndex) =====
