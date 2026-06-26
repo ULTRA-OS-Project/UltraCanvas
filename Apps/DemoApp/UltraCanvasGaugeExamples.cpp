@@ -792,8 +792,10 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
 
     // 4) Dots ring
     auto g4 = CreateGaugeDiagramElement("rp4", 0, 0, kCardW, kCardH);
+    // 24 dots (was 40): at 40 the dots packed tight enough to merge into a solid
+    // ring; fewer dots keep clear gaps so it reads as a dotted ring.
     ApplyRoundPreset(g4, GaugeRingStyle::Segmented, GaugeRingSegmentStyle::Dots,
-                     GaugeFillStyle::NoFill, 12.0f, 40, Color(120, 90, 240, 255));
+                     GaugeFillStyle::NoFill, 12.0f, 24, Color(120, 90, 240, 255));
     g4->SetTitle("Dots");
     g4->SetUnit("%");
     AddGrid(grid, CreateGaugeCard("rp4_c", kCardW, kCardH, g4, 0.0f, 100.0f, 55.0f, "%"), 1, 0);
