@@ -1,3 +1,8 @@
+#### 2026-06-26 *0.2.31*
+- Merge "UltraCanvas popup changelog link"
+- Merge "UltraCanvas Gauge demo layout"
+- Merge "UltraCanvas Slider demo layout"
+
 #### 2026-06-26 *0.2.30*
 - Demo: moved the **Waveform Chart** example out of *Audio Elements* and into the *Charts* category, where it belongs alongside the other data visualizations (a waveform is an amplitude-over-time plot, not a structural diagram).
 - Waveform: added a **Display range** control to the waveform demo and a backing `SetVisibleWindowSeconds()` API on `UltraCanvasWaveformElement`. The view can now show the whole track ("All audio") or a trailing window that scrolls with the playhead — "Last 10 seconds" or "Last 60 seconds". Rendering, click-to-seek and the playhead all map to the visible window.
