@@ -6,14 +6,62 @@
 
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasSpacer.h"
+#include "UltraCanvasTextArea.h"
 #include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasDemo.h"
 #include <iostream>
+#include <fstream>
+#include <sstream>
 #include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
 // ===== INFO WINDOW IMPLEMENTATION =====
+
+    // Open a popup window showing the changelog file in an editable, scrollable
+    // text area. Mirrors the gauge example's "Code" button popup: the window is
+    // kept alive by a static handle (one popup at a time) and closes on Escape.
+    static void ShowChangelogPopup(const std::string& filePath) {
+        static std::shared_ptr<UltraCanvasWindow> changelogWindow;
+
+        std::ifstream file(filePath);
+        std::string text;
+        if (file.is_open()) {
+            std::stringstream buffer;
+            buffer << file.rdbuf();
+            text = buffer.str();
+        } else {
+            debugOutput << "Failed to open changelog: " << filePath << std::endl;
+            text = "Could not load changelog file:\n" + filePath;
+        }
+
+        WindowConfig wc;
+        wc.title = "UltraCanvas - Changelog";
+        wc.width = 760;
+        wc.height = 560;
+        wc.resizable = true;
+        wc.type = WindowType::Standard;
+        changelogWindow = CreateWindow(wc);
+        if (!changelogWindow || !changelogWindow->IsCreated()) return;
+
+        auto editor = std::make_shared<UltraCanvasTextArea>("ChangelogViewer");
+        editor->layout.display = CSSLayout::DisplayType::Block;
+        editor->size.width = CSSLayout::Dimension::Vw(100);
+        editor->size.height = CSSLayout::Dimension::Vh(100);
+        editor->SetText(text);
+        editor->SetShowLineNumbers(false);
+        editor->SetFontSize(12);
+
+        changelogWindow->SetEventCallback([](const UCEvent& event) {
+            if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
+                if (event.targetWindow) ((UltraCanvasWindow*)event.targetWindow)->Close();
+                return true;
+            }
+            return false;
+        });
+        changelogWindow->AddChild(editor);
+        changelogWindow->Show();
+    }
 
     InfoWindow::InfoWindow() : UltraCanvasWindow() {
     }
@@ -189,9 +237,11 @@ namespace UltraCanvas {
         infoLabel1_3->SetMargin(2,20);
         infoLabel1_3->SetTextIsMarkup(true);
         auto openChangelogCallback = []() {
-            // Open the changelog from the local docs folder (shipped under the
-            // resources dir as Docs/UltraCanvas/CHANGELOG.md) instead of GitHub.
-            OpenURL(NormalizePath(GetResourcesDir() + "Docs/UltraCanvas/CHANGELOG.md"));
+            // Show the changelog (shipped under the resources dir as
+            // Docs/UltraCanvas/CHANGELOG.md) in a text area popup, the same way
+            // the gauge example's "Code" button shows generated source. OpenURL
+            // can't render a local markdown file, so a text window is used.
+            ShowChangelogPopup(NormalizePath(GetResourcesDir() + "Docs/UltraCanvas/CHANGELOG.md"));
         };
         infoLabel1_3->onClick = openChangelogCallback;
         AddChild(infoLabel1_3);
