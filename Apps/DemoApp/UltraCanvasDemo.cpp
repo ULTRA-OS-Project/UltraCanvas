@@ -1462,6 +1462,14 @@ namespace UltraCanvas {
             headerContainer->SetDemoTitle("ULTRA OS");
             headerContainer->SetSourceFile("");
             headerContainer->SetDocFile("");
+        } else if (node->IsExpanded() && node->data.showFirstChildOnExpand && node->FirstChild()) {
+            // Parent category with no display content of its own: "jump to first
+            // entry" so selecting it reveals its first child example instead of
+            // blanking the display. The tree already jumps when a node is first
+            // expanded; this also covers re-selecting an already-open parent.
+            // Only "ULTRA OS modules" carries its own content (handled above) and
+            // opts out via showFirstChildOnExpand = false.
+            categoryTreeView->SelectNode(node->FirstChild());
         } else {
             // Category selected - clear display
             ClearDisplay();
