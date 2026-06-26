@@ -19,8 +19,16 @@
 // is an unused "X" channel, so frames are forced to opaque alpha on delivery (the
 // premultiplied ARGB32 pixmap would otherwise treat them as fully transparent).
 //
-// Version: 0.2.0
-// Last Modified: 2026-06-23
+// Version: 0.3.0
+// Last Modified: 2026-06-26
+// V0.3.0: Fix persistent loss of all app audio on Windows. Volume/mute now use
+//   the per-stream renderer volume (MR_STREAM_VOLUME_SERVICE) instead of the
+//   persisted per-application policy volume (MR_POLICY_VOLUME_SERVICE), so a
+//   muted clip can no longer strand the whole process — including the miniaudio
+//   popup player, which shares the one process audio session — silent. The
+//   backend also resets a previously-persisted mute / zero level for this
+//   process's session at startup (ResetProcessAudioSession), recovering apps
+//   already stuck silent across restarts.
 // Author: UltraCanvas Framework
 
 #include "IVideoBackend.h"
@@ -32,12 +40,15 @@
 #include <mferror.h>
 #include <mfobjects.h>
 #include <shlwapi.h>
+#include <mmdeviceapi.h>   // IMMDeviceEnumerator — recover the process audio session
+#include <audiopolicy.h>   // IAudioSessionManager / ISimpleAudioVolume
 #include <wrl/client.h>
 
 #include <atomic>
 #include <chrono>
 #include <mutex>
 #include <thread>
+#include <vector>
 
 using Microsoft::WRL::ComPtr;
 
@@ -46,6 +57,46 @@ namespace UltraCanvas {
 namespace {
 
 const UINT32 kHnsPerSecond = 10000000; // 100-ns units per second
+
+// Recover this process's audio session at startup.
+//
+// Windows persists a per-application audio session's volume AND mute in the
+// registry, keyed by the executable. The streaming audio renderer's "policy"
+// volume (MR_POLICY_VOLUME_SERVICE / IMFSimpleAudioVolume) writes into exactly
+// that persisted session, so if a previous run left this app's session muted or
+// at zero, every audio path the process uses — Media Foundation playback *and*
+// the miniaudio popup player, which share the one process session — stays silent
+// on the next launch too. Other apps (e.g. MPC-HC) are unaffected because their
+// session is separate. That is the "no sound even after a restart, not reset on
+// startup" failure.
+//
+// At startup, undo only the pathological states: unmute if muted, and lift the
+// level back to full only when it has been driven to ~zero. A deliberate, non-
+// zero level the user set in the Windows volume mixer is preserved. Scoped to
+// this process's own session via GetSimpleAudioVolume(NULL, FALSE), so it never
+// touches other applications.
+void ResetProcessAudioSession() {
+    ComPtr<IMMDeviceEnumerator> enumr;
+    if (FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
+                                IID_PPV_ARGS(enumr.GetAddressOf()))) || !enumr)
+        return;
+    ComPtr<IMMDevice> dev;
+    if (FAILED(enumr->GetDefaultAudioEndpoint(eRender, eConsole, dev.GetAddressOf())) || !dev)
+        return;
+    ComPtr<IAudioSessionManager> mgr;
+    if (FAILED(dev->Activate(__uuidof(IAudioSessionManager), CLSCTX_ALL, nullptr,
+                             reinterpret_cast<void**>(mgr.GetAddressOf()))) || !mgr)
+        return;
+    ComPtr<ISimpleAudioVolume> vol;
+    if (FAILED(mgr->GetSimpleAudioVolume(nullptr, FALSE, vol.GetAddressOf())) || !vol)
+        return;
+    BOOL muted = FALSE;
+    if (SUCCEEDED(vol->GetMute(&muted)) && muted)
+        vol->SetMute(FALSE, nullptr);
+    float level = 1.0f;
+    if (SUCCEEDED(vol->GetMasterVolume(&level)) && level < 0.05f)
+        vol->SetMasterVolume(1.0f, nullptr);
+}
 
 UCVideoFramePtr FrameFromRGB32(const uint8_t* data, int width, int height,
                                int stride, double pts) {
@@ -208,17 +259,21 @@ public:
     double GetDuration() const override { return durationSeconds; }
     const VideoStreamInfo& GetStreamInfo() const override { return streamInfo; }
 
+    // Volume / mute go through the per-stream volume (MR_STREAM_VOLUME_SERVICE),
+    // NOT the policy volume (MR_POLICY_VOLUME_SERVICE / IMFSimpleAudioVolume).
+    // The policy volume is the persisted per-application session volume: muting
+    // it leaves the whole app — every audio API in the process — silent, and
+    // Windows remembers it across restarts (see ResetProcessAudioSession). The
+    // stream volume affects only this SAR instance's render stream and is not
+    // persisted, so toggling a clip's volume/mute can never strand the app.
     void SetVolume(float vol) override {
-        ComPtr<IMFSimpleAudioVolume> v;
-        if (session && SUCCEEDED(MFGetService(session.Get(), MR_POLICY_VOLUME_SERVICE,
-                                              IID_PPV_ARGS(&v))))
-            v->SetMasterVolume(vol);
+        if (vol < 0.0f) vol = 0.0f;
+        streamVolume = vol;
+        if (!streamMuted) ApplyStreamVolume(vol);
     }
     void SetMute(bool mute) override {
-        ComPtr<IMFSimpleAudioVolume> v;
-        if (session && SUCCEEDED(MFGetService(session.Get(), MR_POLICY_VOLUME_SERVICE,
-                                              IID_PPV_ARGS(&v))))
-            v->SetMute(mute ? TRUE : FALSE);
+        streamMuted = mute;
+        ApplyStreamVolume(mute ? 0.0f : streamVolume);
     }
     void SetLoop(bool loop) override { looping = loop; }
     void SetPlaybackRate(float r) override {
@@ -437,6 +492,21 @@ private:
         streamInfo.duration = durationSeconds;
     }
 
+    // Push a single level to every channel of the SAR's (non-persisted) stream
+    // volume. A no-op until the audio topology exposes the service, in which case
+    // the renderer just plays at its default full level — still audible.
+    void ApplyStreamVolume(float level) {
+        if (!session) return;
+        ComPtr<IMFAudioStreamVolume> sv;
+        if (FAILED(MFGetService(session.Get(), MR_STREAM_VOLUME_SERVICE,
+                                IID_PPV_ARGS(sv.GetAddressOf()))) || !sv)
+            return;
+        UINT32 channels = 0;
+        if (FAILED(sv->GetChannelCount(&channels)) || channels == 0) return;
+        std::vector<float> vols(channels, level);
+        sv->SetAllVolumes(channels, vols.data());
+    }
+
     void Teardown() {
         // Stop the video pump first so it no longer touches the reader or onFrame.
         running = false;
@@ -471,6 +541,10 @@ private:
     bool looping = false;
     float rate = 1.0f;
     bool hasAudio = false;
+
+    // Per-stream (non-persisted) volume state for SetVolume/SetMute.
+    float streamVolume = 1.0f;   // last requested level (restored on unmute)
+    bool  streamMuted  = false;
 
     // Video pump (IMFSourceReader on the video stream, paced to the clock).
     ComPtr<IMFSourceReader> videoReader;
@@ -817,6 +891,9 @@ public:
             ownsCom = false;
             return false;
         }
+        // Undo any persisted per-app mute / zero-volume left by a previous run so
+        // the app is never stuck silent across restarts (see ResetProcessAudioSession).
+        ResetProcessAudioSession();
         initialized = true;
         return true;
     }
