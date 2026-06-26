@@ -240,7 +240,8 @@ private:
     std::vector<std::string> playlist;
     size_t currentIndex = 0;
 
-    std::shared_ptr<UltraCanvasToolbar>      toolbar;
+    std::shared_ptr<UltraCanvasToolbar>      toolbar;   // navigation / slideshow row
+    std::shared_ptr<UltraCanvasToolbar>      toolbar2;  // view / edit row
     std::shared_ptr<UltraCanvasContainer>    adjustPanel;
     std::shared_ptr<UltraCanvasMediaSurface> surface;
     std::shared_ptr<UltraCanvasContainer>    bottomBar;

@@ -1325,9 +1325,15 @@ namespace UltraCanvas {
 //                               ImplementationStatus::PartiallyImplemented,
 //                               [this]() { return CreatePartiallyImplementedExamples("## Color picker"); });
 
-        widgetsBuilder.AddItem("photovideoviewer", "Photo/Video viewer", "Photo/Video viewer",
-                               ImplementationStatus::NotImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("Photo/Video viewer"); });
+        widgetsBuilder.AddItem("mediaviewer", "Media Viewer",
+                               "Comprehensive media / photo / document viewer: folder browsing, "
+                               "next/previous (arrows or mouse, even while zoomed), slideshow with "
+                               "transitions, manual + automatic zoom, rotation, mirroring, gamma / "
+                               "brightness / colour correction, auto-optimise, sharpening, save-as "
+                               "and a detailed info popup. Drag a folder or files onto it.",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateMediaViewerExamples(); },
+                               "DemoApp/UltraCanvasMediaViewerExamples.cpp");
 
         widgetsBuilder.AddItem("slideshow", "Slideshow",
                                "Timed image slideshow with info text panel and selectable indicator styles",

@@ -581,7 +581,9 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     SetBackgroundColor(Color(24, 24, 28, 255));
     layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-    // ----- TOP TOOLBAR -----
+    // ----- TOP TOOLBAR ROW 1: navigation + slideshow -----
+    // Two rows keep every control visible at modest widths (the toolbar widget
+    // does not yet implement overflow handling).
     toolbar = std::make_shared<UltraCanvasToolbar>("MV_Toolbar", 0, 0, 0, 40);
     toolbar->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -611,28 +613,34 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
                 else if (s == "Zoom")        t = MediaTransition::ZoomFade;
                 SetTransition(t);
             });
-    toolbar->AddSeparator("mv_sep2");
-    toolbar->AddButton("mv_zoomout", "Zoom -", "", [this] { if (surface) surface->ZoomBy(1.0 / 1.25); });
-    toolbar->AddDropdownButton("mv_zoom", "Zoom",
+    AddChild(toolbar);
+
+    // ----- TOP TOOLBAR ROW 2: view + edit -----
+    toolbar2 = std::make_shared<UltraCanvasToolbar>("MV_Toolbar2", 0, 0, 0, 40);
+    toolbar2->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    toolbar2->AddButton("mv_zoomout", "Zoom -", "", [this] { if (surface) surface->ZoomBy(1.0 / 1.25); });
+    toolbar2->AddDropdownButton("mv_zoom", "Zoom",
             { "Fit", "25%", "50%", "75%", "100%", "150%", "200%", "400%" },
             [this](const std::string& s) {
                 if (!surface) return;
                 if (s == "Fit") surface->ResetView();
                 else            surface->SetZoomPercent(std::atof(s.c_str()));
             });
-    toolbar->AddButton("mv_zoomin", "Zoom +", "", [this] { if (surface) surface->ZoomBy(1.25); });
-    toolbar->AddButton("mv_fit", "Fit", "", [this] { if (surface) surface->ResetView(); });
-    toolbar->AddSeparator("mv_sep3");
-    toolbar->AddButton("mv_rotl", "Rotate L", "", [this] { if (surface) surface->RotateBy(-1); });
-    toolbar->AddButton("mv_rotr", "Rotate R", "", [this] { if (surface) surface->RotateBy(1); });
-    toolbar->AddButton("mv_mirh", "Mirror H", "", [this] { if (surface) surface->ToggleFlipHorizontal(); });
-    toolbar->AddButton("mv_mirv", "Mirror V", "", [this] { if (surface) surface->ToggleFlipVertical(); });
-    toolbar->AddSeparator("mv_sep4");
-    toolbar->AddToggleButton("mv_adjust", "Adjust", "",
+    toolbar2->AddButton("mv_zoomin", "Zoom +", "", [this] { if (surface) surface->ZoomBy(1.25); });
+    toolbar2->AddButton("mv_fit", "Fit", "", [this] { if (surface) surface->ResetView(); });
+    toolbar2->AddSeparator("mv_sep3");
+    toolbar2->AddButton("mv_rotl", "Rotate L", "", [this] { if (surface) surface->RotateBy(-1); });
+    toolbar2->AddButton("mv_rotr", "Rotate R", "", [this] { if (surface) surface->RotateBy(1); });
+    toolbar2->AddButton("mv_mirh", "Mirror H", "", [this] { if (surface) surface->ToggleFlipHorizontal(); });
+    toolbar2->AddButton("mv_mirv", "Mirror V", "", [this] { if (surface) surface->ToggleFlipVertical(); });
+    toolbar2->AddSeparator("mv_sep4");
+    toolbar2->AddToggleButton("mv_adjust", "Adjust", "",
             [this](bool on) { if (adjustPanel) adjustPanel->SetVisible(on); });
-    toolbar->AddButton("mv_save", "Save as", "", [this] { ShowSaveDialog(); });
-    toolbar->AddButton("mv_info", "Info", "", [this] { if (surface) surface->ToggleInfoPopup(); });
-    AddChild(toolbar);
+    toolbar2->AddButton("mv_save", "Save as", "", [this] { ShowSaveDialog(); });
+    toolbar2->AddButton("mv_info", "Info", "", [this] { if (surface) surface->ToggleInfoPopup(); });
+    AddChild(toolbar2);
 
     // ----- ADJUSTMENTS PANEL (hidden until "Adjust" is toggled) -----
     adjustPanel = std::make_shared<UltraCanvasContainer>("MV_Adjust", 0, 0, 0, 84);
@@ -715,7 +723,9 @@ bool UltraCanvasMediaViewer::IsSupportedMedia(const std::string& path) {
         "jpg", "jpeg", "jpe", "png", "gif", "bmp", "webp", "tif", "tiff",
         "svg", "ico", "cur", "heic", "heif", "avif", "jxl", "jp2", "j2k",
         "ppm", "pgm", "pbm", "pnm", "pfm", "tga", "psd", "qoi", "hdr", "exr",
-        "xpm", "xbm", "pcx", "sgi", "dds", "fits"
+        "xpm", "xbm", "pcx", "sgi", "dds", "fits",
+        // Documents libvips can rasterise (first page shown).
+        "pdf"
     };
     std::string e = LowerExt(path);
     if (e.empty()) return false;
