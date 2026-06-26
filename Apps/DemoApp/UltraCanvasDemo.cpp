@@ -609,20 +609,6 @@ namespace UltraCanvas {
                 .AddVariant("dropdown", "Editable ComboBox")
                 .AddVariant("dropdown", "Multi-Select");
 
-        basicBuilder.AddItem("datepicker", "Date Picker / Calendar",
-                             "Calendar widgets covering single, range, multiple and week selection",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateDatePickerExamples(); },
-                             "DemoApp/UltraCanvasDatePickerExamples.cpp",
-                             "Docs/UltraCanvas/UltraCanvasDatePicker.md")
-                .AddVariant("datepicker", "Dropdown Calendar")
-                .AddVariant("datepicker", "Inline Calendar")
-                .AddVariant("datepicker", "Date Range")
-                .AddVariant("datepicker", "Multiple Dates")
-                .AddVariant("datepicker", "Keyboard / Text Entry")
-                .AddVariant("datepicker", "Hotel Stay / Blocked Dates")
-                .AddVariant("datepicker", "Multi-Month / Scroll");
-
         basicBuilder
                 .AddItem("checkbox", "Checkbox / Radio / Switch",
                          "Interactive checkbox controls with multiple states and styles",
@@ -643,16 +629,6 @@ namespace UltraCanvas {
                 .AddVariant("slider", "Horizontal Slider")
                 .AddVariant("slider", "Vertical Slider")
                 .AddVariant("slider", "Range Slider");
-
-        basicBuilder.AddItem("colorpicker", "Colour Picker",
-                             "HSV colour wheel with saturation/value square, preview "
-                             "swatches, hex input, HSV/HSL/RGB channel sliders and alpha",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateColorPickerExamples(); },
-                             "DemoApp/UltraCanvasColorPickerExamples.cpp",
-                             "Docs/UltraCanvas/UltraCanvasColorPicker.md")
-                .AddVariant("colorpicker", "Full Picker (Wheel + Sliders)")
-                .AddVariant("colorpicker", "HSV / HSL / RGB Modes");
 
         basicBuilder.AddItem("scrollbars", "Scrollbars",
                              "Standalone scrollbars: preset styles, colour options, "
@@ -1321,9 +1297,30 @@ namespace UltraCanvas {
                                "DemoApp/UltraCanvasDependenciesExamples.cpp");
 
         auto widgetsBuilder = DemoCategoryBuilder(this, DemoCategory::Widgets);
-//        widgetsBuilder.AddItem("colorpicker", "Color Picker", "Color Picker",
-//                               ImplementationStatus::PartiallyImplemented,
-//                               [this]() { return CreatePartiallyImplementedExamples("## Color picker"); });
+
+        widgetsBuilder.AddItem("colorpicker", "Colour Picker",
+                               "HSV colour wheel with saturation/value square, preview "
+                               "swatches, hex input, HSV/HSL/RGB channel sliders and alpha",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateColorPickerExamples(); },
+                               "DemoApp/UltraCanvasColorPickerExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasColorPicker.md")
+                .AddVariant("colorpicker", "Full Picker (Wheel + Sliders)")
+                .AddVariant("colorpicker", "HSV / HSL / RGB Modes");
+
+        widgetsBuilder.AddItem("datepicker", "Date Picker / Calendar",
+                               "Calendar widgets covering single, range, multiple and week selection",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateDatePickerExamples(); },
+                               "DemoApp/UltraCanvasDatePickerExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasDatePicker.md")
+                .AddVariant("datepicker", "Dropdown Calendar")
+                .AddVariant("datepicker", "Inline Calendar")
+                .AddVariant("datepicker", "Date Range")
+                .AddVariant("datepicker", "Multiple Dates")
+                .AddVariant("datepicker", "Keyboard / Text Entry")
+                .AddVariant("datepicker", "Hotel Stay / Blocked Dates")
+                .AddVariant("datepicker", "Multi-Month / Scroll");
 
         widgetsBuilder.AddItem("photovideoviewer", "Photo/Video viewer", "Photo/Video viewer",
                                ImplementationStatus::NotImplemented,
