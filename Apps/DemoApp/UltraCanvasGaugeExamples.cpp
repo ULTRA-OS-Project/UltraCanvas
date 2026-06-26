@@ -521,9 +521,12 @@ static std::shared_ptr<UltraCanvasContainer> BuildSpecializedTab(float w, float 
 
 namespace {
     // A small captioned label above a control, packed into a fixed-height block.
+    // Height is 18 (not 14): an 11px font needs ~15-16px for ascenders + descenders,
+    // and the text layout clips its line to the label's explicit height — at 14px the
+    // descenders (y, g) were cut off and overdrawn by the control below.
     inline std::shared_ptr<UltraCanvasLabel> MakeCaption(const std::string& id,
                                                          const std::string& text) {
-        auto lbl = std::make_shared<UltraCanvasLabel>(id, 0, 0, 0, 14);
+        auto lbl = std::make_shared<UltraCanvasLabel>(id, 0, 0, 0, 18);
         lbl->SetText(text);
         lbl->SetFontSize(11);
         lbl->SetTextColor(Color(90, 90, 110, 255));

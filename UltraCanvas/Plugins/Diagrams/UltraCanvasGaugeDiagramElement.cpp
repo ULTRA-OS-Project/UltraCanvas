@@ -2131,7 +2131,7 @@ void UltraCanvasGaugeDiagramElement::DrawRingTrackAndValue(
         // A few chunky arc segments around the circle (the battery / activity-ring
         // look). Honours: segment count, rounded vs sharp ends, and an optional
         // border drawn as a slightly wider outline beneath each segment.
-        int count = std::max(2, ringSegmentCount);
+        int count = std::max(4, ringSegmentCount);   // floor of 4 (matches SetRingSegmentCount)
         int litCount = static_cast<int>(std::ceil(ratio * count - 1e-6));
         LineCap cap = ringSegmentRounded ? LineCap::Round : LineCap::Butt;
         float gapFrac = 0.30f;                       // generous gaps between chunks
