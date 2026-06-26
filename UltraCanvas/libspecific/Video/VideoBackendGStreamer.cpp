@@ -10,14 +10,19 @@
 // frames are converted to packed BGRA and handed up via the session callbacks;
 // the engine buffers the latest frame for the UI thread to upload to a pixmap.
 //
-// Version: 0.1.7
-// Last Modified: 2026-06-24
+// Version: 0.1.8
+// Last Modified: 2026-06-26
+// V0.1.8: Disable QoS on the video appsink so an expensive codec whose software
+//   decode can't keep up in real time (e.g. HEVC/hvc1) is no longer told to skip
+//   to the next keyframe — which left the surface refreshing only once per GOP
+//   (every few seconds). Frames are now all emitted; sync=TRUE still paces them.
 // Author: UltraCanvas Framework
 
 #include "IVideoBackend.h"
 
 #include <gst/gst.h>
 #include <gst/app/gstappsink.h>
+#include <gst/base/gstbasesink.h>   // gst_base_sink_set_qos_enabled
 #include <gst/video/video.h>
 #include <gst/pbutils/pbutils.h>
 
@@ -267,6 +272,19 @@ public:
                                             "format", G_TYPE_STRING, "BGRA", nullptr);
         g_object_set(appsink, "caps", caps, "emit-signals", TRUE,
                      "sync", TRUE, "max-buffers", 2, "drop", TRUE, nullptr);
+        // Disable QoS on the video sink. With QoS enabled, a sink that renders a
+        // frame "late" posts a QoS event upstream; the decoder reacts by skipping
+        // decode up to the next keyframe. For an expensive codec whose software
+        // decode can't quite keep up in real time (e.g. HEVC/hvc1) every frame
+        // reads as late, so the decoder skips everything between keyframes and the
+        // surface only refreshes once per GOP — i.e. every few seconds. A codec
+        // that decodes comfortably in real time (e.g. H.264) never triggers this,
+        // which is why only the heavy clip stutters. With QoS off the decoder
+        // emits every frame; sync=TRUE still paces them to the clock (a frame that
+        // is genuinely late is simply shown late rather than dropped to a
+        // keyframe), so smooth motion is preserved and A/V stays anchored by the
+        // FLUSH|ACCURATE seeks.
+        gst_base_sink_set_qos_enabled(GST_BASE_SINK(appsink), FALSE);
         gst_caps_unref(caps);
         g_signal_connect(appsink, "new-sample", G_CALLBACK(&GstDecodeSession::OnNewSample), this);
         // While PAUSED (e.g. a paused scrub) the appsink emits new-preroll, not

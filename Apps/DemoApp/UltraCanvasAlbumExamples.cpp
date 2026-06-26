@@ -2,8 +2,13 @@
 // Demonstration of UltraCanvasAlbum: layout designs, image-fit modes, action-icon
 // display options and visitor / user-edit / admin modes for a mixed photo / video
 // / music album.
-// Version: 2.11.0
-// Last Modified: 2026-06-25
+// Version: 2.12.0
+// Last Modified: 2026-06-26
+// V2.12.0: Album-page polish — Masonry is now the default layout (its button
+//   starts highlighted); a single click on a tile opens it (photo lightbox /
+//   video / audio player) instead of needing a double-click; and clicking a
+//   tile's subtitle link now opens it in the system browser (OpenURL) rather
+//   than only reporting it in the status line.
 // V2.11.0: Music tiles now play — a double-click (or the Play icon, now also
 //   drawn on music tiles) opens a small window with audio transport controls
 //   (UltraCanvasAudioPlayerElement: play / pause / stop, seek bar, volume).
@@ -61,6 +66,7 @@
 #include "UltraCanvasAudioPlayerElement.h"
 #include "UltraCanvasImageViewer.h"
 #include "UltraCanvasWindow.h"
+#include "UltraCanvasUtils.h"     // OpenURL — open a subtitle link in the browser
 #include <fstream>
 #include <sstream>
 #include <vector>
@@ -319,8 +325,8 @@ namespace UltraCanvas {
         header->AddChild(title);
 
         auto subtitle = std::make_shared<UltraCanvasLabel>("AlbumSubtitle", 0, 0, 0, 20);
-        subtitle->SetText("Switch the design with the buttons below. Double-click a photo to view "
-                          "it full size, or a video to play it (or use the View / Play icon).");
+        subtitle->SetText("Switch the design with the buttons below. Click a photo to view it "
+                          "full size, or a video / track to play it (or use the View / Play icon).");
         subtitle->SetFontSize(11);
         subtitle->SetTextColor(Color(110, 110, 110, 255));
         subtitle->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
@@ -335,7 +341,7 @@ namespace UltraCanvas {
                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         AlbumConfig cfg;
-        cfg.layout        = AlbumLayout::UniformGrid;
+        cfg.layout        = AlbumLayout::Masonry;
         cfg.mode          = AlbumMode::Display;
         cfg.sizingMode    = AlbumSizingMode::ItemsPerRow;
         cfg.itemsPerRow   = 4;
@@ -456,7 +462,7 @@ namespace UltraCanvas {
 
         // ===== Status (pinned) =====
         auto status = std::make_shared<UltraCanvasLabel>("AlbumStatus", 0, 0, 0, 22);
-        status->SetText("Mode: Display · Layout: Uniform Grid · click a tile, hover for actions");
+        status->SetText("Mode: Display · Layout: Masonry · click a tile to open, hover for actions");
         status->SetFontSize(11);
         status->SetTextColor(Color(120, 120, 120, 255));
         status->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
@@ -544,16 +550,21 @@ namespace UltraCanvas {
         album->AddAction(edit);
         album->AddAction(del);
 
-        // Clicking the second-row source link (blue, underlined) reports the
-        // target rather than selecting the tile.
+        // Clicking the second-row source link (blue, underlined) opens it in the
+        // system browser rather than selecting / opening the tile.
         album->onLinkClicked = [albumPtr, statusPtr](size_t i) {
             const AlbumItem& it = albumPtr->GetItems()[i];
-            std::ostringstream o; o << "Open link: " << it.link;
+            if (it.link.empty()) return;
+            std::ostringstream o; o << "Opening link: " << it.link;
             statusPtr->SetText(o.str());
+            OpenURL(it.link);
         };
 
-        // Double-click opens the same media viewer (photo lightbox / video play).
-        album->onItemActivated = openMedia;
+        // A single click on a tile opens the media viewer (photo lightbox / video
+        // / audio player) — see openMedia. onItemActivated (double-click) is left
+        // unset: the first click of a double-click already opens the item, so
+        // wiring it too would needlessly tear down and re-open the popup window.
+        album->onItemClicked = openMedia;
         album->onItemsReordered = [statusPtr](size_t from, size_t to) {
             std::ostringstream o; o << "Reordered item " << from << " -> " << to;
             statusPtr->SetText(o.str());
@@ -585,7 +596,7 @@ namespace UltraCanvas {
                                                  "Mosaic","Filmstrip","Cards"};
                           std::ostringstream o; o << "Layout: " << names[i];
                           statusPtr->SetText(o.str());
-                      }, 0);  // UniformGrid is the default
+                      }, 2);  // Masonry is the default
         controls->AddChild(layoutRow);
 
         // ----- Crop-focus picker (built first so the image-fit callback can
