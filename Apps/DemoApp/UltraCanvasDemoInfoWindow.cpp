@@ -189,7 +189,9 @@ namespace UltraCanvas {
         infoLabel1_3->SetMargin(2,20);
         infoLabel1_3->SetTextIsMarkup(true);
         auto openChangelogCallback = []() {
-            OpenURL("https://github.com/ULTRA-OS-Project/UltraCanvas/blob/main/Docs/UltraCanvas/CHANGELOG.md");
+            // Open the changelog from the local docs folder (shipped under the
+            // resources dir as Docs/UltraCanvas/CHANGELOG.md) instead of GitHub.
+            OpenURL(NormalizePath(GetResourcesDir() + "Docs/UltraCanvas/CHANGELOG.md"));
         };
         infoLabel1_3->onClick = openChangelogCallback;
         AddChild(infoLabel1_3);
