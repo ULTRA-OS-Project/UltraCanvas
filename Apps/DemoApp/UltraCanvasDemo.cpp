@@ -13,6 +13,7 @@
 #include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasTextArea.h"
+#include "UltraCanvasUtils.h"   // OpenURL — open markdown links in the system browser
 #include "Plugins/Text/UltraCanvasMarkdown.h"
 #include <iostream>
 #include <sstream>
@@ -293,6 +294,18 @@ namespace UltraCanvas {
         markDownTextArea->SetReadOnly(true);
         markDownTextArea->SetWordWrap(true);
         markDownTextArea->SetCursorPosition(LineColumnIndex::INVALID);
+
+        // Make markdown links clickable: external URLs (http/https/mailto) open in
+        // the system browser via OpenURL; in-document anchors (#…) are handled
+        // internally by the text area. This is what powers the per-library website
+        // and Git links in Docs/Dependencies.md.
+        markDownTextArea->onMarkdownLinkClick = [](const std::string& url) {
+            if (url.empty()) return;
+            if (url.rfind("http://", 0) == 0 || url.rfind("https://", 0) == 0 ||
+                url.rfind("mailto:", 0) == 0 || url.rfind("ftp://", 0) == 0) {
+                OpenURL(url);
+            }
+        };
 
 
         docWindow->SetEventCallback([this](const UCEvent& event) {
@@ -1294,7 +1307,8 @@ namespace UltraCanvas {
                                "Third-party libraries used by UltraCanvas and its modules",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateDependenciesExamples(); },
-                               "DemoApp/UltraCanvasDependenciesExamples.cpp");
+                               "DemoApp/UltraCanvasDependenciesExamples.cpp",
+                               "Docs/Dependencies.md");
 
         auto widgetsBuilder = DemoCategoryBuilder(this, DemoCategory::Widgets);
 
