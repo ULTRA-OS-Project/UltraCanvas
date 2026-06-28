@@ -13,8 +13,10 @@
 // Beyond images it also opens documents, spreadsheets, 3D models, audio and
 // video: PDFs render through UltraCanvasPDFView (MuPDF), spreadsheets (ODS /
 // CSV / TSV) through UltraCanvasSpreadsheet, STL 3D models through the OpenGL
-// model viewer (UltraCanvasSTLElement), and audio / video through the framework's
-// UltraCanvasAudioPlayerElement / UltraCanvasVideoPlayerElement. The right view
+// model viewer (UltraCanvasSTLElement), text / source / markdown files through a
+// read-only UltraCanvasTextArea (syntax highlighting + markdown rendering), and
+// audio / video through the framework's UltraCanvasAudioPlayerElement /
+// UltraCanvasVideoPlayerElement. The right view
 // is chosen automatically from the file kind; image-only tools (zoom, rotate,
 // adjustments, save) apply to images, and zoom also drives the PDF view.
 // (ODT is an OpenDocument *text* document, not a spreadsheet, so it is not
@@ -51,13 +53,15 @@ class UltraCanvasVideoPlayerElement; // video playback (platform media backend)
 class UltraCanvasAudioPlayerElement; // audio playback (audio backend)
 class UltraCanvasSpreadsheet;        // ODS / CSV / TSV spreadsheets
 class UltraCanvasSTLElement;         // STL 3D models (OpenGL viewer, 2D fallback)
+class UltraCanvasTextArea;           // text / source / markdown (read-only)
 
 // ===== WHAT KIND OF MEDIA A FILE IS =====
 // Chooses which child element renders it: images go through the image surface,
 // documents through the PDF view, spreadsheets (ODS/CSV/TSV) through the
-// spreadsheet element, 3D models (STL) through the OpenGL model viewer, and
-// audio/video through their player elements.
-enum class MediaKind { Image, Document, Sheet, Model, Video, Audio };
+// spreadsheet element, 3D models (STL) through the OpenGL model viewer, text /
+// source / markdown files through a read-only text area, and audio/video
+// through their player elements.
+enum class MediaKind { Image, Document, Sheet, Model, Text, Video, Audio };
 
 // ===== TRANSITION STYLES BETWEEN IMAGES =====
 // (Suffixed names avoid clashing with X11 macros such as None.)
@@ -264,6 +268,7 @@ private:
     static bool IsDocumentFile(const std::string& path);   // PDF (and other docs)
     static bool IsSpreadsheetFile(const std::string& path); // ODS / CSV / TSV
     static bool IsModelFile(const std::string& path);       // STL 3D models
+    static bool IsTextFile(const std::string& path);        // text / source / markdown
     static bool IsVideoFile(const std::string& path);
     static bool IsAudioFile(const std::string& path);
     static MediaKind ClassifyFile(const std::string& path);
@@ -289,6 +294,7 @@ private:
     std::shared_ptr<UltraCanvasUIElement>    pdfView;       // UltraCanvasPDFView
     std::shared_ptr<UltraCanvasUIElement>    sheetView;     // UltraCanvasSpreadsheet
     std::shared_ptr<UltraCanvasUIElement>    modelView;     // UltraCanvasSTLElement (3D)
+    std::shared_ptr<UltraCanvasUIElement>    textView;      // UltraCanvasTextArea (read-only)
     std::shared_ptr<UltraCanvasUIElement>    videoPlayer;   // UltraCanvasVideoPlayerElement
     std::shared_ptr<UltraCanvasUIElement>    audioPlayer;   // UltraCanvasAudioPlayerElement
     MediaKind activeKind = MediaKind::Image;

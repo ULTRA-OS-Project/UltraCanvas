@@ -15,6 +15,8 @@
 #include "UltraCanvasFileLoader.h"   // FileDialogOptions, DialogResult, FileFilter
 #include "UltraCanvasSpreadsheet.h"  // ODS / CSV / TSV (always built into the core lib)
 #include "Models/STL/UltraCanvasSTLElement.h"  // STL 3D viewer (GL or 2D fallback)
+#include "UltraCanvasTextArea.h"      // text / source / markdown view
+#include "UltraCanvasSyntaxTokenizer.h" // resolve source language from extension
 #ifdef ULTRACANVAS_PLUGIN_PDF
 #include "Plugins/Documents/UltraCanvasPDFView.h"
 #endif
@@ -30,6 +32,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <sstream>
 
 namespace fs = std::filesystem;
@@ -66,6 +69,20 @@ static std::string HumanSize(uintmax_t bytes) {
     if (u == 0) snprintf(buf, sizeof(buf), "%llu %s", (unsigned long long)bytes, units[u]);
     else        snprintf(buf, sizeof(buf), "%.1f %s", v, units[u]);
     return std::string(buf);
+}
+
+// Read a text file into `out`, capped at maxBytes so a huge/binary file can't
+// stall the viewer. Returns false if the file can't be opened.
+static bool ReadTextFile(const std::string& path, std::string& out,
+                         size_t maxBytes = 16u * 1024u * 1024u) {
+    std::ifstream f(path, std::ios::binary);
+    if (!f) return false;
+    out.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
+    if (out.size() > maxBytes) {
+        out.resize(maxBytes);
+        out += "\n\n[... truncated ...]";
+    }
+    return true;
 }
 
 #ifdef HAS_LIBVIPS
@@ -741,6 +758,17 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
         AddChild(modelView);
     }
 
+    // ----- TEXT / SOURCE / MARKDOWN VIEW (read-only) -----
+    {
+        auto tv = std::make_shared<UltraCanvasTextArea>("MV_Text", 0, 0, 0, 0);
+        tv->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        tv->SetReadOnly(true);
+        tv->SetVisible(false);
+        textView = tv;
+        AddChild(textView);
+    }
+
 #ifdef ULTRACANVAS_ENABLE_VIDEO
     // ----- VIDEO PLAYER (shown for video files) -----
     {
@@ -819,6 +847,25 @@ bool UltraCanvasMediaViewer::IsModelFile(const std::string& path) {
     return LowerExt(path) == "stl";
 }
 
+bool UltraCanvasMediaViewer::IsTextFile(const std::string& path) {
+    // Text / markup / source files open in a read-only UltraCanvasTextArea. A
+    // curated set of plain-text & markup extensions, plus any source language
+    // the syntax tokenizer recognises (so highlighting matches the editor).
+    std::string e = LowerExt(path);
+    if (e.empty()) return false;
+    static const std::vector<std::string> textExts = {
+        "txt", "text", "log", "md", "markdown", "rst", "json", "xml",
+        "yaml", "yml", "ini", "cfg", "conf", "toml", "html", "htm", "css",
+        "tex", "srt", "vtt", "diff", "patch"
+    };
+    if (std::find(textExts.begin(), textExts.end(), e) != textExts.end()) return true;
+    // Reuse the syntax tokenizer's language registry for source code (cpp, py,
+    // js, java, …). Constructed once; mutation of its current-language state is
+    // harmless here since we only need the match result.
+    static SyntaxTokenizer tokenizer;
+    return tokenizer.SetLanguageByExtension(e);
+}
+
 bool UltraCanvasMediaViewer::IsVideoFile(const std::string& path) {
     // Video plays through UltraCanvasVideoPlayerElement; only advertised when a
     // real video backend is compiled in.
@@ -857,6 +904,7 @@ MediaKind UltraCanvasMediaViewer::ClassifyFile(const std::string& path) {
     if (IsModelFile(path))       return MediaKind::Model;
     if (IsVideoFile(path))       return MediaKind::Video;
     if (IsAudioFile(path))       return MediaKind::Audio;
+    if (IsTextFile(path))        return MediaKind::Text;
     return MediaKind::Image;
 }
 
@@ -870,10 +918,10 @@ bool UltraCanvasMediaViewer::IsSupportedMedia(const std::string& path) {
     std::string e = LowerExt(path);
     if (e.empty()) return false;
     if (std::find(exts.begin(), exts.end(), e) != exts.end()) return true;
-    // Documents / spreadsheets / 3D models / video / audio (video & audio gated
-    // by their backend being present).
+    // Documents / spreadsheets / 3D models / text / video / audio (video & audio
+    // gated by their backend being present).
     return IsDocumentFile(path) || IsSpreadsheetFile(path) || IsModelFile(path) ||
-           IsVideoFile(path) || IsAudioFile(path);
+           IsVideoFile(path) || IsAudioFile(path) || IsTextFile(path);
 }
 
 std::vector<std::string> UltraCanvasMediaViewer::EnumerateFolder(const std::string& folder) {
@@ -1004,6 +1052,7 @@ void UltraCanvasMediaViewer::ShowView(MediaKind kind) {
     if (pdfView)     pdfView->SetVisible(kind == MediaKind::Document);
     if (sheetView)   sheetView->SetVisible(kind == MediaKind::Sheet);
     if (modelView)   modelView->SetVisible(kind == MediaKind::Model);
+    if (textView)    textView->SetVisible(kind == MediaKind::Text);
     if (videoPlayer) videoPlayer->SetVisible(kind == MediaKind::Video);
     if (audioPlayer) audioPlayer->SetVisible(kind == MediaKind::Audio);
 }
@@ -1061,6 +1110,34 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         auto* mv = static_cast<UltraCanvasSTLElement*>(modelView.get());
         if (!mv->LoadFromFile(path) && infoLabel)
             infoLabel->SetText("Failed to open 3D model: " + BaseName(path));
+        handled = true;
+    }
+    if (!handled && kind == MediaKind::Text && textView) {
+        // Text / source / markdown open read-only in the text area.
+        ShowView(MediaKind::Text);
+        surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
+        auto* ta = static_cast<UltraCanvasTextArea*>(textView.get());
+        std::string content;
+        if (!ReadTextFile(path, content)) {
+            if (infoLabel) infoLabel->SetText("Failed to open text file: " + BaseName(path));
+        } else {
+            std::string ext = LowerExt(path);
+            if (ext == "md" || ext == "markdown") {
+                ta->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
+                ta->SetHighlightSyntax(false);
+            } else {
+                ta->SetEditingMode(TextAreaEditingMode::PlainText);
+                static SyntaxTokenizer tk;
+                if (!ext.empty() && tk.SetLanguageByExtension(ext)) {
+                    ta->SetHighlightSyntax(true);
+                    ta->SetProgrammingLanguage(tk.GetCurrentProgrammingLanguage());
+                } else {
+                    ta->SetHighlightSyntax(false);
+                }
+            }
+            ta->SetReadOnly(true);
+            ta->SetText(content);
+        }
         handled = true;
     }
 #ifdef ULTRACANVAS_ENABLE_VIDEO
@@ -1173,10 +1250,12 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
 #endif
 
     if (activeKind == MediaKind::Sheet || activeKind == MediaKind::Model ||
-        activeKind == MediaKind::Video || activeKind == MediaKind::Audio) {
+        activeKind == MediaKind::Text || activeKind == MediaKind::Video ||
+        activeKind == MediaKind::Audio) {
         std::string kindLabel = activeKind == MediaKind::Video ? "VIDEO"
                               : activeKind == MediaKind::Audio ? "AUDIO"
-                              : activeKind == MediaKind::Model ? "3D MODEL" : "SHEET";
+                              : activeKind == MediaKind::Model ? "3D MODEL"
+                              : activeKind == MediaKind::Text  ? "TEXT" : "SHEET";
         std::ostringstream os;
         os << BaseName(path) << "   \xC2\xB7   " << kindLabel;
         std::error_code ec;
@@ -1242,14 +1321,17 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
 #endif
 
     if (activeKind == MediaKind::Sheet || activeKind == MediaKind::Model ||
-        activeKind == MediaKind::Video || activeKind == MediaKind::Audio) {
+        activeKind == MediaKind::Text || activeKind == MediaKind::Video ||
+        activeKind == MediaKind::Audio) {
         const char* heading = activeKind == MediaKind::Video ? "Video information\n\n"
                             : activeKind == MediaKind::Audio ? "Audio information\n\n"
                             : activeKind == MediaKind::Model ? "3D model information\n\n"
+                            : activeKind == MediaKind::Text  ? "Text information\n\n"
                                                              : "Spreadsheet information\n\n";
         const char* typeName = activeKind == MediaKind::Video ? "Video"
                              : activeKind == MediaKind::Audio ? "Audio"
-                             : activeKind == MediaKind::Model ? "3D model" : "Spreadsheet";
+                             : activeKind == MediaKind::Model ? "3D model"
+                             : activeKind == MediaKind::Text  ? "Text" : "Spreadsheet";
         std::ostringstream mos;
         mos << heading;
         mos << "File: " << BaseName(path) << "\n";
