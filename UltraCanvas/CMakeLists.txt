@@ -31,6 +31,7 @@ option(ULTRACANVAS_PLUGIN_VECTOR, "Build Vector plugin" OFF)
 option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" ON)
 option(ULTRACANVAS_PLUGIN_SVG "Build SVG plugin" OFF)
 option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin" ON)
+option(ULTRACANVAS_PLUGIN_LATEX "Build LaTeX math plugin (embedded MicroTeX)" ON)
 option(ULTRACANVAS_ENABLE_AUDIO "Enable audio playback & recording (requires backend lib)" ON)
 option(ULTRACANVAS_ENABLE_VIDEO "Enable video playback & recording (requires platform media framework)" ON)
 option(ULTRACANVAS_ENABLE_GL "Enable OpenGL 3D surface support" ON)
@@ -862,6 +863,49 @@ if(ULTRACANVAS_PLUGIN_PDF)
     message(STATUS "  [✓] PDF Plugin - ENABLED (MuPDF at ${MUPDF_LIBRARY})")
 else()
     message(STATUS "  [−] PDF Plugin - SKIPPED (disabled by option)")
+endif()
+
+# LaTeX Plugin (embedded MicroTeX, Uni-math / path-render mode)
+# Renders LaTeX math through a native UltraCanvas Graphics2D backend - no Cairo
+# surface blitting and no external TeX engine. The MicroTeX engine is vendored
+# under third_party/microtex and built as a static lib in path-glyph mode
+# (GLYPH_RENDER_TYPE=1), so glyph outlines are drawn as vector paths and stay
+# crisp at any zoom. The Latin Modern Math font and its .clm2 metrics ship in
+# media/microtex (copied into the runtime media dir by the top-level CMake).
+if(ULTRACANVAS_PLUGIN_LATEX)
+    set(MICROTEX_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/microtex)
+
+    file(GLOB_RECURSE MICROTEX_CORE_SOURCES ${MICROTEX_DIR}/lib/*.cpp)
+    # Exclude the C-wrapper API (not used) and the auto-font-find feature - the
+    # only std::filesystem consumer. UltraCanvas initialises the engine with an
+    # explicit FontSrcFile and drives it through the C++ API.
+    list(FILTER MICROTEX_CORE_SOURCES EXCLUDE REGEX "/lib/wrapper/")
+    list(FILTER MICROTEX_CORE_SOURCES EXCLUDE REGEX "/otf/fontsense\\.cpp$")
+
+    add_library(microtex_core STATIC ${MICROTEX_CORE_SOURCES})
+    target_include_directories(microtex_core PUBLIC ${MICROTEX_DIR}/lib)
+    target_compile_features(microtex_core PUBLIC cxx_std_17)
+    target_compile_definitions(microtex_core
+        PRIVATE MICROTEX_LIBRARY
+        PUBLIC  GLYPH_RENDER_TYPE=1)
+    set_target_properties(microtex_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    if(NOT MSVC)
+        target_compile_options(microtex_core PRIVATE -fexceptions)
+    endif()
+
+    # Backend adapter + widget, compiled into the UltraCanvas library.
+    target_sources(${ULTRACANVAS_LIB_NAME} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/LaTeX/UltraCanvasLaTeXBackend.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/LaTeX/UltraCanvasLaTeXView.cpp
+    )
+    target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${MICROTEX_DIR}/lib)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_PLUGIN_LATEX=1)
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC microtex_core)
+    list(APPEND ULTRACANVAS_PLUGIN_TARGETS microtex_core)
+
+    message(STATUS "  [✓] LaTeX Plugin - ENABLED (MicroTeX path-render, Latin Modern Math)")
+else()
+    message(STATUS "  [−] LaTeX Plugin - SKIPPED (disabled by option)")
 endif()
 
 # Add more plugins here...
