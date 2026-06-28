@@ -36,6 +36,8 @@ class UltraCanvasButton;
 class UltraCanvasDropdown;
 class UltraCanvasLabel;
 class UltraCanvasSlider;
+class UltraCanvasPDFView;   // PDF documents render through this element (MuPDF),
+                           // not through the raster/libvips path.
 
 // ===== TRANSITION STYLES BETWEEN IMAGES =====
 // (Suffixed names avoid clashing with X11 macros such as None.)
@@ -232,6 +234,13 @@ private:
     void ApplyAdjustments();          // push `adjustments` to the surface
     void ShowSaveDialog();
     void HandleDroppedFiles(const std::vector<std::string>& files);
+    // Zoom toolbar actions route to the PDF view or the image surface depending
+    // on which is currently showing.
+    void ZoomInAction();
+    void ZoomOutAction();
+    void ZoomFitAction();
+    void ZoomPercentAction(double percent);
+    static bool IsDocumentFile(const std::string& path);   // PDF (and other docs)
     std::shared_ptr<UltraCanvasUIElement> BuildAdjustSlider(
             const std::string& id, const std::string& caption,
             float minV, float maxV, float value, std::function<void(float)> onChange);
@@ -247,6 +256,12 @@ private:
     std::shared_ptr<UltraCanvasContainer>    bottomBar;
     std::shared_ptr<UltraCanvasLabel>        infoLabel;
     std::shared_ptr<UltraCanvasButton>       playButton;
+    // PDF view element (UltraCanvasPDFView), shown instead of the image surface
+    // when the current file is a document. Held as the base type so the public
+    // header need not include the PDF plugin; only constructed when the PDF
+    // plugin is compiled in. pdfActive marks which view is live.
+    std::shared_ptr<UltraCanvasUIElement>    pdfView;
+    bool pdfActive = false;
 
     MediaAdjustments adjustments;
 

@@ -13,6 +13,9 @@
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasFileLoader.h"   // FileDialogOptions, DialogResult, FileFilter
+#ifdef ULTRACANVAS_PLUGIN_PDF
+#include "Plugins/Documents/UltraCanvasPDFView.h"
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -620,16 +623,15 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     toolbar2->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    toolbar2->AddButton("mv_zoomout", "Zoom -", "", [this] { if (surface) surface->ZoomBy(1.0 / 1.25); });
+    toolbar2->AddButton("mv_zoomout", "Zoom -", "", [this] { ZoomOutAction(); });
     toolbar2->AddDropdownButton("mv_zoom", "Zoom",
             { "Fit", "25%", "50%", "75%", "100%", "150%", "200%", "400%" },
             [this](const std::string& s) {
-                if (!surface) return;
-                if (s == "Fit") surface->ResetView();
-                else            surface->SetZoomPercent(std::atof(s.c_str()));
+                if (s == "Fit") ZoomFitAction();
+                else            ZoomPercentAction(std::atof(s.c_str()));
             });
-    toolbar2->AddButton("mv_zoomin", "Zoom +", "", [this] { if (surface) surface->ZoomBy(1.25); });
-    toolbar2->AddButton("mv_fit", "Fit", "", [this] { if (surface) surface->ResetView(); });
+    toolbar2->AddButton("mv_zoomin", "Zoom +", "", [this] { ZoomInAction(); });
+    toolbar2->AddButton("mv_fit", "Fit", "", [this] { ZoomFitAction(); });
     toolbar2->AddSeparator("mv_sep3");
     toolbar2->AddButton("mv_rotl", "Rotate L", "", [this] { if (surface) surface->RotateBy(-1); });
     toolbar2->AddButton("mv_rotr", "Rotate R", "", [this] { if (surface) surface->RotateBy(1); });
@@ -694,6 +696,20 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     surface->SetAdjustments(adjustments);
     AddChild(surface);
 
+#ifdef ULTRACANVAS_PLUGIN_PDF
+    // ----- PDF DOCUMENT VIEW (shown instead of the image surface for PDFs) -----
+    // Built with a zero size so the flex layout (not a fixed CSS size) drives it.
+    {
+        auto pv = std::make_shared<UltraCanvasPDFView>("MV_PDFView", 0, 0, 0, 0);
+        pv->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        pv->onPageChanged = [this](int, int) { UpdateInfoBar(); };
+        pv->SetVisible(false);
+        pdfView = pv;
+        AddChild(pdfView);
+    }
+#endif
+
     // ----- BOTTOM INFO BAR -----
     bottomBar = std::make_shared<UltraCanvasContainer>("MV_Bottom", 0, 0, 0, 26);
     bottomBar->SetBackgroundColor(Color(18, 18, 22, 255));
@@ -718,18 +734,29 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     (void)w; (void)h;
 }
 
+bool UltraCanvasMediaViewer::IsDocumentFile(const std::string& path) {
+    // Documents rendered through a dedicated document element rather than the
+    // image pipeline. PDF is handled by UltraCanvasPDFView (MuPDF) and is only
+    // advertised as supported when that plugin is compiled in.
+#ifdef ULTRACANVAS_PLUGIN_PDF
+    return LowerExt(path) == "pdf";
+#else
+    (void)path;
+    return false;
+#endif
+}
+
 bool UltraCanvasMediaViewer::IsSupportedMedia(const std::string& path) {
     static const std::vector<std::string> exts = {
         "jpg", "jpeg", "jpe", "png", "gif", "bmp", "webp", "tif", "tiff",
         "svg", "ico", "cur", "heic", "heif", "avif", "jxl", "jp2", "j2k",
         "ppm", "pgm", "pbm", "pnm", "pfm", "tga", "psd", "qoi", "hdr", "exr",
-        "xpm", "xbm", "pcx", "sgi", "dds", "fits",
-        // Documents libvips can rasterise (first page shown).
-        "pdf"
+        "xpm", "xbm", "pcx", "sgi", "dds", "fits"
     };
     std::string e = LowerExt(path);
     if (e.empty()) return false;
-    return std::find(exts.begin(), exts.end(), e) != exts.end();
+    if (std::find(exts.begin(), exts.end(), e) != exts.end()) return true;
+    return IsDocumentFile(path);   // PDF when the document plugin is present
 }
 
 std::vector<std::string> UltraCanvasMediaViewer::EnumerateFolder(const std::string& folder) {
@@ -857,12 +884,39 @@ void UltraCanvasMediaViewer::GoTo(size_t index, bool animated) {
 void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
     if (!surface) return;
     if (playlist.empty()) {
+        if (pdfView) pdfView->SetVisible(false);
+        pdfActive = false;
+        surface->SetVisible(true);
         surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
         UpdateInfoBar();
         return;
     }
     if (currentIndex >= playlist.size()) currentIndex = playlist.size() - 1;
-    auto img = UCImage::Get(playlist[currentIndex]);
+    const std::string& path = playlist[currentIndex];
+
+#ifdef ULTRACANVAS_PLUGIN_PDF
+    if (IsDocumentFile(path) && pdfView) {
+        // Render the document through the dedicated PDF element (MuPDF), not the
+        // image/libvips path. Drop the now-hidden image so it frees memory.
+        surface->SetVisible(false);
+        surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
+        pdfView->SetVisible(true);
+        pdfActive = true;
+        auto* pv = static_cast<UltraCanvasPDFView*>(pdfView.get());
+        if (!pv->LoadFromPath(path) && infoLabel) {
+            infoLabel->SetText("Failed to open document: " + BaseName(path));
+        }
+        UpdateInfoBar();
+        UpdateDetailedInfo();
+        return;
+    }
+#endif
+
+    // Image path.
+    if (pdfView) pdfView->SetVisible(false);
+    pdfActive = false;
+    surface->SetVisible(true);
+    auto img = UCImage::Get(path);
     surface->ShowImage(img, transition, transitionDurationMs, animated);
     UpdateInfoBar();
     UpdateDetailedInfo();
@@ -872,15 +926,70 @@ void UltraCanvasMediaViewer::ApplyAdjustments() {
     if (surface) surface->SetAdjustments(adjustments);
 }
 
+// ===== ZOOM ACTIONS (routed to whichever view is live) =====
+
+void UltraCanvasMediaViewer::ZoomInAction() {
+#ifdef ULTRACANVAS_PLUGIN_PDF
+    if (pdfActive && pdfView) { static_cast<UltraCanvasPDFView*>(pdfView.get())->ZoomIn(); return; }
+#endif
+    if (surface) surface->ZoomBy(1.25);
+}
+
+void UltraCanvasMediaViewer::ZoomOutAction() {
+#ifdef ULTRACANVAS_PLUGIN_PDF
+    if (pdfActive && pdfView) { static_cast<UltraCanvasPDFView*>(pdfView.get())->ZoomOut(); return; }
+#endif
+    if (surface) surface->ZoomBy(1.0 / 1.25);
+}
+
+void UltraCanvasMediaViewer::ZoomFitAction() {
+#ifdef ULTRACANVAS_PLUGIN_PDF
+    if (pdfActive && pdfView) { static_cast<UltraCanvasPDFView*>(pdfView.get())->ZoomToFit(); return; }
+#endif
+    if (surface) surface->ResetView();
+}
+
+void UltraCanvasMediaViewer::ZoomPercentAction(double percent) {
+#ifdef ULTRACANVAS_PLUGIN_PDF
+    if (pdfActive && pdfView) {
+        static_cast<UltraCanvasPDFView*>(pdfView.get())->SetZoom(static_cast<float>(percent / 100.0));
+        return;
+    }
+#endif
+    if (surface) surface->SetZoomPercent(percent);
+}
+
 void UltraCanvasMediaViewer::UpdateInfoBar() {
     if (!infoLabel) return;
-    if (playlist.empty() || !surface || !surface->GetImage() ||
-        !surface->GetImage()->IsValid()) {
+    if (playlist.empty()) {
+        infoLabel->SetText("No media");
+        return;
+    }
+    const std::string& path = playlist[currentIndex];
+
+#ifdef ULTRACANVAS_PLUGIN_PDF
+    if (pdfActive && pdfView) {
+        auto* pv = static_cast<UltraCanvasPDFView*>(pdfView.get());
+        std::ostringstream os;
+        os << BaseName(path) << "   \xC2\xB7   PDF";
+        if (pv->HasDocument()) {
+            os << "   \xC2\xB7   page " << pv->GetCurrentPage()
+               << " / " << pv->GetPageCount();
+        }
+        std::error_code ec;
+        auto sz = fs::file_size(path, ec);
+        if (!ec) os << "   \xC2\xB7   " << HumanSize(sz);
+        os << "   \xC2\xB7   " << (currentIndex + 1) << " / " << playlist.size();
+        infoLabel->SetText(os.str());
+        return;
+    }
+#endif
+
+    if (!surface || !surface->GetImage() || !surface->GetImage()->IsValid()) {
         infoLabel->SetText("No media");
         return;
     }
     auto img = surface->GetImage();
-    const std::string& path = playlist[currentIndex];
     std::ostringstream os;
     os << BaseName(path)
        << "   \xC2\xB7   " << img->GetWidth() << " x " << img->GetHeight();
@@ -911,6 +1020,25 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
 void UltraCanvasMediaViewer::UpdateDetailedInfo() {
     if (!surface || playlist.empty()) return;
     const std::string& path = playlist[currentIndex];
+
+#ifdef ULTRACANVAS_PLUGIN_PDF
+    if (pdfActive && pdfView) {
+        // Document metadata comes from the PDF element, never from libvips.
+        auto* pv = static_cast<UltraCanvasPDFView*>(pdfView.get());
+        std::ostringstream dos;
+        dos << "Document information\n\n";
+        dos << "File: " << BaseName(path) << "\n";
+        dos << "Path: " << path << "\n";
+        std::error_code dec;
+        auto dsz = fs::file_size(path, dec);
+        if (!dec) dos << "Size: " << HumanSize(dsz) << "\n";
+        dos << "Type: PDF document\n";
+        if (pv->HasDocument()) dos << "Pages: " << pv->GetPageCount() << "\n";
+        surface->SetInfoText(dos.str());
+        return;
+    }
+#endif
+
     std::ostringstream os;
     os << "Image information\n\n";
     os << "File: " << BaseName(path) << "\n";
