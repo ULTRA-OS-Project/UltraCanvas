@@ -22,6 +22,11 @@
 // (ODT is an OpenDocument *text* document, not a spreadsheet, so it is not
 // handled by the spreadsheet engine.)
 //
+// A folder breadcrumb (Parallelogram style) sits at the top: each segment opens
+// that folder, and its dropdown lists the sibling folders at the same level so
+// another folder can be picked; long paths collapse their middle into a "..."
+// overflow menu.
+//
 // Drag a folder onto the widget to browse it; drag one or more files to view
 // them.
 //
@@ -48,6 +53,7 @@ class UltraCanvasButton;
 class UltraCanvasDropdown;
 class UltraCanvasLabel;
 class UltraCanvasSlider;
+class UltraCanvasBreadcrumb;   // folder path strip at the top (Parallelogram style)
 class UltraCanvasPDFView;             // PDF documents (MuPDF), not the raster path
 class UltraCanvasVideoPlayerElement; // video playback (platform media backend)
 class UltraCanvasAudioPlayerElement; // audio playback (audio backend)
@@ -253,6 +259,7 @@ public:
 private:
     void BuildUI(float w, float h);
     void LoadCurrent(bool animated);
+    void UpdateBreadcrumb();          // rebuild the folder path strip from currentFolder
     void UpdateInfoBar();
     void UpdateDetailedInfo();
     void ApplyAdjustments();          // push `adjustments` to the surface
@@ -279,7 +286,9 @@ private:
 
     std::vector<std::string> playlist;
     size_t currentIndex = 0;
+    std::string currentFolder;     // folder the breadcrumb reflects
 
+    std::shared_ptr<UltraCanvasBreadcrumb>   breadcrumb;
     std::shared_ptr<UltraCanvasToolbar>      toolbar;   // navigation / slideshow row
     std::shared_ptr<UltraCanvasToolbar>      toolbar2;  // view / edit row
     std::shared_ptr<UltraCanvasContainer>    adjustPanel;

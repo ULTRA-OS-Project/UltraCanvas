@@ -7,6 +7,7 @@
 
 #include "UltraCanvasMediaViewer.h"
 #include "UltraCanvasToolbar.h"
+#include "UltraCanvasBreadcrumb.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
@@ -609,6 +610,22 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     SetBackgroundColor(Color(24, 24, 28, 255));
     layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
+    // ----- FOLDER BREADCRUMB (top, Parallelogram style) -----
+    // Each segment navigates to that folder; its dropdown lists the sibling
+    // folders at the same level so another folder can be selected. Long paths
+    // collapse their middle segments into a "..." overflow menu.
+    breadcrumb = std::make_shared<UltraCanvasBreadcrumb>("MV_Breadcrumb", 0, 0, 0, 30);
+    {
+        BreadcrumbStyle bs = BreadcrumbStyle::Parallelogram();
+        bs.overflowMode = BreadcrumbOverflowMode::Collapse;  // collapse middle into "..."
+        bs.backgroundColor = Color(30, 30, 36, 255);
+        breadcrumb->SetStyle(bs);
+    }
+    breadcrumb->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    breadcrumb->SetVisible(false);   // shown once a folder is known
+    AddChild(breadcrumb);
+
     // ----- TOP TOOLBAR ROW 1: navigation + slideshow -----
     // Two rows keep every control visible at modest widths (the toolbar widget
     // does not yet implement overflow handling).
@@ -957,6 +974,8 @@ void UltraCanvasMediaViewer::OpenFolder(const std::string& folderPath,
             }
         }
     }
+    currentFolder = folderPath;
+    UpdateBreadcrumb();
     LoadCurrent(false);
     if (slideshowPlaying) { PauseSlideshow(); PlaySlideshow(); }
 }
@@ -975,6 +994,12 @@ void UltraCanvasMediaViewer::SetFiles(const std::vector<std::string>& files, siz
     if (out.empty()) return;
     playlist = std::move(out);
     currentIndex = std::min(startIndex, playlist.size() - 1);
+    // Reflect the folder the (first) file lives in.
+    {
+        fs::path p(playlist.front());
+        currentFolder = p.parent_path().string();
+    }
+    UpdateBreadcrumb();
     LoadCurrent(false);
     if (slideshowPlaying) { PauseSlideshow(); PlaySlideshow(); }
 }
@@ -1055,6 +1080,58 @@ void UltraCanvasMediaViewer::ShowView(MediaKind kind) {
     if (textView)    textView->SetVisible(kind == MediaKind::Text);
     if (videoPlayer) videoPlayer->SetVisible(kind == MediaKind::Video);
     if (audioPlayer) audioPlayer->SetVisible(kind == MediaKind::Audio);
+}
+
+void UltraCanvasMediaViewer::UpdateBreadcrumb() {
+    if (!breadcrumb) return;
+    if (currentFolder.empty()) {
+        breadcrumb->Clear();
+        breadcrumb->SetVisible(false);
+        return;
+    }
+
+    std::error_code ec;
+    fs::path abs = fs::weakly_canonical(fs::path(currentFolder), ec);
+    if (ec || abs.empty()) abs = fs::path(currentFolder);
+
+    breadcrumb->Clear();
+    fs::path accum;
+    for (const auto& part : abs) {
+        accum /= part;
+        std::string segPath = accum.string();
+        std::string label = part.string();
+
+        BreadcrumbItem item;
+        item.text = label.empty() ? "/" : label;
+        item.clickable = true;
+        // Click a segment → open that folder.
+        item.onClick = [this, segPath] { OpenFolder(segPath); };
+        // Dropdown chevron → the sibling folders at the same level (lazily
+        // listed when the menu opens), each of which opens that folder.
+        item.hasDropdown = true;
+        item.dropdownItemsProvider = [this, segPath]() {
+            std::vector<MenuItemData> out;
+            std::error_code lec;
+            fs::path sp(segPath);
+            fs::path parent = sp.parent_path();
+            // Root (parent == self) lists its children; otherwise list siblings.
+            fs::path listDir = (parent.empty() || parent == sp) ? sp : parent;
+            std::vector<std::string> dirs;
+            for (fs::directory_iterator it(listDir, lec), end; it != end && !lec; it.increment(lec)) {
+                std::error_code dec;
+                if (it->is_directory(dec)) dirs.push_back(it->path().string());
+            }
+            std::sort(dirs.begin(), dirs.end());
+            for (const auto& d : dirs) {
+                std::string name = fs::path(d).filename().string();
+                if (name.empty()) name = d;
+                out.emplace_back(name, [this, d] { OpenFolder(d); });
+            }
+            return out;
+        };
+        breadcrumb->AddItem(item);
+    }
+    breadcrumb->SetVisible(true);
 }
 
 void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
