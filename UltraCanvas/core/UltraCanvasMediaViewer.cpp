@@ -14,6 +14,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasFileLoader.h"   // FileDialogOptions, DialogResult, FileFilter
 #include "UltraCanvasSpreadsheet.h"  // ODS / CSV / TSV (always built into the core lib)
+#include "Models/STL/UltraCanvasSTLElement.h"  // STL 3D viewer (GL or 2D fallback)
 #ifdef ULTRACANVAS_PLUGIN_PDF
 #include "Plugins/Documents/UltraCanvasPDFView.h"
 #endif
@@ -727,6 +728,19 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
         AddChild(sheetView);
     }
 
+    // ----- 3D MODEL VIEW (shown for STL files) -----
+    {
+        auto mv = std::make_shared<UltraCanvasSTLElement>("MV_Model", 0, 0, 0, 0);
+        mv->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        mv->onLoadError = [this](const std::string& err) {
+            if (infoLabel) infoLabel->SetText("Failed to open 3D model: " + err);
+        };
+        mv->SetVisible(false);
+        modelView = mv;
+        AddChild(modelView);
+    }
+
 #ifdef ULTRACANVAS_ENABLE_VIDEO
     // ----- VIDEO PLAYER (shown for video files) -----
     {
@@ -798,6 +812,13 @@ bool UltraCanvasMediaViewer::IsSpreadsheetFile(const std::string& path) {
     return e == "ods" || e == "csv" || e == "tsv";
 }
 
+bool UltraCanvasMediaViewer::IsModelFile(const std::string& path) {
+    // 3D models open in UltraCanvasSTLElement (OpenGL viewer, or a 2D info
+    // placeholder when GL is disabled). The element is always built into the
+    // core library, so no backend guard is needed.
+    return LowerExt(path) == "stl";
+}
+
 bool UltraCanvasMediaViewer::IsVideoFile(const std::string& path) {
     // Video plays through UltraCanvasVideoPlayerElement; only advertised when a
     // real video backend is compiled in.
@@ -833,6 +854,7 @@ bool UltraCanvasMediaViewer::IsAudioFile(const std::string& path) {
 MediaKind UltraCanvasMediaViewer::ClassifyFile(const std::string& path) {
     if (IsDocumentFile(path))    return MediaKind::Document;
     if (IsSpreadsheetFile(path)) return MediaKind::Sheet;
+    if (IsModelFile(path))       return MediaKind::Model;
     if (IsVideoFile(path))       return MediaKind::Video;
     if (IsAudioFile(path))       return MediaKind::Audio;
     return MediaKind::Image;
@@ -848,8 +870,9 @@ bool UltraCanvasMediaViewer::IsSupportedMedia(const std::string& path) {
     std::string e = LowerExt(path);
     if (e.empty()) return false;
     if (std::find(exts.begin(), exts.end(), e) != exts.end()) return true;
-    // Documents / spreadsheets / video / audio (the last two gated by backend).
-    return IsDocumentFile(path) || IsSpreadsheetFile(path) ||
+    // Documents / spreadsheets / 3D models / video / audio (video & audio gated
+    // by their backend being present).
+    return IsDocumentFile(path) || IsSpreadsheetFile(path) || IsModelFile(path) ||
            IsVideoFile(path) || IsAudioFile(path);
 }
 
@@ -980,6 +1003,7 @@ void UltraCanvasMediaViewer::ShowView(MediaKind kind) {
     if (surface)     surface->SetVisible(kind == MediaKind::Image);
     if (pdfView)     pdfView->SetVisible(kind == MediaKind::Document);
     if (sheetView)   sheetView->SetVisible(kind == MediaKind::Sheet);
+    if (modelView)   modelView->SetVisible(kind == MediaKind::Model);
     if (videoPlayer) videoPlayer->SetVisible(kind == MediaKind::Video);
     if (audioPlayer) audioPlayer->SetVisible(kind == MediaKind::Audio);
 }
@@ -1028,6 +1052,15 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         if (!sv->LoadFromFile(path) && infoLabel)
             infoLabel->SetText("Failed to open spreadsheet: " + BaseName(path) +
                                " (" + sv->GetLastError() + ")");
+        handled = true;
+    }
+    if (!handled && kind == MediaKind::Model && modelView) {
+        // 3D models load into the STL element (OpenGL viewer / 2D fallback).
+        ShowView(MediaKind::Model);
+        surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
+        auto* mv = static_cast<UltraCanvasSTLElement*>(modelView.get());
+        if (!mv->LoadFromFile(path) && infoLabel)
+            infoLabel->SetText("Failed to open 3D model: " + BaseName(path));
         handled = true;
     }
 #ifdef ULTRACANVAS_ENABLE_VIDEO
@@ -1139,10 +1172,11 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
     }
 #endif
 
-    if (activeKind == MediaKind::Sheet || activeKind == MediaKind::Video ||
-        activeKind == MediaKind::Audio) {
+    if (activeKind == MediaKind::Sheet || activeKind == MediaKind::Model ||
+        activeKind == MediaKind::Video || activeKind == MediaKind::Audio) {
         std::string kindLabel = activeKind == MediaKind::Video ? "VIDEO"
-                              : activeKind == MediaKind::Audio ? "AUDIO" : "SHEET";
+                              : activeKind == MediaKind::Audio ? "AUDIO"
+                              : activeKind == MediaKind::Model ? "3D MODEL" : "SHEET";
         std::ostringstream os;
         os << BaseName(path) << "   \xC2\xB7   " << kindLabel;
         std::error_code ec;
@@ -1207,13 +1241,15 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
     }
 #endif
 
-    if (activeKind == MediaKind::Sheet || activeKind == MediaKind::Video ||
-        activeKind == MediaKind::Audio) {
+    if (activeKind == MediaKind::Sheet || activeKind == MediaKind::Model ||
+        activeKind == MediaKind::Video || activeKind == MediaKind::Audio) {
         const char* heading = activeKind == MediaKind::Video ? "Video information\n\n"
                             : activeKind == MediaKind::Audio ? "Audio information\n\n"
+                            : activeKind == MediaKind::Model ? "3D model information\n\n"
                                                              : "Spreadsheet information\n\n";
         const char* typeName = activeKind == MediaKind::Video ? "Video"
-                             : activeKind == MediaKind::Audio ? "Audio" : "Spreadsheet";
+                             : activeKind == MediaKind::Audio ? "Audio"
+                             : activeKind == MediaKind::Model ? "3D model" : "Spreadsheet";
         std::ostringstream mos;
         mos << heading;
         mos << "File: " << BaseName(path) << "\n";
