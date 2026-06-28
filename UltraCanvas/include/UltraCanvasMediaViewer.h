@@ -10,6 +10,12 @@
 // saved through the framework's file loader (UCImage / UltraCanvasFileLoader)
 // and pixel manipulation is performed with PixelFX (libvips).
 //
+// Beyond images it also plays back documents, audio and video: PDFs render
+// through UltraCanvasPDFView (MuPDF), and audio / video through the framework's
+// UltraCanvasAudioPlayerElement / UltraCanvasVideoPlayerElement. The right view
+// is chosen automatically from the file kind; image-only tools (zoom, rotate,
+// adjustments, save) apply to images, and zoom also drives the PDF view.
+//
 // Drag a folder onto the widget to browse it; drag one or more files to view
 // them.
 //
@@ -36,8 +42,14 @@ class UltraCanvasButton;
 class UltraCanvasDropdown;
 class UltraCanvasLabel;
 class UltraCanvasSlider;
-class UltraCanvasPDFView;   // PDF documents render through this element (MuPDF),
-                           // not through the raster/libvips path.
+class UltraCanvasPDFView;             // PDF documents (MuPDF), not the raster path
+class UltraCanvasVideoPlayerElement; // video playback (platform media backend)
+class UltraCanvasAudioPlayerElement; // audio playback (audio backend)
+
+// ===== WHAT KIND OF MEDIA A FILE IS =====
+// Chooses which child element renders it: images go through the image surface,
+// documents through the PDF view, and audio/video through their player elements.
+enum class MediaKind { Image, Document, Video, Audio };
 
 // ===== TRANSITION STYLES BETWEEN IMAGES =====
 // (Suffixed names avoid clashing with X11 macros such as None.)
@@ -240,7 +252,11 @@ private:
     void ZoomOutAction();
     void ZoomFitAction();
     void ZoomPercentAction(double percent);
+    void ShowView(MediaKind kind);    // toggle child visibility for the kind
     static bool IsDocumentFile(const std::string& path);   // PDF (and other docs)
+    static bool IsVideoFile(const std::string& path);
+    static bool IsAudioFile(const std::string& path);
+    static MediaKind ClassifyFile(const std::string& path);
     std::shared_ptr<UltraCanvasUIElement> BuildAdjustSlider(
             const std::string& id, const std::string& caption,
             float minV, float maxV, float value, std::function<void(float)> onChange);
@@ -256,12 +272,14 @@ private:
     std::shared_ptr<UltraCanvasContainer>    bottomBar;
     std::shared_ptr<UltraCanvasLabel>        infoLabel;
     std::shared_ptr<UltraCanvasButton>       playButton;
-    // PDF view element (UltraCanvasPDFView), shown instead of the image surface
-    // when the current file is a document. Held as the base type so the public
-    // header need not include the PDF plugin; only constructed when the PDF
-    // plugin is compiled in. pdfActive marks which view is live.
-    std::shared_ptr<UltraCanvasUIElement>    pdfView;
-    bool pdfActive = false;
+    // Alternate views shown instead of the image surface, depending on the
+    // current file's kind. Held as the base type so the public header need not
+    // include the PDF / audio / video plugins; each is only constructed when its
+    // backend is compiled in. `activeKind` marks which view is live.
+    std::shared_ptr<UltraCanvasUIElement>    pdfView;       // UltraCanvasPDFView
+    std::shared_ptr<UltraCanvasUIElement>    videoPlayer;   // UltraCanvasVideoPlayerElement
+    std::shared_ptr<UltraCanvasUIElement>    audioPlayer;   // UltraCanvasAudioPlayerElement
+    MediaKind activeKind = MediaKind::Image;
 
     MediaAdjustments adjustments;
 

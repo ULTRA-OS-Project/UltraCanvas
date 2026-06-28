@@ -1326,11 +1326,13 @@ namespace UltraCanvas {
 //                               [this]() { return CreatePartiallyImplementedExamples("## Color picker"); });
 
         widgetsBuilder.AddItem("mediaviewer", "Media Viewer",
-                               "Comprehensive media / photo / document viewer: folder browsing, "
-                               "next/previous (arrows or mouse, even while zoomed), slideshow with "
-                               "transitions, manual + automatic zoom, rotation, mirroring, gamma / "
-                               "brightness / colour correction, auto-optimise, sharpening, save-as "
-                               "and a detailed info popup. Drag a folder or files onto it.",
+                               "Comprehensive media viewer for images, documents (PDF), audio and "
+                               "video: folder browsing, next/previous (arrows or mouse, even while "
+                               "zoomed), slideshow with transitions, manual + automatic zoom, "
+                               "rotation, mirroring, gamma / brightness / colour correction, "
+                               "auto-optimise, sharpening, save-as and a detailed info popup. "
+                               "PDFs render via UltraCanvasPDFView and audio/video via the player "
+                               "elements. Drag a folder or files onto it.",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateMediaViewerExamples(); },
                                "DemoApp/UltraCanvasMediaViewerExamples.cpp");

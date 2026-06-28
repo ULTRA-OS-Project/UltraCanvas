@@ -16,6 +16,12 @@
 #ifdef ULTRACANVAS_PLUGIN_PDF
 #include "Plugins/Documents/UltraCanvasPDFView.h"
 #endif
+#ifdef ULTRACANVAS_ENABLE_VIDEO
+#include "UltraCanvasVideoPlayerElement.h"
+#endif
+#ifdef ULTRACANVAS_ENABLE_AUDIO
+#include "UltraCanvasAudioPlayerElement.h"
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -710,6 +716,33 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     }
 #endif
 
+#ifdef ULTRACANVAS_ENABLE_VIDEO
+    // ----- VIDEO PLAYER (shown for video files) -----
+    {
+        auto vp = std::make_shared<UltraCanvasVideoPlayerElement>("MV_Video", 0, 0, 0, 0);
+        vp->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        // Auto-advance to the next file when a clip ends during a slideshow.
+        vp->onEnded = [this] { if (slideshowPlaying) Next(); };
+        vp->SetVisible(false);
+        videoPlayer = vp;
+        AddChild(videoPlayer);
+    }
+#endif
+
+#ifdef ULTRACANVAS_ENABLE_AUDIO
+    // ----- AUDIO PLAYER (shown for audio files) -----
+    {
+        auto ap = std::make_shared<UltraCanvasAudioPlayerElement>("MV_Audio", 0, 0, 0, 0);
+        ap->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        ap->onEnded = [this] { if (slideshowPlaying) Next(); };
+        ap->SetVisible(false);
+        audioPlayer = ap;
+        AddChild(audioPlayer);
+    }
+#endif
+
     // ----- BOTTOM INFO BAR -----
     bottomBar = std::make_shared<UltraCanvasContainer>("MV_Bottom", 0, 0, 0, 26);
     bottomBar->SetBackgroundColor(Color(18, 18, 22, 255));
@@ -746,6 +779,45 @@ bool UltraCanvasMediaViewer::IsDocumentFile(const std::string& path) {
 #endif
 }
 
+bool UltraCanvasMediaViewer::IsVideoFile(const std::string& path) {
+    // Video plays through UltraCanvasVideoPlayerElement; only advertised when a
+    // real video backend is compiled in.
+#ifdef ULTRACANVAS_ENABLE_VIDEO
+    static const std::vector<std::string> v = {
+        "mp4", "m4v", "mkv", "webm", "mov", "avi", "wmv",
+        "flv", "mpg", "mpeg", "ogv", "3gp", "ts"
+    };
+    std::string e = LowerExt(path);
+    return !e.empty() && std::find(v.begin(), v.end(), e) != v.end();
+#else
+    (void)path;
+    return false;
+#endif
+}
+
+bool UltraCanvasMediaViewer::IsAudioFile(const std::string& path) {
+    // Audio plays through UltraCanvasAudioPlayerElement; only advertised when a
+    // real audio backend is compiled in.
+#ifdef ULTRACANVAS_ENABLE_AUDIO
+    static const std::vector<std::string> a = {
+        "mp3", "wav", "flac", "ogg", "oga", "m4a",
+        "aac", "opus", "wma", "aif", "aiff"
+    };
+    std::string e = LowerExt(path);
+    return !e.empty() && std::find(a.begin(), a.end(), e) != a.end();
+#else
+    (void)path;
+    return false;
+#endif
+}
+
+MediaKind UltraCanvasMediaViewer::ClassifyFile(const std::string& path) {
+    if (IsDocumentFile(path)) return MediaKind::Document;
+    if (IsVideoFile(path))    return MediaKind::Video;
+    if (IsAudioFile(path))    return MediaKind::Audio;
+    return MediaKind::Image;
+}
+
 bool UltraCanvasMediaViewer::IsSupportedMedia(const std::string& path) {
     static const std::vector<std::string> exts = {
         "jpg", "jpeg", "jpe", "png", "gif", "bmp", "webp", "tif", "tiff",
@@ -756,7 +828,8 @@ bool UltraCanvasMediaViewer::IsSupportedMedia(const std::string& path) {
     std::string e = LowerExt(path);
     if (e.empty()) return false;
     if (std::find(exts.begin(), exts.end(), e) != exts.end()) return true;
-    return IsDocumentFile(path);   // PDF when the document plugin is present
+    // Documents / video / audio, each gated by its backend being present.
+    return IsDocumentFile(path) || IsVideoFile(path) || IsAudioFile(path);
 }
 
 std::vector<std::string> UltraCanvasMediaViewer::EnumerateFolder(const std::string& folder) {
@@ -881,12 +954,27 @@ void UltraCanvasMediaViewer::GoTo(size_t index, bool animated) {
     LoadCurrent(animated);
 }
 
+void UltraCanvasMediaViewer::ShowView(MediaKind kind) {
+    activeKind = kind;
+    if (surface)     surface->SetVisible(kind == MediaKind::Image);
+    if (pdfView)     pdfView->SetVisible(kind == MediaKind::Document);
+    if (videoPlayer) videoPlayer->SetVisible(kind == MediaKind::Video);
+    if (audioPlayer) audioPlayer->SetVisible(kind == MediaKind::Audio);
+}
+
 void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
     if (!surface) return;
+
+    // Stop any media that was playing before we switch away from it.
+#ifdef ULTRACANVAS_ENABLE_VIDEO
+    if (videoPlayer) static_cast<UltraCanvasVideoPlayerElement*>(videoPlayer.get())->Stop();
+#endif
+#ifdef ULTRACANVAS_ENABLE_AUDIO
+    if (audioPlayer) static_cast<UltraCanvasAudioPlayerElement*>(audioPlayer.get())->Stop();
+#endif
+
     if (playlist.empty()) {
-        if (pdfView) pdfView->SetVisible(false);
-        pdfActive = false;
-        surface->SetVisible(true);
+        ShowView(MediaKind::Image);
         surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
         UpdateInfoBar();
         return;
@@ -894,30 +982,55 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
     if (currentIndex >= playlist.size()) currentIndex = playlist.size() - 1;
     const std::string& path = playlist[currentIndex];
 
+    MediaKind kind = ClassifyFile(path);
+    (void)kind;
+    bool handled = false;
+
 #ifdef ULTRACANVAS_PLUGIN_PDF
-    if (IsDocumentFile(path) && pdfView) {
+    if (kind == MediaKind::Document && pdfView) {
         // Render the document through the dedicated PDF element (MuPDF), not the
         // image/libvips path. Drop the now-hidden image so it frees memory.
-        surface->SetVisible(false);
+        ShowView(MediaKind::Document);
         surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
-        pdfView->SetVisible(true);
-        pdfActive = true;
         auto* pv = static_cast<UltraCanvasPDFView*>(pdfView.get());
-        if (!pv->LoadFromPath(path) && infoLabel) {
+        if (!pv->LoadFromPath(path) && infoLabel)
             infoLabel->SetText("Failed to open document: " + BaseName(path));
+        handled = true;
+    }
+#endif
+#ifdef ULTRACANVAS_ENABLE_VIDEO
+    if (!handled && kind == MediaKind::Video && videoPlayer) {
+        ShowView(MediaKind::Video);
+        surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
+        auto* vp = static_cast<UltraCanvasVideoPlayerElement*>(videoPlayer.get());
+        if (!vp->LoadFromFile(path)) {
+            if (infoLabel) infoLabel->SetText("Failed to open video: " + BaseName(path));
+        } else {
+            vp->Play();
         }
-        UpdateInfoBar();
-        UpdateDetailedInfo();
-        return;
+        handled = true;
+    }
+#endif
+#ifdef ULTRACANVAS_ENABLE_AUDIO
+    if (!handled && kind == MediaKind::Audio && audioPlayer) {
+        ShowView(MediaKind::Audio);
+        surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
+        auto* ap = static_cast<UltraCanvasAudioPlayerElement*>(audioPlayer.get());
+        if (!ap->LoadFromFile(path)) {
+            if (infoLabel) infoLabel->SetText("Failed to open audio: " + BaseName(path));
+        } else {
+            ap->Play();
+        }
+        handled = true;
     }
 #endif
 
-    // Image path.
-    if (pdfView) pdfView->SetVisible(false);
-    pdfActive = false;
-    surface->SetVisible(true);
-    auto img = UCImage::Get(path);
-    surface->ShowImage(img, transition, transitionDurationMs, animated);
+    if (!handled) {
+        // Image — or a kind whose backend is unavailable, shown best-effort.
+        ShowView(MediaKind::Image);
+        auto img = UCImage::Get(path);
+        surface->ShowImage(img, transition, transitionDurationMs, animated);
+    }
     UpdateInfoBar();
     UpdateDetailedInfo();
 }
@@ -930,33 +1043,42 @@ void UltraCanvasMediaViewer::ApplyAdjustments() {
 
 void UltraCanvasMediaViewer::ZoomInAction() {
 #ifdef ULTRACANVAS_PLUGIN_PDF
-    if (pdfActive && pdfView) { static_cast<UltraCanvasPDFView*>(pdfView.get())->ZoomIn(); return; }
+    if (activeKind == MediaKind::Document && pdfView) {
+        static_cast<UltraCanvasPDFView*>(pdfView.get())->ZoomIn();
+        return;
+    }
 #endif
-    if (surface) surface->ZoomBy(1.25);
+    if (activeKind == MediaKind::Image && surface) surface->ZoomBy(1.25);
 }
 
 void UltraCanvasMediaViewer::ZoomOutAction() {
 #ifdef ULTRACANVAS_PLUGIN_PDF
-    if (pdfActive && pdfView) { static_cast<UltraCanvasPDFView*>(pdfView.get())->ZoomOut(); return; }
+    if (activeKind == MediaKind::Document && pdfView) {
+        static_cast<UltraCanvasPDFView*>(pdfView.get())->ZoomOut();
+        return;
+    }
 #endif
-    if (surface) surface->ZoomBy(1.0 / 1.25);
+    if (activeKind == MediaKind::Image && surface) surface->ZoomBy(1.0 / 1.25);
 }
 
 void UltraCanvasMediaViewer::ZoomFitAction() {
 #ifdef ULTRACANVAS_PLUGIN_PDF
-    if (pdfActive && pdfView) { static_cast<UltraCanvasPDFView*>(pdfView.get())->ZoomToFit(); return; }
+    if (activeKind == MediaKind::Document && pdfView) {
+        static_cast<UltraCanvasPDFView*>(pdfView.get())->ZoomToFit();
+        return;
+    }
 #endif
-    if (surface) surface->ResetView();
+    if (activeKind == MediaKind::Image && surface) surface->ResetView();
 }
 
 void UltraCanvasMediaViewer::ZoomPercentAction(double percent) {
 #ifdef ULTRACANVAS_PLUGIN_PDF
-    if (pdfActive && pdfView) {
+    if (activeKind == MediaKind::Document && pdfView) {
         static_cast<UltraCanvasPDFView*>(pdfView.get())->SetZoom(static_cast<float>(percent / 100.0));
         return;
     }
 #endif
-    if (surface) surface->SetZoomPercent(percent);
+    if (activeKind == MediaKind::Image && surface) surface->SetZoomPercent(percent);
 }
 
 void UltraCanvasMediaViewer::UpdateInfoBar() {
@@ -968,7 +1090,7 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
     const std::string& path = playlist[currentIndex];
 
 #ifdef ULTRACANVAS_PLUGIN_PDF
-    if (pdfActive && pdfView) {
+    if (activeKind == MediaKind::Document && pdfView) {
         auto* pv = static_cast<UltraCanvasPDFView*>(pdfView.get());
         std::ostringstream os;
         os << BaseName(path) << "   \xC2\xB7   PDF";
@@ -984,6 +1106,18 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
         return;
     }
 #endif
+
+    if (activeKind == MediaKind::Video || activeKind == MediaKind::Audio) {
+        std::ostringstream os;
+        os << BaseName(path) << "   \xC2\xB7   "
+           << (activeKind == MediaKind::Video ? "VIDEO" : "AUDIO");
+        std::error_code ec;
+        auto sz = fs::file_size(path, ec);
+        if (!ec) os << "   \xC2\xB7   " << HumanSize(sz);
+        os << "   \xC2\xB7   " << (currentIndex + 1) << " / " << playlist.size();
+        infoLabel->SetText(os.str());
+        return;
+    }
 
     if (!surface || !surface->GetImage() || !surface->GetImage()->IsValid()) {
         infoLabel->SetText("No media");
@@ -1022,7 +1156,7 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
     const std::string& path = playlist[currentIndex];
 
 #ifdef ULTRACANVAS_PLUGIN_PDF
-    if (pdfActive && pdfView) {
+    if (activeKind == MediaKind::Document && pdfView) {
         // Document metadata comes from the PDF element, never from libvips.
         auto* pv = static_cast<UltraCanvasPDFView*>(pdfView.get());
         std::ostringstream dos;
@@ -1038,6 +1172,24 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
         return;
     }
 #endif
+
+    if (activeKind == MediaKind::Video || activeKind == MediaKind::Audio) {
+        std::ostringstream mos;
+        mos << (activeKind == MediaKind::Video ? "Video information\n\n"
+                                               : "Audio information\n\n");
+        mos << "File: " << BaseName(path) << "\n";
+        mos << "Path: " << path << "\n";
+        std::error_code mec;
+        auto msz = fs::file_size(path, mec);
+        if (!mec) mos << "Size: " << HumanSize(msz) << "\n";
+        std::string ext = LowerExt(path);
+        std::transform(ext.begin(), ext.end(), ext.begin(),
+                       [](unsigned char c) { return (char)std::toupper(c); });
+        mos << "Type: " << (activeKind == MediaKind::Video ? "Video" : "Audio")
+            << " (" << ext << ")\n";
+        surface->SetInfoText(mos.str());
+        return;
+    }
 
     std::ostringstream os;
     os << "Image information\n\n";

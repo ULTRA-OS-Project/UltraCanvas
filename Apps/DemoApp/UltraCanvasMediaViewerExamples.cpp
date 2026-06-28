@@ -65,10 +65,11 @@ namespace UltraCanvas {
 
         // Programmer-facing note.
         auto note = std::make_shared<UltraCanvasLabel>("MediaViewerNote", 20, 806, 940, 60);
-        note->SetText("Loading / saving go through UCImage and UltraCanvasFileLoader; rotation, "
-                      "mirror, gamma, brightness, RGB correction, auto-optimisation and "
-                      "sharpening run through PixelFX. Drag a folder onto the widget to browse "
-                      "it, or drag files to view them.");
+        note->SetText("Images load/save through UCImage and UltraCanvasFileLoader, with rotation, "
+                      "mirror, gamma, brightness, RGB correction, auto-optimisation and sharpening "
+                      "via PixelFX. PDFs render through UltraCanvasPDFView and audio/video through "
+                      "the player elements. Drag a folder onto the widget to browse it, or drag "
+                      "files (images, PDFs, audio or video) to view them.");
         note->SetFontSize(11);
         note->SetTextColor(Color(120, 120, 120, 255));
         note->SetWrap(TextWrap::WrapWord);
