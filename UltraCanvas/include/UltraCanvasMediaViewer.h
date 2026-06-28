@@ -10,11 +10,14 @@
 // saved through the framework's file loader (UCImage / UltraCanvasFileLoader)
 // and pixel manipulation is performed with PixelFX (libvips).
 //
-// Beyond images it also plays back documents, audio and video: PDFs render
-// through UltraCanvasPDFView (MuPDF), and audio / video through the framework's
+// Beyond images it also opens documents, spreadsheets, audio and video: PDFs
+// render through UltraCanvasPDFView (MuPDF), spreadsheets (ODS / CSV / TSV)
+// through UltraCanvasSpreadsheet, and audio / video through the framework's
 // UltraCanvasAudioPlayerElement / UltraCanvasVideoPlayerElement. The right view
 // is chosen automatically from the file kind; image-only tools (zoom, rotate,
 // adjustments, save) apply to images, and zoom also drives the PDF view.
+// (ODT is an OpenDocument *text* document, not a spreadsheet, so it is not
+// handled by the spreadsheet engine.)
 //
 // Drag a folder onto the widget to browse it; drag one or more files to view
 // them.
@@ -45,11 +48,13 @@ class UltraCanvasSlider;
 class UltraCanvasPDFView;             // PDF documents (MuPDF), not the raster path
 class UltraCanvasVideoPlayerElement; // video playback (platform media backend)
 class UltraCanvasAudioPlayerElement; // audio playback (audio backend)
+class UltraCanvasSpreadsheet;        // ODS / CSV / TSV spreadsheets
 
 // ===== WHAT KIND OF MEDIA A FILE IS =====
 // Chooses which child element renders it: images go through the image surface,
-// documents through the PDF view, and audio/video through their player elements.
-enum class MediaKind { Image, Document, Video, Audio };
+// documents through the PDF view, spreadsheets (ODS/CSV/TSV) through the
+// spreadsheet element, and audio/video through their player elements.
+enum class MediaKind { Image, Document, Sheet, Video, Audio };
 
 // ===== TRANSITION STYLES BETWEEN IMAGES =====
 // (Suffixed names avoid clashing with X11 macros such as None.)
@@ -254,6 +259,7 @@ private:
     void ZoomPercentAction(double percent);
     void ShowView(MediaKind kind);    // toggle child visibility for the kind
     static bool IsDocumentFile(const std::string& path);   // PDF (and other docs)
+    static bool IsSpreadsheetFile(const std::string& path); // ODS / CSV / TSV
     static bool IsVideoFile(const std::string& path);
     static bool IsAudioFile(const std::string& path);
     static MediaKind ClassifyFile(const std::string& path);
@@ -277,6 +283,7 @@ private:
     // include the PDF / audio / video plugins; each is only constructed when its
     // backend is compiled in. `activeKind` marks which view is live.
     std::shared_ptr<UltraCanvasUIElement>    pdfView;       // UltraCanvasPDFView
+    std::shared_ptr<UltraCanvasUIElement>    sheetView;     // UltraCanvasSpreadsheet
     std::shared_ptr<UltraCanvasUIElement>    videoPlayer;   // UltraCanvasVideoPlayerElement
     std::shared_ptr<UltraCanvasUIElement>    audioPlayer;   // UltraCanvasAudioPlayerElement
     MediaKind activeKind = MediaKind::Image;

@@ -13,6 +13,7 @@
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasFileLoader.h"   // FileDialogOptions, DialogResult, FileFilter
+#include "UltraCanvasSpreadsheet.h"  // ODS / CSV / TSV (always built into the core lib)
 #ifdef ULTRACANVAS_PLUGIN_PDF
 #include "Plugins/Documents/UltraCanvasPDFView.h"
 #endif
@@ -716,6 +717,16 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     }
 #endif
 
+    // ----- SPREADSHEET VIEW (shown for ODS / CSV / TSV) -----
+    {
+        auto sv = std::make_shared<UltraCanvasSpreadsheet>("MV_Sheet", 0, 0, 0, 0);
+        sv->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        sv->SetVisible(false);
+        sheetView = sv;
+        AddChild(sheetView);
+    }
+
 #ifdef ULTRACANVAS_ENABLE_VIDEO
     // ----- VIDEO PLAYER (shown for video files) -----
     {
@@ -779,6 +790,14 @@ bool UltraCanvasMediaViewer::IsDocumentFile(const std::string& path) {
 #endif
 }
 
+bool UltraCanvasMediaViewer::IsSpreadsheetFile(const std::string& path) {
+    // Spreadsheets open in UltraCanvasSpreadsheet (ODS / CSV / TSV). The engine
+    // is always compiled into the core library, so no backend guard is needed.
+    // (ODT is an OpenDocument *text* document, not a spreadsheet — not handled.)
+    std::string e = LowerExt(path);
+    return e == "ods" || e == "csv" || e == "tsv";
+}
+
 bool UltraCanvasMediaViewer::IsVideoFile(const std::string& path) {
     // Video plays through UltraCanvasVideoPlayerElement; only advertised when a
     // real video backend is compiled in.
@@ -812,9 +831,10 @@ bool UltraCanvasMediaViewer::IsAudioFile(const std::string& path) {
 }
 
 MediaKind UltraCanvasMediaViewer::ClassifyFile(const std::string& path) {
-    if (IsDocumentFile(path)) return MediaKind::Document;
-    if (IsVideoFile(path))    return MediaKind::Video;
-    if (IsAudioFile(path))    return MediaKind::Audio;
+    if (IsDocumentFile(path))    return MediaKind::Document;
+    if (IsSpreadsheetFile(path)) return MediaKind::Sheet;
+    if (IsVideoFile(path))       return MediaKind::Video;
+    if (IsAudioFile(path))       return MediaKind::Audio;
     return MediaKind::Image;
 }
 
@@ -828,8 +848,9 @@ bool UltraCanvasMediaViewer::IsSupportedMedia(const std::string& path) {
     std::string e = LowerExt(path);
     if (e.empty()) return false;
     if (std::find(exts.begin(), exts.end(), e) != exts.end()) return true;
-    // Documents / video / audio, each gated by its backend being present.
-    return IsDocumentFile(path) || IsVideoFile(path) || IsAudioFile(path);
+    // Documents / spreadsheets / video / audio (the last two gated by backend).
+    return IsDocumentFile(path) || IsSpreadsheetFile(path) ||
+           IsVideoFile(path) || IsAudioFile(path);
 }
 
 std::vector<std::string> UltraCanvasMediaViewer::EnumerateFolder(const std::string& folder) {
@@ -958,6 +979,7 @@ void UltraCanvasMediaViewer::ShowView(MediaKind kind) {
     activeKind = kind;
     if (surface)     surface->SetVisible(kind == MediaKind::Image);
     if (pdfView)     pdfView->SetVisible(kind == MediaKind::Document);
+    if (sheetView)   sheetView->SetVisible(kind == MediaKind::Sheet);
     if (videoPlayer) videoPlayer->SetVisible(kind == MediaKind::Video);
     if (audioPlayer) audioPlayer->SetVisible(kind == MediaKind::Audio);
 }
@@ -998,6 +1020,16 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         handled = true;
     }
 #endif
+    if (!handled && kind == MediaKind::Sheet && sheetView) {
+        // Spreadsheets (ODS / CSV / TSV) open in the spreadsheet engine.
+        ShowView(MediaKind::Sheet);
+        surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
+        auto* sv = static_cast<UltraCanvasSpreadsheet*>(sheetView.get());
+        if (!sv->LoadFromFile(path) && infoLabel)
+            infoLabel->SetText("Failed to open spreadsheet: " + BaseName(path) +
+                               " (" + sv->GetLastError() + ")");
+        handled = true;
+    }
 #ifdef ULTRACANVAS_ENABLE_VIDEO
     if (!handled && kind == MediaKind::Video && videoPlayer) {
         ShowView(MediaKind::Video);
@@ -1107,10 +1139,12 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
     }
 #endif
 
-    if (activeKind == MediaKind::Video || activeKind == MediaKind::Audio) {
+    if (activeKind == MediaKind::Sheet || activeKind == MediaKind::Video ||
+        activeKind == MediaKind::Audio) {
+        std::string kindLabel = activeKind == MediaKind::Video ? "VIDEO"
+                              : activeKind == MediaKind::Audio ? "AUDIO" : "SHEET";
         std::ostringstream os;
-        os << BaseName(path) << "   \xC2\xB7   "
-           << (activeKind == MediaKind::Video ? "VIDEO" : "AUDIO");
+        os << BaseName(path) << "   \xC2\xB7   " << kindLabel;
         std::error_code ec;
         auto sz = fs::file_size(path, ec);
         if (!ec) os << "   \xC2\xB7   " << HumanSize(sz);
@@ -1173,10 +1207,15 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
     }
 #endif
 
-    if (activeKind == MediaKind::Video || activeKind == MediaKind::Audio) {
+    if (activeKind == MediaKind::Sheet || activeKind == MediaKind::Video ||
+        activeKind == MediaKind::Audio) {
+        const char* heading = activeKind == MediaKind::Video ? "Video information\n\n"
+                            : activeKind == MediaKind::Audio ? "Audio information\n\n"
+                                                             : "Spreadsheet information\n\n";
+        const char* typeName = activeKind == MediaKind::Video ? "Video"
+                             : activeKind == MediaKind::Audio ? "Audio" : "Spreadsheet";
         std::ostringstream mos;
-        mos << (activeKind == MediaKind::Video ? "Video information\n\n"
-                                               : "Audio information\n\n");
+        mos << heading;
         mos << "File: " << BaseName(path) << "\n";
         mos << "Path: " << path << "\n";
         std::error_code mec;
@@ -1185,8 +1224,7 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
         std::string ext = LowerExt(path);
         std::transform(ext.begin(), ext.end(), ext.begin(),
                        [](unsigned char c) { return (char)std::toupper(c); });
-        mos << "Type: " << (activeKind == MediaKind::Video ? "Video" : "Audio")
-            << " (" << ext << ")\n";
+        mos << "Type: " << typeName << " (" << ext << ")\n";
         surface->SetInfoText(mos.str());
         return;
     }
