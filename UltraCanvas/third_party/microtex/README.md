@@ -17,8 +17,13 @@ This is a trimmed, vendored copy of [MicroTeX](https://github.com/NanoMichael/Mi
 
 ## How it is built
 
+LaTeX support is an **on-demand module**: `microtex_core` (this engine) is a
+static library linked privately into the shared module `libUltraCanvasLaTeX`,
+which the UltraCanvas core `dlopen`s the first time a LaTeX view is created. The
+core itself contains only a small loader, never this engine.
+
 The UltraCanvas top-level CMake (`UltraCanvas/CMakeLists.txt`, guarded by
-`ULTRACANVAS_PLUGIN_LATEX`) compiles `lib/**/*.cpp` into a static `microtex_core`
+`ULTRACANVAS_PLUGIN_LATEX`) compiles `lib/**/*.cpp` into the static `microtex_core`
 target with:
 
 - `-DGLYPH_RENDER_TYPE=1` — **path** glyph rendering. Glyph outlines are emitted

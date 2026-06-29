@@ -1,14 +1,19 @@
 // include/Plugins/LaTeX/UltraCanvasLaTeXView.h
-// UltraCanvas UI element that renders a LaTeX (math) formula via the embedded
-// MicroTeX engine. The formula is typeset to vector paths and drawn through the
-// element's IRenderContext, so it stays crisp at any zoom and participates in
-// the normal layout / transform / clip pipeline.
+// Public interface for LaTeX math rendering.
 //
-// This header is dependency-free with respect to MicroTeX: consumers only need
-// UltraCanvas headers. The engine type is forward-declared and held opaquely.
+// LaTeX support is an ON-DEMAND module: the MicroTeX engine and its math font
+// live in a separate shared object (libUltraCanvasLaTeX) that the core loads
+// via dlopen the first time CreateLaTeXView() is called. Until then nothing
+// LaTeX-related is mapped into the process.
 //
-// Version: 1.0.0
-// Last Modified: 2026-06-28
+// `UltraCanvasLaTeXView` is therefore an ABSTRACT interface here - a regular
+// UltraCanvasUIElement (so it plugs into layout / render / events) whose
+// concrete implementation lives in the module. Application code only ever
+// touches this interface and the free factory below; it never needs the
+// MicroTeX headers or the module's include paths.
+//
+// Version: 2.0.0
+// Last Modified: 2026-06-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -17,75 +22,59 @@
 #include "UltraCanvasEvent.h"
 
 #include <memory>
-#include <optional>
 #include <string>
-
-// Forward-declared MicroTeX render handle (no MicroTeX headers leak out).
-namespace microtex { class Render; }
 
 namespace UltraCanvas {
 
+// Abstract LaTeX (math) view. Concrete instances are produced by
+// CreateLaTeXView() once the LaTeX module has been loaded on demand.
 class UltraCanvasLaTeXView : public UltraCanvasUIElement {
 public:
-    UltraCanvasLaTeXView(const std::string& identifier = "LaTeXView",
-                         float x = 0, float y = 0, float w = 0, float h = 0);
-    ~UltraCanvasLaTeXView() override;
+    UltraCanvasLaTeXView(const std::string& identifier, float x, float y, float w, float h)
+        : UltraCanvasUIElement(identifier, x, y, w, h) {}
+    ~UltraCanvasLaTeXView() override = default;
 
     // ===== CONTENT =====
-    void SetLaTeX(const std::string& latex);
-    const std::string& GetLaTeX() const { return latex_; }
+    virtual void SetLaTeX(const std::string& latex) = 0;
+    virtual const std::string& GetLaTeX() const = 0;
 
     // ===== STYLE =====
-    void SetTextSize(float pixels);
-    float GetTextSize() const { return textSize_; }
-
-    void SetTextColor(const Color& color);
-    const Color& GetTextColor() const { return color_; }
-
-    // Wrap width in pixels for inter-line math; 0 (default) = unlimited, the
-    // formula keeps its intrinsic width.
-    void SetMaxWidth(float pixels);
+    virtual void SetTextSize(float pixels) = 0;      // default 20
+    virtual float GetTextSize() const = 0;
+    virtual void SetTextColor(const Color& color) = 0;
+    virtual const Color& GetTextColor() const = 0;
+    virtual void SetMaxWidth(float pixels) = 0;      // 0 = unlimited / intrinsic
 
     // ===== STATUS =====
-    // True once the most recent SetLaTeX produced a valid render. If false,
-    // GetLastError() explains why (engine not initialised, parse error, ...).
-    bool IsValid() const { return render_ != nullptr; }
-    const std::string& GetLastError() const { return lastError_; }
-
-    // ===== ENGINE / RESOURCES =====
-    // Optional: point the engine at a directory containing latinmodern-math.clm2
-    // (+ .otf). Must be called before the first view is rendered. Normally the
-    // bundled media/microtex directory next to the executable is found
-    // automatically.
-    static void SetFontSearchDir(const std::string& dir);
-
-    // ===== ELEMENT OVERRIDES =====
-    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
-    void ComputeIntrinsicSizes(const CSSLayout::LayoutContext& ctx) override;
-    Size2Df MeasureOwnContent(std::optional<float> definiteContentWidth,
-                              const CSSLayout::LayoutContext& ctx) override;
-    void InvalidateLayout() override;
-
-private:
-    // Parse `latex_` into `render_` using the given context (for text-run
-    // measurement). No-op if nothing changed. Returns true if a render exists.
-    bool EnsureRender(IRenderContext* ctx);
-    void ReleaseRender();
-
-    std::string latex_;
-    float textSize_ = 20.f;
-    Color color_ = Colors::Black;
-    float maxWidth_ = 0.f;
-
-    microtex::Render* render_ = nullptr;
-    bool needsReparse_ = true;
-    std::string lastError_;
+    virtual bool IsValid() const = 0;                // last SetLaTeX produced a render
+    virtual const std::string& GetLastError() const = 0;
 };
 
-inline std::shared_ptr<UltraCanvasLaTeXView> CreateLaTeXView(
-        const std::string& identifier = "LaTeXView",
-        float x = 0, float y = 0, float w = 0, float h = 0) {
-    return std::make_shared<UltraCanvasLaTeXView>(identifier, x, y, w, h);
-}
+// ===== On-demand factory (implemented by the core loader) =====
+
+// Create a LaTeX view. The first call triggers a dlopen of the LaTeX module;
+// subsequent calls reuse the already-loaded module. Returns nullptr (and sets
+// no element) if the module cannot be found or fails to load - check
+// IsLaTeXModuleAvailable()/GetLaTeXModuleError() for diagnostics.
+std::shared_ptr<UltraCanvasLaTeXView> CreateLaTeXView(
+    const std::string& identifier = "LaTeXView",
+    float x = 0, float y = 0, float w = 0, float h = 0);
+
+// Try to load the module (idempotent) and report whether LaTeX is usable.
+bool IsLaTeXModuleAvailable();
+
+// If the last load attempt failed, a human-readable reason; empty otherwise.
+const std::string& GetLaTeXModuleError();
+
+// Optional overrides; must be set before the first CreateLaTeXView() to take
+// effect at load time.
+//  - module path: explicit path to libUltraCanvasLaTeX (file or directory).
+//  - font search dir: directory containing latinmodern-math.clm2 (+ .otf).
+void SetLaTeXModulePath(const std::string& pathOrDir);
+void SetLaTeXFontSearchDir(const std::string& dir);
+
+// Unload the module (no-op if not loaded). Only safe once all views created
+// from it have been destroyed; intended for shutdown / hot-reload scenarios.
+void UnloadLaTeXModule();
 
 } // namespace UltraCanvas

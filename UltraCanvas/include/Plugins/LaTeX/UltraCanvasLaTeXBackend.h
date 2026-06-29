@@ -151,8 +151,9 @@ bool EnsureLaTeXEngineInitialized();
 void SetLaTeXActiveContext(IRenderContext* ctx);
 
 // Override / augment the directories searched for the bundled math font.
-// Takes effect on the next (first) initialization.
-void SetLaTeXFontSearchDir(const std::string& dir);
+// Takes effect on the next (first) initialization. (Module-internal; distinct
+// from the core-side public SetLaTeXFontSearchDir() in the loader.)
+void SetLaTeXEngineFontDir(const std::string& dir);
 
 } // namespace UltraCanvas
 

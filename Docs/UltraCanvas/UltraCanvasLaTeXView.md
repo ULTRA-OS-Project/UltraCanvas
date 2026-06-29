@@ -6,11 +6,16 @@ is typeset to **vector paths** and drawn through the element's `IRenderContext`,
 so it participates in the normal layout / transform / clip pipeline and stays
 crisp at any zoom — there is no rasterized surface to blit.
 
-The plugin is built when `ULTRACANVAS_PLUGIN_LATEX` is `ON` (the default). It
-bundles the GUST/OFL-licensed **Latin Modern Math** font (Computer-Modern look),
-so no external TeX installation is required.
+## Load-on-demand module
 
-## Header
+LaTeX support is an **on-demand module**. The MicroTeX engine and its math font
+live in a separate shared object — `libUltraCanvasLaTeX.so` (`.dylib` / `.dll`) —
+that the core loads via `dlopen` the **first time** `CreateLaTeXView()` is called.
+Until then nothing LaTeX-related (engine code or font) is mapped into the process.
+
+Consequently `UltraCanvasLaTeXView` is an **abstract interface** (a normal
+`UltraCanvasUIElement`); concrete instances come from the factory. Application
+code never includes the MicroTeX headers or the module's include paths — only:
 
 ```cpp
 #include "Plugins/LaTeX/UltraCanvasLaTeXView.h"
@@ -21,45 +26,65 @@ so no external TeX installation is required.
 ```cpp
 using namespace UltraCanvas;
 
-auto formula = CreateLaTeXView("eq1", /*x*/ 20, /*y*/ 20, /*w*/ 0, /*h*/ 0);
-formula->SetTextSize(28.0f);
-formula->SetTextColor(Colors::Black);
-formula->SetLaTeX("\\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}");
-
-window->AddChild(formula);
+auto formula = CreateLaTeXView("eq1", /*x*/20, /*y*/20, /*w*/0, /*h*/0);
+if (formula) {                          // null only if the module can't be loaded
+    formula->SetTextSize(28.0f);
+    formula->SetTextColor(Colors::Black);
+    formula->SetLaTeX("\\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}");
+    window->AddChild(formula);
+}
 ```
 
-Passing width/height of `0` lets the element size itself to the formula's
-intrinsic dimensions via the CSS layout engine. Place it in a `BoxLayout`,
-`GridLayout`, etc. like any other element.
+`CreateLaTeXView` returns a `std::shared_ptr<UltraCanvasLaTeXView>`. The first
+call triggers the `dlopen`; later calls reuse the already-loaded module. Width/
+height of `0` lets the element size itself to the formula via the layout engine.
 
 ## API
 
+### Free functions (in the core)
+| Function | Description |
+| --- | --- |
+| `CreateLaTeXView(id,x,y,w,h)` | Load the module on demand and create a view. Returns `nullptr` if the module is unavailable. |
+| `IsLaTeXModuleAvailable()` | Force a load attempt (idempotent) and report whether LaTeX is usable. |
+| `GetLaTeXModuleError()` | Reason the last load attempt failed (empty on success). |
+| `SetLaTeXModulePath(pathOrDir)` | Override where the module is looked up. Call before first use. |
+| `SetLaTeXFontSearchDir(dir)` | Override where the bundled math font is looked up. |
+| `UnloadLaTeXModule()` | Unload the module (shutdown only; after all views are destroyed). |
+
+### `UltraCanvasLaTeXView` (the element)
 | Method | Description |
 | --- | --- |
-| `SetLaTeX(const std::string&)` | Set the LaTeX source (math mode). Empty/whitespace input renders nothing. |
-| `GetLaTeX()` | Current source string. |
-| `SetTextSize(float pixels)` | Font size in pixels (default 20). Drives the intrinsic size. |
-| `SetTextColor(const Color&)` | Foreground color (default black). |
-| `SetMaxWidth(float pixels)` | Wrap width for inter-line math; `0` (default) = unlimited / intrinsic width. |
-| `IsValid()` | `true` if the last `SetLaTeX` produced a render. |
-| `GetLastError()` | Reason the last parse failed (engine not initialised, parse error, …). |
-| `static SetFontSearchDir(const std::string&)` | Override where the bundled math font is looked up (see below). |
+| `SetLaTeX(const std::string&)` / `GetLaTeX()` | The LaTeX source (math mode). Empty input renders nothing. |
+| `SetTextSize(float)` / `GetTextSize()` | Font size in pixels (default 20); drives intrinsic size. |
+| `SetTextColor(const Color&)` / `GetTextColor()` | Foreground color (default black). |
+| `SetMaxWidth(float)` | Wrap width for inter-line math; `0` (default) = intrinsic width. |
+| `IsValid()` / `GetLastError()` | Whether the last `SetLaTeX` produced a render, and why not. |
 
-## Font resolution
+## Where the module and font are found
 
-At first use the engine loads `latinmodern-math.clm2` (+ `.otf`) by searching, in
-order:
+On first use the loader searches for the module in this order:
+1. a path set via `SetLaTeXModulePath(...)`,
+2. `$ULTRACANVAS_PLUGIN_DIR`,
+3. `<exe>/`, `<exe>/plugins/`, `<exe>/../lib/`, `<exe>/../lib/ultracanvas/`,
+4. the dynamic linker's own search path (rpath / `LD_LIBRARY_PATH`).
 
-1. a directory set via `UltraCanvasLaTeXView::SetFontSearchDir(...)`,
-2. the `MICROTEX_FONTDIR` environment variable,
-3. `<exe>/media/microtex` and `<exe>/../media/microtex`,
-4. `<exe>/share/UltraCanvas/media/microtex` (and `../`), the build/install layout.
+The module then loads `latinmodern-math.clm2` (+ `.otf`) from `media/microtex`
+relative to the executable (or `$MICROTEX_FONTDIR`, or `SetLaTeXFontSearchDir`).
+The top-level CMake copies `media/` into the build/install tree.
 
-The top-level CMake copies `media/` into the build/install tree, so a normal
-build finds the font automatically. If `IsValid()` is `false` and
-`GetLastError()` reports the engine was not initialised, point
-`SetFontSearchDir()` at the directory containing `latinmodern-math.clm2`.
+If `CreateLaTeXView` returns `nullptr`, check `GetLaTeXModuleError()`.
+
+## Build / deployment
+
+- Built when `ULTRACANVAS_PLUGIN_LATEX=ON` (default): produces the core-side
+  loader plus the `libUltraCanvasLaTeX` module. `OFF` builds neither.
+- **Recommended:** build the core as a shared library
+  (`-DULTRACANVAS_BUILD_SHARED=ON`) — the natural form for an OS module — so the
+  plugin resolves core symbols against `libUltraCanvas`. This is the validated
+  configuration.
+- With a **static** core, the host executable must export its dynamic symbols so
+  the `dlopen`'d module can resolve them; the bundled apps already set
+  `ENABLE_EXPORTS` for this.
 
 ## Examples
 
@@ -72,10 +97,11 @@ formula->SetLaTeX("\\text{if } x \\geq 0 \\text{ then } \\sqrt{x}\\in\\mathbb{R}
 
 ## Notes
 
-- The engine renders **math-mode** LaTeX (equations, symbols, matrices,
-  fractions, roots, big operators, accents). It is not a full document
-  typesetter — for whole `.tex` documents a separate pipeline would be needed.
-- Glyphs are drawn as filled paths (`GLYPH_RENDER_TYPE=1`); `\text{...}` runs use
-  the framework's Pango-based text layout.
+- Renders **math-mode** LaTeX (equations, symbols, matrices, fractions, roots,
+  big operators, accents). It is not a full document typesetter.
+- Glyphs are drawn as filled vector paths (`GLYPH_RENDER_TYPE=1`); `\text{...}`
+  runs use the framework's Pango text layout.
+- The C ABI between core and module is in `UltraCanvasLaTeXModuleABI.h`
+  (versioned via `ULTRACANVAS_LATEX_ABI_VERSION`).
 - See `THIRD_PARTY_LICENSES.md` for MicroTeX (MIT) and Latin Modern Math
   (GUST/OFL) licensing.

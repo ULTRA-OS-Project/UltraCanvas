@@ -264,7 +264,7 @@ PlatformFactory_ultracanvas::createTextLayout(const std::string& src, microtex::
 
 // ===== Engine bootstrap =====
 
-void SetLaTeXFontSearchDir(const std::string& dir) { g_userFontDir = dir; }
+void SetLaTeXEngineFontDir(const std::string& dir) { g_userFontDir = dir; }
 
 void SetLaTeXActiveContext(IRenderContext* ctx) {
     auto* factory = static_cast<PlatformFactory_ultracanvas*>(PlatformFactory::get());
