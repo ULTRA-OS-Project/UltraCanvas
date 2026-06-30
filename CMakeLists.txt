@@ -247,7 +247,11 @@ if(BUILD_DEMO_APP)
     add_executable(UltraCanvasDemo
         ${DEMO_SOURCES}
     )
-    
+    # Export the executable's dynamic symbols so on-demand plugin modules
+    # (dlopen'ed via the loader, e.g. libUltraCanvasLaTeX) can resolve
+    # UltraCanvas core symbols when the core is linked statically.
+    set_target_properties(UltraCanvasDemo PROPERTIES ENABLE_EXPORTS ON)
+
     # Include directories
     target_include_directories(UltraCanvasDemo PRIVATE
         ${ULTRACANVAS_INCLUDE_DIRS}
@@ -358,6 +362,9 @@ if (BUILD_TEXTER_APP)
             Apps/Texter/main.cpp
             Apps/Texter/UltraCanvasSearchBar.cpp
     )
+    # Export dynamic symbols so on-demand plugin modules can resolve core
+    # symbols when the core is linked statically (see UltraCanvasDemo).
+    set_target_properties(UltraCanvasTexter PROPERTIES ENABLE_EXPORTS ON)
 
     # Include directories
     target_include_directories(UltraCanvasTexter PRIVATE
