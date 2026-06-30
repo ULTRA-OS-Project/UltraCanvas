@@ -1066,9 +1066,9 @@ namespace UltraCanvas {
                              ImplementationStatus::PartiallyImplemented,
                              [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/OCR/README.md")); });
 
-        toolsBuilder.AddItem("vectorizer", "Vectorizer", "Vectorizer",
-                             ImplementationStatus::NotImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples(""); });
+        toolsBuilder.AddItem("vectorizer", "Vectorizer", "Raster image → SVG vector tracer",
+                             ImplementationStatus::PartiallyImplemented,
+                             [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/Vectorizer/README.md")); });
 
         toolsBuilder.AddItem("textrenderingsettings", "Text Rendering",
                              "Configure text antialiasing, hinting style, and hint metrics",
