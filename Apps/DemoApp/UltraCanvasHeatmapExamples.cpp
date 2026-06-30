@@ -214,6 +214,7 @@ namespace UltraCanvas {
         lbl->SetFontSize(11);
         lbl->SetWrap(TextWrap::WrapWord);
         lbl->SetTextColor(Color(70, 70, 80, 255));
+        lbl->SetMargin(10, 12, 4, 12);   // top, right, bottom, left — inset from the tab edge
         return lbl;
     }
 
