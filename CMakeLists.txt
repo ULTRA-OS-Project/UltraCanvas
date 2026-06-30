@@ -148,6 +148,14 @@ if(BUILD_DEMO_APP)
         if(PLUGIN_TARGET MATCHES "XAR")
             list(APPEND DEMO_SOURCES Apps/DemoApp/UltraCanvasXARExamples.cpp)
         endif()
+
+        if(PLUGIN_TARGET MATCHES "OCR")
+            list(APPEND DEMO_SOURCES Apps/DemoApp/UltraCanvasOCRExamples.cpp)
+        endif()
+
+        if(PLUGIN_TARGET MATCHES "Vectorizer")
+            list(APPEND DEMO_SOURCES Apps/DemoApp/UltraCanvasVectorizerExamples.cpp)
+        endif()
     endforeach()
 
     if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
