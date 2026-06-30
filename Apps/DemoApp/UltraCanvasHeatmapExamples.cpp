@@ -254,7 +254,7 @@ namespace UltraCanvas {
         auto presetDd = std::make_shared<UltraCanvasDropdown>("HmPreset", px, y, pw, ctrlH);
         for (const char* n : {"Gradient", "Random", "Peaks", "Correlation matrix", "Checkerboard"})
             presetDd->AddItem(n);
-        presetDd->SetSelectedIndex(0);
+        presetDd->SetSelectedIndex(2);   // Peaks (matches the heatmap's preconfigured dataset)
         presetDd->onSelectionChanged = [hm](int index, const DropdownItem&) {
             ApplyPreset(hm, index);
         };
@@ -265,7 +265,7 @@ namespace UltraCanvas {
         addLabel("HmCmapLbl", "Colour map:");
         auto cmapDd = std::make_shared<UltraCanvasDropdown>("HmCmap", px, y, pw, ctrlH);
         for (const auto& m : ColormapMenu()) cmapDd->AddItem(m.first);
-        cmapDd->SetSelectedIndex(0);
+        cmapDd->SetSelectedIndex(1);   // Inferno
         cmapDd->onSelectionChanged = [hm](int index, const DropdownItem&) {
             const auto& menu = ColormapMenu();
             if (index >= 0 && index < static_cast<int>(menu.size()))
@@ -304,7 +304,7 @@ namespace UltraCanvas {
         addLabel("HmScaleLbl", "Value scale:");
         auto scaleDd = std::make_shared<UltraCanvasDropdown>("HmScale", px, y, pw, ctrlH);
         for (const char* n : {"Linear", "Logarithmic"}) scaleDd->AddItem(n);
-        scaleDd->SetSelectedIndex(0);
+        scaleDd->SetSelectedIndex(1);   // Logarithmic
         scaleDd->onSelectionChanged = [hm](int index, const DropdownItem&) {
             hm->SetScale(index == 1 ? HeatmapScale::Logarithmic : HeatmapScale::Linear);
         };
@@ -419,9 +419,11 @@ namespace UltraCanvas {
         panel->size.width = CSSLayout::Dimension::Px(300);
 
         auto hm = CreateHeatmapChartElement("HmMain", 0, 0, 760, INNER_H);
-        hm->SetColormap(HeatmapColormap::Viridis);
+        hm->SetColormap(HeatmapColormap::Inferno);
         hm->SetShowColorBar(true);
-        ApplyPreset(hm, 0);
+        ApplyPreset(hm, 2);                          // Peaks dataset
+        hm->SetCellShape(HeatmapCellShape::Rectangle);
+        hm->SetScale(HeatmapScale::Logarithmic);     // after ApplyPreset, which forces Linear
 
         BuildHeatmapControlPanel(panel, hm);
 
