@@ -114,7 +114,7 @@ static struct ChartControls {
         btnLoadRevenue->onClick = [lineChart, revenueData]() {
             lineChart->SetDataSource(revenueData);
             lineChart->SetChartTitle("Quarterly Revenue");
-            //lineChart->Invalidate();
+            //lineChart->InvalidateRect();
         };
         container->AddChild(btnLoadRevenue);
 
@@ -126,7 +126,7 @@ static struct ChartControls {
         btnLoadSales->onClick = [lineChart, salesData]() {
             lineChart->SetDataSource(salesData);
             lineChart->SetChartTitle("Monthly Sales Trend");
-            //lineChart->Invalidate();
+            //lineChart->InvalidateRect();
         };
         container->AddChild(btnLoadSales);
 
@@ -149,7 +149,7 @@ static struct ChartControls {
             newRandomData->LoadFromArray(randomPoints);
             lineChart->SetDataSource(newRandomData);
             lineChart->SetChartTitle("Random Data");
-            //lineChart->Invalidate();
+            //lineChart->InvalidateRect();
         };
         container->AddChild(btnLoadRandom);
 
@@ -161,7 +161,7 @@ static struct ChartControls {
         btnTogglePoints->onClick = [lineChart]()  {
             chartControl.showPoints = !chartControl.showPoints;
             lineChart->SetShowDataPoints(chartControl.showPoints);
-            //lineChart->Invalidate();
+            //lineChart->InvalidateRect();
         };
         container->AddChild(btnTogglePoints);
 
@@ -173,7 +173,7 @@ static struct ChartControls {
         btnToggleSmoothing->onClick = [lineChart]()  {
             chartControl.smoothingEnabled = !chartControl.smoothingEnabled;
             lineChart->SetSmoothingEnabled(chartControl.smoothingEnabled);
-            //lineChart->Invalidate();
+            //lineChart->InvalidateRect();
         };
         container->AddChild(btnToggleSmoothing);
 
@@ -268,7 +268,7 @@ static struct ChartControls {
         btnLoadRevenue->onClick = [barChart, revenueData]() {
             barChart->SetDataSource(revenueData);
             barChart->SetChartTitle("Quarterly Revenue");
-            //barChart->Invalidate();
+            //barChart->InvalidateRect();
         };
         container->AddChild(btnLoadRevenue);
 
@@ -280,7 +280,7 @@ static struct ChartControls {
         btnLoadSales->SetOnClick([barChart, salesData]() {
             barChart->SetDataSource(salesData);
             barChart->SetChartTitle("Monthly Sales");
-            //barChart->Invalidate();
+            //barChart->InvalidateRect();
         });
         container->AddChild(btnLoadSales);
 
@@ -304,7 +304,7 @@ static struct ChartControls {
             newRandomData->LoadFromArray(randomPoints);
             barChart->SetDataSource(newRandomData);
             barChart->SetChartTitle("Random Categories");
-            //barChart->Invalidate();
+            //barChart->InvalidateRect();
         });
         container->AddChild(btnLoadRandom);
 
@@ -381,7 +381,7 @@ static struct ChartControls {
         btnCycleShapes->SetOnClick([scatterPlot, shapes]()  {
             chartControl.currentShape = (chartControl.currentShape + 1) % shapes.size();
             scatterPlot->SetPointShape(shapes[chartControl.currentShape]);
-            //scatterPlot->Invalidate();
+            //scatterPlot->InvalidateRect();
         });
         container->AddChild(btnCycleShapes);
 
@@ -474,7 +474,7 @@ static struct ChartControls {
         btnLoadRevenue->SetOnClick([areaChart, revenueData]() {
             areaChart->SetDataSource(revenueData);
             areaChart->SetChartTitle("Quarterly Revenue Growth");
-            //areaChart->Invalidate();
+            //areaChart->InvalidateRect();
         });
         container->AddChild(btnLoadRevenue);
 
@@ -486,7 +486,7 @@ static struct ChartControls {
         btnLoadSales->SetOnClick([areaChart, salesData]() {
             areaChart->SetDataSource(salesData);
             areaChart->SetChartTitle("Monthly Sales Volume");
-            //areaChart->Invalidate();
+            //areaChart->InvalidateRect();
         });
         container->AddChild(btnLoadSales);
 
@@ -509,7 +509,7 @@ static struct ChartControls {
             newRandomData->LoadFromArray(randomPoints);
             areaChart->SetDataSource(newRandomData);
             areaChart->SetChartTitle("Random Data Volume");
-            //areaChart->Invalidate();
+            //areaChart->InvalidateRect();
         });
         container->AddChild(btnLoadRandom);
 
@@ -521,7 +521,7 @@ static struct ChartControls {
         btnTogglePoints->SetOnClick([areaChart]() {
             chartControl.showPoints = !chartControl.showPoints;
             areaChart->SetShowDataPoints(chartControl.showPoints);
-            //areaChart->Invalidate();
+            //areaChart->InvalidateRect();
         });
         container->AddChild(btnTogglePoints);
 
@@ -533,7 +533,7 @@ static struct ChartControls {
 //        btnToggleSmoothing->SetOnClick([areaChart]() {
 //            chartControl.smoothingEnabled = !chartControl.smoothingEnabled;
 //            areaChart->SetSmoothingEnabled(chartControl.smoothingEnabled);
-//            //areaChart->Invalidate();
+//            //areaChart->InvalidateRect();
 //        });
 //        container->AddChild(btnToggleSmoothing);
 

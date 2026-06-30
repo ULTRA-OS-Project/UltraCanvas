@@ -21,7 +21,7 @@ namespace UltraCanvas {
 
 struct VennCircle {
     std::string label;
-    Point2Df center;
+    Point2Dd center;
     float radius;
     Color fillColor;
     Color borderColor;
@@ -32,7 +32,7 @@ struct VennCircle {
     VennCircle(const std::string& circleLabel, float x, float y, float r, const Color& color)
         : label(circleLabel), center(x, y), radius(r), fillColor(color), borderColor(Colors::Black), borderWidth(2.0f) {}
     
-    bool Contains(const Point2Df& point) const {
+    bool Contains(const Point2Dd& point) const {
         float dx = point.x - center.x;
         float dy = point.y - center.y;
         return (dx * dx + dy * dy) <= (radius * radius);
@@ -50,7 +50,7 @@ struct VennCircle {
 struct VennRegion {
     std::vector<size_t> circleIndices;
     std::unordered_set<std::string> items;
-    Point2Df labelPosition;
+    Point2Dd labelPosition;
     Color textColor = Colors::Black;
     bool isVisible = true;
     
@@ -208,7 +208,7 @@ public:
     
     // ===== RENDERING OVERRIDES =====
     
-    void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
     void RenderChart(IRenderContext* ctxt) override;
     bool HandleChartMouseMove(const Point2Di& mousePos) override;
     bool OnEvent(const UCEvent& event) override;
@@ -226,8 +226,8 @@ private:
     void ApplyFiveCircleLayout(double centerX, double centerY, double radius);
     
     void RecalculateRegions();
-    std::vector<size_t> FindCirclesContainingPoint(const Point2Df& point) const;
-    Point2Df CalculateRegionLabelPosition(const std::vector<size_t>& circleIndices) const;
+    std::vector<size_t> FindCirclesContainingPoint(const Point2Dd& point) const;
+    Point2Dd CalculateRegionLabelPosition(const std::vector<size_t>& circleIndices) const;
     
     void RenderBackground(IRenderContext* ctx);
     void RenderCircles(IRenderContext* ctx);
@@ -235,8 +235,8 @@ private:
     void RenderRegionLabels(IRenderContext* ctx);
     void RenderIntersectionHighlights(IRenderContext* ctx);
     
-    size_t FindCircleAtPoint(const Point2Df& point) const;
-    size_t FindRegionAtPoint(const Point2Df& point) const;
+    size_t FindCircleAtPoint(const Point2Dd& point) const;
+    size_t FindRegionAtPoint(const Point2Dd& point) const;
     
     Color GetNextPaletteColor() const {
         return colorPalette[circles.size() % colorPalette.size()];

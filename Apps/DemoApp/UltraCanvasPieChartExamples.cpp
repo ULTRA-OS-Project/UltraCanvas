@@ -234,7 +234,6 @@ namespace UltraCanvas {
         );
         descLabel->SetFontSize(11);
         descLabel->SetWrap(TextWrap::WrapWord);
-        descLabel->SetAutoResize(true);
         container->AddChild(descLabel);
 
         // ===== EXAMPLE 1: MARKET SHARE ANALYSIS =====
@@ -304,7 +303,7 @@ namespace UltraCanvas {
 
         // Enable 3D mode
         donutChart->Enable3DMode(30.0f, 22.0f);
-        donutChart->SetLightDirection(Point2Df(-0.6f, -0.8f));
+        donutChart->SetLightDirection(Point2Dd(-0.6f, -0.8f));
         donutChart->SetAmbientLight(0.35f);
         donutChart->SetDiffuseLight(0.65f);
 

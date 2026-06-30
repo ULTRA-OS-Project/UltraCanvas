@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasArcDiagramExamples.cpp
 // Demo examples for UltraCanvasArcDiagram — arc diagram
-// Version: 1.0.2
-// Last Modified: 2026-05-17
+// Version: 1.1.1
+// Last Modified: 2026-06-04
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -432,23 +432,47 @@ namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement>
     UltraCanvasDemoApplication::CreateArcDiagramExamples()
     {
-        auto main = std::make_shared<UltraCanvasContainer>(
-                "ArcDiagramExamples", 0, 0, 1030, 800);
+        // No fixed size: the host display area stretches `main` (it applies
+        // flex-grow + align-self:stretch), so the Fr content column grows with
+        // the window and the subtitle re-wraps on resize.
+        auto main = std::make_shared<UltraCanvasContainer>("ArcDiagramExamples");
+        main->SetPadding(5,5,0,5);
+        // 3-row × 2-column grid: title/subtitle in the left column, status box in
+        // the right column spanning both top rows, tabs filling the bottom row.
+        // Fixed pixel heights on the label rows (Auto rows measure unwrapped text
+        // and would clip the subtitle's second wrapped line).
+        main->layout.SetGrid()
+                .SetGridColumns({
+                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fr,
+                                                 .value = CSSLayout::Dimension::Fr(1)},
+                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fixed,
+                                                 .value = CSSLayout::Dimension::Px(350)}})
+                .SetGridRows({
+                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fixed,
+                                                 .value = CSSLayout::Dimension::Px(34)},  // title row
+                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fixed,
+                                                 .value = CSSLayout::Dimension::Px(44)},  // subtitle (room for 2 lines)
+                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fr,
+                                                 .value = CSSLayout::Dimension::Fr(1)}})   // tabs fill
+                .SetGridGap(6);
 
-        auto title = std::make_shared<UltraCanvasLabel>("ArcTitle", 20, 10, 600, 32);
+        auto title = std::make_shared<UltraCanvasLabel>("ArcTitle");
         title->SetText("Arc Diagram");
         title->SetFontSize(18);
         title->SetFontWeight(FontWeight::Bold);
         title->SetTextColor(Color(80, 50, 140));
         main->AddChild(title);
+        title->layoutItem.SetGridRowColSimplified(0, 0);
 
-        auto subtitle = std::make_shared<UltraCanvasLabel>("ArcSub", 20, 44, 900, 20);
+        auto subtitle = std::make_shared<UltraCanvasLabel>("ArcSub");
         subtitle->SetText("Nodes on a baseline, edges as cubic Bezier arcs. Above = forward, below = back or novel. Width + opacity encode weight.");
         subtitle->SetFontSize(11);
+        subtitle->SetWrap(TextWrap::WrapWord);
         subtitle->SetTextColor(Color(90, 90, 90));
         main->AddChild(subtitle);
+        subtitle->layoutItem.SetGridRowColSimplified(1, 0);
 
-        auto statusLabel = std::make_shared<UltraCanvasLabel>("ArcStatus", 680, 10, 340, 56);
+        auto statusLabel = std::make_shared<UltraCanvasLabel>("ArcStatus");
         statusLabel->SetText("Click a node or arc to inspect.");
         statusLabel->SetFontSize(10);
         statusLabel->SetBackgroundColor(Color(245, 245, 245));
@@ -456,9 +480,10 @@ namespace UltraCanvas {
         statusLabel->SetPadding(6.0f);
         statusLabel->SetAlignment(TextAlignment::Center);
         main->AddChild(statusLabel);
+        statusLabel->layoutItem.SetGridRowColSimplified(0, 1, 2, 1);
 
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>(
-                "ArcTabs", 10, 72, 1010, 728);
+                "ArcTabs");
         tabs->SetTabPosition(TabPosition::Top);
         tabs->SetTabStyle(TabStyle::Modern);
         tabs->SetTabMaxWidth(300);
@@ -469,6 +494,7 @@ namespace UltraCanvas {
         tabs->AddTab("RNA base pairs (genomics)",  MakeGenomicsTab(statusLabel));
 
         main->AddChild(tabs);
+        tabs->layoutItem.SetGridRowColSimplified(2, 0, 1, 2);
         return main;
     }
 

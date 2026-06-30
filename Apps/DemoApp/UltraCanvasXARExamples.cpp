@@ -117,7 +117,6 @@ namespace UltraCanvas {
         auto title = std::make_shared<UltraCanvasLabel>("XARTitle", 10, 10, 600, 30);
         title->SetText("CorelDRAW XAR Graphics Demo - Click to View Fullscreen");
         title->SetFontSize(16);
-        title->SetAutoResize(true);
         title->SetFontWeight(FontWeight::Bold);
         container->AddChild(title);
 

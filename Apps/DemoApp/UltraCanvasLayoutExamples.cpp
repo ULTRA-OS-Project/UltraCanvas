@@ -1,23 +1,22 @@
 // Apps/DemoApp/UltraCanvasLayoutExamples.cpp
 // Layout system demonstration examples for UltraCanvas Demo Application
-// Version: 1.0.0
-// Last Modified: 2025-11-03
+// Version: 2.0.0
+// Last Modified: 2026-06-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
-#include "UltraCanvasBoxLayout.h"
-#include "UltraCanvasGridLayout.h"
-#include "UltraCanvasFlexLayout.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasSpacer.h"
+#include "CSSLayout/CSSLayout.h"
 #include <sstream>
 
 namespace UltraCanvas {
 
 // Helper function to create section title
-    std::shared_ptr<UltraCanvasLabel> CreateLayoutSectionTitle(long x, long y, const std::string& text) {
+    std::shared_ptr<UltraCanvasLabel> CreateLayoutSectionTitle(float x, float y, const std::string& text) {
         auto title = std::make_shared<UltraCanvasLabel>("LayoutSecTitle" + std::to_string(x), x, y, 600, 25);
         title->SetText(text);
         title->SetFontSize(14);
@@ -27,13 +26,12 @@ namespace UltraCanvas {
     }
 
 // Helper function to create description label
-    std::shared_ptr<UltraCanvasLabel> CreateLayoutDescription(long x, long y, long width, const std::string& text) {
+    std::shared_ptr<UltraCanvasLabel> CreateLayoutDescription(float x, float y, float width, const std::string& text) {
         auto desc = std::make_shared<UltraCanvasLabel>("LayoutDesc" + std::to_string(x), x, y, width, 0);
         desc->SetText(text);
         desc->SetTextColor(Color(80, 80, 80, 255));
         desc->SetFontSize(12);
         desc->SetWrap(TextWrap::WrapWord);
-        desc->SetAutoResize(true);
         return desc;
     }
 
@@ -74,9 +72,7 @@ namespace UltraCanvas {
         vboxDemo->SetBackgroundColor(Color(245, 245, 250, 255));
         vboxDemo->SetPadding(15);
 
-        auto vboxLayout = CreateVBoxLayout(vboxDemo.get());
-        vboxLayout->SetSpacing(10);
-        //vboxLayout->SetPadding(15);
+        vboxDemo->layout.SetFlexColumn().SetFlexGap(10);
 
         auto vboxBtn1 = std::make_shared<UltraCanvasButton>("VBtn1", 0, 0, 150, 35);
         vboxBtn1->SetText("Button 1");
@@ -96,18 +92,21 @@ namespace UltraCanvas {
         vboxBtn2->SetOnClick([vboxStatus]() { vboxStatus->SetText("Button 2 clicked!"); });
         vboxBtn3->SetOnClick([vboxStatus]() { vboxStatus->SetText("Button 3 clicked!"); });
 
-        vboxLayout->AddUIElement(vboxBtn1, 0)->SetCrossAlignment(LayoutAlignment::Center);
-        vboxLayout->AddUIElement(vboxBtn2, 0)->SetCrossAlignment(LayoutAlignment::Center);
-        vboxLayout->AddUIElement(vboxBtn3, 0)->SetCrossAlignment(LayoutAlignment::Center);
-        vboxLayout->AddStretch(1);
-        vboxLayout->AddUIElement(vboxStatus, 0)->SetCrossAlignment(LayoutAlignment::Center);
+        vboxDemo->AddChild(vboxBtn1);
+        vboxBtn1->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
+        vboxDemo->AddChild(vboxBtn2);
+        vboxBtn2->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
+        vboxDemo->AddChild(vboxBtn3);
+        vboxBtn3->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
+        vboxDemo->AddStretchSpacer(1);
+        vboxDemo->AddChild(vboxStatus);
+        vboxStatus->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
 
-//        vboxDemo->SetLayout(std::move(vboxLayout));
         mainContainer->AddChild(vboxDemo);
 
         // Code explanation
         auto vboxCode = CreateLayoutDescription(340, currentY, 640,
-                                                "Code: auto layout = CreateVBoxLayout(container);\nlayout->AddUIElement(button1); layout->AddStretch(1);");
+                                                "Code: container->layout.SetFlexColumn().SetFlexGap(10);\ncontainer->AddChild(button1); container->AddStretchSpacer(1);");
         mainContainer->AddChild(vboxCode);
 
         currentY += 250;
@@ -126,9 +125,7 @@ namespace UltraCanvas {
         hboxDemo->SetBackgroundColor(Color(245, 245, 250, 255));
         hboxDemo->SetPadding(10);
 
-        auto hboxLayout = CreateHBoxLayout(hboxDemo.get());
-        hboxLayout->SetSpacing(5);
-        //hboxLayout->SetPadding(10);
+        hboxDemo->layout.SetFlexRow().SetFlexGap(5);
 
         auto newBtn = std::make_shared<UltraCanvasButton>("NewBtn", 0, 0, 60, 30);
         newBtn->SetText("New");
@@ -141,21 +138,25 @@ namespace UltraCanvas {
         auto helpBtn = std::make_shared<UltraCanvasButton>("HelpBtn", 0, 0, 60, 30);
         helpBtn->SetText("Help");
 
-        hboxLayout->AddUIElement(newBtn, 0)->SetCrossAlignment(LayoutAlignment::Center);
-        hboxLayout->AddUIElement(openBtn, 0)->SetCrossAlignment(LayoutAlignment::Center);
-        hboxLayout->AddUIElement(saveBtn, 0)->SetCrossAlignment(LayoutAlignment::Center);
-        hboxLayout->AddSpacing(15);      // Visual separator
-        hboxLayout->AddStretch(1);       // Push remaining buttons right
-        hboxLayout->AddUIElement(settingsBtn, 0)->SetCrossAlignment(LayoutAlignment::Center);
-        hboxLayout->AddUIElement(helpBtn, 0)->SetCrossAlignment(LayoutAlignment::Center);
+        hboxDemo->AddChild(newBtn);
+        newBtn->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
+        hboxDemo->AddChild(openBtn);
+        openBtn->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
+        hboxDemo->AddChild(saveBtn);
+        saveBtn->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
+        hboxDemo->AddSpacer(15);          // Visual separator
+        hboxDemo->AddStretchSpacer(1);    // Push remaining buttons right
+        hboxDemo->AddChild(settingsBtn);
+        settingsBtn->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
+        hboxDemo->AddChild(helpBtn);
+        helpBtn->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
 
-//        hboxDemo->SetLayout(std::move(hboxLayout));
         mainContainer->AddChild(hboxDemo);
 
         currentY += 60;
 
         auto hboxCode = CreateLayoutDescription(20, currentY, 960,
-                                                "Code: auto layout = CreateHBoxLayout(container);\nlayout->AddUIElement(leftBtn);\nlayout->AddSpacing(15);\nlayout->AddStretch(1);\nlayout->AddUIElement(rightBtn);");
+                                                "Code: container->layout.SetFlexRow().SetFlexGap(5);\ncontainer->AddChild(leftBtn);\ncontainer->AddSpacer(15);\ncontainer->AddStretchSpacer(1);\ncontainer->AddChild(rightBtn);");
         mainContainer->AddChild(hboxCode);
 
         currentY += 130;
@@ -174,11 +175,14 @@ namespace UltraCanvas {
         gridDemo->SetBackgroundColor(Color(245, 245, 250, 255));
         gridDemo->SetPadding(10);
 
-        auto gridLayout = CreateGridLayout(gridDemo.get(), 4, 2);
-        gridLayout->SetSpacing(10);
-        //gridLayout->SetPadding(15);
-        gridLayout->SetColumnDefinition(0, GridRowColumnDefinition::Auto());
-        gridLayout->SetColumnDefinition(1, GridRowColumnDefinition::Star(1));
+        gridDemo->layout.SetGrid();
+        CSSLayout::GridTrackSize colAuto;  // default kind == Auto
+        CSSLayout::GridTrackSize colStar;
+        colStar.kind  = CSSLayout::GridTrackSizeKind::Fr;
+        colStar.value = CSSLayout::Dimension::Fr(1);
+        gridDemo->layout.SetGridColumns({colAuto, colStar});
+        gridDemo->layout.SetGridRows(std::vector<CSSLayout::GridTrackSize>(4));  // 4 auto rows
+        gridDemo->layout.SetGridGap(10);
 
         int row = 0;
 
@@ -187,32 +191,38 @@ namespace UltraCanvas {
         nameLabel->SetTextColor(Colors::Black);
         auto nameInput = std::make_shared<UltraCanvasTextInput>("NameIn", 0, 0, 250, 25);
         nameInput->SetShowValidationState(false);
-        gridLayout->AddUIElement(nameLabel, row, 0);
-        gridLayout->AddUIElement(nameInput, row++, 1);
+        gridDemo->AddChild(nameLabel);
+        nameLabel->layoutItem.SetGridRowColSimplified(row, 0);
+        gridDemo->AddChild(nameInput);
+        nameInput->layoutItem.SetGridRowColSimplified(row++, 1);
 
         auto emailLabel = std::make_shared<UltraCanvasLabel>("EmailLbl", 0, 0, 70, 25);
         emailLabel->SetText("Email:");
         emailLabel->SetTextColor(Colors::Black);
         auto emailInput = std::make_shared<UltraCanvasTextInput>("EmailIn", 0, 0, 250, 25);
-        gridLayout->AddUIElement(emailLabel, row, 0);
-        gridLayout->AddUIElement(emailInput, row++, 1);
+        gridDemo->AddChild(emailLabel);
+        emailLabel->layoutItem.SetGridRowColSimplified(row, 0);
+        gridDemo->AddChild(emailInput);
+        emailInput->layoutItem.SetGridRowColSimplified(row++, 1);
 
         auto phoneLabel = std::make_shared<UltraCanvasLabel>("PhoneLbl", 0, 0, 70, 25);
         phoneLabel->SetText("Phone:");
         phoneLabel->SetTextColor(Colors::Black);
         auto phoneInput = std::make_shared<UltraCanvasTextInput>("PhoneIn", 0, 0, 250, 25);
-        gridLayout->AddUIElement(phoneLabel, row, 0);
-        gridLayout->AddUIElement(phoneInput, row++, 1);
+        gridDemo->AddChild(phoneLabel);
+        phoneLabel->layoutItem.SetGridRowColSimplified(row, 0);
+        gridDemo->AddChild(phoneInput);
+        phoneInput->layoutItem.SetGridRowColSimplified(row++, 1);
 
         auto submitBtn = std::make_shared<UltraCanvasButton>("SubmitBtn", 0, 0, 150, 30);
         submitBtn->SetText("Submit");
-        gridLayout->AddUIElement(submitBtn, row, 0, 1, 2);  // Span 2 columns
+        gridDemo->AddChild(submitBtn);
+        submitBtn->layoutItem.SetGridRowColSimplified(row, 0, 1, 2);  // Span 2 columns
 
-//        gridDemo->SetLayout(std::move(gridLayout));
         mainContainer->AddChild(gridDemo);
 
         auto gridCode = CreateLayoutDescription(490, currentY, 490,
-                                                "Code: auto layout = CreateGridLayout(container, rows, cols);\nlayout->SetColumnDefinition(0, GridRowColumnDefinition::Auto());\nlayout->SetColumnDefinition(1, GridRowColumnDefinition::Star(1));\nlayout->AddUIElement(label, row, column);\nlayout->AddUIElement(input, row, column);");
+                                                "Code: container->layout.SetGrid();\ncontainer->layout.SetGridColumns({autoTrack, frTrack});\ncontainer->layout.SetGridRows(std::vector<GridTrackSize>(rows));\ncontainer->AddChild(label); label->layoutItem.SetGridRowColSimplified(row, column);\ncontainer->AddChild(input); input->layoutItem.SetGridRowColSimplified(row, column);");
         mainContainer->AddChild(gridCode);
 
         currentY += 220;
@@ -231,12 +241,11 @@ namespace UltraCanvas {
         flexDemo->SetBackgroundColor(Color(245, 245, 250, 255));
         flexDemo->SetPadding(15);
 
-        auto flexLayout = CreateFlexLayout(flexDemo.get(), FlexDirection::Row);
-        flexLayout->SetFlexWrap(FlexWrap::Wrap);
-        flexLayout->SetJustifyContent(FlexJustifyContent::SpaceAround);
-        flexLayout->SetAlignItems(FlexAlignItems::Start);
-        flexLayout->SetGap(15, 15);
-        //flexLayout->SetPadding(15);
+        flexDemo->layout.SetFlexDirection(CSSLayout::FlexDirection::Row)
+                .SetFlexWrap(CSSLayout::FlexWrap::Wrap)
+                .SetFlexJustifyContent(CSSLayout::JustifyContent::SpaceAround)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Start)
+                .SetFlexGap(15, 15);
 
         const char* cardTitles[] = {"Card 1", "Card 2", "Card 3", "Card 4"};
         const char* cardTexts[] = {
@@ -254,9 +263,7 @@ namespace UltraCanvas {
             card->SetBackgroundColor(Color(255, 255, 255, 255));
             card->SetPadding(15);
 
-            auto cardLayout = CreateVBoxLayout(card.get());
-            cardLayout->SetSpacing(8);
-            //cardLayout->SetPadding(12);
+            card->layout.SetFlexColumn().SetFlexGap(8);
 
             auto cardTitle = std::make_shared<UltraCanvasLabel>(
                     std::string("CardTitle") + std::to_string(i),
@@ -281,22 +288,22 @@ namespace UltraCanvas {
             );
             cardBtn->SetText("Action");
 
-            cardLayout->AddUIElement(cardTitle, 0);
-            cardLayout->AddUIElement(cardText, 0);
-            cardLayout->AddStretch(1);
-            cardLayout->AddUIElement(cardBtn, 0);
+            card->AddChild(cardTitle);
+            card->AddChild(cardText);
+            card->AddStretchSpacer(1);
+            card->AddChild(cardBtn);
 
-            //card->SetLayout(std::move(cardLayout));
-            flexLayout->AddUIElement(card, 0, 1, 220);  // flexBasis = 220
+            flexDemo->AddChild(card);
+            card->layoutItem.SetFlexGrow(0).SetFlexShrink(1)
+                    .SetFlexBasis(CSSLayout::Dimension::Px(220));  // flexBasis = 220
         }
 
-        //flexDemo->SetLayout(std::move(flexLayout));
         mainContainer->AddChild(flexDemo);
 
         currentY += 270;
 
         auto flexCode = CreateLayoutDescription(20, currentY, 960,
-                                                "Code: float flexGrow=0, flexShrink=1, flexBasis=220\nauto layout = CreateFlexLayout(container, FlexDirection::Row);\nlayout->SetFlexWrap(FlexWrap::Wrap); layout->SetGap(15, 15);\nlayout->AddUIElement(card, flexGrow, flexShrink, flexBasis);");
+                                                "Code: float flexGrow=0, flexShrink=1, flexBasis=220\ncontainer->layout.SetFlexDirection(FlexDirection::Row);\ncontainer->layout.SetFlexWrap(FlexWrap::Wrap).SetFlexGap(15, 15);\ncontainer->AddChild(card); card->layoutItem.SetFlexGrow(0).SetFlexShrink(1).SetFlexBasis(Dimension::Px(220));");
         mainContainer->AddChild(flexCode);
 
         currentY += 130;

@@ -1,15 +1,17 @@
 // Apps/DemoApp/UltraCanvasDomainTableDemo.cpp
 // Domain management table demonstration with embedded sparkline charts and interactive features
-// Version: 1.0.0
-// Last Modified: 2025-11-14
+// Version: 1.0.1
+// Last Modified: 2026-06-01
 // Author: UltraCanvas Framework
 
+#include "UltraCanvasContainer.h"
+#include "UltraCanvasSpacer.h"
+#include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasDemo.h"
 #include "Plugins/Charts/UltraCanvasSpecificChartElements.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
-#include "UltraCanvasBoxLayout.h"
 //#include "UltraCanvasModalDialog.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasMenu.h"
@@ -365,8 +367,8 @@ namespace UltraCanvas {
         headerContainer->SetBackgroundColor(Color(230, 230, 230, 255));
         headerContainer->SetBorders(1.0f);
         headerContainer->SetPadding(0, 10);
-        auto headerContainerLayout = CreateHBoxLayout(headerContainer.get());
-        headerContainerLayout->SetSpacing(10);
+        headerContainer->layout.SetFlexRow();
+        headerContainer->layout.SetFlexGap(10);
 
         int headerX = 10;
         auto createHeader = [&](const std::string& text, int width) {
@@ -376,7 +378,8 @@ namespace UltraCanvas {
             header->SetFontWeight(FontWeight::Bold);
             header->SetTextColor(Color(40, 40, 40, 255));
             header->SetAlignment(width > 100 ? TextAlignment::Left : TextAlignment::Center);
-            headerContainerLayout->AddUIElement(header)->SetCrossAlignment(LayoutAlignment::Center);
+            headerContainer->AddChild(header);
+            header->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
             headerX += width + 10;
         };
 
@@ -386,9 +389,9 @@ namespace UltraCanvas {
         createHeader("Status", 100, 8011);
         createHeader("Security insights", 180, 8012);
         createHeader("Unique visitors", 180, 8013);
-        headerContainerLayout->AddSpacing(2);
+        headerContainer->AddSpacer(2);
         createHeader("Plan", 60, 8015);
-        headerContainerLayout->AddSpacing(30);
+        headerContainer->AddSpacer(30);
 
         mainContainer->AddChild(headerContainer);
 

@@ -491,7 +491,7 @@ namespace UltraCanvas {
 
     // ===== WINDOW STATE MANAGEMENT =====
     void UltraCanvasLinuxWindow::Show() {
-        if (!_created || visible) {
+        if (!_created || _windowVisible) {
             return;
         }
 
@@ -505,7 +505,7 @@ namespace UltraCanvas {
             SetFullscreen(true);
         }
 
-        visible = true;
+        _windowVisible = true;
 
         if (onWindowShow) {
             onWindowShow();
@@ -514,7 +514,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasLinuxWindow::Hide() {
-        if (!_created || !visible) {
+        if (!_created || ! _windowVisible) {
             return;
         }
 
@@ -523,7 +523,7 @@ namespace UltraCanvas {
         XUnmapWindow(application->GetDisplay(), xWindow);
         XFlush(application->GetDisplay());
 
-        visible = false;
+        _windowVisible = false;
 
         if (onWindowHide) {
             onWindowHide();

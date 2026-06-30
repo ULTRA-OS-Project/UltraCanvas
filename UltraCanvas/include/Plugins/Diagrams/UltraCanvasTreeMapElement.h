@@ -8,6 +8,7 @@
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasApplication.h"
 #include "Plugins/Charts/UltraCanvasChartElementBase.h"
 #include "Plugins/Charts/UltraCanvasChartDataStructures.h"
 #include <vector>
@@ -40,7 +41,7 @@ namespace UltraCanvas {
         
         std::vector<std::string> displayTexts;
         std::vector<std::string> iconPaths;
-        Rect2Df bounds;
+        Rect2Dd bounds;
         bool isLeaf;
         int depth;
         bool isVisible;
@@ -128,7 +129,7 @@ namespace UltraCanvas {
         double currentAnimationProgress = 1.0;
         bool isAnimating = false;
         
-        std::map<std::string, Rect2Df> oldBoundsMap;
+        std::map<std::string, Rect2Dd> oldBoundsMap;
         std::string animationType;
         
         std::shared_ptr<TreeMapNode> hoveredNode = nullptr;
@@ -154,6 +155,7 @@ namespace UltraCanvas {
             enablePan = true;
             rootNode = std::make_shared<TreeMapNode>("Root", 0.0);
             currentNode = rootNode;
+            fontFamily = UltraCanvasApplication::GetInstance()->GetSystemFontStyle().fontFamily;
         }
 
         void SetRootNode(std::shared_ptr<TreeMapNode> root) {
@@ -266,7 +268,7 @@ namespace UltraCanvas {
         std::function<void(const std::string&, double, double)> onNodeDoubleClick;
         std::function<void(const std::string&)> onNodeRightClick;
 
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         void RenderChart(IRenderContext* ctx) override;
         bool HandleChartMouseMove(const Point2Di& mousePos) override;
         bool HandleChartMouseWheel(double delta);
@@ -274,30 +276,30 @@ namespace UltraCanvas {
 
     private:
         void RecalculateLayout();
-        void CalculateSquarifiedLayout(std::vector<std::shared_ptr<TreeMapNode>>& nodes, const Rect2Df& area);
-        void SquarifyRecursive(std::vector<std::shared_ptr<TreeMapNode>>& nodes, size_t start, const Rect2Df& area, double length);
-        void CalculateSliceAndDiceLayout(std::vector<std::shared_ptr<TreeMapNode>>& nodes, const Rect2Df& area, int depth);
-        void CalculateStripLayout(std::vector<std::shared_ptr<TreeMapNode>>& nodes, const Rect2Df& area);
-        void CalculateSpiralLayout(std::vector<std::shared_ptr<TreeMapNode>>& nodes, const Rect2Df& area);
-        void CalculateBinaryLayout(std::vector<std::shared_ptr<TreeMapNode>>& nodes, const Rect2Df& area);
-        void BinaryLayoutRecursive(std::vector<std::shared_ptr<TreeMapNode>>& nodes, size_t start, size_t end, const Rect2Df& area);
+        void CalculateSquarifiedLayout(std::vector<std::shared_ptr<TreeMapNode>>& nodes, const Rect2Dd& area);
+        void SquarifyRecursive(std::vector<std::shared_ptr<TreeMapNode>>& nodes, size_t start, const Rect2Dd& area, double length);
+        void CalculateSliceAndDiceLayout(std::vector<std::shared_ptr<TreeMapNode>>& nodes, const Rect2Dd& area, int depth);
+        void CalculateStripLayout(std::vector<std::shared_ptr<TreeMapNode>>& nodes, const Rect2Dd& area);
+        void CalculateSpiralLayout(std::vector<std::shared_ptr<TreeMapNode>>& nodes, const Rect2Dd& area);
+        void CalculateBinaryLayout(std::vector<std::shared_ptr<TreeMapNode>>& nodes, const Rect2Dd& area);
+        void BinaryLayoutRecursive(std::vector<std::shared_ptr<TreeMapNode>>& nodes, size_t start, size_t end, const Rect2Dd& area);
 
         void DrawGlobalBackground(IRenderContext* ctx);
         void DrawTreeMapRectangle(IRenderContext* ctx, std::shared_ptr<TreeMapNode> node);
-        void DrawFlatRectangle(IRenderContext* ctx, std::shared_ptr<TreeMapNode> node, const Rect2Df& rect);
-        void DrawRaisedRectangle(IRenderContext* ctx, std::shared_ptr<TreeMapNode> node, const Rect2Df& rect);
-        void DrawSunkenRectangle(IRenderContext* ctx, std::shared_ptr<TreeMapNode> node, const Rect2Df& rect);
-        void DrawGradientRectangle(IRenderContext* ctx, std::shared_ptr<TreeMapNode> node, const Rect2Df& rect);
-        void DrawTexturedRectangle(IRenderContext* ctx, std::shared_ptr<TreeMapNode> node, const Rect2Df& rect);
-        void DrawMinimalRectangle(IRenderContext* ctx, std::shared_ptr<TreeMapNode> node, const Rect2Df& rect);
-        void DrawRectangleContent(IRenderContext* ctx, std::shared_ptr<TreeMapNode> node, const Rect2Df& rect);
-        void DrawSelectionIndicator(IRenderContext* ctx, const Rect2Df& rect);
-        void DrawHoverEffect(IRenderContext* ctx, const Rect2Df& rect);
+        void DrawFlatRectangle(IRenderContext* ctx, std::shared_ptr<TreeMapNode> node, const Rect2Dd& rect);
+        void DrawRaisedRectangle(IRenderContext* ctx, std::shared_ptr<TreeMapNode> node, const Rect2Dd& rect);
+        void DrawSunkenRectangle(IRenderContext* ctx, std::shared_ptr<TreeMapNode> node, const Rect2Dd& rect);
+        void DrawGradientRectangle(IRenderContext* ctx, std::shared_ptr<TreeMapNode> node, const Rect2Dd& rect);
+        void DrawTexturedRectangle(IRenderContext* ctx, std::shared_ptr<TreeMapNode> node, const Rect2Dd& rect);
+        void DrawMinimalRectangle(IRenderContext* ctx, std::shared_ptr<TreeMapNode> node, const Rect2Dd& rect);
+        void DrawRectangleContent(IRenderContext* ctx, std::shared_ptr<TreeMapNode> node, const Rect2Dd& rect);
+        void DrawSelectionIndicator(IRenderContext* ctx, const Rect2Dd& rect);
+        void DrawHoverEffect(IRenderContext* ctx, const Rect2Dd& rect);
         void DrawNavigationBreadcrumbs(IRenderContext* ctx);
         void DrawLeafNodeDetails(IRenderContext* ctx);
 
         std::shared_ptr<TreeMapNode> GetNodeAtPosition(const Point2Di& pos) const;
-        std::shared_ptr<TreeMapNode> FindNodeAtPositionRecursive(std::shared_ptr<TreeMapNode> node, const Point2Df& pos) const;
+        std::shared_ptr<TreeMapNode> FindNodeAtPositionRecursive(std::shared_ptr<TreeMapNode> node, const Point2Dd& pos) const;
         Color GetNodeColor(std::shared_ptr<TreeMapNode> node) const;
         void UpdateColors();
         void UpdateNodeColorsRecursive(std::shared_ptr<TreeMapNode> node);
@@ -313,8 +315,8 @@ namespace UltraCanvas {
         void FindNodesByValueRecursive(std::shared_ptr<TreeMapNode> node, double minValue, double maxValue, std::vector<std::shared_ptr<TreeMapNode>>& results) const;
         double GetTotalValueForNodes(const std::vector<std::shared_ptr<TreeMapNode>>& nodes, size_t start) const;
         double CalculateWorstRatio(const std::vector<std::shared_ptr<TreeMapNode>>& row, double totalValue, double length) const;
-        void LayoutRow(const std::vector<std::shared_ptr<TreeMapNode>>& row, const Rect2Df& area, double totalValue);
-        Rect2Df CalculateRemainingArea(const Rect2Df& area, const std::vector<std::shared_ptr<TreeMapNode>>& row, double totalValue) const;
+        void LayoutRow(const std::vector<std::shared_ptr<TreeMapNode>>& row, const Rect2Dd& area, double totalValue);
+        Rect2Dd CalculateRemainingArea(const Rect2Dd& area, const std::vector<std::shared_ptr<TreeMapNode>>& row, double totalValue) const;
         size_t FindBalancedSplit(const std::vector<std::shared_ptr<TreeMapNode>>& nodes, size_t start, size_t end) const;
         double GetValueRatio(const std::vector<std::shared_ptr<TreeMapNode>>& nodes, size_t start, size_t mid, size_t end) const;
         double GetMaxSecondaryValue() const;
@@ -326,8 +328,8 @@ namespace UltraCanvas {
         double CalculateOptimalFontSize(const std::string& text, double availableWidth, double maxSize) const;
         std::string FormatValue(double value) const;
         std::string FormatPercentage(double percentage) const;
-        bool PointInRect(const Point2Df& point, const Rect2Df& rect) const;
-        Rect2Df GetPlotArea() const;
+        bool PointInRect(const Point2Dd& point, const Rect2Dd& rect) const;
+        Rect2Dd GetPlotArea() const;
     };
 
     inline std::shared_ptr<UltraCanvasTreeMapElement> CreateTreeMap(

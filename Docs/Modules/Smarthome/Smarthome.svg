@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">
+<title>UltraCanvas SmartHome module overview (16:9)</title>
+<desc>UltraCanvas SmartHome module: dashboard panel and device cards on top, device-specific control widgets, dialogs and wizards, sitting on a protocol abstraction layer over physical device backends.</desc>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+<style>
+.th{font-size:15px;font-weight:500}
+.ts{font-size:13px;font-weight:400}
+.blue-fill{fill:#E6F1FB;stroke:#185FA5}
+.blue-sub{fill:#BFDDF6;stroke:#185FA5}
+.blue-t{fill:#0C447C}.blue-s{fill:#185FA5}
+.teal-fill{fill:#E1F5EE;stroke:#0F6E56}
+.teal-sub{fill:#9FE1CB;stroke:#0F6E56}
+.teal-t{fill:#085041}.teal-s{fill:#0F6E56}
+.coral-fill{fill:#FAECE7;stroke:#993C1D}
+.coral-sub{fill:#F3CFC2;stroke:#993C1D}
+.coral-t{fill:#712B13}.coral-s{fill:#993C1D}
+.amber-fill{fill:#FAEEDA;stroke:#854F0B}
+.amber-sub{fill:#F2D9A6;stroke:#854F0B}
+.amber-t{fill:#633806}.amber-s{fill:#854F0B}
+.purple-fill{fill:#EEEDFE;stroke:#534AB7}
+.purple-sub{fill:#CECBF6;stroke:#534AB7}
+.purple-t{fill:#3C3489}.purple-s{fill:#534AB7}
+.arr{stroke:#73726c;stroke-width:1.5;fill:none}
+</style>
+</defs>
+
+<!-- Dashboard panel (full width) -->
+<rect class="blue-fill" x="40" y="26" width="1200" height="92" rx="10" stroke-width="0.5"/>
+<text class="th blue-t" x="62" y="49" dominant-baseline="central">SmartHomePanel — dashboard<tspan class="ts blue-s" dx="14">room grouping · scenes · filter/search · grid/list/compact/detailed · real-time status</tspan></text>
+<rect class="blue-sub" x="60" y="64" width="288" height="42" rx="6" stroke-width="0.5"/>
+<text class="ts blue-t" x="204" y="85" text-anchor="middle" dominant-baseline="central">Device organization by room</text>
+<rect class="blue-sub" x="364" y="64" width="288" height="42" rx="6" stroke-width="0.5"/>
+<text class="ts blue-t" x="508" y="85" text-anchor="middle" dominant-baseline="central">Scene cards — quick activate</text>
+<rect class="blue-sub" x="668" y="64" width="288" height="42" rx="6" stroke-width="0.5"/>
+<text class="ts blue-t" x="812" y="85" text-anchor="middle" dominant-baseline="central">Filtering &amp; search</text>
+<rect class="blue-sub" x="972" y="64" width="248" height="42" rx="6" stroke-width="0.5"/>
+<text class="ts blue-t" x="1096" y="85" text-anchor="middle" dominant-baseline="central">Online · battery · last-seen</text>
+
+<!-- Device cards strip (full width) -->
+<rect class="amber-fill" x="40" y="130" width="1200" height="64" rx="10" stroke-width="0.5"/>
+<text class="th amber-t" x="62" y="153" dominant-baseline="central">SmartHomeDeviceCard<tspan class="ts amber-s" dx="14">name · room · status · quick toggle · color-coded category icons · long-press settings · battery</tspan></text>
+<text class="ts amber-s" x="62" y="177" dominant-baseline="central">lights=amber · locks=green · sensors=blue · tap for quick control, long-press for full settings</text>
+
+<line x1="640" y1="194" x2="640" y2="222" class="arr" marker-end="url(#arrow)"/>
+
+<!-- Device-specific controls (full width) -->
+<rect class="teal-fill" x="40" y="224" width="1200" height="208" rx="10" stroke-width="0.5"/>
+<text class="th teal-t" x="62" y="247" dominant-baseline="central">Device-specific controls<tspan class="ts teal-s" dx="14">five typed control widgets</tspan></text>
+
+<rect class="teal-sub" x="60" y="264" width="288" height="68" rx="6" stroke-width="0.5"/>
+<text class="th teal-t" x="204" y="286" text-anchor="middle" dominant-baseline="central">Light Control</text>
+<text class="ts teal-s" x="204" y="305" text-anchor="middle" dominant-baseline="central">On/off, brightness, 2700–6500K</text>
+<text class="ts teal-s" x="204" y="321" text-anchor="middle" dominant-baseline="central">RGB wheel, preset colors</text>
+
+<rect class="teal-sub" x="364" y="264" width="288" height="68" rx="6" stroke-width="0.5"/>
+<text class="th teal-t" x="508" y="286" text-anchor="middle" dominant-baseline="central">Thermostat Control</text>
+<text class="ts teal-s" x="508" y="305" text-anchor="middle" dominant-baseline="central">Circular dial, current/target</text>
+<text class="ts teal-s" x="508" y="321" text-anchor="middle" dominant-baseline="central">Heat/Cool/Auto/Eco, fan, humidity</text>
+
+<rect class="teal-sub" x="668" y="264" width="288" height="68" rx="6" stroke-width="0.5"/>
+<text class="th teal-t" x="812" y="286" text-anchor="middle" dominant-baseline="central">Lock Control</text>
+<text class="ts teal-s" x="812" y="305" text-anchor="middle" dominant-baseline="central">Lock/unlock animated icon</text>
+<text class="ts teal-s" x="812" y="321" text-anchor="middle" dominant-baseline="central">Access log, battery, confirm</text>
+
+<rect class="teal-sub" x="972" y="264" width="248" height="68" rx="6" stroke-width="0.5"/>
+<text class="th teal-t" x="1096" y="286" text-anchor="middle" dominant-baseline="central">Blind Control</text>
+<text class="ts teal-s" x="1096" y="305" text-anchor="middle" dominant-baseline="central">Position 0–100%, tilt</text>
+<text class="ts teal-s" x="1096" y="321" text-anchor="middle" dominant-baseline="central">Preview, Open/Stop/Close</text>
+
+<rect class="teal-sub" x="60" y="344" width="552" height="68" rx="6" stroke-width="0.5"/>
+<text class="th teal-t" x="336" y="366" text-anchor="middle" dominant-baseline="central">Sensor Display</text>
+<text class="ts teal-s" x="336" y="385" text-anchor="middle" dominant-baseline="central">Large readout, unit, 24h history graph</text>
+<text class="ts teal-s" x="336" y="401" text-anchor="middle" dominant-baseline="central">Min/max tracking, threshold alerts</text>
+
+<rect class="teal-sub" x="628" y="344" width="592" height="68" rx="6" stroke-width="0.5"/>
+<text class="th teal-t" x="924" y="366" text-anchor="middle" dominant-baseline="central">Dialogs &amp; Wizards</text>
+<text class="ts teal-s" x="924" y="385" text-anchor="middle" dominant-baseline="central">Device Dialog · Pairing Wizard · Scene Editor · Automation Editor</text>
+<text class="ts teal-s" x="924" y="401" text-anchor="middle" dominant-baseline="central">triggers (time, device state, sunrise/sunset) · conditions · actions</text>
+
+<line x1="640" y1="432" x2="640" y2="460" class="arr" marker-end="url(#arrow)"/>
+
+<!-- Protocol abstraction layer (full width) -->
+<rect class="coral-fill" x="40" y="462" width="1200" height="116" rx="10" stroke-width="0.5"/>
+<text class="th coral-t" x="62" y="485" dominant-baseline="central">Protocol abstraction layer<tspan class="ts coral-s" dx="14">unified device API — pluggable per-protocol drivers</tspan></text>
+<rect class="coral-sub" x="60" y="500" width="180" height="60" rx="6" stroke-width="0.5"/>
+<text class="th coral-t" x="150" y="522" text-anchor="middle" dominant-baseline="central">Matter</text>
+<text class="ts coral-s" x="150" y="541" text-anchor="middle" dominant-baseline="central">IP, multi-vendor</text>
+<rect class="coral-sub" x="252" y="500" width="180" height="60" rx="6" stroke-width="0.5"/>
+<text class="th coral-t" x="342" y="522" text-anchor="middle" dominant-baseline="central">Thread</text>
+<text class="ts coral-s" x="342" y="541" text-anchor="middle" dominant-baseline="central">mesh, low-power</text>
+<rect class="coral-sub" x="444" y="500" width="180" height="60" rx="6" stroke-width="0.5"/>
+<text class="th coral-t" x="534" y="522" text-anchor="middle" dominant-baseline="central">Zigbee</text>
+<text class="ts coral-s" x="534" y="541" text-anchor="middle" dominant-baseline="central">mesh radio</text>
+<rect class="coral-sub" x="636" y="500" width="180" height="60" rx="6" stroke-width="0.5"/>
+<text class="th coral-t" x="726" y="522" text-anchor="middle" dominant-baseline="central">Z-Wave</text>
+<text class="ts coral-s" x="726" y="541" text-anchor="middle" dominant-baseline="central">sub-GHz mesh</text>
+<rect class="coral-sub" x="828" y="500" width="180" height="60" rx="6" stroke-width="0.5"/>
+<text class="th coral-t" x="918" y="522" text-anchor="middle" dominant-baseline="central">WiFi</text>
+<text class="ts coral-s" x="918" y="541" text-anchor="middle" dominant-baseline="central">direct IP</text>
+<rect class="coral-sub" x="1020" y="500" width="200" height="60" rx="6" stroke-width="0.5"/>
+<text class="th coral-t" x="1120" y="522" text-anchor="middle" dominant-baseline="central">Bluetooth</text>
+<text class="ts coral-s" x="1120" y="541" text-anchor="middle" dominant-baseline="central">BLE pairing</text>
+
+<line x1="640" y1="578" x2="640" y2="606" class="arr" marker-end="url(#arrow)"/>
+
+<!-- Physical backends (full width) -->
+<rect class="purple-fill" x="40" y="608" width="1200" height="86" rx="10" stroke-width="0.5"/>
+<text class="th purple-t" x="62" y="631" dominant-baseline="central">Physical devices &amp; hubs</text>
+<rect class="purple-sub" x="60" y="646" width="370" height="40" rx="6" stroke-width="0.5"/>
+<text class="th purple-t" x="245" y="666" text-anchor="middle" dominant-baseline="central">Lights · thermostats · locks · blinds</text>
+<rect class="purple-sub" x="455" y="646" width="370" height="40" rx="6" stroke-width="0.5"/>
+<text class="th purple-t" x="640" y="666" text-anchor="middle" dominant-baseline="central">Sensors · cameras · switches</text>
+<rect class="purple-sub" x="850" y="646" width="370" height="40" rx="6" stroke-width="0.5"/>
+<text class="th purple-t" x="1035" y="666" text-anchor="middle" dominant-baseline="central">Bridges · hubs · border routers</text>
+</svg>

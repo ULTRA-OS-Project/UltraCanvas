@@ -1,5 +1,6 @@
 // include/UltraCanvasTreeView.h
 // Hierarchical tree view with icons and text for each row
+// Last Modified: 2026-06-04
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -53,6 +54,10 @@ struct TreeNodeData {
     TreeNodeIcon rightIcon;       // Optional icon on right side
     bool enabled = true;          // Can be interacted with
     bool visible = true;          // Should be displayed
+    bool showFirstChildOnExpand = true; // Per-node override of the tree's "jump to
+                                        // first entry" behaviour: when false, selecting
+                                        // /expanding this node does not jump to its first
+                                        // child, so the node itself stays selected.
     Color textColor = Colors::Black;     // Text color (ARGB)
     Color backgroundColor = Colors::Transparent; // Background color (transparent by default)
     std::string tooltip;          // Tooltip text
@@ -87,6 +92,10 @@ public:
     TreeNode* FindDescendant(const std::string& nodeId);
 
     TreeNode* FirstChild() { return children.empty() ? nullptr : children[0].get(); };
+
+    // Sort direct children alphabetically (case-insensitive) by data.text.
+    // recursive=true also sorts every descendant level. ascending=false reverses.
+    void SortChildNodes(bool recursive = false, bool ascending = true);
 
     // ===== STATE MANAGEMENT =====
     void Expand();
@@ -127,7 +136,9 @@ private:
     bool showExpandButtons;        // Show +/- buttons
     bool showFirstChildOnExpand;   // auto open first child on expand node
     bool autoExpandSelectedNode;  // auto expand selected node
-    
+    bool autoSortChildren = false; // keep children sorted alphabetically on insert
+    bool autoSortAscending = true; // direction used by auto-sort
+
     // Colors
     Color backgroundColor;       // Tree background color
     Color selectionColor;       // Selected row background
@@ -135,7 +146,7 @@ private:
     Color lineColor;            // Connecting line color
     Color textColor;            // Default text color
 
-    ScrollbarStyle scrollbarStyle;
+    ScrollbarStyle scrollbarStyle = GetDefaultScrollbarStyleOr(ScrollbarStyle::Default());
 
     // Scrolling (using unified scrollbar)
     std::shared_ptr<UltraCanvasScrollbar> verticalScrollbar;
@@ -160,8 +171,13 @@ public:
     
     // ===== CONSTRUCTOR =====
     UltraCanvasTreeView(const std::string& identifier, 
-                       int x, int y, int w, int h);
-    
+                       float x, float y, float w, float h);
+
+    UltraCanvasTreeView(const std::string& identifier,
+                        float w, float h);
+
+    UltraCanvasTreeView(const std::string& identifier = "TreeView");
+
     // ===== TREE STRUCTURE MANAGEMENT =====
     TreeNode* SetRootNode(const TreeNodeData& rootData);
     
@@ -213,7 +229,19 @@ public:
     void SetHoverColor(const Color &color) { hoverColor = color; }
     void SetLineColor(const Color &color) { lineColor = color; }
     void SetTextColor(const Color &color) { textColor = color; }
-    
+
+    // ===== SORTING =====
+    // Persistent option: keep children alphabetically sorted as nodes are added.
+    void SetAutoSortChildren(bool enable, bool ascending = true);
+    bool GetAutoSortChildren() const { return autoSortChildren; }
+
+    // On-demand sort of a specified node's children (no-op if not found / null).
+    void SortNodeChildren(const std::string& nodeId, bool recursive = false, bool ascending = true);
+    void SortNodeChildren(TreeNode* node, bool recursive = false, bool ascending = true);
+
+    // Convenience: sort the entire tree from the root, recursively.
+    void SortAllNodes(bool ascending = true);
+
     // ===== SCROLLING =====
     void ScrollTo(TreeNode* node);
     void ScrollBy(int deltaY);
@@ -222,10 +250,13 @@ public:
     bool OnEvent(const UCEvent& event) override;
     
     // ===== RENDERING =====
-    void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
-    void UpdateGeometry(IRenderContext* ctx) override;
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
-    void SetBounds(const Rect2Di& bounds) override;
+    // ===== LAYOUT (CSS Measure/Arrange) =====
+    // TreeView is externally sized (explicit size or parent stretch); it has no
+    // intrinsic size, so the base block measure is sufficient. We only hook
+    // Arrange to recompute scrollbar geometry against the resolved finalBounds.
+    void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
 // ==== WINDOW PROPAGATION =====
     void SetWindow(UltraCanvasWindowBase* win) override;
@@ -264,13 +295,18 @@ private:
     TreeNode* GetNextVisibleNode(TreeNode* current);
     TreeNode* GetLastVisibleNode();
 
+    // When a parent node (one that has children) is the bottom-most visible row,
+    // nudge the scroll position down by a single row so the user can see that
+    // more entries exist below it. Leaf nodes (no children) are left untouched.
+    void ScrollDownIfLastVisibleParent(TreeNode* node);
+
     void ExpandFirstChildNode(TreeNode *node);
     void BuildVisibleNodeList(TreeNode* node, std::vector<TreeNode*>& list);
 };
 
 // ===== FACTORY FUNCTIONS =====
 //std::shared_ptr<UltraCanvasTreeView> CreateTreeView(
-//    const std::string& identifier, long x, long y, long w, long h) {
+//    const std::string& identifier, float x, float y, float w, float h) {
 //    return std::make_shared<UltraCanvasTreeView>(identifier, x, y, w, h);
 //}
 
@@ -280,7 +316,7 @@ private:
     std::shared_ptr<UltraCanvasTreeView> treeView;
     
 public:
-    TreeViewBuilder(const std::string& identifier, long x, long y, long w, long h) {
+    TreeViewBuilder(const std::string& identifier, float x, float y, float w, float h) {
         treeView = std::make_shared<UltraCanvasTreeView>(identifier, x, y, w, h);
         //treeView = CreateTreeView(identifier, x, y, w, h);
     }
@@ -304,7 +340,12 @@ public:
         treeView->SetLineStyle(style);
         return *this;
     }
-    
+
+    TreeViewBuilder& SetAutoSortChildren(bool enable, bool ascending = true) {
+        treeView->SetAutoSortChildren(enable, ascending);
+        return *this;
+    }
+
     TreeViewBuilder& SetColors(const Color& bg, const Color& selection, const Color& hover, const Color& text) {
         treeView->SetBackgroundColor(bg);
         treeView->SetSelectionColor(selection);

@@ -1,5 +1,6 @@
 // core/UltraCanvasListView.cpp
 // Model-View-Delegate ListView widget implementation
+// Last Modified: 2026-05-29
 #include "UltraCanvasListView.h"
 #include "UltraCanvasApplication.h"
 #include <algorithm>
@@ -9,7 +10,7 @@ namespace UltraCanvas {
     // ===== CONSTRUCTOR =====
 
     UltraCanvasListView::UltraCanvasListView(const std::string& identifier,
-                                              int x, int y, int w, int h)
+                                              float x, float y, float w, float h)
         : UltraCanvasUIElement(identifier, x, y, w, h) {
 
         // Default delegate and selection
@@ -31,7 +32,7 @@ namespace UltraCanvas {
 
     // ===== MODEL / DELEGATE / SELECTION WIRING =====
 
-    void UltraCanvasListView::SetModel(IListModel* newModel) {
+    void UltraCanvasListView::SetModel(std::shared_ptr<IListModel> newModel) {
         DisconnectModelSignals();
         model = newModel;
         if (model) {
@@ -46,7 +47,7 @@ namespace UltraCanvas {
     }
 
     IListModel* UltraCanvasListView::GetModel() const {
-        return model;
+        return model.get();
     }
 
     void UltraCanvasListView::SetDelegate(std::shared_ptr<IItemDelegate> newDelegate) {
@@ -206,8 +207,8 @@ namespace UltraCanvas {
 
     Rect2Di UltraCanvasListView::GetViewportRect() const {
         // Returns element-local coordinates (ctx is translated to element origin)
-        int localContentX = GetBorderLeftWidth() + padding.left;
-        int localContentY = GetBorderTopWidth() + padding.top;
+        int localContentX = GetBorderLeftWidth() + GetPaddingLeft();
+        int localContentY = GetBorderTopWidth() + GetPaddingTop();
         int crWidth = GetWidth() - GetTotalBorderHorizontal() - GetTotalPaddingHorizontal();
         int crHeight = GetHeight() - GetTotalBorderVertical() - GetTotalPaddingVertical();
         int sbWidth = verticalScrollbar->IsVisible() ? verticalScrollbar->GetStyle().trackSize : 0;
@@ -232,13 +233,13 @@ namespace UltraCanvas {
 
     // ===== RENDERING =====
 
-    void UltraCanvasListView::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasListView::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         // Draw background and border
         UltraCanvasUIElement::Render(ctx, dirtyRect);
 
         // Element-local content rect (ctx is translated to element origin)
-        int localContentX = GetBorderLeftWidth() + padding.left;
-        int localContentY = GetBorderTopWidth() + padding.top;
+        int localContentX = GetBorderLeftWidth() + GetPaddingLeft();
+        int localContentY = GetBorderTopWidth() + GetPaddingTop();
         int crWidth = GetWidth() - GetTotalBorderHorizontal() - GetTotalPaddingHorizontal();
         int crHeight = GetHeight() - GetTotalBorderVertical() - GetTotalPaddingVertical();
         Rect2Di contentRect(localContentX, localContentY, crWidth, crHeight);
@@ -285,7 +286,7 @@ namespace UltraCanvas {
         for (int col = 0; col < colCount; col++) {
             auto colDef = model->GetColumnDef(col);
             ctx->SetTextAlignment(colDef.alignment);
-            ctx->DrawTextInRect(colDef.title, Rect2Df(colX + 4, headerRect.y, colDef.width - 8, headerRect.height));
+            ctx->DrawTextInRect(colDef.title, Rect2Dd(colX + 4, headerRect.y, colDef.width - 8, headerRect.height));
 
             // Grid line between columns
             if (viewStyle.showGridLines && col < colCount - 1) {
@@ -324,7 +325,7 @@ namespace UltraCanvas {
             // Alternate row background
             if (viewStyle.alternateRowColors && row % 2 == 1) {
                 ctx->SetFillPaint(viewStyle.alternateRowColor);
-                ctx->FillRectangle(Rect2Df(viewport.x, rowY, viewport.width, viewStyle.rowHeight));
+                ctx->FillRectangle(Rect2Dd(viewport.x, rowY, viewport.width, viewStyle.rowHeight));
             }
 
             bool isSelected = selection && selection->IsSelected(row);
@@ -334,10 +335,10 @@ namespace UltraCanvas {
             // Draw full-row selection/hover background (before any column clipping)
             if (isSelected) {
                 ctx->SetFillPaint(viewStyle.selectionBackgroundColor);
-                ctx->FillRectangle(Rect2Df(viewport.x, rowY, viewport.width, viewStyle.rowHeight));
+                ctx->FillRectangle(Rect2Dd(viewport.x, rowY, viewport.width, viewStyle.rowHeight));
             } else if (isHovered) {
                 ctx->SetFillPaint(viewStyle.hoverBackgroundColor);
-                ctx->FillRectangle(Rect2Df(viewport.x, rowY, viewport.width, viewStyle.rowHeight));
+                ctx->FillRectangle(Rect2Dd(viewport.x, rowY, viewport.width, viewStyle.rowHeight));
             }
 
             if (colCount <= 1) {
@@ -354,7 +355,7 @@ namespace UltraCanvas {
                 opt.columnX = viewport.x;
                 opt.columnWidth = viewport.width;
 
-                delegate->RenderItem(ctx, model, row, 0, opt);
+                delegate->RenderItem(ctx, model.get(), row, 0, opt);
             } else {
                 // Multi-column mode: iterate columns
                 int colX = viewport.x;
@@ -376,7 +377,7 @@ namespace UltraCanvas {
 
                     ctx->PushState();
                     ctx->ClipRect({colX, rowY, colDef.width, viewStyle.rowHeight});
-                    delegate->RenderItem(ctx, model, row, col, opt);
+                    delegate->RenderItem(ctx, model.get(), row, col, opt);
                     ctx->PopState();
 
                     // Grid line between columns
@@ -625,13 +626,16 @@ namespace UltraCanvas {
 
     // ===== OVERRIDES =====
 
-    void UltraCanvasListView::UpdateGeometry(IRenderContext* ctx) {
-        if (verticalScrollbar) {
-            verticalScrollbar->UpdateGeometry(ctx);
-        }
+    void UltraCanvasListView::Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) {
+        // The engine has resolved our final bounds (explicit size or parent stretch).
+        UltraCanvasUIElement::Arrange(finalRect, ctx);   // sets finalBounds + damage
+        // finalBounds is now valid — recompute scrollbar visibility/geometry against it.
+        // (Previously UpdateScrollbar only ran from mutators / SetBounds, never from the
+        // engine's resize, so an in-tree ListView could reserve scrollbar space wrongly.)
+        UpdateScrollbar();
     }
 
-    void UltraCanvasListView::SetBounds(const Rect2Di& bounds) {
+    void UltraCanvasListView::SetBounds(const Rect2Df& bounds) {
         if (bounds != GetBounds()) {
             UltraCanvasUIElement::SetBounds(bounds);
             UpdateScrollbar();

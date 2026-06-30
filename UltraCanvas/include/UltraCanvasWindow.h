@@ -86,6 +86,7 @@ namespace UltraCanvas {
         WindowConfig config_;
         WindowState _state = WindowState::Normal;
         bool _created = false;
+        bool _windowVisible = false;
         bool _needsResize = false;
         bool _needsPopupGeometry = false;
         bool _needsWindowComposition = true;
@@ -137,6 +138,7 @@ namespace UltraCanvas {
         bool SelectMouseCursor(UCMouseCursor ptr);
         bool SelectMouseCursor(UCMouseCursor ptr, const char* filename, int hotspotX, int hotspotY);
 
+        bool IsWindowVisible() { return _windowVisible; }
         virtual void Show() = 0;
         virtual void Hide() = 0;
         // Window state

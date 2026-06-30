@@ -703,7 +703,7 @@ void UltraCanvasJitterPlotElement::RenderJitterAxes(IRenderContext* ctx) {
 // MAIN RENDERING
 // =============================================================================
 
-void UltraCanvasJitterPlotElement::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+void UltraCanvasJitterPlotElement::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
     if (!ctx) return;
 
     ctx->PushState();
@@ -712,7 +712,7 @@ void UltraCanvasJitterPlotElement::Render(IRenderContext* ctx, const Rect2Di& di
 
     if (categoryData.empty()) {
         ctx->SetFillPaint(Color(240, 240, 240, 255));
-        ctx->FillRectangle(Rect2Df(local.x, local.y, local.width, local.height));
+        ctx->FillRectangle(Rect2Dd(local.x, local.y, local.width, local.height));
 
         ctx->SetTextPaint(Color(128, 128, 128, 255));
         ctx->SetFontSize(14.0f);
@@ -732,7 +732,7 @@ void UltraCanvasJitterPlotElement::Render(IRenderContext* ctx, const Rect2Di& di
         UpdateAnimation();
     }
 
-    ctx->ClipRect(Rect2Df(local.x, local.y, local.width, local.height));
+    ctx->ClipRect(Rect2Dd(local.x, local.y, local.width, local.height));
     
     RenderCommonBackground(ctx);
     
@@ -790,7 +790,7 @@ void UltraCanvasJitterPlotElement::RenderRegionBands(IRenderContext* ctx) {
         
         // Dibujar banda de color de fondo
         ctx->SetFillPaint(bandColors[r]);
-        ctx->FillRectangle(Rect2Df(x1, cachedPlotArea.y, x2 - x1, cachedPlotArea.height));
+        ctx->FillRectangle(Rect2Dd(x1, cachedPlotArea.y, x2 - x1, cachedPlotArea.height));
     }
 }
 
@@ -933,7 +933,7 @@ void UltraCanvasJitterPlotElement::RenderJitterPoints(IRenderContext* ctx) {
                     size_t ptIdx = 0;
                     for (double val : catData.values) {
                         float jitter = CalculateJitter(ptIdx, hueIdx);
-                        Point2Df pos = CalculatePointPosition(catIdx, val, jitter, hueIdx);
+                        Point2Dd pos = CalculatePointPosition(catIdx, val, jitter, hueIdx);
                         
                         PointPosition pp;
                         pp.x = pos.x;
@@ -986,7 +986,7 @@ void UltraCanvasJitterPlotElement::RenderJitterPoints(IRenderContext* ctx) {
     }
 }
 
-void UltraCanvasJitterPlotElement::DrawJitterPoint(IRenderContext* ctx, const Point2Df& pos,
+void UltraCanvasJitterPlotElement::DrawJitterPoint(IRenderContext* ctx, const Point2Dd& pos,
                                                    const Color& color, float size) {
     if (pointEdgeWidth > 0.0f) {
         ctx->SetStrokePaint(pointEdgeColor);
@@ -1005,20 +1005,20 @@ void UltraCanvasJitterPlotElement::DrawJitterPoint(IRenderContext* ctx, const Po
 
         case PointShape::Square: {
             float halfSize = size;
-            ctx->FillRectangle(Rect2Df(pos.x - halfSize, pos.y - halfSize,
+            ctx->FillRectangle(Rect2Dd(pos.x - halfSize, pos.y - halfSize,
                                        halfSize * 2, halfSize * 2));
             if (pointEdgeWidth > 0.0f) {
-                ctx->DrawRectangle(Rect2Df(pos.x - halfSize, pos.y - halfSize,
+                ctx->DrawRectangle(Rect2Dd(pos.x - halfSize, pos.y - halfSize,
                                            halfSize * 2, halfSize * 2));
             }
             break;
         }
             
         case PointShape::Triangle: {
-            std::vector<Point2Df> triangle = {
-                Point2Df(pos.x, pos.y - size),
-                Point2Df(pos.x - size, pos.y + size),
-                Point2Df(pos.x + size, pos.y + size)
+            std::vector<Point2Dd> triangle = {
+                Point2Dd(pos.x, pos.y - size),
+                Point2Dd(pos.x - size, pos.y + size),
+                Point2Dd(pos.x + size, pos.y + size)
             };
             ctx->FillLinePath(triangle);
             if (pointEdgeWidth > 0.0f) {
@@ -1028,11 +1028,11 @@ void UltraCanvasJitterPlotElement::DrawJitterPoint(IRenderContext* ctx, const Po
         }
             
         case PointShape::Diamond: {
-            std::vector<Point2Df> diamond = {
-                Point2Df(pos.x, pos.y - size),
-                Point2Df(pos.x + size, pos.y),
-                Point2Df(pos.x, pos.y + size),
-                Point2Df(pos.x - size, pos.y)
+            std::vector<Point2Dd> diamond = {
+                Point2Dd(pos.x, pos.y - size),
+                Point2Dd(pos.x + size, pos.y),
+                Point2Dd(pos.x, pos.y + size),
+                Point2Dd(pos.x - size, pos.y)
             };
             ctx->FillLinePath(diamond);
             if (pointEdgeWidth > 0.0f) {
@@ -1043,17 +1043,17 @@ void UltraCanvasJitterPlotElement::DrawJitterPoint(IRenderContext* ctx, const Po
     }
 }
 
-void UltraCanvasJitterPlotElement::DrawMeanMarker(IRenderContext* ctx, const Point2Df& pos,
+void UltraCanvasJitterPlotElement::DrawMeanMarker(IRenderContext* ctx, const Point2Dd& pos,
                                                   MeanMarkerShape shape, float size) {
     if (!ctx) return;
     
     switch (shape) {
         case MeanMarkerShape::Diamond: {
-            std::vector<Point2Df> diamond = {
-                Point2Df(pos.x, pos.y - size),
-                Point2Df(pos.x + size, pos.y),
-                Point2Df(pos.x, pos.y + size),
-                Point2Df(pos.x - size, pos.y)
+            std::vector<Point2Dd> diamond = {
+                Point2Dd(pos.x, pos.y - size),
+                Point2Dd(pos.x + size, pos.y),
+                Point2Dd(pos.x, pos.y + size),
+                Point2Dd(pos.x - size, pos.y)
             };
             ctx->FillLinePath(diamond);
             ctx->DrawLinePath(diamond, true);
@@ -1076,22 +1076,22 @@ void UltraCanvasJitterPlotElement::DrawMeanMarker(IRenderContext* ctx, const Poi
 
         case MeanMarkerShape::Square: {
             float halfSize = size;
-            ctx->FillRectangle(Rect2Df(pos.x - halfSize, pos.y - halfSize,
+            ctx->FillRectangle(Rect2Dd(pos.x - halfSize, pos.y - halfSize,
                                        halfSize * 2, halfSize * 2));
-            ctx->DrawRectangle(Rect2Df(pos.x - halfSize, pos.y - halfSize,
+            ctx->DrawRectangle(Rect2Dd(pos.x - halfSize, pos.y - halfSize,
                                        halfSize * 2, halfSize * 2));
             break;
         }
         
         case MeanMarkerShape::Star: {
-            std::vector<Point2Df> star;
+            std::vector<Point2Dd> star;
             float outerRadius = size;
             float innerRadius = size * 0.4f;
             
             for (int i = 0; i < 10; ++i) {
                 float angle = (i * 36.0f - 90.0f) * (3.14159265f / 180.0f);
                 float radius = (i % 2 == 0) ? outerRadius : innerRadius;
-                star.push_back(Point2Df(
+                star.push_back(Point2Dd(
                     pos.x + radius * std::cos(angle),
                     pos.y + radius * std::sin(angle)
                 ));
@@ -1172,8 +1172,8 @@ void UltraCanvasJitterPlotElement::RenderMeanMarkers(IRenderContext* ctx) {
             float catPos = GetCategoryPosition(categoryIndex, hueIndex);
             float valuePos = GetValuePosition(catData.cachedMean);
             
-            Point2Df pos = horizontalOrientation ? 
-                Point2Df(valuePos, catPos) : Point2Df(catPos, valuePos);
+            Point2Dd pos = horizontalOrientation ? 
+                Point2Dd(valuePos, catPos) : Point2Dd(catPos, valuePos);
             
             DrawMeanMarker(ctx, pos, meanMarkerShape, meanMarkerSize);
             
@@ -1256,11 +1256,11 @@ void UltraCanvasJitterPlotElement::RenderBoxPlotOverlay(IRenderContext* ctx) {
                 float boxBottom = catPos + boxWidth;
                 
                 ctx->SetFillPaint(boxPlotFillColor);
-                ctx->FillRectangle(Rect2Df(q1Pos, boxTop, q3Pos - q1Pos, boxBottom - boxTop));
+                ctx->FillRectangle(Rect2Dd(q1Pos, boxTop, q3Pos - q1Pos, boxBottom - boxTop));
 
                 ctx->SetStrokePaint(boxPlotBorderColor);
                 ctx->SetStrokeWidth(boxPlotBorderWidth);
-                ctx->DrawRectangle(Rect2Df(q1Pos, boxTop, q3Pos - q1Pos, boxBottom - boxTop));
+                ctx->DrawRectangle(Rect2Dd(q1Pos, boxTop, q3Pos - q1Pos, boxBottom - boxTop));
 
                 ctx->SetStrokeWidth(3.0f);
                 ctx->SetStrokePaint(Color(0, 0, 0, 255));
@@ -1296,11 +1296,11 @@ void UltraCanvasJitterPlotElement::RenderBoxPlotOverlay(IRenderContext* ctx) {
                 float boxHeight = q1Pos - q3Pos;
 
                 ctx->SetFillPaint(boxPlotFillColor);
-                ctx->FillRectangle(Rect2Df(boxLeft, q3Pos, boxRight - boxLeft, boxHeight));
+                ctx->FillRectangle(Rect2Dd(boxLeft, q3Pos, boxRight - boxLeft, boxHeight));
 
                 ctx->SetStrokePaint(boxPlotBorderColor);
                 ctx->SetStrokeWidth(boxPlotBorderWidth);
-                ctx->DrawRectangle(Rect2Df(boxLeft, q3Pos, boxRight - boxLeft, boxHeight));
+                ctx->DrawRectangle(Rect2Dd(boxLeft, q3Pos, boxRight - boxLeft, boxHeight));
 
                 ctx->SetStrokeWidth(3.0f);
                 ctx->SetStrokePaint(Color(0, 0, 0, 255));
@@ -1369,11 +1369,11 @@ void UltraCanvasJitterPlotElement::RenderBarChartBase(IRenderContext* ctx) {
                 float barBottom = catPos + barWidth;
 
                 ctx->SetFillPaint(barChartColor);
-                ctx->FillRectangle(Rect2Df(cachedPlotArea.x, barTop, barHeight, barBottom - barTop));
+                ctx->FillRectangle(Rect2Dd(cachedPlotArea.x, barTop, barHeight, barBottom - barTop));
 
                 ctx->SetStrokePaint(Color(barChartColor.r, barChartColor.g, barChartColor.b, 255));
                 ctx->SetStrokeWidth(1.0f);
-                ctx->DrawRectangle(Rect2Df(cachedPlotArea.x, barTop, barHeight, barBottom - barTop));
+                ctx->DrawRectangle(Rect2Dd(cachedPlotArea.x, barTop, barHeight, barBottom - barTop));
 
                 if (showBarValues) {
                     ctx->SetFillPaint(Color(60, 60, 60, 255));
@@ -1387,11 +1387,11 @@ void UltraCanvasJitterPlotElement::RenderBarChartBase(IRenderContext* ctx) {
                 float barTop = cachedPlotArea.y + cachedPlotArea.height - barHeight;
 
                 ctx->SetFillPaint(barChartColor);
-                ctx->FillRectangle(Rect2Df(barLeft, barTop, barRight - barLeft, barHeight));
+                ctx->FillRectangle(Rect2Dd(barLeft, barTop, barRight - barLeft, barHeight));
 
                 ctx->SetStrokePaint(Color(barChartColor.r, barChartColor.g, barChartColor.b, 255));
                 ctx->SetStrokeWidth(1.0f);
-                ctx->DrawRectangle(Rect2Df(barLeft, barTop, barRight - barLeft, barHeight));
+                ctx->DrawRectangle(Rect2Dd(barLeft, barTop, barRight - barLeft, barHeight));
 
                 if (showBarValues) {
                     ctx->SetFillPaint(Color(60, 60, 60, 255));
@@ -1443,7 +1443,7 @@ void UltraCanvasJitterPlotElement::RenderViolinOverlay(IRenderContext* ctx) {
             float catPos = GetCategoryPosition(categoryIndex, hueIndex);
             float violinWidth = categoryWidth * 0.4f;
             
-            std::vector<Point2Df> violinShape;
+            std::vector<Point2Dd> violinShape;
             
             if (horizontalOrientation) {
                 for (int i = 0; i < violinResolution; ++i) {
@@ -1451,14 +1451,14 @@ void UltraCanvasJitterPlotElement::RenderViolinOverlay(IRenderContext* ctx) {
                     float valuePos = GetValuePosition(value);
                     float width = (density[i] / maxDensity) * violinWidth;
                     
-                    violinShape.push_back(Point2Df(valuePos, catPos + width));
+                    violinShape.push_back(Point2Dd(valuePos, catPos + width));
                 }
                 for (int i = violinResolution - 1; i >= 0; --i) {
                     double value = minVal + (i * range / (violinResolution - 1));
                     float valuePos = GetValuePosition(value);
                     float width = (density[i] / maxDensity) * violinWidth;
                     
-                    violinShape.push_back(Point2Df(valuePos, catPos - width));
+                    violinShape.push_back(Point2Dd(valuePos, catPos - width));
                 }
             } else {
                 for (int i = 0; i < violinResolution; ++i) {
@@ -1466,14 +1466,14 @@ void UltraCanvasJitterPlotElement::RenderViolinOverlay(IRenderContext* ctx) {
                     float valuePos = GetValuePosition(value);
                     float width = (density[i] / maxDensity) * violinWidth;
                     
-                    violinShape.push_back(Point2Df(catPos + width, valuePos));
+                    violinShape.push_back(Point2Dd(catPos + width, valuePos));
                 }
                 for (int i = violinResolution - 1; i >= 0; --i) {
                     double value = minVal + (i * range / (violinResolution - 1));
                     float valuePos = GetValuePosition(value);
                     float width = (density[i] / maxDensity) * violinWidth;
                     
-                    violinShape.push_back(Point2Df(catPos - width, valuePos));
+                    violinShape.push_back(Point2Dd(catPos - width, valuePos));
                 }
             }
             
@@ -1527,7 +1527,7 @@ void UltraCanvasJitterPlotElement::RenderRaincloudPlot(IRenderContext* ctx) {
             float catPos = GetCategoryPosition(categoryIndex, hueIndex);
             float violinWidth = categoryWidth * 0.35f;
             
-            std::vector<Point2Df> halfViolinShape;
+            std::vector<Point2Dd> halfViolinShape;
             
             if (horizontalOrientation) {
                 for (int i = 0; i < violinResolution; ++i) {
@@ -1535,12 +1535,12 @@ void UltraCanvasJitterPlotElement::RenderRaincloudPlot(IRenderContext* ctx) {
                     float valuePos = GetValuePosition(value);
                     float width = (density[i] / maxDensity) * violinWidth;
                     
-                    halfViolinShape.push_back(Point2Df(valuePos, catPos + width));
+                    halfViolinShape.push_back(Point2Dd(valuePos, catPos + width));
                 }
                 for (int i = violinResolution - 1; i >= 0; --i) {
                     double value = minVal + (i * range / (violinResolution - 1));
                     float valuePos = GetValuePosition(value);
-                    halfViolinShape.push_back(Point2Df(valuePos, catPos));
+                    halfViolinShape.push_back(Point2Dd(valuePos, catPos));
                 }
             } else {
                 for (int i = 0; i < violinResolution; ++i) {
@@ -1548,12 +1548,12 @@ void UltraCanvasJitterPlotElement::RenderRaincloudPlot(IRenderContext* ctx) {
                     float valuePos = GetValuePosition(value);
                     float width = (density[i] / maxDensity) * violinWidth;
                     
-                    halfViolinShape.push_back(Point2Df(catPos - width, valuePos));
+                    halfViolinShape.push_back(Point2Dd(catPos - width, valuePos));
                 }
                 for (int i = violinResolution - 1; i >= 0; --i) {
                     double value = minVal + (i * range / (violinResolution - 1));
                     float valuePos = GetValuePosition(value);
-                    halfViolinShape.push_back(Point2Df(catPos, valuePos));
+                    halfViolinShape.push_back(Point2Dd(catPos, valuePos));
                 }
             }
             
@@ -1577,16 +1577,16 @@ void UltraCanvasJitterPlotElement::RenderRaincloudPlot(IRenderContext* ctx) {
 // POSITION CALCULATION HELPERS
 // =============================================================================
 
-Point2Df UltraCanvasJitterPlotElement::CalculatePointPosition(
+Point2Dd UltraCanvasJitterPlotElement::CalculatePointPosition(
     size_t categoryIndex, double value, float jitter, size_t hueIndex) {
     
     float catPos = GetCategoryPosition(categoryIndex, hueIndex);
     float valuePos = GetValuePosition(value);
     
     if (horizontalOrientation) {
-        return Point2Df(valuePos, catPos + jitter * categoryWidth * 0.4f);
+        return Point2Dd(valuePos, catPos + jitter * categoryWidth * 0.4f);
     } else {
-        return Point2Df(catPos + jitter * categoryWidth * 0.4f, valuePos);
+        return Point2Dd(catPos + jitter * categoryWidth * 0.4f, valuePos);
     }
 }
 
@@ -1852,7 +1852,7 @@ UltraCanvasJitterPlotElement::CalculateBeeswarmSwarm(
         float yPos = GetValuePosition(yValue);
         
         // Try placing at center first
-        Point2Df testPos(categoryCenter, yPos);
+        Point2Dd testPos(categoryCenter, yPos);
         
         // Check if center position is free
         if (!CheckBeeswarmCollision(testPos, pointRadius, placed, beeswarmSpacing)) {
@@ -1867,7 +1867,7 @@ UltraCanvasJitterPlotElement::CalculateBeeswarmSwarm(
         
         while (offset < maxHalfWidth && !foundPosition) {
             float xPos = categoryCenter + (offset * side);
-            testPos = Point2Df(xPos, yPos);
+            testPos = Point2Dd(xPos, yPos);
             
             if (!CheckBeeswarmCollision(testPos, pointRadius, placed, beeswarmSpacing)) {
                 placed.push_back({testPos, pointRadius, idx, yValue});
@@ -1885,7 +1885,7 @@ UltraCanvasJitterPlotElement::CalculateBeeswarmSwarm(
         
         // If no position found (runaway point), place at max offset
         if (!foundPosition) {
-            testPos = Point2Df(categoryCenter + (maxHalfWidth * side), yPos);
+            testPos = Point2Dd(categoryCenter + (maxHalfWidth * side), yPos);
             placed.push_back({testPos, pointRadius, idx, yValue});
         }
     }
@@ -1957,7 +1957,7 @@ UltraCanvasJitterPlotElement::CalculateBeeswarmCenter(
             float xPos = startX + col * spacing;
             
             points.push_back({
-                Point2Df(xPos, binY),
+                Point2Dd(xPos, binY),
                 pointRadius,
                 idx,
                 values[idx]
@@ -2031,7 +2031,7 @@ UltraCanvasJitterPlotElement::CalculateBeeswarmHex(
             float xPos = startX + col * spacing;
             
             points.push_back({
-                Point2Df(xPos, binY),
+                Point2Dd(xPos, binY),
                 pointRadius,
                 idx,
                 values[idx]
@@ -2114,7 +2114,7 @@ UltraCanvasJitterPlotElement::CalculateBeeswarmSquare(
             float xPos = startX + col * spacing;
             
             points.push_back({
-                Point2Df(xPos, binY),
+                Point2Dd(xPos, binY),
                 pointRadius,
                 idx,
                 values[idx]
@@ -2130,7 +2130,7 @@ UltraCanvasJitterPlotElement::CalculateBeeswarmSquare(
 // =============================================================================
 
 bool UltraCanvasJitterPlotElement::CheckBeeswarmCollision(
-    const Point2Df& testPos,
+    const Point2Dd& testPos,
     float testRadius,
     const std::vector<BeeswarmPoint>& placedPoints,
     float spacing)

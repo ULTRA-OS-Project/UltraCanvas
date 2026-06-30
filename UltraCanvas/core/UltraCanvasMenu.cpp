@@ -1,7 +1,7 @@
 // UltraCanvasMenu.cpp
 // Interactive menu component with styling options and submenu support
-// Version: 1.5.0
-// Last Modified: 2026-05-06
+// Version: 1.8.0
+// Last Modified: 2026-06-02
 // Author: UltraCanvas Framework
 
 #include <vector>
@@ -26,7 +26,7 @@ namespace UltraCanvas {
             }
 
             activeIndex = -1;
-            needCalculateSize = true;
+            InvalidateLayout();
             scrollOffsetPixels = 0;
             needsScrollbar = false;
 
@@ -46,15 +46,23 @@ namespace UltraCanvas {
         debugOutput << "Menu '" << GetIdentifier() << "' hidden.  Visible: " << IsVisible() << std::endl;
     }
 
-    void UltraCanvasMenu::UpdateGeometry(IRenderContext* ctx) {
-        if (needCalculateSize) {
-            ctx->PushState();
-            CalculateAndUpdateSize(ctx);
-            ctx->PopState();
+    void UltraCanvasMenu::Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) {
+        // The CSS engine has already sized us from the measure pass (content-driven) and
+        // placed us at our requested position. Post-layout, clamp the vertical popup
+        // to the window (flip above / shift left, add a scrollbar on overflow). This
+        // runs on EVERY layout pass and adjusts finalBounds for the current frame only
+        // (no SetElementSize/SetElementAbsolutePosition), so it stays stable across
+        // re-layouts and window resizes.
+        UltraCanvasUIElement::Arrange(finalRect, ctx);
+
+        if (orientation == MenuOrientation::Vertical &&
+            (menuType == MenuType::PopupMenu || menuType == MenuType::SubmenuMenu)) {
+            ClampMenuToWindow();
+            ClampMenuToWindowHorizontal();
         }
     }
 
-    void UltraCanvasMenu::Render(IRenderContext *ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasMenu::Render(IRenderContext *ctx, const Rect2Df& dirtyRect) {
         // FIX: Simplified visibility check - if not visible at all, don't render
         if (menuType == MenuType::Menubar) {
 
@@ -98,10 +106,10 @@ namespace UltraCanvas {
             ctx->PushState();
             int bw = static_cast<int>(style.borderWidth);
             int sbWidth = needsScrollbar ? static_cast<int>(style.scrollbarStyle.trackSize) : 0;
-            ctx->ClipRect(Rect2Df(bw,
+            ctx->ClipRect(Rect2Dd(bw,
                                   bw,
-                                  bounds.width - bw * 2 - sbWidth,
-                                  bounds.height - bw * 2));
+                                  finalBounds.width - bw * 2 - sbWidth,
+                                  finalBounds.height - bw * 2));
 
             for (int i = 0; i < static_cast<int>(items.size()); ++i) {
                 if (items[i].visible) {
@@ -117,10 +125,10 @@ namespace UltraCanvas {
             if (needsScrollbar && menuScrollbar) {
                 int scrollbarWidth = static_cast<int>(style.scrollbarStyle.trackSize);
                 menuScrollbar->SetBounds(Rect2Di(
-                        bounds.width - scrollbarWidth - bw,
+                        finalBounds.width - scrollbarWidth - bw,
                         bw,
                         scrollbarWidth,
-                        bounds.height - bw * 2));
+                        finalBounds.height - bw * 2));
                 menuScrollbar->SetScrollPosition(scrollOffsetPixels);
                 ctx->PushState();
                 auto sbB = menuScrollbar->GetBounds();
@@ -187,12 +195,32 @@ namespace UltraCanvas {
                 orientation = MenuOrientation::Vertical;
                 style.showShadow = true;
                 SetVisible(false);
+                MakeContentSized();
                 break;
             case MenuType::SubmenuMenu:
                 SetVisible(false);
                 orientation = MenuOrientation::Vertical;
+                MakeContentSized();
                 break;
         }
+    }
+
+    void UltraCanvasMenu::MakeContentSized() {
+        // Vertical popups/submenus size to their content via MeasureOwnContent. Any fixed
+        // width stamped by the constructor (e.g. CreateMenu(..., 200, 0)) would
+        // otherwise pin the CSS `size`, and the absolute-position solver would reset
+        // the menu to that width on every re-layout (shrinking it when a submenu
+        // opens). Fold that width into style.minWidth and clear the CSS size so the
+        // engine uses the measured, content-driven size instead.
+        if (!size.width.isAuto()) {
+            float ctorWidth = dimPx(size.width);
+            if (ctorWidth > style.minWidth) {
+                style.minWidth = (int)ctorWidth;
+            }
+        }
+        size.width  = CSSLayout::Dimension::Auto();
+        size.height = CSSLayout::Dimension::Auto();
+        InvalidateLayout();
     }
 
     void UltraCanvasMenu::OpenSubmenu(int itemIndex) {
@@ -206,10 +234,11 @@ namespace UltraCanvas {
         // Close existing submenu
         CloseActiveSubmenu();
 
-        // Create and show new submenu
+        // Create and show new submenu. No fixed size — it sizes to its content via
+        // MeasureOwnContent (see MakeContentSized in SetMenuType).
         activeSubmenu = std::make_shared<UltraCanvasMenu>(
                 GetIdentifier() + "_submenu_" + std::to_string(itemIndex),
-                0, 0, 150, 100
+                0, 0, 0, 0
         );
 
         activeSubmenu->SetMenuType(MenuType::SubmenuMenu);
@@ -318,7 +347,7 @@ namespace UltraCanvas {
         return y;
     }
 
-    bool UltraCanvasMenu::ContainsInWindow(const Point2Di& point) {
+    bool UltraCanvasMenu::ContainsInWindow(const Point2Df& point) {
         if (menuType == MenuType::PopupMenu || menuType == MenuType::SubmenuMenu) {
             // Only check bounds if menu is actually visible
             if (!IsVisible()) {
@@ -347,18 +376,33 @@ namespace UltraCanvas {
         return false;
     }
 
-    void UltraCanvasMenu::CalculateAndUpdateSize(IRenderContext *ctx) {
+    Size2Df UltraCanvasMenu::MeasureOwnContent(std::optional<float> /*definiteContentWidth*/,
+                                               const CSSLayout::LayoutContext& /*ctx*/) {
+        IRenderContext* rc = GetRenderContext();
+        if (!rc) {
+            // No surface to measure text against yet — report a usable default so
+            // a menu with no explicit size still gets sane dimensions. (The block
+            // path still honors an explicit size.width/height if one is set.)
+            return Size2Df(100.f, (float)style.itemHeight);
+        }
+        // MeasureMenuContent returns the full content-driven size (it already
+        // honors an explicit menubar width and its own style min/max). The block
+        // layout adds CSS padding/border (zero here) and applies size.*/constraints.
+        rc->PushState();
+        Size2Df content = MeasureMenuContent(rc);
+        rc->PopState();
+        return content;
+    }
+
+    Size2Df UltraCanvasMenu::MeasureMenuContent(IRenderContext *ctx) const {
         ctx->SetFontStyle(style.font);
 
-        needCalculateSize = false;
         if (items.empty()) {
-            SetWidth(100);
-            SetHeight(style.itemHeight);
-            return;
+            return Size2Df(100.0f, style.itemHeight);
         }
 
         if (orientation == MenuOrientation::Horizontal) {
-            // Horizontal layout calculation (unchanged)
+            // Horizontal (menubar) layout calculation
             int totalWidth = 0;
             int maxHeight = style.itemHeight;
 
@@ -367,10 +411,10 @@ namespace UltraCanvas {
                 ctx->SetFontStyle(item.font.value_or(style.font));
                 totalWidth += CalculateItemWidth(item) + style.paddingLeft + style.paddingRight;
             }
-            if (GetWidth() <= 0) {
-                SetWidth(totalWidth);
-            }
-            SetHeight(maxHeight);
+            // Honor an explicit CSS width (menubar is created with a fixed width);
+            // otherwise size to the summed item widths.
+            float width = !size.width.isAuto() ? dimPx(size.width) : (float)totalWidth;
+            return Size2Df(width, (float)maxHeight);
 
         } else {
             // ============================================================
@@ -379,8 +423,6 @@ namespace UltraCanvas {
             // Menu item layout (left to right):
             // | paddingLeft | [checkbox] | [icon] | label | gap | [shortcut] | [arrow] | paddingRight |
             // ============================================================
-
-            auto ctx = GetRenderContext();
 
             // Column width accumulators - find MAX for each column across ALL items
             bool hasAnyCheckboxOrRadio = false;
@@ -470,18 +512,18 @@ namespace UltraCanvas {
             // Right padding
             totalWidth += style.paddingRight;
 
-            SetWidth(totalWidth);
+            float width = (float)totalWidth;
             if (style.minWidth > 0) {
-                SetWidth(std::max(GetWidth(), style.minWidth));
+                width = std::max(width, (float)style.minWidth);
             }
             if (style.maxWidth > 0) {
-                SetWidth(std::min(GetWidth(), style.maxWidth));
+                width = std::min(width, (float)style.maxWidth);
             }
-            SetHeight(totalHeight);
 
-            // Clamp to window bounds and add scrollbar if needed
-            ClampMenuToWindow();
-            ClampMenuToWindowHorizontal();
+            // Publish the FULL content height. The window-overflow clamp (and the
+            // scrollbar it triggers) is applied later in Arrange()/ClampMenuToWindow,
+            // which knows our resolved on-screen position.
+            return Size2Df(width, (float)totalHeight);
         }
     }
 
@@ -558,7 +600,7 @@ namespace UltraCanvas {
             labelLayout->SetWrap(TextWrap::WrapNone);
             labelLayout->SetEllipsize(item.ellipsize);
             labelLayout->SetExplicitWidth(labelMaxWidth);
-            ctx->SetCurrentPaint(textColor);
+            ctx->SetTextPaint(textColor);
             ctx->DrawTextLayout(*labelLayout, Point2Di(currentX, textY));
         }
 
@@ -580,7 +622,7 @@ namespace UltraCanvas {
 
     Rect2Di UltraCanvasMenu::GetItemBounds(int index) const {
         // Returns element-local coordinates (ctx is translated to element origin at render time)
-        Rect2Di bounds;
+        Rect2Di rect;
 
         if (orientation == MenuOrientation::Horizontal) {
             int currentX = 0;
@@ -591,10 +633,10 @@ namespace UltraCanvas {
                 }
             }
 
-            bounds.x = currentX;
-            bounds.y = 0;
-            bounds.width = CalculateItemWidth(items[index]) + style.paddingLeft + style.paddingRight;
-            bounds.height = style.itemHeight;
+            rect.x = currentX;
+            rect.y = 0;
+            rect.width = CalculateItemWidth(items[index]) + style.paddingLeft + style.paddingRight;
+            rect.height = style.itemHeight;
         } else {
             int currentY = -scrollOffsetPixels;
 
@@ -605,14 +647,14 @@ namespace UltraCanvas {
                 }
             }
 
-            bounds.x = 0;
-            bounds.y = currentY;
-            bounds.width = GetWidth();
-            bounds.height = (items[index].type == MenuItemType::Separator) ?
+            rect.x = 0;
+            rect.y = currentY;
+            rect.width = GetWidth();
+            rect.height = (items[index].type == MenuItemType::Separator) ?
                             style.separatorHeight : style.itemHeight;
         }
 
-        return bounds;
+        return rect;
     }
 
     int UltraCanvasMenu::CalculateItemWidth(const MenuItemData &item) const {
@@ -656,12 +698,12 @@ namespace UltraCanvas {
 
         if (orientation == MenuOrientation::Vertical) {
             // Position to the right of the item
-            submenuPos.x = GetXInWindow() + GetWidth() + style.submenuOffset;
+            submenuPos.x = GetXInWindow() + GetWidth();
             submenuPos.y = GetYInWindow() + GetItemY(itemIndex) - style.paddingTop;
         } else {
             // Position below the item
             submenuPos.x = GetXInWindow() + GetItemX(itemIndex);
-            submenuPos.y = GetYInWindow() + GetHeight() + style.submenuOffset;
+            submenuPos.y = GetYInWindow() + GetHeight();
         }
 
         // Adjust for window boundaries
@@ -669,13 +711,24 @@ namespace UltraCanvas {
         if (win) {
             int windowWidth = win->GetWidth();
             int windowHeight = win->GetHeight();
-            int submenuWidth = submenu.GetWidth();
-            int submenuHeight = submenu.GetHeight();
+
+            // Measure the submenu's content up-front so overflow flipping uses its
+            // real size. The submenu has no surface or layout yet (it isn't opened
+            // until below), so measure it against THIS menu's render context.
+            int submenuWidth = (int)submenu.finalBounds.width;
+            int submenuHeight = (int)submenu.finalBounds.height;
+            if (IRenderContext* rc = GetRenderContext()) {
+                rc->PushState();
+                Size2Df sz = submenu.MeasureMenuContent(rc);
+                rc->PopState();
+                submenuWidth = (int)sz.width;
+                submenuHeight = (int)sz.height;
+            }
 
             // Horizontal: flip to left side if overflows right edge
             if (submenuPos.x + submenuWidth > windowWidth) {
                 if (orientation == MenuOrientation::Vertical) {
-                    submenuPos.x = GetXInWindow() - submenuWidth - style.submenuOffset;
+                    submenuPos.x = GetXInWindow() - submenuWidth;
                 } else {
                     submenuPos.x = windowWidth - submenuWidth;
                 }
@@ -693,13 +746,15 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMenu::RenderSeparator(const Rect2Di &bounds, IRenderContext *ctx) {
+        // bounds is element-local (see GetItemBounds); rendering happens in the
+        // ctx translated to element origin, so use bounds, not finalBounds.
         int centerY = bounds.y + bounds.height / 2;
         int startX = bounds.x + style.paddingLeft;
         int endX = bounds.x + bounds.width - style.paddingRight;
 
         ctx->SetStrokePaint(style.separatorColor);
         ctx->SetStrokeWidth(1.0f);
-        ctx->DrawLine(Point2Df(startX, centerY), Point2Df(endX, centerY));
+        ctx->DrawLine(Point2Dd(startX, centerY), Point2Dd(endX, centerY));
     }
 
     void UltraCanvasMenu::RenderHeader(const MenuItemData &item, const Rect2Di &bounds, IRenderContext *ctx) {
@@ -727,14 +782,14 @@ namespace UltraCanvas {
 
             if (item.type == MenuItemType::Checkbox) {
                 // Draw checkmark
-                Point2Df p1(position.x + 3, position.y + style.iconSize / 2);
-                Point2Df p2(position.x + style.iconSize / 2, position.y + style.iconSize - 3);
-                Point2Df p3(position.x + style.iconSize - 3, position.y + 3);
+                Point2Dd p1(position.x + 3, position.y + style.iconSize / 2);
+                Point2Dd p2(position.x + style.iconSize / 2, position.y + style.iconSize - 3);
+                Point2Dd p3(position.x + style.iconSize - 3, position.y + 3);
                 ctx->DrawLine(p1, p2);
                 ctx->DrawLine(p2, p3);
             } else {
                 // Draw radio dot
-                Point2Df center = {position.x + static_cast<double>(style.iconSize) / 2.0,
+                Point2Dd center = {position.x + static_cast<double>(style.iconSize) / 2.0,
                                     position.y + static_cast<double>(style.iconSize) / 2.0};
                 ctx->DrawCircle(center, static_cast<double>(style.iconSize) / 4.0);
             }
@@ -764,7 +819,7 @@ namespace UltraCanvas {
 
     void UltraCanvasMenu::RenderIcon(const std::string &iconPath, const Point2Di &position, IRenderContext *ctx) {
         // Would implement icon rendering based on file type
-        ctx->DrawImage(iconPath, Rect2Df(position.x, position.y, style.iconSize, style.iconSize), ImageFitMode::Contain);
+        ctx->DrawImage(iconPath, Rect2Dd(position.x, position.y, style.iconSize, style.iconSize), ImageFitMode::Contain);
     }
 
 
@@ -772,8 +827,8 @@ namespace UltraCanvas {
         // Draw in element-local coordinates (ctx is translated to element origin)
         Rect2Di bounds = GetLocalBounds();
         ctx->SetStrokePaint(style.shadowColor);
-        ctx->DrawRectangle(Rect2Df(style.shadowOffset.x, style.shadowOffset.y, bounds.width,
-                           bounds.height));
+        ctx->DrawRectangle(Rect2Dd(style.shadowOffset.x, style.shadowOffset.y, finalBounds.width,
+                           finalBounds.height));
     }
 
     int UltraCanvasMenu::GetItemUnderPointer(const UCEvent & ev) const {
@@ -833,7 +888,7 @@ namespace UltraCanvas {
         } else {
             CloseAllSubmenus();
         }
-        needCalculateSize = true;
+        InvalidateLayout();
         scrollOffsetPixels = 0;
         needsScrollbar = false;
         if (onMenuClosed) onMenuClosed();
@@ -1171,6 +1226,13 @@ namespace UltraCanvas {
         };
     }
 
+    // Post-layout vertical clamp. The engine has already placed us at our requested
+    // position with our full measured height; here we flip above / shrink + add a
+    // scrollbar when we'd run off the bottom of the window. We mutate finalBounds
+    // directly (frame-local) rather than calling SetElementSize/SetElementAbsolutePosition
+    // — those would invalidate layout and re-run this every frame. Because Arrange()
+    // re-derives the full size from the measure pass each time, recomputing the clamp here
+    // is stable and survives window resizes.
     void UltraCanvasMenu::ClampMenuToWindow() {
         if (orientation != MenuOrientation::Vertical) return;
 
@@ -1178,8 +1240,8 @@ namespace UltraCanvas {
         if (!win) return;
 
         int windowHeight = win->GetHeight();
-        int menuY = GetYInWindow();
-        int fullHeight = GetHeight();
+        int menuY = (int)finalBounds.y;
+        int fullHeight = (int)finalBounds.height;
 
         totalContentHeight = fullHeight;
 
@@ -1193,7 +1255,7 @@ namespace UltraCanvas {
             clampedMenuHeight = fullHeight;
         } else if (fullHeight <= spaceAbove) {
             // Flip above
-            SetPosition(GetX(), menuY - fullHeight);
+            finalBounds.y = menuY - fullHeight;
             needsScrollbar = false;
             clampedMenuHeight = fullHeight;
         } else {
@@ -1203,10 +1265,10 @@ namespace UltraCanvas {
             needsScrollbar = true;
 
             if (spaceAbove > spaceBelow) {
-                SetPosition(GetX(), menuY - clampedMenuHeight);
+                finalBounds.y = menuY - clampedMenuHeight;
             }
 
-            SetHeight(clampedMenuHeight);
+            finalBounds.height = clampedMenuHeight;
 
             if (!menuScrollbar) CreateMenuScrollbar();
             menuScrollbar->SetContentSize(totalContentHeight);
@@ -1221,13 +1283,13 @@ namespace UltraCanvas {
         if (!win) return;
 
         int windowWidth = win->GetWidth();
-        int menuX = GetXInWindow();
-        int menuWidth = GetWidth();
+        int menuX = (int)finalBounds.x;
+        int menuWidth = (int)finalBounds.width;
 
         if (menuX + menuWidth > windowWidth) {
             int newX = windowWidth - menuWidth;
             if (newX < 0) newX = 0;
-            SetPosition(newX, GetY());
+            finalBounds.x = newX;
         }
     }
 
@@ -1306,34 +1368,34 @@ namespace UltraCanvas {
 
     void UltraCanvasMenu::AddItem(const MenuItemData &item) {
         items.push_back(item);
-        needCalculateSize = true;
+        InvalidateLayout();
     }
 
     void UltraCanvasMenu::InsertItem(int index, const MenuItemData &item) {
         if (index >= 0 && index <= static_cast<int>(items.size())) {
             items.insert(items.begin() + index, item);
-            needCalculateSize = true;
+            InvalidateLayout();
         }
     }
 
     void UltraCanvasMenu::RemoveItem(int index) {
         if (index >= 0 && index < static_cast<int>(items.size())) {
             items.erase(items.begin() + index);
-            needCalculateSize = true;
+            InvalidateLayout();
         }
     }
 
     void UltraCanvasMenu::UpdateItem(int index, const MenuItemData &item) {
         if (index >= 0 && index < static_cast<int>(items.size())) {
             items[index] = item;
-            needCalculateSize = true;
+            InvalidateLayout();
         }
     }
 
     void UltraCanvasMenu::Clear() {
         items.clear();
         CloseAllSubmenus();
-        needCalculateSize = true;
+        InvalidateLayout();
     }
 
     MenuItemData *UltraCanvasMenu::GetItem(int index) {

@@ -12,7 +12,6 @@
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
-#include "UltraCanvasBoxLayout.h"
 #include "UltraCanvasEvent.h"
 #include <string>
 #include <vector>

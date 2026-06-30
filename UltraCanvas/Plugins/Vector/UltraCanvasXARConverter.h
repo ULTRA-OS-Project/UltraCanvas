@@ -478,7 +478,7 @@ namespace UltraCanvas {
 
         namespace XARCoordUtils {
             // Convert point to XAR millipoints
-            inline XARCoord ToXARCoord(const Point2Df& point) {
+            inline XARCoord ToXARCoord(const Point2Dd& point) {
                 return XARCoord{
                         static_cast<int32_t>(point.x * XAR_MILLIPOINTS_PER_POINT),
                         static_cast<int32_t>(point.y * XAR_MILLIPOINTS_PER_POINT)
@@ -486,8 +486,8 @@ namespace UltraCanvas {
             }
 
             // Convert XAR millipoints to point
-            inline Point2Df FromXARCoord(const XARCoord& coord) {
-                return Point2Df{
+            inline Point2Dd FromXARCoord(const XARCoord& coord) {
+                return Point2Dd{
                         static_cast<float>(coord.x) / XAR_MILLIPOINTS_PER_POINT,
                         static_cast<float>(coord.y) / XAR_MILLIPOINTS_PER_POINT
                 };

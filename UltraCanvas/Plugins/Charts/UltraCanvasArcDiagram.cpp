@@ -25,7 +25,7 @@ namespace UltraCanvas {
 
     UltraCanvasArcDiagram::UltraCanvasArcDiagram(
             const std::string& id,
-            long x, long y, long w, long h)
+            float x, float y, float w, float h)
             : UltraCanvasUIElement(id, x, y, w, h)
     {}
 
@@ -382,7 +382,7 @@ namespace UltraCanvas {
 
         ctx->SetStrokePaint(style.baselineColor);
         ctx->SetStrokeWidth(style.baselineWidth);
-        ctx->DrawLine(Point2Df(x1, y1), Point2Df(x2, y2));
+        ctx->DrawLine(Point2Dd(x1, y1), Point2Dd(x2, y2));
 
         // P5 — draw axis arrowhead at the extended tip
         if (style.showAxisArrow) {
@@ -535,7 +535,7 @@ namespace UltraCanvas {
                 ly = static_cast<float>(apexY - th * 0.5);
             }
             ctx->DrawText(apexText,
-                          Point2Df(static_cast<float>(apexX - tw * 0.5), ly));
+                          Point2Dd(static_cast<float>(apexX - tw * 0.5), ly));
         }
     }
 
@@ -612,7 +612,7 @@ namespace UltraCanvas {
             float gap = (style.arcValueDisplay != ArcValueDisplay::None)
                         ? style.arcValueLabelOffset : 2.0f;
             float ly = above ? (apexY - th - gap) : (apexY + gap);
-            ctx->DrawText(apexText, Point2Df(cx - tw * 0.5f, ly));
+            ctx->DrawText(apexText, Point2Dd(cx - tw * 0.5f, ly));
         }
     }
 
@@ -756,7 +756,7 @@ namespace UltraCanvas {
                 ctx->PushState();
                 ctx->Translate(cx, cy + r + style.labelMargin);
                 ctx->Rotate(1.5707963f);    // +90° (text runs downward)
-                ctx->DrawText(node.label, Point2Df(0.0f, 0.0f));
+                ctx->DrawText(node.label, Point2Dd(0.0f, 0.0f));
                 ctx->PopState();
                 continue;
             }
@@ -774,13 +774,13 @@ namespace UltraCanvas {
                 float ly = labelBelow
                            ? cy + r + style.labelMargin
                            : cy - r - style.labelMargin - th;
-                ctx->DrawText(node.label, Point2Df(lx, ly));
+                ctx->DrawText(node.label, Point2Dd(lx, ly));
             } else {
                 float lx = labelBelow
                            ? cx + r + style.labelMargin
                            : cx - r - style.labelMargin - tw;
                 float ly = pos - th * 0.5f;
-                ctx->DrawText(node.label, Point2Df(lx, ly));
+                ctx->DrawText(node.label, Point2Dd(lx, ly));
             }
         }
     }
@@ -802,17 +802,17 @@ namespace UltraCanvas {
         for (const auto& entry : style.legendEntries) {
             // Swatch
             ctx->SetFillPaint(entry.color);
-            ctx->FillRectangle(Rect2Df(x, y, swatchW, swatchH));
+            ctx->FillRectangle(Rect2Dd(x, y, swatchW, swatchH));
             ctx->SetStrokePaint(Color(120, 120, 120, 180));
             ctx->SetStrokeWidth(0.5f);
-            ctx->DrawRectangle(Rect2Df(x, y, swatchW, swatchH));
+            ctx->DrawRectangle(Rect2Dd(x, y, swatchW, swatchH));
 
             // Label
             ctx->SetTextPaint(style.legendTextColor);
             auto dims = ctx->GetTextLineDimensions(entry.label);
             double tw = dims.width, th = dims.height;
             ctx->DrawText(entry.label,
-                          Point2Df(x + swatchW + gap, y + swatchH * 0.5f - th * 0.5f));
+                          Point2Dd(x + swatchW + gap, y + swatchH * 0.5f - th * 0.5f));
 
             y += rowH;
         }
@@ -837,17 +837,17 @@ namespace UltraCanvas {
         if (by < 0)                  by = tooltipY + 14.0f;
 
         ctx->SetFillPaint(style.tooltipBackground);
-        ctx->FillRectangle(Rect2Df(bx, by, boxW, boxH));
+        ctx->FillRectangle(Rect2Dd(bx, by, boxW, boxH));
 
         ctx->SetTextPaint(style.tooltipText);
-        ctx->DrawText(tooltipText, Point2Df(bx + pad, by + pad));
+        ctx->DrawText(tooltipText, Point2Dd(bx + pad, by + pad));
     }
 
 // ─────────────────────────────────────────────
 // RENDER
 // ─────────────────────────────────────────────
 
-    void UltraCanvasArcDiagram::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasArcDiagram::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         if (nodes.empty()) return;
         if (needsLayout) {
             ComputeLayout();
@@ -934,8 +934,8 @@ namespace UltraCanvas {
         if (nodes.empty()) return false;
 
         auto bounds = GetLocalBounds();
-        float localX = static_cast<float>(event.pointer.x - bounds.x);
-        float localY = static_cast<float>(event.pointer.y - bounds.y);
+        float localX = static_cast<float>(event.pointer.x - finalBounds.x);
+        float localY = static_cast<float>(event.pointer.y - finalBounds.y);
 
         switch (event.type) {
 
@@ -1049,7 +1049,7 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasArcDiagram> CreateArcDiagram(
             const std::string& id,
-            long x, long y, long width, long height)
+            float x, float y, float width, float height)
     {
         return std::make_shared<UltraCanvasArcDiagram>(id, x, y, width, height);
     }

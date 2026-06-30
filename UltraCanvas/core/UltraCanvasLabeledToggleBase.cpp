@@ -1,18 +1,20 @@
 // UltraCanvasLabeledToggleBase.cpp
 // Shared layout/event/label/focus plumbing for checkbox, radio, and switch.
-// Version: 1.0.0
-// Last Modified: 2026-05-07
+// Version: 1.1.0
+// Last Modified: 2026-06-02
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasLabeledToggleBase.h"
 #include "UltraCanvasApplication.h"
+#include "CSSLayout/LayoutUtils.h"
 #include <algorithm>
+#include <optional>
 
 namespace UltraCanvas {
 
     UltraCanvasLabeledToggleBase::UltraCanvasLabeledToggleBase(
             const std::string& identifier,
-            long x, long y, long w, long h,
+            float x, float y, float w, float h,
             const std::string& labelText)
             : UltraCanvasUIElement(identifier, x, y, w, h), text(labelText) {}
 
@@ -41,7 +43,7 @@ namespace UltraCanvas {
 
     void UltraCanvasLabeledToggleBase::CalculateLayout(IRenderContext* ctx) {
         const float padding = 4.0f;
-        Size2Df indicatorSize = GetIndicatorSize();
+        Size2Dd indicatorSize = GetIndicatorSize();
 
         indicatorRect.x = padding;
         indicatorRect.y = (GetHeight() - indicatorSize.height) / 2.0f;
@@ -63,21 +65,22 @@ namespace UltraCanvas {
         layoutDirty = false;
     }
 
-    void UltraCanvasLabeledToggleBase::CalculateAutoSize(IRenderContext* ctx) {
+    Size2Df UltraCanvasLabeledToggleBase::MeasureContentSize(IRenderContext* ctx) const {
         const auto& base = GetBaseVisualStyle();
         Size2Df indicatorSize = GetIndicatorSize();
 
         Size2Di textSize{0, 0};
-        if (!text.empty()) {
+        if (!text.empty() && ctx) {
             ctx->SetFontFace(base.fontFamily, base.fontWeight, FontSlant::Normal);
             ctx->SetFontSize(base.fontSize);
             textSize = ctx->GetTextLineDimensions(text);
         }
 
-        double totalWidth = 8.0 + indicatorSize.width + (text.empty() ? 0 : base.textSpacing + textSize.width) + 8.0;
-        double totalHeight = std::max(indicatorSize.height + 8.0, static_cast<double>(textSize.height + 8));
+        // Natural box = 8px inset each side + indicator + (spacing + label) when present.
+        float totalWidth = 8.0 + indicatorSize.width + (text.empty() ? 0 : base.textSpacing + textSize.width) + 8.0;
+        float totalHeight = std::max(indicatorSize.height + 8, static_cast<float>(textSize.height + 8));
 
-        SetSize(static_cast<int>(totalWidth), static_cast<int>(totalHeight));
+        return Size2Df(totalWidth, totalHeight);
     }
 
     void UltraCanvasLabeledToggleBase::DrawLabel(IRenderContext* ctx) {
@@ -90,13 +93,13 @@ namespace UltraCanvas {
         ctx->SetFontSize(base.fontSize);
         ctx->SetTextPaint(color);
 
-        double textY = textRect.y + (textRect.height - ctx->GetTextLineHeight(text)) / 2.0f;
-        ctx->DrawText(text, Point2Df(textRect.x, textY));
+        float textY = textRect.y + (textRect.height - ctx->GetTextLineHeight(text)) / 2.0f;
+        ctx->DrawText(text, Point2Dd(textRect.x, textY));
     }
 
     void UltraCanvasLabeledToggleBase::DrawFocusRingShape(IRenderContext* ctx) {
         const auto& base = GetBaseVisualStyle();
-        Rect2Df focusRect(
+        Rect2Dd focusRect(
                 indicatorRect.x - base.focusRingWidth,
                 indicatorRect.y - base.focusRingWidth,
                 indicatorRect.width + 2 * base.focusRingWidth,
@@ -105,16 +108,54 @@ namespace UltraCanvas {
                                  base.focusRingWidth, base.focusRingColor, 0.0f);
     }
 
-    void UltraCanvasLabeledToggleBase::UpdateGeometry(IRenderContext* ctx) {
-        if (layoutDirty) {
-            ctx->PushState();
-            if (autoSize) CalculateAutoSize(ctx);
-            CalculateLayout(ctx);
-            ctx->PopState();
+    Size2Df UltraCanvasLabeledToggleBase::MeasureOwnContent(std::optional<float> /*definiteContentWidth*/,
+                                                            const CSSLayout::LayoutContext& /*ctx*/) {
+        IRenderContext* rc = GetRenderContext();
+        if (!rc) {
+            // No surface to measure the label against yet — report no own content;
+            // the block path resolves from size.width/height or the constraints.
+            return Size2Df(0.f, 0.f);
         }
+        // Content box: indicator + spacing + label (their insets are baked in;
+        // these widgets carry no CSS padding/border). The block layout applies
+        // size.*/constraints — leave size = Auto for content sizing.
+        rc->PushState();
+        Size2Df content = MeasureContentSize(rc);
+        rc->PopState();
+        return Size2Df((float)content.width, (float)content.height);
     }
 
-    void UltraCanvasLabeledToggleBase::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasLabeledToggleBase::ComputeIntrinsicSizes(const CSSLayout::LayoutContext& /*ctx*/) {
+        IRenderContext* rc = GetRenderContext();
+        if (!rc) {
+            intrinsic.minContentWidth = intrinsic.maxContentWidth = 0;
+            intrinsic.minContentHeight = intrinsic.maxContentHeight = 0;
+            return;
+        }
+
+        const float padH = GetTotalPaddingHorizontal() + GetTotalBorderHorizontal();
+        const float padV = GetTotalPaddingVertical()   + GetTotalBorderVertical();
+
+        rc->PushState();
+        Size2Dd content = MeasureContentSize(rc);
+        rc->PopState();
+
+        // No wrapping — min-content == max-content. Publish in border-box units.
+        intrinsic.valid = true;
+        intrinsic.maxContentWidth  = (float)content.width  + padH;
+        intrinsic.minContentWidth  = (float)content.width  + padH;
+        intrinsic.maxContentHeight = (float)content.height + padV;
+        intrinsic.minContentHeight = (float)content.height + padV;
+    }
+
+    void UltraCanvasLabeledToggleBase::Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) {
+        UltraCanvasUIElement::Arrange(finalRect, ctx);   // sets finalBounds + damage
+        // Position indicator/label/totalBounds within the resolved bounds (local coords).
+        CalculateLayout(GetRenderContext());
+        layoutDirty = false;
+    }
+
+    void UltraCanvasLabeledToggleBase::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         ctx->PushState();
         DrawIndicator(ctx);
         if (!text.empty()) DrawLabel(ctx);

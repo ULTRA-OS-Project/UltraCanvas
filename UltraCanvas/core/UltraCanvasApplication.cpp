@@ -96,7 +96,7 @@ namespace UltraCanvas {
             }
 
             // Auto-set default window icon if available
-            std::string iconPath = NormalizePath(GetResourcesDir() + UC_DEFAULT_ICON_SUBPATH);
+            std::string iconPath = GetDefaultIcon();
             if (std::filesystem::exists(iconPath)) {
                 SetDefaultWindowIcon(iconPath);
                 debugOutput << "UltraCanvas: Default window icon set to: " << iconPath << std::endl;
@@ -161,20 +161,6 @@ namespace UltraCanvas {
 //                    debugOutput << "window w=" << window << " nativeh=" << window->GetNativeHandle() << " visible=" << window->IsVisible() << " needredraw=" << window->IsNeedsRedraw() << " ctx=" << window->GetRenderContext() << std::endl;
                     if (window->IsVisible()) {
                         window->UpdateAndRender();
-//                        auto ctx = window->GetRenderContext();
-//                        if (window->IsNeedsResize()) {
-//                            window->DoResize();
-//                        }
-//                        if (ctx) {
-//                            if (window->IsNeedsUpdateGeometry() || window->IsNeedsRedraw()) {
-//                                window->UpdateGeometry(ctx);
-//                            }
-//                            if (window->IsNeedsRedraw()) {
-////                                debugOutput << "Redraw window w=" << window << " nativeh=" << window->GetNativeHandle() << std::endl;
-//                                window->Render(ctx);
-//                                window->Flush();
-//                            }
-//                        }
                     }
 
                 }
@@ -287,6 +273,10 @@ namespace UltraCanvas {
                 break;
             }
             DispatchEvent(event);
+
+            if (event.type == UCEventType::MouseUp && capturedMouseButtonDown == event.button) {
+                ReleaseMouse();
+            }
         }
     }
 
@@ -343,7 +333,7 @@ namespace UltraCanvas {
 
     void UltraCanvasApplicationBase::CleanupElementReferences(UltraCanvasUIElement* elem) {
         if (capturedElement == elem) {
-            ReleaseMouse(elem);
+            ReleaseMouse();
         }
         if (hoveredElement == elem) {
             hoveredElement = nullptr;
@@ -453,27 +443,6 @@ namespace UltraCanvas {
             return focusedWindow->GetFocusedElement();
         }
         return nullptr;
-    }
-
-    bool UltraCanvasApplicationBase::IsDoubleClick(const UCEvent &event) {
-        auto now = std::chrono::steady_clock::now();
-        auto timeDiff = std::chrono::duration<float>(now - lastClickTime).count();
-
-        bool isDoubleClick = false;
-        if (timeDiff <= DOUBLE_CLICK_TIME) {
-            int dx = event.pointer.x - lastMouseEvent.pointer.x;
-            int dy = event.pointer.y - lastMouseEvent.pointer.y;
-            int distance = static_cast<int>(std::sqrt(dx * dx + dy * dy));
-
-            if (distance <= DOUBLE_CLICK_DISTANCE) {
-                isDoubleClick = true;
-            }
-        }
-
-        lastMouseEvent = event;
-        lastClickTime = now;
-
-        return isDoubleClick;
     }
 
     void UltraCanvasApplicationBase::DispatchEvent(const UCEvent& event) {
@@ -795,9 +764,9 @@ namespace UltraCanvas {
             debugOutput << "UltraCanvasApplicationBase::DispatchEventToElement window == null for elem=" << elem << std::ends;
             return false;
         }
-        if (event.type != UCEventType::MouseMove) {
-            debugOutput << "DispatchEventToElement ev=" << event.ToString() << " target elem=" << elem << " target win=" << elem->GetWindow() << " focused=" << focusedWindow << std::endl;
-        }
+//        if (event.type != UCEventType::MouseMove) {
+//            debugOutput << "DispatchEventToElement ev=" << event.ToString() << " target elem=" << elem << " target win=" << elem->GetWindow() << " focused=" << focusedWindow << std::endl;
+//        }
         if (event.IsMouseEvent() || event.IsDragEvent() || event.type == UCEventType::MouseEnter) {
             event.pointer = elem->MapToLocal(event.pointerWindow, nullptr);
         }
@@ -812,15 +781,17 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasApplicationBase::CaptureMouse(UltraCanvasUIElement *element) {
-        CaptureMouseNative();
+        capturedMouseButtonDown = currentEvent.button;
         capturedElement = element;
+        CaptureMouseNative();
     }
 
-    void UltraCanvasApplicationBase::ReleaseMouse(UltraCanvasUIElement *element) {
-        if (element && element == capturedElement) {
-            capturedElement = nullptr;
+    void UltraCanvasApplicationBase::ReleaseMouse() {
+        if (capturedElement) {
+            ReleaseMouseNative();
         }
-        ReleaseMouseNative();
+        capturedElement = nullptr;
+        capturedMouseButtonDown = UCMouseButton::NoneButton;
     }
 
     // ===== TIMER SYSTEM =====

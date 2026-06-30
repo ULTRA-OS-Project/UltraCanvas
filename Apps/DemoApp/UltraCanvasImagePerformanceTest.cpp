@@ -1,14 +1,14 @@
 // Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp
 // Bitmap codec comparison benchmark: file size / encode time / decode time per format
-// Version: 2.5.7
-// Last Modified: 2026-05-04
+// Version: 2.5.8
+// Last Modified: 2026-06-01
 // Author: UltraCanvas Framework
 //
 // ================================================================================
 // VERSION 2.5.7 - LEGEND ROW CENTRED HORIZONTALLY
 // ================================================================================
 // The title is horizontally centred but the legend was previously left-
-// aligned at bounds.x + leftMargin, leaving a visual mismatch. This
+// aligned at finalBounds.x + leftMargin, leaving a visual mismatch. This
 // release measures the total legend width up front (sum of swatch + gap
 // + label, plus inter-item gaps) and starts drawing from a centred X so
 // the legend row lines up with the title above it.
@@ -214,20 +214,22 @@
 //       (via UCImage::Save -> libvips)
 //   QOI
 //       (via bundled qoi.h / qoi_encode from libspecific/Cairo/qoi.h;
-//        QOI_IMPLEMENTATION is already provided by VipsQOILoader.cpp,
-//        so we only include the header and link against those symbols)
+//        QOI_IMPLEMENTATION is provided by the standalone libspecific/Cairo/
+//        qoi.cpp, so we only include the header and link against those symbols)
 //
 // TGA is not benchmarked: neither UCImageSaveFormat::TGA nor a bundled TGA
 // encoder is available, and adding either would require core changes.
 // ================================================================================
 
+#include "UltraCanvasContainer.h"
+#include "UltraCanvasSpacer.h"
+#include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
-#include "UltraCanvasBoxLayout.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasModalDialog.h"   // for FileFilter
@@ -236,8 +238,9 @@
 #include "UltraCanvasDebug.h"
 
 // QOI third-party header. IMPORTANT: Do NOT define QOI_IMPLEMENTATION here;
-// it is already defined in libspecific/Cairo/VipsQOILoader.cpp, which provides
-// the qoi_encode / qoi_decode symbols for the whole program via the linker.
+// it is already defined in the standalone libspecific/Cairo/qoi.cpp, which
+// provides the qoi_encode / qoi_decode symbols for the whole program via the
+// linker.
 #include "../../UltraCanvas/libspecific/Cairo/qoi.h"
 
 #ifdef HAS_LIBVIPS
@@ -692,9 +695,8 @@ namespace UltraCanvas {
 // ============================================================================
     class CodecComparisonChartElement : public UltraCanvasUIElement {
     public:
-        CodecComparisonChartElement(const std::string& identifier,
-                                    long x, long y, long w, long h)
-                : UltraCanvasUIElement(identifier, x, y, w, h) {}
+        CodecComparisonChartElement(const std::string& identifier)
+                : UltraCanvasUIElement(identifier) {}
 
         void SetCodecNames(const std::vector<std::string>& names) {
             codecNames = names;
@@ -776,14 +778,14 @@ namespace UltraCanvas {
             return UltraCanvasUIElement::OnEvent(event);
         }
 
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override {
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override {
             if (!ctx || !IsVisible()) return;
             Rect2Di bounds = GetLocalBounds();
-            if (bounds.width < 40 || bounds.height < 40) return;
+            if (finalBounds.width < 40 || finalBounds.height < 40) return;
 
             // Fire geometry-changed callback if bounds have shifted since the last paint.
-            if (bounds.x != lastRenderBounds.x || bounds.y != lastRenderBounds.y ||
-                bounds.width != lastRenderBounds.width || bounds.height != lastRenderBounds.height) {
+            if (finalBounds.x != lastRenderBounds.x || finalBounds.y != lastRenderBounds.y ||
+                finalBounds.width != lastRenderBounds.width || finalBounds.height != lastRenderBounds.height) {
                 lastRenderBounds = bounds;
                 if (onGeometryChanged) onGeometryChanged();
             }
@@ -933,10 +935,10 @@ namespace UltraCanvas {
             auto dims = ctx->GetTextLineDimensions(title);
             int tw = dims.width, th = dims.height;
 
-            const int titleRowTop = bounds.y + 4;
+            const int titleRowTop = finalBounds.y + 4;
             const int titleRowH   = th + 2;
             ctx->DrawText(title,
-                          Point2Df(bounds.x + (bounds.width - tw) / 2,
+                          Point2Dd(finalBounds.x + (finalBounds.width - tw) / 2,
                           titleRowTop + (titleRowH - th) / 2));
 
             // ---- Legend (lower row) ----
@@ -988,7 +990,7 @@ namespace UltraCanvas {
 
             // Pass 2 — draw, starting from the X that centres the row in the
             // chart bounds.
-            int swatchX = bounds.x + (bounds.width - totalLegendWidth) / 2;
+            int swatchX = finalBounds.x + (finalBounds.width - totalLegendWidth) / 2;
 
             for (int i = 0; i < 3; ++i) {
                 const auto& it = items[i];
@@ -1281,7 +1283,7 @@ namespace UltraCanvas {
                 int tw = dims.width, th = dims.height;
                 float cx = plot.x + (i + 0.5f) * groupWidth;
                 ctx->DrawText(codecNames[i],
-                              Point2Df(cx - tw / 2,
+                              Point2Dd(cx - tw / 2,
                               plot.y + plot.height + 4));
             }
         }
@@ -1378,8 +1380,8 @@ namespace UltraCanvas {
         root->SetBackgroundColor(Color(255, 255, 255, 255));
         root->SetPadding(12, 12, 12, 12);
 
-        auto mainLayout = CreateVBoxLayout(root.get());
-        mainLayout->SetSpacing(10);
+        root->layout.SetFlexColumn();
+        root->layout.SetFlexGap(10);
 
         // ========== TITLE ==========
         auto title = std::make_shared<UltraCanvasLabel>(
@@ -1388,7 +1390,7 @@ namespace UltraCanvas {
         title->SetFontSize(20);
         title->SetFontWeight(FontWeight::Bold);
         title->SetTextColor(Color(40, 80, 120, 255));
-        mainLayout->AddUIElement(title)->SetWidthMode(SizeMode::Fill)->SetFixedHeight(32);
+        root->AddChild(title); title->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         // ========== DESCRIPTION ==========
         auto desc = std::make_shared<UltraCanvasLabel>(
@@ -1400,9 +1402,8 @@ namespace UltraCanvas {
                 "re-encoded result at 1:1.");
         desc->SetFontSize(11);
         desc->SetWrap(TextWrap::WrapWord);
-        desc->SetAutoResize(true);
         desc->SetTextColor(Color(80, 80, 80, 255));
-        mainLayout->AddUIElement(desc)->SetWidthMode(SizeMode::Fill);
+        root->AddChild(desc); desc->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         // ========== TOOLBAR ==========
         auto toolbar = std::make_shared<UltraCanvasContainer>(
@@ -1411,9 +1412,9 @@ namespace UltraCanvas {
         toolbar->SetBorders(1.0f, Color(200, 210, 220, 255));
         toolbar->SetPadding(6, 6, 6, 6);
 
-        auto toolbarLayout = CreateHBoxLayout(toolbar.get());
-        toolbarLayout->SetSpacing(8);
-        toolbarLayout->SetDefaultCrossAxisAlignment(LayoutAlignment::Center);
+        toolbar->layout.SetFlexRow();
+        toolbar->layout.SetFlexGap(8);
+        toolbar->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
         state->chooseBtn = std::make_shared<UltraCanvasButton>(
                 "PerfChooseBtn", 0, 0, 160, 30);
@@ -1433,27 +1434,28 @@ namespace UltraCanvas {
         state->infoLabel->SetFontSize(11);
         state->infoLabel->SetTextColor(Color(60, 60, 60, 255));
 
-        toolbarLayout->AddUIElement(state->chooseBtn);
-        toolbarLayout->AddSpacing(8);
-        toolbarLayout->AddUIElement(state->includeBmpCheckbox);
-        toolbarLayout->AddSpacing(8);
-        toolbarLayout->AddUIElement(state->infoLabel, 1);   // stretches
+        toolbar->AddChild(state->chooseBtn);
+        toolbar->AddSpacer(8);
+        toolbar->AddChild(state->includeBmpCheckbox);
+        toolbar->AddSpacer(8);
+        toolbar->AddChild(state->infoLabel); state->infoLabel->layoutItem.SetFlexGrow(1);   // stretches
 
-        mainLayout->AddUIElement(toolbar)->SetWidthMode(SizeMode::Fill)->SetFixedHeight(44);
+        root->AddChild(toolbar); toolbar->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         // ========== CHART AREA (fills remaining vertical space) ==========
         auto chartSection = std::make_shared<UltraCanvasContainer>(
                 "PerfChartSection", 0, 0, 0, 420);
         chartSection->SetBackgroundColor(Color(255, 255, 255, 255));
 
-        auto chartLayout = CreateVBoxLayout(chartSection.get());
-        chartLayout->SetSpacing(4);
+        chartSection->layout.SetFlexColumn();
+        chartSection->layout.SetFlexGap(4);
 
         state->chartElem = std::make_shared<CodecComparisonChartElement>(
-                "PerfChartElem", 0, 0, 0, 360);
+                "PerfChartElem");
         state->chartElem->SetCodecNames(state->codecNames);
         state->chartElem->SetThumbnailImages(state->thumbs);
-        chartLayout->AddUIElement(state->chartElem, 1)->SetWidthMode(SizeMode::Fill);
+        state->chartElem->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        chartSection->AddChild(state->chartElem);
 
         // Thumbnails row — use AddChild without layout manager.
         state->thumbsRow = std::make_shared<UltraCanvasContainer>(
@@ -1476,24 +1478,26 @@ namespace UltraCanvas {
             state->thumbsRow->AddChild(thumb);
         }
 
-        chartLayout->AddUIElement(state->thumbsRow)->SetWidthMode(SizeMode::Fill)->SetFixedHeight(56);
+        state->thumbsRow->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        chartSection->AddChild(state->thumbsRow);
 
-        mainLayout->AddUIElement(chartSection, 1)->SetWidthMode(SizeMode::Fill);
+        chartSection->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        root->AddChild(chartSection);
 
         // ========== STATUS ROW ==========
         auto statusRow = std::make_shared<UltraCanvasContainer>(
                 "PerfStatus", 0, 0, 0, 24);
         statusRow->SetBackgroundColor(Color(255, 255, 255, 255));
-        auto statusLayout = CreateHBoxLayout(statusRow.get());
+        statusRow->layout.SetFlexRow();
 
         state->statusLabel = std::make_shared<UltraCanvasLabel>(
                 "PerfStatusLabel", 0, 0, 0, 20);
         state->statusLabel->SetText("Click [Choose Image...] to pick a bitmap.");
         state->statusLabel->SetFontSize(11);
         state->statusLabel->SetTextColor(Color(60, 60, 60, 255));
-        statusLayout->AddUIElement(state->statusLabel, 1);
+        statusRow->AddChild(state->statusLabel); state->statusLabel->layoutItem.SetFlexGrow(1);
 
-        mainLayout->AddUIElement(statusRow)->SetWidthMode(SizeMode::Fill)->SetFixedHeight(24);
+        root->AddChild(statusRow); statusRow->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         // Position each active codec's thumbnail horizontally centered under
         // its bar group, and hide thumbnails for codecs that are not in the
@@ -1522,8 +1526,8 @@ namespace UltraCanvas {
                 if (!t) continue;
                 int centerXWin = state->chartElem->GetGroupCenterX(slot);
                 int thumbXRel = centerXWin - hostX - thumbW / 2;
-                t->SetPosition(thumbXRel, thumbYRel);
-                t->SetSize(thumbW, thumbH);
+                t->SetElementAbsolutePosition(Point2Df(thumbXRel, thumbYRel));
+                t->SetElementSize(Size2Df(thumbW, thumbH));
                 isActive[globalIdx] = true;
             }
             // Inactive thumbs: keep them hidden so they don't render off-grid.

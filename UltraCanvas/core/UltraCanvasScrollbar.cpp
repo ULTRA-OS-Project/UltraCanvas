@@ -1,7 +1,7 @@
 // core/UltraCanvasScrollbar.cpp
 // Platform-independent scrollbar component implementation
-// Version: 1.0.0
-// Last Modified: 2025-08-15
+// Version: 1.1.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasScrollbar.h"
@@ -11,10 +11,33 @@
 
 namespace UltraCanvas {
 
+// ===== APPLICATION-WIDE DEFAULT SCROLLBAR STYLE =====
+    namespace {
+        bool g_hasDefaultScrollbarStyle = false;
+        ScrollbarStyle g_defaultScrollbarStyle;
+    }
+
+    void SetDefaultScrollbarStyle(const ScrollbarStyle& style) {
+        g_defaultScrollbarStyle = style;
+        g_hasDefaultScrollbarStyle = true;
+    }
+
+    void ClearDefaultScrollbarStyle() {
+        g_hasDefaultScrollbarStyle = false;
+    }
+
+    bool HasDefaultScrollbarStyle() {
+        return g_hasDefaultScrollbarStyle;
+    }
+
+    ScrollbarStyle GetDefaultScrollbarStyleOr(const ScrollbarStyle& fallback) {
+        return g_hasDefaultScrollbarStyle ? g_defaultScrollbarStyle : fallback;
+    }
+
 // This file is intentionally minimal since most implementation
 // is in the header file using inline methods for better performance.
 // Additional platform-specific optimizations can be added here if needed.
-    UltraCanvasScrollbar::UltraCanvasScrollbar(const std::string& id, int x, int y, int w, int h,
+    UltraCanvasScrollbar::UltraCanvasScrollbar(const std::string& id, float x, float y, float w, float h,
                          ScrollbarOrientation orient)
             : UltraCanvasUIElement(id, x, y, w, h)
             , orientation(orient) {
@@ -56,8 +79,8 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
-    void UltraCanvasScrollbar::SetBounds(const Rect2Di& b) {
-        if (b != bounds) {
+    void UltraCanvasScrollbar::SetBounds(const Rect2Df& b) {
+        if (b != GetBounds()) {
             UltraCanvasUIElement::SetBounds(b);
             layoutDirty = true;
             RequestRedraw();
@@ -86,7 +109,7 @@ namespace UltraCanvas {
         return false;
     }
 
-    void UltraCanvasScrollbar::Render(IRenderContext *ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasScrollbar::Render(IRenderContext *ctx, const Rect2Df& dirtyRect) {
         if (!ctx || !ShouldBeVisible()) return;
 
         if (layoutDirty) {
@@ -127,8 +150,6 @@ namespace UltraCanvas {
     bool UltraCanvasScrollbar::OnEvent(const UCEvent &event) {
         if (IsDisabled() || !ShouldBeVisible()) return false;
 
-        UpdateGeometry(GetRenderContext());
-
         switch (event.type) {
             case UCEventType::MouseDown:
                 return HandleMouseDown(event);
@@ -152,7 +173,10 @@ namespace UltraCanvas {
 
     void UltraCanvasScrollbar::UpdateVerticalLayout(const Rect2Di &bounds) {
         if (style.arrowButtonSize > 0) {
-            // With arrow buttons
+            // With arrow buttons. Use the passed-in (local) bounds so the track,
+            // thumb and arrow rects share the same coordinate space the element is
+            // rendered in; using finalBounds here would place them at the element's
+            // absolute position and push them off-screen.
             upArrowRect = Rect2Di(bounds.x, bounds.y,
                                   bounds.width, style.arrowButtonSize);
             downArrowRect = Rect2Di(bounds.x, bounds.y + bounds.height - style.arrowButtonSize,
@@ -169,7 +193,10 @@ namespace UltraCanvas {
 
     void UltraCanvasScrollbar::UpdateHorizontalLayout(const Rect2Di &bounds) {
         if (style.arrowButtonSize > 0) {
-            // With arrow buttons
+            // With arrow buttons. Use the passed-in (local) bounds so the track,
+            // thumb and arrow rects share the same coordinate space the element is
+            // rendered in; using finalBounds here would place them at the element's
+            // absolute position and push them off-screen.
             upArrowRect = Rect2Di(bounds.x, bounds.y,
                                   style.arrowButtonSize, bounds.height);
             downArrowRect = Rect2Di(bounds.x + bounds.width - style.arrowButtonSize, bounds.y,
@@ -220,6 +247,14 @@ namespace UltraCanvas {
     void UltraCanvasScrollbar::RenderThumb(IRenderContext *ctx) {
         if (thumbRect.width <= 0 || thumbRect.height <= 0) return;
 
+        // Custom handle image (SVG/PNG) takes precedence over the solid thumb.
+        if (!style.thumbImagePath.empty()) {
+            ctx->DrawImage(style.thumbImagePath,
+                           Rect2Dd(thumbRect.x, thumbRect.y, thumbRect.width, thumbRect.height),
+                           style.thumbImageFit);
+            return;
+        }
+
         // Determine thumb color based on state
         Color thumbColor = style.thumbColor;
         if (interactionState.thumbPressed || interactionState.isDragging) {
@@ -257,30 +292,30 @@ namespace UltraCanvas {
         if (IsVertical()) {
             if (isUpOrLeft) {
                 // Up arrow
-                ctx->DrawLine(Point2Df(cx - arrowSize, cy + arrowSize / 2),
-                              Point2Df(cx, cy - arrowSize / 2));
-                ctx->DrawLine(Point2Df(cx, cy - arrowSize / 2),
-                              Point2Df(cx + arrowSize, cy + arrowSize / 2));
+                ctx->DrawLine(Point2Dd(cx - arrowSize, cy + arrowSize / 2),
+                              Point2Dd(cx, cy - arrowSize / 2));
+                ctx->DrawLine(Point2Dd(cx, cy - arrowSize / 2),
+                              Point2Dd(cx + arrowSize, cy + arrowSize / 2));
             } else {
                 // Down arrow
-                ctx->DrawLine(Point2Df(cx - arrowSize, cy - arrowSize / 2),
-                              Point2Df(cx, cy + arrowSize / 2));
-                ctx->DrawLine(Point2Df(cx, cy + arrowSize / 2),
-                              Point2Df(cx + arrowSize, cy - arrowSize / 2));
+                ctx->DrawLine(Point2Dd(cx - arrowSize, cy - arrowSize / 2),
+                              Point2Dd(cx, cy + arrowSize / 2));
+                ctx->DrawLine(Point2Dd(cx, cy + arrowSize / 2),
+                              Point2Dd(cx + arrowSize, cy - arrowSize / 2));
             }
         } else {
             if (isUpOrLeft) {
                 // Left arrow
-                ctx->DrawLine(Point2Df(cx + arrowSize / 2, cy - arrowSize),
-                              Point2Df(cx - arrowSize / 2, cy));
-                ctx->DrawLine(Point2Df(cx - arrowSize / 2, cy),
-                              Point2Df(cx + arrowSize / 2, cy + arrowSize));
+                ctx->DrawLine(Point2Dd(cx + arrowSize / 2, cy - arrowSize),
+                              Point2Dd(cx - arrowSize / 2, cy));
+                ctx->DrawLine(Point2Dd(cx - arrowSize / 2, cy),
+                              Point2Dd(cx + arrowSize / 2, cy + arrowSize));
             } else {
                 // Right arrow
-                ctx->DrawLine(Point2Df(cx - arrowSize / 2, cy - arrowSize),
-                              Point2Df(cx + arrowSize / 2, cy));
-                ctx->DrawLine(Point2Df(cx + arrowSize / 2, cy),
-                              Point2Df(cx - arrowSize / 2, cy + arrowSize));
+                ctx->DrawLine(Point2Dd(cx - arrowSize / 2, cy - arrowSize),
+                              Point2Dd(cx + arrowSize / 2, cy));
+                ctx->DrawLine(Point2Dd(cx + arrowSize / 2, cy),
+                              Point2Dd(cx - arrowSize / 2, cy + arrowSize));
             }
         }
     }
@@ -351,12 +386,6 @@ namespace UltraCanvas {
                               interactionState.upArrowPressed ||
                               interactionState.downArrowPressed ||
                               interactionState.trackPressed;
-
-        if (interactionState.isDragging) {
-            if (auto* app = UltraCanvasApplication::GetInstance()) {
-                app->ReleaseMouse(this);
-            }
-        }
 
         interactionState.isDragging = false;
         interactionState.thumbPressed = false;

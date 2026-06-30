@@ -152,7 +152,7 @@ namespace UltraCanvas {
         // ===== CONSTRUCTION =====
 
         UltraCanvasAdjacencyDiagram(const std::string& id,
-                                    long x, long y, long w, long h);
+                                    float x, float y, float w, float h);
 
         // ===== ROOM API =====
 
@@ -261,7 +261,7 @@ namespace UltraCanvas {
 
         // ===== RENDER & EVENTS =====
 
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         bool OnEvent(const UCEvent& event) override;
 
     private:
@@ -322,7 +322,7 @@ namespace UltraCanvas {
                               const Color& col) const;
 
         // Zone bounding box computation
-        Rect2Df ComputeZoneBounds(const AdjacencyZone& zone) const;
+        Rect2Dd ComputeZoneBounds(const AdjacencyZone& zone) const;
 
         // Hit testing
         int     HitTestRoom(float localX, float localY) const;
@@ -333,6 +333,6 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasAdjacencyDiagram> CreateAdjacencyDiagram(
             const std::string& id, long uid,
-            long x, long y, long width, long height);
+            float x, float y, float width, float height);
 
 } // namespace UltraCanvas

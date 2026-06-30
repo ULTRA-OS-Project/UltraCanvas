@@ -466,7 +466,7 @@ namespace UltraCanvas {
 
     // ===== WINDOW MANAGEMENT =====
     void UltraCanvasMacOSWindow::Show() {
-        if (!_created || visible) return;
+        if (!_created || _windowVisible) return;
 
         debugOutput << "UltraCanvas macOS: Showing window..." << std::endl;
         if (!UltraCanvasApplication::GetInstance()->IsRunning()) {
@@ -483,7 +483,7 @@ namespace UltraCanvas {
             if ([nsWindow isMiniaturized]) {
                 [nsWindow deminiaturize:nil];
             }
-            visible = true;
+            _windowVisible = true;
         }
 
         if (onWindowShow) {
@@ -493,13 +493,13 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMacOSWindow::Hide() {
-        if (!_created || !visible) return;
+        if (!_created || !_windowVisible) return;
 
         debugOutput << "UltraCanvas macOS: Hiding window..." << std::endl;
 
         @autoreleasepool {
             [nsWindow orderOut:nil];
-            visible = false;
+            _windowVisible = false;
         }
 
         if (onWindowHide) {

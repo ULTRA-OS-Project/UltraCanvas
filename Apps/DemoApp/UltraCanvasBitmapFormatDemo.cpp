@@ -1260,7 +1260,7 @@ namespace UltraCanvas {
         auto aboutDescCont = std::make_shared<UltraCanvasContainer>("AboutDescCont", 20, 56, 870, 96);
         aboutDescCont->SetPadding(0, 16, 8, 0);
 
-        auto aboutDesc = std::make_shared<UltraCanvasLabel>("AboutDesc", 0, 0, 850, 200);
+        auto aboutDesc = std::make_shared<UltraCanvasLabel>("AboutDesc");
         aboutDesc->SetText(info.aboutDescription);
         aboutDesc->SetFontSize(11);
         aboutDesc->SetTextColor(Color(71, 85, 105, 255));

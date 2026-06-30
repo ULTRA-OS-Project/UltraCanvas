@@ -259,7 +259,7 @@ namespace UltraCanvas {
             if (auto *color = std::get_if<Color>(&text.Style.Fill.value())) ctx->SetTextPaint(*color);
         } else ctx->SetTextPaint(Colors::Black);
 
-        Point2Df pos = text.Position;
+        Point2Dd pos = text.Position;
         for (const auto &span: text.Spans) {
             if (span.Position.has_value()) pos = span.Position.value();
             ctx->DrawText(span.Text, pos.x, pos.y);
@@ -270,7 +270,7 @@ namespace UltraCanvas {
     void VectorRenderer::RenderImage(const VectorImage &image) {
         if (!image.Source.empty())
             ctx->DrawImage(image.Source,
-                           Rect2Df(image.Bounds.x, image.Bounds.y, image.Bounds.width, image.Bounds.height),
+                           Rect2Dd(image.Bounds.x, image.Bounds.y, image.Bounds.width, image.Bounds.height),
                            ImageFitMode::Contain);
     }
 
@@ -289,7 +289,7 @@ namespace UltraCanvas {
         if (!ref) return;
         ctx->PushState();
         ctx->Translate(use.Position.x, use.Position.y);
-        Rect2Df rb = ref->GetBoundingBox();
+        Rect2Dd rb = ref->GetBoundingBox();
         if (use.Size.width > 0 && use.Size.height > 0 && rb.width > 0 && rb.height > 0)
             ctx->Scale(use.Size.width / rb.width, use.Size.height / rb.height);
         RenderElement(ctx, *ref);
@@ -329,12 +329,12 @@ namespace UltraCanvas {
         ctx->Transform(t.m[0][0], t.m[1][0], t.m[0][1], t.m[1][1], t.m[0][2], t.m[1][2]);
     }
 
-    void VectorRenderer::SetupGradient(const GradientData &gradient, const Rect2Df &bounds) {
+    void VectorRenderer::SetupGradient(const GradientData &gradient, const Rect2Dd &bounds) {
         if (auto *l = std::get_if<LinearGradientData>(&gradient)) SetupLinearGradient(*l, bounds);
         else if (auto *r = std::get_if<RadialGradientData>(&gradient)) SetupRadialGradient(*r, bounds);
     }
 
-    void VectorRenderer::SetupLinearGradient(const LinearGradientData &g, const Rect2Df &b) {
+    void VectorRenderer::SetupLinearGradient(const LinearGradientData &g, const Rect2Dd &b) {
         Gradient gr(GradientType::Linear);
         if (g.Units == GradientUnits::ObjectBoundingBox) {
             gr.startPoint = {b.x + g.Start.x * b.width, b.y + g.Start.y * b.height};
@@ -347,7 +347,7 @@ namespace UltraCanvas {
         ctx->SetFillGradient(gr);
     }
 
-    void VectorRenderer::SetupRadialGradient(const RadialGradientData &g, const Rect2Df &b) {
+    void VectorRenderer::SetupRadialGradient(const RadialGradientData &g, const Rect2Dd &b) {
         Gradient gr(GradientType::Radial);
         if (g.Units == GradientUnits::ObjectBoundingBox) {
             gr.startPoint = {b.x + g.Center.x * b.width, b.y + g.Center.y * b.height};
@@ -363,7 +363,7 @@ namespace UltraCanvas {
     }
 
     void VectorRenderer::BuildPath(const PathData &pathData) {
-        Point2Df cur{0, 0}, subStart{0, 0}, lastCtrl{0, 0};
+        Point2Dd cur{0, 0}, subStart{0, 0}, lastCtrl{0, 0};
         for (const auto &cmd: pathData.commands) {
             stats.PathCommandsProcessed++;
             switch (cmd.Type) {
@@ -457,14 +457,14 @@ namespace UltraCanvas {
         return e.Style.Visible && e.Style.Display && e.Style.Opacity > 0;
     }
 
-    bool VectorRenderer::IsInViewport(const Rect2Df &b) const {
+    bool VectorRenderer::IsInViewport(const Rect2Dd &b) const {
         if (options.ViewportBounds.width <= 0 || options.ViewportBounds.height <= 0) return true;
         return !(b.x + b.width < options.ViewportBounds.x || b.y + b.height < options.ViewportBounds.y ||
                  b.x > options.ViewportBounds.x + options.ViewportBounds.width ||
                  b.y > options.ViewportBounds.y + options.ViewportBounds.height);
     }
 
-    void VectorRenderer::RenderDebugBounds(const Rect2Df &b) {
+    void VectorRenderer::RenderDebugBounds(const Rect2Dd &b) {
         ctx->PushState();
         ctx->SetStrokePaint(options.DebugColor);
         ctx->SetStrokeWidth(1.0f);
@@ -474,12 +474,12 @@ namespace UltraCanvas {
 
     void VectorRenderer::ClearCaches() {}
 
-    bool HitTestElement(const VectorElement &e, const Point2Df &p) {
-        Rect2Df b = e.GetBoundingBox();
+    bool HitTestElement(const VectorElement &e, const Point2Dd &p) {
+        Rect2Dd b = e.GetBoundingBox();
         return p.x >= b.x && p.x <= b.x + b.width && p.y >= b.y && p.y <= b.y + b.height;
     }
 
-    std::vector<const VectorElement *> HitTestDocument(const VectorDocument &doc, const Point2Df &pt) {
+    std::vector<const VectorElement *> HitTestDocument(const VectorDocument &doc, const Point2Dd &pt) {
         std::vector<const VectorElement *> hits;
         std::function<void(const VectorGroup &)> test = [&](const VectorGroup &g) {
             for (auto it = g.Children.rbegin(); it != g.Children.rend(); ++it) {
@@ -492,6 +492,6 @@ namespace UltraCanvas {
         return hits;
     }
 
-    Rect2Df CalculateDocumentBounds(const VectorDocument &doc) { return doc.GetBoundingBox(); }
+    Rect2Dd CalculateDocumentBounds(const VectorDocument &doc) { return doc.GetBoundingBox(); }
 
 } // namespace UltraCanvas

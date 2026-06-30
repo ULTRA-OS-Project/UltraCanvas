@@ -1,7 +1,7 @@
 // include/UltraCanvasButton.h
 // Interactive button component with styling options
-// Version: 2.3.2
-// Last Modified: 2026-04-11
+// Version: 2.4.0
+// Last Modified: 2026-05-31
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -11,6 +11,7 @@
 #include "UltraCanvasEvent.h"
 #include <string>
 #include <functional>
+#include <vector>
 
 namespace UltraCanvas {
 
@@ -86,25 +87,31 @@ namespace UltraCanvas {
         Color disabledTextColor = Colors::TextDisabled;
 
         Color borderColor = Colors::ButtonShadow;
-        double borderWidth = 1.0f;
+        float borderWidth = 1.0f;
 
         // Text styling
         FontStyle fontStyle;
 
         std::string fontFamily;
-        double fontSize = 12.0f;
+        float fontSize = 12.0f;
         FontWeight fontWeight = FontWeight::Normal;
         TextAlignment textAlign = TextAlignment::Center;
 
         int iconSpacing = 4;  // Space between icon and text
-        double cornerRadius = 3.0f;
+        float cornerRadius = 3.0f;
 
         bool useIconAsMask = false;
+
+        // Optional vertical background gradient, drawn over the state background
+        // (top = stop position 0.0, bottom = stop position 1.0). Used for state
+        // indicators such as the "unsaved" marker on a save button. Leave empty
+        // to disable.
+        std::vector<GradientStop> backgroundGradient;
 
         // Effects
         bool hasShadow = false;
         Color shadowColor = Color(0, 0, 0, 64);
-        Point2Di shadowOffset = Point2Di(0, 0);
+        Point2Df shadowOffset = Point2Di(0, 0);
         // Split button style
         SplitButtonStyle splitStyle;
     };
@@ -124,21 +131,31 @@ namespace UltraCanvas {
         // State
         bool canToggled = false;
         bool canAcceptFocus = true;
-        bool autoresize = false;
 
         // Cached layout calculations
-        Rect2Di iconRect;
-        Rect2Di textRect;
-        Rect2Di secondaryTextRect;  // For split button secondary section
-        Rect2Di secondaryIconRect;  // For split button secondary icon (new)
-        Rect2Di primarySectionRect;  // Primary section bounds
-        Rect2Di secondarySectionRect;  // Secondary section bounds
+        Rect2Df iconRect;
+        Rect2Df textRect;
+        Rect2Df secondaryTextRect;  // For split button secondary section
+        Rect2Df secondaryIconRect;  // For split button secondary icon (new)
+        Rect2Df primarySectionRect;  // Primary section bounds
+        Rect2Df secondarySectionRect;  // Secondary section bounds
 
     public:
         // ===== CONSTRUCTOR =====
-        UltraCanvasButton(const std::string& identifier = "Button",
-                          long x = 0, long y = 0, long w = 100, long h = 30,
+        UltraCanvasButton(const std::string& identifier,
+                          float x, float y, float w, float h,
                           const std::string& buttonText = "Button");
+
+        UltraCanvasButton(const std::string& identifier,
+                          float w, float h,
+                          const std::string& buttonText = "Button")
+            : UltraCanvasButton(identifier, -1, -1, w, h, buttonText) {};
+
+        UltraCanvasButton(const std::string& identifier, const std::string& buttonText)
+            : UltraCanvasButton(identifier, -1, -1, -1, -1, buttonText) {};
+
+        explicit UltraCanvasButton(const std::string& buttonText = "")
+            : UltraCanvasButton("", -1, -1, -1, -1, buttonText) {};
 
         void SetCanToggled(bool tgl) {
             canToggled = tgl;
@@ -199,11 +216,6 @@ namespace UltraCanvas {
         void SetStyle(const ButtonStyle& newStyle);
         ButtonStyle& GetStyle() { return style; }
 
-        // ===== AUTO-RESIZE =====
-        void SetAutoResize(bool enable) { autoresize = enable; }
-        bool IsAutoResize() const { return autoresize; }
-        void AutoResize();
-
         void SetOnClick(std::function<void()> onClick_) {
             onClick = onClick_;
         };
@@ -218,8 +230,15 @@ namespace UltraCanvas {
         std::function<void()> onHoverLeave;
 
         // ===== OVERRIDES =====
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
-        void UpdateGeometry(IRenderContext *ctx) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
+
+        // CSS layout: publish the button's preferred content-box size from its
+        // text/icon/split content, and place the internal sub-rects in Arrange.
+        // The engine owns finalBounds; the button no longer resizes itself.
+        Size2Df MeasureOwnContent(std::optional<float> definiteContentWidth,
+                                  const CSSLayout::LayoutContext& ctx) override;
+        void ComputeIntrinsicSizes(const CSSLayout::LayoutContext& ctx) override;
+        void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
         bool OnEvent(const UCEvent& event) override;
         bool AcceptsFocus() const override { return canAcceptFocus; }
@@ -227,6 +246,9 @@ namespace UltraCanvas {
 
     protected:
         // ===== LAYOUT HELPERS =====
+        // Content-box size (text + primary icon + split secondary section),
+        // excluding padding/border. Used by MeasureOwnContent/ComputeIntrinsicSizes.
+        Size2Df MeasureContentSize(IRenderContext* rc) const;
         void CalculateLayout();
         void CalculateSplitLayout();
         bool IsPointInPrimarySection(int x, int y) const;
@@ -245,13 +267,13 @@ namespace UltraCanvas {
 
 // ===== FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasButton> CreateButton(
-            const std::string& identifier, long x, long y, long w, long h,
+            const std::string& identifier, float x, float y, float w, float h,
             const std::string& text = "Button") {
         return std::make_shared<UltraCanvasButton>(identifier, x, y, w, h, text);
     }
 
     inline std::shared_ptr<UltraCanvasButton> CreateIconButton(
-            const std::string& identifier, long x, long y, long w, long h,
+            const std::string& identifier, float x, float y, float w, float h,
             const std::string& iconPath, const std::string& text = "") {
         auto button = CreateButton(identifier, x, y, w, h, text);
         button->SetIcon(iconPath);
@@ -268,9 +290,12 @@ namespace UltraCanvas {
             button = std::make_shared<UltraCanvasButton>(identifier);
         }
 
-        ButtonBuilder& SetPosition(long x, long y) {
-            button->SetX(x);
-            button->SetY(y);
+        ButtonBuilder& SetPosition(float x, float y) {
+            button->layoutItem.SetPositionInsets({CSSLayout::Dimension::Px(y),
+                                          CSSLayout::Dimension::Auto(),
+                                          CSSLayout::Dimension::Auto(),
+                                          CSSLayout::Dimension::Px(x)});
+            button->layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
             return *this;
         }
 
@@ -373,9 +398,8 @@ namespace UltraCanvas {
             return *this;
         }
 
-        ButtonBuilder& SetSize(long w, long h) {
-            button->SetWidth(w);
-            button->SetHeight(h);
+        ButtonBuilder& SetSize(float w, float h) {
+            button->SetElementSize({w,h});
             return *this;
         }
 

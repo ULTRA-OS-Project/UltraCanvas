@@ -1,10 +1,12 @@
 // UltraCanvasGLSurface.cpp
 // OpenGL 3D rendering surface implementation
+// Last Modified: 2026-05-29
 #include "UltraCanvasGLSurface.h"
 #include "GL/GLContextManager.h"
 #include "GL/GLFramebuffer.h"
 #include "GL/ICompositeStrategy.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasApplication.h"
 
 #include <iostream>
 
@@ -12,7 +14,7 @@ namespace UltraCanvas {
 
 // Constructors
 UltraCanvasGLSurface::UltraCanvasGLSurface(const std::string& id,
-                                           int x, int y, int width, int height)
+                                           float x, float y, float width, float height)
     : UltraCanvasUIElement(id, width, height)
 {
     SetBounds(Rect2Di(x, y, width, height));
@@ -24,7 +26,7 @@ UltraCanvasGLSurface::UltraCanvasGLSurface(const std::string& id,
 
 UltraCanvasGLSurface::UltraCanvasGLSurface(const GLSurfaceConfig& config,
                                            const std::string& id,
-                                           int x, int y, int width, int height)
+                                           float x, float y, float width, float height)
     : UltraCanvasGLSurface(id, x, y, width, height)
 {
     config_ = config;
@@ -134,7 +136,7 @@ void* UltraCanvasGLSurface::GetNativeGLContext() const {
 }
 
 // UltraCanvasUIElement overrides
-void UltraCanvasGLSurface::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+void UltraCanvasGLSurface::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
     if (!IsVisible()) return;
 
     // Initialize GL on first render
@@ -143,9 +145,31 @@ void UltraCanvasGLSurface::Render(IRenderContext* ctx, const Rect2Di& dirtyRect)
             // Draw error indicator (element-local coordinates)
             ctx->SetFillPaint(Color(200, 50, 50, 255));
             Rect2Di b = GetLocalBounds();
-            ctx->FillRectangle(Rect2Df{static_cast<float>(b.x), static_cast<float>(b.y),
+            ctx->FillRectangle(Rect2Dd{static_cast<float>(b.x), static_cast<float>(b.y),
                               static_cast<float>(b.width), static_cast<float>(b.height)});
             return;
+        }
+    }
+
+    // Keep the render/framebuffer size in sync with the element's *actual* bounds,
+    // however they were last changed. SetBounds() updates surfaceWidth_/Height_
+    // directly, but a layout-driven Arrange (flex/grid stretch, a parent resize,
+    // SetElementSize, a window resize, ...) writes finalBounds without routing
+    // through our SetBounds override. Without this sync the framebuffer would stay
+    // at its previous size and the GL content would not follow the element when it
+    // is resized by the layout engine.
+    {
+        Rect2Di lb = GetLocalBounds();
+        if (lb.width > 0 && lb.height > 0 &&
+            (lb.width != surfaceWidth_ || lb.height != surfaceHeight_)) {
+            surfaceWidth_  = lb.width;
+            surfaceHeight_ = lb.height;
+            needsResize_   = true;
+            // Force a content re-render this pass: EnsureFramebuffer() clears
+            // needsResize_ before ShouldRender() is evaluated, so an OnDemand
+            // surface would otherwise composite a freshly-resized but un-rendered
+            // (garbage) framebuffer.
+            renderRequested_ = true;
         }
     }
 
@@ -163,9 +187,36 @@ void UltraCanvasGLSurface::Render(IRenderContext* ctx, const Rect2Di& dirtyRect)
     // Always composite — skips glReadPixels when no new frame, but always redraws cached pixels
     CompositeToSurface(ctx, didRender);
 
-    // Keep the animation loop alive; expensive work is gated by ShouldRender()
+    // Keep the animation loop alive; expensive work is gated by ShouldRender().
+    //
+    // Only re-arm while the surface is actually on-screen and its window is
+    // still alive. A continuously-rendering surface re-posts a redraw event for
+    // itself every frame, and PushEvent() wakes the event loop — so if we kept
+    // doing this for a window that is closing/closed (or for a hidden tab) the
+    // application would spin forever and never finish shutting down. This is
+    // what made the app impossible to close while the animated GL demo was open.
     if (renderMode_ == RenderMode::Continuous || renderMode_ == RenderMode::TimedUpdate) {
-        RequestRedraw();
+        UltraCanvasWindowBase* win = GetWindow();
+        if (win && IsVisible()) {
+            WindowState ws = win->GetState();
+            if (ws != WindowState::Closing && ws != WindowState::Closed &&
+                ws != WindowState::Minimized && ws != WindowState::Hidden) {
+                // Invalidate only this surface's region rather than the whole
+                // window. Posting a Redraw with no damage rect forces a full
+                // window repaint every frame, so every sibling widget (buttons,
+                // labels, ...) was being redrawn at the animation frame rate.
+                Point2Df p = GetPositionInWindow();
+                Rect2Di b = GetBounds();
+                UCEvent ev{};
+                ev.type = UCEventType::Redraw;
+                ev.targetElement = this;
+                ev.targetWindow = win;
+                ev.pointerWindow = Point2Di(static_cast<int>(p.x), static_cast<int>(p.y));
+                ev.width = b.width;
+                ev.height = b.height;
+                UltraCanvasApplication::GetInstance()->PushEvent(ev);
+            }
+        }
     }
 }
 
@@ -181,7 +232,7 @@ bool UltraCanvasGLSurface::OnEvent(const UCEvent& event) {
     return false;
 }
 
-void UltraCanvasGLSurface::SetBounds(const Rect2Di& newBounds) {
+void UltraCanvasGLSurface::SetBounds(const Rect2Df& newBounds) {
     Rect2Di oldBounds = GetBounds();
     UltraCanvasUIElement::SetBounds(newBounds);
 

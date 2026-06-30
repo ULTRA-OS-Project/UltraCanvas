@@ -1,7 +1,7 @@
 // include/UltraCanvasTableView.h
 // Interactive table view component with sorting, filtering, and selection capabilities
-// Version: 1.0.0
-// Last Modified: 2024-12-30
+// Version: 1.1.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -149,13 +149,18 @@ public:
     std::function<void(int)> onRowAdded;                            // (rowIndex)
     std::function<void(int)> onRowRemoved;                          // (rowIndex)
     
-    // ===== CONSTRUCTOR =====
-    UltraCanvasTableView(const std::string& identifier = "TableView",
-                        long x = 0, long y = 0, long w = 400, long h = 300)
+    // ===== CONSTRUCTORS =====
+    UltraCanvasTableView(const std::string& identifier, float x, float y, float w, float h)
         : UltraCanvasUIElement(identifier, x, y, w, h) {
-        
+
         UpdateScrollBounds();
     }
+
+    UltraCanvasTableView(const std::string& identifier, float w, float h)
+        : UltraCanvasTableView(identifier, -1, -1, w, h) {}
+
+    explicit UltraCanvasTableView(const std::string& identifier)
+        : UltraCanvasTableView(identifier, -1, -1, -1, -1) {}
 
     // ===== COLUMN MANAGEMENT =====
     void AddColumn(const TableColumn& column) {
@@ -540,16 +545,13 @@ public:
         return data;
     }
 
-    void UpdateGeometry(IRenderContext *ctx) override {
-        // Update scroll bounds if needed
+    // ===== RENDERING =====
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override {
         if (needsScrollUpdate) {
             UpdateScrollBounds();
             needsScrollUpdate = false;
         }
-    };
 
-    // ===== RENDERING =====
-    void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override {
         ctx->PushState();
         
 
@@ -1072,7 +1074,7 @@ private:
 
 // ===== FACTORY FUNCTIONS =====
 inline std::shared_ptr<UltraCanvasTableView> CreateTableView(
-    const std::string& identifier, long x, long y, long w, long h) {
+    const std::string& identifier, float x, float y, float w, float h) {
     return UltraCanvasUIElementFactory::Create<UltraCanvasTableView>(identifier, x, y, w, h);
 }
 
@@ -1084,7 +1086,7 @@ inline std::shared_ptr<UltraCanvasTableView> CreateTableView(
 
 // ===== CONVENIENCE FUNCTIONS =====
 inline std::shared_ptr<UltraCanvasTableView> CreateTableWithData(
-    const std::string& identifier, long x, long y, long w, long h,
+    const std::string& identifier, float x, float y, float w, float h,
     const std::vector<std::string>& headers, const std::vector<std::vector<std::string>>& data) {
     auto table = CreateTableView(identifier, x, y, w, h);
     table->SetTableData(headers, data);
@@ -1096,7 +1098,7 @@ extern "C" {
     static UltraCanvasTableView* g_currentTableView = nullptr;
     
     void CreateTableView(int x, int y, int width, int height, const char** headers, int columnCount) {
-        g_currentTableView = new UltraCanvasTableView("legacy_table", 9997, x, y, width, height);
+        g_currentTableView = new UltraCanvasTableView("legacy_table", (float)x, (float)y, (float)width, (float)height);
         
         if (headers && columnCount > 0) {
             for (int i = 0; i < columnCount; i++) {

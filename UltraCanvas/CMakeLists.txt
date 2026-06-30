@@ -1,14 +1,19 @@
 # UltraCanvas/CMakeLists.txt
 # UltraCanvas Core Library - Builds as separate static library with optional plugins
-# Version: 1.4.0
-# Last Modified: 2026-05-10
+# Version: 1.4.2
+# Last Modified: 2026-06-21
 # Author: UltraCanvas Framework
 
 cmake_minimum_required(VERSION 3.16)
 include(FetchContent)
 
+# Enable the C language: third_party/miniz/miniz.c is C (the only C source in the
+# project) and provides ZIP support for ODS/XLSX File I/O. Without this, a CXX-only
+# project silently skips compiling .c files, causing undefined references to mz_zip_*.
+enable_language(C)
+
 # ===== LIBRARY DEFINITION =====
-set(ULTRACANVAS_VERSION "0.1.38")
+set(ULTRACANVAS_VERSION "0.2.31")
 set(ULTRACANVAS_LIB_NAME "UltraCanvas")
 
 message(STATUS "")
@@ -20,21 +25,26 @@ message(STATUS "========================================")
 if (BUILD_DEMO_APP)
 else()
     option(ULTRACANVAS_BUILD_SHARED "Build shared library instead of static" OFF)
-    option(ULTRACANVAS_PLUGIN_CDR "Build CorelDRAW CDR plugin" ON)
-    option(ULTRACANVAS_PLUGIN_VECTOR, "Build Vector plugin" OFF)
-    option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" ON)
-    option(ULTRACANVAS_PLUGIN_SVG "Build SVG plugin" OFF)
-    option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin" OFF)
-    option(ULTRACANVAS_PLUGIN_OCR "Build OCR plugin (requires tesseract + leptonica)" OFF)
-    option(ULTRACANVAS_PLUGIN_VECTORIZER "Build Vectorizer plugin (raster→SVG via VTracer; requires cargo)" OFF)
 endif ()
+option(ULTRACANVAS_PLUGIN_CDR "Build CorelDRAW CDR plugin" ON)
+option(ULTRACANVAS_PLUGIN_VECTOR, "Build Vector plugin" OFF)
+option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" ON)
+option(ULTRACANVAS_PLUGIN_SVG "Build SVG plugin" OFF)
+option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin" ON)
+option(ULTRACANVAS_PLUGIN_OCR "Build OCR plugin (requires tesseract + leptonica)" OFF)
+option(ULTRACANVAS_PLUGIN_VECTORIZER "Build Vectorizer plugin (raster→SVG via VTracer; requires cargo)" OFF)
+option(ULTRACANVAS_ENABLE_AUDIO "Enable audio playback & recording (requires backend lib)" ON)
+option(ULTRACANVAS_ENABLE_VIDEO "Enable video playback & recording (requires platform media framework)" ON)
+option(ULTRACANVAS_ENABLE_GL "Enable OpenGL 3D surface support" ON)
 
-# OpenGL surface support (Linux only)
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    option(ULTRACANVAS_ENABLE_GL "Enable OpenGL 3D surface support" ON)
-else()
-    set(ULTRACANVAS_ENABLE_GL OFF CACHE BOOL "Enable OpenGL 3D surface support" FORCE)
-endif()
+# OpenGL surface support (Linux, macOS and Windows)
+# On Windows the WGL backend additionally requires GLEW to load modern GL
+# entry points; if GLEW is not found below, GL support is disabled there.
+#if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR APPLE OR WIN32)
+#    option(ULTRACANVAS_ENABLE_GL "Enable OpenGL 3D surface support" ON)
+#else()
+#    set(ULTRACANVAS_ENABLE_GL OFF CACHE BOOL "Enable OpenGL 3D surface support" FORCE)
+#endif()
 
 # ===== DETECT PLATFORM =====
 if(WIN32)
@@ -82,6 +92,14 @@ pkg_check_modules(TINYXML2 REQUIRED tinyxml2)
 # libvips - Image processing
 pkg_check_modules(LIBVIPS REQUIRED vips vips-cpp)
 
+# zbar - QR/barcode decoder (optional)
+pkg_check_modules(ZBAR zbar)
+if(ZBAR_FOUND)
+    message(STATUS "  zbar: ${ZBAR_VERSION} (QR decoder enabled)")
+else()
+    message(STATUS "  zbar: NOT FOUND (QR decoder disabled)")
+endif()
+
 # FreeType - Font Rendering
 # On Windows with vcpkg, use pkg-config since FindFreetype may not locate vcpkg's install
 if(WIN32 AND PKG_CONFIG_FOUND)
@@ -112,8 +130,19 @@ if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
     endif()
 elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
     # Windows SDK provides most dependencies
+    # WGL needs GLEW to load modern (GL 3.x/4.x) entry points, since
+    # opengl32.dll only exports OpenGL 1.1.
     if(ULTRACANVAS_ENABLE_GL)
-        set(ULTRACANVAS_HAS_WGL TRUE)
+        pkg_check_modules(GLEW glew)
+        if(GLEW_FOUND)
+            set(ULTRACANVAS_HAS_WGL TRUE)
+            message(STATUS "  GLEW: ${GLEW_VERSION} (WGL GL function loader)")
+        else()
+            message(WARNING "  GLEW NOT FOUND - disabling OpenGL surface support on Windows "
+                            "(install mingw-w64-x86_64-glew)")
+            # Force the cache so the parent scope (demo GL sources) sees it too.
+            set(ULTRACANVAS_ENABLE_GL OFF CACHE BOOL "Enable OpenGL 3D surface support" FORCE)
+        endif()
     endif()
 elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     find_library(COCOA_FRAMEWORK Cocoa REQUIRED)
@@ -151,14 +180,17 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasClipboard.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasElementDebug.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasContainer.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasGroupBox.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSplitPane.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDirtyRectManager.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea_Markdown.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea_Hex.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDropdown.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDatePicker.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAutoComplete.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasImageElement.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasImageViewer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTreeView.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasListModel.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasListView.cpp
@@ -177,18 +209,40 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSegmentedControl.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPasswordStrengthMeter.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPasswordRuleLegend.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasLayout.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBoxLayout.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasGridLayout.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFlexLayout.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasToolbar.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasScrollbar.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlider.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColorPicker.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSplashScreen.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlideshow.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAlbum.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModalDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLoader.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNewDocumentDialog.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/Dimension.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/Layout.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/LayoutUtils.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/Element.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/AbsoluteLayout.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/FlexLayout.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/GridLayout.cpp
+
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudio.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioDevices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioPlayer.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioRecorder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioPlayerElement.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioRecorderElement.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasWaveformElement.cpp
+
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideo.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoDevices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoPlayer.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoThumbnail.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoRecorder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoPlayerElement.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoRecorderElement.cpp
+
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartElementBase.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasSpecificChartElements.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartDataStructures.cpp
@@ -198,6 +252,16 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasPopulationChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasJitterPlotElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasPieChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasRadarChartElement.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasColormap.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasHeatmapChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasCalendarHeatmap.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasHexbinChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasSTFT.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasSpectrogram.cpp
+        # Vendored KissFFT (BSD-3-Clause) - real-input FFT for the spectrogram
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/FFT/kiss_fft.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/FFT/kiss_fftr.c
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasArcDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasAdjacencyDiagram.cpp
 
@@ -212,6 +276,28 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasGourceTree.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasTreeMapElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasFlowChartPalette.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasGaugeDiagramElement.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasCompositorDiagram.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Barcode/UltraCanvasBarcodeElement.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Barcode/UltraCanvasBarcodeEncoders.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Barcode/Encoders/CodabarEncoder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Barcode/Encoders/Code128Encoder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Barcode/Encoders/Code39Encoder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Barcode/Encoders/Code93Encoder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Barcode/Encoders/EANUPCEncoder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Barcode/Encoders/ITFEncoder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Barcode/Encoders/MSIEncoder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Barcode/Encoders/PharmacodeEncoder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Barcode/Encoders/Standard25Encoder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/QRCode/UltraCanvasQRCode.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/QRCode/third_party/qrcodegen.cpp
+
+        # STL 3D model loader/saver (self-contained, no external deps).
+        # The GL-backed viewer in UltraCanvasSTLElement.cpp compiles to a 2D
+        # fallback automatically when ULTRACANVAS_ENABLE_GL is off.
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Models/STL/UltraCanvasSTLLoader.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Models/STL/UltraCanvasSTLElement.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Models/STL/UltraCanvasSTLPlugin.cpp
 
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Text/UltraCanvasMarkdown.cpp
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartElement.cpp
@@ -219,6 +305,20 @@ set(ULTRACANVAS_CORE_SOURCES
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartBasicTypes.cpp
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartRenderer.cpp
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasFinancialCharts.cpp
+        # Spreadsheet component (Cell + Types are header-only)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheet.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetComponent.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetSheet.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetFormula.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetFileIO.cpp
+        # CSV/TSV "Text Import" options dialog (depends on the spreadsheet element)
+        ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasCSVImportDialog.cpp
+        # CSV/TSV "Text Export" options dialog (depends on the spreadsheet element)
+        ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasCSVExportDialog.cpp
+        # Vendored miniz (ZIP support for ODS/XLSX File I/O)
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/miniz/miniz.c
+
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetFileIO.cpp
         # Add Windows/Mac sources as needed
         #        ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraCanvasWindowsDoubleBuffer.cpp
 )
@@ -248,11 +348,11 @@ if(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     file(GLOB ULTRACANVAS_OBJCPP_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/*.mm
     )
-    if(NOT ULTRACANVAS_ENABLE_GL)
-        list(REMOVE_ITEM ULTRACANVAS_OBJCPP_SOURCES
-            ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/GLContextManagerCGL_MacOS.mm
-        )
-    endif()
+    # The CGL context manager is added conditionally by the OpenGL section below
+    # (guarded by ULTRACANVAS_HAS_CGL); remove it here to avoid a duplicate source.
+    list(REMOVE_ITEM ULTRACANVAS_OBJCPP_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/GLContextManagerCGL_MacOS.mm
+    )
     list(APPEND ULTRACANVAS_PLATFORM_SOURCES ${ULTRACANVAS_OBJCPP_SOURCES})
 
     set_source_files_properties(
@@ -263,24 +363,88 @@ if(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     )
 endif()
 
-# Built-in plugins (always included)
-file(GLOB ULTRACANVAS_TEXT_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Text/*.cpp
-)
-
-file(GLOB ULTRACANVAS_CHARTS_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/*.cpp
-)
-
 set(ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/ImageCairo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/RenderContextCairo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/UCTextLayout.cpp
+        # Standalone QOI codec — dependency free, always compiled so qoi_encode/
+        # qoi_decode/qoi_read/qoi_write are available without libvips.
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/qoi.cpp
 )
 if(LIBVIPS_FOUND)
+    # vips foreign loader for QOI — consumes the codec symbols above.
     list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsQOILoader.cpp
     )
+endif()
+
+# Audio sources (always-compiled API surface; backend is a stub unless
+# ULTRACANVAS_ENABLE_AUDIO is ON, in which case the miniaudio backend replaces
+# the null one).
+list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Audio/AudioBackendNull.cpp
+)
+if(ULTRACANVAS_ENABLE_AUDIO)
+    # Fetch miniaudio (single-header, MIT-0 / public-domain, cross-platform).
+    # Pinned to a release tag for reproducibility.
+#    FetchContent_Declare(
+#        miniaudio
+#        GIT_REPOSITORY https://github.com/mackron/miniaudio
+#        GIT_TAG        0.11.21
+#        GIT_SHALLOW    TRUE
+#    )
+#    FetchContent_MakeAvailable(miniaudio)
+
+    list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Audio/AudioBackendMiniaudio.cpp
+    )
+    message(STATUS "Audio backend: miniaudio (${miniaudio_SOURCE_DIR})")
+endif()
+
+# Video sources (always-compiled API surface; backend is a stub unless
+# ULTRACANVAS_ENABLE_VIDEO is ON and a platform media framework is found, in
+# which case the platform-native backend replaces the null one).
+#   Linux  : GStreamer (which dispatches to V4L2 / VA-API under the hood)
+#   macOS  : AVFoundation   (TODO)
+#   Windows: Media Foundation (TODO)
+list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Video/VideoBackendNull.cpp
+)
+set(ULTRACANVAS_VIDEO_BACKEND_FOUND OFF)
+if(ULTRACANVAS_ENABLE_VIDEO)
+    message(STATUS "Video enabled in ${ULTRACANVAS_PLATFORM}")
+    if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
+        find_package(PkgConfig)
+        if(PkgConfig_FOUND)
+            pkg_check_modules(GSTREAMER
+                gstreamer-1.0 gstreamer-app-1.0 gstreamer-video-1.0 gstreamer-pbutils-1.0)
+        endif()
+        if(GSTREAMER_FOUND)
+            list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
+                ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Video/VideoBackendGStreamer.cpp
+            )
+            set(ULTRACANVAS_VIDEO_BACKEND_FOUND ON)
+            message(STATUS "Video backend: GStreamer (${GSTREAMER_VERSION})")
+        else()
+            message(STATUS "Video backend: null (GStreamer dev packages not found; "
+                           "install gstreamer-1.0 + app/video/pbutils plugins for playback & capture)")
+        endif()
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
+        list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Video/VideoBackendMediaFoundation.cpp
+        )
+        set(ULTRACANVAS_VIDEO_BACKEND_FOUND ON)
+        message(STATUS "Video backend: Media Foundation")
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
+        list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Video/VideoBackendAVFoundation.mm
+        )
+        set_source_files_properties(
+            ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Video/VideoBackendAVFoundation.mm
+            PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+        set(ULTRACANVAS_VIDEO_BACKEND_FOUND ON)
+        message(STATUS "Video backend: AVFoundation")
+    endif()
 endif()
 
 # OpenGL surface sources
@@ -312,6 +476,12 @@ if(ULTRACANVAS_ENABLE_GL)
                 ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/GLContextManagerCGL_MacOS.mm
             )
         endif()
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
+        if(ULTRACANVAS_HAS_WGL)
+            list(APPEND ULTRACANVAS_PLATFORM_SOURCES
+                ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/GLContextManagerWGL_MSWindows.cpp
+            )
+        endif()
     endif()
 endif()
 
@@ -320,10 +490,7 @@ set(ULTRACANVAS_ALL_SOURCES
     ${ULTRACANVAS_CORE_SOURCES}
     ${ULTRACANVAS_PLATFORM_SOURCES}
     ${ULTRACANVAS_LIBSPECIFIC_SOURCES}
-    ${ULTRACANVAS_TEXT_SOURCES}
-    ${ULTRACANVAS_CHARTS_SOURCES}
-        #        dialogs/PixelFXExportDialog.cpp
-#        dialogs/PixelFXExportDialog.h
+        libspecific/Audio/miniaudio.h
 )
 
 # ===== BUILD CORE LIBRARY =====
@@ -350,6 +517,7 @@ target_include_directories(${ULTRACANVAS_LIB_NAME}
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/core
         ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/miniz
         ${FREETYPE_INCLUDE_DIRS}
         ${HARFBUZZ_INCLUDE_DIRS}
 )
@@ -369,6 +537,12 @@ if(LIBVIPS_FOUND)
     endforeach()
 endif()
 
+if(ZBAR_FOUND)
+    foreach(_inc_dir ${ZBAR_INCLUDE_DIRS})
+        target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${_inc_dir})
+    endforeach()
+endif()
+
 # Platform-specific includes
 if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
     target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE
@@ -379,6 +553,15 @@ if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
     if(ULTRACANVAS_ENABLE_GL AND EGL_FOUND)
         target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE
             ${EGL_INCLUDE_DIRS}
+        )
+    endif()
+elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
+    if(ULTRACANVAS_ENABLE_GL AND GLEW_FOUND)
+        target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE
+            ${GLEW_INCLUDE_DIRS}
+        )
+        target_link_directories(${ULTRACANVAS_LIB_NAME} PRIVATE
+            ${GLEW_LIBRARY_DIRS}
         )
     endif()
 endif()
@@ -392,7 +575,6 @@ target_link_libraries(${ULTRACANVAS_LIB_NAME}
         ${LIBVIPS_LIBRARIES}
         ${GLIB_LIBRARIES}
         ${TINYXML2_LIBRARIES}
-        ${GTK3_INCLUDE_DIRS}
 )
 
 # Platform-specific libraries
@@ -432,6 +614,7 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
     )
     if(ULTRACANVAS_ENABLE_GL)
         target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
+            ${GLEW_LIBRARIES}
             opengl32
         )
     endif()
@@ -458,6 +641,7 @@ target_link_libraries(${ULTRACANVAS_LIB_NAME}
         ${LIBVIPS_LIBRARIES}
         ${GLIB_LIBRARIES}
         ${TINYXML2_LIBRARIES}
+        ${ZBAR_LIBRARIES}
         fmt::fmt
     # PRIVATE
     #     grapheme
@@ -471,6 +655,7 @@ target_compile_definitions(${ULTRACANVAS_LIB_NAME}
         ULTRACANVAS_VERSION="${ULTRACANVAS_VERSION}"
         ULTRACANVAS_PLATFORM_${ULTRACANVAS_PLATFORM}=1
         $<$<BOOL:${LIBVIPS_FOUND}>:HAS_LIBVIPS=1>
+        $<$<BOOL:${ZBAR_FOUND}>:ULTRACANVAS_QRCODE_HAS_DECODER=1>
         $<$<CXX_COMPILER_ID:MSVC>:_USE_MATH_DEFINES>
         $<$<CXX_COMPILER_ID:MSVC>:NOMINMAX>
         $<$<BOOL:${WIN32}>:WIN32_LEAN_AND_MEAN>
@@ -492,9 +677,61 @@ if(ULTRACANVAS_ENABLE_GL)
     endif()
     if(ULTRACANVAS_HAS_CGL)
         target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_CGL=1)
+        # macOS deprecated OpenGL in 10.14; silence the per-call warnings so the
+        # GL surface code (which intentionally still uses it) builds cleanly.
+        target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE GL_SILENCE_DEPRECATION=1)
     endif()
     if(ULTRACANVAS_HAS_WGL)
         target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_WGL=1)
+    endif()
+endif()
+
+# Audio compile definitions + include path + libs
+if(ULTRACANVAS_ENABLE_AUDIO)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_ENABLE_AUDIO=1)
+    target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE
+        $<BUILD_INTERFACE:${miniaudio_SOURCE_DIR}>
+    )
+    # miniaudio links dl + pthread on Linux, and uses AudioToolbox/CoreFoundation
+    # on macOS. On Windows it's header-only and links the SDK that's already
+    # pulled in via gdi32/ole32/etc.
+    if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC dl pthread m)
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
+        find_library(AUDIOTOOLBOX_FRAMEWORK AudioToolbox REQUIRED)
+        find_library(COREAUDIO_FRAMEWORK CoreAudio REQUIRED)
+        find_library(COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
+            ${AUDIOTOOLBOX_FRAMEWORK}
+            ${COREAUDIO_FRAMEWORK}
+            ${COREFOUNDATION_FRAMEWORK}
+        )
+    endif()
+endif()
+
+# Video compile definitions + include path + libs. The API surface always
+# compiles; ULTRACANVAS_ENABLE_VIDEO=1 is only defined when a real platform
+# backend was found, so the null backend's GetVideoBackend() is used otherwise.
+if(ULTRACANVAS_ENABLE_VIDEO AND ULTRACANVAS_VIDEO_BACKEND_FOUND)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_ENABLE_VIDEO=1)
+    if(GSTREAMER_FOUND)
+        target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${GSTREAMER_INCLUDE_DIRS})
+        target_link_directories(${ULTRACANVAS_LIB_NAME} PUBLIC ${GSTREAMER_LIBRARY_DIRS})
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${GSTREAMER_LIBRARIES})
+        target_compile_options(${ULTRACANVAS_LIB_NAME} PRIVATE ${GSTREAMER_CFLAGS_OTHER})
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
+        # Media Foundation playback + capture + encode
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
+            mf mfplat mfreadwrite mfuuid ole32 shlwapi)
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
+        find_library(AVFOUNDATION_FRAMEWORK AVFoundation REQUIRED)
+        find_library(COREMEDIA_FRAMEWORK CoreMedia REQUIRED)
+        find_library(COREVIDEO_FRAMEWORK CoreVideo REQUIRED)
+        find_library(COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
+        find_library(FOUNDATION_FRAMEWORK Foundation REQUIRED)
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
+            ${AVFOUNDATION_FRAMEWORK} ${COREMEDIA_FRAMEWORK} ${COREVIDEO_FRAMEWORK}
+            ${COREFOUNDATION_FRAMEWORK} ${FOUNDATION_FRAMEWORK})
     endif()
 endif()
 
@@ -558,32 +795,73 @@ else()
     message(STATUS "  [−] VECTOR Plugin - SKIPPED (disabled by option)")
 endif()
 
-# PDF Plugin
+# PDF Plugin (MuPDF-backed)
+# MuPDF ships as a static library on most distros and has no .pc file, so
+# probe via find_path / find_library. On Windows the vcpkg port exposes the
+# same names.
 if(ULTRACANVAS_PLUGIN_PDF)
-    if(NOT WIN32)
-        pkg_check_modules(POPPLER poppler-cpp)
+    find_path(MUPDF_INCLUDE_DIR mupdf/fitz.h)
+    find_library(MUPDF_LIBRARY      NAMES mupdf libmupdf)
+    find_library(MUPDF_THIRD_LIBRARY NAMES mupdf-third libmupdf-third)
+    # Companion libs MuPDF statically depends on. Most distros bundle them
+    # into libmupdf-third, but some (Ubuntu 24.04+) require explicit linkage.
+    find_library(JBIG2DEC_LIBRARY    NAMES jbig2dec)
+    find_library(OPENJP2_LIBRARY     NAMES openjp2)
+    find_library(GUMBO_LIBRARY       NAMES gumbo)
+    find_library(MUJS_LIBRARY        NAMES mujs)
+    find_library(HARFBUZZ_LIB        NAMES harfbuzz)
+    # MuPDF on MSYS2/MinGW is built against the system FreeType/JPEG/zlib
+    # (USE_SYSTEM_LIBS), so these must be linked explicitly AFTER libmupdf.a.
+    # Full paths from find_library (not "-lfreetype") avoid CMake de-duplicating
+    # them back to their earlier, pre-mupdf position on the link line.
+    find_library(FREETYPE_LIB NAMES freetype)
+    find_library(JPEG_LIB     NAMES jpeg libjpeg)
+    find_library(ZLIB_LIB     NAMES z zlib)
+
+    # MUPDF_THIRD_LIBRARY is intentionally NOT required here: it is absent for
+    # DLL/import-lib MuPDF builds (MSYS2/MinGW), where the third-party deps live
+    # inside the DLL. It is still linked below when present (static Linux builds).
+    if(MUPDF_INCLUDE_DIR AND MUPDF_LIBRARY)
+        set(MUPDF_FOUND TRUE)
     else()
-        # On Windows, try find_package instead
-        find_package(poppler CONFIG)
-        if(poppler_FOUND)
-            set(POPPLER_FOUND TRUE)
-        else()
-            set(POPPLER_FOUND FALSE)
-        endif()
+        set(MUPDF_FOUND FALSE)
     endif()
-    if(POPPLER_FOUND)
-        if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/PDF/CMakeLists.txt)
-            add_subdirectory(Plugins/Documents/PDF)
-            if(ULTRACANVAS_PDF_PLUGIN_FOUND)
-                list(APPEND ULTRACANVAS_PLUGIN_TARGETS ${ULTRACANVAS_PDF_PLUGIN_TARGET})
-                message(STATUS "  [✓] PDF Plugin - ENABLED")
-            endif()
-        else()
-            message(STATUS "  [−] PDF Plugin - NOT FOUND (CMakeLists.txt missing)")
-        endif()
-    else()
-        message(STATUS "  [✗] PDF Plugin - DISABLED (missing poppler)")
+
+    list(APPEND ULTRACANVAS_CORE_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/UltraCanvasPDF_MuPDF.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/UltraCanvasPDFView.cpp
+    )
+    # Rebuild the library source list since we just appended.
+    target_sources(${ULTRACANVAS_LIB_NAME} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/UltraCanvasPDF_MuPDF.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/UltraCanvasPDFView.cpp
+    )
+    target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE
+        ${MUPDF_INCLUDE_DIR}
+    )
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC
+        ULTRACANVAS_PLUGIN_PDF=1
+        ULTRACANVAS_PDF_MUPDF=1
+    )
+    # Linking the static archives in the right order matters: dependents
+    # before dependencies.
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
+        ${MUPDF_LIBRARY}
+    )
+    # libmupdf-third only exists for static MuPDF builds (Linux). A DLL/import-lib
+    # build (MSYS2/MinGW) folds the third-party deps into the DLL, so it is absent
+    # there — link it only when present.
+    if(MUPDF_THIRD_LIBRARY)
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${MUPDF_THIRD_LIBRARY})
     endif()
+    foreach(_extra_lib
+            MUJS_LIBRARY GUMBO_LIBRARY JBIG2DEC_LIBRARY OPENJP2_LIBRARY
+            HARFBUZZ_LIB FREETYPE_LIB JPEG_LIB ZLIB_LIB)
+        if(${_extra_lib})
+            target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${${_extra_lib}})
+        endif()
+    endforeach()
+    message(STATUS "  [✓] PDF Plugin - ENABLED (MuPDF at ${MUPDF_LIBRARY})")
 else()
     message(STATUS "  [−] PDF Plugin - SKIPPED (disabled by option)")
 endif()

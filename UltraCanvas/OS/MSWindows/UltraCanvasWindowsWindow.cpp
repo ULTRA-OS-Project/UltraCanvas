@@ -429,20 +429,20 @@ namespace UltraCanvas {
 // ===== WINDOW OPERATIONS =====
 
     void UltraCanvasWindowsWindow::Show() {
-        if (!_created || visible) return;
+        if (!_created || _windowVisible) return;
         ShowWindow(hwnd, SW_SHOW);
         UpdateWindow(hwnd);
 
-        visible = true;
+        _windowVisible = true;
 
         if (onWindowShow) onWindowShow();
     }
 
     void UltraCanvasWindowsWindow::Hide() {
-        if (!_created || !visible) return;
+        if (!_created || !_windowVisible) return;
         ShowWindow(hwnd, SW_HIDE);
 
-        visible = false;
+        _windowVisible = false;
 
         if (onWindowHide) onWindowHide();
     }
@@ -668,7 +668,7 @@ namespace UltraCanvas {
     void UltraCanvasWindowsWindow::InvalidateWindowNative() {
         if (!renderContext || !nativeSurface || !hwnd) return;
         // Trigger a synchronous WM_PAINT to blit the image surface to the window
-        InvalidateRect(hwnd, NULL, FALSE);
+        ::InvalidateRect(hwnd, NULL, FALSE);
         UpdateWindow(hwnd);
     }
 

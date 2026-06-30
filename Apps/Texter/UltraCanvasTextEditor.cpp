@@ -1,9 +1,12 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
-// Version: 2.1.7
-// Last Modified: 2026-05-06
+// Version: 2.2.0
+// Last Modified: 2026-06-23
 // Author: UltraCanvas Framework
 
+#include "UltraCanvasContainer.h"
+#include "UltraCanvasSpacer.h"
+#include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasTextEditor.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasToolbar.h"
@@ -35,7 +38,7 @@
 #include "UltraCanvasUtilsUtf8.h"
 
 namespace UltraCanvas {
-    std::string UltraCanvasTextEditor::version = "0.1.33";
+    std::string UltraCanvasTextEditor::version = "0.1.39";
     
 namespace {
     std::string GetAppDataDirectory() {
@@ -66,13 +69,15 @@ namespace {
     }
 
     // Build a Flat-style ToolbarAppearance tinted for either light or dark mode.
-    // NOTE: Icons in media/icons/texter/*.svg are drawn as-is — icon tinting is a
-    // framework TODO (see UltraCanvas/core/UltraCanvasButton.cpp DrawIcon). Existing
-    // dark-ink icons will render dark-on-dark in dark mode until that is addressed,
-    // either by shipping a light-variant icon set or implementing tinting.
+    // Icons in media/icons/texter/*.svg are recoloured to foregroundColor via the
+    // icon-mask path (ButtonStyle::useIconAsMask -> IRenderContext::DrawMask), so a
+    // single dark-ink icon set renders correctly in both light and dark themes.
     ToolbarAppearance BuildToolbarAppearance(bool dark) {
         if (!dark) {
-            return ToolbarAppearance::Flat();
+            ToolbarAppearance app = ToolbarAppearance::Flat();
+            app.foregroundColor = Color(40, 40, 40, 255);     // dark ink on light bar
+            app.disabledForegroundColor = Color(170, 170, 170, 255); // greyed icons
+            return app;
         }
         ToolbarAppearance app;
         app.style = ToolbarStyle::Flat;
@@ -83,6 +88,7 @@ namespace {
         app.hoverBackgroundColor      = Color(65, 65, 65, 255);
         app.activeBackgroundColor     = Color(80, 80, 80, 255);
         app.disabledBackgroundColor   = Color(55, 55, 55, 255);
+        app.disabledForegroundColor   = Color(110, 110, 110, 255); // greyed icons on dark bar
         return app;
     }
 } // anonymous namespace
@@ -383,14 +389,14 @@ namespace {
             , activeDocumentIndex(-1)
             , hasCheckedForBackups(false)
             , menuBarHeight(24)
-            , toolbarHeight(cfg.showToolbar ? 40 : 0)
             , markdownToolbarWidth(40)
+            , toolbarHeight(40)
             , statusBarHeight(22)
             , tabBarHeight(26)
     {
         configFile.EnsureConfigDirectory();
         LoadConfig();
-        toolbarHeight = config.showToolbar ? 40 : 0;
+
 
         // Configure autosave
         autosaveManager.SetEnabled(config.enableAutosave);
@@ -735,7 +741,7 @@ namespace {
         toolbar = UltraCanvasToolbarBuilder("EditorToolbar")
                 .SetOrientation(ToolbarOrientation::Horizontal)
                 .SetAppearance(ToolbarAppearance::Flat())
-                .SetDimensions(0, 0, GetWidth(), toolbarHeight)
+                .SetDimensions(0, 0, GetWidth(), 40)
                 .AddButton("new", "", NormalizePath(GetResourcesDir() + "media/icons/texter/add-document.svg"), [this]() { OnFileNew(); })
                 .AddButton("open", "", NormalizePath(GetResourcesDir() + "media/icons/texter/folder-open.svg"), [this]() { OnFileOpen(); })
                 .AddButton("save", "", NormalizePath(GetResourcesDir() + "media/icons/texter/save.svg"), [this]() { OnFileSave(); })
@@ -772,31 +778,35 @@ namespace {
         };
 
         for (auto& entry : toolbarTooltips) {
-            auto item = toolbar->GetItem(entry.id);
-            if (item) {
-                auto btn = std::dynamic_pointer_cast<UltraCanvasButton>(item->GetWidget());
-                if (btn) {
-                    btn->SetTooltip(entry.tip);
-                    btn->SetAcceptsFocus(false);
-                }
+            auto btn = std::dynamic_pointer_cast<UltraCanvasButton>(toolbar->GetWidget(entry.id));
+            if (btn) {
+                btn->SetTooltip(entry.tip);
+                btn->SetAcceptsFocus(false);
             }
         }
 
         // Disable focus on toolbar buttons so they don't steal focus from the text area
 //        for (int i = 0; i < toolbar->GetItemCount(); i++) {
-//            auto item = toolbar->GetItemAt(i);
-//            if (item) {
-//                auto btn = std::dynamic_pointer_cast<UltraCanvasButton>(item->GetWidget());
-//                if (btn) btn->SetAcceptsFocus(false);
-//            }
+//            auto btn = std::dynamic_pointer_cast<UltraCanvasButton>(toolbar->GetWidgetAt(i));
+//            if (btn) btn->SetAcceptsFocus(false);
 //        }
 
-        // Wrap toolbar(s) in an HBox container
+        // Wrap toolbar(s) in an HBox container. Origin (0,0): in-flow flex child of the
+        // window column (a non-zero origin would make it AbsoluteUI).
         toolbarContainer = std::make_shared<UltraCanvasContainer>(
-                "ToolbarContainer",  0, toolbarY, GetWidth(), toolbarHeight);
-        auto* hbox = CreateHBoxLayout(toolbarContainer.get());
-        hbox->SetSpacing(0);
-        hbox->AddUIElement(toolbar)->SetStretch(1)->SetHeightMode(SizeMode::Fill);
+                "ToolbarContainer",  0, 0, GetWidth(), toolbarHeight);
+        {
+            // Fixed-height bar: never scroll (avoids a spurious scrollbar when the toolbar
+            // content is a hair taller than the 40px bar).
+            ContainerStyle cs = toolbarContainer->GetContainerStyle();
+            cs.autoShowScrollbars = false;
+            cs.forceShowVerticalScrollbar = false;
+            cs.forceShowHorizontalScrollbar = false;
+            toolbarContainer->SetContainerStyle(cs);
+        }
+        toolbarContainer->layout.SetFlexRow();
+        toolbarContainer->layout.SetFlexGap(0);
+        toolbarContainer->AddChild(toolbar); toolbar->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         // Build and add the markdown toolbar (initially hidden)
         SetupMarkdownToolbar();
@@ -842,17 +852,24 @@ namespace {
                             GetWindow()->RemoveChild(headingSubToolbar);
                         } else {
                             if (headingSubToolbar && markdownToolbar && markdownToolbar->IsVisible()) {
-                                auto item = markdownToolbar->GetItem("md-heading");
-                                if (item && item->GetWidget()) {
-                                    auto btn = item->GetWidget();
+                                auto btn = markdownToolbar->GetWidget("md-heading");
+                                if (btn) {
                                     auto pos = btn->MapFromLocal({btn->GetWidth(),0});
-                                    headingSubToolbar->SetBounds(Rect2Di(pos.x, pos.y, 200, 36));
+                                    // Absolute overlay: anchor via insets (window-local), not SetBounds.
+                                    headingSubToolbar->size.width  = CSSLayout::Dimension::Px(200);
+                                    headingSubToolbar->size.height = CSSLayout::Dimension::Px(36);
+                                    headingSubToolbar->layoutItem.SetPositionInsets(CSSLayout::Position{
+                                        CSSLayout::Dimension::Px((float)pos.y),    // top
+                                        CSSLayout::Dimension::Auto(),               // right
+                                        CSSLayout::Dimension::Auto(),               // bottom
+                                        CSSLayout::Dimension::Px((float)pos.x)});  // left
                                 }
                             }
                             headingSubToolbar->SetVisible(true);
                             GetWindow()->AddChild(headingSubToolbar);
                         }
-                        //UpdateChildLayout();
+                        InvalidateLayout();
+                        RequestRedraw();
                     })
                 .AddSeparator()
                 .AddButton("md-ul", "", NormalizePath(GetResourcesDir() + "media/icons/texter/md-list-unordered.svg"),
@@ -880,13 +897,10 @@ namespace {
                 .Build();
 
         for (auto& entry : mdTooltips) {
-            auto item = markdownToolbar->GetItem(entry.id);
-            if (item) {
-                auto btn = std::dynamic_pointer_cast<UltraCanvasButton>(item->GetWidget());
-                if (btn) {
-                    btn->SetTooltip(entry.tip);
-                    btn->SetAcceptsFocus(false);
-                }
+            auto btn = std::dynamic_pointer_cast<UltraCanvasButton>(markdownToolbar->GetWidget(entry.id));
+            if (btn) {
+                btn->SetTooltip(entry.tip);
+                btn->SetAcceptsFocus(false);
             }
         }
 
@@ -904,29 +918,30 @@ namespace {
 
         // Style buttons with decreasing font sizes to reflect heading hierarchy.
         // Shared helper is reused by ApplyThemeToAllDocuments() so theme toggles
-        // can reassert these fonts (UltraCanvasToolbarButton::UpdateAppearance()
+        // can reassert these fonts (UltraCanvasToolbar::ApplyButtonAppearance()
         // clobbers fontSize on every SetAppearance call).
         ApplyHeadingButtonStyles(isDarkTheme);
         headingSubToolbar->SetVisible(false);
+        // The heading flyout is added to the window on demand; keep it out of the window's
+        // flex column by positioning it absolutely (insets set at show time).
+        headingSubToolbar->layoutItem.SetPositionType(CSSLayout::PositionType::Absolute);
 
         markdownToolbar->SetVisible(false);
-
-        AddChild(markdownToolbar);
-
+        // The markdown toolbar is NOT a window child: it is re-parented into the active tab's
+        // editorArea as an in-flow flex-row item (order 0, left). Cross-axis stretch gives it
+        // the full editor height so every button is visible.
+        markdownToolbar->size.width = CSSLayout::Dimension::Px(markdownToolbarWidth);
+        markdownToolbar->layoutItem.SetPositionType(CSSLayout::PositionType::Static)
+                .SetFlexGrow(0).SetFlexShrink(0).SetFlexOrder(0)
+                .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     }
 
     void UltraCanvasTextEditor::SetupTabContainer() {
-        int yPos = 0;
-        if (config.showMenuBar) yPos += menuBarHeight;
-        if (config.showToolbar) yPos += toolbarHeight;
-
-        int tabAreaHeight = GetHeight() - yPos - (config.showStatusBar ? statusBarHeight : 0);
-
         // Create tabbed container
+        // Origin (0,0): in-flow flex child of the window column (a non-zero origin would
+        // make it AbsoluteUI). The window's flex layout positions it.
         tabContainer = std::make_shared<UltraCanvasTabbedContainer>(
-                "EditorTabs", 
-                0, yPos,
-                GetWidth(), tabAreaHeight
+                "EditorTabs"
         );
 
         // Configure tab container
@@ -1086,12 +1101,19 @@ namespace {
         int eolDropdownWidth = 80;
         int zoomDropdownWidth = 80;
         int gap = 4;
-        int xPos = gap;
+
+        // Flex-row container holding the status controls; the window column places it at
+        // the bottom (fixed height). Controls are built at origin (0,0) so they stay in-flow.
+        statusBarContainer = std::make_shared<UltraCanvasContainer>(
+                "StatusBarContainer", -1, -1, -1, statusBarHeight);
+        statusBarContainer->layout.SetFlexRow().SetFlexGap(gap)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        statusBarContainer->SetBackgroundColor(Color(240, 240, 240, 255));
 
         // Create language dropdown (leftmost)
         languageDropdown = std::make_shared<UltraCanvasDropdown>(
                 "LanguageDropdown",
-                xPos, yPos + 2,
+                -1, -1,
                 languageDropdownWidth, statusBarHeight - 4
         );
 
@@ -1147,13 +1169,12 @@ namespace {
             OnLanguageChanged(index, item);
         };
 
-        AddChild(languageDropdown);
-        xPos += languageDropdownWidth + gap;
+        statusBarContainer->AddChild(languageDropdown);
 
         // Create encoding dropdown
         encodingDropdown = std::make_shared<UltraCanvasDropdown>(
                 "EncodingDropdown",
-                xPos, yPos + 2,
+                -1, -1,
                 encodingDropdownWidth, statusBarHeight - 4
         );
 
@@ -1187,13 +1208,11 @@ namespace {
             OnEncodingChanged(index, item);
         };
 
-        AddChild(encodingDropdown);
-        xPos += encodingDropdownWidth + gap;
+        statusBarContainer->AddChild(encodingDropdown);
 
         // Create EOL dropdown
         eolDropdown = std::make_shared<UltraCanvasDropdown>(
                 "EOLDropdown",
-                xPos, yPos + 2,
                 eolDropdownWidth, statusBarHeight - 4
         );
 
@@ -1214,13 +1233,11 @@ namespace {
             OnEOLChanged(index, item);
         };
 
-        AddChild(eolDropdown);
-        xPos += eolDropdownWidth + gap;
+        statusBarContainer->AddChild(eolDropdown);
 
         // Create zoom dropdown
         zoomDropdown = std::make_shared<UltraCanvasDropdown>(
                 "ZoomDropdown",
-                xPos, yPos + 2,
                 zoomDropdownWidth, statusBarHeight - 4
         );
 
@@ -1241,130 +1258,114 @@ namespace {
         };
         zoomDropdown->SetTooltip("Zoom Level");
 
-        AddChild(zoomDropdown);
-        xPos += zoomDropdownWidth + gap;
+        statusBarContainer->AddChild(zoomDropdown);
 
-        // Status label fills remaining space to the right
+        // Status label fills remaining space to the right (flex-grow in the row)
         statusLabel = std::make_shared<UltraCanvasLabel>(
-                "StatusBar", 
-                xPos, yPos + 4,
-                GetWidth() - xPos - 4, statusBarHeight - 8
+                "StatusBar"
         );
         statusLabel->SetText("Ready");
         statusLabel->SetFontSize(10);
         statusLabel->SetTextColor(Color(80, 80, 80, 255));
         statusLabel->SetBackgroundColor(Color(240, 240, 240, 255));
+        statusLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
+        statusLabel->SetPadding(0,5,0,0);
+        statusLabel->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Center);
 
-        AddChild(statusLabel);
+        statusBarContainer->AddChild(statusLabel);
+        AddChild(statusBarContainer);
     }
 
     void UltraCanvasTextEditor::SetupLayout() {
-        // Layout is managed by fixed positioning
-        // Components are positioned in their setup methods
+        // Window root is a CSS flex column: menu / toolbar / tab area (grows) / status bar.
+        // The engine arranges the children; explicit per-control coordinates are gone.
+        layout.SetFlexColumn().SetFlexGap(0).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+
+        if (menuBar) {
+            menuBar->size.height = CSSLayout::Dimension::Px(menuBarHeight);
+            menuBar->layoutItem.SetFlexShrink(0).SetFlexOrder(0)
+                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        }
+        if (toolbarContainer) {
+            toolbarContainer->size.height = CSSLayout::Dimension::Px(toolbarHeight);
+            toolbarContainer->layoutItem.SetFlexShrink(0).SetFlexOrder(1)
+                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+            if (!config.showToolbar) {
+                toolbarContainer->SetVisible(false);
+            }
+        }
+        if (tabContainer) {
+            tabContainer->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexOrder(2)
+                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        }
+        if (statusBarContainer) {
+            statusBarContainer->size.height = CSSLayout::Dimension::Px(statusBarHeight);
+            statusBarContainer->layoutItem.SetFlexShrink(0).SetFlexOrder(3)
+                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        }
+        InvalidateLayout();
     }
-    void UltraCanvasTextEditor::SetBounds(const Rect2Di& b) {
+    void UltraCanvasTextEditor::SetBounds(const Rect2Df& b) {
         UltraCanvasWindow::SetBounds(b);
-        UpdateChildLayout();
+        // The CSS flex engine re-arranges the window's children on the next layout pass.
+        InvalidateLayout();
+        RequestRedraw();
+    }
+
+    void UltraCanvasTextEditor::BuildDocumentContentBox(const std::shared_ptr<DocumentTab>& doc) {
+        if (!doc || !doc->textArea) return;
+        const std::string base = "doc_" + std::to_string(doc->documentId);
+
+        // editorArea: flex ROW [markdownToolbar (left, fixed width), textArea (grows)].
+        // The markdown toolbar is re-parented in (order 0) when this tab is active and
+        // stretches to full height via the row's cross-axis stretch. The container never
+        // scrolls (the text area scrolls internally).
+        doc->editorArea = std::make_shared<UltraCanvasContainer>(base + "_editor");
+        doc->editorArea->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        {
+            ContainerStyle cs = doc->editorArea->GetContainerStyle();
+            cs.autoShowScrollbars = false;
+            cs.forceShowVerticalScrollbar = false;
+            cs.forceShowHorizontalScrollbar = false;
+            doc->editorArea->SetContainerStyle(cs);
+        }
+        doc->textArea->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexOrder(1)
+                .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        doc->editorArea->AddChild(doc->textArea);
+
+        // contentBox: flex column [searchBar (top, when active) , editorArea (grows)].
+        doc->contentBox = std::make_shared<UltraCanvasContainer>(base + "_pane");
+        doc->contentBox->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        {
+            ContainerStyle cs = doc->contentBox->GetContainerStyle();
+            cs.autoShowScrollbars = false;
+            cs.forceShowVerticalScrollbar = false;
+            cs.forceShowHorizontalScrollbar = false;
+            doc->contentBox->SetContainerStyle(cs);
+        }
+        doc->editorArea->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexOrder(1)
+                .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        doc->contentBox->AddChild(doc->editorArea);
+    }
+
+    void UltraCanvasTextEditor::AttachSharedBarsToActiveTab() {
+        auto* doc = GetActiveDocument();
+        if (!doc) return;
+        // Re-parent the shared singletons into the active tab's boxes (AddChild detaches
+        // them from the previously-active tab). Order/position were configured at setup.
+        if (searchBar && doc->contentBox) {
+            doc->contentBox->AddChild(searchBar);
+        }
+        if (markdownToolbar && doc->editorArea) {
+            doc->editorArea->AddChild(markdownToolbar);
+        }
     }
 
     void UltraCanvasTextEditor::UpdateChildLayout() {
-        int w = GetWidth();
-        int h = GetHeight();
-        int yPos = 0;
-
-        // ===== Menu bar =====
-        if (menuBar && config.showMenuBar) {
-            menuBar->SetBounds(Rect2Di(0, yPos, w, menuBarHeight));
-            yPos += menuBarHeight;
-        }
-
-        // ===== Toolbar =====
-        if (toolbarContainer && config.showToolbar) {
-            toolbarContainer->SetBounds(Rect2Di(0, yPos, w, toolbarHeight));
-            yPos += toolbarHeight;
-        }
-
-        // ===== Search bar height =====
-        int searchBarH = (searchBar && searchBar->IsVisible()) ? searchBar->GetBarHeight() : 0;
-
-        // ===== Tab container (fills remaining space minus status bar, always full width) =====
-        int mdToolbarW = (markdownToolbar && markdownToolbar->IsVisible()) ? markdownToolbarWidth : 0;
-        int tabAreaHeight = 0;
-        if (tabContainer) {
-            int reservedBottom = config.showStatusBar ? statusBarHeight : 0;
-            tabAreaHeight = h - yPos - reservedBottom;
-            if (tabAreaHeight < 0) tabAreaHeight = 0;
-            tabContainer->SetBounds(Rect2Di(0, yPos, w, tabAreaHeight));
-            tabContainer->SetContentTopPadding(searchBarH);
-            tabContainer->SetContentLeftPadding(mdToolbarW);
-        }
-
-        // ===== Search bar (below tab strip, above content — full width) =====
-        if (searchBarH > 0) {
-            int barY = yPos + tabBarHeight;
-            searchBar->SetBounds(Rect2Di(0, barY, w, searchBarH));
-        }
-
-        // ===== Markdown toolbar (vertical, overlays left column of tab content area) =====
-        if (markdownToolbar && markdownToolbar->IsVisible()) {
-            int mdY = yPos + tabBarHeight + searchBarH;
-            int mdH = tabAreaHeight - tabBarHeight - searchBarH;
-            if (mdH < 0) mdH = 0;
-            markdownToolbar->SetBounds(Rect2Di(0, mdY, markdownToolbarWidth, mdH));
-        }
-
-        // ===== Status bar =====
-        if (config.showStatusBar) {
-            int statusY = h - statusBarHeight;
-            int langW = 140, encW = 160, eolW = 80, zoomW = 80;
-            int gap = 4;
-            int xPos = gap;
-
-            // Language dropdown: leftmost
-            if (languageDropdown) {
-                languageDropdown->SetBounds(Rect2Di(
-                    xPos, statusY + 2, langW, statusBarHeight - 4
-                ));
-                xPos += langW + gap;
-            }
-
-            // Encoding dropdown
-            if (encodingDropdown) {
-                encodingDropdown->SetBounds(Rect2Di(
-                    xPos, statusY + 2, encW, statusBarHeight - 4
-                ));
-                xPos += encW + gap;
-            }
-
-            // EOL dropdown
-            if (eolDropdown) {
-                eolDropdown->SetBounds(Rect2Di(
-                    xPos, statusY + 2, eolW, statusBarHeight - 4
-                ));
-                xPos += eolW + gap;
-            }
-
-            // Zoom dropdown
-            if (zoomDropdown) {
-                zoomDropdown->SetBounds(Rect2Di(
-                    xPos, statusY + 2, zoomW, statusBarHeight - 4
-                ));
-                xPos += zoomW + gap;
-            }
-
-            // Status label: fills remaining space to the right
-            if (statusLabel) {
-                statusLabel->SetBounds(Rect2Di(
-                    xPos, statusY + 4,
-                    w - xPos - 4, statusBarHeight - 8
-                ));
-            }
-        }
-
-        // Force every document's text area to recompute wrap / visible area /
-        // scrollbars. The implicit chain through tabContainer ->
-        // PositionTabContent -> textArea->SetBounds only reliably reaches the
-        // active tab; inactive tabs keep stale wrap widths until clicked.
+        // Layout is driven by the CSS flex engine now (window column + per-tab content
+        // boxes); just invalidate so it re-runs, and refresh text-area wrap caches.
+        InvalidateLayout();
+        RequestRedraw();
         for (const auto& doc : documents) {
             if (doc && doc->textArea) {
                 doc->textArea->InvalidateAllLineLayouts();
@@ -1420,7 +1421,7 @@ namespace {
                        c == '/' || c == '\\' || c == '|' || c == '?' || c == '*') {
                 out.push_back('_');
             } else if (c == ' ' || c == '\t') {
-                out.push_back('_');
+                out.push_back(' ');
             } else {
                 out.push_back(static_cast<char>(c));
             }
@@ -1502,6 +1503,26 @@ namespace {
         }
     }
 
+    void UltraCanvasTextEditor::RefreshAutoDisplayName(int docIndex) {
+        if (docIndex < 0 || docIndex >= static_cast<int>(documents.size())) return;
+        auto d = documents[docIndex];
+        if (!d || !d->textArea) return;
+        // Only auto-name unsaved tabs; saved files keep their on-disk filename.
+        if (!(d->isNewFile && d->filePath.empty())) return;
+        if (d->textArea->GetLineCount() <= 0) return;
+
+        std::string suggestion = SuggestFileNameFromFirstLine(d->textArea->GetLine(0));
+        // Sticky: keep the existing name if the first line yields nothing usable
+        // (preserves the "RecoveredN"/"UntitledN" fallback for blank first lines).
+        if (suggestion.empty() || suggestion == d->fileName) return;
+
+        d->fileName = suggestion;
+        UpdateTabTitle(docIndex);
+        if (docIndex == activeDocumentIndex) {
+            UpdateTitle();
+        }
+    }
+
     int UltraCanvasTextEditor::CreateNewDocument(const std::string& fileName) {
         // Create new document tab
         auto doc = std::make_shared<DocumentTab>();
@@ -1533,11 +1554,8 @@ namespace {
 
         // Create text area
         doc->textArea = std::make_shared<UltraCanvasTextArea>(
-                "TextArea_" + std::to_string(documents.size()),
-                0, 0,
-                GetWidth(), contentHeight
-        );
-
+                "TextArea_" + std::to_string(documents.size()));
+        doc->textArea->size.height = CSSLayout::Dimension::Px(contentHeight);
         // Configure text area
         doc->textArea->SetHighlightSyntax(false); // Plain text by default
         doc->textArea->ApplyPlainTextStyle();
@@ -1559,8 +1577,12 @@ namespace {
         // Setup callbacks for this document
         SetupDocumentCallbacks(docIndex);
 
+        // Build the per-tab flex content (contentBox > editorArea > textArea) and use it
+        // as the tab's content element.
+        BuildDocumentContentBox(doc);
+
         // Add tab
-        int tabIndex = tabContainer->AddTab(doc->fileName, doc->textArea);
+        int tabIndex = tabContainer->AddTab(doc->fileName, doc->contentBox);
 
         // Switch to new document
         activeDocumentIndex = docIndex;
@@ -1571,11 +1593,16 @@ namespace {
         tabContainer->EnsureTabVisible(tabIndex);
         tabContainer->InvalidateTabbar();
 
+        AttachSharedBarsToActiveTab();
         UpdateStatusBar();
         UpdateMarkdownToolbarVisibility();
 
         doc->textArea->SetFocus(true);
         doc->textArea->SetCursorPosition({0,0});
+
+        // Empty new document is its own clean baseline (so typing then undoing
+        // back to empty restores the saved status).
+        CaptureSavedContentBaseline(doc.get());
         return docIndex;
     }
 
@@ -1692,6 +1719,8 @@ namespace {
             doc->textArea->SetText(tpl.content, false);
             doc->isModified = false;
             doc->isSaved = false;
+            // Template content is the clean baseline for this new document.
+            CaptureSavedContentBaseline(doc.get());
         }
 
         UpdateTabTitle(docIndex);
@@ -1713,13 +1742,19 @@ namespace {
         std::filesystem::path p(filePath);
         int docIndex = CreateNewDocument(p.filename().string());
 
-        // Load file content
-        if (!LoadFileIntoDocument(docIndex, filePath)) {
-            // Failed to load - close the document
+        // PDFs take a separate codepath: the tab's textArea is swapped out
+        // for a UltraCanvasPDFView. Detect by extension (case-insensitive).
+        std::string ext = p.extension().string();
+        if (!ext.empty() && ext[0] == '.') ext = ext.substr(1);
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+        const bool ok = (ext == "pdf")
+            ? LoadPDFIntoDocument(docIndex, filePath)
+            : LoadFileIntoDocument(docIndex, filePath);
+
+        if (!ok) {
             CloseDocument(docIndex);
             return -1;
         }
-
         return docIndex;
     }
 
@@ -1841,13 +1876,17 @@ namespace {
         doc->textArea->SetShowLineNumbers(config.showLineNumbers);
         doc->textArea->SetWordWrap(config.wordWrap);
 
+        // Build the per-tab flex content and add it as the tab's content element.
+        BuildDocumentContentBox(doc);
+
         // Add tab to TabbedContainer
-        int tabIndex = tabContainer->AddTab(doc->fileName, doc->textArea);
+        int tabIndex = tabContainer->AddTab(doc->fileName, doc->contentBox);
 
         // Activate the new tab
         activeDocumentIndex = docIndex;
         tabContainer->SetActiveTab(tabIndex);
 
+        AttachSharedBarsToActiveTab();
         UpdateTabBadge(docIndex);
         UpdateTabTitle(docIndex);
         UpdateStatusBar();
@@ -1884,6 +1923,9 @@ namespace {
             }
         }
         doc->textArea->SetFocus(doSetFocus);
+
+        // Move the shared search bar / markdown toolbar into this tab's content boxes.
+        AttachSharedBarsToActiveTab();
 
         // Update status bar and dropdowns
         UpdateStatusBar();
@@ -1929,13 +1971,34 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
     }
 
+    void UltraCanvasTextEditor::CaptureSavedContentBaseline(DocumentTab* doc) {
+        if (!doc) return;
+        const std::string content = doc->textArea ? doc->textArea->GetText() : std::string();
+        doc->savedContentHash = std::hash<std::string>{}(content);
+    }
+
+    void UltraCanvasTextEditor::RefreshModifiedStateFromContent(int index, const std::string& currentContent) {
+        if (index < 0 || index >= static_cast<int>(documents.size())) {
+            return;
+        }
+        auto doc = documents[index];
+        if (!doc) return;
+
+        // Compare current content against the saved baseline so that undo/redo
+        // back to the saved state clears the modified flag (and editing away
+        // from it sets it). SetDocumentModified updates the tab marker and,
+        // for the active document, the toolbar save icon.
+        size_t currentHash = std::hash<std::string>{}(currentContent);
+        SetDocumentModified(index, currentHash != doc->savedContentHash);
+    }
+
     std::string UltraCanvasTextEditor::FormatFullTabTooltip(int index) {
         auto& doc = documents[index];
         std::string tooltipText;
-        if (doc->isNewFile) {
-            tooltipText = "<span weight=\"900\">Never saved</span>";   // ● red  (colour is visual only — text says it)
-        } else if (doc->isModified) {
-            tooltipText = "<span weight=\"900\">Unsaved</span>";  // ● orange
+        if (doc->isModified) {
+            tooltipText = "<span weight=\"900\">Unsaved</span>";  // ● red
+        } else if (doc->isNewFile) {
+            tooltipText = "<span weight=\"900\">Never saved</span>";   // ● orange (colour is visual only — text says it)
         } else if (doc->isSaved) {
             tooltipText = "<span>Saved</span>";            // ● green
         }
@@ -1992,13 +2055,21 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
 
         auto doc = documents[index];
+        // For PDFs the engine owns the dirty bit; sync it before deciding
+        // which marker colour to show.
+        if (doc->IsPdf() && doc->pdfView && doc->pdfView->GetDocument()) {
+            doc->isModified = doc->pdfView->GetDocument()->IsDirty();
+        }
         bool showMarker = true;
-        if (doc->isNewFile) {
-            // Never been saved — orange marker
-            tabContainer->SetTabMarkerColor(index, Color(255, 165, 0, 255));
-        } else if (doc->isModified) {
-            // Modified since last save — red marker
+        if (doc->isModified) {
+            // Has unsaved edits — red marker. Checked before isNewFile so that a
+            // brand-new file that has been typed into switches from the orange
+            // "never saved" marker to the red "unsaved" marker (matches the
+            // toolbar save icon, which keys off isModified).
             tabContainer->SetTabMarkerColor(index, Color(195, 30, 3, 255));
+        } else if (doc->isNewFile) {
+            // Never been saved and not yet edited — orange marker
+            tabContainer->SetTabMarkerColor(index, Color(255, 165, 0, 255));
         } else if (doc->isSaved){
             // Saved and clean — green marker
             tabContainer->SetTabMarkerColor(index, Color(40, 167, 69, 255));
@@ -2009,6 +2080,71 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     }
 
 // ===== FILE OPERATIONS =====
+
+    bool UltraCanvasTextEditor::LoadPDFIntoDocument(int docIndex,
+                                                    const std::string& filePath) {
+        if (docIndex < 0 || docIndex >= static_cast<int>(documents.size())) {
+            return false;
+        }
+        auto doc = documents[docIndex];
+
+        // Build the PDF view at the same logical size as the textArea slot.
+        // The container will resize it on layout passes.
+        auto view = UltraCanvas::CreatePDFView(
+            "PDFView_" + std::to_string(doc->documentId),
+            0, 0,
+            doc->textArea ? doc->textArea->GetWidth()  : GetWidth(),
+            doc->textArea ? doc->textArea->GetHeight() : GetHeight());
+
+        if (!view->LoadFromPath(filePath)) {
+            debugOutput << "Failed to load PDF: " << filePath << std::endl;
+            return false;
+        }
+
+        // Wire status-bar updates on page change.
+        view->onPageChanged = [this, docIndex](int cur, int total) {
+            if (docIndex == activeDocumentIndex) {
+                UpdateStatusBar();
+            }
+            (void)cur; (void)total;
+        };
+        view->onError = [this](const std::string& msg) {
+            debugOutput << "[PDF] " << msg << std::endl;
+        };
+
+        std::filesystem::path p(filePath);
+        doc->fileName     = p.filename().string();
+        doc->filePath     = filePath;
+        doc->isNewFile    = false;
+        doc->isModified   = false;
+        doc->isSaved      = true;
+        doc->kind         = DocumentKind::Pdf;
+        doc->language     = "PDF";
+        doc->encoding     = "BINARY";
+        doc->hasBOM       = false;
+        doc->originalRawBytes.clear();
+        doc->pdfView      = view;
+        doc->lastSaveTime = std::chrono::steady_clock::now();
+
+        // Swap the tab's content from the placeholder textArea to the PDF view.
+        // The textArea stays alive (still referenced via doc->textArea) so the
+        // existing null-checked textArea accesses elsewhere keep working, but
+        // it's no longer in the tab's child tree.
+        if (tabContainer) {
+            tabContainer->SetTabContent(docIndex, view);
+        }
+
+        UpdateTabTitle(docIndex);
+        UpdateTabBadge(docIndex);
+        UpdateTitle();
+        UpdateLanguageDropdown();
+        UpdateEncodingDropdown();
+        UpdateMarkdownToolbarVisibility();
+
+        lastOpenedDirectory = p.parent_path().string();
+        AddToRecentFiles(filePath);
+        return true;
+    }
 
     bool UltraCanvasTextEditor::LoadFileIntoDocument(int docIndex, const std::string& filePath) {
         if (docIndex < 0 || docIndex >= static_cast<int>(documents.size())) {
@@ -2110,13 +2246,14 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                     // Full-filename match wins over extension (e.g. pom.xml -> POM,
                     // manifest.json -> WebManifest). Falls through to extension otherwise.
                     doc->textArea->SetHighlightSyntax(true);
-                } else if (doc->textArea->SetProgrammingLanguageByExtension(ext)) {
-                    doc->textArea->SetHighlightSyntax(true);
                 } else {
                     doc->textArea->SetHighlightSyntax(false);
                 }
                 doc->language = doc->textArea->GetCurrentProgrammingLanguage();
             }
+
+            // Freshly loaded file content is the clean baseline.
+            CaptureSavedContentBaseline(doc.get());
 
             UpdateTabTitle(docIndex);
             UpdateTabBadge(docIndex);
@@ -2163,8 +2300,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 "mp4", "avi", "mkv", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg",
                 // Archives
                 "zip", "tar", "gz", "bz2", "xz", "7z", "rar", "zst", "lz4",
-                // Documents (binary formats — NOT rtf/html/odt source which is text/xml)
-                "pdf", "doc", "xls", "ppt",
+                // Documents (binary formats — NOT rtf/html/odt source which is text/xml).
+                // PDF is intentionally excluded: PDFs route to UltraCanvasPDFView
+                // via LoadPDFIntoDocument before IsBinaryFile is ever consulted.
+                "doc", "xls", "ppt",
                 // Office Open XML (ZIP-based binary containers)
                 "docx", "xlsx", "pptx", "odt", "ods",
                 // Fonts
@@ -2234,6 +2373,26 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
         try {
             auto doc = documents[docIndex];
+
+            // PDF documents save via the MuPDF engine, not the text encoder.
+            if (doc->IsPdf() && doc->pdfView) {
+                if (!doc->pdfView->SaveAs(filePath)) {
+                    debugOutput << "Failed to save PDF: " << filePath << std::endl;
+                    return false;
+                }
+                doc->filePath     = filePath;
+                std::filesystem::path p(filePath);
+                doc->fileName     = p.filename().string();
+                doc->isModified   = false;
+                doc->isSaved      = true;
+                doc->isNewFile    = false;
+                doc->lastSaveTime = std::chrono::steady_clock::now();
+                UpdateTabTitle(docIndex);
+                UpdateTabBadge(docIndex);
+                UpdateTitle();
+                AddToRecentFiles(filePath);
+                return true;
+            }
 
             // In hex mode, save raw bytes directly — no encoding conversion, no BOM
             if (doc->textArea->IsHexMode()) {
@@ -2327,6 +2486,9 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             // Clear raw bytes cache since we just saved a fresh version
             doc->originalRawBytes.clear();
 
+            // Content just written to disk becomes the new clean baseline, so a
+            // subsequent edit-then-undo correctly returns to the saved status.
+            CaptureSavedContentBaseline(doc.get());
             SetDocumentModified(docIndex, false);
 
             // Delete autosave backup
@@ -2436,11 +2598,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 if (!autosaveManager.LoadBackup(sd.backupPath, content, origPath, enc, lang)) {
                     continue;
                 }
-                // Use the stored display name (e.g. "Recovered1", "Untitled3")
-                // or fall back to a fresh unique Recovered name.
-                std::string name = !sd.displayName.empty()
-                                   ? sd.displayName
-                                   : GenerateUniqueDocumentName("Recovered");
+                // Start from a fresh "RecoveredN" placeholder; the persisted
+                // displayName may be a stale "RecoveredN" itself, and
+                // RecoverBackupIntoDocument re-derives the real name from the
+                // recovered content below.
+                std::string name = GenerateUniqueDocumentName("Recovered");
                 docIndex = CreateNewDocument(name);
                 RecoverBackupIntoDocument(docIndex, sd.backupPath,
                                           content,
@@ -2541,6 +2703,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             }
         }
 
+        // Recovery never fires onTextChanged (SetText was called with
+        // runNotifications=false), so re-derive the tab name from the recovered
+        // content here — fixes stale "RecoveredN" names on unsaved tabs.
+        RefreshAutoDisplayName(docIndex);
+
         UpdateTabTitle(docIndex);
         UpdateTabBadge(docIndex);
         UpdateEncodingDropdown();
@@ -2595,13 +2762,16 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     void UltraCanvasTextEditor::UpdateMarkdownToolbarVisibility() {
         if (!markdownToolbar) return;
         bool show = IsMarkdownMode() && config.showMarkdownToolbar;
-        if (markdownToolbar->IsVisible() != show) {
-            markdownToolbar->SetVisible(show);
-            if (!show && headingSubToolbar) {
-                headingSubToolbar->SetVisible(false);
-            }
-            UpdateChildLayout();
+        markdownToolbar->SetVisible(show);
+        markdownToolbar->layout.display =
+                show ? CSSLayout::DisplayType::Block : CSSLayout::DisplayType::NoDisplay;
+        if (!show && headingSubToolbar) {
+            headingSubToolbar->SetVisible(false);
         }
+        // No TextArea margin needed: the markdown toolbar is an in-flow flex-row sibling that
+        // naturally sits left of the text area (and collapses out when display:NoDisplay).
+        InvalidateLayout();
+        RequestRedraw();
     }
 
     void UltraCanvasTextEditor::InsertMarkdownSnippet(
@@ -3365,6 +3535,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         if (toolbarContainer) {
             toolbarContainer->SetVisible(checked);
         }
+        //InvalidateLayout();
         UpdateToolbarsSubmenu();
         UpdateChildLayout();
         SaveConfig();
@@ -3406,22 +3577,23 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         config.dialogType = DialogType::Custom;
         config.buttons = DialogButtons::NoButtons;
         config.width = 430;
-        config.height = 526;
+        config.height = 476;
 
 
         aboutDialog = UltraCanvasDialogManager::CreateDialog(config);
 
         // Replace default layout with custom vertical layout
-        auto mainLayout = CreateVBoxLayout(aboutDialog.get());
-        mainLayout->SetSpacing(4);
+        aboutDialog->layout.SetFlexColumn();
+        aboutDialog->layout.SetFlexGap(4);
         aboutDialog->SetPadding(20);
 
         // Logo image
-        auto logo = std::make_shared<UltraCanvasImageElement>("AboutLogo",  0, 74, 74);
+        auto logo = std::make_shared<UltraCanvasImageElement>("AboutLogo", 74, 74);
         logo->LoadFromFile(NormalizePath(GetResourcesDir() + "media/Logo_Texter.png"));
         logo->SetFitMode(ImageFitMode::Contain);
         logo->SetMargin(0, 0, 8, 0);
-        mainLayout->AddUIElement(logo)->SetCrossAlignment(LayoutAlignment::Center);
+        aboutDialog->AddChild(logo);
+        logo->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
 
         // Title
         auto titleLabel = std::make_shared<UltraCanvasLabel>("AboutTitle", 300, 25, "UltraTexter");
@@ -3429,7 +3601,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         titleLabel->SetFontWeight(FontWeight::Bold);
         titleLabel->SetAlignment(TextAlignment::Center);
         titleLabel->SetMargin(0, 0, 4, 0);
-        mainLayout->AddUIElement(titleLabel)->SetWidthMode(SizeMode::Fill);
+        aboutDialog->AddChild(titleLabel);
+        titleLabel->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         // Version
         auto versionLabel = std::make_shared<UltraCanvasLabel>("AboutVersion", 300, 40, "Version " + version + "\nUltraCanvas version " + versionString);
@@ -3437,7 +3610,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         versionLabel->SetTextColor(Color(100, 100, 100));
         versionLabel->SetAlignment(TextAlignment::Center);
         versionLabel->SetMargin(0, 0, 10, 0);
-        mainLayout->AddUIElement(versionLabel)->SetWidthMode(SizeMode::Fill);
+        aboutDialog->AddChild(versionLabel);
+        versionLabel->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         // Description
         auto descLabel = std::make_shared<UltraCanvasLabel>("AboutDesc", 350, 120,
@@ -3452,11 +3626,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         descLabel->SetTextColor(Color(60, 60, 60));
         descLabel->SetAlignment(TextAlignment::Left);
         descLabel->SetWrap(TextWrap::WrapWord);
-        descLabel->SetAutoResize(true);
         descLabel->SetMargin(0, 20, 8, 20);
-        mainLayout->AddUIElement(descLabel)->SetWidthMode(SizeMode::Fill);
-        
-        mainLayout->AddSpacing(10);
+        aboutDialog->AddChild(descLabel);
+        descLabel->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+        aboutDialog->AddSpacer(10);
 
         // Copyright
         auto copyrightLabel = std::make_shared<UltraCanvasLabel>("AboutCopyright", 350, 20,
@@ -3464,10 +3638,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         copyrightLabel->SetFontSize(10);
         copyrightLabel->SetTextColor(Color(120, 120, 120));
         copyrightLabel->SetAlignment(TextAlignment::Center);
-        mainLayout->AddUIElement(copyrightLabel)->SetWidthMode(SizeMode::Fill)->SetCrossAlignment(LayoutAlignment::Center)->SetMainAlignment(LayoutAlignment::Center);;
+        aboutDialog->AddChild(copyrightLabel); copyrightLabel->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch).SetAlignSelf(CSSLayout::AlignSelf::Center);
 
         // Clickable URL label
-        auto urlLabel = std::make_shared<UltraCanvasLabel>("AboutURL",  20);
+        auto urlLabel = std::make_shared<UltraCanvasLabel>("AboutURL", "");
         urlLabel->SetText("<span color=\"blue\">www.ultraos.eu</span>");
         urlLabel->SetTextIsMarkup(true);
         urlLabel->SetFontSize(11);
@@ -3477,18 +3651,20 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             OpenURL("https://www.ultraos.eu/");
         };
         urlLabel->SetMargin(0, 0, 10, 20);
-        mainLayout->AddUIElement(urlLabel)->SetWidthMode(SizeMode::Fill)->SetCrossAlignment(LayoutAlignment::Center);
+        aboutDialog->AddChild(urlLabel);
+        urlLabel->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch).SetAlignSelf(CSSLayout::AlignSelf::Center);
 
         // Push OK button to the bottom
-        mainLayout->AddStretch(1);
+        aboutDialog->AddStretchSpacer(1);
 
         // OK button
-        auto okButton = std::make_shared<UltraCanvasButton>("AboutOK",  0, 0, 80, 28);
+        auto okButton = std::make_shared<UltraCanvasButton>("AboutOK",  80, 28);
         okButton->SetText("OK");
         okButton->onClick = [this]() {
             aboutDialog->CloseDialog(DialogResult::OK);
         };
-        mainLayout->AddUIElement(okButton)->SetCrossAlignment(LayoutAlignment::Center);
+        aboutDialog->AddChild(okButton);
+        okButton->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
 
         aboutDialog->onResult = [this](DialogResult) {
             aboutDialog.reset();
@@ -3636,6 +3812,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 doc->encoding = newEncoding;
                 doc->textArea->SetText(utf8Text, false);
                 doc->isModified = false;
+                // Re-interpreted content is unmodified; reset the clean baseline.
+                CaptureSavedContentBaseline(doc);
                 UpdateTabBadge(activeDocumentIndex);
             } else {
                 // Conversion failed: revert dropdown selection
@@ -3687,25 +3865,41 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         //bool canSave = HasUnsavedChanges();
         auto activeDoc = GetActiveDocument();
         bool canSave = (activeDoc && activeDoc->isNewFile) || HasUnsavedChanges();
-        if (auto item = toolbar->GetItem("save")) {
-            item->SetEnabled(canSave);
+        if (auto w = toolbar->GetWidget("save")) {
+            w->SetDisabled(!canSave);
+            if (auto saveBtn = std::dynamic_pointer_cast<UltraCanvasButton>(w)) {
+                ButtonStyle s = saveBtn->GetStyle();
+                if (HasUnsavedChanges()) {
+                    // Unsaved indicator: red shading on the button background,
+                    // strong red at the bottom fading quickly to a faint (~10%)
+                    // red toward the top.
+                    s.backgroundGradient = {
+                        GradientStop(0.0, Color(210, 40, 40,  20)),  // top: ~8% red
+                        GradientStop(0.55, Color(208, 36, 36, 70)),  // fades in slowly
+                        GradientStop(1.0, Color(205, 30, 30, 235)),  // bottom: strong red
+                    };
+                } else {
+                    s.backgroundGradient.clear();
+                }
+                saveBtn->SetStyle(s);
+            }
         }
- 
+
         // ── Undo / Redo ──
         bool canUndo = CanUndo();
         bool canRedo = CanRedo();
-        if (auto item = toolbar->GetItem("undo")) {
-            item->SetEnabled(canUndo);
+        if (auto w = toolbar->GetWidget("undo")) {
+            w->SetDisabled(!canUndo);
         }
-        if (auto item = toolbar->GetItem("redo")) {
-            item->SetEnabled(canRedo);
+        if (auto w = toolbar->GetWidget("redo")) {
+            w->SetDisabled(!canRedo);
         }
- 
+
         // ── Paste: disabled when clipboard has no text ──
         std::string clipboardText;
         bool canPaste = GetClipboardText(clipboardText) && !clipboardText.empty();
-        if (auto item = toolbar->GetItem("paste")) {
-            item->SetEnabled(canPaste);
+        if (auto w = toolbar->GetWidget("paste")) {
+            w->SetDisabled(!canPaste);
         }
     }
 
@@ -3735,9 +3929,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         Color textColor     = dark ? Color(220, 220, 220, 255) : Color( 40,  40,  40, 255);
         Color disabledColor = dark ? Color(110, 110, 110, 255) : Color(150, 150, 150, 255);
         for (auto& s : headingStyles) {
-            auto item = headingSubToolbar->GetItem(s.id);
-            if (!item) continue;
-            auto btn = std::dynamic_pointer_cast<UltraCanvasButton>(item->GetWidget());
+            auto btn = std::dynamic_pointer_cast<UltraCanvasButton>(headingSubToolbar->GetWidget(s.id));
             if (!btn) continue;
             btn->SetFont("", s.fontSize, s.weight);
             btn->SetTextColors(textColor, textColor, textColor, disabledColor);
@@ -3810,7 +4002,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 if (markdownToolbar)   markdownToolbar->SetAppearance(app);
                 if (headingSubToolbar) headingSubToolbar->SetAppearance(app);
                 // Re-assert heading font sizes/colors AFTER SetAppearance, which
-                // otherwise clobbers fontSize via UltraCanvasToolbarButton::UpdateAppearance.
+                // otherwise clobbers fontSize via UltraCanvasToolbar::ApplyButtonAppearance.
                 ApplyHeadingButtonStyles(true);
             }
             if (tabContainer) {
@@ -3942,26 +4134,18 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 //     documents[currentIndex]->originalRawBytes.clear();
                 //     documents[currentIndex]->originalRawBytes.shrink_to_fit();
                 // }
-                SetDocumentModified(currentIndex, true);
+                // Derive modified flag by comparing against the saved baseline so
+                // that undo/redo back to the saved content marks the document as
+                // saved again (updates save icon + tab status marker). Uses the
+                // text already delivered to the callback to avoid re-copying it.
+                RefreshModifiedStateFromContent(currentIndex, text);
 
                 // For brand-new unsaved documents, keep the tab title in sync with
                 // the first line of content so the user can see a meaningful name
                 // before they ever hit Save As. Intentionally sticky: if the first
                 // line later becomes empty we keep the last suggestion to avoid
                 // jitter.
-                auto d = documents[currentIndex];
-                if (d->isNewFile && d->filePath.empty() && d->textArea &&
-                    d->textArea->GetLineCount() > 0) {
-                    std::string suggestion =
-                        SuggestFileNameFromFirstLine(d->textArea->GetLine(0));
-                    if (!suggestion.empty() && suggestion != d->fileName) {
-                        d->fileName = suggestion;
-                        UpdateTabTitle(currentIndex);
-                        if (currentIndex == activeDocumentIndex) {
-                            UpdateTitle();
-                        }
-                    }
-                }
+                RefreshAutoDisplayName(currentIndex);
             }
             UpdateStatusBar();
         };
@@ -4156,7 +4340,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
 // ===== PUBLIC API =====
 
-    void UltraCanvasTextEditor::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasTextEditor::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         // Poll for async match count results
         //debugOutput << "UltraCanvasTextEditor::Render" << std::endl;
         if (matchCountReady.load()) {
@@ -4451,8 +4635,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
     void UltraCanvasTextEditor::SetupSearchBar() {
         searchBar = std::make_shared<UltraCanvasSearchBar>(
-                "SearchBar", 
-                0, 0, GetWidth()
+                "SearchBar"
         );
         searchBar->Initialize();
 
@@ -4478,6 +4661,23 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             bool hex = doc->textArea->GetEditingMode() == TextAreaEditingMode::Hex;
             int selPos = hex ? doc->textArea->GetHexCursorByteOffset() : doc->textArea->GetSelectionMinGrapheme();
             StartAsyncMatchCount(text, cs, selPos);
+        };
+
+        // ── Incremental (live) find: first match at/after the caret anchor, no advance ──
+        searchBar->onIncrementalFind = [this](const std::string& text, bool cs, bool ww) {
+            auto doc = GetActiveDocument();
+            if (!doc || !doc->textArea) return;
+            doc->textArea->HighlightMatches(text);
+            doc->textArea->IncrementalFind(text, cs);
+            bool hex = doc->textArea->GetEditingMode() == TextAreaEditingMode::Hex;
+            int selPos = hex ? doc->textArea->GetHexCursorByteOffset() : doc->textArea->GetSelectionMinGrapheme();
+            StartAsyncMatchCount(text, cs, selPos);
+        };
+
+        // ── Re-anchor incremental search when the search input regains focus ──
+        searchBar->onSearchInputFocused = [this]() {
+            auto doc = GetActiveDocument();
+            if (doc && doc->textArea) doc->textArea->BeginIncrementalSearch();
         };
 
         // ── Find Previous ──
@@ -4542,7 +4742,12 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             HideSearchBar();
         };
 
-        AddChild(searchBar);
+        // The search bar is NOT a window child: it is re-parented into the active tab's
+        // content box as the first (top) flex item.
+        searchBar->layoutItem.SetFlexOrder(0).SetFlexShrink(0)
+                .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        searchBar->SetVisible(false);
+        searchBar->layout.display = CSSLayout::DisplayType::NoDisplay;
     }
 
 
@@ -4556,31 +4761,40 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         searchBar->SetReplaceHistory(replaceHistory);
 
         searchBar->SetMode(mode);
+        // Give the flex column a definite height for the bar, and make it occupy space.
+        searchBar->size.height = CSSLayout::Dimension::Px(searchBar->GetBarHeight());
+        searchBar->layout.display = CSSLayout::DisplayType::Block;
         searchBar->SetVisible(true);
 
         // Apply current theme
         if (isDarkTheme) searchBar->ApplyDarkTheme();
         else             searchBar->ApplyLightTheme();
 
-        // Pre-fill with selected text if any
+        // Capture the caret as the incremental-search anchor (before the pre-fill
+        // SetSearchText triggers a live search), then pre-fill with selected text.
         auto doc = GetActiveDocument();
-        if (doc && doc->textArea && doc->textArea->HasSelection()) {
-            std::string sel = doc->textArea->GetSelectedText();
-            // Only pre-fill if single-line selection
-            if (sel.find('\n') == std::string::npos && !sel.empty()) {
-                searchBar->SetSearchText(sel);
+        if (doc && doc->textArea) {
+            doc->textArea->BeginIncrementalSearch();
+            if (doc->textArea->HasSelection()) {
+                std::string sel = doc->textArea->GetSelectedText();
+                // Only pre-fill if single-line selection
+                if (sel.find('\n') == std::string::npos && !sel.empty()) {
+                    searchBar->SetSearchText(sel);
+                }
             }
         }
 
         searchBar->FocusSearchInput();
-        UpdateChildLayout();
+        InvalidateLayout();
         RequestRedraw();
     }
 
     void UltraCanvasTextEditor::HideSearchBar() {
         if (!searchBar) return;
         CancelAsyncMatchCount();
+        // Collapse out of the flex column so the text area reclaims the space.
         searchBar->SetVisible(false);
+        searchBar->layout.display = CSSLayout::DisplayType::NoDisplay;
 
         // Return focus to active text area
         auto doc = GetActiveDocument();
@@ -4590,7 +4804,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             doc->textArea->ClearHighlights();
         }
 
-        UpdateChildLayout();
+        InvalidateLayout();
         RequestRedraw();
     }
 
@@ -4690,7 +4904,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         ctx->PushState();
         // Dark translucent background
         ctx->SetFillPaint(Color(0, 0, 0, 100));
-        ctx->FillRectangle(Rect2Df(0, 0, w, h));
+        ctx->FillRectangle(Rect2Dd(0, 0, w, h));
 
         // Central drop zone indicator
         int zoneMargin = 40;
@@ -4731,7 +4945,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
         // Document body
         ctx->SetFillPaint(accentColor);
-        ctx->FillRectangle(Rect2Df(iconCenterX - iconW / 2, iconCenterY - iconH / 2,
+        ctx->FillRectangle(Rect2Dd(iconCenterX - iconW / 2, iconCenterY - iconH / 2,
                         iconW, iconH));
 
         // Document fold corner (top-right triangle overlay)
@@ -4739,7 +4953,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         Color bgColor = isDarkTheme ? Color(0, 0, 0, 100) : Color(0, 0, 0, 100);
         ctx->SetFillPaint(bgColor);
         // Approximate triangle with a small rectangle overlay at top-right
-        ctx->FillRectangle(Rect2Df(iconCenterX + iconW / 2 - foldSize,
+        ctx->FillRectangle(Rect2Dd(iconCenterX + iconW / 2 - foldSize,
                         iconCenterY - iconH / 2,
                         foldSize, foldSize));
 
@@ -4749,7 +4963,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         int lineY = iconCenterY - iconH / 2 + 18;
         for (int i = 0; i < 4; i++) {
             int lineW = (i == 3) ? iconW - 20 : iconW - 12;
-            ctx->FillRectangle(Rect2Df(iconCenterX - iconW / 2 + 6, lineY, lineW, 2));
+            ctx->FillRectangle(Rect2Dd(iconCenterX - iconW / 2 + 6, lineY, lineW, 2));
             lineY += 8;
         }
 
@@ -4861,9 +5075,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
 
         // Position below the toolbar button and open
-        auto item = toolbar->GetItem("recent");
-        if (!item) return;
-        auto btn = item->GetWidget();
+        auto btn = toolbar->GetWidget("recent");
         if (!btn) return;
 
         recentFilesPopupMenu->OpenMenu(
@@ -5104,10 +5316,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
         // Update toolbar button states
         auto setChecked = [&](const std::string& id, bool checked) {
-            if (auto item = markdownToolbar->GetItem(id)) {
-                auto btn = std::dynamic_pointer_cast<UltraCanvasToolbarButton>(item);
-                if (btn) btn->SetChecked(checked);
-            }
+            auto btn = std::dynamic_pointer_cast<UltraCanvasButton>(markdownToolbar->GetWidget(id));
+            if (btn) btn->SetPressed(checked);
         };
 
         setChecked("md-bold", isBold);
@@ -5122,10 +5332,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         // Update heading sub-toolbar if visible
         if (headingSubToolbar) {
             auto setHeadingChecked = [&](const std::string& id, bool checked) {
-                if (auto item = headingSubToolbar->GetItem(id)) {
-                    auto btn = std::dynamic_pointer_cast<UltraCanvasToolbarButton>(item);
-                    if (btn) btn->SetChecked(checked);
-                }
+                auto btn = std::dynamic_pointer_cast<UltraCanvasButton>(headingSubToolbar->GetWidget(id));
+                if (btn) btn->SetPressed(checked);
             };
             setHeadingChecked("md-h1", isH1);
             setHeadingChecked("md-h2", isH2);
