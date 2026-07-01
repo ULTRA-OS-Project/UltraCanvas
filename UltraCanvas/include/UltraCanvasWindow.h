@@ -230,6 +230,14 @@ namespace UltraCanvas {
 
         WindowState GetState() const { return _state; }
 
+        // Ratio of physical device pixels to logical UI units for this window
+        // (1.0 == 100% display scaling / 96 DPI). The whole UltraCanvas layout
+        // and event coordinate space is expressed in logical units; backends that
+        // support HiDPI override this and render at physical resolution. Callers
+        // that cross the native boundary (input coords, window geometry) use this
+        // to convert between logical and physical pixels.
+        virtual double GetContentScale() const { return 1.0; }
+
         const WindowConfig& GetConfig() const { return config_; }
 
         virtual bool OnEvent(const UCEvent& event) override;
