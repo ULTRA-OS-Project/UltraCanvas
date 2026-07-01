@@ -1,7 +1,8 @@
 // OS/MSWindows/UltraCanvasWindowsApplication.cpp
 // Complete Windows application implementation with all methods
-// Version: 1.2.8 - Strip spurious Ctrl/Alt flags on AltGr (Win reports LCtrl+RAlt synthetically)
-// Last Modified: 2026-05-13
+// Version: 1.2.9 - Convert native pointer coords from physical to logical pixels
+//                  using the target window's DPI content scale (HiDPI support)
+// Last Modified: 2026-07-01
 // Author: UltraCanvas Framework
 
 #include "../../include/UltraCanvasApplication.h"
@@ -11,6 +12,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <sstream>
+#include <cmath>
 #include <pango/pangocairo.h>
 #include <fontconfig/fontconfig.h>
 #include "UltraCanvasDebug.h"
@@ -331,6 +333,25 @@ namespace UltraCanvas {
         event.nativeWindowHandle = hwnd;
         event.targetWindow = FindWindow(hwnd);
 
+        // Native pointer coordinates (client and screen) arrive in PHYSICAL
+        // pixels because the process is DPI-aware. The UltraCanvas event/layout
+        // coordinate space is logical, so convert by the window's content scale.
+        double contentScale = event.targetWindow ? event.targetWindow->GetContentScale() : 1.0;
+        if (contentScale <= 0.0) contentScale = 1.0;
+
+        // Emit an event after scaling its pointer fields to logical units.
+        // Harmless for non-pointer events (their pointer fields are {0,0}).
+        auto emit = [this, contentScale](UCEvent& e) {
+            if (contentScale != 1.0) {
+                e.pointerWindow = { static_cast<int>(std::lround(e.pointerWindow.x / contentScale)),
+                                    static_cast<int>(std::lround(e.pointerWindow.y / contentScale)) };
+                e.pointer = e.pointerWindow;
+                e.pointerGlobal = { static_cast<int>(std::lround(e.pointerGlobal.x / contentScale)),
+                                    static_cast<int>(std::lround(e.pointerGlobal.y / contentScale)) };
+            }
+            PushEvent(e);
+        };
+
         // Common modifier state helper
         auto fillModifiers = [&event]() {
             bool ctrlDown = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
@@ -357,7 +378,7 @@ namespace UltraCanvas {
                 event.virtualKey = ConvertVKToUCKey(wParam);
                 event.character = 0;
                 fillModifiers();
-                PushEvent(event);
+                emit(event);
                 return;
             }
 
@@ -368,7 +389,7 @@ namespace UltraCanvas {
                 event.virtualKey = ConvertVKToUCKey(wParam);
                 event.character = 0;
                 fillModifiers();
-                PushEvent(event);
+                emit(event);
                 return;
             }
 
@@ -404,7 +425,7 @@ namespace UltraCanvas {
                                   ? utf8[0] : 0;
                 event.virtualKey = UCKeys::Unknown;
                 fillModifiers();
-                PushEvent(event);
+                emit(event);
                 return;
             }
 
@@ -418,7 +439,7 @@ namespace UltraCanvas {
                 ClientToScreen(hwnd, &pt);
                 event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
-                PushEvent(event);
+                emit(event);
                 return;
             }
 
@@ -431,7 +452,7 @@ namespace UltraCanvas {
                 ClientToScreen(hwnd, &pt);
                 event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
-                PushEvent(event);
+                emit(event);
                 return;
             }
 
@@ -444,7 +465,7 @@ namespace UltraCanvas {
                 ClientToScreen(hwnd, &pt);
                 event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
-                PushEvent(event);
+                emit(event);
                 return;
             }
 
@@ -457,7 +478,7 @@ namespace UltraCanvas {
                 ClientToScreen(hwnd, &pt);
                 event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
-                PushEvent(event);
+                emit(event);
                 return;
             }
 
@@ -470,7 +491,7 @@ namespace UltraCanvas {
                 ClientToScreen(hwnd, &pt);
                 event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
-                PushEvent(event);
+                emit(event);
                 return;
             }
 
@@ -483,7 +504,7 @@ namespace UltraCanvas {
                 ClientToScreen(hwnd, &pt);
                 event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
-                PushEvent(event);
+                emit(event);
                 return;
             }
 
@@ -497,7 +518,7 @@ namespace UltraCanvas {
                 ClientToScreen(hwnd, &pt);
                 event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
-                PushEvent(event);
+                emit(event);
                 return;
             }
 
@@ -510,7 +531,7 @@ namespace UltraCanvas {
                 ClientToScreen(hwnd, &pt);
                 event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
-                PushEvent(event);
+                emit(event);
                 return;
             }
 
@@ -523,7 +544,7 @@ namespace UltraCanvas {
                 ClientToScreen(hwnd, &pt);
                 event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
-                PushEvent(event);
+                emit(event);
                 return;
             }
 
@@ -536,7 +557,7 @@ namespace UltraCanvas {
                 ClientToScreen(hwnd, &pt);
                 event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
-                PushEvent(event);
+                emit(event);
                 return;
             }
 
@@ -555,7 +576,7 @@ namespace UltraCanvas {
                 event.pointerWindow = { pt.x, pt.y };
                 event.pointer = event.pointerWindow;
                 fillModifiers();
-                PushEvent(event);
+                emit(event);
                 return;
             }
 
@@ -570,14 +591,14 @@ namespace UltraCanvas {
                 event.pointerWindow = { pt.x, pt.y };
                 event.pointer = event.pointerWindow;
                 fillModifiers();
-                PushEvent(event);
+                emit(event);
                 return;
             }
 
             // ===== MOUSE ENTER/LEAVE =====
             case WM_MOUSELEAVE: {
                 event.type = UCEventType::MouseLeave;
-                PushEvent(event);
+                emit(event);
                 return;
             }
 
@@ -602,21 +623,21 @@ namespace UltraCanvas {
 
             case WM_CLOSE: {
                 event.type = UCEventType::WindowCloseRequest;
-                PushEvent(event);
+                emit(event);
                 return;
             }
 
             case WM_SETFOCUS: {
                 debugOutput << "focus hwnd=" << hwnd << std::endl;
                 event.type = UCEventType::WindowFocus;
-                PushEvent(event);
+                emit(event);
                 return;
             }
 
             case WM_KILLFOCUS: {
                 debugOutput << "blur hwnd=" << hwnd << std::endl;
                 event.type = UCEventType::WindowBlur;
-                PushEvent(event);
+                emit(event);
                 return;
             }
 

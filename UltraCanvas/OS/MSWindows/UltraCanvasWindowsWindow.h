@@ -60,6 +60,17 @@ namespace UltraCanvas {
 
         bool trackingMouseLeave;
 
+        // Physical-pixels-per-logical-unit for the monitor this window is on
+        // (dpi / 96.0). 1.0 == 100% scaling. Updated on creation and on
+        // WM_DPICHANGED. All UltraCanvas layout stays in logical units; the
+        // native HWND client area and Cairo surface are sized in physical pixels
+        // (logical * dpiScale) so rendering is crisp at any display scale.
+        double dpiScale = 1.0;
+
+        // Guards against reacting to the WM_SIZE that our own DPI/size
+        // adjustments (SetWindowPos) synthesize before the window is ready.
+        bool inDpiChange = false;
+
         bool CreateNative() override;
         void DestroyNative() override;
         std::mutex cairoMutex;
@@ -91,6 +102,9 @@ namespace UltraCanvas {
         void GetScreenSize(int& width, int& height) const override;
         void GetScreenBounds(int& x, int& y, int& width, int& height) const override;
 
+        // Physical pixels per logical unit for this window (see dpiScale).
+        double GetContentScale() const override { return dpiScale; }
+
         // ===== WINDOWS-SPECIFIC METHODS =====
         HWND GetHWND() const { return hwnd; }
 
@@ -106,6 +120,14 @@ namespace UltraCanvas {
         void SetWindowStyle();
 
         void HandleResizeEventWindows(int w, int h);
+
+        // Resize the HWND so its client area holds config_.width/height logical
+        // units at the current dpiScale (i.e. logical * dpiScale physical pixels).
+        void ApplyClientSizePhysical();
+
+        // Rebuild the native surface and render context at a new dpiScale after a
+        // WM_DPICHANGED. Reads the actual client rect so logical size stays stable.
+        void ApplyDpiScaleChange();
 
     protected:
         void DoResizeNative() override;

@@ -1,3 +1,6 @@
+#### 2026-07-01 *0.2.32*
+- Fix Windows HiDPI: on displays scaled above 100% (e.g. 125/150/175%) the whole window and all fonts rendered far too small. The process declared itself Per-Monitor-V2 DPI-aware (manifest + `SetProcessDpiAwarenessContext`) — which tells Windows *not* to scale it — but never actually read the monitor DPI or scaled its own content, so it always drew at 96 DPI into a higher-DPI world. The Windows backend now queries the per-monitor DPI (`GetDpiForWindow`/`GetDpiForMonitor`, resolved dynamically for pre-Win10 fallback), sizes the HWND client area and the Cairo surface in physical pixels, and tags the surface with a Cairo device scale so the entire logical-coordinate UI rasterizes crisply at full monitor resolution. Native pointer/drag-drop coordinates are converted from physical to logical units, and `WM_DPICHANGED` rebuilds the surfaces when the window moves between monitors of different scale. Displays at 100% are unaffected.
+
 #### 2026-06-26 *0.2.31*
 - Merge "UltraCanvas popup changelog link"
 - Merge "UltraCanvas Gauge demo layout"
