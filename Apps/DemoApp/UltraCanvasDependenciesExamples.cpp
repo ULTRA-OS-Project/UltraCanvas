@@ -191,6 +191,14 @@ namespace UltraCanvas {
         header("CDR plugin (optional)");
         dep("CorelDRAW import", "libcdr\nlibrevenge\nlibrevenge-stream\nLCMS2, ICU (optional)", "libcdr\nlibrevenge\nlibrevenge-stream\nLCMS2, ICU (optional)", "– (not available)");
 
+        header("OCR plugin (optional)");
+        dep("Optical character recognition", "Tesseract\nLeptonica", "Tesseract\nLeptonica", "Tesseract\nLeptonica");
+        dep("Language data (tessdata)", "eng.traineddata (bundled)\n+ user downloads", "eng.traineddata (bundled)\n+ user downloads", "eng.traineddata (bundled)\n+ user downloads");
+
+        header("Vectorizer plugin (optional)");
+        dep("Raster → SVG tracing", "VTracer\nvisioncortex\n(Rust, via corrosion)", "VTracer\nvisioncortex\n(Rust, via corrosion)", "VTracer\nvisioncortex\n(Rust, via corrosion)");
+        dep("Build toolchain", "cargo + rustc\ncorrosion-rs (FetchContent)", "cargo + rustc\ncorrosion-rs (FetchContent)", "cargo + rustc\ncorrosion-rs (FetchContent)");
+
         header("LaTeX plugin (optional, on-demand module)");
         dep("LaTeX math rendering", "MicroTeX (bundled)\nLatin Modern Math (bundled)\n→ Cairo / Pango (core)", "MicroTeX (bundled)\nLatin Modern Math (bundled)\n→ Cairo / Pango (core)", "MicroTeX (bundled)\nLatin Modern Math (bundled)\n→ Cairo / Pango (core)");
 

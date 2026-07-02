@@ -52,6 +52,8 @@ option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" ON)
 option(ULTRACANVAS_ENABLE_AUDIO "Build audio backend" ON)
 option(ULTRACANVAS_PLUGIN_VECTOR "Build Vector plugin" OFF)
 option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin (requires MuPDF / libmupdf-dev)" ON)
+option(ULTRACANVAS_PLUGIN_OCR "Build OCR plugin (requires tesseract + leptonica)" OFF)
+option(ULTRACANVAS_PLUGIN_VECTORIZER "Build Vectorizer plugin (raster→SVG via VTracer; requires cargo)" OFF)
 
 include(FetchContent)
 include(cmake/UltraCanvasAppIcon.cmake)
@@ -170,6 +172,14 @@ if(BUILD_DEMO_APP)
 
         if(PLUGIN_TARGET MATCHES "XAR")
             list(APPEND DEMO_SOURCES Apps/DemoApp/UltraCanvasXARExamples.cpp)
+        endif()
+
+        if(PLUGIN_TARGET MATCHES "OCR")
+            list(APPEND DEMO_SOURCES Apps/DemoApp/UltraCanvasOCRExamples.cpp)
+        endif()
+
+        if(PLUGIN_TARGET MATCHES "Vectorizer")
+            list(APPEND DEMO_SOURCES Apps/DemoApp/UltraCanvasVectorizerExamples.cpp)
         endif()
     endforeach()
 

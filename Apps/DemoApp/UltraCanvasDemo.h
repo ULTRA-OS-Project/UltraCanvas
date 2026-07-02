@@ -338,6 +338,12 @@ namespace UltraCanvas {
 #ifdef ULTRACANVAS_HAS_XAR_PLUGIN
         std::shared_ptr<UltraCanvasUIElement> CreateXARVectorExamples();
 #endif
+#ifdef ULTRACANVAS_HAS_OCR_PLUGIN
+        std::shared_ptr<UltraCanvasUIElement> CreateOCRExamples();
+#endif
+#ifdef ULTRACANVAS_HAS_VECTORIZER_PLUGIN
+        std::shared_ptr<UltraCanvasUIElement> CreateVectorizerExamples();
+#endif
         std::shared_ptr<UltraCanvasUIElement> CreateTextRenderingSettingsExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateImagePerformanceTest();
         std::shared_ptr<UltraCanvasContainer> CreateBitmapFormatDemoPage(

@@ -1251,13 +1251,29 @@ namespace UltraCanvas {
                 .AddVariant("barcode", "MSI Plessey")
                 .AddVariant("barcode", "Pharmacode");
 
-        toolsBuilder.AddItem("ocr", "OCR", "OCR",
-                             ImplementationStatus::NotImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples(""); });
+#ifdef ULTRACANVAS_HAS_OCR_PLUGIN
+        toolsBuilder.AddItem("ocr", "OCR", "Optical Character Recognition",
+                             ImplementationStatus::PartiallyImplemented,
+                             [this]() { return CreateOCRExamples(); },
+                             "Apps/DemoApp/UltraCanvasOCRExamples.cpp",
+                             "Docs/Modules/OCR/README.md");
+#else
+        toolsBuilder.AddItem("ocr", "OCR", "Optical Character Recognition",
+                             ImplementationStatus::PartiallyImplemented,
+                             [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/OCR/README.md")); });
+#endif
 
-        toolsBuilder.AddItem("vectorizer", "Vectorizer", "Vectorizer",
-                             ImplementationStatus::NotImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples(""); });
+#ifdef ULTRACANVAS_HAS_VECTORIZER_PLUGIN
+        toolsBuilder.AddItem("vectorizer", "Vectorizer", "Raster image → SVG vector tracer",
+                             ImplementationStatus::PartiallyImplemented,
+                             [this]() { return CreateVectorizerExamples(); },
+                             "Apps/DemoApp/UltraCanvasVectorizerExamples.cpp",
+                             "Docs/Modules/Vectorizer/README.md");
+#else
+        toolsBuilder.AddItem("vectorizer", "Vectorizer", "Raster image → SVG vector tracer",
+                             ImplementationStatus::PartiallyImplemented,
+                             [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/Vectorizer/README.md")); });
+#endif
 
         toolsBuilder.AddItem("textrenderingsettings", "Text Rendering",
                              "Configure text antialiasing, hinting style, and hint metrics",
