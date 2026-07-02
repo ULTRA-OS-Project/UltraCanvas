@@ -14,8 +14,13 @@
 // UltraCanvas itself, not pulled in as third-party libraries.
 //
 // "(bundled)" = vendored in-tree, "(optional)" = built only when present.
+// The accompanying Docs/Dependencies.md mirrors this table and additionally
+// carries an alphabetical "Library links" section with each library's official
+// website and source/Git repository as clickable links (opened via OpenURL when
+// viewed through the demo's Documentation button).
+//
 // Version: 5.0.0
-// Last Modified: 2026-06-23
+// Last Modified: 2026-06-28
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -139,7 +144,8 @@ namespace UltraCanvas {
         // Subtitle
         auto subtitle = std::make_shared<UltraCanvasLabel>("DepSubtitle", 20, 45, 940, 25);
         subtitle->SetText("Grouped per module. Under each module the OS columns list one library per line.  "
-                          "(bundled) = vendored, (optional) = feature-gated.");
+                          "(bundled) = vendored, (optional) = feature-gated.  "
+                          "Open the Documentation button (top-right) for clickable website & source-code links for every library.");
         subtitle->SetFontSize(12);
         subtitle->SetTextColor(Color(120, 120, 120, 255));
         container->AddChild(subtitle);
