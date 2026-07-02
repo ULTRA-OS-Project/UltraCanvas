@@ -32,8 +32,9 @@ eBook file ──► format engine (IEBookEngine) ──► chapters as XHTML + 
 | DOM → element builder (Pango markup for inline styling) | `include/HTMLReader/HTMLElementBuilder.h` | ✅ implemented |
 | Engine interface + registry (chapter-oriented) | `Plugins/Documents/eBook/IEBookEngine.h` | ✅ implemented |
 | ZIP/DEFLATE container access (miniz) | `Plugins/Documents/eBook/EBookArchive.h` | ✅ implemented + unit-tested |
-| EPUB engine | — | 🔄 next |
-| FB2 / TXT engines | — | 🔄 planned |
+| EPUB 2/3 engine (container/OPF/NCX/nav, cover, resources) | `Plugins/Documents/eBook/EPUBEngine.h` | ✅ implemented + unit-tested |
+| TXT engine | `Plugins/Documents/eBook/TXTEngine.h` | ✅ implemented + unit-tested |
+| FB2 engine | — | 🔄 planned |
 | Viewer widget (toolbar, TOC, reading modes) | — | 🔄 planned |
 | MOBI / AZW3 / legacy formats | — | 🔄 later |
 
@@ -70,6 +71,8 @@ plain-text extraction, and search. Engines self-register per extension via
 ### Usage sketch
 
 ```cpp
+UltraCanvas::RegisterBuiltinEBookEngines();   // once at startup
+
 auto engine = UltraCanvas::CreateEBookEngineForFile("book.epub");
 engine->LoadFromFile("book.epub");
 

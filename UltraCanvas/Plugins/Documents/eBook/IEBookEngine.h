@@ -50,6 +50,8 @@ public:
 
     // ===== DOCUMENT INFO =====
     virtual const EBookMetadata& GetMetadata() const = 0;
+    // In this chapter-oriented interface EBookTOCEntry::pageNumber carries the
+    // 0-based chapter index (-1 when a TOC entry points at nothing readable).
     virtual const std::vector<EBookTOCEntry>& GetTableOfContents() const = 0;
 
     // ===== CONTENT =====
