@@ -1,7 +1,7 @@
 // OS/Linux/UltraCanvasLinuxWindow.cpp
 // Complete Linux window implementation with all methods
-// Version: 1.1.1 - Pin cairo-xlib surface fallback DPI to 96 for cross-platform text-width parity
-// Last Modified: 2026-05-10
+// Version: 1.1.2 - event.targetWindow set via GetWeakWindow() (weak_ptr)
+// Last Modified: 2026-07-02
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -172,7 +172,7 @@ namespace UltraCanvas {
         dragDropHandler.onFileDrop = [this](const std::vector<std::string>& paths, int x, int y) {
             UCEvent event;
             event.type = UCEventType::Drop;
-            event.targetWindow = this;
+            event.targetWindow = GetWindowWeakPtr();
             event.nativeWindowHandle = xWindow;
             event.pointerWindow = { x, y };
             event.pointer = event.pointerWindow;
@@ -191,7 +191,7 @@ namespace UltraCanvas {
         dragDropHandler.onDragEnter = [this](int x, int y) {
             UCEvent event;
             event.type = UCEventType::DragEnter;
-            event.targetWindow = this;
+            event.targetWindow = GetWindowWeakPtr();
             event.nativeWindowHandle = xWindow;
             event.pointerWindow = { x, y };
             event.pointer = event.pointerWindow;
@@ -201,7 +201,7 @@ namespace UltraCanvas {
         dragDropHandler.onDragLeave = [this](int x, int y) {
             UCEvent event;
             event.type = UCEventType::DragLeave;
-            event.targetWindow = this;
+            event.targetWindow = GetWindowWeakPtr();
             event.nativeWindowHandle = xWindow;
             event.pointerWindow = { x, y };
             event.pointer = event.pointerWindow;
@@ -211,7 +211,7 @@ namespace UltraCanvas {
         dragDropHandler.onDragOver = [this](int x, int y) {
             UCEvent event;
             event.type = UCEventType::DragOver;
-            event.targetWindow = this;
+            event.targetWindow = GetWindowWeakPtr();
             event.nativeWindowHandle = xWindow;
             event.pointerWindow = { x, y };
             event.pointer = event.pointerWindow;

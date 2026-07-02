@@ -412,6 +412,7 @@ namespace UltraCanvas {
     UCTextLayout::~UCTextLayout() {
         if (layout) {
             g_object_unref(layout);
+            layout = nullptr;   // guard against an accidental second unref
         }
     }
 

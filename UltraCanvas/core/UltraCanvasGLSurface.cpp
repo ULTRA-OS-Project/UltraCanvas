@@ -1,6 +1,7 @@
 // UltraCanvasGLSurface.cpp
 // OpenGL 3D rendering surface implementation
-// Last Modified: 2026-05-29
+// Redraw event targets set via weak_from_this()/GetWeakWindow() (weak_ptr)
+// Last Modified: 2026-07-02
 #include "UltraCanvasGLSurface.h"
 #include "GL/GLContextManager.h"
 #include "GL/GLFramebuffer.h"
@@ -209,8 +210,8 @@ void UltraCanvasGLSurface::Render(IRenderContext* ctx, const Rect2Df& dirtyRect)
                 Rect2Di b = GetBounds();
                 UCEvent ev{};
                 ev.type = UCEventType::Redraw;
-                ev.targetElement = this;
-                ev.targetWindow = win;
+                ev.targetElement = weak_from_this();
+                ev.targetWindow = win->GetWindowWeakPtr();
                 ev.pointerWindow = Point2Di(static_cast<int>(p.x), static_cast<int>(p.y));
                 ev.width = b.width;
                 ev.height = b.height;

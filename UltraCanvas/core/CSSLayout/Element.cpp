@@ -166,13 +166,21 @@ namespace UltraCanvas {
         }
 
         void Element::InvalidateLayout() {
-            if (!measured.valid && !arrangeValid) {
-                return;
+            // Only skip the local cache clear when already invalid — but ALWAYS
+            // bubble to the parent. Short-circuiting the bubble (the old behavior)
+            // assumed "already invalid ⇒ every ancestor is already invalid too",
+            // which is false whenever a subtree is left arrangeValid==false while an
+            // ancestor was re-validated by a pass that did not re-Arrange that
+            // subtree (e.g. a dirty-only paint frame, or skipped/invisible children).
+            // In that state a descendant invalidation would never reach the root, so
+            // the window's geometry pass never runs. (Manifested as split-pane drags
+            // not refreshing during a debug session.)
+            if (measured.valid || arrangeValid) {
+                measured.valid  = false;
+                intrinsic.valid = false;
+                arrangeValid    = false;
+                if (layoutComputed) layoutComputed->valid = false;
             }
-            measured.valid  = false;
-            intrinsic.valid = false;
-            arrangeValid    = false;
-            if (layoutComputed) layoutComputed->valid = false;
             if (parent) parent->InvalidateLayout();
         }
 

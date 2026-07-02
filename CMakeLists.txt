@@ -133,6 +133,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasArcDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasSlideshowExamples.cpp
             Apps/DemoApp/UltraCanvasAlbumExamples.cpp
+            Apps/DemoApp/UltraCanvasMediaViewerExamples.cpp
             Apps/DemoApp/UltraCanvasCompositorDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasGaugeExamples.cpp
             Apps/DemoApp/UltraCanvasQRCodeExamples.cpp

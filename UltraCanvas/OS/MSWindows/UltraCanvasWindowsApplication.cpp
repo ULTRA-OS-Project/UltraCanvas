@@ -1,7 +1,7 @@
 // OS/MSWindows/UltraCanvasWindowsApplication.cpp
 // Complete Windows application implementation with all methods
-// Version: 1.2.8 - Strip spurious Ctrl/Alt flags on AltGr (Win reports LCtrl+RAlt synthetically)
-// Last Modified: 2026-05-13
+// Version: 1.2.9 - focusedWindow now weak_ptr; targetWindow set via GetWeakWindow()
+// Last Modified: 2026-07-02
 // Author: UltraCanvas Framework
 
 #include "../../include/UltraCanvasApplication.h"
@@ -306,12 +306,13 @@ namespace UltraCanvas {
 // ===== MOUSE CAPTURE =====
 
     void UltraCanvasWindowsApplication::CaptureMouseNative() {
-        if (!focusedWindow) {
+        auto* fw = GetFocusedWindow();
+        if (!fw) {
             debugOutput << "UltraCanvas: Cannot capture mouse - no focused window" << std::endl;
             return;
         }
 
-        HWND hwnd = focusedWindow->GetNativeHandle();
+        HWND hwnd = fw->GetNativeHandle();
         if (hwnd) {
             SetCapture(hwnd);
         }
@@ -329,7 +330,9 @@ namespace UltraCanvas {
         UCEvent event;
         event.timestamp = std::chrono::steady_clock::now();
         event.nativeWindowHandle = hwnd;
-        event.targetWindow = FindWindow(hwnd);
+        if (auto* tw = FindWindow(hwnd)) {
+            event.targetWindow = tw->GetWeakWindow();
+        }
 
         // Common modifier state helper
         auto fillModifiers = [&event]() {

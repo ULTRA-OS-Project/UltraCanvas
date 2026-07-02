@@ -1,7 +1,7 @@
 // include/UltraCanvasWindowBase.h
 // Enhanced abstract base window interface inheriting from UltraCanvasContainer
-// Version: 2.0.1
-// Last Modified: 2026-04-05
+// Version: 2.0.2
+// Last Modified: 2026-07-02
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -127,6 +127,14 @@ namespace UltraCanvas {
         UltraCanvasWindowBase();
 
         NativeSurfacePtr GetNativeSurface() { return nativeSurface; };
+
+        // Weak reference to this window as UltraCanvasWindowBase. Returns an empty
+        // weak_ptr when the window is not (yet) owned by a shared_ptr. Used to store
+        // non-owning references (event.targetWindow, application focusedWindow) that
+        // must not dangle when the window is destroyed.
+        std::weak_ptr<UltraCanvasWindowBase> GetWindowWeakPtr() {
+            return std::static_pointer_cast<UltraCanvasWindowBase>(weak_from_this().lock());
+        }
 
         // Window lifecycle
         bool Create(const WindowConfig& config);

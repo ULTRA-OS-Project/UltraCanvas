@@ -718,7 +718,7 @@ namespace {
 
         codeWindow->SetEventCallback([](const UCEvent& event) {
             if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
-                if (event.targetWindow) ((UltraCanvasWindow*)event.targetWindow)->Close();
+                if (auto tw = event.targetWindow.lock()) static_cast<UltraCanvasWindow*>(tw.get())->Close();
                 return true;
             }
             return false;
