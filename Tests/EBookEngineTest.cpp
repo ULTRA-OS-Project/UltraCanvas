@@ -1,12 +1,13 @@
 // Tests/EBookEngineTest.cpp
-// Unit tests for the EPUB and TXT engines: builds a synthetic EPUB 2 book
-// in memory (miniz writer) and exercises metadata, spine, TOC, resources,
-// cover, text extraction, search, and the engine registry.
+// Unit tests for the EPUB, FB2 and TXT engines: builds synthetic books in
+// memory (miniz writer for the EPUB) and exercises metadata, spine, TOC,
+// resources, cover, text extraction, search, and the engine registry.
 // Version: 1.0.0
 // Last Modified: 2026-07-02
 // Author: UltraCanvas Framework
 
 #include "EPUBEngine.h"
+#include "FB2Engine.h"
 #include "TXTEngine.h"
 
 #include "miniz.h"
@@ -284,6 +285,246 @@ static void TestTXT() {
 }
 
 // ============================================================================
+// FB2 TESTS
+// ============================================================================
+
+static std::string MakeTestFB2() {
+    return
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
+        "<FictionBook xmlns=\"http://www.gribuser.ru/xml/fictionbook/2.0\""
+        " xmlns:l=\"http://www.w3.org/1999/xlink\">\n"
+        " <description>\n"
+        "  <title-info>\n"
+        "   <genre>sf</genre>\n"
+        "   <genre>adventure</genre>\n"
+        "   <author><first-name>Ivan</first-name><middle-name>I.</middle-name>"
+        "<last-name>Petrov</last-name></author>\n"
+        "   <author><nickname>ghost</nickname></author>\n"
+        "   <book-title>Test FB2 Book</book-title>\n"
+        "   <annotation><p>A short annotation.</p></annotation>\n"
+        "   <date>1999</date>\n"
+        "   <coverpage><image l:href=\"#cover.jpg\"/></coverpage>\n"
+        "   <lang>ru</lang>\n"
+        "   <sequence name=\"Test Series\" number=\"3\"/>\n"
+        "  </title-info>\n"
+        "  <publish-info>\n"
+        "   <publisher>Test Press</publisher>\n"
+        "   <year>2001</year>\n"
+        "   <isbn>123-456</isbn>\n"
+        "  </publish-info>\n"
+        " </description>\n"
+        " <body>\n"
+        "  <title><p>Test FB2 Book</p></title>\n"
+        "  <epigraph><p>Body epigraph.</p></epigraph>\n"
+        "  <section id=\"ch1\">\n"
+        "   <title><p>Chapter One</p></title>\n"
+        "   <p>Plain with <emphasis>italic</emphasis> and <strong>bold</strong>"
+        " and <a l:href=\"#n1\" type=\"note\">1</a>.</p>\n"
+        "   <empty-line/>\n"
+        "   <subtitle>Sub heading</subtitle>\n"
+        "   <poem><stanza><v>Verse line one</v><v>Verse line two</v></stanza>"
+        "<text-author>Poet</text-author></poem>\n"
+        "   <image l:href=\"#pic.png\" alt=\"A picture\"/>\n"
+        "  </section>\n"
+        "  <section>\n"
+        "   <title><p>Chapter</p><p>Two</p></title>\n"
+        "   <p>The quick brown fox jumps over the lazy dog.</p>\n"
+        "   <cite><p>Quoted text.</p></cite>\n"
+        "  </section>\n"
+        " </body>\n"
+        " <body name=\"notes\">\n"
+        "  <title><p>Notes</p></title>\n"
+        "  <section id=\"n1\"><title><p>1</p></title><p>The note text.</p></section>\n"
+        " </body>\n"
+        " <binary id=\"cover.jpg\" content-type=\"image/jpeg\">Q292ZXI=</binary>\n"
+        " <binary id=\"pic.png\" content-type=\"image/png\">SGVs\nbG8=</binary>\n"
+        "</FictionBook>\n";
+}
+
+static void TestFB2() {
+    std::string xml = MakeTestFB2();
+
+    FB2Engine engine;
+    CHECK(engine.LoadFromMemory(std::vector<uint8_t>(xml.begin(), xml.end())));
+    CHECK(engine.IsLoaded());
+    CHECK(engine.GetFormat() == EBookFormat::FB2);
+
+    // ---- metadata ----
+    const EBookMetadata& meta = engine.GetMetadata();
+    CHECK_EQ(meta.title, std::string("Test FB2 Book"));
+    CHECK_EQ(meta.authors.size(), size_t(2));
+    if (meta.authors.size() == 2) {
+        CHECK_EQ(meta.authors[0], std::string("Ivan I. Petrov"));
+        CHECK_EQ(meta.authors[1], std::string("ghost"));
+    }
+    CHECK_EQ(meta.language, std::string("ru"));
+    CHECK_EQ(meta.publisher, std::string("Test Press"));
+    CHECK_EQ(meta.publicationDate, std::string("2001"));   // publish year wins
+    CHECK_EQ(meta.isbn, std::string("123-456"));
+    CHECK_EQ(meta.subjects.size(), size_t(2));
+    CHECK_EQ(meta.series, std::string("Test Series"));
+    CHECK_EQ(meta.seriesIndex, 3);
+    CHECK_EQ(meta.description, std::string("A short annotation."));
+    CHECK(meta.hasCover);
+    CHECK_EQ(meta.chapterCount, 3);   // 2 sections + notes body
+
+    // ---- chapters / conversion ----
+    CHECK_EQ(engine.GetChapterCount(), 3);
+
+    EBookChapter ch1 = engine.GetChapter(0);
+    CHECK_EQ(ch1.title, std::string("Chapter One"));
+    CHECK_EQ(ch1.href, std::string("#ch1"));
+    // Body title + epigraph land as the first chapter's preamble.
+    CHECK(ch1.content.find("<h1>Test FB2 Book</h1>") != std::string::npos);
+    CHECK(ch1.content.find("<blockquote class=\"epigraph\"><p>Body epigraph.</p></blockquote>")
+          != std::string::npos);
+    CHECK(ch1.content.find("<h2>Chapter One</h2>") != std::string::npos);
+    CHECK(ch1.content.find("<em>italic</em>") != std::string::npos);
+    CHECK(ch1.content.find("<strong>bold</strong>") != std::string::npos);
+    CHECK(ch1.content.find("<a href=\"#n1\">1</a>") != std::string::npos);
+    CHECK(ch1.content.find("<p class=\"empty-line\"></p>") != std::string::npos);
+    CHECK(ch1.content.find("<h4 class=\"subtitle\">Sub heading</h4>") != std::string::npos);
+    CHECK(ch1.content.find("<div class=\"poem\">") != std::string::npos);
+    CHECK(ch1.content.find("<p class=\"verse\">Verse line one</p>") != std::string::npos);
+    CHECK(ch1.content.find("<p class=\"text-author\">Poet</p>") != std::string::npos);
+    CHECK(ch1.content.find("<img src=\"#pic.png\" alt=\"A picture\"/>") != std::string::npos);
+
+    EBookChapter ch2 = engine.GetChapter(1);
+    CHECK_EQ(ch2.title, std::string("Chapter Two"));   // multi-<p> title joined
+    CHECK(ch2.content.find("<h2>Chapter<br/>Two</h2>") != std::string::npos);
+    CHECK(ch2.content.find("<blockquote class=\"cite\"><p>Quoted text.</p></blockquote>")
+          != std::string::npos);
+
+    EBookChapter notes = engine.GetChapter(2);
+    CHECK_EQ(notes.title, std::string("Notes"));
+    CHECK(notes.content.find("The note text.") != std::string::npos);
+
+    CHECK(engine.GetChapter(3).content.empty());
+
+    // ---- TOC ----
+    const auto& toc = engine.GetTableOfContents();
+    CHECK_EQ(toc.size(), size_t(3));
+    if (toc.size() == 3) {
+        CHECK_EQ(toc[0].title, std::string("Chapter One"));
+        CHECK_EQ(toc[0].pageNumber, 0);
+        CHECK_EQ(toc[2].pageNumber, 2);
+    }
+
+    // ---- resources / cover ----
+    std::vector<uint8_t> pic = engine.GetResource("#pic.png");
+    CHECK_EQ(std::string(pic.begin(), pic.end()), std::string("Hello"));
+    CHECK(!engine.GetResource("pic.png").empty());   // bare id works too
+    CHECK(engine.GetResource("#missing").empty());
+
+    std::vector<uint8_t> cover = engine.GetCoverImage();
+    CHECK_EQ(std::string(cover.begin(), cover.end()), std::string("Cover"));
+
+    // ---- stylesheet / text / search ----
+    CHECK(engine.GetStylesheets().find(".verse") != std::string::npos);
+
+    std::string text = engine.ExtractChapterText(0);
+    CHECK(text.find("italic") != std::string::npos);
+    CHECK(text.find("<em>") == std::string::npos);
+
+    auto results = engine.Search("quick brown");
+    CHECK_EQ(results.size(), size_t(1));
+    if (!results.empty()) CHECK_EQ(results[0].chapterIndex, 1);
+
+    engine.Close();
+    CHECK(!engine.IsLoaded());
+    CHECK_EQ(engine.GetChapterCount(), 0);
+}
+
+// A book hidden inside a single wrapper section must still chapterize.
+static void TestFB2SingleWrapperSection() {
+    std::string xml =
+        "<?xml version=\"1.0\"?>\n"
+        "<FictionBook>\n"
+        " <body>\n"
+        "  <section>\n"
+        "   <title><p>Part One</p></title>\n"
+        "   <section><title><p>First</p></title><p>Alpha.</p></section>\n"
+        "   <section><title><p>Second</p></title><p>Beta.</p></section>\n"
+        "  </section>\n"
+        " </body>\n"
+        "</FictionBook>\n";
+
+    FB2Engine engine;
+    CHECK(engine.LoadFromMemory(std::vector<uint8_t>(xml.begin(), xml.end())));
+    CHECK_EQ(engine.GetChapterCount(), 2);
+
+    EBookChapter first = engine.GetChapter(0);
+    CHECK_EQ(first.title, std::string("First"));
+    // Wrapper title precedes the first chapter's own content.
+    CHECK(first.content.find("Part One") != std::string::npos);
+    CHECK(first.content.find("Alpha.") != std::string::npos);
+    CHECK_EQ(engine.GetChapter(1).title, std::string("Second"));
+}
+
+static void TestFB2Zip() {
+    std::string xml = MakeTestFB2();
+
+    mz_zip_archive zip;
+    std::memset(&zip, 0, sizeof(zip));
+    mz_zip_writer_init_heap(&zip, 0, 0);
+    AddFile(zip, "book.fb2", xml);
+    void* buf = nullptr;
+    size_t size = 0;
+    mz_zip_writer_finalize_heap_archive(&zip, &buf, &size);
+    std::vector<uint8_t> data(static_cast<uint8_t*>(buf),
+                              static_cast<uint8_t*>(buf) + size);
+    mz_zip_writer_end(&zip);
+
+    FB2Engine engine;
+    CHECK(engine.LoadFromMemory(std::move(data)));
+    CHECK_EQ(engine.GetChapterCount(), 3);
+    CHECK_EQ(engine.GetMetadata().title, std::string("Test FB2 Book"));
+}
+
+static void TestFB2Encoding() {
+    // windows-1251 "Привет" + "ё" inside a <p>.
+    std::string head =
+        "<?xml version=\"1.0\" encoding=\"windows-1251\"?><p>";
+    std::vector<uint8_t> data(head.begin(), head.end());
+    const uint8_t cp1251[] = {0xCF, 0xF0, 0xE8, 0xE2, 0xE5, 0xF2, 0x20, 0xB8};
+    data.insert(data.end(), std::begin(cp1251), std::end(cp1251));
+    std::string tail = "</p>";
+    data.insert(data.end(), tail.begin(), tail.end());
+
+    std::string utf8 = FB2Engine::ToUTF8(data);
+    CHECK(utf8.find("\xD0\x9F\xD1\x80\xD0\xB8\xD0\xB2\xD0\xB5\xD1\x82") !=
+          std::string::npos);                        // Привет
+    CHECK(utf8.find("\xD1\x91") != std::string::npos);   // ё
+
+    // UTF-8 input passes through untouched.
+    std::string plain = "<?xml version=\"1.0\"?><p>abc</p>";
+    CHECK_EQ(FB2Engine::ToUTF8(std::vector<uint8_t>(plain.begin(), plain.end())),
+             plain);
+
+    // UTF-16LE with BOM.
+    std::vector<uint8_t> utf16 = {0xFF, 0xFE, 'a', 0x00, 'b', 0x00};
+    CHECK_EQ(FB2Engine::ToUTF8(utf16), std::string("ab"));
+
+    // Base64 (with embedded line break and padding).
+    std::vector<uint8_t> decoded = FB2Engine::DecodeBase64("SGVsbG8sIHdv\ncmxkIQ==");
+    CHECK_EQ(std::string(decoded.begin(), decoded.end()),
+             std::string("Hello, world!"));
+    CHECK(FB2Engine::DecodeBase64("").empty());
+}
+
+static void TestFB2Errors() {
+    FB2Engine engine;
+
+    std::string junk = "<html><body>not fb2</body></html>";
+    CHECK(!engine.LoadFromMemory(std::vector<uint8_t>(junk.begin(), junk.end())));
+    CHECK(engine.GetLastError().find("FictionBook") != std::string::npos);
+
+    std::string empty = "<?xml version=\"1.0\"?><FictionBook></FictionBook>";
+    CHECK(!engine.LoadFromMemory(std::vector<uint8_t>(empty.begin(), empty.end())));
+    CHECK(!engine.GetLastError().empty());
+}
+
+// ============================================================================
 // REGISTRY
 // ============================================================================
 
@@ -298,10 +539,19 @@ static void TestRegistry() {
     CHECK(txt != nullptr);
     if (txt) CHECK(txt->GetFormat() == EBookFormat::TXT);
 
+    auto fb2 = CreateEBookEngineForFile("kniga.fb2");
+    CHECK(fb2 != nullptr);
+    if (fb2) CHECK(fb2->GetFormat() == EBookFormat::FB2);
+
+    // Compound extension resolves to the FB2 engine, not a "zip" one.
+    auto fb2zip = CreateEBookEngineForFile("/books/kniga.FB2.ZIP");
+    CHECK(fb2zip != nullptr);
+    if (fb2zip) CHECK(fb2zip->GetFormat() == EBookFormat::FB2);
+
     CHECK(CreateEBookEngineForFile("file.xyz") == nullptr);
 
     auto extensions = GetRegisteredEBookExtensions();
-    CHECK_EQ(extensions.size(), size_t(2));
+    CHECK_EQ(extensions.size(), size_t(4));   // epub, fb2, fb2.zip, txt
 }
 
 // ============================================================================
@@ -310,6 +560,11 @@ int main() {
     TestPathUtilities();
     TestEPUB();
     TestEPUBErrors();
+    TestFB2();
+    TestFB2SingleWrapperSection();
+    TestFB2Zip();
+    TestFB2Encoding();
+    TestFB2Errors();
     TestTXT();
     TestRegistry();
 
