@@ -275,11 +275,18 @@ if(BUILD_DEMO_APP)
         ${JSONCPP_LIBRARIES}
     )
 
-    FetchContent_Declare(
-            fmt
-            GIT_REPOSITORY https://github.com/fmtlib/fmt
-            GIT_TAG        123913715afeb8a437e6388b4473fcc4753e1c9a) # 11.1.4
-    FetchContent_MakeAvailable(fmt)
+    # The core library resolves fmt too, but its imported target is scoped to
+    # that directory — resolve again here (cheap) before falling back to a fetch.
+    if(NOT TARGET fmt::fmt)
+        find_package(fmt CONFIG QUIET)
+    endif()
+    if(NOT TARGET fmt::fmt)
+        FetchContent_Declare(
+                fmt
+                GIT_REPOSITORY https://github.com/fmtlib/fmt
+                GIT_TAG        123913715afeb8a437e6388b4473fcc4753e1c9a) # 11.1.4
+        FetchContent_MakeAvailable(fmt)
+    endif()
     target_link_libraries(UltraCanvasDemo PRIVATE fmt::fmt)
 
     # Link against all plugin libraries
@@ -341,16 +348,9 @@ if(BUILD_TESTS)
     message(STATUS "── Building Unit Tests ──")
     
     enable_testing()
-    
-    # Find test framework
-    find_package(Catch2 QUIET)
-    
-    if(Catch2_FOUND)
-        add_subdirectory(Tests)
-    else()
-        message(STATUS "  Catch2 not found - tests disabled")
-        message(STATUS "  Install with: sudo apt install catch2")
-    endif()
+
+    # The tests are self-contained (no test framework dependency).
+    add_subdirectory(Tests)
 endif()
 
 # ===== DOCUMENTATION =====
@@ -508,8 +508,12 @@ add_custom_target(copy_assets
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_LIST_DIR}/Docs ${CMAKE_CURRENT_BINARY_DIR}/share/UltraCanvas/Docs
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_LIST_DIR}/Apps/DemoApp ${CMAKE_CURRENT_BINARY_DIR}/share/UltraCanvas/DemoApp
 )
-add_dependencies(UltraCanvasTexter copy_assets)
-add_dependencies(UltraCanvasDemo copy_assets)
+if(BUILD_TEXTER_APP)
+    add_dependencies(UltraCanvasTexter copy_assets)
+endif()
+if(BUILD_DEMO_APP)
+    add_dependencies(UltraCanvasDemo copy_assets)
+endif()
 
 # ===== PACKAGE CONFIGURATION =====
 include(CMakePackageConfigHelpers)
