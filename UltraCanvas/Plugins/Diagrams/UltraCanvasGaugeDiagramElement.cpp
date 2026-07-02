@@ -1,8 +1,15 @@
 // Plugins/Diagrams/UltraCanvasGaugeDiagramElement.cpp
 // Implementation of comprehensive gauge element with 17 visual modes
-// Version: 2.9.0
-// Last Modified: 2026-06-26
+// Version: 2.9.1
+// Last Modified: 2026-07-02
 // Author: UltraCanvas Framework
+// V2.9.1 changelog: Round-gauge (CircularRing) fixes:
+//   - Ring radius reduced by 5% (applied after the size clamp, so even
+//     clamp-limited gauges like the playground ring shrink).
+//   - Rounded segment caps no longer spill outside their segment slot: arc
+//     endpoints are inset by the cap overhang (thickness/2 + border), so
+//     chunky SegmentedRing segments and rounded Blocks stop overlapping
+//     their neighbours at large thickness / high segment counts.
 // V2.9.0 changelog: Round-gauge (CircularRing) enhancements:
 //   - Configurable ring start/null angle (SetRingStartAngleDeg) so the zero
 //     position can sit anywhere (e.g. the bottom of the circle); the indicator
@@ -99,6 +106,7 @@ namespace {
     constexpr float kTitleRaise    = 34.0f;   // V2.8: title raised a further 12px (was 22) to free room for the larger gauge
     constexpr float kPaddingBottom = 22.0f;
     constexpr float kGaugeScale    = 1.30f;   // V2.8: enlarge round example gauges by 30%
+    constexpr float kRingShrink    = 0.95f;   // V2.9.1: round (CircularRing) gauges 5% smaller
 }
 
 // =============================================================================
@@ -398,6 +406,9 @@ float UltraCanvasGaugeDiagramElement::GetGaugeRadius() const {
         (static_cast<float>(b.width)  - 2.0f * kPaddingSide) / 2.0f,
         (static_cast<float>(b.height) - padTop - padBottom - titleSpace) / 2.0f);
     r = std::min(r, hardMaxR);
+    // V2.9.1: round gauges 5% smaller — after the clamp, so gauges whose size
+    // is limited by hardMaxR (e.g. the playground ring) shrink too.
+    if (mode == GaugeMode::CircularRing) r *= kRingShrink;
     return std::max(20.0f, r);
 }
 
@@ -2182,9 +2193,21 @@ void UltraCanvasGaugeDiagramElement::DrawRingTrackAndValue(
         float segSweep = sweep / static_cast<float>(count);
         float gap = segSweep * gapFrac;
         float borderW = ringBorder ? std::max(1.5f, thickness * 0.16f) : 0.0f;
+        // V2.9.1: rounded caps overhang the arc endpoints by the stroke's cap
+        // radius (the border pass is wider by borderW per side). Inset the
+        // endpoints by that overhang — converted to radians at this radius —
+        // so each chunk stays inside its segment slot instead of spilling
+        // into, and overlapping, its neighbours.
+        float capInset = (cap == LineCap::Round)
+            ? (thickness * 0.5f + borderW) / radius : 0.0f;
         for (int i = 0; i < count; i++) {
-            float s = startRad + i * segSweep + gap * 0.5f;
-            float e = startRad + (i + 1) * segSweep - gap * 0.5f;
+            float s = startRad + i * segSweep + gap * 0.5f + capInset;
+            float e = startRad + (i + 1) * segSweep - gap * 0.5f - capInset;
+            if (e < s) {   // caps ate the whole slot: collapse to a round dot
+                float mid = startRad + (i + 0.5f) * segSweep;
+                s = mid - 1e-3f;
+                e = mid + 1e-3f;
+            }
             bool lit = (i < litCount);
             if (borderW > 0.0f) {
                 ctx->ClearPath();
@@ -2213,9 +2236,17 @@ void UltraCanvasGaugeDiagramElement::DrawRingTrackAndValue(
         float gapFrac = (ringStyle == GaugeRingStyle::Dashed) ? 0.55f : 0.25f;
         float segSweep = sweep / static_cast<float>(count);
         float gap = segSweep * gapFrac;
+        // V2.9.1: same rounded-cap overhang correction as SegmentedRing above,
+        // so thick blocks don't bleed past their slot and overlap neighbours.
+        float capInset = (thickness * 0.5f) / radius;
         for (int i = 0; i < count; i++) {
-            float s = startRad + i * segSweep + gap * 0.5f;
-            float e = startRad + (i + 1) * segSweep - gap * 0.5f;
+            float s = startRad + i * segSweep + gap * 0.5f + capInset;
+            float e = startRad + (i + 1) * segSweep - gap * 0.5f - capInset;
+            if (e < s) {   // caps ate the whole slot: collapse to a round dot
+                float mid = startRad + (i + 0.5f) * segSweep;
+                s = mid - 1e-3f;
+                e = mid + 1e-3f;
+            }
             ctx->ClearPath();
             ctx->Arc(center.x, center.y, radius, s, e);
             if (i < litCount) setLitStroke(); else ctx->SetStrokePaint(trackColor);
