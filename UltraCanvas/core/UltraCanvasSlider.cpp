@@ -1,7 +1,7 @@
 // core/UltraCanvasSlider.cpp
 // Platform-independent slider component implementation
-// Version: 1.1.0
-// Last Modified: 2026-04-28
+// Version: 1.1.1
+// Last Modified: 2026-07-02
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSlider.h"
@@ -371,12 +371,12 @@ namespace UltraCanvas {
             ctx->DrawRectangle(trackRect);
         } else {
             // Draw track background
-            ctx->DrawFilledRectangle(trackRect, GetCurrentTrackColor(), 1.0, style.handleBorderColor);
+            ctx->DrawFilledRectangle(trackRect, GetCurrentTrackColor(), 1.0, GetCurrentHandleBorderColor());
 
             // Calculate and draw active track
             Rect2Di activeRect = GetActiveTrackRect(trackRect, isVertical);
             if ((isVertical && activeRect.height > 0) || (!isVertical && activeRect.width > 0)) {
-                ctx->SetFillPaint(style.activeTrackColor);
+                ctx->SetFillPaint(GetCurrentActiveTrackColor());
                 ctx->FillRectangle(activeRect);
             }
         }
@@ -393,12 +393,12 @@ namespace UltraCanvas {
         Rect2Di trackRect = GetTrackRect(bounds, isVertical);
 
         // Draw full track background
-        ctx->DrawFilledRectangle(trackRect, GetCurrentTrackColor(), 1.0, style.handleBorderColor);
+        ctx->DrawFilledRectangle(trackRect, GetCurrentTrackColor(), 1.0, GetCurrentHandleBorderColor());
 
         // Draw range region (between handles)
         Rect2Di rangeRect = GetRangeTrackRect(trackRect, isVertical);
         if ((isVertical && rangeRect.height > 0) || (!isVertical && rangeRect.width > 0)) {
-            ctx->SetFillPaint(style.rangeTrackColor);
+            ctx->SetFillPaint(IsDisabled() ? style.disabledActiveTrackColor : style.rangeTrackColor);
             ctx->FillRectangle(rangeRect);
         }
 
@@ -421,7 +421,7 @@ namespace UltraCanvas {
         float radius = std::min(bounds.width, bounds.height) / 2.0f - 10.0f;
 
         // Draw outer circle (track)
-        ctx->SetStrokePaint(style.trackColor);
+        ctx->SetStrokePaint(GetCurrentTrackColor());
         ctx->SetStrokeWidth(style.trackHeight);
         ctx->DrawCircle(Point2Di(centerX, centerY), radius);
 
@@ -430,7 +430,7 @@ namespace UltraCanvas {
         float startAngle = -90.0f; // Start from top
         float sweepAngle = percentage * 360.0f;
 
-        ctx->SetStrokePaint(style.activeTrackColor);
+        ctx->SetStrokePaint(GetCurrentActiveTrackColor());
         ctx->SetStrokeWidth(style.trackHeight);
         // Note: DrawArc would be needed here - simplified for now
 
@@ -455,12 +455,12 @@ namespace UltraCanvas {
         // Draw progress
         Rect2Di progressRect = GetActiveTrackRect(interior, isVertical);
         if ((isVertical && progressRect.height > 0) || (!isVertical && progressRect.width > 0)) {
-            ctx->SetFillPaint(style.activeTrackColor);
+            ctx->SetFillPaint(GetCurrentActiveTrackColor());
             ctx->FillRectangle(progressRect);
         }
 
         // Draw border
-        ctx->SetStrokePaint(style.handleBorderColor);
+        ctx->SetStrokePaint(GetCurrentHandleBorderColor());
         ctx->SetStrokeWidth(style.borderWidth);
         ctx->DrawRectangle(interior);
     }
@@ -474,10 +474,11 @@ namespace UltraCanvas {
 //                    style.handleSize
 //            );
 
-        Color handleColor = highlighted ? style.handleHoverColor : GetCurrentHandleColor();
+        Color handleColor = (highlighted && !IsDisabled()) ? style.handleHoverColor
+                                                           : GetCurrentHandleColor();
 
         ctx->SetFillPaint(handleColor);
-        ctx->SetStrokePaint(style.handleBorderColor);
+        ctx->SetStrokePaint(GetCurrentHandleBorderColor());
         ctx->SetStrokeWidth(style.borderWidth);
 
         // Fill handle
@@ -670,6 +671,15 @@ namespace UltraCanvas {
 
     Color UltraCanvasSlider::GetCurrentTrackColor() const {
         return IsDisabled() ? style.disabledTrackColor : style.trackColor;
+    }
+
+    Color UltraCanvasSlider::GetCurrentActiveTrackColor() const {
+        return IsDisabled() ? style.disabledActiveTrackColor : style.activeTrackColor;
+    }
+
+    Color UltraCanvasSlider::GetCurrentHandleBorderColor() const {
+        // A washed-out border so a disabled handle reads as grey, not crisp.
+        return IsDisabled() ? Color(170, 170, 175) : style.handleBorderColor;
     }
 
     Color UltraCanvasSlider::GetCurrentHandleColor() const {

@@ -1,8 +1,12 @@
 // Plugins/Gauges/UltraCanvasGaugeDiagramElement.h
 // Comprehensive gauge element supporting analog, digital, progress, and specialized gauge modes
-// Version: 2.0.0
-// Last Modified: 2026-05-17
+// Version: 2.1.0
+// Last Modified: 2026-07-02
 // Author: UltraCanvas Framework
+// V2.1.0 changelog: LinearBar low-value options — SetShowZeroValueWarning
+//   (red circle at the empty/zero position), SetLowLevelWarning +
+//   SetLowLevelLimit (blinking fill while the value is at or below the
+//   limit) and SetWarningColor.
 #pragma once
 
 #include "UltraCanvasUIElement.h"
@@ -325,6 +329,23 @@ public:
     void SetSegmentCount(int count);
     int GetSegmentCount() const { return segmentCount; }
 
+    // ===== LINEAR-BAR LOW-VALUE WARNINGS =====
+    // At the gauge minimum a LinearBar draws no fill at all. With this option
+    // enabled a circle in the warning colour marks the empty gauge instead.
+    void SetShowZeroValueWarning(bool enabled);
+    bool GetShowZeroValueWarning() const { return showZeroValueWarning; }
+    // When enabled, the LinearBar fill turns to the warning colour and blinks
+    // while the current value is at or below the low-level limit.
+    void SetLowLevelWarning(bool enabled);
+    bool GetLowLevelWarning() const { return lowLevelWarning; }
+    // Value (in gauge units, not percent) at or below which the low-level
+    // warning activates. Defaults to 10.
+    void SetLowLevelLimit(double limit);
+    double GetLowLevelLimit() const { return lowLevelLimit; }
+    // Colour used by both warnings (default red).
+    void SetWarningColor(const Color& c);
+    const Color& GetWarningColor() const { return warningColor; }
+
     // ===== CALLBACKS =====
     std::function<void(double)> onGaugeValueChange;
 
@@ -389,6 +410,14 @@ private:
     float stopwatchAccumulated = 0.0f;
     uint32_t stopwatchTimerId = 0;
 
+    // LinearBar low-value warnings
+    bool showZeroValueWarning = false;   // circle at the zero/empty position
+    bool lowLevelWarning = false;        // blink the fill at/below the limit
+    double lowLevelLimit = 10.0;         // limit (gauge units) for the blink
+    Color warningColor = Color(230, 55, 45, 255);
+    uint32_t warningBlinkTimerId = 0;
+    bool warningBlinkOn = true;          // current blink phase (true = shown)
+
     // ===== HELPERS =====
     double ValueToAngle(double val) const;
     double ValueToRatio(double val) const;
@@ -448,6 +477,9 @@ private:
     // Starts/stops the 1-second redraw timer needed by live displays
     // (AnalogClock, and Digital when in clock mode) based on current state.
     void UpdateClockTimer();
+    // Starts/stops the blink timer for the LinearBar low-level warning based
+    // on the current mode, value and warning settings.
+    void UpdateWarningBlinkTimer();
 };
 
 // =============================================================================

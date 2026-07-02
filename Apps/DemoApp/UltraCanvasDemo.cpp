@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
-// Version: 1.0.4
-// Last Modified: 2026-06-14
+// Version: 1.0.5 - event.targetWindow read via weak_ptr lock()
+// Last Modified: 2026-07-02
 // V1.0.4: mainContainer scrollbars disabled (it is a pure layout wrapper and must
 //   never scroll the header away); displayContainer is now the explicit single
 //   scroll region (flex-grow:1, flex-shrink:1) and inserted examples are clamped
@@ -13,6 +13,7 @@
 #include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasTextArea.h"
+#include "UltraCanvasUtils.h"   // OpenURL — open markdown links in the system browser
 #include "Plugins/Text/UltraCanvasMarkdown.h"
 #include <iostream>
 #include <sstream>
@@ -294,10 +295,22 @@ namespace UltraCanvas {
         markDownTextArea->SetWordWrap(true);
         markDownTextArea->SetCursorPosition(LineColumnIndex::INVALID);
 
+        // Make markdown links clickable: external URLs (http/https/mailto) open in
+        // the system browser via OpenURL; in-document anchors (#…) are handled
+        // internally by the text area. This is what powers the per-library website
+        // and Git links in Docs/Dependencies.md.
+        markDownTextArea->onMarkdownLinkClick = [](const std::string& url) {
+            if (url.empty()) return;
+            if (url.rfind("http://", 0) == 0 || url.rfind("https://", 0) == 0 ||
+                url.rfind("mailto:", 0) == 0 || url.rfind("ftp://", 0) == 0) {
+                OpenURL(url);
+            }
+        };
+
 
         docWindow->SetEventCallback([this](const UCEvent& event) {
             if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
-                ((UltraCanvasWindow *)event.targetWindow)->Close();
+                if (auto tw = event.targetWindow.lock()) static_cast<UltraCanvasWindow*>(tw.get())->Close();
                 docWindow.reset();
                 return true;
             }
@@ -1294,7 +1307,8 @@ namespace UltraCanvas {
                                "Third-party libraries used by UltraCanvas and its modules",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateDependenciesExamples(); },
-                               "DemoApp/UltraCanvasDependenciesExamples.cpp");
+                               "DemoApp/UltraCanvasDependenciesExamples.cpp",
+                               "Docs/Dependencies.md");
 
         auto widgetsBuilder = DemoCategoryBuilder(this, DemoCategory::Widgets);
 
@@ -1322,9 +1336,17 @@ namespace UltraCanvas {
                 .AddVariant("datepicker", "Hotel Stay / Blocked Dates")
                 .AddVariant("datepicker", "Multi-Month / Scroll");
 
-        widgetsBuilder.AddItem("photovideoviewer", "Photo/Video viewer", "Photo/Video viewer",
-                               ImplementationStatus::NotImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("Photo/Video viewer"); });
+        widgetsBuilder.AddItem("mediaviewer", "Media Viewer",
+                               "Comprehensive media viewer for images, documents (PDF), audio and "
+                               "video: folder browsing, next/previous (arrows or mouse, even while "
+                               "zoomed), slideshow with transitions, manual + automatic zoom, "
+                               "rotation, mirroring, gamma / brightness / colour correction, "
+                               "auto-optimise, sharpening, save-as and a detailed info popup. "
+                               "PDFs render via UltraCanvasPDFView and audio/video via the player "
+                               "elements. Drag a folder or files onto it.",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateMediaViewerExamples(); },
+                               "DemoApp/UltraCanvasMediaViewerExamples.cpp");
 
         widgetsBuilder.AddItem("slideshow", "Slideshow",
                                "Timed image slideshow with info text panel and selectable indicator styles",

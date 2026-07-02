@@ -1,7 +1,7 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
-// Version: 1.4.2 - PANGO_BACKEND=fontconfig env so MSYS2 Pango uses FC instead of Win32 backend
-// Last Modified: 2026-05-10
+// Version: 1.5.0 - focusedWindow/hovered/captured/dragged and UCEvent targets are now weak_ptr
+// Last Modified: 2026-07-02
 // Author: UltraCanvas Framework
 
 #include <algorithm>
@@ -305,8 +305,10 @@ namespace UltraCanvas {
 
     void UltraCanvasApplicationBase::CleanupWindowReferences(UltraCanvasWindowBase* win) {
         UnregisterModalWindow(win);
-        if (focusedWindow == win) {
-            focusedWindow = nullptr;
+        // Called from PerformClose() while the window is still alive, so the weak_ptrs
+        // can still be locked and compared here.
+        if (focusedWindow.lock().get() == win) {
+            focusedWindow.reset();
 
             // if (win->IsFocused()) {
             //     auto parentWin = win->GetParentWindow();
@@ -314,32 +316,35 @@ namespace UltraCanvas {
             //         auto parentWinState = parentWin->GetState();
             //         if ( parentWinState == WindowState::Normal || parentWinState == WindowState::Maximized || parentWinState == WindowState::Fullscreen) {
             //             parentWin->RaiseAndFocus();
-            //             focusedWindow = (UltraCanvasWindow*)parentWin;
+            //             focusedWindow = parentWin->GetWeakWindow();
             //         }
             //     }
             // }
         }
-        if (capturedElement && capturedElement->GetWindow() == win) {
-            capturedElement = nullptr;
+        if (auto ce = capturedElement.lock(); ce && ce->GetWindow() == win) {
+            capturedElement.reset();
         }
-        if (hoveredElement && hoveredElement->GetWindow() == win) {
-            hoveredElement = nullptr;
+        if (auto he = hoveredElement.lock(); he && he->GetWindow() == win) {
+            hoveredElement.reset();
         }
-        if (draggedElement && draggedElement->GetWindow() == win) {
-            draggedElement = nullptr;
+        if (auto de = draggedElement.lock(); de && de->GetWindow() == win) {
+            draggedElement.reset();
         }
         debugOutput << "UltraCanvas: window found and unregistered successfully" << std::endl;
     }
 
     void UltraCanvasApplicationBase::CleanupElementReferences(UltraCanvasUIElement* elem) {
-        if (capturedElement == elem) {
+        // Called from ~UltraCanvasUIElement, where the weak_ptrs referencing elem are
+        // already expired (auto-handling the dangling case). These comparisons are kept
+        // for correctness on any path where elem is still live.
+        if (capturedElement.lock().get() == elem) {
             ReleaseMouse();
         }
-        if (hoveredElement == elem) {
-            hoveredElement = nullptr;
+        if (hoveredElement.lock().get() == elem) {
+            hoveredElement.reset();
         }
-        if (draggedElement == elem) {
-            draggedElement = nullptr;
+        if (draggedElement.lock().get() == elem) {
+            draggedElement.reset();
         }
         auto win = elem->GetWindow();
         if (win && win->IsCreated() && win->GetState() != WindowState::Closing &&  win->GetState() != WindowState::Closed && win->GetFocusedElement() == elem) {
@@ -438,9 +443,13 @@ namespace UltraCanvas {
         }
     }
 
+    UltraCanvasWindow* UltraCanvasApplicationBase::GetFocusedWindow() {
+        return static_cast<UltraCanvasWindow*>(focusedWindow.lock().get());
+    }
+
     UltraCanvasUIElement* UltraCanvasApplicationBase::GetFocusedElement() {
-        if (focusedWindow) {
-            return focusedWindow->GetFocusedElement();
+        if (auto fw = focusedWindow.lock()) {
+            return fw->GetFocusedElement();
         }
         return nullptr;
     }
@@ -464,11 +473,12 @@ namespace UltraCanvas {
         // ===== NEW: IMPROVED TARGET WINDOW DETECTION =====
         UltraCanvasWindow* targetWindow = nullptr;
 
-        // First priority: Use the window information stored in the event
-        if (event.targetWindow != nullptr) {
-            targetWindow = static_cast<UltraCanvasWindow*>(event.targetWindow);
-            if (std::find_if(windows.begin(), windows.end(), [targetWindow](auto const &item) {
-                return item.get() == targetWindow;
+        // First priority: Use the window information stored in the event. An expired
+        // weak_ptr (window already destroyed) naturally falls through to the fallbacks.
+        if (auto tw = event.targetWindow.lock()) {
+            targetWindow = static_cast<UltraCanvasWindow*>(tw.get());
+            if (std::find_if(windows.begin(), windows.end(), [&tw](auto const &item) {
+                return item == tw;
             }) == windows.end()) {
                 debugOutput << "UltraCanvasApplicationBase::DispatchEvent stale event for already deleted window ev=" << event.ToString() << " win="<<targetWindow << std::endl;
                 return;
@@ -484,7 +494,7 @@ namespace UltraCanvas {
             if (event.type == UCEventType::KeyDown ||
                 event.type == UCEventType::KeyUp ||
                 event.type == UCEventType::Shortcut) {
-                targetWindow = focusedWindow;
+                targetWindow = GetFocusedWindow();
             }
         }
 
@@ -494,15 +504,15 @@ namespace UltraCanvas {
         }
 
        if (event.type == UCEventType::MouseDown) {
-           if (targetWindow && event.type == UCEventType::MouseDown && focusedWindow != targetWindow) {
-               debugOutput << "Window clicked but not focused, set focus. target=" << targetWindow << " focused=" << focusedWindow << std::endl;
-               if (focusedWindow) {
+           if (targetWindow && event.type == UCEventType::MouseDown && GetFocusedWindow() != targetWindow) {
+               debugOutput << "Window clicked but not focused, set focus. target=" << targetWindow << " focused=" << GetFocusedWindow() << std::endl;
+               if (auto fw = focusedWindow.lock()) {
                    UCEvent ev{.type = UCEventType::WindowBlur};
-                   DispatchEventToElement(focusedWindow, event);
+                   DispatchEventToElement(fw.get(), event);
                }
                UCEvent ev{.type = UCEventType::WindowFocus};
                DispatchEventToElement(targetWindow, event);
-               focusedWindow = targetWindow;
+               focusedWindow = targetWindow->GetWindowWeakPtr();
            }
        }
 
@@ -510,8 +520,8 @@ namespace UltraCanvas {
         switch (event.type) {
             case UCEventType::MouseMove:
             case UCEventType::MouseUp:
-                if (capturedElement) {
-                    if (DispatchEventToElement(capturedElement, event)) {
+                if (auto ce = capturedElement.lock()) {
+                    if (DispatchEventToElement(ce.get(), event)) {
                         return;
                     }
                 }
@@ -524,18 +534,18 @@ namespace UltraCanvas {
                 }
                 break;
             case UCEventType::WindowFocus:
-                if (targetWindow && focusedWindow != targetWindow) {
+                if (targetWindow && GetFocusedWindow() != targetWindow) {
                     // Update focused window
                     DispatchEventToElement(targetWindow, event);
-                    focusedWindow = targetWindow;
-                    debugOutput << "UltraCanvasBaseApplication: Window " << focusedWindow << " (native=" << focusedWindow->GetNativeHandle() << ") gained focus" << std::endl;
+                    focusedWindow = targetWindow->GetWindowWeakPtr();
+                    debugOutput << "UltraCanvasBaseApplication: Window " << targetWindow << " (native=" << targetWindow->GetNativeHandle() << ") gained focus" << std::endl;
                 }
                 return;
             case UCEventType::WindowBlur:
-                if (targetWindow && targetWindow == focusedWindow) {
-                    debugOutput << "UltraCanvasBaseApplication: Window " << focusedWindow << " (native=" << focusedWindow->GetNativeHandle() << ") lost focus" << std::endl;
+                if (targetWindow && targetWindow == GetFocusedWindow()) {
+                    debugOutput << "UltraCanvasBaseApplication: Window " << targetWindow << " (native=" << targetWindow->GetNativeHandle() << ") lost focus" << std::endl;
                     DispatchEventToElement(targetWindow, event);
-                    focusedWindow = nullptr;
+                    focusedWindow.reset();
                 }
                 return;
         }
@@ -663,26 +673,26 @@ namespace UltraCanvas {
             }
 
             if (event.IsMouseEvent()) {
-                if (hoveredElement && hoveredElement != elementUnderPointer) {
-                    if (hoveredElement->GetWindow() == targetWindow && hoveredElement->IsVisible()) {
+                if (auto he = hoveredElement.lock(); he && he.get() != elementUnderPointer) {
+                    if (he->GetWindow() == targetWindow && he->IsVisible()) {
                         UCEvent leaveEvent = event;
                         leaveEvent.type = UCEventType::MouseLeave;
                         leaveEvent.pointer = { -1, -1 };
-                        DispatchEventToElement(hoveredElement, leaveEvent);
+                        DispatchEventToElement(he.get(), leaveEvent);
                     }
                     UltraCanvasTooltipManager::HideTooltip();
-                    hoveredElement = nullptr;
+                    hoveredElement.reset();
                 }
                 if (!elementUnderPointer || elementUnderPointer == targetWindow) {
                     UltraCanvasTooltipManager::HideTooltip();
                 }
                 if (elementUnderPointer) {
-                    if (hoveredElement != elementUnderPointer) {
+                    if (hoveredElement.lock().get() != elementUnderPointer) {
                         auto enterEvent = event.Clone();
                         enterEvent.type = UCEventType::MouseEnter;
                         DispatchEventToElement(elementUnderPointer, enterEvent);
 
-                        hoveredElement = elementUnderPointer;
+                        hoveredElement = elementUnderPointer->weak_from_this();
                         // Show tooltip if element has one
                         if (!elementUnderPointer->GetTooltip().empty()) {
                             UltraCanvasTooltipManager::UpdateAndShowTooltip(
@@ -704,7 +714,7 @@ namespace UltraCanvas {
             }
 
             if (event.isCommandEvent()) {
-                HandleEventWithBubbling(event.targetElement, event);
+                HandleEventWithBubbling(event.targetElement.lock().get(), event);
                 goto finish;
             }
             DispatchEventToElement(targetWindow, event);
@@ -725,6 +735,9 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasApplicationBase::HandleEventWithBubbling(UltraCanvasUIElement *elem, const UCEvent &event) {
+        if (!elem) {
+            return false;  // target element was destroyed before the event was processed
+        }
         if (!event.isCommandEvent()) {
             if (DispatchEventToElement(elem, event)) {
                 return true;
@@ -742,14 +755,14 @@ namespace UltraCanvas {
 
 
     void UltraCanvasApplicationBase::FocusNextElement() {
-        if (focusedWindow) {
-            focusedWindow->FocusNextElement();
+        if (auto fw = focusedWindow.lock()) {
+            fw->FocusNextElement();
         }
     }
 
     void UltraCanvasApplicationBase::FocusPreviousElement() {
-        if (focusedWindow) {
-            focusedWindow->FocusPreviousElement();
+        if (auto fw = focusedWindow.lock()) {
+            fw->FocusPreviousElement();
         }
     }
 
@@ -758,7 +771,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasApplicationBase::DispatchEventToElement(UltraCanvasUIElement* elem, UCEvent event) {
-        event.targetElement = elem;
+        event.targetElement = elem->weak_from_this();
         auto window = elem->GetWindow();
         if (!window) {
             debugOutput << "UltraCanvasApplicationBase::DispatchEventToElement window == null for elem=" << elem << std::ends;
@@ -782,15 +795,15 @@ namespace UltraCanvas {
 
     void UltraCanvasApplicationBase::CaptureMouse(UltraCanvasUIElement *element) {
         capturedMouseButtonDown = currentEvent.button;
-        capturedElement = element;
+        capturedElement = element ? element->weak_from_this() : std::weak_ptr<UltraCanvasUIElement>();
         CaptureMouseNative();
     }
 
     void UltraCanvasApplicationBase::ReleaseMouse() {
-        if (capturedElement) {
+        if (!capturedElement.expired()) {
             ReleaseMouseNative();
         }
-        capturedElement = nullptr;
+        capturedElement.reset();
         capturedMouseButtonDown = UCMouseButton::NoneButton;
     }
 

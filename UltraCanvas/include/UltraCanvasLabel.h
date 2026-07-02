@@ -4,8 +4,8 @@
 // MeasureOwnContent (constraint-aware content sizing) and ComputeIntrinsicSizes
 // (constraint-free max/min-content) so the engine can place the label
 // without the widget mutating finalBounds itself.
-// Version: 2.0.2
-// Last Modified: 2026-06-04
+// Version: 2.0.3
+// Last Modified: 2026-07-02
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -22,6 +22,9 @@ namespace UltraCanvas {
         // Text appearance
         FontStyle fontStyle;
         Color textColor = Colors::Black;
+        // Used instead of textColor while the label IsDisabled(), so captions
+        // grey out together with the control they describe.
+        Color disabledTextColor = Color(178, 178, 184, 255);
 
         // Text alignment
         TextAlignment horizontalAlign = TextAlignment::Left;

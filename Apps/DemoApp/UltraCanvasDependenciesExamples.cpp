@@ -139,7 +139,8 @@ namespace UltraCanvas {
         // Subtitle
         auto subtitle = std::make_shared<UltraCanvasLabel>("DepSubtitle", 20, 45, 940, 25);
         subtitle->SetText("Grouped per module. Under each module the OS columns list one library per line.  "
-                          "(bundled) = vendored, (optional) = feature-gated.");
+                          "(bundled) = vendored, (optional) = feature-gated.  "
+                          "Open the Documentation button (top-right) for clickable website & source-code links for every library.");
         subtitle->SetFontSize(12);
         subtitle->SetTextColor(Color(120, 120, 120, 255));
         container->AddChild(subtitle);

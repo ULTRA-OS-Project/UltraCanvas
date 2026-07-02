@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
-// Version: 2.2.0
-// Last Modified: 2026-06-23
+// Version: 2.2.1 - Redraw event.targetElement set via weak_from_this()
+// Last Modified: 2026-07-02
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
@@ -370,7 +370,7 @@ namespace {
                 matchCountReady.store(true);
 
                 UCEvent ev;
-                ev.targetElement = this;
+                ev.targetElement = weak_from_this();
                 ev.type = UCEventType::Redraw;
                 UltraCanvasApplication::GetInstance()->PushEvent(ev);
                 debugOutput << "Count matches thread finished, matches=" << pendingMatchTotal << std::endl;

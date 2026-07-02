@@ -1,7 +1,7 @@
 // include/UltraCanvasSlider.h
 // Interactive slider control with multiple styles, value display options, and dual-handle range support
-// Version: 3.3.0
-// Last Modified: 2026-06-23
+// Version: 3.3.1
+// Last Modified: 2026-07-02
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -66,7 +66,8 @@ namespace UltraCanvas {
         // Track colors
         Color trackColor = Color(200, 200, 200);
         Color activeTrackColor = Color(0, 120, 215);
-        Color disabledTrackColor = Color(180, 180, 180);
+        Color disabledTrackColor = Color(210, 210, 214);
+        Color disabledActiveTrackColor = Color(175, 175, 180);  // replaces activeTrackColor when disabled
         Color rangeTrackColor = Color(0, 120, 215, 180);  // Color for range between handles
 
         // Handle colors
@@ -263,7 +264,9 @@ namespace UltraCanvas {
         Rect2Di GetRangeTrackRect(const Rect2Di& trackRect, bool isVertical) const;
         Point2Di GetHandlePosition(const Rect2Di& bounds, bool isVertical, float value) const;
         Color GetCurrentTrackColor() const;
+        Color GetCurrentActiveTrackColor() const;
         Color GetCurrentHandleColor() const;
+        Color GetCurrentHandleBorderColor() const;
 
         bool ShouldShowValueText() const {
             return (valueDisplay == SliderValueDisplay::AlwaysVisible) ||

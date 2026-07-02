@@ -1,6 +1,7 @@
 // core/UltraCanvasDropdown.cpp
 // Interactive dropdown/combobox component with icon support and multi-selection
 // Uses ListView popup for rendering dropdown items
+// Last Modified: 2026-07-02 - DropdownSelect event.targetElement set via weak_from_this()
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasApplication.h"
@@ -246,7 +247,7 @@ namespace UltraCanvas {
                     }
                     UCEvent ev;
                     ev.type = UCEventType::DropdownSelect;
-                    ev.targetElement = this;
+                    ev.targetElement = weak_from_this();
                     ev.userDataInt = index;
                     UltraCanvasApplication::GetInstance()->PushEvent(ev);
                 }
