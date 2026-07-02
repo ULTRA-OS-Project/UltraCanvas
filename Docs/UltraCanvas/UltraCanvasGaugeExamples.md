@@ -360,6 +360,25 @@ bar->SetGaugeColor(Color(0, 140, 255, 255));
 bar->SetValue(65.0);
 ```
 
+The fill is a pill that always keeps the bar's full corner radius: just above
+the minimum it renders as a full-radius circle and grows lengthwise from
+there. At the exact minimum nothing is drawn. Two optional low-value warnings
+are available:
+
+```cpp
+// Show a circle in the warning colour at the zero/empty position instead of
+// drawing nothing.
+bar->SetShowZeroValueWarning(true);
+
+// Blink the fill in the warning colour while the value is at or below the
+// low-level limit (in gauge units; default 10).
+bar->SetLowLevelWarning(true);
+bar->SetLowLevelLimit(10.0);
+
+// Both warnings share the warning colour (default red).
+bar->SetWarningColor(Color(230, 55, 45, 255));
+```
+
 ### 7. Vertical LED VU Meter
 
 ```cpp

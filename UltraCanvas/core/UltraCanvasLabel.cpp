@@ -14,8 +14,8 @@
 //   4. Property setters call textLayout.reset() + InvalidateLayout()
 //      (bubbles engine caches up) + RequestRedraw() (damage).
 //
-// Version: 2.2.1
-// Last Modified: 2026-06-04
+// Version: 2.2.2
+// Last Modified: 2026-07-02
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasLabel.h"
@@ -299,7 +299,7 @@ namespace UltraCanvas {
                 ctx->DrawTextLayout(*textLayout, {contentX + style.shadowOffset.x, contentY + style.shadowOffset.y});
             }
 //            textLayout->ChangeAttribute(TextAttributeFactory::CreateForeground(style.textColor));
-            ctx->SetCurrentPaint(style.textColor);
+            ctx->SetCurrentPaint(IsDisabled() ? style.disabledTextColor : style.textColor);
             ctx->DrawTextLayout(*textLayout, Point2Di(contentX, contentY));
         }
     }
