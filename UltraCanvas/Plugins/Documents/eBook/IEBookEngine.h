@@ -141,6 +141,17 @@ protected:
 
 using EBookEngineFactory = std::function<std::shared_ptr<IEBookEngine>()>;
 
+// ---- href utilities shared by engines and viewers ----
+
+// Collapse "./" and "a/../" segments in a container-relative path.
+std::string NormalizeEBookPath(const std::string& path);
+
+// Resolve `relative` against the directory of `baseFile` (both
+// container-relative); a leading '/' makes `relative` container-absolute.
+// Viewers use this to turn chapter-relative <img src> into engine hrefs.
+std::string ResolveEBookHref(const std::string& baseFile,
+                             const std::string& relative);
+
 void RegisterEBookEngine(const std::vector<std::string>& extensions,
                          EBookEngineFactory factory);
 

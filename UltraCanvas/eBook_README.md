@@ -1,7 +1,8 @@
 # UltraCanvas eBook Support
 
-Status: **under construction — rebuilt from scratch** (the previous eBook code
-never compiled and was removed; see "History" below).
+Status: **functional for EPUB and TXT** — rebuilt from scratch on the
+CSSLayout engine (the previous eBook code never compiled and was removed;
+see "History" below).
 
 ## Architecture
 
@@ -34,8 +35,8 @@ eBook file ──► format engine (IEBookEngine) ──► chapters as XHTML + 
 | ZIP/DEFLATE container access (miniz) | `Plugins/Documents/eBook/EBookArchive.h` | ✅ implemented + unit-tested |
 | EPUB 2/3 engine (container/OPF/NCX/nav, cover, resources) | `Plugins/Documents/eBook/EPUBEngine.h` | ✅ implemented + unit-tested |
 | TXT engine | `Plugins/Documents/eBook/TXTEngine.h` | ✅ implemented + unit-tested |
+| Viewer widget (toolbar, TOC panel, themes, font size, keyboard nav) | `include/UltraCanvasEBookViewer.h` | ✅ implemented + smoke-tested |
 | FB2 engine | — | 🔄 planned |
-| Viewer widget (toolbar, TOC, reading modes) | — | 🔄 planned |
 | MOBI / AZW3 / legacy formats | — | 🔄 later |
 
 ### The HTMLReader module
@@ -68,7 +69,24 @@ stylesheets, and resources; the shared base class provides file loading,
 plain-text extraction, and search. Engines self-register per extension via
 `RegisterEBookEngine`, and viewers obtain one via `CreateEBookEngineForFile`.
 
-### Usage sketch
+### Viewer widget
+
+`UltraCanvasEBookViewer` is a composite container widget: toolbar (chapter
+navigation, font size, theme cycle, TOC toggle), a collapsible TOC list, and
+a scrollable content area rebuilt per chapter through `HTML::ElementBuilder`.
+Left/Right/PageUp/PageDown/Home/End navigate chapters. Themes: Normal, Sepia,
+Night (author colors overridden outside Normal).
+
+```cpp
+UltraCanvas::RegisterBuiltinEBookEngines();          // once at startup
+
+auto reader = UltraCanvas::CreateEBookViewer("reader");
+reader->onChapterChanged = [](int i, const std::string& t) { /* ... */ };
+reader->LoadDocument("book.epub");
+window->AddChild(reader);                            // CSSLayout sizes it
+```
+
+### Engine-level usage
 
 ```cpp
 UltraCanvas::RegisterBuiltinEBookEngines();   // once at startup
