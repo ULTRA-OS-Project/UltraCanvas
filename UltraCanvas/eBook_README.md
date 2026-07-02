@@ -1,6 +1,6 @@
 # UltraCanvas eBook Support
 
-Status: **functional for EPUB and TXT** — rebuilt from scratch on the
+Status: **functional for EPUB, FB2 and TXT** — rebuilt from scratch on the
 CSSLayout engine (the previous eBook code never compiled and was removed;
 see "History" below).
 
@@ -34,9 +34,9 @@ eBook file ──► format engine (IEBookEngine) ──► chapters as XHTML + 
 | Engine interface + registry (chapter-oriented) | `Plugins/Documents/eBook/IEBookEngine.h` | ✅ implemented |
 | ZIP/DEFLATE container access (miniz) | `Plugins/Documents/eBook/EBookArchive.h` | ✅ implemented + unit-tested |
 | EPUB 2/3 engine (container/OPF/NCX/nav, cover, resources) | `Plugins/Documents/eBook/EPUBEngine.h` | ✅ implemented + unit-tested |
+| FB2 engine (metadata, sections → chapters, base64 images, fb2.zip, windows-1251/UTF-16 input) | `Plugins/Documents/eBook/FB2Engine.h` | ✅ implemented + unit-tested |
 | TXT engine | `Plugins/Documents/eBook/TXTEngine.h` | ✅ implemented + unit-tested |
 | Viewer widget (toolbar, TOC panel, themes, font size, keyboard nav) | `include/UltraCanvasEBookViewer.h` | ✅ implemented + smoke-tested |
-| FB2 engine | — | 🔄 planned |
 | MOBI / AZW3 / legacy formats | — | 🔄 later |
 
 ### The HTMLReader module
@@ -67,7 +67,16 @@ Known v1 approximations (documented in code):
 container and hand out `EBookChapter { title, href, content(XHTML) }`,
 stylesheets, and resources; the shared base class provides file loading,
 plain-text extraction, and search. Engines self-register per extension via
-`RegisterEBookEngine`, and viewers obtain one via `CreateEBookEngineForFile`.
+`RegisterEBookEngine`, and viewers obtain one via `CreateEBookEngineForFile`
+(compound extensions like `.fb2.zip` are matched before the last segment).
+
+The FB2 engine converts FictionBook markup to simple HTML per section
+(emphasis → em, poem/stanza/v, epigraph/cite → blockquote, empty-line,
+image l:href → img), maps the top-level `<section>`s of the main `<body>`
+to chapters (descending through single wrapper sections), turns extra
+bodies (notes) into trailing chapters, and serves `<binary>` base64 payloads
+as `#id` resources. Windows-1251, Latin-1 and UTF-16 input is converted to
+UTF-8 before parsing; zipped `.fb2.zip` files are unpacked transparently.
 
 ### Viewer widget
 

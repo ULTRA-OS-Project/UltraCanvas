@@ -174,6 +174,8 @@ std::string NormalizeEBookPath(const std::string& path) {
 std::string ResolveEBookHref(const std::string& baseFile,
                              const std::string& relative) {
     if (relative.empty()) return {};
+    // A fragment refers into the same document (FB2 "#binaryId" resources).
+    if (relative[0] == '#') return relative;
     if (relative[0] == '/') return NormalizeEBookPath(relative.substr(1));
 
     size_t slash = baseFile.find_last_of('/');
@@ -212,7 +214,18 @@ void RegisterEBookEngine(const std::vector<std::string>& extensions,
 }
 
 std::shared_ptr<IEBookEngine> CreateEBookEngineForFile(const std::string& filePath) {
-    auto it = Registry().find(ExtensionOf(filePath));
+    // Compound extensions first so "book.fb2.zip" finds the FB2 engine, not
+    // a hypothetical "zip" one.
+    std::string ext = ExtensionOf(filePath);
+    size_t lastDot = filePath.find_last_of('.');
+    if (lastDot != std::string::npos) {
+        std::string inner = ExtensionOf(filePath.substr(0, lastDot));
+        if (!inner.empty()) {
+            auto it = Registry().find(inner + "." + ext);
+            if (it != Registry().end()) return it->second();
+        }
+    }
+    auto it = Registry().find(ext);
     if (it == Registry().end()) return nullptr;
     return it->second();
 }
