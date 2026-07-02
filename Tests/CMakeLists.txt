@@ -131,6 +131,33 @@ add_test(NAME EBookArchiveTest COMMAND EBookArchiveTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: EBookArchiveTest")
 
+# ===== EBOOK ENGINE TEST =====
+message(STATUS "  Building EBookEngineTest...")
+
+add_executable(EBookEngineTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/EBookEngineTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/eBook/EPUBEngine.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/eBook/TXTEngine.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/eBook/IEBookEngine.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/eBook/EBookArchive.cpp
+    ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLDocument.cpp
+    ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLParser.cpp
+    ${ULTRACANVAS_CORE_DIR}/HTMLReader/CSSStyleSheet.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
+)
+target_include_directories(EBookEngineTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/eBook
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz
+)
+target_compile_features(EBookEngineTest PRIVATE cxx_std_20)
+set_target_properties(EBookEngineTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME EBookEngineTest COMMAND EBookEngineTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: EBookEngineTest")
+
 # ===== FUTURE TESTS =====
 # Add more test executables here as needed:
 #
