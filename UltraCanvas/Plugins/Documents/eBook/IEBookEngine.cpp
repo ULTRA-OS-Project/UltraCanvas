@@ -13,6 +13,7 @@
 #include <cctype>
 #include <fstream>
 #include <map>
+#include <vector>
 
 namespace UltraCanvas {
 
@@ -133,6 +134,51 @@ EBookFormat EBookEngineBase::FormatFromExtension(const std::string& filePath) {
     if (ext == "html" || ext == "htm") return EBookFormat::HTML;
     if (ext == "xhtml") return EBookFormat::XHTML;
     return EBookFormat::Unknown;
+}
+
+// ============================================================================
+// HREF UTILITIES
+// ============================================================================
+
+std::string NormalizeEBookPath(const std::string& path) {
+    std::vector<std::string> parts;
+    std::string current;
+
+    auto flush = [&]() {
+        if (current.empty() || current == ".") {
+            current.clear();
+            return;
+        }
+        if (current == "..") {
+            if (!parts.empty()) parts.pop_back();
+        } else {
+            parts.push_back(current);
+        }
+        current.clear();
+    };
+
+    for (char c : path) {
+        if (c == '/' || c == '\\') flush();
+        else current += c;
+    }
+    flush();
+
+    std::string result;
+    for (size_t i = 0; i < parts.size(); ++i) {
+        if (i) result += '/';
+        result += parts[i];
+    }
+    return result;
+}
+
+std::string ResolveEBookHref(const std::string& baseFile,
+                             const std::string& relative) {
+    if (relative.empty()) return {};
+    if (relative[0] == '/') return NormalizeEBookPath(relative.substr(1));
+
+    size_t slash = baseFile.find_last_of('/');
+    std::string baseDir = (slash == std::string::npos) ? "" : baseFile.substr(0, slash + 1);
+    return NormalizeEBookPath(baseDir + relative);
 }
 
 // ============================================================================

@@ -433,6 +433,19 @@ if (BUILD_CSSLAYOUT_TESTS)
     target_compile_features(CSSLayoutTests PRIVATE cxx_std_20)
 endif()
 
+if (BUILD_TESTS)
+    # Headless eBook viewer smoke test (links the full library).
+    add_executable(EBookViewerTest Tests/EBookViewerTest.cpp)
+    target_include_directories(EBookViewerTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(EBookViewerTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(EBookViewerTest PRIVATE cxx_std_20)
+    set_target_properties(EBookViewerTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME EBookViewerTest COMMAND EBookViewerTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+endif()
+
 if (BUILD_FILEMANAGER_APP)
     set(UCFILEMANAGER_SOURCES
             ${CMAKE_CURRENT_SOURCE_DIR}/Apps/ListView/main.cpp
