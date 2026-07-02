@@ -77,9 +77,9 @@ void UltraCanvasEBookViewer::BuildUI() {
     toolbar->box.padding.left = CSSLayout::Dimension::Px(6);
     toolbar->box.padding.right = CSSLayout::Dimension::Px(6);
 
-    auto makeButton = [&](const char* name, const char* text) {
+    auto makeButton = [&](const char* name, const char* text, float width = 34.f) {
         auto button = std::make_shared<UltraCanvasButton>(id + name, text);
-        button->size.width = CSSLayout::Dimension::Px(34);
+        button->size.width = CSSLayout::Dimension::Px(width);
         button->size.height = CSSLayout::Dimension::Px(28);
         toolbar->AddChild(button);
         return button;
@@ -93,8 +93,8 @@ void UltraCanvasEBookViewer::BuildUI() {
     chapterLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
     toolbar->AddChild(chapterLabel);
 
-    btnFontMinus = makeButton("_fminus", "A-");
-    btnFontPlus = makeButton("_fplus", "A+");
+    btnFontMinus = makeButton("_fminus", "A-", 40.f);
+    btnFontPlus = makeButton("_fplus", "A+", 40.f);
     btnTheme = makeButton("_theme", "\xE2\x98\xBE");       // ☾
     btnToc = makeButton("_toc", "\xE2\x98\xB0");           // ☰
 
