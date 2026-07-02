@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasGaugeExamples.cpp
 // Comprehensive examples of gauge element modes using UltraCanvas layout managers
-// Version: 2.6.0
-// Last Modified: 2026-06-26
+// Version: 2.6.1 - event.targetWindow read via weak_ptr lock()
+// Last Modified: 2026-07-02
 // Author: UltraCanvas Framework
 // V2.6.0 changelog: Round Gauges showcase grid — dropped the redundant value
 //   label under each card's slider (round gauges already show the value in the
@@ -712,7 +712,7 @@ namespace {
 
         codeWindow->SetEventCallback([](const UCEvent& event) {
             if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
-                if (event.targetWindow) ((UltraCanvasWindow*)event.targetWindow)->Close();
+                if (auto tw = event.targetWindow.lock()) static_cast<UltraCanvasWindow*>(tw.get())->Close();
                 return true;
             }
             return false;

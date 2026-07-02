@@ -1,7 +1,7 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
-// Version: 1.4.0
-// Last Modified: 2026-05-10
+// Version: 1.5.0
+// Last Modified: 2026-07-02
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -68,10 +68,12 @@ namespace UltraCanvas {
         std::vector<std::shared_ptr<UltraCanvasWindowBase>> windows;
         std::vector<std::weak_ptr<UltraCanvasWindowBase>> activeModalWindows;
 
-        UltraCanvasWindow* focusedWindow = nullptr;
-        UltraCanvasUIElement* hoveredElement = nullptr;
-        UltraCanvasUIElement* capturedElement = nullptr;
-        UltraCanvasUIElement* draggedElement = nullptr;
+        // Non-owning references to transient UI state. Stored as weak_ptr so a
+        // destroyed window/element simply lock()s to nullptr instead of dangling.
+        std::weak_ptr<UltraCanvasWindowBase> focusedWindow;
+        std::weak_ptr<UltraCanvasUIElement> hoveredElement;
+        std::weak_ptr<UltraCanvasUIElement> capturedElement;
+        std::weak_ptr<UltraCanvasUIElement> draggedElement;
 
         std::vector<std::function<bool(const UCEvent&)>> globalEventHandlers;
         std::function<void()> eventLoopCallback;
@@ -134,10 +136,10 @@ namespace UltraCanvas {
         bool IsAltHeld() { return altHeld; }
         bool IsMetaHeld() { return metaHeld; }
 
-        UltraCanvasWindow* GetFocusedWindow() { return focusedWindow; }
+        UltraCanvasWindow* GetFocusedWindow();  // downcast from weak_ptr, defined in .cpp
         UltraCanvasUIElement* GetFocusedElement();
-        UltraCanvasUIElement* GetHoveredElement() { return hoveredElement; }
-        UltraCanvasUIElement* GetCapturedElement() { return capturedElement; }
+        UltraCanvasUIElement* GetHoveredElement() { return hoveredElement.lock().get(); }
+        UltraCanvasUIElement* GetCapturedElement() { return capturedElement.lock().get(); }
 
         UltraCanvasWindow* FindWindow(NativeWindowHandle nativeHandle);
 

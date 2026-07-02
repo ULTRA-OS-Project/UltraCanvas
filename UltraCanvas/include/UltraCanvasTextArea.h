@@ -14,6 +14,7 @@
 #include <string_view>
 #include <vector>
 #include <array>
+#include <set>
 #include <functional>
 #include <memory>
 #include <utility>
@@ -415,6 +416,9 @@ namespace UltraCanvas {
 
         // Text manipulation - now UTF-8 aware
         void SetText(const std::string& text, bool runNotifications = true);
+        // Programmatic append at the end (works on read-only areas; used for
+        // console/log output). Auto-scrolls to the bottom.
+        void AppendText(const std::string& text);
         std::string GetText() const;
         // Text with internal \n converted to the detected lineEndingType sequence
         // (for file save / external export). GetText() itself returns normalized LF.
@@ -664,17 +668,39 @@ namespace UltraCanvas {
         void AddWarningMarker(int lineIndex, const std::string& message);
         void ClearMarkers();
 
-
         // Callbacks
         TextChangedCallback onTextChanged;
         CursorPositionChangedCallback onCursorPositionChanged;
         SelectionChangedCallback onSelectionChanged;
 
     protected:
+        // ----- Gutter / decoration extension points -----
+        // The base class draws line numbers and the current-line highlight only.
+        // Subclasses (e.g. UCCoderBoxTextArea) override these to add IDE visuals
+        // such as breakpoint indicators and an execution-line highlight, without
+        // the base class knowing anything about debugging.
+
+        // Total width reserved for the gutter. Base = line-number width; a subclass
+        // can add columns (e.g. a breakpoint column) by overriding and adding to it.
+        virtual int GetGutterWidth(IRenderContext* ctx);
+        // Per-visible-line hook called from DrawGutter after the line number is
+        // drawn. gutterLineRect is that line's rect within the gutter.
+        virtual void DrawGutterDecorations(IRenderContext* /*ctx*/, int /*logicalLine*/,
+                                           const Rect2Dd& /*gutterLineRect*/) {}
+        // Called from Render right after DrawCurrentLineBackground (so anything
+        // painted here sits behind the text). Default: nothing.
+        virtual void DrawLineOverlays(IRenderContext* /*ctx*/) {}
+        // Called when a click lands in the gutter. logicalLine is 1-based. Return
+        // true to consume the event. Default: ignore.
+        virtual bool OnGutterClicked(int /*logicalLine*/) { return false; }
+        // On-screen content-row rect (x past the gutter, full content width) for a
+        // visible 1-based logical line. Returns false if the line is not visible.
+        bool GetLogicalLineContentRect(int logicalLine, Rect2Dd& out);
+
         // Drawing methods
         void DrawCurrentLineBackground(IRenderContext* context);
         void DrawBorder(IRenderContext* context);
-        void DrawLineNumbers(IRenderContext* context);
+        virtual void DrawGutter(IRenderContext* context);   // was DrawLineNumbers
         void DrawCursor(IRenderContext* context);
         void DrawScrollbars(IRenderContext* context);
 
@@ -924,7 +950,7 @@ namespace UltraCanvas {
             std::string message;
         };
         std::vector<Marker> markers;
-        
+
     public:
         // Markdown interaction callbacks
         using MarkdownLinkClickCallback = std::function<void(const std::string& url)>;

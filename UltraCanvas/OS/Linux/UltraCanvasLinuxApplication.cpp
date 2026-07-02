@@ -1,7 +1,7 @@
 // OS/Linux/UltraCanvasLinuxApplication.cpp
 // Complete Linux application implementation with all methods
-// Version: 1.6.7 - Force FC-backed Pango default via pango_cairo_font_map_new_for_font_type(FT)
-// Last Modified: 2026-05-10
+// Version: 1.6.8 - focusedWindow now weak_ptr; targetWindow set via GetWeakWindow()
+// Last Modified: 2026-07-02
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWindow.h"
@@ -296,12 +296,12 @@ namespace UltraCanvas {
 
     // ===== MOUSE CAPTURE SUPPORT =====
     void UltraCanvasLinuxApplication::CaptureMouseNative() {
-        if (!display || !focusedWindow) {
+        if (!display || !GetFocusedWindow()) {
             debugOutput << "UltraCanvas: Cannot capture mouse - no display or focused window" << std::endl;
             return;
         }
 
-        auto* linuxWindow = dynamic_cast<UltraCanvasLinuxWindow*>(focusedWindow);
+        auto* linuxWindow = dynamic_cast<UltraCanvasLinuxWindow*>(GetFocusedWindow());
         if (!linuxWindow) {
             debugOutput << "UltraCanvas: Cannot capture mouse - invalid window type" << std::endl;
             return;
@@ -384,7 +384,9 @@ namespace UltraCanvas {
 
         // Find and store the corresponding UltraCanvas window
         auto targetWindow = static_cast<UltraCanvasLinuxWindow*>(FindWindow(xEvent.xany.window));
-        event.targetWindow = targetWindow;
+        if (targetWindow) {
+            event.targetWindow = targetWindow->GetWindowWeakPtr();
+        }
 
         switch (xEvent.type) {
             case KeyPress:

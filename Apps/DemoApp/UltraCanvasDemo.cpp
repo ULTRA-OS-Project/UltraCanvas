@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
-// Version: 1.0.4
-// Last Modified: 2026-06-14
+// Version: 1.0.5 - event.targetWindow read via weak_ptr lock()
+// Last Modified: 2026-07-02
 // V1.0.4: mainContainer scrollbars disabled (it is a pure layout wrapper and must
 //   never scroll the header away); displayContainer is now the explicit single
 //   scroll region (flex-grow:1, flex-shrink:1) and inserted examples are clamped
@@ -297,7 +297,7 @@ namespace UltraCanvas {
 
         docWindow->SetEventCallback([this](const UCEvent& event) {
             if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
-                ((UltraCanvasWindow *)event.targetWindow)->Close();
+                if (auto tw = event.targetWindow.lock()) static_cast<UltraCanvasWindow*>(tw.get())->Close();
                 docWindow.reset();
                 return true;
             }

@@ -1,7 +1,7 @@
 // UltraCanvasMenu.cpp
 // Interactive menu component with styling options and submenu support
-// Version: 1.8.0
-// Last Modified: 2026-06-02
+// Version: 1.8.1 - MenuClick event.targetElement set via weak_from_this()
+// Last Modified: 2026-07-02
 // Author: UltraCanvas Framework
 
 #include <vector>
@@ -1116,7 +1116,7 @@ namespace UltraCanvas {
                 }
                 UCEvent ev;
                 ev.type = UCEventType::MenuClick;
-                ev.targetElement = this;
+                ev.targetElement = weak_from_this();
                 ev.userDataPtr = &item;
                 UltraCanvasApplication::GetInstance()->PushEvent(ev);
                 break;
@@ -1141,7 +1141,7 @@ namespace UltraCanvas {
                 }
                 UCEvent ev;
                 ev.type = UCEventType::MenuClick;
-                ev.targetElement = this;
+                ev.targetElement = weak_from_this();
                 ev.userDataPtr = &item;
                 UltraCanvasApplication::GetInstance()->PushEvent(ev);
                 break;
@@ -1173,7 +1173,7 @@ namespace UltraCanvas {
                 }
                 UCEvent ev;
                 ev.type = UCEventType::MenuClick;
-                ev.targetElement = this;
+                ev.targetElement = weak_from_this();
                 ev.userDataPtr = &item;
                 UltraCanvasApplication::GetInstance()->PushEvent(ev);
                 break;
