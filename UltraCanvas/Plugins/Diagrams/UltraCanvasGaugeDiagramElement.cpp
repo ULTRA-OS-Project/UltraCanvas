@@ -1,8 +1,20 @@
 // Plugins/Diagrams/UltraCanvasGaugeDiagramElement.cpp
 // Implementation of comprehensive gauge element with 17 visual modes
-// Version: 2.9.1
+// Version: 2.10.0
 // Last Modified: 2026-07-02
 // Author: UltraCanvas Framework
+// V2.10.0 changelog: LinearBar low-value fixes and warnings:
+//   - The fill pill keeps the bar's full corner radius at every value: it
+//     starts as a full-radius circle just above the minimum and grows
+//     lengthwise from there. Previously the radius was clamped to the fill
+//     length, so values below ~10% rendered as a squashed sliver and the
+//     full circle only appeared once the fill length reached the bar height.
+//   - At the exact minimum nothing is drawn; with the new
+//     SetShowZeroValueWarning option a circle in the warning colour (default
+//     red) marks the empty gauge instead.
+//   - New SetLowLevelWarning + SetLowLevelLimit options: while the value is
+//     at or below the limit the fill turns to the warning colour and blinks
+//     (500ms phase). SetWarningColor customizes the colour of both warnings.
 // V2.9.1 changelog: Round-gauge (CircularRing) fixes:
 //   - Ring radius reduced by 5% (applied after the size clamp, so even
 //     clamp-limited gauges like the playground ring shrink).
@@ -126,6 +138,10 @@ UltraCanvasGaugeDiagramElement::~UltraCanvasGaugeDiagramElement() {
         app->StopTimer(clockTimerId);
         clockTimerId = 0;
     }
+    if (warningBlinkTimerId) {
+        app->StopTimer(warningBlinkTimerId);
+        warningBlinkTimerId = 0;
+    }
 }
 
 // =============================================================================
@@ -161,6 +177,7 @@ void UltraCanvasGaugeDiagramElement::SetMode(GaugeMode m) {
     }
     // Start/stop the 1-second redraw timer for live displays.
     UpdateClockTimer();
+    UpdateWarningBlinkTimer();
     RequestRedraw();
 }
 
@@ -181,11 +198,33 @@ void UltraCanvasGaugeDiagramElement::UpdateClockTimer() {
     }
 }
 
+// Runs the blink timer only while the low-level warning is actually showing
+// (LinearBar mode, warning enabled, value at or below the limit). When it
+// stops, the phase resets to "shown" so the bar renders solid again.
+void UltraCanvasGaugeDiagramElement::UpdateWarningBlinkTimer() {
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) return;
+    bool needTimer = (mode == GaugeMode::LinearBar) && lowLevelWarning &&
+                     currentValue <= lowLevelLimit;
+    if (needTimer && !warningBlinkTimerId) {
+        warningBlinkOn = true;
+        warningBlinkTimerId = app->StartTimer(500, true, [this](TimerId) {
+            warningBlinkOn = !warningBlinkOn;
+            if (IsVisible()) RequestRedraw();
+        });
+    } else if (!needTimer && warningBlinkTimerId) {
+        app->StopTimer(warningBlinkTimerId);
+        warningBlinkTimerId = 0;
+        warningBlinkOn = true;
+    }
+}
+
 void UltraCanvasGaugeDiagramElement::SetValue(double val) {
     double clamped = std::max(minValue, std::min(maxValue, val));
     if (std::abs(clamped - currentValue) < 0.0001) return;
     currentValue = clamped;
     if (onGaugeValueChange) onGaugeValueChange(currentValue);
+    UpdateWarningBlinkTimer();
     RequestRedraw();
 }
 
@@ -292,6 +331,25 @@ void UltraCanvasGaugeDiagramElement::SetDigitalFontFamily(const std::string& fam
 void UltraCanvasGaugeDiagramElement::SetMajorTickCount(int count) { majorTickCount = std::max(1, count); RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetMinorTickCount(int count) { minorTickCount = std::max(0, count); RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetSegmentCount(int count) { segmentCount = std::max(2, count); RequestRedraw(); }
+
+void UltraCanvasGaugeDiagramElement::SetShowZeroValueWarning(bool enabled) {
+    showZeroValueWarning = enabled;
+    RequestRedraw();
+}
+void UltraCanvasGaugeDiagramElement::SetLowLevelWarning(bool enabled) {
+    lowLevelWarning = enabled;
+    UpdateWarningBlinkTimer();
+    RequestRedraw();
+}
+void UltraCanvasGaugeDiagramElement::SetLowLevelLimit(double limit) {
+    lowLevelLimit = limit;
+    UpdateWarningBlinkTimer();
+    RequestRedraw();
+}
+void UltraCanvasGaugeDiagramElement::SetWarningColor(const Color& c) {
+    warningColor = c;
+    RequestRedraw();
+}
 
 // =============================================================================
 // HELPER METHODS
@@ -1530,30 +1588,40 @@ void UltraCanvasGaugeDiagramElement::RenderLinearBar(IRenderContext* ctx) {
     ctx->SetFillPaint(Color(225, 226, 235, 255));
     ctx->FillRoundedRectangle(Rect2Df(barX, barY, barW, barH), barH / 2.0f);
 
-    // Fill
+    // Fill. The pill keeps the bar's full corner radius at every value: just
+    // above the minimum it is a full-radius circle and it grows lengthwise
+    // from there (never a squashed sliver). At the exact minimum nothing is
+    // drawn — or, with ShowZeroValueWarning, a circle in the warning colour
+    // marks the empty gauge. With LowLevelWarning enabled the fill switches
+    // to the warning colour and blinks while the value is at or below
+    // LowLevelLimit (the blink timer drives warningBlinkOn).
     double ratio = ValueToRatio(currentValue);
-    Color fillC = GetColorForValue(currentValue);
-    ctx->SetFillPaint(fillC);
+    bool atZero = ratio <= 0.00001;
+    bool lowWarn = lowLevelWarning && currentValue <= lowLevelLimit;
+    bool blinkVisible = !lowWarn || warningBlinkOn;
+    // Diameter of the fill's rounded end = the bar's cross dimension.
+    float capD = vertical ? barW : barH;
 
-    if (vertical) {
-        float fillH = static_cast<float>(barH * ratio);
-        if (fillH > 1.0f) {
-            // Clamp the corner radius to half of the smaller dimension so a
-            // short fill renders as a proper pill instead of overlapping arcs
-            // (which collapse into a circle for small values).
-            float radius = std::min(barW, fillH) / 2.0f;
-            ctx->FillRoundedRectangle(
-                Rect2Df(barX, barY + barH - fillH, barW, fillH), radius);
+    if (atZero) {
+        if (showZeroValueWarning && blinkVisible) {
+            ctx->SetFillPaint(warningColor);
+            Point2Df capCenter = vertical
+                ? Point2Df(barX + barW / 2.0f, barY + barH - capD / 2.0f)
+                : Point2Df(barX + capD / 2.0f, barY + barH / 2.0f);
+            ctx->FillCircle(capCenter, capD / 2.0f);
         }
-    } else {
-        float fillW = static_cast<float>(barW * ratio);
-        if (fillW > 1.0f) {
-            // Clamp the corner radius to half of the smaller dimension so a
-            // short fill renders as a proper pill instead of overlapping arcs
-            // (which collapse into a circle for small values).
-            float radius = std::min(fillW, barH) / 2.0f;
+    } else if (blinkVisible) {
+        ctx->SetFillPaint(lowWarn ? warningColor : GetColorForValue(currentValue));
+        if (vertical) {
+            float fillH = capD + static_cast<float>((barH - capD) * ratio);
             ctx->FillRoundedRectangle(
-                Rect2Df(barX, barY, fillW, barH), radius);
+                Rect2Df(barX, barY + barH - fillH, barW, fillH),
+                std::min(barW, fillH) / 2.0f);
+        } else {
+            float fillW = capD + static_cast<float>((barW - capD) * ratio);
+            ctx->FillRoundedRectangle(
+                Rect2Df(barX, barY, fillW, barH),
+                std::min(fillW, barH) / 2.0f);
         }
     }
 
