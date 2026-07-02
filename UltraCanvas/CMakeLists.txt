@@ -71,13 +71,20 @@ else()
 endif()
 
 
-#include(FetchContent)
-#
-#FetchContent_Declare(
-#        fmt
-#        GIT_REPOSITORY https://github.com/fmtlib/fmt
-#        GIT_TAG        e69e5f977d458f2650bb346dadf2ad30c5320281) # 10.2.1
-#FetchContent_MakeAvailable(fmt)
+# The core library links fmt::fmt, so it must resolve the dependency itself
+# rather than relying on the demo app's FetchContent. Prefer an installed fmt
+# (works offline); fall back to fetching the pinned revision.
+if(NOT TARGET fmt::fmt)
+    find_package(fmt CONFIG QUIET)
+    if(NOT fmt_FOUND)
+        include(FetchContent)
+        FetchContent_Declare(
+                fmt
+                GIT_REPOSITORY https://github.com/fmtlib/fmt
+                GIT_TAG        123913715afeb8a437e6388b4473fcc4753e1c9a) # 11.1.4
+        FetchContent_MakeAvailable(fmt)
+    endif()
+endif()
 
 message(STATUS "Target Platform: ${ULTRACANVAS_PLATFORM}")
 
@@ -238,6 +245,20 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/AbsoluteLayout.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/FlexLayout.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/GridLayout.cpp
+
+        # HTMLReader: HTML/XHTML parser + CSS subset + DOM→element builder
+        # on top of the CSSLayout engine (used by the eBook subsystem).
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/HTMLDocument.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/HTMLParser.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/CSSStyleSheet.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/HTMLStyleResolver.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/HTMLElementBuilder.cpp
+
+        # eBook foundation: chapter-oriented engine interface + ZIP/DEFLATE
+        # container access (format engines register themselves here).
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEBookTypes.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/eBook/IEBookEngine.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/eBook/EBookArchive.cpp
 
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudio.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioDevices.cpp
@@ -904,29 +925,6 @@ else()
     message(STATUS "  [−] PDF Plugin - SKIPPED (disabled by option)")
 endif()
 
-# eBook Plugin - currently the VirtualFS-backed decompression layer and the
-# shared eBook types. The format engines (MOBI/AZW3/LIT/RB/TCR/OEB/FB2/LRF)
-# are excluded until their sources match the IEBookEngine interface.
-if(ULTRACANVAS_PLUGIN_EBOOK)
-    if(TARGET VirtualFS)
-        target_sources(${ULTRACANVAS_LIB_NAME} PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/eBook/EBookDecompression.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/eBook/UltraCanvasEBookTypes.cpp
-        )
-        target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/eBook
-        )
-        target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC
-            ULTRACANVAS_PLUGIN_EBOOK=1
-        )
-        message(STATUS "  [✓] eBook Plugin - ENABLED (decompression + types; format engines pending)")
-    else()
-        message(STATUS "  [−] eBook Plugin - SKIPPED (requires the VirtualFS module)")
-    endif()
-else()
-    message(STATUS "  [−] eBook Plugin - SKIPPED (disabled by option)")
-endif()
-
 # OCR Plugin
 if(ULTRACANVAS_PLUGIN_OCR)
     pkg_check_modules(TESSERACT tesseract)
@@ -969,6 +967,7 @@ if(ULTRACANVAS_PLUGIN_VECTORIZER)
 else()
     message(STATUS "  [−] Vectorizer Plugin - SKIPPED (disabled by option)")
 endif()
+
 # LaTeX Plugin (embedded MicroTeX) - ON-DEMAND dynamic module
 #
 # LaTeX support is a load-on-demand module, in line with UltraCanvas' goal of
