@@ -81,7 +81,8 @@ private:
     void AppendInlineMarkup(const Node& node, const ComputedStyle& runStyle,
                             bool preserveWhitespace, std::string& out);
 
-    void ApplyBoxStyle(UltraCanvasUIElement& target, const ComputedStyle& style);
+    void ApplyBoxStyle(UltraCanvasUIElement& target, const ComputedStyle& style,
+                       bool fillWidth = true);
     void ConfigureLabel(UltraCanvasLabel& label, const ComputedStyle& style);
 
     static std::string MarkerText(ListMarker marker, int index);

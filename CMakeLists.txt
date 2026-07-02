@@ -152,6 +152,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasQRCodeExamples.cpp
             Apps/DemoApp/UltraCanvasBarcodeExamples.cpp
             Apps/DemoApp/UltraCanvasAudioExamples.cpp
+            Apps/DemoApp/UltraCanvasEBookExamples.cpp
             Apps/DemoApp/UltraCanvasWaveformExamples.cpp
             Apps/DemoApp/UltraCanvasPDFExamples.cpp
             Apps/DemoApp/UltraCanvasLaTeXExamples.cpp

@@ -45,6 +45,16 @@ int PangoSize(float px) {
     return static_cast<int>(px * 72.f / 96.f * 1024.f + 0.5f);
 }
 
+// Block containers use the engine's Block flow, which measures children at
+// the container width so text wraps correctly. Block does not consume child
+// margins yet (engine TODO), and column Flex freezes text heights before the
+// width is known — so vertical margins are emitted as explicit spacer
+// elements by BuildChildrenInto (with adjacent-margin collapsing), and
+// horizontal margins fold into padding in ApplyBoxStyle.
+void ConfigureBlockLayout(UltraCanvasContainer& container) {
+    container.layout.SetDisplay(CSSLayout::DisplayType::Block);
+}
+
 bool IsBlockDisplay(DisplayMode d) {
     return d == DisplayMode::Block || d == DisplayMode::ListItem ||
            d == DisplayMode::Table || d == DisplayMode::TableRow ||
@@ -124,6 +134,7 @@ BuildResult ElementBuilder::BuildDocument(Document& document, const BuildOptions
     }
 
     result.root = BuildBlock(*body);
+    ++elementCount;   // the root itself
     result.warnings = warnings;
     result.elementCount = elementCount;
     return result;
@@ -139,11 +150,10 @@ std::string ElementBuilder::MakeId(const std::string& hint) {
 
 std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildBlock(Node& element) {
     auto container = std::make_shared<UltraCanvasContainer>(MakeId(element.tag));
-    ++elementCount;
 
     const ComputedStyle& style = resolver.StyleOf(&element);
     ApplyBoxStyle(*container, style);
-    container->layout.SetDisplay(CSSLayout::DisplayType::Block);
+    ConfigureBlockLayout(*container);
 
     BuildChildrenInto(*container, element);
     return container;
@@ -157,6 +167,26 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
     bool markerPending = (element.tag == "li");
     int listCounter = 0;
 
+    // Vertical rhythm: the engine's Block flow stacks children edge-to-edge,
+    // so CSS margins become explicit spacer elements. Adjacent top/bottom
+    // margins collapse to the larger one, like CSS margin collapsing.
+    float pendingMargin = 0.f;
+    bool anyFlowChild = false;
+    auto addFlowChild = [&](std::shared_ptr<UltraCanvasUIElement> child,
+                            float topMargin, float bottomMargin) {
+        float spacing = anyFlowChild ? std::max(pendingMargin, topMargin)
+                                     : topMargin;
+        if (spacing > 0.5f) {
+            auto spacer = std::make_shared<UltraCanvasContainer>(MakeId("gap"));
+            spacer->size.height = CSSLayout::Dimension::Px(spacing);
+            parent.AddChild(spacer);
+        }
+        parent.AddChild(std::move(child));
+        ++elementCount;
+        pendingMargin = bottomMargin;
+        anyFlowChild = true;
+    };
+
     auto flushRun = [&]() {
         if (inlineRun.empty() && !markerPending) return;
         std::string marker;
@@ -166,8 +196,7 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
         }
         auto label = BuildInlineRun(inlineRun, blockStyle, marker);
         if (label) {
-            parent.AddChild(label);
-            ++elementCount;
+            addFlowChild(label, 0.f, 0.f);
         }
         inlineRun.clear();
     };
@@ -190,8 +219,7 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
             flushRun();
             if (opts.enableImages) {
                 if (auto image = BuildImage(child)) {
-                    parent.AddChild(std::static_pointer_cast<UltraCanvasUIElement>(image));
-                    ++elementCount;
+                    addFlowChild(image, childStyle.marginTop, childStyle.marginBottom);
                 }
             }
             continue;
@@ -199,15 +227,14 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
         if (child.tag == "hr") {
             flushRun();
             if (auto rule = BuildRule(child)) {
-                parent.AddChild(std::static_pointer_cast<UltraCanvasUIElement>(rule));
-                ++elementCount;
+                addFlowChild(rule, childStyle.marginTop, childStyle.marginBottom);
             }
             continue;
         }
         if (childStyle.display == DisplayMode::Table) {
             flushRun();
             if (auto table = BuildTable(child)) {
-                parent.AddChild(table);
+                addFlowChild(table, childStyle.marginTop, childStyle.marginBottom);
             }
             continue;
         }
@@ -215,17 +242,16 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
         if (childStyle.display == DisplayMode::ListItem) {
             flushRun();
             auto item = std::make_shared<UltraCanvasContainer>(MakeId("li"));
-            ++elementCount;
             ApplyBoxStyle(*item, childStyle);
-            item->layout.SetDisplay(CSSLayout::DisplayType::Block);
+            ConfigureBlockLayout(*item);
             BuildChildrenInto(*item, child, ++listCounter);
-            parent.AddChild(item);
+            addFlowChild(item, childStyle.marginTop, childStyle.marginBottom);
             continue;
         }
 
         if (IsBlockDisplay(childStyle.display)) {
             flushRun();
-            parent.AddChild(BuildBlock(child));
+            addFlowChild(BuildBlock(child), childStyle.marginTop, childStyle.marginBottom);
             continue;
         }
 
@@ -263,6 +289,8 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
 
     auto label = std::make_shared<UltraCanvasLabel>(MakeId("text"));
     ConfigureLabel(*label, blockStyle);
+    label->box.boxSizing = CSSLayout::BoxSizing::BorderBox;
+    label->size.width = CSSLayout::Dimension::Pct(100.f);
     label->SetTextIsMarkup(true);
     label->SetText(markup);
     return label;
@@ -357,7 +385,7 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildImage(Node& element) 
     image->LoadFromImage(raster);
 
     const ComputedStyle& style = resolver.StyleOf(&element);
-    ApplyBoxStyle(*image, style);
+    ApplyBoxStyle(*image, style, /*fillWidth=*/false);
     // Without explicit dimensions the element reports the image's natural
     // size through MeasureOwnContent.
     return image;
@@ -382,7 +410,7 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element) 
     ++elementCount;
     const ComputedStyle& style = resolver.StyleOf(&element);
     ApplyBoxStyle(*table, style);
-    table->layout.SetDisplay(CSSLayout::DisplayType::Block);
+    ConfigureBlockLayout(*table);
 
     std::function<void(Node&)> addRows = [&](Node& parent) {
         for (const auto& childPtr : parent.children) {
@@ -407,7 +435,7 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element) 
                 auto cellBox = std::make_shared<UltraCanvasContainer>(MakeId(cell.tag));
                 ++elementCount;
                 ApplyBoxStyle(*cellBox, cellStyle);
-                cellBox->layout.SetDisplay(CSSLayout::DisplayType::Block);
+                ConfigureBlockLayout(*cellBox);
                 cellBox->layoutItem.SetFlexGrow(1.f).SetFlexShrink(1.f)
                        .SetFlexBasis(CSSLayout::Dimension::Px(0));
                 BuildChildrenInto(*cellBox, cell);
@@ -425,23 +453,24 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element) 
 // ============================================================================
 
 void ElementBuilder::ApplyBoxStyle(UltraCanvasUIElement& target,
-                                   const ComputedStyle& style) {
+                                   const ComputedStyle& style, bool fillWidth) {
     using CSSLayout::Dimension;
 
-    target.box.margin.top = Dimension::Px(style.marginTop);
-    target.box.margin.right = Dimension::Px(style.marginRight);
-    target.box.margin.bottom = Dimension::Px(style.marginBottom);
-    target.box.margin.left = Dimension::Px(style.marginLeft);
+    // Vertical margins become sibling spacer elements (see BuildChildrenInto);
+    // horizontal margins fold into padding so width:100% never overflows.
+    target.box.boxSizing = CSSLayout::BoxSizing::BorderBox;
 
     target.box.padding.top = Dimension::Px(style.paddingTop);
-    target.box.padding.right = Dimension::Px(style.paddingRight);
+    target.box.padding.right = Dimension::Px(style.paddingRight + style.marginRight);
     target.box.padding.bottom = Dimension::Px(style.paddingBottom);
-    target.box.padding.left = Dimension::Px(style.paddingLeft);
+    target.box.padding.left = Dimension::Px(style.paddingLeft + style.marginLeft);
 
     if (style.widthPx) {
         target.size.width = Dimension::Px(*style.widthPx);
     } else if (style.widthPercent) {
         target.size.width = Dimension::Pct(*style.widthPercent);
+    } else if (fillWidth) {
+        target.size.width = Dimension::Pct(100.f);
     }
     if (style.heightPx) {
         target.size.height = Dimension::Px(*style.heightPx);
