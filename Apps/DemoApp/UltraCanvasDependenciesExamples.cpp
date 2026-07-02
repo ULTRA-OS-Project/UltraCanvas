@@ -14,13 +14,8 @@
 // UltraCanvas itself, not pulled in as third-party libraries.
 //
 // "(bundled)" = vendored in-tree, "(optional)" = built only when present.
-// The accompanying Docs/Dependencies.md mirrors this table and additionally
-// carries an alphabetical "Library links" section with each library's official
-// website and source/Git repository as clickable links (opened via OpenURL when
-// viewed through the demo's Documentation button).
-//
-// Version: 5.0.0
-// Last Modified: 2026-06-28
+// Version: 5.1.0
+// Last Modified: 2026-06-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -195,6 +190,9 @@ namespace UltraCanvas {
 
         header("CDR plugin (optional)");
         dep("CorelDRAW import", "libcdr\nlibrevenge\nlibrevenge-stream\nLCMS2, ICU (optional)", "libcdr\nlibrevenge\nlibrevenge-stream\nLCMS2, ICU (optional)", "– (not available)");
+
+        header("LaTeX plugin (optional, on-demand module)");
+        dep("LaTeX math rendering", "MicroTeX (bundled)\nLatin Modern Math (bundled)\n→ Cairo / Pango (core)", "MicroTeX (bundled)\nLatin Modern Math (bundled)\n→ Cairo / Pango (core)", "MicroTeX (bundled)\nLatin Modern Math (bundled)\n→ Cairo / Pango (core)");
 
         // ===== Demo application =====
         header("Demo application");
