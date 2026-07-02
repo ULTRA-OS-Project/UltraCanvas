@@ -1,8 +1,11 @@
 // Apps/DemoApp/UltraCanvasGaugeExamples.cpp
 // Comprehensive examples of gauge element modes using UltraCanvas layout managers
-// Version: 2.6.0
-// Last Modified: 2026-06-26
+// Version: 2.7.0
+// Last Modified: 2026-07-02
 // Author: UltraCanvas Framework
+// V2.7.0 changelog: Download Progress card demonstrates the new LinearBar
+//   low-value warnings: red circle at 0% (ShowZeroValueWarning) and a red
+//   blinking fill at or below 10% (LowLevelWarning + LowLevelLimit).
 // V2.6.0 changelog: Round Gauges showcase grid — dropped the redundant value
 //   label under each card's slider (round gauges already show the value in the
 //   ring centre), moved the slider to the card bottom and tightened the card
@@ -357,6 +360,9 @@ static std::shared_ptr<UltraCanvasContainer> BuildProgressTab(float w, float h) 
     bar->SetTitle("Download Progress");
     bar->SetUnit("%");
     bar->SetGaugeColor(Color(0, 140, 255, 255));
+    bar->SetShowZeroValueWarning(true);  // 0%: red circle instead of no fill
+    bar->SetLowLevelWarning(true);       // blink the fill red...
+    bar->SetLowLevelLimit(10.0);         // ...while the value is <= 10%
     auto barCard = CreateGaugeCard("bar_c", kCardW, kCardH, bar, 0.0f, 100.0f, 65.0f, "%");
     AddGrid(gridContainer, barCard, 0, 0);
 
@@ -712,7 +718,7 @@ namespace {
 
         codeWindow->SetEventCallback([](const UCEvent& event) {
             if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
-                if (event.targetWindow) ((UltraCanvasWindow*)event.targetWindow)->Close();
+                if (auto tw = event.targetWindow.lock()) static_cast<UltraCanvasWindow*>(tw.get())->Close();
                 return true;
             }
             return false;

@@ -1,7 +1,7 @@
 // OS/MacOS/UltraCanvasMacOSWindow.mm
 // Complete macOS window implementation with Cocoa and Cairo
-// Version: 2.1.1
-// Last Modified: 2026-05-07
+// Version: 2.1.2 - event.targetWindow set via GetWeakWindow() (weak_ptr)
+// Last Modified: 2026-07-02
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -743,7 +743,7 @@ namespace UltraCanvas {
     void UltraCanvasMacOSWindow::OnWindowDidBecomeKey() {
         UCEvent event;
         event.type = UCEventType::WindowFocus;
-        event.targetWindow = this;
+        event.targetWindow = GetWeakWindow();
         event.nativeWindowHandle = GetNativeHandle();
         UltraCanvasApplication::GetInstance()->PushEvent(event);
     }
@@ -751,7 +751,7 @@ namespace UltraCanvas {
     void UltraCanvasMacOSWindow::OnWindowDidResignKey() {
         UCEvent event;
         event.type = UCEventType::WindowBlur;
-        event.targetWindow = this;
+        event.targetWindow = GetWeakWindow();
         event.nativeWindowHandle = GetNativeHandle();
         UltraCanvasApplication::GetInstance()->PushEvent(event);
     }

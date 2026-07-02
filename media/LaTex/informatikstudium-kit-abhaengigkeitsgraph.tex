@@ -1,0 +1,119 @@
+\documentclass{article}
+\usepackage[pdftex,active,tightpage]{preview}
+\setlength\PreviewBorder{2mm}
+
+\usepackage[utf8]{inputenc} % this is needed for german umlauts
+\usepackage[ngerman]{babel} % this is needed for german umlauts
+\usepackage[T1]{fontenc}    % this is needed for correct output of umlauts in pdf
+\usepackage{tikz}
+\usetikzlibrary{arrows,shapes}
+
+\usepackage{pgfplots}
+
+% argument #1: any options
+\newenvironment{customlegend}[1][]{%
+    \begingroup
+    % inits/clears the lists (which might be populated from previous
+    % axes):
+    \csname pgfplots@init@cleared@structures\endcsname
+    \pgfplotsset{#1}%
+}{%
+    % draws the legend:
+    \csname pgfplots@createlegend\endcsname
+    \endgroup
+}%
+
+% makes \addlegendimage available (typically only available within an
+% axis environment):
+\def\addlegendimage{\csname pgfplots@addlegendimage\endcsname}
+
+\begin{document}
+\begin{preview}
+\begin{tikzpicture}[>=stealth',shorten >=1pt,auto,node distance=3.5cm,
+pflicht/.style ={rectangle, draw=blue, thick, fill=blue!20,align=center, rounded corners, minimum height=2em},
+stammmodul/.style ={rectangle, draw=yellow, thick, fill=yellow!20,align=center, rounded corners, minimum height=2em},
+wahl/.style ={rectangle, draw=green, thick, fill=green!20,align=center, rounded corners, minimum height=2em},
+soft/.style ={rectangle, draw=red, thick, fill=red!20,align=center, rounded corners, minimum height=2em}]
+    % Draw the vertices.
+    \node[pflicht] (programmieren) {Programmieren};
+    \node[pflicht] (gbi)    [right of=programmieren] {GBI};
+    \node[pflicht] (lai)    [right of=gbi] {LA I};
+    \node[pflicht] (anai)   [right of=lai]  {ANA I};
+
+    \node[pflicht] (laii)   [below of=lai]  {LA II};
+    \node[pflicht] (anaii)  [below of=anai] {ANA II};
+    \node[pflicht] (algi)   [below of=gbi]   {Algorithmen I};
+    \node[pflicht] (swti)   [below of=programmieren] {SWT I};
+    \node[pflicht] (ro)     [right of=anaii]   {RO};
+
+    \node[pflicht] (dt)     [below of=ro] {DT};
+    \node[pflicht] (wt)     [left of=dt]  {WT};
+    \node[pflicht] (tgi)    [left of=wt]  {TGI};
+    \node[pflicht] (os)     [left of=tgi]  {OS};
+    \node[pflicht] (pse)    [left of=os] {PSE};
+    \node[soft]    (tse)    [left of=pse] {TSE};
+
+    \node[pflicht] (numerik)    [below of=pse] {Numerik};
+    \node[pflicht] (datenbanken)    [right of=numerik] {Datenbanken};
+    \node[pflicht] (rechnernetze)    [below of=wt] {Rechnernetze};
+    \node[stammmodul]   (KogSys)    [right of=rechnernetze] {KogSys};
+    \node[stammmodul]   (Echtzeitsysteme)    [right of=KogSys] {Echtzeit-Sys.};
+    \node[stammmodul]   (Rechnerstrukturen)  [right of=Echtzeitsysteme] {Rechnerstrukturen};
+
+    \node[pflicht] (algii)  [right of=datenbanken, below of=datenbanken] {Algorithmen II};
+    \node[pflicht] (propa)  [right of=algii] {Programmierparadigmen};
+
+    \node[wahl]    (icpc)   [below of=algii] {ICPC};
+
+    \node[wahl]    (web)    [left of=swti] {Web Engineering};
+
+
+    % Connect vertices with edges and draw weights
+    \path[->] (gbi)     edge[thick] node[anchor=center,above,sloped] {\tiny{Automaten}} (tgi);
+    \path[->] (algi)    edge node {} (algii);
+    \path[->] (tgi)     edge node[anchor=center,above,sloped] {\tiny{ILP}} (algii);
+    \path[->] (tgi)     edge[red] node                        {}           (propa);
+    \path[->] (wt)      edge node[anchor=center,above,sloped] {\tiny{Randomisierte Algorithmen}} (algii);
+    \path[->] (wt)      edge node[anchor=center,above,sloped] {\tiny{Bayes Regel}} (KogSys);
+    \path[->] (dt)      edge node[anchor=center,above,sloped] {\tiny{Zahlendarstellungen}} (ro);
+    \path[->] (lai)     edge[ultra thick] node[anchor=center,above,sloped] {\tiny{Gruppe, Körper, \dots}} (laii);
+    \path[<->] (lai)    edge node {} (gbi);
+    \path[->] (lai)     edge node[anchor=center,above,sloped] {\tiny{Matrixmultiplikation; Lösen von linearen Gleichungssystemen}} (numerik);
+    \path[->] (anai)     edge[bend left=10] node[anchor=center,above,sloped] {\tiny{Banachscher Fixpunktsatz}} (numerik);
+    \path[<->] (gbi)    edge[bend left] node [anchor=center,above,sloped] {\tiny{Induktion}} (anai);
+    \path[->] (anai)    edge[ultra thick] node {} (anaii);
+    \path[->] (laii)    edge[bend left] node[anchor=center,above,sloped] {\tiny{Mathematische Strukturen}} (algii);
+    \path[->] (programmieren)    edge[very thick] node[anchor=center,above,sloped] {\tiny{Java}} (swti);
+    \path[->] (programmieren)    edge[bend left] node {} (pse);
+    \path[->] (programmieren)    edge node {} (os);
+    \path[->] (swti)    edge[red] node {} (pse);
+    \path[<->] (ro)     edge node[anchor=center,above,sloped] {\tiny{Assembler, Adressierung, Caches}} (os);
+    \path[<->] (algii)  edge [very thick] node {} (icpc);
+    \path[->] (swti)    edge node[anchor=center,above,sloped] {\tiny{Prozessmodelle}} (web);
+    \path[<->] (pse)    edge[red] node {} (tse);
+
+    \path[->] (laii)    edge[red] node {} (pse);
+    \path[->] (anaii)   edge[red] node {} (pse);
+    \path[->] (programmieren)   edge[red, bend right] node {} (pse);
+    %\path[->] (algi)    edge[red] node {} (pse);
+    \path[->] (algi)    edge[bend left] node[anchor=center,above,sloped] {\tiny{B-Bäume}} (datenbanken);
+    \path[->] (swti)    edge[red, bend right] node {} (pse);
+    \path[->] (gbi)     edge[red] node {} (pse);
+    \path[<->] (os)     edge node[anchor=center,above,sloped] {\tiny{Paging}} (algii);
+    \path[->] (ro)      edge[thick] node[anchor=center,above,sloped] {\tiny{Bus, ROS, CAS, Microprozessoraufbau}} (Echtzeitsysteme);
+    \path[->] (anaii)   edge[bend right] node[anchor=center,above,sloped] {\tiny{Differenzialgleichungen}} (Echtzeitsysteme);
+    \path[->] (ro)   edge[bend left] node[anchor=center,above,sloped] {\tiny{Pipelining, CISC, RISC}} (Rechnerstrukturen);
+
+    \begin{customlegend}[legend entries={Pflichtmodul,Stammmodul,Wahlmodul,Softskill,Inhaltliche Abhängigkeit,Harte Abhängigkeit},legend style={at={(-3,-12)},anchor=center}]
+    \addlegendimage{blue,fill=blue!20,area legend}
+    \addlegendimage{yellow,fill=yellow!20,area legend}
+    \addlegendimage{green,fill=green!20,area legend}
+    \addlegendimage{red,fill=red!20,area legend}
+    \addlegendimage{->,black,sharp plot}
+    \addlegendimage{->,red,sharp plot}
+    %\addlegendimage{red,fill=black!50!red,mark=*,sharp plot}
+    %\addlegendimage{red,fill=black!50!red,ybar,ybar legend}
+    \end{customlegend}
+\end{tikzpicture}
+\end{preview}
+\end{document}

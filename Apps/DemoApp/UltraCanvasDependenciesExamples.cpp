@@ -14,8 +14,8 @@
 // UltraCanvas itself, not pulled in as third-party libraries.
 //
 // "(bundled)" = vendored in-tree, "(optional)" = built only when present.
-// Version: 5.0.0
-// Last Modified: 2026-06-23
+// Version: 5.1.0
+// Last Modified: 2026-06-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -139,7 +139,8 @@ namespace UltraCanvas {
         // Subtitle
         auto subtitle = std::make_shared<UltraCanvasLabel>("DepSubtitle", 20, 45, 940, 25);
         subtitle->SetText("Grouped per module. Under each module the OS columns list one library per line.  "
-                          "(bundled) = vendored, (optional) = feature-gated.");
+                          "(bundled) = vendored, (optional) = feature-gated.  "
+                          "Open the Documentation button (top-right) for clickable website & source-code links for every library.");
         subtitle->SetFontSize(12);
         subtitle->SetTextColor(Color(120, 120, 120, 255));
         container->AddChild(subtitle);
@@ -197,6 +198,9 @@ namespace UltraCanvas {
         header("Vectorizer plugin (optional)");
         dep("Raster → SVG tracing", "VTracer\nvisioncortex\n(Rust, via corrosion)", "VTracer\nvisioncortex\n(Rust, via corrosion)", "VTracer\nvisioncortex\n(Rust, via corrosion)");
         dep("Build toolchain", "cargo + rustc\ncorrosion-rs (FetchContent)", "cargo + rustc\ncorrosion-rs (FetchContent)", "cargo + rustc\ncorrosion-rs (FetchContent)");
+
+        header("LaTeX plugin (optional, on-demand module)");
+        dep("LaTeX math rendering", "MicroTeX (bundled)\nLatin Modern Math (bundled)\n→ Cairo / Pango (core)", "MicroTeX (bundled)\nLatin Modern Math (bundled)\n→ Cairo / Pango (core)", "MicroTeX (bundled)\nLatin Modern Math (bundled)\n→ Cairo / Pango (core)");
 
         // ===== Demo application =====
         header("Demo application");

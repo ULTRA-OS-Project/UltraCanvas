@@ -1,7 +1,7 @@
 // UltraCanvasDemoInfoWindow.cpp
 // Implementation of info window shown at application startup
-// Version: 1.0.2
-// Last Modified: 2026-06-01
+// Version: 1.0.3 - event.targetWindow read via weak_ptr lock()
+// Last Modified: 2026-07-02
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
@@ -54,7 +54,7 @@ namespace UltraCanvas {
 
         changelogWindow->SetEventCallback([](const UCEvent& event) {
             if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
-                if (event.targetWindow) ((UltraCanvasWindow*)event.targetWindow)->Close();
+                if (auto tw = event.targetWindow.lock()) static_cast<UltraCanvasWindow*>(tw.get())->Close();
                 return true;
             }
             return false;

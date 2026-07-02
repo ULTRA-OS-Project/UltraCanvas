@@ -33,6 +33,7 @@ option(ULTRACANVAS_PLUGIN_SVG "Build SVG plugin" OFF)
 option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin" ON)
 option(ULTRACANVAS_PLUGIN_OCR "Build OCR plugin (requires tesseract + leptonica)" OFF)
 option(ULTRACANVAS_PLUGIN_VECTORIZER "Build Vectorizer plugin (raster→SVG via VTracer; requires cargo)" OFF)
+option(ULTRACANVAS_PLUGIN_LATEX "Build LaTeX math plugin (embedded MicroTeX)" ON)
 option(ULTRACANVAS_ENABLE_AUDIO "Enable audio playback & recording (requires backend lib)" ON)
 option(ULTRACANVAS_ENABLE_VIDEO "Enable video playback & recording (requires platform media framework)" ON)
 option(ULTRACANVAS_ENABLE_GL "Enable OpenGL 3D surface support" ON)
@@ -191,6 +192,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAutoComplete.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasImageElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasImageViewer.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMediaViewer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTreeView.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasListModel.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasListView.cpp
@@ -907,6 +909,93 @@ if(ULTRACANVAS_PLUGIN_VECTORIZER)
     endif()
 else()
     message(STATUS "  [−] Vectorizer Plugin - SKIPPED (disabled by option)")
+
+# LaTeX Plugin (embedded MicroTeX) - ON-DEMAND dynamic module
+#
+# LaTeX support is a load-on-demand module, in line with UltraCanvas' goal of
+# being an OS module whose plugins/file-format support are only mapped in when
+# actually used. Nothing here is linked into the core library except a small
+# loader: the core dlopen()s libUltraCanvasLaTeX the first time CreateLaTeXView()
+# is called.
+#
+#   * microtex_core  : the vendored MicroTeX engine (static, path-glyph mode,
+#                      GLYPH_RENDER_TYPE=1) - linked PRIVATELY into the module.
+#   * UltraCanvasLaTeX: the SHARED module = backend adapter + concrete view +
+#                      C ABI entry points + microtex_core. Built into the
+#                      "plugins" output dir; NOT linked by the core.
+#   * loader         : core/UltraCanvasLaTeXModuleLoader.cpp compiled into the
+#                      core lib (the only LaTeX code the core contains).
+#
+# The Latin Modern Math font + its .clm2 metrics ship in media/microtex.
+if(ULTRACANVAS_PLUGIN_LATEX)
+    set(MICROTEX_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/microtex)
+
+    # --- MicroTeX engine (static, private to the module) ---
+    file(GLOB_RECURSE MICROTEX_CORE_SOURCES ${MICROTEX_DIR}/lib/*.cpp)
+    # Exclude the C-wrapper API (not used) and the auto-font-find feature - the
+    # only std::filesystem consumer. The engine is initialised with an explicit
+    # FontSrcFile and driven through the C++ API.
+    list(FILTER MICROTEX_CORE_SOURCES EXCLUDE REGEX "/lib/wrapper/")
+    list(FILTER MICROTEX_CORE_SOURCES EXCLUDE REGEX "/otf/fontsense\\.cpp$")
+
+    add_library(microtex_core STATIC ${MICROTEX_CORE_SOURCES})
+    target_include_directories(microtex_core PUBLIC ${MICROTEX_DIR}/lib)
+    target_compile_features(microtex_core PUBLIC cxx_std_17)
+    target_compile_definitions(microtex_core
+        PRIVATE MICROTEX_LIBRARY
+        PUBLIC  GLYPH_RENDER_TYPE=1)
+    set_target_properties(microtex_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    if(NOT MSVC)
+        target_compile_options(microtex_core PRIVATE -fexceptions)
+    endif()
+
+    # --- The on-demand shared module ---
+    add_library(UltraCanvasLaTeX MODULE
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/LaTeX/UltraCanvasLaTeXBackend.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/LaTeX/UltraCanvasLaTeXViewImpl.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/LaTeX/UltraCanvasLaTeXModule.cpp
+    )
+    set_target_properties(UltraCanvasLaTeX PROPERTIES
+        PREFIX "lib"                     # libUltraCanvasLaTeX.so on all UNIX
+        CXX_VISIBILITY_PRESET hidden
+        # Co-locate with the core lib so the loader's "<exe>/../lib" and bare-name
+        # searches find it during dev/test; installers can relocate it.
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
+    )
+    target_include_directories(UltraCanvasLaTeX PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/CSSLayout
+        ${MICROTEX_DIR}/lib
+        ${CAIRO_INCLUDE_DIRS} ${PANGO_INCLUDE_DIRS} ${GLIB_INCLUDE_DIRS}
+        ${HARFBUZZ_INCLUDE_DIRS} ${FREETYPE_INCLUDE_DIRS}
+    )
+    target_compile_definitions(UltraCanvasLaTeX PRIVATE ULTRACANVAS_PLUGIN_LATEX=1)
+    target_link_libraries(UltraCanvasLaTeX PRIVATE microtex_core)
+    # The module resolves UltraCanvas core symbols (IRenderContext, UIElement,
+    # GetExecutableDir, ...) at load time. When the core is a shared library we
+    # record a link dependency on it; for a static core the host executable must
+    # export its dynamic symbols (ENABLE_EXPORTS / -rdynamic) so RTLD_GLOBAL can
+    # satisfy them - undefined references in the module are expected and allowed.
+    if(ULTRACANVAS_BUILD_SHARED)
+        target_link_libraries(UltraCanvasLaTeX PRIVATE ${ULTRACANVAS_LIB_NAME})
+    elseif(APPLE)
+        set_target_properties(UltraCanvasLaTeX PROPERTIES
+            LINK_FLAGS "-undefined dynamic_lookup")
+    endif()
+    # NB: the module is dlopen()ed at runtime, never linked - so it is NOT added
+    # to ULTRACANVAS_PLUGIN_TARGETS (which apps link against). It builds as part
+    # of the default ("all") target.
+
+    # --- Loader (the only LaTeX code linked into the core) ---
+    target_sources(${ULTRACANVAS_LIB_NAME} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasLaTeXModuleLoader.cpp
+    )
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_PLUGIN_LATEX=1)
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${CMAKE_DL_LIBS})
+
+    message(STATUS "  [✓] LaTeX Plugin - ENABLED (on-demand module: libUltraCanvasLaTeX)")
+else()
+    message(STATUS "  [−] LaTeX Plugin - SKIPPED (disabled by option)")
 endif()
 
 # Add more plugins here...

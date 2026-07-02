@@ -305,6 +305,20 @@ namespace UltraCanvas {
         RebuildText();
     }
 
+    void UltraCanvasTextArea::AppendText(const std::string& text) {
+        if (text.empty()) return;
+        // Programmatic append for consoles/logs. InsertText() refuses to edit a
+        // read-only area, so lift the flag for the duration of the append. Reuses
+        // InsertText's incremental line-layout handling and cursor auto-scroll.
+        bool wasReadOnly = isReadOnly;
+        isReadOnly = false;
+        ClearSelection();
+        int last = std::max(0, GetLineCount() - 1);
+        cursorPosition = LineColumnIndex{last, GetLineVisibleLength(last)};
+        InsertText(text);
+        isReadOnly = wasReadOnly;
+    }
+
     void UltraCanvasTextArea::InsertCodepoint(char32_t codepoint) {
         if (isReadOnly) return;
 
@@ -1034,12 +1048,14 @@ namespace UltraCanvas {
         UltraCanvasUIElement::Render(ctx, dirtyRect);
 
         DrawCurrentLineBackground(ctx);
+        // Subclass overlays (e.g. execution-line highlight) paint behind the text.
+        DrawLineOverlays(ctx);
 
         if (editingMode == TextAreaEditingMode::Hex) {
             DrawHexView(ctx);
         } else {
             if (style.showLineNumbers) {
-                DrawLineNumbers(ctx);
+                DrawGutter(ctx);
             }
 
             // New render path: iterate the per-line layout cache and dispatch each visible line
@@ -1073,7 +1089,31 @@ namespace UltraCanvas {
     // DrawPlainText / DrawHighlightedText removed in Step 8 — rendering goes through
     // RenderLineLayout driven from Render().
 
-    void UltraCanvasTextArea::DrawLineNumbers(IRenderContext* context) {
+    int UltraCanvasTextArea::GetGutterWidth(IRenderContext* ctx) {
+        return CalculateLineNumbersWidth(ctx);
+    }
+
+    bool UltraCanvasTextArea::GetLogicalLineContentRect(int logicalLine, Rect2Dd& out) {
+        if (logicalLine <= 0) return false;
+        auto bounds = GetLocalBounds();
+        float gutterW = style.showLineNumbers ? computedLineNumbersWidth : 0;
+        int viewportTop    = verticalScrollOffset;
+        int viewportBottom = viewportTop + visibleTextArea.height;
+        for (int i = 0; i < (int)lineLayouts.size(); i++) {
+            auto* ll = GetActualLineLayout(i);
+            if (!ll || !ll->layout) continue;
+            if (ll->logicalLineNumber != logicalLine) continue;
+            int lineTop = ll->bounds.y;
+            if (lineTop + ll->bounds.height < viewportTop) return false;
+            if (lineTop > viewportBottom) return false;
+            float y = visibleTextArea.y + lineTop - verticalScrollOffset;
+            out = Rect2Dd(bounds.x + gutterW, y, bounds.width - gutterW, ll->bounds.height);
+            return true;
+        }
+        return false;
+    }
+
+    void UltraCanvasTextArea::DrawGutter(IRenderContext* context) {
         auto bounds = GetLocalBounds();
         float gutterW = computedLineNumbersWidth;
 
@@ -1096,7 +1136,8 @@ namespace UltraCanvas {
         context->ClipRect(gutterClip);
 
         // Iterate the per-line layout cache; draw the number for each logical line at the Y of
-        // its layout's bounds.
+        // its layout's bounds. Numbers are right-aligned, so a subclass that widens the gutter
+        // (GetGutterWidth) keeps a free column on the left for its own decorations.
         int viewportTop    = verticalScrollOffset;
         int viewportBottom = viewportTop + visibleTextArea.height;
         for (int i = 0; i < (int)lineLayouts.size(); i++) {
@@ -1120,6 +1161,10 @@ namespace UltraCanvas {
             if (ll->logicalLineNumber) {
                 context->DrawTextInRect(std::to_string(ll->logicalLineNumber),
                                         Rect2Dd(bounds.x, numY, gutterW - 4, ll->bounds.height));
+                // Subclass hook: draw breakpoint / execution markers in this line's
+                // gutter rect (left of the right-aligned number).
+                DrawGutterDecorations(context, ll->logicalLineNumber,
+                                      Rect2Dd(bounds.x, numY, gutterW, ll->bounds.height));
             }
         }
         context->PopState();
@@ -1322,6 +1367,27 @@ namespace UltraCanvas {
             dragStartOffset.x = event.pointerGlobal.x - GetXInWindow() - horizontalScrollThumb.x;
             UltraCanvasApplication::GetInstance()->CaptureMouse(this);
             return true;
+        }
+
+        // --- Gutter click: dispatch to the subclass (e.g. toggle a breakpoint) ---
+        if (style.showLineNumbers && editingMode != TextAreaEditingMode::Hex) {
+            auto lb = GetLocalBounds();
+            if (event.pointer.x >= lb.x && event.pointer.x < lb.x + computedLineNumbersWidth) {
+                int clickedLogicalLine = -1;
+                for (int i = 0; i < (int)lineLayouts.size(); i++) {
+                    auto* ll = GetActualLineLayout(i);
+                    if (!ll || !ll->layout) continue;
+                    float top = visibleTextArea.y + ll->bounds.y - verticalScrollOffset;
+                    float bot = top + ll->bounds.height;
+                    if (event.pointer.y >= top && event.pointer.y < bot) {
+                        clickedLogicalLine = ll->logicalLineNumber;
+                        break;
+                    }
+                }
+                if (clickedLogicalLine > 0 && OnGutterClicked(clickedLogicalLine)) {
+                    return true;
+                }
+            }
         }
 
 
@@ -1797,7 +1863,7 @@ namespace UltraCanvas {
         visibleTextArea.height -= style.textPadding * 2;
         
         if (style.showLineNumbers) {
-            computedLineNumbersWidth = CalculateLineNumbersWidth(ctx);
+            computedLineNumbersWidth = GetGutterWidth(ctx);   // virtual: subclasses may widen
             visibleTextArea.x += (computedLineNumbersWidth + 5);
             visibleTextArea.width -= (computedLineNumbersWidth + 5);
         }

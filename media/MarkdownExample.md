@@ -67,9 +67,9 @@ Alternative syntax:
 
 ### Images
 
-![UltraCanvas Logo](images/ultracanvas-logo.png)
+![UltraCanvas Logo](media/images/UOS_logo_white.png)
 
-![Image with title](images/screenshot.png "UltraCanvas Demo Screenshot")
+![Image with title](media/images/Logo CoderBox with text.png)
 
 ## Code Blocks
 
@@ -153,7 +153,7 @@ ___
 
 ## Advanced Formatting
 
-### Definition Lists (if supported)
+### Definition Lists
 
 Term 1
 : Definition of term 1
@@ -162,7 +162,7 @@ Term 2
 : First definition of term 2
 : Second definition of term 2
 
-### Footnotes (if supported)
+### Footnotes
 
 Here's a sentence with a footnote.[^1]
 
@@ -171,13 +171,13 @@ Another reference to a footnote.[^2]
 [^1]: This is the first footnote content.
 [^2]: This is the second footnote with more detailed information.
 
-### Superscript & Subscript (if supported)
+### Superscript & Subscript
 
 X^2^ + Y^2^ = Z^2^
 
 H~2~O is water
 
-### Abbreviations (if supported)
+### Abbreviations
 
 The HTML specification is maintained by the W3C.
 
@@ -198,7 +198,7 @@ Asterisk: \*
 
 Underscore: \_
 
-## Emoji (if supported)
+## Emoji
 
 :smile: :heart: :rocket: :computer: :art:
 
@@ -251,7 +251,7 @@ $$
 \sum_{n=1}^{\infty} \frac{1}{n^2} = \frac{\pi^2}{6}
 $$
 
-## Mermaid Diagrams (if supported)
+## Mermaid Diagrams
 ```mermaid
 graph TD
     A[UltraCanvas] --> B[Window Management]

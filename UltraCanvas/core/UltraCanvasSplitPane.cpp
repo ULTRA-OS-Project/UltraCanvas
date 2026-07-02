@@ -70,6 +70,15 @@ namespace UltraCanvas {
                                       : event.pointerGlobal.y;
                     int delta = currentAxis - dragStartGlobalAxis;
                     owner->UpdateSplitterDrag(index, delta);
+                    // Force a serviced relayout+paint this frame, independent of any
+                    // stale arrangeValid left by concurrent (e.g. debug-session)
+                    // invalidations that break the upward InvalidateLayout bubble.
+                    // Invalidating the WINDOW (the root) cannot be defeated by the
+                    // Element::InvalidateLayout early-return since it has no parent to
+                    // bubble to; UpdateAndRender then re-Arranges down to PerformLayout,
+                    // applying the new pane weights — the same geometry pass a resize gets.
+                    if (auto* w = owner->GetWindow()) w->InvalidateLayout();
+                    RequestRedraw();
                     return true;
                 }
                 return false;
@@ -77,7 +86,11 @@ namespace UltraCanvas {
             case UCEventType::MouseUp:
                 if (dragging) {
                     dragging = false;
-                    if (owner) owner->EndSplitterDrag(index);
+                    if (owner) {
+                        owner->EndSplitterDrag(index);
+                        // Guarantee the final committed geometry is laid out and painted.
+                        if (auto* w = owner->GetWindow()) w->InvalidateLayout();
+                    }
                     RequestRedraw();
                     return true;
                 }
