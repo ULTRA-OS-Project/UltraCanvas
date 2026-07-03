@@ -330,6 +330,15 @@ set(ULTRACANVAS_CORE_SOURCES
         # Vendored miniz (ZIP support for ODS/XLSX File I/O)
         ${CMAKE_CURRENT_SOURCE_DIR}/third_party/miniz/miniz.c
 
+        # Reusable ZIP package layer (ODF/OPC containers)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasZipPackage.cpp
+        # Word-processing document module: UCRichDocument + ODT/DOCX readers
+        # and writers (used by FileLoader::OpenTextDocument and Texter)
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasRichDocument.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasWordDocumentIO.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasOdtFormat.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasDocxFormat.cpp
+
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetFileIO.cpp
         # Add Windows/Mac sources as needed
         #        ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraCanvasWindowsDoubleBuffer.cpp

@@ -89,6 +89,48 @@ add_test(
 
 message(STATUS "    Test registered: UCStringTest")
 
+# ===== WORD FORMATS TEST =====
+# Round-trip test for the ODT/DOCX document module. Needs only the module
+# sources + vendored miniz + system tinyxml2 — not the full UltraCanvas lib.
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(TINYXML2_TEST tinyxml2)
+endif()
+
+if(TINYXML2_TEST_FOUND)
+    message(STATUS "  Building WordFormatsTest...")
+
+    set(ULTRACANVAS_SRC_DIR "${ULTRACANVAS_ROOT}/UltraCanvas")
+    add_executable(WordFormatsTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/WordFormatsTest.cpp
+        ${ULTRACANVAS_SRC_DIR}/core/UltraCanvasZipPackage.cpp
+        ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasRichDocument.cpp
+        ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasWordDocumentIO.cpp
+        ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasOdtFormat.cpp
+        ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasDocxFormat.cpp
+        ${ULTRACANVAS_SRC_DIR}/third_party/miniz/miniz.c
+    )
+    target_include_directories(WordFormatsTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${ULTRACANVAS_SRC_DIR}/third_party/miniz
+        ${TINYXML2_TEST_INCLUDE_DIRS}
+    )
+    target_link_libraries(WordFormatsTest PRIVATE ${TINYXML2_TEST_LIBRARIES})
+    target_compile_features(WordFormatsTest PRIVATE cxx_std_20)
+    set_target_properties(WordFormatsTest PROPERTIES
+        OUTPUT_NAME "WordFormatsTest"
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(
+        NAME WordFormatsTest
+        COMMAND WordFormatsTest ${CMAKE_BINARY_DIR}/wordformats-test-out
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    message(STATUS "    Test registered: WordFormatsTest")
+else()
+    message(STATUS "  tinyxml2 not found - WordFormatsTest disabled")
+endif()
+
 # ===== FUTURE TESTS =====
 # Add more test executables here as needed:
 #

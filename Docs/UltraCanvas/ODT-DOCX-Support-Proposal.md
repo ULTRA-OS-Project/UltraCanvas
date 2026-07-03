@@ -5,6 +5,30 @@ TextArea, Bitmap/Image, LaTeX and Spreadsheet elements, and proposes an
 architecture and phased plan for adding OpenDocument Text (`.odt`) and
 Microsoft Word (`.docx`, legacy `.doc`) support to UltraCanvas.
 
+> **Implementation status (2026-07):** Phases 1–3 are implemented, plus the
+> legacy `.doc` detection from Phase 4:
+> - `UCZipPackage` reader/writer — `include/UltraCanvasZipPackage.h`,
+>   `core/UltraCanvasZipPackage.cpp`. The writer emits local headers with
+>   real sizes and no data-descriptor flag; LibreOffice's ODF package
+>   reader rejects descriptor-flagged archives (the miniz writer used by
+>   the ODS spreadsheet saver produces exactly those — migrating it to
+>   UCZipPackage is a known follow-up).
+> - `UCRichDocument` + Markdown/HTML/plain serializers —
+>   `Plugins/Documents/Word/UltraCanvasRichDocument.{h,cpp}`.
+> - ODT + DOCX readers/writers and signature-based detection —
+>   `Plugins/Documents/Word/UltraCanvasOdtFormat.cpp`,
+>   `UltraCanvasDocxFormat.cpp`, `UltraCanvasWordDocumentIO.{h,cpp}`.
+> - `UltraCanvasFileLoader::OpenTextDocument` / `LoadTextDocument` typed
+>   loader.
+> - Texter opens `.odt`/`.docx` as editable Markdown and saves back to
+>   either format; legacy `.doc` shows a convert-to-`.docx` message.
+> - Round-trip tests: `Tests/WordFormatsTest.cpp` (also validated against
+>   LibreOffice Writer in both directions).
+>
+> Remaining from the plan: read-only rich view via `ToHTML()`+HTMLConverter,
+> `ConvertFile` once the universal FileLoader API exists, legacy `.doc` CFB
+> text extraction, Phase 5 fidelity work, and the ODS saver migration above.
+
 ---
 
 ## Part 1 — Current state survey
