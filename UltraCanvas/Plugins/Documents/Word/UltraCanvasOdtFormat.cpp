@@ -10,6 +10,7 @@
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
+#include "UltraCanvasMathToLatex.h"
 #include "UltraCanvasWordFormatInternal.h"
 #include "UltraCanvasZipPackage.h"
 
@@ -265,6 +266,36 @@ private:
         ctx.runs.push_back(std::move(run));
     }
 
+    // Embedded formula objects live as sub-documents inside the package
+    // (e.g. "Object 1/content.xml" holding MathML). Converted formulas are
+    // appended as $latex$ text so the markdown pipeline can render them.
+    bool ParseFormulaObject(tinyxml2::XMLElement* frame, const OdtTextProps& props,
+                            const std::string& linkTarget, InlineContext& ctx) {
+        auto* object = frame->FirstChildElement("draw:object");
+        if (!object) return false;
+        std::string href = Attr(object, "xlink:href");
+        if (href.rfind("./", 0) == 0) href = href.substr(2);
+        if (href.empty()) return false;
+        std::string contentXml;
+        if (!zip_.ReadEntry(href + "/content.xml", contentXml)
+            && !zip_.ReadEntry(href, contentXml)) {
+            return false;
+        }
+        tinyxml2::XMLDocument mathDoc;
+        if (mathDoc.Parse(contentXml.c_str()) != tinyxml2::XML_SUCCESS) return false;
+        auto* root = mathDoc.RootElement();
+        if (!root) return false;
+        std::string rootName = root->Name() ? root->Name() : "";
+        if (rootName != "math" && rootName != "math:math"
+            && rootName.rfind(":math") == std::string::npos) {
+            return false;
+        }
+        std::string latex = WordMath::MathMLToLatex(root);
+        if (latex.empty()) return false;
+        AppendRun(ctx, "$" + latex + "$", props, linkTarget);
+        return true;
+    }
+
     void ParseImageFrame(tinyxml2::XMLElement* frame, InlineContext& ctx) {
         auto* image = frame->FirstChildElement("draw:image");
         if (!image) return;
@@ -305,7 +336,9 @@ private:
             } else if (tag == "text:line-break") {
                 ctx.pendingLineBreak = true;
             } else if (tag == "draw:frame") {
-                ParseImageFrame(elem, ctx);
+                if (!ParseFormulaObject(elem, props, linkTarget, ctx)) {
+                    ParseImageFrame(elem, ctx);
+                }
             } else if (tag == "text:note") {
                 // Keep footnote content inline in parentheses so it is not lost.
                 if (auto* noteBody = elem->FirstChildElement("text:note-body")) {

@@ -290,6 +290,77 @@ int main(int argc, char** argv) {
         CHECK(header[8] == 0 && header[9] == 0);
     }
 
+    // ===== 9. Embedded math import (OMML in DOCX, MathML in ODT) =====
+    {
+        // Minimal DOCX whose single paragraph is an OMML fraction b/2a.
+        std::string documentXml =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+            "<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" "
+            "xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\">"
+            "<w:body><w:p><w:r><w:t xml:space=\"preserve\">value: </w:t></w:r>"
+            "<m:oMath><m:f><m:num><m:r><m:t>b</m:t></m:r></m:num>"
+            "<m:den><m:r><m:t>2a</m:t></m:r></m:den></m:f></m:oMath>"
+            "</w:p></w:body></w:document>";
+        {
+            UCZipPackageWriter zip;
+            CHECK(zip.Open(TmpPath("math.docx")));
+            zip.AddEntry("[Content_Types].xml",
+                std::string("<?xml version=\"1.0\"?>"
+                "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
+                "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
+                "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
+                "<Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/>"
+                "</Types>"));
+            zip.AddEntry("_rels/.rels",
+                std::string("<?xml version=\"1.0\"?>"
+                "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+                "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"word/document.xml\"/>"
+                "</Relationships>"));
+            zip.AddEntry("word/document.xml", documentXml);
+            CHECK(zip.Finalize());
+        }
+        UCRichDocument mathDoc;
+        std::string err;
+        CHECK_MSG(UCWordDocumentIO::Load(TmpPath("math.docx"), mathDoc, err), err);
+        std::string plain = mathDoc.ToPlainText();
+        CHECK_MSG(plain.find("$\\frac{b}{2a}$") != std::string::npos, plain);
+
+        // Minimal ODT with an embedded MathML formula object (x^2).
+        std::string contentXml =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+            "<office:document-content "
+            "xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" "
+            "xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\" "
+            "xmlns:draw=\"urn:oasis:names:tc:opendocument:xmlns:drawing:1.0\" "
+            "xmlns:xlink=\"http://www.w3.org/1999/xlink\" office:version=\"1.2\">"
+            "<office:body><office:text>"
+            "<text:p>square: <draw:frame><draw:object xlink:href=\"./Object 1\"/></draw:frame></text:p>"
+            "</office:text></office:body></office:document-content>";
+        std::string mathMl =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+            "<math:math xmlns:math=\"http://www.w3.org/1998/Math/MathML\">"
+            "<math:semantics><math:msup><math:mi>x</math:mi><math:mn>2</math:mn></math:msup>"
+            "</math:semantics></math:math>";
+        {
+            UCZipPackageWriter zip;
+            CHECK(zip.Open(TmpPath("math.odt")));
+            zip.AddEntry("mimetype", std::string("application/vnd.oasis.opendocument.text"), false);
+            zip.AddEntry("content.xml", contentXml);
+            zip.AddEntry("Object 1/content.xml", mathMl);
+            zip.AddEntry("META-INF/manifest.xml",
+                std::string("<?xml version=\"1.0\"?>"
+                "<manifest:manifest xmlns:manifest=\"urn:oasis:names:tc:opendocument:xmlns:manifest:1.0\" manifest:version=\"1.2\">"
+                "<manifest:file-entry manifest:full-path=\"/\" manifest:media-type=\"application/vnd.oasis.opendocument.text\"/>"
+                "<manifest:file-entry manifest:full-path=\"content.xml\" manifest:media-type=\"text/xml\"/>"
+                "</manifest:manifest>"));
+            CHECK(zip.Finalize());
+        }
+        UCRichDocument odtMathDoc;
+        CHECK_MSG(UCWordDocumentIO::Load(TmpPath("math.odt"), odtMathDoc, err), err);
+        plain = odtMathDoc.ToPlainText();
+        CHECK_MSG(plain.find("$x^{2}$") != std::string::npos, plain);
+    }
+
     if (failures == 0) {
         std::cout << "ALL TESTS PASSED\n";
         return 0;

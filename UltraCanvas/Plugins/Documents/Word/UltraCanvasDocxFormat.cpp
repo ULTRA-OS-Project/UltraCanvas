@@ -7,6 +7,7 @@
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
+#include "UltraCanvasMathToLatex.h"
 #include "UltraCanvasWordFormatInternal.h"
 #include "UltraCanvasZipPackage.h"
 
@@ -309,6 +310,20 @@ private:
             std::string tag = child->Name() ? child->Name() : "";
             if (tag == "w:r") {
                 ParseRun(child, linkTarget, ctx);
+            } else if (tag == "m:oMath") {
+                // Embedded equations become $latex$ text for the markdown
+                // pipeline (which renders inline math).
+                std::string latex = WordMath::OmmlToLatex(child);
+                if (!latex.empty()) {
+                    RichTextRun run;
+                    run.text = "$" + latex + "$";
+                    run.linkTarget = linkTarget;
+                    run.lineBreakBefore = ctx.pendingLineBreak;
+                    ctx.pendingLineBreak = false;
+                    ctx.runs.push_back(std::move(run));
+                }
+            } else if (tag == "m:oMathPara") {
+                ParseInlineContainer(child, linkTarget, ctx);
             } else if (tag == "w:hyperlink") {
                 std::string target = linkTarget;
                 std::string relId = Attr(child, "r:id");

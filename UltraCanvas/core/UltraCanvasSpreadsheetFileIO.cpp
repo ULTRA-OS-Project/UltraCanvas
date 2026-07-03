@@ -300,6 +300,13 @@ private:
                     if (!color.empty()) {
                         cellStyle.font.color = ParseHexColor(color);
                     }
+                    std::string underline = GetAttr(textProps, "style:text-underline-style");
+                    if (!underline.empty() && underline != "none") {
+                        cellStyle.font.underline = (underline == "double")
+                            ? UnderlineStyle::Double : UnderlineStyle::Single;
+                    }
+                    std::string strike = GetAttr(textProps, "style:text-line-through-style");
+                    cellStyle.font.strikethrough = !strike.empty() && strike != "none";
                 }
                 
                 // Parse table-cell properties
@@ -311,15 +318,38 @@ private:
                         cellStyle.fill.foregroundColor = ParseHexColor(bgColor);
                     }
                     
-                    // Borders
+                    // Borders: uniform "fo:border" or per-side attributes.
+                    // Attribute value looks like "0.5pt solid #000000".
+                    auto parseBorderAttr = [&](const char* attr, CellBorder& side) {
+                        std::string value = GetAttr(cellProps, attr);
+                        if (value.empty() || value == "none") return;
+                        side.style = BorderStyle::Thin;
+                        size_t hash = value.find('#');
+                        side.color = (hash != std::string::npos)
+                            ? ParseHexColor(value.substr(hash)) : Colors::Black;
+                        if (value.find("double") != std::string::npos) {
+                            side.style = BorderStyle::Double;
+                        } else if (value.find("dashed") != std::string::npos) {
+                            side.style = BorderStyle::Dashed;
+                        } else if (value.find("dotted") != std::string::npos) {
+                            side.style = BorderStyle::Dotted;
+                        } else if (value.rfind("2pt", 0) == 0) {
+                            side.style = BorderStyle::Thick;
+                        } else if (value.rfind("1pt", 0) == 0) {
+                            side.style = BorderStyle::Medium;
+                        }
+                    };
                     std::string border = GetAttr(cellProps, "fo:border");
                     if (!border.empty() && border != "none") {
-                        // Parse border: 0.002cm solid #000000
                         CellBorder b;
-                        b.style = BorderStyle::Thin;
-                        b.color = Colors::Black;
-                        cellStyle.borders.left = cellStyle.borders.right = 
+                        parseBorderAttr("fo:border", b);
+                        cellStyle.borders.left = cellStyle.borders.right =
                         cellStyle.borders.top = cellStyle.borders.bottom = b;
+                    } else {
+                        parseBorderAttr("fo:border-left", cellStyle.borders.left);
+                        parseBorderAttr("fo:border-right", cellStyle.borders.right);
+                        parseBorderAttr("fo:border-top", cellStyle.borders.top);
+                        parseBorderAttr("fo:border-bottom", cellStyle.borders.bottom);
                     }
                     
                     // Vertical alignment
@@ -516,7 +546,8 @@ private:
         std::string formula = GetAttr(cellElem, "table:formula");
         
         // Parse formula
-        if (!formula.empty()) {
+        bool hasFormula = !formula.empty();
+        if (hasFormula) {
             // ODS formulas start with "of:=" or namespace prefix
             if (formula.find("of:=") == 0) {
                 formula = formula.substr(3);  // Remove "of:"
@@ -525,9 +556,26 @@ private:
             }
             cell->SetFormula(formula);
         }
-        
-        // Parse value based on type
-        if (valueType == "float" || valueType == "currency" || valueType == "percentage") {
+
+        // Parse value based on type. Formula cells store the cached value via
+        // SetFormulaResult — the plain setters would wipe the formula text.
+        if (hasFormula) {
+            if (valueType == "float" || valueType == "currency"
+                || valueType == "percentage") {
+                cell->SetFormulaResult(GetAttrDouble(cellElem, "office:value"),
+                                       CellValueType::Number);
+            } else if (valueType == "boolean") {
+                cell->SetFormulaResult(
+                    GetAttr(cellElem, "office:boolean-value") == "true",
+                    CellValueType::Boolean);
+            } else {
+                auto* textElem = cellElem->FirstChildElement("text:p");
+                const char* text = textElem ? textElem->GetText() : nullptr;
+                cell->SetFormulaResult(std::string(text ? text : ""),
+                                       CellValueType::Text);
+            }
+        }
+        else if (valueType == "float" || valueType == "currency" || valueType == "percentage") {
             double value = GetAttrDouble(cellElem, "office:value");
             if (valueType == "percentage") {
                 cell->SetPercentage(value);
@@ -597,6 +645,10 @@ private:
     // open even though the archive is otherwise valid.
     UCZipPackageWriter zip_;
     std::map<std::string, std::string> styleMap_;
+    // Styles in creation order with their full definition, so
+    // WriteStyleDefinition can serialize real properties (the key alone is
+    // not enough to reconstruct the style).
+    std::vector<std::pair<std::string, CellStyle>> styleDefs_;
     int styleCounter_ = 0;
 
 public:
@@ -662,8 +714,8 @@ private:
         }
         
         // Write collected styles
-        for (const auto& [styleKey, styleName] : styleMap_) {
-            WriteStyleDefinition(ss, styleName, styleKey);
+        for (const auto& [styleName, style] : styleDefs_) {
+            WriteStyleDefinition(ss, styleName, style);
         }
         
         ss << "</office:automatic-styles>\n";
@@ -783,6 +835,20 @@ private:
                 ss << " office:value=\"" << currency.amount << "\"";
                 break;
             }
+            case CellValueType::Formula: {
+                // Cached evaluation result; the formula itself is already in
+                // the table:formula attribute.
+                if (auto number = cell->TryGetNumber()) {
+                    ss << " office:value-type=\"float\"";
+                    ss << " office:value=\"" << *number << "\"";
+                } else if (auto boolean = cell->TryGetBoolean()) {
+                    ss << " office:value-type=\"boolean\"";
+                    ss << " office:boolean-value=\"" << (*boolean ? "true" : "false") << "\"";
+                } else {
+                    ss << " office:value-type=\"string\"";
+                }
+                break;
+            }
             case CellValueType::Text:
             default:
                 ss << " office:value-type=\"string\"";
@@ -803,27 +869,148 @@ private:
         if (it != styleMap_.end()) {
             return it->second;
         }
-        
+
         std::string name = "ce" + std::to_string(++styleCounter_);
         styleMap_[key] = name;
+        styleDefs_.emplace_back(name, style);
         return name;
     }
-    
+
     std::string GenerateStyleKey(const CellStyle& style) {
         std::stringstream ss;
         ss << style.font.family << "|" << style.font.size << "|"
            << style.font.bold << "|" << style.font.italic << "|"
+           << style.font.strikethrough << "|"
+           << static_cast<int>(style.font.underline) << "|"
            << ColorToHex(style.font.color) << "|"
            << static_cast<int>(style.fill.pattern) << "|"
            << ColorToHex(style.fill.foregroundColor) << "|"
            << static_cast<int>(style.hAlign) << "|"
-           << static_cast<int>(style.vAlign);
+           << static_cast<int>(style.vAlign) << "|"
+           << style.wrapText;
+        auto border = [&](const CellBorder& b) {
+            ss << "|" << static_cast<int>(b.style) << ColorToHex(b.color);
+        };
+        border(style.borders.left);
+        border(style.borders.right);
+        border(style.borders.top);
+        border(style.borders.bottom);
         return ss.str();
     }
-    
-    void WriteStyleDefinition(std::stringstream& ss, const std::string& name, const std::string& key) {
-        // Parse key back to style (simplified)
+
+    // ODS border attribute value, e.g. "0.5pt solid #000000". The loader
+    // maps any visible style back to Thin, so the width/style detail is a
+    // LibreOffice-facing nicety.
+    static std::string BorderAttrValue(const CellBorder& border) {
+        const char* lineStyle = "solid";
+        switch (border.style) {
+            case BorderStyle::Dashed:
+            case BorderStyle::MediumDashed:
+            case BorderStyle::DashDot:
+            case BorderStyle::MediumDashDot:
+            case BorderStyle::DashDotDot: lineStyle = "dashed"; break;
+            case BorderStyle::Dotted: lineStyle = "dotted"; break;
+            case BorderStyle::Double: lineStyle = "double"; break;
+            default: break;
+        }
+        const char* width = "0.5pt";
+        if (border.style == BorderStyle::Medium) width = "1pt";
+        else if (border.style == BorderStyle::Thick) width = "2pt";
+        else if (border.style == BorderStyle::Hair) width = "0.25pt";
+        return std::string(width) + " " + lineStyle + " " + ColorToHex(border.color);
+    }
+
+    void WriteStyleDefinition(std::stringstream& ss, const std::string& name,
+                              const CellStyle& style) {
         ss << "<style:style style:name=\"" << name << "\" style:family=\"table-cell\">\n";
+
+        // Cell properties: background, borders, vertical alignment, wrap.
+        {
+            std::stringstream props;
+            if (style.fill.HasFill()) {
+                props << " fo:background-color=\""
+                      << ColorToHex(style.fill.foregroundColor) << "\"";
+            }
+            const CellBorders& b = style.borders;
+            bool uniform = b.left.IsVisible()
+                && b.left.style == b.right.style && b.left.style == b.top.style
+                && b.left.style == b.bottom.style && b.left.color == b.right.color
+                && b.left.color == b.top.color && b.left.color == b.bottom.color;
+            if (uniform) {
+                props << " fo:border=\"" << BorderAttrValue(b.left) << "\"";
+            } else {
+                if (b.left.IsVisible())
+                    props << " fo:border-left=\"" << BorderAttrValue(b.left) << "\"";
+                if (b.right.IsVisible())
+                    props << " fo:border-right=\"" << BorderAttrValue(b.right) << "\"";
+                if (b.top.IsVisible())
+                    props << " fo:border-top=\"" << BorderAttrValue(b.top) << "\"";
+                if (b.bottom.IsVisible())
+                    props << " fo:border-bottom=\"" << BorderAttrValue(b.bottom) << "\"";
+            }
+            if (style.vAlign == VerticalAlignment::Top) {
+                props << " style:vertical-align=\"top\"";
+            } else if (style.vAlign == VerticalAlignment::Middle) {
+                props << " style:vertical-align=\"middle\"";
+            }
+            if (style.wrapText) {
+                props << " fo:wrap-option=\"wrap\"";
+            }
+            if (!props.str().empty()) {
+                ss << "<style:table-cell-properties" << props.str() << "/>\n";
+            }
+        }
+
+        // Horizontal alignment lives in paragraph properties.
+        switch (style.hAlign) {
+            case HorizontalAlignment::Left:
+                ss << "<style:paragraph-properties fo:text-align=\"start\"/>\n";
+                break;
+            case HorizontalAlignment::Center:
+                ss << "<style:paragraph-properties fo:text-align=\"center\"/>\n";
+                break;
+            case HorizontalAlignment::Right:
+                ss << "<style:paragraph-properties fo:text-align=\"end\"/>\n";
+                break;
+            case HorizontalAlignment::Justify:
+            case HorizontalAlignment::Distributed:
+                ss << "<style:paragraph-properties fo:text-align=\"justify\"/>\n";
+                break;
+            default:
+                break;
+        }
+
+        // Text properties: font, weight, style, color, decorations.
+        {
+            std::stringstream props;
+            CellFont defaults;
+            if (style.font.family != defaults.family) {
+                props << " style:font-name=\"" << EscapeXml(style.font.family) << "\""
+                      << " fo:font-family=\"" << EscapeXml(style.font.family) << "\"";
+            }
+            if (style.font.size != defaults.size) {
+                props << " fo:font-size=\"" << style.font.size << "pt\"";
+            }
+            if (style.font.bold) props << " fo:font-weight=\"bold\"";
+            if (style.font.italic) props << " fo:font-style=\"italic\"";
+            if (!(style.font.color == defaults.color)) {
+                props << " fo:color=\"" << ColorToHex(style.font.color) << "\"";
+            }
+            if (style.font.underline != UnderlineStyle::None) {
+                props << " style:text-underline-style=\""
+                      << (style.font.underline == UnderlineStyle::Double
+                          || style.font.underline == UnderlineStyle::DoubleAccounting
+                              ? "double" : "solid")
+                      << "\" style:text-underline-width=\"auto\"";
+            }
+            if (style.font.strikethrough) {
+                props << " style:text-line-through-style=\"solid\"";
+            }
+            if (!props.str().empty()) {
+                ss << "<style:text-properties" << props.str() << "/>\n";
+            }
+        }
+
         ss << "</style:style>\n";
     }
     
@@ -1037,7 +1224,7 @@ bool UltraCanvasSpreadsheet::LoadFromFile(const std::string& filePath) {
     }
 
     lastError_ = "Unsupported file type '" + ext +
-                 "'. Supported formats are .ods, .csv and .tsv: " + filePath;
+                 "'. Supported formats are .ods, .xlsx, .csv and .tsv: " + filePath;
     return false;
 }
 
@@ -1065,7 +1252,7 @@ bool UltraCanvasSpreadsheet::SaveToFile(const std::string& filePath) {
     }
 
     lastError_ = "Unsupported save format '" + ext +
-                 "'. Supported formats are .ods, .csv and .tsv: " + filePath;
+                 "'. Supported formats are .ods, .xlsx, .csv and .tsv: " + filePath;
     return false;
 }
 
@@ -1096,21 +1283,7 @@ bool UltraCanvasSpreadsheet::SaveODS(const std::string& filePath) {
     return true;
 }
 
-bool UltraCanvasSpreadsheet::LoadXLSX(const std::string& filePath) {
-    // XLSX format implementation would follow similar pattern
-    // Using Office Open XML format (also ZIP-based with XML files)
-    // For now, report a clear reason instead of a silent failure.
-    lastError_ = "Excel (.xlsx) import is not supported yet. "
-                 "Please convert the file to .ods or .csv: " + filePath;
-    return false;
-}
-
-bool UltraCanvasSpreadsheet::SaveXLSX(const std::string& filePath) {
-    // XLSX writing is not implemented yet; report a clear reason.
-    lastError_ = "Saving to Excel (.xlsx) is not supported yet. "
-                 "Please save as .ods or .csv: " + filePath;
-    return false;
-}
+// LoadXLSX / SaveXLSX are implemented in UltraCanvasSpreadsheetXlsxIO.cpp.
 
 SpreadsheetSheet* UltraCanvasSpreadsheet::PrepareCSVSheet(int sheetIndex) {
     SpreadsheetSheet* sheet = nullptr;

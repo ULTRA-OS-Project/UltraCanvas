@@ -31,10 +31,28 @@ Microsoft Word (`.docx`, legacy `.doc`) support to UltraCanvas.
 >   (`Tests/fixtures/legacy-word97.doc`); also validated against
 >   LibreOffice Writer/Calc in both directions.
 >
+> Phase 5 (except the interactive rich-text editor):
+> - **XLSX load/save** — `core/UltraCanvasSpreadsheetXlsxIO.cpp` implements
+>   the former `LoadXLSX`/`SaveXLSX` stubs: multi-sheet SpreadsheetML with
+>   shared strings, formulas (cached results preserved via
+>   `SetFormulaResult` — a formula-loss bug this work also fixed in the ODS
+>   loader), typed values via number-format classification
+>   (date/time/percentage/currency), cell styles (font, fill, borders,
+>   alignment, wrap), merged cells and column/row sizes. Validated against
+>   LibreOffice Calc in both directions.
+> - **ODS style round-trip** — `WriteStyleDefinition` now serializes real
+>   style properties (previously empty bodies), and the loader gained
+>   per-side borders, underline and strikethrough.
+> - **Embedded math import** — `Plugins/Documents/Word/UltraCanvasMathToLatex.{h,cpp}`
+>   converts MathML (ODT formula objects) and OMML (DOCX `m:oMath`) to
+>   LaTeX; the ODT/DOCX readers emit formulas as `$latex$` runs, which the
+>   TextArea markdown pipeline renders.
+>
 > Remaining from the plan: read-only rich view via `ToHTML()`+HTMLConverter
 > (blocked on the eBook/HTML subsystem not yet being part of the build),
-> `ConvertFile` once the universal FileLoader API exists, and Phase 5
-> fidelity work.
+> `ConvertFile` once the universal FileLoader API exists, and the Phase-5
+> interactive styled-run editor (a standalone UI project: cursor/selection
+> model over styled runs, IME, rendering — needs its own design round).
 
 ---
 

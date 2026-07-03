@@ -109,6 +109,7 @@ if(TINYXML2_TEST_FOUND)
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasOdtFormat.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasDocxFormat.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp
+        ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasMathToLatex.cpp
         ${ULTRACANVAS_SRC_DIR}/third_party/miniz/miniz.c
     )
     target_include_directories(WordFormatsTest PRIVATE
