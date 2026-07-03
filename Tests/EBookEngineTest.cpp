@@ -1,17 +1,20 @@
 // Tests/EBookEngineTest.cpp
-// Unit tests for the EPUB, FB2 and TXT engines: builds synthetic books in
-// memory (miniz writer for the EPUB) and exercises metadata, spine, TOC,
-// resources, cover, text extraction, search, and the engine registry.
+// Unit tests for the EPUB, FB2, MOBI and TXT engines: builds synthetic books
+// in memory (miniz writer for the EPUB, a hand-assembled PDB for the MOBI)
+// and exercises metadata, spine, TOC, resources, cover, text extraction,
+// search, and the engine registry.
 // Version: 1.0.0
-// Last Modified: 2026-07-02
+// Last Modified: 2026-07-03
 // Author: UltraCanvas Framework
 
 #include "EPUBEngine.h"
 #include "FB2Engine.h"
+#include "MOBIEngine.h"
 #include "TXTEngine.h"
 
 #include "miniz.h"
 
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -525,6 +528,213 @@ static void TestFB2Errors() {
 }
 
 // ============================================================================
+// MOBI TESTS
+// ============================================================================
+
+static void PutBE16(std::vector<uint8_t>& v, uint16_t x) {
+    v.push_back(static_cast<uint8_t>(x >> 8));
+    v.push_back(static_cast<uint8_t>(x & 0xFF));
+}
+static void PutBE32(std::vector<uint8_t>& v, uint32_t x) {
+    v.push_back(static_cast<uint8_t>(x >> 24));
+    v.push_back(static_cast<uint8_t>(x >> 16));
+    v.push_back(static_cast<uint8_t>(x >> 8));
+    v.push_back(static_cast<uint8_t>(x & 0xFF));
+}
+static void SetBE32(std::vector<uint8_t>& v, size_t at, uint32_t x) {
+    v[at] = static_cast<uint8_t>(x >> 24);
+    v[at + 1] = static_cast<uint8_t>(x >> 16);
+    v[at + 2] = static_cast<uint8_t>(x >> 8);
+    v[at + 3] = static_cast<uint8_t>(x & 0xFF);
+}
+
+// Assemble a minimal but valid MOBI6 file: PDB header + 3 records
+// (record 0 with PalmDOC/MOBI/EXTH headers, one ASCII text record, one image).
+static std::vector<uint8_t> MakeTestMOBI() {
+    // ASCII HTML decodes to itself under PalmDOC (all bytes are 0x20..0x7E
+    // literals), so compression=2 exercises the decompressor without needing
+    // a compressor here.
+    std::string text =
+        "<html><body>"
+        "<h1>Chapter One</h1><p>The quick brown fox.</p>"
+        "<mbp:pagebreak/>"
+        "<h1>Chapter Two</h1><p>Jumps over the lazy dog.</p>"
+        "<img recindex=\"00001\"/>"
+        "</body></html>";
+
+    // --- MOBI header (232 bytes) ---
+    std::vector<uint8_t> mobi(232, 0);
+    std::memcpy(&mobi[0], "MOBI", 4);
+    SetBE32(mobi, 4, 232);      // header length
+    SetBE32(mobi, 8, 2);        // mobiType = Mobipocket book
+    SetBE32(mobi, 12, 1252);    // textEncoding = cp1252
+    SetBE32(mobi, 20, 6);       // fileVersion (MOBI6)
+    SetBE32(mobi, 108, 2);      // firstImageIndex = record 2
+    SetBE32(mobi, 128, 0x40);   // exthFlags: has EXTH
+    // fullNameOffset/Length filled once the record-0 layout is known.
+
+    // --- EXTH ---
+    std::vector<uint8_t> exthRecs;
+    auto addExth = [&](uint32_t type, const std::string& s) {
+        PutBE32(exthRecs, type);
+        PutBE32(exthRecs, static_cast<uint32_t>(8 + s.size()));
+        exthRecs.insert(exthRecs.end(), s.begin(), s.end());
+    };
+    addExth(100, "Test Author");
+    addExth(101, "Test Press");
+    addExth(104, "978-0-00-000000-0");
+    addExth(106, "2021");
+    addExth(524, "en");
+    // Cover offset (type 201): BE32 = 0 → first image record is the cover.
+    PutBE32(exthRecs, 201);
+    PutBE32(exthRecs, 12);
+    PutBE32(exthRecs, 0);
+    uint32_t exthCount = 6;
+
+    std::vector<uint8_t> exth;
+    exth.insert(exth.end(), {'E', 'X', 'T', 'H'});
+    PutBE32(exth, static_cast<uint32_t>(12 + exthRecs.size()));
+    PutBE32(exth, exthCount);
+    exth.insert(exth.end(), exthRecs.begin(), exthRecs.end());
+    while (exth.size() % 4 != 0) exth.push_back(0);   // pad
+
+    std::string fullName = "Test MOBI Book";
+
+    // --- record 0 = PalmDOC(16) + MOBI(232) + EXTH + fullName ---
+    std::vector<uint8_t> rec0;
+    PutBE16(rec0, 2);                                   // compression = PalmDOC
+    PutBE16(rec0, 0);                                   // unused
+    PutBE32(rec0, static_cast<uint32_t>(text.size()));  // text length
+    PutBE16(rec0, 1);                                   // text record count
+    PutBE16(rec0, 4096);                               // record size
+    PutBE32(rec0, 0);                                   // encryption + unused
+
+    uint32_t fullNameOffset = static_cast<uint32_t>(16 + mobi.size() + exth.size());
+    SetBE32(mobi, 84, fullNameOffset);
+    SetBE32(mobi, 88, static_cast<uint32_t>(fullName.size()));
+
+    rec0.insert(rec0.end(), mobi.begin(), mobi.end());
+    rec0.insert(rec0.end(), exth.begin(), exth.end());
+    rec0.insert(rec0.end(), fullName.begin(), fullName.end());
+
+    std::vector<uint8_t> rec1(text.begin(), text.end());
+    std::vector<uint8_t> rec2 = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 'i', 'm'};
+
+    std::vector<std::vector<uint8_t>> recs = {rec0, rec1, rec2};
+
+    // --- PDB header (78 bytes) + record list ---
+    std::vector<uint8_t> file(78, 0);
+    std::memcpy(&file[0], "TestBook", 8);
+    std::memcpy(&file[60], "BOOK", 4);
+    std::memcpy(&file[64], "MOBI", 4);
+    file[76] = 0;
+    file[77] = static_cast<uint8_t>(recs.size());   // record count = 3
+
+    size_t listSize = recs.size() * 8;
+    size_t dataStart = 78 + listSize;
+    std::vector<uint32_t> offsets;
+    size_t cursor = dataStart;
+    for (const auto& r : recs) {
+        offsets.push_back(static_cast<uint32_t>(cursor));
+        cursor += r.size();
+    }
+    for (size_t i = 0; i < recs.size(); ++i) {
+        PutBE32(file, offsets[i]);
+        file.push_back(0);                 // attributes
+        file.push_back(0);                 // uid[3]
+        file.push_back(0);
+        file.push_back(static_cast<uint8_t>(i));
+    }
+    for (const auto& r : recs) file.insert(file.end(), r.begin(), r.end());
+    return file;
+}
+
+static void TestMOBI() {
+    std::vector<uint8_t> data = MakeTestMOBI();
+
+    MOBIEngine engine;
+    CHECK(engine.LoadFromMemory(data));
+    CHECK(engine.IsLoaded());
+    CHECK(engine.GetFormat() == EBookFormat::MOBI);
+
+    const EBookMetadata& meta = engine.GetMetadata();
+    CHECK_EQ(meta.title, std::string("Test MOBI Book"));
+    CHECK_EQ(meta.authors.size(), size_t(1));
+    if (!meta.authors.empty()) CHECK_EQ(meta.authors[0], std::string("Test Author"));
+    CHECK_EQ(meta.publisher, std::string("Test Press"));
+    CHECK_EQ(meta.isbn, std::string("978-0-00-000000-0"));
+    CHECK_EQ(meta.publicationDate, std::string("2021"));
+    CHECK_EQ(meta.language, std::string("en"));
+    CHECK(meta.hasCover);
+
+    // Two chapters split on the page break, titled from their headings.
+    CHECK_EQ(engine.GetChapterCount(), 2);
+    EBookChapter ch1 = engine.GetChapter(0);
+    CHECK_EQ(ch1.title, std::string("Chapter One"));
+    CHECK(ch1.content.find("The quick brown fox.") != std::string::npos);
+
+    EBookChapter ch2 = engine.GetChapter(1);
+    CHECK_EQ(ch2.title, std::string("Chapter Two"));
+    CHECK(ch2.content.find("Jumps over the lazy dog.") != std::string::npos);
+    // recindex rewritten to a resolvable resource href.
+    CHECK(ch2.content.find("src=\"mobiimg/1\"") != std::string::npos);
+    CHECK(ch2.content.find("recindex") == std::string::npos);
+
+    // TOC mirrors the chapters.
+    const auto& toc = engine.GetTableOfContents();
+    CHECK_EQ(toc.size(), size_t(2));
+
+    // Image resource + cover.
+    std::vector<uint8_t> img = engine.GetResource("mobiimg/1");
+    CHECK_EQ(img.size(), size_t(10));
+    CHECK(engine.GetResource("mobiimg/9").empty());
+    CHECK_EQ(engine.GetCoverImage().size(), size_t(10));
+
+    // Search + plain text.
+    std::string text = engine.ExtractChapterText(0);
+    CHECK(text.find("quick brown fox") != std::string::npos);
+    CHECK(text.find("<h1>") == std::string::npos);
+    auto results = engine.Search("lazy dog");
+    CHECK_EQ(results.size(), size_t(1));
+    if (!results.empty()) CHECK_EQ(results[0].chapterIndex, 1);
+
+    engine.Close();
+    CHECK(!engine.IsLoaded());
+    CHECK_EQ(engine.GetChapterCount(), 0);
+}
+
+static void TestMOBIPalmDOC() {
+    // Literal "abc" then a length-3 / distance-3 back-reference → "abcabc".
+    std::vector<uint8_t> comp = {'a', 'b', 'c', 0x80, 0x18};
+    auto out = MOBIEngine::DecompressPalmDOC(comp.data(), comp.size());
+    CHECK_EQ(std::string(out.begin(), out.end()), std::string("abcabc"));
+
+    // 0xC1 → space + (0xC1 ^ 0x80) = 'A'.
+    std::vector<uint8_t> sp = {'H', 'i', 0xC1};
+    auto out2 = MOBIEngine::DecompressPalmDOC(sp.data(), sp.size());
+    CHECK_EQ(std::string(out2.begin(), out2.end()), std::string("Hi A"));
+
+    // Literal-run marker (0x03 copies the next 3 bytes verbatim).
+    std::vector<uint8_t> run = {0x03, 'X', 'Y', 'Z'};
+    auto out3 = MOBIEngine::DecompressPalmDOC(run.data(), run.size());
+    CHECK_EQ(std::string(out3.begin(), out3.end()), std::string("XYZ"));
+
+    // cp1252: 0x92 (right single quote) → U+2019 (UTF-8 e2 80 99).
+    std::string cp = "it";
+    cp += static_cast<char>(0x92);
+    cp += "s";
+    CHECK_EQ(MOBIEngine::Cp1252ToUTF8(cp),
+             std::string("it\xE2\x80\x99s"));
+}
+
+static void TestMOBIErrors() {
+    MOBIEngine engine;
+    std::vector<uint8_t> junk(200, 0);
+    CHECK(!engine.LoadFromMemory(junk));
+    CHECK(engine.GetLastError().find("Not a MOBI") != std::string::npos);
+}
+
+// ============================================================================
 // REGISTRY
 // ============================================================================
 
@@ -548,10 +758,17 @@ static void TestRegistry() {
     CHECK(fb2zip != nullptr);
     if (fb2zip) CHECK(fb2zip->GetFormat() == EBookFormat::FB2);
 
+    auto mobi = CreateEBookEngineForFile("book.mobi");
+    CHECK(mobi != nullptr);
+    if (mobi) CHECK(mobi->GetFormat() == EBookFormat::MOBI);
+    CHECK(CreateEBookEngineForFile("book.azw3") != nullptr);
+    CHECK(CreateEBookEngineForFile("old.prc") != nullptr);
+
     CHECK(CreateEBookEngineForFile("file.xyz") == nullptr);
 
     auto extensions = GetRegisteredEBookExtensions();
-    CHECK_EQ(extensions.size(), size_t(4));   // epub, fb2, fb2.zip, txt
+    // epub, fb2, fb2.zip, mobi, prc, azw, azw3, txt
+    CHECK_EQ(extensions.size(), size_t(8));
 }
 
 // ============================================================================
@@ -565,6 +782,9 @@ int main() {
     TestFB2Zip();
     TestFB2Encoding();
     TestFB2Errors();
+    TestMOBI();
+    TestMOBIPalmDOC();
+    TestMOBIErrors();
     TestTXT();
     TestRegistry();
 
