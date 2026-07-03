@@ -232,6 +232,8 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateDialogExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateTextAreaExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSegmentedControlExamples();
+        // Word-processing documents (.odt/.docx/.doc) rendered as markdown
+        std::shared_ptr<UltraCanvasUIElement> CreateODTExamples();
 
         // Graphics Elements - BITMAP FORMATS
         std::shared_ptr<UltraCanvasUIElement> CreateBitmapNotImplementedExamples(const std::string& format);
