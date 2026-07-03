@@ -1,6 +1,6 @@
 # UltraCanvas eBook Support
 
-Status: **functional for EPUB, FB2 and TXT** — rebuilt from scratch on the
+Status: **functional for EPUB, FB2, MOBI/AZW and TXT** — rebuilt from scratch on the
 CSSLayout engine (the previous eBook code never compiled and was removed;
 see "History" below).
 
@@ -35,9 +35,10 @@ eBook file ──► format engine (IEBookEngine) ──► chapters as XHTML + 
 | ZIP/DEFLATE container access (miniz) | `Plugins/Documents/eBook/EBookArchive.h` | ✅ implemented + unit-tested |
 | EPUB 2/3 engine (container/OPF/NCX/nav, cover, resources) | `Plugins/Documents/eBook/EPUBEngine.h` | ✅ implemented + unit-tested |
 | FB2 engine (metadata, sections → chapters, base64 images, fb2.zip, windows-1251/UTF-16 input) | `Plugins/Documents/eBook/FB2Engine.h` | ✅ implemented + unit-tested |
+| MOBI / AZW engine (PDB/PalmDOC, EXTH metadata, images, page-break chapters) | `Plugins/Documents/eBook/MOBIEngine.h` | ✅ implemented + unit-tested |
 | TXT engine | `Plugins/Documents/eBook/TXTEngine.h` | ✅ implemented + unit-tested |
 | Viewer widget (toolbar, TOC panel, themes, font size, keyboard nav) | `include/UltraCanvasEBookViewer.h` | ✅ implemented + smoke-tested |
-| MOBI / AZW3 / legacy formats | — | 🔄 later |
+| AZW3 (KF8-only) / other legacy formats | — | 🔄 later |
 
 ### The HTMLReader module
 
@@ -77,6 +78,19 @@ to chapters (descending through single wrapper sections), turns extra
 bodies (notes) into trailing chapters, and serves `<binary>` base64 payloads
 as `#id` resources. Windows-1251, Latin-1 and UTF-16 input is converted to
 UTF-8 before parsing; zipped `.fb2.zip` files are unpacked transparently.
+
+The MOBI engine reads the Palm Database record layout, decompresses the
+PalmDOC (LZ77) text records (stripping the trailing multibyte/index entries
+signalled by the MOBI extra-data flags), pulls metadata from the EXTH block
+(author, publisher, ISBN, subjects, language, cover), and extracts the image
+records. The single HTML blob is split into chapters on the Mobipocket
+`<mbp:pagebreak>` markers, each titled from its first heading; inline
+`recindex`/`kindle:embed` image references are rewritten to `mobiimg/N`
+resource hrefs. windows-1252 text is converted to UTF-8; UTF-8 books pass
+through. Covered: `.mobi`, `.prc`, `.azw`, and the MOBI 6 half of combo
+`.azw3` files. Reported cleanly rather than mis-rendered: HUFF/CDIC
+compression, DRM, and KF8-only `.azw3` (which needs KF8 skeleton/fragment
+reassembly).
 
 ### Viewer widget
 

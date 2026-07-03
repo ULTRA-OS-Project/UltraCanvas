@@ -7,6 +7,7 @@
 #include "TXTEngine.h"
 #include "EPUBEngine.h"
 #include "FB2Engine.h"
+#include "MOBIEngine.h"
 
 #include <cctype>
 
@@ -144,6 +145,7 @@ void RegisterTXTEngine() {
 void RegisterBuiltinEBookEngines() {
     RegisterEPUBEngine();
     RegisterFB2Engine();
+    RegisterMOBIEngine();
     RegisterTXTEngine();
 }
 
