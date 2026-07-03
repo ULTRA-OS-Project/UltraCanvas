@@ -254,6 +254,9 @@ namespace UltraCanvas {
 
         // Document Elements
         std::shared_ptr<UltraCanvasUIElement> CreateTextDocumentExamples();
+        // LaTeX demo page: scans media/LaTex for .tex files and presents each one
+        // in a vertical tab (rendered output + source).
+        std::shared_ptr<UltraCanvasUIElement> CreateLaTeXExamples();
         std::shared_ptr<UltraCanvasUIElement> CreatePartiallyImplementedExamples(const std::string& text);
         std::shared_ptr<UltraCanvasUIElement> CreateDomainTableDemo();
 
