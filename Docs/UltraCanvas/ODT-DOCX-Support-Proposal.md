@@ -88,7 +88,28 @@ Microsoft Word (`.docx`, legacy `.doc`) support to UltraCanvas.
   emits empty style bodies, and comments/hyperlinks/validation are not
   written. Style round-trip is an open gap.
 
-### 1.5 Reusable infrastructure already in the tree
+### 1.5 FileLoader (`include/UltraCanvasFileLoader.h`, `core/UltraCanvasFileLoader.cpp`)
+
+- **Implemented today:** a facade over the native file-selection dialogs
+  (`OpenFileDialog`/`SaveFileDialog`/`OpenMultipleFilesDialog`/
+  `SelectFolderDialog`), OS recent-documents integration (`NotifyRecentFile`,
+  per-platform in `OS/<platform>/UltraCanvas*FileLoader.cpp`), and two
+  **typed object loaders** that combine dialog + decode in one call:
+  `OpenImage` (→ `UCImageRaster`) and `OpenAudio` (→ `UCAudio` PCM).
+- **Documented vision** (`Docs/Modules/FileLoader/README.md` + architecture
+  diagram): a universal `FileLoader::LoadFile` (auto-detect decode),
+  `ConvertFile` (format-to-format), `LoadMultipleFiles`, `RegisterPlugin`
+  (custom format handlers), `ScanFileForThreats` and cache tuning. The
+  documented format families **already list "Documents: PDF, DOCX, ODT, RTF,
+  TXT, Markdown"** — i.e. ODT/DOCX support is a promised part of the
+  FileLoader roadmap, but none of that universal API exists in code yet.
+- Consequence for this proposal: FileLoader is the intended **front door**
+  for document loading. The ODT/DOCX readers/writers must be exposed through
+  it (a typed loader now, `LoadFile`/`ConvertFile` dispatch as that API
+  materializes), not buried in app-level code the way Texter's current
+  load/save path is.
+
+### 1.6 Reusable infrastructure already in the tree
 
 | Building block | Where | Relevance |
 |---|---|---|
@@ -100,6 +121,7 @@ Microsoft Word (`.docx`, legacy `.doc`) support to UltraCanvas.
 | Markdown hybrid editing + inline-run parser | `UltraCanvasTextArea_Markdown.cpp` | editable representation for imported documents |
 | dlopen module pattern with C ABI | LaTeX module loader | packaging for an optional heavyweight document module |
 | Encoding conversion | `Apps/Texter/UltraCanvasEncoding.*` | legacy `.doc` text extraction (CP1252 etc.) |
+| Typed dialog+decode loaders (`OpenImage`, `OpenAudio`) | `UltraCanvasFileLoader` | pattern for an `OpenTextDocument` entry point |
 
 **Bottom line:** every low-level building block needed for ODT and DOCX
 (ZIP, XML, image decoding, a rendering pipeline, an editor) already exists.
@@ -201,6 +223,28 @@ Phase-5 rich model below.
   `LoadGraphicsFile("x.odt")` returns the rendered view — the extension map
   already classifies these extensions as `GraphicsFormatType::Text`.
 
+**FileLoader (framework front door)**
+- Add a typed loader following the existing `OpenImage`/`OpenAudio` pattern:
+  `UltraCanvasFileLoader::OpenTextDocument(opts, onResult)` — native dialog
+  (default filters: odt/docx/doc/md/txt), then dispatch by
+  extension/signature to the matching reader and deliver a
+  `shared_ptr<UCRichDocument>` in the callback, with errors reported through
+  `FileLoadResult::loadError` exactly like the image/audio loaders. Texter
+  and any other app then consume documents through FileLoader instead of
+  hand-rolled `ifstream` code.
+- The reader/writer pairs double as the first **`ConvertFile` handlers** for
+  the documented universal FileLoader API: `ConvertFile("a.docx", "a.odt")`
+  (and ↔ Markdown/HTML/plain text) becomes read-to-`UCRichDocument` +
+  write, satisfying the Documents row ("PDF, DOCX, ODT, RTF, TXT, Markdown")
+  that `Docs/Modules/FileLoader/README.md` already advertises. When the
+  planned `FileLoader::RegisterPlugin` registry is built, the ODT/DOCX
+  readers/writers should be its first registrants — designing them now as
+  self-describing handlers (supported extensions + magic-byte check + read +
+  write) keeps that migration mechanical.
+- Signature-based detection belongs here rather than in each app: ZIP magic
+  (`PK\x03\x04`) + `mimetype`/`[Content_Types].xml` probe distinguishes
+  ODT/DOCX/renamed files; CFB magic (`D0 CF 11 E0`) identifies legacy `.doc`.
+
 **Bitmap element** — no changes required. Embedded images are decoded from
 memory through the existing libvips path. Add a placeholder glyph fallback
 for WMF/EMF when the ImageMagick delegate is absent (probe with
@@ -251,8 +295,8 @@ binary-size pressure appears later.
 | Phase | Scope | Notes |
 |---|---|---|
 | **1. Foundations** | Extract `UCZipPackage` + XML helpers from `SpreadsheetFileIO.cpp` (pure refactor); define `UCRichDocument`; ODT/DOCX extension + MIME registration; stop hex-opening `.odt`/`.docx` in Texter | Small; unblocks everything incl. XLSX |
-| **2. Import** | `ODTReader` (reuse ODF conventions from ODS loader), then `DOCXReader` (OPC rels, `document.xml`, styles flattening, `word/media/`); `ToMarkdown` + `ToHTML` serializers; Texter open path; read-only rich view | ODT first — closest to existing code |
-| **3. Export** | `ODTWriter` (mimetype-first ZIP, manifest, `content.xml`/`styles.xml`, `Pictures/`), `DOCXWriter` (`[Content_Types].xml`, rels, `document.xml`); `FromMarkdown`; Texter save path with formatting-reduction warning | Round-trip tests against LibreOffice & Word |
+| **2. Import** | `ODTReader` (reuse ODF conventions from ODS loader), then `DOCXReader` (OPC rels, `document.xml`, styles flattening, `word/media/`); `ToMarkdown` + `ToHTML` serializers; `UltraCanvasFileLoader::OpenTextDocument` typed loader with signature-based detection; Texter open path; read-only rich view | ODT first — closest to existing code |
+| **3. Export** | `ODTWriter` (mimetype-first ZIP, manifest, `content.xml`/`styles.xml`, `Pictures/`), `DOCXWriter` (`[Content_Types].xml`, rels, `document.xml`); `FromMarkdown`; Texter save path with formatting-reduction warning; `FileLoader::ConvertFile` document conversions | Round-trip tests against LibreOffice & Word |
 | **4. Legacy `.doc`** | CFB reader + piece-table text extraction, import only; friendly unsupported-message fallback ships earlier in Phase 1 | Text-only by design |
 | **5. Fidelity (optional)** | Styled-run editable document model (rich TextArea or new RichTextArea) editing `UCRichDocument` directly; OMML/MathML → MicroTeX math rendering; XLSX stubs implementation + ODS style round-trip completion | Turns Texter from "text editor that opens documents" into a word processor |
 
