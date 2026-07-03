@@ -175,22 +175,74 @@ namespace UltraCanvas {
     // UltraCanvasVideoRecorderElement.
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTextDocumentExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("TextDocumentExamples", 0, 0, 1000, 600);
+        auto container = std::make_shared<UltraCanvasContainer>("TextDocumentExamples", 0, 0, 1000, 700);
 
-        auto title = std::make_shared<UltraCanvasLabel>("TextDocumentTitle", 10, 10, 300, 30);
+        auto title = std::make_shared<UltraCanvasLabel>("TextDocumentTitle", 10, 10, 500, 30);
         title->SetText("Text Document Examples");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
         container->AddChild(title);
 
-        auto placeholder = std::make_shared<UltraCanvasLabel>("TextDocumentPlaceholder", 20, 50, 800, 400);
-        placeholder->SetText("Text Document Support - Not Implemented\n\nPlanned Document Types:\n• ODT (OpenDocument Text)\n• RTF (Rich Text Format)\n• TeX/LaTeX documents\n• Plain text with syntax highlighting\n• HTML document rendering\n\nFeatures:\n• Document structure navigation\n• Text formatting display\n• Search and replace\n• Print preview\n• Export capabilities\n• Embedded images and tables");
-        placeholder->SetAlignment(TextAlignment::Left);
-        placeholder->SetBackgroundColor(Color(255, 200, 200, 100));
-//        placeholder->SetBorderStyle(BorderStyle::Dashed);
-        placeholder->SetBorders(2.0f);
-        placeholder->SetPadding(20.0f);
-        container->AddChild(placeholder);
+        // TextArea used both to query the syntax renderer's supported languages
+        // and, further below, to render the live example.
+        auto exampleArea = std::make_shared<UltraCanvasTextArea>("TextDocumentSyntaxExample", 20, 235, 950, 300);
+        std::vector<std::string> languages = exampleArea->GetSupportedLanguages();
+
+        // Markdown and PDF are shown by their own dedicated viewers elsewhere
+        // in this demo, so they are excluded from this generic text list.
+        std::string typesText;
+        int count = 0;
+        for (const auto& lang : languages) {
+            if (lang == "Markdown" || lang == "PDF") continue;
+            typesText += (count > 0 ? ((count % 6 == 0) ? ",\n" : ", ") : "");
+            typesText += lang;
+            count++;
+        }
+
+        auto descLabel = std::make_shared<UltraCanvasLabel>("TextDocumentDesc", 20, 45, 950, 20);
+        descLabel->SetText("UltraCanvasTextArea's built-in syntax renderer highlights " + std::to_string(count)
+                            + " plain-text and source-code file types (Markdown and PDF have their own dedicated viewers):");
+        descLabel->SetFontSize(12);
+        descLabel->SetTextColor(Color(80, 80, 80));
+        container->AddChild(descLabel);
+
+        auto typesLabel = std::make_shared<UltraCanvasLabel>("TextDocumentTypesList", 20, 70, 950, 130);
+        typesLabel->SetText(typesText);
+        typesLabel->SetAlignment(TextAlignment::Left);
+        typesLabel->SetBackgroundColor(Color(230, 245, 230, 100));
+        typesLabel->SetBorders(2.0f);
+        typesLabel->SetPadding(10.0f);
+        typesLabel->SetFontSize(11);
+        container->AddChild(typesLabel);
+
+        auto exampleLabel = std::make_shared<UltraCanvasLabel>("TextDocumentExampleLabel", 20, 210, 500, 20);
+        exampleLabel->SetText("Example: JSON configuration file");
+        exampleLabel->SetFontSize(12);
+        exampleLabel->SetFontWeight(FontWeight::Bold);
+        container->AddChild(exampleLabel);
+
+        exampleArea->ApplyCodeStyle("JSON");
+        exampleArea->SetShowLineNumbers(true);
+        exampleArea->SetHighlightCurrentLine(true);
+        exampleArea->SetFontSize(11);
+        exampleArea->SetReadOnly(true);
+
+        std::string jsonExample = R"({
+    "name": "UltraCanvas",
+    "version": "2.0.0",
+    "description": "Cross-platform native UI framework",
+    "features": [
+        "syntax highlighting",
+        "line numbers",
+        "multi-language support"
+    ],
+    "author": {
+        "name": "UltraCanvas Framework",
+        "license": "MIT"
+    }
+})";
+        exampleArea->SetText(jsonExample);
+        container->AddChild(exampleArea);
 
         return container;
     }

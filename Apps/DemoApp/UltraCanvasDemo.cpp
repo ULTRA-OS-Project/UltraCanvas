@@ -1183,9 +1183,12 @@ namespace UltraCanvas {
 //                .AddVariant("codeeditor", "Pascal Syntax")
 //                .AddVariant("codeeditor", "COBOL Syntax");
 
-        textDocBuilder.AddItem("textdocuments", "Text Documents", "Text document support",
-                               ImplementationStatus::NotImplemented,
-                               [this]() { return CreateTextDocumentExamples(); });
+        textDocBuilder.AddItem("textdocuments", "Text Documents",
+                               "Plain text and source-code file rendering via UltraCanvasTextArea's syntax renderer",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateTextDocumentExamples(); },
+                               "DemoApp/UltraCanvasDemoExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasTextAreaExamples.md");
 
         textDocBuilder.AddItem("textdocuments_latex", "LaTeX Documents", "LaTeX document support",
                                ImplementationStatus::NotImplemented,
