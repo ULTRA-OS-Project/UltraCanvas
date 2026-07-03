@@ -2,7 +2,7 @@
 // Readers/writers between word-processing file formats and UCRichDocument:
 //   .odt  — OpenDocument Text (ODF package)            read + write
 //   .docx — Word 2007+ (OOXML/OPC package)             read + write
-//   .doc  — legacy Word 97-2003 (OLE2/CFB binary)      detected, not parsed
+//   .doc  — legacy Word 97-2003 (OLE2/CFB binary)      text-only import
 // Format detection is signature-based (ZIP magic + mimetype /
 // [Content_Types].xml probe, CFB magic) so renamed files are classified
 // correctly. See Docs/UltraCanvas/ODT-DOCX-Support-Proposal.md.
@@ -33,14 +33,19 @@ WordDocumentFormat WordDocumentFormatFromExtension(const std::string& extension)
 class UCWordDocumentIO {
 public:
     // Auto-detects the format and loads. Returns false with a user-facing
-    // reason in outError (legacy .doc reports a clear "convert to .docx"
-    // message rather than parsing).
+    // reason in outError. Legacy .doc goes through the text-only extractor;
+    // if that fails the error suggests converting to .docx.
     static bool Load(const std::string& filePath, UCRichDocument& outDocument,
                      std::string& outError);
     static bool LoadOdt(const std::string& filePath, UCRichDocument& outDocument,
                         std::string& outError);
     static bool LoadDocx(const std::string& filePath, UCRichDocument& outDocument,
                          std::string& outError);
+    // Word 97-2003 binary: extracts the main body text as plain paragraphs
+    // (CFB container + WordDocument piece table). Formatting is not parsed —
+    // there is deliberately no .doc writer; save as .docx instead.
+    static bool LoadDocText(const std::string& filePath, UCRichDocument& outDocument,
+                            std::string& outError);
 
     // Picks the writer from the target extension (.odt/.docx).
     static bool Save(const std::string& filePath, const UCRichDocument& document,

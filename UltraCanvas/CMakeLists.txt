@@ -338,6 +338,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasWordDocumentIO.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasOdtFormat.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasDocxFormat.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp
 
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetFileIO.cpp
         # Add Windows/Mac sources as needed

@@ -208,7 +208,8 @@ int main(int argc, char** argv) {
         src.close(); dst.close();
         CHECK(DetectWordDocumentFormat(TmpPath("renamed.odt")) == WordDocumentFormat::Docx);
 
-        // CFB magic -> legacy .doc, and Load reports a friendly error.
+        // CFB magic -> legacy .doc; a truncated CFB fails extraction with a
+        // friendly convert-to-.docx message.
         const unsigned char cfb[16] = {0xD0,0xCF,0x11,0xE0,0xA1,0xB1,0x1A,0xE1,0,0,0,0,0,0,0,0};
         WriteFile(TmpPath("legacy.doc"), cfb, sizeof(cfb));
         CHECK(DetectWordDocumentFormat(TmpPath("legacy.doc")) == WordDocumentFormat::LegacyDoc);
@@ -223,6 +224,30 @@ int main(int argc, char** argv) {
         CHECK(!UCWordDocumentIO::Load(TmpPath("garbage.docx"), dummy, err));
         CHECK(!err.empty());
     }
+
+    // ===== 5b. Legacy .doc text extraction (real Word 97 fixture) =====
+#ifdef WORDTEST_FIXTURE_DIR
+    {
+        std::string fixture = std::string(WORDTEST_FIXTURE_DIR) + "/legacy-word97.doc";
+        if (std::ifstream(fixture, std::ios::binary).good()) {
+            UCRichDocument legacy;
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Load(fixture, legacy, err), err);
+            std::string plain = legacy.ToPlainText();
+            CHECK(plain.find("Real Document") != std::string::npos);
+            CHECK(plain.find("Normal text with bold part and italic part and a link.")
+                  != std::string::npos);
+            CHECK(plain.find("numbered two") != std::string::npos);
+            CHECK(plain.find("cell 1\tcell 2") != std::string::npos);
+            CHECK(plain.find("Closing paragraph.") != std::string::npos);
+            // Field instructions (e.g. "HYPERLINK http://...") must be dropped.
+            CHECK(plain.find("HYPERLINK") == std::string::npos);
+        } else {
+            std::cerr << "NOTE: fixture missing, skipping legacy .doc check: "
+                      << fixture << "\n";
+        }
+    }
+#endif
 
     // ===== 6. Markdown emission and re-parse =====
     {

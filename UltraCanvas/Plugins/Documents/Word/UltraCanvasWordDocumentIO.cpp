@@ -78,11 +78,18 @@ bool UCWordDocumentIO::Load(const std::string& filePath, UCRichDocument& outDocu
             return LoadOdt(filePath, outDocument, outError);
         case WordDocumentFormat::Docx:
             return LoadDocx(filePath, outDocument, outError);
-        case WordDocumentFormat::LegacyDoc:
-            outError = "This is a legacy Word 97-2003 (.doc) file, which is not "
-                       "supported yet. Please open it in a word processor and save "
-                       "it as .docx or .odt first.";
+        case WordDocumentFormat::LegacyDoc: {
+            // Text-only extraction; the binary format's rich formatting is
+            // not parsed (and never written — export goes to .docx).
+            std::string extractError;
+            if (LoadDocText(filePath, outDocument, extractError)) {
+                return true;
+            }
+            outError = "Could not read this legacy Word 97-2003 (.doc) file ("
+                     + extractError + "). Please open it in a word processor "
+                       "and save it as .docx or .odt.";
             return false;
+        }
         default:
             outError = "The file is not a recognized word-processing document "
                        "(.odt or .docx): " + filePath;

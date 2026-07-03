@@ -108,6 +108,7 @@ if(TINYXML2_TEST_FOUND)
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasWordDocumentIO.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasOdtFormat.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasDocxFormat.cpp
+        ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp
         ${ULTRACANVAS_SRC_DIR}/third_party/miniz/miniz.c
     )
     target_include_directories(WordFormatsTest PRIVATE
@@ -116,6 +117,9 @@ if(TINYXML2_TEST_FOUND)
         ${TINYXML2_TEST_INCLUDE_DIRS}
     )
     target_link_libraries(WordFormatsTest PRIVATE ${TINYXML2_TEST_LIBRARIES})
+    target_compile_definitions(WordFormatsTest PRIVATE
+        WORDTEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+    )
     target_compile_features(WordFormatsTest PRIVATE cxx_std_20)
     set_target_properties(WordFormatsTest PROPERTIES
         OUTPUT_NAME "WordFormatsTest"

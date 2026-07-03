@@ -18,8 +18,10 @@
 #include <filesystem>
 
 // For ZIP handling (ODS/XLSX are ZIP archives)
-// Using miniz for lightweight ZIP support (vendored: third_party/miniz)
+// Reading uses miniz directly (vendored: third_party/miniz); writing goes
+// through UCZipPackageWriter for ODF-compliant archives (see ODSSaver).
 #include "miniz.h"
+#include "UltraCanvasZipPackage.h"
 
 // For XML parsing
 #include "tinyxml2.h"
@@ -589,68 +591,34 @@ private:
 class ODSSaver {
 private:
     UltraCanvasSpreadsheet* spreadsheet_;
-    mz_zip_archive zip_;
+    // UCZipPackageWriter (not miniz's writer) because miniz emits local file
+    // headers with the data-descriptor flag set, which the ODF package
+    // readers in LibreOffice/OpenOffice reject — such .ods files fail to
+    // open even though the archive is otherwise valid.
+    UCZipPackageWriter zip_;
     std::map<std::string, std::string> styleMap_;
     int styleCounter_ = 0;
-    
+
 public:
-    ODSSaver(UltraCanvasSpreadsheet* spreadsheet) : spreadsheet_(spreadsheet) {
-        memset(&zip_, 0, sizeof(zip_));
-    }
-    
-    ~ODSSaver() {
-        mz_zip_writer_end(&zip_);
-    }
-    
+    ODSSaver(UltraCanvasSpreadsheet* spreadsheet) : spreadsheet_(spreadsheet) {}
+
     bool Save(const std::string& filePath) {
-        // Initialize ZIP writer
-        if (!mz_zip_writer_init_file(&zip_, filePath.c_str(), 0)) {
+        if (!zip_.Open(filePath)) {
             return false;
         }
-        
-        // Write mimetype (must be first, uncompressed)
-        std::string mimetype = ODS::MIMETYPE;
-        if (!mz_zip_writer_add_mem(&zip_, "mimetype", mimetype.c_str(), mimetype.size(), 
-                                    MZ_NO_COMPRESSION)) {
+
+        // Write mimetype (must be first, uncompressed), then the XML parts.
+        if (!zip_.AddEntry("mimetype", std::string(ODS::MIMETYPE), false)
+            || !zip_.AddEntry(ODS::STYLES_XML, GenerateStylesXml())
+            || !zip_.AddEntry(ODS::CONTENT_XML, GenerateContentXml())
+            || !zip_.AddEntry(ODS::META_XML, GenerateMetaXml())
+            || !zip_.AddEntry(ODS::MANIFEST_XML, GenerateManifestXml())) {
             return false;
         }
-        
-        // Generate styles
-        std::string stylesXml = GenerateStylesXml();
-        if (!mz_zip_writer_add_mem(&zip_, ODS::STYLES_XML, stylesXml.c_str(), stylesXml.size(),
-                                    MZ_DEFAULT_COMPRESSION)) {
-            return false;
-        }
-        
-        // Generate content
-        std::string contentXml = GenerateContentXml();
-        if (!mz_zip_writer_add_mem(&zip_, ODS::CONTENT_XML, contentXml.c_str(), contentXml.size(),
-                                    MZ_DEFAULT_COMPRESSION)) {
-            return false;
-        }
-        
-        // Generate meta.xml
-        std::string metaXml = GenerateMetaXml();
-        if (!mz_zip_writer_add_mem(&zip_, ODS::META_XML, metaXml.c_str(), metaXml.size(),
-                                    MZ_DEFAULT_COMPRESSION)) {
-            return false;
-        }
-        
-        // Generate manifest
-        std::string manifestXml = GenerateManifestXml();
-        if (!mz_zip_writer_add_mem(&zip_, ODS::MANIFEST_XML, manifestXml.c_str(), manifestXml.size(),
-                                    MZ_DEFAULT_COMPRESSION)) {
-            return false;
-        }
-        
-        // Finalize ZIP
-        if (!mz_zip_writer_finalize_archive(&zip_)) {
-            return false;
-        }
-        
-        return true;
+
+        return zip_.Finalize();
     }
-    
+
 private:
     std::string GenerateStylesXml() {
         std::stringstream ss;

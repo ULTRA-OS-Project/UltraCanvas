@@ -5,14 +5,14 @@ TextArea, Bitmap/Image, LaTeX and Spreadsheet elements, and proposes an
 architecture and phased plan for adding OpenDocument Text (`.odt`) and
 Microsoft Word (`.docx`, legacy `.doc`) support to UltraCanvas.
 
-> **Implementation status (2026-07):** Phases 1–3 are implemented, plus the
-> legacy `.doc` detection from Phase 4:
+> **Implementation status (2026-07):** Phases 1–4 are implemented:
 > - `UCZipPackage` reader/writer — `include/UltraCanvasZipPackage.h`,
 >   `core/UltraCanvasZipPackage.cpp`. The writer emits local headers with
 >   real sizes and no data-descriptor flag; LibreOffice's ODF package
->   reader rejects descriptor-flagged archives (the miniz writer used by
->   the ODS spreadsheet saver produces exactly those — migrating it to
->   UCZipPackage is a known follow-up).
+>   reader rejects descriptor-flagged archives, which is exactly what the
+>   miniz writer produces. The spreadsheet's `ODSSaver` has been migrated
+>   onto it, fixing .ods files that LibreOffice Calc previously refused to
+>   open.
 > - `UCRichDocument` + Markdown/HTML/plain serializers —
 >   `Plugins/Documents/Word/UltraCanvasRichDocument.{h,cpp}`.
 > - ODT + DOCX readers/writers and signature-based detection —
@@ -21,13 +21,20 @@ Microsoft Word (`.docx`, legacy `.doc`) support to UltraCanvas.
 > - `UltraCanvasFileLoader::OpenTextDocument` / `LoadTextDocument` typed
 >   loader.
 > - Texter opens `.odt`/`.docx` as editable Markdown and saves back to
->   either format; legacy `.doc` shows a convert-to-`.docx` message.
-> - Round-trip tests: `Tests/WordFormatsTest.cpp` (also validated against
->   LibreOffice Writer in both directions).
+>   either format.
+> - Legacy `.doc` text-only import — CFB container + WordDocument piece
+>   table (`Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp`), with
+>   CP1252/UTF-16 pieces, field-instruction stripping and table-mark
+>   handling. Export to `.doc` stays unsupported by design (save as
+>   `.docx`).
+> - Round-trip tests: `Tests/WordFormatsTest.cpp` + a real Word 97 fixture
+>   (`Tests/fixtures/legacy-word97.doc`); also validated against
+>   LibreOffice Writer/Calc in both directions.
 >
-> Remaining from the plan: read-only rich view via `ToHTML()`+HTMLConverter,
-> `ConvertFile` once the universal FileLoader API exists, legacy `.doc` CFB
-> text extraction, Phase 5 fidelity work, and the ODS saver migration above.
+> Remaining from the plan: read-only rich view via `ToHTML()`+HTMLConverter
+> (blocked on the eBook/HTML subsystem not yet being part of the build),
+> `ConvertFile` once the universal FileLoader API exists, and Phase 5
+> fidelity work.
 
 ---
 
