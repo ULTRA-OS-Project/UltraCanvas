@@ -1,6 +1,6 @@
 // UltraCanvasGLSurface.cpp
 // OpenGL 3D rendering surface implementation
-// Redraw event targets set via weak_from_this()/GetWeakWindow() (weak_ptr)
+// Redraw event targets set via weak_from_this()/GetWindowWeakPtr() (weak_ptr)
 // Last Modified: 2026-07-02
 #include "UltraCanvasGLSurface.h"
 #include "GL/GLContextManager.h"

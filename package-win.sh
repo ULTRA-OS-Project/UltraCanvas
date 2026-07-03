@@ -41,6 +41,7 @@ mkdir -p "$DIST_DIR"
 
 # Copy the executables
 cp ./build/bin/UltraCanvas*.exe "$DIST_DIR/"
+cp ./build/bin/*.dll "$DIST_DIR/"
 echo "Copied EXE"
 
 if $DO_SIGN; then

@@ -742,7 +742,7 @@ namespace UltraCanvas {
     void UltraCanvasMacOSWindow::OnWindowDidBecomeKey() {
         UCEvent event;
         event.type = UCEventType::WindowFocus;
-        event.targetWindow = GetWeakWindow();
+        event.targetWindow = GetWindowWeakPtr();
         event.nativeWindowHandle = GetNativeHandle();
         UltraCanvasApplication::GetInstance()->PushEvent(event);
     }
@@ -750,7 +750,7 @@ namespace UltraCanvas {
     void UltraCanvasMacOSWindow::OnWindowDidResignKey() {
         UCEvent event;
         event.type = UCEventType::WindowBlur;
-        event.targetWindow = GetWeakWindow();
+        event.targetWindow = GetWindowWeakPtr();
         event.nativeWindowHandle = GetNativeHandle();
         UltraCanvasApplication::GetInstance()->PushEvent(event);
     }

@@ -68,7 +68,7 @@ namespace UltraCanvas {
         dropTarget->onFileDrop = [this](const std::vector<std::string>& paths, int x, int y) {
             UCEvent event;
             event.type = UCEventType::Drop;
-            event.targetWindow = GetWeakWindow();
+            event.targetWindow = GetWindowWeakPtr();
             event.nativeWindowHandle = hwnd;
             // Drop coords arrive in PHYSICAL px; convert to LOGICAL.
             event.pointerWindow = PhysicalToLogical(Point2Di{ x, y });
@@ -87,7 +87,7 @@ namespace UltraCanvas {
         dropTarget->onDragEnter = [this](int x, int y) {
             UCEvent event;
             event.type = UCEventType::DragEnter;
-            event.targetWindow = GetWeakWindow();
+            event.targetWindow = GetWindowWeakPtr();
             event.nativeWindowHandle = hwnd;
             // Drop coords arrive in PHYSICAL px; convert to LOGICAL.
             event.pointerWindow = PhysicalToLogical(Point2Di{ x, y });
@@ -98,7 +98,7 @@ namespace UltraCanvas {
         dropTarget->onDragLeave = [this](int x, int y) {
             UCEvent event;
             event.type = UCEventType::DragLeave;
-            event.targetWindow = GetWeakWindow();
+            event.targetWindow = GetWindowWeakPtr();
             event.nativeWindowHandle = hwnd;
             // Drop coords arrive in PHYSICAL px; convert to LOGICAL.
             event.pointerWindow = PhysicalToLogical(Point2Di{ x, y });
@@ -109,7 +109,7 @@ namespace UltraCanvas {
         dropTarget->onDragOver = [this](int x, int y) {
             UCEvent event;
             event.type = UCEventType::DragOver;
-            event.targetWindow = GetWeakWindow();
+            event.targetWindow = GetWindowWeakPtr();
             event.nativeWindowHandle = hwnd;
             // Drop coords arrive in PHYSICAL px; convert to LOGICAL.
             event.pointerWindow = PhysicalToLogical(Point2Di{ x, y });

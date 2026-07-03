@@ -38,6 +38,15 @@ option(ULTRACANVAS_ENABLE_AUDIO "Enable audio playback & recording (requires bac
 option(ULTRACANVAS_ENABLE_VIDEO "Enable video playback & recording (requires platform media framework)" ON)
 option(ULTRACANVAS_ENABLE_GL "Enable OpenGL 3D surface support" ON)
 
+# The LaTeX plugin is a runtime-loaded module that subclasses core UI classes.
+# On Unix its undefined core symbols are resolved from the host executable at
+# dlopen() time (ENABLE_EXPORTS + RTLD_GLOBAL). Windows PE has no equivalent, so
+# the shared code must live in a DLL that both the apps and the plugin import.
+if(WIN32 AND ULTRACANVAS_PLUGIN_LATEX AND NOT ULTRACANVAS_BUILD_SHARED)
+    message(STATUS "Windows + LaTeX plugin: forcing shared core (ULTRACANVAS_BUILD_SHARED=ON)")
+    set(ULTRACANVAS_BUILD_SHARED ON)
+endif()
+
 # OpenGL surface support (Linux, macOS and Windows)
 # On Windows the WGL backend additionally requires GLEW to load modern GL
 # entry points; if GLEW is not found below, GL support is disabled there.
@@ -511,6 +520,13 @@ set_target_properties(${ULTRACANVAS_LIB_NAME} PROPERTIES
     OUTPUT_NAME "ultracanvas"
 )
 
+if(WIN32)
+    # No __declspec(dllexport) in the sources: export everything (functions AND
+    # data, incl. vtables/typeinfo the LaTeX plugin needs) and emit an import lib.
+    set_target_properties(${ULTRACANVAS_LIB_NAME} PROPERTIES
+        WINDOWS_EXPORT_ALL_SYMBOLS ON)
+endif()
+
 # ===== INCLUDE DIRECTORIES =====
 target_include_directories(${ULTRACANVAS_LIB_NAME}
     PUBLIC
@@ -946,8 +962,13 @@ if(ULTRACANVAS_PLUGIN_LATEX)
         PRIVATE MICROTEX_LIBRARY
         PUBLIC  GLYPH_RENDER_TYPE=1)
     set_target_properties(microtex_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
-    if(NOT MSVC)
-        target_compile_options(microtex_core PRIVATE -fexceptions)
+    # The vendored engine uses a u8"" literal (formula_def.cpp) that is char[]
+    # under C++17 but char8_t[] under C++20 (which this project forces globally),
+    # breaking std::string map initialisation. Keep u8"" as char[].
+    if(MSVC)
+        target_compile_options(microtex_core PRIVATE /Zc:char8_t-)
+    else()
+        target_compile_options(microtex_core PRIVATE -fexceptions -fno-char8_t)
     endif()
 
     # --- The on-demand shared module ---

@@ -332,7 +332,7 @@ namespace UltraCanvas {
         event.nativeWindowHandle = hwnd;
         auto* tw = FindWindow(hwnd);
         if (tw) {
-            event.targetWindow = tw->GetWeakWindow();
+            event.targetWindow = tw->GetWindowWeakPtr();
         }
 
         // Windows delivers mouse coords in PHYSICAL client px (the process is
