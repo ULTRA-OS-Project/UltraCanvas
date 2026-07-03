@@ -1290,8 +1290,10 @@ namespace UltraCanvas {
                                ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/AudioFX"); });
         modulesBuilder.AddItem("fileloader", "File Loader", "File Loader",
-                               ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreateModuleDocScreen("Docs/Modules/FileLoader"); });
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateFileLoaderExamples(); },
+                               "Apps/DemoApp/UltraCanvasFileLoaderExamples.cpp",
+                               "Docs/Modules/FileLoader/README.md");
         modulesBuilder.AddItem("iodevicemanager", "IODeviceManager support", "IODeviceManager support",
                                ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/IODeviceManager"); });

@@ -313,6 +313,8 @@ namespace UltraCanvas {
 #endif
         std::shared_ptr<UltraCanvasUIElement> CreateSVGVectorExamples();
 
+        // FileLoader module page: Overview / Details / Examples tabs, the last one
+        // an interactive Open / Save playground across the supported file families.
         std::shared_ptr<UltraCanvasUIElement> CreateFileLoaderExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateMarkdownDocScreen(const std::string& filename);
         // Composite module documentation screen: short intro (Markdown) on top, an
