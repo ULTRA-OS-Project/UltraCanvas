@@ -1,7 +1,7 @@
 // OS/Linux/UltraCanvasLinuxWindow.cpp
 // Complete Linux window implementation with all methods
-// Version: 1.1.2 - event.targetWindow set via GetWeakWindow() (weak_ptr)
-// Last Modified: 2026-07-02
+// Version: 1.2.0 - per-monitor HiDPI: physical surface/window, hybrid DPI detect
+// Last Modified: 2026-07-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -10,9 +10,26 @@
 #include "../libspecific/Cairo/RenderContextCairo.h"
 #include <iostream>
 #include <cstring>
+#include <cstdlib>
+#include <cmath>
+#include <X11/Xresource.h>
+#include <X11/extensions/Xrandr.h>
 #include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
+
+    // Snap a noisy XRandR-derived scale to the nearest common step so tiny
+    // EDID/mm errors don't produce jittery fractional factors. Env/Xft.dpi
+    // values are precise and honored as-is (not snapped).
+    static float SnapDeviceScale(float s) {
+        static const float steps[] = {1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.5f, 3.0f};
+        float best = 1.0f, bestErr = 1e9f;
+        for (float st : steps) {
+            float e = std::fabs(st - s);
+            if (e < bestErr) { bestErr = e; best = st; }
+        }
+        return best;
+    }
 
 // ===== CONSTRUCTOR & DESTRUCTOR =====
     UltraCanvasLinuxWindow::UltraCanvasLinuxWindow()
@@ -115,14 +132,22 @@ namespace UltraCanvas {
 //        unsigned long valueMask = CWBackPixel | CWBorderPixel | CWColormap | CWEventMask | CWBackingStore;
         unsigned long valueMask = CWColormap | CWEventMask | CWBackingStore;
 
+        // Seed the device scale for the monitor this window opens on. X11 window
+        // sizes/positions are in PHYSICAL px, so the client area must be created
+        // at logical × deviceScale to appear the correct size on a HiDPI display.
+        RefreshDeviceScale();
+        const int physW = LogicalToPhysical(config_.width);
+        const int physH = LogicalToPhysical(config_.height);
+
         debugOutput << "UltraCanvas Linux: Creating X11 window with dimensions: "
-                  << config_.width << "x" << config_.height
+                  << config_.width << "x" << config_.height << " (logical) -> "
+                  << physW << "x" << physH << " px @ " << deviceScale << "x"
                   << " at position: " << config_.x << "," << config_.y << std::endl;
 
         xWindow = XCreateWindow(
                 display, rootWindow,
                 config_.x, config_.y,
-                config_.width, config_.height,
+                physW, physH,
                 0, // border width
                 application->GetDepth(),
                 InputOutput,
@@ -174,7 +199,8 @@ namespace UltraCanvas {
             event.type = UCEventType::Drop;
             event.targetWindow = GetWindowWeakPtr();
             event.nativeWindowHandle = xWindow;
-            event.pointerWindow = { x, y };
+            // XDnD coords arrive in PHYSICAL px; convert to LOGICAL.
+            event.pointerWindow = PhysicalToLogical(Point2Di{ x, y });
             event.pointer = event.pointerWindow;
             event.droppedFiles = paths;
             event.dragMimeType = "text/uri-list";
@@ -193,7 +219,8 @@ namespace UltraCanvas {
             event.type = UCEventType::DragEnter;
             event.targetWindow = GetWindowWeakPtr();
             event.nativeWindowHandle = xWindow;
-            event.pointerWindow = { x, y };
+            // XDnD coords arrive in PHYSICAL px; convert to LOGICAL.
+            event.pointerWindow = PhysicalToLogical(Point2Di{ x, y });
             event.pointer = event.pointerWindow;
             UltraCanvasApplication::GetInstance()->PushEvent(event);
         };
@@ -203,7 +230,8 @@ namespace UltraCanvas {
             event.type = UCEventType::DragLeave;
             event.targetWindow = GetWindowWeakPtr();
             event.nativeWindowHandle = xWindow;
-            event.pointerWindow = { x, y };
+            // XDnD coords arrive in PHYSICAL px; convert to LOGICAL.
+            event.pointerWindow = PhysicalToLogical(Point2Di{ x, y });
             event.pointer = event.pointerWindow;
             UltraCanvasApplication::GetInstance()->PushEvent(event);
         };
@@ -213,7 +241,8 @@ namespace UltraCanvas {
             event.type = UCEventType::DragOver;
             event.targetWindow = GetWindowWeakPtr();
             event.nativeWindowHandle = xWindow;
-            event.pointerWindow = { x, y };
+            // XDnD coords arrive in PHYSICAL px; convert to LOGICAL.
+            event.pointerWindow = PhysicalToLogical(Point2Di{ x, y });
             event.pointer = event.pointerWindow;
             UltraCanvasApplication::GetInstance()->PushEvent(event);
         };        
@@ -231,15 +260,25 @@ namespace UltraCanvas {
         Display* display = application->GetDisplay();
         Visual* visual = application->GetVisual();
 
+        // The X window is sized in PHYSICAL px (logical × deviceScale); the xlib
+        // surface must match the drawable.
+        const int physW = LogicalToPhysical(config_.width);
+        const int physH = LogicalToPhysical(config_.height);
+
         nativeSurface = cairo_xlib_surface_create(
                 display, xWindow, visual,
-                config_.width, config_.height
+                physW, physH
         );
 
         if (!nativeSurface) {
             debugOutput << "UltraCanvas Linux: cairo_xlib_surface_create failed" << std::endl;
             return false;
         }
+
+        // Tell Cairo 1 user unit = deviceScale device px; UI keeps drawing in
+        // logical coordinates while Cairo rasterizes onto the larger pixel grid.
+        cairo_surface_set_device_scale(static_cast<cairo_surface_t *>(nativeSurface),
+                                       deviceScale, deviceScale);
 
         // Pin the surface fallback DPI to 96 so Pango's draw-time
         // pango_cairo_update_layout() doesn't pull in the X server's reported
@@ -259,7 +298,104 @@ namespace UltraCanvas {
         debugOutput << "UltraCanvas Linux: Cairo surface and context created successfully" << std::endl;
         return true;
     }
-    bool UltraCanvasLinuxWindow::CreateXIC() {        
+
+    float UltraCanvasLinuxWindow::QueryXRandRScaleForWindow(Display* display) const {
+        if (!display) return 0.0f;
+        Window root = DefaultRootWindow(display);
+
+        // Determine the window's current position/size in PHYSICAL root coords.
+        // Prefer live geometry (robust when the window has moved between monitors);
+        // fall back to config when the window doesn't exist yet.
+        int wx = config_.x, wy = config_.y;
+        int pw = LogicalToPhysical(config_.width);
+        int ph = LogicalToPhysical(config_.height);
+        if (xWindow != 0) {
+            Window child;
+            XTranslateCoordinates(display, xWindow, root, 0, 0, &wx, &wy, &child);
+            XWindowAttributes attrs;
+            if (XGetWindowAttributes(display, xWindow, &attrs)) {
+                pw = attrs.width;
+                ph = attrs.height;
+            }
+        }
+        const int cx = wx + pw / 2;
+        const int cy = wy + ph / 2;
+
+        int nmon = 0;
+        XRRMonitorInfo* mons = XRRGetMonitors(display, root, True, &nmon);
+        if (!mons || nmon <= 0) {
+            if (mons) XRRFreeMonitors(mons);
+            return 0.0f;
+        }
+        float scale = 0.0f;
+        for (int i = 0; i < nmon; ++i) {
+            const XRRMonitorInfo& m = mons[i];
+            if (cx >= m.x && cx < m.x + m.width && cy >= m.y && cy < m.y + m.height) {
+                if (m.mwidth > 0) {
+                    double dpi = static_cast<double>(m.width) * 25.4 / static_cast<double>(m.mwidth);
+                    if (dpi > 0.0) scale = SnapDeviceScale(static_cast<float>(dpi / 96.0));
+                }
+                break;
+            }
+        }
+        XRRFreeMonitors(mons);
+        return scale;
+    }
+
+    float UltraCanvasLinuxWindow::QueryNativeDeviceScale() const {
+        // 1. Explicit desktop/toolkit env overrides (honored as-is, fractional OK).
+        if (const char* s = getenv("GDK_SCALE")) {
+            float v = static_cast<float>(atof(s));
+            if (v > 0.0f) return v;
+        }
+        if (const char* s = getenv("QT_SCALE_FACTOR")) {
+            float v = static_cast<float>(atof(s));
+            if (v > 0.0f) return v;
+        }
+
+        auto* app = UltraCanvasApplication::GetInstance();
+        Display* display = app ? app->GetDisplay() : nullptr;
+        if (!display) return 1.0f;
+
+        // 2. Xft.dpi from the X resource DB (what most desktops set, precise).
+        if (char* rms = XResourceManagerString(display)) {
+            if (XrmDatabase db = XrmGetStringDatabase(rms)) {
+                char* type = nullptr;
+                XrmValue val;
+                float scale = 0.0f;
+                if (XrmGetResource(db, "Xft.dpi", "Xft.Dpi", &type, &val) && val.addr) {
+                    double dpi = atof(val.addr);
+                    if (dpi > 0.0) scale = static_cast<float>(dpi / 96.0);
+                }
+                XrmDestroyDatabase(db);
+                if (scale > 0.0f) return scale;
+            }
+        }
+
+        // 3. XRandR per-monitor physical DPI for the monitor under the window.
+        float randrScale = QueryXRandRScaleForWindow(display);
+        if (randrScale > 0.0f) return randrScale;
+
+        // 4. Default.
+        return 1.0f;
+    }
+
+    bool UltraCanvasLinuxWindow::RecreateNativeSurface() {
+        std::lock_guard<std::mutex> lock(cairoMutex);
+
+        auto old = nativeSurface;
+        if (!CreateNativeCairoSurface()) {
+            return false;
+        }
+        if (old) {
+            cairo_surface_destroy(static_cast<cairo_surface_t *>(old));
+        }
+        debugOutput << "UltraCanvasLinuxWindow::RecreateNativeSurface: rebuilt @ "
+                    << deviceScale << "x" << std::endl;
+        return true;
+    }
+
+    bool UltraCanvasLinuxWindow::CreateXIC() {
         xic = nullptr;
         auto application = dynamic_cast<UltraCanvasLinuxApplication*>(UltraCanvasApplication::GetInstance());
         auto xim = application->GetXIM();
@@ -462,7 +598,9 @@ namespace UltraCanvas {
 
         if (_created) {
             auto application = UltraCanvasApplication::GetInstance();
-            XResizeWindow(application->GetDisplay(), xWindow, width, height);
+            // X11 window sizes are PHYSICAL px; config_ is LOGICAL.
+            XResizeWindow(application->GetDisplay(), xWindow,
+                          LogicalToPhysical(width), LogicalToPhysical(height));
             _needsResize = true;
 //            UpdateCairoSurface(width, height);
         } else {
@@ -637,14 +775,15 @@ namespace UltraCanvas {
 
         hints.flags = PMinSize | PMaxSize;
 
+        // WM size hints are enforced in PHYSICAL px; config limits are LOGICAL.
         if (config_.resizable) {
-            hints.min_width = config_.minWidth > 0 ? config_.minWidth : 100;
-            hints.min_height = config_.minHeight > 0 ? config_.minHeight : 100;
-            hints.max_width = config_.maxWidth > 0 ? config_.maxWidth : 4096;
-            hints.max_height = config_.maxHeight > 0 ? config_.maxHeight : 4096;
+            hints.min_width  = LogicalToPhysical(config_.minWidth  > 0 ? config_.minWidth  : 100);
+            hints.min_height = LogicalToPhysical(config_.minHeight > 0 ? config_.minHeight : 100);
+            hints.max_width  = LogicalToPhysical(config_.maxWidth  > 0 ? config_.maxWidth  : 4096);
+            hints.max_height = LogicalToPhysical(config_.maxHeight > 0 ? config_.maxHeight : 4096);
         } else {
-            hints.min_width = hints.max_width = config_.width;
-            hints.min_height = hints.max_height = config_.height;
+            hints.min_width = hints.max_width = LogicalToPhysical(config_.width);
+            hints.min_height = hints.max_height = LogicalToPhysical(config_.height);
         }
 
         XSetWMNormalHints(display, xWindow, &hints);
@@ -685,11 +824,10 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasLinuxWindow::DoResizeNative() {
-        std::lock_guard<std::mutex> lock(cairoMutex);  // Add this
-
-        if (nativeSurface) {
-            cairo_xlib_surface_set_size(static_cast<cairo_surface_t *>(nativeSurface), config_.width, config_.height);
-        }
+        // Rebuild the xlib surface at the new physical size (logical × deviceScale)
+        // with the device scale re-asserted. RecreateNativeSurface() takes
+        // cairoMutex internally, so do not hold it here.
+        RecreateNativeSurface();
 
         InvalidateWindowNative();
         XFlush(UltraCanvasApplication::GetInstance()->GetDisplay());

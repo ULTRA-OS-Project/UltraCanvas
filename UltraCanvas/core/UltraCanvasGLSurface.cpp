@@ -361,8 +361,13 @@ bool UltraCanvasGLSurface::EnsureFramebuffer() {
         return false;
     }
 
-    int width = surfaceWidth_;
-    int height = surfaceHeight_;
+    // Render the framebuffer at PHYSICAL resolution so GL content stays crisp on
+    // HiDPI displays. surfaceWidth_/Height_ are LOGICAL; the destination rect
+    // used in CompositeToSurface stays logical, and the composite scales the
+    // physical FBO into it 1:1 against the render context's device scale.
+    float scale = GetSurfaceDeviceScale();
+    int width  = static_cast<int>(surfaceWidth_  * scale + 0.5f);
+    int height = static_cast<int>(surfaceHeight_ * scale + 0.5f);
 
     if (width <= 0 || height <= 0) {
         return false;
@@ -395,9 +400,21 @@ bool UltraCanvasGLSurface::EnsureFramebuffer() {
         }
 
         needsResize_ = false;
+        // Force a content re-render into the freshly (re)sized framebuffer — a
+        // pure DPI change alters the physical size without touching the logical
+        // bounds, so the Render() sync block above would not have requested one.
+        renderRequested_ = true;
     }
 
     return true;
+}
+
+float UltraCanvasGLSurface::GetSurfaceDeviceScale() const {
+    if (UltraCanvasWindowBase* w = GetWindow()) {
+        float s = w->GetDeviceScale();
+        if (s > 0.0f) return s;
+    }
+    return 1.0f;
 }
 
 void UltraCanvasGLSurface::RenderToFramebuffer() {
@@ -467,10 +484,13 @@ RenderSurfaceInfo UltraCanvasGLSurface::BuildRenderInfo() {
     auto now = std::chrono::steady_clock::now();
     double deltaTime = std::chrono::duration<double>(now - lastRenderTime_).count();
 
+    // Report the PHYSICAL framebuffer size and the DPI ratio so GL user code
+    // sets its glViewport/projection at full device resolution.
+    float scale = GetSurfaceDeviceScale();
     RenderSurfaceInfo info;
-    info.width = surfaceWidth_;
-    info.height = surfaceHeight_;
-    info.devicePixelRatio = 1.0f;  // TODO: Get actual DPI scaling from window
+    info.width = static_cast<int>(surfaceWidth_  * scale + 0.5f);
+    info.height = static_cast<int>(surfaceHeight_ * scale + 0.5f);
+    info.devicePixelRatio = scale;
     info.deltaTime = deltaTime;
     info.frameNumber = frameNumber_;
 

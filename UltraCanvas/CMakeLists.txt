@@ -13,7 +13,7 @@ include(FetchContent)
 enable_language(C)
 
 # ===== LIBRARY DEFINITION =====
-set(ULTRACANVAS_VERSION "0.2.31")
+set(ULTRACANVAS_VERSION "0.2.32")
 set(ULTRACANVAS_LIB_NAME "UltraCanvas")
 
 message(STATUS "")
@@ -113,7 +113,8 @@ endif()
 
 # Platform-specific dependencies
 if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
-    pkg_check_modules(X11 REQUIRED x11 xcursor)
+    # xrandr: per-monitor DPI query for HiDPI scaling (XRRGetMonitors).
+    pkg_check_modules(X11 REQUIRED x11 xcursor xrandr)
     find_package(OpenGL REQUIRED)
     pkg_check_modules(GTK3 REQUIRED gtk+-3.0 gtk+-unix-print-3.0)
 
@@ -909,7 +910,7 @@ if(ULTRACANVAS_PLUGIN_VECTORIZER)
     endif()
 else()
     message(STATUS "  [−] Vectorizer Plugin - SKIPPED (disabled by option)")
-
+endif()
 # LaTeX Plugin (embedded MicroTeX) - ON-DEMAND dynamic module
 #
 # LaTeX support is a load-on-demand module, in line with UltraCanvas' goal of
