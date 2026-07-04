@@ -222,8 +222,15 @@ vendor's developer documentation.
 
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
-| Archive formats | libarchive, libmspack, wimlib | libarchive, libmspack, wimlib | libarchive, libmspack, wimlib |
-| Compression | zlib, libzstd, liblz4, libbrotli | zlib, libzstd, liblz4, libbrotli | zlib, libzstd, liblz4, libbrotli |
+| Archive formats | libarchive | libarchive | libarchive |
+| Compression | zlib; optional: libzstd, liblz4 | zlib; optional: libzstd, liblz4 | zlib; optional: libzstd, liblz4 |
+| Planned providers (CHM/LIT, WIM, Brotli) | libmspack, wimlib, libbrotli (not yet wired) | libmspack, wimlib, libbrotli (not yet wired) | libmspack, wimlib, libbrotli (not yet wired) |
+
+> The build degrades gracefully: configure succeeds without libarchive or
+> zlib, the affected features are just compiled out with a warning. Zstandard
+> and LZ4 are opt-in via `-DVIRTUALFS_USE_ZSTD=ON` / `-DVIRTUALFS_USE_LZ4=ON`
+> (both default OFF). libmspack, wimlib, and libbrotli belong to the planned
+> CHM/LIT, WIM, and Brotli providers and are not detected by the build yet.
 
 ---
 

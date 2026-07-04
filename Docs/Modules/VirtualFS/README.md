@@ -57,12 +57,12 @@ interface in `VirtualFS/VirtualFSProvider.h`.
 | Algorithm | Type | Speed | Ratio | Use case |
 |---|---|---|---|---|
 | Deflate | `VirtualFSCompressionMethod::Deflate` | Fast | Good | ZIP default |
-| GZIP | `VirtualFSCompressionMethod::GZIP` | Fast | Good | Web, HTTP |
+| GZIP | `UCVFSCompressionType::GZIP` (bridge) | Fast | Good | Web, HTTP |
 | BZip2 | `VirtualFSCompressionMethod::BZip2` | Slow | Better | Legacy TAR |
 | LZMA/LZMA2 | `VirtualFSCompressionMethod::LZMA2` | Slow | Best | 7-Zip, XZ |
 | **Zstandard** | `VirtualFSCompressionMethod::Zstd` | Very fast | Excellent | **Recommended** |
 | LZ4 | `VirtualFSCompressionMethod::LZ4` | Fastest | Moderate | Real-time |
-| LZX | `VirtualFSCompressionMethod::LZX` | Moderate | Good | CAB, CHM, WIM |
+| LZX | `UCVFSCompressionType::LZX` (bridge) | Moderate | Good | CAB, CHM, WIM |
 | Brotli | `VirtualFSCompressionMethod::Brotli` | Moderate | Excellent | Web content |
 
 ---
@@ -228,13 +228,16 @@ direct zlib calls throughout the codebase.
 
 | Library | Purpose | Required |
 |---|---|---|
-| **libarchive** | Core format support (40+ formats) | Yes |
-| **zlib** | Deflate/GZIP compression | Yes |
-| **libzstd** | Zstandard compression | Recommended |
-| **liblz4** | LZ4 fast compression | Optional |
-| **libmspack** | CHM, LIT, CAB (extended) | Optional |
-| **wimlib** | WIM format | Optional |
-| **libbrotli** | Brotli compression | Optional |
+| **libarchive** | Core format support (40+ formats) | Yes¹ |
+| **zlib** | Deflate/GZIP compression | Yes¹ |
+| **libzstd** | Zstandard compression | Recommended — `-DVIRTUALFS_USE_ZSTD=ON` (default OFF) |
+| **liblz4** | LZ4 fast compression | Optional — `-DVIRTUALFS_USE_LZ4=ON` (default OFF) |
+| **libmspack** | CHM, LIT, CAB (extended) | Planned — CHM provider not yet wired |
+| **wimlib** | WIM format | Planned — WIM provider not yet wired |
+| **libbrotli** | Brotli compression | Planned — detected by CMake, not yet used |
+
+¹ The build degrades gracefully: configure succeeds without libarchive or
+zlib; the affected features are compiled out with a warning.
 
 ---
 
