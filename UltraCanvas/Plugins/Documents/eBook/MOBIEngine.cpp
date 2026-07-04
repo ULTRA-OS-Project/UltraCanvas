@@ -1,950 +1,639 @@
 // Plugins/Documents/eBook/MOBIEngine.cpp
-// Mobipocket (MOBI/PRC) eBook Engine Implementation
+// Mobipocket / Kindle engine: PDB records → PalmDOC-decompressed HTML →
+// chapters + images, fed to HTML::ElementBuilder like every other engine.
 // Version: 1.0.0
-// Last Modified: 2025-01-10
+// Last Modified: 2026-07-03
 // Author: UltraCanvas Framework
 
 #include "MOBIEngine.h"
-#include <fstream>
-#include <sstream>
+
+#include "HTMLReader/HTMLDocument.h"   // HTML::ExtractPlainText
+
 #include <algorithm>
-#include <regex>
+#include <cctype>
 #include <cstring>
-#include <codecvt>
-#include <locale>
 
 namespace UltraCanvas {
 
-// ============================================================================
-// BYTE ORDER HELPERS (MOBI uses Big-Endian)
-// ============================================================================
+namespace {
 
-uint16_t MOBIEngine::ReadBE16(const uint8_t* data) {
-    return (static_cast<uint16_t>(data[0]) << 8) |
-           static_cast<uint16_t>(data[1]);
-}
+// EXTH record types we care about.
+enum : uint32_t {
+    kExthAuthor = 100,
+    kExthPublisher = 101,
+    kExthDescription = 103,
+    kExthIsbn = 104,
+    kExthSubject = 105,
+    kExthDate = 106,
+    kExthRights = 109,
+    kExthCoverOffset = 201,
+    kExthUpdatedTitle = 503,
+    kExthLanguage = 524,
+};
 
-uint32_t MOBIEngine::ReadBE32(const uint8_t* data) {
-    return (static_cast<uint32_t>(data[0]) << 24) |
-           (static_cast<uint32_t>(data[1]) << 16) |
-           (static_cast<uint32_t>(data[2]) << 8) |
-           static_cast<uint32_t>(data[3]);
-}
+// windows-1252 mapping for bytes 0x80..0x9F (the only range that differs from
+// Latin-1). 0x00 marks an undefined slot (kept as the raw byte).
+constexpr uint16_t kCp1252High[32] = {
+    0x20AC, 0x0000, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021,
+    0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0x0000, 0x017D, 0x0000,
+    0x0000, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014,
+    0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0x0000, 0x017E, 0x0178
+};
 
-// ============================================================================
-// CONSTRUCTOR & DESTRUCTOR
-// ============================================================================
-
-MOBIEngine::MOBIEngine()
-    : isLoaded(false)
-    , pageCount(0) {
-}
-
-MOBIEngine::~MOBIEngine() {
-    Close();
-}
-
-// ============================================================================
-// FORMAT IDENTIFICATION
-// ============================================================================
-
-EBookFormat MOBIEngine::GetFormat() const {
-    return EBookFormat::MOBI;
-}
-
-std::string MOBIEngine::GetFormatName() const {
-    if (parsedData.isKF8) {
-        return "Kindle Format 8 (KF8/AZW3)";
+void AppendUTF8(std::string& out, uint32_t cp) {
+    if (cp < 0x80) {
+        out += static_cast<char>(cp);
+    } else if (cp < 0x800) {
+        out += static_cast<char>(0xC0 | (cp >> 6));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+    } else {
+        out += static_cast<char>(0xE0 | (cp >> 12));
+        out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
     }
-    return "Mobipocket (MOBI)";
 }
 
-std::vector<std::string> MOBIEngine::GetSupportedExtensions() const {
-    return { "mobi", "prc", "azw" };
+std::string LowerCopy(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return s;
+}
+
+// Case-insensitive substring search from `from`.
+size_t FindCI(const std::string& hay, const std::string& needleLower, size_t from) {
+    for (size_t i = from; i + needleLower.size() <= hay.size(); ++i) {
+        bool ok = true;
+        for (size_t j = 0; j < needleLower.size(); ++j) {
+            if (std::tolower(static_cast<unsigned char>(hay[i + j])) != needleLower[j]) {
+                ok = false;
+                break;
+            }
+        }
+        if (ok) return i;
+    }
+    return std::string::npos;
+}
+
+std::string TrimCopy(const std::string& s) {
+    size_t a = 0, b = s.size();
+    while (a < b && std::isspace(static_cast<unsigned char>(s[a]))) ++a;
+    while (b > a && std::isspace(static_cast<unsigned char>(s[b - 1]))) --b;
+    return s.substr(a, b - a);
+}
+
+} // namespace
+
+// ============================================================================
+// BYTE READERS
+// ============================================================================
+
+uint16_t MOBIEngine::ReadBE16(const uint8_t* p) {
+    return static_cast<uint16_t>((p[0] << 8) | p[1]);
+}
+
+uint32_t MOBIEngine::ReadBE32(const uint8_t* p) {
+    return (static_cast<uint32_t>(p[0]) << 24) | (static_cast<uint32_t>(p[1]) << 16) |
+           (static_cast<uint32_t>(p[2]) << 8) | static_cast<uint32_t>(p[3]);
 }
 
 // ============================================================================
-// DOCUMENT LOADING
+// ENCODING
 // ============================================================================
 
-bool MOBIEngine::LoadFile(const std::string& filePath, const std::string& password) {
-    Close();
-    currentFilePath = filePath;
-    
-    ReportProgress(0.0f, "Opening file...");
-    
-    // Read file
-    std::ifstream file(filePath, std::ios::binary | std::ios::ate);
-    if (!file.is_open()) {
-        lastError = "Failed to open file: " + filePath;
-        return false;
-    }
-    
-    size_t fileSize = file.tellg();
-    if (fileSize < sizeof(PDBHeader)) {
-        lastError = "File too small to be valid MOBI";
-        return false;
-    }
-    
-    file.seekg(0);
-    std::vector<uint8_t> data(fileSize);
-    file.read(reinterpret_cast<char*>(data.data()), fileSize);
-    file.close();
-    
-    return LoadFromMemory(data, password);
-}
-
-bool MOBIEngine::LoadFromMemory(const std::vector<uint8_t>& data,
-                                 const std::string& password) {
-    Close();
-    
-    if (data.size() < sizeof(PDBHeader)) {
-        lastError = "Data too small to be valid MOBI";
-        return false;
-    }
-    
-    ReportProgress(0.1f, "Parsing PDB header...");
-    
-    // Parse PDB header
-    if (!ParsePDBHeader(data.data(), data.size())) {
-        return false;
-    }
-    
-    ReportProgress(0.2f, "Parsing record list...");
-    
-    // Parse record list
-    if (!ParseRecordList(data.data(), data.size())) {
-        return false;
-    }
-    
-    ReportProgress(0.3f, "Extracting records...");
-    
-    // Extract all records
-    if (!ExtractRecords(data.data(), data.size())) {
-        return false;
-    }
-    
-    ReportProgress(0.4f, "Parsing MOBI headers...");
-    
-    // Parse Record 0 (headers and metadata)
-    if (!parsedData.records.empty()) {
-        if (!ParseRecord0(parsedData.records[0])) {
-            return false;
+std::string MOBIEngine::Cp1252ToUTF8(const std::string& in) {
+    std::string out;
+    out.reserve(in.size());
+    for (unsigned char c : in) {
+        if (c < 0x80) {
+            out += static_cast<char>(c);
+        } else if (c < 0xA0) {
+            uint16_t cp = kCp1252High[c - 0x80];
+            AppendUTF8(out, cp ? cp : c);
+        } else {
+            AppendUTF8(out, c);   // 0xA0..0xFF map 1:1 to U+00A0..U+00FF
         }
     }
-    
-    // Check for encryption
-    if (parsedData.isEncrypted) {
-        if (password.empty()) {
-            lastError = "Document is encrypted and no password provided";
-            return false;
+    return out;
+}
+
+// ============================================================================
+// PALMDOC (LZ77) DECOMPRESSION
+// ============================================================================
+
+std::vector<uint8_t> MOBIEngine::DecompressPalmDOC(const uint8_t* data, size_t size) {
+    std::vector<uint8_t> out;
+    out.reserve(size * 4);
+
+    size_t i = 0;
+    while (i < size) {
+        uint8_t c = data[i++];
+        if (c == 0x00) {
+            out.push_back(0x00);
+        } else if (c <= 0x08) {
+            // Copy the next c bytes literally.
+            for (int j = 0; j < c && i < size; ++j) out.push_back(data[i++]);
+        } else if (c <= 0x7F) {
+            out.push_back(c);
+        } else if (c <= 0xBF) {
+            // 2-byte length/distance pair.
+            if (i >= size) break;
+            uint16_t pair = static_cast<uint16_t>((c << 8) | data[i++]);
+            int distance = (pair >> 3) & 0x07FF;
+            int length = (pair & 0x07) + 3;
+            if (distance == 0) break;
+            for (int j = 0; j < length; ++j) {
+                if (distance > static_cast<int>(out.size())) break;
+                out.push_back(out[out.size() - distance]);
+            }
+        } else {
+            // 0xC0..0xFF: space followed by (c ^ 0x80).
+            out.push_back(' ');
+            out.push_back(static_cast<uint8_t>(c ^ 0x80));
         }
-        // DRM decryption not implemented for legal reasons
-        lastError = "DRM-protected documents are not supported";
-        return false;
     }
-    
-    ReportProgress(0.5f, "Extracting text content...");
-    
-    // Extract text content
-    if (!ExtractTextContent()) {
-        return false;
+    return out;
+}
+
+// ============================================================================
+// TRAILING DATA ENTRIES
+// ============================================================================
+
+namespace {
+
+// Size (in bytes) of the trailing entry at the end of `ptr[0..size)`,
+// read as a backwards big-endian base-128 varint (KindleUnpack algorithm).
+uint32_t BackwardVarintSize(const uint8_t* ptr, size_t size) {
+    uint32_t bitpos = 0, result = 0;
+    size_t p = size;
+    while (p > 0) {
+        uint8_t v = ptr[p - 1];
+        result |= static_cast<uint32_t>(v & 0x7F) << bitpos;
+        bitpos += 7;
+        --p;
+        if ((v & 0x80) || bitpos >= 28) break;
     }
-    
-    ReportProgress(0.7f, "Extracting images...");
-    
-    // Extract images
+    return result;
+}
+
+} // namespace
+
+size_t MOBIEngine::TextRecordPayloadSize(const std::vector<uint8_t>& record) const {
+    size_t size = record.size();
+    // Each set bit above bit 0 marks an appended trailing entry, sized by a
+    // backwards varint at the very end.
+    for (uint16_t flags = extraDataFlags >> 1; flags; flags >>= 1) {
+        if (!(flags & 1)) continue;
+        if (size == 0) break;
+        uint32_t entry = BackwardVarintSize(record.data(), size);
+        if (entry == 0 || entry > size) break;
+        size -= entry;
+    }
+    // Bit 0: a trailing multibyte-overlap run whose length is in the low bits
+    // of the last remaining byte.
+    if ((extraDataFlags & 1) && size > 0) {
+        size_t n = (record[size - 1] & 0x03) + 1;
+        size = (n <= size) ? size - n : 0;
+    }
+    return size;
+}
+
+// ============================================================================
+// LIFECYCLE
+// ============================================================================
+
+bool MOBIEngine::LoadFromMemory(std::vector<uint8_t> data,
+                                const std::string& password) {
+    (void)password;
+    Close();
+
+    ReportProgress(0.1f, "Reading records...");
+    if (!ParseRecords(data.data(), data.size())) return false;
+
+    ReportProgress(0.3f, "Reading headers...");
+    if (!ParseRecord0()) return false;
+
+    ReportProgress(0.6f, "Decompressing text...");
+    if (!DecompressText()) return false;
+
     ExtractImages();
-    
-    ReportProgress(0.8f, "Building metadata...");
-    
-    // Build metadata from EXTH records
     BuildMetadata();
-    
-    ReportProgress(0.9f, "Building table of contents...");
-    
-    // Build table of contents
-    BuildTableOfContents();
-    
-    // Calculate pages
-    CalculatePages();
-    
-    isLoaded = true;
-    
+    BuildChapters();
+    if (chapters.empty()) {
+        Fail("MOBI document has no readable text");
+        return false;
+    }
+    BuildTOC();
+
+    metadata.format = format;
+    metadata.chapterCount = static_cast<int>(chapters.size());
+    metadata.hasCover = !GetCoverImage().empty();
+
+    loaded = true;
     ReportProgress(1.0f, "Complete");
-    
     return true;
 }
 
 void MOBIEngine::Close() {
-    parsedData = MOBIParsedData();
-    metadata = EBookMetadata();
-    tableOfContents.clear();
-    pageInfos.clear();
-    isLoaded = false;
-    pageCount = 0;
-    lastError.clear();
-}
-
-bool MOBIEngine::IsLoaded() const {
-    return isLoaded;
-}
-
-// ============================================================================
-// VALIDATION
-// ============================================================================
-
-bool MOBIEngine::ValidateFile(const std::string& filePath) {
-    std::ifstream file(filePath, std::ios::binary);
-    if (!file.is_open()) {
-        return false;
-    }
-    
-    // Read PDB header
-    uint8_t header[78];
-    file.read(reinterpret_cast<char*>(header), sizeof(header));
-    if (!file.good()) {
-        return false;
-    }
-    
-    return MOBIDetection::IsMOBIType(header, sizeof(header));
+    ResetBaseState();
+    records.clear();
+    chapters.clear();
+    images.clear();
+    exth.clear();
+    fullHtml.clear();
+    fullName.clear();
+    coverImageNumber = -1;
+    compression = 1;
+    textRecordCount = 0;
+    firstImageIndex = 0;
+    textEncoding = 1252;
+    exthCoverOffset = 0xFFFFFFFF;
+    extraDataFlags = 0;
+    hasExth = false;
+    format = EBookFormat::MOBI;
+    formatName = "Mobipocket";
 }
 
 // ============================================================================
-// STATIC DETECTION METHODS
+// PDB RECORDS
 // ============================================================================
 
-bool MOBIEngine::IsMOBIFile(const std::string& filePath) {
-    return MOBIDetection::HasMOBIExtension(filePath);
-}
-
-bool MOBIEngine::IsMOBIData(const uint8_t* data, size_t size) {
-    return MOBIDetection::IsMOBIType(data, size);
-}
-
-// ============================================================================
-// PDB PARSING
-// ============================================================================
-
-bool MOBIEngine::ParsePDBHeader(const uint8_t* data, size_t size) {
-    if (size < sizeof(PDBHeader)) {
-        lastError = "Data too small for PDB header";
+bool MOBIEngine::ParseRecords(const uint8_t* data, size_t size) {
+    if (size < 78) {
+        Fail("Not a MOBI file: too small");
         return false;
     }
-    
-    // Copy header (need to handle endianness)
-    std::memcpy(parsedData.pdbHeader.name, data, 32);
-    parsedData.pdbHeader.attributes = ReadBE16(data + 32);
-    parsedData.pdbHeader.version = ReadBE16(data + 34);
-    parsedData.pdbHeader.creationDate = ReadBE32(data + 36);
-    parsedData.pdbHeader.modificationDate = ReadBE32(data + 40);
-    parsedData.pdbHeader.lastBackupDate = ReadBE32(data + 44);
-    parsedData.pdbHeader.modificationNumber = ReadBE32(data + 48);
-    parsedData.pdbHeader.appInfoOffset = ReadBE32(data + 52);
-    parsedData.pdbHeader.sortInfoOffset = ReadBE32(data + 56);
-    std::memcpy(parsedData.pdbHeader.type, data + 60, 4);
-    std::memcpy(parsedData.pdbHeader.creator, data + 64, 4);
-    parsedData.pdbHeader.uniqueIdSeed = ReadBE32(data + 68);
-    parsedData.pdbHeader.nextRecordListId = ReadBE32(data + 72);
-    parsedData.pdbHeader.recordCount = ReadBE16(data + 76);
-    
-    // Validate type and creator
-    std::string type(parsedData.pdbHeader.type, 4);
-    std::string creator(parsedData.pdbHeader.creator, 4);
-    
-    if (type != "BOOK" || creator != "MOBI") {
-        // Also accept TEXt/REAd for older PalmDOC
-        if (type != "TEXt" || creator != "REAd") {
-            lastError = "Not a MOBI file (type: " + type + ", creator: " + creator + ")";
-            return false;
-        }
-    }
-    
-    return true;
-}
 
-bool MOBIEngine::ParseRecordList(const uint8_t* data, size_t size) {
-    size_t recordListOffset = 78;
-    size_t recordListSize = parsedData.pdbHeader.recordCount * 8;
-    
-    if (size < recordListOffset + recordListSize) {
-        lastError = "Data too small for record list";
+    std::string type(reinterpret_cast<const char*>(data + 60), 4);
+    std::string creator(reinterpret_cast<const char*>(data + 64), 4);
+    if (!((type == "BOOK" && creator == "MOBI") ||
+          (type == "TEXt" && creator == "REAd"))) {
+        Fail("Not a MOBI file (type '" + type + "', creator '" + creator + "')");
         return false;
     }
-    
-    parsedData.recordEntries.clear();
-    parsedData.recordEntries.reserve(parsedData.pdbHeader.recordCount);
-    
-    const uint8_t* ptr = data + recordListOffset;
-    for (int i = 0; i < parsedData.pdbHeader.recordCount; ++i) {
-        PDBRecordEntry entry;
-        entry.offset = ReadBE32(ptr);
-        entry.attributes = ptr[4];
-        std::memcpy(entry.uniqueId, ptr + 5, 3);
-        
-        parsedData.recordEntries.push_back(entry);
-        ptr += 8;
-    }
-    
-    return true;
-}
 
-bool MOBIEngine::ExtractRecords(const uint8_t* data, size_t size) {
-    parsedData.records.clear();
-    parsedData.records.reserve(parsedData.recordEntries.size());
-    
-    for (size_t i = 0; i < parsedData.recordEntries.size(); ++i) {
-        uint32_t offset = parsedData.recordEntries[i].offset;
-        uint32_t nextOffset;
-        
-        if (i + 1 < parsedData.recordEntries.size()) {
-            nextOffset = parsedData.recordEntries[i + 1].offset;
-        } else {
-            nextOffset = static_cast<uint32_t>(size);
-        }
-        
-        if (offset >= size || nextOffset > size || nextOffset < offset) {
-            lastError = "Invalid record offset";
-            return false;
-        }
-        
-        size_t recordSize = nextOffset - offset;
-        std::vector<uint8_t> record(data + offset, data + offset + recordSize);
-        parsedData.records.push_back(std::move(record));
-    }
-    
-    return true;
-}
+    pdbName.assign(reinterpret_cast<const char*>(data),
+                   ::strnlen(reinterpret_cast<const char*>(data), 32));
 
-// ============================================================================
-// RECORD 0 PARSING
-// ============================================================================
-
-bool MOBIEngine::ParseRecord0(const std::vector<uint8_t>& record0) {
-    if (record0.size() < 16) {
-        lastError = "Record 0 too small";
+    uint16_t recordCount = ReadBE16(data + 76);
+    if (size < 78 + static_cast<size_t>(recordCount) * 8) {
+        Fail("Not a MOBI file: record list truncated");
         return false;
     }
-    
-    // Parse PalmDOC header (first 16 bytes)
-    if (!ParsePalmDOCHeader(record0.data(), record0.size())) {
-        return false;
-    }
-    
-    // Check for MOBI header (starts at offset 16)
-    if (record0.size() >= 20) {
-        if (std::memcmp(record0.data() + 16, "MOBI", 4) == 0) {
-            if (!ParseMOBIHeader(record0.data() + 16, record0.size() - 16)) {
-                return false;
-            }
-            
-            // Check for EXTH header
-            if (parsedData.hasEXTH) {
-                size_t exthOffset = 16 + parsedData.mobiHeader.headerLength;
-                if (exthOffset < record0.size()) {
-                    ParseEXTHHeader(record0.data() + exthOffset, 
-                                    record0.size() - exthOffset);
-                }
-            }
-            
-            // Extract full name
-            if (parsedData.mobiHeader.fullNameOffset > 0 &&
-                parsedData.mobiHeader.fullNameOffset < record0.size()) {
-                size_t nameOffset = parsedData.mobiHeader.fullNameOffset;
-                size_t nameLength = std::min(
-                    static_cast<size_t>(parsedData.mobiHeader.fullNameLength),
-                    record0.size() - nameOffset);
-                parsedData.fullName.assign(
-                    reinterpret_cast<const char*>(record0.data() + nameOffset),
-                    nameLength);
-            }
-        }
-    }
-    
-    return true;
-}
 
-bool MOBIEngine::ParsePalmDOCHeader(const uint8_t* data, size_t size) {
-    if (size < 16) {
-        return false;
+    std::vector<uint32_t> offsets;
+    offsets.reserve(recordCount);
+    for (int i = 0; i < recordCount; ++i) {
+        offsets.push_back(ReadBE32(data + 78 + i * 8));
     }
-    
-    parsedData.palmDocHeader.compression = ReadBE16(data);
-    parsedData.palmDocHeader.unused = ReadBE16(data + 2);
-    parsedData.palmDocHeader.textLength = ReadBE32(data + 4);
-    parsedData.palmDocHeader.recordCount = ReadBE16(data + 8);
-    parsedData.palmDocHeader.recordSize = ReadBE16(data + 10);
-    parsedData.palmDocHeader.currentPosition = ReadBE32(data + 12);
-    
-    // Set compression type
-    parsedData.compression = static_cast<MOBICompression>(
-        parsedData.palmDocHeader.compression);
-    
-    // Check for encryption (encoded in currentPosition for some versions)
-    uint16_t encryptionType = ReadBE16(data + 12);
-    parsedData.isEncrypted = (encryptionType != 0);
-    
-    // Determine text record range
-    parsedData.firstTextRecord = 1;
-    parsedData.lastTextRecord = parsedData.palmDocHeader.recordCount;
-    
-    return true;
-}
 
-bool MOBIEngine::ParseMOBIHeader(const uint8_t* data, size_t size) {
-    if (size < 8) {
-        return false;
-    }
-    
-    // Read header length first
-    uint32_t headerLength = ReadBE32(data + 4);
-    if (size < headerLength) {
-        // Header truncated, but we can still read what's available
-    }
-    
-    // Parse MOBI header fields
-    std::memcpy(parsedData.mobiHeader.identifier, data, 4);
-    parsedData.mobiHeader.headerLength = headerLength;
-    
-    if (size >= 28) {
-        parsedData.mobiHeader.mobiType = ReadBE32(data + 8);
-        parsedData.mobiHeader.textEncoding = ReadBE32(data + 12);
-        parsedData.mobiHeader.uniqueId = ReadBE32(data + 16);
-        parsedData.mobiHeader.fileVersion = ReadBE32(data + 20);
-        
-        parsedData.encoding = static_cast<MOBIEncoding>(
-            parsedData.mobiHeader.textEncoding);
-    }
-    
-    if (size >= 92) {
-        parsedData.mobiHeader.firstNonBookIndex = ReadBE32(data + 80);
-        parsedData.mobiHeader.fullNameOffset = ReadBE32(data + 84);
-        parsedData.mobiHeader.fullNameLength = ReadBE32(data + 88);
-    }
-    
-    if (size >= 108) {
-        parsedData.mobiHeader.firstImageIndex = ReadBE32(data + 108);
-    }
-    
-    if (size >= 132) {
-        parsedData.mobiHeader.exthFlags = ReadBE32(data + 128);
-        parsedData.hasEXTH = (parsedData.mobiHeader.exthFlags & 0x40) != 0;
-    }
-    
-    // Check for KF8 format (version 8+)
-    if (parsedData.mobiHeader.fileVersion >= 8) {
-        parsedData.isKF8 = true;
-    }
-    
-    return true;
-}
-
-bool MOBIEngine::ParseEXTHHeader(const uint8_t* data, size_t size) {
-    if (size < 12) {
-        return false;
-    }
-    
-    // Verify EXTH signature
-    if (std::memcmp(data, "EXTH", 4) != 0) {
-        return false;
-    }
-    
-    uint32_t headerLength = ReadBE32(data + 4);
-    uint32_t recordCount = ReadBE32(data + 8);
-    
-    if (size < headerLength) {
-        // Truncated, parse what we can
-    }
-    
-    // Parse EXTH records
-    const uint8_t* ptr = data + 12;
-    const uint8_t* end = data + std::min(size, static_cast<size_t>(headerLength));
-    
-    for (uint32_t i = 0; i < recordCount && ptr + 8 <= end; ++i) {
-        uint32_t recordType = ReadBE32(ptr);
-        uint32_t recordLength = ReadBE32(ptr + 4);
-        
-        if (recordLength < 8 || ptr + recordLength > end) {
-            break;
-        }
-        
-        // Extract record data as string
-        size_t dataLength = recordLength - 8;
-        std::string recordData(reinterpret_cast<const char*>(ptr + 8), dataLength);
-        
-        parsedData.exthRecords[recordType].push_back(recordData);
-        
-        // Handle special records
-        if (recordType == EXTHRecordType::COVER_OFFSET && dataLength >= 4) {
-            parsedData.coverImageIndex = 
-                static_cast<int>(ReadBE32(ptr + 8)) + 
-                static_cast<int>(parsedData.mobiHeader.firstImageIndex);
-        }
-        if (recordType == EXTHRecordType::THUMB_OFFSET && dataLength >= 4) {
-            parsedData.thumbnailImageIndex = 
-                static_cast<int>(ReadBE32(ptr + 8)) + 
-                static_cast<int>(parsedData.mobiHeader.firstImageIndex);
-        }
-        
-        ptr += recordLength;
-    }
-    
-    return true;
-}
-
-// ============================================================================
-// CONTENT EXTRACTION
-// ============================================================================
-
-bool MOBIEngine::ExtractTextContent() {
-    std::vector<uint8_t> decompressedText;
-    
-    int firstRecord = parsedData.firstTextRecord;
-    int lastRecord = std::min(
-        parsedData.lastTextRecord,
-        static_cast<int>(parsedData.records.size()) - 1);
-    
-    // Reserve estimated space
-    decompressedText.reserve(parsedData.palmDocHeader.textLength);
-    
-    for (int i = firstRecord; i <= lastRecord; ++i) {
-        const auto& record = parsedData.records[i];
-        
-        std::vector<uint8_t> decompressed;
-        
-        switch (parsedData.compression) {
-            case MOBICompression::None:
-                decompressed = record;
-                break;
-                
-            case MOBICompression::PalmDOC:
-                decompressed = DecompressPalmDOC(record.data(), record.size());
-                break;
-                
-            case MOBICompression::HuffCDIC:
-                decompressed = DecompressHuffCDIC(record.data(), record.size());
-                break;
-                
-            default:
-                lastError = "Unknown compression type";
-                return false;
-        }
-        
-        decompressedText.insert(decompressedText.end(),
-                                decompressed.begin(), decompressed.end());
-    }
-    
-    // Convert to string with proper encoding
-    parsedData.textContent = ConvertEncoding(decompressedText);
-    
-    return true;
-}
-
-bool MOBIEngine::ExtractImages() {
-    if (parsedData.mobiHeader.firstImageIndex == 0) {
-        return true; // No images
-    }
-    
-    int firstImage = static_cast<int>(parsedData.mobiHeader.firstImageIndex);
-    int lastRecord = static_cast<int>(parsedData.records.size()) - 1;
-    
-    // Skip special records at end (FLIS, FCIS, EOF)
-    int endOffset = 0;
-    for (int i = lastRecord; i >= firstImage && endOffset < 3; --i) {
-        const auto& record = parsedData.records[i];
-        if (record.size() >= 4) {
-            std::string sig(reinterpret_cast<const char*>(record.data()), 4);
-            if (sig == "FLIS" || sig == "FCIS" || sig == "BOUN" || 
-                sig == "FDST" || sig == "DATP" || sig == "APTS") {
-                endOffset++;
-            } else {
-                break;
-            }
-        }
-    }
-    
-    for (int i = firstImage; i <= lastRecord - endOffset; ++i) {
-        const auto& record = parsedData.records[i];
-        
-        if (record.size() < 4) continue;
-        
-        MOBIImageRecord imageRecord;
-        imageRecord.recordIndex = i;
-        imageRecord.data = record;
-        
-        // Detect image type from magic bytes
-        if (record[0] == 0xFF && record[1] == 0xD8) {
-            imageRecord.mimeType = "image/jpeg";
-        } else if (record[0] == 0x89 && record[1] == 'P' && 
-                   record[2] == 'N' && record[3] == 'G') {
-            imageRecord.mimeType = "image/png";
-        } else if (record[0] == 'G' && record[1] == 'I' && record[2] == 'F') {
-            imageRecord.mimeType = "image/gif";
-        } else if (record[0] == 'B' && record[1] == 'M') {
-            imageRecord.mimeType = "image/bmp";
-        } else {
-            // Unknown type, skip
+    records.clear();
+    records.reserve(recordCount);
+    for (size_t i = 0; i < offsets.size(); ++i) {
+        uint32_t start = offsets[i];
+        uint32_t end = (i + 1 < offsets.size()) ? offsets[i + 1]
+                                                : static_cast<uint32_t>(size);
+        if (start > size || end > size || end < start) {
+            records.emplace_back();   // tolerate a bad entry
             continue;
         }
-        
-        // Mark cover and thumbnail
-        if (i == parsedData.coverImageIndex) {
-            imageRecord.isCover = true;
-        }
-        if (i == parsedData.thumbnailImageIndex) {
-            imageRecord.isThumbnail = true;
-        }
-        
-        parsedData.images.push_back(std::move(imageRecord));
+        records.emplace_back(data + start, data + end);
     }
-    
+
+    if (records.empty()) {
+        Fail("MOBI file has no records");
+        return false;
+    }
     return true;
 }
 
-// ============================================================================
-// PALMDOC DECOMPRESSION
-// ============================================================================
+bool MOBIEngine::ParseRecord0() {
+    const std::vector<uint8_t>& r0 = records[0];
+    if (r0.size() < 16) {
+        Fail("MOBI record 0 too small");
+        return false;
+    }
 
-std::vector<uint8_t> MOBIEngine::DecompressPalmDOC(const uint8_t* data, size_t size) {
-    return PalmDOCDecompressor::Decompress(data, size);
+    compression = ReadBE16(r0.data());
+    textRecordCount = ReadBE16(r0.data() + 8);
+    uint16_t encryption = ReadBE16(r0.data() + 12);
+    if (encryption != 0) {
+        Fail("MOBI file is DRM-encrypted");
+        return false;
+    }
+    if (compression == 17480) {
+        Fail("HUFF/CDIC-compressed MOBI is not supported");
+        return false;
+    }
+    if (compression != 1 && compression != 2) {
+        Fail("Unknown MOBI compression type");
+        return false;
+    }
+
+    // MOBI header at offset 16 (older PalmDOC-only files omit it).
+    if (r0.size() >= 20 && std::memcmp(r0.data() + 16, "MOBI", 4) == 0) {
+        const uint8_t* m = r0.data() + 16;
+        size_t mSize = r0.size() - 16;
+        uint32_t headerLength = ReadBE32(m + 4);
+
+        if (mSize >= 24) textEncoding = ReadBE32(m + 12);
+        uint32_t fileVersion = (mSize >= 24) ? ReadBE32(m + 20) : 0;
+        if (mSize >= 92) {
+            uint32_t fullNameOffset = ReadBE32(m + 84);
+            uint32_t fullNameLength = ReadBE32(m + 88);
+            if (fullNameOffset > 0 && fullNameOffset < r0.size()) {
+                size_t len = std::min(static_cast<size_t>(fullNameLength),
+                                      r0.size() - fullNameOffset);
+                fullName.assign(reinterpret_cast<const char*>(r0.data() + fullNameOffset), len);
+            }
+        }
+        if (mSize >= 112) firstImageIndex = ReadBE32(m + 108);
+        if (mSize >= 132) hasExth = (ReadBE32(m + 128) & 0x40) != 0;
+        // extraDataFlags: uint16 at MOBI-header offset 242 (0xF2).
+        if (headerLength >= 244 && mSize >= 244) {
+            extraDataFlags = ReadBE16(m + 242);
+        }
+
+        // A pure-KF8 record 0 (file version >= 8) needs the KF8 fragment
+        // reassembly we do not implement; combo .azw3 keep MOBI6 here.
+        if (fileVersion >= 8) {
+            Fail("KF8-only AZW3 is not supported yet (combo AZW3 and MOBI work)");
+            return false;
+        }
+
+        if (hasExth) {
+            size_t exthOffset = 16 + headerLength;
+            if (exthOffset + 12 <= r0.size()) {
+                ParseExth(r0.data() + exthOffset, r0.size() - exthOffset);
+            }
+        }
+    }
+
+    // A combo AZW3 carries a KF8 boundary (EXTH 121) pointing at its KF8 half;
+    // we read the MOBI6 half but label it honestly.
+    if (exth.count(121)) {
+        format = EBookFormat::AZW3;
+        formatName = "Kindle KF8/AZW3 (MOBI 6 view)";
+    } else {
+        format = EBookFormat::MOBI;
+        formatName = "Mobipocket";
+    }
+    return true;
 }
 
-std::vector<uint8_t> PalmDOCDecompressor::Decompress(const uint8_t* data, size_t size,
-                                                       int trailingBytes) {
-    std::vector<uint8_t> output;
-    output.reserve(size * 2); // Estimate
-    
-    size_t effectiveSize = size - trailingBytes;
-    size_t i = 0;
-    
-    while (i < effectiveSize) {
-        uint8_t c = data[i++];
-        
-        if (c == 0x00) {
-            // Literal null byte
-            output.push_back(0x00);
-        } else if (c >= 0x01 && c <= 0x08) {
-            // Copy next 1-8 bytes literally
-            int count = c;
-            for (int j = 0; j < count && i < effectiveSize; ++j) {
-                output.push_back(data[i++]);
-            }
-        } else if (c >= 0x09 && c <= 0x7F) {
-            // Literal byte
-            output.push_back(c);
-        } else if (c >= 0x80 && c <= 0xBF) {
-            // Length-distance pair (2 bytes)
-            if (i >= effectiveSize) break;
-            
-            uint8_t c2 = data[i++];
-            
-            // Distance is in bits 2-12 (11 bits)
-            int distance = ((c & 0x3F) << 5) | (c2 >> 3);
-            // Length is in bits 13-15 (3 bits) + 3
-            int length = (c2 & 0x07) + 3;
-            
-            if (distance > 0 && distance <= static_cast<int>(output.size())) {
-                size_t srcPos = output.size() - distance;
-                for (int j = 0; j < length; ++j) {
-                    output.push_back(output[srcPos + j]);
+void MOBIEngine::ParseExth(const uint8_t* data, size_t size) {
+    if (size < 12 || std::memcmp(data, "EXTH", 4) != 0) return;
+    uint32_t headerLength = ReadBE32(data + 4);
+    uint32_t count = ReadBE32(data + 8);
+    const uint8_t* ptr = data + 12;
+    const uint8_t* end = data + std::min(size, static_cast<size_t>(headerLength));
+
+    for (uint32_t i = 0; i < count && ptr + 8 <= end; ++i) {
+        uint32_t type = ReadBE32(ptr);
+        uint32_t length = ReadBE32(ptr + 4);
+        if (length < 8 || ptr + length > end) break;
+        size_t dataLen = length - 8;
+
+        if (type == kExthCoverOffset && dataLen >= 4) {
+            exthCoverOffset = ReadBE32(ptr + 8);
+        } else {
+            exth[type].emplace_back(reinterpret_cast<const char*>(ptr + 8), dataLen);
+        }
+        ptr += length;
+    }
+}
+
+// ============================================================================
+// TEXT + IMAGES
+// ============================================================================
+
+bool MOBIEngine::DecompressText() {
+    std::vector<uint8_t> text;
+    uint32_t last = std::min<uint32_t>(textRecordCount,
+                                       static_cast<uint32_t>(records.size()) - 1);
+    for (uint32_t i = 1; i <= last; ++i) {
+        const std::vector<uint8_t>& rec = records[i];
+        size_t payload = TextRecordPayloadSize(rec);
+        if (payload == 0) continue;
+
+        if (compression == 2) {
+            std::vector<uint8_t> chunk = DecompressPalmDOC(rec.data(), payload);
+            text.insert(text.end(), chunk.begin(), chunk.end());
+        } else {
+            text.insert(text.end(), rec.begin(), rec.begin() + payload);
+        }
+    }
+
+    std::string raw(text.begin(), text.end());
+    fullHtml = (textEncoding == 65001) ? raw : Cp1252ToUTF8(raw);
+    return true;
+}
+
+void MOBIEngine::ExtractImages() {
+    if (firstImageIndex == 0 || firstImageIndex >= records.size()) return;
+
+    for (size_t i = firstImageIndex; i < records.size(); ++i) {
+        const std::vector<uint8_t>& rec = records[i];
+        bool isImage = rec.size() >= 4 &&
+            ((rec[0] == 0xFF && rec[1] == 0xD8) ||                       // JPEG
+             (rec[0] == 0x89 && rec[1] == 'P' && rec[2] == 'N' && rec[3] == 'G') ||
+             (rec[0] == 'G' && rec[1] == 'I' && rec[2] == 'F') ||       // GIF
+             (rec[0] == 'B' && rec[1] == 'M'));                          // BMP
+        // Trailing metadata records (FLIS/FCIS/SRCS/...) stop the image run.
+        if (!isImage) {
+            if (rec.size() >= 4) {
+                std::string sig(reinterpret_cast<const char*>(rec.data()), 4);
+                if (sig == "FLIS" || sig == "FCIS" || sig == "SRCS" ||
+                    sig == "DATP" || sig == "FDST" || sig == "BOUN") {
+                    break;
                 }
             }
-        } else { // c >= 0xC0
-            // Space + character
-            output.push_back(' ');
-            output.push_back(c ^ 0x80);
+            images.emplace_back();   // keep 1-based indexing aligned with recindex
+            continue;
         }
+        images.push_back(rec);
     }
-    
-    return output;
-}
 
-std::vector<uint8_t> PalmDOCDecompressor::Compress(const uint8_t* data, size_t size) {
-    // Compression implementation (simplified)
-    std::vector<uint8_t> output;
-    output.reserve(size);
-    
-    // For now, just output uncompressed with literal markers
-    size_t i = 0;
-    while (i < size) {
-        uint8_t c = data[i];
-        
-        if (c == 0x00 || (c >= 0x09 && c <= 0x7F)) {
-            // Can be output directly
-            output.push_back(c);
-            ++i;
-        } else if (c >= 0x01 && c <= 0x08) {
-            // Need to escape with type A command
-            output.push_back(0x01);
-            output.push_back(c);
-            ++i;
-        } else {
-            // Need to escape
-            output.push_back(0x01);
-            output.push_back(c);
-            ++i;
-        }
+    if (exthCoverOffset != 0xFFFFFFFF) {
+        // Cover offset is relative to firstImageIndex → 1-based image number.
+        coverImageNumber = static_cast<int>(exthCoverOffset) + 1;
     }
-    
-    return output;
 }
 
 // ============================================================================
-// HUFF/CDIC DECOMPRESSION
+// METADATA
 // ============================================================================
 
-std::vector<uint8_t> MOBIEngine::DecompressHuffCDIC(const uint8_t* data, size_t size) {
-    // HUFF/CDIC decompression requires Huffman tables from HUFF records
-    // and dictionary data from CDIC records
-    // This is a complex algorithm - for now, return empty
-    lastError = "HUFF/CDIC compression not yet fully implemented";
-    return std::vector<uint8_t>();
+std::string MOBIEngine::GetExthString(uint32_t type) const {
+    auto it = exth.find(type);
+    return (it != exth.end() && !it->second.empty()) ? it->second.front() : std::string();
 }
 
-bool HuffCDICDecompressor::Initialize(const std::vector<std::vector<uint8_t>>& huffRecords,
-                                       const std::vector<std::vector<uint8_t>>& cdicRecords) {
-    if (huffRecords.empty() || cdicRecords.empty()) {
-        return false;
-    }
-    
-    // Parse HUFF record
-    const auto& huff = huffRecords[0];
-    if (huff.size() < 24 || std::memcmp(huff.data(), "HUFF", 4) != 0) {
-        return false;
-    }
-    
-    // Extract dictionary tables
-    uint32_t offset1 = MOBIEngine::ReadBE32(huff.data() + 8);
-    uint32_t offset2 = MOBIEngine::ReadBE32(huff.data() + 12);
-    
-    // Build dict1 (256 entries)
-    dict1.resize(256);
-    for (int i = 0; i < 256 && offset1 + i * 4 + 4 <= huff.size(); ++i) {
-        dict1[i] = MOBIEngine::ReadBE32(huff.data() + offset1 + i * 4);
-    }
-    
-    // Build dict2 (64 entries)
-    dict2.resize(64);
-    for (int i = 0; i < 64 && offset2 + i * 4 + 4 <= huff.size(); ++i) {
-        dict2[i] = MOBIEngine::ReadBE32(huff.data() + offset2 + i * 4);
-    }
-    
-    // Store CDIC data
-    cdicData = cdicRecords;
-    cdicCount = static_cast<int>(cdicRecords.size());
-    
-    initialized = true;
-    return true;
+std::vector<std::string> MOBIEngine::GetExthStrings(uint32_t type) const {
+    auto it = exth.find(type);
+    return it != exth.end() ? it->second : std::vector<std::string>();
 }
-
-std::vector<uint8_t> HuffCDICDecompressor::Decompress(const uint8_t* data, size_t size) {
-    if (!initialized) {
-        return std::vector<uint8_t>();
-    }
-    
-    // Huffman decompression algorithm
-    std::vector<uint8_t> output;
-    // ... Complex implementation would go here
-    
-    return output;
-}
-
-// ============================================================================
-// ENCODING CONVERSION
-// ============================================================================
-
-std::string MOBIEngine::ConvertEncoding(const std::vector<uint8_t>& data) const {
-    if (data.empty()) {
-        return std::string();
-    }
-    
-    if (parsedData.encoding == MOBIEncoding::UTF8) {
-        // Already UTF-8
-        return std::string(data.begin(), data.end());
-    }
-    
-    // Convert from CP1252 to UTF-8
-    std::string result;
-    result.reserve(data.size() * 2);
-    
-    for (uint8_t c : data) {
-        if (c < 0x80) {
-            result.push_back(static_cast<char>(c));
-        } else {
-            // CP1252 to Unicode mapping for characters 0x80-0x9F
-            static const uint16_t cp1252_map[] = {
-                0x20AC, 0x0081, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021,
-                0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0x008D, 0x017D, 0x008F,
-                0x0090, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014,
-                0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0x009D, 0x017E, 0x0178
-            };
-            
-            uint16_t unicode;
-            if (c >= 0x80 && c <= 0x9F) {
-                unicode = cp1252_map[c - 0x80];
-            } else {
-                unicode = c; // Latin-1 Supplement (0xA0-0xFF)
-            }
-            
-            // Encode as UTF-8
-            if (unicode < 0x80) {
-                result.push_back(static_cast<char>(unicode));
-            } else if (unicode < 0x800) {
-                result.push_back(static_cast<char>(0xC0 | (unicode >> 6)));
-                result.push_back(static_cast<char>(0x80 | (unicode & 0x3F)));
-            } else {
-                result.push_back(static_cast<char>(0xE0 | (unicode >> 12)));
-                result.push_back(static_cast<char>(0x80 | ((unicode >> 6) & 0x3F)));
-                result.push_back(static_cast<char>(0x80 | (unicode & 0x3F)));
-            }
-        }
-    }
-    
-    return result;
-}
-
-// ============================================================================
-// METADATA BUILDING
-// ============================================================================
 
 void MOBIEngine::BuildMetadata() {
-    // Title
-    if (!parsedData.fullName.empty()) {
-        metadata.title = parsedData.fullName;
-    } else {
-        // Use database name from PDB header
-        metadata.title = std::string(parsedData.pdbHeader.name, 
-                                     strnlen(parsedData.pdbHeader.name, 32));
-    }
-    
-    // EXTH title override
-    std::string exthTitle = GetEXTHString(EXTHRecordType::UPDATED_TITLE);
-    if (!exthTitle.empty()) {
-        metadata.title = exthTitle;
-    }
-    
-    // Author
-    metadata.author = GetEXTHString(EXTHRecordType::AUTHOR);
-    metadata.creators = GetEXTHStrings(EXTHRecordType::AUTHOR);
-    
-    // Publisher
-    metadata.publisher = GetEXTHString(EXTHRecordType::PUBLISHER);
-    
-    // Description
-    metadata.description = GetEXTHString(EXTHRecordType::DESCRIPTION);
-    
-    // ISBN
-    metadata.isbn = GetEXTHString(EXTHRecordType::ISBN);
-    
-    // Language
-    metadata.language = GetEXTHString(EXTHRecordType::LANGUAGE);
-    
-    // Subjects
-    metadata.subjects = GetEXTHStrings(EXTHRecordType::SUBJECT);
-    
-    // Rights
-    metadata.rights = GetEXTHString(EXTHRecordType::RIGHTS);
-    
-    // Publication date
-    metadata.date = GetEXTHString(EXTHRecordType::PUBLISHING_DATE);
-    
-    // ASIN (Amazon ID)
-    std::string asin = GetEXTHString(EXTHRecordType::ASIN);
-    if (!asin.empty()) {
-        metadata.identifier = asin;
-    }
-}
+    auto decode = [this](const std::string& s) {
+        return (textEncoding == 65001) ? s : Cp1252ToUTF8(s);
+    };
 
-std::string MOBIEngine::GetEXTHString(uint32_t recordType) const {
-    auto it = parsedData.exthRecords.find(recordType);
-    if (it != parsedData.exthRecords.end() && !it->second.empty()) {
-        return it->second[0];
-    }
-    return std::string();
-}
+    std::string title = GetExthString(kExthUpdatedTitle);
+    if (title.empty()) title = fullName;
+    if (title.empty()) title = pdbName;
+    metadata.title = TrimCopy(decode(title));
 
-std::vector<std::string> MOBIEngine::GetEXTHStrings(uint32_t recordType) const {
-    auto it = parsedData.exthRecords.find(recordType);
-    if (it != parsedData.exthRecords.end()) {
-        return it->second;
+    for (const std::string& a : GetExthStrings(kExthAuthor)) {
+        std::string author = TrimCopy(decode(a));
+        if (!author.empty()) metadata.authors.push_back(author);
     }
-    return std::vector<std::string>();
-}
-
-uint32_t MOBIEngine::GetEXTHUInt32(uint32_t recordType) const {
-    auto it = parsedData.exthRecords.find(recordType);
-    if (it != parsedData.exthRecords.end() && !it->second.empty() && 
-        it->second[0].size() >= 4) {
-        const uint8_t* data = reinterpret_cast<const uint8_t*>(it->second[0].data());
-        return ReadBE32(data);
+    metadata.publisher = TrimCopy(decode(GetExthString(kExthPublisher)));
+    metadata.description = TrimCopy(decode(GetExthString(kExthDescription)));
+    metadata.isbn = TrimCopy(GetExthString(kExthIsbn));
+    metadata.language = TrimCopy(GetExthString(kExthLanguage));
+    metadata.publicationDate = TrimCopy(GetExthString(kExthDate));
+    metadata.rights = TrimCopy(decode(GetExthString(kExthRights)));
+    for (const std::string& s : GetExthStrings(kExthSubject)) {
+        std::string subject = TrimCopy(decode(s));
+        if (!subject.empty()) metadata.subjects.push_back(subject);
     }
-    return 0;
 }
 
 // ============================================================================
-// TABLE OF CONTENTS
+// CHAPTERS
 // ============================================================================
 
-void MOBIEngine::BuildTableOfContents() {
-    tableOfContents.clear();
-    
-    // Extract TOC from HTML content
-    // Look for <h1>, <h2>, <h3> tags or guide references
-    std::regex headingRegex(R"(<h([1-6])[^>]*>([^<]+)</h\1>)", std::regex::icase);
-    
-    std::string::const_iterator searchStart = parsedData.textContent.cbegin();
-    std::smatch match;
-    int entryIndex = 0;
-    
-    while (std::regex_search(searchStart, parsedData.textContent.cend(), match, headingRegex)) {
-        EBookTOCEntry entry;
-        entry.title = match[2].str();
-        entry.level = std::stoi(match[1].str()) - 1;
-        entry.pageNumber = entryIndex + 1; // Simplified
-        
-        // Remove HTML entities
-        std::regex entityRegex(R"(&[a-z]+;)");
-        entry.title = std::regex_replace(entry.title, entityRegex, "");
-        
-        // Trim whitespace
-        entry.title.erase(0, entry.title.find_first_not_of(" \t\n\r"));
-        entry.title.erase(entry.title.find_last_not_of(" \t\n\r") + 1);
-        
-        if (!entry.title.empty()) {
-            tableOfContents.push_back(entry);
+namespace {
+
+// Strip tags/entities and collapse whitespace — for chapter titles.
+std::string HeadingText(const std::string& html) {
+    std::string plain = HTML::ExtractPlainText(html);
+    return TrimCopy(plain);
+}
+
+// First <h1..h6> heading text inside a chapter fragment, or "".
+std::string FirstHeading(const std::string& html) {
+    for (char level = '1'; level <= '6'; ++level) {
+        std::string open = std::string("<h") + level;
+        size_t a = FindCI(html, open, 0);
+        while (a != std::string::npos) {
+            size_t gt = html.find('>', a);
+            if (gt == std::string::npos) break;
+            std::string closeTag = std::string("</h") + level;
+            size_t close = FindCI(html, closeTag, gt);
+            if (close == std::string::npos) break;
+            std::string text = HeadingText(html.substr(gt + 1, close - gt - 1));
+            if (!text.empty()) return text;
+            a = FindCI(html, open, close);
         }
-        
-        searchStart = match.suffix().first;
-        ++entryIndex;
+    }
+    return {};
+}
+
+} // namespace
+
+void MOBIEngine::BuildChapters() {
+    if (fullHtml.empty()) return;
+
+    // Rewrite Mobipocket image references to resolvable resource hrefs:
+    //   <img recindex="0001" ...>          → <img src="mobiimg/1" ...>
+    //   <img src="kindle:embed:0001?...">  → <img src="mobiimg/1" ...>
+    auto matchesCI = [&](const std::string& s, size_t pos, const char* lit) {
+        size_t n = std::strlen(lit);
+        if (pos + n > s.size()) return false;
+        for (size_t k = 0; k < n; ++k) {
+            if (std::tolower(static_cast<unsigned char>(s[pos + k])) != lit[k]) return false;
+        }
+        return true;
+    };
+
+    std::string html;
+    html.reserve(fullHtml.size());
+    for (size_t i = 0; i < fullHtml.size();) {
+        // recindex="N"
+        if (matchesCI(fullHtml, i, "recindex=")) {
+            size_t j = i + 9;
+            char quote = (j < fullHtml.size() && (fullHtml[j] == '"' || fullHtml[j] == '\'')) ? fullHtml[j] : 0;
+            if (quote) ++j;
+            std::string digits;
+            while (j < fullHtml.size() && std::isdigit(static_cast<unsigned char>(fullHtml[j]))) {
+                digits += fullHtml[j++];
+            }
+            if (quote && j < fullHtml.size() && fullHtml[j] == quote) ++j;
+            long n = digits.empty() ? 0 : std::stol(digits);
+            html += "src=\"mobiimg/" + std::to_string(n) + "\"";
+            i = j;
+            continue;
+        }
+        html += fullHtml[i++];
+    }
+    // kindle:embed:NNNN → mobiimg/N (strip leading zeros and any query).
+    for (size_t k = FindCI(html, "kindle:embed:", 0); k != std::string::npos;
+         k = FindCI(html, "kindle:embed:", k)) {
+        size_t d = k + 13;
+        std::string digits;
+        while (d < html.size() && std::isdigit(static_cast<unsigned char>(html[d]))) {
+            digits += html[d++];
+        }
+        size_t endTok = d;
+        while (endTok < html.size() && html[endTok] != '"' && html[endTok] != '\'') ++endTok;
+        long n = digits.empty() ? 0 : std::stol(digits);
+        html.replace(k, endTok - k, "mobiimg/" + std::to_string(n));
+        k += 8;
+    }
+
+    // Split on Mobipocket page-break markers.
+    std::vector<size_t> breaks;
+    for (size_t p = FindCI(html, "<mbp:pagebreak", 0); p != std::string::npos;
+         p = FindCI(html, "<mbp:pagebreak", p + 1)) {
+        breaks.push_back(p);
+    }
+
+    std::vector<std::string> pieces;
+    if (breaks.empty()) {
+        pieces.push_back(html);
+    } else {
+        if (breaks.front() > 0) pieces.push_back(html.substr(0, breaks.front()));
+        for (size_t i = 0; i < breaks.size(); ++i) {
+            size_t start = breaks[i];
+            size_t end = (i + 1 < breaks.size()) ? breaks[i + 1] : html.size();
+            pieces.push_back(html.substr(start, end - start));
+        }
+    }
+
+    int ordinal = 0;
+    for (const std::string& piece : pieces) {
+        // Skip pieces with no visible text and no image.
+        if (HeadingText(piece).empty() && FindCI(piece, "<img", 0) == std::string::npos) {
+            continue;
+        }
+        EBookChapter chapter;
+        chapter.content = piece;
+        chapter.title = FirstHeading(piece);
+        if (chapter.title.empty()) {
+            chapter.title = "Section " + std::to_string(++ordinal);
+        }
+        chapters.push_back(std::move(chapter));
+    }
+
+    // Everything got filtered (e.g. a book that is one untitled blob): keep it.
+    if (chapters.empty() && !HeadingText(html).empty()) {
+        EBookChapter chapter;
+        chapter.content = html;
+        chapter.title = metadata.title.empty() ? "Book" : metadata.title;
+        chapters.push_back(std::move(chapter));
     }
 }
 
-// ============================================================================
-// PAGE CALCULATION
-// ============================================================================
-
-void MOBIEngine::CalculatePages() {
-    // Estimate pages based on content length
-    // Typical page: ~2000 characters
-    const int CHARS_PER_PAGE = 2000;
-    
-    size_t contentLength = parsedData.textContent.length();
-    pageCount = std::max(1, static_cast<int>(contentLength / CHARS_PER_PAGE));
-    
-    // Build page info
-    pageInfos.clear();
-    pageInfos.reserve(pageCount);
-    
-    size_t offset = 0;
-    for (int i = 0; i < pageCount; ++i) {
-        EBookPageInfo info;
-        info.pageNumber = i + 1;
-        info.contentOffset = static_cast<int>(offset);
-        info.contentLength = std::min(CHARS_PER_PAGE, 
-                                      static_cast<int>(contentLength - offset));
-        
-        pageInfos.push_back(info);
-        offset += CHARS_PER_PAGE;
+void MOBIEngine::BuildTOC() {
+    tableOfContents.clear();
+    tableOfContents.reserve(chapters.size());
+    for (size_t i = 0; i < chapters.size(); ++i) {
+        EBookTOCEntry entry(chapters[i].title, chapters[i].href,
+                            static_cast<int>(i));
+        entry.index = static_cast<int>(i);
+        tableOfContents.push_back(std::move(entry));
     }
 }
 
@@ -952,250 +641,48 @@ void MOBIEngine::CalculatePages() {
 // CONTENT ACCESS
 // ============================================================================
 
-EBookMetadata MOBIEngine::GetMetadata() const {
-    return metadata;
+EBookChapter MOBIEngine::GetChapter(int index) const {
+    if (index < 0 || index >= static_cast<int>(chapters.size())) return {};
+    return chapters[index];
 }
 
-int MOBIEngine::GetPageCount() const {
-    return pageCount;
+std::string MOBIEngine::GetStylesheets() const {
+    return {};   // MOBI carries presentational HTML; no separate stylesheet.
 }
 
-EBookPageInfo MOBIEngine::GetPageInfo(int pageNumber) const {
-    if (pageNumber < 1 || pageNumber > static_cast<int>(pageInfos.size())) {
-        return EBookPageInfo();
+std::vector<uint8_t> MOBIEngine::GetResource(const std::string& href) const {
+    // Accept "mobiimg/N" (and a bare "N").
+    std::string id = href;
+    size_t slash = id.find_last_of('/');
+    if (slash != std::string::npos) id = id.substr(slash + 1);
+    if (id.empty()) return {};
+    for (char c : id) {
+        if (!std::isdigit(static_cast<unsigned char>(c))) return {};
     }
-    return pageInfos[pageNumber - 1];
+    long n = std::stol(id);
+    if (n < 1 || n > static_cast<long>(images.size())) return {};
+    return images[n - 1];
 }
-
-std::vector<EBookTOCEntry> MOBIEngine::GetTableOfContents() const {
-    return tableOfContents;
-}
-
-std::string MOBIEngine::GetPageContent(int pageNumber) const {
-    if (pageNumber < 1 || pageNumber > pageCount) {
-        return std::string();
-    }
-    
-    const auto& info = pageInfos[pageNumber - 1];
-    if (info.contentOffset >= static_cast<int>(parsedData.textContent.length())) {
-        return std::string();
-    }
-    
-    return parsedData.textContent.substr(info.contentOffset, info.contentLength);
-}
-
-std::vector<uint8_t> MOBIEngine::RenderPageToImage(int pageNumber,
-                                                    int width, int height,
-                                                    float dpi) const {
-    // Rendering would use HTMLConverter
-    // For now, return empty
-    return std::vector<uint8_t>();
-}
-
-std::string MOBIEngine::GetHTMLContent() const {
-    return parsedData.textContent;
-}
-
-const MOBIParsedData& MOBIEngine::GetParsedData() const {
-    return parsedData;
-}
-
-// ============================================================================
-// IMAGE ACCESS
-// ============================================================================
 
 std::vector<uint8_t> MOBIEngine::GetCoverImage() const {
-    for (const auto& image : parsedData.images) {
-        if (image.isCover) {
-            return image.data;
-        }
+    if (coverImageNumber >= 1 && coverImageNumber <= static_cast<int>(images.size())) {
+        const std::vector<uint8_t>& cover = images[coverImageNumber - 1];
+        if (!cover.empty()) return cover;
     }
-    
-    // No explicit cover, try first image
-    if (!parsedData.images.empty()) {
-        return parsedData.images[0].data;
+    for (const std::vector<uint8_t>& img : images) {
+        if (!img.empty()) return img;
     }
-    
-    return std::vector<uint8_t>();
-}
-
-const MOBIImageRecord* MOBIEngine::GetImage(int index) const {
-    if (index < 0 || index >= static_cast<int>(parsedData.images.size())) {
-        return nullptr;
-    }
-    return &parsedData.images[index];
-}
-
-int MOBIEngine::GetImageCount() const {
-    return static_cast<int>(parsedData.images.size());
-}
-
-bool MOBIEngine::IsEncrypted() const {
-    return parsedData.isEncrypted;
-}
-
-bool MOBIEngine::IsKF8Format() const {
-    return parsedData.isKF8;
+    return {};
 }
 
 // ============================================================================
-// SEARCH
+// REGISTRATION
 // ============================================================================
 
-std::vector<EBookSearchResult> MOBIEngine::Search(const std::string& query) const {
-    std::vector<EBookSearchResult> results;
-    
-    if (query.empty() || parsedData.textContent.empty()) {
-        return results;
-    }
-    
-    // Simple case-insensitive search
-    std::string lowerContent = parsedData.textContent;
-    std::string lowerQuery = query;
-    std::transform(lowerContent.begin(), lowerContent.end(), 
-                   lowerContent.begin(), ::tolower);
-    std::transform(lowerQuery.begin(), lowerQuery.end(),
-                   lowerQuery.begin(), ::tolower);
-    
-    size_t pos = 0;
-    while ((pos = lowerContent.find(lowerQuery, pos)) != std::string::npos) {
-        EBookSearchResult result;
-        result.matchedText = parsedData.textContent.substr(pos, query.length());
-        
-        // Extract context (50 chars before and after)
-        size_t contextStart = (pos > 50) ? pos - 50 : 0;
-        size_t contextEnd = std::min(pos + query.length() + 50, 
-                                     parsedData.textContent.length());
-        
-        result.contextBefore = parsedData.textContent.substr(contextStart, pos - contextStart);
-        result.contextAfter = parsedData.textContent.substr(
-            pos + query.length(), 
-            contextEnd - pos - query.length());
-        
-        // Determine page number
-        for (size_t i = 0; i < pageInfos.size(); ++i) {
-            if (pos >= static_cast<size_t>(pageInfos[i].contentOffset) &&
-                pos < static_cast<size_t>(pageInfos[i].contentOffset + pageInfos[i].contentLength)) {
-                result.pageNumber = static_cast<int>(i) + 1;
-                break;
-            }
-        }
-        
-        results.push_back(result);
-        pos += query.length();
-    }
-    
-    return results;
-}
-
-// ============================================================================
-// ERROR HANDLING
-// ============================================================================
-
-std::string MOBIEngine::GetLastError() const {
-    return lastError;
-}
-
-void MOBIEngine::SetProgressCallback(std::function<void(float, const std::string&)> callback) {
-    progressCallback = callback;
-}
-
-void MOBIEngine::ReportProgress(float progress, const std::string& status) {
-    if (progressCallback) {
-        progressCallback(progress, status);
-    }
-}
-
-// ============================================================================
-// DETECTION UTILITIES
-// ============================================================================
-
-namespace MOBIDetection {
-
-bool HasMOBIExtension(const std::string& filePath) {
-    size_t dotPos = filePath.find_last_of('.');
-    if (dotPos == std::string::npos) {
-        return false;
-    }
-    
-    std::string ext = filePath.substr(dotPos + 1);
-    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-    
-    return ext == "mobi" || ext == "prc" || ext == "azw";
-}
-
-bool IsPDBFormat(const uint8_t* data, size_t size) {
-    if (size < 78) {
-        return false;
-    }
-    
-    // Check for reasonable values
-    uint16_t recordCount = MOBIEngine::ReadBE16(data + 76);
-    if (recordCount == 0 || recordCount > 10000) {
-        return false;
-    }
-    
-    return true;
-}
-
-bool IsMOBIType(const uint8_t* data, size_t size) {
-    if (size < 68) {
-        return false;
-    }
-    
-    // Check type and creator fields at offset 60 and 64
-    std::string type(reinterpret_cast<const char*>(data + 60), 4);
-    std::string creator(reinterpret_cast<const char*>(data + 64), 4);
-    
-    // MOBI books have type "BOOK" and creator "MOBI"
-    if (type == "BOOK" && creator == "MOBI") {
-        return true;
-    }
-    
-    // Older PalmDOC has type "TEXt" and creator "REAd"
-    if (type == "TEXt" && creator == "REAd") {
-        return true;
-    }
-    
-    return false;
-}
-
-std::string GetCreatorCode(const uint8_t* data, size_t size) {
-    if (size < 68) {
-        return "";
-    }
-    return std::string(reinterpret_cast<const char*>(data + 64), 4);
-}
-
-std::string GetTypeCode(const uint8_t* data, size_t size) {
-    if (size < 64) {
-        return "";
-    }
-    return std::string(reinterpret_cast<const char*>(data + 60), 4);
-}
-
-} // namespace MOBIDetection
-
-// ============================================================================
-// FACTORY FUNCTIONS
-// ============================================================================
-
-std::unique_ptr<IEBookEngine> CreateMOBIEngine() {
-    return std::make_unique<MOBIEngine>();
-}
-
-void RegisterMOBIPlugin() {
-    // Register with EBookEngineFactory
-    // EBookEngineFactory::RegisterEngine("mobi", CreateMOBIEngine);
-    // EBookEngineFactory::RegisterEngine("prc", CreateMOBIEngine);
-    // EBookEngineFactory::RegisterEngine("azw", CreateMOBIEngine);
-}
-
-void UnregisterMOBIPlugin() {
-    // Unregister from EBookEngineFactory
-    // EBookEngineFactory::UnregisterEngine("mobi");
-    // EBookEngineFactory::UnregisterEngine("prc");
-    // EBookEngineFactory::UnregisterEngine("azw");
+void RegisterMOBIEngine() {
+    RegisterEBookEngine({"mobi", "prc", "azw", "azw3"}, [] {
+        return std::static_pointer_cast<IEBookEngine>(std::make_shared<MOBIEngine>());
+    });
 }
 
 } // namespace UltraCanvas

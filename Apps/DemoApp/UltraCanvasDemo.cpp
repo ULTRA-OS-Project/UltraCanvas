@@ -1183,6 +1183,18 @@ namespace UltraCanvas {
 //                .AddVariant("codeeditor", "Pascal Syntax")
 //                .AddVariant("codeeditor", "COBOL Syntax");
 
+        textDocBuilder.AddItem("ebook", "eBook Reader",
+                               "EPUB/FB2/MOBI/TXT reading with chapters, TOC, themes and font scaling "
+                               "rendered natively through the CSSLayout engine",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateEBookExamples(); },
+                               "DemoApp/UltraCanvasEBookExamples.cpp",
+                               "UltraCanvas/eBook_README.md")
+                .AddVariant("ebook", "EPUB 2 / EPUB 3")
+                .AddVariant("ebook", "FictionBook 2 (FB2)")
+                .AddVariant("ebook", "Kindle (MOBI / AZW)")
+                .AddVariant("ebook", "Plain Text");
+
         textDocBuilder.AddItem("textdocuments", "Text Documents", "Text document support",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreateTextDocumentExamples(); });
