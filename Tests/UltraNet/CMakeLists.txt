@@ -118,6 +118,11 @@ if(TARGET UltraNetSipPlugin)
     target_compile_definitions(UltraNetTests PRIVATE
         ULTRANET_SIP_PLUGIN_PATH_DEFINE="$<TARGET_FILE:UltraNetSipPlugin>")
 endif()
+if(TARGET UltraNetRtpPlugin)
+    add_dependencies(UltraNetTests UltraNetRtpPlugin)
+    target_compile_definitions(UltraNetTests PRIVATE
+        ULTRANET_RTP_PLUGIN_PATH_DEFINE="$<TARGET_FILE:UltraNetRtpPlugin>")
+endif()
 
 include(CTest)
 add_test(NAME UltraNet COMMAND UltraNetTests)

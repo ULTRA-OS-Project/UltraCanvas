@@ -54,6 +54,7 @@ option(ULTRACANVAS_PLUGIN_MDNS   "Build the UltraNet mDNS plug-in (Avahi/Bonjour
 option(ULTRACANVAS_PLUGIN_RTMP   "Build the UltraNet RTMP plug-in (libcurl-native)"    ON)
 option(ULTRACANVAS_PLUGIN_GRPC   "Build the UltraNet gRPC plug-in (libcurl HTTP/2)"    ON)
 option(ULTRACANVAS_PLUGIN_SIP    "Build the UltraNet SIP plug-in (UDP-native)"        ON)
+option(ULTRACANVAS_PLUGIN_RTP    "Build the UltraNet RTP receiver plug-in (UDP-native)" ON)
 
 # ===== DETECT PLATFORM =====
 if(WIN32)
@@ -743,6 +744,10 @@ if(ULTRACANVAS_ENABLE_NET)
     if(ULTRACANVAS_PLUGIN_SIP)
         add_subdirectory(Plugins/UltraNet/sip)
         message(STATUS "  [✓] UltraNet SIP plug-in - ENABLED (UDP-native OPTIONS + MESSAGE)")
+    endif()
+    if(ULTRACANVAS_PLUGIN_RTP)
+        add_subdirectory(Plugins/UltraNet/rtp)
+        message(STATUS "  [✓] UltraNet RTP plug-in - ENABLED (UDP receiver, RFC 3550)")
     endif()
 else()
     message(STATUS "  [−] UltraNet - DISABLED")

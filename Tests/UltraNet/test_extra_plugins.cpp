@@ -16,10 +16,18 @@
 #include <UltraNet/UltraNetPlugins.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <string>
 #include <vector>
+
+#if !defined(_WIN32)
+  #include <arpa/inet.h>
+  #include <netinet/in.h>
+  #include <sys/socket.h>
+  #include <unistd.h>
+#endif
 
 namespace fs = std::filesystem;
 
@@ -86,6 +94,10 @@ fs::path FindOrBuild(const std::string& name) {
     if (name == "SIP" && fs::exists(ULTRANET_SIP_PLUGIN_PATH_DEFINE))
         return fs::path{ULTRANET_SIP_PLUGIN_PATH_DEFINE};
 #endif
+#ifdef ULTRANET_RTP_PLUGIN_PATH_DEFINE
+    if (name == "RTP" && fs::exists(ULTRANET_RTP_PLUGIN_PATH_DEFINE))
+        return fs::path{ULTRANET_RTP_PLUGIN_PATH_DEFINE};
+#endif
 
     // Map test name -> source/class name pair.
     std::string lower = name, cls = name;
@@ -103,6 +115,7 @@ fs::path FindOrBuild(const std::string& name) {
     else if (name == "RTMP")   cls = "Rtmp";
     else if (name == "GRPC")   cls = "Grpc";
     else if (name == "SIP")    cls = "Sip";
+    else if (name == "RTP")    cls = "Rtp";
 
     const fs::path src = fs::path{"UltraCanvas/Plugins/UltraNet"} / lower /
                          (cls + "Plugin.cpp");
@@ -125,6 +138,7 @@ fs::path FindOrBuild(const std::string& name) {
     else if (name == "SSH")  extraLinkFlags = " -lssh";
     else if (name == "MDNS") extraLinkFlags = " -lavahi-client -lavahi-common";
     else if (name == "SIP")  extraLinkFlags = "";   // BSD sockets only, no extra libs
+    else if (name == "RTP")  extraLinkFlags = "";   // BSD sockets only, no extra libs
     else                     extraLinkFlags = " $(pkg-config --cflags --libs libcurl)";
 
     const std::string cmd =
@@ -370,6 +384,82 @@ TEST(sip_plugin_loads_and_registers) {
     // ExecuteCommand on bogus handle -> InvalidHandle result.
     std::string out, err; int exitCode = 0;
     auto r = sh->ExecuteCommand(99999u, "hello", out, err, exitCode);
+    CHECK(!bool(r));
+    REQUIRE_EQ(r.code, UltraNetResultCode::InvalidHandle);
+}
+
+// ===== RTP (real loopback test) =====
+// The RTP plug-in has no external dependency, so we can actually shove a
+// synthetic RTP packet at it over UDP and verify the header parser +
+// ReadFrame path end-to-end.
+TEST(rtp_plugin_loopback_receives_payload) {
+    if (!LoadInto("RTP", "rtp")) SKIP("RTP plug-in not buildable");
+
+    auto p = UltraNet_GetPlugin("rtp");
+    REQUIRE(p != nullptr);
+    REQUIRE_EQ(p->GetName(), std::string{"UltraNet-RTP"});
+    auto* stream = dynamic_cast<IStreamingProtocolPlugin*>(p.get());
+    REQUIRE(stream != nullptr);
+
+#if defined(_WIN32) || defined(_WIN64)
+    SKIP("RTP loopback socket send not wired for Windows in this test");
+#else
+    // Pick an ephemeral-ish port well above the well-known range so
+    // parallel test runs don't collide with each other.
+    const int port = 47654;
+    const std::string url = "rtp://127.0.0.1:" + std::to_string(port);
+
+    UltraNetStreamOptions opt;
+    opt.connectTimeoutMs = 500;
+    UltraNetHandle h = stream->OpenStream(url, opt);
+    REQUIRE(h != UltraNetInvalidHandle);
+
+    // Build a synthetic RTP v2 packet: version=2, PT=96, seq=42, ts=1234,
+    // ssrc=0xdeadbeef, payload = "hello".
+    const uint8_t packet[] = {
+        0x80, 0x60, 0x00, 0x2a,                 // V=2 P=0 X=0 CC=0 | M=0 PT=96 | seq=42
+        0x00, 0x00, 0x04, 0xd2,                 // ts = 1234
+        0xde, 0xad, 0xbe, 0xef,                 // ssrc = 0xdeadbeef
+        'h', 'e', 'l', 'l', 'o'                 // payload
+    };
+
+    int sock = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    REQUIRE(sock >= 0);
+    sockaddr_in dst{};
+    dst.sin_family = AF_INET;
+    dst.sin_port   = htons(static_cast<uint16_t>(port));
+    ::inet_pton(AF_INET, "127.0.0.1", &dst.sin_addr);
+    const ssize_t sent = ::sendto(sock, packet, sizeof packet, 0,
+                                   reinterpret_cast<sockaddr*>(&dst),
+                                   sizeof dst);
+    ::close(sock);
+    REQUIRE_EQ(sent, static_cast<ssize_t>(sizeof packet));
+
+    std::vector<uint8_t> frame;
+    auto r = stream->ReadFrame(h, frame);
+    REQUIRE(bool(r));
+    REQUIRE_EQ(frame.size(), static_cast<std::size_t>(5));
+    REQUIRE_EQ(frame[0], 'h');
+    REQUIRE_EQ(frame[1], 'e');
+    REQUIRE_EQ(frame[2], 'l');
+    REQUIRE_EQ(frame[3], 'l');
+    REQUIRE_EQ(frame[4], 'o');
+#endif
+}
+
+TEST(rtp_plugin_rejects_bad_url) {
+    if (!LoadInto("RTP", "rtp")) SKIP("RTP plug-in not buildable");
+    auto p = UltraNet_GetPlugin("rtp");
+    REQUIRE(p != nullptr);
+    auto* stream = dynamic_cast<IStreamingProtocolPlugin*>(p.get());
+    REQUIRE(stream != nullptr);
+
+    UltraNetStreamOptions opt;
+    REQUIRE_EQ(stream->OpenStream("not-an-rtp-url", opt), UltraNetInvalidHandle);
+
+    // ReadFrame on bogus handle -> InvalidHandle.
+    std::vector<uint8_t> frame;
+    auto r = stream->ReadFrame(99999u, frame);
     CHECK(!bool(r));
     REQUIRE_EQ(r.code, UltraNetResultCode::InvalidHandle);
 }
