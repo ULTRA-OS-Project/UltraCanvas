@@ -904,6 +904,29 @@ else()
     message(STATUS "  [−] PDF Plugin - SKIPPED (disabled by option)")
 endif()
 
+# eBook Plugin - currently the VirtualFS-backed decompression layer and the
+# shared eBook types. The format engines (MOBI/AZW3/LIT/RB/TCR/OEB/FB2/LRF)
+# are excluded until their sources match the IEBookEngine interface.
+if(ULTRACANVAS_PLUGIN_EBOOK)
+    if(TARGET VirtualFS)
+        target_sources(${ULTRACANVAS_LIB_NAME} PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/eBook/EBookDecompression.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/eBook/UltraCanvasEBookTypes.cpp
+        )
+        target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/eBook
+        )
+        target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC
+            ULTRACANVAS_PLUGIN_EBOOK=1
+        )
+        message(STATUS "  [✓] eBook Plugin - ENABLED (decompression + types; format engines pending)")
+    else()
+        message(STATUS "  [−] eBook Plugin - SKIPPED (requires the VirtualFS module)")
+    endif()
+else()
+    message(STATUS "  [−] eBook Plugin - SKIPPED (disabled by option)")
+endif()
+
 # OCR Plugin
 if(ULTRACANVAS_PLUGIN_OCR)
     pkg_check_modules(TESSERACT tesseract)

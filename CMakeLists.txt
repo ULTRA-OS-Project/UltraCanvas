@@ -55,6 +55,7 @@ option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin (requires MuPDF / libmupdf-dev)"
 option(ULTRACANVAS_PLUGIN_OCR "Build OCR plugin (requires tesseract + leptonica)" OFF)
 option(ULTRACANVAS_PLUGIN_VECTORIZER "Build Vectorizer plugin (raster→SVG via VTracer; requires cargo)" OFF)
 option(ULTRACANVAS_USE_VIRTUALFS "Build the VirtualFS module and the UltraCanvas bridge to it" ON)
+option(ULTRACANVAS_PLUGIN_EBOOK "Build eBook plugin (decompression layer; requires VirtualFS)" ON)
 
 include(FetchContent)
 include(cmake/UltraCanvasAppIcon.cmake)

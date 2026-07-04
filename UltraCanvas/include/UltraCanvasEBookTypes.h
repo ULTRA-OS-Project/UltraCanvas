@@ -6,6 +6,25 @@
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
+
+// UltraCanvasCommonTypes.h pulls in X11/Xlib.h on Linux, whose None/Status/
+// Success/Always macros collide with eBook enum members and factory methods
+#ifdef None
+#undef None
+#endif
+#ifdef Status
+#undef Status
+#endif
+#ifdef Success
+#undef Success
+#endif
+#ifdef Always
+#undef Always
+#endif
+#ifdef Bool
+#undef Bool
+#endif
+
 #include <string>
 #include <vector>
 #include <memory>
