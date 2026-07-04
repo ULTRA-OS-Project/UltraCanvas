@@ -82,6 +82,10 @@ fs::path FindOrBuild(const std::string& name) {
     if (name == "GRPC" && fs::exists(ULTRANET_GRPC_PLUGIN_PATH_DEFINE))
         return fs::path{ULTRANET_GRPC_PLUGIN_PATH_DEFINE};
 #endif
+#ifdef ULTRANET_SIP_PLUGIN_PATH_DEFINE
+    if (name == "SIP" && fs::exists(ULTRANET_SIP_PLUGIN_PATH_DEFINE))
+        return fs::path{ULTRANET_SIP_PLUGIN_PATH_DEFINE};
+#endif
 
     // Map test name -> source/class name pair.
     std::string lower = name, cls = name;
@@ -98,6 +102,7 @@ fs::path FindOrBuild(const std::string& name) {
     else if (name == "MDNS")   cls = "Mdns";
     else if (name == "RTMP")   cls = "Rtmp";
     else if (name == "GRPC")   cls = "Grpc";
+    else if (name == "SIP")    cls = "Sip";
 
     const fs::path src = fs::path{"UltraCanvas/Plugins/UltraNet"} / lower /
                          (cls + "Plugin.cpp");
@@ -119,6 +124,7 @@ fs::path FindOrBuild(const std::string& name) {
     else if (name == "SNMP") extraLinkFlags = " -lsnmp";
     else if (name == "SSH")  extraLinkFlags = " -lssh";
     else if (name == "MDNS") extraLinkFlags = " -lavahi-client -lavahi-common";
+    else if (name == "SIP")  extraLinkFlags = "";   // BSD sockets only, no extra libs
     else                     extraLinkFlags = " $(pkg-config --cflags --libs libcurl)";
 
     const std::string cmd =
@@ -343,6 +349,29 @@ TEST(grpc_plugin_loads_and_registers) {
 
     // Bogus URL on Connect -> InvalidHandle.
     REQUIRE_EQ(rpc->Connect("not-a-grpc-url", opt), UltraNetInvalidHandle);
+}
+
+// ===== SIP =====
+TEST(sip_plugin_loads_and_registers) {
+    if (!LoadInto("SIP", "sip")) SKIP("SIP plug-in not buildable");
+
+    auto p = UltraNet_GetPlugin("sip");
+    REQUIRE(p != nullptr);
+    REQUIRE_EQ(p->GetName(), std::string{"UltraNet-SIP"});
+    auto schemes = p->GetSupportedSchemes();
+    CHECK(std::find(schemes.begin(), schemes.end(), "sip") != schemes.end());
+    auto* sh = dynamic_cast<IRemoteAccessPlugin*>(p.get());
+    REQUIRE(sh != nullptr);
+
+    // Bad URL -> InvalidHandle (parser rejects non-sip:// scheme).
+    UltraNetRemoteOptions opt;
+    REQUIRE_EQ(sh->OpenShell("http://not-sip/", opt), UltraNetInvalidHandle);
+
+    // ExecuteCommand on bogus handle -> InvalidHandle result.
+    std::string out, err; int exitCode = 0;
+    auto r = sh->ExecuteCommand(99999u, "hello", out, err, exitCode);
+    CHECK(!bool(r));
+    REQUIRE_EQ(r.code, UltraNetResultCode::InvalidHandle);
 }
 
 // ===== RTMP =====

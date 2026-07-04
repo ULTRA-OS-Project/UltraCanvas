@@ -113,6 +113,11 @@ if(TARGET UltraNetGrpcPlugin)
     target_compile_definitions(UltraNetTests PRIVATE
         ULTRANET_GRPC_PLUGIN_PATH_DEFINE="$<TARGET_FILE:UltraNetGrpcPlugin>")
 endif()
+if(TARGET UltraNetSipPlugin)
+    add_dependencies(UltraNetTests UltraNetSipPlugin)
+    target_compile_definitions(UltraNetTests PRIVATE
+        ULTRANET_SIP_PLUGIN_PATH_DEFINE="$<TARGET_FILE:UltraNetSipPlugin>")
+endif()
 
 include(CTest)
 add_test(NAME UltraNet COMMAND UltraNetTests)

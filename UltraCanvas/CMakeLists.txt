@@ -53,6 +53,7 @@ option(ULTRACANVAS_PLUGIN_SSH    "Build the UltraNet SSH plug-in (requires libss
 option(ULTRACANVAS_PLUGIN_MDNS   "Build the UltraNet mDNS plug-in (Avahi/Bonjour/Win32 DNS-SD)" ON)
 option(ULTRACANVAS_PLUGIN_RTMP   "Build the UltraNet RTMP plug-in (libcurl-native)"    ON)
 option(ULTRACANVAS_PLUGIN_GRPC   "Build the UltraNet gRPC plug-in (libcurl HTTP/2)"    ON)
+option(ULTRACANVAS_PLUGIN_SIP    "Build the UltraNet SIP plug-in (UDP-native)"        ON)
 
 # ===== DETECT PLATFORM =====
 if(WIN32)
@@ -738,6 +739,10 @@ if(ULTRACANVAS_ENABLE_NET)
     if(ULTRACANVAS_PLUGIN_GRPC)
         add_subdirectory(Plugins/UltraNet/grpc)
         message(STATUS "  [✓] UltraNet gRPC plug-in - ENABLED (libcurl HTTP/2 backend)")
+    endif()
+    if(ULTRACANVAS_PLUGIN_SIP)
+        add_subdirectory(Plugins/UltraNet/sip)
+        message(STATUS "  [✓] UltraNet SIP plug-in - ENABLED (UDP-native OPTIONS + MESSAGE)")
     endif()
 else()
     message(STATUS "  [−] UltraNet - DISABLED")
