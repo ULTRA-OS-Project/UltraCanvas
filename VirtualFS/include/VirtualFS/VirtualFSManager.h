@@ -572,6 +572,7 @@ private:
     struct OpenArchive {
         std::shared_ptr<IVirtualFSProvider> provider;
         std::string path;
+        std::string tempFilePath;   // backing temp file (nested archives only)
         std::chrono::steady_clock::time_point lastAccess;
     };
     std::map<std::string, OpenArchive> openArchives;
@@ -594,6 +595,13 @@ private:
     
     // Helper methods
     std::shared_ptr<IVirtualFSProvider> GetOrOpenArchive(const std::string& archivePath);
+    std::shared_ptr<IVirtualFSProvider> ResolveToProvider(
+        const VirtualFSResolvedPath& resolved, std::string& innerPath);
+    std::shared_ptr<IVirtualFSProvider> OpenNestedArchive(
+        const std::string& cacheKey,
+        const std::shared_ptr<IVirtualFSProvider>& outerProvider,
+        const std::string& pathInOuter);
+    void CloseCachedArchive(OpenArchive& cached);
     void CloseArchive(const std::string& archivePath);
     void CleanupCache();
     void RegisterBuiltInProviders();

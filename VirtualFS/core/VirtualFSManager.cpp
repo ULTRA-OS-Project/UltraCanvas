@@ -57,9 +57,7 @@ void VirtualFSManager::Shutdown() {
     {
         std::lock_guard<std::mutex> cacheLock(cacheMutex);
         for (auto& pair : openArchives) {
-            if (pair.second.provider) {
-                pair.second.provider->Close();
-            }
+            CloseCachedArchive(pair.second);
         }
         openArchives.clear();
     }
@@ -280,13 +278,14 @@ std::vector<VirtualFSEntry> VirtualFSManager::ListDirectory(const std::string& p
         return ListRealDirectory(normalized);
     }
     
-    // Inside archive
-    auto provider = GetOrOpenArchive(resolved.realPath);
+    // Inside archive (possibly nested)
+    std::string innerPath;
+    auto provider = ResolveToProvider(resolved, innerPath);
     if (!provider) {
         return {};
     }
     
-    return provider->ListDirectory(resolved.virtualPath);
+    return provider->ListDirectory(innerPath);
 }
 
 std::vector<VirtualFSEntry> VirtualFSManager::ListDirectoryFiltered(
@@ -429,16 +428,17 @@ bool VirtualFSManager::Exists(const std::string& path) {
         return std::filesystem::exists(normalized);
     }
     
-    auto provider = GetOrOpenArchive(resolved.realPath);
+    std::string innerPath;
+    auto provider = ResolveToProvider(resolved, innerPath);
     if (!provider) {
         return false;
     }
     
-    if (resolved.virtualPath.empty()) {
-        return true; // Archive itself exists
+    if (innerPath.empty()) {
+        return true; // Archive itself exists (and could be opened)
     }
     
-    return provider->Exists(resolved.virtualPath);
+    return provider->Exists(innerPath);
 }
 
 VirtualFSEntry VirtualFSManager::GetInfo(const std::string& path) {
@@ -449,17 +449,28 @@ VirtualFSEntry VirtualFSManager::GetInfo(const std::string& path) {
         return GetRealFSInfo(normalized);
     }
     
-    auto provider = GetOrOpenArchive(resolved.realPath);
+    std::string innerPath;
+    auto provider = ResolveToProvider(resolved, innerPath);
     if (!provider) {
         return VirtualFSEntry();
     }
     
-    if (resolved.virtualPath.empty()) {
-        // Return info about the archive itself
-        return GetRealFSInfo(resolved.realPath);
+    if (innerPath.empty()) {
+        // The path denotes the archive itself
+        if (resolved.archiveStack.size() == 1) {
+            return GetRealFSInfo(resolved.realPath);
+        }
+        // Nested archive: synthesize an entry from the opened archive
+        VirtualFSEntry entry;
+        entry.name = VirtualFSPath::GetFileName(resolved.fullPath);
+        entry.path = resolved.fullPath;
+        entry.type = VirtualFSEntryType::File;
+        entry.isArchive = true;
+        entry.size = provider->GetArchiveInfo().archiveSize;
+        return entry;
     }
     
-    return provider->GetInfo(resolved.virtualPath);
+    return provider->GetInfo(innerPath);
 }
 
 VirtualFSEntry VirtualFSManager::GetRealFSInfo(const std::string& path) {
@@ -535,12 +546,30 @@ VirtualFSResult VirtualFSManager::ReadFile(const std::string& path, std::vector<
         return ReadFromRealFS(normalized, outData);
     }
     
-    auto provider = GetOrOpenArchive(resolved.realPath);
+    // A path that denotes an archive itself is read as a plain file
+    // (raw archive bytes), not as an entry inside it
+    if (resolved.virtualPath.empty()) {
+        return ReadFromRealFS(resolved.realPath, outData);
+    }
+    if (resolved.archiveStack.size() > 1 &&
+        resolved.virtualPath == resolved.archiveStack.back()) {
+        VirtualFSResolvedPath parent = resolved;
+        parent.archiveStack.pop_back();
+        std::string parentInner;
+        auto parentProvider = ResolveToProvider(parent, parentInner);
+        if (!parentProvider) {
+            return VirtualFSResult::ProviderNotFound;
+        }
+        return parentProvider->ReadFile(parentInner, outData);
+    }
+    
+    std::string innerPath;
+    auto provider = ResolveToProvider(resolved, innerPath);
     if (!provider) {
         return VirtualFSResult::ProviderNotFound;
     }
     
-    return provider->ReadFile(resolved.virtualPath, outData);
+    return provider->ReadFile(innerPath, outData);
 }
 
 VirtualFSResult VirtualFSManager::ReadFromRealFS(const std::string& path, std::vector<uint8_t>& outData) {
@@ -603,12 +632,13 @@ VirtualFSResult VirtualFSManager::ReadFilePartial(
         }
     }
     
-    auto provider = GetOrOpenArchive(resolved.realPath);
+    std::string innerPath;
+    auto provider = ResolveToProvider(resolved, innerPath);
     if (!provider) {
         return VirtualFSResult::ProviderNotFound;
     }
     
-    return provider->ReadFilePartial(resolved.virtualPath, offset, length, outData);
+    return provider->ReadFilePartial(innerPath, offset, length, outData);
 }
 
 VirtualFSResult VirtualFSManager::ReadFileString(
@@ -639,12 +669,13 @@ std::unique_ptr<VirtualFSStream> VirtualFSManager::OpenStream(
         return nullptr;
     }
     
-    auto provider = GetOrOpenArchive(resolved.realPath);
+    std::string innerPath;
+    auto provider = ResolveToProvider(resolved, innerPath);
     if (!provider) {
         return nullptr;
     }
     
-    return provider->OpenStream(resolved.virtualPath);
+    return provider->OpenStream(innerPath);
 }
 
 // ============================================================================
@@ -921,9 +952,7 @@ void VirtualFSManager::ClearCache() {
     std::lock_guard<std::mutex> lock(cacheMutex);
     
     for (auto& pair : openArchives) {
-        if (pair.second.provider) {
-            pair.second.provider->Close();
-        }
+        CloseCachedArchive(pair.second);
     }
     
     openArchives.clear();
@@ -937,9 +966,7 @@ void VirtualFSManager::ClearCacheForPath(const std::string& archivePath) {
     auto it = openArchives.find(normalized);
     
     if (it != openArchives.end()) {
-        if (it->second.provider) {
-            it->second.provider->Close();
-        }
+        CloseCachedArchive(it->second);
         openArchives.erase(it);
     }
 }
@@ -967,38 +994,184 @@ void VirtualFSManager::SetCacheEnabled(bool enabled) {
 std::shared_ptr<IVirtualFSProvider> VirtualFSManager::GetOrOpenArchive(const std::string& archivePath) {
     std::string normalized = NormalizePath(archivePath);
     
-    std::lock_guard<std::mutex> lock(cacheMutex);
-    
-    // Check cache
-    auto it = openArchives.find(normalized);
-    if (it != openArchives.end()) {
-        it->second.lastAccess = std::chrono::steady_clock::now();
-        return it->second.provider;
+    // Paths that denote an archive nested inside another archive are
+    // handled by the chain walker
+    auto resolved = ResolvePath(normalized);
+    if (resolved.archiveStack.size() > 1) {
+        std::string innerPath;
+        auto provider = ResolveToProvider(resolved, innerPath);
+        // Only valid if the path denotes the archive itself, not a file in it
+        return innerPath.empty() ? provider : nullptr;
     }
     
-    // Get provider for this format
-    auto provider = GetProviderForPath(normalized);
-    if (!provider) {
+    {
+        std::lock_guard<std::mutex> lock(cacheMutex);
+        auto it = openArchives.find(normalized);
+        if (it != openArchives.end()) {
+            it->second.lastAccess = std::chrono::steady_clock::now();
+            return it->second.provider;
+        }
+    }
+    
+    // The registered provider acts as a prototype; open a dedicated
+    // instance per archive so several archives can be open at once
+    auto prototype = GetProviderForPath(normalized);
+    if (!prototype) {
         return nullptr;
     }
     
-    // Create new instance
-    // Note: In a real implementation, we'd need a factory to create new instances
-    // For now, we'll just use the registered provider directly
+    auto provider = prototype->CreateInstance();
+    if (!provider) {
+        provider = prototype; // provider has no factory: shared instance
+    }
+    
     auto result = provider->Open(normalized);
     if (result != VirtualFSResult::Success) {
         return nullptr;
     }
     
     if (cacheEnabled) {
+        std::lock_guard<std::mutex> lock(cacheMutex);
+        auto it = openArchives.find(normalized);
+        if (it != openArchives.end()) {
+            // Another thread opened it concurrently - use theirs
+            if (provider != it->second.provider) {
+                provider->Close();
+            }
+            it->second.lastAccess = std::chrono::steady_clock::now();
+            return it->second.provider;
+        }
         OpenArchive cached;
         cached.provider = provider;
         cached.path = normalized;
         cached.lastAccess = std::chrono::steady_clock::now();
         openArchives[normalized] = cached;
+        CleanupCache();
     }
     
     return provider;
+}
+
+std::shared_ptr<IVirtualFSProvider> VirtualFSManager::ResolveToProvider(
+    const VirtualFSResolvedPath& resolved, std::string& innerPath) {
+    
+    innerPath.clear();
+    if (resolved.archiveStack.empty()) {
+        return nullptr;
+    }
+    
+    auto provider = GetOrOpenArchive(resolved.realPath);
+    if (!provider) {
+        return nullptr;
+    }
+    
+    // Walk nested archives. archiveStack entries beyond the first are
+    // paths relative to the outermost archive, e.g. for
+    // /a.zip/docs/inner.7z/x.csv the stack is ["/a.zip", "docs/inner.7z"].
+    for (size_t i = 1; i < resolved.archiveStack.size(); ++i) {
+        const std::string& nested = resolved.archiveStack[i];
+        std::string relInPrev = (i == 1)
+            ? nested
+            : nested.substr(resolved.archiveStack[i - 1].length() + 1);
+        std::string cacheKey = resolved.realPath + "/" + nested;
+        
+        provider = OpenNestedArchive(cacheKey, provider, relInPrev);
+        if (!provider) {
+            return nullptr;
+        }
+    }
+    
+    if (resolved.archiveStack.size() == 1) {
+        innerPath = resolved.virtualPath;
+    } else {
+        const std::string& innermost = resolved.archiveStack.back();
+        if (resolved.virtualPath.length() > innermost.length()) {
+            innerPath = resolved.virtualPath.substr(innermost.length() + 1);
+        }
+        // else: the path denotes the nested archive itself, innerPath stays empty
+    }
+    
+    return provider;
+}
+
+std::shared_ptr<IVirtualFSProvider> VirtualFSManager::OpenNestedArchive(
+    const std::string& cacheKey,
+    const std::shared_ptr<IVirtualFSProvider>& outerProvider,
+    const std::string& pathInOuter) {
+    
+    {
+        std::lock_guard<std::mutex> lock(cacheMutex);
+        auto it = openArchives.find(cacheKey);
+        if (it != openArchives.end()) {
+            it->second.lastAccess = std::chrono::steady_clock::now();
+            return it->second.provider;
+        }
+    }
+    
+    // Extract the nested archive to a temp file; providers need a real
+    // file to open (archives inside archives cannot be streamed directly)
+    std::vector<uint8_t> data;
+    if (outerProvider->ReadFile(pathInOuter, data) != VirtualFSResult::Success) {
+        return nullptr;
+    }
+    
+    std::string tempPath = tempDirectory + "/vfs_nested_" +
+        std::to_string(std::hash<std::string>{}(cacheKey)) + "_" +
+        VirtualFSPath::GetFileName(pathInOuter);
+    
+    {
+        std::ofstream out(tempPath, std::ios::binary | std::ios::trunc);
+        if (!out.write(reinterpret_cast<const char*>(data.data()),
+                       static_cast<std::streamsize>(data.size()))) {
+            return nullptr;
+        }
+    }
+    
+    auto prototype = GetProviderForPath(pathInOuter);
+    if (!prototype) {
+        std::filesystem::remove(tempPath);
+        return nullptr;
+    }
+    auto instance = prototype->CreateInstance();
+    if (!instance) {
+        instance = prototype;
+    }
+    
+    if (instance->Open(tempPath) != VirtualFSResult::Success) {
+        std::filesystem::remove(tempPath);
+        return nullptr;
+    }
+    
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    auto it = openArchives.find(cacheKey);
+    if (it != openArchives.end()) {
+        // Another thread extracted it concurrently - discard our copy
+        instance->Close();
+        std::filesystem::remove(tempPath);
+        it->second.lastAccess = std::chrono::steady_clock::now();
+        return it->second.provider;
+    }
+    
+    // Nested archives are always cached: the entry owns the temp file
+    OpenArchive cached;
+    cached.provider = instance;
+    cached.path = cacheKey;
+    cached.tempFilePath = tempPath;
+    cached.lastAccess = std::chrono::steady_clock::now();
+    openArchives[cacheKey] = cached;
+    
+    return instance;
+}
+
+void VirtualFSManager::CloseCachedArchive(OpenArchive& cached) {
+    if (cached.provider) {
+        cached.provider->Close();
+    }
+    if (!cached.tempFilePath.empty()) {
+        std::error_code ec;
+        std::filesystem::remove(cached.tempFilePath, ec);
+        cached.tempFilePath.clear();
+    }
 }
 
 void VirtualFSManager::CloseArchive(const std::string& archivePath) {
@@ -1006,8 +1179,8 @@ void VirtualFSManager::CloseArchive(const std::string& archivePath) {
 }
 
 void VirtualFSManager::CleanupCache() {
-    // Remove least recently used archives if cache is too large
-    // This is a simplified implementation
+    // Remove least recently used archives if cache is too large.
+    // Caller must hold cacheMutex.
     
     if (openArchives.size() > 10) {
         // Find oldest entry
@@ -1019,9 +1192,7 @@ void VirtualFSManager::CleanupCache() {
         }
         
         if (oldest != openArchives.end()) {
-            if (oldest->second.provider) {
-                oldest->second.provider->Close();
-            }
+            CloseCachedArchive(oldest->second);
             openArchives.erase(oldest);
         }
     }

@@ -88,6 +88,21 @@ public:
     virtual int GetPriority() const { return 0; }
     
     /**
+     * @brief Creates a fresh, unopened instance of this provider
+     *
+     * The manager keeps the registered instance as a prototype and calls
+     * this to obtain a dedicated instance for each archive it opens, so
+     * multiple archives can be open concurrently.
+     *
+     * @return New provider instance, or nullptr if the provider does not
+     *         support per-archive instances (the registered instance is
+     *         then shared - only one archive can be open at a time)
+     */
+    virtual std::shared_ptr<IVirtualFSProvider> CreateInstance() const {
+        return nullptr;
+    }
+
+    /**
      * @brief Returns complete provider information
      * @return VirtualFSProviderInfo structure
      */

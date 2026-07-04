@@ -93,6 +93,10 @@ public:
     }
     
     int GetPriority() const override { return 100; } // High priority (default provider)
+
+    std::shared_ptr<IVirtualFSProvider> CreateInstance() const override {
+        return std::make_shared<VirtualFSLibArchiveProvider>();
+    }
     
     // =========================================================================
     // DETECTION
