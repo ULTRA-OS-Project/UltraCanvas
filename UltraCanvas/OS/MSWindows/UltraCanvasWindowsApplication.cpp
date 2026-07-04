@@ -1,7 +1,7 @@
 // OS/MSWindows/UltraCanvasWindowsApplication.cpp
 // Complete Windows application implementation with all methods
-// Version: 1.2.8 - Strip spurious Ctrl/Alt flags on AltGr (Win reports LCtrl+RAlt synthetically)
-// Last Modified: 2026-05-13
+// Version: 1.3.0 - HiDPI: mouse coords converted physical->logical per window scale
+// Last Modified: 2026-07-03
 // Author: UltraCanvas Framework
 
 #include "../../include/UltraCanvasApplication.h"
@@ -306,12 +306,13 @@ namespace UltraCanvas {
 // ===== MOUSE CAPTURE =====
 
     void UltraCanvasWindowsApplication::CaptureMouseNative() {
-        if (!focusedWindow) {
+        auto* fw = GetFocusedWindow();
+        if (!fw) {
             debugOutput << "UltraCanvas: Cannot capture mouse - no focused window" << std::endl;
             return;
         }
 
-        HWND hwnd = focusedWindow->GetNativeHandle();
+        HWND hwnd = fw->GetNativeHandle();
         if (hwnd) {
             SetCapture(hwnd);
         }
@@ -329,7 +330,27 @@ namespace UltraCanvas {
         UCEvent event;
         event.timestamp = std::chrono::steady_clock::now();
         event.nativeWindowHandle = hwnd;
-        event.targetWindow = FindWindow(hwnd);
+        auto* tw = FindWindow(hwnd);
+        if (tw) {
+            event.targetWindow = tw->GetWindowWeakPtr();
+        }
+
+        // Windows delivers mouse coords in PHYSICAL client px (the process is
+        // Per-Monitor-V2 aware). Convert every pushed event's pointer fields to
+        // LOGICAL px before dispatch so hit-testing matches the logical UI space.
+        // Non-pointer events (keyboard/focus/close) carry a {0,0} pointer, which
+        // scales to {0,0} — a harmless no-op.
+        auto pushEventScaled = [&](UCEvent& e) {
+            if (tw) {
+                float s = tw->GetDeviceScale();
+                if (s != 1.0f) {
+                    e.pointerWindow = tw->PhysicalToLogical(e.pointerWindow);
+                    e.pointer       = e.pointerWindow;
+                    e.pointerGlobal = tw->PhysicalToLogical(e.pointerGlobal);
+                }
+            }
+            PushEvent(e);
+        };
 
         // Common modifier state helper
         auto fillModifiers = [&event]() {
@@ -357,7 +378,7 @@ namespace UltraCanvas {
                 event.virtualKey = ConvertVKToUCKey(wParam);
                 event.character = 0;
                 fillModifiers();
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
@@ -368,7 +389,7 @@ namespace UltraCanvas {
                 event.virtualKey = ConvertVKToUCKey(wParam);
                 event.character = 0;
                 fillModifiers();
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
@@ -404,7 +425,7 @@ namespace UltraCanvas {
                                   ? utf8[0] : 0;
                 event.virtualKey = UCKeys::Unknown;
                 fillModifiers();
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
@@ -418,7 +439,7 @@ namespace UltraCanvas {
                 ClientToScreen(hwnd, &pt);
                 event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
@@ -431,7 +452,7 @@ namespace UltraCanvas {
                 ClientToScreen(hwnd, &pt);
                 event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
@@ -444,7 +465,7 @@ namespace UltraCanvas {
                 ClientToScreen(hwnd, &pt);
                 event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
@@ -457,7 +478,7 @@ namespace UltraCanvas {
                 ClientToScreen(hwnd, &pt);
                 event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
@@ -470,7 +491,7 @@ namespace UltraCanvas {
                 ClientToScreen(hwnd, &pt);
                 event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
@@ -483,7 +504,7 @@ namespace UltraCanvas {
                 ClientToScreen(hwnd, &pt);
                 event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
@@ -497,7 +518,7 @@ namespace UltraCanvas {
                 ClientToScreen(hwnd, &pt);
                 event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
@@ -510,7 +531,7 @@ namespace UltraCanvas {
                 ClientToScreen(hwnd, &pt);
                 event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
@@ -523,7 +544,7 @@ namespace UltraCanvas {
                 ClientToScreen(hwnd, &pt);
                 event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
@@ -536,7 +557,7 @@ namespace UltraCanvas {
                 ClientToScreen(hwnd, &pt);
                 event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
@@ -555,7 +576,7 @@ namespace UltraCanvas {
                 event.pointerWindow = { pt.x, pt.y };
                 event.pointer = event.pointerWindow;
                 fillModifiers();
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
@@ -570,14 +591,14 @@ namespace UltraCanvas {
                 event.pointerWindow = { pt.x, pt.y };
                 event.pointer = event.pointerWindow;
                 fillModifiers();
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
             // ===== MOUSE ENTER/LEAVE =====
             case WM_MOUSELEAVE: {
                 event.type = UCEventType::MouseLeave;
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
@@ -589,7 +610,7 @@ namespace UltraCanvas {
 //                    event.type = UCEventType::WindowResize;
 //                    event.width = w;
 //                    event.height = h;
-//                    PushEvent(event);
+//                    pushEventScaled(event);
 //                }
 //                return;
 //            }
@@ -602,21 +623,21 @@ namespace UltraCanvas {
 
             case WM_CLOSE: {
                 event.type = UCEventType::WindowCloseRequest;
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
             case WM_SETFOCUS: {
                 debugOutput << "focus hwnd=" << hwnd << std::endl;
                 event.type = UCEventType::WindowFocus;
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
             case WM_KILLFOCUS: {
                 debugOutput << "blur hwnd=" << hwnd << std::endl;
                 event.type = UCEventType::WindowBlur;
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
@@ -769,14 +790,14 @@ namespace UltraCanvas {
 
     FontStyle UltraCanvasWindowsApplication::DetectSystemFontStyleNative() {
         FontStyle result;
-        result.fontFamily = "DejaVu Sans";
+        result.fontFamily = "Ubuntu";
         result.fontSize = 12.0f;
         return result;
     }
 
     FontStyle UltraCanvasWindowsApplication::DetectMonospacedFontStyleNative() {
         FontStyle result;
-        result.fontFamily = "DejaVu Sans Mono";
+        result.fontFamily = "Ubuntu Mono";
         result.fontSize = 12.0f;
         return result;
     }
@@ -786,8 +807,8 @@ namespace UltraCanvas {
 
         FcConfig* cfg = FcConfigGetCurrent();
 
-        for (size_t i = 0; i < kDejaVuAllFontsCount; ++i) {
-            std::string path = dir + kDejaVuAllFonts[i];
+        for (size_t i = 0; i < kEmbeddedAllFontsCount; ++i) {
+            std::string path = dir + kEmbeddedAllFonts[i];
             if (!std::filesystem::exists(path)) {
                 debugOutput << "UltraCanvas: bundled font missing: " << path << std::endl;
                 continue;

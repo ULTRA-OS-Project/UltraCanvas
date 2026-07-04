@@ -28,8 +28,6 @@
 #include "../include/UltraCanvasSlider.h"
 #include "../include/UltraCanvasContainer.h"
 #include "../include/UltraCanvasImageElement.h"
-#include "../include/UltraCanvasBoxLayout.h"
-#include "../include/UltraCanvasGridLayout.h"
 
 #include <functional>
 #include <string>

@@ -55,7 +55,7 @@ namespace UltraCanvas {
         simpleModel->AddItem(ListItem("Lemon", "", "Yellow citrus fruit"));
 
         auto simpleList = std::make_shared<UltraCanvasListView>("SimpleListView", 20, 125, 460, 225);
-        simpleList->SetModel(simpleModel.get());
+        simpleList->SetModel(simpleModel);
         simpleList->SetRowHeight(22);
 
         simpleList->onItemClicked = [statusLabel, simpleModel](int row) {
@@ -101,7 +101,7 @@ namespace UltraCanvas {
         multiModel->AddItem(MultiColumnListItem({"CHANGELOG.md", "Markdown", "12.3 KB", "2025-03-15"}));
 
         auto multiList = std::make_shared<UltraCanvasListView>("MultiColumnListView", 500, 125, 480, 225);
-        multiList->SetModel(multiModel.get());
+        multiList->SetModel(multiModel);
 
         ListViewStyle multiStyle;
         multiStyle.headerFontSize = 10;
@@ -167,7 +167,7 @@ namespace UltraCanvas {
         styledModel->AddItem("Pearl White");
 
         auto styledList = std::make_shared<UltraCanvasListView>("StyledListView", 20, 420, 460, 160);
-        styledList->SetModel(styledModel.get());
+        styledList->SetModel(styledModel);
 
         ListViewStyle styledStyle;
         styledStyle.backgroundColor = Color(252, 252, 255);
@@ -227,7 +227,7 @@ namespace UltraCanvas {
         iconModel->AddItem(ListItem("Go", iconsDir + "go.png", "Google systems language"));
 
         auto iconList = std::make_shared<UltraCanvasListView>("IconListView", 500, 420, 480, 160);
-        iconList->SetModel(iconModel.get());
+        iconList->SetModel(iconModel);
         iconList->SetRowHeight(28);
 
         auto iconDelegate = std::make_shared<UltraCanvasDefaultListDelegate>();

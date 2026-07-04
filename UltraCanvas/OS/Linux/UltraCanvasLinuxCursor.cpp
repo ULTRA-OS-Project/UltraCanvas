@@ -1,7 +1,7 @@
 // OS/Linux/UltraCanvasLinuxCursor.cpp
 // Linux X11/XCursor implementation for custom cursor support
-// Version: 1.0.2
-// Last Modified: 2026-05-01
+// Version: 1.1.0 - HiDPI: scale custom cursor image + hotspot by device scale
+// Last Modified: 2026-07-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWindow.h"
@@ -50,8 +50,18 @@ namespace UltraCanvas {
 
 // ===== CREATE X CURSOR FROM RGBA =====
     static Cursor CreateXCursorFromImage(Display* display,
-                                        const vips::VImage& image,
-                                        int hotspotX, int hotspotY) {
+                                        const vips::VImage& sourceImage,
+                                        int hotspotX, int hotspotY,
+                                        float scale = 1.0f) {
+        // X11 does not scale custom cursors for HiDPI, so upsize the image and
+        // hotspot ourselves. System/theme cursors handle their own scaling.
+        vips::VImage image = sourceImage;
+        if (scale > 1.0f) {
+            image = sourceImage.resize(scale);
+            hotspotX = static_cast<int>(hotspotX * scale + 0.5f);
+            hotspotY = static_cast<int>(hotspotY * scale + 0.5f);
+        }
+
         int width = image.width();
         int height = image.height();
 
@@ -84,12 +94,12 @@ namespace UltraCanvas {
         return cursor;
     }
 
-    Cursor UltraCanvasLinuxApplication::LoadCursorFromImage(const std::string& filename, int hotspotX, int hotspotY) {
+    Cursor UltraCanvasLinuxApplication::LoadCursorFromImage(const std::string& filename, int hotspotX, int hotspotY, float scale) {
         if (filename.empty() || !display) return 0;
         try {
             vips::VImage img = LoadImageForCursor(filename);
-            // Create new cursor
-            return CreateXCursorFromImage(display, img, hotspotX, hotspotY);
+            // Create new cursor (scaled for HiDPI when scale > 1)
+            return CreateXCursorFromImage(display, img, hotspotX, hotspotY, scale);
         } catch (const vips::VError& e) {
             debugOutput << "UltraCanvas Linux: libvips error loading " << filename << ": " << e.what() << std::endl;
         }
@@ -174,12 +184,14 @@ namespace UltraCanvas {
                 break;
 
             case UCMouseCursor::LookingGlass:
-                // Load cursor from image
-                newCursor = LoadCursorFromImage(NormalizePath(GetResourcesDir() + "media/lib/cursor/looking-glass.png"), 0, 0);
+                // Load cursor from image (scaled for the window's display DPI)
+                newCursor = LoadCursorFromImage(NormalizePath(GetResourcesDir() + "media/lib/cursor/looking-glass.png"), 0, 0,
+                                                win ? win->GetDeviceScale() : 1.0f);
                 break;
             case UCMouseCursor::ContextMenu:
                 newCursor = LoadCursorFromImage(
-                    NormalizePath(GetResourcesDir() + "media/lib/cursor/context-menu.png"), 0, 0);
+                    NormalizePath(GetResourcesDir() + "media/lib/cursor/context-menu.png"), 0, 0,
+                    win ? win->GetDeviceScale() : 1.0f);
                 break;
             default:
                 newCursor = XCreateFontCursor(display, XC_left_ptr);
@@ -208,7 +220,8 @@ namespace UltraCanvas {
             return true;
         }
 
-        Cursor newCursor = LoadCursorFromImage(filename, hotspotX, hotspotY);
+        Cursor newCursor = LoadCursorFromImage(filename, hotspotX, hotspotY,
+                                               win ? win->GetDeviceScale() : 1.0f);
         if (!newCursor) {
             return false;
         }

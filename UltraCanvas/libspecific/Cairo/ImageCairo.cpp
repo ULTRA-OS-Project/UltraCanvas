@@ -6,6 +6,7 @@
 
 #include "UltraCanvasImage.h"
 #include "UltraCanvasUtils.h"
+#include "UltraCanvasFileError.h"
 #include "ImageCairo.h"
 #ifdef HAS_LIBVIPS
 #include "VipsQoiLoader.h"
@@ -225,7 +226,10 @@ namespace UltraCanvas {
                 imgDataPtr = nullptr;
             }
             debugOutput << "UCImage::Load: Failed Failed to load image to memory " << imagePath << " Err:" << err.what() << std::endl;
-            errorMessage = std::string("Failed to load image ") + imagePath + " Err:" + err.what();
+            std::string access = DescribeFileReadError(imagePath);
+            errorMessage = !access.empty()
+                ? access
+                : (std::string("Could not read the image file: ") + imagePath + " (" + err.what() + ")");
         }
         return imgDataPtr != nullptr;
     }
@@ -242,7 +246,13 @@ namespace UltraCanvas {
             }
         } catch (vips::VError& err) {
             debugOutput << "UCImage::Load: Failed Failed to load image for " << imagePath << " Err:" << err.what() << std::endl;
-            result->errorMessage = std::string("Failed to load image ") + imagePath + " Err:" + err.what();
+            // Prefer a clear file-access reason (missing / locked / no permission);
+            // otherwise the file opened but the format is unsupported or damaged.
+            std::string access = DescribeFileReadError(imagePath);
+            result->errorMessage = !access.empty()
+                ? access
+                : (std::string("The image format is not supported or the file is damaged: ")
+                   + imagePath + " (" + err.what() + ")");
         }
 
         return result;
@@ -760,7 +770,11 @@ namespace UltraCanvas {
             }
         } catch (vips::VError& err) {
             debugOutput << "UCImageRaster::Save: Failed save image: " << imagePath << " Err:" << err.what() << std::endl;
-            return err.what();
+            // Prefer a clear destination reason (folder missing / read-only /
+            // locked / no permission / disk full) over the raw vips message.
+            std::string writeErr = DescribeFileWriteError(imagePath);
+            return !writeErr.empty() ? writeErr
+                                     : (std::string("Could not save image: ") + err.what());
         }
         return "";
     }

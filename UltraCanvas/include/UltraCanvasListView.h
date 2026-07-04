@@ -1,5 +1,6 @@
 // include/UltraCanvasListView.h
 // Model-View-Delegate ListView widget
+// Last Modified: 2026-05-29
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -37,7 +38,7 @@ namespace UltraCanvas {
         Color selectionBackgroundColor = Colors::Selection;
         Color hoverBackgroundColor = Colors::SelectionHover;
 
-        ScrollbarStyle scrollbarStyle = ScrollbarStyle::Modern();
+        ScrollbarStyle scrollbarStyle = GetDefaultScrollbarStyleOr(ScrollbarStyle::Modern());
     };
 
     // ===== LIST VIEW WIDGET =====
@@ -53,11 +54,18 @@ namespace UltraCanvas {
 
         // Constructor
         UltraCanvasListView(const std::string& identifier,
-                            int x, int y, int w, int h);
+                            float x, float y, float w, float h);
+
+        UltraCanvasListView(const std::string& identifier, float w, float h)
+            : UltraCanvasListView(identifier, -1, -1, w, h) {}
+
+        explicit UltraCanvasListView(const std::string& identifier)
+            : UltraCanvasListView(identifier, -1, -1, -1, -1) {}
+
         virtual ~UltraCanvasListView() = default;
 
         // === Model / Delegate / Selection wiring ===
-        void SetModel(IListModel* model);
+        void SetModel(std::shared_ptr<IListModel> model);
         IListModel* GetModel() const;
 
         void SetDelegate(std::shared_ptr<IItemDelegate> delegate);
@@ -80,16 +88,21 @@ namespace UltraCanvas {
         void EnsureRowVisible(int row);
 
         // === Core overrides ===
-        void UpdateGeometry(IRenderContext* ctx) override;
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        // ListView is externally sized (explicit size or parent stretch); the base
+        // block measure is sufficient. We hook Arrange to recompute the scrollbar
+        // against the resolved finalBounds. SetBounds is kept because dropdown/
+        // autocomplete popups size this view imperatively (SetSize -> SetBounds) and
+        // the window popup pass does not run Measure/Arrange on popups.
+        void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         bool OnEvent(const UCEvent& event) override;
-        void SetBounds(const Rect2Di& bounds) override;
+        void SetBounds(const Rect2Df& bounds) override;
         void SetWindow(UltraCanvasWindowBase* win) override;
         bool AcceptsFocus() const override { return true; }
 
     private:
         // Model / Delegate / Selection
-        IListModel* model = nullptr;
+        std::shared_ptr<IListModel> model;
         std::shared_ptr<IItemDelegate> delegate;
         std::shared_ptr<IListSelection> selection;
 

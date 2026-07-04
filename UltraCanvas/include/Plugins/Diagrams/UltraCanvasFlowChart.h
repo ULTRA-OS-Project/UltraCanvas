@@ -248,7 +248,7 @@ public:
     void SetZoomLevel(double zoom);
     void SetPanOffset(double x, double y);
     double GetZoomLevel() const { return zoomLevel; }
-    Point2Df GetPanOffset() const { return panOffset; }
+    Point2Dd GetPanOffset() const { return panOffset; }
     
     void SetCreateNodeMode(bool enable);
     void SetPendingNodeShape(FlowChartShape shape);
@@ -260,7 +260,7 @@ public:
     // RENDERING
     // =============================================================================
     
-    void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
     bool OnEvent(const UCEvent& event) override;
     
     // =============================================================================
@@ -307,11 +307,11 @@ private:
     int nextNodeId = 1;
     int nextConnId = 1;
     Point2Di dragStartPos;
-    Point2Df panStartOffset;
-    Point2Df dragStartWorldPos;
+    Point2Dd panStartOffset;
+    Point2Dd dragStartWorldPos;
     
     double zoomLevel = 1.0f;
-    Point2Df panOffset;
+    Point2Dd panOffset;
     
     // =============================================================================
     // RENDERING HELPERS
@@ -325,52 +325,52 @@ private:
     void RenderNodeText(IRenderContext* ctx, const FlowChartNode& node);
     void RenderSelectionHighlight(IRenderContext* ctx, const FlowChartNode& node, const Color& color, double width);
     void RenderConnection(IRenderContext* ctx, const FlowChartConnection& conn);
-    void RenderStraightLine(IRenderContext* ctx, const Point2Df& start, const Point2Df& end);
+    void RenderStraightLine(IRenderContext* ctx, const Point2Dd& start, const Point2Dd& end);
     // Computes the orthogonal path from `start` (on `sourceSide` of source) to
     // `end` (on `targetSide` of target), avoiding all other nodes. Falls back
     // to cardinal-aware L/Z routing if A* cannot find a path. The exclusion
     // set lists node ids that A* must NOT treat as obstacles (typically the
     // source and target nodes themselves so the line can leave/enter them).
-    std::vector<Point2Df> ComputeOrthogonalPath(const Point2Df& start, const Point2Df& end,
+    std::vector<Point2Dd> ComputeOrthogonalPath(const Point2Dd& start, const Point2Dd& end,
                                                 CardinalSide sourceSide, CardinalSide targetSide,
                                                 const std::string& sourceId, const std::string& targetId);
     // Cardinal-aware L/Z fallback (the 2.1.4 behavior). Used when A* fails
     // or when no obstacle is in the way.
-    std::vector<Point2Df> ComputeCardinalPath(const Point2Df& start, const Point2Df& end,
+    std::vector<Point2Dd> ComputeCardinalPath(const Point2Dd& start, const Point2Dd& end,
                                               CardinalSide sourceSide, CardinalSide targetSide) const;
     // A* over the chart's grid. Returns empty vector if no path exists.
-    std::vector<Point2Df> RouteAStar(const Point2Df& start, const Point2Df& end,
+    std::vector<Point2Dd> RouteAStar(const Point2Dd& start, const Point2Dd& end,
                                      CardinalSide sourceSide, CardinalSide targetSide,
                                      const std::string& sourceId, const std::string& targetId);
     // True if the cardinal L/Z path between start and end intersects any
     // node not in {sourceId, targetId}. Used to decide whether to call A*.
-    bool PathHasObstacles(const std::vector<Point2Df>& path,
+    bool PathHasObstacles(const std::vector<Point2Dd>& path,
                           const std::string& sourceId, const std::string& targetId) const;
     // Draws a polyline from the given waypoints.
-    void RenderOrthogonalLine(IRenderContext* ctx, const std::vector<Point2Df>& waypoints);
+    void RenderOrthogonalLine(IRenderContext* ctx, const std::vector<Point2Dd>& waypoints);
     // Angle of the final segment (waypoints[n-2] -> waypoints[n-1]).
-    double ComputeIncomingAngle(const std::vector<Point2Df>& waypoints,
+    double ComputeIncomingAngle(const std::vector<Point2Dd>& waypoints,
                                FlowChartConnectionStyle style, CardinalSide targetSide) const;
     // Anchor for the connection label: midpoint of the longest segment in
     // the path. Avoids placing the label on a corner.
-    Point2Df ComputeOrthogonalLabelAnchor(const std::vector<Point2Df>& waypoints) const;
-    void RenderCurvedLine(IRenderContext* ctx, const Point2Df& start, const Point2Df& end);
-    void RenderArrowHead(IRenderContext* ctx, const Point2Df& tip, double angle, const Color& color, double size);
-    void RenderDiamondArrow(IRenderContext* ctx, const Point2Df& tip, double angle, const Color& color, double size);
+    Point2Dd ComputeOrthogonalLabelAnchor(const std::vector<Point2Dd>& waypoints) const;
+    void RenderCurvedLine(IRenderContext* ctx, const Point2Dd& start, const Point2Dd& end);
+    void RenderArrowHead(IRenderContext* ctx, const Point2Dd& tip, double angle, const Color& color, double size);
+    void RenderDiamondArrow(IRenderContext* ctx, const Point2Dd& tip, double angle, const Color& color, double size);
     // Renders the connection label centered on `anchor`. For orthogonal lines
     // `anchor` is the midpoint of the longest segment; for straight/curved
     // lines it is the geometric midpoint.
-    void RenderConnectionLabel(IRenderContext* ctx, const FlowChartConnection& conn, const Point2Df& anchor);
+    void RenderConnectionLabel(IRenderContext* ctx, const FlowChartConnection& conn, const Point2Dd& anchor);
     void RenderArrow(IRenderContext* ctx, double x1, double y1, double x2, double y2, const Color& color);
     
     // =============================================================================
     // HIT TESTING
     // =============================================================================
     
-    std::string FindNodeAt(const Point2Df& pos);
-    std::string FindConnectionAt(const Point2Df& pos);
-    bool PointInNode(const FlowChartNode& node, const Point2Df& pos);
-    double DistanceToLineSegment(const Point2Df& point, const Point2Df& lineStart, const Point2Df& lineEnd);
+    std::string FindNodeAt(const Point2Dd& pos);
+    std::string FindConnectionAt(const Point2Dd& pos);
+    bool PointInNode(const FlowChartNode& node, const Point2Dd& pos);
+    double DistanceToLineSegment(const Point2Dd& point, const Point2Dd& lineStart, const Point2Dd& lineEnd);
     
     // =============================================================================
     // UTILITY
@@ -383,19 +383,19 @@ private:
     //   * Orthogonal/Curved: midpoint of the cardinal side facing
     //     `otherCenter`. For Diamond/Decision the midpoints of the four sides
     //     are the rhombus vertices, which is the visually correct exit.
-    Point2Df GetConnectionPoint(const FlowChartNode& node, const Point2Df& otherCenter,
+    Point2Dd GetConnectionPoint(const FlowChartNode& node, const Point2Dd& otherCenter,
                                 FlowChartConnectionStyle style) const;
-    Point2Df GetNodeCenter(const FlowChartNode& node) const;
+    Point2Dd GetNodeCenter(const FlowChartNode& node) const;
     // Picks Top/Right/Bottom/Left based on the angle from nodeCenter to otherCenter.
-    CardinalSide GetCardinalSide(const Point2Df& nodeCenter, const Point2Df& otherCenter) const;
+    CardinalSide GetCardinalSide(const Point2Dd& nodeCenter, const Point2Dd& otherCenter) const;
     // Returns the midpoint of the given cardinal side of the node's bbox.
-    Point2Df GetCardinalPoint(const FlowChartNode& node, CardinalSide side) const;
-    Point2Df GetArrowEndPoint(const Point2Df& start, const Point2Df& end, FlowChartConnectionStyle style) const;
+    Point2Dd GetCardinalPoint(const FlowChartNode& node, CardinalSide side) const;
+    Point2Dd GetArrowEndPoint(const Point2Dd& start, const Point2Dd& end, FlowChartConnectionStyle style) const;
     void GetConnectionPoints(const std::string& sourceId, const std::string& targetId, double& x1, double& y1, double& x2, double& y2);
-    Point2Df ScreenToWorld(const Point2Di& screenPos) const;
-    Point2Df ScreenToWorld(const Point2Df& screenPos) const;
+    Point2Dd ScreenToWorld(const Point2Di& screenPos) const;
+    Point2Dd ScreenToWorld(const Point2Dd& screenPos) const;
     bool IsNodeSelected(const std::string& nodeId) const;
-    double CalculateAngle(const Point2Df& from, const Point2Df& to);
+    double CalculateAngle(const Point2Dd& from, const Point2Dd& to);
     std::string GenerateUniqueId(const std::string& prefix);
     std::string GenerateNodeId();
     std::string GenerateConnectionId();

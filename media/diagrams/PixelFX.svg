@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">
+<title>PixelFX module overview (16:9)</title>
+<desc>PixelFX image and pixel effects module: stable C++ API surface on top, effect/filter capability interfaces, a backend/execution layer with CPU and GPU pipelines, sitting on shared sibling modules and I/O backends.</desc>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+<style>
+.th{font-size:15px;font-weight:500}
+.ts{font-size:13px;font-weight:400}
+.blue-fill{fill:#E6F1FB;stroke:#185FA5}
+.blue-t{fill:#0C447C}.blue-s{fill:#185FA5}
+.teal-fill{fill:#E1F5EE;stroke:#0F6E56}
+.teal-sub{fill:#9FE1CB;stroke:#0F6E56}
+.teal-t{fill:#085041}.teal-s{fill:#0F6E56}
+.coral-fill{fill:#FAECE7;stroke:#993C1D}
+.coral-sub{fill:#F3CFC2;stroke:#993C1D}
+.coral-t{fill:#712B13}.coral-s{fill:#993C1D}
+.amber-fill{fill:#FAEEDA;stroke:#854F0B}
+.amber-sub{fill:#F2D9A6;stroke:#854F0B}
+.amber-t{fill:#633806}.amber-s{fill:#854F0B}
+.purple-fill{fill:#EEEDFE;stroke:#534AB7}
+.purple-sub{fill:#CECBF6;stroke:#534AB7}
+.purple-t{fill:#3C3489}.purple-s{fill:#534AB7}
+.pchip{font-size:13px;font-weight:500}
+.arr{stroke:#73726c;stroke-width:1.5;fill:none}
+</style>
+</defs>
+
+<!-- API surface (full width) -->
+<rect class="blue-fill" x="40" y="30" width="1200" height="58" rx="10" stroke-width="0.5"/>
+<text class="th blue-t" x="640" y="53" text-anchor="middle" dominant-baseline="central">PixelFX:: stable C++ API surface</text>
+<text class="ts blue-s" x="640" y="72" text-anchor="middle" dominant-baseline="central">Apply&lt;Effect&gt; · EffectChain · non-destructive layers · GPU/CPU auto-select · RawPixels() escape hatch</text>
+
+<!-- Capabilities band (full width) -->
+<rect class="teal-fill" x="40" y="106" width="1200" height="306" rx="10" stroke-width="0.5"/>
+<text class="th teal-t" x="62" y="129" dominant-baseline="central">Effect interfaces<tspan class="ts teal-s" dx="14">10 stable surfaces · composable pixel operations</tspan></text>
+
+<rect class="teal-sub" x="60" y="146" width="288" height="58" rx="6" stroke-width="0.5"/>
+<text class="th teal-t" x="204" y="167" text-anchor="middle" dominant-baseline="central">IColorAdjust</text>
+<text class="ts teal-s" x="204" y="187" text-anchor="middle" dominant-baseline="central">Curves, levels, HSL, balance</text>
+<rect class="teal-sub" x="364" y="146" width="288" height="58" rx="6" stroke-width="0.5"/>
+<text class="th teal-t" x="508" y="167" text-anchor="middle" dominant-baseline="central">IBlur</text>
+<text class="ts teal-s" x="508" y="187" text-anchor="middle" dominant-baseline="central">Gaussian, box, motion, lens</text>
+<rect class="teal-sub" x="668" y="146" width="288" height="58" rx="6" stroke-width="0.5"/>
+<text class="th teal-t" x="812" y="167" text-anchor="middle" dominant-baseline="central">ISharpen</text>
+<text class="ts teal-s" x="812" y="187" text-anchor="middle" dominant-baseline="central">Unsharp, high-pass, clarity</text>
+<rect class="teal-sub" x="972" y="146" width="248" height="58" rx="6" stroke-width="0.5"/>
+<text class="th teal-t" x="1096" y="167" text-anchor="middle" dominant-baseline="central">IConvolve</text>
+<text class="ts teal-s" x="1096" y="187" text-anchor="middle" dominant-baseline="central">Custom kernels, edge detect</text>
+
+<rect class="teal-sub" x="60" y="216" width="288" height="58" rx="6" stroke-width="0.5"/>
+<text class="th teal-t" x="204" y="237" text-anchor="middle" dominant-baseline="central">IDistort</text>
+<text class="ts teal-s" x="204" y="257" text-anchor="middle" dominant-baseline="central">Warp, ripple, lens, perspective</text>
+<rect class="teal-sub" x="364" y="216" width="288" height="58" rx="6" stroke-width="0.5"/>
+<text class="th teal-t" x="508" y="237" text-anchor="middle" dominant-baseline="central">IStylize</text>
+<text class="ts teal-s" x="508" y="257" text-anchor="middle" dominant-baseline="central">Posterize, halftone, oil, sketch</text>
+<rect class="teal-sub" x="668" y="216" width="288" height="58" rx="6" stroke-width="0.5"/>
+<text class="th teal-t" x="812" y="237" text-anchor="middle" dominant-baseline="central">IBlend</text>
+<text class="ts teal-s" x="812" y="257" text-anchor="middle" dominant-baseline="central">28 modes, masks, opacity</text>
+<rect class="teal-sub" x="972" y="216" width="248" height="58" rx="6" stroke-width="0.5"/>
+<text class="th teal-t" x="1096" y="237" text-anchor="middle" dominant-baseline="central">INoise</text>
+<text class="ts teal-s" x="1096" y="257" text-anchor="middle" dominant-baseline="central">Add, denoise, grain, dither</text>
+
+<rect class="teal-sub" x="60" y="286" width="288" height="58" rx="6" stroke-width="0.5"/>
+<text class="th teal-t" x="204" y="307" text-anchor="middle" dominant-baseline="central">IGeometry</text>
+<text class="ts teal-s" x="204" y="327" text-anchor="middle" dominant-baseline="central">Resize, crop, rotate, flip</text>
+<rect class="teal-sub" x="364" y="286" width="288" height="58" rx="6" stroke-width="0.5"/>
+<text class="th teal-t" x="508" y="307" text-anchor="middle" dominant-baseline="central">ICompositor</text>
+<text class="ts teal-s" x="508" y="327" text-anchor="middle" dominant-baseline="central">Layers, groups, alpha, mattes</text>
+<rect class="teal-sub" x="668" y="286" width="552" height="58" rx="6" stroke-width="0.5"/>
+<text class="th teal-t" x="944" y="307" text-anchor="middle" dominant-baseline="central">PixelFXCommon</text>
+<text class="ts teal-s" x="944" y="327" text-anchor="middle" dominant-baseline="central">Surface · PixelBuffer · ColorSpace · ROI · ParamMap · Region</text>
+
+<text class="ts teal-s" x="62" y="383" dominant-baseline="central">Self-registering factories — effects appear in Apply/List/Register the moment they're linked</text>
+
+<line x1="640" y1="412" x2="640" y2="440" class="arr" marker-end="url(#arrow)"/>
+
+<!-- Backend / execution layer (full width) -->
+<rect class="coral-fill" x="40" y="442" width="1200" height="118" rx="10" stroke-width="0.5"/>
+<text class="th coral-t" x="62" y="465" dominant-baseline="central">Execution backends<tspan class="ts coral-s" dx="14">independently opt-in via PIXELFX_BACKEND_&lt;NAME&gt;</tspan></text>
+<rect class="coral-sub" x="60" y="482" width="180" height="56" rx="6" stroke-width="0.5"/>
+<text class="th coral-t" x="150" y="502" text-anchor="middle" dominant-baseline="central">cpu-scalar</text>
+<text class="ts coral-s" x="150" y="522" text-anchor="middle" dominant-baseline="central">portable reference</text>
+<rect class="coral-sub" x="252" y="482" width="180" height="56" rx="6" stroke-width="0.5"/>
+<text class="th coral-t" x="342" y="502" text-anchor="middle" dominant-baseline="central">cpu-simd</text>
+<text class="ts coral-s" x="342" y="522" text-anchor="middle" dominant-baseline="central">SSE / AVX / NEON</text>
+<rect class="coral-sub" x="444" y="482" width="180" height="56" rx="6" stroke-width="0.5"/>
+<text class="th coral-t" x="534" y="502" text-anchor="middle" dominant-baseline="central">gpu-opengl</text>
+<text class="ts coral-s" x="534" y="522" text-anchor="middle" dominant-baseline="central">shader pipeline</text>
+<rect class="coral-sub" x="636" y="482" width="180" height="56" rx="6" stroke-width="0.5"/>
+<text class="th coral-t" x="726" y="502" text-anchor="middle" dominant-baseline="central">gpu-vulkan</text>
+<text class="ts coral-s" x="726" y="522" text-anchor="middle" dominant-baseline="central">compute kernels</text>
+<rect class="coral-sub" x="828" y="482" width="180" height="56" rx="6" stroke-width="0.5"/>
+<text class="th coral-t" x="918" y="502" text-anchor="middle" dominant-baseline="central">…backend</text>
+<text class="ts coral-s" x="918" y="522" text-anchor="middle" dominant-baseline="central">pluggable engines</text>
+<rect class="coral-sub" x="1020" y="482" width="200" height="56" rx="6" stroke-width="0.5"/>
+<text class="th coral-t" x="1120" y="502" text-anchor="middle" dominant-baseline="central">RawPixels()</text>
+<text class="ts coral-s" x="1120" y="522" text-anchor="middle" dominant-baseline="central">direct buffer pointer</text>
+
+<line x1="640" y1="560" x2="640" y2="588" class="arr" marker-end="url(#arrow)"/>
+
+<!-- Sibling modules / backends (full width) -->
+<rect class="purple-fill" x="40" y="590" width="1200" height="100" rx="10" stroke-width="0.5"/>
+<text class="th purple-t" x="62" y="613" dominant-baseline="central">Sibling modules &amp; I/O backends<tspan class="ts purple-s" dx="14">opt-in</tspan></text>
+<rect class="purple-sub" x="60" y="628" width="370" height="46" rx="6" stroke-width="0.5"/>
+<text class="th purple-t" x="245" y="651" text-anchor="middle" dominant-baseline="central">UltraCanvas — Cairo surfaces &amp; rendering</text>
+<rect class="purple-sub" x="455" y="628" width="370" height="46" rx="6" stroke-width="0.5"/>
+<text class="th purple-t" x="640" y="651" text-anchor="middle" dominant-baseline="central">FileLoader — PNG / JPEG / WebP / TIFF decode</text>
+<rect class="purple-sub" x="850" y="628" width="370" height="46" rx="6" stroke-width="0.5"/>
+<text class="th purple-t" x="1035" y="651" text-anchor="middle" dominant-baseline="central">GPU drivers &amp; SIMD runtimes</text>
+</svg>

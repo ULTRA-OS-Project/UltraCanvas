@@ -23,7 +23,7 @@ constexpr float TWO_PI = 2.0f * PI;
 // ===== CONSTRUCTOR =====
 
 UltraCanvasGourceTree::UltraCanvasGourceTree(const std::string& id, 
-                                               long x, long y, long w, long h)
+                                               float x, float y, float w, float h)
     : UltraCanvasUIElement(id, x, y, w, h) {
     
     // Initialize default style
@@ -515,12 +515,12 @@ void UltraCanvasGourceTree::ZoomToFit() {
     
     if (minX >= maxX || minY >= maxY) return;
     
-    Rect2Di bounds = GetBounds();
+    Rect2Di bounds = GetContentRect();
     float nodeWidth = maxX - minX;
     float nodeHeight = maxY - minY;
     
-    float zoomX = (bounds.width - 40) / nodeWidth;
-    float zoomY = (bounds.height - 40) / nodeHeight;
+    float zoomX = (bounds.width - 80) / nodeWidth;
+    float zoomY = (bounds.height - 80) / nodeHeight;
     
     zoomLevel = std::min(zoomX, zoomY);
     zoomLevel = std::clamp(zoomLevel, minZoom, maxZoom);
@@ -552,7 +552,7 @@ void UltraCanvasGourceTree::CenterOnNode(const std::string& nodeId) {
     auto nodeIt = nodes.find(nodeId);
     if (nodeIt == nodes.end()) return;
     
-    Rect2Di bounds = GetBounds();
+    Rect2Di bounds = GetContentRect();
     panX = bounds.width / 2.0f - nodeIt->second.x * zoomLevel;
     panY = bounds.height / 2.0f - nodeIt->second.y * zoomLevel;
     
@@ -565,7 +565,7 @@ void UltraCanvasGourceTree::PerformLayout() {
     if (nodes.empty() || rootNodeId.empty()) return;
     
     // Update center point
-    Rect2Di bounds = GetBounds();
+    Rect2Di bounds = GetContentRect();
     style.centerX = bounds.width / 2.0f;
     style.centerY = bounds.height / 2.0f;
     
@@ -926,20 +926,20 @@ int UltraCanvasGourceTree::CountVisibleDescendants(const std::string& nodeId) co
     return count;
 }
 
-Point2Df UltraCanvasGourceTree::ScreenToWorld(const Point2Di& screenPos) const {
+Point2Dd UltraCanvasGourceTree::ScreenToWorld(const Point2Di& screenPos) const {
     Rect2Di bounds = GetBounds();
     float worldX = (screenPos.x - panX) / zoomLevel;
     float worldY = (screenPos.y - panY) / zoomLevel;
-    return Point2Df(worldX, worldY);
+    return Point2Dd(worldX, worldY);
 }
 
-Point2Di UltraCanvasGourceTree::WorldToScreen(const Point2Df& worldPos) const {
+Point2Di UltraCanvasGourceTree::WorldToScreen(const Point2Dd& worldPos) const {
     int screenX = static_cast<int>(worldPos.x * zoomLevel + panX);
     int screenY = static_cast<int>(worldPos.y * zoomLevel + panY);
     return Point2Di(screenX, screenY);
 }
 
-std::string UltraCanvasGourceTree::FindNodeAtPosition(const Point2Df& worldPos) const {
+std::string UltraCanvasGourceTree::FindNodeAtPosition(const Point2Dd& worldPos) const {
     // Search in reverse order (top nodes first)
     for (auto it = nodes.rbegin(); it != nodes.rend(); ++it) {
         const auto& node = it->second;
@@ -1115,7 +1115,7 @@ void UltraCanvasGourceTree::ApplyThemeColors(GourceTheme theme) {
     }
 }
 
-void UltraCanvasGourceTree::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+void UltraCanvasGourceTree::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
     if (!ctx || !IsVisible()) return;
     
     // Perform layout if needed
@@ -1127,7 +1127,7 @@ void UltraCanvasGourceTree::Render(IRenderContext* ctx, const Rect2Di& dirtyRect
 
 //    // Save state and set clip region (element-local coords)
 //    ctx->PushState();
-//    ctx->ClipRect(Rect2Df(bounds.x, bounds.y, bounds.width, bounds.height));
+//    ctx->ClipRect(Rect2Dd(finalBounds.x, finalBounds.y, finalBounds.width, finalBounds.height));
 
     // Draw background
     DrawBackground(ctx);
@@ -1162,7 +1162,7 @@ void UltraCanvasGourceTree::DrawBackground(IRenderContext* ctx) {
     // Fill background
     ctx->SetFillPaint(style.backgroundColor);
     ctx->ClearPath();
-    ctx->Rect(0, 0, bounds.width, bounds.height);
+    ctx->Rect(0, 0, finalBounds.width, finalBounds.height);
     ctx->FillPathPreserve();
     
     // Draw depth rings (optional grid)
@@ -1179,8 +1179,8 @@ void UltraCanvasGourceTree::DrawBackground(IRenderContext* ctx) {
         }
         
         // Draw concentric circles
-        float centerX = bounds.x + panX + style.centerX * zoomLevel;
-        float centerY = bounds.y + panY + style.centerY * zoomLevel;
+        float centerX = finalBounds.x + panX + style.centerX * zoomLevel;
+        float centerY = finalBounds.y + panY + style.centerY * zoomLevel;
         
         for (int d = 1; d <= maxNodeDepth; d++) {
             float radius = d * style.ringSpacing * zoomLevel;
@@ -1489,7 +1489,7 @@ void UltraCanvasGourceTree::DrawTooltip(IRenderContext* ctx, const GourceNode& n
     std::string tooltipText = tooltip.str();
     
     // Use tooltip manager
-    Point2Di screenPos = WorldToScreen(Point2Df(node.x, node.y));
+    Point2Di screenPos = WorldToScreen(Point2Dd(node.x, node.y));
     
     // Adjust position to not overlap node
     screenPos.x += static_cast<int>(node.nodeRadius * zoomLevel) + 10;
@@ -1552,7 +1552,7 @@ bool UltraCanvasGourceTree::HandleMouseMove(const UCEvent& event) {
     }
     
     // Convert to world coordinates and find node under cursor
-    Point2Df worldPos = ScreenToWorld(mousePos);
+    Point2Dd worldPos = ScreenToWorld(mousePos);
     std::string newHoveredId = FindNodeAtPosition(worldPos);
     
     if (newHoveredId != hoveredNodeId) {
@@ -1592,13 +1592,13 @@ bool UltraCanvasGourceTree::HandleMouseDown(const UCEvent& event) {
     if (event.button == UCMouseButton::Middle || event.button == UCMouseButton::Right) {
         isPanning = true;
         dragStartPos = mousePos;
-        panStartOffset = Point2Df(panX, panY);
+        panStartOffset = Point2Dd(panX, panY);
         return true;
     }
     
     // Left click
     if (event.button == UCMouseButton::Left) {
-        Point2Df worldPos = ScreenToWorld(mousePos);
+        Point2Dd worldPos = ScreenToWorld(mousePos);
         std::string clickedId = FindNodeAtPosition(worldPos);
         
         if (!clickedId.empty()) {
@@ -1635,7 +1635,7 @@ bool UltraCanvasGourceTree::HandleMouseWheel(const UCEvent& event) {
     Rect2Di bounds = GetBounds();
     
     // Calculate world position under mouse before zoom
-    Point2Df worldBefore = ScreenToWorld(mousePos);
+    Point2Dd worldBefore = ScreenToWorld(mousePos);
     
     // Apply zoom
     float newZoom = zoomLevel * zoomFactor;
@@ -1645,7 +1645,7 @@ bool UltraCanvasGourceTree::HandleMouseWheel(const UCEvent& event) {
         zoomLevel = newZoom;
         
         // Adjust pan to keep mouse position fixed
-        Point2Df worldAfter = ScreenToWorld(mousePos);
+        Point2Dd worldAfter = ScreenToWorld(mousePos);
         panX += (worldAfter.x - worldBefore.x) * zoomLevel;
         panY += (worldAfter.y - worldBefore.y) * zoomLevel;
         
@@ -1657,7 +1657,7 @@ bool UltraCanvasGourceTree::HandleMouseWheel(const UCEvent& event) {
 
 bool UltraCanvasGourceTree::HandleDoubleClick(const UCEvent& event) {
     Point2Di mousePos(event.pointer.x, event.pointer.y);
-    Point2Df worldPos = ScreenToWorld(mousePos);
+    Point2Dd worldPos = ScreenToWorld(mousePos);
     std::string clickedId = FindNodeAtPosition(worldPos);
     
     if (!clickedId.empty()) {

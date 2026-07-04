@@ -1,13 +1,15 @@
 // core/UltraCanvasBreadcrumb.cpp
 // Hierarchical breadcrumb navigation control implementation
-// Version: 1.0.0
-// Last Modified: 2026-05-14
+// Version: 1.3.0
+// Last Modified: 2026-06-20
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasBreadcrumb.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasTooltipManager.h"
+#include "CSSLayout/LayoutUtils.h"
 #include <algorithm>
+#include <optional>
 #include <sstream>
 #include <cmath>
 
@@ -62,6 +64,76 @@ namespace UltraCanvas {
         return s;
     }
 
+    BreadcrumbStyle BreadcrumbStyle::Arrow() {
+        BreadcrumbStyle s;
+        s.itemStyle = BreadcrumbItemStyle::Arrow;
+        s.separatorStyle = BreadcrumbSeparatorStyle::NoSeparator;
+        s.overflowMode = BreadcrumbOverflowMode::Clip;
+        s.itemBackgroundColor = Color(228, 230, 233, 255);
+        s.itemHoverBackgroundColor = Color(210, 224, 245, 255);
+        s.itemPressedBackgroundColor = Color(190, 212, 240, 255);
+        s.currentItemBackgroundColor = Color(0, 120, 215, 255);
+        s.currentItemTextColor = Colors::White;
+        s.itemTextColor = Color(60, 60, 60, 255);
+        s.currentItemBold = false;
+        s.currentItemClickable = true;
+        // Thin light gap drawn along each segment outline so neighbours stay distinct.
+        s.separatorColor = Color(255, 255, 255, 255);
+        s.separatorThickness = 1.0f;
+        s.arrowSize = 10;
+        s.itemPaddingHorizontal = 12;
+        s.itemPaddingVertical = 5;
+        s.separatorSpacing = 0;
+        return s;
+    }
+
+    BreadcrumbStyle BreadcrumbStyle::Parallelogram() {
+        BreadcrumbStyle s;
+        s.itemStyle = BreadcrumbItemStyle::Parallelogram;
+        s.separatorStyle = BreadcrumbSeparatorStyle::NoSeparator;
+        s.overflowMode = BreadcrumbOverflowMode::Clip;
+        s.itemBackgroundColor = Color(244, 122, 32, 255);
+        s.itemHoverBackgroundColor = Color(255, 150, 70, 255);
+        s.itemPressedBackgroundColor = Color(225, 105, 20, 255);
+        s.currentItemBackgroundColor = Color(250, 170, 110, 255);
+        s.itemTextColor = Colors::White;
+        s.currentItemTextColor = Colors::White;
+        s.currentItemBold = false;
+        s.currentItemClickable = true;
+        s.separatorColor = Color(255, 255, 255, 255);   // thin seam between segments
+        s.separatorThickness = 2.0f;
+        s.arrowSize = 14;
+        s.itemPaddingHorizontal = 14;
+        s.itemPaddingVertical = 6;
+        s.separatorSpacing = 0;
+        return s;
+    }
+
+    BreadcrumbStyle BreadcrumbStyle::Steps() {
+        BreadcrumbStyle s = BreadcrumbStyle::Arrow();
+        // Dark "wizard step" strip with round numbered badges.
+        s.backgroundColor = Color(32, 33, 36, 255);
+        s.cornerRadius = 6.0f;
+        s.itemBackgroundColor = Color(60, 63, 68, 255);
+        s.itemHoverBackgroundColor = Color(80, 84, 90, 255);
+        s.itemPressedBackgroundColor = Color(50, 53, 58, 255);
+        s.currentItemBackgroundColor = Color(40, 110, 235, 255);
+        s.itemTextColor = Color(210, 212, 216, 255);
+        s.currentItemTextColor = Colors::White;
+        s.separatorColor = Color(32, 33, 36, 255);
+        s.separatorThickness = 2.0f;
+        s.showLevelIndicator = true;
+        s.levelIndicatorBackground = BreadcrumbLevelIndicatorBackground::Round;
+        s.levelIndicatorBorder = true;
+        s.levelIndicatorSize = 22;
+        s.levelIndicatorColor = Color(28, 30, 34, 255);
+        s.levelIndicatorTextColor = Colors::White;
+        s.levelIndicatorBorderColor = Color(120, 150, 245, 255);
+        s.levelIndicatorBorderWidth = 2.0f;
+        s.itemPaddingHorizontal = 12;
+        return s;
+    }
+
     BreadcrumbStyle BreadcrumbStyle::WebDocs() {
         BreadcrumbStyle s;
         s.itemStyle = BreadcrumbItemStyle::Underline;
@@ -81,7 +153,7 @@ namespace UltraCanvas {
 
 // ===== CONSTRUCTOR =====
     UltraCanvasBreadcrumb::UltraCanvasBreadcrumb(const std::string& identifier,
-                                                 long x, long y, long w, long h)
+                                                 float x, float y, float w, float h)
             : UltraCanvasUIElement(identifier, x, y, w, h) {
         style = BreadcrumbStyle::Default();
         SetMouseCursor(UCMouseCursor::Hand);
@@ -91,7 +163,7 @@ namespace UltraCanvas {
     void UltraCanvasBreadcrumb::AddItem(const BreadcrumbItem& item) {
         items.push_back(item);
         layoutDirty = true;
-        RequestUpdateGeometry();
+        InvalidateLayout(); RequestRedraw();
         NotifyPathChanged();
     }
 
@@ -108,7 +180,7 @@ namespace UltraCanvas {
         if (index > static_cast<int>(items.size())) index = static_cast<int>(items.size());
         items.insert(items.begin() + index, item);
         layoutDirty = true;
-        RequestUpdateGeometry();
+        InvalidateLayout(); RequestRedraw();
         NotifyPathChanged();
     }
 
@@ -119,7 +191,7 @@ namespace UltraCanvas {
             explicitCurrentIndex = -1;
         }
         layoutDirty = true;
-        RequestUpdateGeometry();
+        InvalidateLayout(); RequestRedraw();
         NotifyPathChanged();
         return true;
     }
@@ -138,7 +210,7 @@ namespace UltraCanvas {
             explicitCurrentIndex = -1;
         }
         layoutDirty = true;
-        RequestUpdateGeometry();
+        InvalidateLayout(); RequestRedraw();
         NotifyPathChanged();
     }
 
@@ -149,7 +221,7 @@ namespace UltraCanvas {
         hoveredSlotIdx = -1;
         pressedSlotIdx = -1;
         layoutDirty = true;
-        RequestUpdateGeometry();
+        InvalidateLayout(); RequestRedraw();
         NotifyPathChanged();
     }
 
@@ -198,7 +270,7 @@ namespace UltraCanvas {
         }
 
         layoutDirty = true;
-        RequestUpdateGeometry();
+        InvalidateLayout(); RequestRedraw();
         NotifyPathChanged();
     }
 
@@ -215,7 +287,7 @@ namespace UltraCanvas {
         items = std::move(newItems);
         explicitCurrentIndex = -1;
         layoutDirty = true;
-        RequestUpdateGeometry();
+        InvalidateLayout(); RequestRedraw();
         NotifyPathChanged();
     }
 
@@ -226,7 +298,7 @@ namespace UltraCanvas {
         if (explicitCurrentIndex == index) return;
         explicitCurrentIndex = index;
         layoutDirty = true;
-        RequestUpdateGeometry();
+        InvalidateLayout(); RequestRedraw();
     }
 
     int UltraCanvasBreadcrumb::GetCurrentIndex() const {
@@ -245,21 +317,21 @@ namespace UltraCanvas {
     void UltraCanvasBreadcrumb::SetStyle(const BreadcrumbStyle& newStyle) {
         style = newStyle;
         layoutDirty = true;
-        RequestUpdateGeometry();
+        InvalidateLayout(); RequestRedraw();
     }
 
     void UltraCanvasBreadcrumb::SetSeparatorStyle(BreadcrumbSeparatorStyle s) {
         if (style.separatorStyle == s) return;
         style.separatorStyle = s;
         layoutDirty = true;
-        RequestUpdateGeometry();
+        InvalidateLayout(); RequestRedraw();
     }
 
     void UltraCanvasBreadcrumb::SetCustomSeparatorText(const std::string& text) {
         style.customSeparatorText = text;
         if (style.separatorStyle == BreadcrumbSeparatorStyle::CustomText) {
             layoutDirty = true;
-            RequestUpdateGeometry();
+            InvalidateLayout(); RequestRedraw();
         }
     }
 
@@ -267,7 +339,7 @@ namespace UltraCanvas {
         style.customSeparatorIcon = iconPath.empty() ? nullptr : UCImage::Get(iconPath);
         if (style.separatorStyle == BreadcrumbSeparatorStyle::CustomIcon) {
             layoutDirty = true;
-            RequestUpdateGeometry();
+            InvalidateLayout(); RequestRedraw();
         }
     }
 
@@ -275,14 +347,14 @@ namespace UltraCanvas {
         if (style.itemStyle == s) return;
         style.itemStyle = s;
         layoutDirty = true;
-        RequestUpdateGeometry();
+        InvalidateLayout(); RequestRedraw();
     }
 
     void UltraCanvasBreadcrumb::SetOverflowMode(BreadcrumbOverflowMode mode) {
         if (style.overflowMode == mode) return;
         style.overflowMode = mode;
         layoutDirty = true;
-        RequestUpdateGeometry();
+        InvalidateLayout(); RequestRedraw();
     }
 
     void UltraCanvasBreadcrumb::SetFont(const std::string& family, float size, FontWeight weight) {
@@ -290,14 +362,14 @@ namespace UltraCanvas {
         style.fontStyle.fontSize = size;
         style.fontStyle.fontWeight = weight;
         layoutDirty = true;
-        RequestUpdateGeometry();
+        InvalidateLayout(); RequestRedraw();
     }
 
     void UltraCanvasBreadcrumb::SetMaxItemTextWidth(int maxWidth) {
         if (style.maxItemTextWidth == maxWidth) return;
         style.maxItemTextWidth = maxWidth;
         layoutDirty = true;
-        RequestUpdateGeometry();
+        InvalidateLayout(); RequestRedraw();
     }
 
 // ===== MEASUREMENT HELPERS =====
@@ -318,62 +390,71 @@ namespace UltraCanvas {
     int UltraCanvasBreadcrumb::MeasureSeparator(IRenderContext* ctx) {
         switch (style.separatorStyle) {
             case BreadcrumbSeparatorStyle::NoSeparator:
+                separatorLayout.reset();
                 return 0;
             case BreadcrumbSeparatorStyle::Chevron:
+                separatorLayout.reset();
                 return style.separatorSize;
             case BreadcrumbSeparatorStyle::ChevronDouble:
+                separatorLayout.reset();
                 return style.separatorSize * 2 - 2;
             case BreadcrumbSeparatorStyle::CustomIcon: {
+                separatorLayout.reset();
                 if (!style.customSeparatorIcon) return 0;
                 return style.iconSize;
             }
             default: {
                 std::string s = SeparatorTextFor(style.separatorStyle, style.customSeparatorText);
-                if (s.empty()) return 0;
-                return ctx->GetTextLineWidth(s);
+                if (s.empty()) {
+                    separatorLayout.reset();
+                    return 0;
+                }
+                separatorLayout = ctx->CreateTextLayout(s, false);
+                if (separatorLayout) {
+                    separatorLayout->SetFontStyle(style.fontStyle);
+                    separatorLayout->SetWrap(TextWrap::WrapNone);
+                    return static_cast<int>(separatorLayout->GetLayoutWidth());
+                }
+                return 0;
             }
         }
     }
 
-    int UltraCanvasBreadcrumb::MeasureItemWidth(IRenderContext* ctx, const BreadcrumbItem& item,
-                                                bool includeDropdown,
-                                                const std::string& displayText) {
+    std::unique_ptr<ITextLayout> UltraCanvasBreadcrumb::BuildItemLayout(IRenderContext* ctx,
+                                                                       const std::string& text,
+                                                                       bool bold,
+                                                                       int maxWidth) const {
+        auto layout = ctx->CreateTextLayout(text, false);
+        if (!layout) return layout;
+        FontStyle fs = style.fontStyle;
+        if (bold) fs.fontWeight = FontWeight::Bold;
+        layout->SetFontStyle(fs);
+        layout->SetWrap(TextWrap::WrapNone);
+        if (maxWidth > 0) {
+            layout->SetEllipsize(EllipsizeMode::EllipsizeEnd);
+            layout->SetExplicitWidth(static_cast<double>(maxWidth));
+        }
+        return layout;
+    }
+
+    int UltraCanvasBreadcrumb::ComputeItemSlotWidth(const BreadcrumbItem& item,
+                                                   const Size2Dd& textSize,
+                                                   bool includeDropdown) const {
         int width = style.itemPaddingHorizontal * 2;
         bool hasIcon = item.icon != nullptr;
-        bool hasText = !displayText.empty();
+        bool hasText = textSize.width > 0.0f;
 
+        if (style.showLevelIndicator) {
+            width += style.levelIndicatorSize;
+            if (hasIcon || hasText) width += style.iconTextSpacing;
+        }
         if (hasIcon) width += style.iconSize;
         if (hasIcon && hasText) width += style.iconTextSpacing;
-        if (hasText) width += ctx->GetTextLineWidth(displayText);
+        if (hasText) width += static_cast<int>(textSize.width);
         if (includeDropdown && item.hasDropdown) {
             width += style.dropdownChevronSpacing + style.dropdownChevronSize;
         }
         return width;
-    }
-
-    std::string UltraCanvasBreadcrumb::FitText(IRenderContext* ctx, const std::string& text,
-                                               int maxPixelWidth) {
-        if (text.empty() || maxPixelWidth <= 0) return text;
-        int currentWidth = ctx->GetTextLineWidth(text);
-        if (currentWidth <= maxPixelWidth) return text;
-
-        const std::string ellipsis = "...";
-        int ellipsisWidth = ctx->GetTextLineWidth(ellipsis);
-        if (ellipsisWidth >= maxPixelWidth) return ellipsis;
-
-        // Binary search for the longest prefix that fits with the ellipsis appended.
-        int lo = 0, hi = static_cast<int>(text.size());
-        while (lo < hi) {
-            int mid = (lo + hi + 1) / 2;
-            std::string candidate = text.substr(0, mid) + ellipsis;
-            if (ctx->GetTextLineWidth(candidate) <= maxPixelWidth) {
-                lo = mid;
-            } else {
-                hi = mid - 1;
-            }
-        }
-        if (lo <= 0) return ellipsis;
-        return text.substr(0, lo) + ellipsis;
     }
 
 // ===== LAYOUT =====
@@ -397,20 +478,25 @@ namespace UltraCanvas {
         int availableWidth = content.width;
         int currentIdx = ResolvedCurrentIndex();
 
-        // ===== STEP 1: Measure every item (with default text limits) =====
-        std::vector<std::string> displayTexts(items.size());
+        // ===== STEP 1: Build per-item text layouts and measure =====
+        // Each layout carries its own font weight (Bold for the current item when enabled),
+        // so measurement and render use identical metrics.
+        const bool allowInitialEllipsize =
+            (style.maxItemTextWidth > 0
+             && (style.overflowMode == BreadcrumbOverflowMode::Ellipsize
+                 || style.overflowMode == BreadcrumbOverflowMode::ShrinkText
+                 || style.overflowMode == BreadcrumbOverflowMode::Collapse));
+
+        std::vector<std::unique_ptr<ITextLayout>> layouts(items.size());
+        std::vector<Size2Dd> sizes(items.size());
         std::vector<int> itemWidths(items.size());
         int totalWidth = 0;
         for (size_t i = 0; i < items.size(); ++i) {
-            std::string text = items[i].text;
-            if (style.maxItemTextWidth > 0
-                && (style.overflowMode == BreadcrumbOverflowMode::Ellipsize
-                    || style.overflowMode == BreadcrumbOverflowMode::ShrinkText
-                    || style.overflowMode == BreadcrumbOverflowMode::Collapse)) {
-                text = FitText(ctx, text, style.maxItemTextWidth);
-            }
-            displayTexts[i] = text;
-            itemWidths[i] = MeasureItemWidth(ctx, items[i], true, text);
+            bool bold = (static_cast<int>(i) == currentIdx) && style.currentItemBold;
+            int initMax = allowInitialEllipsize ? style.maxItemTextWidth : 0;
+            layouts[i] = BuildItemLayout(ctx, items[i].text, bold, initMax);
+            sizes[i] = layouts[i] ? layouts[i]->GetLayoutSize() : Size2Dd();
+            itemWidths[i] = ComputeItemSlotWidth(items[i], sizes[i], true);
             totalWidth += itemWidths[i];
         }
         int separatorsTotal = items.size() > 1
@@ -422,6 +508,7 @@ namespace UltraCanvas {
         // ===== STEP 2: Apply overflow strategy if necessary =====
         std::vector<bool> visible(items.size(), true);
         bool needsOverflow = false;
+        std::unique_ptr<ITextLayout> overflowLayout;
 
         if (totalWidth > availableWidth) {
             switch (style.overflowMode) {
@@ -430,38 +517,46 @@ namespace UltraCanvas {
                     break;
 
                 case BreadcrumbOverflowMode::Ellipsize: {
-                    // Try shrinking each item's text further until things fit.
+                    // Tighten each non-current item until things fit.
                     int totalSlack = totalWidth - availableWidth;
                     for (size_t i = 0; i < items.size() && totalSlack > 0; ++i) {
                         if (i == static_cast<size_t>(currentIdx)) continue; // never shrink current
-                        int currentTextW = ctx->GetTextLineWidth(displayTexts[i]);
+                        if (!layouts[i]) continue;
+                        int currentTextW = static_cast<int>(sizes[i].width);
                         if (currentTextW <= 0) continue;
                         int newMax = std::max(8, currentTextW - totalSlack);
-                        std::string fitted = FitText(ctx, items[i].text, newMax);
-                        int newWidth = MeasureItemWidth(ctx, items[i], true, fitted);
+                        layouts[i]->SetEllipsize(EllipsizeMode::EllipsizeEnd);
+                        layouts[i]->SetExplicitWidth(static_cast<double>(newMax));
+                        sizes[i] = layouts[i]->GetLayoutSize();
+                        int newWidth = ComputeItemSlotWidth(items[i], sizes[i], true);
                         totalSlack -= (itemWidths[i] - newWidth);
-                        displayTexts[i] = fitted;
                         itemWidths[i] = newWidth;
                     }
                     break;
                 }
 
                 case BreadcrumbOverflowMode::ShrinkText: {
-                    // Same as Ellipsize but applied uniformly.
+                    // Apply a uniform per-item text budget.
                     int perItemBudget = std::max(20, availableWidth / std::max<int>(1, (int)items.size()));
                     for (size_t i = 0; i < items.size(); ++i) {
-                        std::string fitted = FitText(ctx, items[i].text, perItemBudget);
-                        displayTexts[i] = fitted;
-                        itemWidths[i] = MeasureItemWidth(ctx, items[i], true, fitted);
+                        if (!layouts[i]) continue;
+                        layouts[i]->SetEllipsize(EllipsizeMode::EllipsizeEnd);
+                        layouts[i]->SetExplicitWidth(static_cast<double>(perItemBudget));
+                        sizes[i] = layouts[i]->GetLayoutSize();
+                        itemWidths[i] = ComputeItemSlotWidth(items[i], sizes[i], true);
                     }
                     break;
                 }
 
                 case BreadcrumbOverflowMode::Collapse: {
                     needsOverflow = true;
-                    // Reserve width for the "..." overflow placeholder.
+                    // Build the "..." overflow placeholder layout once.
+                    overflowLayout = BuildItemLayout(ctx, style.overflowEllipsisText, false, 0);
+                    int overflowTextW = overflowLayout
+                                        ? static_cast<int>(overflowLayout->GetLayoutWidth())
+                                        : 0;
                     int overflowBaseWidth = style.itemPaddingHorizontal * 2
-                                            + ctx->GetTextLineWidth(style.overflowEllipsisText)
+                                            + overflowTextW
                                             + style.dropdownChevronSpacing
                                             + style.dropdownChevronSize;
                     int sepBlock = separatorWidth + style.separatorSpacing * 2;
@@ -529,6 +624,13 @@ namespace UltraCanvas {
         int contentBottom = content.y + content.height;
         int centerY = (contentTop + contentBottom) / 2;
 
+        // Arrow/Parallelogram styles: segments butt against each other (no separator/gap)
+        // and each non-first segment reserves a left inset so its content clears the
+        // previous segment's tip/slant.
+        const bool segmentStyle = (style.itemStyle == BreadcrumbItemStyle::Arrow
+                                   || style.itemStyle == BreadcrumbItemStyle::Parallelogram);
+        const int arrowDepth = segmentStyle ? std::max(0, style.arrowSize) : 0;
+
         bool overflowEmitted = false;
 
         for (size_t i = 0; i < items.size(); ++i) {
@@ -542,11 +644,18 @@ namespace UltraCanvas {
                 ItemSlot oslot;
                 oslot.itemIndex = -1;
                 oslot.isOverflow = true;
-                int textW = ctx->GetTextLineWidth(style.overflowEllipsisText);
+                Size2Dd oTextSize = overflowLayout ? overflowLayout->GetLayoutSize() : Size2Dd();
+                int textW = static_cast<int>(oTextSize.width);
                 int oWidth = style.itemPaddingHorizontal * 2 + textW
                              + style.dropdownChevronSpacing + style.dropdownChevronSize;
                 oslot.rect = Rect2Di(x, centerY - slotHeight / 2, oWidth, slotHeight);
                 int innerX = x + style.itemPaddingHorizontal;
+                // Center the glyphs vertically via the text layout itself (full
+                // precision) so they share the exact center line of separators/icons.
+                if (overflowLayout) {
+                    overflowLayout->SetVerticalAlignment(VerticalAlignment::Middle);
+                    overflowLayout->SetExplicitHeight(static_cast<double>(slotHeight));
+                }
                 oslot.textRect = Rect2Di(innerX, oslot.rect.y, textW, slotHeight);
                 innerX += textW + style.dropdownChevronSpacing;
                 oslot.dropdownRect = Rect2Di(innerX,
@@ -554,36 +663,55 @@ namespace UltraCanvas {
                                              style.dropdownChevronSize,
                                              style.dropdownChevronSize);
                 oslot.displayText = style.overflowEllipsisText;
-                slots.push_back(oslot);
+                oslot.textSize = oTextSize;
+                oslot.textLayout = std::move(overflowLayout);
+                slots.emplace_back(std::move(oslot));
                 x += oWidth;
                 overflowEmitted = true;
             }
 
             if (!visible[i]) continue;
 
-            if (!slots.empty()) {
+            if (!slots.empty() && !segmentStyle) {
                 x += style.separatorSpacing;
                 x += separatorWidth + style.separatorSpacing;
             }
 
             ItemSlot slot;
             slot.itemIndex = static_cast<int>(i);
-            slot.displayText = displayTexts[i];
+            slot.displayText = items[i].text;
             slot.isCurrent = (static_cast<int>(i) == currentIdx);
-            int width = itemWidths[i];
+            // Non-first segments carve a left notch/slant; widen the body and push the
+            // content right by that depth so text/icons never sit under the wedge.
+            int leftNotch = (segmentStyle && !slots.empty()) ? arrowDepth : 0;
+            int width = itemWidths[i] + leftNotch;
             slot.rect = Rect2Di(x, centerY - slotHeight / 2, width, slotHeight);
 
-            int innerX = x + style.itemPaddingHorizontal;
+            int innerX = x + style.itemPaddingHorizontal + leftNotch;
+            if (style.showLevelIndicator) {
+                slot.indicatorRect = Rect2Di(innerX, centerY - style.levelIndicatorSize / 2,
+                                             style.levelIndicatorSize, style.levelIndicatorSize);
+                innerX += style.levelIndicatorSize;
+                if (items[i].icon || sizes[i].width > 0.0f) innerX += style.iconTextSpacing;
+            }
             if (items[i].icon) {
                 slot.iconRect = Rect2Di(innerX, centerY - style.iconSize / 2,
                                         style.iconSize, style.iconSize);
                 innerX += style.iconSize;
-                if (!slot.displayText.empty()) innerX += style.iconTextSpacing;
+                if (sizes[i].width > 0.0f) innerX += style.iconTextSpacing;
             }
-            if (!slot.displayText.empty()) {
-                int textW = ctx->GetTextLineWidth(slot.displayText);
-                int textH = ctx->GetTextLineHeight(slot.displayText);
-                slot.textRect = Rect2Di(innerX, centerY - textH / 2, textW, textH);
+            if (sizes[i].width > 0.0f) {
+                int textW = static_cast<int>(sizes[i].width);
+                // Delegate vertical centering to the text layout (VerticalAlignment::Middle
+                // over the full slot height). This keeps the glyphs on the exact same
+                // center line as the separators and icons; the previous hand-rolled
+                // "centerY - (int)textH / 2" truncated the half-height to an integer and
+                // drifted the text ~1px off-center against the item/strip backgrounds.
+                if (layouts[i]) {
+                    layouts[i]->SetVerticalAlignment(VerticalAlignment::Middle);
+                    layouts[i]->SetExplicitHeight(static_cast<double>(slotHeight));
+                }
+                slot.textRect = Rect2Di(innerX, slot.rect.y, textW, slotHeight);
                 innerX += textW;
             }
             if (items[i].hasDropdown) {
@@ -593,7 +721,9 @@ namespace UltraCanvas {
                                             style.dropdownChevronSize,
                                             style.dropdownChevronSize);
             }
-            slots.push_back(slot);
+            slot.textSize = sizes[i];
+            slot.textLayout = std::move(layouts[i]);
+            slots.emplace_back(std::move(slot));
             x += width;
         }
 
@@ -601,46 +731,75 @@ namespace UltraCanvas {
         layoutDirty = false;
     }
 
-// ===== UPDATE GEOMETRY =====
-    void UltraCanvasBreadcrumb::UpdateGeometry(IRenderContext* ctx) {
-        if (layoutDirty || needsUpdateGeometry) {
-            RecalculateLayout(ctx);
-            needsUpdateGeometry = false;
-        }
-    }
+// ===== CSS LAYOUT: MEASURE / ARRANGE =====
 
-// ===== PREFERRED SIZE =====
-    int UltraCanvasBreadcrumb::GetPreferredWidth() {
-        auto ctx = GetRenderContext();
-        if (!ctx || items.empty()) return GetTotalPaddingHorizontal() + GetTotalBorderHorizontal();
+    // Natural content size (all items uncollapsed), excluding padding/border.
+    Size2Df UltraCanvasBreadcrumb::MeasureContentSize(IRenderContext* ctx) const {
+        // Height: one row from text/icon height + vertical item padding.
+        int textH = ctx ? ctx->GetTextLineHeight("Mg") : (int)style.fontStyle.fontSize;
+        float contentH = (float)(std::max<int>(textH, style.iconSize) + style.itemPaddingVertical * 2);
+
+        if (!ctx || items.empty()) {
+            return Size2Df(0.f, contentH);
+        }
+
         ctx->PushState();
         ctx->SetFontStyle(style.fontStyle);
-        int sepW = MeasureSeparator(ctx);
+        // MeasureSeparator mutates cached separator layout state; const-cast to reuse it.
+        int sepW = const_cast<UltraCanvasBreadcrumb*>(this)->MeasureSeparator(ctx);
+        int currentIdx = ResolvedCurrentIndex();
         int total = 0;
         for (size_t i = 0; i < items.size(); ++i) {
-            std::string text = items[i].text;
-            if (style.maxItemTextWidth > 0) {
-                text = FitText(ctx, text, style.maxItemTextWidth);
-            }
-            total += MeasureItemWidth(ctx, items[i], true, text);
+            bool bold = (static_cast<int>(i) == currentIdx) && style.currentItemBold;
+            auto layout = BuildItemLayout(ctx, items[i].text, bold, style.maxItemTextWidth);
+            Size2Dd sz = layout ? layout->GetLayoutSize() : Size2Dd();
+            total += ComputeItemSlotWidth(items[i], sz, true);
             if (i + 1 < items.size()) {
                 total += sepW + style.separatorSpacing * 2;
             }
         }
         ctx->PopState();
-        return total + GetTotalPaddingHorizontal() + GetTotalBorderHorizontal();
+        return Size2Df((float)total, contentH);
     }
 
-    int UltraCanvasBreadcrumb::GetPreferredHeight() {
-        auto ctx = GetRenderContext();
-        if (!ctx) return style.fontStyle.fontSize + style.itemPaddingVertical * 2
-                        + GetTotalPaddingVertical() + GetTotalBorderVertical();
-        ctx->PushState();
-        ctx->SetFontStyle(style.fontStyle);
-        int textH = ctx->GetTextLineHeight("Mg");
-        ctx->PopState();
-        int rowH = std::max<int>(textH, style.iconSize) + style.itemPaddingVertical * 2;
-        return rowH + GetTotalPaddingVertical() + GetTotalBorderVertical();
+    Size2Df UltraCanvasBreadcrumb::MeasureOwnContent(std::optional<float> /*definiteContentWidth*/,
+                                                     const CSSLayout::LayoutContext& /*ctx*/) {
+        IRenderContext* rc = GetRenderContext();
+        if (!rc) {
+            // No surface yet — report no own content; the block path resolves
+            // from size.width/height or the incoming constraints.
+            return Size2Df(0.f, 0.f);
+        }
+        // Content box: all items uncollapsed (width) + one row height. The block
+        // layout adds padding/border and applies size.*/constraints.
+        return MeasureContentSize(rc);
+    }
+
+    void UltraCanvasBreadcrumb::ComputeIntrinsicSizes(const CSSLayout::LayoutContext& /*ctx*/) {
+        IRenderContext* rc = GetRenderContext();
+        if (!rc) {
+            intrinsic.minContentWidth = intrinsic.maxContentWidth = 0;
+            intrinsic.minContentHeight = intrinsic.maxContentHeight = 0;
+            return;
+        }
+        const float padH = GetTotalPaddingHorizontal() + GetTotalBorderHorizontal();
+        const float padV = GetTotalPaddingVertical()   + GetTotalBorderVertical();
+        Size2Df content = MeasureContentSize(rc);
+        // Preferred == max-content (the breadcrumb collapses internally at arrange time).
+        intrinsic.valid = true;
+        intrinsic.maxContentWidth  = content.width  + padH;
+        intrinsic.minContentWidth  = content.width  + padH;
+        intrinsic.maxContentHeight = content.height + padV;
+        intrinsic.minContentHeight = content.height + padV;
+    }
+
+    void UltraCanvasBreadcrumb::Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) {
+        UltraCanvasUIElement::Arrange(finalRect, ctx);   // sets finalBounds + damage
+        // Recompute slots/overflow against the resolved content rect.
+        if (IRenderContext* rc = GetRenderContext()) {
+            RecalculateLayout(rc);
+            layoutDirty = false;
+        }
     }
 
 // ===== HIT TESTING =====
@@ -659,8 +818,12 @@ namespace UltraCanvas {
     }
 
 // ===== RENDERING =====
-    void UltraCanvasBreadcrumb::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
-        UpdateGeometry(ctx);
+    void UltraCanvasBreadcrumb::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
+        // Layout is normally computed in Arrange(); recompute here only as a safety
+        // net if something dirtied it without an intervening relayout pass.
+        if (layoutDirty) {
+            RecalculateLayout(ctx);
+        }
 
         // Draw the strip background using the base implementation, then our background color.
         UltraCanvasUIElement::Render(ctx, dirtyRect);
@@ -671,7 +834,7 @@ namespace UltraCanvas {
         ctx->PushState();
         // Clip to content area to avoid bleeding for Clip overflow mode.
         Rect2Di content = GetLocalContentRect();
-        ctx->ClipRect(Rect2Df(content.x, content.y, content.width, content.height));
+        ctx->ClipRect(Rect2Dd(content.x, content.y, content.width, content.height));
 
         ctx->SetFontStyle(style.fontStyle);
 
@@ -694,7 +857,7 @@ namespace UltraCanvas {
     void UltraCanvasBreadcrumb::RenderBackground(IRenderContext* ctx) {
         if (style.backgroundColor.a == 0 && style.borderColor.a == 0) return;
         Rect2Di b = GetLocalBounds();
-        ctx->DrawFilledRectangle(Rect2Df(b.x, b.y, b.width, b.height),
+        ctx->DrawFilledRectangle(Rect2Dd(b.x, b.y, b.width, b.height),
                                  style.backgroundColor,
                                  style.borderWidth,
                                  style.borderColor,
@@ -730,7 +893,9 @@ namespace UltraCanvas {
         Color bgColor = Colors::Transparent;
         bool drawBackground = false;
         if (style.itemStyle == BreadcrumbItemStyle::Pill
-            || style.itemStyle == BreadcrumbItemStyle::Tab) {
+            || style.itemStyle == BreadcrumbItemStyle::Tab
+            || style.itemStyle == BreadcrumbItemStyle::Arrow
+            || style.itemStyle == BreadcrumbItemStyle::Parallelogram) {
             if (isCurrent && style.currentItemBackgroundColor.a > 0) {
                 bgColor = style.currentItemBackgroundColor;
                 drawBackground = true;
@@ -748,10 +913,27 @@ namespace UltraCanvas {
         }
 
         if (drawBackground) {
-            Rect2Di r = slot.rect;
-            ctx->DrawFilledRectangle(Rect2Df(r.x, r.y, r.width, r.height),
-                                     bgColor, 0.0f, Colors::Transparent,
-                                     static_cast<float>(style.itemCornerRadius));
+            bool isLastSlot = (slotIdx == (int)slots.size() - 1);
+            if (style.itemStyle == BreadcrumbItemStyle::Arrow) {
+                // First segment has a flat left edge; every segment grows a right tip
+                // that nests into the next segment's notch (the last one's tip trails off).
+                RenderArrowBackground(ctx, slot.rect, /*leftNotch*/ slotIdx > 0,
+                                      /*rightTip*/ true, bgColor);
+            } else if (style.itemStyle == BreadcrumbItemStyle::Parallelogram) {
+                // Outer edges of the first/last segment stay vertical; inner edges slant.
+                RenderParallelogramBackground(ctx, slot.rect, /*leftSlant*/ slotIdx > 0,
+                                              /*rightSlant*/ !isLastSlot, bgColor);
+            } else {
+                Rect2Di r = slot.rect;
+                ctx->DrawFilledRectangle(Rect2Dd(r.x, r.y, r.width, r.height),
+                                         bgColor, 0.0f, Colors::Transparent,
+                                         static_cast<float>(style.itemCornerRadius));
+            }
+        }
+
+        // Leading level indicator badge
+        if (style.showLevelIndicator && !isOverflow && slot.indicatorRect.width > 0) {
+            RenderLevelIndicator(ctx, slot);
         }
 
         // Tab-style underline strip
@@ -759,27 +941,24 @@ namespace UltraCanvas {
             int y = slot.rect.y + slot.rect.height - 2;
             ctx->SetStrokePaint(style.currentItemTextColor);
             ctx->SetStrokeWidth(2.0f);
-            ctx->DrawLine(Point2Df(slot.rect.x + 2, y),
-                          Point2Df(slot.rect.x + slot.rect.width - 2, y));
+            ctx->DrawLine(Point2Dd(slot.rect.x + 2, y),
+                          Point2Dd(slot.rect.x + slot.rect.width - 2, y));
         }
 
         // Icon
         if (!isOverflow && slot.itemIndex >= 0 && slot.itemIndex < (int)items.size()
             && items[slot.itemIndex].icon && slot.iconRect.width > 0) {
             ctx->DrawImage(*items[slot.itemIndex].icon.get(),
-                           Rect2Df(slot.iconRect.x, slot.iconRect.y,
+                           Rect2Dd(slot.iconRect.x, slot.iconRect.y,
                                    slot.iconRect.width, slot.iconRect.height),
                            ImageFitMode::Contain);
         }
 
-        // Text — handle bolding for current item without mutating shared style.
-        if (!slot.displayText.empty() && slot.textRect.width > 0) {
-            FontWeight weight = style.fontStyle.fontWeight;
-            if (isCurrent && style.currentItemBold) weight = FontWeight::Bold;
-            ctx->SetFontFace(style.fontStyle.fontFamily, weight, style.fontStyle.fontSlant);
-            ctx->SetFontSize(style.fontStyle.fontSize);
+        // Text — render the pre-built layout (font weight, ellipsization already baked in).
+        if (slot.textLayout && slot.textRect.width > 0) {
             ctx->SetTextPaint(textColor);
-            ctx->DrawText(slot.displayText, Point2Df(slot.textRect.x, slot.textRect.y));
+            ctx->DrawTextLayout(*slot.textLayout,
+                                Point2Dd(slot.textRect.x, slot.textRect.y));
 
             // Underline
             bool drawUnderline = false;
@@ -790,11 +969,17 @@ namespace UltraCanvas {
                 if (style.underlineOnHover && isHovered && clickable) drawUnderline = true;
             }
             if (drawUnderline) {
-                int y = slot.textRect.y + slot.textRect.height + 1;
+                // textRect spans the full slot height (text is centered inside it by the
+                // layout), so derive the glyph bottom from the layout's vertical offset
+                // rather than the rect bottom to keep the underline hugging the text.
+                int textBottom = slot.textRect.y
+                                 + static_cast<int>(slot.textLayout->GetLayoutVerticalOffset())
+                                 + static_cast<int>(slot.textSize.height);
+                int y = textBottom + 1;
                 ctx->SetStrokePaint(textColor);
                 ctx->SetStrokeWidth(1.0f);
-                ctx->DrawLine(Point2Df(slot.textRect.x, y),
-                              Point2Df(slot.textRect.x + slot.textRect.width, y));
+                ctx->DrawLine(Point2Dd(slot.textRect.x, y),
+                              Point2Dd(slot.textRect.x + slot.textRect.width, y));
             }
         }
 
@@ -802,6 +987,106 @@ namespace UltraCanvas {
         if (slot.dropdownRect.width > 0) {
             RenderDropdownChevron(ctx, slot.dropdownRect, textColor);
         }
+    }
+
+    void UltraCanvasBreadcrumb::RenderArrowBackground(IRenderContext* ctx, const Rect2Di& rect,
+                                                      bool leftNotch, bool rightTip,
+                                                      const Color& fillColor) {
+        const double a = std::max(0, style.arrowSize);
+        const double left = rect.x;
+        const double right = rect.x + rect.width;
+        const double top = rect.y;
+        const double bottom = rect.y + rect.height;
+        const double midY = rect.y + rect.height / 2.0;
+
+        // Outline clockwise from the top-left corner.
+        ctx->ClearPath();
+        ctx->MoveTo(left, top);
+        ctx->LineTo(right, top);
+        if (rightTip && a > 0.0) {
+            ctx->LineTo(right + a, midY);   // pointed tip past the right edge
+        }
+        ctx->LineTo(right, bottom);
+        ctx->LineTo(left, bottom);
+        if (leftNotch && a > 0.0) {
+            ctx->LineTo(left + a, midY);    // concave wedge matching the previous tip
+        }
+        ctx->ClosePath();
+
+        ctx->SetFillPaint(fillColor);
+        ctx->FillPathPreserve();
+        if (style.separatorColor.a > 0 && style.separatorThickness > 0.0f) {
+            ctx->SetStrokePaint(style.separatorColor);
+            ctx->SetStrokeWidth(style.separatorThickness);
+            ctx->SetLineJoin(LineJoin::Miter);
+            ctx->StrokePathPreserve();
+        }
+        ctx->ClearPath();
+    }
+
+    void UltraCanvasBreadcrumb::RenderParallelogramBackground(IRenderContext* ctx, const Rect2Di& rect,
+                                                              bool leftSlant, bool rightSlant,
+                                                              const Color& fillColor) {
+        const double s = std::max(0, style.arrowSize);
+        const double left = rect.x;
+        const double right = rect.x + rect.width;
+        const double top = rect.y;
+        const double bottom = rect.y + rect.height;
+
+        // Slanted edges shift the top corners right by the skew; the previous segment's
+        // right slant exactly fills this segment's left slant, so they tessellate.
+        ctx->ClearPath();
+        ctx->MoveTo(leftSlant ? left + s : left, top);
+        ctx->LineTo(rightSlant ? right + s : right, top);
+        ctx->LineTo(right, bottom);
+        ctx->LineTo(left, bottom);
+        ctx->ClosePath();
+
+        ctx->SetFillPaint(fillColor);
+        ctx->FillPathPreserve();
+        if (style.separatorColor.a > 0 && style.separatorThickness > 0.0f) {
+            ctx->SetStrokePaint(style.separatorColor);
+            ctx->SetStrokeWidth(style.separatorThickness);
+            ctx->SetLineJoin(LineJoin::Miter);
+            ctx->StrokePathPreserve();
+        }
+        ctx->ClearPath();
+    }
+
+    void UltraCanvasBreadcrumb::RenderLevelIndicator(IRenderContext* ctx, const ItemSlot& slot) {
+        const Rect2Di& r = slot.indicatorRect;
+        Point2Dd center(r.x + r.width / 2.0, r.y + r.height / 2.0);
+
+        const Color border = style.levelIndicatorBorder ? style.levelIndicatorBorderColor
+                                                         : Colors::Transparent;
+        const float borderW = style.levelIndicatorBorder ? style.levelIndicatorBorderWidth : 0.0f;
+
+        switch (style.levelIndicatorBackground) {
+            case BreadcrumbLevelIndicatorBackground::Round:
+                ctx->DrawFilledCircle(center, r.width / 2.0f,
+                                      style.levelIndicatorColor, border, borderW);
+                break;
+            case BreadcrumbLevelIndicatorBackground::Rectangle:
+                ctx->DrawFilledRectangle(Rect2Dd(r.x, r.y, r.width, r.height),
+                                         style.levelIndicatorColor, borderW, border,
+                                         std::max(2.0f, r.width * 0.22f));
+                break;
+            case BreadcrumbLevelIndicatorBackground::NoBackground:
+                break;  // number only
+        }
+
+        // Centered level number (1-based).
+        ctx->PushState();
+        FontStyle fs = style.fontStyle;
+        fs.fontSize = std::max(8.0f, r.height * 0.58f);
+        fs.fontWeight = FontWeight::Bold;
+        ctx->SetFontStyle(fs);
+        ctx->SetTextAlignment(TextAlignment::Center);
+        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
+        ctx->SetTextPaint(style.levelIndicatorTextColor);
+        ctx->DrawTextInRect(std::to_string(slot.itemIndex + 1),
+                            Rect2Dd(r.x, r.y, r.width, r.height));
+        ctx->PopState();
     }
 
     void UltraCanvasBreadcrumb::RenderSeparator(IRenderContext* ctx, int x, int centerY) {
@@ -843,17 +1128,16 @@ namespace UltraCanvas {
                 if (!style.customSeparatorIcon) return;
                 int s = style.iconSize;
                 ctx->DrawImage(*style.customSeparatorIcon.get(),
-                               Rect2Df(x - s / 2.0f, centerY - s / 2.0f, s, s),
+                               Rect2Dd(x - s / 2.0f, centerY - s / 2.0f, s, s),
                                ImageFitMode::Contain);
                 return;
             }
             default: {
-                std::string text = SeparatorTextFor(style.separatorStyle, style.customSeparatorText);
-                if (text.empty()) return;
+                if (!separatorLayout) return;
                 ctx->SetTextPaint(style.separatorColor);
-                int textW = ctx->GetTextLineWidth(text);
-                int textH = ctx->GetTextLineHeight(text);
-                ctx->DrawText(text, Point2Df(x - textW / 2.0f, centerY - textH / 2.0f));
+                Size2Dd sz = separatorLayout->GetLayoutSize();
+                ctx->DrawTextLayout(*separatorLayout,
+                                    Point2Dd(x - sz.width / 2.0f, centerY - sz.height / 2.0f));
                 return;
             }
         }

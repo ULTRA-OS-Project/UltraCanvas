@@ -1,7 +1,7 @@
 // UltraCanvasCheckbox.cpp
 // Checkbox indicator rendering and three-state toggle logic.
-// Version: 2.0.0
-// Last Modified: 2026-05-07
+// Version: 2.1.0
+// Last Modified: 2026-06-02
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasCheckbox.h"
@@ -9,7 +9,7 @@
 namespace UltraCanvas {
 
     UltraCanvasCheckbox::UltraCanvasCheckbox(const std::string& identifier,
-                                             long x, long y, long w, long h,
+                                             float x, float y, float w, float h,
                                              const std::string& labelText)
             : UltraCanvasLabeledToggleBase(identifier, x, y, w, h, labelText) {}
 
@@ -46,12 +46,14 @@ namespace UltraCanvas {
         visualStyle.base.fontSize = size;
         visualStyle.base.fontWeight = weight;
         layoutDirty = true;
+        InvalidateLayout();
         RequestRedraw();
     }
 
     void UltraCanvasCheckbox::SetFontSize(float size) {
         visualStyle.base.fontSize = size;
         layoutDirty = true;
+        InvalidateLayout();
         RequestRedraw();
     }
 
@@ -131,11 +133,12 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasCheckbox> UltraCanvasCheckbox::CreateCheckbox(
             const std::string& identifier,
-            long x, long y, long w, long h,
+            float x, float y, float w, float h,
             const std::string& text, bool checked) {
         auto cb = std::make_shared<UltraCanvasCheckbox>(identifier, x, y, w, h, text);
         cb->SetChecked(checked);
-        if (w == 0 || h == 0) cb->SetAutoSize(true);
+        // A zero w/h leaves that axis size = Auto (the ctor only stamps Px when
+        // > 0), so it content-sizes; a non-zero axis stays an explicit size.
         return cb;
     }
 

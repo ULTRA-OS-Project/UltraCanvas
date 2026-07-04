@@ -1,8 +1,8 @@
 // OS/Linux/UltraCanvasNativeDialogsLinux.cpp
 // Linux implementation of native OS dialogs using GTK+
 // Uses unified DialogType, DialogButtons, DialogResult from UltraCanvasModalDialog.h
-// Version: 2.0.0
-// Last Modified: 2026-01-25
+// Version: 2.1.0
+// Last Modified: 2026-06-21
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasNativeDialogs.h"
@@ -11,6 +11,7 @@
 
 #include <gtk-3.0/gtk/gtk.h>
 #include <gtk/gtkunixprint.h>
+#include <gdk/gdkx.h>   // gdk_x11_window_foreign_new_for_display — parent dialogs to X11 windows
 #include <iostream>
 #include <cstring>
 
@@ -32,8 +33,11 @@ namespace UltraCanvas {
                 if (!initialized) {
                     int argc = 0;
                     char** argv = nullptr;
-                    gtk_init(&argc, &argv);
-                    initialized = true;
+                    // gtk_init_check() reports failure (e.g. no DISPLAY) instead of
+                    // aborting the whole process like gtk_init() would.
+                    if (gtk_init_check(&argc, &argv)) {
+                        initialized = true;
+                    }
                 }
             }
 
@@ -42,8 +46,37 @@ namespace UltraCanvas {
             bool initialized;
         };
 
-        void EnsureGtkInitialized() {
+        // Returns true only if GTK is usable; callers should bail out gracefully
+        // (empty/Cancel result) when this returns false.
+        bool EnsureGtkInitialized() {
             GtkInitializer::GetInstance().EnsureInitialized();
+            return GtkInitializer::GetInstance().IsInitialized();
+        }
+
+        // Make a freshly-created GTK dialog transient-for (and modal to) its
+        // UltraCanvas parent. UltraCanvas windows are raw X11 windows, not
+        // GtkWindows, so gtk_window_set_transient_for() can't be used directly:
+        // we wrap the parent's XID in a foreign GdkWindow and set the transient
+        // hint at the GDK level. With no usable parent we fall back to the old
+        // keep-above behaviour so the dialog still surfaces above the app.
+        void ParentDialogToWindow(GtkWidget* dialog, UltraCanvasWindowBase* parent) {
+            if (!dialog) return;
+            NativeWindowHandle xid = parent ? parent->GetNativeHandle() : 0;
+            if (xid) {
+                gtk_widget_realize(dialog);
+                GdkWindow* dlgGdk = gtk_widget_get_window(dialog);
+                if (dlgGdk) {
+                    GdkDisplay* disp = gdk_window_get_display(dlgGdk);
+                    GdkWindow* parentGdk = gdk_x11_window_foreign_new_for_display(disp, xid);
+                    if (parentGdk) {
+                        gdk_window_set_transient_for(dlgGdk, parentGdk);
+                        g_object_unref(parentGdk);
+                    }
+                }
+                gtk_window_set_modal(GTK_WINDOW(dialog), TRUE);
+            } else {
+                gtk_window_set_keep_above(GTK_WINDOW(dialog), TRUE);
+            }
         }
 
 // Process pending GTK events
@@ -150,17 +183,13 @@ namespace UltraCanvas {
             DialogButtons buttons,
             UltraCanvasWindowBase*  parent) {
 
-        EnsureGtkInitialized();
+        if (!EnsureGtkInitialized()) return DialogResult::Cancel;
 
         GtkMessageType gtkType = ToGtkMessageType(type);
         GtkButtonsType gtkButtons = ToGtkButtonsType(buttons);
 
-        // Get parent GtkWindow if provided
+        // GTK-level parent stays null; the real X11 parent is applied below.
         GtkWindow* parentWindow = nullptr;
-//        if (parent != nullptr) {
-//            // The parent handle should be a GtkWindow* when using GTK
-//            parentWindow = GTK_WINDOW(parent);
-//        }
 
         GtkWidget* dialog = gtk_message_dialog_new(
                 parentWindow,
@@ -173,8 +202,8 @@ namespace UltraCanvas {
 
         gtk_window_set_title(GTK_WINDOW(dialog), title.c_str());
 
-        // Keep dialog on top
-        gtk_window_set_keep_above(GTK_WINDOW(dialog), TRUE);
+        // Parent + make modal to the owning window (keep-above fallback if none).
+        ParentDialogToWindow(dialog, parent);
 
         // Add custom buttons for special cases
         if (buttons == DialogButtons::YesNoCancel) {
@@ -253,13 +282,10 @@ namespace UltraCanvas {
     }
 
     std::string UltraCanvasNativeDialogs::OpenFile(const FileDialogOptions& options) {
-        EnsureGtkInitialized();
+        if (!EnsureGtkInitialized()) return {};
 
-        // Get parent GtkWindow if provided
+        // GTK-level parent stays null; the real X11 parent is applied below.
         GtkWindow* parentWindow = nullptr;
-//        if (options.parentWindow != nullptr) {
-//            parentWindow = GTK_WINDOW(options.parentWindow);
-//        }
 
         GtkWidget* dialog = gtk_file_chooser_dialog_new(
                 options.title.empty() ? "Open File" : options.title.c_str(),
@@ -270,8 +296,8 @@ namespace UltraCanvas {
                 nullptr
         );
 
-        // Keep dialog on top
-        gtk_window_set_keep_above(GTK_WINDOW(dialog), TRUE);
+        // Parent + make modal to the owning window (keep-above fallback if none).
+        ParentDialogToWindow(dialog, options.parentWindow);
 
         GtkFileChooser* chooser = GTK_FILE_CHOOSER(dialog);
 
@@ -329,13 +355,10 @@ namespace UltraCanvas {
     }
 
     std::vector<std::string> UltraCanvasNativeDialogs::OpenMultipleFiles(const FileDialogOptions& options) {
-        EnsureGtkInitialized();
+        if (!EnsureGtkInitialized()) return {};
 
-        // Get parent GtkWindow if provided
+        // GTK-level parent stays null; the real X11 parent is applied below.
         GtkWindow* parentWindow = nullptr;
-//        if (options.parentWindow != nullptr) {
-//            parentWindow = GTK_WINDOW(options.parentWindow);
-//        }
 
         GtkWidget* dialog = gtk_file_chooser_dialog_new(
                 options.title.empty() ? "Open Files" : options.title.c_str(),
@@ -346,8 +369,8 @@ namespace UltraCanvas {
                 nullptr
         );
 
-        // Keep dialog on top
-        gtk_window_set_keep_above(GTK_WINDOW(dialog), TRUE);
+        // Parent + make modal to the owning window (keep-above fallback if none).
+        ParentDialogToWindow(dialog, options.parentWindow);
 
         GtkFileChooser* chooser = GTK_FILE_CHOOSER(dialog);
 
@@ -416,13 +439,10 @@ namespace UltraCanvas {
     }
 
     std::string UltraCanvasNativeDialogs::SaveFile(const FileDialogOptions& options) {
-        EnsureGtkInitialized();
+        if (!EnsureGtkInitialized()) return {};
 
-        // Get parent GtkWindow if provided
+        // GTK-level parent stays null; the real X11 parent is applied below.
         GtkWindow* parentWindow = nullptr;
-//        if (options.parentWindow != nullptr) {
-//            parentWindow = GTK_WINDOW(options.parentWindow);
-//        }
 
         GtkWidget* dialog = gtk_file_chooser_dialog_new(
                 options.title.empty() ? "Save File" : options.title.c_str(),
@@ -433,8 +453,8 @@ namespace UltraCanvas {
                 nullptr
         );
 
-        // Keep dialog on top
-        gtk_window_set_keep_above(GTK_WINDOW(dialog), TRUE);
+        // Parent + make modal to the owning window (keep-above fallback if none).
+        ParentDialogToWindow(dialog, options.parentWindow);
 
         GtkFileChooser* chooser = GTK_FILE_CHOOSER(dialog);
 
@@ -490,13 +510,10 @@ namespace UltraCanvas {
             const std::string& initialDir,
             UltraCanvasWindowBase*  parent) {
 
-        EnsureGtkInitialized();
+        if (!EnsureGtkInitialized()) return {};
 
-        // Get parent GtkWindow if provided
+        // GTK-level parent stays null; the real X11 parent is applied below.
         GtkWindow* parentWindow = nullptr;
-//        if (parent != nullptr) {
-//            parentWindow = GTK_WINDOW(parent);
-//        }
 
         GtkWidget* dialog = gtk_file_chooser_dialog_new(
                 title.empty() ? "Select Folder" : title.c_str(),
@@ -507,8 +524,8 @@ namespace UltraCanvas {
                 nullptr
         );
 
-        // Keep dialog on top
-        gtk_window_set_keep_above(GTK_WINDOW(dialog), TRUE);
+        // Parent + make modal to the owning window (keep-above fallback if none).
+        ParentDialogToWindow(dialog, parent);
 
         GtkFileChooser* chooser = GTK_FILE_CHOOSER(dialog);
 
@@ -549,16 +566,13 @@ namespace UltraCanvas {
     }
 
     NativeInputResult UltraCanvasNativeDialogs::InputText(const NativeInputDialogOptions& options) {
-        EnsureGtkInitialized();
-
         NativeInputResult result;
         result.result = DialogResult::Cancel;
 
-        // Get parent GtkWindow if provided
+        if (!EnsureGtkInitialized()) return result;
+
+        // GTK-level parent stays null; the real X11 parent is applied below.
         GtkWindow* parentWindow = nullptr;
-//        if (options.parentWindow != nullptr) {
-//            parentWindow = GTK_WINDOW(options.parentWindow);
-//        }
 
         // Create dialog
         GtkWidget* dialog = gtk_dialog_new_with_buttons(
@@ -570,8 +584,8 @@ namespace UltraCanvas {
                 nullptr
         );
 
-        // Keep dialog on top
-        gtk_window_set_keep_above(GTK_WINDOW(dialog), TRUE);
+        // Parent + make modal to the owning window (keep-above fallback if none).
+        ParentDialogToWindow(dialog, options.parentWindow);
 
         gtk_dialog_set_default_response(GTK_DIALOG(dialog), GTK_RESPONSE_OK);
 
@@ -657,8 +671,9 @@ namespace UltraCanvas {
             const std::string& textContent,
             UltraCanvasWindowBase* parent) {
 
-        EnsureGtkInitialized();
+        if (!EnsureGtkInitialized()) return false;
 
+        // GTK-level parent stays null; the real X11 parent is applied below.
         GtkWindow* parentWindow = nullptr;
 
         // Build a GtkPrintUnixDialog — the standard GTK print dialog
@@ -667,7 +682,8 @@ namespace UltraCanvas {
                 parentWindow
         );
 
-        gtk_window_set_keep_above(GTK_WINDOW(dialog), TRUE);
+        // Parent + make modal to the owning window (keep-above fallback if none).
+        ParentDialogToWindow(dialog, parent);
 
         // Configure: show all pages tab, hide page range (plain text only)
         GtkPrintCapabilities capabilities = (GtkPrintCapabilities) (GTK_PRINT_CAPABILITY_COPIES |

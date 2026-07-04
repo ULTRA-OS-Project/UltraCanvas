@@ -1,7 +1,7 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.5.2
-// Last Modified: 2026-05-01
+// Version: 3.7.1
+// Last Modified: 2026-06-22
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -14,6 +14,7 @@
 #include <string_view>
 #include <vector>
 #include <array>
+#include <set>
 #include <functional>
 #include <memory>
 #include <utility>
@@ -26,6 +27,10 @@ namespace UltraCanvas {
     // Forward declarations
     class SyntaxTokenizer;
     enum class TokenType;
+    // The built-in image-click action opens the shared lightbox viewer
+    // (UltraCanvasImageViewer, defined in UltraCanvasImageViewer.h). Held by
+    // shared_ptr so a forward declaration suffices here.
+    class UltraCanvasImageViewer;
 
     // ===== HIT RECT FOR CLICKABLE ELEMENTS =====
     // Tracks clickable regions for links and images
@@ -209,8 +214,7 @@ namespace UltraCanvas {
         // Background and borders
         Color backgroundColor;
         Color borderColor;
-        int borderWidth;
-        int padding;
+        float textPadding;
 
         // Selection and cursor
         Color selectionColor;
@@ -291,7 +295,8 @@ namespace UltraCanvas {
         DefinitionContinuation,
         TableHederRow,
         TableSeparatorRow,
-        TableRow
+        TableRow,
+        MarkdownImage   // image-only line: custom-drawn decoded bitmap (layout == nullptr)
     };
 
     // Maps one contiguous visible-text segment back to its source-line position.
@@ -347,6 +352,20 @@ namespace UltraCanvas {
         std::vector<std::unique_ptr<LineLayoutBase>> cellsLayouts;
     };
 
+    // Image-only markdown line: the whole (block-stripped) payload is a single ![alt](url).
+    // Rendered as a decoded bitmap (or a placeholder box when missing/remote) via the
+    // MarkdownImage branch in RenderLineLayout; `layout` is null. Dimensions are resolved once
+    // at build time (header-only load) and cached here so render doesn't re-probe every frame.
+    struct ImageLineLayout : LineLayoutBase {
+        std::string resolvedPath;   // absolute/joined local path (empty/unused if remote)
+        std::string sourceUrl;      // original ![](url) target — passed to onMarkdownImageClick
+        std::string altText;
+        int  naturalWidth  = 0;
+        int  naturalHeight = 0;
+        bool isValid  = false;      // local file, header loaded, dims > 0
+        bool isRemote = false;      // http/https/data: — placeholder only
+    };
+
     // Inline styling run emitted by the markdown/plain-text parser and consumed by MakeLineLayout
     // to drive ITextLayout attribute insertion. Offsets are codepoint indices in the VISIBLE
     // layout text (markup prefixes and inline markers already stripped); use the line's `cpMap`
@@ -361,19 +380,27 @@ namespace UltraCanvas {
     class UltraCanvasTextArea : public UltraCanvasUIElement {
     public:
         // Constructor and destructor
-        UltraCanvasTextArea(const std::string& name, int x, int y, int width, int height);
+        UltraCanvasTextArea(const std::string& name, float x, float y, float width, float height);
+
+        UltraCanvasTextArea(const std::string& name, float width, float height)
+            : UltraCanvasTextArea(name, -1, -1, width, height) {}
+
+        explicit UltraCanvasTextArea(const std::string& name)
+            : UltraCanvasTextArea(name, -1, -1, -1, -1) {}
+
         virtual ~UltraCanvasTextArea();
 
         bool AcceptsFocus() const override { return true; }
         // Render method
-        virtual void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        virtual void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
-        // Drives the per-line layout cache (UpdateLineLayouts) so layouts are ready
-        // before Render runs. Called by the framework when RequestUpdateGeometry() has been set.
-        virtual void UpdateGeometry(IRenderContext* ctx) override;
+        // CSS layout: externally sized (explicit size or parent stretch). The engine sets
+        // finalBounds via Arrange; we flag the visible-area cache for recompute on resize.
+        // (UpdateLineLayouts/CalculateVisibleArea still run lazily in Render via the flag.)
+        void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
         // Override SetBounds to trigger layout recalculation on resize
-        void SetBounds(const Rect2Di& b) override {
+        void SetBounds(const Rect2Df& b) override {
             if (b.width != GetWidth() || b.height != GetHeight()) {
                 isNeedRecalculateVisibleArea = true;
             }
@@ -389,6 +416,9 @@ namespace UltraCanvas {
 
         // Text manipulation - now UTF-8 aware
         void SetText(const std::string& text, bool runNotifications = true);
+        // Programmatic append at the end (works on read-only areas; used for
+        // console/log output). Auto-scrolls to the bottom.
+        void AppendText(const std::string& text);
         std::string GetText() const;
         // Text with internal \n converted to the detected lineEndingType sequence
         // (for file save / external export). GetText() itself returns normalized LF.
@@ -497,6 +527,14 @@ namespace UltraCanvas {
         void FindFirst();
         void FindNext();
         void FindPrevious();
+
+        /// Capture the current caret (or selection start) as the anchor for an
+        /// incremental "search as you type" session.
+        void BeginIncrementalSearch();
+        /// Select the first match at/after the incremental anchor (inclusive),
+        /// WITHOUT advancing — so the selection stays put while the user types.
+        void IncrementalFind(const std::string& searchText, bool caseSensitive = false);
+
         void ReplaceText(const std::string& findText, const std::string& replaceText, bool all = false);
         void HighlightMatches(const std::string& searchText);
         void ClearHighlights();
@@ -630,17 +668,39 @@ namespace UltraCanvas {
         void AddWarningMarker(int lineIndex, const std::string& message);
         void ClearMarkers();
 
-
         // Callbacks
         TextChangedCallback onTextChanged;
         CursorPositionChangedCallback onCursorPositionChanged;
         SelectionChangedCallback onSelectionChanged;
 
     protected:
+        // ----- Gutter / decoration extension points -----
+        // The base class draws line numbers and the current-line highlight only.
+        // Subclasses (e.g. UCCoderBoxTextArea) override these to add IDE visuals
+        // such as breakpoint indicators and an execution-line highlight, without
+        // the base class knowing anything about debugging.
+
+        // Total width reserved for the gutter. Base = line-number width; a subclass
+        // can add columns (e.g. a breakpoint column) by overriding and adding to it.
+        virtual int GetGutterWidth(IRenderContext* ctx);
+        // Per-visible-line hook called from DrawGutter after the line number is
+        // drawn. gutterLineRect is that line's rect within the gutter.
+        virtual void DrawGutterDecorations(IRenderContext* /*ctx*/, int /*logicalLine*/,
+                                           const Rect2Dd& /*gutterLineRect*/) {}
+        // Called from Render right after DrawCurrentLineBackground (so anything
+        // painted here sits behind the text). Default: nothing.
+        virtual void DrawLineOverlays(IRenderContext* /*ctx*/) {}
+        // Called when a click lands in the gutter. logicalLine is 1-based. Return
+        // true to consume the event. Default: ignore.
+        virtual bool OnGutterClicked(int /*logicalLine*/) { return false; }
+        // On-screen content-row rect (x past the gutter, full content width) for a
+        // visible 1-based logical line. Returns false if the line is not visible.
+        bool GetLogicalLineContentRect(int logicalLine, Rect2Dd& out);
+
         // Drawing methods
-        void DrawBackground(IRenderContext* context);
+        void DrawCurrentLineBackground(IRenderContext* context);
         void DrawBorder(IRenderContext* context);
-        void DrawLineNumbers(IRenderContext* context);
+        virtual void DrawGutter(IRenderContext* context);   // was DrawLineNumbers
         void DrawCursor(IRenderContext* context);
         void DrawScrollbars(IRenderContext* context);
 
@@ -661,7 +721,7 @@ namespace UltraCanvas {
         int CalculateLineNumbersWidth(IRenderContext* ctx);
         void RebuildText();
         const TokenStyle& GetStyleForTokenType(TokenType type) const;
-        int GetContentHeight();
+        float GetContentHeight();
 
         // Initialization
         void ApplyDefaultStyle();
@@ -683,6 +743,21 @@ namespace UltraCanvas {
         // MakeLineLayout dispatches here for MarkdownHybrid lines. Inspects lineLayouts[lineIndex-1]
         // for state like open fenced-code-block and returns the appropriate derived LineLayoutBase.
         std::unique_ptr<LineLayoutBase> MakeMarkdownLineLayout(IRenderContext* ctx, int lineIndex);
+
+        // Resolve a markdown image url against the base directory (markdownBaseDirectory override,
+        // else the directory of documentFilePath, else GetResourcesDir()). Sets outIsRemote for
+        // http(s)/data:/ftp schemes (left unresolved). Returns the local path otherwise.
+        std::string ResolveMarkdownImagePath(const std::string& url, bool& outIsRemote) const;
+
+        // Open a (valid, local) image full size in a built-in lightbox viewer window,
+        // styled like the Album photo viewer: the image fills the top (zoomable with
+        // the wheel, pannable by dragging) above a dark info panel showing the title,
+        // the source path and a hint. Closes on Esc. Default action for an image click
+        // unless onMarkdownImageClick is set or markdownImageFullscreenEnabled is false.
+        // displayPath is shown in the panel (the original markdown URL); empty falls
+        // back to imagePath.
+        void OpenMarkdownImageViewer(const std::string& imagePath, const std::string& title,
+                                     const std::string& displayPath = "");
 
         // Doc-wide pre-scan: populates markdownAbbreviations, markdownFootnotes, markdownAnchors,
         // and markdownAnchorBacklinks. Run lazily when markdownIndexDirty is true — which
@@ -757,18 +832,18 @@ namespace UltraCanvas {
         std::unique_ptr<LineLayoutBase> currentLine;
 
         // Cursor / selection state is LineColumnIndex (codepoint-based); see fields above.
-        int computedLineHeight = 12;
-        int computedLineNumbersWidth = 40;
+        float computedLineHeight = 12;
+        float computedLineNumbersWidth = 40;
 
         // Scrolling
-        int horizontalScrollOffset;
-        int verticalScrollOffset;
+        float horizontalScrollOffset;
+        float verticalScrollOffset;
         // firstVisibleLine / maxVisibleLines removed in Step 8b — pixel-based verticalScrollOffset
         // is now the authoritative scroll state.
         int maxLineWidth;
-        Rect2Di visibleTextArea;
-        Rect2Di horizontalScrollThumb;
-        Rect2Di verticalScrollThumb;
+        Rect2Df visibleTextArea;
+        Rect2Df horizontalScrollThumb;
+        Rect2Df verticalScrollThumb;
         Point2Di dragStartOffset;
         bool isDraggingHorizontalThumb = false;
         bool isDraggingVerticalThumb = false;
@@ -845,6 +920,7 @@ namespace UltraCanvas {
         std::string lastSearchText;
         int lastSearchPosition;
         bool lastSearchCaseSensitive;
+        int incrementalSearchAnchor = -1;  // caret anchor for IncrementalFind (grapheme; byte in hex)
         
         // Search highlights (grapheme positions: start, end)
         std::vector<std::pair<int, int>> searchHighlights;
@@ -874,7 +950,7 @@ namespace UltraCanvas {
             std::string message;
         };
         std::vector<Marker> markers;
-        
+
     public:
         // Markdown interaction callbacks
         using MarkdownLinkClickCallback = std::function<void(const std::string& url)>;
@@ -904,6 +980,18 @@ namespace UltraCanvas {
 
         void SetDocumentFilePath(const std::string& path) { documentFilePath = path; }
         std::string GetDocumentFilePath() const { return documentFilePath; }
+
+        // Base directory for resolving relative markdown image paths. When empty, the directory
+        // of documentFilePath is used; if that is also empty, GetResourcesDir() is the fallback.
+        void SetMarkdownBaseDirectory(const std::string& dir) {
+            markdownBaseDirectory = dir; isNeedRebuildLineLayouts = true; RequestRedraw();
+        }
+        std::string GetMarkdownBaseDirectory() const { return markdownBaseDirectory; }
+
+        // When true (default), clicking a rendered markdown image opens it full size in a
+        // built-in fullscreen viewer (unless a custom onMarkdownImageClick handler is set).
+        void SetMarkdownImageFullscreenEnabled(bool enabled) { markdownImageFullscreenEnabled = enabled; }
+        bool IsMarkdownImageFullscreenEnabled() const { return markdownImageFullscreenEnabled; }
 
         // ===== EDITING MODE PUBLIC API =====
         void SetEditingMode(TextAreaEditingMode mode);
@@ -1016,6 +1104,13 @@ namespace UltraCanvas {
         std::vector<std::string> definitionMergedText;
         // Path of the currently loaded document (for resolving relative image paths)
         std::string documentFilePath;
+        // Optional explicit base directory for relative markdown image paths (overrides the
+        // directory derived from documentFilePath when set). See SetMarkdownBaseDirectory.
+        std::string markdownBaseDirectory;
+        // Built-in lightbox image viewer (shared component; owns its window and
+        // reuses it across opens). Lazily created on first image click.
+        std::shared_ptr<UltraCanvasImageViewer> markdownImageViewer;
+        bool markdownImageFullscreenEnabled = true;
         // Per-display-line cumulative Y offset from block images (rebuilt each frame)
         std::vector<int> markdownLineYOffsets;
 

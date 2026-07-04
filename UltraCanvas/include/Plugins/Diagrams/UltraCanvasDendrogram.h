@@ -1,7 +1,7 @@
 // UltraCanvasDendrogram.h
 // Interactive dendrogram / phylogenetic tree diagram element
-// Version: 1.4.1
-// Last Modified: 2026-05-09
+// Version: 1.4.2
+// Last Modified: 2026-06-05
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -231,7 +231,7 @@ namespace UltraCanvas {
         // RENDERING & EVENTS (UltraCanvasUIElement overrides)
         // =====================================================================
 
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         bool OnEvent(const UCEvent& event) override;
 
     private:
@@ -248,10 +248,14 @@ namespace UltraCanvas {
         DendrogramScaleMode   scaleMode   = DendrogramScaleMode::Proportional;
 
         bool layoutDirty = true;
+        // Size used by the last RebuildLayout(); lets Render() detect a resize
+        // from a flex/stretch parent (which never flips layoutDirty) and re-fit.
+        float lastLayoutWidth  = -1.0f;
+        float lastLayoutHeight = -1.0f;
 
         // Zoom / pan
         double   zoom      = 1.0f;
-        Point2Df panOffset = {0.0f, 0.0f};
+        Point2Dd panOffset = {0.0f, 0.0f};
         bool     isPanning = false;
         Point2Di lastPanMouse;
 
@@ -268,8 +272,8 @@ namespace UltraCanvas {
         // Node drag state
         std::string draggingNodeId;
         Point2Di dragStartPos;
-        Point2Df originalNodePos;
-        std::unordered_map<std::string, Point2Df> customNodePositions; // Manual node positions
+        Point2Dd originalNodePos;
+        std::unordered_map<std::string, Point2Dd> customNodePositions; // Manual node positions
 
         // Scrollbars (for large trees)
         std::shared_ptr<UltraCanvasScrollbar> vertScrollbar;
@@ -285,7 +289,7 @@ namespace UltraCanvas {
         // =====================================================================
 
         void RebuildLayout();
-        Rect2Df GetTreeBounds() const; // Inner area after margins
+        Rect2Dd GetTreeBounds() const; // Inner area after margins
         void BuildLeafGroupMap();
 
         // =====================================================================
@@ -362,8 +366,8 @@ namespace UltraCanvas {
         // =====================================================================
 
         // Convert layout coordinates to pixel coordinates (with pan/zoom applied)
-        Point2Df ToPixel(double primary, double depth) const;
-        Point2Df ToPixelRadial(double angle, double radius) const;
+        Point2Dd ToPixel(double primary, double depth) const;
+        Point2Dd ToPixelRadial(double angle, double radius) const;
 
         // Hit-test: find node at pixel position; returns empty string if none
         std::string HitTestNode(int px, int py) const;

@@ -28,19 +28,19 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasRadioGroup> themeRadioGroup;
         std::shared_ptr<UltraCanvasRadioGroup> qualityRadioGroup;
 
-        CheckboxExamplesContainer(const std::string& id, long x, long y, long w, long h)
+        CheckboxExamplesContainer(const std::string& id, float x, float y, float w, float h)
                 : UltraCanvasContainer(id, x, y, w, h) {}
     };
 
 // Helper function to create a separator line
-    std::shared_ptr<UltraCanvasContainer> CreateSeparatorLine(long x, long y, long width) {
+    std::shared_ptr<UltraCanvasContainer> CreateSeparatorLine(float x, float y, float width) {
         auto separator = std::make_shared<UltraCanvasContainer>("Separator" + std::to_string(x), x, y, width, 2);
         separator->SetBackgroundColor(Color(200, 200, 200, 255));
         return separator;
     }
 
 // Helper function to create a section title
-    std::shared_ptr<UltraCanvasLabel> CreateSectionTitle(long x, long y, const std::string& text) {
+    std::shared_ptr<UltraCanvasLabel> CreateSectionTitle(float x, float y, const std::string& text) {
         auto title = std::make_shared<UltraCanvasLabel>("SectionTitle" + std::to_string(x), x, y, 600, 25);
         title->SetText(text);
         title->SetFontSize(14);

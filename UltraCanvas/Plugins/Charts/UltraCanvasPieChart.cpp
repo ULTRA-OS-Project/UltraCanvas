@@ -134,6 +134,11 @@ namespace UltraCanvas {
     void UltraCanvasPieChartElement::SetLeaderLineStyle(const Color& c, float w) {
         leaderLineColor = c; leaderLineWidth = w; RequestRedraw();
     }
+    void UltraCanvasPieChartElement::SetLabelMargin(float pixels) {
+        labelMargin = std::max(0.0f, pixels);
+        InvalidateCache();
+        RequestRedraw();
+    }
     void UltraCanvasPieChartElement::SetLabelFont(const std::string& family, float size, FontWeight weight) {
         labelFontFamily = family; labelFontSize = size; labelFontWeight = weight; RequestRedraw();
     }
@@ -197,10 +202,10 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
-    void UltraCanvasPieChartElement::SetLightDirection(Point2Df dir) {
+    void UltraCanvasPieChartElement::SetLightDirection(Point2Dd dir) {
         double len = std::sqrt(dir.x * dir.x + dir.y * dir.y);
         if (len > 1e-6) {
-            lightDirection = Point2Df(dir.x / len, dir.y / len);
+            lightDirection = Point2Dd(dir.x / len, dir.y / len);
         }
         RequestRedraw();
     }
@@ -223,7 +228,7 @@ namespace UltraCanvas {
             int estLabelW  = EstimateLongestLabelWidth();
             int leaderGap  = 14;                                  // elbow + gap to text
             marginSide     = std::max(40, estLabelW + leaderGap);
-            marginSide     = std::min(marginSide, std::max(40, GetWidth() * 4 / 10));
+            marginSide     = std::min(marginSide, std::max(40, static_cast<int>(GetWidth() * 4 / 10)));
 
             // Vertical room: budget for the tallest possible label block (could be 2-line).
             int lineH      = EstimateLabelLineHeight();
@@ -232,15 +237,15 @@ namespace UltraCanvas {
             marginTop      = chartTitle.empty() ? std::max(20, vRoom)
                                                 : std::max(40, 24 + vRoom);
             marginBottom   = std::max(20, vRoom);
-            marginBottom   = std::min(marginBottom, std::max(20, GetHeight() * 3 / 10));
-            marginTop      = std::min(marginTop,    std::max(20, GetHeight() * 4 / 10));
+            marginBottom   = std::min(marginBottom, std::max(20, static_cast<int>(GetHeight() * 3 / 10)));
+            marginTop      = std::min(marginTop,    std::max(20, static_cast<int>(GetHeight() * 4 / 10)));
         }
 
         ChartPlotArea area;
         area.x      = marginSide;
         area.y      = marginTop;
-        area.width  = std::max(20, GetWidth()  - 2 * marginSide);
-        area.height = std::max(20, GetHeight() - marginTop - marginBottom);
+        area.width  = std::max(20, static_cast<int>(GetWidth()  - 2 * marginSide));
+        area.height = std::max(20, static_cast<int>(GetHeight() - marginTop - marginBottom));
         return area;
     }
 
@@ -364,8 +369,8 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasPieChartElement::ComputeCenterAndRadius(const Rect2Df& chartArea) {
-        cachedCenter = Point2Df(chartArea.x + chartArea.width / 2.0,
+    void UltraCanvasPieChartElement::ComputeCenterAndRadius(const Rect2Dd& chartArea) {
+        cachedCenter = Point2Dd(chartArea.x + chartArea.width / 2.0,
                                 chartArea.y + chartArea.height / 2.0);
         float availH = chartArea.height;
         if (enable3D) {
@@ -451,12 +456,12 @@ namespace UltraCanvas {
             return;
         }
 
-        Rect2Df chartArea(cachedPlotArea.x, cachedPlotArea.y,
+        Rect2Dd chartArea(cachedPlotArea.x, cachedPlotArea.y,
                           cachedPlotArea.width, cachedPlotArea.height);
         RenderChartImpl(ctx, chartArea);
     }
 
-    void UltraCanvasPieChartElement::RenderChartImpl(IRenderContext* ctx, const Rect2Df& chartArea) {
+    void UltraCanvasPieChartElement::RenderChartImpl(IRenderContext* ctx, const Rect2Dd& chartArea) {
         ComputeCenterAndRadius(chartArea);
 
         if (!chartTitle.empty()) {
@@ -467,7 +472,7 @@ namespace UltraCanvas {
             ctx->SetTextPaint(labelColor);
             Size2Di ts = ctx->GetTextLineDimensions(chartTitle);
             ctx->DrawText(chartTitle,
-                          Point2Df(chartArea.x + (chartArea.width - ts.width) / 2.0,
+                          Point2Dd(chartArea.x + (chartArea.width - ts.width) / 2.0,
                                    chartArea.y - ts.height - 4.0));
             ctx->PopState();
         }
@@ -484,7 +489,7 @@ namespace UltraCanvas {
 
     // ===== 2D RENDERING =====
 
-    void UltraCanvasPieChartElement::Render2D(IRenderContext* ctx, const Rect2Df& /*chartArea*/) {
+    void UltraCanvasPieChartElement::Render2D(IRenderContext* ctx, const Rect2Dd& /*chartArea*/) {
         float outerR = cachedOuterRadius;
         float innerR = donutMode ? outerR * innerRadiusFraction : 0.0f;
 
@@ -494,13 +499,13 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasPieChartElement::DrawSlice2D(IRenderContext* ctx,
-                                                 const Point2Df& center,
+                                                 const Point2Dd& center,
                                                  float outerR,
                                                  float innerR,
                                                  const Slice& s) {
         double ex = std::cos(s.midAngle) * s.explosion * outerR;
         double ey = std::sin(s.midAngle) * s.explosion * outerR;
-        Point2Df sliceCenter(center.x + ex, center.y + ey);
+        Point2Dd sliceCenter(center.x + ex, center.y + ey);
 
         ctx->PushState();
         ctx->Translate(sliceCenter.x, sliceCenter.y);
@@ -523,7 +528,7 @@ namespace UltraCanvas {
             // Build annular sector polygon
             double sweep = s.endAngle - s.startAngle;
             int segments = std::max(4, (int)std::ceil(std::fabs(sweep) / (M_PI / 36.0)));
-            std::vector<Point2Df> pts;
+            std::vector<Point2Dd> pts;
             pts.reserve(2 * (segments + 1));
 
             for (int i = 0; i <= segments; ++i) {
@@ -589,7 +594,7 @@ namespace UltraCanvas {
         return base.Darken(darken);
     }
 
-    void UltraCanvasPieChartElement::Render3D(IRenderContext* ctx, const Rect2Df& /*chartArea*/) {
+    void UltraCanvasPieChartElement::Render3D(IRenderContext* ctx, const Rect2Dd& /*chartArea*/) {
         float outerR = cachedOuterRadius;
         float innerR = donutMode ? outerR * innerRadiusFraction : 0.0f;
         double tilt = perspectiveAngleDeg * M_PI / 180.0;
@@ -629,7 +634,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasPieChartElement::DrawSlice3DSides(IRenderContext* ctx,
-                                                     const Point2Df& center,
+                                                     const Point2Dd& center,
                                                      float outerR,
                                                      float innerR,
                                                      double vScale,
@@ -645,8 +650,8 @@ namespace UltraCanvas {
         double ex = std::cos(s.midAngle) * s.explosion * outerR;
         double ey = std::sin(s.midAngle) * s.explosion * outerR * vScale;
 
-        auto project = [&](double a, double r) -> Point2Df {
-            return Point2Df(center.x + ex + r * std::cos(a),
+        auto project = [&](double a, double r) -> Point2Dd {
+            return Point2Dd(center.x + ex + r * std::cos(a),
                             center.y + ey - extraHeight + r * std::sin(a) * vScale);
         };
 
@@ -660,7 +665,7 @@ namespace UltraCanvas {
         double aLast  = std::min(s.endAngle, M_PI);
         if (aFirst < aLast) {
             int segs = std::max(4, (int)std::ceil((aLast - aFirst) / (M_PI / 36.0)));
-            std::vector<Point2Df> pts;
+            std::vector<Point2Dd> pts;
             pts.reserve(2 * (segs + 1));
             for (int i = 0; i <= segs; ++i) {
                 double a = aFirst + (aLast - aFirst) * (double)i / segs;
@@ -668,7 +673,7 @@ namespace UltraCanvas {
             }
             for (int i = segs; i >= 0; --i) {
                 double a = aFirst + (aLast - aFirst) * (double)i / segs;
-                Point2Df top = project(a, outerR);
+                Point2Dd top = project(a, outerR);
                 pts.emplace_back(top.x, top.y + depth);
             }
             // Lighting: average normal across the visible arc — use mid angle
@@ -693,7 +698,7 @@ namespace UltraCanvas {
             // The inner wall is visible where the outer is not — i.e. top arc of inner ellipse
             if (innerFirst < innerLast) {
                 int segs = std::max(4, (int)std::ceil((innerLast - innerFirst) / (M_PI / 36.0)));
-                std::vector<Point2Df> pts;
+                std::vector<Point2Dd> pts;
                 pts.reserve(2 * (segs + 1));
                 for (int i = 0; i <= segs; ++i) {
                     double a = innerFirst + (innerLast - innerFirst) * (double)i / segs;
@@ -701,7 +706,7 @@ namespace UltraCanvas {
                 }
                 for (int i = segs; i >= 0; --i) {
                     double a = innerFirst + (innerLast - innerFirst) * (double)i / segs;
-                    Point2Df top = project(a, innerR);
+                    Point2Dd top = project(a, innerR);
                     pts.emplace_back(top.x, top.y + depth);
                 }
                 double aMid = (innerFirst + innerLast) * 0.5;
@@ -727,17 +732,17 @@ namespace UltraCanvas {
             // Viewer's "down" in the screen after tilt is +y; a face faces viewer if ny > 0.
             if (ny <= 0.0f) return;
 
-            Point2Df topOuter = project(a, outerR);
-            Point2Df topInner = project(a, innerR);
-            Point2Df botOuter(topOuter.x, topOuter.y + depth);
-            Point2Df botInner(topInner.x, topInner.y + depth);
+            Point2Dd topOuter = project(a, outerR);
+            Point2Dd topInner = project(a, innerR);
+            Point2Dd botOuter(topOuter.x, topOuter.y + depth);
+            Point2Dd botInner(topInner.x, topInner.y + depth);
 
-            std::vector<Point2Df> quad;
+            std::vector<Point2Dd> quad;
             if (donutMode && innerR > 0.0f) {
                 quad = {topInner, topOuter, botOuter, botInner};
             } else {
-                Point2Df topCenter(center.x + ex, center.y + ey);
-                Point2Df botCenter(topCenter.x, topCenter.y + depth);
+                Point2Dd topCenter(center.x + ex, center.y + ey);
+                Point2Dd botCenter(topCenter.x, topCenter.y + depth);
                 quad = {topCenter, topOuter, botOuter, botCenter};
             }
             float dotL = nx * (float)lightDirection.x + ny * (float)lightDirection.y;
@@ -755,7 +760,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasPieChartElement::DrawSlice3DTop(IRenderContext* ctx,
-                                                    const Point2Df& center,
+                                                    const Point2Dd& center,
                                                     float outerR,
                                                     float innerR,
                                                     double vScale,
@@ -793,7 +798,7 @@ namespace UltraCanvas {
         if (donutMode && innerR > 0.0f) {
             double sweep = s.endAngle - s.startAngle;
             int segments = std::max(4, (int)std::ceil(std::fabs(sweep) / (M_PI / 36.0)));
-            std::vector<Point2Df> pts;
+            std::vector<Point2Dd> pts;
             pts.reserve(2 * (segments + 1));
             for (int i = 0; i <= segments; ++i) {
                 double a = s.startAngle + sweep * (double)i / segments;
@@ -829,8 +834,26 @@ namespace UltraCanvas {
 
     // ===== LABELS =====
 
+    // Equidistant point of three planar points = circumcenter of their triangle.
+    // Returns false when the three points are collinear (D ~ 0).
+    static bool ComputeCircumcenter(const Point2Dd& A,
+                                    const Point2Dd& B,
+                                    const Point2Dd& C,
+                                    Point2Dd& out) {
+        double D = 2.0 * (A.x * (B.y - C.y) +
+                          B.x * (C.y - A.y) +
+                          C.x * (A.y - B.y));
+        if (std::fabs(D) < 1e-6) return false;
+        double a2 = A.x * A.x + A.y * A.y;
+        double b2 = B.x * B.x + B.y * B.y;
+        double c2 = C.x * C.x + C.y * C.y;
+        out.x = (a2 * (B.y - C.y) + b2 * (C.y - A.y) + c2 * (A.y - B.y)) / D;
+        out.y = (a2 * (C.x - B.x) + b2 * (A.x - C.x) + c2 * (B.x - A.x)) / D;
+        return true;
+    }
+
     void UltraCanvasPieChartElement::RenderLabels(IRenderContext* ctx,
-                                                  const Point2Df& center,
+                                                  const Point2Dd& center,
                                                   float outerR,
                                                   double vScale)
     {
@@ -847,12 +870,13 @@ namespace UltraCanvas {
             const Slice* slice;
             std::string text;
             LabelPosition resolved;
-            Point2Df arcAttach;   // point on outer arc
-            Point2Df anchor;      // base anchor before adjustment
-            Point2Df textPos;     // top-left of text after adjustment
+            Point2Dd arcAttach;       // point on outer arc
+            Point2Dd anchor;          // base anchor before adjustment
+            Point2Dd insideLocal;     // slice-local (pre-projection) anchor for inside placement
+            Point2Dd textPos;         // top-left of text after adjustment
             Size2Di  textSize;
             bool     rightSide;
-            float    fontScale;   // 1.0 = native size; <1.0 = shrunk to fit inside
+            float    fontScale;       // 1.0 = native size; <1.0 = shrunk to fit inside
         };
 
         std::vector<LayoutItem> items;
@@ -860,10 +884,53 @@ namespace UltraCanvas {
 
         // Inside auto-scale tuning. Anything below kMinInsideScale just goes
         // outside instead — readability beats squeezing every label in.
-        const float kAnchorRadiusFactor = 0.65f;
         const float kChordSafety        = 0.92f;
         const float kRadialFraction     = 0.55f;
         const float kMinInsideScale     = 0.72f;
+
+        const float innerRForLabels = donutMode ? outerR * innerRadiusFraction : 0.0f;
+
+        // For each slice we'll need the slice-local anchor — the point inside
+        // the slice that is equidistant from the midpoints of the slice's
+        // three boundary sections (two radial edges + the outer arc). For
+        // donut slices the radial edges run from innerR to outerR so their
+        // midpoints sit at (innerR + outerR) / 2 rather than outerR / 2.
+        auto computeInsideAnchor = [&](const Slice& s) -> Point2Dd {
+            double radialMidR = donutMode
+                                ? (innerRForLabels + outerR) * 0.5
+                                : outerR * 0.5;
+            Point2Dd A(radialMidR * std::cos(s.startAngle),
+                       radialMidR * std::sin(s.startAngle));
+            Point2Dd B(radialMidR * std::cos(s.endAngle),
+                       radialMidR * std::sin(s.endAngle));
+            Point2Dd C(outerR * std::cos(s.midAngle),
+                       outerR * std::sin(s.midAngle));
+            Point2Dd anchor;
+            if (!ComputeCircumcenter(A, B, C, anchor)) {
+                anchor = Point2Dd((A.x + B.x + C.x) / 3.0,
+                                  (A.y + B.y + C.y) / 3.0);
+            }
+            // Guarantee the anchor stays within the slice's radial band — the
+            // circumcenter occasionally lands outside for skinny slices.
+            double r = std::sqrt(anchor.x * anchor.x + anchor.y * anchor.y);
+            double minR = donutMode ? innerRForLabels + 2.0 : 0.0;
+            double maxR = outerR - 2.0;
+            if (r < minR || r > maxR) {
+                double clampedR = std::max(minR, std::min((double)maxR, r));
+                if (r < 1e-6) {
+                    // Degenerate — fall back to the slice's mid-radius along midAngle.
+                    clampedR = donutMode
+                               ? (innerRForLabels + outerR) * 0.5
+                               : outerR * 0.5;
+                    anchor.x = clampedR * std::cos(s.midAngle);
+                    anchor.y = clampedR * std::sin(s.midAngle);
+                } else {
+                    anchor.x *= clampedR / r;
+                    anchor.y *= clampedR / r;
+                }
+            }
+            return anchor;
+        };
 
         // Pass 1a — pick provisional position per slice, build the right text for it,
         // measure at native size and remember each slice's required shrink factor.
@@ -891,11 +958,13 @@ namespace UltraCanvas {
             it.textSize = ctx->GetTextLineDimensions(it.text);
 
             if (resolved == LabelPosition::Inside) {
-                const float labelR = outerR * kAnchorRadiusFactor;
-                const float chord  = 2.0f * labelR * static_cast<float>(std::sin(sweep * 0.5));
-                const float innerLim = donutMode ? outerR * innerRadiusFraction : 0.0f;
+                it.insideLocal = computeInsideAnchor(s);
+                const float anchorR =
+                    static_cast<float>(std::sqrt(it.insideLocal.x * it.insideLocal.x +
+                                                 it.insideLocal.y * it.insideLocal.y));
+                const float chord  = 2.0f * anchorR * static_cast<float>(std::sin(sweep * 0.5));
                 const float availW = chord * kChordSafety;
-                const float availH = (outerR - innerLim) * kRadialFraction;
+                const float availH = (outerR - innerRForLabels) * kRadialFraction;
 
                 if (availW > 4.0f && availH > 4.0f &&
                     it.textSize.width > 0 && it.textSize.height > 0) {
@@ -954,34 +1023,38 @@ namespace UltraCanvas {
             float extraH = enable3D
                            ? depthHeight * std::max(0.0f, s.heightFactor - 1.0f)
                            : 0.0f;
-            it.arcAttach = Point2Df(center.x + ex + outerR * std::cos(s.midAngle),
+            it.arcAttach = Point2Dd(center.x + ex + outerR * std::cos(s.midAngle),
                                     center.y + ey - extraH + outerR * std::sin(s.midAngle) * vScale);
 
-            float radiusFactor = 0.65f;
-            if (resolved == LabelPosition::Inside)       radiusFactor = 0.65f;
-            else if (resolved == LabelPosition::Edge)    radiusFactor = 1.0f;
-            else if (resolved == LabelPosition::Outside) radiusFactor = 1.18f;
-
-            it.anchor = Point2Df(center.x + ex + outerR * radiusFactor * std::cos(s.midAngle),
-                                 center.y + ey - extraH + outerR * radiusFactor * std::sin(s.midAngle) * vScale);
+            if (resolved == LabelPosition::Inside) {
+                // The circumcenter we computed in pass 1a lives in slice-local
+                // coordinates; project it into world space with the same
+                // vertical squash + raise that the slice itself uses.
+                it.anchor = Point2Dd(center.x + ex + it.insideLocal.x,
+                                     center.y + ey - extraH + it.insideLocal.y * vScale);
+            } else {
+                float radiusFactor = (resolved == LabelPosition::Edge) ? 1.0f : 1.18f;
+                it.anchor = Point2Dd(center.x + ex + outerR * radiusFactor * std::cos(s.midAngle),
+                                     center.y + ey - extraH + outerR * radiusFactor * std::sin(s.midAngle) * vScale);
+            }
             it.rightSide = std::cos(s.midAngle) >= 0.0;
 
             if (resolved == LabelPosition::Inside) {
-                it.textPos = Point2Df(it.anchor.x - it.textSize.width / 2.0,
+                it.textPos = Point2Dd(it.anchor.x - it.textSize.width / 2.0,
                                       it.anchor.y - it.textSize.height / 2.0);
             } else if (resolved == LabelPosition::Edge) {
                 if (it.rightSide) {
-                    it.textPos = Point2Df(it.anchor.x + 2.0,
+                    it.textPos = Point2Dd(it.anchor.x + 2.0,
                                           it.anchor.y - it.textSize.height / 2.0);
                 } else {
-                    it.textPos = Point2Df(it.anchor.x - 2.0 - it.textSize.width,
+                    it.textPos = Point2Dd(it.anchor.x - 2.0 - it.textSize.width,
                                           it.anchor.y - it.textSize.height / 2.0);
                 }
             } else { // Outside
                 double elbowX = it.rightSide
                                 ? it.anchor.x + 6.0
                                 : it.anchor.x - 6.0 - it.textSize.width;
-                it.textPos = Point2Df(elbowX, it.anchor.y - it.textSize.height / 2.0);
+                it.textPos = Point2Dd(elbowX, it.anchor.y - it.textSize.height / 2.0);
 
                 // Keep the label fully inside the chart element. The leader line
                 // in pass 3 will follow whatever x we end up with.
@@ -1033,20 +1106,61 @@ namespace UltraCanvas {
         resolveOverlaps(true);
         resolveOverlaps(false);
 
+        // Pass 2b — uniform corner distance.
+        // Overlap resolution slides labels vertically, which leaves their
+        // pie-facing corners at varying distances from the chart circle.
+        // Re-project each outside label horizontally so the corner closest to
+        // the pie sits exactly `labelMargin` pixels off the outer edge — the
+        // leader-line elbow length then reads as identical around the ring.
+        const double targetCornerDist = static_cast<double>(outerR) + labelMargin;
+        const double targetCornerDistSq = targetCornerDist * targetCornerDist;
+        for (auto& it : items) {
+            if (it.resolved != LabelPosition::Outside) continue;
+
+            const double topY = it.textPos.y;
+            const double botY = it.textPos.y + it.textSize.height;
+
+            // The pie-facing edge of the label is its left edge (right-side
+            // labels) or right edge (left-side labels). The closest point on
+            // that edge to the pie center is the corner with smallest |dy|,
+            // unless the edge straddles center.y — then it's directly beside.
+            double yClosest;
+            if (botY < center.y)      yClosest = botY;
+            else if (topY > center.y) yClosest = topY;
+            else                      yClosest = center.y;
+
+            const double dy = yClosest - center.y;
+            double dxSq = targetCornerDistSq - dy * dy;
+            if (dxSq < 0.0) dxSq = 0.0;
+            const double dx = std::sqrt(dxSq);
+
+            if (it.rightSide) {
+                it.textPos.x = center.x + dx;
+            } else {
+                it.textPos.x = center.x - dx - it.textSize.width;
+            }
+
+            // Keep the label visible within the chart element.
+            const float minX = 2.0f;
+            const float maxX = static_cast<float>(GetWidth()) - it.textSize.width - 2.0f;
+            if (it.textPos.x < minX) it.textPos.x = minX;
+            if (it.textPos.x > maxX) it.textPos.x = maxX;
+        }
+
         // Pass 3 — draw
         for (const LayoutItem& it : items) {
             if (it.resolved == LabelPosition::Outside && leaderLinesEnabled) {
                 ctx->SetStrokePaint(leaderLineColor);
                 ctx->SetStrokeWidth(leaderLineWidth);
-                Point2Df elbow;
+                Point2Dd elbow;
                 if (it.rightSide) {
-                    elbow = Point2Df(it.textPos.x - 4.0, it.textPos.y + it.textSize.height / 2.0);
+                    elbow = Point2Dd(it.textPos.x - 4.0, it.textPos.y + it.textSize.height / 2.0);
                 } else {
-                    elbow = Point2Df(it.textPos.x + it.textSize.width + 4.0,
+                    elbow = Point2Dd(it.textPos.x + it.textSize.width + 4.0,
                                      it.textPos.y + it.textSize.height / 2.0);
                 }
                 ctx->DrawLine(it.arcAttach, elbow);
-                Point2Df labelEdge(it.rightSide ? it.textPos.x : it.textPos.x + it.textSize.width,
+                Point2Dd labelEdge(it.rightSide ? it.textPos.x : it.textPos.x + it.textSize.width,
                                    it.textPos.y + it.textSize.height / 2.0);
                 ctx->DrawLine(elbow, labelEdge);
             }
@@ -1054,7 +1168,7 @@ namespace UltraCanvas {
             if (labelBackgroundEnabled) {
                 ctx->SetFillPaint(labelBackgroundColor);
                 ctx->FillRoundedRectangle(
-                    Rect2Df(it.textPos.x - 3.0, it.textPos.y - 1.0,
+                    Rect2Dd(it.textPos.x - 3.0, it.textPos.y - 1.0,
                             it.textSize.width + 6.0, it.textSize.height + 2.0),
                     3.0);
             }
@@ -1069,7 +1183,7 @@ namespace UltraCanvas {
 
     // ===== HIT TESTING =====
 
-    size_t UltraCanvasPieChartElement::HitTestSlice(const Point2Df& localPos) const {
+    size_t UltraCanvasPieChartElement::HitTestSlice(const Point2Dd& localPos) const {
         if (cachedSlices.empty()) return SIZE_MAX;
 
         float outerR = cachedOuterRadius;
@@ -1105,7 +1219,7 @@ namespace UltraCanvas {
     bool UltraCanvasPieChartElement::HandleChartMouseMove(const Point2Di& mousePos) {
         if (cachedSlices.empty()) return false;
 
-        Point2Df local((double)mousePos.x, (double)mousePos.y);
+        Point2Dd local((double)mousePos.x, (double)mousePos.y);
         size_t hit = HitTestSlice(local);
 
         if (hit != hoveredSliceIndex) {
@@ -1178,7 +1292,7 @@ namespace UltraCanvas {
         exportCtx->Clear(backgroundColor.a > 0 ? backgroundColor : Color(255, 255, 255, 255));
 
         // Render into the offscreen ctx using export-area geometry.
-        Rect2Df chartArea(0.0, 0.0, (double)w, (double)h);
+        Rect2Dd chartArea(0.0, 0.0, (double)w, (double)h);
 
         // Ensure slices reflect current dataSource state.
         InvalidateCache();

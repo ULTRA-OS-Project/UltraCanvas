@@ -1,7 +1,7 @@
 // OS/Linux/UltraCanvasX11Window.h
 // Linux platform implementation for UltraCanvas Framework
-// Version: 1.0.0
-// Last Modified: 2025-07-11
+// Version: 1.1.0 - per-monitor HiDPI (deviceScale) support
+// Last Modified: 2026-07-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -10,7 +10,6 @@
 
 // ===== CORE INCLUDES =====
 #include "UltraCanvasRenderContext.h"
-#include "UltraCanvasLinuxDragDrop.h"
 
 // ===== LINUX PLATFORM INCLUDES =====
 #include <X11/Xlib.h>
@@ -21,6 +20,8 @@
 #include <cairo/cairo.h>
 #include <cairo/cairo-xlib.h>
 #include <pango/pangocairo.h>
+
+#include "UltraCanvasLinuxDragDrop.h"
 
 // ===== STANDARD INCLUDES =====
 #include <memory>
@@ -95,6 +96,10 @@ namespace UltraCanvas {
         bool CreateNativeCairoSurface();
         void DestroyNativeCairoSurface();
         void SetWindowHints();
+
+        // Per-monitor physical DPI (mm-based) for the monitor the window is on;
+        // returns 0 when XRandR has no usable data. Helper for QueryNativeDeviceScale.
+        float QueryXRandRScaleForWindow(Display* display) const;
 //        void SetWindowDecorations();
 
         // ===== STATE MANAGEMENT =====
@@ -104,6 +109,11 @@ namespace UltraCanvas {
 //        void RestoreWindowGeometry();
     protected:
         void DoResizeNative() override;
+        // Hybrid DPI detection: GDK_SCALE / QT_SCALE_FACTOR env -> Xft.dpi ->
+        // XRandR per-monitor physical DPI -> 1.0.
+        float QueryNativeDeviceScale() const override;
+        // Rebuild the xlib surface at physical px + device scale.
+        bool RecreateNativeSurface() override;
     };
 
 } // namespace UltraCanvas

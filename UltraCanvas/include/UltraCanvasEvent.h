@@ -1,7 +1,7 @@
 // include/UltraCanvasEvent.h - Enhanced Version
 // Event system for UltraCanvas Framework with Linux optimizations
-// Version: 2.2.0
-// Last Modified: 2026-04-21
+// Version: 2.3.0
+// Last Modified: 2026-07-02
 // Author: UltraCanvas Framework
 
 #ifndef ULTRA_CANVAS_EVENT_H
@@ -10,6 +10,7 @@
 #include "UltraCanvasCommonTypes.h"
 #include <chrono>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -286,17 +287,17 @@ namespace UltraCanvas {
         NoneButton = 0,
         Left = 1,
         Middle = 2,
-        Right = 3,
-        WheelUp = 4,
-        WheelDown = 5,
-        WheelLeft = 6,
-        WheelRight = 7,
+        Right = 4,
+        WheelUp = 8,
+        WheelDown = 16,
+        WheelLeft = 32,
+        WheelRight = 64,
         Unknown = 99
     };
 
     struct UCEvent {
         UCEventType type = UCEventType::NoneEvent;
-        UltraCanvasUIElement *targetElement = nullptr;
+        std::weak_ptr<UltraCanvasUIElement> targetElement;
 
         // Spatial coordinates
         Point2Di pointer;                    // Mouse or touch coordinates
@@ -328,7 +329,7 @@ namespace UltraCanvas {
         // Window specific
         int width = 0, height = 0;           // For resize events
 
-        UltraCanvasWindowBase* targetWindow = nullptr;        // Pointer to the target UltraCanvasWindow
+        std::weak_ptr<UltraCanvasWindowBase> targetWindow;    // Weak ref to the target UltraCanvasWindow
         // Platform-specific window handle (X11 Window, HWND, etc.)
 #if defined(_WIN32) || defined(_WIN64)
         NativeWindowHandle nativeWindowHandle = nullptr;

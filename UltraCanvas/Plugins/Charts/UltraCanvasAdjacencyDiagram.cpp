@@ -21,7 +21,7 @@ namespace UltraCanvas {
 
     UltraCanvasAdjacencyDiagram::UltraCanvasAdjacencyDiagram(
             const std::string& id,
-            long x, long y, long w, long h)
+            float x, float y, float w, float h)
             : UltraCanvasUIElement(id, x, y, w, h)
     {}
 
@@ -256,8 +256,8 @@ namespace UltraCanvas {
 // ZONE BOUNDS
 // ─────────────────────────────────────────────
 
-    Rect2Df UltraCanvasAdjacencyDiagram::ComputeZoneBounds(const AdjacencyZone& zone) const {
-        if (zone.roomIds.empty()) return Rect2Df(0, 0, 0, 0);
+    Rect2Dd UltraCanvasAdjacencyDiagram::ComputeZoneBounds(const AdjacencyZone& zone) const {
+        if (zone.roomIds.empty()) return Rect2Dd(0, 0, 0, 0);
 
         float minX = std::numeric_limits<float>::max();
         float minY = std::numeric_limits<float>::max();
@@ -279,7 +279,7 @@ namespace UltraCanvas {
         }
 
         float pad = zone.padding;
-        return Rect2Df(
+        return Rect2Dd(
                 minX - pad,
                 minY - pad,
                 (maxX - minX) + pad * 2.0f,
@@ -315,7 +315,7 @@ namespace UltraCanvas {
                 float sy = y1 + uy * traveled;
                 float ex = x1 + ux * (traveled + segLen);
                 float ey = y1 + uy * (traveled + segLen);
-                ctx->DrawLine(Point2Df(sx, sy), Point2Df(ex, ey));
+                ctx->DrawLine(Point2Dd(sx, sy), Point2Dd(ex, ey));
             }
 
             traveled += segLen;
@@ -412,7 +412,7 @@ namespace UltraCanvas {
         if (dashLen > 0.0f) {
             DrawDashedLine(ctx, lx1, ly1, lx2, ly2, dashLen, gapLen);
         } else {
-            ctx->DrawLine(Point2Df(lx1, ly1), Point2Df(lx2, ly2));
+            ctx->DrawLine(Point2Dd(lx1, ly1), Point2Dd(lx2, ly2));
         }
 
         // Arrowhead
@@ -430,13 +430,13 @@ namespace UltraCanvas {
             ctx->SetTextPaint(style.zoneLabelColor);
             auto dims = ctx->GetTextLineDimensions(link.label);
             int tw = dims.width, th = dims.height;
-            ctx->DrawText(link.label, Point2Df(midX - tw * 0.5f, midY - th - 2.0f));
+            ctx->DrawText(link.label, Point2Dd(midX - tw * 0.5f, midY - th - 2.0f));
         }
     }
 
     void UltraCanvasAdjacencyDiagram::DrawZones(IRenderContext* ctx) const {
         for (const auto& zone : zones) {
-            Rect2Df bnds = ComputeZoneBounds(zone);
+            Rect2Dd bnds = ComputeZoneBounds(zone);
             if (bnds.width <= 0 || bnds.height <= 0) continue;
 
             // Translucent fill
@@ -465,7 +465,7 @@ namespace UltraCanvas {
                 ctx->SetFontSize(style.zoneLabelFontSize);
                 ctx->SetFontFace("Sans", FontWeight::Normal, FontSlant::Normal);
                 ctx->DrawText(zone.label,
-                              Point2Df(x + 8.0f, y + style.zoneLabelFontSize + 4.0f));
+                              Point2Dd(x + 8.0f, y + style.zoneLabelFontSize + 4.0f));
             }
         }
     }
@@ -494,7 +494,7 @@ namespace UltraCanvas {
 
             // Fill
             ctx->SetFillPaint(fill);
-            ctx->FillCircle(Point2Df(sx, sy), r);
+            ctx->FillCircle(Point2Dd(sx, sy), r);
 
             // Stroke — thicker + colored on hover/select
             Color strokeCol = style.roomStrokeColor;
@@ -509,7 +509,7 @@ namespace UltraCanvas {
 
             ctx->SetStrokePaint(strokeCol);
             ctx->SetStrokeWidth(strokeW);
-            ctx->DrawCircle(Point2Df(sx, sy), r);
+            ctx->DrawCircle(Point2Dd(sx, sy), r);
         }
     }
 
@@ -542,11 +542,11 @@ namespace UltraCanvas {
                 float noteX = sx - nw * 0.5f;
                 float noteY = sy + 2.0f;
                 ctx->SetFontSize(style.noteFontSize);
-                ctx->DrawText(room.note, Point2Df(noteX, noteY));
+                ctx->DrawText(room.note, Point2Dd(noteX, noteY));
                 ctx->SetFontSize(style.labelFontSize);
             }
 
-            ctx->DrawText(room.label, Point2Df(sx - tw * 0.5f, labelY));
+            ctx->DrawText(room.label, Point2Dd(sx - tw * 0.5f, labelY));
         }
     }
 
@@ -569,17 +569,17 @@ namespace UltraCanvas {
         if (by < 0)                  by = tooltipY + 14.0f;
 
         ctx->SetFillPaint(style.tooltipBackground);
-        ctx->FillRectangle(Rect2Df(bx, by, boxW, boxH));
+        ctx->FillRectangle(Rect2Dd(bx, by, boxW, boxH));
 
         ctx->SetTextPaint(style.tooltipText);
-        ctx->DrawText(tooltipText, Point2Df(bx + pad, by + pad));
+        ctx->DrawText(tooltipText, Point2Dd(bx + pad, by + pad));
     }
 
 // ─────────────────────────────────────────────
 // RENDER
 // ─────────────────────────────────────────────
 
-    void UltraCanvasAdjacencyDiagram::Render(IRenderContext* ctx, const Rect2Di& dirtyrects) {
+    void UltraCanvasAdjacencyDiagram::Render(IRenderContext* ctx, const Rect2Df& dirtyrects) {
         if (rooms.empty() && zones.empty()) return;
 
         DrawZones(ctx);     // zones first (background)
@@ -793,7 +793,7 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasAdjacencyDiagram> CreateAdjacencyDiagram(
             const std::string& id,
-            long x, long y, long width, long height)
+            float x, float y, float width, float height)
     {
         return std::make_shared<UltraCanvasAdjacencyDiagram>(id, x, y, width, height);
     }

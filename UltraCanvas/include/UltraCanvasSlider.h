@@ -1,7 +1,7 @@
 // include/UltraCanvasSlider.h
 // Interactive slider control with multiple styles, value display options, and dual-handle range support
-// Version: 3.1.0
-// Last Modified: 2026-04-28
+// Version: 3.3.1
+// Last Modified: 2026-07-02
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -13,6 +13,7 @@
 #include <functional>
 #include <cmath>
 #include <memory>
+#include <vector>
 
 namespace UltraCanvas {
 
@@ -65,7 +66,8 @@ namespace UltraCanvas {
         // Track colors
         Color trackColor = Color(200, 200, 200);
         Color activeTrackColor = Color(0, 120, 215);
-        Color disabledTrackColor = Color(180, 180, 180);
+        Color disabledTrackColor = Color(210, 210, 214);
+        Color disabledActiveTrackColor = Color(175, 175, 180);  // replaces activeTrackColor when disabled
         Color rangeTrackColor = Color(0, 120, 215, 180);  // Color for range between handles
 
         // Handle colors
@@ -124,9 +126,20 @@ namespace UltraCanvas {
         std::string valueFormat = "%.1f";
         std::string customText = "";
 
+        // ===== OPTIONAL TRACK GRADIENT =====
+        // When non-empty the linear track is painted with this colour gradient
+        // (e.g. a full hue palette) instead of the solid track/active-track fill.
+        std::vector<GradientStop> trackGradientStops;
+
     public:
-        // ===== CONSTRUCTOR (REQUIRED PATTERN) =====
-        UltraCanvasSlider(const std::string& identifier = "Slider", long x = 0, long y = 0, long w = 200, long h = 30);
+        // ===== CONSTRUCTORS (REQUIRED PATTERN) =====
+        UltraCanvasSlider(const std::string& identifier, float x, float y, float w, float h);
+
+        UltraCanvasSlider(const std::string& identifier, float w, float h)
+            : UltraCanvasSlider(identifier, -1, -1, w, h) {}
+
+        explicit UltraCanvasSlider(const std::string& identifier)
+            : UltraCanvasSlider(identifier, -1, -1, -1, -1) {}
 
         // ===== VALUE MANAGEMENT =====
         void SetRange(float min, float max);
@@ -146,6 +159,11 @@ namespace UltraCanvas {
 
         void SetStep(float stepValue) { step = std::max(0.0f, stepValue); }
         float GetStep() const { return step; }
+
+        // True while the user is actively dragging the handle. Lets owners
+        // suppress programmatic SetValue() feedback (e.g. a media element pushing
+        // playback position) from fighting the user's drag.
+        bool IsDragging() const { return isDragging; }
 
         // ===== RANGE MODE MANAGEMENT =====
         void SetRangeMode(bool enabled);
@@ -197,6 +215,17 @@ namespace UltraCanvas {
         void SetValueFormat(const std::string& format) { valueFormat = format; }
         void SetCustomText(const std::string& text) { customText = text; }
 
+        // ===== TRACK GRADIENT (e.g. colour palette inside the bar) =====
+        void SetTrackGradient(const std::vector<GradientStop>& stops) {
+            trackGradientStops = stops;
+            RequestRedraw();
+        }
+        void ClearTrackGradient() {
+            trackGradientStops.clear();
+            RequestRedraw();
+        }
+        bool HasTrackGradient() const { return !trackGradientStops.empty(); }
+
         SliderVisualStyle& GetStyle() { return style; }
         const SliderVisualStyle& GetStyle() const { return style; }
         void SetStyle(const SliderVisualStyle& st) {
@@ -204,7 +233,7 @@ namespace UltraCanvas {
         }
 
         // ===== RENDERING (REQUIRED OVERRIDE) =====
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
         // ===== EVENT HANDLING (REQUIRED OVERRIDE) =====
         bool OnEvent(const UCEvent& event) override;
@@ -235,7 +264,9 @@ namespace UltraCanvas {
         Rect2Di GetRangeTrackRect(const Rect2Di& trackRect, bool isVertical) const;
         Point2Di GetHandlePosition(const Rect2Di& bounds, bool isVertical, float value) const;
         Color GetCurrentTrackColor() const;
+        Color GetCurrentActiveTrackColor() const;
         Color GetCurrentHandleColor() const;
+        Color GetCurrentHandleBorderColor() const;
 
         bool ShouldShowValueText() const {
             return (valueDisplay == SliderValueDisplay::AlwaysVisible) ||
@@ -277,12 +308,12 @@ namespace UltraCanvas {
 
 // ===== FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasSlider> CreateSlider(
-            const std::string& identifier, long x, long y, long width, long height) {
+            const std::string& identifier, float x, float y, float width, float height) {
         return std::make_shared<UltraCanvasSlider>(identifier, x, y, width, height);
     }
 
     inline std::shared_ptr<UltraCanvasSlider> CreateHorizontalSlider(
-            const std::string& identifier, long x, long y, long width, long height,
+            const std::string& identifier, float x, float y, float width, float height,
             float min = 0.0f, float max = 100.0f) {
         auto slider = std::make_shared<UltraCanvasSlider>(identifier, x, y, width, height);
         slider->SetSliderStyle(SliderStyle::Horizontal);
@@ -291,7 +322,7 @@ namespace UltraCanvas {
     }
 
     inline std::shared_ptr<UltraCanvasSlider> CreateVerticalSlider(
-            const std::string& identifier, long x, long y, long width, long height,
+            const std::string& identifier, float x, float y, float width, float height,
             float min = 0.0f, float max = 100.0f) {
         auto slider = std::make_shared<UltraCanvasSlider>(identifier, x, y, width, height);
         slider->SetSliderStyle(SliderStyle::Vertical);
@@ -300,7 +331,7 @@ namespace UltraCanvas {
     }
 
     inline std::shared_ptr<UltraCanvasSlider> CreateCircularSlider(
-            const std::string& identifier, long x, long y, long size,
+            const std::string& identifier, float x, float y, float size,
             float min = 0.0f, float max = 100.0f) {
         auto slider = std::make_shared<UltraCanvasSlider>(identifier, x, y, size, size);
         slider->SetSliderStyle(SliderStyle::Circular);
@@ -309,7 +340,7 @@ namespace UltraCanvas {
     }
 
     inline std::shared_ptr<UltraCanvasSlider> CreateRangeSlider(
-            const std::string& identifier, long x, long y, long width, long height,
+            const std::string& identifier, float x, float y, float width, float height,
             float min = 0.0f, float max = 100.0f, float lower = 25.0f, float upper = 75.0f) {
         auto slider = std::make_shared<UltraCanvasSlider>(identifier, x, y, width, height);
         slider->SetSliderStyle(SliderStyle::Range);

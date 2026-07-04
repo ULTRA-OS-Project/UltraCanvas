@@ -1,7 +1,7 @@
 // core/UltraCanvasNewDocumentDialog.cpp
 // New Document dialog implementation - FIXED version with deferred initialization
-// Version: 1.0.1
-// Last Modified: 2025-12-21
+// Version: 1.1.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasNewDocumentDialog.h"
@@ -14,7 +14,7 @@ namespace UltraCanvas {
 
     UltraCanvasNewDocumentDialog::UltraCanvasNewDocumentDialog(
             const std::string& identifier,
-            int x, int y, int width, int height)
+            float x, float y, float width, float height)
             : UltraCanvasContainer(identifier, x, y, width, height)
     {
         SetBackgroundColor(style.backgroundColor);
@@ -374,14 +374,14 @@ namespace UltraCanvas {
 
 // ===== RENDERING =====
 
-    void UltraCanvasNewDocumentDialog::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasNewDocumentDialog::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         ctx->PushState();
 
         Rect2Di bounds = GetLocalBounds();
 
         // Shadow (element-local)
         ctx->SetFillPaint(Color(0, 0, 0, 40));
-        ctx->FillRectangle(Rect2Df(4, 4, bounds.width, bounds.height));
+        ctx->FillRectangle(Rect2Dd(4, 4, finalBounds.width, finalBounds.height));
 
         // Background
         ctx->SetFillPaint(style.backgroundColor);
@@ -512,14 +512,14 @@ namespace UltraCanvas {
         ctx->SetFontFace("sans-serif", FontWeight::Normal, FontSlant::Normal);
         ctx->SetFontSize(12);
         ctx->SetTextPaint(style.itemTextColor);
-        ctx->DrawText("File name:", Point2Di(style.padding, bounds.y + 8));
+        ctx->DrawText("File name:", Point2Di(style.padding, finalBounds.y + 8));
 
         const DocumentTypeInfo* selected = GetSelectedType();
         if (selected) {
             ctx->SetFontSize(10);
             ctx->SetTextPaint(Color(100, 100, 100));
             std::string preview = "Will create: " + GetFullFileName();
-            ctx->DrawText(preview, Point2Di(bounds.x, bounds.y + bounds.height + 4));
+            ctx->DrawText(preview, Point2Di(finalBounds.x, finalBounds.y + finalBounds.height + 4));
         }
     }
 

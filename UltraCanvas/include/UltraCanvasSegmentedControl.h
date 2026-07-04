@@ -1,7 +1,7 @@
 // include/UltraCanvasSegmentedControl.h
 // Segmented control component for mutually exclusive selection between options
-// Version: 1.0.0
-// Last Modified: 2025-10-19
+// Version: 1.2.0
+// Last Modified: 2026-05-31
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -153,12 +153,18 @@ namespace UltraCanvas {
         std::chrono::steady_clock::time_point animationStartTime;
 
     public:
-        // ===== CONSTRUCTOR =====
-        UltraCanvasSegmentedControl(const std::string &identifier = "SegmentedControl", long x = 0, long y = 0, long w = 300, long h = 32)
+        // ===== CONSTRUCTORS =====
+        UltraCanvasSegmentedControl(const std::string &identifier, float x, float y, float w, float h)
                 : UltraCanvasUIElement(identifier, x, y, w, h) {
 
             mouseCursor = UCMouseCursor::Hand;
         }
+
+        UltraCanvasSegmentedControl(const std::string &identifier, float w, float h)
+                : UltraCanvasSegmentedControl(identifier, -1, -1, w, h) {}
+
+        explicit UltraCanvasSegmentedControl(const std::string &identifier)
+                : UltraCanvasSegmentedControl(identifier, -1, -1, -1, -1) {}
 
         bool AcceptsFocus() const override { return true; }
 
@@ -220,8 +226,15 @@ namespace UltraCanvas {
 
         // ===== RENDERING =====
 
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
-        void UpdateGeometry(IRenderContext *ctx) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
+
+        // CSS layout: publish the control's preferred content-box size from its
+        // segment content, and place the per-segment rects in Arrange (local
+        // coordinates). The engine owns finalBounds.
+        Size2Df MeasureOwnContent(std::optional<float> definiteContentWidth,
+                                  const CSSLayout::LayoutContext& ctx) override;
+        void ComputeIntrinsicSizes(const CSSLayout::LayoutContext& ctx) override;
+        void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent &event) override;
@@ -243,6 +256,10 @@ namespace UltraCanvas {
 
         void CalculateLayout(IRenderContext *ctx);
         int CalculateSegmentContentWidth(IRenderContext *ctx, SegmentData &segment);
+        // Content-box preferred size (sum of segment content widths + spacing;
+        // height from text/icon + vertical padding), excluding border. Used by
+        // MeasureOwnContent / ComputeIntrinsicSizes.
+        Size2Df MeasureContentSize(IRenderContext* rc);
         ITextLayout* GetOrCreateTextLayout(IRenderContext* ctx, SegmentData& segment);
 
         // ===== RENDERING HELPERS =====
@@ -266,7 +283,7 @@ namespace UltraCanvas {
 // ===== FACTORY FUNCTIONS =====
 
     inline std::shared_ptr<UltraCanvasSegmentedControl> CreateSegmentedControl(
-            const std::string& identifier, long x, long y, long w, long h) {
+            const std::string& identifier, float x, float y, float w, float h) {
         return UltraCanvasUIElementFactory::Create<UltraCanvasSegmentedControl>(
                 identifier, x, y, w, h
         );
@@ -286,7 +303,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasSegmentedControl> control;
 
     public:
-        SegmentedControlBuilder(const std::string& identifier, long x, long y, long w, long h) {
+        SegmentedControlBuilder(const std::string& identifier, float x, float y, float w, float h) {
             control = CreateSegmentedControl(identifier, x, y, w, h);
         }
 

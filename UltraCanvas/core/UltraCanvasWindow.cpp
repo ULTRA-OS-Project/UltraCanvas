@@ -1,7 +1,7 @@
 // UltraCanvasWindowBase.cpp
 // Fixed implementation of cross-platform window management system
-// Version: 1.2.1
-// Last Modified: 2026-04-05
+// Version: 1.3.0 - cross-platform HiDPI/deviceScale scaling in base
+// Last Modified: 2026-07-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWindow.h"
@@ -17,7 +17,7 @@ namespace UltraCanvas {
     UltraCanvasWindowBase::UltraCanvasWindowBase()
             : UltraCanvasContainer("Window", 0, 0, 0, 0) {
         // Configure container for window behavior
-        visible = false;
+        _windowVisible = false;
         window = this;
         nativeSurface = nullptr;
     }
@@ -295,6 +295,53 @@ namespace UltraCanvas {
         debugOutput << "UltraCanvasWindowBase::HandleResizeEvent nativeh=" << GetNativeHandle() << " (" << config_.width << "x" << config_.height << ")" << std::endl;
     }
 
+    bool UltraCanvasWindowBase::RefreshDeviceScale() {
+        float s = QueryNativeDeviceScale();
+        if (s <= 0.0f) s = 1.0f;
+        bool changed = (s != deviceScale);
+        deviceScale = s;
+        return changed;
+    }
+
+    void UltraCanvasWindowBase::HandleDeviceScaleChange() {
+        if (!_created) return;
+
+        // deviceScale has already been updated by RefreshDeviceScale() before
+        // this call. Rebuild the native surface at the new physical pixel size.
+        if (!RecreateNativeSurface()) {
+            return;
+        }
+
+        // Rebuild the window render context from the NEW nativeSurface so it
+        // inherits the new device scale. We cannot use renderContext->ResizeSurface()
+        // here: it recreates similar to the context's OWN (old-scale) surface.
+        renderContext = CreateRenderContext(Size2Di(config_.width, config_.height), nativeSurface);
+
+        // Drop popup contexts so the UpdateAndRender() popup loop lazily rebuilds
+        // them against the new nativeSurface; re-seed their dirty rects.
+        for (auto& pe : popupElements) {
+            if (pe.element) {
+                pe.element->renderContext.reset();
+                Size2Di ps = pe.element->GetSize();
+                if (ps.width > 0 && ps.height > 0) {
+                    pe.dirtyRectManager.Add(Rect2Di(0, 0, ps.width, ps.height));
+                }
+            }
+        }
+        // Tooltip caches a static render context tied to the old nativeSurface;
+        // drop it now so it is rebuilt at the new scale on next show.
+        UltraCanvasTooltipManager::HideTooltipImmediately();
+
+        // Re-layout and repaint at the new resolution. config_.width/height are
+        // unchanged (logical), so seed a full-window dirty rect directly rather
+        // than routing through DoResize() (which early-outs on unchanged size).
+        InvalidateLayout();
+        AddDirtyRectangle(Rect2Di(0, 0, config_.width, config_.height));
+        RequestWindowComposition();
+        UpdateAndRender();
+        InvalidateWindowNative();
+    }
+
     void UltraCanvasWindowBase::DoResize() {
         _needsResize = false;
         if (GetWidth() == config_.width && GetHeight() == config_.height) {
@@ -307,7 +354,7 @@ namespace UltraCanvas {
             renderContext->ResizeSurface({config_.width, config_.height});
         }
         DoResizeNative();
-        SetOriginalSize(config_.width, config_.height);
+        SetElementSize({config_.width, config_.height});
 
         if (onWindowResize) onWindowResize(config_.width, config_.height);
 
@@ -324,15 +371,30 @@ namespace UltraCanvas {
 
 
     void UltraCanvasWindowBase::UpdateAndRender() {
-        if (!visible || !_created) return;
+        if (!_created || !_windowVisible) return;
         auto ctx = GetRenderContext();
         if (IsNeedsResize()) {
             DoResize();
         }
         if (!ctx) return;
 
-        if (needsUpdateGeometry) {
-            UpdateGeometry(ctx);
+        bool isLayoutValid = IsLayoutValid();
+        if (!isLayoutValid) {
+            CSSLayout::LayoutContext lctx;
+            // TODO: thread em/rem/DPI from window. Viewport defaults
+            // are acceptable for fixed-px callers; only vw/vh users
+            // need this populated correctly.
+            lctx.viewportWidth  = GetWidth();
+            lctx.viewportHeight = GetHeight();
+
+            CSSLayout::MeasureConstraints mc{
+                    { CSSLayout::ConstraintMode::Exact, lctx.viewportWidth  },
+                    { CSSLayout::ConstraintMode::Exact, lctx.viewportHeight }
+            };
+            this->Measure(mc, lctx);
+            // Arrange() places children and, at its tail, calls Arranged()
+            // (z-order sort + scrollbar metrics) and sets arrangeValid.
+            this->Arrange(finalBounds, lctx);
         }
 
         // ---- Window content pass: loop once per optimised dirty rect ----
@@ -340,7 +402,7 @@ namespace UltraCanvas {
             const auto& rects = dirtyRectManager.GetOptimizedRectangles();
             for (const auto& rect : rects) {
                 ctx->PushState();
-                ctx->ClipRect(Rect2Df(rect.x, rect.y, rect.width, rect.height));
+                ctx->ClipRect(Rect2Dd(rect.x, rect.y, rect.width, rect.height));
                 Render(ctx, rect);
                 RenderCustomContent(ctx, rect);
                 ctx->PopState();
@@ -354,17 +416,12 @@ namespace UltraCanvas {
             auto* p = pe.element;
             if (!p || !p->IsVisible()) continue;
 
-            if (_needsPopupGeometry || p->needsUpdateGeometry) {
-                p->UpdateGeometry(ctx);
-                p->needsUpdateGeometry = false;
-            }
 
             Size2Di want = p->GetSize();
             if (want.width <= 0 || want.height <= 0) continue;
 
             if (!p->renderContext) {
                 p->renderContext = CreateRenderContext(want, nativeSurface);
-                p->needsUpdateGeometry = true;
                 pe.dirtyRectManager.Add(Rect2Di(0, 0, want.width, want.height));
             } else if (p->renderContext->GetSurfaceSize() != want) {
                 p->renderContext->ResizeSurface(want);
@@ -375,7 +432,7 @@ namespace UltraCanvas {
                 const auto& popupRects = pe.dirtyRectManager.GetOptimizedRectangles();
                 for (const auto& rect : popupRects) {
                     p->renderContext->PushState();
-                    p->renderContext->ClipRect(Rect2Df(rect.x, rect.y, rect.width, rect.height));
+                    p->renderContext->ClipRect(Rect2Dd(rect.x, rect.y, rect.width, rect.height));
                     p->Render(p->renderContext.get(), rect);
                     p->renderContext->PopState();
                 }
@@ -443,9 +500,10 @@ namespace UltraCanvas {
         }
         popupElements.push_back({&elem, settings, {}});
         AddChild(elem.shared_from_this());
-        elem.SetPosition(pos);
+        elem.SetElementAbsolutePosition(pos);
+        //elem.SetPosition(pos);
         elem.SetVisible(true);
-        elem.zOrder = OverlayZOrder::Popups;
+        elem.SetZIndex(OverlayZOrder::Popups);
         elem.isPopup = true;
 
         // Allocate the popup's own off-screen render context. Size guard handles the
@@ -454,7 +512,6 @@ namespace UltraCanvas {
         Size2Di sz = elem.GetSize();
         if (sz.width <= 0 || sz.height <= 0) sz = {1, 1};
         elem.renderContext = CreateRenderContext(sz, nativeSurface);
-        elem.needsUpdateGeometry = true;
 
         // Seed the popup's dirty list so the first frame paints fully.
         popupElements.back().dirtyRectManager.Add(Rect2Di(0, 0, sz.width, sz.height));
@@ -606,11 +663,15 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasWindowBase::CenterOnScreen() {
+        // Screen bounds and window position are in native space (physical px on
+        // X11/Windows); use the native window size so both terms match on HiDPI.
         int sx = 0, sy = 0, sw = 0, sh = 0;
         GetScreenBounds(sx, sy, sw, sh);
+        int ww = 0, wh = 0;
+        GetNativeWindowSize(ww, wh);
         if (sw > 0 && sh > 0) {
-            int x = sx + (sw - config_.width) / 2;
-            int y = sy + (sh - config_.height) / 2;
+            int x = sx + (sw - ww) / 2;
+            int y = sy + (sh - wh) / 2;
             SetWindowPosition(x, y);
         }
     }
@@ -622,9 +683,11 @@ namespace UltraCanvas {
         }
         int parentX = 0, parentY = 0, parentW = 0, parentH = 0;
         parent->GetWindowPosition(parentX, parentY);
-        parent->GetWindowSize(parentW, parentH);
-        int x = parentX + (parentW - config_.width) / 2;
-        int y = parentY + (parentH - config_.height) / 2;
+        parent->GetNativeWindowSize(parentW, parentH);
+        int ww = 0, wh = 0;
+        GetNativeWindowSize(ww, wh);
+        int x = parentX + (parentW - ww) / 2;
+        int y = parentY + (parentH - wh) / 2;
         SetWindowPosition(x, y);
     }
 
@@ -635,9 +698,11 @@ namespace UltraCanvas {
         }
         int sx = 0, sy = 0, sw = 0, sh = 0;
         referenceWindow->GetScreenBounds(sx, sy, sw, sh);
+        int ww = 0, wh = 0;
+        GetNativeWindowSize(ww, wh);
         if (sw > 0 && sh > 0) {
-            int x = sx + (sw - config_.width) / 2;
-            int y = sy + (sh - config_.height) / 2;
+            int x = sx + (sw - ww) / 2;
+            int y = sy + (sh - wh) / 2;
             SetWindowPosition(x, y);
         }
     }

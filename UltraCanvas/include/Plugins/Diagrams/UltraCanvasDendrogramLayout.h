@@ -244,7 +244,7 @@ namespace UltraCanvas {
         // orientation / scaleMode control the layout algorithm variant.
         DendrogramLayout Compute(
             const IDendrogramDataSource* data,
-            const Rect2Df& bounds,
+            const Rect2Dd& bounds,
             DendrogramOrientation orientation,
             DendrogramScaleMode scaleMode,
             float leafSpacing = 18.0f);  // Min pixels between adjacent leaves
@@ -292,7 +292,7 @@ namespace UltraCanvas {
         double FindMaxDistance(const IDendrogramDataSource* data, const std::string& nodeId);
 
         // Convert Cartesian layout to radial
-        void ApplyRadialLayout(DendrogramLayout& layout, const Rect2Df& bounds);
+        void ApplyRadialLayout(DendrogramLayout& layout, const Rect2Dd& bounds);
     };
 
 } // namespace UltraCanvas

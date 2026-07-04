@@ -1,7 +1,7 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
-// Version: 1.4.2 - PANGO_BACKEND=fontconfig env so MSYS2 Pango uses FC instead of Win32 backend
-// Last Modified: 2026-05-10
+// Version: 1.5.0 - focusedWindow/hovered/captured/dragged and UCEvent targets are now weak_ptr
+// Last Modified: 2026-07-02
 // Author: UltraCanvas Framework
 
 #include <algorithm>
@@ -92,211 +92,35 @@ namespace UltraCanvas {
         }
     }
 
-    const char* const kDejaVuAllFonts[] = {
-        "DejaVuSans.ttf", "DejaVuSans-Bold.ttf",
-        "DejaVuSans-Oblique.ttf", "DejaVuSans-BoldOblique.ttf",
-        "DejaVuSansMono.ttf", "DejaVuSansMono-Bold.ttf",
-        "DejaVuSansMono-Oblique.ttf", "DejaVuSansMono-BoldOblique.ttf",
+    const char* const kEmbeddedAllFonts[] = {
+        "Ubuntu-R.ttf", "Ubuntu-B.ttf",
+        "Ubuntu-RI.ttf", "Ubuntu-BI.ttf",
+        "Ubuntu-C.ttf", "Ubuntu-L.ttf",
+        "Ubuntu-M.ttf", "Ubuntu-LI.ttf",
+        "Ubuntu-MI.ttf", "Ubuntu-Th.ttf",
+        "UbuntuMono-R.ttf", "UbuntuMono-B.ttf",
+        "UbuntuMono-RI.ttf", "UbuntuMono-BI.ttf",
+        "OpenSans-Bold.ttf", "OpenSans-BoldItalic.ttf",
+//        "OpenSans-Italic.ttf", "OpenSans-Regular.ttf",
+//        "OpenSans-Bold.ttf", "OpenSans-BoldItalic.ttf",
+//        "OpenSans-CondBold.ttf", "OpenSans-CondLight.ttf",
+//        "OpenSans-CondLightItalic.ttf", "OpenSans-ExtraBold.ttf",
+//        "OpenSans-Light.ttf", "OpenSans-LightItalic.ttf",
+//        "OpenSans-Semibold.ttf", "OpenSans-SemiboldItalic.ttf",
     };
-    const size_t kDejaVuAllFontsCount = sizeof(kDejaVuAllFonts) / sizeof(kDejaVuAllFonts[0]);
+    const size_t kEmbeddedAllFontsCount = sizeof(kEmbeddedAllFonts) / sizeof(kEmbeddedAllFonts[0]);
 
-    const char* const kDejaVuMonoFonts[] = {
-        "DejaVuSansMono.ttf", "DejaVuSansMono-Bold.ttf",
-        "DejaVuSansMono-Oblique.ttf", "DejaVuSansMono-BoldOblique.ttf",
+    const char* const kEmbeddedMonoFonts[] = {
+            "UbuntuMono-R.ttf", "UbuntuMono-B.ttf",
+            "UbuntuMono-RI.ttf", "UbuntuMono-BI.ttf",
     };
-    const size_t kDejaVuMonoFontsCount = sizeof(kDejaVuMonoFonts) / sizeof(kDejaVuMonoFonts[0]);
+    const size_t kEmbeddedMonoFontsCount = sizeof(kEmbeddedMonoFonts) / sizeof(kEmbeddedMonoFonts[0]);
 
     std::string GetBundledFontsDir() {
-        std::string p = NormalizePath(GetResourcesDir() + "media/fonts/dejavu/");
+        std::string p = NormalizePath(GetResourcesDir() + "media/fonts/");
         return p;
     }
 
-//#if !defined(__APPLE__)
-//    // Inline FC rule that pins hinting/AA for the bundled DejaVu families so
-//    // system fontconfig defaults (which differ between MSYS2 and Linux distros)
-//    // can't change the way the framework's text looks.
-//    static const char* kDejaVuFcRules = R"FC(<?xml version="1.0"?>
-//<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
-//<fontconfig>
-//  <match target="font">
-//    <test name="family"><string>DejaVu Sans</string></test>
-//    <edit name="antialias"      mode="assign"><bool>true</bool></edit>
-//    <edit name="hinting"        mode="assign"><bool>true</bool></edit>
-//    <edit name="hintstyle"      mode="assign"><const>hintslight</const></edit>
-//    <edit name="autohint"       mode="assign"><bool>false</bool></edit>
-//    <edit name="embeddedbitmap" mode="assign"><bool>false</bool></edit>
-//    <edit name="lcdfilter"      mode="assign"><const>lcddefault</const></edit>
-//  </match>
-//  <match target="font">
-//    <test name="family"><string>DejaVu Sans Mono</string></test>
-//    <edit name="antialias"      mode="assign"><bool>true</bool></edit>
-//    <edit name="hinting"        mode="assign"><bool>true</bool></edit>
-//    <edit name="hintstyle"      mode="assign"><const>hintslight</const></edit>
-//    <edit name="autohint"       mode="assign"><bool>false</bool></edit>
-//    <edit name="embeddedbitmap" mode="assign"><bool>false</bool></edit>
-//    <edit name="lcdfilter"      mode="assign"><const>lcddefault</const></edit>
-//  </match>
-//</fontconfig>
-//)FC";
-//
-//    bool LoadDejaVuFcRules(void* fcConfig) {
-//        FcConfig* cfg = static_cast<FcConfig*>(fcConfig);
-//        if (!cfg) return false;
-//        FcBool ok = FcConfigParseAndLoadFromMemory(
-//            cfg,
-//            reinterpret_cast<const FcChar8*>(kDejaVuFcRules),
-//            FcTrue);
-//        if (!ok) {
-//            debugOutput << "UltraCanvas: FcConfigParseAndLoadFromMemory failed for DejaVu rules" << std::endl;
-//            return false;
-//        }
-//        return true;
-//    }
-//#else
-//    bool LoadDejaVuFcRules(void*) { return true; }
-//#endif
-
-//#if !defined(__APPLE__)
-//    namespace {
-//        // Fontconfig's <dir>/<cachedir> path consumer is rooted in POSIX —
-//        // it expects forward-slash separators. On Windows our paths come from
-//        // NormalizePath() which uses backslashes, and FC silently fails to
-//        // scan such paths. Normalise to '/' for everything that goes into
-//        // fonts.conf XML element text. (std::filesystem and the WinAPI we
-//        // use elsewhere accept both forms, so we only convert here.)
-//        std::string ToFcPath(std::string p) {
-//#if defined(_WIN32) || defined(_WIN64)
-//            std::replace(p.begin(), p.end(), '\\', '/');
-//#endif
-//            return p;
-//        }
-//
-//        // Builds a minimal fontconfig config XML that points at the absolute
-//        // path of the bundled DejaVu directory and (on Linux) <include>s the
-//        // system fonts.conf so apps still see non-DejaVu system fonts.
-//        std::string ComposeBundledFontconfigXml(const std::string& bundledDir,
-//                                                const std::string& cacheDir) {
-//            std::ostringstream conf;
-//            conf << "<?xml version=\"1.0\"?>\n"
-//                 << "<!DOCTYPE fontconfig SYSTEM \"fonts.dtd\">\n"
-//                 << "<fontconfig>\n"
-//                 << "  <dir>" << ToFcPath(bundledDir) << "</dir>\n";
-//#if defined(__linux__) || defined(__unix__)
-//            // Pull in system config when present so apps can still resolve
-//            // non-DejaVu families on Linux. ignore_missing keeps things
-//            // working when the file is absent (containers, AppImages on
-//            // hosts without a fontconfig install).
-//            conf << "  <include ignore_missing=\"yes\">/etc/fonts/fonts.conf</include>\n";
-//            conf << "  <include ignore_missing=\"yes\">/usr/local/etc/fonts/fonts.conf</include>\n";
-//#endif
-//            // Absolute writable cachedir — `~` doesn't reliably expand on
-//            // Windows fontconfig, and a failed cache write can abort the
-//            // dir scan entirely.
-//            conf << "  <cachedir>" << ToFcPath(cacheDir) << "</cachedir>\n";
-//            conf << "</fontconfig>\n";
-//            return conf.str();
-//        }
-//
-//        bool WriteFile(const std::string& path, const std::string& contents) {
-//            try {
-//                std::ofstream out(path, std::ios::binary | std::ios::trunc);
-//                if (!out) return false;
-//                out << contents;
-//                return out.good();
-//            } catch (...) {
-//                return false;
-//            }
-//        }
-//    }
-//
-//    void SetupBundledFontconfig() {
-//        // Honour an externally-set FONTCONFIG_FILE so users / packagers can
-//        // override the framework's choice without code changes.
-//        if (const char* existing = std::getenv("FONTCONFIG_FILE")) {
-//            if (existing[0] != '\0') {
-//                debugOutput << "UltraCanvas: FONTCONFIG_FILE already set to '"
-//                            << existing << "', not overriding" << std::endl;
-//                return;
-//            }
-//        }
-//
-//        // Strip trailing separator from the bundled dir so the <dir> element
-//        // doesn't end with a slash that some FC versions don't normalise.
-//        std::string dir = GetBundledFontsDir();
-//        while (!dir.empty() && (dir.back() == '/' || dir.back() == '\\')) {
-//            dir.pop_back();
-//        }
-//        if (dir.empty() || !std::filesystem::exists(dir)) {
-//            debugOutput << "UltraCanvas: bundled fonts dir not found at '" << dir
-//                        << "'; skipping FONTCONFIG_FILE setup" << std::endl;
-//            return;
-//        }
-//
-//        std::filesystem::path tempDir;
-//        try {
-//            tempDir = std::filesystem::temp_directory_path();
-//        } catch (...) {
-//            debugOutput << "UltraCanvas: could not resolve temp dir; skipping FONTCONFIG_FILE setup" << std::endl;
-//            return;
-//        }
-//        std::filesystem::path confPath = tempDir / "ultracanvas-fonts.conf";
-//        std::string confPathStr = confPath.string();
-//
-//        // Cachedir under the same temp tree — known writable. Best-effort
-//        // create; FC will create files inside it as it scans.
-//        std::filesystem::path cacheDirPath = tempDir / "uc-fc-cache";
-//        {
-//            std::error_code ec;
-//            std::filesystem::create_directories(cacheDirPath, ec);
-//        }
-//
-//        std::string xml = ComposeBundledFontconfigXml(dir, cacheDirPath.string());
-//        if (!WriteFile(confPathStr, xml)) {
-//            debugOutput << "UltraCanvas: failed to write fonts.conf at " << confPathStr << std::endl;
-//            return;
-//        }
-//
-//#if defined(_WIN32) || defined(_WIN64)
-//        if (_putenv_s("FONTCONFIG_FILE", confPathStr.c_str()) != 0) {
-//            debugOutput << "UltraCanvas: _putenv_s(FONTCONFIG_FILE) failed" << std::endl;
-//            return;
-//        }
-//#else
-//        if (setenv("FONTCONFIG_FILE", confPathStr.c_str(), 1) != 0) {
-//            debugOutput << "UltraCanvas: setenv(FONTCONFIG_FILE) failed" << std::endl;
-//            return;
-//        }
-//#endif
-//        debugOutput << "UltraCanvas: FONTCONFIG_FILE set to " << confPathStr << std::endl;
-//
-//        // Force Pango to use the fontconfig backend. On MSYS2 Pango is built
-//        // with both fontconfig and win32 backends and may default to win32 —
-//        // that backend ignores FC entirely, so even with a perfect FC config
-//        // pointing at our DejaVu directory, Pango wouldn't see the fonts.
-//        // No-op on Linux (Pango is fontconfig-only there).
-//        const char* existingBackend = std::getenv("PANGO_BACKEND");
-//        if (existingBackend && existingBackend[0] != '\0') {
-//            debugOutput << "UltraCanvas: PANGO_BACKEND already set to '"
-//                        << existingBackend << "', not overriding" << std::endl;
-//        } else {
-//#if defined(_WIN32) || defined(_WIN64)
-//            if (_putenv_s("PANGO_BACKEND", "fontconfig") != 0) {
-//                debugOutput << "UltraCanvas: _putenv_s(PANGO_BACKEND) failed" << std::endl;
-//            } else {
-//                debugOutput << "UltraCanvas: PANGO_BACKEND set to fontconfig" << std::endl;
-//            }
-//#else
-//            if (setenv("PANGO_BACKEND", "fontconfig", 1) != 0) {
-//                debugOutput << "UltraCanvas: setenv(PANGO_BACKEND) failed" << std::endl;
-//            } else {
-//                debugOutput << "UltraCanvas: PANGO_BACKEND set to fontconfig" << std::endl;
-//            }
-//#endif
-//        }
-//    }
-//#else
-//    void SetupBundledFontconfig() {}
-//#endif
 
     FontStyle UltraCanvasApplicationBase::GetSystemFontStyle() {
         if (!cachedSystemFontStyle_.has_value()) {
@@ -328,7 +152,7 @@ namespace UltraCanvas {
             }
 
             // Auto-set default window icon if available
-            std::string iconPath = NormalizePath(GetResourcesDir() + UC_DEFAULT_ICON_SUBPATH);
+            std::string iconPath = GetDefaultIcon();
             if (std::filesystem::exists(iconPath)) {
                 SetDefaultWindowIcon(iconPath);
                 debugOutput << "UltraCanvas: Default window icon set to: " << iconPath << std::endl;
@@ -396,20 +220,6 @@ namespace UltraCanvas {
 //                    debugOutput << "window w=" << window << " nativeh=" << window->GetNativeHandle() << " visible=" << window->IsVisible() << " needredraw=" << window->IsNeedsRedraw() << " ctx=" << window->GetRenderContext() << std::endl;
                     if (window->IsVisible()) {
                         window->UpdateAndRender();
-//                        auto ctx = window->GetRenderContext();
-//                        if (window->IsNeedsResize()) {
-//                            window->DoResize();
-//                        }
-//                        if (ctx) {
-//                            if (window->IsNeedsUpdateGeometry() || window->IsNeedsRedraw()) {
-//                                window->UpdateGeometry(ctx);
-//                            }
-//                            if (window->IsNeedsRedraw()) {
-////                                debugOutput << "Redraw window w=" << window << " nativeh=" << window->GetNativeHandle() << std::endl;
-//                                window->Render(ctx);
-//                                window->Flush();
-//                            }
-//                        }
                     }
 
                 }
@@ -522,6 +332,10 @@ namespace UltraCanvas {
                 break;
             }
             DispatchEvent(event);
+
+            if (event.type == UCEventType::MouseUp && capturedMouseButtonDown == event.button) {
+                ReleaseMouse();
+            }
         }
     }
 
@@ -550,8 +364,10 @@ namespace UltraCanvas {
 
     void UltraCanvasApplicationBase::CleanupWindowReferences(UltraCanvasWindowBase* win) {
         UnregisterModalWindow(win);
-        if (focusedWindow == win) {
-            focusedWindow = nullptr;
+        // Called from PerformClose() while the window is still alive, so the weak_ptrs
+        // can still be locked and compared here.
+        if (focusedWindow.lock().get() == win) {
+            focusedWindow.reset();
 
             // if (win->IsFocused()) {
             //     auto parentWin = win->GetParentWindow();
@@ -559,32 +375,35 @@ namespace UltraCanvas {
             //         auto parentWinState = parentWin->GetState();
             //         if ( parentWinState == WindowState::Normal || parentWinState == WindowState::Maximized || parentWinState == WindowState::Fullscreen) {
             //             parentWin->RaiseAndFocus();
-            //             focusedWindow = (UltraCanvasWindow*)parentWin;
+            //             focusedWindow = parentWin->GetWindowWeakPtr();
             //         }
             //     }
             // }
         }
-        if (capturedElement && capturedElement->GetWindow() == win) {
-            capturedElement = nullptr;
+        if (auto ce = capturedElement.lock(); ce && ce->GetWindow() == win) {
+            capturedElement.reset();
         }
-        if (hoveredElement && hoveredElement->GetWindow() == win) {
-            hoveredElement = nullptr;
+        if (auto he = hoveredElement.lock(); he && he->GetWindow() == win) {
+            hoveredElement.reset();
         }
-        if (draggedElement && draggedElement->GetWindow() == win) {
-            draggedElement = nullptr;
+        if (auto de = draggedElement.lock(); de && de->GetWindow() == win) {
+            draggedElement.reset();
         }
         debugOutput << "UltraCanvas: window found and unregistered successfully" << std::endl;
     }
 
     void UltraCanvasApplicationBase::CleanupElementReferences(UltraCanvasUIElement* elem) {
-        if (capturedElement == elem) {
-            ReleaseMouse(elem);
+        // Called from ~UltraCanvasUIElement, where the weak_ptrs referencing elem are
+        // already expired (auto-handling the dangling case). These comparisons are kept
+        // for correctness on any path where elem is still live.
+        if (capturedElement.lock().get() == elem) {
+            ReleaseMouse();
         }
-        if (hoveredElement == elem) {
-            hoveredElement = nullptr;
+        if (hoveredElement.lock().get() == elem) {
+            hoveredElement.reset();
         }
-        if (draggedElement == elem) {
-            draggedElement = nullptr;
+        if (draggedElement.lock().get() == elem) {
+            draggedElement.reset();
         }
         auto win = elem->GetWindow();
         if (win && win->IsCreated() && win->GetState() != WindowState::Closing &&  win->GetState() != WindowState::Closed && win->GetFocusedElement() == elem) {
@@ -683,32 +502,15 @@ namespace UltraCanvas {
         }
     }
 
-    UltraCanvasUIElement* UltraCanvasApplicationBase::GetFocusedElement() {
-        if (focusedWindow) {
-            return focusedWindow->GetFocusedElement();
-        }
-        return nullptr;
+    UltraCanvasWindow* UltraCanvasApplicationBase::GetFocusedWindow() {
+        return static_cast<UltraCanvasWindow*>(focusedWindow.lock().get());
     }
 
-    bool UltraCanvasApplicationBase::IsDoubleClick(const UCEvent &event) {
-        auto now = std::chrono::steady_clock::now();
-        auto timeDiff = std::chrono::duration<float>(now - lastClickTime).count();
-
-        bool isDoubleClick = false;
-        if (timeDiff <= DOUBLE_CLICK_TIME) {
-            int dx = event.pointer.x - lastMouseEvent.pointer.x;
-            int dy = event.pointer.y - lastMouseEvent.pointer.y;
-            int distance = static_cast<int>(std::sqrt(dx * dx + dy * dy));
-
-            if (distance <= DOUBLE_CLICK_DISTANCE) {
-                isDoubleClick = true;
-            }
+    UltraCanvasUIElement* UltraCanvasApplicationBase::GetFocusedElement() {
+        if (auto fw = focusedWindow.lock()) {
+            return fw->GetFocusedElement();
         }
-
-        lastMouseEvent = event;
-        lastClickTime = now;
-
-        return isDoubleClick;
+        return nullptr;
     }
 
     void UltraCanvasApplicationBase::DispatchEvent(const UCEvent& event) {
@@ -730,11 +532,12 @@ namespace UltraCanvas {
         // ===== NEW: IMPROVED TARGET WINDOW DETECTION =====
         UltraCanvasWindow* targetWindow = nullptr;
 
-        // First priority: Use the window information stored in the event
-        if (event.targetWindow != nullptr) {
-            targetWindow = static_cast<UltraCanvasWindow*>(event.targetWindow);
-            if (std::find_if(windows.begin(), windows.end(), [targetWindow](auto const &item) {
-                return item.get() == targetWindow;
+        // First priority: Use the window information stored in the event. An expired
+        // weak_ptr (window already destroyed) naturally falls through to the fallbacks.
+        if (auto tw = event.targetWindow.lock()) {
+            targetWindow = static_cast<UltraCanvasWindow*>(tw.get());
+            if (std::find_if(windows.begin(), windows.end(), [&tw](auto const &item) {
+                return item == tw;
             }) == windows.end()) {
                 debugOutput << "UltraCanvasApplicationBase::DispatchEvent stale event for already deleted window ev=" << event.ToString() << " win="<<targetWindow << std::endl;
                 return;
@@ -750,7 +553,7 @@ namespace UltraCanvas {
             if (event.type == UCEventType::KeyDown ||
                 event.type == UCEventType::KeyUp ||
                 event.type == UCEventType::Shortcut) {
-                targetWindow = focusedWindow;
+                targetWindow = GetFocusedWindow();
             }
         }
 
@@ -760,15 +563,15 @@ namespace UltraCanvas {
         }
 
        if (event.type == UCEventType::MouseDown) {
-           if (targetWindow && event.type == UCEventType::MouseDown && focusedWindow != targetWindow) {
-               debugOutput << "Window clicked but not focused, set focus. target=" << targetWindow << " focused=" << focusedWindow << std::endl;
-               if (focusedWindow) {
+           if (targetWindow && event.type == UCEventType::MouseDown && GetFocusedWindow() != targetWindow) {
+               debugOutput << "Window clicked but not focused, set focus. target=" << targetWindow << " focused=" << GetFocusedWindow() << std::endl;
+               if (auto fw = focusedWindow.lock()) {
                    UCEvent ev{.type = UCEventType::WindowBlur};
-                   DispatchEventToElement(focusedWindow, event);
+                   DispatchEventToElement(fw.get(), event);
                }
                UCEvent ev{.type = UCEventType::WindowFocus};
                DispatchEventToElement(targetWindow, event);
-               focusedWindow = targetWindow;
+               focusedWindow = targetWindow->GetWindowWeakPtr();
            }
        }
 
@@ -776,8 +579,8 @@ namespace UltraCanvas {
         switch (event.type) {
             case UCEventType::MouseMove:
             case UCEventType::MouseUp:
-                if (capturedElement) {
-                    if (DispatchEventToElement(capturedElement, event)) {
+                if (auto ce = capturedElement.lock()) {
+                    if (DispatchEventToElement(ce.get(), event)) {
                         return;
                     }
                 }
@@ -790,18 +593,18 @@ namespace UltraCanvas {
                 }
                 break;
             case UCEventType::WindowFocus:
-                if (targetWindow && focusedWindow != targetWindow) {
+                if (targetWindow && GetFocusedWindow() != targetWindow) {
                     // Update focused window
                     DispatchEventToElement(targetWindow, event);
-                    focusedWindow = targetWindow;
-                    debugOutput << "UltraCanvasBaseApplication: Window " << focusedWindow << " (native=" << focusedWindow->GetNativeHandle() << ") gained focus" << std::endl;
+                    focusedWindow = targetWindow->GetWindowWeakPtr();
+                    debugOutput << "UltraCanvasBaseApplication: Window " << targetWindow << " (native=" << targetWindow->GetNativeHandle() << ") gained focus" << std::endl;
                 }
                 return;
             case UCEventType::WindowBlur:
-                if (targetWindow && targetWindow == focusedWindow) {
-                    debugOutput << "UltraCanvasBaseApplication: Window " << focusedWindow << " (native=" << focusedWindow->GetNativeHandle() << ") lost focus" << std::endl;
+                if (targetWindow && targetWindow == GetFocusedWindow()) {
+                    debugOutput << "UltraCanvasBaseApplication: Window " << targetWindow << " (native=" << targetWindow->GetNativeHandle() << ") lost focus" << std::endl;
                     DispatchEventToElement(targetWindow, event);
-                    focusedWindow = nullptr;
+                    focusedWindow.reset();
                 }
                 return;
         }
@@ -929,26 +732,26 @@ namespace UltraCanvas {
             }
 
             if (event.IsMouseEvent()) {
-                if (hoveredElement && hoveredElement != elementUnderPointer) {
-                    if (hoveredElement->GetWindow() == targetWindow && hoveredElement->IsVisible()) {
+                if (auto he = hoveredElement.lock(); he && he.get() != elementUnderPointer) {
+                    if (he->GetWindow() == targetWindow && he->IsVisible()) {
                         UCEvent leaveEvent = event;
                         leaveEvent.type = UCEventType::MouseLeave;
                         leaveEvent.pointer = { -1, -1 };
-                        DispatchEventToElement(hoveredElement, leaveEvent);
+                        DispatchEventToElement(he.get(), leaveEvent);
                     }
                     UltraCanvasTooltipManager::HideTooltip();
-                    hoveredElement = nullptr;
+                    hoveredElement.reset();
                 }
                 if (!elementUnderPointer || elementUnderPointer == targetWindow) {
                     UltraCanvasTooltipManager::HideTooltip();
                 }
                 if (elementUnderPointer) {
-                    if (hoveredElement != elementUnderPointer) {
+                    if (hoveredElement.lock().get() != elementUnderPointer) {
                         auto enterEvent = event.Clone();
                         enterEvent.type = UCEventType::MouseEnter;
                         DispatchEventToElement(elementUnderPointer, enterEvent);
 
-                        hoveredElement = elementUnderPointer;
+                        hoveredElement = elementUnderPointer->weak_from_this();
                         // Show tooltip if element has one
                         if (!elementUnderPointer->GetTooltip().empty()) {
                             UltraCanvasTooltipManager::UpdateAndShowTooltip(
@@ -970,7 +773,7 @@ namespace UltraCanvas {
             }
 
             if (event.isCommandEvent()) {
-                HandleEventWithBubbling(event.targetElement, event);
+                HandleEventWithBubbling(event.targetElement.lock().get(), event);
                 goto finish;
             }
             DispatchEventToElement(targetWindow, event);
@@ -991,6 +794,9 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasApplicationBase::HandleEventWithBubbling(UltraCanvasUIElement *elem, const UCEvent &event) {
+        if (!elem) {
+            return false;  // target element was destroyed before the event was processed
+        }
         if (!event.isCommandEvent()) {
             if (DispatchEventToElement(elem, event)) {
                 return true;
@@ -1008,14 +814,14 @@ namespace UltraCanvas {
 
 
     void UltraCanvasApplicationBase::FocusNextElement() {
-        if (focusedWindow) {
-            focusedWindow->FocusNextElement();
+        if (auto fw = focusedWindow.lock()) {
+            fw->FocusNextElement();
         }
     }
 
     void UltraCanvasApplicationBase::FocusPreviousElement() {
-        if (focusedWindow) {
-            focusedWindow->FocusPreviousElement();
+        if (auto fw = focusedWindow.lock()) {
+            fw->FocusPreviousElement();
         }
     }
 
@@ -1024,15 +830,15 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasApplicationBase::DispatchEventToElement(UltraCanvasUIElement* elem, UCEvent event) {
-        event.targetElement = elem;
+        event.targetElement = elem->weak_from_this();
         auto window = elem->GetWindow();
         if (!window) {
             debugOutput << "UltraCanvasApplicationBase::DispatchEventToElement window == null for elem=" << elem << std::ends;
             return false;
         }
-        if (event.type != UCEventType::MouseMove) {
-            debugOutput << "DispatchEventToElement ev=" << event.ToString() << " target elem=" << elem << " target win=" << elem->GetWindow() << " focused=" << focusedWindow << std::endl;
-        }
+//        if (event.type != UCEventType::MouseMove) {
+//            debugOutput << "DispatchEventToElement ev=" << event.ToString() << " target elem=" << elem << " target win=" << elem->GetWindow() << " focused=" << focusedWindow << std::endl;
+//        }
         if (event.IsMouseEvent() || event.IsDragEvent() || event.type == UCEventType::MouseEnter) {
             event.pointer = elem->MapToLocal(event.pointerWindow, nullptr);
         }
@@ -1047,15 +853,17 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasApplicationBase::CaptureMouse(UltraCanvasUIElement *element) {
+        capturedMouseButtonDown = currentEvent.button;
+        capturedElement = element ? element->weak_from_this() : std::weak_ptr<UltraCanvasUIElement>();
         CaptureMouseNative();
-        capturedElement = element;
     }
 
-    void UltraCanvasApplicationBase::ReleaseMouse(UltraCanvasUIElement *element) {
-        if (element && element == capturedElement) {
-            capturedElement = nullptr;
+    void UltraCanvasApplicationBase::ReleaseMouse() {
+        if (!capturedElement.expired()) {
+            ReleaseMouseNative();
         }
-        ReleaseMouseNative();
+        capturedElement.reset();
+        capturedMouseButtonDown = UCMouseButton::NoneButton;
     }
 
     // ===== TIMER SYSTEM =====

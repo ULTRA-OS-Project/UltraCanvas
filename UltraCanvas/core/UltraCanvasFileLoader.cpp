@@ -8,6 +8,7 @@
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasImage.h"
+#include "UltraCanvasAudio.h"
 
 #include <algorithm>
 #include <cctype>
@@ -176,6 +177,42 @@ namespace UltraCanvas {
             }
             if (onResult) {
                 onResult(loadResult, img);
+            }
+        });
+    }
+
+    void UltraCanvasFileLoader::OpenAudio(
+            const FileDialogOptions& opts,
+            std::function<void(const FileLoadResult&, std::shared_ptr<UCAudio>)> onResult) {
+
+        FileDialogOptions effective = opts;
+        if (effective.title.empty()) effective.title = "Open Audio File";
+        if (effective.filters.empty()) {
+            effective
+                .AddFilter("Audio files",
+                           std::vector<std::string>{"wav", "mp3", "flac", "ogg", "oga"})
+                .AddFilter("Wave audio (*.wav)", "wav")
+                .AddFilter("MP3 audio (*.mp3)", "mp3")
+                .AddFilter("FLAC audio (*.flac)", "flac")
+                .AddFilter("Ogg Vorbis (*.ogg)", "ogg")
+                .AddFilter("All files (*.*)", "*");
+        }
+
+        OpenFileDialog(effective, [onResult](DialogResult r, const std::string& path) {
+            FileLoadResult loadResult;
+            loadResult.dialogResult = r;
+            std::shared_ptr<UCAudio> audio;
+
+            if (r == DialogResult::OK && !path.empty()) {
+                audio = UCAudio::LoadFromFile(path);
+                if (!audio || !audio->IsValid()) {
+                    loadResult.loadError =
+                        "Failed to decode audio file (unsupported format or "
+                        "audio backend not available)";
+                }
+            }
+            if (onResult) {
+                onResult(loadResult, audio);
             }
         });
     }

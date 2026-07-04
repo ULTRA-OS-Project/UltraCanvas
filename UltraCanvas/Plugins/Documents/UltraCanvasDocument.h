@@ -184,9 +184,13 @@ public:
     // Document creation and management
     bool CreateNewDocument(UCDocumentType documentType);
     bool LoadFromFile(const std::string& filePath, const std::string& password = "");
-    bool SaveToFile(const std::string& filePath, UCCompressionType compression = UCCompressionType::ZIP, 
+    bool SaveToFile(const std::string& filePath, UCCompressionType compression = UCCompressionType::ZIP,
                    const std::string& password = "");
-    
+
+    // Reason for the most recent failed LoadFromFile/SaveToFile (e.g. file
+    // locked, wrong password, corrupt content). Empty after a successful call.
+    const std::string& GetLastError() const { return lastError_; }
+
     // Window management
     bool AddWindow(const std::shared_ptr<UltraCanvasWindow>& window);
     bool RemoveWindow(const std::string& windowId);
@@ -291,6 +295,7 @@ public:
 
 private:
     // Internal data
+    std::string lastError_;  // reason for the most recent failed load/save
     UCDocumentMetadata Metadata;
     std::vector<std::shared_ptr<UCWindowData>> Windows;
     std::map<std::string, std::shared_ptr<UCMediaResource>> MediaResources;

@@ -1,7 +1,7 @@
 // OS/Linux/UltraCanvasLinuxApplication.cpp
 // Complete Linux application implementation with all methods
-// Version: 1.6.7 - Force FC-backed Pango default via pango_cairo_font_map_new_for_font_type(FT)
-// Last Modified: 2026-05-10
+// Version: 1.7.0 - HiDPI: event coords physical->logical; per-monitor move re-scale
+// Last Modified: 2026-07-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWindow.h"
@@ -296,12 +296,12 @@ namespace UltraCanvas {
 
     // ===== MOUSE CAPTURE SUPPORT =====
     void UltraCanvasLinuxApplication::CaptureMouseNative() {
-        if (!display || !focusedWindow) {
+        if (!display || !GetFocusedWindow()) {
             debugOutput << "UltraCanvas: Cannot capture mouse - no display or focused window" << std::endl;
             return;
         }
 
-        auto* linuxWindow = dynamic_cast<UltraCanvasLinuxWindow*>(focusedWindow);
+        auto* linuxWindow = dynamic_cast<UltraCanvasLinuxWindow*>(GetFocusedWindow());
         if (!linuxWindow) {
             debugOutput << "UltraCanvas: Cannot capture mouse - invalid window type" << std::endl;
             return;
@@ -384,7 +384,9 @@ namespace UltraCanvas {
 
         // Find and store the corresponding UltraCanvas window
         auto targetWindow = static_cast<UltraCanvasLinuxWindow*>(FindWindow(xEvent.xany.window));
-        event.targetWindow = targetWindow;
+        if (targetWindow) {
+            event.targetWindow = targetWindow->GetWindowWeakPtr();
+        }
 
         switch (xEvent.type) {
             case KeyPress:
@@ -553,10 +555,16 @@ namespace UltraCanvas {
 
             case ConfigureNotify: {
                 event.type = UCEventType::WindowResize;
-                event.width = xEvent.xconfigure.width;
+                event.width = xEvent.xconfigure.width;    // PHYSICAL px
                 event.height = xEvent.xconfigure.height;
                 event.pointerWindow = { xEvent.xconfigure.x, xEvent.xconfigure.y };
                 event.pointer = event.pointerWindow;
+                // The window may have moved to a display with a different DPI.
+                // Re-query the per-monitor scale; if it changed, rebuild the
+                // surface/context at the new scale before the resize propagates.
+                if (targetWindow && targetWindow->RefreshDeviceScale()) {
+                    targetWindow->HandleDeviceScaleChange();
+                }
                 break;
             }
 
@@ -634,6 +642,26 @@ namespace UltraCanvas {
             default:
                 event.type = UCEventType::Unknown;
                 break;
+        }
+
+        // ===== HiDPI: PHYSICAL px -> LOGICAL =====
+        // X11 always reports coordinates in physical device px. Convert to the
+        // target window's logical space (divide by deviceScale) so the framework
+        // hit-tests and lays out in device-independent units. macOS/Windows do
+        // the equivalent conversion in their own event layers. Non-pointer events
+        // carry a {0,0} pointer, so the conversion is a harmless no-op there.
+        if (targetWindow) {
+            float s = targetWindow->GetDeviceScale();
+            if (s != 1.0f) {
+                event.pointerWindow = targetWindow->PhysicalToLogical(event.pointerWindow);
+                event.pointer       = event.pointerWindow;
+                event.pointerGlobal = targetWindow->PhysicalToLogical(event.pointerGlobal);
+                if (event.type == UCEventType::WindowResize ||
+                    event.type == UCEventType::WindowRepaint) {
+                    event.width  = targetWindow->PhysicalToLogical(event.width);
+                    event.height = targetWindow->PhysicalToLogical(event.height);
+                }
+            }
         }
 
         return event;
@@ -892,14 +920,14 @@ namespace UltraCanvas {
 
     FontStyle UltraCanvasLinuxApplication::DetectSystemFontStyleNative() {
         FontStyle result;
-        result.fontFamily = "DejaVu Sans";
+        result.fontFamily = "Ubuntu";
         result.fontSize = 12.0;
         return result;
     }
 
     FontStyle UltraCanvasLinuxApplication::DetectMonospacedFontStyleNative() {
         FontStyle result;
-        result.fontFamily = "DejaVu Sans Mono";
+        result.fontFamily = "Ubuntu Mono";
         result.fontSize = 12.0;
         return result;
     }
@@ -912,8 +940,8 @@ namespace UltraCanvas {
         }
 
         const std::string dir = GetBundledFontsDir();
-        for (size_t i = 0; i < kDejaVuAllFontsCount; ++i) {
-            std::string path = dir + kDejaVuAllFonts[i];
+        for (size_t i = 0; i < kEmbeddedAllFontsCount; ++i) {
+            std::string path = dir + kEmbeddedAllFonts[i];
             if (!std::filesystem::exists(path)) {
                 debugOutput << "UltraCanvas: bundled font missing: " << path << std::endl;
                 continue;

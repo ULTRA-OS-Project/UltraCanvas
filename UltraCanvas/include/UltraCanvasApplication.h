@@ -1,7 +1,7 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
-// Version: 1.4.0
-// Last Modified: 2026-05-10
+// Version: 1.5.0
+// Last Modified: 2026-07-02
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -24,10 +24,10 @@ namespace UltraCanvas {
     class UltraCanvasWindowBase;
 
     // Bundled DejaVu font registration tables. Defined in UltraCanvasApplication.cpp.
-    extern const char* const kDejaVuAllFonts[];
-    extern const size_t kDejaVuAllFontsCount;
-    extern const char* const kDejaVuMonoFonts[];
-    extern const size_t kDejaVuMonoFontsCount;
+    extern const char* const kEmbeddedAllFonts[];
+    extern const size_t kEmbeddedAllFontsCount;
+    extern const char* const kEmbeddedMonoFonts[];
+    extern const size_t kEmbeddedMonoFontsCount;
 
     // Returns absolute path to media/fonts/dejavu/ in the resources dir.
     std::string GetBundledFontsDir();
@@ -74,15 +74,17 @@ namespace UltraCanvas {
         std::vector<std::shared_ptr<UltraCanvasWindowBase>> windows;
         std::vector<std::weak_ptr<UltraCanvasWindowBase>> activeModalWindows;
 
-        UltraCanvasWindow* focusedWindow = nullptr;
-        UltraCanvasUIElement* hoveredElement = nullptr;
-        UltraCanvasUIElement* capturedElement = nullptr;
-        UltraCanvasUIElement* draggedElement = nullptr;
+        // Non-owning references to transient UI state. Stored as weak_ptr so a
+        // destroyed window/element simply lock()s to nullptr instead of dangling.
+        std::weak_ptr<UltraCanvasWindowBase> focusedWindow;
+        std::weak_ptr<UltraCanvasUIElement> hoveredElement;
+        std::weak_ptr<UltraCanvasUIElement> capturedElement;
+        std::weak_ptr<UltraCanvasUIElement> draggedElement;
 
         std::vector<std::function<bool(const UCEvent&)>> globalEventHandlers;
         std::function<void()> eventLoopCallback;
 
-        UCEvent lastMouseEvent;
+        UCMouseButton capturedMouseButtonDown = UCMouseButton::NoneButton;
         UCEvent currentEvent;
         std::chrono::steady_clock::time_point lastClickTime;
         const float DOUBLE_CLICK_TIME = 0;
@@ -156,10 +158,10 @@ namespace UltraCanvas {
         bool IsAltHeld() { return altHeld; }
         bool IsMetaHeld() { return metaHeld; }
 
-        UltraCanvasWindow* GetFocusedWindow() { return focusedWindow; }
+        UltraCanvasWindow* GetFocusedWindow();  // downcast from weak_ptr, defined in .cpp
         UltraCanvasUIElement* GetFocusedElement();
-        UltraCanvasUIElement* GetHoveredElement() { return hoveredElement; }
-        UltraCanvasUIElement* GetCapturedElement() { return capturedElement; }
+        UltraCanvasUIElement* GetHoveredElement() { return hoveredElement.lock().get(); }
+        UltraCanvasUIElement* GetCapturedElement() { return capturedElement.lock().get(); }
 
         UltraCanvasWindow* FindWindow(NativeWindowHandle nativeHandle);
 
@@ -170,7 +172,7 @@ namespace UltraCanvas {
 
         // ===== MOUSE CAPTURE =====
         void CaptureMouse(UltraCanvasUIElement* element);
-        void ReleaseMouse(UltraCanvasUIElement* element);
+        void ReleaseMouse();
 
         // System font detection
         FontStyle GetSystemFontStyle();
@@ -206,7 +208,6 @@ namespace UltraCanvas {
         virtual void ReleaseMouseNative() = 0;
 
 
-        bool IsDoubleClick(const UCEvent &event);
         void CleanupWindowReferences(UltraCanvasWindowBase* window);
         virtual void CollectAndProcessNativeEvents() = 0;
 

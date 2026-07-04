@@ -1,6 +1,7 @@
 // UltraCanvasGLSurface.h
 // OpenGL 3D rendering surface for UltraCanvas
 // Provides an EGL/OpenGL rendering context within a UltraCanvasUIElement
+// Last Modified: 2026-05-29
 #pragma once
 
 #ifndef ULTRACANVAS_ENABLE_GL
@@ -95,12 +96,18 @@ private:
 
 public:
     // Constructors
-    UltraCanvasGLSurface(const std::string& identifier = "GLSurface",
-                         int x = 0, int y = 0, int width = 300, int height = 300);
+    UltraCanvasGLSurface(const std::string& identifier,
+                         float x, float y, float width, float height);
+
+    UltraCanvasGLSurface(const std::string& identifier, float width, float height)
+        : UltraCanvasGLSurface(identifier, -1, -1, width, height) {}
+
+    explicit UltraCanvasGLSurface(const std::string& identifier = "GLSurface")
+        : UltraCanvasGLSurface(identifier, -1, -1, -1, -1) {}
 
     UltraCanvasGLSurface(const GLSurfaceConfig& config,
                          const std::string& identifier = "GLSurface",
-                         int x = 0, int y = 0, int width = 300, int height = 300);
+                         float x = 0, float y = 0, float width = 300, float height = 300);
 
     ~UltraCanvasGLSurface() override;
 
@@ -140,9 +147,9 @@ public:
     int GetSurfaceHeight() const { return surfaceHeight_; }
 
     // UltraCanvasUIElement overrides
-    void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
     bool OnEvent(const UCEvent& event) override;
-    void SetBounds(const Rect2Di& bounds) override;
+    void SetBounds(const Rect2Df& bounds) override;
 
 protected:
     // Virtual methods for subclassing (alternative to callbacks)
@@ -160,6 +167,9 @@ private:
     void CompositeToSurface(IRenderContext* ctx, bool readback = true);
     bool ShouldRender() const;
     RenderSurfaceInfo BuildRenderInfo();
+    // Device scale of the window this surface is on (1.0 when unattached).
+    // Used to render the GL framebuffer at physical resolution on HiDPI.
+    float GetSurfaceDeviceScale() const;
 };
 
 // Factory functions

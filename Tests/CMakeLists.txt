@@ -30,22 +30,17 @@ if(NOT EXISTS "${ULTRACANVAS_INCLUDE_DIR}")
 endif()
 
 # ===== UCSTRING TEST =====
-message(STATUS "  Building UCStringTest...")
-
-# Source files for UCString (standalone - doesn't need full UltraCanvas)
-set(UCSTRING_SOURCES
-    ${ULTRACANVAS_CORE_DIR}/UltraCanvasString.cpp
-)
-
-# Check if UltraCanvasString.cpp exists, if not use local copy
-if(NOT EXISTS "${ULTRACANVAS_CORE_DIR}/UltraCanvasString.cpp")
-    message(STATUS "    Note: UltraCanvasString.cpp not in core/, checking Tests/")
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasString.cpp")
-        set(UCSTRING_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasString.cpp)
-    else()
-        message(FATAL_ERROR "UltraCanvasString.cpp not found!")
-    endif()
+# UltraCanvasString.cpp is not currently part of the tree; skip the test when
+# the source is absent instead of failing the configure.
+set(UCSTRING_SOURCES "")
+if(EXISTS "${ULTRACANVAS_CORE_DIR}/UltraCanvasString.cpp")
+    set(UCSTRING_SOURCES ${ULTRACANVAS_CORE_DIR}/UltraCanvasString.cpp)
+elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasString.cpp")
+    set(UCSTRING_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasString.cpp)
 endif()
+
+if(UCSTRING_SOURCES)
+message(STATUS "  Building UCStringTest...")
 
 # Create UCStringTest executable
 add_executable(UCStringTest
@@ -77,9 +72,6 @@ set_target_properties(UCStringTest PROPERTIES
 
 message(STATUS "    Executable: UCStringTest")
 
-# ===== ENABLE CTEST =====
-enable_testing()
-
 # Add UCStringTest as a CTest
 add_test(
     NAME UCStringTest
@@ -88,6 +80,85 @@ add_test(
 )
 
 message(STATUS "    Test registered: UCStringTest")
+else()
+    message(STATUS "  UCStringTest skipped (UltraCanvasString.cpp not present)")
+endif()
+
+# ===== ENABLE CTEST =====
+enable_testing()
+
+# ===== HTMLREADER TEST =====
+# The HTMLReader parse/CSS/resolve layer is framework-independent, so the
+# test builds straight from the sources without linking UltraCanvas.
+message(STATUS "  Building HTMLReaderTest...")
+
+add_executable(HTMLReaderTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/HTMLReaderTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLDocument.cpp
+    ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLParser.cpp
+    ${ULTRACANVAS_CORE_DIR}/HTMLReader/CSSStyleSheet.cpp
+    ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLStyleResolver.cpp
+)
+target_include_directories(HTMLReaderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(HTMLReaderTest PRIVATE cxx_std_20)
+set_target_properties(HTMLReaderTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME HTMLReaderTest COMMAND HTMLReaderTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: HTMLReaderTest")
+
+# ===== EBOOK ARCHIVE TEST =====
+message(STATUS "  Building EBookArchiveTest...")
+
+# miniz is C; the top-level project only declares C++.
+enable_language(C)
+
+add_executable(EBookArchiveTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/EBookArchiveTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/eBook/EBookArchive.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
+)
+target_include_directories(EBookArchiveTest PRIVATE
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/eBook
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz
+)
+target_compile_features(EBookArchiveTest PRIVATE cxx_std_20)
+set_target_properties(EBookArchiveTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME EBookArchiveTest COMMAND EBookArchiveTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: EBookArchiveTest")
+
+# ===== EBOOK ENGINE TEST =====
+message(STATUS "  Building EBookEngineTest...")
+
+add_executable(EBookEngineTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/EBookEngineTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/eBook/EPUBEngine.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/eBook/FB2Engine.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/eBook/MOBIEngine.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/eBook/TXTEngine.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/eBook/IEBookEngine.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/eBook/EBookArchive.cpp
+    ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLDocument.cpp
+    ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLParser.cpp
+    ${ULTRACANVAS_CORE_DIR}/HTMLReader/CSSStyleSheet.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
+)
+target_include_directories(EBookEngineTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/eBook
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz
+)
+target_compile_features(EBookEngineTest PRIVATE cxx_std_20)
+set_target_properties(EBookEngineTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME EBookEngineTest COMMAND EBookEngineTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: EBookEngineTest")
 
 # ===== FUTURE TESTS =====
 # Add more test executables here as needed:

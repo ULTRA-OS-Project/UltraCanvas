@@ -436,7 +436,7 @@ public:
     void SetZoomLevel(double zoom);
     void SetPanOffset(double x, double y);
     double GetZoomLevel() const { return zoomLevel; }
-    Point2Df GetPanOffset() const { return panOffset; }
+    Point2Dd GetPanOffset() const { return panOffset; }
     
     void ZoomIn(double factor = 1.2f);                                      // NEW in 2.0.0
     void ZoomOut(double factor = 1.2f);                                     // NEW in 2.0.0
@@ -523,7 +523,7 @@ public:
     // RENDERING & EVENTS
     // =============================================================================
     
-    void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
     bool OnEvent(const UCEvent& event) override;
     
     // =============================================================================
@@ -553,7 +553,7 @@ private:
     // HANDLE GEOMETRY HELPERS
     // =============================================================================
     
-    Point2Df GetHandleWorldPosition(const NodeDiagramNode& node, const NodeHandle& handle) const;
+    Point2Dd GetHandleWorldPosition(const NodeDiagramNode& node, const NodeHandle& handle) const;
     
     // =============================================================================
     // HIT TESTING - PROPER PER-SHAPE
@@ -563,7 +563,7 @@ private:
     std::string FindLinkAt(const Point2Di& screenPos);
     std::pair<std::string, std::string> FindHandleAt(const Point2Di& screenPos);  // (nodeId, handleId)
     int FindControlButtonAt(const Point2Di& screenPos);  // Returns button index or -1
-    bool PointInNode(const NodeDiagramNode& node, const Point2Df& worldPos) const;
+    bool PointInNode(const NodeDiagramNode& node, const Point2Dd& worldPos) const;
     bool PointInMinimap(const Point2Di& screenPos) const;
     
     // =============================================================================
@@ -601,19 +601,19 @@ private:
     // UTILITY
     // =============================================================================
     
-    Point2Df ScreenToWorld(const Point2Di& screenPos) const;
-    Point2Di WorldToScreen(const Point2Df& worldPos) const;
-    double CalculateDistance(const Point2Df& a, const Point2Df& b) const;
-    Point2Df SnapPoint(const Point2Df& p) const;
+    Point2Dd ScreenToWorld(const Point2Di& screenPos) const;
+    Point2Di WorldToScreen(const Point2Dd& worldPos) const;
+    double CalculateDistance(const Point2Dd& a, const Point2Dd& b) const;
+    Point2Dd SnapPoint(const Point2Dd& p) const;
     void NotifySelectionChange();
     void NotifyViewportChange();
     void ClampZoom();
-    void BuildLinkBezier(const Point2Df& src, const Point2Df& tgt,
+    void BuildLinkBezier(const Point2Dd& src, const Point2Dd& tgt,
                           HandlePosition srcSide, HandlePosition tgtSide,
-                          std::vector<Point2Df>& outPath) const;
-    void BuildLinkStep(const Point2Df& src, const Point2Df& tgt,
+                          std::vector<Point2Dd>& outPath) const;
+    void BuildLinkStep(const Point2Dd& src, const Point2Dd& tgt,
                         HandlePosition srcSide, HandlePosition tgtSide,
-                        bool smooth, std::vector<Point2Df>& outPath) const;
+                        bool smooth, std::vector<Point2Dd>& outPath) const;
     HandlePosition InferHandleSide(const NodeDiagramNode& fromNode,
                                     const NodeDiagramNode& toNode) const;
     
@@ -659,21 +659,21 @@ private:
     
     Point2Di dragStartPos;
     Point2Di lastMousePos;
-    std::map<std::string, Point2Df> dragStartPositions;  // For multi-node drag
+    std::map<std::string, Point2Dd> dragStartPositions;  // For multi-node drag
     
     // Selection box (in world coordinates)
-    Point2Df selectionBoxStart;
-    Point2Df selectionBoxEnd;
+    Point2Dd selectionBoxStart;
+    Point2Dd selectionBoxEnd;
     
     // In-progress connection state
     std::string connectionSourceNode;
     std::string connectionSourceHandle;
     HandleType connectionSourceType = HandleType::Source;
-    Point2Df connectionEndPoint;  // World coords, follows mouse
+    Point2Dd connectionEndPoint;  // World coords, follows mouse
     
     // Viewport
     double zoomLevel = 1.0f;
-    Point2Df panOffset;
+    Point2Dd panOffset;
     double minZoom = 0.1f;
     double maxZoom = 5.0f;
     

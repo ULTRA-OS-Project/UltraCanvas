@@ -31,120 +31,105 @@ namespace UltraCanvas {
         ApplyTypeDefaults();
 
         // Build layout-based UI structure
-        BuildDialogLayout();
+        if (dialogConfig.dialogType != DialogType::Custom) {
+            BuildDialogLayout();
+        }
     }
 
     void UltraCanvasModalDialog::BuildDialogLayout() {
-        // Create main vertical layout for the window
-        auto mainLayout = CreateVBoxLayout(this);
-        mainLayout->SetSpacing(0);
+        // Window: vertical flex; content stretches, footer is fixed height.
+        this->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-        // Create the two main sections
         CreateContentSection();
         CreateFooterSection();
 
-        // Add sections to main layout
-        mainLayout->AddUIElement(contentSection, 1)->SetWidthMode(SizeMode::Fill);  // stretch=1
-        mainLayout->AddUIElement(footerSection)->SetWidthMode(SizeMode::Fill);
+        // Content grows to fill; footer is fixed.
+        contentSection->layoutItem.SetFlexGrow(1);
 
-        // Wire up button callbacks
         WireButtonCallbacks();
     }
 
     void UltraCanvasModalDialog::CreateContentSection() {
-        // Create content container
         contentSection = std::make_shared<UltraCanvasContainer>(
-                "ContentSection", 0, 0, 0, 0);
+                "ContentSection");
         contentSection->SetBackgroundColor(dialogConfig.backgroundColor);
         contentSection->SetPadding(static_cast<int>(style.padding));
 
-        // Create horizontal layout for icon + message area
-        auto contentLayout = CreateHBoxLayout(contentSection.get());
-        contentLayout->SetSpacing(static_cast<int>(style.iconMessageSpacing));
+        // Row flex for icon + message.
+        contentSection->layout.SetFlexRow()
+                              .SetFlexGap(style.iconMessageSpacing)
+                              .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
         // ===== ICON CONTAINER =====
-        if (dialogConfig.dialogType != DialogType::Custom) {
-            iconContainer = std::make_shared<UltraCanvasContainer>(
-                    "IconContainer", 0, 0,
-                    static_cast<long>(style.iconSize), static_cast<long>(style.iconSize));
-            iconContainer->SetBackgroundColor(GetTypeColor());
+        iconContainer = std::make_shared<UltraCanvasContainer>(
+                "IconContainer", 0, 0,
+                style.iconSize, style.iconSize);
+        iconContainer->SetBackgroundColor(GetTypeColor());
 
-            // Create icon layout to center the label
-            auto iconLayout = CreateVBoxLayout(iconContainer.get());
+        // Center the icon label inside.
+        iconContainer->layout.SetFlexColumn()
+                .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
+                             .SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
-            // Icon label
-            iconLabel = std::make_shared<UltraCanvasLabel>("IconLabel", 111);
-            iconLabel->SetText(GetTypeIcon());
-            iconLabel->SetFontSize(style.iconFontSize);
-            iconLabel->SetFontWeight(FontWeight::Bold);
-            iconLabel->SetTextColor(Colors::White);
-            iconLabel->SetAlignment(TextAlignment::Center);
-            iconLabel->SetAutoResize(false);
-            iconLabel->SetSize(static_cast<long>(style.iconSize), static_cast<long>(style.iconSize));
+        iconLabel = std::make_shared<UltraCanvasLabel>("IconLabel");
+        iconLabel->SetText(GetTypeIcon());
+        iconLabel->SetFontSize(style.iconFontSize);
+        iconLabel->SetFontWeight(FontWeight::Bold);
+        iconLabel->SetTextColor(Colors::White);
+        iconLabel->SetAlignment(TextAlignment::Center);
+        iconLabel->SetSize(style.iconSize, style.iconSize);
 
-            iconLayout->AddStretch(1);
-            iconLayout->AddUIElement(iconLabel)->SetMainAlignment(LayoutAlignment::Center)->SetCrossAlignment(LayoutAlignment::Center);
-            iconLayout->AddStretch(1);
-
-            contentLayout->AddUIElement(iconContainer)->SetCrossAlignment(LayoutAlignment::Start);
-        }
+        iconContainer->AddChild(iconLabel);
+        contentSection->AddChild(iconContainer);
+        iconContainer->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
 
         // ===== MESSAGE CONTAINER =====
         messageContainer = std::make_shared<UltraCanvasContainer>(
-                "MessageContainer", 0, 0, 0, 0);
+                "MessageContainer");
 
-        auto messageLayout = CreateVBoxLayout(messageContainer.get());
-        messageLayout->SetSpacing(static_cast<int>(style.sectionSpacing / 2));
+        messageContainer->layout.SetFlexColumn()
+                                .SetFlexGap(style.sectionSpacing / 2)
+                                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-        // Message label - uses the component to render itself
-        messageLabel = std::make_shared<UltraCanvasLabel>("MessageLabel", 121);
+        messageLabel = std::make_shared<UltraCanvasLabel>("MessageLabel");
         messageLabel->SetText(dialogConfig.message);
         messageLabel->SetFontSize(style.messageFontSize);
         messageLabel->SetTextColor(style.messageTextColor);
         messageLabel->SetWrap(TextWrap::WrapWord);
-        messageLabel->SetAutoResize(true);
+        messageContainer->AddChild(messageLabel);
 
-        messageLayout->AddUIElement(messageLabel)->SetWidthMode(SizeMode::Fill);
-
-        // Details label - uses the component to render itself
-        detailsLabel = std::make_shared<UltraCanvasLabel>("DetailsLabel", 122);
+        detailsLabel = std::make_shared<UltraCanvasLabel>("DetailsLabel");
         detailsLabel->SetText(dialogConfig.details);
         detailsLabel->SetFontSize(style.detailsFontSize);
         detailsLabel->SetTextColor(style.detailsTextColor);
         messageLabel->SetWrap(TextWrap::WrapWord);
-        detailsLabel->SetAutoResize(true);
         detailsLabel->SetVisible(!dialogConfig.details.empty());
+        messageContainer->AddChild(detailsLabel);
 
-        messageLayout->AddUIElement(detailsLabel)->SetWidthMode(SizeMode::Fill);
+        // Push content to top — a trailing stretch spacer absorbs slack.
+        messageContainer->AddStretchSpacer(1);
 
-        // Add stretch to push content to top
-        messageLayout->AddStretch(1);
-
-        contentLayout->AddUIElement(messageContainer, 1)->SetCrossAlignment(LayoutAlignment::Fill);
+        contentSection->AddChild(messageContainer);
+        messageContainer->layoutItem.SetFlexGrow(1);
 
         AddChild(contentSection);
     }
 
     void UltraCanvasModalDialog::CreateFooterSection() {
-        // Create footer container with fixed height for buttons
         footerSection = std::make_shared<UltraCanvasContainer>(
-                "FooterSection", 0, 0, 0, static_cast<long>(style.buttonAreaHeight));
+                "FooterSection", 0, 0, 0, style.buttonAreaHeight);
         footerSection->SetBackgroundColor(dialogConfig.backgroundColor);
-        footerSection->SetPadding(static_cast<int>(style.padding), static_cast<int>(style.padding / 2));
+        footerSection->SetPadding(static_cast<int>(style.padding),
+                                  static_cast<int>(style.padding / 2));
 
-        // Create horizontal layout for buttons
-        auto footerLayout = CreateHBoxLayout(footerSection.get());
-        footerLayout->SetSpacing(static_cast<int>(style.buttonSpacing));
-        footerLayout->SetDefaultMainAxisAlignment(LayoutAlignment::Center);
+        footerSection->layout.SetFlexRow()
+                .SetFlexGap(style.buttonSpacing)
+                .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
+                             .SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
-        // Add stretch to push buttons to the right (per guidelines 15.9)
-
-        // Create dialog buttons
         CreateDialogButtons();
-
-        // Add buttons to footer layout
         for (auto& button : dialogButtons) {
-            footerLayout->AddUIElement(button)->SetCrossAlignment(LayoutAlignment::Center);
+            footerSection->AddChild(button);
         }
         AddChild(footerSection);
     }
@@ -245,14 +230,14 @@ namespace UltraCanvas {
         // Recreate buttons
         CreateDialogButtons();
 
-        // Re-add to footer layout
         if (footerSection) {
-            auto footerLayout = CreateHBoxLayout(footerSection.get());
-            footerLayout->SetSpacing(static_cast<int>(style.buttonSpacing));
-            footerLayout->AddStretch(1);
-
+            footerSection->ClearChildren();
+            footerSection->layout.SetFlexRow()
+                                 .SetFlexGap(style.buttonSpacing)
+                                 .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+            footerSection->AddStretchSpacer(1);
             for (auto& button : dialogButtons) {
-                footerLayout->AddUIElement(button)->SetCrossAlignment(LayoutAlignment::Center);
+                footerSection->AddChild(button);
             }
         }
 
@@ -375,13 +360,12 @@ namespace UltraCanvas {
     void UltraCanvasModalDialog::ClearDialogElements() {
         if (messageContainer) {
             messageContainer->ClearChildren();
-
-            // Re-add the standard message and details labels
-            auto messageLayout = CreateVBoxLayout(messageContainer.get());
-            messageLayout->SetSpacing(static_cast<int>(style.sectionSpacing / 2));
-            messageLayout->AddUIElement(messageLabel)->SetWidthMode(SizeMode::Fill);
-            messageLayout->AddUIElement(detailsLabel)->SetWidthMode(SizeMode::Fill);
-            messageLayout->AddStretch(1);
+            messageContainer->layout.SetFlexColumn()
+                                    .SetFlexGap(style.sectionSpacing / 2)
+                                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+            messageContainer->AddChild(messageLabel);
+            messageContainer->AddChild(detailsLabel);
+            messageContainer->AddStretchSpacer(1);
         }
     }
 
@@ -499,10 +483,8 @@ namespace UltraCanvas {
         };
         dialogButtons.push_back(button);
 
-        // Add to footer via layout
         if (footerSection) {
-            auto footerLayout = CreateHBoxLayout(footerSection.get());
-            footerLayout->AddUIElement(button)->SetCrossAlignment(LayoutAlignment::Center);
+            footerSection->AddChild(button);
         }
     }
 
@@ -566,10 +548,9 @@ namespace UltraCanvas {
 
     void UltraCanvasInputDialog::SetupInputField() {
         // Create input label
-        inputLabel = std::make_shared<UltraCanvasLabel>("InputLabel", 2000);
+        inputLabel = std::make_shared<UltraCanvasLabel>("InputLabel");
         inputLabel->SetText(inputConfig.inputLabel);
         inputLabel->SetFontSize(style.messageFontSize);
-        inputLabel->SetAutoResize(true);
 
         // Create text input
         textInput = std::make_shared<UltraCanvasTextInput>("InputField", 0, 0, 300, 25);
@@ -795,20 +776,20 @@ namespace UltraCanvas {
         // All rects are stored in element-local space
         Rect2Di bounds = GetLocalBounds();
 
-        pathBarRect = Rect2Di(10, 10, bounds.width - 20, pathBarHeight);
+        pathBarRect = Rect2Di(10, 10, finalBounds.width - 20, pathBarHeight);
 
         int topOffset = pathBarHeight + 20;
         int bottomOffset = buttonHeight + filterHeight + 70;
         fileListRect = Rect2Di(10, topOffset,
-                               bounds.width - 20, bounds.height - topOffset - bottomOffset);
+                               finalBounds.width - 20, finalBounds.height - topOffset - bottomOffset);
 
         maxVisibleItems = fileListRect.height / itemHeight;
 
-        int fileNameY = bounds.height - buttonHeight - filterHeight - 55;
-        fileNameInputRect = Rect2Di(90, fileNameY, bounds.width - 110, 22);
+        int fileNameY = finalBounds.height - buttonHeight - filterHeight - 55;
+        fileNameInputRect = Rect2Di(90, fileNameY, finalBounds.width - 110, 22);
 
-        int filterY = bounds.height - buttonHeight - filterHeight - 25;
-        filterSelectorRect = Rect2Di(90, filterY, bounds.width - 110, filterHeight);
+        int filterY = finalBounds.height - buttonHeight - filterHeight - 25;
+        filterSelectorRect = Rect2Di(90, filterY, finalBounds.width - 110, filterHeight);
     }
 
     Rect2Di UltraCanvasFileDialog::GetPathBarBounds() const {

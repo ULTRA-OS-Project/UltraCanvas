@@ -1,7 +1,7 @@
 // include/UltraCanvasBreadcrumb.h
 // Hierarchical breadcrumb navigation control with overflow handling and per-item dropdowns
-// Version: 1.0.0
-// Last Modified: 2026-05-14
+// Version: 1.3.0
+// Last Modified: 2026-06-20
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -49,7 +49,17 @@ namespace UltraCanvas {
         Plain,          // Text only (default), background only on hover/press
         Pill,           // Each item drawn with rounded background
         Underline,      // Text with hover underline
-        Tab             // Tab-like with bottom border
+        Tab,            // Tab-like with bottom border
+        Arrow,          // Interlocking right-pointing arrow/chevron segments ("steps")
+        Parallelogram   // Interlocking slanted (skewed) segments
+    };
+
+// ===== LEVEL INDICATOR =====
+// Optional leading badge that shows each item's level number (1-based).
+    enum class BreadcrumbLevelIndicatorBackground {
+        NoBackground,   // Number only, no background fill (named to avoid X11's `None` macro)
+        Round,          // Number inside a filled circle
+        Rectangle       // Number inside a filled rounded rectangle
     };
 
 // ===== BREADCRUMB ITEM =====
@@ -133,6 +143,17 @@ namespace UltraCanvas {
         int itemPaddingHorizontal = 6;
         int itemPaddingVertical = 3;
         int itemCornerRadius = 3;
+        int arrowSize = 10;                     // Depth of the arrow tip / slant (Arrow & Parallelogram styles)
+
+        // Level indicator (leading numbered badge, e.g. step "1", "2", ...)
+        bool showLevelIndicator = false;
+        BreadcrumbLevelIndicatorBackground levelIndicatorBackground = BreadcrumbLevelIndicatorBackground::Round;
+        bool levelIndicatorBorder = false;      // Outline the indicator background
+        int levelIndicatorSize = 20;            // Diameter / box size in pixels
+        Color levelIndicatorColor = Color(0, 120, 215, 255);        // Background fill
+        Color levelIndicatorTextColor = Colors::White;              // Number color
+        Color levelIndicatorBorderColor = Color(255, 255, 255, 255);
+        float levelIndicatorBorderWidth = 2.0f;
         int iconSize = 16;
         int iconTextSpacing = 4;
         int dropdownChevronSize = 6;
@@ -156,6 +177,9 @@ namespace UltraCanvas {
         static BreadcrumbStyle Pills();
         static BreadcrumbStyle FileExplorer();
         static BreadcrumbStyle WebDocs();
+        static BreadcrumbStyle Arrow();
+        static BreadcrumbStyle Parallelogram();
+        static BreadcrumbStyle Steps();        // Arrow segments + round numbered indicators
     };
 
 // ===== MAIN BREADCRUMB CLASS =====
@@ -172,8 +196,15 @@ namespace UltraCanvas {
         std::function<void()> onPathChanged;
 
         // ===== CONSTRUCTORS =====
-        UltraCanvasBreadcrumb(const std::string& identifier = "Breadcrumb",
-                              long x = 0, long y = 0, long w = 400, long h = 28);
+        UltraCanvasBreadcrumb(const std::string& identifier,
+                              float x, float y, float w, float h);
+
+        UltraCanvasBreadcrumb(const std::string& identifier,
+                              float w, float h)
+              : UltraCanvasBreadcrumb(identifier, -1, -1, w, h) {};
+
+        explicit UltraCanvasBreadcrumb(const std::string& identifier = "")
+                : UltraCanvasBreadcrumb(identifier, -1, -1, -1, -1) {};
 
         virtual ~UltraCanvasBreadcrumb() = default;
 
@@ -226,26 +257,38 @@ namespace UltraCanvas {
         void SetMaxItemTextWidth(int maxWidth);
 
         // ===== OVERRIDES =====
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
-        void UpdateGeometry(IRenderContext* ctx) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         bool OnEvent(const UCEvent& event) override;
         bool AcceptsFocus() const override { return false; }
 
-        // Preferred width = width needed to render all items uncollapsed.
-        int GetPreferredWidth() override;
-        int GetPreferredHeight() override;
+        // ===== LAYOUT (CSS Measure/Arrange) =====
+        // Content box = size to render all items uncollapsed (Button pattern).
+        // Arrange runs RecalculateLayout (incl. overflow handling) against finalBounds.
+        Size2Df MeasureOwnContent(std::optional<float> definiteContentWidth,
+                                  const CSSLayout::LayoutContext& ctx) override;
+        void ComputeIntrinsicSizes(const CSSLayout::LayoutContext& ctx) override;
+        void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
     protected:
         // ===== INTERNAL TYPES =====
         struct ItemSlot {
             int itemIndex = -1;           // -1 means this is the overflow placeholder
             Rect2Di rect;                 // Slot rect (whole clickable item box)
+            Rect2Di indicatorRect;        // Level-indicator badge (empty if disabled)
             Rect2Di iconRect;
             Rect2Di textRect;
             Rect2Di dropdownRect;         // Empty if no dropdown
-            std::string displayText;      // Possibly-ellipsized text actually drawn
+            std::string displayText;      // Original item text (kept for overflow menu / debugging)
+            Size2Dd textSize;             // Cached logical size from textLayout
+            std::unique_ptr<ITextLayout> textLayout;
             bool isOverflow = false;
             bool isCurrent = false;
+
+            ItemSlot() = default;
+            ItemSlot(ItemSlot&&) noexcept = default;
+            ItemSlot& operator=(ItemSlot&&) noexcept = default;
+            ItemSlot(const ItemSlot&) = delete;
+            ItemSlot& operator=(const ItemSlot&) = delete;
         };
 
         // ===== STATE =====
@@ -263,6 +306,7 @@ namespace UltraCanvas {
         // Layout cache — recomputed when geometry is dirty.
         std::vector<ItemSlot> slots;
         std::vector<int> overflowItemIndices; // Indices of items collapsed into "..."
+        std::unique_ptr<ITextLayout> separatorLayout; // For text-based separators
         int separatorWidth = 0;               // Cached separator width
         int separatorHeight = 0;
         int rowHeight = 0;
@@ -274,9 +318,12 @@ namespace UltraCanvas {
         // ===== HELPERS =====
         int ResolvedCurrentIndex() const;
         void RecalculateLayout(IRenderContext* ctx);
-        int MeasureItemWidth(IRenderContext* ctx, const BreadcrumbItem& item, bool includeDropdown,
-                             const std::string& displayText);
-        std::string FitText(IRenderContext* ctx, const std::string& text, int maxPixelWidth);
+        // Natural content size (all items uncollapsed), excluding padding/border.
+        Size2Df MeasureContentSize(IRenderContext* ctx) const;
+        std::unique_ptr<ITextLayout> BuildItemLayout(IRenderContext* ctx, const std::string& text,
+                                                    bool bold, int maxWidth) const;
+        int ComputeItemSlotWidth(const BreadcrumbItem& item, const Size2Dd& textSize,
+                                 bool includeDropdown) const;
         int MeasureSeparator(IRenderContext* ctx);
 
         // Hit testing (returns slot index or -1).
@@ -285,6 +332,17 @@ namespace UltraCanvas {
         // Rendering.
         void RenderBackground(IRenderContext* ctx);
         void RenderSlot(IRenderContext* ctx, const ItemSlot& slot, int slotIdx);
+        // Fills an interlocking arrow/chevron segment for the Arrow item style.
+        // leftNotch carves a matching concave wedge on the left; rightTip extends a
+        // pointed wedge past the right edge so it nests into the next item's notch.
+        void RenderArrowBackground(IRenderContext* ctx, const Rect2Di& rect,
+                                   bool leftNotch, bool rightTip, const Color& fillColor);
+        // Fills a slanted segment for the Parallelogram item style. leftSlant/rightSlant
+        // pick which edges are skewed (outer edges of the first/last item stay vertical).
+        void RenderParallelogramBackground(IRenderContext* ctx, const Rect2Di& rect,
+                                           bool leftSlant, bool rightSlant, const Color& fillColor);
+        // Draws the leading numbered level badge for an item slot.
+        void RenderLevelIndicator(IRenderContext* ctx, const ItemSlot& slot);
         void RenderSeparator(IRenderContext* ctx, int x, int centerY);
         void RenderDropdownChevron(IRenderContext* ctx, const Rect2Di& rect, const Color& color);
 
@@ -297,7 +355,7 @@ namespace UltraCanvas {
 
 // ===== FACTORY =====
     inline std::shared_ptr<UltraCanvasBreadcrumb> CreateBreadcrumb(
-            const std::string& identifier, long x, long y, long w = 400, long h = 28) {
+            const std::string& identifier, float x, float y, float w = 400, float h = 28) {
         return std::make_shared<UltraCanvasBreadcrumb>(identifier, x, y, w, h);
     }
 
@@ -308,7 +366,7 @@ namespace UltraCanvas {
 
     public:
         explicit BreadcrumbBuilder(const std::string& identifier = "Breadcrumb",
-                                   long x = 0, long y = 0, long w = 400, long h = 28) {
+                                   float x = 0, float y = 0, float w = 400, float h = 28) {
             breadcrumb = std::make_shared<UltraCanvasBreadcrumb>(identifier, x, y, w, h);
         }
 

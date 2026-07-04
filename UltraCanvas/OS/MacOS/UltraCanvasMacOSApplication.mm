@@ -1,7 +1,7 @@
 // OS/MacOS/UltraCanvasMacOSApplication.mm
 // Complete macOS application implementation with Cocoa/Cairo support
-// Version: 2.2.0 - Bundled DejaVu Sans Mono as monospace default (CoreText registration)
-// Last Modified: 2026-05-10
+// Version: 2.2.1 - focusedWindow now weak_ptr; targetWindow set via GetWindowWeakPtr()
+// Last Modified: 2026-07-02
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMacOSApplication.h"
@@ -342,7 +342,9 @@ static UltraCanvasAppDelegate* g_appDelegate = nil;
             targetWindow = static_cast<UltraCanvasMacOSWindow*>(FindWindow((void*)nsWindow));
         }
 
-        event.targetWindow = targetWindow;
+        if (targetWindow) {
+            event.targetWindow = targetWindow->GetWindowWeakPtr();
+        }
 
         // Get window content height for Y-coordinate flipping
         // macOS uses bottom-left origin, UltraCanvas uses top-left origin
@@ -612,8 +614,8 @@ static UltraCanvasAppDelegate* g_appDelegate = nil;
 
         // However, we can ensure the window becomes key and main to receive all events
         @autoreleasepool {
-            if (focusedWindow) {
-                auto* macWindow = dynamic_cast<UltraCanvasMacOSWindow*>(focusedWindow);
+            if (auto* fw = GetFocusedWindow()) {
+                auto* macWindow = dynamic_cast<UltraCanvasMacOSWindow*>(fw);
                 if (macWindow && macWindow->GetNSWindow()) {
                     NSWindow* nsWin = macWindow->GetNSWindow();
                     if (![nsWin isKeyWindow]) {
@@ -660,7 +662,7 @@ static UltraCanvasAppDelegate* g_appDelegate = nil;
 
     FontStyle UltraCanvasMacOSApplication::DetectMonospacedFontStyleNative() {
         FontStyle result;
-        result.fontFamily = "DejaVu Sans Mono";
+        result.fontFamily = "Ubuntu Mono";
         result.fontSize = 12.0f;
         return result;
     }
@@ -671,8 +673,8 @@ static UltraCanvasAppDelegate* g_appDelegate = nil;
         // process-privately via CoreText.
         @autoreleasepool {
             const std::string dir = GetBundledFontsDir();
-            for (size_t i = 0; i < kDejaVuMonoFontsCount; ++i) {
-                std::string path = dir + kDejaVuMonoFonts[i];
+            for (size_t i = 0; i < kEmbeddedAllFontsCount; ++i) {
+                std::string path = dir + kEmbeddedAllFonts[i];
                 if (!std::filesystem::exists(path)) {
                     debugOutput << "UltraCanvas: bundled font missing: " << path << std::endl;
                     continue;

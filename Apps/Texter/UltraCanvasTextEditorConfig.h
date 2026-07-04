@@ -1,12 +1,13 @@
 // Apps/Texter/UltraCanvasTextEditorConfig.h
 // Persistent configuration file manager for UltraTexter
-// Version: 1.0.1
-// Last Modified: 2026-02-26
+// Version: 1.0.2
+// Last Modified: 2026-06-03
 // Author: UltraCanvas Framework
 #pragma once
 
 #include <string>
 #include <vector>
+#include <map>
 #include <fstream>
 #include <sstream>
 #include <iostream>

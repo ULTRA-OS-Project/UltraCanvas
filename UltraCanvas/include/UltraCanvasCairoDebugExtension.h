@@ -231,7 +231,7 @@ cairo_t* UltraCanvasCairoDebugExtension::GetCurrentCairoContext() {
         ctx->PushState();
 
         float gridSize = 50.0f;
-        Point2Df center = Point2Df(position.x + gridSize, position.y + gridSize);
+        Point2Dd center = Point2Dd(position.x + gridSize, position.y + gridSize);
 
         // Draw coordinate system grid
         ctx->PaintWidthColorColor(128, 128, 128, 150));
@@ -265,11 +265,11 @@ cairo_t* UltraCanvasCairoDebugExtension::GetCurrentCairoContext() {
         float unitScale = gridSize / 4; // Scale down for visualization
 
         // Transformed X axis (1,0) -> (xx, yx)
-        Point2Df transformedX = Point2Df(center.x + matrix.xx * unitScale, center.y + matrix.yx * unitScale);
+        Point2Dd transformedX = Point2Dd(center.x + matrix.xx * unitScale, center.y + matrix.yx * unitScale);
         ctx->DrawLine(center, transformedX);
 
         // Transformed Y axis (0,1) -> (xy, yy)
-        Point2Df transformedY = Point2Df(center.x + matrix.xy * unitScale, center.y + matrix.yy * unitScale);
+        Point2Dd transformedY = Point2Dd(center.x + matrix.xy * unitScale, center.y + matrix.yy * unitScale);
         ctx->DrawLine(center, transformedY);
 
         // Draw arrow heads
@@ -281,7 +281,7 @@ cairo_t* UltraCanvasCairoDebugExtension::GetCurrentCairoContext() {
             ctx->PaintWidthColorColor(255, 255, 100, 200)); // Yellow for translation
             SetStrokeWidth(1.0f);
 
-            Point2Df translatedOrigin = Point2Df(center.x + matrix.x0 / 10, center.y + matrix.y0 / 10);
+            Point2Dd translatedOrigin = Point2Dd(center.x + matrix.x0 / 10, center.y + matrix.y0 / 10);
             ctx->DrawLine(center, translatedOrigin);
 
             // Draw small circle at translated origin

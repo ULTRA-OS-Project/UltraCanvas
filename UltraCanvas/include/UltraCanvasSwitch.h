@@ -1,8 +1,8 @@
 // UltraCanvasSwitch.h
 // Toggle switch: pill-shaped track with a circular thumb that snaps between sides.
 // Supports horizontal/vertical orientation, optional thumb icons, and optional ON/OFF state labels.
-// Version: 1.1.0
-// Last Modified: 2026-05-07
+// Version: 1.2.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -105,16 +105,29 @@ namespace UltraCanvas {
         void DrawFocusRingShape(IRenderContext* ctx) override;
 
     public:
-        UltraCanvasSwitch(const std::string& identifier = "",
-                          long x = 0, long y = 0, long w = 200, long h = 30,
+        // ===== CONSTRUCTORS =====
+        UltraCanvasSwitch(const std::string& identifier,
+                          float x, float y, float w, float h,
                           const std::string& labelText = "");
+
+        UltraCanvasSwitch(const std::string& identifier,
+                          float w, float h,
+                          const std::string& labelText = "")
+            : UltraCanvasSwitch(identifier, -1, -1, w, h, labelText) {}
+
+        UltraCanvasSwitch(const std::string& identifier, const std::string& labelText)
+            : UltraCanvasSwitch(identifier, -1, -1, -1, -1, labelText) {}
+
+        explicit UltraCanvasSwitch(const std::string& labelText = "")
+            : UltraCanvasSwitch("", -1, -1, -1, -1, labelText) {}
+
         ~UltraCanvasSwitch() override = default;
 
         // Indeterminate is invalid for switches; clamp to Unchecked.
         void SetCheckState(CheckedState state) override;
 
         // ===== APPEARANCE =====
-        void SetVisualStyle(const SwitchVisualStyle& s) { visualStyle = s; layoutDirty = true; }
+        void SetVisualStyle(const SwitchVisualStyle& s) { visualStyle = s; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }
         SwitchVisualStyle& GetVisualStyle() { return visualStyle; }
         const SwitchVisualStyle& GetVisualStyle() const { return visualStyle; }
 
@@ -122,11 +135,15 @@ namespace UltraCanvas {
             visualStyle.trackWidth = width;
             visualStyle.trackHeight = height;
             layoutDirty = true;
+            InvalidateLayout();
+            RequestRedraw();
         }
 
         void SetOrientation(SwitchOrientation o) {
             visualStyle.orientation = o;
             layoutDirty = true;
+            InvalidateLayout();
+            RequestRedraw();
         }
 
         void SetThumbIcons(UCImagePtr onIcon, UCImagePtr offIcon, bool useAsMask = false) {
@@ -142,12 +159,14 @@ namespace UltraCanvas {
             visualStyle.offText = offText;
             visualStyle.stateLabelPosition = position;
             layoutDirty = true;
+            InvalidateLayout();
+            RequestRedraw();
         }
 
         // ===== FACTORY =====
         static std::shared_ptr<UltraCanvasSwitch> Create(
                 const std::string& identifier,
-                long x, long y,
+                float x, float y,
                 const std::string& text = "",
                 bool checked = false);
     };

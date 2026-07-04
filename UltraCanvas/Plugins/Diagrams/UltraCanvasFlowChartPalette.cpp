@@ -21,7 +21,7 @@ void UltraCanvasFlowChartPalette::BuildPalette() {
     ClearChildren();
     
     auto title = std::make_shared<UltraCanvasLabel>("paletteTitle", 10, 10, 
-                                                    bounds.width - 20, 25);
+                                                    finalBounds.width - 20, 25);
     title->SetText("Shapes");
     title->SetFont("Arial", 14.0f, FontWeight::Bold);
     title->SetTextColor(Color(40, 40, 40, 255));
@@ -31,7 +31,7 @@ void UltraCanvasFlowChartPalette::BuildPalette() {
     int row = 0;
     
     auto basicLabel = std::make_shared<UltraCanvasLabel>("basicLabel", 10, yPos, 
-                                                           bounds.width - 20, 20);
+                                                           finalBounds.width - 20, 20);
     basicLabel->SetText("Basic");
     basicLabel->SetFontSize(11.0f);
     basicLabel->SetTextColor(Color(100, 100, 100, 255));
@@ -48,7 +48,7 @@ void UltraCanvasFlowChartPalette::BuildPalette() {
     row = 0;
     
     auto flowLabel = std::make_shared<UltraCanvasLabel>("flowLabel", 10, yPos, 
-                                                          bounds.width - 20, 20);
+                                                          finalBounds.width - 20, 20);
     flowLabel->SetText("Flowchart");
     flowLabel->SetFontSize(11.0f);
     flowLabel->SetTextColor(Color(100, 100, 100, 255));
@@ -66,7 +66,7 @@ void UltraCanvasFlowChartPalette::BuildPalette() {
 }
 
 void UltraCanvasFlowChartPalette::CreateShapeButton(FlowChartShape shape, const std::string& label, int row) {
-    int buttonWidth = bounds.width - 20;
+    int buttonWidth = finalBounds.width - 20;
     int buttonHeight = 45;
     int yPos = 170 + row * 50;
     

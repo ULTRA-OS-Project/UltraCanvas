@@ -13,7 +13,7 @@
 //           obstacle set so the line can leave/enter them. The first and
 //           last waypoints are anchored at the exact cardinal endpoints,
 //           with bridge waypoints inserted to keep all segments orthogonal.
-//           Path model changed from "L or Z" to "vector<Point2Df> waypoints";
+//           Path model changed from "L or Z" to "vector<Point2Dd> waypoints";
 //           ComputeIncomingAngle and ComputeOrthogonalLabelAnchor updated
 //           to take the waypoint list. No public API change.
 //   2.1.4 - Cardinal-aware orthogonal routing.
@@ -466,7 +466,7 @@ bool UltraCanvasFlowChart::HandleMouseDown(const UCEvent& event) {
     }
     
     if (event.button == UCMouseButton::Left) {
-        Point2Df worldPos = ScreenToWorld(mousePos);
+        Point2Dd worldPos = ScreenToWorld(mousePos);
         
         if (isCreatingNode) {
             std::string nodeId = "node_" + std::to_string(nextNodeId++);
@@ -555,7 +555,7 @@ bool UltraCanvasFlowChart::HandleMouseMove(const UCEvent& event) {
         return true;
     }
     
-    Point2Df worldPos = ScreenToWorld(mousePos);
+    Point2Dd worldPos = ScreenToWorld(mousePos);
     
     if (isCreatingConnection) {
         connectionEndX = worldPos.x;
@@ -583,7 +583,7 @@ bool UltraCanvasFlowChart::HandleMouseMove(const UCEvent& event) {
     }
     
     if (isDraggingNode && !selectedNodeId.empty()) {
-        Point2Df currentWorldPos = ScreenToWorld(mousePos);
+        Point2Dd currentWorldPos = ScreenToWorld(mousePos);
         
         double newX = currentWorldPos.x - dragOffsetX;
         double newY = currentWorldPos.y - dragOffsetY;
@@ -610,14 +610,14 @@ bool UltraCanvasFlowChart::HandleMouseWheel(const UCEvent& event) {
     double zoomFactor = (event.wheelDelta > 0) ? 1.1f : 0.9f;
     Rect2Di bounds = GetLocalBounds();
     Point2Di mousePos = event.pointer;
-    Point2Df worldBefore = ScreenToWorld(mousePos);
+    Point2Dd worldBefore = ScreenToWorld(mousePos);
     
     double newZoom = zoomLevel * zoomFactor;
     newZoom = std::clamp(newZoom, 0.1, 10.0);
     
     if (newZoom != zoomLevel) {
         zoomLevel = newZoom;
-        Point2Df worldAfter = ScreenToWorld(mousePos);
+        Point2Dd worldAfter = ScreenToWorld(mousePos);
         panOffset.x += (worldAfter.x - worldBefore.x) * zoomLevel;
         panOffset.y += (worldAfter.y - worldBefore.y) * zoomLevel;
         RequestRedraw();
@@ -631,7 +631,7 @@ bool UltraCanvasFlowChart::HandleDoubleClick(const UCEvent& event) {
     
     Rect2Di bounds = GetLocalBounds();
     Point2Di mousePos = event.pointer;
-    Point2Df worldPos = ScreenToWorld(mousePos);
+    Point2Dd worldPos = ScreenToWorld(mousePos);
     std::string clickedId = FindNodeAt(worldPos);
     
     if (!clickedId.empty()) {
@@ -648,7 +648,7 @@ bool UltraCanvasFlowChart::HandleDoubleClick(const UCEvent& event) {
 // RENDERING
 // =============================================================================
 
-void UltraCanvasFlowChart::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+void UltraCanvasFlowChart::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
     if (!ctx || !IsVisible()) return;
     
     Rect2Di bounds = GetLocalBounds();
@@ -657,7 +657,7 @@ void UltraCanvasFlowChart::Render(IRenderContext* ctx, const Rect2Di& dirtyRect)
     ctx->FillRectangle(bounds);
     
     ctx->PushState();
-    ctx->Translate(bounds.x + panOffset.x, bounds.y + panOffset.y);
+    ctx->Translate(finalBounds.x + panOffset.x, finalBounds.y + panOffset.y);
     ctx->Scale(zoomLevel, zoomLevel);
     
     if (style.showGrid) {
@@ -679,8 +679,8 @@ void UltraCanvasFlowChart::RenderGrid(IRenderContext* ctx) {
     ctx->SetStrokeWidth(0.5f);
     
     double spacing = style.gridSpacing;
-    double width = static_cast<double>(bounds.width) / zoomLevel;
-    double height = static_cast<double>(bounds.height) / zoomLevel;
+    double width = static_cast<double>(finalBounds.width) / zoomLevel;
+    double height = static_cast<double>(finalBounds.height) / zoomLevel;
     
     double startX = -panOffset.x / zoomLevel;
     double startY = -panOffset.y / zoomLevel;
@@ -781,7 +781,7 @@ void UltraCanvasFlowChart::RenderNodeShape(IRenderContext* ctx, const FlowChartN
         case FlowChartShape::Decision: {
             double cx = x + w / 2.0f;
             double cy = y + h / 2.0f;
-            std::vector<Point2Df> points = {
+            std::vector<Point2Dd> points = {
                 {cx, y},
                 {x + w, cy},
                 {cx, y + h},
@@ -798,7 +798,7 @@ void UltraCanvasFlowChart::RenderNodeShape(IRenderContext* ctx, const FlowChartN
         case FlowChartShape::Parallelogram:
         case FlowChartShape::ManualInput: {
             double offset = w * 0.15f;
-            std::vector<Point2Df> points = {
+            std::vector<Point2Dd> points = {
                 {x + offset, y},
                 {x + w, y},
                 {x + w - offset, y + h},
@@ -814,7 +814,7 @@ void UltraCanvasFlowChart::RenderNodeShape(IRenderContext* ctx, const FlowChartN
             
         case FlowChartShape::Hexagon: {
             double offset = w * 0.15f;
-            std::vector<Point2Df> points = {
+            std::vector<Point2Dd> points = {
                 {x + offset, y},
                 {x + w - offset, y},
                 {x + w, y + h / 2.0f},
@@ -832,7 +832,7 @@ void UltraCanvasFlowChart::RenderNodeShape(IRenderContext* ctx, const FlowChartN
             
         case FlowChartShape::Triangle: {
             double cx = x + w / 2.0f;
-            std::vector<Point2Df> points = {
+            std::vector<Point2Dd> points = {
                 {cx, y},
                 {x + w, y + h},
                 {x, y + h}
@@ -861,11 +861,11 @@ void UltraCanvasFlowChart::RenderNodeShape(IRenderContext* ctx, const FlowChartN
         case FlowChartShape::Database: {
             double eh = h * 0.15f;
             double cx = x + w / 2.0f;
-            ctx->FillEllipse(Rect2Df(cx - w/2.0f, y, w, eh));
-            ctx->FillRectangle(Rect2Df(x, y + eh/2.0f, w, h - eh));
-            ctx->FillEllipse(Rect2Df(cx - w/2.0f, y + h - eh, w, eh));
-            ctx->DrawEllipse(Rect2Df(cx - w/2.0f, y, w, eh));
-            ctx->DrawEllipse(Rect2Df(cx - w/2.0f, y + h - eh, w, eh));
+            ctx->FillEllipse(Rect2Dd(cx - w/2.0f, y, w, eh));
+            ctx->FillRectangle(Rect2Dd(x, y + eh/2.0f, w, h - eh));
+            ctx->FillEllipse(Rect2Dd(cx - w/2.0f, y + h - eh, w, eh));
+            ctx->DrawEllipse(Rect2Dd(cx - w/2.0f, y, w, eh));
+            ctx->DrawEllipse(Rect2Dd(cx - w/2.0f, y + h - eh, w, eh));
             ctx->DrawLine({x, y + eh}, {x, y + h - eh});
             ctx->DrawLine({x + w, y + eh}, {x + w, y + h - eh});
             break;
@@ -876,7 +876,7 @@ void UltraCanvasFlowChart::RenderNodeShape(IRenderContext* ctx, const FlowChartN
             double cy = y + h / 2.0f;
             double outerR = std::min(w, h) / 2.0f * 0.9f;
             double innerR = outerR * 0.4f;
-            std::vector<Point2Df> points;
+            std::vector<Point2Dd> points;
             for (int i = 0; i < 10; i++) {
                 double angle = (3.14159f / 5.0f) * i - 3.14159f / 2;
                 double r = (i % 2 == 0) ? outerR : innerR;
@@ -894,14 +894,14 @@ void UltraCanvasFlowChart::RenderNodeShape(IRenderContext* ctx, const FlowChartN
             double r1 = w * 0.25f;
             double r2 = w * 0.3f;
             double cy = y + h / 2.0f;
-            ctx->FillEllipse(Rect2Df(x + r1, cy - r1/2, r1 * 2, r1 * 2));
-            ctx->FillEllipse(Rect2Df(x + w/2.0f, y + h * 0.3f, r2 * 2, r2 * 2));
-            ctx->FillEllipse(Rect2Df(x + w - r1, cy - r1/2, r1 * 2, r1 * 2));
-            ctx->FillEllipse(Rect2Df(x + w/2.0f, y + h - r1, r1 * 2, r1 * 2));
-            ctx->DrawEllipse(Rect2Df(x + r1, cy - r1/2, r1 * 2, r1 * 2));
-            ctx->DrawEllipse(Rect2Df(x + w/2.0f, y + h * 0.3f, r2 * 2, r2 * 2));
-            ctx->DrawEllipse(Rect2Df(x + w - r1, cy - r1/2, r1 * 2, r1 * 2));
-            ctx->DrawEllipse(Rect2Df(x + w/2.0f, y + h - r1, r1 * 2, r1 * 2));
+            ctx->FillEllipse(Rect2Dd(x + r1, cy - r1/2, r1 * 2, r1 * 2));
+            ctx->FillEllipse(Rect2Dd(x + w/2.0f, y + h * 0.3f, r2 * 2, r2 * 2));
+            ctx->FillEllipse(Rect2Dd(x + w - r1, cy - r1/2, r1 * 2, r1 * 2));
+            ctx->FillEllipse(Rect2Dd(x + w/2.0f, y + h - r1, r1 * 2, r1 * 2));
+            ctx->DrawEllipse(Rect2Dd(x + r1, cy - r1/2, r1 * 2, r1 * 2));
+            ctx->DrawEllipse(Rect2Dd(x + w/2.0f, y + h * 0.3f, r2 * 2, r2 * 2));
+            ctx->DrawEllipse(Rect2Dd(x + w - r1, cy - r1/2, r1 * 2, r1 * 2));
+            ctx->DrawEllipse(Rect2Dd(x + w/2.0f, y + h - r1, r1 * 2, r1 * 2));
             break;
         }
         
@@ -921,7 +921,7 @@ void UltraCanvasFlowChart::RenderNodeShape(IRenderContext* ctx, const FlowChartN
             // This way the visual center of the note is x+w/2, matching every
             // other shape, and consumers can align it on the grid normally.
             double foldSize = std::min(w, h) * 0.15f;
-            std::vector<Point2Df> body = {
+            std::vector<Point2Dd> body = {
                 {x,            y},
                 {x + w - foldSize, y},
                 {x + w,        y + foldSize},
@@ -937,7 +937,7 @@ void UltraCanvasFlowChart::RenderNodeShape(IRenderContext* ctx, const FlowChartN
             darkerFill.g = static_cast<uint8_t>(darkerFill.g * 0.85f);
             darkerFill.b = static_cast<uint8_t>(darkerFill.b * 0.85f);
             ctx->SetFillPaint(darkerFill);
-            std::vector<Point2Df> fold = {
+            std::vector<Point2Dd> fold = {
                 {x + w - foldSize, y},
                 {x + w,            y + foldSize},
                 {x + w - foldSize, y + foldSize}
@@ -1014,7 +1014,7 @@ void UltraCanvasFlowChart::RenderSelectionHighlight(IRenderContext* ctx, const F
     double padding = 4.0f;
     ctx->SetStrokePaint(color);
     ctx->SetStrokeWidth(width);
-    ctx->DrawRectangle(Rect2Df(node.x - padding, node.y - padding,
+    ctx->DrawRectangle(Rect2Dd(node.x - padding, node.y - padding,
                                node.width + padding * 2, node.height + padding * 2));
 }
 
@@ -1029,10 +1029,10 @@ void UltraCanvasFlowChart::RenderConnection(IRenderContext* ctx, const FlowChart
     //     border without a gap on Diamond/Oval/etc).
     //   * Orthogonal/Curved: midpoint of the cardinal side facing the other
     //     node, so the segment exits perpendicular to a clean axis.
-    Point2Df sourceCenter = GetNodeCenter(*sourceNode);
-    Point2Df targetCenter = GetNodeCenter(*targetNode);
-    Point2Df start = GetConnectionPoint(*sourceNode, targetCenter, conn.style);
-    Point2Df end   = GetConnectionPoint(*targetNode, sourceCenter, conn.style);
+    Point2Dd sourceCenter = GetNodeCenter(*sourceNode);
+    Point2Dd targetCenter = GetNodeCenter(*targetNode);
+    Point2Dd start = GetConnectionPoint(*sourceNode, targetCenter, conn.style);
+    Point2Dd end   = GetConnectionPoint(*targetNode, sourceCenter, conn.style);
     
     // Cardinal sides (only meaningful for orthogonal/curved, but cheap to
     // compute always — Straight ignores them).
@@ -1047,7 +1047,7 @@ void UltraCanvasFlowChart::RenderConnection(IRenderContext* ctx, const FlowChart
     
     // Build waypoints for orthogonal connections (used by render, arrow,
     // and label so the three agree on the same path geometry).
-    std::vector<Point2Df> orthogonalPath;
+    std::vector<Point2Dd> orthogonalPath;
     
     switch (conn.style) {
         case FlowChartConnectionStyle::Straight:
@@ -1072,12 +1072,12 @@ void UltraCanvasFlowChart::RenderConnection(IRenderContext* ctx, const FlowChart
     if (conn.arrowStyle == FlowChartArrowStyle::Arrow ||
         conn.arrowStyle == FlowChartArrowStyle::ArrowFilled ||
         conn.arrowStyle == FlowChartArrowStyle::Diamond) {
-        std::vector<Point2Df> pathForAngle = orthogonalPath.empty()
-            ? std::vector<Point2Df>{start, end}
+        std::vector<Point2Dd> pathForAngle = orthogonalPath.empty()
+            ? std::vector<Point2Dd>{start, end}
             : orthogonalPath;
         double angle = ComputeIncomingAngle(pathForAngle, conn.style, targetSide);
         double retreat = targetNode->borderWidth * 0.5f + 1.0f;
-        Point2Df adjustedTip(end.x - retreat * std::cos(angle),
+        Point2Dd adjustedTip(end.x - retreat * std::cos(angle),
                              end.y - retreat * std::sin(angle));
         if (conn.arrowStyle == FlowChartArrowStyle::Diamond) {
             RenderDiamondArrow(ctx, adjustedTip, angle, lineColor, 8.0f);
@@ -1087,28 +1087,28 @@ void UltraCanvasFlowChart::RenderConnection(IRenderContext* ctx, const FlowChart
     }
     
     if (!conn.label.empty()) {
-        Point2Df anchor;
+        Point2Dd anchor;
         if (conn.style == FlowChartConnectionStyle::Orthogonal && !orthogonalPath.empty()) {
             anchor = ComputeOrthogonalLabelAnchor(orthogonalPath);
         } else {
-            anchor = Point2Df((start.x + end.x) * 0.5f, (start.y + end.y) * 0.5f);
+            anchor = Point2Dd((start.x + end.x) * 0.5f, (start.y + end.y) * 0.5f);
         }
         RenderConnectionLabel(ctx, conn, anchor);
     }
 }
 
-void UltraCanvasFlowChart::RenderStraightLine(IRenderContext* ctx, const Point2Df& start, const Point2Df& end) {
+void UltraCanvasFlowChart::RenderStraightLine(IRenderContext* ctx, const Point2Dd& start, const Point2Dd& end) {
     ctx->DrawLine(start, end);
 }
 
 // Draws a polyline through the given waypoints. The path can have any
 // number of segments, all of which should be axis-aligned.
 void UltraCanvasFlowChart::RenderOrthogonalLine(IRenderContext* ctx,
-                                                 const std::vector<Point2Df>& waypoints) {
+                                                 const std::vector<Point2Dd>& waypoints) {
     if (waypoints.size() < 2) return;
     for (size_t i = 1; i < waypoints.size(); ++i) {
-        const Point2Df& a = waypoints[i - 1];
-        const Point2Df& b = waypoints[i];
+        const Point2Dd& a = waypoints[i - 1];
+        const Point2Dd& b = waypoints[i];
         ctx->DrawLine(a, b);
     }
 }
@@ -1116,8 +1116,8 @@ void UltraCanvasFlowChart::RenderOrthogonalLine(IRenderContext* ctx,
 // Cardinal-aware L-shape (mixed axes) or Z-shape (same axes) routing.
 // This is the 2.1.4 behavior, now packaged as a waypoint generator and used
 // either when there are no obstacles, or as a fallback when A* fails.
-std::vector<Point2Df> UltraCanvasFlowChart::ComputeCardinalPath(
-        const Point2Df& start, const Point2Df& end,
+std::vector<Point2Dd> UltraCanvasFlowChart::ComputeCardinalPath(
+        const Point2Dd& start, const Point2Dd& end,
         CardinalSide sourceSide, CardinalSide targetSide) const {
     auto isHoriz = [](CardinalSide s) {
         return s == CardinalSide::Left || s == CardinalSide::Right;
@@ -1125,23 +1125,23 @@ std::vector<Point2Df> UltraCanvasFlowChart::ComputeCardinalPath(
     bool srcH = isHoriz(sourceSide);
     bool tgtH = isHoriz(targetSide);
     
-    std::vector<Point2Df> waypoints;
+    std::vector<Point2Dd> waypoints;
     waypoints.push_back(start);
     
     if (srcH != tgtH) {
         // L-shape: 1 corner.
-        Point2Df corner = srcH ? Point2Df(end.x, start.y) : Point2Df(start.x, end.y);
+        Point2Dd corner = srcH ? Point2Dd(end.x, start.y) : Point2Dd(start.x, end.y);
         waypoints.push_back(corner);
     } else if (srcH) {
         // Z-shape on horizontal axis: midX vertical bend.
         double midX = (start.x + end.x) * 0.5f;
-        waypoints.push_back(Point2Df(midX, start.y));
-        waypoints.push_back(Point2Df(midX, end.y));
+        waypoints.push_back(Point2Dd(midX, start.y));
+        waypoints.push_back(Point2Dd(midX, end.y));
     } else {
         // Z-shape on vertical axis: midY horizontal bend.
         double midY = (start.y + end.y) * 0.5f;
-        waypoints.push_back(Point2Df(start.x, midY));
-        waypoints.push_back(Point2Df(end.x, midY));
+        waypoints.push_back(Point2Dd(start.x, midY));
+        waypoints.push_back(Point2Dd(end.x, midY));
     }
     
     waypoints.push_back(end);
@@ -1151,7 +1151,7 @@ std::vector<Point2Df> UltraCanvasFlowChart::ComputeCardinalPath(
 // Returns true if any segment of `path` intersects the bbox of a node not
 // in {sourceId, targetId}. Bbox uses a small inset so a path running exactly
 // along the border is not considered a collision.
-bool UltraCanvasFlowChart::PathHasObstacles(const std::vector<Point2Df>& path,
+bool UltraCanvasFlowChart::PathHasObstacles(const std::vector<Point2Dd>& path,
                                              const std::string& sourceId,
                                              const std::string& targetId) const {
     if (path.size() < 2) return false;
@@ -1165,8 +1165,8 @@ bool UltraCanvasFlowChart::PathHasObstacles(const std::vector<Point2Df>& path,
         double t = n.y + inset, b = n.y + n.height - inset;
         
         for (size_t i = 1; i < path.size(); ++i) {
-            const Point2Df& a = path[i - 1];
-            const Point2Df& c = path[i];
+            const Point2Dd& a = path[i - 1];
+            const Point2Dd& c = path[i];
             // All segments are axis-aligned by construction.
             if (std::abs(a.y - c.y) < 0.5f) {
                 // Horizontal segment at y = a.y.
@@ -1215,8 +1215,8 @@ namespace {
 // (in the direction of sourceSide); the last cell sits next to the target.
 // This guarantees the path leaves perpendicular to the source side and
 // arrives perpendicular to the target side. Returns empty on failure.
-std::vector<Point2Df> UltraCanvasFlowChart::RouteAStar(
-        const Point2Df& start, const Point2Df& end,
+std::vector<Point2Dd> UltraCanvasFlowChart::RouteAStar(
+        const Point2Dd& start, const Point2Dd& end,
         CardinalSide sourceSide, CardinalSide targetSide,
         const std::string& sourceId, const std::string& targetId) {
     const double gridSize = style.gridSpacing > 0.0f ? style.gridSpacing : 20.0f;
@@ -1254,7 +1254,7 @@ std::vector<Point2Df> UltraCanvasFlowChart::RouteAStar(
         }
         return {0, 0};
     };
-    auto worldToCell = [&](const Point2Df& p) -> std::pair<int,int> {
+    auto worldToCell = [&](const Point2Dd& p) -> std::pair<int,int> {
         return {
             static_cast<int>(std::floor(p.x / gridSize)),
             static_cast<int>(std::floor(p.y / gridSize))
@@ -1382,12 +1382,12 @@ std::vector<Point2Df> UltraCanvasFlowChart::RouteAStar(
     
     // Convert to world waypoints (cell centers), keeping only corners
     // (where direction changes). This collapses long straight runs.
-    std::vector<Point2Df> raw;
+    std::vector<Point2Dd> raw;
     raw.reserve(cellPath.size());
     for (auto& c : cellPath) {
-        raw.push_back(Point2Df((c.first + 0.5f) * gridSize, (c.second + 0.5f) * gridSize));
+        raw.push_back(Point2Dd((c.first + 0.5f) * gridSize, (c.second + 0.5f) * gridSize));
     }
-    std::vector<Point2Df> simplified;
+    std::vector<Point2Dd> simplified;
     simplified.push_back(raw.front());
     for (size_t i = 1; i + 1 < raw.size(); ++i) {
         // Keep waypoint i if it's a corner (direction changes here).
@@ -1415,18 +1415,18 @@ std::vector<Point2Df> UltraCanvasFlowChart::RouteAStar(
         return s == CardinalSide::Left || s == CardinalSide::Right;
     };
     
-    std::vector<Point2Df> finalPath;
+    std::vector<Point2Dd> finalPath;
     finalPath.reserve(simplified.size() + 4);
     finalPath.push_back(start);
     
     // Bridge from `start` to simplified[0]: source side dictates which axis
     // the first segment uses.
     if (!simplified.empty()) {
-        const Point2Df& first = simplified.front();
+        const Point2Dd& first = simplified.front();
         if (isHoriz(sourceSide)) {
             // First segment is horizontal: keep start.y, snap to first.x.
             if (std::abs(first.x - start.x) > 0.5f) {
-                finalPath.push_back(Point2Df(first.x, start.y));
+                finalPath.push_back(Point2Dd(first.x, start.y));
             }
             if (std::abs(first.y - start.y) > 0.5f) {
                 finalPath.push_back(first);
@@ -1434,7 +1434,7 @@ std::vector<Point2Df> UltraCanvasFlowChart::RouteAStar(
         } else {
             // First segment is vertical: keep start.x, snap to first.y.
             if (std::abs(first.y - start.y) > 0.5f) {
-                finalPath.push_back(Point2Df(start.x, first.y));
+                finalPath.push_back(Point2Dd(start.x, first.y));
             }
             if (std::abs(first.x - start.x) > 0.5f) {
                 finalPath.push_back(first);
@@ -1449,16 +1449,16 @@ std::vector<Point2Df> UltraCanvasFlowChart::RouteAStar(
     
     // Bridge from simplified.back() to `end`.
     if (simplified.size() > 1) {
-        const Point2Df& last = simplified.back();
+        const Point2Dd& last = simplified.back();
         if (isHoriz(targetSide)) {
             // Last segment is horizontal: keep end.y, come from last.x.
             if (std::abs(last.y - end.y) > 0.5f) {
-                finalPath.push_back(Point2Df(last.x, end.y));
+                finalPath.push_back(Point2Dd(last.x, end.y));
             }
         } else {
             // Last segment is vertical: keep end.x, come from last.y.
             if (std::abs(last.x - end.x) > 0.5f) {
-                finalPath.push_back(Point2Df(end.x, last.y));
+                finalPath.push_back(Point2Dd(end.x, last.y));
             }
         }
     }
@@ -1466,7 +1466,7 @@ std::vector<Point2Df> UltraCanvasFlowChart::RouteAStar(
     finalPath.push_back(end);
     
     // De-duplicate consecutive identical waypoints.
-    std::vector<Point2Df> dedup;
+    std::vector<Point2Dd> dedup;
     dedup.reserve(finalPath.size());
     for (const auto& p : finalPath) {
         if (dedup.empty() ||
@@ -1481,8 +1481,8 @@ std::vector<Point2Df> UltraCanvasFlowChart::RouteAStar(
 // Top-level orthogonal routing entry. Tries the cheap cardinal path first;
 // only invokes A* if the cheap path collides with another node. Fallback to
 // cardinal if A* finds nothing.
-std::vector<Point2Df> UltraCanvasFlowChart::ComputeOrthogonalPath(
-        const Point2Df& start, const Point2Df& end,
+std::vector<Point2Dd> UltraCanvasFlowChart::ComputeOrthogonalPath(
+        const Point2Dd& start, const Point2Dd& end,
         CardinalSide sourceSide, CardinalSide targetSide,
         const std::string& sourceId, const std::string& targetId) {
     auto cheap = ComputeCardinalPath(start, end, sourceSide, targetSide);
@@ -1496,7 +1496,7 @@ std::vector<Point2Df> UltraCanvasFlowChart::ComputeOrthogonalPath(
     return astar;
 }
 
-void UltraCanvasFlowChart::RenderCurvedLine(IRenderContext* ctx, const Point2Df& start, const Point2Df& end) {
+void UltraCanvasFlowChart::RenderCurvedLine(IRenderContext* ctx, const Point2Dd& start, const Point2Dd& end) {
     double dx = end.x - start.x;
     
     if (std::abs(dx) < 10.0f) {
@@ -1521,18 +1521,18 @@ void UltraCanvasFlowChart::RenderCurvedLine(IRenderContext* ctx, const Point2Df&
     }
 }
 
-void UltraCanvasFlowChart::RenderArrowHead(IRenderContext* ctx, const Point2Df& tip,
+void UltraCanvasFlowChart::RenderArrowHead(IRenderContext* ctx, const Point2Dd& tip,
                                            double angle, const Color& color, double size) {
     const double arrowAngle = 0.5f;
     
     ctx->SetFillPaint(color);
     
-    Point2Df p1(tip.x - size * std::cos(angle - arrowAngle),
+    Point2Dd p1(tip.x - size * std::cos(angle - arrowAngle),
                 tip.y - size * std::sin(angle - arrowAngle));
-    Point2Df p2(tip.x - size * std::cos(angle + arrowAngle),
+    Point2Dd p2(tip.x - size * std::cos(angle + arrowAngle),
                 tip.y - size * std::sin(angle + arrowAngle));
     
-    std::vector<Point2Df> points = {
+    std::vector<Point2Dd> points = {
         {tip.x, tip.y},
         {p1.x, p1.y},
         {p2.x, p2.y}
@@ -1540,20 +1540,20 @@ void UltraCanvasFlowChart::RenderArrowHead(IRenderContext* ctx, const Point2Df& 
     ctx->FillLinePath(points);
 }
 
-void UltraCanvasFlowChart::RenderDiamondArrow(IRenderContext* ctx, const Point2Df& tip,
+void UltraCanvasFlowChart::RenderDiamondArrow(IRenderContext* ctx, const Point2Dd& tip,
                                               double angle, const Color& color, double size) {
     ctx->SetFillPaint(color);
     
-    Point2Df p1(tip.x - size * 0.7f * std::cos(angle),
+    Point2Dd p1(tip.x - size * 0.7f * std::cos(angle),
                 tip.y - size * 0.7f * std::sin(angle));
-    Point2Df p2(tip.x - size * std::cos(angle - 0.7f),
+    Point2Dd p2(tip.x - size * std::cos(angle - 0.7f),
                 tip.y - size * std::sin(angle - 0.7f));
-    Point2Df p3(tip.x - size * 1.4f * std::cos(angle),
+    Point2Dd p3(tip.x - size * 1.4f * std::cos(angle),
                 tip.y - size * 1.4f * std::sin(angle));
-    Point2Df p4(tip.x - size * std::cos(angle + 0.7f),
+    Point2Dd p4(tip.x - size * std::cos(angle + 0.7f),
                 tip.y - size * std::sin(angle + 0.7f));
     
-    std::vector<Point2Df> points = {
+    std::vector<Point2Dd> points = {
         {tip.x, tip.y},
         {p1.x, p1.y},
         {p2.x, p2.y},
@@ -1564,7 +1564,7 @@ void UltraCanvasFlowChart::RenderDiamondArrow(IRenderContext* ctx, const Point2D
 }
 
 void UltraCanvasFlowChart::RenderConnectionLabel(IRenderContext* ctx, const FlowChartConnection& conn,
-                                                 const Point2Df& anchor) {
+                                                 const Point2Dd& anchor) {
     ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
     ctx->SetFontSize(10.0f);
     
@@ -1577,7 +1577,7 @@ void UltraCanvasFlowChart::RenderConnectionLabel(IRenderContext* ctx, const Flow
 
     double padding = 3.0f;
     ctx->SetFillPaint(conn.labelBackgroundColor);
-    ctx->FillRectangle(Rect2Df(boxX - padding, boxY - padding,
+    ctx->FillRectangle(Rect2Dd(boxX - padding, boxY - padding,
                                labelW + padding * 2, labelH + padding * 2));
 
     // DrawText() Y is the TOP of the text bbox in this framework
@@ -1590,7 +1590,7 @@ void UltraCanvasFlowChart::RenderConnectionLabel(IRenderContext* ctx, const Flow
 // HIT TESTING
 // =============================================================================
 
-std::string UltraCanvasFlowChart::FindNodeAt(const Point2Df& pos) {
+std::string UltraCanvasFlowChart::FindNodeAt(const Point2Dd& pos) {
     for (auto it = nodes.rbegin(); it != nodes.rend(); ++it) {
         if (PointInNode(it->second, pos)) {
             return it->first;
@@ -1599,17 +1599,17 @@ std::string UltraCanvasFlowChart::FindNodeAt(const Point2Df& pos) {
     return "";
 }
 
-std::string UltraCanvasFlowChart::FindConnectionAt(const Point2Df& pos) {
+std::string UltraCanvasFlowChart::FindConnectionAt(const Point2Dd& pos) {
     for (const auto& conn : connections) {
         const auto* sourceNode = GetNode(conn.sourceNodeId);
         const auto* targetNode = GetNode(conn.targetNodeId);
         
         if (!sourceNode || !targetNode) continue;
         
-        Point2Df sourceCenter = GetNodeCenter(*sourceNode);
-        Point2Df targetCenter = GetNodeCenter(*targetNode);
-        Point2Df start = GetConnectionPoint(*sourceNode, targetCenter, conn.style);
-        Point2Df end   = GetConnectionPoint(*targetNode, sourceCenter, conn.style);
+        Point2Dd sourceCenter = GetNodeCenter(*sourceNode);
+        Point2Dd targetCenter = GetNodeCenter(*targetNode);
+        Point2Dd start = GetConnectionPoint(*sourceNode, targetCenter, conn.style);
+        Point2Dd end   = GetConnectionPoint(*targetNode, sourceCenter, conn.style);
         
         double dist = DistanceToLineSegment(pos, start, end);
         
@@ -1620,7 +1620,7 @@ std::string UltraCanvasFlowChart::FindConnectionAt(const Point2Df& pos) {
     return "";
 }
 
-bool UltraCanvasFlowChart::PointInNode(const FlowChartNode& node, const Point2Df& pos) {
+bool UltraCanvasFlowChart::PointInNode(const FlowChartNode& node, const Point2Dd& pos) {
     double cx = node.x + node.width / 2.0f;
     double cy = node.y + node.height / 2.0f;
     
@@ -1652,9 +1652,9 @@ bool UltraCanvasFlowChart::PointInNode(const FlowChartNode& node, const Point2Df
     }
 }
 
-double UltraCanvasFlowChart::DistanceToLineSegment(const Point2Df& point,
-                                                   const Point2Df& lineStart,
-                                                   const Point2Df& lineEnd) {
+double UltraCanvasFlowChart::DistanceToLineSegment(const Point2Dd& point,
+                                                   const Point2Dd& lineStart,
+                                                   const Point2Dd& lineEnd) {
     double dx = lineEnd.x - lineStart.x;
     double dy = lineEnd.y - lineStart.y;
     double lengthSq = dx * dx + dy * dy;
@@ -1680,16 +1680,16 @@ double UltraCanvasFlowChart::DistanceToLineSegment(const Point2Df& point,
 // UTILITY
 // =============================================================================
 
-Point2Df UltraCanvasFlowChart::GetNodeCenter(const FlowChartNode& node) const {
-    return Point2Df(node.x + node.width * 0.5f, node.y + node.height * 0.5f);
+Point2Dd UltraCanvasFlowChart::GetNodeCenter(const FlowChartNode& node) const {
+    return Point2Dd(node.x + node.width * 0.5f, node.y + node.height * 0.5f);
 }
 
 // Picks the cardinal side of `nodeCenter` that faces `otherCenter`. Splits
 // the plane around the node into 4 quadrants by the two diagonals; the side
 // whose outward normal best matches the (other - this) direction wins.
 UltraCanvasFlowChart::CardinalSide
-UltraCanvasFlowChart::GetCardinalSide(const Point2Df& nodeCenter,
-                                       const Point2Df& otherCenter) const {
+UltraCanvasFlowChart::GetCardinalSide(const Point2Dd& nodeCenter,
+                                       const Point2Dd& otherCenter) const {
     double dx = otherCenter.x - nodeCenter.x;
     double dy = otherCenter.y - nodeCenter.y;
     if (std::abs(dx) >= std::abs(dy)) {
@@ -1702,17 +1702,17 @@ UltraCanvasFlowChart::GetCardinalSide(const Point2Df& nodeCenter,
 // Mid-point of the requested cardinal side of the node's bbox. For Diamond
 // these correspond to the four rhombus vertices, which is exactly the visual
 // edge users expect lines to attach to.
-Point2Df UltraCanvasFlowChart::GetCardinalPoint(const FlowChartNode& node,
+Point2Dd UltraCanvasFlowChart::GetCardinalPoint(const FlowChartNode& node,
                                                 CardinalSide side) const {
     double cx = node.x + node.width * 0.5f;
     double cy = node.y + node.height * 0.5f;
     switch (side) {
-        case CardinalSide::Top:    return Point2Df(cx, node.y);
-        case CardinalSide::Right:  return Point2Df(node.x + node.width, cy);
-        case CardinalSide::Bottom: return Point2Df(cx, node.y + node.height);
-        case CardinalSide::Left:   return Point2Df(node.x, cy);
+        case CardinalSide::Top:    return Point2Dd(cx, node.y);
+        case CardinalSide::Right:  return Point2Dd(node.x + node.width, cy);
+        case CardinalSide::Bottom: return Point2Dd(cx, node.y + node.height);
+        case CardinalSide::Left:   return Point2Dd(node.x, cy);
     }
-    return Point2Df(cx, cy);
+    return Point2Dd(cx, cy);
 }
 
 // Returns the attach point on `node` for a connection coming from
@@ -1723,8 +1723,8 @@ Point2Df UltraCanvasFlowChart::GetCardinalPoint(const FlowChartNode& node,
 //     so the line exits cleanly along an axis. For Diamond this lands on
 //     the rhombus vertex (since the side midpoint of a diamond bbox IS a
 //     vertex), keeping the visual semantics of the 2.1.0 fix.
-Point2Df UltraCanvasFlowChart::GetConnectionPoint(const FlowChartNode& node,
-                                                  const Point2Df& otherCenter,
+Point2Dd UltraCanvasFlowChart::GetConnectionPoint(const FlowChartNode& node,
+                                                  const Point2Dd& otherCenter,
                                                   FlowChartConnectionStyle style) const {
     double cx = node.x + node.width * 0.5f;
     double cy = node.y + node.height * 0.5f;
@@ -1736,14 +1736,14 @@ Point2Df UltraCanvasFlowChart::GetConnectionPoint(const FlowChartNode& node,
     
     // Degenerate: other node sits on top of us.
     if (std::abs(dx) < 0.001f && std::abs(dy) < 0.001f) {
-        return Point2Df(cx + halfW, cy);
+        return Point2Dd(cx + halfW, cy);
     }
     
     // Orthogonal/Curved paths exit along an axis; use cardinal midpoints so
     // the segment leaves perpendicular to the chosen side.
     if (style == FlowChartConnectionStyle::Orthogonal ||
         style == FlowChartConnectionStyle::Curved) {
-        return GetCardinalPoint(node, GetCardinalSide(Point2Df(cx, cy), otherCenter));
+        return GetCardinalPoint(node, GetCardinalSide(Point2Dd(cx, cy), otherCenter));
     }
     
     // Straight: shape-aware silhouette intersection.
@@ -1751,9 +1751,9 @@ Point2Df UltraCanvasFlowChart::GetConnectionPoint(const FlowChartNode& node,
         case FlowChartShape::Diamond:
         case FlowChartShape::Decision: {
             double denom = std::abs(dx) / halfW + std::abs(dy) / halfH;
-            if (denom < 0.001f) return Point2Df(cx + halfW, cy);
+            if (denom < 0.001f) return Point2Dd(cx + halfW, cy);
             double t = 1.0f / denom;
-            return Point2Df(cx + t * dx, cy + t * dy);
+            return Point2Dd(cx + t * dx, cy + t * dy);
         }
         case FlowChartShape::Circle:
         case FlowChartShape::Oval:
@@ -1761,15 +1761,15 @@ Point2Df UltraCanvasFlowChart::GetConnectionPoint(const FlowChartNode& node,
             double ndx = dx / halfW;
             double ndy = dy / halfH;
             double denom = std::sqrt(ndx * ndx + ndy * ndy);
-            if (denom < 0.001f) return Point2Df(cx + halfW, cy);
+            if (denom < 0.001f) return Point2Dd(cx + halfW, cy);
             double t = 1.0f / denom;
-            return Point2Df(cx + t * dx, cy + t * dy);
+            return Point2Dd(cx + t * dx, cy + t * dy);
         }
         default: {
             double tx = (dx != 0.0f) ? halfW / std::abs(dx) : std::numeric_limits<double>::infinity();
             double ty = (dy != 0.0f) ? halfH / std::abs(dy) : std::numeric_limits<double>::infinity();
             double t = std::min(tx, ty);
-            return Point2Df(cx + t * dx, cy + t * dy);
+            return Point2Dd(cx + t * dx, cy + t * dy);
         }
     }
 }
@@ -1781,11 +1781,11 @@ Point2Df UltraCanvasFlowChart::GetConnectionPoint(const FlowChartNode& node,
 // Anchor for the orthogonal label: midpoint of the longest segment in the
 // path. Avoids placing the label exactly on a corner. Works for any number
 // of waypoints (L, Z, or A* paths).
-Point2Df UltraCanvasFlowChart::ComputeOrthogonalLabelAnchor(
-        const std::vector<Point2Df>& waypoints) const {
-    if (waypoints.size() < 2) return Point2Df(0, 0);
+Point2Dd UltraCanvasFlowChart::ComputeOrthogonalLabelAnchor(
+        const std::vector<Point2Dd>& waypoints) const {
+    if (waypoints.size() < 2) return Point2Dd(0, 0);
     if (waypoints.size() == 2) {
-        return Point2Df((waypoints[0].x + waypoints[1].x) * 0.5f,
+        return Point2Dd((waypoints[0].x + waypoints[1].x) * 0.5f,
                         (waypoints[0].y + waypoints[1].y) * 0.5f);
     }
     // Find the longest segment.
@@ -1800,14 +1800,14 @@ Point2Df UltraCanvasFlowChart::ComputeOrthogonalLabelAnchor(
             bestIdx = i;
         }
     }
-    return Point2Df((waypoints[bestIdx-1].x + waypoints[bestIdx].x) * 0.5f,
+    return Point2Dd((waypoints[bestIdx-1].x + waypoints[bestIdx].x) * 0.5f,
                     (waypoints[bestIdx-1].y + waypoints[bestIdx].y) * 0.5f);
 }
 
 // Angle of the final segment of the path. For orthogonal/curved we still
 // trust targetSide (always perpendicular to the entry edge). For straight,
 // derive from the geometric segment so callers without a path can use this.
-double UltraCanvasFlowChart::ComputeIncomingAngle(const std::vector<Point2Df>& waypoints,
+double UltraCanvasFlowChart::ComputeIncomingAngle(const std::vector<Point2Dd>& waypoints,
                                                  FlowChartConnectionStyle s,
                                                  CardinalSide targetSide) const {
     if (s == FlowChartConnectionStyle::Orthogonal ||
@@ -1820,8 +1820,8 @@ double UltraCanvasFlowChart::ComputeIncomingAngle(const std::vector<Point2Df>& w
         }
     }
     if (waypoints.size() < 2) return 0.0f;
-    const Point2Df& a = waypoints[waypoints.size() - 2];
-    const Point2Df& b = waypoints.back();
+    const Point2Dd& a = waypoints[waypoints.size() - 2];
+    const Point2Dd& b = waypoints.back();
     return std::atan2(b.y - a.y, b.x - a.x);
 }
 
@@ -1830,19 +1830,19 @@ bool UltraCanvasFlowChart::IsNodeSelected(const std::string& nodeId) const {
     return (it != nodes.end()) ? it->second.isSelected : false;
 }
 
-Point2Df UltraCanvasFlowChart::ScreenToWorld(const Point2Di& screenPos) const {
+Point2Dd UltraCanvasFlowChart::ScreenToWorld(const Point2Di& screenPos) const {
     double worldX = (screenPos.x - panOffset.x) / zoomLevel;
     double worldY = (screenPos.y - panOffset.y) / zoomLevel;
-    return Point2Df(worldX, worldY);
+    return Point2Dd(worldX, worldY);
 }
 
-Point2Df UltraCanvasFlowChart::ScreenToWorld(const Point2Df& screenPos) const {
+Point2Dd UltraCanvasFlowChart::ScreenToWorld(const Point2Dd& screenPos) const {
     double worldX = (screenPos.x - panOffset.x) / zoomLevel;
     double worldY = (screenPos.y - panOffset.y) / zoomLevel;
-    return Point2Df(worldX, worldY);
+    return Point2Dd(worldX, worldY);
 }
 
-double UltraCanvasFlowChart::CalculateAngle(const Point2Df& from, const Point2Df& to) {
+double UltraCanvasFlowChart::CalculateAngle(const Point2Dd& from, const Point2Dd& to) {
     return std::atan2(to.y - from.y, to.x - from.x);
 }
 

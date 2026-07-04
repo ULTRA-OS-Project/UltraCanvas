@@ -1,4 +1,4 @@
-// Apps/DemoApp/UltraCanvasPieChartExamples.cpp
+    // Apps/DemoApp/UltraCanvasPieChartExamples.cpp
 // Comprehensive pie chart demonstration with all features
 // Version: 1.0.0
 // Last Modified: 2025-01-16
@@ -68,6 +68,7 @@ namespace UltraCanvas {
 // ===== CONTROL PANEL CREATION =====
     void CreatePieChartControlPanel(
             std::shared_ptr<UltraCanvasContainer> container,
+            std::vector<std::shared_ptr<UltraCanvasPieChartElement>> charts,
             std::shared_ptr<UltraCanvasPieChartElement> pieChart1,
             std::shared_ptr<UltraCanvasPieChartElement> pieChart2,
             int x, int y) {
@@ -153,7 +154,7 @@ namespace UltraCanvas {
         yOffset += controlHeight + spacing * 2;
 
         // === PERSPECTIVE ANGLE (3D) ===
-        auto perspectiveLabel = std::make_shared<UltraCanvasLabel>("PerspectiveLabel", x, yOffset, 200, 20);
+        auto perspectiveLabel = std::make_shared<UltraCanvasLabel>("PerspectiveLabel", x, yOffset, 300, 20);
         perspectiveLabel->SetText("Perspective Angle (3D):");
         perspectiveLabel->SetFontWeight(FontWeight::Bold);
         container->AddChild(perspectiveLabel);
@@ -163,10 +164,9 @@ namespace UltraCanvas {
         perspectiveSlider->SetRange(5.0, 70.0);
         perspectiveSlider->SetStep(1.0);
         perspectiveSlider->SetValue(pieChartControls.perspectiveAngle);
-        perspectiveSlider->onValueChanged = [pieChart1, pieChart2](double value) {
+        perspectiveSlider->onValueChanged = [charts](double value) {
             pieChartControls.perspectiveAngle = static_cast<float>(value);
-            pieChart1->SetPerspectiveAngle(pieChartControls.perspectiveAngle);
-            pieChart2->SetPerspectiveAngle(pieChartControls.perspectiveAngle);
+            for (auto& c : charts) c->SetPerspectiveAngle(pieChartControls.perspectiveAngle);
         };
         container->AddChild(perspectiveSlider);
         yOffset += controlHeight + spacing * 2;
@@ -234,7 +234,6 @@ namespace UltraCanvas {
         );
         descLabel->SetFontSize(11);
         descLabel->SetWrap(TextWrap::WrapWord);
-        descLabel->SetAutoResize(true);
         container->AddChild(descLabel);
 
         // ===== EXAMPLE 1: MARKET SHARE ANALYSIS =====
@@ -287,7 +286,7 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 3: 3D DONUT WITH GRADIENTS =====
         auto donutLabel = std::make_shared<UltraCanvasLabel>("DonutLabel", 240, 470, 460, 25);
-        donutLabel->SetText("3D Donut with Highlighted Slice");
+        donutLabel->SetText("3D Pie with Highlighted Slice");
         donutLabel->SetFontSize(13);
         donutLabel->SetFontWeight(FontWeight::Bold);
         container->AddChild(donutLabel);
@@ -304,13 +303,13 @@ namespace UltraCanvas {
 
         // Enable 3D mode
         donutChart->Enable3DMode(30.0f, 22.0f);
-        donutChart->SetLightDirection(Point2Df(-0.6f, -0.8f));
+        donutChart->SetLightDirection(Point2Dd(-0.6f, -0.8f));
         donutChart->SetAmbientLight(0.35f);
         donutChart->SetDiffuseLight(0.65f);
 
-        // Enable donut mode
-        donutChart->SetDonutMode(true);
-        donutChart->SetInnerRadius(0.45f);
+        // Solid pie (no center hole) per the design — the 3D shading reads
+        // better on a full sector than on a thin donut ring.
+        donutChart->SetDonutMode(false);
 
         // Apply radial gradients
         donutChart->SetAutoRadialGradients();
@@ -363,7 +362,9 @@ namespace UltraCanvas {
         container->AddChild(styledChart);
 
         // === CONTROL PANEL (left column) ===
-        CreatePieChartControlPanel(container, marketChart, budgetChart, 20, 130);
+        CreatePieChartControlPanel(container,
+                                   {marketChart, budgetChart, donutChart, styledChart},
+                                   marketChart, budgetChart, 20, 130);
 
         return container;
     }

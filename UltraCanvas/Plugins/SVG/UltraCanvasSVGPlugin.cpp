@@ -6,6 +6,7 @@
 
 #include "Plugins/SVG/UltraCanvasSVGPlugin.h"
 #include "UltraCanvasUtils.h"
+#include "UltraCanvasFileError.h"
 #include <cmath>
 #include <algorithm>
 #include <cctype>
@@ -176,24 +177,24 @@ namespace UltraCanvas {
     }
 
 // SVGLinearGradient implementation
-    std::shared_ptr<IPaintPattern> SVGLinearGradient::CreatePattern(IRenderContext* ctx, const Rect2Df& bounds) {
+    std::shared_ptr<IPaintPattern> SVGLinearGradient::CreatePattern(IRenderContext* ctx, const Rect2Dd& bounds) {
         float actualX1 = x1, actualY1 = y1, actualX2 = x2, actualY2 = y2;
 
         if (units == "userSpaceOnUse") {
             // Use absolute coordinates
         } else {
             // objectBoundingBox - scale to bounds
-            actualX1 = bounds.x + x1 * bounds.width;
-            actualY1 = bounds.y + y1 * bounds.height;
-            actualX2 = bounds.x + x2 * bounds.width;
-            actualY2 = bounds.y + y2 * bounds.height;
+            actualX1 = finalBounds.x + x1 * finalBounds.width;
+            actualY1 = finalBounds.y + y1 * finalBounds.height;
+            actualX2 = finalBounds.x + x2 * finalBounds.width;
+            actualY2 = finalBounds.y + y2 * finalBounds.height;
         }
 
         return ctx->CreateLinearGradientPattern(actualX1, actualY1, actualX2, actualY2, stops);
     }
 
 // SVGRadialGradient implementation
-    std::shared_ptr<IPaintPattern> SVGRadialGradient::CreatePattern(IRenderContext* ctx, const Rect2Df& bounds) {
+    std::shared_ptr<IPaintPattern> SVGRadialGradient::CreatePattern(IRenderContext* ctx, const Rect2Dd& bounds) {
         float actualCx = cx, actualCy = cy, actualR = r;
         float actualFx = fx, actualFy = fy;
 
@@ -201,11 +202,11 @@ namespace UltraCanvas {
             // Use absolute coordinates
         } else {
             // objectBoundingBox - scale to bounds
-            actualCx = bounds.x + cx * bounds.width;
-            actualCy = bounds.y + cy * bounds.height;
-            actualR = r * std::max(bounds.width, bounds.height);
-            actualFx = bounds.x + fx * bounds.width;
-            actualFy = bounds.y + fy * bounds.height;
+            actualCx = finalBounds.x + cx * finalBounds.width;
+            actualCy = finalBounds.y + cy * finalBounds.height;
+            actualR = r * std::max(finalBounds.width, finalBounds.height);
+            actualFx = finalBounds.x + fx * finalBounds.width;
+            actualFy = finalBounds.y + fy * finalBounds.height;
         }
         return ctx->CreateRadialGradientPattern(actualFx, actualFy, 0, actualCx, actualCy, actualR, stops);;
     }
@@ -216,7 +217,7 @@ namespace UltraCanvas {
     }
 
 // SVGFilter implementation
-    void SVGFilter::Apply(IRenderContext* ctx, const Rect2Df& bounds) {
+    void SVGFilter::Apply(IRenderContext* ctx, const Rect2Dd& bounds) {
         for (const auto& effect : effects) {
             effect->Apply(ctx);
         }
@@ -692,12 +693,21 @@ namespace UltraCanvas {
     SVGDocument::~SVGDocument() {}
 
     bool SVGDocument::LoadFromFile(const std::string& filepath) {
+        lastError.clear();
         if (xmlDoc.LoadFile(filepath.c_str()) != tinyxml2::XML_SUCCESS) {
+            // tinyxml2 fails both for unreadable files and malformed XML; prefer
+            // a clear file-access reason (missing / locked / no permission).
+            std::string access = DescribeFileReadError(filepath);
+            lastError = !access.empty()
+                ? access
+                : ("The file is not valid SVG/XML: " + filepath +
+                   " (" + xmlDoc.ErrorStr() + ")");
             return false;
         }
 
         root = xmlDoc.FirstChildElement("svg");
         if (!root) {
+            lastError = "The file is not an SVG image (no <svg> root): " + filepath;
             return false;
         }
 
@@ -920,7 +930,7 @@ namespace UltraCanvas {
 
     SVGElementRenderer::~SVGElementRenderer() {}
 
-    void SVGElementRenderer::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void SVGElementRenderer::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         if (!document.root) return;
 
         // Set up viewport transformation
@@ -1018,7 +1028,7 @@ namespace UltraCanvas {
         SVGPathParser::RenderPath(context, commands);
 
         SVGStyle& style = styleStack.top();
-        Rect2Df bounds = GetElementBounds(elem);
+        Rect2Dd bounds = GetElementBounds(elem);
 
         FillAndStroke(style, bounds);
 
@@ -1044,7 +1054,7 @@ namespace UltraCanvas {
         }
 
         SVGStyle& style = styleStack.top();
-        Rect2Df bounds = {x, y, width, height};
+        Rect2Dd bounds = {x, y, width, height};
 
         FillAndStroke(style, bounds);
     }
@@ -1058,7 +1068,7 @@ namespace UltraCanvas {
         context->Circle(cx, cy, r);
 
         SVGStyle& style = styleStack.top();
-        Rect2Df bounds = {cx - r, cy - r, 2 * r, 2 * r};
+        Rect2Dd bounds = {cx - r, cy - r, 2 * r, 2 * r};
 
         FillAndStroke(style, bounds);
     }
@@ -1073,7 +1083,7 @@ namespace UltraCanvas {
         context->Ellipse(cx, cy, rx, ry, 0, 0, 2 * M_PI);
 
         SVGStyle& style = styleStack.top();
-        Rect2Df bounds = {cx - rx, cy - ry, 2 * rx, 2 * ry};
+        Rect2Dd bounds = {cx - rx, cy - ry, 2 * rx, 2 * ry};
 
         FillAndStroke(style, bounds);
     }
@@ -1082,7 +1092,7 @@ namespace UltraCanvas {
         const char* pointsAttr = elem->Attribute("points");
         if (!pointsAttr) return;
 
-        std::vector<Point2Df> points = ParsePoints(pointsAttr);
+        std::vector<Point2Dd> points = ParsePoints(pointsAttr);
         if (points.size() < 3) return;
 
         context->ClearPath();
@@ -1095,7 +1105,7 @@ namespace UltraCanvas {
         context->ClosePath();
 
         SVGStyle& style = styleStack.top();
-        Rect2Df bounds = GetElementBounds(elem);
+        Rect2Dd bounds = GetElementBounds(elem);
 
         FillAndStroke(style, bounds);
     }
@@ -1111,7 +1121,7 @@ namespace UltraCanvas {
         context->LineTo(x2, y2);
 
         SVGStyle& style = styleStack.top();
-        Rect2Df bounds = {std::min(x1, x2), std::min(y1, y2),
+        Rect2Dd bounds = {std::min(x1, x2), std::min(y1, y2),
                        std::abs(x2 - x1), std::abs(y2 - y1)};
 
         // Lines only have stroke
@@ -1125,7 +1135,7 @@ namespace UltraCanvas {
         const char* pointsAttr = elem->Attribute("points");
         if (!pointsAttr) return;
 
-        std::vector<Point2Df> points = ParsePoints(pointsAttr);
+        std::vector<Point2Dd> points = ParsePoints(pointsAttr);
         if (points.size() < 2) return;
 
         context->ClearPath();
@@ -1136,7 +1146,7 @@ namespace UltraCanvas {
         }
 
         SVGStyle& style = styleStack.top();
-        Rect2Df bounds = GetElementBounds(elem);
+        Rect2Dd bounds = GetElementBounds(elem);
 
         // Polylines typically only have stroke
         if (style.strokeColor.a > 0 || !style.strokeGradientId.empty()) {
@@ -1191,7 +1201,7 @@ namespace UltraCanvas {
         if (href) {
             // Load and render image
             // This would need actual image loading implementation
-            context->DrawImage(href, Rect2Df(x, y, width, height), ImageFitMode::Contain);
+            context->DrawImage(href, Rect2Dd(x, y, width, height), ImageFitMode::Contain);
         }
     }
 
@@ -1208,7 +1218,7 @@ namespace UltraCanvas {
         }
     }
 
-    void SVGElementRenderer::FillAndStroke(const SVGStyle& style, const Rect2Df& bounds) {
+    void SVGElementRenderer::FillAndStroke(const SVGStyle& style, const Rect2Dd& bounds) {
         // Apply fill
         if (style.fillColor.a > 0 || !style.fillGradientId.empty()) {
             ApplyFill(style, bounds);
@@ -1246,7 +1256,7 @@ namespace UltraCanvas {
         }
     }
 
-    void SVGElementRenderer::ApplyFill(const SVGStyle& style, const Rect2Df& bounds) {
+    void SVGElementRenderer::ApplyFill(const SVGStyle& style, const Rect2Dd& bounds) {
         if (!style.fillGradientId.empty()) {
             SVGGradient* gradient = const_cast<SVGDocument&>(document).GetGradient(style.fillGradientId);
             if (gradient) {
@@ -1259,7 +1269,7 @@ namespace UltraCanvas {
         }
     }
 
-    void SVGElementRenderer::ApplyStroke(const SVGStyle& style, const Rect2Df& bounds) {
+    void SVGElementRenderer::ApplyStroke(const SVGStyle& style, const Rect2Dd& bounds) {
         if (!style.strokeGradientId.empty()) {
             SVGGradient* gradient = const_cast<SVGDocument&>(document).GetGradient(style.strokeGradientId);
             if (gradient) {
@@ -1342,8 +1352,8 @@ namespace UltraCanvas {
         return transform;
     }
 
-    std::vector<Point2Df> SVGElementRenderer::ParsePoints(const std::string& pointsStr) {
-        std::vector<Point2Df> points;
+    std::vector<Point2Dd> SVGElementRenderer::ParsePoints(const std::string& pointsStr) {
+        std::vector<Point2Dd> points;
         size_t pos = 0;
         std::vector<float> coords = SVGPathParser::ParseNumbers(pointsStr, pos);
 
@@ -1386,16 +1396,16 @@ namespace UltraCanvas {
         return std::stof(numStr);
     }
 
-    Rect2Df SVGElementRenderer::GetElementBounds(tinyxml2::XMLElement* elem) {
+    Rect2Dd SVGElementRenderer::GetElementBounds(tinyxml2::XMLElement* elem) {
         // Simple bounds calculation - would need more sophisticated implementation
         std::string name = elem->Name();
-        Rect2Df bounds{0, 0, 100, 100};
+        Rect2Dd bounds{0, 0, 100, 100};
 
         if (name == "rect") {
-            bounds.x = ParseFloatAttribute(elem, "x", 0);
-            bounds.y = ParseFloatAttribute(elem, "y", 0);
-            bounds.width = ParseFloatAttribute(elem, "width", 100);
-            bounds.height = ParseFloatAttribute(elem, "height", 100);
+            finalBounds.x = ParseFloatAttribute(elem, "x", 0);
+            finalBounds.y = ParseFloatAttribute(elem, "y", 0);
+            finalBounds.width = ParseFloatAttribute(elem, "width", 100);
+            finalBounds.height = ParseFloatAttribute(elem, "height", 100);
         } else if (name == "circle") {
             float cx = ParseFloatAttribute(elem, "cx", 0);
             float cy = ParseFloatAttribute(elem, "cy", 0);
@@ -1417,7 +1427,7 @@ namespace UltraCanvas {
         } else if (name == "polygon" || name == "polyline") {
             const char* pointsAttr = elem->Attribute("points");
             if (pointsAttr) {
-                std::vector<Point2Df> points = ParsePoints(pointsAttr);
+                std::vector<Point2Dd> points = ParsePoints(pointsAttr);
                 if (!points.empty()) {
                     float minX = points[0].x, maxX = points[0].x;
                     float minY = points[0].y, maxY = points[0].y;
@@ -1442,20 +1452,32 @@ namespace UltraCanvas {
     }
 
 // UltraCanvasSVGElement implementation
-    UltraCanvasSVGElement::UltraCanvasSVGElement(const std::string& identifier, long x, long y, long w, long h = 24)
+    UltraCanvasSVGElement::UltraCanvasSVGElement(const std::string& identifier, float x, float y, float w, float h = 24)
             : UltraCanvasUIElement(identifier, x, y, w, h),
             document(std::make_unique<SVGDocument>()) {
     }
 
     bool UltraCanvasSVGElement::LoadFromFile(const std::string& filepath) {
-        return document->LoadFromFile(filepath);
+        lastError.clear();
+        if (!document->LoadFromFile(filepath)) {
+            lastError = document->GetLastError();
+            if (lastError.empty()) lastError = "Could not load SVG: " + filepath;
+            return false;
+        }
+        return true;
     }
 
     bool UltraCanvasSVGElement::LoadFromString(const std::string& svgContent) {
-        return document->LoadFromString(svgContent);
+        lastError.clear();
+        if (!document->LoadFromString(svgContent)) {
+            lastError = document->GetLastError();
+            if (lastError.empty()) lastError = "Could not parse SVG content.";
+            return false;
+        }
+        return true;
     }
 
-    void UltraCanvasSVGElement::Render(IRenderContext* context, const Rect2Di& dirtyRect) {
+    void UltraCanvasSVGElement::Render(IRenderContext* context, const Rect2Df& dirtyRect) {
         if (!document || !context) return;
 
         context->PushState();
@@ -1467,19 +1489,19 @@ namespace UltraCanvas {
         // Handle aspect ratio
         if (preserveAspectRatio) {
             float docAspect = document->GetWidth() / document->GetHeight();
-            float boundsAspect = static_cast<float>(bounds.width) / static_cast<float>(bounds.height);
+            float boundsAspect = static_cast<float>(finalBounds.width) / static_cast<float>(finalBounds.height);
 
             if (docAspect > boundsAspect) {
                 // Document is wider - scale based on width
-                float scaleFactor = static_cast<float>(bounds.width) / document->GetWidth() * scale;
-                float pos_y = (bounds.height - document->GetHeight() * scaleFactor) / 2 + bounds.y;
-                context->Translate(bounds.x, pos_y);
+                float scaleFactor = static_cast<float>(finalBounds.width) / document->GetWidth() * scale;
+                float pos_y = (finalBounds.height - document->GetHeight() * scaleFactor) / 2 + finalBounds.y;
+                context->Translate(finalBounds.x, pos_y);
                 context->Scale(scaleFactor, scaleFactor);
             } else {
                 // Document is taller - scale based on height
-                float scaleFactor = static_cast<float>(bounds.height) / document->GetHeight();
-                float pos_x = (bounds.width - document->GetWidth() * scaleFactor) / 2 + bounds.x;
-                context->Translate(pos_x, bounds.y);
+                float scaleFactor = static_cast<float>(finalBounds.height) / document->GetHeight();
+                float pos_x = (finalBounds.width - document->GetWidth() * scaleFactor) / 2 + finalBounds.x;
+                context->Translate(pos_x, finalBounds.y);
                 context->Scale(scaleFactor, scaleFactor);
             }
         } else {
@@ -1487,9 +1509,9 @@ namespace UltraCanvas {
             if (scale != 1.0f) {
                 context->Scale(scale, scale);
             }
-            context->Translate(bounds.x, bounds.y);
-            float scaleX = static_cast<float>(bounds.width) / document->GetWidth();
-            float scaleY = static_cast<float>(bounds.height) / document->GetHeight();
+            context->Translate(finalBounds.x, finalBounds.y);
+            float scaleX = static_cast<float>(finalBounds.width) / document->GetWidth();
+            float scaleY = static_cast<float>(finalBounds.height) / document->GetHeight();
             context->Scale(scaleX, scaleY);
         }
 

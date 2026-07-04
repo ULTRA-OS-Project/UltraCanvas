@@ -1,7 +1,7 @@
 // UltraCanvasRadio.h
 // Radio button: circular indicator with center dot, exclusive selection via UltraCanvasRadioGroup.
-// Version: 1.0.0
-// Last Modified: 2026-05-07
+// Version: 1.1.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -48,26 +48,39 @@ namespace UltraCanvas {
         void DrawFocusRingShape(IRenderContext* ctx) override;
 
     public:
-        UltraCanvasRadio(const std::string& identifier = "",
-                         long x = 0, long y = 0, long w = 150, long h = 24,
+        // ===== CONSTRUCTORS =====
+        UltraCanvasRadio(const std::string& identifier,
+                         float x, float y, float w, float h,
                          const std::string& labelText = "");
+
+        UltraCanvasRadio(const std::string& identifier,
+                         float w, float h,
+                         const std::string& labelText = "")
+            : UltraCanvasRadio(identifier, -1, -1, w, h, labelText) {}
+
+        UltraCanvasRadio(const std::string& identifier, const std::string& labelText)
+            : UltraCanvasRadio(identifier, -1, -1, -1, -1, labelText) {}
+
+        explicit UltraCanvasRadio(const std::string& labelText = "")
+            : UltraCanvasRadio("", -1, -1, -1, -1, labelText) {}
+
         ~UltraCanvasRadio() override = default;
 
         // Indeterminate is invalid for radios; clamp to Unchecked.
         void SetCheckState(CheckedState state) override;
 
         // ===== APPEARANCE =====
-        void SetVisualStyle(const RadioVisualStyle& s) { visualStyle = s; layoutDirty = true; }
+        void SetVisualStyle(const RadioVisualStyle& s) { visualStyle = s; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }
         RadioVisualStyle& GetVisualStyle() { return visualStyle; }
         const RadioVisualStyle& GetVisualStyle() const { return visualStyle; }
 
-        void SetBoxSize(float size) { visualStyle.boxSize = size; layoutDirty = true; }
+        void SetBoxSize(float size) { visualStyle.boxSize = size; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }
         float GetBoxSize() const { return visualStyle.boxSize; }
 
         // ===== FACTORY =====
         static std::shared_ptr<UltraCanvasRadio> Create(
                 const std::string& identifier,
-                long x, long y,
+                float x, float y,
                 const std::string& text = "",
                 bool checked = false);
     };

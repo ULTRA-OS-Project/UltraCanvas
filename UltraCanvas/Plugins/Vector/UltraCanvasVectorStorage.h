@@ -136,8 +136,8 @@ namespace UltraCanvas {
             Matrix3x3 SkewY(float angle);
             static Matrix3x3 FromValues(float a, float b, float c, float d, float e, float f);
             Matrix3x3 operator*(const Matrix3x3 &o) const;
-            Point2Df Transform(const Point2Df &p) const;
-            Rect2Df Transform(const Rect2Df& rect) const;
+            Point2Dd Transform(const Point2Dd &p) const;
+            Rect2Dd Transform(const Rect2Dd& rect) const;
             float Determinant() const;
             Matrix3x3 Inverse() const;
         };
@@ -153,15 +153,15 @@ namespace UltraCanvas {
         struct PathData {
             std::vector<PathCommand> commands;
             bool Closed = false;
-            mutable std::optional<Rect2Df> cachedBounds;
+            mutable std::optional<Rect2Dd> cachedBounds;
             mutable std::optional<float> length;
-            mutable std::optional<Point2Df> flattenedPoints;
+            mutable std::optional<Point2Dd> flattenedPoints;
 
-            Rect2Df GetBounds() const {
+            Rect2Dd GetBounds() const {
                 if (cachedBounds) return *cachedBounds;
                 if (commands.empty()) return {0, 0, 0, 0};
                 float minX = 1e9f, minY = 1e9f, maxX = -1e9f, maxY = -1e9f;
-                Point2Df cur{0, 0};
+                Point2Dd cur{0, 0};
                 for (const auto &c: commands) {
                     if ((c.Type == PathCommandType::MoveTo || c.Type == PathCommandType::LineTo) &&
                         c.Parameters.size() >= 2) {
@@ -184,7 +184,7 @@ namespace UltraCanvas {
                     }
                 }
                 if (minX > maxX) return {0, 0, 0, 0};
-                cachedBounds = Rect2Df{minX, minY, maxX - minX, maxY - minY};
+                cachedBounds = Rect2Dd{minX, minY, maxX - minX, maxY - minY};
                 return *cachedBounds;
             }
 
@@ -194,17 +194,17 @@ namespace UltraCanvas {
 // ===== GRADIENT DATA (Uses GradientStop from RenderContext.h) =====
 
         struct LinearGradientData {
-            Point2Df Start{0, 0};
-            Point2Df End{1, 0};
+            Point2Dd Start{0, 0};
+            Point2Dd End{1, 0};
             std::vector<GradientStop> Stops;
             GradientUnits Units = GradientUnits::ObjectBoundingBox;
             GradientSpreadMethod SpreadMethod = GradientSpreadMethod::Pad;
             std::optional<Matrix3x3> Transform;
         };
         struct RadialGradientData {
-            Point2Df Center{0.5f, 0.5f};
+            Point2Dd Center{0.5f, 0.5f};
             float Radius = 0.5f;
-            Point2Df FocalPoint{0.5f, 0.5f};
+            Point2Dd FocalPoint{0.5f, 0.5f};
             float FocalRadius = 0;
             std::vector<GradientStop> Stops;
             GradientUnits Units = GradientUnits::ObjectBoundingBox;
@@ -212,7 +212,7 @@ namespace UltraCanvas {
             std::optional<Matrix3x3> Transform;
         };
         struct ConicalGradientData {
-            Point2Df Center{0.5f, 0.5f};
+            Point2Dd Center{0.5f, 0.5f};
             float StartAngle = 0;
             float EndAngle = 360;
             std::vector<GradientStop> Stops;
@@ -220,8 +220,8 @@ namespace UltraCanvas {
             std::optional<Matrix3x3> Transform;
         };
         struct MeshPatch {
-            std::array<Point2Df, 4> Corners;
-            std::array<Point2Df, 8> ControlPoints;
+            std::array<Point2Dd, 4> Corners;
+            std::array<Point2Dd, 8> ControlPoints;
             std::array<Color, 4> Colors;
         };
         struct MeshGradientData {
@@ -235,8 +235,8 @@ namespace UltraCanvas {
 
         struct PatternData {
             std::shared_ptr<VectorGroup> Content;
-            Rect2Df ViewBox;
-            Rect2Df PatternRect;
+            Rect2Dd ViewBox;
+            Rect2Dd PatternRect;
             GradientUnits Units = GradientUnits::ObjectBoundingBox;
             std::optional<Matrix3x3> Transform;
         };
@@ -279,7 +279,7 @@ namespace UltraCanvas {
         struct TextSpanData {
             std::string Text;
             VectorTextStyle Style;
-            std::optional<Point2Df> Position;
+            std::optional<Point2Dd> Position;
         };
         struct TextPathData {
             std::vector<TextSpanData> Spans;
@@ -295,7 +295,7 @@ namespace UltraCanvas {
         };
         struct FilterData {
             std::vector<FilterEffect> Effects;
-            Rect2Df FilterRegion;
+            Rect2Dd FilterRegion;
             GradientUnits Units = GradientUnits::ObjectBoundingBox;
         };
         struct ClipPathData {
@@ -304,13 +304,13 @@ namespace UltraCanvas {
         };
         struct MaskData {
             std::vector<std::shared_ptr<VectorElement>> Elements;
-            Rect2Df MaskRegion;
+            Rect2Dd MaskRegion;
         };
         struct MarkerData {
             std::shared_ptr<VectorGroup> Content;
-            Rect2Df ViewBox;
-            Point2Df RefPoint;
-            Size2Df MarkerSize{3, 3};
+            Rect2Dd ViewBox;
+            Point2Dd RefPoint;
+            Size2Dd MarkerSize{3, 3};
             MarkerOrientation Orientation = MarkerOrientation::Auto;
         };
 
@@ -346,11 +346,11 @@ namespace UltraCanvas {
 
             virtual ~VectorElement() { Parent.reset(); };
 
-            virtual Rect2Df GetBoundingBox() const { return {0, 0, 0, 0}; }
+            virtual Rect2Dd GetBoundingBox() const { return {0, 0, 0, 0}; }
             virtual std::shared_ptr<VectorElement> Clone() const = 0;
             Matrix3x3 GetGlobalTransform() const;
-            Point2Df LocalToGlobal(const Point2Df& point) const;
-            Point2Df GlobalToLocal(const Point2Df& point) const;
+            Point2Dd LocalToGlobal(const Point2Dd& point) const;
+            Point2Dd GlobalToLocal(const Point2Dd& point) const;
             bool HasClass(const std::string &c) const {
                 return std::find(Classes.begin(), Classes.end(), c) != Classes.end();
             }
@@ -360,69 +360,69 @@ namespace UltraCanvas {
 
         class VectorRect : public VectorElement {
         public:
-            Rect2Df Bounds;
+            Rect2Dd Bounds;
             float RadiusX = 0;
             float RadiusY = 0;
 
             VectorRect() { Type = VectorElementType::Rectangle; }
 
-            Rect2Df GetBoundingBox() const;
+            Rect2Dd GetBoundingBox() const;
 
             std::shared_ptr<VectorElement> Clone() const override;
         };
 
         class VectorCircle : public VectorElement {
         public:
-            Point2Df Center;
+            Point2Dd Center;
             float Radius = 0;
 
             VectorCircle() { Type = VectorElementType::Circle; }
 
-            Rect2Df GetBoundingBox() const override;
+            Rect2Dd GetBoundingBox() const override;
 
             std::shared_ptr<VectorElement> Clone() const;
         };
 
         class VectorEllipse : public VectorElement {
         public:
-            Point2Df Center;
+            Point2Dd Center;
             float RadiusX = 0;
             float RadiusY = 0;
 
             VectorEllipse() { Type = VectorElementType::Ellipse; }
-            Rect2Df GetBoundingBox() const override;
+            Rect2Dd GetBoundingBox() const override;
             std::shared_ptr<VectorElement> Clone() const override;
         };
 
         class VectorLine : public VectorElement {
         public:
-            Point2Df Start;
-            Point2Df End;
+            Point2Dd Start;
+            Point2Dd End;
 
             VectorLine() { Type = VectorElementType::Line; }
 
-            Rect2Df GetBoundingBox() const override;
+            Rect2Dd GetBoundingBox() const override;
 
             std::shared_ptr<VectorElement> Clone() const;
         };
 
         class VectorPolyline : public VectorElement {
         public:
-            std::vector<Point2Df> Points;
+            std::vector<Point2Dd> Points;
 
             VectorPolyline() { Type = VectorElementType::Polyline; }
 
-            Rect2Df GetBoundingBox() const;
+            Rect2Dd GetBoundingBox() const;
             std::shared_ptr<VectorElement> Clone() const override;
         };
 
         class VectorPolygon : public VectorElement {
         public:
-            std::vector<Point2Df> Points;
+            std::vector<Point2Dd> Points;
 
             VectorPolygon() { Type = VectorElementType::Polygon; }
 
-            Rect2Df GetBoundingBox() const override;
+            Rect2Dd GetBoundingBox() const override;
 
             std::shared_ptr<VectorElement> Clone() const override;
         };
@@ -433,7 +433,7 @@ namespace UltraCanvas {
 
             VectorPath() { Type = VectorElementType::Path; }
 
-            Rect2Df GetBoundingBox() const;
+            Rect2Dd GetBoundingBox() const;
             void AddCommand(const PathCommand& cmd);
 
             std::shared_ptr<VectorElement> Clone() const override;
@@ -446,23 +446,23 @@ namespace UltraCanvas {
             void ClosePath();
 
             float GetLength() const;
-            Point2Df GetPointAtLength(float length) const;
+            Point2Dd GetPointAtLength(float length) const;
             float GetAngleAtLength(float length) const;
 
-            std::vector<Point2Df> Flatten(float tolerance) const;
+            std::vector<Point2Dd> Flatten(float tolerance) const;
         };
 
 // ===== TEXT =====
 
         class VectorText : public VectorElement {
         public:
-            Point2Df Position;
+            Point2Dd Position;
             std::vector<TextSpanData> Spans;
             VectorTextStyle BaseStyle;
 
             VectorText() { Type = VectorElementType::Text; }
 
-            Rect2Df GetBoundingBox() const override;
+            Rect2Dd GetBoundingBox() const override;
 
             std::shared_ptr<VectorElement> Clone() const;
 
@@ -477,7 +477,7 @@ namespace UltraCanvas {
             TextPathData Data;
 
             VectorTextPath() { Type = VectorElementType::TextPath; }
-            Rect2Df GetBoundingBox() const override;
+            Rect2Dd GetBoundingBox() const override;
             std::shared_ptr<VectorElement> Clone() const override;
         };
 
@@ -489,7 +489,7 @@ namespace UltraCanvas {
 
             VectorGroup() { Type = VectorElementType::Group; }
 
-            Rect2Df GetBoundingBox() const override;
+            Rect2Dd GetBoundingBox() const override;
 
             std::shared_ptr<VectorElement> Clone() const;
 
@@ -502,7 +502,7 @@ namespace UltraCanvas {
 
         class VectorSymbol : public VectorGroup {
         public:
-            Rect2Df ViewBox;
+            Rect2Dd ViewBox;
             std::string PreserveAspectRatio = "xMidYMid meet";
 
             VectorSymbol() { Type = VectorElementType::Symbol; }
@@ -513,12 +513,12 @@ namespace UltraCanvas {
         class VectorUse : public VectorElement {
         public:
             std::string Reference;
-            Point2Df Position;
-            Size2Df Size;
+            Point2Dd Position;
+            Size2Dd Size;
 
             VectorUse() { Type = VectorElementType::Use; }
 
-            Rect2Df GetBoundingBox() const override;
+            Rect2Dd GetBoundingBox() const override;
 
             std::shared_ptr<VectorElement> Clone() const override;
         };
@@ -527,14 +527,14 @@ namespace UltraCanvas {
 
         class VectorImage : public VectorElement {
         public:
-            Rect2Df Bounds;
+            Rect2Dd Bounds;
             std::string Source;
             std::vector<uint8_t> EmbeddedData;
             std::string MimeType;
 
             VectorImage() { Type = VectorElementType::Image; }
 
-            Rect2Df GetBoundingBox() const override;
+            Rect2Dd GetBoundingBox() const override;
 
             std::shared_ptr<VectorElement> Clone() const override;
         };
@@ -545,7 +545,7 @@ namespace UltraCanvas {
 
             VectorGradient() { Type = VectorElementType::LinearGradient; }
 
-            Rect2Df GetBoundingBox() const override { return {}; }
+            Rect2Dd GetBoundingBox() const override { return {}; }
 
             std::shared_ptr<VectorElement> Clone() const override;
         };
@@ -556,7 +556,7 @@ namespace UltraCanvas {
 
             VectorPattern() { Type = VectorElementType::Pattern; }
 
-            Rect2Df GetBoundingBox() const override { return {}; }
+            Rect2Dd GetBoundingBox() const override { return {}; }
 
             std::shared_ptr<VectorElement> Clone() const override;
         };
@@ -567,7 +567,7 @@ namespace UltraCanvas {
 
             VectorFilter() { Type = VectorElementType::Filter; }
 
-            Rect2Df GetBoundingBox() const override { return {}; }
+            Rect2Dd GetBoundingBox() const override { return {}; }
 
             std::shared_ptr<VectorElement> Clone() const override;
         };
@@ -578,7 +578,7 @@ namespace UltraCanvas {
 
             VectorClipPath() { Type = VectorElementType::ClipPath; }
 
-            Rect2Df GetBoundingBox() const override;
+            Rect2Dd GetBoundingBox() const override;
 
             std::shared_ptr<VectorElement> Clone() const override;
         };
@@ -589,7 +589,7 @@ namespace UltraCanvas {
 
             VectorMask() { Type = VectorElementType::Mask; }
 
-            Rect2Df GetBoundingBox() const override { return Data.MaskRegion; }
+            Rect2Dd GetBoundingBox() const override { return Data.MaskRegion; }
 
             std::shared_ptr<VectorElement> Clone() const override;
         };
@@ -600,7 +600,7 @@ namespace UltraCanvas {
 
             VectorMarker() { Type = VectorElementType::Marker; }
 
-            Rect2Df GetBoundingBox() const override { return {}; }
+            Rect2Dd GetBoundingBox() const override { return {}; }
 
             std::shared_ptr<VectorElement> Clone() const override;
         };
@@ -622,8 +622,8 @@ namespace UltraCanvas {
 
         class VectorDocument {
         public:
-            Size2Df Size;
-            Rect2Df ViewBox;
+            Size2Dd Size;
+            Rect2Dd ViewBox;
             std::string PreserveAspectRatio = "xMidYMid meet";
             std::optional<Color> BackgroundColor;
             std::vector<std::shared_ptr<VectorLayer>> Layers;
@@ -641,7 +641,7 @@ namespace UltraCanvas {
             std::shared_ptr<VectorElement> GetDefinition(const std::string &id) const;
             std::shared_ptr<VectorElement> FindElementById(const std::string &id) const;
             std::vector<std::shared_ptr<VectorElement>> FindElementsByClass(const std::string& className) const;
-            Rect2Df GetBoundingBox() const;
+            Rect2Dd GetBoundingBox() const;
             void Clear();
             std::shared_ptr<VectorDocument> Clone() const;
         };

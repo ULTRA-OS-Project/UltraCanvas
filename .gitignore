@@ -3,6 +3,7 @@ CMakeFiles/
 .idea/
 .vscode/
 /cmake-build-debug/
+/cmake-build-release/
 /build/
 Apps/Texter/build/
 /1icons/

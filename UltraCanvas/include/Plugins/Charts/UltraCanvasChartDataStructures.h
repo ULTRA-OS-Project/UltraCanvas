@@ -101,14 +101,14 @@ namespace UltraCanvas {
         // Helper methods
         double GetRight() const { return x + width; }
         double GetBottom() const { return y + height; }
-        Point2Df GetCenter() const { return Point2Df(x + (width / 2.0f), y + (height / 2.0f)); }
+        Point2Dd GetCenter() const { return Point2Dd(x + (width / 2.0f), y + (height / 2.0f)); }
         bool Contains(float px, float py) const {
             return px >= x && px < GetRight() && py >= y && py < GetBottom();
         }
 
         // Convert to UltraCanvas Rect2D
-        Rect2Df ToRect2D() const {
-            return Rect2Df(x, y, width, height);
+        Rect2Dd ToRect2D() const {
+            return Rect2Dd(x, y, width, height);
         }
     };
 
@@ -155,8 +155,8 @@ namespace UltraCanvas {
             return plotArea.y + plotArea.height - (dataY - dataBounds.minY) / dataBounds.GetYRange() * plotArea.height;
         }
 
-        Point2Df DataToScreen(double dataX, double dataY) const {
-            return Point2Df(DataToScreenX(dataX), DataToScreenY(dataY));
+        Point2Dd DataToScreen(double dataX, double dataY) const {
+            return Point2Dd(DataToScreenX(dataX), DataToScreenY(dataY));
         }
 
         // Transform screen coordinates back to data coordinates
@@ -171,8 +171,8 @@ namespace UltraCanvas {
             return dataBounds.minY + (plotArea.y + plotArea.height - screenY) / plotArea.height * dataBounds.GetYRange();
         }
 
-        Point2Df ScreenToData(float screenX, float screenY) const {
-            return Point2Df(static_cast<float>(ScreenToDataX(screenX)), static_cast<float>(ScreenToDataY(screenY)));
+        Point2Dd ScreenToData(float screenX, float screenY) const {
+            return Point2Dd(static_cast<float>(ScreenToDataX(screenX)), static_cast<float>(ScreenToDataY(screenY)));
         }
     };
 } // namespace UltraCanvas

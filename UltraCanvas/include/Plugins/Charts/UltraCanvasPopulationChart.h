@@ -89,12 +89,12 @@ namespace UltraCanvas {
         int titleFontSize;
 
         // Layout
-        int chartPaddingLeft;
-        int chartPaddingRight;
-        int chartPaddingTop;
-        int chartPaddingBottom;
-        int centerX;
-        int plotWidth;
+        float chartPaddingLeft;
+        float chartPaddingRight;
+        float chartPaddingTop;
+        float chartPaddingBottom;
+        float centerX;
+        float plotWidth;
 
         // Legend
         std::string legendPosition;
@@ -122,10 +122,10 @@ namespace UltraCanvas {
         void RenderTooltip(IRenderContext* ctx, int groupIndex, int mouseX, int mouseY);
 
         // Helper methods
-        void DrawHorizontalBar(IRenderContext* ctx, int x, int y, int width, int height,
+        void DrawHorizontalBar(IRenderContext* ctx, float x, float y, float width, float height,
                                const Color& color, bool rightSide);
-        void DrawAgeLabel(IRenderContext* ctx, const std::string& label, int y);
-        void DrawAxisValue(IRenderContext* ctx, double value, int x, int y);
+        void DrawAgeLabel(IRenderContext* ctx, const std::string& label, float y);
+        void DrawAxisValue(IRenderContext* ctx, double value, float  x, float y);
 
     public:
         // Constructor
@@ -197,7 +197,7 @@ namespace UltraCanvas {
         double GetTotalPopulation() const;
 
         // Override base class rendering
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         bool OnEvent(const UCEvent& event) override;
     };
 

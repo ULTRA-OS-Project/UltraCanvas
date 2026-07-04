@@ -242,7 +242,6 @@ namespace UltraCanvas {
         label->SetBackgroundColor(Color(245, 245, 245, 255));
         label->SetBorders(1.0f);
         label->SetPadding(8.0f);
-        label->SetAutoResize(true);
         return label;
     }
 
@@ -715,7 +714,6 @@ namespace UltraCanvas {
 //        title->SetFontSize(18);
 //        title->SetFontWeight(FontWeight::Bold);
 //        title->SetTextColor(Color(255, 140, 0, 255));
-//        title->SetAutoResize(true);
 //        container->AddChild(title);
 //
 //        // Format Description
@@ -808,7 +806,6 @@ namespace UltraCanvas {
         title->SetFontSize(18);
         title->SetFontWeight(FontWeight::Bold);
         title->SetTextColor(Color(138, 43, 226, 255));
-        title->SetAutoResize(true);
         container->AddChild(title);
 
         // Format Description
@@ -908,7 +905,6 @@ namespace UltraCanvas {
         title->SetFontSize(18);
         title->SetFontWeight(FontWeight::Bold);
         title->SetTextColor(Color(184, 134, 11, 255));
-        title->SetAutoResize(true);
         container->AddChild(title);
 
         // Format Description

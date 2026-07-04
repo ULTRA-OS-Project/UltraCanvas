@@ -1,7 +1,7 @@
 // OS/MSWindows/UltraCanvasWindowsWindow.h
 // Windows platform window implementation for UltraCanvas Framework
-// Version: 1.0.1
-// Last Modified: 2026-04-05
+// Version: 1.1.0 - Per-Monitor HiDPI (deviceScale) support
+// Last Modified: 2026-07-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -109,6 +109,15 @@ namespace UltraCanvas {
 
     protected:
         void DoResizeNative() override;
+        // Query the monitor DPI as a scale (GetDpiForWindow()/96, with fallbacks).
+        float QueryNativeDeviceScale() const override;
+        // Rebuild the Cairo image surface at physical px + device scale.
+        bool RecreateNativeSurface() override;
+
+    private:
+        // Adjust a client RECT to a full window RECT honoring per-monitor DPI
+        // (AdjustWindowRectExForDpi when available, else AdjustWindowRectEx).
+        void AdjustWindowRectForDpi(RECT* rect, DWORD style, DWORD exStyle) const;
     };
 
 } // namespace UltraCanvas

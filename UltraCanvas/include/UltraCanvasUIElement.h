@@ -1,7 +1,12 @@
 // include/UltraCanvasUIElement.h
-// Modern C++ base class system for all UI components
-// Version: 3.1.0
-// Last Modified: 2026-05-11
+// Modern C++ base class system for all UI components.
+// Inherits from UltraCanvas::CSSLayout::Element so the CSS layout engine
+// can drive geometry. UI-only concerns (visibility, hover/press state,
+// border *visual* properties, render context, window, tooltip) stay on
+// this class; geometry, box model, identifier, parent link, z-index live
+// on the engine base.
+// Version: 4.0.0
+// Last Modified: 2026-05-27
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -9,6 +14,7 @@
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasConfig.h"
+#include "CSSLayout/CSSLayout.h"
 #include <iostream>
 #include <string>
 #include <vector>
@@ -18,6 +24,7 @@
 #include <functional>
 #include <chrono>
 #include <algorithm>
+#include <optional>
 
 namespace UltraCanvas {
 
@@ -48,13 +55,16 @@ namespace UltraCanvas {
         Selected
     };
 
-    struct ElementBorder {
-        int width = 0;
+    // Per-side visual properties of a border. Width lives in
+    // CSSLayout::BoxModel::border (Dimension-typed) on the engine base.
+    struct BorderSideVisual {
         Color color = Color(0, 0, 0, 255);
-        int radius = 0;
+        float radius = 0.0f;             // legacy per-side radius (CSS border-radius is per-corner)
         UCDashPattern dashPattern;
+    };
 
-        ElementBorder(int w, const Color& c, int r, UCDashPattern p) : width(w), color(c), radius(r), dashPattern(p) {}
+    struct BordersVisual {
+        BorderSideVisual left, right, top, bottom;
     };
 
     struct ElementStateFlags {
@@ -62,8 +72,6 @@ namespace UltraCanvas {
         bool isPressed = false;
         bool isDisabled = false;
         bool isSelected = false;
-//        bool isDragging = false;
-//        bool isResizing = false;
 
         void Reset() {
             isDisabled = isHovered = isPressed = isSelected = false;
@@ -83,37 +91,33 @@ namespace UltraCanvas {
         ClickOutside
     };
 
-// ===== LEAF UI ELEMENT CLASS (NO CHILDREN) =====
-    class UltraCanvasUIElement : public std::enable_shared_from_this<UltraCanvasUIElement>  {
+    // Internal helper: resolve a Dimension to float pixels for the UI
+    // coordinate getters. Non-Px units (auto/%/fr/etc.) collapse to 0.
+    inline float dimPx(const CSSLayout::Dimension& d) {
+        return d.unit == CSSLayout::DimensionUnit::Pixels ? d.value : 0.0f;
+    }
+
+// ===== UI BASE CLASS =====
+    class UltraCanvasUIElement
+            : public CSSLayout::Element,
+              public std::enable_shared_from_this<UltraCanvasUIElement> {
     friend UltraCanvasWindowBase;
     friend UltraCanvasContainer;
     protected:
-        std::string identifier = "";
-        bool needsUpdateGeometry = true;
-        bool visible = true;
+        CSSLayout::DisplayType prevDisplayType = CSSLayout::DisplayType::Block;
         bool isPopup = false;
-        // State properties
-        int zOrder = 0;
 
         std::unique_ptr<IRenderContext> renderContext = nullptr;
-        // Mouse interaction
         UCMouseCursor mouseCursor = UCMouseCursor::Default;
-
-        std::string tooltip = "";
-
+        std::string tooltip;
         UltraCanvasWindowBase* window = nullptr;
-        UltraCanvasContainer* parentContainer = nullptr; // Parent container (not element)
         ElementStateFlags stateFlags;
-        UCMargins margin;
-        UCMargins padding;
-        std::unique_ptr<ElementBorder> borderLeft = nullptr;
-        std::unique_ptr<ElementBorder> borderRight = nullptr;
-        std::unique_ptr<ElementBorder> borderTop = nullptr;
-        std::unique_ptr<ElementBorder> borderBottom = nullptr;
         Color backgroundColor = Colors::Transparent;
 
-        Rect2Di bounds;
-        Size2Di explicitSize;
+        // Visual properties of borders (color/radius/dash per side). Widths
+        // live in the inherited CSSLayout::BoxModel::border. Lazily
+        // initialised by the first border setter call.
+        std::optional<BordersVisual> bordersVisual;
 
     public:
         std::function<bool(const UCEvent&)> eventCallback;
@@ -122,206 +126,206 @@ namespace UltraCanvas {
         std::function<void()> onPopupOpened;
 
         // ===== CONSTRUCTOR AND DESTRUCTOR =====
+        // NOTE: Passing non-zero w/h here stamps a CSS `size.width/height`
+        // on the element. Per CSS spec, an explicit width/height OVERRIDES
+        // parent stretch (grid cell, flex-grow, align-self: Stretch). For
+        // widgets you want the engine to size — children of a flex/grid
+        // container, or any widget that should stretch to its parent — use
+        // the no-size constructor (or pass 0, 0) and let the parent decide.
+        // Pass non-zero w/h only when you genuinely want a fixed-size box.
         UltraCanvasUIElement(const std::string& idstr,
-                             int x, int y, int w, int h)
-                : identifier(idstr),
-                  bounds(x, y, w, h),
-                  explicitSize(w, h) {
+                             float x, float y, float w, float h) {
+            id = idstr;
+            finalBounds = Rect2Df{x, y, w, h};
+            box.boxSizing = CSSLayout::BoxSizing::BorderBox;
+            if (w > 0) size.width  = CSSLayout::Dimension::Px(w);
+            if (h > 0) size.height = CSSLayout::Dimension::Px(h);
+            if (x > 0 || y > 0) {
+                // A widget given an explicit non-zero origin is a legacy
+                // absolutely-placed element: it must keep that (x, y) when its
+                // parent runs the layout engine, instead of being re-stacked as an
+                // in-flow child. We only do this for a real offset — flex/grid
+                // children are conventionally built with (0, 0, w, h) and must stay
+                // in flow so the parent's algorithm can place them.
+                layoutItem.position = CSSLayout::Position();
+                layoutItem.position->left = CSSLayout::Dimension::Px(x);
+                layoutItem.position->top = CSSLayout::Dimension::Px(y);
+                layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
+            }
             stateFlags.Reset();
         }
 
         explicit UltraCanvasUIElement(const std::string& idstr = "",
-                             int w = 0, int h = 0)
-                : identifier(idstr),
-                  bounds(0, 0, w, h),
-                  explicitSize(w, h) {
+                             float w = 0, float h = 0) {
+            id = idstr;
+            finalBounds = Rect2Df{0.f, 0.f, w, h};
+            if (w > 0) size.width  = CSSLayout::Dimension::Px(w);
+            if (h > 0) size.height = CSSLayout::Dimension::Px(h);
             stateFlags.Reset();
         }
 
-        virtual ~UltraCanvasUIElement();
+        ~UltraCanvasUIElement() override;
 
-        // ===== INCLUDE PROPERTY ACCESSORS =====
-        const std::string& GetIdentifier() const { return identifier; }
-        void SetIdentifier(const std::string& id) { identifier = id; }
+        // ===== IDENTIFIER (wraps inherited Element::id) =====
+        const std::string& GetIdentifier() const { return id; }
+        void SetIdentifier(const std::string& newId) { id = newId; }
 
-        const Rect2Di& GetBounds() const {
-            return bounds;
+        // ===== BOUNDS (wraps inherited Element::finalBounds) =====
+        Rect2Df GetBounds() const {
+            return Rect2Df(finalBounds.x, finalBounds.y,
+                           finalBounds.width, finalBounds.height);
         }
 
-        Rect2Di GetLocalBounds() const {
-            return {0, 0, bounds.width, bounds.height};
+        Rect2Df GetLocalBounds() const {
+            return Rect2Df(0.0f, 0.0f, finalBounds.width, finalBounds.height);
         }
 
-        Point2Di GetPosition() {
-            return Point2Di(bounds.x, bounds.y);
+        Point2Df GetPosition() {
+            return Point2Df(finalBounds.x, finalBounds.y);
         }
 
-        Size2Di GetSize() {
-            return Size2Di(bounds.width, bounds.height);
+        Size2Df GetSize() {
+            return Size2Df(finalBounds.width, finalBounds.height);
         }
 
-        Size2Di GetOriginalSize() {
-            return Size2Di(explicitSize);
+        Size2Df GetOriginalSize() {
+            return Size2Df(dimPx(size.width), dimPx(size.height));
         }
 
-        virtual bool Contains(const Point2Di& point) {
+        virtual bool Contains(const Point2Df& point) {
             return GetLocalBounds().Contains(point);
         }
 
-        virtual bool ContainsInWindow(const Point2Di& point) {
+        virtual bool ContainsInWindow(const Point2Df& point) {
             return GetBoundsInWindow().Contains(point);
         }
 
-        int GetXInWindow();
-        int GetYInWindow();
+        float GetXInWindow();
+        float GetYInWindow();
 
-        int GetWidth() const { return bounds.width; }
-        virtual int GetPreferredWidth() { return explicitSize.width; }
-        virtual int GetMinWidth() const { return 0; }
-        virtual int GetMaxWidth() const { return 10000; }
-        void SetWidth(int w) { SetBounds(bounds.x, bounds.y, w, bounds.height); }
+        float GetWidth() const { return finalBounds.width; }
+        void SetWidth(float w) { SetBounds(finalBounds.x, finalBounds.y, w, finalBounds.height); }
 
-        int GetHeight() const { return bounds.height; }
-        virtual int GetPreferredHeight() { return explicitSize.height; }
-        virtual int GetMinHeight() const { return 0; }
-        virtual int GetMaxHeight() const { return 10000; }
-        void SetHeight(int h) { SetBounds(bounds.x, bounds.y, bounds.width, h); }
+        float GetHeight() const { return finalBounds.height; }
+        void SetHeight(float h) { SetBounds(finalBounds.x, finalBounds.y, finalBounds.width, h); }
 
-        int GetX() const { return bounds.x; }
-        void SetX(int x) { SetBounds(x, bounds.y, bounds.width, bounds.height); }
-        int GetY() const { return bounds.y; }
-        void SetY(int y) { SetBounds(bounds.x, y, bounds.width, bounds.height); }
+        float GetX() const { return finalBounds.x; }
+        void SetX(float x) { SetBounds(x, finalBounds.y, finalBounds.width, finalBounds.height); }
+        float GetY() const { return finalBounds.y; }
+        void SetY(float y) { SetBounds(finalBounds.x, y, finalBounds.width, finalBounds.height); }
 
-        void SetPosition(int x, int y) { SetBounds(x, y, bounds.width, bounds.height); }
-        void SetPosition(const Point2Di& pos) { SetBounds(pos.x, pos.y, bounds.width, bounds.height); }
-        void SetSize(int w, int h) { SetBounds(bounds.x, bounds.y, w, h); }
-        void SetSize(const Size2Di& sz) { SetBounds(bounds.x, bounds.y, sz.width, sz.height); }
-        virtual void SetOriginalSize(int w, int h);
-        void SetBounds(int x, int y, int w, int h) {
-            SetBounds(Rect2Di(x, y, w, h));
-        }
+        // if possible dont use these SetSize/SetPosition as it may break layout, use SetElementSize/SetElementAbsolutePosition
+        void SetPosition(float x, float y) { SetBounds(x, y, finalBounds.width, finalBounds.height); }
+        void SetPosition(const Point2Df& pos) { SetBounds(pos.x, pos.y, finalBounds.width, finalBounds.height); }
+        void SetSize(float w, float h) { SetBounds(finalBounds.x, finalBounds.y, w, h); }
+        void SetSize(const Size2Df& sz) { SetBounds(finalBounds.x, finalBounds.y, sz.width, sz.height); }
         void SetBounds(float x, float y, float w, float h) {
-            SetBounds(Rect2Di(static_cast<int>(x), static_cast<int>(y), static_cast<int>(w), static_cast<int>(h)));
+            SetBounds(Rect2Df(x, y, w, h));
         }
-        virtual void SetBounds(const Rect2Di& b);
+        virtual void SetBounds(const Rect2Df& b);
 
-        Point2Di GetPositionInWindow() const;
-        Rect2Di GetBoundsInWindow() const {
+        void SetElementAbsolutePosition(const Point2Df& pos);
+        void SetElementSize(const Size2Df & sz);
+        void SetElementSize(const CSSLayout::Dimension &w, const CSSLayout::Dimension &h);
+
+        Point2Df GetPositionInWindow() const;
+        Rect2Df GetBoundsInWindow() const {
             return GetBounds().SetPosition(GetPositionInWindow());
         }
 
-        // ===== CONVENIENCE SETTERS - MARGIN =====
-        void SetMargin(int all) {
-            margin.left = margin.right = margin.top = margin.bottom = all;
-            RequestUpdateGeometry();
+        // ===== MARGIN SETTERS (write through to BoxModel::margin) =====
+        void SetMargin(float all) {
+            auto px = CSSLayout::Dimension::Px(all);
+            box.margin.left = box.margin.right = box.margin.top = box.margin.bottom = px;
+            InvalidateLayout();
         }
 
-        void SetMargin(int vertical, int horizontal) {
-            margin.left = margin.right = horizontal;
-            margin.top = margin.bottom = vertical;
-            RequestUpdateGeometry();
+        void SetMargin(float vertical, float horizontal) {
+            box.margin.left   = box.margin.right  = CSSLayout::Dimension::Px(horizontal);
+            box.margin.top    = box.margin.bottom = CSSLayout::Dimension::Px(vertical);
+            InvalidateLayout();
         }
 
-        void SetMargin(int top, int right, int bottom, int left) {
-            margin.left = left;
-            margin.top = top;
-            margin.right = right;
-            margin.bottom = bottom;
-            RequestUpdateGeometry();
+        void SetMargin(float top, float right, float bottom, float left) {
+            box.margin.left   = CSSLayout::Dimension::Px(left);
+            box.margin.top    = CSSLayout::Dimension::Px(top);
+            box.margin.right  = CSSLayout::Dimension::Px(right);
+            box.margin.bottom = CSSLayout::Dimension::Px(bottom);
+            InvalidateLayout();
         }
 
-        // ===== CONVENIENCE SETTERS - PADDING =====
-        void SetPadding(int all) {
-            padding.left = padding.right = padding.top = padding.bottom = all;
-            RequestUpdateGeometry();
+        // ===== PADDING SETTERS (write through to BoxModel::padding) =====
+        void SetPadding(float all) {
+            auto px = CSSLayout::Dimension::Px(all);
+            box.padding.left = box.padding.right = box.padding.top = box.padding.bottom = px;
+            InvalidateLayout();
         }
 
-        void SetPadding(int horizontal, int vertical) {
-            padding.left = padding.right = horizontal;
-            padding.top = padding.bottom = vertical;
-            RequestUpdateGeometry();
+        void SetPadding(float horizontal, float vertical) {
+            box.padding.left   = box.padding.right  = CSSLayout::Dimension::Px(horizontal);
+            box.padding.top    = box.padding.bottom = CSSLayout::Dimension::Px(vertical);
+            InvalidateLayout();
         }
 
-        void SetPadding(int top, int right, int bottom, int left) {
-            padding.left = left;
-            padding.top = top;
-            padding.right = right;
-            padding.bottom = bottom;
-            RequestUpdateGeometry();
+        void SetPadding(float top, float right, float bottom, float left) {
+            box.padding.top    = CSSLayout::Dimension::Px(top);
+            box.padding.right  = CSSLayout::Dimension::Px(right);
+            box.padding.bottom = CSSLayout::Dimension::Px(bottom);
+            box.padding.left   = CSSLayout::Dimension::Px(left);
+            InvalidateLayout();
         }
 
-        // ===== CONVENIENCE SETTERS - BORDER WIDTH (all sides same) =====
-        void SetBorders(int width, const Color& color = Colors::Black, int borderRadius = 0, const UCDashPattern& dash = UCDashPattern()) {
+        // ===== BORDER SETTERS =====
+        void SetBorders(float width, const Color& color = Colors::Black, float borderRadius = 0.0f, const UCDashPattern& dash = UCDashPattern()) {
             SetBorderLeft(width, color, borderRadius, dash);
             SetBorderRight(width, color, borderRadius, dash);
             SetBorderTop(width, color, borderRadius, dash);
             SetBorderBottom(width, color, borderRadius, dash);
         }
 
-        // ===== CONVENIENCE SETTERS - BORDER COLOR (all sides same) =====
         void SetBordersColor(const Color& color) {
-            if (borderLeft) {
-                borderLeft->color = color;
-            }
-            if (borderRight) {
-                borderRight->color = color;
-            }
-            if (borderTop) {
-                borderTop->color = color;
-            }
-            if (borderBottom) {
-                borderBottom->color = color;
-            }
+            if (!bordersVisual) bordersVisual.emplace();
+            bordersVisual->left.color = color;
+            bordersVisual->right.color = color;
+            bordersVisual->top.color = color;
+            bordersVisual->bottom.color = color;
             RequestRedraw();
         }
 
-        // ===== INDIVIDUAL BORDER SETTERS =====
-        void SetBorderLeft(int width, const Color& color = Colors::Black, int borderRadius = 0, const UCDashPattern& dash = UCDashPattern()) {
-            if (borderLeft) {
-                borderLeft->width = width;
-                borderLeft->color = color;
-                borderLeft->radius = borderRadius;
-                borderLeft->dashPattern = dash;
-                RequestUpdateGeometry();
-            } else {
-                borderLeft = std::make_unique<ElementBorder>(width, color, borderRadius, dash);
-            }
+        void SetBorderLeft(float width, const Color& color = Colors::Black, float borderRadius = 0.0f, const UCDashPattern& dash = UCDashPattern()) {
+            box.border.left = CSSLayout::Dimension::Px(width);
+            if (!bordersVisual) bordersVisual.emplace();
+            bordersVisual->left.color = color;
+            bordersVisual->left.radius = borderRadius;
+            bordersVisual->left.dashPattern = dash;
+            InvalidateLayout();
         }
 
-        void SetBorderRight(int width, const Color& color = Colors::Black, int borderRadius = 0, const UCDashPattern& dash = UCDashPattern()) {
-            if (borderRight) {
-                borderRight->width = width;
-                borderRight->color = color;
-                borderRight->radius = borderRadius;
-                borderRight->dashPattern = dash;
-                RequestUpdateGeometry();
-            } else {
-                borderRight = std::make_unique<ElementBorder>(width, color, borderRadius, dash);
-            }
+        void SetBorderRight(float width, const Color& color = Colors::Black, float borderRadius = 0.0f, const UCDashPattern& dash = UCDashPattern()) {
+            box.border.right = CSSLayout::Dimension::Px(width);
+            if (!bordersVisual) bordersVisual.emplace();
+            bordersVisual->right.color = color;
+            bordersVisual->right.radius = borderRadius;
+            bordersVisual->right.dashPattern = dash;
+            InvalidateLayout();
         }
 
-        void SetBorderTop(int width, const Color& color = Colors::Black, int borderRadius = 0, const UCDashPattern& dash = UCDashPattern()) {
-            if (borderTop) {
-                borderTop->width = width;
-                borderTop->color = color;
-                borderTop->radius = borderRadius;
-                borderTop->dashPattern = dash;
-                RequestUpdateGeometry();
-            } else {
-                borderTop = std::make_unique<ElementBorder>(width, color, borderRadius, dash);
-            }
+        void SetBorderTop(float width, const Color& color = Colors::Black, float borderRadius = 0.0f, const UCDashPattern& dash = UCDashPattern()) {
+            box.border.top = CSSLayout::Dimension::Px(width);
+            if (!bordersVisual) bordersVisual.emplace();
+            bordersVisual->top.color = color;
+            bordersVisual->top.radius = borderRadius;
+            bordersVisual->top.dashPattern = dash;
+            InvalidateLayout();
         }
 
-        void SetBorderBottom(int width, const Color& color = Colors::Black, int borderRadius = 0, const UCDashPattern& dash = UCDashPattern()) {
-            if (borderBottom) {
-                borderBottom->width = width;
-                borderBottom->color = color;
-                borderBottom->radius = borderRadius;
-                borderBottom->dashPattern = dash;
-                RequestUpdateGeometry();
-            } else {
-                borderBottom = std::make_unique<ElementBorder>(width, color, borderRadius, dash);
-            }
+        void SetBorderBottom(float width, const Color& color = Colors::Black, float borderRadius = 0.0f, const UCDashPattern& dash = UCDashPattern()) {
+            box.border.bottom = CSSLayout::Dimension::Px(width);
+            if (!bordersVisual) bordersVisual.emplace();
+            bordersVisual->bottom.color = color;
+            bordersVisual->bottom.radius = borderRadius;
+            bordersVisual->bottom.dashPattern = dash;
+            InvalidateLayout();
         }
 
         void SetBackgroundColor(const Color& color) {
@@ -333,127 +337,124 @@ namespace UltraCanvas {
         }
 
         // ===== TOTAL CALCULATIONS =====
-        int GetTotalMarginHorizontal() const {
-            return margin.left + margin.right;
+        float GetTotalMarginHorizontal() const {
+            return dimPx(box.margin.left) + dimPx(box.margin.right);
         }
 
-        int GetTotalMarginVertical() const {
-            return margin.top + margin.bottom;
+        float GetTotalMarginVertical() const {
+            return dimPx(box.margin.top) + dimPx(box.margin.bottom);
         }
 
-        int GetTotalPaddingHorizontal() const {
-            return padding.left + padding.right;
+        float GetTotalPaddingHorizontal() const {
+            return dimPx(box.padding.left) + dimPx(box.padding.right);
         }
 
-        int GetTotalPaddingVertical() const {
-            return padding.top + padding.bottom;
+        float GetTotalPaddingVertical() const {
+            return dimPx(box.padding.top) + dimPx(box.padding.bottom);
         }
 
-        int GetTotalBorderHorizontal() const {
+        float GetTotalBorderHorizontal() const {
             return GetBorderLeftWidth() + GetBorderRightWidth();
         }
 
-        int GetTotalBorderVertical() const {
+        float GetTotalBorderVertical() const {
             return GetBorderTopWidth() + GetBorderBottomWidth();
         }
 
         // ===== CONTENT AREA CALCULATIONS =====
-        // client area = bounds minus (border + padding)
-        Rect2Di GetContentRect() const {
-            return Rect2Di(
-                    bounds.x + GetBorderLeftWidth() + padding.left,
-                    bounds.y + GetBorderTopWidth() + padding.top,
-                    bounds.width - (GetTotalBorderHorizontal() + GetTotalPaddingHorizontal()),
-                    bounds.height - (GetTotalBorderVertical() + GetTotalPaddingVertical())
+        // client area = bounds minus (border + padding), in parent coords
+        Rect2Df GetContentRect() const {
+            return Rect2Df(
+                    finalBounds.x + GetBorderLeftWidth() + dimPx(box.padding.left),
+                    finalBounds.y + GetBorderTopWidth()  + dimPx(box.padding.top),
+                    finalBounds.width  - (GetTotalBorderHorizontal() + GetTotalPaddingHorizontal()),
+                    finalBounds.height - (GetTotalBorderVertical()   + GetTotalPaddingVertical())
             );
         }
-        
-        // local client area = bounds in element corrds space (0,0 is top-left) minus (border + padding)
-        Rect2Di GetLocalContentRect() const {
-            return Rect2Di(
-                    GetBorderLeftWidth() + padding.left,
-                    GetBorderTopWidth() + padding.top,
-                    bounds.width - (GetTotalBorderHorizontal() + GetTotalPaddingHorizontal()),
-                    bounds.height - (GetTotalBorderVertical() + GetTotalPaddingVertical())
+
+        // local client area = bounds in element coords (0,0 origin) minus (border + padding)
+        Rect2Df GetLocalContentRect() const {
+            return Rect2Df(
+                    GetBorderLeftWidth() + dimPx(box.padding.left),
+                    GetBorderTopWidth()  + dimPx(box.padding.top),
+                    finalBounds.width  - (GetTotalBorderHorizontal() + GetTotalPaddingHorizontal()),
+                    finalBounds.height - (GetTotalBorderVertical()   + GetTotalPaddingVertical())
             );
         }
 
         // Padding box = bounds minus border
-        Rect2Di GetPaddingRect() {
-            return Rect2Di(
-                    bounds.x + GetBorderLeftWidth(),
-                    bounds.y + GetBorderTopWidth(),
-                    bounds.width - GetTotalBorderHorizontal(),
-                    bounds.height - GetTotalBorderVertical()
+        Rect2Df GetPaddingRect() {
+            return Rect2Df(
+                    finalBounds.x + GetBorderLeftWidth(),
+                    finalBounds.y + GetBorderTopWidth(),
+                    finalBounds.width  - GetTotalBorderHorizontal(),
+                    finalBounds.height - GetTotalBorderVertical()
             );
         }
 
         // Margin box = bounds plus margins
-        Rect2Di GetMarginRect() {
-            return Rect2Di(
-                    bounds.x - margin.left,
-                    bounds.y - margin.top,
-                    bounds.width + margin.left + margin.right,
-                    bounds.height + margin.top + margin.bottom
+        Rect2Df GetMarginRect() {
+            return Rect2Df(
+                    finalBounds.x - dimPx(box.margin.left),
+                    finalBounds.y - dimPx(box.margin.top),
+                    finalBounds.width  + dimPx(box.margin.left) + dimPx(box.margin.right),
+                    finalBounds.height + dimPx(box.margin.top)  + dimPx(box.margin.bottom)
             );
         }
 
-        int GetMarginLeft() const { return margin.left; }
-        int GetMarginRight() const { return margin.right; }
-        int GetMarginTop() const { return margin.top; }
-        int GetMarginBottom() const { return margin.bottom; }
+        float GetMarginLeft() const   { return dimPx(box.margin.left); }
+        float GetMarginRight() const  { return dimPx(box.margin.right); }
+        float GetMarginTop() const    { return dimPx(box.margin.top); }
+        float GetMarginBottom() const { return dimPx(box.margin.bottom); }
 
-        int GetPaddingLeft() const { return padding.left; }
-        int GetPaddingRight() const { return padding.right; }
-        int GetPaddingTop() const { return padding.top; }
-        int GetPaddingBottom() const { return padding.bottom; }
+        float GetPaddingLeft() const   { return dimPx(box.padding.left); }
+        float GetPaddingRight() const  { return dimPx(box.padding.right); }
+        float GetPaddingTop() const    { return dimPx(box.padding.top); }
+        float GetPaddingBottom() const { return dimPx(box.padding.bottom); }
 
-        int GetBorderLeftWidth() const { return borderLeft ? borderLeft->width : 0; }
-        int GetBorderRightWidth() const { return borderRight ? borderRight->width : 0; }
-        int GetBorderTopWidth() const { return borderTop ? borderTop->width : 0; }
-        int GetBorderBottomWidth() const { return borderBottom ? borderBottom->width : 0; }
+        float GetBorderLeftWidth() const   { return dimPx(box.border.left); }
+        float GetBorderRightWidth() const  { return dimPx(box.border.right); }
+        float GetBorderTopWidth() const    { return dimPx(box.border.top); }
+        float GetBorderBottomWidth() const { return dimPx(box.border.bottom); }
 
-        // ===== CHECK IF ANY BORDER EXISTS =====
         bool HasBorder() const {
             return GetBorderLeftWidth() > 0 || GetBorderRightWidth() > 0 ||
-                   GetBorderTopWidth() > 0 || GetBorderBottomWidth() > 0;
+                   GetBorderTopWidth() > 0  || GetBorderBottomWidth() > 0;
         }
 
         bool HasPadding() const {
-            return padding.left > 0 || padding.right > 0 ||
-                   padding.top > 0 || padding.bottom > 0;
+            return GetPaddingLeft() > 0 || GetPaddingRight() > 0 ||
+                   GetPaddingTop() > 0  || GetPaddingBottom() > 0;
         }
 
         bool HasMargin() const {
-            return margin.left > 0 || margin.right > 0 ||
-                   margin.top > 0 || margin.bottom > 0;
+            return GetMarginLeft() > 0 || GetMarginRight() > 0 ||
+                   GetMarginTop() > 0  || GetMarginBottom() > 0;
         }
 
-        // if mapToParent is null then will map to toplevel window coordinates
-        Point2Di MapFromLocal(const Point2Di &localPos, UltraCanvasContainer* mapToParent = nullptr);
-        // if mapFromParent is null then will map from toplevel window coordinates
-        Point2Di MapToLocal(const Point2Di &globalPos, UltraCanvasContainer* mapFromParent = nullptr);
+        // Coordinate mapping (implementation uses GetParentContainer()).
+        Point2Df MapFromLocal(const Point2Df &localPos, UltraCanvasContainer* mapToParent = nullptr);
+        Point2Df MapToLocal(const Point2Df &globalPos, UltraCanvasContainer* mapFromParent = nullptr);
 
-        UCMouseCursor GetMouseCursor() const { return mouseCursor; }
+        // Virtual so interactive widgets (e.g. link labels) can resolve a
+        // context-dependent cursor without the caller setting one explicitly.
+        virtual UCMouseCursor GetMouseCursor() const { return mouseCursor; }
         void SetMouseCursor(UCMouseCursor cur) { mouseCursor = cur; }
 
-        int GetZOrder() const { return zOrder; }
-        void SetZIndex(int index) { zOrder = index; }
+        // ===== Z-INDEX (wraps inherited Element::zIndex) =====
+        int GetZOrder() const { return zIndex; }
+        int GetZIndex() const { return zIndex; }
+        void SetZIndex(int index) { zIndex = index; }
 
         const std::string& GetTooltip() const { return tooltip; }
         void SetTooltip(const std::string& tooltipStr) { tooltip = tooltipStr; }
 
-        // ===== HIERARCHY MANAGEMENT =====
-//        UltraCanvasContainer* GetParent() const { return parent; }
-//        void SetParent(UltraCanvasContainer* newParent) { parent = newParent; }
-
-        bool IsVisible() const { return visible; }
+        bool IsVisible() const { return layout.display != CSSLayout::DisplayType::NoDisplay; }
         void SetVisible(bool visible);
 
         bool IsDisabled() const { return stateFlags.isDisabled; }
         void SetDisabled(bool disabled) { stateFlags.isDisabled = disabled; RequestRedraw(); }
 
-        // ===== STATE MANAGEMENT =====
         bool IsHovered() const { return stateFlags.isHovered; }
         void SetHovered(bool hovered) { stateFlags.isHovered = hovered; RequestRedraw(); }
 
@@ -465,12 +466,8 @@ namespace UltraCanvas {
         virtual bool AcceptsFocus() const { return false; }
         bool CanReceiveFocus() const { return IsVisible() && !IsDisabled() && AcceptsFocus(); }
 
-
         bool IsSelected() const { return stateFlags.isSelected; }
         void SetSelected(bool selected) { stateFlags.isSelected = selected; RequestRedraw(); }
-
-//        bool IsDragging() const { return stateFlags.isDragging; }
-//        void SetDragging(bool dragging) { stateFlags.isDragging = dragging; }
 
         ElementState GetPrimaryState() const {
             if (stateFlags.isDisabled) return ElementState::Disabled;
@@ -482,14 +479,8 @@ namespace UltraCanvas {
         }
         const ElementStateFlags& GetStateFlags() const { return stateFlags; }
 
-        // ===== PARENT CONTAINER MANAGEMENT =====
-        UltraCanvasContainer* GetParentContainer() const {
-            return parentContainer;
-        }
-
-        void SetParentContainer(UltraCanvasContainer* container) {
-            parentContainer = container;
-        }
+        // ===== PARENT CONTAINER (wraps inherited Element::Parent()) =====
+        UltraCanvasContainer* GetParentContainer() const;
 
         UltraCanvasWindowBase* GetWindow() const {
             return window;
@@ -497,14 +488,12 @@ namespace UltraCanvas {
 
         virtual void SetWindow(UltraCanvasWindowBase* win);
 
-        //virtual bool IsInPopupState() { return false; }
-
-
         // ===== CORE VIRTUAL METHODS =====
         IRenderContext* GetRenderContext() const;
         // dirtyRect is in element-local coordinates (matches the translated ctx).
-        virtual void Render(IRenderContext* ctx, const Rect2Di& dirtyRect);
-        virtual void UpdateGeometry(IRenderContext* ctx) {};
+        virtual void Render(IRenderContext* ctx, const Rect2Df& dirtyRect);
+
+        void Arrange(const Rect2Df& newFinalRect, const CSSLayout::LayoutContext& ctx) override;
 
         // ===== EVENT HANDLING =====
         virtual bool OnEvent(const UCEvent& event);
@@ -512,13 +501,10 @@ namespace UltraCanvas {
 
         void SetEventCallback(std::function<bool(const UCEvent&)> callback);
 
-        bool IsNeedsUpdateGeometry() const { return needsUpdateGeometry; }
-
         // Adds localRect (in this element's local coords) to the appropriate
         // dirty-rect manager: the containing popup's, or the window's.
-        virtual void Invalidate(const Rect2Di& localRect);
+        virtual void InvalidateRect(const Rect2Df& localRect);
         void RequestRedraw();
-        void RequestUpdateGeometry();
 
         // ===== UTILITY METHODS =====
         UltraCanvasContainer* GetRootContainer();

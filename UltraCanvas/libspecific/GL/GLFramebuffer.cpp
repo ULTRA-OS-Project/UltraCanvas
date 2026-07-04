@@ -3,9 +3,12 @@
 #include "GL/GLFramebuffer.h"
 #include "UltraCanvasGLSurface.h"
 
-#ifdef __APPLE__
+#if defined(__APPLE__)
 #include <OpenGL/gl3.h>
 #include <OpenGL/gl3ext.h>
+#elif defined(_WIN32)
+// Windows: opengl32 only exports GL 1.1, so modern entry points come from GLEW.
+#include <GL/glew.h>
 #else
 #define GL_GLEXT_PROTOTYPES
 #include <GL/gl.h>

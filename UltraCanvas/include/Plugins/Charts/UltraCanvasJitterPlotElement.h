@@ -135,7 +135,7 @@ class UltraCanvasJitterPlotElement : public UltraCanvasChartElementBase {
 public:
     // ===== BEESWARM HELPER STRUCTURE (MUST BE FIRST - USED BY PRIVATE METHODS) =====
     struct BeeswarmPoint {
-        Point2Df position;      // Final rendered position
+        Point2Dd position;      // Final rendered position
         float radius;           // Circle radius
         int originalIndex;      // Index in original data array
         double yValue;          // Original Y data value
@@ -293,7 +293,7 @@ private:
     
     // Check if two circles collide
     bool CheckBeeswarmCollision(
-        const Point2Df& testPos,
+        const Point2Dd& testPos,
         float testRadius,
         const std::vector<BeeswarmPoint>& placedPoints,
         float spacing);
@@ -415,7 +415,7 @@ public:
     void SetMinScoreFilter(double minScore);
     
     // ===== RENDERING (OVERRIDE FROM BASE) =====
-    void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;  // Override base class Render
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;  // Override base class Render
     void RenderChart(IRenderContext* ctx) override;
     bool HandleChartMouseMove(const Point2Di& mousePos) override;
     
@@ -456,13 +456,13 @@ private:
     void RenderRaincloudPlot(IRenderContext* ctx);
     
     // Point rendering
-    void DrawJitterPoint(IRenderContext* ctx, const Point2Df& pos, 
+    void DrawJitterPoint(IRenderContext* ctx, const Point2Dd& pos, 
                         const Color& color, float size);
-    void DrawMeanMarker(IRenderContext* ctx, const Point2Df& pos, 
+    void DrawMeanMarker(IRenderContext* ctx, const Point2Dd& pos, 
                        MeanMarkerShape shape, float size);
     
     // Position calculation
-    Point2Df CalculatePointPosition(size_t categoryIndex, double value, 
+    Point2Dd CalculatePointPosition(size_t categoryIndex, double value, 
                                     float jitter, size_t hueIndex = 0);
     
     float GetCategoryPosition(size_t categoryIndex, size_t hueIndex = 0);

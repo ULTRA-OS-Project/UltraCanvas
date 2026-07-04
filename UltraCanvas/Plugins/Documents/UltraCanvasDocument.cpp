@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDocument.h"
+#include "UltraCanvasFileError.h"
 #include <fstream>
 #include <sstream>
 #include <algorithm>
@@ -81,90 +82,111 @@ bool UltraCanvasDocument::CreateNewDocument(UCDocumentType documentType) {
 }
 
 bool UltraCanvasDocument::LoadFromFile(const std::string& filePath, const std::string& password) {
+    lastError_.clear();
     try {
         // Read binary file
         std::vector<uint8_t> fileData = UCDocumentUtils::ReadBinaryFile(filePath);
         if (fileData.empty()) {
+            // Could be unreadable (locked / missing / no permission) or just empty.
+            std::string access = DescribeFileReadError(filePath);
+            lastError_ = !access.empty() ? access
+                                         : ("The document file is empty: " + filePath);
             return false;
         }
-        
+
         // Check file header for UCD signature
-        if (fileData.size() < 8 || 
+        if (fileData.size() < 8 ||
             std::string(fileData.begin(), fileData.begin() + 4) != "UCD\x01") {
+            lastError_ = "This is not a valid UltraCanvas document (.ucd): " + filePath;
             return false;
         }
-        
+
         // Read compression and encryption flags
         UCCompressionType compression = static_cast<UCCompressionType>(fileData[4]);
         UCEncryptionType encryption = static_cast<UCEncryptionType>(fileData[5]);
-        
+
         // Skip header (8 bytes)
         std::vector<uint8_t> contentData(fileData.begin() + 8, fileData.end());
-        
+
         // Decrypt if needed
         if (encryption != UCEncryptionType::None) {
             if (password.empty()) {
-                return false; // Password required
+                lastError_ = "This document is password-protected; a password is required.";
+                return false;
             }
-            
+
             std::vector<uint8_t> decryptedData;
             if (!DecryptData(contentData, decryptedData, password)) {
+                lastError_ = "Could not decrypt the document — the password may be incorrect.";
                 return false;
             }
             contentData = std::move(decryptedData);
         }
-        
+
         // Decompress if needed
         if (compression != UCCompressionType::None) {
             std::vector<uint8_t> decompressedData;
             if (!DecompressData(contentData, decompressedData, compression)) {
+                lastError_ = "The document is corrupt (it could not be decompressed): " + filePath;
                 return false;
             }
             contentData = std::move(decompressedData);
         }
-        
+
         // Parse XML/JSON content
         std::string contentString(contentData.begin(), contentData.end());
-        
+
         // Try XML first, then JSON
         if (contentString.front() == '<') {
-            return DeserializeFromXML(contentString);
+            if (!DeserializeFromXML(contentString)) {
+                lastError_ = "The document content is damaged (invalid XML): " + filePath;
+                return false;
+            }
+            return true;
         } else if (contentString.front() == '{') {
-            return DeserializeFromJSON(contentString);
+            if (!DeserializeFromJSON(contentString)) {
+                lastError_ = "The document content is damaged (invalid JSON): " + filePath;
+                return false;
+            }
+            return true;
         }
-        
+
+        lastError_ = "The document content format is not recognised: " + filePath;
         return false;
     }
     catch (const std::exception& e) {
-        // Log error: e.what()
+        lastError_ = std::string("Could not open the document: ") + e.what();
         return false;
     }
 }
 
 bool UltraCanvasDocument::SaveToFile(const std::string& filePath, UCCompressionType compression, const std::string& password) {
+    lastError_.clear();
     try {
         // Update modification date
         Metadata.ModifiedDate = GetCurrentDateTime();
-        
+
         // Serialize to XML (you could also choose JSON)
         std::string contentString = SerializeToXML();
         std::vector<uint8_t> contentData(contentString.begin(), contentString.end());
-        
+
         // Compress if needed
         if (compression != UCCompressionType::None) {
             std::vector<uint8_t> compressedData;
             if (!CompressData(contentData, compressedData, compression)) {
+                lastError_ = "Could not compress the document while saving.";
                 return false;
             }
             contentData = std::move(compressedData);
         }
-        
+
         // Encrypt if password provided
         UCEncryptionType encryption = UCEncryptionType::None;
         if (!password.empty()) {
             encryption = UCEncryptionType::AES256;
             std::vector<uint8_t> encryptedData;
             if (!EncryptData(contentData, encryptedData, password)) {
+                lastError_ = "Could not encrypt the document while saving.";
                 return false;
             }
             contentData = std::move(encryptedData);
@@ -193,10 +215,17 @@ bool UltraCanvasDocument::SaveToFile(const std::string& filePath, UCCompressionT
         fileData.insert(fileData.end(), contentData.begin(), contentData.end());
         
         // Write to file
-        return UCDocumentUtils::WriteBinaryFile(filePath, fileData);
+        if (!UCDocumentUtils::WriteBinaryFile(filePath, fileData)) {
+            std::string writeErr = DescribeFileWriteError(filePath);
+            lastError_ = writeErr.empty()
+                ? ("Could not write the document: " + filePath)
+                : writeErr;
+            return false;
+        }
+        return true;
     }
     catch (const std::exception& e) {
-        // Log error: e.what()
+        lastError_ = std::string("Could not save the document: ") + e.what();
         return false;
     }
 }

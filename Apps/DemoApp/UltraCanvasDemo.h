@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasDemo.h
 // Comprehensive demonstration program showing all UltraCanvas display elements
-// Version: 1.0.0
-// Last Modified: 2024-12-19
+// Version: 1.0.1
+// Last Modified: 2026-06-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -40,7 +40,8 @@ namespace UltraCanvas {
         AudioElements,
         Tools,
         Widgets,
-        Modules
+        Modules,
+        Dependencies
     };
 
 // ===== IMPLEMENTATION STATUS =====
@@ -109,7 +110,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasLabel> notImplementedLabel;
 
     public:
-        DemoLegendContainer(const std::string& identifier, long x, long y, long width, long height);
+        DemoLegendContainer(const std::string& identifier);
         void SetupLegend(const std::string& implementedIconPath,
                          const std::string& partialIconPath,
                          const std::string& notImplementedIconPath);
@@ -121,14 +122,14 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasLabel> titleLabel;
         std::shared_ptr<UltraCanvasImageElement> sourceButton;
         std::shared_ptr<UltraCanvasImageElement> docButton;
-        std::shared_ptr<UltraCanvasContainer> dividerLine;
+        std::shared_ptr<UltraCanvasUIElement> dividerLine;
         std::shared_ptr<UltraCanvasWindow> sourceWindow;
         std::shared_ptr<UltraCanvasWindow> docWindow;
         std::string currentSourceFile;
         std::string currentDocFile;
 
     public:
-        DemoHeaderContainer(const std::string& identifier, long x, long y, long width, long height);
+        DemoHeaderContainer(const std::string& identifier);
 
         void SetDemoTitle(const std::string& title);
         void SetSourceFile(const std::string& sourceFile);
@@ -207,16 +208,25 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateTextInputExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateDropdownExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateAutoCompleteExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateDatePickerExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSliderExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateColorPickerExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateScrollbarExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateLabelExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateCheckboxExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateToolbarExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateTabExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateSplitPaneExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateGroupBoxExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateBreadcrumbExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateSlideshowExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateAlbumExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateMediaViewerExamples();
 
         // Extended Functionality
         std::shared_ptr<UltraCanvasUIElement> CreateTreeViewExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateTableViewExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateSpreadsheetExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateListViewExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateMenuExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateDialogExamples();
@@ -247,13 +257,16 @@ namespace UltraCanvas {
 
         // Document Elements
         std::shared_ptr<UltraCanvasUIElement> CreateTextDocumentExamples();
-        std::shared_ptr<UltraCanvasUIElement> CreateMarkdownExamples();
-        std::shared_ptr<UltraCanvasUIElement> CreateCodeEditorExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateEBookExamples();
+        // LaTeX demo page: scans media/LaTex for .tex files and presents each one
+        // in a vertical tab (rendered output + source).
+        std::shared_ptr<UltraCanvasUIElement> CreateLaTeXExamples();
         std::shared_ptr<UltraCanvasUIElement> CreatePartiallyImplementedExamples(const std::string& text);
         std::shared_ptr<UltraCanvasUIElement> CreateDomainTableDemo();
 
         // Media Elements
         std::shared_ptr<UltraCanvasUIElement> CreateAudioExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateWaveformExamples();
 
         // Data Visualization
         std::shared_ptr<UltraCanvasUIElement> CreateDiagramExamples();
@@ -266,6 +279,9 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateFinancialChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreatePopulationChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreatePieChartExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateRadarChartExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateHeatmapExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateGaugeExamples();
 
         std::shared_ptr<UltraCanvasUIElement> CreateContinentsPopulationExample();
         std::shared_ptr<UltraCanvasUIElement> CreateBrazilSchoolScoresExample();
@@ -289,17 +305,34 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateAdjacencyDiagramExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateArcDiagramExamples();
         std::shared_ptr<UltraCanvasContainer> CreateExampleDiagramSection();
+        std::shared_ptr<UltraCanvasUIElement> CreateCompositorDiagramExamples();
 
         std::shared_ptr<UltraCanvasUIElement> CreateFlowchartExample();
         std::shared_ptr<UltraCanvasUIElement> CreateSystemArchitectureExample();
 
         std::shared_ptr<UltraCanvasUIElement> CreateTreeMapExamples();
 
-//        std::shared_ptr<UltraCanvasUIElement> CreatePDFExamples();
+#ifdef ULTRACANVAS_PLUGIN_PDF
+        std::shared_ptr<UltraCanvasUIElement> CreatePDFExamples();
+#endif
         std::shared_ptr<UltraCanvasUIElement> CreateSVGVectorExamples();
 
         std::shared_ptr<UltraCanvasUIElement> CreateFileLoaderExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateMarkdownDocScreen(const std::string& filename);
+        // Composite module documentation screen: short intro (Markdown) on top, an
+        // optional rendered SVG module diagram in the middle, and the full README
+        // (Markdown) scrolling below. moduleDir is a folder under the resources dir
+        // (e.g. "Docs/Modules/UltraAI") that may contain intro.md, a diagram named
+        // after the module (e.g. "UltraAI.svg") and README.md. A missing intro.md /
+        // diagram is skipped gracefully, so the screen degrades to a plain README
+        // view until those assets are added.
+        std::shared_ptr<UltraCanvasUIElement> CreateModuleDocScreen(const std::string& moduleDir);
+        // Overview page for the "ULTRA OS modules" category node itself: the ULTRA OS
+        // diagram (media/diagrams/ULTRA-OS.svg) plus the descriptive overview text.
+        std::shared_ptr<UltraCanvasUIElement> CreateUltraOSInfoScreen();
+        // Dependencies & Third Party libraries table (UltraCanvasListView-based)
+        std::shared_ptr<UltraCanvasUIElement> CreateDependenciesExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateBarcodeExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateQRCodeExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateGPIOExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateScannerSupportExamples();
@@ -311,6 +344,12 @@ namespace UltraCanvas {
 #endif
 #ifdef ULTRACANVAS_HAS_XAR_PLUGIN
         std::shared_ptr<UltraCanvasUIElement> CreateXARVectorExamples();
+#endif
+#ifdef ULTRACANVAS_HAS_OCR_PLUGIN
+        std::shared_ptr<UltraCanvasUIElement> CreateOCRExamples();
+#endif
+#ifdef ULTRACANVAS_HAS_VECTORIZER_PLUGIN
+        std::shared_ptr<UltraCanvasUIElement> CreateVectorizerExamples();
 #endif
         std::shared_ptr<UltraCanvasUIElement> CreateTextRenderingSettingsExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateImagePerformanceTest();

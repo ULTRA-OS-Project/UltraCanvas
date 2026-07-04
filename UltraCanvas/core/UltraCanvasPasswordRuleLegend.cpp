@@ -1,7 +1,7 @@
 // core/UltraCanvasPasswordRuleLegend.cpp
 // Interactive password requirements checklist component
-// Version: 1.0.0
-// Last Modified: 2025-10-21
+// Version: 1.1.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 #include "UltraCanvasPasswordRuleLegend.h"
 #include <string>
@@ -12,8 +12,8 @@
 
 namespace UltraCanvas {
 
-    UltraCanvasPasswordRuleLegend::UltraCanvasPasswordRuleLegend(const std::string &id, int x, int y, int w,
-                                                                 int h)
+    UltraCanvasPasswordRuleLegend::UltraCanvasPasswordRuleLegend(const std::string &id, float x, float y, float w,
+                                                                 float h)
             : UltraCanvasUIElement(id, x, y, w, h) {
         lastUpdateTime = std::chrono::steady_clock::now();
         SetupDefaultRules();
@@ -85,6 +85,14 @@ namespace UltraCanvas {
         linkedInput = input;
         if (linkedInput) {
             UpdateRules(linkedInput->GetText());
+            // Refresh live as the user types. The input only redraws itself on edit,
+            // so hook its text-changed callback to update (and redraw) this legend too.
+            // Chain any existing callback so we don't clobber it.
+            auto prev = linkedInput->onTextChanged;
+            linkedInput->onTextChanged = [this, prev](const std::string &password) {
+                if (prev) prev(password);
+                UpdateFromPassword(password);
+            };
         }
     }
 
@@ -125,7 +133,9 @@ namespace UltraCanvas {
         return unmet;
     }
 
-    void UltraCanvasPasswordRuleLegend::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasPasswordRuleLegend::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
+        // Externally sized for now (explicit size or parent stretch); the base block
+        // block measure sizes us. TODO: implement MeasureOwnContent for intrinsic sizing.
         Rect2Di bounds = GetLocalBounds();
 
         // Update from linked input if connected
@@ -222,6 +232,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasPasswordRuleLegend::DrawChecklistStyle(IRenderContext *ctx, const Rect2Di &bounds) {
+        // Element-local coordinates: ctx is translated to our origin, draw against bounds.
         int currentY = bounds.y + 10;
 
         ctx->SetFontSize(12);
@@ -238,20 +249,21 @@ namespace UltraCanvas {
             ctx->SetTextPaint(iconColor);
             ctx->SetFontSize(config.iconSize);
             std::string icon = rule.isMet ? config.metIcon : config.unmetIcon;
-            ctx->DrawText(icon, Point2Df(bounds.x + 10, currentY - (config.iconSize - 12)));
+            ctx->DrawText(icon, Point2Dd(bounds.x + 10, currentY - (config.iconSize - 12)));
 
             // Draw text
             Color textColor = config.textColor;
             textColor.a = static_cast<uint8_t>(255 * alpha);
             ctx->SetTextPaint(textColor);
             ctx->SetFontSize(12);
-            ctx->DrawText(rule.displayText, Point2Df(bounds.x + 30, currentY));
+            ctx->DrawText(rule.displayText, Point2Dd(bounds.x + 30, currentY));
 
             currentY += config.itemSpacing + 16;
         }
     }
 
     void UltraCanvasPasswordRuleLegend::DrawBulletsStyle(IRenderContext *ctx, const Rect2Di &bounds) {
+        // Element-local coordinates: ctx is translated to our origin, draw against bounds.
         int currentY = bounds.y + 10;
 
         ctx->SetFontSize(12);
@@ -265,19 +277,20 @@ namespace UltraCanvas {
             Color bulletColor = rule.isMet ? config.metColor : config.unmetColor;
             bulletColor.a = static_cast<uint8_t>(255 * alpha);
             ctx->SetTextPaint(bulletColor);
-            ctx->DrawText(config.bulletIcon, Point2Df(bounds.x + 10, currentY));
+            ctx->DrawText(config.bulletIcon, Point2Dd(bounds.x + 10, currentY));
 
             // Draw text with color indicating status
             Color textColor = rule.isMet ? config.metColor : config.textColor;
             textColor.a = static_cast<uint8_t>(255 * alpha);
             ctx->SetTextPaint(textColor);
-            ctx->DrawText(rule.displayText, Point2Df(bounds.x + 25, currentY));
+            ctx->DrawText(rule.displayText, Point2Dd(bounds.x + 25, currentY));
 
             currentY += config.itemSpacing + 14;
         }
     }
 
     void UltraCanvasPasswordRuleLegend::DrawDetailedStyle(IRenderContext *ctx, const Rect2Di &bounds) {
+        // Element-local coordinates: ctx is translated to our origin, draw against bounds.
         int currentY = bounds.y + 15;
 
         ctx->SetFontSize(12);
@@ -302,14 +315,14 @@ namespace UltraCanvas {
             ctx->SetTextPaint(iconColor);
             ctx->SetFontSize(config.iconSize);
             std::string icon = rule.isMet ? config.metIcon : config.unmetIcon;
-            ctx->DrawText(icon, Point2Df(bounds.x + 20, currentY - (config.iconSize - 12)));
+            ctx->DrawText(icon, Point2Dd(bounds.x + 20, currentY - (config.iconSize - 12)));
 
             // Draw text
             Color textColor = config.textColor;
             textColor.a = static_cast<uint8_t>(255 * alpha);
             ctx->SetTextPaint(textColor);
             ctx->SetFontSize(12);
-            ctx->DrawText(rule.displayText, Point2Df(bounds.x + 45, currentY));
+            ctx->DrawText(rule.displayText, Point2Dd(bounds.x + 45, currentY));
 
             currentY += config.itemSpacing + 35;
         }

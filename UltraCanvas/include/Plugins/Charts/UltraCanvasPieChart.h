@@ -75,6 +75,11 @@ namespace UltraCanvas {
         void SetLeaderLinesEnabled(bool on);
         bool GetLeaderLinesEnabled() const { return leaderLinesEnabled; }
         void SetLeaderLineStyle(const Color& c, float w);
+        // Gap in pixels between the pie's outer edge and the closest point of
+        // every outside label. Applied uniformly so the leader-line lengths
+        // look consistent around the chart.
+        void SetLabelMargin(float pixels);
+        float GetLabelMargin() const { return labelMargin; }
         void SetLabelFont(const std::string& family, float size, FontWeight weight);
         void SetLabelColor(const Color& c);
         void SetLabelBackgroundEnabled(bool on);
@@ -99,7 +104,7 @@ namespace UltraCanvas {
         float GetPerspectiveAngle() const { return perspectiveAngleDeg; }
         void SetDepthHeight(float h);
         float GetDepthHeight() const { return depthHeight; }
-        void SetLightDirection(Point2Df dir);
+        void SetLightDirection(Point2Dd dir);
         void SetAmbientLight(float a);
         void SetDiffuseLight(float d);
 
@@ -135,6 +140,7 @@ namespace UltraCanvas {
         bool leaderLinesEnabled = true;
         Color leaderLineColor = Color(150, 150, 150, 255);
         float leaderLineWidth = 1.0f;
+        float labelMargin = 8.0f;
         std::string labelFontFamily = "Arial";
         float labelFontSize = 11.0f;
         FontWeight labelFontWeight = FontWeight::Normal;
@@ -151,7 +157,7 @@ namespace UltraCanvas {
         bool enable3D = false;
         float depthHeight = 25.0f;
         float perspectiveAngleDeg = 20.0f;
-        Point2Df lightDirection = Point2Df(-0.5, -0.8);
+        Point2Dd lightDirection = Point2Dd(-0.5, -0.8);
         float ambientLight = 0.4f;
         float diffuseLight = 0.6f;
 
@@ -171,7 +177,7 @@ namespace UltraCanvas {
 
         std::vector<Slice> cachedSlices;
         bool slicesValid = false;
-        Point2Df cachedCenter;
+        Point2Dd cachedCenter;
         float cachedOuterRadius = 0.0f;
 
         // ----- Hover state -----
@@ -180,7 +186,7 @@ namespace UltraCanvas {
         // ----- Internal helpers -----
         void RebuildSlices();
         void InvalidateSlices();
-        void ComputeCenterAndRadius(const Rect2Df& plotArea);
+        void ComputeCenterAndRadius(const Rect2Dd& plotArea);
         float GetSliceExplosion(size_t index) const;
         float GetSliceHeightFactor(size_t index) const;
         Color ResolveSliceColor(size_t index, const Color& dataColor) const;
@@ -192,18 +198,18 @@ namespace UltraCanvas {
         int EstimateLabelLineHeight() const;
         int EstimateLabelLineCount() const;
 
-        void RenderChartImpl(IRenderContext* ctx, const Rect2Df& chartArea);
-        void Render2D(IRenderContext* ctx, const Rect2Df& chartArea);
-        void Render3D(IRenderContext* ctx, const Rect2Df& chartArea);
+        void RenderChartImpl(IRenderContext* ctx, const Rect2Dd& chartArea);
+        void Render2D(IRenderContext* ctx, const Rect2Dd& chartArea);
+        void Render3D(IRenderContext* ctx, const Rect2Dd& chartArea);
 
         void DrawSlice2D(IRenderContext* ctx,
-                         const Point2Df& center,
+                         const Point2Dd& center,
                          float outerR,
                          float innerR,
                          const Slice& slice);
 
         void DrawSlice3DSides(IRenderContext* ctx,
-                              const Point2Df& center,
+                              const Point2Dd& center,
                               float outerR,
                               float innerR,
                               double vScale,
@@ -211,7 +217,7 @@ namespace UltraCanvas {
                               float extraHeight,
                               const Slice& slice);
         void DrawSlice3DTop(IRenderContext* ctx,
-                            const Point2Df& center,
+                            const Point2Dd& center,
                             float outerR,
                             float innerR,
                             double vScale,
@@ -223,12 +229,12 @@ namespace UltraCanvas {
                                                           const Slice& slice);
 
         void RenderLabels(IRenderContext* ctx,
-                          const Point2Df& center,
+                          const Point2Dd& center,
                           float outerR,
                           double vScale);
 
         // Hit-testing helper: returns slice index or SIZE_MAX
-        size_t HitTestSlice(const Point2Df& localPos) const;
+        size_t HitTestSlice(const Point2Dd& localPos) const;
 
         // Default palette
         static std::vector<Color> DefaultPalette();

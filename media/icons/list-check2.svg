@@ -1,0 +1,39 @@
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<!--Generator: Xara Designer (www.xara.com), SVG filter version: 6.7.0.0-->
+<svg fill="none" fill-rule="evenodd" stroke="black" stroke-width="0.501" stroke-linejoin="bevel" stroke-miterlimit="10" font-family="Times New Roman" font-size="16" style="font-variant-ligatures:none" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" version="1.1" overflow="visible" width="58.317pt" height="62.43pt" viewBox="86.562 -62.43 58.317 62.43">
+ <defs>
+	</defs>
+ <g id="Layer 1" transform="scale(1 -1)">
+  <g id="Group">
+   <path d="M 115.805,53.303 L 143.753,53.303" fill="none" stroke-width="2.252" stroke-linejoin="round" stroke-linecap="round"/>
+   <g id="Group_1" stroke-width="1.203">
+    <rect x="-8.525" y="-8.526" width="17.051" height="17.052" rx="19.8346706249436" ry="19.8346706249436" transform="translate(95.689 53.303) rotate(90)" stroke-linejoin="miter"/>
+    <g id="Group_2" stroke-linejoin="round" stroke-linecap="round">
+     <path d="M 90.419,48.032 L 101.134,58.747" fill="none"/>
+     <path d="M 90.419,58.747 L 101.134,48.032" fill="none"/>
+    </g>
+   </g>
+  </g>
+  <g id="Group_3">
+   <path d="M 115.805,31.215 L 143.753,31.215" fill="none" stroke-width="2.252" stroke-linejoin="round" stroke-linecap="round"/>
+   <g id="Group_4" stroke-width="1.203">
+    <rect x="-8.525" y="-8.526" width="17.051" height="17.052" rx="17.8533138503752" ry="17.8533138503752" transform="translate(95.689 31.215) rotate(90)" stroke-linejoin="miter"/>
+    <g id="Group_5" stroke-linejoin="round" stroke-linecap="round">
+     <path d="M 90.419,25.944 L 101.134,36.659" fill="none"/>
+     <path d="M 90.419,36.659 L 101.134,25.944" fill="none"/>
+    </g>
+   </g>
+  </g>
+  <g id="Group_6">
+   <path d="M 115.805,9.127 L 143.753,9.127" fill="none" stroke-width="2.252" stroke-linejoin="round" stroke-linecap="round"/>
+   <g id="Group_7" stroke-width="1.203">
+    <rect x="-8.525" y="-8.526" width="17.051" height="17.052" rx="16.825511926833" ry="16.825511926833" transform="translate(95.689 9.127) rotate(90)" stroke-linejoin="miter"/>
+    <g id="Group_8" stroke-linejoin="round" stroke-linecap="round">
+     <path d="M 90.419,3.856 L 101.134,14.571" fill="none"/>
+     <path d="M 90.419,14.571 L 101.134,3.856" fill="none"/>
+    </g>
+   </g>
+  </g>
+ </g>
+</svg>

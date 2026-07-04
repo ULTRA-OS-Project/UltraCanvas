@@ -1,5 +1,6 @@
 // core/UltraCanvasTreeView.cpp
 // Hierarchical tree view with icons and text for each row
+// Last Modified: 2026-06-04
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasApplication.h"
 #include <vector>
@@ -7,6 +8,8 @@
 #include <memory>
 #include <functional>
 #include <unordered_map>
+#include <algorithm>
+#include <cctype>
 
 namespace UltraCanvas {
     TreeNode::TreeNode(const TreeNodeData &nodeData, TreeNode *parentNode)
@@ -121,11 +124,118 @@ namespace UltraCanvas {
         return visible;
     }
 
+    namespace {
+        // Case-insensitive lexicographic less-than (ASCII), matching the
+        // std::tolower idiom used elsewhere in the framework.
+        bool CaseInsensitiveTextLess(const std::string &a, const std::string &b) {
+            return std::lexicographical_compare(
+                    a.begin(), a.end(), b.begin(), b.end(),
+                    [](unsigned char c1, unsigned char c2) {
+                        return std::tolower(c1) < std::tolower(c2);
+                    });
+        }
+    }
+
+    void TreeNode::SortChildNodes(bool recursive, bool ascending) {
+        std::sort(children.begin(), children.end(),
+                  [ascending](const std::unique_ptr<TreeNode> &a,
+                              const std::unique_ptr<TreeNode> &b) {
+                      return ascending
+                             ? CaseInsensitiveTextLess(a->data.text, b->data.text)
+                             : CaseInsensitiveTextLess(b->data.text, a->data.text);
+                  });
+        if (recursive) {
+            for (auto &child: children) {
+                child->SortChildNodes(true, ascending);
+            }
+        }
+    }
+
 
     /* UltraCanvasTreeView */
 
-    UltraCanvasTreeView::UltraCanvasTreeView(const std::string &identifier, int x, int y, int w, int h) :
+    UltraCanvasTreeView::UltraCanvasTreeView(const std::string &identifier, float x, float y, float w, float h) :
             UltraCanvasUIElement(identifier, x, y, w, h) {
+
+        // Tree view specific initialization
+        rootNode = nullptr;
+        selectionMode = TreeSelectionMode::Single;
+        lineStyle = TreeLineStyle::Dotted;
+        hoveredNode = nullptr;
+        focusedNode = nullptr;
+
+        // Visual defaults
+        rowHeight = 20;
+        indentSize = 16;
+        iconSpacing = 4;
+        textPadding = 8;
+        showRootLines = true;
+        showExpandButtons = true;
+        showFirstChildOnExpand = false;
+        autoExpandSelectedNode = false;
+
+        // Color defaults
+        selectionColor = Colors::Selection;       // Blue selection
+        hoverColor = Color(0xE5, 0xF3, 0xFF);          // Light blue hover
+        lineColor = Color(0x80, 0x80, 0x80);           // Gray lines
+        textColor = Colors::Black;           // Black text
+
+        // Scrolling defaults
+        scrollOffsetY = 0;
+        maxScrollY = 0;
+        CreateScrollbar();
+
+
+        // Interaction state
+//        isDragging = false;
+//        draggedNode = nullptr;
+
+        SetBackgroundColor(Colors::White);
+        SetBorders(1, Colors::Gray);
+    }
+
+    UltraCanvasTreeView::UltraCanvasTreeView(const std::string &identifier, float w, float h) :
+            UltraCanvasUIElement(identifier, w, h) {
+
+        // Tree view specific initialization
+        rootNode = nullptr;
+        selectionMode = TreeSelectionMode::Single;
+        lineStyle = TreeLineStyle::Dotted;
+        hoveredNode = nullptr;
+        focusedNode = nullptr;
+
+        // Visual defaults
+        rowHeight = 20;
+        indentSize = 16;
+        iconSpacing = 4;
+        textPadding = 8;
+        showRootLines = true;
+        showExpandButtons = true;
+        showFirstChildOnExpand = false;
+        autoExpandSelectedNode = false;
+
+        // Color defaults
+        selectionColor = Colors::Selection;       // Blue selection
+        hoverColor = Color(0xE5, 0xF3, 0xFF);          // Light blue hover
+        lineColor = Color(0x80, 0x80, 0x80);           // Gray lines
+        textColor = Colors::Black;           // Black text
+
+        // Scrolling defaults
+        scrollOffsetY = 0;
+        maxScrollY = 0;
+        CreateScrollbar();
+
+
+        // Interaction state
+//        isDragging = false;
+//        draggedNode = nullptr;
+
+        SetBackgroundColor(Colors::White);
+        SetBorders(1, Colors::Gray);
+    }
+
+    UltraCanvasTreeView::UltraCanvasTreeView(const std::string &identifier) :
+            UltraCanvasUIElement(identifier) {
 
         // Tree view specific initialization
         rootNode = nullptr;
@@ -178,7 +288,11 @@ namespace UltraCanvas {
         TreeNode *parent = rootNode->FindDescendant(parentId);
         if (parent) {
             TreeNode *newNode = parent->AddChild(nodeData);
+            if (autoSortChildren) {
+                parent->SortChildNodes(false, autoSortAscending);  // only this parent's row changed
+            }
             UpdateScrollbars();
+            return newNode;
         }
 
         return nullptr;
@@ -206,6 +320,34 @@ namespace UltraCanvas {
 
     TreeNode *UltraCanvasTreeView::FindNode(const std::string &nodeId) {
         return rootNode ? rootNode->FindDescendant(nodeId) : nullptr;
+    }
+
+    void UltraCanvasTreeView::SetAutoSortChildren(bool enable, bool ascending) {
+        autoSortChildren = enable;
+        autoSortAscending = ascending;
+        if (enable && rootNode) {              // sort existing tree immediately
+            rootNode->SortChildNodes(true, ascending);
+            UpdateScrollbars();
+            RequestRedraw();
+        }
+    }
+
+    void UltraCanvasTreeView::SortNodeChildren(const std::string &nodeId, bool recursive, bool ascending) {
+        SortNodeChildren(FindNode(nodeId), recursive, ascending);
+    }
+
+    void UltraCanvasTreeView::SortNodeChildren(TreeNode *node, bool recursive, bool ascending) {
+        if (!node) return;
+        node->SortChildNodes(recursive, ascending);
+        UpdateScrollbars();
+        RequestRedraw();
+    }
+
+    void UltraCanvasTreeView::SortAllNodes(bool ascending) {
+        if (!rootNode) return;
+        rootNode->SortChildNodes(true, ascending);
+        UpdateScrollbars();
+        RequestRedraw();
     }
 
     void UltraCanvasTreeView::SelectNode(TreeNode *node, bool addToSelection) {
@@ -352,13 +494,20 @@ namespace UltraCanvas {
         return false;
     }
 
-    void UltraCanvasTreeView::UpdateGeometry(IRenderContext *ctx) {
-        if (verticalScrollbar && verticalScrollbar->IsVisible()) {
-            verticalScrollbar->UpdateGeometry(ctx);
-        }
+    void UltraCanvasTreeView::Arrange(const Rect2Df &finalRect, const CSSLayout::LayoutContext &ctx) {
+        // The engine has resolved our final bounds (explicit size or parent
+        // stretch). Set finalBounds + damage via the base, then recompute the
+        // scrollbar against the now-valid width/height.
+        UltraCanvasUIElement::Arrange(finalRect, ctx);
+
+        // Fix for the right-side gap: scrollbar visibility used to be computed
+        // only from the tree mutators (AddNode/Expand/...), which ran while
+        // finalBounds.height was still 0 and so wrongly marked the scrollbar
+        // visible. Computing it here, with valid bounds, keeps row width correct.
+        UpdateScrollbars();
     }
 
-    void UltraCanvasTreeView::Render(IRenderContext *ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasTreeView::Render(IRenderContext *ctx, const Rect2Df& dirtyRect) {
         // Draw background / border
         UltraCanvasUIElement::Render(ctx, dirtyRect);
         // Build local-space content rect (ctx is translated to element origin)
@@ -456,7 +605,7 @@ namespace UltraCanvas {
         if (!rootNode) return nullptr;
 
         // y is element-local now; subtract local content offset + add scroll
-        int localContentY = GetBorderTopWidth() + padding.top;
+        int localContentY = GetBorderTopWidth() + GetPaddingTop();
         int relativeY = y - localContentY + scrollOffsetY;
         int nodeIndex = relativeY / rowHeight;
 
@@ -545,7 +694,7 @@ namespace UltraCanvas {
         // Draw left icon
         if (node->data.leftIcon.visible && !node->data.leftIcon.iconPath.empty()) {
             ctx->DrawImage(node->data.leftIcon.iconPath.c_str(),
-                           Rect2Df(textX, nodeY + (rowHeight - node->data.leftIcon.height) / 2,
+                           Rect2Dd(textX, nodeY + (rowHeight - node->data.leftIcon.height) / 2,
                                    node->data.leftIcon.width, node->data.leftIcon.height),
                            ImageFitMode::Contain);
             textX += node->data.leftIcon.width + iconSpacing;
@@ -556,14 +705,14 @@ namespace UltraCanvas {
         ctx->SetFontSize(12);
         ctx->SetTextPaint(nodeTextColor);
         ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-        ctx->DrawTextInRect(node->data.text, Rect2Df(textX, nodeY, nodeWidth - textX, rowHeight));
+        ctx->DrawTextInRect(node->data.text, Rect2Dd(textX, nodeY, nodeWidth - textX, rowHeight));
 
         // Draw right icon
         if (node->data.rightIcon.visible && !node->data.rightIcon.iconPath.empty()) {
             int rightIconX = contentRect.Right() - node->data.rightIcon.width - textPadding - sbWidth;
 
             ctx->DrawImage(node->data.rightIcon.iconPath.c_str(),
-                           Rect2Df(rightIconX, nodeY + (rowHeight - node->data.rightIcon.height) / 2,
+                           Rect2Dd(rightIconX, nodeY + (rowHeight - node->data.rightIcon.height) / 2,
                                    node->data.rightIcon.width, node->data.rightIcon.height),
                            ImageFitMode::Contain);
         }
@@ -611,7 +760,7 @@ namespace UltraCanvas {
         TreeNode *clickedNode = GetNodeAtY(event.pointer.y);
         if (clickedNode) {
             // nodeX in element-local space
-            int localContentX = GetBorderLeftWidth() + padding.left;
+            int localContentX = GetBorderLeftWidth() + GetPaddingLeft();
             int nodeX = localContentX + clickedNode->level * indentSize;
 
             // Check if clicking on expand/collapse button
@@ -644,6 +793,10 @@ namespace UltraCanvas {
                     ExpandFirstChildNode(focusedNode);
                 }
             }
+
+            // If a parent node sitting at the bottom of the view was clicked,
+            // nudge the scroll down one row to reveal that more entries follow.
+            ScrollDownIfLastVisibleParent(clickedNode);
         } else {
             ClearSelection();
             focusedNode = nullptr;
@@ -676,7 +829,6 @@ namespace UltraCanvas {
 
     bool UltraCanvasTreeView::HandleMouseUp(const UCEvent &event) {
 //        if (isDragging)  {
-//            UltraCanvasApplication::GetInstance()->ReleaseMouse(this);
 //            isDragging = false;
 //            return true;
 //        }
@@ -841,6 +993,25 @@ namespace UltraCanvas {
         return visibleNodes.empty() ? nullptr : visibleNodes.back();
     }
 
+    void UltraCanvasTreeView::ScrollDownIfLastVisibleParent(TreeNode *node) {
+        // Only parent nodes hint at hidden content; leaves are ignored so a
+        // childless row at the bottom does not move the view.
+        if (!node || !node->HasChildren()) return;
+
+        // Nothing below to reveal: already scrolled to the bottom.
+        if (scrollOffsetY >= maxScrollY) return;
+
+        int nodeY = GetNodeDisplayY(node);
+        int visibleBottom = scrollOffsetY + GetHeight();
+
+        // The node counts as the last visible row when the row directly beneath
+        // it would not fully fit inside the current viewport. In that case scroll
+        // down exactly one row so the next entry peeks into view.
+        if (nodeY + 2 * rowHeight > visibleBottom) {
+            ScrollBy(rowHeight);
+        }
+    }
+
     TreeNode *UltraCanvasTreeView::GetNextVisibleNode(TreeNode *current) {
         if (!current || !rootNode) return nullptr;
 
@@ -872,6 +1043,9 @@ namespace UltraCanvas {
 
     void UltraCanvasTreeView::ExpandFirstChildNode(TreeNode *node) {
         if (!node || !node->HasChildren()) return;
+        // Per-node opt-out: nodes that carry their own content (e.g. an overview page)
+        // keep the selection on themselves instead of jumping to the first child.
+        if (!node->data.showFirstChildOnExpand) return;
         SelectNode(node->FirstChild(), false);
     }
 
@@ -892,13 +1066,5 @@ namespace UltraCanvas {
         };
         verticalScrollbar->SetStyle(scrollbarStyle);
         verticalScrollbar->SetVisible(false);
-    }
-
-    void UltraCanvasTreeView::SetBounds(const Rect2Di &bounds) {
-        if (bounds != GetBounds()) {
-            UltraCanvasUIElement::SetBounds(bounds);
-            UpdateScrollbars();
-            RequestRedraw();
-        }
     }
 }

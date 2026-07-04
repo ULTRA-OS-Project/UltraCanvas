@@ -102,7 +102,7 @@ namespace UltraCanvas {
 
         // Draw overall background using existing functions
         ctx->SetFillPaint(backgroundColor);
-        ctx->FillRectangle(Rect2Df(GetX(), GetY(), GetWidth(), GetHeight()));
+        ctx->FillRectangle(Rect2Dd(GetX(), GetY(), GetWidth(), GetHeight()));
 
         // Draw title using existing functions
         if (!chartTitle.empty()) {
@@ -110,7 +110,7 @@ namespace UltraCanvas {
             ctx->SetFontSize(16.0f);
 
             // Calculate center position (simplified)
-            int titleX = GetX() + GetWidth() / 2 - chartTitle.length() * 5;
+            float titleX = GetX() + GetWidth() / 2 - chartTitle.length() * 5;
             ctx->DrawText(chartTitle, {titleX, GetY()});
         }
     }
@@ -611,7 +611,7 @@ namespace UltraCanvas {
                 float barHeight = (financialPoint.volume / maxVolume) * volumeRenderArea.height;
                 float y = volumeRenderArea.GetBottom() - barHeight;
 
-                ctx->FillRectangle(Rect2Df(x - actualBarWidth/2, y, actualBarWidth, barHeight));
+                ctx->FillRectangle(Rect2Dd(x - actualBarWidth/2, y, actualBarWidth, barHeight));
             }
         }
     }
@@ -749,9 +749,9 @@ namespace UltraCanvas {
         if (bodyHeight < 1.0f) bodyHeight = 1.0f; // Minimum visible height
 
         if (isBullish) {
-            ctx->FillRectangle(Rect2Df(x - candleWidth/2, bodyTop, candleWidth, bodyHeight));
+            ctx->FillRectangle(Rect2Dd(x - candleWidth/2, bodyTop, candleWidth, bodyHeight));
         } else {
-            ctx->DrawRectangle(Rect2Df(x - candleWidth/2, bodyTop, candleWidth, bodyHeight));
+            ctx->DrawRectangle(Rect2Dd(x - candleWidth/2, bodyTop, candleWidth, bodyHeight));
         }
     }
 

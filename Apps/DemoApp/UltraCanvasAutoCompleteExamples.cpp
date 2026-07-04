@@ -16,14 +16,14 @@
 namespace UltraCanvas {
 
 // Helper function to create section separator
-    std::shared_ptr<UltraCanvasContainer> CreateAutoCompleteSeparator(long x, long y, long width) {
+    std::shared_ptr<UltraCanvasContainer> CreateAutoCompleteSeparator(float x, float y, float width) {
         auto separator = std::make_shared<UltraCanvasContainer>("ACSep" + std::to_string(x), x, y, width, 2);
         separator->SetBackgroundColor(Color(200, 200, 200, 255));
         return separator;
     }
 
 // Helper function to create section title
-    std::shared_ptr<UltraCanvasLabel> CreateAutoCompleteSectionTitle(long x, long y, const std::string& text) {
+    std::shared_ptr<UltraCanvasLabel> CreateAutoCompleteSectionTitle(float x, float y, const std::string& text) {
         auto title = std::make_shared<UltraCanvasLabel>("ACSecTitle" + std::to_string(x), x, y, 400, 25);
         title->SetText(text);
         title->SetFontSize(14);

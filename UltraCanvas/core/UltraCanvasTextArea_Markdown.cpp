@@ -1,8 +1,8 @@
 // UltraCanvas/core/UltraCanvasTextArea_Markdown.cpp
 // Markdown hybrid rendering enhancement for TextArea
 // Shows current line as plain text, all other lines as formatted markdown
-// Version: 2.6.2
-// Last Modified: 2026-05-01
+// Version: 2.7.0
+// Last Modified: 2026-06-18
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
@@ -13,6 +13,9 @@
 #include "UltraCanvasTooltipManager.h"
 #include "Plugins/Text/UltraCanvasMarkdown.h"
 #include "UltraCanvasConfig.h"
+#include "UltraCanvasImage.h"
+#include "UltraCanvasImageViewer.h"
+#include "UltraCanvasWindow.h"
 #include <algorithm>
 #include <sstream>
 #include <cmath>
@@ -435,6 +438,41 @@ namespace UltraCanvas {
     // and tally anchor link references. Runs once when markdownIndexDirty is set (after text
     // edits); read by MakeMarkdownLineLayout to decide anchor-return icons and abbreviation /
     // footnote tooltips.
+    // Classify and resolve a markdown image url. Remote schemes (http/https/data/ftp) are left
+    // unresolved with outIsRemote=true. Otherwise returns a local path: an absolute path verbatim,
+    // or a relative path joined against the configured base directory. Existence/validity is left
+    // to UCImage::Get (NormalizePath/realpath is unreliable for not-yet-validated paths).
+    std::string UltraCanvasTextArea::ResolveMarkdownImagePath(const std::string& url,
+                                                              bool& outIsRemote) const {
+        outIsRemote = false;
+        auto hasPrefix = [&](const char* p) {
+            size_t n = std::strlen(p);
+            return url.size() >= n && url.compare(0, n, p) == 0;
+        };
+        if (hasPrefix("http://") || hasPrefix("https://") ||
+            hasPrefix("data:")   || hasPrefix("ftp://")) {
+            outIsRemote = true;
+            return url;
+        }
+        std::string path = hasPrefix("file://") ? url.substr(7) : url;
+
+        // Absolute path: POSIX "/...", or Windows "X:\..." / "\...".
+        bool isAbsolute = (!path.empty() && (path[0] == '/' || path[0] == '\\')) ||
+                          (path.size() > 1 && path[1] == ':');
+        if (isAbsolute) return path;
+
+        // Relative: join against the base dir — explicit override, else the document's folder,
+        // else the resources dir.
+        std::string base = markdownBaseDirectory;
+        if (base.empty() && !documentFilePath.empty()) {
+            auto slash = documentFilePath.find_last_of("/\\");
+            if (slash != std::string::npos) base = documentFilePath.substr(0, slash);
+        }
+        if (base.empty()) base = GetResourcesDir();
+        if (!base.empty() && base.back() != '/' && base.back() != '\\') base.push_back('/');
+        return base + path;
+    }
+
     void UltraCanvasTextArea::RebuildMarkdownIndex() {
         markdownAbbreviations.clear();
         markdownFootnotes.clear();
@@ -998,7 +1036,7 @@ namespace UltraCanvas {
     void UltraCanvasTextArea::NormalizeTableGroupWidths(int startLine, int endLine) {
         constexpr int cellPadding = 4;
         constexpr int rowVerticalPad = 4;
-        const int availWidth = std::max(100, visibleTextArea.width);
+        const float availWidth = std::max(100.0f, visibleTextArea.width);
 
         int colCount = 0;
         for (int i = startLine; i <= endLine; i++) {
@@ -1056,7 +1094,7 @@ namespace UltraCanvas {
         {
             int sum = 0;
             for (int c = 0; c < colCount - 1; c++) sum += colWidth[c];
-            colWidth[colCount - 1] = std::max(20, availWidth - sum);
+            colWidth[colCount - 1] = std::max(20, static_cast<int>(availWidth) - sum);
         }
 
         // Apply: set ExplicitWidth + alignment per cell, re-measure heights, update row bounds.
@@ -1068,7 +1106,7 @@ namespace UltraCanvas {
             bool isSep = (tbl->layoutType == LineLayoutType::TableSeparatorRow);
             tbl->columnAlignments = alignments;
             int x = 0;
-            double maxCellHeight = 0;
+            float maxCellHeight = 0;
             for (int c = 0; c < colCount; c++) {
                 if (c >= (int)tbl->cellsLayouts.size()) { x += colWidth[c]; continue; }
                 auto& cell = tbl->cellsLayouts[c];
@@ -1126,7 +1164,7 @@ namespace UltraCanvas {
             layout->SetFontStyle(style.fontStyle);
             layout->SetLineSpacing(style.lineHeight);
             if (wordWrap && visibleTextArea.width > 0) {
-                int w = std::max(1, visibleTextArea.width - shiftX);
+                float w = std::max(1.0f, visibleTextArea.width - shiftX);
                 layout->SetExplicitWidth(w);
                 layout->SetWrap(TextWrap::WrapWordChar);
             }
@@ -1159,6 +1197,85 @@ namespace UltraCanvas {
             return layout;
         };
 
+        // Image-only line builder. Returns an ImageLineLayout when `payload` is exactly one
+        // ![alt](url) (any surrounding text being whitespace only), else nullptr. `shiftX` is the
+        // container indent (0 at top level; the list/blockquote indent inside those blocks). The
+        // natural dimensions are resolved once here via a cached header-only image load.
+        auto tryBuildImageLine = [&](const std::string& payload, int shiftX)
+                -> std::unique_ptr<LineLayoutBase> {
+            std::string visibleText;
+            std::vector<InlineRun> runs;
+            ParseInlineMarkdownRuns(payload, visibleText, runs);
+
+            int imageRuns = 0;
+            const InlineRun* img = nullptr;
+            for (const auto& r : runs) {
+                if (r.kind == InlineRun::Image) { imageRuns++; img = &r; }
+            }
+            if (imageRuns != 1 || !img) return nullptr;
+            // Every visible byte outside the image run's alt text must be whitespace.
+            for (int b = 0; b < (int)visibleText.size(); b++) {
+                if (b >= img->startByte && b < img->endByte) continue;
+                if (!std::isspace(static_cast<unsigned char>(visibleText[b]))) return nullptr;
+            }
+
+            auto il = std::make_unique<ImageLineLayout>();
+            il->layoutType = LineLayoutType::MarkdownImage;
+            il->layout     = nullptr;
+            il->sourceUrl  = img->url;
+            il->altText    = img->alt;
+
+            bool remote = false;
+            il->resolvedPath = ResolveMarkdownImagePath(img->url, remote);
+            il->isRemote = remote;
+            if (!remote) {
+                auto image = UCImage::Get(il->resolvedPath);
+                if (image && image->IsValid() &&
+                    image->GetWidth() > 0 && image->GetHeight() > 0) {
+                    il->isValid       = true;
+                    il->naturalWidth  = image->GetWidth();
+                    il->naturalHeight = image->GetHeight();
+                }
+            }
+
+            const int   pad       = static_cast<int>(style.textPadding);
+            const int   gap       = 8;            // vertical breathing room above + below
+            const float maxHeight = 400.0f;       // cap so a tall image stays scrollable
+            const float availW    = std::max(1.0f, visibleTextArea.width - shiftX - 2 * pad);
+
+            float dispW, dispH;
+            if (il->isValid) {
+                dispW = static_cast<float>(il->naturalWidth);
+                dispH = static_cast<float>(il->naturalHeight);
+                if (dispW > availW)    { float s = availW    / dispW; dispW = availW;    dispH *= s; }
+                if (dispH > maxHeight) { float s = maxHeight / dispH; dispH = maxHeight; dispW *= s; }
+            } else {
+                dispW = std::min(availW, 240.0f);   // placeholder box
+                dispH = 60.0f;
+            }
+
+            il->layoutShift   = { static_cast<float>(shiftX + pad), static_cast<float>(gap) };
+            il->bounds.width  = dispW + 2 * pad;
+            il->bounds.height = dispH + 2 * gap;
+            // Sentinel-only cpMap: image lines aren't cursor-addressable in rendered form (clicks
+            // resolve to column 0 via the null-layout branch); editing shows raw text via currentLine.
+            il->cpMap = {{0, 0}, {0, utf8_length(payload)}};
+
+            // Layout-local hit rect (FindHitRectAtScreenPos adds bounds + layoutShift) so the
+            // image is clickable for the fullscreen viewer / onMarkdownImageClick.
+            MarkdownHitRect hit;
+            hit.bounds.x = 0;
+            hit.bounds.y = 0;
+            hit.bounds.width  = static_cast<int>(dispW);
+            hit.bounds.height = static_cast<int>(dispH);
+            hit.url     = il->sourceUrl;
+            hit.altText = il->altText;
+            hit.isImage = true;
+            il->hitRects.push_back(hit);
+
+            return il;
+        };
+
         // State from previous layout: open fenced code block?
         LineLayoutBase* prevLayout = (lineIndex > 0 && (lineIndex - 1) < (int)lineLayouts.size())
                                      ? lineLayouts[lineIndex - 1].get() : nullptr;
@@ -1184,7 +1301,7 @@ namespace UltraCanvas {
             cl->layout->SetFontStyle(style.fixedFontStyle);
             cl->layout->SetLineSpacing(style.lineHeight);
             if (wordWrap && visibleTextArea.width > 0) {
-                cl->layout->SetExplicitWidth(visibleTextArea.width - style.padding * 2);
+                cl->layout->SetExplicitWidth(visibleTextArea.width - style.textPadding * 2);
                 cl->layout->SetWrap(TextWrap::WrapWordChar);
             }
 
@@ -1224,9 +1341,9 @@ namespace UltraCanvas {
                 }
             }
 
-            cl->bounds.width = cl->layout->GetLayoutWidth() + style.padding * 2;
+            cl->bounds.width = cl->layout->GetLayoutWidth() + style.textPadding * 2;
             cl->bounds.height = std::max(1.0, cl->layout->GetLayoutHeight());
-            cl->layoutShift.x = style.padding;
+            cl->layoutShift.x = style.textPadding;
             // Identity for content (layout text == rawLine); for the closing fence the
             // layout is empty and the source maps to a single zero-width segment.
             int visCp = utf8_length(cl->layout->GetText());
@@ -1381,6 +1498,7 @@ namespace UltraCanvas {
                 bq->layoutType = LineLayoutType::Blockquote;
                 bq->quoteLevel = depth;
                 bq->layoutShift.x = (depth - 1) * quoteNestingStep + quoteIndent;
+                if (auto imgLine = tryBuildImageLine(payload, (int)bq->layoutShift.x)) return imgLine;
                 bq->layout = buildInlineStyledLayout(payload, bq->layoutShift.x, bq->hitRects,
                                                      nullptr, &bq->cpMap, startCp);
                 bq->bounds.width  = bq->layoutShift.x + bq->layout->GetLayoutWidth();
@@ -1490,7 +1608,7 @@ namespace UltraCanvas {
                     }
 
                     // Provisional bounds — Normalize overwrites width / height / per-cell geometry.
-                    tl->bounds.width  = std::max(100, visibleTextArea.width);
+                    tl->bounds.width  = std::max(100.0f, visibleTextArea.width);
                     tl->bounds.height = 1;
                     return tl;
                 }
@@ -1537,6 +1655,7 @@ namespace UltraCanvas {
                 const int markerGap = listIndent / 2;
                 ol->layoutShift.x = std::max(depth * listIndent,
                                              (depth - 1) * listIndent + markerWidth + markerGap);
+                if (auto imgLine = tryBuildImageLine(payload, (int)ol->layoutShift.x)) return imgLine;
                 ol->layout = buildInlineStyledLayout(payload, ol->layoutShift.x, ol->hitRects,
                                                      nullptr, &ol->cpMap, startCp);
                 ol->bounds.width  = ol->layoutShift.x + ol->layout->GetLayoutWidth();
@@ -1563,6 +1682,7 @@ namespace UltraCanvas {
                 ul->layoutType = LineLayoutType::UnorderedListItem;
                 ul->listDepth = depth;
                 ul->layoutShift.x = depth * listIndent;
+                if (auto imgLine = tryBuildImageLine(payload, (int)ul->layoutShift.x)) return imgLine;
                 ul->layout = buildInlineStyledLayout(payload, ul->layoutShift.x, ul->hitRects,
                                                      nullptr, &ul->cpMap, startCp);
                 ul->bounds.width  = ul->layoutShift.x + ul->layout->GetLayoutWidth();
@@ -1639,14 +1759,14 @@ namespace UltraCanvas {
                 cl->layout->SetLineSpacing(style.lineHeight);
                 if (wordWrap && visibleTextArea.width > 0) {
                     cl->layout->SetExplicitWidth(
-                            std::max(1, visibleTextArea.width - style.padding * 2));
+                            std::max(1.0f, visibleTextArea.width - style.textPadding * 2));
                     cl->layout->SetWrap(TextWrap::WrapWordChar);
                 }
                 int indentCp = utf8_byte_to_cp(rawLine, indentBytes);
                 int contentCp = utf8_length(content);
                 cl->cpMap = {{0, indentCp}, {contentCp, indentCp + contentCp}};
-                cl->layoutShift.x = style.padding;
-                cl->bounds.width  = cl->layout->GetLayoutWidth() + style.padding * 2;
+                cl->layoutShift.x = style.textPadding;
+                cl->bounds.width  = cl->layout->GetLayoutWidth() + style.textPadding * 2;
                 cl->bounds.height = std::max(1.0, cl->layout->GetLayoutHeight());
                 return cl;
             }
@@ -1675,6 +1795,10 @@ namespace UltraCanvas {
                 break;  // first non-blank line after this isn't a def continuation.
             }
         }
+
+        // Image-only line at top level: render the decoded bitmap as a block. Placed last (after
+        // indented-code/def-term) so a ≥4-space-indented image stays CommonMark "indented code".
+        if (auto imgLine = tryBuildImageLine(rawLine, 0)) return imgLine;
 
         {
             // Fallback: plain paragraph (includes tables and anything else not matched above).
@@ -1734,9 +1858,22 @@ namespace UltraCanvas {
             return true;
         }
         if (hit->isImage) {
+            // A custom handler takes precedence; otherwise open the built-in fullscreen viewer
+            // for a valid local image. Resolved at click time so inline image hits work too.
             if (onMarkdownImageClick) {
                 onMarkdownImageClick(hit->url, hit->altText);
                 return true;
+            }
+            if (markdownImageFullscreenEnabled) {
+                bool remote = false;
+                std::string path = ResolveMarkdownImagePath(hit->url, remote);
+                if (!remote) {
+                    auto img = UCImage::Get(path);
+                    if (img && img->IsValid()) {
+                        OpenMarkdownImageViewer(path, hit->altText, hit->url);
+                        return true;
+                    }
+                }
             }
             return false;
         }
@@ -1754,6 +1891,30 @@ namespace UltraCanvas {
             return true;
         }
         return false;
+    }
+
+    // Open a local image in the shared lightbox viewer (UltraCanvasImageViewer):
+    // the image fills the top (wheel to zoom, drag to pan, double-click to reset)
+    // above a dark info panel showing the title and source path. The window opens
+    // over the host app window and closes on Esc. displayPath (the original
+    // markdown URL) is shown as the path; empty falls back to imagePath.
+    void UltraCanvasTextArea::OpenMarkdownImageViewer(const std::string& imagePath,
+                                                      const std::string& title,
+                                                      const std::string& displayPath) {
+        ImageViewerInfo info;
+        info.title    = title;
+        info.subtitle = displayPath.empty() ? imagePath : displayPath;
+        // Title falls back to the file name when there is no alt text.
+        if (info.title.empty()) {
+            const size_t slash = imagePath.find_last_of("/\\");
+            info.title = (slash == std::string::npos) ? imagePath
+                                                       : imagePath.substr(slash + 1);
+        }
+
+        if (!markdownImageViewer) {
+            markdownImageViewer = std::make_shared<UltraCanvasImageViewer>();
+        }
+        markdownImageViewer->Show(imagePath, info, GetWindow());
     }
 
     // ---------------------------------------------------------------

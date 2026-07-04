@@ -99,7 +99,7 @@ namespace UltraCanvas {
         int gapWidth = charW * 2;
 
         // Available width for hex + ASCII content
-        int availWidth = bounds.width - style.padding * 2 - hexAddressWidth - gapWidth;
+        int availWidth = finalBounds.width - style.textPadding * 2 - hexAddressWidth - gapWidth;
 
         // Account for vertical scrollbar — compute preliminary row count first,
         // since hexTotalRows from the previous call may be stale (0 on first call)
@@ -109,7 +109,7 @@ namespace UltraCanvas {
             int bprEst = std::max(4, ((availWidth / perByteEst) / 4) * 4);
             int bufSize = static_cast<int>(hexBuffer.size());
             int estTotalRows = (bufSize > 0) ? ((bufSize + bprEst - 1) / bprEst) : 1;
-            int estMaxVisible = std::max(1, (bounds.height - style.padding * 2) / hexRowHeight);
+            int estMaxVisible = std::max(1, (int)((finalBounds.height - style.textPadding * 2) / hexRowHeight));
             if (estTotalRows > estMaxVisible) {
                 availWidth -= 15; // scrollbar width
             }
@@ -124,7 +124,7 @@ namespace UltraCanvas {
         hexBytesPerRow = std::max(4, bpr);
 
         // Compute panel positions
-        hexPanelStartX = bounds.x + style.padding + hexAddressWidth;
+        hexPanelStartX = finalBounds.x + style.textPadding + hexAddressWidth;
         hexAsciiPanelStartX = hexPanelStartX + hexBytesPerRow * hexByteWidth + gapWidth;
 
         // Compute total rows
@@ -133,10 +133,10 @@ namespace UltraCanvas {
 
         // Visible area
         hexVisibleArea = bounds;
-        hexVisibleArea.x += style.padding;
-        hexVisibleArea.y += style.padding;
-        hexVisibleArea.width -= style.padding * 2;
-        hexVisibleArea.height -= style.padding * 2;
+        hexVisibleArea.x += style.textPadding;
+        hexVisibleArea.y += style.textPadding;
+        hexVisibleArea.width -= style.textPadding * 2;
+        hexVisibleArea.height -= style.textPadding * 2;
 
         // Visible rows
         hexMaxVisibleRows = std::max(1, hexVisibleArea.height / hexRowHeight);
@@ -185,7 +185,7 @@ namespace UltraCanvas {
         if (displayRow >= 0 && displayRow < hexMaxVisibleRows) {
             int y = hexVisibleArea.y + displayRow * hexRowHeight;
             ctx->SetFillPaint(style.currentLineHighlightColor);
-            ctx->FillRectangle(Rect2Df(hexVisibleArea.x, y, hexVisibleArea.width, hexRowHeight));
+            ctx->FillRectangle(Rect2Dd(hexVisibleArea.x, y, hexVisibleArea.width, hexRowHeight));
         }
     }
 
@@ -194,10 +194,10 @@ namespace UltraCanvas {
 
         // Draw address gutter background
         ctx->SetFillPaint(style.lineNumbersBackgroundColor);
-        ctx->FillRectangle(Rect2Df(bounds.x, hexVisibleArea.y, hexAddressWidth + style.padding, hexVisibleArea.height));
+        ctx->FillRectangle(Rect2Dd(finalBounds.x, hexVisibleArea.y, hexAddressWidth + style.textPadding, hexVisibleArea.height));
 
         // Draw separator line
-        int separatorX = bounds.x + style.padding + hexAddressWidth - 4;
+        int separatorX = finalBounds.x + style.textPadding + hexAddressWidth - 4;
         ctx->SetStrokePaint(style.borderColor);
         ctx->SetStrokeWidth(1);
         ctx->DrawLine({separatorX, hexVisibleArea.y}, {separatorX, hexVisibleArea.y + hexVisibleArea.height});
@@ -289,12 +289,12 @@ namespace UltraCanvas {
             // Highlight in hex panel
             int hexX = hexPanelStartX + startCol * hexByteWidth;
             int hexW = (endCol - startCol) * hexByteWidth;
-            ctx->FillRectangle(Rect2Df(hexX, y, hexW, hexRowHeight));
+            ctx->FillRectangle(Rect2Dd(hexX, y, hexW, hexRowHeight));
 
             // Highlight in ASCII panel
             int asciiX = hexAsciiPanelStartX + startCol * hexAsciiCharWidth;
             int asciiW = (endCol - startCol) * hexAsciiCharWidth;
-            ctx->FillRectangle(Rect2Df(asciiX, y, asciiW, hexRowHeight));
+            ctx->FillRectangle(Rect2Dd(asciiX, y, asciiW, hexRowHeight));
         }
     }
 
@@ -321,7 +321,7 @@ namespace UltraCanvas {
                 bandDrawn[displayRow] = true;
                 int y = hexVisibleArea.y + displayRow * hexRowHeight;
                 ctx->SetFillPaint(rowBandColor);
-                ctx->FillRectangle(Rect2Df(hexVisibleArea.x, y, hexVisibleArea.width, hexRowHeight));
+                ctx->FillRectangle(Rect2Dd(hexVisibleArea.x, y, hexVisibleArea.width, hexRowHeight));
             }
         }
 
@@ -347,12 +347,12 @@ namespace UltraCanvas {
                 // Hex panel highlight
                 int hexX = hexPanelStartX + startCol * hexByteWidth;
                 int hexW = (endCol - startCol) * hexByteWidth;
-                ctx->FillRectangle(Rect2Df(hexX, y, hexW, hexRowHeight));
+                ctx->FillRectangle(Rect2Dd(hexX, y, hexW, hexRowHeight));
 
                 // ASCII panel highlight
                 int asciiX = hexAsciiPanelStartX + startCol * hexAsciiCharWidth;
                 int asciiW = (endCol - startCol) * hexAsciiCharWidth;
-                ctx->FillRectangle(Rect2Df(asciiX, y, asciiW, hexRowHeight));
+                ctx->FillRectangle(Rect2Dd(asciiX, y, asciiW, hexRowHeight));
             }
         }
     }
@@ -385,7 +385,7 @@ namespace UltraCanvas {
             int charW = hexByteWidth / 3; // Width of one hex digit
             int x = hexPanelStartX + col * hexByteWidth + hexCursorNibble * charW;
             ctx->SetFillPaint(Color(style.cursorColor.r, style.cursorColor.g, style.cursorColor.b, 80));
-            ctx->FillRectangle(Rect2Df(x, y, charW, hexRowHeight));
+            ctx->FillRectangle(Rect2Dd(x, y, charW, hexRowHeight));
             // Also draw line cursor
             ctx->SetStrokeWidth(2);
             ctx->DrawLine({x, y}, {x, y + hexRowHeight}, style.cursorColor);
@@ -479,11 +479,11 @@ namespace UltraCanvas {
         // Scrollbar thumb dragging
         if (isDraggingVerticalThumb) {
             auto bounds = GetBounds();
-            int scrollbarHeight = bounds.height;
+            int scrollbarHeight = finalBounds.height;
             int thumbHeight = verticalScrollThumb.height;
             int maxThumbY = scrollbarHeight - thumbHeight;
 
-            int newThumbY = event.pointerGlobal.y - dragStartOffset.y - bounds.y;
+            int newThumbY = event.pointerGlobal.y - dragStartOffset.y - finalBounds.y;
             newThumbY = std::max(0, std::min(newThumbY, maxThumbY));
 
             if (maxThumbY > 0 && hexTotalRows > hexMaxVisibleRows) {
@@ -1187,11 +1187,11 @@ namespace UltraCanvas {
         if (hexCursorInAsciiPanel) {
             // Cursor is in ASCII panel → highlight the corresponding byte in the HEX panel
             int x = hexPanelStartX + col * hexByteWidth;
-            ctx->FillRectangle(Rect2Df(x, y, hexByteWidth, hexRowHeight));
+            ctx->FillRectangle(Rect2Dd(x, y, hexByteWidth, hexRowHeight));
         } else {
             // Cursor is in HEX panel → highlight the corresponding char in the ASCII panel
             int x = hexAsciiPanelStartX + col * hexAsciiCharWidth;
-            ctx->FillRectangle(Rect2Df(x, y, hexAsciiCharWidth, hexRowHeight));
+            ctx->FillRectangle(Rect2Dd(x, y, hexAsciiCharWidth, hexRowHeight));
         }
  
         ctx->PopState();
