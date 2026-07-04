@@ -1,7 +1,7 @@
 // OS/MacOS/UltraCanvasMacOSWindow.h
 // macOS window implementation with Cocoa/Cairo support
-// Version: 2.1.1
-// Last Modified: 2026-06-03
+// Version: 2.2.0 - HiDPI scaling moved to UltraCanvasWindowBase (deviceScale)
+// Last Modified: 2026-07-03
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -51,12 +51,6 @@ namespace UltraCanvas {
 
         bool pendingShow = false;
 
-        // Backing-store scale of the screen the window is currently on.
-        // 1.0 = standard, 2.0 = Retina, 3.0 = some external HiDPI panels.
-        // Updated when the window is created and when the system reports a
-        // change (display switched, window dragged between monitors).
-        float backingScaleFactor = 1.0f;
-
         // ===== THREAD SAFETY =====
         mutable std::mutex cairoMutex;
 
@@ -64,14 +58,15 @@ namespace UltraCanvas {
         bool CreateNSWindow();
         bool CreateNativeCairoSurface();
         void DestroyNativeCairoSurface();
-        // Re-reads [nsWindow backingScaleFactor]. Returns true if the value
-        // changed since the last refresh.
-        bool RefreshBackingScaleFactor();
 
     protected:
         bool CreateNative() override;
         void DestroyNative() override;
         void DoResizeNative() override;
+        // Query the live per-window backing scale ([nsWindow backingScaleFactor]).
+        float QueryNativeDeviceScale() const override;
+        // Rebuild the offscreen Cairo surface at the current backing scale.
+        bool RecreateNativeSurface() override;
 
     public:
         // ===== CONSTRUCTOR & DESTRUCTOR =====
@@ -93,6 +88,9 @@ namespace UltraCanvas {
         NativeWindowHandle GetNativeHandle() const override;
         void GetScreenSize(int& width, int& height) const override;
         void GetScreenBounds(int& x, int& y, int& width, int& height) const override;
+        // macOS window geometry is in logical points (Cocoa applies the backing
+        // scale itself), so the native window size equals the logical size.
+        void GetNativeWindowSize(int& w, int& h) const override { w = config_.width; h = config_.height; }
         NSWindow* GetNSWindowHandle() const;
         void RaiseAndFocus() override;
 
@@ -113,10 +111,6 @@ namespace UltraCanvas {
         // different display). Recreates the Cairo surface at the new pixel
         // size so rendering stays crisp on the new screen.
         void OnWindowDidChangeBackingProperties();
-
-        // Currently observed device scale; used by the renderer to pick
-        // pixel-resolution rasterization sizes for fonts and SVG icons.
-        float GetBackingScaleFactor() const { return backingScaleFactor; }
     };
 
 } // namespace UltraCanvas

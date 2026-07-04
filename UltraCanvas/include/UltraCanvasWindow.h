@@ -1,7 +1,7 @@
 // include/UltraCanvasWindowBase.h
 // Enhanced abstract base window interface inheriting from UltraCanvasContainer
-// Version: 2.0.2
-// Last Modified: 2026-07-02
+// Version: 2.1.0 - cross-platform HiDPI/deviceScale scaling in base
+// Last Modified: 2026-07-03
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -15,6 +15,7 @@
 #include <memory>
 #include <vector>
 #include <unordered_set>
+#include <cmath>
 
 namespace UltraCanvas {
     class UltraCanvasWindowBase;
@@ -109,6 +110,24 @@ namespace UltraCanvas {
 
         NativeSurfacePtr nativeSurface;
 
+        // ===== HIDPI / DPI-AWARE SCALING =====
+        // Logical→physical multiplier for the display this window is on.
+        // 1.0 = standard, 2.0 = Retina/200%, 1.5 = 150%, etc. config_.width/height
+        // stay LOGICAL on every platform; nativeSurface + all renderContexts are
+        // built at PHYSICAL px (logical × deviceScale) via cairo device scale.
+        float deviceScale = 1.0f;
+
+        // OS override: query the live native backing scale for this window
+        // (macOS: [nsWindow backingScaleFactor]; Windows: GetDpiForWindow()/96;
+        // Linux: env / Xft.dpi / XRandR per-monitor DPI). Default 1.0 keeps
+        // non-HiDPI back-ends correct.
+        virtual float QueryNativeDeviceScale() const { return 1.0f; }
+
+        // OS override: (re)build nativeSurface at the current deviceScale (physical
+        // pixel dimensions + cairo_surface_set_device_scale). Returns false on
+        // failure. Called by DoResizeNative() and HandleDeviceScaleChange().
+        virtual bool RecreateNativeSurface() = 0;
+
     public:
         // Window-specific callbacks
         std::function<bool()> onWindowClosing;
@@ -127,6 +146,30 @@ namespace UltraCanvas {
         UltraCanvasWindowBase();
 
         NativeSurfacePtr GetNativeSurface() { return nativeSurface; };
+
+        // ===== HIDPI / DPI-AWARE SCALING (shared) =====
+        // Current logical→physical multiplier for this window's display.
+        float GetDeviceScale() const { return deviceScale; }
+
+        // Re-read the native scale via QueryNativeDeviceScale(); store it when
+        // valid (>0); returns true when it changed from the previous value.
+        bool RefreshDeviceScale();
+
+        // Shared DPI-change orchestration: rebuilds nativeSurface, renderContext,
+        // and popup/tooltip contexts at the new deviceScale, then re-lays-out and
+        // repaints. Call after RefreshDeviceScale() reports a change.
+        void HandleDeviceScaleChange();
+
+        // Logical <-> physical pixel conversions using deviceScale. Round (not
+        // truncate) so fractional scales map back cleanly.
+        int LogicalToPhysical(int v) const { return static_cast<int>(std::lround(v * deviceScale)); }
+        int PhysicalToLogical(int v) const {
+            return static_cast<int>(std::lround(v / (deviceScale > 0.0f ? deviceScale : 1.0f)));
+        }
+        Size2Di  LogicalToPhysical(const Size2Di& s)  const { return { LogicalToPhysical(s.width),  LogicalToPhysical(s.height) }; }
+        Size2Di  PhysicalToLogical(const Size2Di& s)  const { return { PhysicalToLogical(s.width),  PhysicalToLogical(s.height) }; }
+        Point2Di PhysicalToLogical(const Point2Di& p) const { return { PhysicalToLogical(p.x),      PhysicalToLogical(p.y) }; }
+        Point2Di LogicalToPhysical(const Point2Di& p) const { return { LogicalToPhysical(p.x),      LogicalToPhysical(p.y) }; }
 
         // Weak reference to this window as UltraCanvasWindowBase. Returns an empty
         // weak_ptr when the window is not (yet) owned by a shared_ptr. Used to store
@@ -225,6 +268,17 @@ namespace UltraCanvas {
         void GetWindowSize(int& w, int& h) const {
             w = config_.width;
             h = config_.height;
+        }
+
+        // Window outer size in the platform's NATIVE window-geometry space —
+        // the space SetWindowPosition() and GetScreenBounds() operate in. On
+        // X11/Windows that is PHYSICAL px (logical × deviceScale); on macOS the
+        // window geometry is in logical points, so it equals the logical size
+        // (macOS overrides this). Used by the CenterOn* helpers so the size and
+        // screen-origin terms are in the same units on HiDPI displays.
+        virtual void GetNativeWindowSize(int& w, int& h) const {
+            w = LogicalToPhysical(config_.width);
+            h = LogicalToPhysical(config_.height);
         }
 
         void DoResize();

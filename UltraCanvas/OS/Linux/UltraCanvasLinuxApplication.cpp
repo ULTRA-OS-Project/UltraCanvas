@@ -1,7 +1,7 @@
 // OS/Linux/UltraCanvasLinuxApplication.cpp
 // Complete Linux application implementation with all methods
-// Version: 1.6.8 - focusedWindow now weak_ptr; targetWindow set via GetWeakWindow()
-// Last Modified: 2026-07-02
+// Version: 1.7.0 - HiDPI: event coords physical->logical; per-monitor move re-scale
+// Last Modified: 2026-07-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWindow.h"
@@ -555,10 +555,16 @@ namespace UltraCanvas {
 
             case ConfigureNotify: {
                 event.type = UCEventType::WindowResize;
-                event.width = xEvent.xconfigure.width;
+                event.width = xEvent.xconfigure.width;    // PHYSICAL px
                 event.height = xEvent.xconfigure.height;
                 event.pointerWindow = { xEvent.xconfigure.x, xEvent.xconfigure.y };
                 event.pointer = event.pointerWindow;
+                // The window may have moved to a display with a different DPI.
+                // Re-query the per-monitor scale; if it changed, rebuild the
+                // surface/context at the new scale before the resize propagates.
+                if (targetWindow && targetWindow->RefreshDeviceScale()) {
+                    targetWindow->HandleDeviceScaleChange();
+                }
                 break;
             }
 
@@ -636,6 +642,26 @@ namespace UltraCanvas {
             default:
                 event.type = UCEventType::Unknown;
                 break;
+        }
+
+        // ===== HiDPI: PHYSICAL px -> LOGICAL =====
+        // X11 always reports coordinates in physical device px. Convert to the
+        // target window's logical space (divide by deviceScale) so the framework
+        // hit-tests and lays out in device-independent units. macOS/Windows do
+        // the equivalent conversion in their own event layers. Non-pointer events
+        // carry a {0,0} pointer, so the conversion is a harmless no-op there.
+        if (targetWindow) {
+            float s = targetWindow->GetDeviceScale();
+            if (s != 1.0f) {
+                event.pointerWindow = targetWindow->PhysicalToLogical(event.pointerWindow);
+                event.pointer       = event.pointerWindow;
+                event.pointerGlobal = targetWindow->PhysicalToLogical(event.pointerGlobal);
+                if (event.type == UCEventType::WindowResize ||
+                    event.type == UCEventType::WindowRepaint) {
+                    event.width  = targetWindow->PhysicalToLogical(event.width);
+                    event.height = targetWindow->PhysicalToLogical(event.height);
+                }
+            }
         }
 
         return event;

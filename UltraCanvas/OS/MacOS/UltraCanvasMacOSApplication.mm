@@ -1,6 +1,6 @@
 // OS/MacOS/UltraCanvasMacOSApplication.mm
 // Complete macOS application implementation with Cocoa/Cairo support
-// Version: 2.2.1 - focusedWindow now weak_ptr; targetWindow set via GetWeakWindow()
+// Version: 2.2.1 - focusedWindow now weak_ptr; targetWindow set via GetWindowWeakPtr()
 // Last Modified: 2026-07-02
 // Author: UltraCanvas Framework
 
@@ -343,7 +343,7 @@ static UltraCanvasAppDelegate* g_appDelegate = nil;
         }
 
         if (targetWindow) {
-            event.targetWindow = targetWindow->GetWeakWindow();
+            event.targetWindow = targetWindow->GetWindowWeakPtr();
         }
 
         // Get window content height for Y-coordinate flipping
