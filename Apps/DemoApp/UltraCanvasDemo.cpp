@@ -1183,6 +1183,12 @@ namespace UltraCanvas {
 //                .AddVariant("codeeditor", "Pascal Syntax")
 //                .AddVariant("codeeditor", "COBOL Syntax");
 
+        textDocBuilder.AddItem("textdocuments", "Text Documents",
+                               "Plain text and source-code file rendering via UltraCanvasTextArea's syntax renderer",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateTextDocumentExamples(); },
+                               "DemoApp/UltraCanvasDemoExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasTextAreaExamples.md");
         textDocBuilder.AddItem("ebook", "eBook Reader",
                                "EPUB/FB2/MOBI/TXT reading with chapters, TOC, themes and font scaling "
                                "rendered natively through the CSSLayout engine",
