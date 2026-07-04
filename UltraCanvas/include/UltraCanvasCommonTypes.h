@@ -13,9 +13,15 @@
 // Platform-specific native window handle for parent window support
 // This ensures native dialogs stay on top of their parent window
 #if defined(_WIN32) || defined(_WIN64)
+#ifndef NOMINMAX
+#define NOMINMAX          // keep std::min/std::max usable (microtex uses them)
+#endif
 #include <windows.h>
 #ifdef DrawText
 #undef DrawText
+#endif
+#ifdef TRANSPARENT        // wingdi.h #define TRANSPARENT 1 collides with
+#undef TRANSPARENT        // microtex::TRANSPARENT (graphic_basic.h)
 #endif
 #ifdef CreateWindow
 #undef CreateWindow

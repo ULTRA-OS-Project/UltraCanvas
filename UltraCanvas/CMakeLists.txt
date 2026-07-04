@@ -13,7 +13,7 @@ include(FetchContent)
 enable_language(C)
 
 # ===== LIBRARY DEFINITION =====
-set(ULTRACANVAS_VERSION "0.2.31")
+set(ULTRACANVAS_VERSION "0.2.32")
 set(ULTRACANVAS_LIB_NAME "UltraCanvas")
 
 message(STATUS "")
@@ -37,6 +37,15 @@ option(ULTRACANVAS_PLUGIN_LATEX "Build LaTeX math plugin (embedded MicroTeX)" ON
 option(ULTRACANVAS_ENABLE_AUDIO "Enable audio playback & recording (requires backend lib)" ON)
 option(ULTRACANVAS_ENABLE_VIDEO "Enable video playback & recording (requires platform media framework)" ON)
 option(ULTRACANVAS_ENABLE_GL "Enable OpenGL 3D surface support" ON)
+
+# The LaTeX plugin is a runtime-loaded module that subclasses core UI classes.
+# On Unix its undefined core symbols are resolved from the host executable at
+# dlopen() time (ENABLE_EXPORTS + RTLD_GLOBAL). Windows PE has no equivalent, so
+# the shared code must live in a DLL that both the apps and the plugin import.
+if(WIN32 AND ULTRACANVAS_PLUGIN_LATEX AND NOT ULTRACANVAS_BUILD_SHARED)
+    message(STATUS "Windows + LaTeX plugin: forcing shared core (ULTRACANVAS_BUILD_SHARED=ON)")
+    set(ULTRACANVAS_BUILD_SHARED ON)
+endif()
 
 # OpenGL surface support (Linux, macOS and Windows)
 # On Windows the WGL backend additionally requires GLEW to load modern GL
@@ -62,13 +71,20 @@ else()
 endif()
 
 
-#include(FetchContent)
-#
-#FetchContent_Declare(
-#        fmt
-#        GIT_REPOSITORY https://github.com/fmtlib/fmt
-#        GIT_TAG        e69e5f977d458f2650bb346dadf2ad30c5320281) # 10.2.1
-#FetchContent_MakeAvailable(fmt)
+# The core library links fmt::fmt, so it must resolve the dependency itself
+# rather than relying on the demo app's FetchContent. Prefer an installed fmt
+# (works offline); fall back to fetching the pinned revision.
+if(NOT TARGET fmt::fmt)
+    find_package(fmt CONFIG QUIET)
+    if(NOT fmt_FOUND)
+        include(FetchContent)
+        FetchContent_Declare(
+                fmt
+                GIT_REPOSITORY https://github.com/fmtlib/fmt
+                GIT_TAG        123913715afeb8a437e6388b4473fcc4753e1c9a) # 11.1.4
+        FetchContent_MakeAvailable(fmt)
+    endif()
+endif()
 
 message(STATUS "Target Platform: ${ULTRACANVAS_PLATFORM}")
 
@@ -113,7 +129,8 @@ endif()
 
 # Platform-specific dependencies
 if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
-    pkg_check_modules(X11 REQUIRED x11 xcursor)
+    # xrandr: per-monitor DPI query for HiDPI scaling (XRRGetMonitors).
+    pkg_check_modules(X11 REQUIRED x11 xcursor xrandr)
     find_package(OpenGL REQUIRED)
     pkg_check_modules(GTK3 REQUIRED gtk+-3.0 gtk+-unix-print-3.0)
 
@@ -228,6 +245,25 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/AbsoluteLayout.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/FlexLayout.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/GridLayout.cpp
+
+        # HTMLReader: HTML/XHTML parser + CSS subset + DOM→element builder
+        # on top of the CSSLayout engine (used by the eBook subsystem).
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/HTMLDocument.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/HTMLParser.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/CSSStyleSheet.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/HTMLStyleResolver.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/HTMLElementBuilder.cpp
+
+        # eBook foundation: chapter-oriented engine interface + ZIP/DEFLATE
+        # container access (format engines register themselves here).
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEBookTypes.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/eBook/IEBookEngine.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/eBook/EBookArchive.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/eBook/EPUBEngine.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/eBook/FB2Engine.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/eBook/MOBIEngine.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/eBook/TXTEngine.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEBookViewer.cpp
 
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudio.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioDevices.cpp
@@ -509,6 +545,13 @@ set_target_properties(${ULTRACANVAS_LIB_NAME} PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     OUTPUT_NAME "ultracanvas"
 )
+
+if(WIN32)
+    # No __declspec(dllexport) in the sources: export everything (functions AND
+    # data, incl. vtables/typeinfo the LaTeX plugin needs) and emit an import lib.
+    set_target_properties(${ULTRACANVAS_LIB_NAME} PROPERTIES
+        WINDOWS_EXPORT_ALL_SYMBOLS ON)
+endif()
 
 # ===== INCLUDE DIRECTORIES =====
 target_include_directories(${ULTRACANVAS_LIB_NAME}
@@ -909,7 +952,7 @@ if(ULTRACANVAS_PLUGIN_VECTORIZER)
     endif()
 else()
     message(STATUS "  [−] Vectorizer Plugin - SKIPPED (disabled by option)")
-
+endif()
 # LaTeX Plugin (embedded MicroTeX) - ON-DEMAND dynamic module
 #
 # LaTeX support is a load-on-demand module, in line with UltraCanvas' goal of
@@ -945,8 +988,13 @@ if(ULTRACANVAS_PLUGIN_LATEX)
         PRIVATE MICROTEX_LIBRARY
         PUBLIC  GLYPH_RENDER_TYPE=1)
     set_target_properties(microtex_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
-    if(NOT MSVC)
-        target_compile_options(microtex_core PRIVATE -fexceptions)
+    # The vendored engine uses a u8"" literal (formula_def.cpp) that is char[]
+    # under C++17 but char8_t[] under C++20 (which this project forces globally),
+    # breaking std::string map initialisation. Keep u8"" as char[].
+    if(MSVC)
+        target_compile_options(microtex_core PRIVATE /Zc:char8_t-)
+    else()
+        target_compile_options(microtex_core PRIVATE -fexceptions -fno-char8_t)
     endif()
 
     # --- The on-demand shared module ---

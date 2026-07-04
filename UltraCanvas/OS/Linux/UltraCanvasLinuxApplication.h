@@ -183,7 +183,9 @@ namespace UltraCanvas {
         FontStyle DetectMonospacedFontStyleNative() override;
         void LoadBundledFontsNative() override;
 
-        Cursor LoadCursorFromImage(const std::string& filename, int hotspotX, int hotspotY);
+        // scale: HiDPI factor; the cursor image and hotspot are scaled by it so
+        // custom cursors stay the right physical size on HiDPI displays.
+        Cursor LoadCursorFromImage(const std::string& filename, int hotspotX, int hotspotY, float scale = 1.0f);
 
     private:
         // ===== INTERNAL INITIALIZATION =====

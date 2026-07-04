@@ -1189,10 +1189,28 @@ namespace UltraCanvas {
                                [this]() { return CreateTextDocumentExamples(); },
                                "DemoApp/UltraCanvasDemoExamples.cpp",
                                "Docs/UltraCanvas/UltraCanvasTextAreaExamples.md");
+        textDocBuilder.AddItem("ebook", "eBook Reader",
+                               "EPUB/FB2/MOBI/TXT reading with chapters, TOC, themes and font scaling "
+                               "rendered natively through the CSSLayout engine",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateEBookExamples(); },
+                               "DemoApp/UltraCanvasEBookExamples.cpp",
+                               "UltraCanvas/eBook_README.md")
+                .AddVariant("ebook", "EPUB 2 / EPUB 3")
+                .AddVariant("ebook", "FictionBook 2 (FB2)")
+                .AddVariant("ebook", "Kindle (MOBI / AZW)")
+                .AddVariant("ebook", "Plain Text");
 
-        textDocBuilder.AddItem("textdocuments_latex", "LaTeX Documents", "LaTeX document support",
+        textDocBuilder.AddItem("textdocuments", "Text Documents", "Text document support",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreateTextDocumentExamples(); });
+
+        textDocBuilder.AddItem("textdocuments_latex", "LaTeX Documents",
+                               "LaTeX document examples scanned from media/LaTex — "
+                               "rendered output and source per document",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateLaTeXExamples(); },
+                               "DemoApp/UltraCanvasLaTeXExamples.cpp");
 
 #ifdef ULTRACANVAS_PLUGIN_PDF
         textDocBuilder.AddItem("textdocuments_pdf", "PDF Documents",
@@ -1417,7 +1435,7 @@ namespace UltraCanvas {
                 {DemoCategory::Graphics3D, "3D Graphics"},
                 {DemoCategory::AudioElements, "Audio Elements"},
                 {DemoCategory::VideoElements, "Video Elements"},
-                {DemoCategory::TextDocuments, "Text Documents"},
+                {DemoCategory::TextDocuments, "Document support"},
                 {DemoCategory::Widgets, "Widgets"},
                 {DemoCategory::Tools, "Tools"},
                 {DemoCategory::Modules, "ULTRA OS modules"},

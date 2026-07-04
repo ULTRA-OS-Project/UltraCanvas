@@ -316,7 +316,7 @@ namespace UltraCanvas {
             //         auto parentWinState = parentWin->GetState();
             //         if ( parentWinState == WindowState::Normal || parentWinState == WindowState::Maximized || parentWinState == WindowState::Fullscreen) {
             //             parentWin->RaiseAndFocus();
-            //             focusedWindow = parentWin->GetWeakWindow();
+            //             focusedWindow = parentWin->GetWindowWeakPtr();
             //         }
             //     }
             // }

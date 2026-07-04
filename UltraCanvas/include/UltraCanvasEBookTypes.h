@@ -525,7 +525,9 @@ struct EBookMargins {
     static EBookMargins Default() { return EBookMargins(); }
     static EBookMargins Narrow() { return {10, 10, 15, 15, 5, 10, 10}; }
     static EBookMargins Wide() { return {30, 30, 40, 40, 15, 20, 20}; }
-    static EBookMargins None() { return {0, 0, 0, 0, 0, 0, 0}; }
+    // Not named "None": X11's Xlib.h (pulled in via UltraCanvasCommonTypes.h)
+    // defines None as a macro.
+    static EBookMargins NoMargins() { return {0, 0, 0, 0, 0, 0, 0}; }
 };
 
 // ===== TEXT REFLOW SETTINGS =====

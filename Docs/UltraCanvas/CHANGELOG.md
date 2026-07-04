@@ -1,3 +1,11 @@
+#### 2026-06-26 *0.2.32*
+- Implemented HiDPI and scaling for all platforms
+- Merge "LaTeX document renderer for UltraCanvas"
+- Merge "OCR and vectorize solution for UltraCanvas"
+- Merge "UltraCanvas heatmap demo presets"
+- Merge "Media viewer widget for UltraCanvas"
+- Merge "UltraCanvas Gauges demo fixes"
+
 #### 2026-06-26 *0.2.31*
 - Merge "UltraCanvas popup changelog link"
 - Merge "UltraCanvas Gauge demo layout"

@@ -167,6 +167,9 @@ private:
     void CompositeToSurface(IRenderContext* ctx, bool readback = true);
     bool ShouldRender() const;
     RenderSurfaceInfo BuildRenderInfo();
+    // Device scale of the window this surface is on (1.0 when unattached).
+    // Used to render the GL framebuffer at physical resolution on HiDPI.
+    float GetSurfaceDeviceScale() const;
 };
 
 // Factory functions
