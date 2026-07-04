@@ -12,6 +12,8 @@
 // Standard library
 #include <algorithm>
 #include <cstring>
+#include <cstdio>
+#include <fstream>
 
 // Compression libraries
 #ifdef VIRTUALFS_HAS_ZLIB

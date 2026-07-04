@@ -41,6 +41,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(PkgConfig QUIET)
 
+set(VIRTUALFS_DEFINITIONS "")
+
 # libarchive (primary backend)
 if(VIRTUALFS_USE_LIBARCHIVE)
     if(PkgConfig_FOUND)
@@ -57,7 +59,7 @@ if(VIRTUALFS_USE_LIBARCHIVE)
     
     if(LIBARCHIVE_FOUND)
         message(STATUS "Found libarchive: ${LIBARCHIVE_LIBRARIES}")
-        add_compile_definitions(VIRTUALFS_HAS_LIBARCHIVE)
+        list(APPEND VIRTUALFS_DEFINITIONS VIRTUALFS_HAS_LIBARCHIVE)
     else()
         message(WARNING "libarchive not found - multi-format support disabled")
     endif()
@@ -68,7 +70,7 @@ if(VIRTUALFS_USE_ZLIB)
     find_package(ZLIB)
     if(ZLIB_FOUND)
         message(STATUS "Found zlib: ${ZLIB_LIBRARIES}")
-        add_compile_definitions(VIRTUALFS_HAS_ZLIB)
+        list(APPEND VIRTUALFS_DEFINITIONS VIRTUALFS_HAS_ZLIB)
     endif()
 endif()
 
@@ -88,7 +90,7 @@ if(VIRTUALFS_USE_ZSTD)
     
     if(ZSTD_FOUND)
         message(STATUS "Found Zstandard: ${ZSTD_LIBRARIES}")
-        add_compile_definitions(VIRTUALFS_HAS_ZSTD)
+        list(APPEND VIRTUALFS_DEFINITIONS VIRTUALFS_HAS_ZSTD)
     endif()
 endif()
 
@@ -100,7 +102,7 @@ if(VIRTUALFS_USE_LZ4)
     
     if(LZ4_FOUND)
         message(STATUS "Found LZ4: ${LZ4_LIBRARIES}")
-        add_compile_definitions(VIRTUALFS_HAS_LZ4)
+        list(APPEND VIRTUALFS_DEFINITIONS VIRTUALFS_HAS_LZ4)
     endif()
 endif()
 
@@ -112,7 +114,7 @@ if(VIRTUALFS_USE_BROTLI)
     
     if(BROTLI_FOUND)
         message(STATUS "Found Brotli: ${BROTLI_LIBRARIES}")
-        add_compile_definitions(VIRTUALFS_HAS_BROTLI)
+        list(APPEND VIRTUALFS_DEFINITIONS VIRTUALFS_HAS_BROTLI)
     endif()
 endif()
 
@@ -158,6 +160,10 @@ endif()
 
 # Alias for use in subdirectories
 add_library(VirtualFS::VirtualFS ALIAS VirtualFS)
+
+# PUBLIC so consumers compiling against VirtualFS (e.g. the UltraCanvas
+# bridge) see the same VIRTUALFS_HAS_* feature set the library was built with
+target_compile_definitions(VirtualFS PUBLIC ${VIRTUALFS_DEFINITIONS})
 
 # ============================================================================
 # INCLUDE DIRECTORIES

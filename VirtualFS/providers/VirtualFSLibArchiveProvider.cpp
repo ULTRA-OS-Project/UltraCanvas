@@ -5,6 +5,7 @@
 // Author: ULTRA OS Framework
 
 #include "VirtualFSLibArchiveProvider.h"
+#include "VirtualFSManager.h"
 
 #ifdef VIRTUALFS_HAS_LIBARCHIVE
 
@@ -14,6 +15,7 @@
 #include <fstream>
 #include <algorithm>
 #include <cstring>
+#include <ctime>
 #include <sstream>
 
 namespace VirtualFS {

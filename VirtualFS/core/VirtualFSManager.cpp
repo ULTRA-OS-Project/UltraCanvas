@@ -6,6 +6,11 @@
 
 #include "VirtualFSManager.h"
 #include "VirtualFSPath.h"
+
+#ifdef VIRTUALFS_HAS_LIBARCHIVE
+#include "VirtualFSLibArchiveProvider.h"
+#endif
+
 #include <filesystem>
 #include <fstream>
 #include <algorithm>
@@ -21,19 +26,23 @@ namespace VirtualFS {
 // ============================================================================
 
 VirtualFSResult VirtualFSManager::Initialize() {
-    std::lock_guard<std::mutex> lock(providerMutex);
-    
-    if (initialized) {
-        return VirtualFSResult::Success;
+    {
+        std::lock_guard<std::mutex> lock(providerMutex);
+
+        if (initialized) {
+            return VirtualFSResult::Success;
+        }
+
+        // Set default temp directory
+        tempDirectory = std::filesystem::temp_directory_path().string();
+
+        initialized = true;
     }
-    
-    // Set default temp directory
-    tempDirectory = std::filesystem::temp_directory_path().string();
-    
-    // Register built-in providers
+
+    // Register built-in providers outside the lock — RegisterProvider()
+    // takes providerMutex itself
     RegisterBuiltInProviders();
-    
-    initialized = true;
+
     return VirtualFSResult::Success;
 }
 
@@ -64,11 +73,9 @@ void VirtualFSManager::Shutdown() {
 }
 
 void VirtualFSManager::RegisterBuiltInProviders() {
-    // Built-in providers will be registered here when implemented
-    // For now, this is a placeholder
-    
-    // Example (when libarchive provider is implemented):
-    // RegisterProvider(CreateLibArchiveProvider());
+#ifdef VIRTUALFS_HAS_LIBARCHIVE
+    RegisterProvider(CreateLibArchiveProvider());
+#endif
 }
 
 // ============================================================================
