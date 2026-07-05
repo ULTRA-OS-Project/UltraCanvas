@@ -15,17 +15,14 @@
 
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetPlugins.h>
+#include <UltraNet/UltraNetMime.h>
 
 #include <curl/curl.h>
 
-#include <atomic>
-#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <ctime>
 #include <memory>
-#include <random>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -33,146 +30,52 @@
 namespace {
 
 // ============================================================================
-// Base64 encoder for attachment bodies. RFC 4648 §4, 76-column wrapping.
-// ============================================================================
-std::string Base64(const std::vector<uint8_t>& in) {
-    static const char* kAlphabet =
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    std::string out;
-    out.reserve(((in.size() + 2) / 3) * 4 + in.size() / 57 + 4);
-
-    std::size_t lineWidth = 0;
-    for (std::size_t i = 0; i < in.size(); i += 3) {
-        const std::size_t left = in.size() - i;
-        const uint32_t triplet =
-            (static_cast<uint32_t>(in[i]) << 16) |
-            (left > 1 ? static_cast<uint32_t>(in[i + 1]) << 8 : 0) |
-            (left > 2 ? static_cast<uint32_t>(in[i + 2])      : 0);
-        out.push_back(kAlphabet[(triplet >> 18) & 0x3f]);
-        out.push_back(kAlphabet[(triplet >> 12) & 0x3f]);
-        out.push_back(left > 1 ? kAlphabet[(triplet >> 6)  & 0x3f] : '=');
-        out.push_back(left > 2 ? kAlphabet[ triplet        & 0x3f] : '=');
-        lineWidth += 4;
-        if (lineWidth >= 76) {
-            out.append("\r\n");
-            lineWidth = 0;
-        }
-    }
-    if (lineWidth > 0) out.append("\r\n");
-    return out;
-}
-
-// ============================================================================
 // Helpers
 // ============================================================================
-std::string CommaJoin(const std::vector<std::string>& v) {
-    std::string out;
-    for (std::size_t i = 0; i < v.size(); ++i) {
-        if (i) out += ", ";
-        out += v[i];
-    }
-    return out;
-}
-
 std::string AngleAddr(const std::string& addr) {
     if (!addr.empty() && addr.front() == '<' && addr.back() == '>') return addr;
     return "<" + addr + ">";
 }
 
-std::string Rfc2822Date() {
-    std::time_t t = std::time(nullptr);
-    std::tm tm{};
-#if defined(_WIN32)
-    gmtime_s(&tm, &t);
-#else
-    gmtime_r(&t, &tm);
-#endif
-    char buf[64];
-    std::strftime(buf, sizeof buf, "%a, %d %b %Y %H:%M:%S +0000", &tm);
-    return buf;
-}
-
-std::string GenerateBoundary() {
-    static std::atomic<uint64_t> counter{0};
-    std::ostringstream os;
-    os << "----=_UltraNet_"
-       << std::chrono::system_clock::now().time_since_epoch().count()
-       << "_" << counter.fetch_add(1);
-    return os.str();
-}
-
-std::string GenerateMessageId() {
-    std::random_device rd;
-    std::ostringstream os;
-    os << "<" << std::hex << rd() << rd() << "@ultranet.local>";
-    return os.str();
-}
-
 // ============================================================================
-// RFC 822 / 2822 / 5322 message construction.
-//
-// For the no-attachment case: a flat message with the supplied content type.
-// For the attachment case: a multipart/mixed wrapping a text/plain (or text/
-// html) body and one base64-encoded application/octet-stream per attachment.
+// Message construction — delegates to the shared UltraNet MIME builder
+// (core UltraNet_MimeBuild) so the wire format lives in one place.
 // ============================================================================
 std::string BuildMessage(const UltraNetMailMessage& m) {
-    std::ostringstream os;
+    UltraNetMimeBuildInput in;
+    in.from = m.from;
+    in.to   = m.to;
+    in.cc   = m.cc;
+    in.bcc  = m.bcc;
+    in.subject = m.subject;
+    in.body = m.body;
+    in.extraHeaders = m.headers;
 
-    const bool hasAttachments = !m.attachments.empty();
-    const std::string boundary = hasAttachments ? GenerateBoundary() : std::string{};
-    const std::string bodyContentType =
-        m.contentType.empty() ? "text/plain; charset=utf-8" : m.contentType;
-
-    os << "From: "    << m.from                 << "\r\n";
-    if (!m.to.empty())  os << "To: "  << CommaJoin(m.to)  << "\r\n";
-    if (!m.cc.empty())  os << "Cc: "  << CommaJoin(m.cc)  << "\r\n";
-    os << "Subject: " << m.subject               << "\r\n"
-       << "Date: "    << Rfc2822Date()           << "\r\n"
-       << "Message-ID: " << GenerateMessageId()  << "\r\n"
-       << "MIME-Version: 1.0\r\n";
-
-    for (const auto& [name, value] : m.headers) {
-        // Skip headers we already generated.
-        if (name == "MIME-Version" || name == "Date" || name == "Message-ID" ||
-            name == "From" || name == "To" || name == "Cc" || name == "Bcc" ||
-            name == "Subject" || name == "Content-Type" ||
-            name == "Content-Transfer-Encoding") {
-            continue;
+    // Split the caller's content type into media type + charset.
+    if (!m.contentType.empty()) {
+        std::size_t semi = m.contentType.find(';');
+        in.bodyMediaType = m.contentType.substr(0, semi);
+        while (!in.bodyMediaType.empty() && in.bodyMediaType.back() == ' ')
+            in.bodyMediaType.pop_back();
+        std::size_t cs = m.contentType.find("charset=");
+        if (cs != std::string::npos) {
+            std::string charset = m.contentType.substr(cs + 8);
+            std::size_t end = charset.find(';');
+            if (end != std::string::npos) charset = charset.substr(0, end);
+            if (!charset.empty() && charset.front() == '"') charset = charset.substr(1);
+            if (!charset.empty() && charset.back() == '"') charset.pop_back();
+            in.bodyCharset = charset;
         }
-        os << name << ": " << value << "\r\n";
     }
 
-    if (!hasAttachments) {
-        os << "Content-Type: " << bodyContentType << "\r\n"
-           << "Content-Transfer-Encoding: 8bit\r\n"
-           << "\r\n"
-           << m.body;
-    } else {
-        os << "Content-Type: multipart/mixed; boundary=\""
-           << boundary << "\"\r\n\r\n"
-           << "This is a multi-part message in MIME format.\r\n";
-
-        // Body part.
-        os << "--" << boundary << "\r\n"
-           << "Content-Type: " << bodyContentType << "\r\n"
-           << "Content-Transfer-Encoding: 8bit\r\n"
-           << "\r\n"
-           << m.body << "\r\n";
-
-        // Attachments.
-        for (const auto& [name, bytes] : m.attachments) {
-            os << "--" << boundary << "\r\n"
-               << "Content-Type: application/octet-stream; name=\""
-                   << name << "\"\r\n"
-               << "Content-Disposition: attachment; filename=\""
-                   << name << "\"\r\n"
-               << "Content-Transfer-Encoding: base64\r\n"
-               << "\r\n"
-               << Base64(bytes);
-        }
-        os << "--" << boundary << "--\r\n";
+    for (const auto& [name, bytes] : m.attachments) {
+        UltraNetMimeBuildAttachment a;
+        a.filename = name;
+        a.data = bytes;
+        in.attachments.push_back(std::move(a));
     }
-    return os.str();
+
+    return UltraNet_MimeBuild(in);
 }
 
 // ============================================================================

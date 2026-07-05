@@ -6,6 +6,7 @@ cmake_minimum_required(VERSION 3.16)
 set(ULTRANET_TEST_SOURCES
     test_main.cpp
     test_url.cpp
+    test_mime.cpp
     test_headers.cpp
     test_result.cpp
     test_plugins.cpp
