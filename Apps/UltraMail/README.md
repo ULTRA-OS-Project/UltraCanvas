@@ -14,8 +14,10 @@ and **UltraDatabase** (local store) modules.
 > (Toolbox + account info-tile bar), the setup wizard (with discovery), the
 > **three-pane reading view** (folders | list | preview with body + attachments),
 > the attachment strip → MediaViewer, the contact manager, and the **composer**
-> (Write / Reply, with Send via the SMTP plug-in). Still to come: the live
-> login-verify + background sync loop, and wiring Send to a persistent outbox.
+> (Write / Reply, Send through a **persistent outbox**). On startup the app
+> brings up the UltraNet plug-in registry (SMTP/IMAP DSOs load if on the path;
+> `ULTRAMAIL_PLUGIN_DIR` overrides). Still to come: a live login-verify against
+> a real server and a periodic background-sync scheduler.
 
 ## Layout
 
@@ -46,6 +48,10 @@ Apps/UltraMail/
                                   (Re:/Fwd:, quoting, threading headers)
     UltraMailSender.{h,cpp}       send a Draft via the SMTP plug-in
                                   (IMailProtocolPlugin)
+    UltraMailOutbox.{h,cpp}       persistent send queue on UltraDatabase:
+                                  Enqueue + Flush (sent->remove, fail->retry)
+    UltraMailSyncService.{h,cpp}  full-account sync (folders+inbox+bodies) over
+                                  the SyncEngine, sync + background-thread variants
   ui/                             UltraCanvas UI layer
     UltraMailApp.{h,cpp}          app manager: owns store + window, wires it up
     UltraMailToolbox.{h,cpp}      start-screen grid: account tiles + "Add

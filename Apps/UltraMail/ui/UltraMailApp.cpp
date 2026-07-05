@@ -57,8 +57,16 @@ bool UltraMailApp::Initialize(const std::string& dataDir) {
     cacheDir_ = dataDir + "/cache";
     mailDir_  = dataDir + "/mail";
 
-    // The address book is a global (account-independent) store.
+    // The address book + outbox are global (account-independent) stores.
     contacts_.Open("ultramail-contacts", dataDir + "/contacts.db");
+    outbox_.Open("ultramail-outbox", dataDir + "/outbox.db");
+
+    // Bring up the UltraNet plug-in registry so the SMTP / IMAP DSOs load if
+    // they are on the plug-in path (ULTRAMAIL_PLUGIN_DIR overrides the default).
+    if (!UltraNet_IsInitialized()) UltraNet_Initialize();
+    if (const char* pd = std::getenv("ULTRAMAIL_PLUGIN_DIR"); pd && *pd)
+        UltraNet_SetPluginDirectory(pd);
+    UltraNet_RefreshPlugins();
 
     store_.ListAccounts(accounts_);
     store_.GetAccountStatus(status_);
@@ -137,6 +145,14 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
         SeedDemoMail();
         OpenReadingView();
     }
+    // Demo path: send a draft (exercises the outbox queue + result dialog).
+    if (const char* ds = std::getenv("ULTRAMAIL_DEMO_SEND"); ds && *ds == '1') {
+        Draft d = Composer::NewMessage("Erika Example", "erika@gmail.com");
+        d.to = {"bob@example.com"};
+        d.subject = "Hello from UltraMail";
+        d.body = "This message was queued through the persistent outbox.";
+        HandleSendDraft(d);
+    }
     // Demo path: open a reply-prefilled compose window.
     if (const char* dcomp = std::getenv("ULTRAMAIL_DEMO_COMPOSE"); dcomp && *dcomp == '1') {
         SourceMessage src;
@@ -198,33 +214,30 @@ void UltraMailApp::HandleSendDraft(const Draft& draft) {
     DiscoveryResult disc = AutoDiscovery::FromPresets(draft.fromAddr);
     const std::string smtpUrl = disc.found ? AutoDiscovery::SmtpServerUrl(disc.smtp) : "";
 
-    // Resolve the SMTP plug-in (loaded on demand).
-    if (!UltraNet_IsInitialized()) UltraNet_Initialize();
-    UltraNet_RefreshPlugins();
+    // Always queue to the persistent outbox first (survives restarts / offline).
+    int64_t id = 0;
+    outbox_.Enqueue(SlugFromEmail(draft.fromAddr), smtpUrl, draft, id);
+
+    // Attempt an immediate flush if the SMTP plug-in is loaded.
     auto plugin = UltraNet_GetPlugin(disc.smtp.security == MailSecurity::SslTls ? "smtps" : "smtp");
     IMailProtocolPlugin* smtp = plugin ? dynamic_cast<IMailProtocolPlugin*>(plugin.get()) : nullptr;
 
     std::string msg;
     if (smtp && !smtpUrl.empty()) {
         CredentialVault vault(dataDir_ + "/vault");
-        std::string pass;
-        vault.Retrieve(SlugFromEmail(draft.fromAddr), pass);
-
-        UltraNetMailOptions opts;
-        opts.credentials.username = draft.fromAddr;
-        opts.credentials.password = pass;
-        opts.useTls = true;
-        opts.implicitTls = (disc.smtp.security == MailSecurity::SslTls);
-
-        MailSender sender(*smtp);
-        UltraNetResult r = sender.Send(draft, smtpUrl, opts);
-        msg = r ? ("Message sent to " + join(draft.to) + ".")
-                : ("Send failed: " + r.message);
+        Outbox ob(outbox_);
+        auto stats = ob.Flush(*smtp, [&vault](const std::string& acc) {
+            std::string p; vault.Retrieve(acc, p); return p;
+        });
+        if (stats.sent > 0)
+            msg = "Message sent to " + join(draft.to) + ".";
+        else
+            msg = "Send failed — the message is queued in the outbox and will be retried.";
     } else {
-        msg = "Draft ready for " + join(draft.to) + " via " +
-              (smtpUrl.empty() ? "the account's SMTP server" : smtpUrl) +
-              ".\n(The SMTP plug-in is not loaded in this build; queueing/sending "
-              "wires up once the plug-in DSO is on the path.)";
+        int n = 0; outbox_.PendingCount(n);
+        msg = "Message queued in the outbox (" + std::to_string(n) + " pending).\n"
+              "It will be sent once the SMTP plug-in is on the path and you are online"
+              + (smtpUrl.empty() ? "." : (" (" + smtpUrl + ")."));
     }
     UltraCanvas::UltraCanvasDialogManager::ShowInformation(
         msg, "UltraMail", nullptr, window_ ? window_.get() : nullptr);

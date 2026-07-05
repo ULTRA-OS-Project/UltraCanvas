@@ -11,6 +11,7 @@ set(ULTRAMAIL_TEST_SOURCES
     test_syncengine.cpp
     test_discovery.cpp
     test_composer.cpp
+    test_outbox.cpp
 )
 
 add_executable(UltraMailEngineTests ${ULTRAMAIL_TEST_SOURCES})

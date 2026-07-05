@@ -17,6 +17,7 @@
 #include "UltraMailLocalStore.h"
 #include "UltraMailMimeCodec.h"
 #include "UltraMailContactStore.h"
+#include "UltraMailOutbox.h"
 
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasContainer.h"
@@ -73,6 +74,7 @@ private:
 
     LocalStore store_;
     ContactStore contacts_;
+    OutboxStore outbox_;
     std::vector<Account> accounts_;
     std::vector<AccountStatus> status_;
     std::string dataDir_;
