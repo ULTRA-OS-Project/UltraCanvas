@@ -7,9 +7,11 @@ UltraMail is built on **UltraCanvas** (UI) and the **UltraNet** (SMTP/IMAP/POP3)
 and **UltraDatabase** (local store) modules.
 
 > **Status (Phase 1, in progress):** the headless **engine** layer is
-> implemented and tested. The display-bound UI (Toolbox start screen with the
-> "Add email account" tile, account-setup wizard, three-pane main window,
-> account info-tile bar, composer) is the next slice.
+> implemented and tested, and the first **UI** slice is in — the main window
+> with the Toolbox ("Add email account" tile + per-account tiles), the account
+> info-tile bar, and the account-setup wizard (identity step). Still to come:
+> the discovery/verify pipeline + credential vault behind the wizard, the
+> three-pane reading view, and the composer.
 
 ## Layout
 
@@ -21,9 +23,20 @@ Apps/UltraMail/
     UltraMailLocalStore.{h,cpp}   account/folder/message index on UltraDatabase:
                                   schema migrations, upserts, flag updates,
                                   the needs-answer rule, per-account rollups
+  ui/                             UltraCanvas UI layer
+    UltraMailApp.{h,cpp}          app manager: owns store + window, wires it up
+    UltraMailToolbox.{h,cpp}      start-screen grid: account tiles + "Add
+                                  email account" square (the only tile at first use)
+    UltraMailInfoTileBar.{h,cpp}  per-account status strip (short name · unread
+                                  · needs-answer), fed by GetAccountStatus
+    UltraMailAccountWizard.{h,cpp} setup wizard dialog (identity step)
+  main.cpp                        entry point: init app, open store, show window
   CMakeLists.txt                  UltraMailEngine static library
-  (ui/  — added in a later phase: Toolbox, wizard, window, composer)
 ```
+
+The GUI executable target `UltraMail` (root CMake, `-DBUILD_ULTRAMAIL_APP=ON`)
+links the full UltraCanvas UI library. The engine and its tests build without a
+display; the GUI needs the UI toolkit.
 
 ## What the engine provides now
 

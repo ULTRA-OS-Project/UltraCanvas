@@ -490,6 +490,36 @@ if (BUILD_CSSLAYOUT_TESTS)
     target_compile_features(CSSLayoutTests PRIVATE cxx_std_20)
 endif()
 
+# ===== ULTRAMAIL GUI APPLICATION =====
+# The full UI executable (Toolbox, account info-tile bar, setup wizard) on top
+# of the UltraMail engine. Links the whole UltraCanvas UI library, so it is
+# OFF by default; enable with -DBUILD_ULTRAMAIL_APP=ON.
+option(BUILD_ULTRAMAIL_APP "Build the UltraMail GUI application" OFF)
+if (BUILD_ULTRAMAIL_APP AND TARGET UltraMailEngine)
+    add_executable(UltraMail
+            Apps/UltraMail/main.cpp
+            Apps/UltraMail/ui/UltraMailApp.cpp
+            Apps/UltraMail/ui/UltraMailToolbox.cpp
+            Apps/UltraMail/ui/UltraMailInfoTileBar.cpp
+            Apps/UltraMail/ui/UltraMailAccountWizard.cpp
+    )
+    set_target_properties(UltraMail PROPERTIES ENABLE_EXPORTS ON)
+    target_include_directories(UltraMail PRIVATE
+            ${ULTRACANVAS_INCLUDE_DIRS}
+            ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraMail
+    )
+    target_link_libraries(UltraMail PRIVATE
+            ${ULTRACANVAS_LIBRARY}
+            UltraMailEngine
+            ${JSONCPP_LIBRARIES}
+    )
+    if(TARGET fmt::fmt)
+        target_link_libraries(UltraMail PRIVATE fmt::fmt)
+    endif()
+    target_compile_features(UltraMail PRIVATE cxx_std_20)
+    message(STATUS "  [✓] UltraMail GUI app - ENABLED (target: UltraMail)")
+endif()
+
 if (BUILD_TESTS)
     # Headless eBook viewer smoke test (links the full library).
     add_executable(EBookViewerTest Tests/EBookViewerTest.cpp)
