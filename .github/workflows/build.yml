@@ -119,6 +119,7 @@ jobs:
       # it lets the receiver-thread / frame-handling paths actually run
       # in CI (where libcurl has WS support).
       - name: Install python websockets package
+        if: runner.os != 'Windows'
         run: pip3 install --user --break-system-packages websockets || pip3 install --user websockets
 
       # ===== Configure & Build =====
