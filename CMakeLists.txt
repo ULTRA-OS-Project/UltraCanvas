@@ -78,6 +78,15 @@ message(STATUS "")
 message(STATUS "── Building UltraCanvas Core Library ──")
 add_subdirectory(UltraCanvas)
 
+# ===== ULTRAMAIL =====
+# The mail application. Phase 1 builds the headless engine (LocalStore on
+# UltraDatabase); UI targets are added in later phases. Enabled by default
+# whenever UltraDatabase is available.
+option(BUILD_ULTRAMAIL "Build the UltraMail application" ON)
+if(BUILD_ULTRAMAIL AND TARGET UltraDatabase)
+    add_subdirectory(Apps/UltraMail)
+endif()
+
 # At this point, the following variables are available from UltraCanvas/CMakeLists.txt:
 #   ULTRACANVAS_LIBRARY        - Main library target name
 #   ULTRACANVAS_LIBRARIES      - All libraries (core + plugins)
@@ -389,6 +398,16 @@ if(ULTRACANVAS_BUILD_DATABASE_TESTS AND TARGET UltraDatabase)
     add_subdirectory(Tests/UltraDatabase)
     message(STATUS "")
     message(STATUS "── UltraDatabase test suite enabled (target: UltraDatabaseTests) ──")
+endif()
+
+# ===== ULTRAMAIL ENGINE TESTS =====
+# Headless engine tests (LocalStore on UltraDatabase); in-tree framework.
+option(ULTRACANVAS_BUILD_ULTRAMAIL_TESTS "Build the UltraMail engine test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRAMAIL_TESTS AND TARGET UltraMailEngine)
+    enable_testing()
+    add_subdirectory(Tests/UltraMail)
+    message(STATUS "")
+    message(STATUS "── UltraMail engine test suite enabled (target: UltraMailEngineTests) ──")
 endif()
 
 # ===== DOCUMENTATION =====
