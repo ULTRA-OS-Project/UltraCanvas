@@ -18,6 +18,7 @@ set(ULTRAMAIL_ENGINE_SOURCES
     engine/UltraMailAttachmentCache.cpp
     engine/UltraMailContacts.cpp
     engine/UltraMailContactStore.cpp
+    engine/UltraMailSyncEngine.cpp
 )
 
 add_library(UltraMailEngine STATIC ${ULTRAMAIL_ENGINE_SOURCES})

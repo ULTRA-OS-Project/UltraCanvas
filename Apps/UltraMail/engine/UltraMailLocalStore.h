@@ -49,6 +49,11 @@ public:
                                int limit,
                                std::vector<MessageEnvelope>& out) const;
 
+    // Highest UID already stored for a folder (0 if none) — the basis for
+    // incremental sync.
+    UltraDbResult GetMaxUid(const std::string& accountId, const std::string& folder,
+                            int64_t& out) const;
+
     // Messages awaiting a reply for one account (most recent first).
     UltraDbResult ListNeedsAnswer(const std::string& accountId,
                                   std::vector<MessageEnvelope>& out) const;

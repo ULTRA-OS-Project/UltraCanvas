@@ -6,11 +6,13 @@ The ULTRA OS mail application. Full concept and design:
 UltraMail is built on **UltraCanvas** (UI) and the **UltraNet** (SMTP/IMAP/POP3)
 and **UltraDatabase** (local store) modules.
 
-> **Status (Phase 1, in progress):** the headless **engine** layer is
-> implemented and tested, and the first **UI** slice is in — the main window
-> with the Toolbox ("Add email account" tile + per-account tiles), the account
-> info-tile bar, and the account-setup wizard (identity step). Still to come:
-> the discovery/verify pipeline + credential vault behind the wizard, the
+> **Status (Phase 1–2, in progress):** the headless **engine** is implemented
+> and tested — LocalStore, MIME codec + attachment cache, contact store, and
+> the **SyncEngine** that drives an IMAP mailbox into the store (folders,
+> incremental envelopes with needs-answer, cached bodies, flag mirroring). The
+> **UI** has the main window (Toolbox + account info-tile bar), the setup
+> wizard, the attachment strip → MediaViewer, and the contact manager. Still to
+> come: the discovery/verify pipeline + credential vault behind the wizard, the
 > three-pane reading view, and the composer.
 
 ## Layout
@@ -31,6 +33,9 @@ Apps/UltraMail/
                                   (Family / Friends / Work / Leisure / Services)
     UltraMailContactStore.{h,cpp} the address book on UltraDatabase: sectioned
                                   contacts, emails/phones, counts, search
+    UltraMailSyncEngine.{h,cpp}   drives an IMailboxProtocolPlugin (IMAP) into
+                                  LocalStore: folders, incremental envelopes,
+                                  .eml body cache, two-sided flag changes
   ui/                             UltraCanvas UI layer
     UltraMailApp.{h,cpp}          app manager: owns store + window, wires it up
     UltraMailToolbox.{h,cpp}      start-screen grid: account tiles + "Add

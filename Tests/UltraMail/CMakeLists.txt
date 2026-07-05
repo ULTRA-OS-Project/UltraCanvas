@@ -8,6 +8,7 @@ set(ULTRAMAIL_TEST_SOURCES
     test_localstore.cpp
     test_attachments.cpp
     test_contacts.cpp
+    test_syncengine.cpp
 )
 
 add_executable(UltraMailEngineTests ${ULTRAMAIL_TEST_SOURCES})

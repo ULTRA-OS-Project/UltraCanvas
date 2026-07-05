@@ -249,6 +249,18 @@ UltraDbResult LocalStore::ListMessages(const std::string& accountId,
     return UltraDbResult::Ok();
 }
 
+UltraDbResult LocalStore::GetMaxUid(const std::string& accountId,
+                                    const std::string& folder, int64_t& out) const {
+    out = 0;
+    UltraDbResultSet rs;
+    UltraDbResult q = UltraDb_Query(connection_,
+        "SELECT COALESCE(MAX(uid), 0) AS m FROM messages "
+        "WHERE account_id=? AND folder=?", { accountId, folder }, rs);
+    if (!q) return q;
+    if (!rs.Empty()) out = rs.Row(0)["m"].AsInt64();
+    return UltraDbResult::Ok();
+}
+
 UltraDbResult LocalStore::ListNeedsAnswer(const std::string& accountId,
                                           std::vector<MessageEnvelope>& out) const {
     out.clear();
