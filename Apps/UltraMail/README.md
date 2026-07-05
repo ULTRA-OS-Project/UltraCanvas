@@ -36,6 +36,10 @@ Apps/UltraMail/
     UltraMailSyncEngine.{h,cpp}   drives an IMailboxProtocolPlugin (IMAP) into
                                   LocalStore: folders, incremental envelopes,
                                   .eml body cache, two-sided flag changes
+    UltraMailDiscovery.{h,cpp}    account auto-discovery: provider presets +
+                                  Mozilla-autoconfig XML (over UltraNet HTTP)
+    UltraMailCredentialVault.{h,cpp} per-account secrets out of the config
+                                  (obfuscated file backend; OS-keychain-ready)
   ui/                             UltraCanvas UI layer
     UltraMailApp.{h,cpp}          app manager: owns store + window, wires it up
     UltraMailToolbox.{h,cpp}      start-screen grid: account tiles + "Add
@@ -72,6 +76,15 @@ It is a global (account-independent) store, so it can be promoted to a shared
 The GUI executable target `UltraMail` (root CMake, `-DBUILD_ULTRAMAIL_APP=ON`)
 links the full UltraCanvas UI library. The engine and its tests build without a
 display; the GUI needs the UI toolkit.
+
+**Account setup:** the wizard collects name / email / password; on submit,
+`AutoDiscovery` resolves the incoming (IMAP) and outgoing (SMTP) servers from
+the address — instant offline provider presets (Gmail, Outlook, Yahoo, iCloud,
+GMX, web.de, mailbox.org, Posteo, …), falling back to a Mozilla-autoconfig /
+ISPDB lookup over UltraNet HTTP. The password (or OAuth token) is stored in the
+`CredentialVault`, never in the config. Try it: run with
+`ULTRAMAIL_DEMO_ADD=you@gmail.com` to exercise discovery + vault + the result
+dialog.
 
 ## What the engine provides now
 

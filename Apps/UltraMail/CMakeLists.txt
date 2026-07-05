@@ -19,6 +19,8 @@ set(ULTRAMAIL_ENGINE_SOURCES
     engine/UltraMailContacts.cpp
     engine/UltraMailContactStore.cpp
     engine/UltraMailSyncEngine.cpp
+    engine/UltraMailDiscovery.cpp
+    engine/UltraMailCredentialVault.cpp
 )
 
 add_library(UltraMailEngine STATIC ${ULTRAMAIL_ENGINE_SOURCES})

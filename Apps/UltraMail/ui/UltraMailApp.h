@@ -63,6 +63,7 @@ private:
     ContactStore contacts_;
     std::vector<Account> accounts_;
     std::vector<AccountStatus> status_;
+    std::string dataDir_;
     std::string cacheDir_;
 
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;

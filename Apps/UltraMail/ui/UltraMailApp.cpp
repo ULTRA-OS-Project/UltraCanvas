@@ -4,11 +4,14 @@
 #include "UltraMailApp.h"
 
 #include "UltraMailAttachmentCache.h"
+#include "UltraMailDiscovery.h"
+#include "UltraMailCredentialVault.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasMediaViewer.h"
+#include "UltraCanvasModalDialog.h"
 
 #include <UltraNet/UltraNetMime.h>
 
@@ -45,6 +48,7 @@ bool UltraMailApp::Initialize(const std::string& dataDir) {
     UltraDbResult opened = store_.Open("ultramail", dbPath);
     if (!opened) return false;
 
+    dataDir_  = dataDir;
     cacheDir_ = dataDir + "/cache";
 
     // The address book is a global (account-independent) store.
@@ -101,6 +105,14 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
     if (const char* dc = std::getenv("ULTRAMAIL_DEMO_CONTACTS"); dc && *dc == '1') {
         SeedDemoContacts();
         OpenContacts();
+    }
+    // Demo path: run the add-account flow for a given address (exercises
+    // discovery + the credential vault + the result dialog).
+    if (const char* addEmail = std::getenv("ULTRAMAIL_DEMO_ADD"); addEmail && *addEmail) {
+        AccountDraft d;
+        d.email = addEmail;
+        d.password = "demo-password";
+        HandleWizardSubmit(d);
     }
 
     return window_;
@@ -223,10 +235,6 @@ void UltraMailApp::HandleAddAccount() {
 }
 
 void UltraMailApp::HandleWizardSubmit(const AccountDraft& draft) {
-    // Phase 1: store the account locally so its tiles appear. The discovery +
-    // login-verify pipeline (provider presets -> autoconfig -> DNS SRV ->
-    // probing, over UltraNet) and the credential vault land in a later slice;
-    // the password is intentionally not persisted here.
     Account a;
     a.accountId   = SlugFromEmail(draft.email);
     a.email       = draft.email;
@@ -235,8 +243,17 @@ void UltraMailApp::HandleWizardSubmit(const AccountDraft& draft) {
 
     if (!store_.UpsertAccount(a)) return;
 
-    // Give the account an inbox so the Toolbox tile and rollups have somewhere
-    // to hang; real folders arrive from the first IMAP sync.
+    // Auto-discover the server settings from the address (offline provider
+    // presets; the wizard's network autoconfig + login verify run in the
+    // engine's AutoDiscovery::Discover).
+    DiscoveryResult disc = AutoDiscovery::FromPresets(draft.email);
+
+    // Store the password out of the config, in the credential vault.
+    CredentialVault vault(dataDir_ + "/vault");
+    if (!draft.password.empty()) vault.Store(a.accountId, draft.password);
+
+    // Seed the inbox so the tile + rollups have somewhere to hang; real folders
+    // arrive from the first IMAP sync (SyncEngine).
     Folder inbox;
     inbox.accountId = a.accountId;
     inbox.name      = "INBOX";
@@ -244,6 +261,20 @@ void UltraMailApp::HandleWizardSubmit(const AccountDraft& draft) {
     store_.UpsertFolder(inbox);
 
     Refresh();
+
+    // Report what discovery found.
+    std::string msg;
+    if (disc.found) {
+        msg = "Account ready — settings detected (" + disc.displayName + ").\n"
+              "Incoming (IMAP): " + AutoDiscovery::ImapServerUrl(disc.imap) + "\n"
+              "Outgoing (SMTP): " + AutoDiscovery::SmtpServerUrl(disc.smtp);
+        if (disc.imap.oauth) msg += "\nSign-in: OAuth2 (browser)";
+    } else {
+        msg = "Account added. Server settings could not be auto-detected from "
+              "the address — network autoconfig or manual setup will follow.";
+    }
+    UltraCanvas::UltraCanvasDialogManager::ShowInformation(
+        msg, "UltraMail", nullptr, window_ ? window_.get() : nullptr);
 }
 
 } // namespace UltraMail
