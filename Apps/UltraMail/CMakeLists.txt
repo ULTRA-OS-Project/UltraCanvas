@@ -14,6 +14,8 @@ endif()
 set(ULTRAMAIL_ENGINE_SOURCES
     engine/UltraMailTypes.cpp
     engine/UltraMailLocalStore.cpp
+    engine/UltraMailMimeCodec.cpp
+    engine/UltraMailAttachmentCache.cpp
 )
 
 add_library(UltraMailEngine STATIC ${ULTRAMAIL_ENGINE_SOURCES})
@@ -24,5 +26,9 @@ target_compile_features(UltraMailEngine PUBLIC cxx_std_20)
 target_include_directories(UltraMailEngine PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/engine)
 target_link_libraries(UltraMailEngine PUBLIC UltraDatabase)
+# UltraNet provides the MIME codec (UltraNet_MimeParse) the engine builds on.
+if(TARGET UltraNet)
+    target_link_libraries(UltraMailEngine PUBLIC UltraNet)
+endif()
 
 message(STATUS "  [✓] UltraMail engine - ENABLED (target: UltraMailEngine)")

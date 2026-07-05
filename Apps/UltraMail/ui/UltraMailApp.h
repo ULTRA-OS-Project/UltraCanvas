@@ -9,8 +9,10 @@
 #include "UltraMailToolbox.h"
 #include "UltraMailInfoTileBar.h"
 #include "UltraMailAccountWizard.h"
+#include "UltraMailAttachmentStrip.h"
 
 #include "UltraMailLocalStore.h"
+#include "UltraMailMimeCodec.h"
 
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasContainer.h"
@@ -39,13 +41,28 @@ private:
     static std::string SlugFromEmail(const std::string& email);
     static std::string LocalPart(const std::string& email);
 
+    // Show a message's attachments in the strip and wire open/save.
+    void ShowAttachments(const ParsedMessage& message);
+    // Materialise an attachment to the cache and open it in a MediaViewer window.
+    void OpenAttachment(const Attachment& attachment);
+    // Save an attachment (Phase 2: writes to the cache dir; a Save-As dialog
+    // follows once the file-dialog wiring lands).
+    void SaveAttachment(const Attachment& attachment);
+    // Demo path (ULTRAMAIL_DEMO=1): build a message with an attachment so the
+    // strip and viewer can be exercised without a live sync.
+    void ShowDemoAttachments();
+
     LocalStore store_;
     std::vector<Account> accounts_;
     std::vector<AccountStatus> status_;
+    std::string cacheDir_;
 
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
-    Toolbox     toolbox_;
-    InfoTileBar infoBar_;
+    Toolbox         toolbox_;
+    InfoTileBar     infoBar_;
+    AttachmentStrip attachmentStrip_;
+    ParsedMessage   currentMessage_;
+    std::vector<std::shared_ptr<UltraCanvas::UltraCanvasWindow>> viewerWindows_;
 };
 
 } // namespace UltraMail

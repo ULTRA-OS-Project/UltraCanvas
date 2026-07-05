@@ -6,6 +6,7 @@ cmake_minimum_required(VERSION 3.16)
 set(ULTRAMAIL_TEST_SOURCES
     test_main.cpp
     test_localstore.cpp
+    test_attachments.cpp
 )
 
 add_executable(UltraMailEngineTests ${ULTRAMAIL_TEST_SOURCES})

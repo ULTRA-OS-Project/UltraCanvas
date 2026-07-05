@@ -17,12 +17,16 @@ and **UltraDatabase** (local store) modules.
 
 ```
 Apps/UltraMail/
-  engine/                         headless — depends only on UltraDatabase
+  engine/                         headless — depends on UltraDatabase + UltraNet
     UltraMailTypes.{h,cpp}        Account / Folder / MessageEnvelope, flags,
                                   FolderRole, AccountStatus (info-tile rollup)
     UltraMailLocalStore.{h,cpp}   account/folder/message index on UltraDatabase:
                                   schema migrations, upserts, flag updates,
                                   the needs-answer rule, per-account rollups
+    UltraMailMimeCodec.{h,cpp}    raw message -> display body + attachments
+                                  (wraps UltraNet_MimeParse)
+    UltraMailAttachmentCache.{h,cpp} attachment bytes -> sanitised cache file
+                                  (so a path-based viewer can open it)
   ui/                             UltraCanvas UI layer
     UltraMailApp.{h,cpp}          app manager: owns store + window, wires it up
     UltraMailToolbox.{h,cpp}      start-screen grid: account tiles + "Add
@@ -30,9 +34,18 @@ Apps/UltraMail/
     UltraMailInfoTileBar.{h,cpp}  per-account status strip (short name · unread
                                   · needs-answer), fed by GetAccountStatus
     UltraMailAccountWizard.{h,cpp} setup wizard dialog (identity step)
+    UltraMailAttachmentStrip.{h,cpp} attachment chips; double-click or right-click
+                                  (Open / Save As…) opens content in UltraCanvasMediaViewer
   main.cpp                        entry point: init app, open store, show window
   CMakeLists.txt                  UltraMailEngine static library
 ```
+
+**Attachments:** a message's MIME parts are decoded by `MimeCodec` (over
+`UltraNet_MimeParse`); the attachment strip shows one chip per part.
+Double-clicking a chip — or the right-click **Open** — writes the bytes to the
+cache and opens them in **`UltraCanvasMediaViewer`** (images, PDF, text,
+audio/video, …). Try it: run with `ULTRAMAIL_DEMO=1` (and
+`ULTRAMAIL_DEMO_OPEN=1` to auto-open) to exercise the flow without a live sync.
 
 The GUI executable target `UltraMail` (root CMake, `-DBUILD_ULTRAMAIL_APP=ON`)
 links the full UltraCanvas UI library. The engine and its tests build without a

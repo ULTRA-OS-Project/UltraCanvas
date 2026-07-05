@@ -3,10 +3,16 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailApp.h"
 
+#include "UltraMailAttachmentCache.h"
+
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasMediaViewer.h"
+
+#include <UltraNet/UltraNetMime.h>
 
 #include <cctype>
+#include <cstdlib>
 #include <filesystem>
 #include <string>
 
@@ -38,6 +44,8 @@ bool UltraMailApp::Initialize(const std::string& dataDir) {
     UltraDbResult opened = store_.Open("ultramail", dbPath);
     if (!opened) return false;
 
+    cacheDir_ = dataDir + "/cache";
+
     store_.ListAccounts(accounts_);
     store_.GetAccountStatus(status_);
     return true;
@@ -65,12 +73,87 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
     toolbox_.onAddAccount  = [this]() { HandleAddAccount(); };
     toolbox_.onOpenAccount = [](const std::string&) { /* Phase 2: open the 3-pane view */ };
 
+    // Attachment strip (populated when a message with attachments is shown).
+    auto strip = attachmentStrip_.Build();
+    window_->AddChild(strip);
+    attachmentStrip_.onOpen   = [this](const Attachment& a) { OpenAttachment(a); };
+    attachmentStrip_.onSaveAs = [this](const Attachment& a) { SaveAttachment(a); };
+
     // First-run hint below the grid.
     window_->AddChild(CreateLabel("umHint", 16, 600, 600, 24,
         "Welcome to UltraMail. Add an account to begin."));
 
     Refresh();
+
+    // Demo path: exercise the attachment strip + viewer without a live sync.
+    if (const char* demo = std::getenv("ULTRAMAIL_DEMO"); demo && *demo == '1')
+        ShowDemoAttachments();
+
     return window_;
+}
+
+void UltraMailApp::ShowAttachments(const ParsedMessage& message) {
+    currentMessage_ = message;
+    attachmentStrip_.SetAttachments(currentMessage_.attachments);
+}
+
+void UltraMailApp::OpenAttachment(const Attachment& attachment) {
+    AttachmentCache cache(cacheDir_);
+    const std::string path = cache.Write(attachment);
+    if (path.empty()) return;
+
+    WindowConfig cfg;
+    cfg.title  = attachment.filename.empty() ? "Attachment" : attachment.filename;
+    cfg.width  = 900;
+    cfg.height = 680;
+    auto win = CreateWindow(cfg);
+
+    auto viewer = CreateMediaViewer("attachmentViewer", 0, 0,
+                                    static_cast<float>(cfg.width),
+                                    static_cast<float>(cfg.height));
+    win->AddChild(viewer);
+    viewer->OpenFile(path);
+    win->Show();
+
+    viewerWindows_.push_back(win);   // keep the window alive
+}
+
+void UltraMailApp::SaveAttachment(const Attachment& attachment) {
+    // Phase 2: persist into the cache directory. A native Save-As dialog
+    // (UltraCanvasFileLoader) replaces this once wired.
+    AttachmentCache cache(cacheDir_);
+    cache.Write(attachment);
+}
+
+void UltraMailApp::ShowDemoAttachments() {
+    // Build a small multipart message with a text attachment, then run it
+    // through the same MIME codec a fetched message would use.
+    UltraNetMimeBuildInput in;
+    in.from = "demo@ultramail.local";
+    in.to = {"you@ultramail.local"};
+    in.subject = "Demo message with an attachment";
+    in.body = "This message carries an attachment — double-click it below "
+              "or right-click for Open / Save As.";
+    in.date = "Tue, 01 Jan 2026 00:00:00 +0000";
+    in.messageId = "<demo@ultramail.local>";
+
+    const std::string note =
+        "UltraMail attachment demo\r\n\r\n"
+        "This text file was extracted from the email's MIME parts by the "
+        "UltraNet MIME codec, written to the attachment cache, and opened in "
+        "UltraCanvasMediaViewer.\r\n";
+    UltraNetMimeBuildAttachment a;
+    a.filename = "readme.txt";
+    a.mediaType = "text/plain";
+    a.data.assign(note.begin(), note.end());
+    in.attachments.push_back(a);
+
+    ParsedMessage parsed = MimeCodec::Parse(UltraNet_MimeBuild(in));
+    ShowAttachments(parsed);
+
+    if (const char* open = std::getenv("ULTRAMAIL_DEMO_OPEN");
+        open && *open == '1' && !parsed.attachments.empty())
+        OpenAttachment(parsed.attachments.front());
 }
 
 void UltraMailApp::Refresh() {
