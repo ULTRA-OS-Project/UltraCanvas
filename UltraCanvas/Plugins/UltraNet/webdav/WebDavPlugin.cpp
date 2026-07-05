@@ -6,7 +6,8 @@
 //
 // Build: produces libultranet_webdav.{so,dylib,dll}.
 // Entry points: UltraNet_PluginInit (v2) and UltraNet_PluginRegister (v1).
-// Version: 0.1.0
+// Version: 0.1.2
+// Last Modified: 2026-07-05
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include <UltraNet/UltraNetCore.h>
@@ -15,6 +16,16 @@
 #include <UltraNet/UltraNetUrl.h>
 
 #include <curl/curl.h>
+
+// On Windows, <curl/curl.h> pulls in <winsock2.h> -> <windows.h>, which #defines
+// CreateDirectory as CreateDirectoryA/W. That macro would textually rewrite our
+// IFileShareProtocolPlugin::CreateDirectory override (below) into CreateDirectoryA,
+// so it no longer matches the base vtable slot and WebDavPlugin stays abstract.
+// This plug-in speaks WebDAV over libcurl (MKCOL), not the Win32 filesystem API,
+// so drop the macro. (#undef of an undefined macro is a harmless no-op elsewhere.)
+#ifdef CreateDirectory
+#  undef CreateDirectory
+#endif
 
 #include <algorithm>
 #include <cctype>
@@ -368,6 +379,8 @@ void UltraNet_PluginInit(const UltraNetPluginHost* host) {
     if (!host || host->abiVersion < 1 || !host->RegisterPlugin) return;
     host->RegisterPlugin(std::make_shared<WebDavPlugin>());
 }
+#if !defined(_WIN32) && !defined(_WIN64)  // v1 resolves UltraNet_RegisterPlugin from the host at dlopen(); POSIX-only, Windows uses the v2 UltraNet_PluginInit vtable above
 extern "C" void UltraNet_PluginRegister(void) {
     UltraNet_RegisterPlugin(std::make_shared<WebDavPlugin>());
 }
+#endif

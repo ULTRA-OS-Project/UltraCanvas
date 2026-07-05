@@ -19,7 +19,8 @@
 //   attributes["port"]   = TCP/UDP port
 //   attributes["ip"]     = first-seen IPv4 (when resolution succeeds)
 //   attributes["txt"]    = TXT record key=value entries (one per push_back)
-// Version: 0.1.0
+// Version: 0.1.2
+// Last Modified: 2026-07-05
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include <UltraNet/UltraNetCore.h>
@@ -265,10 +266,14 @@ bool RunWindowsBrowse(const std::string& serviceType, BrowseState& state,
     (void)timeoutMs;
     if (status != 0 || !recs) return false;
     for (PDNS_RECORD r = recs; r; r = r->pNext) {
-        if (r->wType != DNS_TYPE_PTR || !r->Data.PTR.pNameHost) continue;
+        // recs came from DnsQuery_W, so every record is wide (DNS_RECORDW) even
+        // when this TU is built without UNICODE (where the PDNS_RECORD macro would
+        // otherwise resolve to the ANSI variant with char* fields). Read it as wide.
+        const DNS_RECORDW* rw = reinterpret_cast<const DNS_RECORDW*>(r);
+        if (rw->wType != DNS_TYPE_PTR || !rw->Data.PTR.pNameHost) continue;
         UltraNetDirectoryEntry e;
         // pNameHost is a wide string; convert.
-        const wchar_t* w = r->Data.PTR.pNameHost;
+        const wchar_t* w = rw->Data.PTR.pNameHost;
         int len = WideCharToMultiByte(CP_UTF8, 0, w, -1,
                                       nullptr, 0, nullptr, nullptr);
         std::string s(len > 0 ? len - 1 : 0, '\0');
@@ -338,6 +343,8 @@ void UltraNet_PluginInit(const UltraNetPluginHost* host) {
     if (!host || host->abiVersion < 1 || !host->RegisterPlugin) return;
     host->RegisterPlugin(std::make_shared<MdnsPlugin>());
 }
+#if !defined(_WIN32) && !defined(_WIN64)  // v1 resolves UltraNet_RegisterPlugin from the host at dlopen(); POSIX-only, Windows uses the v2 UltraNet_PluginInit vtable above
 extern "C" void UltraNet_PluginRegister(void) {
     UltraNet_RegisterPlugin(std::make_shared<MdnsPlugin>());
 }
+#endif
