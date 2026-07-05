@@ -1070,6 +1070,53 @@ else()
     message(STATUS "  [−] UltraNet - DISABLED")
 endif()
 
+# ===== BUILD ULTRADATABASE LIBRARY (Stage 1: SQLite core on libsqlite3) =====
+option(ULTRACANVAS_ENABLE_DATABASE "Build the UltraDatabase data-access library" ON)
+if(ULTRACANVAS_ENABLE_DATABASE)
+    find_package(Threads REQUIRED)
+    # SQLite is the bundled/default engine. Prefer the system library; the
+    # amalgamation can be vendored later without touching callers.
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(SQLITE3 sqlite3)
+    endif()
+    if(NOT SQLITE3_FOUND)
+        find_path(SQLITE3_INCLUDE_DIRS sqlite3.h)
+        find_library(SQLITE3_LIBRARIES NAMES sqlite3)
+    endif()
+
+    if(NOT SQLITE3_LIBRARIES)
+        message(STATUS "  [−] UltraDatabase - DISABLED (libsqlite3 not found)")
+    else()
+        set(ULTRADATABASE_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraDatabase/UltraDatabaseValue.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraDatabase/UltraDatabaseManager.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraDatabase/UltraDatabaseSqliteDriver.cpp
+        )
+        add_library(UltraDatabase STATIC ${ULTRADATABASE_SOURCES})
+        set_target_properties(UltraDatabase PROPERTIES
+            POSITION_INDEPENDENT_CODE ON
+            OUTPUT_NAME "ultradatabase")
+        target_compile_features(UltraDatabase PUBLIC cxx_std_20)
+        target_include_directories(UltraDatabase
+            PUBLIC
+                $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+                $<INSTALL_INTERFACE:include/ultracanvas>)
+        target_include_directories(UltraDatabase PRIVATE ${SQLITE3_INCLUDE_DIRS})
+        target_link_libraries(UltraDatabase PUBLIC Threads::Threads)
+        target_link_libraries(UltraDatabase PRIVATE ${SQLITE3_LIBRARIES})
+        target_compile_definitions(UltraDatabase PUBLIC ULTRACANVAS_HAS_DATABASE=1)
+
+        # Let UltraCanvas link UltraDatabase so components/apps can persist
+        # data through it when the module is enabled.
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraDatabase)
+        target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_DATABASE=1)
+        message(STATUS "  [✓] UltraDatabase - ENABLED (SQLite ${SQLITE3_VERSION})")
+    endif()
+else()
+    message(STATUS "  [−] UltraDatabase - DISABLED")
+endif()
+
 # ===== BUILD PLUGINS AS SEPARATE LIBRARIES =====
 set(ULTRACANVAS_PLUGIN_TARGETS "")
 set(ULTRACANVAS_PLUGIN_INCLUDE_DIRS "")

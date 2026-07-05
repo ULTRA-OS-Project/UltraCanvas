@@ -11,9 +11,13 @@ from anywhere; which engine actually backs that connection (SQLite,
 PostgreSQL, MySQL/MariaDB, …) is a configuration detail, not something
 the app code hard-codes.
 
-> Status: Concept / design. This document specifies the module the way
-> the UltraNet README specifies UltraNet — the public surface apps and
-> other modules can design against. Nothing is implemented yet.
+> Status: **Stage 1 implemented.** The SQLite core, connection registry,
+> parameterized queries, prepared statements, transactions and versioned
+> migrations are built and tested — `UltraCanvas/{include,core}/UltraDatabase/`,
+> library target `UltraDatabase` (`libultradatabase.a`), test suite
+> `Tests/UltraDatabase` (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 14 tests).
+> The networked drivers (PostgreSQL, MySQL, …), async queries, pooling and
+> streaming cursors described below are the Stage 2/3 plan.
 
 ---
 
@@ -317,12 +321,16 @@ headless data module usable from any ULTRA OS process.
 
 | Component | State |
 |---|---|
-| Public API (this concept) | Draft for review |
-| SQLite core (bundled) | Planned — first target |
-| Connection registry + pool | Planned |
-| PostgreSQL / MySQL drivers | Planned (Tier 2 plugins) |
-| Async + streaming cursors | Planned |
-| Other drivers (MSSQL, Redis, Mongo, DuckDB) | Tracked separately |
+| Public API (Stage 1) | Implemented |
+| SQLite core (system libsqlite3) | Implemented |
+| Connection registry (lazy open) | Implemented |
+| Query / Exec / Prepare / values | Implemented |
+| Transactions + versioned migrations | Implemented |
+| Test suite (14 tests) | Passing |
+| Connection pool | Planned (Stage 2) |
+| PostgreSQL / MySQL drivers | Planned (Stage 2, Tier 2 plugins) |
+| Async + streaming cursors | Planned (Stage 2) |
+| Other drivers (MSSQL, Redis, Mongo, DuckDB) | Tracked separately (Stage 3) |
 
 **Suggested rollout** (mirrors UltraNet's staged approach):
 1. **Stage 1** — SQLite core, connection registry, `Query`/`Exec`/

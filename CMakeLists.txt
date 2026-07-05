@@ -380,6 +380,17 @@ if(ULTRACANVAS_BUILD_NET_TESTS AND ULTRACANVAS_ENABLE_NET)
     message(STATUS "── UltraNet test suite enabled (target: UltraNetTests) ──")
 endif()
 
+# ===== ULTRADATABASE TESTS =====
+# Independent of BUILD_TESTS / Catch2: uses a tiny in-tree framework so it
+# can run wherever UltraDatabase is built.
+option(ULTRACANVAS_BUILD_DATABASE_TESTS "Build the UltraDatabase test suite" OFF)
+if(ULTRACANVAS_BUILD_DATABASE_TESTS AND TARGET UltraDatabase)
+    enable_testing()
+    add_subdirectory(Tests/UltraDatabase)
+    message(STATUS "")
+    message(STATUS "── UltraDatabase test suite enabled (target: UltraDatabaseTests) ──")
+endif()
+
 # ===== DOCUMENTATION =====
 #find_package(Doxygen QUIET)
 #if(DOXYGEN_FOUND)
