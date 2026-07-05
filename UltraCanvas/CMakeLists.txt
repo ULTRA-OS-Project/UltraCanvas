@@ -1,6 +1,6 @@
 # UltraCanvas/CMakeLists.txt
 # UltraCanvas Core Library - Builds as separate static library with optional plugins
-# Version: 1.4.4
+# Version: 1.4.5
 # Last Modified: 2026-07-05
 # Author: UltraCanvas Framework
 
@@ -1330,6 +1330,17 @@ if(ULTRACANVAS_PLUGIN_LATEX)
         ${CAIRO_INCLUDE_DIRS} ${PANGO_INCLUDE_DIRS} ${GLIB_INCLUDE_DIRS}
         ${HARFBUZZ_INCLUDE_DIRS} ${FREETYPE_INCLUDE_DIRS}
     )
+    # macOS/Homebrew: cairo.pc only emits -I<prefix>/include/cairo, so the
+    # `#include <cairo/cairo.h>` form (reached transitively via the core's
+    # UltraCanvasRenderContext.h -> ImageCairo.h) needs the parent <prefix>/include
+    # on the path. The core lib gets this incidentally from libvips' include dirs;
+    # this MODULE doesn't link the (static) core on macOS, so add it explicitly.
+    if(APPLE)
+        execute_process(COMMAND brew --prefix
+            OUTPUT_VARIABLE _uc_brew_prefix
+            OUTPUT_STRIP_TRAILING_WHITESPACE)
+        target_include_directories(UltraCanvasLaTeX PRIVATE ${_uc_brew_prefix}/include)
+    endif()
     target_compile_definitions(UltraCanvasLaTeX PRIVATE ULTRACANVAS_PLUGIN_LATEX=1)
     target_link_libraries(UltraCanvasLaTeX PRIVATE microtex_core)
     # The module resolves UltraCanvas core symbols (IRenderContext, UIElement,
