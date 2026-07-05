@@ -5,6 +5,7 @@
 
 #include "UltraMailMimeCodec.h"
 
+#include "UltraCanvasButton.h"
 #include "UltraCanvasEvent.h"
 
 #include <ctime>
@@ -115,7 +116,17 @@ std::shared_ptr<UltraCanvasContainer> ReadingView::Build() {
     previewPane_->AddChild(hdrSubject_);
     previewPane_->AddChild(hdrDate_);
 
-    body_ = std::make_shared<UltraCanvasTextArea>("prevBody", 12, 88, 540, 330);
+    auto replyBtn = CreateButton("prevReply", 12, 84, 100, 28, "↩ Reply");
+    replyBtn->onClick = [this]() {
+        if (!onReply) return;
+        std::string selfName, selfAddr;
+        for (const auto& a : accounts_)
+            if (a.accountId == curAccount_) { selfName = a.displayName; selfAddr = a.email; }
+        onReply(current_, selfName, selfAddr);
+    };
+    previewPane_->AddChild(replyBtn);
+
+    body_ = std::make_shared<UltraCanvasTextArea>("prevBody", 12, 120, 540, 300);
     body_->SetReadOnly(true);
     body_->SetEditingMode(TextAreaEditingMode::PlainText);
     previewPane_->AddChild(body_);
@@ -212,10 +223,22 @@ void ReadingView::SelectMessage(const MessageEnvelope& env) {
         std::string text = pm.bodyIsHtml ? HtmlToText(pm.body) : pm.body;
         if (body_) body_->SetText(text);
         attachmentStrip_.SetAttachments(pm.attachments);
+        current_.body = text;
+        current_.attachments = pm.attachments;
     } else {
         if (body_) body_->SetText("(message body not downloaded)");
         attachmentStrip_.SetAttachments({});
+        current_.body.clear();
+        current_.attachments.clear();
     }
+
+    // Capture the selection for a possible Reply.
+    current_.messageId = env.messageId;
+    current_.fromName  = env.fromName;
+    current_.fromAddr  = env.fromAddr;
+    current_.to        = env.to;
+    current_.subject   = env.subject;
+    current_.date      = FormatShortDate(env.date);
 }
 
 } // namespace UltraMail

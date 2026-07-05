@@ -505,6 +505,7 @@ if (BUILD_ULTRAMAIL_APP AND TARGET UltraMailEngine)
             Apps/UltraMail/ui/UltraMailAttachmentStrip.cpp
             Apps/UltraMail/ui/UltraMailContactsView.cpp
             Apps/UltraMail/ui/UltraMailReadingView.cpp
+            Apps/UltraMail/ui/UltraMailComposeWindow.cpp
     )
     set_target_properties(UltraMail PROPERTIES ENABLE_EXPORTS ON)
     target_include_directories(UltraMail PRIVATE

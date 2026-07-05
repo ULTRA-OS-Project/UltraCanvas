@@ -16,6 +16,7 @@
 
 #include "UltraMailAttachmentStrip.h"
 #include "UltraMailLocalStore.h"
+#include "UltraMailComposer.h"   // SourceMessage
 
 #include <functional>
 #include <memory>
@@ -51,6 +52,10 @@ public:
     // Delegated to the app (writes to cache + opens in UltraCanvasMediaViewer).
     std::function<void(const Attachment&)> onOpenAttachment;
 
+    // Delegated to the app: build a reply for the selected message.
+    std::function<void(const SourceMessage&, const std::string& selfName,
+                       const std::string& selfAddr)> onReply;
+
 private:
     void RebuildFolders();
     void RebuildList();
@@ -70,6 +75,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     hdrDate_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea>  body_;
     AttachmentStrip    attachmentStrip_;
+    SourceMessage      current_;   // the selected message, for Reply
 };
 
 } // namespace UltraMail

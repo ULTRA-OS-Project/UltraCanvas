@@ -12,6 +12,7 @@
 #include "UltraMailAttachmentStrip.h"
 #include "UltraMailContactsView.h"
 #include "UltraMailReadingView.h"
+#include "UltraMailComposeWindow.h"
 
 #include "UltraMailLocalStore.h"
 #include "UltraMailMimeCodec.h"
@@ -65,6 +66,11 @@ private:
     // Seed a few messages + cached .eml bodies (demo only).
     void SeedDemoMail();
 
+    // Open a compose window for the given draft (new / reply / forward).
+    void OpenComposer(const Draft& draft);
+    // Attempt to send a draft via the SMTP plug-in; report the outcome.
+    void HandleSendDraft(const Draft& draft);
+
     LocalStore store_;
     ContactStore contacts_;
     std::vector<Account> accounts_;
@@ -79,6 +85,7 @@ private:
     AttachmentStrip attachmentStrip_;
     ContactsView    contactsView_;
     ReadingView     readingView_;
+    ComposeView     composeView_;
     ParsedMessage   currentMessage_;
     std::vector<std::shared_ptr<UltraCanvas::UltraCanvasWindow>> viewerWindows_;
 };

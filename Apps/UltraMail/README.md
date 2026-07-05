@@ -13,8 +13,9 @@ and **UltraDatabase** (local store) modules.
 > needs-answer, cached bodies, flag mirroring). The **UI** has the main window
 > (Toolbox + account info-tile bar), the setup wizard (with discovery), the
 > **three-pane reading view** (folders | list | preview with body + attachments),
-> the attachment strip → MediaViewer, and the contact manager. Still to come:
-> the live login-verify + background sync loop, and the composer.
+> the attachment strip → MediaViewer, the contact manager, and the **composer**
+> (Write / Reply, with Send via the SMTP plug-in). Still to come: the live
+> login-verify + background sync loop, and wiring Send to a persistent outbox.
 
 ## Layout
 
@@ -41,6 +42,10 @@ Apps/UltraMail/
                                   Mozilla-autoconfig XML (over UltraNet HTTP)
     UltraMailCredentialVault.{h,cpp} per-account secrets out of the config
                                   (obfuscated file backend; OS-keychain-ready)
+    UltraMailComposer.{h,cpp}     Draft model + Reply/Forward/New builders
+                                  (Re:/Fwd:, quoting, threading headers)
+    UltraMailSender.{h,cpp}       send a Draft via the SMTP plug-in
+                                  (IMailProtocolPlugin)
   ui/                             UltraCanvas UI layer
     UltraMailApp.{h,cpp}          app manager: owns store + window, wires it up
     UltraMailToolbox.{h,cpp}      start-screen grid: account tiles + "Add
@@ -53,7 +58,8 @@ Apps/UltraMail/
     UltraMailContactsView.{h,cpp} contact manager: section sidebar (with counts) +
                                   contact list; add/edit dialog; delete via context menu
     UltraMailReadingView.{h,cpp}  three-pane reader: folder tree | message list |
-                                  preview (headers + body + attachment strip)
+                                  preview (headers + body + attachment strip + Reply)
+    UltraMailComposeWindow.{h,cpp} compose surface: To/Cc/Subject/Body + Send
   main.cpp                        entry point: init app, open store, show window
   CMakeLists.txt                  UltraMailEngine static library
 ```

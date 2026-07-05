@@ -6,6 +6,8 @@
 #include "UltraMailAttachmentCache.h"
 #include "UltraMailDiscovery.h"
 #include "UltraMailCredentialVault.h"
+#include "UltraMailComposer.h"
+#include "UltraMailSender.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasLabel.h"
@@ -13,6 +15,8 @@
 #include "UltraCanvasMediaViewer.h"
 #include "UltraCanvasModalDialog.h"
 
+#include <UltraNet/UltraNetCore.h>
+#include <UltraNet/UltraNetPlugins.h>
 #include <UltraNet/UltraNetMime.h>
 
 #include <cctype>
@@ -83,7 +87,15 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
     toolbox_.onAddAccount  = [this]() { HandleAddAccount(); };
     toolbox_.onOpenAccount = [](const std::string&) { /* Phase 2: open the 3-pane view */ };
 
-    // Reading view + Contacts entry points.
+    // Write / Reading view / Contacts entry points.
+    auto writeBtn = CreateButton("umWrite", 384, 8, 120, 28, "✎ Write");
+    writeBtn->onClick = [this]() {
+        std::string name, addr;
+        if (!accounts_.empty()) { name = accounts_.front().displayName; addr = accounts_.front().email; }
+        OpenComposer(Composer::NewMessage(name, addr));
+    };
+    window_->AddChild(writeBtn);
+
     auto readBtn = CreateButton("umRead", 512, 8, 120, 28, "Read mail");
     readBtn->onClick = [this]() { OpenReadingView(); };
     window_->AddChild(readBtn);
@@ -125,6 +137,17 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
         SeedDemoMail();
         OpenReadingView();
     }
+    // Demo path: open a reply-prefilled compose window.
+    if (const char* dcomp = std::getenv("ULTRAMAIL_DEMO_COMPOSE"); dcomp && *dcomp == '1') {
+        SourceMessage src;
+        src.messageId = "<orig@example.com>";
+        src.fromName = "Anna Schmidt"; src.fromAddr = "anna@example.com";
+        src.to = {"erika@example.com"};
+        src.subject = "Meeting notes";
+        src.body = "Hi Erika,\n\nHere are the notes from our meeting.\n\nBest,\nAnna";
+        src.date = "Tue, 14 Jan 2026 14:02:00 +0000";
+        OpenComposer(Composer::Reply(src, "Erika Example", "erika@example.com", false));
+    }
 
     return window_;
 }
@@ -141,9 +164,70 @@ void UltraMailApp::OpenReadingView() {
     readingView_.SetMailDir(mailDir_);
     readingView_.SetAccounts(accounts_);
     readingView_.onOpenAttachment = [this](const Attachment& a) { OpenAttachment(a); };
+    readingView_.onReply = [this](const SourceMessage& src, const std::string& selfName,
+                                  const std::string& selfAddr) {
+        OpenComposer(Composer::Reply(src, selfName, selfAddr, /*replyAll=*/false));
+    };
     win->AddChild(readingView_.Build());
     win->Show();
     viewerWindows_.push_back(win);
+}
+
+void UltraMailApp::OpenComposer(const Draft& draft) {
+    WindowConfig cfg;
+    cfg.title  = draft.subject.empty() ? "New message" : draft.subject;
+    cfg.width  = 680;
+    cfg.height = 580;
+    auto win = CreateWindow(cfg);
+
+    composeView_.SetDraft(draft);
+    composeView_.onSend   = [this](const Draft& d) { HandleSendDraft(d); };
+    composeView_.onCancel = []() { /* window stays; close via title bar */ };
+    win->AddChild(composeView_.Build());
+    win->Show();
+    viewerWindows_.push_back(win);
+}
+
+void UltraMailApp::HandleSendDraft(const Draft& draft) {
+    auto join = [](const std::vector<std::string>& v) {
+        std::string s;
+        for (std::size_t i = 0; i < v.size(); ++i) { if (i) s += ", "; s += v[i]; }
+        return s;
+    };
+
+    DiscoveryResult disc = AutoDiscovery::FromPresets(draft.fromAddr);
+    const std::string smtpUrl = disc.found ? AutoDiscovery::SmtpServerUrl(disc.smtp) : "";
+
+    // Resolve the SMTP plug-in (loaded on demand).
+    if (!UltraNet_IsInitialized()) UltraNet_Initialize();
+    UltraNet_RefreshPlugins();
+    auto plugin = UltraNet_GetPlugin(disc.smtp.security == MailSecurity::SslTls ? "smtps" : "smtp");
+    IMailProtocolPlugin* smtp = plugin ? dynamic_cast<IMailProtocolPlugin*>(plugin.get()) : nullptr;
+
+    std::string msg;
+    if (smtp && !smtpUrl.empty()) {
+        CredentialVault vault(dataDir_ + "/vault");
+        std::string pass;
+        vault.Retrieve(SlugFromEmail(draft.fromAddr), pass);
+
+        UltraNetMailOptions opts;
+        opts.credentials.username = draft.fromAddr;
+        opts.credentials.password = pass;
+        opts.useTls = true;
+        opts.implicitTls = (disc.smtp.security == MailSecurity::SslTls);
+
+        MailSender sender(*smtp);
+        UltraNetResult r = sender.Send(draft, smtpUrl, opts);
+        msg = r ? ("Message sent to " + join(draft.to) + ".")
+                : ("Send failed: " + r.message);
+    } else {
+        msg = "Draft ready for " + join(draft.to) + " via " +
+              (smtpUrl.empty() ? "the account's SMTP server" : smtpUrl) +
+              ".\n(The SMTP plug-in is not loaded in this build; queueing/sending "
+              "wires up once the plug-in DSO is on the path.)";
+    }
+    UltraCanvas::UltraCanvasDialogManager::ShowInformation(
+        msg, "UltraMail", nullptr, window_ ? window_.get() : nullptr);
 }
 
 void UltraMailApp::SeedDemoMail() {
