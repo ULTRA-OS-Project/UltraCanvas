@@ -145,6 +145,11 @@ Classic three-pane layout built from nested split panes:
 ```
 ┌───────────────────────────────────────────────────────────────────┐
 │ ☰  🏠  ✎ Write   ⟳ Get Mail   ↩ Reply  ↪ Forward  🗑  [Search… 🔍] │ ← UltraCanvasToolbar
+├───────────────────────────────────────────────────────────────────┤
+│ ┌── erika ──────┐ ┌── work ───────┐ ┌── shop ───────┐             │
+│ │ ✉ 3 new       │ │ ✉ 12 new      │ │ ✉ 0 new       │   ← account │
+│ │ ↩ 2 to answer │ │ ↩ 5 to answer │ │ ✓ all clear   │     bar (3.0)│
+│ └───────────────┘ └───────────────┘ └───────────────┘             │
 ├──────────────┬────────────────────────────────────────────────────┤
 │ Unified Inbox│  ● From          Subject                 Date    📎 │
 │ ▾ erika@…    │  ○ Anna Schmidt  Re: Meeting notes       14:02     │
@@ -160,6 +165,79 @@ Classic three-pane layout built from nested split panes:
 │ ⟳ Synchronizing erika@… Inbox (12/340)              3 new messages │ ← status bar
 └───────────────────────────────────────────────────────────────────┘
 ```
+
+### 3.0 Account info bar
+
+Once one or more accounts are set up, a horizontal strip of **account
+info tiles** sits at the top of the main window, directly under the
+toolbar — one tile per configured account, always visible. Each tile is
+a compact status card, not a big launcher square (those live on the
+Toolbox start screen, 2.1); here the point is at-a-glance triage across
+all accounts at once.
+
+Each tile shows three things:
+
+- **Short account name** — a user-editable nickname (`erika`, `work`,
+  `shop`), defaulting to the local-part of the address. Kept short so
+  many tiles fit; full address in the tooltip.
+- **New unread** — count of unread messages across the account's inbox
+  (folders the user marks as "watched" can be included). "`✉ 3 new`".
+- **Needs answer** — count of messages that were addressed to the user
+  and have not yet been replied to. "`↩ 2 to answer`". When both counts
+  are zero the tile shows a calm "`✓ all clear`" state.
+
+Behaviour:
+
+- **Colour / attention state.** A tile with mail needing an answer is
+  accented (warm accent); unread-only is a lighter accent; all-clear is
+  neutral. This makes "which account needs me right now" readable
+  without counting.
+- **Click a tile** → selects that account and jumps its Inbox into the
+  list pane (folder tree scrolls/expands to it). **Click the "needs
+  answer" line** → applies a *Needs answer* filter to the list (a saved
+  search over that account). This turns the tiles into one-click triage
+  entry points, not just indicators.
+- **Live updates.** Counts update from the SyncEngine as new mail
+  arrives (IMAP IDLE) and as the user reads/replies — the engine pushes
+  deltas to the UI via `PostToUIThread`. The same numbers drive the
+  Toolbox tile badges (2.1) and the OS window/taskbar badge, computed
+  once in the engine.
+- **Overflow.** With more accounts than fit, the strip scrolls
+  horizontally (or the tiles shrink to name + two small numbers); a
+  settings option collapses the bar to a single row of counters or
+  hides it for single-account users.
+
+Implementation: a horizontal `UltraCanvasContainer` (or a `UltraCanvasToolbar`
+in `Sidebar`/`Docked` style laid out horizontally) holding one
+delegate-drawn tile per account; tiles are `CreateIconButton`-style
+clickable panels with two badge lines. The bar is a natural first
+consumer of a future `UltraCanvasTileGrid`/tile component (see open
+question 1), but v1 hand-lays the row — the count is small.
+
+**Defining "needs answer".** A message counts as *needs answer* when
+all of these hold, computed by the engine and cached in the message
+index:
+
+1. It is **incoming** (not sent by one of the user's own addresses).
+2. The user is a **direct recipient** — their address is in `To:`
+   (optionally `Cc:`); pure bulk/list mail where they are neither is
+   excluded.
+3. It is **not yet answered** — this maps directly onto the IMAP
+   `\Answered` system flag, which the server sets when a reply is sent
+   and which the proposed `IMailboxProtocolPlugin::StoreFlags` already
+   manages. UltraMail sets `\Answered` locally the moment the user sends
+   a reply (matched by `In-Reply-To`/`References`), so the count drops
+   instantly and stays correct across devices.
+4. It is **not obviously automated** — messages with
+   `List-Id`/`List-Unsubscribe`, `Precedence: bulk/list`, or
+   `Auto-Submitted` headers, and mail in Junk/Trash, are excluded.
+5. Optionally, not older than a configurable window (default: no age
+   limit; a "hide older than 30 days" option keeps the count actionable).
+
+The user can always override per message: a **"Mark as answered / needs
+answer"** command toggles the `\Answered` flag by hand (for mail
+answered by phone, or that needs a follow-up). "Needs answer" is thus a
+real, synced mailbox state, not a fragile local guess.
 
 - **Folder pane** — `UltraCanvasTreeView`; one root node per account
   plus a *Unified Inbox* node when more than one account exists; unread
@@ -268,7 +346,10 @@ and maps common codes (`AuthenticationFailed`,
     folders.json                    folder tree, UIDVALIDITY, sync state
     <folder>/cur/<uid>.eml          raw RFC 5322 messages (Maildir-like)
     index.db                        flat message index: envelope fields,
-                                    flags, threading refs, search tokens
+                                    flags (incl. \Answered), needs-answer
+                                    bit, threading refs, search tokens
+  status.json                       per-account rollups: unread & needs-
+                                    answer counts driving the account bar
   outbox/                           queued outgoing messages
 ```
 
@@ -378,7 +459,7 @@ default path.
 | Phase | Deliverable |
 |---|---|
 | **1 — Walking skeleton** | App skeleton, Toolbox with the single "Add email account" tile, setup wizard with discovery pipeline, credential vault; verify login; read-only inbox using existing `FetchMessages`; plain-text preview; SMTP send with a minimal composer. *Usable end-to-end.* |
-| **2 — Real mail client** | `IMailboxProtocolPlugin` in UltraNet (folders, envelopes, flags, move, append, IDLE); SyncEngine + LocalStore with offline cache; folder tree, flags, delete/junk/move; MimeCodec; HTML rendering with remote-image blocking; attachments both directions. |
+| **2 — Real mail client** | `IMailboxProtocolPlugin` in UltraNet (folders, envelopes, flags incl. `\Answered`, move, append, IDLE); SyncEngine + LocalStore with offline cache; account info bar (3.0) with unread + needs-answer counts and one-click triage; folder tree, flags, delete/junk/move; MimeCodec; HTML rendering with remote-image blocking; attachments both directions. |
 | **3 — Comfort** | Unified inbox, local search, drafts/outbox/undo-send, signatures, address autocomplete, notifications and badges, settings dialog, keyboard shortcuts, conversation view. |
 | **4 — Ecosystem** | OAuth2 (Gmail/Microsoft), address book app integration (LDAP via UltraNet's `IDirectoryProtocolPlugin`, CardDAV), filter rules, PGP/S-MIME signing & encryption, calendar-invite (.ics) preview, mobile-profile export for ULTRA OS on Android. |
 
