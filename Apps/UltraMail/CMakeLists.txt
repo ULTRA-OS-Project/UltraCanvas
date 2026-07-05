@@ -25,6 +25,8 @@ set(ULTRAMAIL_ENGINE_SOURCES
     engine/UltraMailSender.cpp
     engine/UltraMailOutbox.cpp
     engine/UltraMailSyncService.cpp
+    engine/UltraMailSyncScheduler.cpp
+    engine/UltraMailContactCollector.cpp
 )
 
 add_library(UltraMailEngine STATIC ${ULTRAMAIL_ENGINE_SOURCES})

@@ -18,6 +18,7 @@
 #include "UltraMailMimeCodec.h"
 #include "UltraMailContactStore.h"
 #include "UltraMailOutbox.h"
+#include "UltraMailSyncScheduler.h"
 
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasContainer.h"
@@ -72,6 +73,14 @@ private:
     // Attempt to send a draft via the SMTP plug-in; report the outcome.
     void HandleSendDraft(const Draft& draft);
 
+    // Auto-collect senders of a folder's messages into the address book.
+    void CollectContacts(const std::string& accountId, const std::string& folder);
+    // Register accounts with the scheduler and start a periodic background sync
+    // (only when the IMAP plug-in is available).
+    void StartBackgroundSync();
+    // Sync any accounts the scheduler reports as due (called from the timer).
+    void RunDueSyncs();
+
     LocalStore store_;
     ContactStore contacts_;
     OutboxStore outbox_;
@@ -88,6 +97,7 @@ private:
     ContactsView    contactsView_;
     ReadingView     readingView_;
     ComposeView     composeView_;
+    SyncScheduler   scheduler_;
     ParsedMessage   currentMessage_;
     std::vector<std::shared_ptr<UltraCanvas::UltraCanvasWindow>> viewerWindows_;
 };

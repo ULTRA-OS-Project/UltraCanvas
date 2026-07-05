@@ -16,8 +16,11 @@ and **UltraDatabase** (local store) modules.
 > the attachment strip → MediaViewer, the contact manager, and the **composer**
 > (Write / Reply, Send through a **persistent outbox**). On startup the app
 > brings up the UltraNet plug-in registry (SMTP/IMAP DSOs load if on the path;
-> `ULTRAMAIL_PLUGIN_DIR` overrides). Still to come: a live login-verify against
-> a real server and a periodic background-sync scheduler.
+> `ULTRAMAIL_PLUGIN_DIR` overrides). A **background-sync scheduler** (per-account
+> intervals) drives the SyncService on a UI timer once the IMAP plug-in is
+> present, and the address book **auto-collects** the people you correspond with.
+> Still to come: a live login-verify against a real server and HTML-mail
+> rendering via HTMLReader.
 
 ## Layout
 
@@ -52,6 +55,9 @@ Apps/UltraMail/
                                   Enqueue + Flush (sent->remove, fail->retry)
     UltraMailSyncService.{h,cpp}  full-account sync (folders+inbox+bodies) over
                                   the SyncEngine, sync + background-thread variants
+    UltraMailSyncScheduler.{h,cpp} per-account interval tracking; DueAccounts(now)
+    UltraMailContactCollector.{h,cpp} auto-add mail senders/recipients to the
+                                  address book (Other section) if new
   ui/                             UltraCanvas UI layer
     UltraMailApp.{h,cpp}          app manager: owns store + window, wires it up
     UltraMailToolbox.{h,cpp}      start-screen grid: account tiles + "Add

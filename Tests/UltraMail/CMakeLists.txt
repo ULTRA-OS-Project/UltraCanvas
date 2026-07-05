@@ -12,6 +12,7 @@ set(ULTRAMAIL_TEST_SOURCES
     test_discovery.cpp
     test_composer.cpp
     test_outbox.cpp
+    test_scheduler.cpp
 )
 
 add_executable(UltraMailEngineTests ${ULTRAMAIL_TEST_SOURCES})

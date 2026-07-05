@@ -8,6 +8,8 @@
 #include "UltraMailCredentialVault.h"
 #include "UltraMailComposer.h"
 #include "UltraMailSender.h"
+#include "UltraMailContactCollector.h"
+#include "UltraMailSyncService.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasLabel.h"
@@ -21,6 +23,7 @@
 
 #include <cctype>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -124,9 +127,18 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
 
     Refresh();
 
+    // Register accounts for background sync (the live loop starts only when the
+    // IMAP plug-in is present).
+    StartBackgroundSync();
+
     // Demo path: exercise the attachment strip + viewer without a live sync.
     if (const char* demo = std::getenv("ULTRAMAIL_DEMO"); demo && *demo == '1')
         ShowDemoAttachments();
+    // Demo path: seed mail, auto-collect senders, and open the contact manager.
+    if (const char* dcol = std::getenv("ULTRAMAIL_DEMO_COLLECT"); dcol && *dcol == '1') {
+        SeedDemoMail();
+        OpenContacts();
+    }
     // Demo path: seed contacts and open the contact manager.
     if (const char* dc = std::getenv("ULTRAMAIL_DEMO_CONTACTS"); dc && *dc == '1') {
         SeedDemoContacts();
@@ -218,6 +230,10 @@ void UltraMailApp::HandleSendDraft(const Draft& draft) {
     int64_t id = 0;
     outbox_.Enqueue(SlugFromEmail(draft.fromAddr), smtpUrl, draft, id);
 
+    // Remember the people we write to.
+    for (const auto& addr : draft.to) ContactCollector::Collect(contacts_, "", addr);
+    for (const auto& addr : draft.cc) ContactCollector::Collect(contacts_, "", addr);
+
     // Attempt an immediate flush if the SMTP plug-in is loaded.
     auto plugin = UltraNet_GetPlugin(disc.smtp.security == MailSecurity::SslTls ? "smtps" : "smtp");
     IMailProtocolPlugin* smtp = plugin ? dynamic_cast<IMailProtocolPlugin*>(plugin.get()) : nullptr;
@@ -293,6 +309,63 @@ void UltraMailApp::SeedDemoMail() {
          "Good news! Your order has shipped and is on its way.", Flag_Seen, false);
     seed(1, "Max Weber", "max@example.com", "Lunch on Friday?",
          "Are you free for lunch on Friday around noon?", Flag_None, false);
+
+    // Auto-collect the senders into the address book.
+    CollectContacts("erika", "INBOX");
+}
+
+void UltraMailApp::CollectContacts(const std::string& accountId, const std::string& folder) {
+    if (!contacts_.IsOpen()) return;
+    std::vector<MessageEnvelope> msgs;
+    store_.ListMessages(accountId, folder, 0, msgs);
+    for (const auto& m : msgs)
+        ContactCollector::Collect(contacts_, m.fromName, m.fromAddr, ContactSection::Other);
+}
+
+void UltraMailApp::StartBackgroundSync() {
+    // Register every account's sync cadence with the scheduler.
+    for (const auto& a : accounts_) {
+        DiscoveryResult d = AutoDiscovery::FromPresets(a.email);
+        std::string url = d.found ? AutoDiscovery::ImapServerUrl(d.imap) : "";
+        scheduler_.SetAccount(a.accountId, url, /*intervalSec=*/300);
+    }
+    // Only run the live loop when the IMAP plug-in is present (otherwise a timer
+    // would just fire against nothing).
+    auto imap = UltraNet_GetPlugin("imaps");
+    if (!imap) return;
+    if (auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent())
+        app->StartTimer(300000, /*periodic=*/true,
+                        [this](UltraCanvas::TimerId) { RunDueSyncs(); });
+}
+
+void UltraMailApp::RunDueSyncs() {
+    auto imapPlugin = UltraNet_GetPlugin("imaps");
+    auto* imap = imapPlugin ? dynamic_cast<IMailboxProtocolPlugin*>(imapPlugin.get()) : nullptr;
+    if (!imap) return;
+
+    const int64_t now = static_cast<int64_t>(std::time(nullptr));
+    CredentialVault vault(dataDir_ + "/vault");
+    for (const auto& acc : scheduler_.DueAccounts(now)) {
+        if (acc.serverUrl.empty()) continue;
+        std::string email;
+        for (const auto& a : accounts_) if (a.accountId == acc.accountId) email = a.email;
+
+        UltraNetMailOptions opts;
+        opts.credentials.username = email;
+        std::string pw; vault.Retrieve(acc.accountId, pw);
+        opts.credentials.password = pw;
+        opts.useTls = true; opts.implicitTls = true;
+
+        auto svc = std::make_shared<SyncService>(store_, *imap, mailDir_);
+        const std::string aid = acc.accountId;
+        // onDone keeps `svc` alive until the worker thread finishes; it marshals
+        // the follow-up work back to the UI thread.
+        svc->SyncInBackground(aid, acc.serverUrl, opts, [this, svc, aid](SyncOutcome) {
+            if (auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent())
+                app->PostToUIThread([this, aid]() { CollectContacts(aid, "INBOX"); Refresh(); });
+        });
+        scheduler_.MarkSynced(acc.accountId, now);
+    }
 }
 
 void UltraMailApp::OpenContacts() {
