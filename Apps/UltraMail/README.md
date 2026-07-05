@@ -7,13 +7,14 @@ UltraMail is built on **UltraCanvas** (UI) and the **UltraNet** (SMTP/IMAP/POP3)
 and **UltraDatabase** (local store) modules.
 
 > **Status (Phase 1–2, in progress):** the headless **engine** is implemented
-> and tested — LocalStore, MIME codec + attachment cache, contact store, and
-> the **SyncEngine** that drives an IMAP mailbox into the store (folders,
-> incremental envelopes with needs-answer, cached bodies, flag mirroring). The
-> **UI** has the main window (Toolbox + account info-tile bar), the setup
-> wizard, the attachment strip → MediaViewer, and the contact manager. Still to
-> come: the discovery/verify pipeline + credential vault behind the wizard, the
-> three-pane reading view, and the composer.
+> and tested — LocalStore, MIME codec + attachment cache, contact store,
+> account auto-discovery + credential vault, and the **SyncEngine** that drives
+> an IMAP mailbox into the store (folders, incremental envelopes with
+> needs-answer, cached bodies, flag mirroring). The **UI** has the main window
+> (Toolbox + account info-tile bar), the setup wizard (with discovery), the
+> **three-pane reading view** (folders | list | preview with body + attachments),
+> the attachment strip → MediaViewer, and the contact manager. Still to come:
+> the live login-verify + background sync loop, and the composer.
 
 ## Layout
 
@@ -51,6 +52,8 @@ Apps/UltraMail/
                                   (Open / Save As…) opens content in UltraCanvasMediaViewer
     UltraMailContactsView.{h,cpp} contact manager: section sidebar (with counts) +
                                   contact list; add/edit dialog; delete via context menu
+    UltraMailReadingView.{h,cpp}  three-pane reader: folder tree | message list |
+                                  preview (headers + body + attachment strip)
   main.cpp                        entry point: init app, open store, show window
   CMakeLists.txt                  UltraMailEngine static library
 ```

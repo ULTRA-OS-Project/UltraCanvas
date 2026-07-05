@@ -11,6 +11,7 @@
 #include "UltraMailAccountWizard.h"
 #include "UltraMailAttachmentStrip.h"
 #include "UltraMailContactsView.h"
+#include "UltraMailReadingView.h"
 
 #include "UltraMailLocalStore.h"
 #include "UltraMailMimeCodec.h"
@@ -59,18 +60,25 @@ private:
     // Seed a few contacts across sections (demo only).
     void SeedDemoContacts();
 
+    // Open the three-pane reading view in its own window.
+    void OpenReadingView();
+    // Seed a few messages + cached .eml bodies (demo only).
+    void SeedDemoMail();
+
     LocalStore store_;
     ContactStore contacts_;
     std::vector<Account> accounts_;
     std::vector<AccountStatus> status_;
     std::string dataDir_;
     std::string cacheDir_;
+    std::string mailDir_;
 
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
     Toolbox         toolbox_;
     InfoTileBar     infoBar_;
     AttachmentStrip attachmentStrip_;
     ContactsView    contactsView_;
+    ReadingView     readingView_;
     ParsedMessage   currentMessage_;
     std::vector<std::shared_ptr<UltraCanvas::UltraCanvasWindow>> viewerWindows_;
 };

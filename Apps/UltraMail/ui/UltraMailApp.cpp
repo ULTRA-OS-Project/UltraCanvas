@@ -18,6 +18,7 @@
 #include <cctype>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <string>
 
 using namespace UltraCanvas;
@@ -50,6 +51,7 @@ bool UltraMailApp::Initialize(const std::string& dataDir) {
 
     dataDir_  = dataDir;
     cacheDir_ = dataDir + "/cache";
+    mailDir_  = dataDir + "/mail";
 
     // The address book is a global (account-independent) store.
     contacts_.Open("ultramail-contacts", dataDir + "/contacts.db");
@@ -81,7 +83,11 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
     toolbox_.onAddAccount  = [this]() { HandleAddAccount(); };
     toolbox_.onOpenAccount = [](const std::string&) { /* Phase 2: open the 3-pane view */ };
 
-    // Contacts entry point.
+    // Reading view + Contacts entry points.
+    auto readBtn = CreateButton("umRead", 512, 8, 120, 28, "Read mail");
+    readBtn->onClick = [this]() { OpenReadingView(); };
+    window_->AddChild(readBtn);
+
     auto contactsBtn = CreateButton("umContacts", 640, 8, 120, 28, "Contacts");
     contactsBtn->onClick = [this]() { OpenContacts(); };
     window_->AddChild(contactsBtn);
@@ -114,8 +120,82 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
         d.password = "demo-password";
         HandleWizardSubmit(d);
     }
+    // Demo path: seed messages + bodies and open the reading view.
+    if (const char* dm = std::getenv("ULTRAMAIL_DEMO_MAIL"); dm && *dm == '1') {
+        SeedDemoMail();
+        OpenReadingView();
+    }
 
     return window_;
+}
+
+void UltraMailApp::OpenReadingView() {
+    WindowConfig cfg;
+    cfg.title  = "UltraMail";
+    cfg.width  = 1120;
+    cfg.height = 680;
+    auto win = CreateWindow(cfg);
+
+    store_.ListAccounts(accounts_);
+    readingView_.SetStore(&store_);
+    readingView_.SetMailDir(mailDir_);
+    readingView_.SetAccounts(accounts_);
+    readingView_.onOpenAttachment = [this](const Attachment& a) { OpenAttachment(a); };
+    win->AddChild(readingView_.Build());
+    win->Show();
+    viewerWindows_.push_back(win);
+}
+
+void UltraMailApp::SeedDemoMail() {
+    namespace fs = std::filesystem;
+
+    Account a; a.accountId = "erika"; a.email = "erika@example.com";
+    a.shortName = "erika"; a.displayName = "Erika Example";
+    store_.UpsertAccount(a);
+    Folder inbox; inbox.accountId = "erika"; inbox.name = "INBOX"; inbox.role = FolderRole::Inbox;
+    store_.UpsertFolder(inbox);
+    Folder sent; sent.accountId = "erika"; sent.name = "Sent"; sent.role = FolderRole::Sent;
+    store_.UpsertFolder(sent);
+
+    auto seed = [&](int64_t uid, const std::string& fromName, const std::string& fromAddr,
+                    const std::string& subject, const std::string& body, uint32_t flags,
+                    bool withAttachment) {
+        UltraNetMimeBuildInput in;
+        in.from = fromName + " <" + fromAddr + ">";
+        in.to = {"erika@example.com"};
+        in.subject = subject;
+        in.body = body;
+        in.date = "Wed, 14 Jan 2026 1" + std::to_string(uid) + ":00:00 +0000";
+        in.messageId = "<demo" + std::to_string(uid) + "@example.com>";
+        if (withAttachment) {
+            UltraNetMimeBuildAttachment att;
+            att.filename = "meeting-notes.txt"; att.mediaType = "text/plain";
+            std::string t = "Meeting notes\n\n- ship UltraMail\n- review the reading view\n";
+            att.data.assign(t.begin(), t.end());
+            in.attachments.push_back(att);
+        }
+        const std::string raw = UltraNet_MimeBuild(in);
+
+        fs::path p = fs::path(mailDir_) / "erika" / "INBOX" / (std::to_string(uid) + ".eml");
+        std::error_code ec; fs::create_directories(p.parent_path(), ec);
+        std::ofstream(p, std::ios::binary).write(raw.data(),
+                                                 static_cast<std::streamsize>(raw.size()));
+
+        MessageEnvelope m;
+        m.accountId = "erika"; m.folder = "INBOX"; m.uid = uid;
+        m.fromName = fromName; m.fromAddr = fromAddr; m.subject = subject;
+        m.to = {"erika@example.com"}; m.messageId = in.messageId; m.flags = flags;
+        m.date = 1736852400 + uid * 3600;   // ~Jan 2026, increasing with uid
+        store_.UpsertMessage(m);
+    };
+
+    seed(3, "Anna Schmidt", "anna@example.com", "Re: Meeting notes",
+         "Hi Erika,\n\nHere are the notes from our meeting — see the attachment.\n\nBest,\nAnna",
+         Flag_None, /*withAttachment=*/true);
+    seed(2, "ULTRA Store", "orders@ultra.store", "Your order shipped",
+         "Good news! Your order has shipped and is on its way.", Flag_Seen, false);
+    seed(1, "Max Weber", "max@example.com", "Lunch on Friday?",
+         "Are you free for lunch on Friday around noon?", Flag_None, false);
 }
 
 void UltraMailApp::OpenContacts() {
