@@ -1,7 +1,7 @@
 # UltraCanvas/CMakeLists.txt
 # UltraCanvas Core Library - Builds as separate static library with optional plugins
-# Version: 1.4.2
-# Last Modified: 2026-06-21
+# Version: 1.4.3
+# Last Modified: 2026-07-05
 # Author: UltraCanvas Framework
 
 cmake_minimum_required(VERSION 3.16)
@@ -11,6 +11,14 @@ include(FetchContent)
 # project) and provides ZIP support for ODS/XLSX File I/O. Without this, a CXX-only
 # project silently skips compiling .c files, causing undefined references to mz_zip_*.
 enable_language(C)
+
+# Enable Objective-C++ on Apple platforms: the macOS backend (GL context managers,
+# AVFoundation video, UltraNet TLS/DNS support) ships .mm sources tagged
+# LANGUAGE OBJCXX below. The root project() only declares CXX, so without this the
+# generate step fails with "The language OBJCXX was requested ... but was not enabled".
+if(APPLE)
+    enable_language(OBJCXX)
+endif()
 
 # ===== LIBRARY DEFINITION =====
 set(ULTRACANVAS_VERSION "0.3.1")
