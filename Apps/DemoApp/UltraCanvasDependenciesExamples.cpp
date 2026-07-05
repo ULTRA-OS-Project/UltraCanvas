@@ -235,8 +235,9 @@ namespace UltraCanvas {
         dep("Video effects / transcode", "FFmpeg", "FFmpeg", "FFmpeg");
 
         header("VirtualFS module");
-        dep("Archive formats", "libarchive\nlibmspack\nwimlib", "libarchive\nlibmspack\nwimlib", "libarchive\nlibmspack\nwimlib");
-        dep("Compression", "zlib\nlibzstd\nliblz4\nlibbrotli", "zlib\nlibzstd\nliblz4\nlibbrotli", "zlib\nlibzstd\nliblz4\nlibbrotli");
+        dep("Archive formats", "libarchive", "libarchive", "libarchive");
+        dep("Compression", "zlib\noptional: libzstd, liblz4\n(VIRTUALFS_USE_*, default OFF)", "zlib\noptional: libzstd, liblz4\n(VIRTUALFS_USE_*, default OFF)", "zlib\noptional: libzstd, liblz4\n(VIRTUALFS_USE_*, default OFF)");
+        dep("Planned providers (CHM/LIT, WIM, Brotli)", "libmspack\nwimlib\nlibbrotli\n(not yet wired)", "libmspack\nwimlib\nlibbrotli\n(not yet wired)", "libmspack\nwimlib\nlibbrotli\n(not yet wired)");
 
         // ============================================================
         // The UltraCanvasListView table itself

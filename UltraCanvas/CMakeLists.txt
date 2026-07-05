@@ -557,6 +557,13 @@ if(ULTRACANVAS_ENABLE_GL)
     endif()
 endif()
 
+# VirtualFS bridge (only when the sibling VirtualFS module is part of the build)
+if(TARGET VirtualFS)
+    list(APPEND ULTRACANVAS_CORE_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVirtualFSBridge.cpp
+    )
+endif()
+
 # Combine all core sources
 set(ULTRACANVAS_ALL_SOURCES
     ${ULTRACANVAS_CORE_SOURCES}
@@ -655,6 +662,18 @@ target_link_libraries(${ULTRACANVAS_LIB_NAME}
         ${GLIB_LIBRARIES}
         ${TINYXML2_LIBRARIES}
 )
+
+# VirtualFS module (brings VIRTUALFS_HAS_* defines and headers for the bridge)
+if(TARGET VirtualFS)
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC VirtualFS::VirtualFS)
+    # The bridge calls zlib directly, so it needs the headers/library itself
+    # (VirtualFS's find results are scoped to its own directory)
+    find_package(ZLIB QUIET)
+    if(ZLIB_FOUND)
+        target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${ZLIB_INCLUDE_DIRS})
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE ${ZLIB_LIBRARIES})
+    endif()
+endif()
 
 # Platform-specific libraries
 if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
@@ -1216,6 +1235,7 @@ if(ULTRACANVAS_PLUGIN_VECTORIZER)
 else()
     message(STATUS "  [−] Vectorizer Plugin - SKIPPED (disabled by option)")
 endif()
+
 # LaTeX Plugin (embedded MicroTeX) - ON-DEMAND dynamic module
 #
 # LaTeX support is a load-on-demand module, in line with UltraCanvas' goal of

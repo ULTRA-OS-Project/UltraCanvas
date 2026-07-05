@@ -55,12 +55,23 @@ option(ULTRACANVAS_PLUGIN_VECTOR "Build Vector plugin" OFF)
 option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin (requires MuPDF / libmupdf-dev)" ON)
 option(ULTRACANVAS_PLUGIN_OCR "Build OCR plugin (requires tesseract + leptonica)" OFF)
 option(ULTRACANVAS_PLUGIN_VECTORIZER "Build Vectorizer plugin (raster→SVG via VTracer; requires cargo)" OFF)
+option(ULTRACANVAS_USE_VIRTUALFS "Build the VirtualFS module and the UltraCanvas bridge to it" ON)
 
 include(FetchContent)
 include(cmake/UltraCanvasAppIcon.cmake)
 
 # ===== FIND REQUIRED PACKAGES =====
 find_package(PkgConfig REQUIRED)
+
+# ===== BUILD VIRTUALFS MODULE =====
+# Independent sibling module; UltraCanvas consumes it through
+# UltraCanvasVirtualFSBridge (added inside UltraCanvas/CMakeLists.txt
+# when the VirtualFS target exists).
+if(ULTRACANVAS_USE_VIRTUALFS)
+    message(STATUS "")
+    message(STATUS "── Building VirtualFS Module ──")
+    add_subdirectory(VirtualFS)
+endif()
 
 # ===== BUILD ULTRACANVAS CORE LIBRARY =====
 message(STATUS "")

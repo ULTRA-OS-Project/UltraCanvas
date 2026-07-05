@@ -1189,7 +1189,8 @@ namespace UltraCanvas {
                                [this]() { return CreateTextDocumentExamples(); },
                                "DemoApp/UltraCanvasDemoExamples.cpp",
                                "Docs/UltraCanvas/UltraCanvasTextAreaExamples.md");
-        textDocBuilder.AddItem("ebook", "eBook Reader",
+
+      textDocBuilder.AddItem("ebook", "eBook Reader",
                                "EPUB/FB2/MOBI/TXT reading with chapters, TOC, themes and font scaling "
                                "rendered natively through the CSSLayout engine",
                                ImplementationStatus::FullyImplemented,
