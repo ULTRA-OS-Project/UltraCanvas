@@ -148,6 +148,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasWaveformExamples.cpp
             Apps/DemoApp/UltraCanvasPDFExamples.cpp
             Apps/DemoApp/UltraCanvasLaTeXExamples.cpp
+            Apps/DemoApp/UltraCanvasFileLoaderExamples.cpp
             Apps/DemoApp/UltraCanvasVideoExamples.cpp
     )
 
