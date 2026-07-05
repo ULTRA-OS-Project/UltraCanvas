@@ -307,15 +307,17 @@ A separate window (`CreateWindow`) per draft, Texter-style:
 │  AccountManager      accounts, settings, credentials       │
 │  AutoDiscovery       presets → autoconfig → DNS → probing  │
 │  SyncEngine          per-account folder/message sync, IDLE │
-│  LocalStore          RFC 5322 files + index, offline cache │
+│  LocalStore          .eml files + UltraDatabase index/meta │
 │  MimeCodec           MIME parse/build, encodings, HTML/text│
 │  Outbox              persistent send queue, retries        │
-├────────────────────────────────────────────────────────────┤
-│ UltraNet                                                   │
-│  IMailProtocolPlugin: smtp · imap · pop3 (libcurl-backed)  │
-│  UltraNet_Dns* (SRV/MX) · UltraNet_Http* (autoconfig)      │
-│  TLS via libcurl backend, verification on by default       │
-└────────────────────────────────────────────────────────────┘
+├──────────────────────────────┬─────────────────────────────┤
+│ UltraNet                     │ UltraDatabase               │
+│  IMailProtocolPlugin: smtp · │  local SQLite connection    │
+│  imap · pop3 (libcurl)       │  per account: index, flags, │
+│  UltraNet_Dns* (SRV/MX)      │  needs-answer, search, meta │
+│  UltraNet_Http* (autoconfig) │  UltraDb_Query/Exec/Migrate │
+│  TLS on by default           │  parameterized, transactional│
+└──────────────────────────────┴─────────────────────────────┘
 ```
 
 **Threading.** All protocol work runs on engine worker threads (one
@@ -355,9 +357,16 @@ and maps common codes (`AuthenticationFailed`,
 
 Raw `.eml` files keep the store transparent, portable and crash-safe;
 the compact index makes list rendering and search fast without loading
-message bodies. No new third-party dependency is required for v1 (the
-index is a simple binary/JSON file per folder; moving to SQLite later
-is an isolated change inside `LocalStore`).
+message bodies. The index, flags, needs-answer bits, threading data,
+search tokens and per-account status rollups all live in a per-account
+**UltraDatabase** connection (a local SQLite database, `driver =
+"sqlite"`), registered by name (`"mail-<account-id>"`) and queried
+through the `UltraDb_*` API — see `Docs/Modules/UltraDatabase/README.md`.
+This gives UltraMail parameterized queries, transactional sync updates
+and fast indexed search for free, and means a power user could later
+point the store at a networked engine without changing UltraMail's
+query code. The raw messages stay as `.eml` files on disk; only the
+index/metadata lives in the database.
 
 **Credentials** go into the OS keychain (libsecret on Linux, Windows
 Credential Manager, macOS Keychain) behind a small
@@ -471,9 +480,11 @@ Phases 1–2 are the minimum for a public preview; phase 3 completes the
 1. Should the Toolbox tile grid become a reusable UltraCanvas component
    (`UltraCanvasTileGrid`)? Other ULTRA OS apps (and the future OS
    launcher itself) will want the same square-icon visual language.
-2. Message index backend: stay with flat per-folder index files, or
-   adopt SQLite for v1 already? (Concept assumes flat files; the
-   `LocalStore` API hides the choice.)
+2. ~~Message index backend: flat files vs SQLite?~~ **Resolved:** the
+   index/metadata uses a per-account SQLite connection via the new
+   **UltraDatabase** module (`Docs/Modules/UltraDatabase/README.md`);
+   raw messages stay as `.eml` files. `LocalStore` wraps the `UltraDb_*`
+   calls so the engine choice stays swappable.
 3. Conversation threading in v1.0 message list or v1.x?
 4. Does the ISPDB lookup need a privacy switch (it reveals the user's
    mail domain to Mozilla's service)? Suggested default: on, with an
@@ -486,4 +497,5 @@ Phases 1–2 are the minimum for a public preview; phase 3 completes the
   `UltraNetMailMessage`, `UltraNetMailOptions`
 - `UltraCanvas/Plugins/UltraNet/{smtp,imap,pop3}/` — existing mail plugins
 - `Apps/Texter/` — reference application structure
+- `Docs/Modules/UltraDatabase/README.md` — local index/metadata store
 - `Docs/Modules/ULTRA-OS/README.md` — ULTRA OS ecosystem vision

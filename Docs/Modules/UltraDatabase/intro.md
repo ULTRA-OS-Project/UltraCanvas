@@ -1,0 +1,3 @@
+# UltraDatabase
+
+The unified data-access layer for every platform. One API covers every database an app touches: embedded SQLite out of the box, plus PostgreSQL, MySQL/MariaDB and more as plug-in drivers, without touching the core. Connections are defined once by name and pooled centrally; the same parameterized query, transaction and streaming-cursor API works across every engine, so an app can prototype on SQLite and deploy on Postgres without a rewrite. Injection-safe by default, TLS for networked engines, and credentials pulled from UltraVault — never embedded in code. Blocking calls run sync; async variants keep the UI responsive.
