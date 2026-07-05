@@ -15,7 +15,8 @@ namespace UltraMail {
 
 // The address-book sections the user sees as top-level groups.
 enum class ContactSection {
-    Friends = 0,
+    Family = 0,
+    Friends,
     Work,
     Leisure,
     Services,

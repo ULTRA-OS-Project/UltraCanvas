@@ -42,10 +42,12 @@ int CountFor(ContactStore& s, ContactSection section) {
 
 TEST(section_string_mapping) {
     REQUIRE_EQ(ToString(ContactSection::Friends), std::string("friends"));
+    REQUIRE_EQ(ToString(ContactSection::Family),  std::string("family"));
     REQUIRE(ContactSectionFromString("services") == ContactSection::Services);
+    REQUIRE(ContactSectionFromString("family")   == ContactSection::Family);
     REQUIRE(ContactSectionFromString("nonsense") == ContactSection::Other);
-    REQUIRE_EQ(DisplayName(ContactSection::Leisure), std::string("Leisure"));
-    REQUIRE_EQ(PrimarySections().size(), (size_t)4);
+    REQUIRE_EQ(DisplayName(ContactSection::Family), std::string("Family"));
+    REQUIRE_EQ(PrimarySections().size(), (size_t)5);   // Family + Friends/Work/Leisure/Services
 }
 
 TEST(save_assigns_id_and_get_roundtrip) {

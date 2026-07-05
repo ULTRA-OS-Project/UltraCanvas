@@ -8,6 +8,7 @@ namespace UltraMail {
 
 std::string ToString(ContactSection s) {
     switch (s) {
+        case ContactSection::Family:   return "family";
         case ContactSection::Friends:  return "friends";
         case ContactSection::Work:     return "work";
         case ContactSection::Leisure:  return "leisure";
@@ -18,6 +19,7 @@ std::string ToString(ContactSection s) {
 }
 
 ContactSection ContactSectionFromString(const std::string& s) {
+    if (s == "family")   return ContactSection::Family;
     if (s == "friends")  return ContactSection::Friends;
     if (s == "work")     return ContactSection::Work;
     if (s == "leisure")  return ContactSection::Leisure;
@@ -27,6 +29,7 @@ ContactSection ContactSectionFromString(const std::string& s) {
 
 std::string DisplayName(ContactSection s) {
     switch (s) {
+        case ContactSection::Family:   return "Family";
         case ContactSection::Friends:  return "Friends";
         case ContactSection::Work:     return "Work";
         case ContactSection::Leisure:  return "Leisure";
@@ -38,7 +41,7 @@ std::string DisplayName(ContactSection s) {
 
 const std::vector<ContactSection>& PrimarySections() {
     static const std::vector<ContactSection> sections = {
-        ContactSection::Friends, ContactSection::Work,
+        ContactSection::Family,  ContactSection::Friends, ContactSection::Work,
         ContactSection::Leisure, ContactSection::Services
     };
     return sections;

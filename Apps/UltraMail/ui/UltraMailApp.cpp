@@ -128,18 +128,22 @@ void UltraMailApp::SeedDemoContacts() {
         if (total > 0) return;   // already seeded
     }
     auto add = [&](const std::string& name, ContactSection section,
-                   const std::string& email, const std::string& org) {
+                   const std::string& email, const std::string& phone,
+                   const std::string& org) {
         Contact c; c.displayName = name; c.section = section; c.organization = org;
-        ContactEmail e; e.address = email; e.primary = true; c.emails.push_back(e);
+        if (!email.empty()) { ContactEmail e; e.address = email; e.primary = true; c.emails.push_back(e); }
+        if (!phone.empty()) { ContactPhone p; p.number = phone; p.label = "mobile"; c.phones.push_back(p); }
         contacts_.Save(c);
     };
-    add("Anna Schmidt", ContactSection::Friends,  "anna@example.com", "");
-    add("Max Weber",    ContactSection::Friends,  "max@example.com",  "");
-    add("Carol Boss",   ContactSection::Work,     "carol@acme.com",   "Acme GmbH");
-    add("IT Helpdesk",  ContactSection::Work,     "help@acme.com",    "Acme GmbH");
-    add("Chess Club",   ContactSection::Leisure,  "info@chessclub.org", "");
-    add("Plumber",      ContactSection::Services, "service@plumb.example", "Plumb & Co");
-    add("Electricity",  ContactSection::Services, "billing@power.example", "PowerCo");
+    add("Mum",          ContactSection::Family,   "mum@example.com",   "+49 170 1112222", "");
+    add("Brother Tom",  ContactSection::Family,   "tom@example.com",   "+49 151 3334444", "");
+    add("Anna Schmidt", ContactSection::Friends,  "anna@example.com",  "+49 160 5556666", "");
+    add("Max Weber",    ContactSection::Friends,  "max@example.com",   "",                "");
+    add("Carol Boss",   ContactSection::Work,     "carol@acme.com",    "+49 30 1234567",  "Acme GmbH");
+    add("IT Helpdesk",  ContactSection::Work,     "help@acme.com",     "",                "Acme GmbH");
+    add("Chess Club",   ContactSection::Leisure,  "info@chessclub.org","",                "");
+    add("Plumber",      ContactSection::Services, "service@plumb.example", "+49 40 7654321", "Plumb & Co");
+    add("Electricity",  ContactSection::Services, "billing@power.example", "",             "PowerCo");
 }
 
 void UltraMailApp::ShowAttachments(const ParsedMessage& message) {

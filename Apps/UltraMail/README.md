@@ -28,7 +28,7 @@ Apps/UltraMail/
     UltraMailAttachmentCache.{h,cpp} attachment bytes -> sanitised cache file
                                   (so a path-based viewer can open it)
     UltraMailContacts.{h,cpp}     Contact / email / phone types + sections
-                                  (Friends / Work / Leisure / Services)
+                                  (Family / Friends / Work / Leisure / Services)
     UltraMailContactStore.{h,cpp} the address book on UltraDatabase: sectioned
                                   contacts, emails/phones, counts, search
   ui/                             UltraCanvas UI layer
@@ -54,11 +54,13 @@ audio/video, …). Try it: run with `ULTRAMAIL_DEMO=1` (and
 `ULTRAMAIL_DEMO_OPEN=1` to auto-open) to exercise the flow without a live sync.
 
 **Contacts:** the address book (`ContactStore` on UltraDatabase) organises
-contacts into **Friends / Work / Leisure / Services** sections, each contact
-carrying any number of emails and phones. Open it from the main window's
-**Contacts** button: a section sidebar with live counts, the contact list for
-the selected section, an add/edit dialog, and delete from a row's right-click
-menu. `ULTRAMAIL_DEMO_CONTACTS=1` seeds a few contacts and opens the view.
+contacts into **Family / Friends / Work / Leisure / Services** sections, each
+contact carrying name, any number of emails and phones, an organization and
+notes. Open it from the main window's **Contacts** button: a section sidebar
+with live counts, the contact list for the selected section (name · email ·
+phone), an add/edit dialog (name / email / phone / organization / notes), and
+delete from a row's right-click menu. `ULTRAMAIL_DEMO_CONTACTS=1` seeds a few
+contacts and opens the view.
 It is a global (account-independent) store, so it can be promoted to a shared
 `UltraContacts` module later if a dialer / calendar wants it.
 

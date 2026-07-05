@@ -32,6 +32,10 @@ ContactRow::ContactRow(const std::string& id, float x, float y, float w, float h
     AddChild(CreateLabel(id + ".name", 8, 4, w - 16, 20,
                          contact.displayName.empty() ? "(no name)" : contact.displayName));
     std::string sub = contact.PrimaryEmail();
+    if (!contact.phones.empty()) {
+        if (!sub.empty()) sub += "  ·  ";
+        sub += contact.phones.front().number;
+    }
     if (sub.empty() && !contact.organization.empty()) sub = contact.organization;
     AddChild(CreateLabel(id + ".sub", 8, 24, w - 16, 18, sub));
 }
@@ -149,37 +153,58 @@ void ContactsView::ShowContactDialog(Contact contact, bool isNew) {
 
     DialogConfig config;
     config.title      = isNew ? "Add contact" : "Edit contact";
-    config.width      = 420;
-    config.height     = 260;
+    config.width      = 440;
+    config.height     = 400;
     config.dialogType = DialogType::Custom;
     config.buttons    = DialogButtons::OKCancel;
 
     auto dialog = UltraCanvasDialogManager::CreateDialog(config);
 
-    auto form = CreateContainer("contactForm", 0, 0, 400, 180);
-    form->AddChild(CreateLabel("cName", 12, 12, 120, 22, "Name"));
-    auto name = CreateTextInput("cNameIn", 130, 12, 250, 28);
+    auto form = CreateContainer("contactForm", 0, 0, 420, 320);
+
+    form->AddChild(CreateLabel("cName", 12, 12, 110, 22, "Name"));
+    auto name = CreateTextInput("cNameIn", 130, 12, 270, 28);
     name->SetText(contact.displayName);
     name->SetPlaceholder("Erika Example");
     form->AddChild(name);
 
-    form->AddChild(CreateLabel("cEmail", 12, 52, 120, 22, "Email"));
-    auto email = CreateEmailInput("cEmailIn", 130, 52, 250, 28);
+    form->AddChild(CreateLabel("cEmail", 12, 52, 110, 22, "Email"));
+    auto email = CreateEmailInput("cEmailIn", 130, 52, 270, 28);
     email->SetText(contact.PrimaryEmail());
     email->SetPlaceholder("erika@example.com");
     form->AddChild(email);
 
-    form->AddChild(CreateLabel("cSection", 12, 92, 120, 22,
+    form->AddChild(CreateLabel("cPhone", 12, 92, 110, 22, "Phone"));
+    auto phone = CreateTextInput("cPhoneIn", 130, 92, 270, 28);
+    if (!contact.phones.empty()) phone->SetText(contact.phones.front().number);
+    phone->SetPlaceholder("+49 170 1234567");
+    form->AddChild(phone);
+
+    form->AddChild(CreateLabel("cOrg", 12, 132, 110, 22, "Organization"));
+    auto org = CreateTextInput("cOrgIn", 130, 132, 270, 28);
+    org->SetText(contact.organization);
+    org->SetPlaceholder("Company / group");
+    form->AddChild(org);
+
+    form->AddChild(CreateLabel("cNotes", 12, 172, 110, 22, "Notes"));
+    auto notes = CreateTextInput("cNotesIn", 130, 172, 270, 28);
+    notes->SetText(contact.notes);
+    form->AddChild(notes);
+
+    form->AddChild(CreateLabel("cSection", 12, 212, 400, 22,
                                "Section: " + DisplayName(contact.section)));
     dialog->AddDialogElement(form);
 
     // Capture by value; `contact` carries id + section through the callback.
     UltraCanvasDialogManager::ShowDialog(
         dialog,
-        [this, contact, name, email](DialogResult result) mutable {
+        [this, contact, name, email, phone, org, notes](DialogResult result) mutable {
             if (result != DialogResult::OK) return;
             contact.displayName = name->GetText();
             if (contact.displayName.empty()) return;
+
+            contact.organization = org->GetText();
+            contact.notes = notes->GetText();
 
             const std::string addr = email->GetText();
             contact.emails.clear();
@@ -187,6 +212,14 @@ void ContactsView::ShowContactDialog(Contact contact, bool isNew) {
                 ContactEmail e; e.address = addr; e.primary = true;
                 contact.emails.push_back(e);
             }
+
+            const std::string num = phone->GetText();
+            contact.phones.clear();
+            if (!num.empty()) {
+                ContactPhone p; p.number = num; p.label = "mobile";
+                contact.phones.push_back(p);
+            }
+
             if (store_->Save(contact)) Refresh();
         },
         root_ ? root_->GetWindow() : nullptr);
