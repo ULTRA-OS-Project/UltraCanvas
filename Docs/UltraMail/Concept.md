@@ -405,12 +405,26 @@ Docs/UltraMail/CHANGELOG.md       once implementation starts
 
 ## 6. Required UltraNet extensions (gap analysis)
 
-The existing mail plugins are deliberately minimal (~300 lines each):
+> **Implemented (2026-07):** the `IMailboxProtocolPlugin` extension below
+> is now in UltraNet — `UltraCanvas/include/UltraNet/UltraNetPlugins.h`
+> defines the interface plus `UltraNetMailFolder` / `UltraNetMailEnvelope`
+> / `UltraNetMailboxStatus` / `UltraNetMailFlags`, and the IMAP plug-in
+> (`Plugins/UltraNet/imap/`) implements all of it over libcurl
+> (`LIST`, `STATUS`, `UID SEARCH`/`FETCH`/`STORE`/`MOVE`, `APPEND`), with
+> **XOAUTH2** bearer auth for Gmail/Microsoft. Wire parsing is factored
+> into a pure header (`ImapParse.h`) and unit-tested in
+> `Tests/UltraNet/test_imap_mailbox.cpp`. The signatures below are the
+> original proposal; the shipped API takes the server URL + folder as
+> separate arguments and adds `GetMailboxStatus` (poll-based change
+> detection) in place of a push `IdleStart` (IDLE remains a future
+> optimisation).
+
+The pre-existing mail plugins were deliberately minimal (~300 lines each):
 `SmtpPlugin` sends a complete message, `ImapPlugin.FetchMessages` does
 `SEARCH ALL` + `FETCH BODY[]` of the N most recent UIDs into
 `UltraNetMailMessage` structs, `Pop3Plugin` similarly. That is enough
 for the wizard's login verification and a first read-only inbox, but a
-real client needs more. Proposal: extend the mail plugin surface with a
+real client needs more — so the mail plugin surface was extended with a
 second interface (keeping `IMailProtocolPlugin` intact for
 compatibility):
 

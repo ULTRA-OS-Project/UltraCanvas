@@ -14,6 +14,7 @@ set(ULTRANET_TEST_SOURCES
     test_loopback.cpp
     test_smtp_plugin.cpp
     test_imap_plugin.cpp
+    test_imap_mailbox.cpp
     test_pop3_plugin.cpp
     test_extra_plugins.cpp
     test_sse.cpp
