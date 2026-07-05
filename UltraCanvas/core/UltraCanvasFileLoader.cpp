@@ -9,6 +9,12 @@
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasAudio.h"
+#include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
+
+#include <algorithm>
+#include <cctype>
+#include <filesystem>
+#include <fstream>
 
 #include <algorithm>
 #include <cctype>
@@ -213,6 +219,64 @@ namespace UltraCanvas {
             }
             if (onResult) {
                 onResult(loadResult, audio);
+            }
+        });
+    }
+
+    std::shared_ptr<UCRichDocument> UltraCanvasFileLoader::LoadTextDocument(
+            const std::string& filePath, std::string& outError) {
+        outError.clear();
+
+        // Package formats (and renamed/legacy files) go by content signature.
+        WordDocumentFormat format = DetectWordDocumentFormat(filePath);
+        if (format != WordDocumentFormat::Unknown) {
+            auto document = std::make_shared<UCRichDocument>();
+            if (!UCWordDocumentIO::Load(filePath, *document, outError)) {
+                return nullptr;
+            }
+            return document;
+        }
+
+        // Everything else is treated as (markdown-flavored) text.
+        std::ifstream file(filePath, std::ios::binary);
+        if (!file.is_open()) {
+            outError = "Cannot open file: " + filePath;
+            return nullptr;
+        }
+        std::string text((std::istreambuf_iterator<char>(file)),
+                         std::istreambuf_iterator<char>());
+        std::string baseDirectory = std::filesystem::path(filePath).parent_path().string();
+        return std::make_shared<UCRichDocument>(
+            UCRichDocument::FromMarkdown(text, baseDirectory));
+    }
+
+    void UltraCanvasFileLoader::OpenTextDocument(
+            const FileDialogOptions& opts,
+            std::function<void(const FileLoadResult&, std::shared_ptr<UCRichDocument>)> onResult) {
+
+        FileDialogOptions effective = opts;
+        if (effective.title.empty()) effective.title = "Open Document";
+        if (effective.filters.empty()) {
+            effective
+                .AddFilter("Documents",
+                           std::vector<std::string>{"odt", "docx", "doc", "md", "markdown", "txt"})
+                .AddFilter("OpenDocument Text (*.odt)", "odt")
+                .AddFilter("Word Document (*.docx)", "docx")
+                .AddFilter("Markdown (*.md)", std::vector<std::string>{"md", "markdown"})
+                .AddFilter("Plain Text (*.txt)", "txt")
+                .AddFilter("All files (*.*)", "*");
+        }
+
+        OpenFileDialog(effective, [onResult](DialogResult r, const std::string& path) {
+            FileLoadResult loadResult;
+            loadResult.dialogResult = r;
+            std::shared_ptr<UCRichDocument> document;
+
+            if (r == DialogResult::OK && !path.empty()) {
+                document = LoadTextDocument(path, loadResult.loadError);
+            }
+            if (onResult) {
+                onResult(loadResult, document);
             }
         });
     }

@@ -18,6 +18,7 @@ namespace UltraCanvas {
     class UCImageRaster;
     using UCImage = UCImageRaster;
     class UCAudio;
+    class UCRichDocument;
 
     struct FileDialogOptions {
         std::string title;
@@ -109,6 +110,24 @@ namespace UltraCanvas {
         // on decode failure, loadError is populated and the audio is null/invalid.
         static void OpenAudio(const FileDialogOptions& opts,
                               std::function<void(const FileLoadResult&, std::shared_ptr<UCAudio>)> onResult);
+
+        // Opens the native file dialog and parses the chosen word-processing
+        // document into a UCRichDocument (see Plugins/Documents/Word). Formats:
+        // .odt and .docx are fully parsed (detection is signature-based, so
+        // renamed files still load); .md/.markdown parse as Markdown; anything
+        // else readable as text becomes plain paragraphs. Legacy Word 97-2003
+        // .doc files are detected and rejected with a clear loadError telling
+        // the user to convert to .docx. If the caller supplies no filters, a
+        // sensible set of document filters is added. On cancel, onResult fires
+        // with dialogResult == Cancel and a null document; on parse failure,
+        // loadError is populated and the document is null.
+        static void OpenTextDocument(const FileDialogOptions& opts,
+                                     std::function<void(const FileLoadResult&, std::shared_ptr<UCRichDocument>)> onResult);
+
+        // Dialog-free core of OpenTextDocument: parses filePath into a
+        // UCRichDocument. Returns null and fills outError on failure.
+        static std::shared_ptr<UCRichDocument> LoadTextDocument(const std::string& filePath,
+                                                                std::string& outError);
     };
 
 } // namespace UltraCanvas

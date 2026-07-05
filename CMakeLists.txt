@@ -104,6 +104,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasTextInputExamples.cpp
             Apps/DemoApp/UltraCanvasTreeViewExamples.cpp
             Apps/DemoApp/UltraCanvasSpreadsheetExamples.cpp
+            Apps/DemoApp/UltraCanvasODTExamples.cpp
             Apps/DemoApp/UltraCanvasListViewExamples.cpp
             Apps/DemoApp/UltraCanvasDependenciesExamples.cpp
             Apps/DemoApp/UltraCanvasBasicChartsExamples.cpp

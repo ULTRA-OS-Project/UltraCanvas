@@ -1229,9 +1229,14 @@ namespace UltraCanvas {
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreateTextDocumentExamples(); });
 
-        textDocBuilder.AddItem("textdocuments_odt", "ODT Documents", "ODT document support",
-                               ImplementationStatus::NotImplemented,
-                               [this]() { return CreateTextDocumentExamples(); });
+        textDocBuilder.AddItem("textdocuments_odt", "ODT Documents",
+                               "OpenDocument Text / Word document viewing: loads "
+                               "media/docs/document.odt and any .odt/.docx/.doc via a "
+                               "file dialog, rendered through UCRichDocument as markdown",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateODTExamples(); },
+                               "DemoApp/UltraCanvasODTExamples.cpp",
+                               "Docs/UltraCanvas/ODT-DOCX-Support-Proposal.md");
 
 
         // ===== AUDIO ELEMENTS =====
