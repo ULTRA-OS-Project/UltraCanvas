@@ -10,9 +10,11 @@
 #include "UltraMailInfoTileBar.h"
 #include "UltraMailAccountWizard.h"
 #include "UltraMailAttachmentStrip.h"
+#include "UltraMailContactsView.h"
 
 #include "UltraMailLocalStore.h"
 #include "UltraMailMimeCodec.h"
+#include "UltraMailContactStore.h"
 
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasContainer.h"
@@ -52,7 +54,13 @@ private:
     // strip and viewer can be exercised without a live sync.
     void ShowDemoAttachments();
 
+    // Open the contact manager in its own window.
+    void OpenContacts();
+    // Seed a few contacts across sections (demo only).
+    void SeedDemoContacts();
+
     LocalStore store_;
+    ContactStore contacts_;
     std::vector<Account> accounts_;
     std::vector<AccountStatus> status_;
     std::string cacheDir_;
@@ -61,6 +69,7 @@ private:
     Toolbox         toolbox_;
     InfoTileBar     infoBar_;
     AttachmentStrip attachmentStrip_;
+    ContactsView    contactsView_;
     ParsedMessage   currentMessage_;
     std::vector<std::shared_ptr<UltraCanvas::UltraCanvasWindow>> viewerWindows_;
 };

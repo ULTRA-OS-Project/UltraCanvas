@@ -27,6 +27,10 @@ Apps/UltraMail/
                                   (wraps UltraNet_MimeParse)
     UltraMailAttachmentCache.{h,cpp} attachment bytes -> sanitised cache file
                                   (so a path-based viewer can open it)
+    UltraMailContacts.{h,cpp}     Contact / email / phone types + sections
+                                  (Friends / Work / Leisure / Services)
+    UltraMailContactStore.{h,cpp} the address book on UltraDatabase: sectioned
+                                  contacts, emails/phones, counts, search
   ui/                             UltraCanvas UI layer
     UltraMailApp.{h,cpp}          app manager: owns store + window, wires it up
     UltraMailToolbox.{h,cpp}      start-screen grid: account tiles + "Add
@@ -36,6 +40,8 @@ Apps/UltraMail/
     UltraMailAccountWizard.{h,cpp} setup wizard dialog (identity step)
     UltraMailAttachmentStrip.{h,cpp} attachment chips; double-click or right-click
                                   (Open / Save As…) opens content in UltraCanvasMediaViewer
+    UltraMailContactsView.{h,cpp} contact manager: section sidebar (with counts) +
+                                  contact list; add/edit dialog; delete via context menu
   main.cpp                        entry point: init app, open store, show window
   CMakeLists.txt                  UltraMailEngine static library
 ```
@@ -46,6 +52,15 @@ Double-clicking a chip — or the right-click **Open** — writes the bytes to t
 cache and opens them in **`UltraCanvasMediaViewer`** (images, PDF, text,
 audio/video, …). Try it: run with `ULTRAMAIL_DEMO=1` (and
 `ULTRAMAIL_DEMO_OPEN=1` to auto-open) to exercise the flow without a live sync.
+
+**Contacts:** the address book (`ContactStore` on UltraDatabase) organises
+contacts into **Friends / Work / Leisure / Services** sections, each contact
+carrying any number of emails and phones. Open it from the main window's
+**Contacts** button: a section sidebar with live counts, the contact list for
+the selected section, an add/edit dialog, and delete from a row's right-click
+menu. `ULTRAMAIL_DEMO_CONTACTS=1` seeds a few contacts and opens the view.
+It is a global (account-independent) store, so it can be promoted to a shared
+`UltraContacts` module later if a dialer / calendar wants it.
 
 The GUI executable target `UltraMail` (root CMake, `-DBUILD_ULTRAMAIL_APP=ON`)
 links the full UltraCanvas UI library. The engine and its tests build without a

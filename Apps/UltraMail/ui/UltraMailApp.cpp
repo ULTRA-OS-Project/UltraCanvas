@@ -7,6 +7,7 @@
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasButton.h"
 #include "UltraCanvasMediaViewer.h"
 
 #include <UltraNet/UltraNetMime.h>
@@ -46,6 +47,9 @@ bool UltraMailApp::Initialize(const std::string& dataDir) {
 
     cacheDir_ = dataDir + "/cache";
 
+    // The address book is a global (account-independent) store.
+    contacts_.Open("ultramail-contacts", dataDir + "/contacts.db");
+
     store_.ListAccounts(accounts_);
     store_.GetAccountStatus(status_);
     return true;
@@ -73,6 +77,11 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
     toolbox_.onAddAccount  = [this]() { HandleAddAccount(); };
     toolbox_.onOpenAccount = [](const std::string&) { /* Phase 2: open the 3-pane view */ };
 
+    // Contacts entry point.
+    auto contactsBtn = CreateButton("umContacts", 640, 8, 120, 28, "Contacts");
+    contactsBtn->onClick = [this]() { OpenContacts(); };
+    window_->AddChild(contactsBtn);
+
     // Attachment strip (populated when a message with attachments is shown).
     auto strip = attachmentStrip_.Build();
     window_->AddChild(strip);
@@ -88,8 +97,49 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
     // Demo path: exercise the attachment strip + viewer without a live sync.
     if (const char* demo = std::getenv("ULTRAMAIL_DEMO"); demo && *demo == '1')
         ShowDemoAttachments();
+    // Demo path: seed contacts and open the contact manager.
+    if (const char* dc = std::getenv("ULTRAMAIL_DEMO_CONTACTS"); dc && *dc == '1') {
+        SeedDemoContacts();
+        OpenContacts();
+    }
 
     return window_;
+}
+
+void UltraMailApp::OpenContacts() {
+    if (!contacts_.IsOpen()) return;
+    WindowConfig cfg;
+    cfg.title  = "Contacts";
+    cfg.width  = 640;
+    cfg.height = 520;
+    auto win = CreateWindow(cfg);
+
+    contactsView_.SetStore(&contacts_);
+    win->AddChild(contactsView_.Build());
+    win->Show();
+    viewerWindows_.push_back(win);
+}
+
+void UltraMailApp::SeedDemoContacts() {
+    std::vector<SectionCount> counts;
+    if (contacts_.GetSectionCounts(counts)) {
+        int total = 0;
+        for (auto& c : counts) total += c.count;
+        if (total > 0) return;   // already seeded
+    }
+    auto add = [&](const std::string& name, ContactSection section,
+                   const std::string& email, const std::string& org) {
+        Contact c; c.displayName = name; c.section = section; c.organization = org;
+        ContactEmail e; e.address = email; e.primary = true; c.emails.push_back(e);
+        contacts_.Save(c);
+    };
+    add("Anna Schmidt", ContactSection::Friends,  "anna@example.com", "");
+    add("Max Weber",    ContactSection::Friends,  "max@example.com",  "");
+    add("Carol Boss",   ContactSection::Work,     "carol@acme.com",   "Acme GmbH");
+    add("IT Helpdesk",  ContactSection::Work,     "help@acme.com",    "Acme GmbH");
+    add("Chess Club",   ContactSection::Leisure,  "info@chessclub.org", "");
+    add("Plumber",      ContactSection::Services, "service@plumb.example", "Plumb & Co");
+    add("Electricity",  ContactSection::Services, "billing@power.example", "PowerCo");
 }
 
 void UltraMailApp::ShowAttachments(const ParsedMessage& message) {
