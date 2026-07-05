@@ -126,10 +126,10 @@ std::shared_ptr<UltraCanvasContainer> ReadingView::Build() {
     };
     previewPane_->AddChild(replyBtn);
 
-    body_ = std::make_shared<UltraCanvasTextArea>("prevBody", 12, 120, 540, 300);
-    body_->SetReadOnly(true);
-    body_->SetEditingMode(TextAreaEditingMode::PlainText);
-    previewPane_->AddChild(body_);
+    // Body host: a fixed-size container that RenderBody() fills with either a
+    // read-only text area (plain text) or the HTMLReader-built element tree.
+    bodyHost_ = CreateContainer("prevBodyHost", 12, 120, 540, 300);
+    previewPane_->AddChild(bodyHost_);
 
     // The attachment strip's own container sits at (0,0) of its parent, so wrap
     // it in a positioned container to place it below the body.
@@ -205,6 +205,40 @@ void ReadingView::RebuildList() {
     SelectMessage(msgs.front());
 }
 
+void ReadingView::RenderBody(const std::string& body, bool isHtml) {
+    if (!bodyHost_) return;
+    bodyHost_->ClearChildren();
+
+    const float w = bodyHost_->GetWidth();
+    const float h = bodyHost_->GetHeight();
+
+    if (isHtml) {
+        // Full render through the HTMLReader element builder: the CSSLayout
+        // engine measures and lays out a native UltraCanvas tree (containers +
+        // Pango-markup labels + images).
+        HTML::BuildOptions opts;
+        opts.style.baseFontSizePx = 14.0f;
+        opts.enableImages = true;
+        // No remote fetch in the preview: images resolve to empty (placeholder).
+        opts.resourceLoader = [](const std::string&) { return std::vector<uint8_t>{}; };
+        HTML::ElementBuilder builder;
+        HTML::BuildResult r = builder.Build(body, opts);
+        if (r.root) {
+            r.root->SetPosition(0, 0);
+            r.root->SetSize(w, h);
+            bodyHost_->AddChild(r.root);
+            return;
+        }
+        // Fall through to a text area if the build produced nothing.
+    }
+
+    auto text = std::make_shared<UltraCanvasTextArea>("prevBodyText", 0, 0, w, h);
+    text->SetReadOnly(true);
+    text->SetEditingMode(TextAreaEditingMode::PlainText);
+    text->SetText(isHtml ? HtmlToText(body) : body);
+    bodyHost_->AddChild(text);
+}
+
 void ReadingView::SelectMessage(const MessageEnvelope& env) {
     std::string sender = env.fromName.empty()
         ? env.fromAddr : (env.fromName + " <" + env.fromAddr + ">");
@@ -220,13 +254,13 @@ void ReadingView::SelectMessage(const MessageEnvelope& env) {
         std::ifstream is(path, std::ios::binary);
         std::string raw((std::istreambuf_iterator<char>(is)), std::istreambuf_iterator<char>());
         ParsedMessage pm = MimeCodec::Parse(raw);
-        std::string text = pm.bodyIsHtml ? HtmlToText(pm.body) : pm.body;
-        if (body_) body_->SetText(text);
+        RenderBody(pm.body, pm.bodyIsHtml);
         attachmentStrip_.SetAttachments(pm.attachments);
-        current_.body = text;
+        // Reply quoting works from text; reduce HTML to text for the captured copy.
+        current_.body = pm.bodyIsHtml ? HtmlToText(pm.body) : pm.body;
         current_.attachments = pm.attachments;
     } else {
-        if (body_) body_->SetText("(message body not downloaded)");
+        RenderBody("(message body not downloaded)", false);
         attachmentStrip_.SetAttachments({});
         current_.body.clear();
         current_.attachments.clear();

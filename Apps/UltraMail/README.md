@@ -19,8 +19,11 @@ and **UltraDatabase** (local store) modules.
 > `ULTRAMAIL_PLUGIN_DIR` overrides). A **background-sync scheduler** (per-account
 > intervals) drives the SyncService on a UI timer once the IMAP plug-in is
 > present, and the address book **auto-collects** the people you correspond with.
-> Still to come: a live login-verify against a real server and HTML-mail
-> rendering via HTMLReader.
+> HTML message bodies are **rendered natively** in the preview through the
+> HTMLReader element builder over the UltraCanvas **CSSLayout** engine (block +
+> inline layout, headings, lists, links, colors — no web view); plain-text
+> bodies show in a read-only text area. Still to come: a live login-verify
+> against a real server.
 
 ## Layout
 
@@ -70,7 +73,8 @@ Apps/UltraMail/
     UltraMailContactsView.{h,cpp} contact manager: section sidebar (with counts) +
                                   contact list; add/edit dialog; delete via context menu
     UltraMailReadingView.{h,cpp}  three-pane reader: folder tree | message list |
-                                  preview (headers + body + attachment strip + Reply)
+                                  preview (headers + body + attachment strip + Reply);
+                                  HTML bodies rendered via HTMLReader/CSSLayout
     UltraMailComposeWindow.{h,cpp} compose surface: To/Cc/Subject/Body + Send
   main.cpp                        entry point: init app, open store, show window
   CMakeLists.txt                  UltraMailEngine static library

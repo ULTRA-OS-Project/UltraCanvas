@@ -13,6 +13,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextArea.h"
+#include "HTMLReader/HTMLElementBuilder.h"
 
 #include "UltraMailAttachmentStrip.h"
 #include "UltraMailLocalStore.h"
@@ -59,6 +60,9 @@ public:
 private:
     void RebuildFolders();
     void RebuildList();
+    // Render a message body into bodyHost_: HTML through the HTMLReader element
+    // builder (CSSLayout engine), plain text into a read-only text area.
+    void RenderBody(const std::string& body, bool isHtml);
 
     LocalStore*        store_ = nullptr;
     std::string        mailDir_;
@@ -73,7 +77,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     hdrFrom_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     hdrSubject_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     hdrDate_;
-    std::shared_ptr<UltraCanvas::UltraCanvasTextArea>  body_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> bodyHost_;   // holds text area or rendered HTML tree
     AttachmentStrip    attachmentStrip_;
     SourceMessage      current_;   // the selected message, for Reply
 };

@@ -272,12 +272,13 @@ void UltraMailApp::SeedDemoMail() {
 
     auto seed = [&](int64_t uid, const std::string& fromName, const std::string& fromAddr,
                     const std::string& subject, const std::string& body, uint32_t flags,
-                    bool withAttachment) {
+                    bool withAttachment, bool isHtml = false) {
         UltraNetMimeBuildInput in;
         in.from = fromName + " <" + fromAddr + ">";
         in.to = {"erika@example.com"};
         in.subject = subject;
         in.body = body;
+        in.bodyMediaType = isHtml ? "text/html" : "text/plain";
         in.date = "Wed, 14 Jan 2026 1" + std::to_string(uid) + ":00:00 +0000";
         in.messageId = "<demo" + std::to_string(uid) + "@example.com>";
         if (withAttachment) {
@@ -302,6 +303,16 @@ void UltraMailApp::SeedDemoMail() {
         store_.UpsertMessage(m);
     };
 
+    seed(4, "UltraCanvas News", "news@ultracanvas.dev", "UltraMail now renders HTML",
+         "<html><body style=\"font-family:sans-serif;color:#222\">"
+         "<h2 style=\"color:#1a4d8f\">HTML mail, rendered natively</h2>"
+         "<p>UltraMail now draws HTML message bodies with the "
+         "<b>UltraCanvas CSSLayout engine</b> &mdash; no browser, no web view.</p>"
+         "<ul><li>Block &amp; inline layout from HTMLReader</li>"
+         "<li><i>Bold</i>, <i>italic</i> and <a href=\"https://ultracanvas.dev\">links</a></li>"
+         "<li>Lists, headings and colors</li></ul>"
+         "<p>Welcome to the reading view.</p></body></html>",
+         Flag_None, /*withAttachment=*/false, /*isHtml=*/true);
     seed(3, "Anna Schmidt", "anna@example.com", "Re: Meeting notes",
          "Hi Erika,\n\nHere are the notes from our meeting — see the attachment.\n\nBest,\nAnna",
          Flag_None, /*withAttachment=*/true);
