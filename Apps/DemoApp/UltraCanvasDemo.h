@@ -233,6 +233,9 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateTextAreaExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSegmentedControlExamples();
 
+        // UltraNet integration demo
+        std::shared_ptr<UltraCanvasUIElement> CreateNetworkingExamples();
+
         // Graphics Elements - BITMAP FORMATS
         std::shared_ptr<UltraCanvasUIElement> CreateBitmapNotImplementedExamples(const std::string& format);
         std::shared_ptr<UltraCanvasUIElement> CreatePNGExamples();

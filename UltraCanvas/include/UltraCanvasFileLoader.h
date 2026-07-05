@@ -55,8 +55,30 @@ namespace UltraCanvas {
         }
     };
 
+    // Byte-level load result for LoadFile (local path or URL).
+    // contentType / httpStatus are only populated for URL loads.
+    struct FileBytesResult {
+        bool                 success = false;
+        std::string          error;
+        std::vector<uint8_t> bytes;
+        std::string          sourceUri;
+        std::string          contentType;
+        int                  httpStatus = 0;
+    };
+
     class UltraCanvasFileLoader {
     public:
+        // ===== GENERIC FILE LOAD (path or URL) =====
+        // Reads a local path or fetches a remote URL into memory. URL schemes
+        // http:// and https:// are dispatched to UltraNet when the framework
+        // is built with ULTRACANVAS_HAS_NET; ftp:// / sftp:// will be supported
+        // once the UltraNet FTP module lands (Stage 3 of the UltraNet plan).
+        // Everything else is treated as a local filesystem path.
+        static FileBytesResult LoadFile(const std::string& pathOrUrl);
+
+        // True if `s` starts with a recognised URL scheme (http/https/ftp/ftps/sftp).
+        static bool IsUrl(const std::string& s);
+
         // ===== FILE SELECTION DIALOGS =====
         static void OpenFileDialog(const FileDialogOptions& opts,
                                    std::function<void(DialogResult, const std::string&)> onResult);

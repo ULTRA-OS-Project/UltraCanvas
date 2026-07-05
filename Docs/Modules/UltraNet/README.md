@@ -25,8 +25,21 @@ the security parts wrong.
 
 UltraNet centralises that plumbing behind a stable C-style API
 (`UltraNet_*` free functions + opaque `UltraNetHandle`s) backed by
-**libcurl + OpenSSL** for the core, with platform glue for Linux,
-macOS, Windows, and ULTRA OS native.
+**libcurl** for the core, with platform glue for Linux, macOS,
+Windows, and ULTRA OS native.
+
+To minimise impact on the host system, the TLS backend follows whatever
+libcurl was built against on each platform:
+
+| Platform | TLS backend     | Extra dependency? |
+|---|---|---|
+| Linux    | OpenSSL         | `libcurl4-openssl-dev` |
+| Windows  | Schannel        | None — Win32 native crypto |
+| macOS    | SecureTransport | None — Apple's system libcurl |
+| ULTRA OS | tbd             | Selected by the ULTRA OS build |
+
+UltraNet never calls TLS-library APIs directly, so swapping the backend
+is purely a libcurl build option.
 
 ---
 

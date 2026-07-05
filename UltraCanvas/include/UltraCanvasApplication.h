@@ -65,6 +65,12 @@ namespace UltraCanvas {
         mutable std::mutex timersMutex_;
         TimerId nextTimerId_ = 1;
 
+        // PostToUIThread queue. Background threads push functions here and
+        // call WakeUpEventLoop(); the main loop drains them via
+        // ProcessPostedTasks() each iteration.
+        std::vector<std::function<void()>> postedTasks_;
+        std::mutex                         postedTasksMutex_;
+
         std::vector<std::shared_ptr<UltraCanvasWindowBase>> windows;
         std::vector<std::weak_ptr<UltraCanvasWindowBase>> activeModalWindows;
 
@@ -95,8 +101,24 @@ namespace UltraCanvas {
         bool altHeld = false;
         bool metaHeld = false;
 
-    public:        
-        UltraCanvasApplicationBase() = default;
+    public:
+        UltraCanvasApplicationBase();
+        virtual ~UltraCanvasApplicationBase();
+
+        // Returns the currently-running application instance (the one most
+        // recently constructed). UltraCanvas assumes a single-application
+        // process; this accessor lets callbacks running off the main thread
+        // (e.g. libcurl workers, std::thread, plug-in pumps) reach
+        // PostToUIThread without threading the pointer through every layer.
+        static UltraCanvasApplicationBase* GetCurrent();
+
+        // Schedules `task` to run on the main / UI thread the next time the
+        // event loop iterates. Safe to call from any thread, including a
+        // libcurl async worker (UltraNet_HttpRequestAsync callback) or any
+        // std::thread the app spawns. The call is non-blocking; the task
+        // runs after the loop wakes (WakeUpEventLoop is signalled here too).
+        // A null `task` is silently ignored.
+        void PostToUIThread(std::function<void()> task);
 
         void RegisterWindow(const std::shared_ptr<UltraCanvasWindowBase>& window);
         bool IsWindowRegistered(UltraCanvasWindowBase* window);
@@ -192,6 +214,10 @@ namespace UltraCanvas {
         // Timer processing - called from Run() each iteration
         void ProcessTimers();
         std::chrono::milliseconds GetTimeUntilNextTimer() const;
+
+        // Drains and runs anything PostToUIThread enqueued. Called from
+        // Run() right after ProcessTimers().
+        void ProcessPostedTasks();
 
         // Platform-specific system font detection
         virtual FontStyle DetectSystemFontStyleNative() = 0;

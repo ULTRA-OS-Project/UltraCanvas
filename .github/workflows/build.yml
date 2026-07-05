@@ -27,8 +27,12 @@ jobs:
               brew install cairo pango harfbuzz vips glib freetype tinyxml2
               brew install jsoncpp
               brew install libcdr librevenge
-              brew install zbar 
+              brew install zbar
               brew install mupdf
+              brew install c-ares
+              # libcurl: use Apple's system libcurl (SecureTransport-family
+              # backend) — already present on every macOS install, so we add
+              # no extra dependency for UltraNet on this platform.
           - os: ubuntu-latest
             arch_label: x86_64
             install_deps: |
@@ -45,6 +49,8 @@ jobs:
               # must be linked from system -dev packages (find_library needs the .so).
               sudo apt-get install -y libjbig2dec0-dev libmujs-dev libgumbo-dev libopenjp2-7-dev
               sudo apt-get install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+              sudo apt-get install -y libcurl4-openssl-dev
+              sudo apt-get install -y libc-ares-dev
           - os: windows-latest
             arch_label: x86_64
 
@@ -99,12 +105,21 @@ jobs:
             mingw-w64-x86_64-zbar
             mingw-w64-x86_64-mupdf
             mingw-w64-x86_64-libmupdf
+            mingw-w64-x86_64-curl-winssl
+            mingw-w64-x86_64-c-ares
             zip
             
       # ===== macOS / Linux: system package manager =====
       - name: Install dependencies (macOS/Linux)
         if: runner.os != 'Windows'
         run: ${{ matrix.install_deps }}
+
+      # ===== Python `websockets` for UltraNet WS loopback test =====
+      # Cheap to install; the test SKIPs cleanly if missing, but enabling
+      # it lets the receiver-thread / frame-handling paths actually run
+      # in CI (where libcurl has WS support).
+      - name: Install python websockets package
+        run: pip3 install --user --break-system-packages websockets || pip3 install --user websockets
 
       # ===== Configure & Build =====
       - name: Configure CMake (Windows)
@@ -114,7 +129,8 @@ jobs:
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
             -DBUILD_DEMO_APP=ON \
             -DULTRACANVAS_PLUGIN_CDR=OFF \
-            -DULTRACANVAS_PLUGIN_XAR=ON 2>&1 | tee configure.log
+            -DULTRACANVAS_PLUGIN_XAR=ON \
+            -DULTRACANVAS_BUILD_NET_TESTS=ON 2>&1 | tee configure.log
 
       - name: Configure CMake (macOS/Linux)
         if: runner.os != 'Windows'
@@ -123,7 +139,8 @@ jobs:
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
             -DBUILD_DEMO_APP=ON \
             -DULTRACANVAS_PLUGIN_CDR=ON \
-            -DULTRACANVAS_PLUGIN_XAR=ON 2>&1 | tee configure.log
+            -DULTRACANVAS_PLUGIN_XAR=ON \
+            -DULTRACANVAS_BUILD_NET_TESTS=ON 2>&1 | tee configure.log
 
       # Fail loudly if the OpenGL surface backend was silently disabled
       # (e.g. a missing GLEW on Windows) so a green build can't hide it.
@@ -148,6 +165,11 @@ jobs:
 
       - name: Build
         run: cmake --build build --config ${{ matrix.build_type }} --parallel 2
+
+      - name: Run UltraNet tests
+        if: runner.os != 'Windows'
+        working-directory: build
+        run: ctest --output-on-failure -R UltraNet
 
       - name: Package (Windows)
         if: runner.os == 'Windows'

@@ -1303,6 +1303,14 @@ namespace UltraCanvas {
                              "DemoApp/UltraCanvasTextRenderingExamples.cpp",
                              "Docs/UltraCanvas/UltraCanvasTextRenderingExamples.md");
 
+        toolsBuilder.AddItem("networking", "Networking (UltraNet)",
+                             "Load a remote image from an https:// URL — exercises "
+                             "UltraCanvasFileLoader::LoadFile + UltraNet_HttpGet + "
+                             "UCImageRaster::LoadFromMemory.",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateNetworkingExamples(); },
+                             "Apps/DemoApp/UltraCanvasNetworkingExamples.cpp");
+
         auto modulesBuilder = DemoCategoryBuilder(this, DemoCategory::Modules);
         modulesBuilder.AddItem("audiofx", "Audio FX", "Audio FX",
                                ImplementationStatus::PartiallyImplemented,
