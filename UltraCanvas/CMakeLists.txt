@@ -1,6 +1,6 @@
 # UltraCanvas/CMakeLists.txt
 # UltraCanvas Core Library - Builds as separate static library with optional plugins
-# Version: 1.4.3
+# Version: 1.4.4
 # Last Modified: 2026-07-05
 # Author: UltraCanvas Framework
 
@@ -1073,6 +1073,28 @@ if(ULTRACANVAS_ENABLE_NET)
     if(ULTRACANVAS_PLUGIN_RTP)
         add_subdirectory(Plugins/UltraNet/rtp)
         message(STATUS "  [✓] UltraNet RTP plug-in - ENABLED (UDP receiver, RFC 3550)")
+    endif()
+
+    # macOS: each UltraNet plug-in is a MODULE that resolves core symbols
+    # (UltraNet_RegisterPlugin, UltraNet_ParseUrl, ...) from the host binary at
+    # dlopen() time. Unlike Linux's ld, the Mach-O linker rejects undefined
+    # symbols in a module unless it is linked with -undefined dynamic_lookup
+    # (same mechanism the LaTeX plug-in uses below). Applied here in one place so
+    # a new plug-in only needs its target name added to this list.
+    # NB: when a new UltraNet plug-in is added above, add its target here too.
+    if(APPLE)
+        foreach(_ultranet_plugin IN ITEMS
+                UltraNetSmtpPlugin UltraNetImapPlugin UltraNetPop3Plugin
+                UltraNetWebDavPlugin UltraNetLdapPlugin UltraNetTelnetPlugin
+                UltraNetRtspPlugin UltraNetMqttPlugin UltraNetAmqpPlugin
+                UltraNetCoapPlugin UltraNetSnmpPlugin UltraNetSshPlugin
+                UltraNetMdnsPlugin UltraNetRtmpPlugin UltraNetGrpcPlugin
+                UltraNetSipPlugin UltraNetRtpPlugin)
+            if(TARGET ${_ultranet_plugin})
+                set_property(TARGET ${_ultranet_plugin} APPEND_STRING
+                    PROPERTY LINK_FLAGS " -undefined dynamic_lookup")
+            endif()
+        endforeach()
     endif()
 else()
     message(STATUS "  [−] UltraNet - DISABLED")
