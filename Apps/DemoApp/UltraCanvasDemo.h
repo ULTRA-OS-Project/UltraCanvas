@@ -232,6 +232,11 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateDialogExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateTextAreaExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSegmentedControlExamples();
+        // Word-processing documents (.odt/.docx/.doc) rendered as markdown
+        std::shared_ptr<UltraCanvasUIElement> CreateODTExamples();
+
+        // UltraNet integration demo
+        std::shared_ptr<UltraCanvasUIElement> CreateNetworkingExamples();
 
         // Graphics Elements - BITMAP FORMATS
         std::shared_ptr<UltraCanvasUIElement> CreateBitmapNotImplementedExamples(const std::string& format);
@@ -254,6 +259,7 @@ namespace UltraCanvas {
 
         // Document Elements
         std::shared_ptr<UltraCanvasUIElement> CreateTextDocumentExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateEBookExamples();
         // LaTeX demo page: scans media/LaTex for .tex files and presents each one
         // in a vertical tab (rendered output + source).
         std::shared_ptr<UltraCanvasUIElement> CreateLaTeXExamples();
@@ -314,6 +320,8 @@ namespace UltraCanvas {
 #endif
         std::shared_ptr<UltraCanvasUIElement> CreateSVGVectorExamples();
 
+        // FileLoader module page: Overview / Details / Examples tabs, the last one
+        // an interactive Open / Save playground across the supported file families.
         std::shared_ptr<UltraCanvasUIElement> CreateFileLoaderExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateMarkdownDocScreen(const std::string& filename);
         // Composite module documentation screen: short intro (Markdown) on top, an

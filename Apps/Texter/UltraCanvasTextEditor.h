@@ -94,6 +94,7 @@ namespace UltraCanvas {
                 FileFilter("Data / Config", {"json", "jsonc", "json5", "geojson", "webmanifest", "xml", "xsd", "xsl", "xslt", "yaml", "yml", "toml", "ini", "cfg", "pom", "rss", "atom", "kml"}),
                 FileFilter("Vector Graphics (Text)", std::vector<std::string>{"svg", "svgz"}),
                 FileFilter("PDF Documents", std::vector<std::string>{"pdf"}),
+                FileFilter("Word Processing", std::vector<std::string>{"odt", "docx", "doc"}),
                 FileFilter("Script Files", {"sh", "bash", "bat", "cmd", "ps1"})
         };
 
@@ -136,6 +137,14 @@ namespace UltraCanvas {
         std::string encoding;                  // iconv encoding name (e.g. "UTF-8", "CP1251")
         std::vector<uint8_t> originalRawBytes; // Raw file bytes for re-encoding on manual change
         bool hasBOM;                           // Whether the file had a BOM
+
+        // Word-processing documents (.odt/.docx) are edited as Markdown in
+        // MarkdownHybrid mode and converted back to their package format on
+        // save. Embedded images are extracted to wordMediaDirectory (a
+        // per-document temp dir, removed when the tab closes) so the
+        // markdown renderer can display them.
+        bool isWordDocument = false;
+        std::string wordMediaDirectory;
         LineEndingType eolType = UltraCanvasTextArea::GetSystemDefaultLineEnding(); // Line ending type
 
         // Hash of the in-memory content (UltraCanvasTextArea::GetText) at the last
@@ -347,6 +356,10 @@ namespace UltraCanvas {
         // Convert the tab at docIndex into a PDF tab and load the file.
         // Swaps in a UltraCanvasPDFView via tabContainer->SetTabContent.
         bool LoadPDFIntoDocument(int docIndex, const std::string& filePath);
+        // Load a word-processing document (.odt/.docx) as editable Markdown.
+        // Legacy .doc shows a convert-to-.docx message; a corrupt package
+        // falls back to LoadFileIntoDocument (hex view).
+        bool LoadWordIntoDocument(int docIndex, const std::string& filePath);
         bool SaveDocument(int docIndex);
         bool SaveDocumentAs(int docIndex, const std::string& filePath);
         bool IsBinaryFile(const std::vector<uint8_t>& rawBytes, const std::string& extension) const;

@@ -19,6 +19,7 @@
 #include "UltraCanvasEncoding.h"
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasFileLoader.h"
+#include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasUtils.h"
 //#include "UltraCanvasDialogManager.h"
@@ -1743,13 +1744,20 @@ namespace {
         int docIndex = CreateNewDocument(p.filename().string());
 
         // PDFs take a separate codepath: the tab's textArea is swapped out
-        // for a UltraCanvasPDFView. Detect by extension (case-insensitive).
+        // for a UltraCanvasPDFView. Word-processing documents (.odt/.docx/.doc)
+        // are converted to editable Markdown. Detect by extension
+        // (case-insensitive).
         std::string ext = p.extension().string();
         if (!ext.empty() && ext[0] == '.') ext = ext.substr(1);
         std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-        const bool ok = (ext == "pdf")
-            ? LoadPDFIntoDocument(docIndex, filePath)
-            : LoadFileIntoDocument(docIndex, filePath);
+        bool ok;
+        if (ext == "pdf") {
+            ok = LoadPDFIntoDocument(docIndex, filePath);
+        } else if (ext == "odt" || ext == "docx" || ext == "doc") {
+            ok = LoadWordIntoDocument(docIndex, filePath);
+        } else {
+            ok = LoadFileIntoDocument(docIndex, filePath);
+        }
 
         if (!ok) {
             CloseDocument(docIndex);
@@ -1772,6 +1780,11 @@ namespace {
                     // Delete autosave backup
                     if (!doc->autosaveBackupPath.empty()) {
                         autosaveManager.DeleteBackup(doc->autosaveBackupPath);
+                    }
+                    // Remove extracted word-document images
+                    if (!doc->wordMediaDirectory.empty()) {
+                        std::error_code ec;
+                        std::filesystem::remove_all(doc->wordMediaDirectory, ec);
                     }
 
                     // Remove from documents list
@@ -1803,6 +1816,11 @@ namespace {
             // No unsaved changes - close directly
             if (!doc->autosaveBackupPath.empty()) {
                 autosaveManager.DeleteBackup(doc->autosaveBackupPath);
+            }
+            // Remove extracted word-document images
+            if (!doc->wordMediaDirectory.empty()) {
+                std::error_code ec;
+                std::filesystem::remove_all(doc->wordMediaDirectory, ec);
             }
 
             documents.erase(documents.begin() + index);
@@ -2277,6 +2295,81 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
     }
 
+    bool UltraCanvasTextEditor::LoadWordIntoDocument(int docIndex, const std::string& filePath) {
+        if (docIndex < 0 || docIndex >= static_cast<int>(documents.size())) {
+            return false;
+        }
+        try {
+            auto doc = documents[docIndex];
+
+            UCRichDocument rich;
+            std::string loadError;
+            if (!UCWordDocumentIO::Load(filePath, rich, loadError)) {
+                if (DetectWordDocumentFormat(filePath) == WordDocumentFormat::LegacyDoc) {
+                    UltraCanvasDialogManager::ShowError(loadError, "Unsupported Format",
+                                                        nullptr, this);
+                    return false;
+                }
+                // Unreadable package (corrupt or mislabeled): fall back to the
+                // ordinary loader so the user can still inspect the bytes.
+                debugOutput << "Word document load failed (" << loadError
+                            << "), falling back to raw view" << std::endl;
+                return LoadFileIntoDocument(docIndex, filePath);
+            }
+
+            std::filesystem::path p(filePath);
+            doc->fileName = p.filename().string();
+            doc->filePath = filePath;
+            doc->textArea->SetDocumentFilePath(filePath);
+            doc->isNewFile = false;
+            doc->isModified = false;
+            doc->lastSaveTime = std::chrono::steady_clock::now();
+
+            // Extract embedded images into a per-document temp directory so
+            // the markdown renderer can display them.
+            RichDocumentMarkdownOptions mdOptions;
+            if (!rich.media.empty()) {
+                auto uniqueSuffix = std::to_string(
+                    std::chrono::steady_clock::now().time_since_epoch().count());
+                auto mediaDir = std::filesystem::temp_directory_path()
+                    / ("UltraTexter-media-" + std::to_string(doc->documentId)
+                       + "-" + uniqueSuffix);
+                mdOptions.imageDirectory = mediaDir.string();
+                doc->wordMediaDirectory = mediaDir.string();
+            }
+            std::string markdown = rich.ToMarkdown(mdOptions);
+
+            doc->encoding = "UTF-8";
+            doc->hasBOM = false;
+            doc->originalRawBytes.clear();
+            doc->isWordDocument = true;
+
+            doc->textArea->SetText(markdown, false);
+            doc->eolType = doc->textArea->GetLineEnding();
+            doc->textArea->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
+            doc->language = doc->textArea->GetCurrentProgrammingLanguage();
+
+            CaptureSavedContentBaseline(doc.get());
+
+            UpdateTabTitle(docIndex);
+            UpdateTabBadge(docIndex);
+            UpdateTitle();
+            UpdateEncodingDropdown();
+            UpdateLanguageDropdown();
+            UpdateMarkdownToolbarVisibility();
+
+            lastOpenedDirectory = p.parent_path().string();
+            AddToRecentFiles(filePath);
+
+            doc->textArea->SetCursorPosition(LineColumnIndex::INVALID);
+            return true;
+
+        } catch (const std::exception& e) {
+            debugOutput << "Error loading word document: " << e.what() << std::endl;
+            return false;
+        }
+    }
+
     bool UltraCanvasTextEditor::IsBinaryFile(const std::vector<uint8_t>& rawBytes, const std::string& extension) const {
         // Known binary file extensions
         static const std::vector<std::string> binaryExtensions = {
@@ -2300,11 +2393,13 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 "mp4", "avi", "mkv", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg",
                 // Archives
                 "zip", "tar", "gz", "bz2", "xz", "7z", "rar", "zst", "lz4",
-                // Documents (binary formats — NOT rtf/html/odt source which is text/xml).
-                // PDF is intentionally excluded: PDFs route to UltraCanvasPDFView
-                // via LoadPDFIntoDocument before IsBinaryFile is ever consulted.
+                // Documents. PDF is intentionally excluded: PDFs route to
+                // UltraCanvasPDFView via LoadPDFIntoDocument before IsBinaryFile
+                // is consulted. Likewise doc/docx/odt normally route to
+                // LoadWordIntoDocument first — their entries here are only the
+                // fallback for corrupt/mislabeled packages (hex view).
                 "doc", "xls", "ppt",
-                // Office Open XML (ZIP-based binary containers)
+                // Office Open XML / OpenDocument (ZIP-based binary containers)
                 "docx", "xlsx", "pptx", "odt", "ods",
                 // Fonts
                 "ttf", "otf", "woff", "woff2", "eot",
@@ -2394,6 +2489,15 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 return true;
             }
 
+            // Word-processing targets (.odt/.docx) are written as document
+            // packages: the editor's markdown converts back through
+            // UCRichDocument. Hex-mode tabs skip this and save raw bytes.
+            std::string targetExt = std::filesystem::path(filePath).extension().string();
+            if (!targetExt.empty() && targetExt[0] == '.') targetExt = targetExt.substr(1);
+            std::transform(targetExt.begin(), targetExt.end(), targetExt.begin(), ::tolower);
+            bool isWordTarget = (targetExt == "odt" || targetExt == "docx" || targetExt == "doc")
+                                && !doc->textArea->IsHexMode();
+
             // In hex mode, save raw bytes directly — no encoding conversion, no BOM
             if (doc->textArea->IsHexMode()) {
                 std::vector<uint8_t> rawBytes = doc->textArea->GetRawBytes();
@@ -2405,6 +2509,38 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 file.write(reinterpret_cast<const char*>(rawBytes.data()),
                            static_cast<std::streamsize>(rawBytes.size()));
                 file.close();
+            } else if (isWordTarget) {
+                if (targetExt == "doc") {
+                    UltraCanvasDialogManager::ShowError(
+                        "Saving to the legacy Word 97-2003 (.doc) format is not "
+                        "supported. Save as .docx instead.",
+                        "Unsupported Format", nullptr, this);
+                    return false;
+                }
+                // Relative image paths in the markdown resolve against the
+                // document's directory; extracted embedded images use absolute
+                // paths and re-embed on their own.
+                std::string baseDir =
+                    std::filesystem::path(filePath).parent_path().string();
+                UCRichDocument rich =
+                    UCRichDocument::FromMarkdown(doc->textArea->GetText(), baseDir);
+                rich.metadata.title = std::filesystem::path(filePath).stem().string();
+                std::string saveError;
+                if (!UCWordDocumentIO::Save(filePath, rich, saveError)) {
+                    debugOutput << "Failed to save document: " << saveError << std::endl;
+                    UltraCanvasDialogManager::ShowError(saveError, "Save Failed",
+                                                        nullptr, this);
+                    return false;
+                }
+                doc->isWordDocument = true;
+                doc->encoding = "UTF-8";
+                doc->hasBOM = false;
+                if (!doc->textArea->IsMarkdownHybridMode()) {
+                    doc->textArea->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
+                    doc->language = doc->textArea->GetCurrentProgrammingLanguage();
+                    UpdateLanguageDropdown();
+                    UpdateMarkdownToolbarVisibility();
+                }
             } else {
                 std::string utf8Text = doc->textArea->GetTextForSave();
 
@@ -2467,7 +2603,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                     ext = ext.substr(1);
                 }
 
-                if (ext == "md") {
+                if (ext == "md" || ext == "odt" || ext == "docx") {
                     doc->textArea->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
                 } else if (doc->textArea->SetProgrammingLanguageByFilename(doc->fileName)) {
                     // Full-filename match wins over extension (e.g. pom.xml -> POM,

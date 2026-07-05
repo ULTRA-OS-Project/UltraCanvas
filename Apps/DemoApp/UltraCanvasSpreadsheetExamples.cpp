@@ -130,8 +130,9 @@ namespace UltraCanvas {
         openBtn->onClick = [sheet, status]() {
             FileDialogOptions opts;
             opts.SetTitle("Open Spreadsheet File")
-                .AddFilter("Spreadsheet files", std::vector<std::string>{ "ods", "csv", "tsv" })
+                .AddFilter("Spreadsheet files", std::vector<std::string>{ "ods", "xlsx", "csv", "tsv" })
                 .AddFilter("OpenDocument Spreadsheet", "ods")
+                .AddFilter("Excel Workbook", "xlsx")
                 .AddFilter("CSV / TSV", std::vector<std::string>{ "csv", "tsv" })
                 .AddFilter("All files", "*");
 
@@ -191,8 +192,8 @@ namespace UltraCanvas {
         };
 
         // ===== SAVE -> file dialog (all supported formats) =====
-        // Offer every format the engine can write: OpenDocument (.ods) and
-        // CSV / TSV. When the chosen name ends in .csv or .tsv we open the CSV
+        // Offer every format the engine can write: OpenDocument (.ods), Excel
+        // (.xlsx) and CSV / TSV. When the chosen name ends in .csv or .tsv we open the CSV
         // export options dialog (separator, quoting, charset, line ending) so the
         // text file is written exactly as the user wants; .ods saves directly.
         saveBtn->onClick = [sheet, status]() {
@@ -200,6 +201,7 @@ namespace UltraCanvas {
             opts.SetTitle("Save Spreadsheet As")
                 .SetDefaultFileName("spreadsheet.ods")
                 .AddFilter("OpenDocument Spreadsheet", "ods")
+                .AddFilter("Excel Workbook", "xlsx")
                 .AddFilter("CSV (comma separated)", "csv")
                 .AddFilter("TSV (tab separated)", "tsv")
                 .AddFilter("All files", "*");

@@ -13,7 +13,7 @@ include(FetchContent)
 enable_language(C)
 
 # ===== LIBRARY DEFINITION =====
-set(ULTRACANVAS_VERSION "0.2.32")
+set(ULTRACANVAS_VERSION "0.3.0")
 set(ULTRACANVAS_LIB_NAME "UltraCanvas")
 
 message(STATUS "")
@@ -46,6 +46,28 @@ if(WIN32 AND ULTRACANVAS_PLUGIN_LATEX AND NOT ULTRACANVAS_BUILD_SHARED)
     message(STATUS "Windows + LaTeX plugin: forcing shared core (ULTRACANVAS_BUILD_SHARED=ON)")
     set(ULTRACANVAS_BUILD_SHARED ON)
 endif()
+
+# UltraNet — networking module (HTTP/HTTPS, FTP, WebSocket, TCP/UDP, TLS, DNS).
+# Stage 1 ships HTTP/HTTPS + URL utilities on libcurl. Built as a separate
+# library target so apps that don't need networking pay no cost.
+option(ULTRACANVAS_ENABLE_NET "Build the UltraNet networking library" ON)
+option(ULTRACANVAS_PLUGIN_SMTP   "Build the UltraNet SMTP plug-in"   ON)
+option(ULTRACANVAS_PLUGIN_IMAP   "Build the UltraNet IMAP plug-in"   ON)
+option(ULTRACANVAS_PLUGIN_POP3   "Build the UltraNet POP3 plug-in"   ON)
+option(ULTRACANVAS_PLUGIN_WEBDAV "Build the UltraNet WebDAV plug-in" ON)
+option(ULTRACANVAS_PLUGIN_LDAP   "Build the UltraNet LDAP plug-in"   ON)
+option(ULTRACANVAS_PLUGIN_TELNET "Build the UltraNet Telnet plug-in" ON)
+option(ULTRACANVAS_PLUGIN_RTSP   "Build the UltraNet RTSP plug-in"   ON)
+option(ULTRACANVAS_PLUGIN_MQTT   "Build the UltraNet MQTT plug-in (requires paho-mqtt-c)" ON)
+option(ULTRACANVAS_PLUGIN_AMQP   "Build the UltraNet AMQP plug-in (requires rabbitmq-c)" ON)
+option(ULTRACANVAS_PLUGIN_COAP   "Build the UltraNet CoAP plug-in (requires libcoap3)"   ON)
+option(ULTRACANVAS_PLUGIN_SNMP   "Build the UltraNet SNMP plug-in (requires net-snmp)"   ON)
+option(ULTRACANVAS_PLUGIN_SSH    "Build the UltraNet SSH plug-in (requires libssh)"    ON)
+option(ULTRACANVAS_PLUGIN_MDNS   "Build the UltraNet mDNS plug-in (Avahi/Bonjour/Win32 DNS-SD)" ON)
+option(ULTRACANVAS_PLUGIN_RTMP   "Build the UltraNet RTMP plug-in (libcurl-native)"    ON)
+option(ULTRACANVAS_PLUGIN_GRPC   "Build the UltraNet gRPC plug-in (libcurl HTTP/2)"    ON)
+option(ULTRACANVAS_PLUGIN_SIP    "Build the UltraNet SIP plug-in (UDP-native)"        ON)
+option(ULTRACANVAS_PLUGIN_RTP    "Build the UltraNet RTP receiver plug-in (UDP-native)" ON)
 
 # OpenGL surface support (Linux, macOS and Windows)
 # On Windows the WGL backend additionally requires GLEW to load modern GL
@@ -349,12 +371,24 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetSheet.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetFormula.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetFileIO.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetXlsxIO.cpp
         # CSV/TSV "Text Import" options dialog (depends on the spreadsheet element)
         ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasCSVImportDialog.cpp
         # CSV/TSV "Text Export" options dialog (depends on the spreadsheet element)
         ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasCSVExportDialog.cpp
         # Vendored miniz (ZIP support for ODS/XLSX File I/O)
         ${CMAKE_CURRENT_SOURCE_DIR}/third_party/miniz/miniz.c
+
+        # Reusable ZIP package layer (ODF/OPC containers)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasZipPackage.cpp
+        # Word-processing document module: UCRichDocument + ODT/DOCX readers
+        # and writers (used by FileLoader::OpenTextDocument and Texter)
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasRichDocument.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasWordDocumentIO.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasOdtFormat.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasDocxFormat.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasMathToLatex.cpp
 
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetFileIO.cpp
         # Add Windows/Mac sources as needed
@@ -805,6 +839,235 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         -Werror=return-type
 #        -Wall -Wextra -Wpedantic -Wno-unused-parameter
     )
+endif()
+
+# ===== BUILD ULTRANET LIBRARY (Stage 1: HTTP/HTTPS + URL on libcurl) =====
+if(ULTRACANVAS_ENABLE_NET)
+    find_package(CURL REQUIRED)
+    find_package(Threads REQUIRED)
+    # OpenSSL is the TLS backend for UltraNet_TlsWrap on Linux. Windows and
+    # macOS use Schannel / SecureTransport (no extra dependency).
+    if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
+        find_package(OpenSSL REQUIRED)
+    endif()
+
+    # c-ares: optional async DNS backend. When present, replaces the
+    # system getaddrinfo + libresolv path with a fully non-blocking
+    # resolver, fixes UltraNet_DnsSetServers (which was a no-op without
+    # c-ares), and unifies record-type handling across platforms.
+    pkg_check_modules(CARES libcares)
+    if(CARES_FOUND)
+        message(STATUS "  [✓] c-ares ${CARES_VERSION} - ENABLED (async DNS)")
+        set(ULTRANET_HAS_CARES 1)
+    else()
+        message(STATUS "  [−] c-ares - not found (using thread-per-call async DNS fallback)")
+    endif()
+
+    set(ULTRANET_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetCore.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetHttp.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetHttpEasy.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetHttpAsync.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetCookies.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetDns.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetUrl.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetWebSocket.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetFtp.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetSocket.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetTls.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetPlugins.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetSse.cpp
+    )
+    if(ULTRANET_HAS_CARES)
+        list(APPEND ULTRANET_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetDnsCares.cpp)
+    endif()
+    # Per-platform DNS impl supplies ultranet_dns_platform::Resolve. When
+    # c-ares is enabled, UltraNetDnsCares.cpp supplies that same symbol —
+    # we'd get a duplicate-definition link error if we kept both. Exclude
+    # the per-platform DNS impl when c-ares wins.
+    if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
+        list(APPEND ULTRANET_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraNetSupport.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraNetTlsImpl.cpp)
+        if(NOT ULTRANET_HAS_CARES)
+            list(APPEND ULTRANET_SOURCES
+                ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraNetDnsImpl.cpp)
+        endif()
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
+        list(APPEND ULTRANET_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraNetSupport.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraNetTlsImpl.cpp)
+        if(NOT ULTRANET_HAS_CARES)
+            list(APPEND ULTRANET_SOURCES
+                ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraNetDnsImpl.cpp)
+        endif()
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
+        list(APPEND ULTRANET_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraNetSupport.mm
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraNetTlsImpl.mm)
+        if(NOT ULTRANET_HAS_CARES)
+            list(APPEND ULTRANET_SOURCES
+                ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraNetDnsImpl.mm)
+        endif()
+        set_source_files_properties(
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraNetSupport.mm
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraNetTlsImpl.mm
+            ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraNetDnsImpl.mm
+            PROPERTIES LANGUAGE OBJCXX COMPILE_FLAGS "-x objective-c++ -fobjc-arc")
+    endif()
+
+    add_library(UltraNet STATIC ${ULTRANET_SOURCES})
+    set_target_properties(UltraNet PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        OUTPUT_NAME "ultranet")
+    target_compile_features(UltraNet PUBLIC cxx_std_20)
+    target_include_directories(UltraNet
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include/ultracanvas>)
+    target_link_libraries(UltraNet PUBLIC CURL::libcurl Threads::Threads)
+    if(ULTRANET_HAS_CARES)
+        target_compile_definitions(UltraNet PUBLIC ULTRANET_HAS_CARES=1)
+        target_include_directories(UltraNet PRIVATE ${CARES_INCLUDE_DIRS})
+        target_link_libraries(UltraNet PUBLIC ${CARES_LIBRARIES})
+    endif()
+    if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
+        target_link_libraries(UltraNet PUBLIC OpenSSL::SSL OpenSSL::Crypto resolv)
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
+        # winhttp: system-proxy detection; ws2_32: getaddrinfo/getnameinfo/recv/send;
+        # secur32: Schannel (AcquireCredentialsHandle etc.); crypt32: cert parsing;
+        # dnsapi: DnsQuery for non-A/AAAA DNS records.
+        target_link_libraries(UltraNet PUBLIC
+            winhttp ws2_32 secur32 crypt32 dnsapi)
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
+        find_library(CFNETWORK_FRAMEWORK CFNetwork REQUIRED)
+        find_library(CORE_FOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
+        find_library(SYSTEM_CONFIG_FRAMEWORK SystemConfiguration REQUIRED)
+        find_library(SECURITY_FRAMEWORK Security REQUIRED)
+        target_link_libraries(UltraNet PUBLIC
+            ${CFNETWORK_FRAMEWORK}
+            ${CORE_FOUNDATION_FRAMEWORK}
+            ${SYSTEM_CONFIG_FRAMEWORK}
+            ${SECURITY_FRAMEWORK}
+            resolv)
+    endif()
+    target_compile_definitions(UltraNet PUBLIC ULTRACANVAS_HAS_NET=1)
+
+    # Let UltraCanvas itself link UltraNet so that components like FileLoader
+    # can call UltraNet_HttpDownloadFile when ULTRACANVAS_ENABLE_NET is on.
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraNet)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NET=1)
+    message(STATUS "  [✓] UltraNet - ENABLED (libcurl ${CURL_VERSION_STRING})")
+
+    # Mail plug-ins (SMTP/IMAP/POP3) — load via dlopen/LoadLibrary on all
+    # three platforms. Plug-in DSOs use the v2 host-vtable contract so
+    # they don't depend on the host's import library at load time.
+    if(ULTRACANVAS_PLUGIN_SMTP)
+        add_subdirectory(Plugins/UltraNet/smtp)
+        message(STATUS "  [✓] UltraNet SMTP plug-in - ENABLED")
+    endif()
+    if(ULTRACANVAS_PLUGIN_IMAP)
+        add_subdirectory(Plugins/UltraNet/imap)
+        message(STATUS "  [✓] UltraNet IMAP plug-in - ENABLED")
+    endif()
+    if(ULTRACANVAS_PLUGIN_POP3)
+        add_subdirectory(Plugins/UltraNet/pop3)
+        message(STATUS "  [✓] UltraNet POP3 plug-in - ENABLED")
+    endif()
+
+    # Quick-win plug-ins: all libcurl-native, single-method-ish, same
+    # plug-in DSO shape as the mail trio. Cover four more spec
+    # categories (Web Modern / Directory / Remote Access / Streaming).
+    if(ULTRACANVAS_PLUGIN_WEBDAV)
+        add_subdirectory(Plugins/UltraNet/webdav)
+        message(STATUS "  [✓] UltraNet WebDAV plug-in - ENABLED")
+    endif()
+    if(ULTRACANVAS_PLUGIN_LDAP)
+        add_subdirectory(Plugins/UltraNet/ldap)
+        message(STATUS "  [✓] UltraNet LDAP plug-in - ENABLED")
+    endif()
+    if(ULTRACANVAS_PLUGIN_TELNET)
+        add_subdirectory(Plugins/UltraNet/telnet)
+        message(STATUS "  [✓] UltraNet Telnet plug-in - ENABLED")
+    endif()
+    if(ULTRACANVAS_PLUGIN_RTSP)
+        add_subdirectory(Plugins/UltraNet/rtsp)
+        message(STATUS "  [✓] UltraNet RTSP plug-in - ENABLED")
+    endif()
+
+    # MQTT — first plug-in NOT backed by libcurl. Needs Eclipse Paho's
+    # libpaho-mqtt3as (async + SSL). The plug-in CMakeLists self-disables
+    # when paho-mqtt-c isn't installed, so this is safe to leave ON.
+    if(ULTRACANVAS_PLUGIN_MQTT)
+        add_subdirectory(Plugins/UltraNet/mqtt)
+        if(TARGET UltraNetMqttPlugin)
+            message(STATUS "  [✓] UltraNet MQTT plug-in - ENABLED")
+        else()
+            message(STATUS "  [−] UltraNet MQTT plug-in - SKIPPED (paho-mqtt-c not found)")
+        endif()
+    endif()
+
+    # Three more third-party-library plug-ins. Each self-disables when
+    # its backend library isn't present, so leaving these ON is safe.
+    if(ULTRACANVAS_PLUGIN_AMQP)
+        add_subdirectory(Plugins/UltraNet/amqp)
+        if(TARGET UltraNetAmqpPlugin)
+            message(STATUS "  [✓] UltraNet AMQP plug-in - ENABLED")
+        else()
+            message(STATUS "  [−] UltraNet AMQP plug-in - SKIPPED (rabbitmq-c not found)")
+        endif()
+    endif()
+    if(ULTRACANVAS_PLUGIN_COAP)
+        add_subdirectory(Plugins/UltraNet/coap)
+        if(TARGET UltraNetCoapPlugin)
+            message(STATUS "  [✓] UltraNet CoAP plug-in - ENABLED")
+        else()
+            message(STATUS "  [−] UltraNet CoAP plug-in - SKIPPED (libcoap3 not found)")
+        endif()
+    endif()
+    if(ULTRACANVAS_PLUGIN_SNMP)
+        add_subdirectory(Plugins/UltraNet/snmp)
+        if(TARGET UltraNetSnmpPlugin)
+            message(STATUS "  [✓] UltraNet SNMP plug-in - ENABLED")
+        else()
+            message(STATUS "  [−] UltraNet SNMP plug-in - SKIPPED (net-snmp not found)")
+        endif()
+    endif()
+    if(ULTRACANVAS_PLUGIN_SSH)
+        add_subdirectory(Plugins/UltraNet/ssh)
+        if(TARGET UltraNetSshPlugin)
+            message(STATUS "  [✓] UltraNet SSH plug-in - ENABLED")
+        else()
+            message(STATUS "  [−] UltraNet SSH plug-in - SKIPPED (libssh not found)")
+        endif()
+    endif()
+    if(ULTRACANVAS_PLUGIN_MDNS)
+        add_subdirectory(Plugins/UltraNet/mdns)
+        if(TARGET UltraNetMdnsPlugin)
+            message(STATUS "  [✓] UltraNet mDNS plug-in - ENABLED")
+        else()
+            message(STATUS "  [−] UltraNet mDNS plug-in - SKIPPED (no platform backend)")
+        endif()
+    endif()
+    if(ULTRACANVAS_PLUGIN_RTMP)
+        add_subdirectory(Plugins/UltraNet/rtmp)
+        message(STATUS "  [✓] UltraNet RTMP plug-in - ENABLED (runtime check for libcurl RTMP support)")
+    endif()
+    if(ULTRACANVAS_PLUGIN_GRPC)
+        add_subdirectory(Plugins/UltraNet/grpc)
+        message(STATUS "  [✓] UltraNet gRPC plug-in - ENABLED (libcurl HTTP/2 backend)")
+    endif()
+    if(ULTRACANVAS_PLUGIN_SIP)
+        add_subdirectory(Plugins/UltraNet/sip)
+        message(STATUS "  [✓] UltraNet SIP plug-in - ENABLED (UDP-native OPTIONS + MESSAGE)")
+    endif()
+    if(ULTRACANVAS_PLUGIN_RTP)
+        add_subdirectory(Plugins/UltraNet/rtp)
+        message(STATUS "  [✓] UltraNet RTP plug-in - ENABLED (UDP receiver, RFC 3550)")
+    endif()
+else()
+    message(STATUS "  [−] UltraNet - DISABLED")
 endif()
 
 # ===== BUILD PLUGINS AS SEPARATE LIBRARIES =====

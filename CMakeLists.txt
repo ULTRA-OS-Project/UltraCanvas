@@ -7,7 +7,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(UltraCanvasDemoApp
-    VERSION 0.2.32
+    VERSION 0.3.0
     DESCRIPTION "UltraCanvas Framework Demo Application"
     LANGUAGES CXX
 )
@@ -47,6 +47,7 @@ option(BUILD_FILEMANAGER_APP "Build the file manager application" OFF) # OFF: so
 option(BUILD_DEMO_APP "Build the demo application" ON)
 option(BUILD_CSSLAYOUT_TESTS "Build the CSSLayout non-UI test harness" ON)
 option(BUILD_TESTS "Build unit tests" OFF)
+option(ULTRACANVAS_BUILD_NET_TESTS "Build the UltraNet test suite" OFF)
 option(ULTRACANVAS_PLUGIN_CDR "Build CDR plugin (requires libcdr)" ON)
 option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" ON)
 option(ULTRACANVAS_ENABLE_AUDIO "Build audio backend" ON)
@@ -114,6 +115,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasTextInputExamples.cpp
             Apps/DemoApp/UltraCanvasTreeViewExamples.cpp
             Apps/DemoApp/UltraCanvasSpreadsheetExamples.cpp
+            Apps/DemoApp/UltraCanvasODTExamples.cpp
             Apps/DemoApp/UltraCanvasListViewExamples.cpp
             Apps/DemoApp/UltraCanvasDependenciesExamples.cpp
             Apps/DemoApp/UltraCanvasBasicChartsExamples.cpp
@@ -144,6 +146,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasHeatmapExamples.cpp
             Apps/DemoApp/UltraCanvasAdjacencyDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasArcDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasNetworkingExamples.cpp
             Apps/DemoApp/UltraCanvasSlideshowExamples.cpp
             Apps/DemoApp/UltraCanvasAlbumExamples.cpp
             Apps/DemoApp/UltraCanvasMediaViewerExamples.cpp
@@ -156,6 +159,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasWaveformExamples.cpp
             Apps/DemoApp/UltraCanvasPDFExamples.cpp
             Apps/DemoApp/UltraCanvasLaTeXExamples.cpp
+            Apps/DemoApp/UltraCanvasFileLoaderExamples.cpp
             Apps/DemoApp/UltraCanvasVideoExamples.cpp
     )
 
@@ -359,11 +363,21 @@ endif()
 if(BUILD_TESTS)
     message(STATUS "")
     message(STATUS "── Building Unit Tests ──")
-    
+
     enable_testing()
 
     # The tests are self-contained (no test framework dependency).
     add_subdirectory(Tests)
+endif()
+
+# ===== ULTRANET TESTS =====
+# Independent of BUILD_TESTS / Catch2: uses a tiny in-tree framework so it
+# can run wherever UltraNet is built.
+if(ULTRACANVAS_BUILD_NET_TESTS AND ULTRACANVAS_ENABLE_NET)
+    enable_testing()
+    add_subdirectory(Tests/UltraNet)
+    message(STATUS "")
+    message(STATUS "── UltraNet test suite enabled (target: UltraNetTests) ──")
 endif()
 
 # ===== DOCUMENTATION =====

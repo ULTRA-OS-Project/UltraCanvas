@@ -1183,7 +1183,14 @@ namespace UltraCanvas {
 //                .AddVariant("codeeditor", "Pascal Syntax")
 //                .AddVariant("codeeditor", "COBOL Syntax");
 
-        textDocBuilder.AddItem("ebook", "eBook Reader",
+        textDocBuilder.AddItem("textdocuments", "Text Documents",
+                               "Plain text and source-code file rendering via UltraCanvasTextArea's syntax renderer",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateTextDocumentExamples(); },
+                               "DemoApp/UltraCanvasDemoExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasTextAreaExamples.md");
+
+      textDocBuilder.AddItem("ebook", "eBook Reader",
                                "EPUB/FB2/MOBI/TXT reading with chapters, TOC, themes and font scaling "
                                "rendered natively through the CSSLayout engine",
                                ImplementationStatus::FullyImplemented,
@@ -1223,9 +1230,14 @@ namespace UltraCanvas {
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreateTextDocumentExamples(); });
 
-        textDocBuilder.AddItem("textdocuments_odt", "ODT Documents", "ODT document support",
-                               ImplementationStatus::NotImplemented,
-                               [this]() { return CreateTextDocumentExamples(); });
+        textDocBuilder.AddItem("textdocuments_odt", "ODT Documents",
+                               "OpenDocument Text / Word document viewing: loads "
+                               "media/docs/document.odt and any .odt/.docx/.doc via a "
+                               "file dialog, rendered through UCRichDocument as markdown",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateODTExamples(); },
+                               "DemoApp/UltraCanvasODTExamples.cpp",
+                               "Docs/UltraCanvas/ODT-DOCX-Support-Proposal.md");
 
 
         // ===== AUDIO ELEMENTS =====
@@ -1297,13 +1309,23 @@ namespace UltraCanvas {
                              "DemoApp/UltraCanvasTextRenderingExamples.cpp",
                              "Docs/UltraCanvas/UltraCanvasTextRenderingExamples.md");
 
+        toolsBuilder.AddItem("networking", "Networking (UltraNet)",
+                             "Load a remote image from an https:// URL — exercises "
+                             "UltraCanvasFileLoader::LoadFile + UltraNet_HttpGet + "
+                             "UCImageRaster::LoadFromMemory.",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateNetworkingExamples(); },
+                             "Apps/DemoApp/UltraCanvasNetworkingExamples.cpp");
+
         auto modulesBuilder = DemoCategoryBuilder(this, DemoCategory::Modules);
         modulesBuilder.AddItem("audiofx", "Audio FX", "Audio FX",
                                ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/AudioFX"); });
         modulesBuilder.AddItem("fileloader", "File Loader", "File Loader",
-                               ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreateModuleDocScreen("Docs/Modules/FileLoader"); });
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateFileLoaderExamples(); },
+                               "Apps/DemoApp/UltraCanvasFileLoaderExamples.cpp",
+                               "Docs/Modules/FileLoader/README.md");
         modulesBuilder.AddItem("iodevicemanager", "IODeviceManager support", "IODeviceManager support",
                                ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/IODeviceManager"); });

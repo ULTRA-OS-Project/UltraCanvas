@@ -18,6 +18,7 @@ namespace UltraCanvas {
     class UCImageRaster;
     using UCImage = UCImageRaster;
     class UCAudio;
+    class UCRichDocument;
 
     struct FileDialogOptions {
         std::string title;
@@ -55,8 +56,30 @@ namespace UltraCanvas {
         }
     };
 
+    // Byte-level load result for LoadFile (local path or URL).
+    // contentType / httpStatus are only populated for URL loads.
+    struct FileBytesResult {
+        bool                 success = false;
+        std::string          error;
+        std::vector<uint8_t> bytes;
+        std::string          sourceUri;
+        std::string          contentType;
+        int                  httpStatus = 0;
+    };
+
     class UltraCanvasFileLoader {
     public:
+        // ===== GENERIC FILE LOAD (path or URL) =====
+        // Reads a local path or fetches a remote URL into memory. URL schemes
+        // http:// and https:// are dispatched to UltraNet when the framework
+        // is built with ULTRACANVAS_HAS_NET; ftp:// / sftp:// will be supported
+        // once the UltraNet FTP module lands (Stage 3 of the UltraNet plan).
+        // Everything else is treated as a local filesystem path.
+        static FileBytesResult LoadFile(const std::string& pathOrUrl);
+
+        // True if `s` starts with a recognised URL scheme (http/https/ftp/ftps/sftp).
+        static bool IsUrl(const std::string& s);
+
         // ===== FILE SELECTION DIALOGS =====
         static void OpenFileDialog(const FileDialogOptions& opts,
                                    std::function<void(DialogResult, const std::string&)> onResult);
@@ -87,6 +110,24 @@ namespace UltraCanvas {
         // on decode failure, loadError is populated and the audio is null/invalid.
         static void OpenAudio(const FileDialogOptions& opts,
                               std::function<void(const FileLoadResult&, std::shared_ptr<UCAudio>)> onResult);
+
+        // Opens the native file dialog and parses the chosen word-processing
+        // document into a UCRichDocument (see Plugins/Documents/Word). Formats:
+        // .odt and .docx are fully parsed (detection is signature-based, so
+        // renamed files still load); .md/.markdown parse as Markdown; anything
+        // else readable as text becomes plain paragraphs. Legacy Word 97-2003
+        // .doc files are detected and rejected with a clear loadError telling
+        // the user to convert to .docx. If the caller supplies no filters, a
+        // sensible set of document filters is added. On cancel, onResult fires
+        // with dialogResult == Cancel and a null document; on parse failure,
+        // loadError is populated and the document is null.
+        static void OpenTextDocument(const FileDialogOptions& opts,
+                                     std::function<void(const FileLoadResult&, std::shared_ptr<UCRichDocument>)> onResult);
+
+        // Dialog-free core of OpenTextDocument: parses filePath into a
+        // UCRichDocument. Returns null and fills outError on failure.
+        static std::shared_ptr<UCRichDocument> LoadTextDocument(const std::string& filePath,
+                                                                std::string& outError);
     };
 
 } // namespace UltraCanvas

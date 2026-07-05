@@ -1,3 +1,52 @@
+#### 2026-07-04 *0.3.0*
+- Implemented UltraNet networking module — full v1.0 master-registry surface
+  plus v1.1 extensions (`UltraNet/UltraNetCore.h`, `UltraNetHttp.h`,
+  `UltraNetUrl.h`, `UltraNetWebSocket.h`, `UltraNetFtp.h`, `UltraNetSocket.h`,
+  `UltraNetTls.h`, `UltraNetDns.h`, `UltraNetCookies.h`, `UltraNetPlugins.h`,
+  `UltraNetSse.h`)
+- HTTP / HTTPS sync + async via libcurl multi-handle worker thread; HTTP/3
+  (QUIC) via nghttp3 when libcurl was built with it
+- WebSocket client (libcurl native `curl_ws_*`; runtime capability check
+  with a clear error when libcurl was built without `--enable-websockets`)
+- FTP / FTPS / SFTP download / upload / list / delete / rename / mkdir /
+  rmdir; rich listings via MLSD (with a UNIX `ls -l` fallback)
+- Raw TCP / UDP sockets (POSIX sockets / Winsock)
+- TLS wrap on raw TCP — OS-native backends: OpenSSL (Linux),
+  Schannel (Windows, `SCHANNEL_CRED`), SecureTransport (macOS) — no extra
+  TLS deps on Windows / macOS
+- DNS: A / AAAA / PTR via getaddrinfo; MX / TXT / SRV / NS / CNAME / SOA via
+  libresolv (Linux/macOS) and dnsapi (Windows); optional async c-ares
+  backend (`ARES_OPT_EVENT_THREAD`) covering the full record set
+- Sessions with `CURLSH`-backed cookie + connection-pool sharing
+- Plugin system with `IUltraNetPlugin` + seven specialised category
+  interfaces (mail, messaging, remote-access, directory, streaming,
+  file-share, RPC); v2 host-vtable DSO contract (`UltraNet_PluginInit`) with
+  v1 (`UltraNet_PluginRegister`) fallback; dynamic DSO loading via
+  dlopen / LoadLibrary
+- **All 17 spec plug-ins ship** in `Plugins/UltraNet/`:
+    - Mail: SMTP · IMAP · POP3
+    - Messaging: MQTT · AMQP
+    - Remote access: SSH · Telnet
+    - Directory: LDAP
+    - Streaming: RTSP · RTMP · RTP (in-tree RFC 3550 receiver) · SIP
+      (in-tree RFC 3261 UDP)
+    - IoT: CoAP · SNMP
+    - Discovery: mDNS (Avahi / Bonjour / DnsQuery_W)
+    - Web modern: gRPC · WebDAV
+- SSE / chunked HTTP streaming (`UltraNet_SseStream` + parser) — for
+  token-by-token LLM responses
+- Per-request progress callbacks alongside the global transfer-callbacks bag
+- Streamed HTTP upload from disk (constant memory)
+- `UltraCanvasApplicationBase::PostToUIThread(std::function<void()>)` for
+  marshaling network completions back to the UI thread from background
+  worker threads
+- `UltraCanvasFileLoader::LoadFile(pathOrUrl)` now dispatches `http://` /
+  `https://` URLs to UltraNet automatically
+- Networking demo screen in the demo app (Tools → Networking) — loads a
+  remote image via `UltraCanvasFileLoader::LoadFile(url)`
+- UltraNet test suite (`Tests/UltraNet/`, 102 tests, in-tree framework, CI
+  wired via `ULTRACANVAS_BUILD_NET_TESTS=ON`)
+
 #### 2026-06-26 *0.2.32*
 - Implemented HiDPI and scaling for all platforms
 - Merge "LaTeX document renderer for UltraCanvas"
