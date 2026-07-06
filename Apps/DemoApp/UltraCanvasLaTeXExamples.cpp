@@ -4,19 +4,19 @@
 // LaTeX source below.
 //
 // The rendered output is produced *live* by the on-demand UltraCanvas LaTeX
-// engine (MicroTeX) wherever the document is math-mode LaTeX: the .tex source
-// is parsed and typeset to vector paths at runtime — no pre-baked screenshot.
+// engine (MicroTeX): the .tex source is parsed and typeset to vector paths at
+// runtime — no pre-baked screenshot. The shipped examples (media/LaTex/*.tex)
+// are all math-mode documents that the engine renders directly.
 //
-// The engine is a math typesetter, not a full LaTeX/TikZ implementation, so
-// documents built out of TikZ / pgfplots graphics (plots, diagrams, trees)
-// cannot be rendered by it. For those we fall back to the reference image that
-// ships next to the source and label it honestly as a reference render rather
-// than passing it off as the app's own output.
+// The engine is a math typesetter, not a full LaTeX/TikZ implementation. If a
+// document that reaches for TikZ / pgfplots graphics or document-mode content
+// is dropped into the folder, it cannot be typeset by the engine; the demo
+// then falls back to a reference .png/.gif sitting beside the source (labelled
+// honestly as a reference render) if one exists.
 //
 // New examples appear automatically when a .tex file is dropped into the
-// media/LaTex folder: math documents render live, TikZ documents show their
-// reference .png/.gif if one sits beside them.
-// Version: 2.0.0
+// media/LaTex folder.
+// Version: 2.1.0
 // Last Modified: 2026-07-06
 // Author: UltraCanvas Framework
 
@@ -264,9 +264,8 @@ namespace {
 
         auto info = std::make_shared<UltraCanvasLabel>("LaTeXInfo", 0, 0, 0, 32);
         info->SetText("Example .tex documents scanned from " + latexDir +
-                      ".\nMath documents are typeset live from their source by the UltraCanvas "
-                      "LaTeX engine; TikZ / pgfplots documents are beyond the built-in math "
-                      "engine and show their reference image instead.");
+                      ".\nEach document is typeset live from its source by the on-demand "
+                      "UltraCanvas LaTeX engine.");
         info->SetFontSize(11);
         info->SetTextColor(Color(110, 110, 110, 255));
         info->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
