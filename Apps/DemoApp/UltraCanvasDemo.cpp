@@ -1207,9 +1207,9 @@ namespace UltraCanvas {
                                [this]() { return CreateTextDocumentExamples(); });
 
         textDocBuilder.AddItem("textdocuments_latex", "LaTeX Documents",
-                               "LaTeX document examples scanned from media/LaTex — "
+                               "LaTeX formula documents typeset live from source by MicroTeX — "
                                "rendered output and source per document",
-                               ImplementationStatus::PartiallyImplemented,
+                               ImplementationStatus::FullyImplemented,
                                [this]() { return CreateLaTeXExamples(); },
                                "DemoApp/UltraCanvasLaTeXExamples.cpp");
 

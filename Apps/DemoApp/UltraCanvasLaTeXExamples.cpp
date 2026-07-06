@@ -271,6 +271,32 @@ namespace {
         info->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         root->AddChild(info);
 
+        // Scope note + clickable link to the MicroTeX project (opens in the
+        // system browser on click).
+        auto noteRow = std::make_shared<UltraCanvasContainer>("LaTeXNoteRow", 0, 0, 0, 18);
+        noteRow->layout.SetFlexRow().SetFlexGap(5)
+                       .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        noteRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+
+        auto note = std::make_shared<UltraCanvasLabel>("LaTeXScopeNote", 0, 0, 0, 18);
+        note->SetText("LaTeX support covers only formula design by MicroTeX:");
+        note->SetFontSize(11);
+        note->SetTextColor(Color(90, 90, 90, 255));
+        note->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        noteRow->AddChild(note);
+
+        const std::string microTeXUrl = "https://github.com/NanoMichael/MicroTeX";
+        auto link = std::make_shared<UltraCanvasLabel>("LaTeXMicroTeXLink", 0, 0, 0, 18);
+        link->SetTextIsMarkup(true);
+        link->SetText("<span foreground=\"#2860C0\"><u>" + microTeXUrl + "</u></span>");
+        link->SetFontSize(11);
+        // A label with an onClick handler reports the hand cursor automatically.
+        link->onClick = [microTeXUrl]() { OpenURL(microTeXUrl); };
+        link->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        noteRow->AddChild(link);
+
+        root->AddChild(noteRow);
+
         // Scan the LaTeX folder for .tex files (case-insensitive extension match)
         // so newly added examples show up without any code change.
         std::vector<std::filesystem::path> texFiles;
