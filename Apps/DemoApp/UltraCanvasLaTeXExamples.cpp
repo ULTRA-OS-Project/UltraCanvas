@@ -1,10 +1,23 @@
 // Apps/DemoApp/UltraCanvasLaTeXExamples.cpp
 // LaTeX documents demo: scans media/LaTex for .tex files at runtime and shows
 // each one in a vertical (left-side) tab — the rendered output on top and the
-// LaTeX source below. New examples appear automatically when a .tex file (plus
-// its pre-rendered .png/.gif) is dropped into the media/LaTex folder.
-// Version: 1.0.0
-// Last Modified: 2026-07-02
+// LaTeX source below.
+//
+// The rendered output is produced *live* by the on-demand UltraCanvas LaTeX
+// engine (MicroTeX) wherever the document is math-mode LaTeX: the .tex source
+// is parsed and typeset to vector paths at runtime — no pre-baked screenshot.
+//
+// The engine is a math typesetter, not a full LaTeX/TikZ implementation, so
+// documents built out of TikZ / pgfplots graphics (plots, diagrams, trees)
+// cannot be rendered by it. For those we fall back to the reference image that
+// ships next to the source and label it honestly as a reference render rather
+// than passing it off as the app's own output.
+//
+// New examples appear automatically when a .tex file is dropped into the
+// media/LaTex folder: math documents render live, TikZ documents show their
+// reference .png/.gif if one sits beside them.
+// Version: 2.0.0
+// Last Modified: 2026-07-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -15,6 +28,7 @@
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasConfig.h"   // GetResourcesDir
 #include "UltraCanvasUtils.h"    // NormalizePath, LoadFile
+#include "Plugins/LaTeX/UltraCanvasLaTeXView.h"  // CreateLaTeXView (on-demand)
 
 #include <algorithm>
 #include <cctype>
@@ -26,27 +40,100 @@ namespace UltraCanvas {
 
 namespace {
 
-    // One tab page: the rendered result (a pre-rendered .png/.gif shipped next to
-    // the .tex source) above the LaTeX source itself.
-    std::shared_ptr<UltraCanvasUIElement> CreateLaTeXTabPage(const std::filesystem::path& texPath) {
-        const std::string stem = texPath.stem().string();
+    std::string ToLowerCopy(std::string s) {
+        std::transform(s.begin(), s.end(), s.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+        return s;
+    }
 
-        auto page = std::make_shared<UltraCanvasContainer>("LaTeXPage_" + stem, 0, 0, 800, 600);
-        page->layout.SetFlexColumn().SetFlexGap(6)
-                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        page->SetPadding(8, 10, 8, 10);
-        page->SetBackgroundColor(Colors::White);
+    std::string Trim(const std::string& s) {
+        const size_t a = s.find_first_not_of(" \t\r\n");
+        if (a == std::string::npos) return {};
+        const size_t b = s.find_last_not_of(" \t\r\n");
+        return s.substr(a, b - a + 1);
+    }
 
-        // ----- Rendered output -----
-        auto renderedLabel = std::make_shared<UltraCanvasLabel>("LaTeXRenderedLabel_" + stem, 0, 0, 0, 20);
-        renderedLabel->SetText("Rendered output:");
-        renderedLabel->SetFontSize(12);
-        renderedLabel->SetFontWeight(FontWeight::Bold);
-        renderedLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        page->AddChild(renderedLabel);
+    // A document is renderable by the math engine only if it is plain math-mode
+    // LaTeX. MicroTeX is a math typesetter, not a full LaTeX implementation, so
+    // anything that reaches for TikZ / pgfplots graphics, or for document-mode
+    // constructs (tables, figures, captions, included images), is out of scope
+    // and must fall back to its reference image. The check is deliberately
+    // conservative: when in doubt we prefer the reference image over feeding the
+    // engine something it will refuse to parse and leaving a blank pane.
+    bool IsMathRenderable(const std::string& source) {
+        static const char* kUnsupportedMarkers[] = {
+            // TikZ / pgfplots graphics
+            "tikzpicture", "pgfplot", "\\begin{axis}", "tikzset",
+            "usetikzlibrary", "\\tikz", "pgfmath", "\\draw", "\\node",
+            // document-mode / tabular / floats — not math mode
+            "\\begin{tabular}", "\\begin{table}", "\\begin{figure}",
+            "\\includegraphics", "\\caption", "booktabs", "\\toprule",
+            "\\captionsetup",
+        };
+        const std::string lower = ToLowerCopy(source);
+        for (const char* marker : kUnsupportedMarkers) {
+            if (lower.find(marker) != std::string::npos) return false;
+        }
+        return true;
+    }
 
-        // Look for the pre-rendered image next to the source (.png preferred,
-        // .gif as fallback for animated examples).
+    // Pull the math body out of a full .tex document so the engine gets exactly
+    // what it can parse: the content between \begin{document} and \end{document},
+    // stripped of comments and of the outer math delimiters ($ … $, \[ … \]).
+    std::string ExtractRenderableMath(const std::string& source) {
+        std::string body = source;
+
+        const size_t docBegin = body.find("\\begin{document}");
+        if (docBegin != std::string::npos) {
+            body = body.substr(docBegin + std::string("\\begin{document}").size());
+        }
+        const size_t docEnd = body.find("\\end{document}");
+        if (docEnd != std::string::npos) {
+            body = body.substr(0, docEnd);
+        }
+
+        // Drop LaTeX comments (an unescaped '%' to end of line).
+        std::string noComments;
+        noComments.reserve(body.size());
+        size_t lineStart = 0;
+        while (lineStart <= body.size()) {
+            size_t nl = body.find('\n', lineStart);
+            const std::string line =
+                body.substr(lineStart, nl == std::string::npos ? std::string::npos : nl - lineStart);
+            size_t cut = std::string::npos;
+            for (size_t i = 0; i < line.size(); ++i) {
+                if (line[i] == '%' && (i == 0 || line[i - 1] != '\\')) { cut = i; break; }
+            }
+            noComments += (cut == std::string::npos) ? line : line.substr(0, cut);
+            noComments += '\n';
+            if (nl == std::string::npos) break;
+            lineStart = nl + 1;
+        }
+
+        std::string math = Trim(noComments);
+
+        // Strip a single pair of outer math delimiters if present; the engine is
+        // always in math mode and does not want them.
+        const std::pair<std::string, std::string> delims[] = {
+            {"\\[", "\\]"}, {"$$", "$$"}, {"\\(", "\\)"}, {"$", "$"},
+        };
+        for (const auto& d : delims) {
+            if (math.size() >= d.first.size() + d.second.size() &&
+                math.compare(0, d.first.size(), d.first) == 0 &&
+                math.compare(math.size() - d.second.size(), d.second.size(), d.second) == 0) {
+                math = Trim(math.substr(d.first.size(),
+                                        math.size() - d.first.size() - d.second.size()));
+                break;
+            }
+        }
+        return math;
+    }
+
+    // Reference-image fallback for documents the math engine cannot render
+    // (TikZ / pgfplots) — clearly labelled as a reference render, not a live one.
+    std::shared_ptr<UltraCanvasUIElement> CreateReferenceImage(
+        const std::filesystem::path& texPath, const std::string& stem) {
+
         std::filesystem::path imagePath = texPath;
         imagePath.replace_extension(".png");
         std::error_code ec;
@@ -60,17 +147,78 @@ namespace {
             image->SetFitMode(ImageFitMode::Contain);
             image->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                              .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-            page->AddChild(image);
-        } else {
-            auto missing = std::make_shared<UltraCanvasLabel>("LaTeXNoImage_" + stem, 0, 0, 0, 0);
-            missing->SetText("No rendered image (" + stem + ".png / .gif) found next to the source file.");
-            missing->SetFontSize(12);
-            missing->SetTextColor(Color(150, 60, 60, 255));
-            missing->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
-            missing->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                               .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-            page->AddChild(missing);
+            return image;
         }
+
+        auto missing = std::make_shared<UltraCanvasLabel>("LaTeXNoImage_" + stem, 0, 0, 0, 0);
+        missing->SetText("This document uses TikZ / pgfplots graphics, which the built-in\n"
+                         "math engine cannot render, and no reference image (" + stem +
+                         ".png / .gif) was found beside the source.");
+        missing->SetFontSize(12);
+        missing->SetTextColor(Color(150, 60, 60, 255));
+        missing->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
+        missing->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        return missing;
+    }
+
+    // One tab page: the rendered result above the LaTeX source itself. Math
+    // documents are typeset live by the engine; TikZ documents fall back to a
+    // labelled reference image.
+    std::shared_ptr<UltraCanvasUIElement> CreateLaTeXTabPage(const std::filesystem::path& texPath) {
+        const std::string stem = texPath.stem().string();
+        const std::string source = LoadFile(texPath.string());
+
+        auto page = std::make_shared<UltraCanvasContainer>("LaTeXPage_" + stem, 0, 0, 800, 600);
+        page->layout.SetFlexColumn().SetFlexGap(6)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        page->SetPadding(8, 10, 8, 10);
+        page->SetBackgroundColor(Colors::White);
+
+        // Decide whether the engine can render this document live.
+        const bool mathDoc = IsMathRenderable(source);
+        std::shared_ptr<UltraCanvasLaTeXView> liveView;
+        if (mathDoc) {
+            const std::string math = ExtractRenderableMath(source);
+            if (!math.empty()) {
+                liveView = CreateLaTeXView("LaTeXView_" + stem, 0, 0, 0, 0);
+                if (liveView) {
+                    liveView->SetTextSize(26.0f);
+                    liveView->SetTextColor(Colors::Black);
+                    liveView->SetLaTeX(math);
+                }
+            }
+        }
+        const bool live = static_cast<bool>(liveView);
+
+        // ----- Rendered output header -----
+        auto renderedLabel = std::make_shared<UltraCanvasLabel>("LaTeXRenderedLabel_" + stem, 0, 0, 0, 20);
+        renderedLabel->SetText(live ? "Rendered output (typeset live by the UltraCanvas LaTeX engine):"
+                                    : "Reference image (this document is beyond the built-in math engine):");
+        renderedLabel->SetFontSize(12);
+        renderedLabel->SetFontWeight(FontWeight::Bold);
+        renderedLabel->SetTextColor(live ? Color(40, 110, 40, 255) : Color(150, 90, 40, 255));
+        renderedLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        page->AddChild(renderedLabel);
+
+        // ----- Rendered output body -----
+        // A centred, growing area that holds either the live view or the image.
+        auto renderArea = std::make_shared<UltraCanvasContainer>("LaTeXRenderArea_" + stem, 0, 0, 0, 0);
+        renderArea->layout.SetFlexRow()
+                          .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
+                          .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        renderArea->SetBackgroundColor(Colors::White);
+        renderArea->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                              .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+        if (live) {
+            liveView->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                                .SetAlignSelf(CSSLayout::AlignSelf::Center);
+            renderArea->AddChild(liveView);
+        } else {
+            renderArea->AddChild(CreateReferenceImage(texPath, stem));
+        }
+        page->AddChild(renderArea);
 
         // ----- LaTeX source -----
         auto sourceLabel = std::make_shared<UltraCanvasLabel>("LaTeXSourceLabel_" + stem, 0, 0, 0, 20);
@@ -80,16 +228,16 @@ namespace {
         sourceLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         page->AddChild(sourceLabel);
 
-        auto source = std::make_shared<UltraCanvasTextArea>("LaTeXSource_" + stem);
-        source->SetText(LoadFile(texPath.string()));
-        source->SetReadOnly(true);
-        source->SetShowLineNumbers(true);
-        source->SetWordWrap(false);
-        source->SetCursorPosition(LineColumnIndex::INVALID);
-        source->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                          .SetFlexBasis(CSSLayout::Dimension::Pct(40))
-                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        page->AddChild(source);
+        auto sourceView = std::make_shared<UltraCanvasTextArea>("LaTeXSource_" + stem);
+        sourceView->SetText(source);
+        sourceView->SetReadOnly(true);
+        sourceView->SetShowLineNumbers(true);
+        sourceView->SetWordWrap(false);
+        sourceView->SetCursorPosition(LineColumnIndex::INVALID);
+        sourceView->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                              .SetFlexBasis(CSSLayout::Dimension::Pct(40))
+                              .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        page->AddChild(sourceView);
 
         return page;
     }
@@ -114,9 +262,11 @@ namespace {
 
         const std::string latexDir = NormalizePath(GetResourcesDir() + "media/LaTex");
 
-        auto info = std::make_shared<UltraCanvasLabel>("LaTeXInfo", 0, 0, 0, 18);
+        auto info = std::make_shared<UltraCanvasLabel>("LaTeXInfo", 0, 0, 0, 32);
         info->SetText("Example .tex documents scanned from " + latexDir +
-                      " — pick a document in the vertical tab bar to see its rendered output and source.");
+                      ".\nMath documents are typeset live from their source by the UltraCanvas "
+                      "LaTeX engine; TikZ / pgfplots documents are beyond the built-in math "
+                      "engine and show their reference image instead.");
         info->SetFontSize(11);
         info->SetTextColor(Color(110, 110, 110, 255));
         info->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
@@ -128,9 +278,7 @@ namespace {
         std::error_code ec;
         for (const auto& entry : std::filesystem::directory_iterator(latexDir, ec)) {
             if (!entry.is_regular_file(ec)) continue;
-            std::string ext = entry.path().extension().string();
-            std::transform(ext.begin(), ext.end(), ext.begin(),
-                           [](unsigned char c) { return std::tolower(c); });
+            std::string ext = ToLowerCopy(entry.path().extension().string());
             if (ext == ".tex") {
                 texFiles.push_back(entry.path());
             }
@@ -161,10 +309,17 @@ namespace {
         tabs->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-        for (const auto& texPath : texFiles) {
+        int firstLiveTab = -1;
+        for (size_t i = 0; i < texFiles.size(); ++i) {
+            const auto& texPath = texFiles[i];
+            if (firstLiveTab < 0 && IsMathRenderable(LoadFile(texPath.string()))) {
+                firstLiveTab = static_cast<int>(i);
+            }
             tabs->AddTab(texPath.stem().string(), CreateLaTeXTabPage(texPath));
         }
-        tabs->SetActiveTab(0);
+        // Open on a live-rendered document so the engine's own output is the
+        // first thing the user sees.
+        tabs->SetActiveTab(firstLiveTab >= 0 ? firstLiveTab : 0);
         root->AddChild(tabs);
 
         return root;

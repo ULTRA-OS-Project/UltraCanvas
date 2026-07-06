@@ -1,3 +1,13 @@
+#### 2026-07-06
+- Demo: the LaTeX Documents page now typesets math documents **live** from
+  their `.tex` source through the on-demand UltraCanvas LaTeX engine instead
+  of showing a pre-rendered screenshot. Added a set of math-mode example
+  documents (`media/LaTex/math-*.tex`) that render live; TikZ / pgfplots and
+  document-mode (`tabular`, `figure`) examples — which the math engine cannot
+  typeset — keep their reference image, now labelled honestly as a reference
+  render rather than the app's own output. The page opens on a live-rendered
+  document.
+
 #### 2026-07-05 *0.3.1*
 - Merged "ODT/DOCX support for file elements"
 - Merged "UltraCanvas text document support"
