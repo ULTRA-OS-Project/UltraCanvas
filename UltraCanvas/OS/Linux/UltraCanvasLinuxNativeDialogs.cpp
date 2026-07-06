@@ -143,6 +143,46 @@ namespace UltraCanvas {
             }
         }
 
+        // Key under which each GtkFileFilter stores its primary extension so the
+        // Save dialog can rewrite the filename when the file type is switched.
+        const char* const kPrimaryExtKey = "uc-primary-ext";
+
+        // GTK's Save file chooser does NOT rewrite the extension in the name
+        // entry when the user picks a different "Dateityp"/file-type filter, so
+        // the filename keeps whatever extension it started with. We fix that
+        // ourselves: on every filter change, swap the current name's extension
+        // for the one attached to the newly selected filter.
+        void OnSaveFilterChanged(GObject* chooserObj, GParamSpec*, gpointer) {
+            GtkFileChooser* chooser = GTK_FILE_CHOOSER(chooserObj);
+            GtkFileFilter* filter = gtk_file_chooser_get_filter(chooser);
+            if (!filter) return;
+
+            const char* ext = static_cast<const char*>(
+                    g_object_get_data(G_OBJECT(filter), kPrimaryExtKey));
+            // "All files" (*) and pattern-less filters leave the name untouched.
+            if (!ext || !*ext || std::strcmp(ext, "*") == 0) return;
+
+            gchar* current = gtk_file_chooser_get_current_name(chooser);
+            if (!current) return;
+            std::string name = current;
+            g_free(current);
+            if (name.empty()) return;
+
+            // Replace an existing trailing extension with the filter's extension;
+            // append if the name has none. A leading dot (dot-file) is not an
+            // extension separator, so it is preserved.
+            size_t dot = name.find_last_of('.');
+            size_t sep = name.find_last_of("/\\");
+            if (dot != std::string::npos &&
+                (sep == std::string::npos || dot > sep) && dot != 0) {
+                name.erase(dot);
+            }
+            name += ".";
+            name += ext;
+
+            gtk_file_chooser_set_current_name(chooser, name.c_str());
+        }
+
     } // anonymous namespace
 
 // ===== MESSAGE DIALOGS =====
@@ -479,6 +519,12 @@ namespace UltraCanvas {
             GtkFileFilter* gtkFilter = gtk_file_filter_new();
             gtk_file_filter_set_name(gtkFilter, filter.ToDisplayString().c_str());
             AddFilterPatterns(gtkFilter, filter);
+            // Remember the primary extension so OnSaveFilterChanged can rewrite
+            // the filename when the user switches file type.
+            if (!filter.extensions.empty()) {
+                g_object_set_data_full(G_OBJECT(gtkFilter), kPrimaryExtKey,
+                                       g_strdup(filter.extensions.front().c_str()), g_free);
+            }
             gtk_file_chooser_add_filter(chooser, gtkFilter);
         }
 
@@ -489,6 +535,12 @@ namespace UltraCanvas {
             gtk_file_filter_add_pattern(allFilter, "*");
             gtk_file_chooser_add_filter(chooser, allFilter);
         }
+
+        // Keep the filename's extension in sync with the selected file type.
+        // Connected after the filters are added so priming the default filter
+        // doesn't rewrite the caller-supplied default filename.
+        g_signal_connect(chooser, "notify::filter",
+                         G_CALLBACK(OnSaveFilterChanged), nullptr);
 
         std::string result;
         if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
