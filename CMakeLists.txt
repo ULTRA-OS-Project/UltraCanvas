@@ -78,6 +78,15 @@ message(STATUS "")
 message(STATUS "── Building UltraCanvas Core Library ──")
 add_subdirectory(UltraCanvas)
 
+# ===== ULTRAMAIL =====
+# The mail application. Phase 1 builds the headless engine (LocalStore on
+# UltraDatabase); UI targets are added in later phases. Enabled by default
+# whenever UltraDatabase is available.
+option(BUILD_ULTRAMAIL "Build the UltraMail application" ON)
+if(BUILD_ULTRAMAIL AND TARGET UltraDatabase)
+    add_subdirectory(Apps/UltraMail)
+endif()
+
 # At this point, the following variables are available from UltraCanvas/CMakeLists.txt:
 #   ULTRACANVAS_LIBRARY        - Main library target name
 #   ULTRACANVAS_LIBRARIES      - All libraries (core + plugins)
@@ -380,6 +389,27 @@ if(ULTRACANVAS_BUILD_NET_TESTS AND ULTRACANVAS_ENABLE_NET)
     message(STATUS "── UltraNet test suite enabled (target: UltraNetTests) ──")
 endif()
 
+# ===== ULTRADATABASE TESTS =====
+# Independent of BUILD_TESTS / Catch2: uses a tiny in-tree framework so it
+# can run wherever UltraDatabase is built.
+option(ULTRACANVAS_BUILD_DATABASE_TESTS "Build the UltraDatabase test suite" OFF)
+if(ULTRACANVAS_BUILD_DATABASE_TESTS AND TARGET UltraDatabase)
+    enable_testing()
+    add_subdirectory(Tests/UltraDatabase)
+    message(STATUS "")
+    message(STATUS "── UltraDatabase test suite enabled (target: UltraDatabaseTests) ──")
+endif()
+
+# ===== ULTRAMAIL ENGINE TESTS =====
+# Headless engine tests (LocalStore on UltraDatabase); in-tree framework.
+option(ULTRACANVAS_BUILD_ULTRAMAIL_TESTS "Build the UltraMail engine test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRAMAIL_TESTS AND TARGET UltraMailEngine)
+    enable_testing()
+    add_subdirectory(Tests/UltraMail)
+    message(STATUS "")
+    message(STATUS "── UltraMail engine test suite enabled (target: UltraMailEngineTests) ──")
+endif()
+
 # ===== DOCUMENTATION =====
 #find_package(Doxygen QUIET)
 #if(DOXYGEN_FOUND)
@@ -458,6 +488,40 @@ if (BUILD_CSSLAYOUT_TESTS)
     target_include_directories(CSSLayoutTests PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
     target_link_libraries(CSSLayoutTests PRIVATE ${ULTRACANVAS_LIBRARY})
     target_compile_features(CSSLayoutTests PRIVATE cxx_std_20)
+endif()
+
+# ===== ULTRAMAIL GUI APPLICATION =====
+# The full UI executable (Toolbox, account info-tile bar, setup wizard) on top
+# of the UltraMail engine. Links the whole UltraCanvas UI library, so it is
+# OFF by default; enable with -DBUILD_ULTRAMAIL_APP=ON.
+option(BUILD_ULTRAMAIL_APP "Build the UltraMail GUI application" OFF)
+if (BUILD_ULTRAMAIL_APP AND TARGET UltraMailEngine)
+    add_executable(UltraMail
+            Apps/UltraMail/main.cpp
+            Apps/UltraMail/ui/UltraMailApp.cpp
+            Apps/UltraMail/ui/UltraMailToolbox.cpp
+            Apps/UltraMail/ui/UltraMailInfoTileBar.cpp
+            Apps/UltraMail/ui/UltraMailAccountWizard.cpp
+            Apps/UltraMail/ui/UltraMailAttachmentStrip.cpp
+            Apps/UltraMail/ui/UltraMailContactsView.cpp
+            Apps/UltraMail/ui/UltraMailReadingView.cpp
+            Apps/UltraMail/ui/UltraMailComposeWindow.cpp
+    )
+    set_target_properties(UltraMail PROPERTIES ENABLE_EXPORTS ON)
+    target_include_directories(UltraMail PRIVATE
+            ${ULTRACANVAS_INCLUDE_DIRS}
+            ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraMail
+    )
+    target_link_libraries(UltraMail PRIVATE
+            ${ULTRACANVAS_LIBRARY}
+            UltraMailEngine
+            ${JSONCPP_LIBRARIES}
+    )
+    if(TARGET fmt::fmt)
+        target_link_libraries(UltraMail PRIVATE fmt::fmt)
+    endif()
+    target_compile_features(UltraMail PRIVATE cxx_std_20)
+    message(STATUS "  [✓] UltraMail GUI app - ENABLED (target: UltraMail)")
 endif()
 
 if (BUILD_TESTS)

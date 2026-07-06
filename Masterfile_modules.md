@@ -92,3 +92,54 @@ loading files from `http://`, `https://`, `ftp://`, etc. URLs.
 implemented synchronously on libcurl. Async, WebSocket, FTP, raw sockets,
 TLS layering, DNS, sessions, and the plugin manager are planned for
 Stages 2-3. See `Docs/Modules/UltraNet/README.md`.
+
+### **6. UltraDatabase**
+
+Unified database access layer. Central registry of **named connections**
+that apps define once and reference everywhere; the backing engine is a
+configuration detail. Bundles **SQLite** for zero-config embedded storage
+and adds other engines (PostgreSQL, MySQL/MariaDB, MSSQL, Redis, MongoDB,
+DuckDB) as driver plug-ins under `Plugins/UltraDatabase/` via the
+`IDatabaseDriverPlugin` interface — the core binary does not change to add
+an engine.
+
+UltraDatabase elements must comply with the same rules as UltraNet:
+- Clear structure; call names understandable by their names
+- New drivers use the same function and callback naming patterns
+- **Parameter binding always** — SQL text and values travel separately, so
+  injection is not possible through the public API (no string-built SQL)
+- TLS verification ON by default for networked engines; credentials come
+  from UltraVault, never from app code or config files
+- All blocking operations return `UltraDbResult`; all statement /
+  transaction / cursor / async operations return `UltraDbHandle`
+
+Like UltraNet, it encapsulates open-source libraries (bundled SQLite,
+`libpq`, `libmariadb`, ODBC, `hiredis`) so a backing library can be
+extended or replaced without changing callers.
+
+**Available Functions (Core, Tier 1):**
+- `UltraDb_RegisterConnection`, `UltraDb_CloseConnection`,
+  `UltraDb_GetConnectionInfo`
+- `UltraDb_Query`, `UltraDb_Exec`, `UltraDb_QueryAsync`
+- `UltraDb_Prepare`, `UltraDb_ExecPrepared`, `UltraDb_Finalize`
+- `UltraDb_Begin`, `UltraDb_ExecInTx`, `UltraDb_Commit`, `UltraDb_Rollback`
+- `UltraDb_OpenCursor`, `UltraDb_FetchRow`, `UltraDb_CloseCursor`
+- `UltraDb_Migrate`, `UltraDb_CancelQuery`
+- `UltraDb_RegisterDriver`, `UltraDb_GetSupportedDrivers`
+
+**Driver Categories (Tier 2 / Tier 3, located under `Plugins/UltraDatabase/`):**
+- Relational (SQL): PostgreSQL, MySQL / MariaDB, Microsoft SQL Server
+- Embedded: SQLite (core, bundled), DuckDB (analytics)
+- Key-value: Redis / Valkey
+- Document: MongoDB
+
+UltraDatabase is the recommended persistence module for UltraMail, ULTRA
+Store, and any other UltraCanvas-based application that needs local or
+networked storage. It depends on UltraVault for credentials and,
+optionally, on UltraNet for TLS transport to networked engines.
+
+**Implementation status (this branch):** Concept / design only. Public
+surface specified in `Docs/Modules/UltraDatabase/README.md`; suggested
+rollout is SQLite core + registry + query/transaction/migration API
+(Stage 1), async + pooling + PostgreSQL/MySQL drivers (Stage 2),
+remaining drivers and at-rest encryption (Stage 3).

@@ -58,6 +58,7 @@ is purely a libcurl build option.
 | Sessions | Cookies, connection reuse | `UltraNet/UltraNetCookies.h` |
 | Proxy | HTTP / HTTPS / SOCKS4 / SOCKS5 / system | `UltraNet/UltraNetProxy.h` |
 | URL | Parse, build, encode, query strings | `UltraNet/UltraNetUrl.h` |
+| MIME | base64 / quoted-printable, RFC 2047 headers, multipart parse + build | `UltraNet/UltraNetMime.h` |
 
 ### Plugin-supplied (Tier 2/3)
 

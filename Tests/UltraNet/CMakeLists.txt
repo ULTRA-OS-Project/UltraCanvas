@@ -6,6 +6,7 @@ cmake_minimum_required(VERSION 3.16)
 set(ULTRANET_TEST_SOURCES
     test_main.cpp
     test_url.cpp
+    test_mime.cpp
     test_headers.cpp
     test_result.cpp
     test_plugins.cpp
@@ -14,6 +15,7 @@ set(ULTRANET_TEST_SOURCES
     test_loopback.cpp
     test_smtp_plugin.cpp
     test_imap_plugin.cpp
+    test_imap_mailbox.cpp
     test_pop3_plugin.cpp
     test_extra_plugins.cpp
     test_sse.cpp

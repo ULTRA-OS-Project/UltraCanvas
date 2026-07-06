@@ -129,6 +129,131 @@ public:
         const UltraNetMailOptions& options) = 0;
 };
 
+// ============================================================================
+// Extended mailbox operations (IMAP-style). A full mail client needs more than
+// send + bulk-fetch: folder listing, envelope-only sync, per-message flags,
+// move, append and change detection. IMailboxProtocolPlugin extends
+// IMailProtocolPlugin with those, so a caller can dynamic_cast to it when a
+// plug-in supports the richer surface (the IMAP plug-in does).
+// ============================================================================
+
+// IMAP system flags as a bitfield.
+enum class UltraNetMailFlags : uint32_t {
+    None     = 0,
+    Seen     = 1u << 0,   // \Seen
+    Answered = 1u << 1,   // \Answered
+    Flagged  = 1u << 2,   // \Flagged
+    Deleted  = 1u << 3,   // \Deleted
+    Draft    = 1u << 4,   // \Draft
+    Recent   = 1u << 5    // \Recent
+};
+inline UltraNetMailFlags operator|(UltraNetMailFlags a, UltraNetMailFlags b) {
+    return static_cast<UltraNetMailFlags>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
+}
+inline UltraNetMailFlags operator&(UltraNetMailFlags a, UltraNetMailFlags b) {
+    return static_cast<UltraNetMailFlags>(static_cast<uint32_t>(a) & static_cast<uint32_t>(b));
+}
+inline UltraNetMailFlags& operator|=(UltraNetMailFlags& a, UltraNetMailFlags b) {
+    a = a | b; return a;
+}
+inline bool UltraNetHasFlag(UltraNetMailFlags value, UltraNetMailFlags flag) {
+    return (static_cast<uint32_t>(value) & static_cast<uint32_t>(flag)) != 0;
+}
+
+// A mailbox folder, as returned by LIST (with SPECIAL-USE role detection).
+struct UltraNetMailFolder {
+    std::string name;                     // full path, e.g. "INBOX" / "INBOX/Sent"
+    std::string delimiter;                // hierarchy separator, e.g. "/"
+    std::string role;                     // "inbox"|"sent"|"drafts"|"junk"|
+                                          // "trash"|"archive"|"all"|"" (none)
+    std::vector<std::string> attributes;  // raw IMAP attrs, e.g. "\HasNoChildren"
+    bool selectable = true;               // false when \Noselect is present
+};
+
+// Header-level view of a message (no body). Cheap to sync in bulk.
+struct UltraNetMailEnvelope {
+    uint32_t uid = 0;
+    std::string messageId;                // Message-ID
+    std::string inReplyTo;                // In-Reply-To
+    std::string subject;
+    std::string from;
+    std::vector<std::string> to;
+    std::vector<std::string> cc;
+    std::string date;                     // raw Date header
+    UltraNetMailFlags flags = UltraNetMailFlags::None;
+    uint32_t size = 0;                    // RFC822.SIZE, if known
+};
+
+// STATUS output — the basis for poll-based change detection (a push IDLE
+// optimisation can layer on top later).
+struct UltraNetMailboxStatus {
+    uint32_t messages    = 0;
+    uint32_t recent      = 0;
+    uint32_t uidNext     = 0;
+    uint32_t uidValidity = 0;
+    uint32_t unseen      = 0;
+};
+
+// IMAP-class mailbox operations. Implemented by the IMAP plug-in.
+class IMailboxProtocolPlugin : public IMailProtocolPlugin {
+public:
+    // LIST the folders reachable from the account (server + credentials in the
+    // URL / options). `serverUrl` is "imap(s)://host[:port]/".
+    virtual UltraNetResult ListFolders(
+        const std::string& serverUrl,
+        std::vector<UltraNetMailFolder>& outFolders,
+        const UltraNetMailOptions& options) = 0;
+
+    // STATUS of one folder (message/uid counts) for change detection.
+    virtual UltraNetResult GetMailboxStatus(
+        const std::string& serverUrl,
+        const std::string& folder,
+        UltraNetMailboxStatus& outStatus,
+        const UltraNetMailOptions& options) = 0;
+
+    // Envelope-only fetch of messages with UID > sinceUid (0 = all), newest
+    // first, bounded by options.maxMessages.
+    virtual UltraNetResult FetchEnvelopes(
+        const std::string& serverUrl,
+        const std::string& folder,
+        uint32_t sinceUid,
+        std::vector<UltraNetMailEnvelope>& outEnvelopes,
+        const UltraNetMailOptions& options) = 0;
+
+    // Full raw RFC 5322 body of a single message by UID.
+    virtual UltraNetResult FetchMessage(
+        const std::string& serverUrl,
+        const std::string& folder,
+        uint32_t uid,
+        std::string& outRaw,
+        const UltraNetMailOptions& options) = 0;
+
+    // Set (or clear) flag bits on a message (UID STORE +/-FLAGS).
+    virtual UltraNetResult StoreFlags(
+        const std::string& serverUrl,
+        const std::string& folder,
+        uint32_t uid,
+        UltraNetMailFlags flags,
+        bool set,
+        const UltraNetMailOptions& options) = 0;
+
+    // Move a message to another folder (UID MOVE, RFC 6851).
+    virtual UltraNetResult MoveMessage(
+        const std::string& serverUrl,
+        const std::string& srcFolder,
+        uint32_t uid,
+        const std::string& dstFolder,
+        const UltraNetMailOptions& options) = 0;
+
+    // Upload a raw message into a folder (APPEND) — used for Sent / Drafts.
+    virtual UltraNetResult AppendMessage(
+        const std::string& serverUrl,
+        const std::string& folder,
+        const std::string& rawMessage,
+        UltraNetMailFlags flags,
+        const UltraNetMailOptions& options) = 0;
+};
+
 // MQTT / AMQP.
 class IMessagingProtocolPlugin : public IUltraNetPlugin {
 public:
