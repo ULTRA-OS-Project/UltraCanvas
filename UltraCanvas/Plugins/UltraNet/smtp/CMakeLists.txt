@@ -20,8 +20,14 @@ target_compile_features(UltraNetSmtpPlugin PRIVATE cxx_std_20)
 target_include_directories(UltraNetSmtpPlugin PRIVATE
     ${CMAKE_SOURCE_DIR}/UltraCanvas/include)
 
-find_package(CURL REQUIRED)
-target_link_libraries(UltraNetSmtpPlugin PRIVATE CURL::libcurl)
+# Reuse the curl target the core picked (system or vendored). UC_CURL_LINK is
+# set by UltraCanvas/CMakeLists.txt before these plug-ins are added; the guard
+# keeps the plug-in buildable standalone.
+if(NOT DEFINED UC_CURL_LINK)
+    find_package(CURL REQUIRED)
+    set(UC_CURL_LINK CURL::libcurl)
+endif()
+target_link_libraries(UltraNetSmtpPlugin PRIVATE ${UC_CURL_LINK})
 
 # Drop the binary next to where the host scans by default. The host's
 # UltraNet_GetPluginDirectory() defaults to "Plugins/UltraNet"; mirror that

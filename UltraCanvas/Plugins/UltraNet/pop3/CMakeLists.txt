@@ -16,8 +16,14 @@ target_compile_features(UltraNetPop3Plugin PRIVATE cxx_std_20)
 target_include_directories(UltraNetPop3Plugin PRIVATE
     ${CMAKE_SOURCE_DIR}/UltraCanvas/include)
 
-find_package(CURL REQUIRED)
-target_link_libraries(UltraNetPop3Plugin PRIVATE CURL::libcurl)
+# Reuse the curl target the core picked (system or vendored). UC_CURL_LINK is
+# set by UltraCanvas/CMakeLists.txt before these plug-ins are added; the guard
+# keeps the plug-in buildable standalone.
+if(NOT DEFINED UC_CURL_LINK)
+    find_package(CURL REQUIRED)
+    set(UC_CURL_LINK CURL::libcurl)
+endif()
+target_link_libraries(UltraNetPop3Plugin PRIVATE ${UC_CURL_LINK})
 
 set_target_properties(UltraNetPop3Plugin PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraNet)

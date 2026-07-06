@@ -164,6 +164,21 @@ jobs:
           fi
           echo "OpenGL backend verified on ${{ runner.os }}"
 
+      # CI runners all ship a WebSocket-capable, correctly-versioned system
+      # libcurl, so UltraNet must link it — never the third_party/curl fallback
+      # (which stamps distro-specific symbol versions like CURL_OPENSSL_4 that
+      # are only correct on the developer's machine). Fail loudly if a change
+      # ever pushes CI onto the vendored curl path.
+      - name: Verify CI uses SYSTEM libcurl (not vendored)
+        shell: bash
+        run: |
+          set -eu
+          if grep -q "UltraNet libcurl: VENDORED" configure.log; then
+            echo "::error::CI selected the vendored third_party/curl build. The system libcurl should provide WebSocket support on CI; do not ship the CURL_OPENSSL_4 version-script fix here."
+            exit 1
+          fi
+          echo "Confirmed: CI links system libcurl; vendored curl / version-script fix NOT applied."
+
       - name: Build
         run: cmake --build build --config ${{ matrix.build_type }} --parallel 2
 

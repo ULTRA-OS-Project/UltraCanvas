@@ -14,8 +14,14 @@ target_compile_features(UltraNetLdapPlugin PRIVATE cxx_std_20)
 target_include_directories(UltraNetLdapPlugin PRIVATE
     ${CMAKE_SOURCE_DIR}/UltraCanvas/include)
 
-find_package(CURL REQUIRED)
-target_link_libraries(UltraNetLdapPlugin PRIVATE CURL::libcurl)
+# Reuse the curl target the core picked (system or vendored). UC_CURL_LINK is
+# set by UltraCanvas/CMakeLists.txt before these plug-ins are added; the guard
+# keeps the plug-in buildable standalone.
+if(NOT DEFINED UC_CURL_LINK)
+    find_package(CURL REQUIRED)
+    set(UC_CURL_LINK CURL::libcurl)
+endif()
+target_link_libraries(UltraNetLdapPlugin PRIVATE ${UC_CURL_LINK})
 
 set_target_properties(UltraNetLdapPlugin PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraNet)

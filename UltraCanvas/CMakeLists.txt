@@ -851,8 +851,79 @@ endif()
 
 # ===== BUILD ULTRANET LIBRARY (Stage 1: HTTP/HTTPS + URL on libcurl) =====
 if(ULTRACANVAS_ENABLE_NET)
-    find_package(CURL REQUIRED)
     find_package(Threads REQUIRED)
+
+    # --- libcurl selection: system vs vendored (WebSockets) -------------------
+    # UltraNet's WebSocket transport needs libcurl >= 7.86 built WITH WebSocket
+    # support (curl_ws_*). Some machines ship a libcurl without it, or have a
+    # locally built one that lacks the distro's versioned symbols (e.g.
+    # CURL_OPENSSL_4) that OTHER already-installed libraries (libvips ->
+    # libhdf5) reference — linking such a libcurl next to them fails with
+    #   "undefined reference to curl_global_init@CURL_OPENSSL_4".
+    # When the found libcurl can't satisfy both needs we fall back to building
+    # the vendored copy in third_party/curl and (Linux) stamp it with the
+    # distro's symbol version node, making it a drop-in superset for everything.
+    # CI runners all ship a WebSocket-capable, correctly-versioned system
+    # libcurl, so this fallback never activates there (asserted in build.yml).
+    #
+    # NOTE: the probe below deliberately uses find_library/find_path rather than
+    # find_package(CURL) — find_package creates the imported CURL::libcurl
+    # target, which would clash with the ALIAS of the same name that the
+    # vendored curl's own CMake defines. find_package is called only in the
+    # system branch, where no vendored target exists.
+    set(_uc_use_vendored OFF)
+    set(UC_CURL_HAS_WS FALSE)
+    set(_uc_found_curl_versioned FALSE)
+    if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
+        find_library(_uc_sys_curl_lib NAMES curl)
+        find_path(_uc_sys_curl_inc NAMES curl/curl.h)
+        if(_uc_sys_curl_lib AND _uc_sys_curl_inc)
+            include(CheckSymbolExists)
+            set(CMAKE_REQUIRED_INCLUDES  ${_uc_sys_curl_inc})
+            set(CMAKE_REQUIRED_LIBRARIES ${_uc_sys_curl_lib})
+            # Result goes to a dedicated cache var: check_symbol_exists SKIPS the
+            # test when its result variable is already set, so it must not reuse
+            # a name we pre-initialised (UC_CURL_HAS_WS).
+            check_symbol_exists(curl_ws_send "curl/curl.h;curl/websockets.h" UC_SYS_CURL_HAS_WS)
+            unset(CMAKE_REQUIRED_INCLUDES)
+            unset(CMAKE_REQUIRED_LIBRARIES)
+            if(UC_SYS_CURL_HAS_WS)
+                set(UC_CURL_HAS_WS TRUE)
+            endif()
+            # Versioned symbols (CURL_*) are required to coexist with libhdf5/libvips.
+            execute_process(COMMAND objdump -T "${_uc_sys_curl_lib}"
+                            OUTPUT_VARIABLE _uc_curl_dump ERROR_QUIET)
+            if(_uc_curl_dump MATCHES "CURL_[A-Z0-9_]+")
+                set(_uc_found_curl_versioned TRUE)
+            endif()
+        endif()
+
+        set(_uc_vendored_default OFF)
+        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/curl/CMakeLists.txt"
+           AND (NOT UC_CURL_HAS_WS OR NOT _uc_found_curl_versioned))
+            set(_uc_vendored_default ON)
+        endif()
+        option(ULTRACANVAS_USE_VENDORED_CURL
+            "Build libcurl from third_party/curl (WebSockets, distro-versioned)"
+            ${_uc_vendored_default})
+        if(ULTRACANVAS_USE_VENDORED_CURL)
+            set(_uc_use_vendored ON)
+        endif()
+    endif()
+
+    if(_uc_use_vendored)
+        # Builds libcurl_shared (+ curl's own CURL::libcurl alias) and, on Linux,
+        # stamps it with the distro's symbol version node.
+        include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/VendoredCurl.cmake)
+        set(UC_CURL_LINK libcurl_shared)
+        set(CURL_VERSION_STRING "8.21.0 (vendored)")
+        message(STATUS "  [i] UltraNet libcurl: VENDORED third_party/curl "
+                       "(system curl unusable: WS=${UC_CURL_HAS_WS} versioned=${_uc_found_curl_versioned})")
+    else()
+        find_package(CURL REQUIRED)
+        set(UC_CURL_LINK CURL::libcurl)
+        message(STATUS "  [i] UltraNet libcurl: SYSTEM ${CURL_VERSION_STRING} (WebSocket: OK)")
+    endif()
     # OpenSSL is the TLS backend for UltraNet_TlsWrap on Linux. Windows and
     # macOS use Schannel / SecureTransport (no extra dependency).
     if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
@@ -935,7 +1006,7 @@ if(ULTRACANVAS_ENABLE_NET)
         PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
             $<INSTALL_INTERFACE:include/ultracanvas>)
-    target_link_libraries(UltraNet PUBLIC CURL::libcurl Threads::Threads)
+    target_link_libraries(UltraNet PUBLIC ${UC_CURL_LINK} Threads::Threads)
     if(ULTRANET_HAS_CARES)
         target_compile_definitions(UltraNet PUBLIC ULTRANET_HAS_CARES=1)
         target_include_directories(UltraNet PRIVATE ${CARES_INCLUDE_DIRS})
