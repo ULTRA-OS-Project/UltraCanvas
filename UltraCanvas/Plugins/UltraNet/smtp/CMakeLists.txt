@@ -28,3 +28,12 @@ target_link_libraries(UltraNetSmtpPlugin PRIVATE CURL::libcurl)
 # in the build tree so a stock UltraNet_RefreshPlugins() finds it.
 set_target_properties(UltraNetSmtpPlugin PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraNet)
+
+# --- Windows: import host-provided UltraNet symbols at link time ---------------
+# On POSIX these plug-ins resolve core symbols (UltraNet_ParseUrl, UltraNet_UrlDecode,
+# ...) from the host binary at dlopen() time (RTLD_GLOBAL + -rdynamic). Windows DLLs
+# must bind every symbol at link time, so link the shared UltraCanvas core, which
+# exports them (WINDOWS_EXPORT_ALL_SYMBOLS). No-op on POSIX and on static builds.
+if(WIN32 AND ULTRACANVAS_BUILD_SHARED)
+    target_link_libraries(UltraNetSmtpPlugin PRIVATE UltraCanvas)
+endif()

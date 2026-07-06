@@ -1,7 +1,7 @@
 # UltraCanvas/CMakeLists.txt
 # UltraCanvas Core Library - Builds as separate static library with optional plugins
-# Version: 1.4.2
-# Last Modified: 2026-06-21
+# Version: 1.4.5
+# Last Modified: 2026-07-05
 # Author: UltraCanvas Framework
 
 cmake_minimum_required(VERSION 3.16)
@@ -12,8 +12,16 @@ include(FetchContent)
 # project silently skips compiling .c files, causing undefined references to mz_zip_*.
 enable_language(C)
 
+# Enable Objective-C++ on Apple platforms: the macOS backend (GL context managers,
+# AVFoundation video, UltraNet TLS/DNS support) ships .mm sources tagged
+# LANGUAGE OBJCXX below. The root project() only declares CXX, so without this the
+# generate step fails with "The language OBJCXX was requested ... but was not enabled".
+if(APPLE)
+    enable_language(OBJCXX)
+endif()
+
 # ===== LIBRARY DEFINITION =====
-set(ULTRACANVAS_VERSION "0.3.0")
+set(ULTRACANVAS_VERSION "0.3.1")
 set(ULTRACANVAS_LIB_NAME "UltraCanvas")
 
 message(STATUS "")
@@ -1067,6 +1075,28 @@ if(ULTRACANVAS_ENABLE_NET)
         add_subdirectory(Plugins/UltraNet/rtp)
         message(STATUS "  [✓] UltraNet RTP plug-in - ENABLED (UDP receiver, RFC 3550)")
     endif()
+
+    # macOS: each UltraNet plug-in is a MODULE that resolves core symbols
+    # (UltraNet_RegisterPlugin, UltraNet_ParseUrl, ...) from the host binary at
+    # dlopen() time. Unlike Linux's ld, the Mach-O linker rejects undefined
+    # symbols in a module unless it is linked with -undefined dynamic_lookup
+    # (same mechanism the LaTeX plug-in uses below). Applied here in one place so
+    # a new plug-in only needs its target name added to this list.
+    # NB: when a new UltraNet plug-in is added above, add its target here too.
+    if(APPLE)
+        foreach(_ultranet_plugin IN ITEMS
+                UltraNetSmtpPlugin UltraNetImapPlugin UltraNetPop3Plugin
+                UltraNetWebDavPlugin UltraNetLdapPlugin UltraNetTelnetPlugin
+                UltraNetRtspPlugin UltraNetMqttPlugin UltraNetAmqpPlugin
+                UltraNetCoapPlugin UltraNetSnmpPlugin UltraNetSshPlugin
+                UltraNetMdnsPlugin UltraNetRtmpPlugin UltraNetGrpcPlugin
+                UltraNetSipPlugin UltraNetRtpPlugin)
+            if(TARGET ${_ultranet_plugin})
+                set_property(TARGET ${_ultranet_plugin} APPEND_STRING
+                    PROPERTY LINK_FLAGS " -undefined dynamic_lookup")
+            endif()
+        endforeach()
+    endif()
 else()
     message(STATUS "  [−] UltraNet - DISABLED")
 endif()
@@ -1348,6 +1378,17 @@ if(ULTRACANVAS_PLUGIN_LATEX)
         ${CAIRO_INCLUDE_DIRS} ${PANGO_INCLUDE_DIRS} ${GLIB_INCLUDE_DIRS}
         ${HARFBUZZ_INCLUDE_DIRS} ${FREETYPE_INCLUDE_DIRS}
     )
+    # macOS/Homebrew: cairo.pc only emits -I<prefix>/include/cairo, so the
+    # `#include <cairo/cairo.h>` form (reached transitively via the core's
+    # UltraCanvasRenderContext.h -> ImageCairo.h) needs the parent <prefix>/include
+    # on the path. The core lib gets this incidentally from libvips' include dirs;
+    # this MODULE doesn't link the (static) core on macOS, so add it explicitly.
+    if(APPLE)
+        execute_process(COMMAND brew --prefix
+            OUTPUT_VARIABLE _uc_brew_prefix
+            OUTPUT_STRIP_TRAILING_WHITESPACE)
+        target_include_directories(UltraCanvasLaTeX PRIVATE ${_uc_brew_prefix}/include)
+    endif()
     target_compile_definitions(UltraCanvasLaTeX PRIVATE ULTRACANVAS_PLUGIN_LATEX=1)
     target_link_libraries(UltraCanvasLaTeX PRIVATE microtex_core)
     # The module resolves UltraCanvas core symbols (IRenderContext, UIElement,

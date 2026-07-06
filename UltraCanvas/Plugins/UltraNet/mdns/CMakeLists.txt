@@ -52,3 +52,12 @@ target_link_libraries(UltraNetMdnsPlugin PRIVATE ${MDNS_BACKEND_LIBS})
 
 set_target_properties(UltraNetMdnsPlugin PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraNet)
+
+# --- Windows: import host-provided UltraNet symbols at link time ---------------
+# On POSIX these plug-ins resolve core symbols (UltraNet_ParseUrl, UltraNet_UrlDecode,
+# ...) from the host binary at dlopen() time (RTLD_GLOBAL + -rdynamic). Windows DLLs
+# must bind every symbol at link time, so link the shared UltraCanvas core, which
+# exports them (WINDOWS_EXPORT_ALL_SYMBOLS). No-op on POSIX and on static builds.
+if(WIN32 AND ULTRACANVAS_BUILD_SHARED)
+    target_link_libraries(UltraNetMdnsPlugin PRIVATE UltraCanvas)
+endif()

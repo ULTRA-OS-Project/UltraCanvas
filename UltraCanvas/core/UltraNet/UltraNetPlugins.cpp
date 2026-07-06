@@ -2,7 +2,7 @@
 // Plugin registry. Plug-ins register themselves via UltraNet_RegisterPlugin
 // at static-init time (or at runtime via the future RefreshPlugins loader).
 // The registry maintains two indexes: by plug-in name and by URL scheme.
-// Version: 0.3.0 (Stage 3)
+// Version: 0.3.1 (Stage 3)
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNet/UltraNetPlugins.h"
@@ -25,19 +25,27 @@
   static PluginLibHandle PluginOpen(const char* path)   { return LoadLibraryA(path); }
   static void*           PluginSym (PluginLibHandle h,
                                     const char* sym)    { return reinterpret_cast<void*>(GetProcAddress(h, sym)); }
-  static constexpr const char* kPluginExt = ".dll";
 #else
   #include <dlfcn.h>
   using PluginLibHandle = void*;
   static PluginLibHandle PluginOpen(const char* path)   { return dlopen(path, RTLD_NOW | RTLD_GLOBAL); }
   static void*           PluginSym (PluginLibHandle h,
                                     const char* sym)    { return dlsym(h, sym); }
-  #ifdef __APPLE__
-  static constexpr const char* kPluginExt = ".dylib";
-  #else
-  static constexpr const char* kPluginExt = ".so";
-  #endif
 #endif
+
+// Accept a plug-in file by extension. CMake builds our plug-ins as MODULE
+// libraries, which use the .so suffix on BOTH Linux and macOS; a SHARED build
+// would be .dylib on macOS. Accept both on POSIX so discovery never depends on
+// the build style. (The old code hard-coded .dylib on __APPLE__ and silently
+// skipped the .so files CMake actually produces there.)
+static bool IsPluginFile(const std::filesystem::path& p) {
+    const std::string ext = p.extension().string();
+#if defined(_WIN32) || defined(_WIN64)
+    return ext == ".dll";
+#else
+    return ext == ".so" || ext == ".dylib";
+#endif
+}
 
 // Plug-in DSO contract — see UltraNetPlugins.h for the full description.
 // We resolve v2 (UltraNet_PluginInit) first, fall back to v1
@@ -153,7 +161,7 @@ void UltraNet_RefreshPlugins() {
     for (const auto& entry : it) {
         if (!entry.is_regular_file(ec) || ec) continue;
         const auto& path = entry.path();
-        if (path.extension().string() != kPluginExt) continue;
+        if (!IsPluginFile(path)) continue;
 
         const std::string canonical =
             std::filesystem::weakly_canonical(path, ec).string();

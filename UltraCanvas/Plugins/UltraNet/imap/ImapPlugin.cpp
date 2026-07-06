@@ -1,4 +1,5 @@
 // UltraCanvas/Plugins/UltraNet/imap/ImapPlugin.cpp
+// Version: 0.2.0
 // IMAP / IMAPS plug-in. Implements the full IMailboxProtocolPlugin surface on
 // top of libcurl's native IMAP support: folder listing, mailbox STATUS,
 // envelope-only sync, single-message fetch, flag store, move and append — plus
@@ -8,8 +9,14 @@
 //
 // Build: produces libultranet_imap.{so,dylib}. Loaded at runtime by
 // UltraNet_RefreshPlugins(). Wire parsing lives in ImapParse.h (pure, tested).
-// Version: 0.2.0
-// Author: UltraCanvas Framework / ULTRA OS
+// UltraNet_RefreshPlugins(). Entry point:
+//   extern "C" void UltraNet_PluginRegister(void);
+//
+// Strategy:
+//   1. Issue a SEARCH ALL against the mailbox URL to enumerate UIDs.
+//   2. Fetch up to options.maxMessages most-recent messages by UID.
+//   3. Parse minimal RFC 822 headers (From / To / Cc / Subject / Date /
+//      Content-Type) into UltraNetMailMessage; full body lands in message.body.
 
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetPlugins.h>
@@ -391,6 +398,8 @@ void UltraNet_PluginInit(const UltraNetPluginHost* host) {
 }
 
 // v1 entry — POSIX-only fallback.
+#if !defined(_WIN32) && !defined(_WIN64)  // v1 resolves UltraNet_RegisterPlugin from the host at dlopen(); POSIX-only, Windows uses the v2 UltraNet_PluginInit vtable above
 extern "C" void UltraNet_PluginRegister(void) {
     UltraNet_RegisterPlugin(std::make_shared<ImapPlugin>());
 }
+#endif

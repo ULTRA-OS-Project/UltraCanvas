@@ -16,7 +16,8 @@
 //      UltraNetMailMessage::body.
 //
 // We never DELE — apps that want to delete must do it explicitly.
-// Version: 0.1.0
+// Version: 0.1.1
+// Last Modified: 2026-07-05
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include <UltraNet/UltraNetCore.h>
@@ -279,6 +280,8 @@ void UltraNet_PluginInit(const UltraNetPluginHost* host) {
 }
 
 // v1 entry — POSIX-only fallback.
+#if !defined(_WIN32) && !defined(_WIN64)  // v1 resolves UltraNet_RegisterPlugin from the host at dlopen(); POSIX-only, Windows uses the v2 UltraNet_PluginInit vtable above
 extern "C" void UltraNet_PluginRegister(void) {
     UltraNet_RegisterPlugin(std::make_shared<Pop3Plugin>());
 }
+#endif

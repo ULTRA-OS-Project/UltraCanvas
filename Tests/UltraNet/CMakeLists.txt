@@ -29,11 +29,11 @@ target_link_libraries(UltraNetTests PRIVATE UltraNet)
 target_include_directories(UltraNetTests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR})
 
-# Loopback test needs -rdynamic on Linux so a future DSO-based test can
-# resolve UltraNet_RegisterPlugin from the main binary symbols.
-if(UNIX AND NOT APPLE)
-    target_link_options(UltraNetTests PRIVATE -rdynamic)
-endif()
+# The plug-in tests dlopen DSOs (linked with -undefined dynamic_lookup) whose v1
+# fallback references UltraNet_RegisterPlugin; the host must export its symbols so
+# that reference resolves at load time. ENABLE_EXPORTS does this portably
+# (-rdynamic on Linux, -export_dynamic on macOS), matching the demo/texter apps.
+set_target_properties(UltraNetTests PROPERTIES ENABLE_EXPORTS ON)
 
 # Point the SMTP plug-in test at the built DSO when the plug-in is in this
 # build (so it doesn't try to compile from source).

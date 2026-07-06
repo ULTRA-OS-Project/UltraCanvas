@@ -1,3 +1,8 @@
+#### 2026-07-05 *0.3.1*
+- Merged "ODT/DOCX support for file elements"
+- Merged "UltraCanvas text document support"
+- Merged "UltraCanvas eBook file support validation"
+
 #### 2026-07-04 *0.3.0*
 - Implemented UltraNet networking module — full v1.0 master-registry surface
   plus v1.1 extensions (`UltraNet/UltraNetCore.h`, `UltraNetHttp.h`,

@@ -1,7 +1,8 @@
 // OS/MSWindows/UltraNetDnsImpl.cpp
 // DnsQuery_A-backed DNS-record queries for non-A/AAAA types on Windows.
 // Linked against dnsapi (via CMake).
-// Version: 0.3.1 (Stage 3 hardening)
+// Version: 0.3.2 (UNICODE/ANSI DNS record fix)
+// Last Modified: 2026-07-05
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "../../core/UltraNet/UltraNetDnsImpl.h"
@@ -41,7 +42,10 @@ WORD ToDnsType(UltraNetDnsType t) {
     return DNS_TYPE_A;
 }
 
-bool FormatRecord(const DNS_RECORD* r, UltraNetDnsType type, std::string& out) {
+// DnsQuery_A returns ANSI records (char* fields). Under -DUNICODE the DNS_RECORD
+// macro resolves to DNS_RECORDW (wchar_t* fields), so we operate on the explicit
+// ANSI record type to match what the _A query actually hands back.
+bool FormatRecord(const DNS_RECORDA* r, UltraNetDnsType type, std::string& out) {
     if (!r) return false;
     switch (type) {
         case UltraNetDnsType::MX: {
@@ -126,7 +130,7 @@ UltraNetResult Resolve(const std::string& hostname,
     }
     for (PDNS_RECORD r = records; r; r = r->pNext) {
         std::string formatted;
-        if (FormatRecord(r, type, formatted)) {
+        if (FormatRecord(reinterpret_cast<const DNS_RECORDA*>(r), type, formatted)) {
             outRecords.push_back(std::move(formatted));
         }
     }
