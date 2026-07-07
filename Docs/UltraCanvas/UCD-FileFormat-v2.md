@@ -1,0 +1,253 @@
+# UltraCanvas Document File Format v2.0 (UCD v2)
+
+Status: **Draft specification** — reference for the v2 implementation of
+`UltraCanvas/Plugins/Documents/UltraCanvasDocument.*`.
+
+UCD v2 is a multipurpose container for documents, forms, vector graphics and
+window/UI descriptions, with room for bitmap graphics and video in the future.
+One container format serves all content types:
+
+- window content for a programming IDE
+- single- and multi-page documents (PDF-like)
+- saveable/fillable forms
+- vector graphics (XAR-like feature set)
+- website-like pages with CSS-style layout and text styles
+- future: bitmap graphics, video
+
+Design goals:
+
+- **Detectable by content.** A human-readable ASCII signature at offset 0, so
+  `file(1)`, filers and hex viewers can identify the format and content type
+  without any parsing.
+- **Near real-time preview.** An optional HEIC thumbnail stored *uncompressed*
+  directly after the fixed header, so a filer can extract a preview by reading
+  a handful of bytes — no decompression, no decryption, no body parsing.
+- **Compressed by default.** The body is compressed (per section); the
+  thumbnail is not (HEIC is already internally compressed).
+- **Binary by default, text for debugging.** The body payload is a binary
+  serialization by default; the same structure can be written as XML/JSON text
+  for debugging, signalled by one header byte.
+- **Forward compatible.** Fixed-offset header fields, a header-extension
+  length, and length-prefixed body sections that old readers can skip.
+
+All multi-byte integers are **little-endian**. All offsets are from the start
+of the file unless stated otherwise.
+
+---
+
+## 1. File layout overview
+
+```
++--------------------------------------+
+| Fixed header (28 bytes)              |  never compressed, never encrypted
++--------------------------------------+
+| Header extension (optional)          |  length given in fixed header
++--------------------------------------+
+| Thumbnail (optional, raw HEIC/PNG)   |  never compressed, never encrypted
++--------------------------------------+
+| Section 0 (usually INDX)             |  each section is independently
+| Section 1                            |  compressed and (optionally)
+| ...                                  |  encrypted
+| Section n                            |
++--------------------------------------+
+```
+
+## 2. Signature and fixed header
+
+### 2.1 Signature (bytes 0–11)
+
+The 12-byte signature follows the PNG pattern — every byte has a job:
+
+| Offset | Size | Value | Purpose |
+|---|---|---|---|
+| 0 | 1 | `0x89` | High bit set: file cannot be mistaken for ASCII text; detects 7-bit stripping. |
+| 1 | 8 | ASCII type descriptor, NUL-padded | Human-readable content type (see 2.2). |
+| 9 | 2 | `0x0D 0x0A` (`\r\n`) | Detects DOS↔Unix line-ending conversion by text-mode transfers. |
+| 11 | 1 | `0x1A` | Stops accidental console output (`type`) on legacy systems. |
+
+### 2.2 Type descriptors
+
+The descriptor names the *primary* content type of the file. It is pure
+ASCII, at most 8 characters, padded with `0x00` to exactly 8 bytes.
+
+| Descriptor | Bytes 1–8 (hex) | Primary content |
+|---|---|---|
+| `UCDoc` | `55 43 44 6F 63 00 00 00` | Multi-page document (PDF-like) |
+| `UCForm` | `55 43 46 6F 72 6D 00 00` | Saveable / fillable form |
+| `UCVector` | `55 43 56 65 63 74 6F 72` | Vector graphics (XAR-like) |
+| `UCWindow` | `55 43 57 69 6E 64 6F 77` | Window/UI description (IDE templates) |
+| `UCBitmap` | `55 43 42 69 74 6D 61 70` | Bitmap graphics (future) |
+| `UCVideo` | `55 43 56 69 64 65 6F 00` | Video (future) |
+
+Detection rules:
+
+- All UltraCanvas files share the 3-byte prefix `0x89 'U' 'C'` and the fixed
+  trailer `0x0D 0x0A 0x1A` at offsets 9–11. Matching prefix + trailer
+  identifies "an UltraCanvas container"; the descriptor at offset 1
+  distinguishes the content type. Both live at fixed offsets, so standard
+  magic databases (`file(1)`, shared-mime-info, filer sniffers) can match
+  them with a single fixed-offset rule per type.
+- The descriptor selects the *default viewer/editor*; it does not restrict
+  the sections a file may contain (a `UCDoc` may embed vector and form
+  sections, for example).
+
+### 2.3 Fixed header fields (bytes 12–27)
+
+| Offset | Size | Field | Values / meaning |
+|---|---|---|---|
+| 12 | 1 | Version major | `2` for this specification |
+| 13 | 1 | Version minor | `0` |
+| 14 | 1 | Body encoding | `0` = binary (default), `1` = XML text (debug), `2` = JSON text (debug) |
+| 15 | 1 | Default body compression | `0` = none, `1` = deflate, `2` = gzip, `3` = LZMA. Applies to sections that do not override it. Default when writing: `1` (deflate). |
+| 16 | 1 | Encryption type | `0` = none, `1` = AES-256-GCM, `2` = ChaCha20-Poly1305 |
+| 17 | 1 | Flags | See 2.4 |
+| 18 | 2 | Reserved | Must be `0x0000`; readers must ignore |
+| 20 | 4 | Thumbnail length | uint32, bytes of raw thumbnail data; `0` if no thumbnail |
+| 24 | 4 | Header extension length | uint32, bytes of extension data following the fixed header; `0` in v2.0 |
+
+A reader needs exactly the first 28 bytes to know: format + content type,
+version, whether it can show a preview (and how many bytes to read for it),
+and whether a password will be required for the body.
+
+### 2.4 Flags byte (offset 17)
+
+| Bit | Name | Meaning |
+|---|---|---|
+| 0 | `THUMBNAIL` | A thumbnail is present. Must agree with thumbnail length > 0. |
+| 1 | `THUMB_FORMAT` | `0` = HEIC, `1` = PNG (fallback for writers without a HEIC encoder). |
+| 2 | `ENCRYPTED` | The document body is password-protected. Mirrors *encryption type ≠ 0* so filers can test one bit without reading offset 16. |
+| 3 | `PRIVATE` | Confidential document: writers must **omit** the thumbnail and must not expose metadata outside the encrypted body. When set, bit 0 must be `0` and thumbnail length must be `0`. |
+| 4–7 | reserved | Writers set `0`; readers ignore. |
+
+Notes:
+
+- `ENCRYPTED` without `PRIVATE` is explicitly allowed and is the default for
+  password-protected files: the thumbnail (and the plain-text `META` section,
+  if the writer chooses to keep it unencrypted) remain readable so the filer
+  can still preview the document. `PRIVATE` is the opt-in for hiding even the
+  preview.
+- The fixed header, header extension and thumbnail are **never** encrypted or
+  compressed. Encryption applies per body section (see 4.3).
+
+## 3. Thumbnail
+
+Purpose: near real-time display in a filer, especially for vector graphics
+where full rendering may be slow.
+
+- Located immediately after the fixed header + header extension.
+- Stored **raw** (HEIC by default, PNG fallback per flag bit 1). It is never
+  wrapped in the container compression — HEIC/PNG are already compressed and
+  re-compressing wastes CPU for no gain.
+- Length is given at header offset 20, so a filer reads
+  `28 + extLength + thumbLength` bytes total and hands the raw data to the
+  system HEIC/PNG decoder. Image dimensions come from the image data itself.
+
+Writer policy (application-level, not enforced by the format):
+
+- Thumbnail size is **configurable** (default suggestion: 256 px on the
+  longest edge; the writer may choose any size).
+- For vector graphics, a thumbnail should be generated once the element count
+  exceeds a **configurable threshold** (suggestion: 50 elements); below the
+  threshold a filer can render the vector content directly at interactive
+  speed, so no thumbnail is required.
+- Writers must regenerate the thumbnail on save whenever visible content
+  changed; a stale thumbnail is worse than none.
+
+## 4. Body sections
+
+The body is a sequence of length-prefixed sections. Sections give random
+access (render page 40 without touching pages 1–39), let old readers skip
+unknown content, and allow large media to be streamed.
+
+### 4.1 Section header (12 bytes, never compressed/encrypted)
+
+| Offset | Size | Field | Meaning |
+|---|---|---|---|
+| 0 | 4 | Type ID | Four ASCII characters (see 4.2) |
+| 4 | 4 | Payload length | uint32, bytes of payload as stored in the file (i.e. after compression/encryption) |
+| 8 | 1 | Compression | `0xFF` = use header default (offset 15); otherwise same codes as offset 15 |
+| 9 | 1 | Section flags | bit 0 = payload encrypted; bits 1–7 reserved |
+| 10 | 2 | Reserved | `0x0000` |
+
+Sections follow each other back-to-back; the file ends after the last
+section. A reader iterates by jumping `12 + payloadLength` per section.
+
+### 4.2 Section types
+
+| ID | Content | Notes |
+|---|---|---|
+| `INDX` | Section index: array of (type ID, absolute offset, stored length, uncompressed length) | Optional but recommended as the **first** section; enables random access without scanning. |
+| `META` | Document metadata (title, author, dates, custom properties) | May be left unencrypted in an `ENCRYPTED` file unless `PRIVATE` is set. |
+| `STYL` | Stylesheet: named styles for fonts, padding, margins, colors — CSS-like, referencing the `UltraCanvas::CSSLayout` property set | Shared styles referenced by ID from pages/components. |
+| `WNDW` | Window definitions (`UCWindowData`) | IDE templates / window content. |
+| `PAGE` | One page (`UCPageData`) including its component tree | One section per page → per-page random access. |
+| `FORM` | Form field definitions, validation rules, saved field values | |
+| `VECT` | Vector graphics document (serialized `VectorStorage::VectorDocument`: layers, paths, gradients, masks, filters, text-on-path …) | XAR-like feature set. |
+| `MEDI` | One embedded media resource (image/audio/video/font), MIME-typed | One section per resource; already-compressed media should set compression `0` (none). |
+| `NAVI` | Navigation: page order, bookmarks, table of contents, transitions | |
+| `SECU` | Security parameters: KDF salt, iteration count, permission bits (print/copy/edit/form-fill) | Never encrypted (it is the input to decryption). |
+| `XTND` | Reserved for vendor/application extensions | Readers must skip unknown types. |
+
+Rules:
+
+- Unknown section types must be skipped using the payload length — this is
+  the forward-compatibility mechanism.
+- Multiple sections of the same type are allowed where it makes sense
+  (`PAGE`, `MEDI`, `VECT`, `WNDW`).
+- The content-type descriptor in the signature declares the primary sections
+  a file is expected to contain (e.g. `UCVector` → at least one `VECT`), but
+  mixed documents are valid.
+
+### 4.3 Compression and encryption pipeline
+
+Per section, in this order:
+
+1. Serialize the payload (binary by default; XML/JSON in debug mode).
+2. Compress (unless compression = none for this section).
+3. Encrypt (only if header encryption type ≠ 0 and the section's *encrypted*
+   flag is set), using the key derived via the `SECU` parameters
+   (recommended KDF: Argon2id, fallback PBKDF2-HMAC-SHA256).
+
+Compression **per section** (rather than one blob over the whole body, as in
+v1) is what makes the thumbnail-at-front and random page access possible.
+
+## 5. Binary vs. text body encoding
+
+Header byte 14 selects the encoding of *all* structured section payloads:
+
+- **`0` — binary (default).** Compact tag-length-value serialization of the
+  document model. This is the production format.
+- **`1` — XML / `2` — JSON (debug).** Identical structure serialized as text,
+  intended for debugging, diffing and hand-inspection. Typically combined
+  with compression = none so the sections are directly readable in an editor
+  after the 28-byte header. Not intended for interchange; writers should
+  always produce binary for end users.
+
+The section layer (headers, index, thumbnail, encryption) is identical in
+both modes — only the payload bytes differ.
+
+## 6. Reader/writer requirements
+
+- Writers set every reserved field to zero; readers ignore reserved fields.
+- Readers must validate all 12 signature bytes (guard byte, descriptor,
+  `\r\n`, `0x1A`) before trusting anything else.
+- Readers encountering a higher *minor* version must read the file, skipping
+  unknown sections/flags. A higher *major* version is not readable.
+- Writers must keep the descriptor consistent with the dominant content so
+  filers pick the right icon/preview strategy.
+
+## 7. Changes from v1 (`UCD\x01`)
+
+| Aspect | v1 | v2 |
+|---|---|---|
+| Signature | `UCD\x01` (4 bytes, not self-describing) | 12-byte PNG-style ASCII signature with per-type descriptor |
+| Thumbnail | none | raw HEIC/PNG straight after header, length in fixed header |
+| Body | single XML blob, compressed then encrypted as a whole | independent length-prefixed sections, compressed/encrypted per section |
+| Random access | none (full decompress required) | per section via `INDX` |
+| Encoding | XML text only | binary default, XML/JSON debug modes |
+| Vector graphics | not representable | first-class `VECT` section (VectorStorage model) |
+| Styles | flat per-component properties | shared `STYL` stylesheet section |
+| Privacy | n/a | `ENCRYPTED` + `PRIVATE` flag bits |
+
+File extension stays `.ucd`. v1 files are distinguished by their old 4-byte
+signature; loaders should keep the v1 read path during a transition period.
