@@ -284,11 +284,13 @@ time both the app and the service recompute/compare it, which detects:
   so blob size reveals nothing), not brute-force resistance.
 - `PRIVATE` flag semantics apply as usual; SuperVault files may still carry a
   thumbnail unless `PRIVATE` is set.
-- Availability trade-off is intentional: no service + owner confirmation →
-  no access. Writers should warn users that a SuperVault file is unreadable
-  if the owner account is deleted or the service is unreachable; an optional
-  owner-side "offline grant" (time-limited cached key material issued in
-  advance) is a service feature, not part of the file format.
+- Availability trade-off is intentional and absolute: no service + owner
+  confirmation → no access. If the owner account is not accessible, dormant,
+  or deleted, the file **cannot be opened — permanently**. There is no key
+  escrow, no recovery path, and no offline fallback; this is a deliberate
+  security property, not a limitation to be worked around. Writer
+  applications must state this clearly to the user when a file is first
+  saved with SuperVault protection.
 
 ## 5. Binary vs. text body encoding
 
