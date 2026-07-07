@@ -4,8 +4,8 @@
 // UltraCanvasFileLoader::LoadTextDocument into a UCRichDocument, displayed as
 // rendered Markdown in a read-only TextArea. A standard sample document is
 // loaded from media/docs/document.odt on entry.
-// Version: 1.0.0
-// Last Modified: 2026-07-03
+// Version: 1.1.0
+// Last Modified: 2026-07-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -72,11 +72,20 @@ namespace UltraCanvas {
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateODTExamples() {
-        const int kWidth  = 1020;
-        const int kHeight = 720;
+        // The document view holds a full DIN A4 page (210 x 297 mm) at the
+        // conventional 96 DPI screen resolution, so an entire letter-style
+        // document is on display at once. The page is taller than the demo
+        // window; the surrounding display area scrolls.
+        const int kPageWidth  = 794;    // 210 mm at 96 DPI
+        const int kPageHeight = 1123;   // 297 mm at 96 DPI
+        const int kWidth   = 1020;
+        const int kViewTop = 92;
+        const int kHeight  = kViewTop + kPageHeight + 16;
+        const int kViewLeft = (kWidth - kPageWidth) / 2;
 
         auto root = std::make_shared<UltraCanvasContainer>("ODTExamples", 0, 0, kWidth, kHeight);
-        root->SetBackgroundColor(Colors::White);
+        // Neutral desk color around the white page, document-viewer style.
+        root->SetBackgroundColor(Color(235, 236, 239, 255));
 
         // ===== TITLE =====
         auto title = std::make_shared<UltraCanvasLabel>("odtTitle", 20, 12, 900, 28);
@@ -100,12 +109,15 @@ namespace UltraCanvas {
         // The parsed UCRichDocument is serialized to Markdown and rendered by
         // the TextArea's MarkdownHybrid mode: headings, bold/italic, lists,
         // tables, images and $math$ all display without a separate viewer.
-        auto view = std::make_shared<UltraCanvasTextArea>("odtView", 20, 92,
-                                                          kWidth - 40, kHeight - 104);
+        // Sized and centered as one full DIN A4 page.
+        auto view = std::make_shared<UltraCanvasTextArea>("odtView", kViewLeft, kViewTop,
+                                                          kPageWidth, kPageHeight);
         view->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
         view->SetReadOnly(true);
         view->SetWordWrap(true);
-        view->SetPadding(0, 5, 0, 7);
+        view->SetBackgroundColor(Colors::White);
+        // Page margins approximating a printed letter (~10 mm at 96 DPI).
+        view->SetPadding(38);
         root->AddChild(view);
 
         // ===== STANDARD SAMPLE DOCUMENT =====
