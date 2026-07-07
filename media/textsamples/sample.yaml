@@ -1,0 +1,29 @@
+# sample.yaml — YAML syntax-highlighting sample for the UltraCanvas demo.
+name: UltraCanvas
+version: 2.0.0
+description: Cross-platform native UI framework
+
+build:
+  compiler: clang
+  standard: c++17
+  flags:
+    - -O2
+    - -Wall
+    - -Wextra
+
+features:
+  syntax_highlighting: true
+  line_numbers: true
+  word_wrap: false
+
+platforms:
+  - name: linux
+    backend: x11
+  - name: windows
+    backend: gdi
+  - name: macos
+    backend: cocoa
+
+authors:
+  - name: UltraCanvas Framework
+    email: info@example.com

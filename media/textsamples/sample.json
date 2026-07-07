@@ -1,0 +1,25 @@
+{
+    "name": "UltraCanvas",
+    "version": "2.0.0",
+    "description": "Cross-platform native UI framework",
+    "license": "MIT",
+    "features": [
+        "syntax highlighting",
+        "line numbers",
+        "multi-language support"
+    ],
+    "settings": {
+        "theme": "light",
+        "fontSize": 11,
+        "wordWrap": false,
+        "tabWidth": 4
+    },
+    "author": {
+        "name": "UltraCanvas Framework",
+        "url": "https://example.com"
+    },
+    "dependencies": {
+        "freetype": "^2.13",
+        "harfbuzz": "^8.0"
+    }
+}
