@@ -299,6 +299,8 @@ void UltraCanvasEBookViewer::ApplyThemeColors() {
 void UltraCanvasEBookViewer::RebuildChapterContent() {
     if (!contentScroll) return;
     contentScroll->ClearChildren();
+    chapterAnchors.clear();
+    pendingAnchorId.clear();
 
     if (!IsDocumentLoaded() || currentChapter < 0) {
         auto placeholder = std::make_shared<UltraCanvasLabel>(
@@ -343,6 +345,7 @@ void UltraCanvasEBookViewer::RebuildChapterContent() {
     result.root->box.padding.left = CSSLayout::Dimension::Px(28);
     result.root->box.padding.right = CSSLayout::Dimension::Px(28);
 
+    chapterAnchors = std::move(result.anchors);
     contentScroll->AddChild(result.root);
     contentScroll->ScrollToVertical(0);
     RequestRedraw();
@@ -358,9 +361,70 @@ void UltraCanvasEBookViewer::OpenLink(const std::string& baseHref,
         return;
     }
 
-    int chapter = engine->GetChapterIndexForHref(ResolveEBookHref(baseHref, href));
-    if (chapter >= 0) GoToChapter(chapter);
-    // Fragment scrolling inside the target chapter is not supported yet.
+    std::string path = href;
+    std::string fragment;
+    size_t hash = path.find('#');
+    if (hash != std::string::npos) {
+        fragment = path.substr(hash + 1);
+        path = path.substr(0, hash);
+    }
+
+    if (path.empty()) {                       // same-document fragment
+        ScrollToAnchor(fragment);
+        return;
+    }
+
+    int chapter = engine->GetChapterIndexForHref(ResolveEBookHref(baseHref, path));
+    if (chapter < 0) return;
+    if (chapter == currentChapter) {          // content already laid out
+        ScrollToAnchor(fragment);
+        return;
+    }
+
+    GoToChapter(chapter);
+    // The new content has no layout yet, so anchor positions are unknown —
+    // defer the fragment scroll until the next Arrange. (GoToChapter's
+    // rebuild cleared any stale pending anchor.)
+    if (currentChapter == chapter && !fragment.empty()) {
+        pendingAnchorId = fragment;
+    }
+}
+
+bool UltraCanvasEBookViewer::ScrollToAnchor(const std::string& anchorId) {
+    if (!contentScroll) return false;
+    if (anchorId.empty()) {
+        contentScroll->ScrollToVertical(0);
+        return true;
+    }
+
+    auto it = chapterAnchors.find(anchorId);
+    if (it == chapterAnchors.end() || !it->second) return false;
+
+    // Children's finalBounds are in the parent's border-box frame, so the
+    // anchor's offset inside the content pane is the plain sum up the chain.
+    float y = 0.f;
+    CSSLayout::Element* element = it->second.get();
+    while (element && element != contentScroll.get()) {
+        y += element->finalBounds.y;
+        element = element->Parent();
+    }
+    if (!element) return false;   // not part of the current content tree
+
+    // The scroll range is measured from the content-box origin.
+    y -= contentScroll->GetBorderTopWidth() + contentScroll->GetPaddingTop();
+    contentScroll->ScrollToVertical(std::max(0, static_cast<int>(y)));
+    RequestRedraw();
+    return true;
+}
+
+void UltraCanvasEBookViewer::Arrange(const Rect2Df& finalRect,
+                                     const CSSLayout::LayoutContext& ctx) {
+    UltraCanvasContainer::Arrange(finalRect, ctx);
+    if (!pendingAnchorId.empty()) {
+        std::string anchor = std::move(pendingAnchorId);
+        pendingAnchorId.clear();
+        ScrollToAnchor(anchor);
+    }
 }
 
 void UltraCanvasEBookViewer::PopulateTOC() {

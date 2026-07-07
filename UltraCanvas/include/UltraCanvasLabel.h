@@ -47,12 +47,24 @@ namespace UltraCanvas {
         static LabelStyle StatusStyle();
     };
 
+// ===== TEXT LINKS =====
+    // A hyperlink inside the label's rendered text. Byte offsets refer to the
+    // text as laid out (markup parsed, entities decoded) — the same indexing
+    // that ITextLayout::XYToIndex reports.
+    struct LabelTextLink {
+        int startByte = 0;
+        int endByte = 0;      // exclusive
+        std::string href;
+    };
+
 // ===== LABEL COMPONENT =====
     class UltraCanvasLabel : public UltraCanvasUIElement {
     private:
         // ===== LABEL PROPERTIES =====
         std::string text;
         LabelStyle style;
+        std::vector<LabelTextLink> textLinks;
+        int hoveredLink = -1;
 
         // ===== COMPUTED LAYOUT =====
         Rect2Di textArea;
@@ -82,6 +94,18 @@ namespace UltraCanvas {
         const std::string &GetText() const {
             return text;
         }
+
+        // ===== TEXT LINKS =====
+        // Clickable byte ranges inside the rendered text; activation is
+        // reported through onLinkActivated. Hit testing needs the text
+        // layout, so it only works once the label has been rendered.
+        void SetTextLinks(std::vector<LabelTextLink> links) {
+            textLinks = std::move(links);
+            hoveredLink = -1;
+        }
+        const std::vector<LabelTextLink> &GetTextLinks() const { return textLinks; }
+        // Index into GetTextLinks() of the link at a label-local point, or -1.
+        int LinkIndexAtPoint(const Point2Di& localPoint);
 
         // ===== STYLE MANAGEMENT =====
         void SetStyle(const LabelStyle &newStyle);
@@ -125,10 +149,12 @@ namespace UltraCanvas {
         bool OnEvent(const UCEvent& event) override;
 
         // A label with a click handler behaves like a hyperlink, so it reports
-        // the hand/pointer cursor automatically. An explicit SetMouseCursor()
+        // the hand/pointer cursor automatically (for text links only while
+        // the pointer is over a link range). An explicit SetMouseCursor()
         // (i.e. a non-Default cursor) always takes precedence.
         UCMouseCursor GetMouseCursor() const override {
-            if (mouseCursor == UCMouseCursor::Default && onClick) {
+            if (mouseCursor == UCMouseCursor::Default &&
+                (onClick || hoveredLink >= 0)) {
                 return UCMouseCursor::Hand;
             }
             return mouseCursor;
@@ -136,6 +162,8 @@ namespace UltraCanvas {
 
         // ===== EVENT CALLBACKS =====
         std::function<void()> onClick;
+        // Fired with LabelTextLink::href when a text link is clicked.
+        std::function<void(const std::string&)> onLinkActivated;
         std::function<void()> onHoverEnter;
         std::function<void()> onHoverLeave;
         std::function<void(const std::string&)> onTextChanged;

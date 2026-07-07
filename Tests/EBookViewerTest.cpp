@@ -42,7 +42,8 @@ static const unsigned char kDotPng[] = {
     0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82};
 
 // eBook-viewer regression cases for the element builder: svg-wrapped cover
-// images, clickable links, and content containers without own scrollbars.
+// images, per-range clickable links, #fragment anchors, and content
+// containers without own scrollbars.
 static void TestChapterContentBuilding() {
     HTML::BuildOptions options;
     std::string activatedHref;
@@ -54,14 +55,15 @@ static void TestChapterContentBuilding() {
     };
 
     // EPUB cover-page pattern: raster image wrapped in an svg viewport
-    // (xlink:href), plus an internal link.
+    // (xlink:href), plus a paragraph with two distinct links and anchors.
     HTML::ElementBuilder builder;
     auto result = builder.Build(
         "<html><body>"
-        "<div><svg viewBox=\"0 0 513 751\">"
+        "<div id=\"top\"><svg viewBox=\"0 0 513 751\">"
         "<image width=\"513\" height=\"751\" xlink:href=\"../Images/cover.jpeg\"/>"
         "</svg></div>"
-        "<p><a href=\"../Text/ch1.html#s1\">Chapter 1</a></p>"
+        "<p><a id=\"mark\"></a>Go to <a href=\"a.html\">first</a> and "
+        "<a href=\"b.html\">second</a>.</p>"
         "</body></html>",
         options);
     CHECK(result.root != nullptr);
@@ -69,13 +71,13 @@ static void TestChapterContentBuilding() {
 
     int images = 0;
     int scrollbarContainers = 0;
-    std::function<void()> linkClick;
+    UltraCanvasLabel* linkLabel = nullptr;
     std::function<void(UltraCanvasContainer&)> walk = [&](UltraCanvasContainer& c) {
         if (c.GetContainerStyle().autoShowScrollbars) ++scrollbarContainers;
         for (auto& childPtr : c.GetChildren()) {
             if (dynamic_cast<UltraCanvasImageElement*>(childPtr.get())) ++images;
             if (auto* label = dynamic_cast<UltraCanvasLabel*>(childPtr.get())) {
-                if (label->onClick && !linkClick) linkClick = label->onClick;
+                if (!label->GetTextLinks().empty() && !linkLabel) linkLabel = label;
             }
             if (auto* sub = dynamic_cast<UltraCanvasContainer*>(childPtr.get())) {
                 walk(*sub);
@@ -86,11 +88,33 @@ static void TestChapterContentBuilding() {
 
     CHECK(images == 1);                 // svg <image xlink:href> became an image
     CHECK(scrollbarContainers == 0);    // scrolling stays with the host view
-    CHECK(bool(linkClick));             // the link run is clickable
-    if (linkClick) {
-        linkClick();
-        CHECK(activatedHref == std::string("../Text/ch1.html#s1"));
+
+    // Both links carry byte ranges into the rendered text
+    // ("Go to first and second.") and activate independently.
+    CHECK(linkLabel != nullptr);
+    if (linkLabel) {
+        const auto& links = linkLabel->GetTextLinks();
+        CHECK(links.size() == 2);
+        if (links.size() == 2) {
+            CHECK(links[0].href == std::string("a.html"));
+            CHECK(links[0].startByte == 6 && links[0].endByte == 11);   // "first"
+            CHECK(links[1].href == std::string("b.html"));
+            CHECK(links[1].startByte == 16 && links[1].endByte == 22);  // "second"
+        }
+        CHECK(bool(linkLabel->onLinkActivated));
+        if (linkLabel->onLinkActivated && links.size() == 2) {
+            linkLabel->onLinkActivated(links[1].href);
+            CHECK(activatedHref == std::string("b.html"));
+        }
     }
+
+    // #fragment anchors: block-level ids and empty inline <a id> targets are
+    // both registered and point at elements inside the built tree.
+    CHECK(result.anchors.count("top") == 1);
+    CHECK(result.anchors.count("mark") == 1);
+    CHECK(result.anchors.count("missing") == 0);
+    if (result.anchors.count("top")) CHECK(result.anchors.at("top") != nullptr);
+    if (result.anchors.count("mark")) CHECK(result.anchors.at("mark") != nullptr);
 }
 
 int main() {
