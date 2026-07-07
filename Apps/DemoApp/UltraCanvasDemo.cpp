@@ -1423,6 +1423,17 @@ namespace UltraCanvas {
                 .AddVariant("alert", "Confirm (Yes/No)")
                 .AddVariant("alert", "Rich (details / buttons)");
 
+        widgetsBuilder.AddItem("pagination", "Pagination",
+                               "Page-navigation strip with ellipsis windowing, compact and simple modes",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreatePaginationExamples(); },
+                               "DemoApp/UltraCanvasPaginationExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasPagination.md")
+                .AddVariant("pagination", "Numbered / Ellipsis")
+                .AddVariant("pagination", "From Item Count")
+                .AddVariant("pagination", "Compact")
+                .AddVariant("pagination", "Simple");
+
         widgetsBuilder.AddItem("mediaviewer", "Media Viewer",
                                "Comprehensive media viewer for images, documents (PDF), audio and "
                                "video: folder browsing, next/previous (arrows or mouse, even while "
