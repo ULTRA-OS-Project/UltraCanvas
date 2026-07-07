@@ -643,6 +643,18 @@ namespace UltraCanvas {
                 .AddVariant("slider", "Vertical Slider")
                 .AddVariant("slider", "Range Slider");
 
+        basicBuilder.AddItem("spinner", "Spinner / SpinBox",
+                             "Select a value with up/down (or left/right) arrow buttons, "
+                             "arrow keys, the mouse wheel, or by typing",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateSpinnerExamples(); },
+                             "DemoApp/UltraCanvasSpinnerExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasSpinner.md")
+                .AddVariant("spinner", "Integer Spinner")
+                .AddVariant("spinner", "Decimal Spinner")
+                .AddVariant("spinner", "List / Value Cycle")
+                .AddVariant("spinner", "Horizontal Stepper");
+
         basicBuilder.AddItem("scrollbars", "Scrollbars",
                              "Standalone scrollbars: preset styles, colour options, "
                              "corner-radius / end-shape control and a custom SVG handle",
