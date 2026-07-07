@@ -184,8 +184,12 @@ section. A reader iterates by jumping `12 + payloadLength` per section.
 | `WNDW` | Window definitions (`UCWindowData`) | IDE templates / window content. |
 | `PAGE` | One page (`UCPageData`) including its component tree | One section per page → per-page random access. |
 | `FORM` | Form field definitions, validation rules, saved field values | |
-| `VECT` | Vector graphics document (serialized `VectorStorage::VectorDocument`: layers, paths, gradients, masks, filters, text-on-path …) | XAR-like feature set. |
+| `VECT` | Vector graphics document (serialized `VectorStorage::VectorDocument`: layers, paths, gradients, masks, filters, text-on-path …) | XAR-like feature set. Payload starts with the sub-format preamble (4.5). |
 | `MEDI` | One embedded media resource (image/audio/video/font), MIME-typed | One section per resource; already-compressed media should set compression `0` (none). |
+| `BMAP` | One native bitmap image | Payload starts with the sub-format preamble (4.5). |
+| `VIDS` | One native video stream | Payload starts with the sub-format preamble (4.5). |
+| `AUDS` | One native audio stream | Payload starts with the sub-format preamble (4.5). |
+| `SC3D` | One 3D scene/model | Payload starts with the sub-format preamble (4.5). |
 | `NAVI` | Navigation: page order, bookmarks, table of contents, transitions | |
 | `SECU` | Security parameters: KDF salt, iteration count, permission bits (print/copy/edit/form-fill) | Never encrypted (it is the input to decryption). |
 | `SVLT` | SuperVault remote-authorization record (see 4.4) | Never encrypted or compressed (it is the input to the authorization request); required when encryption type = `3`. |
@@ -291,6 +295,63 @@ time both the app and the service recompute/compare it, which detects:
   security property, not a limitation to be worked around. Writer
   applications must state this clearly to the user when a file is first
   saved with SuperVault protection.
+
+### 4.5 Sub-format identification
+
+Content sections that can carry more than one encoding (`VECT`, `BMAP`,
+`VIDS`, `AUDS`, `SC3D`) begin their payload with a common **8-byte
+sub-format preamble**, so every present and future media section identifies
+its encoding the same way. `MEDI` is the exception — it keeps its MIME-type
+string, since it exists precisely to wrap arbitrary foreign formats.
+
+#### Preamble layout (first 8 bytes of the payload)
+
+| Offset | Size | Field | Meaning |
+|---|---|---|---|
+| 0 | 4 | Sub-format FourCC | Four ASCII characters, space-padded (e.g. `'PNG '`) |
+| 4 | 1 | Sub-format version | Version of the *payload encoding*, starting at `1` |
+| 5 | 3 | Reserved | `0x000000` |
+
+The preamble is part of the payload: it is compressed and encrypted together
+with the content it describes (a codec identifier is only needed when the
+content is actually being decoded, so hiding it inside an encrypted section
+is correct — it leaks nothing about protected content).
+
+A reader that does not support a section's sub-format must treat the section
+like an unknown section type: skip it, and report the content as
+unavailable rather than failing the whole file.
+
+#### Sub-format registry
+
+| Section | FourCC | Encoding |
+|---|---|---|
+| `VECT` | `UCVS` | Native serialized `VectorStorage::VectorDocument` (default) |
+| `VECT` | `SVG ` | Embedded SVG document (pass-through, UTF-8 text) |
+| `BMAP` | `UCRW` | Native raw pixels: uint16 width, uint16 height, uint8 pixel format (`0` = RGBA8, `1` = RGB8, `2` = GRAY8, `3` = RGBA16), 3 reserved bytes, then rows top-down, unpadded |
+| `BMAP` | `PNG ` / `JPEG` / `HEIC` / `WEBP` / `AVIF` | Embedded image file (pass-through) |
+| `VIDS` | `WEBM` / `MP4 ` | Embedded container file (pass-through) |
+| `VIDS` | `AV1 ` / `H264` / `H265` / `VP9 ` | Elementary stream (timing/index data to be defined with the UCVideo payload spec) |
+| `AUDS` | `OPUS` / `FLAC` / `MP3 ` / `AAC ` / `VORB` | Embedded/elementary audio (pass-through) |
+| `AUDS` | `PCM ` | Raw audio: uint32 sample rate, uint8 channels, uint8 bits per sample (16/24/32, little-endian signed), 2 reserved bytes, then interleaved samples |
+| `SC3D` | `GLTF` / `GLB ` | Embedded glTF (JSON / binary) scene (pass-through) |
+| `SC3D` | `OBJ ` / `STL ` | Embedded mesh file (pass-through) |
+| `SC3D` | `UC3S` | Native UltraCanvas 3D scene serialization (to be defined) |
+
+Rules:
+
+- FourCCs are case-sensitive ASCII; codes consisting only of uppercase
+  letters, digits and spaces are reserved for this specification. Vendor
+  experiments must use a lowercase first character.
+- Pass-through sub-formats embed a complete file of the named format —
+  decoding is delegated to the corresponding UltraCanvas plugin (the same
+  loaders used for standalone files), so sub-format support automatically
+  tracks plugin support.
+- Already-compressed sub-formats (everything except `UCRW`, `PCM `, `UCVS`,
+  `SVG `, `GLTF`, `OBJ `, `STL `) should be stored with section
+  compression = none.
+- Every future content-section definition (e.g. the full `UCVideo` payload
+  spec) must keep this preamble as its first 8 bytes; new FourCCs are added
+  to this registry rather than inventing per-section mechanisms.
 
 ## 5. Binary vs. text body encoding
 
