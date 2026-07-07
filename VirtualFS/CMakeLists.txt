@@ -128,10 +128,12 @@ set(VIRTUALFS_HEADERS
     include/VirtualFS/VirtualFSPath.h
     include/VirtualFS/VirtualFSProvider.h
     include/VirtualFS/VirtualFSManager.h
+    include/VirtualFS/VirtualFSCompression.h
 )
 
 set(VIRTUALFS_SOURCES
     core/VirtualFSManager.cpp
+    core/VirtualFSCompression.cpp
 )
 
 # Add provider sources based on available libraries

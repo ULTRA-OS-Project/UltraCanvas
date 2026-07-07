@@ -65,6 +65,31 @@ interface in `VirtualFS/VirtualFSProvider.h`.
 | LZX | `UCVFSCompressionType::LZX` (bridge) | Moderate | Good | CAB, CHM, WIM |
 | Brotli | `VirtualFSCompressionMethod::Brotli` | Moderate | Excellent | Web content |
 
+### Raw buffer compression (no archive container)
+
+`VirtualFSCompression.h` exposes the compression codecs directly for
+modules that define their own binary formats and only need a
+compress/decompress primitive — e.g. the UltraWeb bundler compressing
+`.ucpkg` section payloads:
+
+```cpp
+#include <VirtualFS/VirtualFSCompression.h>
+using namespace VirtualFS;
+
+std::vector<uint8_t> compressed;
+VirtualFS_CompressBuffer(input, compressed, VirtualFSCompressionMethod::LZ4);
+
+std::vector<uint8_t> restored;
+VirtualFS_DecompressBuffer(compressed, restored);   // method auto-detected
+```
+
+Supported methods: `Store`, `Deflate` (zlib/gzip), `Zstd`, `LZ4`
+(standard LZ4 frame format, interoperable with any LZ4F decoder), and
+`Brotli` — each available only when the matching `VIRTUALFS_USE_*`
+option is enabled; query with `VirtualFS_IsCompressionMethodAvailable()`.
+`VirtualFS_DetectCompressionMethod()` identifies a stream by its magic
+bytes (Brotli excepted — it has none).
+
 ---
 
 ## Architecture
