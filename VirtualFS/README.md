@@ -90,6 +90,14 @@ option is enabled; query with `VirtualFS_IsCompressionMethodAvailable()`.
 `VirtualFS_DetectCompressionMethod()` identifies a stream by its magic
 bytes (Brotli excepted — it has none).
 
+Note on the UltraCanvas bridge: `UCVFSBridge::LZ4Compress` (in
+`UltraCanvasVirtualFSBridge`) predates this API and emits the LZ4
+*block* format, which has no header and is **not** readable by frame
+decoders — the two LZ4 outputs are not interchangeable. New code and
+anything crossing a process or network boundary (e.g. `.ucpkg`) should
+use this frame-format API; migrating the bridge to delegate here is a
+planned cleanup.
+
 ---
 
 ## Architecture
