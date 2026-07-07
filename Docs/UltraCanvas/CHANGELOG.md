@@ -1,4 +1,4 @@
-#### 2026-07-06
+#### 2026-07-06 *0.3.2*
 - Demo: the LaTeX Documents page now typesets every document **live** from its
   `.tex` source through the on-demand UltraCanvas LaTeX engine instead of
   showing a pre-rendered screenshot. Added a set of math-mode example
