@@ -179,7 +179,7 @@ section. A reader iterates by jumping `12 + payloadLength` per section.
 | ID | Content | Notes |
 |---|---|---|
 | `INDX` | Section index: array of (type ID, absolute offset, stored length, uncompressed length) | Optional but recommended as the **first** section; enables random access without scanning. |
-| `META` | Document metadata (title, author, dates, custom properties) | May be left unencrypted in an `ENCRYPTED` file unless `PRIVATE` is set. |
+| `META` | Document metadata: title, author, dates, custom properties, file UUID (random, set at creation), default locale (see 4.6) | May be left unencrypted in an `ENCRYPTED` file unless `PRIVATE` is set. |
 | `STYL` | Stylesheet: named styles for fonts, padding, margins, colors — CSS-like, referencing the `UltraCanvas::CSSLayout` property set | Shared styles referenced by ID from pages/components. |
 | `WNDW` | Window definitions (`UCWindowData`) | IDE templates / window content. |
 | `PAGE` | One page (`UCPageData`) including its component tree | One section per page → per-page random access. |
@@ -191,6 +191,7 @@ section. A reader iterates by jumping `12 + payloadLength` per section.
 | `AUDS` | One native audio stream | Payload starts with the sub-format preamble (4.5). |
 | `SC3D` | One 3D scene/model | Payload starts with the sub-format preamble (4.5). |
 | `NAVI` | Navigation: page order, bookmarks, table of contents, transitions | |
+| `LOCL` | Localization string table for one locale (see 4.6) | One section per locale; loaded on demand via `INDX`. |
 | `SECU` | Security parameters: KDF salt, iteration count, permission bits (print/copy/edit/form-fill) | Never encrypted (it is the input to decryption). |
 | `SVLT` | SuperVault remote-authorization record (see 4.4) | Never encrypted or compressed (it is the input to the authorization request); required when encryption type = `3`. |
 | `XTND` | Reserved for vendor/application extensions | Readers must skip unknown types. |
@@ -200,7 +201,10 @@ Rules:
 - Unknown section types must be skipped using the payload length — this is
   the forward-compatibility mechanism.
 - Multiple sections of the same type are allowed where it makes sense
-  (`PAGE`, `MEDI`, `VECT`, `WNDW`).
+  (`PAGE`, `MEDI`, `VECT`, `WNDW`, `LOCL`).
+- Each `WNDW` section contains exactly **one** window definition; the window
+  ID lives inside the payload and must be unique file-wide. Windows
+  reference each other (e.g. a main window opening a child) by window ID.
 - The content-type descriptor in the signature declares the primary sections
   a file is expected to contain (e.g. `UCVector` → at least one `VECT`), but
   mixed documents are valid.
@@ -352,6 +356,73 @@ Rules:
 - Every future content-section definition (e.g. the full `UCVideo` payload
   spec) must keep this preamble as its first 8 bytes; new FourCCs are added
   to this registry rather than inventing per-section mechanisms.
+
+### 4.6 Localization
+
+Localized text is **never embedded literally** in window, page or form
+definitions. Components reference strings by ID, and the strings live in
+per-locale string tables (`LOCL` sections). This is what allows one layout
+to serve every language, translations to ship separately, and the CSS
+layout engine to reflow per locale (text lengths and RTL direction differ).
+
+#### String references
+
+Any localizable text property may hold either a literal (non-localized
+documents stay simple) or a string reference of the form `@str.<id>`, where
+`<id>` is a dotted ASCII identifier, e.g. `@str.mainwindow.title`.
+Placeholders use `{0}`, `{1}`, … positional syntax; plural-form handling is
+an application concern, not a format feature.
+
+#### `LOCL` payload layout
+
+One section per locale. Strings are UTF-8; the section is compressed like
+any other (string tables compress extremely well).
+
+| Field | Type | Meaning |
+|---|---|---|
+| Record version | uint8 | `1` |
+| Flags | uint8 | bit 0 = RTL locale; bits 1–7 reserved |
+| Locale tag length | uint8 | |
+| Locale tag | ASCII | BCP-47, e.g. `en-GB`, `de-DE`, `ar` |
+| String count | uint32 | |
+| Entries × n | | uint16 ID length + ID, uint32 value length + UTF-8 value |
+| Media override count | uint32 | may be `0` |
+| Overrides × n | | uint16 ID length + resource ID, uint16 length + replacement `MEDI` resource ID — for locale-specific images and similar assets |
+
+#### Fallback and resolution
+
+- The `META` section names the document's **default locale**; its `LOCL`
+  table must be complete (every referenced string ID present). Other
+  locales may be partial.
+- Lookup order for a requested locale: external overlay `LOCL` (see below)
+  → embedded `LOCL` for the locale → embedded `LOCL` for the default
+  locale. A missing ID after fallback is a validation error
+  (`UCDocumentUtils::ValidateDocument` should check that the default table
+  covers every `@str.` reference in the file).
+- A runtime loads only the `LOCL` section(s) it needs, located via `INDX`;
+  unused languages cost nothing at load time.
+
+#### External translation overlays (language packs)
+
+The same mechanism ships translations separately: an **overlay file** is an
+ordinary UCD file whose body contains only `META` and `LOCL` sections. Its
+`META` carries two binding properties:
+
+- `TranslatesFileUUID` — the file UUID of the base document (every UCD file
+  gets a random UUID in `META` at creation);
+- `TranslatesFileModified` — the base file's modification timestamp at the
+  time the translation was made.
+
+A loader that is handed a base file plus overlay files checks the UUID
+(wrong file → overlay ignored) and compares the timestamp (older than the
+base file's current modification date → overlay is flagged as possibly
+stale, at the application's discretion). Overlay tables take precedence
+over embedded ones in the lookup order above.
+
+Embedded tables are the **default and recommended** distribution form —
+single file, atomic, translations can never desynchronize from the layout.
+Overlays exist for the language-pack workflow (adding or fixing a
+translation without re-shipping the document).
 
 ## 5. Binary vs. text body encoding
 
