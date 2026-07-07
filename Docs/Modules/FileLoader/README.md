@@ -28,6 +28,28 @@ FileLoadResult image = FileLoader::LoadFile("photo.heic");
 FileLoadResult model = FileLoader::LoadFile("asset.fbx");
 ```
 
+### Transparent Decompression
+Apps never need to care about what compression format they are dealing
+with. Compressed content (gzip, zlib, Zstandard, LZ4) is detected by
+magic bytes — independent of the file extension — and decompressed
+automatically via the VirtualFS compression API, for local files and
+URL loads alike:
+
+```cpp
+// All of these deliver the plain payload; result.decompressedFrom
+// records the on-disk compression ("GZIP", "Zstandard", "LZ4", ...)
+auto a = UltraCanvasFileLoader::LoadFile("styles.css.gz");
+auto b = UltraCanvasFileLoader::LoadFile("dataset.json.zst");
+auto c = UltraCanvasFileLoader::LoadFile("https://example.com/report.lz4");
+
+// Opt out when the raw compressed bytes are wanted (e.g. verbatim copy)
+auto raw = UltraCanvasFileLoader::LoadFile("styles.css.gz", false);
+```
+
+Archive containers (ZIP, 7z, TAR, ...) are not unpacked here — browse
+those as folders through VirtualFS. Content that only looks compressed
+but fails to decode is returned unmodified.
+
 ### Seamless Format Conversion
 Transform files between formats without manual processing. Perfect for web optimization, archival, or platform compatibility:
 

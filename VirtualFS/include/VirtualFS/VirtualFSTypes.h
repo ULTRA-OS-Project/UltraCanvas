@@ -11,6 +11,16 @@
 #include <cstdint>
 #include <memory>
 
+// X11's Xlib.h defines Success and None as object-like macros, which would
+// break the enum members below when this header is included after X11.
+// Shield the header body; the macros are restored at the end of the file.
+// (Use sites in application code compiled against X11 still need to avoid
+// or #undef these names themselves - that cannot be fixed from here.)
+#pragma push_macro("Success")
+#pragma push_macro("None")
+#undef Success
+#undef None
+
 namespace VirtualFS {
 
 // ============================================================================
@@ -525,3 +535,6 @@ inline std::string VirtualFSCompressionMethodToString(VirtualFSCompressionMethod
 }
 
 } // namespace VirtualFS
+
+#pragma pop_macro("None")
+#pragma pop_macro("Success")

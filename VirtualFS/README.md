@@ -68,9 +68,10 @@ interface in `VirtualFS/VirtualFSProvider.h`.
 ### Raw buffer compression (no archive container)
 
 `VirtualFSCompression.h` exposes the compression codecs directly for
-modules that define their own binary formats and only need a
-compress/decompress primitive — e.g. the UltraWeb bundler compressing
-`.ucpkg` section payloads:
+modules that need a compress/decompress primitive without an archive
+container — e.g. the UltraWeb bundler compressing `.ucpkg` section
+payloads, or FileLoader transparently decompressing `.gz`/`.zst`/`.lz4`
+content on load:
 
 ```cpp
 #include <VirtualFS/VirtualFSCompression.h>

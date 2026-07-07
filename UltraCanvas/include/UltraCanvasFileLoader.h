@@ -65,6 +65,10 @@ namespace UltraCanvas {
         std::string          sourceUri;
         std::string          contentType;
         int                  httpStatus = 0;
+        // Compression method the content was transparently decompressed
+        // from ("GZIP"/"Deflate"/"Zstandard"/"LZ4"), empty if the file was
+        // not compressed or autoDecompress was disabled.
+        std::string          decompressedFrom;
     };
 
     class UltraCanvasFileLoader {
@@ -75,7 +79,19 @@ namespace UltraCanvas {
         // is built with ULTRACANVAS_HAS_NET; ftp:// / sftp:// will be supported
         // once the UltraNet FTP module lands (Stage 3 of the UltraNet plan).
         // Everything else is treated as a local filesystem path.
-        static FileBytesResult LoadFile(const std::string& pathOrUrl);
+        //
+        // Compressed content (gzip/zlib/Zstandard/LZ4 streams, detected by
+        // magic bytes, independent of file extension) is transparently
+        // decompressed via VirtualFS, so callers always receive the plain
+        // payload; result.decompressedFrom records the method. Pass
+        // autoDecompress = false to receive the raw bytes instead (e.g. when
+        // copying a .gz file verbatim). Content that only looks compressed
+        // but fails to decode is returned unmodified. Archive containers
+        // (ZIP, 7z, TAR, ...) are not unpacked here - navigate those with
+        // VirtualFS. Requires ULTRACANVAS_USE_VIRTUALFS (default ON);
+        // without it the raw bytes are returned.
+        static FileBytesResult LoadFile(const std::string& pathOrUrl,
+                                        bool autoDecompress = true);
 
         // True if `s` starts with a recognised URL scheme (http/https/ftp/ftps/sftp).
         static bool IsUrl(const std::string& s);

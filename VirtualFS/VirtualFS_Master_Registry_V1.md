@@ -40,6 +40,8 @@ VirtualFS is a standalone, cross-platform Virtual File System module that provid
 - Package managers inspecting package contents
 - Modules with custom binary formats needing a compression primitive
   (e.g. the UltraWeb bundler compressing .ucpkg payloads)
+- FileLoader's transparent decompression: apps receive the plain payload
+  of gzip/zlib/Zstd/LZ4 files without dealing with compression formats
 
 ---
 
