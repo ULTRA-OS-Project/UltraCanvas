@@ -262,6 +262,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasScrollbar.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlider.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpinner.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTimePicker.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColorPicker.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSplashScreen.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlideshow.cpp

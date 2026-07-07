@@ -1401,6 +1401,17 @@ namespace UltraCanvas {
                 .AddVariant("datepicker", "Hotel Stay / Blocked Dates")
                 .AddVariant("datepicker", "Multi-Month / Scroll");
 
+        widgetsBuilder.AddItem("timepicker", "Time Picker",
+                               "Time-of-day field with hour/minute/second spinners, 12/24h and AM/PM",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateTimePickerExamples(); },
+                               "DemoApp/UltraCanvasTimePickerExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasTimePicker.md")
+                .AddVariant("timepicker", "24-Hour")
+                .AddVariant("timepicker", "12-Hour AM/PM")
+                .AddVariant("timepicker", "With Seconds")
+                .AddVariant("timepicker", "Minute Step / Constraints");
+
         widgetsBuilder.AddItem("mediaviewer", "Media Viewer",
                                "Comprehensive media viewer for images, documents (PDF), audio and "
                                "video: folder browsing, next/previous (arrows or mouse, even while "
