@@ -144,12 +144,23 @@ std::string ElementBuilder::MakeId(const std::string& hint) {
     return "html_" + hint + "_" + std::to_string(nextId++);
 }
 
+std::shared_ptr<UltraCanvasContainer> ElementBuilder::MakeContainer(const std::string& hint) {
+    auto container = std::make_shared<UltraCanvasContainer>(MakeId(hint));
+    // Scrolling belongs to the host view (e.g. the eBook viewer's content
+    // pane); overflowing chapter content must not sprout scrollbars on every
+    // nested block.
+    ContainerStyle style = container->GetContainerStyle();
+    style.autoShowScrollbars = false;
+    container->SetContainerStyle(style);
+    return container;
+}
+
 // ============================================================================
 // BLOCK CONSTRUCTION
 // ============================================================================
 
 std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildBlock(Node& element) {
-    auto container = std::make_shared<UltraCanvasContainer>(MakeId(element.tag));
+    auto container = MakeContainer(element.tag);
 
     const ComputedStyle& style = resolver.StyleOf(&element);
     ApplyBoxStyle(*container, style);
@@ -177,7 +188,7 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
         float spacing = anyFlowChild ? std::max(pendingMargin, topMargin)
                                      : topMargin;
         if (spacing > 0.5f) {
-            auto spacer = std::make_shared<UltraCanvasContainer>(MakeId("gap"));
+            auto spacer = MakeContainer("gap");
             spacer->size.height = CSSLayout::Dimension::Px(spacing);
             parent.AddChild(spacer);
         }
@@ -215,11 +226,29 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
         const ComputedStyle& childStyle = resolver.StyleOf(&child);
         if (childStyle.display == DisplayMode::Hidden) continue;
 
-        if (child.tag == "img") {
+        if (child.tag == "img" || child.tag == "image") {
             flushRun();
             if (opts.enableImages) {
                 if (auto image = BuildImage(child)) {
                     addFlowChild(image, childStyle.marginTop, childStyle.marginBottom);
+                }
+            }
+            continue;
+        }
+        if (child.tag == "svg") {
+            // EPUB cover pages wrap the image in an <svg> viewport
+            // (<svg><image xlink:href="..."/></svg>). Vector content is not
+            // supported; render the first referenced raster image instead.
+            flushRun();
+            if (opts.enableImages) {
+                Node* svgImage = child.FindFirst("image");
+                if (!svgImage) svgImage = child.FindFirst("img");
+                if (svgImage) {
+                    if (auto image = BuildImage(*svgImage)) {
+                        addFlowChild(image, childStyle.marginTop, childStyle.marginBottom);
+                    }
+                } else {
+                    warnings.push_back("svg without raster <image> skipped");
                 }
             }
             continue;
@@ -241,7 +270,7 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
 
         if (childStyle.display == DisplayMode::ListItem) {
             flushRun();
-            auto item = std::make_shared<UltraCanvasContainer>(MakeId("li"));
+            auto item = MakeContainer("li");
             ApplyBoxStyle(*item, childStyle);
             ConfigureBlockLayout(*item);
             BuildChildrenInto(*item, child, ++listCounter);
@@ -275,6 +304,7 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
         markup += EscapeMarkup(markerPrefix);
     }
 
+    runLinkHref.clear();
     for (const Node* node : run) {
         AppendInlineMarkup(*node, blockStyle, blockStyle.preserveWhitespace, markup);
     }
@@ -293,6 +323,13 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
     label->size.width = CSSLayout::Dimension::Pct(100.f);
     label->SetTextIsMarkup(true);
     label->SetText(markup);
+
+    // Labels are the clickable unit: a run containing a link activates its
+    // first link (per-character hit testing inside a run is not supported).
+    if (!runLinkHref.empty() && opts.onLinkActivated) {
+        label->onClick = [handler = opts.onLinkActivated,
+                          href = runLinkHref]() { handler(href); };
+    }
     return label;
 }
 
@@ -311,6 +348,10 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
 
     const ComputedStyle& style = resolver.StyleOf(&node);
     if (style.display == DisplayMode::Hidden) return;
+
+    if (style.isLink && !style.href.empty() && runLinkHref.empty()) {
+        runLinkHref = style.href;
+    }
 
     if (node.tag == "br") {
         out += '\n';
@@ -363,7 +404,8 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
 
 std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildImage(Node& element) {
     std::string src = element.GetAttribute("src");
-    if (src.empty()) src = element.GetAttribute("href");     // SVG <image>
+    if (src.empty()) src = element.GetAttribute("href");        // SVG 2 <image>
+    if (src.empty()) src = element.GetAttribute("xlink:href");  // SVG 1.1 <image>
     if (src.empty() || !opts.resourceLoader) {
         if (!src.empty()) warnings.push_back("no resource loader for image: " + src);
         return nullptr;
@@ -387,12 +429,16 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildImage(Node& element) 
     const ComputedStyle& style = resolver.StyleOf(&element);
     ApplyBoxStyle(*image, style, /*fillWidth=*/false);
     // Without explicit dimensions the element reports the image's natural
-    // size through MeasureOwnContent.
+    // size through MeasureOwnContent. Cap at the column width so oversized
+    // images (covers, photos) shrink to fit instead of overflowing.
+    CSSLayout::BoxConstraints constraints;
+    constraints.maxWidth = CSSLayout::Dimension::Pct(100.f);
+    image->boxConstraints = constraints;
     return image;
 }
 
 std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildRule(Node& element) {
-    auto rule = std::make_shared<UltraCanvasContainer>(MakeId("hr"));
+    auto rule = MakeContainer("hr");
     const ComputedStyle& style = resolver.StyleOf(&element);
     ApplyBoxStyle(*rule, style);
     rule->size.height = CSSLayout::Dimension::Px(
@@ -406,7 +452,7 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildRule(Node& element) {
 std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element) {
     // v1 table support: each row is a flex row, cells share the width
     // equally (flex-grow 1). TODO: use CSSLayout Grid for real column sizing.
-    auto table = std::make_shared<UltraCanvasContainer>(MakeId("table"));
+    auto table = MakeContainer("table");
     ++elementCount;
     const ComputedStyle& style = resolver.StyleOf(&element);
     ApplyBoxStyle(*table, style);
@@ -422,7 +468,7 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element) 
             }
             if (child.tag != "tr") continue;
 
-            auto row = std::make_shared<UltraCanvasContainer>(MakeId("tr"));
+            auto row = MakeContainer("tr");
             ++elementCount;
             row->layout.SetFlex(CSSLayout::FlexDirection::Row);
 
@@ -432,7 +478,7 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element) 
                 if (cell.tag != "td" && cell.tag != "th") continue;
 
                 const ComputedStyle& cellStyle = resolver.StyleOf(&cell);
-                auto cellBox = std::make_shared<UltraCanvasContainer>(MakeId(cell.tag));
+                auto cellBox = MakeContainer(cell.tag);
                 ++elementCount;
                 ApplyBoxStyle(*cellBox, cellStyle);
                 ConfigureBlockLayout(*cellBox);

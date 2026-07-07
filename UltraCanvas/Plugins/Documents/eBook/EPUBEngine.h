@@ -40,6 +40,9 @@ public:
     std::string GetStylesheets() const override;
     std::vector<uint8_t> GetResource(const std::string& href) const override;
     std::vector<uint8_t> GetCoverImage() const override;
+    // Exact spine lookup (the TOC-based default misses spine files without a
+    // TOC entry, which internal links may still target).
+    int GetChapterIndexForHref(const std::string& href) const override;
 
     // ===== PATH UTILITIES (public for tests) =====
 
@@ -80,7 +83,6 @@ private:
     void AssignChapterTitles();
 
     const ManifestItem* ItemById(const std::string& id) const;
-    int ChapterIndexForHref(const std::string& href) const;
 };
 
 // Registers the EPUB engine with the extension registry.

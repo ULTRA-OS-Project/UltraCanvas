@@ -101,6 +101,9 @@ public:
     std::function<void(int chapterIndex, const std::string& title)> onChapterChanged;
     std::function<void(const std::string& error)> onError;
     std::function<void(float progress, const std::string& status)> onLoadProgress;
+    // Content link with an external scheme (http:, https:, mailto:, ...) was
+    // clicked; the viewer only follows links inside the book itself.
+    std::function<void(const std::string& url)> onExternalLink;
 
 private:
     // Engine / state
@@ -129,6 +132,7 @@ private:
 
     void BuildUI();
     void RebuildChapterContent();
+    void OpenLink(const std::string& baseHref, const std::string& href);
     void PopulateTOC();
     void RefreshToolbarState();
     void ApplyThemeColors();

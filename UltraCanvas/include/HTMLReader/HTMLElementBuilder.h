@@ -40,6 +40,11 @@ struct BuildOptions {
     // from the archive; return an empty vector when the resource is missing.
     // Also used to load <link rel="stylesheet"> targets.
     std::function<std::vector<uint8_t>(const std::string& href)> resourceLoader;
+
+    // Invoked with the raw (unresolved) href of an <a> when the user clicks
+    // the text run containing it. Inline runs map to whole Labels, so a run
+    // with several links activates the first one.
+    std::function<void(const std::string& href)> onLinkActivated;
 };
 
 struct BuildResult {
@@ -65,8 +70,13 @@ private:
     std::vector<std::string> warnings;
     int elementCount = 0;
     int nextId = 0;
+    std::string runLinkHref;   // first <a href> seen in the current inline run
 
     std::string MakeId(const std::string& hint);
+
+    // All containers in the built tree scroll via the host's scroll view, so
+    // this creates them with their own scrollbars disabled.
+    std::shared_ptr<UltraCanvasContainer> MakeContainer(const std::string& hint);
 
     std::shared_ptr<UltraCanvasContainer> BuildBlock(Node& element);
     void BuildChildrenInto(UltraCanvasContainer& parent, Node& element,

@@ -68,8 +68,18 @@ UltraCanvasEBookViewer::UltraCanvasEBookViewer(const std::string& id,
 void UltraCanvasEBookViewer::BuildUI() {
     layout.SetFlex(CSSLayout::FlexDirection::Column);
 
+    // Only the content pane scrolls; the viewer itself and its chrome rows
+    // must never sprout their own scrollbars over the toolbar.
+    auto disableScrollbars = [](UltraCanvasContainer& container) {
+        ContainerStyle style = container.GetContainerStyle();
+        style.autoShowScrollbars = false;
+        container.SetContainerStyle(style);
+    };
+    disableScrollbars(*this);
+
     // ---- toolbar ----
     toolbar = std::make_shared<UltraCanvasContainer>(id + "_toolbar");
+    disableScrollbars(*toolbar);
     toolbar->size.height = CSSLayout::Dimension::Px(40);
     toolbar->layout.SetFlex(CSSLayout::FlexDirection::Row);
     toolbar->layout.SetFlexGap(4.f);
@@ -102,6 +112,7 @@ void UltraCanvasEBookViewer::BuildUI() {
 
     // ---- body: TOC | content ----
     bodyRow = std::make_shared<UltraCanvasContainer>(id + "_body");
+    disableScrollbars(*bodyRow);
     bodyRow->layoutItem.SetFlexGrow(1.f);
     bodyRow->layout.SetFlex(CSSLayout::FlexDirection::Row);
 
@@ -314,6 +325,9 @@ void UltraCanvasEBookViewer::RebuildChapterContent() {
     options.resourceLoader = [this, chapter](const std::string& href) {
         return engine->GetResource(ResolveEBookHref(chapter.href, href));
     };
+    options.onLinkActivated = [this, base = chapter.href](const std::string& href) {
+        OpenLink(base, href);
+    };
 
     HTML::ElementBuilder builder;
     HTML::BuildResult result = builder.Build(chapter.content, options);
@@ -332,6 +346,21 @@ void UltraCanvasEBookViewer::RebuildChapterContent() {
     contentScroll->AddChild(result.root);
     contentScroll->ScrollToVertical(0);
     RequestRedraw();
+}
+
+void UltraCanvasEBookViewer::OpenLink(const std::string& baseHref,
+                                      const std::string& href) {
+    if (href.empty() || !IsDocumentLoaded()) return;
+
+    // External schemes are the application's business, not the reader's.
+    if (href.find("://") != std::string::npos || href.rfind("mailto:", 0) == 0) {
+        if (onExternalLink) onExternalLink(href);
+        return;
+    }
+
+    int chapter = engine->GetChapterIndexForHref(ResolveEBookHref(baseHref, href));
+    if (chapter >= 0) GoToChapter(chapter);
+    // Fragment scrolling inside the target chapter is not supported yet.
 }
 
 void UltraCanvasEBookViewer::PopulateTOC() {

@@ -10,9 +10,12 @@
 
 #include "UltraCanvasEBookViewer.h"
 #include "UltraCanvasImage.h"
+#include "UltraCanvasImageElement.h"
+#include "HTMLReader/HTMLElementBuilder.h"
 #include "Documents/eBook/TXTEngine.h"
 
 #include <cstdio>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -29,12 +32,75 @@ static int checks = 0;
     } \
 } while (0)
 
+// 1x1 transparent PNG (the same one used in the FB2 case below).
+static const unsigned char kDotPng[] = {
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
+    0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+    0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00,
+    0x0D, 0x49, 0x44, 0x41, 0x54, 0x78, 0xDA, 0x63, 0x64, 0xF8, 0xCF, 0x50,
+    0x0F, 0x00, 0x03, 0x86, 0x01, 0x80, 0x5A, 0x34, 0x7D, 0x6B, 0x00, 0x00,
+    0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82};
+
+// eBook-viewer regression cases for the element builder: svg-wrapped cover
+// images, clickable links, and content containers without own scrollbars.
+static void TestChapterContentBuilding() {
+    HTML::BuildOptions options;
+    std::string activatedHref;
+    options.resourceLoader = [](const std::string&) {
+        return std::vector<uint8_t>(kDotPng, kDotPng + sizeof(kDotPng));
+    };
+    options.onLinkActivated = [&](const std::string& href) {
+        activatedHref = href;
+    };
+
+    // EPUB cover-page pattern: raster image wrapped in an svg viewport
+    // (xlink:href), plus an internal link.
+    HTML::ElementBuilder builder;
+    auto result = builder.Build(
+        "<html><body>"
+        "<div><svg viewBox=\"0 0 513 751\">"
+        "<image width=\"513\" height=\"751\" xlink:href=\"../Images/cover.jpeg\"/>"
+        "</svg></div>"
+        "<p><a href=\"../Text/ch1.html#s1\">Chapter 1</a></p>"
+        "</body></html>",
+        options);
+    CHECK(result.root != nullptr);
+    if (!result.root) return;
+
+    int images = 0;
+    int scrollbarContainers = 0;
+    std::function<void()> linkClick;
+    std::function<void(UltraCanvasContainer&)> walk = [&](UltraCanvasContainer& c) {
+        if (c.GetContainerStyle().autoShowScrollbars) ++scrollbarContainers;
+        for (auto& childPtr : c.GetChildren()) {
+            if (dynamic_cast<UltraCanvasImageElement*>(childPtr.get())) ++images;
+            if (auto* label = dynamic_cast<UltraCanvasLabel*>(childPtr.get())) {
+                if (label->onClick && !linkClick) linkClick = label->onClick;
+            }
+            if (auto* sub = dynamic_cast<UltraCanvasContainer*>(childPtr.get())) {
+                walk(*sub);
+            }
+        }
+    };
+    walk(*result.root);
+
+    CHECK(images == 1);                 // svg <image xlink:href> became an image
+    CHECK(scrollbarContainers == 0);    // scrolling stays with the host view
+    CHECK(bool(linkClick));             // the link run is clickable
+    if (linkClick) {
+        linkClick();
+        CHECK(activatedHref == std::string("../Text/ch1.html#s1"));
+    }
+}
+
 int main() {
     // The FB2 case below decodes an embedded PNG; the image subsystem (vips)
     // must be up even without a window.
     UCImage::InitializeImageSubsysterm("EBookViewerTest");
 
     RegisterBuiltinEBookEngines();
+
+    TestChapterContentBuilding();
 
     auto viewer = CreateEBookViewer("reader", 800, 600);
     CHECK(viewer != nullptr);

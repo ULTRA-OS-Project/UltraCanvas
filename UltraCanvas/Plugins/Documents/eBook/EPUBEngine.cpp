@@ -322,7 +322,7 @@ void EPUBEngine::ParseNCX(const std::string& ncxPath) {
                 if (HTML::Node* content = child->FindFirst("content")) {
                     entry.href = ResolveHref(ncxPath, content->GetAttribute("src"));
                 }
-                entry.pageNumber = ChapterIndexForHref(entry.href);
+                entry.pageNumber = GetChapterIndexForHref(entry.href);
 
                 walk(*child, level + 1, entry.children);
                 out.push_back(std::move(entry));
@@ -374,7 +374,7 @@ void EPUBEngine::ParseNavDoc(const std::string& navPath) {
                         walkList(*part, level + 1, entry.children);
                     }
                 }
-                entry.pageNumber = ChapterIndexForHref(entry.href);
+                entry.pageNumber = GetChapterIndexForHref(entry.href);
                 if (!entry.title.empty() || !entry.children.empty()) {
                     out.push_back(std::move(entry));
                 }
@@ -464,7 +464,7 @@ const EPUBEngine::ManifestItem* EPUBEngine::ItemById(const std::string& id) cons
     return &manifest[it->second];
 }
 
-int EPUBEngine::ChapterIndexForHref(const std::string& href) const {
+int EPUBEngine::GetChapterIndexForHref(const std::string& href) const {
     std::string path = StripFragment(href);
     for (size_t i = 0; i < chapters.size(); ++i) {
         if (chapters[i].href == path) return static_cast<int>(i);

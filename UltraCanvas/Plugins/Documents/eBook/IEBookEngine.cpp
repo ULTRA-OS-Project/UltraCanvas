@@ -63,6 +63,33 @@ std::string EBookEngineBase::ExtractChapterText(int index) const {
     return HTML::ExtractPlainText(GetChapter(index).content);
 }
 
+int EBookEngineBase::GetChapterIndexForHref(const std::string& href) const {
+    if (href.empty()) return -1;
+
+    auto withoutFragment = [](const std::string& s) {
+        size_t hash = s.find('#');
+        return hash == std::string::npos ? s : s.substr(0, hash);
+    };
+    const std::string target = withoutFragment(href);
+    if (target.empty()) return -1;
+
+    int found = -1;
+    std::function<void(const std::vector<EBookTOCEntry>&)> visit =
+        [&](const std::vector<EBookTOCEntry>& entries) {
+            for (const auto& entry : entries) {
+                if (found >= 0) return;
+                if (entry.pageNumber >= 0 &&
+                    withoutFragment(entry.href) == target) {
+                    found = entry.pageNumber;
+                    return;
+                }
+                visit(entry.children);
+            }
+        };
+    visit(tableOfContents);
+    return found;
+}
+
 std::vector<EBookSearchResult> EBookEngineBase::Search(const std::string& query,
                                                        bool caseSensitive) const {
     std::vector<EBookSearchResult> results;
