@@ -212,6 +212,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateTimePickerExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateAlertExamples();
         std::shared_ptr<UltraCanvasUIElement> CreatePaginationExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateRatingExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSliderExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSpinnerExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateColorPickerExamples();

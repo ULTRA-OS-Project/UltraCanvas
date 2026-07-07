@@ -1434,6 +1434,17 @@ namespace UltraCanvas {
                 .AddVariant("pagination", "Compact")
                 .AddVariant("pagination", "Simple");
 
+        widgetsBuilder.AddItem("rating", "Rating",
+                               "Star/shape rating with half steps and custom SVG on/off/half symbols",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateRatingExamples(); },
+                               "DemoApp/UltraCanvasRatingExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasRating.md")
+                .AddVariant("rating", "Stars (whole / half)")
+                .AddVariant("rating", "Circle / Square")
+                .AddVariant("rating", "Read-only")
+                .AddVariant("rating", "Custom SVG symbols");
+
         widgetsBuilder.AddItem("mediaviewer", "Media Viewer",
                                "Comprehensive media viewer for images, documents (PDF), audio and "
                                "video: folder browsing, next/previous (arrows or mouse, even while "
