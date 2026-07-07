@@ -120,6 +120,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasPaginationExamples.cpp
             Apps/DemoApp/UltraCanvasRatingExamples.cpp
             Apps/DemoApp/UltraCanvasStepperExamples.cpp
+            Apps/DemoApp/UltraCanvasChipExamples.cpp
             Apps/DemoApp/UltraCanvasColorPickerExamples.cpp
             Apps/DemoApp/UltraCanvasScrollbarExamples.cpp
             Apps/DemoApp/UltraCanvasSVGExamples.cpp

@@ -1456,6 +1456,17 @@ namespace UltraCanvas {
                 .AddVariant("stepper", "Vertical")
                 .AddVariant("stepper", "Dot / Non-linear");
 
+        widgetsBuilder.AddItem("chip", "Chip / Tag Input",
+                               "Compact chips (filled/outlined/closable/selectable) and a wrapping tag/token input field",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateChipExamples(); },
+                               "DemoApp/UltraCanvasChipExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasChip.md")
+                .AddVariant("chip", "Filled / Outlined")
+                .AddVariant("chip", "Closable")
+                .AddVariant("chip", "Filter (selectable)")
+                .AddVariant("chip", "Tag Input");
+
         widgetsBuilder.AddItem("mediaviewer", "Media Viewer",
                                "Comprehensive media viewer for images, documents (PDF), audio and "
                                "video: folder browsing, next/previous (arrows or mouse, even while "
