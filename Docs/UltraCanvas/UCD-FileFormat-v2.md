@@ -78,6 +78,8 @@ ASCII, at most 8 characters, padded with `0x00` to exactly 8 bytes.
 | `UCWindow` | `55 43 57 69 6E 64 6F 77` | Window/UI description (IDE templates) |
 | `UCBitmap` | `55 43 42 69 74 6D 61 70` | Bitmap graphics (future) |
 | `UCVideo` | `55 43 56 69 64 65 6F 00` | Video (future) |
+| `UCAudio` | `55 43 41 75 64 69 6F 00` | Audio (future) |
+| `UC3D` | `55 43 33 44 00 00 00 00` | 3D scenes/models (future) |
 
 Detection rules:
 
@@ -99,7 +101,7 @@ Detection rules:
 | 13 | 1 | Version minor | `0` |
 | 14 | 1 | Body encoding | `0` = binary (default), `1` = XML text (debug), `2` = JSON text (debug) |
 | 15 | 1 | Default body compression | `0` = none, `1` = deflate, `2` = gzip, `3` = LZMA. Applies to sections that do not override it. Default when writing: `1` (deflate). |
-| 16 | 1 | Encryption type | `0` = none, `1` = AES-256-GCM, `2` = ChaCha20-Poly1305 |
+| 16 | 1 | Encryption type | `0` = none, `1` = AES-256-GCM, `2` = ChaCha20-Poly1305, `3` = SuperVault remote authorization (see 4.4) |
 | 17 | 1 | Flags | See 2.4 |
 | 18 | 2 | Reserved | Must be `0x0000`; readers must ignore |
 | 20 | 4 | Thumbnail length | uint32, bytes of raw thumbnail data; `0` if no thumbnail |
@@ -186,6 +188,7 @@ section. A reader iterates by jumping `12 + payloadLength` per section.
 | `MEDI` | One embedded media resource (image/audio/video/font), MIME-typed | One section per resource; already-compressed media should set compression `0` (none). |
 | `NAVI` | Navigation: page order, bookmarks, table of contents, transitions | |
 | `SECU` | Security parameters: KDF salt, iteration count, permission bits (print/copy/edit/form-fill) | Never encrypted (it is the input to decryption). |
+| `SVLT` | SuperVault remote-authorization record (see 4.4) | Never encrypted or compressed (it is the input to the authorization request); required when encryption type = `3`. |
 | `XTND` | Reserved for vendor/application extensions | Readers must skip unknown types. |
 
 Rules:
@@ -210,6 +213,82 @@ Per section, in this order:
 
 Compression **per section** (rather than one blob over the whole body, as in
 v1) is what makes the thumbnail-at-front and random page access possible.
+
+### 4.4 SuperVault remote-authorization encryption (encryption type `3`)
+
+SuperVault protects a file so that it can only be opened after the **original
+owner confirms the request in real time** (or via a pre-granted policy)
+through the SuperVault app/service. The file itself contains **no key
+material at all** — offline brute force is pointless because there is nothing
+in the file to brute-force. What the file does contain is the identity data
+needed to *ask*: who owns it, who is allowed to ask, and a fingerprint that
+proves the file is the original.
+
+#### `SVLT` record layout
+
+Stored as a `SVLT` section, always uncompressed and unencrypted. All strings
+are UTF-8; IDs are fixed 32-byte SuperVault account identifiers (shorter IDs
+are NUL-padded).
+
+| Offset | Size | Field | Meaning |
+|---|---|---|---|
+| 0 | 1 | Record version | `1` |
+| 1 | 1 | Hash algorithm | `0` = SHA-256 (default), `1` = BLAKE3-256. (MD5 is deliberately **not** assigned a code point — it is collision-broken and a forged file with a matching MD5 is practical today. SHA-256 fills the same role securely.) |
+| 2 | 2 | Reserved | `0x0000` |
+| 4 | 16 | File UUID | Random, generated once at creation; the primary key under which the SuperVault service stores this file's record. |
+| 20 | 32 | Owner ID | SuperVault account of the creator — the person contacted to confirm each open request. |
+| 52 | 2 | Receiver count | uint16, ≥ 1 |
+| 54 | 32 × n | Receiver IDs | Accounts allowed to *request* opening. Requests from any other account are rejected by the service before the owner is even notified — this blocks fake opening requests. |
+| … | 32 | Creation hash | Computed at creation (see below) and simultaneously registered with the service. |
+| … | 4 | Key-material length hint | uint32, expected size of the personal key material the service will return (32 bytes – 1 MiB / `0x00100000`). |
+| … | 16 | KDF salt | Random per file; input to HKDF (below). |
+
+#### Creation hash
+
+Computed once when the file is written, over: the fixed header + header
+extension + thumbnail bytes, the `SVLT` record with the hash field zeroed,
+and the ciphertext of every encrypted section. The same value is stored in
+the file **and** registered with the SuperVault service at creation. At open
+time both the app and the service recompute/compare it, which detects:
+
+- tampered or re-encrypted files masquerading under a stolen `SVLT` record,
+- a forged `SVLT` record pointing at someone else's registration,
+- corruption before the owner is disturbed with a confirmation prompt.
+
+#### Open flow
+
+1. Reader app parses the (plain) `SVLT` section.
+2. App authenticates to the SuperVault service as one of the listed
+   **receiver IDs** and sends: file UUID, owner ID, creation hash, and a
+   fresh challenge nonce (nonce prevents replaying a captured request).
+3. Service checks: UUID exists, requester is in the receiver list, creation
+   hash matches the record registered at creation. Any mismatch → refused,
+   owner never notified.
+4. Service asks the **owner** to confirm (push notification in the SuperVault
+   app); the owner may also have pre-granted this receiver.
+5. On confirmation the service returns the **personal key material** — an
+   opaque blob of 32 bytes up to 1 MiB, generated and stored by the service
+   at file creation, never embedded in the file — over the mutually
+   authenticated encrypted channel.
+6. The app derives the actual section cipher key:
+   `key = HKDF-SHA256(keyMaterial, salt = KDF salt, info = "UCD-SVLT-v1" ‖ fileUUID)`
+   and decrypts the encrypted sections (AES-256-GCM). Key material is held in
+   memory only and discarded when the document closes.
+
+#### Design notes
+
+- The variable-size key material (up to 1 MiB) is supported as specified;
+  note that beyond 32 random bytes the *cryptographic* strength of the
+  derived AES-256 key no longer increases — the large blob's value is
+  operational (the service can rotate/partition it, embed policy, or pad it
+  so blob size reveals nothing), not brute-force resistance.
+- `PRIVATE` flag semantics apply as usual; SuperVault files may still carry a
+  thumbnail unless `PRIVATE` is set.
+- Availability trade-off is intentional: no service + owner confirmation →
+  no access. Writers should warn users that a SuperVault file is unreadable
+  if the owner account is deleted or the service is unreachable; an optional
+  owner-side "offline grant" (time-limited cached key material issued in
+  advance) is a service feature, not part of the file format.
 
 ## 5. Binary vs. text body encoding
 
