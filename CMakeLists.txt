@@ -116,6 +116,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasSliderExamples.cpp
             Apps/DemoApp/UltraCanvasSpinnerExamples.cpp
             Apps/DemoApp/UltraCanvasTimePickerExamples.cpp
+            Apps/DemoApp/UltraCanvasAlertExamples.cpp
             Apps/DemoApp/UltraCanvasColorPickerExamples.cpp
             Apps/DemoApp/UltraCanvasScrollbarExamples.cpp
             Apps/DemoApp/UltraCanvasSVGExamples.cpp

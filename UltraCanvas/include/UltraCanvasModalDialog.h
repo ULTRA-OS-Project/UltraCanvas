@@ -29,6 +29,7 @@ namespace UltraCanvas {
 // ===== DIALOG TYPES =====
     enum class DialogType {
         Information,
+        Successful,   // "Success" is an X11 macro (#define Success 0), so we spell it out
         Question,
         Warning,
         Error,

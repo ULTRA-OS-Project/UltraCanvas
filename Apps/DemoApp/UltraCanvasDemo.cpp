@@ -1412,6 +1412,17 @@ namespace UltraCanvas {
                 .AddVariant("timepicker", "With Seconds")
                 .AddVariant("timepicker", "Minute Step / Constraints");
 
+        widgetsBuilder.AddItem("alert", "Alert / Message Box",
+                               "Modal, always-on-top alert dialogs (info, success, warning, error, confirm)",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateAlertExamples(); },
+                               "DemoApp/UltraCanvasAlertExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasAlert.md")
+                .AddVariant("alert", "Info / Success")
+                .AddVariant("alert", "Warning / Error")
+                .AddVariant("alert", "Confirm (Yes/No)")
+                .AddVariant("alert", "Rich (details / buttons)");
+
         widgetsBuilder.AddItem("mediaviewer", "Media Viewer",
                                "Comprehensive media viewer for images, documents (PDF), audio and "
                                "video: folder browsing, next/previous (arrows or mouse, even while "

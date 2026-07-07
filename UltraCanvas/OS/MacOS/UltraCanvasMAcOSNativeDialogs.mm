@@ -35,6 +35,7 @@ std::string FromNSString(NSString* nsStr) {
 NSAlertStyle ToNSAlertStyle(DialogType type) {
     switch (type) {
         case DialogType::Information: return NSAlertStyleInformational;
+        case DialogType::Successful:     return NSAlertStyleInformational;
         case DialogType::Warning:     return NSAlertStyleWarning;
         case DialogType::Error:       return NSAlertStyleCritical;
         case DialogType::Question:    return NSAlertStyleInformational;

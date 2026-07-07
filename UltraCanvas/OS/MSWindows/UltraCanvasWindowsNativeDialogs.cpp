@@ -39,6 +39,7 @@ namespace UltraCanvas {
         UINT ToMessageBoxIcon(DialogType type) {
             switch (type) {
                 case DialogType::Information: return MB_ICONINFORMATION;
+                case DialogType::Successful:     return MB_ICONINFORMATION;
                 case DialogType::Warning:     return MB_ICONWARNING;
                 case DialogType::Error:       return MB_ICONERROR;
                 case DialogType::Question:    return MB_ICONQUESTION;
