@@ -267,6 +267,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRating.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasStepper.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasChip.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBadge.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColorPicker.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSplashScreen.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlideshow.cpp

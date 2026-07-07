@@ -1467,6 +1467,17 @@ namespace UltraCanvas {
                 .AddVariant("chip", "Filter (selectable)")
                 .AddVariant("chip", "Tag Input");
 
+        widgetsBuilder.AddItem("badge", "Badge",
+                               "Count / status indicators: coloured pills, dots, and overlay badges anchored to icons",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateBadgeExamples(); },
+                               "DemoApp/UltraCanvasBadgeExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasBadge.md")
+                .AddVariant("badge", "Status Pills")
+                .AddVariant("badge", "Count (99+)")
+                .AddVariant("badge", "Status Dots")
+                .AddVariant("badge", "Overlay on Icon");
+
         widgetsBuilder.AddItem("mediaviewer", "Media Viewer",
                                "Comprehensive media viewer for images, documents (PDF), audio and "
                                "video: folder browsing, next/previous (arrows or mouse, even while "
