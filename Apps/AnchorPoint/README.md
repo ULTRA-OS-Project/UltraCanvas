@@ -17,8 +17,8 @@ through NAT, after which the file flows directly and end-to-end encrypted.
 | Milestone | Scope | State |
 |---|---|---|
 | **M1 — Core + CLI** | Transfer protocol (chunked, SHA-256 verified, resumable) + raw-socket TCP transport + headless `anchorpoint` CLI | ✅ Done, tested |
-| **M2 — GUI** | UltraCanvas window: drag-drop a file, pairing code, transfer list with progress | ⏳ Next |
-| **M3 — Internet** | Signaling client + STUN/UDP hole-punching + relay fallback + E2E encryption | ⏳ Planned |
+| **M2 — GUI** | UltraCanvas window: choose a file, enter a peer address, send/receive with live progress | ✅ Done |
+| **M3 — Internet** | Signaling client + STUN/UDP hole-punching + relay fallback + E2E encryption + pairing codes | ⏳ Planned |
 
 ---
 
@@ -66,13 +66,21 @@ byte count already on disk.
 
 ```bash
 cd Apps/AnchorPoint
-cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+# Core + headless CLI only (no framework deps — std lib + platform sockets):
+cmake -B build -DANCHORPOINT_BUILD_GUI=OFF -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 # → build/bin/anchorpoint
+
+# Core + CLI + UltraCanvas GUI (needs the framework toolchain):
+cmake -B build -DANCHORPOINT_BUILD_GUI=ON -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+# → build/bin/AnchorPoint  and  build/bin/anchorpoint
 ```
 
-The M1 core has no dependencies beyond the standard library and the platform
-socket API (`ws2_32` on Windows, pthreads on Linux).
+The core + CLI have **no** dependencies beyond the standard library and the
+platform socket API (`ws2_32` on Windows, pthreads on Linux). The GUI links the
+UltraCanvas framework the same way `Apps/Texter` does.
 
 ---
 
@@ -94,3 +102,26 @@ anchorpoint recv --out ./downloads --from 192.168.1.10:5040 # machine B
 
 Transfers show live progress, resume from interrupted partials, and refuse to
 report success unless the received bytes hash-match the source.
+
+---
+
+## GUI usage (M2)
+
+Launch `AnchorPoint`. The window has two halves:
+
+* **Send a file** — click *Choose File…*, type the peer's address
+  (`host` or `host:port`, default port 5040), and click *Send*.
+* **Receive** — set a listen port and a save folder, then click *Receive* to
+  wait for an incoming file. *Stop* cancels a pending listen.
+
+A Unicode progress bar and status line show live transfer state. All networking
+runs on worker threads; widgets are only ever touched from the UI thread via a
+periodic timer that reads the mutex-guarded transfer state — the threading
+contract UltraNet's off-thread callbacks will also require.
+
+> **Build note:** a full GUI *link* currently depends on the UltraCanvas core
+> library building, which in this tree is blocked by the framework's
+> half-scaffolded `Plugins/UltraNet/*` sources (`#include <UltraNet/UltraNetCore.h>`,
+> not yet present). AnchorPoint's own sources compile cleanly against the real
+> framework headers. The M2 GUI does **not** use `UltraCanvasProgressBar.h`,
+> which is an uncompiled/latent-broken header in the current tree.
