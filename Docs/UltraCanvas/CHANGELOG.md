@@ -1,3 +1,16 @@
+#### 2026-07-07
+- ODT reader: real-world letter documents now render their letterhead
+  sections. `draw:text-box` frames (sender/contact blocks) are parsed into
+  regular blocks instead of being dropped; master-page headers and footers
+  from `styles.xml` (bank details, register lines, region-left/center/right
+  columns) are emitted before/after the body separated by a rule;
+  page-anchored `draw:frame`s directly in the text flow (e.g. signature
+  images) are handled; picture hrefs with a `./` prefix load correctly and
+  external (linked) pictures are skipped; hidden sections
+  (`text:display="none"`) and hidden text no longer leak into the output;
+  text boxes anchored inside table cells flatten into line-broken cell text;
+  named/automatic list styles in `styles.xml` are now honored.
+
 #### 2026-07-06 *0.3.2*
 - Demo: the LaTeX Documents page now typesets every document **live** from its
   `.tex` source through the on-demand UltraCanvas LaTeX engine instead of

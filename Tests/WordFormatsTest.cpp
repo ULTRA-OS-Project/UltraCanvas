@@ -361,6 +361,105 @@ int main(int argc, char** argv) {
         CHECK_MSG(plain.find("$x^{2}$") != std::string::npos, plain);
     }
 
+    // ===== 10. ODT letterhead features: text-box frames, master-page =====
+    // header/footer, hidden sections, "./"-prefixed picture hrefs.
+    {
+        std::string contentXml =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+            "<office:document-content "
+            "xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" "
+            "xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\" "
+            "xmlns:table=\"urn:oasis:names:tc:opendocument:xmlns:table:1.0\" "
+            "xmlns:style=\"urn:oasis:names:tc:opendocument:xmlns:style:1.0\" "
+            "xmlns:draw=\"urn:oasis:names:tc:opendocument:xmlns:drawing:1.0\" "
+            "xmlns:svg=\"urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0\" "
+            "xmlns:xlink=\"http://www.w3.org/1999/xlink\" office:version=\"1.2\">"
+            "<office:body><office:text>"
+            // Paragraph-anchored frame with a text box (the letterhead sender
+            // block) — its paragraphs must appear as separate blocks.
+            "<text:p>"
+            "<draw:frame draw:name=\"SenderBox\" text:anchor-type=\"paragraph\">"
+            "<draw:text-box>"
+            "<text:p>Example GmbH</text:p>"
+            "<text:p>Sample Street 1</text:p>"
+            "<text:p>phone +49 123 456</text:p>"
+            "</draw:text-box></draw:frame>"
+            "Dear applicant,</text:p>"
+            // Page-anchored frame directly in the text flow with a picture
+            // whose href carries the "./" prefix.
+            "<draw:frame draw:name=\"Signature\" svg:width=\"96pt\" svg:height=\"48pt\">"
+            "<draw:image xlink:href=\"./Pictures/sig.png\" xlink:type=\"simple\"/>"
+            "</draw:frame>"
+            "<text:p>body paragraph</text:p>"
+            // A switched-off section must not render.
+            "<text:section text:name=\"Hidden\" text:display=\"none\">"
+            "<text:p>Payment and Order Details</text:p>"
+            "</text:section>"
+            "</office:text></office:body></office:document-content>";
+        std::string stylesXml =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+            "<office:document-styles "
+            "xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" "
+            "xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\" "
+            "xmlns:table=\"urn:oasis:names:tc:opendocument:xmlns:table:1.0\" "
+            "xmlns:style=\"urn:oasis:names:tc:opendocument:xmlns:style:1.0\" "
+            "office:version=\"1.2\">"
+            "<office:master-styles><style:master-page style:name=\"Standard\">"
+            "<style:header><text:p>Example GmbH - Sample Street 1</text:p></style:header>"
+            "<style:footer><table:table table:name=\"FooterTable\">"
+            "<table:table-row>"
+            "<table:table-cell><text:p>Bank Ltd</text:p><text:p>Konto: 12345</text:p></table:table-cell>"
+            "<table:table-cell><text:p>Register B 7741</text:p></table:table-cell>"
+            "</table:table-row>"
+            "</table:table></style:footer>"
+            "</style:master-page></office:master-styles>"
+            "</office:document-styles>";
+        {
+            UCZipPackageWriter zip;
+            CHECK(zip.Open(TmpPath("letter.odt")));
+            zip.AddEntry("mimetype", std::string("application/vnd.oasis.opendocument.text"), false);
+            zip.AddEntry("content.xml", contentXml);
+            zip.AddEntry("styles.xml", stylesXml);
+            zip.AddEntry("Pictures/sig.png", kTinyPng, sizeof(kTinyPng));
+            CHECK(zip.Finalize());
+        }
+        UCRichDocument letter;
+        std::string err;
+        CHECK_MSG(UCWordDocumentIO::Load(TmpPath("letter.odt"), letter, err), err);
+        std::string plain = letter.ToPlainText();
+
+        // Text-box (sender block) content survives as separate lines.
+        CHECK_MSG(plain.find("Example GmbH") != std::string::npos, plain);
+        CHECK_MSG(plain.find("Sample Street 1") != std::string::npos, plain);
+        CHECK_MSG(plain.find("phone +49 123 456") != std::string::npos, plain);
+        CHECK(plain.find("Dear applicant,") != std::string::npos);
+
+        // Master-page header renders before the body, footer table after it.
+        CHECK(!letter.blocks.empty());
+        if (!letter.blocks.empty()) {
+            CHECK(UCRichDocument::ConcatenateRunText(letter.blocks.front().runs)
+                  == "Example GmbH - Sample Street 1");
+            CHECK(letter.blocks.back().type == RichBlockType::Table);
+        }
+        CHECK_MSG(plain.find("Bank Ltd\nKonto: 12345\tRegister B 7741") != std::string::npos, plain);
+        size_t headerPos = plain.find("Example GmbH - Sample Street 1");
+        size_t bodyPos = plain.find("Dear applicant,");
+        size_t footerPos = plain.find("Bank Ltd");
+        CHECK(headerPos != std::string::npos && bodyPos != std::string::npos
+              && footerPos != std::string::npos && headerPos < bodyPos && bodyPos < footerPos);
+
+        // Hidden section content must not render.
+        CHECK_MSG(plain.find("Payment and Order Details") == std::string::npos, plain);
+
+        // "./"-prefixed picture href loads; the page-anchored frame emits an image block.
+        CHECK(letter.media.size() == 1);
+        bool sawSignature = false;
+        for (const auto& b : letter.blocks) {
+            if (b.type == RichBlockType::Image && b.imageAltText == "Signature") sawSignature = true;
+        }
+        CHECK(sawSignature);
+    }
+
     if (failures == 0) {
         std::cout << "ALL TESTS PASSED\n";
         return 0;
