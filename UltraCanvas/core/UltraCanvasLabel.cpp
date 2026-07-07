@@ -211,7 +211,15 @@ namespace UltraCanvas {
 
     // ===== TEXT LINK HIT TESTING =====
     int UltraCanvasLabel::LinkIndexAtPoint(const Point2Di& localPoint) {
-        if (textLinks.empty() || !textLayout || !internalLayoutValid) return -1;
+        if (textLinks.empty()) return -1;
+        // A click can arrive between a layout invalidation (resize, font
+        // change) and the next render; sync the text layout on demand so the
+        // hit test never runs against stale wrap widths — or silently fails
+        // before the first paint.
+        if (!internalLayoutValid || !textLayout) {
+            UpdateInternalLayout(GetRenderContext());
+            if (!internalLayoutValid || !textLayout) return -1;
+        }
 
         // The layout is drawn at the content origin plus its vertical
         // alignment offset (see Render); undo both to get layout-local pixels.
