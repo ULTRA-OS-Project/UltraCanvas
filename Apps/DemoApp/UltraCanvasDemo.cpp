@@ -1445,6 +1445,17 @@ namespace UltraCanvas {
                 .AddVariant("rating", "Read-only")
                 .AddVariant("rating", "Custom SVG symbols");
 
+        widgetsBuilder.AddItem("stepper", "Stepper / Wizard",
+                               "Multi-step progress indicator: numbered/icon/dot markers, horizontal & vertical, linear & non-linear",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateStepperExamples(); },
+                               "DemoApp/UltraCanvasStepperExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasStepper.md")
+                .AddVariant("stepper", "Horizontal Wizard")
+                .AddVariant("stepper", "Descriptions / Error")
+                .AddVariant("stepper", "Vertical")
+                .AddVariant("stepper", "Dot / Non-linear");
+
         widgetsBuilder.AddItem("mediaviewer", "Media Viewer",
                                "Comprehensive media viewer for images, documents (PDF), audio and "
                                "video: folder browsing, next/previous (arrows or mouse, even while "
