@@ -25,6 +25,16 @@
 #include "UltraNet/UltraNetHttp.h"
 #endif
 
+#ifdef ULTRACANVAS_HAS_VIRTUALFS
+#include <VirtualFS/VirtualFSCompression.h>
+// Xlib.h (pulled in via UltraCanvasCommonTypes.h) defines Success as a
+// macro, colliding with VirtualFSResult::Success used below. This file
+// uses no X11 API, so the macro can be dropped for the rest of the TU.
+#ifdef Success
+#undef Success
+#endif
+#endif
+
 namespace UltraCanvas {
 
     namespace {
@@ -36,6 +46,39 @@ namespace UltraCanvas {
             }
             return true;
         }
+
+        // Transparent decompression: apps get the plain payload regardless of
+        // whether the source was gzip/zlib/Zstd/LZ4 compressed. Detection is
+        // by magic bytes; content that only looks compressed (the zlib header
+        // has no strong magic) but fails to decode is kept unmodified.
+        void MaybeDecompress(FileBytesResult& out, bool autoDecompress) {
+#ifdef ULTRACANVAS_HAS_VIRTUALFS
+            if (!autoDecompress || !out.success || out.bytes.size() < 4) return;
+
+            auto method = VirtualFS::VirtualFS_DetectCompressionMethod(
+                out.bytes.data(), out.bytes.size());
+            if (method == VirtualFS::VirtualFSCompressionMethod::Auto) return;
+
+            std::vector<uint8_t> plain;
+            if (VirtualFS::VirtualFS_DecompressBuffer(out.bytes.data(), out.bytes.size(),
+                                                      plain, method)
+                    == VirtualFS::VirtualFSResult::Success) {
+                // gzip and zlib both decode through Deflate; report gzip by
+                // its distinct magic so callers see the on-disk format
+                if (method == VirtualFS::VirtualFSCompressionMethod::Deflate &&
+                    out.bytes[0] == 0x1F && out.bytes[1] == 0x8B) {
+                    out.decompressedFrom = "GZIP";
+                } else {
+                    out.decompressedFrom =
+                        VirtualFS::VirtualFSCompressionMethodToString(method);
+                }
+                out.bytes = std::move(plain);
+            }
+#else
+            (void)out;
+            (void)autoDecompress;
+#endif
+        }
     }
 
     bool UltraCanvasFileLoader::IsUrl(const std::string& s) {
@@ -46,7 +89,8 @@ namespace UltraCanvas {
                StartsWithCaseInsensitive(s, "sftp://");
     }
 
-    FileBytesResult UltraCanvasFileLoader::LoadFile(const std::string& pathOrUrl) {
+    FileBytesResult UltraCanvasFileLoader::LoadFile(const std::string& pathOrUrl,
+                                                    bool autoDecompress) {
         FileBytesResult out;
         out.sourceUri = pathOrUrl;
         if (pathOrUrl.empty()) {
@@ -73,6 +117,7 @@ namespace UltraCanvas {
             } else {
                 out.error = r.message.empty() ? "HTTP request failed" : r.message;
             }
+            MaybeDecompress(out, autoDecompress);
             return out;
 #else
             out.error = "URL load requires ULTRACANVAS_HAS_NET (UltraNet not built)";
@@ -88,6 +133,7 @@ namespace UltraCanvas {
         }
         out.bytes.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
         out.success = true;
+        MaybeDecompress(out, autoDecompress);
         return out;
     }
 

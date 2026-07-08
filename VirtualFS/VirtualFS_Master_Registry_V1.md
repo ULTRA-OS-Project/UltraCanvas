@@ -4,9 +4,10 @@
 ```cpp
 // VirtualFS_Master_Registry.md
 // Complete registry of VirtualFS module functions, types, and callbacks
-// Version: 1.0.0
-// Last Modified: 2026-01-10
+// Version: 1.1.0
+// Last Modified: 2026-07-07
 // Author: ULTRA OS Framework
+// 1.1.0: Added Raw Buffer Compression API (VirtualFSCompression.h)
 ```
 
 ---
@@ -26,6 +27,9 @@ VirtualFS is a standalone, cross-platform Virtual File System module that provid
 - **Caching**: Intelligent caching of archive metadata and extracted files
 - **Password Support**: Encrypted archive handling
 - **Streaming**: Large file support without full extraction
+- **Raw Buffer Compression**: Full compress/decompress support for
+  applications on plain memory buffers (Deflate, Zstd, LZ4, Brotli) -
+  no archive container required
 
 ### **Use Cases**
 
@@ -34,6 +38,10 @@ VirtualFS is a standalone, cross-platform Virtual File System module that provid
 - Asset loading systems for games/applications
 - Backup browsers navigating compressed backups
 - Package managers inspecting package contents
+- Modules with custom binary formats needing a compression primitive
+  (e.g. the UltraWeb bundler compressing .ucpkg payloads)
+- FileLoader's transparent decompression: apps receive the plain payload
+  of gzip/zlib/Zstd/LZ4 files without dealing with compression formats
 
 ---
 
@@ -729,6 +737,75 @@ VirtualFSResult VirtualFS_UpdateInArchive(
     // @param archivePath - Path to archive
     // @param entryPath - Path inside archive
     // @param newData - New file content
+```
+
+### **Raw Buffer Compression**
+*Source: VirtualFSCompression.h*
+
+Full compress/decompress support for applications on plain memory
+buffers, without an archive container. Intended for modules that define
+their own binary formats (first consumer: the UltraWeb bundler for
+.ucpkg payloads). Availability of each method follows the
+`VIRTUALFS_USE_ZLIB` / `_ZSTD` / `_LZ4` / `_BROTLI` build options;
+unavailable methods return `VirtualFSResult::NotSupported`.
+
+Stream formats: Deflate produces a zlib stream (decompression also
+accepts gzip); Zstd and LZ4 use their standard frame formats with
+recorded content size (LZ4 output is readable by any LZ4F decoder);
+Brotli is a raw stream.
+
+Note: `UCVFSBridge::LZ4Compress` in the UltraCanvas bridge emits the
+LZ4 *block* format (no header, caller must track sizes) and is NOT
+interchangeable with this API's frame format. Prefer this API for new
+code and for any data crossing a process or network boundary.
+
+```cpp
+bool VirtualFS_IsCompressionMethodAvailable(VirtualFSCompressionMethod method);
+    // Checks whether a method was compiled into this build
+    // @param method - Compression method to query
+    // @return true if usable for buffer compression (Store always is;
+    //         archive-only methods like LZMA/PPMd always return false)
+
+VirtualFSCompressionMethod VirtualFS_DetectCompressionMethod(
+    const uint8_t* data, size_t size);
+    // Detects the compression method from magic bytes
+    // @param data - Buffer start
+    // @param size - Buffer size in bytes
+    // @return Detected method, or Auto if unknown (Brotli has no magic
+    //         bytes and cannot be detected)
+
+VirtualFSResult VirtualFS_CompressBuffer(
+    const uint8_t* data, size_t size,
+    std::vector<uint8_t>& output,
+    VirtualFSCompressionMethod method,
+    VirtualFSCompressionLevel level = VirtualFSCompressionLevel::Normal);
+    // Compresses a memory buffer
+    // @param data - Input buffer start
+    // @param size - Input size in bytes
+    // @param output - Receives the compressed stream (replaced)
+    // @param method - Store, Deflate, Zstd, LZ4 or Brotli; Auto selects
+    //                 the best available (Zstd > LZ4 > Deflate > Store)
+    // @param level - Compression level preset
+    // @return Success; NotSupported if method not compiled in;
+    //         InvalidArgument on null/empty input; Error on codec failure
+    // Vector overload: VirtualFS_CompressBuffer(input, output, method, level)
+
+VirtualFSResult VirtualFS_DecompressBuffer(
+    const uint8_t* data, size_t size,
+    std::vector<uint8_t>& output,
+    VirtualFSCompressionMethod method = VirtualFSCompressionMethod::Auto,
+    size_t sizeHint = 0);
+    // Decompresses a memory buffer
+    // @param data - Input buffer start (compressed stream)
+    // @param size - Input size in bytes
+    // @param output - Receives the decompressed data (replaced)
+    // @param method - Compression method; Auto detects from magic bytes
+    // @param sizeHint - Expected decompressed size (0 = unknown); used to
+    //                   pre-allocate when the stream does not record it
+    // @return Success; NotSupported if method not compiled in;
+    //         ArchiveUnsupported if Auto detection fails;
+    //         ArchiveCorrupt on a malformed stream
+    // Vector overload: VirtualFS_DecompressBuffer(input, output, method, sizeHint)
 ```
 
 ### **Utility Functions**

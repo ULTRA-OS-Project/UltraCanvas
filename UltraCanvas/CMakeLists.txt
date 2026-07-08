@@ -671,9 +671,11 @@ target_link_libraries(${ULTRACANVAS_LIB_NAME}
         ${TINYXML2_LIBRARIES}
 )
 
-# VirtualFS module (brings VIRTUALFS_HAS_* defines and headers for the bridge)
+# VirtualFS module (brings VIRTUALFS_HAS_* defines and headers for the bridge;
+# ULTRACANVAS_HAS_VIRTUALFS gates FileLoader's transparent decompression)
 if(TARGET VirtualFS)
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC VirtualFS::VirtualFS)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_VIRTUALFS)
     # The bridge calls zlib directly, so it needs the headers/library itself
     # (VirtualFS's find results are scoped to its own directory)
     find_package(ZLIB QUIET)

@@ -22,8 +22,13 @@ image / video / music generation, translation, code assist). See
 
 Universal file loading / saving / converting facade. See
 `Docs/Modules/FileLoader/README.md`. Generic byte-level entry point
-`UltraCanvasFileLoader::LoadFile(pathOrUrl)` accepts both filesystem paths
-and `http(s)://` URLs (URLs require UltraNet to be built in).
+`UltraCanvasFileLoader::LoadFile(pathOrUrl, autoDecompress = true)` accepts
+both filesystem paths and `http(s)://` URLs (URLs require UltraNet to be
+built in). Compressed content (gzip/zlib/Zstandard/LZ4, detected by magic
+bytes) is transparently decompressed via the VirtualFS compression API, so
+applications never deal with compression formats themselves;
+`FileBytesResult::decompressedFrom` records the source format and
+`autoDecompress = false` opts out.
 
 ### **4. Plug-ins for File Types**
 
