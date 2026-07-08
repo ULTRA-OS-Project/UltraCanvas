@@ -5,8 +5,8 @@
 // tinyxml2 with the conventional ODF namespace prefixes (office:, text:,
 // style:, fo:, draw:, table:, xlink:) — the same approach as the existing
 // ODS spreadsheet loader.
-// Version: 1.0.0
-// Last Modified: 2026-07-03
+// Version: 1.1.0
+// Last Modified: 2026-07-07
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
@@ -37,6 +37,7 @@ struct OdtTextProps {
     int strike = -1;
     int subscript = -1;
     int superscript = -1;
+    int hidden = -1;                                // text:display="none" (hidden text)
     std::string color;
     std::string fontFamily;
     float fontSizePt = 0.0f;
@@ -53,6 +54,7 @@ struct OdtTextProps {
         if (strike < 0) strike = parent.strike;
         if (subscript < 0) subscript = parent.subscript;
         if (superscript < 0) superscript = parent.superscript;
+        if (hidden < 0) hidden = parent.hidden;
         if (color.empty()) color = parent.color;
         if (fontFamily.empty()) fontFamily = parent.fontFamily;
         if (fontSizePt <= 0) fontSizePt = parent.fontSizePt;
@@ -101,15 +103,21 @@ public:
             return false;
         }
 
+        // styles.xml carries the named/automatic styles AND the master pages
+        // whose headers/footers hold letterhead content (bank details,
+        // Handelsregister lines, ...). Keep the parsed document alive until
+        // after the body so the header/footer elements can be walked.
         std::string stylesXml;
-        if (zip_.ReadEntry("styles.xml", stylesXml)) {
-            tinyxml2::XMLDocument stylesDoc;
-            if (stylesDoc.Parse(stylesXml.c_str()) == tinyxml2::XML_SUCCESS) {
-                auto* root = stylesDoc.FirstChildElement("office:document-styles");
-                if (root) {
-                    CollectStyles(root->FirstChildElement("office:styles"));
-                    CollectStyles(root->FirstChildElement("office:automatic-styles"));
-                }
+        tinyxml2::XMLDocument stylesDoc;
+        tinyxml2::XMLElement* stylesRoot = nullptr;
+        if (zip_.ReadEntry("styles.xml", stylesXml)
+            && stylesDoc.Parse(stylesXml.c_str()) == tinyxml2::XML_SUCCESS) {
+            stylesRoot = stylesDoc.FirstChildElement("office:document-styles");
+            if (stylesRoot) {
+                CollectStyles(stylesRoot->FirstChildElement("office:styles"));
+                CollectStyles(stylesRoot->FirstChildElement("office:automatic-styles"));
+                CollectListStyles(stylesRoot->FirstChildElement("office:styles"));
+                CollectListStyles(stylesRoot->FirstChildElement("office:automatic-styles"));
             }
         }
 
@@ -132,7 +140,12 @@ public:
             error = "The OpenDocument file has no text body: " + filePath;
             return false;
         }
+        // The linear block model has no page chrome, so the page header is
+        // emitted before the body and the page footer after it, each set off
+        // with a rule.
+        ParseMasterPageRegion(stylesRoot, "style:header", false);
         ParseBlockContainer(text, 0, "");
+        ParseMasterPageRegion(stylesRoot, "style:footer", true);
         LoadMetadata();
         return true;
     }
@@ -169,6 +182,8 @@ private:
                     props.superscript = (position.rfind("super", 0) == 0) ? 1 : 0;
                     props.subscript = (position.rfind("sub", 0) == 0) ? 1 : 0;
                 }
+                std::string display = Attr(tp, "text:display");
+                if (!display.empty()) props.hidden = (display == "none") ? 1 : 0;
                 props.color = Attr(tp, "fo:color");
                 props.fontFamily = Attr(tp, "style:font-name");
                 if (props.fontFamily.empty()) props.fontFamily = Attr(tp, "fo:font-family");
@@ -238,9 +253,14 @@ private:
     }
 
     int LoadPicture(const std::string& href) {
+        // Producers write both "Pictures/x.png" and "./Pictures/x.png";
+        // external (linked, not embedded) pictures cannot be loaded.
+        std::string path = href;
+        if (path.rfind("./", 0) == 0) path = path.substr(2);
+        if (path.empty() || path.find("://") != std::string::npos) return -1;
         std::vector<uint8_t> bytes;
-        if (href.empty() || !zip_.ReadEntry(href, bytes)) return -1;
-        std::string name = href;
+        if (!zip_.ReadEntry(path, bytes)) return -1;
+        std::string name = path;
         size_t slash = name.find_last_of('/');
         if (slash != std::string::npos) name = name.substr(slash + 1);
         return doc_->AddMedia(name, UCRichDocument::MimeTypeForImageName(name),
@@ -251,12 +271,16 @@ private:
     struct InlineContext {
         std::vector<RichTextRun> runs;
         std::vector<RichDocBlock> trailingImages;   // images found inside the paragraph
+        // draw:text-box contents anchored in the paragraph; their block
+        // content is emitted right after the paragraph itself.
+        std::vector<tinyxml2::XMLElement*> textBoxes;
         bool pendingLineBreak = false;
     };
 
     void AppendRun(InlineContext& ctx, const std::string& text, const OdtTextProps& props,
                    const std::string& linkTarget) {
         if (text.empty()) return;
+        if (props.hidden == 1) return;   // hidden text must not render
         RichTextRun run;
         run.text = text;
         run.linkTarget = linkTarget;
@@ -296,11 +320,11 @@ private:
         return true;
     }
 
-    void ParseImageFrame(tinyxml2::XMLElement* frame, InlineContext& ctx) {
+    bool ParseImageFrame(tinyxml2::XMLElement* frame, InlineContext& ctx) {
         auto* image = frame->FirstChildElement("draw:image");
-        if (!image) return;
+        if (!image) return false;
         int mediaIndex = LoadPicture(Attr(image, "xlink:href"));
-        if (mediaIndex < 0) return;
+        if (mediaIndex < 0) return false;
         RichDocBlock block;
         block.type = RichBlockType::Image;
         block.mediaIndex = mediaIndex;
@@ -308,6 +332,20 @@ private:
         block.imageHeightPt = ParseLengthPt(Attr(frame, "svg:height"));
         block.imageAltText = Attr(frame, "draw:name");
         ctx.trailingImages.push_back(std::move(block));
+        return true;
+    }
+
+    // A draw:frame carries one of: an embedded formula object, an image, or
+    // a draw:text-box (positioned letterhead blocks — sender address, contact
+    // details, ...). Text-box content keeps its block structure and is
+    // emitted after the anchoring paragraph.
+    void ParseFrame(tinyxml2::XMLElement* frame, const OdtTextProps& props,
+                    const std::string& linkTarget, InlineContext& ctx) {
+        if (ParseFormulaObject(frame, props, linkTarget, ctx)) return;
+        if (ParseImageFrame(frame, ctx)) return;
+        if (auto* textBox = frame->FirstChildElement("draw:text-box")) {
+            ctx.textBoxes.push_back(textBox);
+        }
     }
 
     void ParseInlineNodes(tinyxml2::XMLNode* parent, const OdtTextProps& props,
@@ -336,9 +374,7 @@ private:
             } else if (tag == "text:line-break") {
                 ctx.pendingLineBreak = true;
             } else if (tag == "draw:frame") {
-                if (!ParseFormulaObject(elem, props, linkTarget, ctx)) {
-                    ParseImageFrame(elem, ctx);
-                }
+                ParseFrame(elem, props, linkTarget, ctx);
             } else if (tag == "text:note") {
                 // Keep footnote content inline in parentheses so it is not lost.
                 if (auto* noteBody = elem->FirstChildElement("text:note-body")) {
@@ -410,12 +446,16 @@ private:
 
         bool emptyPageBreakCarrier = paraProps.pageBreakBefore && block.runs.empty()
                                      && block.type == RichBlockType::Paragraph;
-        bool onlyImages = block.runs.empty() && !ctx.trailingImages.empty();
-        if (!onlyImages && !emptyPageBreakCarrier) {
+        bool onlyFrames = block.runs.empty()
+                          && (!ctx.trailingImages.empty() || !ctx.textBoxes.empty());
+        if (!onlyFrames && !emptyPageBreakCarrier) {
             doc_->blocks.push_back(std::move(block));
         }
         for (auto& image : ctx.trailingImages) {
             doc_->blocks.push_back(std::move(image));
+        }
+        for (auto* textBox : ctx.textBoxes) {
+            ParseBlockContainer(textBox, 0, "");
         }
     }
 
@@ -471,6 +511,16 @@ private:
                     firstParagraph = false;
                     ParseInlineNodes(p, ResolveStyle(Attr(p, "text:style-name")), "", ctx);
                 }
+                // A cell has no room for block structure: text boxes anchored
+                // in it flatten into line-broken cell text so nothing is lost.
+                // Index loop: nested frames may append more text boxes.
+                for (size_t tb = 0; tb < ctx.textBoxes.size(); ++tb) {
+                    for (auto* p = ctx.textBoxes[tb]->FirstChildElement("text:p"); p;
+                         p = p->NextSiblingElement("text:p")) {
+                        if (!ctx.runs.empty()) ctx.pendingLineBreak = true;
+                        ParseInlineNodes(p, ResolveStyle(Attr(p, "text:style-name")), "", ctx);
+                    }
+                }
                 cell.runs = std::move(ctx.runs);
                 row.cells.push_back(std::move(cell));
             }
@@ -509,9 +559,74 @@ private:
             } else if (tag == "table:table") {
                 ParseTable(elem);
             } else if (tag == "text:section") {
+                // Sections switched off in the source document (template
+                // machinery like optional payment blocks) must not render.
+                if (std::string(Attr(elem, "text:display")) != "none") {
+                    ParseBlockContainer(elem, listLevel, listStyleName);
+                }
+            } else if (tag == "draw:frame") {
+                // Page-anchored frame sitting directly in the text flow.
+                InlineContext ctx;
+                ParseFrame(elem, OdtTextProps{}, "", ctx);
+                if (!ctx.runs.empty()) {
+                    RichDocBlock block;
+                    block.type = RichBlockType::Paragraph;
+                    block.runs = std::move(ctx.runs);
+                    doc_->blocks.push_back(std::move(block));
+                }
+                for (auto& image : ctx.trailingImages) {
+                    doc_->blocks.push_back(std::move(image));
+                }
+                for (size_t tb = 0; tb < ctx.textBoxes.size(); ++tb) {
+                    ParseBlockContainer(ctx.textBoxes[tb], listLevel, listStyleName);
+                }
+            } else if (tag == "style:region-left" || tag == "style:region-center"
+                       || tag == "style:region-right") {
+                // Header/footer column regions.
                 ParseBlockContainer(elem, listLevel, listStyleName);
             }
             // Everything else (TOC, sequence declarations, forms) is skipped.
+        }
+    }
+
+    // Emits the header or footer of the first master page (styles.xml) as
+    // ordinary blocks, set off from the body with a horizontal rule. Regions
+    // that are empty or explicitly not displayed contribute nothing.
+    void ParseMasterPageRegion(tinyxml2::XMLElement* stylesRoot, const char* regionTag,
+                               bool afterBody) {
+        if (!stylesRoot) return;
+        auto* masters = stylesRoot->FirstChildElement("office:master-styles");
+        auto* page = masters ? masters->FirstChildElement("style:master-page") : nullptr;
+        auto* region = page ? page->FirstChildElement(regionTag) : nullptr;
+        if (!region || std::string(Attr(region, "style:display")) == "false") return;
+
+        size_t start = doc_->blocks.size();
+        if (afterBody) {
+            RichDocBlock rule;
+            rule.type = RichBlockType::HorizontalRule;
+            doc_->blocks.push_back(std::move(rule));
+        }
+        size_t contentStart = doc_->blocks.size();
+        ParseBlockContainer(region, 0, "");
+
+        bool hasContent = false;
+        for (size_t i = contentStart; i < doc_->blocks.size() && !hasContent; ++i) {
+            const RichDocBlock& b = doc_->blocks[i];
+            if (b.type != RichBlockType::Paragraph) {
+                hasContent = true;
+            } else {
+                std::string text = UCRichDocument::ConcatenateRunText(b.runs);
+                hasContent = text.find_first_not_of(" \t\n") != std::string::npos;
+            }
+        }
+        if (!hasContent) {
+            doc_->blocks.resize(start);
+            return;
+        }
+        if (!afterBody) {
+            RichDocBlock rule;
+            rule.type = RichBlockType::HorizontalRule;
+            doc_->blocks.push_back(std::move(rule));
         }
     }
 
