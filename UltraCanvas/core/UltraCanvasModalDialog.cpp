@@ -434,6 +434,7 @@ namespace UltraCanvas {
     Color UltraCanvasModalDialog::GetTypeColor() const {
         switch (dialogConfig.dialogType) {
             case DialogType::Information: return Color(70, 130, 180);   // Steel Blue
+            case DialogType::Successful:     return Color(40, 167, 69);    // Green
             case DialogType::Question:    return Color(70, 130, 180);   // Steel Blue
             case DialogType::Warning:     return Color(255, 193, 7);    // Amber
             case DialogType::Error:       return Color(220, 53, 69);    // Red
@@ -444,6 +445,7 @@ namespace UltraCanvas {
     std::string UltraCanvasModalDialog::GetTypeIcon() const {
         switch (dialogConfig.dialogType) {
             case DialogType::Information: return "i";
+            case DialogType::Successful:     return "\xE2\x9C\x93";  // check mark (U+2713)
             case DialogType::Question:    return "?";
             case DialogType::Warning:     return "!";
             case DialogType::Error:       return "X";
@@ -456,6 +458,9 @@ namespace UltraCanvas {
         switch (dialogConfig.dialogType) {
             case DialogType::Information:
                 if (dialogConfig.title == "Dialog") dialogConfig.title = "Information";
+                break;
+            case DialogType::Successful:
+                if (dialogConfig.title == "Dialog") dialogConfig.title = "Success";
                 break;
             case DialogType::Question:
                 if (dialogConfig.title == "Dialog") dialogConfig.title = "Question";

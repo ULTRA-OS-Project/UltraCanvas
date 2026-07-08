@@ -643,6 +643,18 @@ namespace UltraCanvas {
                 .AddVariant("slider", "Vertical Slider")
                 .AddVariant("slider", "Range Slider");
 
+        basicBuilder.AddItem("spinner", "Spinner / SpinBox",
+                             "Select a value with up/down (or left/right) arrow buttons, "
+                             "arrow keys, the mouse wheel, or by typing",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateSpinnerExamples(); },
+                             "DemoApp/UltraCanvasSpinnerExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasSpinner.md")
+                .AddVariant("spinner", "Integer Spinner")
+                .AddVariant("spinner", "Decimal Spinner")
+                .AddVariant("spinner", "List / Value Cycle")
+                .AddVariant("spinner", "Horizontal Stepper");
+
         basicBuilder.AddItem("scrollbars", "Scrollbars",
                              "Standalone scrollbars: preset styles, colour options, "
                              "corner-radius / end-shape control and a custom SVG handle",
@@ -1384,6 +1396,83 @@ namespace UltraCanvas {
                 .AddVariant("datepicker", "Keyboard / Text Entry")
                 .AddVariant("datepicker", "Hotel Stay / Blocked Dates")
                 .AddVariant("datepicker", "Multi-Month / Scroll");
+
+        widgetsBuilder.AddItem("timepicker", "Time Picker",
+                               "Time-of-day field with hour/minute/second spinners, 12/24h and AM/PM",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateTimePickerExamples(); },
+                               "DemoApp/UltraCanvasTimePickerExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasTimePicker.md")
+                .AddVariant("timepicker", "24-Hour")
+                .AddVariant("timepicker", "12-Hour AM/PM")
+                .AddVariant("timepicker", "With Seconds")
+                .AddVariant("timepicker", "Minute Step / Constraints");
+
+        widgetsBuilder.AddItem("alert", "Alert / Message Box",
+                               "Modal, always-on-top alert dialogs (info, success, warning, error, confirm)",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateAlertExamples(); },
+                               "DemoApp/UltraCanvasAlertExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasAlert.md")
+                .AddVariant("alert", "Info / Success")
+                .AddVariant("alert", "Warning / Error")
+                .AddVariant("alert", "Confirm (Yes/No)")
+                .AddVariant("alert", "Rich (details / buttons)");
+
+        widgetsBuilder.AddItem("pagination", "Pagination",
+                               "Page-navigation strip with ellipsis windowing, compact and simple modes",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreatePaginationExamples(); },
+                               "DemoApp/UltraCanvasPaginationExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasPagination.md")
+                .AddVariant("pagination", "Numbered / Ellipsis")
+                .AddVariant("pagination", "From Item Count")
+                .AddVariant("pagination", "Compact")
+                .AddVariant("pagination", "Simple");
+
+        widgetsBuilder.AddItem("rating", "Rating",
+                               "Star/shape rating with half steps and custom SVG on/off/half symbols",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateRatingExamples(); },
+                               "DemoApp/UltraCanvasRatingExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasRating.md")
+                .AddVariant("rating", "Stars (whole / half)")
+                .AddVariant("rating", "Circle / Square")
+                .AddVariant("rating", "Read-only")
+                .AddVariant("rating", "Custom SVG symbols");
+
+        widgetsBuilder.AddItem("stepper", "Stepper / Wizard",
+                               "Multi-step progress indicator: numbered/icon/dot markers, horizontal & vertical, linear & non-linear",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateStepperExamples(); },
+                               "DemoApp/UltraCanvasStepperExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasStepper.md")
+                .AddVariant("stepper", "Horizontal Wizard")
+                .AddVariant("stepper", "Descriptions / Error")
+                .AddVariant("stepper", "Vertical")
+                .AddVariant("stepper", "Dot / Non-linear");
+
+        widgetsBuilder.AddItem("chip", "Chip / Tag Input",
+                               "Compact chips (filled/outlined/closable/selectable) and a wrapping tag/token input field",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateChipExamples(); },
+                               "DemoApp/UltraCanvasChipExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasChip.md")
+                .AddVariant("chip", "Filled / Outlined")
+                .AddVariant("chip", "Closable")
+                .AddVariant("chip", "Filter (selectable)")
+                .AddVariant("chip", "Tag Input");
+
+        widgetsBuilder.AddItem("badge", "Badge",
+                               "Count / status indicators: coloured pills, dots, and overlay badges anchored to icons",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateBadgeExamples(); },
+                               "DemoApp/UltraCanvasBadgeExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasBadge.md")
+                .AddVariant("badge", "Status Pills")
+                .AddVariant("badge", "Count (99+)")
+                .AddVariant("badge", "Status Dots")
+                .AddVariant("badge", "Overlay on Icon");
 
         widgetsBuilder.AddItem("mediaviewer", "Media Viewer",
                                "Comprehensive media viewer for images, documents (PDF), audio and "

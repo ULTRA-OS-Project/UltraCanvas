@@ -90,6 +90,7 @@ namespace UltraCanvas {
         GtkMessageType ToGtkMessageType(DialogType type) {
             switch (type) {
                 case DialogType::Information: return GTK_MESSAGE_INFO;
+                case DialogType::Successful:     return GTK_MESSAGE_INFO;
                 case DialogType::Warning:     return GTK_MESSAGE_WARNING;
                 case DialogType::Error:       return GTK_MESSAGE_ERROR;
                 case DialogType::Question:    return GTK_MESSAGE_QUESTION;

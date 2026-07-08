@@ -114,6 +114,14 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasLabelExamples.cpp
             Apps/DemoApp/UltraCanvasMenuExamples.cpp
             Apps/DemoApp/UltraCanvasSliderExamples.cpp
+            Apps/DemoApp/UltraCanvasSpinnerExamples.cpp
+            Apps/DemoApp/UltraCanvasTimePickerExamples.cpp
+            Apps/DemoApp/UltraCanvasAlertExamples.cpp
+            Apps/DemoApp/UltraCanvasPaginationExamples.cpp
+            Apps/DemoApp/UltraCanvasRatingExamples.cpp
+            Apps/DemoApp/UltraCanvasStepperExamples.cpp
+            Apps/DemoApp/UltraCanvasChipExamples.cpp
+            Apps/DemoApp/UltraCanvasBadgeExamples.cpp
             Apps/DemoApp/UltraCanvasColorPickerExamples.cpp
             Apps/DemoApp/UltraCanvasScrollbarExamples.cpp
             Apps/DemoApp/UltraCanvasSVGExamples.cpp
