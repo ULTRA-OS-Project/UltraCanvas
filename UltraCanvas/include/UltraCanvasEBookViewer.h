@@ -28,6 +28,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace UltraCanvas {
@@ -96,11 +97,19 @@ public:
     // ===== EVENTS =====
     bool OnEvent(const UCEvent& event) override;   // keyboard navigation
 
+    // Applies a pending #fragment scroll once the freshly built chapter
+    // content has been laid out (anchor positions are only valid then).
+    void Arrange(const Rect2Df& finalRect,
+                 const CSSLayout::LayoutContext& ctx) override;
+
     // ===== CALLBACKS =====
     std::function<void(const EBookMetadata&)> onDocumentLoaded;
     std::function<void(int chapterIndex, const std::string& title)> onChapterChanged;
     std::function<void(const std::string& error)> onError;
     std::function<void(float progress, const std::string& status)> onLoadProgress;
+    // Content link with an external scheme (http:, https:, mailto:, ...) was
+    // clicked; the viewer only follows links inside the book itself.
+    std::function<void(const std::string& url)> onExternalLink;
 
 private:
     // Engine / state
@@ -127,8 +136,16 @@ private:
     std::shared_ptr<UltraCanvasContainer> contentScroll;
     std::vector<int> tocRowToChapter;   // flattened TOC row → chapter index
 
+    // #fragment targets of the current chapter (id → built element), and the
+    // anchor to scroll to after the next layout pass (set when a link
+    // navigates to a different chapter, whose content isn't laid out yet).
+    std::unordered_map<std::string, std::shared_ptr<UltraCanvasUIElement>> chapterAnchors;
+    std::string pendingAnchorId;
+
     void BuildUI();
     void RebuildChapterContent();
+    void OpenLink(const std::string& baseHref, const std::string& href);
+    bool ScrollToAnchor(const std::string& anchorId);
     void PopulateTOC();
     void RefreshToolbarState();
     void ApplyThemeColors();

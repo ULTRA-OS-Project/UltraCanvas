@@ -21,6 +21,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace UltraCanvas {
@@ -40,6 +41,11 @@ struct BuildOptions {
     // from the archive; return an empty vector when the resource is missing.
     // Also used to load <link rel="stylesheet"> targets.
     std::function<std::vector<uint8_t>(const std::string& href)> resourceLoader;
+
+    // Invoked with the raw (unresolved) href of an <a> when the user clicks
+    // its text. Labels carry per-byte-range link data, so a run with several
+    // links activates exactly the one under the pointer.
+    std::function<void(const std::string& href)> onLinkActivated;
 };
 
 struct BuildResult {
@@ -47,6 +53,10 @@ struct BuildResult {
     std::string title;
     std::vector<std::string> warnings;
     int elementCount = 0;   // native elements created
+
+    // id/name attribute → the native element built for (or containing) it.
+    // Viewers use this to scroll to #fragment link targets.
+    std::unordered_map<std::string, std::shared_ptr<UltraCanvasUIElement>> anchors;
 };
 
 class ElementBuilder {
@@ -65,8 +75,19 @@ private:
     std::vector<std::string> warnings;
     int elementCount = 0;
     int nextId = 0;
+    std::unordered_map<std::string, std::shared_ptr<UltraCanvasUIElement>> anchors;
+
+    // Per-inline-run state: the rendered plain text built alongside the Pango
+    // markup (same bytes the text layout reports from hit testing) and the
+    // link ranges found in it.
+    std::string runPlain;
+    std::vector<LabelTextLink> runLinks;
 
     std::string MakeId(const std::string& hint);
+
+    // All containers in the built tree scroll via the host's scroll view, so
+    // this creates them with their own scrollbars disabled.
+    std::shared_ptr<UltraCanvasContainer> MakeContainer(const std::string& hint);
 
     std::shared_ptr<UltraCanvasContainer> BuildBlock(Node& element);
     void BuildChildrenInto(UltraCanvasContainer& parent, Node& element,
@@ -80,6 +101,12 @@ private:
 
     void AppendInlineMarkup(const Node& node, const ComputedStyle& runStyle,
                             bool preserveWhitespace, std::string& out);
+
+    // Maps the node's id (and <a name>) to the built element in `anchors`,
+    // recursing into `node`'s subtree when deep is true.
+    void RegisterAnchors(const Node& node,
+                         const std::shared_ptr<UltraCanvasUIElement>& element,
+                         bool deep = false);
 
     void ApplyBoxStyle(UltraCanvasUIElement& target, const ComputedStyle& style,
                        bool fillWidth = true);

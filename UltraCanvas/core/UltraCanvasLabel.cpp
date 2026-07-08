@@ -209,16 +209,53 @@ namespace UltraCanvas {
         return Size2Df(w, (float)textLayout->GetLayoutHeight());
     }
 
+    // ===== TEXT LINK HIT TESTING =====
+    int UltraCanvasLabel::LinkIndexAtPoint(const Point2Di& localPoint) {
+        if (textLinks.empty()) return -1;
+        // A click can arrive between a layout invalidation (resize, font
+        // change) and the next render; sync the text layout on demand so the
+        // hit test never runs against stale wrap widths — or silently fails
+        // before the first paint.
+        if (!internalLayoutValid || !textLayout) {
+            UpdateInternalLayout(GetRenderContext());
+            if (!internalLayoutValid || !textLayout) return -1;
+        }
+
+        // The layout is drawn at the content origin plus its vertical
+        // alignment offset (see Render); undo both to get layout-local pixels.
+        int layoutX = localPoint.x - (GetBorderLeftWidth() + GetPaddingLeft());
+        int layoutY = localPoint.y - (GetBorderTopWidth() + GetPaddingTop())
+                      - static_cast<int>(textLayout->GetLayoutVerticalOffset());
+        if (layoutX < 0 || layoutY < 0) return -1;
+
+        UCLayoutHitResult hit = textLayout->XYToIndex(layoutX, layoutY);
+        if (!hit.inside) return -1;
+        for (size_t i = 0; i < textLinks.size(); ++i) {
+            if (hit.index >= textLinks[i].startByte &&
+                hit.index < textLinks[i].endByte) {
+                return static_cast<int>(i);
+            }
+        }
+        return -1;
+    }
+
     // ===== EVENT HANDLING =====
     bool UltraCanvasLabel::OnEvent(const UCEvent &event) {
         if (UltraCanvasUIElement::OnEvent(event)) {
             return true;
-        }        
+        }
 
         switch (event.type) {
             case UCEventType::MouseDown:
                 if (Contains(event.pointer)) {
                     SetFocus(true);
+                    if (onLinkActivated) {
+                        int link = LinkIndexAtPoint(event.pointer);
+                        if (link >= 0) {
+                            onLinkActivated(textLinks[static_cast<size_t>(link)].href);
+                            return true;
+                        }
+                    }
                     if (onClick) {
                         onClick();
                     }
@@ -228,6 +265,9 @@ namespace UltraCanvas {
 
             case UCEventType::MouseMove:
                 if (Contains(event.pointer)) {
+                    if (!textLinks.empty()) {
+                        hoveredLink = LinkIndexAtPoint(event.pointer);
+                    }
                     if (!IsHovered()) {
                         SetHovered(true);
                         if (onHoverEnter) {
@@ -235,6 +275,7 @@ namespace UltraCanvas {
                         }
                     }
                 } else {
+                    hoveredLink = -1;
                     if (IsHovered()) {
                         SetHovered(false);
                         if (onHoverLeave) {
@@ -242,6 +283,13 @@ namespace UltraCanvas {
                         }
                     }
                 }
+                break;
+
+            case UCEventType::MouseLeave:
+                hoveredLink = -1;
+                break;
+
+            default:
                 break;
         }
 

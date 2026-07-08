@@ -61,16 +61,24 @@ bool IsBlockDisplay(DisplayMode d) {
            d == DisplayMode::TableCell;
 }
 
-void CollapseWhitespaceInto(const std::string& text, std::string& out) {
+// Collapse whitespace runs in `text` to single spaces, consulting `rendered`
+// (the plain text emitted so far) for the boundary so a space is also dropped
+// right after an already-emitted space/newline.
+std::string CollapseWhitespace(const std::string& text, const std::string& rendered) {
+    std::string out;
+    out.reserve(text.size());
+    auto lastChar = [&]() {
+        if (!out.empty()) return out.back();
+        return rendered.empty() ? '\n' : rendered.back();
+    };
     for (char c : text) {
         if (std::isspace(static_cast<unsigned char>(c))) {
-            if (!out.empty() && out.back() != ' ' && out.back() != '\n') {
-                out += ' ';
-            }
+            if (lastChar() != ' ' && lastChar() != '\n') out += ' ';
         } else {
             out += c;
         }
     }
+    return out;
 }
 
 bool MarkupHasVisibleText(const std::string& markup) {
@@ -101,6 +109,7 @@ BuildResult ElementBuilder::Build(const std::string& html, const BuildOptions& o
 BuildResult ElementBuilder::BuildDocument(Document& document, const BuildOptions& options) {
     opts = options;
     warnings.clear();
+    anchors.clear();
     elementCount = 0;
     nextId = 0;
 
@@ -137,6 +146,7 @@ BuildResult ElementBuilder::BuildDocument(Document& document, const BuildOptions
     ++elementCount;   // the root itself
     result.warnings = warnings;
     result.elementCount = elementCount;
+    result.anchors = std::move(anchors);
     return result;
 }
 
@@ -144,12 +154,42 @@ std::string ElementBuilder::MakeId(const std::string& hint) {
     return "html_" + hint + "_" + std::to_string(nextId++);
 }
 
+void ElementBuilder::RegisterAnchors(const Node& node,
+                                     const std::shared_ptr<UltraCanvasUIElement>& element,
+                                     bool deep) {
+    if (!element) return;
+    if (node.type == NodeType::Element) {
+        std::string id = node.GetAttribute("id");
+        if (!id.empty()) anchors.emplace(id, element);
+        if (node.tag == "a") {
+            std::string name = node.GetAttribute("name");   // legacy anchors
+            if (!name.empty()) anchors.emplace(name, element);
+        }
+    }
+    if (!deep) return;
+    for (const auto& child : node.children) {
+        RegisterAnchors(*child, element, true);
+    }
+}
+
+std::shared_ptr<UltraCanvasContainer> ElementBuilder::MakeContainer(const std::string& hint) {
+    auto container = std::make_shared<UltraCanvasContainer>(MakeId(hint));
+    // Scrolling belongs to the host view (e.g. the eBook viewer's content
+    // pane); overflowing chapter content must not sprout scrollbars on every
+    // nested block.
+    ContainerStyle style = container->GetContainerStyle();
+    style.autoShowScrollbars = false;
+    container->SetContainerStyle(style);
+    return container;
+}
+
 // ============================================================================
 // BLOCK CONSTRUCTION
 // ============================================================================
 
 std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildBlock(Node& element) {
-    auto container = std::make_shared<UltraCanvasContainer>(MakeId(element.tag));
+    auto container = MakeContainer(element.tag);
+    RegisterAnchors(element, container);
 
     const ComputedStyle& style = resolver.StyleOf(&element);
     ApplyBoxStyle(*container, style);
@@ -177,7 +217,7 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
         float spacing = anyFlowChild ? std::max(pendingMargin, topMargin)
                                      : topMargin;
         if (spacing > 0.5f) {
-            auto spacer = std::make_shared<UltraCanvasContainer>(MakeId("gap"));
+            auto spacer = MakeContainer("gap");
             spacer->size.height = CSSLayout::Dimension::Px(spacing);
             parent.AddChild(spacer);
         }
@@ -195,6 +235,17 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
             markerPending = false;
         }
         auto label = BuildInlineRun(inlineRun, blockStyle, marker);
+        // Anchors inside the run map to its label; runs that produce no label
+        // (e.g. an empty <a id="..."/> target) fall back to the enclosing
+        // block so #fragment navigation still lands nearby.
+        std::shared_ptr<UltraCanvasUIElement> anchorTarget = label;
+        if (!anchorTarget) {
+            anchorTarget = std::static_pointer_cast<UltraCanvasUIElement>(
+                parent.shared_from_this());
+        }
+        for (const Node* node : inlineRun) {
+            RegisterAnchors(*node, anchorTarget, /*deep=*/true);
+        }
         if (label) {
             addFlowChild(label, 0.f, 0.f);
         }
@@ -215,11 +266,31 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
         const ComputedStyle& childStyle = resolver.StyleOf(&child);
         if (childStyle.display == DisplayMode::Hidden) continue;
 
-        if (child.tag == "img") {
+        if (child.tag == "img" || child.tag == "image") {
             flushRun();
             if (opts.enableImages) {
                 if (auto image = BuildImage(child)) {
+                    RegisterAnchors(child, image);
                     addFlowChild(image, childStyle.marginTop, childStyle.marginBottom);
+                }
+            }
+            continue;
+        }
+        if (child.tag == "svg") {
+            // EPUB cover pages wrap the image in an <svg> viewport
+            // (<svg><image xlink:href="..."/></svg>). Vector content is not
+            // supported; render the first referenced raster image instead.
+            flushRun();
+            if (opts.enableImages) {
+                Node* svgImage = child.FindFirst("image");
+                if (!svgImage) svgImage = child.FindFirst("img");
+                if (svgImage) {
+                    if (auto image = BuildImage(*svgImage)) {
+                        RegisterAnchors(child, image, /*deep=*/true);
+                        addFlowChild(image, childStyle.marginTop, childStyle.marginBottom);
+                    }
+                } else {
+                    warnings.push_back("svg without raster <image> skipped");
                 }
             }
             continue;
@@ -227,6 +298,7 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
         if (child.tag == "hr") {
             flushRun();
             if (auto rule = BuildRule(child)) {
+                RegisterAnchors(child, rule);
                 addFlowChild(rule, childStyle.marginTop, childStyle.marginBottom);
             }
             continue;
@@ -241,7 +313,8 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
 
         if (childStyle.display == DisplayMode::ListItem) {
             flushRun();
-            auto item = std::make_shared<UltraCanvasContainer>(MakeId("li"));
+            auto item = MakeContainer("li");
+            RegisterAnchors(child, item);
             ApplyBoxStyle(*item, childStyle);
             ConfigureBlockLayout(*item);
             BuildChildrenInto(*item, child, ++listCounter);
@@ -271,19 +344,42 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
     const std::string& markerPrefix) {
 
     std::string markup;
+    runPlain.clear();
+    runLinks.clear();
     if (!markerPrefix.empty()) {
         markup += EscapeMarkup(markerPrefix);
+        runPlain += markerPrefix;
     }
 
     for (const Node* node : run) {
         AppendInlineMarkup(*node, blockStyle, blockStyle.preserveWhitespace, markup);
     }
 
-    // Trim a leading collapse-space.
+    // Trim a leading collapse-space. Literal leading spaces in the markup are
+    // rendered text, so runPlain starts with the same spaces — trim both and
+    // shift the link ranges accordingly.
     size_t begin = markup.find_first_not_of(' ');
     if (begin == std::string::npos) return nullptr;
-    if (begin > 0) markup = markup.substr(begin);
-    while (!markup.empty() && markup.back() == ' ') markup.pop_back();
+    if (begin > 0) {
+        markup = markup.substr(begin);
+        runPlain = runPlain.size() >= begin ? runPlain.substr(begin) : std::string();
+        for (auto& link : runLinks) {
+            link.startByte = std::max(0, link.startByte - static_cast<int>(begin));
+            link.endByte -= static_cast<int>(begin);
+        }
+    }
+    while (!markup.empty() && markup.back() == ' ') {
+        markup.pop_back();
+        if (!runPlain.empty() && runPlain.back() == ' ') runPlain.pop_back();
+    }
+    for (auto& link : runLinks) {
+        link.endByte = std::min(link.endByte, static_cast<int>(runPlain.size()));
+    }
+    runLinks.erase(std::remove_if(runLinks.begin(), runLinks.end(),
+                                  [](const LabelTextLink& l) {
+                                      return l.endByte <= l.startByte;
+                                  }),
+                   runLinks.end());
 
     if (!MarkupHasVisibleText(markup)) return nullptr;
 
@@ -293,18 +389,25 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
     label->size.width = CSSLayout::Dimension::Pct(100.f);
     label->SetTextIsMarkup(true);
     label->SetText(markup);
+
+    // Attach the link byte ranges; the label hit-tests clicks against the
+    // rendered text, so only the link actually under the pointer activates.
+    if (!runLinks.empty() && opts.onLinkActivated) {
+        label->SetTextLinks(runLinks);
+        label->onLinkActivated = opts.onLinkActivated;
+    }
     return label;
 }
 
 void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& runStyle,
                                         bool preserveWhitespace, std::string& out) {
+    // runPlain mirrors the text the layout will render (markup stripped,
+    // entities decoded); link byte ranges are recorded against it.
     if (node.type == NodeType::Text) {
-        std::string escaped = EscapeMarkup(node.text);
-        if (preserveWhitespace) {
-            out += escaped;
-        } else {
-            CollapseWhitespaceInto(escaped, out);
-        }
+        std::string plain = preserveWhitespace
+            ? node.text : CollapseWhitespace(node.text, runPlain);
+        out += EscapeMarkup(plain);
+        runPlain += plain;
         return;
     }
     if (node.type != NodeType::Element) return;
@@ -314,13 +417,17 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
 
     if (node.tag == "br") {
         out += '\n';
+        runPlain += '\n';
         return;
     }
     if (node.tag == "img") {
         // Inline images inside a text run are not supported yet; note the alt
         // text so nothing silently disappears.
         std::string alt = node.GetAttribute("alt");
-        if (!alt.empty()) out += EscapeMarkup("[" + alt + "]");
+        if (!alt.empty()) {
+            out += EscapeMarkup("[" + alt + "]");
+            runPlain += "[" + alt + "]";
+        }
         return;
     }
 
@@ -350,11 +457,19 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
     }
 
     out += prefix;
+    const int linkStart = static_cast<int>(runPlain.size());
     bool childPre = preserveWhitespace || style.preserveWhitespace;
     for (const auto& child : node.children) {
         AppendInlineMarkup(*child, style, childPre, out);
     }
     out += suffix;
+
+    if (style.isLink && !style.href.empty()) {
+        const int linkEnd = static_cast<int>(runPlain.size());
+        if (linkEnd > linkStart) {
+            runLinks.push_back({linkStart, linkEnd, style.href});
+        }
+    }
 }
 
 // ============================================================================
@@ -363,7 +478,8 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
 
 std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildImage(Node& element) {
     std::string src = element.GetAttribute("src");
-    if (src.empty()) src = element.GetAttribute("href");     // SVG <image>
+    if (src.empty()) src = element.GetAttribute("href");        // SVG 2 <image>
+    if (src.empty()) src = element.GetAttribute("xlink:href");  // SVG 1.1 <image>
     if (src.empty() || !opts.resourceLoader) {
         if (!src.empty()) warnings.push_back("no resource loader for image: " + src);
         return nullptr;
@@ -387,12 +503,16 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildImage(Node& element) 
     const ComputedStyle& style = resolver.StyleOf(&element);
     ApplyBoxStyle(*image, style, /*fillWidth=*/false);
     // Without explicit dimensions the element reports the image's natural
-    // size through MeasureOwnContent.
+    // size through MeasureOwnContent. Cap at the column width so oversized
+    // images (covers, photos) shrink to fit instead of overflowing.
+    CSSLayout::BoxConstraints constraints;
+    constraints.maxWidth = CSSLayout::Dimension::Pct(100.f);
+    image->boxConstraints = constraints;
     return image;
 }
 
 std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildRule(Node& element) {
-    auto rule = std::make_shared<UltraCanvasContainer>(MakeId("hr"));
+    auto rule = MakeContainer("hr");
     const ComputedStyle& style = resolver.StyleOf(&element);
     ApplyBoxStyle(*rule, style);
     rule->size.height = CSSLayout::Dimension::Px(
@@ -406,7 +526,8 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildRule(Node& element) {
 std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element) {
     // v1 table support: each row is a flex row, cells share the width
     // equally (flex-grow 1). TODO: use CSSLayout Grid for real column sizing.
-    auto table = std::make_shared<UltraCanvasContainer>(MakeId("table"));
+    auto table = MakeContainer("table");
+    RegisterAnchors(element, table);
     ++elementCount;
     const ComputedStyle& style = resolver.StyleOf(&element);
     ApplyBoxStyle(*table, style);
@@ -422,7 +543,7 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element) 
             }
             if (child.tag != "tr") continue;
 
-            auto row = std::make_shared<UltraCanvasContainer>(MakeId("tr"));
+            auto row = MakeContainer("tr");
             ++elementCount;
             row->layout.SetFlex(CSSLayout::FlexDirection::Row);
 
@@ -432,7 +553,8 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element) 
                 if (cell.tag != "td" && cell.tag != "th") continue;
 
                 const ComputedStyle& cellStyle = resolver.StyleOf(&cell);
-                auto cellBox = std::make_shared<UltraCanvasContainer>(MakeId(cell.tag));
+                auto cellBox = MakeContainer(cell.tag);
+                RegisterAnchors(cell, cellBox);
                 ++elementCount;
                 ApplyBoxStyle(*cellBox, cellStyle);
                 ConfigureBlockLayout(*cellBox);

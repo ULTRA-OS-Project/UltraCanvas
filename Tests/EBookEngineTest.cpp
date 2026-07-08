@@ -199,6 +199,12 @@ static void TestEPUB() {
         CHECK_EQ(toc[1].pageNumber, 1);
     }
 
+    // href → chapter index (internal link navigation); fragments ignored.
+    CHECK_EQ(engine.GetChapterIndexForHref("OEBPS/text/ch1.xhtml"), 0);
+    CHECK_EQ(engine.GetChapterIndexForHref("OEBPS/text/ch2.xhtml#middle"), 1);
+    CHECK_EQ(engine.GetChapterIndexForHref("OEBPS/text/nope.xhtml"), -1);
+    CHECK_EQ(engine.GetChapterIndexForHref(""), -1);
+
     // Stylesheets.
     CHECK(engine.GetStylesheets().find("margin: 1em") != std::string::npos);
 

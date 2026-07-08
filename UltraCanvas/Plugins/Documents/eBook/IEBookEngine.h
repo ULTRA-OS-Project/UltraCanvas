@@ -59,6 +59,11 @@ public:
     // index is 0-based; returns an empty chapter when out of range.
     virtual EBookChapter GetChapter(int index) const = 0;
 
+    // Maps a container href (already resolved against the linking chapter's
+    // href, fragment allowed) to a 0-based chapter index; -1 when the href
+    // does not point at a chapter. Used by viewers to follow internal links.
+    virtual int GetChapterIndexForHref(const std::string& href) const = 0;
+
     // Combined author CSS for the whole book (may be empty).
     virtual std::string GetStylesheets() const = 0;
 
@@ -112,6 +117,10 @@ public:
     std::vector<uint8_t> GetCoverImage() const override { return {}; }
     std::string GetStylesheets() const override { return {}; }
     std::vector<uint8_t> GetResource(const std::string&) const override { return {}; }
+
+    // Default: match against TOC entry hrefs. Engines with a real spine
+    // (EPUB) override this with an exact chapter-list lookup.
+    int GetChapterIndexForHref(const std::string& href) const override;
 
     std::string ExtractChapterText(int index) const override;
     std::vector<EBookSearchResult> Search(const std::string& query,

@@ -76,11 +76,21 @@ namespace UltraCanvas {
         return Size2Df(0.f, 0.f);
     }
 
-    Size2Df UltraCanvasImageElement::MeasureOwnContent(std::optional<float> /*definiteContentWidth*/,
+    Size2Df UltraCanvasImageElement::MeasureOwnContent(std::optional<float> definiteContentWidth,
                                                        const CSSLayout::LayoutContext& /*ctx*/) {
         // Content box = the image's natural pixel size ({0,0} if none loaded).
         // The block layout adds padding/border and applies size.*/constraints.
-        return NaturalImageSize();
+        // Replaced-element behavior: when the resolved content width is
+        // narrower than the natural width (explicit width or max-width
+        // clamp), report the aspect-preserving scaled height so the image
+        // shrinks instead of letterboxing inside a natural-height box.
+        Size2Df natural = NaturalImageSize();
+        if (definiteContentWidth && natural.width > 0.f &&
+            *definiteContentWidth < natural.width) {
+            float scale = *definiteContentWidth / natural.width;
+            return Size2Df(natural.width * scale, natural.height * scale);
+        }
+        return natural;
     }
 
     void UltraCanvasImageElement::ComputeIntrinsicSizes(const CSSLayout::LayoutContext& /*ctx*/) {
