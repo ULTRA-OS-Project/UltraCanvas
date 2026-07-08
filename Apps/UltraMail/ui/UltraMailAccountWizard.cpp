@@ -1,5 +1,6 @@
 // Apps/UltraMail/ui/UltraMailAccountWizard.cpp
-// Version: 0.1.0 (Phase 1)
+// Version: 0.2.0
+// Last Modified: 2026-07-08
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailAccountWizard.h"
 
@@ -7,6 +8,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasButton.h"
 
 #include <memory>
 
@@ -19,34 +21,92 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
     DialogConfig config;
     config.title      = "Add email account";
     config.width      = 460;
-    config.height     = 340;
+    config.height     = 300;
     config.dialogType = DialogType::Custom;
-    config.buttons    = DialogButtons::OKCancel;   // OK = Continue, Cancel
+    config.buttons    = DialogButtons::NoButtons;  // Custom dialog builds its own.
 
     auto dialog = UltraCanvasDialogManager::CreateDialog(config);
+    // Raw pointer for button callbacks: the dialog outlives its buttons and owns
+    // them, so capturing the shared_ptr would form a reference cycle.
+    auto* dlg = dialog.get();
 
-    // Identity form. Layout coordinates are hints; the layout engine finalises
-    // placement inside the dialog's content area.
-    auto form = CreateContainer("wizardForm", 0, 0, 440, 260);
+    // A Custom dialog builds its own window layout + children (see the framework's
+    // Texter dialogs). Vertical stack: content grows, button row sits at the bottom.
+    dialog->layout.SetFlexColumn()
+                  .SetFlexGap(12)
+                  .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    dialog->SetPadding(16);
 
-    form->AddChild(CreateLabel("wizIntro", 12, 8, 420, 40,
-        "Enter your address and password — UltraMail finds the rest."));
+    // ===== CONTENT: intro + labelled input rows =====
+    auto content = CreateContainer("wizardForm", 0, 0, 0, 0);
+    content->layout.SetFlexColumn()
+                   .SetFlexGap(8)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-    form->AddChild(CreateLabel("wizNameLabel", 12, 56, 140, 22, "Your name"));
-    auto name = CreateTextInput("wizName", 160, 56, 260, 28);
+    auto intro = CreateLabel("wizIntro", 0, 0, 420, 36,
+        "Enter your address and password — UltraMail finds the rest.");
+    intro->SetWrap(TextWrap::WrapWord);
+    content->AddChild(intro);
+    intro->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    // Build a [label + input] flex row and append it to the content column.
+    auto addRow = [&content](const std::string& id, const std::string& labelText,
+                             const std::shared_ptr<UltraCanvasTextInput>& input) {
+        auto row = CreateContainer(id + "Row", 0, 0, 0, 30);
+        row->layout.SetFlexRow()
+                   .SetFlexGap(8)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+
+        auto label = CreateLabel(id + "Label", 0, 0, 110, 26, labelText);
+        row->AddChild(label);
+        label->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
+
+        row->AddChild(input);
+        input->layoutItem.SetFlexGrow(1);
+
+        content->AddChild(row);
+        row->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    };
+
+    auto name = CreateTextInput("wizName", 0, 0, 260, 28);
     name->SetPlaceholder("Erika Example");
-    form->AddChild(name);
+    addRow("wizName", "Your name", name);
 
-    form->AddChild(CreateLabel("wizEmailLabel", 12, 96, 140, 22, "Email address"));
-    auto email = CreateEmailInput("wizEmail", 160, 96, 260, 28);
+    auto email = CreateEmailInput("wizEmail", 0, 0, 260, 28);
     email->SetPlaceholder("erika@example.com");
-    form->AddChild(email);
+    addRow("wizEmail", "Email address", email);
 
-    form->AddChild(CreateLabel("wizPassLabel", 12, 136, 140, 22, "Password"));
-    auto password = CreatePasswordInput("wizPass", 160, 136, 260, 28);
-    form->AddChild(password);
+    auto password = CreatePasswordInput("wizPass", 0, 0, 260, 28);
+    password->SetPlaceholder("Your password");
+    addRow("wizPass", "Password", password);
 
-    dialog->AddDialogElement(form);
+    dialog->AddChild(content);
+    content->layoutItem.SetFlexGrow(1);
+
+    // ===== BUTTON ROW: Continue / Cancel =====
+    auto buttonRow = CreateContainer("wizButtons", 0, 0, 0, 36);
+    buttonRow->layout.SetFlexRow()
+                     .SetFlexGap(10)
+                     .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    buttonRow->AddStretchSpacer(1);
+
+    auto continueBtn = std::make_shared<UltraCanvasButton>("wizContinue", 0, 0, 100, 28);
+    continueBtn->SetText("Continue");
+    continueBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::OK); };
+    buttonRow->AddChild(continueBtn);
+
+    auto cancelBtn = std::make_shared<UltraCanvasButton>("wizCancel", 0, 0, 80, 28);
+    cancelBtn->SetText("Cancel");
+    cancelBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::Cancel); };
+    buttonRow->AddChild(cancelBtn);
+
+    dialog->AddChild(buttonRow);
+
+    // Enter in the password field confirms the dialog.
+    password->onEnterPressed = [dlg](const std::string&) {
+        dlg->CloseDialog(DialogResult::OK);
+        return true;
+    };
 
     UltraCanvasDialogManager::ShowDialog(
         dialog,

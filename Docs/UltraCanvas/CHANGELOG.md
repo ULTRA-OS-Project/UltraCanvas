@@ -1,4 +1,4 @@
-#### 2026-07-07
+#### 2026-07-08 *0.3.3*
 - ODT reader: real-world letter documents now render their letterhead
   sections. `draw:text-box` frames (sender/contact blocks) are parsed into
   regular blocks instead of being dropped; master-page headers and footers
@@ -14,6 +14,12 @@
   DIN A4 page (794 x 1123 px at 96 DPI) — a white page centered on a neutral
   desk background with letter-like margins; the demo display area scrolls
   to reach the rest of the page.
+- Implemented clipboard handling fort TextInput controls
+- Merged "UltraCanvas arrow-key value selector"
+- Merged "UC eBook renderer issues"
+- Merged "UltraCanvas demo treeview fixes"
+- Merged "Docusaurus integration for UltraWeb"
+- Merged "UltraCanvas ODT rendering gaps"
 
 #### 2026-07-06 *0.3.2*
 - Demo: the LaTeX Documents page now typesets every document **live** from its

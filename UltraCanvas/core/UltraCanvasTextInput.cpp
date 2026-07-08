@@ -1,10 +1,11 @@
-// UltraCanvasTextInput.h
+// UltraCanvasTextInput.cpp
 // Advanced text input component with validation, formatting, and feedback systems
-// Version: 1.1.0
-// Last Modified: 2025-01-06
+// Version: 1.3.0
+// Last Modified: 2026-07-08
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasClipboard.h"
 #include <string>
 #include <vector>
 #include <functional>
@@ -170,7 +171,8 @@ namespace UltraCanvas {
 
     std::string UltraCanvasTextInput::GetSelectedText() const {
         if (!hasSelection) return "";
-        return text.substr(selectionStart, selectionEnd - selectionStart);
+        auto [begin, end] = GetSelectionRange();
+        return text.substr(begin, end - begin);
     }
 
     void UltraCanvasTextInput::SetCaretPosition(size_t position) {
@@ -469,9 +471,12 @@ namespace UltraCanvas {
         // Set proper text style for measurement
         ctx->SetFontStyle(style.fontStyle);
 
+        // Normalize so a backward selection (Shift+Left / Shift+Home) measures correctly.
+        auto [selBegin, selEnd] = GetSelectionRange();
+
         // Get text segments for accurate measurement
-        std::string textBeforeSelection = displayText.substr(0, selectionStart);
-        std::string selectedText = displayText.substr(selectionStart, selectionEnd - selectionStart);
+        std::string textBeforeSelection = displayText.substr(0, selBegin);
+        std::string selectedText = displayText.substr(selBegin, selEnd - selBegin);
 
         double selStartX = area.x + ctx->GetTextLineWidth(textBeforeSelection);
         double selWidth = ctx->GetTextLineWidth(selectedText);
@@ -866,69 +871,9 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasTextInput::HandleKeyDown(const UCEvent &event) {
-        if (readOnly) return false;
-
-        // Handle printable characters from KeyDown events
-        // UCEvent already has 'character' and 'text' fields populated by X11
-        if (event.character != 0 && event.character >= 32 && event.character < 127) {
-            // Handle regular printable character input
-            SaveState();
-
-            if (hasSelection) {
-                DeleteSelection();
-            }
-
-            std::string charStr(1, event.character);
-            InsertText(charStr);
-//            InvalidateLayout();
-            return true;
-        }
-
-        // Handle special keys
+        // ===== Non-destructive keys: navigation, selection and copy work even in
+        // read-only inputs (only text mutation is blocked for read-only). =====
         switch (event.virtualKey) {
-            case UCKeys::Return:
-                if (inputType == TextInputType::Multiline) {
-                    SaveState();
-                    if (hasSelection) DeleteSelection();
-                    InsertText("\n");
-                    return true;
-                } else {
-                    if (onEnterPressed) return onEnterPressed(text);
-                }
-                break;
-
-            case UCKeys::Escape:
-                if (onEscapePressed) return onEscapePressed();
-                break;
-
-            case UCKeys::Backspace:
-                if (hasSelection) {
-                    SaveState();
-                    DeleteSelection();
-                } else if (caretPosition > 0) {
-                    SaveState();
-                    text.erase(caretPosition - 1, 1);
-                    caretPosition--;
-                    UpdateDisplayText();
-
-                }
-                UpdateScrollOffset();
-                TextChanged();
-                return true;
-
-            case UCKeys::Delete:
-                if (hasSelection) {
-                    SaveState();
-                    DeleteSelection();
-                } else if (caretPosition < text.length()) {
-                    SaveState();
-                    text.erase(caretPosition, 1);
-                    UpdateDisplayText();
-                }
-                UpdateScrollOffset();
-                TextChanged();
-                return true;
-
             case UCKeys::Left:
                 if (event.shift) {
                     if (!hasSelection) selectionStart = caretPosition;
@@ -954,7 +899,6 @@ namespace UltraCanvas {
                 }
                 UpdateScrollOffset();
                 return true;
-                break;
 
             case UCKeys::Up:
                 if (inputType == TextInputType::Multiline) {
@@ -1023,31 +967,114 @@ namespace UltraCanvas {
                 }
                 break;
 
-            case UCKeys::X:
+            case UCKeys::C:
                 if (event.ctrl && hasSelection) {
-                    CopyToClipboard(GetSelectedText());
-                    SaveState();
-                    DeleteSelection();
+                    Copy();
                     return true;
                 }
                 break;
 
-            case UCKeys::C:
+            case UCKeys::Insert:
+                // Ctrl+Insert = copy (non-destructive). Shift+Insert (paste) is
+                // handled in the editable phase below.
                 if (event.ctrl && hasSelection) {
-                    CopyToClipboard(GetSelectedText());
+                    Copy();
+                    return true;
+                }
+                break;
+
+            default:
+                break;
+        }
+
+        // ===== Everything below mutates text: editable inputs only. =====
+        if (readOnly) return false;
+
+        // Handle printable characters from KeyDown events
+        // UCEvent already has 'character' and 'text' fields populated by X11
+        if (event.character != 0 && event.character >= 32 && event.character < 127) {
+            // Handle regular printable character input
+            SaveState();
+
+            if (hasSelection) {
+                DeleteSelection();
+            }
+
+            std::string charStr(1, event.character);
+            InsertText(charStr);
+//            InvalidateLayout();
+            return true;
+        }
+
+        // Handle special keys
+        switch (event.virtualKey) {
+            case UCKeys::Return:
+                if (inputType == TextInputType::Multiline) {
+                    SaveState();
+                    if (hasSelection) DeleteSelection();
+                    InsertText("\n");
+                    return true;
+                } else {
+                    if (onEnterPressed) return onEnterPressed(text);
+                }
+                break;
+
+            case UCKeys::Escape:
+                if (onEscapePressed) return onEscapePressed();
+                break;
+
+            case UCKeys::Backspace:
+                if (hasSelection) {
+                    SaveState();
+                    DeleteSelection();
+                } else if (caretPosition > 0) {
+                    SaveState();
+                    text.erase(caretPosition - 1, 1);
+                    caretPosition--;
+                    UpdateDisplayText();
+
+                }
+                UpdateScrollOffset();
+                TextChanged();
+                return true;
+
+            case UCKeys::Delete:
+                // Ctrl+Del = cut (acts only when there is a selection).
+                if (event.ctrl) {
+                    if (hasSelection) Cut();
+                    return true;
+                }
+                if (hasSelection) {
+                    SaveState();
+                    DeleteSelection();
+                } else if (caretPosition < text.length()) {
+                    SaveState();
+                    text.erase(caretPosition, 1);
+                    UpdateDisplayText();
+                }
+                UpdateScrollOffset();
+                TextChanged();
+                return true;
+
+            case UCKeys::X:
+                if (event.ctrl && hasSelection) {
+                    Cut();
                     return true;
                 }
                 break;
 
             case UCKeys::V:
                 if (event.ctrl) {
-                    std::string clipboardText = GetFromClipboard();
-                    if (!clipboardText.empty()) {
-                        SaveState();
-                        if (hasSelection) DeleteSelection();
-                        InsertText(clipboardText);
-                        return true;
-                    }
+                    Paste();
+                    return true;
+                }
+                break;
+
+            case UCKeys::Insert:
+                // Shift+Insert = paste (Ctrl+Insert copy handled in the phase above).
+                if (event.shift) {
+                    Paste();
+                    return true;
                 }
                 break;
 
@@ -1141,10 +1168,11 @@ namespace UltraCanvas {
             return;
         }
 
-        // Delete selection if any
+        // Delete selection if any (normalized so a backward span erases correctly)
         if (hasSelection) {
-            text.erase(selectionStart, selectionEnd - selectionStart);
-            caretPosition = selectionStart;
+            auto [begin, end] = GetSelectionRange();
+            text.erase(begin, end - begin);
+            caretPosition = begin;
             ClearSelection();
         }
 
@@ -1167,8 +1195,10 @@ namespace UltraCanvas {
 
         SaveState();
 
-        text.erase(selectionStart, selectionEnd - selectionStart);
-        caretPosition = selectionStart;
+        // Normalize so a backward selection erases the correct span.
+        auto [begin, end] = GetSelectionRange();
+        text.erase(begin, end - begin);
+        caretPosition = begin;
         ClearSelection();
 
         UpdateDisplayText();
@@ -1186,13 +1216,53 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
-    void UltraCanvasTextInput::CopyToClipboard(const std::string &text) {
-        // Platform-specific clipboard implementation needed
+    void UltraCanvasTextInput::Copy() {
+        // Non-destructive: allowed even for read-only inputs.
+        if (!hasSelection) return;
+        CopyToClipboard(GetSelectedText());
+    }
+
+    void UltraCanvasTextInput::Cut() {
+        if (readOnly || !hasSelection) return;
+        CopyToClipboard(GetSelectedText());
+        // DeleteSelection() saves undo state, updates display/scroll and fires TextChanged.
+        DeleteSelection();
+    }
+
+    void UltraCanvasTextInput::Paste() {
+        if (readOnly) return;
+
+        std::string clipboardText = GetFromClipboard();
+
+        // Single-line inputs must never ingest line breaks: drop carriage returns
+        // and flatten newlines to spaces (multiline keeps them).
+        if (inputType != TextInputType::Multiline) {
+            std::string sanitized;
+            sanitized.reserve(clipboardText.size());
+            for (char c : clipboardText) {
+                if (c == '\r') continue;
+                sanitized += (c == '\n') ? ' ' : c;
+            }
+            clipboardText = std::move(sanitized);
+        }
+
+        if (clipboardText.empty()) return;
+
+        // DeleteSelection()/InsertText() save undo state themselves.
+        if (hasSelection) DeleteSelection();
+        InsertText(clipboardText);
+    }
+
+    void UltraCanvasTextInput::CopyToClipboard(const std::string &textToCopy) {
+        // Route to the framework's cross-platform clipboard (X11/Win32/macOS backends).
+        SetClipboardText(textToCopy);
     }
 
     std::string UltraCanvasTextInput::GetFromClipboard() {
-        // Platform-specific clipboard implementation needed
-        return "";
+        // Route to the framework's cross-platform clipboard (X11/Win32/macOS backends).
+        std::string clipboardText;
+        GetClipboardText(clipboardText);  // leaves string empty on failure
+        return clipboardText;
     }
 
     int UltraCanvasTextInput::GetCaretLineNumber() const {

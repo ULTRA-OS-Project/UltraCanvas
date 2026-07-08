@@ -1,5 +1,6 @@
 // Apps/UltraMail/ui/UltraMailContactsView.cpp
-// Version: 0.1.0 (Phase 2)
+// Version: 0.2.0
+// Last Modified: 2026-07-08
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailContactsView.h"
 
@@ -156,44 +157,90 @@ void ContactsView::ShowContactDialog(Contact contact, bool isNew) {
     config.width      = 440;
     config.height     = 400;
     config.dialogType = DialogType::Custom;
-    config.buttons    = DialogButtons::OKCancel;
+    config.buttons    = DialogButtons::NoButtons;  // Custom dialog builds its own.
 
     auto dialog = UltraCanvasDialogManager::CreateDialog(config);
+    // Raw pointer for button callbacks: the dialog owns the buttons, so capturing
+    // the shared_ptr would form a reference cycle.
+    auto* dlg = dialog.get();
 
-    auto form = CreateContainer("contactForm", 0, 0, 420, 320);
+    dialog->layout.SetFlexColumn()
+                  .SetFlexGap(12)
+                  .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    dialog->SetPadding(16);
 
-    form->AddChild(CreateLabel("cName", 12, 12, 110, 22, "Name"));
-    auto name = CreateTextInput("cNameIn", 130, 12, 270, 28);
+    // ===== CONTENT: labelled input rows =====
+    auto content = CreateContainer("contactForm", 0, 0, 0, 0);
+    content->layout.SetFlexColumn()
+                   .SetFlexGap(8)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+
+    // Build a [label + input] flex row and append it to the content column.
+    auto addRow = [&content](const std::string& id, const std::string& labelText,
+                             const std::shared_ptr<UltraCanvasTextInput>& input) {
+        auto row = CreateContainer(id + "Row", 0, 0, 0, 30);
+        row->layout.SetFlexRow()
+                   .SetFlexGap(8)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        auto label = CreateLabel(id + "Label", 0, 0, 110, 26, labelText);
+        row->AddChild(label);
+        label->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
+        row->AddChild(input);
+        input->layoutItem.SetFlexGrow(1);
+        content->AddChild(row);
+        row->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    };
+
+    auto name = CreateTextInput("cNameIn", 0, 0, 270, 28);
     name->SetText(contact.displayName);
     name->SetPlaceholder("Erika Example");
-    form->AddChild(name);
+    addRow("cName", "Name", name);
 
-    form->AddChild(CreateLabel("cEmail", 12, 52, 110, 22, "Email"));
-    auto email = CreateEmailInput("cEmailIn", 130, 52, 270, 28);
+    auto email = CreateEmailInput("cEmailIn", 0, 0, 270, 28);
     email->SetText(contact.PrimaryEmail());
     email->SetPlaceholder("erika@example.com");
-    form->AddChild(email);
+    addRow("cEmail", "Email", email);
 
-    form->AddChild(CreateLabel("cPhone", 12, 92, 110, 22, "Phone"));
-    auto phone = CreateTextInput("cPhoneIn", 130, 92, 270, 28);
+    auto phone = CreateTextInput("cPhoneIn", 0, 0, 270, 28);
     if (!contact.phones.empty()) phone->SetText(contact.phones.front().number);
     phone->SetPlaceholder("+49 170 1234567");
-    form->AddChild(phone);
+    addRow("cPhone", "Phone", phone);
 
-    form->AddChild(CreateLabel("cOrg", 12, 132, 110, 22, "Organization"));
-    auto org = CreateTextInput("cOrgIn", 130, 132, 270, 28);
+    auto org = CreateTextInput("cOrgIn", 0, 0, 270, 28);
     org->SetText(contact.organization);
     org->SetPlaceholder("Company / group");
-    form->AddChild(org);
+    addRow("cOrg", "Organization", org);
 
-    form->AddChild(CreateLabel("cNotes", 12, 172, 110, 22, "Notes"));
-    auto notes = CreateTextInput("cNotesIn", 130, 172, 270, 28);
+    auto notes = CreateTextInput("cNotesIn", 0, 0, 270, 28);
     notes->SetText(contact.notes);
-    form->AddChild(notes);
+    addRow("cNotes", "Notes", notes);
 
-    form->AddChild(CreateLabel("cSection", 12, 212, 400, 22,
-                               "Section: " + DisplayName(contact.section)));
-    dialog->AddDialogElement(form);
+    auto section = CreateLabel("cSection", 0, 0, 400, 22,
+                               "Section: " + DisplayName(contact.section));
+    content->AddChild(section);
+    section->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    dialog->AddChild(content);
+    content->layoutItem.SetFlexGrow(1);
+
+    // ===== BUTTON ROW: Save / Cancel =====
+    auto buttonRow = CreateContainer("cButtons", 0, 0, 0, 36);
+    buttonRow->layout.SetFlexRow()
+                     .SetFlexGap(10)
+                     .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    buttonRow->AddStretchSpacer(1);
+
+    auto saveBtn = std::make_shared<UltraCanvasButton>("cSave", 0, 0, 90, 28);
+    saveBtn->SetText("Save");
+    saveBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::OK); };
+    buttonRow->AddChild(saveBtn);
+
+    auto cancelBtn = std::make_shared<UltraCanvasButton>("cCancel", 0, 0, 80, 28);
+    cancelBtn->SetText("Cancel");
+    cancelBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::Cancel); };
+    buttonRow->AddChild(cancelBtn);
+
+    dialog->AddChild(buttonRow);
 
     // Capture by value; `contact` carries id + section through the callback.
     UltraCanvasDialogManager::ShowDialog(

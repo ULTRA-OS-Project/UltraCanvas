@@ -1,7 +1,7 @@
 // include/UltraCanvasTextInput.h
 // Advanced text input component with validation, formatting, and feedback systems
-// Version: 1.2.0
-// Last Modified: 2026-05-29
+// Version: 1.3.0
+// Last Modified: 2026-07-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -17,6 +17,8 @@
 #include <chrono>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
+#include <algorithm>
 
 namespace UltraCanvas {
 
@@ -422,9 +424,18 @@ public:
     }
     
     bool HasSelection() const { return hasSelection; }
-    
+
     std::string GetSelectedText() const;
-    
+
+    // ===== CLIPBOARD =====
+    // Copy the current selection (non-destructive, works even when read-only).
+    void Copy();
+    // Copy then delete the current selection (no-op when read-only or empty).
+    void Cut();
+    // Insert clipboard contents at the caret (no-op when read-only); single-line
+    // inputs flatten line breaks to spaces.
+    void Paste();
+
     void SetCaretPosition(size_t position);
     
     size_t GetCaretPosition() const { return caretPosition; }
@@ -557,8 +568,17 @@ private:
     bool HandleFocusLost(const UCEvent& event);
 
     void InsertText(const std::string& insertText);
-    
+
     void DeleteSelection();
+
+    // Selection bounds normalized so first <= second, regardless of selection
+    // direction (the anchor may sit before or after the caret, e.g. after
+    // Shift+Left / Shift+Home). Consumers must use this instead of raw
+    // selectionStart/selectionEnd to avoid size_t underflow on backward spans.
+    std::pair<size_t, size_t> GetSelectionRange() const {
+        return { std::min(selectionStart, selectionEnd),
+                 std::max(selectionStart, selectionEnd) };
+    }
     
     void UpdateDisplayText();
     
