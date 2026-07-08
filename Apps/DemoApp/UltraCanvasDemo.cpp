@@ -1202,10 +1202,6 @@ namespace UltraCanvas {
                 .AddVariant("ebook", "Kindle (MOBI / AZW)")
                 .AddVariant("ebook", "Plain Text");
 
-        textDocBuilder.AddItem("textdocuments", "Text Documents", "Text document support",
-                               ImplementationStatus::NotImplemented,
-                               [this]() { return CreateTextDocumentExamples(); });
-
         textDocBuilder.AddItem("textdocuments_latex", "LaTeX Documents",
                                "LaTeX formula documents typeset live from source by MicroTeX — "
                                "rendered output and source per document",

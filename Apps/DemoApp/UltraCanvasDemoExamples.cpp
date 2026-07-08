@@ -17,6 +17,10 @@
 #include <fstream>
 #include <random>
 #include <map>
+#include <algorithm>
+#include <filesystem>
+#include <vector>
+#include <set>
 
 namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVectorExamples() {
@@ -174,77 +178,174 @@ namespace UltraCanvas {
     // player + recorder demo backed by UltraCanvasVideoPlayerElement /
     // UltraCanvasVideoRecorderElement.
 
-    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTextDocumentExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("TextDocumentExamples", 0, 0, 1000, 700);
+    namespace {
+        // Language <-> bundled sample file. The language name must match a value
+        // returned by UltraCanvasTextArea::GetSupportedLanguages() exactly, since
+        // it is fed straight to ApplyCodeStyle(). The order here is the order the
+        // "with a sample" tabs appear in — the ones we can actually show first.
+        struct TextSample {
+            const char* language;   // syntax-renderer language name
+            const char* fileName;   // file under media/textsamples/
+        };
 
-        auto title = std::make_shared<UltraCanvasLabel>("TextDocumentTitle", 10, 10, 500, 30);
-        title->SetText("Text Document Examples");
+        const std::vector<TextSample>& BundledTextSamples() {
+            static const std::vector<TextSample> kSamples = {
+                {"C++",          "sample.cpp"},
+                {"C",            "sample.c"},
+                {"Pascal",       "sample.pas"},
+                {"Python",       "sample.py"},
+                {"Markdown",     "sample.md"},
+                {"Java",         "sample.java"},
+                {"C#",           "sample.cs"},
+                {"JavaScript",   "sample.js"},
+                {"TypeScript",   "sample.ts"},
+                {"Go",           "sample.go"},
+                {"Rust",         "sample.rs"},
+                {"Ruby",         "sample.rb"},
+                {"PHP",          "sample.php"},
+                {"Swift",        "sample.swift"},
+                {"Kotlin",       "sample.kt"},
+                {"Lua",          "sample.lua"},
+                {"Shell Script", "sample.sh"},
+                {"SQL",          "sample.sql"},
+                {"JSON",         "sample.json"},
+                {"XML",          "sample.xml"},
+                {"HTML",         "sample.html"},
+                {"CSS",          "sample.css"},
+                {"YAML",         "sample.yaml"},
+            };
+            return kSamples;
+        }
+    } // anonymous namespace
+
+    // One vertical tab page: the file's source rendered live in a read-only
+    // UltraCanvasTextArea using the syntax renderer for `language`.
+    std::shared_ptr<UltraCanvasUIElement>
+    UltraCanvasDemoApplication::CreateTextSampleTabPage(const std::string& language,
+                                                        const std::string& filePath) {
+        const std::string fileName = std::filesystem::path(filePath).filename().string();
+
+        auto page = std::make_shared<UltraCanvasContainer>("TextSamplePage_" + language, 0, 0, 800, 600);
+        page->layout.SetFlexColumn().SetFlexGap(6)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        page->SetPadding(8, 10, 8, 10);
+        page->SetBackgroundColor(Colors::White);
+
+        auto header = std::make_shared<UltraCanvasLabel>("TextSampleHeader_" + language, 0, 0, 0, 20);
+        header->SetText(language + " — " + fileName +
+                        " (highlighted live by UltraCanvasTextArea's syntax renderer)");
+        header->SetFontSize(12);
+        header->SetFontWeight(FontWeight::Bold);
+        header->SetTextColor(Color(40, 110, 40, 255));
+        header->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        page->AddChild(header);
+
+        auto codeView = std::make_shared<UltraCanvasTextArea>("TextSampleArea_" + language);
+        codeView->ApplyCodeStyle(language);
+        codeView->SetFontSize(11);
+        codeView->SetReadOnly(true);
+        codeView->SetShowLineNumbers(true);
+        codeView->SetHighlightCurrentLine(true);
+        codeView->SetWordWrap(false);
+        codeView->SetText(LoadFile(filePath));
+        codeView->SetCursorPosition(LineColumnIndex::INVALID);
+        codeView->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        page->AddChild(codeView);
+
+        return page;
+    }
+
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTextDocumentExamples() {
+        // Root: flex column filling the display area.
+        auto root = std::make_shared<UltraCanvasContainer>("TextDocumentExamples", 0, 0, 1000, 700);
+        root->layout.SetFlexColumn().SetFlexGap(8)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        root->SetPadding(10, 12, 10, 12);
+
+        auto title = std::make_shared<UltraCanvasLabel>("TextDocumentTitle", 0, 0, 0, 28);
+        title->SetText("Text Documents");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
+        title->SetTextColor(Color(50, 50, 150, 255));
+        title->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        root->AddChild(title);
 
-        // TextArea used both to query the syntax renderer's supported languages
-        // and, further below, to render the live example.
-        auto exampleArea = std::make_shared<UltraCanvasTextArea>("TextDocumentSyntaxExample", 20, 235, 950, 300);
-        std::vector<std::string> languages = exampleArea->GetSupportedLanguages();
+        // Query the renderer for every file type it can highlight.
+        auto probe = std::make_shared<UltraCanvasTextArea>("TextDocumentProbe", 0, 0, 10, 10);
+        std::vector<std::string> languages = probe->GetSupportedLanguages();
+        std::sort(languages.begin(), languages.end());
 
-        // Markdown and PDF are shown by their own dedicated viewers elsewhere
-        // in this demo, so they are excluded from this generic text list.
-        std::string typesText;
-        int count = 0;
-        for (const auto& lang : languages) {
-            if (lang == "Markdown" || lang == "PDF") continue;
-            typesText += (count > 0 ? ((count % 6 == 0) ? ",\n" : ", ") : "");
-            typesText += lang;
-            count++;
+        const std::string samplesDir = NormalizePath(GetResourcesDir() + "media/textsamples/");
+
+        // Figure out which bundled samples are actually present on disk.
+        std::vector<TextSample> presentSamples;
+        for (const auto& sample : BundledTextSamples()) {
+            const std::string path = NormalizePath(samplesDir + sample.fileName);
+            std::error_code ec;
+            if (std::filesystem::exists(path, ec)) {
+                presentSamples.push_back(sample);
+            }
         }
 
-        auto descLabel = std::make_shared<UltraCanvasLabel>("TextDocumentDesc", 20, 45, 950, 20);
-        descLabel->SetText("UltraCanvasTextArea's built-in syntax renderer highlights " + std::to_string(count)
-                            + " plain-text and source-code file types (Markdown and PDF have their own dedicated viewers):");
-        descLabel->SetFontSize(12);
-        descLabel->SetTextColor(Color(80, 80, 80));
-        container->AddChild(descLabel);
+        auto info = std::make_shared<UltraCanvasLabel>("TextDocumentInfo", 0, 0, 0, 34);
+        info->SetText("UltraCanvasTextArea's built-in syntax renderer highlights " +
+                      std::to_string(languages.size()) +
+                      " plain-text and source-code file types. The tabs below open live "
+                      "sample files from " + samplesDir + " — file types with a bundled "
+                      "sample are listed first, the remaining supported types follow.");
+        info->SetFontSize(11);
+        info->SetTextColor(Color(110, 110, 110, 255));
+        info->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        root->AddChild(info);
 
-        auto typesLabel = std::make_shared<UltraCanvasLabel>("TextDocumentTypesList", 20, 70, 950, 130);
-        typesLabel->SetText(typesText);
-        typesLabel->SetAlignment(TextAlignment::Left);
-        typesLabel->SetBackgroundColor(Color(230, 245, 230, 100));
-        typesLabel->SetBorders(2.0f);
-        typesLabel->SetPadding(10.0f);
-        typesLabel->SetFontSize(11);
-        container->AddChild(typesLabel);
+        // Vertical tab bar on the left: one tab per supported file type.
+        auto tabs = std::make_shared<UltraCanvasTabbedContainer>("TextDocumentTabs", 0, 0, 0, 0);
+        tabs->SetTabPosition(TabPosition::Left);
+        tabs->SetTabStyle(TabStyle::Modern);
+        tabs->SetCloseMode(TabCloseMode::NoClose);
+        tabs->SetTabHeight(26);
+        // Many file types — allow jumping to any of them through the overflow
+        // dropdown when the tab column does not fit the window height.
+        tabs->SetOverflowDropdownPosition(OverflowDropdownPosition::Right);
+        tabs->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-        auto exampleLabel = std::make_shared<UltraCanvasLabel>("TextDocumentExampleLabel", 20, 210, 500, 20);
-        exampleLabel->SetText("Example: JSON configuration file");
-        exampleLabel->SetFontSize(12);
-        exampleLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(exampleLabel);
+        // 1) File types we can actually show — a live TextArea per sample file.
+        std::set<std::string> withSample;
+        for (const auto& sample : presentSamples) {
+            withSample.insert(sample.language);
+            const std::string path = NormalizePath(samplesDir + sample.fileName);
+            tabs->AddTab(sample.language, CreateTextSampleTabPage(sample.language, path));
+        }
 
-        exampleArea->ApplyCodeStyle("JSON");
-        exampleArea->SetShowLineNumbers(true);
-        exampleArea->SetHighlightCurrentLine(true);
-        exampleArea->SetFontSize(11);
-        exampleArea->SetReadOnly(true);
+        // 2) Remaining supported file types, listed after the ones with a sample.
+        for (const auto& lang : languages) {
+            if (withSample.count(lang)) continue;
 
-        std::string jsonExample = R"({
-    "name": "UltraCanvas",
-    "version": "2.0.0",
-    "description": "Cross-platform native UI framework",
-    "features": [
-        "syntax highlighting",
-        "line numbers",
-        "multi-language support"
-    ],
-    "author": {
-        "name": "UltraCanvas Framework",
-        "license": "MIT"
-    }
-})";
-        exampleArea->SetText(jsonExample);
-        container->AddChild(exampleArea);
+            auto page = std::make_shared<UltraCanvasContainer>("TextTypePage_" + lang, 0, 0, 800, 600);
+            page->layout.SetFlexColumn()
+                        .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
+                        .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+            page->SetBackgroundColor(Colors::White);
 
-        return container;
+            auto note = std::make_shared<UltraCanvasLabel>("TextTypeNote_" + lang, 0, 0, 0, 0);
+            note->SetText(lang + "\n\nUltraCanvasTextArea highlights this file type — no bundled\n"
+                                 "sample ships for it yet. Open any matching file to see it rendered.");
+            note->SetFontSize(13);
+            note->SetTextColor(Color(120, 120, 120, 255));
+            note->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
+            note->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            page->AddChild(note);
+
+            tabs->AddTab(lang, page);
+        }
+
+        // Open on the first sample tab so a live document greets the user.
+        tabs->SetActiveTab(0);
+        root->AddChild(tabs);
+
+        return root;
     }
 
 //    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMarkdownExamples() {
