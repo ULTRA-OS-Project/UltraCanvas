@@ -15,7 +15,7 @@ set_target_properties(UltraNetRtmpPlugin PROPERTIES
 
 target_compile_features(UltraNetRtmpPlugin PRIVATE cxx_std_20)
 target_include_directories(UltraNetRtmpPlugin PRIVATE
-    ${CMAKE_SOURCE_DIR}/UltraCanvas/include)
+    ${ULTRACANVAS_INCLUDE_DIR})
 
 # Reuse the curl target the core picked (system or vendored). UC_CURL_LINK is
 # set by UltraCanvas/CMakeLists.txt before these plug-ins are added; the guard

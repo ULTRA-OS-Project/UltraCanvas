@@ -21,7 +21,7 @@ set_target_properties(UltraNetMqttPlugin PROPERTIES
 
 target_compile_features(UltraNetMqttPlugin PRIVATE cxx_std_20)
 target_include_directories(UltraNetMqttPlugin PRIVATE
-    ${CMAKE_SOURCE_DIR}/UltraCanvas/include
+    ${ULTRACANVAS_INCLUDE_DIR}
     ${PAHO_MQTT_INCLUDE})
 target_link_libraries(UltraNetMqttPlugin PRIVATE ${PAHO_MQTT_LIB})
 

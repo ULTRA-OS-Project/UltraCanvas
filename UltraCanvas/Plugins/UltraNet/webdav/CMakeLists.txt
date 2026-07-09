@@ -12,7 +12,7 @@ set_target_properties(UltraNetWebDavPlugin PROPERTIES
 
 target_compile_features(UltraNetWebDavPlugin PRIVATE cxx_std_20)
 target_include_directories(UltraNetWebDavPlugin PRIVATE
-    ${CMAKE_SOURCE_DIR}/UltraCanvas/include)
+    ${ULTRACANVAS_INCLUDE_DIR})
 
 # Reuse the curl target the core picked (system or vendored). UC_CURL_LINK is
 # set by UltraCanvas/CMakeLists.txt before these plug-ins are added; the guard

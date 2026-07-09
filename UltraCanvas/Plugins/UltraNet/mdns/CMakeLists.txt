@@ -46,7 +46,7 @@ set_target_properties(UltraNetMdnsPlugin PROPERTIES
 
 target_compile_features(UltraNetMdnsPlugin PRIVATE cxx_std_20)
 target_include_directories(UltraNetMdnsPlugin PRIVATE
-    ${CMAKE_SOURCE_DIR}/UltraCanvas/include
+    ${ULTRACANVAS_INCLUDE_DIR}
     ${MDNS_BACKEND_INCLUDES})
 target_link_libraries(UltraNetMdnsPlugin PRIVATE ${MDNS_BACKEND_LIBS})
 

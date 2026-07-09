@@ -21,7 +21,7 @@ set_target_properties(UltraNetSnmpPlugin PROPERTIES
 
 target_compile_features(UltraNetSnmpPlugin PRIVATE cxx_std_20)
 target_include_directories(UltraNetSnmpPlugin PRIVATE
-    ${CMAKE_SOURCE_DIR}/UltraCanvas/include
+    ${ULTRACANVAS_INCLUDE_DIR}
     ${NETSNMP_INCLUDE})
 target_link_libraries(UltraNetSnmpPlugin PRIVATE ${NETSNMP_LIB})
 

@@ -21,7 +21,7 @@ set_target_properties(UltraNetAmqpPlugin PROPERTIES
 
 target_compile_features(UltraNetAmqpPlugin PRIVATE cxx_std_20)
 target_include_directories(UltraNetAmqpPlugin PRIVATE
-    ${CMAKE_SOURCE_DIR}/UltraCanvas/include
+    ${ULTRACANVAS_INCLUDE_DIR}
     ${RABBITMQ_INCLUDE})
 target_link_libraries(UltraNetAmqpPlugin PRIVATE ${RABBITMQ_LIB})
 

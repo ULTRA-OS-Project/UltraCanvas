@@ -13,7 +13,7 @@ set_target_properties(UltraNetSipPlugin PROPERTIES
 
 target_compile_features(UltraNetSipPlugin PRIVATE cxx_std_20)
 target_include_directories(UltraNetSipPlugin PRIVATE
-    ${CMAKE_SOURCE_DIR}/UltraCanvas/include)
+    ${ULTRACANVAS_INCLUDE_DIR})
 
 if(WIN32)
     target_link_libraries(UltraNetSipPlugin PRIVATE ws2_32)

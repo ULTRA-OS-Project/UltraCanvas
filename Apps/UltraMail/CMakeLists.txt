@@ -39,9 +39,33 @@ target_compile_features(UltraMailEngine PUBLIC cxx_std_20)
 target_include_directories(UltraMailEngine PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/engine)
 target_link_libraries(UltraMailEngine PUBLIC UltraDatabase)
-# UltraNet provides the MIME codec (UltraNet_MimeParse) the engine builds on.
+# UltraNet provides the MIME/HTTP/Base64 helpers the engine builds on.
+# With a STATIC UltraCanvas we link the UltraNet archive directly. With a SHARED
+# UltraCanvas, UltraNet is absorbed into (and exported by) libultracanvas — link
+# THAT instead, for two reasons:
+#   * linking the static archive too would put a second copy of the UltraNet
+#     symbols on consumers' link lines and collide with the DLL's exports;
+#   * the engine's UltraNet_* references must resolve from the ultracanvas import
+#     lib, and GNU ld resolves left-to-right, so libultracanvas has to appear
+#     AFTER libultramail_engine. Expressing the dependency here lets CMake order
+#     them for every consumer (the UltraMail app and the headless engine test).
+# (ULTRACANVAS_BUILD_SHARED can be force-enabled inside the UltraCanvas
+# subdirectory scope, so query the resolved target type instead of the option.)
 if(TARGET UltraNet)
-    target_link_libraries(UltraMailEngine PUBLIC UltraNet)
+    set(_uc_core_shared FALSE)
+    if(TARGET ${ULTRACANVAS_LIBRARY})
+        get_target_property(_uc_core_type ${ULTRACANVAS_LIBRARY} TYPE)
+        if(_uc_core_type STREQUAL "SHARED_LIBRARY")
+            set(_uc_core_shared TRUE)
+        endif()
+    endif()
+    if(_uc_core_shared)
+        target_link_libraries(UltraMailEngine PUBLIC ${ULTRACANVAS_LIBRARY})
+        target_include_directories(UltraMailEngine PUBLIC
+            $<TARGET_PROPERTY:UltraNet,INTERFACE_INCLUDE_DIRECTORIES>)
+    else()
+        target_link_libraries(UltraMailEngine PUBLIC UltraNet)
+    endif()
 endif()
 
 message(STATUS "  [✓] UltraMail engine - ENABLED (target: UltraMailEngine)")
@@ -74,7 +98,10 @@ target_include_directories(UltraMail PRIVATE
     ${ULTRACANVAS_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/ui)
-target_link_libraries(UltraMail PRIVATE ${ULTRACANVAS_LIBRARY} UltraMailEngine)
+# Engine before the core: the engine (static) pulls UltraNet_* from the shared
+# libultracanvas import lib, and GNU ld resolves left-to-right, so the provider
+# must follow the consumer on the link line.
+target_link_libraries(UltraMail PRIVATE UltraMailEngine ${ULTRACANVAS_LIBRARY})
 if(TARGET fmt::fmt)
     target_link_libraries(UltraMail PRIVATE fmt::fmt)
 endif()

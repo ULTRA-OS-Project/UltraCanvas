@@ -22,7 +22,7 @@ set_target_properties(UltraNetSshPlugin PROPERTIES
 
 target_compile_features(UltraNetSshPlugin PRIVATE cxx_std_20)
 target_include_directories(UltraNetSshPlugin PRIVATE
-    ${CMAKE_SOURCE_DIR}/UltraCanvas/include
+    ${ULTRACANVAS_INCLUDE_DIR}
     ${LIBSSH_INCLUDE})
 target_link_libraries(UltraNetSshPlugin PRIVATE ${LIBSSH_LIB})
 

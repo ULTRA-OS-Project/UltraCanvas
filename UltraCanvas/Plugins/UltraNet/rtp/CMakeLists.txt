@@ -13,7 +13,7 @@ set_target_properties(UltraNetRtpPlugin PROPERTIES
 
 target_compile_features(UltraNetRtpPlugin PRIVATE cxx_std_20)
 target_include_directories(UltraNetRtpPlugin PRIVATE
-    ${CMAKE_SOURCE_DIR}/UltraCanvas/include)
+    ${ULTRACANVAS_INCLUDE_DIR})
 
 if(WIN32)
     target_link_libraries(UltraNetRtpPlugin PRIVATE ws2_32)

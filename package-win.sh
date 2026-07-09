@@ -40,7 +40,7 @@ rm -rf "$DIST_DIR"
 mkdir -p "$DIST_DIR"
 
 # Copy the executables
-cp ./build/bin/UltraCanvas*.exe "$DIST_DIR/"
+cp ./build/bin/*.exe "$DIST_DIR/"
 cp ./build/bin/*.dll "$DIST_DIR/"
 echo "Copied EXE"
 

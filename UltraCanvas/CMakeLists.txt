@@ -203,7 +203,7 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
 endif()
 
 # ===== DEFINE INCLUDE DIRECTORY =====
-set(ULTRACANVAS_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
+set(ULTRACANVAS_INCLUDE_DIR ${CMAKE_CURRENT_LIST_DIR}/include)
 set(ULTRACANVAS_INCLUDE_DIR ${ULTRACANVAS_INCLUDE_DIR} PARENT_SCOPE)
 set(ULTRACANVAS_PLATFORM ${ULTRACANVAS_PLATFORM} PARENT_SCOPE)
 
@@ -448,6 +448,24 @@ if(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
             LANGUAGE OBJCXX
             COMPILE_FLAGS "-x objective-c++ -fobjc-arc"
     )
+endif()
+
+# The OS-level UltraNet back-ends (UltraNetSupport / UltraNetTlsImpl /
+# UltraNetDnsImpl) live under the platform dir but belong to the UltraNet static
+# library (they are listed explicitly in ULTRANET_SOURCES). The platform glob
+# above also matches them, which compiled them into BOTH libultracanvas and
+# libultranet. That was silently tolerated only because a plain link never
+# extracted the archive's copies; once UltraNet is absorbed whole-archive into a
+# shared libultracanvas the two copies collide ("multiple definition of
+# ultranet_tls_platform::...", "UltraNet_DetectSystemProxy", ...). Drop them from
+# the core sources so they are compiled exactly once — into libultranet — which
+# the core then links.
+file(GLOB _ultracanvas_ultranet_platform_srcs
+    ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/UltraNet*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/UltraNet*.mm
+)
+if(_ultracanvas_ultranet_platform_srcs)
+    list(REMOVE_ITEM ULTRACANVAS_PLATFORM_SOURCES ${_ultracanvas_ultranet_platform_srcs})
 endif()
 
 set(ULTRACANVAS_LIBSPECIFIC_SOURCES
@@ -923,7 +941,7 @@ if(ULTRACANVAS_ENABLE_NET)
     if(_uc_use_vendored)
         # Builds libcurl_shared (+ curl's own CURL::libcurl alias) and, on Linux,
         # stamps it with the distro's symbol version node.
-        include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/VendoredCurl.cmake)
+        include(${CMAKE_CURRENT_LIST_DIR}/cmake/VendoredCurl.cmake)
         set(UC_CURL_LINK libcurl_shared)
         set(CURL_VERSION_STRING "8.21.0 (vendored)")
         message(STATUS "  [i] UltraNet libcurl: VENDORED third_party/curl "
@@ -1045,7 +1063,34 @@ if(ULTRACANVAS_ENABLE_NET)
 
     # Let UltraCanvas itself link UltraNet so that components like FileLoader
     # can call UltraNet_HttpDownloadFile when ULTRACANVAS_ENABLE_NET is on.
-    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraNet)
+    #
+    # In a shared build, libultracanvas is meant to be the single host that
+    # exports the whole UltraNet API: plug-ins (SMTP/IMAP/...) and apps import
+    # every UltraNet_* symbol from it and never link the static archive, so there
+    # is exactly one copy of UltraNet (and its global state) at runtime.
+    #
+    # A plain link only pulls the UltraNet objects that libultracanvas's own code
+    # references into the DLL, so WINDOWS_EXPORT_ALL_SYMBOLS would re-export only
+    # that arbitrary subset (e.g. UltraNet_Initialize but not UltraNet_MimeBuild /
+    # UltraNet_ParseUrl) — leaving consumers with undefined references. Force the
+    # ENTIRE archive in with --whole-archive so the complete API is present and
+    # exported. PRIVATE keeps the static archive off consumers' link lines (they
+    # import from the DLL); UltraNet's transitive deps/includes still propagate.
+    # A static ultracanvas keeps PUBLIC so consumers link the archive themselves.
+    if(ULTRACANVAS_BUILD_SHARED)
+        if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.24)
+            target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE
+                "$<LINK_LIBRARY:WHOLE_ARCHIVE,UltraNet>")
+        else()
+            # Fallback for CMake < 3.24 (no $<LINK_LIBRARY:WHOLE_ARCHIVE>): force
+            # the archive in by file, plus the target for its usage requirements.
+            target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE
+                -Wl,--whole-archive $<TARGET_FILE:UltraNet> -Wl,--no-whole-archive
+                UltraNet)
+        endif()
+    else()
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraNet)
+    endif()
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NET=1)
     message(STATUS "  [✓] UltraNet - ENABLED (libcurl ${CURL_VERSION_STRING})")
 

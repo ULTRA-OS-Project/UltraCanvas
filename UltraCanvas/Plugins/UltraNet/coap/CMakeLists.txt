@@ -24,7 +24,7 @@ set_target_properties(UltraNetCoapPlugin PROPERTIES
 
 target_compile_features(UltraNetCoapPlugin PRIVATE cxx_std_20)
 target_include_directories(UltraNetCoapPlugin PRIVATE
-    ${CMAKE_SOURCE_DIR}/UltraCanvas/include
+    ${ULTRACANVAS_INCLUDE_DIR}
     ${COAP3_INCLUDE})
 target_link_libraries(UltraNetCoapPlugin PRIVATE ${COAP3_LIB})
 
