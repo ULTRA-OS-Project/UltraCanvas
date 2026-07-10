@@ -652,7 +652,11 @@ namespace UltraCanvas {
             }
         }
 
-        if (event.type == UCEventType::MouseDown && event.button == UCMouseButton::Left) {
+        // A rapid second click arrives as a double-click instead of a
+        // MouseDown; the disclosure arrow must toggle on every click.
+        if ((event.type == UCEventType::MouseDown ||
+             event.type == UCEventType::MouseDoubleClick) &&
+            event.button == UCMouseButton::Left) {
             Point2Df p(event.pointer.x, event.pointer.y);
 
             // The caption layout depends on measured text, which needs a render

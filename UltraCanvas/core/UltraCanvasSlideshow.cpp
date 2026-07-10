@@ -1091,6 +1091,9 @@ namespace UltraCanvas {
                 }
                 return false;
             }
+            // A rapid second click arrives as a double-click instead of a
+            // MouseDown; the clickable indicators must react to every click.
+            case UCEventType::MouseDoubleClick:
             case UCEventType::MouseDown: {
                 if (event.button != UCMouseButton::Left) return false;
                 // A click anywhere on the slideshow grabs keyboard focus so the

@@ -746,6 +746,9 @@ namespace UltraCanvas {
         }
         switch (event.type) {
             case UCEventType::MouseDown:
+            // A rapid second click arrives as a double-click instead of a
+            // MouseDown; the arrow button must toggle on every click.
+            case UCEventType::MouseDoubleClick:
                 return HandleMouseDown(event);
 
             case UCEventType::MouseUp:
