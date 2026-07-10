@@ -57,6 +57,11 @@ namespace UltraCanvas {
         // scaled into the thumb rect using thumbImageFit. Leave empty for the default
         // solid thumb. SVG handles scale crisply; use Fill to stretch to the thumb.
         std::string thumbImagePath;
+        // Optional orientation-specific handle image used for horizontal scrollbars.
+        // When set it overrides thumbImagePath for horizontal bars, so a single style
+        // can carry a vertical grip (thumbImagePath) and a matching horizontal grip
+        // here. If left empty, horizontal bars fall back to thumbImagePath.
+        std::string thumbImagePathHorizontal;
         ImageFitMode thumbImageFit = ImageFitMode::Fill;
 
         // Behavior

@@ -26,13 +26,19 @@ namespace UltraCanvas {
     // scrollbars (the content area, the navigation tree, list/tree/menu examples, …)
     // share this one blue style.
     static ScrollbarStyle DemoScrollbarStyle() {
-        ScrollbarStyle s;                               // default trackSize = 16
+        ScrollbarStyle s;
+        s.trackSize         = 8;                        // half the former 16px width
         s.trackColor        = Color(225, 232, 245, 255);
         s.thumbColor        = Color(90, 140, 220, 255);
         s.thumbHoverColor   = Color(70, 120, 200, 255);
         s.thumbPressedColor = Color(50, 100, 180, 255);
         s.thumbCornerRadius = s.trackSize / 2;          // fully rounded ends
         s.trackCornerRadius = s.trackSize / 2;
+        // Draw a grip handle on the thumb (SVG riffled grip), orientation-aware so
+        // vertical and horizontal bars each get a correctly-oriented grip.
+        s.thumbImagePath           = NormalizePath(GetResourcesDir() + "media/icons/scrollbar-handle-v.svg");
+        s.thumbImagePathHorizontal = NormalizePath(GetResourcesDir() + "media/icons/scrollbar-handle-h.svg");
+        s.thumbImageFit            = ImageFitMode::Fill;
         return s;
     }
 
