@@ -13,8 +13,8 @@
 // Both are self-rendered (no child widgets) and follow the standard element
 // conventions.
 //
-// Version: 1.0.0
-// Last Modified: 2026-07-07
+// Version: 1.0.1
+// Last Modified: 2026-07-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -27,6 +27,7 @@
 #include <memory>
 #include <functional>
 #include <algorithm>
+#include <optional>
 
 namespace UltraCanvas {
 
@@ -91,12 +92,12 @@ namespace UltraCanvas {
             : UltraCanvasChip(identifier, -1, -1, -1, -1) {}
 
         // ===== CONTENT =====
-        void SetLabel(const std::string& text) { label = text; RequestRedraw(); }
+        void SetLabel(const std::string& text) { label = text; InvalidateLayout(); RequestRedraw(); }
         const std::string& GetLabel() const { return label; }
 
         void SetIcon(const std::string& path);
 
-        void SetClosable(bool c)   { closable = c; RequestRedraw(); }
+        void SetClosable(bool c)   { closable = c; InvalidateLayout(); RequestRedraw(); }
         bool IsClosable() const    { return closable; }
 
         void SetSelectable(bool s) { selectable = s; RequestRedraw(); }
@@ -112,7 +113,7 @@ namespace UltraCanvas {
 
         ChipStyle& GetStyle() { return style; }
         const ChipStyle& GetStyle() const { return style; }
-        void SetStyle(const ChipStyle& s) { style = s; RequestRedraw(); }
+        void SetStyle(const ChipStyle& s) { style = s; InvalidateLayout(); RequestRedraw(); }
 
         float GetPreferredWidth(IRenderContext* ctx) const;
 
@@ -121,6 +122,15 @@ namespace UltraCanvas {
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         bool OnEvent(const UCEvent& event) override;
 
+        // ===== ENGINE-DRIVEN LAYOUT =====
+        // Publish the chip's intrinsic size so the CSS engine can place a chip
+        // created with auto (0) width/height. Without these the engine leaves
+        // the chip zero-sized and the parent container culls it before Render
+        // (where the legacy autoWidth sizing lives) ever runs.
+        Size2Df MeasureOwnContent(std::optional<float> definiteContentWidth,
+                                  const CSSLayout::LayoutContext& ctx) override;
+        void ComputeIntrinsicSizes(const CSSLayout::LayoutContext& ctx) override;
+
         // ===== CALLBACKS =====
         std::function<void()> onClick;
         std::function<void()> onClose;              // × pressed (owner should remove it)
@@ -128,6 +138,10 @@ namespace UltraCanvas {
 
     private:
         Rect2Df CloseRect() const;  // element-local; empty when not closable
+        // Preferred content width via the window's render context when
+        // available, or a rough font-size based estimate before the first
+        // frame (so the chip is never measured 0-wide).
+        float ContentWidthForLayout() const;
     };
 
 // ===== TAG INPUT STYLE =====
@@ -225,7 +239,9 @@ namespace UltraCanvas {
         void FireChanged();
 
         bool HandleKeyDown(const UCEvent& event);
-        bool HandleKeyChar(const UCEvent& event);
+        // Printable text arrives on KeyDown (event.character / event.text);
+        // the platform layers never emit a separate KeyChar event.
+        bool HandleCharacterInput(const UCEvent& event);
         bool HandleMouseDown(const UCEvent& event);
         bool HandleMouseMove(const UCEvent& event);
     };
