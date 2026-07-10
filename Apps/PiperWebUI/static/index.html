@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Piper TTS — Voice Studio</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗣️</text></svg>">
+<style>
+  :root {
+    --bg: #f4f6f9;
+    --panel: #ffffff;
+    --text: #1c2530;
+    --muted: #5c6b7a;
+    --border: #d8dfe7;
+    --accent: #2563eb;
+    --accent-text: #ffffff;
+    --ok: #16a34a;
+    --warn: #d97706;
+    --err: #dc2626;
+    --shadow: 0 1px 3px rgba(16, 24, 40, .08), 0 1px 2px rgba(16, 24, 40, .04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #10151c;
+      --panel: #1a222c;
+      --text: #e6ecf3;
+      --muted: #93a3b4;
+      --border: #2c3947;
+      --accent: #3b82f6;
+      --shadow: 0 1px 3px rgba(0, 0, 0, .4);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.45;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 24px 16px 64px; }
+  header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  header h1 { font-size: 26px; margin: 0; }
+  header .sub { color: var(--muted); font-size: 14px; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    padding: 18px;
+    margin-bottom: 18px;
+  }
+  .panel h2 {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--muted);
+    margin: 0 0 12px;
+  }
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+  label.field { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--muted); }
+  select, textarea, input[type=text] {
+    font: inherit;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    width: 100%;
+  }
+  select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  textarea { resize: vertical; min-height: 90px; }
+  .voice-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; font-size: 13px; color: var(--muted); }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .badge.ok { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
+  .badge.warn { background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn); }
+  button {
+    font: inherit;
+    font-weight: 600;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 16px;
+    background: var(--panel);
+    color: var(--text);
+    cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .55; cursor: not-allowed; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  button.primary:hover:not(:disabled) { filter: brightness(1.1); }
+  .slider-row { display: grid; grid-template-columns: 150px 1fr 64px; align-items: center; gap: 12px; margin: 8px 0; font-size: 14px; }
+  .slider-row .name { color: var(--muted); }
+  .slider-row .val { text-align: right; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .opts-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; flex-wrap: wrap; font-size: 14px; }
+  .checkbox { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+  .speak-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .speak-row button.primary { padding: 10px 28px; font-size: 16px; }
+  .status { font-size: 14px; color: var(--muted); }
+  .status.err { color: var(--err); }
+  .spinner {
+    width: 16px; height: 16px; border-radius: 50%;
+    border: 2px solid var(--border); border-top-color: var(--accent);
+    animation: spin .7s linear infinite; display: inline-block; vertical-align: -3px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .result { border-top: 1px solid var(--border); padding: 12px 0; }
+  .result:first-child { border-top: none; padding-top: 0; }
+  .result .meta { font-size: 13px; color: var(--muted); margin-bottom: 6px; display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .result audio { width: 100%; }
+  .result a { color: var(--accent); text-decoration: none; }
+  .hidden { display: none !important; }
+  footer { text-align: center; color: var(--muted); font-size: 13px; margin-top: 28px; }
+  footer a { color: var(--accent); text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Piper TTS</h1>
+    <span class="sub">Voice Studio — neural text-to-speech</span>
+  </header>
+
+  <section class="panel">
+    <h2>Voice</h2>
+    <div class="grid">
+      <label class="field">Language
+        <select id="language"></select>
+      </label>
+      <label class="field">Voice
+        <select id="voice"></select>
+      </label>
+      <label class="field">Quality
+        <select id="quality"></select>
+      </label>
+      <label class="field" id="speakerField">Speaker
+        <select id="speaker"></select>
+      </label>
+    </div>
+    <div class="voice-meta">
+      <span id="voiceKey"></span>
+      <span id="voiceInfo"></span>
+      <span id="installedBadge" class="badge"></span>
+      <button id="downloadBtn" class="hidden">Download voice</button>
+      <span id="downloadStatus" class="status"></span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Text</h2>
+    <textarea id="text" spellcheck="false"></textarea>
+  </section>
+
+  <section class="panel">
+    <h2>Options</h2>
+    <div class="slider-row">
+      <span class="name" title="length_scale — larger is slower">Speed (length scale)</span>
+      <input type="range" id="length_scale" min="0.5" max="2" step="0.05" value="1">
+      <span class="val" id="length_scale_val">1.00</span>
+    </div>
+    <div class="slider-row">
+      <span class="name" title="noise_scale — variability of the generated audio">Noise scale</span>
+      <input type="range" id="noise_scale" min="0" max="1" step="0.017" value="0.667">
+      <span class="val" id="noise_scale_val">0.667</span>
+    </div>
+    <div class="slider-row">
+      <span class="name" title="noise_w_scale — variability of phoneme lengths">Noise width</span>
+      <input type="range" id="noise_w_scale" min="0" max="2" step="0.05" value="0.8">
+      <span class="val" id="noise_w_scale_val">0.80</span>
+    </div>
+    <div class="slider-row">
+      <span class="name" title="Silence inserted after each sentence">Sentence silence (s)</span>
+      <input type="range" id="sentence_silence" min="0" max="2" step="0.05" value="0.2">
+      <span class="val" id="sentence_silence_val">0.20</span>
+    </div>
+    <div class="slider-row">
+      <span class="name" title="Output gain">Volume</span>
+      <input type="range" id="volume" min="0" max="2" step="0.05" value="1">
+      <span class="val" id="volume_val">1.00</span>
+    </div>
+    <div class="opts-foot">
+      <label class="checkbox"><input type="checkbox" id="normalize_audio" checked> Normalize audio</label>
+      <button id="resetBtn">Reset to voice defaults</button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="speak-row">
+      <button id="speakBtn" class="primary">▶ Speak</button>
+      <span id="speakStatus" class="status"></span>
+    </div>
+  </section>
+
+  <section class="panel hidden" id="resultsPanel">
+    <h2>Results</h2>
+    <div id="results"></div>
+  </section>
+
+  <footer>
+    Powered by <a href="https://github.com/OHF-Voice/piper1-gpl" target="_blank" rel="noopener">Piper</a> ·
+    voices from <a href="https://huggingface.co/rhasspy/piper-voices" target="_blank" rel="noopener">rhasspy/piper-voices</a> ·
+    samples reference: <a href="https://rhasspy.github.io/piper-samples/" target="_blank" rel="noopener">piper-samples</a>
+  </footer>
+</div>
+
+<script>
+"use strict";
+
+const $ = (id) => document.getElementById(id);
+const QUALITY_ORDER = { x_low: 0, low: 1, medium: 2, high: 3 };
+const SAMPLE_TEXT = {
+  ar: "مرحبا، اسمي بايبر. أنا نظام تحويل النص إلى كلام.",
+  ca: "Hola, em dic Piper. Sóc un sistema de síntesi de veu.",
+  cs: "Ahoj, jmenuji se Piper. Jsem systém pro převod textu na řeč.",
+  da: "Hej, mit navn er Piper. Jeg er et tekst-til-tale-system.",
+  de: "Hallo, mein Name ist Piper. Ich bin ein Sprachsynthese-System.",
+  el: "Γεια σας, με λένε Πάιπερ. Είμαι ένα σύστημα μετατροπής κειμένου σε ομιλία.",
+  en: "Hello, my name is Piper. I am a fast, local, neural text-to-speech system.",
+  es: "Hola, me llamo Piper. Soy un sistema de conversión de texto a voz.",
+  fa: "سلام، اسم من پایپر است. من یک سامانه تبدیل متن به گفتار هستم.",
+  fi: "Hei, nimeni on Piper. Olen puhesynteesijärjestelmä.",
+  fr: "Bonjour, je m'appelle Piper. Je suis un système de synthèse vocale.",
+  hu: "Helló, a nevem Piper. Egy szövegfelolvasó rendszer vagyok.",
+  is: "Halló, ég heiti Piper. Ég er talgervill.",
+  it: "Ciao, mi chiamo Piper. Sono un sistema di sintesi vocale.",
+  ka: "გამარჯობა, მე მქვია პაიპერი.",
+  kk: "Сәлеметсіз бе, менің атым Пайпер.",
+  lb: "Moien, ech heesche Piper. Ech sinn e Sproochsynthes-System.",
+  ne: "नमस्ते, मेरो नाम पाइपर हो।",
+  nl: "Hallo, mijn naam is Piper. Ik ben een tekst-naar-spraak-systeem.",
+  no: "Hei, jeg heter Piper. Jeg er et tekst-til-tale-system.",
+  pl: "Cześć, nazywam się Piper. Jestem systemem syntezy mowy.",
+  pt: "Olá, o meu nome é Piper. Sou um sistema de síntese de voz.",
+  ro: "Bună, numele meu este Piper. Sunt un sistem de sinteză vocală.",
+  ru: "Здравствуйте, меня зовут Пайпер. Я система синтеза речи.",
+  sk: "Ahoj, volám sa Piper. Som systém na prevod textu na reč.",
+  sl: "Živjo, ime mi je Piper. Sem sistem za pretvorbo besedila v govor.",
+  sr: "Здраво, зовем се Пајпер. Ја сам систем за синтезу говора.",
+  sv: "Hej, jag heter Piper. Jag är ett text-till-tal-system.",
+  sw: "Habari, jina langu ni Piper.",
+  tr: "Merhaba, benim adım Piper. Ben bir metin okuma sistemiyim.",
+  uk: "Привіт, мене звати Пайпер. Я система синтезу мовлення.",
+  vi: "Xin chào, tên tôi là Piper. Tôi là hệ thống chuyển văn bản thành giọng nói.",
+  zh: "你好，我叫派珀。我是一个语音合成系统。",
+};
+
+let voices = [];          // full list from /api/voices
+let userEditedText = false;
+
+const sliders = ["length_scale", "noise_scale", "noise_w_scale", "sentence_silence", "volume"];
+for (const id of sliders) {
+  $(id).addEventListener("input", () => {
+    $(id + "_val").textContent = Number($(id).value).toFixed(id === "noise_scale" ? 3 : 2);
+  });
+}
+$("text").addEventListener("input", () => { userEditedText = true; });
+
+function langLabel(l) {
+  const name = l.name_english || l.code || "Unknown";
+  return l.country_english ? `${name} (${l.country_english})` : name;
+}
+
+function fillSelect(sel, items, keepValue) {
+  const old = sel.value;
+  sel.innerHTML = "";
+  for (const it of items) {
+    const opt = document.createElement("option");
+    opt.value = it.value;
+    opt.textContent = it.label;
+    sel.appendChild(opt);
+  }
+  const kept = keepValue && items.some((it) => it.value === old);
+  if (kept) sel.value = old;
+  return kept;
+}
+
+function currentLangVoices() {
+  return voices.filter((v) => (v.language.code || "") === $("language").value);
+}
+
+function currentEntry() {
+  return currentLangVoices().find(
+    (v) => v.name === $("voice").value && v.quality === $("quality").value
+  );
+}
+
+function refreshLanguages() {
+  const seen = new Map();
+  for (const v of voices) {
+    const code = v.language.code || "";
+    if (!seen.has(code)) seen.set(code, langLabel(v.language));
+  }
+  const items = [...seen.entries()]
+    .map(([value, label]) => ({ value, label }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+  fillSelect($("language"), items, true);
+  if (!$("language").value && items.length) {
+    const en = items.find((it) => it.value.startsWith("en_US")) || items[0];
+    $("language").value = en.value;
+  }
+  refreshVoices(true);
+}
+
+function refreshVoices(keep) {
+  const names = [...new Set(currentLangVoices().map((v) => v.name))].sort();
+  fillSelect($("voice"), names.map((n) => ({ value: n, label: n })), keep);
+  refreshQualities(keep);
+}
+
+function refreshQualities(keep) {
+  const quals = currentLangVoices()
+    .filter((v) => v.name === $("voice").value)
+    .map((v) => v.quality)
+    .sort((a, b) => (QUALITY_ORDER[a] ?? 9) - (QUALITY_ORDER[b] ?? 9));
+  const kept = fillSelect($("quality"), quals.map((q) => ({ value: q, label: q })), keep);
+  // prefer medium when there is no previous selection to keep
+  if (!kept && quals.includes("medium")) $("quality").value = "medium";
+  refreshVoiceDetails();
+}
+
+function refreshVoiceDetails() {
+  const entry = currentEntry();
+  if (!entry) return;
+
+  // speakers
+  const multi = entry.num_speakers > 1;
+  $("speakerField").classList.toggle("hidden", !multi);
+  if (multi) {
+    const items = Object.entries(entry.speaker_id_map)
+      .sort((a, b) => a[1] - b[1])
+      .map(([name, id]) => ({ value: String(id), label: `${name} (#${id})` }));
+    if (!items.length) {
+      for (let i = 0; i < entry.num_speakers; i++) items.push({ value: String(i), label: `Speaker ${i}` });
+    }
+    fillSelect($("speaker"), items, true);
+  }
+
+  $("voiceKey").textContent = entry.key;
+  const bits = [];
+  if (multi) bits.push(`${entry.num_speakers} speakers`);
+  if (entry.sample_rate) bits.push(`${entry.sample_rate} Hz`);
+  if (entry.local_only) bits.push("local model");
+  $("voiceInfo").textContent = bits.join(" · ");
+
+  const badge = $("installedBadge");
+  if (entry.installed) {
+    badge.textContent = "installed";
+    badge.className = "badge ok";
+    $("downloadBtn").classList.add("hidden");
+  } else {
+    badge.textContent = "not installed";
+    badge.className = "badge warn";
+    $("downloadBtn").classList.remove("hidden");
+  }
+  $("downloadStatus").textContent = "";
+  $("speakBtn").disabled = false;
+
+  // sample text for the language
+  if (!userEditedText) {
+    const family = (entry.language.family || entry.language.code || "en").split("_")[0];
+    $("text").value = SAMPLE_TEXT[family] || SAMPLE_TEXT.en;
+  }
+
+  // voice-default synthesis params
+  applyDefaults(entry);
+}
+
+function applyDefaults(entry) {
+  const d = entry.defaults || {};
+  $("length_scale").value = d.length_scale ?? 1.0;
+  $("noise_scale").value = d.noise_scale ?? 0.667;
+  $("noise_w_scale").value = d.noise_w_scale ?? 0.8;
+  for (const id of sliders) $(id).dispatchEvent(new Event("input"));
+}
+
+$("language").addEventListener("change", () => refreshVoices(false));
+$("voice").addEventListener("change", () => refreshQualities(false));
+$("quality").addEventListener("change", refreshVoiceDetails);
+$("resetBtn").addEventListener("click", () => {
+  const entry = currentEntry();
+  if (entry) {
+    $("sentence_silence").value = 0.2;
+    $("volume").value = 1.0;
+    $("normalize_audio").checked = true;
+    applyDefaults(entry);
+  }
+});
+
+async function loadVoices() {
+  $("speakStatus").textContent = "Loading voice list…";
+  try {
+    const res = await fetch("api/voices");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    voices = (await res.json()).voices;
+    refreshLanguages();
+    $("speakStatus").textContent = "";
+  } catch (err) {
+    $("speakStatus").textContent = `Could not load voices: ${err.message}`;
+    $("speakStatus").className = "status err";
+  }
+}
+
+$("downloadBtn").addEventListener("click", async () => {
+  const entry = currentEntry();
+  if (!entry) return;
+  const btn = $("downloadBtn");
+  btn.disabled = true;
+  $("downloadStatus").innerHTML = '<span class="spinner"></span> downloading… (may take a minute)';
+  try {
+    const res = await fetch("api/download", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ voice: entry.key }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
+    entry.installed = true;
+    $("downloadStatus").textContent = "";
+    await loadVoices();
+  } catch (err) {
+    $("downloadStatus").textContent = `Download failed: ${err.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$("speakBtn").addEventListener("click", async () => {
+  const entry = currentEntry();
+  const text = $("text").value.trim();
+  if (!entry || !text) return;
+
+  if (!entry.installed) {
+    $("speakStatus").textContent = "Voice is not installed — downloading it first…";
+    $("downloadBtn").click();
+    return;
+  }
+
+  const params = {
+    voice: entry.key,
+    text,
+    length_scale: Number($("length_scale").value),
+    noise_scale: Number($("noise_scale").value),
+    noise_w_scale: Number($("noise_w_scale").value),
+    sentence_silence: Number($("sentence_silence").value),
+    volume: Number($("volume").value),
+    normalize_audio: $("normalize_audio").checked,
+  };
+  if (entry.num_speakers > 1) params.speaker_id = Number($("speaker").value || 0);
+
+  const btn = $("speakBtn");
+  btn.disabled = true;
+  $("speakStatus").className = "status";
+  $("speakStatus").innerHTML = '<span class="spinner"></span> synthesizing…';
+  const started = performance.now();
+  try {
+    const res = await fetch("api/synthesize", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(params),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
+    const blob = await res.blob();
+    const seconds = ((performance.now() - started) / 1000).toFixed(1);
+    $("speakStatus").textContent = `Done in ${seconds}s`;
+    addResult(entry, params, blob);
+  } catch (err) {
+    $("speakStatus").textContent = `Error: ${err.message}`;
+    $("speakStatus").className = "status err";
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+function addResult(entry, params, blob) {
+  $("resultsPanel").classList.remove("hidden");
+  const url = URL.createObjectURL(blob);
+  const div = document.createElement("div");
+  div.className = "result";
+
+  const speakerTxt = params.speaker_id !== undefined ? ` · speaker ${params.speaker_id}` : "";
+  const fileName = `${entry.key}${params.speaker_id !== undefined ? "-s" + params.speaker_id : ""}.wav`;
+  const meta = document.createElement("div");
+  meta.className = "meta";
+  meta.innerHTML =
+    `<span>${entry.key}${speakerTxt} · speed ${params.length_scale} · noise ${params.noise_scale}/${params.noise_w_scale}</span>` +
+    `<span>“${escapeHtml(params.text.slice(0, 60))}${params.text.length > 60 ? "…" : ""}” — <a download="${fileName}" href="${url}">download WAV</a></span>`;
+
+  const audio = document.createElement("audio");
+  audio.controls = true;
+  audio.src = url;
+  div.appendChild(meta);
+  div.appendChild(audio);
+  $("results").prepend(div);
+  audio.play().catch(() => {});
+
+  // keep the last 10 results
+  while ($("results").children.length > 10) {
+    const last = $("results").lastElementChild;
+    const a = last.querySelector("audio");
+    if (a) URL.revokeObjectURL(a.src);
+    last.remove();
+  }
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+loadVoices();
+</script>
+</body>
+</html>
