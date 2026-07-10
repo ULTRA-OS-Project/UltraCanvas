@@ -1,7 +1,7 @@
 // include/UltraCanvasTextInput.h
 // Advanced text input component with validation, formatting, and feedback systems
-// Version: 1.3.0
-// Last Modified: 2026-07-08
+// Version: 1.3.2
+// Last Modified: 2026-07-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -354,6 +354,13 @@ public:
     
     const std::string& GetText() const { return text; }
     const std::string& GetDisplayText() const { return displayText; }
+
+    // The text exactly as painted: masked with '*' in password mode, otherwise the
+    // formatted display text. ALL width/caret/hit-test/scroll geometry must measure
+    // this (never GetDisplayText) so the computed positions match what the user sees.
+    std::string GetRenderText() const {
+        return passwordMode ? std::string(displayText.length(), '*') : displayText;
+    }
     
     void SetPlaceholder(const std::string& placeholder) {
         placeholderText = placeholder;

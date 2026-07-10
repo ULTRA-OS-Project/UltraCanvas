@@ -1,7 +1,7 @@
 // UltraCanvasTextInput.cpp
 // Advanced text input component with validation, formatting, and feedback systems
-// Version: 1.3.0
-// Last Modified: 2026-07-08
+// Version: 1.3.2
+// Last Modified: 2026-07-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextInput.h"
@@ -346,7 +346,7 @@ namespace UltraCanvas {
 
         // For multiline, check current line width
         if (inputType == TextInputType::Multiline) {
-            std::string displayText = GetDisplayText();
+            std::string displayText = GetRenderText();
             size_t lineStart = caretPosition;
             while (lineStart > 0 && displayText[lineStart - 1] != '\n') {
                 lineStart--;
@@ -367,7 +367,7 @@ namespace UltraCanvas {
             scrollOffset = std::min(scrollOffset, maxScroll);
         } else {
             // Single line: check against total text width
-            std::string displayText = GetDisplayText();
+            std::string displayText = GetRenderText();
 
             // Set text style for measurement
             ctx->SetFontStyle(style.fontStyle);
@@ -424,8 +424,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTextInput::RenderText(const Rect2Dd &area, const Color &color, IRenderContext* ctx) {
-        std::string renderText = passwordMode ?
-                                 std::string(text.length(), '*') : GetDisplayText();
+        std::string renderText = GetRenderText();
 
         if (renderText.empty()) return;
 
@@ -466,7 +465,7 @@ namespace UltraCanvas {
     void UltraCanvasTextInput::RenderSelection(const Rect2Dd &area, IRenderContext* ctx) {
         if (!HasSelection()) return;
 
-        std::string displayText = GetDisplayText();
+        std::string displayText = GetRenderText();
 
         // Set proper text style for measurement
         ctx->SetFontStyle(style.fontStyle);
@@ -481,11 +480,13 @@ namespace UltraCanvas {
         double selStartX = area.x + ctx->GetTextLineWidth(textBeforeSelection);
         double selWidth = ctx->GetTextLineWidth(selectedText);
 
-        // Calculate proper selection height based on font metrics
-        double ascender = style.fontStyle.fontSize * 0.8f;
-        double descender = style.fontStyle.fontSize * 0.2f;
-        double selectionHeight = ascender + descender;
-        double selectionY = area.y + (area.height - selectionHeight) / 2.0f;
+        // Cover the full text line box (font ascent + descent) so tall and deep glyphs
+        // are fully highlighted, then pad by 2px above and below. Mirrors the line height
+        // RenderText uses so the highlight stays aligned with the drawn text.
+        const double selectionPadding = 2.0;
+        double lineHeight = ctx->GetTextLineHeight(displayText);
+        double selectionHeight = lineHeight + 2.0 * selectionPadding;
+        double selectionY = area.y + (area.height - lineHeight) / 2.0 - selectionPadding;
 
         // Ensure selection is within visible area
         double visibleStartX = std::max(selStartX, area.x);
@@ -510,7 +511,7 @@ namespace UltraCanvas {
             caretX = textArea.x - scrollOffset;
         } else {
             // Calculate width of text up to caret position
-            std::string displayText = GetDisplayText();
+            std::string displayText = GetRenderText();
             std::string textUpToCaret;
 
             if (inputType == TextInputType::Multiline) {
@@ -720,7 +721,7 @@ namespace UltraCanvas {
             clickedLine = std::max(0, clickedLine);
 
             // Find the start position of the clicked line
-            std::string displayText = GetDisplayText();
+            std::string displayText = GetRenderText();
             size_t lineStartPos = 0;
             int currentLine = 0;
 
@@ -775,7 +776,7 @@ namespace UltraCanvas {
 
             if (relativeX <= 0) return 0;
 
-            std::string displayText = GetDisplayText();
+            std::string displayText = GetRenderText();
 
             // Set text style for measurement
             ctx->SetFontStyle(style.fontStyle);
@@ -1292,7 +1293,7 @@ namespace UltraCanvas {
             return style.paddingLeft;
         }
 
-        std::string displayText = GetDisplayText();
+        std::string displayText = GetRenderText();
 
         // Find start of current line
         size_t lineStart = caretPosition;
@@ -1316,7 +1317,7 @@ namespace UltraCanvas {
             return style.paddingLeft;
         }
 
-        std::string displayText = GetDisplayText();
+        std::string displayText = GetRenderText();
 
         if (inputType == TextInputType::Multiline) {
             // For multiline: find start of current line
