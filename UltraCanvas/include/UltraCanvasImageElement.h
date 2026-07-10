@@ -8,6 +8,7 @@
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
+#include "UltraCanvasImageAnimation.h"
 #include <string>
 #include <vector>
 #include <functional>
@@ -67,7 +68,12 @@ private:
     // Performance
     bool cacheEnabled = true;
     bool asyncLoading = false;
-    
+
+    // Animation (GIF / animated WebP). Frames come from the loaded image's
+    // shared UCImageAnimation; the controller paces them on the app timer.
+    UCImageAnimationController animator;
+    bool animationEnabled = true;
+
 public:
     // ===== EVENTS =====
     std::function<void()> onImageLoaded;
@@ -120,6 +126,22 @@ public:
 //    ImageFormat GetImageFormat() const { return loadedImage.format; }
     //const std::string& GetImagePath() const { return loadedImage.imagePath; }
     
+    // ===== ANIMATION (GIF / animated WebP) =====
+    // Animated images auto-play as soon as they are loaded. Call
+    // SetAnimationEnabled(false) (before or after loading) to show only the
+    // first frame instead.
+    void SetAnimationEnabled(bool enable);
+    bool IsAnimationEnabled() const { return animationEnabled; }
+    // True when the loaded image has more than one animation frame.
+    bool IsAnimatedImage() const { return loadedImage && loadedImage->IsAnimated(); }
+    void PlayAnimation()  { animator.Play(); }
+    void PauseAnimation() { animator.Pause(); }
+    void StopAnimation()  { animator.Stop(); }     // rewinds to frame 0
+    bool IsAnimationPlaying() const { return animator.IsPlaying(); }
+    // Direct access for advanced control (frame stepping, loop override,
+    // onEnded notification).
+    UCImageAnimationController& GetAnimationController() { return animator; }
+
     // ===== INTERACTION =====
     void SetClickable(bool enable) {
         clickable = enable;
@@ -148,6 +170,9 @@ private:
     Size2Df NaturalImageSize() const;
 
     void SetError(const std::string& message);
+
+    // Decode + start (or clear) the frame animation for the loaded image.
+    void SetupAnimation();
 
     void DrawLoadedImage(IRenderContext* ctx);
     void DrawErrorPlaceholder(IRenderContext* ctx);

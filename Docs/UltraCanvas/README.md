@@ -144,6 +144,9 @@ make
     viewer widget and the headless `IPDFDocument` engine (rendering, search,
     text/image extraction, page ops, editing), with examples from the PDF demo.
 -   [Bitmap Handling Architecture](BitmapHandlingArchitecture.md)
+-   [Animated Images (GIF / animated WebP)](UltraCanvasAnimatedImages.md) -
+    how animated images decode and play in `UltraCanvasImageElement` and the
+    media viewer, and the `UCImageAnimationController` playback API.
 
 ----------
 

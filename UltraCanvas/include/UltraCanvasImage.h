@@ -321,5 +321,6 @@ namespace UltraCanvas {
 
     typedef std::shared_ptr<UCImage> UCImagePtr;
     typedef std::shared_ptr<UCPixmap> UCPixmapPtr;
+    typedef std::shared_ptr<UCImageAnimation> UCImageAnimationPtr;
 }
 #endif

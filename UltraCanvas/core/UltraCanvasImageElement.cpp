@@ -22,22 +22,43 @@ namespace UltraCanvas {
     UltraCanvasImageElement::UltraCanvasImageElement(const std::string &identifier, float x, float y, float w,
                                                      float h)
             : UltraCanvasUIElement(identifier, x, y, w, h) {
-
+        animator.onFrameChanged = [this]() { RequestRedraw(); };
     }
 
     UltraCanvasImageElement::UltraCanvasImageElement(const std::string &identifier, float w, float h)
             : UltraCanvasUIElement(identifier, w, h) {
-
+        animator.onFrameChanged = [this]() { RequestRedraw(); };
     }
 
     UltraCanvasImageElement::UltraCanvasImageElement(const std::string &identifier)
             : UltraCanvasUIElement(identifier) {
+        animator.onFrameChanged = [this]() { RequestRedraw(); };
+    }
 
+    void UltraCanvasImageElement::SetupAnimation() {
+        animator.SetAnimation(nullptr);
+        if (!animationEnabled || !loadedImage || !loadedImage->IsValid() ||
+            !loadedImage->IsAnimated()) {
+            return;
+        }
+        auto anim = loadedImage->GetAnimation();   // lazy full decode, shared + cached
+        if (anim && anim->GetFrameCount() > 1) {
+            animator.SetAnimation(anim);
+            animator.Play();
+        }
+    }
+
+    void UltraCanvasImageElement::SetAnimationEnabled(bool enable) {
+        if (animationEnabled == enable) return;
+        animationEnabled = enable;
+        SetupAnimation();          // start playing / fall back to frame 0
+        RequestRedraw();
     }
 
     bool UltraCanvasImageElement::LoadFromFile(const std::string &filePath) {
         errorMessage.clear();
         loadedImage = UCImage::Get(filePath);
+        SetupAnimation();
         // Intrinsic size changed — re-measure (for auto-sized elements) and repaint.
         InvalidateLayout();
         RequestRedraw();
@@ -60,6 +81,7 @@ namespace UltraCanvas {
 
     bool UltraCanvasImageElement::LoadFromImage(std::shared_ptr<UCImage> img) {
         loadedImage = img;
+        SetupAnimation();
         // Intrinsic size changed — re-measure (for auto-sized elements) and repaint.
         InvalidateLayout();
         RequestRedraw();
@@ -152,6 +174,7 @@ namespace UltraCanvas {
         errorMessage = message;
 //        loadState = ImageLoadState::Failed;
         loadedImage = std::make_shared<UCImage>(); // Reset
+        animator.SetAnimation(nullptr);
 
         debugOutput << "[UltraCanvasImageElement] Error: " << message << std::endl;
 
@@ -182,7 +205,10 @@ namespace UltraCanvas {
         }
 
         // Draw the image using unified rendering (element-local bounds)
-        if (loadedImage->IsValid()) {
+        if (auto framePm = animator.GetCurrentFramePixmap()) {
+            // Animated image: draw the controller's current frame directly.
+            ctx->DrawPixmap(*framePm, GetLocalBounds(), fitMode);
+        } else if (loadedImage->IsValid()) {
             // Load from file path
             ctx->DrawImage(*loadedImage.get(), GetLocalBounds(), fitMode);
         } else {

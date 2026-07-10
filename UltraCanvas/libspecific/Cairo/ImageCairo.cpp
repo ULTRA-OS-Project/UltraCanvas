@@ -241,6 +241,7 @@ namespace UltraCanvas {
             vips::VImage vipsImage = result->GetVImage();
             result->width = vipsImage.width();
             result->height = vipsImage.height();
+            result->ReadAnimationMetadata(vipsImage);
             if (!loadOnlyHeader) {
                 result->LoadFileToMemory(imagePath);
             }
@@ -285,6 +286,7 @@ namespace UltraCanvas {
 
             result->width = vipsImage.width();
             result->height = vipsImage.height();
+            result->ReadAnimationMetadata(vipsImage);
         } catch (vips::VError& err) {
             debugOutput << "UCImageVips::LoadFromMemory: Failed to load image from buffer. Err:" << err.what() << std::endl;
             result->errorMessage = std::string("Failed to load image from memory buffer. Err:") + err.what();
@@ -312,6 +314,91 @@ namespace UltraCanvas {
         result->imgDataSize = dataSize;
         result->errorMessage = "Image loading not yet implemented (no libvips)";
         return result;
+    }
+#endif
+
+#ifdef HAS_LIBVIPS
+    void UCImageRaster::ReadAnimationMetadata(vips::VImage& vipsImage) {
+        nPages = 1;
+        hasFrameDelays = false;
+        try {
+            if (vipsImage.get_typeof("n-pages") != 0) {
+                nPages = std::max(1, vipsImage.get_int("n-pages"));
+            }
+            // Only animation-capable loaders (GIF, animated WebP) attach
+            // per-frame delays; multi-page TIFF / PDF expose n-pages too but
+            // must keep displaying as stills.
+            hasFrameDelays = nPages > 1 && vipsImage.get_typeof("delay") != 0;
+        } catch (vips::VError&) {
+            nPages = 1;
+            hasFrameDelays = false;
+        }
+    }
+
+    std::shared_ptr<UCImageAnimation> UCImageRaster::GetAnimation() {
+        if (animation) return animation;
+        if (!IsAnimated() || animationDecodeFailed) return nullptr;
+        try {
+            // Re-open the source with n=-1 so every page loads, stacked
+            // vertically ("toilet roll"); libvips composites GIF disposal so
+            // each page is a complete frame.
+            auto options = vips::VImage::option()->set("n", -1);
+            vips::VImage strip = imgDataPtr
+                ? vips::VImage::new_from_buffer(imgDataPtr, imgDataSize, "", options)
+                : vips::VImage::new_from_file(fileName.c_str(), options);
+
+            int pageH = strip.get_typeof("page-height") != 0
+                        ? strip.get_int("page-height") : height;
+            if (pageH <= 0 || strip.height() < pageH) {
+                throw UCImageError("invalid page-height");
+            }
+            const int frameCount = strip.height() / pageH;
+            if (frameCount <= 1) throw UCImageError("single frame");
+
+            // Refuse to fully decode sequences that would not fit in a sane
+            // amount of memory; the image keeps displaying frame 0.
+            constexpr size_t kMaxAnimationBytes = 512u * 1024u * 1024u;
+            const size_t decodedBytes = static_cast<size_t>(strip.width()) * pageH * 4u * frameCount;
+            if (decodedBytes > kMaxAnimationBytes) {
+                throw UCImageError("animation too large to decode fully");
+            }
+
+            std::vector<int> delays;
+            if (strip.get_typeof("delay") != 0) {
+                delays = strip.get_array_int("delay");
+            }
+            int loop = 0;
+            if (strip.get_typeof("loop") != 0) {
+                loop = std::max(0, strip.get_int("loop"));
+            }
+
+            // Materialize the whole strip once so the per-frame crops below
+            // don't re-run the file decoder frameCount times.
+            strip = strip.copy_memory();
+
+            auto anim = std::make_shared<UCImageAnimation>();
+            anim->width = strip.width();
+            anim->height = pageH;
+            anim->loopCount = loop;
+            anim->frames.reserve(frameCount);
+            anim->delaysMs.reserve(frameCount);
+            for (int i = 0; i < frameCount; ++i) {
+                vips::VImage frame = strip.extract_area(0, i * pageH, strip.width(), pageH);
+                anim->frames.push_back(CreatePixmapFromVImage(frame));
+                anim->delaysMs.push_back(i < static_cast<int>(delays.size()) ? delays[i] : 100);
+            }
+            animation = anim;
+        } catch (std::exception& err) {
+            debugOutput << "UCImageRaster::GetAnimation: cannot decode animation for "
+                        << fileName << " Err:" << err.what() << std::endl;
+            animationDecodeFailed = true;   // don't retry on every frame request
+            return nullptr;
+        }
+        return animation;
+    }
+#else
+    std::shared_ptr<UCImageAnimation> UCImageRaster::GetAnimation() {
+        return nullptr;
     }
 #endif
 

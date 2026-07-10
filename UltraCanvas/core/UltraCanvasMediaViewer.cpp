@@ -129,6 +129,7 @@ static PixelFX::PFXImage ApplyColourAdjustments(PixelFX::PFXImage p,
 UltraCanvasMediaSurface::UltraCanvasMediaSurface(const std::string& elemId)
     : UltraCanvasUIElement(elemId, 0.0f, 0.0f, 0.0f, 0.0f) {
     SetMouseCursor(UCMouseCursor::Default);
+    animator.onFrameChanged = [this]() { if (IsVisible()) RequestRedraw(); };
 }
 
 UltraCanvasMediaSurface::~UltraCanvasMediaSurface() {
@@ -163,6 +164,10 @@ void UltraCanvasMediaSurface::RebuildProcessed() {
 void UltraCanvasMediaSurface::SetAdjustments(const MediaAdjustments& adj) {
     adjust = adj;
     RebuildProcessed();
+    // Adjustments are baked into one composited pixmap, so they freeze an
+    // animated image on its current frame; identity resumes playback.
+    if (!adjust.IsIdentity()) animator.Pause();
+    else if (animator.GetAnimation()) animator.Play();
     RequestRedraw();
 }
 
@@ -193,6 +198,11 @@ void UltraCanvasMediaSurface::ShowImage(std::shared_ptr<UCImage> img,
     rotationQuarters = 0;
     flipH = flipV = false;
     RebuildProcessed();
+    // Animated images (GIF / animated WebP) start playing right away unless
+    // colour adjustments are active (those bake a single frame).
+    animator.SetAnimation((image && image->IsValid() && image->IsAnimated())
+                              ? image->GetAnimation() : nullptr);
+    if (animator.GetAnimation() && adjust.IsIdentity()) animator.Play();
     RequestRedraw();
     if (onViewChanged) onViewChanged();
 }
@@ -329,7 +339,10 @@ void UltraCanvasMediaSurface::DrawCurrent(IRenderContext* ctx, const Rect2Df& b)
     double s = fit * zoom;
     double cx = b.width * 0.5 + panX;
     double cy = b.height * 0.5 + panY;
-    Blit(ctx, image, processed, iw, ih, s, cx, cy, rotationQuarters, flipH, flipV, 1.0);
+    // Colour-adjusted pixmap wins; otherwise an animated image draws its
+    // current frame; a plain still falls through to the image itself.
+    std::shared_ptr<UCPixmap> pm = processed ? processed : animator.GetCurrentFramePixmap();
+    Blit(ctx, image, pm, iw, ih, s, cx, cy, rotationQuarters, flipH, flipV, 1.0);
 }
 
 void UltraCanvasMediaSurface::DrawInfoOverlay(IRenderContext* ctx, const Rect2Df& b) {
@@ -406,7 +419,9 @@ void UltraCanvasMediaSurface::Render(IRenderContext* ctx, const Rect2Df& /*dirty
                  cx + prevOffX, cy + prevOffY, prevRotQ, prevFlipH, prevFlipV, prevAlpha);
         }
         if (image && curAlpha > 0.001) {
-            Blit(ctx, image, processed, iwC, ihC, fitC * curScaleMul,
+            std::shared_ptr<UCPixmap> curPm =
+                    processed ? processed : animator.GetCurrentFramePixmap();
+            Blit(ctx, image, curPm, iwC, ihC, fitC * curScaleMul,
                  cx + curOffX, cy + curOffY, rotationQuarters, flipH, flipV, curAlpha);
         }
     } else {
@@ -1435,6 +1450,9 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
 
     if (auto img = surface->GetImage()) {
         os << "Dimensions: " << img->GetWidth() << " x " << img->GetHeight() << " px\n";
+        if (img->IsAnimated()) {
+            os << "Animation: " << img->GetFrameCount() << " frames\n";
+        }
     }
 
 #ifdef HAS_LIBVIPS
