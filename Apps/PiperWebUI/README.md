@@ -110,6 +110,39 @@ are unaffected.
 
   Returns `audio/wav`. Only `text` is required.
 
+### OpenAI-compatible audio API (UltraAI)
+
+The server also speaks the OpenAI `/v1/audio` dialect, so clients built for
+OpenAI-style local servers — including the **UltraAI `local` TextToSpeech
+adapter** — work against Piper without any code changes:
+
+* `GET /v1/audio/voices` — `{"voices": [{"id", "name", "language", "gender", "description"}]}`
+* `POST /v1/audio/speech` — body
+  `{"input": "text", "voice": "en_US-bryce-medium", "speed": 1.0, "response_format": "wav"}`.
+  Voices are auto-downloaded on first use. For multi-speaker voices append
+  the speaker to the id: `"en_US-libritts_r-medium:p3922"` (name) or
+  `"...:0"` (numeric id). `speed` maps to Piper's length scale.
+  `response_format` values other than `wav` (mp3, opus, flac, aac) are
+  transcoded with `ffmpeg` when it is installed on the server.
+
+UltraAI usage (no adapter changes needed — note UltraAI's interim HTTP
+client is loopback-only, so run the server on the same machine until
+UltraNet transport lands):
+
+```cpp
+TextToSpeechConfig cfg;
+cfg.providerId = "local";
+cfg.endpoint   = "http://127.0.0.1:5000";
+
+auto tts = CreateTextToSpeech(cfg);
+auto voices = tts->ListVoices();          // full Piper catalog
+
+SpeakRequest req;
+req.text    = "Hello ULTRA OS.";
+req.voiceId = "en_US-bryce-medium";
+SpeakResult res = tts->Speak(req);        // res.audio = WAV bytes
+```
+
 ### Stock-compatible API
 
 * `GET /voices` — configs of installed voices

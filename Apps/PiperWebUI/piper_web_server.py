@@ -24,6 +24,8 @@ import argparse
 import io
 import json
 import logging
+import shutil
+import subprocess
 import threading
 import time
 import wave
@@ -41,6 +43,7 @@ _LOGGER = logging.getLogger("piper_web")
 
 STATIC_DIR = Path(__file__).parent / "static"
 VOICES_CACHE_TTL = 24 * 60 * 60  # refresh catalog once a day
+_FFMPEG = shutil.which("ffmpeg") is not None
 
 
 def _strip_suffix(name: str, suffix: str) -> str:
@@ -352,6 +355,118 @@ def create_app(manager: VoiceManager, args: argparse.Namespace) -> Flask:
             _LOGGER.exception("Synthesis failed")
             return jsonify({"error": f"synthesis failed: {err}"}), 500
         return Response(wav_bytes, mimetype="audio/wav")
+
+    # ----- OpenAI-compatible audio API ---------------------------------------
+    # Matches clients that speak the OpenAI /v1/audio dialect, e.g. the
+    # UltraAI "local" TextToSpeech adapter, LocalAI clients, etc.
+
+    @app.route("/v1/audio/voices", methods=["GET"])
+    def openai_voices() -> Response:
+        voices = []
+        for entry in build_voice_list(manager):
+            language = entry["language"]
+            bits = [entry["quality"]]
+            if entry["num_speakers"] > 1:
+                bits.append(f"{entry['num_speakers']} speakers")
+            bits.append("installed" if entry["installed"] else "downloads on first use")
+            voices.append(
+                {
+                    "id": entry["key"],
+                    "name": f"{entry['name']} ({entry['quality']})",
+                    "language": (language.get("code") or "").replace("_", "-"),
+                    "gender": "",
+                    "description": ", ".join(bits),
+                }
+            )
+        return jsonify({"voices": voices})
+
+    @app.route("/v1/audio/speech", methods=["POST", "OPTIONS"])
+    def openai_speech() -> Response:
+        if request.method == "OPTIONS":
+            return Response(status=204)
+        data = request_json()
+
+        text = (data.get("input") or data.get("text") or "").strip()
+        if not text:
+            return jsonify({"error": "input is required"}), 400
+
+        # voice: "en_US-bryce-medium" or "en_US-libritts_r-medium:p3922"
+        # (speaker name or numeric id after the colon). Falls back to the
+        # "model" field when it looks like a Piper voice key.
+        voice_id = data.get("voice") or ""
+        model = data.get("model") or ""
+        if not voice_id and "-" in model:
+            voice_id = model
+        if not voice_id and args.model:
+            voice_id = args.model
+        if not voice_id:
+            return jsonify({"error": "voice is required"}), 400
+
+        speaker: Optional[str] = None
+        if ":" in voice_id:
+            voice_id, speaker = voice_id.split(":", 1)
+
+        if manager.find_model(voice_id) is None:
+            try:
+                _LOGGER.info("Voice %s not installed, downloading", voice_id)
+                manager.download(voice_id)
+            except Exception as err:
+                return jsonify({"error": f"unknown voice {voice_id}: {err}"}), 404
+
+        response_format = (data.get("response_format") or "wav").lower()
+        if response_format != "wav" and not _FFMPEG:
+            return (
+                jsonify(
+                    {
+                        "error": f"response_format '{response_format}' needs ffmpeg "
+                        "on the server; only 'wav' is available"
+                    }
+                ),
+                400,
+            )
+
+        synth_request: Dict[str, Any] = {"text": text, "voice": voice_id}
+        speed = data.get("speed")
+        if speed:
+            synth_request["length_scale"] = 1.0 / float(speed)
+        if speaker is not None:
+            if speaker.isdigit():
+                synth_request["speaker_id"] = int(speaker)
+            else:
+                synth_request["speaker"] = speaker
+
+        try:
+            wav_bytes = _synthesize(synth_request)
+        except FileNotFoundError as err:
+            return jsonify({"error": f"voice not installed: {err}"}), 404
+        except ValueError as err:
+            return jsonify({"error": str(err)}), 400
+
+        if response_format == "wav":
+            return Response(wav_bytes, mimetype="audio/wav")
+        return _transcode(wav_bytes, response_format)
+
+    def _transcode(wav_bytes: bytes, fmt: str) -> Response:
+        mimetypes = {
+            "mp3": "audio/mpeg",
+            "opus": "audio/ogg",
+            "ogg": "audio/ogg",
+            "flac": "audio/flac",
+            "aac": "audio/aac",
+        }
+        if fmt not in mimetypes:
+            return jsonify({"error": f"unsupported response_format: {fmt}"}), 400
+        proc = subprocess.run(
+            ["ffmpeg", "-loglevel", "error", "-i", "pipe:0", "-f", fmt, "pipe:1"],
+            input=wav_bytes,
+            capture_output=True,
+        )
+        if proc.returncode != 0:
+            return (
+                jsonify({"error": f"ffmpeg failed: {proc.stderr.decode(errors='replace')[:200]}"}),
+                500,
+            )
+        return Response(proc.stdout, mimetype=mimetypes[fmt])
 
     # ----- stock piper.http_server compatible API ---------------------------
 
