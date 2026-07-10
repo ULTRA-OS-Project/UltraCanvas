@@ -248,8 +248,14 @@ namespace UltraCanvas {
         if (thumbRect.width <= 0 || thumbRect.height <= 0) return;
 
         // Custom handle image (SVG/PNG) takes precedence over the solid thumb.
-        if (!style.thumbImagePath.empty()) {
-            ctx->DrawImage(style.thumbImagePath,
+        // Horizontal bars use the orientation-specific image when one is provided,
+        // otherwise both orientations share thumbImagePath.
+        const std::string& handleImage =
+                (IsHorizontal() && !style.thumbImagePathHorizontal.empty())
+                        ? style.thumbImagePathHorizontal
+                        : style.thumbImagePath;
+        if (!handleImage.empty()) {
+            ctx->DrawImage(handleImage,
                            Rect2Dd(thumbRect.x, thumbRect.y, thumbRect.width, thumbRect.height),
                            style.thumbImageFit);
             return;
