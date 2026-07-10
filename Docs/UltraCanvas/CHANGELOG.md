@@ -1,4 +1,17 @@
 #### 2026-07-10 *0.3.4*
+- Demo: the "Networking (UltraNet)" page moved from Tools into the
+  "ULTRA OS modules ▸ Ultra Net" tree entry and is now presented like the
+  FileLoader module page — Overview / Details / Examples tabs, with the live
+  remote-resource loader on the Examples tab.
+- UltraNet: fixed https:// requests failing with "Problem with the SSL CA
+  cert (path? access rights?)". libcurl bakes the CA bundle path of the
+  build machine into the library; when that path does not exist on the
+  machine the app actually runs on, every TLS request failed. When no
+  `UltraNetConfig::caBundlePath` is set, UltraNet now discovers the system
+  trust anchors at runtime — `CURL_CA_BUNDLE` / `SSL_CERT_FILE` environment
+  overrides first, then the well-known distro bundle locations
+  (Debian/Ubuntu, Fedora/RHEL, openSUSE, Alpine/BSD) and the hashed
+  certificate directory — and passes them to libcurl.
 - Implemented GIF (and animated WebP) animation support. Animated images now
   play in `UltraCanvasImageElement` (auto-play on load, with
   Play/Pause/Stop/SetAnimationEnabled control) and in the media viewer, where

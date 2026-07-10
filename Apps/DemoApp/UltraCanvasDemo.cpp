@@ -1323,14 +1323,6 @@ namespace UltraCanvas {
                              "DemoApp/UltraCanvasTextRenderingExamples.cpp",
                              "Docs/UltraCanvas/UltraCanvasTextRenderingExamples.md");
 
-        toolsBuilder.AddItem("networking", "Networking (UltraNet)",
-                             "Load a remote image from an https:// URL — exercises "
-                             "UltraCanvasFileLoader::LoadFile + UltraNet_HttpGet + "
-                             "UCImageRaster::LoadFromMemory.",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateNetworkingExamples(); },
-                             "Apps/DemoApp/UltraCanvasNetworkingExamples.cpp");
-
         auto modulesBuilder = DemoCategoryBuilder(this, DemoCategory::Modules);
         modulesBuilder.AddItem("audiofx", "Audio FX", "Audio FX",
                                ImplementationStatus::PartiallyImplemented,
@@ -1352,9 +1344,14 @@ namespace UltraCanvas {
         modulesBuilder.AddItem("ultraai", "Ultra AI", "Ultra AI Module",
                                ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/UltraAI"); });
-        modulesBuilder.AddItem("ultranet", "Ultra Net", "Ultra Net Module",
+        modulesBuilder.AddItem("ultranet", "Ultra Net",
+                               "Ultra Net Module — overview, documentation and a live "
+                               "remote-resource loader (UltraCanvasFileLoader::LoadFile + "
+                               "UltraNet_HttpGet + UCImageRaster::LoadFromMemory)",
                                ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreateModuleDocScreen("Docs/Modules/UltraNet"); });
+                               [this]() { return CreateNetworkingExamples(); },
+                               "Apps/DemoApp/UltraCanvasNetworkingExamples.cpp",
+                               "Docs/Modules/UltraNet/README.md");
         modulesBuilder.AddItem("videofx", "VideoFX", "VideoFX Module",
                                ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/VideoFX"); });
