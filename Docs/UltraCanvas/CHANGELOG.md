@@ -1,3 +1,17 @@
+#### 2026-07-10 *0.3.4*
+- Implemented GIF (and animated WebP) animation support. Animated images now
+  play in `UltraCanvasImageElement` (auto-play on load, with
+  Play/Pause/Stop/SetAnimationEnabled control) and in the media viewer, where
+  zoom/pan/rotate/mirror apply live to the running animation and colour
+  adjustments freeze it on the current frame. Frames are decoded once through
+  libvips' multi-page loader into a shared, cached `UCImageAnimation`
+  (per-frame delays, loop count honoured, near-zero delays shown at 100ms);
+  playback is stepped by the new reusable `UCImageAnimationController` on the
+  same main-thread app timer the video player element uses for its frame
+  ticks. Multi-page stills (TIFF/PDF) keep displaying as static images, and
+  the info popup shows the frame count for animated files. See
+  `Docs/UltraCanvas/UltraCanvasAnimatedImages.md`.
+
 #### 2026-07-08 *0.3.3*
 - ODT reader: real-world letter documents now render their letterhead
   sections. `draw:text-box` frames (sender/contact blocks) are parsed into

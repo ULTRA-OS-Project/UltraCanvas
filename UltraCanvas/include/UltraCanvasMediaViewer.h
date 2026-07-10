@@ -38,6 +38,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasImage.h"
+#include "UltraCanvasImageAnimation.h"
 #include "UltraCanvasTimer.h"
 #include <string>
 #include <vector>
@@ -177,6 +178,12 @@ private:
     std::shared_ptr<UCImage>  image;
     std::shared_ptr<UCPixmap> processed;     // colour-adjusted full-res pixmap (or null)
     MediaAdjustments adjust;
+
+    // Frame stepping for animated images (GIF, animated WebP). Plays while
+    // the tone/colour adjustments are identity; a non-identity adjustment
+    // freezes playback on the current frame (adjustments are baked into a
+    // single composited pixmap).
+    UCImageAnimationController animator;
 
     Color canvasColor = Color(24, 24, 28, 255);
 

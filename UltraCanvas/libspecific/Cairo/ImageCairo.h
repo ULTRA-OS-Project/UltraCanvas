@@ -75,6 +75,41 @@ namespace UltraCanvas {
         double GetDeviceScale() const { return deviceScale; }
     };
 
+    // ===== ANIMATED IMAGE FRAME SEQUENCE =====
+    // Fully decoded frames of an animated image (GIF, animated WebP). Every
+    // frame is a complete composited image (libvips resolves GIF frame
+    // disposal while loading), so frame N can be drawn without frame N-1.
+    // Produced lazily by UCImageRaster::GetAnimation() and shared between all
+    // elements displaying the same image. Playback timing lives in
+    // UCImageAnimationController (include/UltraCanvasImageAnimation.h).
+    class UCImageAnimation {
+    public:
+        std::vector<std::shared_ptr<UCPixmapCairo>> frames;
+        std::vector<int> delaysMs;   // per-frame display time; same length as frames
+        int loopCount = 0;           // 0 = repeat forever, N = play N times
+        int width = 0;               // frame dimensions (all frames equal)
+        int height = 0;
+
+        int GetFrameCount() const { return static_cast<int>(frames.size()); }
+
+        std::shared_ptr<UCPixmapCairo> GetFramePixmap(int index) const {
+            if (index < 0 || index >= static_cast<int>(frames.size())) return nullptr;
+            return frames[index];
+        }
+
+        // Delay before advancing past frame `index`. Zero / near-zero encoded
+        // delays are shown for 100ms — the browser convention many GIFs rely on.
+        int GetFrameDelayMs(int index) const {
+            int d = (index >= 0 && index < static_cast<int>(delaysMs.size()))
+                    ? delaysMs[index] : 100;
+            return d < 20 ? 100 : d;
+        }
+
+        size_t GetMemoryBytes() const {
+            return frames.size() * static_cast<size_t>(width) * height * 4;
+        }
+    };
+
     class UCImageRaster {
     private:
         int width = 0;
@@ -84,7 +119,19 @@ namespace UltraCanvas {
         bool ownData = false;
         std::string fileName;
 
+        // Animation state ("n-pages" / "delay" loader metadata). Multi-page
+        // stills (TIFF, PDF) have pages but no delays and stay static.
+        int nPages = 1;
+        bool hasFrameDelays = false;
+        bool animationDecodeFailed = false;
+        std::shared_ptr<UCImageAnimation> animation;   // lazy decode cache
+
         bool LoadFileToMemory(const std::string &imagePath);
+
+#ifdef HAS_LIBVIPS
+        // Reads "n-pages" / "delay" metadata off a freshly loaded header.
+        void ReadAnimationMetadata(vips::VImage& vipsImage);
+#endif
 
     public:
         std::string errorMessage;
@@ -126,12 +173,22 @@ namespace UltraCanvas {
         int GetWidth() const { return width; }
         int GetHeight() const { return height; }
 
+        // ===== ANIMATION (GIF / animated WebP) =====
+        // True when the loader reported multiple pages WITH per-frame delays.
+        bool IsAnimated() const { return nPages > 1 && hasFrameDelays; }
+        int GetFrameCount() const { return nPages; }
+        // Decode every frame (lazily, cached). Returns null for still images,
+        // when decoding fails, or when the fully decoded sequence would be
+        // unreasonably large — the image then displays as a still (frame 0).
+        std::shared_ptr<UCImageAnimation> GetAnimation();
+
 #ifdef HAS_LIBVIPS
         vips::VImage GetVImage();
 #endif
 
         size_t GetDataSize() {
-            return sizeof(UCImageRaster) + 250 + imgDataSize;
+            return sizeof(UCImageRaster) + 250 + imgDataSize
+                   + (animation ? animation->GetMemoryBytes() : 0);
         }
         bool IsValid() { return !fileName.empty() && errorMessage.empty() && width > 0;};
 
