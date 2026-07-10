@@ -868,6 +868,10 @@ namespace UltraCanvas {
     bool UltraCanvasCalendarView::OnEvent(const UCEvent& event) {
         if (UsesMultiMonth()) return OnEventMultiMonth(event);
         switch (event.type) {
+            // A rapid second click arrives as a double-click instead of a
+            // MouseDown; the prev/next navigation arrows and day cells must
+            // react to every click.
+            case UCEventType::MouseDoubleClick:
             case UCEventType::MouseDown: {
                 Layout l = ComputeLayout();
                 Point2Df p(static_cast<float>(event.pointer.x), static_cast<float>(event.pointer.y));
@@ -1255,6 +1259,9 @@ namespace UltraCanvas {
         };
 
         switch (event.type) {
+            // See OnEvent: a rapid second click arrives as a double-click and
+            // must still act as a press (month navigation arrows, day cells).
+            case UCEventType::MouseDoubleClick:
             case UCEventType::MouseDown: {
                 if (showFooter && ml.footer.height > 0) {
                     if (ml.todayButton.Contains(p)) {
@@ -1787,6 +1794,9 @@ namespace UltraCanvas {
     bool UltraCanvasDatePicker::OnEvent(const UCEvent& event) {
         switch (event.type) {
             case UCEventType::MouseDown:
+            // A rapid second click arrives as a double-click instead of a
+            // MouseDown; the calendar toggle button must react to every click.
+            case UCEventType::MouseDoubleClick:
                 return HandleMouseDown(event);
             case UCEventType::MouseMove: {
                 Point2Df p(static_cast<float>(event.pointer.x), static_cast<float>(event.pointer.y));

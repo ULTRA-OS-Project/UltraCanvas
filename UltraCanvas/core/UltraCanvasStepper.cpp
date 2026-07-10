@@ -358,6 +358,9 @@ namespace UltraCanvas {
         if (UltraCanvasUIElement::OnEvent(event)) return true;
 
         switch (event.type) {
+            // A rapid second click arrives as a double-click instead of a
+            // MouseDown; step markers must react to every click.
+            case UCEventType::MouseDoubleClick:
             case UCEventType::MouseDown: {
                 int i = HitTest(event.pointer);
                 if (i < 0) return false;

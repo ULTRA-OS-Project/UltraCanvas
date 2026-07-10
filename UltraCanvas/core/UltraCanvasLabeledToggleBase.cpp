@@ -170,6 +170,10 @@ namespace UltraCanvas {
         bool handled = false;
         switch (event.type) {
             case UCEventType::MouseDown:
+            // A rapid second click arrives as a double-click instead of a
+            // MouseDown; without treating it as a press, the MouseUp that
+            // follows would not toggle.
+            case UCEventType::MouseDoubleClick:
                 if (totalBounds.Contains(event.pointer)) {
                     SetPressed(true);
                     handled = true;

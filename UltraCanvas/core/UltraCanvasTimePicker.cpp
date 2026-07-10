@@ -452,6 +452,9 @@ namespace UltraCanvas {
 
         switch (event.type) {
             case UCEventType::MouseDown:  return HandleMouseDown(event);
+            // A rapid second click arrives as a double-click instead of a
+            // MouseDown; the popup toggle button must react to every click.
+            case UCEventType::MouseDoubleClick: return HandleMouseDown(event);
             case UCEventType::KeyDown:    return HandleKeyDown(event);
             case UCEventType::KeyChar:    return HandleKeyChar(event);
             case UCEventType::MouseWheel: return HandleWheel(event);

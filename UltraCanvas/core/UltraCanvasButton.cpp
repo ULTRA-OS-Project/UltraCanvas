@@ -919,6 +919,10 @@ namespace UltraCanvas {
 
         switch (event.type) {
             case UCEventType::MouseDown:
+            // A rapid second click arrives as a double-click instead of a
+            // MouseDown; without treating it as a press, the MouseUp that
+            // follows would not fire the click.
+            case UCEventType::MouseDoubleClick:
                 if (Contains(event.pointer)) {
                     if (IsPressed() && canToggled) {
                         SetPressed(false);

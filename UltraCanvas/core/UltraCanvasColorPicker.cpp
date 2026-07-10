@@ -668,6 +668,9 @@ namespace UltraCanvas {
 
         switch (event.type) {
             case UCEventType::MouseDown:  return HandleMouseDown(event);
+            // A rapid second click arrives as a double-click instead of a
+            // MouseDown; the swap arrow and buttons must react to every click.
+            case UCEventType::MouseDoubleClick: return HandleMouseDown(event);
             case UCEventType::MouseMove:  return HandleMouseMove(event);
             case UCEventType::MouseUp:    return HandleMouseUp(event);
             case UCEventType::KeyDown:    return HandleKeyDown(event);

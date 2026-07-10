@@ -806,6 +806,10 @@ namespace UltraCanvas {
                 break;
 
             case UCEventType::MouseDown:
+            // A rapid second click arrives as a double-click instead of a
+            // MouseDown; the tab scroll arrows and close buttons must react
+            // to every click.
+            case UCEventType::MouseDoubleClick:
                 if (HandleMouseDown(event)) return true;
                 break;
 

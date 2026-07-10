@@ -422,8 +422,10 @@ namespace UltraCanvas {
             case UCEventType::KeyDown:          return HandleKeyDown(event);
             case UCEventType::KeyChar:          return HandleKeyChar(event);
             case UCEventType::MouseDoubleClick:
+                // A rapid second click arrives as a double-click instead of a
+                // MouseDown; on the arrow buttons every click must step.
                 if (HitTest(event.pointer) == Part::Field) { BeginEditing(); return true; }
-                return false;
+                return HandleMouseDown(event);
             case UCEventType::MouseEnter:
                 SetHovered(true);
                 return true;
