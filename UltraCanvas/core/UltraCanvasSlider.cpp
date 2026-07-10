@@ -1,7 +1,7 @@
 // core/UltraCanvasSlider.cpp
 // Platform-independent slider component implementation
-// Version: 1.1.1
-// Last Modified: 2026-07-02
+// Version: 1.2.0
+// Last Modified: 2026-07-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSlider.h"
@@ -353,9 +353,27 @@ namespace UltraCanvas {
         Rect2Di trackRect = GetTrackRect(bounds, isVertical);
 
         if (!trackGradientStops.empty()) {
-            // Paint the whole track with the supplied colour gradient (e.g. a full
-            // hue palette). The active-track overlay is skipped so the palette
+            // Paint the whole bar with the supplied colour gradient (e.g. a full
+            // hue palette). The bar spans the full slider length with fully
+            // rounded end caps so the handle appears to sit inside the bar at
+            // both extremes. The active-track overlay is skipped so the palette
             // stays visible across the entire bar.
+            Rect2Di interior = GetSliderInteriorRect(bounds, isVertical);
+            Rect2Di barRect = trackRect;
+            double capRadius;
+            if (isVertical) {
+                barRect.y = interior.y;
+                barRect.height = interior.height;
+                capRadius = barRect.width / 2.0;
+            } else {
+                barRect.x = interior.x;
+                barRect.width = interior.width;
+                capRadius = barRect.height / 2.0;
+            }
+
+            // Gradient coordinates span the handle-travel range (trackRect) so
+            // the colour under the handle matches the value; the rounded caps
+            // continue the first/last stop colours (CAIRO_EXTEND_PAD).
             std::shared_ptr<IPaintPattern> grad = isVertical
                 ? ctx->CreateLinearGradientPattern(trackRect.x, trackRect.y + trackRect.height,
                                                    trackRect.x, trackRect.y, trackGradientStops)
@@ -363,12 +381,12 @@ namespace UltraCanvas {
                                                    trackRect.x + trackRect.width, trackRect.y,
                                                    trackGradientStops);
             ctx->SetFillPaint(grad);
-            ctx->FillRectangle(trackRect);
+            ctx->FillRoundedRectangle(barRect, capRadius);
 
             // Outline so the bar reads as a discrete control.
             ctx->SetStrokePaint(style.handleBorderColor);
             ctx->SetStrokeWidth(style.borderWidth);
-            ctx->DrawRectangle(trackRect);
+            ctx->DrawRoundedRectangle(barRect, capRadius);
         } else {
             // Draw track background
             ctx->DrawFilledRectangle(trackRect, GetCurrentTrackColor(), 1.0, GetCurrentHandleBorderColor());
@@ -603,11 +621,16 @@ namespace UltraCanvas {
         // Element-local coordinates: the ctx is translated to our origin and
         // event.pointer is element-local, so build the interior from the passed-in
         // local bounds (origin 0,0), not finalBounds.x/y (parent-space).
+        // The cross-axis thickness must fit whichever is larger — the handle or
+        // the bar plus its border — so a palette-style bar thicker than the
+        // handle is not clipped at the element edge.
+        int thickness = (int)std::ceil(std::max(style.handleSize,
+                                                style.trackHeight + 2.0f * style.borderWidth));
         if (isVertical) {
-            return Rect2Di(bounds.x, bounds.y, (int)style.handleSize, bounds.height);
+            return Rect2Di(bounds.x, bounds.y, thickness, bounds.height);
         } else {
-            return Rect2Di(bounds.x, bounds.y + bounds.height - (int)style.handleSize,
-                           bounds.width, (int)style.handleSize);
+            return Rect2Di(bounds.x, bounds.y + bounds.height - thickness,
+                           bounds.width, thickness);
         }
     }
 

@@ -104,13 +104,15 @@ namespace UltraCanvas {
         paletteLabel->SetFontSize(12);
         container->AddChild(paletteLabel);
 
-        auto paletteSlider = CreateSlider("PaletteSlider", 20, 120, 300, 28);
+        auto paletteSlider = CreateSlider("PaletteSlider", 20, 123, 300, 22);
         paletteSlider->SetOrientation(SliderOrientation::Horizontal);
         paletteSlider->SetRange(0.0f, 360.0f);
         paletteSlider->SetValue(0.0f);
         paletteSlider->SetStep(1.0f);
-        // Thick bar with a small handle that fits inside it.
-        paletteSlider->SetTrackHeight(26.0f);
+        // Bar just thick enough to wrap the handle (handle size plus the bar
+        // border on each side); its rounded end caps enclose the handle at the
+        // extremes so the handle appears to travel inside the bar.
+        paletteSlider->SetTrackHeight(20.0f);
         paletteSlider->SetHandleSize(18.0f);
         // Full hue palette inside the bar.
         std::vector<GradientStop> hueStops;
@@ -120,9 +122,10 @@ namespace UltraCanvas {
         paletteSlider->SetTrackGradient(hueStops);
         container->AddChild(paletteSlider);
 
-        // Selected-colour preview field with RGB readout.
-        auto paletteSwatch = CreateLabel("PaletteSwatch", 340, 121, 140, 26);
-        paletteSwatch->SetAlignment(TextAlignment::Center);
+        // Selected-colour preview field with RGB readout, vertically centered
+        // on the palette bar (same height and top edge as the bar).
+        auto paletteSwatch = CreateLabel("PaletteSwatch", 340, 124, 140, 20);
+        paletteSwatch->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
         paletteSwatch->SetPadding(3);
         container->AddChild(paletteSwatch);
 
