@@ -153,6 +153,24 @@ namespace {
                   [](const PFXImage& src, const std::vector<float>& p) {
                       int f = std::max(2, static_cast<int>(p[0]));
                       return FX::Conversion::Zoom(FX::Conversion::Subsample(src, f), f); } },
+                { "centercrop", "Center crop", "Keeps the chosen percentage of the image around its centre (Conversion::Crop).",
+                  { { "Keep %", 10.0f, 100.0f, 60.0f, 1.0f } },
+                  [](const PFXImage& src, const std::vector<float>& p) {
+                      int w = std::max(1, static_cast<int>(src.Width()  * p[0] / 100.0f));
+                      int h = std::max(1, static_cast<int>(src.Height() * p[0] / 100.0f));
+                      return FX::Conversion::Crop(src, (src.Width() - w) / 2, (src.Height() - h) / 2, w, h); } },
+                { "smartcrop", "Smart crop", "Attention-based crop that keeps the most interesting region (Conversion::SmartCrop).",
+                  { { "Width %",  10.0f, 100.0f, 50.0f, 1.0f },
+                    { "Height %", 10.0f, 100.0f, 50.0f, 1.0f } },
+                  [](const PFXImage& src, const std::vector<float>& p) {
+                      int w = std::max(1, static_cast<int>(src.Width()  * p[0] / 100.0f));
+                      int h = std::max(1, static_cast<int>(src.Height() * p[1] / 100.0f));
+                      return FX::Conversion::SmartCrop(src, w, h); } },
+                { "similarity", "Similarity transform", "Combined scale + rotation around the centre in one resampling pass (Resample::Similarity).",
+                  { { "Scale", 0.2f, 2.0f, 0.8f, 0.05f },
+                    { "Angle °", -180.0f, 180.0f, 20.0f, 1.0f } },
+                  [](const PFXImage& src, const std::vector<float>& p) {
+                      return FX::Resample::Similarity(src, p[0], p[1]); } },
             } },
             // Greyscale morphology via rank filters: Morphology::Erode/Dilate wrap
             // vips_morph, which only operates on binary (0/255) images. A rank
