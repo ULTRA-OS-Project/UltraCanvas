@@ -4,7 +4,7 @@
 //   * Overview  – the short intro, the architecture diagram and a Markdown
 //                 table of the processing categories exposed by the playground.
 //   * Details   – the full README documentation.
-//   * Examples  – a live playground: pick a sample image (cat.jpg by default)
+//   * Examples  – a live playground: pick a sample image (portrait.jpg by default)
 //                 or upload a custom one, choose a processing function from the
 //                 category tree in the middle, tune its options on the right
 //                 and watch the processed result on the left.
@@ -613,7 +613,7 @@ namespace {
         int defaultIndex = 0;
         for (size_t i = 0; i < samples.size(); ++i) {
             sampleDropdown->AddItem(DropdownItem(samples[i], imagesDir + samples[i]));
-            if (samples[i] == "cat.jpg") defaultIndex = static_cast<int>(i);
+            if (samples[i] == "portrait.jpg") defaultIndex = static_cast<int>(i);
         }
         sampleDropdown->onSelectionChanged =
             [loadSource](int, const DropdownItem& item) { loadSource(item.value); };
