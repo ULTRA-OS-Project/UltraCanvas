@@ -1333,8 +1333,10 @@ namespace UltraCanvas {
 
         auto modulesBuilder = DemoCategoryBuilder(this, DemoCategory::Modules);
         modulesBuilder.AddItem("audiofx", "Audio FX", "Audio FX",
-                               ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreateModuleDocScreen("Docs/Modules/AudioFX"); });
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateAudioFXExamples(); },
+                               "Apps/DemoApp/UltraCanvasAudioFXExamples.cpp",
+                               "Docs/Modules/AudioFX/README.md");
         modulesBuilder.AddItem("fileloader", "File Loader", "File Loader",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateFileLoaderExamples(); },
