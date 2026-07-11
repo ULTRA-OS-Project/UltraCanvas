@@ -907,17 +907,21 @@ namespace UltraCanvas {
             // Re-check bounds in case timers were removed
             if (i >= timers_.size()) break;
 
-            auto& timer = timers_[i];
-            if (!timer.active) continue;
-            if (timer.nextFire > now) continue;
+            if (!timers_[i].active) continue;
+            if (timers_[i].nextFire > now) continue;
 
-            // Fire the timer
-            if (timer.callback) {
-                timer.callback(timer.id);
+            // Fire the timer. The callback is copied out first: a callback that
+            // calls StartTimer() grows timers_ and may reallocate it, which
+            // would invalidate any reference held across the call. Index i
+            // itself stays valid — timers are only erased below, never during
+            // the callbacks (StopTimer just marks inactive).
+            if (timers_[i].callback) {
+                auto callback = timers_[i].callback;
+                callback(timers_[i].id);
             } else {
                 UCEvent timerEvent;
                 timerEvent.type = UCEventType::Timer;
-                timerEvent.userDataInt = static_cast<int>(timer.id);
+                timerEvent.userDataInt = static_cast<int>(timers_[i].id);
                 // Push directly to queue without calling WakeUpEventLoop (we're already on the main thread)
                 {
                     std::lock_guard<std::mutex> lock(eventQueueMutex);
@@ -926,16 +930,16 @@ namespace UltraCanvas {
             }
 
             // Advance or deactivate
-            if (timer.periodic && timer.active) {
-                timer.nextFire += timer.interval;
+            if (timers_[i].periodic && timers_[i].active) {
+                timers_[i].nextFire += timers_[i].interval;
                 // If we fell behind, skip to next future fire time
-                if (timer.nextFire <= now) {
-                    auto elapsed = now - timer.nextFire;
-                    auto periods = elapsed / timer.interval + 1;
-                    timer.nextFire += timer.interval * periods;
+                if (timers_[i].nextFire <= now) {
+                    auto elapsed = now - timers_[i].nextFire;
+                    auto periods = elapsed / timers_[i].interval + 1;
+                    timers_[i].nextFire += timers_[i].interval * periods;
                 }
             } else {
-                timer.active = false;
+                timers_[i].active = false;
             }
         }
 

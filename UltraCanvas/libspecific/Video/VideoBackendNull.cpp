@@ -57,7 +57,8 @@ public:
     CameraPermission GetCameraPermission() override { return CameraPermission::Denied; }
     void RequestCameraPermission(std::function<void(bool)> cb) override { if (cb) cb(false); }
 
-    std::unique_ptr<IVideoDecodeSession> OpenDecoder(const std::string&) override {
+    std::unique_ptr<IVideoDecodeSession> OpenDecoder(const std::string&,
+                                                     const VideoDecodeOptions&) override {
         return nullptr;
     }
     std::unique_ptr<IVideoCaptureSession> OpenCapture(const VideoCaptureParams& p) override {

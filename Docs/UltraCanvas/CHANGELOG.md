@@ -1,3 +1,19 @@
+#### 2026-07-11 *0.3.5*
+- Hover video preview for the album widget: resting the cursor on a Video tile
+  plays a short muted inline preview of the clip in place of its static poster
+  frame (opt-in via `AlbumConfig::videoHoverPreview`, with configurable dwell
+  delay, duration, loop, start offset, mute and preview fps). The engine behind
+  it is the new reusable `UltraCanvasVideoHoverPreview`
+  (`include/UltraCanvasVideoHoverPreview.h`): dwell-delayed muted playback,
+  frames delivered as a ready-to-draw `UCPixmap`, self-limiting duration, one
+  decode session at a time, and a silent fallback to the static thumbnail with
+  the null video backend. The demo's Album page enables it on its video tiles.
+  See the "Hover video preview" section in
+  `Docs/UltraCanvas/UltraCanvasAlbumExamples.md`.
+- Fixed a latent timer-system hazard: `ProcessTimers()` held a reference into
+  the timers vector across a fired callback, so a callback that started a new
+  timer could reallocate the vector and invalidate the reference.
+
 #### 2026-07-10 *0.3.4*
 - Implemented GIF (and animated WebP) animation support. Animated images now
   play in `UltraCanvasImageElement` (auto-play on load, with

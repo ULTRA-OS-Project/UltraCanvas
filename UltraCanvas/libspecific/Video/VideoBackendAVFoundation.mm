@@ -396,9 +396,13 @@ public:
         }];
     }
 
-    std::unique_ptr<IVideoDecodeSession> OpenDecoder(const std::string& source) override {
+    std::unique_ptr<IVideoDecodeSession> OpenDecoder(const std::string& source,
+                                                     const VideoDecodeOptions& opts) override {
         auto s = std::make_unique<AVFDecodeSession>(source);
         if (!s->Build()) return nullptr;
+        // disableAudio degrades to a hard mute here (AVPlayer manages its own
+        // audio session; a muted player doesn't hold the output device open).
+        if (opts.disableAudio) s->SetMute(true);
         return s;
     }
     std::unique_ptr<IVideoCaptureSession> OpenCapture(const VideoCaptureParams& p) override {

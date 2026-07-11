@@ -136,6 +136,33 @@ Convenience setters: `SetLayout`, `SetMode`, `SetImageDisplay`,
 | `Stretch` | Fill | Distorts the image to the exact cell. |
 | `Fit` | Contain | Whole image, letterboxed onto the item background. |
 
+### Hover video preview
+
+Resting the cursor on a **Video** tile can play a short muted inline preview of
+the clip (`AlbumItem::mediaPath`) in place of its static poster frame — the
+YouTube / file-browser hover behaviour. Opt in per album:
+
+```cpp
+cfg.videoHoverPreview          = true;   // off by default
+cfg.hoverPreviewDelayMs        = 400;    // cursor dwell before playback starts
+cfg.hoverPreviewDurationSec    = 5.0f;   // preview length; 0 = play while hovered
+cfg.hoverPreviewLoop           = false;  // restart clips shorter than the duration
+cfg.hoverPreviewStartOffsetSec = 0.0f;   // skip into the clip (e.g. past intro black)
+cfg.hoverPreviewMuted          = true;   // previews are silent unless opted in
+cfg.hoverPreviewFps            = 24;     // frame-poll / repaint cadence
+```
+
+Playback starts only after the dwell delay, so a cursor merely crossing the
+grid never opens a decoder; until the first frame arrives the poster stays, and
+when the preview ends (duration elapsed, clip over, or the cursor leaves) the
+poster returns. One decode session exists at a time. The preview frame is
+fitted exactly like the thumbnail (`imageDisplay`, focus point, hover zoom) so
+nothing jumps when it starts or ends. Requires a real video backend
+(`ULTRACANVAS_ENABLE_VIDEO`); with the null backend the static thumbnail simply
+stays. The engine behind it, `UltraCanvasVideoHoverPreview`
+(`include/UltraCanvasVideoHoverPreview.h`), is reusable by any widget that
+paints video covers.
+
 ### Actions & modes
 
 ```cpp

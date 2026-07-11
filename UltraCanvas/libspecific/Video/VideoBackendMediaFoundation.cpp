@@ -945,7 +945,8 @@ public:
     CameraPermission GetCameraPermission() override { return CameraPermission::Granted; }
     void RequestCameraPermission(std::function<void(bool)> cb) override { if (cb) cb(true); }
 
-    std::unique_ptr<IVideoDecodeSession> OpenDecoder(const std::string& source) override {
+    std::unique_ptr<IVideoDecodeSession> OpenDecoder(const std::string& source,
+                                                     const VideoDecodeOptions& opts) override {
         // The session is COM-refcounted (IMFAsyncCallback) and starts at ref 1.
         // Build()'s Teardown-on-failure path releases it; on success we hand the
         // single reference to the unique_ptr. Its default `delete` runs the
@@ -953,6 +954,9 @@ public:
         // no references by the time the memory is freed.
         auto* s = new MFDecodeSession(source);
         if (!s->Build()) { s->Release(); return nullptr; }
+        // disableAudio degrades to a hard mute here (the SAR stays in the
+        // topology — dropping it needs a per-stream topology rebuild).
+        if (opts.disableAudio) s->SetMute(true);
         return std::unique_ptr<IVideoDecodeSession>(s);
     }
     std::unique_ptr<IVideoCaptureSession> OpenCapture(const VideoCaptureParams& p) override {
