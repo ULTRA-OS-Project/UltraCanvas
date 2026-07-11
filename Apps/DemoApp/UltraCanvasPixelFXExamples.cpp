@@ -154,27 +154,33 @@ namespace {
                       int f = std::max(2, static_cast<int>(p[0]));
                       return FX::Conversion::Zoom(FX::Conversion::Subsample(src, f), f); } },
             } },
+            // Greyscale morphology via rank filters: Morphology::Erode/Dilate wrap
+            // vips_morph, which only operates on binary (0/255) images. A rank
+            // filter taking the neighbourhood minimum / maximum is the greyscale
+            // equivalent and works on photographs.
             { "morphology", "Morphology", {
-                { "erode", "Erode", "Shrinks bright regions with a disk structuring element (Morphology::Erode).",
+                { "erode", "Erode", "Shrinks bright regions — neighbourhood minimum (Morphology::Rank).",
                   { { "Radius", 1.0f, 6.0f, 2.0f, 1.0f } },
                   [](const PFXImage& src, const std::vector<float>& p) {
-                      return FX::Morphology::Erode(FX::Conversion::CastUchar(src),
-                                                   FX::Morphology::CreateDisk(static_cast<int>(p[0]))); } },
-                { "dilate", "Dilate", "Grows bright regions with a disk structuring element (Morphology::Dilate).",
+                      int size = static_cast<int>(p[0]) * 2 + 1;
+                      return FX::Morphology::Rank(src, size, size, 0); } },
+                { "dilate", "Dilate", "Grows bright regions — neighbourhood maximum (Morphology::Rank).",
                   { { "Radius", 1.0f, 6.0f, 2.0f, 1.0f } },
                   [](const PFXImage& src, const std::vector<float>& p) {
-                      return FX::Morphology::Dilate(FX::Conversion::CastUchar(src),
-                                                    FX::Morphology::CreateDisk(static_cast<int>(p[0]))); } },
-                { "open", "Open", "Erode then dilate — removes small bright specks (Morphology::Open).",
+                      int size = static_cast<int>(p[0]) * 2 + 1;
+                      return FX::Morphology::Rank(src, size, size, size * size - 1); } },
+                { "open", "Open", "Erode then dilate — removes small bright specks (Morphology::Rank).",
                   { { "Radius", 1.0f, 6.0f, 2.0f, 1.0f } },
                   [](const PFXImage& src, const std::vector<float>& p) {
-                      return FX::Morphology::Open(FX::Conversion::CastUchar(src),
-                                                  FX::Morphology::CreateDisk(static_cast<int>(p[0]))); } },
-                { "close", "Close", "Dilate then erode — fills small dark holes (Morphology::Close).",
+                      int size = static_cast<int>(p[0]) * 2 + 1;
+                      PFXImage eroded = FX::Morphology::Rank(src, size, size, 0);
+                      return FX::Morphology::Rank(eroded, size, size, size * size - 1); } },
+                { "close", "Close", "Dilate then erode — fills small dark holes (Morphology::Rank).",
                   { { "Radius", 1.0f, 6.0f, 2.0f, 1.0f } },
                   [](const PFXImage& src, const std::vector<float>& p) {
-                      return FX::Morphology::Close(FX::Conversion::CastUchar(src),
-                                                   FX::Morphology::CreateDisk(static_cast<int>(p[0]))); } },
+                      int size = static_cast<int>(p[0]) * 2 + 1;
+                      PFXImage dilated = FX::Morphology::Rank(src, size, size, size * size - 1);
+                      return FX::Morphology::Rank(dilated, size, size, 0); } },
             } },
         };
         return categories;
@@ -593,7 +599,7 @@ namespace {
 
         tree->onNodeSelected = [state, rebuildOptions, applyCurrent](TreeNode* node) {
             if (!node) return;
-            const Effect* fx = FindEffect(node->data.id);
+            const Effect* fx = FindEffect(node->data.nodeId);
             if (!fx) return;   // root / category nodes just expand
             state->effect = fx;
             state->params.clear();
