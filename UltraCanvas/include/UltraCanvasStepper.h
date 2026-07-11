@@ -13,8 +13,8 @@
 //   * Marker style     — NumberedCircle, IconCheck, Dot, or Custom (SVG/image)
 //   * Navigation       — Linear, NonLinear, or Display-only
 //
-// Version: 1.0.0
-// Last Modified: 2026-07-07
+// Version: 1.0.1
+// Last Modified: 2026-07-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -127,6 +127,13 @@ namespace UltraCanvas {
 
         int hoveredStep = -1;
 
+        // Label line heights measured with the real render context (cached by
+        // Render, estimated from the font sizes before the first frame). The
+        // vertical layout needs them to keep the last step's label block
+        // inside the element's bounds.
+        mutable float titleLineHeight = 0.0f;
+        mutable float descriptionLineHeight = 0.0f;
+
     public:
         // ===== CONSTRUCTORS (REQUIRED PATTERN) =====
         UltraCanvasStepper(const std::string& identifier, float x, float y, float w, float h);
@@ -187,6 +194,14 @@ namespace UltraCanvas {
         // Layout: marker square rects + clickable slot rects (element-local).
         void ComputeLayout(std::vector<Rect2Df>& markerRects,
                            std::vector<Rect2Df>& slotRects) const;
+
+        // Cache titleLineHeight / descriptionLineHeight from the context.
+        void MeasureLabelLineHeights(IRenderContext* ctx) const;
+
+        // Height of step `index`'s label block measured from the marker's top
+        // edge (0 when the step shows no label). Mirrors RenderLabel's
+        // vertical stacking.
+        float LabelBlockHeight(int index) const;
 
         void RenderConnector(IRenderContext* ctx, const Rect2Df& a, const Rect2Df& b,
                              bool completed);
