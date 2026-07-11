@@ -1,6 +1,6 @@
 // include/UltraCanvasListView.h
 // Model-View-Delegate ListView widget
-// Last Modified: 2026-05-29
+// Last Modified: 2026-07-11
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -52,6 +52,14 @@ namespace UltraCanvas {
         std::function<void(const std::vector<int>&)> onSelectionChanged;
         std::function<void(int row)> onItemHovered;
 
+        // Cell-level callbacks (multi-column aware). posInCell is relative to the
+        // cell's top-left corner, i.e. the same space as the rects a delegate
+        // computes from ListItemStyleOption (x - columnX, y - row top). Hover is
+        // reported on every mouse move; (row=-1, column=-1) means the pointer
+        // left the rows area.
+        std::function<void(int row, int column, const Point2Di& posInCell)> onCellClicked;
+        std::function<void(int row, int column, const Point2Di& posInCell)> onCellHovered;
+
         // Constructor
         UltraCanvasListView(const std::string& identifier,
                             float x, float y, float w, float h);
@@ -86,6 +94,11 @@ namespace UltraCanvas {
         // === Scrolling ===
         void ScrollToRow(int row);
         void EnsureRowVisible(int row);
+
+        // === Hit testing ===
+        // Column under an element-local x coordinate (-1 if outside the rows
+        // viewport). columnStartX receives the column's element-local left edge.
+        int GetColumnAt(int x, int* columnStartX = nullptr) const;
 
         // === Core overrides ===
         // ListView is externally sized (explicit size or parent stretch); the base

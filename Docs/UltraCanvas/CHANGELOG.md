@@ -1,3 +1,19 @@
+#### 2026-07-11 *0.3.5*
+- `UltraCanvasListView`: new cell-level callbacks `onCellClicked` and
+  `onCellHovered` (row, column, cell-local position) plus the `GetColumnAt()`
+  hit-test helper, so delegates can implement per-cell interactive regions
+  (links, buttons) in multi-column views. Hover leaves are reported as
+  (-1, -1) and the view now also resets its hover state on `MouseLeave`.
+- Demo: the Dependencies & Third-Party page is now interactive. Library names
+  render as links — hovering underlines them, shows a hand cursor and a
+  tooltip with the website / source repository / license; clicking opens a
+  popup with "Website" and "Source code" entries (or opens the site directly
+  for OS frameworks without a public repository). Each library additionally
+  carries its license tag after the name — e.g. (MIT), (LGPL 2.1) — which is
+  its own link to the license description page on spdx.org.
+  `Docs/Dependencies.md` gained the matching License column and the
+  previously missing OCR / Vectorizer / LaTeX plugin libraries.
+
 #### 2026-07-10 *0.3.4*
 - Implemented GIF (and animated WebP) animation support. Animated images now
   play in `UltraCanvasImageElement` (auto-play on load, with
