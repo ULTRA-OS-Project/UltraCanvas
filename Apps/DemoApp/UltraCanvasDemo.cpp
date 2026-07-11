@@ -1343,9 +1343,17 @@ namespace UltraCanvas {
         modulesBuilder.AddItem("iodevicemanager", "IODeviceManager support", "IODeviceManager support",
                                ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/IODeviceManager"); });
+#ifdef HAS_LIBVIPS
+        modulesBuilder.AddItem("pixelfx", "Pixel FX", "Pixel FX",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreatePixelFXExamples(); },
+                               "Apps/DemoApp/UltraCanvasPixelFXExamples.cpp",
+                               "Docs/Modules/PixelFX/README.md");
+#else
         modulesBuilder.AddItem("pixelfx", "Pixel FX", "Pixel FX",
                                ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/PixelFX"); });
+#endif
         modulesBuilder.AddItem("smarthome", "Smart Home module", "UltraCanvas Smart Home Module",
                                ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/Smarthome"); });

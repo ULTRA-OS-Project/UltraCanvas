@@ -185,6 +185,7 @@ if(BUILD_DEMO_APP)
         list(APPEND DEMO_SOURCES
             Apps/DemoApp/UltraCanvasBitmapExamples.cpp
             Apps/DemoApp/UltraCanvasBitmapFormatDemo.cpp
+            Apps/DemoApp/UltraCanvasPixelFXExamples.cpp
         )
     endif()
 

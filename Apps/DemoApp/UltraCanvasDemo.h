@@ -334,6 +334,12 @@ namespace UltraCanvas {
         // FileLoader module page: Overview / Details / Examples tabs, the last one
         // an interactive Open / Save playground across the supported file families.
         std::shared_ptr<UltraCanvasUIElement> CreateFileLoaderExamples();
+#ifdef HAS_LIBVIPS
+        // PixelFX module page: Overview / Details / Examples tabs, the last one an
+        // interactive image-processing playground (sample image + function tree +
+        // per-function options).
+        std::shared_ptr<UltraCanvasUIElement> CreatePixelFXExamples();
+#endif
         std::shared_ptr<UltraCanvasUIElement> CreateMarkdownDocScreen(const std::string& filename);
         // Composite module documentation screen: short intro (Markdown) on top, an
         // optional rendered SVG module diagram in the middle, and the full README
