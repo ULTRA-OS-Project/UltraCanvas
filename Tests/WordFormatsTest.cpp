@@ -460,11 +460,15 @@ int main(int argc, char** argv) {
         CHECK(sawSignature);
     }
 
-    // ===== 11. Letterhead with a dedicated first-page master page =====
-    // Real letterheads define a "First Page" master (logo, full contact block,
-    // bank-details footer) distinct from the plain continuation master, and the
-    // first body paragraph pins it via style:master-page-name. The reader must
-    // render the applied master, not whichever master is written first.
+    // ===== 11. Letterhead: applied first-page master, pinned by a table =====
+    // Mirrors the real "IK Softwareportal" letterhead. The letterhead chrome
+    // (logo, sender, four-line contact block) sits in PAGE-ANCHORED FRAMES in
+    // the body, not in any header. Page 1 draws from the "First Page" master,
+    // pinned by the leading layout TABLE's style (table:style-name), and that
+    // master carries only the bank-details footer. The unrelated "Standard"
+    // continuation master (written first) owns a "Seite N / 1" page-number
+    // header that only ever shows on page 2+, so it must NOT be rendered for a
+    // one-page letter.
     {
         std::string contentXml =
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
@@ -472,17 +476,36 @@ int main(int argc, char** argv) {
             "xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" "
             "xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\" "
             "xmlns:style=\"urn:oasis:names:tc:opendocument:xmlns:style:1.0\" "
-            "office:version=\"1.2\">"
+            "xmlns:table=\"urn:oasis:names:tc:opendocument:xmlns:table:1.0\" "
+            "xmlns:draw=\"urn:oasis:names:tc:opendocument:xmlns:drawing:1.0\" "
+            "xmlns:svg=\"urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0\" "
+            "xmlns:xlink=\"http://www.w3.org/1999/xlink\" office:version=\"1.2\">"
             "<office:automatic-styles>"
-            "<style:style style:name=\"P1\" style:family=\"paragraph\" "
+            // A TABLE style pins the first-page master (as the real file does).
+            "<style:style style:name=\"TB\" style:family=\"table\" "
             "style:master-page-name=\"First_20_Page\"/>"
             "</office:automatic-styles>"
             "<office:body><office:text>"
-            "<text:p text:style-name=\"P1\">Business Bonus Payment</text:p>"
+            // Leading non-flow nodes: page-anchored logo and contact frames.
+            "<draw:frame draw:name=\"Logo\" text:anchor-type=\"page\" "
+            "svg:width=\"72pt\" svg:height=\"48pt\">"
+            "<draw:image xlink:href=\"Pictures/logo.png\"/></draw:frame>"
+            "<draw:frame draw:name=\"Contacts\" text:anchor-type=\"page\">"
+            "<draw:text-box>"
+            "<text:p>phone +49 (0) 2761 82 81 69</text:p>"
+            "<text:p>fax +49 (0) 911 308 44 77 844</text:p>"
+            "<text:p>mobile +49 (0) 170 754 22 91</text:p>"
+            "<text:p>info@interkontakt.net</text:p>"
+            "</draw:text-box></draw:frame>"
+            // First FLOW block is the reference table, which pins First Page.
+            "<table:table table:name=\"Ref\" table:style-name=\"TB\">"
+            "<table:table-row>"
+            "<table:table-cell><text:p>Datum</text:p></table:table-cell>"
+            "<table:table-cell><text:p>9.2.2021</text:p></table:table-cell>"
+            "</table:table-row></table:table>"
+            "<text:p>Business Bonus Payment</text:p>"
             "<text:p>The company pays a bonus every month.</text:p>"
             "</office:text></office:body></office:document-content>";
-        // "Standard" master is written first with an EMPTY header (the
-        // continuation page). "First Page" carries the real letterhead.
         std::string stylesXml =
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
             "<office:document-styles "
@@ -490,29 +513,15 @@ int main(int argc, char** argv) {
             "xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\" "
             "xmlns:style=\"urn:oasis:names:tc:opendocument:xmlns:style:1.0\" "
             "xmlns:table=\"urn:oasis:names:tc:opendocument:xmlns:table:1.0\" "
-            "xmlns:draw=\"urn:oasis:names:tc:opendocument:xmlns:drawing:1.0\" "
-            "xmlns:svg=\"urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0\" "
-            "xmlns:xlink=\"http://www.w3.org/1999/xlink\" office:version=\"1.2\">"
+            "office:version=\"1.2\">"
             "<office:master-styles>"
-            // Mirrors the real letterhead: the header (logo + full contact
-            // block) lives on the "Standard" master, written first, alongside
-            // an empty layout table and a "Seite N / 1" page-number line; the
-            // bank-details footer lives on the separate "First Page" master.
+            // Continuation master (written first): page-number header only.
             "<style:master-page style:name=\"Standard\">"
             "<style:header>"
-            "<table:table table:name=\"Layout\">"
-            "<table:table-row><table:table-cell><text:p/></table:table-cell>"
-            "<table:table-cell><text:p/></table:table-cell></table:table-row></table:table>"
             "<text:p>Seite <text:page-number text:select-page=\"current\"/> / "
             "<text:page-count>1</text:page-count></text:p>"
-            "<text:p><draw:frame draw:name=\"Logo\" svg:width=\"72pt\" svg:height=\"48pt\">"
-            "<draw:image xlink:href=\"Pictures/logo.png\"/></draw:frame></text:p>"
-            "<text:p>phone +49 (0) 2761 82 81 69</text:p>"
-            "<text:p>fax +49 (0) 911 308 44 77 844</text:p>"
-            "<text:p>mobile +49 (0) 170 754 22 91</text:p>"
-            "<text:p>info@interkontakt.net</text:p>"
-            "</style:header>"
-            "</style:master-page>"
+            "</style:header></style:master-page>"
+            // First-page master: bank-details footer only, no header.
             "<style:master-page style:name=\"First_20_Page\">"
             "<style:footer><table:table table:name=\"F\">"
             "<table:table-row>"
@@ -536,8 +545,7 @@ int main(int argc, char** argv) {
         CHECK_MSG(UCWordDocumentIO::Load(TmpPath("letterhead.odt"), letter, err), err);
         std::string plain = letter.ToPlainText();
 
-        // The applied first-page master supplies logo, all four contact lines
-        // and the bank-details footer.
+        // Logo and contact block come from the body's page-anchored frames.
         CHECK_MSG(letter.media.size() == 1, "logo image loaded");
         bool sawLogo = false;
         for (const auto& b : letter.blocks) {
@@ -548,22 +556,72 @@ int main(int argc, char** argv) {
         CHECK_MSG(plain.find("+49 (0) 911 308 44 77 844") != std::string::npos, plain);
         CHECK_MSG(plain.find("+49 (0) 170 754 22 91") != std::string::npos, plain);
         CHECK_MSG(plain.find("info@interkontakt.net") != std::string::npos, plain);
+
+        // The First-Page master's footer is rendered even though the header is
+        // on the (different) Standard master.
         CHECK_MSG(plain.find("Deutsche Bank 24") != std::string::npos, plain);
         CHECK_MSG(plain.find("Handelsregister B 126110") != std::string::npos, plain);
         CHECK_MSG(plain.find("Finanzamt") != std::string::npos, plain);
         CHECK_MSG(plain.find("Business Bonus Payment") != std::string::npos, plain);
 
-        // Page-number field renders as page 1 instead of an empty gap.
-        CHECK_MSG(plain.find("Seite 1 / 1") != std::string::npos, plain);
-        // The empty header layout table must not litter the flow with a stray
-        // cell separator (the header's only table has no text).
-        CHECK_MSG(plain.find("Seite 1 / 1\n\n\t") == std::string::npos, plain);
+        // The Standard continuation master's page-number header must NOT leak
+        // in — it never displays on a one-page letter (matches OpenOffice).
+        CHECK_MSG(plain.find("Seite") == std::string::npos, plain);
 
-        // Ordering: header contacts before body, footer after body.
+        // Ordering: contacts (body) before body text, footer after it.
         size_t contactPos = plain.find("+49 (0) 2761 82 81 69");
         size_t bodyPos = plain.find("Business Bonus Payment");
         size_t footerPos = plain.find("Deutsche Bank 24");
         CHECK(contactPos < bodyPos && bodyPos < footerPos);
+    }
+
+    // ===== 11b. Header page furniture: page-number field + empty layout table =====
+    // When a header IS displayed (default "Standard" master, no pin), a
+    // text:page-number field must render as page 1 (not an empty gap), and a
+    // text-free layout table must not inject a stray cell separator.
+    {
+        std::string contentXml =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+            "<office:document-content "
+            "xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" "
+            "xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\" "
+            "office:version=\"1.2\">"
+            "<office:body><office:text>"
+            "<text:p>body</text:p>"
+            "</office:text></office:body></office:document-content>";
+        std::string stylesXml =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+            "<office:document-styles "
+            "xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" "
+            "xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\" "
+            "xmlns:style=\"urn:oasis:names:tc:opendocument:xmlns:style:1.0\" "
+            "xmlns:table=\"urn:oasis:names:tc:opendocument:xmlns:table:1.0\" "
+            "office:version=\"1.2\">"
+            "<office:master-styles><style:master-page style:name=\"Standard\">"
+            "<style:header>"
+            "<table:table table:name=\"Layout\">"
+            "<table:table-row><table:table-cell><text:p/></table:table-cell>"
+            "<table:table-cell><text:p/></table:table-cell></table:table-row></table:table>"
+            "<text:p>Seite <text:page-number text:select-page=\"current\"/> / "
+            "<text:page-count>1</text:page-count></text:p>"
+            "</style:header></style:master-page></office:master-styles>"
+            "</office:document-styles>";
+        {
+            UCZipPackageWriter zip;
+            CHECK(zip.Open(TmpPath("furniture.odt")));
+            zip.AddEntry("mimetype", std::string("application/vnd.oasis.opendocument.text"), false);
+            zip.AddEntry("content.xml", contentXml);
+            zip.AddEntry("styles.xml", stylesXml);
+            CHECK(zip.Finalize());
+        }
+        UCRichDocument doc3;
+        std::string err;
+        CHECK_MSG(UCWordDocumentIO::Load(TmpPath("furniture.odt"), doc3, err), err);
+        std::string plain = doc3.ToPlainText();
+        CHECK_MSG(plain.find("Seite 1 / 1") != std::string::npos, plain);
+        // No table block precedes the page-number line (empty table skipped).
+        CHECK(!doc3.blocks.empty());
+        CHECK_MSG(doc3.blocks.front().type != RichBlockType::Table, "empty layout table skipped");
     }
 
     // ===== 12. Table cells preserve non-paragraph block content =====

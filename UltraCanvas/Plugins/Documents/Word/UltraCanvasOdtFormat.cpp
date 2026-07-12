@@ -145,14 +145,16 @@ public:
         // The linear block model has no page chrome, so the page header is
         // emitted before the body and the page footer after it, each set off
         // with a rule. A letterhead typically defines a dedicated first-page
-        // master (logo, full contact block, bank-details footer) distinct from
-        // the plain continuation master; pick the one actually applied to the
-        // body rather than whichever master happens to be written first, and
-        // resolve the header and footer independently because a template may
-        // legitimately keep the header on one master and the footer on another.
+        // master (its own header/footer) distinct from the plain continuation
+        // master; a single page always draws both its header and footer from
+        // the one master applied to it, so pick the master actually applied to
+        // the document's first page and render only its regions. Rendering a
+        // header from an unrelated master (e.g. the continuation master's
+        // "Seite N / N" page-number line, which never shows on a one-page
+        // letter) would inject chrome the reader never displays.
         tinyxml2::XMLElement* masterPage = ResolveMasterPage(stylesRoot, text);
-        auto* headerRegion = FindMasterRegion(stylesRoot, masterPage, "style:header");
-        auto* footerRegion = FindMasterRegion(stylesRoot, masterPage, "style:footer");
+        auto* headerRegion = masterPage ? masterPage->FirstChildElement("style:header") : nullptr;
+        auto* footerRegion = masterPage ? masterPage->FirstChildElement("style:footer") : nullptr;
         ParseMasterPageRegion(headerRegion, false);
         ParseBlockContainer(text, 0, "");
         ParseMasterPageRegion(footerRegion, true);
@@ -671,23 +673,32 @@ private:
         return false;
     }
 
-    // Name of the master page the body actually starts on: the first
-    // paragraph/heading's paragraph style may pin it via style:master-page-name
-    // (ODF §16.2); otherwise the document defaults to the "Standard" master.
+    // Name of the master page the document's first page draws from. The initial
+    // page master is pinned by the first flow block's style via
+    // style:master-page-name (ODF §16.2); otherwise the document defaults to the
+    // "Standard" master. The pin lives on the paragraph *or table* style — real
+    // letterheads carry it on the leading layout table (table:style-name), not a
+    // paragraph — so both are consulted. A later pin is a page break onto a new
+    // page and must not be mistaken for the first page's master, so only the
+    // first flow block is inspected. Non-flow leading nodes (forms, field
+    // declarations, page-anchored frames/shapes) carry no page style and are
+    // skipped.
     std::string AppliedMasterPageName(tinyxml2::XMLElement* body) const {
         for (auto* elem = body->FirstChildElement(); elem;
              elem = elem->NextSiblingElement()) {
             std::string tag = elem->Name() ? elem->Name() : "";
-            if (tag == "text:p" || tag == "text:h") {
-                std::string name = ResolveStyle(Attr(elem, "text:style-name")).masterPageName;
-                if (!name.empty()) return name;
-                break;
+            const char* styleAttr = nullptr;
+            if (tag == "text:p" || tag == "text:h" || tag == "text:list") {
+                styleAttr = "text:style-name";
+            } else if (tag == "table:table") {
+                styleAttr = "table:style-name";
+            } else if (tag == "text:section") {
+                // A section is flow content; resolve within it, then stop.
+                return AppliedMasterPageName(elem);
+            } else {
+                continue;   // non-flow: forms, decls, page-anchored drawings
             }
-            if (tag == "text:section") {
-                // Descend into a leading section to reach the first paragraph.
-                std::string name = AppliedMasterPageName(elem);
-                if (!name.empty()) return name;
-            }
+            return ResolveStyle(Attr(elem, styleAttr)).masterPageName;
         }
         return "";
     }
@@ -719,31 +730,6 @@ private:
         if (standard && MasterPageHasContent(standard)) return standard;
         if (firstWithContent) return firstWithContent;
         return standard ? standard : first;
-    }
-
-    // The displayed header/footer element to render for a region, preferring
-    // the applied master page but falling back to any sibling master that
-    // carries content there (letterheads often split the header onto the
-    // continuation master and the footer onto the first-page master).
-    tinyxml2::XMLElement* FindMasterRegion(tinyxml2::XMLElement* stylesRoot,
-                                           tinyxml2::XMLElement* appliedMaster,
-                                           const char* regionTag) const {
-        auto visible = [&](tinyxml2::XMLElement* page) -> tinyxml2::XMLElement* {
-            if (!page) return nullptr;
-            auto* region = page->FirstChildElement(regionTag);
-            if (!region) return nullptr;
-            if (std::string(Attr(region, "style:display")) == "false") return nullptr;
-            return NodeHasVisibleContent(region) ? region : nullptr;
-        };
-        if (auto* region = visible(appliedMaster)) return region;
-        if (!stylesRoot) return nullptr;
-        auto* masters = stylesRoot->FirstChildElement("office:master-styles");
-        if (!masters) return nullptr;
-        for (auto* page = masters->FirstChildElement("style:master-page"); page;
-             page = page->NextSiblingElement("style:master-page")) {
-            if (auto* region = visible(page)) return region;
-        }
-        return nullptr;
     }
 
     // Emits a resolved header or footer region (styles.xml) as ordinary blocks,
