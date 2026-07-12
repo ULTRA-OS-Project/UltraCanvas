@@ -9,9 +9,12 @@
 //                 UltraCanvasFileLoader. The Open and Save buttons advertise the
 //                 file types currently available for the chosen family, and the
 //                 loaded file is shown in the matching display area (text area,
-//                 image, spreadsheet, audio or video player).
-// Version: 1.0.0
-// Last Modified: 2026-07-03
+//                 image, spreadsheet, audio or video player). A file can also be
+//                 dragged from the OS file manager and dropped onto the display
+//                 area; the family dropdown switches automatically when the
+//                 dropped file belongs to another family.
+// Version: 1.1.0
+// Last Modified: 2026-07-12
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -29,6 +32,7 @@
 #include "UltraCanvasConfig.h"   // GetResourcesDir
 #include "UltraCanvasUtils.h"    // NormalizePath, LoadFile
 
+#include <algorithm>
 #include <cctype>
 #include <fstream>
 #include <functional>
@@ -107,6 +111,26 @@ namespace {
         return ext;
     }
 
+    // Family whose Open list accepts the file's extension. The preferred
+    // (currently selected) family wins when it matches, so dropping e.g. an .svg
+    // while "Vector graphics" is active stays there even though other families
+    // could claim the extension too. Returns -1 when no family accepts the file.
+    int FindGroupForFile(const std::vector<FileGroup>& groups, const std::string& path, int preferredIndex) {
+        const std::string ext = LowerExtension(path);
+        if (ext.empty()) return -1;
+        auto accepts = [&ext](const FileGroup& g) {
+            return std::find(g.openExts.begin(), g.openExts.end(), ext) != g.openExts.end();
+        };
+        if (preferredIndex >= 0 && preferredIndex < static_cast<int>(groups.size()) &&
+            accepts(groups[preferredIndex])) {
+            return preferredIndex;
+        }
+        for (size_t i = 0; i < groups.size(); ++i) {
+            if (accepts(groups[i])) return static_cast<int>(i);
+        }
+        return -1;
+    }
+
     std::shared_ptr<UltraCanvasLabel> CenteredHint(const std::string& id, const std::string& text) {
         auto label = std::make_shared<UltraCanvasLabel>(id, 0, 0, 0, 0);
         label->SetText(text);
@@ -126,7 +150,7 @@ namespace {
 
         if (!loaded) {
             return CenteredHint("FileLoaderHint",
-                                "Click “Open file” to load a " + group.name +
+                                "Click “Open file” or drag & drop a file here to load a " + group.name +
                                 " file.\nSupported: " + JoinExts(group.openExts));
         }
 
@@ -316,6 +340,54 @@ namespace {
         dropdown->onSelectionChanged = [refresh](int index, const DropdownItem&) {
             (*refresh)(index, "");
         };
+
+        // ----- Drag & drop: a file dropped onto the display area is loaded like
+        // one picked via "Open file". Drag events bubble up from whichever child
+        // currently fills the area, so hooking the container catches them all.
+        const Color normalBorder(200, 200, 205, 255);
+        const Color dropBorder(70, 130, 220, 255);
+        // The callback is stored on displayArea itself, so it captures the area
+        // and the refresh function as raw pointers to avoid a shared_ptr cycle;
+        // both outlive the callback.
+        auto* areaPtr = displayArea.get();
+        auto* refreshPtr = refresh.get();
+        displayArea->SetEventCallback(
+            [groups, dropdown, status, areaPtr, refreshPtr, normalBorder, dropBorder]
+            (const UCEvent& event) -> bool {
+                switch (event.type) {
+                    case UCEventType::DragEnter:
+                    case UCEventType::DragOver:
+                        areaPtr->SetBordersColor(dropBorder);
+                        return true;
+                    case UCEventType::DragLeave:
+                        areaPtr->SetBordersColor(normalBorder);
+                        return true;
+                    case UCEventType::Drop: {
+                        areaPtr->SetBordersColor(normalBorder);
+                        if (event.droppedFiles.empty()) return false;
+                        const std::string& path = event.droppedFiles.front();
+                        int idx = FindGroupForFile(groups, path, dropdown->GetSelectedIndex());
+                        if (idx < 0) {
+                            status->SetText("Cannot open dropped file: unsupported type \"." +
+                                            LowerExtension(path) + "\" (" + path + ")");
+                            status->RequestRedraw();
+                            return true;
+                        }
+                        // Keep the family dropdown in sync without re-triggering
+                        // onSelectionChanged (refresh below shows the file itself).
+                        if (idx != dropdown->GetSelectedIndex()) {
+                            dropdown->SetSelectedIndex(idx, false);
+                        }
+                        (*refreshPtr)(idx, path);
+                        status->SetText("Loaded (dropped): " + path);
+                        status->RequestRedraw();
+                        return true;
+                    }
+                    default:
+                        // Anything else keeps the container's normal handling.
+                        return false;
+                }
+            });
 
         // ----- Open: native dialog filtered to the current family -----
         openBtn->onClick = [groups, dropdown, status, refresh]() {
