@@ -47,3 +47,21 @@ The engine is built in **Uni-math** mode with glyphs rendered as vector paths
 The `.clm2` file is a binary metrics + glyph-path table derived from the OTF by
 MicroTeX's `prebuilt/otf2clm.py` tool; it is a transformed representation of the
 same font and is covered by the same license.
+
+---
+
+## miniaudio (audio backend)
+
+- **Used by:** the audio subsystem when `ULTRACANVAS_ENABLE_AUDIO` is ON
+  (`UltraCanvas/libspecific/Audio/AudioBackendMiniaudio.cpp`). Provides
+  cross-platform device I/O, playback/capture streams, WAV encode, and
+  WAV/MP3/FLAC decode via its bundled dr_wav/dr_mp3/dr_flac decoders.
+- **Upstream:** https://github.com/mackron/miniaudio
+- **Vendored at:** `UltraCanvas/libspecific/Audio/miniaudio.h` (single header).
+- **License:** dual-licensed as public domain (Unlicense) **or** MIT No
+  Attribution (MIT-0), at the user's choice — Copyright David Reid. The vendored
+  header carries the full license text inline at the top of the file.
+- **Note:** the header is vendored unmodified. OGG Vorbis and Opus are not part
+  of miniaudio's bundled decoders and are only available when the corresponding
+  codec (e.g. stb_vorbis, libvorbis, opusfile) is added to the build; those
+  carry their own licenses.

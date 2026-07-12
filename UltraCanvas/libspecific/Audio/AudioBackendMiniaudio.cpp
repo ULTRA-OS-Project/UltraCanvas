@@ -1,7 +1,11 @@
 // libspecific/Audio/AudioBackendMiniaudio.cpp
-// IAudioBackend implementation backed by miniaudio (single-header, MIT).
-// Provides device enumeration, playback and capture streams, plus WAV
-// encode and WAV/MP3/FLAC/Vorbis decode (miniaudio's built-in support).
+// IAudioBackend implementation backed by miniaudio (single-header, MIT-0).
+// Provides device enumeration, playback and capture streams, plus WAV encode
+// and WAV/MP3/FLAC decode. These three decoders (dr_wav/dr_mp3/dr_flac) are the
+// only ones bundled in miniaudio.h; Vorbis (OGG) and Opus are NOT compiled in
+// unless the corresponding decoder is added to the build (e.g. vendoring
+// stb_vorbis, which auto-enables miniaudio's MA_HAS_VORBIS path). Until then a
+// hinted OGG/Opus decode fails cleanly rather than silently mis-detecting.
 // Only compiled when ULTRACANVAS_ENABLE_AUDIO is ON.
 // Version: 0.1.0
 // Last Modified: 2026-06-12
@@ -40,6 +44,21 @@ AudioSampleType FromMiniaudioFormat(ma_format f) {
         case ma_format_s32: return AudioSampleType::PCM_S32;
         case ma_format_f32: return AudioSampleType::PCM_F32;
         default: return AudioSampleType::PCM_F32;
+    }
+}
+
+// Map a UCAudio container hint onto miniaudio's decoder encodingFormat. Returns
+// ma_encoding_format_unknown for Autodetect and for containers miniaudio can't
+// key on directly (the decoder then sniffs the stream). Setting a specific
+// format makes miniaudio try only that decoder and fail cleanly if it isn't
+// compiled in, instead of silently mis-detecting.
+ma_encoding_format ToMiniaudioEncodingFormat(AudioFormat hint) {
+    switch (hint) {
+        case AudioFormat::WAV:  return ma_encoding_format_wav;
+        case AudioFormat::MP3:  return ma_encoding_format_mp3;
+        case AudioFormat::FLAC: return ma_encoding_format_flac;
+        case AudioFormat::OGG:  return ma_encoding_format_vorbis;
+        default:                return ma_encoding_format_unknown;
     }
 }
 
@@ -209,20 +228,24 @@ public:
         return s;
     }
 
-    std::shared_ptr<UCAudio> DecodeFile(const std::string& path) override {
+    std::shared_ptr<UCAudio> DecodeFile(const std::string& path,
+                                        AudioFormat hint) override {
         if (!Initialize()) return nullptr;
         ma_decoder decoder;
         ma_decoder_config dcfg = ma_decoder_config_init(ma_format_f32, 0, 0);
+        dcfg.encodingFormat = ToMiniaudioEncodingFormat(hint);
         if (ma_decoder_init_file(path.c_str(), &dcfg, &decoder) != MA_SUCCESS) {
             return nullptr;
         }
         return DecodeViaDecoder(decoder);
     }
 
-    std::shared_ptr<UCAudio> DecodeMemory(const uint8_t* data, size_t size) override {
+    std::shared_ptr<UCAudio> DecodeMemory(const uint8_t* data, size_t size,
+                                          AudioFormat hint) override {
         if (!Initialize() || !data || !size) return nullptr;
         ma_decoder decoder;
         ma_decoder_config dcfg = ma_decoder_config_init(ma_format_f32, 0, 0);
+        dcfg.encodingFormat = ToMiniaudioEncodingFormat(hint);
         if (ma_decoder_init_memory(data, size, &dcfg, &decoder) != MA_SUCCESS) {
             return nullptr;
         }

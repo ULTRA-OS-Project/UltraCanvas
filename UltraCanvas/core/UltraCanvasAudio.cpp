@@ -22,10 +22,10 @@ size_t AudioBufferInfo::BytesPerSample() const {
 }
 
 std::shared_ptr<UCAudio> UCAudio::LoadFromFile(const std::string& filePath,
-                                               AudioFormat /*hint*/) {
+                                               AudioFormat hint) {
     auto* backend = GetAudioBackend();
     if (!backend) return std::make_shared<UCAudio>();
-    auto audio = backend->DecodeFile(filePath);
+    auto audio = backend->DecodeFile(filePath, hint);
     if (!audio) {
         audio = std::make_shared<UCAudio>();
     }
@@ -34,10 +34,10 @@ std::shared_ptr<UCAudio> UCAudio::LoadFromFile(const std::string& filePath,
 }
 
 std::shared_ptr<UCAudio> UCAudio::LoadFromMemory(const uint8_t* data, size_t size,
-                                                 AudioFormat /*hint*/) {
+                                                 AudioFormat hint) {
     auto* backend = GetAudioBackend();
     if (!backend) return std::make_shared<UCAudio>();
-    auto audio = backend->DecodeMemory(data, size);
+    auto audio = backend->DecodeMemory(data, size, hint);
     return audio ? audio : std::make_shared<UCAudio>();
 }
 

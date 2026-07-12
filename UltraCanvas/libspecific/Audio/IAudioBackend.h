@@ -77,8 +77,13 @@ public:
 
     // Decoding / encoding. Implementations may return null/false when format
     // support isn't compiled in. The null backend always returns null/false.
-    virtual std::shared_ptr<UCAudio> DecodeFile(const std::string& path) = 0;
-    virtual std::shared_ptr<UCAudio> DecodeMemory(const uint8_t* data, size_t size) = 0;
+    // `hint` lets the caller assert the container format; AudioFormat::Autodetect
+    // (the default) leaves the backend to sniff it. A hint that names a codec the
+    // backend can't decode should fail rather than fall back to autodetection.
+    virtual std::shared_ptr<UCAudio> DecodeFile(const std::string& path,
+                                                AudioFormat hint = AudioFormat::Autodetect) = 0;
+    virtual std::shared_ptr<UCAudio> DecodeMemory(const uint8_t* data, size_t size,
+                                                  AudioFormat hint = AudioFormat::Autodetect) = 0;
     virtual bool EncodeFile(const std::string& path, const UCAudio& audio,
                             AudioFormat format) = 0;
 };

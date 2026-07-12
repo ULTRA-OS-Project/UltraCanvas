@@ -130,3 +130,73 @@ networking:
       priority: "low"
       platforms: ["all"]
       apt: "libldap2-dev"
+
+# ===== AUDIO (UltraCanvas Audio) =====
+#
+# Audio codec strategy: the core backend is miniaudio, a single-header,
+# public-domain (MIT-0) library vendored in-tree at
+# UltraCanvas/libspecific/Audio/miniaudio.h. It supplies device enumeration,
+# playback/capture streams, WAV encode, and WAV/MP3/FLAC decode via its bundled
+# dr_wav/dr_mp3/dr_flac decoders. Because it is vendored, the core tier needs no
+# system package — it is enabled by the ULTRACANVAS_ENABLE_AUDIO CMake option.
+#
+# OGG (Vorbis) and Opus are NOT part of miniaudio's bundled set. They are added
+# in the advanced tier:
+#   - Vorbis decode: vendor stb_vorbis (public domain), which auto-enables
+#     miniaudio's MA_HAS_VORBIS decode path with no system dependency.
+#   - Opus decode / Vorbis+Opus encode: link the Xiph libraries below.
+audio:
+  core:
+    miniaudio:
+      min_version: "0.11.21"
+      purpose: "Audio device I/O + WAV/MP3/FLAC decode, WAV encode (Tier 1 core)"
+      required: true
+      platforms: ["all"]
+      vendored: "UltraCanvas/libspecific/Audio/miniaudio.h"  # single-header, no system package
+      apt: "(vendored)"
+      vcpkg: "(vendored)"
+      brew: "(vendored)"
+      # Links dl + pthread + m on Linux; AudioToolbox/CoreAudio/CoreFoundation
+      # on macOS; the already-linked Win32 SDK on Windows.
+
+  advanced:
+    stb_vorbis:
+      purpose: "OGG Vorbis decode (auto-enables miniaudio MA_HAS_VORBIS)"
+      required: false
+      priority: "high"
+      platforms: ["all"]
+      vendored: "UltraCanvas/third_party/stb_vorbis"  # public domain, planned vendor
+      apt: "(vendored)"
+
+    libvorbis:
+      min_version: "1.3.6"
+      purpose: "OGG Vorbis encode (libvorbisenc); optional decode via vorbisfile"
+      required: false
+      priority: "medium"
+      platforms: ["all"]
+      pkg_config: "vorbisenc vorbisfile vorbis"
+      apt: "libvorbis-dev"
+      vcpkg: "libvorbis"
+      brew: "libvorbis"
+
+    libogg:
+      min_version: "1.3.4"
+      purpose: "Ogg container framing (transitive dep of libvorbis / opusfile)"
+      required: false
+      priority: "medium"
+      platforms: ["all"]
+      pkg_config: "ogg"
+      apt: "libogg-dev"
+      vcpkg: "libogg"
+      brew: "libogg"
+
+    opus:
+      min_version: "1.3"
+      purpose: "Opus decode/encode (opusfile + opusenc, Ogg-encapsulated Opus)"
+      required: false
+      priority: "low"
+      platforms: ["all"]
+      pkg_config: "opusfile opus"
+      apt: "libopusfile-dev libopus-dev"
+      vcpkg: "opusfile opus"
+      brew: "opusfile opus"

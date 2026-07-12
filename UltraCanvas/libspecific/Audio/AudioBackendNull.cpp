@@ -59,8 +59,8 @@ public:
         return std::make_unique<NullStream>(cfg, AudioStreamDirection::Input);
     }
 
-    std::shared_ptr<UCAudio> DecodeFile(const std::string&) override { return nullptr; }
-    std::shared_ptr<UCAudio> DecodeMemory(const uint8_t*, size_t) override { return nullptr; }
+    std::shared_ptr<UCAudio> DecodeFile(const std::string&, AudioFormat) override { return nullptr; }
+    std::shared_ptr<UCAudio> DecodeMemory(const uint8_t*, size_t, AudioFormat) override { return nullptr; }
     bool EncodeFile(const std::string&, const UCAudio&, AudioFormat) override { return false; }
 };
 
