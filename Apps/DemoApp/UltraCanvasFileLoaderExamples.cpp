@@ -12,8 +12,10 @@
 //                 image, spreadsheet, audio or video player). A file can also be
 //                 dragged from the OS file manager and dropped onto the display
 //                 area; the family dropdown switches automatically when the
-//                 dropped file belongs to another family.
-// Version: 1.1.0
+//                 dropped file belongs to another family. Writable bitmap
+//                 formats are probed against the installed libvips build, and
+//                 the Save dialog defaults to the loaded file's name.
+// Version: 1.2.0
 // Last Modified: 2026-07-12
 // Author: UltraCanvas Framework
 
@@ -24,6 +26,7 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasTextArea.h"
+#include "UltraCanvasImage.h"    // VipsCanSave — probe writable bitmap formats
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasSpreadsheet.h"
 #include "UltraCanvasAudioPlayerElement.h"
@@ -56,13 +59,31 @@ namespace {
         DisplayKind display;
     };
 
+    // Writable bitmap formats. The UCImage save path implements all of these
+    // (HEIC included, via libvips heifsave), but whether an encoder is really
+    // present depends on the installed libvips build — .heic for example needs
+    // libvips compiled with libheif and an HEVC encoder (x265), which many
+    // distro builds omit. Each candidate is therefore probed with VipsCanSave
+    // so only formats this system can actually encode are advertised; PNG is
+    // always kept so the list is never empty.
+    std::vector<std::string> BitmapSaveExts() {
+        std::vector<std::string> exts = { "png", "jpg", "webp", "avif", "heic", "gif",
+                                          "bmp", "tiff", "tga", "hdr", "jxl", "ppm" };
+#ifdef HAS_LIBVIPS
+        exts.erase(std::remove_if(exts.begin(), exts.end(), [](const std::string& e) {
+                       return e != "png" && !VipsCanSave("." + e);
+                   }), exts.end());
+#endif
+        return exts;
+    }
+
     // The seven file families requested for the demo, each with the extensions the
     // Open/Save dialogs currently advertise for it.
     const std::vector<FileGroup>& FileGroups() {
         static const std::vector<FileGroup> groups = {
             { "Bitmap graphics",
               { "png", "jpg", "jpeg", "webp", "avif", "heic", "gif", "bmp", "tif", "tiff", "tga", "hdr", "jxl", "ppm", "psd" },
-              { "png", "jpg", "webp", "avif", "gif", "bmp", "tiff", "tga", "hdr", "jxl", "ppm" },
+              BitmapSaveExts(),
               DisplayKind::Image },
             { "Vector graphics",
               { "svg", "svgz", "cdr", "xar", "eps", "ps" },
@@ -320,9 +341,14 @@ namespace {
                                .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         root->AddChild(displayArea);
 
+        // Path of the file currently shown in the display area ("" when none);
+        // the Save dialog reuses its name as the default file name.
+        auto loadedPath = std::make_shared<std::string>();
+
         // Rebuild the display + status for a family, optionally showing a file.
         auto refresh = std::make_shared<std::function<void(int, const std::string&)>>();
-        *refresh = [groups, displayArea, status](int groupIndex, const std::string& path) {
+        *refresh = [groups, displayArea, status, loadedPath](int groupIndex, const std::string& path) {
+            *loadedPath = path;
             if (groupIndex < 0 || groupIndex >= static_cast<int>(groups.size())) groupIndex = 0;
             const FileGroup& g = groups[groupIndex];
 
@@ -397,6 +423,9 @@ namespace {
 
             FileDialogOptions opts;
             opts.SetTitle("Open " + g.name + " file")
+                // Parenting makes the dialog modal to the demo window, so the
+                // window manager keeps it in front of the application.
+                .SetParentWindow(dropdown->GetWindow())
                 .AddFilter(g.name, g.openExts)
                 .AddFilter("All files", "*");
 
@@ -414,7 +443,7 @@ namespace {
         };
 
         // ----- Save: native dialog listing the family's writable formats -----
-        saveBtn->onClick = [groups, dropdown, status]() {
+        saveBtn->onClick = [groups, dropdown, status, loadedPath]() {
             int idx = dropdown->GetSelectedIndex();
             if (idx < 0 || idx >= static_cast<int>(groups.size())) idx = 0;
             const FileGroup& g = groups[idx];
@@ -425,11 +454,37 @@ namespace {
                 return;
             }
 
+            // Default to the loaded file's name; its extension is kept when it
+            // is writable, otherwise swapped for the family's first writable
+            // format (e.g. a read-only .psd defaults to saving as .png).
+            std::string saveExt = g.saveExts.front();
+            std::string defaultName = "untitled." + saveExt;
+            if (!loadedPath->empty()) {
+                std::string base = *loadedPath;
+                size_t sep = base.find_last_of("/\\");
+                if (sep != std::string::npos) base.erase(0, sep + 1);
+                std::string ext = LowerExtension(base);
+                size_t dot = base.find_last_of('.');
+                std::string stem = (dot == std::string::npos || dot == 0)
+                                   ? base : base.substr(0, dot);
+                if (std::find(g.saveExts.begin(), g.saveExts.end(), ext) != g.saveExts.end()) {
+                    saveExt = ext;
+                }
+                if (!stem.empty()) defaultName = stem + "." + saveExt;
+            }
+
             FileDialogOptions opts;
             opts.SetTitle("Save " + g.name + " file")
-                .SetDefaultFileName("untitled." + g.saveExts.front());
+                // Parenting makes the dialog modal to the demo window, so the
+                // window manager keeps it in front of the application.
+                .SetParentWindow(dropdown->GetWindow())
+                .SetDefaultFileName(defaultName);
+            // The filter matching the default name's extension goes first —
+            // the dialog preselects the first filter, and this keeps it
+            // consistent with the proposed file name.
+            opts.AddFilter("." + saveExt + " file", saveExt);
             for (const auto& ext : g.saveExts) {
-                opts.AddFilter("." + ext + " file", ext);
+                if (ext != saveExt) opts.AddFilter("." + ext + " file", ext);
             }
             opts.AddFilter("All files", "*");
 
