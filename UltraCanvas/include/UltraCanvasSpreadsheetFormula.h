@@ -225,6 +225,7 @@ private:
     FormulaToken ReadIdentifier();
     FormulaToken ReadOperator();
     FormulaToken ReadCellReference(const std::string& prefix = "");
+    FormulaToken ReadQuotedSheetReference();
     
     bool IsAlpha(char c) const { return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_'; }
     bool IsDigit(char c) const { return c >= '0' && c <= '9'; }
@@ -711,6 +712,61 @@ inline FormulaToken FormulaTokenizer::ReadIdentifier() {
     return FormulaToken(FormulaTokenType::NamedRef, ident, startPos);
 }
 
+inline FormulaToken FormulaTokenizer::ReadQuotedSheetReference() {
+    // Reads a sheet-qualified reference whose sheet name is single-quoted, e.g.
+    // 'Sheet Name'.B55 or 'Sheet Name'.B4:C40. ODF quotes any sheet name that
+    // contains spaces or special characters; the plain ReadIdentifier path only
+    // handles unquoted, space-free names. We reassemble the textual reference and
+    // let CellAddress/CellRange::FromString interpret it (they already strip the
+    // surrounding quotes and split the sheet from the cell on the '.').
+    int startPos = static_cast<int>(pos_);
+
+    auto readQuotedName = [&]() -> std::string {
+        std::string q;
+        q += Advance();  // opening quote
+        while (pos_ < formula_.size()) {
+            char c = Advance();
+            if (c == '\'') {
+                if (Peek() == '\'') { q += "''"; Advance(); continue; }  // '' escapes a quote
+                q += '\'';
+                break;
+            }
+            q += c;
+        }
+        return q;
+    };
+    auto readCellPart = [&]() -> std::string {
+        std::string p;
+        while (pos_ < formula_.size() && (IsAlphaNum(Peek()) || Peek() == '$')) {
+            p += Advance();
+        }
+        return p;
+    };
+
+    std::string startStr = readQuotedName();       // 'Sheet Name'
+    if (Peek() == '.') startStr += Advance();       // sheet/cell separator
+    startStr += readCellPart();                     // 'Sheet Name'.B4
+
+    if (Peek() == ':') {
+        Advance();  // consume ':'
+        std::string endStr;
+        if (Peek() == '\'') {                       // 'S1'.A1:'S2'.B2
+            endStr = readQuotedName();
+            if (Peek() == '.') endStr += Advance();
+            endStr += readCellPart();
+        } else {
+            if (Peek() == '.') Advance();           // tolerate a bare leading '.'
+            endStr = readCellPart();
+        }
+        CellAddress start = CellAddress::FromString(startStr);
+        CellAddress end = CellAddress::FromString(endStr);
+        if (end.sheetName.empty()) end.sheetName = start.sheetName;
+        return FormulaToken::RangeReference(CellRange(start, end), startPos);
+    }
+
+    return FormulaToken::CellReference(CellAddress::FromString(startStr), startPos);
+}
+
 inline std::vector<FormulaToken> FormulaTokenizer::Tokenize() {
     std::vector<FormulaToken> tokens;
     
@@ -731,6 +787,10 @@ inline std::vector<FormulaToken> FormulaTokenizer::Tokenize() {
         }
         else if (c == '"') {
             tokens.push_back(ReadString());
+        }
+        else if (c == '\'') {
+            // Single-quoted, sheet-qualified reference: 'Sheet Name'.A1
+            tokens.push_back(ReadQuotedSheetReference());
         }
         else if (IsAlpha(c) || c == '$' || c == '#') {
             tokens.push_back(ReadIdentifier());

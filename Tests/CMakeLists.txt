@@ -224,6 +224,29 @@ else()
     message(STATUS "  tinyxml2 not found - WordFormatsTest disabled")
 endif()
 
+# ===== SPREADSHEET ODS FORMULA TEST =====
+# Regression test for translating OpenDocument (ODS) formula references into the
+# engine's native A1 syntax and tokenizing them. Header-only: exercises the real
+# OdsFormulaToNative() and FormulaTokenizer with no UI stack and no link deps.
+message(STATUS "  Building SpreadsheetOdsFormulaTest...")
+add_executable(SpreadsheetOdsFormulaTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetOdsFormulaTest.cpp
+)
+target_include_directories(SpreadsheetOdsFormulaTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(SpreadsheetOdsFormulaTest PRIVATE cxx_std_20)
+set_target_properties(SpreadsheetOdsFormulaTest PROPERTIES
+    OUTPUT_NAME "SpreadsheetOdsFormulaTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME SpreadsheetOdsFormulaTest
+    COMMAND SpreadsheetOdsFormulaTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: SpreadsheetOdsFormulaTest")
+
 # ===== FUTURE TESTS =====
 # Add more test executables here as needed:
 #

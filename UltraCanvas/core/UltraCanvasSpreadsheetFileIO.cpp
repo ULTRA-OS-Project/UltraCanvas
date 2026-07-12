@@ -9,11 +9,13 @@
 #include "UltraCanvasSpreadsheetSheet.h"
 #include "UltraCanvasSpreadsheetCell.h"
 #include "UltraCanvasSpreadsheetTypes.h"
+#include "UltraCanvasSpreadsheetOdsFormula.h"
 #include <fstream>
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
 #include <cstring>
+#include <cctype>
 #include <ctime>
 #include <filesystem>
 
@@ -548,12 +550,10 @@ private:
         // Parse formula
         bool hasFormula = !formula.empty();
         if (hasFormula) {
-            // ODS formulas start with "of:=" or namespace prefix
-            if (formula.find("of:=") == 0) {
-                formula = formula.substr(3);  // Remove "of:"
-            } else if (formula[0] != '=') {
-                formula = "=" + formula;
-            }
+            // Convert ODF reference syntax ("of:=", bracketed [.A1] / range
+            // [.A1:.B2] / cross-sheet ['Sheet'.A1]) into the engine's native
+            // A1 / A1:B2 / 'Sheet'.A1 form.
+            formula = OdsFormulaToNative(formula);
             cell->SetFormula(formula);
         }
 
@@ -798,10 +798,12 @@ private:
             ss << " table:style-name=\"" << styleName << "\"";
         }
         
-        // Formula
+        // Formula. Serialize into ODF syntax (bracketed references, "of:="
+        // prefix). When the parsed AST is available we emit precise reference
+        // brackets; otherwise fall back to the stored text.
         if (cell->HasFormula()) {
-            std::string formula = cell->GetFormulaText();
-            ss << " table:formula=\"of:" << EscapeXml(formula) << "\"";
+            std::string odf = FormulaToODS(cell);
+            ss << " table:formula=\"of:" << EscapeXml(odf) << "\"";
         }
         
         // Value type and value
@@ -1014,6 +1016,101 @@ private:
         ss << "</style:style>\n";
     }
     
+    // ---- Native formula -> ODF formula serialization ---------------------
+    // ODF references are bracketed and sheet-qualified with a '.', e.g.
+    // [.D28], [.B28:.B42], ['Sheet Name'.B55]. A current-sheet reference has an
+    // empty sheet part ("[."). This is the inverse of OdsFormulaToNative().
+    static std::string QuoteSheetName(const std::string& name) {
+        // ODF requires quoting sheet names that are not simple identifiers.
+        bool simple = !name.empty();
+        for (char c : name) {
+            if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '_')) {
+                simple = false;
+                break;
+            }
+        }
+        if (simple) return name;
+        std::string q = "'";
+        for (char c : name) { if (c == '\'') q += '\''; q += c; }  // double internal quotes
+        q += "'";
+        return q;
+    }
+
+    static std::string BareCell(CellAddress addr) {
+        addr.sheetName.clear();
+        return addr.ToString();  // column letters + optional '$' + row
+    }
+
+    static std::string ODSCellRef(const CellAddress& addr) {
+        std::string sheet = addr.sheetName.empty() ? "" : QuoteSheetName(addr.sheetName);
+        return "[" + sheet + "." + BareCell(addr) + "]";
+    }
+
+    static std::string ODSRangeRef(const CellRange& range) {
+        std::string startSheet =
+            range.start.sheetName.empty() ? "" : QuoteSheetName(range.start.sheetName);
+        // The end keeps its own sheet only when it differs from the start's.
+        std::string endSheet;
+        if (!range.end.sheetName.empty() && range.end.sheetName != range.start.sheetName) {
+            endSheet = QuoteSheetName(range.end.sheetName);
+        }
+        return "[" + startSheet + "." + BareCell(range.start) + ":" +
+               endSheet + "." + BareCell(range.end) + "]";
+    }
+
+    static std::string EmitODS(const FormulaNode* node) {
+        if (!node) return "";
+        switch (node->nodeType) {
+            case FormulaNodeType::Literal: {
+                const FormulaValue& v = node->literalValue;
+                if (v.IsText()) return "\"" + v.GetText() + "\"";
+                if (v.IsBoolean()) return v.GetBoolean() ? "TRUE()" : "FALSE()";
+                if (v.IsError()) return CellErrorToString(v.GetError());
+                std::ostringstream os;
+                os << v.GetNumber();
+                return os.str();
+            }
+            case FormulaNodeType::CellRef:
+                return ODSCellRef(node->cellRef);
+            case FormulaNodeType::RangeRef:
+                return ODSRangeRef(node->rangeRef);
+            case FormulaNodeType::NamedRef:
+                return node->namedRef;
+            case FormulaNodeType::BinaryOp:
+                if (node->children.size() == 2) {
+                    return "(" + EmitODS(node->children[0].get()) + node->op +
+                           EmitODS(node->children[1].get()) + ")";
+                }
+                return "";
+            case FormulaNodeType::UnaryOp:
+                if (node->children.size() == 1) {
+                    if (node->op == "%") return "(" + EmitODS(node->children[0].get()) + "%)";
+                    return "(" + node->op + EmitODS(node->children[0].get()) + ")";
+                }
+                return "";
+            case FormulaNodeType::FunctionCall: {
+                std::string out = node->functionName + "(";
+                for (size_t i = 0; i < node->children.size(); ++i) {
+                    if (i) out += ";";  // ODF uses ';' as the argument separator
+                    out += EmitODS(node->children[i].get());
+                }
+                out += ")";
+                return out;
+            }
+            default:
+                return "";
+        }
+    }
+
+    static std::string FormulaToODS(const SpreadsheetCell* cell) {
+        auto formula = cell->GetFormula();
+        if (formula && formula->GetAST()) {
+            return "=" + EmitODS(formula->GetAST());
+        }
+        // Fall back to the stored text when no parsed AST is available.
+        return cell->GetFormulaText();
+    }
+
     // Serial numbers use the ODS/Excel epoch (Dec 30, 1899) - the same epoch
     // DateTimeValue uses - so convert through DateTimeValue rather than a
     // Unix-epoch/localtime round-trip (which is timezone-dependent and breaks
