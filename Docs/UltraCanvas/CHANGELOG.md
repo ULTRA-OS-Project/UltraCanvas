@@ -1,4 +1,15 @@
 #### 2026-07-11 *0.3.6*
+- Hover video preview for the album widget: resting the cursor on a Video tile
+  plays a short muted inline preview of the clip in place of its static poster
+  frame (opt-in via `AlbumConfig::videoHoverPreview`, with configurable dwell
+  delay, duration, loop, start offset, mute and preview fps). The engine behind
+  it is the new reusable `UltraCanvasVideoHoverPreview`
+  (`include/UltraCanvasVideoHoverPreview.h`): dwell-delayed muted playback,
+  frames delivered as a ready-to-draw `UCPixmap`, self-limiting duration, one
+  decode session at a time, and a silent fallback to the static thumbnail with
+  the null video backend. The demo's Album page enables it on its video tiles.
+  See the "Hover video preview" section in
+  `Docs/UltraCanvas/UltraCanvasAlbumExamples.md`.
 - Added "jump to last window": the application now keeps a most-recently-used
   window focus history and `JumpToLastWindow()` raises + focuses the window
   used before the current one, restoring keyboard focus to the input field

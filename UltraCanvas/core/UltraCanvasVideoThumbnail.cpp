@@ -96,7 +96,10 @@ UCVideoFramePtr FitWithin(const UCVideoFramePtr& src, int maxW, int maxH) {
 UCVideoFramePtr GrabViaDecodeSession(IVideoBackend* backend,
                                      const std::string& source,
                                      const VideoThumbnailRequest& req) {
-    auto session = backend->OpenDecoder(source);
+    // A one-frame grab must never open (or stall on) an audio device.
+    VideoDecodeOptions opts;
+    opts.disableAudio = true;
+    auto session = backend->OpenDecoder(source, opts);
     if (!session) return nullptr;
 
     std::mutex m;

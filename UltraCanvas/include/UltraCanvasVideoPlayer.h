@@ -32,6 +32,14 @@ struct VideoPlaybackConfig {
     bool  loop = false;
     bool  mute = false;
     bool  autoPlay = false;
+    // Open the source without wiring its audio track at all (no audio decode,
+    // no audio device opened / occupied). Stronger than mute for always-silent
+    // playback such as hover previews — a muted session still opens the
+    // platform audio sink, which can stall or fail on machines without a
+    // running audio server. Applied when the source is opened (LoadFrom*), not
+    // switchable mid-session. Backends that can't drop the audio branch treat
+    // it as a hard mute.
+    bool  disableAudio = false;
 };
 
 // ===== VIDEO PLAYER (NON-VISUAL) =====
