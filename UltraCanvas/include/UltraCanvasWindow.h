@@ -259,10 +259,14 @@ namespace UltraCanvas {
             y = config_.y;
         }
 
-        /// Get the actual screen position of the window (queries the platform)
+        /// Get the actual screen position of the window in native screen
+        /// coordinates. Platform backends override this to query the live
+        /// geometry (the cached config position can be stale on platforms that
+        /// don't report window moves, e.g. X11); the default returns the last
+        /// configured position.
         virtual void GetScreenPosition(int& x, int& y) const {
-            x = config_.x + x;
-            y = config_.y + y;
+            x = config_.x;
+            y = config_.y;
         }
 
         void GetWindowSize(int& w, int& h) const {
@@ -317,6 +321,12 @@ namespace UltraCanvas {
         // currently resides on (not centered on the reference window itself).
         // Falls back to CenterOnScreen() when referenceWindow is null.
         void CenterOnScreenOfWindow(UltraCanvasWindowBase* referenceWindow);
+
+        // Declare this window a transient child of `parent` (dialogs, alerts).
+        // Records the parent in the config; platform backends additionally tell
+        // the window manager (X11 WM_TRANSIENT_FOR) so the window is kept above
+        // its parent and treated as belonging to the parent's monitor.
+        virtual void SetTransientParent(UltraCanvasWindowBase* parent);
 
         // Method chaining for fluent interface
         UltraCanvasWindowBase& Title(const std::string& title) {

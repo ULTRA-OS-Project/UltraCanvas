@@ -2,13 +2,11 @@
 // Demonstration of UltraCanvasAlbum: layout designs, image-fit modes, action-icon
 // display options and visitor / user-edit / admin modes for a mixed photo / video
 // / music album.
-// Version: 2.12.1
-// Last Modified: 2026-07-12
-// V2.12.1: Media-window close fixes — the video / audio player windows now stop
-//   playback via onWindowClosed however they are closed (title-bar close button
-//   included; previously only ESC was handled, so the viewer's retained
-//   shared_ptr kept the closed window's pipeline playing audio forever) and the
-//   viewer's window reference is released so the window is actually destroyed.
+// Version: 2.13.0
+// Last Modified: 2026-07-11
+// V2.13.0: Hover video preview enabled (AlbumConfig::videoHoverPreview) —
+//   resting the cursor on a video tile for ~0.4s plays a ~6s muted inline
+//   preview of the clip in place of its poster frame.
 // V2.12.0: Album-page polish — Masonry is now the default layout (its button
 //   starts highlighted); a single click on a tile opens it (photo lightbox /
 //   video / audio player) instead of needing a double-click; and clicking a
@@ -382,6 +380,10 @@ namespace UltraCanvas {
         cfg.dropShadow    = true;
         cfg.cornerRadius  = 6.0f;
         cfg.hoverZoom     = true;
+        // Rest the cursor on a video tile for ~0.4s and a short muted preview
+        // of the clip plays in place of its poster frame, then reverts.
+        cfg.videoHoverPreview       = true;
+        cfg.hoverPreviewDurationSec = 6.0f;
         album->SetConfig(cfg);
 
         // Build a mixed media list from images that ship in media/images.

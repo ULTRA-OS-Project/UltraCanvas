@@ -2,8 +2,12 @@
 // Photo / video / music album widget: a self-rendered media grid with selectable
 // layout designs, per-item crop / zoom / stretch fitting, action icons and
 // visitor / user-edit / admin modes. A companion to UltraCanvasSlideshow.
-// Version: 1.4.0
-// Last Modified: 2026-06-25
+// Version: 1.5.0
+// Last Modified: 2026-07-11
+// V1.5.0: Hover video preview (AlbumConfig::videoHoverPreview) — resting the
+//   cursor on a Video tile plays a short muted preview of the clip in place of
+//   its static thumbnail (dwell delay, duration, loop, start offset and mute
+//   are configurable; backed by UltraCanvasVideoHoverPreview).
 // V1.4.0: The self-rendered scrollbar is now interactive — its thumb can be
 //   dragged and a click on the track jumps the thumb to the cursor (previously
 //   only the mouse wheel scrolled the album).
@@ -30,6 +34,7 @@
 namespace UltraCanvas {
 
     class UltraCanvasMenu;
+    class UltraCanvasVideoHoverPreview;
 
     // ===== KIND OF MEDIA AN ITEM REPRESENTS =====
     // Photos draw their own bitmap; video / music draw a thumbnail (cover art /
@@ -255,6 +260,22 @@ namespace UltraCanvas {
         // ----- Hover -----
         bool  hoverScrim   = true;         // darken a tile slightly on hover
         bool  hoverZoom    = false;        // subtle image zoom on hover (Crop/Zoom)
+
+        // ----- Video hover preview -----
+        // While the cursor rests on a Video tile, play a short muted preview of
+        // the clip in place of its static thumbnail (YouTube / file-browser
+        // style). Playback starts after a dwell delay so a cursor merely
+        // crossing the grid never spins up a decoder, and stops by itself after
+        // hoverPreviewDurationSec (reverting to the thumbnail). Requires a real
+        // video backend (ULTRACANVAS_ENABLE_VIDEO); with the null backend the
+        // static thumbnail simply stays.
+        bool  videoHoverPreview          = false;  // opt-in
+        int   hoverPreviewDelayMs        = 400;    // dwell before playback starts
+        float hoverPreviewDurationSec    = 5.0f;   // preview length; 0 = while hovered
+        bool  hoverPreviewLoop           = false;  // restart clips shorter than that
+        float hoverPreviewStartOffsetSec = 0.0f;   // skip into the clip (intro black)
+        bool  hoverPreviewMuted          = true;   // previews are silent by default
+        int   hoverPreviewFps            = 24;     // frame-poll / repaint cadence
     };
 
     // ===== THE ALBUM ELEMENT =====
@@ -367,6 +388,14 @@ namespace UltraCanvas {
         // Hover / interaction
         int  hoveredItem = -1;
 
+        // Hover video preview (config.videoHoverPreview). Created lazily on the
+        // first hovered Video tile; hoverPreviewItem is the item it is armed /
+        // playing for (-1 = none). It stays set while the cursor rests on the
+        // tile even after the preview finished, so a finished preview does not
+        // immediately re-arm.
+        std::unique_ptr<UltraCanvasVideoHoverPreview> hoverPreview;
+        int  hoverPreviewItem = -1;
+
         // Which action icon the cursor currently sits on, so a tooltip is shown
         // once on enter rather than re-issued on every mouse move. Mirrors the
         // ActionAt() return convention: -2 = none, -1 = the kebab/menu icon.
@@ -446,8 +475,18 @@ namespace UltraCanvas {
         // Map a thumb leading-edge pixel back to a scroll offset and apply it.
         void   ScrollThumbTo(int thumbLeadPx);
 
+        // ===== VIDEO HOVER PREVIEW =====
+        // React to a hovered-item change: arm the preview for a newly hovered
+        // Video tile, end it when the cursor moved off the previewed one.
+        void UpdateHoverPreview();
+        void StopHoverPreview();
+
         // ===== DRAWING =====
         void DrawTile(IRenderContext* ctx, const TileLayout& tile, bool hovered);
+        // Draw the live preview frame with the configured image fitting; returns
+        // false while there is no frame yet (caller draws the static thumbnail).
+        bool DrawHoverPreviewFrame(IRenderContext* ctx, const AlbumItem& item,
+                                   const Rect2Di& rect, float zoomExtra);
         void DrawImageInRect(IRenderContext* ctx, const AlbumItem& item,
                              const Rect2Di& rect, float zoomExtra);
         void DrawPlaceholder(IRenderContext* ctx, const AlbumItem& item,

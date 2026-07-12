@@ -12,6 +12,7 @@
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasTimer.h"
+#include "UltraCanvasFocusHistory.h"
 #include <vector>
 #include <algorithm>
 #include <functional>
@@ -77,6 +78,21 @@ namespace UltraCanvas {
         // Non-owning references to transient UI state. Stored as weak_ptr so a
         // destroyed window/element simply lock()s to nullptr instead of dangling.
         std::weak_ptr<UltraCanvasWindowBase> focusedWindow;
+
+        // Window focus history in most-recently-used order (front = current).
+        // Maintained by SetFocusedWindowInternal(); drives JumpToLastWindow().
+        UCWeakMRUList<UltraCanvasWindowBase> windowFocusHistory;
+
+        // "Jump to last window" trigger bindings. Disabled until an app calls
+        // SetJumpToLastWindowKey() / SetJumpToLastWindowMouseButton().
+        bool jumpLastWindowKeyEnabled = false;
+        UCKeys jumpLastWindowKey = UCKeys::Unknown;
+        bool jumpLastWindowKeyCtrl = false;
+        bool jumpLastWindowKeyShift = false;
+        bool jumpLastWindowKeyAlt = false;
+        bool jumpLastWindowKeyMeta = false;
+        UCMouseButton jumpLastWindowMouseButton = UCMouseButton::NoneButton;
+
         std::weak_ptr<UltraCanvasUIElement> hoveredElement;
         std::weak_ptr<UltraCanvasUIElement> capturedElement;
         std::weak_ptr<UltraCanvasUIElement> draggedElement;
@@ -159,6 +175,8 @@ namespace UltraCanvas {
         bool IsMetaHeld() { return metaHeld; }
 
         UltraCanvasWindow* GetFocusedWindow();  // downcast from weak_ptr, defined in .cpp
+        // All windows registered with the application (main windows and dialogs).
+        const std::vector<std::shared_ptr<UltraCanvasWindowBase>>& GetWindows() const { return windows; }
         UltraCanvasUIElement* GetFocusedElement();
         UltraCanvasUIElement* GetHoveredElement() { return hoveredElement.lock().get(); }
         UltraCanvasUIElement* GetCapturedElement() { return capturedElement.lock().get(); }
@@ -169,6 +187,28 @@ namespace UltraCanvas {
 
         virtual void FocusNextElement();
         virtual void FocusPreviousElement();
+
+        // ===== JUMP TO LAST WINDOW =====
+        // Raises + focuses the window that was used before the currently
+        // focused one (repeated calls toggle between the two most recent
+        // windows). The target window's focused element is preserved across
+        // the switch, so keyboard input resumes in the same input field.
+        // Returns false when there is no other eligible window or a modal
+        // window is active (modality must not be bypassed by the shortcut).
+        bool JumpToLastWindow();
+
+        // Binds a keyboard shortcut that triggers JumpToLastWindow() on
+        // KeyDown, before the event reaches any window. Example:
+        //   app->SetJumpToLastWindowKey(UCKeys::F6);
+        //   app->SetJumpToLastWindowKey(UCKeys::Grave, /*ctrl=*/true);
+        void SetJumpToLastWindowKey(UCKeys key, bool ctrl = false, bool shift = false,
+                                    bool alt = false, bool meta = false);
+        void ClearJumpToLastWindowKey();
+
+        // Binds a mouse button (typically UCMouseButton::Back or ::Forward,
+        // the side/thumb buttons) that triggers JumpToLastWindow() on
+        // MouseDown. Pass UCMouseButton::NoneButton to disable.
+        void SetJumpToLastWindowMouseButton(UCMouseButton button);
 
         // ===== MOUSE CAPTURE =====
         void CaptureMouse(UltraCanvasUIElement* element);
@@ -210,6 +250,15 @@ namespace UltraCanvas {
 
         void CleanupWindowReferences(UltraCanvasWindowBase* window);
         virtual void CollectAndProcessNativeEvents() = 0;
+
+        // Applies a window focus change synchronously: sends WindowBlur to the
+        // previously focused window, WindowFocus to `window`, then updates
+        // focusedWindow and the MRU focus history. Passing nullptr only blurs.
+        void SetFocusedWindowInternal(UltraCanvasWindowBase* window);
+
+        // True when `event` matches the configured jump-to-last-window
+        // keyboard or mouse trigger.
+        bool MatchesJumpToLastWindowTrigger(const UCEvent& event) const;
 
         // Timer processing - called from Run() each iteration
         void ProcessTimers();

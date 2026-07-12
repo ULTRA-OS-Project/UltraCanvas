@@ -165,8 +165,26 @@ namespace UltraCanvas {
 
         debugOutput << "UltraCanvas Linux: X11 window created with ID: " << xWindow << std::endl;
 
+        // An explicit initial position from the config counts as programmatic
+        // placement and must be honored by the WM (USPosition in SetWindowHints).
+        if (config_.x >= 0 && config_.y >= 0) {
+            hasExplicitPosition = true;
+        }
+
         SetWindowTitle(config_.title);
         SetWindowHints();
+
+        // Tell the WM this is a dialog so it stacks and places it like one.
+        if (config_.type == WindowType::Dialog) {
+            Atom windowTypeAtom = XInternAtom(display, "_NET_WM_WINDOW_TYPE", False);
+            Atom dialogTypeAtom = XInternAtom(display, "_NET_WM_WINDOW_TYPE_DIALOG", False);
+            XChangeProperty(display, xWindow, windowTypeAtom, XA_ATOM, 32,
+                            PropModeReplace,
+                            reinterpret_cast<unsigned char*>(&dialogTypeAtom), 1);
+        }
+        if (config_.parentWindow) {
+            SetTransientParent(config_.parentWindow);
+        }
 
         // Apply borderless style if requested (remove window decorations)
         if (config_.type == WindowType::Borderless) {
@@ -299,10 +317,7 @@ namespace UltraCanvas {
         return true;
     }
 
-    float UltraCanvasLinuxWindow::QueryXRandRScaleForWindow(Display* display) const {
-        if (!display) return 0.0f;
-        Window root = DefaultRootWindow(display);
-
+    void UltraCanvasLinuxWindow::GetWindowCenterInRootCoords(Display* display, int& cx, int& cy) const {
         // Determine the window's current position/size in PHYSICAL root coords.
         // Prefer live geometry (robust when the window has moved between monitors);
         // fall back to config when the window doesn't exist yet.
@@ -311,15 +326,24 @@ namespace UltraCanvas {
         int ph = LogicalToPhysical(config_.height);
         if (xWindow != 0) {
             Window child;
-            XTranslateCoordinates(display, xWindow, root, 0, 0, &wx, &wy, &child);
+            XTranslateCoordinates(display, xWindow, DefaultRootWindow(display),
+                                  0, 0, &wx, &wy, &child);
             XWindowAttributes attrs;
             if (XGetWindowAttributes(display, xWindow, &attrs)) {
                 pw = attrs.width;
                 ph = attrs.height;
             }
         }
-        const int cx = wx + pw / 2;
-        const int cy = wy + ph / 2;
+        cx = wx + pw / 2;
+        cy = wy + ph / 2;
+    }
+
+    float UltraCanvasLinuxWindow::QueryXRandRScaleForWindow(Display* display) const {
+        if (!display) return 0.0f;
+        Window root = DefaultRootWindow(display);
+
+        int cx = 0, cy = 0;
+        GetWindowCenterInRootCoords(display, cx, cy);
 
         int nmon = 0;
         XRRMonitorInfo* mons = XRRGetMonitors(display, root, True, &nmon);
@@ -611,10 +635,17 @@ namespace UltraCanvas {
     void UltraCanvasLinuxWindow::SetWindowPosition(int x, int y) {
         config_.x = x;
         config_.y = y;
+        hasExplicitPosition = true;
 
         if (_created) {
             auto application = UltraCanvasApplication::GetInstance();
             XMoveWindow(application->GetDisplay(), xWindow, x, y);
+            // Refresh WM_NORMAL_HINTS while the window is still unmapped so the
+            // WM honors this position at map time (dialogs are positioned
+            // between creation and Show()).
+            if (!_windowVisible) {
+                SetWindowHints();
+            }
         }
         //UltraCanvasWindowBase::SetPosition(x, y);
     }
@@ -775,6 +806,16 @@ namespace UltraCanvas {
 
         hints.flags = PMinSize | PMaxSize;
 
+        // A programmatically chosen position (e.g. a dialog centered on its
+        // parent's monitor) must be exported via USPosition, otherwise the WM
+        // is free to ignore it at map time and apply its own placement policy
+        // (typically dropping the window on a different monitor).
+        if (hasExplicitPosition) {
+            hints.flags |= USPosition;
+            hints.x = config_.x;
+            hints.y = config_.y;
+        }
+
         // WM size hints are enforced in PHYSICAL px; config limits are LOGICAL.
         if (config_.resizable) {
             hints.min_width  = LogicalToPhysical(config_.minWidth  > 0 ? config_.minWidth  : 100);
@@ -891,6 +932,61 @@ namespace UltraCanvas {
         } else {
             width = 0;
             height = 0;
+        }
+    }
+
+    void UltraCanvasLinuxWindow::GetScreenBounds(int& x, int& y, int& width, int& height) const {
+        // Fallback: the whole X screen. On multi-monitor X11 this spans ALL
+        // monitors, so it's only used when XRandR gives us nothing better.
+        x = 0;
+        y = 0;
+        GetScreenSize(width, height);
+
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (!app || !app->GetDisplay()) return;
+        Display* display = app->GetDisplay();
+        Window root = DefaultRootWindow(display);
+
+        int nmon = 0;
+        XRRMonitorInfo* mons = XRRGetMonitors(display, root, True, &nmon);
+        if (!mons || nmon <= 0) {
+            if (mons) XRRFreeMonitors(mons);
+            return;
+        }
+
+        int cx = 0, cy = 0;
+        GetWindowCenterInRootCoords(display, cx, cy);
+
+        // The monitor containing the window's center; the primary monitor when
+        // the window isn't on any (not created yet or moved off-screen).
+        int chosen = -1;
+        int primary = 0;
+        for (int i = 0; i < nmon; ++i) {
+            const XRRMonitorInfo& m = mons[i];
+            if (m.primary) primary = i;
+            if (cx >= m.x && cx < m.x + m.width && cy >= m.y && cy < m.y + m.height) {
+                chosen = i;
+                break;
+            }
+        }
+        if (chosen < 0) chosen = primary;
+
+        x = mons[chosen].x;
+        y = mons[chosen].y;
+        width = mons[chosen].width;
+        height = mons[chosen].height;
+        XRRFreeMonitors(mons);
+    }
+
+    void UltraCanvasLinuxWindow::SetTransientParent(UltraCanvasWindowBase* parent) {
+        if (!parent || parent == this) return;
+        UltraCanvasWindowBase::SetTransientParent(parent);
+
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (xWindow == 0 || !app || !app->GetDisplay()) return;
+        Window parentXWindow = static_cast<Window>(parent->GetNativeHandle());
+        if (parentXWindow != 0) {
+            XSetTransientForHint(app->GetDisplay(), xWindow, parentXWindow);
         }
     }
 

@@ -38,7 +38,9 @@ struct UltraCanvasVideoPlayer::Impl {
         if (!backend) { Fail("No video backend available"); return false; }
 
         SetState(VideoPlaybackState::Loading);
-        session = backend->OpenDecoder(source);
+        VideoDecodeOptions opts;
+        opts.disableAudio = config.disableAudio;
+        session = backend->OpenDecoder(source, opts);
         if (!session) { Fail("Failed to open video source: " + source); return false; }
 
         HookSession();

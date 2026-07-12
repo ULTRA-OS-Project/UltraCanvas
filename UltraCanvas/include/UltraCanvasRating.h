@@ -11,8 +11,8 @@
 //     "on" symbol to its left half over the "off" symbol — so half rendering
 //     works for any symbol, built-in or custom.
 //
-// Version: 1.0.0
-// Last Modified: 2026-07-07
+// Version: 1.0.1
+// Last Modified: 2026-07-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -164,8 +164,12 @@ namespace UltraCanvas {
     inline std::shared_ptr<UltraCanvasRating> CreateHalfRating(
             const std::string& identifier, float x, float y, float w, float h,
             int maxRating = 5, float value = 0.0f) {
-        auto r = CreateRating(identifier, x, y, w, h, maxRating, value);
+        auto r = std::make_shared<UltraCanvasRating>(identifier, x, y, w, h);
+        r->SetMaxRating(maxRating);
+        // Enable half steps BEFORE setting the value, otherwise the initial
+        // value would be snapped to a whole number (e.g. 3.5 -> 4).
         r->SetAllowHalf(true);
+        r->SetValue(value, false);
         return r;
     }
 

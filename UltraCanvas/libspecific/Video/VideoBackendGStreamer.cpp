@@ -257,7 +257,9 @@ UCVideoFramePtr GstGrabThumbnail(const std::string& source, const VideoThumbnail
 
 class GstDecodeSession : public IVideoDecodeSession {
 public:
-    explicit GstDecodeSession(const std::string& source) : sourceUri(source) {}
+    explicit GstDecodeSession(const std::string& source,
+                              const VideoDecodeOptions& options = {})
+        : sourceUri(source), opts(options) {}
 
     ~GstDecodeSession() override { Teardown(); }
 
@@ -306,6 +308,18 @@ public:
         gst_pipeline_use_clock(GST_PIPELINE(pipeline), sysClock);
         gst_object_unref(sysClock);
 
+        // Audio-less session (hover previews, ambient video): drop playbin's
+        // audio branch entirely by clearing GST_PLAY_FLAG_AUDIO. No audio
+        // decode runs and no audio device is opened, so preroll can't stall on
+        // a missing/broken audio server and the device isn't held for a clip
+        // that will never be heard.
+        if (opts.disableAudio) {
+            gint flags = 0;
+            g_object_get(pipeline, "flags", &flags, nullptr);
+            flags &= ~0x2;   // GST_PLAY_FLAG_AUDIO (gstplay-enum.h not installed)
+            g_object_set(pipeline, "flags", flags, nullptr);
+        }
+
         // Audio sink. With the pipeline pinned to the system clock, pulsesink
         // runs as a clock SLAVE. The audio path's fixed device latency
         // (~buffer-time) is a constant ~67ms offset the system clock can't model;
@@ -316,13 +330,15 @@ public:
         // seeks re-anchor audio+video together so it never compounds.
         // provide-clock=false also makes pulsesink unselectable as the pipeline
         // clock, so the post-flush garbage-clock freeze can't recur.
-        if (GstElement* asink = gst_element_factory_make("pulsesink", "ucvideo-asink")) {
-            g_object_set(asink,
-                         "slave-method", 2,      // GST_AUDIO_BASE_SINK_SLAVE_NONE
-                         "provide-clock", FALSE, nullptr);
-            g_object_set(pipeline, "audio-sink", asink, nullptr);  // playbin takes the ref
+        if (!opts.disableAudio) {
+            if (GstElement* asink = gst_element_factory_make("pulsesink", "ucvideo-asink")) {
+                g_object_set(asink,
+                             "slave-method", 2,      // GST_AUDIO_BASE_SINK_SLAVE_NONE
+                             "provide-clock", FALSE, nullptr);
+                g_object_set(pipeline, "audio-sink", asink, nullptr);  // playbin takes the ref
+            }
+            // else: pulsesink unavailable (rare) → leave playbin's autoaudiosink default.
         }
-        // else: pulsesink unavailable (rare) → leave playbin's autoaudiosink default.
 
         gchar* uri = MakeUri(sourceUri);
         g_object_set(pipeline, "uri", uri, nullptr);
@@ -583,6 +599,7 @@ private:
     }
 
     std::string sourceUri;
+    VideoDecodeOptions opts;
     GstElement* pipeline = nullptr;
     GstElement* appsink = nullptr;
     GstBus* bus = nullptr;
@@ -827,8 +844,9 @@ public:
     CameraPermission GetCameraPermission() override { return CameraPermission::Granted; }
     void RequestCameraPermission(std::function<void(bool)> cb) override { if (cb) cb(true); }
 
-    std::unique_ptr<IVideoDecodeSession> OpenDecoder(const std::string& source) override {
-        auto s = std::make_unique<GstDecodeSession>(source);
+    std::unique_ptr<IVideoDecodeSession> OpenDecoder(const std::string& source,
+                                                     const VideoDecodeOptions& opts) override {
+        auto s = std::make_unique<GstDecodeSession>(source, opts);
         if (!s->Build()) return nullptr;
         return s;
     }

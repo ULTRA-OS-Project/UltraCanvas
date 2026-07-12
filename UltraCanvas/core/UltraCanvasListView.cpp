@@ -1,6 +1,6 @@
 // core/UltraCanvasListView.cpp
 // Model-View-Delegate ListView widget implementation
-// Last Modified: 2026-05-29
+// Last Modified: 2026-07-11
 #include "UltraCanvasListView.h"
 #include "UltraCanvasApplication.h"
 #include <algorithm>
@@ -216,6 +216,28 @@ namespace UltraCanvas {
         return Rect2Di(localContentX, localContentY + headerOff, crWidth - sbWidth, crHeight - headerOff);
     }
 
+    int UltraCanvasListView::GetColumnAt(int x, int* columnStartX) const {
+        if (!model) return -1;
+        auto viewport = GetViewportRect();
+        if (x < viewport.x || x >= viewport.x + viewport.width) return -1;
+
+        int colCount = model->GetColumnCount();
+        if (colCount <= 1) {
+            if (columnStartX) *columnStartX = viewport.x;
+            return 0;
+        }
+        int colX = viewport.x;
+        for (int col = 0; col < colCount; col++) {
+            int colW = model->GetColumnDef(col).width;
+            if (x < colX + colW) {
+                if (columnStartX) *columnStartX = colX;
+                return col;
+            }
+            colX += colW;
+        }
+        return -1;
+    }
+
     int UltraCanvasListView::GetRowAtY(int y) const {
         if (!model) return -1;
         auto viewport = GetViewportRect();
@@ -415,6 +437,13 @@ namespace UltraCanvas {
                 return HandleMouseDown(event);
             case UCEventType::MouseMove:
                 return HandleMouseMove(event);
+            case UCEventType::MouseLeave:
+                if (onCellHovered) onCellHovered(-1, -1, Point2Di(-1, -1));
+                if (hoveredRow != -1) {
+                    hoveredRow = -1;
+                    RequestRedraw();
+                }
+                return false;
             case UCEventType::MouseUp:
                 return HandleMouseUp(event);
             case UCEventType::MouseDoubleClick:
@@ -461,12 +490,32 @@ namespace UltraCanvas {
         }
 
         if (onItemClicked) onItemClicked(row);
+        if (onCellClicked) {
+            int colX = 0;
+            int col = GetColumnAt(event.pointer.x, &colX);
+            if (col >= 0) {
+                auto rowRect = GetRowRect(row);
+                onCellClicked(row, col, Point2Di(event.pointer.x - colX,
+                                                 event.pointer.y - rowRect.y));
+            }
+        }
         RequestRedraw();
         return true;
     }
 
     bool UltraCanvasListView::HandleMouseMove(const UCEvent& event) {
         int newHovered = Contains(event.pointer) ? GetRowAtY(event.pointer.y) : -1;
+        if (onCellHovered) {
+            int colX = 0;
+            int col = newHovered >= 0 ? GetColumnAt(event.pointer.x, &colX) : -1;
+            if (newHovered >= 0 && col >= 0) {
+                auto rowRect = GetRowRect(newHovered);
+                onCellHovered(newHovered, col, Point2Di(event.pointer.x - colX,
+                                                        event.pointer.y - rowRect.y));
+            } else {
+                onCellHovered(-1, -1, Point2Di(-1, -1));
+            }
+        }
         if (newHovered != hoveredRow) {
             hoveredRow = newHovered;
             if (onItemHovered && hoveredRow >= 0) onItemHovered(hoveredRow);

@@ -87,6 +87,23 @@ endif()
 # ===== ENABLE CTEST =====
 enable_testing()
 
+# ===== FOCUS HISTORY TEST =====
+# UCWeakMRUList (jump-to-last-window focus history) is header-only and
+# framework-independent, so the test builds without linking UltraCanvas.
+message(STATUS "  Building FocusHistoryTest...")
+
+add_executable(FocusHistoryTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/FocusHistoryTest.cpp
+)
+target_include_directories(FocusHistoryTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(FocusHistoryTest PRIVATE cxx_std_20)
+set_target_properties(FocusHistoryTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME FocusHistoryTest COMMAND FocusHistoryTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: FocusHistoryTest")
+
 # ===== HTMLREADER TEST =====
 # The HTMLReader parse/CSS/resolve layer is framework-independent, so the
 # test builds straight from the sources without linking UltraCanvas.

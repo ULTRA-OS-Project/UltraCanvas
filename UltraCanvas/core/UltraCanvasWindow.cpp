@@ -681,13 +681,25 @@ namespace UltraCanvas {
             CenterOnScreen();
             return;
         }
+        // Use the parent's live screen position: the cached config position can
+        // be stale on platforms that don't report window moves (X11), which
+        // would center the dialog where the parent was created rather than
+        // where the user has since moved it.
         int parentX = 0, parentY = 0, parentW = 0, parentH = 0;
-        parent->GetWindowPosition(parentX, parentY);
+        parent->GetScreenPosition(parentX, parentY);
         parent->GetNativeWindowSize(parentW, parentH);
         int ww = 0, wh = 0;
         GetNativeWindowSize(ww, wh);
         int x = parentX + (parentW - ww) / 2;
         int y = parentY + (parentH - wh) / 2;
+
+        // Keep the window entirely on the parent's monitor.
+        int sx = 0, sy = 0, sw = 0, sh = 0;
+        parent->GetScreenBounds(sx, sy, sw, sh);
+        if (sw > 0 && sh > 0) {
+            x = std::max(sx, std::min(x, sx + sw - ww));
+            y = std::max(sy, std::min(y, sy + sh - wh));
+        }
         SetWindowPosition(x, y);
     }
 
@@ -704,6 +716,12 @@ namespace UltraCanvas {
             int x = sx + (sw - ww) / 2;
             int y = sy + (sh - wh) / 2;
             SetWindowPosition(x, y);
+        }
+    }
+
+    void UltraCanvasWindowBase::SetTransientParent(UltraCanvasWindowBase* parent) {
+        if (parent && parent != this) {
+            config_.parentWindow = parent;
         }
     }
 

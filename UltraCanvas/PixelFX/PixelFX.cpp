@@ -544,8 +544,11 @@ namespace PixelFX {
         PFXImage Blur(const PFXImage& image, int radius) { return GaussianBlur(image, radius / 2.0); }
 
         PFXImage BoxBlur(const PFXImage& image, int radius) {
+            // conv needs a one-band matrix image; new_from_image would create a
+            // size²-band constant image and fail with "matrix image must have one band".
             int size = radius * 2 + 1;
-            vips::VImage kernel = image.new_from_image(std::vector<double>(size * size, 1.0 / (size * size)));
+            std::vector<double> values(size * size, 1.0 / (size * size));
+            vips::VImage kernel = vips::VImage::new_matrix(size, size, values.data(), static_cast<int>(values.size()));
             return PFXImage(image.conv(kernel));
         }
 

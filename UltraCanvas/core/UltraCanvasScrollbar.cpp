@@ -1,7 +1,7 @@
 // core/UltraCanvasScrollbar.cpp
 // Platform-independent scrollbar component implementation
-// Version: 1.1.0
-// Last Modified: 2026-05-29
+// Version: 1.1.1
+// Last Modified: 2026-07-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasScrollbar.h"
@@ -259,9 +259,12 @@ namespace UltraCanvas {
                         ? style.thumbImagePathHorizontal
                         : style.thumbImagePath;
         if (!handleImage.empty()) {
+            // The handle must keep its aspect ratio: Contain scales it to fit the
+            // thumb rect and centers it, so a long thumb shows a centered grip
+            // instead of a stretched one.
             ctx->DrawImage(handleImage,
                            Rect2Dd(thumbRect.x, thumbRect.y, thumbRect.width, thumbRect.height),
-                           style.thumbImageFit);
+                           ImageFitMode::Contain);
             return;
         }
 

@@ -366,6 +366,7 @@ namespace UltraCanvas {
         UnregisterModalWindow(win);
         // Called from PerformClose() while the window is still alive, so the weak_ptrs
         // can still be locked and compared here.
+        windowFocusHistory.Remove(win);
         if (focusedWindow.lock().get() == win) {
             focusedWindow.reset();
 
@@ -513,6 +514,116 @@ namespace UltraCanvas {
         return nullptr;
     }
 
+    void UltraCanvasApplicationBase::SetFocusedWindowInternal(UltraCanvasWindowBase* window) {
+        auto current = focusedWindow.lock();
+        if (current.get() == window) {
+            // No focus change, but make sure the window is at the front of the
+            // history (covers the very first focus after window creation).
+            if (current) windowFocusHistory.Touch(current);
+            return;
+        }
+        if (current) {
+            UCEvent blurEvent;
+            blurEvent.type = UCEventType::WindowBlur;
+            DispatchEventToElement(current.get(), blurEvent);
+        }
+        if (window) {
+            UCEvent focusEvent;
+            focusEvent.type = UCEventType::WindowFocus;
+            DispatchEventToElement(window, focusEvent);
+            focusedWindow = window->GetWindowWeakPtr();
+            if (auto shared = focusedWindow.lock()) {
+                windowFocusHistory.Touch(shared);
+            }
+        } else {
+            focusedWindow.reset();
+        }
+    }
+
+    // ===== JUMP TO LAST WINDOW =====
+    bool UltraCanvasApplicationBase::JumpToLastWindow() {
+        // A modal window owns the interaction; switching away would bypass it.
+        if (HasActiveModalWindow()) {
+            return false;
+        }
+
+        auto* current = focusedWindow.lock().get();
+        auto eligible = [](const std::shared_ptr<UltraCanvasWindowBase>& w) {
+            if (!w->IsCreated()) return false;
+            auto state = w->GetState();
+            if (state == WindowState::Closing || state == WindowState::Closed ||
+                state == WindowState::Hidden) {
+                return false;
+            }
+            // Popup windows (menus, dropdowns) are transient — never jump targets.
+            if (w->GetConfig().type == WindowType::Popup) return false;
+            return w->IsWindowVisible() || state == WindowState::Minimized;
+        };
+
+        auto target = windowFocusHistory.FindMostRecent(current, eligible);
+        if (!target) {
+            // No usable history yet (e.g. shortcut pressed right after startup):
+            // fall back to the first other eligible registered window.
+            for (const auto& w : windows) {
+                if (w.get() != current && eligible(w)) {
+                    target = w;
+                    break;
+                }
+            }
+        }
+        if (!target) {
+            return false;
+        }
+
+        if (target->GetState() == WindowState::Minimized) {
+            target->Restore();
+        }
+        target->RaiseAndFocus();
+
+        // Update focus bookkeeping immediately instead of waiting for the
+        // asynchronous native focus notification, so repeated triggers toggle
+        // between the two most recent windows predictably. The native
+        // WindowFocus event that arrives later becomes a no-op. The target
+        // window keeps its _focusedElement, so keyboard input resumes in the
+        // element (input field) that was focused when the window was left.
+        SetFocusedWindowInternal(target.get());
+        return true;
+    }
+
+    void UltraCanvasApplicationBase::SetJumpToLastWindowKey(UCKeys key, bool ctrl, bool shift,
+                                                            bool alt, bool meta) {
+        jumpLastWindowKeyEnabled = (key != UCKeys::Unknown);
+        jumpLastWindowKey = key;
+        jumpLastWindowKeyCtrl = ctrl;
+        jumpLastWindowKeyShift = shift;
+        jumpLastWindowKeyAlt = alt;
+        jumpLastWindowKeyMeta = meta;
+    }
+
+    void UltraCanvasApplicationBase::ClearJumpToLastWindowKey() {
+        jumpLastWindowKeyEnabled = false;
+        jumpLastWindowKey = UCKeys::Unknown;
+    }
+
+    void UltraCanvasApplicationBase::SetJumpToLastWindowMouseButton(UCMouseButton button) {
+        jumpLastWindowMouseButton = button;
+    }
+
+    bool UltraCanvasApplicationBase::MatchesJumpToLastWindowTrigger(const UCEvent& event) const {
+        if (jumpLastWindowKeyEnabled && event.type == UCEventType::KeyDown) {
+            return event.virtualKey == jumpLastWindowKey &&
+                   event.ctrl == jumpLastWindowKeyCtrl &&
+                   event.shift == jumpLastWindowKeyShift &&
+                   event.alt == jumpLastWindowKeyAlt &&
+                   event.meta == jumpLastWindowKeyMeta;
+        }
+        if (jumpLastWindowMouseButton != UCMouseButton::NoneButton &&
+            event.type == UCEventType::MouseDown) {
+            return event.button == jumpLastWindowMouseButton;
+        }
+        return false;
+    }
+
     void UltraCanvasApplicationBase::DispatchEvent(const UCEvent& event) {
         // Update modifier states
         if (event.IsKeyboardEvent()) {
@@ -527,6 +638,14 @@ namespace UltraCanvas {
             if (handler(event)) {
                 return; // Event consumed by global handler
             }
+        }
+
+        // Jump-to-last-window trigger is an application-level action; consume
+        // the event before any window/element sees it so a bound key or mouse
+        // button never leaks into the UI as input.
+        if (MatchesJumpToLastWindowTrigger(event)) {
+            JumpToLastWindow();
+            return;
         }
 
         // ===== NEW: IMPROVED TARGET WINDOW DETECTION =====
@@ -563,15 +682,9 @@ namespace UltraCanvas {
         }
 
        if (event.type == UCEventType::MouseDown) {
-           if (targetWindow && event.type == UCEventType::MouseDown && GetFocusedWindow() != targetWindow) {
+           if (targetWindow && GetFocusedWindow() != targetWindow) {
                debugOutput << "Window clicked but not focused, set focus. target=" << targetWindow << " focused=" << GetFocusedWindow() << std::endl;
-               if (auto fw = focusedWindow.lock()) {
-                   UCEvent ev{.type = UCEventType::WindowBlur};
-                   DispatchEventToElement(fw.get(), event);
-               }
-               UCEvent ev{.type = UCEventType::WindowFocus};
-               DispatchEventToElement(targetWindow, event);
-               focusedWindow = targetWindow->GetWindowWeakPtr();
+               SetFocusedWindowInternal(targetWindow);
            }
        }
 
@@ -594,9 +707,8 @@ namespace UltraCanvas {
                 break;
             case UCEventType::WindowFocus:
                 if (targetWindow && GetFocusedWindow() != targetWindow) {
-                    // Update focused window
-                    DispatchEventToElement(targetWindow, event);
-                    focusedWindow = targetWindow->GetWindowWeakPtr();
+                    // Update focused window + MRU focus history
+                    SetFocusedWindowInternal(targetWindow);
                     debugOutput << "UltraCanvasBaseApplication: Window " << targetWindow << " (native=" << targetWindow->GetNativeHandle() << ") gained focus" << std::endl;
                 }
                 return;
@@ -907,17 +1019,21 @@ namespace UltraCanvas {
             // Re-check bounds in case timers were removed
             if (i >= timers_.size()) break;
 
-            auto& timer = timers_[i];
-            if (!timer.active) continue;
-            if (timer.nextFire > now) continue;
+            if (!timers_[i].active) continue;
+            if (timers_[i].nextFire > now) continue;
 
-            // Fire the timer
-            if (timer.callback) {
-                timer.callback(timer.id);
+            // Fire the timer. The callback is copied out first: a callback that
+            // calls StartTimer() grows timers_ and may reallocate it, which
+            // would invalidate any reference held across the call. Index i
+            // itself stays valid — timers are only erased below, never during
+            // the callbacks (StopTimer just marks inactive).
+            if (timers_[i].callback) {
+                auto callback = timers_[i].callback;
+                callback(timers_[i].id);
             } else {
                 UCEvent timerEvent;
                 timerEvent.type = UCEventType::Timer;
-                timerEvent.userDataInt = static_cast<int>(timer.id);
+                timerEvent.userDataInt = static_cast<int>(timers_[i].id);
                 // Push directly to queue without calling WakeUpEventLoop (we're already on the main thread)
                 {
                     std::lock_guard<std::mutex> lock(eventQueueMutex);
@@ -926,16 +1042,16 @@ namespace UltraCanvas {
             }
 
             // Advance or deactivate
-            if (timer.periodic && timer.active) {
-                timer.nextFire += timer.interval;
+            if (timers_[i].periodic && timers_[i].active) {
+                timers_[i].nextFire += timers_[i].interval;
                 // If we fell behind, skip to next future fire time
-                if (timer.nextFire <= now) {
-                    auto elapsed = now - timer.nextFire;
-                    auto periods = elapsed / timer.interval + 1;
-                    timer.nextFire += timer.interval * periods;
+                if (timers_[i].nextFire <= now) {
+                    auto elapsed = now - timers_[i].nextFire;
+                    auto periods = elapsed / timers_[i].interval + 1;
+                    timers_[i].nextFire += timers_[i].interval * periods;
                 }
             } else {
-                timer.active = false;
+                timers_[i].active = false;
             }
         }
 
