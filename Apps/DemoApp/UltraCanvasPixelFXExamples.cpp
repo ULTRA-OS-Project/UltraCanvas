@@ -372,7 +372,12 @@ namespace {
         bool pickArmed = false;
 
         bool OnEvent(const UCEvent& event) override {
+            // While armed, a left click inside the fitted image reports a fill
+            // position. Picking stays armed so the user can keep re-placing the
+            // fill; Esc or the right mouse button end the mode (handled by a
+            // window-level event filter installed alongside this view).
             if (pickArmed && event.type == UCEventType::MouseDown &&
+                event.button == UCMouseButton::Left &&
                 Contains(event.pointer) && contentW > 0 && contentH > 0) {
                 // Reproduce the ImageFitMode::Contain letterboxing of the renderer
                 float ew = GetWidth(), eh = GetHeight();
@@ -382,7 +387,6 @@ namespace {
                 float nx = (event.pointer.x - ox) / dw;
                 float ny = (event.pointer.y - oy) / dh;
                 if (nx >= 0.0f && nx <= 1.0f && ny >= 0.0f && ny <= 1.0f) {
-                    pickArmed = false;
                     if (onPixelPicked) onPixelPicked(nx, ny);
                     return true;
                 }
@@ -665,6 +669,43 @@ namespace {
             status->RequestRedraw();
         };
 
+        // Arm / disarm the flood-fill position picker. Arming shows a crosshair
+        // cursor over the image and keeps the mode active until the user cancels
+        // with Esc or the right mouse button; a window-level event filter (installed
+        // lazily on first arm) delivers those cancels regardless of which widget
+        // currently holds focus.
+        auto setPick = std::make_shared<std::function<void(bool)>>();
+        auto escInstalled = std::make_shared<bool>(false);
+        std::weak_ptr<std::function<void(bool)>> setPickWeak = setPick;
+        *setPick = [imageView, setStatus, escInstalled, setPickWeak](bool on) {
+            if (imageView->pickArmed == on) return;   // nothing to do
+            imageView->pickArmed = on;
+            imageView->SetMouseCursor(on ? UCMouseCursor::Cross : UCMouseCursor::Default);
+            if (auto* win = imageView->GetWindow()) {
+                if (on && !*escInstalled) {
+                    *escInstalled = true;
+                    PixelFXImageView* iv = imageView.get();
+                    win->InstallEventFilter("PixelFXFloodFillPick",
+                        [iv, setPickWeak](const UCEvent& e) -> bool {
+                            if (!iv->pickArmed) return false;
+                            bool esc   = e.type == UCEventType::KeyDown &&
+                                         e.virtualKey == UCKeys::Escape;
+                            bool right = e.type == UCEventType::MouseDown &&
+                                         e.button == UCMouseButton::Right;
+                            if (esc || right) {
+                                if (auto f = setPickWeak.lock()) (*f)(false);
+                                return true;   // consume so no context menu / other action fires
+                            }
+                            return false;
+                        }, { UCEventType::KeyDown, UCEventType::MouseDown });
+                }
+                win->SelectMouseCursor(on ? UCMouseCursor::Cross : UCMouseCursor::Default);
+            }
+            setStatus(on ? "Click in the image to fill from that point — click again to "
+                           "move the fill. Press Esc or right-click to finish."
+                         : "Fill-position picking finished.");
+        };
+
         // Encode a PFXImage to PNG and hand it to the image element. The PNG
         // bytes stay alive in `state` because the raster references them.
         auto showImage = [state, imageView, setStatus](const PixelFX::PFXImage& img) -> bool {
@@ -741,7 +782,7 @@ namespace {
         // and a "Show original" reset button. When the "Others" entry is
         // selected the panel shows the not-demoed function list instead.
         auto rebuildOptions = std::make_shared<std::function<void()>>();
-        *rebuildOptions = [state, optionsBox, imageView, applyCurrent, showImage, setStatus, iconsDir]() {
+        *rebuildOptions = [state, optionsBox, imageView, applyCurrent, showImage, setStatus, iconsDir, setPick]() {
             optionsBox->ClearChildren();
 
             if (state->infoMode) {
@@ -850,10 +891,7 @@ namespace {
                     pickBtn->SetIcon(iconsDir + "circle-empty.svg");
                     pickBtn->SetIconSize(14, 14);
                     pickBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                    pickBtn->onClick = [imageView, setStatus]() {
-                        imageView->pickArmed = true;
-                        setStatus("Click a spot in the image to set the flood-fill start point.");
-                    };
+                    pickBtn->onClick = [setPick]() { (*setPick)(true); };
                     optionsBox->AddChild(pickBtn);
                 }
 
@@ -883,8 +921,9 @@ namespace {
             optionsBox->RequestRedraw();
         };
 
-        tree->onNodeSelected = [state, rebuildOptions, applyCurrent, showImage, setStatus](TreeNode* node) {
+        tree->onNodeSelected = [state, rebuildOptions, applyCurrent, showImage, setStatus, setPick](TreeNode* node) {
             if (!node) return;
+            (*setPick)(false);   // leaving the current function ends any active fill picking
             if (node->data.nodeId == "others") {
                 state->effect = nullptr;
                 state->infoMode = true;
@@ -905,7 +944,9 @@ namespace {
             applyCurrent();
         };
 
-        // Flood-fill position picking: armed by the "Set fill position" button.
+        // Flood-fill position picking: armed by the "Set fill position" button and
+        // kept active (via setPick) until Esc or a right-click. Each left click
+        // re-runs the fill from the new point.
         imageView->onPixelPicked = [state, applyCurrent](float nx, float ny) {
             state->ctx.posX = nx;
             state->ctx.posY = ny;
