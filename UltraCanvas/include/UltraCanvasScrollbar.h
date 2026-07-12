@@ -1,7 +1,7 @@
 // include/UltraCanvasScrollbar.h
 // Standalone scrollbar UI control with full interaction support
-// Version: 2.1.0
-// Last Modified: 2026-05-29
+// Version: 2.1.1
+// Last Modified: 2026-07-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -53,16 +53,17 @@ namespace UltraCanvas {
         bool showThumbBorder = false;
 
         // Custom handle (thumb) image. When thumbImagePath is non-empty the thumb is
-        // drawn from this image (PNG or SVG) instead of the solid rounded rectangle,
-        // scaled into the thumb rect using thumbImageFit. Leave empty for the default
-        // solid thumb. SVG handles scale crisply; use Fill to stretch to the thumb.
+        // drawn from this image (PNG or SVG) instead of the solid rounded rectangle.
+        // The image is never stretched: it is scaled preserving its aspect ratio to
+        // fit the thumb rect and centered within it, so the grip keeps its shape on
+        // bars of any width and thumbs of any length. Leave empty for the default
+        // solid thumb. SVG handles scale crisply.
         std::string thumbImagePath;
         // Optional orientation-specific handle image used for horizontal scrollbars.
         // When set it overrides thumbImagePath for horizontal bars, so a single style
         // can carry a vertical grip (thumbImagePath) and a matching horizontal grip
         // here. If left empty, horizontal bars fall back to thumbImagePath.
         std::string thumbImagePathHorizontal;
-        ImageFitMode thumbImageFit = ImageFitMode::Fill;
 
         // Behavior
         bool autoHide = false;

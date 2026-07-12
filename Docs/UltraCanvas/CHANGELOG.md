@@ -1,4 +1,4 @@
-#### 2026-07-11 *0.3.5*
+#### 2026-07-11 *0.3.6*
 - Hover video preview for the album widget: resting the cursor on a Video tile
   plays a short muted inline preview of the clip in place of its static poster
   frame (opt-in via `AlbumConfig::videoHoverPreview`, with configurable dwell
@@ -10,11 +10,58 @@
   the null video backend. The demo's Album page enables it on its video tiles.
   See the "Hover video preview" section in
   `Docs/UltraCanvas/UltraCanvasAlbumExamples.md`.
-- Fixed a latent timer-system hazard: `ProcessTimers()` held a reference into
-  the timers vector across a fired callback, so a callback that started a new
-  timer could reallocate the vector and invalidate the reference.
+- Added "jump to last window": the application now keeps a most-recently-used
+  window focus history and `JumpToLastWindow()` raises + focuses the window
+  used before the current one, restoring keyboard focus to the input field
+  that was active there; repeated triggers toggle between the two most recent
+  windows. Bindable to a keyboard shortcut and/or a mouse button via
+  `SetJumpToLastWindowKey()` / `SetJumpToLastWindowMouseButton()` (disabled by
+  default; the demo binds F6 and the mouse Back button). The Linux and Windows
+  back-ends now translate the mouse side/thumb buttons (X11 buttons 8/9,
+  Windows XBUTTON1/2) as `UCMouseButton::Back`/`::Forward`. Click-to-focus now
+  sends proper `WindowBlur`/`WindowFocus` events to the windows involved
+  (previously the raw MouseDown event was re-dispatched to both). See
+  `Docs/UltraCanvas/UltraCanvasJumpToLastWindow.md`.
+#### 2026-07-11 *0.3.5*
+- `UltraCanvasListView`: new cell-level callbacks `onCellClicked` and
+  `onCellHovered` (row, column, cell-local position) plus the `GetColumnAt()`
+  hit-test helper, so delegates can implement per-cell interactive regions
+  (links, buttons) in multi-column views. Hover leaves are reported as
+  (-1, -1) and the view now also resets its hover state on `MouseLeave`.
+- Demo: the Dependencies & Third-Party page is now interactive. Library names
+  render as links — hovering underlines them, shows a hand cursor and a
+  tooltip with the website / source repository / license; clicking opens a
+  popup with "Website" and "Source code" entries (or opens the site directly
+  for OS frameworks without a public repository). Each library additionally
+  carries its license tag after the name — e.g. (MIT), (LGPL 2.1) — which is
+  its own link to the license description page on spdx.org.
+  `Docs/Dependencies.md` gained the matching License column and the
+  previously missing OCR / Vectorizer / LaTeX plugin libraries.
+- Scrollbar: a custom handle image (`thumbImagePath` /
+  `thumbImagePathHorizontal`) is no longer stretched to the thumb rectangle.
+  The handle is now always scaled preserving its aspect ratio and centered in
+  the thumb, so the grip keeps its shape regardless of thumb length. The
+  `thumbImageFit` style field was removed accordingly.
 
 #### 2026-07-10 *0.3.4*
+- Demo: the "Networking (UltraNet)" page moved from Tools into the
+  "ULTRA OS modules ▸ Ultra Net" tree entry and is now presented like the
+  FileLoader module page — Overview / Details / Examples tabs, with the live
+  remote-resource loader on the Examples tab.
+- UltraNet: fixed https:// requests failing with "Problem with the SSL CA
+  cert (path? access rights?)". libcurl bakes the CA bundle path of the
+  build machine into the library; when that path does not exist on the
+  machine the app actually runs on, every TLS request failed. When no
+  `UltraNetConfig::caBundlePath` is set, UltraNet now discovers the system
+  trust anchors at runtime — `CURL_CA_BUNDLE` / `SSL_CERT_FILE` environment
+  overrides first, then the well-known distro bundle locations
+  (Debian/Ubuntu, Fedora/RHEL, openSUSE, Alpine/BSD) and the hashed
+  certificate directory — and passes them to libcurl.
+- Rating: fixed half-step (0.5) values never displaying. `CreateHalfRating`
+  applied the initial value before enabling half steps, so it was snapped to
+  a whole number (e.g. 3.5 became 4) and the half-filled symbol never
+  appeared. Half steps are now enabled before the value is set, so ratings
+  like 3.5 render as three full symbols plus a left-half-filled one.
 - Implemented GIF (and animated WebP) animation support. Animated images now
   play in `UltraCanvasImageElement` (auto-play on load, with
   Play/Pause/Stop/SetAnimationEnabled control) and in the media viewer, where
