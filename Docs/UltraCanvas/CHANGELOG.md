@@ -1,3 +1,15 @@
+#### 2026-07-12 *0.3.7*
+- Rating: fixed the built-in **Circle** symbol never showing its filled/selected
+  state, so a circle rating appeared to ignore clicks (the "Circle and Square
+  symbols" demo row). The filled portion of each symbol is painted by re-drawing
+  the shape inside a `ClipRect` (clipped to the filled fraction); the circle was
+  drawn with `FillCircle`, whose arc-based fill is not rendered inside an active
+  clip region on some back-ends, so only the unclipped empty base showed and the
+  rating looked unselectable. The circle is now drawn as a filled polygon via
+  `FillLinePath`/`DrawLinePath` — the same clip-honouring primitive the Star uses
+  — so all three built-in shapes (Star, Circle, Square) render their fill through
+  a consistent code path. The disc is visually unchanged.
+
 #### 2026-07-11 *0.3.6*
 - Hover video preview for the album widget: resting the cursor on a Video tile
   plays a short muted inline preview of the clip in place of its static poster
