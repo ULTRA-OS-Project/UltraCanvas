@@ -62,12 +62,65 @@ namespace UltraCanvas {
         return Size2Df(w, style.height);
     }
 
+    Size2Df UltraCanvasBadge::ContentSize() const {
+        IRenderContext* rc = GetRenderContext();
+        if (!rc) {
+            // Not attached to a window yet — no surface to measure text
+            // against. The dot and the minimum pill are style-driven, so a
+            // usable size still exists; the first measured pass refines it.
+            if (dot) return Size2Df(style.dotSize, style.dotSize);
+            return Size2Df(style.minWidth, style.height);
+        }
+        rc->PushState();
+        Size2Df sz = MeasureContent(rc);
+        rc->PopState();
+        return sz;
+    }
+
+    Size2Df UltraCanvasBadge::MeasureOwnContent(std::optional<float> /*definiteContentWidth*/,
+                                                const CSSLayout::LayoutContext& /*ctx*/) {
+        // The pill never wraps, so the size is constraint-independent.
+        return ContentSize();
+    }
+
+    void UltraCanvasBadge::ComputeIntrinsicSizes(const CSSLayout::LayoutContext& /*ctx*/) {
+        // paddingH is visual style, not CSS box padding/border (both zero
+        // here), so the measured pill/dot IS the border-box size.
+        Size2Df sz = ContentSize();
+        intrinsic.valid = true;
+        intrinsic.minContentWidth  = intrinsic.maxContentWidth  = sz.width;
+        intrinsic.minContentHeight = intrinsic.maxContentHeight = sz.height;
+    }
+
+    Point2Df UltraCanvasBadge::AnchorTopLeft(const Rect2Df& ab, float w, float h) const {
+        float cornerX = (corner == BadgeCorner::TopRight || corner == BadgeCorner::BottomRight)
+                            ? (ab.x + ab.width) : ab.x;
+        float cornerY = (corner == BadgeCorner::BottomLeft || corner == BadgeCorner::BottomRight)
+                            ? (ab.y + ab.height) : ab.y;
+        return Point2Df(cornerX - w / 2.0f + anchorOffsetX,
+                        cornerY - h / 2.0f + anchorOffsetY);
+    }
+
     void UltraCanvasBadge::AnchorTo(const std::shared_ptr<UltraCanvasUIElement>& anchorElement,
                                     BadgeCorner c, float offsetX, float offsetY) {
         anchor = anchorElement;
         corner = c;
         anchorOffsetX = offsetX;
         anchorOffsetY = offsetY;
+        if (anchorElement) {
+            // Take the badge out of flow: it overlays a sibling, so the
+            // parent's layout must neither stack it as a flow child nor let
+            // it displace other children. Seed the engine position from the
+            // anchor's current bounds (text metrics may be unavailable yet);
+            // Render keeps it in sync as sizes resolve and the anchor moves.
+            Size2Df sz = ContentSize();
+            Point2Df tl = AnchorTopLeft(anchorElement->GetBounds(), sz.width, sz.height);
+            if (!layoutItem.position) layoutItem.position = CSSLayout::Position();
+            layoutItem.position->left = CSSLayout::Dimension::Px(tl.x);
+            layoutItem.position->top  = CSSLayout::Dimension::Px(tl.y);
+            layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
+            InvalidateLayout();
+        }
         SetZIndex(OverlayZOrder::Overlays);
         RequestRedraw();
     }
@@ -78,22 +131,21 @@ namespace UltraCanvas {
         Size2Df sz = MeasureContent(ctx);
         float w = sz.width, h = sz.height;
 
-        // Position: follow the anchor's corner (badge straddles the corner), or
-        // keep the caller-set position.
-        float nx = GetX(), ny = GetY();
+        // Anchored badges follow the anchor's corner (badge straddles it).
+        // Standalone badges are sized/placed by the layout engine (via
+        // MeasureOwnContent), so their bounds are left alone here.
         if (auto a = anchor.lock()) {
-            Rect2Df ab = a->GetBounds();
-            float cornerX = (corner == BadgeCorner::TopRight || corner == BadgeCorner::BottomRight)
-                                ? (ab.x + ab.width) : ab.x;
-            float cornerY = (corner == BadgeCorner::BottomLeft || corner == BadgeCorner::BottomRight)
-                                ? (ab.y + ab.height) : ab.y;
-            nx = cornerX - w / 2.0f + anchorOffsetX;
-            ny = cornerY - h / 2.0f + anchorOffsetY;
-        }
-
-        if (std::abs(nx - GetX()) > 0.5f || std::abs(ny - GetY()) > 0.5f ||
-            std::abs(w - GetWidth()) > 0.5f || std::abs(h - GetHeight()) > 0.5f) {
-            SetBounds(nx, ny, w, h);
+            Point2Df tl = AnchorTopLeft(a->GetBounds(), w, h);
+            if (std::abs(tl.x - GetX()) > 0.5f || std::abs(tl.y - GetY()) > 0.5f ||
+                std::abs(w - GetWidth()) > 0.5f || std::abs(h - GetHeight()) > 0.5f) {
+                SetBounds(tl.x, tl.y, w, h);
+                // Keep the engine insets in sync so the next layout pass
+                // doesn't snap the badge back to a stale position.
+                if (layoutItem.position) {
+                    layoutItem.position->left = CSSLayout::Dimension::Px(tl.x);
+                    layoutItem.position->top  = CSSLayout::Dimension::Px(tl.y);
+                }
+            }
         }
 
         bool ring = overlayRing && !anchor.expired();
