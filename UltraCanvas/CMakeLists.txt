@@ -139,6 +139,17 @@ pkg_check_modules(TINYXML2 REQUIRED tinyxml2)
 # libvips - Image processing
 pkg_check_modules(LIBVIPS REQUIRED vips vips-cpp)
 
+# librsvg - parse-once SVG documents (optional). With it, SVG files are parsed
+# a single time into a retained document that every rasterization (zoom level,
+# HiDPI, layout size) renders from; without it SVG falls back to libvips'
+# svgload, which re-reads and re-parses the XML for every requested size.
+pkg_check_modules(LIBRSVG librsvg-2.0)
+if(LIBRSVG_FOUND)
+    message(STATUS "  librsvg: ${LIBRSVG_VERSION} (parse-once SVG documents enabled)")
+else()
+    message(STATUS "  librsvg: NOT FOUND (SVG re-parses per rasterization via libvips)")
+endif()
+
 # zbar - QR/barcode decoder (optional)
 pkg_check_modules(ZBAR zbar)
 if(ZBAR_FOUND)
@@ -483,6 +494,12 @@ if(LIBVIPS_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsQOILoader.cpp
     )
 endif()
+if(LIBRSVG_FOUND)
+    # Parse-once SVG document cache (retained RsvgHandle).
+    list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/SvgDocumentCairo.cpp
+    )
+endif()
 
 # Audio sources (always-compiled API surface; backend is a stub unless
 # ULTRACANVAS_ENABLE_AUDIO is ON, in which case the miniaudio backend replaces
@@ -656,6 +673,12 @@ if(LIBVIPS_FOUND)
         target_include_directories(${ULTRACANVAS_LIB_NAME} PUBLIC $<BUILD_INTERFACE:${_inc_dir}>)
     endforeach()
 endif()
+if(LIBRSVG_FOUND)
+    # Only libspecific/Cairo internals include librsvg headers.
+    foreach(_inc_dir ${LIBRSVG_INCLUDE_DIRS})
+        target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${_inc_dir})
+    endforeach()
+endif()
 
 if(ZBAR_FOUND)
     foreach(_inc_dir ${ZBAR_INCLUDE_DIRS})
@@ -773,6 +796,7 @@ target_link_libraries(${ULTRACANVAS_LIB_NAME}
         ${PANGO_LIBRARIES}
         ${FREETYPE_LIBRARIES}
         ${LIBVIPS_LIBRARIES}
+        ${LIBRSVG_LIBRARIES}
         ${GLIB_LIBRARIES}
         ${TINYXML2_LIBRARIES}
         ${ZBAR_LIBRARIES}
@@ -789,6 +813,7 @@ target_compile_definitions(${ULTRACANVAS_LIB_NAME}
         ULTRACANVAS_VERSION="${ULTRACANVAS_VERSION}"
         ULTRACANVAS_PLATFORM_${ULTRACANVAS_PLATFORM}=1
         $<$<BOOL:${LIBVIPS_FOUND}>:HAS_LIBVIPS=1>
+        $<$<BOOL:${LIBRSVG_FOUND}>:HAS_LIBRSVG=1>
         $<$<BOOL:${ZBAR_FOUND}>:ULTRACANVAS_QRCODE_HAS_DECODER=1>
         $<$<CXX_COMPILER_ID:MSVC>:_USE_MATH_DEFINES>
         $<$<CXX_COMPILER_ID:MSVC>:NOMINMAX>
@@ -1599,6 +1624,9 @@ if(HARFBUZZ_FOUND)
 endif()
 if(LIBVIPS_FOUND)
     message(STATUS "  libvips: ${LIBVIPS_VERSION}")
+endif()
+if(LIBRSVG_FOUND)
+    message(STATUS "  librsvg: ${LIBRSVG_VERSION} (parse-once SVG documents)")
 endif()
 # message(STATUS "  libgrapheme: 3.0.0 (bundled, Unicode 17.0.0)")
 message(STATUS "  Plugins: ${ULTRACANVAS_PLUGIN_TARGETS}")

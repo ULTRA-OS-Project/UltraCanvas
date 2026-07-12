@@ -11,8 +11,12 @@
 #ifdef HAS_LIBVIPS
 #include "VipsQoiLoader.h"
 #endif
+#ifdef HAS_LIBRSVG
+#include "SvgDocumentCairo.h"
+#endif
 
 #include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <sstream>
 #include <mutex>
@@ -237,6 +241,21 @@ namespace UltraCanvas {
 #ifdef HAS_LIBVIPS
     std::shared_ptr<UCImageRaster> UCImageRaster::Load(const std::string &imagePath, bool loadOnlyHeader) {
         auto result = std::make_shared<UCImageRaster>(imagePath);
+#ifdef HAS_LIBRSVG
+        // SVG parse-once path: take the dimensions from the retained parsed
+        // document instead of a vips header read (which parses the XML too).
+        // CreatePixmap rasterizes from the same parsed document, so the file
+        // is read and parsed exactly once while it stays cached.
+        if (UCSvgDocument::IsSvgPath(imagePath)) {
+            auto svgDoc = UCSvgDocument::Get(imagePath);
+            if (svgDoc && svgDoc->IsValid()) {
+                result->width  = static_cast<int>(std::lround(svgDoc->GetIntrinsicWidth()));
+                result->height = static_cast<int>(std::lround(svgDoc->GetIntrinsicHeight()));
+                return result;
+            }
+            // Parse failed — fall through to vips for its detailed error reporting.
+        }
+#endif
         try {
             vips::VImage vipsImage = result->GetVImage();
             result->width = vipsImage.width();
@@ -439,6 +458,19 @@ namespace UltraCanvas {
 #ifdef HAS_LIBVIPS
     std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmap(int w, int h, ImageFitMode fitMode, float scale) {
         if (scale <= 0.0f) scale = 1.0f;
+#ifdef HAS_LIBRSVG
+        // SVG fast path: rasterize from the cached parsed document — no file
+        // read and no XML re-parse per requested size (each zoom level /
+        // layout size only pays for the vector render itself).
+        if (UCSvgDocument::IsSvgPath(fileName)) {
+            auto svgDoc = UCSvgDocument::Get(fileName);
+            if (svgDoc && svgDoc->IsValid()) {
+                auto pm = svgDoc->RenderPixmap(w, h, fitMode, scale);
+                if (pm) return pm;
+            }
+            // Fall through to the generic vips path on failure.
+        }
+#endif
         try {
             // Rasterize at backing-pixel resolution. For SVG (libvips uses
             // librsvg under the hood) this yields sharp edges at the target
