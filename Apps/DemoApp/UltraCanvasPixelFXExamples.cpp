@@ -245,31 +245,35 @@ namespace {
             } },
             { "draw", "Draw", {
                 { "floodfill", "Flood fill",
-                  "Paint-bucket fill around the picked point (Draw::FloodFillEqual). "
-                  "Tolerance quantises the image first so smooth photo gradients form "
-                  "connected regions. Choose the ink below, press “Set fill position” "
-                  "and click a spot in the image.",
+                  "Paint-bucket fill around the picked point. Tolerance is the maximum "
+                  "colour distance (mean per-channel difference, 0–255) a pixel may have "
+                  "from the clicked colour to be filled; the fill spreads to the connected "
+                  "region of such pixels, so raising Tolerance always grows the area. "
+                  "Choose the ink below, press “Set fill position” and click a spot in the image.",
                   { { "Tolerance", 4.0f, 64.0f, 24.0f, 2.0f } },
                   [](const PFXImage& src, const std::vector<float>& p, const EffectContext& ctx) {
                       PFXImage base = FX::Conversion::CastUchar(src);
                       if (FX::Colour::HasAlpha(base)) base = FX::Colour::Flatten(base);
                       int x = std::clamp(static_cast<int>(ctx.posX * (base.Width()  - 1)), 0, base.Width()  - 1);
                       int y = std::clamp(static_cast<int>(ctx.posY * (base.Height() - 1)), 0, base.Height() - 1);
-                      // Exact-equality flood fill barely spreads on continuous photo
-                      // tones, so run it on a smoothed, posterised helper image and
-                      // then paint every changed pixel on the original.
-                      double step = std::max(1.0f, p[0]);
-                      PFXImage quant = FX::Conversion::CastUchar(
-                          FX::Arithmetic::Multiply(
-                              FX::Arithmetic::Floor(
-                                  FX::Arithmetic::Divide(FX::Morphology::Median(base, 3), step)), step));
-                      // Marker colour guaranteed to differ from the start pixel
-                      std::vector<double> start = FX::Arithmetic::GetPoint(quant, x, y);
-                      std::vector<double> marker;
-                      for (double v : start) marker.push_back(v >= 128.0 ? v - 128.0 : v + 128.0);
-                      PFXImage flooded = FX::Conversion::CopyMemory(quant);   // draw_* mutates
-                      FX::Draw::FloodFillEqual(flooded, x, y, marker, {});
-                      PFXImage mask = FX::Colour::Bandmean(FX::Arithmetic::NotEqual(flooded, quant));
+                      // True tolerance flood fill: build a binary "within tolerance of the
+                      // clicked colour" mask, then keep only the region connected to the
+                      // seed. Because a larger tolerance can only add pixels to that mask,
+                      // the filled area grows monotonically instead of jumping around the
+                      // way a fixed quantisation grid does.
+                      double tol = std::max(0.0f, p[0]);
+                      PFXImage smooth = FX::Morphology::Median(base, 3);   // damp photo noise
+                      std::vector<double> start = FX::Arithmetic::GetPoint(smooth, x, y);
+                      PFXImage dist = FX::Colour::Bandmean(
+                          FX::Arithmetic::Abs(
+                              FX::Arithmetic::Subtract(smooth, FX::Generate::NewFromImage(smooth, start))));
+                      PFXImage similar = FX::Conversion::CastUchar(
+                          FX::Arithmetic::LessEq(dist, FX::Generate::NewFromImage(dist, { tol })));
+                      // Flood the connected component of the similarity mask from the seed.
+                      // Seed value is 255 (distance 0 ≤ tol); mark it with a distinct value.
+                      PFXImage flooded = FX::Conversion::CopyMemory(similar);   // draw_* mutates
+                      FX::Draw::FloodFillEqual(flooded, x, y, { 100.0 }, {});
+                      PFXImage mask = FX::Arithmetic::Equal(flooded, FX::Generate::NewFromImage(flooded, { 100.0 }));
                       PFXImage ink  = FX::Generate::NewFromImage(base,
                           { static_cast<double>(ctx.fillColor.r),
                             static_cast<double>(ctx.fillColor.g),
