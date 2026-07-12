@@ -13,6 +13,8 @@
 #include "UltraCanvasCSVImportDialog.h"
 #include "UltraCanvasCSVExportDialog.h"
 #include "UltraCanvasFileLoader.h"
+#include "UltraCanvasConfig.h"   // GetResourcesDir
+#include "UltraCanvasUtils.h"    // NormalizePath
 #include <algorithm>
 #include <string>
 
@@ -113,14 +115,26 @@ namespace UltraCanvas {
         root->AddChild(saveBtn);
 
         auto status = std::make_shared<UltraCanvasLabel>("ssStatus", 496, 56, 510, 22);
-        status->SetText("Loaded: (sample data) — supported formats: .ods, .csv");
         status->SetFontSize(12);
         status->SetTextColor(Color(90, 90, 90, 255));
         root->AddChild(status);
 
         // ===== SPREADSHEET ELEMENT =====
         auto sheet = CreateSpreadsheetElement("ssDemoGrid", 20, 92, kWidth - 40, kHeight - 104);
-        SeedSampleData(sheet.get());
+
+        // Load the bundled OpenDocument Spreadsheet demo file on entry so the
+        // element opens on a real .ods document (monthly sales / chargeback
+        // report with live SUM totals). If it cannot be found, fall back to the
+        // programmatic sample data so the demo is still meaningful.
+        const std::string samplePath =
+            NormalizePath(GetResourcesDir() + "media/docs/spreadsheet.ods");
+        if (sheet->LoadFromFile(samplePath)) {
+            status->SetText("Loaded: " + samplePath
+                            + " — supported formats: .ods, .xlsx, .csv");
+        } else {
+            SeedSampleData(sheet.get());
+            status->SetText("Loaded: (sample data) — supported formats: .ods, .xlsx, .csv");
+        }
         root->AddChild(sheet);
 
         // ===== OPEN -> FileLoader -> LoadFromFile =====
