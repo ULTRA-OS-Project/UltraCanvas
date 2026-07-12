@@ -371,7 +371,14 @@ void UltraCanvasSpreadsheet::RenderCell(IRenderContext* ctx, int row, int col, c
                          (style.font.bold ? FontWeight::Bold : FontWeight::Normal),
                          (style.font.italic ? FontSlant::Italic : FontSlant::Normal));
         ctx->SetFontSize(style.font.size);
-        ctx->SetTextPaint(style.font.color);
+        // Negative values in a "red negatives" number format paint red, as in
+        // the authoring application; otherwise the style's own font colour wins.
+        Color textColor = style.font.color;
+        if (style.numberFormat.negativeRed && cell->IsNumeric() &&
+            cell->GetNumber() < 0.0) {
+            textColor = Color(255, 0, 0);
+        }
+        ctx->SetTextPaint(textColor);
 
         // Get display text
         std::string text = cell->GetDisplayValue();

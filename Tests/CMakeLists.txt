@@ -247,6 +247,29 @@ add_test(
 )
 message(STATUS "    Test registered: SpreadsheetOdsFormulaTest")
 
+# ===== SPREADSHEET NUMBER FORMAT TEST =====
+# Regression test for currency/percentage/date display formatting and the
+# DateTimeValue date round-trip. Header-only: exercises the real SpreadsheetCell
+# / NumberFormat / DateTimeValue with no UI stack and no link deps.
+message(STATUS "  Building SpreadsheetNumberFormatTest...")
+add_executable(SpreadsheetNumberFormatTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetNumberFormatTest.cpp
+)
+target_include_directories(SpreadsheetNumberFormatTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(SpreadsheetNumberFormatTest PRIVATE cxx_std_20)
+set_target_properties(SpreadsheetNumberFormatTest PROPERTIES
+    OUTPUT_NAME "SpreadsheetNumberFormatTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME SpreadsheetNumberFormatTest
+    COMMAND SpreadsheetNumberFormatTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: SpreadsheetNumberFormatTest")
+
 # ===== FUTURE TESTS =====
 # Add more test executables here as needed:
 #

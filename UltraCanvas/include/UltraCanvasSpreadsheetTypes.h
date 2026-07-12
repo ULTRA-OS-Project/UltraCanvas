@@ -1087,7 +1087,11 @@ inline DateTimeValue DateTimeValue::FromDateTime(int year, int month, int day,
 }
 
 inline void DateTimeValue::ToDate(int& year, int& month, int& day) const {
-    int z = GetDateSerial() + 2415019 + 1;  // Convert to Julian day
+    // Invert FromDate(): serial = JulianDayNumber - 2415019, so recover the
+    // Julian day with serial + 2415019. (A previous extra "+ 1" here made
+    // ToDate one day ahead of FromDate, so every stored date rendered a day
+    // late and round-tripping a date drifted forward.)
+    int z = GetDateSerial() + 2415019;  // Convert back to Julian day number
     int a = z + 32044;
     int b = (4 * a + 3) / 146097;
     int c = a - (146097 * b) / 4;

@@ -10,6 +10,8 @@
 #include <memory>
 #include <optional>
 #include <functional>
+#include <cstring>
+#include <cstdio>
 
 namespace UltraCanvas {
 
@@ -908,7 +910,18 @@ inline void SpreadsheetCell::UpdateDisplayValue() const {
             
         case CellValueType::Currency:
             if (auto* curr = std::get_if<CurrencyValue>(&value_)) {
-                displayValue_ = curr->currencyCode + " " + FormatNumber(curr->amount);
+                // When the cell carries a currency/accounting number format
+                // (e.g. loaded from an ODS number:currency-style), let
+                // FormatNumber render the symbol, position, grouping and sign
+                // exactly as authored ("2,397.36 €"). Otherwise fall back to a
+                // neutral "CODE amount" form ("EUR 2397.36").
+                NumberFormatCategory cat = GetStyle().numberFormat.category;
+                if (cat == NumberFormatCategory::Currency ||
+                    cat == NumberFormatCategory::Accounting) {
+                    displayValue_ = FormatNumber(curr->amount);
+                } else {
+                    displayValue_ = curr->currencyCode + " " + FormatNumber(curr->amount);
+                }
             }
             break;
             
@@ -1012,27 +1025,62 @@ inline std::string SpreadsheetCell::FormatDate(const DateTimeValue& value) const
     int year, month, day, hour, minute, second;
     value.ToDate(year, month, day);
     value.ToTime(hour, minute, second);
-    
+
     const NumberFormat& fmt = GetStyle().numberFormat;
-    
+
+    // Honour an explicit format code (e.g. "DD/MM/YY", "MM / YYYY") when the
+    // loader has supplied one from the document's number:date-style. Tokens:
+    //   YYYY/YY year, MM/M month, DD/D day, HH/H hour, NN minute, SS second.
+    // Anything else is copied literally. Falls back to ISO defaults when no
+    // usable code is present.
+    const std::string& code = fmt.formatCode;
+    bool hasCode = !code.empty() && code != "General" &&
+                   (code.find('Y') != std::string::npos ||
+                    code.find('M') != std::string::npos ||
+                    code.find('D') != std::string::npos ||
+                    code.find('H') != std::string::npos ||
+                    code.find('N') != std::string::npos ||
+                    code.find('S') != std::string::npos);
+    if (hasCode) {
+        std::string out;
+        char buf[16];
+        for (size_t i = 0; i < code.size();) {
+            auto starts = [&](const char* tok) {
+                return code.compare(i, std::strlen(tok), tok) == 0;
+            };
+            if (starts("YYYY")) { snprintf(buf, sizeof(buf), "%04d", year); out += buf; i += 4; }
+            else if (starts("YY")) { snprintf(buf, sizeof(buf), "%02d", year % 100); out += buf; i += 2; }
+            else if (starts("MM")) { snprintf(buf, sizeof(buf), "%02d", month); out += buf; i += 2; }
+            else if (starts("M"))  { snprintf(buf, sizeof(buf), "%d", month); out += buf; i += 1; }
+            else if (starts("DD")) { snprintf(buf, sizeof(buf), "%02d", day); out += buf; i += 2; }
+            else if (starts("D"))  { snprintf(buf, sizeof(buf), "%d", day); out += buf; i += 1; }
+            else if (starts("HH")) { snprintf(buf, sizeof(buf), "%02d", hour); out += buf; i += 2; }
+            else if (starts("H"))  { snprintf(buf, sizeof(buf), "%d", hour); out += buf; i += 1; }
+            else if (starts("NN")) { snprintf(buf, sizeof(buf), "%02d", minute); out += buf; i += 2; }
+            else if (starts("SS")) { snprintf(buf, sizeof(buf), "%02d", second); out += buf; i += 2; }
+            else { out += code[i]; i += 1; }
+        }
+        return out;
+    }
+
     char buffer[64];
-    
+
     switch (fmt.category) {
         case NumberFormatCategory::Date:
             snprintf(buffer, sizeof(buffer), "%04d-%02d-%02d", year, month, day);
             break;
-            
+
         case NumberFormatCategory::Time:
             snprintf(buffer, sizeof(buffer), "%02d:%02d:%02d", hour, minute, second);
             break;
-            
+
         case NumberFormatCategory::DateTime:
         default:
-            snprintf(buffer, sizeof(buffer), "%04d-%02d-%02d %02d:%02d:%02d", 
+            snprintf(buffer, sizeof(buffer), "%04d-%02d-%02d %02d:%02d:%02d",
                      year, month, day, hour, minute, second);
             break;
     }
-    
+
     return std::string(buffer);
 }
 

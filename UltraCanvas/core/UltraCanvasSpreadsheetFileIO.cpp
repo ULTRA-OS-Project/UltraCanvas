@@ -159,6 +159,60 @@ double GetAttrDouble(const tinyxml2::XMLElement* elem, const char* name, double 
     return val ? std::stod(val) : defaultVal;
 }
 
+// Recursively gather the text of an ODF text element (text:p / text:span /
+// text:a ...). tinyxml2's GetText() only returns a leading text node, so
+// nested runs — most importantly a hyperlink's <text:a>content</text:a> —
+// would otherwise be dropped. The ODF inline whitespace elements are honoured:
+//   text:s -> N spaces (text:c), text:tab -> tab, text:line-break -> newline.
+void AppendElementText(const tinyxml2::XMLElement* elem, std::string& out) {
+    for (const tinyxml2::XMLNode* node = elem->FirstChild();
+         node; node = node->NextSibling()) {
+        if (const tinyxml2::XMLText* textNode = node->ToText()) {
+            out += textNode->Value();
+        } else if (const tinyxml2::XMLElement* child = node->ToElement()) {
+            std::string name = child->Name();
+            if (name == "text:s") {
+                int count = GetAttrInt(child, "text:c", 1);
+                if (count > 0) out.append(static_cast<size_t>(count), ' ');
+            } else if (name == "text:tab") {
+                out += '\t';
+            } else if (name == "text:line-break") {
+                out += '\n';
+            } else {
+                AppendElementText(child, out);  // text:span, text:a, ...
+            }
+        }
+    }
+}
+
+// Concatenate every text:p paragraph of a cell, newline-separated.
+std::string GetCellText(const tinyxml2::XMLElement* cellElem) {
+    std::string out;
+    bool first = true;
+    for (const tinyxml2::XMLElement* p = cellElem->FirstChildElement("text:p");
+         p; p = p->NextSiblingElement("text:p")) {
+        if (!first) out += '\n';
+        first = false;
+        AppendElementText(p, out);
+    }
+    return out;
+}
+
+// First hyperlink target (xlink:href on a text:a) found anywhere in the cell,
+// or empty when the cell holds no link.
+std::string FindCellHyperlink(const tinyxml2::XMLElement* elem) {
+    for (const tinyxml2::XMLElement* child = elem->FirstChildElement();
+         child; child = child->NextSiblingElement()) {
+        if (std::string(child->Name()) == "text:a") {
+            std::string href = GetAttr(child, "xlink:href");
+            if (!href.empty()) return href;
+        }
+        std::string nested = FindCellHyperlink(child);
+        if (!nested.empty()) return nested;
+    }
+    return "";
+}
+
 } // anonymous namespace
 
 // ============================================================================
@@ -170,6 +224,9 @@ private:
     UltraCanvasSpreadsheet* spreadsheet_;
     mz_zip_archive zip_;
     std::map<std::string, CellStyle> styles_;
+    // Number/currency/date/percentage formats keyed by their ODF data-style
+    // name (e.g. "N110"), referenced from a cell style's style:data-style-name.
+    std::map<std::string, NumberFormat> numberFormats_;
     std::string error_;
 
 public:
@@ -253,28 +310,141 @@ private:
         auto* root = doc.RootElement();
         if (!root) return;
         
+        // Number/data styles must be parsed before the cell styles that
+        // reference them via style:data-style-name.
         auto* officeStyles = root->FirstChildElement("office:styles");
-        if (officeStyles) {
-            ParseStyleElements(officeStyles);
-        }
-        
         auto* automaticStyles = root->FirstChildElement("office:automatic-styles");
-        if (automaticStyles) {
-            ParseStyleElements(automaticStyles);
-        }
+        if (officeStyles) ParseNumberStyles(officeStyles);
+        if (automaticStyles) ParseNumberStyles(automaticStyles);
+        if (officeStyles) ParseStyleElements(officeStyles);
+        if (automaticStyles) ParseStyleElements(automaticStyles);
     }
-    
+
     void ParseContentStyles(const std::string& xml) {
         tinyxml2::XMLDocument doc;
         if (doc.Parse(xml.c_str()) != tinyxml2::XML_SUCCESS) return;
-        
+
         auto* root = doc.RootElement();
         if (!root) return;
-        
+
         auto* automaticStyles = root->FirstChildElement("office:automatic-styles");
         if (automaticStyles) {
+            ParseNumberStyles(automaticStyles);
             ParseStyleElements(automaticStyles);
         }
+    }
+
+    // Parse every number:*-style child of the given container into a
+    // NumberFormat keyed by its style:name. ODF number styles model currency
+    // symbol/position, decimal places, thousands grouping, red negatives and
+    // date/time component order; we translate those into the engine's
+    // NumberFormat so display matches the authoring application.
+    void ParseNumberStyles(tinyxml2::XMLElement* parent) {
+        static const char* kTags[] = {
+            "number:number-style", "number:currency-style",
+            "number:percentage-style", "number:date-style",
+            "number:time-style"
+        };
+        for (const char* tag : kTags) {
+            for (auto* elem = parent->FirstChildElement(tag);
+                 elem; elem = elem->NextSiblingElement(tag)) {
+                std::string name = GetAttr(elem, "style:name");
+                if (name.empty()) continue;
+                numberFormats_[name] = ParseNumberFormatStyle(elem, tag);
+            }
+        }
+    }
+
+    NumberFormat ParseNumberFormatStyle(tinyxml2::XMLElement* styleElem,
+                                        const std::string& tag) {
+        NumberFormat fmt;
+        if (tag == "number:currency-style")        fmt.category = NumberFormatCategory::Currency;
+        else if (tag == "number:percentage-style") fmt.category = NumberFormatCategory::Percentage;
+        else if (tag == "number:date-style")       fmt.category = NumberFormatCategory::Date;
+        else if (tag == "number:time-style")       fmt.category = NumberFormatCategory::Time;
+        else                                       fmt.category = NumberFormatCategory::Number;
+
+        bool negativeRed = false;
+        std::string dateCode;              // built for date/time styles
+        int numberIndex = -1, symbolIndex = -1, childIndex = 0;
+        std::vector<int> spaceTextIndices; // number:text children that are blank
+        bool sawNumber = false;
+
+        for (auto* child = styleElem->FirstChildElement();
+             child; child = child->NextSiblingElement(), ++childIndex) {
+            std::string name = child->Name();
+            if (name == "style:text-properties") {
+                std::string color = GetAttr(child, "fo:color");
+                if (!color.empty()) {
+                    Color c = ParseHexColor(color);
+                    if (c.r > 180 && c.g < 80 && c.b < 80) negativeRed = true;
+                }
+            } else if (name == "number:number") {
+                numberIndex = childIndex;
+                sawNumber = true;
+                fmt.decimalPlaces = GetAttrInt(child, "number:decimal-places", 0);
+                if (GetAttr(child, "number:grouping") == "true")
+                    fmt.useThousandsSeparator = true;
+            } else if (name == "number:currency-symbol") {
+                symbolIndex = childIndex;
+                const char* t = child->GetText();
+                if (t) fmt.currencySymbol = t;
+            } else if (name == "number:day") {
+                dateCode += (GetAttr(child, "number:style") == "long") ? "DD" : "D";
+            } else if (name == "number:month") {
+                dateCode += (GetAttr(child, "number:style") == "long") ? "MM" : "M";
+            } else if (name == "number:year") {
+                dateCode += (GetAttr(child, "number:style") == "long") ? "YYYY" : "YY";
+            } else if (name == "number:hours") {
+                dateCode += (GetAttr(child, "number:style") == "long") ? "HH" : "H";
+            } else if (name == "number:minutes") {
+                dateCode += "NN";
+            } else if (name == "number:seconds") {
+                dateCode += "SS";
+            } else if (name == "number:text") {
+                // tinyxml2 drops pure-whitespace text nodes (GetText() == null);
+                // such an empty number:text almost always stood for a single
+                // space separator, so treat it as one.
+                const char* t = child->GetText();
+                std::string txt = (t && *t) ? t : " ";
+                dateCode += txt;   // literal separators (used only for date/time)
+                bool blank = txt.find_first_not_of(" \t\xC2\xA0") == std::string::npos;
+                if (blank) spaceTextIndices.push_back(childIndex);
+            }
+        }
+
+        fmt.negativeRed = negativeRed;
+
+        if (fmt.category == NumberFormatCategory::Currency) {
+            fmt.currencySymbolAfter = (symbolIndex > numberIndex);
+            // FormatNumber auto-inserts a space when the symbol trails the
+            // amount ("1,234.00 €") but not when it leads. If the document put
+            // a blank between a leading symbol and the amount ("€ 1,234.00"),
+            // fold that space into the symbol so it is preserved.
+            if (!fmt.currencySymbolAfter && symbolIndex >= 0 && numberIndex >= 0) {
+                for (int idx : spaceTextIndices) {
+                    if (idx > symbolIndex && idx < numberIndex) {
+                        fmt.currencySymbol += " ";
+                        break;
+                    }
+                }
+            }
+            (void)sawNumber;
+        } else if (fmt.category == NumberFormatCategory::Date ||
+                   fmt.category == NumberFormatCategory::Time) {
+            bool hasDate = dateCode.find('Y') != std::string::npos ||
+                           dateCode.find('D') != std::string::npos ||
+                           dateCode.find('M') != std::string::npos;
+            bool hasTime = dateCode.find('H') != std::string::npos ||
+                           dateCode.find("NN") != std::string::npos ||
+                           dateCode.find("SS") != std::string::npos;
+            if (hasDate && hasTime)      fmt.category = NumberFormatCategory::DateTime;
+            else if (hasTime && !hasDate) fmt.category = NumberFormatCategory::Time;
+            else                          fmt.category = NumberFormatCategory::Date;
+            if (!dateCode.empty()) fmt.formatCode = dateCode;
+        }
+
+        return fmt;
     }
     
     void ParseStyleElements(tinyxml2::XMLElement* stylesElem) {
@@ -376,11 +546,21 @@ private:
                         cellStyle.hAlign = HorizontalAlignment::Right;
                 }
                 
+                // Link the number/data format referenced by this cell style so
+                // currency/percentage/date cells display as authored.
+                std::string dataStyle = GetAttr(style, "style:data-style-name");
+                if (!dataStyle.empty()) {
+                    auto nf = numberFormats_.find(dataStyle);
+                    if (nf != numberFormats_.end()) {
+                        cellStyle.numberFormat = nf->second;
+                    }
+                }
+
                 styles_[styleName] = cellStyle;
             }
         }
     }
-    
+
     bool ParseContent(const std::string& xml) {
         tinyxml2::XMLDocument doc;
         if (doc.Parse(xml.c_str()) != tinyxml2::XML_SUCCESS) {
@@ -569,10 +749,7 @@ private:
                     GetAttr(cellElem, "office:boolean-value") == "true",
                     CellValueType::Boolean);
             } else {
-                auto* textElem = cellElem->FirstChildElement("text:p");
-                const char* text = textElem ? textElem->GetText() : nullptr;
-                cell->SetFormulaResult(std::string(text ? text : ""),
-                                       CellValueType::Text);
+                cell->SetFormulaResult(GetCellText(cellElem), CellValueType::Text);
             }
         }
         else if (valueType == "float" || valueType == "currency" || valueType == "percentage") {
@@ -603,24 +780,23 @@ private:
             cell->SetBoolean(value);
         }
         else if (valueType == "string" || !valueType.empty()) {
-            // Get text content from text:p element
-            auto* textElem = cellElem->FirstChildElement("text:p");
-            if (textElem) {
-                const char* text = textElem->GetText();
-                cell->SetText(text ? text : "");
-            }
+            // Gather text from all paragraphs, including nested runs / links.
+            cell->SetText(GetCellText(cellElem));
         }
         else if (formula.empty()) {
-            // Check for text content without value-type
-            auto* textElem = cellElem->FirstChildElement("text:p");
-            if (textElem) {
-                const char* text = textElem->GetText();
-                if (text && text[0]) {
-                    cell->SetValueFromString(text);
-                }
+            // Check for text content without value-type.
+            std::string text = GetCellText(cellElem);
+            if (!text.empty()) {
+                cell->SetValueFromString(text);
             }
         }
-        
+
+        // Preserve a hyperlink target carried by a text:a run.
+        std::string href = FindCellHyperlink(cellElem);
+        if (!href.empty()) {
+            cell->SetHyperlink(href);
+        }
+
         // Apply style
         std::string styleName = GetAttr(cellElem, "table:style-name");
         if (!styleName.empty()) {
