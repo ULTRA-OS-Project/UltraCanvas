@@ -128,11 +128,17 @@ namespace UltraCanvas {
         float m = style.markerSize;
         float pad = style.edgePadding;
 
+        // The hover/selection ring is stroked at radius + 2 with a 2px pen, so
+        // it reaches 3px past the marker circle; keep that overhang (plus 1px
+        // for antialiasing) inside the element bounds, or the parent clip cuts
+        // the top of the ring on the active/hovered step.
+        const float ringOverhang = 4.0f;
+
         std::vector<float> centersMain;   // along the primary axis
         centersMain.reserve(n);
 
         if (orientation == StepperOrientation::Horizontal) {
-            float cy = showLabels ? (b.y + 2.0f + m / 2.0f) : (b.y + b.height / 2.0f);
+            float cy = showLabels ? (b.y + ringOverhang + m / 2.0f) : (b.y + b.height / 2.0f);
             float first = b.x + pad + m / 2.0f;
             float last  = b.x + b.width - pad - m / 2.0f;
             float span  = (n > 1) ? (last - first) / (n - 1) : 0.0f;

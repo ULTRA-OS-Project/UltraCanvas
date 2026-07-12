@@ -94,15 +94,17 @@ namespace UltraCanvas {
             : UltraCanvasBadge(identifier, -1, -1, -1, -1) {}
 
         // ===== CONTENT =====
-        void SetText(const std::string& t) { text = t; useCount = false; dot = false; RequestRedraw(); }
+        // Content changes resize the badge, so they invalidate engine layout
+        // (the badge publishes its size via MeasureOwnContent) besides redrawing.
+        void SetText(const std::string& t) { text = t; useCount = false; dot = false; InvalidateLayout(); RequestRedraw(); }
         const std::string& GetText() const { return text; }
 
-        void SetCount(int c) { count = c; useCount = true; dot = false; RequestRedraw(); }
+        void SetCount(int c) { count = c; useCount = true; dot = false; InvalidateLayout(); RequestRedraw(); }
         int  GetCount() const { return count; }
-        void SetMaxCount(int m) { maxCount = std::max(1, m); RequestRedraw(); }
-        void SetShowZero(bool s) { showZero = s; RequestRedraw(); }
+        void SetMaxCount(int m) { maxCount = std::max(1, m); InvalidateLayout(); RequestRedraw(); }
+        void SetShowZero(bool s) { showZero = s; InvalidateLayout(); RequestRedraw(); }
 
-        void SetDot(bool d) { dot = d; RequestRedraw(); }
+        void SetDot(bool d) { dot = d; InvalidateLayout(); RequestRedraw(); }
         bool IsDot() const { return dot; }
 
         // Visible for the current content (count 0 with !showZero, or empty text,
@@ -116,7 +118,7 @@ namespace UltraCanvas {
 
         BadgeStyle& GetStyle() { return style; }
         const BadgeStyle& GetStyle() const { return style; }
-        void SetStyle(const BadgeStyle& s) { style = s; RequestRedraw(); }
+        void SetStyle(const BadgeStyle& s) { style = s; InvalidateLayout(); RequestRedraw(); }
 
         // ===== OVERLAY ANCHORING =====
         // Position this badge over `anchorElement` (a sibling in the same
@@ -132,6 +134,14 @@ namespace UltraCanvas {
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         bool OnEvent(const UCEvent& event) override;
 
+        // ===== CSS LAYOUT (intrinsic sizing) =====
+        // The badge auto-sizes to its content. Publishing that size to the
+        // layout engine is what keeps Arrange from collapsing the (auto-sized)
+        // badge to 0x0 — a zero-sized child is culled and never rendered.
+        Size2Df MeasureOwnContent(std::optional<float> definiteContentWidth,
+                                  const CSSLayout::LayoutContext& ctx) override;
+        void ComputeIntrinsicSizes(const CSSLayout::LayoutContext& ctx) override;
+
         // ===== CALLBACKS =====
         std::function<void()> onClick;
 
@@ -140,6 +150,8 @@ namespace UltraCanvas {
         Color VariantColor() const;
         Color CurrentTextColor() const;
         Size2Df MeasureContent(IRenderContext* ctx) const;
+        Size2Df ContentSize() const;   // MeasureContent via GetRenderContext(), style-based fallback
+        Point2Df AnchorTopLeft(const Rect2Df& anchorBounds, float w, float h) const;
     };
 
 // ===== FACTORY FUNCTIONS =====

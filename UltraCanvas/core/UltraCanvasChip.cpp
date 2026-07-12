@@ -1,7 +1,7 @@
 // core/UltraCanvasChip.cpp
 // Platform-independent chip and tag-input implementation.
-// Version: 1.0.0
-// Last Modified: 2026-07-07
+// Version: 1.0.1
+// Last Modified: 2026-07-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasChip.h"
@@ -24,6 +24,7 @@ namespace UltraCanvas {
     void UltraCanvasChip::SetIcon(const std::string& path) {
         iconPath = path;
         iconImage = path.empty() ? nullptr : UCImage::Get(path);
+        InvalidateLayout();
         RequestRedraw();
     }
 
@@ -42,6 +43,37 @@ namespace UltraCanvas {
         if (closable) w += style.spacing + style.closeSize;
         w += style.paddingH;
         return w;
+    }
+
+    float UltraCanvasChip::ContentWidthForLayout() const {
+        if (IRenderContext* rc = GetRenderContext()) {
+            return GetPreferredWidth(rc);
+        }
+        // No render context yet (measured before the window's first frame):
+        // approximate the text width from the font size so the chip still
+        // gets a usable, non-zero size.
+        float fs = static_cast<float>(style.fontStyle.fontSize > 0 ? style.fontStyle.fontSize : 12.0);
+        float w = style.paddingH * 2.0f + static_cast<float>(label.size()) * fs * 0.6f;
+        if (iconImage) w += style.iconSize + style.spacing;
+        if (closable)  w += style.spacing + style.closeSize;
+        return w;
+    }
+
+    Size2Df UltraCanvasChip::MeasureOwnContent(std::optional<float> definiteContentWidth,
+                                               const CSSLayout::LayoutContext& /*ctx*/) {
+        float w = definiteContentWidth.has_value() ? std::max(0.0f, *definiteContentWidth)
+                                                   : ContentWidthForLayout();
+        return Size2Df(w, style.height);
+    }
+
+    void UltraCanvasChip::ComputeIntrinsicSizes(const CSSLayout::LayoutContext& /*ctx*/) {
+        const float padH = static_cast<float>(GetTotalPaddingHorizontal() + GetTotalBorderHorizontal());
+        const float padV = static_cast<float>(GetTotalPaddingVertical()   + GetTotalBorderVertical());
+        const float w = ContentWidthForLayout();
+        // Border-box units, matching the protocol (see UltraCanvasLabel).
+        intrinsic.valid = true;
+        intrinsic.minContentWidth  = intrinsic.maxContentWidth  = w + padH;
+        intrinsic.minContentHeight = intrinsic.maxContentHeight = style.height + padV;
     }
 
     Rect2Df UltraCanvasChip::CloseRect() const {
@@ -366,7 +398,7 @@ namespace UltraCanvas {
                 if (hoveredChip != -1) { hoveredChip = -1; RequestRedraw(); }
                 return true;
             case UCEventType::KeyDown:    return HandleKeyDown(event);
-            case UCEventType::KeyChar:    return HandleKeyChar(event);
+            case UCEventType::KeyChar:    return HandleCharacterInput(event);
             default:
                 break;
         }
@@ -419,18 +451,34 @@ namespace UltraCanvas {
             default:
                 break;
         }
-        return false;
+        // Printable characters are delivered on the KeyDown event itself
+        // (event.character / event.text) — the platform layers do not send a
+        // separate KeyChar event. Same convention as UltraCanvasTextInput.
+        return HandleCharacterInput(event);
     }
 
-    bool UltraCanvasTagInput::HandleKeyChar(const UCEvent& event) {
+    bool UltraCanvasTagInput::HandleCharacterInput(const UCEvent& event) {
         if (!IsFocused()) return false;
         char c = event.character;
         if (c == '\n' || c == '\r' || c == ',') {   // commit separators
             CommitBuffer();
             return true;
         }
-        if (static_cast<unsigned char>(c) >= 32 && c != 127) {
-            editBuffer.push_back(c);
+        if (c != 0) {
+            if (static_cast<unsigned char>(c) >= 32 && c != 127) {
+                editBuffer.push_back(c);
+                RequestRedraw();
+                return true;
+            }
+            return false;
+        }
+        // Multi-byte UTF-8 input: character is 0 and text holds the sequence.
+        if (!event.text.empty()) {
+            for (char ch : event.text) {
+                unsigned char u = static_cast<unsigned char>(ch);
+                if (u < 32 || u == 127) return false;   // control sequence — ignore
+            }
+            editBuffer += event.text;
             RequestRedraw();
             return true;
         }

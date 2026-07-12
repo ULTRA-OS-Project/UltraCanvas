@@ -88,10 +88,15 @@ std::function<void()> onClick;
 ## Notes
 
 - **Anchoring** requires the badge and its anchor to be siblings in the same
-  container (so their bounds share a coordinate space). The badge sets a high
-  z-index automatically so it draws above the anchor, sizes itself to its content,
-  and re-positions to the chosen corner each frame — so it tracks a moving or
+  container (so their bounds share a coordinate space). `AnchorTo()` takes the
+  badge **out of flow** (`PositionType::AbsoluteUI`) so the parent's layout
+  neither stacks it as a regular child nor lets it displace siblings, and sets a
+  high z-index so it draws above the anchor. It sizes itself to its content and
+  re-positions to the chosen corner each frame — so it tracks a moving or
   resizing anchor.
+- The badge publishes its content size to the CSS layout engine
+  (`MeasureOwnContent` / `ComputeIntrinsicSizes`), so it also works as an
+  auto-sized child of flex/grid containers; see `Docs/CSSLayout.md`.
 - A count of `0` with show-zero off renders nothing (`IsBadgeVisible()` returns
   false); the element stays in place so it reappears when the count returns.
 - The Warning variant uses dark text on amber for contrast; all other variants
