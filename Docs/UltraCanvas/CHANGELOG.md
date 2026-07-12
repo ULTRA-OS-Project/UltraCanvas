@@ -74,6 +74,7 @@
   ticks. Multi-page stills (TIFF/PDF) keep displaying as static images, and
   the info popup shows the frame count for animated files. See
   `Docs/UltraCanvas/UltraCanvasAnimatedImages.md`.
+- Fixed Tesseract OCR plugin
 
 #### 2026-07-08 *0.3.3*
 - ODT reader: real-world letter documents now render their letterhead

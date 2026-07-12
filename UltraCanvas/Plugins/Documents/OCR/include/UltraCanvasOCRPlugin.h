@@ -12,10 +12,10 @@
 #include <stop_token>
 
 #ifdef ULTRACANVAS_OCR_SUPPORT
-
+#include <vips/vips8>
 #include "UltraCanvasCommonTypes.h"
 
-namespace PixelFX { class PFXImage; }
+//namespace PixelFX { class PFXImage; }
 
 namespace UltraCanvas {
 
@@ -107,11 +107,11 @@ public:
     OCRResult RecognizeFile(const std::string& path);
     OCRResult RecognizeBuffer(const void* data, size_t bytes,
                               const std::string& formatHint = "");
-    OCRResult RecognizeImage(const PixelFX::PFXImage& img);
+    OCRResult RecognizeImage(const vips::VImage& img);
 
     std::future<OCRResult> RecognizeFileAsync(const std::string& path,
                                               std::stop_token st = {});
-    std::future<OCRResult> RecognizeImageAsync(const PixelFX::PFXImage& img,
+    std::future<OCRResult> RecognizeImageAsync(const vips::VImage& img,
                                                std::stop_token st = {});
 
     void              SetConfig(const OCRConfig& cfg);

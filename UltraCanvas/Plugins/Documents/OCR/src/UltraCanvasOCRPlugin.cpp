@@ -8,7 +8,7 @@
 
 #ifdef ULTRACANVAS_OCR_SUPPORT
 
-#include "PixelFX/PixelFX.h"
+//#include "PixelFX/PixelFX.h"
 
 #include <cstring>
 #include <iomanip>
@@ -37,14 +37,14 @@ std::unique_ptr<IOCREngine> MakeEngine(OCREngineKind kind) {
     }
 }
 
-// Convert a PFXImage to a tightly-packed 8-bit raster Tesseract can consume.
+// Convert a VImage to a tightly-packed 8-bit raster Tesseract can consume.
 // Returns false on conversion failure.
-bool PFXToRaw(const PixelFX::PFXImage& src,
-              std::vector<uint8_t>& out,
-              int& outW, int& outH, int& outBpp, int& outStride) {
+bool ImageToRaw(const vips::VImage& src,
+                std::vector<uint8_t>& out,
+                int& outW, int& outH, int& outBpp, int& outStride) {
     try {
         // Force RGB / 8-bit; Tesseract handles greyscale internally.
-        vips::VImage img = src; // PFXImage inherits from vips::VImage
+        vips::VImage img = src; // VImage inherits from vips::VImage
         if (img.format() != VIPS_FORMAT_UCHAR) {
             img = img.cast(VIPS_FORMAT_UCHAR);
         }
@@ -131,12 +131,12 @@ OCRResult UltraCanvasOCR::RecognizeBuffer(const void* data, size_t bytes,
     return engine->RecognizeBuffer(data, bytes, formatHint);
 }
 
-OCRResult UltraCanvasOCR::RecognizeImage(const PixelFX::PFXImage& img) {
+OCRResult UltraCanvasOCR::RecognizeImage(const vips::VImage& img) {
     if (!engine) { OCRResult r; r.error = "No OCR engine available"; return r; }
     std::vector<uint8_t> raw;
     int w = 0, h = 0, bpp = 0, stride = 0;
-    if (!PFXToRaw(img, raw, w, h, bpp, stride)) {
-        OCRResult r; r.error = "Failed to convert PFXImage to raw raster";
+    if (!ImageToRaw(img, raw, w, h, bpp, stride)) {
+        OCRResult r; r.error = "Failed to convert VImage to raw raster";
         return r;
     }
     return engine->RecognizeRaw(raw.data(), w, h, bpp, stride);
@@ -150,7 +150,7 @@ std::future<OCRResult> UltraCanvasOCR::RecognizeFileAsync(const std::string& pat
                       [this, path]() { return RecognizeFile(path); });
 }
 
-std::future<OCRResult> UltraCanvasOCR::RecognizeImageAsync(const PixelFX::PFXImage& img,
+std::future<OCRResult> UltraCanvasOCR::RecognizeImageAsync(const vips::VImage& img,
                                                            std::stop_token /*st*/) {
     return std::async(std::launch::async,
                       [this, img]() { return RecognizeImage(img); });
