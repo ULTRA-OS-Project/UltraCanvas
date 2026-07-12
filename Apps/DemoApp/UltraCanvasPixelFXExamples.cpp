@@ -188,8 +188,11 @@ namespace {
                   [](const PFXImage& src, const std::vector<float>&, const EffectContext&) { return FX::Resample::FlipHorizontal(src); } },
                 { "flipv", "Flip vertical", "Mirrors the image top ↔ bottom (Resample::FlipVertical).", {},
                   [](const PFXImage& src, const std::vector<float>&, const EffectContext&) { return FX::Resample::FlipVertical(src); } },
-                { "scale", "Scale", "Resizes with a Lanczos3 kernel (Resample::Resize).",
-                  { { "Factor", 0.1f, 2.0f, 0.5f, 0.05f } },
+                { "scale", "Scale", "Resizes with a Lanczos3 kernel (Resample::Resize). The "
+                  "preview grows or shrinks with the factor relative to the frame: 1.0 fits "
+                  "the frame, below 1.0 shrinks centred, above 1.0 pins the width and grows "
+                  "taller (centre-cropped) up to the frame border.",
+                  { { "Factor", 0.1f, 3.0f, 1.0f, 0.05f } },
                   [](const PFXImage& src, const std::vector<float>& p, const EffectContext&) { return FX::Resample::Resize(src, p[0]); } },
                 { "pixelate", "Pixelate", "Subsamples then zooms back up for a mosaic look (Conversion::Subsample + Zoom).",
                   { { "Block size", 2.0f, 32.0f, 8.0f, 1.0f } },
@@ -739,8 +742,42 @@ namespace {
             }
         };
 
+        // Build the on-screen image for the Scale demo so the display size tracks
+        // the factor instead of always fitting the frame. `factor` 1.0 fits the
+        // image into the frame (with a margin); smaller values shrink it centred on
+        // a neutral canvas so the reduced area is visible; larger values grow it
+        // proportionally (aspect preserved). Once the width reaches the frame it is
+        // pinned and the image keeps growing in height — a centred crop — until it
+        // meets the frame border minus the margin. Returns a canvas exactly the size
+        // of the frame so the Contain fit maps it 1:1.
+        auto frameScaled = [](const PixelFX::PFXImage& original, float factor,
+                              int frameW, int frameH) -> PixelFX::PFXImage {
+            namespace FX = PixelFX;
+            const int margin = 10;
+            PixelFX::PFXImage base = FX::Conversion::CastUchar(original);
+            if (FX::Colour::HasAlpha(base)) base = FX::Colour::Flatten(base);
+            const int W = base.Width(), H = base.Height();
+            const int availW = std::max(1, frameW - 2 * margin);
+            const int availH = std::max(1, frameH - 2 * margin);
+            // On-screen scale: fit the original into the frame at factor 1.0, then
+            // multiply by the requested factor.
+            const double fitScale = std::min(static_cast<double>(availW) / W,
+                                             static_cast<double>(availH) / H);
+            const double dispScale = std::max(0.01, fitScale * std::max(0.01f, factor));
+            PixelFX::PFXImage scaled = FX::Conversion::CastUchar(FX::Resample::Resize(base, dispScale));
+            const int sw = scaled.Width(), sh = scaled.Height();
+            // Pin to the available box, centre-cropping whatever overflows.
+            const int cropW = std::min(sw, availW);
+            const int cropH = std::min(sh, availH);
+            PixelFX::PFXImage piece = (cropW < sw || cropH < sh)
+                ? FX::Conversion::Crop(scaled, (sw - cropW) / 2, (sh - cropH) / 2, cropW, cropH)
+                : scaled;
+            PixelFX::PFXImage canvas = PixelFX::PFXImage::CreateSolid(frameW, frameH, { 246, 246, 248 });
+            return FX::Conversion::Insert(canvas, piece, (frameW - cropW) / 2, (frameH - cropH) / 2);
+        };
+
         // Run the selected effect (or none) on the loaded source and display it.
-        auto applyCurrent = [state, showImage, setStatus]() {
+        auto applyCurrent = [state, showImage, setStatus, imageView, frameScaled]() {
             if (!state->originalValid) return;
             if (!state->effect) {
                 if (showImage(state->original)) {
@@ -749,6 +786,19 @@ namespace {
                 return;
             }
             try {
+                // The Scale demo frames its result to the display so the on-screen
+                // size tracks the factor (see frameScaled); every other effect just
+                // shows its processed image fitted to the frame.
+                if (state->effect->id == "scale" && !state->params.empty()) {
+                    int fw = static_cast<int>(imageView->GetWidth());
+                    int fh = static_cast<int>(imageView->GetHeight());
+                    if (fw < 32 || fh < 32) { fw = 640; fh = 480; }   // pre-layout fallback
+                    if (!showImage(frameScaled(state->original, state->params[0], fw, fh))) return;
+                    setStatus(state->effect->name + " (Factor = " + FormatParamValue(state->params[0]) +
+                              ") — display grows with the factor: width pinned to the frame, then "
+                              "taller to the border; below 1.0 it shrinks centred.");
+                    return;
+                }
                 PixelFX::PFXImage result = state->effect->apply(state->original, state->params, state->ctx);
                 if (!showImage(result)) return;
                 std::string text = state->effect->name;
