@@ -826,6 +826,11 @@ private:
     // not enough to reconstruct the style).
     std::vector<std::pair<std::string, CellStyle>> styleDefs_;
     int styleCounter_ = 0;
+    // Number/data styles (currency/percentage/date/number) discovered from cell
+    // formats, keyed by signature, plus their definitions in creation order.
+    std::map<std::string, std::string> numberStyleMap_;
+    std::vector<std::pair<std::string, NumberFormat>> numberStyleDefs_;
+    int numberStyleCounter_ = 0;
 
 public:
     ODSSaver(UltraCanvasSpreadsheet* spreadsheet) : spreadsheet_(spreadsheet) {}
@@ -889,11 +894,17 @@ private:
             });
         }
         
-        // Write collected styles
+        // Write the number/data styles first so the cell styles that reference
+        // them via style:data-style-name resolve.
+        for (const auto& [numName, numFmt] : numberStyleDefs_) {
+            WriteNumberStyleDefinition(ss, numName, numFmt);
+        }
+
+        // Write collected cell styles
         for (const auto& [styleName, style] : styleDefs_) {
             WriteStyleDefinition(ss, styleName, style);
         }
-        
+
         ss << "</office:automatic-styles>\n";
         
         // Body
@@ -1051,6 +1062,9 @@ private:
         std::string name = "ce" + std::to_string(++styleCounter_);
         styleMap_[key] = name;
         styleDefs_.emplace_back(name, style);
+        // Ensure the referenced data style is created now, so number styles are
+        // known (and emitted) before the cell styles that reference them.
+        GetOrCreateNumberStyle(style.numberFormat);
         return name;
     }
 
@@ -1073,7 +1087,34 @@ private:
         border(style.borders.right);
         border(style.borders.top);
         border(style.borders.bottom);
+        ss << "|nf:" << NumberStyleKey(style.numberFormat);
         return ss.str();
+    }
+
+    // Signature for a number format so equal formats share one data style.
+    static std::string NumberStyleKey(const NumberFormat& f) {
+        std::stringstream ss;
+        ss << static_cast<int>(f.category) << "|" << f.decimalPlaces << "|"
+           << f.useThousandsSeparator << "|" << f.currencySymbol << "|"
+           << f.currencySymbolAfter << "|" << f.negativeRed << "|" << f.formatCode;
+        return ss.str();
+    }
+
+    // Returns the ODF data-style name for a format, creating it on first use.
+    // General/Text formats need no data style, so return "".
+    std::string GetOrCreateNumberStyle(const NumberFormat& fmt) {
+        if (fmt.category == NumberFormatCategory::General ||
+            fmt.category == NumberFormatCategory::Text) {
+            return "";
+        }
+        std::string key = NumberStyleKey(fmt);
+        auto it = numberStyleMap_.find(key);
+        if (it != numberStyleMap_.end()) return it->second;
+
+        std::string name = "N" + std::to_string(++numberStyleCounter_);
+        numberStyleMap_[key] = name;
+        numberStyleDefs_.emplace_back(name, fmt);
+        return name;
     }
 
     // ODS border attribute value, e.g. "0.5pt solid #000000". The loader
@@ -1098,9 +1139,123 @@ private:
         return std::string(width) + " " + lineStyle + " " + ColorToHex(border.color);
     }
 
+    // Emit the currency number + symbol runs in the authored order. The loader
+    // folds a leading symbol's separating space into currencySymbol; undo that
+    // here so the ODF is a clean symbol element plus a text separator.
+    void EmitCurrencyBody(std::stringstream& ss, const NumberFormat& fmt) {
+        std::stringstream numAttr;
+        numAttr << "number:decimal-places=\"" << fmt.decimalPlaces
+                << "\" number:min-integer-digits=\"1\"";
+        if (fmt.useThousandsSeparator) numAttr << " number:grouping=\"true\"";
+        std::string numEl = "<number:number " + numAttr.str() + "/>";
+
+        std::string sym = fmt.currencySymbol;
+        bool trailingSpace = !sym.empty() && sym.back() == ' ';
+        while (!sym.empty() && sym.back() == ' ') sym.pop_back();
+        std::string symEl = "<number:currency-symbol>" + EscapeXml(sym)
+                          + "</number:currency-symbol>";
+
+        if (fmt.currencySymbolAfter) {
+            ss << numEl << "<number:text> </number:text>" << symEl;
+        } else {
+            ss << symEl;
+            if (trailingSpace) ss << "<number:text> </number:text>";
+            ss << numEl;
+        }
+    }
+
+    // Emit date/time component elements from a format code (inverse of the
+    // formatCode built by the loader). Consecutive literals coalesce into one
+    // number:text.
+    void EmitDateTimeBody(std::stringstream& ss, const std::string& code) {
+        std::string lit;
+        auto flush = [&]() {
+            if (!lit.empty()) { ss << "<number:text>" << EscapeXml(lit) << "</number:text>"; lit.clear(); }
+        };
+        for (size_t i = 0; i < code.size();) {
+            auto st = [&](const char* t) { return code.compare(i, std::strlen(t), t) == 0; };
+            if (st("YYYY"))      { flush(); ss << "<number:year number:style=\"long\"/>"; i += 4; }
+            else if (st("YY"))   { flush(); ss << "<number:year/>"; i += 2; }
+            else if (st("MM"))   { flush(); ss << "<number:month number:style=\"long\"/>"; i += 2; }
+            else if (st("M"))    { flush(); ss << "<number:month/>"; i += 1; }
+            else if (st("DD"))   { flush(); ss << "<number:day number:style=\"long\"/>"; i += 2; }
+            else if (st("D"))    { flush(); ss << "<number:day/>"; i += 1; }
+            else if (st("HH"))   { flush(); ss << "<number:hours number:style=\"long\"/>"; i += 2; }
+            else if (st("H"))    { flush(); ss << "<number:hours/>"; i += 1; }
+            else if (st("NN"))   { flush(); ss << "<number:minutes number:style=\"long\"/>"; i += 2; }
+            else if (st("SS"))   { flush(); ss << "<number:seconds number:style=\"long\"/>"; i += 2; }
+            else { lit += code[i]; i += 1; }
+        }
+        flush();
+    }
+
+    // Serialize a NumberFormat as an ODF number:*-style (inverse of
+    // ParseNumberFormatStyle), so currency/percentage/date/number formats
+    // survive a save round-trip.
+    void WriteNumberStyleDefinition(std::stringstream& ss, const std::string& name,
+                                    const NumberFormat& fmt) {
+        auto grouping = [&]() { return fmt.useThousandsSeparator ? " number:grouping=\"true\"" : ""; };
+        switch (fmt.category) {
+            case NumberFormatCategory::Number:
+                ss << "<number:number-style style:name=\"" << name << "\">"
+                   << "<number:number number:decimal-places=\"" << fmt.decimalPlaces
+                   << "\" number:min-integer-digits=\"1\"" << grouping()
+                   << "/></number:number-style>\n";
+                break;
+            case NumberFormatCategory::Percentage:
+                ss << "<number:percentage-style style:name=\"" << name << "\">"
+                   << "<number:number number:decimal-places=\"" << fmt.decimalPlaces
+                   << "\" number:min-integer-digits=\"1\"" << grouping()
+                   << "/><number:text>%</number:text></number:percentage-style>\n";
+                break;
+            case NumberFormatCategory::Currency:
+            case NumberFormatCategory::Accounting:
+                if (fmt.negativeRed) {
+                    // Positive variant, then a red base with a leading minus and
+                    // a map back to the positive style (matches LibreOffice).
+                    ss << "<number:currency-style style:name=\"" << name
+                       << "P\" style:volatile=\"true\">";
+                    EmitCurrencyBody(ss, fmt);
+                    ss << "</number:currency-style>\n";
+                    ss << "<number:currency-style style:name=\"" << name << "\">"
+                       << "<style:text-properties fo:color=\"#ff0000\"/>"
+                       << "<number:text>-</number:text>";
+                    EmitCurrencyBody(ss, fmt);
+                    ss << "<style:map style:condition=\"value()&gt;=0\""
+                       << " style:apply-style-name=\"" << name << "P\"/>"
+                       << "</number:currency-style>\n";
+                } else {
+                    ss << "<number:currency-style style:name=\"" << name << "\">";
+                    EmitCurrencyBody(ss, fmt);
+                    ss << "</number:currency-style>\n";
+                }
+                break;
+            case NumberFormatCategory::Date:
+            case NumberFormatCategory::DateTime:
+                ss << "<number:date-style style:name=\"" << name << "\">";
+                EmitDateTimeBody(ss, fmt.formatCode);
+                ss << "</number:date-style>\n";
+                break;
+            case NumberFormatCategory::Time:
+                ss << "<number:time-style style:name=\"" << name << "\">";
+                EmitDateTimeBody(ss, fmt.formatCode);
+                ss << "</number:time-style>\n";
+                break;
+            default:
+                break;
+        }
+    }
+
     void WriteStyleDefinition(std::stringstream& ss, const std::string& name,
                               const CellStyle& style) {
-        ss << "<style:style style:name=\"" << name << "\" style:family=\"table-cell\">\n";
+        ss << "<style:style style:name=\"" << name << "\" style:family=\"table-cell\"";
+        // Link the number/data style (already emitted) so currency/percentage/
+        // date formats round-trip.
+        std::string dataStyle = GetOrCreateNumberStyle(style.numberFormat);
+        if (!dataStyle.empty()) {
+            ss << " style:data-style-name=\"" << dataStyle << "\"";
+        }
+        ss << ">\n";
 
         // Cell properties: background, borders, vertical alignment, wrap.
         {
