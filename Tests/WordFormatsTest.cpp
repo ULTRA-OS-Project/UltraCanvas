@@ -460,6 +460,147 @@ int main(int argc, char** argv) {
         CHECK(sawSignature);
     }
 
+    // ===== 11. Letterhead with a dedicated first-page master page =====
+    // Real letterheads define a "First Page" master (logo, full contact block,
+    // bank-details footer) distinct from the plain continuation master, and the
+    // first body paragraph pins it via style:master-page-name. The reader must
+    // render the applied master, not whichever master is written first.
+    {
+        std::string contentXml =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+            "<office:document-content "
+            "xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" "
+            "xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\" "
+            "xmlns:style=\"urn:oasis:names:tc:opendocument:xmlns:style:1.0\" "
+            "office:version=\"1.2\">"
+            "<office:automatic-styles>"
+            "<style:style style:name=\"P1\" style:family=\"paragraph\" "
+            "style:master-page-name=\"First_20_Page\"/>"
+            "</office:automatic-styles>"
+            "<office:body><office:text>"
+            "<text:p text:style-name=\"P1\">Business Bonus Payment</text:p>"
+            "<text:p>The company pays a bonus every month.</text:p>"
+            "</office:text></office:body></office:document-content>";
+        // "Standard" master is written first with an EMPTY header (the
+        // continuation page). "First Page" carries the real letterhead.
+        std::string stylesXml =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+            "<office:document-styles "
+            "xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" "
+            "xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\" "
+            "xmlns:style=\"urn:oasis:names:tc:opendocument:xmlns:style:1.0\" "
+            "xmlns:table=\"urn:oasis:names:tc:opendocument:xmlns:table:1.0\" "
+            "xmlns:draw=\"urn:oasis:names:tc:opendocument:xmlns:drawing:1.0\" "
+            "xmlns:svg=\"urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0\" "
+            "xmlns:xlink=\"http://www.w3.org/1999/xlink\" office:version=\"1.2\">"
+            "<office:master-styles>"
+            "<style:master-page style:name=\"Standard\">"
+            "<style:header><text:p>continuation</text:p></style:header>"
+            "</style:master-page>"
+            "<style:master-page style:name=\"First_20_Page\">"
+            "<style:header>"
+            "<text:p><draw:frame draw:name=\"Logo\" svg:width=\"72pt\" svg:height=\"48pt\">"
+            "<draw:image xlink:href=\"Pictures/logo.png\"/></draw:frame></text:p>"
+            "<text:p>phone +49 (0) 2761 82 81 69</text:p>"
+            "<text:p>fax +49 (0) 911 308 44 77 844</text:p>"
+            "<text:p>mobile +49 (0) 170 754 22 91</text:p>"
+            "<text:p>info@interkontakt.net</text:p>"
+            "</style:header>"
+            "<style:footer><table:table table:name=\"F\">"
+            "<table:table-row>"
+            "<table:table-cell><text:p>Deutsche Bank 24</text:p></table:table-cell>"
+            "<table:table-cell><text:p>Handelsregister B 126110</text:p></table:table-cell>"
+            "<table:table-cell><text:p>Finanzamt</text:p></table:table-cell>"
+            "</table:table-row></table:table></style:footer>"
+            "</style:master-page>"
+            "</office:master-styles></office:document-styles>";
+        {
+            UCZipPackageWriter zip;
+            CHECK(zip.Open(TmpPath("letterhead.odt")));
+            zip.AddEntry("mimetype", std::string("application/vnd.oasis.opendocument.text"), false);
+            zip.AddEntry("content.xml", contentXml);
+            zip.AddEntry("styles.xml", stylesXml);
+            zip.AddEntry("Pictures/logo.png", kTinyPng, sizeof(kTinyPng));
+            CHECK(zip.Finalize());
+        }
+        UCRichDocument letter;
+        std::string err;
+        CHECK_MSG(UCWordDocumentIO::Load(TmpPath("letterhead.odt"), letter, err), err);
+        std::string plain = letter.ToPlainText();
+
+        // The applied first-page master supplies logo, all four contact lines
+        // and the bank-details footer.
+        CHECK_MSG(letter.media.size() == 1, "logo image loaded");
+        bool sawLogo = false;
+        for (const auto& b : letter.blocks) {
+            if (b.type == RichBlockType::Image) sawLogo = true;
+        }
+        CHECK_MSG(sawLogo, "logo image block emitted");
+        CHECK_MSG(plain.find("+49 (0) 2761 82 81 69") != std::string::npos, plain);
+        CHECK_MSG(plain.find("+49 (0) 911 308 44 77 844") != std::string::npos, plain);
+        CHECK_MSG(plain.find("+49 (0) 170 754 22 91") != std::string::npos, plain);
+        CHECK_MSG(plain.find("info@interkontakt.net") != std::string::npos, plain);
+        CHECK_MSG(plain.find("Deutsche Bank 24") != std::string::npos, plain);
+        CHECK_MSG(plain.find("Handelsregister B 126110") != std::string::npos, plain);
+        CHECK_MSG(plain.find("Finanzamt") != std::string::npos, plain);
+        CHECK_MSG(plain.find("Business Bonus Payment") != std::string::npos, plain);
+
+        // The unrelated "Standard" (continuation) master must NOT leak in.
+        CHECK_MSG(plain.find("continuation") == std::string::npos, plain);
+
+        // Ordering: header contacts before body, footer after body.
+        size_t contactPos = plain.find("+49 (0) 2761 82 81 69");
+        size_t bodyPos = plain.find("Business Bonus Payment");
+        size_t footerPos = plain.find("Deutsche Bank 24");
+        CHECK(contactPos < bodyPos && bodyPos < footerPos);
+    }
+
+    // ===== 12. Table cells preserve non-paragraph block content =====
+    // A cell can hold headings, lists and nested tables, not just text:p. All
+    // of it must survive into the flattened cell text.
+    {
+        std::string contentXml =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+            "<office:document-content "
+            "xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" "
+            "xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\" "
+            "xmlns:table=\"urn:oasis:names:tc:opendocument:xmlns:table:1.0\" "
+            "office:version=\"1.2\">"
+            "<office:body><office:text>"
+            "<table:table table:name=\"T\">"
+            "<table:table-row>"
+            "<table:table-cell>"
+            "<text:h text:outline-level=\"3\">Cell Heading</text:h>"
+            "<text:list><text:list-item><text:p>bullet one</text:p></text:list-item>"
+            "<text:list-item><text:p>bullet two</text:p></text:list-item></text:list>"
+            "</table:table-cell>"
+            "<table:table-cell><text:p>plain cell</text:p></table:table-cell>"
+            "</table:table-row></table:table>"
+            "</office:text></office:body></office:document-content>";
+        {
+            UCZipPackageWriter zip;
+            CHECK(zip.Open(TmpPath("cellcontent.odt")));
+            zip.AddEntry("mimetype", std::string("application/vnd.oasis.opendocument.text"), false);
+            zip.AddEntry("content.xml", contentXml);
+            CHECK(zip.Finalize());
+        }
+        UCRichDocument doc2;
+        std::string err;
+        CHECK_MSG(UCWordDocumentIO::Load(TmpPath("cellcontent.odt"), doc2, err), err);
+        CHECK(!doc2.blocks.empty());
+        bool foundTable = false;
+        for (const auto& b : doc2.blocks) {
+            if (b.type != RichBlockType::Table || b.tableRows.empty()) continue;
+            foundTable = true;
+            const auto& cell0 = b.tableRows[0].cells[0];
+            std::string cellText = UCRichDocument::ConcatenateRunText(cell0.runs);
+            CHECK_MSG(cellText.find("Cell Heading") != std::string::npos, cellText);
+            CHECK_MSG(cellText.find("bullet one") != std::string::npos, cellText);
+            CHECK_MSG(cellText.find("bullet two") != std::string::npos, cellText);
+        }
+        CHECK(foundTable);
+    }
+
     if (failures == 0) {
         std::cout << "ALL TESTS PASSED\n";
         return 0;
