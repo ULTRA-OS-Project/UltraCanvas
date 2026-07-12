@@ -1,4 +1,8 @@
 #### 2026-07-12 *0.3.7*
+- Album demo: the video player window gained an info bar under the video
+  surface showing the clip's title and its source link (clickable — opens in
+  the system browser), and the Lola Lexy tile's link line now reads
+  `youtube.com/LolaLexy`.
 - Animated images (GIF / animated WebP) now play in the lightbox image viewer
   (`UltraCanvasImageViewer`): the zoom / pan surface steps them with the shared
   `UCImageAnimationController`, so zoom and pan apply to the running animation
