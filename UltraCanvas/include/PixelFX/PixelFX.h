@@ -397,6 +397,17 @@ namespace PixelFX {
         void Point(PFXImage& image, int x, int y, const std::vector<double>& ink);
         void FloodFill(PFXImage& image, int x, int y, const std::vector<double>& ink);
         void FloodFillEqual(PFXImage& image, int x, int y, const std::vector<double>& ink, const std::vector<double>& target);
+        // Magic-wand / gradient flood fill with neighbour tolerance. Unlike the
+        // libvips draw_flood variants above (which only spread across pixels equal
+        // to the seed), the region grows to any 4-connected pixel whose colour is
+        // within `tolerance` (mean absolute per-channel difference, 0..255) of the
+        // neighbouring pixel it spreads from. This lets the fill creep across smooth
+        // gradients while stopping at hard edges. A larger tolerance can only add
+        // pixels, so the filled area grows monotonically.
+        void FloodFillTolerance(PFXImage& image, int x, int y, const std::vector<double>& ink, double tolerance);
+        // Same spread as FloodFillTolerance, but returns the selection as a single-band
+        // uchar mask (255 = inside, 0 = outside) for compositing instead of painting ink.
+        PFXImage MagicWandMask(const PFXImage& image, int x, int y, double tolerance);
         void Smudge(PFXImage& image, int left, int top, int width, int height);
         void Insert(PFXImage& image, const PFXImage& sub, int x, int y);
         void Mask(PFXImage& image, const PFXImage& mask, int x, int y, const std::vector<double>& ink);

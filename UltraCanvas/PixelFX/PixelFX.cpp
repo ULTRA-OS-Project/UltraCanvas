@@ -517,6 +517,106 @@ namespace PixelFX {
 // ============================================================================
     namespace Draw {
 
+        namespace {
+            // 4-connected magic-wand flood fill with *neighbour* tolerance.
+            //
+            // Starting from the seed, a pixel joins the selection when its colour is
+            // within `tolerance` (mean absolute per-channel difference) of the pixel it
+            // spreads from, rather than of the seed. The selection is therefore the
+            // transitive closure of the "locally similar" relation over 4-neighbours,
+            // restricted to the component containing the seed. That set is independent
+            // of traversal order and, because raising the tolerance only ever admits
+            // more edges, grows monotonically with `tolerance`.
+            //
+            // Returns a W*H byte map (255 = selected, 0 = not). Works on the image cast
+            // to 8-bit; a trailing alpha band is ignored for the colour comparison.
+            std::vector<unsigned char> MagicWandBuffer(const vips::VImage& image, int x, int y, double tolerance) {
+                vips::VImage work = image.cast(VIPS_FORMAT_UCHAR);
+                const int W = work.width();
+                const int H = work.height();
+                const int B = work.bands();
+                std::vector<unsigned char> mask(static_cast<size_t>(std::max(0, W)) * std::max(0, H), 0);
+                if (W <= 0 || H <= 0 || B <= 0) return mask;
+                x = std::clamp(x, 0, W - 1);
+                y = std::clamp(y, 0, H - 1);
+                const int colourBands = work.has_alpha() ? std::max(1, B - 1) : B;
+
+                size_t bytes = 0;
+                unsigned char* raw = static_cast<unsigned char*>(work.write_to_memory(&bytes));
+                std::vector<unsigned char> pix(raw, raw + bytes);
+                g_free(raw);
+
+                auto within = [&](int from, int to) -> bool {
+                    const unsigned char* a = &pix[static_cast<size_t>(from) * B];
+                    const unsigned char* b = &pix[static_cast<size_t>(to) * B];
+                    int sum = 0;
+                    for (int c = 0; c < colourBands; ++c) {
+                        int d = static_cast<int>(a[c]) - static_cast<int>(b[c]);
+                        sum += d < 0 ? -d : d;
+                    }
+                    return static_cast<double>(sum) / colourBands <= tolerance;
+                };
+
+                std::vector<int> stack;
+                stack.reserve(1024);
+                const int seed = y * W + x;
+                mask[seed] = 255;
+                stack.push_back(seed);
+                while (!stack.empty()) {
+                    const int p = stack.back();
+                    stack.pop_back();
+                    const int px = p % W;
+                    const int py = p / W;
+                    const int nx[4] = { px - 1, px + 1, px, px };
+                    const int ny[4] = { py, py, py - 1, py + 1 };
+                    for (int k = 0; k < 4; ++k) {
+                        if (nx[k] < 0 || nx[k] >= W || ny[k] < 0 || ny[k] >= H) continue;
+                        const int n = ny[k] * W + nx[k];
+                        if (mask[n]) continue;
+                        if (within(p, n)) {
+                            mask[n] = 255;
+                            stack.push_back(n);
+                        }
+                    }
+                }
+                return mask;
+            }
+        } // anonymous namespace
+
+        void FloodFillTolerance(PFXImage& image, int x, int y, const std::vector<double>& ink, double tolerance) {
+            vips::VImage work = image.cast(VIPS_FORMAT_UCHAR);
+            const int W = work.width();
+            const int H = work.height();
+            const int B = work.bands();
+            if (W <= 0 || H <= 0 || B <= 0) return;
+            std::vector<unsigned char> mask = MagicWandBuffer(work, x, y, tolerance);
+
+            size_t bytes = 0;
+            unsigned char* raw = static_cast<unsigned char*>(work.write_to_memory(&bytes));
+            std::vector<unsigned char> pix(raw, raw + bytes);
+            g_free(raw);
+
+            const int n = std::min(static_cast<int>(ink.size()), B);
+            for (size_t i = 0; i < mask.size(); ++i) {
+                if (!mask[i]) continue;
+                unsigned char* px = &pix[i * B];
+                for (int c = 0; c < n; ++c) {
+                    double v = ink[c];
+                    px[c] = static_cast<unsigned char>(v < 0.0 ? 0.0 : (v > 255.0 ? 255.0 : v));
+                }
+            }
+            image = PFXImage(vips::VImage::new_from_memory(
+                pix.data(), pix.size(), W, H, B, VIPS_FORMAT_UCHAR).copy_memory());
+        }
+
+        PFXImage MagicWandMask(const PFXImage& image, int x, int y, double tolerance) {
+            const int W = image.width();
+            const int H = image.height();
+            std::vector<unsigned char> mask = MagicWandBuffer(image, x, y, tolerance);
+            return PFXImage(vips::VImage::new_from_memory(
+                mask.data(), mask.size(), W, H, 1, VIPS_FORMAT_UCHAR).copy_memory());
+        }
+
         void Circle(PFXImage& image, int cx, int cy, int radius, const std::vector<double>& ink, bool fill) {
             image.draw_circle(ink, cx, cy, radius, vips::VImage::option()->set("fill", fill));
         }
