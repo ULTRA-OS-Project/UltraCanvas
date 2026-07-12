@@ -518,19 +518,24 @@ namespace PixelFX {
     namespace Draw {
 
         namespace {
-            // 4-connected magic-wand flood fill with *neighbour* tolerance.
+            // 4-connected tolerant flood fill, shared by FloodFillTolerance and
+            // MagicWandMask.
             //
-            // Starting from the seed, a pixel joins the selection when its colour is
-            // within `tolerance` (mean absolute per-channel difference) of the pixel it
-            // spreads from, rather than of the seed. The selection is therefore the
-            // transitive closure of the "locally similar" relation over 4-neighbours,
-            // restricted to the component containing the seed. That set is independent
-            // of traversal order and, because raising the tolerance only ever admits
-            // more edges, grows monotonically with `tolerance`.
+            // A pixel joins the selection according to `match`:
+            //   Neighbour - colour within `tolerance` of the pixel it spreads from
+            //               (follows gradients; the classic magic wand)
+            //   Seed      - colour within `tolerance` of the clicked seed colour
+            //   Exact     - colour identical to the seed colour (tolerance ignored)
+            // Distance is the mean absolute per-channel difference over the colour
+            // bands (a trailing alpha band is ignored). The selection is the
+            // transitive closure of the accepting relation over 4-neighbours,
+            // restricted to the component containing the seed, so it is independent
+            // of traversal order and grows monotonically as `tolerance` rises.
             //
             // Returns a W*H byte map (255 = selected, 0 = not). Works on the image cast
-            // to 8-bit; a trailing alpha band is ignored for the colour comparison.
-            std::vector<unsigned char> MagicWandBuffer(const vips::VImage& image, int x, int y, double tolerance) {
+            // to 8-bit.
+            std::vector<unsigned char> MagicWandBuffer(const vips::VImage& image, int x, int y,
+                                                       double tolerance, FloodMatch match) {
                 vips::VImage work = image.cast(VIPS_FORMAT_UCHAR);
                 const int W = work.width();
                 const int H = work.height();
@@ -546,15 +551,23 @@ namespace PixelFX {
                 std::vector<unsigned char> pix(raw, raw + bytes);
                 g_free(raw);
 
-                auto within = [&](int from, int to) -> bool {
-                    const unsigned char* a = &pix[static_cast<size_t>(from) * B];
-                    const unsigned char* b = &pix[static_cast<size_t>(to) * B];
+                const unsigned char* seed = &pix[static_cast<size_t>(y * W + x) * B];
+                auto colourDist = [&](const unsigned char* a, const unsigned char* b) -> double {
                     int sum = 0;
                     for (int c = 0; c < colourBands; ++c) {
                         int d = static_cast<int>(a[c]) - static_cast<int>(b[c]);
                         sum += d < 0 ? -d : d;
                     }
-                    return static_cast<double>(sum) / colourBands <= tolerance;
+                    return static_cast<double>(sum) / colourBands;
+                };
+                auto within = [&](int from, int to) -> bool {
+                    const unsigned char* cand = &pix[static_cast<size_t>(to) * B];
+                    switch (match) {
+                        case FloodMatch::Seed:  return colourDist(seed, cand) <= tolerance;
+                        case FloodMatch::Exact: return colourDist(seed, cand) == 0.0;
+                        case FloodMatch::Neighbour:
+                        default:                return colourDist(&pix[static_cast<size_t>(from) * B], cand) <= tolerance;
+                    }
                 };
 
                 std::vector<int> stack;
@@ -583,13 +596,13 @@ namespace PixelFX {
             }
         } // anonymous namespace
 
-        void FloodFillTolerance(PFXImage& image, int x, int y, const std::vector<double>& ink, double tolerance) {
+        void FloodFillTolerance(PFXImage& image, int x, int y, const std::vector<double>& ink, double tolerance, FloodMatch match) {
             vips::VImage work = image.cast(VIPS_FORMAT_UCHAR);
             const int W = work.width();
             const int H = work.height();
             const int B = work.bands();
             if (W <= 0 || H <= 0 || B <= 0) return;
-            std::vector<unsigned char> mask = MagicWandBuffer(work, x, y, tolerance);
+            std::vector<unsigned char> mask = MagicWandBuffer(work, x, y, tolerance, match);
 
             size_t bytes = 0;
             unsigned char* raw = static_cast<unsigned char*>(work.write_to_memory(&bytes));
@@ -609,10 +622,10 @@ namespace PixelFX {
                 pix.data(), pix.size(), W, H, B, VIPS_FORMAT_UCHAR).copy_memory());
         }
 
-        PFXImage MagicWandMask(const PFXImage& image, int x, int y, double tolerance) {
+        PFXImage MagicWandMask(const PFXImage& image, int x, int y, double tolerance, FloodMatch match) {
             const int W = image.width();
             const int H = image.height();
-            std::vector<unsigned char> mask = MagicWandBuffer(image, x, y, tolerance);
+            std::vector<unsigned char> mask = MagicWandBuffer(image, x, y, tolerance, match);
             return PFXImage(vips::VImage::new_from_memory(
                 mask.data(), mask.size(), W, H, 1, VIPS_FORMAT_UCHAR).copy_memory());
         }

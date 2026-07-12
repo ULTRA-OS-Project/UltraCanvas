@@ -245,30 +245,36 @@ namespace {
             } },
             { "draw", "Draw", {
                 { "floodfill", "Flood fill",
-                  "Magic-wand / gradient fill around the picked point (Draw::MagicWandMask). "
-                  "The fill spreads to every pixel that stays within Tolerance of its "
-                  "neighbour as it grows, so it creeps across smooth shading and stops at "
-                  "hard edges — and raising Tolerance always enlarges the area. Choose the "
-                  "ink below, press “Set fill position” and click a spot in the image.",
+                  "Paint-bucket fill around the picked point (Draw::MagicWandMask). The Fill "
+                  "mode chooses how the region grows: Gradient spreads while each pixel stays "
+                  "within Tolerance of its neighbour (magic wand — follows smooth shading); "
+                  "Global keeps pixels within Tolerance of the clicked colour; Exact takes "
+                  "only the connected patch of the identical colour. Raising Tolerance always "
+                  "enlarges the area. Choose the ink below, press “Set fill position” and "
+                  "click a spot in the image.",
                   { { "Tolerance", 1.0f, 48.0f, 10.0f, 1.0f } },
                   [](const PFXImage& src, const std::vector<float>& p, const EffectContext& ctx) {
                       PFXImage base = FX::Conversion::CastUchar(src);
                       if (FX::Colour::HasAlpha(base)) base = FX::Colour::Flatten(base);
                       int x = std::clamp(static_cast<int>(ctx.posX * (base.Width()  - 1)), 0, base.Width()  - 1);
                       int y = std::clamp(static_cast<int>(ctx.posY * (base.Height() - 1)), 0, base.Height() - 1);
-                      // Neighbour-tolerance flood fill: the region grows across pixels that
-                      // stay locally similar, so it follows gradients instead of a single
-                      // global colour bucket. Median-smooth the guide image first so sensor
-                      // noise doesn't block or leak the spread, but paint the ink over the
-                      // pristine original so untouched areas keep their detail.
-                      PFXImage guide = FX::Morphology::Median(base, 3);
-                      PFXImage mask  = FX::Draw::MagicWandMask(guide, x, y, std::max(0.0f, p[0]));
+                      FX::Draw::FloodMatch match =
+                          ctx.choice == 1 ? FX::Draw::FloodMatch::Seed  :
+                          ctx.choice == 2 ? FX::Draw::FloodMatch::Exact :
+                                            FX::Draw::FloodMatch::Neighbour;
+                      // The tolerance modes run on a median-smoothed guide so sensor noise
+                      // doesn't block or leak the spread; Exact matches the true pixels.
+                      // The ink is painted over the pristine original either way, so
+                      // untouched areas keep their detail.
+                      PFXImage guide = (match == FX::Draw::FloodMatch::Exact)
+                                           ? base : FX::Morphology::Median(base, 3);
+                      PFXImage mask  = FX::Draw::MagicWandMask(guide, x, y, std::max(0.0f, p[0]), match);
                       PFXImage ink   = FX::Generate::NewFromImage(base,
                           { static_cast<double>(ctx.fillColor.r),
                             static_cast<double>(ctx.fillColor.g),
                             static_cast<double>(ctx.fillColor.b) });
                       return FX::Arithmetic::Ifthenelse(mask, ink, base); },
-                  "", {}, true },
+                  "Fill mode", { "Gradient (neighbour)", "Global (seed colour)", "Exact colour" }, true },
             } },
             { "compositing", "Compositing", {
                 { "blend", "Blend modes",
@@ -618,6 +624,8 @@ namespace {
         auto tree = std::make_shared<UltraCanvasTreeView>("PixelFXTree", 0, 0, 250, 0);
         tree->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        // Expanding a category jumps the selection to its first function entry.
+        tree->SetShowFirstChildOnExpand(true);
 
         TreeNodeData rootData("pixelfx_root", "PixelFX processing");
         rootData.leftIcon = TreeNodeIcon(iconsDir + "image.png", 16, 16);
