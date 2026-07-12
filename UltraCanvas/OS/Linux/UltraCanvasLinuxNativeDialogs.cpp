@@ -1,11 +1,12 @@
 // OS/Linux/UltraCanvasNativeDialogsLinux.cpp
 // Linux implementation of native OS dialogs using GTK+
 // Uses unified DialogType, DialogButtons, DialogResult from UltraCanvasModalDialog.h
-// Version: 2.1.0
-// Last Modified: 2026-06-21
+// Version: 2.2.0
+// Last Modified: 2026-07-12
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasNativeDialogs.h"
+#include "UltraCanvasApplication.h"
 
 #ifdef __linux__
 
@@ -84,6 +85,31 @@ namespace UltraCanvas {
             while (gtk_events_pending()) {
                 gtk_main_iteration();
             }
+        }
+
+        // A GTK dialog runs its own nested main loop on GTK's own X11
+        // connection; the UltraCanvas connection is not read while it is up,
+        // so clicks and keystrokes aimed at the blocked application windows
+        // pile up in the UltraCanvas event queue. Dispatching them after the
+        // dialog closes replays stale input — every extra click on an
+        // "Open…" button would immediately reopen the just-closed dialog —
+        // so pointer/keyboard events queued during the dialog are dropped.
+        void DiscardQueuedUserInput() {
+            auto* app = UltraCanvasApplication::GetInstance();
+            Display* display = app ? app->GetDisplay() : nullptr;
+            if (!display) return;
+            XSync(display, False);
+            XEvent dropped;
+            while (XCheckMaskEvent(display,
+                                   ButtonPressMask | ButtonReleaseMask |
+                                   KeyPressMask | KeyReleaseMask,
+                                   &dropped)) {}
+        }
+
+        // Post-dialog cleanup shared by every modal dialog in this file.
+        void FinishNativeDialog() {
+            ProcessGtkEvents();
+            DiscardQueuedUserInput();
         }
 
 // Convert DialogType to GTK message type
@@ -268,7 +294,7 @@ namespace UltraCanvas {
 
         gint response = gtk_dialog_run(GTK_DIALOG(dialog));
         gtk_widget_destroy(dialog);
-        ProcessGtkEvents();
+        FinishNativeDialog();
 
         // Handle special button mappings
         if (buttons == DialogButtons::AbortRetryIgnore) {
@@ -376,7 +402,7 @@ namespace UltraCanvas {
         }
 
         gtk_widget_destroy(dialog);
-        ProcessGtkEvents();
+        FinishNativeDialog();
 
         return result;
     }
@@ -458,7 +484,7 @@ namespace UltraCanvas {
         }
 
         gtk_widget_destroy(dialog);
-        ProcessGtkEvents();
+        FinishNativeDialog();
 
         return results;
     }
@@ -553,7 +579,7 @@ namespace UltraCanvas {
         }
 
         gtk_widget_destroy(dialog);
-        ProcessGtkEvents();
+        FinishNativeDialog();
 
         return result;
     }
@@ -597,7 +623,7 @@ namespace UltraCanvas {
         }
 
         gtk_widget_destroy(dialog);
-        ProcessGtkEvents();
+        FinishNativeDialog();
 
         return result;
     }
@@ -680,7 +706,7 @@ namespace UltraCanvas {
         }
 
         gtk_widget_destroy(dialog);
-        ProcessGtkEvents();
+        FinishNativeDialog();
 
         return result;
     }
@@ -774,7 +800,7 @@ namespace UltraCanvas {
         }
 
         gtk_widget_destroy(dialog);
-        ProcessGtkEvents();
+        FinishNativeDialog();
 
         return printed;
     }
