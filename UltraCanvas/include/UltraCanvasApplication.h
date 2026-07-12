@@ -175,6 +175,8 @@ namespace UltraCanvas {
         bool IsMetaHeld() { return metaHeld; }
 
         UltraCanvasWindow* GetFocusedWindow();  // downcast from weak_ptr, defined in .cpp
+        // All windows registered with the application (main windows and dialogs).
+        const std::vector<std::shared_ptr<UltraCanvasWindowBase>>& GetWindows() const { return windows; }
         UltraCanvasUIElement* GetFocusedElement();
         UltraCanvasUIElement* GetHoveredElement() { return hoveredElement.lock().get(); }
         UltraCanvasUIElement* GetCapturedElement() { return capturedElement.lock().get(); }

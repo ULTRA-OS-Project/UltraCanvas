@@ -14,9 +14,89 @@
 #include <string>
 #include <vector>
 
+#ifndef _WIN32
+#include <sys/stat.h>
+#endif
+
 namespace ultranet_internal {
 
 namespace {
+
+    bool FileReadable(const char* path) {
+        std::FILE* f = std::fopen(path, "rb");
+        if (!f) return false;
+        std::fclose(f);
+        return true;
+    }
+
+    // CA trust anchors used when UltraNetConfig::caBundlePath is empty.
+    // libcurl bakes the CA bundle location of the *build* machine into the
+    // library; when the binary then runs on a distro that stores its bundle
+    // elsewhere (or the vendored libcurl was built on a different system),
+    // every https:// request fails with CURLE_SSL_CACERT_BADFILE — "Problem
+    // with the SSL CA cert (path? access rights?)". Probing the well-known
+    // locations at runtime keeps TLS verification working (rather than off)
+    // regardless of where the library was built.
+    struct CaTrust {
+        std::string bundle;   // CURLOPT_CAINFO
+        std::string dir;      // CURLOPT_CAPATH
+    };
+
+    const CaTrust& DiscoverCaTrust() {
+        static const CaTrust trust = [] {
+            CaTrust t;
+
+            // Explicit overrides first. libcurl itself does not read these —
+            // only the curl tool does — so honour them here for parity.
+            for (const char* name : {"CURL_CA_BUNDLE", "SSL_CERT_FILE"}) {
+                const char* v = std::getenv(name);
+                if (v && *v && FileReadable(v)) {
+                    t.bundle = v;
+                    return t;
+                }
+            }
+
+#if LIBCURL_VERSION_NUM >= 0x075400 /* 7.84.0: cainfo in version info */
+            // If the build-time default actually exists on this machine,
+            // leave libcurl alone.
+            const curl_version_info_data* info = curl_version_info(CURLVERSION_NOW);
+            if (info && info->cainfo && FileReadable(info->cainfo)) {
+                return t;
+            }
+#endif
+
+            static const char* const kBundles[] = {
+                "/etc/ssl/certs/ca-certificates.crt",                // Debian/Ubuntu/Arch/Gentoo
+                "/etc/pki/tls/certs/ca-bundle.crt",                  // Fedora/RHEL
+                "/etc/ssl/ca-bundle.pem",                            // openSUSE
+                "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem", // RHEL/CentOS trust store
+                "/etc/pki/tls/cacert.pem",                           // older Red Hat
+                "/etc/ssl/cert.pem",                                 // Alpine/BSD/macOS
+                "/usr/local/share/certs/ca-root-nss.crt",            // FreeBSD port
+            };
+            for (const char* p : kBundles) {
+                if (FileReadable(p)) {
+                    t.bundle = p;
+                    break;
+                }
+            }
+
+#ifndef _WIN32
+            auto dirExists = [](const char* p) {
+                struct stat st{};
+                return ::stat(p, &st) == 0 && S_ISDIR(st.st_mode);
+            };
+            const char* certDir = std::getenv("SSL_CERT_DIR");
+            if (certDir && *certDir && dirExists(certDir)) {
+                t.dir = certDir;
+            } else if (t.bundle.empty() && dirExists("/etc/ssl/certs")) {
+                t.dir = "/etc/ssl/certs";     // hashed-certificate directory
+            }
+#endif
+            return t;
+        }();
+        return trust;
+    }
 
     const char* MethodString(UltraNetHttpMethod m,
                              const std::string& customMethod) {
@@ -253,6 +333,17 @@ curl_slist* ConfigureEasyHandle(CURL* easy,
     curl_easy_setopt(easy, CURLOPT_SSLVERSION, CurlTlsVersionMask(cfg.minTlsVersion));
     if (!cfg.caBundlePath.empty()) {
         curl_easy_setopt(easy, CURLOPT_CAINFO, cfg.caBundlePath.c_str());
+    } else {
+        // No application-supplied bundle: point libcurl at the trust anchors
+        // this system actually has (see DiscoverCaTrust above). When nothing
+        // is found, libcurl's own defaults stay in effect.
+        const CaTrust& trust = DiscoverCaTrust();
+        if (!trust.bundle.empty()) {
+            curl_easy_setopt(easy, CURLOPT_CAINFO, trust.bundle.c_str());
+        }
+        if (!trust.dir.empty()) {
+            curl_easy_setopt(easy, CURLOPT_CAPATH, trust.dir.c_str());
+        }
     }
 
     const UltraNetProxyConfig& proxy =

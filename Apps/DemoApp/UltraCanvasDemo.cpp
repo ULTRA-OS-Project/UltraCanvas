@@ -35,10 +35,11 @@ namespace UltraCanvas {
         s.thumbCornerRadius = s.trackSize / 2;          // fully rounded ends
         s.trackCornerRadius = s.trackSize / 2;
         // Draw a grip handle on the thumb (SVG riffled grip), orientation-aware so
-        // vertical and horizontal bars each get a correctly-oriented grip.
+        // vertical and horizontal bars each get a correctly-oriented grip. The
+        // scrollbar scales the grip preserving its aspect ratio and centers it in
+        // the thumb.
         s.thumbImagePath           = NormalizePath(GetResourcesDir() + "media/icons/scrollbar-handle-v.svg");
         s.thumbImagePathHorizontal = NormalizePath(GetResourcesDir() + "media/icons/scrollbar-handle-h.svg");
-        s.thumbImageFit            = ImageFitMode::Fill;
         return s;
     }
 
@@ -714,6 +715,72 @@ namespace UltraCanvas {
                 .AddVariant("gauges", "Specialized")
                 .AddVariant("gauges", "Analog");
 
+        basicBuilder.AddItem("alert", "Alert / Message Box",
+                             "Modal, always-on-top alert dialogs (info, success, warning, error, confirm)",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateAlertExamples(); },
+                             "DemoApp/UltraCanvasAlertExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasAlert.md")
+                .AddVariant("alert", "Info / Success")
+                .AddVariant("alert", "Warning / Error")
+                .AddVariant("alert", "Confirm (Yes/No)")
+                .AddVariant("alert", "Rich (details / buttons)");
+
+        basicBuilder.AddItem("pagination", "Pagination",
+                             "Page-navigation strip with ellipsis windowing, compact and simple modes",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreatePaginationExamples(); },
+                             "DemoApp/UltraCanvasPaginationExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasPagination.md")
+                .AddVariant("pagination", "Numbered / Ellipsis")
+                .AddVariant("pagination", "From Item Count")
+                .AddVariant("pagination", "Compact")
+                .AddVariant("pagination", "Simple");
+
+        basicBuilder.AddItem("rating", "Rating",
+                             "Star/shape rating with half steps and custom SVG on/off/half symbols",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateRatingExamples(); },
+                             "DemoApp/UltraCanvasRatingExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasRating.md")
+                .AddVariant("rating", "Stars (whole / half)")
+                .AddVariant("rating", "Circle / Square")
+                .AddVariant("rating", "Read-only")
+                .AddVariant("rating", "Custom SVG symbols");
+
+        basicBuilder.AddItem("stepper", "Stepper / Wizard",
+                             "Multi-step progress indicator: numbered/icon/dot markers, horizontal & vertical, linear & non-linear",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateStepperExamples(); },
+                             "DemoApp/UltraCanvasStepperExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasStepper.md")
+                .AddVariant("stepper", "Horizontal Wizard")
+                .AddVariant("stepper", "Descriptions / Error")
+                .AddVariant("stepper", "Vertical")
+                .AddVariant("stepper", "Dot / Non-linear");
+
+        basicBuilder.AddItem("chip", "Chip / Tag Input",
+                             "Compact chips (filled/outlined/closable/selectable) and a wrapping tag/token input field",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateChipExamples(); },
+                             "DemoApp/UltraCanvasChipExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasChip.md")
+                .AddVariant("chip", "Filled / Outlined")
+                .AddVariant("chip", "Closable")
+                .AddVariant("chip", "Filter (selectable)")
+                .AddVariant("chip", "Tag Input");
+
+        basicBuilder.AddItem("badge", "Badge",
+                             "Count / status indicators: coloured pills, dots, and overlay badges anchored to icons",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateBadgeExamples(); },
+                             "DemoApp/UltraCanvasBadgeExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasBadge.md")
+                .AddVariant("badge", "Status Pills")
+                .AddVariant("badge", "Count (99+)")
+                .AddVariant("badge", "Status Dots")
+                .AddVariant("badge", "Overlay on Icon");
+
         // ===== EXTENDED FUNCTIONALITY =====
         auto extendedBuilder = DemoCategoryBuilder(this, DemoCategory::ExtendedFunctionality);
 
@@ -1331,18 +1398,12 @@ namespace UltraCanvas {
                              "DemoApp/UltraCanvasTextRenderingExamples.cpp",
                              "Docs/UltraCanvas/UltraCanvasTextRenderingExamples.md");
 
-        toolsBuilder.AddItem("networking", "Networking (UltraNet)",
-                             "Load a remote image from an https:// URL — exercises "
-                             "UltraCanvasFileLoader::LoadFile + UltraNet_HttpGet + "
-                             "UCImageRaster::LoadFromMemory.",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateNetworkingExamples(); },
-                             "Apps/DemoApp/UltraCanvasNetworkingExamples.cpp");
-
         auto modulesBuilder = DemoCategoryBuilder(this, DemoCategory::Modules);
         modulesBuilder.AddItem("audiofx", "Audio FX", "Audio FX",
-                               ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreateModuleDocScreen("Docs/Modules/AudioFX"); });
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateAudioFXExamples(); },
+                               "Apps/DemoApp/UltraCanvasAudioFXExamples.cpp",
+                               "Docs/Modules/AudioFX/README.md");
         modulesBuilder.AddItem("fileloader", "File Loader", "File Loader",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateFileLoaderExamples(); },
@@ -1360,9 +1421,14 @@ namespace UltraCanvas {
         modulesBuilder.AddItem("ultraai", "Ultra AI", "Ultra AI Module",
                                ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/UltraAI"); });
-        modulesBuilder.AddItem("ultranet", "Ultra Net", "Ultra Net Module",
+        modulesBuilder.AddItem("ultranet", "Ultra Net",
+                               "Ultra Net Module — overview, documentation and a live "
+                               "remote-resource loader (UltraCanvasFileLoader::LoadFile + "
+                               "UltraNet_HttpGet + UCImageRaster::LoadFromMemory)",
                                ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreateModuleDocScreen("Docs/Modules/UltraNet"); });
+                               [this]() { return CreateNetworkingExamples(); },
+                               "Apps/DemoApp/UltraCanvasNetworkingExamples.cpp",
+                               "Docs/Modules/UltraNet/README.md");
         modulesBuilder.AddItem("videofx", "VideoFX", "VideoFX Module",
                                ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/VideoFX"); });
@@ -1421,72 +1487,6 @@ namespace UltraCanvas {
                 .AddVariant("timepicker", "12-Hour AM/PM")
                 .AddVariant("timepicker", "With Seconds")
                 .AddVariant("timepicker", "Minute Step / Constraints");
-
-        widgetsBuilder.AddItem("alert", "Alert / Message Box",
-                               "Modal, always-on-top alert dialogs (info, success, warning, error, confirm)",
-                               ImplementationStatus::FullyImplemented,
-                               [this]() { return CreateAlertExamples(); },
-                               "DemoApp/UltraCanvasAlertExamples.cpp",
-                               "Docs/UltraCanvas/UltraCanvasAlert.md")
-                .AddVariant("alert", "Info / Success")
-                .AddVariant("alert", "Warning / Error")
-                .AddVariant("alert", "Confirm (Yes/No)")
-                .AddVariant("alert", "Rich (details / buttons)");
-
-        widgetsBuilder.AddItem("pagination", "Pagination",
-                               "Page-navigation strip with ellipsis windowing, compact and simple modes",
-                               ImplementationStatus::FullyImplemented,
-                               [this]() { return CreatePaginationExamples(); },
-                               "DemoApp/UltraCanvasPaginationExamples.cpp",
-                               "Docs/UltraCanvas/UltraCanvasPagination.md")
-                .AddVariant("pagination", "Numbered / Ellipsis")
-                .AddVariant("pagination", "From Item Count")
-                .AddVariant("pagination", "Compact")
-                .AddVariant("pagination", "Simple");
-
-        widgetsBuilder.AddItem("rating", "Rating",
-                               "Star/shape rating with half steps and custom SVG on/off/half symbols",
-                               ImplementationStatus::FullyImplemented,
-                               [this]() { return CreateRatingExamples(); },
-                               "DemoApp/UltraCanvasRatingExamples.cpp",
-                               "Docs/UltraCanvas/UltraCanvasRating.md")
-                .AddVariant("rating", "Stars (whole / half)")
-                .AddVariant("rating", "Circle / Square")
-                .AddVariant("rating", "Read-only")
-                .AddVariant("rating", "Custom SVG symbols");
-
-        widgetsBuilder.AddItem("stepper", "Stepper / Wizard",
-                               "Multi-step progress indicator: numbered/icon/dot markers, horizontal & vertical, linear & non-linear",
-                               ImplementationStatus::FullyImplemented,
-                               [this]() { return CreateStepperExamples(); },
-                               "DemoApp/UltraCanvasStepperExamples.cpp",
-                               "Docs/UltraCanvas/UltraCanvasStepper.md")
-                .AddVariant("stepper", "Horizontal Wizard")
-                .AddVariant("stepper", "Descriptions / Error")
-                .AddVariant("stepper", "Vertical")
-                .AddVariant("stepper", "Dot / Non-linear");
-
-        widgetsBuilder.AddItem("chip", "Chip / Tag Input",
-                               "Compact chips (filled/outlined/closable/selectable) and a wrapping tag/token input field",
-                               ImplementationStatus::FullyImplemented,
-                               [this]() { return CreateChipExamples(); },
-                               "DemoApp/UltraCanvasChipExamples.cpp",
-                               "Docs/UltraCanvas/UltraCanvasChip.md")
-                .AddVariant("chip", "Filled / Outlined")
-                .AddVariant("chip", "Closable")
-                .AddVariant("chip", "Filter (selectable)")
-                .AddVariant("chip", "Tag Input");
-
-        widgetsBuilder.AddItem("badge", "Badge",
-                               "Count / status indicators: coloured pills, dots, and overlay badges anchored to icons",
-                               ImplementationStatus::FullyImplemented,
-                               [this]() { return CreateBadgeExamples(); },
-                               "DemoApp/UltraCanvasBadgeExamples.cpp",
-                               "Docs/UltraCanvas/UltraCanvasBadge.md")
-                .AddVariant("badge", "Status Pills")
-                .AddVariant("badge", "Count (99+)")
-                .AddVariant("badge", "Status Dots")
-                .AddVariant("badge", "Overlay on Icon");
 
         widgetsBuilder.AddItem("mediaviewer", "Media Viewer",
                                "Comprehensive media viewer for images, documents (PDF), audio and "

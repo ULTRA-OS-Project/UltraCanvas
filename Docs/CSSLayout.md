@@ -212,3 +212,30 @@ you want the engine to size or stretch, use the no-size constructor (or pass `0,
   `SetElementAbsolutePosition()` if you must set geometry imperatively.
 - Toggle visibility with `SetVisible()` — it flows through `layout.display` (`NoDisplay`)
   and invalidates layout for you.
+- When a setter changes something that affects the element's **size** (text, count,
+  font, style), call `InvalidateLayout()` in addition to `RequestRedraw()` — a redraw
+  alone repaints the *old* bounds; only an invalidation makes the engine re-measure.
+
+## Troubleshooting: my widget renders nothing at all
+
+The most common contract violation fails **silently**: an auto-sized leaf widget
+(no explicit `w`/`h`, factory passes `0, 0`) that does **not** implement
+`MeasureOwnContent()` / `ComputeIntrinsicSizes()` measures as `{0, 0}`, so `Arrange()`
+resolves it to a **0×0 border-box** — and containers cull zero-sized children before
+`Render()` is ever called. No warning is logged; the widget simply never appears.
+
+Checklist when a widget is invisible:
+
+1. **Does it publish an intrinsic size?** Leaf widgets must override
+   `MeasureOwnContent()` (and `ComputeIntrinsicSizes()` for flex/grid parents). Setting
+   `finalBounds` from the constructor or from `Render()` does **not** work — the next
+   Arrange pass overwrites it (see the golden rule above). `UltraCanvasLabel` and
+   `UltraCanvasBadge` are exemplars.
+2. **Is it unintentionally in flow?** An element meant to *overlay* a sibling (badge on
+   an icon, resize handle, tooltip anchor) that is constructed at `(0, 0)` stays a
+   static in-flow child and gets stacked by the parent's layout. Take it out of flow
+   with `PositionType::AbsoluteUI` (see `UltraCanvasBadge::AnchorTo` for the pattern).
+3. **No render context during Measure?** `MeasureOwnContent()` may run before the
+   element can reach a window's render context (text can't be measured yet). Return a
+   sensible style-based fallback instead of `{0, 0}` where one exists, and let the next
+   measured pass refine it.

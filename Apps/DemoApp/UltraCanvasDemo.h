@@ -334,6 +334,10 @@ namespace UltraCanvas {
         // FileLoader module page: Overview / Details / Examples tabs, the last one
         // an interactive Open / Save playground across the supported file families.
         std::shared_ptr<UltraCanvasUIElement> CreateFileLoaderExamples();
+        // AudioFX module page: Overview / Details / Examples tabs, the last one an
+        // interactive audio-effect playground (sample track + effect tree +
+        // per-effect options, with waveform display and playback).
+        std::shared_ptr<UltraCanvasUIElement> CreateAudioFXExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateMarkdownDocScreen(const std::string& filename);
         // Composite module documentation screen: short intro (Markdown) on top, an
         // optional rendered SVG module diagram in the middle, and the full README
