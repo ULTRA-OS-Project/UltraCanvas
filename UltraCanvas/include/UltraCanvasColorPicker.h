@@ -1,9 +1,12 @@
 // include/UltraCanvasColorPicker.h
 // Comprehensive colour picker widget with HSV colour wheel, SV square,
-// preview swatches, hex input, mode selector (HSV/HSL/RGB) and editable
-// channel sliders with an alpha channel.
-// Version: 1.0.0
-// Last Modified: 2026-06-21
+// foreground/background swatches, hex input, mode selector (HSV/HSL/RGB) and
+// editable channel sliders with an alpha channel. Hovering a swatch floods the
+// whole widget surface with that colour so it can be judged on a large area,
+// and a screen colour-picker ("eyedropper") button samples a pixel from the
+// screen into the foreground (left mouse) or background (right mouse) colour.
+// Version: 1.1.0
+// Last Modified: 2026-07-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -161,6 +164,15 @@ namespace UltraCanvas {
         // Commit the current colour as the new baseline "previous" swatch.
         void CommitColor() { previousColor = GetColor(); RequestRedraw(); }
 
+        // ----- Foreground / background aliases -----
+        // The "current" swatch is the foreground colour (the value being edited);
+        // the "previous" swatch is the background colour. These aliases make the
+        // swatch semantics explicit for callers that think in fore/background terms.
+        Color GetForegroundColor() const { return GetColor(); }
+        void  SetForegroundColor(const Color& c, bool notify = true) { SetColor(c, notify); }
+        Color GetBackgroundColor() const { return previousColor; }
+        void  SetBackgroundColor(const Color& c) { SetPreviousColor(c); }
+
         // ===== MODE / LAYOUT =====
         ColorPickerModel GetModel() const { return model; }
         void SetModel(ColorPickerModel m);
@@ -179,6 +191,14 @@ namespace UltraCanvas {
         // ===== CALLBACKS =====
         std::function<void(const Color&)> onColorChanged;    // final value (drag end / commit)
         std::function<void(const Color&)> onColorChanging;   // continuous, during interaction
+
+        // Screen colour-picker ("eyedropper") request. Fired when the eyedropper
+        // button next to the background swatch is clicked: foreground == true for
+        // a left click (sample into the foreground colour) and false for a right
+        // click (sample into the background colour). Actual screen sampling is
+        // platform specific, so the host wires this up and calls SetForegroundColor
+        // or SetBackgroundColor with the picked pixel.
+        std::function<void(bool foreground)> onScreenColorPick;
 
         // ===== UIElement OVERRIDES =====
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
@@ -208,6 +228,11 @@ namespace UltraCanvas {
 
         bool dropdownOpen = false;
 
+        // Which swatch the pointer is hovering; drives the full-surface colour
+        // preview (the whole widget background is flooded with that colour).
+        enum class HoverSwatch { NoneSwatch, Foreground, Background };
+        HoverSwatch hoverSwatch = HoverSwatch::NoneSwatch;
+
         // ----- Cached layout (recomputed on resize) -----
         bool layoutValid = false;
         float cachedW = -1, cachedH = -1;
@@ -218,6 +243,7 @@ namespace UltraCanvas {
         Rect2Df currentSwatchRect;
         Rect2Df previousSwatchRect;
         Rect2Df swapArrowRect;
+        Rect2Df screenPickRect;     // eyedropper (screen colour picker) button
         Rect2Df modeButtonRect;
         Rect2Df hexLabelRect;
         Rect2Df hexFieldRect;
@@ -237,6 +263,7 @@ namespace UltraCanvas {
         void RenderSVSquare(IRenderContext* ctx);
         void RenderSwatches(IRenderContext* ctx);
         void RenderModeButton(IRenderContext* ctx);
+        void RenderScreenPickButton(IRenderContext* ctx);
         void RenderHexField(IRenderContext* ctx);
         void RenderTabs(IRenderContext* ctx);
         void RenderChannelRow(IRenderContext* ctx, int row);
@@ -253,6 +280,7 @@ namespace UltraCanvas {
         void ApplyDrag(const Point2Df& p, bool finished);
         void UpdateHueFromPoint(const Point2Df& p);
         void UpdateSVFromPoint(const Point2Df& p);
+        void UpdateSwatchHover(const Point2Df& p);           // full-surface preview
 
         // ----- Channel model glue -----
         // Returns the labels, current values and ranges for the active model.

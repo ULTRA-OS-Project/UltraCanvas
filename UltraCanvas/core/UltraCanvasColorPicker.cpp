@@ -1,7 +1,7 @@
 // core/UltraCanvasColorPicker.cpp
 // Implementation of the comprehensive colour picker widget.
-// Version: 1.0.0
-// Last Modified: 2026-06-21
+// Version: 1.1.0
+// Last Modified: 2026-07-12
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasColorPicker.h"
@@ -136,6 +136,13 @@ namespace UltraCanvas {
         currentSwatchRect  = Rect2Df(x0, cursorY, swatch, swatch);
         previousSwatchRect = Rect2Df(x0 + swatch * 0.55f, cursorY + swatch * 0.45f, swatch, swatch);
         swapArrowRect      = Rect2Df(x0, cursorY + swatch + 2.0f, 22.0f, 20.0f);
+
+        // Eyedropper (screen colour picker) sits just right of the background
+        // swatch, bottom-aligned with it.
+        const float iconSize = 20.0f;
+        screenPickRect = Rect2Df(previousSwatchRect.x + previousSwatchRect.width + 6.0f,
+                                 previousSwatchRect.y + previousSwatchRect.height - iconSize,
+                                 iconSize, iconSize);
 
         const float modeW = 64.0f;
         modeButtonRect = Rect2Df(rightEdge - modeW, cursorY, modeW, rh);
@@ -458,6 +465,32 @@ namespace UltraCanvas {
         ctx->FillLinePath({Point2Dd(tx, ty), Point2Dd(tx + 8, ty), Point2Dd(tx + 4, ty + 5)});
     }
 
+    void UltraCanvasColorPicker::RenderScreenPickButton(IRenderContext* ctx) {
+        Rect2Dd r(screenPickRect.x, screenPickRect.y,
+                  screenPickRect.width, screenPickRect.height);
+        ctx->SetFillPaint(style.fieldColor);
+        ctx->FillRoundedRectangle(r, style.cornerRadius);
+        ctx->SetStrokePaint(style.fieldBorderColor);
+        ctx->SetStrokeWidth(1.0);
+        ctx->DrawRoundedRectangle(r, style.cornerRadius);
+
+        // Eyedropper glyph: a diagonal barrel with a squeeze-bulb at the top-right
+        // and a pointed tip at the bottom-left.
+        const float x = screenPickRect.x, y = screenPickRect.y;
+        const float w = screenPickRect.width, h = screenPickRect.height;
+        Point2Dd tip(x + w * 0.26f, y + h * 0.74f);   // dropper tip (bottom-left)
+        Point2Dd neck(x + w * 0.60f, y + h * 0.40f);  // where barrel meets bulb
+        ctx->SetStrokePaint(style.textColor);
+        ctx->SetStrokeWidth(2.0);
+        ctx->DrawLine(tip, neck);
+        // Squeeze bulb
+        ctx->SetFillPaint(style.accentColor);
+        ctx->FillCircle(Point2Dd(x + w * 0.71f, y + h * 0.29f), w * 0.15f);
+        // Drop at the tip
+        ctx->SetFillPaint(style.textColor);
+        ctx->FillCircle(tip, w * 0.07f);
+    }
+
     void UltraCanvasColorPicker::RenderHexField(IRenderContext* ctx) {
         SetFont(ctx, true);
         ctx->SetTextAlignment(TextAlignment::Right);
@@ -639,14 +672,20 @@ namespace UltraCanvas {
     void UltraCanvasColorPicker::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         RecalculateLayout();
 
-        // Background panel
-        ctx->SetFillPaint(style.backgroundColor);
+        // Background panel. When a swatch is hovered the whole surface is flooded
+        // with that colour (forced opaque) so the picked colour can be judged on a
+        // large area; otherwise the normal UI background is used.
+        Color surface = style.backgroundColor;
+        if (hoverSwatch == HoverSwatch::Foreground)      { surface = GetColor();     surface.a = 255; }
+        else if (hoverSwatch == HoverSwatch::Background) { surface = previousColor;  surface.a = 255; }
+        ctx->SetFillPaint(surface);
         ctx->FillRectangle(Rect2Dd(0, 0, GetWidth(), GetHeight()));
 
         if (showColorWheel) {
             RenderHueRing(ctx);
             RenderSVSquare(ctx);
             RenderSwatches(ctx);
+            RenderScreenPickButton(ctx);
         }
         RenderModeButton(ctx);
         RenderHexField(ctx);
@@ -676,6 +715,10 @@ namespace UltraCanvas {
             case UCEventType::KeyDown:    return HandleKeyDown(event);
             case UCEventType::MouseLeave:
                 SetHovered(false);
+                if (hoverSwatch != HoverSwatch::NoneSwatch) {
+                    hoverSwatch = HoverSwatch::NoneSwatch;
+                    RequestRedraw();
+                }
                 return false;
             default: break;
         }
@@ -707,6 +750,15 @@ namespace UltraCanvas {
         }
 
         if (showColorWheel) {
+            // Eyedropper: left mouse samples the screen into the foreground colour,
+            // right mouse into the background colour. Actual sampling is done by the
+            // host via the onScreenColorPick callback.
+            if (screenPickRect.Contains(p)) {
+                bool foreground = (event.button != UCMouseButton::Right);
+                if (onScreenColorPick) onScreenColorPick(foreground);
+                return true;
+            }
+
             float dx = p.x - wheelCenter.x;
             float dy = p.y - wheelCenter.y;
             float dist = std::sqrt(dx * dx + dy * dy);
@@ -774,10 +826,29 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasColorPicker::HandleMouseMove(const UCEvent& event) {
-        if (dragTarget == DragTarget::NoneTarget) return false;
         Point2Df p(event.pointer.x, event.pointer.y);
-        ApplyDrag(p, false);
-        return true;
+        if (dragTarget != DragTarget::NoneTarget) {
+            ApplyDrag(p, false);
+            return true;
+        }
+        // Not dragging: track which swatch (if any) the pointer hovers so the
+        // whole surface can preview that colour.
+        UpdateSwatchHover(p);
+        return false;
+    }
+
+    void UltraCanvasColorPicker::UpdateSwatchHover(const Point2Df& p) {
+        HoverSwatch now = HoverSwatch::NoneSwatch;
+        if (showColorWheel) {
+            // The foreground (current) swatch sits on top of the background
+            // (previous) swatch, so test it first.
+            if (currentSwatchRect.Contains(p))       now = HoverSwatch::Foreground;
+            else if (previousSwatchRect.Contains(p)) now = HoverSwatch::Background;
+        }
+        if (now != hoverSwatch) {
+            hoverSwatch = now;
+            RequestRedraw();
+        }
     }
 
     bool UltraCanvasColorPicker::HandleMouseUp(const UCEvent& event) {
