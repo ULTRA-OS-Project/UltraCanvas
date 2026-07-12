@@ -1,7 +1,9 @@
 // core/UltraCanvasVideoPlayer.cpp
 // Non-visual video playback engine; wraps a backend decode session
-// Version: 0.1.0
-// Last Modified: 2026-06-15
+// Version: 0.1.1
+// Last Modified: 2026-07-12
+// V0.1.1: Play() after the clip ran to end-of-stream rewinds to 0 first — at EOS
+//   the pipeline produces no data, so a bare Play() silently did nothing.
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVideoPlayer.h"
@@ -15,6 +17,7 @@ struct UltraCanvasVideoPlayer::Impl {
     VideoPlaybackConfig config;
     std::unique_ptr<IVideoDecodeSession> session;
     VideoPlaybackState state = VideoPlaybackState::Idle;
+    bool endedAtEos = false;   // playback ran to end-of-stream; Play() must rewind
     std::string lastError;
     VideoStreamInfo emptyInfo;
 
@@ -67,6 +70,7 @@ struct UltraCanvasVideoPlayer::Impl {
             if (owner->onPositionChanged) owner->onPositionChanged(f ? f->GetPTS() : 0.0);
         };
         s->onEnded = [this]() {
+            endedAtEos = true;
             SetState(VideoPlaybackState::Stopped);
             if (owner->onEnded) owner->onEnded();
         };
@@ -86,6 +90,7 @@ struct UltraCanvasVideoPlayer::Impl {
             latestFrame.reset();
         }
         state = VideoPlaybackState::Idle;
+        endedAtEos = false;
         lastError.clear();
     }
 };
@@ -113,6 +118,13 @@ bool UltraCanvasVideoPlayer::IsLoaded() const { return impl->session != nullptr;
 
 bool UltraCanvasVideoPlayer::Play() {
     if (!impl->session) return false;
+    // After end-of-stream the pipeline is parked at EOS; setting it back to
+    // playing produces no data (GStreamer keeps reporting EOS). Rewind first so
+    // Play() after the clip finished restarts it from the top.
+    if (impl->endedAtEos) {
+        impl->endedAtEos = false;
+        impl->session->Seek(0.0);
+    }
     bool ok = impl->session->Play();
     if (ok) impl->SetState(VideoPlaybackState::Playing);
     return ok;
@@ -125,12 +137,16 @@ bool UltraCanvasVideoPlayer::Pause() {
 }
 bool UltraCanvasVideoPlayer::Stop() {
     if (!impl->session) return false;
-    bool ok = impl->session->Stop();
-    if (ok) impl->SetState(VideoPlaybackState::Stopped);
+    bool ok = impl->session->Stop();       // pauses and rewinds to 0
+    if (ok) {
+        impl->endedAtEos = false;
+        impl->SetState(VideoPlaybackState::Stopped);
+    }
     return ok;
 }
 bool UltraCanvasVideoPlayer::Seek(double seconds) {
     if (!impl->session) return false;
+    impl->endedAtEos = false;   // an explicit seek moves playback off the end
     return impl->session->Seek(std::max(0.0, seconds));
 }
 

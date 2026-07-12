@@ -223,10 +223,23 @@ namespace UltraCanvas {
                 window->eventCallback = [this](const UCEvent& event) {
                     if (event.type == UCEventType::KeyUp &&
                         event.virtualKey == UCKeys::Escape) {
-                        if (window) { window->Close(); window.reset(); }
+                        if (window) window->Close();
                         return true;
                     }
                     return false;
+                };
+
+                // Stop playback whenever the window closes — the title-bar
+                // close button included, which never runs our ESC handler.
+                // Without this the shared_ptr held here keeps the closed
+                // window (and the player in it) alive, so the decode pipeline
+                // keeps playing audio with no window on screen. Dropping our
+                // reference lets the application destroy the window and tear
+                // the pipeline down.
+                std::weak_ptr<UltraCanvasVideoPlayerElement> weakPlayer = player;
+                window->onWindowClosed = [this, weakPlayer]() {
+                    if (auto p = weakPlayer.lock()) p->Stop();
+                    window.reset();
                 };
 
                 window->Show();
@@ -287,10 +300,18 @@ namespace UltraCanvas {
                 window->eventCallback = [this](const UCEvent& event) {
                     if (event.type == UCEventType::KeyUp &&
                         event.virtualKey == UCKeys::Escape) {
-                        if (window) { window->Close(); window.reset(); }
+                        if (window) window->Close();
                         return true;
                     }
                     return false;
+                };
+
+                // Same close-time cleanup as the video window: stop playback
+                // and release our reference however the window was closed.
+                std::weak_ptr<UltraCanvasAudioPlayerElement> weakPlayer = player;
+                window->onWindowClosed = [this, weakPlayer]() {
+                    if (auto p = weakPlayer.lock()) p->Stop();
+                    window.reset();
                 };
 
                 window->Show();
