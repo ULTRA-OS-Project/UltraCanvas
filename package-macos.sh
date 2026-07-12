@@ -491,6 +491,20 @@ build_app_bundle() {
         echo "  Warning: media/ directory not found"
     fi
 
+    # Copy documentation to Resources/Docs/ (used by the demo's "View Docs").
+    if [ -d "$SCRIPT_DIR/Docs" ]; then
+        cp -R "$SCRIPT_DIR/Docs" "$contents_dir/Resources/Docs"
+        echo "  Copied documentation"
+    fi
+
+    # Copy demo example sources to Resources/DemoApp/ so the demo's
+    # "View Source" can load them (paths registered in UltraCanvasDemo.cpp).
+    if ls "$SCRIPT_DIR"/Apps/DemoApp/*.cpp >/dev/null 2>&1; then
+        mkdir -p "$contents_dir/Resources/DemoApp"
+        cp "$SCRIPT_DIR"/Apps/DemoApp/*.cpp "$contents_dir/Resources/DemoApp/"
+        echo "  Copied demo example sources"
+    fi
+
     # Bundle Homebrew dylibs
     bundle_dylibs "$contents_dir/MacOS/$exe_name" "$contents_dir/Frameworks"
 

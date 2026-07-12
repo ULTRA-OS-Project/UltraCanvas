@@ -166,7 +166,7 @@ namespace UltraCanvas {
         void SetScale(float scale);
         float GetScale() const { return scaleLevel; }
         void SetOffset(float x, float y);
-        Point2Df GetOffset() const { return offset; }
+        Point2Dd GetOffset() const { return offset; }
 
         void RenderPage(IRenderContext* ctx, int pageIndex);
     private:
@@ -174,7 +174,7 @@ namespace UltraCanvas {
         float viewWidth = 0;
         float viewHeight = 0;
         float scaleLevel = 1.0f;
-        Point2Df offset = {0, 0};
+        Point2Dd offset = {0, 0};
         CDRFitMode fitMode = CDRFitMode::FitPage;
 
         void CalculateAndSetFitTransform(IRenderContext* ctx, const CDRPage& page);
@@ -185,12 +185,17 @@ namespace UltraCanvas {
     private:
         UltraCanvasCDRRenderer cdrRenderer;
         int currentPageIndex = 0;
+        std::string lastError;
         void RenderPlaceholder(IRenderContext* ctx, const std::string& message);
 
     public:
-        UltraCanvasCDRElement(const std::string& identifier, long id,
+        UltraCanvasCDRElement(const std::string& identifier,
                               int x, int y, int width, int height);
         ~UltraCanvasCDRElement() override = default;
+
+        // Reason for the most recent failed load (locked / missing / not a valid
+        // CDR file). Empty after a successful load.
+        const std::string& GetLastError() const { return lastError; }
 
         // Load CDR file
         bool LoadFromFile(const std::string& filePath);
@@ -204,12 +209,12 @@ namespace UltraCanvas {
         void SetZoom(float zoom);
         float GetZoom() const { return cdrRenderer.GetScale(); }
         void SetOffset(float x, float y);
-        Point2Df GetOffset() const { return cdrRenderer.GetOffset(); }
+        Point2Dd GetOffset() const { return cdrRenderer.GetOffset(); }
         void SetFitMode(CDRFitMode mode);
         CDRFitMode GetFitMode() const { return cdrRenderer.GetFitMode(); }
 
         // Rendering
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
         // Callbacks
         std::function<void(int)> onPageChanged;
@@ -250,16 +255,16 @@ namespace UltraCanvas {
 
 // ===== CONVENIENCE FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasCDRElement> CreateCDRElement(
-            const std::string& identifier, long id,
+            const std::string& identifier,
             int x, int y, int width, int height) {
-        return std::make_shared<UltraCanvasCDRElement>(identifier, id, x, y, width, height);
+        return std::make_shared<UltraCanvasCDRElement>(identifier, x, y, width, height);
     }
 
     inline std::shared_ptr<UltraCanvasCDRElement> LoadCDRFromFile(
-            const std::string& identifier, long id,
+            const std::string& identifier,
             int x, int y, int width, int height,
             const std::string& filePath) {
-        auto element = CreateCDRElement(identifier, id, x, y, width, height);
+        auto element = CreateCDRElement(identifier, x, y, width, height);
         if (element->LoadFromFile(filePath)) {
             return element;
         }

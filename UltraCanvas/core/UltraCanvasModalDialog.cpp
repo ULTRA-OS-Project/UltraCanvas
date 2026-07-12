@@ -31,120 +31,105 @@ namespace UltraCanvas {
         ApplyTypeDefaults();
 
         // Build layout-based UI structure
-        BuildDialogLayout();
+        if (dialogConfig.dialogType != DialogType::Custom) {
+            BuildDialogLayout();
+        }
     }
 
     void UltraCanvasModalDialog::BuildDialogLayout() {
-        // Create main vertical layout for the window
-        auto mainLayout = CreateVBoxLayout(this);
-        mainLayout->SetSpacing(0);
+        // Window: vertical flex; content stretches, footer is fixed height.
+        this->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-        // Create the two main sections
         CreateContentSection();
         CreateFooterSection();
 
-        // Add sections to main layout
-        mainLayout->AddUIElement(contentSection, 1)->SetWidthMode(SizeMode::Fill);  // stretch=1
-        mainLayout->AddUIElement(footerSection)->SetWidthMode(SizeMode::Fill);
+        // Content grows to fill; footer is fixed.
+        contentSection->layoutItem.SetFlexGrow(1);
 
-        // Wire up button callbacks
         WireButtonCallbacks();
     }
 
     void UltraCanvasModalDialog::CreateContentSection() {
-        // Create content container
         contentSection = std::make_shared<UltraCanvasContainer>(
-                "ContentSection", 100, 0, 0, 0, 0);
+                "ContentSection");
         contentSection->SetBackgroundColor(dialogConfig.backgroundColor);
         contentSection->SetPadding(static_cast<int>(style.padding));
 
-        // Create horizontal layout for icon + message area
-        auto contentLayout = CreateHBoxLayout(contentSection.get());
-        contentLayout->SetSpacing(static_cast<int>(style.iconMessageSpacing));
+        // Row flex for icon + message.
+        contentSection->layout.SetFlexRow()
+                              .SetFlexGap(style.iconMessageSpacing)
+                              .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
         // ===== ICON CONTAINER =====
-        if (dialogConfig.dialogType != DialogType::Custom) {
-            iconContainer = std::make_shared<UltraCanvasContainer>(
-                    "IconContainer", 110, 0, 0,
-                    static_cast<long>(style.iconSize), static_cast<long>(style.iconSize));
-            iconContainer->SetBackgroundColor(GetTypeColor());
+        iconContainer = std::make_shared<UltraCanvasContainer>(
+                "IconContainer", 0, 0,
+                style.iconSize, style.iconSize);
+        iconContainer->SetBackgroundColor(GetTypeColor());
 
-            // Create icon layout to center the label
-            auto iconLayout = CreateVBoxLayout(iconContainer.get());
+        // Center the icon label inside.
+        iconContainer->layout.SetFlexColumn()
+                .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
+                             .SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
-            // Icon label
-            iconLabel = std::make_shared<UltraCanvasLabel>("IconLabel", 111);
-            iconLabel->SetText(GetTypeIcon());
-            iconLabel->SetFontSize(style.iconFontSize);
-            iconLabel->SetFontWeight(FontWeight::Bold);
-            iconLabel->SetTextColor(Colors::White);
-            iconLabel->SetAlignment(TextAlignment::Center);
-            iconLabel->SetAutoResize(false);
-            iconLabel->SetSize(static_cast<long>(style.iconSize), static_cast<long>(style.iconSize));
+        iconLabel = std::make_shared<UltraCanvasLabel>("IconLabel");
+        iconLabel->SetText(GetTypeIcon());
+        iconLabel->SetFontSize(style.iconFontSize);
+        iconLabel->SetFontWeight(FontWeight::Bold);
+        iconLabel->SetTextColor(Colors::White);
+        iconLabel->SetAlignment(TextAlignment::Center);
+        iconLabel->SetSize(style.iconSize, style.iconSize);
 
-            iconLayout->AddStretch(1);
-            iconLayout->AddUIElement(iconLabel)->SetMainAlignment(LayoutAlignment::Center)->SetCrossAlignment(LayoutAlignment::Center);
-            iconLayout->AddStretch(1);
-
-            contentLayout->AddUIElement(iconContainer)->SetCrossAlignment(LayoutAlignment::Start);
-        }
+        iconContainer->AddChild(iconLabel);
+        contentSection->AddChild(iconContainer);
+        iconContainer->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
 
         // ===== MESSAGE CONTAINER =====
         messageContainer = std::make_shared<UltraCanvasContainer>(
-                "MessageContainer", 120, 0, 0, 0, 0);
+                "MessageContainer");
 
-        auto messageLayout = CreateVBoxLayout(messageContainer.get());
-        messageLayout->SetSpacing(static_cast<int>(style.sectionSpacing / 2));
+        messageContainer->layout.SetFlexColumn()
+                                .SetFlexGap(style.sectionSpacing / 2)
+                                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-        // Message label - uses the component to render itself
-        messageLabel = std::make_shared<UltraCanvasLabel>("MessageLabel", 121);
+        messageLabel = std::make_shared<UltraCanvasLabel>("MessageLabel");
         messageLabel->SetText(dialogConfig.message);
         messageLabel->SetFontSize(style.messageFontSize);
         messageLabel->SetTextColor(style.messageTextColor);
         messageLabel->SetWrap(TextWrap::WrapWord);
-        messageLabel->SetAutoResize(true);
+        messageContainer->AddChild(messageLabel);
 
-        messageLayout->AddUIElement(messageLabel)->SetWidthMode(SizeMode::Fill);
-
-        // Details label - uses the component to render itself
-        detailsLabel = std::make_shared<UltraCanvasLabel>("DetailsLabel", 122);
+        detailsLabel = std::make_shared<UltraCanvasLabel>("DetailsLabel");
         detailsLabel->SetText(dialogConfig.details);
         detailsLabel->SetFontSize(style.detailsFontSize);
         detailsLabel->SetTextColor(style.detailsTextColor);
         messageLabel->SetWrap(TextWrap::WrapWord);
-        detailsLabel->SetAutoResize(true);
         detailsLabel->SetVisible(!dialogConfig.details.empty());
+        messageContainer->AddChild(detailsLabel);
 
-        messageLayout->AddUIElement(detailsLabel)->SetWidthMode(SizeMode::Fill);
+        // Push content to top — a trailing stretch spacer absorbs slack.
+        messageContainer->AddStretchSpacer(1);
 
-        // Add stretch to push content to top
-        messageLayout->AddStretch(1);
-
-        contentLayout->AddUIElement(messageContainer, 1)->SetCrossAlignment(LayoutAlignment::Fill);
+        contentSection->AddChild(messageContainer);
+        messageContainer->layoutItem.SetFlexGrow(1);
 
         AddChild(contentSection);
     }
 
     void UltraCanvasModalDialog::CreateFooterSection() {
-        // Create footer container with fixed height for buttons
         footerSection = std::make_shared<UltraCanvasContainer>(
-                "FooterSection", 200, 0, 0, 0, static_cast<long>(style.buttonAreaHeight));
+                "FooterSection", 0, 0, 0, style.buttonAreaHeight);
         footerSection->SetBackgroundColor(dialogConfig.backgroundColor);
-        footerSection->SetPadding(static_cast<int>(style.padding), static_cast<int>(style.padding / 2));
+        footerSection->SetPadding(static_cast<int>(style.padding),
+                                  static_cast<int>(style.padding / 2));
 
-        // Create horizontal layout for buttons
-        auto footerLayout = CreateHBoxLayout(footerSection.get());
-        footerLayout->SetSpacing(static_cast<int>(style.buttonSpacing));
-        footerLayout->SetDefaultMainAxisAlignment(LayoutAlignment::Center);
+        footerSection->layout.SetFlexRow()
+                .SetFlexGap(style.buttonSpacing)
+                .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
+                             .SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
-        // Add stretch to push buttons to the right (per guidelines 15.9)
-
-        // Create dialog buttons
         CreateDialogButtons();
-
-        // Add buttons to footer layout
         for (auto& button : dialogButtons) {
-            footerLayout->AddUIElement(button)->SetCrossAlignment(LayoutAlignment::Center);
+            footerSection->AddChild(button);
         }
         AddChild(footerSection);
     }
@@ -157,7 +142,7 @@ namespace UltraCanvas {
 
         auto addButton = [this](DialogButton btn, const std::string& text) {
             auto button = std::make_shared<UltraCanvasButton>(
-                    fmt::format("DialogBtn_{}", static_cast<int>(btn)), 0, 0, 0,
+                    fmt::format("DialogBtn_{}", static_cast<int>(btn)), 0, 0,
                     static_cast<long>(style.buttonWidth), static_cast<long>(style.buttonHeight));
             button->SetText(text);
             dialogButtons.push_back(button);
@@ -245,14 +230,14 @@ namespace UltraCanvas {
         // Recreate buttons
         CreateDialogButtons();
 
-        // Re-add to footer layout
         if (footerSection) {
-            auto footerLayout = CreateHBoxLayout(footerSection.get());
-            footerLayout->SetSpacing(static_cast<int>(style.buttonSpacing));
-            footerLayout->AddStretch(1);
-
+            footerSection->ClearChildren();
+            footerSection->layout.SetFlexRow()
+                                 .SetFlexGap(style.buttonSpacing)
+                                 .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+            footerSection->AddStretchSpacer(1);
             for (auto& button : dialogButtons) {
-                footerLayout->AddUIElement(button)->SetCrossAlignment(LayoutAlignment::Center);
+                footerSection->AddChild(button);
             }
         }
 
@@ -308,15 +293,45 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasModalDialog::ShowModal(UltraCanvasWindowBase* parent) {
-        // Center on parent if specified
-        if (parent && dialogConfig.position == DialogPosition::CenterParent) {
-            int parentX, parentY, parentW, parentH;
-            parent->GetWindowPosition(parentX, parentY);
-            parent->GetWindowSize(parentW, parentH);
+        // Resolve the window the dialog belongs to. When the caller passes no
+        // parent, fall back to the application's focused window, then to any
+        // visible non-dialog window, so the dialog always opens on the monitor
+        // the application is running on instead of wherever the window manager
+        // decides to place it.
+        UltraCanvasWindowBase* reference = parent;
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (!reference && app) {
+            reference = app->GetFocusedWindow();
+            if (!reference) {
+                for (auto& win : app->GetWindows()) {
+                    if (win && win.get() != this && win->IsWindowVisible() &&
+                        win->GetConfig().type != WindowType::Dialog) {
+                        reference = win.get();
+                        break;
+                    }
+                }
+            }
+        }
+        if (reference == this) reference = nullptr;
 
-            int dialogX = parentX + (parentW - dialogConfig.width) / 2;
-            int dialogY = parentY + (parentH - dialogConfig.height) / 2;
-            SetWindowPosition(dialogX, dialogY);
+        if (reference) {
+            // Lets the window manager keep the dialog above its parent and
+            // treat it as belonging to the parent's monitor.
+            SetTransientParent(reference);
+        }
+
+        switch (dialogConfig.position) {
+            case DialogPosition::CenterParent:
+                // Centered over the reference window, clamped to its monitor;
+                // falls back to centering on the screen when there is none.
+                CenterOnParent(reference);
+                break;
+            case DialogPosition::Center:
+                // Centered on the monitor the reference window resides on.
+                CenterOnScreenOfWindow(reference);
+                break;
+            default:
+                break;
         }
 
         // Register with dialog manager
@@ -375,13 +390,12 @@ namespace UltraCanvas {
     void UltraCanvasModalDialog::ClearDialogElements() {
         if (messageContainer) {
             messageContainer->ClearChildren();
-
-            // Re-add the standard message and details labels
-            auto messageLayout = CreateVBoxLayout(messageContainer.get());
-            messageLayout->SetSpacing(static_cast<int>(style.sectionSpacing / 2));
-            messageLayout->AddUIElement(messageLabel)->SetWidthMode(SizeMode::Fill);
-            messageLayout->AddUIElement(detailsLabel)->SetWidthMode(SizeMode::Fill);
-            messageLayout->AddStretch(1);
+            messageContainer->layout.SetFlexColumn()
+                                    .SetFlexGap(style.sectionSpacing / 2)
+                                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+            messageContainer->AddChild(messageLabel);
+            messageContainer->AddChild(detailsLabel);
+            messageContainer->AddStretchSpacer(1);
         }
     }
 
@@ -450,6 +464,7 @@ namespace UltraCanvas {
     Color UltraCanvasModalDialog::GetTypeColor() const {
         switch (dialogConfig.dialogType) {
             case DialogType::Information: return Color(70, 130, 180);   // Steel Blue
+            case DialogType::Successful:     return Color(40, 167, 69);    // Green
             case DialogType::Question:    return Color(70, 130, 180);   // Steel Blue
             case DialogType::Warning:     return Color(255, 193, 7);    // Amber
             case DialogType::Error:       return Color(220, 53, 69);    // Red
@@ -460,6 +475,7 @@ namespace UltraCanvas {
     std::string UltraCanvasModalDialog::GetTypeIcon() const {
         switch (dialogConfig.dialogType) {
             case DialogType::Information: return "i";
+            case DialogType::Successful:     return "\xE2\x9C\x93";  // check mark (U+2713)
             case DialogType::Question:    return "?";
             case DialogType::Warning:     return "!";
             case DialogType::Error:       return "X";
@@ -472,6 +488,9 @@ namespace UltraCanvas {
         switch (dialogConfig.dialogType) {
             case DialogType::Information:
                 if (dialogConfig.title == "Dialog") dialogConfig.title = "Information";
+                break;
+            case DialogType::Successful:
+                if (dialogConfig.title == "Dialog") dialogConfig.title = "Success";
                 break;
             case DialogType::Question:
                 if (dialogConfig.title == "Dialog") dialogConfig.title = "Question";
@@ -490,7 +509,7 @@ namespace UltraCanvas {
     void UltraCanvasModalDialog::AddCustomButton(const std::string& text, DialogResult buttonResult,
                                                  std::function<void()> callback) {
         auto button = std::make_shared<UltraCanvasButton>(
-                "DialogBtn_Custom_" + text, 1000 + static_cast<long>(dialogButtons.size()), 0, 0,
+                "DialogBtn_Custom_" + text, 0, 0,
                 static_cast<long>(style.buttonWidth), static_cast<long>(style.buttonHeight));
         button->SetText(text);
         button->onClick = [this, buttonResult, callback]() {
@@ -499,10 +518,8 @@ namespace UltraCanvas {
         };
         dialogButtons.push_back(button);
 
-        // Add to footer via layout
         if (footerSection) {
-            auto footerLayout = CreateHBoxLayout(footerSection.get());
-            footerLayout->AddUIElement(button)->SetCrossAlignment(LayoutAlignment::Center);
+            footerSection->AddChild(button);
         }
     }
 
@@ -566,13 +583,12 @@ namespace UltraCanvas {
 
     void UltraCanvasInputDialog::SetupInputField() {
         // Create input label
-        inputLabel = std::make_shared<UltraCanvasLabel>("InputLabel", 2000);
+        inputLabel = std::make_shared<UltraCanvasLabel>("InputLabel");
         inputLabel->SetText(inputConfig.inputLabel);
         inputLabel->SetFontSize(style.messageFontSize);
-        inputLabel->SetAutoResize(true);
 
         // Create text input
-        textInput = std::make_shared<UltraCanvasTextInput>("InputField", 2001, 0, 0, 300, 25);
+        textInput = std::make_shared<UltraCanvasTextInput>("InputField", 0, 0, 300, 25);
         textInput->SetText(inputConfig.defaultValue);
         textInput->SetPlaceholder(inputConfig.inputPlaceholder);
         inputValue = inputConfig.defaultValue;
@@ -795,20 +811,20 @@ namespace UltraCanvas {
         // All rects are stored in element-local space
         Rect2Di bounds = GetLocalBounds();
 
-        pathBarRect = Rect2Di(10, 10, bounds.width - 20, pathBarHeight);
+        pathBarRect = Rect2Di(10, 10, finalBounds.width - 20, pathBarHeight);
 
         int topOffset = pathBarHeight + 20;
         int bottomOffset = buttonHeight + filterHeight + 70;
         fileListRect = Rect2Di(10, topOffset,
-                               bounds.width - 20, bounds.height - topOffset - bottomOffset);
+                               finalBounds.width - 20, finalBounds.height - topOffset - bottomOffset);
 
         maxVisibleItems = fileListRect.height / itemHeight;
 
-        int fileNameY = bounds.height - buttonHeight - filterHeight - 55;
-        fileNameInputRect = Rect2Di(90, fileNameY, bounds.width - 110, 22);
+        int fileNameY = finalBounds.height - buttonHeight - filterHeight - 55;
+        fileNameInputRect = Rect2Di(90, fileNameY, finalBounds.width - 110, 22);
 
-        int filterY = bounds.height - buttonHeight - filterHeight - 25;
-        filterSelectorRect = Rect2Di(90, filterY, bounds.width - 110, filterHeight);
+        int filterY = finalBounds.height - buttonHeight - filterHeight - 25;
+        filterSelectorRect = Rect2Di(90, filterY, finalBounds.width - 110, filterHeight);
     }
 
     Rect2Di UltraCanvasFileDialog::GetPathBarBounds() const {
@@ -1316,37 +1332,6 @@ namespace UltraCanvas {
                     }, parent);
     }
 
-// ===== LEGACY METHODS (now async with optional callbacks) =====
-//    void UltraCanvasDialogManager::ShowMessage(const std::string& message, const std::string& title,
-//                                               DialogType type, DialogButtons buttons,
-//                                               std::function<void(DialogResult)> onResult) {
-//        ShowMessage(message, title, type, buttons, onResult, nullptr);
-//    }
-//
-//    void UltraCanvasDialogManager::ShowInformation(const std::string& message, const std::string& title,
-//                                                   std::function<void(DialogResult)> onResult) {
-//        ShowMessage(message, title, DialogType::Information, DialogButtons::OK, onResult, nullptr);
-//    }
-//
-//    void UltraCanvasDialogManager::ShowQuestion(const std::string& message, const std::string& title,
-//                                                std::function<void(DialogResult)> onResult) {
-//        ShowMessage(message, title, DialogType::Question, DialogButtons::YesNo, onResult, nullptr);
-//    }
-//
-//    void UltraCanvasDialogManager::ShowWarning(const std::string& message, const std::string& title,
-//                                               std::function<void(DialogResult)> onResult) {
-//        ShowMessage(message, title, DialogType::Warning, DialogButtons::OKCancel, onResult, nullptr);
-//    }
-//
-//    void UltraCanvasDialogManager::ShowError(const std::string& message, const std::string& title,
-//                                             std::function<void(DialogResult)> onResult) {
-//        ShowMessage(message, title, DialogType::Error, DialogButtons::OK, onResult, nullptr);
-//    }
-//
-//    void UltraCanvasDialogManager::ShowConfirmation(const std::string& message, const std::string& title,
-//                                                    std::function<void(bool)> onResult) {
-//        ShowConfirmation(message, title, onResult, nullptr);
-//    }
 // ===== CUSTOM DIALOGS =====
     std::shared_ptr<UltraCanvasModalDialog> UltraCanvasDialogManager::CreateDialog(const DialogConfig& config) {
         auto dialog = std::make_shared<UltraCanvasModalDialog>();
@@ -1402,86 +1387,6 @@ namespace UltraCanvas {
                 onResult(result, dialog->GetInputValue());
             }
         }, parent);
-    }
-
-    void UltraCanvasDialogManager::ShowOpenFileDialog(const std::string& title,
-                                                      const std::vector<FileFilter>& filters,
-                                                      const std::string& initialDir,
-                                                      std::function<void(DialogResult, const std::string&)> onResult,
-                                                      UltraCanvasWindowBase* parent) {
-        if (!enabled) {
-            if (onResult) onResult(DialogResult::Cancel, "");
-            return;
-        }
-
-        // File dialogs always use native dialogs for best user experience
-        // (native file browser is always better than custom implementation)
-        std::string result = UltraCanvasNativeDialogs::OpenFile(
-                title.empty() ? "Open File" : title, filters, initialDir, parent);
-
-        if (onResult) {
-            onResult(result.empty() ? DialogResult::Cancel : DialogResult::OK, result);
-        }
-    }
-
-    void UltraCanvasDialogManager::ShowSaveFileDialog(const std::string& title,
-                                                      const std::vector<FileFilter>& filters,
-                                                      const std::string& initialDir,
-                                                      const std::string& defaultName,
-                                                      std::function<void(DialogResult, const std::string&)> onResult,
-                                                      UltraCanvasWindowBase* parent) {
-        if (!enabled) {
-            if (onResult) onResult(DialogResult::Cancel, "");
-            return;
-        }
-
-        // File dialogs always use native dialogs for best user experience
-        std::string result = UltraCanvasNativeDialogs::SaveFile(
-                title.empty() ? "Save File" : title, filters, initialDir, defaultName, parent);
-
-        if (onResult) {
-            onResult(result.empty() ? DialogResult::Cancel : DialogResult::OK, result);
-        }
-    }
-
-    void UltraCanvasDialogManager::ShowOpenMultipleFilesDialog(
-            const std::string& title,
-            const std::vector<FileFilter>& filters,
-            const std::string& initialDir,
-            std::function<void(DialogResult, const std::vector<std::string>&)> onResult,
-            UltraCanvasWindowBase* parent) {
-
-        if (!enabled) {
-            if (onResult) onResult(DialogResult::Cancel, {});
-            return;
-        }
-
-        // Use native multi-file dialog for best user experience
-        std::vector<std::string> results = UltraCanvasNativeDialogs::OpenMultipleFiles(
-                title.empty() ? "Open Files" : title,
-                filters, initialDir, parent);
-
-        if (onResult) {
-            onResult(results.empty() ? DialogResult::Cancel : DialogResult::OK, results);
-        }
-    }
-
-    void UltraCanvasDialogManager::ShowSelectFolderDialog(const std::string& title,
-                                                          const std::string& initialDir,
-                                                          std::function<void(DialogResult, const std::string&)> onResult,
-                                                          UltraCanvasWindowBase* parent) {
-        if (!enabled) {
-            if (onResult) onResult(DialogResult::Cancel, "");
-            return;
-        }
-
-        // Folder dialogs always use native dialogs for best user experience
-        std::string result = UltraCanvasNativeDialogs::SelectFolder(
-                title.empty() ? "Select Folder" : title, initialDir, parent);
-
-        if (onResult) {
-            onResult(result.empty() ? DialogResult::Cancel : DialogResult::OK, result);
-        }
     }
 
     void UltraCanvasDialogManager::CloseAllDialogs() {
@@ -1670,4 +1575,53 @@ namespace UltraCanvas {
         return dialog;
     }
 
+    void FileDialogConfig::SetFiltersFromString(const std::string &filterString) {
+        filters.clear();
+        selectedFilterIndex = 0;
+
+        if (filterString.empty()) return;
+
+        std::vector<std::string> parts;
+        std::stringstream ss(filterString);
+        std::string part;
+        while (std::getline(ss, part, '|')) {
+            parts.push_back(part);
+        }
+
+        for (size_t i = 0; i + 1 < parts.size(); i += 2) {
+            std::string desc = parts[i];
+            std::string extPattern = parts[i + 1];
+
+            std::vector<std::string> extensions;
+            std::stringstream extSs(extPattern);
+            std::string ext;
+            while (std::getline(extSs, ext, ';')) {
+                // Remove "*." prefix if present
+                if (ext.substr(0, 2) == "*.") {
+                    ext = ext.substr(2);
+                }
+                if (!ext.empty()) {
+                    extensions.push_back(ext);
+                }
+            }
+
+            if (!extensions.empty()) {
+                filters.emplace_back(desc, extensions);
+            }
+        }
+    }
+
+    FileDialogConfig::FileDialogConfig() : DialogConfig() {
+        buttons = DialogButtons::OKCancel;
+        width = 600;
+        height = 450;
+        resizable = true;
+        // Default filters
+        filters = {
+                FileFilter("All Files", "*"),
+                FileFilter("Text Files", {"txt", "log", "md"}),
+                FileFilter("Image Files", {"png", "jpg", "jpeg", "gif", "bmp"}),
+                FileFilter("Document Files", {"pdf", "doc", "docx", "rtf"})
+        };
+    }
 } // namespace UltraCanvas

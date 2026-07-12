@@ -55,7 +55,6 @@ namespace UltraCanvas {
             // Create fullscreen SVG element
             auto fullscreenSVG = std::make_shared<UltraCanvasImageElement>(
                     "FullscreenSVG",
-                    10001,
                     0, 0,
                     1900, 1000
             );
@@ -71,7 +70,6 @@ namespace UltraCanvas {
             // Create instruction label
             auto instructionLabel = std::make_shared<UltraCanvasLabel>(
                     "Instructions",
-                    10002,
                     10, 10,
                     300, 30
             );
@@ -100,24 +98,24 @@ namespace UltraCanvas {
 
 // ===== VECTOR/SVG EXAMPLES IMPLEMENTATION =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSVGVectorExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("VectorExamples", 900, 0, 0, 1000, 780);
+        auto container = std::make_shared<UltraCanvasContainer>("VectorExamples", 0, 0, 1000, 780);
 
         // Title
-        auto title = std::make_shared<UltraCanvasLabel>("VectorTitle", 901, 10, 10, 500, 30);
+        auto title = std::make_shared<UltraCanvasLabel>("VectorTitle", 10, 10, 500, 30);
         title->SetText("SVG Graphics Demo - Click to View Fullscreen");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
         container->AddChild(title);
 
         // Description
-        auto description = std::make_shared<UltraCanvasLabel>("Description", 902, 10, 45, 600, 40);
+        auto description = std::make_shared<UltraCanvasLabel>("Description", 10, 45, 600, 40);
         description->SetText("Click on the SVG image below to open it in fullscreen mode.\nPress ESC to close the fullscreen view.");
         description->SetFontSize(12);
         description->SetTextColor(Color(80, 80, 80, 255));
         container->AddChild(description);
 
         // SVG Container with border
-        auto svgContainer = std::make_shared<UltraCanvasContainer>("SVGContainer", 903, 20, 100, 240, 240);
+        auto svgContainer = std::make_shared<UltraCanvasContainer>("SVGContainer", 20, 100, 240, 240);
         svgContainer->SetBackgroundColor(Color(250, 250, 250, 255));
         svgContainer->SetBorders(2, Color(180, 180, 180, 255));
 
@@ -125,7 +123,6 @@ namespace UltraCanvas {
         // Create SVG Element (200x200 inside the container with padding)
         auto svgElement = std::make_shared<UltraCanvasImageElement>(
                 "DemoSVG",
-                904,
                 20, 20,  // 20px padding inside container
                 200, 200
         );
@@ -194,14 +191,13 @@ namespace UltraCanvas {
             }
         });
 
-        auto svgContainer2 = std::make_shared<UltraCanvasContainer>("SVGContainer", 903, 280, 100, 240, 240);
+        auto svgContainer2 = std::make_shared<UltraCanvasContainer>("SVGContainer", 280, 100, 240, 240);
         svgContainer2->SetBackgroundColor(Color(250, 250, 250, 255));
         svgContainer2->SetBorders(2, Color(180, 180, 180, 255));
 
         // Create SVG Element (200x200 inside the container with padding)
         auto svgElement2 = std::make_shared<UltraCanvasImageElement>(
                 "DemoSVG2",
-                904,
                 20, 20,  // 20px padding inside container
                 200, 200
         );
@@ -230,14 +226,13 @@ namespace UltraCanvas {
             }
         });
 
-        auto svgContainer3 = std::make_shared<UltraCanvasContainer>("SVGContainer", 903, 540, 100, 240, 240);
+        auto svgContainer3 = std::make_shared<UltraCanvasContainer>("SVGContainer", 540, 100, 240, 240);
         svgContainer3->SetBackgroundColor(Color(250, 250, 250, 255));
         svgContainer3->SetBorders(2, Color(180, 180, 180, 255));
 
         // Create SVG Element (200x200 inside the container with padding)
         auto svgElement3 = std::make_shared<UltraCanvasImageElement>(
                 "DemoSVG2",
-                904,
                 18, 18,  // 20px padding inside container
                 200, 200
         );
@@ -266,14 +261,13 @@ namespace UltraCanvas {
             }
         });
 
-        auto svgContainer4 = std::make_shared<UltraCanvasContainer>("SVGContainer", 903, 20, 360, 240, 240);
+        auto svgContainer4 = std::make_shared<UltraCanvasContainer>("SVGContainer", 20, 360, 240, 240);
         svgContainer4->SetBackgroundColor(Color(250, 250, 250, 255));
         svgContainer4->SetBorders(2, Color(180, 180, 180, 255));
 
         // Create SVG Element (200x200 inside the container with padding)
         auto svgElement4 = std::make_shared<UltraCanvasImageElement>(
                 "DemoSVG2",
-                904,
                 20, 20,  // 20px padding inside container
                 200, 200
         );
@@ -316,18 +310,18 @@ namespace UltraCanvas {
         container->AddChild(svgContainer4);
 
         // Information panel
-        auto infoPanel = std::make_shared<UltraCanvasContainer>("InfoPanel", 905, 540, 360, 320, 320);
+        auto infoPanel = std::make_shared<UltraCanvasContainer>("InfoPanel", 540, 360, 320, 320);
         infoPanel->SetBackgroundColor(Color(245, 245, 245, 255));
         infoPanel->SetPadding(10,15,10,15);
         infoPanel->SetBorders(1, Color(200, 200, 200, 255));
 
-        auto infoTitle = std::make_shared<UltraCanvasLabel>("InfoTitle", 906, 0, 0, 250, 25);
+        auto infoTitle = std::make_shared<UltraCanvasLabel>("InfoTitle", 15, 10, 0, 25);
         infoTitle->SetText("SVG Features:");
         infoTitle->SetFontSize(14);
         infoTitle->SetFontWeight(FontWeight::Bold);
         infoPanel->AddChild(infoTitle);
 
-        auto infoText = std::make_shared<UltraCanvasLabel>("InfoText", 907, 0, 45, 240, 230);
+        auto infoText = std::make_shared<UltraCanvasLabel>("InfoText", 15, 45, 0, 0);
         infoText->SetText(
                 "• Scalable Vector Graphics support\n"
                 "• Load from file or string\n"

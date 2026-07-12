@@ -1,5 +1,6 @@
 // include/UltraCanvasListView.h
 // Model-View-Delegate ListView widget
+// Last Modified: 2026-07-11
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -37,7 +38,7 @@ namespace UltraCanvas {
         Color selectionBackgroundColor = Colors::Selection;
         Color hoverBackgroundColor = Colors::SelectionHover;
 
-        ScrollbarStyle scrollbarStyle = ScrollbarStyle::Modern();
+        ScrollbarStyle scrollbarStyle = GetDefaultScrollbarStyleOr(ScrollbarStyle::Modern());
     };
 
     // ===== LIST VIEW WIDGET =====
@@ -51,13 +52,28 @@ namespace UltraCanvas {
         std::function<void(const std::vector<int>&)> onSelectionChanged;
         std::function<void(int row)> onItemHovered;
 
+        // Cell-level callbacks (multi-column aware). posInCell is relative to the
+        // cell's top-left corner, i.e. the same space as the rects a delegate
+        // computes from ListItemStyleOption (x - columnX, y - row top). Hover is
+        // reported on every mouse move; (row=-1, column=-1) means the pointer
+        // left the rows area.
+        std::function<void(int row, int column, const Point2Di& posInCell)> onCellClicked;
+        std::function<void(int row, int column, const Point2Di& posInCell)> onCellHovered;
+
         // Constructor
-        UltraCanvasListView(const std::string& identifier, long id,
-                            int x, int y, int w, int h);
+        UltraCanvasListView(const std::string& identifier,
+                            float x, float y, float w, float h);
+
+        UltraCanvasListView(const std::string& identifier, float w, float h)
+            : UltraCanvasListView(identifier, -1, -1, w, h) {}
+
+        explicit UltraCanvasListView(const std::string& identifier)
+            : UltraCanvasListView(identifier, -1, -1, -1, -1) {}
+
         virtual ~UltraCanvasListView() = default;
 
         // === Model / Delegate / Selection wiring ===
-        void SetModel(IListModel* model);
+        void SetModel(std::shared_ptr<IListModel> model);
         IListModel* GetModel() const;
 
         void SetDelegate(std::shared_ptr<IItemDelegate> delegate);
@@ -79,17 +95,27 @@ namespace UltraCanvas {
         void ScrollToRow(int row);
         void EnsureRowVisible(int row);
 
+        // === Hit testing ===
+        // Column under an element-local x coordinate (-1 if outside the rows
+        // viewport). columnStartX receives the column's element-local left edge.
+        int GetColumnAt(int x, int* columnStartX = nullptr) const;
+
         // === Core overrides ===
-        void UpdateGeometry(IRenderContext* ctx) override;
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        // ListView is externally sized (explicit size or parent stretch); the base
+        // block measure is sufficient. We hook Arrange to recompute the scrollbar
+        // against the resolved finalBounds. SetBounds is kept because dropdown/
+        // autocomplete popups size this view imperatively (SetSize -> SetBounds) and
+        // the window popup pass does not run Measure/Arrange on popups.
+        void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         bool OnEvent(const UCEvent& event) override;
-        void SetBounds(const Rect2Di& bounds) override;
+        void SetBounds(const Rect2Df& bounds) override;
         void SetWindow(UltraCanvasWindowBase* win) override;
         bool AcceptsFocus() const override { return true; }
 
     private:
         // Model / Delegate / Selection
-        IListModel* model = nullptr;
+        std::shared_ptr<IListModel> model;
         std::shared_ptr<IItemDelegate> delegate;
         std::shared_ptr<IListSelection> selection;
 

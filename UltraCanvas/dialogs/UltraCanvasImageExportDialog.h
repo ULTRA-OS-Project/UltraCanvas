@@ -1,7 +1,7 @@
 // dialogs/UltraCanvasImageExportDialog.h
 // Comprehensive bitmap file save dialog with dynamic format-specific options
-// Version: 2.1.0
-// Last Modified: 2025-01-06
+// Version: 2.2.0
+// Last Modified: 2026-05-11
 // Author: UltraCanvas Framework
 //
 // ARCHITECTURE: Uses UltraCanvas layout system for automatic positioning
@@ -28,8 +28,6 @@
 #include "../include/UltraCanvasSlider.h"
 #include "../include/UltraCanvasContainer.h"
 #include "../include/UltraCanvasImageElement.h"
-#include "../include/UltraCanvasBoxLayout.h"
-#include "../include/UltraCanvasGridLayout.h"
 
 #include <functional>
 #include <string>
@@ -133,6 +131,15 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasContainer> gifOptionsContainer;
         std::shared_ptr<UltraCanvasContainer> tiffOptionsContainer;
         std::shared_ptr<UltraCanvasContainer> qoiOptionsContainer;
+        // ===== Phase 1 additions: per-format containers =====
+        std::shared_ptr<UltraCanvasContainer> tgaOptionsContainer;
+        std::shared_ptr<UltraCanvasContainer> pcxOptionsContainer;
+        std::shared_ptr<UltraCanvasContainer> pnmOptionsContainer;
+        std::shared_ptr<UltraCanvasContainer> exrOptionsContainer;
+        std::shared_ptr<UltraCanvasContainer> dpxOptionsContainer;
+        std::shared_ptr<UltraCanvasContainer> cinOptionsContainer;
+        std::shared_ptr<UltraCanvasContainer> psdOptionsContainer;
+        std::shared_ptr<UltraCanvasContainer> sgiOptionsContainer;
 
         // PNG - matches PngExportOptions: compressionLevel, interlace, preserveTransparency, colorDepth
         std::shared_ptr<UltraCanvasCheckbox> pngInterlaceCheckbox;
@@ -166,6 +173,24 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasCheckbox> qoiLinearColorspaceCheckbox;  // Changed from dropdown to checkbox
         std::shared_ptr<UltraCanvasLabel> qoiInfoLabel;
 
+        // ===== Phase 1 widgets =====
+        // TGA - rleCompression
+        std::shared_ptr<UltraCanvasCheckbox> tgaRleCheckbox;
+        // PCX - rleCompression
+        std::shared_ptr<UltraCanvasCheckbox> pcxRleCheckbox;
+        // PNM/PGM/PBM/PFM - binary vs ASCII
+        std::shared_ptr<UltraCanvasCheckbox> pnmBinaryCheckbox;
+        // EXR - compression dropdown
+        std::shared_ptr<UltraCanvasDropdown> exrCompressionDropdown;
+        // DPX - bit-depth dropdown
+        std::shared_ptr<UltraCanvasDropdown> dpxBitDepthDropdown;
+        // CIN - bit-depth dropdown
+        std::shared_ptr<UltraCanvasDropdown> cinBitDepthDropdown;
+        // PSD - compression
+        std::shared_ptr<UltraCanvasCheckbox> psdCompressedCheckbox;
+        // SGI - rleCompression
+        std::shared_ptr<UltraCanvasCheckbox> sgiRleCheckbox;
+
         // ===== METADATA COMPONENTS =====
         // Note: Many format-specific metadata options are commented out in UltraCanvasImage.h
         std::shared_ptr<UltraCanvasCheckbox> preserveMetadataCheckbox;
@@ -177,6 +202,10 @@ namespace UltraCanvas {
 
         // ===== STATE =====
         UCImageSaveFormat currentFormat = UCImageSaveFormat::PNG;
+        // Format entries actually shown in the dropdown, filtered against
+        // the installed libvips build via VipsCanSave. The dropdown's
+        // selection index maps directly into this vector.
+        std::vector<ImageFormatInfo> availableFormats;
 
         // ===== INTERNAL METHODS =====
         void BuildLayout();
@@ -193,6 +222,15 @@ namespace UltraCanvas {
         void CreateGifOptions();
         void CreateTiffOptions();
         void CreateQoiOptions();
+        // ===== Phase 1 additions =====
+        void CreateTgaOptions();
+        void CreatePcxOptions();
+        void CreatePnmOptions();
+        void CreateExrOptions();
+        void CreateDpxOptions();
+        void CreateCinOptions();
+        void CreatePsdOptions();
+        void CreateSgiOptions();
 
         void WireCallbacks();
         void UpdateFormatOptions();

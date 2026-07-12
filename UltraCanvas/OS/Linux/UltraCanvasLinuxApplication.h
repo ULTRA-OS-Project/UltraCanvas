@@ -1,7 +1,7 @@
 // OS/Linux/UltraCanvasLinuxApplication.h
 // Complete Linux platform implementation for UltraCanvas Framework
-// Version: 1.3.0
-// Last Modified: 2026-04-06
+// Version: 1.4.0
+// Last Modified: 2026-05-10
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -181,8 +181,11 @@ namespace UltraCanvas {
         void ShutdownWakeUp() override;
         FontStyle DetectSystemFontStyleNative() override;
         FontStyle DetectMonospacedFontStyleNative() override;
+        void LoadBundledFontsNative() override;
 
-        Cursor LoadCursorFromImage(const std::string& filename, int hotspotX, int hotspotY);
+        // scale: HiDPI factor; the cursor image and hotspot are scaled by it so
+        // custom cursors stay the right physical size on HiDPI displays.
+        Cursor LoadCursorFromImage(const std::string& filename, int hotspotX, int hotspotY, float scale = 1.0f);
 
     private:
         // ===== INTERNAL INITIALIZATION =====

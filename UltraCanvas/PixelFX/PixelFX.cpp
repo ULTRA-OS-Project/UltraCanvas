@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "PixelFX/PixelFX.h"
+#include "UltraCanvasFileError.h"
 #include "../libspecific/Cairo/VipsQoiLoader.h"
 #include <algorithm>
 #include <cmath>
@@ -83,7 +84,13 @@ namespace PixelFX {
                                                      vips::VImage::option()->set("access", (int)access)));
             return img;
         } catch (const vips::VError& e) {
-            throw PixelFXException("Failed to load image: " + std::string(e.what()));
+            // Prefer a clear file-access reason (missing / locked / no permission);
+            // otherwise report an unsupported/damaged format with the vips detail.
+            std::string access = UltraCanvas::DescribeFileReadError(filename);
+            throw PixelFXException(!access.empty()
+                ? access
+                : ("The image format is not supported or the file is damaged: "
+                   + filename + " (" + e.what() + ")"));
         }
     }
 
@@ -212,12 +219,20 @@ namespace PixelFX {
 
         bool Save(const PFXImage& image, const std::string& filename) {
             try { image.write_to_file(filename.c_str()); return true; }
-            catch (const vips::VError& e) { throw PixelFXException("Failed to save image: " + std::string(e.what())); }
+            catch (const vips::VError& e) {
+                std::string w = UltraCanvas::DescribeFileWriteError(filename);
+                throw PixelFXException(!w.empty() ? w
+                    : ("Could not save image: " + std::string(e.what())));
+            }
         }
 
         bool SaveWithOptions(const PFXImage& image, const std::string& filename, vips::VOption* options) {
             try { image.write_to_file(filename.c_str(), options); return true; }
-            catch (const vips::VError& e) { throw PixelFXException("Failed to save image: " + std::string(e.what())); }
+            catch (const vips::VError& e) {
+                std::string w = UltraCanvas::DescribeFileWriteError(filename);
+                throw PixelFXException(!w.empty() ? w
+                    : ("Could not save image: " + std::string(e.what())));
+            }
         }
 
         std::vector<uint8_t> SaveToBuffer(const PFXImage& image, const std::string& format) {
@@ -529,8 +544,11 @@ namespace PixelFX {
         PFXImage Blur(const PFXImage& image, int radius) { return GaussianBlur(image, radius / 2.0); }
 
         PFXImage BoxBlur(const PFXImage& image, int radius) {
+            // conv needs a one-band matrix image; new_from_image would create a
+            // size²-band constant image and fail with "matrix image must have one band".
             int size = radius * 2 + 1;
-            vips::VImage kernel = image.new_from_image(std::vector<double>(size * size, 1.0 / (size * size)));
+            std::vector<double> values(size * size, 1.0 / (size * size));
+            vips::VImage kernel = vips::VImage::new_matrix(size, size, values.data(), static_cast<int>(values.size()));
             return PFXImage(image.conv(kernel));
         }
 

@@ -1,0 +1,3 @@
+# IODeviceManager
+
+The unified hardware abstraction layer for all input and output devices. Discover, connect, configure, and control scanners, cameras, printers, microphones, speakers, storage, serial ports, and GPIO across every platform through one consistent API. Under the hood it speaks SANE, TWAIN, WIA, ONVIF, V4L2, and libgpiod, so the same code reaches the same hardware on Windows, Linux, and macOS. Async callbacks report progress, completion, and errors.

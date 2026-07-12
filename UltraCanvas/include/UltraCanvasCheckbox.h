@@ -1,37 +1,28 @@
 // UltraCanvasCheckbox.h
-// Interactive checkbox component with multiple states and customizable appearance
-// Version: 1.1.0
-// Last Modified: 2024-12-19
+// Interactive checkbox component with multiple states and customizable appearance.
+// Visual variants only (Standard/Rounded/Material). Radio and Switch are now
+// separate classes — see UltraCanvasRadio.h and UltraCanvasSwitch.h.
+// Version: 2.1.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 #pragma once
 
-#include "UltraCanvasCommonTypes.h"
-#include "UltraCanvasUIElement.h"
-#include "UltraCanvasRenderContext.h"
-#include "UltraCanvasEvent.h"
-#include <string>
-#include <functional>
+#include "UltraCanvasLabeledToggleBase.h"
+#include <memory>
 
 namespace UltraCanvas {
 
-// ===== CHECKBOX STATES =====
-    enum class CheckboxState {
-        Unchecked,
-        Checked,
-        Indeterminate  // Partially checked state for tree views
-    };
-
-// ===== CHECKBOX APPEARANCE STYLES =====
+// ===== CHECKBOX VISUAL VARIANT =====
     enum class CheckboxStyle {
-        Standard,       // Default square checkbox
-        Rounded,        // Rounded corners
-        Switch,         // Toggle switch style
-        Radio,          // Radio button style (circular)
-        Material        // Material Design style
+        Standard,   // Default square checkbox
+        Rounded,    // Rounded corners
+        Material    // Material Design (rounded with material colors)
     };
 
 // ===== CHECKBOX VISUAL STYLE =====
     struct CheckboxVisualStyle {
+        LabeledToggleVisualStyle base;
+
         // Box appearance
         Color boxColor = Colors::ButtonFace;
         Color boxBorderColor = Colors::ButtonShadow;
@@ -44,152 +35,83 @@ namespace UltraCanvas {
         Color checkmarkHoverColor = Colors::TextDefault;
         Color checkmarkDisabledColor = Colors::TextDisabled;
 
-        // Text appearance
-        Color textColor = Colors::TextDefault;
-        Color textHoverColor = Colors::TextDefault;
-        Color textDisabledColor = Colors::TextDisabled;
-
         // Layout
         float boxSize = 16.0f;
         float borderWidth = 1.0f;
         float cornerRadius = 2.0f;
         float checkmarkThickness = 2.0f;
-        int textSpacing = 6;  // Space between checkbox and label
-
-        // Text styling
-        std::string fontFamily = "Arial";
-        float fontSize = 12.0f;
-        FontWeight fontWeight = FontWeight::Normal;
-
-        // Effects
-        bool hasFocusRing = true;
-        Color focusRingColor = Color(0, 120, 215, 128);
-        float focusRingWidth = 2.0f;
     };
 
-// ===== MAIN CHECKBOX CLASS =====
-    class UltraCanvasCheckbox : public UltraCanvasUIElement {
+// ===== CHECKBOX =====
+    class UltraCanvasCheckbox : public UltraCanvasLabeledToggleBase {
     private:
-        // Core properties
-        std::string text;
-        CheckboxState checkState = CheckboxState::Unchecked;
         CheckboxStyle style = CheckboxStyle::Standard;
         CheckboxVisualStyle visualStyle;
-
-        // State tracking
         bool allowIndeterminate = false;
-        bool layoutDirty = true;
-        bool autoSize = false;
-
-        // Layout calculations
-        Rect2Df boxRect;
-        Rect2Df textRect;
-        Rect2Df totalBounds;
-
-        // Helper methods
-        void CalculateAutoSize(IRenderContext* ctx);
-        void CalculateLayout(IRenderContext* ctx);
-        void DrawCheckbox(IRenderContext* ctx);
-        void DrawCheckmark(IRenderContext* ctx);
-        void DrawIndeterminateMark(IRenderContext* ctx);
-        void DrawLabel(IRenderContext* ctx);
-        void DrawFocusRing(IRenderContext* ctx);
 
         Color GetCurrentBoxColor() const;
         Color GetCurrentCheckmarkColor() const;
+        float GetEffectiveCornerRadius() const;
+
+        void DrawCheckmark(IRenderContext* ctx);
+        void DrawIndeterminateMark(IRenderContext* ctx);
+
+    protected:
+        void DrawIndicator(IRenderContext* ctx) override;
+        Size2Df GetIndicatorSize() const override { return {visualStyle.boxSize, visualStyle.boxSize}; }
+        void OnActivate() override { Toggle(); }
+        const LabeledToggleVisualStyle& GetBaseVisualStyle() const override { return visualStyle.base; }
 
     public:
         // ===== CONSTRUCTORS =====
-        UltraCanvasCheckbox(const std::string& identifier = "", long id = 0,
-                            long x = 0, long y = 0, long w = 150, long h = 24,
+        UltraCanvasCheckbox(const std::string& identifier,
+                            float x, float y, float w, float h,
                             const std::string& labelText = "");
 
-        virtual ~UltraCanvasCheckbox() = default;
+        UltraCanvasCheckbox(const std::string& identifier,
+                            float w, float h,
+                            const std::string& labelText = "")
+            : UltraCanvasCheckbox(identifier, -1, -1, w, h, labelText) {}
 
-        // ===== STATE MANAGEMENT =====
-        void SetChecked(bool checked);
-        bool IsChecked() const { return checkState == CheckboxState::Checked; }
+        UltraCanvasCheckbox(const std::string& identifier, const std::string& labelText)
+            : UltraCanvasCheckbox(identifier, -1, -1, -1, -1, labelText) {}
 
-        void SetCheckState(CheckboxState state);
-        CheckboxState GetCheckState() const { return checkState; }
+        explicit UltraCanvasCheckbox(const std::string& labelText = "")
+            : UltraCanvasCheckbox("", -1, -1, -1, -1, labelText) {}
+
+        ~UltraCanvasCheckbox() override = default;
+
+        // ===== STATE =====
+        // Three-state cycle when allowIndeterminate is enabled.
+        void Toggle() override;
 
         void SetIndeterminate(bool indeterminate);
-        bool IsIndeterminate() const { return checkState == CheckboxState::Indeterminate; }
+        bool IsIndeterminate() const { return checkState == CheckedState::Indeterminate; }
 
         void SetAllowIndeterminate(bool allow) { allowIndeterminate = allow; }
         bool GetAllowIndeterminate() const { return allowIndeterminate; }
 
-        void SetAutoSize(bool val) { autoSize = val; }
-        void Toggle();
-
         // ===== APPEARANCE =====
-        void SetText(const std::string& labelText) { text = labelText; layoutDirty = true; }
-        std::string GetText() const { return text; }
-
-        void SetStyle(CheckboxStyle newStyle) { style = newStyle; layoutDirty = true; }
+        void SetStyle(CheckboxStyle newStyle) { style = newStyle; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }
         CheckboxStyle GetStyle() const { return style; }
 
-        void SetVisualStyle(const CheckboxVisualStyle& newStyle) { visualStyle = newStyle; layoutDirty = true; }
+        void SetVisualStyle(const CheckboxVisualStyle& s) { visualStyle = s; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }
         CheckboxVisualStyle& GetVisualStyle() { return visualStyle; }
         const CheckboxVisualStyle& GetVisualStyle() const { return visualStyle; }
 
-        void SetBoxSize(float size) { visualStyle.boxSize = size; layoutDirty = true; }
+        void SetBoxSize(float size) { visualStyle.boxSize = size; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }
         float GetBoxSize() const { return visualStyle.boxSize; }
 
         void SetColors(const Color& box, const Color& checkmark, const Color& text);
         void SetFont(const std::string& family, float size, FontWeight weight = FontWeight::Normal);
         void SetFontSize(float size);
 
-        // ===== RENDERING =====
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
-        void UpdateGeometry(IRenderContext *ctx) override;
-
-        // ===== EVENT HANDLING =====
-        bool OnEvent(const UCEvent& event) override;
-
-        // ===== CALLBACKS =====
-        std::function<void(CheckboxState oldState, CheckboxState newState)> onStateChanged;
-        std::function<void()> onChecked;
-        std::function<void()> onUnchecked;
-        std::function<void()> onIndeterminate;
-
-        // ===== AUTO-SIZING =====
-
-        // ===== FACTORY METHODS =====
+        // ===== FACTORY =====
         static std::shared_ptr<UltraCanvasCheckbox> CreateCheckbox(
-                const std::string& identifier, long id,
-                long x, long y, long w, long h,
+                const std::string& identifier,
+                float x, float y, float w, float h,
                 const std::string& text = "",
                 bool checked = false);
-
-        static std::shared_ptr<UltraCanvasCheckbox> CreateSwitch(
-                const std::string& identifier, long id,
-                long x, long y,
-                const std::string& text = "",
-                bool checked = false);
-
-        static std::shared_ptr<UltraCanvasCheckbox> CreateRadioButton(
-                const std::string& identifier, long id,
-                long x, long y,
-                const std::string& text = "",
-                bool checked = false);
-
-    };
-
-// ===== RADIO BUTTON GROUP MANAGER =====
-    class UltraCanvasRadioGroup {
-    private:
-        std::vector<std::shared_ptr<UltraCanvasCheckbox>> radioButtons;
-        std::shared_ptr<UltraCanvasCheckbox> selectedButton;
-
-    public:
-        void AddRadioButton(std::shared_ptr<UltraCanvasCheckbox> button);
-        void RemoveRadioButton(std::shared_ptr<UltraCanvasCheckbox> button);
-        void SelectButton(std::shared_ptr<UltraCanvasCheckbox> button);
-        std::shared_ptr<UltraCanvasCheckbox> GetSelectedButton() const { return selectedButton; }
-        void ClearSelection();
-
-        std::function<void(std::shared_ptr<UltraCanvasCheckbox>)> onSelectionChanged;
     };
 
 } // namespace UltraCanvas

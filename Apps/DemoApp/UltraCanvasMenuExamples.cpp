@@ -18,25 +18,25 @@ namespace UltraCanvas {
         debugOutput << "Creating Menu Examples..." << std::endl;
 
         // Create container for menu examples
-        auto container = std::make_shared<UltraCanvasContainer>("MenuContainer", 100, 0, 0, 1000, 630);
+        auto container = std::make_shared<UltraCanvasContainer>("MenuContainer", 0, 0, 1000, 630);
         container->SetBackgroundColor(Color(252, 252, 252, 255));
         container->SetPadding(0,0,10,0);
 
         // Section label for Context Menus
-        auto contextLabel = std::make_shared<UltraCanvasLabel>("ContextLabel", 101, 20, 10, 300, 30);
+        auto contextLabel = std::make_shared<UltraCanvasLabel>("ContextLabel", 20, 10, 400, 30);
         contextLabel->SetText("Context Menu Examples:");
         contextLabel->SetFontSize(14);
         contextLabel->SetFontWeight(FontWeight::Bold);
         container->AddChild(contextLabel);
 
         // Button to trigger context menu
-        auto contextMenuBtn = std::make_shared<UltraCanvasButton>("ContextMenuBtn", 102, 20, 45, 280, 35);
+        auto contextMenuBtn = std::make_shared<UltraCanvasButton>("ContextMenuBtn", 20, 45, 280, 35);
         contextMenuBtn->SetText("Right-Click for Context Menu");
 //        contextMenuBtn->SetTooltipText("Right-click anywhere on this button to show context menu");
         container->AddChild(contextMenuBtn);
 
         // Create context menu
-        auto contextMenu = std::make_shared<UltraCanvasMenu>("ContextMenu1", 103, 0, 0, 200, 0);
+        auto contextMenu = std::make_shared<UltraCanvasMenu>("ContextMenu1", 0, 0, 200, 0);
         contextMenu->SetMenuType(MenuType::PopupMenu);
 
         // Add context menu items
@@ -70,25 +70,45 @@ namespace UltraCanvas {
             debugOutput << "Delete action triggered" << std::endl;
         }));
 
-        // Set right-click handler for button
-        contextMenuBtn->onClick = [contextMenu, contextMenuBtn, container]() {
+        // "You clicked the wrong button" popup, shown on left-click as a
+        // cheeky reminder that this button expects a right-click.
+        auto contextWrongClickPopup = std::make_shared<UltraCanvasContainer>(
+                "ContextWrongClickPopup", 0, 0, 340, 64);
+        contextWrongClickPopup->SetBackgroundColor(Color(255, 255, 225, 255));
+        contextWrongClickPopup->SetBorders(1, Color(118, 118, 118, 255), 3.0f);
+
+        auto contextWrongClickIcon = std::make_shared<UltraCanvasImageElement>(
+                "ContextWrongClickIcon", 12, 12, 40, 40);
+        contextWrongClickIcon->LoadFromFile(NormalizePath(GetResourcesDir() + "media/icons/face-awesome.svg"));
+        contextWrongClickIcon->SetFitMode(ImageFitMode::Contain);
+        contextWrongClickPopup->AddChild(contextWrongClickIcon);
+
+        auto contextWrongClickText = std::make_shared<UltraCanvasLabel>(
+                "ContextWrongClickText", 62, 10, 268, 44);
+        contextWrongClickText->SetTextIsMarkup(true);
+        contextWrongClickText->SetWrap(TextWrap::WrapWord);
+        contextWrongClickText->SetText("Can't you read?\nI said <b>Right click</b> not <b>Left click</b>!");
+        contextWrongClickPopup->AddChild(contextWrongClickText);
+
+        // Set click handler for button: right-click opens the menu, left-click scolds.
+        contextMenuBtn->onClick = [contextMenu, contextWrongClickPopup, contextMenuBtn, container]() {
             auto ev = UltraCanvasApplication::GetInstance()->GetCurrentEvent();
             if (ev.button == UCMouseButton::Right) {
-                // move menu to window container
-//                container->GetWindow()->AddChild(contextMenu);
                 contextMenu->OpenMenu(ev.pointerWindow, *container->GetWindow(), PopupElementSettings());
+            } else if (ev.button == UCMouseButton::Left) {
+                container->GetWindow()->OpenPopup(ev.pointerWindow, *contextWrongClickPopup, PopupElementSettings());
             }
         };
 
         // Section label for Main Menu Bar
-        auto mainMenuLabel = std::make_shared<UltraCanvasLabel>("MainMenuLabel", 104, 20, 100, 250, 30);
+        auto mainMenuLabel = std::make_shared<UltraCanvasLabel>("MainMenuLabel", 20, 100, 400, 30);
         mainMenuLabel->SetText("Main Menu Bar Example:");
         mainMenuLabel->SetFontSize(14);
         mainMenuLabel->SetFontWeight(FontWeight::Bold);
         container->AddChild(mainMenuLabel);
 
 // Create main menu bar using MenuType::Menubar and MenuBuilder
-        auto mainMenuBar = MenuBuilder("MainMenuBar", 105, 20, 135, 960, 32)
+        auto mainMenuBar = MenuBuilder("MainMenuBar", 20, 135, 960, 32)
                 .SetType(MenuType::Menubar)
                 .AddSubmenu("File", {
                         MenuItemData::ActionWithShortcut("📄 New", "Ctrl+N", []() {
@@ -183,11 +203,11 @@ namespace UltraCanvas {
         container->AddChild(mainMenuBar);
 
         // Dark theme menu
-        auto darkMenuBtn = std::make_shared<UltraCanvasButton>("DarkMenuBtn", 115, 20, 225, 170, 35);
+        auto darkMenuBtn = std::make_shared<UltraCanvasButton>("DarkMenuBtn", 20, 225, 170, 35);
         darkMenuBtn->SetText("Dark Theme Menu");
         container->AddChild(darkMenuBtn);
 
-        auto darkMenu = std::make_shared<UltraCanvasMenu>("DarkMenu", 116, 0, 0, 200, 0);
+        auto darkMenu = std::make_shared<UltraCanvasMenu>("DarkMenu", 0, 0, 200, 0);
         darkMenu->SetMenuType(MenuType::PopupMenu);
         darkMenu->SetStyle(MenuStyle::Dark());
 
@@ -209,11 +229,11 @@ namespace UltraCanvas {
         };
 
         // Flat style menu
-        auto flatMenuBtn = std::make_shared<UltraCanvasButton>("FlatMenuBtn", 117, 200, 225, 170, 35);
+        auto flatMenuBtn = std::make_shared<UltraCanvasButton>("FlatMenuBtn", 200, 225, 170, 35);
         flatMenuBtn->SetText("Flat Style Menu");
         container->AddChild(flatMenuBtn);
 
-        auto flatMenu = std::make_shared<UltraCanvasMenu>("FlatMenu", 118, 0, 0, 200, 0);
+        auto flatMenu = std::make_shared<UltraCanvasMenu>("FlatMenu", 0, 0, 200, 0);
         flatMenu->SetMenuType(MenuType::PopupMenu);
         flatMenu->SetStyle(MenuStyle::Flat());
 
@@ -235,7 +255,7 @@ namespace UltraCanvas {
         };
 
         // Info label about menu features
-        auto infoLabel = std::make_shared<UltraCanvasLabel>("InfoLabel", 119, 20, 270, 960, 140);
+        auto infoLabel = std::make_shared<UltraCanvasLabel>("InfoLabel", 20, 270, 960, 140);
         infoLabel->SetText("Menu Features:\n"
                            "• Context menus with right-click\n"
                            "• Main menu bar with dropdowns\n"
@@ -248,14 +268,14 @@ namespace UltraCanvas {
         container->AddChild(infoLabel);
 
         // Popup menu example
-        auto popupLabel = std::make_shared<UltraCanvasLabel>("PopupLabel", 120, 20, 425, 200, 30);
+        auto popupLabel = std::make_shared<UltraCanvasLabel>("PopupLabel", 20, 425, 400, 30);
         popupLabel->SetText("Popup Menu Example:");
         popupLabel->SetFontSize(14);
         popupLabel->SetFontWeight(FontWeight::Bold);
         container->AddChild(popupLabel);
 
         // Create a sample list for popup menu
-        auto listContainer = std::make_shared<UltraCanvasContainer>("ListContainer", 121, 20, 460, 300, 150);
+        auto listContainer = std::make_shared<UltraCanvasContainer>("ListContainer", 20, 460, 300, 150);
         listContainer->SetBackgroundColor(Color(255, 255, 255, 255));
         listContainer->SetBorders(1, Color(200, 200, 200, 255));
         container->AddChild(listContainer);
@@ -264,7 +284,7 @@ namespace UltraCanvas {
         for (int i = 0; i < 5; i++) {
             auto itemLabel = std::make_shared<UltraCanvasLabel>(
                     "ListItem" + std::to_string(i),
-                    122 + i,
+                    
                     10, 10 + i * 25, 280, 20
             );
             itemLabel->SetText("Item " + std::to_string(i + 1) + " - Right-click for options");
@@ -273,7 +293,7 @@ namespace UltraCanvas {
             // Create item-specific popup menu
             auto itemMenu = std::make_shared<UltraCanvasMenu>(
                     "ItemMenu" + std::to_string(i),
-                    130 + i,
+                    
                     0, 0, 150, 0
             );
             itemMenu->SetMenuType(MenuType::PopupMenu);
@@ -290,11 +310,33 @@ namespace UltraCanvas {
                 debugOutput << "Delete item " << (i + 1) << std::endl;
             }));
 
-            // Set right-click handler
-            itemLabel->onClick = [itemMenu, itemLabel, container]() {
+            // "You clicked the wrong button" popup, shown on left-click as a
+            // cheeky reminder that these items expect a right-click.
+            auto wrongClickPopup = std::make_shared<UltraCanvasContainer>(
+                    "WrongClickPopup" + std::to_string(i), 0, 0, 340, 64);
+            wrongClickPopup->SetBackgroundColor(Color(255, 255, 225, 255));
+            wrongClickPopup->SetBorders(1, Color(118, 118, 118, 255), 3.0f);
+
+            auto wrongClickIcon = std::make_shared<UltraCanvasImageElement>(
+                    "WrongClickIcon" + std::to_string(i), 12, 12, 40, 40);
+            wrongClickIcon->LoadFromFile(NormalizePath(GetResourcesDir() + "media/icons/face-awesome.svg"));
+            wrongClickIcon->SetFitMode(ImageFitMode::Contain);
+            wrongClickPopup->AddChild(wrongClickIcon);
+
+            auto wrongClickText = std::make_shared<UltraCanvasLabel>(
+                    "WrongClickText" + std::to_string(i), 62, 10, 268, 44);
+            wrongClickText->SetTextIsMarkup(true);
+            wrongClickText->SetWrap(TextWrap::WrapWord);
+            wrongClickText->SetText("Can't you read? I said <b>Right click</b> not <b>Left click</b>!");
+            wrongClickPopup->AddChild(wrongClickText);
+
+            // Set click handler: right-click opens the menu, left-click scolds.
+            itemLabel->onClick = [itemMenu, wrongClickPopup, itemLabel, container]() {
                 auto ev = UltraCanvasApplication::GetInstance()->GetCurrentEvent();
                 if (ev.button == UCMouseButton::Right) {
                     itemMenu->OpenMenu(ev.pointerWindow, *container->GetWindow(), PopupElementSettings());
+                } else if (ev.button == UCMouseButton::Left) {
+                    container->GetWindow()->OpenPopup(ev.pointerWindow, *wrongClickPopup, PopupElementSettings());
                 }
             };
 

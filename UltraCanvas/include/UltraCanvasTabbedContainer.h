@@ -1,7 +1,7 @@
 // include/UltraCanvasTabbedContainer.h
 // Enhanced tabbed container component with overflow dropdown, search, drag-out, drag-in
-// Version: 2.0.2
-// Last Modified: 2026-04-24
+// Version: 2.2.0
+// Last Modified: 2026-05-31
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -221,9 +221,15 @@ namespace UltraCanvas {
         /// @return New tab index if accepted, -1 to reject
         std::function<int(const TabTransferData& data, int insertionIndex)> onTabDragIn;
 
-        UltraCanvasTabbedContainer(const std::string& elementId, long uniqueId, long posX, long posY, long w, long h);
+        UltraCanvasTabbedContainer(const std::string& elementId, float posX, float posY, float w, float h);
 
-        void InvalidateTabbar() { tabbarLayoutDirty = true; RequestRedraw(); }
+        UltraCanvasTabbedContainer(const std::string& elementId, float w, float h)
+            : UltraCanvasTabbedContainer(elementId, -1, -1, w, h) {}
+
+        explicit UltraCanvasTabbedContainer(const std::string& elementId)
+            : UltraCanvasTabbedContainer(elementId, -1, -1, -1, -1) {}
+
+        void InvalidateTabbar() { tabbarLayoutDirty = true; InvalidateLayout(); RequestRedraw(); }
 
         void SetTabHeight(int th);
         int GetTabHeight() const { return tabHeight; }
@@ -276,6 +282,11 @@ namespace UltraCanvas {
         int AddTab(const std::string& title, std::shared_ptr<UltraCanvasUIElement> content = nullptr);
         void RemoveTab(int index);
         void SetActiveTab(int index);
+        // Swap the UI element shown for an existing tab. Used when the tab's
+        // content type changes (e.g. plain TextArea swapped for a PDF view
+        // when the loaded file turns out to be a PDF).
+        void SetTabContent(int index, std::shared_ptr<UltraCanvasUIElement> content);
+        std::shared_ptr<UltraCanvasUIElement> GetTabContent(int index) const;
 
         // ===== TAB ICON AND BADGE METHODS =====
         void SetTabIcon(int index, const std::string& iconPath);
@@ -307,11 +318,13 @@ namespace UltraCanvas {
         void PopulateSearchAutoComplete();
 
         // ===== LAYOUT =====
-        void SetBounds(const Rect2Di& b) override;
-        void UpdateGeometry(IRenderContext* ctx) override;
+        void SetBounds(const Rect2Df& b) override;
+        // CSS layout: lay out the tab bar + active content in Arrange (the engine
+        // owns finalBounds; the container is externally sized so no custom measure).
+        void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
         // ===== RENDERING =====
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         void RenderTabBar(IRenderContext* ctx);
         void RenderTab(int index, IRenderContext* ctx);
         void RenderTabIcon(int index, IRenderContext* ctx);
@@ -419,11 +432,11 @@ namespace UltraCanvas {
 
 // ===== FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasTabbedContainer> CreateTabbedContainerWithDropdown(
-            const std::string& id, long uid, long x, long y, long width, long height,
+            const std::string& id, float x, float y, float width, float height,
             OverflowDropdownPosition dropdownPos = OverflowDropdownPosition::Left,
             bool enableSearch = true, int searchThreshold = 5) {
 
-        auto container = std::make_shared<UltraCanvasTabbedContainer>(id, uid, x, y, width, height);
+        auto container = std::make_shared<UltraCanvasTabbedContainer>(id, x, y, width, height);
         container->SetOverflowDropdownPosition(dropdownPos);
         container->SetDropdownSearchEnabled(enableSearch);
         container->SetDropdownSearchThreshold(searchThreshold);
@@ -431,8 +444,8 @@ namespace UltraCanvas {
     }
 
     inline std::shared_ptr<UltraCanvasTabbedContainer> CreateTabbedContainer(
-            const std::string& id, long uid, long x, long y, long width, long height) {
-        return std::make_shared<UltraCanvasTabbedContainer>(id, uid, x, y, width, height);
+            const std::string& id, float x, float y, float width, float height) {
+        return std::make_shared<UltraCanvasTabbedContainer>(id, x, y, width, height);
     }
 
 } // namespace UltraCanvas

@@ -1,13 +1,14 @@
 // include/UltraCanvasImageElement.h
 // Image display component with loading, caching, and transformation support
-// Version: 1.0.0
-// Last Modified: 2024-12-30
+// Version: 1.1.0
+// Last Modified: 2026-05-11
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
+#include "UltraCanvasImageAnimation.h"
 #include <string>
 #include <vector>
 #include <functional>
@@ -50,8 +51,8 @@ private:
     
     // Transform properties
     float rotation = 0.0f;
-    Point2Df scale = Point2Df(1.0f, 1.0f);
-    Point2Df offset = Point2Df(0.0f, 0.0f);
+    Point2Dd scale = Point2Dd(1.0f, 1.0f);
+    Point2Dd offset = Point2Dd(0.0f, 0.0f);
     
     // Interaction
     bool clickable = false;
@@ -67,7 +68,12 @@ private:
     // Performance
     bool cacheEnabled = true;
     bool asyncLoading = false;
-    
+
+    // Animation (GIF / animated WebP). Frames come from the loaded image's
+    // shared UCImageAnimation; the controller paces them on the app timer.
+    UCImageAnimationController animator;
+    bool animationEnabled = true;
+
 public:
     // ===== EVENTS =====
     std::function<void()> onImageLoaded;
@@ -76,15 +82,24 @@ public:
     std::function<void(const Point2Di&)> onImageDragged;
     
     // ===== CONSTRUCTOR =====
-    UltraCanvasImageElement(const std::string& identifier = "ImageElement", long id = 0,
-                           long x = 0, long y = 0, long w = 100, long h = 100);
+    UltraCanvasImageElement(const std::string& identifier,
+                           float x, float y, float w, float h);
+
+    UltraCanvasImageElement(const std::string& identifier,
+                            float w, float h);
+
+    UltraCanvasImageElement(const std::string& identifier = "ImageElement");
 
     // ===== IMAGE LOADING =====
     bool LoadFromFile(const std::string& filePath);
     bool LoadFromImage(std::shared_ptr<UCImage> img);
 
+    // Human-readable reason for the most recent failed LoadFromFile (e.g. the
+    // file was locked, missing, or the format is unsupported). Empty on success.
+    const std::string& GetLastError() const { return errorMessage; }
+
     // ===== IMAGE PROPERTIES =====
-    void SetFitMode(ImageFitMode mode) { fitMode = mode; }
+    void SetFitMode(ImageFitMode mode) { fitMode = mode; RequestRedraw(); }
     
     ImageFitMode GetFitMode() const { return fitMode; }
     void SetTintColor(const Color& color) { tintColor = color; }
@@ -102,7 +117,7 @@ public:
     }
     
     Point2Di GetImageSize() const {
-        if (loadedImage->IsValid()) {
+        if (loadedImage && loadedImage->IsValid()) {
             return Point2Di(loadedImage->GetWidth(), loadedImage->GetHeight());
         }
         return Point2Di(0, 0);
@@ -111,6 +126,22 @@ public:
 //    ImageFormat GetImageFormat() const { return loadedImage.format; }
     //const std::string& GetImagePath() const { return loadedImage.imagePath; }
     
+    // ===== ANIMATION (GIF / animated WebP) =====
+    // Animated images auto-play as soon as they are loaded. Call
+    // SetAnimationEnabled(false) (before or after loading) to show only the
+    // first frame instead.
+    void SetAnimationEnabled(bool enable);
+    bool IsAnimationEnabled() const { return animationEnabled; }
+    // True when the loaded image has more than one animation frame.
+    bool IsAnimatedImage() const { return loadedImage && loadedImage->IsAnimated(); }
+    void PlayAnimation()  { animator.Play(); }
+    void PauseAnimation() { animator.Pause(); }
+    void StopAnimation()  { animator.Stop(); }     // rewinds to frame 0
+    bool IsAnimationPlaying() const { return animator.IsPlaying(); }
+    // Direct access for advanced control (frame stepping, loop override,
+    // onEnded notification).
+    UCImageAnimationController& GetAnimationController() { return animator; }
+
     // ===== INTERACTION =====
     void SetClickable(bool enable) {
         clickable = enable;
@@ -119,14 +150,29 @@ public:
     
     void SetDraggable(bool enable) { draggable = enable; }
     
+    // ===== LAYOUT (CSS Measure/Arrange) =====
+    // Content box = the loaded image's natural pixel dimensions (Button pattern).
+    // Explicit size / parent stretch still win. The image is drawn from
+    // GetLocalBounds() + fitMode, so Arrange has no sub-rects to place.
+    Size2Df MeasureOwnContent(std::optional<float> definiteContentWidth,
+                              const CSSLayout::LayoutContext& ctx) override;
+    void ComputeIntrinsicSizes(const CSSLayout::LayoutContext& ctx) override;
+    void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
+
     // ===== RENDERING =====
-    void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
-    
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
+
     // ===== EVENT HANDLING =====
     bool OnEvent(const UCEvent& event) override;
     
 private:
+    // Natural (intrinsic) image size in pixels; {0,0} if no valid image is loaded.
+    Size2Df NaturalImageSize() const;
+
     void SetError(const std::string& message);
+
+    // Decode + start (or clear) the frame animation for the loaded image.
+    void SetupAnimation();
 
     void DrawLoadedImage(IRenderContext* ctx);
     void DrawErrorPlaceholder(IRenderContext* ctx);
@@ -140,26 +186,26 @@ private:
 
 // ===== FACTORY FUNCTIONS =====
 inline std::shared_ptr<UltraCanvasImageElement> CreateImageElement(
-    const std::string& identifier, long id, long x, long y, long w, long h) {
-    return UltraCanvasUIElementFactory::Create<UltraCanvasImageElement>(identifier, id, x, y, w, h);
+    const std::string& identifier, float x, float y, float w, float h) {
+    return UltraCanvasUIElementFactory::Create<UltraCanvasImageElement>(identifier, x, y, w, h);
 }
 
 inline std::shared_ptr<UltraCanvasImageElement> CreateImageElement(
-        const std::string& identifier, long w = 0, long h = 0) {
-    return UltraCanvasUIElementFactory::Create<UltraCanvasImageElement>(identifier, 0, 0, 0, w, h);
+        const std::string& identifier, float w = 0, float h = 0) {
+    return UltraCanvasUIElementFactory::Create<UltraCanvasImageElement>(identifier, 0, 0, w, h);
 }
 
 inline std::shared_ptr<UltraCanvasImageElement> CreateImageFromFile(
-    const std::string& identifier, long id, long x, long y, long w, long h, const std::string& imagePath) {
-    auto image = CreateImageElement(identifier, id, x, y, w, h);
+    const std::string& identifier, float x, float y, float w, float h, const std::string& imagePath) {
+    auto image = CreateImageElement(identifier, x, y, w, h);
     image->LoadFromFile(imagePath);
     return image;
 }
 
 inline std::shared_ptr<UltraCanvasImageElement> CreateImageFromMemory(
-    const std::string& identifier, long id, long x, long y, long w, long h, 
+    const std::string& identifier, float x, float y, float w, float h, 
     const std::vector<uint8_t>& imageData, UCImageLoadFormat format = UCImageLoadFormat::Autodetect) {
-    auto image = CreateImageElement(identifier, id, x, y, w, h);
+    auto image = CreateImageElement(identifier, x, y, w, h);
     auto img = UCImageRaster::LoadFromMemory(imageData);
     image->LoadFromImage(img);
     return image;
@@ -167,17 +213,17 @@ inline std::shared_ptr<UltraCanvasImageElement> CreateImageFromMemory(
 
 // ===== CONVENIENCE FUNCTIONS =====
 inline std::shared_ptr<UltraCanvasImageElement> CreateScaledImage(
-    const std::string& identifier, long id, long x, long y, long w, long h,
+    const std::string& identifier, float x, float y, float w, float h,
     const std::string& imagePath, ImageFitMode fitMode) {
-    auto image = CreateImageFromFile(identifier, id, x, y, w, h, imagePath);
+    auto image = CreateImageFromFile(identifier, x, y, w, h, imagePath);
     image->SetFitMode(fitMode);
     return image;
 }
 
 inline std::shared_ptr<UltraCanvasImageElement> CreateClickableImage(
-    const std::string& identifier, long id, long x, long y, long w, long h,
+    const std::string& identifier, float x, float y, float w, float h,
     const std::string& imagePath, std::function<void()> clickCallback) {
-    auto image = CreateImageFromFile(identifier, id, x, y, w, h, imagePath);
+    auto image = CreateImageFromFile(identifier, x, y, w, h, imagePath);
     image->SetClickable(true);
     image->onClick = clickCallback;
     return image;

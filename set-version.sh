@@ -72,8 +72,13 @@ sed -i "s/\(std::string UltraCanvasTextEditor::version = \"\)[^\"]*\"/\1$TEXTER_
 echo "  Updated $FILE"
 
 # --- Apps/Texter/UltraTexter.manifest: TEXTER_VERSION="x.y.z.0" ---
+# Only the app's own <assemblyIdentity> version (8-space indented, top-level
+# element). Must NOT touch the XML prolog `<?xml version="1.0"?>` or the
+# Common-Controls dependency `version="6.0.0.0"` (16-space indented) — a
+# malformed prolog makes Windows ignore the whole manifest (disabling DPI
+# awareness), and a wrong Common-Controls version fails the ComCtl32 v6 bind.
 FILE="$SCRIPT_DIR/Apps/Texter/UltraTexter.manifest"
-sed -i "s/\(version=\"\)[0-9][0-9.]*\"/\1$TEXTER_DOT4_VER\"/" "$FILE"
+sed -i "s/^\(        version=\"\)[0-9][0-9.]*\"/\1$TEXTER_DOT4_VER\"/" "$FILE"
 echo "  Updated $FILE"
 
 # --- Apps/Texter/UltraTexter.rc ---

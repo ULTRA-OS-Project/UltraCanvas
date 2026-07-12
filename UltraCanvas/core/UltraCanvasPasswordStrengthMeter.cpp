@@ -1,7 +1,7 @@
 // core/UltraCanvasPasswordStrengthMeter.cpp
 // Visual password strength indicator component
-// Version: 1.0.0
-// Last Modified: 2025-10-21
+// Version: 1.1.0
+// Last Modified: 2026-05-29
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasPasswordStrengthMeter.h"
@@ -10,9 +10,9 @@
 #include <functional>
 
 namespace UltraCanvas {
-    UltraCanvasPasswordStrengthMeter::UltraCanvasPasswordStrengthMeter(const std::string &id, long uid, int x, int y,
-                                                                       int w, int h)
-            : UltraCanvasUIElement(id, uid, x, y, w, h) {
+    UltraCanvasPasswordStrengthMeter::UltraCanvasPasswordStrengthMeter(const std::string &id, float x, float y,
+                                                                       float w, float h)
+            : UltraCanvasUIElement(id, x, y, w, h) {
         animationStartTime = std::chrono::steady_clock::now();
     }
 
@@ -44,6 +44,14 @@ namespace UltraCanvas {
         linkedInput = input;
         if (linkedInput) {
             UpdateStrength(linkedInput->GetText());
+            // Refresh live as the user types. The input only redraws itself on edit,
+            // so hook its text-changed callback to update (and redraw) this meter too.
+            // Chain any existing callback so we don't clobber it.
+            auto prev = linkedInput->onTextChanged;
+            linkedInput->onTextChanged = [this, prev](const std::string &password) {
+                if (prev) prev(password);
+                UpdateFromPassword(password);
+            };
         }
     }
 
@@ -55,7 +63,9 @@ namespace UltraCanvas {
         UpdateStrength(password);
     }
 
-    void UltraCanvasPasswordStrengthMeter::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasPasswordStrengthMeter::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
+        // Externally sized for now (explicit size or parent stretch); the base block
+        // block measure sizes us. TODO: implement MeasureOwnContent for intrinsic sizing.
         Rect2Di bounds = GetLocalBounds();
 
         // Update animation
@@ -154,6 +164,8 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasPasswordStrengthMeter::DrawBarStyle(IRenderContext *ctx, const Rect2Di &bounds) {
+        // Element-local coordinates: the ctx is translated to our origin, so draw
+        // against the passed-in local bounds (origin 0,0), not finalBounds.x/y.
         int barHeight = config.height;
         int barY = bounds.y + (bounds.height - barHeight) / 2;
 
@@ -175,6 +187,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasPasswordStrengthMeter::DrawCircularStyle(IRenderContext *ctx, const Rect2Di &bounds) {
+        // Element-local coordinates (ctx is translated to our origin).
         double centerX = bounds.x + bounds.width / 2;
         double centerY = bounds.y + bounds.height / 2;
         double radius = std::min(bounds.width, bounds.height) / 2 - 5;
@@ -199,7 +212,7 @@ namespace UltraCanvas {
             ctx->SetFontWeight(FontWeight::Bold);
             std::string percentText = std::to_string(static_cast<int>(currentStrength)) + "%";
             Size2Di textSize = ctx->GetTextLineDimensions(percentText);
-            ctx->DrawText(percentText, Point2Df(centerX - textSize.width / 2, centerY - textSize.height / 2));
+            ctx->DrawText(percentText, Point2Dd(centerX - textSize.width / 2, centerY - textSize.height / 2));
         }
 
         // Draw label below
@@ -207,7 +220,7 @@ namespace UltraCanvas {
             ctx->SetFontSize(10);
             ctx->SetFontWeight(FontWeight::Normal);
             int labelWidth = ctx->GetTextLineWidth(strengthLabel);
-            ctx->DrawText(strengthLabel, Point2Df(centerX - labelWidth / 2, centerY + radius + 5));
+            ctx->DrawText(strengthLabel, Point2Dd(centerX - labelWidth / 2, centerY + radius + 5));
         }
     }
 
@@ -226,7 +239,7 @@ namespace UltraCanvas {
 
         if (!displayText.empty()) {
             int textWidth = ctx->GetTextLineWidth(displayText);
-            ctx->DrawText(displayText, Point2Df (bounds.x + static_cast<double>(bounds.width - textWidth) / 2.0, y));
+            ctx->DrawText(displayText, Point2Dd (bounds.x + static_cast<double>(bounds.width - textWidth) / 2.0, y));
         }
     }
 }

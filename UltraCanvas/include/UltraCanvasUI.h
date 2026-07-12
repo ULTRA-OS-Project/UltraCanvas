@@ -16,15 +16,14 @@
 
 // ===== UI COMPONENTS =====
 #include "UltraCanvasButton.h"
+#include "UltraCanvasBreadcrumb.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasContainer.h"
-#include "UltraCanvasLayout.h"
-#include "UltraCanvasBoxLayout.h"
-#include "UltraCanvasGridLayout.h"
-#include "UltraCanvasFlexLayout.h"
+#include "UltraCanvasGroupBox.h"
 #include "UltraCanvasTooltipManager.h"
 #include "UltraCanvasMenu.h"
+#include "UltraCanvasColorPicker.h"
 //#include "UltraCanvasStyledText.h"
 //#include "UltraCanvasShapePrimitives.h"
 

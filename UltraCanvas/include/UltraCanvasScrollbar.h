@@ -1,7 +1,7 @@
 // include/UltraCanvasScrollbar.h
 // Standalone scrollbar UI control with full interaction support
-// Version: 2.0.0
-// Last Modified: 2025-11-24
+// Version: 2.1.1
+// Last Modified: 2026-07-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -51,6 +51,19 @@ namespace UltraCanvas {
         int trackCornerRadius = 0;
         bool showTrackBorder = false;
         bool showThumbBorder = false;
+
+        // Custom handle (thumb) image. When thumbImagePath is non-empty the thumb is
+        // drawn from this image (PNG or SVG) instead of the solid rounded rectangle.
+        // The image is never stretched: it is scaled preserving its aspect ratio to
+        // fit the thumb rect and centered within it, so the grip keeps its shape on
+        // bars of any width and thumbs of any length. Leave empty for the default
+        // solid thumb. SVG handles scale crisply.
+        std::string thumbImagePath;
+        // Optional orientation-specific handle image used for horizontal scrollbars.
+        // When set it overrides thumbImagePath for horizontal bars, so a single style
+        // can carry a vertical grip (thumbImagePath) and a matching horizontal grip
+        // here. If left empty, horizontal bars fall back to thumbImagePath.
+        std::string thumbImagePathHorizontal;
 
         // Behavior
         bool autoHide = false;
@@ -119,6 +132,21 @@ namespace UltraCanvas {
             return style;
         }
     };
+
+// ===== APPLICATION-WIDE DEFAULT SCROLLBAR STYLE =====
+// An application may set a single default scrollbar style that every element
+// owning a scrollbar (containers, tree/list views, menus, dropdowns, ...) adopts
+// for a consistent app-wide look. Element style structs initialise their
+// scrollbarStyle from GetDefaultScrollbarStyleOr(<their own default>), so the
+// default is only applied to elements and never to standalone UltraCanvasScrollbar
+// instances created with an explicit style (e.g. the scrollbar showcase page).
+// No default is set until an app calls SetDefaultScrollbarStyle, so framework
+// behaviour is unchanged for callers that never opt in.
+    void SetDefaultScrollbarStyle(const ScrollbarStyle& style);
+    void ClearDefaultScrollbarStyle();
+    bool HasDefaultScrollbarStyle();
+    // Returns the app-wide default style if one has been set, otherwise fallback.
+    ScrollbarStyle GetDefaultScrollbarStyleOr(const ScrollbarStyle& fallback);
 
 // ===== SCROLLBAR INTERACTION STATE =====
     struct ScrollbarInteractionState {
@@ -199,9 +227,20 @@ namespace UltraCanvas {
         bool layoutDirty = true;
 
     public:
-        // ===== CONSTRUCTOR =====
-        UltraCanvasScrollbar(const std::string& id, long uid, int x, int y, int w, int h,
+        // ===== CONSTRUCTORS =====
+        UltraCanvasScrollbar(const std::string& id, float x, float y, float w, float h,
                              ScrollbarOrientation orient = ScrollbarOrientation::Vertical);
+
+        UltraCanvasScrollbar(const std::string& id, float w, float h,
+                             ScrollbarOrientation orient = ScrollbarOrientation::Vertical)
+            : UltraCanvasScrollbar(id, -1, -1, w, h, orient) {}
+
+        UltraCanvasScrollbar(const std::string& id,
+                             ScrollbarOrientation orient = ScrollbarOrientation::Vertical)
+            : UltraCanvasScrollbar(id, -1, -1, -1, -1, orient) {}
+
+        explicit UltraCanvasScrollbar(ScrollbarOrientation orient = ScrollbarOrientation::Vertical)
+            : UltraCanvasScrollbar("", -1, -1, -1, -1, orient) {}
 
         virtual ~UltraCanvasScrollbar() = default;
 
@@ -298,9 +337,9 @@ namespace UltraCanvas {
         Rect2Di GetTrackRect() const { return trackRect; }
         Rect2Di GetThumbRect() const { return thumbRect; }
 
-        void SetBounds(const Rect2Di& b) override;
+        void SetBounds(const Rect2Df& b) override;
         // ===== RENDERING =====
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;
@@ -326,20 +365,20 @@ namespace UltraCanvas {
 
 // ===== FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasScrollbar> CreateScrollbar(
-            const std::string& id, long uid, int x, int y, int w, int h,
+            const std::string& id, float x, float y, float w, float h,
             ScrollbarOrientation orientation = ScrollbarOrientation::Vertical) {
-        return std::make_shared<UltraCanvasScrollbar>(id, uid, x, y, w, h, orientation);
+        return std::make_shared<UltraCanvasScrollbar>(id, x, y, w, h, orientation);
     }
 
     inline std::shared_ptr<UltraCanvasScrollbar> CreateVerticalScrollbar(
-            const std::string& id, long uid, int x, int y, int width, int height) {
-        return std::make_shared<UltraCanvasScrollbar>(id, uid, x, y, width, height,
+            const std::string& id, float x, float y, float width, float height) {
+        return std::make_shared<UltraCanvasScrollbar>(id, x, y, width, height,
                                                       ScrollbarOrientation::Vertical);
     }
 
     inline std::shared_ptr<UltraCanvasScrollbar> CreateHorizontalScrollbar(
-            const std::string& id, long uid, int x, int y, int width, int height) {
-        return std::make_shared<UltraCanvasScrollbar>(id, uid, x, y, width, height,
+            const std::string& id, float x, float y, float width, float height) {
+        return std::make_shared<UltraCanvasScrollbar>(id, x, y, width, height,
                                                       ScrollbarOrientation::Horizontal);
     }
 

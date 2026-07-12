@@ -326,7 +326,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasWaterfallChartElement::DrawSingleBar(IRenderContext* ctx, const Rect2Df& rect, const Color& fillColor, bool hasBorder) {
+    void UltraCanvasWaterfallChartElement::DrawSingleBar(IRenderContext* ctx, const Rect2Dd& rect, const Color& fillColor, bool hasBorder) {
         if (!ctx || rect.height <= 0) return;
 
         switch (barStyle) {

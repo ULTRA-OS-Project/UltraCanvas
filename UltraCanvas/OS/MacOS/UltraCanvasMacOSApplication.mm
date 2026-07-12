@@ -1,20 +1,39 @@
 // OS/MacOS/UltraCanvasMacOSApplication.mm
 // Complete macOS application implementation with Cocoa/Cairo support
-// Version: 2.1.1 - Fix main-row digit keys (were mapped to NumPad); add punctuation & real numpad mappings
-// Last Modified: 2026-04-17
+// Version: 2.2.1 - focusedWindow now weak_ptr; targetWindow set via GetWindowWeakPtr()
+// Last Modified: 2026-07-02
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMacOSApplication.h"
 
 #import <Cocoa/Cocoa.h>
 #import <QuartzCore/QuartzCore.h>
+#import <CoreText/CoreText.h>
 
 #include <iostream>
 #include <thread>
 #include <chrono>
+#include <filesystem>
 #include "UltraCanvasDebug.h"
 
+// Minimal NSApplicationDelegate. Its only job is to opt the app into the
+// secure-coding code path of AppKit's window state restoration system.
+// Without this, macOS 14+ falls back to a legacy archiving path that has
+// crashed on macOS 26.x inside __CFBinaryPlistWriteOrPresize (see report
+// from 2026-05-07: bus error during NSPersistentUIManager flushAllChanges).
+@interface UltraCanvasAppDelegate : NSObject <NSApplicationDelegate>
+@end
+
+@implementation UltraCanvasAppDelegate
+- (BOOL)applicationSupportsSecureRestorableState:(NSApplication *)app {
+    return YES;
+}
+@end
+
 namespace UltraCanvas {
+
+// Strong reference to the delegate; NSApplication holds a weak delegate ref.
+static UltraCanvasAppDelegate* g_appDelegate = nil;
 
 // ===== STATIC INSTANCE =====
     UltraCanvasMacOSApplication* UltraCanvasMacOSApplication::instance = nullptr;
@@ -87,6 +106,14 @@ namespace UltraCanvas {
 
             // Set activation policy to regular app
             [nsApplication setActivationPolicy:NSApplicationActivationPolicyRegular];
+
+            // Install our NSApplicationDelegate before AppKit's run loop starts
+            // scheduling persistent-UI flushes. The delegate opts into secure
+            // coding for restorable state (required since macOS 14).
+            if (![nsApplication delegate]) {
+                g_appDelegate = [[UltraCanvasAppDelegate alloc] init];
+                [nsApplication setDelegate:g_appDelegate];
+            }
 
             // Get main run loop
             mainRunLoop = [NSRunLoop mainRunLoop];
@@ -182,6 +209,10 @@ namespace UltraCanvas {
 
         //StopEventThread();
         @autoreleasepool {
+            if (nsApplication && [nsApplication delegate] == g_appDelegate) {
+                [nsApplication setDelegate:nil];
+            }
+            g_appDelegate = nil;
             nsApplication = nullptr;
             mainRunLoop = nullptr;
         }
@@ -311,7 +342,9 @@ namespace UltraCanvas {
             targetWindow = static_cast<UltraCanvasMacOSWindow*>(FindWindow((void*)nsWindow));
         }
 
-        event.targetWindow = targetWindow;
+        if (targetWindow) {
+            event.targetWindow = targetWindow->GetWindowWeakPtr();
+        }
 
         // Get window content height for Y-coordinate flipping
         // macOS uses bottom-left origin, UltraCanvas uses top-left origin
@@ -581,8 +614,8 @@ namespace UltraCanvas {
 
         // However, we can ensure the window becomes key and main to receive all events
         @autoreleasepool {
-            if (focusedWindow) {
-                auto* macWindow = dynamic_cast<UltraCanvasMacOSWindow*>(focusedWindow);
+            if (auto* fw = GetFocusedWindow()) {
+                auto* macWindow = dynamic_cast<UltraCanvasMacOSWindow*>(fw);
                 if (macWindow && macWindow->GetNSWindow()) {
                     NSWindow* nsWin = macWindow->GetNSWindow();
                     if (![nsWin isKeyWindow]) {
@@ -614,15 +647,6 @@ namespace UltraCanvas {
                 result.fontFamily = [[sysFont familyName] UTF8String];
                 result.fontSize = static_cast<float>([sysFont pointSize]);
                 if (result.fontSize <= 0) result.fontSize = 12.0f;
-
-//                NSFontTraitMask traits = [[NSFontManager sharedFontManager]
-//                                          traitsOfFont:sysFont];
-//                if (traits & NSBoldFontMask) {
-//                    result.fontWeight = FontWeight::Bold;
-//                }
-//                if (traits & NSItalicFontMask) {
-//                    result.fontSlant = FontSlant::Italic;
-//                }
             }
 
             // Private system font names (e.g. ".AppleSystemUIFont", ".SF NS")
@@ -638,29 +662,41 @@ namespace UltraCanvas {
 
     FontStyle UltraCanvasMacOSApplication::DetectMonospacedFontStyleNative() {
         FontStyle result;
+        result.fontFamily = "Ubuntu Mono";
+        result.fontSize = 12.0f;
+        return result;
+    }
 
+    void UltraCanvasMacOSApplication::LoadBundledFontsNative() {
+        // macOS keeps the system proportional font; only the monospace family
+        // is replaced with DejaVu Sans Mono. Register the four mono variants
+        // process-privately via CoreText.
         @autoreleasepool {
-            NSFont* monoFont = nil;
-
-            // Available on macOS 10.15+
-            if (@available(macOS 10.15, *)) {
-                monoFont = [NSFont monospacedSystemFontOfSize:0 weight:NSFontWeightRegular];
-            }
-
-            if (monoFont) {
-                result.fontFamily = [[monoFont familyName] UTF8String];
-                result.fontSize = static_cast<float>([monoFont pointSize]);
-                if (result.fontSize <= 0) result.fontSize = 12.0f;
-            }
-
-            // Private font names cannot be resolved by Pango/Cairo
-            if (result.fontFamily.empty() || result.fontFamily[0] == '.') {
-                result.fontFamily = "Menlo";
-                if (result.fontSize <= 0) result.fontSize = 12.0f;
+            const std::string dir = GetBundledFontsDir();
+            for (size_t i = 0; i < kEmbeddedAllFontsCount; ++i) {
+                std::string path = dir + kEmbeddedAllFonts[i];
+                if (!std::filesystem::exists(path)) {
+                    debugOutput << "UltraCanvas: bundled font missing: " << path << std::endl;
+                    continue;
+                }
+                NSURL* url = [NSURL fileURLWithPath:[NSString stringWithUTF8String:path.c_str()]];
+                CFErrorRef err = nullptr;
+                if (!CTFontManagerRegisterFontsForURL(
+                        (__bridge CFURLRef)url,
+                        kCTFontManagerScopeProcess,
+                        &err)) {
+                    // kCTFontManagerErrorAlreadyRegistered is benign on re-init.
+                    if (err) {
+                        CFIndex code = CFErrorGetCode(err);
+                        if (code != kCTFontManagerErrorAlreadyRegistered) {
+                            debugOutput << "UltraCanvas: CTFontManagerRegisterFontsForURL failed for "
+                                        << path << " (code " << (long)code << ")" << std::endl;
+                        }
+                    }
+                }
+                if (err) CFRelease(err);
             }
         }
-
-        return result;
     }
 
 } // namespace UltraCanvas

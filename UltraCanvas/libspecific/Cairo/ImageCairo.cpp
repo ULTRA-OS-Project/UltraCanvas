@@ -1,17 +1,22 @@
 // libspecific/Cairo/ImageCairo.cpp
 // Cross-platform image loader implementation using PIMPL idiom
-// Version: 2.0.1
-// Last Modified: 2026-04-29
+// Version: 2.1.0
+// Last Modified: 2026-05-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImage.h"
 #include "UltraCanvasUtils.h"
+#include "UltraCanvasFileError.h"
 #include "ImageCairo.h"
 #ifdef HAS_LIBVIPS
 #include "VipsQoiLoader.h"
 #endif
+#ifdef HAS_LIBRSVG
+#include "SvgDocumentCairo.h"
+#endif
 
 #include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <sstream>
 #include <mutex>
@@ -225,7 +230,10 @@ namespace UltraCanvas {
                 imgDataPtr = nullptr;
             }
             debugOutput << "UCImage::Load: Failed Failed to load image to memory " << imagePath << " Err:" << err.what() << std::endl;
-            errorMessage = std::string("Failed to load image ") + imagePath + " Err:" + err.what();
+            std::string access = DescribeFileReadError(imagePath);
+            errorMessage = !access.empty()
+                ? access
+                : (std::string("Could not read the image file: ") + imagePath + " (" + err.what() + ")");
         }
         return imgDataPtr != nullptr;
     }
@@ -233,16 +241,38 @@ namespace UltraCanvas {
 #ifdef HAS_LIBVIPS
     std::shared_ptr<UCImageRaster> UCImageRaster::Load(const std::string &imagePath, bool loadOnlyHeader) {
         auto result = std::make_shared<UCImageRaster>(imagePath);
+#ifdef HAS_LIBRSVG
+        // SVG parse-once path: take the dimensions from the retained parsed
+        // document instead of a vips header read (which parses the XML too).
+        // CreatePixmap rasterizes from the same parsed document, so the file
+        // is read and parsed exactly once while it stays cached.
+        if (UCSvgDocument::IsSvgPath(imagePath)) {
+            auto svgDoc = UCSvgDocument::Get(imagePath);
+            if (svgDoc && svgDoc->IsValid()) {
+                result->width  = static_cast<int>(std::lround(svgDoc->GetIntrinsicWidth()));
+                result->height = static_cast<int>(std::lround(svgDoc->GetIntrinsicHeight()));
+                return result;
+            }
+            // Parse failed — fall through to vips for its detailed error reporting.
+        }
+#endif
         try {
             vips::VImage vipsImage = result->GetVImage();
             result->width = vipsImage.width();
             result->height = vipsImage.height();
+            result->ReadAnimationMetadata(vipsImage);
             if (!loadOnlyHeader) {
                 result->LoadFileToMemory(imagePath);
             }
         } catch (vips::VError& err) {
             debugOutput << "UCImage::Load: Failed Failed to load image for " << imagePath << " Err:" << err.what() << std::endl;
-            result->errorMessage = std::string("Failed to load image ") + imagePath + " Err:" + err.what();
+            // Prefer a clear file-access reason (missing / locked / no permission);
+            // otherwise the file opened but the format is unsupported or damaged.
+            std::string access = DescribeFileReadError(imagePath);
+            result->errorMessage = !access.empty()
+                ? access
+                : (std::string("The image format is not supported or the file is damaged: ")
+                   + imagePath + " (" + err.what() + ")");
         }
 
         return result;
@@ -275,6 +305,7 @@ namespace UltraCanvas {
 
             result->width = vipsImage.width();
             result->height = vipsImage.height();
+            result->ReadAnimationMetadata(vipsImage);
         } catch (vips::VError& err) {
             debugOutput << "UCImageVips::LoadFromMemory: Failed to load image from buffer. Err:" << err.what() << std::endl;
             result->errorMessage = std::string("Failed to load image from memory buffer. Err:") + err.what();
@@ -302,6 +333,91 @@ namespace UltraCanvas {
         result->imgDataSize = dataSize;
         result->errorMessage = "Image loading not yet implemented (no libvips)";
         return result;
+    }
+#endif
+
+#ifdef HAS_LIBVIPS
+    void UCImageRaster::ReadAnimationMetadata(vips::VImage& vipsImage) {
+        nPages = 1;
+        hasFrameDelays = false;
+        try {
+            if (vipsImage.get_typeof("n-pages") != 0) {
+                nPages = std::max(1, vipsImage.get_int("n-pages"));
+            }
+            // Only animation-capable loaders (GIF, animated WebP) attach
+            // per-frame delays; multi-page TIFF / PDF expose n-pages too but
+            // must keep displaying as stills.
+            hasFrameDelays = nPages > 1 && vipsImage.get_typeof("delay") != 0;
+        } catch (vips::VError&) {
+            nPages = 1;
+            hasFrameDelays = false;
+        }
+    }
+
+    std::shared_ptr<UCImageAnimation> UCImageRaster::GetAnimation() {
+        if (animation) return animation;
+        if (!IsAnimated() || animationDecodeFailed) return nullptr;
+        try {
+            // Re-open the source with n=-1 so every page loads, stacked
+            // vertically ("toilet roll"); libvips composites GIF disposal so
+            // each page is a complete frame.
+            auto options = vips::VImage::option()->set("n", -1);
+            vips::VImage strip = imgDataPtr
+                ? vips::VImage::new_from_buffer(imgDataPtr, imgDataSize, "", options)
+                : vips::VImage::new_from_file(fileName.c_str(), options);
+
+            int pageH = strip.get_typeof("page-height") != 0
+                        ? strip.get_int("page-height") : height;
+            if (pageH <= 0 || strip.height() < pageH) {
+                throw UCImageError("invalid page-height");
+            }
+            const int frameCount = strip.height() / pageH;
+            if (frameCount <= 1) throw UCImageError("single frame");
+
+            // Refuse to fully decode sequences that would not fit in a sane
+            // amount of memory; the image keeps displaying frame 0.
+            constexpr size_t kMaxAnimationBytes = 512u * 1024u * 1024u;
+            const size_t decodedBytes = static_cast<size_t>(strip.width()) * pageH * 4u * frameCount;
+            if (decodedBytes > kMaxAnimationBytes) {
+                throw UCImageError("animation too large to decode fully");
+            }
+
+            std::vector<int> delays;
+            if (strip.get_typeof("delay") != 0) {
+                delays = strip.get_array_int("delay");
+            }
+            int loop = 0;
+            if (strip.get_typeof("loop") != 0) {
+                loop = std::max(0, strip.get_int("loop"));
+            }
+
+            // Materialize the whole strip once so the per-frame crops below
+            // don't re-run the file decoder frameCount times.
+            strip = strip.copy_memory();
+
+            auto anim = std::make_shared<UCImageAnimation>();
+            anim->width = strip.width();
+            anim->height = pageH;
+            anim->loopCount = loop;
+            anim->frames.reserve(frameCount);
+            anim->delaysMs.reserve(frameCount);
+            for (int i = 0; i < frameCount; ++i) {
+                vips::VImage frame = strip.extract_area(0, i * pageH, strip.width(), pageH);
+                anim->frames.push_back(CreatePixmapFromVImage(frame));
+                anim->delaysMs.push_back(i < static_cast<int>(delays.size()) ? delays[i] : 100);
+            }
+            animation = anim;
+        } catch (std::exception& err) {
+            debugOutput << "UCImageRaster::GetAnimation: cannot decode animation for "
+                        << fileName << " Err:" << err.what() << std::endl;
+            animationDecodeFailed = true;   // don't retry on every frame request
+            return nullptr;
+        }
+        return animation;
+    }
+#else
+    std::shared_ptr<UCImageAnimation> UCImageRaster::GetAnimation() {
+        return nullptr;
     }
 #endif
 
@@ -342,6 +458,19 @@ namespace UltraCanvas {
 #ifdef HAS_LIBVIPS
     std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmap(int w, int h, ImageFitMode fitMode, float scale) {
         if (scale <= 0.0f) scale = 1.0f;
+#ifdef HAS_LIBRSVG
+        // SVG fast path: rasterize from the cached parsed document — no file
+        // read and no XML re-parse per requested size (each zoom level /
+        // layout size only pays for the vector render itself).
+        if (UCSvgDocument::IsSvgPath(fileName)) {
+            auto svgDoc = UCSvgDocument::Get(fileName);
+            if (svgDoc && svgDoc->IsValid()) {
+                auto pm = svgDoc->RenderPixmap(w, h, fitMode, scale);
+                if (pm) return pm;
+            }
+            // Fall through to the generic vips path on failure.
+        }
+#endif
         try {
             // Rasterize at backing-pixel resolution. For SVG (libvips uses
             // librsvg under the hood) this yields sharp edges at the target
@@ -645,7 +774,13 @@ namespace UltraCanvas {
                     break;
 
                 case UCImageSaveFormat::PPM:
-                    vImg.ppmsave(imagePath.c_str(), vips::VImage::option());
+                case UCImageSaveFormat::PGM:
+                case UCImageSaveFormat::PBM:
+                case UCImageSaveFormat::PFM:
+                    // libvips ppmsave auto-detects PPM/PGM/PBM/PFM from the
+                    // filename extension; we only control text-vs-binary.
+                    vImg.ppmsave(imagePath.c_str(), vips::VImage::option()
+                            ->set("ascii", !opts.pnm.binary));
                     break;
 
                 case UCImageSaveFormat::ICO:
@@ -660,6 +795,93 @@ namespace UltraCanvas {
                     break;
                 }
 
+                case UCImageSaveFormat::HDR:
+                    vImg.radsave(imagePath.c_str(), vips::VImage::option());
+                    break;
+
+                case UCImageSaveFormat::FITS:
+                    vImg.fitssave(imagePath.c_str(), vips::VImage::option());
+                    break;
+
+                case UCImageSaveFormat::QOI: {
+                    // QOI export goes through ImageMagick. The custom
+                    // VipsQoiLoader plugin only registers a LOADER; if the
+                    // local libvips/ImageMagick build lacks QOI write
+                    // support the runtime probe filter in the dialog will
+                    // hide this option.
+                    vImg.magicksave(imagePath.c_str(), vips::VImage::option()
+                            ->set("format", "qoi"));
+                    break;
+                }
+
+                case UCImageSaveFormat::TGA: {
+                    auto magickOpts = vips::VImage::option()->set("format", "tga");
+                    if (opts.tga.rleCompression) {
+                        magickOpts->set("compression", "RLE");
+                    } else {
+                        magickOpts->set("compression", "NoCompression");
+                    }
+                    vImg.magicksave(imagePath.c_str(), magickOpts);
+                    break;
+                }
+
+                case UCImageSaveFormat::PCX: {
+                    auto magickOpts = vips::VImage::option()->set("format", "pcx");
+                    // ImageMagick's PCX writer applies RLE by default; the
+                    // option here is informational and may be ignored by the
+                    // delegate, but we set it explicitly for clarity.
+                    if (!opts.pcx.rleCompression) {
+                        magickOpts->set("compression", "NoCompression");
+                    }
+                    vImg.magicksave(imagePath.c_str(), magickOpts);
+                    break;
+                }
+
+                case UCImageSaveFormat::EXR: {
+                    auto magickOpts = vips::VImage::option()->set("format", "exr");
+                    const char* exrComp = "ZIP";
+                    switch (opts.exr.compression) {
+                        case UCImageSave::ExrExportOptions::Compression::NoCompression: exrComp = "None"; break;
+                        case UCImageSave::ExrExportOptions::Compression::RLE:           exrComp = "RLE"; break;
+                        case UCImageSave::ExrExportOptions::Compression::ZIP:           exrComp = "ZIP"; break;
+                        case UCImageSave::ExrExportOptions::Compression::PIZ:           exrComp = "PIZ"; break;
+                        case UCImageSave::ExrExportOptions::Compression::PXR24:         exrComp = "PXR24"; break;
+                        case UCImageSave::ExrExportOptions::Compression::B44:           exrComp = "B44"; break;
+                    }
+                    magickOpts->set("compression", exrComp);
+                    vImg.magicksave(imagePath.c_str(), magickOpts);
+                    break;
+                }
+
+                case UCImageSaveFormat::DPX:
+                    vImg.magicksave(imagePath.c_str(), vips::VImage::option()
+                            ->set("format", "dpx")
+                            ->set("quality", opts.dpx.bitDepth));
+                    break;
+
+                case UCImageSaveFormat::CIN:
+                    vImg.magicksave(imagePath.c_str(), vips::VImage::option()
+                            ->set("format", "cin")
+                            ->set("quality", opts.cin.bitDepth));
+                    break;
+
+                case UCImageSaveFormat::PSD:
+                    vImg.magicksave(imagePath.c_str(), vips::VImage::option()
+                            ->set("format", "psd")
+                            ->set("compression", opts.psd.compressed ? "RLE" : "NoCompression"));
+                    break;
+
+                case UCImageSaveFormat::SGI:
+                    vImg.magicksave(imagePath.c_str(), vips::VImage::option()
+                            ->set("format", "sgi")
+                            ->set("compression", opts.sgi.rleCompression ? "RLE" : "NoCompression"));
+                    break;
+
+                case UCImageSaveFormat::FARBFELD:
+                    vImg.magicksave(imagePath.c_str(), vips::VImage::option()
+                            ->set("format", "farbfeld"));
+                    break;
+
                 default:
                     debugOutput << "UCImageRaster::Save: Failed save image: " << imagePath
                               << " Err: Unsupported format (" << static_cast<int>(opts.format) << ")" << std::endl;
@@ -667,9 +889,31 @@ namespace UltraCanvas {
             }
         } catch (vips::VError& err) {
             debugOutput << "UCImageRaster::Save: Failed save image: " << imagePath << " Err:" << err.what() << std::endl;
-            return err.what();
+            // Prefer a clear destination reason (folder missing / read-only /
+            // locked / no permission / disk full) over the raw vips message.
+            std::string writeErr = DescribeFileWriteError(imagePath);
+            return !writeErr.empty() ? writeErr
+                                     : (std::string("Could not save image: ") + err.what());
         }
         return "";
+    }
+
+    // ===== Runtime libvips capability probes =====
+    // vips_foreign_find_save returns the GType name of the saver vips would
+    // pick for the given filename (NULL if no saver is compiled in for that
+    // extension). Use a dummy filename — only the extension is inspected.
+    bool VipsCanSave(const std::string& extensionWithDot) {
+        if (extensionWithDot.empty()) return false;
+        const std::string dummy = std::string("probe") + extensionWithDot;
+        return vips_foreign_find_save(dummy.c_str()) != nullptr;
+    }
+
+    bool VipsCanLoad(const std::string& extensionWithDot) {
+        if (extensionWithDot.empty()) return false;
+        const std::string dummy = std::string("probe") + extensionWithDot;
+        // vips_foreign_find_load_buffer / _filename inspect the filename for
+        // extension-based loaders. NULL means no compiled-in loader matched.
+        return vips_foreign_find_load(dummy.c_str()) != nullptr;
     }
 #else
     std::string UCImageRaster::Save(const std::string &, const UCImageSave::ImageExportOptions&) {

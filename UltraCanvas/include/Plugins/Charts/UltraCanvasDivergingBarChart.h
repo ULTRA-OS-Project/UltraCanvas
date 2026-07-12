@@ -226,7 +226,7 @@ namespace UltraCanvas {
 
     public:
         // Constructor
-        UltraCanvasDivergingBarChart(const std::string& id, long uid, int x, int y, int width, int height);
+        UltraCanvasDivergingBarChart(const std::string& id, int x, int y, int width, int height);
 
         // ===== DATA MANAGEMENT =====
         // Set custom categories
@@ -287,25 +287,25 @@ namespace UltraCanvas {
 // ===== FACTORY FUNCTIONS =====
 
     inline std::shared_ptr<UltraCanvasDivergingBarChart> CreateDivergingBarChart(
-            const std::string& id, long uid, int x, int y, int width, int height) {
-        return std::make_shared<UltraCanvasDivergingBarChart>(id, uid, x, y, width, height);
+            const std::string& id, int x, int y, int width, int height) {
+        return std::make_shared<UltraCanvasDivergingBarChart>(id, x, y, width, height);
     }
 
     inline std::shared_ptr<UltraCanvasDivergingBarChart> CreatePopulationPyramid(
-            const std::string& id, long uid, int x, int y, int width, int height,
+            const std::string& id, int x, int y, int width, int height,
             const std::vector<std::string>& rowLabels,
             const std::vector<DivergingCategory>& categories) {
 
-        auto chart = CreateDivergingBarChart(id, uid, x, y, width, height);
+        auto chart = CreateDivergingBarChart(id, x, y, width, height);
         chart->SetChartStyle(DivergingChartStyle::PopulationPyramid);
         chart->SetCategories(categories);
         return chart;
     }
 
     inline std::shared_ptr<UltraCanvasDivergingBarChart> CreateLikertChart(
-            const std::string& id, long uid, int x, int y, int width, int height) {
+            const std::string& id, int x, int y, int width, int height) {
 
-        auto chart = CreateDivergingBarChart(id, uid, x, y, width, height);
+        auto chart = CreateDivergingBarChart(id, x, y, width, height);
         chart->SetChartStyle(DivergingChartStyle::LikertScale);
         return chart;
     }

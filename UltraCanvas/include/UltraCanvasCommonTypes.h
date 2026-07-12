@@ -13,9 +13,15 @@
 // Platform-specific native window handle for parent window support
 // This ensures native dialogs stay on top of their parent window
 #if defined(_WIN32) || defined(_WIN64)
+#ifndef NOMINMAX
+#define NOMINMAX          // keep std::min/std::max usable (microtex uses them)
+#endif
 #include <windows.h>
 #ifdef DrawText
 #undef DrawText
+#endif
+#ifdef TRANSPARENT        // wingdi.h #define TRANSPARENT 1 collides with
+#undef TRANSPARENT        // microtex::TRANSPARENT (graphic_basic.h)
 #endif
 #ifdef CreateWindow
 #undef CreateWindow
@@ -62,12 +68,12 @@ struct Point2D {
     template <typename U>
     Point2D(U px = 0, U py = 0) : x(static_cast<T>(px)), y(static_cast<T>(py)) {}
 
-    // Cross-type converting constructor (e.g. Point2Df from Point2Di)
+    // Cross-type converting constructor (e.g. Point2Dd from Point2Di)
     template <typename U>
     Point2D(const Point2D<U>& other)
         : x(static_cast<T>(other.x)), y(static_cast<T>(other.y)) {}
 
-    // Cross-type assignment (e.g. Point2Df = Point2Di)
+    // Cross-type assignment (e.g. Point2Dd = Point2Di)
     template <typename U>
     Point2D& operator=(const Point2D<U>& other) {
         x = static_cast<T>(other.x);
@@ -112,8 +118,9 @@ struct Point2D {
     }
 };
 
-typedef struct Point2D<double> Point2Df;
-typedef struct Point2D<int> Point2Di;
+typedef struct Point2D<double> Point2Dd;
+typedef struct Point2D<float>  Point2Df;
+typedef struct Point2D<int>    Point2Di;
 
 
 template <typename T>
@@ -125,12 +132,12 @@ struct Size2D {
     template <typename U>
     Size2D(U w = 0, U h = 0) : width(static_cast<T>(w)), height(static_cast<T>(h)) {}
 
-    // Cross-type converting constructor (e.g. Size2Df from Size2Di)
+    // Cross-type converting constructor (e.g. Size2Dd from Size2Di)
     template <typename U>
     Size2D(const Size2D<U>& other)
         : width(static_cast<T>(other.width)), height(static_cast<T>(other.height)) {}
 
-    // Cross-type assignment (e.g. Size2Df = Size2Di)
+    // Cross-type assignment (e.g. Size2Dd = Size2Di)
     template <typename U>
     Size2D& operator=(const Size2D<U>& other) {
         width = static_cast<T>(other.width);
@@ -155,8 +162,9 @@ struct Size2D {
     }
 };
 
-typedef struct Size2D<double> Size2Df;
-typedef struct Size2D<int> Size2Di;
+typedef struct Size2D<double> Size2Dd;
+typedef struct Size2D<float>  Size2Df;
+typedef struct Size2D<int>    Size2Di;
 
 template <typename T>
 struct Rect2D {
@@ -172,7 +180,7 @@ struct Rect2D {
     Rect2D(Point2D<T> pt, Size2D<T> sz)
             : x(pt.x), y(pt.y), width(sz.width), height(sz.height) {}
 
-    // Cross-type converting constructor (e.g. Rect2Df from Rect2Di)
+    // Cross-type converting constructor (e.g. Rect2Dd from Rect2Di)
     template <typename U>
     Rect2D(const Rect2D<U>& other)
         : x(static_cast<T>(other.x)),
@@ -180,7 +188,7 @@ struct Rect2D {
           width(static_cast<T>(other.width)),
           height(static_cast<T>(other.height)) {}
 
-    // Cross-type assignment (e.g. Rect2Df = Rect2Di)
+    // Cross-type assignment (e.g. Rect2Dd = Rect2Di)
     template <typename U>
     Rect2D& operator=(const Rect2D<U>& other) {
         x = static_cast<T>(other.x);
@@ -276,8 +284,9 @@ struct Rect2D {
     inline static Rect2D INVALID = {-1, -1, -1, -1};
 };
 
-typedef struct Rect2D<double> Rect2Df;
-typedef struct Rect2D<int> Rect2Di;
+typedef struct Rect2D<double> Rect2Dd;
+typedef struct Rect2D<float>  Rect2Df;
+typedef struct Rect2D<int>    Rect2Di;
 
 struct UCMargins {
     int left = 0;

@@ -1,0 +1,3 @@
+# SmartHome
+
+Connect and control the whole smart home from a single module. Manage switches, lights, sensors, cameras, vacuum robots, washing machines, fridges, and more through one consistent interface that hides the differences between device protocols and vendors. A plug-in architecture makes adding new device types straightforward, so applications can automate, monitor, and respond to the connected home without dealing with each manufacturer's quirks.

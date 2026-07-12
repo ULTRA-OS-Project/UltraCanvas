@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- sample.xml — XML syntax-highlighting sample for the UltraCanvas demo. -->
+<catalog xmlns:uc="https://example.com/ultracanvas">
+    <book id="bk101" available="true">
+        <author>Gambardella, Matthew</author>
+        <title>XML Developer's Guide</title>
+        <genre>Computer</genre>
+        <price currency="USD">44.95</price>
+        <publish_date>2000-10-01</publish_date>
+        <uc:description>
+            An in-depth look at creating applications with XML.
+        </uc:description>
+    </book>
+    <book id="bk102" available="false">
+        <author>Ralls, Kim</author>
+        <title>Midnight Rain</title>
+        <genre>Fantasy</genre>
+        <price currency="USD">5.95</price>
+        <publish_date>2000-12-16</publish_date>
+    </book>
+</catalog>

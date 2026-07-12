@@ -1,7 +1,7 @@
 // include/UltraCanvasMenu.h
 // Interactive menu component with styling options and submenu support
-// Version: 1.5.0
-// Last Modified: 2026-05-06
+// Version: 1.7.0
+// Last Modified: 2026-05-31
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -171,7 +171,6 @@ namespace UltraCanvas {
 
         // Submenu
         int submenuDelay = 300;  // milliseconds
-        int submenuOffset = 2;
 
         // Animation
         bool enableAnimations = false;
@@ -184,7 +183,7 @@ namespace UltraCanvas {
         int shadowBlur = 4;
 
         // Scrollbar (for overflow menus)
-        ScrollbarStyle scrollbarStyle;
+        ScrollbarStyle scrollbarStyle = GetDefaultScrollbarStyleOr(ScrollbarStyle::Default());
 
         static MenuStyle Default();
         static MenuStyle Dark();
@@ -205,7 +204,6 @@ namespace UltraCanvas {
         // Navigation state
         int activeIndex = -1;
         int selectedIndex = -1;
-        bool needCalculateSize = true;
 
         PopupElementSettings menuPopupSettings;
 
@@ -234,18 +232,32 @@ namespace UltraCanvas {
         std::function<void(int)> onItemHovered;
 
         // ===== CONSTRUCTORS =====
-        UltraCanvasMenu(const std::string& identifier, long id, long x, long y, long w, long h)
-                : UltraCanvasUIElement(identifier, id, x, y, w, h) {
+        UltraCanvasMenu(const std::string& identifier, float x, float y, float w, float h)
+                : UltraCanvasUIElement(identifier, x, y, w, h) {
             style = MenuStyle::Default();
         }
+
+        UltraCanvasMenu(const std::string& identifier, float w, float h)
+                : UltraCanvasMenu(identifier, -1, -1, w, h) {}
+
+        explicit UltraCanvasMenu(const std::string& identifier)
+                : UltraCanvasMenu(identifier, -1, -1, -1, -1) {}
 
         virtual ~UltraCanvasMenu() {
             CloseAllSubmenus();
         }
 
         // ===== CORE RENDERING =====
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
-        void UpdateGeometry(IRenderContext *ctx) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
+
+        void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
+
+        // Publishes the menu's content-driven desired size into the CSS engine's
+        // measure cache. Runs on every layout pass, so the menu's size stays correct
+        // when the window re-lays-out (e.g. when a submenu opens), instead of being
+        // reset to a stale constructor size.
+        Size2Df MeasureOwnContent(std::optional<float> definiteContentWidth,
+                                  const CSSLayout::LayoutContext& ctx) override;
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;
@@ -256,14 +268,14 @@ namespace UltraCanvas {
 
         void SetOrientation(MenuOrientation orient) {
             orientation = orient;
-            needCalculateSize = true;
+            InvalidateLayout();
         }
 
         MenuOrientation GetOrientation() const { return orientation; }
 
         void SetStyle(const MenuStyle& menuStyle) {
             style = menuStyle;
-            needCalculateSize = true;
+            InvalidateLayout();
         }
         const MenuStyle& GetStyle() const { return style; }
 
@@ -303,14 +315,22 @@ namespace UltraCanvas {
         int GetItemX(int index) const;
         int GetItemY(int index) const;
 
-        bool ContainsInWindow(const Point2Di& point) override;
+        bool ContainsInWindow(const Point2Df& point) override;
 
     protected:
         void OnPopupClosed(ClosePopupReason reason) override;
 
     private:
         // ===== CALCULATION METHODS =====
-        void CalculateAndUpdateSize(IRenderContext* ctx);
+        // Pure measurement: computes the menu's content-driven size from its
+        // items/style (honoring an explicit menubar width + style min/max).
+        // Returns the size instead of mutating finalBounds, so the CSS engine
+        // owns sizing (Measure/Arrange model).
+        Size2Df MeasureMenuContent(IRenderContext* ctx) const;
+
+        // Clear the CSS `size` (folding any fixed width into style.minWidth) so a
+        // vertical popup/submenu sizes to its content through MeasureOwnContent.
+        void MakeContentSized();
 
         Rect2Di GetItemBounds(int index) const;
 
@@ -374,14 +394,21 @@ namespace UltraCanvas {
 // Rest of the file remains the same (factory functions, builder pattern, etc.)
 // ===== FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasMenu> CreateMenu(
-            const std::string& identifier, long id, long x, long y, long w, long h) {
+            const std::string& identifier, float x, float y, float w, float h) {
         return UltraCanvasUIElementFactory::Create<UltraCanvasMenu>(
-                identifier, id, x, y, w, h);
+                identifier, x, y, w, h);
     }
 
     inline std::shared_ptr<UltraCanvasMenu> CreateMenuBar(
-            const std::string& identifier, long id, long x, long y, long w) {
-        auto menu = CreateMenu(identifier, id, x, y, w, 32);
+            const std::string& identifier, float x, float y, float w) {
+        auto menu = CreateMenu(identifier, x, y, w, 32);
+        menu->SetMenuType(MenuType::Menubar);
+        return menu;
+    }
+
+    inline std::shared_ptr<UltraCanvasMenu> CreateMenuBar(
+            const std::string& identifier) {
+        auto menu = CreateMenu(identifier, -1, -1, -1, 32);
         menu->SetMenuType(MenuType::Menubar);
         return menu;
     }
@@ -392,8 +419,8 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasMenu> menu;
 
     public:
-        MenuBuilder(const std::string& identifier, long id, long x, long y, long w = 150, long h = 100) {
-            menu = CreateMenu(identifier, id, x, y, w, h);
+        MenuBuilder(const std::string& identifier, float x, float y, float w = 150, float h = 100) {
+            menu = CreateMenu(identifier, x, y, w, h);
         }
 
         MenuBuilder& SetType(MenuType type) {
@@ -477,7 +504,6 @@ namespace UltraCanvas {
         style.iconSize = 16;
         style.iconSpacing = 6;
         style.shortcutSpacing = 20;
-        style.submenuOffset = 2;
         style.separatorHeight = 1;
         style.borderWidth = 1;
         style.borderRadius = 0;

@@ -1,7 +1,7 @@
 // OS/MSWindows/UltraCanvasWindowsWindow.cpp
 // Complete Windows window implementation with Cairo rendering
-// Version: 1.0.1
-// Last Modified: 2026-04-05
+// Version: 1.1.0 - Per-Monitor HiDPI: physical surface/window, WM_DPICHANGED
+// Last Modified: 2026-07-03
 // Author: UltraCanvas Framework
 
 #include "../../include/UltraCanvasWindow.h"
@@ -9,6 +9,16 @@
 #include "UltraCanvasWindowsApplication.h"
 #include <iostream>
 #include "UltraCanvasDebug.h"
+
+// Per-Monitor-V2 DPI message; may be absent from older SDK headers under
+// WIN32_LEAN_AND_MEAN. All DPI entry points are resolved dynamically via
+// GetProcAddress so no shcore/user32 import lib is required.
+#ifndef WM_DPICHANGED
+#define WM_DPICHANGED 0x02E0
+#endif
+#ifndef MDT_EFFECTIVE_DPI
+#define MDT_EFFECTIVE_DPI 0
+#endif
 
 namespace UltraCanvas {
 
@@ -58,9 +68,10 @@ namespace UltraCanvas {
         dropTarget->onFileDrop = [this](const std::vector<std::string>& paths, int x, int y) {
             UCEvent event;
             event.type = UCEventType::Drop;
-            event.targetWindow = this;
+            event.targetWindow = GetWindowWeakPtr();
             event.nativeWindowHandle = hwnd;
-            event.pointerWindow = { x, y };
+            // Drop coords arrive in PHYSICAL px; convert to LOGICAL.
+            event.pointerWindow = PhysicalToLogical(Point2Di{ x, y });
             event.pointer = event.pointerWindow;
             event.droppedFiles = paths;
             event.dragMimeType = "text/uri-list";
@@ -76,9 +87,10 @@ namespace UltraCanvas {
         dropTarget->onDragEnter = [this](int x, int y) {
             UCEvent event;
             event.type = UCEventType::DragEnter;
-            event.targetWindow = this;
+            event.targetWindow = GetWindowWeakPtr();
             event.nativeWindowHandle = hwnd;
-            event.pointerWindow = { x, y };
+            // Drop coords arrive in PHYSICAL px; convert to LOGICAL.
+            event.pointerWindow = PhysicalToLogical(Point2Di{ x, y });
             event.pointer = event.pointerWindow;
             UltraCanvasWindowsApplication::GetInstance()->PushEvent(event);
         };
@@ -86,9 +98,10 @@ namespace UltraCanvas {
         dropTarget->onDragLeave = [this](int x, int y) {
             UCEvent event;
             event.type = UCEventType::DragLeave;
-            event.targetWindow = this;
+            event.targetWindow = GetWindowWeakPtr();
             event.nativeWindowHandle = hwnd;
-            event.pointerWindow = { x, y };
+            // Drop coords arrive in PHYSICAL px; convert to LOGICAL.
+            event.pointerWindow = PhysicalToLogical(Point2Di{ x, y });
             event.pointer = event.pointerWindow;
             UltraCanvasWindowsApplication::GetInstance()->PushEvent(event);
         };
@@ -96,9 +109,10 @@ namespace UltraCanvas {
         dropTarget->onDragOver = [this](int x, int y) {
             UCEvent event;
             event.type = UCEventType::DragOver;
-            event.targetWindow = this;
+            event.targetWindow = GetWindowWeakPtr();
             event.nativeWindowHandle = hwnd;
-            event.pointerWindow = { x, y };
+            // Drop coords arrive in PHYSICAL px; convert to LOGICAL.
+            event.pointerWindow = PhysicalToLogical(Point2Di{ x, y });
             event.pointer = event.pointerWindow;
             UltraCanvasWindowsApplication::GetInstance()->PushEvent(event);
         };
@@ -156,9 +170,16 @@ namespace UltraCanvas {
         if (!config_.maximizable) style &= ~WS_MAXIMIZEBOX;
         if (config_.alwaysOnTop)  exStyle |= WS_EX_TOPMOST;
 
-        // Calculate window rect to get correct client area size
-        RECT rect = {0, 0, config_.width, config_.height};
-        AdjustWindowRectEx(&rect, style, FALSE, exStyle);
+        // Seed the device scale from the monitor the window will open on. hwnd
+        // doesn't exist yet, so QueryNativeDeviceScale() uses the monitor under
+        // the configured position (GetDpiForMonitor / GetDpiForSystem). The
+        // process is Per-Monitor-V2 aware, so CreateWindowExW client sizes are in
+        // PHYSICAL px = logical × deviceScale.
+        RefreshDeviceScale();
+
+        // Calculate window rect to get correct client area size (physical px)
+        RECT rect = {0, 0, LogicalToPhysical(config_.width), LogicalToPhysical(config_.height)};
+        AdjustWindowRectForDpi(&rect, style, exStyle);
 
         int winWidth = rect.right - rect.left;
         int winHeight = rect.bottom - rect.top;
@@ -213,16 +234,33 @@ namespace UltraCanvas {
     bool UltraCanvasWindowsWindow::CreateNativeCairoSurface() {
         if (!hwnd) return false;
 
+        // Now that the window exists, GetDpiForWindow() is authoritative — pull
+        // the live scale so the surface is built at the correct physical size.
+        RefreshDeviceScale();
+
+        const int pixW = LogicalToPhysical(config_.width);
+        const int pixH = LogicalToPhysical(config_.height);
+
         // Use a Cairo image surface instead of cairo_win32_surface.
         // This avoids DWM composition issues where rendering to a persistent
         // window DC outside of BeginPaint/EndPaint is not reliably displayed.
         // The image surface data is blitted to the window DC in WM_PAINT.
-        nativeSurface = cairo_image_surface_create(CAIRO_FORMAT_RGB24,
-                                                   config_.width, config_.height);
+        // Allocate at PHYSICAL px so fonts/vectors rasterize at full DPI detail.
+        nativeSurface = cairo_image_surface_create(CAIRO_FORMAT_RGB24, pixW, pixH);
         if (!nativeSurface) {
             debugOutput << "UltraCanvas Windows: cairo_image_surface_create failed" << std::endl;
             return false;
         }
+
+        // Tell Cairo 1 user unit = deviceScale device px; UI keeps drawing in
+        // logical coordinates while Cairo rasterizes onto the larger pixel grid.
+        cairo_surface_set_device_scale(static_cast<cairo_surface_t *>(nativeSurface),
+                                       deviceScale, deviceScale);
+
+        // Pin the surface fallback DPI to 96. Cairo image surfaces default to
+        // 72 DPI, which would let Pango's draw-time pango_cairo_update_layout()
+        // resync to a different scale than the cairo-xlib surface on Linux.
+        cairo_surface_set_fallback_resolution(static_cast<cairo_surface_t *>(nativeSurface), 96.0, 96.0);
 
         cairo_status_t status = cairo_surface_status(static_cast<cairo_surface_t *>(nativeSurface));
         if (status != CAIRO_STATUS_SUCCESS) {
@@ -234,7 +272,80 @@ namespace UltraCanvas {
         }
 
         debugOutput << "UltraCanvas Windows: Cairo image surface created ("
-                  << config_.width << "x" << config_.height << ")" << std::endl;
+                  << pixW << "x" << pixH << " px @ " << deviceScale << "x)" << std::endl;
+        return true;
+    }
+
+    float UltraCanvasWindowsWindow::QueryNativeDeviceScale() const {
+        UINT dpi = 96;
+        HMODULE user32 = GetModuleHandleW(L"user32.dll");
+
+        if (hwnd) {
+            using GetDpiForWindowFn = UINT(WINAPI*)(HWND);
+            static auto pGetDpiForWindow = user32
+                ? reinterpret_cast<GetDpiForWindowFn>(GetProcAddress(user32, "GetDpiForWindow"))
+                : nullptr;
+            if (pGetDpiForWindow) {
+                dpi = pGetDpiForWindow(hwnd);
+            } else {
+                HDC dc = GetDC(hwnd);
+                if (dc) {
+                    int d = GetDeviceCaps(dc, LOGPIXELSX);
+                    if (d > 0) dpi = static_cast<UINT>(d);
+                    ReleaseDC(hwnd, dc);
+                }
+            }
+        } else {
+            // No window yet: use the monitor under the configured position.
+            POINT pt = { config_.x >= 0 ? config_.x : 0, config_.y >= 0 ? config_.y : 0 };
+            HMONITOR mon = MonitorFromPoint(pt, MONITOR_DEFAULTTOPRIMARY);
+            bool got = false;
+            if (HMODULE shcore = LoadLibraryW(L"shcore.dll")) {
+                using GetDpiForMonitorFn = HRESULT(WINAPI*)(HMONITOR, int, UINT*, UINT*);
+                if (auto p = reinterpret_cast<GetDpiForMonitorFn>(GetProcAddress(shcore, "GetDpiForMonitor"))) {
+                    UINT dx = 96, dy = 96;
+                    if (SUCCEEDED(p(mon, MDT_EFFECTIVE_DPI, &dx, &dy)) && dx > 0) { dpi = dx; got = true; }
+                }
+                FreeLibrary(shcore);
+            }
+            if (!got && user32) {
+                using GetDpiForSystemFn = UINT(WINAPI*)();
+                if (auto p = reinterpret_cast<GetDpiForSystemFn>(GetProcAddress(user32, "GetDpiForSystem"))) {
+                    UINT d = p();
+                    if (d > 0) dpi = d;
+                }
+            }
+        }
+        return dpi > 0 ? dpi / 96.0f : 1.0f;
+    }
+
+    void UltraCanvasWindowsWindow::AdjustWindowRectForDpi(RECT* rect, DWORD style, DWORD exStyle) const {
+        UINT dpi = static_cast<UINT>(std::lround(deviceScale * 96.0f));
+        HMODULE user32 = GetModuleHandleW(L"user32.dll");
+        using AdjustForDpiFn = BOOL(WINAPI*)(LPRECT, DWORD, BOOL, DWORD, UINT);
+        static auto pAdjust = user32
+            ? reinterpret_cast<AdjustForDpiFn>(GetProcAddress(user32, "AdjustWindowRectExForDpi"))
+            : nullptr;
+        if (pAdjust) {
+            pAdjust(rect, style, FALSE, exStyle, dpi);
+        } else {
+            AdjustWindowRectEx(rect, style, FALSE, exStyle);
+        }
+    }
+
+    bool UltraCanvasWindowsWindow::RecreateNativeSurface() {
+        std::lock_guard<std::mutex> lock(cairoMutex);
+
+        if (nativeSurface) {
+            cairo_surface_destroy(static_cast<cairo_surface_t *>(nativeSurface));
+            nativeSurface = nullptr;
+        }
+        if (!CreateNativeCairoSurface()) {
+            debugOutput << "UltraCanvas Windows: Failed to recreate Cairo surface" << std::endl;
+            return false;
+        }
+        debugOutput << "UltraCanvasWindowsWindow::RecreateNativeSurface: nativeh=" << GetNativeHandle()
+                    << " surface=" << nativeSurface << " @ " << deviceScale << "x" << std::endl;
         return true;
     }
 
@@ -255,27 +366,8 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasWindowsWindow::DoResizeNative() {
-        std::lock_guard<std::mutex> lock(cairoMutex);
-        int w = config_.width;
-        int h = config_.height;
-
-        if (nativeSurface) {
-            cairo_surface_destroy(static_cast<cairo_surface_t *>(nativeSurface));
-            nativeSurface = nullptr;
-        }
-
-        nativeSurface = cairo_image_surface_create(CAIRO_FORMAT_RGB24, w, h);
-        if (!nativeSurface) {
-            debugOutput << "UltraCanvas Windows: Failed to recreate Cairo surface on resize" << std::endl;
-            return;
-        }
-
-//        if (renderContext) {
-//            renderContext->SetTargetSurface(cairoSurface, w, h);
-//            renderContext->ResizeStagingSurface(w, h);
-//        }
-
-        debugOutput << "UltraCanvasWindowsWindow::DoResizeNative: nativeh=" << GetNativeHandle() << " Native surface=" << nativeSurface << " updated successfully" << std::endl;
+        // Rebuild the image surface at the current logical size × deviceScale.
+        RecreateNativeSurface();
     }
 
     void UltraCanvasWindowsWindow::DestroyNative() {
@@ -334,8 +426,10 @@ namespace UltraCanvas {
             }
 
             case WM_SIZE: {
-                int w_new = LOWORD(lParam);
-                int h_new = HIWORD(lParam);
+                // LOWORD/HIWORD are PHYSICAL client px (Per-Monitor-V2 aware).
+                // Convert to LOGICAL before feeding the framework.
+                int w_new = PhysicalToLogical(LOWORD(lParam));
+                int h_new = PhysicalToLogical(HIWORD(lParam));
                 // Track window state from SIZE message
                 if (wParam == SIZE_MINIMIZED)
                     _state = WindowState::Minimized;
@@ -347,6 +441,30 @@ namespace UltraCanvas {
                 if (w_new > 0 && h_new > 0) {
                     HandleResizeEventWindows(w_new, h_new);
                 }
+                return 0;
+            }
+
+            case WM_DPICHANGED: {
+                // The window was moved to a display with a different DPI (or the
+                // display scale changed). wParam LOWORD = new DPI; lParam = the
+                // OS-suggested window RECT (physical px, in the new DPI).
+                deviceScale = LOWORD(wParam) / 96.0f;
+                if (deviceScale <= 0.0f) deviceScale = 1.0f;
+
+                const RECT* suggested = reinterpret_cast<const RECT*>(lParam);
+                if (suggested) {
+                    // Reposition/resize to the suggested rect (required by the
+                    // WM_DPICHANGED contract). This fires a nested WM_SIZE, now
+                    // computed against the already-updated deviceScale.
+                    SetWindowPos(h, nullptr,
+                                 suggested->left, suggested->top,
+                                 suggested->right - suggested->left,
+                                 suggested->bottom - suggested->top,
+                                 SWP_NOZORDER | SWP_NOACTIVATE);
+                }
+                // Rebuild nativeSurface + renderContext at the new scale, relayout
+                // and repaint (authoritative final state after the nested WM_SIZE).
+                HandleDeviceScaleChange();
                 return 0;
             }
 
@@ -390,14 +508,15 @@ namespace UltraCanvas {
                 DWORD exStyle = static_cast<DWORD>(GetWindowLongW(h, GWL_EXSTYLE));
 
                 if (config_.minWidth > 0 && config_.minHeight > 0) {
-                    RECT r = {0, 0, config_.minWidth, config_.minHeight};
-                    AdjustWindowRectEx(&r, style, FALSE, exStyle);
+                    // Track sizes are PHYSICAL px; config limits are LOGICAL.
+                    RECT r = {0, 0, LogicalToPhysical(config_.minWidth), LogicalToPhysical(config_.minHeight)};
+                    AdjustWindowRectForDpi(&r, style, exStyle);
                     mmi->ptMinTrackSize.x = r.right - r.left;
                     mmi->ptMinTrackSize.y = r.bottom - r.top;
                 }
                 if (config_.maxWidth > 0 && config_.maxHeight > 0) {
-                    RECT r = {0, 0, config_.maxWidth, config_.maxHeight};
-                    AdjustWindowRectEx(&r, style, FALSE, exStyle);
+                    RECT r = {0, 0, LogicalToPhysical(config_.maxWidth), LogicalToPhysical(config_.maxHeight)};
+                    AdjustWindowRectForDpi(&r, style, exStyle);
                     mmi->ptMaxTrackSize.x = r.right - r.left;
                     mmi->ptMaxTrackSize.y = r.bottom - r.top;
                 }
@@ -423,20 +542,20 @@ namespace UltraCanvas {
 // ===== WINDOW OPERATIONS =====
 
     void UltraCanvasWindowsWindow::Show() {
-        if (!_created || visible) return;
+        if (!_created || _windowVisible) return;
         ShowWindow(hwnd, SW_SHOW);
         UpdateWindow(hwnd);
 
-        visible = true;
+        _windowVisible = true;
 
         if (onWindowShow) onWindowShow();
     }
 
     void UltraCanvasWindowsWindow::Hide() {
-        if (!_created || !visible) return;
+        if (!_created || !_windowVisible) return;
         ShowWindow(hwnd, SW_HIDE);
 
-        visible = false;
+        _windowVisible = false;
 
         if (onWindowHide) onWindowHide();
     }
@@ -553,11 +672,12 @@ namespace UltraCanvas {
         config_.height = height;
 
         if (hwnd) {
-            // Calculate window size from desired client area
+            // Calculate window size from desired client area. width/height are
+            // LOGICAL; the native client area is PHYSICAL = logical × deviceScale.
             DWORD style = static_cast<DWORD>(GetWindowLongW(hwnd, GWL_STYLE));
             DWORD exStyle = static_cast<DWORD>(GetWindowLongW(hwnd, GWL_EXSTYLE));
-            RECT rect = {0, 0, width, height};
-            AdjustWindowRectEx(&rect, style, FALSE, exStyle);
+            RECT rect = {0, 0, LogicalToPhysical(width), LogicalToPhysical(height)};
+            AdjustWindowRectForDpi(&rect, style, exStyle);
 
             SetWindowPos(hwnd, nullptr, 0, 0,
                          rect.right - rect.left, rect.bottom - rect.top,
@@ -662,7 +782,7 @@ namespace UltraCanvas {
     void UltraCanvasWindowsWindow::InvalidateWindowNative() {
         if (!renderContext || !nativeSurface || !hwnd) return;
         // Trigger a synchronous WM_PAINT to blit the image surface to the window
-        InvalidateRect(hwnd, NULL, FALSE);
+        ::InvalidateRect(hwnd, NULL, FALSE);
         UpdateWindow(hwnd);
     }
 

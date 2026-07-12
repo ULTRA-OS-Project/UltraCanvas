@@ -22,7 +22,7 @@
 #include <string>
 
 namespace UltraCanvas {
-    const char* versionString = "0.1.28";
+    const char* versionString = "0.3.4";
 
     std::string ToLowerCase(const std::string &str) {
         std::string result = str;
@@ -492,7 +492,6 @@ namespace UltraCanvas {
 
     std::string NormalizePath(const std::string& in) {
         std::string result;
-
 #if defined(_WIN32) || defined(_WIN64)
         result = in;
         std::replace(result.begin(), result.end(), '/', '\\');
@@ -501,6 +500,13 @@ namespace UltraCanvas {
         realpath(in.c_str(), real);
         result = real;
 #endif
+        if (!in.empty() && (in.back() == '/' || in.back() == '\\')) {
+#if defined(_WIN32) || defined(_WIN64)
+            result.push_back('\\');
+#else
+            result.push_back('/');
+#endif
+        }
         return result;
     }
 }

@@ -7,6 +7,7 @@
 #include "UltraCanvasCDRPlugin.h"
 #include "UltraCanvasCDRPluginImpl.h"
 #include "UltraCanvasUtils.h"
+#include "UltraCanvasFileError.h"
 #include <iostream>
 #include <fstream>
 #include <cmath>
@@ -156,7 +157,7 @@ namespace UltraCanvas {
 
     void UltraCanvasCDRPainterImpl::FillAndStroke(IRenderContext* ctx, const CDRStyleState& style) {
         // Get path bounds for gradient calculation
-        Rect2Df bounds = ctx->GetPathExtents();
+        Rect2Dd bounds = ctx->GetPathExtents();
 
         if (style.hasFill) {
             if (!style.fillGradientId.empty()) {
@@ -187,7 +188,7 @@ namespace UltraCanvas {
     std::shared_ptr<IPaintPattern> UltraCanvasCDRPainterImpl::CreateGradientPattern(
             IRenderContext* ctx,
             const std::string& gradientId,
-            const Rect2Df& bounds) {
+            const Rect2Dd& bounds) {
 
         auto it = document->gradients.find(gradientId);
         if (it == document->gradients.end() || it->second.stops.empty()) {
@@ -850,7 +851,7 @@ namespace UltraCanvas {
         const librevenge::RVNGPropertyListVector* points = propList.child("svg:points");
         if (!points || points->count() < 2) return;
 
-        std::vector<Point2Df> pointList;
+        std::vector<Point2Dd> pointList;
         for (unsigned long i = 0; i < points->count(); ++i) {
             const librevenge::RVNGPropertyList& point = (*points)[i];
             float x = ParseUnit(point["svg:x"]);
@@ -885,7 +886,7 @@ namespace UltraCanvas {
         const librevenge::RVNGPropertyListVector* points = propList.child("svg:points");
         if (!points || points->count() < 3) return;
 
-        std::vector<Point2Df> pointList;
+        std::vector<Point2Dd> pointList;
         for (unsigned long i = 0; i < points->count(); ++i) {
             const librevenge::RVNGPropertyList& point = (*points)[i];
             float x = ParseUnit(point["svg:x"]);
@@ -1299,9 +1300,9 @@ namespace UltraCanvas {
             if (image && image->IsValid()) {
                 if (hasTransform) {
                     // Draw at origin since we translated
-                    ctx->DrawImage(*image, Rect2Df(0, 0, imgW, imgH), ImageFitMode::Fill);
+                    ctx->DrawImage(*image, Rect2Dd(0, 0, imgW, imgH), ImageFitMode::Fill);
                 } else {
-                    ctx->DrawImage(*image, Rect2Df(imgX, imgY, imgW, imgH), ImageFitMode::Fill);
+                    ctx->DrawImage(*image, Rect2Dd(imgX, imgY, imgW, imgH), ImageFitMode::Fill);
                 }
             } else {
                 // Fallback placeholder if image loading fails
@@ -1736,19 +1737,26 @@ namespace UltraCanvas {
 
 // ===== ULTRACANVAS CDR ELEMENT IMPLEMENTATION =====
 
-    UltraCanvasCDRElement::UltraCanvasCDRElement(const std::string& identifier, long id,
+    UltraCanvasCDRElement::UltraCanvasCDRElement(const std::string& identifier,
                                                  int x, int y, int width, int height)
-            : UltraCanvasUIElement(identifier, id, x, y, width, height) {
+            : UltraCanvasUIElement(identifier, x, y, width, height) {
     }
 
     bool UltraCanvasCDRElement::LoadFromFile(const std::string& filePath) {
+        lastError.clear();
         bool result = cdrRenderer.LoadFromFile(filePath);
 
         if (result && onLoadComplete) {
             onLoadComplete();
         }
-        if (!result && onLoadError) {
-            onLoadError("Failed to parse CDR file: " + filePath);
+        if (!result) {
+            // Distinguish a file-access problem (missing / locked / no permission)
+            // from a valid-but-unparseable CorelDRAW file.
+            std::string access = DescribeFileReadError(filePath);
+            lastError = !access.empty()
+                ? access
+                : ("The file is not a valid CorelDRAW (.cdr) drawing: " + filePath);
+            if (onLoadError) onLoadError(lastError);
         }
 
         RequestRedraw();
@@ -1814,7 +1822,7 @@ namespace UltraCanvas {
         ctx->DrawText(message, Point2Di(bounds.x + 10, bounds.y + bounds.height / 2));
     }
 
-    void UltraCanvasCDRElement::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasCDRElement::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         if (!IsVisible()) return;
 
         ctx->PushState();
@@ -1852,7 +1860,7 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasCDRPlugin::LoadGraphics(const std::string& filePath) {
         auto element = std::make_shared<UltraCanvasCDRElement>(
-                "cdr_" + std::to_string(rand()), rand(), 0, 0, 800, 600);
+                "cdr_" + std::to_string(rand()), 0, 0, 800, 600);
 
         if (element->LoadFromFile(filePath)) {
             return element;
@@ -1868,7 +1876,7 @@ namespace UltraCanvas {
                                                                                GraphicsFormatType type) {
         if (type == GraphicsFormatType::Vector) {
             return std::make_shared<UltraCanvasCDRElement>(
-                    "cdr_new_" + std::to_string(rand()), rand(), 0, 0, width, height);
+                    "cdr_new_" + std::to_string(rand()), 0, 0, width, height);
         }
         return nullptr;
     }

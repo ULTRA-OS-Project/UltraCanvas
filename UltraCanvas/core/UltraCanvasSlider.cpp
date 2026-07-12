@@ -1,7 +1,7 @@
 // core/UltraCanvasSlider.cpp
 // Platform-independent slider component implementation
-// Version: 1.1.0
-// Last Modified: 2026-04-28
+// Version: 1.2.0
+// Last Modified: 2026-07-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSlider.h"
@@ -15,8 +15,8 @@
 
 namespace UltraCanvas {
 
-    UltraCanvasSlider::UltraCanvasSlider(const std::string &identifier, long id, long x, long y, long w, long h)
-            : UltraCanvasUIElement(identifier, id, x, y, w, h) {
+    UltraCanvasSlider::UltraCanvasSlider(const std::string &identifier, float x, float y, float w, float h)
+            : UltraCanvasUIElement(identifier, x, y, w, h) {
 
         // Initialize standard properties
         mouseCursor = UCMouseCursor::Hand;
@@ -212,10 +212,12 @@ namespace UltraCanvas {
         style.handleColor = handle;
     }
 
-    void UltraCanvasSlider::Render(IRenderContext *ctx, const Rect2Di &dirtyRect) {
-        ctx->PushState();
+    void UltraCanvasSlider::Render(IRenderContext *ctx, const Rect2Df&dirtyRect) {
+//        ctx->PushState();
 
         UpdateSliderState();
+        // Externally sized for now (explicit size or parent stretch); the base block
+        // block measure sizes us. TODO: implement MeasureOwnContent for intrinsic sizing.
         Rect2Di bounds = GetLocalBounds();
 //        SetBorders(1, Colors::Black);
 //        UltraCanvasUIElement::Render(ctx, dirtyRect);
@@ -248,7 +250,7 @@ namespace UltraCanvas {
         if (ShouldShowValueText()) {
             RenderValueDisplay(bounds, ctx);
         }
-        ctx->PopState();
+//        ctx->PopState();
     }
 
     bool UltraCanvasSlider::OnEvent(const UCEvent &event) {
@@ -350,14 +352,51 @@ namespace UltraCanvas {
         // Calculate track rectangle
         Rect2Di trackRect = GetTrackRect(bounds, isVertical);
 
-        // Draw track background
-        ctx->DrawFilledRectangle(trackRect, GetCurrentTrackColor(), 1.0, style.handleBorderColor);
+        if (!trackGradientStops.empty()) {
+            // Paint the whole bar with the supplied colour gradient (e.g. a full
+            // hue palette). The bar spans the full slider length with fully
+            // rounded end caps so the handle appears to sit inside the bar at
+            // both extremes. The active-track overlay is skipped so the palette
+            // stays visible across the entire bar.
+            Rect2Di interior = GetSliderInteriorRect(bounds, isVertical);
+            Rect2Di barRect = trackRect;
+            double capRadius;
+            if (isVertical) {
+                barRect.y = interior.y;
+                barRect.height = interior.height;
+                capRadius = barRect.width / 2.0;
+            } else {
+                barRect.x = interior.x;
+                barRect.width = interior.width;
+                capRadius = barRect.height / 2.0;
+            }
 
-        // Calculate and draw active track
-        Rect2Di activeRect = GetActiveTrackRect(trackRect, isVertical);
-        if ((isVertical && activeRect.height > 0) || (!isVertical && activeRect.width > 0)) {
-            ctx->SetFillPaint(style.activeTrackColor);
-            ctx->FillRectangle(activeRect);
+            // Gradient coordinates span the handle-travel range (trackRect) so
+            // the colour under the handle matches the value; the rounded caps
+            // continue the first/last stop colours (CAIRO_EXTEND_PAD).
+            std::shared_ptr<IPaintPattern> grad = isVertical
+                ? ctx->CreateLinearGradientPattern(trackRect.x, trackRect.y + trackRect.height,
+                                                   trackRect.x, trackRect.y, trackGradientStops)
+                : ctx->CreateLinearGradientPattern(trackRect.x, trackRect.y,
+                                                   trackRect.x + trackRect.width, trackRect.y,
+                                                   trackGradientStops);
+            ctx->SetFillPaint(grad);
+            ctx->FillRoundedRectangle(barRect, capRadius);
+
+            // Outline so the bar reads as a discrete control.
+            ctx->SetStrokePaint(style.handleBorderColor);
+            ctx->SetStrokeWidth(style.borderWidth);
+            ctx->DrawRoundedRectangle(barRect, capRadius);
+        } else {
+            // Draw track background
+            ctx->DrawFilledRectangle(trackRect, GetCurrentTrackColor(), 1.0, GetCurrentHandleBorderColor());
+
+            // Calculate and draw active track
+            Rect2Di activeRect = GetActiveTrackRect(trackRect, isVertical);
+            if ((isVertical && activeRect.height > 0) || (!isVertical && activeRect.width > 0)) {
+                ctx->SetFillPaint(GetCurrentActiveTrackColor());
+                ctx->FillRectangle(activeRect);
+            }
         }
 
         // Draw handle
@@ -372,12 +411,12 @@ namespace UltraCanvas {
         Rect2Di trackRect = GetTrackRect(bounds, isVertical);
 
         // Draw full track background
-        ctx->DrawFilledRectangle(trackRect, GetCurrentTrackColor(), 1.0, style.handleBorderColor);
+        ctx->DrawFilledRectangle(trackRect, GetCurrentTrackColor(), 1.0, GetCurrentHandleBorderColor());
 
         // Draw range region (between handles)
         Rect2Di rangeRect = GetRangeTrackRect(trackRect, isVertical);
         if ((isVertical && rangeRect.height > 0) || (!isVertical && rangeRect.width > 0)) {
-            ctx->SetFillPaint(style.rangeTrackColor);
+            ctx->SetFillPaint(IsDisabled() ? style.disabledActiveTrackColor : style.rangeTrackColor);
             ctx->FillRectangle(rangeRect);
         }
 
@@ -393,13 +432,14 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasSlider::RenderCircularSlider(const Rect2Di &bounds, IRenderContext *ctx) {
-        // Circular/knob style slider
+        // Circular/knob style slider — element-local coordinates (ctx is translated
+        // to our origin), so use the local bounds, not finalBounds.x/y.
         int centerX = bounds.x + bounds.width / 2;
         int centerY = bounds.y + bounds.height / 2;
         float radius = std::min(bounds.width, bounds.height) / 2.0f - 10.0f;
 
         // Draw outer circle (track)
-        ctx->SetStrokePaint(style.trackColor);
+        ctx->SetStrokePaint(GetCurrentTrackColor());
         ctx->SetStrokeWidth(style.trackHeight);
         ctx->DrawCircle(Point2Di(centerX, centerY), radius);
 
@@ -408,7 +448,7 @@ namespace UltraCanvas {
         float startAngle = -90.0f; // Start from top
         float sweepAngle = percentage * 360.0f;
 
-        ctx->SetStrokePaint(style.activeTrackColor);
+        ctx->SetStrokePaint(GetCurrentActiveTrackColor());
         ctx->SetStrokeWidth(style.trackHeight);
         // Note: DrawArc would be needed here - simplified for now
 
@@ -433,12 +473,12 @@ namespace UltraCanvas {
         // Draw progress
         Rect2Di progressRect = GetActiveTrackRect(interior, isVertical);
         if ((isVertical && progressRect.height > 0) || (!isVertical && progressRect.width > 0)) {
-            ctx->SetFillPaint(style.activeTrackColor);
+            ctx->SetFillPaint(GetCurrentActiveTrackColor());
             ctx->FillRectangle(progressRect);
         }
 
         // Draw border
-        ctx->SetStrokePaint(style.handleBorderColor);
+        ctx->SetStrokePaint(GetCurrentHandleBorderColor());
         ctx->SetStrokeWidth(style.borderWidth);
         ctx->DrawRectangle(interior);
     }
@@ -452,10 +492,11 @@ namespace UltraCanvas {
 //                    style.handleSize
 //            );
 
-        Color handleColor = highlighted ? style.handleHoverColor : GetCurrentHandleColor();
+        Color handleColor = (highlighted && !IsDisabled()) ? style.handleHoverColor
+                                                           : GetCurrentHandleColor();
 
         ctx->SetFillPaint(handleColor);
-        ctx->SetStrokePaint(style.handleBorderColor);
+        ctx->SetStrokePaint(GetCurrentHandleBorderColor());
         ctx->SetStrokeWidth(style.borderWidth);
 
         // Fill handle
@@ -485,10 +526,10 @@ namespace UltraCanvas {
 
             case SliderHandleShape::Triangle: {
                 // Create triangle points (pointing up)
-                std::vector<Point2Df> triangle = {
-                        Point2Df(position.x, position.y - handleRadius),                    // Top
-                        Point2Df(position.x - handleRadius, position.y + handleRadius),    // Bottom left
-                        Point2Df(position.x + handleRadius, position.y + handleRadius)     // Bottom right
+                std::vector<Point2Dd> triangle = {
+                        Point2Dd(position.x, position.y - handleRadius),                    // Top
+                        Point2Dd(position.x - handleRadius, position.y + handleRadius),    // Bottom left
+                        Point2Dd(position.x + handleRadius, position.y + handleRadius)     // Bottom right
                 };
                 // Draw filled triangle
                 ctx->FillLinePath(triangle);
@@ -499,11 +540,11 @@ namespace UltraCanvas {
 
             case SliderHandleShape::Diamond: {
                 // Create diamond points
-                std::vector<Point2Df> diamond = {
-                        Point2Df(position.x, position.y - handleRadius),                   // Top
-                        Point2Df(position.x + handleRadius, position.y),                   // Right
-                        Point2Df(position.x, position.y + handleRadius),                   // Bottom
-                        Point2Df(position.x - handleRadius, position.y)                    // Left
+                std::vector<Point2Dd> diamond = {
+                        Point2Dd(position.x, position.y - handleRadius),                   // Top
+                        Point2Dd(position.x + handleRadius, position.y),                   // Right
+                        Point2Dd(position.x, position.y + handleRadius),                   // Bottom
+                        Point2Dd(position.x - handleRadius, position.y)                    // Left
                 };
                 // Draw filled diamond
                 ctx->FillLinePath(diamond);
@@ -577,11 +618,19 @@ namespace UltraCanvas {
     }
 
     Rect2Di UltraCanvasSlider::GetSliderInteriorRect(const Rect2Di &bounds, bool isVertical) const {
+        // Element-local coordinates: the ctx is translated to our origin and
+        // event.pointer is element-local, so build the interior from the passed-in
+        // local bounds (origin 0,0), not finalBounds.x/y (parent-space).
+        // The cross-axis thickness must fit whichever is larger — the handle or
+        // the bar plus its border — so a palette-style bar thicker than the
+        // handle is not clipped at the element edge.
+        int thickness = (int)std::ceil(std::max(style.handleSize,
+                                                style.trackHeight + 2.0f * style.borderWidth));
         if (isVertical) {
-            return Rect2Di(bounds.x, bounds.y, (int)style.handleSize, bounds.height);
+            return Rect2Di(bounds.x, bounds.y, thickness, bounds.height);
         } else {
-            return Rect2Di(bounds.x, bounds.y + bounds.height - (int)style.handleSize,
-                           bounds.width, (int)style.handleSize);
+            return Rect2Di(bounds.x, bounds.y + bounds.height - thickness,
+                           bounds.width, thickness);
         }
     }
 
@@ -645,6 +694,15 @@ namespace UltraCanvas {
 
     Color UltraCanvasSlider::GetCurrentTrackColor() const {
         return IsDisabled() ? style.disabledTrackColor : style.trackColor;
+    }
+
+    Color UltraCanvasSlider::GetCurrentActiveTrackColor() const {
+        return IsDisabled() ? style.disabledActiveTrackColor : style.activeTrackColor;
+    }
+
+    Color UltraCanvasSlider::GetCurrentHandleBorderColor() const {
+        // A washed-out border so a disabled handle reads as grey, not crisp.
+        return IsDisabled() ? Color(170, 170, 175) : style.handleBorderColor;
     }
 
     Color UltraCanvasSlider::GetCurrentHandleColor() const {
@@ -845,6 +903,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasSlider::UpdateValueFromPosition(const Point2Di &pos) {
+        // pos is element-local, so map against local bounds (origin 0,0), not finalBounds.
         Rect2Di bounds = GetLocalBounds();
         float newValue;
 

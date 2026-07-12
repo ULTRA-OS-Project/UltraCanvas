@@ -1,232 +1,118 @@
 // UltraCanvasCheckbox.cpp
-// Interactive checkbox component with multiple states and customizable appearance
-// Version: 1.1.0
-// Last Modified: 2024-12-19
+// Checkbox indicator rendering and three-state toggle logic.
+// Version: 2.1.0
+// Last Modified: 2026-06-02
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasCheckbox.h"
-#include "UltraCanvasApplication.h"
-#include <algorithm>
 
 namespace UltraCanvas {
 
-// ===== CONSTRUCTOR =====
-    UltraCanvasCheckbox::UltraCanvasCheckbox(const std::string& identifier, long id,
-                                             long x, long y, long w, long h,
+    UltraCanvasCheckbox::UltraCanvasCheckbox(const std::string& identifier,
+                                             float x, float y, float w, float h,
                                              const std::string& labelText)
-            : UltraCanvasUIElement(identifier, id, x, y, w, h), text(labelText) {
+            : UltraCanvasLabeledToggleBase(identifier, x, y, w, h, labelText) {}
 
-        checkState = CheckboxState::Unchecked;
-        style = CheckboxStyle::Standard;
-        allowIndeterminate = false;
-
-        layoutDirty = true;
-    }
-
-// ===== LAYOUT CALCULATION =====
-    void UltraCanvasCheckbox::CalculateLayout(IRenderContext* ctx) {
-        // Calculate checkbox box position (left-aligned with padding) in element-local space
-        float padding = 4.0f;
-        boxRect.x = padding;
-        boxRect.y = (GetHeight() - visualStyle.boxSize) / 2.0f;
-        boxRect.width = visualStyle.boxSize;
-        boxRect.height = visualStyle.boxSize;
-
-        // Calculate text position (element-local)
-        if (!text.empty()) {
-            textRect.x = boxRect.x + boxRect.width + visualStyle.textSpacing;
-            textRect.y = 0;
-            textRect.width = GetWidth() - textRect.x - padding;
-            textRect.height = GetHeight();
-        }
-
-        // Calculate total bounds for hit testing (element-local)
-        totalBounds.x = 0;
-        totalBounds.y = 0;
-        totalBounds.width = GetWidth();
-        totalBounds.height = GetHeight();
-
-        layoutDirty = false;
-    }
-
-// ===== STATE MANAGEMENT =====
-    void UltraCanvasCheckbox::SetChecked(bool checked) {
-        SetCheckState(checked ? CheckboxState::Checked : CheckboxState::Unchecked);
-    }
-
-    void UltraCanvasCheckbox::SetCheckState(CheckboxState state) {
-        if (checkState != state) {
-            CheckboxState oldState = checkState;
-            checkState = state;
-
-            // Fire callbacks
-            if (onStateChanged) {
-                onStateChanged(oldState, state);
-            }
-
-            switch (state) {
-                case CheckboxState::Checked:
-                    if (onChecked) onChecked();
-                    break;
-                case CheckboxState::Unchecked:
-                    if (onUnchecked) onUnchecked();
-                    break;
-                case CheckboxState::Indeterminate:
-                    if (onIndeterminate) onIndeterminate();
-                    break;
-            }
-
-            RequestRedraw();
+    void UltraCanvasCheckbox::Toggle() {
+        switch (checkState) {
+            case CheckedState::Unchecked:
+                SetCheckState(CheckedState::Checked);
+                break;
+            case CheckedState::Checked:
+                SetCheckState(allowIndeterminate ? CheckedState::Indeterminate
+                                                 : CheckedState::Unchecked);
+                break;
+            case CheckedState::Indeterminate:
+                SetCheckState(CheckedState::Unchecked);
+                break;
         }
     }
 
     void UltraCanvasCheckbox::SetIndeterminate(bool indeterminate) {
         if (allowIndeterminate) {
-            SetCheckState(indeterminate ? CheckboxState::Indeterminate : CheckboxState::Unchecked);
+            SetCheckState(indeterminate ? CheckedState::Indeterminate : CheckedState::Unchecked);
         }
     }
 
-    void UltraCanvasCheckbox::Toggle() {
-        switch (checkState) {
-            case CheckboxState::Unchecked:
-                SetCheckState(CheckboxState::Checked);
-                break;
-            case CheckboxState::Checked:
-                if (allowIndeterminate) {
-                    SetCheckState(CheckboxState::Indeterminate);
-                } else {
-                    SetCheckState(CheckboxState::Unchecked);
-                }
-                break;
-            case CheckboxState::Indeterminate:
-                SetCheckState(CheckboxState::Unchecked);
-                break;
-        }
-    }
-
-// ===== APPEARANCE SETTERS =====
     void UltraCanvasCheckbox::SetColors(const Color& box, const Color& checkmark, const Color& text) {
         visualStyle.boxColor = box;
         visualStyle.checkmarkColor = checkmark;
-        visualStyle.textColor = text;
+        visualStyle.base.textColor = text;
         RequestRedraw();
     }
 
     void UltraCanvasCheckbox::SetFont(const std::string& family, float size, FontWeight weight) {
-        visualStyle.fontFamily = family;
-        visualStyle.fontSize = size;
-        visualStyle.fontWeight = weight;
+        visualStyle.base.fontFamily = family;
+        visualStyle.base.fontSize = size;
+        visualStyle.base.fontWeight = weight;
         layoutDirty = true;
+        InvalidateLayout();
         RequestRedraw();
     }
 
     void UltraCanvasCheckbox::SetFontSize(float size) {
-        visualStyle.fontSize = size;
+        visualStyle.base.fontSize = size;
         layoutDirty = true;
+        InvalidateLayout();
         RequestRedraw();
     }
 
-// ===== COLOR HELPERS =====
     Color UltraCanvasCheckbox::GetCurrentBoxColor() const {
         switch (GetPrimaryState()) {
             case ElementState::Disabled: return visualStyle.boxDisabledColor;
-            case ElementState::Pressed: return visualStyle.boxPressedColor;
-            case ElementState::Hovered: return visualStyle.boxHoverColor;
-            default: return visualStyle.boxColor;
+            case ElementState::Pressed:  return visualStyle.boxPressedColor;
+            case ElementState::Hovered:  return visualStyle.boxHoverColor;
+            default:                     return visualStyle.boxColor;
         }
     }
 
     Color UltraCanvasCheckbox::GetCurrentCheckmarkColor() const {
         switch (GetPrimaryState()) {
             case ElementState::Disabled: return visualStyle.checkmarkDisabledColor;
-            case ElementState::Hovered: return visualStyle.checkmarkHoverColor;
-            default: return visualStyle.checkmarkColor;
+            case ElementState::Hovered:  return visualStyle.checkmarkHoverColor;
+            default:                     return visualStyle.checkmarkColor;
         }
     }
 
-    void UltraCanvasCheckbox::UpdateGeometry(IRenderContext* ctx) {
-        if (layoutDirty) {
-            ctx->PushState();
-            if (autoSize) {
-                CalculateAutoSize(ctx);
-            }
-            CalculateLayout(ctx);
-            ctx->PopState();
-        }
-    }
-
-// ===== RENDERING =====
-    void UltraCanvasCheckbox::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
-        ctx->PushState();
-
-        // Draw based on style
+    float UltraCanvasCheckbox::GetEffectiveCornerRadius() const {
         switch (style) {
-            case CheckboxStyle::Standard:
+            case CheckboxStyle::Standard: return 0.0f;
             case CheckboxStyle::Rounded:
-            case CheckboxStyle::Material:
-                DrawCheckbox(ctx);
-                break;
-            case CheckboxStyle::Switch:
-                // TODO: Implement switch style rendering
-                DrawCheckbox(ctx);
-                break;
-            case CheckboxStyle::Radio:
-                // TODO: Implement radio button style
-                DrawCheckbox(ctx);
-                break;
+            case CheckboxStyle::Material: return visualStyle.cornerRadius;
         }
-
-        // Draw label text
-        if (!text.empty()) {
-            DrawLabel(ctx);
-        }
-
-        // Draw focus ring if needed
-        if (IsFocused() && visualStyle.hasFocusRing) {
-            DrawFocusRing(ctx);
-        }
-
-        ctx->PopState();
+        return 0.0f;
     }
 
-    void UltraCanvasCheckbox::DrawCheckbox(IRenderContext* ctx) {
-        // Get current colors
-        Color boxColor = GetCurrentBoxColor();
-        Color borderColor = visualStyle.boxBorderColor;
+    void UltraCanvasCheckbox::DrawIndicator(IRenderContext* ctx) {
+        ctx->DrawFilledRectangle(indicatorRect,
+                                 GetCurrentBoxColor(),
+                                 visualStyle.borderWidth,
+                                 visualStyle.boxBorderColor,
+                                 GetEffectiveCornerRadius());
 
-        // Draw checkbox box
-        float radius = (style == CheckboxStyle::Rounded) ? visualStyle.cornerRadius : 0.0f;
-
-        ctx->DrawFilledRectangle(boxRect, boxColor, visualStyle.borderWidth, visualStyle.boxBorderColor, radius);
-
-        // Draw check mark or indeterminate mark
-        if (checkState == CheckboxState::Checked) {
+        if (checkState == CheckedState::Checked) {
             DrawCheckmark(ctx);
-        } else if (checkState == CheckboxState::Indeterminate) {
+        } else if (checkState == CheckedState::Indeterminate) {
             DrawIndeterminateMark(ctx);
         }
     }
 
     void UltraCanvasCheckbox::DrawCheckmark(IRenderContext* ctx) {
-        Color checkColor = GetCurrentCheckmarkColor();
+        Color color = GetCurrentCheckmarkColor();
 
-        // Calculate checkmark path points
-        float boxCenterX = boxRect.x + boxRect.width / 2.0f;
-        float boxCenterY = boxRect.y + boxRect.height / 2.0f;
-        float checkSize = boxRect.width * 0.7f;
+        float cx = indicatorRect.x + indicatorRect.width / 2.0f;
+        float cy = indicatorRect.y + indicatorRect.height / 2.0f;
+        float size = indicatorRect.width * 0.7f;
 
-        // Draw checkmark as two lines forming a check
-        float x1 = boxCenterX - checkSize * 0.35f;
-        float y1 = boxCenterY;
-        float x2 = boxCenterX - checkSize * 0.1f;
-        float y2 = boxCenterY + checkSize * 0.25f;
-        float x3 = boxCenterX + checkSize * 0.35f;
-        float y3 = boxCenterY - checkSize * 0.25f;
+        float x1 = cx - size * 0.35f;
+        float y1 = cy;
+        float x2 = cx - size * 0.1f;
+        float y2 = cy + size * 0.25f;
+        float x3 = cx + size * 0.35f;
+        float y3 = cy - size * 0.25f;
 
         ctx->SetStrokeWidth(visualStyle.checkmarkThickness);
-        ctx->SetStrokePaint(checkColor);
-
-        // Draw the checkmark
+        ctx->SetStrokePaint(color);
         ctx->ClearPath();
         ctx->MoveTo(x1, y1);
         ctx->LineTo(x2, y2);
@@ -235,230 +121,25 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasCheckbox::DrawIndeterminateMark(IRenderContext* ctx) {
-        Color markColor = GetCurrentCheckmarkColor();
-
-        // Draw horizontal line in the middle of the box
-        float margin = boxRect.width * 0.25f;
-        float y = boxRect.y + boxRect.height / 2.0f;
-
-        Rect2Df lineRect(
-                boxRect.x + margin,
-                y - visualStyle.checkmarkThickness / 2.0f,
-                boxRect.width - 2 * margin,
-                visualStyle.checkmarkThickness
-        );
-
-        ctx->DrawFilledRectangle(lineRect, markColor);
+        Color color = GetCurrentCheckmarkColor();
+        float margin = indicatorRect.width * 0.25f;
+        float y = indicatorRect.y + indicatorRect.height / 2.0f;
+        Rect2Df lineRect(indicatorRect.x + margin,
+                         y - visualStyle.checkmarkThickness / 2.0f,
+                         indicatorRect.width - 2 * margin,
+                         visualStyle.checkmarkThickness);
+        ctx->DrawFilledRectangle(lineRect, color);
     }
 
-    void UltraCanvasCheckbox::DrawLabel(IRenderContext* ctx) {
-        Color textColor = !IsDisabled() ?
-                          (IsHovered() ? visualStyle.textHoverColor : visualStyle.textColor) :
-                          visualStyle.textDisabledColor;
-
-        ctx->SetFontFace(visualStyle.fontFamily, visualStyle.fontWeight, FontSlant::Normal);
-        ctx->SetFontSize(visualStyle.fontSize);
-        ctx->SetTextPaint(textColor);
-
-        // Draw text aligned to the middle of the text rect
-        double textY = textRect.y + (textRect.height - ctx->GetTextLineHeight(text)) / 2.0f;
-        ctx->DrawText(text, Point2Df(textRect.x, textY));
-    }
-
-    void UltraCanvasCheckbox::DrawFocusRing(IRenderContext* ctx) {
-        Rect2Df focusRect(
-                boxRect.x - visualStyle.focusRingWidth,
-                boxRect.y - visualStyle.focusRingWidth,
-                boxRect.width + 2 * visualStyle.focusRingWidth,
-                boxRect.height + 2 * visualStyle.focusRingWidth
-        );
-
-        float radius = (style == CheckboxStyle::Rounded) ?
-                       visualStyle.cornerRadius + visualStyle.focusRingWidth : 0.0f;
-
-        ctx->DrawFilledRectangle(focusRect, visualStyle.focusRingColor,
-                                  visualStyle.focusRingWidth, visualStyle.focusRingColor, radius);
-    }
-
-// ===== EVENT HANDLING =====
-    bool UltraCanvasCheckbox::OnEvent(const UCEvent& event) {
-        if (IsDisabled() || !IsVisible()) return false;
-        // Call base class if not handled
-        if (UltraCanvasUIElement::OnEvent(event)) {
-            return true;
-        }
-        
-        bool handled = false;
-        switch (event.type) {
-            case UCEventType::MouseDown:
-                if (totalBounds.Contains(event.pointer)) {
-                    SetPressed(true);
-                    handled = true;
-                }
-                break;
-
-            case UCEventType::MouseUp:
-                if (IsPressed() && totalBounds.Contains(event.pointer)) {
-                    Toggle();
-                    handled = true;
-                }
-                SetPressed(false);
-                break;
-
-            case UCEventType::MouseMove:
-                SetHovered(totalBounds.Contains(event.pointer));
-                break;
-
-            case UCEventType::MouseEnter:
-                SetHovered(true);
-                break;
-
-            case UCEventType::MouseLeave:
-                SetHovered(false);
-                break;
-
-            case UCEventType::KeyDown:
-                if (IsFocused()) {
-                    if (event.virtualKey == UCKeys::Space || event.virtualKey == UCKeys::Enter) {
-                        Toggle();
-                        handled = true;
-                    }
-                }
-                break;
-
-            case UCEventType::FocusGained:
-                RequestRedraw();
-                handled = true;
-                break;
-
-            case UCEventType::FocusLost:
-                RequestRedraw();
-                handled = true;
-                break;
-
-            default:
-                break;
-        }
-
-        return handled;
-    }
-
-// ===== AUTO-SIZING =====
-    void UltraCanvasCheckbox::CalculateAutoSize(IRenderContext* ctx) {
-        if (text.empty()) return;
-
-        ctx->SetFontFace(visualStyle.fontFamily, visualStyle.fontWeight, FontSlant::Normal);
-        ctx->SetFontSize(visualStyle.fontSize);
-        Size2Di textSize = ctx->GetTextLineDimensions(text);
-
-        // Calculate total width needed
-        float totalWidth = 8.0f + visualStyle.boxSize + visualStyle.textSpacing + textSize.width + 8.0f;
-        float totalHeight = std::max(visualStyle.boxSize + 8.0f, static_cast<float>(textSize.height + 8));
-
-        SetSize(static_cast<int>(totalWidth), static_cast<int>(totalHeight));
-    }
-
-// ===== FACTORY METHODS =====
     std::shared_ptr<UltraCanvasCheckbox> UltraCanvasCheckbox::CreateCheckbox(
-            const std::string& identifier, long id,
-            long x, long y, long w, long h,
+            const std::string& identifier,
+            float x, float y, float w, float h,
             const std::string& text, bool checked) {
-
-        auto checkbox = std::make_shared<UltraCanvasCheckbox>(identifier, id, x, y, w, h, text);
-        checkbox->SetChecked(checked);
-
-        if (w == 0 || h == 0) {
-            checkbox->SetAutoSize(true);
-        }
-
-        return checkbox;
-    }
-
-    std::shared_ptr<UltraCanvasCheckbox> UltraCanvasCheckbox::CreateSwitch(
-            const std::string& identifier, long id,
-            long x, long y,
-            const std::string& text, bool checked) {
-
-        auto switchBox = std::make_shared<UltraCanvasCheckbox>(identifier, id, x, y, 200, 30, text);
-        switchBox->SetStyle(CheckboxStyle::Switch);
-        switchBox->SetChecked(checked);
-
-        // Configure switch-specific visual style
-        switchBox->visualStyle.boxSize = 20.0f;
-        switchBox->visualStyle.cornerRadius = 10.0f;
-
-        switchBox->SetAutoSize(true);
-        return switchBox;
-    }
-
-    std::shared_ptr<UltraCanvasCheckbox> UltraCanvasCheckbox::CreateRadioButton(
-            const std::string& identifier, long id,
-            long x, long y,
-            const std::string& text, bool checked) {
-
-        auto radio = std::make_shared<UltraCanvasCheckbox>(identifier, id, x, y, 150, 24, text);
-        radio->SetStyle(CheckboxStyle::Radio);
-        radio->SetChecked(checked);
-        radio->SetAllowIndeterminate(false);  // Radio buttons don't support indeterminate
-
-        // Configure radio-specific visual style
-        radio->visualStyle.cornerRadius = radio->visualStyle.boxSize / 2.0f;  // Make it circular
-
-        radio->SetAutoSize(true);
-        return radio;
-    }
-
-// ===== RADIO GROUP IMPLEMENTATION =====
-    void UltraCanvasRadioGroup::AddRadioButton(std::shared_ptr<UltraCanvasCheckbox> button) {
-        if (!button || button->GetStyle() != CheckboxStyle::Radio) return;
-
-        radioButtons.push_back(button);
-
-        // Set up callback to handle exclusive selection
-        button->onChecked = [this, button]() {
-            SelectButton(button);
-        };
-    }
-
-    void UltraCanvasRadioGroup::RemoveRadioButton(std::shared_ptr<UltraCanvasCheckbox> button) {
-        radioButtons.erase(
-                std::remove(radioButtons.begin(), radioButtons.end(), button),
-                radioButtons.end()
-        );
-
-        if (selectedButton == button) {
-            selectedButton = nullptr;
-        }
-    }
-
-    void UltraCanvasRadioGroup::SelectButton(std::shared_ptr<UltraCanvasCheckbox> button) {
-        if (!button || std::find(radioButtons.begin(), radioButtons.end(), button) == radioButtons.end()) {
-            return;
-        }
-
-        // Uncheck all other buttons
-        for (auto& radioButton : radioButtons) {
-            if (radioButton != button && radioButton->IsChecked()) {
-                radioButton->SetChecked(false);
-            }
-        }
-
-        selectedButton = button;
-
-        if (onSelectionChanged) {
-            onSelectionChanged(button);
-        }
-    }
-
-    void UltraCanvasRadioGroup::ClearSelection() {
-        for (auto& button : radioButtons) {
-            button->SetChecked(false);
-        }
-        selectedButton = nullptr;
-
-        if (onSelectionChanged) {
-            onSelectionChanged(nullptr);
-        }
+        auto cb = std::make_shared<UltraCanvasCheckbox>(identifier, x, y, w, h, text);
+        cb->SetChecked(checked);
+        // A zero w/h leaves that axis size = Auto (the ctor only stamps Px when
+        // > 0), so it content-sizes; a non-zero axis stays an explicit size.
+        return cb;
     }
 
 } // namespace UltraCanvas

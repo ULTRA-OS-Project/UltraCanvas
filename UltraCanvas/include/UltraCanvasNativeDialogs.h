@@ -1,46 +1,20 @@
 // include/UltraCanvasNativeDialogs.h
 // Cross-platform native OS dialog system for file operations and messages
 // Uses unified DialogType, DialogButtons, DialogResult from UltraCanvasModalDialog.h
-// Version: 2.1.0
-// Last Modified: 2026-01-25
+// FileDialogOptions is owned by UltraCanvasFileLoader.h (the public facade);
+// this header re-includes it so existing callers keep compiling.
+// Version: 2.2.0
+// Last Modified: 2026-05-12
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasModalDialog.h"  // For DialogType, DialogButtons, DialogResult, FileFilter, InputType
+#include "UltraCanvasFileLoader.h"   // For FileDialogOptions
 #include <string>
 #include <vector>
 #include <functional>
 
 namespace UltraCanvas {
-
-// ===== NATIVE FILE DIALOG OPTIONS =====
-// Uses FileFilter from UltraCanvasModalDialog.h
-    struct NativeFileDialogOptions {
-        std::string title;
-        std::string initialDirectory;
-        std::string defaultFileName;
-        std::vector<FileFilter> filters;
-        bool allowMultiSelect = false;
-        bool showHiddenFiles = false;
-        UltraCanvasWindowBase* parentWindow = nullptr;  // Parent window for modal behavior
-
-        NativeFileDialogOptions() = default;
-
-        NativeFileDialogOptions& SetTitle(const std::string& t) { title = t; return *this; }
-        NativeFileDialogOptions& SetInitialDirectory(const std::string& dir) { initialDirectory = dir; return *this; }
-        NativeFileDialogOptions& SetDefaultFileName(const std::string& name) { defaultFileName = name; return *this; }
-        NativeFileDialogOptions& AddFilter(const std::string& desc, const std::string& ext) {
-            filters.emplace_back(desc, ext);
-            return *this;
-        }
-        NativeFileDialogOptions& AddFilter(const std::string& desc, const std::vector<std::string>& exts) {
-            filters.emplace_back(desc, exts);
-            return *this;
-        }
-        NativeFileDialogOptions& SetMultiSelect(bool multi) { allowMultiSelect = multi; return *this; }
-        NativeFileDialogOptions& SetShowHidden(bool show) { showHiddenFiles = show; return *this; }
-        NativeFileDialogOptions& SetParentWindow(UltraCanvasWindowBase* parent) { parentWindow = parent; return *this; }
-    };
 
 // ===== NATIVE INPUT DIALOG OPTIONS =====
     struct NativeInputDialogOptions {
@@ -133,7 +107,7 @@ namespace UltraCanvas {
                 UltraCanvasWindowBase*  parent = nullptr);
 
         // Show open file dialog with options
-        static std::string OpenFile(const NativeFileDialogOptions& options);
+        static std::string OpenFile(const FileDialogOptions& options);
 
         // Show open multiple files dialog
         static std::vector<std::string> OpenMultipleFiles(
@@ -143,7 +117,7 @@ namespace UltraCanvas {
                 UltraCanvasWindowBase*  parent = nullptr);
 
         // Show open multiple files dialog with options
-        static std::vector<std::string> OpenMultipleFiles(const NativeFileDialogOptions& options);
+        static std::vector<std::string> OpenMultipleFiles(const FileDialogOptions& options);
 
         // Show save file dialog
         static std::string SaveFile(
@@ -154,7 +128,7 @@ namespace UltraCanvas {
                 UltraCanvasWindowBase*  parent = nullptr);
 
         // Show save file dialog with options
-        static std::string SaveFile(const NativeFileDialogOptions& options);
+        static std::string SaveFile(const FileDialogOptions& options);
 
         // Show folder selection dialog
         static std::string SelectFolder(

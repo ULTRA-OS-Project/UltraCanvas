@@ -1,6 +1,7 @@
 // core/UltraCanvasDropdown.cpp
 // Interactive dropdown/combobox component with icon support and multi-selection
 // Uses ListView popup for rendering dropdown items
+// Last Modified: 2026-07-02 - DropdownSelect event.targetElement set via weak_from_this()
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasApplication.h"
@@ -57,8 +58,8 @@ namespace UltraCanvas {
             int sepY = option.rect.y + option.rect.height / 2;
             ctx->SetStrokePaint(style->listBorderColor);
             ctx->SetStrokeWidth(1.0f);
-            ctx->DrawLine(Point2Df(option.rect.x + 4, sepY),
-                         Point2Df(option.rect.x + option.rect.width - 4, sepY));
+            ctx->DrawLine(Point2Dd(option.rect.x + 4, sepY),
+                         Point2Dd(option.rect.x + option.rect.width - 4, sepY));
             return;
         }
 
@@ -134,12 +135,12 @@ namespace UltraCanvas {
             int cy = checkboxRect.y + checkboxRect.height / 2;
 
             ctx->DrawLine(
-                Point2Df(checkboxRect.x + 3, cy),
-                Point2Df(cx - 1, checkboxRect.y + checkboxRect.height - 4)
+                Point2Dd(checkboxRect.x + 3, cy),
+                Point2Dd(cx - 1, checkboxRect.y + checkboxRect.height - 4)
             );
             ctx->DrawLine(
-                Point2Df(cx - 1, checkboxRect.y + checkboxRect.height - 4),
-                Point2Df(checkboxRect.x + checkboxRect.width - 3, checkboxRect.y + 3)
+                Point2Dd(cx - 1, checkboxRect.y + checkboxRect.height - 4),
+                Point2Dd(checkboxRect.x + checkboxRect.width - 3, checkboxRect.y + 3)
             );
         }
     }
@@ -155,10 +156,11 @@ namespace UltraCanvas {
 
     // ===== DROPDOWN CONSTRUCTOR =====
 
-    UltraCanvasDropdown::UltraCanvasDropdown(const std::string &identifier, long id, long x, long y,
-                                             long w, long h)
-            : UltraCanvasUIElement(identifier, id, x, y, w, h) {
-        style.scrollbarStyle = ScrollbarStyle::DropDown();
+    UltraCanvasDropdown::UltraCanvasDropdown(const std::string &identifier, float x, float y,
+                                             float w, float h)
+            : UltraCanvasUIElement(identifier, x, y, w, h) {
+        style.scrollbarStyle = GetDefaultScrollbarStyleOr(ScrollbarStyle::DropDown());
+        dropdownModel = std::make_shared<DropdownListModel>();
         CreatePopupListView();
         WireListViewCallbacks();
     }
@@ -167,22 +169,22 @@ namespace UltraCanvas {
 
     void UltraCanvasDropdown::AddItem(const std::string &text) {
         items.emplace_back(text);
-        dropdownModel.DataChanged();
+        dropdownModel->DataChanged();
     }
 
     void UltraCanvasDropdown::AddItem(const std::string &text, const std::string &value) {
         items.emplace_back(text, value);
-        dropdownModel.DataChanged();
+        dropdownModel->DataChanged();
     }
 
     void UltraCanvasDropdown::AddItem(const std::string &text, const std::string &value, const std::string &iconPath) {
         items.emplace_back(text, value, iconPath);
-        dropdownModel.DataChanged();
+        dropdownModel->DataChanged();
     }
 
     void UltraCanvasDropdown::AddItem(const DropdownItem &item) {
         items.push_back(item);
-        dropdownModel.DataChanged();
+        dropdownModel->DataChanged();
     }
 
     void UltraCanvasDropdown::AddSeparator() {
@@ -190,14 +192,14 @@ namespace UltraCanvas {
         separator.separator = true;
         separator.enabled = false;
         items.push_back(separator);
-        dropdownModel.DataChanged();
+        dropdownModel->DataChanged();
     }
 
     void UltraCanvasDropdown::ClearItems() {
         items.clear();
         selectedIndex = -1;
         selectedIndices.clear();
-        dropdownModel.DataChanged();
+        dropdownModel->DataChanged();
     }
 
     void UltraCanvasDropdown::RemoveItem(int index) {
@@ -224,7 +226,7 @@ namespace UltraCanvas {
                 selectedIndices = newSelectedIndices;
             }
 
-            dropdownModel.DataChanged();
+            dropdownModel->DataChanged();
         }
     }
 
@@ -245,7 +247,7 @@ namespace UltraCanvas {
                     }
                     UCEvent ev;
                     ev.type = UCEventType::DropdownSelect;
-                    ev.targetElement = this;
+                    ev.targetElement = weak_from_this();
                     ev.userDataInt = index;
                     UltraCanvasApplication::GetInstance()->PushEvent(ev);
                 }
@@ -293,7 +295,7 @@ namespace UltraCanvas {
 
             // Update delegate and selection model
             dropdownDelegate->SetMultiSelectEnabled(enabled);
-            dropdownModel.DataChanged();
+            dropdownModel->DataChanged();
             RequestRedraw();
         }
     }
@@ -322,7 +324,7 @@ namespace UltraCanvas {
         }
 
         if (changed) {
-            dropdownModel.DataChanged();
+            dropdownModel->DataChanged();
 
             if (onMultiSelectionChanged) {
                 std::vector<int> indices(selectedIndices.begin(), selectedIndices.end());
@@ -355,7 +357,7 @@ namespace UltraCanvas {
             }
         }
 
-        dropdownModel.DataChanged();
+        dropdownModel->DataChanged();
 
         if (onMultiSelectionChanged) {
             std::vector<int> indices(selectedIndices.begin(), selectedIndices.end());
@@ -375,7 +377,7 @@ namespace UltraCanvas {
             item.selected = false;
         }
 
-        dropdownModel.DataChanged();
+        dropdownModel->DataChanged();
 
         if (onMultiSelectionChanged) {
             std::vector<int> empty;
@@ -417,7 +419,7 @@ namespace UltraCanvas {
     void UltraCanvasDropdown::OpenDropdown() {
         if (!isPopup && !items.empty() && window) {
             dropdownOpen = true;
-            dropdownModel.DataChanged();
+            dropdownModel->DataChanged();
             CalculateAndSetPopupSize();
 
             Point2Di pos = CalculatePopupPosition();
@@ -484,7 +486,7 @@ namespace UltraCanvas {
             maxTextWidth = std::max(maxTextWidth, textWidth);
         }
 
-        int dropdownWidth = maxTextWidth + static_cast<int>(style.paddingLeft + style.paddingRight);
+        float dropdownWidth = maxTextWidth + style.paddingLeft + style.paddingRight;
         dropdownWidth = std::max(dropdownWidth, GetBounds().width);
         dropdownWidth = std::min(dropdownWidth, style.maxItemWidth);
 
@@ -494,27 +496,27 @@ namespace UltraCanvas {
             ? itemCount
             : std::min(itemCount, style.maxVisibleItems);
 
-        int dropdownHeight = static_cast<int>(visibleItems * style.itemHeight + style.borderWidth * 2);
+        float dropdownHeight = visibleItems * style.itemHeight + style.borderWidth * 2;
 
-        popupListView->SetSize(dropdownWidth, dropdownHeight);
+        popupListView->SetElementSize(Size2Df(dropdownWidth, dropdownHeight));
     }
 
-    Point2Di UltraCanvasDropdown::CalculatePopupPosition() {
-        Point2Di globalPos = GetPositionInWindow();
-        Size2Di buttonSize = GetSize();
+    Point2Df UltraCanvasDropdown::CalculatePopupPosition() {
+        Point2Df globalPos = GetPositionInWindow();
+        Size2Df buttonSize = GetSize();
 
-        int windowHeight = window ? window->GetHeight() : 9999;
-        int windowWidth = window ? window->GetWidth() : 9999;
+        float windowHeight = window ? window->GetHeight() : 9999;
+        float windowWidth = window ? window->GetWidth() : 9999;
 
-        int popupWidth = popupListView->GetBounds().width;
-        int popupHeight = popupListView->GetBounds().height;
+        float popupWidth = popupListView->GetBounds().width;
+        float popupHeight = popupListView->GetBounds().height;
 
         // Calculate available space below and above the button
-        int spaceBelow = windowHeight - (globalPos.y + buttonSize.height);
-        int spaceAbove = globalPos.y;
+        float spaceBelow = windowHeight - (globalPos.y + buttonSize.height);
+        float spaceAbove = globalPos.y;
 
-        int effectiveHeight = popupHeight;
-        int listY;
+        float effectiveHeight = popupHeight;
+        float listY;
 
         if (effectiveHeight <= spaceBelow) {
             // Fits below
@@ -524,36 +526,36 @@ namespace UltraCanvas {
             listY = globalPos.y - effectiveHeight;
         } else if (spaceBelow >= spaceAbove) {
             // More space below — clamp
-            effectiveHeight = std::max(spaceBelow, static_cast<int>(style.itemHeight) + 2);
+            effectiveHeight = std::max(spaceBelow, static_cast<float>(style.itemHeight) + 2);
             listY = globalPos.y + buttonSize.height;
         } else {
             // More space above — clamp
-            effectiveHeight = std::max(spaceAbove, static_cast<int>(style.itemHeight) + 2);
+            effectiveHeight = std::max(spaceAbove, static_cast<float>(style.itemHeight) + 2);
             listY = globalPos.y - effectiveHeight;
         }
 
         // Update popup size if clamped
         if (effectiveHeight != popupHeight) {
-            popupListView->SetSize(popupWidth, effectiveHeight);
+            popupListView->SetElementSize(Size2Df(popupWidth, effectiveHeight));
         }
 
-        int listX = globalPos.x;
+        float listX = globalPos.x;
         // Horizontal adjustment
         if (listX + popupWidth > windowWidth) {
             listX = windowWidth - popupWidth;
         }
 
-        return Point2Di(listX, listY);
+        return Point2Df(listX, listY);
     }
 
     // ===== LISTVIEW SETUP =====
 
     void UltraCanvasDropdown::CreatePopupListView() {
         popupListView = std::make_shared<UltraCanvasListView>(
-            GetIdentifier() + "_popup_lv", 0, 0, 0, 200, 100);
+            GetIdentifier() + "_popup_lv", 0, 0, 200, 100);
 
-        dropdownModel.SetItems(&items);
-        popupListView->SetModel(&dropdownModel);
+        dropdownModel->SetItems(&items);
+        popupListView->SetModel(dropdownModel);
         popupListView->SetShowHeader(false);
 
         dropdownDelegate = std::make_shared<DropdownItemDelegate>();
@@ -620,7 +622,7 @@ namespace UltraCanvas {
 
     // ===== RENDERING =====
 
-    void UltraCanvasDropdown::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasDropdown::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         RenderButton(ctx);
     }
 
@@ -737,8 +739,16 @@ namespace UltraCanvas {
     // ===== EVENT HANDLING =====
 
     bool UltraCanvasDropdown::OnEvent(const UCEvent &event) {
+        // A disabled dropdown ignores all input (it still renders greyed out).
+        if (IsDisabled()) {
+            if (dropdownOpen) CloseDropdown();
+            return false;
+        }
         switch (event.type) {
             case UCEventType::MouseDown:
+            // A rapid second click arrives as a double-click instead of a
+            // MouseDown; the arrow button must toggle on every click.
+            case UCEventType::MouseDoubleClick:
                 return HandleMouseDown(event);
 
             case UCEventType::MouseUp:

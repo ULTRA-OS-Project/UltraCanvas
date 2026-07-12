@@ -14,24 +14,24 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSegmentedControlExamples() {
-        auto mainContainer = std::make_shared<UltraCanvasContainer>("SegmentedControlExamples", 5000, 0, 0, 1000, 1000);
+        auto mainContainer = std::make_shared<UltraCanvasContainer>("SegmentedControlExamples", 0, 0, 1000, 1000);
 
         // ===== PAGE TITLE =====
-        auto title = std::make_shared<UltraCanvasLabel>("SegmentedControlTitle", 5001, 20, 10, 600, 35);
+        auto title = std::make_shared<UltraCanvasLabel>("SegmentedControlTitle", 20, 10, 600, 35);
         title->SetText("UltraCanvas Segmented Control Showcase");
         title->SetFontSize(18);
         title->SetFontWeight(FontWeight::Bold);
         title->SetTextColor(Color(50, 50, 150, 255));
         mainContainer->AddChild(title);
 
-        auto subtitle = std::make_shared<UltraCanvasLabel>("SegmentedControlSubtitle", 5002, 20, 45, 800, 25);
+        auto subtitle = std::make_shared<UltraCanvasLabel>("SegmentedControlSubtitle", 20, 45, 800, 25);
         subtitle->SetText("Demonstrating all segmented control styles, modes, and interaction patterns");
         subtitle->SetFontSize(12);
         subtitle->SetTextColor(Color(100, 100, 100, 255));
         mainContainer->AddChild(subtitle);
 
         // Status label for feedback
-        auto statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel", 5003, 570, 10, 350, 60);
+        auto statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel", 570, 10, 350, 60);
         statusLabel->SetText("Click any segment to see selection feedback");
         statusLabel->SetFontSize(11);
         statusLabel->SetBackgroundColor(Color(245, 245, 245, 255));
@@ -44,14 +44,14 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 1: BASIC BORDERED STYLE
         // ========================================
-        auto section1Label = std::make_shared<UltraCanvasLabel>("Section1", 5010, 20, yOffset, 960, 25);
+        auto section1Label = std::make_shared<UltraCanvasLabel>("Section1", 20, yOffset, 960, 25);
         section1Label->SetText("1. Basic Bordered Style (Default)");
         section1Label->SetFontWeight(FontWeight::Bold);
         section1Label->SetTextColor(Color(200, 50, 50, 255));
         mainContainer->AddChild(section1Label);
         yOffset += 35;
 
-        auto basicControl = SegmentedControlBuilder("basic", 5011, 50, yOffset, 420, 35)
+        auto basicControl = SegmentedControlBuilder("basic", 50, yOffset, 420, 35)
                 .AddSegment("All")
                 .AddSegment("Active")
                 .AddSegment("Completed")
@@ -67,7 +67,7 @@ namespace UltraCanvas {
                 .Build();
         mainContainer->AddChild(basicControl);
 
-        auto basicDesc = std::make_shared<UltraCanvasLabel>("BasicDesc", 5012, 480, yOffset, 500, 35);
+        auto basicDesc = std::make_shared<UltraCanvasLabel>("BasicDesc", 480, yOffset, 500, 35);
         basicDesc->SetText("• Standard filter/view selector\n• Equal width segments\n• Clear visual separation");
         basicDesc->SetFontSize(10);
         basicDesc->SetTextColor(Color(100, 100, 100, 255));
@@ -77,14 +77,14 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 2: iOS STYLE
         // ========================================
-        auto section2Label = std::make_shared<UltraCanvasLabel>("Section2", 5020, 20, yOffset, 960, 25);
+        auto section2Label = std::make_shared<UltraCanvasLabel>("Section2", 20, yOffset, 960, 25);
         section2Label->SetText("2. iOS Style (Blue Border, Transparent Background)");
         section2Label->SetFontWeight(FontWeight::Bold);
         section2Label->SetTextColor(Color(200, 50, 50, 255));
         mainContainer->AddChild(section2Label);
         yOffset += 35;
 
-        auto iOSControl = CreateSegmentedControl("ios", 5021, 50, yOffset, 350, 32);
+        auto iOSControl = CreateSegmentedControl("ios", 50, yOffset, 350, 32);
         iOSControl->AddSegment("Map");
         iOSControl->AddSegment("Transit");
         iOSControl->AddSegment("Satellite");
@@ -99,7 +99,7 @@ namespace UltraCanvas {
         };
         mainContainer->AddChild(iOSControl);
 
-        auto iOSDesc = std::make_shared<UltraCanvasLabel>("iOSDesc", 5022, 420, yOffset, 550, 32);
+        auto iOSDesc = std::make_shared<UltraCanvasLabel>("iOSDesc", 420, yOffset, 550, 32);
         iOSDesc->SetText("• Apple Maps-style control | White selected segment\n• Transparent background with blue border");
         iOSDesc->SetFontSize(10);
         iOSDesc->SetTextColor(Color(100, 100, 100, 255));
@@ -109,14 +109,14 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 3: FLAT STYLE
         // ========================================
-        auto section3Label = std::make_shared<UltraCanvasLabel>("Section3", 5030, 20, yOffset, 960, 25);
+        auto section3Label = std::make_shared<UltraCanvasLabel>("Section3", 20, yOffset, 960, 25);
         section3Label->SetText("3. Flat Style (No Borders, Spaced Segments)");
         section3Label->SetFontWeight(FontWeight::Bold);
         section3Label->SetTextColor(Color(200, 50, 50, 255));
         mainContainer->AddChild(section3Label);
         yOffset += 35;
 
-        auto flatControl = CreateSegmentedControl("flat", 5031, 50, yOffset, 420, 35);
+        auto flatControl = CreateSegmentedControl("flat", 50, yOffset, 420, 35);
         flatControl->AddSegment("Day");
         flatControl->AddSegment("Week");
         flatControl->AddSegment("Month");
@@ -132,7 +132,7 @@ namespace UltraCanvas {
         };
         mainContainer->AddChild(flatControl);
 
-        auto flatDesc = std::make_shared<UltraCanvasLabel>("FlatDesc", 5032, 490, yOffset, 450, 35);
+        auto flatDesc = std::make_shared<UltraCanvasLabel>("FlatDesc", 490, yOffset, 450, 35);
         flatDesc->SetText("• Modern minimal design\n• Individual rounded segments\n• 4px spacing between segments");
         flatDesc->SetFontSize(10);
         flatDesc->SetTextColor(Color(100, 100, 100, 255));
@@ -142,14 +142,14 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 4: BAR STYLE
         // ========================================
-        auto section4Label = std::make_shared<UltraCanvasLabel>("Section4", 5040, 20, yOffset, 960, 25);
+        auto section4Label = std::make_shared<UltraCanvasLabel>("Section4", 20, yOffset, 960, 25);
         section4Label->SetText("4. Bar Style (Background Bar with Highlight)");
         section4Label->SetFontWeight(FontWeight::Bold);
         section4Label->SetTextColor(Color(200, 50, 50, 255));
         mainContainer->AddChild(section4Label);
         yOffset += 35;
 
-        auto barControl = CreateSegmentedControl("bar", 5041, 50, yOffset, 360, 36);
+        auto barControl = CreateSegmentedControl("bar", 50, yOffset, 360, 36);
         barControl->AddSegment("Small");
         barControl->AddSegment("Medium");
         barControl->AddSegment("Large");
@@ -175,7 +175,7 @@ namespace UltraCanvas {
         };
         mainContainer->AddChild(barControl);
 
-        auto barDesc = std::make_shared<UltraCanvasLabel>("BarDesc", 5042, 430, yOffset, 540, 36);
+        auto barDesc = std::make_shared<UltraCanvasLabel>("BarDesc", 430, yOffset, 540, 36);
         barDesc->SetText("• Size selector with background bar\n• Blue highlight for selected segment\n• Custom colors (gray bg, blue selected)");
         barDesc->SetFontSize(10);
         barDesc->SetTextColor(Color(100, 100, 100, 255));
@@ -185,14 +185,14 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 5: TEXT FORMATTING (TOGGLE MODE)
         // ========================================
-        auto section5Label = std::make_shared<UltraCanvasLabel>("Section5", 5050, 20, yOffset, 960, 25);
+        auto section5Label = std::make_shared<UltraCanvasLabel>("Section5", 20, yOffset, 960, 25);
         section5Label->SetText("5. Text Formatting (Allow No Selection - Toggle Mode)");
         section5Label->SetFontWeight(FontWeight::Bold);
         section5Label->SetTextColor(Color(200, 50, 50, 255));
         mainContainer->AddChild(section5Label);
         yOffset += 35;
 
-        auto textStyleControl = CreateSegmentedControl("textStyle", 5051, 50, yOffset, 200, 32);
+        auto textStyleControl = CreateSegmentedControl("textStyle", 50, yOffset, 200, 32);
         textStyleControl->AddSegment("<b>B</b>");   // Bold
         textStyleControl->AddSegment("<i>I</i>");   // Italic
         textStyleControl->AddSegment("<u>U</u>");   // Underline
@@ -212,7 +212,7 @@ namespace UltraCanvas {
                 statusLabel->SetText(oss.str());
         };
 
-        auto textStyleControl2 = CreateSegmentedControl("textStyle", 5051, 250, yOffset, 80, 32);
+        auto textStyleControl2 = CreateSegmentedControl("textStyle", 250, yOffset, 80, 32);
         textStyleControl2->SetAllowNoSelection(true);  // Allow toggling off
         textStyleControl2->SetWidthMode(SegmentWidthMode::Equal);
         textStyleControl2->SetSelectionMode(SegmentSelectionMode::Single);
@@ -234,7 +234,7 @@ namespace UltraCanvas {
         mainContainer->AddChild(textStyleControl);
         mainContainer->AddChild(textStyleControl2);
 
-        auto textStyleDesc = std::make_shared<UltraCanvasLabel>("TextStyleDesc", 5052, 340, yOffset, 650, 32);
+        auto textStyleDesc = std::make_shared<UltraCanvasLabel>("TextStyleDesc", 340, yOffset, 650, 32);
         textStyleDesc->SetText("• Text editor formatting toolbar\n• Click to enable, click again to disable\n• AllowNoSelection = true");
         textStyleDesc->SetFontSize(10);
         textStyleDesc->SetTextColor(Color(100, 100, 100, 255));
@@ -244,14 +244,14 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 6: ALIGNMENT (FIT CONTENT MODE)
         // ========================================
-        auto section6Label = std::make_shared<UltraCanvasLabel>("Section6", 5060, 20, yOffset, 960, 25);
+        auto section6Label = std::make_shared<UltraCanvasLabel>("Section6", 20, yOffset, 960, 25);
         section6Label->SetText("6. Text Alignment (FitContent Width Mode)");
         section6Label->SetFontWeight(FontWeight::Bold);
         section6Label->SetTextColor(Color(200, 50, 50, 255));
         mainContainer->AddChild(section6Label);
         yOffset += 35;
 
-        auto alignmentControl = CreateSegmentedControl("alignment", 5061, 50, yOffset, 400, 34);
+        auto alignmentControl = CreateSegmentedControl("alignment", 50, yOffset, 400, 34);
         alignmentControl->AddSegment("Left", TextAlignment::Left);
         alignmentControl->AddSegment("Center", TextAlignment::Center);
         alignmentControl->AddSegment("Right", TextAlignment::Right);
@@ -275,7 +275,7 @@ namespace UltraCanvas {
         };
         mainContainer->AddChild(alignmentControl);
 
-        auto alignDesc = std::make_shared<UltraCanvasLabel>("AlignDesc", 5062, 470, yOffset, 500, 34);
+        auto alignDesc = std::make_shared<UltraCanvasLabel>("AlignDesc", 470, yOffset, 500, 34);
         alignDesc->SetText("• Auto-sized segments based on text width\n• Custom blue theme\n• Perfect for toolbar alignment controls");
         alignDesc->SetFontSize(10);
         alignDesc->SetTextColor(Color(100, 100, 100, 255));
@@ -285,14 +285,14 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 7: DISABLED SEGMENTS
         // ========================================
-        auto section7Label = std::make_shared<UltraCanvasLabel>("Section7", 5070, 20, yOffset, 960, 25);
+        auto section7Label = std::make_shared<UltraCanvasLabel>("Section7", 20, yOffset, 960, 25);
         section7Label->SetText("7. Disabled Segments Demonstration");
         section7Label->SetFontWeight(FontWeight::Bold);
         section7Label->SetTextColor(Color(200, 50, 50, 255));
         mainContainer->AddChild(section7Label);
         yOffset += 35;
 
-        auto disabledControl = CreateSegmentedControl("disabled", 5071, 50, yOffset, 600, 35);
+        auto disabledControl = CreateSegmentedControl("disabled", 50, yOffset, 600, 35);
         disabledControl->AddSegment("Enabled 1");
         disabledControl->AddSegment("Disabled");
         disabledControl->AddSegment("Enabled 2");
@@ -310,7 +310,7 @@ namespace UltraCanvas {
         };
         mainContainer->AddChild(disabledControl);
 
-        auto disabledDesc = std::make_shared<UltraCanvasLabel>("DisabledDesc", 5072, 660, yOffset, 330, 55);
+        auto disabledDesc = std::make_shared<UltraCanvasLabel>("DisabledDesc", 660, yOffset, 330, 55);
         disabledDesc->SetText("• Individual segments can be disabled\n• Disabled segments: grayed out, not clickable\n• Keyboard navigation skips disabled segments");
         disabledDesc->SetFontSize(10);
         disabledDesc->SetTextColor(Color(100, 100, 100, 255));
@@ -320,14 +320,14 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 8: CUSTOM WIDTH SEGMENTS
         // ========================================
-        auto section8Label = std::make_shared<UltraCanvasLabel>("Section8", 5080, 20, yOffset, 960, 25);
+        auto section8Label = std::make_shared<UltraCanvasLabel>("Section8", 20, yOffset, 960, 25);
         section8Label->SetText("8. Custom Width Segments");
         section8Label->SetFontWeight(FontWeight::Bold);
         section8Label->SetTextColor(Color(200, 50, 50, 255));
         mainContainer->AddChild(section8Label);
         yOffset += 35;
 
-        auto customWidthControl = CreateSegmentedControl("customWidth", 5081, 50, yOffset, 500, 36);
+        auto customWidthControl = CreateSegmentedControl("customWidth", 50, yOffset, 500, 36);
         customWidthControl->AddSegment("Short");
         customWidthControl->AddSegment("Medium Length");
         customWidthControl->AddSegment("Very Long Segment Name");
@@ -348,7 +348,7 @@ namespace UltraCanvas {
         };
         mainContainer->AddChild(customWidthControl);
 
-        auto customWidthDesc = std::make_shared<UltraCanvasLabel>("CustomWidthDesc", 5082, 570, yOffset, 400, 36);
+        auto customWidthDesc = std::make_shared<UltraCanvasLabel>("CustomWidthDesc", 570, yOffset, 400, 36);
         customWidthDesc->SetText("• Segments auto-size to text length\n• Flat style with green theme\n• Perfect for variable-length options");
         customWidthDesc->SetFontSize(10);
         customWidthDesc->SetTextColor(Color(100, 100, 100, 255));
@@ -358,14 +358,14 @@ namespace UltraCanvas {
         // ========================================
         // KEYBOARD NAVIGATION INFO
         // ========================================
-        auto keyboardLabel = std::make_shared<UltraCanvasLabel>("KeyboardNav", 5090, 20, yOffset, 800, 25);
+        auto keyboardLabel = std::make_shared<UltraCanvasLabel>("KeyboardNav", 20, yOffset, 800, 25);
         keyboardLabel->SetText("⌨️ Keyboard Navigation");
         keyboardLabel->SetFontWeight(FontWeight::Bold);
         keyboardLabel->SetTextColor(Color(50, 100, 200, 255));
         mainContainer->AddChild(keyboardLabel);
         yOffset += 30;
 
-        auto keyboardDesc = std::make_shared<UltraCanvasLabel>("KeyboardDesc", 5091, 50, yOffset, 800, 70);
+        auto keyboardDesc = std::make_shared<UltraCanvasLabel>("KeyboardDesc", 50, yOffset, 800, 70);
         keyboardDesc->SetText(
                 "• Left/Right Arrow Keys: Navigate between segments\n"
                 "• Up/Down Arrow Keys: Also navigate (alternative)\n"

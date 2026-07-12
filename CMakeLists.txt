@@ -7,7 +7,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(UltraCanvasDemoApp
-    VERSION 0.1.28
+    VERSION 0.3.4
     DESCRIPTION "UltraCanvas Framework Demo Application"
     LANGUAGES CXX
 )
@@ -46,17 +46,33 @@ option(BUILD_TEXTER_APP "Build the texter application" ON)
 option(BUILD_FILEMANAGER_APP "Build the file manager application" OFF) # OFF: source files not yet committed
 option(BUILD_DEMO_APP "Build the demo application" ON)
 option(BUILD_ULTRAAI_APP "Build the UltraAI dashboard demo application" ON)
+option(BUILD_CSSLAYOUT_TESTS "Build the CSSLayout non-UI test harness" ON)
 option(BUILD_TESTS "Build unit tests" OFF)
+option(ULTRACANVAS_BUILD_NET_TESTS "Build the UltraNet test suite" OFF)
 option(ULTRACANVAS_PLUGIN_CDR "Build CDR plugin (requires libcdr)" ON)
 option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" ON)
+option(ULTRACANVAS_ENABLE_AUDIO "Build audio backend" ON)
 option(ULTRACANVAS_PLUGIN_VECTOR "Build Vector plugin" OFF)
-option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin (requires poppler)" OFF)
+option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin (requires MuPDF / libmupdf-dev)" ON)
+option(ULTRACANVAS_PLUGIN_OCR "Build OCR plugin (requires tesseract + leptonica)" OFF)
+option(ULTRACANVAS_PLUGIN_VECTORIZER "Build Vectorizer plugin (raster→SVG via VTracer; requires cargo)" OFF)
+option(ULTRACANVAS_USE_VIRTUALFS "Build the VirtualFS module and the UltraCanvas bridge to it" ON)
 
 include(FetchContent)
 include(cmake/UltraCanvasAppIcon.cmake)
 
 # ===== FIND REQUIRED PACKAGES =====
 find_package(PkgConfig REQUIRED)
+
+# ===== BUILD VIRTUALFS MODULE =====
+# Independent sibling module; UltraCanvas consumes it through
+# UltraCanvasVirtualFSBridge (added inside UltraCanvas/CMakeLists.txt
+# when the VirtualFS target exists).
+if(ULTRACANVAS_USE_VIRTUALFS)
+    message(STATUS "")
+    message(STATUS "── Building VirtualFS Module ──")
+    add_subdirectory(VirtualFS)
+endif()
 
 # ===== BUILD ULTRACANVAS CORE LIBRARY =====
 message(STATUS "")
@@ -71,6 +87,15 @@ if(BUILD_ULTRAAI_APP AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/UltraAI/CMakeLists.
     message(STATUS "")
     message(STATUS "── Building UltraAI Module ──")
     add_subdirectory(UltraAI)
+endif()
+    
+# ===== ULTRAMAIL =====
+# The mail application. Phase 1 builds the headless engine (LocalStore on
+# UltraDatabase); UI targets are added in later phases. Enabled by default
+# whenever UltraDatabase is available.
+option(BUILD_ULTRAMAIL "Build the UltraMail application" ON)
+if(BUILD_ULTRAMAIL AND TARGET UltraDatabase)
+    add_subdirectory(Apps/UltraMail)
 endif()
 
 # At this point, the following variables are available from UltraCanvas/CMakeLists.txt:
@@ -95,16 +120,32 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasDemoExamples.cpp
             Apps/DemoApp/UltraCanvasButtonExamples.cpp
             Apps/DemoApp/UltraCanvasDropDownExamples.cpp
+            Apps/DemoApp/UltraCanvasDatePickerExamples.cpp
             Apps/DemoApp/UltraCanvasAutoCompleteExamples.cpp
             Apps/DemoApp/UltraCanvasLabelExamples.cpp
             Apps/DemoApp/UltraCanvasMenuExamples.cpp
             Apps/DemoApp/UltraCanvasSliderExamples.cpp
+            Apps/DemoApp/UltraCanvasSpinnerExamples.cpp
+            Apps/DemoApp/UltraCanvasTimePickerExamples.cpp
+            Apps/DemoApp/UltraCanvasAlertExamples.cpp
+            Apps/DemoApp/UltraCanvasPaginationExamples.cpp
+            Apps/DemoApp/UltraCanvasRatingExamples.cpp
+            Apps/DemoApp/UltraCanvasStepperExamples.cpp
+            Apps/DemoApp/UltraCanvasChipExamples.cpp
+            Apps/DemoApp/UltraCanvasBadgeExamples.cpp
+            Apps/DemoApp/UltraCanvasColorPickerExamples.cpp
+            Apps/DemoApp/UltraCanvasScrollbarExamples.cpp
             Apps/DemoApp/UltraCanvasSVGExamples.cpp
             Apps/DemoApp/UltraCanvasTabExamples.cpp
+            Apps/DemoApp/UltraCanvasSplitPaneExamples.cpp
+            Apps/DemoApp/UltraCanvasGroupBoxExamples.cpp
             Apps/DemoApp/UltraCanvasTextAreaExamples.cpp
             Apps/DemoApp/UltraCanvasTextInputExamples.cpp
             Apps/DemoApp/UltraCanvasTreeViewExamples.cpp
+            Apps/DemoApp/UltraCanvasSpreadsheetExamples.cpp
+            Apps/DemoApp/UltraCanvasODTExamples.cpp
             Apps/DemoApp/UltraCanvasListViewExamples.cpp
+            Apps/DemoApp/UltraCanvasDependenciesExamples.cpp
             Apps/DemoApp/UltraCanvasBasicChartsExamples.cpp
             Apps/DemoApp/UltraCanvasDivergingChartExamples.cpp
             Apps/DemoApp/UltraCanvasWatefallChartExamples.cpp
@@ -112,13 +153,43 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasCheckboxExamples.cpp
             Apps/DemoApp/UltraCanvasDemoInfoWindow.cpp
             Apps/DemoApp/UltraCanvasSankeyExamples.cpp
+            Apps/DemoApp/UltraCanvasTreeMapExamples.cpp
+            Apps/DemoApp/UltraCanvasVennDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasDendrogramExamples.cpp
+            Apps/DemoApp/UltraCanvasBlockDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasNodeDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasFlowChartExamples.cpp
+            Apps/DemoApp/UltraCanvasGourceTreeExamples.cpp
+            Apps/DemoApp/UltraCanvasJitterPlotExamples.cpp
             Apps/DemoApp/UltraCanvasPopulationChartExamples.cpp
             Apps/DemoApp/UltraCanvasSegmentedControlExamples.cpp
+            Apps/DemoApp/UltraCanvasBreadcrumbExamples.cpp
             Apps/DemoApp/UltraCanvasLayoutExamples.cpp
             Apps/DemoApp/UltraCanvasToolbarExamples.cpp
             Apps/DemoApp/UltraCanvasTabExamples.cpp
             Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp
             Apps/DemoApp/UltraCanvasTextRenderingExamples.cpp
+            Apps/DemoApp/UltraCanvasPieChartExamples.cpp
+            Apps/DemoApp/UltraCanvasRadarChartExamples.cpp
+            Apps/DemoApp/UltraCanvasHeatmapExamples.cpp
+            Apps/DemoApp/UltraCanvasAdjacencyDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasArcDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasNetworkingExamples.cpp
+            Apps/DemoApp/UltraCanvasSlideshowExamples.cpp
+            Apps/DemoApp/UltraCanvasAlbumExamples.cpp
+            Apps/DemoApp/UltraCanvasMediaViewerExamples.cpp
+            Apps/DemoApp/UltraCanvasCompositorDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasGaugeExamples.cpp
+            Apps/DemoApp/UltraCanvasQRCodeExamples.cpp
+            Apps/DemoApp/UltraCanvasBarcodeExamples.cpp
+            Apps/DemoApp/UltraCanvasAudioExamples.cpp
+            Apps/DemoApp/UltraCanvasAudioFXExamples.cpp
+            Apps/DemoApp/UltraCanvasEBookExamples.cpp
+            Apps/DemoApp/UltraCanvasWaveformExamples.cpp
+            Apps/DemoApp/UltraCanvasPDFExamples.cpp
+            Apps/DemoApp/UltraCanvasLaTeXExamples.cpp
+            Apps/DemoApp/UltraCanvasFileLoaderExamples.cpp
+            Apps/DemoApp/UltraCanvasVideoExamples.cpp
     )
 
     # These files depend on libvips
@@ -126,12 +197,18 @@ if(BUILD_DEMO_APP)
         list(APPEND DEMO_SOURCES
             Apps/DemoApp/UltraCanvasBitmapExamples.cpp
             Apps/DemoApp/UltraCanvasBitmapFormatDemo.cpp
+            Apps/DemoApp/UltraCanvasPixelFXExamples.cpp
         )
     endif()
 
     # Only include GL examples if GL support is enabled
     if(ULTRACANVAS_ENABLE_GL)
-        list(APPEND DEMO_SOURCES Apps/DemoApp/UltraCanvasGLSurfaceExamples.cpp)
+        list(APPEND DEMO_SOURCES
+            Apps/DemoApp/UltraCanvasGLSurfaceExamples.cpp
+            Apps/DemoApp/UltraCanvasGLModelsTab.cpp
+            Apps/DemoApp/UltraCanvasGLShaderTab.cpp
+            Apps/DemoApp/UltraCanvasGLZarchTab.cpp
+        )
     endif()
 
     # Only include plugin examples if the plugins are actually built
@@ -142,6 +219,14 @@ if(BUILD_DEMO_APP)
 
         if(PLUGIN_TARGET MATCHES "XAR")
             list(APPEND DEMO_SOURCES Apps/DemoApp/UltraCanvasXARExamples.cpp)
+        endif()
+
+        if(PLUGIN_TARGET MATCHES "OCR")
+            list(APPEND DEMO_SOURCES Apps/DemoApp/UltraCanvasOCRExamples.cpp)
+        endif()
+
+        if(PLUGIN_TARGET MATCHES "Vectorizer")
+            list(APPEND DEMO_SOURCES Apps/DemoApp/UltraCanvasVectorizerExamples.cpp)
         endif()
     endforeach()
 
@@ -220,7 +305,11 @@ if(BUILD_DEMO_APP)
     add_executable(UltraCanvasDemo
         ${DEMO_SOURCES}
     )
-    
+    # Export the executable's dynamic symbols so on-demand plugin modules
+    # (dlopen'ed via the loader, e.g. libUltraCanvasLaTeX) can resolve
+    # UltraCanvas core symbols when the core is linked statically.
+    set_target_properties(UltraCanvasDemo PROPERTIES ENABLE_EXPORTS ON)
+
     # Include directories
     target_include_directories(UltraCanvasDemo PRIVATE
         ${ULTRACANVAS_INCLUDE_DIRS}
@@ -233,11 +322,18 @@ if(BUILD_DEMO_APP)
         ${JSONCPP_LIBRARIES}
     )
 
-    FetchContent_Declare(
-            fmt
-            GIT_REPOSITORY https://github.com/fmtlib/fmt
-            GIT_TAG        123913715afeb8a437e6388b4473fcc4753e1c9a) # 11.1.4
-    FetchContent_MakeAvailable(fmt)
+    # The core library resolves fmt too, but its imported target is scoped to
+    # that directory — resolve again here (cheap) before falling back to a fetch.
+    if(NOT TARGET fmt::fmt)
+        find_package(fmt CONFIG QUIET)
+    endif()
+    if(NOT TARGET fmt::fmt)
+        FetchContent_Declare(
+                fmt
+                GIT_REPOSITORY https://github.com/fmtlib/fmt
+                GIT_TAG        123913715afeb8a437e6388b4473fcc4753e1c9a) # 11.1.4
+        FetchContent_MakeAvailable(fmt)
+    endif()
     target_link_libraries(UltraCanvasDemo PRIVATE fmt::fmt)
 
     # Link against all plugin libraries
@@ -264,6 +360,8 @@ if(BUILD_DEMO_APP)
         UCAPP_ICON_PATH="media/appicon/Demo.png"
         $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
         $<$<BOOL:${ULTRACANVAS_ENABLE_GL}>:ULTRACANVAS_ENABLE_GL=1>
+        # macOS deprecated OpenGL in 10.14; silence per-call warnings in the GL demo code.
+        $<$<AND:$<BOOL:${ULTRACANVAS_ENABLE_GL}>,$<BOOL:${APPLE}>>:GL_SILENCE_DEPRECATION=1>
     )
 
     # Embed app icon in .exe (Windows only)
@@ -295,18 +393,42 @@ endif()
 if(BUILD_TESTS)
     message(STATUS "")
     message(STATUS "── Building Unit Tests ──")
-    
+
     enable_testing()
-    
-    # Find test framework
-    find_package(Catch2 QUIET)
-    
-    if(Catch2_FOUND)
-        add_subdirectory(Tests)
-    else()
-        message(STATUS "  Catch2 not found - tests disabled")
-        message(STATUS "  Install with: sudo apt install catch2")
-    endif()
+
+    # The tests are self-contained (no test framework dependency).
+    add_subdirectory(Tests)
+endif()
+
+# ===== ULTRANET TESTS =====
+# Independent of BUILD_TESTS / Catch2: uses a tiny in-tree framework so it
+# can run wherever UltraNet is built.
+if(ULTRACANVAS_BUILD_NET_TESTS AND ULTRACANVAS_ENABLE_NET)
+    enable_testing()
+    add_subdirectory(Tests/UltraNet)
+    message(STATUS "")
+    message(STATUS "── UltraNet test suite enabled (target: UltraNetTests) ──")
+endif()
+
+# ===== ULTRADATABASE TESTS =====
+# Independent of BUILD_TESTS / Catch2: uses a tiny in-tree framework so it
+# can run wherever UltraDatabase is built.
+option(ULTRACANVAS_BUILD_DATABASE_TESTS "Build the UltraDatabase test suite" OFF)
+if(ULTRACANVAS_BUILD_DATABASE_TESTS AND TARGET UltraDatabase)
+    enable_testing()
+    add_subdirectory(Tests/UltraDatabase)
+    message(STATUS "")
+    message(STATUS "── UltraDatabase test suite enabled (target: UltraDatabaseTests) ──")
+endif()
+
+# ===== ULTRAMAIL ENGINE TESTS =====
+# Headless engine tests (LocalStore on UltraDatabase); in-tree framework.
+option(ULTRACANVAS_BUILD_ULTRAMAIL_TESTS "Build the UltraMail engine test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRAMAIL_TESTS AND TARGET UltraMailEngine)
+    enable_testing()
+    add_subdirectory(Tests/UltraMail)
+    message(STATUS "")
+    message(STATUS "── UltraMail engine test suite enabled (target: UltraMailEngineTests) ──")
 endif()
 
 # ===== DOCUMENTATION =====
@@ -328,8 +450,10 @@ if (BUILD_TEXTER_APP)
             Apps/Texter/UltraCanvasEncoding.cpp
             Apps/Texter/main.cpp
             Apps/Texter/UltraCanvasSearchBar.cpp
-            Apps/Texter/UltraCanvasSearchBar.h
     )
+    # Export dynamic symbols so on-demand plugin modules can resolve core
+    # symbols when the core is linked statically (see UltraCanvasDemo).
+    set_target_properties(UltraCanvasTexter PROPERTIES ENABLE_EXPORTS ON)
 
     # Include directories
     target_include_directories(UltraCanvasTexter PRIVATE
@@ -378,7 +502,7 @@ endif()
 #            OUTPUT_NAME "UltraCanvasTexter"
 #            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/..
 #    )
-endif ()
+endif()
 
 # ===== ULTRAAI APPLICATION =====
 # Dashboard demo for the UltraAI module: grid of icon-buttons, modal
@@ -420,6 +544,31 @@ if(BUILD_ULTRAAI_APP)
     endif()
 
     message(STATUS "  UltraAI executable: UltraAIApp")
+endif()
+
+if (BUILD_CSSLAYOUT_TESTS)
+    add_executable(CSSLayoutTests Apps/CSSLayoutTests/main.cpp)
+    target_include_directories(CSSLayoutTests PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(CSSLayoutTests PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(CSSLayoutTests PRIVATE cxx_std_20)
+endif()
+
+# ===== ULTRAMAIL GUI APPLICATION =====
+# The full UI executable is defined alongside the engine in
+# Apps/UltraMail/CMakeLists.txt (target: UltraMail), built whenever
+# BUILD_ULTRAMAIL is ON and the UltraCanvas UI library is available.
+
+if (BUILD_TESTS)
+    # Headless eBook viewer smoke test (links the full library).
+    add_executable(EBookViewerTest Tests/EBookViewerTest.cpp)
+    target_include_directories(EBookViewerTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(EBookViewerTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(EBookViewerTest PRIVATE cxx_std_20)
+    set_target_properties(EBookViewerTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME EBookViewerTest COMMAND EBookViewerTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 endif()
 
 if (BUILD_FILEMANAGER_APP)
@@ -497,8 +646,12 @@ add_custom_target(copy_assets
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_LIST_DIR}/Docs ${CMAKE_CURRENT_BINARY_DIR}/share/UltraCanvas/Docs
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_LIST_DIR}/Apps/DemoApp ${CMAKE_CURRENT_BINARY_DIR}/share/UltraCanvas/DemoApp
 )
-add_dependencies(UltraCanvasTexter copy_assets)
-add_dependencies(UltraCanvasDemo copy_assets)
+if(BUILD_TEXTER_APP)
+    add_dependencies(UltraCanvasTexter copy_assets)
+endif()
+if(BUILD_DEMO_APP)
+    add_dependencies(UltraCanvasDemo copy_assets)
+endif()
 
 # ===== PACKAGE CONFIGURATION =====
 include(CMakePackageConfigHelpers)

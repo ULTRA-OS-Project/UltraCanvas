@@ -177,6 +177,8 @@ namespace UltraCanvas {
 
     SyntaxTokenizationRules CreateCRules();
 
+    SyntaxTokenizationRules CreateGlslRules();
+
     SyntaxTokenizationRules CreateJavaRules();
 
     SyntaxTokenizationRules CreateCSharpRules();
@@ -257,6 +259,7 @@ namespace UltraCanvas {
         // Register all supported languagesRules
         RegisterLanguage(CreateCppRules());
         RegisterLanguage(CreateCRules());
+        RegisterLanguage(CreateGlslRules());
         RegisterLanguage(CreateJavaRules());
         RegisterLanguage(CreateCSharpRules());
         RegisterLanguage(CreatePythonRules());
@@ -749,6 +752,82 @@ namespace UltraCanvas {
         rules.characterDelimiters = {'\''};
         rules.hasPreprocessor = true;
         rules.numberSuffixes = {"f", "F", "l", "L", "u", "U", "ul", "UL", "ll", "LL"};
+
+        return rules;
+    }
+
+// ===== GLSL (OpenGL Shading Language) RULES =====
+    inline SyntaxTokenizationRules CreateGlslRules() {
+        SyntaxTokenizationRules rules;
+        rules.name = "GLSL";
+        rules.fileExtensions = {"glsl", "vert", "frag", "geom", "comp", "tesc", "tese",
+                                "vs", "fs", "gs", "vsh", "fsh", "gsh"};
+
+        rules.keywords = {
+                "attribute", "const", "uniform", "varying", "buffer", "shared",
+                "coherent", "volatile", "restrict", "readonly", "writeonly",
+                "layout", "centroid", "flat", "smooth", "noperspective", "patch",
+                "sample", "break", "continue", "do", "for", "while", "switch",
+                "case", "default", "if", "else", "discard", "return", "struct",
+                "in", "out", "inout", "precision", "highp", "mediump", "lowp",
+                "invariant", "precise", "subroutine"
+        };
+
+        rules.types = {
+                "void", "bool", "int", "uint", "float", "double",
+                "vec2", "vec3", "vec4", "bvec2", "bvec3", "bvec4",
+                "ivec2", "ivec3", "ivec4", "uvec2", "uvec3", "uvec4",
+                "dvec2", "dvec3", "dvec4",
+                "mat2", "mat3", "mat4",
+                "mat2x2", "mat2x3", "mat2x4", "mat3x2", "mat3x3", "mat3x4",
+                "mat4x2", "mat4x3", "mat4x4", "dmat2", "dmat3", "dmat4",
+                "sampler1D", "sampler2D", "sampler3D", "samplerCube",
+                "sampler1DArray", "sampler2DArray", "samplerCubeArray",
+                "sampler2DShadow", "samplerCubeShadow", "sampler2DRect",
+                "isampler2D", "isampler3D", "usampler2D", "usampler3D",
+                "image1D", "image2D", "image3D", "imageCube", "atomic_uint"
+        };
+
+        rules.builtins = {
+                // built-in functions
+                "radians", "degrees", "sin", "cos", "tan", "asin", "acos", "atan",
+                "sinh", "cosh", "tanh", "asinh", "acosh", "atanh",
+                "pow", "exp", "log", "exp2", "log2", "sqrt", "inversesqrt",
+                "abs", "sign", "floor", "trunc", "round", "roundEven", "ceil",
+                "fract", "mod", "modf", "min", "max", "clamp", "mix", "step",
+                "smoothstep", "isnan", "isinf", "floatBitsToInt", "intBitsToFloat",
+                "length", "distance", "dot", "cross", "normalize", "faceforward",
+                "reflect", "refract", "matrixCompMult", "outerProduct", "transpose",
+                "determinant", "inverse", "lessThan", "lessThanEqual",
+                "greaterThan", "greaterThanEqual", "equal", "notEqual", "any",
+                "all", "not", "texture", "textureProj", "textureLod",
+                "textureOffset", "texelFetch", "textureGrad", "textureSize",
+                "texture2D", "texture3D", "textureCube", "dFdx", "dFdy", "fwidth",
+                "EmitVertex", "EndPrimitive", "barrier",
+                // built-in variables
+                "gl_Position", "gl_PointSize", "gl_FragCoord", "gl_FragDepth",
+                "gl_FragColor", "gl_FrontFacing", "gl_PointCoord", "gl_VertexID",
+                "gl_InstanceID", "gl_PrimitiveID", "gl_Layer", "gl_ViewportIndex",
+                "gl_GlobalInvocationID", "gl_LocalInvocationID", "gl_WorkGroupID",
+                "gl_NumWorkGroups", "gl_WorkGroupSize"
+        };
+
+        rules.constants = {"true", "false"};
+        rules.operators = {
+                "+", "-", "*", "/", "%", "=", "==", "!=", "<", ">", "<=", ">=",
+                "&&", "||", "!", "&", "|", "^", "~", "<<", ">>", "++", "--",
+                "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>=",
+                ".", "?:", ",", ";", "(", ")", "[", "]", "{", "}"
+        };
+
+        rules.singleLineComments = {"//"};
+        rules.multiLineComments = {{"/*", "*/"}};
+        rules.stringDelimiters = {};           // GLSL has no string literals
+        rules.characterDelimiters = {};
+        rules.hasPreprocessor = true;          // #version, #define, #ifdef, ...
+        rules.hasEscapeSequences = false;
+        rules.hasOctalNumbers = false;
+        rules.numberSuffixes = {"f", "F", "u", "U", "lf", "LF"};
 
         return rules;
     }

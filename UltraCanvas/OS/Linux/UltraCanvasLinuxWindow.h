@@ -1,7 +1,7 @@
 // OS/Linux/UltraCanvasX11Window.h
 // Linux platform implementation for UltraCanvas Framework
-// Version: 1.0.0
-// Last Modified: 2025-07-11
+// Version: 1.1.0 - per-monitor HiDPI (deviceScale) support
+// Last Modified: 2026-07-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -10,7 +10,6 @@
 
 // ===== CORE INCLUDES =====
 #include "UltraCanvasRenderContext.h"
-#include "UltraCanvasLinuxDragDrop.h"
 
 // ===== LINUX PLATFORM INCLUDES =====
 #include <X11/Xlib.h>
@@ -21,6 +20,8 @@
 #include <cairo/cairo.h>
 #include <cairo/cairo-xlib.h>
 #include <pango/pangocairo.h>
+
+#include "UltraCanvasLinuxDragDrop.h"
 
 // ===== STANDARD INCLUDES =====
 #include <memory>
@@ -69,6 +70,13 @@ namespace UltraCanvas {
         virtual NativeWindowHandle GetNativeHandle() const override;
         virtual void GetScreenPosition(int& x, int& y) const override;
         void GetScreenSize(int& width, int& height) const override;
+        // Bounds of the XRandR monitor this window is on (physical px, root
+        // coords); primary monitor when the window isn't on any, whole X screen
+        // when XRandR is unavailable.
+        void GetScreenBounds(int& x, int& y, int& width, int& height) const override;
+        // Record the parent and set WM_TRANSIENT_FOR so the WM keeps this
+        // window above its parent and places it on the parent's monitor.
+        void SetTransientParent(UltraCanvasWindowBase* parent) override;
         UltraCanvasLinuxDragDrop& GetDragDropHandler() { return dragDropHandler; }
 //        virtual void ProcessEvents() override;
 //        virtual bool OnEvent(const UCEvent&) override;
@@ -95,6 +103,21 @@ namespace UltraCanvas {
         bool CreateNativeCairoSurface();
         void DestroyNativeCairoSurface();
         void SetWindowHints();
+
+        // Per-monitor physical DPI (mm-based) for the monitor the window is on;
+        // returns 0 when XRandR has no usable data. Helper for QueryNativeDeviceScale.
+        float QueryXRandRScaleForWindow(Display* display) const;
+
+        // Window center in root coordinates (physical px): live X geometry when
+        // the window exists, config geometry otherwise. Used to pick the
+        // XRandR monitor the window is on.
+        void GetWindowCenterInRootCoords(Display* display, int& cx, int& cy) const;
+
+        // True once a position has been chosen programmatically (dialog
+        // centering, explicit config x/y). Exported to the WM via the
+        // USPosition size hint so it honors the position instead of applying
+        // its own placement policy.
+        bool hasExplicitPosition = false;
 //        void SetWindowDecorations();
 
         // ===== STATE MANAGEMENT =====
@@ -104,6 +127,11 @@ namespace UltraCanvas {
 //        void RestoreWindowGeometry();
     protected:
         void DoResizeNative() override;
+        // Hybrid DPI detection: GDK_SCALE / QT_SCALE_FACTOR env -> Xft.dpi ->
+        // XRandR per-monitor physical DPI -> 1.0.
+        float QueryNativeDeviceScale() const override;
+        // Rebuild the xlib surface at physical px + device scale.
+        bool RecreateNativeSurface() override;
     };
 
 } // namespace UltraCanvas

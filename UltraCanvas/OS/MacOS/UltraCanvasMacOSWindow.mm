@@ -1,7 +1,7 @@
 // OS/MacOS/UltraCanvasMacOSWindow.mm
 // Complete macOS window implementation with Cocoa and Cairo
-// Version: 2.1.0
-// Last Modified: 2026-05-03
+// Version: 2.2.0 - HiDPI scaling moved to UltraCanvasWindowBase (deviceScale)
+// Last Modified: 2026-07-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -336,6 +336,13 @@ namespace UltraCanvas {
             [nsWindow setReleasedWhenClosed:NO];
             [nsWindow setAcceptsMouseMovedEvents:YES];
 
+            // Opt out of AppKit's automatic window state restoration. The framework
+            // owns its own window/UI state, and AppKit's NSPersistentUIManager
+            // periodically archives restorable windows via NSKeyedArchiver — that
+            // path crashes on macOS 26.x while encoding our custom Cairo NSView
+            // (CFRelease alignment fault inside __CFBinaryPlistWriteOrPresize).
+            [nsWindow setRestorable:NO];
+
             // Create custom view for Cairo rendering
             NSRect contentFrame = [[nsWindow contentView] frame];
             contentView = [[UltraCanvasView alloc] initWithFrame:contentFrame window:this];
@@ -351,20 +358,15 @@ namespace UltraCanvas {
         }
     }
 
-    bool UltraCanvasMacOSWindow::RefreshBackingScaleFactor() {
-        float newScale = 1.0f;
+    float UltraCanvasMacOSWindow::QueryNativeDeviceScale() const {
         @autoreleasepool {
             if (nsWindow) {
-                newScale = static_cast<float>([nsWindow backingScaleFactor]);
-            } else {
-                NSScreen* screen = [NSScreen mainScreen];
-                if (screen) newScale = static_cast<float>([screen backingScaleFactor]);
+                return static_cast<float>([nsWindow backingScaleFactor]);
             }
+            NSScreen* screen = [NSScreen mainScreen];
+            if (screen) return static_cast<float>([screen backingScaleFactor]);
         }
-        if (newScale <= 0.0f) newScale = 1.0f;
-        bool changed = (newScale != backingScaleFactor);
-        backingScaleFactor = newScale;
-        return changed;
+        return 1.0f;
     }
 
     bool UltraCanvasMacOSWindow::CreateNativeCairoSurface() {
@@ -383,8 +385,8 @@ namespace UltraCanvas {
 
         // Pull current per-window backing scale (queries [nsWindow backingScaleFactor]).
         // 1.0 on standard displays, 2.0 on Retina, etc.
-        RefreshBackingScaleFactor();
-        const float scale = backingScaleFactor;
+        RefreshDeviceScale();
+        const float scale = deviceScale;
         const int pixW = static_cast<int>(width * scale);
         const int pixH = static_cast<int>(height * scale);
 
@@ -438,28 +440,32 @@ namespace UltraCanvas {
         //cgContext = nullptr;
     }
 
-    void UltraCanvasMacOSWindow::DoResizeNative() {
+    bool UltraCanvasMacOSWindow::RecreateNativeSurface() {
         std::lock_guard<std::mutex> lock(cairoMutex);
-        int w = config_.width;
-        int h = config_.height;
 
-        debugOutput << "UltraCanvasMacOSWindow::DoResizeNative: Resizing Cairo surface to " << w << "x" << h << std::endl;
+        debugOutput << "UltraCanvasMacOSWindow::RecreateNativeSurface: Rebuilding Cairo surface for "
+                    << config_.width << "x" << config_.height << " @ " << deviceScale << "x" << std::endl;
 
         auto oldCairoSurface = nativeSurface;
 
         if (!CreateNativeCairoSurface()) {
-            return;
+            return false;
         }
 
         // Destroy old surface
         if (oldCairoSurface) {
             cairo_surface_destroy(static_cast<cairo_surface_t*>(oldCairoSurface));
         }
+        return true;
+    }
+
+    void UltraCanvasMacOSWindow::DoResizeNative() {
+        RecreateNativeSurface();
     }
 
     // ===== WINDOW MANAGEMENT =====
     void UltraCanvasMacOSWindow::Show() {
-        if (!_created || visible) return;
+        if (!_created || _windowVisible) return;
 
         debugOutput << "UltraCanvas macOS: Showing window..." << std::endl;
         if (!UltraCanvasApplication::GetInstance()->IsRunning()) {
@@ -476,7 +482,7 @@ namespace UltraCanvas {
             if ([nsWindow isMiniaturized]) {
                 [nsWindow deminiaturize:nil];
             }
-            visible = true;
+            _windowVisible = true;
         }
 
         if (onWindowShow) {
@@ -486,13 +492,13 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMacOSWindow::Hide() {
-        if (!_created || !visible) return;
+        if (!_created || !_windowVisible) return;
 
         debugOutput << "UltraCanvas macOS: Hiding window..." << std::endl;
 
         @autoreleasepool {
             [nsWindow orderOut:nil];
-            visible = false;
+            _windowVisible = false;
         }
 
         if (onWindowHide) {
@@ -736,7 +742,7 @@ namespace UltraCanvas {
     void UltraCanvasMacOSWindow::OnWindowDidBecomeKey() {
         UCEvent event;
         event.type = UCEventType::WindowFocus;
-        event.targetWindow = this;
+        event.targetWindow = GetWindowWeakPtr();
         event.nativeWindowHandle = GetNativeHandle();
         UltraCanvasApplication::GetInstance()->PushEvent(event);
     }
@@ -744,7 +750,7 @@ namespace UltraCanvas {
     void UltraCanvasMacOSWindow::OnWindowDidResignKey() {
         UCEvent event;
         event.type = UCEventType::WindowBlur;
-        event.targetWindow = this;
+        event.targetWindow = GetWindowWeakPtr();
         event.nativeWindowHandle = GetNativeHandle();
         UltraCanvasApplication::GetInstance()->PushEvent(event);
     }
@@ -760,34 +766,17 @@ namespace UltraCanvas {
     void UltraCanvasMacOSWindow::OnWindowDidChangeBackingProperties() {
         if (!_created) return;
 
-        const float oldScale = backingScaleFactor;
-        if (!RefreshBackingScaleFactor()) {
+        const float oldScale = deviceScale;
+        if (!RefreshDeviceScale()) {
             // No actual change (e.g. a redundant notification).
             return;
         }
         debugOutput << "UltraCanvas macOS: Backing scale changed " << oldScale
-                    << " -> " << backingScaleFactor << ", recreating Cairo surface" << std::endl;
+                    << " -> " << deviceScale << ", recreating Cairo surface" << std::endl;
 
-        // Recreate the offscreen Cairo surface at the new backing dimensions.
-        // Logical width/height stay the same; only the pixel resolution shifts.
-        {
-            std::lock_guard<std::mutex> lock(cairoMutex);
-            auto oldCairoSurface = nativeSurface;
-
-            if (!CreateNativeCairoSurface()) {
-                return;
-            }
-
-            if (oldCairoSurface) {
-                cairo_surface_destroy(static_cast<cairo_surface_t*>(oldCairoSurface));
-            }
-        }
-
-        // Force a full re-layout / repaint at the new resolution.
-        DoResize();
-        RequestWindowComposition();
-        UpdateAndRender();
-        InvalidateWindowNative();
+        // Shared flow: recreates nativeSurface at the new backing size, rebuilds
+        // renderContext + popup/tooltip contexts, re-lays-out and repaints.
+        HandleDeviceScaleChange();
     }
 } // namespace UltraCanvas
 

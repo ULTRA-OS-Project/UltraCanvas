@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasSearchBar.h
 // Inline search and replace bar — embedded panel in the editor (VS Code style)
-// Version: 1.0.0
-// Last Modified: 2026-03-14
+// Version: 1.1.0
+// Last Modified: 2026-06-23
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -31,6 +31,11 @@ namespace UltraCanvas {
     private:
         // ===== MODE =====
         SearchBarMode mode = SearchBarMode::Find;
+
+        // ===== ROWS (flex) =====
+        std::shared_ptr<UltraCanvasContainer>   findRow;        // flex row (search controls)
+        std::shared_ptr<UltraCanvasContainer>   findSpacer;     // flex-grow gap before close (✕)
+        std::shared_ptr<UltraCanvasContainer>   replaceSpacer;  // flex-grow gap on replace row
 
         // ===== FIND ROW COMPONENTS =====
         std::shared_ptr<UltraCanvasButton>       searchIconButton;
@@ -69,7 +74,7 @@ namespace UltraCanvas {
         static constexpr int RowPadding    = 4;   // vertical inset per row
         static constexpr int HSpacing      = 4;
         static constexpr int IconBtnSize   = 28;
-        static constexpr int CountLabelW   = 72;
+        static constexpr int CountLabelW   = 110;
         static constexpr int ReplaceBtnW   = 110;
         static constexpr int MaxInputWidth  = 400;
         static constexpr int SearchIconW    = 28;
@@ -78,18 +83,18 @@ namespace UltraCanvas {
         void BuildFindRow(int y, int w);
         void BuildReplaceRow(int y, int w);
         void BuildSettingsMenu();
-        void UpdateLayout();
+        void UpdateSearchbarLayout();
         void WireCallbacks();
         void AddToHistory(std::vector<std::string>& history, const std::string& text);
         void ShowHistoryMenu(bool isReplace);
         int ComputeInputWidth() const;
 
     public:
-        UltraCanvasSearchBar(const std::string& id, long uid, int x, int y, int w);
+        UltraCanvasSearchBar(const std::string& id);
 
         // ===== SETUP =====
         void Initialize();
-        void SetBounds(const Rect2Di& bounds) override;
+        void SetBounds(const Rect2Df& bounds) override;
 
         // ===== MODE CONTROL =====
         void SetMode(SearchBarMode newMode);
@@ -137,6 +142,13 @@ namespace UltraCanvas {
         std::function<void(const std::string&, bool caseSensitive, bool wholeWord)> onFindNext;
         std::function<void(const std::string&, bool caseSensitive, bool wholeWord)> onFindPrevious;
         std::function<void(const std::string&, bool caseSensitive, bool wholeWord)> onFindFirst;
+        // Invoked when a search is (re)started or refined (typing, option toggle,
+        // history pick) — should select the first match from the search anchor
+        // WITHOUT advancing. Falls back to onFindNext if unset.
+        std::function<void(const std::string&, bool caseSensitive, bool wholeWord)> onIncrementalFind;
+        // Fired when the search input regains keyboard focus — lets the host
+        // re-capture the incremental-search anchor at the caret's current position.
+        std::function<void()> onSearchInputFocused;
         std::function<void(const std::string& find, const std::string& replace, bool cs, bool ww)> onReplace;
         std::function<void(const std::string& find, const std::string& replace, bool cs, bool ww)> onReplaceAll;
         std::function<void()> onClose;

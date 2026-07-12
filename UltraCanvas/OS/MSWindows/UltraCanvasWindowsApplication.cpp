@@ -1,7 +1,7 @@
 // OS/MSWindows/UltraCanvasWindowsApplication.cpp
 // Complete Windows application implementation with all methods
-// Version: 1.1.1
-// Last Modified: 2026-04-17
+// Version: 1.3.0 - HiDPI: mouse coords converted physical->logical per window scale
+// Last Modified: 2026-07-03
 // Author: UltraCanvas Framework
 
 #include "../../include/UltraCanvasApplication.h"
@@ -9,10 +9,15 @@
 #include "UltraCanvasWindowsApplication.h"
 #include <iostream>
 #include <algorithm>
+#include <filesystem>
+#include <sstream>
+#include <pango/pangocairo.h>
+#include <fontconfig/fontconfig.h>
 #include "UltraCanvasDebug.h"
 
 // Link against IME library
 #pragma comment(lib, "imm32.lib")
+#pragma comment(lib, "gdi32.lib")
 
 namespace UltraCanvas {
 
@@ -301,12 +306,13 @@ namespace UltraCanvas {
 // ===== MOUSE CAPTURE =====
 
     void UltraCanvasWindowsApplication::CaptureMouseNative() {
-        if (!focusedWindow) {
+        auto* fw = GetFocusedWindow();
+        if (!fw) {
             debugOutput << "UltraCanvas: Cannot capture mouse - no focused window" << std::endl;
             return;
         }
 
-        HWND hwnd = focusedWindow->GetNativeHandle();
+        HWND hwnd = fw->GetNativeHandle();
         if (hwnd) {
             SetCapture(hwnd);
         }
@@ -324,15 +330,43 @@ namespace UltraCanvas {
         UCEvent event;
         event.timestamp = std::chrono::steady_clock::now();
         event.nativeWindowHandle = hwnd;
-        event.targetWindow = FindWindow(hwnd);
+        auto* tw = FindWindow(hwnd);
+        if (tw) {
+            event.targetWindow = tw->GetWindowWeakPtr();
+        }
+
+        // Windows delivers mouse coords in PHYSICAL client px (the process is
+        // Per-Monitor-V2 aware). Convert every pushed event's pointer fields to
+        // LOGICAL px before dispatch so hit-testing matches the logical UI space.
+        // Non-pointer events (keyboard/focus/close) carry a {0,0} pointer, which
+        // scales to {0,0} — a harmless no-op.
+        auto pushEventScaled = [&](UCEvent& e) {
+            if (tw) {
+                float s = tw->GetDeviceScale();
+                if (s != 1.0f) {
+                    e.pointerWindow = tw->PhysicalToLogical(e.pointerWindow);
+                    e.pointer       = e.pointerWindow;
+                    e.pointerGlobal = tw->PhysicalToLogical(e.pointerGlobal);
+                }
+            }
+            PushEvent(e);
+        };
 
         // Common modifier state helper
         auto fillModifiers = [&event]() {
+            bool ctrlDown = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+            bool altDown  = (GetKeyState(VK_MENU) & 0x8000) != 0;
+            // AltGr is delivered by Windows as a synthetic LCtrl+RAlt chord.
+            // Strip both so AltGr-produced characters reach text consumers
+            // as plain text, matching X11/Linux modifier semantics.
+            bool isAltGr  = ((GetKeyState(VK_RMENU) & 0x8000) != 0) &&
+                            ((GetKeyState(VK_LCONTROL) & 0x8000) != 0);
+
             event.shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
-            event.ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
-            event.alt = (GetKeyState(VK_MENU) & 0x8000) != 0;
-            event.meta = ((GetKeyState(VK_LWIN) & 0x8000) != 0) ||
-                         ((GetKeyState(VK_RWIN) & 0x8000) != 0);
+            event.ctrl  = ctrlDown && !isAltGr;
+            event.alt   = altDown  && !isAltGr;
+            event.meta  = ((GetKeyState(VK_LWIN) & 0x8000) != 0) ||
+                          ((GetKeyState(VK_RWIN) & 0x8000) != 0);
         };
 
         switch (msg) {
@@ -344,7 +378,7 @@ namespace UltraCanvas {
                 event.virtualKey = ConvertVKToUCKey(wParam);
                 event.character = 0;
                 fillModifiers();
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
@@ -355,7 +389,7 @@ namespace UltraCanvas {
                 event.virtualKey = ConvertVKToUCKey(wParam);
                 event.character = 0;
                 fillModifiers();
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
@@ -391,7 +425,7 @@ namespace UltraCanvas {
                                   ? utf8[0] : 0;
                 event.virtualKey = UCKeys::Unknown;
                 fillModifiers();
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
@@ -405,7 +439,7 @@ namespace UltraCanvas {
                 ClientToScreen(hwnd, &pt);
                 event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
@@ -418,7 +452,7 @@ namespace UltraCanvas {
                 ClientToScreen(hwnd, &pt);
                 event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
@@ -431,7 +465,7 @@ namespace UltraCanvas {
                 ClientToScreen(hwnd, &pt);
                 event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
@@ -444,7 +478,7 @@ namespace UltraCanvas {
                 ClientToScreen(hwnd, &pt);
                 event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
@@ -457,7 +491,7 @@ namespace UltraCanvas {
                 ClientToScreen(hwnd, &pt);
                 event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
@@ -470,7 +504,24 @@ namespace UltraCanvas {
                 ClientToScreen(hwnd, &pt);
                 event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
-                PushEvent(event);
+                pushEventScaled(event);
+                return;
+            }
+
+            // ===== EXTENDED (SIDE/THUMB) BUTTON EVENTS =====
+            case WM_XBUTTONDOWN:
+            case WM_XBUTTONUP: {
+                event.type = (msg == WM_XBUTTONDOWN) ? UCEventType::MouseDown
+                                                     : UCEventType::MouseUp;
+                event.button = (GET_XBUTTON_WPARAM(wParam) == XBUTTON1)
+                                   ? UCMouseButton::Back : UCMouseButton::Forward;
+                event.pointerWindow = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+                event.pointer = event.pointerWindow;
+                POINT pt = { event.pointer.x, event.pointer.y };
+                ClientToScreen(hwnd, &pt);
+                event.pointerGlobal = { pt.x, pt.y };
+                fillModifiers();
+                pushEventScaled(event);
                 return;
             }
 
@@ -484,7 +535,7 @@ namespace UltraCanvas {
                 ClientToScreen(hwnd, &pt);
                 event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
@@ -497,7 +548,7 @@ namespace UltraCanvas {
                 ClientToScreen(hwnd, &pt);
                 event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
@@ -510,7 +561,7 @@ namespace UltraCanvas {
                 ClientToScreen(hwnd, &pt);
                 event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
@@ -523,7 +574,7 @@ namespace UltraCanvas {
                 ClientToScreen(hwnd, &pt);
                 event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
@@ -542,7 +593,7 @@ namespace UltraCanvas {
                 event.pointerWindow = { pt.x, pt.y };
                 event.pointer = event.pointerWindow;
                 fillModifiers();
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
@@ -557,14 +608,14 @@ namespace UltraCanvas {
                 event.pointerWindow = { pt.x, pt.y };
                 event.pointer = event.pointerWindow;
                 fillModifiers();
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
             // ===== MOUSE ENTER/LEAVE =====
             case WM_MOUSELEAVE: {
                 event.type = UCEventType::MouseLeave;
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
@@ -576,7 +627,7 @@ namespace UltraCanvas {
 //                    event.type = UCEventType::WindowResize;
 //                    event.width = w;
 //                    event.height = h;
-//                    PushEvent(event);
+//                    pushEventScaled(event);
 //                }
 //                return;
 //            }
@@ -589,21 +640,21 @@ namespace UltraCanvas {
 
             case WM_CLOSE: {
                 event.type = UCEventType::WindowCloseRequest;
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
             case WM_SETFOCUS: {
                 debugOutput << "focus hwnd=" << hwnd << std::endl;
                 event.type = UCEventType::WindowFocus;
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
             case WM_KILLFOCUS: {
                 debugOutput << "blur hwnd=" << hwnd << std::endl;
                 event.type = UCEventType::WindowBlur;
-                PushEvent(event);
+                pushEventScaled(event);
                 return;
             }
 
@@ -729,6 +780,11 @@ namespace UltraCanvas {
             case WM_MBUTTONUP:
             case WM_MBUTTONDBLCLK:
                 return UCMouseButton::Middle;
+            case WM_XBUTTONDOWN:
+            case WM_XBUTTONUP:
+            case WM_XBUTTONDBLCLK:
+                return (GET_XBUTTON_WPARAM(wParam) == XBUTTON1)
+                           ? UCMouseButton::Back : UCMouseButton::Forward;
             default:
                 return UCMouseButton::Unknown;
         }
@@ -756,92 +812,93 @@ namespace UltraCanvas {
 
     FontStyle UltraCanvasWindowsApplication::DetectSystemFontStyleNative() {
         FontStyle result;
-        result.fontFamily = "Sans";
+        result.fontFamily = "Ubuntu";
         result.fontSize = 12.0f;
-        return result;
-        NONCLIENTMETRICSW ncm = {};
-        ncm.cbSize = sizeof(NONCLIENTMETRICSW);
-
-        if (SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(ncm), &ncm, 0)) {
-            std::wstring wfontName(ncm.lfMessageFont.lfFaceName);
-            result.fontFamily = Utf16ToUtf8(wfontName);
-
-            // lfHeight is negative for character height in logical units
-            int height = ncm.lfMessageFont.lfHeight;
-            if (height < 0) height = -height;
-            result.fontSize = static_cast<float>(height) * 72.0f / 96.0f;
-            if (result.fontSize <= 0) result.fontSize = 12.0f;
-
-//            if (ncm.lfMessageFont.lfWeight >= FW_BOLD) {
-//                result.fontWeight = FontWeight::Bold;
-//            }
-//            if (ncm.lfMessageFont.lfItalic) {
-//                result.fontSlant = FontSlant::Italic;
-//            }
-        } else {
-            result.fontFamily = "Segoe UI";
-            result.fontSize = 12.0f;
-        }
-
         return result;
     }
 
     FontStyle UltraCanvasWindowsApplication::DetectMonospacedFontStyleNative() {
         FontStyle result;
+        result.fontFamily = "Ubuntu Mono";
+        result.fontSize = 12.0f;
+        return result;
+    }
 
-        NONCLIENTMETRICSW ncm = {};
-        ncm.cbSize = sizeof(NONCLIENTMETRICSW);
+    void UltraCanvasWindowsApplication::LoadBundledFontsNative() {
+        const std::string dir = GetBundledFontsDir();
 
-        if (SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(ncm), &ncm, 0)) {
-            // Use the status font size as reference for monospaced font
-            int height = ncm.lfStatusFont.lfHeight;
-            if (height < 0) height = -height;
-            result.fontSize = static_cast<float>(height) * 72.0f / 96.0f;
-            if (result.fontSize <= 0) result.fontSize = 12.0f;
-        }
+        FcConfig* cfg = FcConfigGetCurrent();
 
-        // Try Consolas first (Vista+, universally available)
-        // Then Cascadia Mono (Windows 10/11 with Terminal installed)
-        // Courier New as last resort — always present, but ugly
-        static const char *candidates[] = {
-                "Cascadia Mono", "Cascadia Code",
-                "Consolas", "Lucida Console",
-                "Courier New", nullptr
-        };
+        for (size_t i = 0; i < kEmbeddedAllFontsCount; ++i) {
+            std::string path = dir + kEmbeddedAllFonts[i];
+            if (!std::filesystem::exists(path)) {
+                debugOutput << "UltraCanvas: bundled font missing: " << path << std::endl;
+                continue;
+            }
 
-        PangoFontMap *fontMap = pango_cairo_font_map_get_default();
-        if (!fontMap) {
-            result.fontFamily = "Courier New";
-            return result;
-        }
+            std::wstring wpath = Utf8ToUtf16(path);
+            if (AddFontResourceExW(wpath.c_str(), FR_PRIVATE, 0) == 0) {
+                debugOutput << "UltraCanvas: AddFontResourceExW failed for " << path << std::endl;
+            }
 
-        PangoContext* ctx = pango_font_map_create_context(fontMap);
-        if (!ctx) {
-            result.fontFamily = "Courier New";
-            return result;
-        }
-
-        for (int i = 0; candidates[i]; ++i) {
-            PangoFontDescription *desc =
-                    pango_font_description_from_string(candidates[i]);
-            PangoFont *font = pango_font_map_load_font(
-                    fontMap, ctx, desc);
-
-            pango_font_description_free(desc);
-
-            if (font) {
-                result.fontFamily = candidates[i];
-                g_object_unref(font);
-                break;
-            } else {
-                g_object_unref(font);
+            if (cfg) {
+                if (!FcConfigAppFontAddFile(cfg,
+                        reinterpret_cast<const FcChar8*>(path.c_str()))) {
+                    debugOutput << "UltraCanvas: FcConfigAppFontAddFile failed for " << path << std::endl;
+                }
             }
         }
-        g_object_unref(ctx);
 
-        if (result.fontFamily.empty()) {
-            result.fontFamily = "Courier New"; // fallback
+        if (cfg) {
+            // Materialise the FontSet so FcMatch (and therefore Pango) can
+            // actually find the just-added app fonts. No-op on a system-loaded
+            // config; required on a FcConfigCreate'd one.
+            FcConfigBuildFonts(cfg);
+
+            // PANGO_BACKEND env var is ignored by MSYS2's Pango, so the
+            // default font map stays Win32 — which never reads our FC config.
+            // Force an FC-backed map by constructing one explicitly via
+            // pango_cairo_font_map_new_for_font_type(CAIRO_FONT_TYPE_FT) and
+            // setting it as the default. set_default takes its own ref, so
+            // we drop ours afterwards.
+            PangoFontMap* fcFm = pango_cairo_font_map_new_for_font_type(CAIRO_FONT_TYPE_FT);
+            if (fcFm) {
+                pango_cairo_font_map_set_default(PANGO_CAIRO_FONT_MAP(fcFm));
+                g_object_unref(fcFm);
+            } else {
+                debugOutput << "UltraCanvas: pango_cairo_font_map_new_for_font_type(FT) returned null" << std::endl;
+                pango_cairo_font_map_set_default(nullptr);
+            }
+
+#ifdef ULTRACANVAS_DEBUG
+            // Diagnostic: how many fonts does FC know about now? If this is
+            // small (<10) on a packaged build, FC likely couldn't find any
+            // system fonts and only our bundled DejaVu families are available.
+            // Also log a sample of family names so we can tell whether DejaVu
+            // Sans was actually picked up by FC's dir scan.
+            {
+                FcPattern* pat = FcPatternCreate();
+                FcObjectSet* os = FcObjectSetBuild(FC_FAMILY, FC_FILE, (char*)nullptr);
+                FcFontSet* fs = FcFontList(cfg, pat, os);
+                debugOutput << "UltraCanvas: FC font count after init=" << (fs ? fs->nfont : -1) << std::endl;
+                if (fs) {
+                    int sampleN = std::min(fs->nfont, 500);
+                    std::ostringstream fams;
+                    for (int i = 0; i < sampleN; ++i) {
+                        FcChar8* fam = nullptr;
+                        if (FcPatternGetString(fs->fonts[i], FC_FAMILY, 0, &fam) == FcResultMatch && fam) {
+                            if (i) fams << ", ";
+                            fams << reinterpret_cast<const char*>(fam);
+                        }
+                    }
+                    debugOutput << "UltraCanvas: FC family sample (" << sampleN << "/" << fs->nfont
+                                << "): " << fams.str() << std::endl;
+                    FcFontSetDestroy(fs);
+                }
+                FcObjectSetDestroy(os);
+                FcPatternDestroy(pat);
+            }
+#endif
         }
-        return result;
     }
 } // namespace UltraCanvas

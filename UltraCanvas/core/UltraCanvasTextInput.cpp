@@ -1,10 +1,11 @@
-// UltraCanvasTextInput.h
+// UltraCanvasTextInput.cpp
 // Advanced text input component with validation, formatting, and feedback systems
-// Version: 1.1.0
-// Last Modified: 2025-01-06
+// Version: 1.3.2
+// Last Modified: 2026-07-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasClipboard.h"
 #include <string>
 #include <vector>
 #include <functional>
@@ -14,8 +15,8 @@
 
 namespace UltraCanvas {
 
-    UltraCanvasTextInput::UltraCanvasTextInput(const std::string &id, long uid, long x, long y, long w, long h)
-            : UltraCanvasUIElement(id, uid, x, y, w, h)
+    UltraCanvasTextInput::UltraCanvasTextInput(const std::string &id, float x, float y, float w, float h)
+            : UltraCanvasUIElement(id, x, y, w, h)
             , text("")
             , placeholderText("")
             , inputType(TextInputType::Text)
@@ -170,7 +171,8 @@ namespace UltraCanvas {
 
     std::string UltraCanvasTextInput::GetSelectedText() const {
         if (!hasSelection) return "";
-        return text.substr(selectionStart, selectionEnd - selectionStart);
+        auto [begin, end] = GetSelectionRange();
+        return text.substr(begin, end - begin);
     }
 
     void UltraCanvasTextInput::SetCaretPosition(size_t position) {
@@ -227,7 +229,7 @@ namespace UltraCanvas {
         TextChanged();
     }
 
-    void UltraCanvasTextInput::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasTextInput::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         // Get colors based on state
         Color backgroundColor = GetBackgroundColor();
         Color borderColor = GetBorderColor();
@@ -239,7 +241,7 @@ namespace UltraCanvas {
         ctx->DrawFilledRectangle(bounds, backgroundColor, style.borderWidth, style.borderColor);
 
         // Get text area (excluding padding)
-        Rect2Df textArea = GetTextArea();
+        Rect2Dd textArea = GetTextArea();
         ctx->PushState();
         // Set clipping for text area ONLY
         ctx->ClipRect(textArea);
@@ -270,6 +272,19 @@ namespace UltraCanvas {
 
         // Draw clear button
         RenderClearButton(ctx);
+    }
+
+    void UltraCanvasTextInput::Arrange(const Rect2Df &finalRect, const CSSLayout::LayoutContext &ctx) {
+        float oldWidth = finalBounds.width;
+        // The engine has resolved our final bounds (explicit size or parent stretch).
+        UltraCanvasUIElement::Arrange(finalRect, ctx);
+
+        // Re-clamp horizontal scroll only when our width changed (manual resize or
+        // parent stretch); the text area width feeds UpdateScrollOffset()'s clamp.
+        // Guarding on width avoids a redraw loop (UpdateScrollOffset calls RequestRedraw).
+        if (finalBounds.width != oldWidth) {
+            UpdateScrollOffset();
+        }
     }
 
     bool UltraCanvasTextInput::OnEvent(const UCEvent &event) {
@@ -331,7 +346,7 @@ namespace UltraCanvas {
 
         // For multiline, check current line width
         if (inputType == TextInputType::Multiline) {
-            std::string displayText = GetDisplayText();
+            std::string displayText = GetRenderText();
             size_t lineStart = caretPosition;
             while (lineStart > 0 && displayText[lineStart - 1] != '\n') {
                 lineStart--;
@@ -352,7 +367,7 @@ namespace UltraCanvas {
             scrollOffset = std::min(scrollOffset, maxScroll);
         } else {
             // Single line: check against total text width
-            std::string displayText = GetDisplayText();
+            std::string displayText = GetRenderText();
 
             // Set text style for measurement
             ctx->SetFontStyle(style.fontStyle);
@@ -381,8 +396,8 @@ namespace UltraCanvas {
             rightOffset += 20;
         }
 
-        int btnX = bounds.width - rightOffset - clearButtonSize - 2;
-        int btnY = (bounds.height - clearButtonSize) / 2;
+        int btnX = finalBounds.width - rightOffset - clearButtonSize - 2;
+        int btnY = (finalBounds.height - clearButtonSize) / 2;
 
         return Rect2Di(btnX, btnY, clearButtonSize, clearButtonSize);
     }
@@ -403,14 +418,13 @@ namespace UltraCanvas {
         return Rect2Di(
                 style.paddingLeft,
                 style.paddingTop,
-                bounds.width - style.paddingLeft - rightReduction,
-                bounds.height - style.paddingTop - style.paddingBottom
+                finalBounds.width - style.paddingLeft - rightReduction,
+                finalBounds.height - style.paddingTop - style.paddingBottom
         );
     }
 
-    void UltraCanvasTextInput::RenderText(const Rect2Df &area, const Color &color, IRenderContext* ctx) {
-        std::string renderText = passwordMode ?
-                                 std::string(text.length(), '*') : GetDisplayText();
+    void UltraCanvasTextInput::RenderText(const Rect2Dd &area, const Color &color, IRenderContext* ctx) {
+        std::string renderText = GetRenderText();
 
         if (renderText.empty()) return;
 
@@ -433,12 +447,12 @@ namespace UltraCanvas {
             //float baselineY = centeredY + (style.fontSize * 0.8f);
             double baselineY = centeredY;
 
-            Point2Df textPos(area.x - scrollOffset, baselineY);
+            Point2Dd textPos(area.x - scrollOffset, baselineY);
             ctx->DrawText(renderText, textPos);
         }
     }
 
-    void UltraCanvasTextInput::RenderPlaceholder(const Rect2Df &area, IRenderContext* ctx) {
+    void UltraCanvasTextInput::RenderPlaceholder(const Rect2Dd &area, IRenderContext* ctx) {
         ctx->SetTextAlignment(style.textAlignment);
         ctx->SetTextVerticalAlignment((inputType == TextInputType::Multiline) ?
             VerticalAlignment::Top : VerticalAlignment::Middle);
@@ -448,43 +462,48 @@ namespace UltraCanvas {
         ctx->DrawTextInRect(placeholderText, area);
     }
 
-    void UltraCanvasTextInput::RenderSelection(const Rect2Df &area, IRenderContext* ctx) {
+    void UltraCanvasTextInput::RenderSelection(const Rect2Dd &area, IRenderContext* ctx) {
         if (!HasSelection()) return;
 
-        std::string displayText = GetDisplayText();
+        std::string displayText = GetRenderText();
 
         // Set proper text style for measurement
         ctx->SetFontStyle(style.fontStyle);
 
+        // Normalize so a backward selection (Shift+Left / Shift+Home) measures correctly.
+        auto [selBegin, selEnd] = GetSelectionRange();
+
         // Get text segments for accurate measurement
-        std::string textBeforeSelection = displayText.substr(0, selectionStart);
-        std::string selectedText = displayText.substr(selectionStart, selectionEnd - selectionStart);
+        std::string textBeforeSelection = displayText.substr(0, selBegin);
+        std::string selectedText = displayText.substr(selBegin, selEnd - selBegin);
 
         double selStartX = area.x + ctx->GetTextLineWidth(textBeforeSelection);
         double selWidth = ctx->GetTextLineWidth(selectedText);
 
-        // Calculate proper selection height based on font metrics
-        double ascender = style.fontStyle.fontSize * 0.8f;
-        double descender = style.fontStyle.fontSize * 0.2f;
-        double selectionHeight = ascender + descender;
-        double selectionY = area.y + (area.height - selectionHeight) / 2.0f;
+        // Cover the full text line box (font ascent + descent) so tall and deep glyphs
+        // are fully highlighted, then pad by 2px above and below. Mirrors the line height
+        // RenderText uses so the highlight stays aligned with the drawn text.
+        const double selectionPadding = 2.0;
+        double lineHeight = ctx->GetTextLineHeight(displayText);
+        double selectionHeight = lineHeight + 2.0 * selectionPadding;
+        double selectionY = area.y + (area.height - lineHeight) / 2.0 - selectionPadding;
 
         // Ensure selection is within visible area
         double visibleStartX = std::max(selStartX, area.x);
         double visibleEndX = std::min(selStartX + selWidth, area.x + area.width);
 
         if (visibleEndX > visibleStartX) {
-            Rect2Df selectionRect(visibleStartX, selectionY, visibleEndX - visibleStartX, selectionHeight);
+            Rect2Dd selectionRect(visibleStartX, selectionY, visibleEndX - visibleStartX, selectionHeight);
             ctx->SetFillPaint(style.selectionColor);
             ctx->FillRectangle(selectionRect);
         }
     }
 
-    void UltraCanvasTextInput::RenderCaret(const Rect2Df &area, IRenderContext* ctx) {
+    void UltraCanvasTextInput::RenderCaret(const Rect2Dd &area, IRenderContext* ctx) {
         if (!IsFocused() || !isCaretVisible) return;
 
         // FIXED: Calculate X position to match text rendering exactly
-        Rect2Df textArea = GetTextArea();
+        Rect2Dd textArea = GetTextArea();
         float caretX;
 
         if (text.empty() || caretPosition == 0) {
@@ -492,7 +511,7 @@ namespace UltraCanvas {
             caretX = textArea.x - scrollOffset;
         } else {
             // Calculate width of text up to caret position
-            std::string displayText = GetDisplayText();
+            std::string displayText = GetRenderText();
             std::string textUpToCaret;
 
             if (inputType == TextInputType::Multiline) {
@@ -536,7 +555,7 @@ namespace UltraCanvas {
         );
     }
 
-    void UltraCanvasTextInput::RenderMultilineText(const Rect2Df &area, const std::string &displayText, const Point2Di &startPos, IRenderContext* ctx) {
+    void UltraCanvasTextInput::RenderMultilineText(const Rect2Dd &area, const std::string &displayText, const Point2Di &startPos, IRenderContext* ctx) {
         // Split text into lines
         std::vector<std::string> lines;
         std::string currentLine;
@@ -585,17 +604,18 @@ namespace UltraCanvas {
         ctx->SetStrokeWidth(2.0f);
         ctx->DrawRectangle(bounds);
 
-        // Draw validation icon (simplified)
+        // Draw validation icon (simplified) — element-local coordinates (the ctx is
+        // already translated to our origin, so use bounds, not finalBounds.x/y).
         if (lastValidationResult.state == ValidationState::Valid) {
             // Draw checkmark
-            Point2Di iconPos(bounds.x + bounds.width - 20, bounds.y + bounds.height / 2);
+            Point2Di iconPos(bounds.width - 20, bounds.height / 2);
             ctx->SetStrokePaint(style.validBorderColor);
             ctx->SetStrokeWidth(2.0f);
             ctx->DrawLine(iconPos, Point2Di(iconPos.x + 4, iconPos.y + 4));
             ctx->DrawLine(Point2Di(iconPos.x + 4, iconPos.y + 4), Point2Di(iconPos.x + 12, iconPos.y - 4));
         } else if (lastValidationResult.state == ValidationState::Invalid) {
             // Draw X
-            Point2Di iconPos(bounds.x + bounds.width - 20, bounds.y + bounds.height / 2 - 6);
+            Point2Di iconPos(bounds.width - 20, bounds.height / 2 - 6);
             ctx->SetStrokePaint(style.invalidBorderColor);
             ctx->SetStrokeWidth(2.0f);
             ctx->DrawLine(iconPos, Point2Di(iconPos.x + 12, iconPos.y + 12));
@@ -628,6 +648,8 @@ namespace UltraCanvas {
     void UltraCanvasTextInput::DrawShadow(const Rect2Di &bounds, IRenderContext* ctx) {
         if (!style.showShadow) return;
 
+        // Element-local coordinates: the ctx is translated to our origin, so the
+        // shadow offset is applied from (0,0), not from finalBounds.x/y.
         Rect2Di shadowRect(
                 bounds.x + style.shadowOffset.x,
                 bounds.y + style.shadowOffset.y,
@@ -690,7 +712,7 @@ namespace UltraCanvas {
     size_t UltraCanvasTextInput::GetTextPositionFromPoint(const Point2Di& point) {
         IRenderContext *ctx = GetRenderContext();
 
-        Rect2Df textArea = GetTextArea();
+        Rect2Dd textArea = GetTextArea();
 
         if (inputType == TextInputType::Multiline) {
             // Calculate which line was clicked
@@ -699,7 +721,7 @@ namespace UltraCanvas {
             clickedLine = std::max(0, clickedLine);
 
             // Find the start position of the clicked line
-            std::string displayText = GetDisplayText();
+            std::string displayText = GetRenderText();
             size_t lineStartPos = 0;
             int currentLine = 0;
 
@@ -754,7 +776,7 @@ namespace UltraCanvas {
 
             if (relativeX <= 0) return 0;
 
-            std::string displayText = GetDisplayText();
+            std::string displayText = GetRenderText();
 
             // Set text style for measurement
             ctx->SetFontStyle(style.fontStyle);
@@ -850,69 +872,9 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasTextInput::HandleKeyDown(const UCEvent &event) {
-        if (readOnly) return false;
-
-        // Handle printable characters from KeyDown events
-        // UCEvent already has 'character' and 'text' fields populated by X11
-        if (event.character != 0 && event.character >= 32 && event.character < 127) {
-            // Handle regular printable character input
-            SaveState();
-
-            if (hasSelection) {
-                DeleteSelection();
-            }
-
-            std::string charStr(1, event.character);
-            InsertText(charStr);
-//            InvalidateLayout();
-            return true;
-        }
-
-        // Handle special keys
+        // ===== Non-destructive keys: navigation, selection and copy work even in
+        // read-only inputs (only text mutation is blocked for read-only). =====
         switch (event.virtualKey) {
-            case UCKeys::Return:
-                if (inputType == TextInputType::Multiline) {
-                    SaveState();
-                    if (hasSelection) DeleteSelection();
-                    InsertText("\n");
-                    return true;
-                } else {
-                    if (onEnterPressed) return onEnterPressed(text);
-                }
-                break;
-
-            case UCKeys::Escape:
-                if (onEscapePressed) return onEscapePressed();
-                break;
-
-            case UCKeys::Backspace:
-                if (hasSelection) {
-                    SaveState();
-                    DeleteSelection();
-                } else if (caretPosition > 0) {
-                    SaveState();
-                    text.erase(caretPosition - 1, 1);
-                    caretPosition--;
-                    UpdateDisplayText();
-
-                }
-                UpdateScrollOffset();
-                TextChanged();
-                return true;
-
-            case UCKeys::Delete:
-                if (hasSelection) {
-                    SaveState();
-                    DeleteSelection();
-                } else if (caretPosition < text.length()) {
-                    SaveState();
-                    text.erase(caretPosition, 1);
-                    UpdateDisplayText();
-                }
-                UpdateScrollOffset();
-                TextChanged();
-                return true;
-
             case UCKeys::Left:
                 if (event.shift) {
                     if (!hasSelection) selectionStart = caretPosition;
@@ -938,7 +900,6 @@ namespace UltraCanvas {
                 }
                 UpdateScrollOffset();
                 return true;
-                break;
 
             case UCKeys::Up:
                 if (inputType == TextInputType::Multiline) {
@@ -1007,31 +968,114 @@ namespace UltraCanvas {
                 }
                 break;
 
-            case UCKeys::X:
+            case UCKeys::C:
                 if (event.ctrl && hasSelection) {
-                    CopyToClipboard(GetSelectedText());
-                    SaveState();
-                    DeleteSelection();
+                    Copy();
                     return true;
                 }
                 break;
 
-            case UCKeys::C:
+            case UCKeys::Insert:
+                // Ctrl+Insert = copy (non-destructive). Shift+Insert (paste) is
+                // handled in the editable phase below.
                 if (event.ctrl && hasSelection) {
-                    CopyToClipboard(GetSelectedText());
+                    Copy();
+                    return true;
+                }
+                break;
+
+            default:
+                break;
+        }
+
+        // ===== Everything below mutates text: editable inputs only. =====
+        if (readOnly) return false;
+
+        // Handle printable characters from KeyDown events
+        // UCEvent already has 'character' and 'text' fields populated by X11
+        if (event.character != 0 && event.character >= 32 && event.character < 127) {
+            // Handle regular printable character input
+            SaveState();
+
+            if (hasSelection) {
+                DeleteSelection();
+            }
+
+            std::string charStr(1, event.character);
+            InsertText(charStr);
+//            InvalidateLayout();
+            return true;
+        }
+
+        // Handle special keys
+        switch (event.virtualKey) {
+            case UCKeys::Return:
+                if (inputType == TextInputType::Multiline) {
+                    SaveState();
+                    if (hasSelection) DeleteSelection();
+                    InsertText("\n");
+                    return true;
+                } else {
+                    if (onEnterPressed) return onEnterPressed(text);
+                }
+                break;
+
+            case UCKeys::Escape:
+                if (onEscapePressed) return onEscapePressed();
+                break;
+
+            case UCKeys::Backspace:
+                if (hasSelection) {
+                    SaveState();
+                    DeleteSelection();
+                } else if (caretPosition > 0) {
+                    SaveState();
+                    text.erase(caretPosition - 1, 1);
+                    caretPosition--;
+                    UpdateDisplayText();
+
+                }
+                UpdateScrollOffset();
+                TextChanged();
+                return true;
+
+            case UCKeys::Delete:
+                // Ctrl+Del = cut (acts only when there is a selection).
+                if (event.ctrl) {
+                    if (hasSelection) Cut();
+                    return true;
+                }
+                if (hasSelection) {
+                    SaveState();
+                    DeleteSelection();
+                } else if (caretPosition < text.length()) {
+                    SaveState();
+                    text.erase(caretPosition, 1);
+                    UpdateDisplayText();
+                }
+                UpdateScrollOffset();
+                TextChanged();
+                return true;
+
+            case UCKeys::X:
+                if (event.ctrl && hasSelection) {
+                    Cut();
                     return true;
                 }
                 break;
 
             case UCKeys::V:
                 if (event.ctrl) {
-                    std::string clipboardText = GetFromClipboard();
-                    if (!clipboardText.empty()) {
-                        SaveState();
-                        if (hasSelection) DeleteSelection();
-                        InsertText(clipboardText);
-                        return true;
-                    }
+                    Paste();
+                    return true;
+                }
+                break;
+
+            case UCKeys::Insert:
+                // Shift+Insert = paste (Ctrl+Insert copy handled in the phase above).
+                if (event.shift) {
+                    Paste();
+                    return true;
                 }
                 break;
 
@@ -1125,10 +1169,11 @@ namespace UltraCanvas {
             return;
         }
 
-        // Delete selection if any
+        // Delete selection if any (normalized so a backward span erases correctly)
         if (hasSelection) {
-            text.erase(selectionStart, selectionEnd - selectionStart);
-            caretPosition = selectionStart;
+            auto [begin, end] = GetSelectionRange();
+            text.erase(begin, end - begin);
+            caretPosition = begin;
             ClearSelection();
         }
 
@@ -1151,8 +1196,10 @@ namespace UltraCanvas {
 
         SaveState();
 
-        text.erase(selectionStart, selectionEnd - selectionStart);
-        caretPosition = selectionStart;
+        // Normalize so a backward selection erases the correct span.
+        auto [begin, end] = GetSelectionRange();
+        text.erase(begin, end - begin);
+        caretPosition = begin;
         ClearSelection();
 
         UpdateDisplayText();
@@ -1170,13 +1217,53 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
-    void UltraCanvasTextInput::CopyToClipboard(const std::string &text) {
-        // Platform-specific clipboard implementation needed
+    void UltraCanvasTextInput::Copy() {
+        // Non-destructive: allowed even for read-only inputs.
+        if (!hasSelection) return;
+        CopyToClipboard(GetSelectedText());
+    }
+
+    void UltraCanvasTextInput::Cut() {
+        if (readOnly || !hasSelection) return;
+        CopyToClipboard(GetSelectedText());
+        // DeleteSelection() saves undo state, updates display/scroll and fires TextChanged.
+        DeleteSelection();
+    }
+
+    void UltraCanvasTextInput::Paste() {
+        if (readOnly) return;
+
+        std::string clipboardText = GetFromClipboard();
+
+        // Single-line inputs must never ingest line breaks: drop carriage returns
+        // and flatten newlines to spaces (multiline keeps them).
+        if (inputType != TextInputType::Multiline) {
+            std::string sanitized;
+            sanitized.reserve(clipboardText.size());
+            for (char c : clipboardText) {
+                if (c == '\r') continue;
+                sanitized += (c == '\n') ? ' ' : c;
+            }
+            clipboardText = std::move(sanitized);
+        }
+
+        if (clipboardText.empty()) return;
+
+        // DeleteSelection()/InsertText() save undo state themselves.
+        if (hasSelection) DeleteSelection();
+        InsertText(clipboardText);
+    }
+
+    void UltraCanvasTextInput::CopyToClipboard(const std::string &textToCopy) {
+        // Route to the framework's cross-platform clipboard (X11/Win32/macOS backends).
+        SetClipboardText(textToCopy);
     }
 
     std::string UltraCanvasTextInput::GetFromClipboard() {
-        // Platform-specific clipboard implementation needed
-        return "";
+        // Route to the framework's cross-platform clipboard (X11/Win32/macOS backends).
+        std::string clipboardText;
+        GetClipboardText(clipboardText);  // leaves string empty on failure
+        return clipboardText;
     }
 
     int UltraCanvasTextInput::GetCaretLineNumber() const {
@@ -1195,7 +1282,7 @@ namespace UltraCanvas {
     }
 
     float UltraCanvasTextInput::GetLineYPosition(int lineNumber) const {
-        Rect2Df textArea = GetTextArea();
+        Rect2Dd textArea = GetTextArea();
         float lineHeight = style.fontStyle.fontSize * 1.2f;
         return textArea.y + (lineNumber * lineHeight);
     }
@@ -1206,7 +1293,7 @@ namespace UltraCanvas {
             return style.paddingLeft;
         }
 
-        std::string displayText = GetDisplayText();
+        std::string displayText = GetRenderText();
 
         // Find start of current line
         size_t lineStart = caretPosition;
@@ -1230,7 +1317,7 @@ namespace UltraCanvas {
             return style.paddingLeft;
         }
 
-        std::string displayText = GetDisplayText();
+        std::string displayText = GetRenderText();
 
         if (inputType == TextInputType::Multiline) {
             // For multiline: find start of current line
@@ -1260,7 +1347,7 @@ namespace UltraCanvas {
     }
 
     float UltraCanvasTextInput::GetCaretYPosition() {
-        Rect2Df textArea = GetTextArea();
+        Rect2Dd textArea = GetTextArea();
 
         if (inputType == TextInputType::Multiline) {
             // Count line number where caret is

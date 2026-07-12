@@ -1,6 +1,7 @@
 // include/UltraCanvasDropdown.h
 // Interactive dropdown/combobox component with icon support and multi-selection
 // Uses ListView popup for rendering dropdown items
+// Last Modified: 2026-05-29
 #pragma once
 
 #include "UltraCanvasUIElement.h"
@@ -75,7 +76,7 @@ namespace UltraCanvas {
         float paddingLeft = 8.0f;
         float paddingRight = 20.0f;
         float itemHeight = 24.0f;
-        int maxItemWidth = 400;
+        float maxItemWidth = 400;
         int maxVisibleItems = 8;
         float arrowSize = 8.0f;
 
@@ -92,7 +93,7 @@ namespace UltraCanvas {
         float fontSize = 11.0f;
 
         // Scrollbar style
-        ScrollbarStyle scrollbarStyle;
+        ScrollbarStyle scrollbarStyle = GetDefaultScrollbarStyleOr(ScrollbarStyle::DropDown());
     };
 
 // ===== DROPDOWN LIST MODEL (adapter over vector<DropdownItem>) =====
@@ -158,11 +159,17 @@ namespace UltraCanvas {
 
         // ListView popup components
         std::shared_ptr<UltraCanvasListView> popupListView;
-        DropdownListModel dropdownModel;
+        std::shared_ptr<DropdownListModel> dropdownModel;
         std::shared_ptr<DropdownItemDelegate> dropdownDelegate;
 
     public:
-        UltraCanvasDropdown(const std::string& identifier, long id, long x, long y, long w, long h = 24);
+        UltraCanvasDropdown(const std::string& identifier, float x, float y, float w, float h);
+
+        UltraCanvasDropdown(const std::string& identifier, float w, float h)
+            : UltraCanvasDropdown(identifier, -1, -1, w, h) {}
+
+        explicit UltraCanvasDropdown(const std::string& identifier)
+            : UltraCanvasDropdown(identifier, -1, -1, -1, -1) {}
 
         virtual ~UltraCanvasDropdown() = default;
 
@@ -219,7 +226,7 @@ namespace UltraCanvas {
 
         void SetWindow(UltraCanvasWindowBase* win) override;
         // ===== RENDERING =====
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;
@@ -229,7 +236,7 @@ namespace UltraCanvas {
         void WireListViewCallbacks();
         void ApplyStyleToListView();
         void CalculateAndSetPopupSize();
-        Point2Di CalculatePopupPosition();
+        Point2Df CalculatePopupPosition();
 
         void RenderButton(IRenderContext* ctx);
         void RenderDropdownArrow(const Rect2Di& buttonRect, const Color& color, IRenderContext* ctx);
@@ -247,7 +254,7 @@ namespace UltraCanvas {
 
 // ===== FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasDropdown> CreateDropdown(
-            const std::string& identifier, long id, long x, long y, long w, long h = 24) {
-        return std::make_shared<UltraCanvasDropdown>(identifier, id, x, y, w, h);
+            const std::string& identifier, float x, float y, float w, float h = 24) {
+        return std::make_shared<UltraCanvasDropdown>(identifier, x, y, w, h);
     }
 } // namespace UltraCanvas

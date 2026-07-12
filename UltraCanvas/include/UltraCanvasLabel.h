@@ -1,7 +1,11 @@
 // include/UltraCanvasLabel.h
-// Modern text display label control with styling and alignment options
-// Version: 1.0.0
-// Last Modified: 2025-08-17
+// Modern text display label control with styling and alignment options.
+// Exemplar of the new CSSLayout intrinsic-sizing protocol: overrides
+// MeasureOwnContent (constraint-aware content sizing) and ComputeIntrinsicSizes
+// (constraint-free max/min-content) so the engine can place the label
+// without the widget mutating finalBounds itself.
+// Version: 2.0.3
+// Last Modified: 2026-07-02
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -18,6 +22,9 @@ namespace UltraCanvas {
         // Text appearance
         FontStyle fontStyle;
         Color textColor = Colors::Black;
+        // Used instead of textColor while the label IsDisabled(), so captions
+        // grey out together with the control they describe.
+        Color disabledTextColor = Color(178, 178, 184, 255);
 
         // Text alignment
         TextAlignment horizontalAlign = TextAlignment::Left;
@@ -40,29 +47,44 @@ namespace UltraCanvas {
         static LabelStyle StatusStyle();
     };
 
+// ===== TEXT LINKS =====
+    // A hyperlink inside the label's rendered text. Byte offsets refer to the
+    // text as laid out (markup parsed, entities decoded) — the same indexing
+    // that ITextLayout::XYToIndex reports.
+    struct LabelTextLink {
+        int startByte = 0;
+        int endByte = 0;      // exclusive
+        std::string href;
+    };
+
 // ===== LABEL COMPONENT =====
     class UltraCanvasLabel : public UltraCanvasUIElement {
     private:
         // ===== LABEL PROPERTIES =====
         std::string text;
         LabelStyle style;
+        std::vector<LabelTextLink> textLinks;
+        int hoveredLink = -1;
 
         // ===== COMPUTED LAYOUT =====
         Rect2Di textArea;
         std::unique_ptr<ITextLayout> textLayout = nullptr;
-        int maxWidth = 0;
-        bool autoResize = false;
         bool isMarkup = false;
 
+        bool internalLayoutValid = false;
     public:
         // ===== CONSTRUCTOR =====
-        UltraCanvasLabel(const std::string &identifier,
-                         long id, long x, long y, long w, long h,
+        UltraCanvasLabel(const std::string &identifier, float x, float y, float w, float h,
                          const std::string &labelText = "");
 
-        explicit UltraCanvasLabel(const std::string &identifier = "Label",
-                                  long w = 100, long h = 25,
-                                  const std::string &labelText = "");
+        UltraCanvasLabel(const std::string &identifier, float w, float h, const std::string &labelText = "")
+                : UltraCanvasLabel(identifier, -1, -1, w, h, labelText) {}
+
+        UltraCanvasLabel(const std::string &identifier, const std::string &labelText)
+                : UltraCanvasLabel(identifier, -1, -1, -1, -1, labelText) {}
+
+        explicit UltraCanvasLabel(const std::string &labelText = "")
+                : UltraCanvasLabel("", -1, -1, -1, -1, labelText) {}
 
         virtual ~UltraCanvasLabel() = default;
 
@@ -72,6 +94,18 @@ namespace UltraCanvas {
         const std::string &GetText() const {
             return text;
         }
+
+        // ===== TEXT LINKS =====
+        // Clickable byte ranges inside the rendered text; activation is
+        // reported through onLinkActivated. Hit testing needs the text
+        // layout, so it only works once the label has been rendered.
+        void SetTextLinks(std::vector<LabelTextLink> links) {
+            textLinks = std::move(links);
+            hoveredLink = -1;
+        }
+        const std::vector<LabelTextLink> &GetTextLinks() const { return textLinks; }
+        // Index into GetTextLinks() of the link at a label-local point, or -1.
+        int LinkIndexAtPoint(const Point2Di& localPoint);
 
         // ===== STYLE MANAGEMENT =====
         void SetStyle(const LabelStyle &newStyle);
@@ -86,62 +120,84 @@ namespace UltraCanvas {
         void SetTextColor(const Color &color);
         void SetAlignment(TextAlignment horizontal, VerticalAlignment vertical = VerticalAlignment::Top);
         void SetWrap(TextWrap wrap);
-        void SetAutoResize(bool autoResize);
-        void SetMaxWidth(int mWidth);
         void SetTextIsMarkup(bool markup);
 
-        int GetPreferredWidth() override;
-        int GetPreferredHeight() override;
+        // ===== ENGINE-DRIVEN LAYOUT =====
+        // Content-box size of the text. nullopt width → max-content width;
+        // a definite width → height at that width (reflects wrapping). The
+        // block layout adds padding/border and applies size.*/constraints.
+        Size2Df MeasureOwnContent(std::optional<float> definiteContentWidth,
+                                  const CSSLayout::LayoutContext& ctx) override;
+
+        // Constraint-free: publishes intrinsic min/max-content via the
+        // inherited `intrinsic` cache, in BORDER-BOX units (i.e. including
+        // padding + border) to match what measured.* would return.
+        void ComputeIntrinsicSizes(const CSSLayout::LayoutContext& ctx) override;
+
+        void InvalidateLayout() override;
+
+        // Re-sync the cached text layout when the engine re-arranges us to a
+        // new size (e.g. a window resize growing a grid/flex cell); otherwise
+        // wrapped text keeps its previous wrap width.
+        void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
         // ===== RENDERING =====
-        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
-        void UpdateGeometry(IRenderContext *ctx) override;
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
+        void UpdateInternalLayout(IRenderContext *ctx);
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;
 
-        // ===== SIZE CHANGES =====
-        void SetBounds(const Rect2Di& bounds) override;
+        // A label with a click handler behaves like a hyperlink, so it reports
+        // the hand/pointer cursor automatically (for text links only while
+        // the pointer is over a link range). An explicit SetMouseCursor()
+        // (i.e. a non-Default cursor) always takes precedence.
+        UCMouseCursor GetMouseCursor() const override {
+            if (mouseCursor == UCMouseCursor::Default &&
+                (onClick || hoveredLink >= 0)) {
+                return UCMouseCursor::Hand;
+            }
+            return mouseCursor;
+        }
 
         // ===== EVENT CALLBACKS =====
         std::function<void()> onClick;
+        // Fired with LabelTextLink::href when a text link is clicked.
+        std::function<void(const std::string&)> onLinkActivated;
         std::function<void()> onHoverEnter;
         std::function<void()> onHoverLeave;
         std::function<void(const std::string&)> onTextChanged;
 
     protected:
-        // ===== LAYOUT CALCULATION =====
-//        void CalculateLayout(IRenderContext *ctx);
-        // ===== SIZING =====
-//        void AutoResize(const Size2Di &textDimensions);
-
+        // Build the cached ITextLayout if missing and configure it with the
+        // current font/wrap/alignment. Does NOT set explicit width — callers
+        // (MeasureOwnContent / ComputeIntrinsicSizes) own that.
+        // Returns true if the layout is now valid, false if no render context
+        // is available (in which case callers should bail gracefully).
+        bool EnsureTextLayout();
     };
+
+
 // ===== FACTORY FUNCTIONS =====
-    std::shared_ptr<UltraCanvasLabel> CreateLabel(
-            const std::string& identifier, long id, long x, long y, long w, long h,
-            const std::string& text = "");
+    inline std::shared_ptr<UltraCanvasLabel>
+    CreateLabel(const std::string &identifier, float x, float y, float w, float h,
+                const std::string &text = "") {
+        return std::make_shared<UltraCanvasLabel>(identifier, x, y, w, h, text);
+    }
 
-    std::shared_ptr<UltraCanvasLabel> CreateLabel(
-            const std::string& identifier, long x, long y, long w, long h,
-            const std::string& text = "");
+    inline std::shared_ptr<UltraCanvasLabel>
+    CreateLabel(const std::string &identifier, float w, float h, const std::string &text = "") {
+        return std::make_shared<UltraCanvasLabel>(identifier, 0, 0, w, h, text);
+    }
 
-    std::shared_ptr<UltraCanvasLabel> CreateLabel(
-            const std::string& identifier, long w, long h,
-            const std::string& text = "");
+    inline std::shared_ptr<UltraCanvasLabel> CreateLabel(const std::string &text) {
+        return std::make_shared<UltraCanvasLabel>("", text);
+    }
 
-    std::shared_ptr<UltraCanvasLabel> CreateLabel(const std::string& text);
-
-    std::shared_ptr<UltraCanvasLabel> CreateAutoLabel(
-            const std::string& identifier, long id, long x, long y,
-            const std::string& text);
-
-    std::shared_ptr<UltraCanvasLabel> CreateHeaderLabel(
-            const std::string& identifier, long id, long x, long y, long w, long h,
-            const std::string& text);
-
-    std::shared_ptr<UltraCanvasLabel> CreateStatusLabel(
-            const std::string& identifier, long id, long x, long y, long w, long h,
-            const std::string& text = "Ready");
+    inline std::shared_ptr<UltraCanvasLabel> CreateLabel(const std::string &identifier,
+                                                  const std::string &text) {
+        return std::make_shared<UltraCanvasLabel>(identifier, text);
+    }
 
 // ===== BUILDER PATTERN =====
     class LabelBuilder {
@@ -149,7 +205,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasLabel> label;
 
     public:
-        LabelBuilder(const std::string& identifier, long id, long x, long y, long w = 100, long h = 25);
+        LabelBuilder(const std::string& identifier);
 
         LabelBuilder& SetText(const std::string& text);
         LabelBuilder& SetFont(const std::string& fontFamily, float fontSize = 12.0f);
@@ -157,7 +213,6 @@ namespace UltraCanvas {
         LabelBuilder& SetBackgroundColor(const Color& color);
         LabelBuilder& SetAlignment(TextAlignment align);
         LabelBuilder& SetPadding(float padding);
-        LabelBuilder& SetAutoResize(bool autoResize = true);
         LabelBuilder& SetStyle(const LabelStyle& style);
         LabelBuilder& OnClick(std::function<void()> callback);
 
@@ -165,10 +220,4 @@ namespace UltraCanvas {
             return label;
         }
     };
-
-// ===== CONVENIENCE BUILDER =====
-    inline LabelBuilder CreateLabelBuilder(const std::string& identifier, long id, long x, long y, long w = 100, long h = 25) {
-        return LabelBuilder(identifier, id, x, y, w, h);
-    }
-
 } // namespace UltraCanvas

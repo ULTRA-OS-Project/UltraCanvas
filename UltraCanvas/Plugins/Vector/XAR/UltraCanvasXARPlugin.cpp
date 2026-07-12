@@ -1,10 +1,11 @@
 // Plugins/Vector/XAR/UltraCanvasXARPlugin.cpp
 // Xara XAR vector graphics format plugin implementation for UltraCanvas
-// Version: 2.0.0
-// Last Modified: 2026-05-06
+// Version: 2.0.1
+// Last Modified: 2026-05-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasXARPlugin.h"
+#include "UltraCanvasFileError.h"
 #include <fstream>
 #include <cstring>
 #include <cmath>
@@ -56,12 +57,12 @@ namespace UltraCanvas {
 
 // ===== XAR NODE BOUNDS =====
 
-    Rect2Df XARNode::CalculateBounds() const {
+    Rect2Dd XARNode::CalculateBounds() const {
         if (boundsCached && bounds.width > 0 && bounds.height > 0) return bounds;
         if (children.empty()) return bounds;
-        Rect2Df total = bounds;
+        Rect2Dd total = bounds;
         for (const auto& child : children) {
-            Rect2Df cb = child->CalculateBounds();
+            Rect2Dd cb = child->CalculateBounds();
             if (cb.width <= 0 || cb.height <= 0) continue;
             if (total.width == 0 && total.height == 0) {
                 total = cb;
@@ -70,7 +71,7 @@ namespace UltraCanvas {
                 float minY = std::min(total.y, cb.y);
                 float maxX = std::max(total.x + total.width, cb.x + cb.width);
                 float maxY = std::max(total.y + total.height, cb.y + cb.height);
-                total = Rect2Df(minX, minY, maxX - minX, maxY - minY);
+                total = Rect2Dd(minX, minY, maxX - minX, maxY - minY);
             }
         }
         return total;
@@ -87,8 +88,8 @@ namespace UltraCanvas {
                 ctx->SetFillPaint(f.startColor);
                 break;
             case XARFillType::LinearGradient: {
-                Point2Df s = MillipointsToPixels(f.startPoint, scale);
-                Point2Df e = MillipointsToPixels(f.endPoint, scale);
+                Point2Dd s = MillipointsToPixels(f.startPoint, scale);
+                Point2Dd e = MillipointsToPixels(f.endPoint, scale);
                 auto stops = BuildGradientStops(f);
                 auto pat = ctx->CreateLinearGradientPattern(s.x, s.y, e.x, e.y, stops);
                 if (pat) ctx->SetFillPaint(pat); else ctx->SetFillPaint(f.startColor);
@@ -96,8 +97,8 @@ namespace UltraCanvas {
             }
             case XARFillType::CircularGradient:
             case XARFillType::EllipticalGradient: {
-                Point2Df c = MillipointsToPixels(f.startPoint, scale);
-                Point2Df ed = MillipointsToPixels(f.endPoint, scale);
+                Point2Dd c = MillipointsToPixels(f.startPoint, scale);
+                Point2Dd ed = MillipointsToPixels(f.endPoint, scale);
                 float r = std::sqrt((ed.x - c.x) * (ed.x - c.x) + (ed.y - c.y) * (ed.y - c.y));
                 auto stops = BuildGradientStops(f);
                 auto pat = ctx->CreateRadialGradientPattern(c.x, c.y, 0, c.x, c.y, r, stops);
@@ -106,8 +107,8 @@ namespace UltraCanvas {
             }
             case XARFillType::ConicalGradient: {
                 // No native conic; fall back to linear between centre and edge
-                Point2Df s = MillipointsToPixels(f.startPoint, scale);
-                Point2Df e = MillipointsToPixels(f.endPoint, scale);
+                Point2Dd s = MillipointsToPixels(f.startPoint, scale);
+                Point2Dd e = MillipointsToPixels(f.endPoint, scale);
                 auto stops = BuildGradientStops(f);
                 auto pat = ctx->CreateLinearGradientPattern(s.x, s.y, e.x, e.y, stops);
                 if (pat) ctx->SetFillPaint(pat); else ctx->SetFillPaint(f.startColor);
@@ -115,8 +116,8 @@ namespace UltraCanvas {
             }
             case XARFillType::Diamond: {
                 // Render as radial best-effort
-                Point2Df c = MillipointsToPixels(f.startPoint, scale);
-                Point2Df ed = MillipointsToPixels(f.endPoint, scale);
+                Point2Dd c = MillipointsToPixels(f.startPoint, scale);
+                Point2Dd ed = MillipointsToPixels(f.endPoint, scale);
                 float r = std::sqrt((ed.x - c.x) * (ed.x - c.x) + (ed.y - c.y) * (ed.y - c.y));
                 auto stops = BuildGradientStops(f);
                 auto pat = ctx->CreateRadialGradientPattern(c.x, c.y, 0, c.x, c.y, r, stops);
@@ -125,8 +126,8 @@ namespace UltraCanvas {
             }
             case XARFillType::ThreeColour:
             case XARFillType::FourColour: {
-                Point2Df s = MillipointsToPixels(f.startPoint, scale);
-                Point2Df e = MillipointsToPixels(f.endPoint, scale);
+                Point2Dd s = MillipointsToPixels(f.startPoint, scale);
+                Point2Dd e = MillipointsToPixels(f.endPoint, scale);
                 std::vector<GradientStop> stops;
                 stops.push_back(GradientStop(0.0f, f.startColor));
                 stops.push_back(GradientStop(1.0f, f.endColor));
@@ -202,14 +203,14 @@ namespace UltraCanvas {
                 case XARPathVerb::MoveTo:
                     if (!cmd.points.empty()) {
                         Point2Di p = extra ? extra->Transform(cmd.points[0]) : cmd.points[0];
-                        Point2Df px = MillipointsToPixels(p, scale);
+                        Point2Dd px = MillipointsToPixels(p, scale);
                         ctx->MoveTo(px.x, px.y);
                     }
                     break;
                 case XARPathVerb::LineTo:
                     if (!cmd.points.empty()) {
                         Point2Di p = extra ? extra->Transform(cmd.points[0]) : cmd.points[0];
-                        Point2Df px = MillipointsToPixels(p, scale);
+                        Point2Dd px = MillipointsToPixels(p, scale);
                         ctx->LineTo(px.x, px.y);
                     }
                     break;
@@ -218,9 +219,9 @@ namespace UltraCanvas {
                         Point2Di c1 = extra ? extra->Transform(cmd.points[0]) : cmd.points[0];
                         Point2Di c2 = extra ? extra->Transform(cmd.points[1]) : cmd.points[1];
                         Point2Di e = extra ? extra->Transform(cmd.points[2]) : cmd.points[2];
-                        Point2Df p1 = MillipointsToPixels(c1, scale);
-                        Point2Df p2 = MillipointsToPixels(c2, scale);
-                        Point2Df p3 = MillipointsToPixels(e, scale);
+                        Point2Dd p1 = MillipointsToPixels(c1, scale);
+                        Point2Dd p2 = MillipointsToPixels(c2, scale);
+                        Point2Dd p3 = MillipointsToPixels(e, scale);
                         ctx->BezierCurveTo(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
                     }
                     break;
@@ -236,19 +237,19 @@ namespace UltraCanvas {
     void XARRectangleNode::Render(IRenderContext* ctx, float scale) {
         ctx->PushState();
         if (!transform.IsIdentity()) transform.ApplyToContext(ctx);
-        Point2Df c = MillipointsToPixels(centre, scale);
+        Point2Dd c = MillipointsToPixels(centre, scale);
         float hw, hh;
         if (isSimple) {
             // simple rectangles use majorAxis/minorAxis as half-width/height vectors
-            Point2Df ma = MillipointsToPixels(majorAxis, scale);
-            Point2Df mi = MillipointsToPixels(minorAxis, scale);
+            Point2Dd ma = MillipointsToPixels(majorAxis, scale);
+            Point2Dd mi = MillipointsToPixels(minorAxis, scale);
             hw = std::sqrt(ma.x * ma.x + ma.y * ma.y);
             hh = std::sqrt(mi.x * mi.x + mi.y * mi.y);
         } else {
             hw = MPtoPx(halfWidth, scale);
             hh = MPtoPx(halfHeight, scale);
         }
-        Rect2Df rect{c.x - hw, c.y - hh, hw * 2.0f, hh * 2.0f};
+        Rect2Dd rect{c.x - hw, c.y - hh, hw * 2.0f, hh * 2.0f};
         float r = MPtoPx(cornerRadius, scale);
 
         if (hasFill) {
@@ -270,9 +271,9 @@ namespace UltraCanvas {
     void XAREllipseNode::Render(IRenderContext* ctx, float scale) {
         ctx->PushState();
         if (!transform.IsIdentity()) transform.ApplyToContext(ctx);
-        Point2Df c = MillipointsToPixels(centre, scale);
-        Point2Df ma = MillipointsToPixels(majorAxis, scale);
-        Point2Df mi = MillipointsToPixels(minorAxis, scale);
+        Point2Dd c = MillipointsToPixels(centre, scale);
+        Point2Dd ma = MillipointsToPixels(majorAxis, scale);
+        Point2Dd mi = MillipointsToPixels(minorAxis, scale);
         float rx = std::sqrt(ma.x * ma.x + ma.y * ma.y);
         float ry = std::sqrt(mi.x * mi.x + mi.y * mi.y);
 
@@ -290,11 +291,11 @@ namespace UltraCanvas {
 
 // ===== POLYGON NODE =====
 
-    std::vector<Point2Df> XARPolygonNode::GeneratePolygonPoints(float scale) const {
-        std::vector<Point2Df> pts;
-        Point2Df c = MillipointsToPixels(centre, scale);
-        Point2Df ma = MillipointsToPixels(majorAxis, scale);
-        Point2Df mi = MillipointsToPixels(minorAxis, scale);
+    std::vector<Point2Dd> XARPolygonNode::GeneratePolygonPoints(float scale) const {
+        std::vector<Point2Dd> pts;
+        Point2Dd c = MillipointsToPixels(centre, scale);
+        Point2Dd ma = MillipointsToPixels(majorAxis, scale);
+        Point2Dd mi = MillipointsToPixels(minorAxis, scale);
         float rx = std::sqrt(ma.x * ma.x + ma.y * ma.y);
         float ry = std::sqrt(mi.x * mi.x + mi.y * mi.y);
         if (numSides < 3) return pts;
@@ -303,11 +304,11 @@ namespace UltraCanvas {
 
         for (int i = 0; i < numSides; ++i) {
             float a = startAngle + i * angleStep;
-            pts.push_back(Point2Df(c.x + rx * std::cos(a), c.y + ry * std::sin(a)));
+            pts.push_back(Point2Dd(c.x + rx * std::cos(a), c.y + ry * std::sin(a)));
             if (isStellated && stellationRadius > 0) {
                 float ia = a + angleStep * 0.5f + stellationOffset;
                 float ir = stellationRadius;
-                pts.push_back(Point2Df(c.x + rx * ir * std::cos(ia), c.y + ry * ir * std::sin(ia)));
+                pts.push_back(Point2Dd(c.x + rx * ir * std::cos(ia), c.y + ry * ir * std::sin(ia)));
             }
         }
         return pts;
@@ -346,7 +347,7 @@ namespace UltraCanvas {
     void XARTextStoryNode::Render(IRenderContext* ctx, float scale) {
         ctx->PushState();
         if (hasTransform) transform.ApplyToContext(ctx);
-        Point2Df p = MillipointsToPixels(position, scale);
+        Point2Dd p = MillipointsToPixels(position, scale);
         ctx->Translate(p.x, p.y);
         XARNode::Render(ctx, scale);
         ctx->PopState();
@@ -371,10 +372,10 @@ namespace UltraCanvas {
         // primitive; we leave this as a TODO and fall back to a placeholder rect
         // outline so that bitmap-positioned objects don't disappear entirely.
         ctx->PushState();
-        Point2Df bl = MillipointsToPixels(bottomLeft, scale);
-        Point2Df br = MillipointsToPixels(bottomRight, scale);
-        Point2Df tl = MillipointsToPixels(topLeft, scale);
-        Point2Df tr(br.x + (tl.x - bl.x), br.y + (tl.y - bl.y));
+        Point2Dd bl = MillipointsToPixels(bottomLeft, scale);
+        Point2Dd br = MillipointsToPixels(bottomRight, scale);
+        Point2Dd tl = MillipointsToPixels(topLeft, scale);
+        Point2Dd tr(br.x + (tl.x - bl.x), br.y + (tl.y - bl.y));
         ctx->ClearPath();
         ctx->MoveTo(bl.x, bl.y);
         ctx->LineTo(br.x, br.y);
@@ -460,7 +461,7 @@ namespace UltraCanvas {
             width = viewport.width;
             height = viewport.height;
         } else {
-            Rect2Df b = root->CalculateBounds();
+            Rect2Dd b = root->CalculateBounds();
             width = b.width;
             height = b.height;
         }
@@ -1631,82 +1632,123 @@ namespace UltraCanvas {
     }
 
     void XARDocument::ParseComplexColorRecord(const XARRecord& record) {
+        // Wire layout per XAR spec (XARFormatDocument.pdf p.123):
+        //   <Simple RGBColour>     3 BYTE  (R, G, B) — fallback for screen rendering
+        //   <ColourModel>          BYTE    (2=RGB, 3=CMYK, 4=HSV, 5=Greyscale)
+        //   <ColourType>           BYTE    (0=Normal, 1=Spot, 2=Tint, 3=Linked, 4=Shade)
+        //   <EntryIndex>           UINT32
+        //   <ParentColour>         INT32 COLOURREF
+        //   <ColourDescription>    4 × UINT32 fixed24 (1.0 == 0x01000000)
+        //   <ColourName>           UTF-16LE, terminated by 0x00 0x00
+
         XARColorDefinition cd;
         cd.sequenceNumber = currentSequenceNumber;
-        if (record.data.size() < 4) {
-            colors[currentSequenceNumber] = std::move(cd);
-            return;
-        }
-        const uint8_t* d = record.data.data();
+
+        const uint8_t* d  = record.data.data();
+        const size_t total = record.data.size();
         size_t off = 0;
-        cd.name = ReadUTF16String(d, off, record.data.size());
-        if (off + 4 > record.data.size()) {
-            colors[currentSequenceNumber] = std::move(cd);
-            return;
-        }
-        uint8_t typeByte = ReadByte(d, off);
+
+        // 1) Simple RGB fallback. Always populate cd.color from this so screen
+        //    rendering is correct even if we can't decode the rest.
+        if (off + 3 > total) { colors[currentSequenceNumber] = std::move(cd); return; }
+        uint8_t r = ReadByte(d, off);
+        uint8_t g = ReadByte(d, off);
+        uint8_t b = ReadByte(d, off);
+        cd.simpleRGB = Color(r, g, b, 255);
+        cd.color     = cd.simpleRGB;
+
+        // 2) ColourModel + ColourType. In-memory enum ordinals don't match the
+        //    wire values, so map explicitly.
+        if (off + 2 > total) { colors[currentSequenceNumber] = std::move(cd); return; }
         uint8_t modelByte = ReadByte(d, off);
-        cd.colorType = static_cast<XARColorDefinition::Type>(std::min<uint8_t>(typeByte, 4));
-        cd.model = static_cast<XARColorDefinition::Model>(std::min<uint8_t>(modelByte, 3));
-        cd.parentRef = ReadInt32(d, off);
-        // 4× FIXED24 (3 bytes each, MSB-first): components
-        auto readFixed24 = [&](size_t& o) -> float {
-            if (o + 3 > record.data.size()) return 0;
-            uint32_t v = (uint32_t(d[o]) << 16) | (uint32_t(d[o + 1]) << 8) | uint32_t(d[o + 2]);
-            o += 3;
-            // Treat as signed-like: 0.5 == middle, normalised to [0,1]
-            return static_cast<float>(v) / static_cast<float>(0xFFFFFF);
-        };
-        for (int i = 0; i < 4; ++i) {
-            if (off + 3 > record.data.size()) break;
-            cd.components[i] = readFixed24(off);
+        uint8_t typeByte  = ReadByte(d, off);
+        switch (modelByte) {
+            case 2:  cd.model = XARColorDefinition::Model::RGB;       break;
+            case 3:  cd.model = XARColorDefinition::Model::CMYK;      break;
+            case 4:  cd.model = XARColorDefinition::Model::HSV;       break;
+            case 5:  cd.model = XARColorDefinition::Model::Greyscale; break;
+            default: cd.model = XARColorDefinition::Model::RGB;       break;
+        }
+        switch (typeByte) {
+            case 0: cd.colorType = XARColorDefinition::Type::Normal; break;
+            case 1: cd.colorType = XARColorDefinition::Type::Spot;   break;
+            case 2: cd.colorType = XARColorDefinition::Type::Tint;   break;
+            case 3: cd.colorType = XARColorDefinition::Type::Linked; break;
+            case 4: cd.colorType = XARColorDefinition::Type::Shaded; break;
+            default: cd.colorType = XARColorDefinition::Type::Normal; break;
         }
 
-        // Resolve to a final RGB Color
-        switch (cd.model) {
-            case XARColorDefinition::Model::RGB:
-                cd.color = Color(
-                    static_cast<uint8_t>(cd.components[0] * 255),
-                    static_cast<uint8_t>(cd.components[1] * 255),
-                    static_cast<uint8_t>(cd.components[2] * 255), 255);
-                break;
-            case XARColorDefinition::Model::Greyscale: {
-                uint8_t g = static_cast<uint8_t>(cd.components[0] * 255);
-                cd.color = Color(g, g, g, 255);
-                break;
-            }
-            case XARColorDefinition::Model::HSV: {
-                float h = cd.components[0] * 360.0f;
-                float s = cd.components[1];
-                float v = cd.components[2];
-                float c = v * s;
-                float hh = h / 60.0f;
-                float x = c * (1.0f - std::fabs(std::fmod(hh, 2.0f) - 1.0f));
-                float r1 = 0, g1 = 0, b1 = 0;
-                if (hh < 1) { r1 = c; g1 = x; }
-                else if (hh < 2) { r1 = x; g1 = c; }
-                else if (hh < 3) { g1 = c; b1 = x; }
-                else if (hh < 4) { g1 = x; b1 = c; }
-                else if (hh < 5) { r1 = x; b1 = c; }
-                else { r1 = c; b1 = x; }
-                float mm = v - c;
-                cd.color = Color(
-                    static_cast<uint8_t>((r1 + mm) * 255),
-                    static_cast<uint8_t>((g1 + mm) * 255),
-                    static_cast<uint8_t>((b1 + mm) * 255), 255);
-                break;
-            }
-            case XARColorDefinition::Model::CMYK: {
-                float cc = cd.components[0], mm = cd.components[1];
-                float yy = cd.components[2], kk = cd.components[3];
-                float r = (1 - cc) * (1 - kk);
-                float g = (1 - mm) * (1 - kk);
-                float b = (1 - yy) * (1 - kk);
-                cd.color = Color(
-                    static_cast<uint8_t>(r * 255),
-                    static_cast<uint8_t>(g * 255),
-                    static_cast<uint8_t>(b * 255), 255);
-                break;
+        // 3) EntryIndex + ParentColour
+        if (off + 8 > total) { colors[currentSequenceNumber] = std::move(cd); return; }
+        cd.entryIndex = ReadUInt32(d, off);
+        cd.parentRef  = ReadInt32(d, off);
+
+        // 4) Four UINT32 fixed24 components (binary point between bits 23 and 24,
+        //    so 1.0 == 0x01000000). 0xF8000000 in a Linked component means
+        //    "inherit from parent" — leave as 0 here, current renderer doesn't
+        //    consume it.
+        bool componentsOk = true;
+        for (int i = 0; i < 4; ++i) {
+            if (off + 4 > total) { componentsOk = false; break; }
+            uint32_t v = ReadUInt32(d, off);
+            if (v == 0xF8000000u) { cd.components[i] = 0.0f; continue; }
+            cd.components[i] = std::min(1.0f,
+                static_cast<float>(v) / static_cast<float>(0x01000000));
+        }
+
+        // 5) ColourName — last field.
+        if (off + 2 <= total) {
+            cd.name = ReadUTF16String(d, off, total - off);
+        }
+
+        // 6) Resolve cd.color from the full definition where possible. If the
+        //    components weren't fully present, keep cd.color = simpleRGB fallback.
+        if (componentsOk) {
+            switch (cd.model) {
+                case XARColorDefinition::Model::RGB:
+                    cd.color = Color(
+                        static_cast<uint8_t>(cd.components[0] * 255),
+                        static_cast<uint8_t>(cd.components[1] * 255),
+                        static_cast<uint8_t>(cd.components[2] * 255), 255);
+                    break;
+                case XARColorDefinition::Model::Greyscale: {
+                    uint8_t gv = static_cast<uint8_t>(cd.components[0] * 255);
+                    cd.color = Color(gv, gv, gv, 255);
+                    break;
+                }
+                case XARColorDefinition::Model::HSV: {
+                    float h = cd.components[0] * 360.0f;
+                    float s = cd.components[1];
+                    float v = cd.components[2];
+                    float c = v * s;
+                    float hh = h / 60.0f;
+                    float x = c * (1.0f - std::fabs(std::fmod(hh, 2.0f) - 1.0f));
+                    float r1 = 0, g1 = 0, b1 = 0;
+                    if (hh < 1) { r1 = c; g1 = x; }
+                    else if (hh < 2) { r1 = x; g1 = c; }
+                    else if (hh < 3) { g1 = c; b1 = x; }
+                    else if (hh < 4) { g1 = x; b1 = c; }
+                    else if (hh < 5) { r1 = x; b1 = c; }
+                    else { r1 = c; b1 = x; }
+                    float mm = v - c;
+                    cd.color = Color(
+                        static_cast<uint8_t>((r1 + mm) * 255),
+                        static_cast<uint8_t>((g1 + mm) * 255),
+                        static_cast<uint8_t>((b1 + mm) * 255), 255);
+                    break;
+                }
+                case XARColorDefinition::Model::CMYK: {
+                    float cc = cd.components[0], mm = cd.components[1];
+                    float yy = cd.components[2], kk = cd.components[3];
+                    float rr = (1 - cc) * (1 - kk);
+                    float gg = (1 - mm) * (1 - kk);
+                    float bb = (1 - yy) * (1 - kk);
+                    cd.color = Color(
+                        static_cast<uint8_t>(rr * 255),
+                        static_cast<uint8_t>(gg * 255),
+                        static_cast<uint8_t>(bb * 255), 255);
+                    break;
+                }
             }
         }
 
@@ -2108,7 +2150,7 @@ namespace UltraCanvas {
         size_t off = 0;
         Point2Di bl = ReadCoord(d, off);
         Point2Di tr = ReadCoord(d, off);
-        pendingObjectBounds = Rect2Df(
+        pendingObjectBounds = Rect2Dd(
             static_cast<float>(bl.x) * XARConstants::MILLIPOINTS_TO_PIXELS,
             static_cast<float>(bl.y) * XARConstants::MILLIPOINTS_TO_PIXELS,
             static_cast<float>(tr.x - bl.x) * XARConstants::MILLIPOINTS_TO_PIXELS,
@@ -2317,21 +2359,38 @@ namespace UltraCanvas {
 
 // ===== UI ELEMENT =====
 
-    UltraCanvasXARElement::UltraCanvasXARElement(const std::string& identifier, long id,
-                                                 long x, long y, long w, long h)
-        : UltraCanvasUIElement(identifier, id, x, y, w, h) {}
+    UltraCanvasXARElement::UltraCanvasXARElement(const std::string& identifier,
+                                                 float x, float y, float w, float h)
+        : UltraCanvasUIElement(identifier, x, y, w, h) {}
 
     bool UltraCanvasXARElement::LoadFromFile(const std::string& filepath) {
+        lastError.clear();
         document = std::make_unique<XARDocument>();
-        return document->LoadFromFile(filepath);
+        if (!document->LoadFromFile(filepath)) {
+            // Distinguish a file-access problem (missing / locked / no permission)
+            // from a valid-but-unparseable XAR file.
+            std::string access = DescribeFileReadError(filepath);
+            lastError = !access.empty()
+                ? access
+                : ("The file is not a valid Xara (.xar) drawing: " + filepath);
+            document.reset();
+            return false;
+        }
+        return true;
     }
 
     bool UltraCanvasXARElement::LoadFromMemory(const uint8_t* data, size_t size) {
+        lastError.clear();
         document = std::make_unique<XARDocument>();
-        return document->LoadFromMemory(data, size);
+        if (!document->LoadFromMemory(data, size)) {
+            lastError = "The data is not a valid Xara (.xar) drawing.";
+            document.reset();
+            return false;
+        }
+        return true;
     }
 
-    void UltraCanvasXARElement::Render(IRenderContext* ctx, const Rect2Di& /*dirtyRect*/) {
+    void UltraCanvasXARElement::Render(IRenderContext* ctx, const Rect2Df& /*dirtyRect*/) {
         if (!document || !ctx) return;
         Rect2Di bounds = GetBounds();
         ctx->PushState();
@@ -2372,11 +2431,10 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasXARPlugin::LoadGraphics(const std::string& filePath) {
-        auto element = std::make_shared<UltraCanvasXARElement>("XARElement", 0, 0, 0, 400, 400);
+        auto element = std::make_shared<UltraCanvasXARElement>("XARElement", 0, 0, 400, 400);
         if (element->LoadFromFile(filePath)) {
             if (element->GetDocument()) {
-                element->SetSize(static_cast<int>(element->GetDocument()->GetWidth()),
-                                 static_cast<int>(element->GetDocument()->GetHeight()));
+                element->SetElementSize(Size2Df (element->GetDocument()->GetWidth(), element->GetDocument()->GetHeight()));
             }
             return element;
         }

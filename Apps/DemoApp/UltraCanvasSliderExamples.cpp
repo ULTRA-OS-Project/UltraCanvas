@@ -37,7 +37,7 @@ namespace UltraCanvas {
         container->AddChild(hSliderLabel);
 
         // Value display for horizontal slider
-        auto hValueLabel = CreateLabel("HValueLabel", 340, 60, 80, 20);
+        auto hValueLabel = CreateLabel("HValueLabel", 340, 62, 80, 20);
         hValueLabel->SetText("50");
         hValueLabel->SetAlignment(TextAlignment::Center);
         hValueLabel->SetBackgroundColor(Color(240, 240, 240, 255));
@@ -59,6 +59,91 @@ namespace UltraCanvas {
         vSliderLabel->SetText("Vertical Slider");
         vSliderLabel->SetFontSize(12);
         container->AddChild(vSliderLabel);
+
+        // Vertical dual-handle (range) slider, placed in the first row to the right
+        // of the simple vertical slider.
+        auto volumeLabel = CreateLabel("VolumeLabel", 765, 50, 220, 25);
+        volumeLabel->SetText("Vertical Volume Range (0-100)");
+        volumeLabel->SetFontWeight(FontWeight::Bold);
+        volumeLabel->SetFontSize(12);
+        container->AddChild(volumeLabel);
+
+        auto volumeRange = CreateRangeSlider("volumeRange", 720, 50, 40, 200,
+                                             0.0f, 100.0f, 30.0f, 80.0f);
+        volumeRange->SetOrientation(SliderOrientation::Vertical);
+        volumeRange->SetRangeMode(true);
+        volumeRange->SetValueDisplay(SliderValueDisplay::Tooltip);
+        volumeRange->SetStep(5.0f);
+
+        // Custom colors for volume
+        auto& volumeStyle = volumeRange->GetStyle();
+        volumeStyle.rangeTrackColor = Color(100, 200, 100, 180);  // Green
+        volumeStyle.trackHeight = 8.0f;
+        volumeStyle.handleSize = 20.0f;
+
+        auto volumeDisplay = CreateLabel("VolumeDisplay", 765, 80, 220, 25);
+        volumeDisplay->SetText("Volume Range: 30 - 80");
+        volumeDisplay->SetBackgroundColor(Color(220, 255, 220));
+        volumeDisplay->SetPadding(3);
+        container->AddChild(volumeDisplay);
+
+        volumeRange->onRangeChanged = [volumeDisplay](float lower, float upper) {
+            std::ostringstream oss;
+            oss << "Volume Range: " << static_cast<int>(lower) << " - " << static_cast<int>(upper);
+            volumeDisplay->SetText(oss.str());
+        };
+
+        container->AddChild(volumeRange);
+
+        // ===== HORIZONTAL COLOUR PALETTE SLIDER =====
+        // A hue palette painted inside the bar (colour-picker style) with a small
+        // handle that fits within the bar. The field on the right previews the
+        // selected colour and shows its RGB value.
+        auto paletteLabel = CreateLabel("PaletteLabel", 20, 155, 300, 20);
+        paletteLabel->SetText("Colour Palette Slider (Hue)");
+        paletteLabel->SetFontSize(12);
+        container->AddChild(paletteLabel);
+
+        auto paletteSlider = CreateSlider("PaletteSlider", 20, 123, 300, 22);
+        paletteSlider->SetOrientation(SliderOrientation::Horizontal);
+        paletteSlider->SetRange(0.0f, 360.0f);
+        paletteSlider->SetValue(0.0f);
+        paletteSlider->SetStep(1.0f);
+        // Bar just thick enough to wrap the handle (handle size plus the bar
+        // border on each side); its rounded end caps enclose the handle at the
+        // extremes so the handle appears to travel inside the bar.
+        paletteSlider->SetTrackHeight(20.0f);
+        paletteSlider->SetHandleSize(18.0f);
+        // Full hue palette inside the bar.
+        std::vector<GradientStop> hueStops;
+        for (int i = 0; i <= 6; ++i) {
+            hueStops.emplace_back(i / 6.0, HSV(i * 60.0f, 1.0f, 1.0f));
+        }
+        paletteSlider->SetTrackGradient(hueStops);
+        container->AddChild(paletteSlider);
+
+        // Selected-colour preview field with RGB readout, vertically centered
+        // on the palette bar (same height and top edge as the bar).
+        auto paletteSwatch = CreateLabel("PaletteSwatch", 340, 124, 140, 20);
+        paletteSwatch->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
+        paletteSwatch->SetPadding(3);
+        container->AddChild(paletteSwatch);
+
+        auto updateSwatch = [paletteSwatch](float hue) {
+            Color c = HSV(hue, 1.0f, 1.0f);
+            paletteSwatch->SetBackgroundColor(c);
+            // Choose readable text colour based on perceived luminance.
+            float luma = 0.299f * c.r + 0.587f * c.g + 0.114f * c.b;
+            paletteSwatch->SetTextColor(luma > 140.0f ? Colors::Black : Colors::White);
+            std::ostringstream oss;
+            oss << "RGB " << static_cast<int>(c.r) << ", "
+                << static_cast<int>(c.g) << ", " << static_cast<int>(c.b);
+            paletteSwatch->SetText(oss.str());
+        };
+        updateSwatch(0.0f);
+        paletteSlider->onValueChanged = [updateSwatch](float value) {
+            updateSwatch(value);
+        };
 
         auto rangeSlidersContainer = std::make_shared<UltraCanvasContainer>("RangeSliderDemos", 0, 260, 1000, 1050);
         //rangeSlidersContainer->SetBackgroundColor(Color(245, 245, 245));
@@ -242,49 +327,14 @@ namespace UltraCanvas {
         rangeSlidersContainer->AddChild(timeRange);
         yPos += 60;
 
-        // ===== EXAMPLE 6: VERTICAL VOLUME RANGE =====
-        auto volumeLabel = CreateLabel("VolumeLabel", 20, yPos, 300, 25);
-        volumeLabel->SetText("Vertical Volume Range (0-100)");
-        volumeLabel->SetFontWeight(FontWeight::Bold);
-        rangeSlidersContainer->AddChild(volumeLabel);
-        yPos += 20;
-
-        auto volumeRange = CreateRangeSlider("volumeRange",  50, yPos, 40, 200,
-                                             0.0f, 100.0f, 30.0f, 80.0f);
-        volumeRange->SetOrientation(SliderOrientation::Vertical);
-        volumeRange->SetRangeMode(true);
-        volumeRange->SetValueDisplay(SliderValueDisplay::Tooltip);
-        volumeRange->SetStep(5.0f);
-
-        // Custom colors for volume
-        auto& volumeStyle = volumeRange->GetStyle();
-        volumeStyle.rangeTrackColor = Color(100, 200, 100, 180);  // Green
-        volumeStyle.trackHeight = 8.0f;
-        volumeStyle.handleSize = 20.0f;
-
-        auto volumeDisplay = CreateLabel("VolumeDisplay", 100, yPos + 80, 250, 25);
-        volumeDisplay->SetText("Volume Range: 30 - 80");
-        volumeDisplay->SetBackgroundColor(Color(220, 255, 220));
-        volumeDisplay->SetPadding(3);
-        rangeSlidersContainer->AddChild(volumeDisplay);
-
-        volumeRange->onRangeChanged = [volumeDisplay](float lower, float upper) {
-            std::ostringstream oss;
-            oss << "Volume Range: " << static_cast<int>(lower) << " - " << static_cast<int>(upper);
-            volumeDisplay->SetText(oss.str());
-        };
-
-        rangeSlidersContainer->AddChild(volumeRange);
-        yPos += 220;
-
-        // ===== EXAMPLE 7: DATE RANGE (Days 1-31) =====
+        // ===== EXAMPLE 6: DATE RANGE (Days 1-31) =====
         auto dateLabel = CreateLabel("DateLabel", 20, yPos, 300, 25);
         dateLabel->SetText("Date Range Selector (Days 1-31)");
         dateLabel->SetFontWeight(FontWeight::Bold);
         rangeSlidersContainer->AddChild(dateLabel);
         yPos += 35;
 
-        auto dateRange = CreateRangeSlider("dateRange", 20, yPos, sliderWidth, 30,
+        auto dateRange = CreateRangeSlider("dateRange", 20, yPos, sliderWidth, 40,
                                            1.0f, 31.0f, 5.0f, 25.0f);
         dateRange->SetValueDisplay(SliderValueDisplay::AlwaysVisible);
         dateRange->SetValueFormat("Day %.0f");
@@ -305,14 +355,14 @@ namespace UltraCanvas {
         rangeSlidersContainer->AddChild(dateRange);
         yPos += 60;
 
-        // ===== EXAMPLE 8: ROUNDED STYLE RANGE SLIDER =====
+        // ===== EXAMPLE 7: ROUNDED STYLE RANGE SLIDER =====
         auto roundedLabel = CreateLabel("RoundedLabel", 20, yPos, 300, 25);
         roundedLabel->SetText("Diamond Style handle");
         roundedLabel->SetFontWeight(FontWeight::Bold);
         rangeSlidersContainer->AddChild(roundedLabel);
         yPos += 35;
 
-        auto roundedRange = CreateRangeSlider("roundedRange", 20, yPos, sliderWidth, 30,
+        auto roundedRange = CreateRangeSlider("roundedRange", 20, yPos, sliderWidth, 40,
                                               0.0f, 100.0f, 25.0f, 75.0f);
         roundedRange->SetValueDisplay(SliderValueDisplay::Number);
         roundedRange->SetStep(1.0f);

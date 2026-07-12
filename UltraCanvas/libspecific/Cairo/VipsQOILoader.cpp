@@ -9,7 +9,8 @@
 #include <cstdlib>
 #include <cstdint>
 
-#define QOI_IMPLEMENTATION 1
+// The QOI codec implementation lives in qoi.cpp (always compiled, dependency
+// free). Here we only need the declarations to call qoi_decode().
 #include "qoi.h"
 #include <stdio.h>
 

@@ -1,0 +1,22 @@
+# VirtualFSConfig.cmake.in
+# CMake package configuration file for VirtualFS
+
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+# Optional dependencies
+if(@VIRTUALFS_USE_LIBARCHIVE@)
+    find_dependency(PkgConfig)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(LIBARCHIVE libarchive)
+    endif()
+endif()
+
+if(@VIRTUALFS_USE_ZLIB@)
+    find_dependency(ZLIB)
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/VirtualFSTargets.cmake")
+
+check_required_components(VirtualFS)

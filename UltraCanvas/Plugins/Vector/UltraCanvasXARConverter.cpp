@@ -439,7 +439,7 @@ namespace UltraCanvas {
             // Set document size if available
             if (importState.document) {
                 // XAR doesn't store document dimensions in header, set defaults
-                importState.document->Size = Size2Df{595.0f, 842.0f};  // A4 in points
+                importState.document->Size = Size2Dd{595.0f, 842.0f};  // A4 in points
             }
 
             return true;
@@ -655,12 +655,12 @@ namespace UltraCanvas {
                 offset += sizeof(XARCoord);
                 XARCoord hi = *reinterpret_cast<const XARCoord*>(data.data() + offset);
 
-                Point2Df loPoint = FromXARCoord(lo);
-                Point2Df hiPoint = FromXARCoord(hi);
+                Point2Dd loPoint = FromXARCoord(lo);
+                Point2Dd hiPoint = FromXARCoord(hi);
 
                 importState.document->Size.width = hiPoint.x - loPoint.x;
                 importState.document->Size.height = hiPoint.y - loPoint.y;
-                importState.document->ViewBox = Rect2Df{loPoint.x, loPoint.y,
+                importState.document->ViewBox = Rect2Dd{loPoint.x, loPoint.y,
                                                         importState.document->Size.width,
                                                         importState.document->Size.height};
             }
@@ -751,8 +751,8 @@ namespace UltraCanvas {
             uint32_t numElements = *reinterpret_cast<const uint32_t*>(data.data() + offset);
             offset += sizeof(uint32_t);
 
-            Point2Df currentPoint{0, 0};
-            Point2Df subpathStart{0, 0};
+            Point2Dd currentPoint{0, 0};
+            Point2Dd subpathStart{0, 0};
 
             // XAR stores verbs and coordinates separately
             // First: verb array (numElements bytes)
@@ -779,7 +779,7 @@ namespace UltraCanvas {
 
                 if (verbType == (VERB_MOVETO & 0x07)) {
                     // MoveTo
-                    Point2Df pt = FromXARCoord(coords[coordIndex++]);
+                    Point2Dd pt = FromXARCoord(coords[coordIndex++]);
                     if (relative && i > 0) {
                         pt.x += currentPoint.x;
                         pt.y += currentPoint.y;
@@ -791,7 +791,7 @@ namespace UltraCanvas {
                 }
                 else if (verbType == (VERB_LINETO & 0x07)) {
                     // LineTo
-                    Point2Df pt = FromXARCoord(coords[coordIndex++]);
+                    Point2Dd pt = FromXARCoord(coords[coordIndex++]);
                     if (relative) {
                         pt.x += currentPoint.x;
                         pt.y += currentPoint.y;
@@ -803,9 +803,9 @@ namespace UltraCanvas {
                 else if (verbType == (VERB_CURVETO & 0x07)) {
                     // CurveTo - need 3 points (2 control + 1 end)
                     if (coordIndex + 2 < numElements) {
-                        Point2Df c1 = FromXARCoord(coords[coordIndex++]);
-                        Point2Df c2 = FromXARCoord(coords[coordIndex++]);
-                        Point2Df end = FromXARCoord(coords[coordIndex++]);
+                        Point2Dd c1 = FromXARCoord(coords[coordIndex++]);
+                        Point2Dd c2 = FromXARCoord(coords[coordIndex++]);
+                        Point2Dd end = FromXARCoord(coords[coordIndex++]);
 
                         if (relative) {
                             c1.x += currentPoint.x;
@@ -855,10 +855,10 @@ namespace UltraCanvas {
             XARCoord hi = *reinterpret_cast<const XARCoord*>(data.data() + offset);
             offset += sizeof(XARCoord);
 
-            Point2Df loPoint = FromXARCoord(lo);
-            Point2Df hiPoint = FromXARCoord(hi);
+            Point2Dd loPoint = FromXARCoord(lo);
+            Point2Dd hiPoint = FromXARCoord(hi);
 
-            rect->Bounds = Rect2Df{loPoint.x, loPoint.y,
+            rect->Bounds = Rect2Dd{loPoint.x, loPoint.y,
                                    hiPoint.x - loPoint.x,
                                    hiPoint.y - loPoint.y};
 
@@ -891,9 +891,9 @@ namespace UltraCanvas {
             offset += sizeof(XARCoord);
             XARCoord minorAxis = *reinterpret_cast<const XARCoord*>(data.data() + offset);
 
-            Point2Df centrePoint = FromXARCoord(centre);
-            Point2Df majorPoint = FromXARCoord(majorAxis);
-            Point2Df minorPoint = FromXARCoord(minorAxis);
+            Point2Dd centrePoint = FromXARCoord(centre);
+            Point2Dd majorPoint = FromXARCoord(majorAxis);
+            Point2Dd minorPoint = FromXARCoord(minorAxis);
 
             // Calculate radii from axis endpoints
             float rx = std::sqrt(std::pow(majorPoint.x - centrePoint.x, 2) +
@@ -945,8 +945,8 @@ namespace UltraCanvas {
             XARCoord majorAxis = *reinterpret_cast<const XARCoord*>(data.data() + offset);
             offset += sizeof(XARCoord);
 
-            Point2Df centrePoint = FromXARCoord(centre);
-            Point2Df majorPoint = FromXARCoord(majorAxis);
+            Point2Dd centrePoint = FromXARCoord(centre);
+            Point2Dd majorPoint = FromXARCoord(majorAxis);
 
             float radius = std::sqrt(std::pow(majorPoint.x - centrePoint.x, 2) +
                                      std::pow(majorPoint.y - centrePoint.y, 2));
@@ -1085,17 +1085,17 @@ namespace UltraCanvas {
             }
 
             // Calculate bounds from corners
-            Point2Df p0 = FromXARCoord(corners[0]);
-            Point2Df p1 = FromXARCoord(corners[1]);
-            Point2Df p2 = FromXARCoord(corners[2]);
-            Point2Df p3 = FromXARCoord(corners[3]);
+            Point2Dd p0 = FromXARCoord(corners[0]);
+            Point2Dd p1 = FromXARCoord(corners[1]);
+            Point2Dd p2 = FromXARCoord(corners[2]);
+            Point2Dd p3 = FromXARCoord(corners[3]);
 
             float minX = std::min({p0.x, p1.x, p2.x, p3.x});
             float minY = std::min({p0.y, p1.y, p2.y, p3.y});
             float maxX = std::max({p0.x, p1.x, p2.x, p3.x});
             float maxY = std::max({p0.y, p1.y, p2.y, p3.y});
 
-            image->Bounds = Rect2Df{minX, minY, maxX - minX, maxY - minY};
+            image->Bounds = Rect2Dd{minX, minY, maxX - minX, maxY - minY};
 
             // Link to bitmap data if available
             if (importState.bitmapData.count(bitmapId)) {
@@ -1414,8 +1414,8 @@ namespace UltraCanvas {
                 std::vector<uint8_t> data(4 * sizeof(XARCoord));
                 size_t offset = 0;
 
-                XARCoord lo = ToXARCoord(Point2Df{0, 0});
-                XARCoord hi = ToXARCoord(Point2Df{document.Size.width, document.Size.height});
+                XARCoord lo = ToXARCoord(Point2Dd{0, 0});
+                XARCoord hi = ToXARCoord(Point2Dd{document.Size.width, document.Size.height});
 
                 std::memcpy(data.data() + offset, &lo, sizeof(XARCoord));
                 offset += sizeof(XARCoord);
@@ -1507,8 +1507,8 @@ namespace UltraCanvas {
         void XARConverter::Impl::WriteRect(std::ostream& stream, const VectorRect& rect) {
             std::vector<uint8_t> data;
 
-            XARCoord lo = ToXARCoord(Point2Df{rect.Bounds.x, rect.Bounds.y});
-            XARCoord hi = ToXARCoord(Point2Df{rect.Bounds.x + rect.Bounds.width,
+            XARCoord lo = ToXARCoord(Point2Dd{rect.Bounds.x, rect.Bounds.y});
+            XARCoord hi = ToXARCoord(Point2Dd{rect.Bounds.x + rect.Bounds.width,
                                               rect.Bounds.y + rect.Bounds.height});
 
             data.resize(2 * sizeof(XARCoord));
@@ -1531,8 +1531,8 @@ namespace UltraCanvas {
             std::vector<uint8_t> data(3 * sizeof(XARCoord));
 
             XARCoord centre = ToXARCoord(circle.Center);
-            XARCoord majorAxis = ToXARCoord(Point2Df{circle.Center.x + circle.Radius, circle.Center.y});
-            XARCoord minorAxis = ToXARCoord(Point2Df{circle.Center.x, circle.Center.y + circle.Radius});
+            XARCoord majorAxis = ToXARCoord(Point2Dd{circle.Center.x + circle.Radius, circle.Center.y});
+            XARCoord minorAxis = ToXARCoord(Point2Dd{circle.Center.x, circle.Center.y + circle.Radius});
 
             std::memcpy(data.data(), &centre, sizeof(XARCoord));
             std::memcpy(data.data() + sizeof(XARCoord), &majorAxis, sizeof(XARCoord));
@@ -1545,8 +1545,8 @@ namespace UltraCanvas {
             std::vector<uint8_t> data(3 * sizeof(XARCoord));
 
             XARCoord centre = ToXARCoord(ellipse.Center);
-            XARCoord majorAxis = ToXARCoord(Point2Df{ellipse.Center.x + ellipse.RadiusX, ellipse.Center.y});
-            XARCoord minorAxis = ToXARCoord(Point2Df{ellipse.Center.x, ellipse.Center.y + ellipse.RadiusY});
+            XARCoord majorAxis = ToXARCoord(Point2Dd{ellipse.Center.x + ellipse.RadiusX, ellipse.Center.y});
+            XARCoord minorAxis = ToXARCoord(Point2Dd{ellipse.Center.x, ellipse.Center.y + ellipse.RadiusY});
 
             std::memcpy(data.data(), &centre, sizeof(XARCoord));
             std::memcpy(data.data() + sizeof(XARCoord), &majorAxis, sizeof(XARCoord));
@@ -1603,21 +1603,21 @@ namespace UltraCanvas {
                 switch (cmd.Type) {
                     case PathCommandType::MoveTo:
                         verbs[verbIdx++] = VERB_MOVETO;
-                        coords[coordIdx++] = ToXARCoord(Point2Df{cmd.Parameters[0], cmd.Parameters[1]});
+                        coords[coordIdx++] = ToXARCoord(Point2Dd{cmd.Parameters[0], cmd.Parameters[1]});
                         break;
 
                     case PathCommandType::LineTo:
                         verbs[verbIdx++] = VERB_LINETO;
-                        coords[coordIdx++] = ToXARCoord(Point2Df{cmd.Parameters[0], cmd.Parameters[1]});
+                        coords[coordIdx++] = ToXARCoord(Point2Dd{cmd.Parameters[0], cmd.Parameters[1]});
                         break;
 
                     case PathCommandType::CurveTo:
                         verbs[verbIdx++] = VERB_CURVETO | PATHFLAG_CONTROL;
-                        coords[coordIdx++] = ToXARCoord(Point2Df{cmd.Parameters[0], cmd.Parameters[1]});
+                        coords[coordIdx++] = ToXARCoord(Point2Dd{cmd.Parameters[0], cmd.Parameters[1]});
                         verbs[verbIdx++] = VERB_CURVETO | PATHFLAG_CONTROL;
-                        coords[coordIdx++] = ToXARCoord(Point2Df{cmd.Parameters[2], cmd.Parameters[3]});
+                        coords[coordIdx++] = ToXARCoord(Point2Dd{cmd.Parameters[2], cmd.Parameters[3]});
                         verbs[verbIdx++] = VERB_CURVETO;
-                        coords[coordIdx++] = ToXARCoord(Point2Df{cmd.Parameters[4], cmd.Parameters[5]});
+                        coords[coordIdx++] = ToXARCoord(Point2Dd{cmd.Parameters[4], cmd.Parameters[5]});
                         break;
 
                     case PathCommandType::ClosePath:
@@ -1723,8 +1723,8 @@ namespace UltraCanvas {
                     std::vector<uint8_t> data(sizeof(XARRadialFillData));
                     XARRadialFillData fillData;
                     fillData.CentrePoint = ToXARCoord(radial->Center);
-                    fillData.MajorAxes = ToXARCoord(Point2Df{radial->Center.x + radial->Radius, radial->Center.y});
-                    fillData.MinorAxes = ToXARCoord(Point2Df{radial->Center.x, radial->Center.y + radial->Radius});
+                    fillData.MajorAxes = ToXARCoord(Point2Dd{radial->Center.x + radial->Radius, radial->Center.y});
+                    fillData.MinorAxes = ToXARCoord(Point2Dd{radial->Center.x, radial->Center.y + radial->Radius});
 
                     if (!radial->Stops.empty()) {
                         fillData.StartColour = ToXARColour(radial->Stops.front().StopColor);
@@ -1741,7 +1741,7 @@ namespace UltraCanvas {
 
                     float endX = conical->Center.x + 100 * std::cos(conical->StartAngle);
                     float endY = conical->Center.y + 100 * std::sin(conical->StartAngle);
-                    fillData.EndPoint = ToXARCoord(Point2Df{endX, endY});
+                    fillData.EndPoint = ToXARCoord(Point2Dd{endX, endY});
 
                     if (!conical->Stops.empty()) {
                         fillData.StartColour = ToXARColour(conical->Stops.front().StopColor);

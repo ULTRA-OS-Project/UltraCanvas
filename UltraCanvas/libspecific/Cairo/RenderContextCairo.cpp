@@ -1,7 +1,7 @@
 // libspecific/Cairo/RenderContextCairo.cpp
 // Cairo support implementation for UltraCanvas Framework
-// Version: 1.0.6 - Rect-based DrawPixmap/DrawMask
-// Last Modified: 2026-04-11
+// Version: 1.0.10 - Text/circle/arc primitives no longer leak or inherit a cairo current point (stray connecting lines)
+// Last Modified: 2026-07-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -30,10 +30,19 @@ namespace UltraCanvas {
     };
     static UCCache<UCTextLayout, UCTextLayoutCacheEntry> g_TextLayoutsCache(20 * 1024 * 1024);
 
-    // Configurable text rendering font options (global, matching cache scope)
+    // Configurable text rendering font options (global, matching cache scope).
+    // Defaults are chosen for layout stability across platforms/DPI: fractional
+    // advance widths (HINT_METRICS_OFF) keep paragraph widths identical to the
+    // font designer's metrics, and HINT_STYLE_SLIGHT keeps glyph outlines crisp
+    // at small sizes without snapping advances to integer pixels.
     static cairo_antialias_t g_TextAntialias = CAIRO_ANTIALIAS_SUBPIXEL;
-    static cairo_hint_style_t g_TextHintStyle = CAIRO_HINT_STYLE_MEDIUM;
-    static cairo_hint_metrics_t g_TextHintMetrics = CAIRO_HINT_METRICS_DEFAULT;
+    static cairo_hint_style_t g_TextHintStyle = CAIRO_HINT_STYLE_SLIGHT;
+    static cairo_hint_metrics_t g_TextHintMetrics = CAIRO_HINT_METRICS_OFF;
+
+    // Pin Pango point->pixel conversion to a known DPI on every platform. 96
+    // matches the CSS reference and what every modern UI toolkit assumes; fixing
+    // it here removes drift from Cairo backends that report different defaults.
+    static double g_PangoResolution = 96.0;
 
     std::vector<RenderContextCairo*> RenderContextCairo::g_Instances;
 
@@ -132,63 +141,12 @@ namespace UltraCanvas {
 //                  << static_cast<int>(g_TextAntialias)
 //                  << static_cast<int>(g_TextHintStyle)
 //                  << static_cast<int>(g_TextHintMetrics) << "|"
+                  << "|r" << static_cast<int>(g_PangoResolution * 100)
                   << text.substr(0,300);
 
         return keyStream.str();
     }
 
-
-//    RenderContextCairo::RenderContextCairo(cairo_surface_t *surf, int width, int height, bool enableDoubleBuffering)
-//        : targetSurface(nullptr), surfaceWidth(0), surfaceHeight(0), stagingSurface(nullptr), pangoContext(nullptr), cairo(nullptr), targetContext(nullptr), destroying(false) {
-//
-//        SetTargetSurface(surf, width, height);
-//
-//        // Initialize Pango for text rendering with proper error checking
-//        try {
-//            debugOutput << "RenderContextCairo: Initializing Pango..." << std::endl;
-//
-//            auto fontMap = pango_cairo_font_map_get_default();
-//            if (!fontMap) {
-//                debugOutput << "ERROR: Failed to get default Pango font map" << std::endl;
-//                throw std::runtime_error("RenderContextCairo: Failed to get Pango font map");
-//            }
-//            debugOutput << "RenderContextCairo: Got Pango font map: " << fontMap << std::endl;
-//
-//            pangoContext = pango_font_map_create_context(fontMap);
-//            if (!pangoContext) {
-//                debugOutput << "ERROR: Failed to create Pango context" << std::endl;
-//                throw std::runtime_error("RenderContextCairo: Failed to create Pango context");
-//            }
-//            debugOutput << "RenderContextCairo: Created Pango context: " << pangoContext << std::endl;
-//
-//            // Associate Pango context with Cairo context
-//            pango_cairo_context_set_resolution(pangoContext, 96.0);  // Standard DPI
-//
-//            // Apply configurable text rendering font options
-//            ApplyPangoFontOptions();
-//            g_Instances.push_back(this);
-//
-//            debugOutput << "RenderContextCairo: Pango initialization complete" << std::endl;
-//
-//        } catch (const std::exception &e) {
-//            debugOutput << "ERROR: Exception during Pango initialization: " << e.what() << std::endl;
-//
-//            // Cleanup on failure
-//            if (pangoContext) {
-//                g_object_unref(pangoContext);
-//                pangoContext = nullptr;
-//            }
-//            throw;
-//        }
-//
-//        if (enableDoubleBuffering) {
-//            CreateStagingSurface();
-//            SwitchToSurface(stagingSurface);
-//        }
-//        // Initialize default state
-//        ResetState();
-//        debugOutput << "RenderContextCairo: Initialization complete" << std::endl;
-//    }
 
     bool RenderContextCairo::CreateSurface(const Size2Di & sz, NativeSurfacePtr createSimilarToSurface) {
         auto oldCairoSurface = surface;
@@ -257,6 +215,47 @@ namespace UltraCanvas {
             debugOutput << "RenderContextCairo::CreateSurface: Can't create Pango context" << std::endl;
             return false;
 
+        }
+
+        // Pin Pango DPI before any layout uses this context.
+        pango_cairo_context_set_resolution(pangoContext, g_PangoResolution);
+
+        // Belt-and-braces: also pin the cairo surface's fallback DPI and the
+        // default Pango font map's resolution. Pango's draw-time
+        // pango_cairo_update_layout() can resync metrics from cairo's
+        // font_options or the font map; both must agree with our context pin
+        // or text widths drift between platforms.
+        cairo_surface_set_fallback_resolution(surface, g_PangoResolution, g_PangoResolution);
+        if (PangoFontMap* fm = pango_cairo_font_map_get_default()) {
+            pango_cairo_font_map_set_resolution(PANGO_CAIRO_FONT_MAP(fm), g_PangoResolution);
+        }
+
+        // One-shot diagnostic: the only reliable way to discover which Pango/
+        // Cairo layer is reporting a non-pinned resolution on a given platform.
+        static bool s_diagLogged = false;
+        if (!s_diagLogged) {
+            s_diagLogged = true;
+            double ctxRes = pango_cairo_context_get_resolution(pangoContext);
+            PangoFontMap* fmDiag = pango_cairo_font_map_get_default();
+            double fmRes = fmDiag
+                ? pango_cairo_font_map_get_resolution(PANGO_CAIRO_FONT_MAP(fmDiag))
+                : -1.0;
+            double sxFb = 0, syFb = 0;
+            cairo_surface_get_fallback_resolution(surface, &sxFb, &syFb);
+            double devSx = 0, devSy = 0;
+            cairo_surface_get_device_scale(surface, &devSx, &devSy);
+            cairo_font_options_t* fo = cairo_font_options_create();
+            cairo_get_font_options(cairo, fo);
+            debugOutput << "UC text-render diag:"
+                        << " pango_ctx_res=" << ctxRes
+                        << " fontmap_res=" << fmRes
+                        << " surface_fallback_res=" << sxFb << "x" << syFb
+                        << " surface_device_scale=" << devSx << "x" << devSy
+                        << " hint_style=" << cairo_font_options_get_hint_style(fo)
+                        << " hint_metrics=" << cairo_font_options_get_hint_metrics(fo)
+                        << " antialias=" << cairo_font_options_get_antialias(fo)
+                        << std::endl;
+            cairo_font_options_destroy(fo);
         }
 
         // Apply configurable text rendering font options
@@ -457,9 +456,9 @@ namespace UltraCanvas {
 
     void RenderContextCairo::ResetTransform() {
         cairo_identity_matrix(cairo);
-        currentState.translation = Point2Df(0, 0);
+        currentState.translation = Point2Dd(0, 0);
         currentState.rotation = 0;
-        currentState.scale = Point2Df(1, 1);
+        currentState.scale = Point2Dd(1, 1);
     }
 
     void RenderContextCairo::ClearClipRect() {
@@ -470,7 +469,7 @@ namespace UltraCanvas {
 //        debugOutput << "RenderContextCairo::ClearClipRect - clip region cleared successfully" << std::endl;
     }
 
-    void RenderContextCairo::ClipRect(const Rect2Df& rect) {
+    void RenderContextCairo::ClipRect(const Rect2Dd& rect) {
 //        debugOutput << "RenderContextCairo::ClipRect - setting clip to "
 //                  << x << "," << y << " " << w << "x" << h << std::endl;
         cairo_rectangle(cairo, rect.x, rect.y, rect.width, rect.height);
@@ -482,7 +481,7 @@ namespace UltraCanvas {
     }
 
     void RenderContextCairo::ClipRoundedRectangle(
-            const Rect2Df& rect,
+            const Rect2Dd& rect,
             double borderTopLeftRadius, double borderTopRightRadius,
             double borderBottomRightRadius, double borderBottomLeftRadius) {
         // Clamp radii to prevent overlapping
@@ -520,42 +519,42 @@ namespace UltraCanvas {
         bottomRightRadius *= scale;
         bottomLeftRadius *= scale;
 
-        cairo_save(cairo);
-
-        // Create the rounded rectangle path
+        // Create the rounded rectangle path. Trace it clockwise as
+        // edge-then-corner so any mix of zero / non-zero radii stays a closed
+        // rectangle: a zero radius simply collapses its arc to the corner point
+        // (the surrounding line_to calls still draw the full edges). The previous
+        // form let a zero-radius corner draw the *next* edge instead of its own,
+        // which cut a diagonal across the clip whenever only some corners were
+        // rounded (e.g. an image rounded on top but square under a caption strip).
         cairo_new_path(cairo);
 
-        // Top left corner
-        if (topLeftRadius > 0) {
-            cairo_arc(cairo, x + topLeftRadius, y + topLeftRadius,
-                      topLeftRadius, M_PI, 3 * M_PI / 2);
-        } else {
-            cairo_move_to(cairo, x, y);
-            cairo_line_to(cairo, x + width - topRightRadius, y);
-        }
-
-        // Top right corner
+        // Start just after the top-left corner and run along the top edge.
+        cairo_move_to(cairo, x + topLeftRadius, y);
+        cairo_line_to(cairo, x + width - topRightRadius, y);
         if (topRightRadius > 0) {
             cairo_arc(cairo, x + width - topRightRadius, y + topRightRadius,
-                      topRightRadius, 3 * M_PI / 2, 0);
-        } else {
-            cairo_line_to(cairo, x + width, y + height - bottomRightRadius);
+                      topRightRadius, -M_PI / 2, 0);
         }
 
-        // Bottom right corner
+        // Right edge -> bottom-right corner.
+        cairo_line_to(cairo, x + width, y + height - bottomRightRadius);
         if (bottomRightRadius > 0) {
             cairo_arc(cairo, x + width - bottomRightRadius, y + height - bottomRightRadius,
                       bottomRightRadius, 0, M_PI / 2);
-        } else {
-            cairo_line_to(cairo, x + bottomLeftRadius, y + height);
         }
 
-        // Bottom left corner
+        // Bottom edge -> bottom-left corner.
+        cairo_line_to(cairo, x + bottomLeftRadius, y + height);
         if (bottomLeftRadius > 0) {
             cairo_arc(cairo, x + bottomLeftRadius, y + height - bottomLeftRadius,
                       bottomLeftRadius, M_PI / 2, M_PI);
-        } else {
-            cairo_line_to(cairo, x, y + topLeftRadius);
+        }
+
+        // Left edge -> back up into the top-left corner.
+        cairo_line_to(cairo, x, y + topLeftRadius);
+        if (topLeftRadius > 0) {
+            cairo_arc(cairo, x + topLeftRadius, y + topLeftRadius,
+                      topLeftRadius, M_PI, 3 * M_PI / 2);
         }
 
         cairo_close_path(cairo);
@@ -565,7 +564,7 @@ namespace UltraCanvas {
     }
 
 // ===== BASIC DRAWING =====
-    void RenderContextCairo::FillRectangle(const Rect2Df& rect) {
+    void RenderContextCairo::FillRectangle(const Rect2Dd& rect) {
 //        debugOutput << "RenderContextCairo::FillRectangle this=" << this << " cairo=" << cairo << std::endl;
 
         // *** CRITICAL FIX: Apply fill style explicitly ***
@@ -577,7 +576,7 @@ namespace UltraCanvas {
 //        debugOutput << "RenderContextCairo::FillRectangle: Complete" << std::endl;
     }
 
-    void RenderContextCairo::DrawRectangle(const Rect2Df& rect) {
+    void RenderContextCairo::DrawRectangle(const Rect2Dd& rect) {
 //        debugOutput << "RenderContextCairo::DrawRectangle this=" << this << " cairo=" << cairo << std::endl;
 
         // *** CRITICAL FIX: Apply stroke style explicitly ***
@@ -589,7 +588,7 @@ namespace UltraCanvas {
 //        debugOutput << "RenderContextCairo::DrawRectangle: Complete" << std::endl;
     }
 
-    void RenderContextCairo::FillRoundedRectangle(const Rect2Df & rect, double radius) {
+    void RenderContextCairo::FillRoundedRectangle(const Rect2Dd & rect, double radius) {
 //        debugOutput << "RenderContextCairo::FillRoundedRectangle" << std::endl;
 
         // *** Apply fill style ***
@@ -606,7 +605,7 @@ namespace UltraCanvas {
         Fill();
     }
 
-    void RenderContextCairo::DrawRoundedRectangle(const Rect2Df & rect, double radius) {
+    void RenderContextCairo::DrawRoundedRectangle(const Rect2Dd & rect, double radius) {
 //        debugOutput << "RenderContextCairo::DrawRoundedRectangle" << std::endl;
 
         // *** Apply stroke style ***
@@ -623,17 +622,19 @@ namespace UltraCanvas {
         Stroke();
     }
 
-    void RenderContextCairo::FillCircle(const Point2Df& center, double radius) {
+    void RenderContextCairo::FillCircle(const Point2Dd& center, double radius) {
+        cairo_new_path(cairo);   // cairo_arc connects a leftover current point to the arc
         cairo_arc(cairo, center.x, center.y, radius, 0, 2 * M_PI);
         Fill();
     }
 
-    void RenderContextCairo::DrawCircle(const Point2Df& center, double radius) {
+    void RenderContextCairo::DrawCircle(const Point2Dd& center, double radius) {
+        cairo_new_path(cairo);   // cairo_arc connects a leftover current point to the arc
         cairo_arc(cairo, center.x, center.y, radius, 0, 2 * M_PI);
         Stroke();
     }
 
-    void RenderContextCairo::DrawLine(const Point2Df& from, const Point2Df& to) {
+    void RenderContextCairo::DrawLine(const Point2Dd& from, const Point2Dd& to) {
 //        debugOutput << "RenderContextCairo::DrawLine" << std::endl;
 
         // *** Apply stroke style ***
@@ -759,14 +760,18 @@ namespace UltraCanvas {
     }
 
 
-    void RenderContextCairo::DrawTextLayout(ITextLayout &layout, const Point2Df &pos) {
+    void RenderContextCairo::DrawTextLayout(ITextLayout &layout, const Point2Dd &pos) {
         auto extents = layout.GetLayoutExtents();
 //        debugOutput << "RenderContextCairo::DrawTextLayout txt=" << layout.GetText() << " pos=" << pos.x << "," << pos.y << " offset=" << layout.GetLayoutVerticalOffset() <<  " extents=" << extents.logical.x << "," << extents.logical.y << " " << extents.logical.width << "x" << extents.logical.height << " ink=" << extents.ink.x << "," << extents.ink.y << " " << extents.ink.width << "x" << extents.ink.height << std::endl;
         cairo_move_to(cairo, pos.x, pos.y + layout.GetLayoutVerticalOffset());
+        ApplySourceToCairo(cairo, currentState.textSourceColor, currentState.textSourcePattern);
         pango_cairo_show_layout(cairo, static_cast<PangoLayout *>(layout.GetHandle()));
+        // Drop the current point set by cairo_move_to; otherwise a following
+        // cairo_arc-based primitive connects it to the arc with a stray line.
+        cairo_new_path(cairo);
     }
 
-    void RenderContextCairo::DrawText(const std::string &text, const Point2Df &pos) {
+    void RenderContextCairo::DrawText(const std::string &text, const Point2Dd &pos) {
         // Comprehensive null checks
         if (text.empty()) {
             return; // Nothing to draw
@@ -781,7 +786,7 @@ namespace UltraCanvas {
 
     }
 
-    void RenderContextCairo::DrawTextInRect(const std::string &text, const Rect2Df &rect) {
+    void RenderContextCairo::DrawTextInRect(const std::string &text, const Rect2Dd &rect) {
         if (text.empty()) {
             return; // Nothing to draw
         }
@@ -964,8 +969,9 @@ namespace UltraCanvas {
     }
 
 
-    void RenderContextCairo::FillEllipse(const Rect2Df& rect) {
+    void RenderContextCairo::FillEllipse(const Rect2Dd& rect) {
 
+        cairo_new_path(cairo);   // the path survives cairo_save/restore, so clear it here
         cairo_save(cairo);
         cairo_translate(cairo, rect.x + rect.width / 2, rect.y + rect.height / 2);
         cairo_scale(cairo, rect.width / 2, rect.height / 2);
@@ -975,8 +981,9 @@ namespace UltraCanvas {
         Fill();
     }
 
-    void RenderContextCairo::DrawEllipse(const Rect2Df& rect) {
+    void RenderContextCairo::DrawEllipse(const Rect2Dd& rect) {
 
+        cairo_new_path(cairo);   // the path survives cairo_save/restore, so clear it here
         cairo_save(cairo);
         cairo_translate(cairo, rect.x + rect.width / 2, rect.y + rect.height / 2);
         cairo_scale(cairo, rect.width / 2, rect.height / 2);
@@ -986,7 +993,7 @@ namespace UltraCanvas {
         Stroke();
     }
 
-    void RenderContextCairo::FillLinePath(const std::vector<Point2Df> &points) {
+    void RenderContextCairo::FillLinePath(const std::vector<Point2Dd> &points) {
         if (points.empty()) return;
 
         cairo_move_to(cairo, points[0].x, points[0].y);
@@ -997,7 +1004,7 @@ namespace UltraCanvas {
         Fill();
     }
 
-    void RenderContextCairo::DrawLinePath(const std::vector<Point2Df> &points, bool closePath) {
+    void RenderContextCairo::DrawLinePath(const std::vector<Point2Dd> &points, bool closePath) {
         if (points.empty()) return;
 
         cairo_move_to(cairo, points[0].x, points[0].y);
@@ -1015,6 +1022,7 @@ namespace UltraCanvas {
 
     void RenderContextCairo::DrawArc(double x, double y, double radius, double startAngle, double endAngle) {
         //ApplyStrokeStyle(currentState.style);
+        cairo_new_path(cairo);   // cairo_arc connects a leftover current point to the arc
         cairo_arc(cairo, x, y, radius, startAngle, endAngle);
         Stroke();
     }
@@ -1036,8 +1044,8 @@ namespace UltraCanvas {
 //        cairo_fill(cairo);
 //    }
 
-    void RenderContextCairo::DrawBezierCurve(const Point2Df &start, const Point2Df &cp1, const Point2Df &cp2,
-                                             const Point2Df &end) {
+    void RenderContextCairo::DrawBezierCurve(const Point2Dd &start, const Point2Dd &cp1, const Point2Dd &cp2,
+                                             const Point2Dd &end) {
 //        ApplyStrokeStyle(currentState.style);
         cairo_move_to(cairo, start.x, start.y);
         cairo_curve_to(cairo, cp1.x, cp1.y, cp2.x, cp2.y, end.x, end.y);
@@ -1096,21 +1104,62 @@ namespace UltraCanvas {
     }
 
     void RenderContextCairo::ArcTo(double x1, double y1, double x2, double y2, double radius) {
-        // Cairo doesn't have arc_to, so we approximate
-        double cx, cy;
-        cairo_get_current_point(cairo, &cx, &cy);
+        // Cairo has no arc_to, so emulate the HTML5-canvas semantics: draw a line
+        // from the current point toward the corner (x1,y1), then a circular arc of
+        // the given radius that is tangent to both the incoming segment
+        // (current->corner) and the outgoing segment (corner->(x2,y2)). The arc
+        // centre is inset from the corner along the angle bisector — it is NOT the
+        // corner itself.
+        double x0, y0;
+        cairo_get_current_point(cairo, &x0, &y0);
 
-        // Calculate the center of the arc
-        double dx1 = x1 - cx;
-        double dy1 = y1 - cy;
-        double dx2 = x2 - x1;
-        double dy2 = y2 - y1;
+        // Unit vectors from the corner back to the current point and on to (x2,y2).
+        double v1x = x0 - x1, v1y = y0 - y1;
+        double v2x = x2 - x1, v2y = y2 - y1;
+        double len1 = std::hypot(v1x, v1y);
+        double len2 = std::hypot(v2x, v2y);
 
-        double a1 = atan2(dy1, dx1);
-        double a2 = atan2(dy2, dx2);
+        const double eps = 1e-9;
+        if (len1 < eps || len2 < eps || radius <= 0.0) {
+            cairo_line_to(cairo, x1, y1);
+            return;
+        }
+        v1x /= len1; v1y /= len1;
+        v2x /= len2; v2y /= len2;
 
-        cairo_arc(cairo, x1, y1, radius, a1, a2);
-        cairo_line_to(cairo, x2, y2);
+        // Half-angle between the two segments at the corner.
+        double cosTheta = std::max(-1.0, std::min(1.0, v1x * v2x + v1y * v2y));
+        double theta = std::acos(cosTheta);
+        double sinHalf = std::sin(theta * 0.5);
+        if (sinHalf < eps) {            // collinear: nothing to round
+            cairo_line_to(cairo, x1, y1);
+            return;
+        }
+
+        // Tangent points along each segment and the arc centre on the bisector.
+        double tanHalf = std::tan(theta * 0.5);
+        double tangentDist = radius / tanHalf;
+        double t1x = x1 + v1x * tangentDist, t1y = y1 + v1y * tangentDist;
+        double t2x = x1 + v2x * tangentDist, t2y = y1 + v2y * tangentDist;
+
+        double bx = v1x + v2x, by = v1y + v2y;
+        double blen = std::hypot(bx, by);
+        bx /= blen; by /= blen;
+        double centreDist = radius / sinHalf;
+        double cx = x1 + bx * centreDist;
+        double cy = y1 + by * centreDist;
+
+        double startAngle = std::atan2(t1y - cy, t1x - cx);
+        double endAngle   = std::atan2(t2y - cy, t2x - cx);
+
+        cairo_line_to(cairo, t1x, t1y);
+        // Sweep along the minor arc; the cross product picks the turn direction.
+        double cross = v1x * v2y - v1y * v2x;
+        if (cross < 0.0) {
+            cairo_arc(cairo, cx, cy, radius, startAngle, endAngle);
+        } else {
+            cairo_arc_negative(cairo, cx, cy, radius, startAngle, endAngle);
+        }
     }
 
     void RenderContextCairo::Ellipse(double cx, double cy, double rx, double ry, double rotation) {
@@ -1136,7 +1185,7 @@ namespace UltraCanvas {
     }
 
     void RenderContextCairo::DrawRoundedRectangleWidthBorders(
-            const Rect2Df & rect,
+            const Rect2Dd & rect,
             bool fill,
             double borderLeftWidth, double borderRightWidth,
             double borderTopWidth, double borderBottomWidth,
@@ -1186,40 +1235,41 @@ namespace UltraCanvas {
 
         PushState();
 
-        // Create the rounded rectangle path
+        // Create the rounded rectangle path. Trace it clockwise as
+        // edge-then-corner so any mix of zero / non-zero radii stays a closed
+        // rectangle (a zero radius collapses its arc to the corner point while
+        // the line_to calls still draw the full edges). The earlier form let a
+        // zero-radius corner draw the *next* edge, cutting a diagonal across the
+        // fill whenever only some corners were rounded.
         ClearPath();
 
-        // Top left corner
-        if (topLeftRadius > 0) {
-            Arc(x + topLeftRadius, y + topLeftRadius,
-                      topLeftRadius, M_PI, 3 * M_PI / 2);
-        } else {
-            MoveTo(x, y);
-            LineTo(x + width - topRightRadius, y);
-        }
-
-        // Top right corner
+        // Start just after the top-left corner and run along the top edge.
+        MoveTo(x + topLeftRadius, y);
+        LineTo(x + width - topRightRadius, y);
         if (topRightRadius > 0) {
             Arc(x + width - topRightRadius, y + topRightRadius,
-                      topRightRadius, 3 * M_PI / 2, 0);
-        } else {
-            LineTo(x + width, y + height - bottomRightRadius);
+                      topRightRadius, -M_PI / 2, 0);
         }
 
-        // Bottom right corner
+        // Right edge -> bottom-right corner.
+        LineTo(x + width, y + height - bottomRightRadius);
         if (bottomRightRadius > 0) {
             Arc(x + width - bottomRightRadius, y + height - bottomRightRadius,
                       bottomRightRadius, 0, M_PI / 2);
-        } else {
-            LineTo(x + bottomLeftRadius, y + height);
         }
 
-        // Bottom left corner
+        // Bottom edge -> bottom-left corner.
+        LineTo(x + bottomLeftRadius, y + height);
         if (bottomLeftRadius > 0) {
             Arc(x + bottomLeftRadius, y + height - bottomLeftRadius,
                       bottomLeftRadius, M_PI / 2, M_PI);
-        } else {
-            LineTo(x, y + topLeftRadius);
+        }
+
+        // Left edge -> back up into the top-left corner.
+        LineTo(x, y + topLeftRadius);
+        if (topLeftRadius > 0) {
+            Arc(x + topLeftRadius, y + topLeftRadius,
+                      topLeftRadius, M_PI, 3 * M_PI / 2);
         }
 
         ClosePath();
@@ -1289,39 +1339,50 @@ namespace UltraCanvas {
                      {xPos, y + height - bottomLeftRadius});
         }
 
-        // Draw rounded corners with borders
+        // Draw rounded corners with borders.
+        // The path used for ClipPath() above follows the outer edge of the
+        // rounded rectangle, so a corner arc drawn at the full corner radius is
+        // centred on the clip boundary and has its outer half clipped away,
+        // making the corners look thinner than the straight edges. Inset each
+        // arc radius by half its stroke width so the stroke's outer edge lines
+        // up with the clip boundary, matching how the straight borders above are
+        // inset by half their width.
         if (topLeftRadius > 0) {
             const Color avgColor = borderLeftColor.Blend(borderTopColor, 0.5);
             double avgWidth = (borderLeftWidth + borderTopWidth) / 2.0;
+            double arcRadius = std::max(0.0, topLeftRadius - avgWidth / 2.0);
             SetStrokeWidth(avgWidth);
             SetStrokePaint(avgColor);
-            DrawArc(x + topLeftRadius, y + topLeftRadius, topLeftRadius,
+            DrawArc(x + topLeftRadius, y + topLeftRadius, arcRadius,
                 M_PI, 3 * M_PI / 2);
         }
         if (topRightRadius > 0) {
             const Color avgColor = borderTopColor.Blend(borderRightColor, 0.5);
             double avgWidth = (borderTopWidth + borderRightWidth) / 2.0;
+            double arcRadius = std::max(0.0, topRightRadius - avgWidth / 2.0);
             SetStrokeWidth(avgWidth);
             SetStrokePaint(avgColor);
-            DrawArc(x + width - topRightRadius, y + topRightRadius, topRightRadius,
+            DrawArc(x + width - topRightRadius, y + topRightRadius, arcRadius,
                 3 * M_PI / 2, 2 * M_PI);
         }
 
         if (bottomRightRadius > 0) {
             const Color avgColor = borderBottomColor.Blend(borderRightColor, 0.5);
             double avgWidth = (borderRightWidth +  borderBottomWidth) / 2.0;
+            double arcRadius = std::max(0.0, bottomRightRadius - avgWidth / 2.0);
             SetStrokeWidth(avgWidth);
             SetStrokePaint(avgColor);
             DrawArc(x + width - bottomRightRadius, y + height - bottomRightRadius,
-                bottomRightRadius, 0, M_PI / 2);
+                arcRadius, 0, M_PI / 2);
         }
 
         if (bottomLeftRadius > 0) {
             const Color avgColor = borderBottomColor.Blend(borderLeftColor, 0.5);
             double avgWidth = (borderBottomWidth + borderLeftWidth) / 2.0;
+            double arcRadius = std::max(0.0, bottomLeftRadius - avgWidth / 2.0);
             SetStrokeWidth(avgWidth);
             SetStrokePaint(avgColor);
-            DrawArc(x + bottomLeftRadius, y + height - bottomLeftRadius, bottomLeftRadius,
+            DrawArc(x + bottomLeftRadius, y + height - bottomLeftRadius, arcRadius,
                 M_PI / 2, M_PI);
         }
         PopState();
@@ -1331,9 +1392,9 @@ namespace UltraCanvas {
         cairo_arc(cairo, x, y, radius, 0, 2 * M_PI);
     }
 
-    Rect2Df RenderContextCairo::GetPathExtents() {
-        Rect2Df result;
-        Point2Df p2;
+    Rect2Dd RenderContextCairo::GetPathExtents() {
+        Rect2Dd result;
+        Point2Dd p2;
         cairo_path_extents(cairo, &result.x, &result.y, &p2.x, &p2.y);
         result.width = std::abs(p2.x - result.x);
         result.height = std::abs(p2.y - result.y);
@@ -1525,6 +1586,9 @@ namespace UltraCanvas {
 
         cairo_move_to(cairo, x, y);
         cairo_show_text(cairo, text.c_str());
+        // cairo_show_text leaves the current point at the end of the text;
+        // drop it so the next cairo_arc-based primitive doesn't connect to it.
+        cairo_new_path(cairo);
     }
 
     void RenderContextCairo::StrokeText(const std::string& text, double x, double y) {
@@ -1621,8 +1685,13 @@ namespace UltraCanvas {
 
         // Set the image as source and paint
         if (drawMasked) {
-            cairo_set_source_rgb(cairo, 1.0, 1.0, 1.0);
-            cairo_set_operator(cairo, CAIRO_OPERATOR_DIFFERENCE);
+            // Recolor the icon: use the pixmap's alpha channel as a mask for a
+            // solid color source so the SVG/icon is tinted with `c` (e.g. theme
+            // foreground, or a grey for disabled/inactive icons). Honors the
+            // global alpha so callers can dim via SetAlpha().
+            cairo_set_source_rgba(cairo,
+                                  c.r / 255.0, c.g / 255.0, c.b / 255.0,
+                                  (c.a / 255.0) * alpha);
             cairo_mask_surface(cairo, pixmap.GetSurface(), 0, 0);
         } else {
             cairo_set_source_surface(cairo, pixmap.GetSurface(), 0, 0);
@@ -1637,17 +1706,17 @@ namespace UltraCanvas {
         cairo_restore(cairo);
     }
 
-    void RenderContextCairo::DrawPixmap(UCPixmap& pixmap, const Rect2Df& rect, ImageFitMode fitMode) {
+    void RenderContextCairo::DrawPixmap(UCPixmap& pixmap, const Rect2Dd& rect, ImageFitMode fitMode) {
         DrawPixmapOrMask(cairo, pixmap, rect.x, rect.y, rect.width, rect.height, fitMode,
                          currentState.globalAlpha, false, Colors::Transparent);
     }
 
-    void RenderContextCairo::DrawMask(const Color& c, UCPixmap& mask, const Rect2Df& rect, ImageFitMode fitMode) {
+    void RenderContextCairo::DrawMask(const Color& c, UCPixmap& mask, const Rect2Dd& rect, ImageFitMode fitMode) {
         DrawPixmapOrMask(cairo, mask, rect.x, rect.y, rect.width, rect.height, fitMode,
                          currentState.globalAlpha, true, c);
     }
 
-    void RenderContextCairo::DrawPartOfPixmap(UCPixmap & pixmap, const Rect2Df &srcRect, const Rect2Df &destRect) {
+    void RenderContextCairo::DrawPartOfPixmap(UCPixmap & pixmap, const Rect2Dd &srcRect, const Rect2Dd &destRect) {
         try {
             // Validate source rectangle bounds
             if (srcRect.x < 0 || srcRect.y < 0 ||
@@ -1744,7 +1813,7 @@ namespace UltraCanvas {
         // Re-associate Pango context with new Cairo context
         if (pangoContext) {
             pango_cairo_update_context(cairo, pangoContext);
-            //pango_cairo_context_set_resolution(pangoContext, 96.0);
+            pango_cairo_context_set_resolution(pangoContext, g_PangoResolution);
             ApplyPangoFontOptions();
         }
 
@@ -1774,7 +1843,7 @@ namespace UltraCanvas {
         cairo_fill(cairo);
     }
 
-    void RenderContextCairo::FlushToSurface(NativeSurfacePtr flushToSurface, const Point2Df& pos) {
+    void RenderContextCairo::FlushToSurface(NativeSurfacePtr flushToSurface, const Point2Dd& pos) {
         // Copy staging surface to window surface
         cairo_t *toCtx = cairo_create(static_cast<cairo_surface_t *>(flushToSurface));
         if (!toCtx) {

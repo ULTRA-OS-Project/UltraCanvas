@@ -35,6 +35,7 @@ std::string FromNSString(NSString* nsStr) {
 NSAlertStyle ToNSAlertStyle(DialogType type) {
     switch (type) {
         case DialogType::Information: return NSAlertStyleInformational;
+        case DialogType::Successful:     return NSAlertStyleInformational;
         case DialogType::Warning:     return NSAlertStyleWarning;
         case DialogType::Error:       return NSAlertStyleCritical;
         case DialogType::Question:    return NSAlertStyleInformational;
@@ -222,7 +223,7 @@ std::string UltraCanvasNativeDialogs::OpenFile(
     const std::string& initialDir,
     UltraCanvasWindowBase*  parent) {
 
-    NativeFileDialogOptions options;
+    FileDialogOptions options;
     options.title = title;
     options.filters = filters;
     options.initialDirectory = initialDir;
@@ -230,7 +231,7 @@ std::string UltraCanvasNativeDialogs::OpenFile(
     return OpenFile(options);
 }
 
-std::string UltraCanvasNativeDialogs::OpenFile(const NativeFileDialogOptions& options) {
+std::string UltraCanvasNativeDialogs::OpenFile(const FileDialogOptions& options) {
     @autoreleasepool {
         NSOpenPanel* panel = [NSOpenPanel openPanel];
 
@@ -291,16 +292,15 @@ std::vector<std::string> UltraCanvasNativeDialogs::OpenMultipleFiles(
     const std::string& initialDir,
     UltraCanvasWindowBase*  parent) {
 
-    NativeFileDialogOptions options;
+    FileDialogOptions options;
     options.title = title;
     options.filters = filters;
     options.initialDirectory = initialDir;
-    options.allowMultiSelect = true;
     options.parentWindow = parent;
     return OpenMultipleFiles(options);
 }
 
-std::vector<std::string> UltraCanvasNativeDialogs::OpenMultipleFiles(const NativeFileDialogOptions& options) {
+std::vector<std::string> UltraCanvasNativeDialogs::OpenMultipleFiles(const FileDialogOptions& options) {
     @autoreleasepool {
         NSOpenPanel* panel = [NSOpenPanel openPanel];
 
@@ -357,7 +357,7 @@ std::string UltraCanvasNativeDialogs::SaveFile(
     const std::string& defaultFileName,
     UltraCanvasWindowBase*  parent) {
 
-    NativeFileDialogOptions options;
+    FileDialogOptions options;
     options.title = title;
     options.filters = filters;
     options.initialDirectory = initialDir;
@@ -366,7 +366,7 @@ std::string UltraCanvasNativeDialogs::SaveFile(
     return SaveFile(options);
 }
 
-std::string UltraCanvasNativeDialogs::SaveFile(const NativeFileDialogOptions& options) {
+std::string UltraCanvasNativeDialogs::SaveFile(const FileDialogOptions& options) {
     @autoreleasepool {
         NSSavePanel* panel = [NSSavePanel savePanel];
 
