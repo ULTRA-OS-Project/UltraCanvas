@@ -624,6 +624,60 @@ int main(int argc, char** argv) {
         CHECK_MSG(doc3.blocks.front().type != RichBlockType::Table, "empty layout table skipped");
     }
 
+    // ===== 11c. Page breaks apply only to the main text flow =====
+    // A paragraph carrying fo:break-before="page" inside a positioned text box
+    // (a letterhead contact line) must NOT start a new page, while the same
+    // property on a main-flow paragraph must. Otherwise the letterhead's
+    // contact block is split by a stray page break / thematic rule.
+    {
+        std::string contentXml =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+            "<office:document-content "
+            "xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" "
+            "xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\" "
+            "xmlns:style=\"urn:oasis:names:tc:opendocument:xmlns:style:1.0\" "
+            "xmlns:draw=\"urn:oasis:names:tc:opendocument:xmlns:drawing:1.0\" "
+            "office:version=\"1.2\">"
+            "<office:automatic-styles>"
+            "<style:style style:name=\"PB\" style:family=\"paragraph\">"
+            "<style:paragraph-properties fo:break-before=\"page\"/></style:style>"
+            "</office:automatic-styles>"
+            "<office:body><office:text>"
+            "<text:p><draw:frame draw:name=\"C\" text:anchor-type=\"paragraph\">"
+            "<draw:text-box>"
+            "<text:p>contact line one</text:p>"
+            "<text:p text:style-name=\"PB\">contact line two</text:p>"
+            "</draw:text-box></draw:frame>anchor</text:p>"
+            "<text:p text:style-name=\"PB\">after real break</text:p>"
+            "</office:text></office:body></office:document-content>";
+        {
+            UCZipPackageWriter zip;
+            CHECK(zip.Open(TmpPath("pgbreak.odt")));
+            zip.AddEntry("mimetype", std::string("application/vnd.oasis.opendocument.text"), false);
+            zip.AddEntry("content.xml", contentXml);
+            CHECK(zip.Finalize());
+        }
+        UCRichDocument doc4;
+        std::string err;
+        CHECK_MSG(UCWordDocumentIO::Load(TmpPath("pgbreak.odt"), doc4, err), err);
+        int breaks = 0, breakBeforeContactTwo = 0;
+        bool sawContactTwo = false;
+        for (const auto& b : doc4.blocks) {
+            if (b.type == RichBlockType::PageBreak) {
+                ++breaks;
+                if (!sawContactTwo) ++breakBeforeContactTwo;   // count breaks before contact two
+            }
+            if (UCRichDocument::ConcatenateRunText(b.runs).find("contact line two")
+                    != std::string::npos) {
+                sawContactTwo = true;
+            }
+        }
+        // Exactly one page break, from the main-flow "after real break"
+        // paragraph — none from the text-box contact line.
+        CHECK_MSG(breaks == 1, std::to_string(breaks));
+        CHECK_MSG(breakBeforeContactTwo == 0, "no page break splits the contact block");
+    }
+
     // ===== 12. Table cells preserve non-paragraph block content =====
     // A cell can hold headings, lists and nested tables, not just text:p. All
     // of it must survive into the flattened cell text.

@@ -165,6 +165,12 @@ public:
 private:
     UCZipPackageReader zip_;
     UCRichDocument* doc_ = nullptr;
+    // Page breaks (fo:break-before/after="page") only take effect for
+    // paragraphs in the main text flow. A paragraph carrying that property
+    // inside a positioned frame, text box, table cell or header/footer does
+    // not start a new page (ODF/CSS fragmentation applies to in-flow boxes),
+    // so break emission is gated on this flag.
+    bool inMainFlow_ = true;
     std::map<std::string, OdtTextProps> styles_;
     // list style name -> (level -> ordered?)
     std::map<std::string, std::map<int, bool>> listStyles_;
@@ -450,10 +456,11 @@ private:
         ParseInlineNodes(elem, runBase, "", ctx);
         block.runs = std::move(ctx.runs);
 
-        if (paraProps.pageBreakBefore) {
-            RichDocBlock pageBreak;
-            pageBreak.type = RichBlockType::PageBreak;
-            doc_->blocks.push_back(std::move(pageBreak));
+        bool pageBreak = inMainFlow_ && paraProps.pageBreakBefore;
+        if (pageBreak) {
+            RichDocBlock pageBreakBlock;
+            pageBreakBlock.type = RichBlockType::PageBreak;
+            doc_->blocks.push_back(std::move(pageBreakBlock));
         }
 
         // An empty bordered paragraph is the horizontal-rule idiom.
@@ -462,7 +469,7 @@ private:
             block.type = RichBlockType::HorizontalRule;
         }
 
-        bool emptyPageBreakCarrier = paraProps.pageBreakBefore && block.runs.empty()
+        bool emptyPageBreakCarrier = pageBreak && block.runs.empty()
                                      && block.type == RichBlockType::Paragraph;
         bool onlyFrames = block.runs.empty()
                           && (!ctx.trailingImages.empty() || !ctx.textBoxes.empty());
@@ -472,9 +479,14 @@ private:
         for (auto& image : ctx.trailingImages) {
             doc_->blocks.push_back(std::move(image));
         }
+        // Text-box content is not part of the main flow: suppress page breaks
+        // from break-before styles on paragraphs positioned inside the box.
+        bool savedFlow = inMainFlow_;
+        inMainFlow_ = false;
         for (auto* textBox : ctx.textBoxes) {
             ParseBlockContainer(textBox, 0, "");
         }
+        inMainFlow_ = savedFlow;
     }
 
     void ParseList(tinyxml2::XMLElement* list, int level, std::string listStyleName) {
@@ -625,9 +637,12 @@ private:
                 for (auto& image : ctx.trailingImages) {
                     doc_->blocks.push_back(std::move(image));
                 }
+                bool savedFlow = inMainFlow_;
+                inMainFlow_ = false;   // text-box content is not main flow
                 for (size_t tb = 0; tb < ctx.textBoxes.size(); ++tb) {
                     ParseBlockContainer(ctx.textBoxes[tb], listLevel, listStyleName);
                 }
+                inMainFlow_ = savedFlow;
             } else if (tag == "style:region-left" || tag == "style:region-center"
                        || tag == "style:region-right") {
                 // Header/footer column regions.
@@ -745,7 +760,10 @@ private:
             doc_->blocks.push_back(std::move(rule));
         }
         size_t contentStart = doc_->blocks.size();
+        bool savedFlow = inMainFlow_;
+        inMainFlow_ = false;   // header/footer paragraphs never break pages
         ParseBlockContainer(region, 0, "");
+        inMainFlow_ = savedFlow;
 
         bool hasContent = false;
         for (size_t i = contentStart; i < doc_->blocks.size() && !hasContent; ++i) {
