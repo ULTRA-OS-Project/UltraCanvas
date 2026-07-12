@@ -1369,7 +1369,7 @@ namespace UltraCanvas {
 
 #ifdef ULTRACANVAS_HAS_OCR_PLUGIN
         toolsBuilder.AddItem("ocr", "OCR", "Optical Character Recognition",
-                             ImplementationStatus::PartiallyImplemented,
+                             ImplementationStatus::FullyImplemented,
                              [this]() { return CreateOCRExamples(); },
                              "Apps/DemoApp/UltraCanvasOCRExamples.cpp",
                              "Docs/Modules/OCR/README.md");
