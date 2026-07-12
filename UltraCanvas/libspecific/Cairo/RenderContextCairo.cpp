@@ -1,7 +1,7 @@
 // libspecific/Cairo/RenderContextCairo.cpp
 // Cairo support implementation for UltraCanvas Framework
-// Version: 1.0.9 - DrawTextLayout now applies text source color before pango_cairo_show_layout
-// Last Modified: 2026-05-17
+// Version: 1.0.10 - Text/circle/arc primitives no longer leak or inherit a cairo current point (stray connecting lines)
+// Last Modified: 2026-07-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -623,11 +623,13 @@ namespace UltraCanvas {
     }
 
     void RenderContextCairo::FillCircle(const Point2Dd& center, double radius) {
+        cairo_new_path(cairo);   // cairo_arc connects a leftover current point to the arc
         cairo_arc(cairo, center.x, center.y, radius, 0, 2 * M_PI);
         Fill();
     }
 
     void RenderContextCairo::DrawCircle(const Point2Dd& center, double radius) {
+        cairo_new_path(cairo);   // cairo_arc connects a leftover current point to the arc
         cairo_arc(cairo, center.x, center.y, radius, 0, 2 * M_PI);
         Stroke();
     }
@@ -764,6 +766,9 @@ namespace UltraCanvas {
         cairo_move_to(cairo, pos.x, pos.y + layout.GetLayoutVerticalOffset());
         ApplySourceToCairo(cairo, currentState.textSourceColor, currentState.textSourcePattern);
         pango_cairo_show_layout(cairo, static_cast<PangoLayout *>(layout.GetHandle()));
+        // Drop the current point set by cairo_move_to; otherwise a following
+        // cairo_arc-based primitive connects it to the arc with a stray line.
+        cairo_new_path(cairo);
     }
 
     void RenderContextCairo::DrawText(const std::string &text, const Point2Dd &pos) {
@@ -966,6 +971,7 @@ namespace UltraCanvas {
 
     void RenderContextCairo::FillEllipse(const Rect2Dd& rect) {
 
+        cairo_new_path(cairo);   // the path survives cairo_save/restore, so clear it here
         cairo_save(cairo);
         cairo_translate(cairo, rect.x + rect.width / 2, rect.y + rect.height / 2);
         cairo_scale(cairo, rect.width / 2, rect.height / 2);
@@ -977,6 +983,7 @@ namespace UltraCanvas {
 
     void RenderContextCairo::DrawEllipse(const Rect2Dd& rect) {
 
+        cairo_new_path(cairo);   // the path survives cairo_save/restore, so clear it here
         cairo_save(cairo);
         cairo_translate(cairo, rect.x + rect.width / 2, rect.y + rect.height / 2);
         cairo_scale(cairo, rect.width / 2, rect.height / 2);
@@ -1015,6 +1022,7 @@ namespace UltraCanvas {
 
     void RenderContextCairo::DrawArc(double x, double y, double radius, double startAngle, double endAngle) {
         //ApplyStrokeStyle(currentState.style);
+        cairo_new_path(cairo);   // cairo_arc connects a leftover current point to the arc
         cairo_arc(cairo, x, y, radius, startAngle, endAngle);
         Stroke();
     }
@@ -1578,6 +1586,9 @@ namespace UltraCanvas {
 
         cairo_move_to(cairo, x, y);
         cairo_show_text(cairo, text.c_str());
+        // cairo_show_text leaves the current point at the end of the text;
+        // drop it so the next cairo_arc-based primitive doesn't connect to it.
+        cairo_new_path(cairo);
     }
 
     void RenderContextCairo::StrokeText(const std::string& text, double x, double y) {
