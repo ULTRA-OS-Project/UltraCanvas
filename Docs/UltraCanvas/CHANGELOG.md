@@ -1,3 +1,10 @@
+#### 2026-07-11 *0.3.5*
+- Scrollbar: a custom handle image (`thumbImagePath` /
+  `thumbImagePathHorizontal`) is no longer stretched to the thumb rectangle.
+  The handle is now always scaled preserving its aspect ratio and centered in
+  the thumb, so the grip keeps its shape regardless of thumb length. The
+  `thumbImageFit` style field was removed accordingly.
+
 #### 2026-07-10 *0.3.4*
 - Demo: the "Networking (UltraNet)" page moved from Tools into the
   "ULTRA OS modules ▸ Ultra Net" tree entry and is now presented like the
