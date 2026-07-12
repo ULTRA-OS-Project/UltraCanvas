@@ -1,7 +1,7 @@
 // core/UltraCanvasStepper.cpp
 // Platform-independent stepper / wizard-progress control implementation.
-// Version: 1.0.0
-// Last Modified: 2026-07-07
+// Version: 1.0.1
+// Last Modified: 2026-07-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasStepper.h"
@@ -128,11 +128,17 @@ namespace UltraCanvas {
         float m = style.markerSize;
         float pad = style.edgePadding;
 
+        // The hover/selection ring is stroked at radius + 2 with a 2px pen, so
+        // it reaches 3px past the marker circle; keep that overhang (plus 1px
+        // for antialiasing) inside the element bounds, or the parent clip cuts
+        // the top of the ring on the active/hovered step.
+        const float ringOverhang = 4.0f;
+
         std::vector<float> centersMain;   // along the primary axis
         centersMain.reserve(n);
 
         if (orientation == StepperOrientation::Horizontal) {
-            float cy = showLabels ? (b.y + 2.0f + m / 2.0f) : (b.y + b.height / 2.0f);
+            float cy = showLabels ? (b.y + ringOverhang + m / 2.0f) : (b.y + b.height / 2.0f);
             float first = b.x + pad + m / 2.0f;
             float last  = b.x + b.width - pad - m / 2.0f;
             float span  = (n > 1) ? (last - first) / (n - 1) : 0.0f;
@@ -147,9 +153,16 @@ namespace UltraCanvas {
                 slotRects.emplace_back(x0, b.y, x1 - x0, b.height);
             }
         } else {
+            // A vertical step's label hangs from its marker's top edge (title,
+            // then description), so a label block taller than the marker paints
+            // below the marker. Reserve that overhang for the last step;
+            // otherwise its description lands outside the element's bounds and
+            // gets painted over by whatever sits below the stepper.
+            float overhang = showLabels
+                    ? std::max(0.0f, LabelBlockHeight(n - 1) - m) : 0.0f;
             float cx = b.x + pad + m / 2.0f;
             float first = b.y + pad + m / 2.0f;
-            float last  = b.y + b.height - pad - m / 2.0f;
+            float last  = std::max(first, b.y + b.height - pad - overhang - m / 2.0f);
             float span  = (n > 1) ? (last - first) / (n - 1) : 0.0f;
             for (int i = 0; i < n; ++i) {
                 float cyc = (n > 1) ? (first + i * span) : (b.y + b.height / 2.0f);
@@ -164,6 +177,36 @@ namespace UltraCanvas {
         }
     }
 
+    void UltraCanvasStepper::MeasureLabelLineHeights(IRenderContext* ctx) const {
+        FontStyle fs;
+        fs.fontFamily = style.fontFamily;
+        fs.fontSize = style.titleFontSize;
+        fs.fontWeight = FontWeight::Bold;
+        ctx->SetFontStyle(fs);
+        titleLineHeight = static_cast<float>(ctx->GetTextDimension("Ag").y);
+
+        fs.fontSize = style.descriptionFontSize;
+        fs.fontWeight = FontWeight::Normal;
+        ctx->SetFontStyle(fs);
+        descriptionLineHeight = static_cast<float>(ctx->GetTextDimension("Ag").y);
+    }
+
+    float UltraCanvasStepper::LabelBlockHeight(int index) const {
+        if (index < 0 || index >= GetStepCount()) return 0.0f;
+        const StepItem& s = steps[index];
+        if (s.title.empty() && s.description.empty()) return 0.0f;
+
+        float titleH = (titleLineHeight > 0.0f)
+                ? titleLineHeight : style.titleFontSize * 1.4f;
+        if (s.description.empty()) {
+            // RenderLabel roughly centers a lone title on the marker.
+            return (style.markerSize - style.titleFontSize) / 2.0f - 1.0f + titleH;
+        }
+        float descH = (descriptionLineHeight > 0.0f)
+                ? descriptionLineHeight : style.descriptionFontSize * 1.4f;
+        return 2.0f + titleH + 3.0f + descH;
+    }
+
 // ===================================================================
 // RENDERING
 // ===================================================================
@@ -171,6 +214,10 @@ namespace UltraCanvas {
     void UltraCanvasStepper::Render(IRenderContext* ctx, const Rect2Df& /*dirtyRect*/) {
         int n = GetStepCount();
         if (n == 0) return;
+
+        if (showLabels && orientation == StepperOrientation::Vertical) {
+            MeasureLabelLineHeights(ctx);
+        }
 
         std::vector<Rect2Df> markerRects, slotRects;
         ComputeLayout(markerRects, slotRects);

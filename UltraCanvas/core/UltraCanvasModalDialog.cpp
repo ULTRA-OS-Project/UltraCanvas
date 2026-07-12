@@ -293,15 +293,45 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasModalDialog::ShowModal(UltraCanvasWindowBase* parent) {
-        // Center on parent if specified
-        if (parent && dialogConfig.position == DialogPosition::CenterParent) {
-            int parentX, parentY, parentW, parentH;
-            parent->GetWindowPosition(parentX, parentY);
-            parent->GetWindowSize(parentW, parentH);
+        // Resolve the window the dialog belongs to. When the caller passes no
+        // parent, fall back to the application's focused window, then to any
+        // visible non-dialog window, so the dialog always opens on the monitor
+        // the application is running on instead of wherever the window manager
+        // decides to place it.
+        UltraCanvasWindowBase* reference = parent;
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (!reference && app) {
+            reference = app->GetFocusedWindow();
+            if (!reference) {
+                for (auto& win : app->GetWindows()) {
+                    if (win && win.get() != this && win->IsWindowVisible() &&
+                        win->GetConfig().type != WindowType::Dialog) {
+                        reference = win.get();
+                        break;
+                    }
+                }
+            }
+        }
+        if (reference == this) reference = nullptr;
 
-            int dialogX = parentX + (parentW - dialogConfig.width) / 2;
-            int dialogY = parentY + (parentH - dialogConfig.height) / 2;
-            SetWindowPosition(dialogX, dialogY);
+        if (reference) {
+            // Lets the window manager keep the dialog above its parent and
+            // treat it as belonging to the parent's monitor.
+            SetTransientParent(reference);
+        }
+
+        switch (dialogConfig.position) {
+            case DialogPosition::CenterParent:
+                // Centered over the reference window, clamped to its monitor;
+                // falls back to centering on the screen when there is none.
+                CenterOnParent(reference);
+                break;
+            case DialogPosition::Center:
+                // Centered on the monitor the reference window resides on.
+                CenterOnScreenOfWindow(reference);
+                break;
+            default:
+                break;
         }
 
         // Register with dialog manager

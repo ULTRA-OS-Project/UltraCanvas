@@ -15,7 +15,7 @@
 - **Style Presets**: `Default`, `Modern`, `Minimal`, `Classic` (with arrow buttons), and `DropDown`
 - **Full Colour Control**: Separate track and thumb colours for normal, hover, and pressed states
 - **Corner Radius / End Shape**: Independent `thumbCornerRadius` and `trackCornerRadius` for square, soft, or round (pill) ends
-- **Custom Image Handle**: Draw the thumb from a PNG or SVG image via `thumbImagePath` and `thumbImageFit`
+- **Custom Image Handle**: Draw the thumb from a PNG or SVG image via `thumbImagePath` (scaled with its aspect ratio preserved)
 - **Arrow Buttons**: Optional up/down (left/right) arrow buttons via `arrowButtonSize`
 - **Scroll Operations**: Line, page, top/bottom, wheel, and arbitrary delta scrolling helpers
 - **Auto-Hide**: Optionally hide the scrollbar when content fits the viewport
@@ -109,10 +109,13 @@ struct ScrollbarStyle {
     bool showThumbBorder   = false;
 
     // Custom handle (thumb) image. When non-empty, the thumb is drawn from
-    // this image (PNG or SVG) instead of the solid rounded rectangle, scaled
-    // into the thumb rect using thumbImageFit. SVG handles scale crisply.
+    // this image (PNG or SVG) instead of the solid rounded rectangle. The image
+    // keeps its aspect ratio: it is scaled to fit the thumb rect and centered
+    // within it, never stretched. SVG handles scale crisply.
     std::string  thumbImagePath;
-    ImageFitMode thumbImageFit = ImageFitMode::Fill;
+    // Optional orientation-specific handle for horizontal bars; falls back to
+    // thumbImagePath when empty.
+    std::string  thumbImagePathHorizontal;
 
     // Behavior
     bool autoHide            = false;
@@ -320,9 +323,10 @@ sbPillFlat->SetScrollDimensions(150, 460);
 ### 4. Custom SVG Handle
 
 Set `thumbImagePath` to a PNG or SVG file to draw the thumb from an image
-instead of the solid rounded rectangle. `thumbImageFit` controls how the image
-is scaled into the thumb rect; `ImageFitMode::Fill` stretches it to the thumb.
-SVG handles scale crisply, so the same handle can ride bars of different widths.
+instead of the solid rounded rectangle. The image always keeps its aspect
+ratio: it is scaled to fit the thumb rect and centered within it, so a long
+thumb shows a centered grip rather than a stretched one. SVG handles scale
+crisply, so the same handle can ride bars of different widths.
 
 ```cpp
 const std::string vHandle =
@@ -334,7 +338,6 @@ handleV.thumbMinSize     = 44;
 handleV.trackColor       = Color(238, 240, 243, 255);
 handleV.trackCornerRadius = 7;
 handleV.thumbImagePath   = vHandle;            // SVG handle
-handleV.thumbImageFit    = ImageFitMode::Fill;
 
 auto sb = std::make_shared<UltraCanvasScrollbar>(
     "sbHandleV", 60.0f, 862.0f, static_cast<float>(handleV.trackSize), 150.0f,
@@ -412,7 +415,8 @@ container->AddChild(sb);
   `trackCornerRadius` to `trackSize / 2` for a pill shape; they can differ to
   put a rounded thumb on a flat track.
 - **Prefer SVG for custom handles.** SVG `thumbImagePath` handles scale crisply
-  across different bar widths; use `ImageFitMode::Fill` to stretch into the thumb.
+  across different bar widths; the handle is scaled with its aspect ratio
+  preserved and centered in the thumb, never stretched.
 - **Use `autoHide` for overlay scrollbars.** Presets `Modern` and `Minimal`
   enable it so the bar hides when content fits; check `ShouldBeVisible()`.
 - **Capture by `weak_ptr` in callbacks.** When an `onScrollChange` lambda needs
