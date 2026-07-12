@@ -147,11 +147,15 @@ public:
         // with a rule. A letterhead typically defines a dedicated first-page
         // master (logo, full contact block, bank-details footer) distinct from
         // the plain continuation master; pick the one actually applied to the
-        // body rather than whichever master happens to be written first.
+        // body rather than whichever master happens to be written first, and
+        // resolve the header and footer independently because a template may
+        // legitimately keep the header on one master and the footer on another.
         tinyxml2::XMLElement* masterPage = ResolveMasterPage(stylesRoot, text);
-        ParseMasterPageRegion(masterPage, "style:header", false);
+        auto* headerRegion = FindMasterRegion(stylesRoot, masterPage, "style:header");
+        auto* footerRegion = FindMasterRegion(stylesRoot, masterPage, "style:footer");
+        ParseMasterPageRegion(headerRegion, false);
         ParseBlockContainer(text, 0, "");
-        ParseMasterPageRegion(masterPage, "style:footer", true);
+        ParseMasterPageRegion(footerRegion, true);
         LoadMetadata();
         return true;
     }
@@ -378,6 +382,11 @@ private:
                           props, linkTarget);
             } else if (tag == "text:tab") {
                 AppendRun(ctx, "\t", props, linkTarget);
+            } else if (tag == "text:page-number") {
+                // Dynamic page field; the linear model is a single flow, so the
+                // current page is 1. Without this the field renders as an empty
+                // gap ("Seite  / 1") because it carries no static text.
+                AppendRun(ctx, "1", props, linkTarget);
             } else if (tag == "text:line-break") {
                 ctx.pendingLineBreak = true;
             } else if (tag == "draw:frame") {
@@ -560,7 +569,21 @@ private:
              rowElem = rowElem->NextSiblingElement("table:table-row")) {
             parseRow(rowElem, false);
         }
-        if (!block.tableRows.empty()) doc_->blocks.push_back(std::move(block));
+        // Skip layout-only tables whose cells carry no text (letterheads use
+        // an empty table in the page header purely for positioning); emitting
+        // them would litter the linear flow with stray cell separators.
+        bool hasText = false;
+        for (const auto& row : block.tableRows) {
+            for (const auto& cell : row.cells) {
+                if (UCRichDocument::ConcatenateRunText(cell.runs)
+                        .find_first_not_of(" \t\r\n") != std::string::npos) {
+                    hasText = true;
+                    break;
+                }
+            }
+            if (hasText) break;
+        }
+        if (!block.tableRows.empty() && hasText) doc_->blocks.push_back(std::move(block));
     }
 
     void ParseBlockContainer(tinyxml2::XMLElement* container, int listLevel,
@@ -698,13 +721,35 @@ private:
         return standard ? standard : first;
     }
 
-    // Emits the header or footer of the applied master page (styles.xml) as
-    // ordinary blocks, set off from the body with a horizontal rule. Regions
-    // that are empty or explicitly not displayed contribute nothing.
-    void ParseMasterPageRegion(tinyxml2::XMLElement* page, const char* regionTag,
-                               bool afterBody) {
-        if (!page) return;
-        auto* region = page->FirstChildElement(regionTag);
+    // The displayed header/footer element to render for a region, preferring
+    // the applied master page but falling back to any sibling master that
+    // carries content there (letterheads often split the header onto the
+    // continuation master and the footer onto the first-page master).
+    tinyxml2::XMLElement* FindMasterRegion(tinyxml2::XMLElement* stylesRoot,
+                                           tinyxml2::XMLElement* appliedMaster,
+                                           const char* regionTag) const {
+        auto visible = [&](tinyxml2::XMLElement* page) -> tinyxml2::XMLElement* {
+            if (!page) return nullptr;
+            auto* region = page->FirstChildElement(regionTag);
+            if (!region) return nullptr;
+            if (std::string(Attr(region, "style:display")) == "false") return nullptr;
+            return NodeHasVisibleContent(region) ? region : nullptr;
+        };
+        if (auto* region = visible(appliedMaster)) return region;
+        if (!stylesRoot) return nullptr;
+        auto* masters = stylesRoot->FirstChildElement("office:master-styles");
+        if (!masters) return nullptr;
+        for (auto* page = masters->FirstChildElement("style:master-page"); page;
+             page = page->NextSiblingElement("style:master-page")) {
+            if (auto* region = visible(page)) return region;
+        }
+        return nullptr;
+    }
+
+    // Emits a resolved header or footer region (styles.xml) as ordinary blocks,
+    // set off from the body with a horizontal rule. A region that is empty or
+    // explicitly not displayed contributes nothing.
+    void ParseMasterPageRegion(tinyxml2::XMLElement* region, bool afterBody) {
         if (!region || std::string(Attr(region, "style:display")) == "false") return;
 
         size_t start = doc_->blocks.size();
