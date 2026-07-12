@@ -1,5 +1,6 @@
 // Apps/UltraAIApp/UltraAIDashboard.cpp
-// Version: 0.1.0
+// Version: 0.1.1
+// Last Modified: 2026-07-12
 
 #include "UltraAIDashboard.h"
 #include "UltraAIDialogs.h"
@@ -29,7 +30,7 @@ bool UltraAIDashboard::Create() {
     cfg.resizable = false;
     cfg.type   = WindowType::Standard;
 
-    window_ = std::make_shared<UltraCanvasWindow>(cfg);
+    window_ = CreateWindow(cfg);
     if (!window_) return false;
 
     window_->onWindowClosing = [this]() {
@@ -39,14 +40,14 @@ bool UltraAIDashboard::Create() {
 
     // Header label
     auto title = std::make_shared<UltraCanvasLabel>(
-        "dash-title", 0, 20, 18, kWindowWidth - 40, 22,
+        "dash-title", 20, 18, kWindowWidth - 40, 22,
         "UltraAI — choose a service");
-    window_->AddElement(title);
+    window_->AddChild(title);
 
     auto sub = std::make_shared<UltraCanvasLabel>(
-        "dash-sub", 0, 20, 38, kWindowWidth - 40, 18,
+        "dash-sub", 20, 38, kWindowWidth - 40, 18,
         "All services use the in-process mock adapter (no network).");
-    window_->AddElement(sub);
+    window_->AddChild(sub);
 
     CreateButtons();
     return true;
@@ -88,11 +89,11 @@ void UltraAIDashboard::CreateButtons() {
         long y = kHeaderHeight + row * (kButtonHeight + kGap);
 
         auto btn = std::make_shared<UltraCanvasButton>(
-            "svc-" + std::to_string(i), 0,
+            "svc-" + std::to_string(i),
             x, y, kButtonWidth, kButtonHeight);
         btn->SetText(entries[i].label);
         btn->onClick = entries[i].open;
-        window_->AddElement(btn);
+        window_->AddChild(btn);
     }
 }
 

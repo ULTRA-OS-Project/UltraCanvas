@@ -1116,7 +1116,7 @@ namespace UltraCanvas {
                 }
                 UCEvent ev;
                 ev.type = UCEventType::MenuClick;
-                ev.targetElement = weak_from_this();
+                ev.targetElement = this;
                 ev.userDataPtr = &item;
                 UltraCanvasApplication::GetInstance()->PushEvent(ev);
                 break;
@@ -1141,7 +1141,7 @@ namespace UltraCanvas {
                 }
                 UCEvent ev;
                 ev.type = UCEventType::MenuClick;
-                ev.targetElement = weak_from_this();
+                ev.targetElement = this;
                 ev.userDataPtr = &item;
                 UltraCanvasApplication::GetInstance()->PushEvent(ev);
                 break;
@@ -1173,7 +1173,7 @@ namespace UltraCanvas {
                 }
                 UCEvent ev;
                 ev.type = UCEventType::MenuClick;
-                ev.targetElement = weak_from_this();
+                ev.targetElement = this;
                 ev.userDataPtr = &item;
                 UltraCanvasApplication::GetInstance()->PushEvent(ev);
                 break;

@@ -1,7 +1,7 @@
 // UltraAI/include/UltraAICommon.h
 // Shared types used across all UltraAI capability interfaces.
-// Version: 0.1.0
-// Last Modified: 2026-05-08
+// Version: 0.1.1
+// Last Modified: 2026-07-12
 // Author: UltraAI Module
 #pragma once
 
@@ -11,6 +11,15 @@
 #include <string>
 #include <variant>
 #include <vector>
+
+// When this module is used alongside UltraCanvas on Linux, the framework pulls
+// in X11/Xlib.h, whose `None` macro (0L) collides with the `None` enumerator
+// used across the UltraAI interfaces. Neutralise it before our declarations —
+// same approach as UltraCanvasEBookTypes.h. This is the umbrella-included
+// header, so the #undef covers every UltraAI capability header in the TU.
+#ifdef None
+#undef None
+#endif
 
 namespace UltraAI {
 

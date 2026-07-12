@@ -258,7 +258,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasContainer::HandleScrollbarEvents(const UCEvent& event) {
-        if (!Contains(event.pointer)) {
+        if (!Contains(event.pointer) && !verticalScrollbar->IsDragging() && !horizontalScrollbar->IsDragging()) {
             return false;
         }
         bool handled = false;

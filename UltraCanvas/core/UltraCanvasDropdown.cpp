@@ -247,7 +247,7 @@ namespace UltraCanvas {
                     }
                     UCEvent ev;
                     ev.type = UCEventType::DropdownSelect;
-                    ev.targetElement = weak_from_this();
+                    ev.targetElement = this;
                     ev.userDataInt = index;
                     UltraCanvasApplication::GetInstance()->PushEvent(ev);
                 }

@@ -57,7 +57,7 @@ namespace UltraCanvas {
         std::string appName;
         std::string defaultWindowIconPath;
 
-        std::queue<UCEvent> eventQueue;
+        std::deque<UCEvent> eventQueue;
         std::mutex eventQueueMutex;
         std::condition_variable eventCondition;
 
@@ -93,9 +93,10 @@ namespace UltraCanvas {
         bool jumpLastWindowKeyMeta = false;
         UCMouseButton jumpLastWindowMouseButton = UCMouseButton::NoneButton;
 
-        std::weak_ptr<UltraCanvasUIElement> hoveredElement;
-        std::weak_ptr<UltraCanvasUIElement> capturedElement;
-        std::weak_ptr<UltraCanvasUIElement> draggedElement;
+        // raw pointers used instead weak_ptr because when element created without using make_shared()
+        // (make_unique() or raw new()) then weak_ptr is null
+        UltraCanvasUIElement* hoveredElement = nullptr;
+        UltraCanvasUIElement* capturedElement = nullptr;
 
         std::vector<std::function<bool(const UCEvent&)>> globalEventHandlers;
         std::function<void()> eventLoopCallback;
@@ -178,8 +179,8 @@ namespace UltraCanvas {
         // All windows registered with the application (main windows and dialogs).
         const std::vector<std::shared_ptr<UltraCanvasWindowBase>>& GetWindows() const { return windows; }
         UltraCanvasUIElement* GetFocusedElement();
-        UltraCanvasUIElement* GetHoveredElement() { return hoveredElement.lock().get(); }
-        UltraCanvasUIElement* GetCapturedElement() { return capturedElement.lock().get(); }
+        UltraCanvasUIElement* GetHoveredElement() { return hoveredElement; }
+        UltraCanvasUIElement* GetCapturedElement() { return capturedElement; }
 
         UltraCanvasWindow* FindWindow(NativeWindowHandle nativeHandle);
 

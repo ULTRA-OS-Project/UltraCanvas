@@ -299,7 +299,7 @@ namespace UltraCanvas {
 
     struct UCEvent {
         UCEventType type = UCEventType::NoneEvent;
-        std::weak_ptr<UltraCanvasUIElement> targetElement;
+        UltraCanvasUIElement* targetElement = nullptr;
 
         // Spatial coordinates
         Point2Di pointer;                    // Mouse or touch coordinates

@@ -3,8 +3,8 @@
 // shell — title bar, "Run" button, scrollable result area, "Close"
 // button — and lets subclasses contribute their own input form and
 // "what to do when Run is pressed" logic.
-// Version: 0.1.0
-// Last Modified: 2026-05-08
+// Version: 0.1.1
+// Last Modified: 2026-07-12
 // Author: UltraAI Module
 #pragma once
 
@@ -51,11 +51,15 @@ protected:
         const std::string& id, long x, long y, long w, long h,
         const std::string& placeholder, bool multiline = false);
 
+public:
+    // Layout constants — public so free functions in the dialog implementation
+    // (e.g. kFormWidth in UltraAIDialogs.cpp) can reference them at namespace scope.
     static constexpr long kDialogWidth  = 720;
     static constexpr long kDialogHeight = 560;
     static constexpr long kMargin       = 16;
     static constexpr long kFormTop      = 80;   // below the description label
 
+protected:
     std::string serviceName_;
     std::string description_;
 

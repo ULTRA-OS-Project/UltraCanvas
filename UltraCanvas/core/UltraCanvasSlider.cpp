@@ -763,20 +763,22 @@ namespace UltraCanvas {
                 activeHandle = (lowerDist < upperDist) ? RangeHandle::Lower : RangeHandle::Upper;
             }
 
-            isDragging = true;
-            dragStartPos = mousePos;
             dragStartValue = (activeHandle == RangeHandle::Lower) ? lowerValue : upperValue;
         } else {
             // Single handle mode
-            isDragging = true;
-            dragStartPos = mousePos;
             dragStartValue = currentValue;
         }
 
+        dragStartPos = mousePos;
+        isDragging = true;
         SetFocus(true);
         UpdateValueFromPosition(mousePos);
 
         if (onPress) onPress(event);
+
+        if (auto* app = UltraCanvasApplication::GetInstance()) {
+            app->CaptureMouse(this);
+        }
 
         return true;
     }

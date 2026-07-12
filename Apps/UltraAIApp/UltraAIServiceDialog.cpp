@@ -1,5 +1,6 @@
 // Apps/UltraAIApp/UltraAIServiceDialog.cpp
-// Version: 0.1.0
+// Version: 0.1.1
+// Last Modified: 2026-07-12
 
 #include "UltraAIServiceDialog.h"
 #include "UltraCanvasButton.h"
@@ -43,7 +44,7 @@ void UltraAIServiceDialog::CreateServiceDialog() {
     // ===== Action row: Run + Status =====
     long actionRowY = formBottom + 8;
     auto runBtn = std::make_shared<UltraCanvasButton>(
-        "svc-run", 0, kMargin, actionRowY, 120, 30);
+        "svc-run", kMargin, actionRowY, 120, 30);
     runBtn->SetText("Run");
     runBtn->onClick = [this]() { RunCapability(); };
     AddDialogElement(runBtn);
@@ -64,7 +65,7 @@ void UltraAIServiceDialog::CreateServiceDialog() {
 
     long resultH = kDialogHeight - resultY - 80;
     resultArea_ = std::make_shared<UltraCanvasTextInput>(
-        "svc-result", 0,
+        "svc-result",
         kMargin, resultY + 22,
         kDialogWidth - 2 * kMargin, resultH);
     resultArea_->SetInputType(TextInputType::Multiline);
@@ -73,7 +74,7 @@ void UltraAIServiceDialog::CreateServiceDialog() {
 
     // ===== Footer: Close button =====
     auto closeBtn = std::make_shared<UltraCanvasButton>(
-        "svc-close", 0,
+        "svc-close",
         kDialogWidth - kMargin - 100, kDialogHeight - 56, 100, 30);
     closeBtn->SetText("Close");
     closeBtn->onClick = [this]() { CloseDialog(DialogResult::Close); };
@@ -96,13 +97,13 @@ void UltraAIServiceDialog::SetStatus(const std::string& text) {
 std::shared_ptr<UltraCanvasLabel> UltraAIServiceDialog::MakeLabel(
     const std::string& id, long x, long y, long w, long h,
     const std::string& text) {
-    return std::make_shared<UltraCanvasLabel>(id, 0, x, y, w, h, text);
+    return std::make_shared<UltraCanvasLabel>(id, x, y, w, h, text);
 }
 
 std::shared_ptr<UltraCanvasTextInput> UltraAIServiceDialog::MakeInput(
     const std::string& id, long x, long y, long w, long h,
     const std::string& placeholder, bool multiline) {
-    auto in = std::make_shared<UltraCanvasTextInput>(id, 0, x, y, w, h);
+    auto in = std::make_shared<UltraCanvasTextInput>(id, x, y, w, h);
     in->SetPlaceholder(placeholder);
     if (multiline) in->SetInputType(TextInputType::Multiline);
     return in;

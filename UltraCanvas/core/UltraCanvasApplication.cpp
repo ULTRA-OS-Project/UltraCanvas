@@ -305,7 +305,7 @@ namespace UltraCanvas {
     void UltraCanvasApplicationBase::PushEvent(const UCEvent& event) {
         {
             std::lock_guard<std::mutex> lock(eventQueueMutex);
-            eventQueue.push(event);
+            eventQueue.push_back(event);
         }
         eventCondition.notify_one();
         WakeUpEventLoop();
@@ -318,7 +318,7 @@ namespace UltraCanvas {
         }
 
         event = eventQueue.front();
-        eventQueue.pop();
+        eventQueue.pop_front();
         return true;
     }
 
@@ -381,14 +381,11 @@ namespace UltraCanvas {
             //     }
             // }
         }
-        if (auto ce = capturedElement.lock(); ce && ce->GetWindow() == win) {
-            capturedElement.reset();
+        if (capturedElement && capturedElement->GetWindow() == win) {
+            ReleaseMouse();
         }
-        if (auto he = hoveredElement.lock(); he && he->GetWindow() == win) {
-            hoveredElement.reset();
-        }
-        if (auto de = draggedElement.lock(); de && de->GetWindow() == win) {
-            draggedElement.reset();
+        if (hoveredElement && hoveredElement->GetWindow() == win) {
+            hoveredElement = nullptr;
         }
         debugOutput << "UltraCanvas: window found and unregistered successfully" << std::endl;
     }
@@ -397,14 +394,21 @@ namespace UltraCanvas {
         // Called from ~UltraCanvasUIElement, where the weak_ptrs referencing elem are
         // already expired (auto-handling the dangling case). These comparisons are kept
         // for correctness on any path where elem is still live.
-        if (capturedElement.lock().get() == elem) {
+        for(auto & eventsIt : eventQueue) {
+            if (eventsIt.targetElement == elem) {
+                eventsIt.targetElement = nullptr;
+            }
+        }
+
+        if (currentEvent.targetElement == elem) {
+            currentEvent.targetElement = nullptr;
+        }
+
+        if (capturedElement == elem) {
             ReleaseMouse();
         }
-        if (hoveredElement.lock().get() == elem) {
-            hoveredElement.reset();
-        }
-        if (draggedElement.lock().get() == elem) {
-            draggedElement.reset();
+        if (hoveredElement == elem) {
+            hoveredElement = nullptr;
         }
         auto win = elem->GetWindow();
         if (win && win->IsCreated() && win->GetState() != WindowState::Closing &&  win->GetState() != WindowState::Closed && win->GetFocusedElement() == elem) {
@@ -692,8 +696,8 @@ namespace UltraCanvas {
         switch (event.type) {
             case UCEventType::MouseMove:
             case UCEventType::MouseUp:
-                if (auto ce = capturedElement.lock()) {
-                    if (DispatchEventToElement(ce.get(), event)) {
+                if (capturedElement) {
+                    if (DispatchEventToElement(capturedElement, event)) {
                         return;
                     }
                 }
@@ -844,26 +848,26 @@ namespace UltraCanvas {
             }
 
             if (event.IsMouseEvent()) {
-                if (auto he = hoveredElement.lock(); he && he.get() != elementUnderPointer) {
-                    if (he->GetWindow() == targetWindow && he->IsVisible()) {
+                if (hoveredElement && hoveredElement != elementUnderPointer) {
+                    if (hoveredElement->GetWindow() == targetWindow && hoveredElement->IsVisible()) {
                         UCEvent leaveEvent = event;
                         leaveEvent.type = UCEventType::MouseLeave;
                         leaveEvent.pointer = { -1, -1 };
-                        DispatchEventToElement(he.get(), leaveEvent);
+                        DispatchEventToElement(hoveredElement, leaveEvent);
                     }
                     UltraCanvasTooltipManager::HideTooltip();
-                    hoveredElement.reset();
+                    hoveredElement = nullptr;
                 }
                 if (!elementUnderPointer || elementUnderPointer == targetWindow) {
                     UltraCanvasTooltipManager::HideTooltip();
                 }
                 if (elementUnderPointer) {
-                    if (hoveredElement.lock().get() != elementUnderPointer) {
+                    if (hoveredElement != elementUnderPointer) {
                         auto enterEvent = event.Clone();
                         enterEvent.type = UCEventType::MouseEnter;
                         DispatchEventToElement(elementUnderPointer, enterEvent);
 
-                        hoveredElement = elementUnderPointer->weak_from_this();
+                        hoveredElement = elementUnderPointer;
                         // Show tooltip if element has one
                         if (!elementUnderPointer->GetTooltip().empty()) {
                             UltraCanvasTooltipManager::UpdateAndShowTooltip(
@@ -885,7 +889,7 @@ namespace UltraCanvas {
             }
 
             if (event.isCommandEvent()) {
-                HandleEventWithBubbling(event.targetElement.lock().get(), event);
+                HandleEventWithBubbling(event.targetElement, event);
                 goto finish;
             }
             DispatchEventToElement(targetWindow, event);
@@ -942,7 +946,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasApplicationBase::DispatchEventToElement(UltraCanvasUIElement* elem, UCEvent event) {
-        event.targetElement = elem->weak_from_this();
+        event.targetElement = elem;
         auto window = elem->GetWindow();
         if (!window) {
             debugOutput << "UltraCanvasApplicationBase::DispatchEventToElement window == null for elem=" << elem << std::ends;
@@ -966,15 +970,15 @@ namespace UltraCanvas {
 
     void UltraCanvasApplicationBase::CaptureMouse(UltraCanvasUIElement *element) {
         capturedMouseButtonDown = currentEvent.button;
-        capturedElement = element ? element->weak_from_this() : std::weak_ptr<UltraCanvasUIElement>();
+        capturedElement = element;
         CaptureMouseNative();
     }
 
     void UltraCanvasApplicationBase::ReleaseMouse() {
-        if (!capturedElement.expired()) {
+        if (capturedElement) {
             ReleaseMouseNative();
         }
-        capturedElement.reset();
+        capturedElement = nullptr;
         capturedMouseButtonDown = UCMouseButton::NoneButton;
     }
 
@@ -1037,7 +1041,7 @@ namespace UltraCanvas {
                 // Push directly to queue without calling WakeUpEventLoop (we're already on the main thread)
                 {
                     std::lock_guard<std::mutex> lock(eventQueueMutex);
-                    eventQueue.push(timerEvent);
+                    eventQueue.push_back(timerEvent);
                 }
             }
 

@@ -3,12 +3,13 @@
 // one per AI capability. Clicking an icon opens a modal dialog
 // driven by the matching in-process mock adapter — no network or
 // external models required.
-// Version: 0.1.0
-// Last Modified: 2026-05-08
+// Version: 0.1.1
+// Last Modified: 2026-07-12
 // Author: UltraAI Module
 
 #include "UltraAIDashboard.h"
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasModalDialog.h"
 #include "UltraCanvasDebug.h"
 
 #ifdef __linux__

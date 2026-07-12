@@ -210,7 +210,7 @@ void UltraCanvasGLSurface::Render(IRenderContext* ctx, const Rect2Df& dirtyRect)
                 Rect2Di b = GetBounds();
                 UCEvent ev{};
                 ev.type = UCEventType::Redraw;
-                ev.targetElement = weak_from_this();
+                ev.targetElement = this;
                 ev.targetWindow = win->GetWindowWeakPtr();
                 ev.pointerWindow = Point2Di(static_cast<int>(p.x), static_cast<int>(p.y));
                 ev.width = b.width;
