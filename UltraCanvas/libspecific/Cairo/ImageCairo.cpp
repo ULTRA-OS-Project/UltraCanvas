@@ -908,12 +908,55 @@ namespace UltraCanvas {
         return vips_foreign_find_save(dummy.c_str()) != nullptr;
     }
 
+    namespace {
+        // Collects the suffix list every VipsForeignLoad subclass advertises.
+        // vips_foreign_find_load() cannot probe a hypothetical filename — it
+        // stats and content-sniffs the real file — so extension probing has to
+        // read the loader class metadata instead.
+        void* CollectLoaderSuffixes(GType type, void* a) {
+            auto* out = static_cast<std::vector<std::string>*>(a);
+            auto* cls = VIPS_OBJECT_CLASS(g_type_class_ref(type));
+            auto* fc  = VIPS_FOREIGN_CLASS(cls);
+            if (fc->suffs) {
+                for (const char* const* s = fc->suffs; *s; ++s) {
+                    out->emplace_back(*s);
+                }
+            }
+            return nullptr;   // keep iterating over all subclasses
+        }
+
+        const std::vector<std::string>& LoaderSuffixes() {
+            // Collected once, but only after vips has been initialized —
+            // before that the base type does not exist yet and the (empty)
+            // result must not be cached.
+            static std::vector<std::string> suffixes;
+            static bool collected = false;
+            if (!collected) {
+                GType base = g_type_from_name("VipsForeignLoad");
+                if (base) {
+                    vips_type_map_all(base, CollectLoaderSuffixes, &suffixes);
+                    collected = true;
+                }
+            }
+            return suffixes;
+        }
+    }
+
     bool VipsCanLoad(const std::string& extensionWithDot) {
         if (extensionWithDot.empty()) return false;
-        const std::string dummy = std::string("probe") + extensionWithDot;
-        // vips_foreign_find_load_buffer / _filename inspect the filename for
-        // extension-based loaders. NULL means no compiled-in loader matched.
-        return vips_foreign_find_load(dummy.c_str()) != nullptr;
+        std::string wanted = extensionWithDot;
+        std::transform(wanted.begin(), wanted.end(), wanted.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        const auto& suffixes = LoaderSuffixes();
+        return std::find(suffixes.begin(), suffixes.end(), wanted) != suffixes.end();
+    }
+
+    bool VipsHasMagickLoadFallback() {
+        // ImageMagick's loader advertises no suffixes (it content-sniffs), yet
+        // handles most legacy raster formats (BMP, TGA, PSD, PCX, ...). Callers
+        // that probe a known-raster extension can treat its presence as "this
+        // will load", which VipsCanLoad's suffix matching cannot express.
+        return vips_type_find("VipsOperation", "magickload") != 0;
     }
 #else
     std::string UCImageRaster::Save(const std::string &, const UCImageSave::ImageExportOptions&) {
