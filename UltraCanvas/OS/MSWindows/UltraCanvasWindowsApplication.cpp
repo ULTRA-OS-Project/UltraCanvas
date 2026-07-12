@@ -508,6 +508,23 @@ namespace UltraCanvas {
                 return;
             }
 
+            // ===== EXTENDED (SIDE/THUMB) BUTTON EVENTS =====
+            case WM_XBUTTONDOWN:
+            case WM_XBUTTONUP: {
+                event.type = (msg == WM_XBUTTONDOWN) ? UCEventType::MouseDown
+                                                     : UCEventType::MouseUp;
+                event.button = (GET_XBUTTON_WPARAM(wParam) == XBUTTON1)
+                                   ? UCMouseButton::Back : UCMouseButton::Forward;
+                event.pointerWindow = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+                event.pointer = event.pointerWindow;
+                POINT pt = { event.pointer.x, event.pointer.y };
+                ClientToScreen(hwnd, &pt);
+                event.pointerGlobal = { pt.x, pt.y };
+                fillModifiers();
+                pushEventScaled(event);
+                return;
+            }
+
             // ===== DOUBLE-CLICK EVENTS =====
             case WM_LBUTTONDBLCLK: {
                 event.type = UCEventType::MouseDoubleClick;
@@ -763,6 +780,11 @@ namespace UltraCanvas {
             case WM_MBUTTONUP:
             case WM_MBUTTONDBLCLK:
                 return UCMouseButton::Middle;
+            case WM_XBUTTONDOWN:
+            case WM_XBUTTONUP:
+            case WM_XBUTTONDBLCLK:
+                return (GET_XBUTTON_WPARAM(wParam) == XBUTTON1)
+                           ? UCMouseButton::Back : UCMouseButton::Forward;
             default:
                 return UCMouseButton::Unknown;
         }

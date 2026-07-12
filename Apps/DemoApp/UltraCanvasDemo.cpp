@@ -363,6 +363,14 @@ namespace UltraCanvas {
             return false;
         }
         debugOutput << "Main window created" << std::endl;
+
+        // Jump-to-last-window demo bindings: F6 or the mouse "back" thumb
+        // button toggles between the two most recently used demo windows
+        // (main window, source window, doc window, ...), restoring focus to
+        // the input field that was active in the target window.
+        auto* app = UltraCanvasApplication::GetInstance();
+        app->SetJumpToLastWindowKey(UCKeys::F6);
+        app->SetJumpToLastWindowMouseButton(UCMouseButton::Back);
         // Calculate positions for adjusted layout
         const int treeViewHeight = 740;  // Reduced from 840 to make room for legend
         const int legendHeight = 95;     // Height for legend container

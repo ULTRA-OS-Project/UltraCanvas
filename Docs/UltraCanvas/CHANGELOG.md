@@ -1,3 +1,16 @@
+#### 2026-07-11 *0.3.6*
+- Added "jump to last window": the application now keeps a most-recently-used
+  window focus history and `JumpToLastWindow()` raises + focuses the window
+  used before the current one, restoring keyboard focus to the input field
+  that was active there; repeated triggers toggle between the two most recent
+  windows. Bindable to a keyboard shortcut and/or a mouse button via
+  `SetJumpToLastWindowKey()` / `SetJumpToLastWindowMouseButton()` (disabled by
+  default; the demo binds F6 and the mouse Back button). The Linux and Windows
+  back-ends now translate the mouse side/thumb buttons (X11 buttons 8/9,
+  Windows XBUTTON1/2) as `UCMouseButton::Back`/`::Forward`. Click-to-focus now
+  sends proper `WindowBlur`/`WindowFocus` events to the windows involved
+  (previously the raw MouseDown event was re-dispatched to both). See
+  `Docs/UltraCanvas/UltraCanvasJumpToLastWindow.md`.
 #### 2026-07-11 *0.3.5*
 - `UltraCanvasListView`: new cell-level callbacks `onCellClicked` and
   `onCellHovered` (row, column, cell-local position) plus the `GetColumnAt()`

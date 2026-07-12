@@ -808,6 +808,8 @@ namespace UltraCanvas {
             case Button5: return UCMouseButton::WheelDown;
             case 6: return UCMouseButton::WheelLeft;
             case 7: return UCMouseButton::WheelRight;
+            case 8: return UCMouseButton::Back;
+            case 9: return UCMouseButton::Forward;
             default: return UCMouseButton::Unknown;
         }
     }
