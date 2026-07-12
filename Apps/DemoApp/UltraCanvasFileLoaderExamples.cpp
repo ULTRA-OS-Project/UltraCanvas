@@ -6,16 +6,17 @@
 //                 text, documents, audio, video).
 //   * Details   – the full README documentation.
 //   * Examples  – a live playground: pick a file family, then Open / Save through
-//                 UltraCanvasFileLoader. The Open and Save buttons advertise the
-//                 file types currently available for the chosen family, and the
-//                 loaded file is shown in the matching display area (text area,
-//                 image, spreadsheet, audio or video player). A file can also be
-//                 dragged from the OS file manager and dropped onto the display
-//                 area; the family dropdown switches automatically when the
-//                 dropped file belongs to another family. Writable bitmap
-//                 formats are probed against the installed libvips build, and
-//                 the Save dialog defaults to the loaded file's name.
-// Version: 1.2.0
+//                 UltraCanvasFileLoader. The Open and Save file-type lists are
+//                 resolved at runtime from the supported-format API
+//                 (UltraCanvasSupportedFormats), so they advertise exactly what
+//                 this build can load and save — nothing the framework cannot
+//                 actually handle. The loaded file is shown in the matching
+//                 display area (text area, image, spreadsheet, audio or video
+//                 player). A file can also be dragged from the OS file manager
+//                 and dropped onto the display area; the family dropdown switches
+//                 automatically when the dropped file belongs to another family.
+//                 The Save dialog defaults to the loaded file's name.
+// Version: 1.3.0
 // Last Modified: 2026-07-12
 // Author: UltraCanvas Framework
 
@@ -26,12 +27,13 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasTextArea.h"
-#include "UltraCanvasImage.h"    // VipsCanSave — probe writable bitmap formats
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasSpreadsheet.h"
 #include "UltraCanvasAudioPlayerElement.h"
 #include "UltraCanvasVideoPlayerElement.h"
 #include "UltraCanvasFileLoader.h"
+#include "UltraCanvasSupportedFormats.h"      // MediaFormatCategory, MediaFormatInfo
+#include "Models/STL/UltraCanvasSTLPlugin.h"  // RegisterSTLPlugin (built-in 3D)
 #include "UltraCanvasConfig.h"   // GetResourcesDir
 #include "UltraCanvasUtils.h"    // NormalizePath, LoadFile
 
@@ -54,62 +56,41 @@ namespace {
 
     struct FileGroup {
         std::string name;                       // dropdown label
-        std::vector<std::string> openExts;      // formats offered by the Open dialog
-        std::vector<std::string> saveExts;      // formats offered by the Save dialog
+        MediaFormatCategory category;           // API category this family maps to
         DisplayKind display;
+        std::vector<std::string> openExts;      // load formats reported by the API
+        std::vector<std::string> saveExts;      // save formats reported by the API
     };
 
-    // Writable bitmap formats. The UCImage save path implements all of these
-    // (HEIC included, via libvips heifsave), but whether an encoder is really
-    // present depends on the installed libvips build — .heic for example needs
-    // libvips compiled with libheif and an HEVC encoder (x265), which many
-    // distro builds omit. Each candidate is therefore probed with VipsCanSave
-    // so only formats this system can actually encode are advertised; PNG is
-    // always kept so the list is never empty.
-    std::vector<std::string> BitmapSaveExts() {
-        std::vector<std::string> exts = { "png", "jpg", "webp", "avif", "heic", "gif",
-                                          "bmp", "tiff", "tga", "hdr", "jxl", "ppm" };
-#ifdef HAS_LIBVIPS
-        exts.erase(std::remove_if(exts.begin(), exts.end(), [](const std::string& e) {
-                       return e != "png" && !VipsCanSave("." + e);
-                   }), exts.end());
-#endif
-        return exts;
-    }
-
-    // The seven file families requested for the demo, each with the extensions the
-    // Open/Save dialogs currently advertise for it.
-    const std::vector<FileGroup>& FileGroups() {
-        static const std::vector<FileGroup> groups = {
-            { "Bitmap graphics",
-              { "png", "jpg", "jpeg", "webp", "avif", "heic", "gif", "bmp", "tif", "tiff", "tga", "hdr", "jxl", "ppm", "psd" },
-              BitmapSaveExts(),
-              DisplayKind::Image },
-            { "Vector graphics",
-              { "svg", "svgz", "cdr", "xar", "eps", "ps" },
-              { "svg", "svgz" },
-              DisplayKind::Image },
-            { "3D graphics",
-              { "obj", "stl", "gltf", "glb", "fbx", "3ds", "ply", "dae" },
-              { "obj", "stl", "ply" },
-              DisplayKind::Text },
-            { "Documents files",
-              { "pdf", "docx", "odt", "rtf", "epub", "mobi", "azw3", "fb2", "txt", "md" },
-              { "pdf", "txt", "md", "rtf" },
-              DisplayKind::Text },
-            { "Spreadsheet files",
-              { "ods", "xlsx", "csv", "tsv" },
-              { "ods", "csv", "tsv" },
-              DisplayKind::Spreadsheet },
-            { "Audio",
-              { "mp3", "flac", "wav", "ogg", "aac", "m4a", "opus", "wma" },
-              { "wav", "flac", "mp3", "ogg", "opus" },
-              DisplayKind::Audio },
-            { "Video",
-              { "mp4", "webm", "mkv", "avi", "mov", "flv", "wmv" },
-              { "mp4", "webm" },
-              DisplayKind::Video },
+    // Resolves the demo families against the supported-format API. The Open /
+    // Save extension lists are NOT hardcoded: they come from
+    // UltraCanvasFileLoader::GetSupportedLoad/SaveExtensions, so the playground
+    // advertises exactly what THIS build can do — HEIC only when libvips has an
+    // HEVC encoder, 3D only when a model plugin is registered, and none of the
+    // formats the framework merely aspires to (OGG audio, RTF, glTF/FBX/PLY,
+    // SVG save, ...) that older hardcoded lists used to show by mistake.
+    std::vector<FileGroup> ResolveFileGroups() {
+        struct Def { const char* name; MediaFormatCategory category; DisplayKind display; };
+        static const std::vector<Def> defs = {
+            { "Bitmap graphics", MediaFormatCategory::Bitmap,      DisplayKind::Image },
+            { "Vector graphics", MediaFormatCategory::Vector,      DisplayKind::Image },
+            { "3D models",       MediaFormatCategory::Model3D,     DisplayKind::Text },
+            { "Documents",       MediaFormatCategory::Document,    DisplayKind::Text },
+            { "Spreadsheets",    MediaFormatCategory::Spreadsheet, DisplayKind::Spreadsheet },
+            { "Audio",           MediaFormatCategory::Audio,       DisplayKind::Audio },
+            { "Video",           MediaFormatCategory::Video,       DisplayKind::Video },
         };
+        std::vector<FileGroup> groups;
+        groups.reserve(defs.size());
+        for (const auto& d : defs) {
+            FileGroup g;
+            g.name     = d.name;
+            g.category = d.category;
+            g.display  = d.display;
+            g.openExts = UltraCanvasFileLoader::GetSupportedLoadExtensions(d.category);
+            g.saveExts = UltraCanvasFileLoader::GetSupportedSaveExtensions(d.category);
+            groups.push_back(std::move(g));
+        }
         return groups;
     }
 
@@ -222,14 +203,25 @@ namespace {
                 // Show plain-text sources verbatim; binary documents / models are
                 // summarised instead of dumping raw bytes into the view.
                 std::string ext = LowerExtension(path);
-                const bool textual = (ext == "txt" || ext == "md" || ext == "markdown" || ext == "rtf");
+                const bool textual = (ext == "txt" || ext == "md" || ext == "markdown");
                 if (textual) {
                     text->SetText(LoadFile(path));
                 } else {
-                    text->SetText("Loaded " + group.name + " file:\n  " + path +
-                                  "\n\nThis " + ext + " file was decoded by the matching FileLoader "
-                                  "plug-in. In a full application it renders through the dedicated "
-                                  "viewer (e.g. UltraCanvasPDFView for PDF, the GL model viewer for 3D).");
+                    // Report what the supported-format API knows about this
+                    // file — the library/plugin that provides it and its
+                    // load/save capability — instead of a generic blurb.
+                    std::string info = "Loaded " + group.name + " file:\n  " + path + "\n";
+                    if (auto fmt = UltraCanvasSupportedFormats::FindByExtension(ext)) {
+                        info += "\nFormat:    " + fmt->description +
+                                "\nProvider:  " + fmt->provider +
+                                "\nCan load:  " + std::string(fmt->canLoad ? "yes" : "no") +
+                                "     Can save: " + std::string(fmt->canSave ? "yes" : "no");
+                        if (!fmt->notes.empty()) info += "\nNote:      " + fmt->notes;
+                    }
+                    info += "\n\nThis file was decoded by the provider above. In a full "
+                            "application it renders through the dedicated viewer "
+                            "(e.g. UltraCanvasPDFView for PDF, the GL model viewer for 3D).";
+                    text->SetText(info);
                 }
                 text->SetCursorPosition(LineColumnIndex::INVALID);
                 return text;
@@ -284,7 +276,13 @@ namespace {
 
     // ---- Examples tab: the interactive Open / Save playground. ----
     std::shared_ptr<UltraCanvasUIElement> BuildExamplesTab() {
-        const auto& groups = FileGroups();
+        // Register the built-in STL model plugin so the 3D family reports its
+        // real capability through the graphics plugin registry (registration
+        // is idempotent). Other graphics plugins (CDR, XAR, ...) show up here
+        // automatically once the host application registers them too.
+        RegisterSTLPlugin();
+
+        auto groups = ResolveFileGroups();
 
         auto root = std::make_shared<UltraCanvasContainer>("FileLoaderDemo", 0, 0, 1000, 700);
         root->layout.SetFlexColumn().SetFlexGap(8)
