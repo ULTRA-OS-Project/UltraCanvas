@@ -331,6 +331,13 @@ namespace UltraCanvas {
         int rowCount = model->GetRowCount();
         int colCount = model->GetColumnCount();
 
+        // Clip rows to the viewport (the area below the header). Rows are drawn
+        // after the header, and a scrolled row's top slides up into the header
+        // band; without this clip that content would paint over the header,
+        // making the title row look transparent behind the table content.
+        ctx->PushState();
+        ctx->ClipRect(Rect2Dd(viewport.x, viewport.y, viewport.width, viewport.height));
+
         // Calculate visible range (culling)
         int firstVisible = scrollOffsetY / viewStyle.rowHeight;
         int lastVisible = (scrollOffsetY + viewport.height) / viewStyle.rowHeight;
@@ -413,6 +420,8 @@ namespace UltraCanvas {
                 }
             }
         }
+
+        ctx->PopState();
     }
 
     // ===== EVENT HANDLING =====
