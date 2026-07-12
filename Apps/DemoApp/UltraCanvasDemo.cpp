@@ -34,12 +34,14 @@ namespace UltraCanvas {
         s.thumbPressedColor = Color(50, 100, 180, 255);
         s.thumbCornerRadius = s.trackSize / 2;          // fully rounded ends
         s.trackCornerRadius = s.trackSize / 2;
-        // Draw a grip handle on the thumb (SVG riffled grip), orientation-aware so
-        // vertical and horizontal bars each get a correctly-oriented grip. The
+        // Draw a blue grip handle on the thumb (SVG riffled grip) that matches the
+        // light-blue track and the blue tree-selection highlights, orientation-aware
+        // so vertical and horizontal bars each get a correctly-oriented grip. The
         // scrollbar scales the grip preserving its aspect ratio and centers it in
-        // the thumb.
-        s.thumbImagePath           = NormalizePath(GetResourcesDir() + "media/icons/scrollbar-handle-v.svg");
-        s.thumbImagePathHorizontal = NormalizePath(GetResourcesDir() + "media/icons/scrollbar-handle-h.svg");
+        // the thumb. (The neutral-gray scrollbar-handle-{v,h}.svg files remain for
+        // the Scrollbar showcase's generic "Custom handle" demo.)
+        s.thumbImagePath           = NormalizePath(GetResourcesDir() + "media/icons/scrollbar-handle-blue-v.svg");
+        s.thumbImagePathHorizontal = NormalizePath(GetResourcesDir() + "media/icons/scrollbar-handle-blue-h.svg");
         return s;
     }
 

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="14" height="48" viewBox="0 0 14 48">
+  <defs>
+    <linearGradient id="vGripBlue" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0"   stop-color="#4a7ed2"/>
+      <stop offset="0.5" stop-color="#8bb0ea"/>
+      <stop offset="1"   stop-color="#4a7ed2"/>
+    </linearGradient>
+  </defs>
+  <!-- Capsule body with fully rounded ends -->
+  <rect x="1" y="1" width="12" height="46" rx="6" ry="6"
+        fill="url(#vGripBlue)" stroke="#3866b6" stroke-width="1"/>
+  <!-- Riffled grip lines in the middle (light, for contrast on the blue body) -->
+  <g stroke="#eef4fd" stroke-width="1" stroke-linecap="round">
+    <line x1="4" y1="21" x2="10" y2="21"/>
+    <line x1="4" y1="24" x2="10" y2="24"/>
+    <line x1="4" y1="27" x2="10" y2="27"/>
+  </g>
+</svg>
