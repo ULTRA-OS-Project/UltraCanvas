@@ -17,7 +17,12 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
+#include <filesystem>
 #include <sstream>
+#include <system_error>
+
+#include "UltraCanvasUtils.h"   // GetExecutableDir()
+#include "UltraCanvasConfig.h"  // GetResourcesDir()
 
 namespace UltraCanvas {
 
@@ -54,26 +59,92 @@ TesseractOCREngine::~TesseractOCREngine() {
     if (api) api->End();
 }
 
-std::string TesseractOCREngine::ResolveDataPath(const std::string& userPath) const {
-    if (!userPath.empty()) return userPath;
-    if (const char* env = std::getenv("TESSDATA_PREFIX"); env && *env) return env;
-    return {}; // let tesseract probe its built-in locations
+std::string TesseractOCREngine::ResolveDataPath(const std::string& userPath,
+                                                const std::string& firstLang,
+                                                std::vector<std::string>& tried) const {
+    namespace fs = std::filesystem;
+
+    // Tesseract 4/5 expects the data directory to *directly* contain the
+    // "<lang>.traineddata" files (the old "parent of tessdata" convention was
+    // dropped). For each candidate base we therefore accept either the base
+    // itself or a "tessdata" subfolder underneath it.
+    const std::string leaf = firstLang + ".traineddata";
+
+    auto probe = [&](const std::string& base) -> std::string {
+        if (base.empty()) return {};
+        std::error_code ec;
+        const fs::path b(base);
+        const fs::path direct = b / leaf;
+        tried.push_back(direct.string());
+        if (fs::exists(direct, ec)) return b.string();
+        const fs::path nested = b / "tessdata" / leaf;
+        tried.push_back(nested.string());
+        if (fs::exists(nested, ec)) return (b / "tessdata").string();
+        return {};
+    };
+
+    // 1) Explicit override from the caller wins.
+    if (!userPath.empty()) {
+        if (std::string hit = probe(userPath); !hit.empty()) return hit;
+    }
+    // 2) TESSDATA_PREFIX, honouring the user's environment.
+    if (const char* env = std::getenv("TESSDATA_PREFIX"); env && *env) {
+        if (std::string hit = probe(env); !hit.empty()) return hit;
+    }
+    // 3) Bundle locations relative to the executable and the resources dir.
+    //    This is what makes a portable Windows build work without any env
+    //    vars: the shipped media/ocr/tessdata/ folder is discovered here.
+    const std::string exe = GetExecutableDir();
+    const std::string res = GetResourcesDir(); // already ends with a separator
+    for (const std::string& base : {
+             res + "media/ocr",
+             exe + "/media/ocr",
+             res,                       // <Resources>/tessdata
+             exe + "/ocr",
+             exe,                       // next to the executable
+         }) {
+        if (std::string hit = probe(base); !hit.empty()) return hit;
+    }
+    return {}; // nothing found; caller falls back to tesseract's own probing
 }
 
 bool TesseractOCREngine::Initialize(const OCRConfig& cfg) {
     std::lock_guard<std::mutex> lock(mtx);
     config = cfg;
+    lastError.clear();
     api = std::make_unique<tesseract::TessBaseAPI>();
 
-    const std::string dataPath = ResolveDataPath(cfg.dataPath);
+    const std::string firstLang = cfg.languages.empty() ? "eng"
+                                                         : cfg.languages.front();
+    std::vector<std::string> tried;
+    const std::string dataPath = ResolveDataPath(cfg.dataPath, firstLang, tried);
     const std::string langs    = JoinLanguages(cfg.languages);
 
+    // On Linux the system tessdata is found through Tesseract's compiled-in
+    // default path even when `dataPath` is empty; on a portable Windows build
+    // it is not, so an empty result here is the usual cause of failure.
     const int rc = api->Init(dataPath.empty() ? nullptr : dataPath.c_str(),
                              langs.c_str(),
                              tesseract::OcrEngineMode::OEM_LSTM_ONLY);
     if (rc != 0) {
         api.reset();
         ready = false;
+        std::ostringstream msg;
+        msg << "could not load language '" << langs << "' — no "
+            << firstLang << ".traineddata found. ";
+        if (dataPath.empty()) {
+            msg << "Bundle it under \"" << UltraCanvasOCR::DefaultModelsDir()
+                << "/tessdata/\" beside the application, or set TESSDATA_PREFIX. ";
+            if (!tried.empty()) {
+                msg << "Searched:";
+                for (const std::string& p : tried) msg << "\n  " << p;
+            }
+        } else {
+            msg << "tessdata dir \"" << dataPath
+                << "\" exists but Tesseract rejected it (corrupt or wrong "
+                   "version?).";
+        }
+        lastError = msg.str();
         return false;
     }
 
@@ -169,7 +240,12 @@ OCRResult TesseractOCREngine::ExtractResult() {
 
 OCRResult TesseractOCREngine::RecognizeFile(const std::string& path) {
     std::lock_guard<std::mutex> lock(mtx);
-    if (!ready) { OCRResult r; r.error = "Engine not initialised"; return r; }
+    if (!ready) {
+        OCRResult r;
+        r.error = lastError.empty() ? std::string("Engine not initialised")
+                                    : "Engine not initialised: " + lastError;
+        return r;
+    }
 
     const auto t0 = std::chrono::steady_clock::now();
     Pix* pix = pixRead(path.c_str());
@@ -188,7 +264,12 @@ OCRResult TesseractOCREngine::RecognizeFile(const std::string& path) {
 OCRResult TesseractOCREngine::RecognizeBuffer(const void* data, size_t bytes,
                                               const std::string& /*formatHint*/) {
     std::lock_guard<std::mutex> lock(mtx);
-    if (!ready) { OCRResult r; r.error = "Engine not initialised"; return r; }
+    if (!ready) {
+        OCRResult r;
+        r.error = lastError.empty() ? std::string("Engine not initialised")
+                                    : "Engine not initialised: " + lastError;
+        return r;
+    }
 
     const auto t0 = std::chrono::steady_clock::now();
     Pix* pix = pixReadMem(static_cast<const l_uint8*>(data), bytes);
@@ -207,7 +288,12 @@ OCRResult TesseractOCREngine::RecognizeBuffer(const void* data, size_t bytes,
 OCRResult TesseractOCREngine::RecognizeRaw(const uint8_t* pixels, int width, int height,
                                            int bytesPerPixel, int bytesPerLine) {
     std::lock_guard<std::mutex> lock(mtx);
-    if (!ready) { OCRResult r; r.error = "Engine not initialised"; return r; }
+    if (!ready) {
+        OCRResult r;
+        r.error = lastError.empty() ? std::string("Engine not initialised")
+                                    : "Engine not initialised: " + lastError;
+        return r;
+    }
 
     const auto t0 = std::chrono::steady_clock::now();
     api->SetImage(pixels, width, height, bytesPerPixel, bytesPerLine);

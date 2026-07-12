@@ -34,12 +34,19 @@ public:
 
 private:
     OCRResult ExtractResult();
-    std::string ResolveDataPath(const std::string& userPath) const;
+    // Resolves a directory that directly contains "<firstLang>.traineddata".
+    // Probes the explicit override, TESSDATA_PREFIX, and the executable /
+    // resources relative bundle locations. Returns an empty string when none
+    // of the candidates hold the data; every path tried is appended to `tried`.
+    std::string ResolveDataPath(const std::string& userPath,
+                                const std::string& firstLang,
+                                std::vector<std::string>& tried) const;
 
     std::unique_ptr<tesseract::TessBaseAPI> api;
     OCRConfig                                config;
     mutable std::mutex                       mtx;
     bool                                     ready = false;
+    std::string                              lastError; // why Init last failed
 };
 
 } // namespace UltraCanvas
