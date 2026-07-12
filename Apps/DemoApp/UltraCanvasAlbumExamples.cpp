@@ -2,8 +2,13 @@
 // Demonstration of UltraCanvasAlbum: layout designs, image-fit modes, action-icon
 // display options and visitor / user-edit / admin modes for a mixed photo / video
 // / music album.
-// Version: 2.12.0
-// Last Modified: 2026-06-26
+// Version: 2.12.1
+// Last Modified: 2026-07-12
+// V2.12.1: Media-window close fixes — the video / audio player windows now stop
+//   playback via onWindowClosed however they are closed (title-bar close button
+//   included; previously only ESC was handled, so the viewer's retained
+//   shared_ptr kept the closed window's pipeline playing audio forever) and the
+//   viewer's window reference is released so the window is actually destroyed.
 // V2.12.0: Album-page polish — Masonry is now the default layout (its button
 //   starts highlighted); a single click on a tile opens it (photo lightbox /
 //   video / audio player) instead of needing a double-click; and clicking a
@@ -220,10 +225,23 @@ namespace UltraCanvas {
                 window->eventCallback = [this](const UCEvent& event) {
                     if (event.type == UCEventType::KeyUp &&
                         event.virtualKey == UCKeys::Escape) {
-                        if (window) { window->Close(); window.reset(); }
+                        if (window) window->Close();
                         return true;
                     }
                     return false;
+                };
+
+                // Stop playback whenever the window closes — the title-bar
+                // close button included, which never runs our ESC handler.
+                // Without this the shared_ptr held here keeps the closed
+                // window (and the player in it) alive, so the decode pipeline
+                // keeps playing audio with no window on screen. Dropping our
+                // reference lets the application destroy the window and tear
+                // the pipeline down.
+                std::weak_ptr<UltraCanvasVideoPlayerElement> weakPlayer = player;
+                window->onWindowClosed = [this, weakPlayer]() {
+                    if (auto p = weakPlayer.lock()) p->Stop();
+                    window.reset();
                 };
 
                 window->Show();
@@ -284,10 +302,18 @@ namespace UltraCanvas {
                 window->eventCallback = [this](const UCEvent& event) {
                     if (event.type == UCEventType::KeyUp &&
                         event.virtualKey == UCKeys::Escape) {
-                        if (window) { window->Close(); window.reset(); }
+                        if (window) window->Close();
                         return true;
                     }
                     return false;
+                };
+
+                // Same close-time cleanup as the video window: stop playback
+                // and release our reference however the window was closed.
+                std::weak_ptr<UltraCanvasAudioPlayerElement> weakPlayer = player;
+                window->onWindowClosed = [this, weakPlayer]() {
+                    if (auto p = weakPlayer.lock()) p->Stop();
+                    window.reset();
                 };
 
                 window->Show();

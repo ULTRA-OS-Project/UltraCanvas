@@ -1,7 +1,10 @@
 // core/UltraCanvasVideoPlayerElement.cpp
 // Composite UI control wrapping UltraCanvasVideoPlayer: video surface + transport bar
-// Version: 0.1.4
-// Last Modified: 2026-06-24
+// Version: 0.1.5
+// Last Modified: 2026-07-12
+// V0.1.5: A replay after end-of-stream shows video again: the frame timer is no
+//   longer stopped on EOS (Play also re-arms it), so frame uploads resume when
+//   playback restarts instead of leaving a frozen surface with audio only.
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVideoPlayerElement.h"
@@ -102,7 +105,10 @@ void UltraCanvasVideoPlayerElement::Play() {
     // The frame timer's lifetime is tied to a loaded source (started in
     // LoadFrom*, stopped in the destructor), not to playback state, so the time
     // readout keeps tracking the audio clock even when our optimistic engine
-    // state lags the real pipeline.
+    // state lags the real pipeline. Re-arm it here anyway (no-op if running):
+    // a replay after end-of-stream must resume frame uploads or the surface
+    // stays frozen while the audio restarts.
+    StartFrameTimer();
     player->Play();
     lastInteractionTime = NowSeconds();
     if (onPlay) onPlay();
@@ -140,7 +146,9 @@ void UltraCanvasVideoPlayerElement::HookPlayerCallbacks() {
         self->RequestRedraw();
     };
     player->onEnded = [self]() {
-        self->StopFrameTimer();
+        // Keep the frame timer running: it's tied to the loaded source, and a
+        // replay (Play/Seek after EOS) needs it to keep uploading frames. The
+        // per-tick early-out makes an idle ended player as cheap as a paused one.
         if (self->onEnded) self->onEnded();
         self->RequestRedraw();
     };

@@ -1,3 +1,14 @@
+#### 2026-07-12 *0.3.5*
+- Fixed Album demo video-window bugs: closing the player window while a clip
+  is playing (title-bar close button included) now stops playback — the demo
+  viewer hooks `onWindowClosed` to stop the player and release its retained
+  window reference, so the decode pipeline no longer keeps playing audio after
+  the window is gone. Replaying a finished clip shows video again:
+  `UltraCanvasVideoPlayer::Play()` rewinds to 0 after end-of-stream (an
+  EOS-parked pipeline produces no data), and `UltraCanvasVideoPlayerElement`
+  no longer stops its frame timer on EOS (Play re-arms it), so frame uploads
+  resume instead of leaving a frozen surface with audio only.
+
 #### 2026-07-10 *0.3.4*
 - Implemented GIF (and animated WebP) animation support. Animated images now
   play in `UltraCanvasImageElement` (auto-play on load, with
