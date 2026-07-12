@@ -1,4 +1,9 @@
 #### 2026-07-10 *0.3.4*
+- Rating: fixed half-step (0.5) values never displaying. `CreateHalfRating`
+  applied the initial value before enabling half steps, so it was snapped to
+  a whole number (e.g. 3.5 became 4) and the half-filled symbol never
+  appeared. Half steps are now enabled before the value is set, so ratings
+  like 3.5 render as three full symbols plus a left-half-filled one.
 - Implemented GIF (and animated WebP) animation support. Animated images now
   play in `UltraCanvasImageElement` (auto-play on load, with
   Play/Pause/Stop/SetAnimationEnabled control) and in the media viewer, where
