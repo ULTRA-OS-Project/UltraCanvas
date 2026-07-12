@@ -212,7 +212,6 @@ namespace UltraCanvas {
             handleV.trackColor = Color(238, 240, 243, 255);
             handleV.trackCornerRadius = 7;
             handleV.thumbImagePath = vHandle;     // <-- SVG handle
-            handleV.thumbImageFit = ImageFitMode::Fill;
             AddVScrollbar(root, "sbHandleV", col0 + colGap * 0, y, handleV,
                           "SVG handle", status);
 
@@ -230,7 +229,6 @@ namespace UltraCanvas {
             handleH.trackColor = Color(238, 240, 243, 255);
             handleH.trackCornerRadius = 7;
             handleH.thumbImagePath = hHandle;
-            handleH.thumbImageFit = ImageFitMode::Fill;
             AddHScrollbar(root, "sbHandleH", col0 + colGap * 2, y + 20.0f, 240.0f,
                           handleH, "Horizontal SVG handle", status);
         }

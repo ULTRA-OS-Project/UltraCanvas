@@ -292,7 +292,9 @@ namespace UltraCanvas {
         WheelDown = 16,
         WheelLeft = 32,
         WheelRight = 64,
-        Unknown = 99
+        Unknown = 99,
+        Back = 128,      // side/thumb "back" button (X11 button 8, Windows XBUTTON1)
+        Forward = 256    // side/thumb "forward" button (X11 button 9, Windows XBUTTON2)
     };
 
     struct UCEvent {

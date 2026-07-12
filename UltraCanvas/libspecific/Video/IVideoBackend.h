@@ -15,6 +15,19 @@
 
 namespace UltraCanvas {
 
+// ===== DECODE OPTIONS =====
+// Per-session opening options for OpenDecoder().
+struct VideoDecodeOptions {
+    // Don't wire the audio track at all: no audio decode, no audio device
+    // opened or occupied. For always-silent playback (hover previews, ambient
+    // background video) this is stronger than SetMute(true) — a muted session
+    // still opens the platform audio sink, which fails or stalls preroll on
+    // machines without a running audio server and needlessly holds the device.
+    // Backends that can't drop the audio branch may treat this as a hard mute.
+    // Video timing then follows the backend's non-audio clock.
+    bool disableAudio = false;
+};
+
 // ===== DECODE SESSION =====
 // Wraps one open media source. Demuxes + decodes video to RGBA frames and (when
 // present) plays the audio track through the platform's own audio sink so A/V
@@ -101,7 +114,8 @@ public:
     virtual void RequestCameraPermission(std::function<void(bool)> cb) = 0;
 
     // Returns null when the source can't be opened / format isn't supported.
-    virtual std::unique_ptr<IVideoDecodeSession> OpenDecoder(const std::string& source) = 0;
+    virtual std::unique_ptr<IVideoDecodeSession> OpenDecoder(
+            const std::string& source, const VideoDecodeOptions& opts = {}) = 0;
     virtual std::unique_ptr<IVideoCaptureSession> OpenCapture(const VideoCaptureParams& params) = 0;
 
     // Synchronously decode a single representative frame (poster / thumbnail)

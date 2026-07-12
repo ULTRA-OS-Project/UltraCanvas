@@ -2,8 +2,8 @@
 // Demonstration of UltraCanvasStepper: horizontal numbered wizard driven by
 // Next/Prev buttons, a version with descriptions and an error step, a vertical
 // stepper, a compact dot style, and a non-linear (click-any-step) stepper.
-// Version: 1.0.0
-// Last Modified: 2026-07-07
+// Version: 1.0.1
+// Last Modified: 2026-07-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -15,7 +15,7 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateStepperExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("StepperExamples", 0, 0, 1000, 780);
+        auto container = std::make_shared<UltraCanvasContainer>("StepperExamples", 0, 0, 1000, 800);
         container->SetPadding(0, 0, 10, 0);
 
         auto title = CreateLabel("StepperTitle", 20, 10, 0, 30);
@@ -125,7 +125,7 @@ namespace UltraCanvas {
         };
 
         // ===== INSTRUCTIONS =====
-        auto instructions = CreateLabel("StepperInstructions", 20, 700, 940, 70);
+        auto instructions = CreateLabel("StepperInstructions", 20, 700, 940, 84);
         instructions->SetText(
                 "API:\n"
                 "\xE2\x80\xA2 AddStep(title, desc) / SetSteps({...}); SetCurrentStep / NextStep / PrevStep\n"

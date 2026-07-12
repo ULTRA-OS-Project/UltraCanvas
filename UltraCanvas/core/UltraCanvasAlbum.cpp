@@ -1,8 +1,12 @@
 // core/UltraCanvasAlbum.cpp
 // Photo / video / music album widget with selectable layout designs, per-item
 // crop / zoom / stretch fitting, action icons and visitor / edit / admin modes.
-// Version: 1.4.0
-// Last Modified: 2026-06-25
+// Version: 1.5.0
+// Last Modified: 2026-07-11
+// V1.5.0: Hover video preview (AlbumConfig::videoHoverPreview) — resting the
+//   cursor on a Video tile plays a short muted preview of the clip in place of
+//   its static thumbnail, with configurable dwell delay, duration, loop, start
+//   offset and mute (backed by the new UltraCanvasVideoHoverPreview engine).
 // V1.4.0: The self-rendered scrollbar reacts to the mouse — drag the thumb or
 //   click the track to scroll (DrawScrollbar and the event handler now share
 //   ScrollbarGeometry so a click hits exactly what is drawn).
@@ -32,6 +36,7 @@
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasTooltipManager.h"
+#include "UltraCanvasVideoHoverPreview.h"
 #include <algorithm>
 #include <cmath>
 
@@ -65,6 +70,7 @@ namespace UltraCanvas {
     void UltraCanvasAlbum::SetConfig(const AlbumConfig& cfg) {
         config = cfg;
         SetBackgroundColor(config.backgroundColor);
+        if (!config.videoHoverPreview) StopHoverPreview();
         InvalidateAlbumLayout();
         RequestRedraw();
     }
@@ -127,6 +133,7 @@ namespace UltraCanvas {
     void UltraCanvasAlbum::SetItems(const std::vector<AlbumItem>& newItems) {
         items = newItems;
         ClearSelection();
+        StopHoverPreview();
         InvalidateAlbumLayout();
         RequestRedraw();
     }
@@ -135,6 +142,7 @@ namespace UltraCanvas {
         items.clear();
         selection.clear();
         hoveredItem = -1;
+        StopHoverPreview();
         scrollOffsetX = scrollOffsetY = 0;
         InvalidateAlbumLayout();
         RequestRedraw();
@@ -152,6 +160,7 @@ namespace UltraCanvas {
                         selection.end());
         for (auto& s : selection) if (s > index) --s;
         hoveredItem = -1;
+        StopHoverPreview();
         InvalidateAlbumLayout();
         if (onItemRemoved) onItemRemoved(index);
         RequestRedraw();
@@ -164,6 +173,7 @@ namespace UltraCanvas {
         items.erase(items.begin() + from);
         items.insert(items.begin() + to, moved);
         selection.clear();
+        StopHoverPreview();
         InvalidateAlbumLayout();
         if (onItemsReordered) onItemsReordered(from, to);
         RequestRedraw();
@@ -698,10 +708,17 @@ namespace UltraCanvas {
              config.imageDisplay == AlbumImageDisplay::Zoom)) {
             zoomExtra *= 1.06f;
         }
-        DrawImageInRect(ctx, item, tile.imageRect, zoomExtra);
+        // A live hover preview frame replaces the static thumbnail; until the
+        // first frame arrives (dwell delay / preroll) the thumbnail stays.
+        bool previewShown = false;
+        if (hoverPreview && hoverPreviewItem == static_cast<int>(tile.itemIndex)) {
+            previewShown = DrawHoverPreviewFrame(ctx, item, tile.imageRect, zoomExtra);
+        }
+        if (!previewShown) DrawImageInRect(ctx, item, tile.imageRect, zoomExtra);
 
-        // Hover scrim across the image.
-        if (config.hoverScrim && hovered) {
+        // Hover scrim across the image (skipped while a preview plays so the
+        // video is shown unobstructed).
+        if (config.hoverScrim && hovered && !previewShown) {
             ctx->SetFillPaint(Color(0, 0, 0, 36));
             ctx->FillRectangle(Rect2Dd(tile.imageRect));
         }
@@ -774,6 +791,46 @@ namespace UltraCanvas {
             }
         }
         ctx->PopState();
+    }
+
+    bool UltraCanvasAlbum::DrawHoverPreviewFrame(IRenderContext* ctx, const AlbumItem& item,
+                                                 const Rect2Di& rect, float zoomExtra) {
+        std::shared_ptr<UCPixmap> pm = hoverPreview->GetFramePixmap();
+        const int fw = hoverPreview->GetFrameWidth();
+        const int fh = hoverPreview->GetFrameHeight();
+        if (!pm || !pm->IsValid() || fw <= 0 || fh <= 0) return false;
+
+        ctx->PushState();
+        ctx->ClipRect(Rect2Dd(rect));
+
+        // Mirror DrawImageInRect's fitting so the frame lands exactly where the
+        // thumbnail was and nothing jumps when the preview starts or ends.
+        switch (config.imageDisplay) {
+            case AlbumImageDisplay::Stretch:
+                ctx->DrawPixmap(*pm, Rect2Dd(rect), ImageFitMode::Fill);
+                break;
+            case AlbumImageDisplay::Fit: {
+                ctx->SetFillPaint(config.itemBackgroundColor);
+                ctx->FillRectangle(Rect2Dd(rect));
+                ctx->DrawPixmap(*pm, Rect2Dd(rect), ImageFitMode::Contain);
+                break;
+            }
+            case AlbumImageDisplay::Crop:
+            case AlbumImageDisplay::Zoom:
+            default: {
+                const double rw = rect.width, rh = rect.height;
+                double s = std::max(rw / fw, rh / fh) * std::max(1.0f, zoomExtra);
+                double dstW = fw * s, dstH = fh * s;
+                double fx = std::max(0.0f, std::min(1.0f, item.focusPoint.x));
+                double fy = std::max(0.0f, std::min(1.0f, item.focusPoint.y));
+                double dstX = rect.x + (rw - dstW) * fx;
+                double dstY = rect.y + (rh - dstH) * fy;
+                ctx->DrawPixmap(*pm, Rect2Dd(dstX, dstY, dstW, dstH), ImageFitMode::Fill);
+                break;
+            }
+        }
+        ctx->PopState();
+        return true;
     }
 
     void UltraCanvasAlbum::DrawPlaceholder(IRenderContext* ctx, const AlbumItem& item,
@@ -1193,6 +1250,54 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    // ===== VIDEO HOVER PREVIEW =====
+    void UltraCanvasAlbum::UpdateHoverPreview() {
+        if (!config.videoHoverPreview) return;
+
+        int target = -1;
+        if (!dragging && hoveredItem >= 0 &&
+            hoveredItem < static_cast<int>(items.size())) {
+            const AlbumItem& it = items[hoveredItem];
+            if (it.mediaType == AlbumMediaType::Video && !it.mediaPath.empty()) {
+                target = hoveredItem;
+            }
+        }
+        // Same tile as before (armed, playing or already finished): leave it be,
+        // so the dwell delay isn't reset by in-tile motion and a finished
+        // preview doesn't restart until the cursor leaves and comes back.
+        if (target == hoverPreviewItem) return;
+
+        StopHoverPreview();
+        if (target < 0) return;
+
+        if (!hoverPreview) {
+            hoverPreview = std::make_unique<UltraCanvasVideoHoverPreview>();
+            hoverPreview->onFrame = [this]() {
+                if (IsVisible()) RequestRedraw();
+                else StopHoverPreview();
+            };
+            hoverPreview->onStopped = [this]() { RequestRedraw(); };
+        }
+        VideoHoverPreviewConfig pc;
+        pc.startDelayMs   = config.hoverPreviewDelayMs;
+        pc.durationSec    = config.hoverPreviewDurationSec;
+        pc.loop           = config.hoverPreviewLoop;
+        pc.startOffsetSec = config.hoverPreviewStartOffsetSec;
+        pc.muted          = config.hoverPreviewMuted;
+        pc.targetFps      = config.hoverPreviewFps;
+        hoverPreview->SetConfig(pc);
+
+        hoverPreviewItem = target;
+        hoverPreview->Begin(items[target].mediaPath);
+    }
+
+    void UltraCanvasAlbum::StopHoverPreview() {
+        if (hoverPreviewItem == -1) return;
+        hoverPreviewItem = -1;
+        if (hoverPreview) hoverPreview->End();
+        RequestRedraw();
+    }
+
     // ===== EVENTS =====
     bool UltraCanvasAlbum::OnEvent(const UCEvent& event) {
         if (IsDisabled() || !IsVisible()) return false;
@@ -1200,6 +1305,7 @@ namespace UltraCanvas {
         switch (event.type) {
             case UCEventType::MouseLeave: {
                 if (hoveredItem != -1) { hoveredItem = -1; RequestRedraw(); }
+                StopHoverPreview();
                 if (hoveredActionIndex != -2) {
                     hoveredActionIndex = -2;
                     UltraCanvasTooltipManager::HideTooltip();
@@ -1244,6 +1350,7 @@ namespace UltraCanvas {
                     hoveredItem = newHover;
                     RequestRedraw();
                 }
+                UpdateHoverPreview();
 
                 // Hand cursor while hovering a clickable subtitle link.
                 int linkHover = LinkAt(local);

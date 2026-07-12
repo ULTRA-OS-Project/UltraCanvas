@@ -340,6 +340,10 @@ namespace UltraCanvas {
         // per-function options).
         std::shared_ptr<UltraCanvasUIElement> CreatePixelFXExamples();
 #endif
+        // AudioFX module page: Overview / Details / Examples tabs, the last one an
+        // interactive audio-effect playground (sample track + effect tree +
+        // per-effect options, with waveform display and playback).
+        std::shared_ptr<UltraCanvasUIElement> CreateAudioFXExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateMarkdownDocScreen(const std::string& filename);
         // Composite module documentation screen: short intro (Markdown) on top, an
         // optional rendered SVG module diagram in the middle, and the full README

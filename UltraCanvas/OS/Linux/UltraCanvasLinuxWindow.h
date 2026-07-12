@@ -70,6 +70,13 @@ namespace UltraCanvas {
         virtual NativeWindowHandle GetNativeHandle() const override;
         virtual void GetScreenPosition(int& x, int& y) const override;
         void GetScreenSize(int& width, int& height) const override;
+        // Bounds of the XRandR monitor this window is on (physical px, root
+        // coords); primary monitor when the window isn't on any, whole X screen
+        // when XRandR is unavailable.
+        void GetScreenBounds(int& x, int& y, int& width, int& height) const override;
+        // Record the parent and set WM_TRANSIENT_FOR so the WM keeps this
+        // window above its parent and places it on the parent's monitor.
+        void SetTransientParent(UltraCanvasWindowBase* parent) override;
         UltraCanvasLinuxDragDrop& GetDragDropHandler() { return dragDropHandler; }
 //        virtual void ProcessEvents() override;
 //        virtual bool OnEvent(const UCEvent&) override;
@@ -100,6 +107,17 @@ namespace UltraCanvas {
         // Per-monitor physical DPI (mm-based) for the monitor the window is on;
         // returns 0 when XRandR has no usable data. Helper for QueryNativeDeviceScale.
         float QueryXRandRScaleForWindow(Display* display) const;
+
+        // Window center in root coordinates (physical px): live X geometry when
+        // the window exists, config geometry otherwise. Used to pick the
+        // XRandR monitor the window is on.
+        void GetWindowCenterInRootCoords(Display* display, int& cx, int& cy) const;
+
+        // True once a position has been chosen programmatically (dialog
+        // centering, explicit config x/y). Exported to the WM via the
+        // USPosition size hint so it honors the position instead of applying
+        // its own placement policy.
+        bool hasExplicitPosition = false;
 //        void SetWindowDecorations();
 
         // ===== STATE MANAGEMENT =====
