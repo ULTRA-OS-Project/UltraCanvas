@@ -1,3 +1,13 @@
+#### 2026-07-12 *0.3.7*
+- `UltraCanvasTabbedContainer`: the overflow dropdown is now disabled for
+  vertical tab layouts (`TabPosition::Left`/`Right`). It rendered a faulty
+  display there and was not usable for vertical tabs, so
+  `CheckIfOverflowDropdownNeeded()` always returns `false` when tabs are
+  vertical — the overflow button never displays or takes part in tab-bar
+  layout. If the feature is accidentally switched on for vertical tabs
+  (enabling the dropdown while vertical, or switching to a vertical position
+  while the dropdown is enabled), a warning is emitted: "Overflow dropdown not
+  supported for vertical tabs".
 #### 2026-07-11 *0.3.6*
 - Hover video preview for the album widget: resting the cursor on a Video tile
   plays a short muted inline preview of the clip in place of its static poster
