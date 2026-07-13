@@ -39,7 +39,10 @@ A value can be changed four ways:
 - ✅ Optional **wrap-around** at the ends
 - ✅ **Prefix / suffix** strings (e.g. `$`, ` s`, `°`)
 - ✅ **Custom formatter** callback for arbitrary display text (month names, etc.)
-- ✅ Inline **text editing** with commit (`Enter`) / cancel (`Esc`)
+- ✅ Inline **text editing** with commit (`Enter`) / cancel (`Esc`); focusing /
+  clicking the field selects the current value so typing replaces it
+- ✅ Optional **value dropdown** (`SetDropdownEnabled(true)`) — a combobox-style
+  popup of every available value, opened by clicking the field
 - ✅ Buttons render disabled at the range limits (unless wrapping)
 - ✅ Full state feedback: hover, pressed, focused, disabled
 - ✅ Event callbacks: value changed / changing, selection changed, editing finished
@@ -120,6 +123,12 @@ void SetTextAlignment(TextAlignment);
 void SetFormatter(std::function<std::string(double)>);
 void SetEditable(bool);
 
+// Value dropdown (optional combobox-style picker)
+void SetDropdownEnabled(bool);          // click the field to pick from a popup list
+bool IsDropdownEnabled() const;
+void OpenValueDropdown();
+void CloseValueDropdown();
+
 // Layout / style
 void SetLayout(SpinnerLayout);
 void SetButtonGlyph(SpinnerButtonGlyph);
@@ -153,4 +162,11 @@ std::function<void()> onEditingFinished;
   the value clamps and the corresponding button renders disabled.
 - Text editing is available for Integer and Decimal modes when `IsEditable()` is
   true (the default). Set `SetEditable(false)` for arrow-only controls such as a
-  month picker driven by a custom formatter.
+  month picker driven by a custom formatter. When a field is focused (or clicked)
+  its current value is "selected", so the first keystroke replaces it rather than
+  appending.
+- `SetDropdownEnabled(true)` turns the spinner into a combobox: a single click on
+  the field opens a popup listing every available value (the list items in List
+  mode, or the `min..max` grid stepped by `step` in numeric modes). Editable
+  numeric fields can still be typed into via a **double-click**. Numeric grids
+  larger than 512 entries are not listed (the arrows / typing remain available).

@@ -2,8 +2,8 @@
 // Demonstration of the UltraCanvasSpinner control: integer / decimal / list
 // value modes, vertical up-down and horizontal stepper layouts, wrapping,
 // prefixes / suffixes and custom formatting.
-// Version: 1.0.0
-// Last Modified: 2026-07-07
+// Version: 1.1.0
+// Last Modified: 2026-07-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -33,6 +33,21 @@ namespace UltraCanvas {
 
         int y = 100;
         const int labelX = 360;
+        // All spinners share one width so the column lines up; each value
+        // label matches the spinner's height and is vertically centred.
+        const int spinW = 160;
+        const int spinH = 28;
+
+        // Helper: build a read-out label that is vertically centred against the
+        // spinner on its row (VerticalAlignment::Middle) rather than top-aligned.
+        auto makeValueLabel = [&](const std::string& id, const std::string& text) {
+            auto lbl = CreateLabel(id, labelX, y, 260, spinH);
+            lbl->SetText(text);
+            lbl->SetBackgroundColor(Color(240, 240, 240));
+            lbl->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
+            lbl->SetPadding(3);
+            return lbl;
+        };
 
         // ===== 1. INTEGER SPINNER (vertical up/down buttons) =====
         auto intLabel = CreateLabel("IntSpinLabel", 20, y - 22, 320, 20);
@@ -40,13 +55,10 @@ namespace UltraCanvas {
         intLabel->SetFontWeight(FontWeight::Bold);
         container->AddChild(intLabel);
 
-        auto intSpin = CreateIntSpinner("IntSpinner", 20, y, 120, 28, 0, 100, 20, 5);
+        auto intSpin = CreateIntSpinner("IntSpinner", 20, y, spinW, spinH, 0, 100, 20, 5);
         container->AddChild(intSpin);
 
-        auto intValue = CreateLabel("IntSpinValue", labelX, y + 4, 260, 20);
-        intValue->SetText("Value: 20");
-        intValue->SetBackgroundColor(Color(240, 240, 240));
-        intValue->SetPadding(3);
+        auto intValue = makeValueLabel("IntSpinValue", "Value: 20");
         container->AddChild(intValue);
         intSpin->onValueChanged = [intValue](double v) {
             intValue->SetText("Value: " + std::to_string(static_cast<int>(v)));
@@ -59,14 +71,11 @@ namespace UltraCanvas {
         decLabel->SetFontWeight(FontWeight::Bold);
         container->AddChild(decLabel);
 
-        auto decSpin = CreateDecimalSpinner("DecSpinner", 20, y, 140, 28, 0.0, 5.0, 1.5, 0.25, 2);
+        auto decSpin = CreateDecimalSpinner("DecSpinner", 20, y, spinW, spinH, 0.0, 5.0, 1.5, 0.25, 2);
         decSpin->SetSuffix(" s");
         container->AddChild(decSpin);
 
-        auto decValue = CreateLabel("DecSpinValue", labelX, y + 4, 260, 20);
-        decValue->SetText("Duration: 1.50 s");
-        decValue->SetBackgroundColor(Color(240, 240, 240));
-        decValue->SetPadding(3);
+        auto decValue = makeValueLabel("DecSpinValue", "Duration: 1.50 s");
         container->AddChild(decValue);
         decSpin->onValueChanged = [decValue](double v) {
             std::ostringstream oss;
@@ -81,16 +90,15 @@ namespace UltraCanvas {
         listLabel->SetFontWeight(FontWeight::Bold);
         container->AddChild(listLabel);
 
-        auto listSpin = CreateListSpinner("ListSpinner", 20, y, 160, 28,
+        auto listSpin = CreateListSpinner("ListSpinner", 20, y, spinW, spinH,
                                           {"Small", "Medium", "Large", "X-Large"});
         listSpin->SetWrap(true);
         listSpin->SetTextAlignment(TextAlignment::Center);
+        // Combobox-style: clicking the field opens a dropdown of every size.
+        listSpin->SetDropdownEnabled(true);
         container->AddChild(listSpin);
 
-        auto listValue = CreateLabel("ListSpinValue", labelX, y + 4, 260, 20);
-        listValue->SetText("Size: Small");
-        listValue->SetBackgroundColor(Color(240, 240, 240));
-        listValue->SetPadding(3);
+        auto listValue = makeValueLabel("ListSpinValue", "Size: Small");
         container->AddChild(listValue);
         listSpin->onSelectionChanged = [listValue](int, const std::string& text) {
             listValue->SetText("Size: " + text);
@@ -103,13 +111,10 @@ namespace UltraCanvas {
         stepLabel->SetFontWeight(FontWeight::Bold);
         container->AddChild(stepLabel);
 
-        auto stepper = CreateStepper("QtyStepper", 20, y, 140, 28, 1, 99, 1, 1);
+        auto stepper = CreateStepper("QtyStepper", 20, y, spinW, spinH, 1, 99, 1, 1);
         container->AddChild(stepper);
 
-        auto stepValue = CreateLabel("StepSpinValue", labelX, y + 4, 260, 20);
-        stepValue->SetText("Quantity: 1");
-        stepValue->SetBackgroundColor(Color(240, 240, 240));
-        stepValue->SetPadding(3);
+        auto stepValue = makeValueLabel("StepSpinValue", "Quantity: 1");
         container->AddChild(stepValue);
         stepper->onValueChanged = [stepValue](double v) {
             stepValue->SetText("Quantity: " + std::to_string(static_cast<int>(v)));
@@ -122,16 +127,13 @@ namespace UltraCanvas {
         angleLabel->SetFontWeight(FontWeight::Bold);
         container->AddChild(angleLabel);
 
-        auto angleSpin = CreateIntSpinner("AngleSpinner", 20, y, 130, 28, 0, 359, 90, 15);
+        auto angleSpin = CreateIntSpinner("AngleSpinner", 20, y, spinW, spinH, 0, 359, 90, 15);
         angleSpin->SetWrap(true);
         angleSpin->SetSuffix("\xC2\xB0");   // degree sign (UTF-8)
         angleSpin->SetButtonGlyph(SpinnerButtonGlyph::Chevron);
         container->AddChild(angleSpin);
 
-        auto angleValue = CreateLabel("AngleSpinValue", labelX, y + 4, 260, 20);
-        angleValue->SetText("Angle: 90\xC2\xB0");
-        angleValue->SetBackgroundColor(Color(240, 240, 240));
-        angleValue->SetPadding(3);
+        auto angleValue = makeValueLabel("AngleSpinValue", "Angle: 90\xC2\xB0");
         container->AddChild(angleValue);
         angleSpin->onValueChanged = [angleValue](double v) {
             angleValue->SetText("Angle: " + std::to_string(static_cast<int>(v)) + "\xC2\xB0");
@@ -144,10 +146,12 @@ namespace UltraCanvas {
         monthLabel->SetFontWeight(FontWeight::Bold);
         container->AddChild(monthLabel);
 
-        auto monthSpin = CreateIntSpinner("MonthSpinner", 20, y, 150, 28, 1, 12, 7, 1);
+        auto monthSpin = CreateIntSpinner("MonthSpinner", 20, y, spinW, spinH, 1, 12, 7, 1);
         monthSpin->SetWrap(true);
         monthSpin->SetEditable(false);
         monthSpin->SetTextAlignment(TextAlignment::Center);
+        // Non-editable, so offer the dropdown as the way to pick a month.
+        monthSpin->SetDropdownEnabled(true);
         monthSpin->SetFormatter([](double v) {
             static const char* names[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
                                           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
@@ -157,10 +161,7 @@ namespace UltraCanvas {
         });
         container->AddChild(monthSpin);
 
-        auto monthValue = CreateLabel("MonthSpinValue", labelX, y + 4, 260, 20);
-        monthValue->SetText("Month #7");
-        monthValue->SetBackgroundColor(Color(240, 240, 240));
-        monthValue->SetPadding(3);
+        auto monthValue = makeValueLabel("MonthSpinValue", "Month #7");
         container->AddChild(monthValue);
         monthSpin->onValueChanged = [monthValue](double v) {
             monthValue->SetText("Month #" + std::to_string(static_cast<int>(v)));
@@ -174,7 +175,10 @@ namespace UltraCanvas {
                 "\xE2\x80\xA2 Click the arrow buttons, or press Up/Down (Left/Right) to step\n"
                 "\xE2\x80\xA2 PageUp / PageDown step by the page amount; Home / End jump to min / max\n"
                 "\xE2\x80\xA2 Scroll the mouse wheel over a spinner to change its value\n"
-                "\xE2\x80\xA2 Type directly into an editable field, then press Enter to commit (Esc to cancel)");
+                "\xE2\x80\xA2 Type directly into an editable field (the current value is selected, so "
+                "typing replaces it), then press Enter to commit (Esc to cancel)\n"
+                "\xE2\x80\xA2 The Size and Month spinners have a value dropdown \xE2\x80\x93 click the "
+                "field to pick from the full list");
         instructions->SetFontSize(11);
         instructions->SetBackgroundColor(Color(255, 255, 240));
         instructions->SetPadding(6);
