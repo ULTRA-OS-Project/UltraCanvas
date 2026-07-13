@@ -904,7 +904,7 @@ namespace UltraCanvas {
         return xWindow;
     }
 
-    void UltraCanvasLinuxWindow::GetScreenPosition(int& outX, int& outY) const {
+    void UltraCanvasLinuxWindow::GetWindowPosition(int& outX, int& outY) const {
         if (!_created) {
             outX = config_.x;
             outY = config_.y;

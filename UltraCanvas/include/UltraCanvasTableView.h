@@ -604,10 +604,6 @@ public:
             case UCEventType::KeyDown:
                 HandleKeyDown(event);
                 break;
-                
-            case UCEventType::KeyChar:
-                HandleKeyChar(event);
-                break;
         }
         return false;
     }
@@ -940,7 +936,8 @@ private:
                     if (!editingText.empty()) {
                         editingText.pop_back();
                     }
-                    break;
+                default:
+                    return HandleKeyChar(event);
             }
         } else {
             // Navigation

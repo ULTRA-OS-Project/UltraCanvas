@@ -1,7 +1,7 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
-// Version: 1.5.0 - focusedWindow/hovered/captured/dragged and UCEvent targets are now weak_ptr
-// Last Modified: 2026-07-02
+// Version: 1.5.1 - ProcessTimers() now runs callbacks outside timersMutex_ (fixes data race + reentrant dangling access)
+// Last Modified: 2026-07-12
 // Author: UltraCanvas Framework
 
 #include <algorithm>
@@ -46,6 +46,7 @@ namespace UltraCanvas {
         // Latch the most-recently-constructed app as the "current" one;
         // UltraCanvas assumes one app per process.
         g_currentApplication.store(this, std::memory_order_release);
+        memset(keyStates, 0, sizeof(keyStates));
     }
 
     UltraCanvasApplicationBase::~UltraCanvasApplicationBase() {
@@ -448,7 +449,6 @@ namespace UltraCanvas {
             case UCEventType::KeyDown:
             case UCEventType::KeyUp:
             case UCEventType::TextInput:
-            case UCEventType::Shortcut:
                 if (targetWindow != modalWindow) return true;
                 break;
             case UCEventType::WindowFocus:
@@ -629,12 +629,15 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasApplicationBase::DispatchEvent(const UCEvent& event) {
-        // Update modifier states
-        if (event.IsKeyboardEvent()) {
+        // Update modifier states and key pressed status
+        if (event.type == UCEventType::KeyDown || event.type == UCEventType::KeyUp) {
             shiftHeld = event.shift;
             ctrlHeld = event.ctrl;
             altHeld = event.alt;
             metaHeld = event.meta;
+            if (event.virtualKey >= 0 && event.virtualKey < 256) {
+                keyStates[event.virtualKey] = (event.type == UCEventType::KeyDown);
+            }
         }
 
         // Call global handlers first
@@ -674,8 +677,7 @@ namespace UltraCanvas {
         else {
             // Only use focused window for keyboard events when no target is found
             if (event.type == UCEventType::KeyDown ||
-                event.type == UCEventType::KeyUp ||
-                event.type == UCEventType::Shortcut) {
+                event.type == UCEventType::KeyUp) {
                 targetWindow = GetFocusedWindow();
             }
         }
@@ -700,13 +702,6 @@ namespace UltraCanvas {
                     if (DispatchEventToElement(capturedElement, event)) {
                         return;
                     }
-                }
-                break;
-
-            case UCEventType::KeyDown:
-            case UCEventType::KeyUp:
-                if (event.nativeKeyCode >= 0 && event.nativeKeyCode < 256) {
-                    keyStates[event.nativeKeyCode] = (event.type == UCEventType::KeyDown);
                 }
                 break;
             case UCEventType::WindowFocus:
@@ -1012,60 +1007,61 @@ namespace UltraCanvas {
     void UltraCanvasApplicationBase::ProcessTimers() {
         auto now = std::chrono::steady_clock::now();
 
-        // Snapshot the current timer count so timers added during callbacks are not processed this round
-        size_t count;
+        // Collect the work to run for timers that are due. We must NOT invoke
+        // callbacks (or touch a timers_ element) while iterating: callbacks are
+        // documented to call StartTimer()/StopTimer() from any thread, and
+        // StartTimer() does timers_.push_back() which can reallocate the vector.
+        // So we snapshot each due timer's id + callback under the lock, advance
+        // or deactivate the timer in place (still under the lock), and only run
+        // the callbacks after the lock is released. A null callback means push a
+        // Timer UCEvent instead. Timers added during callbacks appear next round.
+        std::vector<std::pair<TimerId, std::function<void(TimerId)>>> due;
         {
             std::lock_guard<std::mutex> lock(timersMutex_);
-            count = timers_.size();
-        }
+            for (auto& timer : timers_) {
+                if (!timer.active) continue;
+                if (timer.nextFire > now) continue;
 
-        for (size_t i = 0; i < count; ++i) {
-            // Re-check bounds in case timers were removed
-            if (i >= timers_.size()) break;
+                due.emplace_back(timer.id, timer.callback);
 
-            if (!timers_[i].active) continue;
-            if (timers_[i].nextFire > now) continue;
-
-            // Fire the timer. The callback is copied out first: a callback that
-            // calls StartTimer() grows timers_ and may reallocate it, which
-            // would invalidate any reference held across the call. Index i
-            // itself stays valid — timers are only erased below, never during
-            // the callbacks (StopTimer just marks inactive).
-            if (timers_[i].callback) {
-                auto callback = timers_[i].callback;
-                callback(timers_[i].id);
-            } else {
-                UCEvent timerEvent;
-                timerEvent.type = UCEventType::Timer;
-                timerEvent.userDataInt = static_cast<int>(timers_[i].id);
-                // Push directly to queue without calling WakeUpEventLoop (we're already on the main thread)
-                {
-                    std::lock_guard<std::mutex> lock(eventQueueMutex);
-                    eventQueue.push_back(timerEvent);
+                // Advance (periodic) or deactivate (one-shot). If a collected
+                // callback later calls StopTimer() on its own periodic timer, it
+                // marks active=false and the timer is cleaned up next round, so a
+                // self-stopped timer never fires again.
+                if (timer.periodic) {
+                    timer.nextFire += timer.interval;
+                    // If we fell behind, skip to next future fire time
+                    if (timer.nextFire <= now) {
+                        auto elapsed = now - timer.nextFire;
+                        auto periods = elapsed / timer.interval + 1;
+                        timer.nextFire += timer.interval * periods;
+                    }
+                } else {
+                    timer.active = false;
                 }
             }
 
-            // Advance or deactivate
-            if (timers_[i].periodic && timers_[i].active) {
-                timers_[i].nextFire += timers_[i].interval;
-                // If we fell behind, skip to next future fire time
-                if (timers_[i].nextFire <= now) {
-                    auto elapsed = now - timers_[i].nextFire;
-                    auto periods = elapsed / timers_[i].interval + 1;
-                    timers_[i].nextFire += timers_[i].interval * periods;
-                }
-            } else {
-                timers_[i].active = false;
-            }
-        }
-
-        // Clean up inactive timers
-        {
-            std::lock_guard<std::mutex> lock(timersMutex_);
+            // Clean up inactive timers (safe: everything needed is already in `due`)
             timers_.erase(
                 std::remove_if(timers_.begin(), timers_.end(),
                                [](const UltraCanvasTimer& t) { return !t.active; }),
                 timers_.end());
+        }
+
+        // Run callbacks / push events without holding timersMutex_, so a callback
+        // is free to call StartTimer()/StopTimer() without deadlocking, and no
+        // timers_ element is accessed across a callback.
+        for (auto& [id, callback] : due) {
+            if (callback) {
+                callback(id);
+            } else {
+                UCEvent timerEvent;
+                timerEvent.type = UCEventType::Timer;
+                timerEvent.userDataInt = static_cast<int>(id);
+                // Push directly to queue without calling WakeUpEventLoop (we're already on the main thread)
+                std::lock_guard<std::mutex> lock(eventQueueMutex);
+                eventQueue.push_back(timerEvent);
+            }
         }
     }
 

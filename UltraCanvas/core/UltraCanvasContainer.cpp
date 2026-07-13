@@ -90,14 +90,14 @@ namespace UltraCanvas {
         ctx->PopState();
     }
 
-    void UltraCanvasContainer::RenderScrollbars(IRenderContext *ctx, const Rect2Di& dirtyRect) {
+    void UltraCanvasContainer::RenderScrollbars(IRenderContext *ctx, const Rect2Df& dirtyRect) {
         int localContentX = GetBorderLeftWidth() + GetPaddingLeft();
         int localContentY = GetBorderTopWidth()  + GetPaddingTop();
 
         auto renderScrollbar = [&](UltraCanvasScrollbar* sb) {
             auto sbBounds = sb->GetBounds();
-            Point2Di compoundOffset(sbBounds.x + localContentX, sbBounds.y + localContentY);
-            Rect2Di sbDirty(dirtyRect.x - compoundOffset.x,
+            Point2Df compoundOffset(sbBounds.x + localContentX, sbBounds.y + localContentY);
+            Rect2Df sbDirty(dirtyRect.x - compoundOffset.x,
                             dirtyRect.y - compoundOffset.y,
                             dirtyRect.width, dirtyRect.height);
             ctx->PushState();

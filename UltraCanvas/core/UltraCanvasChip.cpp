@@ -398,7 +398,6 @@ namespace UltraCanvas {
                 if (hoveredChip != -1) { hoveredChip = -1; RequestRedraw(); }
                 return true;
             case UCEventType::KeyDown:    return HandleKeyDown(event);
-            case UCEventType::KeyChar:    return HandleCharacterInput(event);
             default:
                 break;
         }

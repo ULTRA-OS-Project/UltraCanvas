@@ -814,7 +814,7 @@ namespace UltraCanvas {
         return reinterpret_cast<NativeWindowHandle>(hwnd);
     }
 
-    void UltraCanvasWindowsWindow::GetScreenPosition(int& x, int& y) const {
+    void UltraCanvasWindowsWindow::GetWindowPosition(int& x, int& y) const {
         if (hwnd) {
             RECT r;
             GetWindowRect(hwnd, &r);

@@ -87,7 +87,8 @@ namespace UltraCanvas {
         void SetFullscreen(bool fullscreen) override;
         void InvalidateWindowNative() override;
         NativeWindowHandle GetNativeHandle() const override;
-        void GetScreenPosition(int& x, int& y) const override;
+        void GetWindowPosition(int& x, int& y) const override;
+
         void GetScreenSize(int& width, int& height) const override;
         void GetScreenBounds(int& x, int& y, int& width, int& height) const override;
 

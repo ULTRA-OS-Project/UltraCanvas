@@ -46,6 +46,7 @@
   sends proper `WindowBlur`/`WindowFocus` events to the windows involved
   (previously the raw MouseDown event was re-dispatched to both). See
   `Docs/UltraCanvas/UltraCanvasJumpToLastWindow.md`.
+
 #### 2026-07-11 *0.3.5*
 - `UltraCanvasListView`: new cell-level callbacks `onCellClicked` and
   `onCellHovered` (row, column, cell-local position) plus the `GetColumnAt()`

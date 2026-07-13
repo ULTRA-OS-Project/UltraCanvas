@@ -174,7 +174,7 @@ namespace UltraCanvas {
             cfg.width  = std::max(640, (int)host->GetWidth());
             cfg.height = std::max(480, (int)host->GetHeight());
             int hx = 0, hy = 0;
-            host->GetScreenPosition(hx, hy);
+            host->GetWindowPosition(hx, hy);
             cfg.x = hx;
             cfg.y = hy;
             cfg.parentWindow = host;
