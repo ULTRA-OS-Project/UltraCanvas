@@ -1,12 +1,14 @@
 # UltraCanvasVennDiagramElement Documentation
 
-**Version:** 1.1.0
-**Last Modified:** 2025-04-02
+**Version:** 2.0.0
+**Last Modified:** 2026-07-13
 **Author:** UltraCanvas Framework
 
 ## Overview
 
-`UltraCanvasVennDiagramElement` renders interactive Venn diagrams with two to five overlapping circles. Each circle owns a set of items, and items can additionally be assigned to specific intersections of circles. The element handles automatic layout for the common 2/3/4/5-circle arrangements, supports multiple visual styles (classic outlines, modern gradients, minimal, filled), and exposes hover/click callbacks for both individual circles and computed regions.
+`UltraCanvasVennDiagramElement` renders interactive Venn / Euler diagrams with two to five sets. Each set owns a collection of items, and items can additionally be assigned to specific intersections of sets. The element handles automatic layout for the common 2/3/4/5-set arrangements plus a **nested containment layout** (the LaTeX set-hierarchy style), draws sets either as **circles or rounded rectangles**, supports multiple visual styles (classic outlines, modern, minimal, filled), and exposes hover/click callbacks for both individual sets and computed regions.
+
+Set labels are centred on their shape and automatically placed above shapes in the upper half of the diagram and below shapes in the lower half, so labels never pile up in the busy overlap region at the centre.
 
 **Namespace:** `UltraCanvas`
 **Header:** `include/Plugins/Diagrams/UltraCanvasVennDiagram.h`
@@ -23,12 +25,14 @@ UltraCanvasUIElement
 
 ## Features
 
-- **Preset layouts:** `TwoCircles`, `ThreeCircles`, `FourCircles`, `FiveCircles`, `Custom`.
+- **Preset layouts:** `TwoCircles`, `ThreeCircles`, `FourCircles`, `FiveCircles`, `Nested`, `Custom`.
+- **Set shapes:** `Circle` (classic overlapping circles) or `RoundedRectangle` (LaTeX / set-theory boxes), selectable at runtime with `SetShape`.
+- **Nested containment layout:** `VennLayout::Nested` draws each set fully inside the previous one — ideal for subset hierarchies such as *Group ⊃ Abelian Group ⊃ Ring ⊃ Field*. Reads best with the `RoundedRectangle` shape.
 - **Styles:** `Classic`, `Modern`, `Minimal`, `Filled`, `Outlined`.
-- **Item membership:** items per circle plus items per intersection (any subset of circle indices).
-- **Region computation:** the element automatically derives the visible regions from the circles' geometry.
-- **Interaction:** zoom, pan, drag-to-move circles, hover and click callbacks.
-- **Configurable visuals:** show/hide circle labels, item counts, region labels, font size, background color, and a custom color palette.
+- **Item membership:** items per set plus items per intersection (any subset of set indices).
+- **Region computation:** the element automatically derives the visible regions from the sets' geometry.
+- **Interaction:** zoom, pan, drag-to-move sets, hover and click callbacks (hit-testing follows the active shape).
+- **Configurable visuals:** show/hide set labels, item counts, region labels, font size, corner radius (box mode), background color, and a custom color palette.
 
 ## Header Include
 
@@ -86,6 +90,10 @@ void ApplyLayout();
 void SetStyle(VennStyle newStyle);
 VennStyle GetStyle() const;
 
+void SetShape(VennShape newShape);   // Circle or RoundedRectangle
+VennShape GetShape() const;
+void SetCornerRadius(double radius); // Corner radius used in RoundedRectangle mode
+
 void SetShowLabels(bool show);
 void SetShowItemCounts(bool show);
 void SetShowRegionLabels(bool show);
@@ -117,8 +125,10 @@ inline std::shared_ptr<UltraCanvasVennDiagramElement> CreateVennDiagram(
 ```cpp
 struct VennCircle {
     std::string label;
-    Point2Df center;
+    Point2Dd center;
     float radius;
+    float width  = 0.0f;   // Rectangle extents (RoundedRectangle mode);
+    float height = 0.0f;   // 0 → derived from radius
     Color fillColor;
     Color borderColor;
     float borderWidth = 2.0f;
@@ -128,9 +138,13 @@ struct VennCircle {
     VennCircle(const std::string& circleLabel, float x, float y, float r,
                const Color& color);
 
-    bool Contains(const Point2Df& point) const;
-    void AddItem(const std::string& item);
-    void RemoveItem(const std::string& item);
+    bool     Contains(const Point2Dd& point) const;      // circle hit-test
+    bool     ContainsRect(const Point2Dd& point) const;  // rectangle hit-test
+    Rect2Dd  GetRect() const;                            // centre-based box
+    float    RectWidth() const;
+    float    RectHeight() const;
+    void     AddItem(const std::string& item);
+    void     RemoveItem(const std::string& item);
 };
 ```
 
@@ -152,13 +166,22 @@ struct VennRegion {
 
 ```cpp
 enum class VennLayout {
-    TwoCircles, ThreeCircles, FourCircles, FiveCircles, Custom
+    TwoCircles, ThreeCircles, FourCircles, FiveCircles, Nested, Custom
 };
 
 enum class VennStyle {
     Classic, Modern, Minimal, Filled, Outlined
 };
+
+enum class VennShape {
+    Circle,             // Classic overlapping circles
+    RoundedRectangle    // Rectangular (LaTeX / set-theory) style boxes
+};
 ```
+
+`VennCircle` additionally carries optional `width` / `height` fields used when the
+diagram is drawn with `RoundedRectangle`; when left at `0` they are derived from
+`radius`, so circle-only setups need no extra bookkeeping.
 
 ## Usage Examples
 
@@ -257,6 +280,48 @@ fourCirclesVenn->SetLayout(VennLayout::FourCircles);
 fourCirclesVenn->SetStyle(VennStyle::Classic);
 fourCirclesVenn->SetShowLabels(true);
 fourCirclesVenn->SetShowItemCounts(true);
+```
+
+### Set Hierarchy (Rectangular / Nested, LaTeX style)
+
+The `Nested` layout combined with the `RoundedRectangle` shape reproduces the
+classic set-theory containment diagram, where each set is drawn fully inside its
+superset and labelled at the top-left of its box:
+
+```cpp
+auto hierarchyVenn = std::make_shared<UltraCanvasVennDiagramElement>(
+        "hierarchyVenn", 60, 90, 540, 420);
+
+hierarchyVenn->ClearCircles();
+hierarchyVenn->AddCircle("Group",         Color(210, 244, 180, 200));
+hierarchyVenn->AddCircle("Abelian Group", Color(248, 200, 210, 210));
+hierarchyVenn->AddCircle("Ring",          Color(190, 200, 255, 210));
+hierarchyVenn->AddCircle("Field",         Color(255, 205, 205, 220));
+
+hierarchyVenn->AddItemToCircle(0, "GL(n)");
+hierarchyVenn->AddItemToCircle(0, "O(n)");
+hierarchyVenn->AddItemToCircle(1, "(Z, +)");
+hierarchyVenn->AddItemToCircle(2, "(Z, +, *)");
+hierarchyVenn->AddItemToCircle(3, "(Q, +, *)");
+hierarchyVenn->AddItemToCircle(3, "(R, +, *)");
+hierarchyVenn->AddItemToCircle(3, "(C, +, *)");
+
+hierarchyVenn->SetShape(VennShape::RoundedRectangle);
+hierarchyVenn->SetLayout(VennLayout::Nested);
+hierarchyVenn->SetStyle(VennStyle::Filled);
+hierarchyVenn->SetShowLabels(true);
+hierarchyVenn->SetShowItemCounts(true);
+```
+
+### Toggling Shape at Runtime
+
+```cpp
+shapeSelector->onSelectionChanged =
+    [allVenns](int, const DropdownItem& item) {
+        VennShape shape = (item.value == "rect") ? VennShape::RoundedRectangle
+                                                 : VennShape::Circle;
+        for (auto& v : allVenns) v->SetShape(shape);
+    };
 ```
 
 ### Switching Style at Runtime
