@@ -2,8 +2,8 @@
 // Container with scrollbars and child management. Child storage lives on
 // CSSLayout::Element (via UltraCanvasUIElement); we iterate it through
 // Children() and static_pointer_cast each element to UltraCanvasUIElement.
-// Version: 4.1.2
-// Last Modified: 2026-06-09
+// Version: 4.1.3
+// Last Modified: 2026-07-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
@@ -566,6 +566,10 @@ namespace UltraCanvas {
         // but they still need the parent link so InvalidateRect /
         // GetPositionInWindow can walk up to compute window-relative coords.
         verticalScrollbar->SetParentNonOwning(this);
+        // We render/hit-test them as fixed chrome in our content box (see
+        // RenderScrollbars/HandleScrollbarEvents); tell them so their
+        // self-invalidation uses the same transform instead of the generic walk.
+        verticalScrollbar->SetFixedInParentContentBox(true);
 
         horizontalScrollbar = std::make_unique<UltraCanvasScrollbar>(
                 GetIdentifier() + "_hscroll", 0, 0, 100, style.scrollbarStyle.trackSize,
@@ -576,6 +580,7 @@ namespace UltraCanvas {
         };
         horizontalScrollbar->SetVisible(false);
         horizontalScrollbar->SetParentNonOwning(this);
+        horizontalScrollbar->SetFixedInParentContentBox(true);
 
         ApplyStyleToScrollbars();
     }

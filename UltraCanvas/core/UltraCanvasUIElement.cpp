@@ -1,8 +1,8 @@
 // UltraCanvasUIElement.cpp
 // UI base class implementation; geometry and box model live on
 // UltraCanvas::CSSLayout::Element (the new base).
-// Version: 4.1.0
-// Last Modified: 2026-05-31
+// Version: 4.1.1
+// Last Modified: 2026-07-13
 // Author: UltraCanvas Framework
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasContainer.h"
@@ -293,11 +293,17 @@ namespace UltraCanvas {
         if (oldBounds == b) return;
 
         finalBounds = Rect2Df{b.x, b.y, b.width, b.height};
-        // Invalidate union of old+new bounds in parent space — bounds are stored
-        // in parent coords, so this is what the parent (or window) needs to repaint.
+        // Damage is the union of old+new bounds in the PARENT's child-layout frame.
         Rect2Df damage = oldBounds.Union(b);
         if (auto* parentCont = GetParentContainer()) {
-            parentCont->InvalidateRect(damage);
+            // Re-express damage in OUR own local frame and invalidate via
+            // InvalidateRect, whose GetPositionInWindow() already applies the parent's
+            // scroll (normal children) or content-origin offset (fixed chrome). Passing
+            // parent-frame coords straight to parentCont->InvalidateRect() skipped the
+            // parent's scroll, landing the dirty rect scrollOffset px away in scrolled
+            // containers.
+            InvalidateRect(Rect2Df(damage.x - finalBounds.x, damage.y - finalBounds.y,
+                                   damage.width, damage.height));
         } else if (window && this != window) {
             window->AddDirtyRectangle(damage);
         }
@@ -310,7 +316,11 @@ namespace UltraCanvas {
         Rect2Df damage = oldBounds.Union(finalBounds);
 
         if (auto* parentCont = GetParentContainer()) {
-            parentCont->InvalidateRect(damage);
+            // See SetBounds: damage is in the parent's child-layout frame; re-express
+            // it in our own local frame so InvalidateRect's GetPositionInWindow()
+            // applies the parent's scroll (and content-origin for fixed chrome).
+            InvalidateRect(Rect2Df(damage.x - finalBounds.x, damage.y - finalBounds.y,
+                                   damage.width, damage.height));
         } else if (window && this != window) {
             window->AddDirtyRectangle(damage);
         }
