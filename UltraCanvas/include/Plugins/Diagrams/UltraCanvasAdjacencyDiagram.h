@@ -2,8 +2,8 @@
 // Architectural space-planning adjacency diagram
 // Rooms as area-proportional circles, edges as solid/dashed adjacency links,
 // functional zones as dashed bounding regions.
-// Version: 1.0.1
-// Last Modified: 2026-05-14
+// Version: 1.0.2
+// Last Modified: 2026-07-13
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -98,6 +98,14 @@ namespace UltraCanvas {
         float   noteFontSize            = 9.0f;     ///< Room note font size
         Color   labelColor              = Color(255, 255, 255, 240); ///< Label text color on dark fills
         Color   labelColorDark          = Color( 30,  30,  30, 240); ///< Label text on light fills
+
+        // Label halo — a contrasting outline drawn behind label/zone text so it
+        // stays readable when a label is wider than its circle and spills onto
+        // the diagram background or a similarly-colored zone fill.
+        bool    labelHalo               = true;     ///< Draw a contrasting halo behind text
+        float   labelHaloWidth          = 2.0f;     ///< Halo thickness in pixels
+        Color   labelHaloLight          = Color(255, 255, 255, 220); ///< Halo behind dark text
+        Color   labelHaloDark           = Color(  0,   0,   0, 180); ///< Halo behind light text
 
         // Links
         float   directLinkWidth         = 1.8f;     ///< Direct adjacency line width
@@ -299,6 +307,11 @@ namespace UltraCanvas {
         float   RoomRadius(const AdjacencyRoom& room) const;
         Color   RoomColor(const AdjacencyRoom& room) const;
         bool    IsLightColor(const Color& c) const;
+
+        // Draw text with a contrasting halo behind it (keeps labels readable
+        // when they overflow their circle onto the diagram background).
+        void    DrawTextWithHalo(IRenderContext* ctx, const std::string& text,
+                                 float x, float y, const Color& textColor) const;
 
         // Diagram → screen coordinate conversion (applies pan offset)
         void    DiagramToScreen(float dx, float dy, float& sx, float& sy) const;

@@ -2,8 +2,8 @@
 // Architectural space-planning adjacency diagram
 // Rooms as area-proportional circles, edges as solid/dashed adjacency links,
 // functional zones as dashed bounding regions.
-// Version: 1.0.1
-// Last Modified: 2026-05-14
+// Version: 1.0.2
+// Last Modified: 2026-07-13
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasAdjacencyDiagram.h"
@@ -252,6 +252,37 @@ namespace UltraCanvas {
         return lum > 0.55f;
     }
 
+    void UltraCanvasAdjacencyDiagram::DrawTextWithHalo(
+            IRenderContext* ctx, const std::string& text,
+            float x, float y, const Color& textColor) const
+    {
+        // A label is drawn centered on its circle, but small circles are often
+        // narrower than the label — the text spills onto the surrounding zone
+        // fill or diagram background, where it may match the text color and
+        // become unreadable. Draw a contrasting halo behind the text so it
+        // stays legible regardless of what is behind it.
+        if (style.labelHalo && style.labelHaloWidth > 0.0f) {
+            // Halo contrasts the text itself: light text gets a dark halo,
+            // dark text gets a light halo.
+            const Color& halo = IsLightColor(textColor)
+                                ? style.labelHaloDark
+                                : style.labelHaloLight;
+            ctx->SetTextPaint(halo);
+
+            float w = style.labelHaloWidth;
+            static const float dirs[8][2] = {
+                {-1, 0}, {1, 0}, {0, -1}, {0, 1},
+                {-1, -1}, {1, -1}, {-1, 1}, {1, 1}
+            };
+            for (const auto& d : dirs) {
+                ctx->DrawText(text, Point2Dd(x + d[0] * w, y + d[1] * w));
+            }
+        }
+
+        ctx->SetTextPaint(textColor);
+        ctx->DrawText(text, Point2Dd(x, y));
+    }
+
 // ─────────────────────────────────────────────
 // ZONE BOUNDS
 // ─────────────────────────────────────────────
@@ -427,10 +458,11 @@ namespace UltraCanvas {
             float midY = (ly1 + ly2) * 0.5f;
             ctx->SetFontSize(style.tooltipFontSize - 1.0f);
             ctx->SetFontFace("Sans", FontWeight::Normal, FontSlant::Normal);
-            ctx->SetTextPaint(style.zoneLabelColor);
             auto dims = ctx->GetTextLineDimensions(link.label);
             int tw = dims.width, th = dims.height;
-            ctx->DrawText(link.label, Point2Dd(midX - tw * 0.5f, midY - th - 2.0f));
+            DrawTextWithHalo(ctx, link.label,
+                             midX - tw * 0.5f, midY - th - 2.0f,
+                             style.zoneLabelColor);
         }
     }
 
@@ -461,11 +493,11 @@ namespace UltraCanvas {
 
             // Zone label at top-left inside the bounding box
             if (!zone.label.empty()) {
-                ctx->SetTextPaint(style.zoneLabelColor);
                 ctx->SetFontSize(style.zoneLabelFontSize);
                 ctx->SetFontFace("Sans", FontWeight::Normal, FontSlant::Normal);
-                ctx->DrawText(zone.label,
-                              Point2Dd(x + 8.0f, y + style.zoneLabelFontSize + 4.0f));
+                DrawTextWithHalo(ctx, zone.label,
+                                 x + 8.0f, y + style.zoneLabelFontSize + 4.0f,
+                                 style.zoneLabelColor);
             }
         }
     }
@@ -526,7 +558,6 @@ namespace UltraCanvas {
             // Room name
             ctx->SetFontSize(style.labelFontSize);
             ctx->SetFontFace("Sans", FontWeight::Normal, FontSlant::Normal);
-            ctx->SetTextPaint(textCol);
 
             auto dims = ctx->GetTextLineDimensions(room.label);
             int tw = dims.width, th = dims.height;
@@ -542,11 +573,11 @@ namespace UltraCanvas {
                 float noteX = sx - nw * 0.5f;
                 float noteY = sy + 2.0f;
                 ctx->SetFontSize(style.noteFontSize);
-                ctx->DrawText(room.note, Point2Dd(noteX, noteY));
+                DrawTextWithHalo(ctx, room.note, noteX, noteY, textCol);
                 ctx->SetFontSize(style.labelFontSize);
             }
 
-            ctx->DrawText(room.label, Point2Dd(sx - tw * 0.5f, labelY));
+            DrawTextWithHalo(ctx, room.label, sx - tw * 0.5f, labelY, textCol);
         }
     }
 
