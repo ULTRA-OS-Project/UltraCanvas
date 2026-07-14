@@ -1,7 +1,7 @@
 // Plugins/Diagrams/UltraCanvasVennDiagram.cpp
 // Interactive Venn diagram element implementation
-// Version: 2.0.1 (Fixed API compatibility)
-// Last Modified: 2025-04-02
+// Version: 2.1.0 (Rectangular sets, nested layout, centred labels)
+// Last Modified: 2026-07-13
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasVennDiagram.h"
@@ -127,6 +127,21 @@ VennStyle UltraCanvasVennDiagramElement::GetStyle() const {
     return style;
 }
 
+void UltraCanvasVennDiagramElement::SetShape(VennShape newShape) {
+    shape = newShape;
+    ApplyLayout();
+    RequestRedraw();
+}
+
+VennShape UltraCanvasVennDiagramElement::GetShape() const {
+    return shape;
+}
+
+void UltraCanvasVennDiagramElement::SetCornerRadius(double radius) {
+    cornerRadius = std::max(0.0, radius);
+    RequestRedraw();
+}
+
 void UltraCanvasVennDiagramElement::SetShowLabels(bool show) {
     showLabels = show;
     RequestRedraw();
@@ -186,7 +201,13 @@ void UltraCanvasVennDiagramElement::ApplyLayout() {
     double centerX = GetWidth() / 2.0f;
     double centerY = GetHeight() / 2.0f;
     double baseRadius = std::min(GetWidth(), GetHeight()) / 4.5f;
-    
+
+    // Non-nested layouts derive their rectangle extents from the radius, so
+    // clear any explicit dimensions left over from a previous nested layout.
+    if (layout != VennLayout::Nested) {
+        for (auto& c : circles) { c.width = 0.0f; c.height = 0.0f; }
+    }
+
     switch (layout) {
         case VennLayout::TwoCircles:
             ApplyTwoCircleLayout(centerX, centerY, baseRadius);
@@ -200,10 +221,13 @@ void UltraCanvasVennDiagramElement::ApplyLayout() {
         case VennLayout::FiveCircles:
             ApplyFiveCircleLayout(centerX, centerY, baseRadius);
             break;
+        case VennLayout::Nested:
+            ApplyNestedLayout();
+            break;
         case VennLayout::Custom:
             break;
     }
-    
+
     RecalculateRegions();
 }
 
@@ -262,10 +286,10 @@ void UltraCanvasVennDiagramElement::ApplyFourCircleLayout(double centerX, double
 
 void UltraCanvasVennDiagramElement::ApplyFiveCircleLayout(double centerX, double centerY, double radius) {
     if (circles.size() < 5) return;
-    
+
     double pentagonRadius = radius * 0.75f;
     double circleRadius = radius * 0.65f;
-    
+
     for (size_t i = 0; i < 5; ++i) {
         double angle = (i * 2.0f * M_PI / 5.0f) - M_PI/2;
         circles[i].center = Point2Dd(
@@ -273,6 +297,45 @@ void UltraCanvasVennDiagramElement::ApplyFiveCircleLayout(double centerX, double
             centerY + pentagonRadius * sin(angle)
         );
         circles[i].radius = circleRadius;
+    }
+}
+
+void UltraCanvasVennDiagramElement::ApplyNestedLayout() {
+    // Containment / subset layout: each circle is drawn fully inside the
+    // previous one, reproducing the LaTeX "set-hierarchy" look (e.g.
+    // Group ⊃ Abelian Group ⊃ Ring ⊃ Field). Rectangular shapes suit this
+    // best, but it works for circles too. Labels sit at the top of each box
+    // so the nested hierarchy stays readable.
+    size_t n = circles.size();
+    if (n == 0) return;
+
+    double margin = 24.0;
+    double outerW = GetWidth() - margin * 2.0;
+    double outerH = GetHeight() - margin * 2.0;
+
+    // Vertical room reserved at the top of every box for its own label.
+    double labelBand = fontSize + 12.0;
+    // Horizontal inset between successive nested boxes.
+    double stepX = std::max(18.0, outerW * 0.06);
+
+    double left = margin;
+    double top = margin;
+    double width = outerW;
+    double height = outerH;
+
+    for (size_t i = 0; i < n; ++i) {
+        circles[i].width = width;
+        circles[i].height = height;
+        circles[i].center = Point2Dd(left + width * 0.5, top + height * 0.5);
+        circles[i].radius = std::min(width, height) * 0.5;
+
+        // Shrink for the next (inner) box: inset on both sides horizontally,
+        // and leave the label band free at the top.
+        left += stepX;
+        top += labelBand;
+        width -= stepX * 2.0;
+        height -= labelBand + stepX;
+        if (width < stepX * 2.0 || height < labelBand) break;
     }
 }
 
@@ -331,15 +394,20 @@ void UltraCanvasVennDiagramElement::RecalculateRegions() {
     }
 }
 
+bool UltraCanvasVennDiagramElement::ShapeContains(const VennCircle& circle, const Point2Dd& point) const {
+    return (shape == VennShape::RoundedRectangle) ? circle.ContainsRect(point)
+                                                  : circle.Contains(point);
+}
+
 std::vector<size_t> UltraCanvasVennDiagramElement::FindCirclesContainingPoint(const Point2Dd& point) const {
     std::vector<size_t> containingCircles;
-    
+
     for (size_t i = 0; i < circles.size(); ++i) {
-        if (circles[i].Contains(point)) {
+        if (ShapeContains(circles[i], point)) {
             containingCircles.push_back(i);
         }
     }
-    
+
     return containingCircles;
 }
 
@@ -388,64 +456,102 @@ void UltraCanvasVennDiagramElement::RenderChart(IRenderContext* ctx) {
 void UltraCanvasVennDiagramElement::RenderBackground(IRenderContext* ctx) {
     if (backgroundColor.a > 0) {
         ctx->SetFillPaint(backgroundColor);
-        ctx->FillRectangle(GetBounds());
+        // Draw in the element's local coordinate space (the render context is
+        // already translated to our top-left), not GetBounds() which is our
+        // parent-relative position and would offset the fill.
+        ctx->FillRectangle(GetLocalBounds());
     }
 }
 
 void UltraCanvasVennDiagramElement::RenderCircles(IRenderContext* ctx) {
+    bool rect = (shape == VennShape::RoundedRectangle);
+
     for (size_t i = 0; i < circles.size(); ++i) {
         const VennCircle& circle = circles[i];
-        
-        double renderRadius = circle.radius;
-        if (animationEnabled && animationProgress < 1.0f) {
-            renderRadius *= animationProgress;
-        }
-        
+
+        double progress = (animationEnabled && animationProgress < 1.0f) ? animationProgress : 1.0f;
+        double renderRadius = circle.radius * progress;
+
         Color renderColor = circle.fillColor;
         if (i == hoveredCircleIndex) {
             renderColor.a = std::min(255, (int)(renderColor.a * 1.3f));
         }
-        
-        switch (style) {
-            case VennStyle::Classic:
-            case VennStyle::Modern:
-            case VennStyle::Filled:
+
+        bool filled = (style != VennStyle::Minimal && style != VennStyle::Outlined);
+
+        if (rect) {
+            // Scale the rectangle about its centre for the grow-in animation.
+            Rect2Dd r = circle.GetRect();
+            if (progress < 1.0f) {
+                double w = r.width * progress;
+                double h = r.height * progress;
+                r = Rect2Dd(circle.center.x - w * 0.5, circle.center.y - h * 0.5, w, h);
+            }
+            double cr = std::min<double>(cornerRadius, std::min(r.width, r.height) * 0.5);
+            if (filled) {
+                ctx->SetFillPaint(renderColor);
+                ctx->FillRoundedRectangle(r, cr);
+            }
+            if (circle.borderWidth > 0 || !filled) {
+                ctx->SetStrokePaint(circle.borderColor);
+                ctx->SetStrokeWidth(circle.borderWidth > 0 ? circle.borderWidth : 2.0f);
+                ctx->DrawRoundedRectangle(r, cr);
+            }
+        } else {
+            if (filled) {
                 ctx->SetFillPaint(renderColor);
                 ctx->FillCircle(circle.center, renderRadius);
-                
-                if (circle.borderWidth > 0) {
-                    ctx->SetStrokePaint(circle.borderColor);
-                    ctx->SetStrokeWidth(circle.borderWidth);
-                    ctx->DrawCircle(circle.center, renderRadius);
-                }
-                break;
-                
-            case VennStyle::Minimal:
-            case VennStyle::Outlined:
+            }
+            if (circle.borderWidth > 0 || !filled) {
                 ctx->SetStrokePaint(circle.borderColor);
-                ctx->SetStrokeWidth(circle.borderWidth);
+                ctx->SetStrokeWidth(circle.borderWidth > 0 ? circle.borderWidth : 2.0f);
                 ctx->DrawCircle(circle.center, renderRadius);
-                break;
+            }
         }
     }
 }
 
 void UltraCanvasVennDiagramElement::RenderLabels(IRenderContext* ctx) {
-    ctx->SetFontFace(fontFamily, FontWeight::Normal, FontSlant::Normal);
+    ctx->SetFontFace(fontFamily, FontWeight::Bold, FontSlant::Normal);
     ctx->SetFontSize(fontSize);
     ctx->SetTextPaint(Colors::Black);
-    
+
+    double diagramMidY = GetHeight() * 0.5;
+
     for (size_t i = 0; i < circles.size(); ++i) {
         const VennCircle& circle = circles[i];
-        
-        double labelX = circle.center.x;
-        double labelY = circle.center.y - circle.radius - 18;
-        
+
         std::string labelText = circle.label;
         if (showItemCounts) {
             labelText += " (" + std::to_string(circle.items.size()) + ")";
         }
-        
+
+        if (layout == VennLayout::Nested) {
+            // Label anchored to the top-left inside the box, like the LaTeX
+            // set-hierarchy diagram. No centering / no offset collisions.
+            Rect2Dd r = circle.GetRect();
+            ctx->DrawText(labelText, Point2Dd(r.x + 12.0, r.y + fontSize + 4.0));
+            continue;
+        }
+
+        // Centre the label horizontally on the shape and push it clear of the
+        // shape: shapes in the lower half get their label below, shapes in the
+        // upper half get it above. This keeps labels from piling up in the
+        // busy overlap region at the centre of the diagram.
+        int textWidth = ctx->GetTextLineWidth(labelText);
+        double labelX = circle.center.x - textWidth * 0.5;
+
+        double halfExtent = (shape == VennShape::RoundedRectangle)
+                                ? circle.RectHeight() * 0.5
+                                : circle.radius;
+
+        double labelY;
+        if (circle.center.y > diagramMidY) {
+            labelY = circle.center.y + halfExtent + fontSize + 4.0;   // below
+        } else {
+            labelY = circle.center.y - halfExtent - 8.0;              // above
+        }
+
         ctx->DrawText(labelText, Point2Dd(labelX, labelY));
     }
 }
@@ -460,10 +566,10 @@ void UltraCanvasVennDiagramElement::RenderRegionLabels(IRenderContext* ctx) {
         if (!region.isVisible || region.items.empty()) continue;
         
         ctx->SetTextPaint(region.textColor);
-        
+
         std::string regionText = std::to_string(region.items.size());
-        
-        ctx->DrawText(regionText, region.labelPosition);
+        int tw = ctx->GetTextLineWidth(regionText);
+        ctx->DrawText(regionText, Point2Dd(region.labelPosition.x - tw * 0.5, region.labelPosition.y));
     }
 }
 
@@ -570,8 +676,9 @@ bool UltraCanvasVennDiagramElement::OnEvent(const UCEvent& event) {
 // ===== UTILITY METHODS =====
 
 size_t UltraCanvasVennDiagramElement::FindCircleAtPoint(const Point2Dd& point) const {
-    for (size_t i = 0; i < circles.size(); ++i) {
-        if (circles[i].Contains(point)) {
+    // Iterate topmost-first so the innermost box wins in nested layouts.
+    for (size_t i = circles.size(); i-- > 0; ) {
+        if (ShapeContains(circles[i], point)) {
             return i;
         }
     }

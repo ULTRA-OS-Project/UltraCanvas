@@ -1,7 +1,8 @@
 // include/Plugins/Diagrams/UltraCanvasVennDiagram.h
-// Interactive Venn diagram element with multiple circle support and intersection calculations
-// Version: 1.1.0
-// Last Modified: 2025-04-02
+// Interactive Venn/Euler diagram element with circular or rectangular sets,
+// overlapping and nested (containment) layouts, and intersection calculations
+// Version: 2.0.0
+// Last Modified: 2026-07-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -23,25 +24,47 @@ struct VennCircle {
     std::string label;
     Point2Dd center;
     float radius;
+    // Rectangle extents used when the diagram is rendered with rectangular
+    // shapes. When zero they are derived from the radius, keeping circle-only
+    // setups working without any extra bookkeeping.
+    float width = 0.0f;
+    float height = 0.0f;
     Color fillColor;
     Color borderColor;
     float borderWidth = 2.0f;
     float alpha = 0.6f;
     std::unordered_set<std::string> items;
-    
+
     VennCircle(const std::string& circleLabel, float x, float y, float r, const Color& color)
         : label(circleLabel), center(x, y), radius(r), fillColor(color), borderColor(Colors::Black), borderWidth(2.0f) {}
-    
+
     bool Contains(const Point2Dd& point) const {
         float dx = point.x - center.x;
         float dy = point.y - center.y;
         return (dx * dx + dy * dy) <= (radius * radius);
     }
-    
+
+    // Effective rectangle size for rectangular rendering / hit-testing.
+    float RectWidth() const  { return width  > 0.0f ? width  : radius * 2.0f; }
+    float RectHeight() const { return height > 0.0f ? height : radius * 2.0f; }
+
+    Rect2Dd GetRect() const {
+        float w = RectWidth();
+        float h = RectHeight();
+        return Rect2Dd(center.x - w * 0.5f, center.y - h * 0.5f, w, h);
+    }
+
+    bool ContainsRect(const Point2Dd& point) const {
+        float w = RectWidth();
+        float h = RectHeight();
+        return point.x >= center.x - w * 0.5f && point.x <= center.x + w * 0.5f &&
+               point.y >= center.y - h * 0.5f && point.y <= center.y + h * 0.5f;
+    }
+
     void AddItem(const std::string& item) {
         items.insert(item);
     }
-    
+
     void RemoveItem(const std::string& item) {
         items.erase(item);
     }
@@ -85,8 +108,18 @@ enum class VennLayout {
     TwoCircles,          // Classic two-circle overlap
     ThreeCircles,        // Classic three-circle Venn
     FourCircles,         // Four-circle arrangement
-    FiveCircles,         // Five-circle complex arrangement  
+    FiveCircles,         // Five-circle complex arrangement
+    Nested,              // Containment layout (LaTeX set-hierarchy style)
     Custom               // User-defined positions
+};
+
+// =============================================================================
+// VENN DIAGRAM SHAPE OPTIONS
+// =============================================================================
+
+enum class VennShape {
+    Circle,             // Classic overlapping circles
+    RoundedRectangle    // Rectangular (LaTeX / set-theory) style boxes
 };
 
 // =============================================================================
@@ -112,7 +145,9 @@ private:
     std::vector<VennRegion> regions;
     VennLayout layout = VennLayout::ThreeCircles;
     VennStyle style = VennStyle::Classic;
-    
+    VennShape shape = VennShape::Circle;
+    float cornerRadius = 16.0f;   // Corner radius used in RoundedRectangle mode
+
     // Display settings
     bool showLabels = true;
     bool showItemCounts = true;
@@ -190,7 +225,11 @@ public:
     
     void SetStyle(VennStyle newStyle);
     VennStyle GetStyle() const;
-    
+
+    void SetShape(VennShape newShape);
+    VennShape GetShape() const;
+    void SetCornerRadius(double radius);
+
     void SetShowLabels(bool show);
     void SetShowItemCounts(bool show);
     void SetShowRegionLabels(bool show);
@@ -224,6 +263,7 @@ private:
     void ApplyThreeCircleLayout(double centerX, double centerY, double radius);
     void ApplyFourCircleLayout(double centerX, double centerY, double radius);
     void ApplyFiveCircleLayout(double centerX, double centerY, double radius);
+    void ApplyNestedLayout();
     
     void RecalculateRegions();
     std::vector<size_t> FindCirclesContainingPoint(const Point2Dd& point) const;
@@ -237,6 +277,7 @@ private:
     
     size_t FindCircleAtPoint(const Point2Dd& point) const;
     size_t FindRegionAtPoint(const Point2Dd& point) const;
+    bool ShapeContains(const VennCircle& circle, const Point2Dd& point) const;
     
     Color GetNextPaletteColor() const {
         return colorPalette[circles.size() % colorPalette.size()];
