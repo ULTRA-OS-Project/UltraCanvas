@@ -1,0 +1,45 @@
+@ UltraCanvas ARM Assembly sample (GNU as syntax, ARM32 / Linux EABI)
+@ Prints a message, then computes 5! with a recursive-style loop.
+@ Showcases UltraCanvasTextArea ARM syntax highlighting:
+@   instructions, r0-r15/sp/lr/pc registers, condition suffixes,
+@   .directives, '#' immediates, '@' comments, strings and numbers.
+
+        .data
+msg:            .asciz  "UltraCanvas ARM demo\n"
+msg_len         =       . - msg
+
+        .text
+        .global _start
+
+_start:
+        @ --- write(1, msg, msg_len) ---
+        mov     r7, #4              @ sys_write
+        mov     r0, #1              @ stdout
+        ldr     r1, =msg
+        mov     r2, #(msg_len - 1)  @ drop the trailing NUL
+        svc     #0
+
+        @ --- factorial(5) -> r4 ---
+        mov     r0, #5              @ n
+        bl      factorial
+        mov     r4, r0              @ keep the result (120)
+
+        @ --- exit(r4 & 0xff) ---
+        mov     r7, #1              @ sys_exit
+        mov     r0, r4
+        and     r0, r0, #0xff
+        svc     #0
+
+@ r0 = n on entry, returns n! in r0. Iterative to keep the demo simple.
+factorial:
+        cmp     r0, #1
+        movle   r0, #1              @ 0! and 1! are 1
+        bxle    lr
+
+        mov     r1, r0              @ counter = n
+        mov     r0, #1              @ accumulator
+.loop:
+        mul     r0, r0, r1          @ acc *= counter
+        subs    r1, r1, #1          @ counter--
+        bne     .loop
+        bx      lr
