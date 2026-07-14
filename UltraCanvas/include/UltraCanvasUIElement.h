@@ -261,7 +261,7 @@ namespace UltraCanvas {
             InvalidateLayout();
         }
 
-        void SetPadding(float horizontal, float vertical) {
+        void SetPadding(float vertical, float horizontal) {
             box.padding.left   = box.padding.right  = CSSLayout::Dimension::Px(horizontal);
             box.padding.top    = box.padding.bottom = CSSLayout::Dimension::Px(vertical);
             InvalidateLayout();

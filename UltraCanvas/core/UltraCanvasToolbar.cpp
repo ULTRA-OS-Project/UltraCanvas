@@ -31,10 +31,10 @@ namespace UltraCanvas {
 
     void UltraCanvasToolbar::CreateLayout() {
         if (toolbarOrientation == ToolbarOrientation::Vertical) {
-            SetPadding(5, 3);
+            SetPadding(3, 5);
             layout.SetFlexColumn();
         } else {
-            SetPadding(3, 5);
+            SetPadding(5, 3);
             layout.SetFlexRow();
         }
         layout.SetFlexGap(toolbarAppearance.itemSpacing);

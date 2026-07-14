@@ -92,7 +92,7 @@ static std::shared_ptr<UltraCanvasContainer> MakeControlBar(
     bar->SetBackgroundColor(Color(247,247,250,255));
     bar->layout.SetFlexColumn().SetFlexGap(2)
                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    bar->SetPadding(4, 6);
+    bar->SetPadding(6, 4);
 
     // Line 1 — button row.
     auto btnRow = std::make_shared<UltraCanvasContainer>("ctrlrow_"+d->GetIdentifier(), 0, 0, 0, 30);
@@ -657,7 +657,7 @@ namespace UltraCanvas {
         container->SetBackgroundColor(Color(255,255,255,255));
         container->layout.SetFlexColumn().SetFlexGap(6)
                  .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        container->SetPadding(8, 10);
+        container->SetPadding(10, 8);
         container->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         auto titleLbl = std::make_shared<UltraCanvasLabel>("DendrogramTitle", 0, 0, 0, 34, "Dendrogram Analysis Suite");

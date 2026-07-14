@@ -1,11 +1,14 @@
 // core/CSSLayout/Element.cpp
 // Element base: measure-cache wrapper, default block layout, arrange dispatch.
+// Version: 1.5.2 - position:fixed children in ArrangeBlock go through
+//                 ArrangeFixedChild so their finalBounds stay parent-relative
+//                 (no double ancestor offset for a fixed element below the root).
 // Version: 1.5.1 - resolveOwnContentSize: when the parent fixes BOTH axes, the
 //                 constraint (the used size) overrides the element's explicit
 //                 size, so a stretched/grown container reports and lays out its
 //                 children against its used size. Single-axis Exact (block fill
 //                 hint) still lets an explicit size win.
-// Last Modified: 2026-06-02
+// Last Modified: 2026-07-13
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -441,8 +444,7 @@ namespace UltraCanvas {
                 if (pos == PositionType::Absolute || pos == PositionType::AbsoluteUI) {
                     ArrangePositionedChild(*kid, paddingBox, ctx);
                 } else if (pos == PositionType::Fixed) {
-                    Rect2Df viewport{ 0, 0, ctx.viewportWidth, ctx.viewportHeight };
-                    ArrangePositionedChild(*kid, viewport, ctx);
+                    ArrangeFixedChild(*kid, ctx);
                 }
             }
         }
