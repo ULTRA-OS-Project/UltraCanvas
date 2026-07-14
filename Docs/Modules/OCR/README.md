@@ -354,6 +354,32 @@ real tessdata:
 
 ---
 
+## 9a. Troubleshooting
+
+**"OCR failed: Engine not initialised" (commonly on Windows)**
+
+This means `TessBaseAPI::Init` could not load a language, almost always
+because it could not find `eng.traineddata`. On Linux, Tesseract's
+compiled-in default path (`/usr/share/tesseract-ocr/<ver>/tessdata/`)
+usually satisfies this even with no configuration; a portable Windows
+build has no such system path, so the data must ship with the app.
+
+The engine auto-discovers the data by probing, in order:
+
+1. `OCRConfig::dataPath`
+2. `TESSDATA_PREFIX`
+3. `<Resources>/media/ocr/`(`/tessdata/`)
+4. `<executable dir>/media/ocr/`, `/ocr/`, and next to the executable
+
+So the fix is to make sure `eng.traineddata` is present in one of those
+places — the intended location is `media/ocr/tessdata/` beside the app
+(see `media/ocr/tessdata/README.md`). Since 0.3.x the error message lists
+every path that was searched, so the log shows exactly where to drop the
+file. Setting `TESSDATA_PREFIX` to an existing `tessdata` directory also
+works.
+
+---
+
 ## 10. Risks & open questions
 
 * **Tesseract memory** — `TessBaseAPI` holds ~80 MB resident after
