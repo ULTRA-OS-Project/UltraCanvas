@@ -113,7 +113,7 @@ private:
             if (ed.get() == exclude) continue;
 
             int wx, wy;
-            ed->GetScreenPosition(wx, wy);
+            ed->GetWindowPosition(wx, wy);
             int ww = ed->GetWidth();
             int wh = ed->GetHeight();
 

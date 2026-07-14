@@ -5,11 +5,13 @@
 // MinContent/MaxContent/FitContent, gaps, justify-self / align-self.
 // Deferred (TODO): named lines, named areas, dense packing, subgrid, MinMax
 // proper resolution (currently approximated as Min..Max bounds).
+// Version: 1.3.3 - position:fixed children go through ArrangeFixedChild so their
+//                 finalBounds stay parent-relative (no double ancestor offset).
 // Version: 1.3.2 - A fully-constrained (both-axes Exact) grid container now
 //                 derives its content extent from the constraint rather than its
 //                 own explicit size, so a grown/stretched grid lays out its tracks
 //                 against its USED size, not its specified size.
-// Last Modified: 2026-06-02
+// Last Modified: 2026-07-13
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -667,8 +669,7 @@ namespace UltraCanvas {
                 if (p == PositionType::Absolute || p == PositionType::AbsoluteUI) {
                     ArrangePositionedChild(*kid, paddingBox, ctx);
                 } else if (p == PositionType::Fixed) {
-                    Rect2Df viewport{ 0, 0, ctx.viewportWidth, ctx.viewportHeight };
-                    ArrangePositionedChild(*kid, viewport, ctx);
+                    ArrangeFixedChild(*kid, ctx);
                 }
             }
         }

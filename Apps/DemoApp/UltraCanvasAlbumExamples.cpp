@@ -2,11 +2,24 @@
 // Demonstration of UltraCanvasAlbum: layout designs, image-fit modes, action-icon
 // display options and visitor / user-edit / admin modes for a mixed photo / video
 // / music album.
-// Version: 2.13.0
-// Last Modified: 2026-07-11
+// Version: 2.15.0
+// Last Modified: 2026-07-12
+// V2.15.0: The video player window now shows an info bar under the video
+//   surface with the clip's title and its source link (clickable — opens in the
+//   system browser), and the Lola Lexy tile's link line reads
+//   "youtube.com/LolaLexy".
+// V2.14.0: Reworked the seed media list — the album now leads with an animated
+//   GIF tile ("Charlie Chaplin run", media/images/charlie-chaplin-run.gif) that
+//   plays in the photo lightbox, and the placeholder tiles "Brand Reel",
+//   "Chill Beats" and "Roadtrip" were removed.
 // V2.13.0: Hover video preview enabled (AlbumConfig::videoHoverPreview) —
 //   resting the cursor on a video tile for ~0.4s plays a ~6s muted inline
 //   preview of the clip in place of its poster frame.
+// V2.12.1: Media-window close fixes — the video / audio player windows now stop
+//   playback via onWindowClosed however they are closed (title-bar close button
+//   included; previously only ESC was handled, so the viewer's retained
+//   shared_ptr kept the closed window's pipeline playing audio forever) and the
+//   viewer's window reference is released so the window is actually destroyed.
 // V2.12.0: Album-page polish — Masonry is now the default layout (its button
 //   starts highlighted); a single click on a tile opens it (photo lightbox /
 //   video / audio player) instead of needing a double-click; and clicking a
@@ -202,7 +215,7 @@ namespace UltraCanvas {
                 WindowConfig cfg;
                 cfg.title     = item.title.empty() ? "Video" : item.title;
                 cfg.width     = 960;
-                cfg.height    = 600;
+                cfg.height    = 648;   // 600px video surface + the info bar below
                 cfg.type      = WindowType::Standard;
                 cfg.resizable = true;
                 window = CreateWindow(cfg);
@@ -218,6 +231,36 @@ namespace UltraCanvas {
                         item.mediaPath.empty() ? item.thumbnailPath : item.mediaPath;
                 player->LoadFromFile(path);
                 window->AddChild(player);
+
+                // Info bar under the video surface (YouTube-style): the clip's
+                // title and, when the item carries one, its source link —
+                // clicking the link opens it in the system browser.
+                auto infoBar = MakeLayoutBox("VideoInfoBar");
+                infoBar->layout.SetFlexColumn().SetFlexGap(2)
+                               .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+                infoBar->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                                   .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+                infoBar->SetPadding(8, 14, 10, 14);
+
+                auto titleLbl = std::make_shared<UltraCanvasLabel>("VideoTitle", 0, 0, 0, 22);
+                titleLbl->SetText(item.title.empty() ? "Video" : item.title);
+                titleLbl->SetFontSize(15);
+                titleLbl->SetFontWeight(FontWeight::Bold);
+                titleLbl->SetTextColor(Color(235, 235, 235, 255));
+                titleLbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+                infoBar->AddChild(titleLbl);
+
+                if (!item.link.empty()) {
+                    auto linkLbl = std::make_shared<UltraCanvasLabel>("VideoLink", 0, 0, 0, 16);
+                    linkLbl->SetText(item.link);
+                    linkLbl->SetFontSize(11);
+                    linkLbl->SetTextColor(Color(102, 178, 255, 255));  // link blue on black
+                    linkLbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+                    const std::string url = item.link;
+                    linkLbl->onClick = [url]() { OpenURL(url); };   // hand cursor comes with onClick
+                    infoBar->AddChild(linkLbl);
+                }
+                window->AddChild(infoBar);
 
                 // ESC closes the viewer.
                 window->eventCallback = [this](const UCEvent& event) {
@@ -407,6 +450,12 @@ namespace UltraCanvas {
         // (matching a search-results / gallery "image · source" layout); video /
         // music tiles keep a plain metadata subtitle with no link.
         const Seed seeds[] = {
+            { "charlie-chaplin-run.gif", "Charlie Chaplin run",
+              "Easy Street (1917) | Charlie Chaplin The Policeman [Original]",
+              AlbumMediaType::Photo, false,
+              "Charlie Chaplin and a fellow citizen sprint down Easy Street with "
+              "the law in pursuit \xE2\x80\x94 an animated GIF from the 1917 silent "
+              "classic. Open the tile to watch it play in the lightbox." },
             { "landscape.jpg",   "Mountain Dawn",    "naturepix.example",   AlbumMediaType::Photo, true,
               "First light spilling over the ridge line. Shot handheld just after "
               "sunrise, the low sun rakes across the slopes and pulls out every fold "
@@ -425,7 +474,7 @@ namespace UltraCanvas {
               "Cinematic track \"The Mountain\". Music by Dmitrii Kolesnikov from Pixabay.",
               "https://pixabay.com/users/the_mountain-3616498/?utm_source=link-attribution&utm_medium=referral&utm_campaign=music&utm_content=489998",
               "", false, true },
-            { "Lola Lexy - No kings.mp4", "Lola Lexy - No kings", "youtube.com", AlbumMediaType::Video, false,
+            { "Lola Lexy - No kings.mp4", "Lola Lexy - No kings", "youtube.com/LolaLexy", AlbumMediaType::Video, false,
               "Linked from YouTube.", "https://www.youtube.com/watch?v=Tl15Os47lG0", "youtube.svg", true },
             { "freepicOIP-3521821688.jpg", "Game Night",  "boardgames.example",  AlbumMediaType::Photo, false,
               "Coloured dice mid-roll on game night — a quick macro grab to freeze "
@@ -433,14 +482,9 @@ namespace UltraCanvas {
             { "3d-boxes.png",    "Renders",          "blenderhub.example",  AlbumMediaType::Photo, false,
               "A set of stacked 3D boxes rendered in Blender to test material and "
               "lighting setups.", "https://blenderhub.example/renders" },
-            { "sample_logo.png", "Brand Reel",       "Video · 0:30",        AlbumMediaType::Video, false, "", "" },
-            { "test_small.png",  "Chill Beats",      "Music · 18 tracks",   AlbumMediaType::Music, false, "", "" },
             { "testcard_rgba.qoi", "Field Notes",    "filmdiary.example",   AlbumMediaType::Photo, false,
               "Scanned 35mm film frame from a walk in the field — grainy, warm and "
               "full of character.", "https://filmdiary.example/field-notes" },
-            { "webp_68.png",     "Roadtrip",         "openroad.example",    AlbumMediaType::Photo, false,
-              "A snapshot from the 2022 summer road trip, somewhere along an open "
-              "stretch of highway.", "https://openroad.example/roadtrip" },
         };
         // Video tiles backed by a real clip (Seed::isVideoFile) point mediaPath at
         // media/videos and get a poster frame extracted once via SaveVideoThumbnail

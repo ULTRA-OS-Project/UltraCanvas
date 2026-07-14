@@ -1,8 +1,10 @@
 // core/CSSLayout/AbsoluteLayout.cpp
 // Out-of-flow positioning: position: absolute / fixed (CSS 2.1 §10.3.7, §10.6.4).
 // Position: relative offsets are applied post-layout (§9.4.3).
-// Version: 1.2.1
-// Last Modified: 2026-05-31
+// Version: 1.3.0 - ArrangeFixedChild: express a fixed child's finalBounds in its
+//                 DOM parent's local frame so ancestor offsets are not applied
+//                 twice for a fixed element nested below the window origin.
+// Last Modified: 2026-07-13
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -225,6 +227,29 @@ namespace UltraCanvas {
             child.Arrange(Rect2Df{ containingBlock.x + box.x,
                                    containingBlock.y + box.y,
                                    box.width, box.height }, ctx);
+        }
+
+        void ArrangeFixedChild(Element& child, const LayoutContext& ctx) {
+            // position: fixed lays out against the viewport, but finalBounds must
+            // stay in the DOM parent's local (border-box) frame — the renderer
+            // re-adds every ancestor's finalBounds as it descends
+            // (UltraCanvasContainer::Render / GetPositionInWindow). So offset the
+            // viewport CB origin by the NEGATION of the parent's window-space
+            // origin; the two cancel and the child lands at its true viewport
+            // coordinate. A {0,0} origin (the old code) only worked when the parent
+            // sat at the window origin, otherwise double-counting every ancestor.
+            // Arrange is strictly top-down, so `child`'s ancestors already have
+            // their finalBounds set here.
+            // NOTE: ignores ancestor *scroll* (applied at paint time) — a fixed
+            // element inside a scrolled container still tracks that scroll;
+            // separate concern (TODO).
+            float ox = 0.f, oy = 0.f;
+            for (const Element* a = child.Parent(); a; a = a->Parent()) {
+                ox += a->finalBounds.x;
+                oy += a->finalBounds.y;
+            }
+            Rect2Df viewport{ -ox, -oy, ctx.viewportWidth, ctx.viewportHeight };
+            ArrangePositionedChild(child, viewport, ctx);
         }
 
         Rect2Df MeasureAbsoluteUIBox(Element& child,

@@ -686,7 +686,7 @@ namespace UltraCanvas {
         // would center the dialog where the parent was created rather than
         // where the user has since moved it.
         int parentX = 0, parentY = 0, parentW = 0, parentH = 0;
-        parent->GetScreenPosition(parentX, parentY);
+        parent->GetWindowPosition(parentX, parentY);
         parent->GetNativeWindowSize(parentW, parentH);
         int ww = 0, wh = 0;
         GetNativeWindowSize(ww, wh);

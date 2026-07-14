@@ -34,9 +34,7 @@ namespace UltraCanvas {
         // Keyboard Events
         KeyDown,
         KeyUp,
-        KeyChar,
         TextInput,        // Added for text input events
-        Shortcut,
 
         // Window Events
         WindowCloseRequest,
@@ -85,193 +83,187 @@ namespace UltraCanvas {
 // Key code constants for cross-platform compatibility
     enum UCKeys {
         // Special values
-        Unknown = 0xFFFFFFF,
+        Unknown = 0,
 
         // Control keys
-        Escape = 0xFF1B,
-        Tab = 0xFF09,
-        Return = 0xFF0D,
-        Enter = 0xFF0D,
-        Space = 0x0020,
-        Backspace = 0xFF08,
-        Delete = 0xFFFF,
-
-        // Arrow keys
-        Left = 0xFF51,
-        LeftArrow = 0xFF51,
-        Up = 0xFF52,
-        UpArrow = 0xFF52,
-        Right = 0xFF53,
-        RightArrow = 0xFF53,
-        Down = 0xFF54,
-        DownArrow = 0xFF54,
-
-        // Navigation keys
-        Home = 0xFF50,
-        End = 0xFF57,
-        PageUp = 0xFF55,
-        PageDown = 0xFF56,
-        Insert = 0xFF63,
-
-        // Function keys
-        F1 = 0xFFBE,
-        F2 = 0xFFBF,
-        F3 = 0xFFC0,
-        F4 = 0xFFC1,
-        F5 = 0xFFC2,
-        F6 = 0xFFC3,
-        F7 = 0xFFC4,
-        F8 = 0xFFC5,
-        F9 = 0xFFC6,
-        F10 = 0xFFC7,
-        F11 = 0xFFC8,
-        F12 = 0xFFC9,
-
-        // Modifier keys
-        LeftShift = 0xFFE1,
-        RightShift = 0xFFE2,
-        LeftCtrl = 0xFFE3,
-        LeftControl = 0xFFE3,
-        RightCtrl = 0xFFE4,
-        RightControl = 0xFFE4,
-        LeftAlt = 0xFFE9,
-        RightAlt = 0xFFEA,
-        LeftMeta = 0xFFEB,  // Linux Super key
-        RightMeta = 0xFFEC,
-
-        // Number pad
-        NumLock = 0xFF7F,
-        NumPadInsert = 0xFF9E,
-        NumPadDelete = 0xFF9F,
-        NumPadHome = 0xff95,
-        NumPadLeft = 0xff96,
-        NumPadUp = 0xff97,
-        NumPadRight = 0xff98,
-        NumPadDown = 0xff99,
-        NumPadPageUp = 0xff9a,
-        NumPadPageDown = 0xff9b,
-        NumPadEnd = 0xff9c,
-        NumPad0 = 0xFFB0,
-        NumPad1 = 0xFFB1,
-        NumPad2 = 0xFFB2,
-        NumPad3 = 0xFFB3,
-        NumPad4 = 0xFFB4,
-        NumPad5 = 0xFFB5,
-        NumPad6 = 0xFFB6,
-        NumPad7 = 0xFFB7,
-        NumPad8 = 0xFFB8,
-        NumPad9 = 0xFFB9,
-        NumPadDecimal = 0xFFAE,
-        NumPadPlus = 0xFFAB,
-        NumPadMinus = 0xFFAD,
-        NumPadMultiply = 0xFFAA,
-        NumPadDivide = 0xFFAF,
-        NumPadEnter = 0xFF8D,
+        Escape = 0x1B,
+        Tab = 0x09,
+        Return = 0x0D,
+        Enter = 0x0D,
+        Space = 0x20,
+        Backspace = 0x08,
+        Delete = 0x07,
 
         // Number row (0-9)
-        Key0 = 0x0030,
-        Key1 = 0x0031,
-        Key2 = 0x0032,
-        Key3 = 0x0033,
-        Key4 = 0x0034,
-        Key5 = 0x0035,
-        Key6 = 0x0036,
-        Key7 = 0x0037,
-        Key8 = 0x0038,
-        Key9 = 0x0039,
+        Key0 = 0x30,
+        Key1 = 0x31,
+        Key2 = 0x32,
+        Key3 = 0x33,
+        Key4 = 0x34,
+        Key5 = 0x35,
+        Key6 = 0x36,
+        Key7 = 0x37,
+        Key8 = 0x38,
+        Key9 = 0x39,
 
         // Letters A-Z (ASCII values)
-        A = 0x0041,
-        B = 0x0042,
-        C = 0x0043,
-        D = 0x0044,
-        E = 0x0045,
-        F = 0x0046,
-        G = 0x0047,
-        H = 0x0048,
-        I = 0x0049,
-        J = 0x004A,
-        K = 0x004B,
-        L = 0x004C,
-        M = 0x004D,
-        N = 0x004E,
-        O = 0x004F,
-        P = 0x0050,
-        Q = 0x0051,
-        R = 0x0052,
-        S = 0x0053,
-        T = 0x0054,
-        U = 0x0055,
-        V = 0x0056,
-        W = 0x0057,
-        X = 0x0058,
-        Y = 0x0059,
-        Z = 0x005A,
+        A = 0x41,
+        B = 0x42,
+        C = 0x43,
+        D = 0x44,
+        E = 0x45,
+        F = 0x46,
+        G = 0x47,
+        H = 0x48,
+        I = 0x49,
+        J = 0x4A,
+        K = 0x4B,
+        L = 0x4C,
+        M = 0x4D,
+        N = 0x4E,
+        O = 0x4F,
+        P = 0x50,
+        Q = 0x51,
+        R = 0x52,
+        S = 0x53,
+        T = 0x54,
+        U = 0x55,
+        V = 0x56,
+        W = 0x57,
+        X = 0x58,
+        Y = 0x59,
+        Z = 0x5A,
 
         // Punctuation and symbols (commonly used)
-        Semicolon = 0x003B,      // ;
-        Equal = 0x003D,          // =
-        Comma = 0x002C,          // ,
-        Minus = 0x002D,          // -
-        Period = 0x002E,         // .
-        Slash = 0x002F,          // /
-        Grave = 0x0060,          // `
-        LeftBracket = 0x005B,    // [
-        Backslash = 0x005C,      // backslash
-        RightBracket = 0x005D,   // ]
-        Quote = 0x0027,          // '
+        Semicolon = 0x3B,      // ;
+        Equal = 0x3D,          // =
+        Comma = 0x2C,          // ,
+        Minus = 0x2D,          // -
+        Period = 0x2E,         // .
+        Slash = 0x2F,          // /
+        Grave = 0x60,          // `
+        LeftBracket = 0x5B,    // [
+        Backslash = 0x5C,      // backslash
+        RightBracket = 0x5D,   // ]
+        Quote = 0x27,          // '
 
         // Additional symbols
-        Exclamation = 0x0021,    // !
-        At = 0x0040,             // @
-        Hash = 0x0023,           // #
-        Dollar = 0x0024,         // $
-        Percent = 0x0025,        // %
-        Caret = 0x005E,          // ^
-        Ampersand = 0x0026,      // &
-        Asterisk = 0x002A,       // *
-        LeftParen = 0x0028,      // (
-        RightParen = 0x0029,     // )
-        Underscore = 0x005F,     // _
-        Plus = 0x002B,           // +
-        LeftBrace = 0x007B,      // {
-        Pipe = 0x007C,           // |
-        RightBrace = 0x007D,     // }
-        Tilde = 0x007E,          // ~
-        DoubleQuote = 0x0022,    // "
-        Colon = 0x003A,          // :
-        Less = 0x003C,           // <
-        Greater = 0x003E,        // >
-        Question = 0x003F,       // ?
+        Exclamation = 0x21,    // !
+        At = 0x40,             // @
+        Hash = 0x23,           // #
+        Dollar = 0x24,         // $
+        Percent = 0x25,        // %
+        Caret = 0x5E,          // ^
+        Ampersand = 0x26,      // &
+        Asterisk = 0x2A,       // *
+        LeftParen = 0x28,      // (
+        RightParen = 0x29,     // )
+        Underscore = 0x5F,     // _
+        Plus = 0x2B,           // +
+        LeftBrace = 0x7B,      // {
+        Pipe = 0x7C,           // |
+        RightBrace = 0x7D,     // }
+        Tilde = 0x7E,          // ~
+        DoubleQuote = 0x22,    // "
+        Colon = 0x3A,          // :
+        Less = 0x3C,           // <
+        Greater = 0x3E,        // >
+        Question = 0x3F,       // ?
+
+        // Arrow keys
+        Left = 0x80,
+        Up,
+        Right,
+        Down,
+
+        // Navigation keys
+        Home,
+        End,
+        PageUp,
+        PageDown,
+        Insert,
+
+        // Function keys
+        F1,
+        F2,
+        F3,
+        F4,
+        F5,
+        F6,
+        F7,
+        F8,
+        F9,
+        F10,
+        F11,
+        F12,
+
+        // Modifier keys
+        LeftShift,
+        RightShift,
+        LeftCtrl,
+        RightCtrl,
+        LeftAlt,
+        RightAlt,
+        LeftMeta,  // Linux Super key
+        RightMeta,
+
+        // Number pad
+        NumLock,
+        NumPadInsert,
+        NumPadDelete,
+        NumPadHome,
+        NumPadLeft,
+        NumPadUp,
+        NumPadRight,
+        NumPadDown,
+        NumPadPageUp,
+        NumPadPageDown,
+        NumPadEnd,
+        NumPad0,
+        NumPad1,
+        NumPad2,
+        NumPad3,
+        NumPad4,
+        NumPad5,
+        NumPad6,
+        NumPad7,
+        NumPad8,
+        NumPad9,
+        NumPadDecimal,
+        NumPadPlus,
+        NumPadMinus,
+        NumPadMultiply,
+        NumPadDivide,
+        NumPadEnter,
 
         // Special system keys
-        CapsLock = 0xFFE5,
-        ScrollLock = 0xFF14,
-        Pause = 0xFF13,
-        PrintScreen = 0xFF61,
-        SysReq = 0xFF15,
-        Break = 0xFF6B,
-        Menu = 0xFF67,
-        Power = 0xFF2A,
-        Sleep = 0xFF2F,
+        CapsLock,
+        ScrollLock,
+        Pause,
+        PrintScreen,
+        SysReq,
+        Break,
+        Menu,
+        Power,
+        Sleep,
 
         // Media keys (where supported)
-        VolumeUp = 0x1008FF13,
-        VolumeDown = 0x1008FF11,
-        VolumeMute = 0x1008FF12,
-        MediaPlay = 0x1008FF14,
-        MediaStop = 0x1008FF15,
-        MediaPrevious = 0x1008FF16,
-        MediaNext = 0x1008FF17,
+        VolumeUp,
+        VolumeDown,
+        VolumeMute,
+        MediaPlay,
+        MediaStop,
+        MediaPrevious,
+        MediaNext,
 
         // Browser keys (where supported)
-        BrowserBack = 0x1008FF26,
-        BrowserForward = 0x1008FF27,
-        BrowserRefresh = 0x1008FF29,
-        BrowserStop = 0x1008FF28,
-        BrowserSearch = 0x1008FF1B,
-        BrowserFavorites = 0x1008FF30,
-        BrowserHome = 0x1008FF18
+        BrowserBack,
+        BrowserForward,
+        BrowserRefresh,
+        BrowserStop,
+        BrowserSearch,
+        BrowserFavorites,
+        BrowserHome
     };
 
 // Convenience aliases for commonly misnamed keys
@@ -372,7 +364,7 @@ namespace UltraCanvas {
         }
 
         bool IsKeyboardEvent() const {
-            return type >= UCEventType::KeyDown && type <= UCEventType::Shortcut;
+            return type >= UCEventType::KeyDown && type <= UCEventType::TextInput;
         }
 
         bool IsWindowEvent() const {
@@ -391,15 +383,15 @@ namespace UltraCanvas {
             return type > UCEventType::CommandEventsStart && type < UCEventType::CommandEventsEnd;
         }
 
-        float GetAge() const {
-            auto now = std::chrono::steady_clock::now();
-            return std::chrono::duration<float>(now - timestamp).count();
-        }
-
-        bool IsKeyRepeat() const {
-            // Simple repeat detection - can be enhanced
-            return GetAge() < 0.1f && (type == UCEventType::KeyDown || type == UCEventType::KeyChar);
-        }
+//        float GetAge() const {
+//            auto now = std::chrono::steady_clock::now();
+//            return std::chrono::duration<float>(now - timestamp).count();
+//        }
+//
+//        bool IsKeyRepeat() const {
+//            // Simple repeat detection - can be enhanced
+//            return GetAge() < 0.1f && (type == UCEventType::KeyDown);
+//        }
 
         std::string ToString() const;
     };

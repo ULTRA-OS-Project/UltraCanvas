@@ -68,7 +68,7 @@ namespace UltraCanvas {
         virtual void SetFullscreen(bool fullscreen) override;
         virtual void InvalidateWindowNative() override;
         virtual NativeWindowHandle GetNativeHandle() const override;
-        virtual void GetScreenPosition(int& x, int& y) const override;
+        virtual void GetWindowPosition(int& x, int& y) const override;
         void GetScreenSize(int& width, int& height) const override;
         // Bounds of the XRandR monitor this window is on (physical px, root
         // coords); primary monitor when the window isn't on any, whole X screen

@@ -792,9 +792,9 @@ bool UltraCanvasSpreadsheet::OnEvent(const UCEvent& event) {
         case UCEventType::KeyDown:
             HandleKeyDown(event);
             return true;
-        case UCEventType::KeyChar:
-            HandleKeyPress(event);
-            return true;
+//        case UCEventType::KeyChar:
+//            HandleKeyPress(event);
+//            return true;
         default:
             return false;
     }

@@ -206,6 +206,10 @@ namespace UltraCanvas {
     // build has a saver/loader compiled in for that extension.
     bool VipsCanSave(const std::string& extensionWithDot);
     bool VipsCanLoad(const std::string& extensionWithDot);
+    // True when libvips has the ImageMagick load delegate. magickload
+    // advertises no suffixes (it content-sniffs), so VipsCanLoad cannot see
+    // it; for known raster extensions its presence means "will load".
+    bool VipsHasMagickLoadFallback();
 #endif
 }
 #endif

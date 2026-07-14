@@ -14,6 +14,9 @@ Animation works out of the box in:
   adjustments (gamma, brightness, per-channel, sharpen) freeze playback on
   the current frame while active, because they are baked into a single
   composited pixmap.
+- **`UltraCanvasImageViewer`** (the lightbox used by the markdown renderer
+  and the Album photo viewer) — animated images auto-play in the zoom / pan
+  surface; wheel-zoom and drag-pan apply to the running animation.
 
 ## Architecture
 

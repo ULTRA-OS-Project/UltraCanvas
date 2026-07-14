@@ -18,10 +18,19 @@ namespace UltraCanvas {
 
 // ===== INFO WINDOW IMPLEMENTATION =====
 
-    // Open a popup window showing the changelog file in an editable, scrollable
-    // text area. Mirrors the gauge example's "Code" button popup: the window is
-    // kept alive by a static handle (one popup at a time) and closes on Escape.
-    static void ShowChangelogPopup(const std::string& filePath) {
+    // Open a popup window showing the changelog file rendered as Markdown in a
+    // read-only, scrollable text area. Mirrors the gauge example's "Code" button
+    // popup: the window is kept alive by a static handle (one popup at a time)
+    // and closes on Escape.
+    //
+    // The popup is created modal and transient-for the (also modal) info window.
+    // Without this it opens *behind* the info window: the info window is modal,
+    // so as soon as the new window takes focus the app's modal handler re-raises
+    // the info window over it (HandleModalWindowEvents / RaiseAndFocus) and
+    // swallows the changelog's input. Registering this window as the topmost
+    // modal makes it the current modal instead, so it stays on top and stays
+    // interactive; closing it returns modality to the info window.
+    static void ShowChangelogPopup(const std::string& filePath, UltraCanvasWindowBase* parent) {
         static std::shared_ptr<UltraCanvasWindow> changelogWindow;
 
         std::ifstream file(filePath);
@@ -40,17 +49,29 @@ namespace UltraCanvas {
         wc.width = 760;
         wc.height = 560;
         wc.resizable = true;
-        wc.type = WindowType::Standard;
+        wc.type = WindowType::Dialog;
+        wc.parentWindow = parent;
+        wc.modal = true;
         changelogWindow = CreateWindow(wc);
         if (!changelogWindow || !changelogWindow->IsCreated()) return;
+
+        // Base directory used to resolve any relative image links in the markdown.
+        std::string baseDir = filePath;
+        auto slash = baseDir.find_last_of("/\\");
+        if (slash != std::string::npos) baseDir.erase(slash + 1);
 
         auto editor = std::make_shared<UltraCanvasTextArea>("ChangelogViewer");
         editor->layout.display = CSSLayout::DisplayType::Block;
         editor->size.width = CSSLayout::Dimension::Vw(100);
         editor->size.height = CSSLayout::Dimension::Vh(100);
+        editor->SetMarkdownBaseDirectory(baseDir);
         editor->SetText(text);
+        editor->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
+        editor->SetReadOnly(true);
+        editor->SetWordWrap(true);
         editor->SetShowLineNumbers(false);
         editor->SetFontSize(12);
+        editor->SetCursorPosition(LineColumnIndex::INVALID);
 
         changelogWindow->SetEventCallback([](const UCEvent& event) {
             if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
@@ -236,12 +257,14 @@ namespace UltraCanvas {
         infoLabel1_3->SetTextColor(Color(60, 60, 60, 255));
         infoLabel1_3->SetMargin(2,20);
         infoLabel1_3->SetTextIsMarkup(true);
-        auto openChangelogCallback = []() {
+        auto openChangelogCallback = [this]() {
             // Show the changelog (shipped under the resources dir as
-            // Docs/UltraCanvas/CHANGELOG.md) in a text area popup, the same way
-            // the gauge example's "Code" button shows generated source. OpenURL
-            // can't render a local markdown file, so a text window is used.
-            ShowChangelogPopup(NormalizePath(GetResourcesDir() + "Docs/UltraCanvas/CHANGELOG.md"));
+            // Docs/UltraCanvas/CHANGELOG.md) rendered as Markdown in a text area
+            // popup, the same way the gauge example's "Code" button shows
+            // generated source. OpenURL can't render a local markdown file, so a
+            // text window is used. Pass this (the modal info window) as parent so
+            // the popup layers above it instead of behind it.
+            ShowChangelogPopup(NormalizePath(GetResourcesDir() + "Docs/UltraCanvas/CHANGELOG.md"), this);
         };
         infoLabel1_3->onClick = openChangelogCallback;
         AddChild(infoLabel1_3);

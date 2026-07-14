@@ -420,7 +420,6 @@ namespace UltraCanvas {
             case UCEventType::MouseMove:        return HandleMouseMove(event);
             case UCEventType::MouseWheel:       return HandleWheel(event);
             case UCEventType::KeyDown:          return HandleKeyDown(event);
-            case UCEventType::KeyChar:          return HandleKeyChar(event);
             case UCEventType::MouseDoubleClick:
                 // A rapid second click arrives as a double-click instead of a
                 // MouseDown; on the arrow buttons every click must step.
@@ -536,7 +535,7 @@ namespace UltraCanvas {
                 }
                 return false;
             default:
-                break;
+                return HandleKeyChar(event);
         }
         return false;
     }

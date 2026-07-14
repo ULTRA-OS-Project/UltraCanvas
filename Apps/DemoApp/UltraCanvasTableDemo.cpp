@@ -366,7 +366,7 @@ namespace UltraCanvas {
         auto headerContainer = std::make_shared<UltraCanvasContainer>("HeaderContainer", 20, 105, 960, 35);
         headerContainer->SetBackgroundColor(Color(230, 230, 230, 255));
         headerContainer->SetBorders(1.0f);
-        headerContainer->SetPadding(0, 10);
+        headerContainer->SetPadding(10, 0);
         headerContainer->layout.SetFlexRow();
         headerContainer->layout.SetFlexGap(10);
 

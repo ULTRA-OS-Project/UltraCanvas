@@ -145,7 +145,7 @@ namespace UltraCanvas {
         }
 
         // ===== OVERRIDDEN ELEMENT METHODS =====
-        void Render(IRenderContext *ctx, const Rect2Df&dirtyRect) override;
+        void Render(IRenderContext *ctx, const Rect2Df& dirtyRect) override;
 
         void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
@@ -170,7 +170,7 @@ namespace UltraCanvas {
         void ApplyStyleToScrollbars();
 
         // ===== RENDERING HELPERS =====
-        void RenderScrollbars(IRenderContext *ctx, const Rect2Di& dirtyRect);
+        void RenderScrollbars(IRenderContext *ctx, const Rect2Df& dirtyRect);
         void RenderCorner(IRenderContext *ctx);
 
         void SortChildrenByZOrder();

@@ -519,8 +519,8 @@ namespace UltraCanvas {
         int newIndex = selectedIndex;
 
         switch (event.virtualKey) {
-            case UCKeys::LeftArrow:
-            case UCKeys::UpArrow:
+            case UCKeys::Left:
+            case UCKeys::Up:
                 // Move to previous enabled segment
                 if (newIndex > 0) {
                     newIndex--;
@@ -534,8 +534,8 @@ namespace UltraCanvas {
                 }
                 break;
 
-            case UCKeys::RightArrow:
-            case UCKeys::DownArrow:
+            case UCKeys::Right:
+            case UCKeys::Down:
                 // Move to next enabled segment
                 if (newIndex < static_cast<int>(segments.size()) - 1) {
                     newIndex++;

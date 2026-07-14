@@ -5,8 +5,8 @@
 // border *visual* properties, render context, window, tooltip) stay on
 // this class; geometry, box model, identifier, parent link, z-index live
 // on the engine base.
-// Version: 4.0.0
-// Last Modified: 2026-05-27
+// Version: 4.0.1
+// Last Modified: 2026-07-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -228,7 +228,7 @@ namespace UltraCanvas {
         void SetElementSize(const Size2Df & sz);
         void SetElementSize(const CSSLayout::Dimension &w, const CSSLayout::Dimension &h);
 
-        Point2Df GetPositionInWindow() const;
+        virtual Point2Df GetPositionInWindow() const;
         Rect2Df GetBoundsInWindow() const {
             return GetBounds().SetPosition(GetPositionInWindow());
         }
@@ -261,7 +261,7 @@ namespace UltraCanvas {
             InvalidateLayout();
         }
 
-        void SetPadding(float horizontal, float vertical) {
+        void SetPadding(float vertical, float horizontal) {
             box.padding.left   = box.padding.right  = CSSLayout::Dimension::Px(horizontal);
             box.padding.top    = box.padding.bottom = CSSLayout::Dimension::Px(vertical);
             InvalidateLayout();
