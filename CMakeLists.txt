@@ -177,6 +177,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasNetworkingExamples.cpp
             Apps/DemoApp/UltraCanvasSlideshowExamples.cpp
             Apps/DemoApp/UltraCanvasAlbumExamples.cpp
+            Apps/DemoApp/UltraCanvasFilerExamples.cpp
             Apps/DemoApp/UltraCanvasMediaViewerExamples.cpp
             Apps/DemoApp/UltraCanvasCompositorDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasGaugeExamples.cpp

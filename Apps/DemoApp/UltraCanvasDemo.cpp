@@ -1542,6 +1542,24 @@ namespace UltraCanvas {
                 .AddVariant("album", "Filmstrip")
                 .AddVariant("album", "Cards");
 
+        widgetsBuilder.AddItem("filer", "Filer",
+                               "Folder-content widget with details / list / thumbnail / "
+                               "bar-size / treemap view types, sorting by name / size / type / "
+                               "dates, hover icon menu and a full file context menu "
+                               "(Copy, Cut, Delete, Duplicate, Rename, New, Display, Open with, "
+                               "Compress, Extract, Print, Extras, Settings)",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateFilerExamples(); },
+                               "DemoApp/UltraCanvasFilerExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasFilerWidget.md")
+                .AddVariant("filer", "Details")
+                .AddVariant("filer", "List")
+                .AddVariant("filer", "Thumbnails (S/M/B/XL)")
+                .AddVariant("filer", "Bar size")
+                .AddVariant("filer", "Treemap")
+                .AddVariant("filer", "Force-directed tree (planned)")
+                .AddVariant("filer", "3D (planned)");
+
         debugOutput << "✓ Registered " << demoItems.size() << " demo items across "
                   << categoryItems.size() << " categories" << std::endl;
     }
