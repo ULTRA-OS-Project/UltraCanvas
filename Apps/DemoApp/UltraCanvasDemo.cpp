@@ -523,6 +523,13 @@ namespace UltraCanvas {
                 .AddVariant("menu", "Checkbox/Radio Items")
                 .AddVariant("menu", "Styled Menus");
 
+        basicBuilder.AddItem("menuconfig", "Menu Configurator",
+                             "Customise menus: command registry, editable layout, live Apply",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateMenuConfigExamples(); },
+                             "DemoApp/UltraCanvasMenuConfigExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasMenuConfigWidget.md");
+
         basicBuilder.AddItem("toolbar", "Toolbar", "Tool and action bars",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateToolbarExamples(); },

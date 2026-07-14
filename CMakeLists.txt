@@ -124,6 +124,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasAutoCompleteExamples.cpp
             Apps/DemoApp/UltraCanvasLabelExamples.cpp
             Apps/DemoApp/UltraCanvasMenuExamples.cpp
+            Apps/DemoApp/UltraCanvasMenuConfigExamples.cpp
             Apps/DemoApp/UltraCanvasSliderExamples.cpp
             Apps/DemoApp/UltraCanvasSpinnerExamples.cpp
             Apps/DemoApp/UltraCanvasTimePickerExamples.cpp

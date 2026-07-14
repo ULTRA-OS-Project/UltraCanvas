@@ -275,6 +275,12 @@ namespace UltraCanvas {
     }
 
     TreeNode *UltraCanvasTreeView::SetRootNode(const TreeNodeData &rootData) {
+        // Replacing the root frees the previous node graph. Drop any pointers
+        // into the old graph first so selection/hover/focus can't dangle when a
+        // caller rebuilds the tree (e.g. the menu-configuration widget).
+        selectedNodes.clear();
+        hoveredNode = nullptr;
+        focusedNode = nullptr;
         rootNode = std::make_unique<TreeNode>(rootData);
         UpdateScrollbars();
         return rootNode.get();
