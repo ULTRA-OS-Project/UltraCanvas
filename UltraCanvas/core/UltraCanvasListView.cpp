@@ -291,8 +291,11 @@ namespace UltraCanvas {
     void UltraCanvasListView::RenderHeader(IRenderContext* ctx, const Rect2Di& contentRect) {
         if (!model) return;
 
-        int sbWidth = verticalScrollbar->IsVisible() ? verticalScrollbar->GetStyle().trackSize : 0;
-        Rect2Di headerRect(contentRect.x, contentRect.y, contentRect.width - sbWidth, viewStyle.headerHeight);
+        // The header spans the full content width. The scrollbar occupies only
+        // the rows area below the header (see UpdateScrollbar), so reserving
+        // scrollbar width here would leave an unpainted white box in the
+        // top-right corner between the header and the scrollbar track.
+        Rect2Di headerRect(contentRect.x, contentRect.y, contentRect.width, viewStyle.headerHeight);
 
         // Header background
         ctx->SetFillPaint(viewStyle.headerBackgroundColor);
@@ -330,6 +333,13 @@ namespace UltraCanvas {
         auto viewport = GetViewportRect();
         int rowCount = model->GetRowCount();
         int colCount = model->GetColumnCount();
+
+        // Clip rows to the viewport (the area below the header). Rows are drawn
+        // after the header, and a scrolled row's top slides up into the header
+        // band; without this clip that content would paint over the header,
+        // making the title row look transparent behind the table content.
+        ctx->PushState();
+        ctx->ClipRect(Rect2Dd(viewport.x, viewport.y, viewport.width, viewport.height));
 
         // Calculate visible range (culling)
         int firstVisible = scrollOffsetY / viewStyle.rowHeight;
@@ -413,6 +423,8 @@ namespace UltraCanvas {
                 }
             }
         }
+
+        ctx->PopState();
     }
 
     // ===== EVENT HANDLING =====
