@@ -5,8 +5,8 @@
 // tinyxml2 with the conventional ODF namespace prefixes (office:, text:,
 // style:, fo:, draw:, table:, xlink:) — the same approach as the existing
 // ODS spreadsheet loader.
-// Version: 1.1.0
-// Last Modified: 2026-07-07
+// Version: 1.2.0
+// Last Modified: 2026-07-12
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
@@ -42,6 +42,7 @@ struct OdtTextProps {
     std::string fontFamily;
     float fontSizePt = 0.0f;
     std::string parentStyleName;
+    std::string masterPageName;                     // style:master-page-name (paragraph styles)
     RichTextAlign align = RichTextAlign::Default;   // paragraph styles only
     bool bottomBorder = false;                      // paragraph styles only
     bool pageBreakBefore = false;                   // paragraph styles only
@@ -58,6 +59,7 @@ struct OdtTextProps {
         if (color.empty()) color = parent.color;
         if (fontFamily.empty()) fontFamily = parent.fontFamily;
         if (fontSizePt <= 0) fontSizePt = parent.fontSizePt;
+        if (masterPageName.empty()) masterPageName = parent.masterPageName;
         if (align == RichTextAlign::Default) align = parent.align;
         bottomBorder = bottomBorder || parent.bottomBorder;
         pageBreakBefore = pageBreakBefore || parent.pageBreakBefore;
@@ -142,10 +144,20 @@ public:
         }
         // The linear block model has no page chrome, so the page header is
         // emitted before the body and the page footer after it, each set off
-        // with a rule.
-        ParseMasterPageRegion(stylesRoot, "style:header", false);
+        // with a rule. A letterhead typically defines a dedicated first-page
+        // master (its own header/footer) distinct from the plain continuation
+        // master; a single page always draws both its header and footer from
+        // the one master applied to it, so pick the master actually applied to
+        // the document's first page and render only its regions. Rendering a
+        // header from an unrelated master (e.g. the continuation master's
+        // "Seite N / N" page-number line, which never shows on a one-page
+        // letter) would inject chrome the reader never displays.
+        tinyxml2::XMLElement* masterPage = ResolveMasterPage(stylesRoot, text);
+        auto* headerRegion = masterPage ? masterPage->FirstChildElement("style:header") : nullptr;
+        auto* footerRegion = masterPage ? masterPage->FirstChildElement("style:footer") : nullptr;
+        ParseMasterPageRegion(headerRegion, false);
         ParseBlockContainer(text, 0, "");
-        ParseMasterPageRegion(stylesRoot, "style:footer", true);
+        ParseMasterPageRegion(footerRegion, true);
         LoadMetadata();
         return true;
     }
@@ -153,6 +165,12 @@ public:
 private:
     UCZipPackageReader zip_;
     UCRichDocument* doc_ = nullptr;
+    // Page breaks (fo:break-before/after="page") only take effect for
+    // paragraphs in the main text flow. A paragraph carrying that property
+    // inside a positioned frame, text box, table cell or header/footer does
+    // not start a new page (ODF/CSS fragmentation applies to in-flow boxes),
+    // so break emission is gated on this flag.
+    bool inMainFlow_ = true;
     std::map<std::string, OdtTextProps> styles_;
     // list style name -> (level -> ordered?)
     std::map<std::string, std::map<int, bool>> listStyles_;
@@ -168,6 +186,7 @@ private:
              style = style->NextSiblingElement("style:style")) {
             OdtTextProps props;
             props.parentStyleName = Attr(style, "style:parent-style-name");
+            props.masterPageName = Attr(style, "style:master-page-name");
             if (auto* tp = style->FirstChildElement("style:text-properties")) {
                 std::string weight = Attr(tp, "fo:font-weight");
                 if (!weight.empty()) props.bold = (weight != "normal") ? 1 : 0;
@@ -371,6 +390,11 @@ private:
                           props, linkTarget);
             } else if (tag == "text:tab") {
                 AppendRun(ctx, "\t", props, linkTarget);
+            } else if (tag == "text:page-number") {
+                // Dynamic page field; the linear model is a single flow, so the
+                // current page is 1. Without this the field renders as an empty
+                // gap ("Seite  / 1") because it carries no static text.
+                AppendRun(ctx, "1", props, linkTarget);
             } else if (tag == "text:line-break") {
                 ctx.pendingLineBreak = true;
             } else if (tag == "draw:frame") {
@@ -432,10 +456,11 @@ private:
         ParseInlineNodes(elem, runBase, "", ctx);
         block.runs = std::move(ctx.runs);
 
-        if (paraProps.pageBreakBefore) {
-            RichDocBlock pageBreak;
-            pageBreak.type = RichBlockType::PageBreak;
-            doc_->blocks.push_back(std::move(pageBreak));
+        bool pageBreak = inMainFlow_ && paraProps.pageBreakBefore;
+        if (pageBreak) {
+            RichDocBlock pageBreakBlock;
+            pageBreakBlock.type = RichBlockType::PageBreak;
+            doc_->blocks.push_back(std::move(pageBreakBlock));
         }
 
         // An empty bordered paragraph is the horizontal-rule idiom.
@@ -444,7 +469,7 @@ private:
             block.type = RichBlockType::HorizontalRule;
         }
 
-        bool emptyPageBreakCarrier = paraProps.pageBreakBefore && block.runs.empty()
+        bool emptyPageBreakCarrier = pageBreak && block.runs.empty()
                                      && block.type == RichBlockType::Paragraph;
         bool onlyFrames = block.runs.empty()
                           && (!ctx.trailingImages.empty() || !ctx.textBoxes.empty());
@@ -454,9 +479,14 @@ private:
         for (auto& image : ctx.trailingImages) {
             doc_->blocks.push_back(std::move(image));
         }
+        // Text-box content is not part of the main flow: suppress page breaks
+        // from break-before styles on paragraphs positioned inside the box.
+        bool savedFlow = inMainFlow_;
+        inMainFlow_ = false;
         for (auto* textBox : ctx.textBoxes) {
             ParseBlockContainer(textBox, 0, "");
         }
+        inMainFlow_ = savedFlow;
     }
 
     void ParseList(tinyxml2::XMLElement* list, int level, std::string listStyleName) {
@@ -488,6 +518,24 @@ private:
         }
     }
 
+    // Flattens every block inside a table cell (paragraphs, headings, list
+    // items, nested table cells) into ctx.runs, one logical line per block.
+    void CollectCellRuns(tinyxml2::XMLElement* container, InlineContext& ctx) {
+        for (auto* elem = container->FirstChildElement(); elem;
+             elem = elem->NextSiblingElement()) {
+            std::string tag = elem->Name() ? elem->Name() : "";
+            if (tag == "text:p" || tag == "text:h") {
+                if (!ctx.runs.empty()) ctx.pendingLineBreak = true;
+                ParseInlineNodes(elem, ResolveStyle(Attr(elem, "text:style-name")), "", ctx);
+            } else if (tag == "text:list" || tag == "text:list-item"
+                       || tag == "text:list-header" || tag == "table:table"
+                       || tag == "table:table-row" || tag == "table:table-cell"
+                       || tag == "table:table-header-rows" || tag == "text:section") {
+                CollectCellRuns(elem, ctx);   // descend to reach the paragraphs
+            }
+        }
+    }
+
     void ParseTable(tinyxml2::XMLElement* table) {
         RichDocBlock block;
         block.type = RichBlockType::Table;
@@ -504,13 +552,11 @@ private:
                 cell.columnSpan = cellElem->IntAttribute("table:number-columns-spanned", 1);
                 cell.rowSpan = cellElem->IntAttribute("table:number-rows-spanned", 1);
                 InlineContext ctx;
-                bool firstParagraph = true;
-                for (auto* p = cellElem->FirstChildElement("text:p"); p;
-                     p = p->NextSiblingElement("text:p")) {
-                    if (!firstParagraph) ctx.pendingLineBreak = true;
-                    firstParagraph = false;
-                    ParseInlineNodes(p, ResolveStyle(Attr(p, "text:style-name")), "", ctx);
-                }
+                // A cell holds block content (paragraphs, headings, lists,
+                // even nested tables). The flat cell model keeps only runs, so
+                // every block's text is flattened into the cell separated by
+                // line breaks rather than dropping non-paragraph blocks.
+                CollectCellRuns(cellElem, ctx);
                 // A cell has no room for block structure: text boxes anchored
                 // in it flatten into line-broken cell text so nothing is lost.
                 // Index loop: nested frames may append more text boxes.
@@ -537,7 +583,21 @@ private:
              rowElem = rowElem->NextSiblingElement("table:table-row")) {
             parseRow(rowElem, false);
         }
-        if (!block.tableRows.empty()) doc_->blocks.push_back(std::move(block));
+        // Skip layout-only tables whose cells carry no text (letterheads use
+        // an empty table in the page header purely for positioning); emitting
+        // them would litter the linear flow with stray cell separators.
+        bool hasText = false;
+        for (const auto& row : block.tableRows) {
+            for (const auto& cell : row.cells) {
+                if (UCRichDocument::ConcatenateRunText(cell.runs)
+                        .find_first_not_of(" \t\r\n") != std::string::npos) {
+                    hasText = true;
+                    break;
+                }
+            }
+            if (hasText) break;
+        }
+        if (!block.tableRows.empty() && hasText) doc_->blocks.push_back(std::move(block));
     }
 
     void ParseBlockContainer(tinyxml2::XMLElement* container, int listLevel,
@@ -577,27 +637,120 @@ private:
                 for (auto& image : ctx.trailingImages) {
                     doc_->blocks.push_back(std::move(image));
                 }
+                bool savedFlow = inMainFlow_;
+                inMainFlow_ = false;   // text-box content is not main flow
                 for (size_t tb = 0; tb < ctx.textBoxes.size(); ++tb) {
                     ParseBlockContainer(ctx.textBoxes[tb], listLevel, listStyleName);
                 }
+                inMainFlow_ = savedFlow;
             } else if (tag == "style:region-left" || tag == "style:region-center"
                        || tag == "style:region-right") {
                 // Header/footer column regions.
+                ParseBlockContainer(elem, listLevel, listStyleName);
+            } else if (tag == "draw:g") {
+                // Grouped drawing shapes (e.g. a logo frame grouped with a
+                // caption): recurse so the nested frames/text boxes render.
                 ParseBlockContainer(elem, listLevel, listStyleName);
             }
             // Everything else (TOC, sequence declarations, forms) is skipped.
         }
     }
 
-    // Emits the header or footer of the first master page (styles.xml) as
-    // ordinary blocks, set off from the body with a horizontal rule. Regions
-    // that are empty or explicitly not displayed contribute nothing.
-    void ParseMasterPageRegion(tinyxml2::XMLElement* stylesRoot, const char* regionTag,
-                               bool afterBody) {
-        if (!stylesRoot) return;
+    // True if a master-page region (or any descendant) carries visible text or
+    // an image/table — used to skip empty first-page headers when choosing
+    // which master page to render.
+    bool NodeHasVisibleContent(tinyxml2::XMLNode* node) const {
+        for (auto* child = node->FirstChild(); child; child = child->NextSibling()) {
+            if (auto* textNode = child->ToText()) {
+                std::string v = textNode->Value() ? textNode->Value() : "";
+                if (v.find_first_not_of(" \t\r\n") != std::string::npos) return true;
+                continue;
+            }
+            auto* elem = child->ToElement();
+            if (!elem) continue;
+            std::string tag = elem->Name() ? elem->Name() : "";
+            if (tag == "draw:frame" || tag == "draw:image" || tag == "draw:g"
+                || tag == "table:table") {
+                return true;
+            }
+            if (NodeHasVisibleContent(elem)) return true;
+        }
+        return false;
+    }
+
+    bool MasterPageHasContent(tinyxml2::XMLElement* page) const {
+        for (const char* tag : {"style:header", "style:footer"}) {
+            auto* region = page->FirstChildElement(tag);
+            if (!region) continue;
+            if (std::string(Attr(region, "style:display")) == "false") continue;
+            if (NodeHasVisibleContent(region)) return true;
+        }
+        return false;
+    }
+
+    // Name of the master page the document's first page draws from. The initial
+    // page master is pinned by the first flow block's style via
+    // style:master-page-name (ODF §16.2); otherwise the document defaults to the
+    // "Standard" master. The pin lives on the paragraph *or table* style — real
+    // letterheads carry it on the leading layout table (table:style-name), not a
+    // paragraph — so both are consulted. A later pin is a page break onto a new
+    // page and must not be mistaken for the first page's master, so only the
+    // first flow block is inspected. Non-flow leading nodes (forms, field
+    // declarations, page-anchored frames/shapes) carry no page style and are
+    // skipped.
+    std::string AppliedMasterPageName(tinyxml2::XMLElement* body) const {
+        for (auto* elem = body->FirstChildElement(); elem;
+             elem = elem->NextSiblingElement()) {
+            std::string tag = elem->Name() ? elem->Name() : "";
+            const char* styleAttr = nullptr;
+            if (tag == "text:p" || tag == "text:h" || tag == "text:list") {
+                styleAttr = "text:style-name";
+            } else if (tag == "table:table") {
+                styleAttr = "table:style-name";
+            } else if (tag == "text:section") {
+                // A section is flow content; resolve within it, then stop.
+                return AppliedMasterPageName(elem);
+            } else {
+                continue;   // non-flow: forms, decls, page-anchored drawings
+            }
+            return ResolveStyle(Attr(elem, styleAttr)).masterPageName;
+        }
+        return "";
+    }
+
+    // Chooses which master page supplies the header/footer for the linear
+    // rendering: the one pinned by the body's first paragraph, else "Standard"
+    // if it carries content, else the first master page that has any content,
+    // else the first defined. This keeps letterhead chrome (logo, contacts,
+    // bank footer) that lives only on a first-page master.
+    tinyxml2::XMLElement* ResolveMasterPage(tinyxml2::XMLElement* stylesRoot,
+                                            tinyxml2::XMLElement* body) const {
+        if (!stylesRoot) return nullptr;
         auto* masters = stylesRoot->FirstChildElement("office:master-styles");
-        auto* page = masters ? masters->FirstChildElement("style:master-page") : nullptr;
-        auto* region = page ? page->FirstChildElement(regionTag) : nullptr;
+        if (!masters) return nullptr;
+        std::string wanted = AppliedMasterPageName(body);
+        tinyxml2::XMLElement* byName = nullptr;
+        tinyxml2::XMLElement* standard = nullptr;
+        tinyxml2::XMLElement* firstWithContent = nullptr;
+        tinyxml2::XMLElement* first = nullptr;
+        for (auto* page = masters->FirstChildElement("style:master-page"); page;
+             page = page->NextSiblingElement("style:master-page")) {
+            if (!first) first = page;
+            std::string name = Attr(page, "style:name");
+            if (!wanted.empty() && name == wanted) byName = page;
+            if (name == "Standard") standard = page;
+            if (!firstWithContent && MasterPageHasContent(page)) firstWithContent = page;
+        }
+        if (byName) return byName;
+        if (standard && MasterPageHasContent(standard)) return standard;
+        if (firstWithContent) return firstWithContent;
+        return standard ? standard : first;
+    }
+
+    // Emits a resolved header or footer region (styles.xml) as ordinary blocks,
+    // set off from the body with a horizontal rule. A region that is empty or
+    // explicitly not displayed contributes nothing.
+    void ParseMasterPageRegion(tinyxml2::XMLElement* region, bool afterBody) {
         if (!region || std::string(Attr(region, "style:display")) == "false") return;
 
         size_t start = doc_->blocks.size();
@@ -607,7 +760,10 @@ private:
             doc_->blocks.push_back(std::move(rule));
         }
         size_t contentStart = doc_->blocks.size();
+        bool savedFlow = inMainFlow_;
+        inMainFlow_ = false;   // header/footer paragraphs never break pages
         ParseBlockContainer(region, 0, "");
+        inMainFlow_ = savedFlow;
 
         bool hasContent = false;
         for (size_t i = contentStart; i < doc_->blocks.size() && !hasContent; ++i) {
