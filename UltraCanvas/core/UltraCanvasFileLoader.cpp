@@ -269,6 +269,22 @@ namespace UltraCanvas {
         });
     }
 
+    std::vector<MediaFormatInfo> UltraCanvasFileLoader::GetSupportedFormats() {
+        return UltraCanvasSupportedFormats::GetAll();
+    }
+
+    std::vector<MediaFormatInfo> UltraCanvasFileLoader::GetSupportedFormats(MediaFormatCategory category) {
+        return UltraCanvasSupportedFormats::GetByCategory(category);
+    }
+
+    std::vector<std::string> UltraCanvasFileLoader::GetSupportedLoadExtensions(MediaFormatCategory category) {
+        return UltraCanvasSupportedFormats::GetLoadExtensions(category);
+    }
+
+    std::vector<std::string> UltraCanvasFileLoader::GetSupportedSaveExtensions(MediaFormatCategory category) {
+        return UltraCanvasSupportedFormats::GetSaveExtensions(category);
+    }
+
     std::shared_ptr<UCRichDocument> UltraCanvasFileLoader::LoadTextDocument(
             const std::string& filePath, std::string& outError) {
         outError.clear();
