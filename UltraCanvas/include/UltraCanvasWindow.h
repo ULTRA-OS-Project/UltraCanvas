@@ -144,6 +144,7 @@ namespace UltraCanvas {
 
         // ===== CONSTRUCTOR & DESTRUCTOR =====
         UltraCanvasWindowBase();
+        virtual ~UltraCanvasWindowBase();
 
         NativeSurfacePtr GetNativeSurface() { return nativeSurface; };
 

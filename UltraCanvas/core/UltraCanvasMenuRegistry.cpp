@@ -98,7 +98,7 @@ namespace UltraCanvas {
         item.radioGroup = cmd->radioGroup;
         item.onClick = cmd->onClick;
         item.onToggle = cmd->onToggle;
-        item.onTextInput = cmd->onTextInput;
+//        item.onTextInput = cmd->onTextInput;
         return item;
     }
 

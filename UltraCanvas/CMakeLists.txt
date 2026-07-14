@@ -21,7 +21,7 @@ if(APPLE)
 endif()
 
 # ===== LIBRARY DEFINITION =====
-set(ULTRACANVAS_VERSION "0.3.4")
+set(ULTRACANVAS_VERSION "0.3.7")
 set(ULTRACANVAS_LIB_NAME "UltraCanvas")
 
 message(STATUS "")

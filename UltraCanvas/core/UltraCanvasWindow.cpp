@@ -22,10 +22,12 @@ namespace UltraCanvas {
         nativeSurface = nullptr;
     }
 
-//    UltraCanvasWindowBase::~UltraCanvasWindowBase() {
-//        UnregisterWindow();
-//        debugOutput << "UltraCanvas: Window deleted" << std::endl;
-//    }
+    UltraCanvasWindowBase::~UltraCanvasWindowBase() {
+        CloseAllPopups();
+        _state = WindowState::Closed;
+        _focusedElement = nullptr;
+        debugOutput << "UltraCanvas: Window deleted" << std::endl;
+    }
 
     // ===== FOCUS MANAGEMENT IMPLEMENTATION =====
 

@@ -462,7 +462,7 @@ namespace UltraCanvas {
         void SetPressed(bool pressed) { stateFlags.isPressed = pressed; RequestRedraw(); }
 
         bool IsFocused() const;
-        virtual bool SetFocus(bool focus = true);
+        virtual bool SetFocus(bool focus);
         virtual bool AcceptsFocus() const { return false; }
         bool CanReceiveFocus() const { return IsVisible() && !IsDisabled() && AcceptsFocus(); }
 

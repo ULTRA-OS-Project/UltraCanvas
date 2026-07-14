@@ -119,7 +119,7 @@ namespace UltraCanvas {
 
             // Focused State (simulated)
             auto focusedBtn = CreateButton("FocusedBtn", 280, yOffset, 120, 35, "Focused");
-            focusedBtn->SetFocus();
+            focusedBtn->SetFocus(true);
             focusedBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Focused button clicked\nShows focus ring when selected");
             };

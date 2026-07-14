@@ -345,11 +345,6 @@ namespace UltraCanvas {
         }
 
         infoWindow.reset();
-
-        // Focus back to main window
-        if (mainWindow) {
-            mainWindow->SetFocus();
-        }
     }
 
 } // namespace UltraCanvas

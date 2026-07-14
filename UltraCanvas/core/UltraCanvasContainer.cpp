@@ -22,9 +22,8 @@ namespace UltraCanvas {
         return static_cast<UltraCanvasUIElement*>(c.get());
     }
 
-    UltraCanvasContainer::~UltraCanvasContainer() = default;
+//    UltraCanvasContainer::~UltraCanvasContainer() = default;
 
-// ===== RENDERING IMPLEMENTATION =====
     void UltraCanvasContainer::SetWindow(UltraCanvasWindowBase *win) {
         UltraCanvasUIElement::SetWindow(win);
         for (auto& c : Children()) {
@@ -33,6 +32,26 @@ namespace UltraCanvas {
         horizontalScrollbar->SetWindow(win);
         verticalScrollbar->SetWindow(win);
     }
+
+    // if container unfocused then child elements also unfocused
+    bool UltraCanvasContainer::SetFocus(bool on) {
+        if (UltraCanvasUIElement::SetFocus(on)) {
+            return true;
+        }
+        if (!on) {
+            if (window) {
+                UltraCanvasUIElement* focusedElem = window->GetFocusedElement();
+                if (focusedElem) {
+                    if (focusedElem->IsDescendantOf(this)) {
+                        window->ClearFocus();
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
 
     void UltraCanvasContainer::Arrange(const Rect2Df& finalRect, const LayoutContext& ctx) {
         UltraCanvasUIElement::Arrange(finalRect, ctx);
@@ -43,6 +62,8 @@ namespace UltraCanvas {
 
         internalLayoutValid = true;
     }
+
+    // ===== RENDERING IMPLEMENTATION =====
 
     void UltraCanvasContainer::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         UltraCanvasUIElement::Render(ctx, dirtyRect);

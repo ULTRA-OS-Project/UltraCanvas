@@ -1,7 +1,7 @@
 # UltraCanvas/Plugins/Vector/CDR/CMakeLists.txt
 # CorelDRAW CDR Plugin - Builds as separate static library
 # Version: 1.0.0
-# Last Modified: 2025-12-14
+# Last Modified: 2026-07-14
 # Author: UltraCanvas Framework
 
 cmake_minimum_required(VERSION 3.16)
@@ -55,6 +55,9 @@ target_include_directories(${PLUGIN_NAME}
 target_link_libraries(${PLUGIN_NAME}
         PUBLIC
         ${LIBZLIB_LIBRARIES}
+        PRIVATE
+        UltraCanvas   # core: declares the link edge so the static plugin's core
+                      # symbol references resolve at final link (GNU/MinGW ld order).
 )
 
 # Include UltraCanvas core headers (passed from parent)

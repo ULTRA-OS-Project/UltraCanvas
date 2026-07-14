@@ -1769,15 +1769,15 @@ namespace UltraCanvas {
             for (FilerSortField f : fields) {
                 sortItems.push_back(MenuItemData::Radio(
                         SortFieldLabel(f), 1, sortField == f,
-                        [this, f](bool on) { if (on) SetSortField(f); }));
+                        [this, f]() { SetSortField(f); }));
             }
             sortItems.push_back(MenuItemData::Separator());
             sortItems.push_back(MenuItemData::Radio(
                     "Ascending", 2, sortAscending,
-                    [this](bool on) { if (on) SetSortAscending(true); }));
+                    [this]() { SetSortAscending(true); }));
             sortItems.push_back(MenuItemData::Radio(
                     "Descending", 2, !sortAscending,
-                    [this](bool on) { if (on) SetSortAscending(false); }));
+                    [this]() { SetSortAscending(false); }));
 
             std::vector<MenuItemData> typeItems;
             static const FilerViewType views[] = {
@@ -1790,7 +1790,7 @@ namespace UltraCanvas {
             for (FilerViewType v : views) {
                 typeItems.push_back(MenuItemData::Radio(
                         ViewTypeLabel(v), 3, viewType == v,
-                        [this, v](bool on) { if (on) SetViewType(v); }));
+                        [this, v]() { SetViewType(v); }));
             }
 
             std::vector<MenuItemData> displayItems;
@@ -1916,8 +1916,7 @@ namespace UltraCanvas {
                     return false;   // characters arrive via KeyChar / TextInput
             }
         }
-        if (event.type == UCEventType::KeyChar ||
-            event.type == UCEventType::TextInput) {
+        if (event.type == UCEventType::TextInput) {
             std::string in = event.text;
             if (in.empty() && event.character >= 32) in.assign(1, event.character);
             // Strip control characters and the path separator.
@@ -2139,7 +2138,6 @@ namespace UltraCanvas {
                 }
                 return false;
             }
-            case UCEventType::KeyChar:
             case UCEventType::TextInput:
                 return HandleRenameKey(event);
             default:

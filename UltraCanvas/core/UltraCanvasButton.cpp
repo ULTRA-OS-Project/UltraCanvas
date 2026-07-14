@@ -928,7 +928,7 @@ namespace UltraCanvas {
                         SetPressed(false);
                     } else {
                         SetPressed(true);
-                        SetFocus();
+                        SetFocus(true);
                         if (onPress) onPress();
                     }
                     if (canToggled && onToggle) {

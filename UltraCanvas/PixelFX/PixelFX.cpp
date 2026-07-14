@@ -550,7 +550,6 @@ namespace PixelFX {
                 unsigned char* raw = static_cast<unsigned char*>(work.write_to_memory(&bytes));
                 std::vector<unsigned char> pix(raw, raw + bytes);
                 g_free(raw);
-
                 const unsigned char* seed = &pix[static_cast<size_t>(y * W + x) * B];
                 auto colourDist = [&](const unsigned char* a, const unsigned char* b) -> double {
                     int sum = 0;
@@ -572,9 +571,9 @@ namespace PixelFX {
 
                 std::vector<int> stack;
                 stack.reserve(1024);
-                const int seed = y * W + x;
-                mask[seed] = 255;
-                stack.push_back(seed);
+                const int seedInt = y * W + x;
+                mask[seedInt] = 255;
+                stack.push_back(seedInt);
                 while (!stack.empty()) {
                     const int p = stack.back();
                     stack.pop_back();

@@ -22,7 +22,7 @@
 #include <string>
 
 namespace UltraCanvas {
-    const char* versionString = "0.3.4";
+    const char* versionString = "0.3.7";
 
     std::string ToLowerCase(const std::string &str) {
         std::string result = str;

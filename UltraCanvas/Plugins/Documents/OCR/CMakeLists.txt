@@ -1,7 +1,7 @@
 # UltraCanvas/Plugins/Documents/OCR/CMakeLists.txt
 # OCR Plugin (Tesseract) - Builds as separate static library
 # Version: 0.1.0
-# Last Modified: 2026-05-21
+# Last Modified: 2026-07-14
 # Author: UltraCanvas Framework
 
 cmake_minimum_required(VERSION 3.16)
@@ -76,6 +76,11 @@ target_link_libraries(${PLUGIN_NAME}
     PUBLIC
         ${TESSERACT_LIBRARIES}
         ${LEPTONICA_LIBRARIES}
+    PRIVATE
+        # Core provides GetExecutableDir(), GetResourcesDir(), etc. Declaring this
+        # link edge lets CMake order the core archive after this plugin so GNU/MinGW
+        # ld can resolve the plugin's references (a static lib is always linked in).
+        UltraCanvas
 )
 
 # ===== COMPILER SETTINGS =====

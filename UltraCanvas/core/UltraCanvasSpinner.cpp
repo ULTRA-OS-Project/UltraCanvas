@@ -336,7 +336,7 @@ namespace UltraCanvas {
             bool checked = std::abs(v - value) < eps;
             valueMenu->AddItem(MenuItemData::Radio(
                     FormatValueForDisplay(v), /*group*/ 1, checked,
-                    [this, v](bool) { SetValue(v); }));
+                    [this, v]() { SetValue(v); }));
         }
 
         Point2Df origin = GetPositionInWindow();

@@ -392,9 +392,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasApplicationBase::CleanupElementReferences(UltraCanvasUIElement* elem) {
-        // Called from ~UltraCanvasUIElement, where the weak_ptrs referencing elem are
-        // already expired (auto-handling the dangling case). These comparisons are kept
-        // for correctness on any path where elem is still live.
+        // Called from ~UltraCanvasUIElement
         for(auto & eventsIt : eventQueue) {
             if (eventsIt.targetElement == elem) {
                 eventsIt.targetElement = nullptr;
@@ -412,8 +410,8 @@ namespace UltraCanvas {
             hoveredElement = nullptr;
         }
         auto win = elem->GetWindow();
-        if (win && win->IsCreated() && win->GetState() != WindowState::Closing &&  win->GetState() != WindowState::Closed && win->GetFocusedElement() == elem) {
-            win->SetFocusedElement(nullptr);
+        if (win && win->_focusedElement == elem) {
+            win->_focusedElement = nullptr;
         }
     }
 

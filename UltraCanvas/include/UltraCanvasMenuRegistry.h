@@ -35,7 +35,7 @@ namespace UltraCanvas {
         // Exactly one of these is used, chosen by `type`:
         std::function<void()> onClick;                    // Action / Submenu-less
         std::function<void(bool)> onToggle;               // Checkbox / Radio
-        std::function<void(const std::string&)> onTextInput; // Input
+//        std::function<void(const std::string&)> onTextInput; // Input
 
         bool defaultChecked = false; // initial state for Checkbox / Radio
         int  radioGroup = 0;         // group id for Radio items

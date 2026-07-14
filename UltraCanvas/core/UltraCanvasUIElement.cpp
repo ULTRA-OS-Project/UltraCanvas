@@ -16,10 +16,16 @@
 namespace UltraCanvas {
 
     UltraCanvasUIElement::~UltraCanvasUIElement() {
+        // delete childs first
+        if (!children.empty()) {
+            children.clear();
+        }
         auto app = UltraCanvasApplication::GetInstance();
         if (app) {
             app->CleanupElementReferences(this);
         }
+        parent = nullptr;
+        window = nullptr;
     }
 
     UltraCanvasContainer* UltraCanvasUIElement::GetParentContainer() const {
@@ -231,8 +237,8 @@ namespace UltraCanvas {
         return pos + finalBounds.y;
     }
 
-    bool UltraCanvasUIElement::SetFocus(bool focus) {
-        if (focus) {
+    bool UltraCanvasUIElement::SetFocus(bool on) {
+        if (on) {
             if (!window) {
                 debugOutput << "Warning: Element " << GetIdentifier() << " has no window assigned" << std::endl;
                 return false;

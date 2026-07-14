@@ -62,7 +62,7 @@ namespace UltraCanvas {
         explicit UltraCanvasContainer(const std::string &id)
                 : UltraCanvasContainer(id, -1, -1, -1, -1) {}
 
-        virtual ~UltraCanvasContainer();
+//        virtual ~UltraCanvasContainer();
 
         // ===== CHILD MANAGEMENT =====
         void AddChild(std::shared_ptr<UltraCanvasUIElement> child);
@@ -151,7 +151,8 @@ namespace UltraCanvas {
 
         bool OnEvent(const UCEvent &event) override;
 
-        virtual void SetWindow(UltraCanvasWindowBase *win) override;
+        void SetWindow(UltraCanvasWindowBase *win) override;
+        bool SetFocus(bool on) override;
 
     private:
         // ===== INTERNAL METHODS =====
