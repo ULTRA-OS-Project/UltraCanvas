@@ -397,6 +397,27 @@ namespace PixelFX {
         void Point(PFXImage& image, int x, int y, const std::vector<double>& ink);
         void FloodFill(PFXImage& image, int x, int y, const std::vector<double>& ink);
         void FloodFillEqual(PFXImage& image, int x, int y, const std::vector<double>& ink, const std::vector<double>& target);
+        // How a tolerant flood fill decides whether a candidate pixel joins the
+        // region. Colour distance is the mean absolute per-channel difference
+        // (0..255) over the colour bands (a trailing alpha band is ignored).
+        enum class FloodMatch {
+            Neighbour = 0,  // within tolerance of the neighbour it spreads from — follows
+                            // smooth gradients while stopping at hard edges (magic wand)
+            Seed      = 1,  // within tolerance of the clicked seed colour — a single global
+                            // colour band, still restricted to the connected region
+            Exact     = 2   // identical to the seed colour (tolerance ignored)
+        };
+
+        // 4-connected tolerant flood fill. Unlike the libvips draw_flood variants
+        // above (which only spread across pixels equal to the seed), the region
+        // grows according to `match` and `tolerance`. For every mode a larger
+        // tolerance can only add pixels, so the filled area grows monotonically.
+        void FloodFillTolerance(PFXImage& image, int x, int y, const std::vector<double>& ink,
+                                double tolerance, FloodMatch match = FloodMatch::Neighbour);
+        // Same spread as FloodFillTolerance, but returns the selection as a single-band
+        // uchar mask (255 = inside, 0 = outside) for compositing instead of painting ink.
+        PFXImage MagicWandMask(const PFXImage& image, int x, int y, double tolerance,
+                               FloodMatch match = FloodMatch::Neighbour);
         void Smudge(PFXImage& image, int left, int top, int width, int height);
         void Insert(PFXImage& image, const PFXImage& sub, int x, int y);
         void Mask(PFXImage& image, const PFXImage& mask, int x, int y, const std::vector<double>& ink);
