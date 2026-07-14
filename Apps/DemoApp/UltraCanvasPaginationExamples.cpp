@@ -61,6 +61,20 @@ namespace UltraCanvas {
         container->AddChild(readout2);
 
         auto pg2 = CreatePaginationForItems("Pg2", 20, y, 640, 34, 95, 10, 1);
+        // Round page entries in a light orange pastel palette.
+        {
+            PaginationStyle s = pg2->GetStyle();
+            s.cornerRadius     = s.cellSize / 2.0f;          // circular cells
+            s.cellColor        = Color(255, 236, 214, 255);  // light orange pastel
+            s.cellHoverColor   = Color(255, 224, 178, 255);
+            s.cellPressedColor = Color(255, 213, 153, 255);
+            s.cellBorderColor  = Color(255, 193, 130, 255);
+            s.cellTextColor    = Color(120, 70, 20, 255);    // warm brown for contrast
+            s.currentColor     = Color(255, 167, 74, 255);   // stronger pastel orange
+            s.currentTextColor = Colors::White;
+            s.navGlyphColor    = Color(150, 90, 30, 255);
+            pg2->SetStyle(s);
+        }
         // Read the item window (start-end) straight from the control on change.
         auto pg2ptr = pg2.get();
         pg2->onPageChanged = [readout2, pg2ptr](int) {
