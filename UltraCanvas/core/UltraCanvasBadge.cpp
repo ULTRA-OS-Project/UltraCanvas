@@ -180,9 +180,14 @@ namespace UltraCanvas {
         ctx->SetFontStyle(fs);
         ctx->SetTextPaint(CurrentTextColor());
         std::string t = DisplayText();
-        Point2Di ts = ctx->GetTextDimension(t);
-        ctx->DrawText(t, Point2Di(static_cast<int>((w - ts.x) / 2.0f),
-                                  static_cast<int>((h - ts.y) / 2.0f)));
+        // Centre via DrawTextInRect: it aligns the font's ascent+descent band
+        // (not the taller logical line box), so the glyphs sit optically
+        // centred in the pill. Manually placing by GetTextDimension centres the
+        // logical box instead, and its asymmetric external leading pushed the
+        // text off-centre (typically too high).
+        ctx->SetTextAlignment(TextAlignment::Center);
+        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
+        ctx->DrawTextInRect(t, Rect2Dd(rect.x, rect.y, rect.width, rect.height));
     }
 
     bool UltraCanvasBadge::OnEvent(const UCEvent& event) {
