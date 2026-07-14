@@ -20,26 +20,26 @@
 #include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
-    // Demo-wide scrollbar look: the "Blue" style from the Scrollbar showcase page —
-    // a light-blue track carrying a blue, round-ended ("pill") thumb. Registered as
-    // the application-wide default scrollbar style in Initialize() so every element's
-    // scrollbars (the content area, the navigation tree, list/tree/menu examples, …)
-    // share this one blue style.
+    // Demo-wide scrollbar look: a light-blue track carrying a blue, round-ended
+    // ("pill") thumb. Registered as the application-wide default scrollbar style in
+    // Initialize() so every element's scrollbars (the content area, the navigation
+    // tree, list/tree/menu examples, …) share this one blue style.
+    //
+    // The thumb is a solid rounded rectangle (no grip image): its length tracks the
+    // visible fraction of the content (UpdateThumbRect scales it by
+    // viewportSize/contentSize), so the bar visibly represents how much of the full
+    // area is on screen, and it reacts to hover and drag via the thumb color states
+    // below. (Drawing the grip from an SVG would instead show a fixed-size centered
+    // capsule that hides the proportional length and can't change color on hover.)
     static ScrollbarStyle DemoScrollbarStyle() {
         ScrollbarStyle s;
-        s.trackSize         = 8;                        // half the former 16px width
+        s.trackSize         = 12;                       // was 8; widened by 4px
         s.trackColor        = Color(225, 232, 245, 255);
         s.thumbColor        = Color(90, 140, 220, 255);
-        s.thumbHoverColor   = Color(70, 120, 200, 255);
-        s.thumbPressedColor = Color(50, 100, 180, 255);
+        s.thumbHoverColor   = Color(70, 120, 200, 255); // lightens/darkens on hover
+        s.thumbPressedColor = Color(50, 100, 180, 255); // darkens while dragging
         s.thumbCornerRadius = s.trackSize / 2;          // fully rounded ends
         s.trackCornerRadius = s.trackSize / 2;
-        // Draw a grip handle on the thumb (SVG riffled grip), orientation-aware so
-        // vertical and horizontal bars each get a correctly-oriented grip. The
-        // scrollbar scales the grip preserving its aspect ratio and centers it in
-        // the thumb.
-        s.thumbImagePath           = NormalizePath(GetResourcesDir() + "media/icons/scrollbar-handle-v.svg");
-        s.thumbImagePathHorizontal = NormalizePath(GetResourcesDir() + "media/icons/scrollbar-handle-h.svg");
         return s;
     }
 
