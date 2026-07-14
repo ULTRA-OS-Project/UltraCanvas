@@ -9,11 +9,13 @@
 #include "UltraCanvasSpreadsheetSheet.h"
 #include "UltraCanvasSpreadsheetCell.h"
 #include "UltraCanvasSpreadsheetTypes.h"
+#include "UltraCanvasSpreadsheetOdsFormula.h"
 #include <fstream>
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
 #include <cstring>
+#include <cctype>
 #include <ctime>
 #include <filesystem>
 
@@ -157,6 +159,60 @@ double GetAttrDouble(const tinyxml2::XMLElement* elem, const char* name, double 
     return val ? std::stod(val) : defaultVal;
 }
 
+// Recursively gather the text of an ODF text element (text:p / text:span /
+// text:a ...). tinyxml2's GetText() only returns a leading text node, so
+// nested runs — most importantly a hyperlink's <text:a>content</text:a> —
+// would otherwise be dropped. The ODF inline whitespace elements are honoured:
+//   text:s -> N spaces (text:c), text:tab -> tab, text:line-break -> newline.
+void AppendElementText(const tinyxml2::XMLElement* elem, std::string& out) {
+    for (const tinyxml2::XMLNode* node = elem->FirstChild();
+         node; node = node->NextSibling()) {
+        if (const tinyxml2::XMLText* textNode = node->ToText()) {
+            out += textNode->Value();
+        } else if (const tinyxml2::XMLElement* child = node->ToElement()) {
+            std::string name = child->Name();
+            if (name == "text:s") {
+                int count = GetAttrInt(child, "text:c", 1);
+                if (count > 0) out.append(static_cast<size_t>(count), ' ');
+            } else if (name == "text:tab") {
+                out += '\t';
+            } else if (name == "text:line-break") {
+                out += '\n';
+            } else {
+                AppendElementText(child, out);  // text:span, text:a, ...
+            }
+        }
+    }
+}
+
+// Concatenate every text:p paragraph of a cell, newline-separated.
+std::string GetCellText(const tinyxml2::XMLElement* cellElem) {
+    std::string out;
+    bool first = true;
+    for (const tinyxml2::XMLElement* p = cellElem->FirstChildElement("text:p");
+         p; p = p->NextSiblingElement("text:p")) {
+        if (!first) out += '\n';
+        first = false;
+        AppendElementText(p, out);
+    }
+    return out;
+}
+
+// First hyperlink target (xlink:href on a text:a) found anywhere in the cell,
+// or empty when the cell holds no link.
+std::string FindCellHyperlink(const tinyxml2::XMLElement* elem) {
+    for (const tinyxml2::XMLElement* child = elem->FirstChildElement();
+         child; child = child->NextSiblingElement()) {
+        if (std::string(child->Name()) == "text:a") {
+            std::string href = GetAttr(child, "xlink:href");
+            if (!href.empty()) return href;
+        }
+        std::string nested = FindCellHyperlink(child);
+        if (!nested.empty()) return nested;
+    }
+    return "";
+}
+
 } // anonymous namespace
 
 // ============================================================================
@@ -168,6 +224,9 @@ private:
     UltraCanvasSpreadsheet* spreadsheet_;
     mz_zip_archive zip_;
     std::map<std::string, CellStyle> styles_;
+    // Number/currency/date/percentage formats keyed by their ODF data-style
+    // name (e.g. "N110"), referenced from a cell style's style:data-style-name.
+    std::map<std::string, NumberFormat> numberFormats_;
     std::string error_;
 
 public:
@@ -251,28 +310,141 @@ private:
         auto* root = doc.RootElement();
         if (!root) return;
         
+        // Number/data styles must be parsed before the cell styles that
+        // reference them via style:data-style-name.
         auto* officeStyles = root->FirstChildElement("office:styles");
-        if (officeStyles) {
-            ParseStyleElements(officeStyles);
-        }
-        
         auto* automaticStyles = root->FirstChildElement("office:automatic-styles");
-        if (automaticStyles) {
-            ParseStyleElements(automaticStyles);
-        }
+        if (officeStyles) ParseNumberStyles(officeStyles);
+        if (automaticStyles) ParseNumberStyles(automaticStyles);
+        if (officeStyles) ParseStyleElements(officeStyles);
+        if (automaticStyles) ParseStyleElements(automaticStyles);
     }
-    
+
     void ParseContentStyles(const std::string& xml) {
         tinyxml2::XMLDocument doc;
         if (doc.Parse(xml.c_str()) != tinyxml2::XML_SUCCESS) return;
-        
+
         auto* root = doc.RootElement();
         if (!root) return;
-        
+
         auto* automaticStyles = root->FirstChildElement("office:automatic-styles");
         if (automaticStyles) {
+            ParseNumberStyles(automaticStyles);
             ParseStyleElements(automaticStyles);
         }
+    }
+
+    // Parse every number:*-style child of the given container into a
+    // NumberFormat keyed by its style:name. ODF number styles model currency
+    // symbol/position, decimal places, thousands grouping, red negatives and
+    // date/time component order; we translate those into the engine's
+    // NumberFormat so display matches the authoring application.
+    void ParseNumberStyles(tinyxml2::XMLElement* parent) {
+        static const char* kTags[] = {
+            "number:number-style", "number:currency-style",
+            "number:percentage-style", "number:date-style",
+            "number:time-style"
+        };
+        for (const char* tag : kTags) {
+            for (auto* elem = parent->FirstChildElement(tag);
+                 elem; elem = elem->NextSiblingElement(tag)) {
+                std::string name = GetAttr(elem, "style:name");
+                if (name.empty()) continue;
+                numberFormats_[name] = ParseNumberFormatStyle(elem, tag);
+            }
+        }
+    }
+
+    NumberFormat ParseNumberFormatStyle(tinyxml2::XMLElement* styleElem,
+                                        const std::string& tag) {
+        NumberFormat fmt;
+        if (tag == "number:currency-style")        fmt.category = NumberFormatCategory::Currency;
+        else if (tag == "number:percentage-style") fmt.category = NumberFormatCategory::Percentage;
+        else if (tag == "number:date-style")       fmt.category = NumberFormatCategory::Date;
+        else if (tag == "number:time-style")       fmt.category = NumberFormatCategory::Time;
+        else                                       fmt.category = NumberFormatCategory::Number;
+
+        bool negativeRed = false;
+        std::string dateCode;              // built for date/time styles
+        int numberIndex = -1, symbolIndex = -1, childIndex = 0;
+        std::vector<int> spaceTextIndices; // number:text children that are blank
+        bool sawNumber = false;
+
+        for (auto* child = styleElem->FirstChildElement();
+             child; child = child->NextSiblingElement(), ++childIndex) {
+            std::string name = child->Name();
+            if (name == "style:text-properties") {
+                std::string color = GetAttr(child, "fo:color");
+                if (!color.empty()) {
+                    Color c = ParseHexColor(color);
+                    if (c.r > 180 && c.g < 80 && c.b < 80) negativeRed = true;
+                }
+            } else if (name == "number:number") {
+                numberIndex = childIndex;
+                sawNumber = true;
+                fmt.decimalPlaces = GetAttrInt(child, "number:decimal-places", 0);
+                if (GetAttr(child, "number:grouping") == "true")
+                    fmt.useThousandsSeparator = true;
+            } else if (name == "number:currency-symbol") {
+                symbolIndex = childIndex;
+                const char* t = child->GetText();
+                if (t) fmt.currencySymbol = t;
+            } else if (name == "number:day") {
+                dateCode += (GetAttr(child, "number:style") == "long") ? "DD" : "D";
+            } else if (name == "number:month") {
+                dateCode += (GetAttr(child, "number:style") == "long") ? "MM" : "M";
+            } else if (name == "number:year") {
+                dateCode += (GetAttr(child, "number:style") == "long") ? "YYYY" : "YY";
+            } else if (name == "number:hours") {
+                dateCode += (GetAttr(child, "number:style") == "long") ? "HH" : "H";
+            } else if (name == "number:minutes") {
+                dateCode += "NN";
+            } else if (name == "number:seconds") {
+                dateCode += "SS";
+            } else if (name == "number:text") {
+                // tinyxml2 drops pure-whitespace text nodes (GetText() == null);
+                // such an empty number:text almost always stood for a single
+                // space separator, so treat it as one.
+                const char* t = child->GetText();
+                std::string txt = (t && *t) ? t : " ";
+                dateCode += txt;   // literal separators (used only for date/time)
+                bool blank = txt.find_first_not_of(" \t\xC2\xA0") == std::string::npos;
+                if (blank) spaceTextIndices.push_back(childIndex);
+            }
+        }
+
+        fmt.negativeRed = negativeRed;
+
+        if (fmt.category == NumberFormatCategory::Currency) {
+            fmt.currencySymbolAfter = (symbolIndex > numberIndex);
+            // FormatNumber auto-inserts a space when the symbol trails the
+            // amount ("1,234.00 €") but not when it leads. If the document put
+            // a blank between a leading symbol and the amount ("€ 1,234.00"),
+            // fold that space into the symbol so it is preserved.
+            if (!fmt.currencySymbolAfter && symbolIndex >= 0 && numberIndex >= 0) {
+                for (int idx : spaceTextIndices) {
+                    if (idx > symbolIndex && idx < numberIndex) {
+                        fmt.currencySymbol += " ";
+                        break;
+                    }
+                }
+            }
+            (void)sawNumber;
+        } else if (fmt.category == NumberFormatCategory::Date ||
+                   fmt.category == NumberFormatCategory::Time) {
+            bool hasDate = dateCode.find('Y') != std::string::npos ||
+                           dateCode.find('D') != std::string::npos ||
+                           dateCode.find('M') != std::string::npos;
+            bool hasTime = dateCode.find('H') != std::string::npos ||
+                           dateCode.find("NN") != std::string::npos ||
+                           dateCode.find("SS") != std::string::npos;
+            if (hasDate && hasTime)      fmt.category = NumberFormatCategory::DateTime;
+            else if (hasTime && !hasDate) fmt.category = NumberFormatCategory::Time;
+            else                          fmt.category = NumberFormatCategory::Date;
+            if (!dateCode.empty()) fmt.formatCode = dateCode;
+        }
+
+        return fmt;
     }
     
     void ParseStyleElements(tinyxml2::XMLElement* stylesElem) {
@@ -374,11 +546,21 @@ private:
                         cellStyle.hAlign = HorizontalAlignment::Right;
                 }
                 
+                // Link the number/data format referenced by this cell style so
+                // currency/percentage/date cells display as authored.
+                std::string dataStyle = GetAttr(style, "style:data-style-name");
+                if (!dataStyle.empty()) {
+                    auto nf = numberFormats_.find(dataStyle);
+                    if (nf != numberFormats_.end()) {
+                        cellStyle.numberFormat = nf->second;
+                    }
+                }
+
                 styles_[styleName] = cellStyle;
             }
         }
     }
-    
+
     bool ParseContent(const std::string& xml) {
         tinyxml2::XMLDocument doc;
         if (doc.Parse(xml.c_str()) != tinyxml2::XML_SUCCESS) {
@@ -548,12 +730,10 @@ private:
         // Parse formula
         bool hasFormula = !formula.empty();
         if (hasFormula) {
-            // ODS formulas start with "of:=" or namespace prefix
-            if (formula.find("of:=") == 0) {
-                formula = formula.substr(3);  // Remove "of:"
-            } else if (formula[0] != '=') {
-                formula = "=" + formula;
-            }
+            // Convert ODF reference syntax ("of:=", bracketed [.A1] / range
+            // [.A1:.B2] / cross-sheet ['Sheet'.A1]) into the engine's native
+            // A1 / A1:B2 / 'Sheet'.A1 form.
+            formula = OdsFormulaToNative(formula);
             cell->SetFormula(formula);
         }
 
@@ -569,10 +749,7 @@ private:
                     GetAttr(cellElem, "office:boolean-value") == "true",
                     CellValueType::Boolean);
             } else {
-                auto* textElem = cellElem->FirstChildElement("text:p");
-                const char* text = textElem ? textElem->GetText() : nullptr;
-                cell->SetFormulaResult(std::string(text ? text : ""),
-                                       CellValueType::Text);
+                cell->SetFormulaResult(GetCellText(cellElem), CellValueType::Text);
             }
         }
         else if (valueType == "float" || valueType == "currency" || valueType == "percentage") {
@@ -603,24 +780,23 @@ private:
             cell->SetBoolean(value);
         }
         else if (valueType == "string" || !valueType.empty()) {
-            // Get text content from text:p element
-            auto* textElem = cellElem->FirstChildElement("text:p");
-            if (textElem) {
-                const char* text = textElem->GetText();
-                cell->SetText(text ? text : "");
-            }
+            // Gather text from all paragraphs, including nested runs / links.
+            cell->SetText(GetCellText(cellElem));
         }
         else if (formula.empty()) {
-            // Check for text content without value-type
-            auto* textElem = cellElem->FirstChildElement("text:p");
-            if (textElem) {
-                const char* text = textElem->GetText();
-                if (text && text[0]) {
-                    cell->SetValueFromString(text);
-                }
+            // Check for text content without value-type.
+            std::string text = GetCellText(cellElem);
+            if (!text.empty()) {
+                cell->SetValueFromString(text);
             }
         }
-        
+
+        // Preserve a hyperlink target carried by a text:a run.
+        std::string href = FindCellHyperlink(cellElem);
+        if (!href.empty()) {
+            cell->SetHyperlink(href);
+        }
+
         // Apply style
         std::string styleName = GetAttr(cellElem, "table:style-name");
         if (!styleName.empty()) {
@@ -650,6 +826,11 @@ private:
     // not enough to reconstruct the style).
     std::vector<std::pair<std::string, CellStyle>> styleDefs_;
     int styleCounter_ = 0;
+    // Number/data styles (currency/percentage/date/number) discovered from cell
+    // formats, keyed by signature, plus their definitions in creation order.
+    std::map<std::string, std::string> numberStyleMap_;
+    std::vector<std::pair<std::string, NumberFormat>> numberStyleDefs_;
+    int numberStyleCounter_ = 0;
 
 public:
     ODSSaver(UltraCanvasSpreadsheet* spreadsheet) : spreadsheet_(spreadsheet) {}
@@ -713,11 +894,17 @@ private:
             });
         }
         
-        // Write collected styles
+        // Write the number/data styles first so the cell styles that reference
+        // them via style:data-style-name resolve.
+        for (const auto& [numName, numFmt] : numberStyleDefs_) {
+            WriteNumberStyleDefinition(ss, numName, numFmt);
+        }
+
+        // Write collected cell styles
         for (const auto& [styleName, style] : styleDefs_) {
             WriteStyleDefinition(ss, styleName, style);
         }
-        
+
         ss << "</office:automatic-styles>\n";
         
         // Body
@@ -798,10 +985,12 @@ private:
             ss << " table:style-name=\"" << styleName << "\"";
         }
         
-        // Formula
+        // Formula. Serialize into ODF syntax (bracketed references, "of:="
+        // prefix). When the parsed AST is available we emit precise reference
+        // brackets; otherwise fall back to the stored text.
         if (cell->HasFormula()) {
-            std::string formula = cell->GetFormulaText();
-            ss << " table:formula=\"of:" << EscapeXml(formula) << "\"";
+            std::string odf = FormulaToODS(cell);
+            ss << " table:formula=\"of:" << EscapeXml(odf) << "\"";
         }
         
         // Value type and value
@@ -873,6 +1062,9 @@ private:
         std::string name = "ce" + std::to_string(++styleCounter_);
         styleMap_[key] = name;
         styleDefs_.emplace_back(name, style);
+        // Ensure the referenced data style is created now, so number styles are
+        // known (and emitted) before the cell styles that reference them.
+        GetOrCreateNumberStyle(style.numberFormat);
         return name;
     }
 
@@ -895,7 +1087,34 @@ private:
         border(style.borders.right);
         border(style.borders.top);
         border(style.borders.bottom);
+        ss << "|nf:" << NumberStyleKey(style.numberFormat);
         return ss.str();
+    }
+
+    // Signature for a number format so equal formats share one data style.
+    static std::string NumberStyleKey(const NumberFormat& f) {
+        std::stringstream ss;
+        ss << static_cast<int>(f.category) << "|" << f.decimalPlaces << "|"
+           << f.useThousandsSeparator << "|" << f.currencySymbol << "|"
+           << f.currencySymbolAfter << "|" << f.negativeRed << "|" << f.formatCode;
+        return ss.str();
+    }
+
+    // Returns the ODF data-style name for a format, creating it on first use.
+    // General/Text formats need no data style, so return "".
+    std::string GetOrCreateNumberStyle(const NumberFormat& fmt) {
+        if (fmt.category == NumberFormatCategory::General ||
+            fmt.category == NumberFormatCategory::Text) {
+            return "";
+        }
+        std::string key = NumberStyleKey(fmt);
+        auto it = numberStyleMap_.find(key);
+        if (it != numberStyleMap_.end()) return it->second;
+
+        std::string name = "N" + std::to_string(++numberStyleCounter_);
+        numberStyleMap_[key] = name;
+        numberStyleDefs_.emplace_back(name, fmt);
+        return name;
     }
 
     // ODS border attribute value, e.g. "0.5pt solid #000000". The loader
@@ -920,9 +1139,123 @@ private:
         return std::string(width) + " " + lineStyle + " " + ColorToHex(border.color);
     }
 
+    // Emit the currency number + symbol runs in the authored order. The loader
+    // folds a leading symbol's separating space into currencySymbol; undo that
+    // here so the ODF is a clean symbol element plus a text separator.
+    void EmitCurrencyBody(std::stringstream& ss, const NumberFormat& fmt) {
+        std::stringstream numAttr;
+        numAttr << "number:decimal-places=\"" << fmt.decimalPlaces
+                << "\" number:min-integer-digits=\"1\"";
+        if (fmt.useThousandsSeparator) numAttr << " number:grouping=\"true\"";
+        std::string numEl = "<number:number " + numAttr.str() + "/>";
+
+        std::string sym = fmt.currencySymbol;
+        bool trailingSpace = !sym.empty() && sym.back() == ' ';
+        while (!sym.empty() && sym.back() == ' ') sym.pop_back();
+        std::string symEl = "<number:currency-symbol>" + EscapeXml(sym)
+                          + "</number:currency-symbol>";
+
+        if (fmt.currencySymbolAfter) {
+            ss << numEl << "<number:text> </number:text>" << symEl;
+        } else {
+            ss << symEl;
+            if (trailingSpace) ss << "<number:text> </number:text>";
+            ss << numEl;
+        }
+    }
+
+    // Emit date/time component elements from a format code (inverse of the
+    // formatCode built by the loader). Consecutive literals coalesce into one
+    // number:text.
+    void EmitDateTimeBody(std::stringstream& ss, const std::string& code) {
+        std::string lit;
+        auto flush = [&]() {
+            if (!lit.empty()) { ss << "<number:text>" << EscapeXml(lit) << "</number:text>"; lit.clear(); }
+        };
+        for (size_t i = 0; i < code.size();) {
+            auto st = [&](const char* t) { return code.compare(i, std::strlen(t), t) == 0; };
+            if (st("YYYY"))      { flush(); ss << "<number:year number:style=\"long\"/>"; i += 4; }
+            else if (st("YY"))   { flush(); ss << "<number:year/>"; i += 2; }
+            else if (st("MM"))   { flush(); ss << "<number:month number:style=\"long\"/>"; i += 2; }
+            else if (st("M"))    { flush(); ss << "<number:month/>"; i += 1; }
+            else if (st("DD"))   { flush(); ss << "<number:day number:style=\"long\"/>"; i += 2; }
+            else if (st("D"))    { flush(); ss << "<number:day/>"; i += 1; }
+            else if (st("HH"))   { flush(); ss << "<number:hours number:style=\"long\"/>"; i += 2; }
+            else if (st("H"))    { flush(); ss << "<number:hours/>"; i += 1; }
+            else if (st("NN"))   { flush(); ss << "<number:minutes number:style=\"long\"/>"; i += 2; }
+            else if (st("SS"))   { flush(); ss << "<number:seconds number:style=\"long\"/>"; i += 2; }
+            else { lit += code[i]; i += 1; }
+        }
+        flush();
+    }
+
+    // Serialize a NumberFormat as an ODF number:*-style (inverse of
+    // ParseNumberFormatStyle), so currency/percentage/date/number formats
+    // survive a save round-trip.
+    void WriteNumberStyleDefinition(std::stringstream& ss, const std::string& name,
+                                    const NumberFormat& fmt) {
+        auto grouping = [&]() { return fmt.useThousandsSeparator ? " number:grouping=\"true\"" : ""; };
+        switch (fmt.category) {
+            case NumberFormatCategory::Number:
+                ss << "<number:number-style style:name=\"" << name << "\">"
+                   << "<number:number number:decimal-places=\"" << fmt.decimalPlaces
+                   << "\" number:min-integer-digits=\"1\"" << grouping()
+                   << "/></number:number-style>\n";
+                break;
+            case NumberFormatCategory::Percentage:
+                ss << "<number:percentage-style style:name=\"" << name << "\">"
+                   << "<number:number number:decimal-places=\"" << fmt.decimalPlaces
+                   << "\" number:min-integer-digits=\"1\"" << grouping()
+                   << "/><number:text>%</number:text></number:percentage-style>\n";
+                break;
+            case NumberFormatCategory::Currency:
+            case NumberFormatCategory::Accounting:
+                if (fmt.negativeRed) {
+                    // Positive variant, then a red base with a leading minus and
+                    // a map back to the positive style (matches LibreOffice).
+                    ss << "<number:currency-style style:name=\"" << name
+                       << "P\" style:volatile=\"true\">";
+                    EmitCurrencyBody(ss, fmt);
+                    ss << "</number:currency-style>\n";
+                    ss << "<number:currency-style style:name=\"" << name << "\">"
+                       << "<style:text-properties fo:color=\"#ff0000\"/>"
+                       << "<number:text>-</number:text>";
+                    EmitCurrencyBody(ss, fmt);
+                    ss << "<style:map style:condition=\"value()&gt;=0\""
+                       << " style:apply-style-name=\"" << name << "P\"/>"
+                       << "</number:currency-style>\n";
+                } else {
+                    ss << "<number:currency-style style:name=\"" << name << "\">";
+                    EmitCurrencyBody(ss, fmt);
+                    ss << "</number:currency-style>\n";
+                }
+                break;
+            case NumberFormatCategory::Date:
+            case NumberFormatCategory::DateTime:
+                ss << "<number:date-style style:name=\"" << name << "\">";
+                EmitDateTimeBody(ss, fmt.formatCode);
+                ss << "</number:date-style>\n";
+                break;
+            case NumberFormatCategory::Time:
+                ss << "<number:time-style style:name=\"" << name << "\">";
+                EmitDateTimeBody(ss, fmt.formatCode);
+                ss << "</number:time-style>\n";
+                break;
+            default:
+                break;
+        }
+    }
+
     void WriteStyleDefinition(std::stringstream& ss, const std::string& name,
                               const CellStyle& style) {
-        ss << "<style:style style:name=\"" << name << "\" style:family=\"table-cell\">\n";
+        ss << "<style:style style:name=\"" << name << "\" style:family=\"table-cell\"";
+        // Link the number/data style (already emitted) so currency/percentage/
+        // date formats round-trip.
+        std::string dataStyle = GetOrCreateNumberStyle(style.numberFormat);
+        if (!dataStyle.empty()) {
+            ss << " style:data-style-name=\"" << dataStyle << "\"";
+        }
+        ss << ">\n";
 
         // Cell properties: background, borders, vertical alignment, wrap.
         {
@@ -1014,6 +1347,101 @@ private:
         ss << "</style:style>\n";
     }
     
+    // ---- Native formula -> ODF formula serialization ---------------------
+    // ODF references are bracketed and sheet-qualified with a '.', e.g.
+    // [.D28], [.B28:.B42], ['Sheet Name'.B55]. A current-sheet reference has an
+    // empty sheet part ("[."). This is the inverse of OdsFormulaToNative().
+    static std::string QuoteSheetName(const std::string& name) {
+        // ODF requires quoting sheet names that are not simple identifiers.
+        bool simple = !name.empty();
+        for (char c : name) {
+            if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '_')) {
+                simple = false;
+                break;
+            }
+        }
+        if (simple) return name;
+        std::string q = "'";
+        for (char c : name) { if (c == '\'') q += '\''; q += c; }  // double internal quotes
+        q += "'";
+        return q;
+    }
+
+    static std::string BareCell(CellAddress addr) {
+        addr.sheetName.clear();
+        return addr.ToString();  // column letters + optional '$' + row
+    }
+
+    static std::string ODSCellRef(const CellAddress& addr) {
+        std::string sheet = addr.sheetName.empty() ? "" : QuoteSheetName(addr.sheetName);
+        return "[" + sheet + "." + BareCell(addr) + "]";
+    }
+
+    static std::string ODSRangeRef(const CellRange& range) {
+        std::string startSheet =
+            range.start.sheetName.empty() ? "" : QuoteSheetName(range.start.sheetName);
+        // The end keeps its own sheet only when it differs from the start's.
+        std::string endSheet;
+        if (!range.end.sheetName.empty() && range.end.sheetName != range.start.sheetName) {
+            endSheet = QuoteSheetName(range.end.sheetName);
+        }
+        return "[" + startSheet + "." + BareCell(range.start) + ":" +
+               endSheet + "." + BareCell(range.end) + "]";
+    }
+
+    static std::string EmitODS(const FormulaNode* node) {
+        if (!node) return "";
+        switch (node->nodeType) {
+            case FormulaNodeType::Literal: {
+                const FormulaValue& v = node->literalValue;
+                if (v.IsText()) return "\"" + v.GetText() + "\"";
+                if (v.IsBoolean()) return v.GetBoolean() ? "TRUE()" : "FALSE()";
+                if (v.IsError()) return CellErrorToString(v.GetError());
+                std::ostringstream os;
+                os << v.GetNumber();
+                return os.str();
+            }
+            case FormulaNodeType::CellRef:
+                return ODSCellRef(node->cellRef);
+            case FormulaNodeType::RangeRef:
+                return ODSRangeRef(node->rangeRef);
+            case FormulaNodeType::NamedRef:
+                return node->namedRef;
+            case FormulaNodeType::BinaryOp:
+                if (node->children.size() == 2) {
+                    return "(" + EmitODS(node->children[0].get()) + node->op +
+                           EmitODS(node->children[1].get()) + ")";
+                }
+                return "";
+            case FormulaNodeType::UnaryOp:
+                if (node->children.size() == 1) {
+                    if (node->op == "%") return "(" + EmitODS(node->children[0].get()) + "%)";
+                    return "(" + node->op + EmitODS(node->children[0].get()) + ")";
+                }
+                return "";
+            case FormulaNodeType::FunctionCall: {
+                std::string out = node->functionName + "(";
+                for (size_t i = 0; i < node->children.size(); ++i) {
+                    if (i) out += ";";  // ODF uses ';' as the argument separator
+                    out += EmitODS(node->children[i].get());
+                }
+                out += ")";
+                return out;
+            }
+            default:
+                return "";
+        }
+    }
+
+    static std::string FormulaToODS(const SpreadsheetCell* cell) {
+        auto formula = cell->GetFormula();
+        if (formula && formula->GetAST()) {
+            return "=" + EmitODS(formula->GetAST());
+        }
+        // Fall back to the stored text when no parsed AST is available.
+        return cell->GetFormulaText();
+    }
+
     // Serial numbers use the ODS/Excel epoch (Dec 30, 1899) - the same epoch
     // DateTimeValue uses - so convert through DateTimeValue rather than a
     // Unix-epoch/localtime round-trip (which is timezone-dependent and breaks
