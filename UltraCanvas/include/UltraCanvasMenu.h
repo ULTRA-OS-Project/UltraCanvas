@@ -75,7 +75,7 @@ namespace UltraCanvas {
         // Callbacks
         std::function<void()> onClick;
         std::function<void(bool)> onToggle;
-        std::function<void(const std::string&)> onTextInput;
+//        std::function<void(const std::string&)> onTextInput;
 
         // Submenu items — either static (subItems) or lambda-provided (subItemsProvider).
         // If subItemsProvider is set, it is invoked each time the submenu opens,
@@ -120,8 +120,8 @@ namespace UltraCanvas {
         static MenuItemData Header(const std::string& label);
         static MenuItemData Checkbox(const std::string& label, bool checked, std::function<void(bool)> callback);
         static MenuItemData Checkbox(const std::string& label, bool checked, const FontStyle& font, std::function<void(bool)> callback);
-        static MenuItemData Radio(const std::string& label, int group, bool checked, std::function<void(bool)> callback);
-        static MenuItemData Radio(const std::string& label, int group, bool checked, const FontStyle& font, std::function<void(bool)> callback);
+        static MenuItemData Radio(const std::string& label, int group, bool checked, std::function<void()> callback);
+        static MenuItemData Radio(const std::string& label, int group, bool checked, const FontStyle& font, std::function<void()> callback);
         static MenuItemData Submenu(const std::string& label, const std::vector<MenuItemData>& items);
         static MenuItemData Submenu(const std::string& label, const std::string& iconPath, const std::vector<MenuItemData>& items);
         static MenuItemData Submenu(const std::string& label, const FontStyle& font, const std::vector<MenuItemData>& items);
@@ -647,24 +647,24 @@ namespace UltraCanvas {
         return item;
     }
 
-    inline MenuItemData MenuItemData::Radio(const std::string& label, int group, bool checked, std::function<void(bool)> callback) {
+    inline MenuItemData MenuItemData::Radio(const std::string& label, int group, bool checked, std::function<void()> callback) {
         MenuItemData item;
         item.type = MenuItemType::Radio;
         item.label = label;
         item.checked = checked;
         item.radioGroup = group;
-        item.onToggle = callback;
+        item.onClick = callback;
         return item;
     }
 
-    inline MenuItemData MenuItemData::Radio(const std::string& label, int group, bool checked, const FontStyle& font, std::function<void(bool)> callback) {
+    inline MenuItemData MenuItemData::Radio(const std::string& label, int group, bool checked, const FontStyle& font, std::function<void()> callback) {
         MenuItemData item;
         item.type = MenuItemType::Radio;
         item.label = label;
         item.checked = checked;
         item.radioGroup = group;
         item.font = font;
-        item.onToggle = callback;
+        item.onClick = callback;
         return item;
     }
 
@@ -740,21 +740,21 @@ namespace UltraCanvas {
         return item;
     }
 
-    inline MenuItemData MenuItemData::Input(const std::string& label, const std::string& placeholder, std::function<void(const std::string&)> callback) {
-        MenuItemData item;
-        item.type = MenuItemType::Input;
-        item.label = label;
-        item.onTextInput = callback;
-        return item;
-    }
-
-    inline MenuItemData MenuItemData::Input(const std::string& label, const std::string& placeholder, const FontStyle& font, std::function<void(const std::string&)> callback) {
-        MenuItemData item;
-        item.type = MenuItemType::Input;
-        item.label = label;
-        item.font = font;
-        item.onTextInput = callback;
-        return item;
-    }
+//    inline MenuItemData MenuItemData::Input(const std::string& label, const std::string& placeholder, std::function<void(const std::string&)> callback) {
+//        MenuItemData item;
+//        item.type = MenuItemType::Input;
+//        item.label = label;
+//        item.onTextInput = callback;
+//        return item;
+//    }
+//
+//    inline MenuItemData MenuItemData::Input(const std::string& label, const std::string& placeholder, const FontStyle& font, std::function<void(const std::string&)> callback) {
+//        MenuItemData item;
+//        item.type = MenuItemType::Input;
+//        item.label = label;
+//        item.font = font;
+//        item.onTextInput = callback;
+//        return item;
+//    }
 
 } // namespace UltraCanvas

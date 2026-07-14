@@ -188,8 +188,11 @@ namespace {
                   [](const PFXImage& src, const std::vector<float>&, const EffectContext&) { return FX::Resample::FlipHorizontal(src); } },
                 { "flipv", "Flip vertical", "Mirrors the image top ↔ bottom (Resample::FlipVertical).", {},
                   [](const PFXImage& src, const std::vector<float>&, const EffectContext&) { return FX::Resample::FlipVertical(src); } },
-                { "scale", "Scale", "Resizes with a Lanczos3 kernel (Resample::Resize).",
-                  { { "Factor", 0.1f, 2.0f, 0.5f, 0.05f } },
+                { "scale", "Scale", "Resizes with a Lanczos3 kernel (Resample::Resize). The "
+                  "preview grows or shrinks with the factor relative to the frame: 1.0 fits "
+                  "the frame, below 1.0 shrinks centred, above 1.0 pins the width and grows "
+                  "taller (centre-cropped) up to the frame border.",
+                  { { "Factor", 0.1f, 3.0f, 1.0f, 0.05f } },
                   [](const PFXImage& src, const std::vector<float>& p, const EffectContext&) { return FX::Resample::Resize(src, p[0]); } },
                 { "pixelate", "Pixelate", "Subsamples then zooms back up for a mosaic look (Conversion::Subsample + Zoom).",
                   { { "Block size", 2.0f, 32.0f, 8.0f, 1.0f } },
@@ -245,37 +248,36 @@ namespace {
             } },
             { "draw", "Draw", {
                 { "floodfill", "Flood fill",
-                  "Paint-bucket fill around the picked point (Draw::FloodFillEqual). "
-                  "Tolerance quantises the image first so smooth photo gradients form "
-                  "connected regions. Choose the ink below, press “Set fill position” "
-                  "and click a spot in the image.",
-                  { { "Tolerance", 4.0f, 64.0f, 24.0f, 2.0f } },
+                  "Paint-bucket fill around the picked point (Draw::MagicWandMask). The Fill "
+                  "mode chooses how the region grows: Gradient spreads while each pixel stays "
+                  "within Tolerance of its neighbour (magic wand — follows smooth shading); "
+                  "Global keeps pixels within Tolerance of the clicked colour; Exact takes "
+                  "only the connected patch of the identical colour. Raising Tolerance always "
+                  "enlarges the area. Choose the ink below, press “Set fill position” and "
+                  "click a spot in the image.",
+                  { { "Tolerance", 1.0f, 48.0f, 10.0f, 1.0f } },
                   [](const PFXImage& src, const std::vector<float>& p, const EffectContext& ctx) {
                       PFXImage base = FX::Conversion::CastUchar(src);
                       if (FX::Colour::HasAlpha(base)) base = FX::Colour::Flatten(base);
                       int x = std::clamp(static_cast<int>(ctx.posX * (base.Width()  - 1)), 0, base.Width()  - 1);
                       int y = std::clamp(static_cast<int>(ctx.posY * (base.Height() - 1)), 0, base.Height() - 1);
-                      // Exact-equality flood fill barely spreads on continuous photo
-                      // tones, so run it on a smoothed, posterised helper image and
-                      // then paint every changed pixel on the original.
-                      double step = std::max(1.0f, p[0]);
-                      PFXImage quant = FX::Conversion::CastUchar(
-                          FX::Arithmetic::Multiply(
-                              FX::Arithmetic::Floor(
-                                  FX::Arithmetic::Divide(FX::Morphology::Median(base, 3), step)), step));
-                      // Marker colour guaranteed to differ from the start pixel
-                      std::vector<double> start = FX::Arithmetic::GetPoint(quant, x, y);
-                      std::vector<double> marker;
-                      for (double v : start) marker.push_back(v >= 128.0 ? v - 128.0 : v + 128.0);
-                      PFXImage flooded = FX::Conversion::CopyMemory(quant);   // draw_* mutates
-                      FX::Draw::FloodFillEqual(flooded, x, y, marker, {});
-                      PFXImage mask = FX::Colour::Bandmean(FX::Arithmetic::NotEqual(flooded, quant));
-                      PFXImage ink  = FX::Generate::NewFromImage(base,
+                      FX::Draw::FloodMatch match =
+                          ctx.choice == 1 ? FX::Draw::FloodMatch::Seed  :
+                          ctx.choice == 2 ? FX::Draw::FloodMatch::Exact :
+                                            FX::Draw::FloodMatch::Neighbour;
+                      // The tolerance modes run on a median-smoothed guide so sensor noise
+                      // doesn't block or leak the spread; Exact matches the true pixels.
+                      // The ink is painted over the pristine original either way, so
+                      // untouched areas keep their detail.
+                      PFXImage guide = (match == FX::Draw::FloodMatch::Exact)
+                                           ? base : FX::Morphology::Median(base, 3);
+                      PFXImage mask  = FX::Draw::MagicWandMask(guide, x, y, std::max(0.0f, p[0]), match);
+                      PFXImage ink   = FX::Generate::NewFromImage(base,
                           { static_cast<double>(ctx.fillColor.r),
                             static_cast<double>(ctx.fillColor.g),
                             static_cast<double>(ctx.fillColor.b) });
                       return FX::Arithmetic::Ifthenelse(mask, ink, base); },
-                  "", {}, true },
+                  "Fill mode", { "Gradient (neighbour)", "Global (seed colour)", "Exact colour" }, true },
             } },
             { "compositing", "Compositing", {
                 { "blend", "Blend modes",
@@ -379,7 +381,12 @@ namespace {
         bool pickArmed = false;
 
         bool OnEvent(const UCEvent& event) override {
+            // While armed, a left click inside the fitted image reports a fill
+            // position. Picking stays armed so the user can keep re-placing the
+            // fill; Esc or the right mouse button end the mode (handled by a
+            // window-level event filter installed alongside this view).
             if (pickArmed && event.type == UCEventType::MouseDown &&
+                event.button == UCMouseButton::Left &&
                 Contains(event.pointer) && contentW > 0 && contentH > 0) {
                 // Reproduce the ImageFitMode::Contain letterboxing of the renderer
                 float ew = GetWidth(), eh = GetHeight();
@@ -389,7 +396,6 @@ namespace {
                 float nx = (event.pointer.x - ox) / dw;
                 float ny = (event.pointer.y - oy) / dh;
                 if (nx >= 0.0f && nx <= 1.0f && ny >= 0.0f && ny <= 1.0f) {
-                    pickArmed = false;
                     if (onPixelPicked) onPixelPicked(nx, ny);
                     return true;
                 }
@@ -621,6 +627,8 @@ namespace {
         auto tree = std::make_shared<UltraCanvasTreeView>("PixelFXTree", 0, 0, 250, 0);
         tree->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        // Expanding a category jumps the selection to its first function entry.
+        tree->SetShowFirstChildOnExpand(true);
 
         TreeNodeData rootData("pixelfx_root", "PixelFX processing");
         rootData.leftIcon = TreeNodeIcon(iconsDir + "image.png", 16, 16);
@@ -672,6 +680,43 @@ namespace {
             status->RequestRedraw();
         };
 
+        // Arm / disarm the flood-fill position picker. Arming shows a crosshair
+        // cursor over the image and keeps the mode active until the user cancels
+        // with Esc or the right mouse button; a window-level event filter (installed
+        // lazily on first arm) delivers those cancels regardless of which widget
+        // currently holds focus.
+        auto setPick = std::make_shared<std::function<void(bool)>>();
+        auto escInstalled = std::make_shared<bool>(false);
+        std::weak_ptr<std::function<void(bool)>> setPickWeak = setPick;
+        *setPick = [imageView, setStatus, escInstalled, setPickWeak](bool on) {
+            if (imageView->pickArmed == on) return;   // nothing to do
+            imageView->pickArmed = on;
+            imageView->SetMouseCursor(on ? UCMouseCursor::Cross : UCMouseCursor::Default);
+            if (auto* win = imageView->GetWindow()) {
+                if (on && !*escInstalled) {
+                    *escInstalled = true;
+                    PixelFXImageView* iv = imageView.get();
+                    win->InstallEventFilter("PixelFXFloodFillPick",
+                        [iv, setPickWeak](const UCEvent& e) -> bool {
+                            if (!iv->pickArmed) return false;
+                            bool esc   = e.type == UCEventType::KeyDown &&
+                                         e.virtualKey == UCKeys::Escape;
+                            bool right = e.type == UCEventType::MouseDown &&
+                                         e.button == UCMouseButton::Right;
+                            if (esc || right) {
+                                if (auto f = setPickWeak.lock()) (*f)(false);
+                                return true;   // consume so no context menu / other action fires
+                            }
+                            return false;
+                        }, { UCEventType::KeyDown, UCEventType::MouseDown });
+                }
+                win->SelectMouseCursor(on ? UCMouseCursor::Cross : UCMouseCursor::Default);
+            }
+            setStatus(on ? "Click in the image to fill from that point — click again to "
+                           "move the fill. Press Esc or right-click to finish."
+                         : "Fill-position picking finished.");
+        };
+
         // Encode a PFXImage to PNG and hand it to the image element. The PNG
         // bytes stay alive in `state` because the raster references them.
         auto showImage = [state, imageView, setStatus](const PixelFX::PFXImage& img) -> bool {
@@ -697,8 +742,42 @@ namespace {
             }
         };
 
+        // Build the on-screen image for the Scale demo so the display size tracks
+        // the factor instead of always fitting the frame. `factor` 1.0 fits the
+        // image into the frame (with a margin); smaller values shrink it centred on
+        // a neutral canvas so the reduced area is visible; larger values grow it
+        // proportionally (aspect preserved). Once the width reaches the frame it is
+        // pinned and the image keeps growing in height — a centred crop — until it
+        // meets the frame border minus the margin. Returns a canvas exactly the size
+        // of the frame so the Contain fit maps it 1:1.
+        auto frameScaled = [](const PixelFX::PFXImage& original, float factor,
+                              int frameW, int frameH) -> PixelFX::PFXImage {
+            namespace FX = PixelFX;
+            const int margin = 10;
+            PixelFX::PFXImage base = FX::Conversion::CastUchar(original);
+            if (FX::Colour::HasAlpha(base)) base = FX::Colour::Flatten(base);
+            const int W = base.Width(), H = base.Height();
+            const int availW = std::max(1, frameW - 2 * margin);
+            const int availH = std::max(1, frameH - 2 * margin);
+            // On-screen scale: fit the original into the frame at factor 1.0, then
+            // multiply by the requested factor.
+            const double fitScale = std::min(static_cast<double>(availW) / W,
+                                             static_cast<double>(availH) / H);
+            const double dispScale = std::max(0.01, fitScale * std::max(0.01f, factor));
+            PixelFX::PFXImage scaled = FX::Conversion::CastUchar(FX::Resample::Resize(base, dispScale));
+            const int sw = scaled.Width(), sh = scaled.Height();
+            // Pin to the available box, centre-cropping whatever overflows.
+            const int cropW = std::min(sw, availW);
+            const int cropH = std::min(sh, availH);
+            PixelFX::PFXImage piece = (cropW < sw || cropH < sh)
+                ? FX::Conversion::Crop(scaled, (sw - cropW) / 2, (sh - cropH) / 2, cropW, cropH)
+                : scaled;
+            PixelFX::PFXImage canvas = PixelFX::PFXImage::CreateSolid(frameW, frameH, { 246, 246, 248 });
+            return FX::Conversion::Insert(canvas, piece, (frameW - cropW) / 2, (frameH - cropH) / 2);
+        };
+
         // Run the selected effect (or none) on the loaded source and display it.
-        auto applyCurrent = [state, showImage, setStatus]() {
+        auto applyCurrent = [state, showImage, setStatus, imageView, frameScaled]() {
             if (!state->originalValid) return;
             if (!state->effect) {
                 if (showImage(state->original)) {
@@ -707,6 +786,19 @@ namespace {
                 return;
             }
             try {
+                // The Scale demo frames its result to the display so the on-screen
+                // size tracks the factor (see frameScaled); every other effect just
+                // shows its processed image fitted to the frame.
+                if (state->effect->id == "scale" && !state->params.empty()) {
+                    int fw = static_cast<int>(imageView->GetWidth());
+                    int fh = static_cast<int>(imageView->GetHeight());
+                    if (fw < 32 || fh < 32) { fw = 640; fh = 480; }   // pre-layout fallback
+                    if (!showImage(frameScaled(state->original, state->params[0], fw, fh))) return;
+                    setStatus(state->effect->name + " (Factor = " + FormatParamValue(state->params[0]) +
+                              ") — display grows with the factor: width pinned to the frame, then "
+                              "taller to the border; below 1.0 it shrinks centred.");
+                    return;
+                }
                 PixelFX::PFXImage result = state->effect->apply(state->original, state->params, state->ctx);
                 if (!showImage(result)) return;
                 std::string text = state->effect->name;
@@ -748,7 +840,7 @@ namespace {
         // and a "Show original" reset button. When the "Others" entry is
         // selected the panel shows the not-demoed function list instead.
         auto rebuildOptions = std::make_shared<std::function<void()>>();
-        *rebuildOptions = [state, optionsBox, imageView, applyCurrent, showImage, setStatus, iconsDir]() {
+        *rebuildOptions = [state, optionsBox, imageView, applyCurrent, showImage, setStatus, iconsDir, setPick]() {
             optionsBox->ClearChildren();
 
             if (state->infoMode) {
@@ -857,10 +949,7 @@ namespace {
                     pickBtn->SetIcon(iconsDir + "circle-empty.svg");
                     pickBtn->SetIconSize(14, 14);
                     pickBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                    pickBtn->onClick = [imageView, setStatus]() {
-                        imageView->pickArmed = true;
-                        setStatus("Click a spot in the image to set the flood-fill start point.");
-                    };
+                    pickBtn->onClick = [setPick]() { (*setPick)(true); };
                     optionsBox->AddChild(pickBtn);
                 }
 
@@ -890,8 +979,9 @@ namespace {
             optionsBox->RequestRedraw();
         };
 
-        tree->onNodeSelected = [state, rebuildOptions, applyCurrent, showImage, setStatus](TreeNode* node) {
+        tree->onNodeSelected = [state, rebuildOptions, applyCurrent, showImage, setStatus, setPick](TreeNode* node) {
             if (!node) return;
+            (*setPick)(false);   // leaving the current function ends any active fill picking
             if (node->data.nodeId == "others") {
                 state->effect = nullptr;
                 state->infoMode = true;
@@ -912,7 +1002,9 @@ namespace {
             applyCurrent();
         };
 
-        // Flood-fill position picking: armed by the "Set fill position" button.
+        // Flood-fill position picking: armed by the "Set fill position" button and
+        // kept active (via setPick) until Esc or a right-click. Each left click
+        // re-runs the fill from the new point.
         imageView->onPixelPicked = [state, applyCurrent](float nx, float ny) {
             state->ctx.posX = nx;
             state->ctx.posY = ny;

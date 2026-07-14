@@ -100,10 +100,11 @@ namespace UltraCanvas {
                     {"svg", GraphicsFormatType::Vector}, {"xar", GraphicsFormatType::Vector},
                     {"ger", GraphicsFormatType::Vector}, {"ai", GraphicsFormatType::Vector},
                     {"eps", GraphicsFormatType::Vector}, {"ps", GraphicsFormatType::Vector},
+                    {"cdr", GraphicsFormatType::Vector}, {"cmx", GraphicsFormatType::Vector},
 
                     // 3D model formats
                     {"3dm", GraphicsFormatType::ThreeD}, {"3ds", GraphicsFormatType::ThreeD},
-                    {"pov", GraphicsFormatType::ThreeD}, {"std", GraphicsFormatType::ThreeD},
+                    {"pov", GraphicsFormatType::ThreeD}, {"stl", GraphicsFormatType::ThreeD},
                     {"obj", GraphicsFormatType::ThreeD}, {"fbx", GraphicsFormatType::ThreeD},
                     {"dae", GraphicsFormatType::ThreeD}, {"gltf", GraphicsFormatType::ThreeD},
 

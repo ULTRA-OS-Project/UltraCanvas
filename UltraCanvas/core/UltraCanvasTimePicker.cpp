@@ -456,7 +456,6 @@ namespace UltraCanvas {
             // MouseDown; the popup toggle button must react to every click.
             case UCEventType::MouseDoubleClick: return HandleMouseDown(event);
             case UCEventType::KeyDown:    return HandleKeyDown(event);
-            case UCEventType::KeyChar:    return HandleKeyChar(event);
             case UCEventType::MouseWheel: return HandleWheel(event);
             case UCEventType::MouseEnter: SetHovered(true);  return true;
             case UCEventType::MouseLeave: SetHovered(false); return true;
@@ -510,6 +509,7 @@ namespace UltraCanvas {
                 }
                 return false;
             default:
+                HandleKeyChar(event);
                 break;
         }
         return false;

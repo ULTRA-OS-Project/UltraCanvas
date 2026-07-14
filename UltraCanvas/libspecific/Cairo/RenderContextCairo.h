@@ -68,7 +68,7 @@ namespace UltraCanvas {
         }
 
         void ApplyStrokeSource() {
-            ApplySource(currentState.fillSourceColor, currentState.fillSourcePattern);
+            ApplySource(currentState.strokeSourceColor, currentState.strokeSourcePattern);
         }
 
 //        void ApplyStrokeStyle(const DrawingStyle &style);

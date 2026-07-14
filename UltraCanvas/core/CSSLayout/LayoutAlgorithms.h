@@ -1,8 +1,8 @@
 // core/CSSLayout/LayoutAlgorithms.h
 // Internal forward declarations for per-display-type algorithms.
 // (Header lives under core/ so it is private to the implementation.)
-// Version: 1.2.0
-// Last Modified: 2026-05-31
+// Version: 1.2.1 - declare ArrangeFixedChild (fixed-position CB in parent frame).
+// Last Modified: 2026-07-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -29,6 +29,10 @@ namespace UltraCanvas {
         void ArrangePositionedChild(Element& child,
                                     const Rect2Df& containingBlock,
                                     const LayoutContext& ctx);
+
+        // Lays out a position:fixed child against the viewport, storing
+        // parent-relative finalBounds (see ArrangeFixedChild in AbsoluteLayout.cpp).
+        void ArrangeFixedChild(Element& child, const LayoutContext& ctx);
 
         // Compute the CB-relative box an AbsoluteUI child occupies within a
         // containing block of the given content size (cbWidth x cbHeight),

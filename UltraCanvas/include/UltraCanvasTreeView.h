@@ -140,7 +140,7 @@ private:
     bool autoSortAscending = true; // direction used by auto-sort
 
     // Colors
-    Color backgroundColor;       // Tree background color
+//    Color backgroundColor;       // Tree background color
     Color selectionColor;       // Selected row background
     Color hoverColor;           // Hovered row background
     Color lineColor;            // Connecting line color

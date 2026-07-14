@@ -176,14 +176,14 @@ namespace UltraCanvas {
                                 debugOutput << "Sidebar " << (checked ? "shown" : "hidden") << std::endl;
                             }),
                             MenuItemData::Separator(),
-                            MenuItemData::Radio("Zoom 50%", 1, false, [](bool checked) {
-                                if (checked) debugOutput << "Zoom 50%" << std::endl;
+                            MenuItemData::Radio("Zoom 50%", 1, false, []() {
+                                debugOutput << "Zoom 50%" << std::endl;
                             }),
-                            MenuItemData::Radio("Zoom 100%", 1, true, [](bool checked) {
-                                if (checked) debugOutput << "Zoom 100%" << std::endl;
+                            MenuItemData::Radio("Zoom 100%", 1, true, []() {
+                                debugOutput << "Zoom 100%" << std::endl;
                             }),
-                            MenuItemData::Radio("Zoom 150%", 1, false, [](bool checked) {
-                                if (checked) debugOutput << "Zoom 150%" << std::endl;
+                            MenuItemData::Radio("Zoom 150%", 1, false, []() {
+                                debugOutput << "Zoom 150%" << std::endl;
                             })
                 })
                 .AddSubmenu("Help", {

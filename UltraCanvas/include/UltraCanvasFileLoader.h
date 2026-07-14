@@ -8,6 +8,7 @@
 #pragma once
 
 #include "UltraCanvasModalDialog.h"   // FileFilter, DialogResult, UltraCanvasWindowBase
+#include "UltraCanvasSupportedFormats.h"
 #include <string>
 #include <vector>
 #include <memory>
@@ -144,6 +145,16 @@ namespace UltraCanvas {
         // UCRichDocument. Returns null and fills outError on failure.
         static std::shared_ptr<UCRichDocument> LoadTextDocument(const std::string& filePath,
                                                                 std::string& outError);
+
+        // ===== SUPPORTED FORMAT INVENTORY =====
+        // Runtime snapshot of every file format this build can load and/or
+        // save, per media category, including the library or plugin providing
+        // each (see UltraCanvasSupportedFormats.h). The extension lists are
+        // ready to feed into FileDialogOptions::AddFilter.
+        static std::vector<MediaFormatInfo> GetSupportedFormats();
+        static std::vector<MediaFormatInfo> GetSupportedFormats(MediaFormatCategory category);
+        static std::vector<std::string> GetSupportedLoadExtensions(MediaFormatCategory category);
+        static std::vector<std::string> GetSupportedSaveExtensions(MediaFormatCategory category);
     };
 
 } // namespace UltraCanvas

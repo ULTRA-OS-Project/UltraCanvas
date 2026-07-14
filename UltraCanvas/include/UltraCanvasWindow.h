@@ -254,17 +254,12 @@ namespace UltraCanvas {
         // ===== ENHANCED WINDOW PROPERTIES =====
         std::string GetWindowTitle() const { return config_.title; }
 
-        void GetWindowPosition(int& x, int& y) const {
-            x = config_.x;
-            y = config_.y;
-        }
-
         /// Get the actual screen position of the window in native screen
         /// coordinates. Platform backends override this to query the live
         /// geometry (the cached config position can be stale on platforms that
         /// don't report window moves, e.g. X11); the default returns the last
         /// configured position.
-        virtual void GetScreenPosition(int& x, int& y) const {
+        virtual void GetWindowPosition(int& x, int& y) const {
             x = config_.x;
             y = config_.y;
         }

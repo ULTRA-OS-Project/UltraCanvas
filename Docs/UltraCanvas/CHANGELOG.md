@@ -8,6 +8,39 @@
   (enabling the dropdown while vertical, or switching to a vertical position
   while the dropdown is enabled), a warning is emitted: "Overflow dropdown not
   supported for vertical tabs".
+- Rating: fixed the built-in **Circle** symbol never showing its filled/selected
+  state, so a circle rating appeared to ignore clicks (the "Circle and Square
+  symbols" demo row). The filled portion of each symbol is painted by re-drawing
+  the shape inside a `ClipRect` (clipped to the filled fraction); the circle was
+  drawn with `FillCircle`, whose arc-based fill is not rendered inside an active
+  clip region on some back-ends, so only the unclipped empty base showed and the
+  rating looked unselectable. The circle is now drawn as a filled polygon via
+  `FillLinePath`/`DrawLinePath` — the same clip-honouring primitive the Star uses
+  — so all three built-in shapes (Star, Circle, Square) render their fill through
+  a consistent code path. The disc is visually unchanged.
+- Album demo: the video player window gained an info bar under the video
+  surface showing the clip's title and its source link (clickable — opens in
+  the system browser), and the Lola Lexy tile's link line now reads
+  `youtube.com/LolaLexy`.
+- Animated images (GIF / animated WebP) now play in the lightbox image viewer
+  (`UltraCanvasImageViewer`): the zoom / pan surface steps them with the shared
+  `UCImageAnimationController`, so zoom and pan apply to the running animation
+  — matching `UltraCanvasImageElement` and the media viewer.
+- Album demo: the seed list now leads with an animated GIF tile
+  ("Charlie Chaplin run", `media/images/charlie-chaplin-run.gif`) that plays
+  in the photo lightbox; removed the placeholder tiles "Brand Reel",
+  "Chill Beats" and "Roadtrip".
+- Fixed Album demo video-window bugs (merged as PR #102): closing the player
+  window while a clip is playing (title-bar close button included) now stops
+  playback — the demo viewer hooks `onWindowClosed` to stop the player and
+  release its retained window reference, so the decode pipeline no longer
+  keeps playing audio after the window is gone. Replaying a finished clip
+  shows video again: `UltraCanvasVideoPlayer::Play()` rewinds to 0 after
+  end-of-stream (an EOS-parked pipeline produces no data), and
+  `UltraCanvasVideoPlayerElement` no longer stops its frame timer on EOS
+  (Play re-arms it), so frame uploads resume instead of leaving a frozen
+  surface with audio only.
+
 #### 2026-07-11 *0.3.6*
 - Hover video preview for the album widget: resting the cursor on a Video tile
   plays a short muted inline preview of the clip in place of its static poster
@@ -32,6 +65,7 @@
   sends proper `WindowBlur`/`WindowFocus` events to the windows involved
   (previously the raw MouseDown event was re-dispatched to both). See
   `Docs/UltraCanvas/UltraCanvasJumpToLastWindow.md`.
+
 #### 2026-07-11 *0.3.5*
 - `UltraCanvasListView`: new cell-level callbacks `onCellClicked` and
   `onCellHovered` (row, column, cell-local position) plus the `GetColumnAt()`

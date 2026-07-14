@@ -2,14 +2,18 @@
 // Reusable lightbox image viewer: a zoomable / pannable image above a dark
 // info panel, opened in its own window. Shared by the markdown renderer's
 // image-click action and the Album photo viewer.
-// Version: 1.0.0
-// Last Modified: 2026-06-25
+// Version: 1.1.0
+// Last Modified: 2026-07-12
+// V1.1.0: Animated images (GIF / animated WebP) now play in the lightbox — the
+//   zoom / pan surface steps them with a UCImageAnimationController, matching
+//   UltraCanvasImageElement.
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasImage.h"
+#include "UltraCanvasImageAnimation.h"
 #include <string>
 #include <memory>
 
@@ -40,6 +44,9 @@ private:
     bool HandleZoom(const UCEvent& event);
 
     std::shared_ptr<UCImage> image;
+    // Steps animated images (GIF / animated WebP) on the app timer; zoom and
+    // pan apply to the running animation. Holds no animation for stills.
+    UCImageAnimationController animator;
     Color  canvasColor = Color(255, 255, 255, 255);
     bool   needsFit = true;
     double zoom = 1.0;            // multiple of the fit scale (1.0 == fit-to-view)

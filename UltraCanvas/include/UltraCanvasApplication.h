@@ -168,7 +168,7 @@ namespace UltraCanvas {
         static void UnInstallWindowEventFilter(UltraCanvasUIElement* elem);
         static void MoveWindowEventFilters(UltraCanvasWindowBase* winFrom, UltraCanvasUIElement* elem);
 
-        bool IsKeyPressed(int keyCode);
+        bool IsKeyPressed(UCKeys keyCode) { return keyStates[keyCode]; }
 
         bool IsShiftHeld() { return shiftHeld; }
         bool IsCtrlHeld() { return ctrlHeld; }

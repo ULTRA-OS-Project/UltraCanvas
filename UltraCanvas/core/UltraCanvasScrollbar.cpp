@@ -1,7 +1,7 @@
 // core/UltraCanvasScrollbar.cpp
 // Platform-independent scrollbar component implementation
-// Version: 1.1.1
-// Last Modified: 2026-07-11
+// Version: 1.1.2
+// Last Modified: 2026-07-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasScrollbar.h"
@@ -85,6 +85,23 @@ namespace UltraCanvas {
             layoutDirty = true;
             RequestRedraw();
         }
+    }
+
+    Point2Df UltraCanvasScrollbar::GetPositionInWindow() const {
+        // As container chrome we are placed in the parent's CONTENT box and are not
+        // moved by the parent's scroll (mirror RenderScrollbars/HandleScrollbarEvents).
+        // The generic UIElement walk instead subtracts the parent's scroll and omits
+        // the content origin, displacing self-invalidation by (contentOrigin + scroll).
+        if (fixedInParentContentBox) {
+            if (auto* pc = GetParentContainer()) {
+                Point2Df base = pc->GetPositionInWindow();
+                auto b = GetBounds();
+                base.x += b.x + pc->GetBorderLeftWidth() + pc->GetPaddingLeft();
+                base.y += b.y + pc->GetBorderTopWidth()  + pc->GetPaddingTop();
+                return base;
+            }
+        }
+        return UltraCanvasUIElement::GetPositionInWindow();
     }
 
     void UltraCanvasScrollbar::SetContentSize(int size) {

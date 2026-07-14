@@ -371,7 +371,7 @@ namespace {
                 matchCountReady.store(true);
 
                 UCEvent ev;
-                ev.targetElement = weak_from_this();
+                ev.targetElement = this;
                 ev.type = UCEventType::Redraw;
                 UltraCanvasApplication::GetInstance()->PushEvent(ev);
                 debugOutput << "Count matches thread finished, matches=" << pendingMatchTotal << std::endl;

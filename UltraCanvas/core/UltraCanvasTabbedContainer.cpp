@@ -1094,14 +1094,14 @@ namespace UltraCanvas {
 
     bool UltraCanvasTabbedContainer::HandleKeyDown(const UCEvent &event) {
         switch (event.virtualKey) {
-            case UCKeys::LeftArrow:
+            case UCKeys::Left:
                 if (activeTabIndex > 0) {
                     SetActiveTab(activeTabIndex - 1);
                     return true;
                 }
                 break;
 
-            case UCKeys::RightArrow:
+            case UCKeys::Right:
                 if (activeTabIndex < (int)tabs.size() - 1) {
                     SetActiveTab(activeTabIndex + 1);
                     return true;

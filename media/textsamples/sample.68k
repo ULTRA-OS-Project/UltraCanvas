@@ -1,0 +1,39 @@
+* UltraCanvas Motorola 68000 Assembly sample (GNU as m68k syntax)
+* Sums the first eight Fibonacci numbers into d0 and copies a string.
+* Showcases UltraCanvasTextArea 68000 syntax highlighting:
+*   instructions, d0-d7/a0-a7 registers, .b/.w/.l size keywords,
+*   .directives, '#' immediates, '$' hex numbers, '*' and ';' comments.
+
+        .text
+        .global start
+
+start:
+        ; --- sum the first 8 Fibonacci numbers into d0 ---
+        moveq   #0,d0               ; running total
+        moveq   #0,d1               ; fib(n-1)
+        moveq   #1,d2               ; fib(n)
+        moveq   #7,d3               ; loop counter (8 iterations via dbra)
+.fib:
+        add.l   d1,d0               ; total += fib(n-1)
+        move.l  d2,d4               ; tmp = fib(n)
+        add.l   d1,d2               ; fib(n) = fib(n) + fib(n-1)
+        move.l  d4,d1               ; fib(n-1) = tmp
+        dbra    d3,.fib             ; decrement and branch until -1
+
+        ; --- copy the message into the buffer via a0/a1 ---
+        lea     message,a0          ; source pointer
+        lea     buffer,a1           ; destination pointer
+        move.w  #(msg_end-message-1),d5
+.copy:
+        move.b  (a0)+,(a1)+         ; *dst++ = *src++
+        dbra    d5,.copy
+
+        move.l  #$00C0FFEE,d6       ; a hex constant, just for the highlighter
+        rts                         ; return to caller
+
+        .data
+message:        .asciz  "UltraCanvas 68000 demo"
+msg_end:
+
+        .bss
+buffer:         .space  64          ; 64-byte destination buffer

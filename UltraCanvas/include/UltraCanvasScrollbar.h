@@ -1,7 +1,7 @@
 // include/UltraCanvasScrollbar.h
 // Standalone scrollbar UI control with full interaction support
-// Version: 2.1.1
-// Last Modified: 2026-07-11
+// Version: 2.1.2
+// Last Modified: 2026-07-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -226,6 +226,10 @@ namespace UltraCanvas {
         Rect2Di downArrowRect;
         bool layoutDirty = true;
 
+        // Set by the owning container: placed as fixed chrome in the parent's
+        // content box (see SetFixedInParentContentBox / GetPositionInWindow).
+        bool fixedInParentContentBox = false;
+
     public:
         // ===== CONSTRUCTORS =====
         UltraCanvasScrollbar(const std::string& id, float x, float y, float w, float h,
@@ -338,6 +342,17 @@ namespace UltraCanvas {
         Rect2Di GetThumbRect() const { return thumbRect; }
 
         void SetBounds(const Rect2Df& b) override;
+
+        // ===== CONTAINER-CHROME PLACEMENT =====
+        // When true, the owning container renders/hit-tests this scrollbar as fixed
+        // chrome in its CONTENT box (offset by border+padding, NOT moved by the
+        // container's scroll). GetPositionInWindow() mirrors that transform so
+        // self-invalidation lands on the actual painted pixels. Left false for
+        // scrollbars used as ordinary in-flow children (the generic walk is correct).
+        void SetFixedInParentContentBox(bool v) { fixedInParentContentBox = v; }
+        bool IsFixedInParentContentBox() const { return fixedInParentContentBox; }
+        Point2Df GetPositionInWindow() const override;
+
         // ===== RENDERING =====
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 

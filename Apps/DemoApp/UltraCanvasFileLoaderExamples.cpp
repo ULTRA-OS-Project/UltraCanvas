@@ -6,12 +6,18 @@
 //                 text, documents, audio, video).
 //   * Details   – the full README documentation.
 //   * Examples  – a live playground: pick a file family, then Open / Save through
-//                 UltraCanvasFileLoader. The Open and Save buttons advertise the
-//                 file types currently available for the chosen family, and the
-//                 loaded file is shown in the matching display area (text area,
-//                 image, spreadsheet, audio or video player).
-// Version: 1.0.0
-// Last Modified: 2026-07-03
+//                 UltraCanvasFileLoader. The Open and Save file-type lists are
+//                 resolved at runtime from the supported-format API
+//                 (UltraCanvasSupportedFormats), so they advertise exactly what
+//                 this build can load and save — nothing the framework cannot
+//                 actually handle. The loaded file is shown in the matching
+//                 display area (text area, image, spreadsheet, audio or video
+//                 player). A file can also be dragged from the OS file manager
+//                 and dropped onto the display area; the family dropdown switches
+//                 automatically when the dropped file belongs to another family.
+//                 The Save dialog defaults to the loaded file's name.
+// Version: 1.3.0
+// Last Modified: 2026-07-12
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -26,9 +32,12 @@
 #include "UltraCanvasAudioPlayerElement.h"
 #include "UltraCanvasVideoPlayerElement.h"
 #include "UltraCanvasFileLoader.h"
+#include "UltraCanvasSupportedFormats.h"      // MediaFormatCategory, MediaFormatInfo
+#include "Models/STL/UltraCanvasSTLPlugin.h"  // RegisterSTLPlugin (built-in 3D)
 #include "UltraCanvasConfig.h"   // GetResourcesDir
 #include "UltraCanvasUtils.h"    // NormalizePath, LoadFile
 
+#include <algorithm>
 #include <cctype>
 #include <fstream>
 #include <functional>
@@ -47,44 +56,41 @@ namespace {
 
     struct FileGroup {
         std::string name;                       // dropdown label
-        std::vector<std::string> openExts;      // formats offered by the Open dialog
-        std::vector<std::string> saveExts;      // formats offered by the Save dialog
+        MediaFormatCategory category;           // API category this family maps to
         DisplayKind display;
+        std::vector<std::string> openExts;      // load formats reported by the API
+        std::vector<std::string> saveExts;      // save formats reported by the API
     };
 
-    // The seven file families requested for the demo, each with the extensions the
-    // Open/Save dialogs currently advertise for it.
-    const std::vector<FileGroup>& FileGroups() {
-        static const std::vector<FileGroup> groups = {
-            { "Bitmap graphics",
-              { "png", "jpg", "jpeg", "webp", "avif", "heic", "gif", "bmp", "tif", "tiff", "tga", "hdr", "jxl", "ppm", "psd" },
-              { "png", "jpg", "webp", "avif", "gif", "bmp", "tiff", "tga", "hdr", "jxl", "ppm" },
-              DisplayKind::Image },
-            { "Vector graphics",
-              { "svg", "svgz", "cdr", "xar", "eps", "ps" },
-              { "svg", "svgz" },
-              DisplayKind::Image },
-            { "3D graphics",
-              { "obj", "stl", "gltf", "glb", "fbx", "3ds", "ply", "dae" },
-              { "obj", "stl", "ply" },
-              DisplayKind::Text },
-            { "Documents files",
-              { "pdf", "docx", "odt", "rtf", "epub", "mobi", "azw3", "fb2", "txt", "md" },
-              { "pdf", "txt", "md", "rtf" },
-              DisplayKind::Text },
-            { "Spreadsheet files",
-              { "ods", "xlsx", "csv", "tsv" },
-              { "ods", "csv", "tsv" },
-              DisplayKind::Spreadsheet },
-            { "Audio",
-              { "mp3", "flac", "wav", "ogg", "aac", "m4a", "opus", "wma" },
-              { "wav", "flac", "mp3", "ogg", "opus" },
-              DisplayKind::Audio },
-            { "Video",
-              { "mp4", "webm", "mkv", "avi", "mov", "flv", "wmv" },
-              { "mp4", "webm" },
-              DisplayKind::Video },
+    // Resolves the demo families against the supported-format API. The Open /
+    // Save extension lists are NOT hardcoded: they come from
+    // UltraCanvasFileLoader::GetSupportedLoad/SaveExtensions, so the playground
+    // advertises exactly what THIS build can do — HEIC only when libvips has an
+    // HEVC encoder, 3D only when a model plugin is registered, and none of the
+    // formats the framework merely aspires to (OGG audio, RTF, glTF/FBX/PLY,
+    // SVG save, ...) that older hardcoded lists used to show by mistake.
+    std::vector<FileGroup> ResolveFileGroups() {
+        struct Def { const char* name; MediaFormatCategory category; DisplayKind display; };
+        static const std::vector<Def> defs = {
+            { "Bitmap graphics", MediaFormatCategory::Bitmap,      DisplayKind::Image },
+            { "Vector graphics", MediaFormatCategory::Vector,      DisplayKind::Image },
+            { "3D models",       MediaFormatCategory::Model3D,     DisplayKind::Text },
+            { "Documents",       MediaFormatCategory::Document,    DisplayKind::Text },
+            { "Spreadsheets",    MediaFormatCategory::Spreadsheet, DisplayKind::Spreadsheet },
+            { "Audio",           MediaFormatCategory::Audio,       DisplayKind::Audio },
+            { "Video",           MediaFormatCategory::Video,       DisplayKind::Video },
         };
+        std::vector<FileGroup> groups;
+        groups.reserve(defs.size());
+        for (const auto& d : defs) {
+            FileGroup g;
+            g.name     = d.name;
+            g.category = d.category;
+            g.display  = d.display;
+            g.openExts = UltraCanvasFileLoader::GetSupportedLoadExtensions(d.category);
+            g.saveExts = UltraCanvasFileLoader::GetSupportedSaveExtensions(d.category);
+            groups.push_back(std::move(g));
+        }
         return groups;
     }
 
@@ -107,6 +113,26 @@ namespace {
         return ext;
     }
 
+    // Family whose Open list accepts the file's extension. The preferred
+    // (currently selected) family wins when it matches, so dropping e.g. an .svg
+    // while "Vector graphics" is active stays there even though other families
+    // could claim the extension too. Returns -1 when no family accepts the file.
+    int FindGroupForFile(const std::vector<FileGroup>& groups, const std::string& path, int preferredIndex) {
+        const std::string ext = LowerExtension(path);
+        if (ext.empty()) return -1;
+        auto accepts = [&ext](const FileGroup& g) {
+            return std::find(g.openExts.begin(), g.openExts.end(), ext) != g.openExts.end();
+        };
+        if (preferredIndex >= 0 && preferredIndex < static_cast<int>(groups.size()) &&
+            accepts(groups[preferredIndex])) {
+            return preferredIndex;
+        }
+        for (size_t i = 0; i < groups.size(); ++i) {
+            if (accepts(groups[i])) return static_cast<int>(i);
+        }
+        return -1;
+    }
+
     std::shared_ptr<UltraCanvasLabel> CenteredHint(const std::string& id, const std::string& text) {
         auto label = std::make_shared<UltraCanvasLabel>(id, 0, 0, 0, 0);
         label->SetText(text);
@@ -126,7 +152,7 @@ namespace {
 
         if (!loaded) {
             return CenteredHint("FileLoaderHint",
-                                "Click “Open file” to load a " + group.name +
+                                "Click “Open file” or drag & drop a file here to load a " + group.name +
                                 " file.\nSupported: " + JoinExts(group.openExts));
         }
 
@@ -177,14 +203,25 @@ namespace {
                 // Show plain-text sources verbatim; binary documents / models are
                 // summarised instead of dumping raw bytes into the view.
                 std::string ext = LowerExtension(path);
-                const bool textual = (ext == "txt" || ext == "md" || ext == "markdown" || ext == "rtf");
+                const bool textual = (ext == "txt" || ext == "md" || ext == "markdown");
                 if (textual) {
                     text->SetText(LoadFile(path));
                 } else {
-                    text->SetText("Loaded " + group.name + " file:\n  " + path +
-                                  "\n\nThis " + ext + " file was decoded by the matching FileLoader "
-                                  "plug-in. In a full application it renders through the dedicated "
-                                  "viewer (e.g. UltraCanvasPDFView for PDF, the GL model viewer for 3D).");
+                    // Report what the supported-format API knows about this
+                    // file — the library/plugin that provides it and its
+                    // load/save capability — instead of a generic blurb.
+                    std::string info = "Loaded " + group.name + " file:\n  " + path + "\n";
+                    if (auto fmt = UltraCanvasSupportedFormats::FindByExtension(ext)) {
+                        info += "\nFormat:    " + fmt->description +
+                                "\nProvider:  " + fmt->provider +
+                                "\nCan load:  " + std::string(fmt->canLoad ? "yes" : "no") +
+                                "     Can save: " + std::string(fmt->canSave ? "yes" : "no");
+                        if (!fmt->notes.empty()) info += "\nNote:      " + fmt->notes;
+                    }
+                    info += "\n\nThis file was decoded by the provider above. In a full "
+                            "application it renders through the dedicated viewer "
+                            "(e.g. UltraCanvasPDFView for PDF, the GL model viewer for 3D).";
+                    text->SetText(info);
                 }
                 text->SetCursorPosition(LineColumnIndex::INVALID);
                 return text;
@@ -239,7 +276,13 @@ namespace {
 
     // ---- Examples tab: the interactive Open / Save playground. ----
     std::shared_ptr<UltraCanvasUIElement> BuildExamplesTab() {
-        const auto& groups = FileGroups();
+        // Register the built-in STL model plugin so the 3D family reports its
+        // real capability through the graphics plugin registry (registration
+        // is idempotent). Other graphics plugins (CDR, XAR, ...) show up here
+        // automatically once the host application registers them too.
+        RegisterSTLPlugin();
+
+        auto groups = ResolveFileGroups();
 
         auto root = std::make_shared<UltraCanvasContainer>("FileLoaderDemo", 0, 0, 1000, 700);
         root->layout.SetFlexColumn().SetFlexGap(8)
@@ -296,9 +339,14 @@ namespace {
                                .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         root->AddChild(displayArea);
 
+        // Path of the file currently shown in the display area ("" when none);
+        // the Save dialog reuses its name as the default file name.
+        auto loadedPath = std::make_shared<std::string>();
+
         // Rebuild the display + status for a family, optionally showing a file.
         auto refresh = std::make_shared<std::function<void(int, const std::string&)>>();
-        *refresh = [groups, displayArea, status](int groupIndex, const std::string& path) {
+        *refresh = [groups, displayArea, status, loadedPath](int groupIndex, const std::string& path) {
+            *loadedPath = path;
             if (groupIndex < 0 || groupIndex >= static_cast<int>(groups.size())) groupIndex = 0;
             const FileGroup& g = groups[groupIndex];
 
@@ -317,6 +365,54 @@ namespace {
             (*refresh)(index, "");
         };
 
+        // ----- Drag & drop: a file dropped onto the display area is loaded like
+        // one picked via "Open file". Drag events bubble up from whichever child
+        // currently fills the area, so hooking the container catches them all.
+        const Color normalBorder(200, 200, 205, 255);
+        const Color dropBorder(70, 130, 220, 255);
+        // The callback is stored on displayArea itself, so it captures the area
+        // and the refresh function as raw pointers to avoid a shared_ptr cycle;
+        // both outlive the callback.
+        auto* areaPtr = displayArea.get();
+        auto* refreshPtr = refresh.get();
+        displayArea->SetEventCallback(
+            [groups, dropdown, status, areaPtr, refreshPtr, normalBorder, dropBorder]
+            (const UCEvent& event) -> bool {
+                switch (event.type) {
+                    case UCEventType::DragEnter:
+                    case UCEventType::DragOver:
+                        areaPtr->SetBordersColor(dropBorder);
+                        return true;
+                    case UCEventType::DragLeave:
+                        areaPtr->SetBordersColor(normalBorder);
+                        return true;
+                    case UCEventType::Drop: {
+                        areaPtr->SetBordersColor(normalBorder);
+                        if (event.droppedFiles.empty()) return false;
+                        const std::string& path = event.droppedFiles.front();
+                        int idx = FindGroupForFile(groups, path, dropdown->GetSelectedIndex());
+                        if (idx < 0) {
+                            status->SetText("Cannot open dropped file: unsupported type \"." +
+                                            LowerExtension(path) + "\" (" + path + ")");
+                            status->RequestRedraw();
+                            return true;
+                        }
+                        // Keep the family dropdown in sync without re-triggering
+                        // onSelectionChanged (refresh below shows the file itself).
+                        if (idx != dropdown->GetSelectedIndex()) {
+                            dropdown->SetSelectedIndex(idx, false);
+                        }
+                        (*refreshPtr)(idx, path);
+                        status->SetText("Loaded (dropped): " + path);
+                        status->RequestRedraw();
+                        return true;
+                    }
+                    default:
+                        // Anything else keeps the container's normal handling.
+                        return false;
+                }
+            });
+
         // ----- Open: native dialog filtered to the current family -----
         openBtn->onClick = [groups, dropdown, status, refresh]() {
             int idx = dropdown->GetSelectedIndex();
@@ -325,6 +421,9 @@ namespace {
 
             FileDialogOptions opts;
             opts.SetTitle("Open " + g.name + " file")
+                // Parenting makes the dialog modal to the demo window, so the
+                // window manager keeps it in front of the application.
+                .SetParentWindow(dropdown->GetWindow())
                 .AddFilter(g.name, g.openExts)
                 .AddFilter("All files", "*");
 
@@ -342,7 +441,7 @@ namespace {
         };
 
         // ----- Save: native dialog listing the family's writable formats -----
-        saveBtn->onClick = [groups, dropdown, status]() {
+        saveBtn->onClick = [groups, dropdown, status, loadedPath]() {
             int idx = dropdown->GetSelectedIndex();
             if (idx < 0 || idx >= static_cast<int>(groups.size())) idx = 0;
             const FileGroup& g = groups[idx];
@@ -353,11 +452,37 @@ namespace {
                 return;
             }
 
+            // Default to the loaded file's name; its extension is kept when it
+            // is writable, otherwise swapped for the family's first writable
+            // format (e.g. a read-only .psd defaults to saving as .png).
+            std::string saveExt = g.saveExts.front();
+            std::string defaultName = "untitled." + saveExt;
+            if (!loadedPath->empty()) {
+                std::string base = *loadedPath;
+                size_t sep = base.find_last_of("/\\");
+                if (sep != std::string::npos) base.erase(0, sep + 1);
+                std::string ext = LowerExtension(base);
+                size_t dot = base.find_last_of('.');
+                std::string stem = (dot == std::string::npos || dot == 0)
+                                   ? base : base.substr(0, dot);
+                if (std::find(g.saveExts.begin(), g.saveExts.end(), ext) != g.saveExts.end()) {
+                    saveExt = ext;
+                }
+                if (!stem.empty()) defaultName = stem + "." + saveExt;
+            }
+
             FileDialogOptions opts;
             opts.SetTitle("Save " + g.name + " file")
-                .SetDefaultFileName("untitled." + g.saveExts.front());
+                // Parenting makes the dialog modal to the demo window, so the
+                // window manager keeps it in front of the application.
+                .SetParentWindow(dropdown->GetWindow())
+                .SetDefaultFileName(defaultName);
+            // The filter matching the default name's extension goes first —
+            // the dialog preselects the first filter, and this keeps it
+            // consistent with the proposed file name.
+            opts.AddFilter("." + saveExt + " file", saveExt);
             for (const auto& ext : g.saveExts) {
-                opts.AddFilter("." + ext + " file", ext);
+                if (ext != saveExt) opts.AddFilter("." + ext + " file", ext);
             }
             opts.AddFilter("All files", "*");
 
