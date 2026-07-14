@@ -1,8 +1,11 @@
 // core/UltraCanvasImageViewer.cpp
 // Implementation of the reusable lightbox image viewer (zoom / pan image +
 // info panel in its own window). Shared by the markdown renderer and Album.
-// Version: 1.0.0
-// Last Modified: 2026-06-25
+// Version: 1.1.0
+// Last Modified: 2026-07-12
+// V1.1.0: Animated images (GIF / animated WebP) now play in the lightbox — the
+//   zoom / pan surface steps them with a UCImageAnimationController and draws
+//   the controller's current frame, so zoom / pan apply to the live animation.
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImageViewer.h"
@@ -18,10 +21,21 @@ namespace UltraCanvas {
     UltraCanvasZoomPanImage::UltraCanvasZoomPanImage(const std::string& elemId)
         : UltraCanvasUIElement(elemId, 0.0f, 0.0f, 0.0f, 0.0f) {
         SetMouseCursor(UCMouseCursor::SizeAll);
+        animator.onFrameChanged = [this]() { RequestRedraw(); };
     }
 
     void UltraCanvasZoomPanImage::SetImage(std::shared_ptr<UCImage> img) {
         image = std::move(img);
+        // Animated sources (GIF / animated WebP) auto-play, matching
+        // UltraCanvasImageElement; stills clear any previous animation.
+        animator.SetAnimation(nullptr);
+        if (image && image->IsValid() && image->IsAnimated()) {
+            auto anim = image->GetAnimation();   // lazy full decode, shared + cached
+            if (anim && anim->GetFrameCount() > 1) {
+                animator.SetAnimation(anim);
+                animator.Play();
+            }
+        }
         needsFit = true;
         RequestRedraw();
     }
@@ -45,7 +59,14 @@ namespace UltraCanvas {
             const double dispH = ih * s;
             const double left  = b.width  * 0.5 + panX - dispW * 0.5;
             const double top   = b.height * 0.5 + panY - dispH * 0.5;
-            ctx->DrawImage(*image, Rect2Dd(left, top, dispW, dispH), ImageFitMode::Fill);
+            if (auto framePm = animator.GetCurrentFramePixmap()) {
+                // Animated image: draw the controller's current frame; the
+                // zoom / pan transform applies to the running animation.
+                ctx->DrawPixmap(*framePm, Rect2Dd(left, top, dispW, dispH),
+                                ImageFitMode::Fill);
+            } else {
+                ctx->DrawImage(*image, Rect2Dd(left, top, dispW, dispH), ImageFitMode::Fill);
+            }
         }
         ctx->PopState();
     }

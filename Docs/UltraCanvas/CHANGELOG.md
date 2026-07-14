@@ -1,3 +1,27 @@
+#### 2026-07-12 *0.3.7*
+- Album demo: the video player window gained an info bar under the video
+  surface showing the clip's title and its source link (clickable — opens in
+  the system browser), and the Lola Lexy tile's link line now reads
+  `youtube.com/LolaLexy`.
+- Animated images (GIF / animated WebP) now play in the lightbox image viewer
+  (`UltraCanvasImageViewer`): the zoom / pan surface steps them with the shared
+  `UCImageAnimationController`, so zoom and pan apply to the running animation
+  — matching `UltraCanvasImageElement` and the media viewer.
+- Album demo: the seed list now leads with an animated GIF tile
+  ("Charlie Chaplin run", `media/images/charlie-chaplin-run.gif`) that plays
+  in the photo lightbox; removed the placeholder tiles "Brand Reel",
+  "Chill Beats" and "Roadtrip".
+- Fixed Album demo video-window bugs (merged as PR #102): closing the player
+  window while a clip is playing (title-bar close button included) now stops
+  playback — the demo viewer hooks `onWindowClosed` to stop the player and
+  release its retained window reference, so the decode pipeline no longer
+  keeps playing audio after the window is gone. Replaying a finished clip
+  shows video again: `UltraCanvasVideoPlayer::Play()` rewinds to 0 after
+  end-of-stream (an EOS-parked pipeline produces no data), and
+  `UltraCanvasVideoPlayerElement` no longer stops its frame timer on EOS
+  (Play re-arms it), so frame uploads resume instead of leaving a frozen
+  surface with audio only.
+
 #### 2026-07-11 *0.3.6*
 - Hover video preview for the album widget: resting the cursor on a Video tile
   plays a short muted inline preview of the clip in place of its static poster
