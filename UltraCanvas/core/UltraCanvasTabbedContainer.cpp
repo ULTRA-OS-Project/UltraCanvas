@@ -1,7 +1,7 @@
 // core/UltraCanvasTabbedContainer.cpp
 // Enhanced tabbed container component with overflow dropdown and search functionality
-// Version: 2.0.1
-// Last Modified: 2026-06-04
+// Version: 2.0.2
+// Last Modified: 2026-07-12
 // Author: UltraCanvas Framework
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasApplication.h"
@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <iostream>
 
 namespace UltraCanvas {
 
@@ -106,6 +107,11 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTabbedContainer::SetOverflowDropdownPosition(OverflowDropdownPosition position) {
+        if (position != OverflowDropdownPosition::Off &&
+            (tabPosition == TabPosition::Left || tabPosition == TabPosition::Right)) {
+            std::cerr << "UltraCanvasTabbedContainer: Overflow dropdown not supported "
+                         "for vertical tabs" << std::endl;
+        }
         overflowDropdownPosition = position;
         showOverflowDropdown = (position != OverflowDropdownPosition::Off);
         InvalidateTabbar();
@@ -370,6 +376,13 @@ namespace UltraCanvas {
 
     bool UltraCanvasTabbedContainer::CheckIfOverflowDropdownNeeded() {
         if (!showOverflowDropdown || overflowDropdownPosition == OverflowDropdownPosition::Off) {
+            return false;
+        }
+
+        // The overflow dropdown is not supported for vertical tab layouts
+        // (Left/Right). It produces a faulty display and is not usable there,
+        // so it is deactivated regardless of the configured position.
+        if (tabPosition == TabPosition::Left || tabPosition == TabPosition::Right) {
             return false;
         }
 
@@ -1489,6 +1502,11 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTabbedContainer::SetTabPosition(TabPosition position) {
+        if ((position == TabPosition::Left || position == TabPosition::Right) &&
+            showOverflowDropdown && overflowDropdownPosition != OverflowDropdownPosition::Off) {
+            std::cerr << "UltraCanvasTabbedContainer: Overflow dropdown not supported "
+                         "for vertical tabs" << std::endl;
+        }
         tabPosition = position;
         InvalidateTabbar();
     }

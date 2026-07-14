@@ -87,6 +87,12 @@ enum class OverflowDropdownPosition {
 };
 ```
 
+> **Note:** The overflow dropdown is only supported for horizontal tab layouts
+> (`TabPosition::Top`/`Bottom`). For vertical layouts (`TabPosition::Left`/`Right`)
+> it is automatically deactivated — the overflow button is never shown, and
+> enabling it emits the warning "Overflow dropdown not supported for vertical
+> tabs". Use tab scrolling for vertical layouts instead.
+
 ## TabData Structure
 
 Represents individual tab properties.

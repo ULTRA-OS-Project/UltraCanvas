@@ -328,9 +328,9 @@ namespace {
         tabs->SetTabStyle(TabStyle::Modern);
         tabs->SetCloseMode(TabCloseMode::NoClose);
         tabs->SetTabHeight(26);
-        // The example set is large — allow jumping to any document through the
-        // overflow dropdown when the tab column does not fit the window height.
-        tabs->SetOverflowDropdownPosition(OverflowDropdownPosition::Right);
+        // The example set is large — the tab column scrolls when it does not fit
+        // the window height. The overflow dropdown is intentionally not enabled:
+        // it is not supported for vertical (Left/Right) tab layouts.
         tabs->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 

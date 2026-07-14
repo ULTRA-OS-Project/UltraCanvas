@@ -1,4 +1,13 @@
 #### 2026-07-12 *0.3.7*
+- `UltraCanvasTabbedContainer`: the overflow dropdown is now disabled for
+  vertical tab layouts (`TabPosition::Left`/`Right`). It rendered a faulty
+  display there and was not usable for vertical tabs, so
+  `CheckIfOverflowDropdownNeeded()` always returns `false` when tabs are
+  vertical — the overflow button never displays or takes part in tab-bar
+  layout. If the feature is accidentally switched on for vertical tabs
+  (enabling the dropdown while vertical, or switching to a vertical position
+  while the dropdown is enabled), a warning is emitted: "Overflow dropdown not
+  supported for vertical tabs".
 - Rating: fixed the built-in **Circle** symbol never showing its filled/selected
   state, so a circle rating appeared to ignore clicks (the "Circle and Square
   symbols" demo row). The filled portion of each symbol is painted by re-drawing
