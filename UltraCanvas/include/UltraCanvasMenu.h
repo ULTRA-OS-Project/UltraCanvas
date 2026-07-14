@@ -67,6 +67,13 @@ namespace UltraCanvas {
         std::string label;
         std::string shortcut;
         std::string iconPath;
+
+        // Stable, serializable identifier for this action (e.g. "file.open").
+        // Empty by default so existing code is unaffected. When set, it lets the
+        // item be referenced from a persisted MenuLayout and rebuilt via
+        // UltraCanvasMenuRegistry (see UltraCanvasMenuRegistry.h / UltraCanvasMenuLayout.h).
+        // Lambdas cannot be serialized, so this id is what a saved menu stores.
+        std::string commandId;
         bool enabled = true;
         bool visible = true;
         bool checked = false;

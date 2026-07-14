@@ -1467,6 +1467,13 @@ namespace UltraCanvas {
 
         auto widgetsBuilder = DemoCategoryBuilder(this, DemoCategory::Widgets);
 
+        widgetsBuilder.AddItem("menuconfig", "Menu Configurator",
+                               "Customise menus: command registry, editable layout, live Apply",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateMenuConfigExamples(); },
+                               "DemoApp/UltraCanvasMenuConfigExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasMenuConfigWidget.md");
+
         widgetsBuilder.AddItem("colorpicker", "Colour Picker",
                                "HSV colour wheel with saturation/value square, preview "
                                "swatches, hex input, HSV/HSL/RGB channel sliders and alpha",

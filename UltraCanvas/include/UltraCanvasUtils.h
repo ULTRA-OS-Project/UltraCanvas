@@ -39,7 +39,10 @@ namespace UltraCanvas {
 
     inline std::string LTrimWhitespace(std::string s) {
         std::string result = s;
-        result.erase(result.begin(), std::find_if(s.begin(), result.end(), [](unsigned char ch) {
+        // NOTE: iterate `result` consistently. Mixing s.begin() with result.end()
+        // walks off the end of a different allocation (heap overflow), since `s`
+        // and `result` are distinct string objects.
+        result.erase(result.begin(), std::find_if(result.begin(), result.end(), [](unsigned char ch) {
             return !std::isspace(ch);
         }));
         return result;
