@@ -141,12 +141,28 @@ namespace UltraCanvas {
 
         switch (symbol) {
             case RatingSymbol::Circle: {
+                // Draw the disc as a filled polygon via FillLinePath rather than
+                // FillCircle. RenderSymbol paints the "on" state by re-drawing the
+                // symbol inside a ClipRect (clipped to the filled fraction); some
+                // render back-ends fill an arc/circle path incorrectly when a clip
+                // region is active, so the fill state of a circle rating never
+                // appeared while the (unclipped) empty base still did. FillLinePath
+                // is the same primitive the Star uses and clips correctly, so this
+                // keeps all built-in shapes on one code path that honours the clip.
+                std::vector<Point2Dd> pts;
+                const int segments = 48;
+                float rr = R * 0.92f;
+                pts.reserve(segments);
+                for (int i = 0; i < segments; ++i) {
+                    float ang = (i / static_cast<float>(segments)) * 2.0f * 3.14159265f;
+                    pts.emplace_back(cx + rr * std::cos(ang), cy + rr * std::sin(ang));
+                }
                 ctx->SetFillPaint(color);
-                ctx->FillCircle(Point2Dd(cx, cy), R * 0.92f);
+                ctx->FillLinePath(pts);
                 if (style.borderWidth > 0.0f) {
                     ctx->SetStrokePaint(style.borderColor);
                     ctx->SetStrokeWidth(style.borderWidth);
-                    ctx->DrawCircle(Point2Dd(cx, cy), R * 0.92f);
+                    ctx->DrawLinePath(pts, true);
                 }
                 break;
             }
