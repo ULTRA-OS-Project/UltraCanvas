@@ -1,11 +1,12 @@
 // core/UltraCanvasSpinner.cpp
 // Platform-independent spinner / spin-button component implementation.
-// Version: 1.0.0
-// Last Modified: 2026-07-07
+// Version: 1.1.0
+// Last Modified: 2026-07-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSpinner.h"
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasMenu.h"
 #include <cstdio>
 #include <cmath>
 #include <sstream>
@@ -185,6 +186,22 @@ namespace UltraCanvas {
         return prefix + body + suffix;
     }
 
+    std::string UltraCanvasSpinner::FormatValueForDisplay(double v) const {
+        // FormatNumber() reports the *current* selection in List mode, so the
+        // list index has to be resolved explicitly here; numeric / formatter
+        // modes format the passed value directly.
+        std::string body;
+        if (valueType == SpinnerValueType::List) {
+            int idx = static_cast<int>(std::llround(v));
+            if (idx >= 0 && idx < static_cast<int>(listItems.size())) {
+                body = listItems[idx];
+            }
+        } else {
+            body = FormatNumber(v);
+        }
+        return prefix + body + suffix;
+    }
+
 // ===================================================================
 // GEOMETRY (element-local coordinates; ctx is translated to our origin)
 // ===================================================================
@@ -236,12 +253,16 @@ namespace UltraCanvas {
         if (!IsEditableNumeric()) return;
         editing = true;
         editBuffer = FormatNumber(value);   // seed with current value (no prefix/suffix)
+        // The seeded text starts out "selected": the first keystroke replaces
+        // it, matching how a native spin box behaves when you focus/click it.
+        editBufferFresh = true;
         RequestRedraw();
     }
 
     void UltraCanvasSpinner::CommitEditing() {
         if (!editing) return;
         editing = false;
+        editBufferFresh = false;
         if (!editBuffer.empty()) {
             try {
                 double parsed = std::stod(editBuffer);
@@ -258,8 +279,86 @@ namespace UltraCanvas {
     void UltraCanvasSpinner::CancelEditing() {
         if (!editing) return;
         editing = false;
+        editBufferFresh = false;
         editBuffer.clear();
         RequestRedraw();
+    }
+
+// ===================================================================
+// VALUE DROPDOWN (optional combobox-style value picker)
+// ===================================================================
+
+    void UltraCanvasSpinner::SetDropdownEnabled(bool enabled) {
+        if (dropdownEnabled == enabled) return;
+        dropdownEnabled = enabled;
+        if (!enabled && dropdownOpen) CloseValueDropdown();
+        RequestRedraw();
+    }
+
+    int UltraCanvasSpinner::DropdownItemCount() const {
+        if (valueType == SpinnerValueType::List) {
+            return static_cast<int>(listItems.size());
+        }
+        if (maxValue < minValue) return 0;
+        double s = (valueType == SpinnerValueType::Integer) ? std::max(1.0, step) : step;
+        if (s <= 0.0) return -1;   // no usable grid
+        long long n = static_cast<long long>(std::floor((maxValue - minValue) / s + 1e-9)) + 1;
+        if (n <= 0) return 0;
+        if (n > kMaxDropdownItems) return -1;   // too many to list
+        return static_cast<int>(n);
+    }
+
+    void UltraCanvasSpinner::OpenValueDropdown() {
+        UltraCanvasWindowBase* win = GetWindow();
+        if (!win) return;
+
+        int count = DropdownItemCount();
+        if (count <= 0) return;   // nothing to show, or too many grid values
+
+        if (!valueMenu) {
+            valueMenu = std::make_shared<UltraCanvasMenu>(GetIdentifier() + "_ValueMenu");
+            valueMenu->SetMenuType(MenuType::PopupMenu);
+            valueMenu->onMenuClosed = [this]() {
+                dropdownOpen = false;
+                RequestRedraw();
+            };
+            // Radio items don't self-close the popup, so close on any pick.
+            valueMenu->onItemSelected = [this](int) { CloseValueDropdown(); };
+        }
+
+        valueMenu->Clear();
+        double s = (valueType == SpinnerValueType::Integer) ? std::max(1.0, step) : step;
+        const double eps = (valueType == SpinnerValueType::Decimal && s > 0.0) ? s * 0.5 : 0.5;
+        for (int i = 0; i < count; ++i) {
+            double v = (valueType == SpinnerValueType::List)
+                           ? static_cast<double>(i)
+                           : SnapToStep(minValue + i * s);
+            bool checked = std::abs(v - value) < eps;
+            valueMenu->AddItem(MenuItemData::Radio(
+                    FormatValueForDisplay(v), /*group*/ 1, checked,
+                    [this, v](bool) { SetValue(v); }));
+        }
+
+        Point2Df origin = GetPositionInWindow();
+        Rect2Df local   = GetLocalBounds();
+        Point2Di pos(static_cast<int>(origin.x),
+                     static_cast<int>(origin.y + local.height));
+
+        PopupElementSettings settings;
+        settings.popupOwner = shared_from_this();
+        settings.closeByEscapeKey = true;
+        settings.closeByClickOutside = true;
+
+        dropdownOpen = true;
+        valueMenu->OpenMenu(pos, *win, settings);
+        RequestRedraw();
+    }
+
+    void UltraCanvasSpinner::CloseValueDropdown() {
+        if (valueMenu && dropdownOpen) {
+            valueMenu->CloseMenu();
+        }
+        dropdownOpen = false;
     }
 
 // ===================================================================
@@ -423,7 +522,12 @@ namespace UltraCanvas {
             case UCEventType::MouseDoubleClick:
                 // A rapid second click arrives as a double-click instead of a
                 // MouseDown; on the arrow buttons every click must step.
-                if (HitTest(event.pointer) == Part::Field) { BeginEditing(); return true; }
+                if (HitTest(event.pointer) == Part::Field) {
+                    // With the dropdown enabled the single clicks already toggle
+                    // the popup; don't also start inline editing.
+                    if (!dropdownEnabled) BeginEditing();
+                    return true;
+                }
                 return HandleMouseDown(event);
             case UCEventType::MouseEnter:
                 SetHovered(true);
@@ -457,7 +561,14 @@ namespace UltraCanvas {
             if (editing) CommitEditing();
             StepBy(-1.0);
         } else if (part == Part::Field) {
-            if (IsEditableNumeric()) BeginEditing();
+            if (dropdownEnabled) {
+                // Combobox-style: the field click toggles the value dropdown.
+                if (editing) CommitEditing();
+                if (dropdownOpen) CloseValueDropdown();
+                else             OpenValueDropdown();
+            } else if (IsEditableNumeric()) {
+                BeginEditing();
+            }
         }
         RequestRedraw();
         return true;
@@ -472,8 +583,10 @@ namespace UltraCanvas {
 
     bool UltraCanvasSpinner::HandleMouseMove(const UCEvent& event) {
         Part part = HitTest(event.pointer);
-        // Cursor: text caret over the editable field, arrow over the buttons.
-        mouseCursor = (part == Part::Field && IsEditableNumeric())
+        // Cursor: text caret over an editable field, arrow over the buttons.
+        // A dropdown-enabled field opens a popup on click, so it keeps the
+        // default arrow rather than an editing caret.
+        mouseCursor = (part == Part::Field && IsEditableNumeric() && !dropdownEnabled)
                           ? UCMouseCursor::Text : UCMouseCursor::Default;
         if (part != hoveredPart) {
             hoveredPart = part;
@@ -528,10 +641,19 @@ namespace UltraCanvas {
                 if (editing) { CancelEditing(); return true; }
                 return false;
             case UCKeys::Backspace:
-                if (editing && !editBuffer.empty()) {
-                    editBuffer.pop_back();
-                    RequestRedraw();
-                    return true;
+                if (editing) {
+                    if (editBufferFresh) {
+                        // Backspace over the "selected" seed clears it entirely.
+                        editBuffer.clear();
+                        editBufferFresh = false;
+                        RequestRedraw();
+                        return true;
+                    }
+                    if (!editBuffer.empty()) {
+                        editBuffer.pop_back();
+                        RequestRedraw();
+                        return true;
+                    }
                 }
                 return false;
             default:
@@ -554,7 +676,11 @@ namespace UltraCanvas {
         if (!editing) {
             editing = true;
             editBuffer.clear();   // typing starts a fresh value
+        } else if (editBufferFresh) {
+            // The seeded value was "selected"; the first keystroke replaces it.
+            editBuffer.clear();
         }
+        editBufferFresh = false;
         editBuffer.push_back(c);
         RequestRedraw();
         return true;

@@ -12,8 +12,8 @@
 //   * UpDownRight    - editable field with stacked up/down buttons on the right
 //   * SidesHorizontal - [dec] field [inc] with buttons flanking the field
 //
-// Version: 1.0.0
-// Last Modified: 2026-07-07
+// Version: 1.1.0
+// Last Modified: 2026-07-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -29,6 +29,8 @@
 #include <cmath>
 
 namespace UltraCanvas {
+
+    class UltraCanvasMenu;   // popup used by the optional value dropdown
 
 // ===== SPINNER MODE / LAYOUT DEFINITIONS =====
     enum class SpinnerValueType {
@@ -112,6 +114,18 @@ namespace UltraCanvas {
         bool allowTextEditing = true;   // let the user type a value into the field
         std::function<std::string(double)> formatter;   // optional custom formatting
 
+        // ===== VALUE DROPDOWN (optional combobox-style picker) =====
+        // When enabled a single click on the field opens a popup listing the
+        // available values (the list items in List mode, or the discrete
+        // min..max/step grid in numeric modes). Editable numeric spinners can
+        // still be typed into via a double-click.
+        bool dropdownEnabled = false;
+        bool dropdownOpen    = false;
+        std::shared_ptr<UltraCanvasMenu> valueMenu;   // lazily created popup
+        // Upper bound on how many grid values a numeric dropdown will list, so
+        // a wide range with a tiny step cannot spawn a runaway popup.
+        static constexpr int kMaxDropdownItems = 512;
+
         // ===== LAYOUT / STYLE =====
         SpinnerLayout layout = SpinnerLayout::UpDownRight;
         SpinnerVisualStyle style;
@@ -123,6 +137,12 @@ namespace UltraCanvas {
         // Inline text editing (numeric modes only).
         bool editing = false;
         std::string editBuffer;
+        // True right after the buffer is seeded from the current value (e.g. by
+        // clicking the field): the content is treated as "selected", so the
+        // next typed character or Backspace replaces it wholesale instead of
+        // appending. Mirrors the select-all-on-focus behaviour of native
+        // spin boxes.
+        bool editBufferFresh = false;
 
     public:
         // ===== CONSTRUCTORS (REQUIRED PATTERN) =====
@@ -190,6 +210,16 @@ namespace UltraCanvas {
         void SetEditable(bool enabled);
         bool IsEditable() const { return allowTextEditing; }
 
+        // ===== VALUE DROPDOWN =====
+        // Enable a combobox-style popup that lists the available values and
+        // opens on a single click of the field. Off by default; a plain
+        // spinner keeps its click-to-edit behaviour.
+        void SetDropdownEnabled(bool enabled);
+        bool IsDropdownEnabled() const { return dropdownEnabled; }
+        bool IsDropdownOpen() const { return dropdownOpen; }
+        void OpenValueDropdown();
+        void CloseValueDropdown();
+
         // Formatted text currently shown in the field (excludes any live edit buffer).
         std::string GetDisplayText() const;
 
@@ -238,6 +268,15 @@ namespace UltraCanvas {
 
         // ===== FORMATTING =====
         std::string FormatNumber(double v) const;
+        // Text shown for an arbitrary value (index in List mode) in the
+        // dropdown, including prefix / suffix.
+        std::string FormatValueForDisplay(double v) const;
+
+        // ===== VALUE DROPDOWN HELPERS =====
+        // Number of discrete values the dropdown would list (list size, or the
+        // min..max/step count in numeric modes), or -1 when it exceeds
+        // kMaxDropdownItems and should be suppressed.
+        int DropdownItemCount() const;
 
         // ===== RENDER HELPERS =====
         void RenderField(const Rect2Di& fieldRect, IRenderContext* ctx);
