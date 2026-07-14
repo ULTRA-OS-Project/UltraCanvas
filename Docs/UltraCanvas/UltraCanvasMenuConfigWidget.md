@@ -168,4 +168,4 @@ entries.
 | `include/UltraCanvasMenuRegistry.h`, `core/UltraCanvasMenuRegistry.cpp` | command catalog |
 | `include/UltraCanvasMenuLayout.h`, `core/UltraCanvasMenuLayout.cpp` | layout data, persistence, materialize/introspect |
 | `include/UltraCanvasMenuConfigWidget.h`, `core/UltraCanvasMenuConfigWidget.cpp` | the widget |
-| `Apps/DemoApp/UltraCanvasMenuConfigExamples.cpp` | runnable example (Demo → Widgets → "Menu Configurator") |
+| `Apps/DemoApp/UltraCanvasMenuConfigExamples.cpp` | runnable example (Demo → Widgets → "Menu Configurator") that customises the `UltraCanvasFilerWidget` file context menu |
