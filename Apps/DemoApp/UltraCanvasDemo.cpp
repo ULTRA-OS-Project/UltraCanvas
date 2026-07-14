@@ -1315,9 +1315,15 @@ namespace UltraCanvas {
                                [this]() { return CreateTextDocumentExamples(); });
 #endif
 
-        textDocBuilder.AddItem("textdocuments_odf", "ODF Documents", "ODF document support",
-                               ImplementationStatus::NotImplemented,
-                               [this]() { return CreateTextDocumentExamples(); });
+        textDocBuilder.AddItem("textdocuments_ods", "ODS Documents",
+                               "OpenDocument Spreadsheet (.ods) viewing & editing: opens the "
+                               "bundled media/docs/spreadsheet.ods demo in the Spreadsheet "
+                               "widget with live SUM totals, and loads any .ods/.xlsx/.csv "
+                               "via a file dialog",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateSpreadsheetExamples(); },
+                               "DemoApp/UltraCanvasSpreadsheetExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasSpreadsheetExamples.md");
 
         textDocBuilder.AddItem("textdocuments_odt", "ODT Documents",
                                "OpenDocument Text / Word document viewing: loads "
