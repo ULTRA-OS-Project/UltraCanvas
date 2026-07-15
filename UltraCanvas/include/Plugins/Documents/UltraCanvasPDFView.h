@@ -1,8 +1,8 @@
 // include/Plugins/Documents/UltraCanvasPDFView.h
 // UI element that displays a PDF document with a thumbnail strip,
 // scrollable page render, and search-hit overlay.
-// Version: 1.5.0
-// Last Modified: 2026-06-19
+// Version: 1.6.0
+// Last Modified: 2026-07-15
 // Author: UltraCanvas Framework
 #pragma once
 #ifndef ULTRACANVAS_PDF_VIEW_H
@@ -148,6 +148,19 @@ public:
     bool MovePage(int fromPage, int toPage);
     bool InsertBlankPageAt(int at, float widthPt, float heightPt);
     bool SaveAs(const std::string& path, const PDFSaveOptions& opts = {});
+
+    // Merge pages [srcStart..srcEnd] (1-based, inclusive) from `other` into the
+    // current document so the first merged page lands at position `insertAt`.
+    // srcEnd <= 0 means "through the last source page"; insertAt <= 0 means
+    // "append after the last page". `other` is not modified or consumed. The
+    // view navigates to the first merged page on success.
+    bool MergeFromDocument(IPDFDocument& other, int srcStart = 1, int srcEnd = 0,
+                           int insertAt = 0);
+    // Convenience: open the PDF at `path` and merge a page range from it. The
+    // opened document is released once its pages have been grafted in. Returns
+    // false if the file cannot be opened or the merge fails.
+    bool MergeFromFile(const std::string& path, int srcStart = 1, int srcEnd = 0,
+                       int insertAt = 0, const std::string& password = "");
 
     // ----- Content editing (M3) -----
     // Replace the text under `bboxPt` on the current page with `newText`.

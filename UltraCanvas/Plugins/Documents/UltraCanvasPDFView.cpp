@@ -1,7 +1,7 @@
 // Plugins/Documents/UltraCanvasPDFView.cpp
 // UI element rendering a PDF document via the IPDFDocument backend.
-// Version: 1.5.0
-// Last Modified: 2026-06-19
+// Version: 1.6.0
+// Last Modified: 2026-07-15
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/UltraCanvasPDFView.h"
@@ -501,6 +501,32 @@ bool UltraCanvasPDFView::SaveAs(const std::string& path,
                                 const PDFSaveOptions& opts) {
     if (!doc_) return false;
     return doc_->Save(path, opts);
+}
+
+bool UltraCanvasPDFView::MergeFromDocument(IPDFDocument& other, int srcStart,
+                                           int srcEnd, int insertAt) {
+    if (!doc_) return false;
+    // insertAt <= 0 means "append after the last page". The engine clamps the
+    // range end when srcEnd <= 0, so pass it through unchanged.
+    const int at = (insertAt <= 0) ? doc_->GetPageCount() + 1 : insertAt;
+    if (!doc_->MergeFrom(other, srcStart, srcEnd, at)) return false;
+    InvalidateCaches();
+    GoToPage(at);
+    return true;
+}
+
+bool UltraCanvasPDFView::MergeFromFile(const std::string& path, int srcStart,
+                                       int srcEnd, int insertAt,
+                                       const std::string& password) {
+    if (!doc_) return false;
+    std::unique_ptr<IPDFDocument> other = OpenPDF(path, password);
+    if (!other || !other->IsOpen()) {
+        if (onError) onError("Failed to open PDF for merge: " + path);
+        return false;
+    }
+    // `other`'s pages are grafted (copied) into doc_, so it can be released as
+    // soon as the merge returns.
+    return MergeFromDocument(*other, srcStart, srcEnd, insertAt);
 }
 
 bool UltraCanvasPDFView::ReplaceTextAt(const Rect2Df& bboxPt,
