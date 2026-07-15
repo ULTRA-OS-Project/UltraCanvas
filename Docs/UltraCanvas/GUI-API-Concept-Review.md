@@ -1,158 +1,155 @@
-# UltraCanvas GUI API — Concept Review
+# UltraCanvas GUI API — Concept Review (Remaining Problems)
 
-**Date:** 2026-07-02
-**Scope:** Public API concept and architecture: core headers (`UltraCanvasUIElement.h`, `UltraCanvasEvent.h`, `UltraCanvasApplication.h`, `UltraCanvasWindow.h`, `UltraCanvasRenderContext.h`, `UltraCanvasContainer.h`), the CSS layout engine (`include/CSSLayout`, `core/CSSLayout`), the platform layer (`OS/Linux`, `OS/MSWindows`, `OS/MacOS`, `OS/BSD`, `OS/WASM`), a 10-widget sample of the component layer, the dirty-rect/rendering pipeline, and the `Docs/` folder. All findings were verified against source; file:line references are given per finding.
+**Original review:** 2026-07-02 (commit `13a91ef`)
+**Rechecked:** 2026-07-15 against current `main` (commit `80699fd`). Every finding of the original review was re-verified against the current sources. **Items confirmed fixed have been removed from this document**; what follows is only what remains. Line numbers refer to the current code.
 
----
-
-## Verdict
-
-**The concept is sound and is confirmed — with reservations in three specific areas.**
-
-The architectural core holds up well:
-
-- **Shared base + thin native layer.** `UltraCanvasApplicationBase`/`UltraCanvasWindowBase` keep all dispatch, focus, modal, popup, tooltip, timer and dirty-rect logic platform-independent; a backend implements ~15 pure virtuals. The Linux/Windows pair proves the decomposition works.
-- **The CSS layout engine is above average for a from-scratch framework.** Two-phase Measure/Arrange with Flutter-style constraints (`Exact/AtMost/Unbounded`), spec-shaped flexbox (css-flexbox-1 structure, citation comments), a CSS 2.1 §10.3.7-correct absolute solver shared between measure and arrange, disciplined caching with context-aware keys, and zero knowledge of widgets or rendering. There is **one** element tree (children/geometry live only on `CSSLayout::Element`; `UltraCanvasContainer` is a typed view) — the classic dual-hierarchy divergence bug is designed out.
-- **The element-local rendering contract is coherent and the code matches the docs.** Containers push/clip/translate so each element renders at (0,0) with a local dirty rect and receives pre-mapped local event coordinates (`UltraCanvasContainer.cpp:74-85`, `UltraCanvasCoordinateSystemGuide.md`). This eliminates the double-offset bug class by construction.
-- **The compositor-in-miniature is a good design.** Window content, each popup, and tooltips render to separate retained surfaces with independent dirty queues; closing a popup recomposites instead of repainting what was underneath.
-- **The event loop is done right.** Blocking (zero idle CPU), timer-deadline-driven timeouts, per-platform wakeup primitives (eventfd / auto-reset event / CFRunLoopSource), thread-safe inbound event queue, starvation guard.
-
-The three areas of genuine concern:
-
-1. **The ownership/lifetime model is the weakest part of the concept.** `shared_ptr`-owned children coexist with five kinds of *raw* element pointers (`parent`, `window`, `_focusedElement`, app-level hovered/captured/dragged, `UCEvent::targetElement`) held together by manual cleanup hooks — and the cleanup has real, traceable gaps that produce use-after-free / undefined behavior (findings A1–A4).
-2. **The "cross-platform" abstraction is an X11 design that other platforms impersonate,** and it leaks Cairo/Pango/Xlib/windows.h into every client translation unit. It has never been validated against a genuinely different backend (the WASM render context no longer compiles against the current interface). The claimed platform matrix (Linux, Windows, macOS, BSD, WASM, iOS, Android) is really Linux + Windows + a lagging macOS.
-3. **The threading contract is implicit and violated by the framework's own timer system.** Only `PushEvent` and `StartTimer/StopTimer` are safe off-thread; nothing documents this, `RequestRedraw` is unsynchronized and cannot wake the blocked loop, and `ProcessTimers` has a data race plus a dangling-reference bug even single-threaded.
-
-None of these require architectural upheaval to fix. Concrete remedies are in the Recommendations section.
+**Verified fixed since the original review** (removed from this doc): queued-event `targetElement` scrubbing + null-guarded dispatch; destruction-order UB in the element/window teardown chain; event dispatch into destructors on focus teardown; `ClosePopup` use-after-free ordering; focus/blur dispatch bug on click-to-focus; `ProcessTimers` data race and dangling reference; radio menu items not firing; TreeView `backgroundColor` shadowing; `GetScreenPosition` uninitialized read (API removed); `IsKeyPressed` undefined / `keyStates` uninitialized; `StrokeText` using fill paint; `Arrange`/`SetBounds` invalidation ignoring scroll offset; scrollbar self-invalidation frame; `position:Fixed` double-offset; `MapFromLocal`/`MapToLocal` off-by-one-level; `SetMargin`/`SetPadding` argument-order mismatch; `UCKeys` redefined as a portable virtual-key enum (no longer X11 keysyms); `InvalidateLayout` no longer wedges (always bubbles); `PostToUIThread` helper added with event-loop wakeup; `MeasureResult` cache now context-keyed.
 
 ---
 
-## A. Ownership & lifetime (Critical)
+## Verdict (unchanged in substance)
 
-**A1. Queued events hold raw `targetElement` that is never scrubbed on element destruction.**
-`UCEvent::targetElement` is a raw pointer (`UltraCanvasEvent.h:299`). Widgets enqueue command events pointing at themselves (`UltraCanvasMenu.cpp:1119/1144/1176`, `UltraCanvasDropdown.cpp:249`); dispatch dereferences the stored pointer without a registry check (`UltraCanvasApplication.cpp:706-707`, `:727-741`, `:760-762`). `CleanupElementReferences` (`UltraCanvasApplication.cpp:334-348`) clears hovered/captured/dragged/focus but does **not** scan `eventQueue`. An element that posts an event and is destroyed before dispatch (menu destroyed by its own action, popup closed) leaves a dangling pointer that is dereferenced. Stale *windows* are guarded (`:468-476`); elements are not.
-
-**A2. Destruction-order UB: children destruct after their owning window is torn down, then call back into it.**
-`~UltraCanvasUIElement` calls `CleanupElementReferences(this)`, which reads `window->IsCreated()`, `GetState()`, `GetFocusedElement()` and makes the virtual call `SetFocusedElement(nullptr)` (`UltraCanvasUIElement.cpp:15-20`, `UltraCanvasApplication.cpp:344-347`). Children are owned by the `children` vector on the most-base class `CSSLayout::Element` (`CSSLayout.h:460`), so on window destruction the child destructors run *after* `~UltraCanvasWindowBase`/`~UltraCanvasContainer` have completed and the vtable has been demoted — reads of destructed members and virtual dispatch through a degraded vtable. It survives today only because `PerformClose` happens to leave `_created = false` behind; dropping a window's last `shared_ptr` without `Close()` is hard UB.
-
-**A3. Focus teardown dispatches events into an element already inside its destructor.**
-Dying focused element → `SetFocusedElement(nullptr)` → `SendFocusLostEvent(prev)` → `prev->OnEvent(...)` + `prev->RequestRedraw()` (`UltraCanvasWindow.cpp:48-65`, `:173-180`). The derived destructor has already run; the base `OnEvent` still invokes the user's `eventCallback`, whose lambda typically captures the derived `this`. Cleanup hooks should null pointers, never dispatch.
-
-**A4. `ClosePopup` can free the element mid-function; `OpenPopup` is a `shared_from_this` footgun.**
-`RemoveChild(elem.shared_from_this()); elem.renderContext.reset(); elem.OnPopupClosed(reason);` (`UltraCanvasWindow.cpp:483-485`) — if the children vector held the last reference, the uses after `RemoveChild` are use-after-free. `UltraCanvasMenu.cpp:1044` guards this exact pattern ("ExecuteItem may destroy *this"); this site doesn't. `OpenPopup(..., UltraCanvasUIElement&, ...)` calls `shared_from_this()` on a by-reference parameter (`:447-455`) — a stack- or `unique_ptr`-owned element throws `bad_weak_ptr`; the signature invites the misuse.
-
-*Also in this family:* hiding a container leaves a hidden descendant focused and still receiving keys (`UltraCanvasUIElement.cpp:245-257`, `UltraCanvasApplication.cpp:628-649`); `UnInstallWindowEventFilter` never removes anything (inverted `empty()` check + erasing from a copy, `UltraCanvasWindow.cpp:212-224`), so leaked filters are another vector for callbacks capturing dead elements; `CloseAllPopups` clears vetoed entries without cleanup (`UltraCanvasWindow.cpp:507-515`).
+The core concept remains **confirmed**: shared base + thin native layer, a spec-shaped two-phase CSS layout engine over a single element tree, element-local rendering with retained per-layer surfaces, and a blocking wake-able event loop. The recent fixes removed the entire memory-safety family that was the review's biggest concern. The remaining problems concentrate in: (1) the rendering abstraction's Cairo/Pango coupling and composition cost, (2) platform parity and dead platform code, (3) the non-Px unit seam between the layout engine and the UI getters, and (4) widget-API consistency and stale docs.
 
 ---
 
-## B. Confirmed functional defects (fix before further porting/feature work)
+## A. Ownership & lifetime — remaining items
 
-| # | Defect | Evidence |
-|---|--------|----------|
-| B1 | **Focus/blur events never delivered on click-to-focus** — synthesized `UCEvent ev{WindowBlur/WindowFocus}` is built but the code dispatches `event` (the MouseDown) instead of `ev`, on all platforms | `core/UltraCanvasApplication.cpp:496-507` |
-| B2 | **`ProcessTimers` data race + dangling reference** — iterates and fires callbacks without `timersMutex_` while `StartTimer/StopTimer` are documented cross-thread; and `auto& timer = timers_[i]` is held across a callback that may `push_back` → reallocation → UB even single-threaded | `core/UltraCanvasApplication.cpp:799-878` |
-| B3 | **Radio menu items never fire** — `MenuItemData::Radio()` stores the callback in `onToggle`, but `ExecuteItem`'s Radio branch invokes `onClick`; the framework's own demo (`UltraCanvasMenuExamples.cpp:179-186`) is affected | `UltraCanvasMenu.h:650-668`, `core/UltraCanvasMenu.cpp:1148-1178` |
-| B4 | **`MenuItemType::Input`/`Custom` are dead API** — declared, factory-constructed (placeholder arg silently discarded), zero handling in rendering or `ExecuteItem` | `UltraCanvasMenu.h:53-62,133-134,743-758`, `core/UltraCanvasMenu.cpp:1185` |
-| B5 | **TreeView shadows base `backgroundColor`** — derived private member is never initialized (stays opaque black); `SetBackgroundColor()` writes the base member, row rendering reads the derived one | `UltraCanvasTreeView.h:143`, `core/UltraCanvasTreeView.cpp:657,666,193/233/273` |
-| B6 | **`GetScreenPosition` default impl reads its own uninitialized out-params** (`x = config_.x + x;`); Linux/Windows override it, **macOS does not** → garbage on macOS | `UltraCanvasWindow.h:212-215` |
-| B7 | **`IsKeyPressed` declared but never defined** (link error for any caller); `keyStates[256]` never zero-initialized; indexed by platform-specific `nativeKeyCode`, so it can't be portable anyway | `UltraCanvasApplication.h:90,130`, `core/UltraCanvasApplication.cpp:522-524` |
-| B8 | **`StrokeText` strokes with the fill paint** — `ApplyStrokeSource()` applies `fillSourceColor/Pattern`; `Stroke()` uses the correct stroke source | `RenderContextCairo.h:70-72`, `RenderContextCairo.cpp:1584,1820-1827` |
-| B9 | **Text-layout cache can return the wrong layout** — key ends at `text.substr(0,300)` (collisions after 300 bytes); omits `letterSpacing`; `lineHeight` is in the key but never applied ("Fixme"), so `SetTextLineHeight()` is a silent no-op; cached layouts are returned as mutable `shared_ptr` (one caller's mutation corrupts everyone's) | `RenderContextCairo.cpp:125-148,718-758` |
-| B10 | **Invalidation from `Arrange`/`SetBounds` ignores the parent's scroll offset** — damage passed in unscrolled parent-frame coords into an API expecting the visual local frame; dirty rect lands `scrollOffset` pixels away inside scrolled containers | `core/UltraCanvasUIElement.cpp:298-316,65-90`, `core/UltraCanvasContainer.cpp:65-67` |
-| B11 | **Scrollbar self-invalidation computed in the wrong frame** — displaced by `(contentOrigin + scroll)` once the container has border/padding or is scrolled; the comment claiming it works (`UltraCanvasContainer.cpp:565-568`) is wrong | `core/UltraCanvasContainer.cpp:94-104`, `core/UltraCanvasUIElement.cpp:180-195` |
-| B12 | **Block layout ignores margins entirely** — `SetMargin()` works in a flex parent, silent no-op in the default block parent (still invalidates layout); flex resolves margins correctly | `core/CSSLayout/Element.cpp:306-312,404-413` vs `FlexLayout.cpp:84-100` |
-| B13 | **`position: Fixed` double-offsets** — viewport-space coords written into parent-relative `finalBounds`; ancestor offsets applied twice for any Fixed child not parented at the window origin | `Element.cpp:435-438`, `FlexLayout.cpp:769-772`, `GridLayout.cpp:669-672` |
-| B14 | **`MapFromLocal/MapToLocal` with explicit target parent are off by one level** (adds the target's own offset before breaking; `nullptr`/window-frame callers unaffected) | `core/UltraCanvasUIElement.cpp:30-39` |
+**A1. `CloseAllPopups` — iterator invalidation UB and leaked vetoed popups.**
+`UltraCanvasWindow.cpp:556-564` reverse-iterates `popupElements` while calling `ClosePopup`, which erases from the same container mid-iteration — undefined behavior. It then ends with an unconditional `popupElements.clear()`, dropping entries whose `OnPopupAboutToClose` vetoed the close without cleanup (their `isPopup` flag, child link, and render context are never cleared).
+
+**A2. `UnInstallWindowEventFilter` never removes anything.**
+`UltraCanvasWindow.cpp:214-226`: the guard is inverted (`if (eventFilters.empty())`) and the erase operates on a copy (`auto funcs = ef.second;`). Leaked filters are a residual vector for callbacks capturing dead elements.
+
+**A3. Hiding a container leaves a hidden descendant focused and receiving keys.**
+`SetVisible(false)` clears focus only if the element *itself* is focused (`UltraCanvasUIElement.cpp:264-276`); a focused child inside the hidden subtree keeps `_focusedElement`, and keyboard dispatch (`UltraCanvasApplication.cpp:806-827`) has no visibility check.
+
+**A4. `OpenPopup`/`ClosePopup` `shared_from_this` footgun.**
+The UAF ordering was fixed (commit `0ca288f`), but both still take `UltraCanvasUIElement&` and call `elem.shared_from_this()` (`UltraCanvasWindow.cpp:496,504,534`) — a stack- or `unique_ptr`-owned element throws `bad_weak_ptr`. Taking `shared_ptr` in the signature would make the precondition explicit.
+
+**A5. Event-queue scrub races if producers run off-thread.**
+The new `CleanupElementReferences` scrub (`UltraCanvasApplication.cpp:394-404`) iterates `eventQueue` without taking `eventQueueMutex`, while `PushEvent` locks it — inconsistent locking on a queue documented as a cross-thread channel.
 
 ---
 
-## C. Platform abstraction (X11-centric; matrix overstated)
+## B. Rendering — remaining items
 
-**C1. The abstraction vocabulary was lifted from X11, not designed neutrally.**
-`UCKeys` values are literal X11 keysyms (`Escape = 0xFF1B`, `F1 = 0xFFBE`, XF86 media keys; `UltraCanvasEvent.h:85-274`); `UCMouseButton` encodes wheel directions as X11-style buttons. Linux converts nearly identity; Windows and macOS each maintain 100+-entry emulation tables (`OS/MSWindows/...Application.cpp:630-728`, `OS/MacOS/...Application.mm:475-596`); unmapped keys silently become `Unknown`. Public `UCEvent` carries `NativeWindowHandle` behind a 4-way `#ifdef` ladder, and `UltraCanvasCommonTypes.h:15-53` `#include`s `<windows.h>`/`<X11/Xlib.h>` into **every** framework and client TU, requiring `#undef DrawText/CreateWindow/RGB/Rect` macro surgery.
+**B1. `IRenderContext` is still hard-wired to Cairo/Pango.**
+The abstract header still includes `<cairo/cairo.h>` and `<pango/pangocairo.h>` (`UltraCanvasRenderContext.h:10-11`), the public factory still exposes `CreateFontDescFromPango(const PangoFontDescription*)` (`:589`), and `TextAttributeType` (`:489-528`) mirrors Pango 1:1. A second (non-Cairo) backend cannot be implemented against this interface, and every client TU compiles against Cairo/Pango. (The Cairo context moving to `libspecific/Cairo/` is a good structural step; the header coupling is the remaining problem.)
 
-**C2. Event semantics diverge per platform.**
-Windows delivers two `KeyDown` events per character keystroke (one from `WM_KEYDOWN`, one from `WM_CHAR` with `virtualKey = Unknown`); Linux delivers one with both keysym and text. The dedicated `TextInput`/`KeyChar` event types exist but are unused by all three backends. macOS emits no `MouseDoubleClick`, no `MouseEnter`/`MouseLeave` (no NSTrackingArea anywhere), no horizontal wheel; wheel deltas are ±5-per-notch on Linux/Windows but raw truncated `scrollingDeltaY` on macOS (small trackpad deltas truncate to 0). Mouse capture is a no-op stub on macOS; there is no macOS drag-and-drop implementation at all, despite `DragStart..Drop` being public API.
+**B2. No enforcement of the state-stack invariant; escape hatches break the render contract.**
+`PopState()` on an empty shadow stack now logs, but still calls `cairo_restore` unconditionally (`libspecific/Cairo/RenderContextCairo.cpp:406-414`) — one unbalanced pop puts the `cairo_t` into permanent error state and silently blanks the window. `ClearClipRect`/`ResetTransform`/`SetTransform`/`ResetState` remain public on the element-facing interface (`UltraCanvasRenderContext.h:167-181`); `ClearClipRect` = `cairo_reset_clip` (cpp:464-470) discards the window's dirty-region clip and all container clips. Recommended: a RAII `ScopedRenderState` + balance assertion around `Render()`, and a restricted element-facing paint facade (or documenting these as compositor-only).
 
-**C3. BSD and WASM are unreachable dead code; iOS/Android don't exist.**
-BSD/WASM override virtuals that no longer exist in the base and cannot compile (`OS/BSD/UltraCanvasBSDApplication.h:118-121`, `OS/WASM/UltraCanvasWASMApplication.h:55`). Selection macros can't reach them anyway: `__WASM__` is tested (Emscripten defines `__EMSCRIPTEN__`) and the include path points at a nonexistent `OS/Web/`; on BSD, `defined(__unix__)` selects the **Linux** implementation, which includes `<sys/eventfd.h>`/`<linux/limits.h>`. `OS/iOS/` and `OS/Android/`, referenced from the public headers, are not in the tree. CMake wires only Linux/Windows/macOS.
+**B3. Composition still throws away what dirty-rects saved.**
+`FlushToSurface` has no region parameter and paints the entire backbuffer with `CAIRO_OPERATOR_SOURCE` (cpp:1846-1864); any dirty rect sets `_needsWindowComposition`, triggering a full-window flush plus re-flush of every popup surface plus a fresh tooltip render each frame (`UltraCanvasWindow.cpp:403-466`). Compounding it, `UltraCanvasContainer::InvalidateLayout()` still calls `RequestRedraw()` at every bubble step (`UltraCanvasContainer.h:141-145`), so any layout-affecting property set dirties the whole window. Damage is already computed from old∪new bounds after Arrange — the eager per-bubble redraw is redundant.
 
-**C4. Threading contract is implicit.**
-Safe cross-thread channels are exactly `PushEvent` and `StartTimer/StopTimer` (modulo B2) — documented nowhere. `RequestRedraw` → dirty-rect path has no synchronization and no `WakeUpEventLoop()`, so a worker thread calling it races on the rect vector *and* the repaint waits for the next user input (the loop blocks indefinitely when no timers run). There is no `RunOnUIThread` helper. `running`/`initialized` are `bool volatile`, not atomics. Linux carries a complete, never-called event-thread implementation (`OS/Linux/...Application.cpp:788-862`) — a vestige of an abandoned two-thread design that would be unsafe if ever enabled.
+**B4. Text-layout cache defects.**
+`libspecific/Cairo/RenderContextCairo.cpp`: cache key still ends with `text.substr(0,300)` (:145) — two texts identical in their first 300 bytes collide and render as each other; the key omits `letterSpacing`; `lineHeight` is in the key but never applied ("Fixme! Need to set line height", :741), so `SetTextLineHeight` is a silent no-op for `DrawText`; and the cache returns mutable `shared_ptr<ITextLayout>` (:720-760) — any caller mutating a cached layout corrupts it for every other user.
+
+**B5. Rendering minor items (all unchanged):**
+- `SetTransform`/`Transform` don't update the tracked `currentState.translation/rotation/scale` while `Translate/Rotate/Scale` do (cpp:426-455) — the shadow state is untrustworthy.
+- `SetAlpha`/global alpha has three different behaviors depending on code path (cpp:1536-1544 vs :108-123 vs :957-963); no real group-opacity concept.
+- Two text pipelines with different anchoring: baseline-anchored cairo toy-font `FillText`/`StrokeText` (cpp:1581-1602) vs top-left Pango `DrawText` (:774-800).
+- 1px clip-inflation hack compensating float→int truncation (`UltraCanvasContainer.cpp:96-97`); rect-type proliferation (`Rect2Dd`/`Rect2Df`/`Rect2Di`) persists across the render path (scrollbar signature was aligned to `Rect2Df` — partial improvement).
+- `DrawRoundedRectangleWidthBorders`: 18 parameters, "Width" typo intact (`UltraCanvasRenderContext.h:196-207`).
+- Dead `HandleScrollWheel` in container — zero callers, gates on the wrong condition (`UltraCanvasContainer.cpp:263-279`).
+- Per-text-draw `ostringstream` key construction + mutex-guarded cache lookup in the hot path (cpp:125-148, `UltraCanvasUtils.h:134-136`).
+- `g_Instances` static registry unsynchronized (cpp:47,264,274); `ClearClipRect` logs every call (:465); `DrawText` applies the text source twice (:781 + :767).
+
+---
+
+## C. Platform abstraction — remaining items
+
+**C1. Platform headers still leak into every TU.**
+`UCKeys` is fixed (portable enum), but `UltraCanvasCommonTypes.h:15-44` still includes `<windows.h>`/`<X11/Xlib.h>` into every framework and client TU (with 7 `#undef`s of Win32 macros), and `UCEvent` still carries `nativeWindowHandle` behind an `#ifdef` ladder (`UltraCanvasEvent.h:328-336`). An opaque handle type would remove the leak.
+
+**C2. Event semantics still diverge per platform.**
+- Windows emits **two** `KeyDown` per character keystroke (WM_KEYDOWN, then WM_CHAR with `virtualKey = Unknown`) (`OS/MSWindows/UltraCanvasWindowsApplication.cpp:374-383,422-428`); Linux emits one with both key and text. The `TextInput`/`KeyChar` event types are still produced by no backend.
+- macOS: no `MouseDoubleClick` (clickCount never inspected), no `MouseEnter`/`MouseLeave` (no NSTrackingArea), no horizontal wheel (`OS/MacOS/UltraCanvasMacOSApplication.mm:375-438`); wheel delta is raw truncated `scrollingDeltaY` (:402) vs ±5-per-notch on Linux/Windows — trackpad deltas truncate to 0; mouse capture is a no-op stub (:610-634); no drag-and-drop implementation at all despite `DragStart..Drop` being public API.
+
+**C3. BSD/WASM dead code is still unreachable and non-compiling; iOS/Android still phantom.**
+`OS/BSD` and `OS/WASM` still override the removed virtual `RunNative()`; the selection macros at the bottom of `UltraCanvasApplication.h`/`UltraCanvasWindow.h` still test `__WASM__` (Emscripten defines `__EMSCRIPTEN__`) and include nonexistent `../OS/Web/...` headers; `defined(__unix__)` still selects the Linux implementation (with `<sys/eventfd.h>`) on BSD; `OS/iOS`/`OS/Android` are referenced but do not exist. Recommend deleting or quarantining until re-based on the current API, and documenting the real matrix (Linux/Windows/macOS).
+
+**C4. Threading contract — residuals.**
+`PostToUIThread` (with loop wakeup) is a solid addition. Still open: `bool volatile running/initialized` instead of `std::atomic` (`UltraCanvasApplication.h:55-56`); the dirty-rect path (`RequestRedraw` → `DirtyRectManager::Add`) remains unsynchronized and does not wake the loop — safe only on the UI thread, which is still undocumented; the dead Linux `StartEventThread`/`EventThreadFunction` (never called, unsafe if ever enabled) is still present (`OS/Linux/UltraCanvasLinuxApplication.cpp:818-892`).
 
 **C5. Process-global singleton.**
-Each platform app self-registers a static `instance` with no double-instantiation guard; `GetInstance()` is called from 84 sites in 30 files including widgets, the Cairo context and plugins. Consequences: one app per process, hidden init-order dependency, and widget unit tests require a live X11 connection.
+Per-platform `static instance` assigned unguarded in the constructor, never cleared (`OS/Linux/UltraCanvasLinuxApplication.cpp:24,37`); `GetInstance()` hardwired across ~25 core files. The new `GetCurrent()` documents the single-app assumption rather than removing it. Consequences unchanged: one app per process, init-order dependency, widget tests need a live display.
+
+**C6. Platform minor items (all unchanged):**
+- Linux `GetClipboardText()` dead stub returns `""` while the real `UltraCanvasLinuxClipboard` backend exists (`OS/Linux/UltraCanvasLinuxApplication.cpp:895-902`).
+- `XIOErrorHandler` calls `exit(1)` on X connection loss (:913-916) — no orderly shutdown.
+- Fragile event classifiers: `IsMouseEvent` still omits Enter/Leave/horizontal wheel; `IsWindowEvent` is still an enum-order range check excluding `WindowCloseRequest`/`WindowRepaint` (`UltraCanvasEvent.h:352-380`).
+- `windowClassSuffix` (Windows-only) still in the cross-platform `WindowConfig` (now at least documented).
+- Linux rejects windows larger than 4096px (`OS/Linux/UltraCanvasLinuxWindow.cpp:113-117`) — fails on 5K/6K monitors.
+- Dead `DOUBLE_CLICK_TIME = 0` / `DOUBLE_CLICK_DISTANCE = 0` constants (`UltraCanvasApplication.h:107-108`).
 
 ---
 
-## D. Rendering API (good contract, leaky abstraction, one big performance hole)
+## D. Layout engine — remaining items
 
-**D1. `IRenderContext` is hard-wired to Cairo/Pango.**
-The *abstract* header includes `<cairo/cairo.h>` and `<pango/pangocairo.h>` (`UltraCanvasRenderContext.h:10-11`); the public factory exposes `CreateFontDescFromPango(const PangoFontDescription*)` (`:589`); the text-attribute enum mirrors Pango 1:1. A second backend can't be implemented without Pango semantics — and the only attempted non-Cairo backend (WASM) is bit-rotted against an older interface, i.e. the abstraction has never been re-validated.
+**D1. `dimPx` collapses every non-Px unit to 0 across the UI geometry API.**
+Unchanged (`UltraCanvasUIElement.h:96-98`): `GetContentRect`, `GetOriginalSize`, all margin/padding/border getters return 0 for `%`/`em`/`vw`/… values that the engine resolves correctly during layout, and container scrollbar placement, scroll range and wheel hit-testing consume these getters (`UltraCanvasContainer.cpp:115-116,168-169,223-235,265-266,287-288,451-452`). Either resolve via the last `LayoutContext` or document non-Px box values as unsupported on UI elements.
 
-**D2. No enforcement of the state-stack invariant; escape hatches break the rendering contract.**
-An unbalanced `PopState()` still calls `cairo_restore` on an empty shadow stack, putting the `cairo_t` into permanent error state — one misbehaving widget silently blanks the window (`RenderContextCairo.cpp:406-414`). Meanwhile `ClearClipRect`/`ResetTransform`/`SetTransform`/`ResetState` are public on the same interface handed to `Render()`; `ClearClipRect` = `cairo_reset_clip`, which discards the window's dirty-region clip and every container clip. Elements are handed the whole-surface API where a restricted painting facade (plus a RAII state guard) is needed.
+**D2. `InvalidateSubtree` still doesn't reach the window's geometry gate.**
+The permanent-wedge is fixed (`InvalidateLayout` now always bubbles, `Element.cpp:171-188`), but `InvalidateSubtree` remains downward-only (`Element.cpp:190-196`) while the window gates the geometry pass on the root's `arrangeValid` (`UltraCanvasWindow.cpp:383-400`) — a bare mid-tree `InvalidateSubtree` still triggers no re-layout; the TabbedContainer workaround is still needed (`UltraCanvasTabbedContainer.cpp:63-80`).
 
-**D3. Composition throws away what dirty-rects saved.**
-`FlushToSurface` has no region parameter and paints the entire backbuffer with `CAIRO_OPERATOR_SOURCE`; any dirty rect (a blinking caret) triggers a full-window blit plus re-flush of every popup plus a fresh tooltip render (`RenderContextCairo.cpp:1835-1853`, `UltraCanvasWindow.cpp:398-417`). On large/HiDPI windows this O(window-area) per-frame cost dominates. Related amplification: `UltraCanvasContainer::InvalidateLayout` calls `RequestRedraw()` on every bubble step, so any layout-affecting property set dirties the whole window (`UltraCanvasContainer.h:141-145`).
+**D3. Two invalidation disciplines on the same data.**
+`size`, `box`, `layout`, `layoutItem` remain public mutable (`CSSLayout.h:346-367`) and the chainable `Layout`/`LayoutItem` setters cannot invalidate (no back-pointer, `:273-331`). `el->layout.SetFlexGap(8)` still silently does nothing until something else invalidates.
 
-**D4. Coherence nits.** Two text pipelines with different anchoring (baseline-anchored toy-font `FillText` vs top-left Pango `DrawText`); `SetAlpha` has three different behaviors depending on code path; rect types proliferate (`Rect2Dd`/`Rect2Df`/`Rect2Di` across one hand-off chain) with a compensating 1px clip-inflation hack (`UltraCanvasContainer.cpp:75-76`); ~120 virtuals on one interface; `DrawRoundedRectangleWidthBorders` takes 17 parameters (and typos "Width" for "With"); per-text-draw `ostringstream` cache-key construction in the hot path.
+**D4. Constructor-value-driven positioning mode.**
+`(x > 0 || y > 0)` still stamps `AbsoluteUI` (`UltraCanvasUIElement.h:136-156`). Now well-commented, but the hidden mode switch stands: `(id,0,0,w,h)` and `(id,0,1,w,h)` land in different layout regimes, and absolute placement at (0,0) is inexpressible via the constructor.
 
----
+**D5. Cache-design nits.**
+Flex/grid `LayoutComputed` state is still keyed by constraints only — no `ctxKey` (`FlexLayout.cpp:544-545`, `GridLayout.cpp:528-529`), repeating the staleness bug the measure cache already fixed; the measure cache remains single-slot (`CSSLayout.h:208-215`) and thrashes on multi-constraint passes.
 
-## E. Layout engine (sound core, sharp edges at the UI seam)
-
-**E1. `dimPx` collapses every non-Px unit to 0 across the UI geometry API** (`UltraCanvasUIElement.h:96-98`). The engine resolves `%`/`em`/`vw`/… correctly during layout, but `GetContentRect`, margin/padding/border getters, scrollbar geometry, scroll range and wheel hit-testing all read 0 for non-Px values and disagree with the engine (`UltraCanvasContainer.cpp:147-148,196-199,244-248,266-267,430-431`). `GetOriginalSize()` on a `Pct(100)`-sized element returns `{0,0}`. The engine advertises 11 units; the UI layer round-trips one. Resolve via the last `LayoutContext`, or document non-Px box values as unsupported on UI elements.
-
-**E2. One-way invalidation trap.** `InvalidateLayout` only ascends; `InvalidateSubtree` only descends; the window gates the geometry pass on the *root's* `arrangeValid`. Calling `InvalidateSubtree` mid-tree leaves the root valid → no re-layout runs, and descendants' subsequent `InvalidateLayout` calls hit the already-invalid early-out → the tree wedges. `UltraCanvasTabbedContainer.cpp:64-78` contains a manual workaround that documents the trap.
-
-**E3. Two invalidation disciplines on the same data.** `size`, `box`, `layout`, `layoutItem` are public mutable fields, and the chainable `Layout`/`LayoutItem` setters never invalidate (they can't — they don't know the Element). Only the UI-layer setters uphold the contract. `el->layout.SetFlexGap(8)` silently does nothing until something else invalidates.
-
-**E4. Constructor-value-driven positioning mode.** `(x > 0 || y > 0)` in the base constructor flips the element into `AbsoluteUI` positioning (`UltraCanvasUIElement.h:143-154`). `AbsoluteUI` itself is a defensible, honestly-documented compat extension — but the trigger means `("id",0,0,w,h)` and `("id",0,1,w,h)` land in different layout regimes, absolute placement at (0,0) is inexpressible, and `UltraCanvasContainer` must pass sentinel `(-1,-1)` to dodge it. An explicit tag/setter would carry the same compatibility without the hidden mode switch.
-
-**E5. Cache-design nits.** Flex/grid `LayoutComputed` state is keyed by constraints only (missing the `ctxKey` that the measure cache gained after the same staleness bug); the measure cache is single-slot while flex/grid measure each child under up to three constraint sets per pass (thrash on deep auto-sized trees).
+**D6. Block layout still ignores margins entirely.**
+`MeasureBlock`/`ArrangeBlock` stack children by `measuredHeight` with zero margin handling (`Element.cpp:315-323,401-425`) while flex/grid resolve margins correctly. `SetMargin()` in the default block parent is a silent no-op that still invalidates layout. At minimum, document it alongside the existing "no margin collapsing" note in `Docs/CSSLayout.md`.
 
 ---
 
-## F. Widget API consistency & documentation
+## E. Widget API & documentation — remaining items
 
-- **Four coexisting creation idioms** (free-function `CreateX`, static member factory, `UltraCanvasUIElementFactory::Create<>`, two different Builder architectures) with no blessed one; the framework's own apps vote with 216 raw `make_shared` calls vs 39 `CreateButton` and 2 Builder uses.
-- **Semantic collisions on shared names:** single-string constructor means *text* on Button/Label/Checkbox but *identifier* on TextInput/Dropdown/Menu/TreeView; `SetMargin(vertical, horizontal)` vs `SetPadding(horizontal, vertical)` (`UltraCanvasUIElement.h:243,264`); `onClick` is `void()` on Button/Label but `void(const UCEvent&)` on Slider; `SetColors(...)` means four different tuples on four widgets.
-- **Naming drift:** `Is*` vs `Get*` for booleans; `onSelectionChanged`/`onItemSelected`/`onNodeSelected`/`onTabChange`+`onTabSelect` for the same concept; three different veto-callback conventions.
-- **TabbedContainer exposes its entire state as public data members** mirrored by setters — two write paths, one of which bypasses invalidation.
-- **No theme system.** Per-widget style structs with named presets is a coherent idiom, but there's no application-wide theme or dark-mode switch, and "where does a border live" differs per widget (Label's style excludes background/border, Button's still embeds them).
-- **Documentation is systematically stale.** All four spot-checked component docs describe a removed constructor generation (`identifier, long id, x, y, ...`), phantom factories (`CreateAutoButton`, `DropdownBuilder`), and renamed style fields. The developer guides (coordinate system, CSSLayout contract, bitmap architecture) are accurate and unusually good; the per-widget examples should be regenerated or clearly marked untrusted.
-- **Header hygiene:** `UltraCanvasTabbedContainer.h` pulls in AutoComplete + Menu + Button; `<regex>` included in `TextInput.h` but used only in the .cpp; commented-out code blocks shipped in public headers; `UCEvent::IsWindowEvent()`-style enum-order-fragile range checks (excludes `WindowCloseRequest`/`WindowRepaint`; `IsMouseEvent` excludes Enter/Leave/horizontal wheel).
+**E1. Four coexisting creation idioms, none blessed.**
+Free-function `CreateX` factories, static `Checkbox::CreateCheckbox`, the `UltraCanvasUIElementFactory::Create<>` template, and two incompatible Builder architectures (wrap-live `ButtonBuilder` vs accumulate-then-build `TextInputBuilder`) all coexist; TreeView's factory is still commented out. The framework's own apps overwhelmingly use raw `make_shared` — consider blessing that (+ constructors), keeping factories as sugar, and retiring or regularizing the Builders.
 
----
+**E2. Single-string constructor semantics (partially fixed).**
+Button's text-only constructor was removed (commit `80699fd`) — good. `UltraCanvasLabel(const std::string&)` (`Label.h:86-87`) and `UltraCanvasCheckbox` (`Checkbox.h:79-80`) still treat the single string as **text** while TextInput/Dropdown/Menu/TreeView treat it as the **identifier**.
 
-## G. What the design does well (confirmations)
+**E3. Callback API inconsistencies.**
+`onClick` is `void()` on Button/Label but `void(const UCEvent&)` on Slider (`Slider.h:301`); veto conventions vary (`onTabClose bool(int)`, `onClosing bool(DialogResult)`, `onPopupAboutToClose bool(ClosePopupReason)`, `onTabDragIn` int/-1); selection callbacks drift (`onSelectionChanged` / `onItemSelected` / `onNodeSelected` / `onTabChange`+`onTabSelect`).
 
-1. Single element tree; no duplicated hierarchy between layout engine and UI layer.
-2. Clean engine layering: `core/CSSLayout` has zero widget/window/render knowledge; widgets integrate through exactly two virtuals with a well-written contract doc.
-3. Element-local rendering + local dirty rects + pre-mapped local event coordinates — consistent between docs and code; the "don't do" documentation is honest and concrete.
-4. Retained per-layer surfaces (window/popups/tooltips) with independent dirty queues; popup close = recomposite, not repaint.
-5. Blocking, wake-able event loop implemented three times with matching semantics and correct timer-timeout integration; thread-safe inbound event queue.
-6. Clipboard and native dialogs are abstracted *properly* (interface + per-OS backend selected in one .cpp; no platform types leak) — proof the team knows how to build the clean boundary that the event/window layer lacks.
-7. HiDPI concept: logical units everywhere, `GetDeviceScale()` documented as a resource-selection hint; Pango resolution pinning; bundled-font strategy unified across Fontconfig/GDI/CoreText.
-8. Separate fill/stroke/text paint slots (avoids the HTML-canvas single-current-color footgun); pattern lifetimes tied to `shared_ptr`.
-9. Real platform craftsmanship where implemented: XIM UTF-8 input, Win32 surrogate-pair + AltGr handling, per-monitor-v2 DPI, OLE/XDnD drag-drop.
-10. Widget-level uniformity in the *shape* of the API: consistent `(id, x, y, w, h)` constructor families, lowercase `on*` `std::function` members, identical `OnEvent`/`Render` contracts, `UltraCanvasLabeledToggleBase` factoring, style-struct + preset idiom.
+**E4. Naming & semantic collisions.**
+`Is*` vs `Get*` for booleans (`GetShowExpandButtons` vs `IsReadOnly`, hybrid `IsShowPlaceholderAlways`); `SetColors(...)` means four different tuples on Button/Checkbox/Slider/TreeViewBuilder; `GetZOrder()`/`GetZIndex()` duplicates; `SetOnClick()` setter coexisting with the public `onClick` member; `SetSize`/`SetPosition` kept with a "don't use" comment.
 
----
+**E5. TabbedContainer state exposure.**
+Entire state (tabs vector, indices, 20+ colors, drag state) is public *and* mirrored by setters; several setters (`SetNewTabButtonWidth`, `SetInactiveTabBackgroundColor`, `SetActiveTabBackgroundColor`, `SetInactiveTabTextColor`, `SetNewButtonColor`, `TabbedContainer.h:252-256`) skip `InvalidateTabbar()` while neighbors invalidate.
 
-## H. Recommendations (priority order)
+**E6. Menu `Input`/`Custom` half-removed.**
+The inline `Input()` factory bodies are commented out, but the enum values and the *declared* factories remain (`Menu.h:59-60,140-141`) — calling them is now a linker error rather than a silent no-op. Remove the declarations and enum values (or implement them).
 
-1. **Fix the outright defects (section B).** B1, B2, B3, B5, B6, B8 are cheap, user-visible wins; B9–B13 need small design decisions first.
-2. **Close the lifetime gaps without re-architecting:** make `UCEvent::targetElement`, `_focusedElement`, and the app-level hovered/captured/dragged pointers `weak_ptr<UltraCanvasUIElement>` (the class already inherits `enable_shared_from_this`); forbid event dispatch/redraw from destructor paths (cleanup hooks only null pointers); make `OpenPopup` take a `shared_ptr`; guard `ClosePopup` with a local `shared_ptr` for the duration of the call.
-3. **Make the platform story honest:** delete or quarantine `OS/BSD` and `OS/WASM` (plus the iOS/Android references) until re-based on the current API; fix the `__WASM__`/`OS/Web` selection macros when WASM returns; document the real matrix.
-4. **Document and enforce the threading contract:** "UI thread only, except `PushEvent`/timers"; fix `ProcessTimers` locking; either make `RequestRedraw` thread-safe + loop-waking or assert it's called on the UI thread; consider a `RunOnUIThread(fn)` helper (trivially built on `PushEvent`).
-5. **De-leak the public headers:** move `<X11/Xlib.h>`/`<windows.h>` out of `UltraCanvasCommonTypes.h` (opaque handle type), remove `cairo/pango` includes from `UltraCanvasRenderContext.h` (the Pango factory hook can live in a backend-specific header). Keeping X11 keysym *values* for `UCKeys` is defensible as an ABI choice, but say so in the header, and route all key translation through shared tables.
-6. **Harden the render contract:** RAII state guard (`ScopedRenderState`) + balance assertion per `Render()` call; split a restricted element-facing paint interface from the surface-owner interface (or at least document `ClearClipRect`/`ResetTransform` as compositor-only); add a region parameter to `FlushToSurface`.
-7. **Bless one widget-creation idiom** (the evidence says: constructors + `make_shared`, keep free-function factories as sugar, retire the per-widget Builders or generate them uniformly); align `SetMargin`/`SetPadding` argument order (breaking, but it's a live footgun); unify the single-string constructor semantics.
-8. **Regenerate the per-widget docs from the current headers** — they are a full API generation behind and actively misleading.
-9. **Layout-engine follow-ups:** implement block-flow margins (B12); make `InvalidateSubtree` bubble up (E2); decide the non-Px story for the UI getters (E1); replace the `(x>0||y>0)` constructor heuristic with an explicit tag (E4); compute damage from old∪new bounds after Arrange instead of whole-window redraw per invalidation bubble (D3/m3).
+**E7. Header hygiene.**
+`UltraCanvasMenu.h` still ~767 lines with heavy inline bodies; `TextInput.h` includes `<regex>` unused in the header; `TabbedContainer.h` still pulls in AutoComplete/Menu/Button; commented-out code blocks persist in public headers (TreeView factory, Menu state API, Menu Input factories, TextInput factory). TextInput factory param types still mix `int`/`float`/`long` (`TextInput.h:639-696`). TreeView's three ~40-line constructors are still copy-paste rather than delegating (`core/UltraCanvasTreeView.cpp:157-275`). Dead `prevDisplayType` member on the base element (`UltraCanvasUIElement.h:107`).
+
+**E8. Per-widget docs are still a full API generation behind.**
+`UltraCanvasButtonExamples.md`, `UltraCanvasLabelExamples.md`, `UltraCanvasCheckbox.md`, `UltraCanvasDropDownExamples.md` still document the removed `long id` constructor generation, phantom `CreateAutoButton`/`DropdownBuilder`, and renamed style fields. The developer guides (coordinate system, CSSLayout, bitmap architecture) remain accurate; the per-widget examples actively mislead and should be regenerated or marked untrusted.
+
+**E9. No theme system.**
+Per-widget style structs + presets only; no app-wide theme or dark-mode switch; "where does a border live" still differs per widget (LabelStyle excludes background/border, ButtonStyle embeds them).
 
 ---
 
-*Review produced by automated multi-agent analysis of the repository at commit `13a91ef`; every finding was verified against the source files cited.*
+## F. Recommendations (updated priority order)
+
+1. **Small correctness fixes first:** `CloseAllPopups` iterator invalidation + vetoed-entry cleanup (A1); `UnInstallWindowEventFilter` (A2); lock `eventQueueMutex` in the cleanup scrub (A5); clear focus from hidden subtrees (A3); text-layout cache key/immutability (B4).
+2. **Harden the render contract:** RAII state guard + balance assertion per `Render()`; restrict or document `ClearClipRect`/`ResetTransform` as compositor-only (B2); add a region parameter to `FlushToSurface` and drop the per-bubble `RequestRedraw` in `InvalidateLayout` (B3).
+3. **De-leak the public headers:** opaque native-handle type to remove `<windows.h>`/`<X11/Xlib.h>` from `UltraCanvasCommonTypes.h` (C1); move Cairo/Pango includes and the Pango factory hook out of `UltraCanvasRenderContext.h` (B1).
+4. **Make the platform story honest:** delete/quarantine `OS/BSD`, `OS/WASM`, and the iOS/Android/Web references; fix or remove the selection macros (C3). Close the macOS interaction gaps (double-click, enter/leave, wheel scale, capture, DnD) before claiming parity (C2).
+5. **Finish the threading contract:** atomics for `running`/`initialized`; document "UI thread only, except `PushEvent`/timers/`PostToUIThread`"; remove the dead Linux event-thread code (C4).
+6. **Layout seam:** decide the non-Px story for the UI getters (D1); make `InvalidateSubtree` bubble or assert root-only (D2); route the chainable layout setters through invalidation or make the fields non-public (D3); replace the `(x>0||y>0)` heuristic with an explicit tag (D4); implement block-flow margins or document their absence (D6).
+7. **Widget API consolidation:** bless one creation idiom (E1); unify the remaining single-string ctor semantics on Label/Checkbox (E2); align `onClick` signatures and veto conventions (E3); remove the half-deleted Menu Input/Custom API (E6).
+8. **Regenerate the four stale per-widget docs from current headers** (E8).
+
+---
+
+*Recheck produced by automated multi-agent re-verification of every original finding against the current sources; fixed items were confirmed with code evidence before removal from this document.*
