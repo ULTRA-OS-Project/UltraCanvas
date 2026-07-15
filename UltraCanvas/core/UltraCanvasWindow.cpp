@@ -529,9 +529,9 @@ namespace UltraCanvas {
                         popupElements.erase(it);
                         elem.isPopup = false;
                         elem.SetVisible(false);
-                        RemoveChild(elem.shared_from_this());
                         elem.renderContext.reset();
                         elem.OnPopupClosed(reason);
+                        RemoveChild(elem.shared_from_this());
                         // Closing a popup uncovers window pixels, so we need a full
                         // window recomposite to refresh the area underneath.
                         RequestWindowComposition();
