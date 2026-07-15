@@ -3,7 +3,7 @@
 **Original review:** 2026-07-02 (commit `13a91ef`)
 **Rechecked:** 2026-07-15 against current `main` (commit `80699fd`). Every finding of the original review was re-verified against the current sources. **Items confirmed fixed have been removed from this document**; what follows is only what remains. Line numbers refer to the current code.
 
-**Verified fixed since the original review** (removed from this doc): queued-event `targetElement` scrubbing + null-guarded dispatch; destruction-order UB in the element/window teardown chain; event dispatch into destructors on focus teardown; `ClosePopup` use-after-free ordering; focus/blur dispatch bug on click-to-focus; `ProcessTimers` data race and dangling reference; radio menu items not firing; TreeView `backgroundColor` shadowing; `GetScreenPosition` uninitialized read (API removed); `IsKeyPressed` undefined / `keyStates` uninitialized; `StrokeText` using fill paint; `Arrange`/`SetBounds` invalidation ignoring scroll offset; scrollbar self-invalidation frame; `position:Fixed` double-offset; `MapFromLocal`/`MapToLocal` off-by-one-level; `SetMargin`/`SetPadding` argument-order mismatch; `UCKeys` redefined as a portable virtual-key enum (no longer X11 keysyms); `InvalidateLayout` no longer wedges (always bubbles); `PostToUIThread` helper added with event-loop wakeup; `MeasureResult` cache now context-keyed.
+**Verified fixed since the original review** (removed from this doc): queued-event `targetElement` scrubbing + null-guarded dispatch; destruction-order UB in the element/window teardown chain; event dispatch into destructors on focus teardown; `ClosePopup` use-after-free ordering; hidden containers leaving a focused descendant (`UltraCanvasContainer::SetFocus(false)` now clears focus from any focused descendant via `IsDescendantOf`); focus/blur dispatch bug on click-to-focus; `ProcessTimers` data race and dangling reference; radio menu items not firing; TreeView `backgroundColor` shadowing; `GetScreenPosition` uninitialized read (API removed); `IsKeyPressed` undefined / `keyStates` uninitialized; `StrokeText` using fill paint; `Arrange`/`SetBounds` invalidation ignoring scroll offset; scrollbar self-invalidation frame; `position:Fixed` double-offset; `MapFromLocal`/`MapToLocal` off-by-one-level; `SetMargin`/`SetPadding` argument-order mismatch; `UCKeys` redefined as a portable virtual-key enum (no longer X11 keysyms); `InvalidateLayout` no longer wedges (always bubbles); `PostToUIThread` helper added with event-loop wakeup; `MeasureResult` cache now context-keyed.
 
 ---
 
@@ -21,13 +21,10 @@ The core concept remains **confirmed**: shared base + thin native layer, a spec-
 **A2. `UnInstallWindowEventFilter` never removes anything.**
 `UltraCanvasWindow.cpp:214-226`: the guard is inverted (`if (eventFilters.empty())`) and the erase operates on a copy (`auto funcs = ef.second;`). Leaked filters are a residual vector for callbacks capturing dead elements.
 
-**A3. Hiding a container leaves a hidden descendant focused and receiving keys.**
-`SetVisible(false)` clears focus only if the element *itself* is focused (`UltraCanvasUIElement.cpp:264-276`); a focused child inside the hidden subtree keeps `_focusedElement`, and keyboard dispatch (`UltraCanvasApplication.cpp:806-827`) has no visibility check.
-
-**A4. `OpenPopup`/`ClosePopup` `shared_from_this` footgun.**
+**A3. `OpenPopup`/`ClosePopup` `shared_from_this` footgun.**
 The UAF ordering was fixed (commit `0ca288f`), but both still take `UltraCanvasUIElement&` and call `elem.shared_from_this()` (`UltraCanvasWindow.cpp:496,504,534`) — a stack- or `unique_ptr`-owned element throws `bad_weak_ptr`. Taking `shared_ptr` in the signature would make the precondition explicit.
 
-**A5. Event-queue scrub races if producers run off-thread.**
+**A4. Event-queue scrub races if producers run off-thread.**
 The new `CleanupElementReferences` scrub (`UltraCanvasApplication.cpp:394-404`) iterates `eventQueue` without taking `eventQueueMutex`, while `PushEvent` locks it — inconsistent locking on a queue documented as a cross-thread channel.
 
 ---
@@ -141,7 +138,7 @@ Per-widget style structs + presets only; no app-wide theme or dark-mode switch; 
 
 ## F. Recommendations (updated priority order)
 
-1. **Small correctness fixes first:** `CloseAllPopups` iterator invalidation + vetoed-entry cleanup (A1); `UnInstallWindowEventFilter` (A2); lock `eventQueueMutex` in the cleanup scrub (A5); clear focus from hidden subtrees (A3); text-layout cache key/immutability (B4).
+1. **Small correctness fixes first:** `CloseAllPopups` iterator invalidation + vetoed-entry cleanup (A1); `UnInstallWindowEventFilter` (A2); lock `eventQueueMutex` in the cleanup scrub (A4); text-layout cache key/immutability (B4).
 2. **Harden the render contract:** RAII state guard + balance assertion per `Render()`; restrict or document `ClearClipRect`/`ResetTransform` as compositor-only (B2); add a region parameter to `FlushToSurface` and drop the per-bubble `RequestRedraw` in `InvalidateLayout` (B3).
 3. **De-leak the public headers:** opaque native-handle type to remove `<windows.h>`/`<X11/Xlib.h>` from `UltraCanvasCommonTypes.h` (C1); move Cairo/Pango includes and the Pango factory hook out of `UltraCanvasRenderContext.h` (B1).
 4. **Make the platform story honest:** delete/quarantine `OS/BSD`, `OS/WASM`, and the iOS/Android/Web references; fix or remove the selection macros (C3). Close the macOS interaction gaps (double-click, enter/leave, wheel scale, capture, DnD) before claiming parity (C2).
