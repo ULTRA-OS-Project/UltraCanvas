@@ -7,6 +7,7 @@
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
+#include "UltraCanvasNativeHandle.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDirtyRectManager.h"

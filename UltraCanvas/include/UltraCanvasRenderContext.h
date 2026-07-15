@@ -5,10 +5,11 @@
 // Author: UltraCanvas Framework
 #pragma once
 
+#ifndef ULTRACANVAS_RENDER_CONTEXT_H
+#define ULTRACANVAS_RENDER_CONTEXT_H
+
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasImage.h"
-#include <cairo/cairo.h>
-#include <pango/pangocairo.h>
 #include <thread>
 #include <unordered_map>
 #include <memory>
@@ -126,9 +127,9 @@ namespace UltraCanvas {
     struct RenderState {
         FontStyle fontStyle;
         TextStyle textStyle;
-        Point2Dd translation;
-        double rotation = 0.0f;
-        Point2Dd scale = Point2Dd(1.0f, 1.0f);
+//        Point2Dd translation;
+//        double rotation = 0.0f;
+//        Point2Dd scale = Point2Dd(1.0f, 1.0f);
         double globalAlpha = 1.0f;
 
         std::shared_ptr<IPaintPattern> fillSourcePattern = nullptr;
@@ -585,8 +586,6 @@ namespace UltraCanvas {
     namespace TextAttributeFactory {
         // Font description (from UltraCanvas FontStyle)
         std::unique_ptr<ITextAttribute> CreateFontStyle(const FontStyle& fontStyle);
-        // Font description (from raw PangoFontDescription)
-        std::unique_ptr<ITextAttribute> CreateFontDescFromPango(const PangoFontDescription* desc);
 
         // Font family
         std::unique_ptr<ITextAttribute> CreateFontFamily(const std::string& family);
@@ -779,3 +778,5 @@ namespace UltraCanvas {
     // factory
     std::unique_ptr<IRenderContext> CreateRenderContext(const Size2Di& sz, NativeSurfacePtr similarTo);
 } // namespace UltraCanvas
+
+#endif

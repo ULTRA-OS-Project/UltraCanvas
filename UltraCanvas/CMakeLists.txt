@@ -627,6 +627,7 @@ set(ULTRACANVAS_ALL_SOURCES
     ${ULTRACANVAS_PLATFORM_SOURCES}
     ${ULTRACANVAS_LIBSPECIFIC_SOURCES}
         libspecific/Audio/miniaudio.h
+        include/UltraCanvasNativeHandle.h
 )
 
 # ===== BUILD CORE LIBRARY =====

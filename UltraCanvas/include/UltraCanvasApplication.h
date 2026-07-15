@@ -8,6 +8,7 @@
 #ifndef ULTRACANVAS_BASE_APPLICATION_H
 #define ULTRACANVAS_BASE_APPLICATION_H
 
+#include "UltraCanvasNativeHandle.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasConfig.h"

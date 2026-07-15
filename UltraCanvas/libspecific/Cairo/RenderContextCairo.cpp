@@ -407,10 +407,10 @@ namespace UltraCanvas {
         if (!stateStack.empty()) {
             currentState = stateStack.back();
             stateStack.pop_back();
+            cairo_restore(cairo);
         } else {
             debugOutput << "RenderContextCairo::PopState() stateStack empty!" << std::endl;
         }
-        cairo_restore(cairo);
     }
 
     void RenderContextCairo::ResetState() {
@@ -426,20 +426,15 @@ namespace UltraCanvas {
     void RenderContextCairo::Translate(double x, double y) {
         if (x != 0 || y != 0) {
             cairo_translate(cairo, x, y);
-            currentState.translation.x += x;
-            currentState.translation.y += y;
         }
     }
 
     void RenderContextCairo::Rotate(double angle) {
         cairo_rotate(cairo, angle);
-        currentState.rotation += angle;
     }
 
     void RenderContextCairo::Scale(double sx, double sy) {
         cairo_scale(cairo, sx, sy);
-        currentState.scale.x *= sx;
-        currentState.scale.y *= sy;
     }
 
     void RenderContextCairo::SetTransform(double a, double b, double c, double d, double e, double f) {
@@ -456,9 +451,6 @@ namespace UltraCanvas {
 
     void RenderContextCairo::ResetTransform() {
         cairo_identity_matrix(cairo);
-        currentState.translation = Point2Dd(0, 0);
-        currentState.rotation = 0;
-        currentState.scale = Point2Dd(1, 1);
     }
 
     void RenderContextCairo::ClearClipRect() {

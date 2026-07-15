@@ -393,9 +393,13 @@ namespace UltraCanvas {
 
     void UltraCanvasApplicationBase::CleanupElementReferences(UltraCanvasUIElement* elem) {
         // Called from ~UltraCanvasUIElement
-        for(auto & eventsIt : eventQueue) {
-            if (eventsIt.targetElement == elem) {
-                eventsIt.targetElement = nullptr;
+
+        {
+            std::lock_guard<std::mutex> lock(eventQueueMutex);
+            for (auto &eventsIt: eventQueue) {
+                if (eventsIt.targetElement == elem) {
+                    eventsIt.targetElement = nullptr;
+                }
             }
         }
 

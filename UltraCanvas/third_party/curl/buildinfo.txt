@@ -1,0 +1,13 @@
+# This is a generated file.  Do not edit.
+buildinfo.configure.tool: configure
+buildinfo.configure.args:  '--with-openssl' '--with-nghttp2'
+buildinfo.host: x86_64-pc-linux-gnu
+buildinfo.host.cpu: x86_64
+buildinfo.host.os: linux-gnu
+buildinfo.target: x86_64-pc-linux-gnu
+buildinfo.target.cpu: x86_64
+buildinfo.target.os: linux-gnu
+buildinfo.target.flags: UNIX GCC
+buildinfo.compiler: GNU_C
+buildinfo.compiler.version: 11
+buildinfo.sysroot: 

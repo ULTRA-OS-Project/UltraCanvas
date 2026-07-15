@@ -8,6 +8,7 @@
 #define ULTRA_CANVAS_EVENT_H
 
 #include "UltraCanvasCommonTypes.h"
+#include "UltraCanvasNativeHandle.h"
 #include <chrono>
 #include <cstdint>
 #include <memory>

@@ -2,8 +2,12 @@
 // Demonstration of UltraCanvasAlbum: layout designs, image-fit modes, action-icon
 // display options and visitor / user-edit / admin modes for a mixed photo / video
 // / music album.
-// Version: 2.15.0
-// Last Modified: 2026-07-12
+// Version: 2.15.1
+// Last Modified: 2026-07-15
+// V2.15.1: Fixed a crash opening the Album demo — the first seed (Charlie
+//   Chaplin GIF) omits the link field, so it was value-initialized to nullptr
+//   and assigning it into AlbumItem::link (std::string) called strlen(nullptr).
+//   The seed loop now null-guards the const char* -> std::string assignments.
 // V2.15.0: The video player window now shows an info bar under the video
 //   surface with the clip's title and its source link (clickable — opens in the
 //   system browser), and the Lola Lexy tile's link line reads
@@ -517,12 +521,16 @@ namespace UltraCanvas {
             } else {
                 it.mediaPath = mediaRoot + s.file;
             }
-            it.title = s.title;
-            it.subtitle = s.subtitle;
-            it.description = s.description;
+            // Seeds may omit any of these const char* fields; per aggregate
+            // initialization the missing ones are value-initialized to nullptr,
+            // and assigning a null const char* into a std::string would call
+            // strlen(nullptr). Guard each one, leaving the member empty when null.
+            if (s.title)       it.title = s.title;
+            if (s.subtitle)    it.subtitle = s.subtitle;
+            if (s.description) it.description = s.description;
             it.mediaType = s.type;
             it.featured = s.featured;
-            it.link = s.link;
+            if (s.link)        it.link = s.link;
             if (s.linkIcon && *s.linkIcon) {
                 it.linkIconPath = NormalizePath(GetResourcesDir() + "media/icons/" + s.linkIcon);
             }

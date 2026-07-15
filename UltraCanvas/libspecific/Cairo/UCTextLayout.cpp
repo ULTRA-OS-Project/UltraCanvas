@@ -199,10 +199,10 @@ namespace UltraCanvas {
             return std::make_unique<UCTextAttribute>(a);
         }
 
-        std::unique_ptr<ITextAttribute> CreateFontDescFromPango(const PangoFontDescription *desc) {
-            if (!desc) return std::make_unique<UCTextAttribute>(nullptr);
-            return std::make_unique<UCTextAttribute>(pango_attr_font_desc_new(desc));
-        }
+//        std::unique_ptr<ITextAttribute> CreateFontDescFromPango(const PangoFontDescription *desc) {
+//            if (!desc) return std::make_unique<UCTextAttribute>(nullptr);
+//            return std::make_unique<UCTextAttribute>(pango_attr_font_desc_new(desc));
+//        }
 
         std::unique_ptr<ITextAttribute> CreateFontFamily(const std::string &family) {
             return std::make_unique<UCTextAttribute>(pango_attr_family_new(family.c_str()));

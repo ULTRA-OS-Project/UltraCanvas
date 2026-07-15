@@ -1,7 +1,7 @@
 // UltraCanvasWindowBase.cpp
 // Fixed implementation of cross-platform window management system
-// Version: 1.3.0 - cross-platform HiDPI/deviceScale scaling in base
-// Last Modified: 2026-07-03
+// Version: 1.3.2 - UnInstallWindowEventFilter now actually removes filters (fixed inverted guard + erase-on-copy)
+// Last Modified: 2026-07-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWindow.h"
@@ -212,14 +212,12 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasWindowBase::UnInstallWindowEventFilter(const std::string& uniqueFilterId) {
-        if (eventFilters.empty()) {
-            for(auto &ef : eventFilters) {
-                auto funcs = ef.second;
-                for(auto it = funcs.begin(); it != funcs.end(); ++it) {
-                    if (it->id == uniqueFilterId) {
-                        funcs.erase(it);
-                        break;
-                    }
+        for(auto &ef : eventFilters) {
+            auto &funcs = ef.second;
+            for(auto it = funcs.begin(); it != funcs.end(); ++it) {
+                if (it->id == uniqueFilterId) {
+                    funcs.erase(it);
+                    break;
                 }
             }
         }
@@ -531,7 +529,10 @@ namespace UltraCanvas {
                         elem.SetVisible(false);
                         elem.renderContext.reset();
                         elem.OnPopupClosed(reason);
-                        RemoveChild(elem.shared_from_this());
+                        try {
+                            // catch in case elem is not shared (but it should never happens)
+                            RemoveChild(elem.shared_from_this());
+                        } catch (const std::exception& ex) {}
                         // Closing a popup uncovers window pixels, so we need a full
                         // window recomposite to refresh the area underneath.
                         RequestWindowComposition();
@@ -554,13 +555,29 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasWindowBase::CloseAllPopups() {
-        
-        for(auto it = popupElements.rbegin(); it != popupElements.rend(); ++it) {
-            if (it->element) {
-                ClosePopup(*it->element);
-            }
+        // Teardown-only path (window destruction / PerformClose): force every popup fully
+        // closed regardless of any OnPopupAboutToClose veto — a dying window cannot keep a
+        // popup open. Pop one entry at a time so we never iterate a container that ClosePopup-
+        // style cleanup could mutate; this also guarantees each popup is visited exactly once.
+        bool closedAny = !popupElements.empty();
+        while (!popupElements.empty()) {
+            UltraCanvasUIElement* elem = popupElements.back().element;
+            popupElements.pop_back();
+            if (!elem) continue;
+            elem->isPopup = false;
+            elem->SetVisible(false);
+            elem->renderContext.reset();
+            elem->OnPopupClosed(ClosePopupReason::Manual);
+            try {
+                // catch in case elem is not shared (but it should never happens)
+                RemoveChild(elem->shared_from_this());
+            } catch (const std::exception& ex) {}
         }
-        popupElements.clear();
+        if (closedAny) {
+            // Closing popups uncovers window pixels, so request a recomposite (harmless
+            // flag set if the window is already tearing down).
+            RequestWindowComposition();
+        }
     }
 
     bool UltraCanvasWindowBase::Create(const WindowConfig& config) {
