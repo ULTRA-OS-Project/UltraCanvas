@@ -58,6 +58,7 @@ New            >  Text, Doc, Spreadsheet, Bitmap, Vector, Audio, Video
 Display        >  Sort  >  Name / Size / Type / Modified / Created + Ascending / Descending
                   Type  >  all view types
                   Icon-Menu (checkbox: the small hover icon menu)
+                  Info-Bar (checkbox: the selection info bar)
 ──────────
 Open with      >  applications registered via AddOpenWithApp()
 ──────────
@@ -81,6 +82,29 @@ Notes:
   alongside, **Extract** unpacks selected archives into sibling folders — both
   via `UCVFSBridge` and available when the VirtualFS module is built
   (`ULTRACANVAS_HAS_VIRTUALFS`); without it they report an error through `onError`.
+
+## Selection info bar
+
+A one-line bar under the folder display (`SetSelectionInfoVisible`, default on,
+also toggled by Display > Info-Bar) describes the current selection:
+
+- **Single file** — name, type, size, modified date and attributes, plus:
+  - **bitmaps**: pixel dimensions (`1920 × 1080 px`), parsed from the file
+    header for PNG / JPEG / GIF / BMP / WebP / TIFF / QOI / ICO (other formats
+    fall back to the shared `UCImage` cache);
+  - **audio / video**: play length and codec (`3:45 · H.264`), parsed from the
+    container headers of WAV / MP3 / FLAC / OGG / Opus / MP4 / M4A / MOV / AVI /
+    MKV / WebM / WMV — no decoding, only a few bounded reads. When nothing can
+    be probed the entry's `info` value (e.g. from `infoProvider`) is shown.
+- **Single folder** — recursive file / folder counts and total size (capped at
+  50 000 entries for safety; a `≥` prefix marks a capped result).
+- **Multiple items** — item counts and the summed size of the selection
+  (folders counted recursively).
+- **No selection** — a summary of the displayed folder (entry counts + size).
+
+Probe results and folder statistics are cached per path and refreshed on every
+rescan. Colors and the bar height come from `FilerStyle` (`infoBarBackground`,
+`infoBarTextColor`, `infoBarHeight`).
 
 ## Hover icon menu
 
