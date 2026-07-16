@@ -550,6 +550,10 @@ namespace PixelFX {
                 unsigned char* raw = static_cast<unsigned char*>(work.write_to_memory(&bytes));
                 std::vector<unsigned char> pix(raw, raw + bytes);
                 g_free(raw);
+                // Guard against a short buffer (a partial/failed materialisation):
+                // every pixel access below indexes up to (H*W-1)*B + colourBands,
+                // so bail out with an empty selection rather than read out of bounds.
+                if (bytes < static_cast<size_t>(W) * H * B) return mask;
                 const unsigned char* seed = &pix[static_cast<size_t>(y * W + x) * B];
                 auto colourDist = [&](const unsigned char* a, const unsigned char* b) -> double {
                     int sum = 0;
