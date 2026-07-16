@@ -11,6 +11,7 @@
 #include <fmt/os.h>
 #include <iostream>
 #include <algorithm>
+#include <cmath>
 #include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
@@ -86,33 +87,52 @@ namespace UltraCanvas {
         // ===== MESSAGE CONTAINER =====
         messageContainer = std::make_shared<UltraCanvasContainer>(
                 "MessageContainer");
+        // The message area supplies its own scrollbar, so the container that
+        // holds it must never raise a second one of its own.
+        {
+            ContainerStyle mcStyle = messageContainer->GetContainerStyle();
+            mcStyle.autoShowScrollbars = false;
+            mcStyle.forceShowVerticalScrollbar = false;
+            mcStyle.forceShowHorizontalScrollbar = false;
+            messageContainer->SetContainerStyle(mcStyle);
+        }
 
         messageContainer->layout.SetFlexColumn()
                                 .SetFlexGap(style.sectionSpacing / 2)
                                 .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-        messageLabel = std::make_shared<UltraCanvasLabel>("MessageLabel");
-        messageLabel->SetText(dialogConfig.message);
-        messageLabel->SetFontSize(style.messageFontSize);
-        messageLabel->SetTextColor(style.messageTextColor);
-        messageLabel->SetWrap(TextWrap::WrapWord);
-        messageContainer->AddChild(messageLabel);
-
-        detailsLabel = std::make_shared<UltraCanvasLabel>("DetailsLabel");
-        detailsLabel->SetText(dialogConfig.details);
-        detailsLabel->SetFontSize(style.detailsFontSize);
-        detailsLabel->SetTextColor(style.detailsTextColor);
-        messageLabel->SetWrap(TextWrap::WrapWord);
-        detailsLabel->SetVisible(!dialogConfig.details.empty());
-        messageContainer->AddChild(detailsLabel);
-
-        // Push content to top — a trailing stretch spacer absorbs slack.
-        messageContainer->AddStretchSpacer(1);
+        // Read-only, word-wrapping Markdown message area. It fills the content
+        // box (flex-grow) so that when the dialog is capped to the monitor the
+        // text taller than the box scrolls inside the area itself.
+        messageArea = std::make_shared<UltraCanvasTextArea>("MessageArea");
+        messageArea->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
+        messageArea->SetReadOnly(true);
+        messageArea->SetWordWrap(true);
+        messageArea->SetShowLineNumbers(false);
+        messageArea->SetHighlightCurrentLine(false);
+        messageArea->SetBackgroundColor(dialogConfig.backgroundColor);
+        messageArea->SetFontSize(style.messageFontSize);
+        messageArea->SetTextColor(style.messageTextColor);
+        messageArea->SetText(ComposeMessageMarkdown(), false);
+        messageContainer->AddChild(messageArea);
+        messageArea->layoutItem.SetFlexGrow(1);
 
         contentSection->AddChild(messageContainer);
         messageContainer->layoutItem.SetFlexGrow(1);
 
         AddChild(contentSection);
+    }
+
+    // Combine the plain message and the optional details line into a single
+    // Markdown source. Both are already rendered as Markdown, so existing
+    // plain-text callers are unaffected; details are separated by a blank line.
+    std::string UltraCanvasModalDialog::ComposeMessageMarkdown() const {
+        std::string md = dialogConfig.message;
+        if (!dialogConfig.details.empty()) {
+            if (!md.empty()) md += "\n\n";
+            md += dialogConfig.details;
+        }
+        return md;
     }
 
     void UltraCanvasModalDialog::CreateFooterSection() {
@@ -213,16 +233,15 @@ namespace UltraCanvas {
 
     void UltraCanvasModalDialog::SetMessage(const std::string& message) {
         dialogConfig.message = message;
-        if (messageLabel) {
-            messageLabel->SetText(message);
+        if (messageArea) {
+            messageArea->SetText(ComposeMessageMarkdown(), false);
         }
     }
 
     void UltraCanvasModalDialog::SetDetails(const std::string& details) {
         dialogConfig.details = details;
-        if (detailsLabel) {
-            detailsLabel->SetText(details);
-            detailsLabel->SetVisible(!details.empty());
+        if (messageArea) {
+            messageArea->SetText(ComposeMessageMarkdown(), false);
         }
     }
 
@@ -267,13 +286,9 @@ namespace UltraCanvas {
         style = dialogStyle;
 
         // Apply style to components
-        if (messageLabel) {
-            messageLabel->SetFontSize(style.messageFontSize);
-            messageLabel->SetTextColor(style.messageTextColor);
-        }
-        if (detailsLabel) {
-            detailsLabel->SetFontSize(style.detailsFontSize);
-            detailsLabel->SetTextColor(style.detailsTextColor);
+        if (messageArea) {
+            messageArea->SetFontSize(style.messageFontSize);
+            messageArea->SetTextColor(style.messageTextColor);
         }
 
         UpdateIconAppearance();
@@ -335,6 +350,10 @@ namespace UltraCanvas {
             SetTransientParent(reference);
         }
 
+        // Fit the dialog height to the message before we position it, so the
+        // centering below uses the final size.
+        AutoSizeToContent();
+
         switch (dialogConfig.position) {
             case DialogPosition::CenterParent:
                 // Centered over the reference window, clamped to its monitor;
@@ -355,6 +374,55 @@ namespace UltraCanvas {
 
         // Show the window
         Show();
+    }
+
+    void UltraCanvasModalDialog::AutoSizeToContent() {
+        if (!autoSizeHeight || !messageArea) return;
+        auto* ctx = GetRenderContext();
+        if (!ctx) return;  // headless / creation failed — keep the configured size
+
+        // Run one layout pass at the current size so the message area receives a
+        // definite content width; its wrapped/Markdown height is meaningless
+        // until then. Nothing is drawn here.
+        CSSLayout::LayoutContext lctx;
+        lctx.viewportWidth  = GetWidth();
+        lctx.viewportHeight = GetHeight();
+        CSSLayout::MeasureConstraints mc{
+                { CSSLayout::ConstraintMode::Exact, static_cast<float>(GetWidth())  },
+                { CSSLayout::ConstraintMode::Exact, static_cast<float>(GetHeight()) }
+        };
+        Measure(mc, lctx);
+        Arrange(finalBounds, lctx);
+
+        float textHeight = messageArea->MeasureContentHeight();
+
+        // Desired client height = content padding + the taller of the icon and
+        // the text + the button bar. textPadding (5px) is baked into the area's
+        // own content box, so add a little slack so the last line clears it.
+        float contentBlock = std::max(static_cast<float>(style.iconSize), textHeight + 10.0f);
+        int desired = static_cast<int>(std::ceil(
+                2.0f * style.padding + contentBlock + style.buttonAreaHeight));
+
+        // Clamp between the configured minimum and (most of) the monitor. Past
+        // the cap the message area scrolls instead of the window growing.
+        int minH = std::max(dialogConfig.minHeight,
+                            static_cast<int>(2.0f * style.padding + style.iconSize + style.buttonAreaHeight));
+        int capH = desired;
+        int screenW = 0, screenH = 0;
+        GetScreenSize(screenW, screenH);
+        if (screenH > 0) capH = static_cast<int>(screenH * 0.85f);
+        if (dialogConfig.maxHeight > 0) capH = std::min(capH, dialogConfig.maxHeight);
+        capH = std::max(capH, minH);
+
+        int newHeight = std::clamp(desired, minH, capH);
+        if (newHeight != static_cast<int>(GetHeight())) {
+            // Updates config_ + native size + flags a resize; the next render
+            // re-arranges everything (and the area scrolls if it was capped).
+            SetWindowSize(static_cast<int>(GetWidth()), newHeight);
+            // The manual Measure/Arrange above validated layout at the old size;
+            // force a fresh pass so the new height propagates to the sections.
+            InvalidateLayout();
+        }
     }
 
     void UltraCanvasModalDialog::PerformClose() {
@@ -408,9 +476,8 @@ namespace UltraCanvas {
             messageContainer->layout.SetFlexColumn()
                                     .SetFlexGap(style.sectionSpacing / 2)
                                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-            messageContainer->AddChild(messageLabel);
-            messageContainer->AddChild(detailsLabel);
-            messageContainer->AddStretchSpacer(1);
+            messageContainer->AddChild(messageArea);
+            messageArea->layoutItem.SetFlexGrow(1);
         }
     }
 
@@ -451,12 +518,8 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasModalDialog::UpdateMessageContent() {
-        if (messageLabel) {
-            messageLabel->SetText(dialogConfig.message);
-        }
-        if (detailsLabel) {
-            detailsLabel->SetText(dialogConfig.details);
-            detailsLabel->SetVisible(!dialogConfig.details.empty());
+        if (messageArea) {
+            messageArea->SetText(ComposeMessageMarkdown(), false);
         }
     }
 
@@ -561,6 +624,14 @@ namespace UltraCanvas {
         inputConfig = config;
         CreateDialog(config);
 
+        // Input dialogs carry an input field below the prompt and keep the
+        // fixed size from their config; don't auto-fit to the prompt text.
+        autoSizeHeight = false;
+        // The prompt shares the content box with the input field, so it sizes
+        // to its own text instead of growing to fill (which would squeeze the
+        // field). Alerts keep the grow so their long text can scroll.
+        if (messageArea) messageArea->layoutItem.SetFlexGrow(0);
+
         SetMessage(inputConfig.inputLabel);
         SetDialogButtons(DialogButtons::OKCancel);
 
@@ -654,6 +725,10 @@ namespace UltraCanvas {
     void UltraCanvasFileDialog::CreateFileDialog(const FileDialogConfig &config) {
         fileConfig = config;
         UltraCanvasModalDialog::CreateDialog(config);
+
+        // The file browser custom-renders against a fixed window height; never
+        // resize it to fit the (unused) message area.
+        autoSizeHeight = false;
 
         currentDirectory = fileConfig.initialDirectory;
         showHiddenFiles = fileConfig.showHiddenFiles;

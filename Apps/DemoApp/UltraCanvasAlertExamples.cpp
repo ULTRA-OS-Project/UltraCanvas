@@ -99,18 +99,52 @@ namespace UltraCanvas {
             }, parentWin());
         };
 
-        // ===== RICH: details + OK/Cancel =====
-        addButton("AlertRichBtn", "Rich Alert (details)")->onClick = [status, describe, parentWin]() {
+        // ===== RICH: Markdown details + OK/Cancel =====
+        addButton("AlertRichBtn", "Rich Alert (Markdown)")->onClick = [status, describe, parentWin]() {
             AlertOptions opts;
             opts.severity = AlertSeverity::Warning;
             opts.title = "Update available";
-            opts.message = "A new version is ready to install.";
-            opts.details = "Version 4.2.0 - the application will restart to finish updating.";
+            // The message is rendered as Markdown, so inline **bold**, *italic*
+            // and `code` all format; the dialog height fits the text.
+            opts.message = "A new version of **UltraCanvas** is ready to install.";
+            opts.details = "Version `4.2.0` — the application will *restart* to finish updating.";
             opts.buttons = DialogButtons::OKCancel;
             opts.defaultButton = DialogButton::OK;
             opts.parent = parentWin();
             opts.onResult = [status, describe](DialogResult r) {
                 status->SetText("Result: Rich -> " + describe(r));
+            };
+            UltraCanvasAlert::Show(opts);
+        };
+
+        // ===== LONG MARKDOWN: auto-size + scrollbar =====
+        addButton("AlertLongBtn", "Long Markdown Alert")->onClick = [status, describe, parentWin]() {
+            AlertOptions opts;
+            opts.severity = AlertSeverity::Info;
+            opts.title = "Release notes";
+            // Long, structured Markdown: the dialog grows to fit up to the
+            // monitor cap, then the message area shows its own scrollbar.
+            opts.message =
+                    "# UltraCanvas 4.2.0\n\n"
+                    "This release focuses on **dialogs** and *text rendering*.\n\n"
+                    "## Highlights\n\n"
+                    "- Alerts now render their message as Markdown\n"
+                    "- Dialog height **auto-fits** the text\n"
+                    "- A vertical scrollbar appears when the text is too tall\n"
+                    "- Inline `code`, **bold** and *italic* are supported\n\n"
+                    "## Details\n\n"
+                    "The message area is a read-only text area, so long content\n"
+                    "stays fully readable by scrolling instead of being clipped.\n\n"
+                    "1. Open an alert\n"
+                    "2. Watch it size itself to the text\n"
+                    "3. Scroll if the content exceeds the screen\n\n"
+                    "> Tip: pass Markdown straight into the message string.\n\n"
+                    "Thanks for using UltraCanvas!";
+            opts.buttons = DialogButtons::OK;
+            opts.defaultButton = DialogButton::OK;
+            opts.parent = parentWin();
+            opts.onResult = [status, describe](DialogResult r) {
+                status->SetText("Result: Long -> " + describe(r));
             };
             UltraCanvasAlert::Show(opts);
         };
@@ -129,6 +163,9 @@ namespace UltraCanvas {
                 "  AlertOptions o; o.severity = AlertSeverity::Warning;\n"
                 "  o.message = ...; o.details = ...; o.buttons = DialogButtons::OKCancel;\n"
                 "  UltraCanvasAlert::Show(o);\n\n"
+                "The message supports Markdown (**bold**, *italic*, `code`,\n"
+                "headers, lists). The dialog height auto-fits the text and shows\n"
+                "a vertical scrollbar once the content grows past the screen.\n\n"
                 "Every alert is modal and always-on-top; the parent window's input\n"
                 "is blocked until the user answers. Severity picks the icon + colour\n"
                 "(Info/Question blue, Success green, Warning amber, Error red).");

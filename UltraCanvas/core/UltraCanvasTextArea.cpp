@@ -1925,6 +1925,26 @@ namespace UltraCanvas {
         }
     }
 
+    float UltraCanvasTextArea::MeasureContentHeight() {
+        auto ctx = GetRenderContext();
+        if (!ctx) return GetContentHeight();
+
+        // Mirror the layout half of Render(): resolve the visible-area width
+        // first (word wrap needs it), then build the per-line layouts so
+        // GetContentHeight() reflects real wrapped/markdown heights. No pixels
+        // are drawn — this only populates the layout cache.
+        ctx->PushState();
+        if (editingMode == TextAreaEditingMode::Hex) {
+            CalculateHexLayout();
+        } else {
+            CalculateVisibleArea();
+        }
+        UpdateLineLayouts(ctx);
+        ctx->PopState();
+
+        return GetContentHeight();
+    }
+
     void UltraCanvasTextArea::SetWordWrap(bool wrap) {
         if (wordWrap == wrap) return;
         wordWrap = wrap;
