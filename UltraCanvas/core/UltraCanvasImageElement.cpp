@@ -15,7 +15,6 @@
 #include <memory>
 #include <fstream>
 #include <iostream>
-#include <math.h>
 #include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
