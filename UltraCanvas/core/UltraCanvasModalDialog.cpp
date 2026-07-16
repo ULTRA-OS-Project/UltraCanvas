@@ -119,8 +119,23 @@ namespace UltraCanvas {
         footerSection = std::make_shared<UltraCanvasContainer>(
                 "FooterSection", 0, 0, 0, style.buttonAreaHeight);
         footerSection->SetBackgroundColor(dialogConfig.backgroundColor);
-        footerSection->SetPadding(static_cast<int>(style.padding),
-                                  static_cast<int>(style.padding / 2));
+        // SetPadding(vertical, horizontal): the button row is only
+        // buttonAreaHeight (50px) tall, so vertical padding must be the SMALL
+        // value — the taller value belongs on the horizontal axis. Passing the
+        // large value as vertical padding left <buttonHeight of content height,
+        // pushing the button out of the footer's content box and triggering a
+        // spurious vertical scrollbar in the button area.
+        footerSection->SetPadding(static_cast<int>(style.padding / 2),
+                                  static_cast<int>(style.padding));
+
+        // The footer is a fixed button bar, never a scroll region: keep its
+        // scrollbars off so no residual overflow can raise one (same convention
+        // as UltraCanvasToolbar).
+        ContainerStyle footerStyle = footerSection->GetContainerStyle();
+        footerStyle.autoShowScrollbars = false;
+        footerStyle.forceShowVerticalScrollbar = false;
+        footerStyle.forceShowHorizontalScrollbar = false;
+        footerSection->SetContainerStyle(footerStyle);
 
         footerSection->layout.SetFlexRow()
                 .SetFlexGap(style.buttonSpacing)
