@@ -151,9 +151,12 @@ namespace {
         const bool loaded = !path.empty();
 
         if (!loaded) {
+            // The supported extensions are already shown in the status label
+            // above the display area, so the hint only invites an action —
+            // repeating the list inside the display area duplicated it.
             return CenteredHint("FileLoaderHint",
                                 "Click “Open file” or drag & drop a file here to load a " + group.name +
-                                " file.\nSupported: " + JoinExts(group.openExts));
+                                " file.");
         }
 
         switch (group.display) {
