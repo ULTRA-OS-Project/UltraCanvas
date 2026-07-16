@@ -133,6 +133,14 @@ namespace UltraCanvas {
         float fontSize        = 13.0f;
         float smallFontSize   = 11.0f;
 
+        // Native OS theme integration. When enabled the widget draws folder /
+        // file-type icons from the desktop's icon theme (freedesktop.org spec on
+        // Linux/BSD) and adopts the native desktop UI font family + size. Both
+        // fall back gracefully — synthetic icons and the sizes above — when the
+        // theme can't be resolved, so they are safe to leave on.
+        bool useNativeThemeIcons = true;
+        bool useNativeThemeFont  = true;
+
         int detailsRowHeight  = 24;      // details / bar-size row height
         int listRowHeight     = 22;      // list mode row height
         int listColumnWidth   = 220;     // list mode column width
@@ -196,6 +204,20 @@ namespace UltraCanvas {
 
         void SetStyle(const FilerStyle& s);
         const FilerStyle& GetStyle() const { return style; }
+
+        // ===== NATIVE OS THEME =====
+        // Draw folder / file-type icons from the desktop icon theme instead of
+        // the built-in synthetic glyphs (falls back to synthetic on a miss).
+        void SetUseNativeThemeIcons(bool enabled);
+        bool GetUseNativeThemeIcons() const { return style.useNativeThemeIcons; }
+
+        // Adopt the native desktop UI font family and point size.
+        void SetUseNativeThemeFont(bool enabled);
+        bool GetUseNativeThemeFont() const { return style.useNativeThemeFont; }
+
+        // Re-read the native theme (icon theme + UI font) now — e.g. after the
+        // user switches desktop theme at runtime.
+        void ApplyNativeTheme();
 
         // ===== DATA ACCESS =====
         const std::vector<FilerEntry>& GetEntries() const { return entries; }
@@ -268,6 +290,7 @@ namespace UltraCanvas {
         bool hoverIconMenu = true;
         bool showOpenPathItem = false;
         FilerStyle style;
+        bool nativeThemeFontApplied = false;      // system font pulled into style
 
         std::vector<size_t> selection;            // indices into `entries`
         int lastClickedIndex = -1;                // anchor for shift-range select
@@ -374,6 +397,12 @@ namespace UltraCanvas {
                                  const std::string& message);
         void DrawEntryIcon(IRenderContext* ctx, const FilerEntry& e,
                            const Rect2Di& rect);
+        void DrawSyntheticEntryIcon(IRenderContext* ctx, const FilerEntry& e,
+                                    const Rect2Di& rect);
+        // Try to paint the entry's icon from the native OS theme; returns false
+        // (drawing nothing) when the theme has no matching icon.
+        bool DrawNativeThemeIcon(IRenderContext* ctx, const FilerEntry& e,
+                                 const Rect2Di& rect);
         void DrawSelectionState(IRenderContext* ctx, const ItemLayout& item, bool hovered);
         void DrawHoverIconMenu(IRenderContext* ctx, const ItemLayout& item);
         void DrawIconMenuGlyph(IRenderContext* ctx, IconMenuAction action,
@@ -400,6 +429,11 @@ namespace UltraCanvas {
         bool HandleRenameKey(const UCEvent& event);
         void FireSelectionChanged();
         void ReportError(const std::string& message);
+
+        // Pull the native desktop UI font (family + size) into `style` once, and
+        // scale the row / caption heights so the native size fits. No-op unless
+        // style.useNativeThemeFont is set.
+        void EnsureNativeThemeFont();
         std::string UniqueChildPath(const std::string& baseName) const;
 
         // Selected entries, or the whole folder when nothing is selected —

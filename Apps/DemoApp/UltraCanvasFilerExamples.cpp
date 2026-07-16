@@ -233,6 +233,60 @@ namespace UltraCanvas {
             root->AddChild(row);
         }
 
+        // ===== Native OS theme row =====
+        // Toggles whether the filer paints folder / file-type icons from the
+        // desktop icon theme and adopts the native UI font + size. Both are on
+        // by default; turning them off falls back to the built-in synthetic
+        // icons and the FilerStyle font.
+        {
+            auto row = MakeFilerRow("FilerThemeRow");
+            auto lbl = std::make_shared<UltraCanvasLabel>("FilerThemeLbl", 0, 0, 46, 24);
+            lbl->SetText("Theme");
+            lbl->SetFontSize(12);
+            lbl->SetFontWeight(FontWeight::Bold);
+            lbl->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
+            lbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            row->AddChild(lbl);
+
+            auto filerPtr = filer.get();
+
+            auto iconsBtn = std::make_shared<UltraCanvasButton>(
+                    "FilerThemeIcons", 0, 0, 120, 24, "OS icons: on");
+            iconsBtn->SetFontSize(11);
+            iconsBtn->SetCornerRadius(4.0f);
+            StyleFilerOptionButton(iconsBtn.get(), true);
+            {
+                auto* raw = iconsBtn.get();
+                iconsBtn->SetOnClick([filerPtr, raw]() {
+                    bool on = !filerPtr->GetUseNativeThemeIcons();
+                    filerPtr->SetUseNativeThemeIcons(on);
+                    raw->SetText(on ? "OS icons: on" : "OS icons: off");
+                    StyleFilerOptionButton(raw, on);
+                });
+            }
+            iconsBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            row->AddChild(iconsBtn);
+
+            auto fontBtn = std::make_shared<UltraCanvasButton>(
+                    "FilerThemeFont", 0, 0, 120, 24, "OS font: on");
+            fontBtn->SetFontSize(11);
+            fontBtn->SetCornerRadius(4.0f);
+            StyleFilerOptionButton(fontBtn.get(), true);
+            {
+                auto* raw = fontBtn.get();
+                fontBtn->SetOnClick([filerPtr, raw]() {
+                    bool on = !filerPtr->GetUseNativeThemeFont();
+                    filerPtr->SetUseNativeThemeFont(on);
+                    raw->SetText(on ? "OS font: on" : "OS font: off");
+                    StyleFilerOptionButton(raw, on);
+                });
+            }
+            fontBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            row->AddChild(fontBtn);
+
+            root->AddChild(row);
+        }
+
         root->AddChild(filer);
 
         // ===== Status line (pinned, below the filer) =====

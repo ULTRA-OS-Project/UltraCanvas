@@ -10,7 +10,11 @@
 #include <iostream>
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
 #include <sstream>
+#include <set>
+#include <vector>
+#include <cstdlib>
 #include <sys/select.h>
 #include <sys/eventfd.h>
 #include <unistd.h>
@@ -920,10 +924,112 @@ namespace UltraCanvas {
         debugOutput << "UltraCanvas X11 Error in " << context << ": code " << errorCode << std::endl;
     }
 
+    namespace {
+        std::string ReadDesktopFontDescription() {
+            auto envOr = [](const char* n, const std::string& fb) {
+                const char* v = std::getenv(n);
+                return (v && *v) ? std::string(v) : fb;
+            };
+            auto trim = [](std::string s) {
+                size_t a = s.find_first_not_of(" \t\r\n\"");
+                if (a == std::string::npos) return std::string();
+                size_t b = s.find_last_not_of(" \t\r\n\"");
+                return s.substr(a, b - a + 1);
+            };
+            // Extract "key = value" from an ini file (optionally within a
+            // [section]); tolerant of the loose GTK/KDE dialects.
+            auto readKey = [&](const std::string& path, const std::string& section,
+                               const std::string& key) -> std::string {
+                std::ifstream in(path);
+                if (!in) return "";
+                std::string line;
+                bool inSection = section.empty();
+                while (std::getline(in, line)) {
+                    std::string t = trim(line);
+                    if (t.empty() || t[0] == '#' || t[0] == ';') continue;
+                    if (!t.empty() && t.front() == '[' && t.back() == ']') {
+                        if (!section.empty())
+                            inSection = (t.substr(1, t.size() - 2) == section);
+                        continue;
+                    }
+                    if (!inSection) continue;
+                    size_t eq = t.find('=');
+                    if (eq == std::string::npos) continue;
+                    if (trim(t.substr(0, eq)) == key) return trim(t.substr(eq + 1));
+                }
+                return "";
+            };
+
+            std::string home = envOr("HOME", "");
+            std::string cfg = envOr("XDG_CONFIG_HOME", home.empty() ? "" : home + "/.config");
+            if (!cfg.empty()) {
+                for (const char* v : {"gtk-4.0", "gtk-3.0"}) {
+                    std::string f = readKey(cfg + "/" + v + "/settings.ini",
+                                            "Settings", "gtk-font-name");
+                    if (!f.empty()) return f;
+                }
+                // KDE stores e.g. "Noto Sans,10,-1,5,50,0,0,0,0,0".
+                std::string kde = readKey(cfg + "/kdeglobals", "General", "font");
+                if (!kde.empty()) {
+                    size_t comma = kde.find(',');
+                    if (comma != std::string::npos) {
+                        std::string fam = trim(kde.substr(0, comma));
+                        std::string rest = kde.substr(comma + 1);
+                        size_t c2 = rest.find(',');
+                        std::string sz = trim(c2 == std::string::npos ? rest
+                                                                       : rest.substr(0, c2));
+                        return fam + " " + sz;
+                    }
+                    return kde;
+                }
+            }
+            if (!home.empty()) {
+                std::string f = readKey(home + "/.gtkrc-2.0", "", "gtk-font-name");
+                if (!f.empty()) return f;
+            }
+            return "";
+        }
+    }
+
     FontStyle UltraCanvasLinuxApplication::DetectSystemFontStyleNative() {
         FontStyle result;
         result.fontFamily = "Ubuntu";
         result.fontSize = 12.0;
+
+        // Desktop font descriptions are Pango-style: "Family [Styles] Size",
+        // e.g. "Cantarell 11", "Noto Sans Bold 10". The trailing numeric token
+        // is the point size; the family is everything before it, minus trailing
+        // style keywords.
+        std::string desc = ReadDesktopFontDescription();
+        if (!desc.empty()) {
+            std::istringstream iss(desc);
+            std::vector<std::string> tokens;
+            std::string tok;
+            while (iss >> tok) tokens.push_back(tok);
+            if (!tokens.empty()) {
+                double size = 0.0;
+                try { size = std::stod(tokens.back()); } catch (...) { size = 0.0; }
+                if (size > 0.0) {
+                    tokens.pop_back();
+                    result.fontSize = size;
+                }
+                static const std::set<std::string> styleWords = {
+                    "Regular", "Book", "Normal", "Medium", "Bold", "Semibold",
+                    "SemiBold", "Light", "Thin", "Italic", "Oblique", "Condensed",
+                    "Heavy", "Black", "Ultra-Light", "Demi-Bold"
+                };
+                while (!tokens.empty() && styleWords.count(tokens.back()))
+                    tokens.pop_back();
+                if (!tokens.empty()) {
+                    std::string fam;
+                    for (size_t i = 0; i < tokens.size(); ++i) {
+                        if (i) fam += " ";
+                        fam += tokens[i];
+                    }
+                    result.fontFamily = fam;
+                }
+            }
+        }
         return result;
     }
 

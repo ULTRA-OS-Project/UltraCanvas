@@ -18,6 +18,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasImage.h"
+#include "UltraCanvasNativeTheme.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasWindow.h"
 #include <algorithm>
@@ -503,6 +504,51 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::SetStyle(const FilerStyle& s) {
         style = s;
         SetBackgroundColor(style.backgroundColor);
+        // The caller supplied a fresh style; re-derive the native font from it.
+        nativeThemeFontApplied = false;
+        InvalidateFilerLayout();
+        RequestRedraw();
+    }
+
+    // ===== NATIVE OS THEME =====
+    void UltraCanvasFilerWidget::EnsureNativeThemeFont() {
+        if (!style.useNativeThemeFont || nativeThemeFontApplied) return;
+        nativeThemeFontApplied = true;
+
+        FontStyle sys = UltraCanvasNativeTheme::Get().UIFont();
+        if (!sys.fontFamily.empty()) style.fontFamily = sys.fontFamily;
+        if (sys.fontSize > 0) {
+            style.fontSize = static_cast<float>(sys.fontSize);
+            style.smallFontSize = std::max(9.0f, static_cast<float>(sys.fontSize) - 2.0f);
+            // Grow the row / caption heights so the native size always fits
+            // (never shrink below the configured defaults).
+            int line = static_cast<int>(std::lround(sys.fontSize));
+            style.detailsRowHeight = std::max(style.detailsRowHeight, line + 11);
+            style.listRowHeight    = std::max(style.listRowHeight,    line + 9);
+            style.captionHeight    = std::max(style.captionHeight,    line + 7);
+            detailsHeaderHeight    = std::max(detailsHeaderHeight,    line + 13);
+        }
+        InvalidateFilerLayout();
+    }
+
+    void UltraCanvasFilerWidget::SetUseNativeThemeIcons(bool enabled) {
+        if (style.useNativeThemeIcons == enabled) return;
+        style.useNativeThemeIcons = enabled;
+        RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::SetUseNativeThemeFont(bool enabled) {
+        if (style.useNativeThemeFont == enabled && nativeThemeFontApplied) return;
+        style.useNativeThemeFont = enabled;
+        nativeThemeFontApplied = false;   // re-resolve on next render
+        InvalidateFilerLayout();
+        RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::ApplyNativeTheme() {
+        UltraCanvasNativeTheme::Get().InvalidateCache();
+        nativeThemeFontApplied = false;
+        EnsureNativeThemeFont();
         InvalidateFilerLayout();
         RequestRedraw();
     }
@@ -1082,6 +1128,7 @@ namespace UltraCanvas {
     // ===== RENDER =====
     void UltraCanvasFilerWidget::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         UltraCanvasUIElement::Render(ctx, dirtyRect);
+        EnsureNativeThemeFont();
         EnsureLayout();
 
         auto lb = GetLocalBounds();
@@ -1205,11 +1252,78 @@ namespace UltraCanvas {
         }
     }
 
+    namespace {
+        // Snap a drawing rect to the nearest standard icon pixel size the
+        // theme is likely to ship, so the resolver picks a crisp directory.
+        int StandardIconSize(const Rect2Di& rect) {
+            int s = std::min(rect.width, rect.height);
+            static const int kSizes[] = {16, 22, 24, 32, 48, 64, 96, 128, 256};
+            for (int cand : kSizes) if (cand >= s) return cand;
+            return 256;
+        }
+
+        // freedesktop icon names for an entry, most specific first, always
+        // ending in a generic fallback that every theme provides.
+        std::vector<std::string> ThemeIconNames(const FilerEntry& e) {
+            std::vector<std::string> names;
+            if (e.isDirectory) {
+                names.push_back("folder");
+                names.push_back("inode-directory");
+                return names;
+            }
+            // Specific MIME icons for a few common extensions.
+            static const std::map<std::string, const char*> kSpecific = {
+                {"pdf", "application-pdf"},
+                {"svg", "image-svg+xml"},
+                {"html", "text-html"}, {"htm", "text-html"},
+                {"zip", "application-zip"},
+                {"deb", "application-x-deb"},
+                {"rpm", "application-x-rpm"},
+                {"iso", "application-x-cd-image"},
+                {"doc", "application-msword"}, {"docx", "application-msword"},
+                {"xls", "application-vnd.ms-excel"},
+                {"xlsx", "application-vnd.ms-excel"},
+            };
+            auto it = kSpecific.find(e.extension);
+            if (it != kSpecific.end()) names.push_back(it->second);
+
+            // Generic icon by coarse category.
+            switch (e.category) {
+                case FilerFileCategory::Image:       names.push_back("image-x-generic"); break;
+                case FilerFileCategory::Vector:      names.push_back("image-svg+xml");
+                                                     names.push_back("image-x-generic"); break;
+                case FilerFileCategory::Audio:       names.push_back("audio-x-generic"); break;
+                case FilerFileCategory::Video:       names.push_back("video-x-generic"); break;
+                case FilerFileCategory::Document:    names.push_back("x-office-document"); break;
+                case FilerFileCategory::Text:        names.push_back("text-x-generic"); break;
+                case FilerFileCategory::Spreadsheet: names.push_back("x-office-spreadsheet"); break;
+                case FilerFileCategory::Archive:     names.push_back("package-x-generic"); break;
+                case FilerFileCategory::Executable:  names.push_back("application-x-executable"); break;
+                default:                             names.push_back("text-x-generic"); break;
+            }
+            names.push_back("unknown");
+            return names;
+        }
+    }
+
+    bool UltraCanvasFilerWidget::DrawNativeThemeIcon(IRenderContext* ctx,
+                                                     const FilerEntry& e,
+                                                     const Rect2Di& rect) {
+        std::string path = UltraCanvasNativeTheme::Get().ResolveIcon(
+            ThemeIconNames(e), StandardIconSize(rect));
+        if (path.empty()) return false;
+        auto img = UCImage::Get(path);
+        if (!img || img->GetWidth() <= 0 || img->GetHeight() <= 0) return false;
+        ctx->DrawImage(*img, Rect2Dd(rect), ImageFitMode::Contain);
+        return true;
+    }
+
     void UltraCanvasFilerWidget::DrawEntryIcon(IRenderContext* ctx, const FilerEntry& e,
                                                const Rect2Di& rect) {
         if (rect.width <= 2 || rect.height <= 2) return;
 
-        // Real image thumbnails (explicit thumbnail, else the bitmap itself).
+        // Real image thumbnails (explicit thumbnail, else the bitmap itself)
+        // always win — they show the actual content, not just a type icon.
         std::string thumb = e.thumbnailPath;
         if (thumb.empty() &&
             (e.category == FilerFileCategory::Image ||
@@ -1224,6 +1338,17 @@ namespace UltraCanvas {
             }
         }
 
+        // Native OS theme icon (folder / file-type) — falls through to the
+        // built-in synthetic glyph when the theme has no matching icon.
+        if (style.useNativeThemeIcons && DrawNativeThemeIcon(ctx, e, rect))
+            return;
+
+        DrawSyntheticEntryIcon(ctx, e, rect);
+    }
+
+    void UltraCanvasFilerWidget::DrawSyntheticEntryIcon(IRenderContext* ctx,
+                                                        const FilerEntry& e,
+                                                        const Rect2Di& rect) {
         Color color = CategoryColor(e.category);
         if (e.isDirectory) {
             // Folder shape: a tab above the body.

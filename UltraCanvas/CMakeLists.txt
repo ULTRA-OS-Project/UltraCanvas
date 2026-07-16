@@ -288,6 +288,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlideshow.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAlbum.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFilerWidget.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNativeTheme.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModalDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLoader.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSupportedFormats.cpp
