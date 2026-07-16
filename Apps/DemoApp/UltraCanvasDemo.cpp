@@ -1555,7 +1555,7 @@ namespace UltraCanvas {
                                "dates, hover icon menu and a full file context menu "
                                "(Copy, Cut, Delete, Duplicate, Rename, New, Display, Open with, "
                                "Compress, Extract, Print, Extras, Settings)",
-                               ImplementationStatus::PartiallyImplemented,
+                               ImplementationStatus::FullyImplemented,
                                [this]() { return CreateFilerExamples(); },
                                "DemoApp/UltraCanvasFilerExamples.cpp",
                                "Docs/UltraCanvas/UltraCanvasFilerWidget.md")
@@ -1622,7 +1622,8 @@ namespace UltraCanvas {
                 itemData.rightIcon = TreeNodeIcon(GetStatusIcon(demoItem->status), 12, 12);
                 categoryTreeView->AddNode(categoryData.nodeId, itemData);
             }
-            if (category == DemoCategory::Charts || category == DemoCategory::Diagrams || category == DemoCategory::InfoGraphics) {
+            if (category == DemoCategory::Charts || category == DemoCategory::Diagrams ||
+                category == DemoCategory::InfoGraphics || category == DemoCategory::Widgets) {
                 categoryNode->SortChildNodes();
             }
         }
