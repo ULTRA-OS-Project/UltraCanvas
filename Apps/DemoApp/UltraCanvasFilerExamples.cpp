@@ -8,11 +8,13 @@
 
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasFilerWidget.h"
+#include "UltraCanvasBreadcrumb.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasUtils.h"
 #include <filesystem>
+#include <vector>
 
 namespace UltraCanvas {
 
@@ -36,6 +38,98 @@ namespace UltraCanvas {
             row->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
             return row;
+        }
+
+        // Available drive roots / mounted volumes, used by the breadcrumb's
+        // leading "Computer" node so the user can jump straight to another drive.
+        std::vector<std::string> ListDriveRoots() {
+            std::vector<std::string> roots;
+            std::error_code ec;
+#ifdef _WIN32
+            for (char c = 'A'; c <= 'Z'; ++c) {
+                std::string drive = std::string(1, c) + ":\\";
+                if (std::filesystem::exists(drive, ec)) roots.push_back(drive);
+            }
+#else
+            roots.push_back("/");
+            for (const char* base : {"/media", "/mnt", "/Volumes"}) {
+                std::error_code e2;
+                if (!std::filesystem::is_directory(base, e2)) continue;
+                for (const auto& entry :
+                         std::filesystem::directory_iterator(base, e2)) {
+                    std::error_code e3;
+                    if (entry.is_directory(e3)) roots.push_back(entry.path().string());
+                }
+            }
+#endif
+            return roots;
+        }
+
+        // Rebuilds the breadcrumb from the filer's current path: a leading
+        // "Computer" node (drive list) followed by one clickable node per path
+        // segment, each jumping the filer to its cumulative sub-path.
+        void RebuildFilerBreadcrumb(UltraCanvasBreadcrumb* crumb,
+                                    UltraCanvasFilerWidget* filer,
+                                    const std::string& path) {
+            if (!crumb || !filer) return;
+            crumb->Clear();
+
+            std::filesystem::path p(path);
+            std::filesystem::path base = p.root_path();
+            if (base.empty()) base = "/";
+
+            // "Computer": jumps to the current drive root and drops down the
+            // full list of drives / volumes so any of them can be selected.
+            BreadcrumbItem computer("__computer__", "Computer");
+            computer.tooltip = "Computer — show all drives";
+            {
+                std::string rootTarget = base.string();
+                computer.onClick = [filer, rootTarget]() { filer->SetPath(rootTarget); };
+            }
+            std::vector<std::string> drives = ListDriveRoots();
+            if (!drives.empty()) {
+                computer.hasDropdown = true;
+                for (const std::string& d : drives) {
+                    computer.dropdownItems.emplace_back(
+                            d, [filer, d]() { filer->SetPath(d); });
+                }
+            }
+            crumb->AddItem(computer);
+
+            // On Windows the drive letter ("C:") is its own node; on Unix the
+            // root "/" is already covered by "Computer", so segments start below.
+            std::string driveLabel = p.root_name().string();
+            if (!driveLabel.empty()) {
+                BreadcrumbItem drive(driveLabel);
+                std::string target = base.string();
+                drive.onClick = [filer, target]() { filer->SetPath(target); };
+                crumb->AddItem(drive);
+            }
+
+            std::filesystem::path accum = base;
+            for (const auto& part : p.relative_path()) {
+                std::string seg = part.string();
+                if (seg.empty() || seg == "/" || seg == "\\") continue;
+                accum /= part;
+                BreadcrumbItem item(seg);
+                std::string target = accum.string();
+                item.onClick = [filer, target]() { filer->SetPath(target); };
+                crumb->AddItem(item);
+            }
+        }
+
+        // A compact "arrow steps" breadcrumb style, smaller than the standalone
+        // breadcrumb example so it sits neatly on the filer's path row.
+        BreadcrumbStyle MakeFilerBreadcrumbStyle() {
+            BreadcrumbStyle s = BreadcrumbStyle::Arrow();
+            s.overflowMode = BreadcrumbOverflowMode::Collapse;
+            s.keepFirstItemOnCollapse = true;
+            s.minVisibleAfterCollapse = 2;
+            s.arrowSize = 8;
+            s.itemPaddingHorizontal = 9;
+            s.itemPaddingVertical = 3;
+            s.fontStyle.fontSize = 11.0f;
+            return s;
         }
 
         // Option-button styling shared with the slideshow / album examples: the
@@ -82,21 +176,31 @@ namespace UltraCanvas {
         filer->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-        // ===== Path row: Up button + current path =====
+        // ===== Path row: Up button + breadcrumb =====
         auto pathRow = MakeFilerRow("FilerPathRow");
-        auto upButton = std::make_shared<UltraCanvasButton>("FilerUp", 0, 0, 56, 24, "Up");
+        // Width 0 lets the button auto-size to its icon + label (intrinsic
+        // sizing) so the up-arrow and text always fit.
+        auto upButton = std::make_shared<UltraCanvasButton>("FilerUp", 0, 0, 0, 24, "Up");
         upButton->SetFontSize(11);
         upButton->SetCornerRadius(4.0f);
+        upButton->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/arrow-up.svg"));
+        upButton->SetIconSize(12, 12);
+        upButton->SetIconPosition(ButtonIconPosition::Left);
+        upButton->SetIconSpacing(4);
+        upButton->SetUseIconAsMask(true);
+        upButton->SetIconMaskColor(Color(40, 40, 40, 255));
         StyleFilerOptionButton(upButton.get(), false);
         upButton->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         pathRow->AddChild(upButton);
 
-        auto pathLabel = std::make_shared<UltraCanvasLabel>("FilerPath", 0, 0, 0, 24);
-        pathLabel->SetFontSize(11);
-        pathLabel->SetTextColor(Color(80, 80, 86, 255));
-        pathLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
-        pathLabel->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
-        pathRow->AddChild(pathLabel);
+        // Breadcrumb replaces the plain path label: it shows the current folder
+        // as interlocking "arrow steps" and lets the user jump directly to any
+        // parent folder (or, via the leading "Computer" node, another drive).
+        auto breadcrumb = std::make_shared<UltraCanvasBreadcrumb>("FilerBreadcrumb", 0, 0, 0, 26);
+        breadcrumb->SetStyle(MakeFilerBreadcrumbStyle());
+        breadcrumb->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                              .SetAlignSelf(CSSLayout::AlignSelf::Center);
+        pathRow->AddChild(breadcrumb);
         root->AddChild(pathRow);
 
         {
@@ -172,19 +276,21 @@ namespace UltraCanvas {
             lbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
             row->AddChild(lbl);
 
-            struct SortSeed { const char* label; FilerSortField field; int width; };
+            struct SortSeed { const char* label; FilerSortField field; };
             const SortSeed sorts[] = {
-                {"Name",     FilerSortField::Name,         52},
-                {"Size",     FilerSortField::Size,         46},
-                {"Type",     FilerSortField::Type,         48},
-                {"Modified", FilerSortField::ModifiedDate, 68},
-                {"Created",  FilerSortField::CreatedDate,  62},
+                {"Name",     FilerSortField::Name},
+                {"Size",     FilerSortField::Size},
+                {"Type",     FilerSortField::Type},
+                {"Modified", FilerSortField::ModifiedDate},
+                {"Created",  FilerSortField::CreatedDate},
             };
             auto fieldGroup = std::make_shared<std::vector<UltraCanvasButton*>>();
             auto filerPtr = filer.get();
             for (const SortSeed& s : sorts) {
+                // Width 0 => the button auto-sizes to its label (intrinsic
+                // sizing), so "Modified" / "Created" are never clipped.
                 auto b = std::make_shared<UltraCanvasButton>(
-                        std::string("FilerSort_") + s.label, 0, 0, s.width, 24, s.label);
+                        std::string("FilerSort_") + s.label, 0, 0, 0, 24, s.label);
                 b->SetFontSize(11);
                 b->SetCornerRadius(4.0f);
                 StyleFilerOptionButton(b.get(), s.field == FilerSortField::Name);
@@ -203,7 +309,7 @@ namespace UltraCanvas {
             const char* orderLabels[] = {"Up", "Down"};
             for (int i = 0; i < 2; ++i) {
                 auto b = std::make_shared<UltraCanvasButton>(
-                        std::string("FilerOrder_") + orderLabels[i], 0, 0, 52, 24,
+                        std::string("FilerOrder_") + orderLabels[i], 0, 0, 0, 24,
                         orderLabels[i]);
                 b->SetFontSize(11);
                 b->SetCornerRadius(4.0f);
@@ -246,11 +352,11 @@ namespace UltraCanvas {
         // ===== Wire the filer to the page =====
         {
             auto* statusPtr = status.get();
-            auto* pathPtr = pathLabel.get();
+            auto* crumbPtr = breadcrumb.get();
             auto filerPtr = filer.get();
 
-            filer->onPathChanged = [pathPtr, statusPtr, filerPtr](const std::string& path) {
-                pathPtr->SetText(path);
+            filer->onPathChanged = [crumbPtr, statusPtr, filerPtr](const std::string& path) {
+                RebuildFilerBreadcrumb(crumbPtr, filerPtr, path);
                 statusPtr->SetText(std::to_string(filerPtr->GetEntries().size())
                                    + " entries");
             };

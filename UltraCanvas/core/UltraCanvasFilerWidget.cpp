@@ -20,6 +20,11 @@
 #include "UltraCanvasImage.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasWindow.h"
+#include "UltraCanvasTooltipManager.h"
+#include "UltraCanvasModalDialog.h"
+#include "UltraCanvasImageElement.h"
+#include "UltraCanvasContainer.h"
+#include "UltraCanvasLabel.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -604,7 +609,18 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::DeleteSelection() {
         std::vector<FilerEntry> victims = GetSelectedEntries();
         if (victims.empty()) return;
-        if (confirmDelete && !confirmDelete(victims)) return;
+        // An app-provided veto takes precedence over the built-in dialog so
+        // existing hosts keep full control of the confirmation flow.
+        if (confirmDelete) {
+            if (!confirmDelete(victims)) return;
+            PerformDeletion(victims);
+            return;
+        }
+        ShowDeleteConfirmation(victims);
+    }
+
+    void UltraCanvasFilerWidget::PerformDeletion(
+            const std::vector<FilerEntry>& victims) {
         std::error_code ec;
         for (const FilerEntry& e : victims) {
             fs::remove_all(e.path, ec);
@@ -612,6 +628,124 @@ namespace UltraCanvas {
         }
         ClearSelection();
         Refresh();
+    }
+
+    void UltraCanvasFilerWidget::ShowDeleteConfirmation(
+            const std::vector<FilerEntry>& victims) {
+        // Build the confirmation message.
+        size_t folderCount = 0, fileCount = 0;
+        for (const FilerEntry& e : victims) {
+            if (e.isDirectory) ++folderCount; else ++fileCount;
+        }
+        std::string message;
+        if (victims.size() == 1) {
+            message = "Delete \"" + victims.front().name + "\" permanently?";
+        } else {
+            message = "Delete " + std::to_string(victims.size())
+                    + " items permanently?";
+        }
+
+        DialogConfig cfg;
+        cfg.title = "Confirm Delete";
+        cfg.dialogType = DialogType::Warning;
+        cfg.message = message;
+        cfg.details = "This action cannot be undone.";
+        cfg.buttons = DialogButtons::NoButtons;   // custom buttons added below
+        cfg.width = 480;
+        // Taller when a folder preview (thumbnail grid) is shown.
+        cfg.height = folderCount > 0 ? 440 : 200;
+
+        auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
+        if (!dialog) {   // dialogs disabled — fall back to an immediate delete
+            PerformDeletion(victims);
+            return;
+        }
+
+        // When a folder is being deleted, preview the first entries inside it
+        // (with thumbnails) so the user sees what the folder holds.
+        const FilerEntry* previewFolder = nullptr;
+        for (const FilerEntry& e : victims) {
+            if (e.isDirectory) { previewFolder = &e; break; }
+        }
+        if (previewFolder) {
+            std::error_code ec;
+            std::vector<fs::directory_entry> inner;
+            for (fs::directory_iterator it(previewFolder->path, ec), end;
+                 it != end && inner.size() < 10; it.increment(ec)) {
+                if (ec) break;
+                inner.push_back(*it);
+            }
+            size_t totalInner = 0;
+            for (fs::directory_iterator it(previewFolder->path, ec), end;
+                 it != end; it.increment(ec)) {
+                if (ec) break;
+                ++totalInner;
+            }
+
+            auto caption = std::make_shared<UltraCanvasLabel>(
+                    "FilerDelPreviewCap", 0, 0, 0, 18);
+            caption->SetText("Folder \"" + previewFolder->name + "\" contains "
+                             + std::to_string(totalInner) + " item(s)"
+                             + (totalInner > inner.size()
+                                    ? "  ·  showing first "
+                                          + std::to_string(inner.size())
+                                    : ""));
+            caption->SetFontSize(11);
+            caption->SetTextColor(Color(90, 90, 96, 255));
+            caption->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            dialog->AddDialogElement(caption);
+
+            // A wrapping row of small thumbnail tiles.
+            auto grid = std::make_shared<UltraCanvasContainer>("FilerDelPreviewGrid");
+            grid->layout.SetFlexRow().SetFlexWrap(CSSLayout::FlexWrap::Wrap)
+                        .SetFlexGap(6)
+                        .SetFlexAlignItems(CSSLayout::AlignItems::Start);
+            grid->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+            const int tile = 64;
+            int idx = 0;
+            for (const fs::directory_entry& de : inner) {
+                std::error_code e2;
+                std::string name = de.path().filename().string();
+                bool isDir = de.is_directory(e2);
+
+                auto cell = std::make_shared<UltraCanvasContainer>(
+                        "FilerDelCell" + std::to_string(idx));
+                cell->layout.SetFlexColumn().SetFlexGap(2)
+                            .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+                cell->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+
+                auto thumb = CreateImageElement(
+                        "FilerDelThumb" + std::to_string(idx), 0, 0, tile, tile);
+                thumb->SetFitMode(ImageFitMode::Contain);
+                if (!isDir) thumb->LoadFromFile(de.path().string());
+                thumb->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+                cell->AddChild(thumb);
+
+                auto lbl = std::make_shared<UltraCanvasLabel>(
+                        "FilerDelName" + std::to_string(idx), 0, 0, tile, 14);
+                std::string shown = name.size() > 12 ? name.substr(0, 11) + "…" : name;
+                lbl->SetText(shown);
+                lbl->SetFontSize(9);
+                lbl->SetTextColor(Color(80, 80, 86, 255));
+                lbl->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
+                lbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+                cell->AddChild(lbl);
+
+                grid->AddChild(cell);
+                ++idx;
+            }
+            dialog->AddDialogElement(grid);
+        }
+
+        auto self = this;
+        std::vector<FilerEntry> captured = victims;
+        dialog->AddCustomButton("Delete", DialogResult::Yes,
+                [self, captured]() { self->PerformDeletion(captured); });
+        dialog->AddCustomButton("Cancel", DialogResult::Cancel, nullptr);
+
+        UltraCanvasDialogManager::ShowDialog(dialog, nullptr, GetWindow());
     }
 
     void UltraCanvasFilerWidget::DuplicateSelection() {
@@ -1940,6 +2074,10 @@ namespace UltraCanvas {
         switch (event.type) {
             case UCEventType::MouseLeave: {
                 if (hoveredIndex != -1) { hoveredIndex = -1; RequestRedraw(); }
+                if (hoveredIconAction != -1) {
+                    hoveredIconAction = -1;
+                    UltraCanvasTooltipManager::HideTooltip();
+                }
                 draggingScrollbar = false;
                 return true;
             }
@@ -1967,6 +2105,28 @@ namespace UltraCanvas {
                 if (newHover != hoveredIndex) {
                     hoveredIndex = newHover;
                     RequestRedraw();
+                }
+
+                // Tooltip for the hover icon-menu button under the cursor.
+                {
+                    size_t tipEntry = 0;
+                    int tipAction = IconMenuActionAt(local, tipEntry);
+                    if (tipAction != hoveredIconAction || tipEntry != hoveredIconEntry) {
+                        hoveredIconAction = tipAction;
+                        hoveredIconEntry  = tipEntry;
+                        auto* win = GetWindow();
+                        if (win && tipAction >= 0) {
+                            static const char* kIconMenuTips[] = {
+                                "Copy", "Cut", "Rename", "Delete"
+                            };
+                            UltraCanvasTooltipManager::UpdateAndShowTooltip(
+                                    win, kIconMenuTips[tipAction],
+                                    Point2Di(event.pointerWindow.x,
+                                             event.pointerWindow.y));
+                        } else {
+                            UltraCanvasTooltipManager::HideTooltip();
+                        }
+                    }
                 }
                 return false;
             }

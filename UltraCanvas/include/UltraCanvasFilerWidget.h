@@ -273,6 +273,12 @@ namespace UltraCanvas {
         int lastClickedIndex = -1;                // anchor for shift-range select
         int hoveredIndex = -1;
 
+        // Hover icon-menu tooltip tracking: the action / entry currently under
+        // the cursor, so the tooltip is shown once when the cursor enters a
+        // button and hidden when it leaves.
+        int    hoveredIconAction = -1;
+        size_t hoveredIconEntry  = 0;
+
         std::vector<FilerNewDocumentType> newDocumentTypes;
         std::vector<FilerOpenWithApp> openWithApps;
 
@@ -405,6 +411,15 @@ namespace UltraCanvas {
         // Selected entries, or the whole folder when nothing is selected —
         // what Compress / Print / Extras operate on.
         std::vector<FilerEntry> SelectionOrAll() const;
+
+        // ===== DELETE CONFIRMATION =====
+        // Actually removes the given entries from disk (no confirmation).
+        void PerformDeletion(const std::vector<FilerEntry>& victims);
+        // Shows the built-in modal confirmation dialog (used when no
+        // confirmDelete veto is installed). Deletes on confirm. When a folder is
+        // among the victims, a preview of its first entries (with thumbnails) is
+        // shown so the user sees what is about to be lost.
+        void ShowDeleteConfirmation(const std::vector<FilerEntry>& victims);
     };
 
     // ===== FACTORY =====
