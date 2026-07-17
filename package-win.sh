@@ -85,7 +85,7 @@ if [ -d "/mingw64/lib/libheif" ]; then
     echo "  Copied libheif codec plugins"
 fi
 
-# Copy ImageMagick BMP coder module and config
+# Copy ImageMagick coder modules and config
 cp /mingw64/bin/libMagickCore*.dll "$DIST_DIR/" 2>/dev/null
 
 IM_LIB_DIR=$(ls -d /mingw64/lib/ImageMagick-* 2>/dev/null | head -1)
@@ -93,13 +93,21 @@ if [ -d "$IM_LIB_DIR" ]; then
     IM_BASENAME=$(basename "$IM_LIB_DIR")
     CODERS_DEST="$DIST_DIR/lib/$IM_BASENAME/modules-Q16HDRI/coders"
     mkdir -p "$CODERS_DEST"
-    # Only copy the BMP coder (dll + la)
-    cp "$IM_LIB_DIR/modules-Q16HDRI/coders/bmp.dll" "$CODERS_DEST/" 2>/dev/null || true
-    cp "$IM_LIB_DIR/modules-Q16HDRI/coders/bmp.la"  "$CODERS_DEST/" 2>/dev/null || true
+    # Copy ALL coder modules (dll + la), not just BMP. libvips has no native
+    # loader for several legacy raster formats (TGA, PSD, PCX, ICO, ...) and
+    # falls back to ImageMagick's magickload for them; the supported-format
+    # inventory advertises those formats whenever magickload is present. If a
+    # coder module is missing, ImageMagick fails with
+    # "NoDecodeDelegateForThisImageFormat" (e.g. .tga would not open at all).
+    # Shipping every coder keeps what the demo advertises in sync with what it
+    # can actually decode.
+    cp "$IM_LIB_DIR/modules-Q16HDRI/coders/"*.dll "$CODERS_DEST/" 2>/dev/null || true
+    cp "$IM_LIB_DIR/modules-Q16HDRI/coders/"*.la  "$CODERS_DEST/" 2>/dev/null || true
     if [ -d "$IM_LIB_DIR/config-Q16HDRI" ]; then
         cp -r "$IM_LIB_DIR/config-Q16HDRI" "$DIST_DIR/lib/$IM_BASENAME/"
     fi
-    echo "  Copied ImageMagick BMP coder from $IM_BASENAME"
+    CODER_COUNT=$(find "$CODERS_DEST" -name '*.dll' | wc -l)
+    echo "  Copied $CODER_COUNT ImageMagick coder modules from $IM_BASENAME"
 fi
 # Copy ImageMagick configuration XMLs
 IM_ETC_DIR=$(ls -d /mingw64/etc/ImageMagick-* 2>/dev/null | head -1)
