@@ -5,9 +5,12 @@
 // with a full file context menu (Copy / Cut / Delete / Duplicate / Rename /
 // New / Display / Open with / Compress / Extract / Print / Extras / Settings)
 // and an optional small icon menu shown at the top-right of the hovered item.
+// A selection info bar under the folder display describes the selection (type,
+// size, dates, attributes, image dimensions, media duration / codec, folder
+// content counts, multi-selection totals).
 // Self-rendered like UltraCanvasAlbum so large folders stay cheap.
-// Version: 1.0.0
-// Last Modified: 2026-07-12
+// Version: 1.1.0
+// Last Modified: 2026-07-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -18,6 +21,7 @@
 #include <cstdint>
 #include <ctime>
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -128,6 +132,8 @@ namespace UltraCanvas {
         Color iconMenuGlyphColor   = Color(255, 255, 255, 235);
         Color renameFieldColor     = Color(255, 255, 255, 255);
         Color renameBorderColor    = Color(60, 140, 220, 255);
+        Color infoBarBackground    = Color(245, 245, 247, 255);
+        Color infoBarTextColor     = Color(50, 50, 56, 255);
 
         std::string fontFamily;          // empty = system default
         float fontSize        = 13.0f;
@@ -147,6 +153,7 @@ namespace UltraCanvas {
         int thumbnailMaximized = 260;
 
         int iconMenuButtonSize = 20;     // hover icon-menu button edge
+        int infoBarHeight      = 26;     // selection info bar under the entries
     };
 
     // ===== THE FILER ELEMENT =====
@@ -193,6 +200,17 @@ namespace UltraCanvas {
         // Show the "Open Path" context-menu item (useful when the widget
         // displays a search result rather than a plain folder).
         void SetOpenPathMenuItemVisible(bool visible) { showOpenPathItem = visible; }
+
+        // The selection info bar shown under the folder display. One line
+        // describing the selection: name, type, size, modified date and
+        // attributes for a single file, plus pixel dimensions for bitmaps and
+        // play length / codec for audio and video (parsed from the file
+        // headers, no decoding); recursive content counts and size for a
+        // selected folder; the item counts and summed size for a multi
+        // selection; a folder summary when nothing is selected. Also toggled
+        // by the Display > Info-Bar context-menu checkbox.
+        void SetSelectionInfoVisible(bool visible);
+        bool IsSelectionInfoVisible() const { return showSelectionInfo; }
 
         void SetStyle(const FilerStyle& s);
         const FilerStyle& GetStyle() const { return style; }
@@ -267,6 +285,7 @@ namespace UltraCanvas {
         bool showHiddenFiles = false;
         bool hoverIconMenu = true;
         bool showOpenPathItem = false;
+        bool showSelectionInfo = true;
         FilerStyle style;
 
         std::vector<size_t> selection;            // indices into `entries`
@@ -324,6 +343,16 @@ namespace UltraCanvas {
         // Inline rename editor.
         int renamingIndex = -1;
         std::string renameBuffer;
+
+        // Selection info bar caches, computed on demand and cleared on rescan.
+        struct FolderStats {
+            uint64_t files = 0;      // recursive
+            uint64_t folders = 0;
+            uint64_t bytes = 0;
+            bool capped = false;     // hit the traversal safety cap
+        };
+        mutable std::map<std::string, FolderStats> folderStatsCache;
+        mutable std::map<std::string, std::string> mediaInfoCache;  // path -> extra info
 
         std::shared_ptr<UltraCanvasMenu> activePopupMenu;
 
@@ -386,6 +415,20 @@ namespace UltraCanvas {
                                const Rect2Di& button);
         void DrawRenameEditor(IRenderContext* ctx, const ItemLayout& item);
         void DrawScrollbar(IRenderContext* ctx);
+        void DrawSelectionInfoBar(IRenderContext* ctx, const Rect2Di& bounds);
+        int  InfoBarHeight() const {
+            return (showSelectionInfo && style.infoBarHeight > 0)
+                    ? style.infoBarHeight : 0;
+        }
+        bool IsInInfoBar(const Point2Di& localPoint) const;
+        // Selection description for the info bar: `primary` is the bold lead
+        // (name / "N items selected"), `secondary` the detail run after it.
+        void BuildSelectionInfoText(std::string& primary,
+                                    std::string& secondary) const;
+        const FolderStats& GetFolderStats(const std::string& path) const;
+        // Cached per-file extra info: "1920 × 1080 px" for bitmaps,
+        // "3:45 · H.264" for audio / video. Empty when nothing was probed.
+        std::string EntryExtraInfo(const FilerEntry& e) const;
         std::string EllipsizeText(IRenderContext* ctx, const std::string& text,
                                   int maxWidth) const;
 

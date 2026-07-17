@@ -164,7 +164,9 @@ namespace UltraCanvas {
         auto subtitle = std::make_shared<UltraCanvasLabel>("FilerSubtitle", 0, 0, 0, 20);
         subtitle->SetText("Double-click a folder to enter it. Right-click for the file menu "
                           "(Copy / Cut / Delete / Duplicate / Rename / New / Display / Compress / "
-                          "Extras). Hovering an item shows its quick icon menu.");
+                          "Extras). Hovering an item shows its quick icon menu; the info bar at "
+                          "the bottom describes the selection (size, dates, image dimensions, "
+                          "media duration and codec, folder contents).");
         subtitle->SetFontSize(11);
         subtitle->SetTextColor(Color(110, 110, 110, 255));
         subtitle->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
@@ -360,16 +362,17 @@ namespace UltraCanvas {
                 statusPtr->SetText(std::to_string(filerPtr->GetEntries().size())
                                    + " entries");
             };
+            // Selection details (type, size, media info, ...) are shown by the
+            // widget's built-in info bar; the demo status line only counts.
             filer->onSelectionChanged =
                     [statusPtr, filerPtr](const std::vector<FilerEntry>& sel) {
                 if (sel.empty()) {
                     statusPtr->SetText(std::to_string(filerPtr->GetEntries().size())
                                        + " entries");
-                } else if (sel.size() == 1) {
-                    statusPtr->SetText("Selected: " + sel[0].name + "  ·  "
-                                       + sel[0].typeName);
                 } else {
-                    statusPtr->SetText(std::to_string(sel.size()) + " items selected");
+                    statusPtr->SetText(std::to_string(sel.size()) + " of "
+                                       + std::to_string(filerPtr->GetEntries().size())
+                                       + " entries selected");
                 }
             };
             filer->onFileActivated = [statusPtr](const FilerEntry& e) {

@@ -1,9 +1,11 @@
 // core/UltraCanvasFilerWidget.cpp
 // Filer folder widget: displays one folder's content with selectable view types
 // (details, list, thumbnails, size bars, treemap), sorting, an inline rename
-// editor, a hover icon menu and the full file context menu.
-// Version: 1.0.0
-// Last Modified: 2026-07-12
+// editor, a hover icon menu, the full file context menu and a selection info
+// bar (type / size / dates / attributes, image dimensions, media duration and
+// codec via lightweight header probes, recursive folder stats).
+// Version: 1.1.0
+// Last Modified: 2026-07-16
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -264,6 +266,630 @@ namespace UltraCanvas {
             }
             return "";
         }
+
+        std::string FormatDuration(double seconds) {
+            if (seconds < 0) return "";
+            long total = std::lround(seconds);
+            long h = total / 3600, m = (total % 3600) / 60, s = total % 60;
+            char buf[32];
+            if (h > 0) snprintf(buf, sizeof(buf), "%ld:%02ld:%02ld", h, m, s);
+            else       snprintf(buf, sizeof(buf), "%ld:%02ld", m, s);
+            return buf;
+        }
+
+        // ===== LIGHTWEIGHT FILE-HEADER PROBES (selection info bar) =====
+        // Parse just the container headers so describing a selection never
+        // decodes an image or plays a media file. Every probe reads a bounded
+        // number of bytes and fails soft — the info bar simply omits the
+        // detail it could not determine.
+
+        uint16_t U16LE(const unsigned char* p) { return uint16_t(p[0] | (p[1] << 8)); }
+        uint32_t U24LE(const unsigned char* p) {
+            return uint32_t(p[0]) | (uint32_t(p[1]) << 8) | (uint32_t(p[2]) << 16);
+        }
+        uint32_t U32LE(const unsigned char* p) {
+            return uint32_t(p[0]) | (uint32_t(p[1]) << 8)
+                 | (uint32_t(p[2]) << 16) | (uint32_t(p[3]) << 24);
+        }
+        uint64_t U64LE(const unsigned char* p) {
+            return uint64_t(U32LE(p)) | (uint64_t(U32LE(p + 4)) << 32);
+        }
+        uint16_t U16BE(const unsigned char* p) { return uint16_t((p[0] << 8) | p[1]); }
+        uint32_t U24BE(const unsigned char* p) {
+            return (uint32_t(p[0]) << 16) | (uint32_t(p[1]) << 8) | p[2];
+        }
+        uint32_t U32BE(const unsigned char* p) {
+            return (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16)
+                 | (uint32_t(p[2]) << 8) | uint32_t(p[3]);
+        }
+        uint64_t U64BE(const unsigned char* p) {
+            return (uint64_t(U32BE(p)) << 32) | U32BE(p + 4);
+        }
+
+        std::vector<unsigned char> ReadFileBytes(std::ifstream& f, uint64_t offset,
+                                                 size_t count) {
+            std::vector<unsigned char> out(count);
+            f.clear();
+            f.seekg(static_cast<std::streamoff>(offset), std::ios::beg);
+            f.read(reinterpret_cast<char*>(out.data()),
+                   static_cast<std::streamsize>(count));
+            out.resize(static_cast<size_t>(std::max<std::streamsize>(0, f.gcount())));
+            return out;
+        }
+
+        std::string FourCCName(const unsigned char* p) {
+            std::string s;
+            for (int i = 0; i < 4; ++i) {
+                char c = char(p[i]);
+                if (c >= 32 && c < 127) s += c;
+            }
+            return s;
+        }
+
+        // --- Bitmap dimensions (PNG / GIF / BMP / QOI / WebP / ICO / JPEG / TIFF) ---
+        bool ProbeImageDimensions(const std::string& path, int& w, int& h) {
+            w = h = 0;
+            std::ifstream f(path, std::ios::binary);
+            if (!f) return false;
+            auto head = ReadFileBytes(f, 0, 64);
+            if (head.size() < 16) return false;
+            const unsigned char* p = head.data();
+
+            static const unsigned char pngSig[8] =
+                {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
+            if (head.size() >= 24 && std::memcmp(p, pngSig, 8) == 0) {
+                w = int(U32BE(p + 16)); h = int(U32BE(p + 20));
+                return w > 0 && h > 0;
+            }
+            if (std::memcmp(p, "GIF8", 4) == 0) {
+                w = U16LE(p + 6); h = U16LE(p + 8);
+                return w > 0 && h > 0;
+            }
+            if (head.size() >= 26 && p[0] == 'B' && p[1] == 'M') {
+                w = int(int32_t(U32LE(p + 18)));
+                h = std::abs(int(int32_t(U32LE(p + 22))));
+                return w > 0 && h > 0;
+            }
+            if (std::memcmp(p, "qoif", 4) == 0) {
+                w = int(U32BE(p + 4)); h = int(U32BE(p + 8));
+                return w > 0 && h > 0;
+            }
+            if (head.size() >= 30 && std::memcmp(p, "RIFF", 4) == 0 &&
+                std::memcmp(p + 8, "WEBP", 4) == 0) {
+                if (std::memcmp(p + 12, "VP8X", 4) == 0) {
+                    w = int(U24LE(p + 24)) + 1; h = int(U24LE(p + 27)) + 1;
+                    return true;
+                }
+                if (std::memcmp(p + 12, "VP8L", 4) == 0 && p[20] == 0x2F) {
+                    uint32_t bits = U32LE(p + 21);
+                    w = int(bits & 0x3FFF) + 1; h = int((bits >> 14) & 0x3FFF) + 1;
+                    return true;
+                }
+                if (std::memcmp(p + 12, "VP8 ", 4) == 0 &&
+                    p[23] == 0x9D && p[24] == 0x01 && p[25] == 0x2A) {
+                    w = U16LE(p + 26) & 0x3FFF; h = U16LE(p + 28) & 0x3FFF;
+                    return w > 0 && h > 0;
+                }
+                return false;
+            }
+            if (p[0] == 0 && p[1] == 0 && (p[2] == 1 || p[2] == 2) && p[3] == 0 &&
+                U16LE(p + 4) > 0) {   // ICO / CUR, first directory entry
+                w = p[6] ? p[6] : 256; h = p[7] ? p[7] : 256;
+                return true;
+            }
+            if (p[0] == 0xFF && p[1] == 0xD8) {   // JPEG: walk to the first SOF
+                uint64_t pos = 2;
+                for (int i = 0; i < 256; ++i) {
+                    auto m = ReadFileBytes(f, pos, 4);
+                    if (m.size() < 4 || m[0] != 0xFF) return false;
+                    unsigned char marker = m[1];
+                    if (marker == 0xFF) { ++pos; continue; }   // fill byte
+                    if (marker == 0xD8 || marker == 0x01 ||
+                        (marker >= 0xD0 && marker <= 0xD7)) { pos += 2; continue; }
+                    if (marker == 0xD9 || marker == 0xDA) return false;   // EOI / SOS
+                    uint32_t len = U16BE(m.data() + 2);
+                    if (len < 2) return false;
+                    bool sof = (marker >= 0xC0 && marker <= 0xCF &&
+                                marker != 0xC4 && marker != 0xC8 && marker != 0xCC);
+                    if (sof) {
+                        auto d = ReadFileBytes(f, pos + 4, 5);
+                        if (d.size() < 5) return false;
+                        h = U16BE(d.data() + 1); w = U16BE(d.data() + 3);
+                        return w > 0 && h > 0;
+                    }
+                    pos += 2 + len;
+                }
+                return false;
+            }
+            bool tiffLE = std::memcmp(p, "II\x2A\x00", 4) == 0;
+            bool tiffBE = std::memcmp(p, "MM\x00\x2A", 4) == 0;
+            if (tiffLE || tiffBE) {
+                auto rd16 = [tiffLE](const unsigned char* q) {
+                    return tiffLE ? U16LE(q) : U16BE(q);
+                };
+                auto rd32 = [tiffLE](const unsigned char* q) {
+                    return tiffLE ? U32LE(q) : U32BE(q);
+                };
+                uint32_t ifd = rd32(p + 4);
+                auto cnt = ReadFileBytes(f, ifd, 2);
+                if (cnt.size() < 2) return false;
+                uint32_t n = rd16(cnt.data());
+                if (n == 0 || n > 512) return false;
+                auto dir = ReadFileBytes(f, ifd + 2, size_t(n) * 12);
+                if (dir.size() < size_t(n) * 12) return false;
+                for (uint32_t i = 0; i < n; ++i) {
+                    const unsigned char* e = dir.data() + i * 12;
+                    uint16_t tag = rd16(e), type = rd16(e + 2);
+                    uint32_t val = (type == 3) ? rd16(e + 8) : rd32(e + 8);
+                    if (tag == 256) w = int(val);
+                    else if (tag == 257) h = int(val);
+                }
+                return w > 0 && h > 0;
+            }
+            return false;
+        }
+
+        // --- Audio / video duration + codec ---
+        struct FilerMediaProbe {
+            double seconds = -1.0;
+            std::string codec;
+        };
+
+        bool ProbeWav(std::ifstream& f, uint64_t fileSize, FilerMediaProbe& out) {
+            auto head = ReadFileBytes(f, 0, 12);
+            if (head.size() < 12 || std::memcmp(head.data(), "RIFF", 4) != 0 ||
+                std::memcmp(head.data() + 8, "WAVE", 4) != 0) return false;
+            uint64_t pos = 12;
+            uint16_t fmtTag = 0;
+            uint32_t byteRate = 0;
+            uint64_t dataSize = 0;
+            for (int i = 0; i < 64 && pos + 8 <= fileSize; ++i) {
+                auto ch = ReadFileBytes(f, pos, 8);
+                if (ch.size() < 8) break;
+                uint32_t sz = U32LE(ch.data() + 4);
+                if (std::memcmp(ch.data(), "fmt ", 4) == 0) {
+                    auto fmt = ReadFileBytes(f, pos + 8, std::min<uint32_t>(sz, 16));
+                    if (fmt.size() >= 16) {
+                        fmtTag = U16LE(fmt.data());
+                        byteRate = U32LE(fmt.data() + 8);
+                    }
+                } else if (std::memcmp(ch.data(), "data", 4) == 0) {
+                    dataSize = (sz == 0 || sz == 0xFFFFFFFFu)
+                            ? (fileSize > pos + 8 ? fileSize - pos - 8 : 0) : sz;
+                }
+                pos += 8 + uint64_t(sz) + (sz & 1);
+            }
+            if (byteRate && dataSize) out.seconds = double(dataSize) / byteRate;
+            switch (fmtTag) {
+                case 0x01:   out.codec = "PCM"; break;
+                case 0x03:   out.codec = "PCM Float"; break;
+                case 0x06:   out.codec = "A-law"; break;
+                case 0x07:   out.codec = "µ-law"; break;
+                case 0x55:   out.codec = "MP3"; break;
+                case 0xFFFE: out.codec = "PCM"; break;
+                default:     out.codec = fmtTag ? "WAV" : ""; break;
+            }
+            return out.seconds >= 0 || !out.codec.empty();
+        }
+
+        bool ProbeFlac(std::ifstream& f, FilerMediaProbe& out) {
+            auto head = ReadFileBytes(f, 0, 4);
+            if (head.size() < 4 || std::memcmp(head.data(), "fLaC", 4) != 0)
+                return false;
+            uint64_t pos = 4;
+            for (int i = 0; i < 64; ++i) {
+                auto bh = ReadFileBytes(f, pos, 4);
+                if (bh.size() < 4) break;
+                bool last = (bh[0] & 0x80) != 0;
+                int type = bh[0] & 0x7F;
+                uint32_t sz = U24BE(bh.data() + 1);
+                if (type == 0 && sz >= 18) {   // STREAMINFO
+                    auto d = ReadFileBytes(f, pos + 4, 18);
+                    if (d.size() >= 18) {
+                        uint32_t sr = (uint32_t(d[10]) << 12)
+                                    | (uint32_t(d[11]) << 4) | (d[12] >> 4);
+                        uint64_t samples = (uint64_t(d[13] & 0x0F) << 32)
+                                         | U32BE(d.data() + 14);
+                        if (sr && samples) out.seconds = double(samples) / sr;
+                    }
+                }
+                pos += 4 + uint64_t(sz);
+                if (last) break;
+            }
+            out.codec = "FLAC";
+            return true;
+        }
+
+        bool ProbeMp3(std::ifstream& f, uint64_t fileSize, FilerMediaProbe& out) {
+            uint64_t off = 0;
+            auto id3 = ReadFileBytes(f, 0, 10);
+            if (id3.size() >= 10 && std::memcmp(id3.data(), "ID3", 3) == 0) {
+                off = 10 + ((uint32_t(id3[6] & 0x7F) << 21)
+                          | (uint32_t(id3[7] & 0x7F) << 14)
+                          | (uint32_t(id3[8] & 0x7F) << 7) | (id3[9] & 0x7F));
+            }
+            auto buf = ReadFileBytes(f, off, 16384);
+            static const int kBitrateV1L3[16] =
+                {0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0};
+            static const int kBitrateV2L3[16] =
+                {0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0};
+            static const int kRateV1[4] = {44100, 48000, 32000, 0};
+            for (size_t i = 0; i + 4 <= buf.size(); ++i) {
+                if (buf[i] != 0xFF || (buf[i + 1] & 0xE0) != 0xE0) continue;
+                int verBits = (buf[i + 1] >> 3) & 3;     // 0 = 2.5, 2 = 2, 3 = 1
+                int layerBits = (buf[i + 1] >> 1) & 3;   // 1 = Layer III
+                if (verBits == 1 || layerBits != 1) continue;
+                int brIdx = buf[i + 2] >> 4;
+                int srIdx = (buf[i + 2] >> 2) & 3;
+                if (brIdx == 0 || brIdx == 15 || srIdx == 3) continue;
+                bool v1 = (verBits == 3);
+                int sr = kRateV1[srIdx];
+                if (verBits == 2) sr /= 2;
+                else if (verBits == 0) sr /= 4;
+                int bitrate = (v1 ? kBitrateV1L3 : kBitrateV2L3)[brIdx] * 1000;
+                if (!sr || !bitrate) continue;
+                int spf = v1 ? 1152 : 576;   // samples per frame, Layer III
+                bool mono = ((buf[i + 3] >> 6) & 3) == 3;
+                size_t xing = i + 4 + (v1 ? (mono ? 17 : 32) : (mono ? 9 : 17));
+                uint32_t frames = 0;
+                if (xing + 12 <= buf.size() &&
+                    (std::memcmp(&buf[xing], "Xing", 4) == 0 ||
+                     std::memcmp(&buf[xing], "Info", 4) == 0)) {
+                    if (U32BE(&buf[xing + 4]) & 1) frames = U32BE(&buf[xing + 8]);
+                } else if (i + 4 + 32 + 18 <= buf.size() &&
+                           std::memcmp(&buf[i + 4 + 32], "VBRI", 4) == 0) {
+                    frames = U32BE(&buf[i + 4 + 32 + 14]);
+                }
+                if (frames) out.seconds = double(frames) * spf / sr;
+                else if (fileSize > off + i)
+                    out.seconds = double(fileSize - off - i) * 8.0 / bitrate;
+                out.codec = "MP3";
+                return true;
+            }
+            return false;
+        }
+
+        bool ProbeOgg(std::ifstream& f, uint64_t fileSize, FilerMediaProbe& out) {
+            auto b = ReadFileBytes(f, 0, 512);
+            if (b.size() < 28 || std::memcmp(b.data(), "OggS", 4) != 0) return false;
+            size_t pk = 27 + b[26];   // first packet, after the segment table
+            uint32_t rate = 0;
+            if (pk + 8 <= b.size()) {
+                if (std::memcmp(&b[pk], "\x01vorbis", 7) == 0) {
+                    out.codec = "Vorbis";
+                    if (pk + 16 <= b.size()) rate = U32LE(&b[pk + 12]);
+                } else if (std::memcmp(&b[pk], "OpusHead", 8) == 0) {
+                    out.codec = "Opus";
+                    rate = 48000;   // Opus granules always run at 48 kHz
+                } else if (std::memcmp(&b[pk], "\x80theora", 7) == 0) {
+                    out.codec = "Theora";
+                } else if (std::memcmp(&b[pk], "\x7f""FLAC", 5) == 0) {
+                    out.codec = "FLAC";
+                } else {
+                    out.codec = "OGG";
+                }
+            }
+            if (rate) {
+                // Duration = granule position of the last page.
+                size_t tailLen = size_t(std::min<uint64_t>(fileSize, 65536));
+                auto tail = ReadFileBytes(f, fileSize - tailLen, tailLen);
+                if (tail.size() >= 27) {
+                    for (size_t i = tail.size() - 27;; --i) {
+                        if (std::memcmp(&tail[i], "OggS", 4) == 0) {
+                            uint64_t granule = U64LE(&tail[i + 6]);
+                            if (granule && granule != ~0ull)
+                                out.seconds = double(granule) / rate;
+                            break;
+                        }
+                        if (i == 0) break;
+                    }
+                }
+            }
+            return !out.codec.empty();
+        }
+
+        std::string Mp4CodecName(const std::string& fcc, bool& isVideo) {
+            struct Map { const char* fcc; const char* name; bool video; };
+            static const Map map[] = {
+                {"avc1", "H.264", true},  {"avc3", "H.264", true},
+                {"hvc1", "H.265", true},  {"hev1", "H.265", true},
+                {"vp08", "VP8", true},    {"vp09", "VP9", true},
+                {"av01", "AV1", true},    {"mp4v", "MPEG-4", true},
+                {"s263", "H.263", true},  {"mjpa", "MJPEG", true},
+                {"jpeg", "MJPEG", true},
+                {"mp4a", "AAC", false},   {"ac-3", "AC-3", false},
+                {"ec-3", "E-AC-3", false},{"alac", "ALAC", false},
+                {"Opus", "Opus", false},  {"opus", "Opus", false},
+                {"fLaC", "FLAC", false},  {"twos", "PCM", false},
+                {"sowt", "PCM", false},   {"lpcm", "PCM", false},
+                {"samr", "AMR", false},
+            };
+            for (const Map& m : map)
+                if (fcc == m.fcc) { isVideo = m.video; return m.name; }
+            isVideo = false;
+            return fcc;   // unknown: show the raw sample-entry code
+        }
+
+        void ParseMp4Boxes(const unsigned char* p, size_t n, FilerMediaProbe& out,
+                           bool& haveVideoCodec, int depth) {
+            if (depth > 6) return;
+            size_t pos = 0;
+            while (pos + 8 <= n) {
+                uint64_t sz = U32BE(p + pos);
+                std::string type = FourCCName(p + pos + 4);
+                size_t hdr = 8;
+                if (sz == 1) {
+                    if (pos + 16 > n) return;
+                    sz = U64BE(p + pos + 8);
+                    hdr = 16;
+                } else if (sz == 0) {
+                    sz = n - pos;
+                }
+                if (sz < hdr || sz > n - pos) return;
+                const unsigned char* body = p + pos + hdr;
+                size_t bodyLen = size_t(sz - hdr);
+                if (type == "trak" || type == "mdia" || type == "minf" ||
+                    type == "stbl") {
+                    ParseMp4Boxes(body, bodyLen, out, haveVideoCodec, depth + 1);
+                } else if (type == "mvhd" && bodyLen >= 20) {
+                    if (body[0] == 1 && bodyLen >= 32) {
+                        uint32_t scale = U32BE(body + 20);
+                        uint64_t dur = U64BE(body + 24);
+                        if (scale && dur != ~0ull) out.seconds = double(dur) / scale;
+                    } else if (body[0] == 0 && bodyLen >= 20) {
+                        uint32_t scale = U32BE(body + 12);
+                        uint32_t dur = U32BE(body + 16);
+                        if (scale && dur != 0xFFFFFFFFu)
+                            out.seconds = double(dur) / scale;
+                    }
+                } else if (type == "stsd" && bodyLen >= 16) {
+                    bool isVideo = false;
+                    std::string name = Mp4CodecName(FourCCName(body + 12), isVideo);
+                    if (!name.empty() &&
+                        (out.codec.empty() || (isVideo && !haveVideoCodec))) {
+                        out.codec = name;
+                        haveVideoCodec = haveVideoCodec || isVideo;
+                    }
+                }
+                pos += size_t(sz);
+            }
+        }
+
+        bool ProbeMp4(std::ifstream& f, uint64_t fileSize, FilerMediaProbe& out) {
+            auto head = ReadFileBytes(f, 0, 12);
+            if (head.size() < 12) return false;
+            std::string first = FourCCName(head.data() + 4);
+            if (first != "ftyp" && first != "moov" && first != "mdat" &&
+                first != "wide" && first != "free" && first != "skip")
+                return false;
+            uint64_t pos = 0;
+            for (int i = 0; i < 128 && pos + 8 <= fileSize; ++i) {
+                auto bh = ReadFileBytes(f, pos, 16);
+                if (bh.size() < 8) break;
+                uint64_t sz = U32BE(bh.data());
+                uint64_t hdr = 8;
+                if (sz == 1 && bh.size() >= 16) {
+                    sz = U64BE(bh.data() + 8);
+                    hdr = 16;
+                } else if (sz == 0) {
+                    sz = fileSize - pos;
+                }
+                if (sz < hdr) break;
+                if (std::memcmp(bh.data() + 4, "moov", 4) == 0) {
+                    size_t load = size_t(std::min<uint64_t>(sz - hdr, 8u << 20));
+                    auto moov = ReadFileBytes(f, pos + hdr, load);
+                    bool haveVideo = false;
+                    ParseMp4Boxes(moov.data(), moov.size(), out, haveVideo, 0);
+                    break;
+                }
+                pos += sz;
+            }
+            return out.seconds >= 0 || !out.codec.empty();
+        }
+
+        std::string AviCodecName(std::string fcc) {
+            std::transform(fcc.begin(), fcc.end(), fcc.begin(),
+                           [](unsigned char c) { return std::toupper(c); });
+            if (fcc == "H264" || fcc == "X264" || fcc == "AVC1") return "H.264";
+            if (fcc == "H265" || fcc == "X265" || fcc == "HEVC") return "H.265";
+            if (fcc == "XVID" || fcc == "DIVX" || fcc == "DX50" ||
+                fcc == "FMP4" || fcc == "MP4V") return "MPEG-4";
+            if (fcc == "MJPG") return "MJPEG";
+            if (fcc == "DVSD") return "DV";
+            if (fcc == "WMV3") return "WMV";
+            if (fcc == "VP80") return "VP8";
+            if (fcc == "VP90") return "VP9";
+            return fcc;
+        }
+
+        void ParseAviChunks(const unsigned char* p, size_t n, FilerMediaProbe& out,
+                            int depth) {
+            if (depth > 4) return;
+            size_t pos = 0;
+            while (pos + 8 <= n) {
+                const unsigned char* c = p + pos;
+                uint32_t sz = U32LE(c + 4);
+                if (sz > n - pos - 8) break;
+                if (std::memcmp(c, "LIST", 4) == 0 && sz >= 4) {
+                    ParseAviChunks(c + 12, sz - 4, out, depth + 1);
+                } else if (std::memcmp(c, "avih", 4) == 0 && sz >= 20) {
+                    uint32_t usPerFrame = U32LE(c + 8);
+                    uint32_t totalFrames = U32LE(c + 8 + 16);
+                    if (usPerFrame && totalFrames)
+                        out.seconds = double(usPerFrame) * totalFrames / 1e6;
+                } else if (std::memcmp(c, "strh", 4) == 0 && sz >= 8) {
+                    if (std::memcmp(c + 8, "vids", 4) == 0 && out.codec.empty())
+                        out.codec = AviCodecName(FourCCName(c + 12));
+                }
+                pos += 8 + size_t(sz) + (sz & 1);
+            }
+        }
+
+        bool ProbeAvi(std::ifstream& f, FilerMediaProbe& out) {
+            auto b = ReadFileBytes(f, 0, 65536);
+            if (b.size() < 16 || std::memcmp(b.data(), "RIFF", 4) != 0 ||
+                std::memcmp(b.data() + 8, "AVI ", 4) != 0) return false;
+            ParseAviChunks(b.data() + 12, b.size() - 12, out, 0);
+            if (out.codec.empty()) out.codec = "AVI";
+            return true;
+        }
+
+        // Matroska / WebM: a bounded EBML walk over Segment > Info / Tracks.
+        struct MkvScan {
+            double durationTicks = -1.0;
+            uint64_t timescale = 1000000;   // ns per tick, Matroska default
+            std::string videoCodec, audioCodec;
+        };
+
+        bool EbmlRead(std::ifstream& f, uint64_t& pos, uint64_t end,
+                      bool keepMarker, uint64_t& value, bool& unknown) {
+            unknown = false;
+            if (pos >= end) return false;
+            auto b = ReadFileBytes(f, pos, 8);
+            if (b.empty() || b[0] == 0) return false;
+            int len = 1;
+            while (len <= 8 && !(b[0] & (0x80 >> (len - 1)))) ++len;
+            if (len > 8 || size_t(len) > b.size()) return false;
+            value = keepMarker ? b[0] : uint64_t(b[0] & (0xFF >> len));
+            for (int i = 1; i < len; ++i) value = (value << 8) | b[i];
+            if (!keepMarker) {
+                uint64_t allOnes = (len == 8) ? 0x00FFFFFFFFFFFFFFull
+                                              : ((1ull << (7 * len)) - 1);
+                unknown = (value == allOnes);
+            }
+            pos += len;
+            return true;
+        }
+
+        std::string MkvCodecName(const std::string& id) {
+            if (id == "V_MPEG4/ISO/AVC")  return "H.264";
+            if (id == "V_MPEGH/ISO/HEVC") return "H.265";
+            if (id == "V_VP8")            return "VP8";
+            if (id == "V_VP9")            return "VP9";
+            if (id == "V_AV1")            return "AV1";
+            if (id == "V_THEORA")         return "Theora";
+            if (id == "V_MPEG2")          return "MPEG-2";
+            if (id.rfind("V_MPEG4", 0) == 0) return "MPEG-4";
+            if (id == "A_OPUS")           return "Opus";
+            if (id == "A_VORBIS")         return "Vorbis";
+            if (id == "A_FLAC")           return "FLAC";
+            if (id.rfind("A_AAC", 0) == 0) return "AAC";
+            if (id == "A_MPEG/L3")        return "MP3";
+            if (id == "A_AC3")            return "AC-3";
+            if (id == "A_EAC3")           return "E-AC-3";
+            if (id.rfind("A_PCM", 0) == 0) return "PCM";
+            if (id.size() > 2 && id[1] == '_') return id.substr(2);
+            return id;
+        }
+
+        void ParseMkvLevel(std::ifstream& f, uint64_t pos, uint64_t end,
+                           MkvScan& scan, int depth) {
+            if (depth > 5) return;
+            for (int guard = 0; pos < end && guard < 256; ++guard) {
+                uint64_t id = 0, sz = 0;
+                bool unknown = false, idUnknown = false;
+                if (!EbmlRead(f, pos, end, true, id, idUnknown)) return;
+                if (!EbmlRead(f, pos, end, false, sz, unknown)) return;
+                uint64_t bodyEnd = unknown ? end : std::min(end, pos + sz);
+                if (id == 0x1F43B675ull) return;   // Cluster: headers are done
+                if (id == 0x18538067ull || id == 0x1549A966ull ||
+                    id == 0x1654AE6Bull || id == 0xAEull) {
+                    // Segment / Info / Tracks / TrackEntry
+                    ParseMkvLevel(f, pos, bodyEnd, scan, depth + 1);
+                } else if (id == 0x2AD7B1ull) {    // TimestampScale (uint)
+                    auto d = ReadFileBytes(f, pos, size_t(std::min<uint64_t>(sz, 8)));
+                    uint64_t v = 0;
+                    for (unsigned char c : d) v = (v << 8) | c;
+                    if (v) scan.timescale = v;
+                } else if (id == 0x4489ull) {      // Duration (float)
+                    auto d = ReadFileBytes(f, pos, size_t(std::min<uint64_t>(sz, 8)));
+                    if (d.size() == 4) {
+                        uint32_t u = U32BE(d.data());
+                        float fv;
+                        std::memcpy(&fv, &u, 4);
+                        scan.durationTicks = fv;
+                    } else if (d.size() == 8) {
+                        uint64_t u = U64BE(d.data());
+                        double dv;
+                        std::memcpy(&dv, &u, 8);
+                        scan.durationTicks = dv;
+                    }
+                } else if (id == 0x86ull) {        // CodecID (string)
+                    auto d = ReadFileBytes(f, pos, size_t(std::min<uint64_t>(sz, 32)));
+                    std::string codecId(d.begin(), d.end());
+                    if (codecId.rfind("V_", 0) == 0 && scan.videoCodec.empty())
+                        scan.videoCodec = MkvCodecName(codecId);
+                    else if (codecId.rfind("A_", 0) == 0 && scan.audioCodec.empty())
+                        scan.audioCodec = MkvCodecName(codecId);
+                }
+                if (unknown) return;   // can't skip an unknown-size element
+                pos += sz;
+            }
+        }
+
+        bool ProbeMkv(std::ifstream& f, uint64_t fileSize, FilerMediaProbe& out) {
+            auto head = ReadFileBytes(f, 0, 4);
+            if (head.size() < 4 ||
+                std::memcmp(head.data(), "\x1A\x45\xDF\xA3", 4) != 0) return false;
+            MkvScan scan;
+            ParseMkvLevel(f, 0, fileSize, scan, 0);
+            if (scan.durationTicks > 0)
+                out.seconds = scan.durationTicks * double(scan.timescale) / 1e9;
+            out.codec = !scan.videoCodec.empty() ? scan.videoCodec : scan.audioCodec;
+            return out.seconds >= 0 || !out.codec.empty();
+        }
+
+        bool ProbeAsf(std::ifstream& f, FilerMediaProbe& out) {
+            static const unsigned char kAsfHeader[16] =
+                {0x30, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11,
+                 0xA6, 0xD9, 0x00, 0xAA, 0x00, 0x62, 0xCE, 0x6C};
+            static const unsigned char kFileProps[16] =
+                {0xA1, 0xDC, 0xAB, 0x8C, 0x47, 0xA9, 0xCF, 0x11,
+                 0x8E, 0xE4, 0x00, 0xC0, 0x0C, 0x20, 0x53, 0x65};
+            auto b = ReadFileBytes(f, 0, 65536);
+            if (b.size() < 30 || std::memcmp(b.data(), kAsfHeader, 16) != 0)
+                return false;
+            size_t pos = 30;
+            for (int i = 0; i < 64 && pos + 24 <= b.size(); ++i) {
+                uint64_t sz = U64LE(&b[pos + 16]);
+                if (sz < 24) break;
+                if (std::memcmp(&b[pos], kFileProps, 16) == 0 &&
+                    pos + 24 + 64 <= b.size()) {
+                    uint64_t play = U64LE(&b[pos + 24 + 40]);      // 100 ns units
+                    uint64_t preroll = U64LE(&b[pos + 24 + 56]);   // ms
+                    double s = double(play) / 1e7 - double(preroll) / 1000.0;
+                    if (s > 0) out.seconds = s;
+                    break;
+                }
+                if (sz > b.size() - pos) break;
+                pos += size_t(sz);
+            }
+            out.codec = "WMV";
+            return true;
+        }
+
+        bool ProbeMediaFile(const std::string& path, const std::string& ext,
+                            FilerMediaProbe& out) {
+            std::ifstream f(path, std::ios::binary);
+            if (!f) return false;
+            f.seekg(0, std::ios::end);
+            uint64_t fileSize = uint64_t(std::max<std::streamoff>(0, f.tellg()));
+            if (fileSize < 16) return false;
+
+            if (ext == "wav")  return ProbeWav(f, fileSize, out);
+            if (ext == "flac") return ProbeFlac(f, out);
+            if (ext == "mp3")  return ProbeMp3(f, fileSize, out);
+            if (ext == "ogg" || ext == "oga" || ext == "opus")
+                return ProbeOgg(f, fileSize, out);
+            if (ext == "mp4" || ext == "m4a" || ext == "m4v" || ext == "mov" ||
+                ext == "3gp")
+                return ProbeMp4(f, fileSize, out);
+            if (ext == "avi")  return ProbeAvi(f, out);
+            if (ext == "mkv" || ext == "webm" || ext == "mka")
+                return ProbeMkv(f, fileSize, out);
+            if (ext == "wmv")  return ProbeAsf(f, out);
+            return false;
+        }
     }
 
     // ===== CONSTRUCTION =====
@@ -334,6 +960,8 @@ namespace UltraCanvas {
         effectiveSizesValid = false;
         hoveredIndex = -1;
         lastClickedIndex = -1;
+        folderStatsCache.clear();   // files may have changed on disk
+        mediaInfoCache.clear();
 
         std::error_code ec;
         bool isRealDir = !currentPath.empty() && fs::is_directory(currentPath, ec);
@@ -502,6 +1130,13 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::SetHoverIconMenuEnabled(bool enabled) {
         hoverIconMenu = enabled;
+        RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::SetSelectionInfoVisible(bool visible) {
+        if (showSelectionInfo == visible) return;
+        showSelectionInfo = visible;
+        InvalidateFilerLayout();   // the bar changes the content area height
         RequestRedraw();
     }
 
@@ -889,7 +1524,8 @@ namespace UltraCanvas {
         int pad = style.outerPadding;
         return Rect2Di(static_cast<int>(b.x) + pad, static_cast<int>(b.y) + pad,
                        std::max(0, static_cast<int>(b.width) - 2 * pad),
-                       std::max(0, static_cast<int>(b.height) - 2 * pad));
+                       std::max(0, static_cast<int>(b.height) - 2 * pad
+                                   - InfoBarHeight()));
     }
 
     int UltraCanvasFilerWidget::ThumbnailEdge() const {
@@ -1133,7 +1769,8 @@ namespace UltraCanvas {
     // ===== SCROLLING =====
     int UltraCanvasFilerWidget::MaxScrollY() const {
         auto b = GetLocalBounds();
-        return std::max(0, contentHeight - static_cast<int>(b.height));
+        return std::max(0, contentHeight
+                           - (static_cast<int>(b.height) - InfoBarHeight()));
     }
 
     int UltraCanvasFilerWidget::MaxScrollX() const {
@@ -1154,7 +1791,8 @@ namespace UltraCanvas {
         if (IsHorizontal()) {
             int maxX = MaxScrollX();
             if (maxX <= 0) return g;
-            int y = static_cast<int>(b.y + b.height) - kBarThickness - 2;
+            int y = static_cast<int>(b.y + b.height) - InfoBarHeight()
+                    - kBarThickness - 2;
             double frac = static_cast<double>(b.width) / std::max(1, contentWidth);
             int thumbW = std::max(kMinThumb, static_cast<int>(b.width * frac));
             int travel = std::max(0, static_cast<int>(b.width) - thumbW);
@@ -1165,13 +1803,14 @@ namespace UltraCanvas {
         } else {
             int maxY = MaxScrollY();
             if (maxY <= 0) return g;
+            int viewH = static_cast<int>(b.height) - InfoBarHeight();
             int x = static_cast<int>(b.x + b.width) - kBarThickness - 2;
-            double frac = static_cast<double>(b.height) / std::max(1, contentHeight);
-            int thumbH = std::max(kMinThumb, static_cast<int>(b.height * frac));
-            int travel = std::max(0, static_cast<int>(b.height) - thumbH);
+            double frac = static_cast<double>(viewH) / std::max(1, contentHeight);
+            int thumbH = std::max(kMinThumb, static_cast<int>(viewH * frac));
+            int travel = std::max(0, viewH - thumbH);
             int ty = static_cast<int>(b.y) + (maxY > 0 ? travel * scrollOffsetY / maxY : 0);
             g.active = true; g.horizontal = false; g.travel = travel; g.maxScroll = maxY;
-            g.track = Rect2Di(x, static_cast<int>(b.y), kBarThickness, static_cast<int>(b.height));
+            g.track = Rect2Di(x, static_cast<int>(b.y), kBarThickness, viewH);
             g.thumb = Rect2Di(x, ty, kBarThickness, thumbH);
         }
         return g;
@@ -1203,10 +1842,11 @@ namespace UltraCanvas {
                     scrollOffsetX = it.rect.x + it.rect.width - (int)b.width;
             } else {
                 int top = (viewType == FilerViewType::Details) ? detailsHeaderHeight : 0;
+                int viewH = static_cast<int>(b.height) - InfoBarHeight();
                 if (it.rect.y - scrollOffsetY < top)
                     scrollOffsetY = it.rect.y - top;
-                else if (it.rect.y + it.rect.height - scrollOffsetY > (int)b.height)
-                    scrollOffsetY = it.rect.y + it.rect.height - (int)b.height;
+                else if (it.rect.y + it.rect.height - scrollOffsetY > viewH)
+                    scrollOffsetY = it.rect.y + it.rect.height - viewH;
             }
             ClampScroll();
             break;
@@ -1232,11 +1872,13 @@ namespace UltraCanvas {
         if (viewType == FilerViewType::GourceTree) {
             DrawPlaceholderView(ctx, bounds,
                                 "Force-directed tree view (Gource) — to be implemented");
+            DrawSelectionInfoBar(ctx, bounds);
             ctx->PopState();
             return;
         }
         if (viewType == FilerViewType::View3D) {
             DrawPlaceholderView(ctx, bounds, "3D view — to be implemented");
+            DrawSelectionInfoBar(ctx, bounds);
             ctx->PopState();
             return;
         }
@@ -1249,6 +1891,7 @@ namespace UltraCanvas {
             ctx->SetFontStyle(fsty);
             ctx->DrawTextInRect(currentPath.empty() ? "(no folder)" : "(empty folder)",
                                 Rect2Dd(bounds));
+            DrawSelectionInfoBar(ctx, bounds);
             ctx->PopState();
             return;
         }
@@ -1293,6 +1936,7 @@ namespace UltraCanvas {
 
         if (viewType == FilerViewType::Details) DrawDetailsHeader(ctx, bounds);
         DrawScrollbar(ctx);
+        DrawSelectionInfoBar(ctx, bounds);
         ctx->PopState();
     }
 
@@ -1769,6 +2413,197 @@ namespace UltraCanvas {
         ctx->FillRoundedRectangle(Rect2Dd(g.thumb), 3);
     }
 
+    // ===== SELECTION INFO BAR =====
+    const UltraCanvasFilerWidget::FolderStats&
+    UltraCanvasFilerWidget::GetFolderStats(const std::string& path) const {
+        auto it = folderStatsCache.find(path);
+        if (it != folderStatsCache.end()) return it->second;
+
+        FolderStats st;
+        std::error_code ec;
+        if (fs::is_directory(path, ec)) {
+            uint64_t visited = 0;
+            for (fs::recursive_directory_iterator rit(
+                     path, fs::directory_options::skip_permission_denied, ec), end;
+                 rit != end; rit.increment(ec)) {
+                if (ec) break;
+                if (visited++ >= kDirSizeEntryCap) { st.capped = true; break; }
+                std::error_code fec;
+                if (rit->is_directory(fec)) {
+                    ++st.folders;
+                } else {
+                    ++st.files;
+                    uint64_t sz = rit->file_size(fec);
+                    if (!fec) st.bytes += sz;
+                }
+            }
+        }
+        return folderStatsCache.emplace(path, st).first->second;
+    }
+
+    std::string UltraCanvasFilerWidget::EntryExtraInfo(const FilerEntry& e) const {
+        if (e.isDirectory) return "";
+        auto it = mediaInfoCache.find(e.path);
+        if (it != mediaInfoCache.end()) return it->second;
+
+        std::string out;
+        if (e.category == FilerFileCategory::Image) {
+            int w = 0, h = 0;
+            if (!ProbeImageDimensions(e.path, w, h)) {
+                // Unknown container (AVIF, HEIC, ...): ask the shared image
+                // cache — the thumbnail views load these files anyway.
+                auto img = UCImage::Get(e.path);
+                if (img) { w = img->GetWidth(); h = img->GetHeight(); }
+            }
+            if (w > 0 && h > 0)
+                out = std::to_string(w) + " × " + std::to_string(h) + " px";
+        } else if (e.category == FilerFileCategory::Audio ||
+                   e.category == FilerFileCategory::Video) {
+            FilerMediaProbe probe;
+            if (ProbeMediaFile(e.path, e.extension, probe)) {
+                out = FormatDuration(probe.seconds);
+                if (!probe.codec.empty()) {
+                    if (!out.empty()) out += " · ";
+                    out += probe.codec;
+                }
+            }
+        }
+        mediaInfoCache.emplace(e.path, out);
+        return out;
+    }
+
+    void UltraCanvasFilerWidget::BuildSelectionInfoText(std::string& primary,
+                                                        std::string& secondary) const {
+        primary.clear();
+        secondary.clear();
+
+        auto addPart = [&secondary](const std::string& part) {
+            if (part.empty()) return;
+            if (!secondary.empty()) secondary += " · ";
+            secondary += part;
+        };
+        auto countsText = [](uint64_t files, uint64_t folders) {
+            std::string s;
+            if (files)
+                s += std::to_string(files) + (files == 1 ? " file" : " files");
+            if (folders) {
+                if (!s.empty()) s += ", ";
+                s += std::to_string(folders) + (folders == 1 ? " folder" : " folders");
+            }
+            return s;
+        };
+
+        std::vector<FilerEntry> sel = GetSelectedEntries();
+
+        if (sel.empty()) {
+            // Folder summary: entry counts + non-recursive size of its files.
+            uint64_t files = 0, folders = 0, bytes = 0;
+            for (const FilerEntry& e : entries) {
+                if (e.isDirectory) ++folders;
+                else { ++files; bytes += e.size; }
+            }
+            addPart(std::to_string(entries.size())
+                    + (entries.size() == 1 ? " item" : " items"));
+            if (files && folders) addPart(countsText(files, folders));
+            if (files) addPart(FormatSize(bytes));
+            return;
+        }
+
+        if (sel.size() == 1) {
+            const FilerEntry& e = sel.front();
+            primary = e.name;
+            addPart(e.typeName);
+            if (e.isDirectory) {
+                const FolderStats& st = GetFolderStats(e.path);
+                if (st.files || st.folders || st.bytes) {
+                    std::string prefix = st.capped ? "≥ " : "";
+                    addPart(prefix + countsText(st.files, st.folders));
+                    addPart(prefix + FormatSize(st.bytes));
+                }
+            } else {
+                addPart(FormatSize(e.size));
+            }
+            std::string extra = EntryExtraInfo(e);
+            if (extra.empty()) extra = e.info;   // provider / compression fallback
+            addPart(extra);
+            addPart(FormatTime(e.modifiedTime));
+            if (!e.attributes.empty()) addPart("[" + e.attributes + "]");
+            return;
+        }
+
+        // Multi selection: counts + summed sizes (folders counted recursively).
+        uint64_t files = 0, folders = 0, bytes = 0;
+        bool capped = false;
+        for (const FilerEntry& e : sel) {
+            if (e.isDirectory) {
+                ++folders;
+                const FolderStats& st = GetFolderStats(e.path);
+                bytes += st.bytes;
+                capped = capped || st.capped;
+            } else {
+                ++files;
+                bytes += e.size;
+            }
+        }
+        primary = std::to_string(sel.size()) + " items selected";
+        addPart(countsText(files, folders));
+        addPart(std::string(capped ? "≥ " : "") + FormatSize(bytes) + " total");
+    }
+
+    void UltraCanvasFilerWidget::DrawSelectionInfoBar(IRenderContext* ctx,
+                                                      const Rect2Di& bounds) {
+        int h = InfoBarHeight();
+        if (h <= 0 || bounds.height <= h) return;
+        Rect2Di bar(bounds.x, bounds.y + bounds.height - h, bounds.width, h);
+        ctx->SetFillPaint(style.infoBarBackground);
+        ctx->FillRectangle(Rect2Dd(bar));
+        ctx->SetStrokePaint(style.gridLineColor);
+        ctx->SetStrokeWidth(1.0f);
+        ctx->DrawLine(Point2Dd(bar.x, bar.y), Point2Dd(bar.x + bar.width, bar.y));
+
+        std::string primary, secondary;
+        BuildSelectionInfoText(primary, secondary);
+        if (primary.empty() && secondary.empty()) return;
+
+        FontStyle fsty;
+        fsty.fontFamily = style.fontFamily;
+        fsty.fontSize = style.fontSize;
+
+        int pad = 8;
+        int x = bar.x + pad;
+        int avail = bar.width - 2 * pad;
+        if (avail <= 0) return;
+
+        if (!primary.empty()) {
+            fsty.fontWeight = FontWeight::Bold;
+            ctx->SetFontStyle(fsty);
+            // Leave room for the details after a long name.
+            int nameMax = secondary.empty() ? avail : std::max(60, avail * 3 / 5);
+            std::string shown = EllipsizeText(ctx, primary, nameMax);
+            Size2Di ts = ctx->GetTextLineDimensions(shown);
+            ctx->SetTextPaint(style.infoBarTextColor);
+            ctx->DrawText(shown, Point2Dd(x, bar.y + (h - ts.height) / 2.0));
+            x += ts.width;
+            avail -= ts.width;
+        }
+        if (!secondary.empty() && avail > 12) {
+            std::string text = primary.empty() ? secondary : ("  ·  " + secondary);
+            fsty.fontWeight = FontWeight::Normal;
+            ctx->SetFontStyle(fsty);
+            std::string shown = EllipsizeText(ctx, text, avail);
+            Size2Di ts = ctx->GetTextLineDimensions(shown);
+            ctx->SetTextPaint(style.secondaryTextColor);
+            ctx->DrawText(shown, Point2Dd(x, bar.y + (h - ts.height) / 2.0));
+        }
+    }
+
+    bool UltraCanvasFilerWidget::IsInInfoBar(const Point2Di& localPoint) const {
+        int h = InfoBarHeight();
+        if (h <= 0) return false;
+        auto b = GetLocalBounds();
+        return localPoint.y >= static_cast<int>(b.y + b.height) - h;
+    }
+
     // ===== HIT TESTING =====
     Point2Di UltraCanvasFilerWidget::ToContentPoint(const Point2Di& localPoint) const {
         return Point2Di(localPoint.x + scrollOffsetX, localPoint.y + scrollOffsetY);
@@ -1937,6 +2772,9 @@ namespace UltraCanvas {
             displayItems.push_back(MenuItemData::Checkbox(
                     "Icon-Menu", hoverIconMenu,
                     [this](bool on) { SetHoverIconMenuEnabled(on); }));
+            displayItems.push_back(MenuItemData::Checkbox(
+                    "Info-Bar", showSelectionInfo,
+                    [this](bool on) { SetSelectionInfoVisible(on); }));
             menu.AddItem(MenuItemData::Submenu("Display", displayItems));
         }
         menu.AddItem(MenuItemData::Separator());
@@ -2105,7 +2943,7 @@ namespace UltraCanvas {
                     RequestRedraw();
                     return true;
                 }
-                int newHover = ItemAt(ToContentPoint(local));
+                int newHover = IsInInfoBar(local) ? -1 : ItemAt(ToContentPoint(local));
                 if (newHover != hoveredIndex) {
                     hoveredIndex = newHover;
                     RequestRedraw();
@@ -2137,6 +2975,9 @@ namespace UltraCanvas {
             case UCEventType::MouseDown: {
                 Point2Di local(event.pointer.x, event.pointer.y);
                 SetFocus(true);
+
+                // The info bar covers items scrolled behind it.
+                if (IsInInfoBar(local)) return true;
 
                 if (event.button == UCMouseButton::Right) {
                     if (renamingIndex >= 0) CommitRename();
@@ -2225,6 +3066,7 @@ namespace UltraCanvas {
             }
             case UCEventType::MouseDoubleClick: {
                 Point2Di local(event.pointer.x, event.pointer.y);
+                if (IsInInfoBar(local)) return true;
                 int index = ItemAt(ToContentPoint(local));
                 if (index >= 0) {
                     ActivateEntry(static_cast<size_t>(index));
