@@ -408,7 +408,8 @@ namespace UltraCanvas {
         void DrawPlaceholderView(IRenderContext* ctx, const Rect2Di& bounds,
                                  const std::string& message);
         void DrawEntryIcon(IRenderContext* ctx, const FilerEntry& e,
-                           const Rect2Di& rect);
+                           const Rect2Di& rect,
+                           ImageFitMode imageFit = ImageFitMode::Contain);
         void DrawSelectionState(IRenderContext* ctx, const ItemLayout& item, bool hovered);
         void DrawHoverIconMenu(IRenderContext* ctx, const ItemLayout& item);
         void DrawIconMenuGlyph(IRenderContext* ctx, IconMenuAction action,

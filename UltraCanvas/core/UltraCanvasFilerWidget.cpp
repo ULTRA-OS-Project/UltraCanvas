@@ -1984,7 +1984,8 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::DrawEntryIcon(IRenderContext* ctx, const FilerEntry& e,
-                                               const Rect2Di& rect) {
+                                               const Rect2Di& rect,
+                                               ImageFitMode imageFit) {
         if (rect.width <= 2 || rect.height <= 2) return;
 
         // Real image thumbnails (explicit thumbnail, else the bitmap itself).
@@ -1997,7 +1998,7 @@ namespace UltraCanvas {
         if (!thumb.empty()) {
             auto img = UCImage::Get(thumb);
             if (img && img->GetWidth() > 0 && img->GetHeight() > 0) {
-                ctx->DrawImage(*img, Rect2Dd(rect), ImageFitMode::Contain);
+                ctx->DrawImage(*img, Rect2Dd(rect), imageFit);
                 return;
             }
         }
@@ -2165,7 +2166,9 @@ namespace UltraCanvas {
         Rect2Di img(item.imageRect.x + inset, item.imageRect.y + inset,
                     item.imageRect.width - 2 * inset,
                     item.imageRect.height - 2 * inset);
-        DrawEntryIcon(ctx, e, img);
+        // ScaleDown keeps images smaller than the tile at their original
+        // size (centered) instead of blowing them up to fill it.
+        DrawEntryIcon(ctx, e, img, ImageFitMode::ScaleDown);
 
         FontStyle fsty;
         fsty.fontFamily = style.fontFamily;
