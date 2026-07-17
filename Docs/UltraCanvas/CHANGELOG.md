@@ -1,4 +1,9 @@
 #### 2026-07-12 *0.3.7*
+- Filer widget: in the thumbnail views (`ThumbnailsSmall`/`Medium`/`Big`/
+  `Maximized`) images smaller than the tile are no longer upscaled to fill
+  it — they are drawn at their original size, centered in the tile
+  (`ImageFitMode::ScaleDown`). Larger images still scale down to fit as
+  before, and the other views keep their `Contain` icon fitting.
 - `UltraCanvasTabbedContainer`: the overflow dropdown is now disabled for
   vertical tab layouts (`TabPosition::Left`/`Right`). It rendered a faulty
   display there and was not usable for vertical tabs, so
