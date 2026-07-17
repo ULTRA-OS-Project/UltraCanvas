@@ -92,6 +92,7 @@ their *License* is likewise marked **—** (OS component).
 | mujs | [mujs.com](https://mujs.com/) | [codeberg.org/ccxvii/mujs](https://codeberg.org/ccxvii/mujs) | [ISC](https://spdx.org/licenses/ISC.html) |
 | MuPDF | [mupdf.com](https://mupdf.com/) | [github.com/ArtifexSoftware/mupdf](https://github.com/ArtifexSoftware/mupdf) | [AGPL 3](https://spdx.org/licenses/AGPL-3.0-or-later.html) |
 | Network.framework | [developer.apple.com](https://developer.apple.com/documentation/network) | — | — |
+| nlohmann/json | [json.nlohmann.me](https://json.nlohmann.me/) | [github.com/nlohmann/json](https://github.com/nlohmann/json) | [MIT](https://spdx.org/licenses/MIT.html) |
 | OpenGL | [opengl.org](https://www.opengl.org/) | [github.com/KhronosGroup/OpenGL-Registry](https://github.com/KhronosGroup/OpenGL-Registry) | — |
 | OpenJPEG (openjp2) | [openjpeg.org](https://www.openjpeg.org/) | [github.com/uclouvain/openjpeg](https://github.com/uclouvain/openjpeg) | [BSD 2](https://spdx.org/licenses/BSD-2-Clause.html) |
 | OpenSSL | [openssl.org](https://www.openssl.org/) | [github.com/openssl/openssl](https://github.com/openssl/openssl) | [Apache 2](https://spdx.org/licenses/Apache-2.0.html) |
@@ -219,10 +220,15 @@ their *License* is likewise marked **—** (OS component).
 | Core protocols (HTTP/WS/FTP/TLS/DNS) | libcurl, OpenSSL | libcurl, OpenSSL | libcurl, OpenSSL |
 | Native sockets / platform glue | POSIX sockets (glibc) | BSD sockets, Network.framework | Winsock2 (ws2_32) |
 | Extra protocols (SMTP/MQTT/SSH/gRPC/…) | plugin-supplied (libs tracked separately) | plugin-supplied (libs tracked separately) | plugin-supplied (libs tracked separately) |
+| JMAP mail plug-in (RFC 8620/8621) | nlohmann/json (bundled) | nlohmann/json (bundled) | nlohmann/json (bundled) |
 
 > UltraNet's core (libcurl + OpenSSL) only covers the Tier-1 protocols; the
 > SMTP / IMAP / MQTT / SSH / gRPC / LDAP / RTSP / … protocols are provided by
 > plugins, whose backing libraries are tracked separately and not yet named.
+> The JMAP plug-in is the exception: it runs entirely over the UltraNet HTTP
+> core and needs only **nlohmann/json** ([json.nlohmann.me](https://json.nlohmann.me/),
+> [github.com/nlohmann/json](https://github.com/nlohmann/json), MIT), vendored
+> as a single header at `UltraCanvas/third_party/nlohmann/json.hpp`.
 
 ### VideoFX module
 

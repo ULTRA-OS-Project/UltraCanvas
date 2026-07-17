@@ -17,6 +17,7 @@ set(ULTRANET_TEST_SOURCES
     test_imap_plugin.cpp
     test_imap_mailbox.cpp
     test_pop3_plugin.cpp
+    test_jmap_plugin.cpp
     test_extra_plugins.cpp
     test_sse.cpp
     test_websocket.cpp
@@ -53,6 +54,12 @@ if(TARGET UltraNetPop3Plugin)
     add_dependencies(UltraNetTests UltraNetPop3Plugin)
     target_compile_definitions(UltraNetTests PRIVATE
         ULTRANET_POP3_PLUGIN_PATH_DEFINE="$<TARGET_FILE:UltraNetPop3Plugin>")
+endif()
+
+if(TARGET UltraNetJmapPlugin)
+    add_dependencies(UltraNetTests UltraNetJmapPlugin)
+    target_compile_definitions(UltraNetTests PRIVATE
+        ULTRANET_JMAP_PLUGIN_PATH_DEFINE="$<TARGET_FILE:UltraNetJmapPlugin>")
 endif()
 
 if(TARGET UltraNetWebDavPlugin)

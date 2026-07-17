@@ -1,6 +1,7 @@
 # JMAP Support in UltraNet — Investigation & Design
 
-**Status:** Investigation / design proposal
+**Status:** Phase 1 implemented (read path) — see `Plugins/UltraNet/jmap/`;
+phases 2–3 remain as designed below
 **Scope:** Add JMAP (JSON Meta Application Protocol, RFC 8620 core + RFC 8621 mail)
 as an UltraNet protocol plug-in, consumable by UltraMail alongside IMAP/SMTP.
 
@@ -180,12 +181,17 @@ the mail domain. A successful probe yields a `jmap://` account, marking the
 Verification targets: any Stalwart or Cyrus test instance, or a Fastmail
 account (Basic app-password auth) — phase 1 is exercisable read-only.
 
-## 6. Decisions to confirm before implementation
+## 6. Decisions
 
-1. **JSON dependency** — vendor nlohmann/json (§3.1 option A, recommended) vs
-   hand-rolled parser (option B).
-2. **Interface evolution** — ship phase 1 on the uid-mapping shim, or take the
-   `UltraNetMailEnvelope.id` extension immediately (it is additive and
-   source-compatible for existing plug-ins).
+1. **JSON dependency** — *decided & done:* nlohmann/json v3.12.0
+   ([json.nlohmann.me](https://json.nlohmann.me/),
+   [github.com/nlohmann/json](https://github.com/nlohmann/json), MIT) is
+   vendored at `UltraCanvas/third_party/nlohmann/json.hpp` and listed in
+   `Docs/Dependencies.md`, the demo app's dependencies table and
+   `THIRD_PARTY_LICENSES.md`.
+2. **Interface evolution** — phase 1 ships on the uid-mapping shim
+   (`JmapCore.h` `UidMap`); the `UltraNetMailEnvelope.id` extension remains a
+   phase 3 follow-up.
 3. Whether `SendMail` through JMAP should be preferred by UltraMail when an
-   account is JMAP-discovered (replacing the SMTP path for those accounts).
+   account is JMAP-discovered (replacing the SMTP path for those accounts) —
+   open until phase 2.
