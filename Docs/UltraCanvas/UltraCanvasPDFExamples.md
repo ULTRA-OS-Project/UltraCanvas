@@ -415,8 +415,24 @@ for (const PDFImageRef& img : doc->ListImages(1)) {
 doc->DeletePage(3);
 doc->MovePage(/*from*/ 5, /*to*/ 2);
 doc->InsertBlankPage(/*at*/ 1, /*widthPt*/ 595, /*heightPt*/ 842);   // A4
+
+// Merge pages 1..3 of another document so they land at position 4. `other`
+// may be a separately opened file: the engine bridges the two even when each
+// document owns its own MuPDF context (it serializes + re-grafts internally).
+auto other = OpenPDF("appendix.pdf");
 doc->MergeFrom(*other, /*srcStart*/ 1, /*srcEnd*/ 3, /*insertAt*/ 4);
 doc->Save("out.pdf");
+```
+
+From the widget, the same merge is one call — it opens the file, grafts the
+range, releases it, and navigates to the first merged page:
+
+```cpp
+pdfView->MergeFromFile("appendix.pdf", /*srcStart*/ 1, /*srcEnd*/ 3,
+                       /*insertAt*/ 4);
+pdfView->MergeFromFile("cover.pdf");            // whole file, appended at the end
+pdfView->MergeFromDocument(*other, 1, 0, 1);    // already-open doc, prepended
+pdfView->SaveAs("out.pdf");
 ```
 
 ### Content editing & annotations
@@ -436,7 +452,8 @@ doc->DeleteAnnotation(1, /*indexOnPage*/ 0);
 
 The same edits are reachable from the widget via `ReplaceTextAt`,
 `ApplyPendingRedactions`, `ListAnnotationsOnCurrentPage`, `DeleteAnnotation`,
-`DeleteCurrentPage`, `MovePage`, `InsertBlankPageAt`, and `SaveAs`.
+`DeleteCurrentPage`, `MovePage`, `InsertBlankPageAt`, `MergeFromFile`,
+`MergeFromDocument`, and `SaveAs`.
 
 ---
 

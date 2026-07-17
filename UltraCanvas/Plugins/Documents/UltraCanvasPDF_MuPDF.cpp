@@ -1,8 +1,8 @@
 // Plugins/Documents/UltraCanvasPDF_MuPDF.cpp
 // MuPDF-backed implementation of IPDFDocument.
 // Built when ULTRACANVAS_PLUGIN_PDF and ULTRACANVAS_PDF_MUPDF are both enabled.
-// Version: 1.2.0
-// Last Modified: 2026-06-19
+// Version: 1.3.0
+// Last Modified: 2026-07-15
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/UltraCanvasPDF.h"
@@ -860,6 +860,42 @@ bool MuPDFDocument::InsertBlankPage(int at, float widthPt, float heightPt) {
     return ok;
 }
 
+namespace {
+
+// Serialize an entire PDF document into an in-memory byte buffer, operating
+// in the document's *own* fz_context. Used by MergeFrom to bridge two
+// documents that live in different contexts, since pdf_graft_* cannot cross a
+// context boundary. Page indices are preserved by a full serialization, so a
+// range selected against the original document still maps 1:1 in the copy.
+bool SerializePdfDocument(fz_context* ctx, pdf_document* pdoc,
+                          std::vector<uint8_t>& out) {
+    if (!ctx || !pdoc) return false;
+    fz_buffer* buf  = nullptr;
+    fz_output* fout = nullptr;
+    bool ok = true;
+    fz_var(buf);
+    fz_var(fout);
+    fz_try(ctx) {
+        buf  = fz_new_buffer(ctx, 4096);
+        fout = fz_new_output_with_buffer(ctx, buf);
+        pdf_write_options wopts = pdf_default_write_options;
+        wopts.do_garbage = 1;   // drop orphans so the temporary doc stays compact
+        pdf_write_document(ctx, pdoc, fout, &wopts);
+        fz_close_output(ctx, fout);
+
+        unsigned char* data = nullptr;
+        size_t n = fz_buffer_storage(ctx, buf, &data);
+        out.assign(data, data + n);
+    } fz_catch(ctx) {
+        ok = false;
+    }
+    if (fout) fz_drop_output(ctx, fout);
+    if (buf)  fz_drop_buffer(ctx, buf);
+    return ok;
+}
+
+} // namespace
+
 bool MuPDFDocument::MergeFrom(IPDFDocument& other,
                               int srcStart, int srcEnd, int insertAt) {
     auto* src = dynamic_cast<MuPDFDocument*>(&other);
@@ -879,28 +915,65 @@ bool MuPDFDocument::MergeFrom(IPDFDocument& other,
     if (insertAt < 1) insertAt = 1;
     if (insertAt > dstTotal + 1) insertAt = dstTotal + 1;
 
+    // Fast path: both documents share a context — graft the pages directly.
+    if (src->ctx_ == ctx_) {
+        bool ok = true;
+        pdf_graft_map* gmap = nullptr;
+        fz_var(gmap);
+        fz_try(ctx_) {
+            gmap = pdf_new_graft_map(ctx_, pdoc_);
+            int dst = insertAt - 1;
+            for (int p = srcStart - 1; p <= srcEnd - 1; ++p) {
+                pdf_graft_mapped_page(ctx_, gmap, dst, src->pdoc_, p);
+                ++dst;
+            }
+        } fz_catch(ctx_) {
+            ok = false;
+        }
+        if (gmap) pdf_drop_graft_map(ctx_, gmap);
+        if (ok) dirty_ = true;
+        return ok;
+    }
+
+    // Cross-context path: pdf_graft_* requires a shared fz_context, but each
+    // MuPDFDocument owns a private context, so two independently-opened files
+    // land here. We serialize the source document to bytes in its own context,
+    // re-open that buffer as a temporary document in *this* document's context,
+    // then graft the requested range from the temporary into this document.
+    std::vector<uint8_t> bytes;
+    if (!SerializePdfDocument(src->ctx_, src->pdoc_, bytes) || bytes.empty()) {
+        return false;
+    }
+
     bool ok = true;
-    pdf_graft_map* gmap = nullptr;
+    fz_stream*     stream = nullptr;
+    fz_document*   tmpDoc = nullptr;
+    pdf_document*  tmpPdf = nullptr;
+    pdf_graft_map* gmap   = nullptr;
+    fz_var(stream);
+    fz_var(tmpDoc);
     fz_var(gmap);
     fz_try(ctx_) {
-        gmap = pdf_new_graft_map(ctx_, pdoc_);
-        // pdf_graft_page handles cross-context grafting only if both docs
-        // share a context; src and dst may have *different* fz_contexts.
-        // For v1 we require them to share a context. If not, we fall back
-        // to a slower copy-via-bytes path (TODO).
-        if (src->ctx_ != ctx_) {
-            fz_throw(ctx_, FZ_ERROR_GENERIC,
-                     "Cross-context PDF merge not supported in v1");
+        // `bytes` must outlive tmpDoc: fz_open_memory does not copy. The
+        // vector stays in scope until after the drops below.
+        stream = fz_open_memory(ctx_, bytes.data(), bytes.size());
+        tmpDoc = fz_open_document_with_stream(ctx_, "application/pdf", stream);
+        tmpPdf = pdf_specifics(ctx_, tmpDoc);
+        if (!tmpPdf) {
+            fz_throw(ctx_, FZ_ERROR_GENERIC, "serialized source is not a PDF");
         }
+        gmap = pdf_new_graft_map(ctx_, pdoc_);
         int dst = insertAt - 1;
         for (int p = srcStart - 1; p <= srcEnd - 1; ++p) {
-            pdf_graft_mapped_page(ctx_, gmap, dst, src->pdoc_, p);
+            pdf_graft_mapped_page(ctx_, gmap, dst, tmpPdf, p);
             ++dst;
         }
     } fz_catch(ctx_) {
         ok = false;
     }
-    if (gmap) pdf_drop_graft_map(ctx_, gmap);
+    if (gmap)   pdf_drop_graft_map(ctx_, gmap);
+    if (tmpDoc) fz_drop_document(ctx_, tmpDoc);
+    if (stream) fz_drop_stream(ctx_, stream);
     if (ok) dirty_ = true;
     return ok;
 }
