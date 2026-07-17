@@ -10,6 +10,7 @@
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasTextArea.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasEvent.h"
@@ -327,8 +328,15 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasContainer> iconContainer;
         std::shared_ptr<UltraCanvasLabel> iconLabel;
         std::shared_ptr<UltraCanvasContainer> messageContainer;
-        std::shared_ptr<UltraCanvasLabel> messageLabel;
-        std::shared_ptr<UltraCanvasLabel> detailsLabel;
+        // The message (and optional details) are rendered by a read-only,
+        // word-wrapping Markdown text area. It supplies its own vertical
+        // scrollbar when the text is taller than the (capped) dialog.
+        std::shared_ptr<UltraCanvasTextArea> messageArea;
+
+        // When true, ShowModal() grows/shrinks the dialog height to fit the
+        // message text (clamped to the monitor); beyond the cap the message
+        // area scrolls. Input/file dialogs disable this and keep a fixed size.
+        bool autoSizeHeight = true;
 
         // ===== FOOTER COMPONENTS =====
         std::vector<std::shared_ptr<UltraCanvasButton>> dialogButtons;
@@ -401,6 +409,13 @@ namespace UltraCanvas {
         Color GetTypeColor() const;
         std::string GetTypeIcon() const;
         void ApplyTypeDefaults();
+
+        // ===== AUTO-SIZING =====
+        // Combined Markdown source fed to the message area (message + details).
+        std::string ComposeMessageMarkdown() const;
+        // Grow/shrink the window height so the message fits, clamped to the
+        // monitor. Called from ShowModal() before the dialog is positioned.
+        void AutoSizeToContent();
 
         // ===== EVENT HELPERS =====
         void OnDialogButtonClick(DialogButton button);

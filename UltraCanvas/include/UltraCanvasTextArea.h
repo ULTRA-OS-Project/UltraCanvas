@@ -560,6 +560,15 @@ namespace UltraCanvas {
         void SetWordWrap(bool wrap);
         bool GetWordWrap() const { return wordWrap; }
 
+        // Lays the text out at the element's current width using its render
+        // context, then returns the total content height in pixels. Lets a
+        // parent size itself to fit the text (e.g. an auto-sizing dialog)
+        // before the first on-screen render. Requires the element to be
+        // attached to a window with a render context and to have a definite
+        // width already assigned by a layout pass; falls back to a line-count
+        // estimate when no render context is available yet.
+        float MeasureContentHeight();
+
         void SetHighlightCurrentLine(bool highlight) { highlightCurrentLine = highlight; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
         bool GetHighlightCurrentLine() const { return highlightCurrentLine; }
 
