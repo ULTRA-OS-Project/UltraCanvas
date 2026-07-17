@@ -550,6 +550,10 @@ namespace PixelFX {
                 unsigned char* raw = static_cast<unsigned char*>(work.write_to_memory(&bytes));
                 std::vector<unsigned char> pix(raw, raw + bytes);
                 g_free(raw);
+                // Guard against a short buffer (a partial/failed materialisation):
+                // every pixel access below indexes up to (H*W-1)*B + colourBands,
+                // so bail out with an empty selection rather than read out of bounds.
+                if (bytes < static_cast<size_t>(W) * H * B) return mask;
                 const unsigned char* seed = &pix[static_cast<size_t>(y * W + x) * B];
                 auto colourDist = [&](const unsigned char* a, const unsigned char* b) -> double {
                     int sum = 0;
@@ -617,16 +621,27 @@ namespace PixelFX {
                     px[c] = static_cast<unsigned char>(v < 0.0 ? 0.0 : (v > 255.0 ? 255.0 : v));
                 }
             }
-            image = PFXImage(vips::VImage::new_from_memory(
-                pix.data(), pix.size(), W, H, B, VIPS_FORMAT_UCHAR).copy_memory());
+            // new_from_memory_copy makes vips OWN a copy of the pixels. Plain
+            // new_from_memory only wraps the caller's buffer, and copy_memory()
+            // on an already-memory image just adds a reference — so the result
+            // would dangle onto this local `pix` vector once the function
+            // returns and be read (freed) later when the pipeline is evaluated.
+            image = PFXImage(vips::VImage::new_from_memory_copy(
+                pix.data(), pix.size(), W, H, B, VIPS_FORMAT_UCHAR));
         }
 
         PFXImage MagicWandMask(const PFXImage& image, int x, int y, double tolerance, FloodMatch match) {
             const int W = image.width();
             const int H = image.height();
             std::vector<unsigned char> mask = MagicWandBuffer(image, x, y, tolerance, match);
-            return PFXImage(vips::VImage::new_from_memory(
-                mask.data(), mask.size(), W, H, 1, VIPS_FORMAT_UCHAR).copy_memory());
+            // new_from_memory_copy so vips owns the mask pixels; plain
+            // new_from_memory + copy_memory() would leave the returned image
+            // pointing at this local `mask` buffer (copy_memory only refs an
+            // already-memory image), which is then read after free when the
+            // Ifthenelse pipeline is evaluated — a garbled mask on Linux and a
+            // worker-thread segfault on Windows.
+            return PFXImage(vips::VImage::new_from_memory_copy(
+                mask.data(), mask.size(), W, H, 1, VIPS_FORMAT_UCHAR));
         }
 
         void Circle(PFXImage& image, int cx, int cy, int radius, const std::vector<double>& ink, bool fill) {

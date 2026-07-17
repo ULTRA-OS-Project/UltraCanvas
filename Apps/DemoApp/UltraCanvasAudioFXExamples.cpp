@@ -741,6 +741,12 @@ namespace {
         sourceRow->layout.SetFlexRow().SetFlexGap(8)
                          .SetFlexAlignItems(CSSLayout::AlignItems::Center);
         sourceRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        // This is a fixed-height strip holding the sample dropdown and the upload
+        // button; its contents are meant to stay put. Disable scrollbars so a
+        // narrow column never spawns a (horizontal) scrollbar across the block.
+        ContainerStyle sourceRowStyle;
+        sourceRowStyle.autoShowScrollbars = false;
+        sourceRow->SetContainerStyle(sourceRowStyle);
         leftCol->AddChild(sourceRow);
 
         auto sourceLabel = std::make_shared<UltraCanvasLabel>("AudioFXSourceLabel", 0, 0, 92, 24);

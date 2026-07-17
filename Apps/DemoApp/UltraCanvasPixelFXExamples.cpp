@@ -570,6 +570,12 @@ namespace {
         sourceRow->layout.SetFlexRow().SetFlexGap(8)
                          .SetFlexAlignItems(CSSLayout::AlignItems::Center);
         sourceRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        // This is a fixed-height strip holding the sample dropdown and the upload
+        // button; its contents are meant to stay put. Disable scrollbars so a
+        // narrow column never spawns a (horizontal) scrollbar across the block.
+        ContainerStyle sourceRowStyle;
+        sourceRowStyle.autoShowScrollbars = false;
+        sourceRow->SetContainerStyle(sourceRowStyle);
         leftCol->AddChild(sourceRow);
 
         auto sourceLabel = std::make_shared<UltraCanvasLabel>("PixelFXSourceLabel", 0, 0, 96, 24);
@@ -698,13 +704,19 @@ namespace {
                     PixelFXImageView* iv = imageView.get();
                     win->InstallEventFilter("PixelFXFloodFillPick",
                         [iv, setPickWeak](const UCEvent& e) -> bool {
+                            // This filter lives on the window, which outlives the
+                            // PixelFX page. `setPick` is owned by the page, so once
+                            // the page (and `iv`) is destroyed the weak pointer
+                            // expires — bail out before touching the dangling `iv`.
+                            auto keepAlive = setPickWeak.lock();
+                            if (!keepAlive) return false;
                             if (!iv->pickArmed) return false;
                             bool esc   = e.type == UCEventType::KeyDown &&
                                          e.virtualKey == UCKeys::Escape;
                             bool right = e.type == UCEventType::MouseDown &&
                                          e.button == UCMouseButton::Right;
                             if (esc || right) {
-                                if (auto f = setPickWeak.lock()) (*f)(false);
+                                (*keepAlive)(false);
                                 return true;   // consume so no context menu / other action fires
                             }
                             return false;
@@ -824,6 +836,14 @@ namespace {
                 if (std::max(img.Width(), img.Height()) > kMaxProcessingSize) {
                     img = PixelFX::Resample::Thumbnail(img, kMaxProcessingSize);
                 }
+                // Materialise the source into a flat memory buffer. Effects such as
+                // Flood fill read the pixels back in an arbitrary (non top-to-bottom)
+                // order via write_to_memory; doing that straight off a lazy
+                // file-backed pipeline can trip libvips' "out of order read" guard,
+                // which on some builds aborts the process instead of throwing. A
+                // memory-resident source supports random access safely and also
+                // keeps the per-slider-tick reprocessing fast.
+                img = PixelFX::PFXImage(img.copy_memory());
                 state->original = img;
                 state->originalValid = true;
                 state->imagePath = path;
