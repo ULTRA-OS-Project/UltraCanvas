@@ -1863,21 +1863,25 @@ namespace UltraCanvas {
         auto& menu = *activePopupMenu;
 
         auto addAction = [&menu](const std::string& label, bool enabled,
-                                 std::function<void()> cb) {
-            MenuItemData item = MenuItemData::Action(label, std::move(cb));
+                                 std::function<void()> cb,
+                                 const std::string& shortcut = "") {
+            MenuItemData item = shortcut.empty()
+                    ? MenuItemData::Action(label, std::move(cb))
+                    : MenuItemData::ActionWithShortcut(label, shortcut,
+                                                       std::move(cb));
             item.enabled = enabled;
             menu.AddItem(item);
         };
 
-        addAction("Copy", hasSel, [this]() { CopySelection(); });
-        addAction("Cut", hasSel, [this]() { CutSelection(); });
-        addAction("Paste", ClipboardHasContent(), [this]() { Paste(); });
-        addAction("Delete", hasSel, [this]() { DeleteSelection(); });
-        addAction("Duplicate", hasSel, [this]() { DuplicateSelection(); });
+        addAction("Copy", hasSel, [this]() { CopySelection(); }, "Ctrl+C");
+        addAction("Cut", hasSel, [this]() { CutSelection(); }, "Ctrl+X");
+        addAction("Paste", ClipboardHasContent(), [this]() { Paste(); }, "Ctrl+V");
+        addAction("Delete", hasSel, [this]() { DeleteSelection(); }, "Del");
+        addAction("Duplicate", hasSel, [this]() { DuplicateSelection(); }, "Ctrl+D");
         {
             size_t renameIdx = singleSel ? selection.front() : 0;
             addAction("Rename", singleSel,
-                      [this, renameIdx]() { StartRename(renameIdx); });
+                      [this, renameIdx]() { StartRename(renameIdx); }, "F2");
         }
         menu.AddItem(MenuItemData::Separator());
 
@@ -1966,7 +1970,7 @@ namespace UltraCanvas {
 
         addAction("Print", static_cast<bool>(onPrint), [this]() {
             if (onPrint) onPrint(SelectionOrAll());
-        });
+        }, "Ctrl+P");
         menu.AddItem(MenuItemData::Separator());
 
         if (showOpenPathItem) {
@@ -2238,6 +2242,10 @@ namespace UltraCanvas {
                         case 'c': case 'C': CopySelection(); return true;
                         case 'x': case 'X': CutSelection(); return true;
                         case 'v': case 'V': Paste(); return true;
+                        case 'd': case 'D': DuplicateSelection(); return true;
+                        case 'p': case 'P':
+                            if (onPrint) onPrint(SelectionOrAll());
+                            return true;
                         default: break;
                     }
                     return false;

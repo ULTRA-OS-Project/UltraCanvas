@@ -114,9 +114,10 @@ when handled). A freshly created document goes straight into rename mode.
 
 Enter activates (folders / archives are entered, files fire `onFileActivated`),
 Delete deletes, F2 renames, Ctrl+A / Ctrl+C / Ctrl+X / Ctrl+V select all / copy /
-cut / paste, and the arrow keys move the selection (grid-aware in the thumbnail
-and list views). Click, Ctrl+click and Shift+click select single items, toggle,
-and ranges.
+cut / paste, Ctrl+D duplicates, Ctrl+P prints (when `onPrint` is set), and the
+arrow keys move the selection (grid-aware in the thumbnail and list views). The
+same shortcuts are shown next to their commands in the right-click context menu.
+Click, Ctrl+click and Shift+click select single items, toggle, and ranges.
 
 ## Directory scanning
 
