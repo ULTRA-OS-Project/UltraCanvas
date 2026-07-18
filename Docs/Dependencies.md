@@ -67,7 +67,7 @@ their *License* is likewise marked **—** (OS component).
 | ICU | [icu.unicode.org](https://icu.unicode.org/) | [github.com/unicode-org/icu](https://github.com/unicode-org/icu) | [Unicode](https://spdx.org/licenses/Unicode-3.0.html) |
 | ImageMagick | [imagemagick.org](https://imagemagick.org/) | [github.com/ImageMagick/ImageMagick](https://github.com/ImageMagick/ImageMagick) | [ImageMagick](https://spdx.org/licenses/ImageMagick.html) |
 | jbig2dec | [jbig2dec.com](https://jbig2dec.com/) | [github.com/ArtifexSoftware/jbig2dec](https://github.com/ArtifexSoftware/jbig2dec) | [AGPL 3](https://spdx.org/licenses/AGPL-3.0-or-later.html) |
-| jsoncpp | [open-source-parsers.github.io](https://open-source-parsers.github.io/jsoncpp-docs/doxygen/index.html) | [github.com/open-source-parsers/jsoncpp](https://github.com/open-source-parsers/jsoncpp) | [MIT](https://spdx.org/licenses/MIT.html) |
+| yyjson | [ibireme.github.io/yyjson](https://ibireme.github.io/yyjson/doc/doxygen/html/) | [github.com/ibireme/yyjson](https://github.com/ibireme/yyjson) | [MIT](https://spdx.org/licenses/MIT.html) |
 | KissFFT | [github.com/mborgerding/kissfft](https://github.com/mborgerding/kissfft) | [github.com/mborgerding/kissfft](https://github.com/mborgerding/kissfft) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | Latin Modern Math | [gust.org.pl](https://www.gust.org.pl/projects/e-foundry/lm-math) | — | [LPPL](https://spdx.org/licenses/LPPL-1.3c.html) |
 | LCMS2 (Little CMS) | [littlecms.com](https://www.littlecms.com/) | [github.com/mm2/Little-CMS](https://github.com/mm2/Little-CMS) | [MIT](https://spdx.org/licenses/MIT.html) |
@@ -145,6 +145,7 @@ their *License* is likewise marked **—** (OS component).
 | QR / barcode decoding | zbar (optional) | zbar (optional) | zbar (optional) |
 | QR code generation | qrcodegen (bundled) | qrcodegen (bundled) | qrcodegen (bundled) |
 | ZIP for ODS / XLSX I/O | miniz (bundled) | miniz (bundled) | miniz (bundled) |
+| JSON parsing (UltraCanvasJSON) | yyjson (bundled) | yyjson (bundled) | yyjson (bundled) |
 | FFT / spectrogram | KissFFT (bundled) | KissFFT (bundled) | KissFFT (bundled) |
 
 ---
@@ -169,7 +170,6 @@ their *License* is likewise marked **—** (OS component).
 
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
-| JSON parsing | jsoncpp | jsoncpp | jsoncpp |
 | App icon → .exe (build tool) | – (Windows only) | – (Windows only) | ImageMagick (`magick` CLI) |
 
 ---

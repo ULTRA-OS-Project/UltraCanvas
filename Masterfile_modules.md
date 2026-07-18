@@ -12,6 +12,29 @@ surface that downstream applications and plugins can depend on.
 UI widget framework — windows, controls, layout, rendering. Sources under
 `UltraCanvas/{include,core,libspecific,OS/<Platform>,Plugins}`.
 
+**DataFormats section** — framework-wide structured-data facilities under
+`UltraCanvas/{include,core}/DataFormats/`. These are core services (usable by
+core, plugins and applications alike; never implemented inside a file-type
+plugin). Public engines are always wrapped behind an UltraCanvas-owned API so
+the backing implementation can be replaced without affecting callers.
+
+- **UltraCanvasJSON** (`DataFormats/UltraCanvasJSON.h`) — general-purpose JSON
+  parsing and serialization, backed by the vendored yyjson engine
+  (`UltraCanvas/third_party/yyjson`, MIT). Public surface:
+  - `JSONValue` — value-semantic DOM (Null / Boolean / Number / String /
+    Array / Object; objects preserve insertion order); accessors
+    `GetBoolean/GetInteger/GetNumber/GetString` (fallback-based, never throw),
+    structure access `At/Find/Get/Contains/GetSize/operator[]`, mutation
+    `Append/Set/Remove`, builders `MakeArray/MakeObject`.
+  - `JSON::Parse`, `JSON::ParseFile` — strict RFC 8259 by default; opt-in
+    comments / trailing commas / Inf-NaN via `JSONParseOptions`; errors are
+    reported through `JSONParseResult` (message, byte position, line, column);
+    nesting depth is limited to defend against hostile input.
+  - `JSON::Serialize`, `JSON::SerializeToFile` — compact or pretty output via
+    `JSONSerializeOptions`; output is always strictly valid JSON.
+  - `JSON::EscapeString` and framework-type helpers
+    `FromColor/ToColor`, `FromPoint/ToPoint`, `FromRect/ToRect`.
+
 ### **2. UltraAI**
 
 Provider-agnostic AI capabilities (LLM, embeddings, STT, TTS, vision,

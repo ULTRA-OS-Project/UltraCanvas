@@ -94,7 +94,7 @@ UltraCanvas/
 -   **Graphics:** Cairo, OpenGL, Direct2D, Core Graphics
 -   **Text Rendering:** FreeType, Pango, HarfBuzz
 -   **Image Processing:** libvips
--   **Utilities:** glib-2.0, tinyxml2, jsoncpp, fmt
+-   **Utilities:** glib-2.0, tinyxml2, fmt (JSON support is built in via the vendored yyjson engine behind UltraCanvasJSON)
 
 ----------
 
@@ -107,10 +107,10 @@ Install the required dependencies for your platform:
 ```bash
 # Ubuntu/Debian
 sudo apt install build-essential cmake libcairo2-dev libpango1.0-dev \
-    libfreetype6-dev libvips-dev libjsoncpp-dev libharfbuzz-dev
+    libfreetype6-dev libvips-dev libharfbuzz-dev
 
 # macOS
-brew install cmake cairo pango freetype vips jsoncpp harfbuzz
+brew install cmake cairo pango freetype vips harfbuzz
 ```
 
 **Build**
