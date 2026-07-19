@@ -31,6 +31,7 @@ cheap and the whole look can be swapped by a single enum.
 - **Appearance** — background colour, item background, border + border colour, corner radius, drop shadow
 - **Selection + drag-to-reorder** in edit / admin modes
 - **Manual scrolling** — vertical for grid layouts, horizontal for the filmstrip
+- **Hover previews** — optional inline playback while a tile is hovered: a muted video preview on Video tiles (`videoHoverPreview`) and animated GIF / WebP playback on image tiles (`animationHoverPreview`)
 
 ## Header Include
 
@@ -162,6 +163,30 @@ nothing jumps when it starts or ends. Requires a real video backend
 stays. The engine behind it, `UltraCanvasVideoHoverPreview`
 (`include/UltraCanvasVideoHoverPreview.h`), is reusable by any widget that
 paints video covers.
+
+### Hover animation preview (GIF / animated WebP)
+
+Resting the cursor on a tile whose bitmap is an **animated image** (GIF,
+animated WebP) can play the animation in place of its static first frame — the
+same interaction as the video hover preview, sharing its dwell / duration /
+loop knobs. Opt in per album:
+
+```cpp
+cfg.animationHoverPreview   = true;   // off by default
+cfg.hoverPreviewDelayMs     = 400;    // shared: cursor dwell before playback
+cfg.hoverPreviewDurationSec = 5.0f;   // shared: preview length; 0 = while hovered
+cfg.hoverPreviewLoop        = false;  // shared: true overrides a finite file loop count
+```
+
+Frame timing comes from the file itself (per-frame delays stepped by
+`UCImageAnimationController`), still images are unaffected, and the full frame
+decode is deferred until the dwell delay elapses so a cursor merely crossing
+the grid never pays for it. The animation frame is fitted exactly like the
+thumbnail (`imageDisplay`, focus point, hover zoom) so nothing jumps when the
+preview starts or ends; when it ends (duration elapsed, finite loop count
+exhausted, or the cursor leaves) the static first frame returns. Unlike the
+video preview no extra backend is required — any build that decodes the image
+format can play it.
 
 ### Actions & modes
 

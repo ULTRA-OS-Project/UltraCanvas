@@ -2,8 +2,13 @@
 // Demonstration of UltraCanvasAlbum: layout designs, image-fit modes, action-icon
 // display options and visitor / user-edit / admin modes for a mixed photo / video
 // / music album.
-// Version: 2.15.1
-// Last Modified: 2026-07-15
+// Version: 2.16.0
+// Last Modified: 2026-07-19
+// V2.16.0: Hover animation preview enabled (AlbumConfig::animationHoverPreview)
+//   — resting the cursor on the "Charlie Chaplin run" GIF tile for ~0.4s plays
+//   the animation in place of its static first frame (same dwell / duration
+//   knobs as the video hover preview), reverting when it ends or the cursor
+//   leaves.
 // V2.15.1: Fixed a crash opening the Album demo — the first seed (Charlie
 //   Chaplin GIF) omits the link field, so it was value-initialized to nullptr
 //   and assigning it into AlbumItem::link (std::string) called strlen(nullptr).
@@ -428,8 +433,12 @@ namespace UltraCanvas {
         cfg.cornerRadius  = 6.0f;
         cfg.hoverZoom     = true;
         // Rest the cursor on a video tile for ~0.4s and a short muted preview
-        // of the clip plays in place of its poster frame, then reverts.
+        // of the clip plays in place of its poster frame, then reverts. The
+        // same dwell / duration applies to animated-image tiles (the Charlie
+        // Chaplin GIF): hovering plays the animation in place of its first
+        // frame.
         cfg.videoHoverPreview       = true;
+        cfg.animationHoverPreview   = true;
         cfg.hoverPreviewDurationSec = 6.0f;
         album->SetConfig(cfg);
 
