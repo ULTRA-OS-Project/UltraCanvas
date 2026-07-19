@@ -30,6 +30,23 @@ The engine is built in **Uni-math** mode with glyphs rendered as vector paths
 
 ---
 
+## nlohmann/json (JSON for Modern C++)
+
+- **Used by:** the UltraNet JMAP plug-in (`ULTRACANVAS_PLUGIN_JMAP`) and the
+  Documents plug-in's JSON handling.
+- **Website:** https://json.nlohmann.me/
+- **Upstream:** https://github.com/nlohmann/json (v3.12.0, single-header
+  release).
+- **Vendored at:** `UltraCanvas/third_party/nlohmann/json.hpp`
+- **License:** MIT License — Copyright (c) 2013–2025 Niels Lohmann.
+- **Full text:** embedded in the vendored header
+  (`SPDX-License-Identifier: MIT`).
+
+The header is vendored verbatim from the upstream v3.12.0 release with no
+local modifications.
+
+---
+
 ## Latin Modern Math (math font)
 
 - **Used by:** the LaTeX math plugin as the default OpenType math font, together

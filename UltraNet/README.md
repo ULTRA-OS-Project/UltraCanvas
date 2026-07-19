@@ -48,7 +48,7 @@ macOS, Windows, and ULTRA OS native.
 
 ### Plugin-supplied (Tier 2/3)
 
-`SMTP`, `IMAP`, `POP3`, `MQTT`, `gRPC`, `WebDAV`, `mDNS`, `SSH`,
+`SMTP`, `IMAP`, `POP3`, `JMAP`, `MQTT`, `gRPC`, `WebDAV`, `mDNS`, `SSH`,
 `Telnet`, `LDAP`, `RTSP`, `RTMP`, `RTP`, `SIP`, `CoAP`, `MQTT-SN`,
 `SNMP`. Each is added through the
 `I<Category>ProtocolPlugin` interface in

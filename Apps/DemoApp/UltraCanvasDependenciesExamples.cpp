@@ -21,8 +21,8 @@
 // UltraCanvas itself, not pulled in as third-party libraries.
 //
 // "(bundled)" = vendored in-tree, "(optional)" = built only when present.
-// Version: 5.2.0
-// Last Modified: 2026-07-11
+// Version: 5.3.0
+// Last Modified: 2026-07-17
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -171,6 +171,7 @@ namespace UltraCanvas {
         // --- UltraNet ---
         {"libcurl",           "https://curl.se/libcurl/",                                          "https://github.com/curl/curl",                                  "curl"},
         {"OpenSSL",           "https://www.openssl.org/",                                          "https://github.com/openssl/openssl",                            "Apache 2"},
+        {"nlohmann/json",     "https://json.nlohmann.me/",                                         "https://github.com/nlohmann/json",                              "MIT"},
         {"Winsock2",          "https://learn.microsoft.com/en-us/windows/win32/winsock/windows-sockets-start-page-2", "",                                          ""},
         {"Network.framework", "https://developer.apple.com/documentation/network",                 "",                                                              ""},
         // --- VirtualFS ---
@@ -636,6 +637,7 @@ namespace UltraCanvas {
         dep("Core protocols (HTTP/WS/FTP/TLS/DNS)", "libcurl (curl)\nOpenSSL (Apache 2)", "libcurl (curl)\nOpenSSL (Apache 2)", "libcurl (curl)\nOpenSSL (Apache 2)");
         dep("Native sockets / platform glue", "POSIX sockets (glibc)", "BSD sockets\nNetwork.framework", "Winsock2 (ws2_32)");
         dep("Extra protocols (SMTP/MQTT/SSH/gRPC/…)", "plugin-supplied\n(libs tracked separately)", "plugin-supplied\n(libs tracked separately)", "plugin-supplied\n(libs tracked separately)");
+        dep("JMAP mail plug-in (RFC 8620/8621)", "nlohmann/json (MIT) (bundled)", "nlohmann/json (MIT) (bundled)", "nlohmann/json (MIT) (bundled)");
 
         header("VideoFX module");
         dep("Video effects / transcode", "FFmpeg (LGPL 2.1)", "FFmpeg (LGPL 2.1)", "FFmpeg (LGPL 2.1)");

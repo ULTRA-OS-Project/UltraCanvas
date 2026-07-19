@@ -63,6 +63,7 @@ option(ULTRACANVAS_ENABLE_NET "Build the UltraNet networking library" ON)
 option(ULTRACANVAS_PLUGIN_SMTP   "Build the UltraNet SMTP plug-in"   ON)
 option(ULTRACANVAS_PLUGIN_IMAP   "Build the UltraNet IMAP plug-in"   ON)
 option(ULTRACANVAS_PLUGIN_POP3   "Build the UltraNet POP3 plug-in"   ON)
+option(ULTRACANVAS_PLUGIN_JMAP   "Build the UltraNet JMAP plug-in (JSON mail over the HTTP core)" ON)
 option(ULTRACANVAS_PLUGIN_WEBDAV "Build the UltraNet WebDAV plug-in" ON)
 option(ULTRACANVAS_PLUGIN_LDAP   "Build the UltraNet LDAP plug-in"   ON)
 option(ULTRACANVAS_PLUGIN_TELNET "Build the UltraNet Telnet plug-in" ON)
@@ -663,6 +664,8 @@ target_include_directories(${ULTRACANVAS_LIB_NAME}
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Plugins>
+        # vendored header-only libs (<nlohmann/json.hpp> for Documents / JMAP)
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party>
         $<INSTALL_INTERFACE:include/ultracanvas>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/core
@@ -1072,6 +1075,8 @@ if(ULTRACANVAS_ENABLE_NET)
     target_include_directories(UltraNet
         PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            # vendored header-only libs (nlohmann/json for the JMAP plug-in & tests)
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party>
             $<INSTALL_INTERFACE:include/ultracanvas>)
     target_link_libraries(UltraNet PUBLIC ${UC_CURL_LINK} Threads::Threads)
     if(ULTRANET_HAS_CARES)
@@ -1148,6 +1153,10 @@ if(ULTRACANVAS_ENABLE_NET)
     if(ULTRACANVAS_PLUGIN_POP3)
         add_subdirectory(Plugins/UltraNet/pop3)
         message(STATUS "  [✓] UltraNet POP3 plug-in - ENABLED")
+    endif()
+    if(ULTRACANVAS_PLUGIN_JMAP)
+        add_subdirectory(Plugins/UltraNet/jmap)
+        message(STATUS "  [✓] UltraNet JMAP plug-in - ENABLED")
     endif()
 
     # Quick-win plug-ins: all libcurl-native, single-method-ish, same
