@@ -101,6 +101,10 @@ namespace UltraCanvas {
         float cornerRadius = 3.0f;
 
         bool useIconAsMask = false;
+        // Explicit tint applied when the icon is drawn as a mask. Transparent
+        // (the default) means "follow the current text color" so the icon tracks
+        // the button state; set an opaque color to override that.
+        Color iconMaskColor = Colors::Transparent;
 
         // Optional vertical background gradient, drawn over the state background
         // (top = stop position 0.0, bottom = stop position 1.0). Used for state

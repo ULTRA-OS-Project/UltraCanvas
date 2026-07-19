@@ -1,3 +1,7 @@
+#### 2026-07-17 *0.3.8*
+- Fix missing method implementation SetIconMaskColor() in the Button
+- Fix crash in the PixelFX FloodFill demo
+
 #### 2026-07-12 *0.3.7*
 - Filer widget: in the thumbnail views (`ThumbnailsSmall`/`Medium`/`Big`/
   `Maximized`) images smaller than the tile are no longer upscaled to fill

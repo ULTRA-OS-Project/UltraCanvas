@@ -1,7 +1,7 @@
 // core/UltraCanvasButton.cpp
 // Interactive button component implementation with secondary icon support
-// Version: 2.5.1
-// Last Modified: 2026-06-03
+// Version: 2.5.2
+// Last Modified: 2026-07-17
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasButton.h"
@@ -128,7 +128,15 @@ namespace UltraCanvas {
         style.useIconAsMask = useAsMask;
         RequestRedraw();
     }
-    
+
+    void UltraCanvasButton::SetIconMaskColor(const Color& c) {
+        style.iconMaskColor = c;
+        // Specifying a mask tint only makes sense when the icon is drawn as a
+        // mask, so enable that mode as a convenience.
+        style.useIconAsMask = true;
+        RequestRedraw();
+    }
+
 // ===== STYLING METHODS =====
     void UltraCanvasButton::SetColors(const Color& normal, const Color& hover,
                                       const Color& pressed, const Color& disabled) {
@@ -634,19 +642,23 @@ namespace UltraCanvas {
         Color bgColor, textColor;
         GetCurrentColors(bgColor, textColor);
 
+        // Tint the mask with the explicit mask color if one was set; otherwise
+        // follow the text color so the icon tracks the button state.
+        Color maskColor = (style.iconMaskColor.a != 0) ? style.iconMaskColor : textColor;
+
         // Dim icon when disabled
         if (GetPrimaryState() == ElementState::Disabled) {
             ctx->PushState();
             ctx->SetAlpha(0.35f);
             if (style.useIconAsMask) {
-                ctx->DrawMask(textColor, *icon.get(), iconRect, ImageFitMode::Contain);
+                ctx->DrawMask(maskColor, *icon.get(), iconRect, ImageFitMode::Contain);
             } else {
                 ctx->DrawImage(*icon.get(), iconRect, ImageFitMode::Contain);
             }
             ctx->PopState();
         } else {
             if (style.useIconAsMask) {
-                ctx->DrawMask(textColor, *icon.get(), iconRect, ImageFitMode::Contain);
+                ctx->DrawMask(maskColor, *icon.get(), iconRect, ImageFitMode::Contain);
             } else {
                 ctx->DrawImage(*icon.get(), iconRect, ImageFitMode::Contain);
             }
