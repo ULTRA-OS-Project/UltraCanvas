@@ -1,3 +1,13 @@
+#### 2026-07-19 *0.3.9*
+- Fix GIF export failing with `VipsOperation: class "gifsave" not found` on
+  builds whose libvips lacks cgif (the MSYS2/Windows package is built with
+  `-Dcgif=disabled`). `UCImageRaster::Save` and PixelFX `SaveGif` now probe
+  for the native `gifsave` operation and fall back to the ImageMagick bridge
+  (`magicksave` with `format=gif`), which the Windows package already ships.
+- Image export errors no longer include stale libvips messages from earlier
+  operations (e.g. recoverable HEIF "bad seek" noise appearing inside a GIF
+  save failure): the libvips error buffer is cleared before each save.
+
 #### 2026-07-17 *0.3.8*
 - Fix missing method implementation SetIconMaskColor() in the Button
 - Fix crash in the PixelFX FloodFill demo

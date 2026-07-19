@@ -631,6 +631,11 @@ namespace UltraCanvas {
 
 #ifdef HAS_LIBVIPS
     std::string UCImageRaster::Save(const std::string &imagePath, const UCImageSave::ImageExportOptions& opts) {
+        // libvips appends errors to a process-wide buffer and VError::what()
+        // returns the whole buffer. Drop leftovers from earlier operations
+        // (e.g. recoverable "bad seek" noise from a previous HEIF decode) so
+        // a failure here reports only its own cause.
+        vips_error_clear();
         vips::VImage vImg;
         try {
             vImg = GetVImage();
@@ -642,6 +647,7 @@ namespace UltraCanvas {
     }
 
     std::string ExportVImage(vips::VImage vImg, const std::string &imagePath, const UCImageSave::ImageExportOptions& opts) {
+        vips_error_clear();   // see UCImageRaster::Save — keep error reports scoped to this export
         // Handle resize if target dimensions specified
         if (!opts.preserveTransparency && vImg.bands() > 3) {
             vImg = vImg.extract_band(0, vips::VImage::option()->set("n", 3));
@@ -667,10 +673,24 @@ namespace UltraCanvas {
             switch (opts.format) {
                 case UCImageSaveFormat::GIF:
                     bitDepth = std::min(8, ColorDepthToBitDepth(opts.gif.colorDepth));
-                    vImg.gifsave(imagePath.c_str(), vips::VImage::option()
-                            ->set("bitdepth", bitDepth)
-                            ->set("interlace", opts.gif.interlace)
-                            ->set("dither", opts.gif.dithering ? 1.0 : 0.0));
+                    if (vips_type_find("VipsOperation", "gifsave") != 0) {
+                        vImg.gifsave(imagePath.c_str(), vips::VImage::option()
+                                ->set("bitdepth", bitDepth)
+                                ->set("interlace", opts.gif.interlace)
+                                ->set("dither", opts.gif.dithering ? 1.0 : 0.0));
+                    } else if (vips_type_find("VipsOperation", "magicksave") != 0) {
+                        // Some libvips builds ship without cgif (MSYS2 passes
+                        // -Dcgif=disabled), so the native gifsave operation
+                        // does not exist. ImageMagick's GIF coder quantizes to
+                        // <=256 colours itself; interlace/dither have no
+                        // magicksave equivalent, so only bitdepth carries over.
+                        vImg.magicksave(imagePath.c_str(), vips::VImage::option()
+                                ->set("format", "gif")
+                                ->set("bitdepth", bitDepth));
+                    } else {
+                        return "GIF export is not supported by this libvips build "
+                               "(neither gifsave nor magicksave is available)";
+                    }
                     break;
 
                 case UCImageSaveFormat::PNG: {
