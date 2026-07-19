@@ -8,9 +8,12 @@
 // A selection info bar under the folder display describes the selection (type,
 // size, dates, attributes, image dimensions, media duration / codec, folder
 // content counts, multi-selection totals).
-// Self-rendered like UltraCanvasAlbum so large folders stay cheap.
-// Version: 1.1.0
-// Last Modified: 2026-07-16
+// Self-rendered like UltraCanvasAlbum so large folders stay cheap. Image
+// thumbnails are decoded asynchronously on worker threads: the folder page
+// renders immediately with placeholder glyphs and tiles fill in as decodes
+// complete.
+// Version: 1.2.0
+// Last Modified: 2026-07-19
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -18,12 +21,19 @@
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
+#include <atomic>
+#include <condition_variable>
 #include <cstdint>
 #include <ctime>
+#include <deque>
 #include <functional>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace UltraCanvas {
@@ -343,6 +353,60 @@ namespace UltraCanvas {
         // Inline rename editor.
         int renamingIndex = -1;
         std::string renameBuffer;
+
+        // ===== ASYNC THUMBNAILS =====
+        // Decoding an image for a tile is expensive (full decode + resize).
+        // Done inside Render() it blocks the frame until every visible
+        // thumbnail is ready, so opening a folder full of photos froze the
+        // window. Instead the draw path only consumes pixmaps that finished
+        // decoding; missing ones are queued here, decoded by background
+        // worker threads, and every finished pixmap posts one (coalesced)
+        // redraw so tiles fill in as they become available.
+        enum class ThumbState { Pending, Ready, Failed };
+        struct ThumbSlot {
+            ThumbState state = ThumbState::Pending;
+            std::shared_ptr<UCPixmap> pixmap;   // set when state == Ready
+            size_t bytes = 0;
+        };
+        struct ThumbRequest {
+            std::string path;
+            int w = 0, h = 0;
+            ImageFitMode fit = ImageFitMode::Contain;
+            float scale = 1.0f;
+            uint64_t generation = 0;
+        };
+        std::unordered_map<std::string, ThumbSlot> thumbSlots;  // by ThumbSlotKey
+        std::deque<ThumbRequest> thumbQueue;
+        // One decode per file at a time: UCImageRaster instances are shared
+        // via the global image cache and are not safe against two threads
+        // rasterizing the same instance concurrently.
+        std::unordered_set<std::string> thumbPathsInFlight;
+        std::mutex thumbMutex;                  // guards slots/queue/generation
+        std::condition_variable thumbCond;
+        std::vector<std::thread> thumbWorkers;
+        bool thumbShutdown = false;
+        uint64_t thumbGeneration = 0;           // bumped to drop stale results
+        size_t thumbBytes = 0;                  // decoded pixmap bytes held
+        std::atomic<bool> thumbRedrawPosted{false};
+        // Destructor flips this so a queued PostToUIThread redraw task that
+        // outlives the widget becomes a no-op instead of a dangling call.
+        std::shared_ptr<std::atomic<bool>> thumbAlive =
+                std::make_shared<std::atomic<bool>>(true);
+
+        // Returns the decoded pixmap, or null (draw the placeholder) after
+        // queueing a background decode / while one is running / when the
+        // file cannot be decoded.
+        std::shared_ptr<UCPixmap> AcquireThumbnail(const std::string& path,
+                                                   int w, int h,
+                                                   ImageFitMode fit,
+                                                   float scale);
+        void StartThumbnailWorkersLocked();
+        void StopThumbnailWorkers();
+        void ThumbnailWorkerMain();
+        void DropThumbnailCache();              // on rescan / view change
+        void PostThumbnailRedraw();
+        static std::string ThumbSlotKey(const std::string& path, int w, int h,
+                                        ImageFitMode fit, float scale);
 
         // Selection info bar caches, computed on demand and cleared on rescan.
         struct FolderStats {

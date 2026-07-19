@@ -1,3 +1,17 @@
+#### 2026-07-19 *0.3.9*
+- Filer widget: thumbnails are now loaded **asynchronously**. Opening a folder
+  renders its content immediately (names, layout, info bar) with the generic
+  category glyph in each tile; the real image thumbnails are decoded on
+  background worker threads and fill in as they become ready, each batch
+  posting one coalesced redraw via `PostToUIThread`. Previously the first
+  frame of a folder blocked until every visible thumbnail was fully decoded
+  on the UI thread, which froze the window for seconds on photo folders —
+  in all views (the details/list icon column decoded images too). Decoded
+  pixmaps land in the shared image/pixmap caches (so other consumers get
+  cache hits), the widget's own bookkeeping is bounded by a 96 MB budget,
+  decodes of the same file are serialized, and pending work is dropped on
+  folder change / view change / widget destruction.
+
 #### 2026-07-17 *0.3.8*
 - Fix missing method implementation SetIconMaskColor() in the Button
 - Fix crash in the PixelFX FloodFill demo

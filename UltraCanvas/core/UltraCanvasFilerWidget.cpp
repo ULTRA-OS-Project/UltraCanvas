@@ -3,9 +3,11 @@
 // (details, list, thumbnails, size bars, treemap), sorting, an inline rename
 // editor, a hover icon menu, the full file context menu and a selection info
 // bar (type / size / dates / attributes, image dimensions, media duration and
-// codec via lightweight header probes, recursive folder stats).
-// Version: 1.1.0
-// Last Modified: 2026-07-16
+// codec via lightweight header probes, recursive folder stats). Image
+// thumbnails decode asynchronously (see ASYNC THUMBNAILS) so the folder page
+// never waits for image files.
+// Version: 1.2.0
+// Last Modified: 2026-07-19
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -916,7 +918,10 @@ namespace UltraCanvas {
         };
     }
 
-    UltraCanvasFilerWidget::~UltraCanvasFilerWidget() = default;
+    UltraCanvasFilerWidget::~UltraCanvasFilerWidget() {
+        thumbAlive->store(false);   // neutralize queued cross-thread redraws
+        StopThumbnailWorkers();
+    }
 
     // ===== FOLDER =====
     void UltraCanvasFilerWidget::SetPath(const std::string& folderPath) {
@@ -962,6 +967,7 @@ namespace UltraCanvas {
         lastClickedIndex = -1;
         folderStatsCache.clear();   // files may have changed on disk
         mediaInfoCache.clear();
+        DropThumbnailCache();
 
         std::error_code ec;
         bool isRealDir = !currentPath.empty() && fs::is_directory(currentPath, ec);
@@ -1107,6 +1113,7 @@ namespace UltraCanvas {
         viewType = type;
         scrollOffsetX = scrollOffsetY = 0;
         CancelRename();
+        DropThumbnailCache();   // tile size changed; free the old-size pixmaps
         InvalidateFilerLayout();
         RequestRedraw();
         if (onViewTypeChanged) onViewTypeChanged(viewType);
@@ -1983,12 +1990,174 @@ namespace UltraCanvas {
         }
     }
 
+    // ===== ASYNC THUMBNAILS =====
+    // The decode results are held per (path, size, fit, scale) so the same
+    // file can appear at several sizes (details icon vs. thumbnail tile).
+    std::string UltraCanvasFilerWidget::ThumbSlotKey(const std::string& path,
+                                                     int w, int h,
+                                                     ImageFitMode fit,
+                                                     float scale) {
+        return path + '|' + std::to_string(w) + 'x' + std::to_string(h)
+             + '|' + std::to_string(static_cast<int>(fit))
+             + '|' + std::to_string(static_cast<int>(scale * 100.0f));
+    }
+
+    std::shared_ptr<UCPixmap> UltraCanvasFilerWidget::AcquireThumbnail(
+            const std::string& path, int w, int h,
+            ImageFitMode fit, float scale) {
+        if (w <= 0 || h <= 0 || path.empty()) return nullptr;
+        const std::string key = ThumbSlotKey(path, w, h, fit, scale);
+
+        std::lock_guard<std::mutex> lk(thumbMutex);
+        auto it = thumbSlots.find(key);
+        if (it != thumbSlots.end()) {
+            if (it->second.state == ThumbState::Ready) return it->second.pixmap;
+            return nullptr;   // still decoding, or undecodable — placeholder
+        }
+        thumbSlots.emplace(key, ThumbSlot{});
+        thumbQueue.push_back(ThumbRequest{path, w, h, fit, scale, thumbGeneration});
+        StartThumbnailWorkersLocked();
+        thumbCond.notify_one();
+        return nullptr;
+    }
+
+    void UltraCanvasFilerWidget::StartThumbnailWorkersLocked() {
+        if (!thumbWorkers.empty() || thumbShutdown) return;
+        unsigned hw = std::thread::hardware_concurrency();
+        unsigned count = std::min(4u, std::max(1u, hw / 2));
+        thumbWorkers.reserve(count);
+        for (unsigned i = 0; i < count; ++i) {
+            thumbWorkers.emplace_back([this]() { ThumbnailWorkerMain(); });
+        }
+    }
+
+    void UltraCanvasFilerWidget::StopThumbnailWorkers() {
+        {
+            std::lock_guard<std::mutex> lk(thumbMutex);
+            thumbShutdown = true;
+            thumbQueue.clear();
+        }
+        thumbCond.notify_all();
+        for (std::thread& t : thumbWorkers) {
+            if (t.joinable()) t.join();
+        }
+        thumbWorkers.clear();
+    }
+
+    void UltraCanvasFilerWidget::DropThumbnailCache() {
+        std::lock_guard<std::mutex> lk(thumbMutex);
+        ++thumbGeneration;   // results of in-flight decodes are discarded
+        thumbQueue.clear();
+        thumbSlots.clear();
+        thumbBytes = 0;
+    }
+
+    void UltraCanvasFilerWidget::ThumbnailWorkerMain() {
+        // Keeps the retained pixmap bytes bounded: browsing a huge folder in a
+        // big tile size cannot grow without limit. On overflow the finished
+        // slots are simply dropped — anything still visible is re-queued by
+        // the next draw and comes straight back from the shared pixmap cache.
+        constexpr size_t kThumbBudgetBytes = 96 * 1024 * 1024;
+
+        for (;;) {
+            ThumbRequest req;
+            {
+                std::unique_lock<std::mutex> lk(thumbMutex);
+                for (;;) {
+                    if (thumbShutdown) return;
+                    // Pick the oldest request whose file no other worker is
+                    // on right now (same file at two sizes must serialize).
+                    auto qit = std::find_if(
+                            thumbQueue.begin(), thumbQueue.end(),
+                            [this](const ThumbRequest& r) {
+                                return thumbPathsInFlight.count(r.path) == 0;
+                            });
+                    if (qit != thumbQueue.end()) {
+                        req = std::move(*qit);
+                        thumbQueue.erase(qit);
+                        thumbPathsInFlight.insert(req.path);
+                        break;
+                    }
+                    thumbCond.wait(lk);
+                }
+            }
+
+            // The expensive part — outside the lock. UCImage::Get and
+            // GetPixmap populate the shared mutex-guarded caches, so later
+            // synchronous users (e.g. the media viewer) get free cache hits.
+            std::shared_ptr<UCPixmap> pm;
+            auto img = UCImage::Get(req.path);
+            if (img && img->GetWidth() > 0 && img->GetHeight() > 0) {
+                pm = img->GetPixmap(req.w, req.h, req.fit, req.scale);
+            }
+
+            bool report = false;
+            {
+                std::lock_guard<std::mutex> lk(thumbMutex);
+                thumbPathsInFlight.erase(req.path);
+                if (thumbShutdown) return;
+                if (req.generation == thumbGeneration) {
+                    const std::string key = ThumbSlotKey(req.path, req.w, req.h,
+                                                         req.fit, req.scale);
+                    ThumbSlot& slot = thumbSlots[key];
+                    if (pm) {
+                        slot.state = ThumbState::Ready;
+                        slot.pixmap = pm;
+                        slot.bytes = static_cast<size_t>(pm->GetRawWidth())
+                                   * static_cast<size_t>(pm->GetRawHeight()) * 4;
+                        thumbBytes += slot.bytes;
+                        if (thumbBytes > kThumbBudgetBytes) {
+                            for (auto sit = thumbSlots.begin();
+                                 sit != thumbSlots.end();) {
+                                if (sit->first != key &&
+                                    sit->second.state == ThumbState::Ready) {
+                                    sit = thumbSlots.erase(sit);
+                                } else {
+                                    ++sit;
+                                }
+                            }
+                            thumbBytes = slot.bytes;
+                        }
+                    } else {
+                        slot.state = ThumbState::Failed;   // don't retry-loop
+                        slot.pixmap = nullptr;
+                    }
+                    report = true;
+                }
+            }
+            // A sibling worker may be parked on a queued request for the
+            // path just released.
+            thumbCond.notify_all();
+            if (report) PostThumbnailRedraw();
+        }
+    }
+
+    void UltraCanvasFilerWidget::PostThumbnailRedraw() {
+        // Coalesced: one queued UI task repaints however many thumbnails
+        // finished before it ran.
+        if (thumbRedrawPosted.exchange(true)) return;
+        UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app) {
+            thumbRedrawPosted.store(false);
+            return;
+        }
+        auto alive = thumbAlive;
+        app->PostToUIThread([this, alive]() {
+            if (!alive->load()) return;   // widget destroyed meanwhile
+            thumbRedrawPosted.store(false);
+            RequestRedraw();
+        });
+    }
+
     void UltraCanvasFilerWidget::DrawEntryIcon(IRenderContext* ctx, const FilerEntry& e,
                                                const Rect2Di& rect,
                                                ImageFitMode imageFit) {
         if (rect.width <= 2 || rect.height <= 2) return;
 
         // Real image thumbnails (explicit thumbnail, else the bitmap itself).
+        // Never decoded here: the frame must not wait for image files, so the
+        // pixmap is fetched from the async loader and the tile shows the
+        // generic glyph until its decode lands (which then repaints us).
         std::string thumb = e.thumbnailPath;
         if (thumb.empty() &&
             (e.category == FilerFileCategory::Image ||
@@ -1996,9 +2165,10 @@ namespace UltraCanvas {
             thumb = e.path;
         }
         if (!thumb.empty()) {
-            auto img = UCImage::Get(thumb);
-            if (img && img->GetWidth() > 0 && img->GetHeight() > 0) {
-                ctx->DrawImage(*img, Rect2Dd(rect), imageFit);
+            auto pm = AcquireThumbnail(thumb, rect.width, rect.height,
+                                       imageFit, ctx->GetDeviceScale());
+            if (pm) {
+                ctx->DrawPixmap(*pm, Rect2Dd(rect), imageFit);
                 return;
             }
         }
