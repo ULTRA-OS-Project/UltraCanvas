@@ -26,9 +26,11 @@ namespace UltraCanvas {
         // grey out together with the control they describe.
         Color disabledTextColor = Color(178, 178, 184, 255);
 
-        // Text alignment
+        // Text alignment. Vertical defaults to Middle so labels line up with
+        // the text of neighbouring controls (buttons, checkboxes) in rows;
+        // for auto-sized labels the box hugs the text and Middle == Top.
         TextAlignment horizontalAlign = TextAlignment::Left;
-        VerticalAlignment verticalAlign = VerticalAlignment::Top;
+        VerticalAlignment verticalAlign = VerticalAlignment::Middle;
         // Word wrapping
         TextWrap wrap = TextWrap::WrapNone;
 
@@ -118,7 +120,7 @@ namespace UltraCanvas {
         void SetFontSize(float fontSize);
         void SetFontWeight(const FontWeight w);
         void SetTextColor(const Color &color);
-        void SetAlignment(TextAlignment horizontal, VerticalAlignment vertical = VerticalAlignment::Top);
+        void SetAlignment(TextAlignment horizontal, VerticalAlignment vertical = VerticalAlignment::Middle);
         void SetWrap(TextWrap wrap);
         void SetTextIsMarkup(bool markup);
 
