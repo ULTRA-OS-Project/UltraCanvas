@@ -1433,6 +1433,9 @@ namespace UltraCanvas {
         state->infoLabel->SetText("No image loaded");
         state->infoLabel->SetFontSize(11);
         state->infoLabel->SetTextColor(Color(60, 60, 60, 255));
+        // Labels draw their text top-aligned by default, which made this one
+        // sit visibly higher than the button/checkbox text in the toolbar row.
+        state->infoLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
 
         toolbar->AddChild(state->chooseBtn);
         toolbar->AddSpacer(8);
