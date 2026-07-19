@@ -1,4 +1,13 @@
 #### 2026-07-19 *0.3.9*
+- Filer widget: thumbnail decoding is now **viewport-driven with a one-screen
+  prefetch**. Only files whose tiles are visible — plus at most one viewport
+  height (width in the horizontal List view) ahead in scroll direction — are
+  ever decoded, so slow scrolling almost always lands on already-decoded
+  tiles. The decode queue is rebuilt every frame in priority order (visible
+  tiles first, prefetch band after), and pending decodes that scroll out of
+  both bands are dropped from the queue — a fast flick past hundreds of
+  photos decodes only what you stop at, and the tiles you are looking at
+  never wait behind tiles you scrolled past.
 - Filer widget: thumbnails are now loaded **asynchronously**. Opening a folder
   renders its content immediately (names, layout, info bar) with the generic
   category glyph in each tile; the real image thumbnails are decoded on

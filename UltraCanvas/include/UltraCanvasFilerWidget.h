@@ -359,9 +359,17 @@ namespace UltraCanvas {
         // Done inside Render() it blocks the frame until every visible
         // thumbnail is ready, so opening a folder full of photos froze the
         // window. Instead the draw path only consumes pixmaps that finished
-        // decoding; missing ones are queued here, decoded by background
-        // worker threads, and every finished pixmap posts one (coalesced)
-        // redraw so tiles fill in as they become available.
+        // decoding; missing ones are queued, decoded by background worker
+        // threads, and every finished pixmap posts one (coalesced) redraw so
+        // tiles fill in as they become available.
+        //
+        // The decode queue is viewport-driven: each frame rebuilds it from
+        // what that frame actually needs — the visible tiles first, then a
+        // prefetch band of one viewport in the scroll direction (so the next
+        // screenful is usually ready before it scrolls in). Files outside
+        // visible + prefetch are never decoded, and pending work that
+        // scrolls out of both bands is dropped from the queue instead of
+        // wasting a worker on it.
         enum class ThumbState { Pending, Ready, Failed };
         struct ThumbSlot {
             ThumbState state = ThumbState::Pending;
@@ -377,6 +385,10 @@ namespace UltraCanvas {
         };
         std::unordered_map<std::string, ThumbSlot> thumbSlots;  // by ThumbSlotKey
         std::deque<ThumbRequest> thumbQueue;
+        // Per-frame decode want-list (UI thread only, no lock): filled in
+        // priority order while the frame draws (visible tiles) and prefetches
+        // (next-screen band), then swapped into thumbQueue in one commit.
+        std::vector<ThumbRequest> thumbFrameWants;
         // One decode per file at a time: UCImageRaster instances are shared
         // via the global image cache and are not safe against two threads
         // rasterizing the same instance concurrently.
@@ -407,6 +419,19 @@ namespace UltraCanvas {
         void PostThumbnailRedraw();
         static std::string ThumbSlotKey(const std::string& path, int w, int h,
                                         ImageFitMode fit, float scale);
+        // The image file a tile displays; empty when the entry has none.
+        std::string ThumbSourceFor(const FilerEntry& e) const;
+        // The exact icon rect + fit mode the draw call will use for an item
+        // — prefetch must request identical parameters or its decode would
+        // land under a different cache key than the draw looks up.
+        void ThumbGeometryForItem(const ItemLayout& item, Rect2Di& outRect,
+                                  ImageFitMode& outFit) const;
+        // Queues decodes for the tiles in the prefetch band (one viewport
+        // past the visible edge in scroll direction).
+        void PrefetchThumbnails(IRenderContext* ctx, const Rect2Di& bounds);
+        // Swaps thumbFrameWants into the worker queue and forgets pending
+        // slots that fell out of the visible + prefetch bands.
+        void CommitThumbnailWants();
 
         // Selection info bar caches, computed on demand and cleared on rescan.
         struct FolderStats {
