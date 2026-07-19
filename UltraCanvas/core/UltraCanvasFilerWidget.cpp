@@ -6,7 +6,7 @@
 // codec via lightweight header probes, recursive folder stats). Image
 // thumbnails decode asynchronously (see ASYNC THUMBNAILS) so the folder page
 // never waits for image files.
-// Version: 1.2.0
+// Version: 1.3.0
 // Last Modified: 2026-07-19
 // Author: UltraCanvas Framework
 
@@ -22,6 +22,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasImage.h"
+#include "../libspecific/Cairo/QoiPixmapCodec.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasTooltipManager.h"
@@ -2047,18 +2048,65 @@ namespace UltraCanvas {
             ImageFitMode fit, float scale) {
         if (w <= 0 || h <= 0 || path.empty()) return nullptr;
         const std::string key = ThumbSlotKey(path, w, h, fit, scale);
+        std::shared_ptr<std::vector<uint8_t>> blob;
         {
             std::lock_guard<std::mutex> lk(thumbMutex);
             auto it = thumbSlots.find(key);
             if (it != thumbSlots.end()) {
-                if (it->second.state == ThumbState::Ready) return it->second.pixmap;
-                if (it->second.state == ThumbState::Failed) return nullptr;
-                // Pending: fall through and re-record the want so the item
-                // keeps its place when the queue is rebuilt this frame.
+                if (it->second.state == ThumbState::Ready) {
+                    if (it->second.pixmap) return it->second.pixmap;
+                    // Compressed slot: serve from the hot cache, or take a
+                    // reference to the blob and inflate outside the lock.
+                    auto hot = thumbHot.find(key);
+                    if (hot != thumbHot.end()) {
+                        hot->second.tick = ++thumbHotTick;
+                        return hot->second.pixmap;
+                    }
+                    blob = it->second.qoi;
+                }
+                if (!blob) {
+                    if (it->second.state == ThumbState::Failed) return nullptr;
+                    // Pending: fall through and re-record the want so the
+                    // item keeps its place when the queue is rebuilt.
+                }
             } else {
                 thumbSlots.emplace(key, ThumbSlot{});
             }
         }
+
+        if (blob) {
+            // ~0.1-2 ms per tile, only when a tile (re-)enters the drawn
+            // band; repaints afterwards hit the hot cache above.
+            auto pm = QoiDecompressPixmap(*blob);
+            if (!pm) return nullptr;   // cannot happen for our own blobs
+            std::lock_guard<std::mutex> lk(thumbMutex);
+            HotThumb& he = thumbHot[key];
+            if (!he.pixmap) {
+                he.pixmap = pm;
+                he.bytes = static_cast<size_t>(pm->GetRawWidth())
+                         * static_cast<size_t>(pm->GetRawHeight()) * 4;
+                thumbHotBytes += he.bytes;
+            }
+            he.tick = ++thumbHotTick;
+            // Evict least-recently-drawn tiles beyond the hot budget — it
+            // only needs to cover the visible + prefetch bands.
+            constexpr size_t kHotBudgetBytes = 32 * 1024 * 1024;
+            while (thumbHotBytes > kHotBudgetBytes && thumbHot.size() > 1) {
+                auto oldest = thumbHot.end();
+                for (auto hit = thumbHot.begin(); hit != thumbHot.end(); ++hit) {
+                    if (hit->first == key) continue;
+                    if (oldest == thumbHot.end() ||
+                        hit->second.tick < oldest->second.tick) {
+                        oldest = hit;
+                    }
+                }
+                if (oldest == thumbHot.end()) break;
+                thumbHotBytes -= oldest->second.bytes;
+                thumbHot.erase(oldest);
+            }
+            return pm;
+        }
+
         thumbFrameWants.push_back(ThumbRequest{path, w, h, fit, scale, 0});
         return nullptr;
     }
@@ -2150,6 +2198,31 @@ namespace UltraCanvas {
         thumbQueue.clear();
         thumbSlots.clear();
         thumbBytes = 0;
+        thumbHot.clear();
+        thumbHotBytes = 0;
+    }
+
+    void UltraCanvasFilerWidget::SetCompressedThumbnails(bool enabled) {
+        if (compressedThumbs.exchange(enabled) == enabled) return;
+        // Existing slots hold the other representation; drop them and let
+        // the visible tiles re-decode into the new one.
+        DropThumbnailCache();
+        RequestRedraw();
+    }
+
+    UltraCanvasFilerWidget::ThumbCacheStats
+    UltraCanvasFilerWidget::GetThumbnailCacheStats() const {
+        ThumbCacheStats st;
+        std::lock_guard<std::mutex> lk(thumbMutex);
+        for (const auto& kv : thumbSlots) {
+            if (kv.second.state != ThumbState::Ready) continue;
+            ++st.entries;
+            st.storedBytes += kv.second.bytes;
+            st.rawBytes += kv.second.rawBytes;
+        }
+        st.hotEntries = thumbHot.size();
+        st.hotBytes = thumbHotBytes;
+        return st;
     }
 
     void UltraCanvasFilerWidget::ThumbnailWorkerMain() {
@@ -2202,6 +2275,17 @@ namespace UltraCanvas {
                 pm = img->GetPixmap(req.w, req.h, req.fit, req.scale);
             }
 
+            // "Compressed thumbnails": deflate here on the worker so the UI
+            // thread never pays for compression; the slot then holds the
+            // blob instead of the raw pixmap.
+            std::shared_ptr<std::vector<uint8_t>> blob;
+            if (pm && compressedThumbs.load()) {
+                std::vector<uint8_t> v = QoiCompressPixmap(*pm);
+                if (!v.empty()) {
+                    blob = std::make_shared<std::vector<uint8_t>>(std::move(v));
+                }
+            }
+
             bool report = false;
             {
                 std::lock_guard<std::mutex> lk(thumbMutex);
@@ -2213,15 +2297,28 @@ namespace UltraCanvas {
                     ThumbSlot& slot = thumbSlots[key];
                     if (pm) {
                         slot.state = ThumbState::Ready;
-                        slot.pixmap = pm;
-                        slot.bytes = static_cast<size_t>(pm->GetRawWidth())
-                                   * static_cast<size_t>(pm->GetRawHeight()) * 4;
+                        slot.rawBytes = static_cast<size_t>(pm->GetRawWidth())
+                                      * static_cast<size_t>(pm->GetRawHeight()) * 4;
+                        if (blob) {
+                            slot.qoi = blob;
+                            slot.pixmap = nullptr;
+                            slot.bytes = blob->size();
+                        } else {
+                            slot.pixmap = pm;
+                            slot.qoi = nullptr;
+                            slot.bytes = slot.rawBytes;
+                        }
                         thumbBytes += slot.bytes;
                         if (thumbBytes > kThumbBudgetBytes) {
                             for (auto sit = thumbSlots.begin();
                                  sit != thumbSlots.end();) {
                                 if (sit->first != key &&
                                     sit->second.state == ThumbState::Ready) {
+                                    auto hit = thumbHot.find(sit->first);
+                                    if (hit != thumbHot.end()) {
+                                        thumbHotBytes -= hit->second.bytes;
+                                        thumbHot.erase(hit);
+                                    }
                                     sit = thumbSlots.erase(sit);
                                 } else {
                                     ++sit;
@@ -2232,6 +2329,7 @@ namespace UltraCanvas {
                     } else {
                         slot.state = ThumbState::Failed;   // don't retry-loop
                         slot.pixmap = nullptr;
+                        slot.qoi = nullptr;
                     }
                     report = true;
                 }

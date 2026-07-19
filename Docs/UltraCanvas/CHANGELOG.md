@@ -1,4 +1,16 @@
 #### 2026-07-19 *0.3.9*
+- Filer widget: optional **"Compressed thumbnails"** mode
+  (`SetCompressedThumbnails(bool)`, default off; toggle in the Filer demo).
+  Finished thumbnails are held in memory QOI-compressed instead of as raw
+  ARGB32 pixmaps (measured 6.4× smaller on the demo set; typically 2–4× on
+  photos), with a 32 MB hot cache of decompressed tiles covering the
+  visible + prefetch bands so scrolling still draws raw surfaces. The codec
+  is a new Cairo-native QOI variant (`libspecific/Cairo/QoiPixmapCodec.h`,
+  separate from the `qoi.cpp` file-format codec) that compresses the
+  premultiplied ARGB32 buffer in place — bit-exact round trip (rendering is
+  pixel-identical in both modes), ~140 µs encode / ~32 µs decode per medium
+  tile, HiDPI device scale preserved. `GetThumbnailCacheStats()` reports
+  stored vs. raw bytes for A/B comparison.
 - Filer widget: thumbnail decoding is now **viewport-driven with a one-screen
   prefetch**. Only files whose tiles are visible — plus at most one viewport
   height (width in the horizontal List view) ahead in scroll direction — are

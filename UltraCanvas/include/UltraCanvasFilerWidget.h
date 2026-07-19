@@ -12,7 +12,7 @@
 // thumbnails are decoded asynchronously on worker threads: the folder page
 // renders immediately with placeholder glyphs and tiles fill in as decodes
 // complete.
-// Version: 1.2.0
+// Version: 1.3.0
 // Last Modified: 2026-07-19
 // Author: UltraCanvas Framework
 #pragma once
@@ -201,6 +201,27 @@ namespace UltraCanvas {
         void SetShowHiddenFiles(bool show);
         bool GetShowHiddenFiles() const { return showHiddenFiles; }
 
+        // "Compressed thumbnails": hold finished thumbnails QOI-compressed in
+        // memory (roughly 3-4x smaller for photos) instead of as raw ARGB32
+        // pixmaps. Tiles being drawn are decompressed on demand into a small
+        // hot cache, so scrolling still draws from raw surfaces. Off by
+        // default; toggling drops the thumbnail cache and re-decodes lazily.
+        void SetCompressedThumbnails(bool enabled);
+        bool GetCompressedThumbnails() const { return compressedThumbs.load(); }
+
+        // Snapshot of what the thumbnail cache currently holds — lets an
+        // application (or an A/B test) compare the footprint of compressed
+        // vs. raw storage. rawBytes is what the same thumbnails would take
+        // uncompressed; with compression off, storedBytes == rawBytes.
+        struct ThumbCacheStats {
+            size_t entries = 0;       // finished thumbnails held
+            size_t storedBytes = 0;   // bytes actually held (blobs or raw)
+            size_t rawBytes = 0;      // raw ARGB32 size of those thumbnails
+            size_t hotEntries = 0;    // decompressed tiles in the hot cache
+            size_t hotBytes = 0;
+        };
+        ThumbCacheStats GetThumbnailCacheStats() const;
+
         // The small icon menu (Copy / Cut / Rename / Delete) shown at the top
         // right of the hovered item. Also toggled by the Display > Icon-Menu
         // context-menu checkbox.
@@ -371,10 +392,15 @@ namespace UltraCanvas {
         // scrolls out of both bands is dropped from the queue instead of
         // wasting a worker on it.
         enum class ThumbState { Pending, Ready, Failed };
+        // A Ready slot holds either the raw pixmap (compression off) or a
+        // QOI blob (compression on) — never both. `bytes` is whichever is
+        // held, `rawBytes` always the uncompressed ARGB32 size.
         struct ThumbSlot {
             ThumbState state = ThumbState::Pending;
-            std::shared_ptr<UCPixmap> pixmap;   // set when state == Ready
+            std::shared_ptr<UCPixmap> pixmap;
+            std::shared_ptr<std::vector<uint8_t>> qoi;
             size_t bytes = 0;
+            size_t rawBytes = 0;
         };
         struct ThumbRequest {
             std::string path;
@@ -393,7 +419,18 @@ namespace UltraCanvas {
         // via the global image cache and are not safe against two threads
         // rasterizing the same instance concurrently.
         std::unordered_set<std::string> thumbPathsInFlight;
-        std::mutex thumbMutex;                  // guards slots/queue/generation
+        // Compressed mode: LRU of decompressed pixmaps for the tiles being
+        // drawn, so repaints never re-inflate. Guarded by thumbMutex.
+        struct HotThumb {
+            std::shared_ptr<UCPixmap> pixmap;
+            size_t bytes = 0;
+            uint64_t tick = 0;
+        };
+        std::unordered_map<std::string, HotThumb> thumbHot;
+        size_t thumbHotBytes = 0;
+        uint64_t thumbHotTick = 0;
+        std::atomic<bool> compressedThumbs{false};
+        mutable std::mutex thumbMutex;          // guards slots/queue/generation
         std::condition_variable thumbCond;
         std::vector<std::thread> thumbWorkers;
         bool thumbShutdown = false;

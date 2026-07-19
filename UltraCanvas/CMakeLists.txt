@@ -500,6 +500,9 @@ set(ULTRACANVAS_LIBSPECIFIC_SOURCES
         # Standalone QOI codec — dependency free, always compiled so qoi_encode/
         # qoi_decode/qoi_read/qoi_write are available without libvips.
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/qoi.cpp
+        # QOI-style compression applied natively to Cairo ARGB32 pixmaps
+        # (in-memory thumbnail caches); separate from the file-format codec.
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/QoiPixmapCodec.cpp
 )
 if(LIBVIPS_FOUND)
     # vips foreign loader for QOI — consumes the codec symbols above.
