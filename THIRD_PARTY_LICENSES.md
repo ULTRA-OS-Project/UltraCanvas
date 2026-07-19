@@ -47,3 +47,17 @@ The engine is built in **Uni-math** mode with glyphs rendered as vector paths
 The `.clm2` file is a binary metrics + glyph-path table derived from the OTF by
 MicroTeX's `prebuilt/otf2clm.py` tool; it is a transformed representation of the
 same font and is covered by the same license.
+
+---
+
+## yyjson (JSON engine)
+
+- **Used by:** the DataFormats section's `UltraCanvasJSON` module
+  (`UltraCanvas/{include,core}/DataFormats/`), which wraps it completely —
+  yyjson types never appear in public UltraCanvas headers.
+- **Upstream:** https://github.com/ibireme/yyjson (version 0.12.0).
+- **Vendored at:** `UltraCanvas/third_party/yyjson`
+- **License:** MIT License — Copyright (c) 2020 YaoYuan.
+- **Full text:** `UltraCanvas/third_party/yyjson/LICENSE-yyjson.txt`
+
+The vendored copy is unmodified upstream source (`yyjson.h` / `yyjson.c`).

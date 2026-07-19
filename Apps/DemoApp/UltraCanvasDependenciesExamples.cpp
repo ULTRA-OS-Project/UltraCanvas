@@ -155,8 +155,8 @@ namespace UltraCanvas {
         // --- LaTeX plugin ---
         {"MicroTeX",          "https://github.com/NanoMichael/MicroTeX",                           "https://github.com/NanoMichael/MicroTeX",                       "MIT"},
         {"Latin Modern Math", "https://www.gust.org.pl/projects/e-foundry/lm-math",                "",                                                              "LPPL"},
-        // --- Demo application ---
-        {"jsoncpp",           "https://open-source-parsers.github.io/jsoncpp-docs/doxygen/index.html", "https://github.com/open-source-parsers/jsoncpp",            "MIT"},
+        // --- DataFormats (UltraCanvasJSON, vendored engine) ---
+        {"yyjson",            "https://ibireme.github.io/yyjson/doc/doxygen/html/",                "https://github.com/ibireme/yyjson",                             "MIT"},
         // --- AudioFX / VideoFX ---
         {"FFmpeg",            "https://ffmpeg.org/",                                               "https://git.ffmpeg.org/ffmpeg.git",                             "LGPL 2.1"},
         {"libsndfile",        "https://libsndfile.github.io/libsndfile/",                          "https://github.com/libsndfile/libsndfile",                      "LGPL 2.1"},
@@ -588,6 +588,7 @@ namespace UltraCanvas {
         dep("QR code generation", "qrcodegen (MIT) (bundled)", "qrcodegen (MIT) (bundled)", "qrcodegen (MIT) (bundled)");
         dep("ZIP for ODS / XLSX I/O", "miniz (MIT) (bundled)", "miniz (MIT) (bundled)", "miniz (MIT) (bundled)");
         dep("FFT / spectrogram", "KissFFT (BSD 3) (bundled)", "KissFFT (BSD 3) (bundled)", "KissFFT (BSD 3) (bundled)");
+        dep("JSON parsing (UltraCanvasJSON)", "yyjson (MIT) (bundled)", "yyjson (MIT) (bundled)", "yyjson (MIT) (bundled)");
 
         // ===== Optional plugins =====
         header("PDF plugin (optional)");
@@ -610,7 +611,6 @@ namespace UltraCanvas {
 
         // ===== Demo application =====
         header("Demo application");
-        dep("JSON parsing", "jsoncpp (MIT)", "jsoncpp (MIT)", "jsoncpp (MIT)");
         dep("App icon → .exe (build tool)", "– (Windows only)", "– (Windows only)", "ImageMagick (ImageMagick)\n(magick CLI)");
 
         // ===== Additional ULTRA OS modules =====

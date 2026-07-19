@@ -7,9 +7,10 @@
 cmake_minimum_required(VERSION 3.16)
 include(FetchContent)
 
-# Enable the C language: third_party/miniz/miniz.c is C (the only C source in the
-# project) and provides ZIP support for ODS/XLSX File I/O. Without this, a CXX-only
-# project silently skips compiling .c files, causing undefined references to mz_zip_*.
+# Enable the C language: third_party/miniz/miniz.c (ZIP support for ODS/XLSX File
+# I/O) and third_party/yyjson/yyjson.c (JSON engine behind UltraCanvasJSON) are C
+# sources. Without this, a CXX-only project silently skips compiling .c files,
+# causing undefined references to mz_zip_* / yyjson_*.
 enable_language(C)
 
 # Enable Objective-C++ on Apple platforms: the macOS backend (GL context managers,
@@ -412,6 +413,11 @@ set(ULTRACANVAS_CORE_SOURCES
         # Vendored miniz (ZIP support for ODS/XLSX File I/O)
         ${CMAKE_CURRENT_SOURCE_DIR}/third_party/miniz/miniz.c
 
+        # DataFormats section: general-purpose JSON API (UltraCanvasJSON) backed
+        # by the vendored yyjson engine
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasJSON.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson/yyjson.c
+
         # Reusable ZIP package layer (ODF/OPC containers)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasZipPackage.cpp
         # Word-processing document module: UCRichDocument + ODT/DOCX readers
@@ -662,6 +668,7 @@ target_include_directories(${ULTRACANVAS_LIB_NAME}
         ${CMAKE_CURRENT_SOURCE_DIR}/core
         ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/third_party/miniz
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson
         ${FREETYPE_INCLUDE_DIRS}
         ${HARFBUZZ_INCLUDE_DIRS}
 )

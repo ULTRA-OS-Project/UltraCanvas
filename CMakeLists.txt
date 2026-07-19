@@ -110,9 +110,6 @@ if(BUILD_DEMO_APP)
     message(STATUS "")
     message(STATUS "── Building Demo Application ──")
 
-    # Find jsoncpp for demo app
-    pkg_check_modules(JSONCPP REQUIRED jsoncpp)
-
     # Demo app source files
     set(DEMO_SOURCES
             Apps/DemoApp/main.cpp
@@ -269,7 +266,6 @@ if(BUILD_DEMO_APP)
                 ${GLIB_INCLUDE_DIRS}
                 ${VIPS_INCLUDE_DIRS}
                 ${TINYXML2_INCLUDE_DIRS}
-                ${JSONCPP_INCLUDE_DIRS}
                 ${HOMEBREW_PREFIX}/include
                 ${HOMEBREW_PREFIX}/include/pango-1.0
                 ${HOMEBREW_PREFIX}/include/glib-2.0
@@ -287,13 +283,11 @@ if(BUILD_DEMO_APP)
                 ${HARFBUZZ_LIBRARY_DIRS}
                 ${GLIB_LIBRARY_DIRS}
                 ${TINYXML2_LIBRARY_DIRS}
-                ${JSONCPP_LIBRARY_DIRS}
                 ${HOMEBREW_PREFIX}/lib
                 ${HOMEBREW_PREFIX}/opt/vips/lib
         )
     elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
         link_directories(
-                ${JSONCPP_LIBRARY_DIRS}
                 ${CAIRO_LIBRARY_DIRS}
                 ${PANGO_LIBRARY_DIRS}
                 ${HARFBUZZ_LIBRARY_DIRS}
@@ -321,7 +315,6 @@ if(BUILD_DEMO_APP)
     # Link against UltraCanvas core library
     target_link_libraries(UltraCanvasDemo PRIVATE
         ${ULTRACANVAS_LIBRARY}
-        ${JSONCPP_LIBRARIES}
     )
 
     # The core library resolves fmt too, but its imported target is scoped to
@@ -465,7 +458,6 @@ if (BUILD_TEXTER_APP)
     # Link against UltraCanvas core library
     target_link_libraries(UltraCanvasTexter PRIVATE
             ${ULTRACANVAS_LIBRARY}
-            ${JSONCPP_LIBRARIES}
     )
     target_link_libraries(UltraCanvasTexter PRIVATE fmt::fmt)
 
@@ -570,6 +562,24 @@ if (BUILD_TESTS)
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     add_test(NAME EBookViewerTest COMMAND EBookViewerTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # UltraCanvasJSON unit tests (DataFormats section). Compiles only the JSON
+    # module and its vendored engine, so it runs headless without the UI stack.
+    add_executable(JSONTests
+        Tests/DataFormats/JSONTests.cpp
+        UltraCanvas/core/DataFormats/UltraCanvasJSON.cpp
+        UltraCanvas/third_party/yyjson/yyjson.c
+    )
+    target_include_directories(JSONTests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvas/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvas/third_party/yyjson
+    )
+    target_compile_features(JSONTests PRIVATE cxx_std_20)
+    set_target_properties(JSONTests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME JSONTests COMMAND JSONTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 endif()
 
