@@ -1,8 +1,8 @@
 // OS/MacOS/UltraCanvasNativeDialogsMacOS.mm
 // macOS implementation of native OS dialogs using Cocoa/AppKit
 // Uses unified DialogType, DialogButtons, DialogResult from UltraCanvasModalDialog.h
-// Version: 2.0.0
-// Last Modified: 2026-01-25
+// Version: 2.0.1 - bridge-cast void* NativeWindowHandle back to NSWindow*
+// Last Modified: 2026-07-20
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasNativeDialogs.h"
@@ -178,7 +178,7 @@ DialogResult UltraCanvasNativeDialogs::ShowMessage(
         // If parent window is provided, run as sheet (attached modal)
         // Otherwise run as application-modal dialog
         if (parent != nullptr) {
-            NSWindow* parentWindow = (NSWindow*)parent->GetNativeHandle();
+            NSWindow* parentWindow = (__bridge NSWindow*)parent->GetNativeHandle();
 
             // For sheet-style, we need to use beginSheetModalForWindow
             // But since we need a synchronous result, we use runModal with window level

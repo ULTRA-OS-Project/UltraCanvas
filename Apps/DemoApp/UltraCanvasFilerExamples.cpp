@@ -10,6 +10,7 @@
 #include "UltraCanvasFilerWidget.h"
 #include "UltraCanvasBreadcrumb.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasCheckbox.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasUtils.h"
@@ -338,6 +339,21 @@ namespace UltraCanvas {
                     StyleFilerOptionButton((*orderGroup)[1], !asc);
                 }
             };
+
+            // A/B switch for the in-memory QOI thumbnail compression.
+            auto compressCb = std::make_shared<UltraCanvasCheckbox>(
+                    "FilerCompressedThumbs", 0, 0, 190, 24,
+                    "Compressed thumbnails");
+            compressCb->SetChecked(filerPtr->GetCompressedThumbnails());
+            compressCb->onChecked = [filerPtr]() {
+                filerPtr->SetCompressedThumbnails(true);
+            };
+            compressCb->onUnchecked = [filerPtr]() {
+                filerPtr->SetCompressedThumbnails(false);
+            };
+            compressCb->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            row->AddChild(compressCb);
+
             root->AddChild(row);
         }
 

@@ -29,6 +29,7 @@ jobs:
               brew install zbar
               brew install mupdf
               brew install c-ares
+              brew install leptonica tesseract
               # libcurl: use Apple's system libcurl (SecureTransport-family
               # backend) — already present on every macOS install, so we add
               # no extra dependency for UltraNet on this platform.
@@ -105,6 +106,8 @@ jobs:
             mingw-w64-x86_64-libmupdf
             mingw-w64-x86_64-curl-winssl
             mingw-w64-x86_64-c-ares
+            mingw-w64-x86_64-leptonica
+            mingw-w64-x86_64-tesseract-ocr
             zip
             
       # ===== macOS / Linux: system package manager =====

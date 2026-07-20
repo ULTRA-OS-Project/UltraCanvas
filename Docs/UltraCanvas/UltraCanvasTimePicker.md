@@ -4,22 +4,26 @@
 
 **UltraCanvasTimePicker** is the time-of-day sibling of `UltraCanvasDatePicker`.
 It presents a compact combobox-style field that shows the selected time as
-editable text and pops up a small panel of **hour / minute (/ second) spinners**
-plus an optional **AM/PM** selector. The popup fields are built from
-`UltraCanvasSpinner`, so hour/minute selection reuses the same arrow-driven
-control.
+editable text and pops up either a small panel of **hour / minute (/ second)
+spinners** plus an optional **AM/PM** selector, or a **circular clock-face
+dial** (`TimePickerPopupStyle::Clock`, Windows-10 style). The spinner popup
+fields are built from `UltraCanvasSpinner`, so hour/minute selection reuses the
+same arrow-driven control.
 
 **File Location**: `include/UltraCanvasTimePicker.h`
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Author**: UltraCanvas Framework
 
 ## Features
 
 - ✅ **12- and 24-hour formats** (with AM/PM selector in 12-hour mode)
 - ✅ **Optional seconds** field
+- ✅ **Two popup styles**: spinner panel or circular **clock-face dial**
 - ✅ **Configurable minute / second step** (e.g. 5- or 15-minute increments)
 - ✅ **Min / max constraints** — values are clamped to an allowed window
-- ✅ **Four input paths**: spinner popup, direct typing, mouse wheel, keyboard
+- ✅ **Four input paths**: popup, direct typing, mouse wheel, keyboard
+- ✅ **In-field caret editing** — click to place the cursor, `Left`/`Right`/
+  `Home`/`End`/`Del`/`Backspace` edit at the caret
 - ✅ **"Now" / "Clear"** shortcuts in the popup footer
 - ✅ Custom **format string** override, placeholder text, full styling
 - ✅ Popup auto-positions above/below the field to stay on-screen
@@ -87,6 +91,10 @@ auto tp2 = CreateTimePicker24h("slot", 20, 100, 190, 28, /*showSeconds*/ true);
 tp2->SetMinuteStep(15);
 tp2->SetMinTime(UCTime(9, 0));
 tp2->SetMaxTime(UCTime(17, 0));
+
+// Circular clock-face dial popup
+auto tpc = CreateClockTimePicker("alarm", 20, 140, 190, 28, /*use24h*/ true);
+// ...or switch any picker: tp->SetPopupStyle(TimePickerPopupStyle::Clock);
 ```
 
 ## Factory Functions
@@ -96,6 +104,7 @@ tp2->SetMaxTime(UCTime(17, 0));
 | `CreateTimePicker(id, x, y, w, h)` | Default (24-hour) picker |
 | `CreateTimePicker24h(id, x, y, w, h, showSeconds)` | 24-hour picker |
 | `CreateTimePicker12h(id, x, y, w, h, showSeconds)` | 12-hour AM/PM picker |
+| `CreateClockTimePicker(id, x, y, w, h, use24h, showSeconds)` | Picker with the clock-dial popup |
 
 ## Key API
 
@@ -118,6 +127,7 @@ void SetMinTime(const UCTime&);
 void SetMaxTime(const UCTime&);
 
 // Popup
+void SetPopupStyle(TimePickerPopupStyle);  // Spinners (default) or Clock
 void OpenPopup();
 void ClosePopup();
 bool IsPopupOpen() const;
@@ -131,23 +141,48 @@ std::function<void()> onPopupOpened;
 std::function<void()> onPopupClosed;
 ```
 
+## The clock-face dial (`TimePickerPopupStyle::Clock`)
+
+`SetPopupStyle(TimePickerPopupStyle::Clock)` (or `CreateClockTimePicker`)
+replaces the spinner panel with `UltraCanvasTimeClockView`, a round dial:
+
+- The **header** shows the pending time (`--:--` while empty). Click a
+  component (hour / minute / second, or **AM/PM** in 12-hour mode) to make it
+  active on the face below.
+- The **hour face** in 24-hour mode has two rings — outer `00, 13–23`, inner
+  `12, 01–11`; 12-hour mode shows a single `12, 1–11` ring.
+- The **minute/second face** is labelled every 5 and snaps to the configured
+  minute/second step; click or drag to select, and the mouse wheel nudges the
+  active component.
+- Picking an hour advances to minutes (then seconds if enabled); picking the
+  last component closes the popup. The `Now` / `Clear` footer matches the
+  spinner popup.
+- Colors come from the `clock*` fields of `TimePickerStyle`
+  (header, face, numbers, selection bubble, hover).
+
+`UltraCanvasTimeClockView` is a regular element with `onTimeChanged` /
+`onAccepted` callbacks, so it can also be embedded outside the picker.
+
 ## Keyboard & Mouse
 
 | Input | Action |
 |-------|--------|
-| Click clock button / `Up` / `Down` | Open the spinner popup |
+| Click clock button / `Up` / `Down` | Open the popup (spinners or clock dial) |
 | Spinner arrows / wheel / keys | Adjust hour, minute, second, AM/PM |
 | Type into the field | Enter a time (e.g. `9:30`, `2:15 pm`) |
+| Click inside the text | Place the caret at the clicked character |
+| `Left` / `Right` / `Home` / `End` | Move the caret while editing |
+| `Backspace` / `Del` | Delete before / at the caret |
 | `Enter` | Commit typed text |
 | `Esc` | Close popup / cancel edit |
 | Mouse wheel over field | Nudge the time by the minute step |
 
 ## Notes
 
-- In 12-hour mode the popup shows an hour spinner (1–12) plus an **AM/PM** list
-  spinner; the derived format is `hh:mm tt`.
+- In 12-hour mode the spinner popup shows an hour spinner (1–12) plus an
+  **AM/PM** list spinner; the derived format is `hh:mm tt`.
 - Changing `SetUse24HourFormat`/`SetShowSeconds` while the popup is open closes it
   so it is rebuilt with the new field set on the next open.
-- Constraints are applied whenever the value changes (spinner, typing or wheel);
-  if a constraint moves the value, the popup spinners are re-synced to match.
+- Constraints are applied whenever the value changes (popup, typing or wheel);
+  if a constraint moves the value, the popup is re-synced to match.
 - `UCTime` is timezone-free wall-clock time; `UCTime::Now()` reads local time.

@@ -31,7 +31,7 @@ namespace UltraCanvas {
         auto title = std::make_shared<UltraCanvasLabel>(
                 "ToolbarTitle", 20, currentY, 500, 35
         );
-        title->SetText("Toolbar Component Examples");
+        title->SetText("Toolbar Element Examples");
         title->SetFontSize(18);
         title->SetFontWeight(FontWeight::Bold);
         title->SetTextColor(Color(50, 50, 150));
@@ -232,10 +232,14 @@ namespace UltraCanvas {
         sidebarContainer->SetBackgroundColor(Color(245, 245, 245, 255));
         sidebarContainer->SetBorders(1, Color(220, 220, 220, 255));
 
+        // Toolbar height is sized to its content so no free space is left below
+        // the last icon: 5 buttons x 32 + separator 1 + 5 gaps x 4 = 181, plus
+        // 3+3 vertical padding and 1+1 borders = 189. Width 44 = 32 (button) +
+        // 5+5 horizontal padding + 1+1 borders, so icons get equal side margins.
         auto verticalToolbar = UltraCanvasToolbarBuilder("VerticalToolbar")
                 .SetOrientation(ToolbarOrientation::Vertical)
                 .SetAppearance(ToolbarAppearance::Sidebar())
-                .SetDimensions(10, 10, 50, 220)
+                .SetDimensions(10, 10, 44, 189)
                 .AddButton("dashboard", "📊", "", []() {
                     debugOutput << "Dashboard clicked" << std::endl;
                 })
@@ -253,7 +257,16 @@ namespace UltraCanvas {
                     debugOutput << "Reports clicked" << std::endl;
                 })
                 .Build();
-        //dynamic_cast<UltraCanvasButton*>(verticalToolbar->GetWidget("dashboard").get())
+
+        // The buttons are created with auto width, so each one would size to its
+        // emoji glyph and the icons would sit at slightly different distances
+        // from the toolbar edges. Force a uniform 32x32 square for every button
+        // so all icons show with the same margins inside the toolbar.
+        for (const char* buttonId : {"dashboard", "files", "users", "analytics", "reports"}) {
+            if (auto widget = verticalToolbar->GetWidget(buttonId)) {
+                widget->SetElementSize({32.0f, 32.0f});
+            }
+        }
         sidebarContainer->AddChild(verticalToolbar);
 
         // Content area label

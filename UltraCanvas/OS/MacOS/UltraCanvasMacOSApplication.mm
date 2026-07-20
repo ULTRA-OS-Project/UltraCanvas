@@ -1,7 +1,7 @@
 // OS/MacOS/UltraCanvasMacOSApplication.mm
 // Complete macOS application implementation with Cocoa/Cairo support
-// Version: 2.2.1 - focusedWindow now weak_ptr; targetWindow set via GetWindowWeakPtr()
-// Last Modified: 2026-07-02
+// Version: 2.2.2 - NativeWindowHandle is now void*; bridge-cast NSWindow* at FindWindow call sites
+// Last Modified: 2026-07-20
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMacOSApplication.h"
@@ -336,10 +336,10 @@ static UltraCanvasAppDelegate* g_appDelegate = nil;
         // Find target window
         NSWindow* nsWindow = [nsEvent window];
         UltraCanvasMacOSWindow* targetWindow = nullptr;
-        event.nativeWindowHandle = nsWindow;
+        event.nativeWindowHandle = (__bridge void*)nsWindow;
 
         if (nsWindow) {
-            targetWindow = static_cast<UltraCanvasMacOSWindow*>(FindWindow((void*)nsWindow));
+            targetWindow = static_cast<UltraCanvasMacOSWindow*>(FindWindow((__bridge void*)nsWindow));
         }
 
         if (targetWindow) {

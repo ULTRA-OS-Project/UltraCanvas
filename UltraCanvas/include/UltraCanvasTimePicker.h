@@ -9,8 +9,12 @@
 // Supports 12- and 24-hour formats, optional seconds, a configurable minute
 // step, min/max constraints, direct keyboard entry and the mouse wheel.
 //
-// Version: 1.0.0
-// Last Modified: 2026-07-07
+// Two popup styles are available: the spinner panel described above and a
+// circular clock-face dial (UltraCanvasTimeClockView) with a Windows-10-style
+// dual-ring 24-hour face.
+//
+// Version: 1.1.0
+// Last Modified: 2026-07-19
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -105,9 +109,109 @@ namespace UltraCanvas {
 
         std::string fontFamily;
         float fontSize      = 12.0f;
+
+        // Clock-face popup (TimePickerPopupStyle::Clock)
+        Color clockHeaderColor        = Color(0, 120, 215, 255);
+        Color clockHeaderTextColor    = Colors::White;
+        Color clockHeaderDimTextColor = Color(255, 255, 255, 150);
+        Color clockFaceColor          = Color(234, 234, 234, 255);
+        Color clockNumberColor        = Color(40, 40, 40, 255);
+        Color clockSelectionColor     = Color(0, 120, 215, 255);
+        Color clockSelectionTextColor = Colors::White;
+        Color clockHoverColor         = Color(0, 120, 215, 60);
+        float clockHeaderFontSize     = 26.0f;
     };
 
-// ===== TIME PICKER (dropdown spinner popup) =====
+// Which kind of panel the field pops up.
+    enum class TimePickerPopupStyle {
+        Spinners,   // hour / minute (/ second) spinners + AM/PM list
+        Clock       // circular clock-face dial (UltraCanvasTimeClockView)
+    };
+
+// ===== CLOCK FACE VIEW (circular time selector) =====
+// A round clock dial with a header showing the pending time. The header
+// components (hour / minute / second / AM/PM) are clickable; the active
+// component is selected on the face below. In 24-hour mode the hour face has
+// two rings: outer 00,13-23 and inner 12,01-11 (Windows 10 style); in 12-hour
+// mode a single 12,1-11 ring plus AM/PM in the header. Minutes/seconds use a
+// 00-55 ring labelled in 5s and snap to the configured step.
+// Used by UltraCanvasTimePicker for TimePickerPopupStyle::Clock, but works as
+// a standalone element too.
+    class UltraCanvasTimeClockView : public UltraCanvasUIElement {
+    public:
+        enum class Section { Hours, Minutes, Seconds };
+
+        // Fired on every change made through the dial or header (live).
+        std::function<void(const UCTime&)> onTimeChanged;
+        // Fired when the last section has been picked (time fully chosen).
+        std::function<void(const UCTime&)> onAccepted;
+
+        UltraCanvasTimeClockView(const std::string& identifier, float x, float y, float w, float h);
+
+        void   SetTime(const UCTime& t);
+        UCTime GetTime() const { return hasValue ? value : UCTime(); }
+
+        void SetUse24HourFormat(bool use24);
+        bool GetUse24HourFormat() const { return use24h; }
+        void SetShowSeconds(bool show);
+        bool GetShowSeconds() const { return showSeconds; }
+        void SetMinuteStep(int step) { minuteStep = (step > 0 ? step : 1); }
+        void SetSecondStep(int step) { secondStep = (step > 0 ? step : 1); }
+
+        void SetSection(Section s);
+        Section GetSection() const { return section; }
+
+        // Shares the picker's style struct (clock* + font fields are used).
+        void SetStyle(const TimePickerStyle& s) { style = s; RequestRedraw(); }
+
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
+        bool OnEvent(const UCEvent& event) override;
+
+    private:
+        struct Layout {
+            Rect2Df header;
+            Rect2Df hourRect, minuteRect, secondRect;   // header hit areas
+            Rect2Df amRect, pmRect;                     // 12h only
+            std::string hourText, minuteText, secondText;
+            float colonW  = 0;    // width of the ":" separators in the header
+            Point2Df center;
+            float faceR   = 0;    // face disc radius
+            float outerR  = 0;    // outer number ring radius
+            float innerR  = 0;    // inner number ring radius (24h hours)
+        };
+        Layout ComputeLayout(IRenderContext* ctx) const;
+
+        void RenderHeader(IRenderContext* ctx, const Layout& l);
+        void RenderFace(IRenderContext* ctx, const Layout& l);
+        void DrawFaceNumber(IRenderContext* ctx, const Point2Df& pos, const std::string& text,
+                            const Color& color);
+
+        // Face hit-testing: returns true and the value for the active section
+        // at a face-local point (also reports which ring for 24h hours).
+        bool ValueAtPoint(const Layout& l, const Point2Df& p, int& outValue) const;
+        Point2Df PointForValue(const Layout& l, int v, float* outRingR = nullptr) const;
+
+        void ApplyFaceValue(int v, bool finishSection);
+        void AdvanceSection();
+        void EnsureValuePresent();
+        void FireChanged();
+
+        UCTime value;             // the pending time (always a concrete time)
+        bool hasValue = false;    // false => header shows "--:--"
+        bool use24h = true;
+        bool showSeconds = false;
+        int  minuteStep = 1;
+        int  secondStep = 1;
+
+        Section section = Section::Hours;
+        bool dragging = false;
+        int  hoverValue = -1;     // value under the pointer for the section
+        int  headerHover = 0;     // 1=hour 2=minute 3=second 4=AM 5=PM
+
+        TimePickerStyle style;
+    };
+
+// ===== TIME PICKER (dropdown popup) =====
     class UltraCanvasTimePicker : public UltraCanvasUIElement {
     public:
         // ===== CALLBACKS =====
@@ -154,6 +258,10 @@ namespace UltraCanvas {
         void SetMinTime(const UCTime& t) { minTime = t; }
         void SetMaxTime(const UCTime& t) { maxTime = t; }
 
+        // Spinner panel (default) or circular clock-face dial.
+        void SetPopupStyle(TimePickerPopupStyle s);
+        TimePickerPopupStyle GetPopupStyle() const { return popupStyle; }
+
         // ===== POPUP STATE =====
         void OpenPopup();
         void ClosePopup();
@@ -186,7 +294,8 @@ namespace UltraCanvas {
 
         // ----- popup -----
         void BuildPopup();               // (re)create the popup container + spinners
-        void SyncSpinnersFromValue();    // push value into the spinners
+        void BuildClockPopup();          // popup variant hosting the clock dial
+        void SyncSpinnersFromValue();    // push value into the spinners / dial
         void RecomputeFromSpinners();    // pull value back out of the spinners
 
         // ----- events -----
@@ -194,6 +303,11 @@ namespace UltraCanvas {
         bool HandleKeyDown(const UCEvent& event);
         bool HandleKeyChar(const UCEvent& event);
         bool HandleWheel(const UCEvent& event);
+
+        // ----- caret -----
+        // Byte index in editBuffer for a click at field-local x (measures the
+        // rendered text, so the caret lands between the clicked characters).
+        size_t CaretIndexFromX(float x) const;
 
         // ----- state -----
         UCTime value;                    // may be empty (present == false)
@@ -207,13 +321,16 @@ namespace UltraCanvas {
         UCTime minTime, maxTime;         // empty => unbounded
 
         // popup
+        TimePickerPopupStyle popupStyle = TimePickerPopupStyle::Spinners;
         std::shared_ptr<UltraCanvasContainer> popup;
         std::shared_ptr<UltraCanvasSpinner> hourSpin, minuteSpin, secondSpin, ampmSpin;
+        std::shared_ptr<UltraCanvasTimeClockView> clockView;
         bool popupOpen = false;
-        bool updatingSpinners = false;   // guard: suppress spinner feedback
+        bool updatingSpinners = false;   // guard: suppress spinner/dial feedback
 
         // text editing (active only when allowTextInput && focused)
         std::string editBuffer;
+        size_t caretPos = 0;             // byte index into editBuffer
         bool editing = false;
 
         TimePickerStyle style;
@@ -240,6 +357,17 @@ namespace UltraCanvas {
         auto p = std::make_shared<UltraCanvasTimePicker>(identifier, x, y, w, h);
         p->SetUse24HourFormat(false);
         p->SetShowSeconds(showSeconds);
+        return p;
+    }
+
+    // Picker whose popup is the circular clock-face dial.
+    inline std::shared_ptr<UltraCanvasTimePicker> CreateClockTimePicker(
+            const std::string& identifier, float x, float y, float w, float h = 26,
+            bool use24h = true, bool showSeconds = false) {
+        auto p = std::make_shared<UltraCanvasTimePicker>(identifier, x, y, w, h);
+        p->SetUse24HourFormat(use24h);
+        p->SetShowSeconds(showSeconds);
+        p->SetPopupStyle(TimePickerPopupStyle::Clock);
         return p;
     }
 

@@ -1,7 +1,7 @@
 // OS/MacOS/UltraCanvasMacOSWindow.mm
 // Complete macOS window implementation with Cocoa and Cairo
-// Version: 2.2.0 - HiDPI scaling moved to UltraCanvasWindowBase (deviceScale)
-// Last Modified: 2026-07-03
+// Version: 2.2.1 - GetNativeHandle() returns void* handle via __bridge cast
+// Last Modified: 2026-07-20
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -664,7 +664,7 @@ namespace UltraCanvas {
     }
 
     NativeWindowHandle UltraCanvasMacOSWindow::GetNativeHandle() const  {
-        return (NativeWindowHandle)(__bridge void*)nsWindow;
+        return (__bridge void*)nsWindow;
     };
 
     NSWindow* UltraCanvasMacOSWindow::GetNSWindowHandle() const {

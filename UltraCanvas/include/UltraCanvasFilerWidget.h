@@ -8,9 +8,12 @@
 // A selection info bar under the folder display describes the selection (type,
 // size, dates, attributes, image dimensions, media duration / codec, folder
 // content counts, multi-selection totals).
-// Self-rendered like UltraCanvasAlbum so large folders stay cheap.
-// Version: 1.1.0
-// Last Modified: 2026-07-16
+// Self-rendered like UltraCanvasAlbum so large folders stay cheap. Image
+// thumbnails are decoded asynchronously on worker threads: the folder page
+// renders immediately with placeholder glyphs and tiles fill in as decodes
+// complete.
+// Version: 1.3.0
+// Last Modified: 2026-07-19
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -18,12 +21,19 @@
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
+#include <atomic>
+#include <condition_variable>
 #include <cstdint>
 #include <ctime>
+#include <deque>
 #include <functional>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace UltraCanvas {
@@ -191,6 +201,27 @@ namespace UltraCanvas {
         void SetShowHiddenFiles(bool show);
         bool GetShowHiddenFiles() const { return showHiddenFiles; }
 
+        // "Compressed thumbnails": hold finished thumbnails QOI-compressed in
+        // memory (roughly 3-4x smaller for photos) instead of as raw ARGB32
+        // pixmaps. Tiles being drawn are decompressed on demand into a small
+        // hot cache, so scrolling still draws from raw surfaces. Off by
+        // default; toggling drops the thumbnail cache and re-decodes lazily.
+        void SetCompressedThumbnails(bool enabled);
+        bool GetCompressedThumbnails() const { return compressedThumbs.load(); }
+
+        // Snapshot of what the thumbnail cache currently holds — lets an
+        // application (or an A/B test) compare the footprint of compressed
+        // vs. raw storage. rawBytes is what the same thumbnails would take
+        // uncompressed; with compression off, storedBytes == rawBytes.
+        struct ThumbCacheStats {
+            size_t entries = 0;       // finished thumbnails held
+            size_t storedBytes = 0;   // bytes actually held (blobs or raw)
+            size_t rawBytes = 0;      // raw ARGB32 size of those thumbnails
+            size_t hotEntries = 0;    // decompressed tiles in the hot cache
+            size_t hotBytes = 0;
+        };
+        ThumbCacheStats GetThumbnailCacheStats() const;
+
         // The small icon menu (Copy / Cut / Rename / Delete) shown at the top
         // right of the hovered item. Also toggled by the Display > Icon-Menu
         // context-menu checkbox.
@@ -343,6 +374,101 @@ namespace UltraCanvas {
         // Inline rename editor.
         int renamingIndex = -1;
         std::string renameBuffer;
+
+        // ===== ASYNC THUMBNAILS =====
+        // Decoding an image for a tile is expensive (full decode + resize).
+        // Done inside Render() it blocks the frame until every visible
+        // thumbnail is ready, so opening a folder full of photos froze the
+        // window. Instead the draw path only consumes pixmaps that finished
+        // decoding; missing ones are queued, decoded by background worker
+        // threads, and every finished pixmap posts one (coalesced) redraw so
+        // tiles fill in as they become available.
+        //
+        // The decode queue is viewport-driven: each frame rebuilds it from
+        // what that frame actually needs — the visible tiles first, then a
+        // prefetch band of one viewport in the scroll direction (so the next
+        // screenful is usually ready before it scrolls in). Files outside
+        // visible + prefetch are never decoded, and pending work that
+        // scrolls out of both bands is dropped from the queue instead of
+        // wasting a worker on it.
+        enum class ThumbState { Pending, Ready, Failed };
+        // A Ready slot holds either the raw pixmap (compression off) or a
+        // QOI blob (compression on) — never both. `bytes` is whichever is
+        // held, `rawBytes` always the uncompressed ARGB32 size.
+        struct ThumbSlot {
+            ThumbState state = ThumbState::Pending;
+            std::shared_ptr<UCPixmap> pixmap;
+            std::shared_ptr<std::vector<uint8_t>> qoi;
+            size_t bytes = 0;
+            size_t rawBytes = 0;
+        };
+        struct ThumbRequest {
+            std::string path;
+            int w = 0, h = 0;
+            ImageFitMode fit = ImageFitMode::Contain;
+            float scale = 1.0f;
+            uint64_t generation = 0;
+        };
+        std::unordered_map<std::string, ThumbSlot> thumbSlots;  // by ThumbSlotKey
+        std::deque<ThumbRequest> thumbQueue;
+        // Per-frame decode want-list (UI thread only, no lock): filled in
+        // priority order while the frame draws (visible tiles) and prefetches
+        // (next-screen band), then swapped into thumbQueue in one commit.
+        std::vector<ThumbRequest> thumbFrameWants;
+        // One decode per file at a time: UCImageRaster instances are shared
+        // via the global image cache and are not safe against two threads
+        // rasterizing the same instance concurrently.
+        std::unordered_set<std::string> thumbPathsInFlight;
+        // Compressed mode: LRU of decompressed pixmaps for the tiles being
+        // drawn, so repaints never re-inflate. Guarded by thumbMutex.
+        struct HotThumb {
+            std::shared_ptr<UCPixmap> pixmap;
+            size_t bytes = 0;
+            uint64_t tick = 0;
+        };
+        std::unordered_map<std::string, HotThumb> thumbHot;
+        size_t thumbHotBytes = 0;
+        uint64_t thumbHotTick = 0;
+        std::atomic<bool> compressedThumbs{false};
+        mutable std::mutex thumbMutex;          // guards slots/queue/generation
+        std::condition_variable thumbCond;
+        std::vector<std::thread> thumbWorkers;
+        bool thumbShutdown = false;
+        uint64_t thumbGeneration = 0;           // bumped to drop stale results
+        size_t thumbBytes = 0;                  // decoded pixmap bytes held
+        std::atomic<bool> thumbRedrawPosted{false};
+        // Destructor flips this so a queued PostToUIThread redraw task that
+        // outlives the widget becomes a no-op instead of a dangling call.
+        std::shared_ptr<std::atomic<bool>> thumbAlive =
+                std::make_shared<std::atomic<bool>>(true);
+
+        // Returns the decoded pixmap, or null (draw the placeholder) after
+        // queueing a background decode / while one is running / when the
+        // file cannot be decoded.
+        std::shared_ptr<UCPixmap> AcquireThumbnail(const std::string& path,
+                                                   int w, int h,
+                                                   ImageFitMode fit,
+                                                   float scale);
+        void StartThumbnailWorkersLocked();
+        void StopThumbnailWorkers();
+        void ThumbnailWorkerMain();
+        void DropThumbnailCache();              // on rescan / view change
+        void PostThumbnailRedraw();
+        static std::string ThumbSlotKey(const std::string& path, int w, int h,
+                                        ImageFitMode fit, float scale);
+        // The image file a tile displays; empty when the entry has none.
+        std::string ThumbSourceFor(const FilerEntry& e) const;
+        // The exact icon rect + fit mode the draw call will use for an item
+        // — prefetch must request identical parameters or its decode would
+        // land under a different cache key than the draw looks up.
+        void ThumbGeometryForItem(const ItemLayout& item, Rect2Di& outRect,
+                                  ImageFitMode& outFit) const;
+        // Queues decodes for the tiles in the prefetch band (one viewport
+        // past the visible edge in scroll direction).
+        void PrefetchThumbnails(IRenderContext* ctx, const Rect2Di& bounds);
+        // Swaps thumbFrameWants into the worker queue and forgets pending
+        // slots that fell out of the visible + prefetch bands.
+        void CommitThumbnailWants();
 
         // Selection info bar caches, computed on demand and cleared on rescan.
         struct FolderStats {

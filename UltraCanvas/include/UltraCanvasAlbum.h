@@ -2,8 +2,13 @@
 // Photo / video / music album widget: a self-rendered media grid with selectable
 // layout designs, per-item crop / zoom / stretch fitting, action icons and
 // visitor / user-edit / admin modes. A companion to UltraCanvasSlideshow.
-// Version: 1.5.0
-// Last Modified: 2026-07-11
+// Version: 1.6.0
+// Last Modified: 2026-07-19
+// V1.6.0: Hover animation preview (AlbumConfig::animationHoverPreview) —
+//   resting the cursor on a tile whose bitmap is an animated image (GIF,
+//   animated WebP) plays the animation in place of its static first frame,
+//   sharing the video preview's dwell delay / duration / loop knobs (backed
+//   by UCImageAnimationController).
 // V1.5.0: Hover video preview (AlbumConfig::videoHoverPreview) — resting the
 //   cursor on a Video tile plays a short muted preview of the clip in place of
 //   its static thumbnail (dwell delay, duration, loop, start offset and mute
@@ -26,6 +31,7 @@
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
+#include "UltraCanvasTimer.h"
 #include <functional>
 #include <memory>
 #include <string>
@@ -35,6 +41,7 @@ namespace UltraCanvas {
 
     class UltraCanvasMenu;
     class UltraCanvasVideoHoverPreview;
+    class UCImageAnimationController;
 
     // ===== KIND OF MEDIA AN ITEM REPRESENTS =====
     // Photos draw their own bitmap; video / music draw a thumbnail (cover art /
@@ -276,6 +283,17 @@ namespace UltraCanvas {
         float hoverPreviewStartOffsetSec = 0.0f;   // skip into the clip (intro black)
         bool  hoverPreviewMuted          = true;   // previews are silent by default
         int   hoverPreviewFps            = 24;     // frame-poll / repaint cadence
+
+        // ----- Animated-image hover preview -----
+        // While the cursor rests on a tile whose bitmap is an animated image
+        // (GIF, animated WebP), play the animation in place of its static
+        // first frame — the same interaction as the video hover preview,
+        // sharing its dwell / duration / loop knobs (hoverPreviewDelayMs,
+        // hoverPreviewDurationSec, hoverPreviewLoop). Frame timing comes from
+        // the file itself; still images are unaffected. Unlike the video
+        // preview no extra backend is required — any build that decodes the
+        // image format can play it.
+        bool  animationHoverPreview      = false;  // opt-in
     };
 
     // ===== THE ALBUM ELEMENT =====
@@ -396,6 +414,18 @@ namespace UltraCanvas {
         std::unique_ptr<UltraCanvasVideoHoverPreview> hoverPreview;
         int  hoverPreviewItem = -1;
 
+        // Hover animation preview (config.animationHoverPreview). Mirrors the
+        // video preview's lifecycle: armed for the hovered animated tile, the
+        // dwell one-shot starts playback, the duration one-shot (0 = never)
+        // ends it. animPreviewItem stays set after a finished preview (with
+        // animPreviewPlaying false) so it does not re-arm until the cursor
+        // leaves the tile and comes back.
+        std::unique_ptr<UCImageAnimationController> animPreview;
+        int  animPreviewItem = -1;
+        bool animPreviewPlaying = false;
+        TimerId animPreviewDelayTimerId = InvalidTimerId;   // dwell one-shot
+        TimerId animPreviewStopTimerId  = InvalidTimerId;   // duration one-shot
+
         // Which action icon the cursor currently sits on, so a tooltip is shown
         // once on enter rather than re-issued on every mouse move. Mirrors the
         // ActionAt() return convention: -2 = none, -1 = the kebab/menu icon.
@@ -475,11 +505,17 @@ namespace UltraCanvas {
         // Map a thumb leading-edge pixel back to a scroll offset and apply it.
         void   ScrollThumbTo(int thumbLeadPx);
 
-        // ===== VIDEO HOVER PREVIEW =====
-        // React to a hovered-item change: arm the preview for a newly hovered
-        // Video tile, end it when the cursor moved off the previewed one.
+        // ===== HOVER PREVIEWS (video + animated image) =====
+        // React to a hovered-item change: arm the matching preview for a newly
+        // hovered tile (video preview for Video tiles, animation preview for
+        // animated bitmaps), end the one whose tile the cursor left.
         void UpdateHoverPreview();
-        void StopHoverPreview();
+        void StopHoverPreview();               // both kinds (leave / teardown)
+        void StopVideoHoverPreview();
+        void StopAnimationHoverPreview();
+        void StartAnimationPreviewPlayback();  // dwell elapsed — decode + play
+        void FinishAnimationPreview();         // self-ended — thumbnail returns
+        void CancelAnimationPreviewTimers();
 
         // ===== DRAWING =====
         void DrawTile(IRenderContext* ctx, const TileLayout& tile, bool hovered);
@@ -487,6 +523,11 @@ namespace UltraCanvas {
         // false while there is no frame yet (caller draws the static thumbnail).
         bool DrawHoverPreviewFrame(IRenderContext* ctx, const AlbumItem& item,
                                    const Rect2Di& rect, float zoomExtra);
+        // Shared by the video and animation previews: draw a preview pixmap
+        // with the configured image fitting, exactly where the thumbnail lands.
+        void DrawPreviewPixmap(IRenderContext* ctx, const AlbumItem& item,
+                               const Rect2Di& rect, float zoomExtra,
+                               UCPixmap& pm, int fw, int fh);
         void DrawImageInRect(IRenderContext* ctx, const AlbumItem& item,
                              const Rect2Di& rect, float zoomExtra);
         void DrawPlaceholder(IRenderContext* ctx, const AlbumItem& item,

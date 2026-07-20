@@ -22,7 +22,7 @@ if(APPLE)
 endif()
 
 # ===== LIBRARY DEFINITION =====
-set(ULTRACANVAS_VERSION "0.3.8")
+set(ULTRACANVAS_VERSION "0.3.10")
 set(ULTRACANVAS_LIB_NAME "UltraCanvas")
 
 message(STATUS "")
@@ -500,6 +500,9 @@ set(ULTRACANVAS_LIBSPECIFIC_SOURCES
         # Standalone QOI codec — dependency free, always compiled so qoi_encode/
         # qoi_decode/qoi_read/qoi_write are available without libvips.
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/qoi.cpp
+        # QOI-style compression applied natively to Cairo ARGB32 pixmaps
+        # (in-memory thumbnail caches); separate from the file-format codec.
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/QoiPixmapCodec.cpp
 )
 if(LIBVIPS_FOUND)
     # vips foreign loader for QOI — consumes the codec symbols above.
@@ -1260,6 +1263,7 @@ if(ULTRACANVAS_ENABLE_NET)
     if(APPLE)
         foreach(_ultranet_plugin IN ITEMS
                 UltraNetSmtpPlugin UltraNetImapPlugin UltraNetPop3Plugin
+                UltraNetJmapPlugin
                 UltraNetWebDavPlugin UltraNetLdapPlugin UltraNetTelnetPlugin
                 UltraNetRtspPlugin UltraNetMqttPlugin UltraNetAmqpPlugin
                 UltraNetCoapPlugin UltraNetSnmpPlugin UltraNetSshPlugin
