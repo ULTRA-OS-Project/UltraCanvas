@@ -36,6 +36,13 @@ natively with the framework's `IRenderContext` primitives.
   colour; **Esc** cancels. Hosts can override the behaviour (e.g. for real
   whole-screen sampling) via `onScreenColorPick`.
 - ✅ **Hex input** — click to edit, accepts `#RGB`, `#RRGGBB` and `#RRGGBBAA`.
+- ✅ **Full inline text editing** — the hex and numeric value fields are real
+  single-line editors: click places the caret, drag selects, double-click
+  selects all, with the usual keyboard shortcuts (arrows / Home / End with
+  Shift-selection, Ctrl+A/C/X/V, Ctrl/Shift+Insert, Ctrl+Delete = cut,
+  Backspace/Delete, Tab / Shift+Tab to hop between fields, Enter commits,
+  Esc cancels). Input is filtered per field (hex digits + `#`, digits, or
+  digits + `.`/`-`).
 - ✅ **Model selector** — either a **tab bar** (default) or a **dropdown**
   switches the channel editors between **HSV**, **HSL** and **RGB**. The two
   presentations are mutually exclusive (`SetModeSelector`).
@@ -177,7 +184,12 @@ Color HSLToRGB(float h, float s, float l, uint8_t a = 255);
 | …then left (Select) click | Samples the pixel under the pointer into the foreground colour |
 | …then right (Adjust) click | Samples the pixel under the pointer into the background colour |
 | …Esc | Cancels picking |
-| Click hex / value box | Begins inline editing (Enter commits, Esc cancels) |
+| Click hex / value box | Begins inline editing with the caret at the click position |
+| Drag in an edited field | Selects text; double-click selects all |
+| Arrows / Home / End (+Shift) | Move the caret / extend the selection |
+| Ctrl+A / Ctrl+C / Ctrl+X / Ctrl+V | Select all / copy / cut / paste (Ctrl+Insert copy, Shift+Insert paste, Ctrl+Delete cut) |
+| Tab / Shift+Tab while editing | Commits and moves to the next / previous field |
+| Enter / Esc while editing | Commits / cancels the edit |
 | Click `<` / `>` in a value box | Steps the value by one unit (when spinners are enabled) |
 | Click a tab or the dropdown | Switches HSV / HSL / RGB channel editors |
 | Click the disclosure arrow | Shows/hides the channel sliders (when collapsible) |

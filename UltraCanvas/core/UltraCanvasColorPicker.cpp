@@ -8,6 +8,7 @@
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasUtils.h"
+#include "UltraCanvasClipboard.h"
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
@@ -684,12 +685,16 @@ namespace UltraCanvas {
                                           hexFieldRect.width, hexFieldRect.height),
                                   Scaled(style.cornerRadius));
 
-        std::string text = editing ? (editBuffer + "|") : GetColor().ToHexStringWithAlpha();
-        SetFont(ctx);
-        ctx->SetTextAlignment(TextAlignment::Left);
-        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-        ctx->DrawTextInRect(text, Rect2Dd(hexFieldRect.x + Scaled(8.0f), hexFieldRect.y,
-                                          hexFieldRect.width - Scaled(12.0f), hexFieldRect.height));
+        if (editing) {
+            RenderEditableText(ctx);
+        } else {
+            SetFont(ctx);
+            ctx->SetTextAlignment(TextAlignment::Left);
+            ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
+            ctx->DrawTextInRect(GetColor().ToHexStringWithAlpha(),
+                                Rect2Dd(hexFieldRect.x + Scaled(8.0f), hexFieldRect.y,
+                                        hexFieldRect.width - Scaled(12.0f), hexFieldRect.height));
+        }
     }
 
     void UltraCanvasColorPicker::RenderTabs(IRenderContext* ctx) {
@@ -816,10 +821,14 @@ namespace UltraCanvas {
             ctx->DrawLine(Point2Dd(rx + ah, cy), Point2Dd(rx, cy + ah));
         }
 
-        SetFont(ctx);
-        ctx->SetTextAlignment(TextAlignment::Center);
-        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-        ctx->DrawTextInRect(text, Rect2Dd(vb.x + aw, vb.y, vb.width - 2.0f * aw, vb.height));
+        if (editing) {
+            RenderEditableText(ctx);
+        } else {
+            SetFont(ctx);
+            ctx->SetTextAlignment(TextAlignment::Center);
+            ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
+            ctx->DrawTextInRect(text, Rect2Dd(vb.x + aw, vb.y, vb.width - 2.0f * aw, vb.height));
+        }
     }
 
     void UltraCanvasColorPicker::RenderChannelRow(IRenderContext* ctx, int row) {
@@ -841,8 +850,7 @@ namespace UltraCanvas {
         bool editing = ((row == 0 && editField == EditField::Channel0) ||
                         (row == 1 && editField == EditField::Channel1) ||
                         (row == 2 && editField == EditField::Channel2));
-        std::string vtext = editing ? (editBuffer + "|") : FormatChannel(row);
-        RenderValueBox(ctx, row, editing, vtext);
+        RenderValueBox(ctx, row, editing, FormatChannel(row));
     }
 
     void UltraCanvasColorPicker::RenderAlphaRow(IRenderContext* ctx) {
@@ -865,8 +873,7 @@ namespace UltraCanvas {
         bool editing = (editField == EditField::Alpha);
         char buf[16];
         std::snprintf(buf, sizeof(buf), "%d", (int)alpha);
-        std::string vtext = editing ? (editBuffer + "|") : std::string(buf);
-        RenderValueBox(ctx, row, editing, vtext);
+        RenderValueBox(ctx, row, editing, std::string(buf));
     }
 
     void UltraCanvasColorPicker::RenderDropdownPopup(IRenderContext* ctx) {
@@ -980,8 +987,21 @@ namespace UltraCanvas {
             return true;
         }
 
-        // Clicking away from an active edit commits it
+        // Clicking inside the field being edited moves the caret (drag extends
+        // the selection, double-click selects all); clicking anywhere else
+        // commits the edit first.
         if (editField != EditField::NoEdit) {
+            if (EditTextRect(editField).Contains(p)) {
+                if (event.type == UCEventType::MouseDoubleClick) {
+                    EditSelectAll();
+                } else {
+                    editCaret = CaretIndexFromPoint(p);
+                    editAnchor = editCaret;
+                    dragTarget = DragTarget::TextDrag;
+                }
+                RequestRedraw();
+                return true;
+            }
             CommitEdit();
         }
 
@@ -1045,7 +1065,8 @@ namespace UltraCanvas {
             return true;
         }
         if (hexFieldRect.Contains(p)) {
-            BeginEdit(EditField::Hex);
+            BeginEdit(EditField::Hex, &p);
+            dragTarget = DragTarget::TextDrag;
             return true;
         }
         if (modeSelector == ColorPickerModeSelector::TabBar) {
@@ -1071,7 +1092,8 @@ namespace UltraCanvas {
                     }
                     EditField fields[4] = {EditField::Channel0, EditField::Channel1,
                                            EditField::Channel2, EditField::Alpha};
-                    BeginEdit(fields[i]);
+                    BeginEdit(fields[i], &p);
+                    dragTarget = DragTarget::TextDrag;
                     return true;
                 }
                 if (rowSliderRects[i].Contains(p)) {
@@ -1095,6 +1117,21 @@ namespace UltraCanvas {
         // Not dragging: track which swatch (if any) the pointer hovers so the
         // whole surface can preview that colour.
         UpdateSwatchHover(p);
+
+        // I-beam over the editable text fields (hex + value boxes, minus the
+        // spinner arrow zones), default arrow elsewhere.
+        bool overText = hexFieldRect.Contains(p);
+        if (!overText && SlidersVisible()) {
+            int nRows = 3 + (showAlpha ? 1 : 0);
+            for (int i = 0; i < nRows && !overText; ++i) {
+                if (rowValueRects[i].Contains(p)) {
+                    overText = !showValueSpinners ||
+                               (!SpinnerDownRect(i).Contains(p) &&
+                                !SpinnerUpRect(i).Contains(p));
+                }
+            }
+        }
+        mouseCursor = overText ? UCMouseCursor::Text : UCMouseCursor::Default;
         return false;
     }
 
@@ -1122,6 +1159,11 @@ namespace UltraCanvas {
 
     void UltraCanvasColorPicker::ApplyDrag(const Point2Df& p, bool finished) {
         switch (dragTarget) {
+            case DragTarget::TextDrag:
+                // Extend the text selection towards the pointer; no colour change.
+                editCaret = CaretIndexFromPoint(p);
+                RequestRedraw();
+                return;
             case DragTarget::HueRing:  UpdateHueFromPoint(p); break;
             case DragTarget::HueBar:   UpdateHueFromBar(p); break;
             case DragTarget::SVSquare: UpdateSVFromPoint(p); break;
@@ -1272,16 +1314,26 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasColorPicker::BeginEdit(EditField field) {
+    void UltraCanvasColorPicker::BeginEdit(EditField field, const Point2Df* clickAt) {
         if (dragTarget != DragTarget::NoneTarget) return;
         editField = field;
         editBuffer = CurrentFieldText(field);
+        if (clickAt) {
+            // Mouse entry: place the caret under the click.
+            editCaret = CaretIndexFromPoint(*clickAt);
+            editAnchor = editCaret;
+        } else {
+            // Keyboard entry (Tab): select the whole text for quick replacement.
+            editAnchor = 0;
+            editCaret = editBuffer.size();
+        }
         RequestRedraw();
     }
 
     void UltraCanvasColorPicker::CancelEdit() {
         editField = EditField::NoEdit;
         editBuffer.clear();
+        editCaret = editAnchor = 0;
         RequestRedraw();
     }
 
@@ -1291,6 +1343,7 @@ namespace UltraCanvas {
         std::string text = editBuffer;
         editField = EditField::NoEdit;
         editBuffer.clear();
+        editCaret = editAnchor = 0;
 
         auto trim = [](std::string s) {
             size_t a = s.find_first_not_of(" \t");
@@ -1332,29 +1385,287 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    // ===================================================================
+    // Inline text editor: selection / clipboard / navigation helpers
+    // ===================================================================
+    void UltraCanvasColorPicker::EditSelectAll() {
+        editAnchor = 0;
+        editCaret = editBuffer.size();
+        RequestRedraw();
+    }
+
+    void UltraCanvasColorPicker::EditDeleteSelection() {
+        if (!HasEditSelection()) return;
+        size_t a = EditSelMin(), b = EditSelMax();
+        editBuffer.erase(a, b - a);
+        editCaret = editAnchor = a;
+    }
+
+    void UltraCanvasColorPicker::EditInsert(const std::string& s) {
+        EditDeleteSelection();
+        std::string filtered;
+        for (char c : s) {
+            if (EditAcceptsChar(c)) filtered += c;
+        }
+        // Keep the buffer bounded; the longest valid content is #RRGGBBAA.
+        size_t room = (editBuffer.size() < 16) ? (16 - editBuffer.size()) : 0;
+        if (filtered.size() > room) filtered.resize(room);
+        if (!filtered.empty()) {
+            editBuffer.insert(editCaret, filtered);
+            editCaret += filtered.size();
+            editAnchor = editCaret;
+        }
+        RequestRedraw();
+    }
+
+    void UltraCanvasColorPicker::EditCopy() {
+        if (!HasEditSelection()) return;
+        SetClipboardText(editBuffer.substr(EditSelMin(), EditSelMax() - EditSelMin()));
+    }
+
+    void UltraCanvasColorPicker::EditCut() {
+        if (!HasEditSelection()) return;
+        EditCopy();
+        EditDeleteSelection();
+        RequestRedraw();
+    }
+
+    void UltraCanvasColorPicker::EditPaste() {
+        std::string clip;
+        GetClipboardText(clip);   // leaves the string empty on failure
+        // Single-line fields: strip line breaks entirely.
+        std::string flat;
+        for (char c : clip) {
+            if (c == '\r' || c == '\n') continue;
+            flat += c;
+        }
+        if (!flat.empty()) EditInsert(flat);
+    }
+
+    bool UltraCanvasColorPicker::EditAcceptsChar(char c) const {
+        switch (editField) {
+            case EditField::Hex:
+                return c == '#' || (c >= '0' && c <= '9') ||
+                       (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+            case EditField::Alpha:
+                return (c >= '0' && c <= '9');
+            case EditField::Channel0:
+            case EditField::Channel1:
+            case EditField::Channel2:
+                return (c >= '0' && c <= '9') || c == '.' || c == '-';
+            default:
+                return false;
+        }
+    }
+
+    void UltraCanvasColorPicker::EditMoveToNextField(bool backwards) {
+        // Editable field cycle: Hex -> Ch0 -> Ch1 -> Ch2 [-> Alpha] -> Hex.
+        std::vector<EditField> order = {EditField::Hex};
+        if (SlidersVisible()) {
+            order.push_back(EditField::Channel0);
+            order.push_back(EditField::Channel1);
+            order.push_back(EditField::Channel2);
+            if (showAlpha) order.push_back(EditField::Alpha);
+        }
+        size_t idx = 0;
+        for (size_t i = 0; i < order.size(); ++i) {
+            if (order[i] == editField) { idx = i; break; }
+        }
+        size_t n = order.size();
+        size_t next = backwards ? (idx + n - 1) % n : (idx + 1) % n;
+        CommitEdit();
+        BeginEdit(order[next]);   // keyboard entry: selects all
+    }
+
+    Rect2Df UltraCanvasColorPicker::EditFieldRect(EditField field) const {
+        switch (field) {
+            case EditField::Hex:      return hexFieldRect;
+            case EditField::Channel0: return rowValueRects[0];
+            case EditField::Channel1: return rowValueRects[1];
+            case EditField::Channel2: return rowValueRects[2];
+            case EditField::Alpha:    return rowValueRects[3];
+            default:                  return Rect2Df();
+        }
+    }
+
+    Rect2Df UltraCanvasColorPicker::EditTextRect(EditField field) const {
+        Rect2Df fr = EditFieldRect(field);
+        if (field == EditField::Hex) {
+            float padL = Scaled(8.0f);
+            return Rect2Df(fr.x + padL, fr.y, std::max(4.0f, fr.width - padL - Scaled(4.0f)),
+                           fr.height);
+        }
+        float aw = showValueSpinners ? Scaled(14.0f) : Scaled(4.0f);
+        return Rect2Df(fr.x + aw, fr.y, std::max(4.0f, fr.width - 2.0f * aw), fr.height);
+    }
+
+    bool UltraCanvasColorPicker::EditTextCentered(EditField field) const {
+        return field != EditField::Hex;   // value boxes draw centered text
+    }
+
+    float UltraCanvasColorPicker::EditTextWidth(IRenderContext* ctx,
+                                                const std::string& s) const {
+        if (s.empty()) return 0.0f;
+        return (float)ctx->GetTextLineDimensions(s).width;
+    }
+
+    float UltraCanvasColorPicker::EditTextStartX(IRenderContext* ctx) const {
+        Rect2Df tr = EditTextRect(editField);
+        if (!EditTextCentered(editField)) return tr.x;
+        float w = EditTextWidth(ctx, editBuffer);
+        return std::max(tr.x, tr.x + (tr.width - w) * 0.5f);
+    }
+
+    size_t UltraCanvasColorPicker::CaretIndexFromPoint(const Point2Df& p) {
+        IRenderContext* ctx = GetRenderContext();
+        if (!ctx) return editBuffer.size();
+        SetFont(ctx);
+        float startX = EditTextStartX(ctx);
+        size_t best = 0;
+        float bestDist = std::fabs(p.x - startX);
+        for (size_t i = 1; i <= editBuffer.size(); ++i) {
+            float cx = startX + EditTextWidth(ctx, editBuffer.substr(0, i));
+            float d = std::fabs(p.x - cx);
+            if (d < bestDist) { bestDist = d; best = i; }
+        }
+        return best;
+    }
+
+    void UltraCanvasColorPicker::RenderEditableText(IRenderContext* ctx) {
+        Rect2Df tr = EditTextRect(editField);
+        SetFont(ctx);
+        float startX = EditTextStartX(ctx);
+
+        // Selection highlight behind the text
+        if (HasEditSelection()) {
+            float x1 = startX + EditTextWidth(ctx, editBuffer.substr(0, EditSelMin()));
+            float x2 = startX + EditTextWidth(ctx, editBuffer.substr(0, EditSelMax()));
+            ctx->SetFillPaint(style.accentColor.WithAlpha(110));
+            ctx->FillRectangle(Rect2Dd(x1, tr.y + 2.0f, x2 - x1, tr.height - 4.0f));
+        }
+
+        SetFont(ctx);
+        ctx->SetTextAlignment(TextAlignment::Left);
+        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
+        ctx->DrawTextInRect(editBuffer,
+                            Rect2Dd(startX, tr.y, std::max(4.0f, tr.x + tr.width - startX),
+                                    tr.height));
+
+        // Caret
+        float cx = startX + EditTextWidth(ctx, editBuffer.substr(0, editCaret));
+        ctx->SetStrokePaint(style.textColor);
+        ctx->SetStrokeWidth(1.0);
+        ctx->DrawLine(Point2Dd(cx, tr.y + 3.0f), Point2Dd(cx, tr.y + tr.height - 3.0f));
+    }
+
     bool UltraCanvasColorPicker::HandleKeyDown(const UCEvent& event) {
         if (editField == EditField::NoEdit) return false;
 
-        if (event.character != 0 && event.character >= 32 && event.character < 127) {
-            editBuffer += event.character;
-            RequestRedraw();
-            return true;
-        }
+        const size_t len = editBuffer.size();
+
+        // ----- Navigation, selection and clipboard shortcuts -----
         switch (event.virtualKey) {
+            case UCKeys::Left:
+                if (event.shift) {
+                    if (editCaret > 0) editCaret--;
+                } else if (HasEditSelection()) {
+                    editCaret = editAnchor = EditSelMin();
+                } else if (editCaret > 0) {
+                    editCaret = editAnchor = editCaret - 1;
+                }
+                if (!event.shift) editAnchor = editCaret;
+                RequestRedraw();
+                return true;
+
+            case UCKeys::Right:
+                if (event.shift) {
+                    if (editCaret < len) editCaret++;
+                } else if (HasEditSelection()) {
+                    editCaret = editAnchor = EditSelMax();
+                } else if (editCaret < len) {
+                    editCaret = editAnchor = editCaret + 1;
+                }
+                if (!event.shift) editAnchor = editCaret;
+                RequestRedraw();
+                return true;
+
+            case UCKeys::Home:
+                editCaret = 0;
+                if (!event.shift) editAnchor = editCaret;
+                RequestRedraw();
+                return true;
+
+            case UCKeys::End:
+                editCaret = len;
+                if (!event.shift) editAnchor = editCaret;
+                RequestRedraw();
+                return true;
+
+            case UCKeys::A:
+                if (event.ctrl) { EditSelectAll(); return true; }
+                break;
+
+            case UCKeys::C:
+                if (event.ctrl) { EditCopy(); return true; }
+                break;
+
+            case UCKeys::X:
+                if (event.ctrl) { EditCut(); return true; }
+                break;
+
+            case UCKeys::V:
+                if (event.ctrl) { EditPaste(); return true; }
+                break;
+
+            case UCKeys::Insert:
+                // Ctrl+Insert = copy, Shift+Insert = paste (classic bindings).
+                if (event.ctrl)  { EditCopy(); return true; }
+                if (event.shift) { EditPaste(); return true; }
+                break;
+
             case UCKeys::Return:
                 CommitEdit();
                 return true;
+
             case UCKeys::Escape:
                 CancelEdit();
                 return true;
+
+            case UCKeys::Tab:
+                EditMoveToNextField(event.shift);
+                return true;
+
             case UCKeys::Backspace:
-                if (!editBuffer.empty()) editBuffer.pop_back();
+                if (HasEditSelection()) {
+                    EditDeleteSelection();
+                } else if (editCaret > 0) {
+                    editBuffer.erase(editCaret - 1, 1);
+                    editCaret = editAnchor = editCaret - 1;
+                }
                 RequestRedraw();
                 return true;
+
+            case UCKeys::Delete:
+                if (event.ctrl) { EditCut(); return true; }
+                if (HasEditSelection()) {
+                    EditDeleteSelection();
+                } else if (editCaret < len) {
+                    editBuffer.erase(editCaret, 1);
+                }
+                RequestRedraw();
+                return true;
+
             default:
                 break;
         }
-        return true; // swallow keys while editing
+
+        // ----- Printable characters (never with Ctrl held: those are shortcuts) -----
+        if (!event.ctrl && event.character != 0 &&
+            event.character >= 32 && event.character < 127) {
+            EditInsert(std::string(1, event.character));
+            return true;
+        }
+        return true; // swallow remaining keys while editing
     }
 
 } // namespace UltraCanvas

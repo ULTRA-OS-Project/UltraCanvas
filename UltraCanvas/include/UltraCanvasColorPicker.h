@@ -294,12 +294,16 @@ namespace UltraCanvas {
 
         // ----- Interaction state -----
         enum class DragTarget { NoneTarget, HueRing, HueBar, SVSquare,
-                                Channel0, Channel1, Channel2, Alpha };
+                                Channel0, Channel1, Channel2, Alpha, TextDrag };
         DragTarget dragTarget = DragTarget::NoneTarget;
 
         enum class EditField { NoEdit, Hex, Channel0, Channel1, Channel2, Alpha };
         EditField editField = EditField::NoEdit;
         std::string editBuffer;
+        // Caret index and selection anchor into editBuffer; the selection is
+        // [min(caret,anchor), max(caret,anchor)) — empty when they are equal.
+        size_t editCaret = 0;
+        size_t editAnchor = 0;
 
         bool dropdownOpen = false;
 
@@ -396,10 +400,32 @@ namespace UltraCanvas {
         std::shared_ptr<IPaintPattern> MakeChannelGradient(IRenderContext* ctx, int row) const;
 
         // ----- Editing -----
-        void BeginEdit(EditField field);
+        // clickAt places the caret at that point; without it the whole text is
+        // selected (keyboard/Tab entry).
+        void BeginEdit(EditField field, const Point2Df* clickAt = nullptr);
         void CommitEdit();
         void CancelEdit();
         std::string CurrentFieldText(EditField field) const;
+
+        // ----- Inline text editor (caret / selection / clipboard) -----
+        bool HasEditSelection() const { return editCaret != editAnchor; }
+        size_t EditSelMin() const { return std::min(editCaret, editAnchor); }
+        size_t EditSelMax() const { return std::max(editCaret, editAnchor); }
+        void EditSelectAll();
+        void EditDeleteSelection();
+        void EditInsert(const std::string& s);
+        void EditCopy();
+        void EditCut();
+        void EditPaste();
+        bool EditAcceptsChar(char c) const;          // per-field character filter
+        void EditMoveToNextField(bool backwards);    // Tab / Shift+Tab
+        Rect2Df EditFieldRect(EditField field) const;
+        Rect2Df EditTextRect(EditField field) const; // inner text area
+        bool EditTextCentered(EditField field) const;
+        float EditTextWidth(IRenderContext* ctx, const std::string& s) const;
+        float EditTextStartX(IRenderContext* ctx) const;
+        size_t CaretIndexFromPoint(const Point2Df& p);
+        void RenderEditableText(IRenderContext* ctx); // selection + text + caret
 
         // ----- Notification -----
         void Changed(bool finished);
