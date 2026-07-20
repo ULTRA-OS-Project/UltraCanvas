@@ -1,6 +1,6 @@
 // core/UltraCanvasTreeView.cpp
 // Hierarchical tree view with icons and text for each row
-// Last Modified: 2026-06-04
+// Last Modified: 2026-07-20
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasApplication.h"
 #include <vector>
@@ -871,6 +871,12 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasTreeView::HandleMouseWheel(const UCEvent &event) {
+        if (verticalScrollbar->IsVisible()) {
+            // Route through the scrollbar so wheel scrolling is smoothly
+            // animated; one line step = one row, wheelScrollLines rows/notch.
+            verticalScrollbar->GetStyleRef().scrollSpeed = std::max(1, rowHeight);
+            return verticalScrollbar->ScrollByWheel(event.wheelDelta);
+        }
         int scrollAmount = event.wheelDelta * rowHeight * 3; // Scroll 3 rows per wheel notch
         ScrollBy(-scrollAmount);
         return true;

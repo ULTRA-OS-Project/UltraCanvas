@@ -1,7 +1,7 @@
 // Plugins/Text/Markdown.cpp
 // Markdown text display driver with full formatting and rendering support
-// Version: 1.1.0
-// Last Modified: 2025-10-28
+// Version: 1.1.1
+// Last Modified: 2026-07-20
 // Author: UltraCanvas Framework
 #include "Plugins/Text/UltraCanvasMarkdown.h"
 #include "UltraCanvasUtils.h"
@@ -1031,7 +1031,8 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasMarkdownDisplay::HandleMouseWheel(const UCEvent &event) {
-        ScrollBy(-event.wheelDelta * 10);
+        // ~3 text lines per wheel notch (wheelDelta is ±1 per notch)
+        ScrollBy(-event.wheelDelta * 60);
 
         return true;
     }

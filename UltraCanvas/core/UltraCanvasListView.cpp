@@ -1,6 +1,6 @@
 // core/UltraCanvasListView.cpp
 // Model-View-Delegate ListView widget implementation
-// Last Modified: 2026-07-11
+// Last Modified: 2026-07-20
 #include "UltraCanvasListView.h"
 #include "UltraCanvasApplication.h"
 #include <algorithm>
@@ -553,11 +553,10 @@ namespace UltraCanvas {
 
     bool UltraCanvasListView::HandleMouseWheel(const UCEvent& event) {
         if (verticalScrollbar->IsVisible()) {
-            int scrollAmount = event.wheelDelta * viewStyle.rowHeight;
-            scrollOffsetY -= scrollAmount;
-            ClampScrollOffset();
-            RequestRedraw();
-            return true;
+            // Route through the scrollbar so wheel scrolling is smoothly
+            // animated; one line step = one row, wheelScrollLines rows/notch.
+            verticalScrollbar->GetStyleRef().scrollSpeed = std::max(1, viewStyle.rowHeight);
+            return verticalScrollbar->ScrollByWheel(event.wheelDelta);
         }
         return false;
     }

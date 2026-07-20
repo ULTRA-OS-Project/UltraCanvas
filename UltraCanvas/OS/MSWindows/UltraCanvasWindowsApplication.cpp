@@ -1,7 +1,7 @@
 // OS/MSWindows/UltraCanvasWindowsApplication.cpp
 // Complete Windows application implementation with all methods
-// Version: 1.3.0 - HiDPI: mouse coords converted physical->logical per window scale
-// Last Modified: 2026-07-03
+// Version: 1.4.0 - Wheel delta normalized to +/-1 per notch
+// Last Modified: 2026-07-20
 // Author: UltraCanvas Framework
 
 #include "../../include/UltraCanvasApplication.h"
@@ -582,9 +582,11 @@ namespace UltraCanvas {
             case WM_MOUSEWHEEL: {
                 event.type = UCEventType::MouseWheel;
                 // Wheel delta: positive = scroll up, negative = scroll down
-                // Normalize to match Linux scale (±5 per notch)
+                // Normalize to ±1 per notch (WHEEL_DELTA = 120 per notch);
+                // consumers decide how many lines/pixels a notch scrolls.
                 int rawDelta = GET_WHEEL_DELTA_WPARAM(wParam);
-                event.wheelDelta = (rawDelta > 0) ? 5 : -5;
+                event.wheelDelta = rawDelta / WHEEL_DELTA;
+                if (event.wheelDelta == 0) event.wheelDelta = (rawDelta > 0) ? 1 : -1;
 
                 // WM_MOUSEWHEEL coordinates are in screen space
                 POINT pt = {GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
@@ -600,7 +602,8 @@ namespace UltraCanvas {
             case WM_MOUSEHWHEEL: {
                 event.type = UCEventType::MouseWheelHorizontal;
                 int rawDelta = GET_WHEEL_DELTA_WPARAM(wParam);
-                event.wheelDelta = (rawDelta > 0) ? 5 : -5;
+                event.wheelDelta = rawDelta / WHEEL_DELTA;
+                if (event.wheelDelta == 0) event.wheelDelta = (rawDelta > 0) ? 1 : -1;
 
                 POINT pt = {GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
                 event.pointerGlobal = { pt.x, pt.y };

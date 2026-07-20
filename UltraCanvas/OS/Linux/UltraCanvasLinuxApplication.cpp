@@ -1,7 +1,7 @@
 // OS/Linux/UltraCanvasLinuxApplication.cpp
 // Complete Linux application implementation with all methods
-// Version: 1.7.0 - HiDPI: event coords physical->logical; per-monitor move re-scale
-// Last Modified: 2026-07-03
+// Version: 1.8.0 - Wheel delta normalized to +/-1 per notch
+// Last Modified: 2026-07-20
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWindow.h"
@@ -480,7 +480,9 @@ namespace UltraCanvas {
                 if (xButton == Button4 || xButton == Button5) {
                     if (xEvent.type == ButtonPress) {
                         event.type = UCEventType::MouseWheel;
-                        event.wheelDelta = (xButton == Button4) ? 5 : -5;
+                        // One wheel notch = ±1; consumers decide how many
+                        // lines/pixels a notch scrolls.
+                        event.wheelDelta = (xButton == Button4) ? 1 : -1;
                         // Set modifier keys
                     } else {
                         event.type = UCEventType::Unknown;
@@ -490,7 +492,7 @@ namespace UltraCanvas {
                 else if (xButton == 6 || xButton == 7) {
                     if (xEvent.type == ButtonPress) {
                         event.type = UCEventType::MouseWheelHorizontal;
-                        event.wheelDelta = (xButton == 7) ? 5 : -5;
+                        event.wheelDelta = (xButton == 7) ? 1 : -1;
                     } else {
                         event.type = UCEventType::Unknown;
                     }
