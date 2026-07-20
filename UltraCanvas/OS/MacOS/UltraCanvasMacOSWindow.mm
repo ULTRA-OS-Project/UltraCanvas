@@ -484,6 +484,7 @@ namespace UltraCanvas {
             }
             _windowVisible = true;
         }
+        HandleWindowShown();
 
         if (onWindowShow) {
             onWindowShow();
@@ -500,6 +501,7 @@ namespace UltraCanvas {
             [nsWindow orderOut:nil];
             _windowVisible = false;
         }
+        HandleWindowHidden();
 
         if (onWindowHide) {
             onWindowHide();
@@ -512,6 +514,9 @@ namespace UltraCanvas {
         @autoreleasepool {
             [nsWindow miniaturize:nil];
         }
+        // windowDidResignKey will also fire, but notify now so the focused
+        // element reacts immediately (deduplicated in the base class).
+        HandleWindowHidden();
     }
 
     void UltraCanvasMacOSWindow::Maximize() {

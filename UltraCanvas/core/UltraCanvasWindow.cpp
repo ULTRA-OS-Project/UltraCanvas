@@ -58,6 +58,7 @@ namespace UltraCanvas {
 
         // Set new focused element
         _focusedElement = element;
+        _focusedElementNotifiedActive = (_focusedElement != nullptr);
 
         // Set focus on new element
         if (_focusedElement) {
@@ -183,6 +184,31 @@ namespace UltraCanvas {
         element->OnEvent(focusEvent);
     }
 
+    void UltraCanvasWindowBase::NotifyFocusedElementWindowActive(bool active) {
+        if (!_focusedElement) return;
+        if (active == _focusedElementNotifiedActive) return;
+        _focusedElementNotifiedActive = active;
+        if (active) {
+            SendFocusGainedEvent(_focusedElement);
+        } else {
+            SendFocusLostEvent(_focusedElement);
+        }
+    }
+
+    void UltraCanvasWindowBase::HandleWindowShown() {
+        // Showing does not imply activation — only re-notify when the
+        // application still considers this window focused (hide + show of the
+        // active window); otherwise the native WindowFocus event that follows
+        // actual activation delivers the FocusGained.
+        if (IsWindowFocused()) {
+            NotifyFocusedElementWindowActive(true);
+        }
+    }
+
+    void UltraCanvasWindowBase::HandleWindowHidden() {
+        NotifyFocusedElementWindowActive(false);
+    }
+
     bool UltraCanvasWindowBase::OnEvent(const UCEvent &event) {
         // Handle window-specific events first
         if (HandleWindowEvent(event)) {
@@ -241,12 +267,16 @@ namespace UltraCanvas {
     bool UltraCanvasWindowBase::HandleWindowEvent(const UCEvent &event) {
         switch (event.type) {
             case UCEventType::WindowBlur:
+                // Deactivation: the focused element is told it lost focus but
+                // stays _focusedElement, so activation restores it below.
+                NotifyFocusedElementWindowActive(false);
                 if (onWindowBlur) {
                     onWindowBlur();
                 }
                 RequestRedraw();
                 return true;
             case UCEventType::WindowFocus:
+                NotifyFocusedElementWindowActive(true);
                 if (onWindowFocus) {
                     onWindowFocus();
                 }

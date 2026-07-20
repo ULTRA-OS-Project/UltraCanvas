@@ -111,6 +111,25 @@ namespace UltraCanvas {
 
         UltraCanvasUIElement* _focusedElement = nullptr;  // Current focused element in this window
 
+        // True while _focusedElement has been sent FocusGained more recently
+        // than FocusLost. Lets window activate/deactivate and hide/show paths
+        // notify the focused element exactly once, whichever fires first
+        // (native focus events, synthetic focus switches, programmatic
+        // Show/Hide/Minimize).
+        bool _focusedElementNotifiedActive = false;
+
+        // Send FocusGained/FocusLost to the focused element when this window's
+        // activation state changes, WITHOUT clearing _focusedElement — so
+        // keyboard focus returns to the same element (and its caret comes
+        // back) when the window is activated again.
+        void NotifyFocusedElementWindowActive(bool active);
+
+        // Called by platform Show()/Hide()/Minimize() implementations so the
+        // focused element learns about visibility-driven focus changes even
+        // when the native focus notification is late or absent.
+        void HandleWindowShown();
+        void HandleWindowHidden();
+
         UCMouseCursor currentMouseCursor = UCMouseCursor::Default;
 
         NativeSurfacePtr nativeSurface;

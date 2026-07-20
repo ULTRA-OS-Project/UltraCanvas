@@ -675,6 +675,7 @@ namespace UltraCanvas {
         }
 
         _windowVisible = true;
+        HandleWindowShown();
 
         if (onWindowShow) {
             onWindowShow();
@@ -693,6 +694,7 @@ namespace UltraCanvas {
         XFlush(application->GetDisplay());
 
         _windowVisible = false;
+        HandleWindowHidden();
 
         if (onWindowHide) {
             onWindowHide();
@@ -708,6 +710,9 @@ namespace UltraCanvas {
         Display* display = application->GetDisplay();
         XIconifyWindow(display, xWindow, application->GetScreen());
         _state = WindowState::Minimized;
+        // The WM will also send FocusOut, but notify now so the focused
+        // element reacts immediately (deduplicated in the base class).
+        HandleWindowHidden();
     }
 
     void UltraCanvasLinuxWindow::Maximize() {
