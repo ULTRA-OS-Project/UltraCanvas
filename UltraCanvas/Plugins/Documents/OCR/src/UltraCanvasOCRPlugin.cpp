@@ -142,16 +142,14 @@ OCRResult UltraCanvasOCR::RecognizeImage(const vips::VImage& img) {
     return engine->RecognizeRaw(raw.data(), w, h, bpp, stride);
 }
 
-std::future<OCRResult> UltraCanvasOCR::RecognizeFileAsync(const std::string& path,
-                                                          std::stop_token /*st*/) {
+std::future<OCRResult> UltraCanvasOCR::RecognizeFileAsync(const std::string& path) {
     // Engines are not yet cancellation-aware (Phase 2). The stop_token is
     // accepted now so callers can be written against the final shape.
     return std::async(std::launch::async,
                       [this, path]() { return RecognizeFile(path); });
 }
 
-std::future<OCRResult> UltraCanvasOCR::RecognizeImageAsync(const vips::VImage& img,
-                                                           std::stop_token /*st*/) {
+std::future<OCRResult> UltraCanvasOCR::RecognizeImageAsync(const vips::VImage& img) {
     return std::async(std::launch::async,
                       [this, img]() { return RecognizeImage(img); });
 }

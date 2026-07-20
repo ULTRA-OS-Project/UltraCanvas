@@ -1,4 +1,4 @@
-#### 2026-07-19 *0.3.9*
+#### 2026-07-19 *0.3.10*
 - Filer widget: optional **"Compressed thumbnails"** mode
   (`SetCompressedThumbnails(bool)`, default off; toggle in the Filer demo).
   Finished thumbnails are held in memory QOI-compressed instead of as raw
@@ -32,6 +32,10 @@
   cache hits), the widget's own bookkeeping is bounded by a 96 MB budget,
   decodes of the same file are serialized, and pending work is dropped on
   folder change / view change / widget destruction.
+
+#### 2026-07-19 *0.3.9*
+- Merge "JSON support in UltraCanvas API"
+- Merge "JMAP support for UltraNet"
 
 #### 2026-07-17 *0.3.8*
 - Fix missing method implementation SetIconMaskColor() in the Button

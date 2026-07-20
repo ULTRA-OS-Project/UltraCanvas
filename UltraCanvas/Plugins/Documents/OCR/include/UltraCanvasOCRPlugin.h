@@ -9,7 +9,6 @@
 #include <vector>
 #include <memory>
 #include <future>
-#include <stop_token>
 
 #ifdef ULTRACANVAS_OCR_SUPPORT
 #include <vips/vips8>
@@ -109,10 +108,8 @@ public:
                               const std::string& formatHint = "");
     OCRResult RecognizeImage(const vips::VImage& img);
 
-    std::future<OCRResult> RecognizeFileAsync(const std::string& path,
-                                              std::stop_token st = {});
-    std::future<OCRResult> RecognizeImageAsync(const vips::VImage& img,
-                                               std::stop_token st = {});
+    std::future<OCRResult> RecognizeFileAsync(const std::string& path);
+    std::future<OCRResult> RecognizeImageAsync(const vips::VImage& img);
 
     void              SetConfig(const OCRConfig& cfg);
     const OCRConfig&  Config() const;

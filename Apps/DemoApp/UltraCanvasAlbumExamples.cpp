@@ -570,6 +570,10 @@ namespace UltraCanvas {
             { "3d-boxes.png",    "Renders",          "blenderhub.example",  AlbumMediaType::Photo, false,
               "A set of stacked 3D boxes rendered in Blender to test material and "
               "lighting setups.", "https://blenderhub.example/renders" },
+            { "fantasycutemonster.jpg",    "Fantasy cute monster",  "renders.example",          AlbumMediaType::Photo, false,
+                    "Fantasy cute monster", "" },
+            { "artist.jpg",    "Portrait",  "portrait.example",  AlbumMediaType::Photo, false,
+                    "Portrait", "" },
             { "testcard_rgba.qoi", "Field Notes",    "filmdiary.example",   AlbumMediaType::Photo, false,
               "Scanned 35mm film frame from a walk in the field — grainy, warm and "
               "full of character.", "https://filmdiary.example/field-notes" },

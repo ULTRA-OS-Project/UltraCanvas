@@ -22,7 +22,7 @@ if(APPLE)
 endif()
 
 # ===== LIBRARY DEFINITION =====
-set(ULTRACANVAS_VERSION "0.3.8")
+set(ULTRACANVAS_VERSION "0.3.10")
 set(ULTRACANVAS_LIB_NAME "UltraCanvas")
 
 message(STATUS "")
@@ -1263,6 +1263,7 @@ if(ULTRACANVAS_ENABLE_NET)
     if(APPLE)
         foreach(_ultranet_plugin IN ITEMS
                 UltraNetSmtpPlugin UltraNetImapPlugin UltraNetPop3Plugin
+                UltraNetJmapPlugin
                 UltraNetWebDavPlugin UltraNetLdapPlugin UltraNetTelnetPlugin
                 UltraNetRtspPlugin UltraNetMqttPlugin UltraNetAmqpPlugin
                 UltraNetCoapPlugin UltraNetSnmpPlugin UltraNetSshPlugin
