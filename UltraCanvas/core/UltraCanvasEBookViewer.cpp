@@ -81,6 +81,10 @@ void UltraCanvasEBookViewer::BuildUI() {
     toolbar = std::make_shared<UltraCanvasContainer>(id + "_toolbar");
     disableScrollbars(*toolbar);
     toolbar->size.height = CSSLayout::Dimension::Px(40);
+    // bodyRow's flex base size is the chapter's content height, so a long
+    // chapter puts the column into shrink mode — the toolbar must keep its
+    // 40px; bodyRow absorbs the overflow and the content pane scrolls.
+    toolbar->layoutItem.SetFlexShrink(0);
     toolbar->layout.SetFlex(CSSLayout::FlexDirection::Row);
     toolbar->layout.SetFlexGap(4.f);
     toolbar->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
@@ -118,11 +122,24 @@ void UltraCanvasEBookViewer::BuildUI() {
 
     tocList = std::make_shared<UltraCanvasListView>(id + "_toclist");
     tocList->size.width = CSSLayout::Dimension::Px(240);
+    // Same shrink protection on the row axis: wide content (oversized cover
+    // images) must not squeeze the TOC panel below its 240px.
+    tocList->layoutItem.SetFlexShrink(0);
     tocList->SetVisible(false);
     bodyRow->AddChild(tocList);
 
     contentScroll = std::make_shared<UltraCanvasContainer>(id + "_content");
     contentScroll->layoutItem.SetFlexGrow(1.f);
+    // Chapter content reflows to the pane width (images are capped at 100%),
+    // so horizontal scrolling is never meaningful here. Without this, the
+    // vertical scrollbar appearing narrows the viewport by its track size and
+    // fabricates a track-sized horizontal overflow — a stray scrollbar with a
+    // ~full-width thumb at the bottom of every long chapter.
+    {
+        ContainerStyle contentStyle = contentScroll->GetContainerStyle();
+        contentStyle.autoShowHorizontalScrollbar = false;
+        contentScroll->SetContainerStyle(contentStyle);
+    }
     bodyRow->AddChild(contentScroll);
 
     AddChild(bodyRow);
