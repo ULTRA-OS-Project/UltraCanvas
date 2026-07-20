@@ -1,7 +1,7 @@
 // include/UltraCanvasScrollbar.h
 // Standalone scrollbar UI control with full interaction support
-// Version: 2.1.2
-// Last Modified: 2026-07-13
+// Version: 2.2.0
+// Last Modified: 2026-07-20
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -9,8 +9,10 @@
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasTimer.h"
 #include <functional>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 
 namespace UltraCanvas {
@@ -67,9 +69,13 @@ namespace UltraCanvas {
 
         // Behavior
         bool autoHide = false;
-        int scrollSpeed = 20;       // Pixels per scroll step
+        int scrollSpeed = 20;       // Pixels per scroll step (one "line")
+        int wheelScrollLines = 3;   // Line steps per wheel notch (Windows-like default)
         int pageScrollRatio = 90;   // Percentage of viewport for page scroll
-        bool smoothScrolling = false;
+        // Smooth scrolling: wheel, arrow-button and track-page scrolls animate
+        // towards their target instead of jumping. Thumb dragging and
+        // programmatic SetScrollPosition() stay immediate.
+        bool smoothScrolling = true;
         int smoothScrollDuration = 150;  // milliseconds
 
         // ===== PRESET STYLES =====
@@ -226,6 +232,10 @@ namespace UltraCanvas {
         Rect2Di downArrowRect;
         bool layoutDirty = true;
 
+        // Smooth-scroll animation (driven by an application timer)
+        TimerId animationTimerId = InvalidTimerId;
+        std::chrono::steady_clock::time_point animationStartTime;
+
         // Set by the owning container: placed as fixed chrome in the parent's
         // content box (see SetFixedInParentContentBox / GetPositionInWindow).
         bool fixedInParentContentBox = false;
@@ -246,7 +256,7 @@ namespace UltraCanvas {
         explicit UltraCanvasScrollbar(ScrollbarOrientation orient = ScrollbarOrientation::Vertical)
             : UltraCanvasScrollbar("", -1, -1, -1, -1, orient) {}
 
-        virtual ~UltraCanvasScrollbar() = default;
+        virtual ~UltraCanvasScrollbar();
 
         // ===== ORIENTATION =====
         void SetOrientation(ScrollbarOrientation orient);
@@ -301,24 +311,35 @@ namespace UltraCanvas {
         }
 
         bool ScrollLineUp() {
-            return ScrollBy(-style.scrollSpeed);
+            return SmoothScrollBy(-style.scrollSpeed);
         }
 
         bool ScrollLineDown() {
-            return ScrollBy(style.scrollSpeed);
+            return SmoothScrollBy(style.scrollSpeed);
         }
 
         bool ScrollPageUp() {
             int pageAmount = (scrollState.viewportSize * style.pageScrollRatio) / 100;
-            return ScrollBy(-std::max(1, pageAmount));
+            return SmoothScrollBy(-std::max(1, pageAmount));
         }
 
         bool ScrollPageDown() {
             int pageAmount = (scrollState.viewportSize * style.pageScrollRatio) / 100;
-            return ScrollBy(std::max(1, pageAmount));
+            return SmoothScrollBy(std::max(1, pageAmount));
         }
 
+        // Scrolls wheelScrollLines line steps per wheel notch (delta = signed
+        // notch count, positive = towards start), animated when smoothScrolling
+        // is enabled.
         bool ScrollByWheel(int delta);
+
+        // Animated scrolling. Successive calls accumulate: the delta is applied
+        // to the pending animation target, so fast wheel notches add up instead
+        // of restarting from the current position. Falls back to an immediate
+        // jump when smoothScrolling is off.
+        bool SmoothScrollBy(int delta);
+        bool SmoothScrollTo(int targetPosition);
+        bool IsScrollAnimating() const { return interactionState.isAnimating; }
 
         // ===== SCROLLABILITY =====
         bool IsScrollable() const {
@@ -376,6 +397,13 @@ namespace UltraCanvas {
         bool HandleMouseUp(const UCEvent& event);
         bool HandleMouseMove(const UCEvent& event);
         bool HandleMouseLeave(const UCEvent& event);
+
+        // ===== SMOOTH-SCROLL ANIMATION =====
+        // Applies a position without cancelling the running animation (used by
+        // the animation tick; SetScrollPosition cancels it first).
+        bool ApplyScrollPosition(int position);
+        void TickScrollAnimation();
+        void CancelScrollAnimation();
     };
 
 // ===== FACTORY FUNCTIONS =====

@@ -7,6 +7,7 @@
 #include "UltraCanvasWASMWindow.h"
 #include "UltraCanvasWASMApplication.h"
 #include <iostream>
+#include <cmath>
 #include <emscripten.h>
 #include "UltraCanvasDebug.h"
 
@@ -524,8 +525,16 @@ UCEvent UltraCanvasWASMWindow::ConvertWheelEvent(const EmscriptenWheelEvent* eve
     UCEvent ucEvent;
     ucEvent.type = UCEventType::MouseWheel;
     
-    // Set scroll delta
-    ucEvent.wheelDelta = -static_cast<int>(event->deltaY);
+    // Set scroll delta, normalized to ±1 per wheel notch. Browsers report
+    // deltaY in pixels (deltaMode 0, ~100 per notch), lines (mode 1, ~3 per
+    // notch) or pages (mode 2); consumers only expect notch counts.
+    double notches = 0.0;
+    switch (event->deltaMode) {
+        case DOM_DELTA_LINE: notches = -event->deltaY / 3.0;   break;
+        case DOM_DELTA_PAGE: notches = -event->deltaY;         break;
+        default:             notches = -event->deltaY / 100.0; break;
+    }
+    ucEvent.wheelDelta = static_cast<int>(notches > 0 ? std::ceil(notches) : std::floor(notches));
     
     // Set position
     ucEvent.pointer = { static_cast<int>(event->mouse.targetX), static_cast<int>(event->mouse.targetY) };

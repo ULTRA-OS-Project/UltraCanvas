@@ -1,7 +1,7 @@
 // core/UltraCanvasScrollbar.cpp
 // Platform-independent scrollbar component implementation
-// Version: 1.1.2
-// Last Modified: 2026-07-13
+// Version: 1.2.0
+// Last Modified: 2026-07-20
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasScrollbar.h"
@@ -43,7 +43,13 @@ namespace UltraCanvas {
             , orientation(orient) {
         mouseCursor = (orient == ScrollbarOrientation::Vertical)
                   ? UCMouseCursor::SizeNS
-                  : UCMouseCursor::SizeWE;        
+                  : UCMouseCursor::SizeWE;
+    }
+
+    UltraCanvasScrollbar::~UltraCanvasScrollbar() {
+        // The animation timer callback captures `this`; make sure it can never
+        // fire after destruction.
+        CancelScrollAnimation();
     }
 
     void UltraCanvasScrollbar::SetOrientation(ScrollbarOrientation orient) {
@@ -113,6 +119,15 @@ namespace UltraCanvas {
 
     bool UltraCanvasScrollbar::SetScrollPosition(int position) {
         int newPos = std::clamp(position, 0, scrollState.maxPosition);
+        if (newPos == scrollState.position) return false;
+        // A direct position change (thumb drag, programmatic scroll) overrides
+        // any in-flight smooth-scroll animation.
+        CancelScrollAnimation();
+        return ApplyScrollPosition(newPos);
+    }
+
+    bool UltraCanvasScrollbar::ApplyScrollPosition(int position) {
+        int newPos = std::clamp(position, 0, scrollState.maxPosition);
         if (newPos != scrollState.position) {
             scrollState.position = newPos;
             layoutDirty = true;
@@ -160,8 +175,79 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasScrollbar::ScrollByWheel(int delta) {
-        int scrollAmount = delta * style.scrollSpeed;
-        return ScrollBy(-scrollAmount);  // Invert for natural scrolling
+        // delta is a signed notch count (±1 per notch from the platform layer).
+        int scrollAmount = delta * style.scrollSpeed * std::max(1, style.wheelScrollLines);
+        return SmoothScrollBy(-scrollAmount);  // Invert for natural scrolling
+    }
+
+    bool UltraCanvasScrollbar::SmoothScrollBy(int delta) {
+        // Accumulate onto the pending target so rapid wheel notches chain into
+        // one continuous glide instead of restarting from the current position.
+        int base = interactionState.isAnimating ? interactionState.animationTargetPos
+                                                : scrollState.position;
+        return SmoothScrollTo(base + delta);
+    }
+
+    bool UltraCanvasScrollbar::SmoothScrollTo(int targetPosition) {
+        int target = std::clamp(targetPosition, 0, scrollState.maxPosition);
+
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (!style.smoothScrolling || style.smoothScrollDuration <= 0 || !app) {
+            return SetScrollPosition(target);
+        }
+
+        int from = interactionState.isAnimating ? interactionState.animationTargetPos
+                                                : scrollState.position;
+        if (target == from && target == scrollState.position) return false;
+
+        interactionState.isAnimating = true;
+        interactionState.animationStartPos = scrollState.position;
+        interactionState.animationTargetPos = target;
+        interactionState.animationProgress = 0.0f;
+        animationStartTime = std::chrono::steady_clock::now();
+
+        if (animationTimerId == InvalidTimerId) {
+            // ~60 fps animation tick; fires on the main thread.
+            animationTimerId = app->StartTimer(16, true, [this](TimerId) {
+                TickScrollAnimation();
+            });
+        }
+        return true;
+    }
+
+    void UltraCanvasScrollbar::TickScrollAnimation() {
+        if (!interactionState.isAnimating) {
+            CancelScrollAnimation();
+            return;
+        }
+
+        auto now = std::chrono::steady_clock::now();
+        float elapsedMs = std::chrono::duration<float, std::milli>(now - animationStartTime).count();
+        float t = std::min(1.0f, elapsedMs / static_cast<float>(std::max(1, style.smoothScrollDuration)));
+        // Ease-out cubic: fast start, gentle landing on the target line.
+        float eased = 1.0f - (1.0f - t) * (1.0f - t) * (1.0f - t);
+        interactionState.animationProgress = t;
+
+        int from = interactionState.animationStartPos;
+        int target = std::clamp(interactionState.animationTargetPos, 0, scrollState.maxPosition);
+        int pos = from + static_cast<int>(std::lround((target - from) * eased));
+        ApplyScrollPosition(pos);
+
+        if (t >= 1.0f) {
+            ApplyScrollPosition(target);
+            CancelScrollAnimation();
+        }
+    }
+
+    void UltraCanvasScrollbar::CancelScrollAnimation() {
+        interactionState.isAnimating = false;
+        interactionState.animationProgress = 0.0f;
+        if (animationTimerId != InvalidTimerId) {
+            if (auto* app = UltraCanvasApplication::GetInstance()) {
+                app->StopTimer(animationTimerId);
+            }
+            animationTimerId = InvalidTimerId;
+        }
     }
 
     bool UltraCanvasScrollbar::OnEvent(const UCEvent &event) {

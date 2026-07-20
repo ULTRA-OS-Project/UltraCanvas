@@ -119,9 +119,13 @@ struct ScrollbarStyle {
 
     // Behavior
     bool autoHide            = false;
-    int  scrollSpeed         = 20;    // Pixels per scroll step
+    int  scrollSpeed         = 20;    // Pixels per scroll step (one "line")
+    int  wheelScrollLines    = 3;     // Line steps per wheel notch (Windows-like)
     int  pageScrollRatio     = 90;    // Percentage of viewport for page scroll
-    bool smoothScrolling     = false;
+    // Wheel, arrow-button and track-page scrolls glide to their target
+    // (ease-out) instead of jumping; thumb drags and programmatic
+    // SetScrollPosition() stay immediate. On by default.
+    bool smoothScrolling     = true;
     int  smoothScrollDuration = 150;  // milliseconds
 
     // Preset styles
@@ -193,8 +197,19 @@ bool ScrollLineUp();      // Moves by style.scrollSpeed
 bool ScrollLineDown();
 bool ScrollPageUp();      // Moves by a fraction of the viewport (pageScrollRatio)
 bool ScrollPageDown();
+// delta is a signed wheel-notch count (+/-1 per notch); scrolls
+// scrollSpeed * wheelScrollLines pixels per notch.
 bool ScrollByWheel(int delta);
+// Animated scrolling; successive calls accumulate on the pending target so
+// fast wheel notches chain into one glide. Immediate when smoothScrolling
+// is off. IsScrollAnimating() reports a scroll animation in flight.
+bool SmoothScrollBy(int delta);
+bool SmoothScrollTo(int targetPosition);
 ```
+
+Line, page and wheel scrolls animate when `smoothScrolling` is enabled (the
+default); `ScrollBy`/`ScrollTo*`/`SetScrollPosition` are immediate and cancel
+any running animation.
 
 ### Scrollability and Visibility
 

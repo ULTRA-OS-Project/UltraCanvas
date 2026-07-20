@@ -1,8 +1,8 @@
 // core/UltraCanvasModalDialog.cpp
 // Implementation of cross-platform modal dialog system - Window-based
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
-// Version: 3.3.0
-// Last Modified: 2026-01-25
+// Version: 3.3.1
+// Last Modified: 2026-07-20
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasModalDialog.h"
@@ -1228,7 +1228,7 @@ namespace UltraCanvas {
         if (fileListRect.Contains(event.pointer)) {
             int totalItems = static_cast<int>(directoryList.size() + fileList.size());
             scrollOffset = std::max(0, std::min(totalItems - maxVisibleItems,
-                                                scrollOffset - event.wheelDelta));
+                                                scrollOffset - event.wheelDelta * 3));
         }
     }
 
