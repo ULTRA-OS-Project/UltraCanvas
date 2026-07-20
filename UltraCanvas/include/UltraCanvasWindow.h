@@ -191,6 +191,12 @@ namespace UltraCanvas {
         bool SelectMouseCursor(UCMouseCursor ptr);
         bool SelectMouseCursor(UCMouseCursor ptr, const char* filename, int hotspotX, int hotspotY);
 
+        // Sample the colour of the window pixel at (x, y) in LOGICAL window
+        // coordinates from the window's rendered surface (the last presented
+        // frame). Used by colour-picking tools (eyedropper). Returns false when
+        // no surface exists or the position cannot be read.
+        virtual bool GetPixelColor(int x, int y, Color& out);
+
         bool IsWindowVisible() { return _windowVisible; }
         virtual void Show() = 0;
         virtual void Hide() = 0;

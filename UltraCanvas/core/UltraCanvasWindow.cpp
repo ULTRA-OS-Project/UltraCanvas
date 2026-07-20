@@ -9,6 +9,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasTooltipManager.h"
 
+#include <cairo/cairo.h>
 #include <iostream>
 #include <algorithm>
 #include "UltraCanvasDebug.h"
@@ -645,6 +646,48 @@ namespace UltraCanvas {
         if (onWindowClosed) {
             onWindowClosed();
         }
+    }
+
+    bool UltraCanvasWindowBase::GetPixelColor(int x, int y, Color& out) {
+        if (!nativeSurface) return false;
+        if (x < 0 || y < 0 || x >= config_.width || y >= config_.height) return false;
+
+        // The native surface is a cairo surface on every backend (xlib/image/
+        // quartz). It may not be an image surface, so copy the wanted pixel
+        // through a 1x1 image surface; cairo handles the backend readback and
+        // the device scale of HiDPI surfaces.
+        cairo_surface_t* src = static_cast<cairo_surface_t*>(nativeSurface);
+        cairo_surface_flush(src);
+        cairo_surface_t* dst = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1);
+        if (cairo_surface_status(dst) != CAIRO_STATUS_SUCCESS) {
+            cairo_surface_destroy(dst);
+            return false;
+        }
+        cairo_t* cr = cairo_create(dst);
+        cairo_set_source_surface(cr, src, -x, -y);
+        cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_NEAREST);
+        cairo_paint(cr);
+        cairo_destroy(cr);
+        cairo_surface_flush(dst);
+
+        const unsigned char* data = cairo_image_surface_get_data(dst);
+        if (!data) {
+            cairo_surface_destroy(dst);
+            return false;
+        }
+        uint32_t px = *reinterpret_cast<const uint32_t*>(data);   // premultiplied ARGB
+        uint8_t a = (px >> 24) & 0xFF;
+        uint8_t r = (px >> 16) & 0xFF;
+        uint8_t g = (px >> 8) & 0xFF;
+        uint8_t b = px & 0xFF;
+        if (a > 0 && a < 255) {   // un-premultiply
+            r = (uint8_t)std::min(255, r * 255 / a);
+            g = (uint8_t)std::min(255, g * 255 / a);
+            b = (uint8_t)std::min(255, b * 255 / a);
+        }
+        out = Color(r, g, b, a ? a : 255);
+        cairo_surface_destroy(dst);
+        return true;
     }
 
     bool UltraCanvasWindowBase::SelectMouseCursor(UCMouseCursor ptr) {
