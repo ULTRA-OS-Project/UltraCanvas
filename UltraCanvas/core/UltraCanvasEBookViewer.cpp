@@ -6,6 +6,7 @@
 
 #include "UltraCanvasEBookViewer.h"
 
+#include "UltraCanvasApplication.h"
 #include "HTMLReader/HTMLElementBuilder.h"
 
 #include <algorithm>
@@ -60,6 +61,11 @@ UltraCanvasEBookViewer::CurrentThemeColors() const {
 UltraCanvasEBookViewer::UltraCanvasEBookViewer(const std::string& id,
                                                float w, float h)
     : UltraCanvasContainer(id, w, h) {
+    // Book text starts at the interface font size (A-/A+ adjust from there).
+    if (auto* app = UltraCanvasApplication::GetInstance()) {
+        float systemSize = static_cast<float>(app->GetSystemFontStyle().fontSize);
+        if (systemSize > 0.f) baseFontSizePx = systemSize;
+    }
     BuildUI();
     ApplyThemeColors();
     RefreshToolbarState();
@@ -81,9 +87,9 @@ void UltraCanvasEBookViewer::BuildUI() {
     toolbar = std::make_shared<UltraCanvasContainer>(id + "_toolbar");
     disableScrollbars(*toolbar);
     toolbar->size.height = CSSLayout::Dimension::Px(40);
-    // bodyRow's flex base size is the chapter's content height, so a long
+    // The body's flex base size is the chapter's content height, so a long
     // chapter puts the column into shrink mode — the toolbar must keep its
-    // 40px; bodyRow absorbs the overflow and the content pane scrolls.
+    // 40px; the body absorbs the overflow and the content pane scrolls.
     toolbar->layoutItem.SetFlexShrink(0);
     toolbar->layout.SetFlex(CSSLayout::FlexDirection::Row);
     toolbar->layout.SetFlexGap(4.f);
@@ -99,34 +105,29 @@ void UltraCanvasEBookViewer::BuildUI() {
         return button;
     };
 
+    // All controls sit on the left; the chapter title fills the rest.
     btnPrev = makeButton("_prev", "\xE2\x97\x80");         // ◀
     btnNext = makeButton("_next", "\xE2\x96\xB6");         // ▶
-
-    chapterLabel = std::make_shared<UltraCanvasLabel>(id + "_chapter", "");
-    chapterLabel->layoutItem.SetFlexGrow(1.f);
-    chapterLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
-    toolbar->AddChild(chapterLabel);
-
     btnFontMinus = makeButton("_fminus", "A-", 40.f);
     btnFontPlus = makeButton("_fplus", "A+", 40.f);
     btnTheme = makeButton("_theme", "\xE2\x98\xBE");       // ☾
     btnToc = makeButton("_toc", "\xE2\x98\xB0");           // ☰
 
+    chapterLabel = std::make_shared<UltraCanvasLabel>(id + "_chapter", "");
+    chapterLabel->layoutItem.SetFlexGrow(1.f);
+    chapterLabel->box.margin.left = CSSLayout::Dimension::Px(8);
+    chapterLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
+    toolbar->AddChild(chapterLabel);
+
     AddChild(toolbar);
 
-    // ---- body: TOC | content ----
-    bodyRow = std::make_shared<UltraCanvasContainer>(id + "_body");
-    disableScrollbars(*bodyRow);
-    bodyRow->layoutItem.SetFlexGrow(1.f);
-    bodyRow->layout.SetFlex(CSSLayout::FlexDirection::Row);
+    // ---- body: TOC ║ content (split pane with a draggable splitter) ----
+    bodySplit = std::make_shared<UltraCanvasSplitPane>(
+        id + "_body", SplitOrientation::Horizontal);
+    bodySplit->layoutItem.SetFlexGrow(1.f).SetFlexShrink(1.f);
 
     tocList = std::make_shared<UltraCanvasListView>(id + "_toclist");
-    tocList->size.width = CSSLayout::Dimension::Px(240);
-    // Same shrink protection on the row axis: wide content (oversized cover
-    // images) must not squeeze the TOC panel below its 240px.
-    tocList->layoutItem.SetFlexShrink(0);
-    tocList->SetVisible(false);
-    bodyRow->AddChild(tocList);
+    tocList->layoutItem.SetFlexGrow(1.f);
 
     contentScroll = std::make_shared<UltraCanvasContainer>(id + "_content");
     contentScroll->layoutItem.SetFlexGrow(1.f);
@@ -140,9 +141,15 @@ void UltraCanvasEBookViewer::BuildUI() {
         contentStyle.autoShowHorizontalScrollbar = false;
         contentScroll->SetContainerStyle(contentStyle);
     }
-    bodyRow->AddChild(contentScroll);
 
-    AddChild(bodyRow);
+    contentPane = bodySplit->AddPane(1.0);
+    disableScrollbars(*contentPane);
+    contentPane->layout.SetFlexColumn();
+    contentPane->AddChild(contentScroll);
+
+    if (tocVisible) AttachTocPane();
+
+    AddChild(bodySplit);
 
     // ---- wiring ----
     btnPrev->SetOnClick([this]() { PreviousChapter(); });
@@ -164,6 +171,41 @@ void UltraCanvasEBookViewer::BuildUI() {
             if (chapter >= 0) GoToChapter(chapter);
         }
     };
+}
+
+void UltraCanvasEBookViewer::AttachTocPane() {
+    if (tocPane || !bodySplit) return;
+
+    tocPane = bodySplit->InsertPane(0);
+    ContainerStyle paneStyle = tocPane->GetContainerStyle();
+    paneStyle.autoShowScrollbars = false;   // the ListView scrolls itself
+    tocPane->SetContainerStyle(paneStyle);
+    tocPane->layout.SetFlexColumn();
+    tocPane->AddChild(tocList);
+    tocList->SetVisible(true);
+
+    bodySplit->SetPaneMinSize(0, 180);
+    bodySplit->SetPaneMinSize(1, 240);
+    int total = bodySplit->GetWidth();
+    if (total > tocWidthPx + 240) {
+        // Restore the remembered TOC width against the current body width.
+        bodySplit->SetPaneSizes({tocWidthPx, total - tocWidthPx});
+    } else {
+        // Not laid out yet (or very narrow): fall back to a 30/70 split.
+        bodySplit->SetPaneSizes({3, 7});
+    }
+}
+
+void UltraCanvasEBookViewer::DetachTocPane() {
+    if (!tocPane || !bodySplit) return;
+
+    int width = tocPane->GetWidth();
+    if (width > 0) tocWidthPx = width;
+
+    tocList->SetVisible(false);
+    tocPane->RemoveChild(tocList);
+    bodySplit->RemovePane(tocPane.get());
+    tocPane.reset();
 }
 
 // ============================================================================
@@ -285,7 +327,8 @@ void UltraCanvasEBookViewer::SetContentFontFamily(const std::string& family) {
 void UltraCanvasEBookViewer::ShowTableOfContents(bool show) {
     if (tocVisible == show) return;
     tocVisible = show;
-    if (tocList) tocList->SetVisible(show);
+    if (show) AttachTocPane();
+    else      DetachTocPane();
     InvalidateLayout();
     RequestRedraw();
 }

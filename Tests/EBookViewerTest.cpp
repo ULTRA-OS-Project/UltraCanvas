@@ -171,15 +171,21 @@ int main() {
     CHECK(viewer->GetCurrentChapter() == 0);
     CHECK(chapterChanges == 5);
 
-    // Appearance changes rebuild without incident.
+    // Appearance changes rebuild without incident. The initial font size
+    // follows the platform UI font (or the 12px fallback when no application
+    // instance exists, as in this headless test).
     viewer->SetTheme(EBookViewerTheme::Night);
     CHECK(viewer->GetTheme() == EBookViewerTheme::Night);
+    const float initialFontSize = viewer->GetBaseFontSize();
+    CHECK(initialFontSize > 0.f);
     viewer->IncreaseFontSize();
-    CHECK(viewer->GetBaseFontSize() == 20.f);
+    CHECK(viewer->GetBaseFontSize() == initialFontSize + 2.f);
     viewer->SetBaseFontSize(100.f);   // clamped
     CHECK(viewer->GetBaseFontSize() == 48.f);
 
-    // TOC panel toggle.
+    // TOC panel is shown by default; toggling hides and re-shows it.
+    CHECK(viewer->IsTableOfContentsVisible());
+    viewer->ToggleTableOfContents();
     CHECK(!viewer->IsTableOfContentsVisible());
     viewer->ToggleTableOfContents();
     CHECK(viewer->IsTableOfContentsVisible());
