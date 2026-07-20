@@ -347,6 +347,12 @@ namespace UltraCanvas {
     void UltraCanvasLinuxApplication::ProcessXEvent(XEvent& xEvent) {
         // Find the window that owns this event
         if (xEvent.type == SelectionRequest || xEvent.type == SelectionNotify || xEvent.type == SelectionClear) {
+            // An active XDnD source drag owns XdndSelection: it answers the
+            // target's data requests (SelectionRequest) and reacts to losing
+            // the selection (SelectionClear).
+            if (UltraCanvasLinuxDragDrop::HandleSourceSelectionEvent(xEvent)) {
+                return;
+            }
             // For SelectionNotify, let the window's drag-drop handler try first
             // (XDnD drop uses SelectionNotify to deliver file data)
             if (xEvent.type == SelectionNotify) {

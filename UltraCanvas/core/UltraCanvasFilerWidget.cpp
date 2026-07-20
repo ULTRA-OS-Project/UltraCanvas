@@ -6,8 +6,12 @@
 // codec via lightweight header probes, recursive folder stats). Image
 // thumbnails decode asynchronously (see ASYNC THUMBNAILS) so the folder page
 // never waits for image files.
-// Version: 1.3.0
-// Last Modified: 2026-07-19
+// Files drag out to other windows / applications via the native OS drag &
+// drop, external drops are copied into the shown folder, and Copy / Cut /
+// Paste go through the system clipboard so files can be exchanged with other
+// programs (external file managers, editors, ...).
+// Version: 1.4.0
+// Last Modified: 2026-07-20
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -50,6 +54,7 @@ namespace UltraCanvas {
     namespace {
         constexpr int kWheelStep = 64;                 // px per wheel notch
         constexpr uint64_t kDirSizeEntryCap = 50000;   // recursive-size safety cap
+        constexpr int kDragStartSlop = 5;              // px before a press becomes a drag-out
 
         int clampi(int v, int lo, int hi) {
             return v < lo ? lo : (v > hi ? hi : v);
@@ -1196,17 +1201,86 @@ namespace UltraCanvas {
 
     // ===== CLIPBOARD / FILE OPERATIONS =====
     bool UltraCanvasFilerWidget::ClipboardHasContent() {
-        return !clipboardPaths.empty();
+        if (!clipboardPaths.empty()) return true;
+        // Files copied in another application (external file manager).
+        if (UltraCanvasClipboard* cb = GetClipboard()) {
+            return cb->IsFormatAvailable("text/uri-list");
+        }
+        return false;
     }
 
     void UltraCanvasFilerWidget::SelectionToClipboard(bool cut) {
         clipboardPaths.clear();
         for (const FilerEntry& e : GetSelectedEntries()) clipboardPaths.push_back(e.path);
         clipboardCut = cut && !clipboardPaths.empty();
+        // Mirror to the system clipboard (text/uri-list + cut/copy marker) so
+        // the files can be pasted in other programs.
+        if (!clipboardPaths.empty()) {
+            if (UltraCanvasClipboard* cb = GetClipboard()) {
+                cb->SetFiles(clipboardPaths, clipboardCut);
+            }
+        }
     }
 
     void UltraCanvasFilerWidget::CopySelection() { SelectionToClipboard(false); }
     void UltraCanvasFilerWidget::CutSelection()  { SelectionToClipboard(true); }
+
+    // ===== NATIVE DRAG & DROP =====
+    bool UltraCanvasFilerWidget::StartNativeDragOfSelection() {
+        UltraCanvasWindowBase* win = GetWindow();
+        if (!win) return false;
+
+        std::vector<std::string> paths;
+        for (const FilerEntry& e : GetSelectedEntries()) paths.push_back(e.path);
+        if (paths.empty()) return false;
+
+        // The pointer leaves for the drag: drop the hover state now, the
+        // widget won't see mouse events until the drag ends.
+        if (hoveredIndex != -1) { hoveredIndex = -1; RequestRedraw(); }
+        UltraCanvasTooltipManager::HideTooltip();
+
+        // The drop target performs the copy / move itself; after a move this
+        // folder needs a rescan to drop the vanished entries.
+        std::weak_ptr<UltraCanvasUIElement> weakSelf = weak_from_this();
+        return win->StartNativeFileDrag(paths,
+                [weakSelf](bool accepted, bool moved) {
+                    if (!accepted || !moved) return;
+                    if (auto self = weakSelf.lock()) {
+                        static_cast<UltraCanvasFilerWidget*>(self.get())->Refresh();
+                    }
+                });
+    }
+
+    void UltraCanvasFilerWidget::AcceptDroppedFiles(const std::vector<std::string>& paths) {
+        if (paths.empty()) return;
+        std::error_code ec;
+        if (!fs::is_directory(currentPath, ec)) return;
+
+        bool changed = false;
+        for (const std::string& src : paths) {
+            fs::path from(src);
+            if (!fs::exists(from, ec)) continue;
+            // Skip files already in this folder and the folder itself.
+            fs::path canonicalFrom = fs::weakly_canonical(from, ec);
+            fs::path canonicalHere = fs::weakly_canonical(fs::path(currentPath), ec);
+            if (canonicalFrom == canonicalHere) continue;
+            if (canonicalFrom.parent_path() == canonicalHere) continue;
+            // Don't copy a folder into itself.
+            std::string fromStr = canonicalFrom.string();
+            std::string hereStr = canonicalHere.string();
+            if (fs::is_directory(from, ec) && !fromStr.empty() &&
+                hereStr.compare(0, fromStr.size(), fromStr) == 0 &&
+                (hereStr.size() == fromStr.size() || hereStr[fromStr.size()] == '/')) {
+                ReportError("Cannot drop a folder into itself: " + src);
+                continue;
+            }
+            std::string dest = UniqueChildPath(from.filename().string());
+            fs::copy(from, dest, fs::copy_options::recursive, ec);
+            if (ec) ReportError("Drop failed for " + src + ": " + ec.message());
+            else changed = true;
+        }
+        if (changed) Refresh();
+    }
 
     std::string UltraCanvasFilerWidget::UniqueChildPath(const std::string& baseName) const {
         fs::path base(baseName);
@@ -1223,17 +1297,33 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::Paste() {
-        if (clipboardPaths.empty()) return;
+        // The system clipboard wins: it holds whatever was copied last,
+        // whether here (mirrored by SelectionToClipboard) or in another
+        // program. The internal clipboard is the fallback when no system
+        // clipboard is available.
+        std::vector<std::string> paths;
+        bool cut = false;
+        if (UltraCanvasClipboard* cb = GetClipboard()) {
+            cb->GetFiles(paths, cut);
+        }
+        if (paths.empty()) {
+            paths = clipboardPaths;
+            cut = clipboardCut;
+        }
+        if (paths.empty()) return;
+
         std::error_code ec;
         if (!fs::is_directory(currentPath, ec)) {
             ReportError("Paste target is not a writable folder: " + currentPath);
             return;
         }
-        for (const std::string& src : clipboardPaths) {
+        for (const std::string& src : paths) {
             fs::path from(src);
             if (!fs::exists(from, ec)) continue;
+            // Cut-pasting into the folder the file already lives in is a no-op.
+            if (cut && fs::path(src).parent_path() == fs::path(currentPath)) continue;
             std::string dest = UniqueChildPath(from.filename().string());
-            if (clipboardCut) {
+            if (cut) {
                 fs::rename(from, dest, ec);
                 if (ec) {   // cross-device move: copy + delete
                     ec.clear();
@@ -1245,7 +1335,7 @@ namespace UltraCanvas {
             }
             if (ec) ReportError("Paste failed for " + src + ": " + ec.message());
         }
-        if (clipboardCut) { clipboardPaths.clear(); clipboardCut = false; }
+        if (cut) { clipboardPaths.clear(); clipboardCut = false; }
         Refresh();
     }
 
@@ -3296,6 +3386,8 @@ namespace UltraCanvas {
                     UltraCanvasTooltipManager::HideTooltip();
                 }
                 draggingScrollbar = false;
+                dragOutArmed = false;
+                dragCollapseIndex = -1;
                 return true;
             }
             case UCEventType::MouseWheel: {
@@ -3312,6 +3404,17 @@ namespace UltraCanvas {
             }
             case UCEventType::MouseMove: {
                 Point2Di local(event.pointer.x, event.pointer.y);
+                // Armed drag-out: once the press moves past the slop the
+                // selection leaves as a native OS drag.
+                if (dragOutArmed) {
+                    int dx = local.x - dragOutPressPoint.x;
+                    int dy = local.y - dragOutPressPoint.y;
+                    if (dx * dx + dy * dy >= kDragStartSlop * kDragStartSlop) {
+                        dragOutArmed = false;
+                        dragCollapseIndex = -1;   // it's a drag, not a click
+                        if (StartNativeDragOfSelection()) return true;
+                    }
+                }
                 if (draggingScrollbar) {
                     ScrollThumbTo((IsHorizontal() ? local.x : local.y)
                                   - scrollbarGrabOffset);
@@ -3427,11 +3530,37 @@ namespace UltraCanvas {
                     }
                 }
 
-                HandleItemClick(ItemAt(ToContentPoint(local)),
-                                event.ctrl, event.shift);
+                {
+                    int index = ItemAt(ToContentPoint(local));
+                    bool alreadySelected = index >= 0 &&
+                            std::find(selection.begin(), selection.end(),
+                                      static_cast<size_t>(index)) != selection.end();
+                    if (alreadySelected && !event.ctrl && !event.shift) {
+                        // Keep the (multi-)selection so it can be dragged as a
+                        // whole; collapsing to just this item happens on
+                        // release when no drag started.
+                        dragCollapseIndex = index;
+                    } else {
+                        HandleItemClick(index, event.ctrl, event.shift);
+                        dragCollapseIndex = -1;
+                    }
+                    // Pressing on an item arms the drag-out gesture; the drag
+                    // starts once the pointer moves past the slop threshold.
+                    if (index >= 0 && !selection.empty()) {
+                        dragOutArmed = true;
+                        dragOutPressPoint = local;
+                    }
+                }
                 return true;
             }
             case UCEventType::MouseUp: {
+                if (dragOutArmed && dragCollapseIndex >= 0) {
+                    // The press on a selected item turned out to be a plain
+                    // click: apply the deferred "select only this item".
+                    HandleItemClick(dragCollapseIndex, false, false);
+                }
+                dragOutArmed = false;
+                dragCollapseIndex = -1;
                 if (draggingScrollbar) {
                     draggingScrollbar = false;
                     RequestRedraw();
@@ -3525,6 +3654,13 @@ namespace UltraCanvas {
             }
             case UCEventType::TextInput:
                 return HandleRenameKey(event);
+            case UCEventType::Drop: {
+                // Files dragged in from other applications / windows are
+                // copied into the shown folder.
+                if (event.droppedFiles.empty()) return false;
+                AcceptDroppedFiles(event.droppedFiles);
+                return true;
+            }
             default:
                 break;
         }

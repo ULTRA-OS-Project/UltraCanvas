@@ -890,13 +890,25 @@ namespace UltraCanvas {
 
 // ===== EVENT HANDLING =====
     bool UltraCanvasLinuxWindow::HandleXEvent(const XEvent& event) {
-        // Let the XDnD handler process drag-and-drop events first
+        // An active outgoing file drag (XDnD source) consumes pointer / key
+        // events and the target's XdndStatus / XdndFinished replies.
+        if (dragDropHandler.HandleSourceXEvent(event)) {
+            return true;
+        }
+        // Let the XDnD target handler process drag-and-drop events first
         if (event.type == ClientMessage || event.type == SelectionNotify) {
             if (dragDropHandler.HandleXEvent(event)) {
                 return true;
             }
         }
         return false;
+    }
+
+// ===== NATIVE FILE DRAG SOURCE =====
+    bool UltraCanvasLinuxWindow::StartNativeFileDrag(
+            const std::vector<std::string>& filePaths,
+            std::function<void(bool accepted, bool moved)> onFinished) {
+        return dragDropHandler.BeginSourceDrag(filePaths, std::move(onFinished));
     }
 
 // ===== ACCESSORS =====

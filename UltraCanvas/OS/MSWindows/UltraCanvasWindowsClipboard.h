@@ -46,6 +46,10 @@ namespace UltraCanvas {
         bool SetClipboardImage(const std::vector<uint8_t>& imageData, const std::string& format) override;
         bool GetClipboardFiles(std::vector<std::string>& filePaths) override;
         bool SetClipboardFiles(const std::vector<std::string>& filePaths) override;
+        // Cut/copy-aware variants: CF_HDROP plus the shell's
+        // "Preferred DropEffect" format (DROPEFFECT_MOVE for cut).
+        bool GetClipboardFiles(std::vector<std::string>& filePaths, bool& cutOperation) override;
+        bool SetClipboardFiles(const std::vector<std::string>& filePaths, bool cutOperation) override;
 
         // ===== MONITORING =====
         bool HasClipboardChanged() override;

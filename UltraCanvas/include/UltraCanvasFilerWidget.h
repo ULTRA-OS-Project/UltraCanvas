@@ -12,8 +12,13 @@
 // thumbnails are decoded asynchronously on worker threads: the folder page
 // renders immediately with placeholder glyphs and tiles fill in as decodes
 // complete.
-// Version: 1.3.0
-// Last Modified: 2026-07-19
+// Files can be dragged out of the widget into other windows and applications
+// (native OS drag & drop; the target performs the copy/move), files dropped
+// onto the widget from other applications are copied into the shown folder,
+// and Copy / Cut / Paste (Ctrl+C/X/V) interoperate with the system clipboard
+// so files can be exchanged with external file managers.
+// Version: 1.4.0
+// Last Modified: 2026-07-20
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -253,7 +258,11 @@ namespace UltraCanvas {
         void SelectAll();
 
         // ===== FILE OPERATIONS (also wired to the context / icon menus) =====
-        void CopySelection();      // to the filer clipboard (shared by instances)
+        // Copy / Cut mirror the selection to the OS clipboard (file-manager
+        // formats: text/uri-list + cut/copy marker) besides the internal
+        // filer clipboard, so the files can be pasted in external programs.
+        // Paste prefers the OS clipboard, falling back to the internal one.
+        void CopySelection();
         void CutSelection();
         void Paste();              // into the current folder
         void DeleteSelection();    // gated by confirmDelete when set
@@ -374,6 +383,18 @@ namespace UltraCanvas {
         // Inline rename editor.
         int renamingIndex = -1;
         std::string renameBuffer;
+
+        // ===== DRAG FILES OUT (native OS drag & drop) =====
+        // A left press on an item arms the gesture; moving past the slop
+        // threshold with the button held starts a native file drag of the
+        // selection (window->StartNativeFileDrag). The drop target performs
+        // the actual copy / move; after a move this view is refreshed.
+        bool dragOutArmed = false;
+        Point2Di dragOutPressPoint;
+        // Press on an already-selected item keeps the (multi-)selection so it
+        // can be dragged; the usual "select only this item" collapse is
+        // deferred to the release and recorded here (-1 = nothing deferred).
+        int dragCollapseIndex = -1;
 
         // ===== ASYNC THUMBNAILS =====
         // Decoding an image for a tile is expensive (full decode + resize).
@@ -571,6 +592,11 @@ namespace UltraCanvas {
         void OpenContextMenu(const Point2Di& localPoint);
         std::vector<size_t> SelectionOrItem(int index) const;
         void SelectionToClipboard(bool cut);
+        // Starts the native OS drag of the current selection (drag-out).
+        bool StartNativeDragOfSelection();
+        // Files dropped onto the widget from other applications / windows are
+        // copied into the current folder (sources already there are skipped).
+        void AcceptDroppedFiles(const std::vector<std::string>& paths);
         void CommitRename();
         void CancelRename();
         bool HandleRenameKey(const UCEvent& event);

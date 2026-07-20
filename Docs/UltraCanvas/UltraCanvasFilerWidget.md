@@ -3,7 +3,11 @@
 The Filer folder widget displays the content of one folder. It is self-rendered
 (like `UltraCanvasAlbum`), so folders with thousands of entries stay cheap: rows,
 tiles, treemap cells, the hover icon menu and the scrollbar are all painted
-inside `Render()` rather than being child elements.
+inside `Render()` rather than being child elements. Files can be dragged out to
+other windows and applications (and dropped in from them), and Copy / Cut /
+Paste go through the system clipboard so files can be exchanged with external
+file managers — see [Clipboard interop](#clipboard-interop-with-other-programs)
+and [Drag & drop](#drag--drop).
 
 ```cpp
 #include "UltraCanvasFilerWidget.h"
@@ -118,7 +122,7 @@ so no icon assets are required.
 All operations are also available programmatically:
 
 ```cpp
-filer->CopySelection();       // to the shared filer clipboard
+filer->CopySelection();       // to the filer clipboard + the system clipboard
 filer->CutSelection();
 filer->Paste();               // into the current folder (unique names)
 filer->DeleteSelection();     // gated by confirmDelete when set
@@ -133,6 +137,39 @@ filer->CreateNewDocument({"Text", "txt", ""});
 `templatePath` that is copied instead of creating an empty file, and
 `onNewDocument` lets the application take over creation entirely (return `true`
 when handled). A freshly created document goes straight into rename mode.
+
+## Clipboard interop with other programs
+
+Copy and Cut place the selection on the **system clipboard** in the standard
+file-manager formats (`text/uri-list`, `x-special/gnome-copied-files` and the
+KDE cut marker on Linux; `CF_HDROP` plus `Preferred DropEffect` on Windows) in
+addition to the internal filer clipboard, so files copied in the widget can be
+pasted in external file managers — and a cut there is honoured as a move.
+Plain-text targets are offered too, so pasting into an editor or terminal
+inserts the file paths.
+
+Paste prefers the system clipboard (whatever was copied last, in this widget
+or in another program) and falls back to the internal filer clipboard. A cut
+paste moves the files; the paste of a file into the folder it already lives in
+is skipped for a cut and duplicated with a unique " (2)" style name for a copy.
+
+## Drag & drop
+
+Files can be **dragged out** of the widget: press on a (selected) item, move a
+few pixels, and the selection leaves as a native OS drag (XDND on Linux) that
+can be dropped on any other window or application — another Filer widget,
+another window of the same application, an external file manager, an editor,
+… The drop target performs the copy or move itself; when it reports a move the
+source folder is rescanned automatically. During the drag the cursor shows
+whether the target accepts a copy or a move (hold Shift to suggest a move) and
+Escape cancels. Pressing an item that is part of a multi-selection keeps the
+selection so the whole set can be dragged; the usual collapse to a single item
+happens on release when no drag started.
+
+Files **dropped onto** the widget from other applications (or dragged over
+from another Filer widget) are copied into the shown folder with unique names;
+sources already inside the folder, and folders dropped into themselves, are
+skipped.
 
 ## Keyboard
 

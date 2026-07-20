@@ -97,6 +97,20 @@ public:
     virtual bool SetClipboardImage(const std::vector<uint8_t>& imageData, const std::string& format) = 0;
     virtual bool GetClipboardFiles(std::vector<std::string>& filePaths) = 0;
     virtual bool SetClipboardFiles(const std::vector<std::string>& filePaths) = 0;
+
+    // Cut/copy-aware file clipboard operations. File managers mark a "cut"
+    // (move-on-paste) on the clipboard next to the file list
+    // (x-special/gnome-copied-files on Linux, "Preferred DropEffect" on
+    // Windows). Backends without that concept fall back to the plain
+    // file-list operations above and report cutOperation = false.
+    virtual bool SetClipboardFiles(const std::vector<std::string>& filePaths, bool cutOperation) {
+        (void)cutOperation;
+        return SetClipboardFiles(filePaths);
+    }
+    virtual bool GetClipboardFiles(std::vector<std::string>& filePaths, bool& cutOperation) {
+        cutOperation = false;
+        return GetClipboardFiles(filePaths);
+    }
     
     // Monitoring
     virtual bool HasClipboardChanged() = 0;
@@ -143,6 +157,9 @@ public:
     bool SetImage(const std::vector<uint8_t>& imageData, const std::string& format);
     bool GetFiles(std::vector<std::string>& filePaths);
     bool SetFiles(const std::vector<std::string>& filePaths);
+    // Cut/copy-aware variants (file-manager semantics: cut = move on paste).
+    bool GetFiles(std::vector<std::string>& filePaths, bool& cutOperation);
+    bool SetFiles(const std::vector<std::string>& filePaths, bool cutOperation);
     
     // ===== HISTORY MANAGEMENT =====
     void AddEntry(const ClipboardData& entry);
