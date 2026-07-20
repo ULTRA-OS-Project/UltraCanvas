@@ -17,6 +17,7 @@
 #include "UltraCanvasImageViewer.h"
 #include "UltraCanvasWindow.h"
 #include <algorithm>
+#include <cstring>
 #include <sstream>
 #include <cmath>
 #include <regex>

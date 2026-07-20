@@ -1855,6 +1855,45 @@ namespace UltraCanvas {
         cairo_destroy(toCtx);
     }
 
+    void RenderContextCairo::CompositeToSurface(NativeSurfacePtr flushToSurface, const Point2Dd& pos) {
+        // Alpha-blend the surface over the destination (OVER, not SOURCE)
+        cairo_t *toCtx = cairo_create(static_cast<cairo_surface_t *>(flushToSurface));
+        if (!toCtx) {
+            debugOutput << "RenderContextCairo::CompositeToSurface can't create context for flushToSurface" << std::endl;
+            return;
+        }
+        cairo_surface_flush(surface);
+        if (pos.x != 0 || pos.y != 0) {
+            cairo_translate(toCtx, pos.x, pos.y);
+        }
+        cairo_rectangle(toCtx, 0, 0, surfaceSize.width, surfaceSize.height);
+        cairo_clip(toCtx);
+        cairo_set_source_surface(toCtx, surface, 0, 0);
+        cairo_set_operator(toCtx, CAIRO_OPERATOR_OVER);
+        cairo_paint(toCtx);
+        cairo_surface_flush(static_cast<cairo_surface_t *>(flushToSurface));
+        cairo_destroy(toCtx);
+    }
+
+    void RenderContextCairo::FlushRegionToSurface(NativeSurfacePtr flushToSurface,
+                                                  const Rect2Dd& region, const Point2Dd& destPos) {
+        // Copy only `region` of the surface, placing it at destPos
+        cairo_t *toCtx = cairo_create(static_cast<cairo_surface_t *>(flushToSurface));
+        if (!toCtx) {
+            debugOutput << "RenderContextCairo::FlushRegionToSurface can't create context for flushToSurface" << std::endl;
+            return;
+        }
+        cairo_surface_flush(surface);
+        cairo_translate(toCtx, destPos.x, destPos.y);
+        cairo_rectangle(toCtx, 0, 0, region.width, region.height);
+        cairo_clip(toCtx);
+        cairo_set_source_surface(toCtx, surface, -region.x, -region.y);
+        cairo_set_operator(toCtx, CAIRO_OPERATOR_SOURCE);
+        cairo_paint(toCtx);
+        cairo_surface_flush(static_cast<cairo_surface_t *>(flushToSurface));
+        cairo_destroy(toCtx);
+    }
+
 
     // factory
     std::unique_ptr<IRenderContext> CreateRenderContext(const Size2Di& sz, NativeSurfacePtr similarToSurface) {

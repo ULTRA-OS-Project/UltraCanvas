@@ -1,7 +1,11 @@
 // OS/Linux/UltraCanvasLinuxClipboard.h - Fixed X11 Clipboard Implementation
-// X11-specific clipboard implementation with proper write support
-// Version: 1.1.0
-// Last Modified: 2025-08-14
+// X11-specific clipboard implementation with proper write support.
+// Serves multiple targets per selection (UTF8_STRING / STRING / text/plain
+// variants for text; text/uri-list + x-special/gnome-copied-files +
+// application/x-kde-cutselection for file copy/cut) so files copied here
+// paste into external file managers and vice versa.
+// Version: 1.2.0
+// Last Modified: 2026-07-20
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -38,16 +42,25 @@ namespace UltraCanvas {
         Atom atomImageBmp;
         Atom atomTextUriList;
         Atom atomApplicationOctetStream;
+        Atom atomGnomeCopiedFiles;   // x-special/gnome-copied-files ("copy\n<uris>" / "cut\n<uris>")
+        Atom atomKdeCutSelection;    // application/x-kde-cutselection ("0" copy / "1" cut)
 
         // ===== CLIPBOARD STATE =====
         std::chrono::steady_clock::time_point lastChangeCheck;
         std::string lastClipboardText;
         bool clipboardChanged;
 
-        // ===== SELECTION HANDLING =====
+        // ===== SELECTION HANDLING (reading other apps' clipboards) =====
         std::vector<uint8_t> selectionData;
         std::string selectionFormat;
         bool selectionReady;
+
+        // ===== SELECTION SERVING (we own the clipboard) =====
+        // Everything the current clipboard contents can be delivered as:
+        // one payload per target atom, served on SelectionRequest and listed
+        // in TARGETS. A text copy offers the string under several text
+        // atoms; a file copy offers URI lists plus the cut/copy marker.
+        std::vector<std::pair<Atom, std::vector<uint8_t>>> offeredTargets;
 
         // ===== OWNERSHIP TRACKING =====
         bool ownsClipboard;
@@ -76,6 +89,8 @@ namespace UltraCanvas {
         bool SetClipboardImage(const std::vector<uint8_t>& imageData, const std::string& format) override;
         bool GetClipboardFiles(std::vector<std::string>& filePaths) override;
         bool SetClipboardFiles(const std::vector<std::string>& filePaths) override;
+        bool GetClipboardFiles(std::vector<std::string>& filePaths, bool& cutOperation) override;
+        bool SetClipboardFiles(const std::vector<std::string>& filePaths, bool cutOperation) override;
 
         // ===== MONITORING =====
         bool HasClipboardChanged() override;
@@ -106,6 +121,9 @@ namespace UltraCanvas {
         // ===== LOW-LEVEL SELECTION HANDLING =====
         bool ReadClipboardData(Atom selection, Atom target, std::vector<uint8_t>& data, std::string& format);
         bool WriteClipboardData(Atom selection, Atom target, const std::vector<uint8_t>& data);
+        // Own `selection` and serve every (target, payload) pair given.
+        bool WriteClipboardTargets(Atom selection,
+                                   std::vector<std::pair<Atom, std::vector<uint8_t>>> offers);
         bool WaitForSelectionNotify(std::vector<uint8_t>& data, std::string& format);
 
         // ===== TEXT OPERATIONS =====
@@ -117,8 +135,12 @@ namespace UltraCanvas {
         bool WriteImageToClipboard(Atom selection, const std::vector<uint8_t>& imageData, const std::string& format);
 
         // ===== FILE OPERATIONS =====
-        bool ReadFilesFromClipboard(Atom selection, std::vector<std::string>& filePaths);
-        bool WriteFilesToClipboard(Atom selection, const std::vector<std::string>& filePaths);
+        bool ReadFilesFromClipboard(Atom selection, std::vector<std::string>& filePaths, bool& cutOperation);
+        bool WriteFilesToClipboard(Atom selection, const std::vector<std::string>& filePaths, bool cutOperation);
+        // file:// URI helpers (percent-encoding aware)
+        static std::string EncodeFileUri(const std::string& path);
+        static std::string DecodeFileUri(const std::string& uri);
+        static std::vector<std::string> ParseUriListPaths(const std::string& uriList);
 
         // ===== UTILITY FUNCTIONS =====
         std::string AtomToString(Atom atom);

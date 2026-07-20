@@ -4,6 +4,7 @@
 
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasCaret.h"
 #include "UltraCanvasClipboard.h"
 #include <algorithm>
 #include <cstdio>
@@ -171,8 +172,10 @@ namespace UltraCanvas {
         
         DrawHexCrossHighlight(ctx); 
 
-        if (IsFocused() && cursorVisible && !isReadOnly) {
-            DrawHexCursor(ctx);
+        if (IsFocused() && !isReadOnly) {
+            UpdateHexCaret(ctx);
+        } else {
+            UltraCanvasCaret::GetInstance().Hide(this);
         }
 
         ctx->PopState();
@@ -357,41 +360,55 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasTextArea::DrawHexCursor(IRenderContext* ctx) {
+    void UltraCanvasTextArea::UpdateHexCaret(IRenderContext* ctx) {
+        auto& caret = UltraCanvasCaret::GetInstance();
+
         int bufSize = static_cast<int>(hexBuffer.size());
         if (bufSize == 0 && hexCursorByteOffset == 0) {
             // Empty buffer — show cursor at start
         } else if (hexCursorByteOffset >= bufSize) {
+            caret.Hide(this);
             return;
         }
 
         int cursorRow = HexGetRowForByte(hexCursorByteOffset);
         int displayRow = cursorRow - hexFirstVisibleRow;
 
-        if (displayRow < 0 || displayRow >= hexMaxVisibleRows) return;
+        if (displayRow < 0 || displayRow >= hexMaxVisibleRows) {
+            caret.Hide(this);
+            return;
+        }
 
         int y = hexVisibleArea.y + displayRow * hexRowHeight;
         int col = HexGetColumnForByte(hexCursorByteOffset);
-
-        ctx->PushState();
+        Point2Df winPos = GetPositionInWindow();
+        Color cursorColor = style.cursorColor;
 
         if (hexCursorInAsciiPanel) {
-            // Line cursor in ASCII panel
+            // Line cursor in ASCII panel (2px, like the stroke it replaces)
             int x = hexAsciiPanelStartX + col * hexAsciiCharWidth;
-            ctx->SetStrokeWidth(2);
-            ctx->DrawLine({x, y}, {x, y + hexRowHeight}, style.cursorColor);
+            Rect2Di rectInWindow(static_cast<int>(winPos.x) + x - 1,
+                                 static_cast<int>(winPos.y) + y,
+                                 2, hexRowHeight);
+            caret.Show(this, rectInWindow, cursorColor);
         } else {
-            // Block cursor in hex panel on current nibble
+            // Block cursor in hex panel on current nibble: a translucent fill
+            // over the digit plus a solid 2px line at its left edge. Painted
+            // into the shared caret's surface; the compositor alpha-blends it
+            // over the window so the digit stays readable underneath.
             int charW = hexByteWidth / 3; // Width of one hex digit
             int x = hexPanelStartX + col * hexByteWidth + hexCursorNibble * charW;
-            ctx->SetFillPaint(Color(style.cursorColor.r, style.cursorColor.g, style.cursorColor.b, 80));
-            ctx->FillRectangle(Rect2Dd(x, y, charW, hexRowHeight));
-            // Also draw line cursor
-            ctx->SetStrokeWidth(2);
-            ctx->DrawLine({x, y}, {x, y + hexRowHeight}, style.cursorColor);
+            Rect2Di rectInWindow(static_cast<int>(winPos.x) + x - 1,
+                                 static_cast<int>(winPos.y) + y,
+                                 charW + 1, hexRowHeight);
+            caret.Show(this, rectInWindow,
+                       [cursorColor](IRenderContext* cctx, int w, int h) {
+                           cctx->SetFillPaint(Color(cursorColor.r, cursorColor.g, cursorColor.b, 80));
+                           cctx->FillRectangle(Rect2Dd(1, 0, w - 1, h));
+                           cctx->SetFillPaint(cursorColor);
+                           cctx->FillRectangle(Rect2Dd(0, 0, 2, h));
+                       });
         }
-
-        ctx->PopState();
     }
 
 // ===== HEX HIT TESTING =====
@@ -521,6 +538,9 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasTextArea::HandleHexKeyDown(const UCEvent& event) {
+        // Keep the cursor solid while the user is typing or navigating
+        UltraCanvasCaret::GetInstance().ResetBlink(this);
+
         if (hexBuffer.empty() && event.virtualKey != UCKeys::Escape) {
             // Allow typing in empty buffer only for paste
             if (event.ctrl && event.virtualKey == UCKeys::V) {

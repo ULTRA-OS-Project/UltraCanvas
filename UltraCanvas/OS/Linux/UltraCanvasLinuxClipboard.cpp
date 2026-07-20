@@ -8,6 +8,8 @@
 #include "UltraCanvasApplication.h"
 #include <iostream>
 #include <algorithm>
+#include <cctype>
+#include <cstdlib>
 #include <cstring>
 #include <sstream>
 #include <unistd.h>
@@ -134,6 +136,8 @@ namespace UltraCanvas {
         atomImageBmp = XInternAtom(display, "image/bmp", False);
         atomTextUriList = XInternAtom(display, "text/uri-list", False);
         atomApplicationOctetStream = XInternAtom(display, "application/octet-stream", False);
+        atomGnomeCopiedFiles = XInternAtom(display, "x-special/gnome-copied-files", False);
+        atomKdeCutSelection = XInternAtom(display, "application/x-kde-cutselection", False);
     }
 
 // ===== CLIPBOARD OPERATIONS =====
@@ -163,11 +167,20 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasLinuxClipboard::GetClipboardFiles(std::vector<std::string>& filePaths) {
-        return ReadFilesFromClipboard(atomClipboard, filePaths);
+        bool cutOperation = false;
+        return ReadFilesFromClipboard(atomClipboard, filePaths, cutOperation);
     }
 
     bool UltraCanvasLinuxClipboard::SetClipboardFiles(const std::vector<std::string>& filePaths) {
-        return WriteFilesToClipboard(atomClipboard, filePaths);
+        return WriteFilesToClipboard(atomClipboard, filePaths, false);
+    }
+
+    bool UltraCanvasLinuxClipboard::GetClipboardFiles(std::vector<std::string>& filePaths, bool& cutOperation) {
+        return ReadFilesFromClipboard(atomClipboard, filePaths, cutOperation);
+    }
+
+    bool UltraCanvasLinuxClipboard::SetClipboardFiles(const std::vector<std::string>& filePaths, bool cutOperation) {
+        return WriteFilesToClipboard(atomClipboard, filePaths, cutOperation);
     }
 
 // ===== MONITORING =====
@@ -248,7 +261,15 @@ namespace UltraCanvas {
 
     bool UltraCanvasLinuxClipboard::WriteTextToClipboard(Atom selection, const std::string& text) {
         std::vector<uint8_t> data(text.begin(), text.end());
-        return WriteClipboardData(selection, atomUtf8String, data);
+        // One string, several targets: requestors ask for whichever text
+        // flavour they prefer.
+        std::vector<std::pair<Atom, std::vector<uint8_t>>> offers;
+        offers.emplace_back(atomUtf8String, data);
+        offers.emplace_back(atomTextPlainUtf8, data);
+        offers.emplace_back(atomTextPlain, data);
+        offers.emplace_back(atomString, data);
+        offers.emplace_back(atomText, std::move(data));
+        return WriteClipboardTargets(selection, std::move(offers));
     }
 
 // ===== IMAGE OPERATIONS =====
@@ -277,45 +298,153 @@ namespace UltraCanvas {
     }
 
 // ===== FILE OPERATIONS =====
-    bool UltraCanvasLinuxClipboard::ReadFilesFromClipboard(Atom selection, std::vector<std::string>& filePaths) {
+    std::string UltraCanvasLinuxClipboard::EncodeFileUri(const std::string& path) {
+        static const char* hex = "0123456789ABCDEF";
+        std::string uri = "file://";
+        for (unsigned char c : path) {
+            bool unreserved = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                              (c >= '0' && c <= '9') ||
+                              c == '-' || c == '_' || c == '.' || c == '~' ||
+                              c == '/';
+            if (unreserved) {
+                uri += static_cast<char>(c);
+            } else {
+                uri += '%';
+                uri += hex[c >> 4];
+                uri += hex[c & 0x0F];
+            }
+        }
+        return uri;
+    }
+
+    std::string UltraCanvasLinuxClipboard::DecodeFileUri(const std::string& uri) {
+        std::string path;
+        if (uri.compare(0, 7, "file://") == 0) {
+            path = uri.substr(7);
+        } else if (uri.compare(0, 5, "file:") == 0) {
+            path = uri.substr(5);
+        } else if (!uri.empty() && uri[0] == '/') {
+            path = uri;   // bare path (some apps put plain paths on the list)
+        } else {
+            return "";
+        }
+
+        // "file://localhost/path" → strip the host part.
+        if (!path.empty() && path[0] != '/') {
+            size_t slash = path.find('/');
+            if (slash == std::string::npos) return "";
+            path = path.substr(slash);
+        }
+
+        // Percent-decode (%20 → space, UTF-8 bytes, ...).
+        std::string decoded;
+        decoded.reserve(path.size());
+        for (size_t i = 0; i < path.size(); ++i) {
+            if (path[i] == '%' && i + 2 < path.size() &&
+                std::isxdigit(static_cast<unsigned char>(path[i + 1])) &&
+                std::isxdigit(static_cast<unsigned char>(path[i + 2]))) {
+                char hexPair[3] = { path[i + 1], path[i + 2], '\0' };
+                decoded += static_cast<char>(std::strtol(hexPair, nullptr, 16));
+                i += 2;
+            } else {
+                decoded += path[i];
+            }
+        }
+        return decoded;
+    }
+
+    std::vector<std::string> UltraCanvasLinuxClipboard::ParseUriListPaths(const std::string& uriList) {
+        std::vector<std::string> paths;
+        std::istringstream stream(uriList);
+        std::string line;
+        while (std::getline(stream, line)) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            if (line.empty() || line[0] == '#') continue;
+            std::string path = DecodeFileUri(line);
+            if (!path.empty()) paths.push_back(path);
+        }
+        return paths;
+    }
+
+    bool UltraCanvasLinuxClipboard::ReadFilesFromClipboard(Atom selection,
+                                                           std::vector<std::string>& filePaths,
+                                                           bool& cutOperation) {
+        cutOperation = false;
         std::vector<uint8_t> data;
         std::string format;
 
-        if (ReadClipboardData(selection, atomTextUriList, data, format)) {
-            std::string uriList(reinterpret_cast<const char*>(data.data()), data.size());
-
-            // Parse URI list (one URI per line)
-            std::istringstream stream(uriList);
-            std::string line;
-
-            while (std::getline(stream, line)) {
-                if (line.empty() || line[0] == '#') continue; // Skip empty lines and comments
-
-                // Convert file:// URI to path
-                if (line.substr(0, 7) == "file://") {
-                    std::string path = line.substr(7);
-                    // URL decode if needed
-                    filePaths.push_back(path);
-                }
+        // Preferred: x-special/gnome-copied-files — carries the copy/cut verb
+        // on the first line, then one URI per line.
+        if (ReadClipboardData(selection, atomGnomeCopiedFiles, data, format) && !data.empty()) {
+            std::string payload(reinterpret_cast<const char*>(data.data()), data.size());
+            std::string verb = payload;
+            size_t newline = payload.find('\n');
+            std::string rest;
+            if (newline != std::string::npos) {
+                verb = payload.substr(0, newline);
+                rest = payload.substr(newline + 1);
+            } else {
+                rest.clear();
             }
+            if (!verb.empty() && verb.back() == '\r') verb.pop_back();
+            cutOperation = (verb == "cut");
+            filePaths = ParseUriListPaths(rest);
+            if (!filePaths.empty()) return true;
+            cutOperation = false;
+        }
 
-            return !filePaths.empty();
+        // Generic: text/uri-list. The KDE cut marker rides along separately.
+        data.clear();
+        if (ReadClipboardData(selection, atomTextUriList, data, format) && !data.empty()) {
+            std::string uriList(reinterpret_cast<const char*>(data.data()), data.size());
+            filePaths = ParseUriListPaths(uriList);
+            if (filePaths.empty()) return false;
+
+            std::vector<uint8_t> cutData;
+            std::string cutFormat;
+            if (ReadClipboardData(selection, atomKdeCutSelection, cutData, cutFormat) &&
+                !cutData.empty() && cutData[0] == '1') {
+                cutOperation = true;
+            }
+            return true;
         }
 
         return false;
     }
 
-    bool UltraCanvasLinuxClipboard::WriteFilesToClipboard(Atom selection, const std::vector<std::string>& filePaths) {
+    bool UltraCanvasLinuxClipboard::WriteFilesToClipboard(Atom selection,
+                                                          const std::vector<std::string>& filePaths,
+                                                          bool cutOperation) {
         if (filePaths.empty()) return false;
 
-        // Create URI list
-        std::string uriList;
+        // text/uri-list: CRLF-terminated, percent-encoded URIs.
+        std::string uriListCrlf;
+        // gnome-copied-files: verb line + LF-separated URIs.
+        std::string gnomeList = cutOperation ? "cut" : "copy";
+        // Plain-text fallback so the copy also pastes into editors/terminals.
+        std::string plainPaths;
         for (const std::string& path : filePaths) {
-            uriList += "file://" + path + "\n";
+            std::string uri = EncodeFileUri(path);
+            uriListCrlf += uri + "\r\n";
+            gnomeList += "\n" + uri;
+            if (!plainPaths.empty()) plainPaths += "\n";
+            plainPaths += path;
         }
 
-        std::vector<uint8_t> data(uriList.begin(), uriList.end());
-        return WriteClipboardData(selection, atomTextUriList, data);
+        std::vector<std::pair<Atom, std::vector<uint8_t>>> offers;
+        offers.emplace_back(atomTextUriList,
+                            std::vector<uint8_t>(uriListCrlf.begin(), uriListCrlf.end()));
+        offers.emplace_back(atomGnomeCopiedFiles,
+                            std::vector<uint8_t>(gnomeList.begin(), gnomeList.end()));
+        const char* kdeFlag = cutOperation ? "1" : "0";
+        offers.emplace_back(atomKdeCutSelection,
+                            std::vector<uint8_t>(kdeFlag, kdeFlag + 1));
+        offers.emplace_back(atomUtf8String,
+                            std::vector<uint8_t>(plainPaths.begin(), plainPaths.end()));
+        offers.emplace_back(atomString,
+                            std::vector<uint8_t>(plainPaths.begin(), plainPaths.end()));
+
+        return WriteClipboardTargets(selection, std::move(offers));
     }
 
 // ===== CORE SELECTION HANDLING =====
@@ -331,7 +460,15 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasLinuxClipboard::WriteClipboardData(Atom selection, Atom target, const std::vector<uint8_t>& data) {
-        if (!display || !window) return false;
+        std::vector<std::pair<Atom, std::vector<uint8_t>>> offers;
+        offers.emplace_back(target, data);
+        return WriteClipboardTargets(selection, std::move(offers));
+    }
+
+    bool UltraCanvasLinuxClipboard::WriteClipboardTargets(
+            Atom selection,
+            std::vector<std::pair<Atom, std::vector<uint8_t>>> offers) {
+        if (!display || !window || offers.empty()) return false;
 
         // Set ourselves as the selection owner
         XSetSelectionOwner(display, selection, window, CurrentTime);
@@ -339,13 +476,18 @@ namespace UltraCanvas {
         // Verify we own the selection
         Window owner = XGetSelectionOwner(display, selection);
         if (owner != window) {
-            LogError("WriteClipboardData", "Failed to acquire selection ownership");
+            LogError("WriteClipboardTargets", "Failed to acquire selection ownership");
             return false;
         }
 
-        // Store the data for later retrieval
-        selectionData = data;
-        selectionFormat = AtomToString(target);
+        // Store the offers; SelectionRequest events are answered from here.
+        offeredTargets = std::move(offers);
+
+        if (selection == atomClipboard) {
+            ownsClipboard = true;
+        } else if (selection == atomPrimary) {
+            ownsPrimary = true;
+        }
 
         return true;
     }
@@ -385,12 +527,16 @@ namespace UltraCanvas {
 
         data = selectionData;
         format = selectionFormat;
-        return true;
+        // A failed conversion (owner refused the target) also ends the wait —
+        // it must not report the previous read's stale bytes as success.
+        return !data.empty();
     }
 
     bool UltraCanvasLinuxClipboard::HandleSelectionNotify(const XSelectionEvent& selEvent) {
         if (selEvent.property == None) {
             LogError("HandleSelectionNotify", "Selection conversion failed");
+            selectionData.clear();
+            selectionFormat.clear();
             selectionReady = true;
             return false;
         }
@@ -410,6 +556,8 @@ namespace UltraCanvas {
 
         if (result != Success || !prop) {
             LogError("HandleSelectionNotify", "Failed to get window property");
+            selectionData.clear();
+            selectionFormat.clear();
             selectionReady = true;
             return false;
         }
@@ -450,41 +598,66 @@ namespace UltraCanvas {
 
         bool success = false;
 
+        // Some (older) requestors leave property None: reply on the target atom.
+        if (response.property == None) {
+            response.property = request.target;
+        }
+
         if (request.target == atomTargets) {
             // Client wants to know what targets we support
-            Atom supportedTargets[] = {
-                    atomTargets,
-                    atomUtf8String,
-                    atomString,
-                    atomTextPlain,
-                    atomText
-            };
+            std::vector<Atom> supportedTargets;
+            supportedTargets.push_back(atomTargets);
+            for (const auto& offer : offeredTargets) {
+                supportedTargets.push_back(offer.first);
+            }
 
             XChangeProperty(
-                    display, request.requestor, request.property,
+                    display, request.requestor, response.property,
                     XA_ATOM, 32, PropModeReplace,
-                    reinterpret_cast<unsigned char*>(supportedTargets),
-                    sizeof(supportedTargets) / sizeof(Atom)
+                    reinterpret_cast<unsigned char*>(supportedTargets.data()),
+                    static_cast<int>(supportedTargets.size())
             );
 
             success = true;
-            debugOutput << "UltraCanvas: Provided TARGETS list" << std::endl;
-
-        } else if (IsTextFormat(request.target) && !selectionData.empty()) {
-            // Client wants text data
-            XChangeProperty(
-                    display, request.requestor, request.property,
-                    request.target, 8, PropModeReplace,
-                    selectionData.data(), selectionData.size()
-            );
-
-            success = true;
-            debugOutput << "UltraCanvas: Provided text data (" << selectionData.size() << " bytes)" << std::endl;
+            debugOutput << "UltraCanvas: Provided TARGETS list ("
+                        << supportedTargets.size() << " targets)" << std::endl;
 
         } else {
-            // Unsupported target or no data
-            response.property = None;
-            debugOutput << "UltraCanvas: Unsupported target or no data available" << std::endl;
+            // Serve the payload registered for exactly this target; text
+            // requests additionally fall back to any offered text flavour
+            // (a requestor may ask for TEXT while we offered UTF8_STRING).
+            const std::vector<uint8_t>* payload = nullptr;
+            for (const auto& offer : offeredTargets) {
+                if (offer.first == request.target) {
+                    payload = &offer.second;
+                    break;
+                }
+            }
+            if (!payload && IsTextFormat(request.target)) {
+                for (const auto& offer : offeredTargets) {
+                    if (IsTextFormat(offer.first)) {
+                        payload = &offer.second;
+                        break;
+                    }
+                }
+            }
+
+            if (payload) {
+                XChangeProperty(
+                        display, request.requestor, response.property,
+                        request.target, 8, PropModeReplace,
+                        payload->data(), static_cast<int>(payload->size())
+                );
+                success = true;
+                debugOutput << "UltraCanvas: Provided " << AtomToString(request.target)
+                            << " data (" << payload->size() << " bytes)" << std::endl;
+            } else {
+                // Unsupported target or no data
+                response.property = None;
+                debugOutput << "UltraCanvas: Unsupported target "
+                            << AtomToString(request.target)
+                            << " or no data available" << std::endl;
+            }
         }
 
         // Send response
@@ -507,7 +680,7 @@ namespace UltraCanvas {
         // If we've lost all selections, clear our data
         if (!ownsClipboard && !ownsPrimary) {
             clipboardTextData.clear();
-            selectionData.clear();
+            offeredTargets.clear();
             debugOutput << "UltraCanvas: Cleared clipboard data (lost all ownership)" << std::endl;
         }
     }

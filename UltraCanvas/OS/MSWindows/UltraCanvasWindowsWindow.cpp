@@ -547,6 +547,7 @@ namespace UltraCanvas {
         UpdateWindow(hwnd);
 
         _windowVisible = true;
+        HandleWindowShown();
 
         if (onWindowShow) onWindowShow();
     }
@@ -556,6 +557,7 @@ namespace UltraCanvas {
         ShowWindow(hwnd, SW_HIDE);
 
         _windowVisible = false;
+        HandleWindowHidden();
 
         if (onWindowHide) onWindowHide();
     }
@@ -717,6 +719,9 @@ namespace UltraCanvas {
         if (!_created) return;
         ShowWindow(hwnd, SW_MINIMIZE);
         _state = WindowState::Minimized;
+        // WM_KILLFOCUS will also arrive, but notify now so the focused
+        // element reacts immediately (deduplicated in the base class).
+        HandleWindowHidden();
         if (onWindowMinimize) onWindowMinimize();
         debugOutput << "UltraCanvasWindowsWindow::Minimize nativeh=" << GetNativeHandle() << std::endl;
     }

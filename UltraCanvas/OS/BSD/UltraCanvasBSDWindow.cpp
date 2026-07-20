@@ -266,8 +266,9 @@ void UltraCanvasBSDWindow::Show() {
     
     XMapWindow(display, xWindow);
     XFlush(display);
-    
+
     _visible = true;
+    HandleWindowShown();
     debugOutput << "UltraCanvas BSD: Window shown" << std::endl;
 }
 
@@ -286,8 +287,9 @@ void UltraCanvasBSDWindow::Hide() {
     
     XUnmapWindow(display, xWindow);
     XFlush(display);
-    
+
     _visible = false;
+    HandleWindowHidden();
     debugOutput << "UltraCanvas BSD: Window hidden" << std::endl;
 }
 
@@ -336,7 +338,10 @@ void UltraCanvasBSDWindow::Minimize() {
     
     XIconifyWindow(display, xWindow, screen);
     XFlush(display);
-    
+
+    // The WM will also send FocusOut, but notify now so the focused
+    // element reacts immediately (deduplicated in the base class).
+    HandleWindowHidden();
     debugOutput << "UltraCanvas BSD: Window minimized" << std::endl;
 }
 

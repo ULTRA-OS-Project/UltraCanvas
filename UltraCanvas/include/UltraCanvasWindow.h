@@ -92,6 +92,10 @@ namespace UltraCanvas {
         bool _needsResize = false;
         bool _needsPopupGeometry = false;
         bool _needsWindowComposition = true;
+        // Caret blink phase changed but no content did: restore the pixels
+        // under the caret from the content surface and re-blend the caret,
+        // without re-rendering any widget (see UpdateAndRender).
+        bool _needsCaretComposition = false;
 
         UltraCanvasDirtyRectManager dirtyRectManager;
 
@@ -106,6 +110,25 @@ namespace UltraCanvas {
         std::list<PopupElement> popupElements = {};
 
         UltraCanvasUIElement* _focusedElement = nullptr;  // Current focused element in this window
+
+        // True while _focusedElement has been sent FocusGained more recently
+        // than FocusLost. Lets window activate/deactivate and hide/show paths
+        // notify the focused element exactly once, whichever fires first
+        // (native focus events, synthetic focus switches, programmatic
+        // Show/Hide/Minimize).
+        bool _focusedElementNotifiedActive = false;
+
+        // Send FocusGained/FocusLost to the focused element when this window's
+        // activation state changes, WITHOUT clearing _focusedElement — so
+        // keyboard focus returns to the same element (and its caret comes
+        // back) when the window is activated again.
+        void NotifyFocusedElementWindowActive(bool active);
+
+        // Called by platform Show()/Hide()/Minimize() implementations so the
+        // focused element learns about visibility-driven focus changes even
+        // when the native focus notification is late or absent.
+        void HandleWindowShown();
+        void HandleWindowHidden();
 
         UCMouseCursor currentMouseCursor = UCMouseCursor::Default;
 
@@ -249,6 +272,22 @@ namespace UltraCanvas {
         virtual NativeWindowHandle GetNativeHandle() const = 0;
         virtual void InvalidateWindowNative() = 0;
 
+        // ===== NATIVE FILE DRAG SOURCE =====
+        // Start a native OS drag-and-drop of the given files out of this
+        // window (into file managers, editors, other windows of this app,
+        // ...). Must be called while a mouse button is held down — the usual
+        // "pressed on an item and moved" gesture. Returns immediately; the
+        // drag then runs inside the normal event loop and onFinished (when
+        // given) reports the outcome: accepted = a target took the drop,
+        // moved = the target chose the "move" action (it performs the file
+        // operation itself; the source only needs to refresh its view).
+        // Platforms without an implementation return false.
+        virtual bool StartNativeFileDrag(const std::vector<std::string>& filePaths,
+                                         std::function<void(bool accepted, bool moved)> onFinished = nullptr) {
+            (void)filePaths; (void)onFinished;
+            return false;
+        }
+
         // Overlay elements
         void OpenPopup(const Point2Di& pos, UltraCanvasUIElement& element, const PopupElementSettings& settings);
         bool ClosePopup(UltraCanvasUIElement& element, ClosePopupReason reason=ClosePopupReason::Manual);
@@ -313,6 +352,7 @@ namespace UltraCanvas {
 
         void RequestPopupGeometry() { _needsPopupGeometry = true; }
         void RequestWindowComposition() { _needsWindowComposition = true; }
+        void RequestCaretComposition() { _needsCaretComposition = true; }
         void UpdateAndRender();
 
         bool IsNeedsResize() const { return _needsResize; }

@@ -166,8 +166,24 @@ bool UltraCanvasClipboard::GetFiles(std::vector<std::string>& filePaths) {
 
 bool UltraCanvasClipboard::SetFiles(const std::vector<std::string>& filePaths) {
     if (!backend) return false;
-    
+
     bool success = backend->SetClipboardFiles(filePaths);
+    if (success) {
+        backend->ResetChangeState();
+    }
+    return success;
+}
+
+bool UltraCanvasClipboard::GetFiles(std::vector<std::string>& filePaths, bool& cutOperation) {
+    cutOperation = false;
+    if (!backend) return false;
+    return backend->GetClipboardFiles(filePaths, cutOperation);
+}
+
+bool UltraCanvasClipboard::SetFiles(const std::vector<std::string>& filePaths, bool cutOperation) {
+    if (!backend) return false;
+
+    bool success = backend->SetClipboardFiles(filePaths, cutOperation);
     if (success) {
         backend->ResetChangeState();
     }

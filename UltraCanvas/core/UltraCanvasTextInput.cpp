@@ -5,10 +5,12 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasCaret.h"
 #include "UltraCanvasClipboard.h"
 #include <string>
 #include <vector>
 #include <functional>
+#include <cmath>
 #include <regex>
 #include <memory>
 #include <chrono>
@@ -34,8 +36,6 @@ namespace UltraCanvas {
             , selectionStart(0)
             , selectionEnd(0)
             , hasSelection(false)
-            , isCaretVisible(true)
-            , caretBlinkTimer(0.0f)
             , scrollOffset(0.0f)
             , maxScrollOffset(0.0f)
             , lastMeasuredSize(0.0f)
@@ -44,6 +44,10 @@ namespace UltraCanvas {
         textWidthCache.clear();
         lastMeasuredFont.clear();
         SetMouseCursor(UCMouseCursor::Text);
+    }
+
+    UltraCanvasTextInput::~UltraCanvasTextInput() {
+        UltraCanvasCaret::GetInstance().Hide(this);
     }
 
     void UltraCanvasTextInput::TextChanged() {
@@ -179,6 +183,8 @@ namespace UltraCanvas {
         caretPosition = std::min(position, text.length());
         ClearSelection();
         UpdateScrollOffset();
+        // The render pass reports the new caret rect to UltraCanvasCaret
+        RequestRedraw();
     }
 
     void UltraCanvasTextInput::Undo() {
@@ -258,11 +264,13 @@ namespace UltraCanvas {
             RenderSelection(textArea, ctx);
         }
         ctx->PopState();
-        // CRITICAL: Clear clipping BEFORE drawing caret
 
-        // Draw caret WITHOUT clipping so it's always visible
-        if (IsFocused() && isCaretVisible && !HasSelection()) {
-            RenderCaret(textArea, ctx);
+        // The caret is not drawn here: its rect is reported to the shared
+        // UltraCanvasCaret, which blinks and composites it over the window.
+        if (IsFocused() && !HasSelection()) {
+            UpdateCaret(textArea, ctx);
+        } else {
+            UltraCanvasCaret::GetInstance().Hide(this);
         }
 
         // Draw validation feedback
@@ -499,8 +507,8 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasTextInput::RenderCaret(const Rect2Dd &area, IRenderContext* ctx) {
-        if (!IsFocused() || !isCaretVisible) return;
+    void UltraCanvasTextInput::UpdateCaret(const Rect2Dd &area, IRenderContext* ctx) {
+        if (!IsFocused()) return;
 
         // FIXED: Calculate X position to match text rendering exactly
         Rect2Dd textArea = GetTextArea();
@@ -537,22 +545,24 @@ namespace UltraCanvas {
         float lineHeight = style.fontStyle.fontSize * 1.4f;
         // Total height should be about lineHeight for visibility
         float caretStartY = GetCaretYPosition();
-        float caretEndY = caretStartY + lineHeight;
 
         // Only hide if completely outside control bounds (element-local)
         Rect2Di controlBounds = GetLocalBounds();
         if (caretX < controlBounds.x - 10 || caretX > controlBounds.x + controlBounds.width + 10) {
+            UltraCanvasCaret::GetInstance().Hide(this);
             return;
         }
 
-        ctx->SetStrokePaint(style.caretColor);
-        ctx->SetStrokeWidth(style.caretWidth);
-
-        // Draw caret line with proper height and position
-         ctx->DrawLine(
-                Point2Di(caretX, caretStartY),
-                Point2Di(caretX, caretEndY)
-        );
+        // Report the caret rect (window coordinates) to the shared caret,
+        // which owns blinking and painting from here on.
+        int caretWidth = std::max(1, style.caretWidth);
+        Point2Df winPos = GetPositionInWindow();
+        Rect2Di caretRect(
+                static_cast<int>(std::lround(winPos.x + caretX - caretWidth * 0.5f)),
+                static_cast<int>(std::lround(winPos.y + caretStartY)),
+                caretWidth,
+                static_cast<int>(std::lround(lineHeight)));
+        UltraCanvasCaret::GetInstance().Show(this, caretRect, style.caretColor, style.caretBlinkRate);
     }
 
     void UltraCanvasTextInput::RenderMultilineText(const Rect2Dd &area, const std::string &displayText, const Point2Di &startPos, IRenderContext* ctx) {
@@ -872,6 +882,11 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasTextInput::HandleKeyDown(const UCEvent &event) {
+        // Keep the caret solid while the user is typing or navigating, and
+        // re-render so the caret rect reported to the shared caret stays fresh
+        UltraCanvasCaret::GetInstance().ResetBlink(this);
+        RequestRedraw();
+
         // ===== Non-destructive keys: navigation, selection and copy work even in
         // read-only inputs (only text mutation is blocked for read-only). =====
         switch (event.virtualKey) {
@@ -1141,19 +1156,18 @@ namespace UltraCanvas {
 
     bool UltraCanvasTextInput::HandleFocusGained(const UCEvent &event) {
         SetFocus(true);
-        isCaretVisible = true;
-        caretBlinkTimer = 0.0f;
-//        InvalidateLayout();
+        // The render pass claims the shared caret with the current rect
+        RequestRedraw();
 
         if (onFocusGained) onFocusGained();
         return true;
     }
 
     bool UltraCanvasTextInput::HandleFocusLost(const UCEvent &event) {
-        isCaretVisible = false;
+        UltraCanvasCaret::GetInstance().Hide(this);
         isDragging = false;
         isClearButtonHovered = false;
-//        InvalidateLayout();
+        RequestRedraw();
 
         if (onFocusLost) onFocusLost();
         return true;
