@@ -78,6 +78,11 @@ namespace UltraCanvas {
         // window above its parent and places it on the parent's monitor.
         void SetTransientParent(UltraCanvasWindowBase* parent) override;
         UltraCanvasLinuxDragDrop& GetDragDropHandler() { return dragDropHandler; }
+
+        // Native XDnD source: drag files out of this window into other
+        // applications. Called with a mouse button held down.
+        bool StartNativeFileDrag(const std::vector<std::string>& filePaths,
+                                 std::function<void(bool accepted, bool moved)> onFinished = nullptr) override;
 //        virtual void ProcessEvents() override;
 //        virtual bool OnEvent(const UCEvent&) override;
 

@@ -205,6 +205,66 @@ namespace UltraCanvas {
         return !filePaths.empty();
     }
 
+    bool UltraCanvasWindowsClipboard::GetClipboardFiles(
+            std::vector<std::string>& filePaths, bool& cutOperation) {
+        cutOperation = false;
+        if (!GetClipboardFiles(filePaths)) {
+            return false;
+        }
+
+        // The shell marks a cut (Ctrl+X in Explorer) with the registered
+        // "Preferred DropEffect" format holding DROPEFFECT_MOVE.
+        UINT dropEffectFormat = RegisterClipboardFormatW(L"Preferred DropEffect");
+        if (dropEffectFormat != 0 &&
+            IsClipboardFormatAvailable(dropEffectFormat) &&
+            OpenClipboard(nullptr)) {
+            HANDLE hEffect = GetClipboardData(dropEffectFormat);
+            if (hEffect) {
+                DWORD* pEffect = static_cast<DWORD*>(GlobalLock(hEffect));
+                if (pEffect) {
+                    cutOperation = (*pEffect & 2 /* DROPEFFECT_MOVE */) != 0;
+                    GlobalUnlock(hEffect);
+                }
+            }
+            CloseClipboard();
+        }
+        return true;
+    }
+
+    bool UltraCanvasWindowsClipboard::SetClipboardFiles(
+            const std::vector<std::string>& filePaths, bool cutOperation) {
+        if (!SetClipboardFiles(filePaths)) {
+            return false;
+        }
+
+        // Append the "Preferred DropEffect" marker so Explorer moves (cut) or
+        // copies on paste. SetClipboardFiles already emptied + set CF_HDROP;
+        // adding another format must not empty the clipboard again.
+        UINT dropEffectFormat = RegisterClipboardFormatW(L"Preferred DropEffect");
+        if (dropEffectFormat == 0) return true;   // files are on the clipboard anyway
+
+        HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, sizeof(DWORD));
+        if (!hMem) return true;
+        DWORD* pEffect = static_cast<DWORD*>(GlobalLock(hMem));
+        if (!pEffect) {
+            GlobalFree(hMem);
+            return true;
+        }
+        *pEffect = cutOperation ? 2 /* DROPEFFECT_MOVE */
+                                : 5 /* DROPEFFECT_COPY | DROPEFFECT_LINK */;
+        GlobalUnlock(hMem);
+
+        if (!OpenClipboard(nullptr)) {
+            GlobalFree(hMem);
+            return true;
+        }
+        if (!SetClipboardData(dropEffectFormat, hMem)) {
+            GlobalFree(hMem);
+        }
+        CloseClipboard();
+        return true;
+    }
+
     bool UltraCanvasWindowsClipboard::SetClipboardFiles(
             const std::vector<std::string>& filePaths) {
         if (filePaths.empty()) return false;

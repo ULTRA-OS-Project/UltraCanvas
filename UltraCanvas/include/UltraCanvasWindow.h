@@ -272,6 +272,22 @@ namespace UltraCanvas {
         virtual NativeWindowHandle GetNativeHandle() const = 0;
         virtual void InvalidateWindowNative() = 0;
 
+        // ===== NATIVE FILE DRAG SOURCE =====
+        // Start a native OS drag-and-drop of the given files out of this
+        // window (into file managers, editors, other windows of this app,
+        // ...). Must be called while a mouse button is held down — the usual
+        // "pressed on an item and moved" gesture. Returns immediately; the
+        // drag then runs inside the normal event loop and onFinished (when
+        // given) reports the outcome: accepted = a target took the drop,
+        // moved = the target chose the "move" action (it performs the file
+        // operation itself; the source only needs to refresh its view).
+        // Platforms without an implementation return false.
+        virtual bool StartNativeFileDrag(const std::vector<std::string>& filePaths,
+                                         std::function<void(bool accepted, bool moved)> onFinished = nullptr) {
+            (void)filePaths; (void)onFinished;
+            return false;
+        }
+
         // Overlay elements
         void OpenPopup(const Point2Di& pos, UltraCanvasUIElement& element, const PopupElementSettings& settings);
         bool ClosePopup(UltraCanvasUIElement& element, ClosePopupReason reason=ClosePopupReason::Manual);
