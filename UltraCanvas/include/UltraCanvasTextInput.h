@@ -9,6 +9,7 @@
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
+#include "UltraCanvasTimer.h"
 #include <string>
 #include <vector>
 #include <functional>
@@ -312,7 +313,7 @@ private:
     size_t selectionEnd;
     bool hasSelection;
     bool isCaretVisible;
-    float caretBlinkTimer;
+    TimerId caretBlinkTimerId = InvalidTimerId;
     
     // ===== SCROLLING (for long text) =====
     int scrollOffset;
@@ -347,7 +348,7 @@ public:
     explicit UltraCanvasTextInput(const std::string& id)
         : UltraCanvasTextInput(id, -1, -1, -1, -1) {}
 
-    virtual ~UltraCanvasTextInput() = default;
+    virtual ~UltraCanvasTextInput();
     
     // ===== TEXT MANAGEMENT =====
     void SetText(const std::string& newText);
@@ -534,15 +535,13 @@ private:
         return style.textColor;
     }
     
-    void UpdateCaretBlink() {
-        caretBlinkTimer += 1.0f / 60.0f; // Assume 60 FPS
-        
-        if (caretBlinkTimer >= 1.0f / style.caretBlinkRate) {
-            isCaretVisible = !isCaretVisible;
-            caretBlinkTimer = 0.0f;
-        }
-    }
-    
+    // Caret blinking runs on an application timer while the field is focused:
+    // each fire toggles isCaretVisible and requests a redraw. Reset restarts
+    // the interval so the caret stays solid while the user types or moves it.
+    void StartCaretBlink();
+    void StopCaretBlink();
+    void ResetCaretBlink();
+
     void RenderText(const Rect2Dd& area, const Color& color, IRenderContext* ctx);
     
     void RenderPlaceholder(const Rect2Dd& area, IRenderContext* ctx);

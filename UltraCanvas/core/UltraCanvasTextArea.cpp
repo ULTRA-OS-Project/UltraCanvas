@@ -27,7 +27,6 @@ namespace UltraCanvas {
             : UltraCanvasUIElement(name, x, y, width, height),
               horizontalScrollOffset(0),
               verticalScrollOffset(0),
-              cursorBlinkTime(0),
               cursorVisible(true),
               isReadOnly(false),
               wordWrap(false),
@@ -48,7 +47,35 @@ namespace UltraCanvas {
     }
 
 // Destructor
-    UltraCanvasTextArea::~UltraCanvasTextArea() = default;
+    UltraCanvasTextArea::~UltraCanvasTextArea() {
+        StopCursorBlink();
+    }
+
+// ===== CURSOR BLINKING =====
+    void UltraCanvasTextArea::StartCursorBlink() {
+        StopCursorBlink();
+        cursorVisible = true;
+
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (!app) return;
+
+        cursorBlinkTimerId = app->StartTimer(CursorBlinkHalfPeriodMs, true, [this](TimerId) {
+            cursorVisible = !cursorVisible;
+            RequestRedraw();
+        });
+    }
+
+    void UltraCanvasTextArea::StopCursorBlink() {
+        if (cursorBlinkTimerId == InvalidTimerId) return;
+        if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(cursorBlinkTimerId);
+        cursorBlinkTimerId = InvalidTimerId;
+    }
+
+    void UltraCanvasTextArea::ResetCursorBlink() {
+        if (!IsFocused()) return;
+        StartCursorBlink();
+        RequestRedraw();
+    }
 
 // Initialize default style
     void UltraCanvasTextArea::ApplyDefaultStyle() {
@@ -1303,11 +1330,13 @@ namespace UltraCanvas {
                 case UCEventType::MouseWheel:
                     return HandleMouseWheel(event);
                 case UCEventType::FocusGained:
-                    cursorVisible = true;
-                    cursorBlinkTime = 0;
+                    StartCursorBlink();
+                    RequestRedraw();
                     return true;
                 case UCEventType::FocusLost:
+                    StopCursorBlink();
                     cursorVisible = false;
+                    RequestRedraw();
                     return true;
                 default:
                     return false;
@@ -1328,11 +1357,11 @@ namespace UltraCanvas {
             case UCEventType::MouseWheel:
                 return HandleMouseWheel(event);
             case UCEventType::FocusGained:
-                cursorVisible = true;
-                cursorBlinkTime = 0;
+                StartCursorBlink();
                 RequestRedraw();
                 return true;
             case UCEventType::FocusLost:
+                StopCursorBlink();
                 cursorVisible = false;
                 // Return the in-edit line to its formatted MD layout while the widget is idle
                 // (or discard the stash if the line was modified). On focus regain, the swap
@@ -1643,6 +1672,9 @@ namespace UltraCanvas {
 
     bool UltraCanvasTextArea::HandleKeyDown(const UCEvent& event) {
         bool handled = true;
+
+        // Keep the cursor solid while the user is typing or navigating
+        ResetCursorBlink();
 
         switch (event.virtualKey) {
             case UCKeys::Left:

@@ -521,6 +521,9 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasTextArea::HandleHexKeyDown(const UCEvent& event) {
+        // Keep the cursor solid while the user is typing or navigating
+        ResetCursorBlink();
+
         if (hexBuffer.empty() && event.virtualKey != UCKeys::Escape) {
             // Allow typing in empty buffer only for paste
             if (event.ctrl && event.virtualKey == UCKeys::V) {

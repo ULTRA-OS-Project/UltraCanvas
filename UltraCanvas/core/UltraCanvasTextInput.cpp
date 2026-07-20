@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
 #include <string>
 #include <vector>
@@ -35,7 +36,6 @@ namespace UltraCanvas {
             , selectionEnd(0)
             , hasSelection(false)
             , isCaretVisible(true)
-            , caretBlinkTimer(0.0f)
             , scrollOffset(0.0f)
             , maxScrollOffset(0.0f)
             , lastMeasuredSize(0.0f)
@@ -44,6 +44,39 @@ namespace UltraCanvas {
         textWidthCache.clear();
         lastMeasuredFont.clear();
         SetMouseCursor(UCMouseCursor::Text);
+    }
+
+    UltraCanvasTextInput::~UltraCanvasTextInput() {
+        StopCaretBlink();
+    }
+
+    void UltraCanvasTextInput::StartCaretBlink() {
+        StopCaretBlink();
+        isCaretVisible = true;
+        if (style.caretBlinkRate <= 0) return;  // rate <= 0 means a solid, non-blinking caret
+
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (!app) return;
+
+        // caretBlinkRate counts full on/off cycles per second, so the caret
+        // toggles every half cycle.
+        unsigned int halfPeriodMs = static_cast<unsigned int>(std::max(1, 500 / style.caretBlinkRate));
+        caretBlinkTimerId = app->StartTimer(halfPeriodMs, true, [this](TimerId) {
+            isCaretVisible = !isCaretVisible;
+            RequestRedraw();
+        });
+    }
+
+    void UltraCanvasTextInput::StopCaretBlink() {
+        if (caretBlinkTimerId == InvalidTimerId) return;
+        if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(caretBlinkTimerId);
+        caretBlinkTimerId = InvalidTimerId;
+    }
+
+    void UltraCanvasTextInput::ResetCaretBlink() {
+        if (!IsFocused()) return;
+        StartCaretBlink();
+        RequestRedraw();
     }
 
     void UltraCanvasTextInput::TextChanged() {
@@ -177,6 +210,7 @@ namespace UltraCanvas {
 
     void UltraCanvasTextInput::SetCaretPosition(size_t position) {
         caretPosition = std::min(position, text.length());
+        ResetCaretBlink();
         ClearSelection();
         UpdateScrollOffset();
     }
@@ -872,6 +906,9 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasTextInput::HandleKeyDown(const UCEvent &event) {
+        // Keep the caret solid while the user is typing or navigating
+        ResetCaretBlink();
+
         // ===== Non-destructive keys: navigation, selection and copy work even in
         // read-only inputs (only text mutation is blocked for read-only). =====
         switch (event.virtualKey) {
@@ -1141,19 +1178,19 @@ namespace UltraCanvas {
 
     bool UltraCanvasTextInput::HandleFocusGained(const UCEvent &event) {
         SetFocus(true);
-        isCaretVisible = true;
-        caretBlinkTimer = 0.0f;
-//        InvalidateLayout();
+        StartCaretBlink();
+        RequestRedraw();
 
         if (onFocusGained) onFocusGained();
         return true;
     }
 
     bool UltraCanvasTextInput::HandleFocusLost(const UCEvent &event) {
+        StopCaretBlink();
         isCaretVisible = false;
         isDragging = false;
         isClearButtonHovered = false;
-//        InvalidateLayout();
+        RequestRedraw();
 
         if (onFocusLost) onFocusLost();
         return true;

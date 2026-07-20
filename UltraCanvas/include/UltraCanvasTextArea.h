@@ -8,6 +8,7 @@
 
 #include "UltraCanvasUI.h"
 #include "UltraCanvasEvent.h"
+#include "UltraCanvasTimer.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasRenderContext.h"
 #include <string>
@@ -468,6 +469,7 @@ namespace UltraCanvas {
         void SetCursorPosition(const LineColumnIndex& pos, bool selecting = false) {
             cursorPosition = pos;
             isCursorMoved = true;
+            ResetCursorBlink();
             RequestRedraw();
         }
 
@@ -871,9 +873,16 @@ namespace UltraCanvas {
         static constexpr int MultiClickDistanceThreshold = 5;
         static constexpr int MultiClickTimeThresholdMs = 400;
 
-        // Cursor animation
-        double cursorBlinkTime;
+        // Cursor animation: a periodic application timer toggles cursorVisible
+        // while the editor is focused (see StartCursorBlink). Reset restarts
+        // the interval so the cursor stays solid while the user types.
+        static constexpr unsigned int CursorBlinkHalfPeriodMs = 500;
         bool cursorVisible;
+        TimerId cursorBlinkTimerId = InvalidTimerId;
+
+        void StartCursorBlink();
+        void StopCursorBlink();
+        void ResetCursorBlink();
 
         // Properties
         bool isNeedRecalculateVisibleArea;
