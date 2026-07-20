@@ -311,8 +311,6 @@ private:
     size_t selectionStart;
     size_t selectionEnd;
     bool hasSelection;
-    bool isCaretVisible;
-    float caretBlinkTimer;
     
     // ===== SCROLLING (for long text) =====
     int scrollOffset;
@@ -347,7 +345,7 @@ public:
     explicit UltraCanvasTextInput(const std::string& id)
         : UltraCanvasTextInput(id, -1, -1, -1, -1) {}
 
-    virtual ~UltraCanvasTextInput() = default;
+    virtual ~UltraCanvasTextInput();
     
     // ===== TEXT MANAGEMENT =====
     void SetText(const std::string& newText);
@@ -534,22 +532,16 @@ private:
         return style.textColor;
     }
     
-    void UpdateCaretBlink() {
-        caretBlinkTimer += 1.0f / 60.0f; // Assume 60 FPS
-        
-        if (caretBlinkTimer >= 1.0f / style.caretBlinkRate) {
-            isCaretVisible = !isCaretVisible;
-            caretBlinkTimer = 0.0f;
-        }
-    }
-    
     void RenderText(const Rect2Dd& area, const Color& color, IRenderContext* ctx);
     
     void RenderPlaceholder(const Rect2Dd& area, IRenderContext* ctx);
     
     void RenderSelection(const Rect2Dd& area, IRenderContext* ctx);
     
-    void RenderCaret(const Rect2Dd& area, IRenderContext* ctx);
+    // Computes the caret rect and reports it to the application-wide
+    // UltraCanvasCaret, which paints and blinks it as a compositor overlay
+    // (the widget itself no longer draws the caret).
+    void UpdateCaret(const Rect2Dd& area, IRenderContext* ctx);
     
     void RenderMultilineText(const Rect2Dd& area, const std::string& displayText, const Point2Di& startPos, IRenderContext* ctx);
     

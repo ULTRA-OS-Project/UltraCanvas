@@ -156,6 +156,25 @@ namespace UltraCanvas {
         virtual Size2Di GetSurfaceSize() const = 0;
         virtual void FlushToSurface(NativeSurfacePtr flushToSurface, const Point2Dd& pos) = 0;
 
+        // Alpha-blend (OVER) this context's surface onto `flushToSurface` at
+        // `pos`. Unlike FlushToSurface — a raw copy that would overwrite the
+        // destination under transparent pixels — this preserves the content
+        // beneath. Used for small overlays such as the shared caret. The base
+        // fallback is a plain flush, which is correct for fully opaque surfaces.
+        virtual void CompositeToSurface(NativeSurfacePtr flushToSurface, const Point2Dd& pos) {
+            FlushToSurface(flushToSurface, pos);
+        }
+
+        // Copy only `region` (in this surface's coordinates) onto
+        // `flushToSurface`, placing its top-left corner at `destPos`. Lets the
+        // window compositor restore just the pixels under the caret instead of
+        // re-blitting the whole content surface. The base fallback flushes the
+        // full surface offset so that `region` still lands at `destPos`.
+        virtual void FlushRegionToSurface(NativeSurfacePtr flushToSurface,
+                                          const Rect2Dd& region, const Point2Dd& destPos) {
+            FlushToSurface(flushToSurface, {destPos.x - region.x, destPos.y - region.y});
+        }
+
         // Backing-store scale of the surface this context renders into:
         // 1.0 on standard displays, 2.0 on Retina, etc. Drawing always
         // happens in logical (point) coordinates regardless — this is purely

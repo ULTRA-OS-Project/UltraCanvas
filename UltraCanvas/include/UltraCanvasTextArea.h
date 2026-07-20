@@ -710,7 +710,10 @@ namespace UltraCanvas {
         void DrawCurrentLineBackground(IRenderContext* context);
         void DrawBorder(IRenderContext* context);
         virtual void DrawGutter(IRenderContext* context);   // was DrawLineNumbers
-        void DrawCursor(IRenderContext* context);
+        // Computes the cursor rect and reports it to the application-wide
+        // UltraCanvasCaret, which paints and blinks it as a compositor overlay
+        // (the widget itself no longer draws the cursor).
+        void UpdateCaret(IRenderContext* context);
         void DrawScrollbars(IRenderContext* context);
 
         // Event handlers
@@ -870,10 +873,6 @@ namespace UltraCanvas {
         int lastClickY = 0;
         static constexpr int MultiClickDistanceThreshold = 5;
         static constexpr int MultiClickTimeThresholdMs = 400;
-
-        // Cursor animation
-        double cursorBlinkTime;
-        bool cursorVisible;
 
         // Properties
         bool isNeedRecalculateVisibleArea;
@@ -1049,7 +1048,7 @@ namespace UltraCanvas {
         void DrawHexSelection(IRenderContext* ctx);
         void DrawHexCrossHighlight(IRenderContext* ctx);
         void DrawHexSearchHighlights(IRenderContext* ctx);
-        void DrawHexCursor(IRenderContext* ctx);
+        void UpdateHexCaret(IRenderContext* ctx);
         void DrawHexCurrentRowHighlight(IRenderContext* ctx);
         void CalculateHexLayout();
 

@@ -92,6 +92,10 @@ namespace UltraCanvas {
         bool _needsResize = false;
         bool _needsPopupGeometry = false;
         bool _needsWindowComposition = true;
+        // Caret blink phase changed but no content did: restore the pixels
+        // under the caret from the content surface and re-blend the caret,
+        // without re-rendering any widget (see UpdateAndRender).
+        bool _needsCaretComposition = false;
 
         UltraCanvasDirtyRectManager dirtyRectManager;
 
@@ -106,6 +110,25 @@ namespace UltraCanvas {
         std::list<PopupElement> popupElements = {};
 
         UltraCanvasUIElement* _focusedElement = nullptr;  // Current focused element in this window
+
+        // True while _focusedElement has been sent FocusGained more recently
+        // than FocusLost. Lets window activate/deactivate and hide/show paths
+        // notify the focused element exactly once, whichever fires first
+        // (native focus events, synthetic focus switches, programmatic
+        // Show/Hide/Minimize).
+        bool _focusedElementNotifiedActive = false;
+
+        // Send FocusGained/FocusLost to the focused element when this window's
+        // activation state changes, WITHOUT clearing _focusedElement — so
+        // keyboard focus returns to the same element (and its caret comes
+        // back) when the window is activated again.
+        void NotifyFocusedElementWindowActive(bool active);
+
+        // Called by platform Show()/Hide()/Minimize() implementations so the
+        // focused element learns about visibility-driven focus changes even
+        // when the native focus notification is late or absent.
+        void HandleWindowShown();
+        void HandleWindowHidden();
 
         UCMouseCursor currentMouseCursor = UCMouseCursor::Default;
 
@@ -313,6 +336,7 @@ namespace UltraCanvas {
 
         void RequestPopupGeometry() { _needsPopupGeometry = true; }
         void RequestWindowComposition() { _needsWindowComposition = true; }
+        void RequestCaretComposition() { _needsCaretComposition = true; }
         void UpdateAndRender();
 
         bool IsNeedsResize() const { return _needsResize; }

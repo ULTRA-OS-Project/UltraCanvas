@@ -93,6 +93,9 @@ namespace UltraCanvas {
         bool ResizeSurface(const Size2Di& sz) override;
         Size2Di GetSurfaceSize() const override { return surfaceSize; }
         void FlushToSurface(NativeSurfacePtr flushToSurface, const Point2Dd& pos) override;
+        void CompositeToSurface(NativeSurfacePtr flushToSurface, const Point2Dd& pos) override;
+        void FlushRegionToSurface(NativeSurfacePtr flushToSurface,
+                                  const Rect2Dd& region, const Point2Dd& destPos) override;
         float GetDeviceScale() const override {
             if (!surface) return 1.0f;
             double sx = 1.0, sy = 1.0;

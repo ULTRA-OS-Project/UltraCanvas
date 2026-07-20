@@ -195,8 +195,9 @@ void UltraCanvasWASMWindow::Show() {
             canvas.style.display = 'block';
         }
     }, canvasId.c_str());
-    
+
     _visible = true;
+    HandleWindowShown();
 }
 
 void UltraCanvasWASMWindow::Hide() {
@@ -208,8 +209,9 @@ void UltraCanvasWASMWindow::Hide() {
             canvas.style.display = 'none';
         }
     }, canvasId.c_str());
-    
+
     _visible = false;
+    HandleWindowHidden();
 }
 
 void UltraCanvasWASMWindow::Minimize() {

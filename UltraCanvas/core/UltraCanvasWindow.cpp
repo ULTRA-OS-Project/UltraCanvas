@@ -8,6 +8,7 @@
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasTooltipManager.h"
+#include "UltraCanvasCaret.h"
 
 #include <cairo/cairo.h>
 #include <iostream>
@@ -24,6 +25,7 @@ namespace UltraCanvas {
     }
 
     UltraCanvasWindowBase::~UltraCanvasWindowBase() {
+        UltraCanvasCaret::GetInstance().OnWindowClosed(this);
         CloseAllPopups();
         _state = WindowState::Closed;
         _focusedElement = nullptr;
@@ -57,6 +59,7 @@ namespace UltraCanvas {
 
         // Set new focused element
         _focusedElement = element;
+        _focusedElementNotifiedActive = (_focusedElement != nullptr);
 
         // Set focus on new element
         if (_focusedElement) {
@@ -182,6 +185,31 @@ namespace UltraCanvas {
         element->OnEvent(focusEvent);
     }
 
+    void UltraCanvasWindowBase::NotifyFocusedElementWindowActive(bool active) {
+        if (!_focusedElement) return;
+        if (active == _focusedElementNotifiedActive) return;
+        _focusedElementNotifiedActive = active;
+        if (active) {
+            SendFocusGainedEvent(_focusedElement);
+        } else {
+            SendFocusLostEvent(_focusedElement);
+        }
+    }
+
+    void UltraCanvasWindowBase::HandleWindowShown() {
+        // Showing does not imply activation — only re-notify when the
+        // application still considers this window focused (hide + show of the
+        // active window); otherwise the native WindowFocus event that follows
+        // actual activation delivers the FocusGained.
+        if (IsWindowFocused()) {
+            NotifyFocusedElementWindowActive(true);
+        }
+    }
+
+    void UltraCanvasWindowBase::HandleWindowHidden() {
+        NotifyFocusedElementWindowActive(false);
+    }
+
     bool UltraCanvasWindowBase::OnEvent(const UCEvent &event) {
         // Handle window-specific events first
         if (HandleWindowEvent(event)) {
@@ -240,12 +268,16 @@ namespace UltraCanvas {
     bool UltraCanvasWindowBase::HandleWindowEvent(const UCEvent &event) {
         switch (event.type) {
             case UCEventType::WindowBlur:
+                // Deactivation: the focused element is told it lost focus but
+                // stays _focusedElement, so activation restores it below.
+                NotifyFocusedElementWindowActive(false);
                 if (onWindowBlur) {
                     onWindowBlur();
                 }
                 RequestRedraw();
                 return true;
             case UCEventType::WindowFocus:
+                NotifyFocusedElementWindowActive(true);
                 if (onWindowFocus) {
                     onWindowFocus();
                 }
@@ -442,7 +474,23 @@ namespace UltraCanvas {
             }
         }
 
-        // Composite popups and tooltips onto the native surface
+        // A caret blink toggle only needs the few pixels under the caret
+        // refreshed. That shortcut is valid only when no overlay could cover
+        // the caret area: with popups or a tooltip visible, fall back to a
+        // full composite so the stacking order stays correct.
+        if (_needsCaretComposition && !_needsWindowComposition) {
+            bool hasOverlays = UltraCanvasTooltipManager::IsVisible();
+            if (!hasOverlays) {
+                for (auto& pe : popupElements) {
+                    if (pe.element && pe.element->IsVisible()) { hasOverlays = true; break; }
+                }
+            }
+            if (hasOverlays) {
+                _needsWindowComposition = true;
+            }
+        }
+
+        // Composite popups, the caret and tooltips onto the native surface
         if (_needsWindowComposition) {
             renderContext->FlushToSurface(nativeSurface, {0, 0});
 
@@ -456,16 +504,34 @@ namespace UltraCanvas {
                 }
             }
 
+            // Caret goes above the window content and popups (the focused
+            // widget may live inside a popup), but below tooltips.
+            UltraCanvasCaret::GetInstance().Composite(this, nativeSurface);
+
             auto tooltipCtx = UltraCanvasTooltipManager::Render(this);
             if (tooltipCtx) {
                 tooltipCtx->FlushToSurface(nativeSurface, UltraCanvasTooltipManager::GetTooltipPosition());
             }
 
             InvalidateWindowNative();
+        } else if (_needsCaretComposition) {
+            // Blink-phase-only frame: no widget rendered anything. Restore the
+            // pixels under the caret from the content surface, then blend the
+            // caret back on top when it is in its visible phase.
+            auto& caret = UltraCanvasCaret::GetInstance();
+            if (caret.IsOnWindow(this)) {
+                const Rect2Di& r = caret.GetRect();
+                renderContext->FlushRegionToSurface(nativeSurface,
+                        Rect2Dd(r.x, r.y, r.width, r.height),
+                        {(double)r.x, (double)r.y});
+                caret.Composite(this, nativeSurface);
+                InvalidateWindowNative();
+            }
         }
 
         _needsPopupGeometry = false;
         _needsWindowComposition = false;
+        _needsCaretComposition = false;
     }
 
     void UltraCanvasWindowBase::AddDirtyRectangle(const Rect2Di& windowRect) {
