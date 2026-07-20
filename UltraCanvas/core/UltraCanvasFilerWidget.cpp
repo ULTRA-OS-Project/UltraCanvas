@@ -5,9 +5,11 @@
 // bar (type / size / dates / attributes, image dimensions, media duration and
 // codec via lightweight header probes, recursive folder stats). Image
 // thumbnails decode asynchronously (see ASYNC THUMBNAILS) so the folder page
-// never waits for image files.
-// Version: 1.3.0
-// Last Modified: 2026-07-19
+// never waits for image files, and recursive folder statistics are computed
+// asynchronously too (see ASYNC FOLDER STATS) so selecting or opening a
+// folder never waits for a subtree walk.
+// Version: 1.4.0
+// Last Modified: 2026-07-20
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -922,6 +924,7 @@ namespace UltraCanvas {
     UltraCanvasFilerWidget::~UltraCanvasFilerWidget() {
         thumbAlive->store(false);   // neutralize queued cross-thread redraws
         StopThumbnailWorkers();
+        StopFolderStatsWorker();
     }
 
     // ===== FOLDER =====
@@ -966,7 +969,14 @@ namespace UltraCanvas {
         effectiveSizesValid = false;
         hoveredIndex = -1;
         lastClickedIndex = -1;
-        folderStatsCache.clear();   // files may have changed on disk
+        {
+            // Files may have changed on disk: forget the folder stats and
+            // drop queued / in-flight background walks of the old view.
+            std::lock_guard<std::mutex> lk(statsMutex);
+            ++statsGeneration;
+            statsQueue.clear();
+            folderStatsCache.clear();
+        }
         mediaInfoCache.clear();
         DropThumbnailCache();
 
@@ -1089,23 +1099,18 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::EnsureEffectiveSizes() {
         if (effectiveSizesValid) return;
-        effectiveSizesValid = true;
+        // Directory weights come from the async folder stats: not-yet-walked
+        // folders keep weight 0 for now and the layout reflows when their
+        // background walk lands (PostFolderStatsRedraw invalidates us).
+        bool allReady = true;
         for (FilerEntry& e : entries) {
             e.effectiveSize = e.size;
             if (!e.isDirectory) continue;
-            std::error_code ec;
-            if (!fs::is_directory(e.path, ec)) continue;
-            uint64_t total = 0, count = 0;
-            for (fs::recursive_directory_iterator it(
-                     e.path, fs::directory_options::skip_permission_denied, ec), end;
-                 it != end && count < kDirSizeEntryCap; it.increment(ec)) {
-                if (ec) break;
-                std::error_code fec;
-                if (it->is_regular_file(fec)) total += it->file_size(fec);
-                ++count;
-            }
-            e.effectiveSize = total;
+            FolderStats st = GetFolderStats(e.path);
+            if (st.ready) e.effectiveSize = st.bytes;
+            else allReady = false;
         }
+        effectiveSizesValid = allReady;
     }
 
     // ===== VIEW SETTINGS =====
@@ -2788,33 +2793,120 @@ namespace UltraCanvas {
         ctx->FillRoundedRectangle(Rect2Dd(g.thumb), 3);
     }
 
-    // ===== SELECTION INFO BAR =====
-    const UltraCanvasFilerWidget::FolderStats&
-    UltraCanvasFilerWidget::GetFolderStats(const std::string& path) const {
+    // ===== ASYNC FOLDER STATS =====
+    // The recursive walk behind these stats is the single most expensive
+    // thing the widget can do (up to kDirSizeEntryCap directory entries per
+    // folder — seconds on a big subtree, cold cache or slow storage). It
+    // used to run inline here, on the UI thread, so merely selecting a
+    // folder — including the first click of the double-click that opens it —
+    // froze the window until the whole subtree had been visited. Now the
+    // walk runs on a background worker and callers immediately get a
+    // placeholder that is filled in by a posted redraw.
+    UltraCanvasFilerWidget::FolderStats
+    UltraCanvasFilerWidget::GetFolderStats(const std::string& path) {
+        std::lock_guard<std::mutex> lk(statsMutex);
         auto it = folderStatsCache.find(path);
         if (it != folderStatsCache.end()) return it->second;
 
-        FolderStats st;
-        std::error_code ec;
-        if (fs::is_directory(path, ec)) {
-            uint64_t visited = 0;
-            for (fs::recursive_directory_iterator rit(
-                     path, fs::directory_options::skip_permission_denied, ec), end;
-                 rit != end; rit.increment(ec)) {
-                if (ec) break;
-                if (visited++ >= kDirSizeEntryCap) { st.capped = true; break; }
-                std::error_code fec;
-                if (rit->is_directory(fec)) {
-                    ++st.folders;
-                } else {
-                    ++st.files;
-                    uint64_t sz = rit->file_size(fec);
-                    if (!fec) st.bytes += sz;
+        // Pending marker so repeated calls (every frame while the info bar
+        // shows this folder) queue the walk only once.
+        folderStatsCache.emplace(path, FolderStats{});
+        statsQueue.push_back(path);
+        StartFolderStatsWorkerLocked();
+        statsCond.notify_one();
+        return FolderStats{};
+    }
+
+    void UltraCanvasFilerWidget::StartFolderStatsWorkerLocked() {
+        if (statsWorker.joinable() || statsShutdown) return;
+        statsWorker = std::thread([this]() { FolderStatsWorkerMain(); });
+    }
+
+    void UltraCanvasFilerWidget::StopFolderStatsWorker() {
+        {
+            std::lock_guard<std::mutex> lk(statsMutex);
+            statsShutdown = true;
+            statsQueue.clear();
+        }
+        statsCond.notify_all();
+        if (statsWorker.joinable()) statsWorker.join();
+    }
+
+    void UltraCanvasFilerWidget::FolderStatsWorkerMain() {
+        for (;;) {
+            std::string path;
+            uint64_t gen;
+            {
+                std::unique_lock<std::mutex> lk(statsMutex);
+                statsCond.wait(lk, [this]() {
+                    return statsShutdown || !statsQueue.empty();
+                });
+                if (statsShutdown) return;
+                path = std::move(statsQueue.front());
+                statsQueue.pop_front();
+                gen = statsGeneration;
+            }
+
+            // The expensive walk — outside the lock, one folder at a time
+            // (a single worker is enough: deep walks are I/O bound).
+            FolderStats st;
+            st.ready = true;
+            std::error_code ec;
+            if (fs::is_directory(path, ec)) {
+                uint64_t visited = 0;
+                for (fs::recursive_directory_iterator rit(
+                         path, fs::directory_options::skip_permission_denied, ec), end;
+                     rit != end; rit.increment(ec)) {
+                    if (ec) break;
+                    if (visited++ >= kDirSizeEntryCap) { st.capped = true; break; }
+                    std::error_code fec;
+                    if (rit->is_directory(fec)) {
+                        ++st.folders;
+                    } else {
+                        ++st.files;
+                        uint64_t sz = rit->file_size(fec);
+                        if (!fec) st.bytes += sz;
+                    }
                 }
             }
+
+            bool report = false;
+            {
+                std::lock_guard<std::mutex> lk(statsMutex);
+                if (statsShutdown) return;
+                if (gen == statsGeneration) {   // folder view unchanged
+                    folderStatsCache[path] = st;
+                    report = true;
+                }
+            }
+            if (report) PostFolderStatsRedraw();
         }
-        return folderStatsCache.emplace(path, st).first->second;
     }
+
+    void UltraCanvasFilerWidget::PostFolderStatsRedraw() {
+        // Coalesced like the thumbnail redraw: one queued UI task picks up
+        // however many finished walks preceded it.
+        if (statsRedrawPosted.exchange(true)) return;
+        UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app) {
+            statsRedrawPosted.store(false);
+            return;
+        }
+        auto alive = thumbAlive;
+        app->PostToUIThread([this, alive]() {
+            if (!alive->load()) return;   // widget destroyed meanwhile
+            statsRedrawPosted.store(false);
+            // New directory weights change the size-weighted geometries.
+            if (viewType == FilerViewType::BarSize ||
+                viewType == FilerViewType::TreeMap) {
+                effectiveSizesValid = false;
+                InvalidateFilerLayout();
+            }
+            RequestRedraw();
+        });
+    }
+
+    // ===== SELECTION INFO BAR =====
 
     std::string UltraCanvasFilerWidget::EntryExtraInfo(const FilerEntry& e) const {
         if (e.isDirectory) return "";
@@ -2848,7 +2940,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::BuildSelectionInfoText(std::string& primary,
-                                                        std::string& secondary) const {
+                                                        std::string& secondary) {
         primary.clear();
         secondary.clear();
 
@@ -2889,8 +2981,12 @@ namespace UltraCanvas {
             primary = e.name;
             addPart(e.typeName);
             if (e.isDirectory) {
-                const FolderStats& st = GetFolderStats(e.path);
-                if (st.files || st.folders || st.bytes) {
+                FolderStats st = GetFolderStats(e.path);
+                if (!st.ready) {
+                    // Background walk still running; the finished stats
+                    // arrive with a posted redraw.
+                    addPart("…");
+                } else if (st.files || st.folders || st.bytes) {
                     std::string prefix = st.capped ? "≥ " : "";
                     addPart(prefix + countsText(st.files, st.folders));
                     addPart(prefix + FormatSize(st.bytes));
@@ -2912,9 +3008,11 @@ namespace UltraCanvas {
         for (const FilerEntry& e : sel) {
             if (e.isDirectory) {
                 ++folders;
-                const FolderStats& st = GetFolderStats(e.path);
+                FolderStats st = GetFolderStats(e.path);
                 bytes += st.bytes;
-                capped = capped || st.capped;
+                // Walks still pending make the sum a lower bound, same as a
+                // capped traversal; the posted redraw refines it.
+                capped = capped || st.capped || !st.ready;
             } else {
                 ++files;
                 bytes += e.size;
