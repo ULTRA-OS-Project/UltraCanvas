@@ -16,13 +16,16 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasTextArea.h"
+#include "UltraCanvasDropdown.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasOCRPlugin.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
+#include <unordered_set>
 
 namespace UltraCanvas {
 
@@ -63,8 +66,8 @@ UltraCanvasDemoApplication::CreateOCRExamples() {
 
     auto subhead = std::make_shared<UltraCanvasLabel>(
         "OCRSub", 20, 46, 910, 22);
-    subhead->SetText("Load any image containing printed text, then press "
-                     "\"Run OCR\" to extract it. Result appears on the right.");
+    subhead->SetText("Load an image, pick a language (any Tesseract language — "
+                     "packs download on first use), then press \"Run OCR\".");
     subhead->SetFontSize(12);
     subhead->SetTextColor(Color(100, 116, 139, 255));
     container->AddChild(subhead);
@@ -86,21 +89,59 @@ UltraCanvasDemoApplication::CreateOCRExamples() {
     imageCard->AddChild(imageTitle);
 
     auto imageFrame = std::make_shared<UltraCanvasContainer>(
-        "OCRImageFrame", 16, 44, leftW - 32, leftH - 160);
+        "OCRImageFrame", 16, 44, leftW - 32, leftH - 230);
     imageFrame->SetBackgroundColor(Color(241, 245, 249, 255));
     imageFrame->SetBorders(1, Color(203, 213, 225, 255));
     imageCard->AddChild(imageFrame);
 
     auto image = std::make_shared<UltraCanvasImageElement>(
-        "OCRImage", 4, 4, leftW - 40, leftH - 168);
+        "OCRImage", 4, 4, leftW - 40, leftH - 238);
     const std::string defaultPath =
         NormalizePath(GetResourcesDir() + kDefaultOCRImage);
     image->LoadFromFile(defaultPath);
     image->SetFitMode(ImageFitMode::Contain);
     imageFrame->AddChild(image);
 
+    // ===== Language selector =====
+    // The full Tesseract catalogue is offered; languages whose traineddata is
+    // not installed yet are marked and fetched on demand when OCR is run.
+    auto langLabel = std::make_shared<UltraCanvasLabel>(
+        "OCRLangLabel", 16, leftH - 176, 90, 24);
+    langLabel->SetText("Language:");
+    langLabel->SetFontSize(12);
+    langLabel->SetFontWeight(FontWeight::Bold);
+    langLabel->SetTextColor(Color(30, 41, 59, 255));
+    imageCard->AddChild(langLabel);
+
+    auto langDropdown = std::make_shared<UltraCanvasDropdown>(
+        "OCRLangDropdown", 110, leftH - 178, leftW - 126, 28);
+    {
+        std::vector<std::string> installedVec =
+            UltraCanvasOCR::InstalledLanguages();
+        std::unordered_set<std::string> installed(installedVec.begin(),
+                                                  installedVec.end());
+        int selectIndex = 0, idx = 0;
+        for (const OCRLanguageInfo& lang : UltraCanvasOCR::SupportedLanguages()) {
+            if (lang.isScript) continue; // hide osd/equ helper models
+            const bool have = installed.count(lang.code) > 0;
+            std::string label = lang.englishName + " (" + lang.code + ")";
+            if (!have) label += "  \xE2\xAC\x87"; // ⬇ = not installed, will download
+            langDropdown->AddItem(label, lang.code);
+            if (lang.code == "eng") selectIndex = idx;
+            ++idx;
+        }
+        langDropdown->SetSelectedIndex(selectIndex, false);
+    }
+    imageCard->AddChild(langDropdown);
+
+    auto selectedLang = std::make_shared<std::string>("eng");
+    langDropdown->onSelectionChanged =
+        [selectedLang](int, const DropdownItem& item) {
+            *selectedLang = item.value;
+        };
+
     auto pathLabel = std::make_shared<UltraCanvasLabel>(
-        "OCRImagePath", 16, leftH - 108, leftW - 32, 20);
+        "OCRImagePath", 16, leftH - 140, leftW - 32, 20);
     pathLabel->SetText(defaultPath);
     pathLabel->SetFontSize(10);
     pathLabel->SetTextColor(Color(100, 116, 139, 255));
@@ -131,12 +172,26 @@ UltraCanvasDemoApplication::CreateOCRExamples() {
     // ===== Shared state for the action buttons =====
     auto currentPath = std::make_shared<std::string>(defaultPath);
 
-    auto runOCR = [resultArea, currentPath]() {
-        resultArea->SetText("Recognising… please wait.");
+    auto runOCR = [resultArea, currentPath, selectedLang]() {
+        const std::string lang = selectedLang->empty() ? "eng" : *selectedLang;
+        const bool needsFetch = !UltraCanvasOCR::IsLanguageInstalled(lang);
+        resultArea->SetText(needsFetch
+            ? "Fetching language pack '" + lang + "' and recognising…"
+            : "Recognising… please wait.");
+
         OCRConfig cfg;
-        cfg.engine    = OCREngineKind::Auto;
-        cfg.languages = {"eng"};
+        cfg.engine = OCREngineKind::Auto;
         UltraCanvasOCR ocr(cfg);
+
+        // Provision the chosen language (downloads its traineddata the first
+        // time it is used), then run recognition.
+        std::string err;
+        if (!ocr.EnsureLanguages({lang}, err)) {
+            resultArea->SetText("Could not prepare language '" + lang +
+                                "':\n" + err);
+            return;
+        }
+
         OCRResult r = ocr.RecognizeFile(*currentPath);
         if (!r.Ok()) {
             resultArea->SetText("OCR failed: " + r.error);

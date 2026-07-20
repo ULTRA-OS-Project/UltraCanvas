@@ -287,11 +287,32 @@ upstream releases:
 
 Shipped: `eng.traineddata` (fast) + `osd.traineddata` in
 `media/ocr/tessdata/`. Additional languages are resolved at runtime
-from `OCRConfig::dataPath`, falling back to the system
-`/usr/share/tesseract-ocr/<ver>/tessdata/` and `TESSDATA_PREFIX`. A
-helper `UltraCanvasOCR::EnsureLanguage("deu")` downloads the file via
-UltraNet (when available) into the user data dir — same pattern as
-UltraAI's adapter downloads.
+from `OCRConfig::dataPath`, the per-user pack dir, the system
+`/usr/share/tesseract-ocr/<ver>/tessdata/` and `TESSDATA_PREFIX`.
+
+**All languages, on demand (implemented).** Rather than bundling every
+pack, the plugin exposes the complete upstream catalogue and fetches the
+rest on first use:
+
+* `UltraCanvasOCR::SupportedLanguages()` — the full catalogue (~130
+  languages: code + English name) regardless of what is installed. This
+  is the list from the Tesseract manual's LANGUAGES section.
+* `UltraCanvasOCR::InstalledLanguages()` / `IsLanguageInstalled(code)`
+  — what is present locally now.
+* `UltraCanvasOCR::EnsureLanguages({"deu","fra"}, err, tier)` — seeds
+  each requested pack from a local copy when one exists, else downloads
+  it via UltraNet, consolidates them into one directory (so Tesseract can
+  load them together) and reconfigures the engine.
+* `UltraCanvasOCR::DownloadLanguage(code, tier, err)` — fetch a single
+  pack. `OCRDataTier` selects the source repo: `Fast`→`tessdata_fast`
+  (default), `Standard`→`tessdata`, `Best`→`tessdata_best`.
+
+Downloaded packs are cached under `UltraCanvasOCR::LanguageDataDir()`
+(`$XDG_DATA_HOME/UltraCanvas/ocr/tessdata` on Linux, `Application
+Support/…` on macOS, `%LOCALAPPDATA%\…` on Windows), so each language is
+fetched only once. On a build without network support the same files can
+be dropped into that directory manually. The demo OCR screen drives this
+through a language dropdown populated from the catalogue.
 
 ONNX models (if `ULTRACANVAS_OCR_ONNX=ON`) come from RapidOCR's
 release: detection (~4 MB), recognition (~8 MB), classification
