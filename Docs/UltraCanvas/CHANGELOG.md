@@ -1,4 +1,20 @@
 #### 2026-07-19 *0.3.10*
+- Fix GIF export failing with `VipsOperation: class "gifsave" not found` on
+  builds whose libvips lacks cgif (the MSYS2/Windows package is built with
+  `-Dcgif=disabled`). `UCImageRaster::Save` and PixelFX `SaveGif` now probe
+  for the native `gifsave` operation and fall back to the ImageMagick bridge
+  (`magicksave` with `format=gif`), which the Windows package already ships.
+- Image export errors no longer include stale libvips messages from earlier
+  operations (e.g. recoverable HEIF "bad seek" noise appearing inside a GIF
+  save failure): the libvips error buffer is cleared before each save.
+- `UltraCanvasLabel` now renders its text vertically centered by default
+  (`LabelStyle::verticalAlign` and the `SetAlignment()` vertical default
+  changed from `Top` to `Middle`), so labels line up with the text of
+  neighbouring buttons/checkboxes in toolbar rows. Auto-sized labels are
+  unaffected (their box hugs the text); labels that need top alignment can
+  request it explicitly via `SetAlignment(h, VerticalAlignment::Top)`.
+  Fixes the misaligned file-dimensions info label in the DemoApp codec
+  comparison benchmark toolbar.
 - Filer widget: optional **"Compressed thumbnails"** mode
   (`SetCompressedThumbnails(bool)`, default off; toggle in the Filer demo).
   Finished thumbnails are held in memory QOI-compressed instead of as raw

@@ -266,7 +266,16 @@ namespace PixelFX {
         }
 
         bool SaveGif(const PFXImage& image, const std::string& filename) {
-            try { image.gifsave(filename.c_str()); return true; }
+            try {
+                // gifsave only exists when libvips was built with cgif; fall
+                // back to the ImageMagick bridge on builds without it.
+                if (vips_type_find("VipsOperation", "gifsave") != 0) {
+                    image.gifsave(filename.c_str());
+                } else {
+                    image.magicksave(filename.c_str(), vips::VImage::option()->set("format", "gif"));
+                }
+                return true;
+            }
             catch (const vips::VError& e) { throw PixelFXException("Failed to save GIF: " + std::string(e.what())); }
         }
 
