@@ -491,14 +491,41 @@ namespace UltraCanvas {
         // slots that fell out of the visible + prefetch bands.
         void CommitThumbnailWants();
 
-        // Selection info bar caches, computed on demand and cleared on rescan.
+        // ===== ASYNC FOLDER STATS =====
+        // Recursive folder statistics feed the selection info bar (content
+        // counts / size of a selected folder) and the size-weighted views
+        // (BarSize / TreeMap directory weights). Computing them walks the
+        // whole subtree — up to the traversal cap — which on a big or
+        // cold-cache tree takes seconds. Done synchronously it stalled the
+        // UI: the click that selects a folder froze the window until the
+        // walk finished, so opening such a folder took seconds. Instead the
+        // stats are computed by a background worker: readers get a
+        // not-yet-ready placeholder immediately, and each finished walk
+        // posts one (coalesced) redraw so the info bar / layout fills in.
         struct FolderStats {
             uint64_t files = 0;      // recursive
             uint64_t folders = 0;
             uint64_t bytes = 0;
             bool capped = false;     // hit the traversal safety cap
+            bool ready = false;      // background walk finished
         };
-        mutable std::map<std::string, FolderStats> folderStatsCache;
+        std::map<std::string, FolderStats> folderStatsCache; // by folder path
+        std::deque<std::string> statsQueue;                  // paths to walk
+        std::mutex statsMutex;              // guards cache/queue/generation
+        std::condition_variable statsCond;
+        std::thread statsWorker;
+        bool statsShutdown = false;
+        uint64_t statsGeneration = 0;       // bumped to drop stale results
+        std::atomic<bool> statsRedrawPosted{false};
+
+        // Non-blocking: returns the cached stats, or a pending placeholder
+        // (ready == false) after queueing a background walk of `path`.
+        FolderStats GetFolderStats(const std::string& path);
+        void StartFolderStatsWorkerLocked();
+        void StopFolderStatsWorker();
+        void FolderStatsWorkerMain();
+        void PostFolderStatsRedraw();
+
         mutable std::map<std::string, std::string> mediaInfoCache;  // path -> extra info
 
         std::shared_ptr<UltraCanvasMenu> activePopupMenu;
@@ -510,7 +537,7 @@ namespace UltraCanvas {
         // ===== SCANNING =====
         void ScanFolder();
         void SortEntries();
-        void EnsureEffectiveSizes();              // recursive dir sizes (capped)
+        void EnsureEffectiveSizes();   // dir weights from the async folder stats
         void ApplyEntryTypeInfo(FilerEntry& e) const;
 
         // ===== LAYOUT =====
@@ -572,8 +599,7 @@ namespace UltraCanvas {
         // Selection description for the info bar: `primary` is the bold lead
         // (name / "N items selected"), `secondary` the detail run after it.
         void BuildSelectionInfoText(std::string& primary,
-                                    std::string& secondary) const;
-        const FolderStats& GetFolderStats(const std::string& path) const;
+                                    std::string& secondary);
         // Cached per-file extra info: "1920 × 1080 px" for bitmaps,
         // "3:45 · H.264" for audio / video. Empty when nothing was probed.
         std::string EntryExtraInfo(const FilerEntry& e) const;

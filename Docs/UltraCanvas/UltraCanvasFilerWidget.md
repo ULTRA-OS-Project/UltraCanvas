@@ -32,7 +32,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
 | `Details` | Text columns: name (with mini thumbnail), size, type, modified date, created date, attributes and an info column (play duration via `infoProvider`, compression factor of archive-compressed entries). Column headers are clickable and toggle the sort. |
 | `List` | Compact icon + name entries flowing top-to-bottom into columns (horizontal scrolling). |
 | `ThumbnailsSmall` / `ThumbnailsMedium` / `ThumbnailsBig` / `ThumbnailsMaximized` | Thumbnail grids with growing tile sizes. Images and SVGs show their real bitmap (via the shared `UCImage` cache); images larger than the tile are scaled down to fit, while images already smaller than the tile keep their original size (centered) instead of being upscaled. Other files draw a category-colored glyph with their extension. Thumbnails are decoded **asynchronously** on background worker threads: the folder page appears immediately (each image tile shows the generic glyph first) and tiles fill in as their decode completes, so opening a folder full of photos never blocks the window. Decoding is **viewport-driven**: only visible tiles plus a prefetch band of one screen ahead in scroll direction are ever decoded, visible tiles always decode first, and queued decodes that scroll out of range are dropped. With `SetCompressedThumbnails(true)` the finished thumbnails are additionally held QOI-compressed in memory (2–6× smaller, bit-exact) and decompressed on demand into a small hot cache while drawn; `GetThumbnailCacheStats()` exposes the footprint for comparison. |
-| `BarSize` | One row per entry with a bar proportional to its size (directories use a lazily computed recursive size, capped for safety). |
+| `BarSize` | One row per entry with a bar proportional to its size (directories use a recursive size computed asynchronously on a background worker, capped for safety; bars reflow as the walks complete). |
 | `TreeMap` | Squarified treemap weighted by entry size, colored by file category. |
 | `GourceTree` | Force-directed tree (Gource style) — reserved, shows a placeholder until implemented. |
 | `View3D` | 3D view — reserved, shows a placeholder until implemented. |
@@ -105,6 +105,13 @@ also toggled by Display > Info-Bar) describes the current selection:
 - **Multiple items** — item counts and the summed size of the selection
   (folders counted recursively).
 - **No selection** — a summary of the displayed folder (entry counts + size).
+
+Recursive folder statistics are computed **asynchronously** on a background
+worker: selecting a folder shows `…` (or a `≥` lower bound for multi
+selections) immediately and the exact counts fill in when the subtree walk
+finishes, so clicking or opening a folder with a deep subtree never blocks the
+window. The same statistics provide the directory weights of the BarSize and
+TreeMap views, whose layout reflows as the walks complete.
 
 Probe results and folder statistics are cached per path and refreshed on every
 rescan. Colors and the bar height come from `FilerStyle` (`infoBarBackground`,
