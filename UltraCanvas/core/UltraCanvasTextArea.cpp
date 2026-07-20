@@ -8,6 +8,7 @@
 #include "UltraCanvasSyntaxTokenizer.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasCaret.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasUtilsUtf8.h"
@@ -27,7 +28,6 @@ namespace UltraCanvas {
             : UltraCanvasUIElement(name, x, y, width, height),
               horizontalScrollOffset(0),
               verticalScrollOffset(0),
-              cursorVisible(true),
               isReadOnly(false),
               wordWrap(false),
               highlightCurrentLine(false),
@@ -48,33 +48,7 @@ namespace UltraCanvas {
 
 // Destructor
     UltraCanvasTextArea::~UltraCanvasTextArea() {
-        StopCursorBlink();
-    }
-
-// ===== CURSOR BLINKING =====
-    void UltraCanvasTextArea::StartCursorBlink() {
-        StopCursorBlink();
-        cursorVisible = true;
-
-        auto* app = UltraCanvasApplication::GetInstance();
-        if (!app) return;
-
-        cursorBlinkTimerId = app->StartTimer(CursorBlinkHalfPeriodMs, true, [this](TimerId) {
-            cursorVisible = !cursorVisible;
-            RequestRedraw();
-        });
-    }
-
-    void UltraCanvasTextArea::StopCursorBlink() {
-        if (cursorBlinkTimerId == InvalidTimerId) return;
-        if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(cursorBlinkTimerId);
-        cursorBlinkTimerId = InvalidTimerId;
-    }
-
-    void UltraCanvasTextArea::ResetCursorBlink() {
-        if (!IsFocused()) return;
-        StartCursorBlink();
-        RequestRedraw();
+        UltraCanvasCaret::GetInstance().Hide(this);
     }
 
 // Initialize default style
@@ -1105,8 +1079,10 @@ namespace UltraCanvas {
             }
             ctx->PopState();
 
-            if (IsFocused() && cursorVisible) {
-                DrawCursor(ctx);
+            if (IsFocused()) {
+                UpdateCaret(ctx);
+            } else {
+                UltraCanvasCaret::GetInstance().Hide(this);
             }
         }
 
@@ -1217,23 +1193,32 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasTextArea::DrawCursor(IRenderContext* context) {
+    void UltraCanvasTextArea::UpdateCaret(IRenderContext* context) {
+        auto& caret = UltraCanvasCaret::GetInstance();
+
         Rect2Di cursorRect = LineColumnToCursorPos(cursorPosition);
-        if (!cursorRect.IsValid()) return;
+        if (!cursorRect.IsValid()) { caret.Hide(this); return; }
 
         // Clip to visible text area.
-        if (cursorRect.y + cursorRect.height < visibleTextArea.y) return;
-        if (cursorRect.y > visibleTextArea.y + visibleTextArea.height) return;
-        if (cursorRect.x > visibleTextArea.x + visibleTextArea.width) return;
-        if (cursorRect.x < visibleTextArea.x) return;
+        if (cursorRect.y + cursorRect.height < visibleTextArea.y ||
+            cursorRect.y > visibleTextArea.y + visibleTextArea.height ||
+            cursorRect.x > visibleTextArea.x + visibleTextArea.width ||
+            cursorRect.x < visibleTextArea.x) {
+            caret.Hide(this);
+            return;
+        }
 
         int caretHeight = cursorRect.height > 0 ? cursorRect.height
                                                 : (computedLineHeight > 0 ? computedLineHeight : 16);
-        context->PushState();
-        context->SetStrokeWidth(2);
-        context->DrawLine({cursorRect.x, cursorRect.y},
-                          {cursorRect.x, cursorRect.y + caretHeight}, style.cursorColor);
-        context->PopState();
+
+        // Report the cursor rect (window coordinates) to the shared caret,
+        // which owns blinking and painting from here on. The 2px width matches
+        // the stroke the widget used to draw.
+        Point2Df winPos = GetPositionInWindow();
+        Rect2Di rectInWindow(static_cast<int>(winPos.x) + cursorRect.x - 1,
+                             static_cast<int>(winPos.y) + cursorRect.y,
+                             2, caretHeight);
+        caret.Show(this, rectInWindow, style.cursorColor);
     }
 
     void UltraCanvasTextArea::DrawScrollbars(IRenderContext* context) {
@@ -1330,12 +1315,11 @@ namespace UltraCanvas {
                 case UCEventType::MouseWheel:
                     return HandleMouseWheel(event);
                 case UCEventType::FocusGained:
-                    StartCursorBlink();
+                    // The render pass claims the shared caret with the current rect
                     RequestRedraw();
                     return true;
                 case UCEventType::FocusLost:
-                    StopCursorBlink();
-                    cursorVisible = false;
+                    UltraCanvasCaret::GetInstance().Hide(this);
                     RequestRedraw();
                     return true;
                 default:
@@ -1357,12 +1341,11 @@ namespace UltraCanvas {
             case UCEventType::MouseWheel:
                 return HandleMouseWheel(event);
             case UCEventType::FocusGained:
-                StartCursorBlink();
+                // The render pass claims the shared caret with the current rect
                 RequestRedraw();
                 return true;
             case UCEventType::FocusLost:
-                StopCursorBlink();
-                cursorVisible = false;
+                UltraCanvasCaret::GetInstance().Hide(this);
                 // Return the in-edit line to its formatted MD layout while the widget is idle
                 // (or discard the stash if the line was modified). On focus regain, the swap
                 // re-runs via ReconcileLayoutState.
@@ -1674,7 +1657,7 @@ namespace UltraCanvas {
         bool handled = true;
 
         // Keep the cursor solid while the user is typing or navigating
-        ResetCursorBlink();
+        UltraCanvasCaret::GetInstance().ResetBlink(this);
 
         switch (event.virtualKey) {
             case UCKeys::Left:

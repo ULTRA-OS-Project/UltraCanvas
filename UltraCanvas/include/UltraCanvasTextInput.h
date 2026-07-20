@@ -9,7 +9,6 @@
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
-#include "UltraCanvasTimer.h"
 #include <string>
 #include <vector>
 #include <functional>
@@ -312,8 +311,6 @@ private:
     size_t selectionStart;
     size_t selectionEnd;
     bool hasSelection;
-    bool isCaretVisible;
-    TimerId caretBlinkTimerId = InvalidTimerId;
     
     // ===== SCROLLING (for long text) =====
     int scrollOffset;
@@ -535,20 +532,16 @@ private:
         return style.textColor;
     }
     
-    // Caret blinking runs on an application timer while the field is focused:
-    // each fire toggles isCaretVisible and requests a redraw. Reset restarts
-    // the interval so the caret stays solid while the user types or moves it.
-    void StartCaretBlink();
-    void StopCaretBlink();
-    void ResetCaretBlink();
-
     void RenderText(const Rect2Dd& area, const Color& color, IRenderContext* ctx);
     
     void RenderPlaceholder(const Rect2Dd& area, IRenderContext* ctx);
     
     void RenderSelection(const Rect2Dd& area, IRenderContext* ctx);
     
-    void RenderCaret(const Rect2Dd& area, IRenderContext* ctx);
+    // Computes the caret rect and reports it to the application-wide
+    // UltraCanvasCaret, which paints and blinks it as a compositor overlay
+    // (the widget itself no longer draws the caret).
+    void UpdateCaret(const Rect2Dd& area, IRenderContext* ctx);
     
     void RenderMultilineText(const Rect2Dd& area, const std::string& displayText, const Point2Di& startPos, IRenderContext* ctx);
     

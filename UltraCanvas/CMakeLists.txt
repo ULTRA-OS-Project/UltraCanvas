@@ -234,6 +234,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasApplication.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRenderInterface.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTooltipManager.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCaret.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasWindow.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMenu.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMenuRegistry.cpp

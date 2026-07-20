@@ -8,7 +8,6 @@
 
 #include "UltraCanvasUI.h"
 #include "UltraCanvasEvent.h"
-#include "UltraCanvasTimer.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasRenderContext.h"
 #include <string>
@@ -469,7 +468,6 @@ namespace UltraCanvas {
         void SetCursorPosition(const LineColumnIndex& pos, bool selecting = false) {
             cursorPosition = pos;
             isCursorMoved = true;
-            ResetCursorBlink();
             RequestRedraw();
         }
 
@@ -712,7 +710,10 @@ namespace UltraCanvas {
         void DrawCurrentLineBackground(IRenderContext* context);
         void DrawBorder(IRenderContext* context);
         virtual void DrawGutter(IRenderContext* context);   // was DrawLineNumbers
-        void DrawCursor(IRenderContext* context);
+        // Computes the cursor rect and reports it to the application-wide
+        // UltraCanvasCaret, which paints and blinks it as a compositor overlay
+        // (the widget itself no longer draws the cursor).
+        void UpdateCaret(IRenderContext* context);
         void DrawScrollbars(IRenderContext* context);
 
         // Event handlers
@@ -872,17 +873,6 @@ namespace UltraCanvas {
         int lastClickY = 0;
         static constexpr int MultiClickDistanceThreshold = 5;
         static constexpr int MultiClickTimeThresholdMs = 400;
-
-        // Cursor animation: a periodic application timer toggles cursorVisible
-        // while the editor is focused (see StartCursorBlink). Reset restarts
-        // the interval so the cursor stays solid while the user types.
-        static constexpr unsigned int CursorBlinkHalfPeriodMs = 500;
-        bool cursorVisible;
-        TimerId cursorBlinkTimerId = InvalidTimerId;
-
-        void StartCursorBlink();
-        void StopCursorBlink();
-        void ResetCursorBlink();
 
         // Properties
         bool isNeedRecalculateVisibleArea;
@@ -1058,7 +1048,7 @@ namespace UltraCanvas {
         void DrawHexSelection(IRenderContext* ctx);
         void DrawHexCrossHighlight(IRenderContext* ctx);
         void DrawHexSearchHighlights(IRenderContext* ctx);
-        void DrawHexCursor(IRenderContext* ctx);
+        void UpdateHexCaret(IRenderContext* ctx);
         void DrawHexCurrentRowHighlight(IRenderContext* ctx);
         void CalculateHexLayout();
 

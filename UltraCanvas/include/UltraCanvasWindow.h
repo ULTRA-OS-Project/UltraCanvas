@@ -92,6 +92,10 @@ namespace UltraCanvas {
         bool _needsResize = false;
         bool _needsPopupGeometry = false;
         bool _needsWindowComposition = true;
+        // Caret blink phase changed but no content did: restore the pixels
+        // under the caret from the content surface and re-blend the caret,
+        // without re-rendering any widget (see UpdateAndRender).
+        bool _needsCaretComposition = false;
 
         UltraCanvasDirtyRectManager dirtyRectManager;
 
@@ -307,6 +311,7 @@ namespace UltraCanvas {
 
         void RequestPopupGeometry() { _needsPopupGeometry = true; }
         void RequestWindowComposition() { _needsWindowComposition = true; }
+        void RequestCaretComposition() { _needsCaretComposition = true; }
         void UpdateAndRender();
 
         bool IsNeedsResize() const { return _needsResize; }
