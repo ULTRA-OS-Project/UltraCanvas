@@ -3,9 +3,11 @@
 // (details, list, thumbnails, size bars, treemap), sorting, an inline rename
 // editor, a hover icon menu, the full file context menu and a selection info
 // bar (type / size / dates / attributes, image dimensions, media duration and
-// codec via lightweight header probes, recursive folder stats).
-// Version: 1.1.0
-// Last Modified: 2026-07-16
+// codec via lightweight header probes, recursive folder stats). Image
+// thumbnails decode asynchronously (see ASYNC THUMBNAILS) so the folder page
+// never waits for image files.
+// Version: 1.3.0
+// Last Modified: 2026-07-19
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -20,6 +22,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasImage.h"
+#include "../libspecific/Cairo/QoiPixmapCodec.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasTooltipManager.h"
@@ -916,7 +919,10 @@ namespace UltraCanvas {
         };
     }
 
-    UltraCanvasFilerWidget::~UltraCanvasFilerWidget() = default;
+    UltraCanvasFilerWidget::~UltraCanvasFilerWidget() {
+        thumbAlive->store(false);   // neutralize queued cross-thread redraws
+        StopThumbnailWorkers();
+    }
 
     // ===== FOLDER =====
     void UltraCanvasFilerWidget::SetPath(const std::string& folderPath) {
@@ -962,6 +968,7 @@ namespace UltraCanvas {
         lastClickedIndex = -1;
         folderStatsCache.clear();   // files may have changed on disk
         mediaInfoCache.clear();
+        DropThumbnailCache();
 
         std::error_code ec;
         bool isRealDir = !currentPath.empty() && fs::is_directory(currentPath, ec);
@@ -1107,6 +1114,7 @@ namespace UltraCanvas {
         viewType = type;
         scrollOffsetX = scrollOffsetY = 0;
         CancelRename();
+        DropThumbnailCache();   // tile size changed; free the old-size pixmaps
         InvalidateFilerLayout();
         RequestRedraw();
         if (onViewTypeChanged) onViewTypeChanged(viewType);
@@ -1896,7 +1904,10 @@ namespace UltraCanvas {
             return;
         }
 
-        // Scrolled content.
+        // Scrolled content. Every drawn tile records the decode it wants;
+        // the prefetch pass below adds the next screenful, and the commit
+        // rebuilds the worker queue from exactly that set.
+        thumbFrameWants.clear();
         ctx->PushState();
         ctx->Translate(-scrollOffsetX, -scrollOffsetY);
         for (const ItemLayout& item : items) {
@@ -1933,6 +1944,9 @@ namespace UltraCanvas {
             }
         }
         ctx->PopState();
+
+        PrefetchThumbnails(ctx, bounds);
+        CommitThumbnailWants();
 
         if (viewType == FilerViewType::Details) DrawDetailsHeader(ctx, bounds);
         DrawScrollbar(ctx);
@@ -1983,22 +1997,382 @@ namespace UltraCanvas {
         }
     }
 
+    // ===== ASYNC THUMBNAILS =====
+    // The decode results are held per (path, size, fit, scale) so the same
+    // file can appear at several sizes (details icon vs. thumbnail tile).
+    std::string UltraCanvasFilerWidget::ThumbSlotKey(const std::string& path,
+                                                     int w, int h,
+                                                     ImageFitMode fit,
+                                                     float scale) {
+        return path + '|' + std::to_string(w) + 'x' + std::to_string(h)
+             + '|' + std::to_string(static_cast<int>(fit))
+             + '|' + std::to_string(static_cast<int>(scale * 100.0f));
+    }
+
+    std::string UltraCanvasFilerWidget::ThumbSourceFor(const FilerEntry& e) const {
+        if (!e.thumbnailPath.empty()) return e.thumbnailPath;
+        if (e.category == FilerFileCategory::Image ||
+            e.category == FilerFileCategory::Vector) {
+            return e.path;
+        }
+        return {};
+    }
+
+    void UltraCanvasFilerWidget::ThumbGeometryForItem(const ItemLayout& item,
+                                                      Rect2Di& outRect,
+                                                      ImageFitMode& outFit) const {
+        switch (viewType) {
+            case FilerViewType::ThumbnailsSmall:
+            case FilerViewType::ThumbnailsMedium:
+            case FilerViewType::ThumbnailsBig:
+            case FilerViewType::ThumbnailsMaximized: {
+                int inset = std::max(4, item.imageRect.width / 12);
+                outRect = Rect2Di(item.imageRect.x + inset,
+                                  item.imageRect.y + inset,
+                                  item.imageRect.width - 2 * inset,
+                                  item.imageRect.height - 2 * inset);
+                // ScaleDown keeps images smaller than the tile at their
+                // original size (centered) instead of blowing them up.
+                outFit = ImageFitMode::ScaleDown;
+                break;
+            }
+            default:
+                outRect = item.imageRect;
+                outFit = ImageFitMode::Contain;
+                break;
+        }
+    }
+
+    std::shared_ptr<UCPixmap> UltraCanvasFilerWidget::AcquireThumbnail(
+            const std::string& path, int w, int h,
+            ImageFitMode fit, float scale) {
+        if (w <= 0 || h <= 0 || path.empty()) return nullptr;
+        const std::string key = ThumbSlotKey(path, w, h, fit, scale);
+        std::shared_ptr<std::vector<uint8_t>> blob;
+        {
+            std::lock_guard<std::mutex> lk(thumbMutex);
+            auto it = thumbSlots.find(key);
+            if (it != thumbSlots.end()) {
+                if (it->second.state == ThumbState::Ready) {
+                    if (it->second.pixmap) return it->second.pixmap;
+                    // Compressed slot: serve from the hot cache, or take a
+                    // reference to the blob and inflate outside the lock.
+                    auto hot = thumbHot.find(key);
+                    if (hot != thumbHot.end()) {
+                        hot->second.tick = ++thumbHotTick;
+                        return hot->second.pixmap;
+                    }
+                    blob = it->second.qoi;
+                }
+                if (!blob) {
+                    if (it->second.state == ThumbState::Failed) return nullptr;
+                    // Pending: fall through and re-record the want so the
+                    // item keeps its place when the queue is rebuilt.
+                }
+            } else {
+                thumbSlots.emplace(key, ThumbSlot{});
+            }
+        }
+
+        if (blob) {
+            // ~0.1-2 ms per tile, only when a tile (re-)enters the drawn
+            // band; repaints afterwards hit the hot cache above.
+            auto pm = QoiDecompressPixmap(*blob);
+            if (!pm) return nullptr;   // cannot happen for our own blobs
+            std::lock_guard<std::mutex> lk(thumbMutex);
+            HotThumb& he = thumbHot[key];
+            if (!he.pixmap) {
+                he.pixmap = pm;
+                he.bytes = static_cast<size_t>(pm->GetRawWidth())
+                         * static_cast<size_t>(pm->GetRawHeight()) * 4;
+                thumbHotBytes += he.bytes;
+            }
+            he.tick = ++thumbHotTick;
+            // Evict least-recently-drawn tiles beyond the hot budget — it
+            // only needs to cover the visible + prefetch bands.
+            constexpr size_t kHotBudgetBytes = 32 * 1024 * 1024;
+            while (thumbHotBytes > kHotBudgetBytes && thumbHot.size() > 1) {
+                auto oldest = thumbHot.end();
+                for (auto hit = thumbHot.begin(); hit != thumbHot.end(); ++hit) {
+                    if (hit->first == key) continue;
+                    if (oldest == thumbHot.end() ||
+                        hit->second.tick < oldest->second.tick) {
+                        oldest = hit;
+                    }
+                }
+                if (oldest == thumbHot.end()) break;
+                thumbHotBytes -= oldest->second.bytes;
+                thumbHot.erase(oldest);
+            }
+            return pm;
+        }
+
+        thumbFrameWants.push_back(ThumbRequest{path, w, h, fit, scale, 0});
+        return nullptr;
+    }
+
+    void UltraCanvasFilerWidget::PrefetchThumbnails(IRenderContext* ctx,
+                                                    const Rect2Di& bounds) {
+        // The treemap always fills the viewport (nothing to scroll to), and
+        // the placeholder views draw no entries.
+        if (viewType == FilerViewType::TreeMap) return;
+
+        const bool horiz = IsHorizontal();
+        const int viewEnd = horiz ? bounds.x + bounds.width
+                                  : bounds.y + bounds.height;
+        const int band = horiz ? bounds.width : bounds.height;
+        const float scale = ctx->GetDeviceScale();
+
+        for (const ItemLayout& item : items) {
+            int lead = horiz ? item.rect.x - scrollOffsetX
+                             : item.rect.y - scrollOffsetY;
+            // Items overlapping the viewport were already requested by their
+            // draw call; take only the next viewport-sized band past it.
+            if (lead <= viewEnd || lead > viewEnd + band) continue;
+            std::string src = ThumbSourceFor(entries[item.entryIndex]);
+            if (src.empty()) continue;
+            Rect2Di r;
+            ImageFitMode fit;
+            ThumbGeometryForItem(item, r, fit);
+            AcquireThumbnail(src, r.width, r.height, fit, scale);
+        }
+    }
+
+    void UltraCanvasFilerWidget::CommitThumbnailWants() {
+        std::lock_guard<std::mutex> lk(thumbMutex);
+        // The queue is rebuilt from scratch each frame in want order —
+        // visible tiles first, prefetch band after — so decode priority
+        // always tracks the current viewport.
+        thumbQueue.clear();
+        std::unordered_set<std::string> wantedKeys;
+        wantedKeys.reserve(thumbFrameWants.size());
+        for (ThumbRequest& r : thumbFrameWants) {
+            r.generation = thumbGeneration;
+            wantedKeys.insert(ThumbSlotKey(r.path, r.w, r.h, r.fit, r.scale));
+            thumbQueue.push_back(r);
+        }
+        // Forget pending slots that fell out of the visible + prefetch
+        // bands: files scrolled past are never decoded. (Finished slots are
+        // kept for scroll-back; the byte budget bounds those.)
+        for (auto it = thumbSlots.begin(); it != thumbSlots.end();) {
+            if (it->second.state == ThumbState::Pending &&
+                wantedKeys.find(it->first) == wantedKeys.end()) {
+                it = thumbSlots.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        thumbFrameWants.clear();
+        if (!thumbQueue.empty()) {
+            StartThumbnailWorkersLocked();
+            thumbCond.notify_all();
+        }
+    }
+
+    void UltraCanvasFilerWidget::StartThumbnailWorkersLocked() {
+        if (!thumbWorkers.empty() || thumbShutdown) return;
+        unsigned hw = std::thread::hardware_concurrency();
+        unsigned count = std::min(4u, std::max(1u, hw / 2));
+        thumbWorkers.reserve(count);
+        for (unsigned i = 0; i < count; ++i) {
+            thumbWorkers.emplace_back([this]() { ThumbnailWorkerMain(); });
+        }
+    }
+
+    void UltraCanvasFilerWidget::StopThumbnailWorkers() {
+        {
+            std::lock_guard<std::mutex> lk(thumbMutex);
+            thumbShutdown = true;
+            thumbQueue.clear();
+        }
+        thumbCond.notify_all();
+        for (std::thread& t : thumbWorkers) {
+            if (t.joinable()) t.join();
+        }
+        thumbWorkers.clear();
+    }
+
+    void UltraCanvasFilerWidget::DropThumbnailCache() {
+        std::lock_guard<std::mutex> lk(thumbMutex);
+        ++thumbGeneration;   // results of in-flight decodes are discarded
+        thumbQueue.clear();
+        thumbSlots.clear();
+        thumbBytes = 0;
+        thumbHot.clear();
+        thumbHotBytes = 0;
+    }
+
+    void UltraCanvasFilerWidget::SetCompressedThumbnails(bool enabled) {
+        if (compressedThumbs.exchange(enabled) == enabled) return;
+        // Existing slots hold the other representation; drop them and let
+        // the visible tiles re-decode into the new one.
+        DropThumbnailCache();
+        RequestRedraw();
+    }
+
+    UltraCanvasFilerWidget::ThumbCacheStats
+    UltraCanvasFilerWidget::GetThumbnailCacheStats() const {
+        ThumbCacheStats st;
+        std::lock_guard<std::mutex> lk(thumbMutex);
+        for (const auto& kv : thumbSlots) {
+            if (kv.second.state != ThumbState::Ready) continue;
+            ++st.entries;
+            st.storedBytes += kv.second.bytes;
+            st.rawBytes += kv.second.rawBytes;
+        }
+        st.hotEntries = thumbHot.size();
+        st.hotBytes = thumbHotBytes;
+        return st;
+    }
+
+    void UltraCanvasFilerWidget::ThumbnailWorkerMain() {
+        // Keeps the retained pixmap bytes bounded: browsing a huge folder in a
+        // big tile size cannot grow without limit. On overflow the finished
+        // slots are simply dropped — anything still visible is re-queued by
+        // the next draw and comes straight back from the shared pixmap cache.
+        constexpr size_t kThumbBudgetBytes = 96 * 1024 * 1024;
+
+        for (;;) {
+            ThumbRequest req;
+            {
+                std::unique_lock<std::mutex> lk(thumbMutex);
+                for (;;) {
+                    if (thumbShutdown) return;
+                    // Pick the highest-priority request that is still worth
+                    // decoding (slot pending) and whose file no other worker
+                    // is on right now (same file at two sizes must
+                    // serialize). Entries whose slot was pruned or already
+                    // finished — the queue is rebuilt every frame and may
+                    // repeat in-flight work — are dropped on the way.
+                    auto qit = thumbQueue.begin();
+                    while (qit != thumbQueue.end()) {
+                        auto sit = thumbSlots.find(ThumbSlotKey(
+                                qit->path, qit->w, qit->h, qit->fit, qit->scale));
+                        if (sit == thumbSlots.end() ||
+                            sit->second.state != ThumbState::Pending) {
+                            qit = thumbQueue.erase(qit);
+                            continue;
+                        }
+                        if (thumbPathsInFlight.count(qit->path) == 0) break;
+                        ++qit;
+                    }
+                    if (qit != thumbQueue.end()) {
+                        req = std::move(*qit);
+                        thumbQueue.erase(qit);
+                        thumbPathsInFlight.insert(req.path);
+                        break;
+                    }
+                    thumbCond.wait(lk);
+                }
+            }
+
+            // The expensive part — outside the lock. UCImage::Get and
+            // GetPixmap populate the shared mutex-guarded caches, so later
+            // synchronous users (e.g. the media viewer) get free cache hits.
+            std::shared_ptr<UCPixmap> pm;
+            auto img = UCImage::Get(req.path);
+            if (img && img->GetWidth() > 0 && img->GetHeight() > 0) {
+                pm = img->GetPixmap(req.w, req.h, req.fit, req.scale);
+            }
+
+            // "Compressed thumbnails": deflate here on the worker so the UI
+            // thread never pays for compression; the slot then holds the
+            // blob instead of the raw pixmap.
+            std::shared_ptr<std::vector<uint8_t>> blob;
+            if (pm && compressedThumbs.load()) {
+                std::vector<uint8_t> v = QoiCompressPixmap(*pm);
+                if (!v.empty()) {
+                    blob = std::make_shared<std::vector<uint8_t>>(std::move(v));
+                }
+            }
+
+            bool report = false;
+            {
+                std::lock_guard<std::mutex> lk(thumbMutex);
+                thumbPathsInFlight.erase(req.path);
+                if (thumbShutdown) return;
+                if (req.generation == thumbGeneration) {
+                    const std::string key = ThumbSlotKey(req.path, req.w, req.h,
+                                                         req.fit, req.scale);
+                    ThumbSlot& slot = thumbSlots[key];
+                    if (pm) {
+                        slot.state = ThumbState::Ready;
+                        slot.rawBytes = static_cast<size_t>(pm->GetRawWidth())
+                                      * static_cast<size_t>(pm->GetRawHeight()) * 4;
+                        if (blob) {
+                            slot.qoi = blob;
+                            slot.pixmap = nullptr;
+                            slot.bytes = blob->size();
+                        } else {
+                            slot.pixmap = pm;
+                            slot.qoi = nullptr;
+                            slot.bytes = slot.rawBytes;
+                        }
+                        thumbBytes += slot.bytes;
+                        if (thumbBytes > kThumbBudgetBytes) {
+                            for (auto sit = thumbSlots.begin();
+                                 sit != thumbSlots.end();) {
+                                if (sit->first != key &&
+                                    sit->second.state == ThumbState::Ready) {
+                                    auto hit = thumbHot.find(sit->first);
+                                    if (hit != thumbHot.end()) {
+                                        thumbHotBytes -= hit->second.bytes;
+                                        thumbHot.erase(hit);
+                                    }
+                                    sit = thumbSlots.erase(sit);
+                                } else {
+                                    ++sit;
+                                }
+                            }
+                            thumbBytes = slot.bytes;
+                        }
+                    } else {
+                        slot.state = ThumbState::Failed;   // don't retry-loop
+                        slot.pixmap = nullptr;
+                        slot.qoi = nullptr;
+                    }
+                    report = true;
+                }
+            }
+            // A sibling worker may be parked on a queued request for the
+            // path just released.
+            thumbCond.notify_all();
+            if (report) PostThumbnailRedraw();
+        }
+    }
+
+    void UltraCanvasFilerWidget::PostThumbnailRedraw() {
+        // Coalesced: one queued UI task repaints however many thumbnails
+        // finished before it ran.
+        if (thumbRedrawPosted.exchange(true)) return;
+        UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app) {
+            thumbRedrawPosted.store(false);
+            return;
+        }
+        auto alive = thumbAlive;
+        app->PostToUIThread([this, alive]() {
+            if (!alive->load()) return;   // widget destroyed meanwhile
+            thumbRedrawPosted.store(false);
+            RequestRedraw();
+        });
+    }
+
     void UltraCanvasFilerWidget::DrawEntryIcon(IRenderContext* ctx, const FilerEntry& e,
                                                const Rect2Di& rect,
                                                ImageFitMode imageFit) {
         if (rect.width <= 2 || rect.height <= 2) return;
 
         // Real image thumbnails (explicit thumbnail, else the bitmap itself).
-        std::string thumb = e.thumbnailPath;
-        if (thumb.empty() &&
-            (e.category == FilerFileCategory::Image ||
-             e.category == FilerFileCategory::Vector)) {
-            thumb = e.path;
-        }
+        // Never decoded here: the frame must not wait for image files, so the
+        // pixmap is fetched from the async loader and the tile shows the
+        // generic glyph until its decode lands (which then repaints us).
+        std::string thumb = ThumbSourceFor(e);
         if (!thumb.empty()) {
-            auto img = UCImage::Get(thumb);
-            if (img && img->GetWidth() > 0 && img->GetHeight() > 0) {
-                ctx->DrawImage(*img, Rect2Dd(rect), imageFit);
+            auto pm = AcquireThumbnail(thumb, rect.width, rect.height,
+                                       imageFit, ctx->GetDeviceScale());
+            if (pm) {
+                ctx->DrawPixmap(*pm, Rect2Dd(rect), imageFit);
                 return;
             }
         }
@@ -2162,13 +2536,11 @@ namespace UltraCanvas {
             ctx->SetFillPaint(selected ? style.selectionColor : style.hoverColor);
             ctx->FillRoundedRectangle(Rect2Dd(item.rect), 5);
         }
-        int inset = std::max(4, item.imageRect.width / 12);
-        Rect2Di img(item.imageRect.x + inset, item.imageRect.y + inset,
-                    item.imageRect.width - 2 * inset,
-                    item.imageRect.height - 2 * inset);
-        // ScaleDown keeps images smaller than the tile at their original
-        // size (centered) instead of blowing them up to fill it.
-        DrawEntryIcon(ctx, e, img, ImageFitMode::ScaleDown);
+        // Same geometry the prefetch requests, so the cache keys line up.
+        Rect2Di img;
+        ImageFitMode fit;
+        ThumbGeometryForItem(item, img, fit);
+        DrawEntryIcon(ctx, e, img, fit);
 
         FontStyle fsty;
         fsty.fontFamily = style.fontFamily;

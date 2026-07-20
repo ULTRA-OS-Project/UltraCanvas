@@ -1,3 +1,38 @@
+#### 2026-07-19 *0.3.9*
+- Filer widget: optional **"Compressed thumbnails"** mode
+  (`SetCompressedThumbnails(bool)`, default off; toggle in the Filer demo).
+  Finished thumbnails are held in memory QOI-compressed instead of as raw
+  ARGB32 pixmaps (measured 6.4× smaller on the demo set; typically 2–4× on
+  photos), with a 32 MB hot cache of decompressed tiles covering the
+  visible + prefetch bands so scrolling still draws raw surfaces. The codec
+  is a new Cairo-native QOI variant (`libspecific/Cairo/QoiPixmapCodec.h`,
+  separate from the `qoi.cpp` file-format codec) that compresses the
+  premultiplied ARGB32 buffer in place — bit-exact round trip (rendering is
+  pixel-identical in both modes), ~140 µs encode / ~32 µs decode per medium
+  tile, HiDPI device scale preserved. `GetThumbnailCacheStats()` reports
+  stored vs. raw bytes for A/B comparison.
+- Filer widget: thumbnail decoding is now **viewport-driven with a one-screen
+  prefetch**. Only files whose tiles are visible — plus at most one viewport
+  height (width in the horizontal List view) ahead in scroll direction — are
+  ever decoded, so slow scrolling almost always lands on already-decoded
+  tiles. The decode queue is rebuilt every frame in priority order (visible
+  tiles first, prefetch band after), and pending decodes that scroll out of
+  both bands are dropped from the queue — a fast flick past hundreds of
+  photos decodes only what you stop at, and the tiles you are looking at
+  never wait behind tiles you scrolled past.
+- Filer widget: thumbnails are now loaded **asynchronously**. Opening a folder
+  renders its content immediately (names, layout, info bar) with the generic
+  category glyph in each tile; the real image thumbnails are decoded on
+  background worker threads and fill in as they become ready, each batch
+  posting one coalesced redraw via `PostToUIThread`. Previously the first
+  frame of a folder blocked until every visible thumbnail was fully decoded
+  on the UI thread, which froze the window for seconds on photo folders —
+  in all views (the details/list icon column decoded images too). Decoded
+  pixmaps land in the shared image/pixmap caches (so other consumers get
+  cache hits), the widget's own bookkeeping is bounded by a 96 MB budget,
+  decodes of the same file are serialized, and pending work is dropped on
+  folder change / view change / widget destruction.
+
 #### 2026-07-17 *0.3.8*
 - Fix missing method implementation SetIconMaskColor() in the Button
 - Fix crash in the PixelFX FloodFill demo
