@@ -1507,7 +1507,8 @@ namespace UltraCanvas {
                 .AddVariant("timepicker", "24-Hour")
                 .AddVariant("timepicker", "12-Hour AM/PM")
                 .AddVariant("timepicker", "With Seconds")
-                .AddVariant("timepicker", "Minute Step / Constraints");
+                .AddVariant("timepicker", "Minute Step / Constraints")
+                .AddVariant("timepicker", "Clock Dial (24h / 12h AM-PM)");
 
         widgetsBuilder.AddItem("mediaviewer", "Media Viewer",
                                "Comprehensive media viewer for images, documents (PDF), audio and "
