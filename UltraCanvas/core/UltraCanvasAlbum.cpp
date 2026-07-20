@@ -1,8 +1,14 @@
 // core/UltraCanvasAlbum.cpp
 // Photo / video / music album widget with selectable layout designs, per-item
 // crop / zoom / stretch fitting, action icons and visitor / edit / admin modes.
-// Version: 1.5.0
-// Last Modified: 2026-07-11
+// Version: 1.6.0
+// Last Modified: 2026-07-19
+// V1.6.0: Hover animation preview (AlbumConfig::animationHoverPreview) —
+//   resting the cursor on a tile whose bitmap is an animated image (GIF,
+//   animated WebP) plays the animation in place of its static first frame,
+//   sharing the video preview's dwell delay / duration / loop knobs (backed
+//   by UCImageAnimationController; the preview frame is drawn with the same
+//   fitting as the thumbnail so nothing jumps when it starts or ends).
 // V1.5.0: Hover video preview (AlbumConfig::videoHoverPreview) — resting the
 //   cursor on a Video tile plays a short muted preview of the clip in place of
 //   its static thumbnail, with configurable dwell delay, duration, loop, start
@@ -37,6 +43,7 @@
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasTooltipManager.h"
 #include "UltraCanvasVideoHoverPreview.h"
+#include "UltraCanvasImageAnimation.h"
 #include <algorithm>
 #include <cmath>
 
@@ -64,13 +71,19 @@ namespace UltraCanvas {
         SetContainerStyle(cs);
     }
 
-    UltraCanvasAlbum::~UltraCanvasAlbum() = default;
+    UltraCanvasAlbum::~UltraCanvasAlbum() {
+        // The album-owned preview timers capture `this`; cancel them before
+        // the members go away. (The preview engines cancel their own timers
+        // in their destructors.)
+        CancelAnimationPreviewTimers();
+    }
 
     // ===== CONFIGURATION =====
     void UltraCanvasAlbum::SetConfig(const AlbumConfig& cfg) {
         config = cfg;
         SetBackgroundColor(config.backgroundColor);
-        if (!config.videoHoverPreview) StopHoverPreview();
+        if (!config.videoHoverPreview) StopVideoHoverPreview();
+        if (!config.animationHoverPreview) StopAnimationHoverPreview();
         InvalidateAlbumLayout();
         RequestRedraw();
     }
@@ -708,11 +721,22 @@ namespace UltraCanvas {
              config.imageDisplay == AlbumImageDisplay::Zoom)) {
             zoomExtra *= 1.06f;
         }
-        // A live hover preview frame replaces the static thumbnail; until the
-        // first frame arrives (dwell delay / preroll) the thumbnail stays.
+        // A live hover preview frame (video clip or animated image) replaces
+        // the static thumbnail; until the first frame arrives (dwell delay /
+        // preroll) the thumbnail stays.
         bool previewShown = false;
         if (hoverPreview && hoverPreviewItem == static_cast<int>(tile.itemIndex)) {
             previewShown = DrawHoverPreviewFrame(ctx, item, tile.imageRect, zoomExtra);
+        }
+        if (!previewShown && animPreviewPlaying && animPreview &&
+            animPreviewItem == static_cast<int>(tile.itemIndex)) {
+            if (auto pm = animPreview->GetCurrentFramePixmap()) {
+                if (pm->IsValid() && pm->GetWidth() > 0 && pm->GetHeight() > 0) {
+                    DrawPreviewPixmap(ctx, item, tile.imageRect, zoomExtra,
+                                      *pm, pm->GetWidth(), pm->GetHeight());
+                    previewShown = true;
+                }
+            }
         }
         if (!previewShown) DrawImageInRect(ctx, item, tile.imageRect, zoomExtra);
 
@@ -799,7 +823,13 @@ namespace UltraCanvas {
         const int fw = hoverPreview->GetFrameWidth();
         const int fh = hoverPreview->GetFrameHeight();
         if (!pm || !pm->IsValid() || fw <= 0 || fh <= 0) return false;
+        DrawPreviewPixmap(ctx, item, rect, zoomExtra, *pm, fw, fh);
+        return true;
+    }
 
+    void UltraCanvasAlbum::DrawPreviewPixmap(IRenderContext* ctx, const AlbumItem& item,
+                                             const Rect2Di& rect, float zoomExtra,
+                                             UCPixmap& pm, int fw, int fh) {
         ctx->PushState();
         ctx->ClipRect(Rect2Dd(rect));
 
@@ -807,12 +837,12 @@ namespace UltraCanvas {
         // thumbnail was and nothing jumps when the preview starts or ends.
         switch (config.imageDisplay) {
             case AlbumImageDisplay::Stretch:
-                ctx->DrawPixmap(*pm, Rect2Dd(rect), ImageFitMode::Fill);
+                ctx->DrawPixmap(pm, Rect2Dd(rect), ImageFitMode::Fill);
                 break;
             case AlbumImageDisplay::Fit: {
                 ctx->SetFillPaint(config.itemBackgroundColor);
                 ctx->FillRectangle(Rect2Dd(rect));
-                ctx->DrawPixmap(*pm, Rect2Dd(rect), ImageFitMode::Contain);
+                ctx->DrawPixmap(pm, Rect2Dd(rect), ImageFitMode::Contain);
                 break;
             }
             case AlbumImageDisplay::Crop:
@@ -825,12 +855,11 @@ namespace UltraCanvas {
                 double fy = std::max(0.0f, std::min(1.0f, item.focusPoint.y));
                 double dstX = rect.x + (rw - dstW) * fx;
                 double dstY = rect.y + (rh - dstH) * fy;
-                ctx->DrawPixmap(*pm, Rect2Dd(dstX, dstY, dstW, dstH), ImageFitMode::Fill);
+                ctx->DrawPixmap(pm, Rect2Dd(dstX, dstY, dstW, dstH), ImageFitMode::Fill);
                 break;
             }
         }
         ctx->PopState();
-        return true;
     }
 
     void UltraCanvasAlbum::DrawPlaceholder(IRenderContext* ctx, const AlbumItem& item,
@@ -1250,52 +1279,175 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
-    // ===== VIDEO HOVER PREVIEW =====
+    // ===== HOVER PREVIEWS (video + animated image) =====
     void UltraCanvasAlbum::UpdateHoverPreview() {
-        if (!config.videoHoverPreview) return;
+        if (!config.videoHoverPreview && !config.animationHoverPreview) return;
 
-        int target = -1;
+        // What the hovered tile is eligible for: Video tiles get the video
+        // preview; any other tile whose bitmap is animated (GIF / animated
+        // WebP) gets the animation preview. Get() only touches the (cached)
+        // image header — the tile's thumbnail is already loaded to draw the
+        // grid — so this per-move check stays cheap.
+        int videoTarget = -1;
+        int animTarget  = -1;
         if (!dragging && hoveredItem >= 0 &&
             hoveredItem < static_cast<int>(items.size())) {
             const AlbumItem& it = items[hoveredItem];
-            if (it.mediaType == AlbumMediaType::Video && !it.mediaPath.empty()) {
-                target = hoveredItem;
+            if (it.mediaType == AlbumMediaType::Video) {
+                if (config.videoHoverPreview && !it.mediaPath.empty()) {
+                    videoTarget = hoveredItem;
+                }
+            } else if (config.animationHoverPreview) {
+                const std::string path = ThumbPathFor(it);
+                std::shared_ptr<UCImage> img =
+                        path.empty() ? nullptr : UCImage::Get(path);
+                if (img && img->IsAnimated()) animTarget = hoveredItem;
             }
         }
+
         // Same tile as before (armed, playing or already finished): leave it be,
         // so the dwell delay isn't reset by in-tile motion and a finished
         // preview doesn't restart until the cursor leaves and comes back.
-        if (target == hoverPreviewItem) return;
+        if (videoTarget != hoverPreviewItem) {
+            StopVideoHoverPreview();
+            if (videoTarget >= 0) {
+                if (!hoverPreview) {
+                    hoverPreview = std::make_unique<UltraCanvasVideoHoverPreview>();
+                    hoverPreview->onFrame = [this]() {
+                        if (IsVisible()) RequestRedraw();
+                        else StopHoverPreview();
+                    };
+                    hoverPreview->onStopped = [this]() { RequestRedraw(); };
+                }
+                VideoHoverPreviewConfig pc;
+                pc.startDelayMs   = config.hoverPreviewDelayMs;
+                pc.durationSec    = config.hoverPreviewDurationSec;
+                pc.loop           = config.hoverPreviewLoop;
+                pc.startOffsetSec = config.hoverPreviewStartOffsetSec;
+                pc.muted          = config.hoverPreviewMuted;
+                pc.targetFps      = config.hoverPreviewFps;
+                hoverPreview->SetConfig(pc);
 
-        StopHoverPreview();
-        if (target < 0) return;
+                hoverPreviewItem = videoTarget;
+                hoverPreview->Begin(items[videoTarget].mediaPath);
+            }
+        }
 
-        if (!hoverPreview) {
-            hoverPreview = std::make_unique<UltraCanvasVideoHoverPreview>();
-            hoverPreview->onFrame = [this]() {
+        if (animTarget != animPreviewItem) {
+            StopAnimationHoverPreview();
+            if (animTarget >= 0) {
+                animPreviewItem = animTarget;
+                if (config.hoverPreviewDelayMs <= 0) {
+                    StartAnimationPreviewPlayback();
+                } else if (auto* app = UltraCanvasApplication::GetInstance()) {
+                    animPreviewDelayTimerId = app->StartTimer(
+                            static_cast<unsigned int>(config.hoverPreviewDelayMs),
+                            false, [this](TimerId) {
+                                animPreviewDelayTimerId = InvalidTimerId;
+                                StartAnimationPreviewPlayback();
+                            });
+                } else {
+                    animPreviewItem = -1;   // no app timer — no preview
+                }
+            }
+        }
+    }
+
+    // Dwell elapsed with the cursor still on the tile: decode the frames (the
+    // full decode is deferred to here so a cursor merely crossing the grid
+    // never pays for it; GetAnimation caches, so repeats are cheap) and play.
+    void UltraCanvasAlbum::StartAnimationPreviewPlayback() {
+        if (animPreviewItem < 0 ||
+            animPreviewItem >= static_cast<int>(items.size())) {
+            StopAnimationHoverPreview();
+            return;
+        }
+        const std::string path = ThumbPathFor(items[animPreviewItem]);
+        std::shared_ptr<UCImage> img = path.empty() ? nullptr : UCImage::Get(path);
+        std::shared_ptr<UCImageAnimation> anim =
+                (img && img->IsAnimated()) ? img->GetAnimation() : nullptr;
+        if (!anim || anim->GetFrameCount() < 2) {
+            // Decode failed / sequence too large: the static thumbnail stays.
+            // The item stays marked so this isn't retried until the cursor
+            // leaves the tile.
+            return;
+        }
+
+        if (!animPreview) {
+            animPreview = std::make_unique<UCImageAnimationController>();
+            animPreview->onFrameChanged = [this]() {
                 if (IsVisible()) RequestRedraw();
                 else StopHoverPreview();
             };
-            hoverPreview->onStopped = [this]() { RequestRedraw(); };
+            animPreview->onEnded = [this]() { FinishAnimationPreview(); };
         }
-        VideoHoverPreviewConfig pc;
-        pc.startDelayMs   = config.hoverPreviewDelayMs;
-        pc.durationSec    = config.hoverPreviewDurationSec;
-        pc.loop           = config.hoverPreviewLoop;
-        pc.startOffsetSec = config.hoverPreviewStartOffsetSec;
-        pc.muted          = config.hoverPreviewMuted;
-        pc.targetFps      = config.hoverPreviewFps;
-        hoverPreview->SetConfig(pc);
+        animPreview->SetAnimation(anim);
+        // hoverPreviewLoop overrides a finite file loop count, matching the
+        // video preview's "restart clips shorter than the duration".
+        animPreview->SetLoopForever(config.hoverPreviewLoop);
+        animPreview->Play();
+        animPreviewPlaying = true;
 
-        hoverPreviewItem = target;
-        hoverPreview->Begin(items[target].mediaPath);
+        if (config.hoverPreviewDurationSec > 0.0f) {
+            if (auto* app = UltraCanvasApplication::GetInstance()) {
+                animPreviewStopTimerId = app->StartTimer(
+                        static_cast<unsigned int>(config.hoverPreviewDurationSec * 1000.0f),
+                        false, [this](TimerId) {
+                            animPreviewStopTimerId = InvalidTimerId;
+                            FinishAnimationPreview();
+                        });
+            }
+        }
+        RequestRedraw();
+    }
+
+    // Self-initiated end (duration elapsed, or a finite-loop file finished):
+    // the static thumbnail returns, but the item stays marked so the preview
+    // does not immediately re-arm while the cursor rests on the tile.
+    void UltraCanvasAlbum::FinishAnimationPreview() {
+        CancelAnimationPreviewTimers();
+        if (animPreview) {
+            animPreview->Stop();
+            animPreview->SetAnimation(nullptr);   // drop the decoded frames
+        }
+        animPreviewPlaying = false;
+        RequestRedraw();
     }
 
     void UltraCanvasAlbum::StopHoverPreview() {
+        StopVideoHoverPreview();
+        StopAnimationHoverPreview();
+    }
+
+    void UltraCanvasAlbum::StopVideoHoverPreview() {
         if (hoverPreviewItem == -1) return;
         hoverPreviewItem = -1;
         if (hoverPreview) hoverPreview->End();
         RequestRedraw();
+    }
+
+    void UltraCanvasAlbum::StopAnimationHoverPreview() {
+        if (animPreviewItem == -1) return;
+        animPreviewItem = -1;
+        CancelAnimationPreviewTimers();
+        if (animPreview) {
+            animPreview->Stop();
+            animPreview->SetAnimation(nullptr);
+        }
+        animPreviewPlaying = false;
+        RequestRedraw();
+    }
+
+    void UltraCanvasAlbum::CancelAnimationPreviewTimers() {
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (animPreviewDelayTimerId != InvalidTimerId) {
+            if (app) app->StopTimer(animPreviewDelayTimerId);
+            animPreviewDelayTimerId = InvalidTimerId;
+        }
+        if (animPreviewStopTimerId != InvalidTimerId) {
+            if (app) app->StopTimer(animPreviewStopTimerId);
+            animPreviewStopTimerId = InvalidTimerId;
+        }
     }
 
     // ===== EVENTS =====

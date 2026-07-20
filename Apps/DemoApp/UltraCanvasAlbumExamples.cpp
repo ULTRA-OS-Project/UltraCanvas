@@ -2,8 +2,19 @@
 // Demonstration of UltraCanvasAlbum: layout designs, image-fit modes, action-icon
 // display options and visitor / user-edit / admin modes for a mixed photo / video
 // / music album.
-// Version: 2.15.1
-// Last Modified: 2026-07-15
+// Version: 2.17.0
+// Last Modified: 2026-07-19
+// V2.17.0: Selectable viewer for opening tiles — a "Viewer" option row picks
+//   between the Mini viewer (the compact per-kind windows implemented here:
+//   photo lightbox, video window with info bar, small audio transport window)
+//   and the comprehensive UltraCanvasMediaViewer widget in its own window
+//   (toolbar, folder navigation, slideshow, zoom / rotate / adjust, info bar),
+//   which classifies the file kind itself. Mini stays the default.
+// V2.16.0: Hover animation preview enabled (AlbumConfig::animationHoverPreview)
+//   — resting the cursor on the "Charlie Chaplin run" GIF tile for ~0.4s plays
+//   the animation in place of its static first frame (same dwell / duration
+//   knobs as the video hover preview), reverting when it ends or the cursor
+//   leaves.
 // V2.15.1: Fixed a crash opening the Album demo — the first seed (Charlie
 //   Chaplin GIF) omits the link field, so it was value-initialized to nullptr
 //   and assigning it into AlbumItem::link (std::string) called strlen(nullptr).
@@ -85,6 +96,7 @@
 #include "UltraCanvasVideoPlayerElement.h"
 #include "UltraCanvasAudioPlayerElement.h"
 #include "UltraCanvasImageViewer.h"
+#include "UltraCanvasMediaViewer.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasUtils.h"     // OpenURL — open a subtitle link in the browser
 #include <fstream>
@@ -193,7 +205,20 @@ namespace UltraCanvas {
         // implementation. One instance reuses its window across opens.
         class AlbumPhotoViewer {
         public:
+            // Which viewer implementation opens a clicked tile:
+            //   Mini  — the compact per-kind windows implemented below (photo
+            //           lightbox, video window with info bar, small audio
+            //           transport window).
+            //   Media — the comprehensive UltraCanvasMediaViewer widget in its
+            //           own window (toolbar, folder navigation, slideshow,
+            //           zoom / rotate / adjust, info bar); it classifies the
+            //           file kind itself, so all three media types route to it.
+            enum class ViewerKind { Mini, Media };
+            void SetViewerKind(ViewerKind k) { viewerKind = k; }
+            ViewerKind GetViewerKind() const { return viewerKind; }
+
             void Show(const AlbumItem& item, UltraCanvasWindowBase* host = nullptr) {
+                if (viewerKind == ViewerKind::Media) { ShowInMediaViewer(item); return; }
                 ImageViewerInfo info;
                 info.title       = item.title;
                 info.subtitle    = item.subtitle;
@@ -211,6 +236,7 @@ namespace UltraCanvas {
             // the window and starts playing immediately. Reuses the single shared
             // window (closing any open photo / video view first).
             void ShowVideo(const AlbumItem& item) {
+                if (viewerKind == ViewerKind::Media) { ShowInMediaViewer(item); return; }
                 if (window) {
                     window->Close();
                     window.reset();
@@ -299,6 +325,7 @@ namespace UltraCanvas {
             // UltraCanvasAudioPlayerElement: play / pause / stop, a seek bar with
             // time labels and a volume slider). Reuses the single shared window.
             void ShowAudio(const AlbumItem& item) {
+                if (viewerKind == ViewerKind::Media) { ShowInMediaViewer(item); return; }
                 if (window) {
                     window->Close();
                     window.reset();
@@ -365,7 +392,60 @@ namespace UltraCanvas {
                 player->Play();
             }
 
+            // Open the item in the full UltraCanvasMediaViewer in its own
+            // window: toolbar, next/previous over the rest of the file's
+            // folder, slideshow, zoom / rotate / mirror / colour adjustments
+            // and the info bar. The viewer classifies the file itself, so
+            // photos, videos and music all route through here when the Media
+            // viewer is selected. Reuses the single shared window.
+            void ShowInMediaViewer(const AlbumItem& item) {
+                if (window) {
+                    window->Close();
+                    window.reset();
+                }
+
+                const std::string path =
+                        item.mediaPath.empty() ? item.thumbnailPath : item.mediaPath;
+                if (path.empty()) return;
+
+                WindowConfig cfg;
+                cfg.title     = item.title.empty() ? "Media viewer" : item.title;
+                cfg.width     = 960;
+                cfg.height    = 720;
+                cfg.type      = WindowType::Standard;
+                cfg.resizable = true;
+                window = CreateWindow(cfg);
+                if (!window) return;
+                window->SetBackgroundColor(Color(24, 24, 28, 255));
+                window->layout.SetFlexColumn()
+                              .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+
+                auto mv = CreateMediaViewer("AlbumMediaViewer", 0, 0, 0, 0);
+                mv->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                              .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+                mv->OpenFile(path);   // shows the file, browses its folder
+                window->AddChild(mv);
+
+                // ESC closes the viewer (matching the mini viewer windows).
+                window->eventCallback = [this](const UCEvent& event) {
+                    if (event.type == UCEventType::KeyUp &&
+                        event.virtualKey == UCKeys::Escape) {
+                        if (window) window->Close();
+                        return true;
+                    }
+                    return false;
+                };
+
+                // Release our reference however the window is closed so the
+                // application can destroy it; destroying the media viewer
+                // tears its audio / video pipeline down with it.
+                window->onWindowClosed = [this]() { window.reset(); };
+
+                window->Show();
+            }
+
         private:
+            ViewerKind viewerKind = ViewerKind::Mini;
             UltraCanvasImageViewer viewer;
             std::shared_ptr<UltraCanvasWindow> window;
         };
@@ -428,8 +508,12 @@ namespace UltraCanvas {
         cfg.cornerRadius  = 6.0f;
         cfg.hoverZoom     = true;
         // Rest the cursor on a video tile for ~0.4s and a short muted preview
-        // of the clip plays in place of its poster frame, then reverts.
+        // of the clip plays in place of its poster frame, then reverts. The
+        // same dwell / duration applies to animated-image tiles (the Charlie
+        // Chaplin GIF): hovering plays the animation in place of its first
+        // frame.
         cfg.videoHoverPreview       = true;
+        cfg.animationHoverPreview   = true;
         cfg.hoverPreviewDurationSec = 6.0f;
         album->SetConfig(cfg);
 
@@ -730,6 +814,21 @@ namespace UltraCanvas {
                             << (i == 0 ? " — view only" : " — drag to reorder, right-click for actions");
                           statusPtr->SetText(o.str());
                       }, 0);  // Display (visitor) is the default
+        modeRow->AddSpacer(24);
+        // Which viewer a clicked tile opens in: the compact per-kind Mini
+        // viewer windows (photo lightbox / video window / audio transport) or
+        // the comprehensive Media viewer widget (UltraCanvasMediaViewer).
+        AppendLabeledButtons(modeRow, "album_viewer_", "Viewer", 56, 110, kBtnH,
+                      {"Mini viewer", "Media viewer"},
+                      [viewer, statusPtr](int i) {
+                          viewer->SetViewerKind(i == 0
+                                  ? AlbumPhotoViewer::ViewerKind::Mini
+                                  : AlbumPhotoViewer::ViewerKind::Media);
+                          statusPtr->SetText(i == 0
+                                  ? "Viewer: Mini — photo lightbox, video window, audio transport"
+                                  : "Viewer: Media — full media viewer (browse folder, slideshow, "
+                                    "zoom / rotate / adjust)");
+                      }, 0);  // Mini viewer is the default
         controls->AddChild(modeRow);
 
         // ----- Action-icon display picker -----
