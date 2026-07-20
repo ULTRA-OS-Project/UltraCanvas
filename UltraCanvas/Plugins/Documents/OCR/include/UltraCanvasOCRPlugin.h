@@ -37,6 +37,24 @@ enum class OCRPageSegmentation {
     RawLine
 };
 
+// ===== LANGUAGE DATA TIER =====
+// Mirrors the three upstream tessdata release repositories. Downloads pick
+// their source from this, trading footprint against recognition quality.
+enum class OCRDataTier {
+    Fast,      // tessdata_fast  — small & quick, good quality (default)
+    Standard,  // tessdata       — the balanced LSTM + legacy models
+    Best       // tessdata_best  — largest, highest accuracy
+};
+
+// ===== LANGUAGE CATALOGUE ENTRY =====
+// One recognisable language from the upstream Tesseract catalogue, whether or
+// not its traineddata is installed locally.
+struct OCRLanguageInfo {
+    std::string code;         // tessdata code, e.g. "deu"
+    std::string englishName;  // human-readable name, e.g. "German"
+    bool        isScript = false; // helper models (osd, equ), not a language
+};
+
 // ===== CONFIGURATION =====
 struct OCRConfig {
     OCREngineKind            engine        = OCREngineKind::Auto;
@@ -118,6 +136,49 @@ public:
     static std::vector<OCREngineKind> AvailableEngines();
     static std::string                DefaultModelsDir();
     static const char*                EngineKindName(OCREngineKind);
+
+    // ===== LANGUAGE MANAGEMENT =====
+    // The full catalogue of languages Tesseract can recognise (the upstream
+    // tessdata set). This is what "all available languages" means; it does not
+    // imply the data is installed — use InstalledLanguages()/EnsureLanguages()
+    // for that. Sorted by English name for display.
+    static const std::vector<OCRLanguageInfo>& SupportedLanguages();
+
+    // Look up a catalogue entry by tessdata code; nullptr if unknown.
+    static const OCRLanguageInfo* FindLanguage(const std::string& code);
+
+    // Writable per-user directory that downloaded language packs are stored in
+    // (…/UltraCanvas/ocr/tessdata). Created on demand by EnsureLanguages().
+    static std::string LanguageDataDir();
+
+    // Codes whose "<code>.traineddata" exists in any discoverable data
+    // directory (bundle, user pack dir, TESSDATA_PREFIX, system). Sorted,
+    // de-duplicated.
+    static std::vector<std::string> InstalledLanguages();
+
+    // True when "<code>.traineddata" is present. When dataDir is empty the
+    // standard discovery locations are searched; otherwise only dataDir.
+    static bool IsLanguageInstalled(const std::string& code,
+                                    const std::string& dataDir = "");
+
+    // Fetch a single language pack into destDir (defaults to LanguageDataDir())
+    // from the given tessdata tier. Requires network support (UltraNet). On
+    // failure returns false and fills outError. Only catalogue codes are
+    // accepted. A no-op returning true when the pack is already present.
+    static bool DownloadLanguage(const std::string& code,
+                                 OCRDataTier tier,
+                                 std::string& outError,
+                                 const std::string& destDir = "");
+
+    // Make every requested language usable: any missing pack is seeded from a
+    // local copy if one exists, else downloaded from `tier`. All packs are
+    // consolidated into a single directory (so Tesseract can load them
+    // together), the config is pointed at it, and the engine is rebuilt with
+    // `codes` as the active languages. Returns false (and fills outError) if a
+    // language could not be provisioned.
+    bool EnsureLanguages(const std::vector<std::string>& codes,
+                         std::string& outError,
+                         OCRDataTier tier = OCRDataTier::Fast);
 
 private:
     void Rebuild();

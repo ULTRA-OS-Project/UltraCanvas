@@ -28,6 +28,7 @@ endif()
 set(OCR_PLUGIN_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/UltraCanvasOCRPlugin.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/TesseractOCREngine.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/OCRLanguageCatalog.cpp
 )
 
 set(OCR_PLUGIN_HEADERS

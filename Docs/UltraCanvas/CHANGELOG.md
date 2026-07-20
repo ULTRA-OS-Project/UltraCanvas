@@ -1,3 +1,24 @@
+#### 2026-07-20 *0.3.11*
+- OCR plugin now supports **all Tesseract languages**, not just the bundled
+  English pack. The full upstream catalogue (~130 languages) is exposed via
+  `UltraCanvasOCR::SupportedLanguages()`, and any language's `traineddata` is
+  fetched on first use instead of having to be pre-bundled:
+  - `EnsureLanguages({codes}, err, tier)` seeds each requested pack from a
+    local copy when one exists, otherwise downloads it (via UltraNet),
+    consolidates them into a single directory so Tesseract can load them
+    together, and reconfigures the engine.
+  - `DownloadLanguage(code, tier, err)` fetches a single pack; `OCRDataTier`
+    picks the source repo (`Fast`→tessdata_fast, `Standard`→tessdata,
+    `Best`→tessdata_best).
+  - `InstalledLanguages()` / `IsLanguageInstalled(code)` report what is
+    present locally; downloaded packs are cached once under
+    `LanguageDataDir()` (per-user data dir) and discovered automatically by
+    the Tesseract engine's data-path resolver.
+  - On a build without network support, packs can be dropped into the
+    per-user directory manually and are picked up the same way.
+- The DemoApp OCR screen gains a language dropdown populated from the full
+  catalogue; languages that are not installed yet are marked and downloaded
+  on demand when "Run OCR" is pressed.
 #### 2026-07-19 *0.3.10*
 - Fix GIF export failing with `VipsOperation: class "gifsave" not found` on
   builds whose libvips lacks cgif (the MSYS2/Windows package is built with

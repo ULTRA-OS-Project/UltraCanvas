@@ -87,11 +87,16 @@ std::string TesseractOCREngine::ResolveDataPath(const std::string& userPath,
     if (!userPath.empty()) {
         if (std::string hit = probe(userPath); !hit.empty()) return hit;
     }
-    // 2) TESSDATA_PREFIX, honouring the user's environment.
+    // 2) The writable per-user pack directory, where languages fetched on
+    //    demand by UltraCanvasOCR::EnsureLanguages()/DownloadLanguage() land.
+    //    Probed early so a downloaded language is preferred over a stale bundle.
+    if (std::string hit = probe(UltraCanvasOCR::LanguageDataDir()); !hit.empty())
+        return hit;
+    // 3) TESSDATA_PREFIX, honouring the user's environment.
     if (const char* env = std::getenv("TESSDATA_PREFIX"); env && *env) {
         if (std::string hit = probe(env); !hit.empty()) return hit;
     }
-    // 3) Bundle locations relative to the executable and the resources dir.
+    // 4) Bundle locations relative to the executable and the resources dir.
     //    This is what makes a portable Windows build work without any env
     //    vars: the shipped media/ocr/tessdata/ folder is discovered here.
     const std::string exe = GetExecutableDir();
