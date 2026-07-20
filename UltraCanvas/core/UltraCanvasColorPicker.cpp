@@ -1,10 +1,13 @@
 // core/UltraCanvasColorPicker.cpp
 // Implementation of the comprehensive colour picker widget.
-// Version: 1.1.0
-// Last Modified: 2026-07-12
+// Version: 1.2.0
+// Last Modified: 2026-07-20
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasColorPicker.h"
+#include "UltraCanvasWindow.h"
+#include "UltraCanvasConfig.h"
+#include "UltraCanvasUtils.h"
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
@@ -19,6 +22,18 @@ namespace UltraCanvas {
             : UltraCanvasUIElement(identifier, x, y, w, h) {
         mouseCursor = UCMouseCursor::Default;
         previousColor = GetColor();
+    }
+
+    UltraCanvasColorPicker::~UltraCanvasColorPicker() {
+        // The screen-pick event filter captures `this`, so it must not outlive
+        // the widget.
+        screenPickActive = false;
+        if (screenPickFilterInstalled) {
+            if (auto* win = GetWindow()) {
+                win->UnInstallWindowEventFilter(ScreenPickFilterId());
+            }
+            screenPickFilterInstalled = false;
+        }
     }
 
     // ===================================================================
@@ -64,6 +79,48 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    void UltraCanvasColorPicker::SetModeSelector(ColorPickerModeSelector s) {
+        if (modeSelector == s) return;
+        modeSelector = s;
+        dropdownOpen = false;
+        layoutValid = false;
+        RequestRedraw();
+    }
+
+    void UltraCanvasColorPicker::SetSliderStyle(ColorPickerSliderStyle s) {
+        if (sliderStyle == s) return;
+        sliderStyle = s;
+        RequestRedraw();
+    }
+
+    void UltraCanvasColorPicker::SetWheelStyle(ColorPickerWheelStyle s) {
+        if (wheelStyle == s) return;
+        wheelStyle = s;
+        layoutValid = false;
+        RequestRedraw();
+    }
+
+    void UltraCanvasColorPicker::SetShowValueSpinners(bool show) {
+        if (showValueSpinners == show) return;
+        showValueSpinners = show;
+        RequestRedraw();
+    }
+
+    void UltraCanvasColorPicker::SetSlidersCollapsible(bool collapsible, bool expanded) {
+        if (slidersCollapsible == collapsible && slidersExpanded == expanded) return;
+        slidersCollapsible = collapsible;
+        slidersExpanded = expanded;
+        layoutValid = false;
+        RequestRedraw();
+    }
+
+    void UltraCanvasColorPicker::SetSlidersExpanded(bool expanded) {
+        if (slidersExpanded == expanded) return;
+        slidersExpanded = expanded;
+        layoutValid = false;
+        RequestRedraw();
+    }
+
     void UltraCanvasColorPicker::SetShowColorWheel(bool show) {
         if (showColorWheel == show) return;
         showColorWheel = show;
@@ -78,6 +135,14 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    void UltraCanvasColorPicker::SetUIScale(float scale) {
+        scale = std::max(0.1f, scale);
+        if (style.uiScale == scale) return;
+        style.uiScale = scale;
+        layoutValid = false;
+        RequestRedraw();
+    }
+
     void UltraCanvasColorPicker::Changed(bool finished) {
         RequestRedraw();
         Color c = GetColor();
@@ -87,7 +152,7 @@ namespace UltraCanvas {
 
     void UltraCanvasColorPicker::SetFont(IRenderContext* ctx, bool muted) const {
         ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
-        ctx->SetFontSize(style.fontSize);
+        ctx->SetFontSize(Scaled(style.fontSize));
         ctx->SetTextPaint(muted ? style.mutedTextColor : style.textColor);
     }
 
@@ -101,75 +166,124 @@ namespace UltraCanvas {
         cachedW = W;
         cachedH = H;
 
-        const float pad = style.padding;
-        const float gap = style.rowGap;
+        const float pad = Scaled(style.padding);
+        const float gap = Scaled(style.rowGap);
         const float x0 = pad;
         const float innerW = std::max(40.0f, W - 2.0f * pad);
         const float rightEdge = x0 + innerW;
-        const float rh = style.rowHeight;
+        const float rh = Scaled(style.rowHeight);
+        const float tabH = Scaled(style.tabHeight);
 
         const int nRows = 3 + (showAlpha ? 1 : 0);
-        const float rowsH = nRows * (rh + gap);
-        const float previewRowH = 2.0f * rh + gap;       // mode button + hex field stacked
-        const float bottomH = previewRowH + gap + style.tabHeight + gap + rowsH;
+        const float rowsH = SlidersVisible() ? nRows * (rh + gap) : 0.0f;
+        const float headerH = slidersCollapsible ? (rh + gap) : 0.0f;
+        const float previewRowH = 2.0f * rh + gap;       // swatches / hex block
+        const float tabsH = (modeSelector == ColorPickerModeSelector::TabBar)
+                            ? (tabH + gap) : 0.0f;
+        const float bottomH = previewRowH + gap + tabsH + headerH + rowsH;
 
         // --- Optional colour wheel occupies the space above the controls ---
         float cursorY = pad;
         if (showColorWheel) {
             float wheelAreaH = H - pad - bottomH - gap - pad;
-            float wheelSize = std::min(innerW, std::max(60.0f, wheelAreaH));
-            wheelRect = Rect2Df(x0 + (innerW - wheelSize) * 0.5f, pad, wheelSize, wheelSize);
-            wheelCenter = Point2Df(wheelRect.x + wheelSize * 0.5f, wheelRect.y + wheelSize * 0.5f);
-            ringOuter = wheelSize * 0.5f;
-            ringInner = std::max(10.0f, ringOuter - style.ringThickness);
-            float sq = ringInner * 1.41421356f * 0.86f;   // inscribed square (with margin)
-            svRect = Rect2Df(wheelCenter.x - sq * 0.5f, wheelCenter.y - sq * 0.5f, sq, sq);
-            cursorY = wheelRect.y + wheelSize + pad;
+            if (wheelStyle == ColorPickerWheelStyle::Ring) {
+                float wheelSize = std::min(innerW, std::max(60.0f, wheelAreaH));
+                wheelRect = Rect2Df(x0 + (innerW - wheelSize) * 0.5f, pad, wheelSize, wheelSize);
+                wheelCenter = Point2Df(wheelRect.x + wheelSize * 0.5f, wheelRect.y + wheelSize * 0.5f);
+                ringOuter = wheelSize * 0.5f;
+                ringInner = std::max(10.0f, ringOuter - Scaled(style.ringThickness));
+                float sq = ringInner * 1.41421356f * 0.86f;   // inscribed square (with margin)
+                svRect = Rect2Df(wheelCenter.x - sq * 0.5f, wheelCenter.y - sq * 0.5f, sq, sq);
+                hueBarRect = Rect2Df();
+                cursorY = wheelRect.y + wheelSize + pad;
+            } else {
+                // Bar style: the SV rectangle grows to the full inner width
+                // (with the padding as margin) and the hue range sits under it
+                // as a horizontal bar.
+                float hueH = Scaled(style.hueBarHeight);
+                float svH = std::max(40.0f, wheelAreaH - hueH - gap);
+                svRect = Rect2Df(x0, pad, innerW, svH);
+                hueBarRect = Rect2Df(x0, svRect.y + svRect.height + gap, innerW, hueH);
+                wheelRect = Rect2Df();
+                wheelCenter = Point2Df();
+                ringOuter = ringInner = 0;
+                cursorY = hueBarRect.y + hueBarRect.height + pad;
+            }
         } else {
             wheelRect = Rect2Df();
             svRect = Rect2Df();
+            hueBarRect = Rect2Df();
             cursorY = pad;
         }
 
         // --- Preview row: swatches on the left, mode + hex on the right ---
-        const float swatch = std::min(style.swatchSize, previewRowH);
+        const float swatch = std::min(Scaled(style.swatchSize), previewRowH);
         currentSwatchRect  = Rect2Df(x0, cursorY, swatch, swatch);
         previousSwatchRect = Rect2Df(x0 + swatch * 0.55f, cursorY + swatch * 0.45f, swatch, swatch);
-        swapArrowRect      = Rect2Df(x0, cursorY + swatch + 2.0f, 22.0f, 20.0f);
+
+        // Swap symbol tucked into the free top-right corner of the swatch pair
+        // (right of the foreground swatch, above the background swatch).
+        swapArrowRect = Rect2Df(x0 + swatch + Scaled(3.0f), cursorY,
+                                swatch * 0.5f, swatch * 0.42f);
 
         // Eyedropper (screen colour picker) sits just right of the background
         // swatch, bottom-aligned with it.
-        const float iconSize = 20.0f;
-        screenPickRect = Rect2Df(previousSwatchRect.x + previousSwatchRect.width + 6.0f,
+        const float iconSize = Scaled(20.0f);
+        screenPickRect = Rect2Df(previousSwatchRect.x + previousSwatchRect.width + Scaled(6.0f),
                                  previousSwatchRect.y + previousSwatchRect.height - iconSize,
                                  iconSize, iconSize);
 
-        const float modeW = 64.0f;
-        modeButtonRect = Rect2Df(rightEdge - modeW, cursorY, modeW, rh);
-
-        const float hexFieldW = std::min(120.0f, innerW * 0.45f);
-        hexFieldRect = Rect2Df(rightEdge - hexFieldW, cursorY + rh + gap, hexFieldW, rh);
-        hexLabelRect = Rect2Df(hexFieldRect.x - 40.0f, hexFieldRect.y, 34.0f, rh);
+        const float hexFieldW = std::min(Scaled(120.0f), innerW * 0.45f);
+        if (modeSelector == ColorPickerModeSelector::Dropdown) {
+            const float modeW = Scaled(64.0f);
+            modeButtonRect = Rect2Df(rightEdge - modeW, cursorY, modeW, rh);
+            hexFieldRect = Rect2Df(rightEdge - hexFieldW, cursorY + rh + gap, hexFieldW, rh);
+        } else {
+            // Tab bar mode: no dropdown button, the hex field takes the top line.
+            modeButtonRect = Rect2Df();
+            hexFieldRect = Rect2Df(rightEdge - hexFieldW, cursorY, hexFieldW, rh);
+        }
+        hexLabelRect = Rect2Df(hexFieldRect.x - Scaled(40.0f), hexFieldRect.y,
+                               Scaled(34.0f), rh);
 
         cursorY += previewRowH + gap;
 
-        // --- Mode tabs (HSV / HSL / RGB) ---
-        tabRect = Rect2Df(x0, cursorY, innerW, style.tabHeight);
-        const float tabW = innerW / 3.0f;
-        for (int i = 0; i < 3; ++i) {
-            tabRects[i] = Rect2Df(x0 + tabW * i, cursorY, tabW, style.tabHeight);
+        // --- Mode tabs (HSV / HSL / RGB) — TabBar selector only ---
+        if (modeSelector == ColorPickerModeSelector::TabBar) {
+            tabRect = Rect2Df(x0, cursorY, innerW, tabH);
+            const float tabW = innerW / 3.0f;
+            for (int i = 0; i < 3; ++i) {
+                tabRects[i] = Rect2Df(x0 + tabW * i, cursorY, tabW, tabH);
+            }
+            cursorY += tabH + gap;
+        } else {
+            tabRect = Rect2Df();
+            for (auto& r : tabRects) r = Rect2Df();
         }
-        cursorY += style.tabHeight + gap;
+
+        // --- Disclosure header for collapsible sliders ---
+        if (slidersCollapsible) {
+            slidersHeaderRect = Rect2Df(x0, cursorY, innerW, rh);
+            cursorY += rh + gap;
+        } else {
+            slidersHeaderRect = Rect2Df();
+        }
 
         // --- Channel rows ---
-        const float labelW = 18.0f;
-        const float valueW = 56.0f;
+        const float labelW = Scaled(18.0f);
+        const float valueW = Scaled(showValueSpinners ? 68.0f : 56.0f);
         for (int i = 0; i < nRows; ++i) {
+            if (!SlidersVisible()) {
+                rowLabelRects[i] = Rect2Df();
+                rowValueRects[i] = Rect2Df();
+                rowSliderRects[i] = Rect2Df();
+                continue;
+            }
             float y = cursorY + i * (rh + gap);
             rowLabelRects[i] = Rect2Df(x0, y, labelW, rh);
             rowValueRects[i] = Rect2Df(rightEdge - valueW, y, valueW, rh);
-            float sliderX = x0 + labelW + 6.0f;
-            float sliderW = std::max(20.0f, (rowValueRects[i].x - 8.0f) - sliderX);
+            float sliderX = x0 + labelW + Scaled(6.0f);
+            float sliderW = std::max(20.0f, (rowValueRects[i].x - Scaled(8.0f)) - sliderX);
             rowSliderRects[i] = Rect2Df(sliderX, y, sliderW, rh);
         }
         for (int i = nRows; i < 4; ++i) {
@@ -179,6 +293,30 @@ namespace UltraCanvas {
         }
 
         layoutValid = true;
+    }
+
+    Rect2Df UltraCanvasColorPicker::SpinnerDownRect(int row) const {
+        const Rect2Df& vb = rowValueRects[row];
+        float aw = Scaled(14.0f);
+        return Rect2Df(vb.x, vb.y, aw, vb.height);
+    }
+
+    Rect2Df UltraCanvasColorPicker::SpinnerUpRect(int row) const {
+        const Rect2Df& vb = rowValueRects[row];
+        float aw = Scaled(14.0f);
+        return Rect2Df(vb.x + vb.width - aw, vb.y, aw, vb.height);
+    }
+
+    void UltraCanvasColorPicker::StepChannel(int row, float direction) {
+        if (row == 3) {
+            int a = (int)alpha + (int)direction;
+            alpha = (uint8_t)std::clamp(a, 0, 255);
+        } else {
+            std::string label; float value, mn, mx;
+            GetChannelInfo(row, label, value, mn, mx);
+            SetChannelValue(row, std::clamp(value + direction, mn, mx));
+        }
+        Changed(true);
     }
 
     // ===================================================================
@@ -367,7 +505,7 @@ namespace UltraCanvas {
         float am = (hue + 180.0f) * (float)M_PI / 180.0f;
         float rm = (ringInner + ringOuter) * 0.5f;
         Point2Dd mp(wheelCenter.x + rm * std::cos(am), wheelCenter.y + rm * std::sin(am));
-        float mr = style.ringThickness * 0.42f;
+        float mr = Scaled(style.ringThickness) * 0.42f;
         ctx->SetFillPaint(HSV(hue, 1.0f, 1.0f));
         ctx->FillCircle(mp, mr);
         ctx->SetStrokePaint(style.markerColor);
@@ -376,6 +514,33 @@ namespace UltraCanvas {
         ctx->SetStrokePaint(style.markerOutline);
         ctx->SetStrokeWidth(1.0);
         ctx->DrawCircle(mp, mr + 1.5f);
+    }
+
+    void UltraCanvasColorPicker::RenderHueBar(IRenderContext* ctx) {
+        // Full hue range painted inside a thick bar; the control point travels
+        // inside the bar (Slider-demo palette style).
+        Rect2Dd bar(hueBarRect.x, hueBarRect.y, hueBarRect.width, hueBarRect.height);
+        double radius = bar.height * 0.5;
+        std::vector<GradientStop> stops;
+        for (int i = 0; i <= 6; ++i)
+            stops.emplace_back(i / 6.0, HSV(i * 60.0f, 1.0f, 1.0f));
+        auto grad = ctx->CreateLinearGradientPattern(bar.x, bar.y, bar.x + bar.width, bar.y, stops);
+        ctx->SetFillPaint(grad);
+        ctx->FillRoundedRectangle(bar, radius);
+        ctx->SetStrokePaint(style.fieldBorderColor);
+        ctx->SetStrokeWidth(1.0);
+        ctx->DrawRoundedRectangle(bar, radius);
+
+        // Handle inside the bar
+        float hr = std::max(3.0f, (float)radius - Scaled(2.0f));
+        float t = std::clamp(hue / 360.0f, 0.0f, 1.0f);
+        float cx = hueBarRect.x + radius + t * (hueBarRect.width - 2.0f * radius);
+        float cy = hueBarRect.y + hueBarRect.height * 0.5f;
+        ctx->SetFillPaint(HSV(hue, 1.0f, 1.0f));
+        ctx->FillCircle(Point2Dd(cx, cy), hr);
+        ctx->SetStrokePaint(style.markerColor);
+        ctx->SetStrokeWidth(2.0);
+        ctx->DrawCircle(Point2Dd(cx, cy), hr);
     }
 
     void UltraCanvasColorPicker::RenderSVSquare(IRenderContext* ctx) {
@@ -404,15 +569,15 @@ namespace UltraCanvas {
         float my = svRect.y + (1.0f - val) * svRect.height;
         ctx->SetStrokePaint(style.markerColor);
         ctx->SetStrokeWidth(2.0);
-        ctx->DrawCircle(Point2Dd(mx, my), 6.0);
+        ctx->DrawCircle(Point2Dd(mx, my), Scaled(6.0f));
         ctx->SetStrokePaint(style.markerOutline);
         ctx->SetStrokeWidth(1.0);
-        ctx->DrawCircle(Point2Dd(mx, my), 7.5);
+        ctx->DrawCircle(Point2Dd(mx, my), Scaled(7.5f));
     }
 
     void UltraCanvasColorPicker::RenderSwatches(IRenderContext* ctx) {
         // Previous (behind), then current (in front)
-        DrawCheckerboard(ctx, previousSwatchRect, 8.0f);
+        DrawCheckerboard(ctx, previousSwatchRect, Scaled(8.0f));
         ctx->SetFillPaint(previousColor);
         ctx->FillRectangle(Rect2Dd(previousSwatchRect.x, previousSwatchRect.y,
                                    previousSwatchRect.width, previousSwatchRect.height));
@@ -421,7 +586,7 @@ namespace UltraCanvas {
         ctx->DrawRectangle(Rect2Dd(previousSwatchRect.x, previousSwatchRect.y,
                                    previousSwatchRect.width, previousSwatchRect.height));
 
-        DrawCheckerboard(ctx, currentSwatchRect, 8.0f);
+        DrawCheckerboard(ctx, currentSwatchRect, Scaled(8.0f));
         ctx->SetFillPaint(GetColor());
         ctx->FillRectangle(Rect2Dd(currentSwatchRect.x, currentSwatchRect.y,
                                    currentSwatchRect.width, currentSwatchRect.height));
@@ -429,50 +594,60 @@ namespace UltraCanvas {
         ctx->DrawRectangle(Rect2Dd(currentSwatchRect.x, currentSwatchRect.y,
                                    currentSwatchRect.width, currentSwatchRect.height));
 
-        // Swap arrow (two-way)
+        // Swap symbol: bent double-headed arrow in the corner between the two
+        // swatches — one head points at the foreground swatch (left), the other
+        // down at the background swatch.
+        const float L = swapArrowRect.x, T = swapArrowRect.y;
+        const float Wd = swapArrowRect.width, Ht = swapArrowRect.height;
+        const float ah = std::max(2.0f, Scaled(3.5f));    // arrowhead size
+        Point2Dd leftEnd(L + Wd * 0.05f, T + Ht * 0.30f);
+        Point2Dd corner (L + Wd * 0.78f, T + Ht * 0.30f);
+        Point2Dd downEnd(L + Wd * 0.78f, T + Ht * 0.95f);
         ctx->SetStrokePaint(style.mutedTextColor);
         ctx->SetStrokeWidth(1.5);
-        float ax = swapArrowRect.x, ay = swapArrowRect.y;
-        ctx->DrawLine(Point2Dd(ax + 2, ay + 6), Point2Dd(ax + 14, ay + 6));
-        ctx->DrawLine(Point2Dd(ax + 14, ay + 6), Point2Dd(ax + 10, ay + 2));
-        ctx->DrawLine(Point2Dd(ax + 14, ay + 14), Point2Dd(ax + 2, ay + 14));
-        ctx->DrawLine(Point2Dd(ax + 2, ay + 14), Point2Dd(ax + 6, ay + 18));
+        ctx->DrawLine(leftEnd, corner);
+        ctx->DrawLine(corner, downEnd);
+        ctx->DrawLine(leftEnd, Point2Dd(leftEnd.x + ah, leftEnd.y - ah));
+        ctx->DrawLine(leftEnd, Point2Dd(leftEnd.x + ah, leftEnd.y + ah));
+        ctx->DrawLine(downEnd, Point2Dd(downEnd.x - ah, downEnd.y - ah));
+        ctx->DrawLine(downEnd, Point2Dd(downEnd.x + ah, downEnd.y - ah));
     }
 
     void UltraCanvasColorPicker::RenderModeButton(IRenderContext* ctx) {
         ctx->SetFillPaint(style.fieldColor);
         ctx->FillRoundedRectangle(Rect2Dd(modeButtonRect.x, modeButtonRect.y,
                                           modeButtonRect.width, modeButtonRect.height),
-                                  style.cornerRadius);
+                                  Scaled(style.cornerRadius));
         ctx->SetStrokePaint(style.fieldBorderColor);
         ctx->SetStrokeWidth(1.0);
         ctx->DrawRoundedRectangle(Rect2Dd(modeButtonRect.x, modeButtonRect.y,
                                           modeButtonRect.width, modeButtonRect.height),
-                                  style.cornerRadius);
+                                  Scaled(style.cornerRadius));
 
         const char* names[3] = {"HSV", "HSL", "RGB"};
         SetFont(ctx);
         ctx->SetTextAlignment(TextAlignment::Left);
         ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
         ctx->DrawTextInRect(names[(int)model],
-                            Rect2Dd(modeButtonRect.x + 8, modeButtonRect.y,
-                                    modeButtonRect.width - 20, modeButtonRect.height));
+                            Rect2Dd(modeButtonRect.x + Scaled(8.0f), modeButtonRect.y,
+                                    modeButtonRect.width - Scaled(20.0f), modeButtonRect.height));
 
         // Down triangle
-        float tx = modeButtonRect.x + modeButtonRect.width - 14;
-        float ty = modeButtonRect.y + modeButtonRect.height * 0.5f - 2;
+        float tx = modeButtonRect.x + modeButtonRect.width - Scaled(14.0f);
+        float ty = modeButtonRect.y + modeButtonRect.height * 0.5f - Scaled(2.0f);
         ctx->SetFillPaint(style.mutedTextColor);
-        ctx->FillLinePath({Point2Dd(tx, ty), Point2Dd(tx + 8, ty), Point2Dd(tx + 4, ty + 5)});
+        ctx->FillLinePath({Point2Dd(tx, ty), Point2Dd(tx + Scaled(8.0f), ty),
+                           Point2Dd(tx + Scaled(4.0f), ty + Scaled(5.0f))});
     }
 
     void UltraCanvasColorPicker::RenderScreenPickButton(IRenderContext* ctx) {
         Rect2Dd r(screenPickRect.x, screenPickRect.y,
                   screenPickRect.width, screenPickRect.height);
-        ctx->SetFillPaint(style.fieldColor);
-        ctx->FillRoundedRectangle(r, style.cornerRadius);
-        ctx->SetStrokePaint(style.fieldBorderColor);
-        ctx->SetStrokeWidth(1.0);
-        ctx->DrawRoundedRectangle(r, style.cornerRadius);
+        ctx->SetFillPaint(screenPickActive ? style.panelColor : style.fieldColor);
+        ctx->FillRoundedRectangle(r, Scaled(style.cornerRadius));
+        ctx->SetStrokePaint(screenPickActive ? style.accentColor : style.fieldBorderColor);
+        ctx->SetStrokeWidth(screenPickActive ? 1.5 : 1.0);
+        ctx->DrawRoundedRectangle(r, Scaled(style.cornerRadius));
 
         // Eyedropper glyph: a diagonal barrel with a squeeze-bulb at the top-right
         // and a pointed tip at the bottom-left.
@@ -502,33 +677,33 @@ namespace UltraCanvas {
         ctx->SetFillPaint(style.fieldColor);
         ctx->FillRoundedRectangle(Rect2Dd(hexFieldRect.x, hexFieldRect.y,
                                           hexFieldRect.width, hexFieldRect.height),
-                                  style.cornerRadius);
+                                  Scaled(style.cornerRadius));
         ctx->SetStrokePaint(editing ? style.accentColor : style.fieldBorderColor);
         ctx->SetStrokeWidth(editing ? 1.5 : 1.0);
         ctx->DrawRoundedRectangle(Rect2Dd(hexFieldRect.x, hexFieldRect.y,
                                           hexFieldRect.width, hexFieldRect.height),
-                                  style.cornerRadius);
+                                  Scaled(style.cornerRadius));
 
         std::string text = editing ? (editBuffer + "|") : GetColor().ToHexStringWithAlpha();
         SetFont(ctx);
         ctx->SetTextAlignment(TextAlignment::Left);
         ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-        ctx->DrawTextInRect(text, Rect2Dd(hexFieldRect.x + 8, hexFieldRect.y,
-                                          hexFieldRect.width - 12, hexFieldRect.height));
+        ctx->DrawTextInRect(text, Rect2Dd(hexFieldRect.x + Scaled(8.0f), hexFieldRect.y,
+                                          hexFieldRect.width - Scaled(12.0f), hexFieldRect.height));
     }
 
     void UltraCanvasColorPicker::RenderTabs(IRenderContext* ctx) {
         const char* names[3] = {"HSV", "HSL", "RGB"};
         ctx->SetFillPaint(style.fieldColor);
         ctx->FillRoundedRectangle(Rect2Dd(tabRect.x, tabRect.y, tabRect.width, tabRect.height),
-                                  style.cornerRadius);
+                                  Scaled(style.cornerRadius));
         for (int i = 0; i < 3; ++i) {
             bool active = ((int)model == i);
             const Rect2Df& tb = tabRects[i];
             if (active) {
                 ctx->SetFillPaint(style.panelColor);
                 ctx->FillRoundedRectangle(Rect2Dd(tb.x + 1, tb.y + 1, tb.width - 2, tb.height - 2),
-                                          style.cornerRadius);
+                                          Scaled(style.cornerRadius));
             }
             SetFont(ctx, !active);
             ctx->SetTextAlignment(TextAlignment::Center);
@@ -539,7 +714,112 @@ namespace UltraCanvas {
         ctx->SetStrokePaint(style.fieldBorderColor);
         ctx->SetStrokeWidth(1.0);
         ctx->DrawRoundedRectangle(Rect2Dd(tabRect.x, tabRect.y, tabRect.width, tabRect.height),
-                                  style.cornerRadius);
+                                  Scaled(style.cornerRadius));
+    }
+
+    void UltraCanvasColorPicker::RenderSlidersHeader(IRenderContext* ctx) {
+        const Rect2Df& hr = slidersHeaderRect;
+        // Disclosure triangle: right-pointing when collapsed, down when expanded.
+        float cx = hr.x + Scaled(4.0f);
+        float cy = hr.y + hr.height * 0.5f;
+        float s = Scaled(5.0f);
+        ctx->SetFillPaint(style.mutedTextColor);
+        if (slidersExpanded) {
+            ctx->FillLinePath({Point2Dd(cx, cy - s * 0.6f), Point2Dd(cx + 2 * s, cy - s * 0.6f),
+                               Point2Dd(cx + s, cy + s)});
+        } else {
+            ctx->FillLinePath({Point2Dd(cx, cy - s), Point2Dd(cx + s * 1.6f, cy),
+                               Point2Dd(cx, cy + s)});
+        }
+        SetFont(ctx, true);
+        ctx->SetTextAlignment(TextAlignment::Left);
+        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
+        ctx->DrawTextInRect(slidersExpanded ? "Channels" : ("Channels  (" +
+                            GetColor().ToHexStringWithAlpha() + ")"),
+                            Rect2Dd(hr.x + Scaled(18.0f), hr.y,
+                                    hr.width - Scaled(20.0f), hr.height));
+    }
+
+    void UltraCanvasColorPicker::RenderSliderTrackAndHandle(
+            IRenderContext* ctx, int row, float t,
+            const std::shared_ptr<IPaintPattern>& gradient, bool checkerUnder) {
+        const Rect2Df& tr = rowSliderRects[row];
+        t = std::clamp(t, 0.0f, 1.0f);
+
+        if (sliderStyle == ColorPickerSliderStyle::Thick) {
+            // Thick bar that encloses the control point: full row height with
+            // rounded end caps, handle circle travelling inside the bar.
+            float trackH = tr.height - Scaled(2.0f);
+            Rect2Df trackF(tr.x, tr.y + (tr.height - trackH) * 0.5f, tr.width, trackH);
+            Rect2Dd track(trackF.x, trackF.y, trackF.width, trackF.height);
+            double radius = trackH * 0.5;
+            if (checkerUnder) DrawCheckerboard(ctx, trackF, Scaled(6.0f));
+            ctx->SetFillPaint(gradient);
+            ctx->FillRoundedRectangle(track, radius);
+            ctx->SetStrokePaint(style.fieldBorderColor);
+            ctx->SetStrokeWidth(1.0);
+            ctx->DrawRoundedRectangle(track, radius);
+
+            float hr = std::max(3.0f, (float)radius - Scaled(2.0f));
+            float hx = trackF.x + (float)radius + t * (trackF.width - 2.0f * (float)radius);
+            float hy = trackF.y + trackH * 0.5f;
+            ctx->SetFillPaint(Colors::White);
+            ctx->FillCircle(Point2Dd(hx, hy), hr);
+            ctx->SetStrokePaint(style.accentColor);
+            ctx->SetStrokeWidth(1.5);
+            ctx->DrawCircle(Point2Dd(hx, hy), hr);
+        } else {
+            // Thin track with the handle overhanging it.
+            float trackH = Scaled(8.0f);
+            Rect2Df trackF(tr.x, tr.y + tr.height * 0.5f - trackH * 0.5f, tr.width, trackH);
+            Rect2Dd track(trackF.x, trackF.y, trackF.width, trackF.height);
+            if (checkerUnder) DrawCheckerboard(ctx, trackF, Scaled(6.0f));
+            ctx->SetFillPaint(gradient);
+            ctx->FillRoundedRectangle(track, trackH * 0.5);
+            ctx->SetStrokePaint(style.fieldBorderColor);
+            ctx->SetStrokeWidth(1.0);
+            ctx->DrawRoundedRectangle(track, trackH * 0.5);
+
+            float hx = tr.x + t * tr.width;
+            float hy = tr.y + tr.height * 0.5f;
+            ctx->SetFillPaint(Colors::White);
+            ctx->FillCircle(Point2Dd(hx, hy), Scaled(6.0f));
+            ctx->SetStrokePaint(style.accentColor);
+            ctx->SetStrokeWidth(1.5);
+            ctx->DrawCircle(Point2Dd(hx, hy), Scaled(6.0f));
+        }
+    }
+
+    void UltraCanvasColorPicker::RenderValueBox(IRenderContext* ctx, int row,
+                                                bool editing, const std::string& text) {
+        const Rect2Df& vb = rowValueRects[row];
+        ctx->SetFillPaint(style.fieldColor);
+        ctx->FillRoundedRectangle(Rect2Dd(vb.x, vb.y, vb.width, vb.height),
+                                  Scaled(style.cornerRadius));
+        ctx->SetStrokePaint(editing ? style.accentColor : style.fieldBorderColor);
+        ctx->SetStrokeWidth(editing ? 1.5 : 1.0);
+        ctx->DrawRoundedRectangle(Rect2Dd(vb.x, vb.y, vb.width, vb.height),
+                                  Scaled(style.cornerRadius));
+
+        float aw = showValueSpinners ? Scaled(14.0f) : 0.0f;
+        if (showValueSpinners) {
+            // < and > step arrows inside the box edges
+            float ah = Scaled(4.0f);
+            float cy = vb.y + vb.height * 0.5f;
+            ctx->SetStrokePaint(style.mutedTextColor);
+            ctx->SetStrokeWidth(1.5);
+            float lx = vb.x + aw * 0.62f;
+            ctx->DrawLine(Point2Dd(lx, cy - ah), Point2Dd(lx - ah, cy));
+            ctx->DrawLine(Point2Dd(lx - ah, cy), Point2Dd(lx, cy + ah));
+            float rx = vb.x + vb.width - aw * 0.62f;
+            ctx->DrawLine(Point2Dd(rx, cy - ah), Point2Dd(rx + ah, cy));
+            ctx->DrawLine(Point2Dd(rx + ah, cy), Point2Dd(rx, cy + ah));
+        }
+
+        SetFont(ctx);
+        ctx->SetTextAlignment(TextAlignment::Center);
+        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
+        ctx->DrawTextInRect(text, Rect2Dd(vb.x + aw, vb.y, vb.width - 2.0f * aw, vb.height));
     }
 
     void UltraCanvasColorPicker::RenderChannelRow(IRenderContext* ctx, int row) {
@@ -553,43 +833,16 @@ namespace UltraCanvas {
         ctx->DrawTextInRect(label, Rect2Dd(rowLabelRects[row].x, rowLabelRects[row].y,
                                            rowLabelRects[row].width, rowLabelRects[row].height));
 
-        // Slider track with gradient
-        const Rect2Df& tr = rowSliderRects[row];
-        Rect2Dd track(tr.x, tr.y + tr.height * 0.5f - 4.0f, tr.width, 8.0);
-        auto grad = MakeChannelGradient(ctx, row);
-        ctx->SetFillPaint(grad);
-        ctx->FillRoundedRectangle(track, 4.0);
-        ctx->SetStrokePaint(style.fieldBorderColor);
-        ctx->SetStrokeWidth(1.0);
-        ctx->DrawRoundedRectangle(track, 4.0);
-
-        // Handle
+        // Slider track with gradient + handle
         float t = (mx > mn) ? (value - mn) / (mx - mn) : 0.0f;
-        t = std::clamp(t, 0.0f, 1.0f);
-        float hx = tr.x + t * tr.width;
-        float hy = tr.y + tr.height * 0.5f;
-        ctx->SetFillPaint(Colors::White);
-        ctx->FillCircle(Point2Dd(hx, hy), 6.0);
-        ctx->SetStrokePaint(style.accentColor);
-        ctx->SetStrokeWidth(1.5);
-        ctx->DrawCircle(Point2Dd(hx, hy), 6.0);
+        RenderSliderTrackAndHandle(ctx, row, t, MakeChannelGradient(ctx, row), false);
 
         // Value box
         bool editing = ((row == 0 && editField == EditField::Channel0) ||
                         (row == 1 && editField == EditField::Channel1) ||
                         (row == 2 && editField == EditField::Channel2));
-        const Rect2Df& vb = rowValueRects[row];
-        ctx->SetFillPaint(style.fieldColor);
-        ctx->FillRoundedRectangle(Rect2Dd(vb.x, vb.y, vb.width, vb.height), style.cornerRadius);
-        ctx->SetStrokePaint(editing ? style.accentColor : style.fieldBorderColor);
-        ctx->SetStrokeWidth(editing ? 1.5 : 1.0);
-        ctx->DrawRoundedRectangle(Rect2Dd(vb.x, vb.y, vb.width, vb.height), style.cornerRadius);
-
         std::string vtext = editing ? (editBuffer + "|") : FormatChannel(row);
-        SetFont(ctx);
-        ctx->SetTextAlignment(TextAlignment::Center);
-        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-        ctx->DrawTextInRect(vtext, Rect2Dd(vb.x, vb.y, vb.width, vb.height));
+        RenderValueBox(ctx, row, editing, vtext);
     }
 
     void UltraCanvasColorPicker::RenderAlphaRow(IRenderContext* ctx) {
@@ -602,59 +855,33 @@ namespace UltraCanvas {
                                          rowLabelRects[row].width, rowLabelRects[row].height));
 
         const Rect2Df& tr = rowSliderRects[row];
-        Rect2Df trackF(tr.x, tr.y + tr.height * 0.5f - 4.0f, tr.width, 8.0f);
-        Rect2Dd track(trackF.x, trackF.y, trackF.width, trackF.height);
-        DrawCheckerboard(ctx, trackF, 6.0f);
         Color opaque = GetColor(); opaque.a = 255;
         Color clear = opaque; clear.a = 0;
         auto grad = ctx->CreateLinearGradientPattern(
-                track.x, track.y, track.x + track.width, track.y,
+                tr.x, tr.y, tr.x + tr.width, tr.y,
                 {GradientStop(0.0, clear), GradientStop(1.0, opaque)});
-        ctx->SetFillPaint(grad);
-        ctx->FillRoundedRectangle(track, 4.0);
-        ctx->SetStrokePaint(style.fieldBorderColor);
-        ctx->SetStrokeWidth(1.0);
-        ctx->DrawRoundedRectangle(track, 4.0);
-
-        float t = alpha / 255.0f;
-        float hx = tr.x + t * tr.width;
-        float hy = tr.y + tr.height * 0.5f;
-        ctx->SetFillPaint(Colors::White);
-        ctx->FillCircle(Point2Dd(hx, hy), 6.0);
-        ctx->SetStrokePaint(style.accentColor);
-        ctx->SetStrokeWidth(1.5);
-        ctx->DrawCircle(Point2Dd(hx, hy), 6.0);
+        RenderSliderTrackAndHandle(ctx, row, alpha / 255.0f, grad, true);
 
         bool editing = (editField == EditField::Alpha);
-        const Rect2Df& vb = rowValueRects[row];
-        ctx->SetFillPaint(style.fieldColor);
-        ctx->FillRoundedRectangle(Rect2Dd(vb.x, vb.y, vb.width, vb.height), style.cornerRadius);
-        ctx->SetStrokePaint(editing ? style.accentColor : style.fieldBorderColor);
-        ctx->SetStrokeWidth(editing ? 1.5 : 1.0);
-        ctx->DrawRoundedRectangle(Rect2Dd(vb.x, vb.y, vb.width, vb.height), style.cornerRadius);
-
         char buf[16];
         std::snprintf(buf, sizeof(buf), "%d", (int)alpha);
         std::string vtext = editing ? (editBuffer + "|") : std::string(buf);
-        SetFont(ctx);
-        ctx->SetTextAlignment(TextAlignment::Center);
-        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-        ctx->DrawTextInRect(vtext, Rect2Dd(vb.x, vb.y, vb.width, vb.height));
+        RenderValueBox(ctx, row, editing, vtext);
     }
 
     void UltraCanvasColorPicker::RenderDropdownPopup(IRenderContext* ctx) {
         const char* names[3] = {"HSV", "HSL", "RGB"};
-        float itemH = style.rowHeight;
+        float itemH = Scaled(style.rowHeight);
         float w = modeButtonRect.width;
         float x = modeButtonRect.x;
         float y = modeButtonRect.y + modeButtonRect.height + 2.0f;
         Rect2Dd box(x, y, w, itemH * 3.0f);
 
         ctx->SetFillPaint(style.fieldColor);
-        ctx->FillRoundedRectangle(box, style.cornerRadius);
+        ctx->FillRoundedRectangle(box, Scaled(style.cornerRadius));
         ctx->SetStrokePaint(style.fieldBorderColor);
         ctx->SetStrokeWidth(1.0);
-        ctx->DrawRoundedRectangle(box, style.cornerRadius);
+        ctx->DrawRoundedRectangle(box, Scaled(style.cornerRadius));
 
         for (int i = 0; i < 3; ++i) {
             Rect2Dd item(x, y + i * itemH, w, itemH);
@@ -665,7 +892,8 @@ namespace UltraCanvas {
             SetFont(ctx);
             ctx->SetTextAlignment(TextAlignment::Left);
             ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-            ctx->DrawTextInRect(names[i], Rect2Dd(item.x + 8, item.y, item.width - 12, item.height));
+            ctx->DrawTextInRect(names[i], Rect2Dd(item.x + Scaled(8.0f), item.y,
+                                                  item.width - Scaled(12.0f), item.height));
         }
     }
 
@@ -682,19 +910,27 @@ namespace UltraCanvas {
         ctx->FillRectangle(Rect2Dd(0, 0, GetWidth(), GetHeight()));
 
         if (showColorWheel) {
-            RenderHueRing(ctx);
+            if (wheelStyle == ColorPickerWheelStyle::Ring) {
+                RenderHueRing(ctx);
+            } else {
+                RenderHueBar(ctx);
+            }
             RenderSVSquare(ctx);
             RenderSwatches(ctx);
             RenderScreenPickButton(ctx);
         }
-        RenderModeButton(ctx);
+        if (modeSelector == ColorPickerModeSelector::Dropdown) {
+            RenderModeButton(ctx);
+        } else {
+            RenderTabs(ctx);
+        }
         RenderHexField(ctx);
-        RenderTabs(ctx);
+        if (slidersCollapsible) RenderSlidersHeader(ctx);
 
-        int nRows = 3 + (showAlpha ? 1 : 0);
-        for (int i = 0; i < 3; ++i) RenderChannelRow(ctx, i);
-        if (showAlpha) RenderAlphaRow(ctx);
-        (void)nRows;
+        if (SlidersVisible()) {
+            for (int i = 0; i < 3; ++i) RenderChannelRow(ctx, i);
+            if (showAlpha) RenderAlphaRow(ctx);
+        }
 
         if (dropdownOpen) RenderDropdownPopup(ctx);
     }
@@ -731,7 +967,7 @@ namespace UltraCanvas {
 
         // Dropdown popup takes priority while open
         if (dropdownOpen) {
-            float itemH = style.rowHeight;
+            float itemH = Scaled(style.rowHeight);
             float x = modeButtonRect.x;
             float y = modeButtonRect.y + modeButtonRect.height + 2.0f;
             Rect2Df popup(x, y, modeButtonRect.width, itemH * 3.0f);
@@ -750,21 +986,33 @@ namespace UltraCanvas {
         }
 
         if (showColorWheel) {
-            // Eyedropper: left mouse samples the screen into the foreground colour,
-            // right mouse into the background colour. Actual sampling is done by the
-            // host via the onScreenColorPick callback.
+            // Eyedropper: with an onScreenColorPick host callback the host does
+            // the sampling (left mouse = foreground, right mouse = background).
+            // Without a callback the built-in mode arms: the pointer becomes an
+            // eyedropper and the next click in the window is sampled.
             if (screenPickRect.Contains(p)) {
-                bool foreground = (event.button != UCMouseButton::Right);
-                if (onScreenColorPick) onScreenColorPick(foreground);
+                if (onScreenColorPick) {
+                    bool foreground = (event.button != UCMouseButton::Right);
+                    onScreenColorPick(foreground);
+                } else {
+                    StartScreenPick();
+                }
                 return true;
             }
 
-            float dx = p.x - wheelCenter.x;
-            float dy = p.y - wheelCenter.y;
-            float dist = std::sqrt(dx * dx + dy * dy);
-            if (dist >= ringInner && dist <= ringOuter) {
-                dragTarget = DragTarget::HueRing;
-                UpdateHueFromPoint(p);
+            if (wheelStyle == ColorPickerWheelStyle::Ring) {
+                float dx = p.x - wheelCenter.x;
+                float dy = p.y - wheelCenter.y;
+                float dist = std::sqrt(dx * dx + dy * dy);
+                if (dist >= ringInner && dist <= ringOuter) {
+                    dragTarget = DragTarget::HueRing;
+                    UpdateHueFromPoint(p);
+                    Changed(false);
+                    return true;
+                }
+            } else if (hueBarRect.Contains(p)) {
+                dragTarget = DragTarget::HueBar;
+                UpdateHueFromBar(p);
                 Changed(false);
                 return true;
             }
@@ -790,7 +1038,8 @@ namespace UltraCanvas {
             }
         }
 
-        if (modeButtonRect.Contains(p)) {
+        if (modeSelector == ColorPickerModeSelector::Dropdown &&
+            modeButtonRect.Contains(p)) {
             dropdownOpen = true;
             RequestRedraw();
             return true;
@@ -799,27 +1048,39 @@ namespace UltraCanvas {
             BeginEdit(EditField::Hex);
             return true;
         }
-        for (int i = 0; i < 3; ++i) {
-            if (tabRects[i].Contains(p)) {
-                SetModel((ColorPickerModel)i);
-                return true;
+        if (modeSelector == ColorPickerModeSelector::TabBar) {
+            for (int i = 0; i < 3; ++i) {
+                if (tabRects[i].Contains(p)) {
+                    SetModel((ColorPickerModel)i);
+                    return true;
+                }
             }
         }
+        if (slidersCollapsible && slidersHeaderRect.Contains(p)) {
+            SetSlidersExpanded(!slidersExpanded);
+            return true;
+        }
 
-        int nRows = 3 + (showAlpha ? 1 : 0);
-        for (int i = 0; i < nRows; ++i) {
-            if (rowValueRects[i].Contains(p)) {
-                EditField fields[4] = {EditField::Channel0, EditField::Channel1,
-                                       EditField::Channel2, EditField::Alpha};
-                BeginEdit(fields[i]);
-                return true;
-            }
-            if (rowSliderRects[i].Contains(p)) {
-                DragTarget targets[4] = {DragTarget::Channel0, DragTarget::Channel1,
-                                         DragTarget::Channel2, DragTarget::Alpha};
-                dragTarget = targets[i];
-                ApplyDrag(p, false);
-                return true;
+        if (SlidersVisible()) {
+            int nRows = 3 + (showAlpha ? 1 : 0);
+            for (int i = 0; i < nRows; ++i) {
+                if (rowValueRects[i].Contains(p)) {
+                    if (showValueSpinners) {
+                        if (SpinnerDownRect(i).Contains(p)) { StepChannel(i, -1.0f); return true; }
+                        if (SpinnerUpRect(i).Contains(p))   { StepChannel(i, +1.0f); return true; }
+                    }
+                    EditField fields[4] = {EditField::Channel0, EditField::Channel1,
+                                           EditField::Channel2, EditField::Alpha};
+                    BeginEdit(fields[i]);
+                    return true;
+                }
+                if (rowSliderRects[i].Contains(p)) {
+                    DragTarget targets[4] = {DragTarget::Channel0, DragTarget::Channel1,
+                                             DragTarget::Channel2, DragTarget::Alpha};
+                    dragTarget = targets[i];
+                    ApplyDrag(p, false);
+                    return true;
+                }
             }
         }
         return false;
@@ -862,6 +1123,7 @@ namespace UltraCanvas {
     void UltraCanvasColorPicker::ApplyDrag(const Point2Df& p, bool finished) {
         switch (dragTarget) {
             case DragTarget::HueRing:  UpdateHueFromPoint(p); break;
+            case DragTarget::HueBar:   UpdateHueFromBar(p); break;
             case DragTarget::SVSquare: UpdateSVFromPoint(p); break;
             case DragTarget::Channel0:
             case DragTarget::Channel1:
@@ -894,11 +1156,102 @@ namespace UltraCanvas {
         hue = h;
     }
 
+    void UltraCanvasColorPicker::UpdateHueFromBar(const Point2Df& p) {
+        // Match the handle travel used in RenderHueBar (end caps excluded).
+        float radius = hueBarRect.height * 0.5f;
+        float span = std::max(1.0f, hueBarRect.width - 2.0f * radius);
+        float t = std::clamp((p.x - hueBarRect.x - radius) / span, 0.0f, 1.0f);
+        hue = t * 360.0f;
+    }
+
     void UltraCanvasColorPicker::UpdateSVFromPoint(const Point2Df& p) {
         float s = (p.x - svRect.x) / std::max(1.0f, svRect.width);
         float v = 1.0f - (p.y - svRect.y) / std::max(1.0f, svRect.height);
         sat = std::clamp(s, 0.0f, 1.0f);
         val = std::clamp(v, 0.0f, 1.0f);
+    }
+
+    // ===================================================================
+    // Built-in screen colour picking (eyedropper)
+    // ===================================================================
+    std::string UltraCanvasColorPicker::ScreenPickFilterId() const {
+        return "UCColorPickerScreenPick_" + GetIdentifier();
+    }
+
+    void UltraCanvasColorPicker::StartScreenPick() {
+        if (screenPickActive) return;
+        auto* win = GetWindow();
+        if (!win) return;
+        screenPickActive = true;
+
+        // Switch the pointer to an eyedropper cursor; fall back to the
+        // crosshair when the cursor image cannot be loaded.
+        std::string cursorFile = NormalizePath(GetResourcesDir() +
+                                               "media/lib/cursor/color-picker.png");
+        // Hotspot at the dropper tip (bottom-left of the 24x24 image).
+        if (win->SelectMouseCursor(UCMouseCursor::Custom1, cursorFile.c_str(), 1, 22)) {
+            screenPickCursor = UCMouseCursor::Custom1;
+        } else {
+            screenPickCursor = UCMouseCursor::Cross;
+            win->SelectMouseCursor(screenPickCursor);
+        }
+
+        // Window-level filter: the sampling click can land on any widget in the
+        // window, so intercept events before normal dispatch. MouseMove is
+        // filtered too so the hover logic cannot swap the eyedropper cursor for
+        // the hovered element's cursor. Installed once and left in place (the
+        // screenPickActive guard makes it a no-op while disarmed); removing it
+        // from inside its own invocation would destroy the running lambda.
+        if (!screenPickFilterInstalled) {
+            screenPickFilterInstalled = true;
+            win->InstallEventFilter(ScreenPickFilterId(),
+                [this](const UCEvent& e) -> bool {
+                    if (!screenPickActive) return false;
+                    switch (e.type) {
+                        case UCEventType::MouseMove:
+                            if (auto* w = GetWindow()) w->SelectMouseCursor(screenPickCursor);
+                            return false;               // hover handling may continue
+                        case UCEventType::KeyDown:
+                            if (e.virtualKey == UCKeys::Escape) {
+                                EndScreenPick();
+                                return true;
+                            }
+                            return false;
+                        case UCEventType::MouseDown:
+                            HandleScreenPickClick(e);
+                            return true;                // consume the sampling click
+                        default:
+                            return false;
+                    }
+                },
+                { UCEventType::MouseDown, UCEventType::MouseMove, UCEventType::KeyDown });
+        }
+        RequestRedraw();
+    }
+
+    void UltraCanvasColorPicker::HandleScreenPickClick(const UCEvent& event) {
+        // Select (left) button -> foreground colour; Adjust (right) button ->
+        // background colour.
+        bool foreground = (event.button != UCMouseButton::Right);
+        Color sampled;
+        auto* win = GetWindow();
+        if (win && win->GetPixelColor(event.pointerWindow.x, event.pointerWindow.y, sampled)) {
+            sampled.a = 255;
+            if (foreground) SetForegroundColor(sampled, true);
+            else            SetBackgroundColor(sampled);
+        }
+        EndScreenPick();
+    }
+
+    void UltraCanvasColorPicker::EndScreenPick(bool restoreCursor) {
+        if (!screenPickActive) return;
+        screenPickActive = false;
+        // The event filter stays installed (guarded by screenPickActive); it is
+        // only removed in the destructor.
+        if (restoreCursor) {
+            if (auto* win = GetWindow()) win->SelectMouseCursor(UCMouseCursor::Default);
+        }
+        RequestRedraw();
     }
 
     // ===================================================================

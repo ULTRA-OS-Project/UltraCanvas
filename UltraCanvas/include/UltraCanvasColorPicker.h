@@ -1,12 +1,15 @@
 // include/UltraCanvasColorPicker.h
-// Comprehensive colour picker widget with HSV colour wheel, SV square,
-// foreground/background swatches, hex input, mode selector (HSV/HSL/RGB) and
-// editable channel sliders with an alpha channel. Hovering a swatch floods the
-// whole widget surface with that colour so it can be judged on a large area,
-// and a screen colour-picker ("eyedropper") button samples a pixel from the
-// screen into the foreground (left mouse) or background (right mouse) colour.
-// Version: 1.1.0
-// Last Modified: 2026-07-12
+// Comprehensive colour picker widget with HSV colour wheel (ring or bar
+// layout), SV square, foreground/background swatches, hex input, mode selector
+// (HSV/HSL/RGB as either a tab bar or a dropdown) and editable channel sliders
+// (thin or thick style, optional +/- spinners, optionally collapsible) with an
+// alpha channel. Hovering a swatch floods the whole widget surface with that
+// colour so it can be judged on a large area, and a screen colour-picker
+// ("eyedropper") button switches the pointer to an eyedropper cursor and
+// samples a pixel from the window into the foreground (left/Select mouse) or
+// background (right/Adjust mouse) colour.
+// Version: 1.2.0
+// Last Modified: 2026-07-20
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -30,6 +33,26 @@ namespace UltraCanvas {
         RGB
     };
 
+// ===== MODE SELECTOR PRESENTATION =====
+// The HSV/HSL/RGB model can be switched either with a clickable tab bar or
+// with a dropdown button; the two presentations are mutually exclusive.
+    enum class ColorPickerModeSelector {
+        TabBar,     // row of HSV | HSL | RGB tabs (default)
+        Dropdown    // compact dropdown button
+    };
+
+// ===== CHANNEL SLIDER PRESENTATION =====
+    enum class ColorPickerSliderStyle {
+        Thin,       // thin track with the handle overhanging it (default)
+        Thick       // thick bar that fully encloses the control point
+    };
+
+// ===== HUE + SV AREA PRESENTATION =====
+    enum class ColorPickerWheelStyle {
+        Ring,       // circular hue ring with the SV square inscribed (default)
+        Bar         // maximised SV rectangle with a hue bar underneath
+    };
+
 // ===== STYLING =====
     struct ColorPickerStyle {
         // Surface
@@ -48,12 +71,17 @@ namespace UltraCanvas {
 
         // Metrics
         float padding = 10.0f;
-        float ringThickness = 26.0f;     // hue ring thickness
+        float ringThickness = 26.0f;     // hue ring thickness (Ring style)
+        float hueBarHeight = 18.0f;      // hue bar height (Bar style)
         float cornerRadius = 4.0f;
         float rowHeight = 22.0f;
         float rowGap = 6.0f;
         float tabHeight = 24.0f;
         float swatchSize = 36.0f;
+
+        // Uniform scale applied to every metric and font above (0.6 = 60%
+        // sized picker). Lets the same widget be embedded at reduced size.
+        float uiScale = 1.0f;
 
         // Fonts
         std::string fontFamily = "Sans";
@@ -145,6 +173,8 @@ namespace UltraCanvas {
         explicit UltraCanvasColorPicker(const std::string& identifier)
             : UltraCanvasColorPicker(identifier, -1, -1, 290, 470) {}
 
+        ~UltraCanvasColorPicker() override;
+
         // ===== COLOUR ACCESS =====
         Color GetColor() const;
         void SetColor(const Color& color, bool notify = true);
@@ -177,6 +207,32 @@ namespace UltraCanvas {
         ColorPickerModel GetModel() const { return model; }
         void SetModel(ColorPickerModel m);
 
+        // How the HSV/HSL/RGB model selector is presented: a clickable tab bar
+        // OR a dropdown button — never both at the same time.
+        ColorPickerModeSelector GetModeSelector() const { return modeSelector; }
+        void SetModeSelector(ColorPickerModeSelector s);
+
+        // Channel slider presentation: thin track with an overhanging handle,
+        // or a thick bar that encloses the control point (Slider-demo style).
+        ColorPickerSliderStyle GetSliderStyle() const { return sliderStyle; }
+        void SetSliderStyle(ColorPickerSliderStyle s);
+
+        // Hue/SV presentation: circular ring with the inscribed SV square, or a
+        // maximised SV rectangle with the full hue range as a bar underneath.
+        ColorPickerWheelStyle GetWheelStyle() const { return wheelStyle; }
+        void SetWheelStyle(ColorPickerWheelStyle s);
+
+        // Show < and > step arrows inside each numeric value field.
+        bool GetShowValueSpinners() const { return showValueSpinners; }
+        void SetShowValueSpinners(bool show);
+
+        // When collapsible, the channel sliders hide behind a disclosure row
+        // (dropdown icon); `expanded` selects the initial state.
+        bool GetSlidersCollapsible() const { return slidersCollapsible; }
+        void SetSlidersCollapsible(bool collapsible, bool expanded = true);
+        bool GetSlidersExpanded() const { return slidersExpanded; }
+        void SetSlidersExpanded(bool expanded);
+
         // Compact mode hides the colour wheel and preview swatches, leaving only
         // the channel sliders (useful as an inline editor inside a toolbar/panel).
         void SetShowColorWheel(bool show);
@@ -188,17 +244,29 @@ namespace UltraCanvas {
         const ColorPickerStyle& GetStyle() const { return style; }
         void SetStyle(const ColorPickerStyle& s) { style = s; layoutValid = false; RequestRedraw(); }
 
+        // Convenience: scale the whole picker UI (metrics + fonts). 0.6 gives a
+        // 60% sized picker; pair it with a proportionally smaller widget size.
+        float GetUIScale() const { return style.uiScale; }
+        void SetUIScale(float scale);
+
         // ===== CALLBACKS =====
         std::function<void(const Color&)> onColorChanged;    // final value (drag end / commit)
         std::function<void(const Color&)> onColorChanging;   // continuous, during interaction
 
         // Screen colour-picker ("eyedropper") request. Fired when the eyedropper
-        // button next to the background swatch is clicked: foreground == true for
-        // a left click (sample into the foreground colour) and false for a right
-        // click (sample into the background colour). Actual screen sampling is
-        // platform specific, so the host wires this up and calls SetForegroundColor
-        // or SetBackgroundColor with the picked pixel.
+        // button next to the background swatch is clicked. When set, the host
+        // takes over: it performs platform screen sampling and writes the pixel
+        // back via SetForegroundColor / SetBackgroundColor. When NOT set, the
+        // picker runs its built-in mode: the pointer becomes an eyedropper
+        // cursor and the next click samples the window pixel under it — left
+        // (Select) button into the foreground colour, right (Adjust) button
+        // into the background colour; Escape cancels.
         std::function<void(bool foreground)> onScreenColorPick;
+
+        // Built-in eyedropper mode control (also usable programmatically).
+        bool IsScreenPickActive() const { return screenPickActive; }
+        void StartScreenPick();
+        void CancelScreenPick() { EndScreenPick(); }
 
         // ===== UIElement OVERRIDES =====
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
@@ -214,12 +282,19 @@ namespace UltraCanvas {
         Color previousColor = Colors::Red;
 
         ColorPickerModel model = ColorPickerModel::HSV;
+        ColorPickerModeSelector modeSelector = ColorPickerModeSelector::TabBar;
+        ColorPickerSliderStyle sliderStyle = ColorPickerSliderStyle::Thin;
+        ColorPickerWheelStyle wheelStyle = ColorPickerWheelStyle::Ring;
         ColorPickerStyle style;
         bool showColorWheel = true;
         bool showAlpha = true;
+        bool showValueSpinners = false;
+        bool slidersCollapsible = false;
+        bool slidersExpanded = true;
 
         // ----- Interaction state -----
-        enum class DragTarget { NoneTarget, HueRing, SVSquare, Channel0, Channel1, Channel2, Alpha };
+        enum class DragTarget { NoneTarget, HueRing, HueBar, SVSquare,
+                                Channel0, Channel1, Channel2, Alpha };
         DragTarget dragTarget = DragTarget::NoneTarget;
 
         enum class EditField { NoEdit, Hex, Channel0, Channel1, Channel2, Alpha };
@@ -227,6 +302,14 @@ namespace UltraCanvas {
         std::string editBuffer;
 
         bool dropdownOpen = false;
+
+        // Built-in eyedropper: true while waiting for the sampling click. The
+        // window event filter is installed once (lazily) and stays installed,
+        // guarded by screenPickActive — removing it from inside its own
+        // invocation would destroy the running lambda.
+        bool screenPickActive = false;
+        bool screenPickFilterInstalled = false;
+        UCMouseCursor screenPickCursor = UCMouseCursor::Cross;
 
         // Which swatch the pointer is hovering; drives the full-surface colour
         // preview (the whole widget background is flooded with that colour).
@@ -236,19 +319,21 @@ namespace UltraCanvas {
         // ----- Cached layout (recomputed on resize) -----
         bool layoutValid = false;
         float cachedW = -1, cachedH = -1;
-        Rect2Df wheelRect;          // bounding box of the hue ring
+        Rect2Df wheelRect;          // bounding box of the hue ring (Ring style)
         Point2Df wheelCenter;
         float ringOuter = 0, ringInner = 0;
-        Rect2Df svRect;             // saturation/value square
+        Rect2Df svRect;             // saturation/value square / rectangle
+        Rect2Df hueBarRect;         // hue bar (Bar style)
         Rect2Df currentSwatchRect;
         Rect2Df previousSwatchRect;
         Rect2Df swapArrowRect;
         Rect2Df screenPickRect;     // eyedropper (screen colour picker) button
-        Rect2Df modeButtonRect;
+        Rect2Df modeButtonRect;     // dropdown selector (Dropdown mode only)
         Rect2Df hexLabelRect;
         Rect2Df hexFieldRect;
-        Rect2Df tabRect;
+        Rect2Df tabRect;            // tab bar (TabBar mode only)
         std::array<Rect2Df, 3> tabRects;
+        Rect2Df slidersHeaderRect;  // disclosure row (collapsible mode only)
         // Four channel rows: label, slider track, value box (index 3 = alpha)
         std::array<Rect2Df, 4> rowLabelRects;
         std::array<Rect2Df, 4> rowSliderRects;
@@ -257,18 +342,27 @@ namespace UltraCanvas {
 
         // ----- Layout -----
         void RecalculateLayout();
+        float Scaled(float v) const { return v * std::max(0.1f, style.uiScale); }
+        bool SlidersVisible() const { return !slidersCollapsible || slidersExpanded; }
 
         // ----- Rendering helpers -----
         void RenderHueRing(IRenderContext* ctx);
+        void RenderHueBar(IRenderContext* ctx);
         void RenderSVSquare(IRenderContext* ctx);
         void RenderSwatches(IRenderContext* ctx);
         void RenderModeButton(IRenderContext* ctx);
         void RenderScreenPickButton(IRenderContext* ctx);
         void RenderHexField(IRenderContext* ctx);
         void RenderTabs(IRenderContext* ctx);
+        void RenderSlidersHeader(IRenderContext* ctx);
         void RenderChannelRow(IRenderContext* ctx, int row);
         void RenderAlphaRow(IRenderContext* ctx);
         void RenderDropdownPopup(IRenderContext* ctx);
+        void RenderSliderTrackAndHandle(IRenderContext* ctx, int row, float t,
+                                        const std::shared_ptr<IPaintPattern>& gradient,
+                                        bool checkerUnder);
+        void RenderValueBox(IRenderContext* ctx, int row, bool editing,
+                            const std::string& text);
         void DrawCheckerboard(IRenderContext* ctx, const Rect2Df& rect, float cell);
 
         // ----- Event helpers -----
@@ -279,8 +373,19 @@ namespace UltraCanvas {
 
         void ApplyDrag(const Point2Df& p, bool finished);
         void UpdateHueFromPoint(const Point2Df& p);
+        void UpdateHueFromBar(const Point2Df& p);
         void UpdateSVFromPoint(const Point2Df& p);
         void UpdateSwatchHover(const Point2Df& p);           // full-surface preview
+
+        // Value-field spinner zones (< and > arrows). Row 0..3 (3 = alpha).
+        Rect2Df SpinnerDownRect(int row) const;
+        Rect2Df SpinnerUpRect(int row) const;
+        void StepChannel(int row, float direction);          // direction = +1/-1
+
+        // ----- Built-in eyedropper -----
+        std::string ScreenPickFilterId() const;
+        void EndScreenPick(bool restoreCursor = true);
+        void HandleScreenPickClick(const UCEvent& event);
 
         // ----- Channel model glue -----
         // Returns the labels, current values and ranges for the active model.
