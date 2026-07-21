@@ -31,9 +31,11 @@ natively with the framework's `IRenderContext` primitives.
   area; moving the pointer away restores the normal UI background.
 - ✅ **Screen colour picker ("eyedropper")** — the button right of the background
   swatch arms a picking mode: the mouse pointer becomes an eyedropper cursor and
-  the next click samples the window pixel under it — **left (Select) mouse**
-  into the foreground colour, **right (Adjust) mouse** into the background
-  colour; **Esc** cancels. Hosts can override the behaviour (e.g. for real
+  the foreground swatch **live-previews the pixel under the pointer** as the
+  mouse moves, so you can see the colour before committing. The next click
+  samples that window pixel — **left (Select) mouse** into the foreground
+  colour, **right (Adjust) mouse** into the background colour; **Esc** cancels
+  (discarding the preview). Hosts can override the behaviour (e.g. for real
   whole-screen sampling) via `onScreenColorPick`.
 - ✅ **Hex input** — click to edit, accepts `#RGB`, `#RRGGBB` and `#RRGGBBAA`.
 - ✅ **Full inline text editing** — the hex and numeric value fields are real
@@ -55,7 +57,8 @@ natively with the framework's `IRenderContext` primitives.
 - ✅ **Collapsible sliders** — optionally hide the four sliders behind a
   disclosure (dropdown-icon) row; configurable whether they start expanded or
   collapsed (`SetSlidersCollapsible`).
-- ✅ **Alpha channel** — checkerboard-backed alpha slider.
+- ✅ **Alpha channel** — checkerboard-backed alpha slider with rounded ends (the
+  checkerboard is clipped to the rounded track so it matches the slider shape).
 - ✅ **UI scaling** — `SetUIScale(0.6f)` renders the whole picker at 60% (all
   metrics and fonts), for embedding a smaller variant.
 - ✅ **Compact mode** — hide the wheel/swatches for an inline sliders-only editor.

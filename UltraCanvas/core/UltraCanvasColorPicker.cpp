@@ -588,12 +588,19 @@ namespace UltraCanvas {
                                    previousSwatchRect.width, previousSwatchRect.height));
 
         DrawCheckerboard(ctx, currentSwatchRect, Scaled(8.0f));
-        ctx->SetFillPaint(GetColor());
+        // While the eyedropper is armed, show a live preview of the pixel under
+        // the pointer here instead of the committed foreground colour, so the
+        // tile tracks the mouse until a click commits (or Escape cancels).
+        Color currentFill = (screenPickActive && screenPickPreviewValid)
+                            ? screenPickPreview : GetColor();
+        ctx->SetFillPaint(currentFill);
         ctx->FillRectangle(Rect2Dd(currentSwatchRect.x, currentSwatchRect.y,
                                    currentSwatchRect.width, currentSwatchRect.height));
-        ctx->SetStrokePaint(style.borderColor);
+        ctx->SetStrokePaint(screenPickActive ? style.accentColor : style.borderColor);
+        ctx->SetStrokeWidth(screenPickActive ? 1.5 : 1.0);
         ctx->DrawRectangle(Rect2Dd(currentSwatchRect.x, currentSwatchRect.y,
                                    currentSwatchRect.width, currentSwatchRect.height));
+        ctx->SetStrokeWidth(1.0);
 
         // Swap symbol: bent double-headed arrow in the corner between the two
         // swatches — one head points at the foreground swatch (left), the other
@@ -758,7 +765,17 @@ namespace UltraCanvas {
             Rect2Df trackF(tr.x, tr.y + (tr.height - trackH) * 0.5f, tr.width, trackH);
             Rect2Dd track(trackF.x, trackF.y, trackF.width, trackF.height);
             double radius = trackH * 0.5;
-            if (checkerUnder) DrawCheckerboard(ctx, trackF, Scaled(6.0f));
+            if (checkerUnder) {
+                // Clip the checkerboard to the rounded track so its square
+                // corners don't poke out past the rounded gradient — the alpha
+                // slider then reads as a rounded bar, matching the other
+                // channels. Wrapped in Push/PopState so the clip is scoped to
+                // the checkerboard and the parent dirty-rect clip is restored.
+                ctx->PushState();
+                ctx->ClipRoundedRectangle(track, radius, radius, radius, radius);
+                DrawCheckerboard(ctx, trackF, Scaled(6.0f));
+                ctx->PopState();
+            }
             ctx->SetFillPaint(gradient);
             ctx->FillRoundedRectangle(track, radius);
             ctx->SetStrokePaint(style.fieldBorderColor);
@@ -778,7 +795,15 @@ namespace UltraCanvas {
             float trackH = Scaled(8.0f);
             Rect2Df trackF(tr.x, tr.y + tr.height * 0.5f - trackH * 0.5f, tr.width, trackH);
             Rect2Dd track(trackF.x, trackF.y, trackF.width, trackF.height);
-            if (checkerUnder) DrawCheckerboard(ctx, trackF, Scaled(6.0f));
+            double radius = trackH * 0.5;
+            if (checkerUnder) {
+                // Round the checkerboard's ends to the track shape (see the
+                // Thick branch above) so the alpha slider has round ends.
+                ctx->PushState();
+                ctx->ClipRoundedRectangle(track, radius, radius, radius, radius);
+                DrawCheckerboard(ctx, trackF, Scaled(6.0f));
+                ctx->PopState();
+            }
             ctx->SetFillPaint(gradient);
             ctx->FillRoundedRectangle(track, trackH * 0.5);
             ctx->SetStrokePaint(style.fieldBorderColor);
@@ -1225,6 +1250,7 @@ namespace UltraCanvas {
         auto* win = GetWindow();
         if (!win) return;
         screenPickActive = true;
+        screenPickPreviewValid = false;
 
         // Switch the pointer to an eyedropper cursor; fall back to the
         // crosshair when the cursor image cannot be loaded.
@@ -1252,6 +1278,10 @@ namespace UltraCanvas {
                     switch (e.type) {
                         case UCEventType::MouseMove:
                             if (auto* w = GetWindow()) w->SelectMouseCursor(screenPickCursor);
+                            // Live-preview the pixel under the pointer in the
+                            // foreground swatch so the user sees the colour
+                            // before clicking to commit it.
+                            UpdateScreenPickPreview(e);
                             return false;               // hover handling may continue
                         case UCEventType::KeyDown:
                             if (e.virtualKey == UCKeys::Escape) {
@@ -1267,6 +1297,20 @@ namespace UltraCanvas {
                     }
                 },
                 { UCEventType::MouseDown, UCEventType::MouseMove, UCEventType::KeyDown });
+        }
+        RequestRedraw();
+    }
+
+    void UltraCanvasColorPicker::UpdateScreenPickPreview(const UCEvent& event) {
+        if (!screenPickActive) return;
+        auto* win = GetWindow();
+        Color sampled;
+        if (win && win->GetPixelColor(event.pointerWindow.x, event.pointerWindow.y, sampled)) {
+            sampled.a = 255;
+            screenPickPreview = sampled;
+            screenPickPreviewValid = true;
+        } else {
+            screenPickPreviewValid = false;
         }
         RequestRedraw();
     }
@@ -1288,6 +1332,7 @@ namespace UltraCanvas {
     void UltraCanvasColorPicker::EndScreenPick(bool restoreCursor) {
         if (!screenPickActive) return;
         screenPickActive = false;
+        screenPickPreviewValid = false;
         // The event filter stays installed (guarded by screenPickActive); it is
         // only removed in the destructor.
         if (restoreCursor) {

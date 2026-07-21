@@ -7,9 +7,10 @@
 // colour so it can be judged on a large area, and a screen colour-picker
 // ("eyedropper") button switches the pointer to an eyedropper cursor and
 // samples a pixel from the window into the foreground (left/Select mouse) or
-// background (right/Adjust mouse) colour.
-// Version: 1.2.0
-// Last Modified: 2026-07-20
+// background (right/Adjust mouse) colour, live-previewing the pixel under the
+// pointer in the foreground swatch as the mouse moves.
+// Version: 1.2.1
+// Last Modified: 2026-07-21
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -258,9 +259,10 @@ namespace UltraCanvas {
         // takes over: it performs platform screen sampling and writes the pixel
         // back via SetForegroundColor / SetBackgroundColor. When NOT set, the
         // picker runs its built-in mode: the pointer becomes an eyedropper
-        // cursor and the next click samples the window pixel under it — left
-        // (Select) button into the foreground colour, right (Adjust) button
-        // into the background colour; Escape cancels.
+        // cursor, the foreground swatch live-previews the pixel under the
+        // pointer as the mouse moves, and the next click samples that window
+        // pixel — left (Select) button into the foreground colour, right
+        // (Adjust) button into the background colour; Escape cancels.
         std::function<void(bool foreground)> onScreenColorPick;
 
         // Built-in eyedropper mode control (also usable programmatically).
@@ -314,6 +316,13 @@ namespace UltraCanvas {
         bool screenPickActive = false;
         bool screenPickFilterInstalled = false;
         UCMouseCursor screenPickCursor = UCMouseCursor::Cross;
+
+        // Live preview while the eyedropper is armed: as the pointer moves, the
+        // pixel under it is sampled and shown in the foreground swatch tile so
+        // the user sees the colour before committing it with a click. The value
+        // is only a preview (no HSV/callback commit) and is discarded on cancel.
+        bool screenPickPreviewValid = false;
+        Color screenPickPreview;
 
         // Which swatch the pointer is hovering; drives the full-surface colour
         // preview (the whole widget background is flooded with that colour).
@@ -390,6 +399,8 @@ namespace UltraCanvas {
         std::string ScreenPickFilterId() const;
         void EndScreenPick(bool restoreCursor = true);
         void HandleScreenPickClick(const UCEvent& event);
+        // Sample the pixel under the pointer into the live preview swatch.
+        void UpdateScreenPickPreview(const UCEvent& event);
 
         // ----- Channel model glue -----
         // Returns the labels, current values and ranges for the active model.
