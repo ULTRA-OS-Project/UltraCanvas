@@ -218,7 +218,8 @@ bool MOBIEngine::LoadFromMemory(std::vector<uint8_t> data,
 
     ExtractImages();
     BuildMetadata();
-    BuildChapters();
+    if (kf8) BuildChaptersKF8();
+    else     BuildChapters();
     if (chapters.empty()) {
         Fail("MOBI document has no readable text");
         return false;
@@ -250,6 +251,12 @@ void MOBIEngine::Close() {
     exthCoverOffset = 0xFFFFFFFF;
     extraDataFlags = 0;
     hasExth = false;
+    kf8 = false;
+    fdstIndex = 0xFFFFFFFF;
+    skelIndex = 0xFFFFFFFF;
+    fragIndex = 0xFFFFFFFF;
+    kf8Css.clear();
+    kf8Flows.clear();
     format = EBookFormat::MOBI;
     formatName = "Mobipocket";
 }
@@ -330,7 +337,9 @@ bool MOBIEngine::ParseRecord0() {
         return false;
     }
 
-    // MOBI header at offset 16 (older PalmDOC-only files omit it).
+    // MOBI header at offset 16 (older PalmDOC-only files omit it). All field
+    // offsets below are relative to the "MOBI" magic (record-0 offset − 16),
+    // matching KindleUnpack/libmobi.
     if (r0.size() >= 20 && std::memcmp(r0.data() + 16, "MOBI", 4) == 0) {
         const uint8_t* m = r0.data() + 16;
         size_t mSize = r0.size() - 16;
@@ -338,27 +347,32 @@ bool MOBIEngine::ParseRecord0() {
 
         if (mSize >= 24) textEncoding = ReadBE32(m + 12);
         uint32_t fileVersion = (mSize >= 24) ? ReadBE32(m + 20) : 0;
-        if (mSize >= 92) {
-            uint32_t fullNameOffset = ReadBE32(m + 84);
-            uint32_t fullNameLength = ReadBE32(m + 88);
+        if (mSize >= 76) {
+            uint32_t fullNameOffset = ReadBE32(m + 68);
+            uint32_t fullNameLength = ReadBE32(m + 72);
             if (fullNameOffset > 0 && fullNameOffset < r0.size()) {
                 size_t len = std::min(static_cast<size_t>(fullNameLength),
                                       r0.size() - fullNameOffset);
                 fullName.assign(reinterpret_cast<const char*>(r0.data() + fullNameOffset), len);
             }
         }
-        if (mSize >= 112) firstImageIndex = ReadBE32(m + 108);
-        if (mSize >= 132) hasExth = (ReadBE32(m + 128) & 0x40) != 0;
-        // extraDataFlags: uint16 at MOBI-header offset 242 (0xF2).
-        if (headerLength >= 244 && mSize >= 244) {
-            extraDataFlags = ReadBE16(m + 242);
+        if (mSize >= 96) firstImageIndex = ReadBE32(m + 92);
+        if (mSize >= 116) hasExth = (ReadBE32(m + 112) & 0x40) != 0;
+        // extraDataFlags: uint16 at record-0 offset 0xF2 (m + 226), present
+        // from MOBI 5 on when the header reaches it.
+        if (fileVersion >= 5 && headerLength >= 228 && mSize >= 228) {
+            extraDataFlags = ReadBE16(m + 226);
         }
 
-        // A pure-KF8 record 0 (file version >= 8) needs the KF8 fragment
-        // reassembly we do not implement; combo .azw3 keep MOBI6 here.
+        // A pure-KF8 record 0 (file version >= 8): the markup is reassembled
+        // from the skeleton/fragment INDX tables in BuildChaptersKF8.
         if (fileVersion >= 8) {
-            Fail("KF8-only AZW3 is not supported yet (combo AZW3 and MOBI work)");
-            return false;
+            kf8 = true;
+            if (mSize >= 180) fdstIndex = ReadBE32(m + 176);
+            if (mSize >= 240) {
+                fragIndex = ReadBE32(m + 232);   // record-0 offset 0xF8
+                skelIndex = ReadBE32(m + 236);   // record-0 offset 0xFC
+            }
         }
 
         if (hasExth) {
@@ -369,9 +383,12 @@ bool MOBIEngine::ParseRecord0() {
         }
     }
 
-    // A combo AZW3 carries a KF8 boundary (EXTH 121) pointing at its KF8 half;
-    // we read the MOBI6 half but label it honestly.
-    if (exth.count(121)) {
+    if (kf8) {
+        format = EBookFormat::AZW3;
+        formatName = "Kindle KF8/AZW3";
+    } else if (exth.count(121)) {
+        // A combo AZW3 carries a KF8 boundary (EXTH 121) pointing at its KF8
+        // half; we read the MOBI6 half but label it honestly.
         format = EBookFormat::AZW3;
         formatName = "Kindle KF8/AZW3 (MOBI 6 view)";
     } else {
@@ -533,12 +550,36 @@ std::string FirstHeading(const std::string& html) {
 
 } // namespace
 
-void MOBIEngine::BuildChapters() {
-    if (fullHtml.empty()) return;
+namespace {
 
-    // Rewrite Mobipocket image references to resolvable resource hrefs:
+// Parses a Kindle resource index at s[pos..]: decimal for MOBI6, base32
+// ("0-9A-V", case-insensitive) for KF8. Returns -1 when no digits are found;
+// endPos receives the first position past the number.
+long ParseKindleIndex(const std::string& s, size_t pos, bool base32,
+                      size_t* endPos) {
+    long n = 0;
+    bool any = false;
+    while (pos < s.size()) {
+        unsigned char c = static_cast<unsigned char>(s[pos]);
+        int digit = -1;
+        if (std::isdigit(c)) digit = c - '0';
+        else if (base32 && std::isalpha(c)) digit = 10 + (std::toupper(c) - 'A');
+        if (digit < 0 || digit >= (base32 ? 32 : 10)) break;
+        n = n * (base32 ? 32 : 10) + digit;
+        any = true;
+        ++pos;
+    }
+    if (endPos) *endPos = pos;
+    return any ? n : -1;
+}
+
+} // namespace
+
+std::string MOBIEngine::RewriteImageRefs(const std::string& src) const {
+    // Rewrite Mobipocket/Kindle image references to resolvable resource hrefs:
     //   <img recindex="0001" ...>          → <img src="mobiimg/1" ...>
     //   <img src="kindle:embed:0001?...">  → <img src="mobiimg/1" ...>
+    // KF8 kindle:embed indexes are base32 ("0-9A-V"); MOBI6 uses decimal.
     auto matchesCI = [&](const std::string& s, size_t pos, const char* lit) {
         size_t n = std::strlen(lit);
         if (pos + n > s.size()) return false;
@@ -549,39 +590,70 @@ void MOBIEngine::BuildChapters() {
     };
 
     std::string html;
-    html.reserve(fullHtml.size());
-    for (size_t i = 0; i < fullHtml.size();) {
+    html.reserve(src.size());
+    for (size_t i = 0; i < src.size();) {
         // recindex="N"
-        if (matchesCI(fullHtml, i, "recindex=")) {
+        if (matchesCI(src, i, "recindex=")) {
             size_t j = i + 9;
-            char quote = (j < fullHtml.size() && (fullHtml[j] == '"' || fullHtml[j] == '\'')) ? fullHtml[j] : 0;
+            char quote = (j < src.size() && (src[j] == '"' || src[j] == '\'')) ? src[j] : 0;
             if (quote) ++j;
             std::string digits;
-            while (j < fullHtml.size() && std::isdigit(static_cast<unsigned char>(fullHtml[j]))) {
-                digits += fullHtml[j++];
+            while (j < src.size() && std::isdigit(static_cast<unsigned char>(src[j]))) {
+                digits += src[j++];
             }
-            if (quote && j < fullHtml.size() && fullHtml[j] == quote) ++j;
+            if (quote && j < src.size() && src[j] == quote) ++j;
             long n = digits.empty() ? 0 : std::stol(digits);
             html += "src=\"mobiimg/" + std::to_string(n) + "\"";
             i = j;
             continue;
         }
-        html += fullHtml[i++];
+        html += src[i++];
     }
     // kindle:embed:NNNN → mobiimg/N (strip leading zeros and any query).
     for (size_t k = FindCI(html, "kindle:embed:", 0); k != std::string::npos;
          k = FindCI(html, "kindle:embed:", k)) {
-        size_t d = k + 13;
-        std::string digits;
-        while (d < html.size() && std::isdigit(static_cast<unsigned char>(html[d]))) {
-            digits += html[d++];
-        }
+        size_t d = 0;
+        long n = ParseKindleIndex(html, k + 13, kf8, &d);
         size_t endTok = d;
         while (endTok < html.size() && html[endTok] != '"' && html[endTok] != '\'') ++endTok;
-        long n = digits.empty() ? 0 : std::stol(digits);
-        html.replace(k, endTok - k, "mobiimg/" + std::to_string(n));
+        html.replace(k, endTok - k, "mobiimg/" + std::to_string(n > 0 ? n : 0));
         k += 8;
     }
+    return html;
+}
+
+std::string MOBIEngine::InlineSvgFlows(const std::string& src) const {
+    // A KF8 cover page is <img src="kindle:flow:NNNN?mime=image/svg+xml"/> —
+    // the SVG lives in another flow and wraps the raster via kindle:embed.
+    // Splice the SVG markup in place of the <img>, so the element builder's
+    // svg-cover path (first raster <image> inside <svg>) renders it.
+    std::string html = src;
+    for (size_t p = FindCI(html, "<img", 0); p != std::string::npos;) {
+        size_t gt = html.find('>', p);
+        if (gt == std::string::npos) break;
+
+        size_t flowRef = FindCI(html, "kindle:flow:", p);
+        if (flowRef == std::string::npos || flowRef > gt) {
+            p = FindCI(html, "<img", gt);
+            continue;
+        }
+
+        std::string replacement;
+        long n = ParseKindleIndex(html, flowRef + 12, /*base32=*/true, nullptr);
+        if (n >= 1 && n < static_cast<long>(kf8Flows.size())) {
+            const std::string& flow = kf8Flows[static_cast<size_t>(n)];
+            if (FindCI(flow, "<svg", 0) != std::string::npos) replacement = flow;
+        }
+        html.replace(p, gt - p + 1, replacement);
+        p = FindCI(html, "<img", p + replacement.size());
+    }
+    return html;
+}
+
+void MOBIEngine::BuildChapters() {
+    if (fullHtml.empty()) return;
+
+    std::string html = RewriteImageRefs(fullHtml);
 
     // Split on Mobipocket page-break markers.
     std::vector<size_t> breaks;
@@ -626,6 +698,263 @@ void MOBIEngine::BuildChapters() {
     }
 }
 
+// ============================================================================
+// KF8 (skeleton/fragment reassembly)
+// ============================================================================
+
+namespace {
+
+// Forward base-128 varint (high bit terminates), as used in INDX tag values.
+uint32_t ReadForwardVarint(const uint8_t* d, size_t size, size_t& pos) {
+    uint32_t value = 0;
+    while (pos < size) {
+        uint8_t b = d[pos++];
+        value = (value << 7) | (b & 0x7F);
+        if (b & 0x80) break;
+    }
+    return value;
+}
+
+int CountSetBits(uint8_t v) {
+    int n = 0;
+    for (; v; v >>= 1) n += v & 1;
+    return n;
+}
+
+struct TagxEntry {
+    uint8_t tag = 0;
+    uint8_t valuesPerEntry = 0;
+    uint8_t bitmask = 0;
+    uint8_t endFlag = 0;
+};
+
+} // namespace
+
+bool MOBIEngine::ParseIndx(uint32_t headerRecord,
+                           std::vector<IndxEntry>& out) const {
+    out.clear();
+    if (headerRecord >= records.size()) return false;
+
+    const std::vector<uint8_t>& hdr = records[headerRecord];
+    if (hdr.size() < 28 || std::memcmp(hdr.data(), "INDX", 4) != 0) return false;
+
+    uint32_t indxLength = ReadBE32(hdr.data() + 4);
+    uint32_t dataRecordCount = ReadBE32(hdr.data() + 24);
+    if (indxLength + 12 > hdr.size()) return false;
+
+    // TAGX table follows the INDX header: "TAGX", length, control byte count,
+    // then 4-byte (tag, valuesPerEntry, bitmask, endFlag) entries.
+    if (std::memcmp(hdr.data() + indxLength, "TAGX", 4) != 0) return false;
+    uint32_t tagxLength = ReadBE32(hdr.data() + indxLength + 4);
+    uint32_t controlByteCount = ReadBE32(hdr.data() + indxLength + 8);
+    if (tagxLength < 12 || indxLength + tagxLength > hdr.size()) return false;
+
+    std::vector<TagxEntry> tagx;
+    for (uint32_t p = indxLength + 12; p + 4 <= indxLength + tagxLength; p += 4) {
+        tagx.push_back({hdr[p], hdr[p + 1], hdr[p + 2], hdr[p + 3]});
+    }
+
+    for (uint32_t r = 0; r < dataRecordCount; ++r) {
+        uint32_t recIdx = headerRecord + 1 + r;
+        if (recIdx >= records.size()) break;
+        const std::vector<uint8_t>& rec = records[recIdx];
+        if (rec.size() < 28 || std::memcmp(rec.data(), "INDX", 4) != 0) continue;
+
+        uint32_t idxtPos = ReadBE32(rec.data() + 20);
+        uint32_t entryCount = ReadBE32(rec.data() + 24);
+        if (idxtPos + 4 > rec.size() ||
+            std::memcmp(rec.data() + idxtPos, "IDXT", 4) != 0) {
+            continue;
+        }
+
+        // IDXT: entryCount uint16 offsets; the IDXT position ends the last one.
+        std::vector<uint32_t> offsets;
+        for (uint32_t i = 0; i < entryCount; ++i) {
+            size_t p = idxtPos + 4 + i * 2;
+            if (p + 2 > rec.size()) break;
+            offsets.push_back(ReadBE16(rec.data() + p));
+        }
+        offsets.push_back(idxtPos);
+
+        for (size_t i = 0; i + 1 < offsets.size(); ++i) {
+            uint32_t start = offsets[i], end = offsets[i + 1];
+            if (start >= end || end > rec.size()) continue;
+
+            IndxEntry entry;
+            size_t pos = start;
+            uint8_t nameLen = rec[pos++];
+            if (pos + nameLen > end) continue;
+            entry.name.assign(reinterpret_cast<const char*>(rec.data() + pos), nameLen);
+            pos += nameLen;
+
+            // Control bytes select which tags are present for this entry.
+            if (pos + controlByteCount > end) continue;
+            size_t controlPos = pos;
+            size_t dataPos = pos + controlByteCount;
+
+            struct Pending {
+                uint8_t tag;
+                uint32_t valueCount;   // number of value groups (0 = byte-sized)
+                uint32_t valueBytes;   // total value bytes when valueCount == 0
+                uint8_t valuesPerEntry;
+            };
+            std::vector<Pending> pending;
+
+            size_t controlIndex = 0;
+            for (const TagxEntry& t : tagx) {
+                if (t.endFlag & 0x01) {
+                    ++controlIndex;
+                    continue;
+                }
+                if (controlPos + controlIndex >= end) break;
+                uint8_t value = rec[controlPos + controlIndex] & t.bitmask;
+                if (!value) continue;
+                if (value == t.bitmask) {
+                    if (CountSetBits(t.bitmask) > 1) {
+                        uint32_t bytes = ReadForwardVarint(rec.data(), end, dataPos);
+                        pending.push_back({t.tag, 0, bytes, t.valuesPerEntry});
+                    } else {
+                        pending.push_back({t.tag, 1, 0, t.valuesPerEntry});
+                    }
+                } else {
+                    uint8_t mask = t.bitmask;
+                    while (!(mask & 1)) { mask >>= 1; value >>= 1; }
+                    pending.push_back({t.tag, value, 0, t.valuesPerEntry});
+                }
+            }
+
+            for (const Pending& p : pending) {
+                std::vector<uint32_t>& values = entry.tags[p.tag];
+                if (p.valueCount) {
+                    uint32_t total = p.valueCount * p.valuesPerEntry;
+                    for (uint32_t k = 0; k < total && dataPos < end; ++k) {
+                        values.push_back(ReadForwardVarint(rec.data(), end, dataPos));
+                    }
+                } else {
+                    size_t stop = dataPos + p.valueBytes;
+                    while (dataPos < stop && dataPos < end) {
+                        values.push_back(ReadForwardVarint(rec.data(), end, dataPos));
+                    }
+                }
+            }
+            out.push_back(std::move(entry));
+        }
+    }
+    return !out.empty();
+}
+
+void MOBIEngine::BuildChaptersKF8() {
+    if (fullHtml.empty()) return;
+
+    // ---- FDST: flow boundaries. Flow 0 is the markup; the rest are CSS
+    // (kindle:flow:...) and other auxiliary flows. ----
+    std::string markup = fullHtml;
+    if (fdstIndex < records.size()) {
+        const std::vector<uint8_t>& fdst = records[fdstIndex];
+        if (fdst.size() >= 12 && std::memcmp(fdst.data(), "FDST", 4) == 0) {
+            uint32_t entriesStart = ReadBE32(fdst.data() + 4);
+            uint32_t entryCount = ReadBE32(fdst.data() + 8);
+            std::vector<std::pair<uint32_t, uint32_t>> flows;
+            for (uint32_t i = 0; i < entryCount; ++i) {
+                size_t p = entriesStart + i * 8;
+                if (p + 8 > fdst.size()) break;
+                uint32_t a = ReadBE32(fdst.data() + p);
+                uint32_t b = ReadBE32(fdst.data() + p + 4);
+                if (a > b || b > fullHtml.size()) break;
+                flows.push_back({a, b});
+            }
+            if (!flows.empty()) {
+                markup = fullHtml.substr(flows[0].first,
+                                         flows[0].second - flows[0].first);
+                kf8Flows.assign(flows.size(), {});
+                for (size_t i = 1; i < flows.size(); ++i) {
+                    std::string flow = fullHtml.substr(
+                        flows[i].first, flows[i].second - flows[i].first);
+                    // Stylesheet flows feed GetStylesheets; markup flows (SVG
+                    // cover wrappers) are kept for InlineSvgFlows.
+                    if (flow.find('{') != std::string::npos &&
+                        flow.find('<') == std::string::npos) {
+                        kf8Css += flow;
+                        kf8Css += '\n';
+                    }
+                    kf8Flows[i] = std::move(flow);
+                }
+            }
+        }
+    }
+
+    // ---- Skeleton/fragment reassembly (KindleUnpack algorithm): each
+    // skeleton part gets its fragments spliced back at their recorded insert
+    // positions; each reassembled part is one XHTML document. ----
+    //   skeleton entry: tag 1 = fragment count, tag 6 = (position, length)
+    //   fragment entry: name = insert position, tag 6 = (position, length)
+    std::vector<std::string> parts;
+    std::vector<IndxEntry> skel, frag;
+    if (ParseIndx(skelIndex, skel) && ParseIndx(fragIndex, frag)) {
+        size_t fragPtr = 0;
+        for (const IndxEntry& s : skel) {
+            auto cntIt = s.tags.find(1);
+            auto posIt = s.tags.find(6);
+            if (cntIt == s.tags.end() || posIt == s.tags.end() ||
+                cntIt->second.empty() || posIt->second.size() < 2) {
+                parts.clear();
+                break;
+            }
+            uint32_t fragCount = cntIt->second[0];
+            size_t skelPos = posIt->second[0];
+            size_t skelLen = posIt->second[1];
+            if (skelPos + skelLen > markup.size()) { parts.clear(); break; }
+
+            std::string part = markup.substr(skelPos, skelLen);
+            size_t basePtr = skelPos + skelLen;
+            bool ok = true;
+            for (uint32_t j = 0; j < fragCount && fragPtr < frag.size(); ++j) {
+                const IndxEntry& f = frag[fragPtr++];
+                auto fPosIt = f.tags.find(6);
+                if (fPosIt == f.tags.end() || fPosIt->second.size() < 2) {
+                    ok = false;
+                    break;
+                }
+                size_t fragLen = fPosIt->second[1];
+                size_t insertPos = 0;
+                for (char c : f.name) {
+                    if (!std::isdigit(static_cast<unsigned char>(c))) break;
+                    insertPos = insertPos * 10 + static_cast<size_t>(c - '0');
+                }
+                if (insertPos < skelPos || insertPos - skelPos > part.size() ||
+                    basePtr + fragLen > markup.size()) {
+                    ok = false;
+                    break;
+                }
+                part.insert(insertPos - skelPos, markup, basePtr, fragLen);
+                basePtr += fragLen;
+            }
+            if (!ok) { parts.clear(); break; }
+            parts.push_back(std::move(part));
+        }
+    }
+    // Fallback: no usable skeleton/fragment tables — feed the whole flow to
+    // the tolerant parser as a single chapter.
+    if (parts.empty()) parts.push_back(markup);
+
+    int ordinal = 0;
+    for (const std::string& piece : parts) {
+        std::string content = RewriteImageRefs(InlineSvgFlows(piece));
+        // Skip pieces with no visible text and no image.
+        if (HeadingText(content).empty() &&
+            FindCI(content, "<img", 0) == std::string::npos) {
+            continue;
+        }
+        EBookChapter chapter;
+        chapter.title = FirstHeading(content);
+        if (chapter.title.empty()) {
+            chapter.title = "Section " + std::to_string(++ordinal);
+        }
+        chapter.content = std::move(content);
+        chapters.push_back(std::move(chapter));
+    }
+}
+
 void MOBIEngine::BuildTOC() {
     tableOfContents.clear();
     tableOfContents.reserve(chapters.size());
@@ -647,10 +976,19 @@ EBookChapter MOBIEngine::GetChapter(int index) const {
 }
 
 std::string MOBIEngine::GetStylesheets() const {
-    return {};   // MOBI carries presentational HTML; no separate stylesheet.
+    // MOBI6 carries presentational HTML; KF8 has real CSS flows.
+    return kf8Css;
 }
 
 std::vector<uint8_t> MOBIEngine::GetResource(const std::string& href) const {
+    // Accept un-rewritten Kindle references too (e.g. from inlined SVG that
+    // slipped past RewriteImageRefs).
+    if (href.rfind("kindle:embed:", 0) == 0) {
+        long n = ParseKindleIndex(href, 13, kf8, nullptr);
+        if (n < 1 || n > static_cast<long>(images.size())) return {};
+        return images[static_cast<size_t>(n - 1)];
+    }
+
     // Accept "mobiimg/N" (and a bare "N").
     std::string id = href;
     size_t slash = id.find_last_of('/');

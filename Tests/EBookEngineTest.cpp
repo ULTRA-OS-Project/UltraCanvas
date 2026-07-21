@@ -14,9 +14,11 @@
 
 #include "miniz.h"
 
+#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -553,6 +555,10 @@ static void SetBE32(std::vector<uint8_t>& v, size_t at, uint32_t x) {
     v[at + 2] = static_cast<uint8_t>(x >> 8);
     v[at + 3] = static_cast<uint8_t>(x & 0xFF);
 }
+static void PutBE16At(std::vector<uint8_t>& v, size_t at, uint16_t x) {
+    v[at] = static_cast<uint8_t>(x >> 8);
+    v[at + 1] = static_cast<uint8_t>(x & 0xFF);
+}
 
 // Assemble a minimal but valid MOBI6 file: PDB header + 3 records
 // (record 0 with PalmDOC/MOBI/EXTH headers, one ASCII text record, one image).
@@ -568,15 +574,16 @@ static std::vector<uint8_t> MakeTestMOBI() {
         "<img recindex=\"00001\"/>"
         "</body></html>";
 
-    // --- MOBI header (232 bytes) ---
+    // --- MOBI header (232 bytes) --- (field offsets relative to "MOBI")
     std::vector<uint8_t> mobi(232, 0);
     std::memcpy(&mobi[0], "MOBI", 4);
     SetBE32(mobi, 4, 232);      // header length
     SetBE32(mobi, 8, 2);        // mobiType = Mobipocket book
     SetBE32(mobi, 12, 1252);    // textEncoding = cp1252
     SetBE32(mobi, 20, 6);       // fileVersion (MOBI6)
-    SetBE32(mobi, 108, 2);      // firstImageIndex = record 2
-    SetBE32(mobi, 128, 0x40);   // exthFlags: has EXTH
+    SetBE32(mobi, 92, 2);       // firstImageIndex = record 2
+    SetBE32(mobi, 112, 0x40);   // exthFlags: has EXTH
+    // extraDataFlags (uint16 at 226) stays 0: no trailing entries.
     // fullNameOffset/Length filled once the record-0 layout is known.
 
     // --- EXTH ---
@@ -616,8 +623,8 @@ static std::vector<uint8_t> MakeTestMOBI() {
     PutBE32(rec0, 0);                                   // encryption + unused
 
     uint32_t fullNameOffset = static_cast<uint32_t>(16 + mobi.size() + exth.size());
-    SetBE32(mobi, 84, fullNameOffset);
-    SetBE32(mobi, 88, static_cast<uint32_t>(fullName.size()));
+    SetBE32(mobi, 68, fullNameOffset);
+    SetBE32(mobi, 72, static_cast<uint32_t>(fullName.size()));
 
     rec0.insert(rec0.end(), mobi.begin(), mobi.end());
     rec0.insert(rec0.end(), exth.begin(), exth.end());
@@ -733,6 +740,176 @@ static void TestMOBIPalmDOC() {
              std::string("it\xE2\x80\x99s"));
 }
 
+// Assemble a minimal but valid KF8 (MOBI file version 8) file: one text flow
+// (FDST-delimited), a one-entry skeleton INDX and a one-entry fragment INDX
+// that splice back into a single XHTML part, plus one image record.
+static std::vector<uint8_t> MakeTestKF8() {
+    // --- flow 0: skeleton bytes followed by the fragment bytes ---
+    std::string skeleton = "<html><body></body></html>";   // 26 bytes
+    std::string fragment =
+        "<p>Hi</p><img src=\"kindle:embed:0001?mime=image/jpeg\"/>";
+    size_t insertPos = skeleton.find("</body>");            // 12
+    std::string markup = skeleton + fragment;
+
+    // --- FDST: one flow spanning the whole markup ---
+    std::vector<uint8_t> fdst;
+    fdst.insert(fdst.end(), {'F', 'D', 'S', 'T'});
+    PutBE32(fdst, 12);                                  // entries start
+    PutBE32(fdst, 1);                                   // entry count
+    PutBE32(fdst, 0);                                   // flow 0 start
+    PutBE32(fdst, static_cast<uint32_t>(markup.size()));// flow 0 end
+
+    // --- INDX builders ---
+    auto forwardVarint = [](std::vector<uint8_t>& v, uint32_t n) {
+        uint8_t bytes[5];
+        int count = 0;
+        do { bytes[count++] = n & 0x7F; n >>= 7; } while (n);
+        for (int i = count - 1; i >= 0; --i) {
+            uint8_t b = bytes[i];
+            if (i == 0) b |= 0x80;                       // terminator bit
+            v.push_back(b);
+        }
+    };
+    // header record: INDX + dataRecordCount, then TAGX at indxLength.
+    auto makeIndxHeader = [](const std::vector<std::array<uint8_t, 4>>& tagx,
+                             uint8_t controlByteCount) {
+        std::vector<uint8_t> h(28, 0);
+        std::memcpy(&h[0], "INDX", 4);
+        SetBE32(h, 4, 28);                              // indxLength: TAGX offset
+        SetBE32(h, 24, 1);                              // one data record
+        h.insert(h.end(), {'T', 'A', 'G', 'X'});
+        PutBE32(h, static_cast<uint32_t>(12 + tagx.size() * 4));
+        PutBE32(h, controlByteCount);
+        for (const auto& t : tagx) h.insert(h.end(), t.begin(), t.end());
+        return h;
+    };
+    // data record: INDX header + one entry + IDXT offset table.
+    auto makeIndxData = [](const std::string& name, uint8_t control,
+                           const std::vector<uint32_t>& varints,
+                           const std::function<void(std::vector<uint8_t>&, uint32_t)>& putVarint) {
+        std::vector<uint8_t> d(28, 0);
+        std::memcpy(&d[0], "INDX", 4);
+        SetBE32(d, 24, 1);                              // one entry
+        uint16_t entryOffset = 28;
+        d.push_back(static_cast<uint8_t>(name.size()));
+        d.insert(d.end(), name.begin(), name.end());
+        d.push_back(control);
+        for (uint32_t v : varints) putVarint(d, v);
+        uint32_t idxtPos = static_cast<uint32_t>(d.size());
+        SetBE32(d, 20, idxtPos);
+        d.insert(d.end(), {'I', 'D', 'X', 'T'});
+        PutBE16(d, entryOffset);
+        return d;
+    };
+
+    // Skeleton: tag1 = fragment count (mask 0x03), tag6 = (pos,len) (mask 0x0C).
+    std::vector<uint8_t> skelHdr = makeIndxHeader(
+        {{{1, 1, 0x03, 0}}, {{6, 2, 0x0C, 0}}, {{0, 0, 0, 1}}}, 1);
+    std::vector<uint8_t> skelData = makeIndxData(
+        "S0", 0x05, {1, 0, static_cast<uint32_t>(skeleton.size())}, forwardVarint);
+
+    // Fragment: tag6 = (pos,len) (mask 0x01); name is the insert position.
+    std::vector<uint8_t> fragHdr = makeIndxHeader({{{6, 2, 0x01, 0}}, {{0, 0, 0, 1}}}, 1);
+    std::vector<uint8_t> fragData = makeIndxData(
+        std::to_string(insertPos), 0x01,
+        {0, static_cast<uint32_t>(fragment.size())}, forwardVarint);
+
+    // --- MOBI header (248 bytes), field offsets relative to "MOBI" ---
+    std::vector<uint8_t> mobi(248, 0);
+    std::memcpy(&mobi[0], "MOBI", 4);
+    SetBE32(mobi, 4, 248);      // header length
+    SetBE32(mobi, 8, 2);        // mobiType
+    SetBE32(mobi, 12, 65001);   // textEncoding = UTF-8
+    SetBE32(mobi, 20, 8);       // fileVersion = 8 (KF8)
+    SetBE32(mobi, 112, 0x40);   // exthFlags: has EXTH
+    // firstImageIndex(92), FDST(176), fragIndex(232), skelIndex(236) set below.
+
+    std::vector<uint8_t> exthRecs;
+    PutBE32(exthRecs, 201); PutBE32(exthRecs, 12); PutBE32(exthRecs, 0);  // cover = image 0
+    std::vector<uint8_t> exth;
+    exth.insert(exth.end(), {'E', 'X', 'T', 'H'});
+    PutBE32(exth, static_cast<uint32_t>(12 + exthRecs.size()));
+    PutBE32(exth, 1);
+    exth.insert(exth.end(), exthRecs.begin(), exthRecs.end());
+    while (exth.size() % 4 != 0) exth.push_back(0);
+
+    std::string fullName = "KF8 Test Book";
+
+    std::vector<uint8_t> rec0;
+    PutBE16(rec0, 1);                                   // compression = none
+    PutBE16(rec0, 0);
+    PutBE32(rec0, static_cast<uint32_t>(markup.size()));
+    PutBE16(rec0, 1);                                   // text record count
+    PutBE16(rec0, 4096);
+    PutBE32(rec0, 0);                                   // encryption + unused
+
+    uint32_t fullNameOffset = static_cast<uint32_t>(16 + mobi.size() + exth.size());
+    SetBE32(mobi, 68, fullNameOffset);
+    SetBE32(mobi, 72, static_cast<uint32_t>(fullName.size()));
+
+    // Record layout: 0=rec0, 1=text, 2=FDST, 3/4=fragment INDX, 5/6=skeleton
+    // INDX, 7=image.
+    SetBE32(mobi, 176, 2);      // FDST record
+    SetBE32(mobi, 232, 3);      // fragment INDX header (record-0 offset 0xF8)
+    SetBE32(mobi, 236, 5);      // skeleton INDX header (record-0 offset 0xFC)
+    SetBE32(mobi, 92, 7);       // firstImageIndex
+
+    rec0.insert(rec0.end(), mobi.begin(), mobi.end());
+    rec0.insert(rec0.end(), exth.begin(), exth.end());
+    rec0.insert(rec0.end(), fullName.begin(), fullName.end());
+
+    std::vector<uint8_t> textRec(markup.begin(), markup.end());
+    std::vector<uint8_t> imageRec = {0xFF, 0xD8, 0xFF, 0xE0, 'J', 'P', 'G'};
+
+    std::vector<std::vector<uint8_t>> recs = {
+        rec0, textRec, fdst, fragHdr, fragData, skelHdr, skelData, imageRec};
+
+    std::vector<uint8_t> file(78, 0);
+    std::memcpy(&file[0], "KF8Book", 7);
+    std::memcpy(&file[60], "BOOK", 4);
+    std::memcpy(&file[64], "MOBI", 4);
+    PutBE16At(file, 76, static_cast<uint16_t>(recs.size()));
+
+    size_t dataStart = 78 + recs.size() * 8;
+    std::vector<uint32_t> offsets;
+    size_t cursor = dataStart;
+    for (const auto& r : recs) { offsets.push_back(static_cast<uint32_t>(cursor)); cursor += r.size(); }
+    for (size_t i = 0; i < recs.size(); ++i) {
+        PutBE32(file, offsets[i]);
+        file.push_back(0); file.push_back(0); file.push_back(0);
+        file.push_back(static_cast<uint8_t>(i));
+    }
+    for (const auto& r : recs) file.insert(file.end(), r.begin(), r.end());
+    return file;
+}
+
+static void TestKF8() {
+    std::vector<uint8_t> data = MakeTestKF8();
+
+    MOBIEngine engine;
+    CHECK(engine.LoadFromMemory(data));
+    CHECK(engine.IsLoaded());
+    CHECK(engine.GetFormat() == EBookFormat::AZW3);
+    CHECK(engine.GetFormatName().find("KF8") != std::string::npos);
+    CHECK_EQ(engine.GetMetadata().title, std::string("KF8 Test Book"));
+
+    // The skeleton and fragment reassemble into one well-formed part.
+    CHECK_EQ(engine.GetChapterCount(), 1);
+    EBookChapter ch = engine.GetChapter(0);
+    CHECK(ch.content.find("<html><body><p>Hi</p>") != std::string::npos);
+    CHECK(ch.content.find("</body></html>") != std::string::npos);
+    // KF8 base32 kindle:embed reference rewritten to a resolvable href.
+    CHECK(ch.content.find("src=\"mobiimg/1\"") != std::string::npos);
+    CHECK(ch.content.find("kindle:embed") == std::string::npos);
+
+    // Image resource + cover resolve.
+    CHECK_EQ(engine.GetResource("mobiimg/1").size(), size_t(7));
+    CHECK_EQ(engine.GetCoverImage().size(), size_t(7));
+
+    engine.Close();
+    CHECK(!engine.IsLoaded());
+}
+
 static void TestMOBIErrors() {
     MOBIEngine engine;
     std::vector<uint8_t> junk(200, 0);
@@ -790,6 +967,7 @@ int main() {
     TestFB2Errors();
     TestMOBI();
     TestMOBIPalmDOC();
+    TestKF8();
     TestMOBIErrors();
     TestTXT();
     TestRegistry();
