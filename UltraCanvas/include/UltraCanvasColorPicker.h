@@ -7,9 +7,11 @@
 // colour so it can be judged on a large area, and a screen colour-picker
 // ("eyedropper") button switches the pointer to an eyedropper cursor and
 // samples a pixel from the window into the foreground (left/Select mouse) or
-// background (right/Adjust mouse) colour.
-// Version: 1.2.0
-// Last Modified: 2026-07-20
+// background (right/Adjust mouse) colour — the button used on the icon selects
+// the target swatch, which live-previews the pixel under the pointer as the
+// mouse moves.
+// Version: 1.2.5
+// Last Modified: 2026-07-21
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -227,9 +229,14 @@ namespace UltraCanvas {
         void SetShowValueSpinners(bool show);
 
         // When collapsible, the channel sliders hide behind a disclosure row
-        // (dropdown icon); `expanded` selects the initial state.
+        // (dropdown icon); `expanded` selects the initial state and defaults to
+        // collapsed — the point of collapsing is a compact footprint, so a
+        // collapsible picker starts collapsed. The widget keeps a fixed size:
+        // expanding the sliders shrinks the colour-shading area by exactly the
+        // space the sliders occupy (and collapsing gives it back), rather than
+        // resizing the widget.
         bool GetSlidersCollapsible() const { return slidersCollapsible; }
-        void SetSlidersCollapsible(bool collapsible, bool expanded = true);
+        void SetSlidersCollapsible(bool collapsible, bool expanded = false);
         bool GetSlidersExpanded() const { return slidersExpanded; }
         void SetSlidersExpanded(bool expanded);
 
@@ -253,19 +260,32 @@ namespace UltraCanvas {
         std::function<void(const Color&)> onColorChanged;    // final value (drag end / commit)
         std::function<void(const Color&)> onColorChanging;   // continuous, during interaction
 
+        // Background (Adjust / right-button) edits: fired when the background
+        // colour is changed by using the colour controls with the right mouse
+        // button. onBackgroundChanging is continuous during the drag,
+        // onBackgroundChanged is the final value on release.
+        std::function<void(const Color&)> onBackgroundChanged;
+        std::function<void(const Color&)> onBackgroundChanging;
+
         // Screen colour-picker ("eyedropper") request. Fired when the eyedropper
         // button next to the background swatch is clicked. When set, the host
         // takes over: it performs platform screen sampling and writes the pixel
         // back via SetForegroundColor / SetBackgroundColor. When NOT set, the
         // picker runs its built-in mode: the pointer becomes an eyedropper
-        // cursor and the next click samples the window pixel under it — left
-        // (Select) button into the foreground colour, right (Adjust) button
-        // into the background colour; Escape cancels.
+        // cursor and the button used here selects the target swatch — left
+        // (Select) button targets the foreground colour, right (Adjust) button
+        // the background colour. That target swatch live-previews the pixel
+        // under the pointer as the mouse moves, and the next click commits the
+        // sampled pixel into it; Escape cancels.
         std::function<void(bool foreground)> onScreenColorPick;
 
         // Built-in eyedropper mode control (also usable programmatically).
+        // `foreground` selects which swatch the pick targets — the tile that
+        // live-previews while moving and receives the sampled colour on click.
+        // It mirrors the mouse button used on the eyedropper icon: left/Select
+        // -> foreground, right/Adjust -> background.
         bool IsScreenPickActive() const { return screenPickActive; }
-        void StartScreenPick();
+        void StartScreenPick(bool foreground = true);
         void CancelScreenPick() { EndScreenPick(); }
 
         // ===== UIElement OVERRIDES =====
@@ -297,6 +317,15 @@ namespace UltraCanvas {
                                 Channel0, Channel1, Channel2, Alpha, TextDrag };
         DragTarget dragTarget = DragTarget::NoneTarget;
 
+        // Right-button (Adjust) colour edits target the background instead of
+        // the foreground. While such an edit is in progress the working HSV
+        // state (hue/sat/val/alpha) temporarily holds the background colour so
+        // every edit/render path operates on it; the foreground is saved here
+        // and restored when the edit finishes.
+        bool editingBackground = false;
+        float fgSaveHue = 0.0f, fgSaveSat = 1.0f, fgSaveVal = 1.0f;
+        uint8_t fgSaveAlpha = 255;
+
         enum class EditField { NoEdit, Hex, Channel0, Channel1, Channel2, Alpha };
         EditField editField = EditField::NoEdit;
         std::string editBuffer;
@@ -314,6 +343,17 @@ namespace UltraCanvas {
         bool screenPickActive = false;
         bool screenPickFilterInstalled = false;
         UCMouseCursor screenPickCursor = UCMouseCursor::Cross;
+
+        // Live preview while the eyedropper is armed: as the pointer moves, the
+        // pixel under it is sampled and shown in the target swatch tile so the
+        // user sees the colour before committing it with a click. The value is
+        // only a preview (no HSV/callback commit) and is discarded on cancel.
+        // screenPickForeground records which swatch is the target (chosen by the
+        // mouse button used on the eyedropper icon): true = foreground swatch,
+        // false = background swatch.
+        bool screenPickForeground = true;
+        bool screenPickPreviewValid = false;
+        Color screenPickPreview;
 
         // Which swatch the pointer is hovering; drives the full-surface colour
         // preview (the whole widget background is flooded with that colour).
@@ -377,6 +417,19 @@ namespace UltraCanvas {
 
         void ApplyDrag(const Point2Df& p, bool finished);
         void UpdateHueFromPoint(const Point2Df& p);
+
+        // ----- Background (Adjust) editing -----
+        // Swap the working HSV state to the background colour for the duration
+        // of a right-button colour edit, then commit + restore on release.
+        void BeginBackgroundEdit();
+        void EndBackgroundEdit();
+
+        // ----- Hover tooltips -----
+        // Explain the model choices (HSV/HSL/RGB) and the channel / hex labels
+        // (H, S, V, A, L, R, G, B, Hex) when the pointer rests over them.
+        void UpdateHoverTooltip(const UCEvent& event);
+        std::string ModelTooltip(ColorPickerModel m) const;
+        std::string ChannelTooltip(const std::string& label) const;
         void UpdateHueFromBar(const Point2Df& p);
         void UpdateSVFromPoint(const Point2Df& p);
         void UpdateSwatchHover(const Point2Df& p);           // full-surface preview
@@ -390,6 +443,8 @@ namespace UltraCanvas {
         std::string ScreenPickFilterId() const;
         void EndScreenPick(bool restoreCursor = true);
         void HandleScreenPickClick(const UCEvent& event);
+        // Sample the pixel under the pointer into the live preview swatch.
+        void UpdateScreenPickPreview(const UCEvent& event);
 
         // ----- Channel model glue -----
         // Returns the labels, current values and ranges for the active model.

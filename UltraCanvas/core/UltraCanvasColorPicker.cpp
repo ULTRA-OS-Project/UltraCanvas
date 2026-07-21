@@ -1,7 +1,7 @@
 // core/UltraCanvasColorPicker.cpp
 // Implementation of the comprehensive colour picker widget.
-// Version: 1.2.0
-// Last Modified: 2026-07-20
+// Version: 1.2.5
+// Last Modified: 2026-07-21
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasColorPicker.h"
@@ -9,6 +9,7 @@
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasClipboard.h"
+#include "UltraCanvasTooltipManager.h"
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
@@ -147,6 +148,15 @@ namespace UltraCanvas {
     void UltraCanvasColorPicker::Changed(bool finished) {
         RequestRedraw();
         Color c = GetColor();
+        if (editingBackground) {
+            // The working state currently holds the background colour being
+            // edited: mirror it into the background swatch live and notify via
+            // the background callbacks instead of the foreground ones.
+            previousColor = c;
+            if (onBackgroundChanging) onBackgroundChanging(c);
+            if (finished && onBackgroundChanged) onBackgroundChanged(c);
+            return;
+        }
         if (onColorChanging) onColorChanging(c);
         if (finished && onColorChanged) onColorChanged(c);
     }
@@ -577,23 +587,42 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasColorPicker::RenderSwatches(IRenderContext* ctx) {
+        // While the eyedropper is armed, the target swatch (chosen by the button
+        // used on the icon) live-previews the pixel under the pointer and is
+        // outlined in the accent colour. The other swatch renders normally.
+        bool previewBg = screenPickActive && screenPickPreviewValid && !screenPickForeground;
+        bool previewFg = screenPickActive && screenPickPreviewValid &&  screenPickForeground;
+        bool targetBg  = screenPickActive && !screenPickForeground;
+        bool targetFg  = screenPickActive &&  screenPickForeground;
+
+        // During an Adjust (right-button) edit the working HSV state holds the
+        // background colour, so the foreground swatch must show the saved
+        // foreground rather than GetColor(); the background swatch tracks the
+        // live edit (mirrored into previousColor). Outline the background swatch
+        // to signal it is the one being edited.
+        Color foreground = editingBackground
+                           ? HSV(fgSaveHue, fgSaveSat, fgSaveVal, fgSaveAlpha)
+                           : GetColor();
+
         // Previous (behind), then current (in front)
         DrawCheckerboard(ctx, previousSwatchRect, Scaled(8.0f));
-        ctx->SetFillPaint(previousColor);
+        ctx->SetFillPaint(previewBg ? screenPickPreview : previousColor);
         ctx->FillRectangle(Rect2Dd(previousSwatchRect.x, previousSwatchRect.y,
                                    previousSwatchRect.width, previousSwatchRect.height));
-        ctx->SetStrokePaint(style.borderColor);
-        ctx->SetStrokeWidth(1.0);
+        ctx->SetStrokePaint((targetBg || editingBackground) ? style.accentColor : style.borderColor);
+        ctx->SetStrokeWidth((targetBg || editingBackground) ? 1.5 : 1.0);
         ctx->DrawRectangle(Rect2Dd(previousSwatchRect.x, previousSwatchRect.y,
                                    previousSwatchRect.width, previousSwatchRect.height));
 
         DrawCheckerboard(ctx, currentSwatchRect, Scaled(8.0f));
-        ctx->SetFillPaint(GetColor());
+        ctx->SetFillPaint(previewFg ? screenPickPreview : foreground);
         ctx->FillRectangle(Rect2Dd(currentSwatchRect.x, currentSwatchRect.y,
                                    currentSwatchRect.width, currentSwatchRect.height));
-        ctx->SetStrokePaint(style.borderColor);
+        ctx->SetStrokePaint(targetFg ? style.accentColor : style.borderColor);
+        ctx->SetStrokeWidth(targetFg ? 1.5 : 1.0);
         ctx->DrawRectangle(Rect2Dd(currentSwatchRect.x, currentSwatchRect.y,
                                    currentSwatchRect.width, currentSwatchRect.height));
+        ctx->SetStrokeWidth(1.0);
 
         // Swap symbol: bent double-headed arrow in the corner between the two
         // swatches — one head points at the foreground swatch (left), the other
@@ -758,7 +787,17 @@ namespace UltraCanvas {
             Rect2Df trackF(tr.x, tr.y + (tr.height - trackH) * 0.5f, tr.width, trackH);
             Rect2Dd track(trackF.x, trackF.y, trackF.width, trackF.height);
             double radius = trackH * 0.5;
-            if (checkerUnder) DrawCheckerboard(ctx, trackF, Scaled(6.0f));
+            if (checkerUnder) {
+                // Clip the checkerboard to the rounded track so its square
+                // corners don't poke out past the rounded gradient — the alpha
+                // slider then reads as a rounded bar, matching the other
+                // channels. Wrapped in Push/PopState so the clip is scoped to
+                // the checkerboard and the parent dirty-rect clip is restored.
+                ctx->PushState();
+                ctx->ClipRoundedRectangle(track, radius, radius, radius, radius);
+                DrawCheckerboard(ctx, trackF, Scaled(6.0f));
+                ctx->PopState();
+            }
             ctx->SetFillPaint(gradient);
             ctx->FillRoundedRectangle(track, radius);
             ctx->SetStrokePaint(style.fieldBorderColor);
@@ -778,7 +817,15 @@ namespace UltraCanvas {
             float trackH = Scaled(8.0f);
             Rect2Df trackF(tr.x, tr.y + tr.height * 0.5f - trackH * 0.5f, tr.width, trackH);
             Rect2Dd track(trackF.x, trackF.y, trackF.width, trackF.height);
-            if (checkerUnder) DrawCheckerboard(ctx, trackF, Scaled(6.0f));
+            double radius = trackH * 0.5;
+            if (checkerUnder) {
+                // Round the checkerboard's ends to the track shape (see the
+                // Thick branch above) so the alpha slider has round ends.
+                ctx->PushState();
+                ctx->ClipRoundedRectangle(track, radius, radius, radius, radius);
+                DrawCheckerboard(ctx, trackF, Scaled(6.0f));
+                ctx->PopState();
+            }
             ctx->SetFillPaint(gradient);
             ctx->FillRoundedRectangle(track, trackH * 0.5);
             ctx->SetStrokePaint(style.fieldBorderColor);
@@ -958,6 +1005,7 @@ namespace UltraCanvas {
             case UCEventType::KeyDown:    return HandleKeyDown(event);
             case UCEventType::MouseLeave:
                 SetHovered(false);
+                UltraCanvasTooltipManager::HideTooltip();
                 if (hoverSwatch != HoverSwatch::NoneSwatch) {
                     hoverSwatch = HoverSwatch::NoneSwatch;
                     RequestRedraw();
@@ -971,6 +1019,10 @@ namespace UltraCanvas {
     bool UltraCanvasColorPicker::HandleMouseDown(const UCEvent& event) {
         Point2Df p(event.pointer.x, event.pointer.y);
         SetFocus(true);
+        // Adjust (right) button on the colour controls edits the background
+        // colour instead of the foreground (mirrors the eyedropper's
+        // left=foreground / right=background rule).
+        const bool adjust = (event.button == UCMouseButton::Right);
 
         // Dropdown popup takes priority while open
         if (dropdownOpen) {
@@ -1009,13 +1061,16 @@ namespace UltraCanvas {
             // Eyedropper: with an onScreenColorPick host callback the host does
             // the sampling (left mouse = foreground, right mouse = background).
             // Without a callback the built-in mode arms: the pointer becomes an
-            // eyedropper and the next click in the window is sampled.
+            // eyedropper and the next click in the window is sampled. The mouse
+            // button used on the icon selects the target swatch (left/Select ->
+            // foreground, right/Adjust -> background) for both the live preview
+            // and the committed sample.
             if (screenPickRect.Contains(p)) {
+                bool foreground = (event.button != UCMouseButton::Right);
                 if (onScreenColorPick) {
-                    bool foreground = (event.button != UCMouseButton::Right);
                     onScreenColorPick(foreground);
                 } else {
-                    StartScreenPick();
+                    StartScreenPick(foreground);
                 }
                 return true;
             }
@@ -1025,18 +1080,21 @@ namespace UltraCanvas {
                 float dy = p.y - wheelCenter.y;
                 float dist = std::sqrt(dx * dx + dy * dy);
                 if (dist >= ringInner && dist <= ringOuter) {
+                    if (adjust) BeginBackgroundEdit();
                     dragTarget = DragTarget::HueRing;
                     UpdateHueFromPoint(p);
                     Changed(false);
                     return true;
                 }
             } else if (hueBarRect.Contains(p)) {
+                if (adjust) BeginBackgroundEdit();
                 dragTarget = DragTarget::HueBar;
                 UpdateHueFromBar(p);
                 Changed(false);
                 return true;
             }
             if (svRect.Contains(p)) {
+                if (adjust) BeginBackgroundEdit();
                 dragTarget = DragTarget::SVSquare;
                 UpdateSVFromPoint(p);
                 Changed(false);
@@ -1097,6 +1155,7 @@ namespace UltraCanvas {
                     return true;
                 }
                 if (rowSliderRects[i].Contains(p)) {
+                    if (adjust) BeginBackgroundEdit();
                     DragTarget targets[4] = {DragTarget::Channel0, DragTarget::Channel1,
                                              DragTarget::Channel2, DragTarget::Alpha};
                     dragTarget = targets[i];
@@ -1117,6 +1176,9 @@ namespace UltraCanvas {
         // Not dragging: track which swatch (if any) the pointer hovers so the
         // whole surface can preview that colour.
         UpdateSwatchHover(p);
+
+        // Explain the model choices and channel / hex labels on hover.
+        UpdateHoverTooltip(event);
 
         // I-beam over the editable text fields (hex + value boxes, minus the
         // spinner arrow zones), default arrow elsewhere.
@@ -1149,11 +1211,95 @@ namespace UltraCanvas {
         }
     }
 
+    std::string UltraCanvasColorPicker::ModelTooltip(ColorPickerModel m) const {
+        switch (m) {
+            case ColorPickerModel::HSV: return "HSV — Hue, Saturation, Value";
+            case ColorPickerModel::HSL: return "HSL — Hue, Saturation, Lightness";
+            case ColorPickerModel::RGB: return "RGB — Red, Green, Blue";
+        }
+        return "";
+    }
+
+    std::string UltraCanvasColorPicker::ChannelTooltip(const std::string& label) const {
+        if (label == "H")   return "Hue (0–360°)";
+        if (label == "S")   return "Saturation (0–100%)";
+        if (label == "V")   return "Value / Brightness (0–100%)";
+        if (label == "L")   return "Lightness (0–100%)";
+        if (label == "R")   return "Red (0–255)";
+        if (label == "G")   return "Green (0–255)";
+        if (label == "B")   return "Blue (0–255)";
+        if (label == "A")   return "Alpha / Opacity (0–255)";
+        if (label == "Hex") return "Hex colour code (#RRGGBB or #RRGGBBAA)";
+        return "";
+    }
+
+    void UltraCanvasColorPicker::UpdateHoverTooltip(const UCEvent& event) {
+        auto* win = GetWindow();
+        if (!win) return;
+        Point2Df p(event.pointer.x, event.pointer.y);
+        auto over = [&](const Rect2Df& r) {
+            return r.width > 0.0f && r.height > 0.0f && r.Contains(p);
+        };
+        std::string text;
+
+        // Model choices: HSV / HSL / RGB (tab bar, dropdown button, or the open
+        // dropdown list).
+        if (modeSelector == ColorPickerModeSelector::TabBar) {
+            for (int i = 0; i < 3; ++i) {
+                if (over(tabRects[i])) { text = ModelTooltip((ColorPickerModel)i); break; }
+            }
+        } else if (over(modeButtonRect)) {
+            text = ModelTooltip(model);
+        }
+        if (text.empty() && dropdownOpen) {
+            float itemH = Scaled(style.rowHeight);
+            float x = modeButtonRect.x;
+            float y = modeButtonRect.y + modeButtonRect.height + 2.0f;
+            Rect2Df popup(x, y, modeButtonRect.width, itemH * 3.0f);
+            if (over(popup)) {
+                int idx = std::clamp((int)((p.y - y) / itemH), 0, 2);
+                text = ModelTooltip((ColorPickerModel)idx);
+            }
+        }
+
+        // Channel labels: H/S/V, H/S/L or R/G/B (per model) plus A for alpha.
+        if (text.empty() && SlidersVisible()) {
+            int nRows = 3 + (showAlpha ? 1 : 0);
+            for (int i = 0; i < nRows; ++i) {
+                if (over(rowLabelRects[i])) {
+                    std::string label;
+                    if (i < 3) {
+                        float v, mn, mx;
+                        GetChannelInfo(i, label, v, mn, mx);
+                    } else {
+                        label = "A";
+                    }
+                    text = ChannelTooltip(label);
+                    break;
+                }
+            }
+        }
+
+        // Hex label.
+        if (text.empty() && over(hexLabelRect)) {
+            text = ChannelTooltip("Hex");
+        }
+
+        if (text.empty()) {
+            UltraCanvasTooltipManager::HideTooltip();
+        } else {
+            UltraCanvasTooltipManager::UpdateAndShowTooltip(
+                    win, text, Point2Di(event.pointerWindow.x, event.pointerWindow.y));
+        }
+    }
+
     bool UltraCanvasColorPicker::HandleMouseUp(const UCEvent& event) {
         if (dragTarget == DragTarget::NoneTarget) return false;
         Point2Df p(event.pointer.x, event.pointer.y);
         ApplyDrag(p, true);
         dragTarget = DragTarget::NoneTarget;
+        // Commit the background colour and restore the foreground working state.
+        if (editingBackground) EndBackgroundEdit();
         return true;
     }
 
@@ -1213,6 +1359,27 @@ namespace UltraCanvas {
         val = std::clamp(v, 0.0f, 1.0f);
     }
 
+    void UltraCanvasColorPicker::BeginBackgroundEdit() {
+        if (editingBackground) return;
+        // Save the foreground working state, then load the background colour
+        // into it so every existing edit/render path operates on the background
+        // for the duration of the Adjust drag.
+        fgSaveHue = hue; fgSaveSat = sat; fgSaveVal = val; fgSaveAlpha = alpha;
+        float h, s, v;
+        RGBToHSV(previousColor, h, s, v);
+        if (s > 1e-4f && v > 1e-4f) hue = h;   // keep current hue on a grey bg
+        sat = s; val = v; alpha = previousColor.a;
+        editingBackground = true;
+    }
+
+    void UltraCanvasColorPicker::EndBackgroundEdit() {
+        if (!editingBackground) return;
+        previousColor = GetColor();            // commit the edited background
+        hue = fgSaveHue; sat = fgSaveSat; val = fgSaveVal; alpha = fgSaveAlpha;
+        editingBackground = false;
+        RequestRedraw();
+    }
+
     // ===================================================================
     // Built-in screen colour picking (eyedropper)
     // ===================================================================
@@ -1220,11 +1387,13 @@ namespace UltraCanvas {
         return "UCColorPickerScreenPick_" + GetIdentifier();
     }
 
-    void UltraCanvasColorPicker::StartScreenPick() {
+    void UltraCanvasColorPicker::StartScreenPick(bool foreground) {
         if (screenPickActive) return;
         auto* win = GetWindow();
         if (!win) return;
         screenPickActive = true;
+        screenPickForeground = foreground;
+        screenPickPreviewValid = false;
 
         // Switch the pointer to an eyedropper cursor; fall back to the
         // crosshair when the cursor image cannot be loaded.
@@ -1252,6 +1421,10 @@ namespace UltraCanvas {
                     switch (e.type) {
                         case UCEventType::MouseMove:
                             if (auto* w = GetWindow()) w->SelectMouseCursor(screenPickCursor);
+                            // Live-preview the pixel under the pointer in the
+                            // foreground swatch so the user sees the colour
+                            // before clicking to commit it.
+                            UpdateScreenPickPreview(e);
                             return false;               // hover handling may continue
                         case UCEventType::KeyDown:
                             if (e.virtualKey == UCKeys::Escape) {
@@ -1271,16 +1444,29 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    void UltraCanvasColorPicker::UpdateScreenPickPreview(const UCEvent& event) {
+        if (!screenPickActive) return;
+        auto* win = GetWindow();
+        Color sampled;
+        if (win && win->GetPixelColor(event.pointerWindow.x, event.pointerWindow.y, sampled)) {
+            sampled.a = 255;
+            screenPickPreview = sampled;
+            screenPickPreviewValid = true;
+        } else {
+            screenPickPreviewValid = false;
+        }
+        RequestRedraw();
+    }
+
     void UltraCanvasColorPicker::HandleScreenPickClick(const UCEvent& event) {
-        // Select (left) button -> foreground colour; Adjust (right) button ->
-        // background colour.
-        bool foreground = (event.button != UCMouseButton::Right);
+        // The target swatch was chosen by the button used on the eyedropper icon
+        // (see screenPickForeground); the sampling click commits into it.
         Color sampled;
         auto* win = GetWindow();
         if (win && win->GetPixelColor(event.pointerWindow.x, event.pointerWindow.y, sampled)) {
             sampled.a = 255;
-            if (foreground) SetForegroundColor(sampled, true);
-            else            SetBackgroundColor(sampled);
+            if (screenPickForeground) SetForegroundColor(sampled, true);
+            else                      SetBackgroundColor(sampled);
         }
         EndScreenPick();
     }
@@ -1288,6 +1474,7 @@ namespace UltraCanvas {
     void UltraCanvasColorPicker::EndScreenPick(bool restoreCursor) {
         if (!screenPickActive) return;
         screenPickActive = false;
+        screenPickPreviewValid = false;
         // The event filter stays installed (guarded by screenPickActive); it is
         // only removed in the destructor.
         if (restoreCursor) {

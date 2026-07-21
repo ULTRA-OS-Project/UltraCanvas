@@ -26,15 +26,25 @@ natively with the framework's `IRenderContext` primitives.
 - ✅ **Preview swatches** — foreground (current) vs. background (previous) colour,
   with a swap symbol tucked into the corner between the two swatches. Click the
   background swatch to revert.
+- ✅ **Select / Adjust editing** — using the colour controls (hue wheel/bar, SV
+  area and channel sliders) with the **Select (left)** button edits the
+  **foreground** colour; using them with the **Adjust (right)** button edits the
+  **background** colour (mirroring the eyedropper's left = foreground /
+  right = background rule). While an Adjust edit is in progress the background
+  swatch is outlined and tracks the change live; the `onBackgroundChanging` /
+  `onBackgroundChanged` callbacks report background edits.
 - ✅ **Full-surface hover preview** — hovering either swatch floods the whole
   widget background with that colour (opaque) so it can be judged on a large
   area; moving the pointer away restores the normal UI background.
 - ✅ **Screen colour picker ("eyedropper")** — the button right of the background
-  swatch arms a picking mode: the mouse pointer becomes an eyedropper cursor and
-  the next click samples the window pixel under it — **left (Select) mouse**
-  into the foreground colour, **right (Adjust) mouse** into the background
-  colour; **Esc** cancels. Hosts can override the behaviour (e.g. for real
-  whole-screen sampling) via `onScreenColorPick`.
+  swatch arms a picking mode. The mouse button used on the icon selects the
+  target swatch — **left (Select) mouse** targets the foreground colour, **right
+  (Adjust) mouse** the background colour. The pointer becomes an eyedropper
+  cursor and the **target swatch live-previews the pixel under the pointer** as
+  the mouse moves, so you can see the colour before committing; the next click
+  commits that pixel into the target swatch, and **Esc** cancels (discarding the
+  preview). Hosts can override the behaviour (e.g. for real whole-screen
+  sampling) via `onScreenColorPick`.
 - ✅ **Hex input** — click to edit, accepts `#RGB`, `#RRGGBB` and `#RRGGBBAA`.
 - ✅ **Full inline text editing** — the hex and numeric value fields are real
   single-line editors: click places the caret, drag selects, double-click
@@ -46,6 +56,9 @@ natively with the framework's `IRenderContext` primitives.
 - ✅ **Model selector** — either a **tab bar** (default) or a **dropdown**
   switches the channel editors between **HSV**, **HSL** and **RGB**. The two
   presentations are mutually exclusive (`SetModeSelector`).
+- ✅ **Hover tooltips** — resting the pointer over a model choice (HSV / HSL /
+  RGB) or a channel / hex label (H, S, V, A, L, R, G, B, Hex) shows a short
+  tooltip explaining what it is and its value range.
 - ✅ **Channel sliders** — three colour channels plus alpha, each with a live
   gradient track and an editable numeric value box. Two presentations
   (`SetSliderStyle`): **Thin** (thin track, overhanging handle) or **Thick**
@@ -53,9 +66,15 @@ natively with the framework's `IRenderContext` primitives.
 - ✅ **Value steppers** — optional `<` and `>` arrows inside each value field
   step the value by one unit (`SetShowValueSpinners`).
 - ✅ **Collapsible sliders** — optionally hide the four sliders behind a
-  disclosure (dropdown-icon) row; configurable whether they start expanded or
-  collapsed (`SetSlidersCollapsible`).
-- ✅ **Alpha channel** — checkerboard-backed alpha slider.
+  disclosure (dropdown-icon) row; **starts collapsed by default**
+  (`SetSlidersCollapsible`). The widget keeps a **fixed size**: the colour
+  wheel / shading area fills the space the collapsed sliders leave free, so
+  expanding the sliders shrinks the shading area by exactly the space they
+  occupy (and collapsing gives it straight back) instead of resizing the
+  widget. The shading area absorbs the change best in **Bar** wheel style,
+  where the SV rectangle fills the full available height.
+- ✅ **Alpha channel** — checkerboard-backed alpha slider with rounded ends (the
+  checkerboard is clipped to the rounded track so it matches the slider shape).
 - ✅ **UI scaling** — `SetUIScale(0.6f)` renders the whole picker at 60% (all
   metrics and fonts), for embedding a smaller variant.
 - ✅ **Compact mode** — hide the wheel/swatches for an inline sliders-only editor.
@@ -101,9 +120,10 @@ namespace UltraCanvas {
         Color GetBackgroundColor() const;
         void  SetBackgroundColor(const Color& c);
 
-        // Built-in eyedropper control
+        // Built-in eyedropper control. `foreground` selects the target swatch
+        // (true = foreground, false = background) for the preview and sample.
         bool IsScreenPickActive() const;
-        void StartScreenPick();
+        void StartScreenPick(bool foreground = true);
         void CancelScreenPick();
 
         std::function<void(const Color&)> onColorChanged;
