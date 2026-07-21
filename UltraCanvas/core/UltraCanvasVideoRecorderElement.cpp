@@ -1,7 +1,11 @@
 // core/UltraCanvasVideoRecorderElement.cpp
 // Composite UI control wrapping UltraCanvasVideoRecorder: camera preview + REC controls
-// Version: 0.1.1
-// Last Modified: 2026-06-24
+// Version: 0.1.2
+// Last Modified: 2026-07-21
+// V0.1.2: Add a frozen-still preview mode. OpenCamera(false) activates the camera
+//   but holds the first captured frame as a still; SetPreviewLive(true) (or
+//   starting a recording) switches to the moving feed. Lets a host show a still
+//   camera image on load and only go live on demand.
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVideoRecorderElement.h"
@@ -41,11 +45,21 @@ UltraCanvasVideoRecorderElement::~UltraCanvasVideoRecorderElement() {
     StopFrameTimer();
 }
 
-bool UltraCanvasVideoRecorderElement::OpenCamera() {
+bool UltraCanvasVideoRecorderElement::OpenCamera(bool live) {
+    previewLive = live;
     bool ok = recorder->Open();
     if (ok) StartFrameTimer();
     RequestRedraw();
     return ok;
+}
+
+void UltraCanvasVideoRecorderElement::SetPreviewLive(bool live) {
+    if (previewLive == live) return;
+    previewLive = live;
+    // Going live re-arms the frame pump (a frozen still idles the timer once it
+    // has its frame); no-op if the timer is already running.
+    if (live && recorder->IsOpen()) StartFrameTimer();
+    RequestRedraw();
 }
 void UltraCanvasVideoRecorderElement::CloseCamera() {
     recorder->Close();
@@ -55,6 +69,7 @@ void UltraCanvasVideoRecorderElement::CloseCamera() {
 
 void UltraCanvasVideoRecorderElement::StartRecording() {
     if (recorder->Start()) {
+        previewLive = true;            // a recording always shows the live feed
         StartFrameTimer();
         if (onRecordStarted) onRecordStarted();
     }
@@ -104,7 +119,7 @@ void UltraCanvasVideoRecorderElement::SelectCamera(const std::string& deviceId,
     // so the switch is visible immediately (but never interrupt a recording).
     if (recorder->IsOpen() && recorder->GetState() != VideoRecordingState::Recording) {
         CloseCamera();
-        OpenCamera();
+        OpenCamera(previewLive);   // preserve still / live mode across the switch
     }
     RequestRedraw();
 }
@@ -144,8 +159,23 @@ void UltraCanvasVideoRecorderElement::StopFrameTimer() {
 
 void UltraCanvasVideoRecorderElement::OnFrameTick() {
     if (!IsVisible()) return;
+
+    // Frozen still: the first frame has been captured and shown — hold it and idle
+    // cheaply. The camera session stays open (still capturing), so a later switch
+    // to the live feed is instant.
+    if (!previewLive && haveFrame) return;
+
+    bool hadFrame = haveFrame;
     UploadPreviewFrame();
-    // Blink the REC indicator at ~2Hz while recording.
+
+    if (!previewLive) {
+        // Still mode, first frame not captured yet: repaint once it lands, then the
+        // early-out above idles the timer.
+        if (haveFrame && !hadFrame) RequestRedraw();
+        return;
+    }
+
+    // Live: blink the REC indicator at ~2Hz while recording.
     static int tick = 0;
     if (recorder->GetState() == VideoRecordingState::Recording) {
         int per = std::max(1, style.targetFps / 2);

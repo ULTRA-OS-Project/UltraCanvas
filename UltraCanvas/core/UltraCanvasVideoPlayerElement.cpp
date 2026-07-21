@@ -1,7 +1,10 @@
 // core/UltraCanvasVideoPlayerElement.cpp
 // Composite UI control wrapping UltraCanvasVideoPlayer: video surface + transport bar
-// Version: 0.1.5
-// Last Modified: 2026-07-12
+// Version: 0.1.6
+// Last Modified: 2026-07-21
+// V0.1.6: The transport bar is greyed out and non-interactive when no media is
+//   loaded — controls draw in VideoPlayerStyle::disabledColor with no seek knob,
+//   and OnEvent ignores control clicks/hover in that state.
 // V0.1.5: A replay after end-of-stream shows video again: the frame timer is no
 //   longer stopped on EOS (Play also re-arms it), so frame uploads resume when
 //   playback restarts instead of leaving a frozen surface with audio only.
@@ -330,11 +333,21 @@ void UltraCanvasVideoPlayerElement::DrawControlBar(IRenderContext* ctx) {
                                      controlBarRect.width, controlBarRect.height),
                              style.controlBarColor, 0.0f, Color(0, 0, 0, 0), 0);
 
+    // With no media loaded the transport bar is inert: draw every control in the
+    // muted "disabled" colour and skip the progress fill / seek knob. OnEvent
+    // ignores control interactions in the same state.
+    const bool loaded = player->IsLoaded();
+    const Color iconCol  = loaded ? (hoverPlay ? style.iconHoverColor : style.iconColor)
+                                  : style.disabledColor;
+    const Color fillCol  = loaded ? style.progressFillColor : style.disabledColor;
+    const Color knobCol  = loaded ? style.knobColor : style.disabledColor;
+    const Color textCol  = loaded ? style.textColor : style.disabledColor;
+
     // Play / Pause icon
     int cx = playButtonRect.x + playButtonRect.width / 2;
     int cy = playButtonRect.y + playButtonRect.height / 2;
     int r = playButtonRect.width / 3;
-    ctx->SetFillPaint(hoverPlay ? style.iconHoverColor : style.iconColor);
+    ctx->SetFillPaint(iconCol);
     if (player->IsPlaying()) {
         int bw = r / 2, gap = bw / 2;
         ctx->FillRectangle(Rect2Dd(cx - gap - bw, cy - r, bw, r * 2));
@@ -355,12 +368,15 @@ void UltraCanvasVideoPlayerElement::DrawControlBar(IRenderContext* ctx) {
     float pct = (dur > 0.0) ? static_cast<float>(pos / dur) : 0.0f;
     pct = std::clamp(pct, 0.0f, 1.0f);
     int fillW = static_cast<int>(seekBarRect.width * pct);
-    if (fillW > 0) {
+    if (loaded && fillW > 0) {
         ctx->DrawFilledRectangle(Rect2Dd(seekBarRect.x, seekBarRect.y, fillW, seekBarRect.height),
-                                 style.progressFillColor, 0.0f, Color(0, 0, 0, 0), seekBarRect.height / 2);
+                                 fillCol, 0.0f, Color(0, 0, 0, 0), seekBarRect.height / 2);
     }
-    ctx->SetFillPaint(style.knobColor);
-    ctx->FillCircle(Point2Dd(seekBarRect.x + fillW, seekBarRect.y + seekBarRect.height / 2), kSeekKnobR);
+    // No seek knob when nothing is loaded (there is nothing to scrub).
+    if (loaded) {
+        ctx->SetFillPaint(knobCol);
+        ctx->FillCircle(Point2Dd(seekBarRect.x + fillW, seekBarRect.y + seekBarRect.height / 2), kSeekKnobR);
+    }
 
     // Mute / volume icon (SVG, tinted via the icon-as-mask path)
     if (muteButtonRect.width > 0) {
@@ -368,7 +384,7 @@ void UltraCanvasVideoPlayerElement::DrawControlBar(IRenderContext* ctx) {
         int isz = 18;
         Rect2Dd ir(muteButtonRect.x + (muteButtonRect.width - isz) / 2,
                    muteButtonRect.y + (muteButtonRect.height - isz) / 2, isz, isz);
-        ctx->DrawMask(style.iconColor, VideoIconPath(icon), ir, ImageFitMode::Contain);
+        ctx->DrawMask(iconCol, VideoIconPath(icon), ir, ImageFitMode::Contain);
     }
 
     // Volume bar
@@ -380,7 +396,7 @@ void UltraCanvasVideoPlayerElement::DrawControlBar(IRenderContext* ctx) {
         int vw = static_cast<int>(volumeBarRect.width * v);
         if (vw > 0) {
             ctx->DrawFilledRectangle(Rect2Dd(volumeBarRect.x, volumeBarRect.y, vw, volumeBarRect.height),
-                                     style.progressFillColor, 0.0f, Color(0, 0, 0, 0), volumeBarRect.height / 2);
+                                     fillCol, 0.0f, Color(0, 0, 0, 0), volumeBarRect.height / 2);
         }
     }
 
@@ -388,7 +404,7 @@ void UltraCanvasVideoPlayerElement::DrawControlBar(IRenderContext* ctx) {
     if (timeLabelRect.width > 0) {
         std::string label = FormatTime(pos) + " / " + FormatTime(dur);
         ctx->SetFontSize(11);
-        ctx->SetTextPaint(style.textColor);
+        ctx->SetTextPaint(textCol);
         ctx->SetTextAlignment(TextAlignment::Left);
         ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
         ctx->DrawTextInRect(label, Rect2Dd(timeLabelRect.x, timeLabelRect.y,
@@ -415,6 +431,11 @@ bool UltraCanvasVideoPlayerElement::OnEvent(const UCEvent& event) {
         case UCEventType::MouseDown: {
             if (event.button != UCMouseButton::Left) return false;
             lastInteractionTime = NowSeconds();
+            if (!player->IsLoaded()) {
+                // Controls are disabled with no media: swallow clicks on the
+                // (greyed) bar so they don't fall through, but act on nothing.
+                return ControlsVisible() && Hit(controlBarRect, p);
+            }
             if (Hit(playButtonRect, p)) { TogglePlayPause(); return true; }
             if (muteButtonRect.width > 0 && Hit(muteButtonRect, p)) {
                 player->SetMute(!player->IsMuted()); RequestRedraw(); return true;
@@ -446,7 +467,8 @@ bool UltraCanvasVideoPlayerElement::OnEvent(const UCEvent& event) {
 
         case UCEventType::MouseMove: {
             lastInteractionTime = NowSeconds();
-            bool nh = Hit(playButtonRect, p);
+            // No hover highlight on the disabled (no-media) play button.
+            bool nh = player->IsLoaded() && Hit(playButtonRect, p);
             if (nh != hoverPlay) { hoverPlay = nh; RequestRedraw(); }
             if (draggingSeek) {
                 float pct = std::clamp(static_cast<float>(p.x - seekBarRect.x) /

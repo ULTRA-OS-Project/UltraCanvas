@@ -42,8 +42,16 @@ public:
     ~UltraCanvasVideoRecorderElement() override;
 
     // ===== SESSION =====
-    bool OpenCamera();                       // start the live preview
+    // Open the camera. live=true starts the moving preview immediately; live=false
+    // grabs a single frame and holds it as a frozen still (switch to the live feed
+    // later with SetPreviewLive(true), or by starting a recording).
+    bool OpenCamera(bool live = true);
     void CloseCamera();
+
+    // Switch a frozen still preview to the live feed (or back). No-op unless the
+    // camera is currently open.
+    void SetPreviewLive(bool live);
+    bool IsPreviewLive() const { return previewLive; }
 
     // ===== TRANSPORT =====
     void StartRecording();
@@ -95,6 +103,7 @@ private:
 
     TimerId frameTimerId = InvalidTimerId;
     bool pulseOn = false;
+    bool previewLive = true;   // false: hold the first grabbed frame as a still
 
     Rect2Di videoRect;
     Rect2Di controlBarRect;

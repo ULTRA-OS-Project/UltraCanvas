@@ -1,7 +1,13 @@
 // Apps/DemoApp/UltraCanvasVideoExamples.cpp
 // Video player & recorder example screen
-// Version: 0.1.0
-// Last Modified: 2026-06-15
+// Version: 0.1.2
+// Last Modified: 2026-07-21
+// V0.1.2: The camera is activated on page open and shows a frozen still frame;
+//   "Start camera" switches it to the live feed. It also reports why the camera
+//   failed to open instead of silently showing "Camera off".
+// V0.1.1: Opening a video now auto-plays it (the decode backends only deliver
+//   frames while playing, so the surface previously sat on "Buffering..."
+//   forever).
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -49,13 +55,20 @@ namespace UltraCanvas {
         container->AddChild(playLabel);
 
         auto player = CreateVideoPlayer("DemoVideoPlayer", 10, 120, 460, 300);
-        player->onFileOpened = [status](const std::string& path) {
-            status->SetText("Loaded: " + path);
+        auto playerWeak = std::weak_ptr<UltraCanvasVideoPlayerElement>(player);
+        // Start playback as soon as a file is opened, the same way the Album
+        // viewer does (UltraCanvasAlbumExamples.cpp): the platform decode
+        // backends only deliver video frames while the pipeline is *playing*, so
+        // a freshly loaded-but-paused clip shows nothing but the "Buffering..."
+        // placeholder until Play() is called.
+        player->onFileOpened = [status, playerWeak](const std::string& path) {
+            status->SetText("Playing: " + path);
+            status->SetTextColor(Color(40, 120, 40));
+            if (auto p = playerWeak.lock()) p->Play();
         };
         container->AddChild(player);
 
         auto openBtn = CreateButton("OpenVideo", 10, 430, 130, 36, "Open video...");
-        auto playerWeak = std::weak_ptr<UltraCanvasVideoPlayerElement>(player);
         openBtn->onClick = [playerWeak]() {
             if (auto p = playerWeak.lock()) p->ShowOpenDialog();
         };
@@ -76,10 +89,38 @@ namespace UltraCanvas {
         };
         container->AddChild(recorder);
 
-        auto camBtn = CreateButton("StartCam", 520, 430, 130, 36, "Start camera");
+        // Activate the camera as soon as the page opens and hold the first frame as
+        // a frozen still. Clicking "Start camera" switches that still to the live
+        // feed. The page is destroyed on navigation (DisplayDemoItem/ClearDisplay),
+        // which closes the camera, so it is never left running in the background.
         auto recWeak = std::weak_ptr<UltraCanvasVideoRecorderElement>(recorder);
-        camBtn->onClick = [recWeak]() {
-            if (auto r = recWeak.lock()) r->OpenCamera();
+        if (recorder->OpenCamera(/*live=*/false)) {
+            status->SetText("Camera ready (still) — click \"Start camera\" for the live feed.");
+            status->SetTextColor(Color(40, 120, 40));
+        }
+
+        auto camBtn = CreateButton("StartCam", 520, 430, 130, 36, "Start camera");
+        camBtn->onClick = [recWeak, status]() {
+            auto r = recWeak.lock();
+            if (!r) return;
+            auto rec = r->GetRecorder();
+            // The camera is already activated as a still on page open; just switch
+            // to the live feed. If the initial open failed (no device / access
+            // denied), retry here and surface the backend's reason.
+            if (rec && rec->IsOpen()) {
+                r->SetPreviewLive(true);
+                status->SetText("Live camera preview.");
+                status->SetTextColor(Color(40, 120, 40));
+            } else if (r->OpenCamera(/*live=*/true)) {
+                status->SetText("Live camera preview.");
+                status->SetTextColor(Color(40, 120, 40));
+            } else {
+                std::string why = rec ? rec->GetLastError() : "";
+                status->SetText(why.empty()
+                                    ? "Could not start the camera (no device or access denied)."
+                                    : "Could not start the camera: " + why);
+                status->SetTextColor(Color(180, 60, 60));
+            }
         };
         container->AddChild(camBtn);
 
