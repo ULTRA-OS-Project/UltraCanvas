@@ -3525,8 +3525,10 @@ namespace UltraCanvas {
                     hoveredIconAction = -1;
                     UltraCanvasTooltipManager::HideTooltip();
                 }
-                draggingScrollbar = false;
-                dragOutArmed = false;
+                // Do not cancel an active scrollbar drag here: it is mouse-
+                // captured and ends on button release, so a leave (e.g. the
+                // pointer crossing the right edge) must not interrupt it.
+                if (!draggingScrollbar) dragOutArmed = false;
                 dragCollapseIndex = -1;
                 return true;
             }
@@ -3644,6 +3646,14 @@ namespace UltraCanvas {
                                               - scrollbarGrabOffset);
                             }
                             draggingScrollbar = true;
+                            // Capture the mouse so the drag keeps tracking even
+                            // when the pointer leaves the widget (the vertical
+                            // scrollbar hugs the right edge, so dragging right
+                            // would otherwise trigger a MouseLeave that killed
+                            // the drag). Captured MouseMove/MouseUp route here
+                            // directly and the spurious leave is never sent.
+                            if (auto* app = UltraCanvasApplication::GetInstance())
+                                app->CaptureMouse(this);
                             RequestRedraw();
                             return true;
                         }
@@ -3713,6 +3723,8 @@ namespace UltraCanvas {
                 dragCollapseIndex = -1;
                 if (draggingScrollbar) {
                     draggingScrollbar = false;
+                    if (auto* app = UltraCanvasApplication::GetInstance())
+                        app->ReleaseMouse();
                     RequestRedraw();
                     return true;
                 }
