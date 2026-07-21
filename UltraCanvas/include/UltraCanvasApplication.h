@@ -1,7 +1,7 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
-// Version: 1.5.0
-// Last Modified: 2026-07-02
+// Version: 1.5.1
+// Last Modified: 2026-07-21
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -148,6 +148,13 @@ namespace UltraCanvas {
         UltraCanvasWindowBase* GetCurrentModalWindow();
         void RegisterModalWindow(const std::shared_ptr<UltraCanvasWindowBase>& window);
         void UnregisterModalWindow(UltraCanvasWindowBase* window);
+
+        // Close every window whose config parentWindow is `parent` (recursively,
+        // via each child's own PerformClose). Called when a window closes so its
+        // transient children (dialogs, modal popups) cannot outlive it — an
+        // orphaned modal child would keep swallowing the whole application's
+        // input while its parent is already gone.
+        void CloseChildWindows(UltraCanvasWindowBase* parent);
 
         void ProcessEvents();
         bool PopEvent(UCEvent& event);
