@@ -1468,6 +1468,14 @@ namespace UltraCanvas {
                               (float)color.g / 255.0f,
                               (float)color.b / 255.0f,
                               (float)color.a / 255.0f);
+        // Set the immediate cairo source above, but also record it as the text
+        // source. DrawText/DrawTextLayout re-apply currentState.textSourceColor
+        // just before painting, so without this the raw source we just set is
+        // clobbered by whatever text colour was last left in the state (e.g. a
+        // grey from an earlier widget), and callers that colour text via
+        // SetCurrentPaint (Label, TextArea, Barcode) render in the wrong colour.
+        currentState.textSourceColor = color;
+        currentState.textSourcePattern = nullptr;
     }
 
     void RenderContextCairo::SetCurrentPaint(std::shared_ptr<IPaintPattern> pattern) {
@@ -1477,6 +1485,10 @@ namespace UltraCanvas {
         } else {
             debugOutput << "ERROR: ApplySourceToCairo no pattern handle";
         }
+        // Keep the text source in sync so a following DrawTextLayout paints with
+        // this pattern rather than re-applying a stale text colour (see above).
+        currentState.textSourcePattern = pattern;
+        currentState.textSourceColor = Colors::Transparent;
     }
 
     void RenderContextCairo::ApplySource(const Color& sourceColor, std::shared_ptr<IPaintPattern> sourcePattern) {
