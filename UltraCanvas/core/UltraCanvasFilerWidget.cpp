@@ -1227,6 +1227,12 @@ namespace UltraCanvas {
         return false;
     }
 
+    bool UltraCanvasFilerWidget::IsCutEntry(const FilerEntry& e) const {
+        if (!clipboardCut) return false;
+        return std::find(clipboardPaths.begin(), clipboardPaths.end(), e.path)
+               != clipboardPaths.end();
+    }
+
     void UltraCanvasFilerWidget::SelectionToClipboard(bool cut) {
         clipboardPaths.clear();
         for (const FilerEntry& e : GetSelectedEntries()) clipboardPaths.push_back(e.path);
@@ -1238,6 +1244,7 @@ namespace UltraCanvas {
                 cb->SetFiles(clipboardPaths, clipboardCut);
             }
         }
+        RequestRedraw();   // reflect (or clear) the cut ghosting immediately
     }
 
     void UltraCanvasFilerWidget::CopySelection() { SelectionToClipboard(false); }
@@ -2031,6 +2038,14 @@ namespace UltraCanvas {
                 case FilerViewType::TreeMap: DrawTreeMapCell(ctx, item, hov); break;
                 default:                     DrawThumbnailTile(ctx, item, hov); break;
             }
+            // Ghost entries that are pending a "cut": wash the tile toward the
+            // background so it reads as dimmed until the move is pasted.
+            if (IsCutEntry(entries[item.entryIndex])) {
+                Color wash = style.backgroundColor;
+                wash.a = 150;
+                ctx->SetFillPaint(wash);
+                ctx->FillRoundedRectangle(Rect2Dd(item.rect), 5);
+            }
         }
         // Hover icon menu on top of its item, inside the scrolled space so it
         // tracks the item; hit rects are recorded in content space.
@@ -2782,7 +2797,11 @@ namespace UltraCanvas {
         int sz = style.iconMenuButtonSize;
         int gap = 2;
         int total = 4 * sz + 3 * gap;
+        // Right-align the strip inside the item, but never let it spill past the
+        // item's left edge: on narrow thumbnail tiles the four buttons are wider
+        // than the tile, so clamp the start to the left edge instead.
         int x = item.rect.x + item.rect.width - total - 4;
+        if (x < item.rect.x) x = item.rect.x;
         int y = item.rect.y + 2;
         for (IconMenuAction a : actions) {
             Rect2Di button(x, y, sz, sz);
@@ -3543,6 +3562,16 @@ namespace UltraCanvas {
                     return true;
                 }
                 int newHover = IsInInfoBar(local) ? -1 : ItemAt(ToContentPoint(local));
+                // Keep the item hovered while the pointer is over one of its
+                // hover icon-menu buttons. On narrow tiles the button strip can
+                // extend past the item's own rect, so a plain ItemAt() test
+                // would drop the hover the moment the cursor reaches a button
+                // and the menu would flicker away.
+                if (hoverIconMenu) {
+                    size_t iconEntry = 0;
+                    if (IconMenuActionAt(local, iconEntry) >= 0)
+                        newHover = static_cast<int>(iconEntry);
+                }
                 if (newHover != hoveredIndex) {
                     hoveredIndex = newHover;
                     RequestRedraw();
