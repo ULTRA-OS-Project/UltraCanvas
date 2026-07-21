@@ -188,16 +188,20 @@ namespace UltraCanvas {
         verticalScrollbar->SetScrollDimensions(clientRect.height, maxBottom);
 
         if (style.autoShowScrollbars) {
-            verticalScrollbar->SetVisible(verticalScrollbar->IsScrollable());
-            horizontalScrollbar->SetVisible(horizontalScrollbar->IsScrollable());
+            verticalScrollbar->SetVisible(style.autoShowVerticalScrollbar &&
+                                          verticalScrollbar->IsScrollable());
+            horizontalScrollbar->SetVisible(style.autoShowHorizontalScrollbar &&
+                                            horizontalScrollbar->IsScrollable());
 
             auto newClientRect = GetContentArea();
             if (newClientRect != clientRect) {
                 horizontalScrollbar->SetScrollDimensions(newClientRect.width, maxRight);
                 verticalScrollbar->SetScrollDimensions(newClientRect.height, maxBottom);
 
-                verticalScrollbar->SetVisible(verticalScrollbar->IsScrollable());
-                horizontalScrollbar->SetVisible(horizontalScrollbar->IsScrollable());
+                verticalScrollbar->SetVisible(style.autoShowVerticalScrollbar &&
+                                              verticalScrollbar->IsScrollable());
+                horizontalScrollbar->SetVisible(style.autoShowHorizontalScrollbar &&
+                                                horizontalScrollbar->IsScrollable());
             }
         }
 

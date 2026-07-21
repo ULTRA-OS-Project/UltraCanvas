@@ -1,3 +1,17 @@
+#### 2026-07-21 *0.3.12*
+- Fix GIF export failing with `magicksave: libMagick error:
+  NoEncodeDelegateForThisImageFormat 'gif'` (seen on the DemoApp bitmap
+  performance-comparison page). When libvips has no native cgif `gifsave`,
+  the previous fallback routed the write through ImageMagick's `magicksave`,
+  but ImageMagick's GIF *coder* is itself an optional build-time delegate —
+  on systems without it the save threw at run time. GIF export no longer
+  depends on either cgif or ImageMagick: a bundled, dependency-free GIF89a
+  encoder (`libspecific/Cairo/UltraCanvasGifEncoder.h`, median-cut
+  quantisation + LZW, like the existing bundled BMP/QOI encoders) is used
+  whenever native `gifsave` is unavailable. It honours the requested colour
+  depth and interlacing and keeps 1-bit transparency for RGBA sources.
+  Both `UCImageRaster::Save` and PixelFX `SaveGif` route through it.
+
 #### 2026-07-21 *0.3.11*
 - Window management: closing a window now also closes its transient child
   windows (dialogs/popups created with `WindowConfig::parentWindow` pointing at
@@ -11,6 +25,7 @@
   application.
 - Clicking a non-modal window while a modal is active now raises the modal
   window to the front instead of silently discarding the click.
+
 - OCR plugin now supports **all Tesseract languages**, not just the bundled
   English pack. The full upstream catalogue (~130 languages) is exposed via
   `UltraCanvasOCR::SupportedLanguages()`, and any language's `traineddata` is

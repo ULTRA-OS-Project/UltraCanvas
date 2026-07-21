@@ -26,6 +26,13 @@ namespace UltraCanvas {
     struct ContainerStyle {
         // Scrolling behavior
         bool autoShowScrollbars = true;
+        // Per-axis refinement of autoShowScrollbars. Lets a pane whose content
+        // reflows to its width (e.g. book text) opt out of the horizontal bar:
+        // when the vertical scrollbar appears it narrows the viewport by its
+        // track size, which would otherwise fabricate a track-sized horizontal
+        // overflow of content that was laid out against the full width.
+        bool autoShowVerticalScrollbar = true;
+        bool autoShowHorizontalScrollbar = true;
         bool forceShowVerticalScrollbar = false;
         bool forceShowHorizontalScrollbar = false;
 
