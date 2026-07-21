@@ -1,7 +1,9 @@
 // include/UltraCanvasVideoPlayerElement.h
 // Composite UI control wrapping UltraCanvasVideoPlayer: video surface + transport bar
-// Version: 0.1.2
-// Last Modified: 2026-06-24
+// Version: 0.1.3
+// Last Modified: 2026-07-21
+// V0.1.3: The transport bar is drawn greyed out and stops responding to input
+//   when no media is loaded (VideoPlayerStyle::disabledColor).
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -27,6 +29,7 @@ struct VideoPlayerStyle {
     Color textColor = Color(235, 235, 235);
     Color iconColor = Color(235, 235, 235);
     Color iconHoverColor = Color(0, 170, 255);
+    Color disabledColor = Color(110, 110, 110);   // controls when no media is loaded
 
     int   controlBarHeight = 40;
     int   buttonSize = 28;
