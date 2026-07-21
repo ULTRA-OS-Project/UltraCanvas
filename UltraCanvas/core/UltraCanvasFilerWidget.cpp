@@ -207,6 +207,21 @@ namespace UltraCanvas {
             return buf;
         }
 
+        // Uniform size string for the "Bar size" view: always a mantissa with
+        // exactly one decimal place plus a unit chosen so the value stays below
+        // 1024 (e.g. "100.9 KB", "23.2 MB", "1.5 TB").  Keeping every value in
+        // the same "NNN.N UU" shape lets the number column line up and every bar
+        // share the same width.
+        std::string FormatSizeFixed(uint64_t bytes) {
+            static const char* kUnits[] = { "B", "KB", "MB", "GB", "TB", "PB" };
+            double v = static_cast<double>(bytes);
+            int u = 0;
+            while (v >= 1024.0 && u < 5) { v /= 1024.0; ++u; }
+            char buf[32];
+            snprintf(buf, sizeof(buf), "%.1f %s", v, kUnits[u]);
+            return buf;
+        }
+
         std::string FormatTime(std::time_t t) {
             if (t == 0) return "";
             char buf[32];
@@ -2676,11 +2691,19 @@ namespace UltraCanvas {
         int textY = item.rect.y + (item.rect.height - ts.height) / 2;
         ctx->DrawText(shown, Point2Dd(nameX, textY));
 
-        // Size bar scaled against the folder's largest entry.
-        std::string sizeText = FormatSize(e.effectiveSize);
+        // Size bar scaled against the folder's largest entry.  The size label
+        // lives in a fixed-width column on the right so every bar ends at the
+        // same x and all bars share the same width, regardless of how wide the
+        // individual number happens to be.  The reference string sizes that
+        // column for the widest value we can format ("NNN.N UU").
+        std::string sizeText = FormatSizeFixed(e.effectiveSize);
+        int sizeColW = ctx->GetTextLineDimensions("1023.9 MB").width;
         Size2Di sts = ctx->GetTextLineDimensions(sizeText);
+        const int rightPad = 14;
+        const int labelGap = 8;
+        int sizeColX = item.rect.x + item.rect.width - rightPad - sizeColW;
         int barX = item.rect.x + nameW + item.imageRect.width + 12;
-        int barMaxW = item.rect.x + item.rect.width - barX - sts.width - 14;
+        int barMaxW = sizeColX - labelGap - barX;
         if (barMaxW > 20) {
             int barH = std::max(6, item.rect.height - 12);
             int barY = item.rect.y + (item.rect.height - barH) / 2;
@@ -2695,8 +2718,10 @@ namespace UltraCanvas {
                 ctx->SetFillPaint(bar);
                 ctx->FillRoundedRectangle(Rect2Dd(barX, barY, w, barH), 3);
             }
+            // Right-align the number within its fixed-width column.
             ctx->SetTextPaint(style.secondaryTextColor);
-            ctx->DrawText(sizeText, Point2Dd(barX + barMaxW + 8, textY));
+            ctx->DrawText(sizeText,
+                          Point2Dd(sizeColX + (sizeColW - sts.width), textY));
         }
     }
 
