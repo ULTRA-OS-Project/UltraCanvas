@@ -66,8 +66,13 @@ natively with the framework's `IRenderContext` primitives.
 - ✅ **Value steppers** — optional `<` and `>` arrows inside each value field
   step the value by one unit (`SetShowValueSpinners`).
 - ✅ **Collapsible sliders** — optionally hide the four sliders behind a
-  disclosure (dropdown-icon) row; configurable whether they start expanded or
-  collapsed (`SetSlidersCollapsible`).
+  disclosure (dropdown-icon) row; **starts collapsed by default**
+  (`SetSlidersCollapsible`). The widget keeps a **fixed size**: the colour
+  wheel / shading area fills the space the collapsed sliders leave free, so
+  expanding the sliders shrinks the shading area by exactly the space they
+  occupy (and collapsing gives it straight back) instead of resizing the
+  widget. The shading area absorbs the change best in **Bar** wheel style,
+  where the SV rectangle fills the full available height.
 - ✅ **Alpha channel** — checkerboard-backed alpha slider with rounded ends (the
   checkerboard is clipped to the rounded track so it matches the slider shape).
 - ✅ **UI scaling** — `SetUIScale(0.6f)` renders the whole picker at 60% (all

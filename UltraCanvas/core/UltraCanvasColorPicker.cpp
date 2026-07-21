@@ -1,6 +1,6 @@
 // core/UltraCanvasColorPicker.cpp
 // Implementation of the comprehensive colour picker widget.
-// Version: 1.2.4
+// Version: 1.2.5
 // Last Modified: 2026-07-21
 // Author: UltraCanvas Framework
 

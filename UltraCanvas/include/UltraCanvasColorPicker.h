@@ -10,7 +10,7 @@
 // background (right/Adjust mouse) colour — the button used on the icon selects
 // the target swatch, which live-previews the pixel under the pointer as the
 // mouse moves.
-// Version: 1.2.4
+// Version: 1.2.5
 // Last Modified: 2026-07-21
 // Author: UltraCanvas Framework
 #pragma once
@@ -229,9 +229,14 @@ namespace UltraCanvas {
         void SetShowValueSpinners(bool show);
 
         // When collapsible, the channel sliders hide behind a disclosure row
-        // (dropdown icon); `expanded` selects the initial state.
+        // (dropdown icon); `expanded` selects the initial state and defaults to
+        // collapsed — the point of collapsing is a compact footprint, so a
+        // collapsible picker starts collapsed. The widget keeps a fixed size:
+        // expanding the sliders shrinks the colour-shading area by exactly the
+        // space the sliders occupy (and collapsing gives it back), rather than
+        // resizing the widget.
         bool GetSlidersCollapsible() const { return slidersCollapsible; }
-        void SetSlidersCollapsible(bool collapsible, bool expanded = true);
+        void SetSlidersCollapsible(bool collapsible, bool expanded = false);
         bool GetSlidersExpanded() const { return slidersExpanded; }
         void SetSlidersExpanded(bool expanded);
 
