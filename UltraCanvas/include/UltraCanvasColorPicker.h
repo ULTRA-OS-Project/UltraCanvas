@@ -10,7 +10,7 @@
 // background (right/Adjust mouse) colour — the button used on the icon selects
 // the target swatch, which live-previews the pixel under the pointer as the
 // mouse moves.
-// Version: 1.2.3
+// Version: 1.2.4
 // Last Modified: 2026-07-21
 // Author: UltraCanvas Framework
 #pragma once
@@ -255,6 +255,13 @@ namespace UltraCanvas {
         std::function<void(const Color&)> onColorChanged;    // final value (drag end / commit)
         std::function<void(const Color&)> onColorChanging;   // continuous, during interaction
 
+        // Background (Adjust / right-button) edits: fired when the background
+        // colour is changed by using the colour controls with the right mouse
+        // button. onBackgroundChanging is continuous during the drag,
+        // onBackgroundChanged is the final value on release.
+        std::function<void(const Color&)> onBackgroundChanged;
+        std::function<void(const Color&)> onBackgroundChanging;
+
         // Screen colour-picker ("eyedropper") request. Fired when the eyedropper
         // button next to the background swatch is clicked. When set, the host
         // takes over: it performs platform screen sampling and writes the pixel
@@ -304,6 +311,15 @@ namespace UltraCanvas {
         enum class DragTarget { NoneTarget, HueRing, HueBar, SVSquare,
                                 Channel0, Channel1, Channel2, Alpha, TextDrag };
         DragTarget dragTarget = DragTarget::NoneTarget;
+
+        // Right-button (Adjust) colour edits target the background instead of
+        // the foreground. While such an edit is in progress the working HSV
+        // state (hue/sat/val/alpha) temporarily holds the background colour so
+        // every edit/render path operates on it; the foreground is saved here
+        // and restored when the edit finishes.
+        bool editingBackground = false;
+        float fgSaveHue = 0.0f, fgSaveSat = 1.0f, fgSaveVal = 1.0f;
+        uint8_t fgSaveAlpha = 255;
 
         enum class EditField { NoEdit, Hex, Channel0, Channel1, Channel2, Alpha };
         EditField editField = EditField::NoEdit;
@@ -396,6 +412,12 @@ namespace UltraCanvas {
 
         void ApplyDrag(const Point2Df& p, bool finished);
         void UpdateHueFromPoint(const Point2Df& p);
+
+        // ----- Background (Adjust) editing -----
+        // Swap the working HSV state to the background colour for the duration
+        // of a right-button colour edit, then commit + restore on release.
+        void BeginBackgroundEdit();
+        void EndBackgroundEdit();
 
         // ----- Hover tooltips -----
         // Explain the model choices (HSV/HSL/RGB) and the channel / hex labels

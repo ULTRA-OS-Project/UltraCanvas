@@ -1,6 +1,6 @@
 // core/UltraCanvasColorPicker.cpp
 // Implementation of the comprehensive colour picker widget.
-// Version: 1.2.3
+// Version: 1.2.4
 // Last Modified: 2026-07-21
 // Author: UltraCanvas Framework
 
@@ -148,6 +148,15 @@ namespace UltraCanvas {
     void UltraCanvasColorPicker::Changed(bool finished) {
         RequestRedraw();
         Color c = GetColor();
+        if (editingBackground) {
+            // The working state currently holds the background colour being
+            // edited: mirror it into the background swatch live and notify via
+            // the background callbacks instead of the foreground ones.
+            previousColor = c;
+            if (onBackgroundChanging) onBackgroundChanging(c);
+            if (finished && onBackgroundChanged) onBackgroundChanged(c);
+            return;
+        }
         if (onColorChanging) onColorChanging(c);
         if (finished && onColorChanged) onColorChanged(c);
     }
@@ -586,18 +595,27 @@ namespace UltraCanvas {
         bool targetBg  = screenPickActive && !screenPickForeground;
         bool targetFg  = screenPickActive &&  screenPickForeground;
 
+        // During an Adjust (right-button) edit the working HSV state holds the
+        // background colour, so the foreground swatch must show the saved
+        // foreground rather than GetColor(); the background swatch tracks the
+        // live edit (mirrored into previousColor). Outline the background swatch
+        // to signal it is the one being edited.
+        Color foreground = editingBackground
+                           ? HSV(fgSaveHue, fgSaveSat, fgSaveVal, fgSaveAlpha)
+                           : GetColor();
+
         // Previous (behind), then current (in front)
         DrawCheckerboard(ctx, previousSwatchRect, Scaled(8.0f));
         ctx->SetFillPaint(previewBg ? screenPickPreview : previousColor);
         ctx->FillRectangle(Rect2Dd(previousSwatchRect.x, previousSwatchRect.y,
                                    previousSwatchRect.width, previousSwatchRect.height));
-        ctx->SetStrokePaint(targetBg ? style.accentColor : style.borderColor);
-        ctx->SetStrokeWidth(targetBg ? 1.5 : 1.0);
+        ctx->SetStrokePaint((targetBg || editingBackground) ? style.accentColor : style.borderColor);
+        ctx->SetStrokeWidth((targetBg || editingBackground) ? 1.5 : 1.0);
         ctx->DrawRectangle(Rect2Dd(previousSwatchRect.x, previousSwatchRect.y,
                                    previousSwatchRect.width, previousSwatchRect.height));
 
         DrawCheckerboard(ctx, currentSwatchRect, Scaled(8.0f));
-        ctx->SetFillPaint(previewFg ? screenPickPreview : GetColor());
+        ctx->SetFillPaint(previewFg ? screenPickPreview : foreground);
         ctx->FillRectangle(Rect2Dd(currentSwatchRect.x, currentSwatchRect.y,
                                    currentSwatchRect.width, currentSwatchRect.height));
         ctx->SetStrokePaint(targetFg ? style.accentColor : style.borderColor);
@@ -1001,6 +1019,10 @@ namespace UltraCanvas {
     bool UltraCanvasColorPicker::HandleMouseDown(const UCEvent& event) {
         Point2Df p(event.pointer.x, event.pointer.y);
         SetFocus(true);
+        // Adjust (right) button on the colour controls edits the background
+        // colour instead of the foreground (mirrors the eyedropper's
+        // left=foreground / right=background rule).
+        const bool adjust = (event.button == UCMouseButton::Right);
 
         // Dropdown popup takes priority while open
         if (dropdownOpen) {
@@ -1058,18 +1080,21 @@ namespace UltraCanvas {
                 float dy = p.y - wheelCenter.y;
                 float dist = std::sqrt(dx * dx + dy * dy);
                 if (dist >= ringInner && dist <= ringOuter) {
+                    if (adjust) BeginBackgroundEdit();
                     dragTarget = DragTarget::HueRing;
                     UpdateHueFromPoint(p);
                     Changed(false);
                     return true;
                 }
             } else if (hueBarRect.Contains(p)) {
+                if (adjust) BeginBackgroundEdit();
                 dragTarget = DragTarget::HueBar;
                 UpdateHueFromBar(p);
                 Changed(false);
                 return true;
             }
             if (svRect.Contains(p)) {
+                if (adjust) BeginBackgroundEdit();
                 dragTarget = DragTarget::SVSquare;
                 UpdateSVFromPoint(p);
                 Changed(false);
@@ -1130,6 +1155,7 @@ namespace UltraCanvas {
                     return true;
                 }
                 if (rowSliderRects[i].Contains(p)) {
+                    if (adjust) BeginBackgroundEdit();
                     DragTarget targets[4] = {DragTarget::Channel0, DragTarget::Channel1,
                                              DragTarget::Channel2, DragTarget::Alpha};
                     dragTarget = targets[i];
@@ -1272,6 +1298,8 @@ namespace UltraCanvas {
         Point2Df p(event.pointer.x, event.pointer.y);
         ApplyDrag(p, true);
         dragTarget = DragTarget::NoneTarget;
+        // Commit the background colour and restore the foreground working state.
+        if (editingBackground) EndBackgroundEdit();
         return true;
     }
 
@@ -1329,6 +1357,27 @@ namespace UltraCanvas {
         float v = 1.0f - (p.y - svRect.y) / std::max(1.0f, svRect.height);
         sat = std::clamp(s, 0.0f, 1.0f);
         val = std::clamp(v, 0.0f, 1.0f);
+    }
+
+    void UltraCanvasColorPicker::BeginBackgroundEdit() {
+        if (editingBackground) return;
+        // Save the foreground working state, then load the background colour
+        // into it so every existing edit/render path operates on the background
+        // for the duration of the Adjust drag.
+        fgSaveHue = hue; fgSaveSat = sat; fgSaveVal = val; fgSaveAlpha = alpha;
+        float h, s, v;
+        RGBToHSV(previousColor, h, s, v);
+        if (s > 1e-4f && v > 1e-4f) hue = h;   // keep current hue on a grey bg
+        sat = s; val = v; alpha = previousColor.a;
+        editingBackground = true;
+    }
+
+    void UltraCanvasColorPicker::EndBackgroundEdit() {
+        if (!editingBackground) return;
+        previousColor = GetColor();            // commit the edited background
+        hue = fgSaveHue; sat = fgSaveSat; val = fgSaveVal; alpha = fgSaveAlpha;
+        editingBackground = false;
+        RequestRedraw();
     }
 
     // ===================================================================

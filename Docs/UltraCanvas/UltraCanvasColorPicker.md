@@ -26,6 +26,13 @@ natively with the framework's `IRenderContext` primitives.
 - ✅ **Preview swatches** — foreground (current) vs. background (previous) colour,
   with a swap symbol tucked into the corner between the two swatches. Click the
   background swatch to revert.
+- ✅ **Select / Adjust editing** — using the colour controls (hue wheel/bar, SV
+  area and channel sliders) with the **Select (left)** button edits the
+  **foreground** colour; using them with the **Adjust (right)** button edits the
+  **background** colour (mirroring the eyedropper's left = foreground /
+  right = background rule). While an Adjust edit is in progress the background
+  swatch is outlined and tracks the change live; the `onBackgroundChanging` /
+  `onBackgroundChanged` callbacks report background edits.
 - ✅ **Full-surface hover preview** — hovering either swatch floods the whole
   widget background with that colour (opaque) so it can be judged on a large
   area; moving the pointer away restores the normal UI background.
