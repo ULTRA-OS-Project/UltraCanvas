@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <fstream>
 #include <sstream>
 #include <mutex>
@@ -298,8 +299,17 @@ namespace UltraCanvas {
         }
 
         try {
-            result->imgDataPtr = (uint8_t *)data;
+            // Copy the buffer: the raster outlives the call (pixmap creation,
+            // animation decode happen later at draw time), while the caller's
+            // buffer usually doesn't.
+            result->imgDataPtr = (uint8_t *)malloc(dataSize);
+            if (!result->imgDataPtr) {
+                result->errorMessage = "Not enough memory for image data";
+                return result;
+            }
+            std::memcpy(result->imgDataPtr, data, dataSize);
             result->imgDataSize = dataSize;
+            result->ownData = true;
 
             auto vipsImage = result->GetVImage();
 
@@ -329,8 +339,14 @@ namespace UltraCanvas {
             result->errorMessage = "Invalid data: null pointer or zero size";
             return result;
         }
-        result->imgDataPtr = (uint8_t *)data;
+        result->imgDataPtr = (uint8_t *)malloc(dataSize);
+        if (!result->imgDataPtr) {
+            result->errorMessage = "Not enough memory for image data";
+            return result;
+        }
+        std::memcpy(result->imgDataPtr, data, dataSize);
         result->imgDataSize = dataSize;
+        result->ownData = true;
         result->errorMessage = "Image loading not yet implemented (no libvips)";
         return result;
     }

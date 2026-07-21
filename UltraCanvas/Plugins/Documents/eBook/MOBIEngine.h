@@ -10,11 +10,14 @@
 // Mobipocket page-break markers, and hands the pieces to HTML::ElementBuilder
 // — it performs no rendering itself.
 //
-// Scope: MOBI6 (.mobi/.prc/.azw and the MOBI6 half of combo .azw3 files) with
-// no-compression and PalmDOC. HUFF/CDIC and KF8-only .azw3 are detected and
-// reported rather than mis-rendered.
-// Version: 1.0.0
-// Last Modified: 2026-07-03
+// Scope: MOBI6 (.mobi/.prc/.azw and the MOBI6 half of combo .azw3 files) and
+// KF8 (MOBI file version 8: KF8-only .azw3/.mobi), with no-compression and
+// PalmDOC. KF8 documents are reassembled from their skeleton/fragment INDX
+// tables (one chapter per skeleton part) with FDST separating the markup flow
+// from CSS flows. HUFF/CDIC compression and DRM are detected and reported
+// rather than mis-rendered.
+// Version: 1.1.0
+// Last Modified: 2026-07-20
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -79,6 +82,20 @@ private:
     std::string pdbName;   // PDB database name (title fallback)
     std::map<uint32_t, std::vector<std::string>> exth;
 
+    // KF8 (MOBI file version >= 8) state.
+    bool kf8 = false;
+    uint32_t fdstIndex = 0xFFFFFFFF;   // FDST record (flow boundaries)
+    uint32_t skelIndex = 0xFFFFFFFF;   // skeleton INDX header record
+    uint32_t fragIndex = 0xFFFFFFFF;   // fragment INDX header record
+    std::string kf8Css;                // concatenated CSS flows
+    std::vector<std::string> kf8Flows; // auxiliary flows ([0] unused)
+
+    // One parsed INDX entry: its name plus tag → values from the TAGX scheme.
+    struct IndxEntry {
+        std::string name;
+        std::map<uint8_t, std::vector<uint32_t>> tags;
+    };
+
     bool ParseRecords(const uint8_t* data, size_t size);
     bool ParseRecord0();
     void ParseExth(const uint8_t* data, size_t size);
@@ -86,7 +103,16 @@ private:
     void ExtractImages();
     void BuildMetadata();
     void BuildChapters();
+    void BuildChaptersKF8();
     void BuildTOC();
+
+    // Parses the INDX header record at `headerRecord` plus its data records.
+    bool ParseIndx(uint32_t headerRecord, std::vector<IndxEntry>& out) const;
+    // Rewrites recindex= / kindle:embed image references to mobiimg/N hrefs.
+    std::string RewriteImageRefs(const std::string& src) const;
+    // Replaces <img src="kindle:flow:..."> (KF8 SVG cover wrappers) with the
+    // referenced flow's inline markup.
+    std::string InlineSvgFlows(const std::string& src) const;
 
     std::string GetExthString(uint32_t type) const;
     std::vector<std::string> GetExthStrings(uint32_t type) const;

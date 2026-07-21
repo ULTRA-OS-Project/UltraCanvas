@@ -4,11 +4,11 @@
 // Composite UltraCanvasContainer laid out by the CSSLayout engine:
 //
 //   ┌─────────────────────────────────────────────┐
-//   │ toolbar: ◀ ▶  chapter title   A- A+ ☾ ☰    │  flex row, fixed height
-//   ├──────────┬──────────────────────────────────┤
-//   │ TOC list │ chapter content (scrollable)     │  flex row, grows
-//   │ (toggle) │ built by HTML::ElementBuilder    │
-//   └──────────┴──────────────────────────────────┘
+//   │ toolbar: ◀ ▶ A- A+ ☾ ☰  chapter title      │  flex row, fixed height
+//   ├──────────╥──────────────────────────────────┤
+//   │ TOC list ║ chapter content (scrollable)     │  split pane, grows
+//   │ (toggle) ║ built by HTML::ElementBuilder    │  (draggable splitter)
+//   └──────────╨──────────────────────────────────┘
 //
 // Chapters come from an IEBookEngine (EPUB, TXT, ... via the engine
 // registry); the chapter XHTML is converted to native elements, so text is
@@ -22,6 +22,7 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasListView.h"
+#include "UltraCanvasSplitPane.h"
 
 #include "Documents/eBook/IEBookEngine.h"
 
@@ -116,10 +117,12 @@ private:
     std::shared_ptr<IEBookEngine> engine;
     std::string lastError;
     int currentChapter = -1;
-    float baseFontSizePx = 18.f;
+    // Overridden in the constructor with the platform's UI font size, so the
+    // book text starts at the same size as the application interface.
+    float baseFontSizePx = 12.f;
     std::string contentFontFamily;
     EBookViewerTheme theme = EBookViewerTheme::Normal;
-    bool tocVisible = false;
+    bool tocVisible = true;
 
     // UI parts
     std::shared_ptr<UltraCanvasContainer> toolbar;
@@ -130,11 +133,16 @@ private:
     std::shared_ptr<UltraCanvasButton> btnFontPlus;
     std::shared_ptr<UltraCanvasButton> btnTheme;
     std::shared_ptr<UltraCanvasButton> btnToc;
-    std::shared_ptr<UltraCanvasContainer> bodyRow;
+    // TOC | content, separated by a draggable splitter. The TOC pane is
+    // inserted/removed on toggle; tocList itself is retained across toggles.
+    std::shared_ptr<UltraCanvasSplitPane> bodySplit;
+    std::shared_ptr<UltraCanvasContainer> tocPane;
+    std::shared_ptr<UltraCanvasContainer> contentPane;
     std::shared_ptr<UltraCanvasListView> tocList;
     std::shared_ptr<UltraCanvasSimpleListModel> tocModel;
     std::shared_ptr<UltraCanvasContainer> contentScroll;
     std::vector<int> tocRowToChapter;   // flattened TOC row → chapter index
+    int tocWidthPx = 300;               // TOC pane width, remembered across toggles
 
     // #fragment targets of the current chapter (id → built element), and the
     // anchor to scroll to after the next layout pass (set when a link
@@ -143,6 +151,8 @@ private:
     std::string pendingAnchorId;
 
     void BuildUI();
+    void AttachTocPane();
+    void DetachTocPane();
     void RebuildChapterContent();
     void OpenLink(const std::string& baseHref, const std::string& href);
     bool ScrollToAnchor(const std::string& anchorId);

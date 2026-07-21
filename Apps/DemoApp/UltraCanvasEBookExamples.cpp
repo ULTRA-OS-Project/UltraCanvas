@@ -54,6 +54,16 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateEBookExa
     // ---- header row: open button + status ----
     auto header = std::make_shared<UltraCanvasContainer>("EBookDemoHeader");
     header->size.height = CSSLayout::Dimension::Px(44);
+    // The reader's flex base size is the chapter's full content height, so a
+    // long chapter puts this column into shrink mode. The header is a fixed
+    // chrome row: never let it be crushed (and never let it sprout its own
+    // scrollbars over the buttons while layout is in flux).
+    header->layoutItem.SetFlexShrink(0);
+    {
+        ContainerStyle headerStyle = header->GetContainerStyle();
+        headerStyle.autoShowScrollbars = false;
+        header->SetContainerStyle(headerStyle);
+    }
     header->layout.SetFlex(CSSLayout::FlexDirection::Row);
     header->layout.SetFlexGap(8.f);
     header->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
