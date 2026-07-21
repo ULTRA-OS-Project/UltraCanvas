@@ -308,7 +308,19 @@ namespace {
                 texFiles.push_back(entry.path());
             }
         }
-        std::sort(texFiles.begin(), texFiles.end());
+        // Order the tabs: the MicroTeX gallery examples ("microtex-*") lead the
+        // list, followed by the rest; each group alphabetical for determinism.
+        // (Plain lexical order would sink "microtex-" below "math-", pushing the
+        // showcase examples to the bottom.)
+        auto isGallery = [](const std::filesystem::path& p) {
+            return p.stem().string().rfind("microtex-", 0) == 0;
+        };
+        std::sort(texFiles.begin(), texFiles.end(),
+                  [&](const std::filesystem::path& a, const std::filesystem::path& b) {
+                      const bool ga = isGallery(a), gb = isGallery(b);
+                      if (ga != gb) return ga;            // gallery examples first
+                      return a < b;                       // then alphabetical
+                  });
 
         if (texFiles.empty()) {
             auto empty = std::make_shared<UltraCanvasLabel>("LaTeXEmpty", 0, 0, 0, 0);
