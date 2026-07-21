@@ -2,8 +2,8 @@
 // Parse-once SVG document: retains the parsed librsvg handle so repeated
 // rasterizations (zoom levels, HiDPI, layout changes) skip the file read and
 // the XML parse and only pay for the vector render itself.
-// Version: 1.0.0
-// Last Modified: 2026-07-11
+// Version: 1.1.0
+// Last Modified: 2026-07-21
 // Author: UltraCanvas Framework
 #pragma once
 #ifdef HAS_LIBRSVG
@@ -32,6 +32,11 @@ namespace UltraCanvas {
         // invalid (parse/read failure) — check IsValid(); failures are not
         // cached so a corrected file is picked up on the next call.
         static std::shared_ptr<UCSvgDocument> Get(const std::string& path);
+
+        // Drop the cached parsed document for `path` (if any), so the next
+        // Get() re-reads and re-parses the file. Called by
+        // UCImageRaster::ClearCache to keep SVG sources in sync on disk edits.
+        static void RemoveFromCache(const std::string& path);
 
         // True for paths this parse-once path handles: plain ".svg" files.
         // Compressed ".svgz" is left to the generic loader (librsvg's

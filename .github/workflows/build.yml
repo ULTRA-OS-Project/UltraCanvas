@@ -88,6 +88,7 @@ jobs:
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-ninja
             mingw-w64-x86_64-pkgconf
+            mingw-w64-x86_64-rust
             mingw-w64-x86_64-cairo
             mingw-w64-x86_64-pango
             mingw-w64-x86_64-harfbuzz
@@ -114,6 +115,21 @@ jobs:
       - name: Install dependencies (macOS/Linux)
         if: runner.os != 'Windows'
         run: ${{ matrix.install_deps }}
+
+      # ===== Rust toolchain — Vectorizer plugin (raster→SVG via VTracer) =====
+      # Windows installs the native mingw-w64-x86_64-rust package above (gnu ABI,
+      # matching the MinGW compiler; MSYS2's /usr/bin POSIX rust breaks Corrosion
+      # with 'failed to join paths from $LD_LIBRARY_PATH'). On macOS/Linux use the
+      # runner's preinstalled rustup to pin a current stable, so the version-pinned
+      # vtracer / visioncortex crates build with a new-enough compiler.
+      - name: Install Rust toolchain (macOS/Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustc --version
+          cargo --version
 
       # ===== Python `websockets` for UltraNet WS loopback test =====
       # Cheap to install; the test SKIPs cleanly if missing, but enabling
@@ -179,6 +195,21 @@ jobs:
             exit 1
           fi
           echo "Confirmed: CI links system libcurl; vendored curl / version-script fix NOT applied."
+
+      # The Vectorizer plugin (raster→SVG via VTracer) needs a Rust toolchain. Its
+      # parent gate only prints a status line when cargo is missing/incompatible and
+      # keeps configuring, so a broken toolchain would otherwise ship artifacts with
+      # no vectorization support. Fail loudly instead.
+      - name: Verify Vectorizer plugin enabled
+        shell: bash
+        run: |
+          set -eu
+          if ! grep -q "Vectorizer Plugin - ENABLED" configure.log; then
+            echo "::error::Vectorizer plugin was not enabled during configure (Rust toolchain missing or incompatible)"
+            grep -i "vectorizer" configure.log || true
+            exit 1
+          fi
+          echo "Vectorizer plugin enabled on ${{ runner.os }}"
 
       - name: Build
         run: cmake --build build --config ${{ matrix.build_type }} --parallel 2

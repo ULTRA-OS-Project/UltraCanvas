@@ -22,7 +22,7 @@ if(APPLE)
 endif()
 
 # ===== LIBRARY DEFINITION =====
-set(ULTRACANVAS_VERSION "0.3.10")
+set(ULTRACANVAS_VERSION "0.3.11")
 set(ULTRACANVAS_LIB_NAME "UltraCanvas")
 
 message(STATUS "")
@@ -41,7 +41,7 @@ option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" ON)
 option(ULTRACANVAS_PLUGIN_SVG "Build SVG plugin" OFF)
 option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin" ON)
 option(ULTRACANVAS_PLUGIN_OCR "Build OCR plugin (requires tesseract + leptonica)" ON)
-option(ULTRACANVAS_PLUGIN_VECTORIZER "Build Vectorizer plugin (raster→SVG via VTracer; requires cargo)" OFF)
+option(ULTRACANVAS_PLUGIN_VECTORIZER "Build Vectorizer plugin (raster→SVG via VTracer; requires cargo)" ON)
 option(ULTRACANVAS_PLUGIN_LATEX "Build LaTeX math plugin (embedded MicroTeX)" ON)
 option(ULTRACANVAS_ENABLE_AUDIO "Enable audio playback & recording (requires backend lib)" ON)
 option(ULTRACANVAS_ENABLE_VIDEO "Enable video playback & recording (requires platform media framework)" ON)
@@ -1583,7 +1583,11 @@ if(ULTRACANVAS_PLUGIN_LATEX)
     endif()
     # NB: the module is dlopen()ed at runtime, never linked - so it is NOT added
     # to ULTRACANVAS_PLUGIN_TARGETS (which apps link against). It builds as part
-    # of the default ("all") target.
+    # of the default ("all") target. Because nothing links it, a single-target
+    # IDE build would not rebuild it when a core interface header changes, leaving
+    # a stale .so with a mismatched vtable - so the top-level CMakeLists adds an
+    # explicit build-order dependency (add_dependencies, not a link) from each app
+    # onto UltraCanvasLaTeX. Keep both in sync.
 
     # --- Loader (the only LaTeX code linked into the core) ---
     target_sources(${ULTRACANVAS_LIB_NAME} PRIVATE

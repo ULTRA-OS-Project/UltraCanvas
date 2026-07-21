@@ -1,7 +1,7 @@
 // libspecific/Cairo/ImageCairo.h
 // Base interface for cross-platform image handling in UltraCanvas
-// Version: 1.1.0
-// Last Modified: 2026-05-11
+// Version: 1.2.0
+// Last Modified: 2026-07-21
 // Author: UltraCanvas Framework
 #pragma once
 #ifndef IMAGECAIRO_H
@@ -142,6 +142,11 @@ namespace UltraCanvas {
         ~UCImageRaster();
 
         static std::shared_ptr<UCImageRaster> Get(const std::string &path);
+        // Evict every cached artifact for `path`: the loaded raster, all of its
+        // derived pixmaps (every requested size/fit/scale) and, for SVG
+        // sources, the parsed document. Use after a file on disk changes so the
+        // next Get()/DrawImage re-reads it instead of serving the stale copy.
+        static void RemoveFromCache(const std::string &path);
         static std::shared_ptr<UCImageRaster> Load(const std::string &path, bool loadOnlyHeader = true);
         static std::shared_ptr<UCImageRaster> LoadFromMemory(const uint8_t* data, size_t dataSize);
         static std::shared_ptr<UCImageRaster> LoadFromMemory(const std::vector<uint8_t>& data) {

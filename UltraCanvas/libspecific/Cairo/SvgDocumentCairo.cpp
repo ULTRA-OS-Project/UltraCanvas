@@ -1,8 +1,8 @@
 // libspecific/Cairo/SvgDocumentCairo.cpp
 // Implementation of the parse-once SVG document (retained RsvgHandle + LRU
 // document cache). See SvgDocumentCairo.h for the design rationale.
-// Version: 1.0.0
-// Last Modified: 2026-07-11
+// Version: 1.1.0
+// Last Modified: 2026-07-21
 // Author: UltraCanvas Framework
 
 #ifdef HAS_LIBRSVG
@@ -57,6 +57,10 @@ namespace UltraCanvas {
             }
         }
         return doc;
+    }
+
+    void UCSvgDocument::RemoveFromCache(const std::string& path) {
+        g_SvgDocsCache.RemoveFromCache(path);
     }
 
     std::shared_ptr<UCSvgDocument> UCSvgDocument::Parse(const std::string& path) {

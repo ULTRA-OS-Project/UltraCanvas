@@ -1387,7 +1387,7 @@ namespace UltraCanvas {
 
 #ifdef ULTRACANVAS_HAS_VECTORIZER_PLUGIN
         toolsBuilder.AddItem("vectorizer", "Vectorizer", "Raster image → SVG vector tracer",
-                             ImplementationStatus::PartiallyImplemented,
+                             ImplementationStatus::FullyImplemented,
                              [this]() { return CreateVectorizerExamples(); },
                              "Apps/DemoApp/UltraCanvasVectorizerExamples.cpp",
                              "Docs/Modules/Vectorizer/README.md");

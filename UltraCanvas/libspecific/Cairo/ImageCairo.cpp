@@ -1,7 +1,7 @@
 // libspecific/Cairo/ImageCairo.cpp
 // Cross-platform image loader implementation using PIMPL idiom
-// Version: 2.1.0
-// Last Modified: 2026-05-11
+// Version: 2.2.0
+// Last Modified: 2026-07-21
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImage.h"
@@ -192,6 +192,23 @@ namespace UltraCanvas {
             }
         }
         return im;
+    }
+
+    void UCImageRaster::RemoveFromCache(const std::string &path) {
+        // Loaded raster (keyed by the exact path).
+        g_ImagesCache.RemoveFromCache(path);
+#if HAS_PIXMAPS_CACHE
+        // Derived pixmaps are keyed "<path>?w:..h:..c:..r:.." (see
+        // MakePixmapCacheKey); the '?' guards against a path that is a prefix
+        // of another file's path matching by accident.
+        g_PixmapsCache.RemoveFromCacheByPrefix(path + "?");
+#endif
+#ifdef HAS_LIBRSVG
+        // Parse-once SVG document cache, keyed by the exact path.
+        if (UCSvgDocument::IsSvgPath(path)) {
+            UCSvgDocument::RemoveFromCache(path);
+        }
+#endif
     }
 
     std::shared_ptr<UCImageRaster> UCImageRaster::GetFromMemory(const uint8_t* data, size_t dataSize) {

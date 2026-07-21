@@ -7,7 +7,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(UltraCanvasDemoApp
-    VERSION 0.3.10
+    VERSION 0.3.11
     DESCRIPTION "UltraCanvas Framework Demo Application"
     LANGUAGES CXX
 )
@@ -55,7 +55,7 @@ option(ULTRACANVAS_ENABLE_AUDIO "Build audio backend" ON)
 option(ULTRACANVAS_PLUGIN_VECTOR "Build Vector plugin" OFF)
 option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin (requires MuPDF / libmupdf-dev)" ON)
 option(ULTRACANVAS_PLUGIN_OCR "Build OCR plugin (requires tesseract + leptonica)" ON)
-option(ULTRACANVAS_PLUGIN_VECTORIZER "Build Vectorizer plugin (raster→SVG via VTracer; requires cargo)" OFF)
+option(ULTRACANVAS_PLUGIN_VECTORIZER "Build Vectorizer plugin (raster→SVG via VTracer; requires cargo)" ON)
 option(ULTRACANVAS_USE_VIRTUALFS "Build the VirtualFS module and the UltraCanvas bridge to it" ON)
 
 include(FetchContent)
@@ -663,6 +663,20 @@ if(BUILD_TEXTER_APP)
 endif()
 if(BUILD_DEMO_APP)
     add_dependencies(UltraCanvasDemo copy_assets)
+endif()
+
+# The LaTeX plugin is a dlopen()ed CMake MODULE - never linked by any app, so
+# nothing forces it to rebuild when a core interface header (e.g. IRenderContext)
+# changes. A single-target IDE build then rebuilds the core but leaves a stale
+# libUltraCanvasLaTeX.so whose baked-in vtable indices no longer match the core,
+# crashing on the first cross-module virtual call. Take an explicit build-order
+# dependency (NOT a link) so any app that can load the module always rebuilds it.
+if(TARGET UltraCanvasLaTeX)
+    foreach(_uc_app UltraCanvasDemo UltraCanvasTexter UltraAIApp UCFileManager EBookViewerTest)
+        if(TARGET ${_uc_app})
+            add_dependencies(${_uc_app} UltraCanvasLaTeX)
+        endif()
+    endforeach()
 endif()
 
 # ===== PACKAGE CONFIGURATION =====

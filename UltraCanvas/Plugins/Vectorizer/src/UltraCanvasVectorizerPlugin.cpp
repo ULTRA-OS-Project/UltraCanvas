@@ -47,10 +47,10 @@ bool PFXToRGBA(const PixelFX::PFXImage& src,
         img = img.colourspace(VIPS_INTERPRETATION_sRGB);
         if (img.bands() == 3) {
             // Add a fully-opaque alpha channel — VTracer expects RGBA.
-            img = img.bandjoin(vips::VImage::new_from_image(img, std::vector<double>{255.0}));
+            img = img.bandjoin(255);
         } else if (img.bands() == 1) {
             img = img.bandjoin(img).bandjoin(img); // greyscale → RGB
-            img = img.bandjoin(vips::VImage::new_from_image(img, std::vector<double>{255.0}));
+            img = img.bandjoin(255);
         } else if (img.bands() == 2) {
             // grey + alpha — expand grey to RGB, keep alpha
             vips::VImage grey  = img.extract_band(0);

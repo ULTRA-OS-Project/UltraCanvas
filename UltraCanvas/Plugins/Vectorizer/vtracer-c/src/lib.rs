@@ -1,6 +1,6 @@
 // vtracer_c — C ABI shim around the VTracer raster-to-SVG tracer.
 // Version: 0.1.0
-// Last Modified: 2026-05-21
+// Last Modified: 2026-07-21
 // Author: UltraCanvas Framework
 
 #![allow(non_camel_case_types)]
@@ -11,8 +11,8 @@ use std::panic::{self, AssertUnwindSafe};
 use std::ptr;
 use std::slice;
 
-use visioncortex::ColorImage;
-use vtracer::{ColorMode, Config, Hierarchical, PathSimplifyMode};
+use visioncortex::{ColorImage, PathSimplifyMode};
+use vtracer::{ColorMode, Config, Hierarchical};
 
 const VTRACER_VERSION: &str = concat!("vtracer 0.6.11 / vtracer_c ", env!("CARGO_PKG_VERSION"), "\0");
 

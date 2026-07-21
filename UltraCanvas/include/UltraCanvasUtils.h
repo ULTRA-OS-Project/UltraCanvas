@@ -1,7 +1,7 @@
 // include/UltraCanvasUtils.h
 // Utils
-// Version: 1.0.0
-// Last Modified: 2025-09-14
+// Version: 1.1.0
+// Last Modified: 2026-07-21
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -147,6 +147,34 @@ namespace UltraCanvas {
             std::lock_guard<std::mutex> lock(cacheMutex);
             cache.clear();
             currentCacheSize = 0;
+        }
+
+        // Drop a single entry by exact key. Returns true if one was removed.
+        bool RemoveFromCache(const std::string& key) {
+            std::lock_guard<std::mutex> lock(cacheMutex);
+            auto it = cache.find(key);
+            if (it == cache.end()) return false;
+            currentCacheSize -= it->second.GetEntrySize();
+            cache.erase(it);
+            return true;
+        }
+
+        // Drop every entry whose key begins with `prefix`, returning how many
+        // were removed. Used to evict all derived entries of one source at once
+        // (e.g. every cached pixmap size/scale of a single image path).
+        size_t RemoveFromCacheByPrefix(const std::string& prefix) {
+            std::lock_guard<std::mutex> lock(cacheMutex);
+            size_t removed = 0;
+            for (auto it = cache.begin(); it != cache.end();) {
+                if (it->first.compare(0, prefix.size(), prefix) == 0) {
+                    currentCacheSize -= it->second.GetEntrySize();
+                    it = cache.erase(it);
+                    ++removed;
+                } else {
+                    ++it;
+                }
+            }
+            return removed;
         }
 
         void SetMaxCacheSize(size_t size) { maxCacheSize = size; }

@@ -55,8 +55,11 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
-    bool UltraCanvasImageElement::LoadFromFile(const std::string &filePath) {
+    bool UltraCanvasImageElement::LoadFromFile(const std::string &filePath, bool forceLoad) {
         errorMessage.clear();
+        if (forceLoad) {
+            UCImage::RemoveFromCache(filePath);
+        }
         loadedImage = UCImage::Get(filePath);
         SetupAnimation();
         // Intrinsic size changed — re-measure (for auto-sized elements) and repaint.

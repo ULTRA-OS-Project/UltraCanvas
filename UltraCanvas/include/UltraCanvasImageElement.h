@@ -91,7 +91,7 @@ public:
     UltraCanvasImageElement(const std::string& identifier = "ImageElement");
 
     // ===== IMAGE LOADING =====
-    bool LoadFromFile(const std::string& filePath);
+    bool LoadFromFile(const std::string& filePath, bool forceLoad = false);
     bool LoadFromImage(std::shared_ptr<UCImage> img);
 
     // Human-readable reason for the most recent failed LoadFromFile (e.g. the

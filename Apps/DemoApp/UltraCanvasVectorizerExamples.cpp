@@ -163,7 +163,7 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
                                  "write SVG to " + outPath);
             return;
         }
-        if (!outputImage->LoadFromFile(outPath)) {
+        if (!outputImage->LoadFromFile(outPath, true)) {
             statusLabel->SetText("SVG written to " + outPath
                                + " but image element rejected it");
             return;
