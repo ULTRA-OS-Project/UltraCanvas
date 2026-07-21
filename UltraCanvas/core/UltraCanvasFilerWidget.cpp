@@ -207,6 +207,21 @@ namespace UltraCanvas {
             return buf;
         }
 
+        // Uniform size string for the "Bar size" view: always a mantissa with
+        // exactly one decimal place plus a unit chosen so the value stays below
+        // 1024 (e.g. "100.9 KB", "23.2 MB", "1.5 TB").  Keeping every value in
+        // the same "NNN.N UU" shape lets the number column line up and every bar
+        // share the same width.
+        std::string FormatSizeFixed(uint64_t bytes) {
+            static const char* kUnits[] = { "B", "KB", "MB", "GB", "TB", "PB" };
+            double v = static_cast<double>(bytes);
+            int u = 0;
+            while (v >= 1024.0 && u < 5) { v /= 1024.0; ++u; }
+            char buf[32];
+            snprintf(buf, sizeof(buf), "%.1f %s", v, kUnits[u]);
+            return buf;
+        }
+
         std::string FormatTime(std::time_t t) {
             if (t == 0) return "";
             char buf[32];
@@ -1212,6 +1227,12 @@ namespace UltraCanvas {
         return false;
     }
 
+    bool UltraCanvasFilerWidget::IsCutEntry(const FilerEntry& e) const {
+        if (!clipboardCut) return false;
+        return std::find(clipboardPaths.begin(), clipboardPaths.end(), e.path)
+               != clipboardPaths.end();
+    }
+
     void UltraCanvasFilerWidget::SelectionToClipboard(bool cut) {
         clipboardPaths.clear();
         for (const FilerEntry& e : GetSelectedEntries()) clipboardPaths.push_back(e.path);
@@ -1223,6 +1244,7 @@ namespace UltraCanvas {
                 cb->SetFiles(clipboardPaths, clipboardCut);
             }
         }
+        RequestRedraw();   // reflect (or clear) the cut ghosting immediately
     }
 
     void UltraCanvasFilerWidget::CopySelection() { SelectionToClipboard(false); }
@@ -2016,6 +2038,14 @@ namespace UltraCanvas {
                 case FilerViewType::TreeMap: DrawTreeMapCell(ctx, item, hov); break;
                 default:                     DrawThumbnailTile(ctx, item, hov); break;
             }
+            // Ghost entries that are pending a "cut": wash the tile toward the
+            // background so it reads as dimmed until the move is pasted.
+            if (IsCutEntry(entries[item.entryIndex])) {
+                Color wash = style.backgroundColor;
+                wash.a = 150;
+                ctx->SetFillPaint(wash);
+                ctx->FillRoundedRectangle(Rect2Dd(item.rect), 5);
+            }
         }
         // Hover icon menu on top of its item, inside the scrolled space so it
         // tracks the item; hit rects are recorded in content space.
@@ -2676,11 +2706,19 @@ namespace UltraCanvas {
         int textY = item.rect.y + (item.rect.height - ts.height) / 2;
         ctx->DrawText(shown, Point2Dd(nameX, textY));
 
-        // Size bar scaled against the folder's largest entry.
-        std::string sizeText = FormatSize(e.effectiveSize);
+        // Size bar scaled against the folder's largest entry.  The size label
+        // lives in a fixed-width column on the right so every bar ends at the
+        // same x and all bars share the same width, regardless of how wide the
+        // individual number happens to be.  The reference string sizes that
+        // column for the widest value we can format ("NNN.N UU").
+        std::string sizeText = FormatSizeFixed(e.effectiveSize);
+        int sizeColW = ctx->GetTextLineDimensions("1023.9 MB").width;
         Size2Di sts = ctx->GetTextLineDimensions(sizeText);
+        const int rightPad = 14;
+        const int labelGap = 8;
+        int sizeColX = item.rect.x + item.rect.width - rightPad - sizeColW;
         int barX = item.rect.x + nameW + item.imageRect.width + 12;
-        int barMaxW = item.rect.x + item.rect.width - barX - sts.width - 14;
+        int barMaxW = sizeColX - labelGap - barX;
         if (barMaxW > 20) {
             int barH = std::max(6, item.rect.height - 12);
             int barY = item.rect.y + (item.rect.height - barH) / 2;
@@ -2695,8 +2733,10 @@ namespace UltraCanvas {
                 ctx->SetFillPaint(bar);
                 ctx->FillRoundedRectangle(Rect2Dd(barX, barY, w, barH), 3);
             }
+            // Right-align the number within its fixed-width column.
             ctx->SetTextPaint(style.secondaryTextColor);
-            ctx->DrawText(sizeText, Point2Dd(barX + barMaxW + 8, textY));
+            ctx->DrawText(sizeText,
+                          Point2Dd(sizeColX + (sizeColW - sts.width), textY));
         }
     }
 
@@ -2757,7 +2797,11 @@ namespace UltraCanvas {
         int sz = style.iconMenuButtonSize;
         int gap = 2;
         int total = 4 * sz + 3 * gap;
+        // Right-align the strip inside the item, but never let it spill past the
+        // item's left edge: on narrow thumbnail tiles the four buttons are wider
+        // than the tile, so clamp the start to the left edge instead.
         int x = item.rect.x + item.rect.width - total - 4;
+        if (x < item.rect.x) x = item.rect.x;
         int y = item.rect.y + 2;
         for (IconMenuAction a : actions) {
             Rect2Di button(x, y, sz, sz);
@@ -3481,8 +3525,10 @@ namespace UltraCanvas {
                     hoveredIconAction = -1;
                     UltraCanvasTooltipManager::HideTooltip();
                 }
-                draggingScrollbar = false;
-                dragOutArmed = false;
+                // Do not cancel an active scrollbar drag here: it is mouse-
+                // captured and ends on button release, so a leave (e.g. the
+                // pointer crossing the right edge) must not interrupt it.
+                if (!draggingScrollbar) dragOutArmed = false;
                 dragCollapseIndex = -1;
                 return true;
             }
@@ -3518,6 +3564,16 @@ namespace UltraCanvas {
                     return true;
                 }
                 int newHover = IsInInfoBar(local) ? -1 : ItemAt(ToContentPoint(local));
+                // Keep the item hovered while the pointer is over one of its
+                // hover icon-menu buttons. On narrow tiles the button strip can
+                // extend past the item's own rect, so a plain ItemAt() test
+                // would drop the hover the moment the cursor reaches a button
+                // and the menu would flicker away.
+                if (hoverIconMenu) {
+                    size_t iconEntry = 0;
+                    if (IconMenuActionAt(local, iconEntry) >= 0)
+                        newHover = static_cast<int>(iconEntry);
+                }
                 if (newHover != hoveredIndex) {
                     hoveredIndex = newHover;
                     RequestRedraw();
@@ -3590,6 +3646,14 @@ namespace UltraCanvas {
                                               - scrollbarGrabOffset);
                             }
                             draggingScrollbar = true;
+                            // Capture the mouse so the drag keeps tracking even
+                            // when the pointer leaves the widget (the vertical
+                            // scrollbar hugs the right edge, so dragging right
+                            // would otherwise trigger a MouseLeave that killed
+                            // the drag). Captured MouseMove/MouseUp route here
+                            // directly and the spurious leave is never sent.
+                            if (auto* app = UltraCanvasApplication::GetInstance())
+                                app->CaptureMouse(this);
                             RequestRedraw();
                             return true;
                         }
@@ -3659,6 +3723,8 @@ namespace UltraCanvas {
                 dragCollapseIndex = -1;
                 if (draggingScrollbar) {
                     draggingScrollbar = false;
+                    if (auto* app = UltraCanvasApplication::GetInstance())
+                        app->ReleaseMouse();
                     RequestRedraw();
                     return true;
                 }

@@ -585,6 +585,9 @@ namespace UltraCanvas {
                            const Rect2Di& rect,
                            ImageFitMode imageFit = ImageFitMode::Contain);
         void DrawSelectionState(IRenderContext* ctx, const ItemLayout& item, bool hovered);
+        // True when the entry sits on the clipboard as a pending "cut", so the
+        // view can ghost it until the move completes (Explorer-style).
+        bool IsCutEntry(const FilerEntry& e) const;
         void DrawHoverIconMenu(IRenderContext* ctx, const ItemLayout& item);
         void DrawIconMenuGlyph(IRenderContext* ctx, IconMenuAction action,
                                const Rect2Di& button);
