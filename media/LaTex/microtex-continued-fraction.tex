@@ -1,0 +1,20 @@
+\documentclass{article}
+\usepackage{amsmath}
+% A continued fraction and scaled delimiters around nested sums.
+% From the MicroTeX sample gallery (NanoMichael/MicroTeX).
+\begin{document}
+\[
+  \cfrac{1}{\sqrt{2}+
+  \cfrac{1}{\sqrt{2}+
+  \cfrac{1}{\sqrt{2}+\dotsb
+  }}}
+  \\
+  \biggl[
+  \sum_i a_i\biggl\lvert\sum_j x_{ij}
+  \biggr\rvert^p\biggr]^{1/p}
+  \\
+  \biggl[
+  \sum_i a_i\Bigl\lvert\sum_j x_{ij}
+  \Bigr\rvert^p\biggr]^{1/p}
+\]
+\end{document}

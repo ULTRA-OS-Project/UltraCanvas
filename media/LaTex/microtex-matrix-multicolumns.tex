@@ -1,0 +1,22 @@
+\documentclass{article}
+\usepackage{amsmath}
+% Ruled array with multicolumns, an inner matrix and the font-size commands.
+% From the MicroTeX sample gallery (NanoMichael/MicroTeX).
+\begin{document}
+\[
+  \begin{array}{|c|l|||r|c|}
+    \hline
+    \text{Matrix}&\multicolumn{2}{|c|}{\text{Multicolumns}}&\text{Font sizes commands}\cr
+    \hline
+    \begin{pmatrix}
+        \alpha_{11}&\cdots&\alpha_{1n}\cr
+        \hdotsfor{3}\cr
+        \alpha_{n1}&\cdots&\alpha_{nn}
+    \end{pmatrix}
+    &\Large \text{Large Right}&\small \text{small Left}&\tiny \text{tiny Tiny}\cr
+    \hline
+    \multicolumn{4}{|c|}{\Huge \text{Huge Multicolumns}}\cr
+    \hline
+  \end{array}
+\]
+\end{document}
