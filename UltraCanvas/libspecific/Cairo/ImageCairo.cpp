@@ -10,6 +10,7 @@
 #include "ImageCairo.h"
 #ifdef HAS_LIBVIPS
 #include "VipsQoiLoader.h"
+#include "UltraCanvasGifEncoder.h"
 #endif
 #ifdef HAS_LIBRSVG
 #include "SvgDocumentCairo.h"
@@ -662,6 +663,45 @@ namespace UltraCanvas {
         return ExportVImage(vImg, imagePath, opts);
     }
 
+    // Bundled, dependency-free GIF89a writer, used when this libvips build has
+    // no native cgif `gifsave`. Normalises the VImage to 8-bit sRGB (RGB, or
+    // RGBA when transparency must be kept), hands the raw buffer to the bundled
+    // encoder, and returns "" on success or an error string. See
+    // UltraCanvasGifEncoder.h for why the encoder exists.
+    static std::string EncodeGIFFromVImage(vips::VImage vImg, const std::string& imagePath,
+                                           int maxColorBits, bool interlace) {
+        try {
+            if (vImg.interpretation() != VIPS_INTERPRETATION_sRGB) {
+                vImg = vImg.colourspace(VIPS_INTERPRETATION_sRGB);
+            }
+            int bands = vImg.bands();
+            if (bands == 1) {
+                vImg = vImg.bandjoin({ vImg, vImg });        // gray → RGB
+                bands = 3;
+            } else if (bands == 2) {
+                // gray + alpha → RGB + alpha (keep binary transparency)
+                vips::VImage gray  = vImg.extract_band(0);
+                vips::VImage alpha = vImg.extract_band(1);
+                vImg = gray.bandjoin({ gray, gray, alpha });
+                bands = 4;
+            } else if (bands > 4) {
+                vImg = vImg.extract_band(0, vips::VImage::option()->set("n", 4));
+                bands = 4;
+            }
+            if (vImg.format() != VIPS_FORMAT_UCHAR) {
+                vImg = vImg.cast(VIPS_FORMAT_UCHAR);
+            }
+            vImg = vImg.copy_memory();   // guarantee a contiguous buffer
+            const int width  = vImg.width();
+            const int height = vImg.height();
+            const uint8_t* data = static_cast<const uint8_t*>(vImg.data());
+            return UltraCanvas::GifEncode::EncodeGifFile(
+                    imagePath, data, width, height, bands, maxColorBits, interlace);
+        } catch (vips::VError& err) {
+            return std::string("GIF encode: ") + err.what();
+        }
+    }
+
     std::string ExportVImage(vips::VImage vImg, const std::string &imagePath, const UCImageSave::ImageExportOptions& opts) {
         vips_error_clear();   // see UCImageRaster::Save — keep error reports scoped to this export
         // Handle resize if target dimensions specified
@@ -694,18 +734,21 @@ namespace UltraCanvas {
                                 ->set("bitdepth", bitDepth)
                                 ->set("interlace", opts.gif.interlace)
                                 ->set("dither", opts.gif.dithering ? 1.0 : 0.0));
-                    } else if (vips_type_find("VipsOperation", "magicksave") != 0) {
-                        // Some libvips builds ship without cgif (MSYS2 passes
-                        // -Dcgif=disabled), so the native gifsave operation
-                        // does not exist. ImageMagick's GIF coder quantizes to
-                        // <=256 colours itself; interlace/dither have no
-                        // magicksave equivalent, so only bitdepth carries over.
-                        vImg.magicksave(imagePath.c_str(), vips::VImage::option()
-                                ->set("format", "gif")
-                                ->set("bitdepth", bitDepth));
                     } else {
-                        return "GIF export is not supported by this libvips build "
-                               "(neither gifsave nor magicksave is available)";
+                        // This libvips build has no native cgif writer (MSYS2
+                        // passes -Dcgif=disabled). The previous fallback routed
+                        // GIF through ImageMagick's magicksave, but that fails
+                        // at run time on systems whose ImageMagick lacks the
+                        // optional GIF encode delegate:
+                        //   magicksave: libMagick error:
+                        //   NoEncodeDelegateForThisImageFormat `gif'
+                        // Use the bundled, dependency-free encoder instead so
+                        // GIF export works regardless of cgif/ImageMagick.
+                        // (bitdepth carries over; interlace is honoured; the
+                        // encoder quantises to <=256 colours itself.)
+                        std::string gifErr = EncodeGIFFromVImage(
+                                vImg, imagePath, bitDepth, opts.gif.interlace);
+                        if (!gifErr.empty()) return gifErr;
                     }
                     break;
 
