@@ -1,11 +1,13 @@
 // Apps/DemoApp/UltraCanvasVideoExamples.cpp
 // Video player & recorder example screen
-// Version: 0.1.1
+// Version: 0.1.2
 // Last Modified: 2026-07-21
+// V0.1.2: The camera is activated on page open and shows a frozen still frame;
+//   "Start camera" switches it to the live feed. It also reports why the camera
+//   failed to open instead of silently showing "Camera off".
 // V0.1.1: Opening a video now auto-plays it (the decode backends only deliver
 //   frames while playing, so the surface previously sat on "Buffering..."
-//   forever). "Start camera" now reports why the camera failed to open instead
-//   of silently showing "Camera off".
+//   forever).
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -87,19 +89,33 @@ namespace UltraCanvas {
         };
         container->AddChild(recorder);
 
-        auto camBtn = CreateButton("StartCam", 520, 430, 130, 36, "Start camera");
+        // Activate the camera as soon as the page opens and hold the first frame as
+        // a frozen still. Clicking "Start camera" switches that still to the live
+        // feed. The page is destroyed on navigation (DisplayDemoItem/ClearDisplay),
+        // which closes the camera, so it is never left running in the background.
         auto recWeak = std::weak_ptr<UltraCanvasVideoRecorderElement>(recorder);
+        if (recorder->OpenCamera(/*live=*/false)) {
+            status->SetText("Camera ready (still) — click \"Start camera\" for the live feed.");
+            status->SetTextColor(Color(40, 120, 40));
+        }
+
+        auto camBtn = CreateButton("StartCam", 520, 430, 130, 36, "Start camera");
         camBtn->onClick = [recWeak, status]() {
             auto r = recWeak.lock();
             if (!r) return;
-            // OpenCamera() returns false when the device can't be activated
-            // (no camera, or the OS denied access). Surface the backend's reason
-            // instead of leaving a silent "Camera off" so the demo is diagnosable.
-            if (r->OpenCamera()) {
-                status->SetText("Camera preview started.");
+            auto rec = r->GetRecorder();
+            // The camera is already activated as a still on page open; just switch
+            // to the live feed. If the initial open failed (no device / access
+            // denied), retry here and surface the backend's reason.
+            if (rec && rec->IsOpen()) {
+                r->SetPreviewLive(true);
+                status->SetText("Live camera preview.");
+                status->SetTextColor(Color(40, 120, 40));
+            } else if (r->OpenCamera(/*live=*/true)) {
+                status->SetText("Live camera preview.");
                 status->SetTextColor(Color(40, 120, 40));
             } else {
-                std::string why = r->GetRecorder() ? r->GetRecorder()->GetLastError() : "";
+                std::string why = rec ? rec->GetLastError() : "";
                 status->SetText(why.empty()
                                     ? "Could not start the camera (no device or access denied)."
                                     : "Could not start the camera: " + why);
