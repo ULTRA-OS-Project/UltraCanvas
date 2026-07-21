@@ -538,18 +538,17 @@ namespace UltraCanvas {
         // (matching a search-results / gallery "image · source" layout); video /
         // music tiles keep a plain metadata subtitle with no link.
         const Seed seeds[] = {
-            { "artist.jpg",    "Portrait",  "portrait.example",  AlbumMediaType::Photo, false,
-                    "Portrait", "" },
+            { "artist.jpg",    "Artist",  "portrait.example",  AlbumMediaType::Photo, false,
+                    "Artist", "" },
             { "charlie-chaplin-run.gif", "Charlie Chaplin run",
               "Easy Street (1917) | Charlie Chaplin The Policeman [Original]",
               AlbumMediaType::Photo, false,
               "Charlie Chaplin and a fellow citizen sprint down Easy Street with "
               "the law in pursuit \xE2\x80\x94 an animated GIF from the 1917 silent "
               "classic. Open the tile to watch it play in the lightbox." },
-            { "landscape.jpg",   "Mountain Dawn",    "naturepix.example",   AlbumMediaType::Photo, true,
-              "First light spilling over the ridge line. Shot handheld just after "
-              "sunrise, the low sun rakes across the slopes and pulls out every fold "
-              "in the terrain.", "https://naturepix.example/mountain-dawn" },
+            { "UOS phone.jpg",   "UltraOS phone",    "ultraos.eu",          AlbumMediaType::Photo, true,
+              "UltraOS running on a phone \xE2\x80\x94 the UltraCanvas UI stack on a "
+              "handheld form factor.", "https://www.ultraos.eu" },
             { "portrait.jpg",    "Studio Portrait",  "studioshots.example", AlbumMediaType::Photo, false,
               "A classic studio headshot taken with a fast 50mm lens and a single "
               "softbox to camera-left for soft, directional light.",
