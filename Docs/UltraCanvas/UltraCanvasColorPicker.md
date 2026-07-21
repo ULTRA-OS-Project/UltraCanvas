@@ -30,13 +30,14 @@ natively with the framework's `IRenderContext` primitives.
   widget background with that colour (opaque) so it can be judged on a large
   area; moving the pointer away restores the normal UI background.
 - ✅ **Screen colour picker ("eyedropper")** — the button right of the background
-  swatch arms a picking mode: the mouse pointer becomes an eyedropper cursor and
-  the foreground swatch **live-previews the pixel under the pointer** as the
-  mouse moves, so you can see the colour before committing. The next click
-  samples that window pixel — **left (Select) mouse** into the foreground
-  colour, **right (Adjust) mouse** into the background colour; **Esc** cancels
-  (discarding the preview). Hosts can override the behaviour (e.g. for real
-  whole-screen sampling) via `onScreenColorPick`.
+  swatch arms a picking mode. The mouse button used on the icon selects the
+  target swatch — **left (Select) mouse** targets the foreground colour, **right
+  (Adjust) mouse** the background colour. The pointer becomes an eyedropper
+  cursor and the **target swatch live-previews the pixel under the pointer** as
+  the mouse moves, so you can see the colour before committing; the next click
+  commits that pixel into the target swatch, and **Esc** cancels (discarding the
+  preview). Hosts can override the behaviour (e.g. for real whole-screen
+  sampling) via `onScreenColorPick`.
 - ✅ **Hex input** — click to edit, accepts `#RGB`, `#RRGGBB` and `#RRGGBBAA`.
 - ✅ **Full inline text editing** — the hex and numeric value fields are real
   single-line editors: click places the caret, drag selects, double-click
@@ -104,9 +105,10 @@ namespace UltraCanvas {
         Color GetBackgroundColor() const;
         void  SetBackgroundColor(const Color& c);
 
-        // Built-in eyedropper control
+        // Built-in eyedropper control. `foreground` selects the target swatch
+        // (true = foreground, false = background) for the preview and sample.
         bool IsScreenPickActive() const;
-        void StartScreenPick();
+        void StartScreenPick(bool foreground = true);
         void CancelScreenPick();
 
         std::function<void(const Color&)> onColorChanged;

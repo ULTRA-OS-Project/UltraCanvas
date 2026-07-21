@@ -7,9 +7,10 @@
 // colour so it can be judged on a large area, and a screen colour-picker
 // ("eyedropper") button switches the pointer to an eyedropper cursor and
 // samples a pixel from the window into the foreground (left/Select mouse) or
-// background (right/Adjust mouse) colour, live-previewing the pixel under the
-// pointer in the foreground swatch as the mouse moves.
-// Version: 1.2.1
+// background (right/Adjust mouse) colour — the button used on the icon selects
+// the target swatch, which live-previews the pixel under the pointer as the
+// mouse moves.
+// Version: 1.2.2
 // Last Modified: 2026-07-21
 // Author: UltraCanvas Framework
 #pragma once
@@ -259,15 +260,20 @@ namespace UltraCanvas {
         // takes over: it performs platform screen sampling and writes the pixel
         // back via SetForegroundColor / SetBackgroundColor. When NOT set, the
         // picker runs its built-in mode: the pointer becomes an eyedropper
-        // cursor, the foreground swatch live-previews the pixel under the
-        // pointer as the mouse moves, and the next click samples that window
-        // pixel — left (Select) button into the foreground colour, right
-        // (Adjust) button into the background colour; Escape cancels.
+        // cursor and the button used here selects the target swatch — left
+        // (Select) button targets the foreground colour, right (Adjust) button
+        // the background colour. That target swatch live-previews the pixel
+        // under the pointer as the mouse moves, and the next click commits the
+        // sampled pixel into it; Escape cancels.
         std::function<void(bool foreground)> onScreenColorPick;
 
         // Built-in eyedropper mode control (also usable programmatically).
+        // `foreground` selects which swatch the pick targets — the tile that
+        // live-previews while moving and receives the sampled colour on click.
+        // It mirrors the mouse button used on the eyedropper icon: left/Select
+        // -> foreground, right/Adjust -> background.
         bool IsScreenPickActive() const { return screenPickActive; }
-        void StartScreenPick();
+        void StartScreenPick(bool foreground = true);
         void CancelScreenPick() { EndScreenPick(); }
 
         // ===== UIElement OVERRIDES =====
@@ -318,9 +324,13 @@ namespace UltraCanvas {
         UCMouseCursor screenPickCursor = UCMouseCursor::Cross;
 
         // Live preview while the eyedropper is armed: as the pointer moves, the
-        // pixel under it is sampled and shown in the foreground swatch tile so
-        // the user sees the colour before committing it with a click. The value
-        // is only a preview (no HSV/callback commit) and is discarded on cancel.
+        // pixel under it is sampled and shown in the target swatch tile so the
+        // user sees the colour before committing it with a click. The value is
+        // only a preview (no HSV/callback commit) and is discarded on cancel.
+        // screenPickForeground records which swatch is the target (chosen by the
+        // mouse button used on the eyedropper icon): true = foreground swatch,
+        // false = background swatch.
+        bool screenPickForeground = true;
         bool screenPickPreviewValid = false;
         Color screenPickPreview;
 

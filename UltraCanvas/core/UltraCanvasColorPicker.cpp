@@ -577,27 +577,30 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasColorPicker::RenderSwatches(IRenderContext* ctx) {
+        // While the eyedropper is armed, the target swatch (chosen by the button
+        // used on the icon) live-previews the pixel under the pointer and is
+        // outlined in the accent colour. The other swatch renders normally.
+        bool previewBg = screenPickActive && screenPickPreviewValid && !screenPickForeground;
+        bool previewFg = screenPickActive && screenPickPreviewValid &&  screenPickForeground;
+        bool targetBg  = screenPickActive && !screenPickForeground;
+        bool targetFg  = screenPickActive &&  screenPickForeground;
+
         // Previous (behind), then current (in front)
         DrawCheckerboard(ctx, previousSwatchRect, Scaled(8.0f));
-        ctx->SetFillPaint(previousColor);
+        ctx->SetFillPaint(previewBg ? screenPickPreview : previousColor);
         ctx->FillRectangle(Rect2Dd(previousSwatchRect.x, previousSwatchRect.y,
                                    previousSwatchRect.width, previousSwatchRect.height));
-        ctx->SetStrokePaint(style.borderColor);
-        ctx->SetStrokeWidth(1.0);
+        ctx->SetStrokePaint(targetBg ? style.accentColor : style.borderColor);
+        ctx->SetStrokeWidth(targetBg ? 1.5 : 1.0);
         ctx->DrawRectangle(Rect2Dd(previousSwatchRect.x, previousSwatchRect.y,
                                    previousSwatchRect.width, previousSwatchRect.height));
 
         DrawCheckerboard(ctx, currentSwatchRect, Scaled(8.0f));
-        // While the eyedropper is armed, show a live preview of the pixel under
-        // the pointer here instead of the committed foreground colour, so the
-        // tile tracks the mouse until a click commits (or Escape cancels).
-        Color currentFill = (screenPickActive && screenPickPreviewValid)
-                            ? screenPickPreview : GetColor();
-        ctx->SetFillPaint(currentFill);
+        ctx->SetFillPaint(previewFg ? screenPickPreview : GetColor());
         ctx->FillRectangle(Rect2Dd(currentSwatchRect.x, currentSwatchRect.y,
                                    currentSwatchRect.width, currentSwatchRect.height));
-        ctx->SetStrokePaint(screenPickActive ? style.accentColor : style.borderColor);
-        ctx->SetStrokeWidth(screenPickActive ? 1.5 : 1.0);
+        ctx->SetStrokePaint(targetFg ? style.accentColor : style.borderColor);
+        ctx->SetStrokeWidth(targetFg ? 1.5 : 1.0);
         ctx->DrawRectangle(Rect2Dd(currentSwatchRect.x, currentSwatchRect.y,
                                    currentSwatchRect.width, currentSwatchRect.height));
         ctx->SetStrokeWidth(1.0);
@@ -1034,13 +1037,16 @@ namespace UltraCanvas {
             // Eyedropper: with an onScreenColorPick host callback the host does
             // the sampling (left mouse = foreground, right mouse = background).
             // Without a callback the built-in mode arms: the pointer becomes an
-            // eyedropper and the next click in the window is sampled.
+            // eyedropper and the next click in the window is sampled. The mouse
+            // button used on the icon selects the target swatch (left/Select ->
+            // foreground, right/Adjust -> background) for both the live preview
+            // and the committed sample.
             if (screenPickRect.Contains(p)) {
+                bool foreground = (event.button != UCMouseButton::Right);
                 if (onScreenColorPick) {
-                    bool foreground = (event.button != UCMouseButton::Right);
                     onScreenColorPick(foreground);
                 } else {
-                    StartScreenPick();
+                    StartScreenPick(foreground);
                 }
                 return true;
             }
@@ -1245,11 +1251,12 @@ namespace UltraCanvas {
         return "UCColorPickerScreenPick_" + GetIdentifier();
     }
 
-    void UltraCanvasColorPicker::StartScreenPick() {
+    void UltraCanvasColorPicker::StartScreenPick(bool foreground) {
         if (screenPickActive) return;
         auto* win = GetWindow();
         if (!win) return;
         screenPickActive = true;
+        screenPickForeground = foreground;
         screenPickPreviewValid = false;
 
         // Switch the pointer to an eyedropper cursor; fall back to the
@@ -1316,15 +1323,14 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasColorPicker::HandleScreenPickClick(const UCEvent& event) {
-        // Select (left) button -> foreground colour; Adjust (right) button ->
-        // background colour.
-        bool foreground = (event.button != UCMouseButton::Right);
+        // The target swatch was chosen by the button used on the eyedropper icon
+        // (see screenPickForeground); the sampling click commits into it.
         Color sampled;
         auto* win = GetWindow();
         if (win && win->GetPixelColor(event.pointerWindow.x, event.pointerWindow.y, sampled)) {
             sampled.a = 255;
-            if (foreground) SetForegroundColor(sampled, true);
-            else            SetBackgroundColor(sampled);
+            if (screenPickForeground) SetForegroundColor(sampled, true);
+            else                      SetBackgroundColor(sampled);
         }
         EndScreenPick();
     }
