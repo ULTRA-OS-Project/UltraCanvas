@@ -1,3 +1,17 @@
+#### 2026-07-21 *0.3.12*
+- Fix GIF export failing with `magicksave: libMagick error:
+  NoEncodeDelegateForThisImageFormat 'gif'` (seen on the DemoApp bitmap
+  performance-comparison page). When libvips has no native cgif `gifsave`,
+  the previous fallback routed the write through ImageMagick's `magicksave`,
+  but ImageMagick's GIF *coder* is itself an optional build-time delegate —
+  on systems without it the save threw at run time. GIF export no longer
+  depends on either cgif or ImageMagick: a bundled, dependency-free GIF89a
+  encoder (`libspecific/Cairo/UltraCanvasGifEncoder.h`, median-cut
+  quantisation + LZW, like the existing bundled BMP/QOI encoders) is used
+  whenever native `gifsave` is unavailable. It honours the requested colour
+  depth and interlacing and keeps 1-bit transparency for RGBA sources.
+  Both `UCImageRaster::Save` and PixelFX `SaveGif` route through it.
+ 
 #### 2026-07-20 *0.3.11*
 - Make work VTracer/Vectorizer plugin.
 - Implement RemoveFromCache() method for images used for reload
