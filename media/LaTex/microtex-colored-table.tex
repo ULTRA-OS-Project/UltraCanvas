@@ -1,0 +1,26 @@
+\documentclass{article}
+\usepackage{amsmath}
+% A table with row and cell background colours and a custom column type.
+% From the MicroTeX sample gallery (NanoMichael/MicroTeX).
+\begin{document}
+\[
+  \newcolumntype{s}{>{\color{#1234B6}}c}
+  \begin{array}{|c|c|c|s|}
+    \hline
+    \rowcolor{Tan}\multicolumn{4}{|c|}{\textcolor{white}{\bold{\text{Table Head}}}}\\
+    \hline
+    \text{Matrix}&\multicolumn{2}{|c|}{\text{Multicolumns}}&\text{Font size commands}\\
+    \hline
+    \begin{pmatrix}
+        \alpha_{11}&\cdots&\alpha_{1n}\\
+        \hdotsfor{3}\\
+        \alpha_{n1}&\cdots&\alpha_{nn}
+    \end{pmatrix}
+    &\large \text{Left}&\cellcolor{#00bde5}\small \textcolor{white}{\text{\bold{Right}}}
+    &\small \text{small Small}\\
+    \hline
+    \multicolumn{4}{|c|}{\text{Table Foot}}\\
+    \hline
+  \end{array}
+\]
+\end{document}

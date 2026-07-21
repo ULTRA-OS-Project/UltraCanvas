@@ -1,0 +1,16 @@
+\documentclass{article}
+\usepackage{amsmath}
+% Fraction styling: default, forced displaystyle, and \nolimits on operators.
+% From the MicroTeX sample gallery (NanoMichael/MicroTeX).
+\begin{document}
+\[
+  \frac{\sum_{n > 0} z^n}
+  {\prod_{1\leq k\leq n} (1-q^k)}
+  \\
+  \frac{{\displaystyle\sum_{n > 0} z^n}}
+  {{\displaystyle\prod_{1\leq k\leq n} (1-q^k)}}
+  \\
+  \frac{{\displaystyle\sum\nolimits_{n> 0} z^n}}
+  {{\displaystyle\prod\nolimits_{1\leq k\leq n} (1-q^k)}}
+\]
+\end{document}
