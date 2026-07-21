@@ -49,6 +49,9 @@ natively with the framework's `IRenderContext` primitives.
 - ✅ **Model selector** — either a **tab bar** (default) or a **dropdown**
   switches the channel editors between **HSV**, **HSL** and **RGB**. The two
   presentations are mutually exclusive (`SetModeSelector`).
+- ✅ **Hover tooltips** — resting the pointer over a model choice (HSV / HSL /
+  RGB) or a channel / hex label (H, S, V, A, L, R, G, B, Hex) shows a short
+  tooltip explaining what it is and its value range.
 - ✅ **Channel sliders** — three colour channels plus alpha, each with a live
   gradient track and an editable numeric value box. Two presentations
   (`SetSliderStyle`): **Thin** (thin track, overhanging handle) or **Thick**

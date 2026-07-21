@@ -1,7 +1,7 @@
 // core/UltraCanvasColorPicker.cpp
 // Implementation of the comprehensive colour picker widget.
-// Version: 1.2.0
-// Last Modified: 2026-07-20
+// Version: 1.2.3
+// Last Modified: 2026-07-21
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasColorPicker.h"
@@ -9,6 +9,7 @@
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasClipboard.h"
+#include "UltraCanvasTooltipManager.h"
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
@@ -986,6 +987,7 @@ namespace UltraCanvas {
             case UCEventType::KeyDown:    return HandleKeyDown(event);
             case UCEventType::MouseLeave:
                 SetHovered(false);
+                UltraCanvasTooltipManager::HideTooltip();
                 if (hoverSwatch != HoverSwatch::NoneSwatch) {
                     hoverSwatch = HoverSwatch::NoneSwatch;
                     RequestRedraw();
@@ -1149,6 +1151,9 @@ namespace UltraCanvas {
         // whole surface can preview that colour.
         UpdateSwatchHover(p);
 
+        // Explain the model choices and channel / hex labels on hover.
+        UpdateHoverTooltip(event);
+
         // I-beam over the editable text fields (hex + value boxes, minus the
         // spinner arrow zones), default arrow elsewhere.
         bool overText = hexFieldRect.Contains(p);
@@ -1177,6 +1182,88 @@ namespace UltraCanvas {
         if (now != hoverSwatch) {
             hoverSwatch = now;
             RequestRedraw();
+        }
+    }
+
+    std::string UltraCanvasColorPicker::ModelTooltip(ColorPickerModel m) const {
+        switch (m) {
+            case ColorPickerModel::HSV: return "HSV — Hue, Saturation, Value";
+            case ColorPickerModel::HSL: return "HSL — Hue, Saturation, Lightness";
+            case ColorPickerModel::RGB: return "RGB — Red, Green, Blue";
+        }
+        return "";
+    }
+
+    std::string UltraCanvasColorPicker::ChannelTooltip(const std::string& label) const {
+        if (label == "H")   return "Hue (0–360°)";
+        if (label == "S")   return "Saturation (0–100%)";
+        if (label == "V")   return "Value / Brightness (0–100%)";
+        if (label == "L")   return "Lightness (0–100%)";
+        if (label == "R")   return "Red (0–255)";
+        if (label == "G")   return "Green (0–255)";
+        if (label == "B")   return "Blue (0–255)";
+        if (label == "A")   return "Alpha / Opacity (0–255)";
+        if (label == "Hex") return "Hex colour code (#RRGGBB or #RRGGBBAA)";
+        return "";
+    }
+
+    void UltraCanvasColorPicker::UpdateHoverTooltip(const UCEvent& event) {
+        auto* win = GetWindow();
+        if (!win) return;
+        Point2Df p(event.pointer.x, event.pointer.y);
+        auto over = [&](const Rect2Df& r) {
+            return r.width > 0.0f && r.height > 0.0f && r.Contains(p);
+        };
+        std::string text;
+
+        // Model choices: HSV / HSL / RGB (tab bar, dropdown button, or the open
+        // dropdown list).
+        if (modeSelector == ColorPickerModeSelector::TabBar) {
+            for (int i = 0; i < 3; ++i) {
+                if (over(tabRects[i])) { text = ModelTooltip((ColorPickerModel)i); break; }
+            }
+        } else if (over(modeButtonRect)) {
+            text = ModelTooltip(model);
+        }
+        if (text.empty() && dropdownOpen) {
+            float itemH = Scaled(style.rowHeight);
+            float x = modeButtonRect.x;
+            float y = modeButtonRect.y + modeButtonRect.height + 2.0f;
+            Rect2Df popup(x, y, modeButtonRect.width, itemH * 3.0f);
+            if (over(popup)) {
+                int idx = std::clamp((int)((p.y - y) / itemH), 0, 2);
+                text = ModelTooltip((ColorPickerModel)idx);
+            }
+        }
+
+        // Channel labels: H/S/V, H/S/L or R/G/B (per model) plus A for alpha.
+        if (text.empty() && SlidersVisible()) {
+            int nRows = 3 + (showAlpha ? 1 : 0);
+            for (int i = 0; i < nRows; ++i) {
+                if (over(rowLabelRects[i])) {
+                    std::string label;
+                    if (i < 3) {
+                        float v, mn, mx;
+                        GetChannelInfo(i, label, v, mn, mx);
+                    } else {
+                        label = "A";
+                    }
+                    text = ChannelTooltip(label);
+                    break;
+                }
+            }
+        }
+
+        // Hex label.
+        if (text.empty() && over(hexLabelRect)) {
+            text = ChannelTooltip("Hex");
+        }
+
+        if (text.empty()) {
+            UltraCanvasTooltipManager::HideTooltip();
+        } else {
+            UltraCanvasTooltipManager::UpdateAndShowTooltip(
+                    win, text, Point2Di(event.pointerWindow.x, event.pointerWindow.y));
         }
     }
 

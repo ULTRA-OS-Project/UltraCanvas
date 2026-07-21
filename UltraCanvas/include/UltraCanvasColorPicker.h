@@ -10,7 +10,7 @@
 // background (right/Adjust mouse) colour — the button used on the icon selects
 // the target swatch, which live-previews the pixel under the pointer as the
 // mouse moves.
-// Version: 1.2.2
+// Version: 1.2.3
 // Last Modified: 2026-07-21
 // Author: UltraCanvas Framework
 #pragma once
@@ -396,6 +396,13 @@ namespace UltraCanvas {
 
         void ApplyDrag(const Point2Df& p, bool finished);
         void UpdateHueFromPoint(const Point2Df& p);
+
+        // ----- Hover tooltips -----
+        // Explain the model choices (HSV/HSL/RGB) and the channel / hex labels
+        // (H, S, V, A, L, R, G, B, Hex) when the pointer rests over them.
+        void UpdateHoverTooltip(const UCEvent& event);
+        std::string ModelTooltip(ColorPickerModel m) const;
+        std::string ChannelTooltip(const std::string& label) const;
         void UpdateHueFromBar(const Point2Df& p);
         void UpdateSVFromPoint(const Point2Df& p);
         void UpdateSwatchHover(const Point2Df& p);           // full-surface preview
