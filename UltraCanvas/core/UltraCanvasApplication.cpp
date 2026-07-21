@@ -1,7 +1,7 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
-// Version: 1.5.1 - ProcessTimers() now runs callbacks outside timersMutex_ (fixes data race + reentrant dangling access)
-// Last Modified: 2026-07-12
+// Version: 1.5.2 - modal fixes: close transient children with parent, ignore unmapped modals, raise modal on outside click
+// Last Modified: 2026-07-21
 // Author: UltraCanvas Framework
 
 #include <algorithm>
@@ -424,7 +424,10 @@ namespace UltraCanvas {
         for (auto it = activeModalWindows.rbegin(); it != activeModalWindows.rend(); ++it) {
             auto locked = it->lock();
             if (!locked) continue;
-            if (!locked->IsVisible()) continue;
+            // Native visibility, not the CSS display flag: a window that is not
+            // mapped on screen (never shown, hidden, or unmapped by the WM) must
+            // never block the application's input as an invisible modal.
+            if (!locked->IsWindowVisible()) continue;
             auto state = locked->GetState();
             if (state == WindowState::Closing || state == WindowState::Closed) continue;
             return locked.get();
@@ -442,10 +445,20 @@ namespace UltraCanvas {
 
         switch (event.type) {
             case UCEventType::MouseDown:
+            case UCEventType::MouseDoubleClick:
+                // A click on another window while a modal is active: bring the
+                // modal back to the front so the user sees what is blocking the
+                // application instead of the click being swallowed silently
+                // (the modal can be buried when the WM restacks windows, e.g.
+                // after its transient parent went away).
+                if (targetWindow != modalWindow) {
+                    modalWindow->RaiseAndFocus();
+                    return true;
+                }
+                break;
             case UCEventType::MouseUp:
             case UCEventType::MouseMove:
             case UCEventType::MouseWheel:
-            case UCEventType::MouseDoubleClick:
             case UCEventType::MouseEnter:
             case UCEventType::MouseLeave:
             case UCEventType::KeyDown:
@@ -472,12 +485,31 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasApplicationBase::UnregisterModalWindow(UltraCanvasWindowBase* window) {
-        std::erase_if(activeModalWindows, 
+        std::erase_if(activeModalWindows,
             [window](const std::weak_ptr<UltraCanvasWindowBase>& w) {
                 auto locked = w.lock();
                 return !locked || locked.get() == window;
             }
         );
+    }
+
+    void UltraCanvasApplicationBase::CloseChildWindows(UltraCanvasWindowBase* parent) {
+        // Collect first: each child's PerformClose() recurses back here for its
+        // own children and mutates the focus/modal bookkeeping while we iterate.
+        // Holding shared_ptr copies keeps the children alive through the loop.
+        std::vector<std::shared_ptr<UltraCanvasWindowBase>> children;
+        for (auto& w : windows) {
+            if (w && w.get() != parent && w->GetConfig().parentWindow == parent) {
+                children.push_back(w);
+            }
+        }
+        for (auto& child : children) {
+            auto state = child->GetState();
+            if (state == WindowState::Closing || state == WindowState::Closed) continue;
+            debugOutput << "UltraCanvas: closing child window " << child.get()
+                        << " of closing parent " << parent << std::endl;
+            child->PerformClose();
+        }
     }
 
     void UltraCanvasApplicationBase::UnregisterWindow(UltraCanvasWindowBase* window) {

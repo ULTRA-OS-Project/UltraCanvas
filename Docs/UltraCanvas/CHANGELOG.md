@@ -11,7 +11,21 @@
   whenever native `gifsave` is unavailable. It honours the requested colour
   depth and interlacing and keeps 1-bit transparency for RGBA sources.
   Both `UCImageRaster::Save` and PixelFX `SaveGif` route through it.
-#### 2026-07-20 *0.3.11*
+
+#### 2026-07-21 *0.3.11*
+- Window management: closing a window now also closes its transient child
+  windows (dialogs/popups created with `WindowConfig::parentWindow` pointing at
+  it). Previously a modal child could outlive its parent as an orphan and keep
+  swallowing the whole application's input — in the DemoApp, opening the
+  Changelog from the startup info window and then closing the info window with
+  the titlebar close button left the main window unresponsive to mouse clicks.
+- Modal input blocking now checks the window's native visibility
+  (`IsWindowVisible()`) instead of the always-true CSS display flag, so a
+  modal window that is not mapped on screen can no longer invisibly block the
+  application.
+- Clicking a non-modal window while a modal is active now raises the modal
+  window to the front instead of silently discarding the click.
+
 - OCR plugin now supports **all Tesseract languages**, not just the bundled
   English pack. The full upstream catalogue (~130 languages) is exposed via
   `UltraCanvasOCR::SupportedLanguages()`, and any language's `traineddata` is

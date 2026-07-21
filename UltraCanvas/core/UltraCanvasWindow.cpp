@@ -1,7 +1,7 @@
 // UltraCanvasWindowBase.cpp
 // Fixed implementation of cross-platform window management system
-// Version: 1.3.2 - UnInstallWindowEventFilter now actually removes filters (fixed inverted guard + erase-on-copy)
-// Last Modified: 2026-07-15
+// Version: 1.3.3 - PerformClose() closes transient child windows so no orphaned modal survives its parent
+// Last Modified: 2026-07-21
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWindow.h"
@@ -702,6 +702,11 @@ namespace UltraCanvas {
         _state = WindowState::Closing;
 
         CloseAllPopups();
+
+        // Transient children (dialogs, modal popups parented to this window)
+        // must not outlive their parent: an orphaned modal child keeps
+        // swallowing the whole application's input with its parent gone.
+        UltraCanvasApplication::GetInstance()->CloseChildWindows(this);
 
         UltraCanvasApplication::GetInstance()->CleanupWindowReferences(this);
 
