@@ -918,6 +918,10 @@ namespace UltraCanvas {
                 .AddVariant("imageperformance", "Decompress + Draw Test")
                 .AddVariant("imageperformance", "Draw Only Test");
 
+        bitmapBuilder.AddItem("drawing", "Drawing Surface", "Vector drawing and primitives",
+                              ImplementationStatus::PartiallyImplemented,
+                              [this]() { return CreateVectorExamples(); });
+
         // ===== VECTOR ELEMENTS =====
         auto vectorBuilder = DemoCategoryBuilder(this, DemoCategory::VectorElements);
 
@@ -943,10 +947,6 @@ namespace UltraCanvas {
                               "DemoApp/UltraCanvasXARExamples.cpp",
                               "Docs/UltraCanvas/UltraCanvasXARExamples.md");
 #endif
-
-        vectorBuilder.AddItem("drawing", "Drawing Surface", "Vector drawing and primitives",
-                              ImplementationStatus::PartiallyImplemented,
-                              [this]() { return CreateVectorExamples(); });
 
         // ===== CHARTS =====
         auto chartBuilder = DemoCategoryBuilder(this, DemoCategory::Charts);
@@ -1298,7 +1298,7 @@ namespace UltraCanvas {
         textDocBuilder.AddItem("textdocuments_latex", "LaTeX Documents",
                                "LaTeX formula documents typeset live from source by MicroTeX — "
                                "rendered output and source per document",
-                               ImplementationStatus::FullyImplemented,
+                               ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreateLaTeXExamples(); },
                                "DemoApp/UltraCanvasLaTeXExamples.cpp");
 
