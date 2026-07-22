@@ -11,6 +11,7 @@
 
 #include "Plugins/Charts/UltraCanvasChartElementBase.h"
 #include "UltraCanvasImage.h"
+#include "UltraCanvasTimer.h"
 #include <vector>
 #include <string>
 #include <memory>
@@ -271,6 +272,7 @@ private:
     bool layoutDirty = true;
     Size2Di lastLayoutSize;
     std::mt19937 rng;
+    TimerId animationTimerId = 0;   // periodic frame driver for the fade-in
 
     // Occupancy grid: 1 byte per cell, non-zero = blocked.
     std::vector<uint8_t> occupancy;
@@ -291,7 +293,7 @@ public:
         backgroundColor = Colors::White;
     }
 
-    virtual ~UltraCanvasWordCloudElement() = default;
+    virtual ~UltraCanvasWordCloudElement();
 
     // ===== WORD MANAGEMENT =====
 
@@ -437,6 +439,11 @@ private:
     void ResolveCenterImage();
     void ResolveMaskImage();
     void ResolveColorImage();
+
+    // ===== ANIMATION =====
+
+    void StartFadeInAnimation();
+    void StopAnimationTimer();
 
     // ===== RENDERING =====
 

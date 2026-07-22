@@ -8,6 +8,7 @@
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasWordCloudDiagram.h"
+#include "UltraCanvasApplication.h"
 #include "UltraCanvasUtils.h"
 #include <algorithm>
 #include <cctype>
@@ -56,6 +57,14 @@ namespace {
         };
         return stopwords;
     }
+}
+
+// =============================================================================
+// LIFECYCLE
+// =============================================================================
+
+UltraCanvasWordCloudElement::~UltraCanvasWordCloudElement() {
+    StopAnimationTimer();
 }
 
 // =============================================================================
@@ -1021,7 +1030,7 @@ void UltraCanvasWordCloudElement::PerformLayout(IRenderContext* ctx) {
     }
 
     if (animationEnabled) {
-        StartAnimation();
+        StartFadeInAnimation();
     }
     if (onLayoutComplete) {
         onLayoutComplete(GetPlacedWordCount(), placedWords.size());
@@ -1169,8 +1178,38 @@ void UltraCanvasWordCloudElement::RenderWords(IRenderContext* ctx) {
         ctx->PopState();
     }
 
-    if (progress < 1.0f) {
-        RequestRedraw();   // keep the fade-in animation running
+}
+
+// =============================================================================
+// ANIMATION
+// =============================================================================
+
+void UltraCanvasWordCloudElement::StartFadeInAnimation() {
+    StopAnimationTimer();
+    StartAnimation();
+    // Drive the fade-in with a ~60fps periodic timer. RequestRedraw() alone
+    // cannot advance the animation: the event loop blocks until a native
+    // event or a timer wakes it, so the timer produces successive frames.
+    if (auto* app = UltraCanvasApplication::GetInstance()) {
+        animationTimerId = app->StartTimer(16, true, [this](TimerId) {
+            UpdateAnimation();
+            if (animationComplete) {
+                StopAnimationTimer();
+            }
+            RequestRedraw();
+        });
+    } else {
+        // No application loop (e.g. offscreen rendering) - skip the fade.
+        animationComplete = true;
+    }
+}
+
+void UltraCanvasWordCloudElement::StopAnimationTimer() {
+    if (animationTimerId != 0) {
+        if (auto* app = UltraCanvasApplication::GetInstance()) {
+            app->StopTimer(animationTimerId);
+        }
+        animationTimerId = 0;
     }
 }
 
