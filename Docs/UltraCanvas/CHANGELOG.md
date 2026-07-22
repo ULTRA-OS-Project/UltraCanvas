@@ -1,3 +1,24 @@
+#### 2026-07-22 *0.3.13*
+- **UltraCanvasListView now supports variable row heights.** The delegate
+  hook `IItemDelegate::GetRowHeight(model, row)` — previously declared but
+  never consulted — is now wired into the view when variable mode is enabled
+  via `SetVariableRowHeights(true)`. Every row can report its own height; the
+  view keeps a lazily-rebuilt prefix-sum of row tops so scrolling,
+  hit-testing (`GetRowAtY`), `GetRowRect`, `EnsureRowVisible`, `ScrollToRow`,
+  culling and Page Up/Down navigation are all height-aware. Uniform rows stay
+  the default and keep their original arithmetic fast path (no table). Call
+  `InvalidateRowHeights()` when a custom delegate's sizing changes without a
+  model signal (e.g. an async delegate finished measuring a row).
+- **UltraCanvasFilerWidget shrinks thumbnail rows to fit landscape images.**
+  In the thumbnail grid views the tiles are square (the selected Small /
+  Medium / Big / Maximized edge), which leaves a tall empty band above and
+  below wide photos. A grid row whose images all display shorter than the
+  tile edge is now shortened to the tallest image actually shown in it; a row
+  that holds any full-height item (a folder, a generic-glyph file, a
+  vector/portrait/square or not-yet-measured image) keeps the full edge.
+  Natural image sizes come from the existing header-only probe (no decode),
+  cached per file. Controlled by `SetShrinkThumbnailRows(bool)` (default on).
+
 #### 2026-07-21 *0.3.12*
 - Fix GIF export failing with `magicksave: libMagick error:
   NoEncodeDelegateForThisImageFormat 'gif'` (seen on the DemoApp bitmap

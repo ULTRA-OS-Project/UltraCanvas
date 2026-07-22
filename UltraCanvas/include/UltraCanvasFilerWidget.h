@@ -18,7 +18,7 @@
 // and Copy / Cut / Paste (Ctrl+C/X/V) interoperate with the system clipboard
 // so files can be exchanged with external file managers.
 // Version: 1.4.0
-// Last Modified: 2026-07-20
+// Last Modified: 2026-07-22
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -214,6 +214,19 @@ namespace UltraCanvas {
         void SetCompressedThumbnails(bool enabled);
         bool GetCompressedThumbnails() const { return compressedThumbs.load(); }
 
+        // "Shrink thumbnail rows": in the thumbnail grid views the tiles are
+        // square (edge = the selected Small / Medium / Big / Maximized size), so
+        // a row of landscape photos leaves a wide empty band above and below
+        // each image. When enabled (default), a grid row whose images all
+        // display shorter than the tile edge is shortened to the tallest image
+        // actually shown in it, closing that gap; a row that contains any
+        // full-height item (a folder, a generic-glyph file, a portrait/square or
+        // not-yet-measured image) keeps the full edge height. Natural image
+        // sizes are read from file headers (no decode). Off restores the fixed
+        // square grid.
+        void SetShrinkThumbnailRows(bool enabled);
+        bool GetShrinkThumbnailRows() const { return shrinkThumbnailRows; }
+
         // Snapshot of what the thumbnail cache currently holds — lets an
         // application (or an A/B test) compare the footprint of compressed
         // vs. raw storage. rawBytes is what the same thumbnails would take
@@ -326,7 +339,15 @@ namespace UltraCanvas {
         bool hoverIconMenu = true;
         bool showOpenPathItem = false;
         bool showSelectionInfo = true;
+        bool shrinkThumbnailRows = true;
         FilerStyle style;
+
+        // Natural aspect ratio (width / height) of raster image entries, keyed
+        // by file path, filled lazily from image headers (ProbeImageDimensions,
+        // no decode) for the thumbnail-row shrinking. 0 = probed but has no
+        // usable dimensions (treated as full-height); absent = not yet probed.
+        // Cleared on rescan.
+        std::unordered_map<std::string, float> aspectCache;
 
         std::vector<size_t> selection;            // indices into `entries`
         int lastClickedIndex = -1;                // anchor for shift-range select
@@ -546,6 +567,14 @@ namespace UltraCanvas {
         void RecomputeLayout();
         Rect2Di ContentBounds() const;
         int  ThumbnailEdge() const;               // tile edge for the thumb modes
+        // Natural width/height of a raster image entry (cached), or 0 when the
+        // entry is not a measurable raster image.
+        float EntryAspect(const FilerEntry& e);
+        // Height an entry's thumbnail actually occupies inside an `edge`-wide
+        // tile: `edge` for folders, glyph files, vectors and portrait/square or
+        // not-yet-measured images; a smaller value for landscape images. Only
+        // shrinks below `edge` when shrinkThumbnailRows is on.
+        int  ThumbnailImageHeight(const FilerEntry& e, int edge);
         void LayoutDetails(const Rect2Di& area);
         void LayoutList(const Rect2Di& area);
         void LayoutThumbnails(const Rect2Di& area);

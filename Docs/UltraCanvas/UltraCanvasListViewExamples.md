@@ -69,8 +69,35 @@ const ListViewStyle& GetStyle() const;
 void SetRowHeight(int height);
 int GetRowHeight() const;
 
+void SetVariableRowHeights(bool enabled);
+bool GetVariableRowHeights() const;
+void InvalidateRowHeights();
+
 void SetShowHeader(bool show);
 bool GetShowHeader() const;
+```
+
+`SetRowHeight` / `rowHeight` set the single height used by every row. For rows
+of differing height, call `SetVariableRowHeights(true)`: the view then asks the
+delegate for each row's height via `IItemDelegate::GetRowHeight(model, row)`
+instead of using the uniform value. Scrolling, hit-testing, `GetRowRect`,
+`EnsureRowVisible`, culling and Page Up/Down all follow the per-row heights
+(internally the view keeps a lazily-rebuilt prefix-sum of row tops). Uniform
+rows remain the default. If a custom delegate changes its sizing without the
+model firing a data-changed signal — for example an async delegate that sizes a
+row from a decoded image — call `InvalidateRowHeights()` to force a recompute.
+
+```cpp
+// A delegate that gives every third row extra room (in practice you would
+// decide from the row's own data, e.g. a thumbnail vs. a plain text entry).
+class MyDelegate : public UltraCanvasDefaultListDelegate {
+public:
+    int GetRowHeight(const IListModel* /*model*/, int row) const override {
+        return (row % 3 == 0) ? 64 : 24;
+    }
+};
+listView->SetDelegate(std::make_shared<MyDelegate>());
+listView->SetVariableRowHeights(true);
 ```
 
 The `ListViewStyle` struct controls colors, grid lines, alternating rows, header visibility, and the scrollbar style:
@@ -438,7 +465,7 @@ iconList->onItemClicked = [statusLabel, iconModel](int row) {
 1. **Keep the model alive for as long as the view uses it.** The view stores a raw pointer; if the model is destroyed first, the view will read freed memory.
 2. **Notify on data changes.** When mutating a custom model, fire `onDataChanged` / `onRowChanged` / `onRowInserted` / `onRowRemoved` so the view repaints and rescrolls correctly.
 3. **Use `UltraCanvasMultiSelection` for any list where Ctrl/Shift-Click should add to selection.** The default is single-selection.
-4. **Tune `rowHeight` to match `delegate->GetRowHeight()`** when using icons larger than 16px — set both to avoid clipped icons.
+4. **In uniform mode, tune `rowHeight` to match your content** when using icons larger than 16px, to avoid clipped icons. If rows genuinely differ in height, enable `SetVariableRowHeights(true)` and return the right height per row from `delegate->GetRowHeight(model, row)` instead.
 5. **For large datasets**, keep `GetData()` cheap — it is called once per visible cell per repaint.
 
 ## See Also
