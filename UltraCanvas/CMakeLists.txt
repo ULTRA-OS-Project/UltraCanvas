@@ -1,7 +1,7 @@
 # UltraCanvas/CMakeLists.txt
 # UltraCanvas Core Library - Builds as separate static library with optional plugins
-# Version: 1.4.5
-# Last Modified: 2026-07-05
+# Version: 1.4.6
+# Last Modified: 2026-07-22
 # Author: UltraCanvas Framework
 
 cmake_minimum_required(VERSION 3.16)
@@ -1086,6 +1086,15 @@ if(ULTRACANVAS_ENABLE_NET)
     if(ULTRANET_HAS_CARES)
         target_compile_definitions(UltraNet PUBLIC ULTRANET_HAS_CARES=1)
         target_include_directories(UltraNet PRIVATE ${CARES_INCLUDE_DIRS})
+        # Put c-ares' pkg-config library dir on the link path so the transitive
+        # -lcares resolves for consumers. Needed on Homebrew macOS (arm64), where
+        # c-ares lives in a keg dir (/opt/homebrew/opt/c-ares/lib) that is NOT a
+        # default linker search path; without this the UltraMail/demo link fails
+        # with "ld: library 'cares' not found". PUBLIC so the -L propagates the
+        # same way the -l does (UltraNet is a STATIC archive resolved by its
+        # consumers). No-op on Linux/Windows, where libcares is already on the
+        # default search path. Mirrors the GStreamer pattern above.
+        target_link_directories(UltraNet PUBLIC ${CARES_LIBRARY_DIRS})
         target_link_libraries(UltraNet PUBLIC ${CARES_LIBRARIES})
     endif()
     if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
