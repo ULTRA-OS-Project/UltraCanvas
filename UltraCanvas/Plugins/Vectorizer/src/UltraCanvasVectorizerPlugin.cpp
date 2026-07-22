@@ -150,7 +150,7 @@ VectorizerResult UltraCanvasVectorizer::VectorizeBuffer(const void* data, size_t
 }
 
 std::future<VectorizerResult> UltraCanvasVectorizer::VectorizeImageAsync(
-    const PixelFX::PFXImage& img, std::stop_token /*st*/) {
+    const PixelFX::PFXImage& img) {
     // VTracer doesn't expose mid-flight cancellation; the stop_token is
     // accepted now so callers can be written against the final shape.
     return std::async(std::launch::async,
@@ -158,7 +158,7 @@ std::future<VectorizerResult> UltraCanvasVectorizer::VectorizeImageAsync(
 }
 
 std::future<VectorizerResult> UltraCanvasVectorizer::VectorizeFileAsync(
-    const std::string& path, std::stop_token /*st*/) {
+    const std::string& path) {
     return std::async(std::launch::async,
                       [this, path]() { return VectorizeFile(path); });
 }
