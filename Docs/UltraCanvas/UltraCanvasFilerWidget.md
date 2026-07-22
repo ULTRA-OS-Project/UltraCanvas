@@ -82,10 +82,17 @@ Notes:
 - Items whose hook callback is not set (Print, Share, Attributes, Access,
   Settings, empty Open with) are shown disabled. "Copy path" has a built-in
   default (system clipboard via `SetClipboardText`).
-- **Compress** packs the selection (or the whole folder) into a unique `.zip`
-  alongside, **Extract** unpacks selected archives into sibling folders — both
-  via `UCVFSBridge` and available when the VirtualFS module is built
+- **Compress** is a submenu of archive formats (ZIP, 7-Zip, TAR, TAR+gzip,
+  TAR+bzip2, TAR+xz, TAR+Zstd). Picking one opens a modal compress dialog
+  showing the archive's file-type icon, an editable file name, and the
+  destination folder as smaller text. The icon can be dragged onto any folder in
+  the view to change the destination (the target folder highlights while
+  dragging); Enter / Compress creates it, Esc / Cancel dismisses. **Extract**
+  unpacks selected archives into sibling folders. Both go through `UCVFSBridge`
+  and are available when the VirtualFS module is built
   (`ULTRACANVAS_HAS_VIRTUALFS`); without it they report an error through `onError`.
+  `CompressSelection(extension)` still performs an immediate, dialog-free
+  compress for programmatic use.
 
 ## Selection info bar
 

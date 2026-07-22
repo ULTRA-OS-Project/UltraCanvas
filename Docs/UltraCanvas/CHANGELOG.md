@@ -1,3 +1,18 @@
+#### 2026-07-22 *0.3.14*
+- **UltraCanvasFilerWidget**: picking a format from the context menu's
+  "Compress" submenu now opens a modal compress dialog instead of creating the
+  archive immediately. The dialog shows:
+  - the archive's file-type icon on top,
+  - an editable file name (with the format's extension shown as a suffix),
+  - the destination folder as smaller, separate text.
+
+  The icon can be **dragged onto any folder in the view** to retarget the
+  destination path — the folder under the icon highlights while dragging, and
+  dropping on it updates the "Location". Enter / the Compress button creates the
+  archive; Esc / Cancel dismisses. Because the icon must be droppable onto the
+  folders behind it, the dialog is an in-widget overlay rather than a separate
+  top-level modal window.
+
 #### 2026-07-22 *0.3.13*
 - **UltraCanvasFilerWidget**: the right-click context menu now closes on a
   left click anywhere outside it. Previously the popup registered the whole

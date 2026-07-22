@@ -575,6 +575,9 @@ namespace UltraCanvas {
         void EnsureVisible(size_t entryIndex);
 
         // ===== DRAWING =====
+        // The folder view + chrome (has several early-return branches); the
+        // public Render() calls this and then paints any modal overlay on top.
+        void DrawViewContent(IRenderContext* ctx, const Rect2Di& bounds);
         void DrawDetails(IRenderContext* ctx, const Rect2Di& bounds);
         void DrawDetailsHeader(IRenderContext* ctx, const Rect2Di& bounds);
         void DrawDetailsRow(IRenderContext* ctx, const ItemLayout& item, bool hovered);
@@ -595,6 +598,9 @@ namespace UltraCanvas {
         void DrawIconMenuGlyph(IRenderContext* ctx, IconMenuAction action,
                                const Rect2Di& button);
         void DrawRenameEditor(IRenderContext* ctx, const ItemLayout& item);
+        void DrawCompressDialog(IRenderContext* ctx, const Rect2Di& bounds);
+        void DrawDialogButton(IRenderContext* ctx, const Rect2Di& rect,
+                              const std::string& label, bool primary, bool hovered);
         void DrawScrollbar(IRenderContext* ctx);
         void DrawSelectionInfoBar(IRenderContext* ctx, const Rect2Di& bounds);
         int  InfoBarHeight() const {
@@ -639,6 +645,51 @@ namespace UltraCanvas {
         // Selected entries, or the whole folder when nothing is selected —
         // what Compress / Print / Extras operate on.
         std::vector<FilerEntry> SelectionOrAll() const;
+
+        // ===== COMPRESS DIALOG (modal in-widget overlay) =====
+        // Shown when a format is picked from the context menu's "Compress"
+        // submenu. It previews the archive's file-type icon, lets the name be
+        // edited, and shows the destination folder as smaller text. The icon can
+        // be dragged onto any folder in the view to retarget that destination —
+        // which is why this is an in-widget overlay rather than a separate modal
+        // window (a top-level modal would block the folders behind it).
+        struct CompressDialogState {
+            bool        active = false;
+            std::string extension;      // archive extension, e.g. "zip", "tar.gz"
+            std::string formatLabel;    // human label, e.g. "TAR + gzip"
+            std::string nameBuffer;     // editable base name (no extension)
+            std::string destDir;        // folder the archive is written to
+            std::vector<std::string> sourcePaths;  // captured at open time
+
+            // Layout, recomputed each frame (widget-local coordinates).
+            Rect2Di panel;
+            Rect2Di iconRect;
+            Rect2Di nameRect;
+            Rect2Di okRect;
+            Rect2Di cancelRect;
+
+            // Icon drag-to-folder interaction.
+            bool     draggingIcon = false;
+            Point2Di dragPos;               // cursor while dragging (widget-local)
+            int      dropFolderIndex = -1;  // folder entry highlighted under the icon
+
+            bool     nameFocused = true;
+            bool     okHover = false;
+            bool     cancelHover = false;
+        };
+        CompressDialogState compressDlg;
+
+        void OpenCompressDialog(const std::string& extension,
+                                const std::string& formatLabel);
+        void LayoutCompressDialog(const Rect2Di& bounds);
+        bool HandleCompressDialogEvent(const UCEvent& event);
+        void CommitCompressDialog();
+        void CloseCompressDialog();
+        // Folder entry index under a widget-local point (ignoring the panel), or
+        // -1 when the point is over the panel or not over a folder.
+        int  FolderIndexAtLocal(const Point2Di& localPoint) const;
+        // Short uppercase tag drawn on the archive icon for a given extension.
+        static std::string ArchiveIconTag(const std::string& extension);
 
         // ===== DELETE CONFIRMATION =====
         // Actually removes the given entries from disk (no confirmation).
