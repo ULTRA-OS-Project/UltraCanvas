@@ -295,8 +295,11 @@ namespace UltraCanvas {
             long total = std::lround(seconds);
             long h = total / 3600, m = (total % 3600) / 60, s = total % 60;
             char buf[32];
-            if (h > 0) snprintf(buf, sizeof(buf), "%ld:%02ld:%02ld", h, m, s);
-            else       snprintf(buf, sizeof(buf), "%ld:%02ld", m, s);
+            // Append the largest applicable unit: seconds ("34 s"),
+            // minutes ("3:45 min") or hours ("2:32:20 h").
+            if (h > 0)         snprintf(buf, sizeof(buf), "%ld:%02ld:%02ld h", h, m, s);
+            else if (m > 0)    snprintf(buf, sizeof(buf), "%ld:%02ld min", m, s);
+            else               snprintf(buf, sizeof(buf), "%ld s", s);
             return buf;
         }
 
