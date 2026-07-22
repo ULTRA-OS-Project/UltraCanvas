@@ -268,7 +268,10 @@ namespace UltraCanvas {
         void DeleteSelection();    // gated by confirmDelete when set
         void DuplicateSelection(); // copy alongside with a unique name
         void StartRename(size_t entryIndex);   // inline rename editor
-        void CompressSelection();  // pack the selection into a .zip alongside
+        // Pack the selection into an archive alongside it. The extension picks
+        // the format (e.g. "zip", "7z", "tar", "tar.gz", "tar.bz2", "tar.xz",
+        // "tar.zst"); defaults to a .zip archive.
+        void CompressSelection(const std::string& extension = "zip");
         void ExtractSelection();   // unpack selected archives alongside
         static bool ClipboardHasContent();
 

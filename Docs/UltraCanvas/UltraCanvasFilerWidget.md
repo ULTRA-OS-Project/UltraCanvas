@@ -135,7 +135,8 @@ filer->Paste();               // into the current folder (unique names)
 filer->DeleteSelection();     // gated by confirmDelete when set
 filer->DuplicateSelection();  // copy alongside with " (2)" style names
 filer->StartRename(index);    // inline rename editor (Enter commits, Esc cancels)
-filer->CompressSelection();
+filer->CompressSelection();          // .zip alongside (default)
+filer->CompressSelection("tar.gz");  // pick the format via extension
 filer->ExtractSelection();
 filer->CreateNewDocument({"Text", "txt", ""});
 ```

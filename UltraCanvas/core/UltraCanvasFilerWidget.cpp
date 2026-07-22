@@ -1558,7 +1558,7 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
-    void UltraCanvasFilerWidget::CompressSelection() {
+    void UltraCanvasFilerWidget::CompressSelection(const std::string& extension) {
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
         std::vector<FilerEntry> targets = SelectionOrAll();
         if (targets.empty()) return;
@@ -1568,13 +1568,17 @@ namespace UltraCanvas {
                 ? fs::path(targets[0].name).stem().string()
                 : fs::path(currentPath).filename().string();
         if (base.empty()) base = "archive";
-        std::string dest = UniqueChildPath(base + ".zip");
+        // The extension drives the archive format chosen by the VirtualFS bridge.
+        std::string ext = extension.empty() ? std::string("zip") : extension;
+        if (!ext.empty() && ext.front() == '.') ext.erase(ext.begin());
+        std::string dest = UniqueChildPath(base + "." + ext);
         if (!UCVFSBridge::CreateArchive(dest, paths)) {
             ReportError("Compression failed for " + dest);
             return;
         }
         Refresh();
 #else
+        (void)extension;
         ReportError("Compress requires the VirtualFS module");
 #endif
     }
@@ -3407,7 +3411,31 @@ namespace UltraCanvas {
         }
         menu.AddItem(MenuItemData::Separator());
 
-        addAction("Compress", !entries.empty(), [this]() { CompressSelection(); });
+        // Compress > (pick the archive format)
+        {
+            bool canCompress = !entries.empty();
+            struct CompressFormat { const char* label; const char* ext; };
+            static const CompressFormat compressFormats[] = {
+                {"ZIP (.zip)",             "zip"},
+                {"7-Zip (.7z)",            "7z"},
+                {"TAR (.tar)",             "tar"},
+                {"TAR + gzip (.tar.gz)",   "tar.gz"},
+                {"TAR + bzip2 (.tar.bz2)", "tar.bz2"},
+                {"TAR + xz (.tar.xz)",     "tar.xz"},
+                {"TAR + Zstd (.tar.zst)",  "tar.zst"},
+            };
+            std::vector<MenuItemData> compressItems;
+            for (const CompressFormat& f : compressFormats) {
+                std::string ext = f.ext;
+                MenuItemData item = MenuItemData::Action(
+                        f.label, [this, ext]() { CompressSelection(ext); });
+                item.enabled = canCompress;
+                compressItems.push_back(item);
+            }
+            MenuItemData compressSub = MenuItemData::Submenu("Compress", compressItems);
+            compressSub.enabled = canCompress;
+            menu.AddItem(compressSub);
+        }
         addAction("Extract", anyArchive, [this]() { ExtractSelection(); });
         menu.AddItem(MenuItemData::Separator());
 
@@ -3468,7 +3496,12 @@ namespace UltraCanvas {
         Point2Di winPos(static_cast<int>(GetXInWindow()) + localPoint.x,
                         static_cast<int>(GetYInWindow()) + localPoint.y);
         PopupElementSettings settings;
-        settings.popupOwner = weak_from_this();
+        // Deliberately leave popupOwner unset. The owner would be this whole
+        // widget, and the window's dismissal logic treats a click on the owner as
+        // "inside" the popup — so a left click anywhere in the file view would
+        // fail to close the context menu. With no owner, any click outside the
+        // menu bounds (including on the file view itself) dismisses it.
+        settings.closeByClickOutside = true;
         activePopupMenu->OpenMenu(winPos, *win, settings);
     }
 

@@ -1,3 +1,20 @@
+#### 2026-07-22 *0.3.13*
+- **UltraCanvasFilerWidget**: the right-click context menu now closes on a
+  left click anywhere outside it. Previously the popup registered the whole
+  Filer widget as its `popupOwner`, and the window's dismissal logic treats a
+  click on the owner as "inside" the popup — so clicking in the file view left
+  the menu stuck open. The context menu no longer sets an owner, so any click
+  outside the menu bounds dismisses it.
+- **UltraCanvasFilerWidget**: the context menu's "Compress" entry is now a
+  submenu listing the available archive formats — ZIP, 7-Zip, TAR, TAR+gzip,
+  TAR+bzip2, TAR+xz and TAR+Zstd. `CompressSelection(extension)` takes the
+  target extension (default `zip`) which selects the format.
+- **VirtualFS (libarchive provider)**: `CreateArchive` now recognises compound
+  archive extensions (`.tar.gz`, `.tar.bz2`, `.tar.xz`, `.tar.zst`, `.tar.lz4`)
+  when picking the format and filter. It previously inspected only the final
+  token (e.g. `gz`), which selected the ZIP format and then layered a gzip
+  filter on top, producing a corrupt archive for those names.
+
 #### 2026-07-21 *0.3.12*
 - Fix GIF export failing with `magicksave: libMagick error:
   NoEncodeDelegateForThisImageFormat 'gif'` (seen on the DemoApp bitmap
