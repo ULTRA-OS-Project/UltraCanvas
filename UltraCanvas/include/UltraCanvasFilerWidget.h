@@ -68,6 +68,20 @@ namespace UltraCanvas {
         CreatedDate
     };
 
+    // ===== THUMBNAIL DATASET FIELDS =====
+    // Extra per-file facts shown under the name in the thumbnail views. Combine
+    // as a bitmask (Display > Dataset toggles them). Length applies to audio /
+    // video, Dimensions to bitmaps; both are skipped for entries they don't fit.
+    enum class FilerDatasetField : uint32_t {
+        None         = 0,
+        Size         = 1u << 0,
+        ModifiedDate = 1u << 1,   // "Edit date"
+        CreatedDate  = 1u << 2,   // "Creation date"
+        Attributes   = 1u << 3,
+        Length       = 1u << 4,   // audio / video duration
+        Dimensions   = 1u << 5    // bitmap width × height
+    };
+
     // ===== COARSE FILE CATEGORY (drives icons / colors / type sorting) =====
     enum class FilerFileCategory {
         Folder,
@@ -248,6 +262,14 @@ namespace UltraCanvas {
         void SetSelectionInfoVisible(bool visible);
         bool IsSelectionInfoVisible() const { return showSelectionInfo; }
 
+        // ===== THUMBNAIL DATASET =====
+        // Which extra facts are drawn under the file name in the thumbnail
+        // views (Display > Dataset). Changing the set relays out the tiles.
+        void SetDatasetField(FilerDatasetField field, bool on);
+        bool IsDatasetFieldEnabled(FilerDatasetField field) const;
+        void SetDatasetFields(uint32_t mask);
+        uint32_t GetDatasetFields() const { return datasetFields; }
+
         void SetStyle(const FilerStyle& s);
         const FilerStyle& GetStyle() const { return style; }
 
@@ -329,6 +351,8 @@ namespace UltraCanvas {
         bool hoverIconMenu = true;
         bool showOpenPathItem = false;
         bool showSelectionInfo = true;
+        // Bitmask of FilerDatasetField values drawn under thumbnail captions.
+        uint32_t datasetFields = 0;
         FilerStyle style;
 
         std::vector<size_t> selection;            // indices into `entries`
@@ -617,6 +641,14 @@ namespace UltraCanvas {
         std::string EntryExtraInfo(const FilerEntry& e) const;
         std::string EllipsizeText(IRenderContext* ctx, const std::string& text,
                                   int maxWidth) const;
+
+        // Thumbnail dataset lines (Display > Dataset): the formatted values of
+        // the enabled fields that apply to this entry, top to bottom.
+        std::vector<std::string> DatasetLinesFor(const FilerEntry& e) const;
+        // How many enabled dataset fields there are — the number of caption
+        // lines reserved per tile so the grid stays aligned across file kinds.
+        int  DatasetLineCount() const;
+        int  DatasetLineHeight() const;
 
         // ===== HIT TESTING =====
         Point2Di ToContentPoint(const Point2Di& localPoint) const;

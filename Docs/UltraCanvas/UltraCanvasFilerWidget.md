@@ -59,8 +59,10 @@ Copy / Cut / Paste / Delete / Duplicate / Rename
 ──────────
 New            >  Text, Doc, Spreadsheet, Bitmap, Vector, Audio, Video
 ──────────
-Display        >  Sort  >  Name / Size / Type / Modified / Created + Ascending / Descending
-                  Type  >  all view types
+Display        >  Sort    >  Name / Size / Type / Modified / Created + Ascending / Descending
+                  Type    >  all view types
+                  Dataset >  Size / Edit date / Creation date / Attributes /
+                             Length (audio/video) / Dimensions (bitmaps)
                   Icon-Menu (checkbox: the small hover icon menu)
                   Info-Bar (checkbox: the selection info bar)
 ──────────
@@ -93,6 +95,13 @@ Notes:
   (`ULTRACANVAS_HAS_VIRTUALFS`); without it they report an error through `onError`.
   `CompressSelection(extension)` still performs an immediate, dialog-free
   compress for programmatic use.
+- **Display > Dataset** toggles extra per-file facts drawn under the name in the
+  thumbnail views: Size, Edit date, Creation date, Attributes, Length
+  (audio/video duration) and Dimensions (bitmap pixel size). Each enabled field
+  adds a caption line and the tiles grow to fit; Length and Dimensions only
+  appear on the file kinds they apply to (their values are probed lazily from
+  the file headers and cached). Drive it in code with
+  `SetDatasetField(FilerDatasetField::Size, true)` / `SetDatasetFields(mask)`.
 
 ## Selection info bar
 

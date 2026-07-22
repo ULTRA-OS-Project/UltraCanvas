@@ -1171,6 +1171,71 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    void UltraCanvasFilerWidget::SetDatasetField(FilerDatasetField field, bool on) {
+        uint32_t bit = static_cast<uint32_t>(field);
+        uint32_t next = on ? (datasetFields | bit) : (datasetFields & ~bit);
+        SetDatasetFields(next);
+    }
+
+    bool UltraCanvasFilerWidget::IsDatasetFieldEnabled(FilerDatasetField field) const {
+        return (datasetFields & static_cast<uint32_t>(field)) != 0;
+    }
+
+    void UltraCanvasFilerWidget::SetDatasetFields(uint32_t mask) {
+        if (datasetFields == mask) return;
+        datasetFields = mask;
+        // Each enabled field adds a caption line, so the tile height changes.
+        InvalidateFilerLayout();
+        RequestRedraw();
+    }
+
+    int UltraCanvasFilerWidget::DatasetLineCount() const {
+        int n = 0;
+        for (uint32_t m = datasetFields; m; m &= (m - 1)) ++n;
+        return n;
+    }
+
+    int UltraCanvasFilerWidget::DatasetLineHeight() const {
+        return static_cast<int>(style.smallFontSize) + 3;
+    }
+
+    std::vector<std::string> UltraCanvasFilerWidget::DatasetLinesFor(
+            const FilerEntry& e) const {
+        std::vector<std::string> lines;
+        if (datasetFields == 0) return lines;
+
+        auto has = [this](FilerDatasetField f) {
+            return (datasetFields & static_cast<uint32_t>(f)) != 0;
+        };
+        if (has(FilerDatasetField::Size) && !e.isDirectory) {
+            lines.push_back(FormatSize(e.size));
+        }
+        if (has(FilerDatasetField::ModifiedDate) && e.modifiedTime != 0) {
+            lines.push_back(FormatTime(e.modifiedTime));
+        }
+        if (has(FilerDatasetField::CreatedDate) && e.createdTime != 0) {
+            lines.push_back(FormatTime(e.createdTime));
+        }
+        if (has(FilerDatasetField::Attributes) && !e.attributes.empty()) {
+            lines.push_back(e.attributes);
+        }
+        // Length (audio / video) and Dimensions (bitmaps) both come from the
+        // lazily-probed, cached media info — gated by category so each only
+        // shows where it applies.
+        if (has(FilerDatasetField::Length) &&
+            (e.category == FilerFileCategory::Audio ||
+             e.category == FilerFileCategory::Video)) {
+            std::string info = EntryExtraInfo(e);
+            if (!info.empty()) lines.push_back(info);
+        }
+        if (has(FilerDatasetField::Dimensions) &&
+            e.category == FilerFileCategory::Image) {
+            std::string info = EntryExtraInfo(e);
+            if (!info.empty()) lines.push_back(info);
+        }
+        return lines;
+    }
+
     void UltraCanvasFilerWidget::SetStyle(const FilerStyle& s) {
         style = s;
         SetBackgroundColor(style.backgroundColor);
@@ -2137,7 +2202,9 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::LayoutThumbnails(const Rect2Di& area) {
         int edge = ThumbnailEdge();
         int gap = style.tileGap;
-        int capH = style.captionHeight;
+        // The name occupies the base caption band; each enabled dataset field
+        // adds one line below it (reserved uniformly so the grid stays aligned).
+        int capH = style.captionHeight + DatasetLineCount() * DatasetLineHeight();
         int tileW = edge;
         int tileH = edge + capH;
         int scrollbarGutter = 10;
@@ -3051,6 +3118,24 @@ namespace UltraCanvas {
                 item.rect.x + (item.rect.width - ts.width) / 2.0,
                 capTop + (style.captionHeight - ts.height) / 2.0));
 
+        // Dataset lines (Display > Dataset) under the name, smaller and greyed.
+        if (datasetFields != 0) {
+            std::vector<std::string> lines = DatasetLinesFor(e);
+            if (!lines.empty()) {
+                ctx->SetTextPaint(style.secondaryTextColor);
+                int lineH = DatasetLineHeight();
+                int y = capTop + style.captionHeight;
+                for (const std::string& raw : lines) {
+                    std::string ln = EllipsizeText(ctx, raw, item.rect.width - 8);
+                    Size2Di lts = ctx->GetTextLineDimensions(ln);
+                    ctx->DrawText(ln, Point2Dd(
+                            item.rect.x + (item.rect.width - lts.width) / 2.0,
+                            y + (lineH - lts.height) / 2.0));
+                    y += lineH;
+                }
+            }
+        }
+
         if (selected) {
             ctx->SetStrokePaint(style.selectionBorderColor);
             ctx->SetStrokeWidth(2.0f);
@@ -3745,9 +3830,28 @@ namespace UltraCanvas {
                         [this, v]() { SetViewType(v); }));
             }
 
+            // Dataset > extra per-file facts under thumbnail captions.
+            std::vector<MenuItemData> datasetItems;
+            struct DatasetOption { const char* label; FilerDatasetField field; };
+            static const DatasetOption datasetOptions[] = {
+                {"Size",                   FilerDatasetField::Size},
+                {"Edit date",              FilerDatasetField::ModifiedDate},
+                {"Creation date",          FilerDatasetField::CreatedDate},
+                {"Attributes",             FilerDatasetField::Attributes},
+                {"Length (audio/video)",   FilerDatasetField::Length},
+                {"Dimensions (bitmaps)",   FilerDatasetField::Dimensions},
+            };
+            for (const DatasetOption& o : datasetOptions) {
+                FilerDatasetField f = o.field;
+                datasetItems.push_back(MenuItemData::Checkbox(
+                        o.label, IsDatasetFieldEnabled(f),
+                        [this, f](bool on) { SetDatasetField(f, on); }));
+            }
+
             std::vector<MenuItemData> displayItems;
             displayItems.push_back(MenuItemData::Submenu("Sort", sortItems));
             displayItems.push_back(MenuItemData::Submenu("Type", typeItems));
+            displayItems.push_back(MenuItemData::Submenu("Dataset", datasetItems));
             displayItems.push_back(MenuItemData::Checkbox(
                     "Icon-Menu", hoverIconMenu,
                     [this](bool on) { SetHoverIconMenuEnabled(on); }));

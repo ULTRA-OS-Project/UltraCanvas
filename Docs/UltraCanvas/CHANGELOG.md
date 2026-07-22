@@ -1,3 +1,12 @@
+#### 2026-07-22 *0.3.15*
+- **UltraCanvasFilerWidget**: new **Display > Dataset** submenu with toggles for
+  extra per-file facts shown under the name in the thumbnail views — Size, Edit
+  date, Creation date, Attributes, Length (audio/video) and Dimensions
+  (bitmaps). Each enabled field adds a caption line (Length/Dimensions only
+  appear on the file kinds they apply to); tiles grow to fit and the grid stays
+  aligned. Also available programmatically via `SetDatasetField()` /
+  `SetDatasetFields()` with the new `FilerDatasetField` flags.
+
 #### 2026-07-22 *0.3.14*
 - **UltraCanvasFilerWidget**: picking a format from the context menu's
   "Compress" submenu now opens a modal compress dialog instead of creating the
