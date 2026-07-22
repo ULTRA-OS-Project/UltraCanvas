@@ -1,6 +1,6 @@
 # UltraCanvas/CMakeLists.txt
 # UltraCanvas Core Library - Builds as separate static library with optional plugins
-# Version: 1.4.6
+# Version: 1.4.7
 # Last Modified: 2026-07-22
 # Author: UltraCanvas Framework
 
@@ -808,6 +808,31 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
             ${OPENGL_FRAMEWORK}
         )
     endif()
+    # Homebrew installs each formula under a keg-specific prefix
+    # (/opt/homebrew/opt/<pkg>/lib) that is NOT on the default Mach-O linker
+    # search path. libultracanvas re-exports cairo/pango/vips/rsvg/zbar/... as
+    # PUBLIC link deps, so every consumer inherits the -l<name> flags. As a
+    # STATIC archive the core never links these itself — only the final
+    # executable does — so the -L search dirs must reach those executables too.
+    # The root CMakeLists' link_directories() is directory-scoped and runs after
+    # add_subdirectory(Apps/...), so apps like UltraMail never saw it (linker:
+    # "library 'cairo' not found"). Attach the dirs to the TARGET (PUBLIC) so
+    # they propagate through usage requirements exactly like the -l flags do.
+    execute_process(COMMAND brew --prefix
+        OUTPUT_VARIABLE _uc_hb_prefix OUTPUT_STRIP_TRAILING_WHITESPACE)
+    target_link_directories(${ULTRACANVAS_LIB_NAME} PUBLIC
+            ${CAIRO_LIBRARY_DIRS}
+            ${PANGO_LIBRARY_DIRS}
+            ${FREETYPE_LIBRARY_DIRS}
+            ${HARFBUZZ_LIBRARY_DIRS}
+            ${GLIB_LIBRARY_DIRS}
+            ${TINYXML2_LIBRARY_DIRS}
+            ${LIBVIPS_LIBRARY_DIRS}
+            ${LIBRSVG_LIBRARY_DIRS}
+            ${ZBAR_LIBRARY_DIRS}
+            ${_uc_hb_prefix}/lib
+            ${_uc_hb_prefix}/opt/vips/lib
+    )
 endif()
 
 # ===== LINK LIBRARIES =====

@@ -6,15 +6,20 @@ if [ -z "$VERSION" ]; then
     echo "Error: could not parse version from $PROJECTDIR/Docs/UltraCanvas/CHANGELOG.md (expected '#### YYYY-MM-DD *x.y.z*')" >&2
     exit 1
 fi
-EXECUTABLE=$PROJECTDIR/cmake-build-release/bin/UltraCanvasDemo
+BUILDDIR=$PROJECTDIR/cmake-build-release
+EXECUTABLE=$BUILDDIR/bin/UltraCanvasDemo
 
 rm -rf $OUTPUTDIR/AppDir \
 && mkdir $OUTPUTDIR/AppDir \
 && mkdir $OUTPUTDIR/AppDir/lib \
 && mkdir $OUTPUTDIR/AppDir/lib/x86_64-linux-gnu \
 && mkdir $OUTPUTDIR/AppDir/etc \
+&& mkdir $OUTPUTDIR/AppDir/usr \
+&& mkdir $OUTPUTDIR/AppDir/usr/lib \
 && cp -r /etc/ImageMagick-6 $OUTPUTDIR/AppDir/etc \
-&& cp -r /usr/lib/x86_64-linux-gnu/ImageMagick-6.9.11 $OUTPUTDIR/AppDir/lib/x86_64-linux-gnu \
+&& cp -r /usr/lib/x86_64-linux-gnu/ImageMagick-* $OUTPUTDIR/AppDir/lib/x86_64-linux-gnu \
+&& cp $BUILDDIR/lib/*.so $OUTPUTDIR/AppDir/usr/lib \
+&& cp /usr/lib/x86_64-linux-gnu/libMagickCore-* $OUTPUTDIR/AppDir/usr/lib \
 && linuxdeploy-x86_64.AppImage --appdir $OUTPUTDIR/AppDir \
     --executable $EXECUTABLE \
     --desktop-file $PROJECTDIR/appimage/ucdemoapp.desktop \
