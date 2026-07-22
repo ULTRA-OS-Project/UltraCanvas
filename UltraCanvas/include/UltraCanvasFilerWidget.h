@@ -165,7 +165,7 @@ namespace UltraCanvas {
         Color infoBarTextColor     = Color(50, 50, 56, 255);
 
         std::string fontFamily;          // empty = system default
-        float fontSize        = 13.0f;
+        float fontSize        = 12.0f;   // Windows standard UI size (9pt @ 96dpi)
         float smallFontSize   = 11.0f;
 
         int detailsRowHeight  = 24;      // details / bar-size row height
@@ -650,9 +650,17 @@ namespace UltraCanvas {
         int  DatasetLineCount() const;
         int  DatasetLineHeight() const;
 
+        // The font size the item name is drawn at in the current view — the
+        // rename editor uses the same so editing matches the display exactly
+        // (thumbnail / treemap captions use the small size, rows the base size).
+        float ItemNameFontSize() const;
+
         // ===== HIT TESTING =====
         Point2Di ToContentPoint(const Point2Di& localPoint) const;
         int  ItemAt(const Point2Di& contentPoint) const;   // entry index or -1
+        // True when a content-space point falls on the item's name text (not its
+        // icon) — a double-click there starts an inline rename.
+        bool IsOnItemName(const ItemLayout& item, const Point2Di& contentPoint) const;
         int  IconMenuActionAt(const Point2Di& localPoint, size_t& outEntry) const;
         int  DetailsHeaderColumnAt(const Point2Di& localPoint) const;
 

@@ -1,3 +1,13 @@
+#### 2026-07-22 *0.3.16*
+- **UltraCanvasFilerWidget**:
+  - Default display font reduced from 13 to 12 px (Windows standard 9pt @ 96dpi).
+  - The inline rename editor now uses the same font size as the on-screen name
+    for the current view (base size in the row views, the small size in the
+    thumbnail / treemap captions) instead of a fixed larger size.
+  - Double-clicking a file's **name** now starts an inline rename; double-clicking
+    its **icon** (or, in Details view, another column) still opens/activates the
+    entry.
+
 #### 2026-07-22 *0.3.15*
 - **UltraCanvasFilerWidget**: new **Display > Dataset** submenu with toggles for
   extra per-file facts shown under the name in the thumbnail views — Size, Edit

@@ -3351,7 +3351,7 @@ namespace UltraCanvas {
 
         FontStyle fsty;
         fsty.fontFamily = style.fontFamily;
-        fsty.fontSize = style.fontSize;
+        fsty.fontSize = ItemNameFontSize();   // match the on-screen name size
         ctx->SetFontStyle(fsty);
         ctx->SetTextPaint(style.textColor);
         ctx->PushState();
@@ -3682,6 +3682,48 @@ namespace UltraCanvas {
                 return static_cast<int>(it.entryIndex);
         }
         return -1;
+    }
+
+    float UltraCanvasFilerWidget::ItemNameFontSize() const {
+        switch (viewType) {
+            case FilerViewType::ThumbnailsSmall:
+            case FilerViewType::ThumbnailsMedium:
+            case FilerViewType::ThumbnailsBig:
+            case FilerViewType::ThumbnailsMaximized:
+            case FilerViewType::TreeMap:
+                return style.smallFontSize;
+            default:
+                return style.fontSize;
+        }
+    }
+
+    bool UltraCanvasFilerWidget::IsOnItemName(const ItemLayout& item,
+                                              const Point2Di& contentPoint) const {
+        // The icon is never the name (double-clicking it activates the entry).
+        if (item.imageRect.Contains(contentPoint)) return false;
+
+        switch (viewType) {
+            case FilerViewType::ThumbnailsSmall:
+            case FilerViewType::ThumbnailsMedium:
+            case FilerViewType::ThumbnailsBig:
+            case FilerViewType::ThumbnailsMaximized:
+            case FilerViewType::TreeMap: {
+                // Caption sits below the icon.
+                int capTop = item.imageRect.y + item.imageRect.height;
+                return contentPoint.y >= capTop;
+            }
+            default: {
+                // Row views: the name runs to the right of the icon. In Details
+                // it is limited to the Name column so the other columns still
+                // open the entry.
+                int nameLeft = item.imageRect.x + item.imageRect.width;
+                int nameRight = item.rect.x + item.rect.width;
+                if (viewType == FilerViewType::Details && !detailsColumns.empty()) {
+                    nameRight = detailsColumns[0].x + detailsColumns[0].width;
+                }
+                return contentPoint.x >= nameLeft && contentPoint.x < nameRight;
+            }
+        }
     }
 
     int UltraCanvasFilerWidget::IconMenuActionAt(const Point2Di& localPoint,
@@ -4249,9 +4291,20 @@ namespace UltraCanvas {
             case UCEventType::MouseDoubleClick: {
                 Point2Di local(event.pointer.x, event.pointer.y);
                 if (IsInInfoBar(local)) return true;
-                int index = ItemAt(ToContentPoint(local));
+                Point2Di content = ToContentPoint(local);
+                int index = ItemAt(content);
                 if (index >= 0) {
-                    ActivateEntry(static_cast<size_t>(index));
+                    // Double-clicking the name edits it; double-clicking the
+                    // icon (or, in Details, another column) opens the entry.
+                    const ItemLayout* layout = nullptr;
+                    for (const ItemLayout& it : items) {
+                        if (static_cast<int>(it.entryIndex) == index) { layout = &it; break; }
+                    }
+                    if (layout && IsOnItemName(*layout, content)) {
+                        StartRename(static_cast<size_t>(index));
+                    } else {
+                        ActivateEntry(static_cast<size_t>(index));
+                    }
                     return true;
                 }
                 return false;
