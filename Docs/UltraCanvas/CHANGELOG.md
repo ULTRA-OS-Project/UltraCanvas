@@ -1,3 +1,13 @@
+#### 2026-07-23 *0.3.14*
+- eBook reader gains **zoom**. `UltraCanvasEBookViewer` now has a reading-zoom
+  level on top of the base font size (`SetZoom`/`GetZoom`/`ZoomIn`/`ZoomOut`,
+  `onZoomChanged`), plus two fit modes: `ZoomToWidth()` scales the text so a
+  comfortable line measure fills the pane width, and `ZoomToHeight()` scales
+  the current chapter to fit the pane height. Because chapters reflow, zoom is
+  a crisp text scale rather than a page bitmap scale. The DemoApp eBook page
+  exposes it with −/+ buttons, a live zoom-percent readout, and "Fit Width" /
+  "Fit Height" buttons.
+
 #### 2026-07-23 *0.3.13*
 - Fix two MOBI/KF8 eBook rendering bugs (seen with the DemoApp eBook demo on
   `media/ebooks/Game-of-rat-and-dragon.mobi`):

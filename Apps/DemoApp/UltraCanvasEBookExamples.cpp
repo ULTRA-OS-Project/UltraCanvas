@@ -1,8 +1,9 @@
 // Apps/DemoApp/UltraCanvasEBookExamples.cpp
 // eBook Reader demo: hosts UltraCanvasEBookViewer with a built-in sample
-// book and an Open... dialog for real EPUB/TXT files.
-// Version: 1.0.0
-// Last Modified: 2026-07-02
+// book, an Open... dialog for real EPUB/TXT/MOBI files, and zoom controls
+// (zoom in/out, fit width, fit height).
+// Version: 1.1.0
+// Last Modified: 2026-07-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -10,6 +11,8 @@
 #include "UltraCanvasEBookViewer.h"
 #include "UltraCanvasFileLoader.h"
 #include "Documents/eBook/TXTEngine.h"   // RegisterBuiltinEBookEngines
+
+#include <string>
 
 namespace UltraCanvas {
 
@@ -83,6 +86,25 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateEBookExa
     statusLabel->SetTextColor(Color(90, 90, 90, 255));
     header->AddChild(statusLabel);
 
+    // ---- zoom controls (pushed to the right by the growing status label) ----
+    auto makeZoomButton = [&](const char* name, const char* text, float width) {
+        auto button = std::make_shared<UltraCanvasButton>(name, text);
+        button->size.width = CSSLayout::Dimension::Px(width);
+        button->size.height = CSSLayout::Dimension::Px(30);
+        header->AddChild(button);
+        return button;
+    };
+
+    auto zoomOutBtn = makeZoomButton("EBookDemoZoomOut", "\xE2\x88\x92", 34.f);   // −
+    auto zoomLabel = std::make_shared<UltraCanvasLabel>("EBookDemoZoomLevel", "100%");
+    zoomLabel->size.width = CSSLayout::Dimension::Px(48);
+    zoomLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
+    zoomLabel->SetTextColor(Color(90, 90, 90, 255));
+    header->AddChild(zoomLabel);
+    auto zoomInBtn = makeZoomButton("EBookDemoZoomIn", "+", 34.f);
+    auto fitWidthBtn = makeZoomButton("EBookDemoFitWidth", "Fit Width", 78.f);
+    auto fitHeightBtn = makeZoomButton("EBookDemoFitHeight", "Fit Height", 82.f);
+
     container->AddChild(header);
 
     // ---- the reader ----
@@ -99,6 +121,24 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateEBookExa
     reader->onError = [statusLabel](const std::string& error) {
         statusLabel->SetText("Error: " + error);
     };
+    reader->onZoomChanged = [zoomLabel](float percent) {
+        zoomLabel->SetText(std::to_string(static_cast<int>(percent + 0.5f)) + "%");
+    };
+
+    // ---- zoom wiring ----
+    auto zoomReaderWeak = std::weak_ptr<UltraCanvasEBookViewer>(reader);
+    zoomOutBtn->SetOnClick([zoomReaderWeak]() {
+        if (auto viewer = zoomReaderWeak.lock()) viewer->ZoomOut();
+    });
+    zoomInBtn->SetOnClick([zoomReaderWeak]() {
+        if (auto viewer = zoomReaderWeak.lock()) viewer->ZoomIn();
+    });
+    fitWidthBtn->SetOnClick([zoomReaderWeak]() {
+        if (auto viewer = zoomReaderWeak.lock()) viewer->ZoomToWidth();
+    });
+    fitHeightBtn->SetOnClick([zoomReaderWeak]() {
+        if (auto viewer = zoomReaderWeak.lock()) viewer->ZoomToHeight();
+    });
 
     std::string sample = kSampleBook;
     reader->LoadDocumentFromMemory(

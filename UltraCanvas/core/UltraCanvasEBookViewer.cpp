@@ -1,7 +1,7 @@
 // core/UltraCanvasEBookViewer.cpp
 // eBook reading widget: engine chapters → HTML::ElementBuilder → CSSLayout.
-// Version: 2.0.0
-// Last Modified: 2026-07-02
+// Version: 2.1.0
+// Last Modified: 2026-07-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasEBookViewer.h"
@@ -10,6 +10,7 @@
 #include "HTMLReader/HTMLElementBuilder.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace UltraCanvas {
 
@@ -324,6 +325,52 @@ void UltraCanvasEBookViewer::SetContentFontFamily(const std::string& family) {
     RebuildChapterContent();
 }
 
+float UltraCanvasEBookViewer::EffectiveFontSize() const {
+    return std::clamp(baseFontSizePx * zoomLevel, 6.f, 120.f);
+}
+
+void UltraCanvasEBookViewer::SetZoom(float level) {
+    level = std::clamp(level, kMinZoom, kMaxZoom);
+    if (std::abs(level - zoomLevel) < 0.001f) return;
+    zoomLevel = level;
+    RebuildChapterContent();
+    if (onZoomChanged) onZoomChanged(GetZoomPercent());
+}
+
+void UltraCanvasEBookViewer::ZoomToWidth() {
+    if (!IsDocumentLoaded() || !contentScroll) return;
+
+    // The content pane width, minus the reading margins (RebuildChapterContent
+    // sets 28px on each side) and room for the vertical scrollbar. Scale the
+    // text so a comfortable line measure (~kTargetCharsPerLine characters at a
+    // ~0.5em average advance) spans that width, so a wider pane reads larger.
+    float paneWidth = contentScroll->GetWidth();
+    if (paneWidth <= 0.f) return;
+    constexpr float kReadingMarginsPx = 28.f * 2.f;
+    constexpr float kScrollbarPx = 16.f;
+    constexpr float kTargetCharsPerLine = 50.f;
+    constexpr float kAverageAdvanceEm = 0.5f;
+    float usableWidth = paneWidth - kReadingMarginsPx - kScrollbarPx;
+    if (usableWidth <= 0.f) return;
+
+    float targetFont = usableWidth / (kTargetCharsPerLine * kAverageAdvanceEm);
+    SetZoom(targetFont / baseFontSizePx);
+}
+
+void UltraCanvasEBookViewer::ZoomToHeight() {
+    if (!IsDocumentLoaded() || !contentScroll || !contentRoot) return;
+
+    // Fit the current chapter into the visible pane height. Both sizes come
+    // from the last layout pass, so scaling the font by their ratio brings the
+    // content close to a single screen; because reflow makes height only
+    // roughly proportional to font size, clicking again refines the fit.
+    float paneHeight = contentScroll->GetHeight();
+    float contentHeight = contentRoot->GetHeight();
+    if (paneHeight <= 0.f || contentHeight <= 0.f) return;
+
+    SetZoom(zoomLevel * (paneHeight / contentHeight));
+}
+
 void UltraCanvasEBookViewer::ShowTableOfContents(bool show) {
     if (tocVisible == show) return;
     tocVisible = show;
@@ -359,6 +406,7 @@ void UltraCanvasEBookViewer::ApplyThemeColors() {
 void UltraCanvasEBookViewer::RebuildChapterContent() {
     if (!contentScroll) return;
     contentScroll->ClearChildren();
+    contentRoot.reset();
     chapterAnchors.clear();
     pendingAnchorId.clear();
 
@@ -379,7 +427,7 @@ void UltraCanvasEBookViewer::RebuildChapterContent() {
     ThemeColors colors = CurrentThemeColors();
 
     HTML::BuildOptions options;
-    options.style.baseFontSizePx = baseFontSizePx;
+    options.style.baseFontSizePx = EffectiveFontSize();
     options.style.baseFontFamily = contentFontFamily;
     options.style.textColor = colors.text;
     options.style.linkColor = colors.link;
@@ -406,6 +454,7 @@ void UltraCanvasEBookViewer::RebuildChapterContent() {
     result.root->box.padding.right = CSSLayout::Dimension::Px(28);
 
     chapterAnchors = std::move(result.anchors);
+    contentRoot = result.root;
     contentScroll->AddChild(result.root);
     contentScroll->ScrollToVertical(0);
     RequestRedraw();

@@ -13,8 +13,8 @@
 // Chapters come from an IEBookEngine (EPUB, TXT, ... via the engine
 // registry); the chapter XHTML is converted to native elements, so text is
 // real Labels laid out by CSSLayout — no page images.
-// Version: 2.0.0
-// Last Modified: 2026-07-02
+// Version: 2.1.0
+// Last Modified: 2026-07-23
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -82,6 +82,23 @@ public:
 
     void SetContentFontFamily(const std::string& family);
 
+    // ===== ZOOM =====
+    // Zoom scales the reading text on top of the base font size (1.0 = 100%).
+    // Because chapters reflow, zoom is a text scale rather than a page scale:
+    // text stays crisp at every level. The fit modes derive a level from the
+    // laid-out content and the content pane, so they need the viewer to have
+    // been laid out at least once (they no-op before that).
+    void SetZoom(float level);
+    float GetZoom() const { return zoomLevel; }
+    float GetZoomPercent() const { return zoomLevel * 100.f; }
+    void ZoomIn()  { SetZoom(zoomLevel * kZoomStep); }
+    void ZoomOut() { SetZoom(zoomLevel / kZoomStep); }
+    void ResetZoom() { SetZoom(1.f); }
+    // Scales the text so a comfortable line measure fills the pane width.
+    void ZoomToWidth();
+    // Scales the text so the current chapter fits the pane height.
+    void ZoomToHeight();
+
     // ===== PANELS =====
     void ShowTableOfContents(bool show);
     void ToggleTableOfContents() { ShowTableOfContents(!tocVisible); }
@@ -106,6 +123,8 @@ public:
     // ===== CALLBACKS =====
     std::function<void(const EBookMetadata&)> onDocumentLoaded;
     std::function<void(int chapterIndex, const std::string& title)> onChapterChanged;
+    // Fired whenever the zoom level changes (argument is the percent, e.g. 125).
+    std::function<void(float zoomPercent)> onZoomChanged;
     std::function<void(const std::string& error)> onError;
     std::function<void(float progress, const std::string& status)> onLoadProgress;
     // Content link with an external scheme (http:, https:, mailto:, ...) was
@@ -120,6 +139,11 @@ private:
     // Overridden in the constructor with the platform's UI font size, so the
     // book text starts at the same size as the application interface.
     float baseFontSizePx = 12.f;
+    // Reading zoom applied on top of the base size (1.0 = 100%).
+    float zoomLevel = 1.f;
+    static constexpr float kMinZoom = 0.5f;
+    static constexpr float kMaxZoom = 4.f;
+    static constexpr float kZoomStep = 1.25f;
     std::string contentFontFamily;
     EBookViewerTheme theme = EBookViewerTheme::Normal;
     bool tocVisible = true;
@@ -141,6 +165,9 @@ private:
     std::shared_ptr<UltraCanvasListView> tocList;
     std::shared_ptr<UltraCanvasSimpleListModel> tocModel;
     std::shared_ptr<UltraCanvasContainer> contentScroll;
+    // Root element of the current chapter's built content (for fit-to-* zoom
+    // measurements); null when nothing is loaded.
+    std::shared_ptr<UltraCanvasUIElement> contentRoot;
     std::vector<int> tocRowToChapter;   // flattened TOC row → chapter index
     int tocWidthPx = 300;               // TOC pane width, remembered across toggles
 
@@ -160,6 +187,9 @@ private:
     void RefreshToolbarState();
     void ApplyThemeColors();
     bool FinishLoad();
+
+    // Font size actually handed to the builder: base size × zoom, clamped.
+    float EffectiveFontSize() const;
 
     struct ThemeColors;
     ThemeColors CurrentThemeColors() const;
