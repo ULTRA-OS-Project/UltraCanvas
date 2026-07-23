@@ -16,8 +16,8 @@
 // tables (one chapter per skeleton part) with FDST separating the markup flow
 // from CSS flows. HUFF/CDIC compression and DRM are detected and reported
 // rather than mis-rendered.
-// Version: 1.1.0
-// Last Modified: 2026-07-20
+// Version: 1.2.0
+// Last Modified: 2026-07-23
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -105,6 +105,17 @@ private:
     void BuildChapters();
     void BuildChaptersKF8();
     void BuildTOC();
+
+    // Moves a book's own inline "Table of Contents" page (kindlegen/calibre
+    // appends it as the last part) to just after the cover, where readers
+    // expect it, instead of leaving it stranded at the end.
+    void ReorderInlineToc();
+
+    // Folds Mobipocket drop-cap figures — a floated <img alt="X"> wrapper set
+    // in front of the following paragraph — into a large inline first letter.
+    // The layout engine has no CSS float, so the raw markup would otherwise
+    // stack the big letter as a centered block above its paragraph.
+    std::string TransformDropCaps(const std::string& html) const;
 
     // Parses the INDX header record at `headerRecord` plus its data records.
     bool ParseIndx(uint32_t headerRecord, std::vector<IndxEntry>& out) const;

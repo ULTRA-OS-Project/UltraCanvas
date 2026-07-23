@@ -9,8 +9,12 @@
 //   Capture  : AVCaptureSession with an AVCaptureVideoDataOutput (live preview)
 //              and an AVCaptureMovieFileOutput (records video + audio to file).
 //
-// Version: 0.1.1
-// Last Modified: 2026-06-21
+// Version: 0.1.2
+// Last Modified: 2026-07-23
+// V0.1.2: Camera capture adapts to any camera mode. The session preset is chosen from
+//   a graceful fallback chain (a tier near the requested height, else High/Medium/Low)
+//   instead of hard-pinning 1280x720, and frame conversion defensively refuses any
+//   non-BGRA pixel buffer. Resolution/stride are already read from the pixel buffer.
 // Author: UltraCanvas Framework
 
 #include "IVideoBackend.h"
@@ -29,6 +33,10 @@ namespace {
 // Build a UCVideoFrame (packed BGRA) from a CoreVideo pixel buffer.
 UCVideoFramePtr FrameFromPixelBuffer(CVPixelBufferRef pb, double pts) {
     if (!pb) return nullptr;
+    // We only fast-path packed 32-bit BGRA (what capture + decode both request). A
+    // planar YUV buffer would make the w*4 row copy read garbage / out of bounds, so
+    // refuse anything else rather than corrupt memory.
+    if (CVPixelBufferGetPixelFormatType(pb) != kCVPixelFormatType_32BGRA) return nullptr;
     CVPixelBufferLockBaseAddress(pb, kCVPixelBufferLock_ReadOnly);
     const int w = (int)CVPixelBufferGetWidth(pb);
     const int h = (int)CVPixelBufferGetHeight(pb);
@@ -240,8 +248,23 @@ public:
         if (session) return true;
         session = [[AVCaptureSession alloc] init];
         [session beginConfiguration];
-        if ([session canSetSessionPreset:AVCaptureSessionPreset1280x720])
-            session.sessionPreset = AVCaptureSessionPreset1280x720;
+        // Pick the first supported preset from a graceful fallback chain rather than
+        // hard-pinning 1280x720: prefer a tier near the requested height, then step
+        // down. AVCaptureSessionPresetHigh is always supported, so the session always
+        // lands on a valid preset and adapts to whatever the camera provides (the
+        // frame path reads the actual dimensions/stride).
+        NSMutableArray<AVCaptureSessionPreset>* presets = [NSMutableArray array];
+        if (params.height >= 1000) {
+            // 1080p preset is macOS 10.15+; guard so it compiles/runs on older targets.
+            if (@available(macOS 10.15, *)) [presets addObject:AVCaptureSessionPreset1920x1080];
+        }
+        [presets addObjectsFromArray:@[ AVCaptureSessionPreset1280x720,
+                                        AVCaptureSessionPresetHigh,
+                                        AVCaptureSessionPresetMedium,
+                                        AVCaptureSessionPresetLow ]];
+        for (AVCaptureSessionPreset p in presets) {
+            if ([session canSetSessionPreset:p]) { session.sessionPreset = p; break; }
+        }
 
         // ----- Camera input -----
         AVCaptureDevice* cam = nil;

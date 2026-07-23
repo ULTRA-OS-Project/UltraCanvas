@@ -1,7 +1,17 @@
 // Apps/DemoApp/UltraCanvasVideoExamples.cpp
 // Video player & recorder example screen
-// Version: 0.1.2
-// Last Modified: 2026-07-21
+// Version: 0.1.5
+// Last Modified: 2026-07-23
+// V0.1.5: "Start camera" now fully closes any prior (stopped) session and clears the
+//   stale recording path before reopening, so it reliably returns to a clean live
+//   preview after a recording was stopped (previously it rebuilt the record pipeline
+//   and came up blank).
+// V0.1.4: "Start camera" is now a real Start/Stop toggle: the camera starts off,
+//   the button opens the live feed and becomes "Stop camera", and Stop stops any
+//   recording then closes the camera (reset to initial state). The page-load still
+//   preview was dropped so the initial/after-stop states match.
+// V0.1.3: Hook the recorder's onError to the status label so camera/pipeline
+//   failures are shown (red) instead of a stale "Live camera preview." message.
 // V0.1.2: The camera is activated on page open and shows a frozen still frame;
 //   "Start camera" switches it to the live feed. It also reports why the camera
 //   failed to open instead of silently showing "Camera off".
@@ -82,47 +92,83 @@ namespace UltraCanvas {
         container->AddChild(recLabel);
 
         auto recorder = CreateVideoRecorder("DemoVideoRecorder", 520, 120, 460, 300);
-        recorder->onRecordStarted = [status]() { status->SetText("Recording..."); };
-        recorder->onRecordStopped = [status]() { status->SetText("Recording stopped."); };
-        recorder->onSaved = [status](const std::string& path) {
-            status->SetText("Saved to " + path);
-        };
         container->AddChild(recorder);
-
-        // Activate the camera as soon as the page opens and hold the first frame as
-        // a frozen still. Clicking "Start camera" switches that still to the live
-        // feed. The page is destroyed on navigation (DisplayDemoItem/ClearDisplay),
-        // which closes the camera, so it is never left running in the background.
         auto recWeak = std::weak_ptr<UltraCanvasVideoRecorderElement>(recorder);
-        if (recorder->OpenCamera(/*live=*/false)) {
-            status->SetText("Camera ready (still) — click \"Start camera\" for the live feed.");
-            status->SetTextColor(Color(40, 120, 40));
-        }
 
+        // Start/Stop-camera toggle. The camera starts off; "Start camera" opens the
+        // live feed and the button becomes "Stop camera", which stops any recording
+        // and closes the camera — back to the initial state. The page is destroyed on
+        // navigation (DisplayDemoItem/ClearDisplay), which closes the camera, so it is
+        // never left running in the background.
         auto camBtn = CreateButton("StartCam", 520, 430, 130, 36, "Start camera");
-        camBtn->onClick = [recWeak, status]() {
-            auto r = recWeak.lock();
-            if (!r) return;
-            auto rec = r->GetRecorder();
-            // The camera is already activated as a still on page open; just switch
-            // to the live feed. If the initial open failed (no device / access
-            // denied), retry here and surface the backend's reason.
-            if (rec && rec->IsOpen()) {
-                r->SetPreviewLive(true);
-                status->SetText("Live camera preview.");
-                status->SetTextColor(Color(40, 120, 40));
-            } else if (r->OpenCamera(/*live=*/true)) {
-                status->SetText("Live camera preview.");
-                status->SetTextColor(Color(40, 120, 40));
-            } else {
-                std::string why = rec ? rec->GetLastError() : "";
-                status->SetText(why.empty()
-                                    ? "Could not start the camera (no device or access denied)."
-                                    : "Could not start the camera: " + why);
-                status->SetTextColor(Color(180, 60, 60));
+        container->AddChild(camBtn);
+        std::weak_ptr<UltraCanvasButton> camBtnWeak = camBtn;
+
+        recorder->onRecordStarted = [status, camBtnWeak]() {
+            status->SetText("Recording...");
+            status->SetTextColor(Color(200, 60, 60));
+            // Recording always runs the live camera; keep the toggle label in sync
+            // when a recording is started from "Record to file..." rather than here.
+            if (auto b = camBtnWeak.lock()) b->SetText("Stop camera");
+        };
+        recorder->onRecordStopped = [status, recWeak, camBtnWeak]() {
+            status->SetText("Recording stopped.");
+            // A stop can come from the in-surface record button too; keep the toggle
+            // label truthful about whether the camera is still open afterwards.
+            if (auto r = recWeak.lock()) {
+                auto rec = r->GetRecorder();
+                if (auto b = camBtnWeak.lock())
+                    b->SetText(rec && rec->IsOpen() ? "Stop camera" : "Start camera");
             }
         };
-        container->AddChild(camBtn);
+        recorder->onSaved = [status](const std::string& path) {
+            status->SetText("Saved to " + path);
+            status->SetTextColor(Color(40, 120, 40));
+        };
+        // Surface backend failures (camera can't open, caps negotiation fails, etc.)
+        // so the status line reflects reality instead of a stale "preview" message.
+        recorder->onError = [status](const std::string& msg) {
+            status->SetText("Camera error: " + msg);
+            status->SetTextColor(Color(180, 60, 60));
+        };
+
+        camBtn->onClick = [recWeak, camBtnWeak, status]() {
+            auto r = recWeak.lock();
+            if (!r) return;
+            auto b = camBtnWeak.lock();
+            auto rec = r->GetRecorder();
+            const bool live = rec && rec->IsOpen() && r->IsPreviewLive();
+            if (live) {
+                // Stop camera: finalize any recording, then close (reset to initial).
+                if (rec->GetState() == VideoRecordingState::Recording ||
+                    rec->GetState() == VideoRecordingState::Paused)
+                    r->StopRecording();
+                r->CloseCamera();
+                if (b) b->SetText("Start camera");
+                status->SetText("Camera off.");
+                status->SetTextColor(Color(120, 120, 120));
+            } else {
+                // Start camera: fully close any prior session first — after a
+                // recording the session is torn down but the recorder still holds the
+                // output path, so a plain reopen would rebuild the heavy record
+                // pipeline (encoder/muxer/mic + filesink on the last file) and fail to
+                // reinitialise, leaving the surface blank. Drop the stale path so we
+                // reopen a clean, lightweight live PREVIEW, just like the first open.
+                r->CloseCamera();
+                r->SetOutputPath("");
+                if (!r->OpenCamera(/*live=*/true)) {
+                    std::string why = rec ? rec->GetLastError() : "";
+                    status->SetText(why.empty()
+                                        ? "Could not start the camera (no device or access denied)."
+                                        : "Could not start the camera: " + why);
+                    status->SetTextColor(Color(180, 60, 60));
+                    return;
+                }
+                if (b) b->SetText("Stop camera");
+                status->SetText("Live camera preview.");
+                status->SetTextColor(Color(40, 120, 40));
+            }
+        };
 
         auto recBtn = CreateButton("RecToFile", 660, 430, 150, 36, "Record to file...");
         recBtn->onClick = [recWeak]() {

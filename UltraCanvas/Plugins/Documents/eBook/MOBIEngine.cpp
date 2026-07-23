@@ -1,8 +1,8 @@
 // Plugins/Documents/eBook/MOBIEngine.cpp
 // Mobipocket / Kindle engine: PDB records → PalmDOC-decompressed HTML →
 // chapters + images, fed to HTML::ElementBuilder like every other engine.
-// Version: 1.0.0
-// Last Modified: 2026-07-03
+// Version: 1.2.0
+// Last Modified: 2026-07-23
 // Author: UltraCanvas Framework
 
 #include "MOBIEngine.h"
@@ -80,6 +80,77 @@ std::string TrimCopy(const std::string& s) {
     while (a < b && std::isspace(static_cast<unsigned char>(s[a]))) ++a;
     while (b > a && std::isspace(static_cast<unsigned char>(s[b - 1]))) --b;
     return s.substr(a, b - a);
+}
+
+// True when `lit` (already lowercase) matches s at `pos`, case-insensitively.
+bool MatchesCI(const std::string& s, size_t pos, const char* lit) {
+    size_t n = std::strlen(lit);
+    if (pos + n > s.size()) return false;
+    for (size_t k = 0; k < n; ++k) {
+        if (std::tolower(static_cast<unsigned char>(s[pos + k])) !=
+            static_cast<unsigned char>(lit[k])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Value of attribute `nameLower` in a start tag like `<img alt="P" .../>`
+// (case-insensitive name, single/double quoted or unquoted value). "" if none.
+std::string TagAttr(const std::string& tag, const std::string& nameLower) {
+    for (size_t p = FindCI(tag, nameLower, 0); p != std::string::npos;
+         p = FindCI(tag, nameLower, p + 1)) {
+        bool boundaryBefore = p == 0 ||
+            std::isspace(static_cast<unsigned char>(tag[p - 1])) || tag[p - 1] == '<';
+        if (!boundaryBefore) continue;
+        size_t q = p + nameLower.size();
+        while (q < tag.size() && std::isspace(static_cast<unsigned char>(tag[q]))) ++q;
+        if (q >= tag.size() || tag[q] != '=') continue;
+        size_t v = q + 1;
+        while (v < tag.size() && std::isspace(static_cast<unsigned char>(tag[v]))) ++v;
+        if (v < tag.size() && (tag[v] == '"' || tag[v] == '\'')) {
+            char quote = tag[v++];
+            size_t e = tag.find(quote, v);
+            return tag.substr(v, (e == std::string::npos ? tag.size() : e) - v);
+        }
+        size_t e = v;
+        while (e < tag.size() && !std::isspace(static_cast<unsigned char>(tag[e])) &&
+               tag[e] != '>' && tag[e] != '/') {
+            ++e;
+        }
+        return tag.substr(v, e - v);
+    }
+    return {};
+}
+
+// Lowercased element name of a start/end tag string ("</div>" → "div").
+std::string TagName(const std::string& tag) {
+    size_t i = 0;
+    if (i < tag.size() && tag[i] == '<') ++i;
+    if (i < tag.size() && tag[i] == '/') ++i;
+    size_t start = i;
+    while (i < tag.size() &&
+           (std::isalnum(static_cast<unsigned char>(tag[i])) || tag[i] == ':' ||
+            tag[i] == '-')) {
+        ++i;
+    }
+    return LowerCopy(tag.substr(start, i - start));
+}
+
+bool IsBlockTagName(const std::string& n) {
+    return n == "p" || n == "div" || n == "h1" || n == "h2" || n == "h3" ||
+           n == "h4" || n == "h5" || n == "h6" || n == "blockquote" ||
+           n == "section" || n == "li";
+}
+
+// A book's own navigational "Table of Contents" page: the calibre/kindlegen
+// generated inline TOC marker, or a page whose heading is just "Contents".
+bool LooksLikeInlineToc(const EBookChapter& c) {
+    if (FindCI(c.content, "calibre_generated_inline_toc", 0) != std::string::npos) {
+        return true;
+    }
+    std::string title = LowerCopy(TrimCopy(c.title));
+    return title == "table of contents" || title == "contents";
 }
 
 } // namespace
@@ -224,6 +295,7 @@ bool MOBIEngine::LoadFromMemory(std::vector<uint8_t> data,
         Fail("MOBI document has no readable text");
         return false;
     }
+    ReorderInlineToc();
     BuildTOC();
 
     metadata.format = format;
@@ -650,6 +722,80 @@ std::string MOBIEngine::InlineSvgFlows(const std::string& src) const {
     return html;
 }
 
+std::string MOBIEngine::TransformDropCaps(const std::string& html) const {
+    std::string out;
+    out.reserve(html.size() + 64);
+
+    for (size_t i = 0; i < html.size();) {
+        if (html[i] != '<' || !MatchesCI(html, i, "<img")) {
+            out += html[i++];
+            continue;
+        }
+        size_t tagEnd = html.find('>', i);
+        if (tagEnd == std::string::npos) { out.append(html, i, std::string::npos); break; }
+        ++tagEnd;   // one past '>'
+
+        std::string alt = TagAttr(html.substr(i, tagEnd - i), "alt");
+        bool isDropCap = alt.size() == 1 && std::isalpha(static_cast<unsigned char>(alt[0]));
+        if (!isDropCap) {
+            out.append(html, i, tagEnd - i);
+            i = tagEnd;
+            continue;
+        }
+
+        size_t regionEnd = tagEnd;
+
+        // Absorb a wrapping <div>/<span> whose only child is this image. Its
+        // open tag is already in `out`; the close tag follows in `html`.
+        size_t tail = out.size();
+        while (tail > 0 && std::isspace(static_cast<unsigned char>(out[tail - 1]))) --tail;
+        if (tail > 0 && out[tail - 1] == '>') {
+            size_t lt = out.rfind('<', tail - 1);
+            if (lt != std::string::npos) {
+                std::string prev = out.substr(lt, tail - lt);
+                std::string name = TagName(prev);
+                bool closing = prev.size() > 1 && prev[1] == '/';
+                bool selfClose = prev.size() >= 2 && prev[prev.size() - 2] == '/';
+                if ((name == "div" || name == "span") && !closing && !selfClose) {
+                    size_t k = regionEnd;
+                    while (k < html.size() &&
+                           std::isspace(static_cast<unsigned char>(html[k]))) ++k;
+                    std::string closeTag = "</" + name;
+                    if (MatchesCI(html, k, closeTag.c_str())) {
+                        size_t ce = html.find('>', k);
+                        if (ce != std::string::npos) {
+                            out.erase(lt);         // drop the wrapper open tag
+                            regionEnd = ce + 1;    // and skip its close tag
+                        }
+                    }
+                }
+            }
+        }
+
+        // Inject the letter inside the following block element so it sits in
+        // front of that paragraph's first word ("P" + "inlighting").
+        std::string keep;
+        size_t rest = regionEnd;
+        size_t j = regionEnd;
+        while (j < html.size() && std::isspace(static_cast<unsigned char>(html[j]))) ++j;
+        if (j + 1 < html.size() && html[j] == '<' && html[j + 1] != '/') {
+            size_t gt = html.find('>', j);
+            if (gt != std::string::npos &&
+                IsBlockTagName(TagName(html.substr(j, gt - j + 1)))) {
+                keep = html.substr(regionEnd, gt + 1 - regionEnd);
+                rest = gt + 1;
+            }
+        }
+
+        out += keep;
+        out += "<span style=\"font-size:230%\">";
+        out += alt;
+        out += "</span>";
+        i = rest;
+    }
+    return out;
+}
+
 void MOBIEngine::BuildChapters() {
     if (fullHtml.empty()) return;
 
@@ -676,16 +822,18 @@ void MOBIEngine::BuildChapters() {
 
     int ordinal = 0;
     for (const std::string& piece : pieces) {
+        std::string content = TransformDropCaps(piece);
         // Skip pieces with no visible text and no image.
-        if (HeadingText(piece).empty() && FindCI(piece, "<img", 0) == std::string::npos) {
+        if (HeadingText(content).empty() &&
+            FindCI(content, "<img", 0) == std::string::npos) {
             continue;
         }
         EBookChapter chapter;
-        chapter.content = piece;
-        chapter.title = FirstHeading(piece);
+        chapter.title = FirstHeading(content);
         if (chapter.title.empty()) {
             chapter.title = "Section " + std::to_string(++ordinal);
         }
+        chapter.content = std::move(content);
         chapters.push_back(std::move(chapter));
     }
 
@@ -939,7 +1087,7 @@ void MOBIEngine::BuildChaptersKF8() {
 
     int ordinal = 0;
     for (const std::string& piece : parts) {
-        std::string content = RewriteImageRefs(InlineSvgFlows(piece));
+        std::string content = TransformDropCaps(RewriteImageRefs(InlineSvgFlows(piece)));
         // Skip pieces with no visible text and no image.
         if (HeadingText(content).empty() &&
             FindCI(content, "<img", 0) == std::string::npos) {
@@ -953,6 +1101,24 @@ void MOBIEngine::BuildChaptersKF8() {
         chapter.content = std::move(content);
         chapters.push_back(std::move(chapter));
     }
+}
+
+void MOBIEngine::ReorderInlineToc() {
+    // Need at least a cover, a TOC and one content page to be worth moving.
+    if (chapters.size() < 3) return;
+
+    int tocIndex = -1;
+    for (size_t i = 0; i < chapters.size(); ++i) {
+        if (LooksLikeInlineToc(chapters[i])) { tocIndex = static_cast<int>(i); break; }
+    }
+
+    // Land it on the second page, right after the cover / title image.
+    const int target = 1;
+    if (tocIndex <= target) return;   // missing or already near the front
+
+    EBookChapter toc = std::move(chapters[static_cast<size_t>(tocIndex)]);
+    chapters.erase(chapters.begin() + tocIndex);
+    chapters.insert(chapters.begin() + target, std::move(toc));
 }
 
 void MOBIEngine::BuildTOC() {

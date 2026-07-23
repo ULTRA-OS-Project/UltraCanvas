@@ -7,6 +7,11 @@
   - Double-clicking a file's **name** now starts an inline rename; double-clicking
     its **icon** (or, in Details view, another column) still opens/activates the
     entry.
+- eBook reader: the table-of-contents toolbar button now uses the
+  `list-ordered` icon (drawn as a mask so it takes the button's text color)
+  and highlights while the TOC pane is open (accent fill with a light icon),
+  so its active state is visible. It reverts to the normal toolbar-button
+  look when the pane is hidden.
 
 #### 2026-07-22 *0.3.15*
 - **UltraCanvasFilerWidget**: new **Display > Dataset** submenu with toggles for
@@ -48,6 +53,21 @@
   when picking the format and filter. It previously inspected only the final
   token (e.g. `gz`), which selected the ZIP format and then layered a gzip
   filter on top, producing a corrupt archive for those names.
+- Fix two MOBI/KF8 eBook rendering bugs (seen with the DemoApp eBook demo on
+  `media/ebooks/Game-of-rat-and-dragon.mobi`):
+  - **Drop caps.** Mobipocket/Project-Gutenberg books set the decorative
+    first letter of a section as a floated image
+    (`<div class="figleft"><img alt="P"/></div>` in front of the paragraph).
+    The layout engine has no CSS `float`, so each big letter stacked as a
+    centred block *above* its paragraph instead of leading it. The MOBI
+    engine now folds such single-letter drop-cap figures into a large inline
+    first letter at the start of the following paragraph, so "P" reads in
+    front of "inlighting" as intended. Genuine illustrations (multi-character
+    or empty `alt`) are left untouched as block images.
+  - **Inline table of contents.** kindlegen/calibre append the book's own
+    "Table of Contents" page as the last part of the file, so it appeared at
+    the very end of the chapter list. It is now moved to the second page,
+    right after the cover/title image, where readers expect it.
 
 #### 2026-07-21 *0.3.12*
 - Fix GIF export failing with `magicksave: libMagick error:

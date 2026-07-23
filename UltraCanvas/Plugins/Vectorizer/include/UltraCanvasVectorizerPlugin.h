@@ -9,7 +9,6 @@
 #include <vector>
 #include <memory>
 #include <future>
-#include <stop_token>
 
 #ifdef ULTRACANVAS_VECTORIZER_SUPPORT
 
@@ -76,9 +75,9 @@ public:
     VectorizerResult VectorizeImage (const PixelFX::PFXImage& img);
 
     std::future<VectorizerResult> VectorizeImageAsync(
-        const PixelFX::PFXImage& img, std::stop_token st = {});
+        const PixelFX::PFXImage& img);
     std::future<VectorizerResult> VectorizeFileAsync(
-        const std::string& path, std::stop_token st = {});
+        const std::string& path);
 
     void                     SetConfig(const VectorizerConfig& cfg);
     const VectorizerConfig&  Config() const;

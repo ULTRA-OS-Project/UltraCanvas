@@ -1,7 +1,13 @@
 // core/UltraCanvasVideoRecorderElement.cpp
 // Composite UI control wrapping UltraCanvasVideoRecorder: camera preview + REC controls
-// Version: 0.1.2
-// Last Modified: 2026-07-21
+// Version: 0.1.4
+// Last Modified: 2026-07-23
+// V0.1.4: CloseCamera() now clears the last preview frame so the surface shows
+//   "Camera off" after closing (instead of a frozen still). ShowSaveDialog() appends
+//   the recording format's extension when the chosen file name lacks/mismatches it
+//   (out -> out.mp4, out.ddd -> out.ddd.mp4).
+// V0.1.3: Forward the engine's onError to the element's onError so hosts can show
+//   camera/pipeline failures instead of leaving a stale status message.
 // V0.1.2: Add a frozen-still preview mode. OpenCamera(false) activates the camera
 //   but holds the first captured frame as a still; SetPreviewLive(true) (or
 //   starting a recording) switches to the moving feed. Lets a host show a still
@@ -12,6 +18,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasMenu.h"
+#include "UltraCanvasUtils.h"        // GetFileExtension
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -29,6 +36,19 @@ namespace {
         return r.width > 0 && r.height > 0 &&
                p.x >= r.x && p.x < r.x + r.width &&
                p.y >= r.y && p.y < r.y + r.height;
+    }
+
+    // File extension (no dot) for a recording container, so the saved file's name
+    // matches the format actually written.
+    std::string ContainerExtension(VideoContainer c) {
+        switch (c) {
+            case VideoContainer::MKV:  return "mkv";
+            case VideoContainer::WebM: return "webm";
+            case VideoContainer::MOV:  return "mov";
+            case VideoContainer::AVI:  return "avi";
+            case VideoContainer::MP4:
+            default:                   return "mp4";
+        }
     }
 }
 
@@ -64,6 +84,10 @@ void UltraCanvasVideoRecorderElement::SetPreviewLive(bool live) {
 void UltraCanvasVideoRecorderElement::CloseCamera() {
     recorder->Close();
     StopFrameTimer();
+    // Drop the last preview frame so the surface shows the "Camera off" placeholder
+    // instead of a frozen still — a closed camera should look closed.
+    haveFrame = false;
+    shownFrame.reset();
     RequestRedraw();
 }
 
@@ -100,7 +124,13 @@ void UltraCanvasVideoRecorderElement::ShowSaveDialog() {
     UltraCanvasFileLoader::SaveFileDialog(opts,
         [self](DialogResult result, const std::string& path) {
             if (result == DialogResult::OK && !path.empty()) {
-                self->SetOutputPath(path);
+                // Ensure the file name ends with the recording format's extension.
+                // Append (not replace) when it's missing or different, so "out" ->
+                // "out.mp4" and "out.ddd" -> "out.ddd.mp4".
+                std::string out = path;
+                std::string ext = ContainerExtension(self->GetConfig().container);
+                if (GetFileExtension(out) != ext) out += "." + ext;
+                self->SetOutputPath(out);
                 self->StartRecording();
             }
         });
@@ -140,6 +170,9 @@ void UltraCanvasVideoRecorderElement::HookRecorderCallbacks() {
     };
     recorder->onPermissionChanged = [self](CameraPermission p) {
         if (self->onPermissionChanged) self->onPermissionChanged(p);
+    };
+    recorder->onError = [self](const std::string& msg) {
+        if (self->onError) self->onError(msg);
     };
 }
 
