@@ -562,18 +562,10 @@ static void PutBE16At(std::vector<uint8_t>& v, size_t at, uint16_t x) {
 
 // Assemble a minimal but valid MOBI6 file: PDB header + 3 records
 // (record 0 with PalmDOC/MOBI/EXTH headers, one ASCII text record, one image).
-static std::vector<uint8_t> MakeTestMOBI() {
-    // ASCII HTML decodes to itself under PalmDOC (all bytes are 0x20..0x7E
-    // literals), so compression=2 exercises the decompressor without needing
-    // a compressor here.
-    std::string text =
-        "<html><body>"
-        "<h1>Chapter One</h1><p>The quick brown fox.</p>"
-        "<mbp:pagebreak/>"
-        "<h1>Chapter Two</h1><p>Jumps over the lazy dog.</p>"
-        "<img recindex=\"00001\"/>"
-        "</body></html>";
-
+// `text` is the book's HTML; ASCII HTML decodes to itself under PalmDOC (all
+// bytes are 0x20..0x7E literals), so compression=2 exercises the decompressor
+// without needing a compressor here.
+static std::vector<uint8_t> MakeMOBI6(const std::string& text) {
     // --- MOBI header (232 bytes) --- (field offsets relative to "MOBI")
     std::vector<uint8_t> mobi(232, 0);
     std::memcpy(&mobi[0], "MOBI", 4);
@@ -660,6 +652,16 @@ static std::vector<uint8_t> MakeTestMOBI() {
     }
     for (const auto& r : recs) file.insert(file.end(), r.begin(), r.end());
     return file;
+}
+
+static std::vector<uint8_t> MakeTestMOBI() {
+    return MakeMOBI6(
+        "<html><body>"
+        "<h1>Chapter One</h1><p>The quick brown fox.</p>"
+        "<mbp:pagebreak/>"
+        "<h1>Chapter Two</h1><p>Jumps over the lazy dog.</p>"
+        "<img recindex=\"00001\"/>"
+        "</body></html>");
 }
 
 static void TestMOBI() {
@@ -917,6 +919,47 @@ static void TestMOBIErrors() {
     CHECK(engine.GetLastError().find("Not a MOBI") != std::string::npos);
 }
 
+// Drop-cap folding and inline-TOC reordering. The book is: a cover page, two
+// chapters (the first opening with a floated drop-cap figure), and the book's
+// own "Table of Contents" page stranded at the very end.
+static void TestMOBIDropCapsAndToc() {
+    std::vector<uint8_t> data = MakeMOBI6(
+        "<html><body>"
+        "<p>Cover page.</p>"
+        "<mbp:pagebreak/>"
+        "<h1>Chapter One</h1>"
+        "<div class=\"figleft\"><img alt=\"D\" recindex=\"00001\"/></div>"
+        "<p>ropcap folded into the paragraph.</p>"
+        "<mbp:pagebreak/>"
+        "<h1>Chapter Two</h1><p>The end.</p>"
+        "<mbp:pagebreak/>"
+        "<h1>Table of Contents</h1><p>Contents listing.</p>"
+        "</body></html>");
+
+    MOBIEngine engine;
+    CHECK(engine.LoadFromMemory(data));
+    CHECK_EQ(engine.GetChapterCount(), 4);
+
+    // Bug 2: the trailing "Table of Contents" page moves to just after the
+    // cover (the second page), instead of staying at the end.
+    CHECK_EQ(engine.GetChapter(1).title, std::string("Table of Contents"));
+    CHECK_EQ(engine.GetChapter(3).title, std::string("Chapter Two"));
+    const auto& toc = engine.GetTableOfContents();
+    CHECK_EQ(toc.size(), size_t(4));
+    if (toc.size() == 4) {
+        CHECK_EQ(toc[1].title, std::string("Table of Contents"));
+        CHECK_EQ(toc[1].pageNumber, 1);
+    }
+
+    // Bug 1: the floated <img alt="D"> drop-cap figure becomes a large inline
+    // first letter at the front of its paragraph — no leftover figure/image.
+    std::string chapter = engine.GetChapter(2).content;
+    CHECK(chapter.find("<span style=\"font-size:230%\">D</span>ropcap") !=
+          std::string::npos);
+    CHECK(chapter.find("figleft") == std::string::npos);
+    CHECK(chapter.find("<img") == std::string::npos);
+}
+
 // ============================================================================
 // REGISTRY
 // ============================================================================
@@ -967,6 +1010,7 @@ int main() {
     TestFB2Errors();
     TestMOBI();
     TestMOBIPalmDOC();
+    TestMOBIDropCapsAndToc();
     TestKF8();
     TestMOBIErrors();
     TestTXT();
