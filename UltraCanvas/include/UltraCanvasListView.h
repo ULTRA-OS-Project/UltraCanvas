@@ -1,6 +1,6 @@
 // include/UltraCanvasListView.h
 // Model-View-Delegate ListView widget
-// Last Modified: 2026-07-11
+// Last Modified: 2026-07-22
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -88,6 +88,21 @@ namespace UltraCanvas {
         void SetRowHeight(int height);
         int GetRowHeight() const;
 
+        // Variable row heights. When enabled the height of each row comes from
+        // the delegate (IItemDelegate::GetRowHeight(model, row)) instead of the
+        // single viewStyle.rowHeight, so rows can differ in height. Off by
+        // default (uniform rows, unchanged fast path). A custom delegate that
+        // returns per-row heights is expected; the default delegate reports one
+        // constant height (its own SetRowHeight value).
+        void SetVariableRowHeights(bool enabled);
+        bool GetVariableRowHeights() const;
+
+        // Recompute the cached per-row offsets on the next layout/paint. Call
+        // when a custom delegate's row-height results change without the model
+        // firing a data-changed signal (e.g. an async delegate finished sizing
+        // a row from a decoded thumbnail).
+        void InvalidateRowHeights();
+
         void SetShowHeader(bool show);
         bool GetShowHeader() const;
 
@@ -127,6 +142,16 @@ namespace UltraCanvas {
         int scrollOffsetY = 0;
         int maxScrollY = 0;
 
+        // Variable row heights. When useVariableRowHeights is set the per-row
+        // height is taken from the delegate; otherwise every row is
+        // viewStyle.rowHeight tall. rowTops is a cached prefix-sum (size
+        // rowCount+1) of the element-local content Y of each row top, rebuilt
+        // lazily by RebuildRowGeometryIfNeeded(). In uniform mode the table is
+        // not used at all (offsets are plain arithmetic).
+        bool useVariableRowHeights = false;
+        mutable std::vector<int> rowTops;
+        mutable bool rowGeometryValid = false;
+
         // Interaction state
         int hoveredRow = -1;
         int focusedRow = -1;
@@ -142,6 +167,14 @@ namespace UltraCanvas {
         Rect2Di GetViewportRect() const;
         int GetRowAtY(int y) const;
         Rect2Di GetRowRect(int row) const;
+
+        // Per-row geometry helpers (uniform fast path, or variable prefix-sum).
+        int RowHeightForRow(int row) const;        // height of a single row
+        int RowTopOffset(int row) const;           // content-space Y of row top
+        int RowsContentHeight() const;             // summed height of all rows
+        int ClampRowIndexAtContentY(int contentY) const;  // row at a content Y
+        void RebuildRowGeometryIfNeeded() const;
+        void InvalidateRowGeometry();
 
         // Rendering
         void RenderHeader(IRenderContext* ctx, const Rect2Di& contentRect);

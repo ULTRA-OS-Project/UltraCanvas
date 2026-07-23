@@ -11,7 +11,7 @@
 // Paste go through the system clipboard so files can be exchanged with other
 // programs (external file managers, editors, ...).
 // Version: 1.4.0
-// Last Modified: 2026-07-20
+// Last Modified: 2026-07-22
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -999,6 +999,7 @@ namespace UltraCanvas {
             folderStatsCache.clear();
         }
         mediaInfoCache.clear();
+        aspectCache.clear();
         DropThumbnailCache();
 
         std::error_code ec;
@@ -2209,24 +2210,38 @@ namespace UltraCanvas {
         // adds one line below it (reserved uniformly so the grid stays aligned).
         int capH = style.captionHeight + DatasetLineCount() * DatasetLineHeight();
         int tileW = edge;
-        int tileH = edge + capH;
         int scrollbarGutter = 10;
         int availW = area.width - scrollbarGutter;
         int cols = std::max(1, (availW + gap) / (tileW + gap));
-        for (size_t i = 0; i < entries.size(); ++i) {
-            int col = static_cast<int>(i) % cols;
-            int row = static_cast<int>(i) / cols;
-            ItemLayout it;
-            it.entryIndex = i;
-            it.rect = Rect2Di(area.x + col * (tileW + gap),
-                              area.y + row * (tileH + gap), tileW, tileH);
-            it.imageRect = Rect2Di(it.rect.x, it.rect.y, tileW, edge);
-            items.push_back(it);
+        size_t n = entries.size();
+
+        // Rows are laid out one grid line at a time so each can take its own
+        // height. A row's image band is the tallest thumbnail actually shown in
+        // it: any full-height item (folder / glyph / portrait or not-yet-measured
+        // image) keeps the whole row at the square edge, and only a row whose
+        // every tile is a shorter landscape image shrinks to close the gap.
+        int y = area.y;
+        for (size_t rowStart = 0; rowStart < n; rowStart += static_cast<size_t>(cols)) {
+            size_t rowEnd = std::min(n, rowStart + static_cast<size_t>(cols));
+            int rowImageH = 0;
+            for (size_t i = rowStart; i < rowEnd; ++i) {
+                rowImageH = std::max(rowImageH, ThumbnailImageHeight(entries[i], edge));
+                if (rowImageH >= edge) break;   // pinned to full height already
+            }
+            if (rowImageH <= 0) rowImageH = edge;
+            int tileH = rowImageH + capH;
+            for (size_t i = rowStart; i < rowEnd; ++i) {
+                int col = static_cast<int>(i - rowStart);
+                ItemLayout it;
+                it.entryIndex = i;
+                it.rect = Rect2Di(area.x + col * (tileW + gap), y, tileW, tileH);
+                it.imageRect = Rect2Di(it.rect.x, it.rect.y, tileW, rowImageH);
+                items.push_back(it);
+            }
+            y += tileH + gap;
         }
-        int rows = (static_cast<int>(entries.size()) + cols - 1) / cols;
         contentWidth = area.width;
-        contentHeight = area.y + rows * (tileH + gap) - gap + style.outerPadding;
-        if (rows == 0) contentHeight = area.height;
+        contentHeight = (n == 0) ? area.height : (y - gap + style.outerPadding);
     }
 
     void UltraCanvasFilerWidget::LayoutBarSize(const Rect2Di& area) {
@@ -2775,6 +2790,45 @@ namespace UltraCanvas {
         // the visible tiles re-decode into the new one.
         DropThumbnailCache();
         RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::SetShrinkThumbnailRows(bool enabled) {
+        if (shrinkThumbnailRows == enabled) return;
+        shrinkThumbnailRows = enabled;
+        // Only the thumbnail grid layout depends on this; recompute it (and its
+        // decode geometry) on the next paint.
+        InvalidateFilerLayout();
+        RequestRedraw();
+    }
+
+    float UltraCanvasFilerWidget::EntryAspect(const FilerEntry& e) {
+        // Only raster images have a meaningful, cheaply-probeable pixel size.
+        // Vectors scale to fill the tile, everything else draws a glyph.
+        if (e.category != FilerFileCategory::Image) return 0.0f;
+        auto it = aspectCache.find(e.path);
+        if (it != aspectCache.end()) return it->second;
+        int w = 0, h = 0;
+        float aspect = (ProbeImageDimensions(e.path, w, h) && w > 0 && h > 0)
+                           ? static_cast<float>(w) / static_cast<float>(h)
+                           : 0.0f;
+        aspectCache.emplace(e.path, aspect);
+        return aspect;
+    }
+
+    int UltraCanvasFilerWidget::ThumbnailImageHeight(const FilerEntry& e, int edge) {
+        if (!shrinkThumbnailRows || edge <= 0) return edge;
+        float aspect = EntryAspect(e);
+        if (aspect <= 1.0f) return edge;   // unknown / portrait / square: fill
+        // The image is drawn ScaleDown-fit inside a symmetric inset box (see
+        // ThumbGeometryForItem). Predict its displayed height for that same box
+        // and re-add the inset so the tile keeps equal padding all around, the
+        // way a portrait tile does.
+        int inset = std::max(4, edge / 12);
+        int box = edge - 2 * inset;
+        if (box <= 0) return edge;
+        int shown = static_cast<int>(std::lround(box / aspect)) + 2 * inset;
+        // Never grow past the square tile, and keep at least the inset padding.
+        return std::max(2 * inset + 1, std::min(edge, shown));
     }
 
     UltraCanvasFilerWidget::ThumbCacheStats
