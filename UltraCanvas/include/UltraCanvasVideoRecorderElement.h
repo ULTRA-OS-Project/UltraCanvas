@@ -1,7 +1,9 @@
 // include/UltraCanvasVideoRecorderElement.h
 // Composite UI control wrapping UltraCanvasVideoRecorder: camera preview + REC controls
-// Version: 0.1.0
-// Last Modified: 2026-06-15
+// Version: 0.1.1
+// Last Modified: 2026-07-23
+// V0.1.1: Expose onError so hosts can surface camera/pipeline failures (a silent
+//   backend error otherwise leaves a stale status message on screen).
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -87,6 +89,7 @@ public:
     std::function<void()> onRecordStopped;
     std::function<void(const std::string& filePath)> onSaved;
     std::function<void(CameraPermission)> onPermissionChanged;
+    std::function<void(const std::string& message)> onError;
 
     // ===== UIElement OVERRIDES =====
     void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;

@@ -10,8 +10,20 @@
 // frames are converted to packed BGRA and handed up via the session callbacks;
 // the engine buffers the latest frame for the UI thread to upload to a pixmap.
 //
-// Version: 0.1.8
-// Last Modified: 2026-06-26
+// Version: 0.1.10
+// Last Modified: 2026-07-23
+// V0.1.10: Fix camera preview/recording delivering no frames on webcams without an
+//   exact 1280x720 mode. The capture source no longer hard-pins width×height (which
+//   failed caps negotiation on such cameras); it constrains height to a range
+//   (≤ requested height) and lets v4l2src fixate to its best supported mode, so a
+//   camera offering only e.g. 1280x1024/640x480 now runs at 640x480@30 instead of
+//   showing nothing.
+// V0.1.9: Fix camera capture on Linux. The record branch (encoder+muxer+filesink)
+//   is now only built when an output path is set — building filesink with an
+//   empty location async-failed and wedged the whole capture (no preview; a later
+//   EOS deadlocked on the half-dead branch). Stop() now pushes EOS and waits
+//   (bounded) for the muxer to finalize the file before tearing the pipeline down,
+//   so the recording is a valid, non-empty file instead of 0 bytes.
 // V0.1.8: Disable QoS on the video appsink so an expensive codec whose software
 //   decode can't keep up in real time (e.g. HEVC/hvc1) is no longer told to skip
 //   to the next keyframe — which left the surface refreshing only once per GOP
@@ -28,6 +40,8 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <future>
 #include <mutex>
 #include <thread>
@@ -637,24 +651,53 @@ public:
     bool Open() override {
         if (pipeline) return true;
 
-        // Preview + a valved record branch. The record branch's valve drops
-        // buffers until Start() opens it, so the file only contains footage
-        // captured between Start() and Stop().
-        std::string enc = EncoderFor(params.codec);
-        std::string mux = MuxerFor(params.container);
         std::string dev = params.cameraId.empty() ? "" : (" device=" + params.cameraId);
 
-        std::string desc =
-            "v4l2src" + dev + " ! videoconvert ! "
-            "video/x-raw,width=" + std::to_string(params.width) +
-            ",height=" + std::to_string(params.height) + " ! tee name=t "
-            "t. ! queue ! videoconvert ! video/x-raw,format=BGRA ! "
-            "appsink name=preview emit-signals=true sync=false max-buffers=2 drop=true "
-            "t. ! queue ! valve name=recvalve drop=true ! videoconvert ! " + enc +
-            " ! " + mux + " name=mux ! filesink name=fsink location=\"" + params.outputPath + "\"";
+        // The record branch (valve → encoder → muxer → filesink) is only built
+        // when an output path is set. A filesink with an empty location fails its
+        // READY→PAUSED open(); for a live source that failure arrives async (so
+        // set_state(PLAYING) still returns non-FAILURE) and leaves the record
+        // branch wedged — no preview frames, and a subsequent EOS deadlocks on the
+        // stream lock held by the stuck branch. So a path-less open() (e.g. the
+        // page-load still/live preview before a file is chosen) builds a
+        // preview-only pipeline; recording rebuilds with the record branch once a
+        // path is known (see UltraCanvasVideoRecorder::Start()).
+        const bool wantRecord = !params.outputPath.empty();
 
-        if (params.captureAudio) {
-            desc += " autoaudiosrc ! queue ! audioconvert ! voaacenc ! mux.";
+        // Source caps: constrain the camera to a mode whose height is at most the
+        // requested height, and DON'T pin an exact width×height. videoconvert only
+        // changes pixel format, not resolution, so a hard "width=W,height=H" pin
+        // (the old code) demands an exact mode the device may not have — a webcam
+        // that lacks 1280x720 (e.g. UVC cams offering only 1280x1024 and 640x480)
+        // then fails caps negotiation and delivers zero frames (preview stuck on
+        // "Starting camera...", 0-byte recording). A height range keeps the intent
+        // ("up to H") while letting v4l2src fixate to its largest supported mode
+        // ≤ H: cameras with real 720p still get 1280x720; others fall back to e.g.
+        // 640x480@30 — which also skips slow high-res modes (1280x1024 is often
+        // only ~9fps). The appsink/encoder take whatever size results (SampleToFrame
+        // reads the real dimensions; the UI scales to fit), so nothing downstream
+        // needs a fixed resolution.
+        std::string desc =
+            "v4l2src" + dev + " ! video/x-raw,height=[1," +
+            std::to_string(params.height) + "] ! videoconvert";
+
+        if (wantRecord) {
+            std::string enc = EncoderFor(params.codec);
+            std::string mux = MuxerFor(params.container);
+            desc +=
+                " ! tee name=t "
+                "t. ! queue ! videoconvert ! video/x-raw,format=BGRA ! "
+                "appsink name=preview emit-signals=true sync=false max-buffers=2 drop=true "
+                "t. ! queue ! valve name=recvalve drop=true ! videoconvert ! " + enc +
+                " ! " + mux + " name=mux ! filesink name=fsink location=\"" + params.outputPath + "\"";
+            if (params.captureAudio) {
+                desc += " autoaudiosrc ! queue ! audioconvert ! voaacenc ! mux.";
+            }
+        } else {
+            // Preview only — no file is written until a recording is (re)opened.
+            desc +=
+                " ! video/x-raw,format=BGRA ! "
+                "appsink name=preview emit-signals=true sync=false max-buffers=2 drop=true";
         }
 
         GError* err = nullptr;
@@ -710,7 +753,13 @@ public:
 
     bool Start() override {
         if (!opened && !Open()) return false;
-        if (recValve) g_object_set(recValve, "drop", FALSE, nullptr);
+        // No record branch means this session was opened preview-only (no output
+        // path). The caller must reopen with a path before recording.
+        if (!recValve) {
+            if (onError) onError("No output file set for recording");
+            return false;
+        }
+        g_object_set(recValve, "drop", FALSE, nullptr);
         recording = true;
         startTime = g_get_monotonic_time();
         if (onStarted) onStarted();
@@ -727,9 +776,23 @@ public:
     bool Stop() override {
         if (!recording) return false;
         recording = false;
-        if (recValve) g_object_set(recValve, "drop", TRUE, nullptr);
-        // Send EOS so the muxer finalizes the file header/index cleanly.
-        gst_element_send_event(pipeline, gst_event_new_eos());
+        // Finalize the file. Push EOS through the *whole* pipeline (injected at the
+        // live source, it flows down through the encoder + muxer to the filesink);
+        // the muxer writes its header/index only on EOS, so the captured bytes
+        // become a valid file only after EOS has reached the sinks. Then wait
+        // (bounded) for the pipeline's EOS bus message before tearing down: Close()
+        // sets the pipeline to NULL, which without the wait would truncate the
+        // muxer mid-write and leave a 0-byte / unplayable file. The valve is left
+        // open so the last buffers + EOS drain through the record branch.
+        if (pipeline) {
+            { std::lock_guard<std::mutex> lk(eosMutex); eosSeen = false; }
+            gst_element_send_event(pipeline, gst_event_new_eos());
+            std::unique_lock<std::mutex> lk(eosMutex);
+            eosCv.wait_for(lk, std::chrono::seconds(5), [this] { return eosSeen; });
+        }
+        // Tear the pipeline down (flushes + closes the file, releases the camera).
+        // The next Start() reopens a fresh pipeline for the next take.
+        Close();
         if (onStopped) onStopped();
         return true;
     }
@@ -773,14 +836,32 @@ private:
         return GST_FLOW_OK;
     }
 
+    // Wake a Stop() that is waiting for the file to finalize.
+    void SignalEos() {
+        { std::lock_guard<std::mutex> lk(eosMutex); eosSeen = true; }
+        eosCv.notify_all();
+    }
+
     static gboolean OnBus(GstBus*, GstMessage* msg, gpointer user) {
         auto* self = static_cast<GstCaptureSession*>(user);
-        if (GST_MESSAGE_TYPE(msg) == GST_MESSAGE_ERROR) {
-            GError* err = nullptr; gchar* dbg = nullptr;
-            gst_message_parse_error(msg, &err, &dbg);
-            if (self->onError) self->onError(err ? err->message : "GStreamer capture error");
-            if (err) g_error_free(err);
-            g_free(dbg);
+        switch (GST_MESSAGE_TYPE(msg)) {
+            case GST_MESSAGE_ERROR: {
+                GError* err = nullptr; gchar* dbg = nullptr;
+                gst_message_parse_error(msg, &err, &dbg);
+                if (self->onError) self->onError(err ? err->message : "GStreamer capture error");
+                if (err) g_error_free(err);
+                g_free(dbg);
+                // An error means EOS will never complete — release a waiting Stop()
+                // so finalization can't hang past the timeout.
+                self->SignalEos();
+                break;
+            }
+            case GST_MESSAGE_EOS:
+                // The pipeline finished draining EOS: the muxer has written its
+                // trailer and the filesink has all the bytes. Safe to tear down.
+                self->SignalEos();
+                break;
+            default: break;
         }
         return TRUE;
     }
@@ -793,6 +874,12 @@ private:
     bool opened = false;
     std::atomic<bool> recording{false};
     gint64 startTime = 0;
+
+    // Stop() finalization: it sends EOS and blocks on eosCv until OnBus reports the
+    // pipeline's EOS (or an error), so the muxer finishes writing before teardown.
+    std::mutex eosMutex;
+    std::condition_variable eosCv;
+    bool eosSeen = false;
 };
 
 // ---- Backend --------------------------------------------------------------

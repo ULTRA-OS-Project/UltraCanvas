@@ -1,7 +1,10 @@
 // core/UltraCanvasVideoRecorder.cpp
 // Non-visual video capture engine; wraps a backend capture session
-// Version: 0.1.0
-// Last Modified: 2026-06-15
+// Version: 0.1.1
+// Last Modified: 2026-07-22
+// V0.1.1: Start() reopens the capture session when the chosen output path differs
+//   from the one the session was built with, so recording a file after a path-less
+//   preview no longer reuses a stale pipeline (0-byte output / hang on Stop()).
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVideoRecorder.h"
@@ -116,7 +119,15 @@ void UltraCanvasVideoRecorder::Close() { impl->Close(); }
 bool UltraCanvasVideoRecorder::IsOpen() const { return impl->session && impl->session->IsOpen(); }
 
 bool UltraCanvasVideoRecorder::Start() {
-    if (!IsOpen() && !impl->Open()) return false;
+    // The capture session wires its file-writing branch (encoder/muxer/filesink)
+    // from the output path at Open() time. A session opened for preview before a
+    // file was chosen has no record branch, and one built for a different target
+    // would write to the wrong file — so (re)open whenever the session's built
+    // path doesn't match the path we're about to record to. Otherwise Start()
+    // would silently record nothing (0-byte output).
+    bool needReopen = !IsOpen() ||
+                      impl->session->GetParams().outputPath != impl->config.outputPath;
+    if (needReopen && !impl->Open()) return false;
     return impl->session->Start();
 }
 bool UltraCanvasVideoRecorder::Pause() {
