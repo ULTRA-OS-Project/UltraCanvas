@@ -1,4 +1,73 @@
+#### 2026-07-22 *0.3.16*
+- **UltraCanvasFilerWidget**:
+  - Default display font reduced from 13 to 12 px (Windows standard 9pt @ 96dpi).
+  - The inline rename editor now uses the same font size as the on-screen name
+    for the current view (base size in the row views, the small size in the
+    thumbnail / treemap captions) instead of a fixed larger size.
+  - Double-clicking a file's **name** now starts an inline rename; double-clicking
+    its **icon** (or, in Details view, another column) still opens/activates the
+    entry.
+- eBook reader: the table-of-contents toolbar button now uses the
+  `list-ordered` icon (drawn as a mask so it takes the button's text color)
+  and highlights while the TOC pane is open (accent fill with a light icon),
+  so its active state is visible. It reverts to the normal toolbar-button
+  look when the pane is hidden.
+
+#### 2026-07-22 *0.3.15*
+- **UltraCanvasFilerWidget**: new **Display > Dataset** submenu with toggles for
+  extra per-file facts shown under the name in the thumbnail views — Size, Edit
+  date, Creation date, Attributes, Length (audio/video) and Dimensions
+  (bitmaps). Each enabled field adds a caption line (Length/Dimensions only
+  appear on the file kinds they apply to); tiles grow to fit and the grid stays
+  aligned. Also available programmatically via `SetDatasetField()` /
+  `SetDatasetFields()` with the new `FilerDatasetField` flags.
+
+#### 2026-07-22 *0.3.14*
+- **UltraCanvasFilerWidget**: picking a format from the context menu's
+  "Compress" submenu now opens a modal compress dialog instead of creating the
+  archive immediately. The dialog shows:
+  - the archive's file-type icon on top,
+  - an editable file name (with the format's extension shown as a suffix),
+  - the destination folder as smaller, separate text.
+
+  The icon can be **dragged onto any folder in the view** to retarget the
+  destination path — the folder under the icon highlights while dragging, and
+  dropping on it updates the "Location". Enter / the Compress button creates the
+  archive; Esc / Cancel dismisses. Because the icon must be droppable onto the
+  folders behind it, the dialog is an in-widget overlay rather than a separate
+  top-level modal window.
+
 #### 2026-07-22 *0.3.13*
+- **UltraCanvasFilerWidget**: the right-click context menu now closes on a
+  left click anywhere outside it. Previously the popup registered the whole
+  Filer widget as its `popupOwner`, and the window's dismissal logic treats a
+  click on the owner as "inside" the popup — so clicking in the file view left
+  the menu stuck open. The context menu no longer sets an owner, so any click
+  outside the menu bounds dismisses it.
+- **UltraCanvasFilerWidget**: the context menu's "Compress" entry is now a
+  submenu listing the available archive formats — ZIP, 7-Zip, TAR, TAR+gzip,
+  TAR+bzip2, TAR+xz and TAR+Zstd. `CompressSelection(extension)` takes the
+  target extension (default `zip`) which selects the format.
+- **VirtualFS (libarchive provider)**: `CreateArchive` now recognises compound
+  archive extensions (`.tar.gz`, `.tar.bz2`, `.tar.xz`, `.tar.zst`, `.tar.lz4`)
+  when picking the format and filter. It previously inspected only the final
+  token (e.g. `gz`), which selected the ZIP format and then layered a gzip
+  filter on top, producing a corrupt archive for those names.
+- Fix two MOBI/KF8 eBook rendering bugs (seen with the DemoApp eBook demo on
+  `media/ebooks/Game-of-rat-and-dragon.mobi`):
+  - **Drop caps.** Mobipocket/Project-Gutenberg books set the decorative
+    first letter of a section as a floated image
+    (`<div class="figleft"><img alt="P"/></div>` in front of the paragraph).
+    The layout engine has no CSS `float`, so each big letter stacked as a
+    centred block *above* its paragraph instead of leading it. The MOBI
+    engine now folds such single-letter drop-cap figures into a large inline
+    first letter at the start of the following paragraph, so "P" reads in
+    front of "inlighting" as intended. Genuine illustrations (multi-character
+    or empty `alt`) are left untouched as block images.
+  - **Inline table of contents.** kindlegen/calibre append the book's own
+    "Table of Contents" page as the last part of the file, so it appeared at
+    the very end of the chapter list. It is now moved to the second page,
+    right after the cover/title image, where readers expect it.
 - **UltraCanvasListView now supports variable row heights.** The delegate
   hook `IItemDelegate::GetRowHeight(model, row)` — previously declared but
   never consulted — is now wired into the view when variable mode is enabled

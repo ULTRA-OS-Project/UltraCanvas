@@ -12,7 +12,11 @@
 #include <tesseract/ocrclass.h>
 #include <tesseract/publictypes.h>
 #include <tesseract/resultiterator.h>
+#if defined(__APPLE__)
+#include <allheaders.h>
+#else
 #include <leptonica/allheaders.h>
+#endif
 
 #include <algorithm>
 #include <chrono>

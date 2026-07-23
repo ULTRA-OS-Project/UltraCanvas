@@ -295,8 +295,11 @@ namespace UltraCanvas {
             long total = std::lround(seconds);
             long h = total / 3600, m = (total % 3600) / 60, s = total % 60;
             char buf[32];
-            if (h > 0) snprintf(buf, sizeof(buf), "%ld:%02ld:%02ld", h, m, s);
-            else       snprintf(buf, sizeof(buf), "%ld:%02ld", m, s);
+            // Append the largest applicable unit: seconds ("34 s"),
+            // minutes ("3:45 min") or hours ("2:32:20 h").
+            if (h > 0)         snprintf(buf, sizeof(buf), "%ld:%02ld:%02ld h", h, m, s);
+            else if (m > 0)    snprintf(buf, sizeof(buf), "%ld:%02ld min", m, s);
+            else               snprintf(buf, sizeof(buf), "%ld s", s);
             return buf;
         }
 
@@ -1172,6 +1175,71 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    void UltraCanvasFilerWidget::SetDatasetField(FilerDatasetField field, bool on) {
+        uint32_t bit = static_cast<uint32_t>(field);
+        uint32_t next = on ? (datasetFields | bit) : (datasetFields & ~bit);
+        SetDatasetFields(next);
+    }
+
+    bool UltraCanvasFilerWidget::IsDatasetFieldEnabled(FilerDatasetField field) const {
+        return (datasetFields & static_cast<uint32_t>(field)) != 0;
+    }
+
+    void UltraCanvasFilerWidget::SetDatasetFields(uint32_t mask) {
+        if (datasetFields == mask) return;
+        datasetFields = mask;
+        // Each enabled field adds a caption line, so the tile height changes.
+        InvalidateFilerLayout();
+        RequestRedraw();
+    }
+
+    int UltraCanvasFilerWidget::DatasetLineCount() const {
+        int n = 0;
+        for (uint32_t m = datasetFields; m; m &= (m - 1)) ++n;
+        return n;
+    }
+
+    int UltraCanvasFilerWidget::DatasetLineHeight() const {
+        return static_cast<int>(style.smallFontSize) + 3;
+    }
+
+    std::vector<std::string> UltraCanvasFilerWidget::DatasetLinesFor(
+            const FilerEntry& e) const {
+        std::vector<std::string> lines;
+        if (datasetFields == 0) return lines;
+
+        auto has = [this](FilerDatasetField f) {
+            return (datasetFields & static_cast<uint32_t>(f)) != 0;
+        };
+        if (has(FilerDatasetField::Size) && !e.isDirectory) {
+            lines.push_back(FormatSize(e.size));
+        }
+        if (has(FilerDatasetField::ModifiedDate) && e.modifiedTime != 0) {
+            lines.push_back(FormatTime(e.modifiedTime));
+        }
+        if (has(FilerDatasetField::CreatedDate) && e.createdTime != 0) {
+            lines.push_back(FormatTime(e.createdTime));
+        }
+        if (has(FilerDatasetField::Attributes) && !e.attributes.empty()) {
+            lines.push_back(e.attributes);
+        }
+        // Length (audio / video) and Dimensions (bitmaps) both come from the
+        // lazily-probed, cached media info — gated by category so each only
+        // shows where it applies.
+        if (has(FilerDatasetField::Length) &&
+            (e.category == FilerFileCategory::Audio ||
+             e.category == FilerFileCategory::Video)) {
+            std::string info = EntryExtraInfo(e);
+            if (!info.empty()) lines.push_back(info);
+        }
+        if (has(FilerDatasetField::Dimensions) &&
+            e.category == FilerFileCategory::Image) {
+            std::string info = EntryExtraInfo(e);
+            if (!info.empty()) lines.push_back(info);
+        }
+        return lines;
+    }
+
     void UltraCanvasFilerWidget::SetStyle(const FilerStyle& s) {
         style = s;
         SetBackgroundColor(style.backgroundColor);
@@ -1559,7 +1627,7 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
-    void UltraCanvasFilerWidget::CompressSelection() {
+    void UltraCanvasFilerWidget::CompressSelection(const std::string& extension) {
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
         std::vector<FilerEntry> targets = SelectionOrAll();
         if (targets.empty()) return;
@@ -1569,13 +1637,17 @@ namespace UltraCanvas {
                 ? fs::path(targets[0].name).stem().string()
                 : fs::path(currentPath).filename().string();
         if (base.empty()) base = "archive";
-        std::string dest = UniqueChildPath(base + ".zip");
+        // The extension drives the archive format chosen by the VirtualFS bridge.
+        std::string ext = extension.empty() ? std::string("zip") : extension;
+        if (!ext.empty() && ext.front() == '.') ext.erase(ext.begin());
+        std::string dest = UniqueChildPath(base + "." + ext);
         if (!UCVFSBridge::CreateArchive(dest, paths)) {
             ReportError("Compression failed for " + dest);
             return;
         }
         Refresh();
 #else
+        (void)extension;
         ReportError("Compress requires the VirtualFS module");
 #endif
     }
@@ -1597,6 +1669,368 @@ namespace UltraCanvas {
 #else
         ReportError("Extract requires the VirtualFS module");
 #endif
+    }
+
+    // ===== COMPRESS DIALOG =====
+
+    std::string UltraCanvasFilerWidget::ArchiveIconTag(const std::string& extension) {
+        if (extension == "zip")     return "ZIP";
+        if (extension == "7z")      return "7Z";
+        if (extension == "tar")     return "TAR";
+        if (extension == "tar.gz")  return "TGZ";
+        if (extension == "tar.bz2") return "TBZ";
+        if (extension == "tar.xz")  return "TXZ";
+        if (extension == "tar.zst") return "ZST";
+        // Fallback: the last extension token, uppercased and clipped.
+        std::string tag = extension;
+        size_t dot = tag.rfind('.');
+        if (dot != std::string::npos) tag = tag.substr(dot + 1);
+        tag = tag.substr(0, 4);
+        std::transform(tag.begin(), tag.end(), tag.begin(),
+                       [](unsigned char c) { return std::toupper(c); });
+        return tag;
+    }
+
+    void UltraCanvasFilerWidget::OpenCompressDialog(const std::string& extension,
+                                                    const std::string& formatLabel) {
+        std::vector<FilerEntry> targets = SelectionOrAll();
+        if (targets.empty()) return;
+
+        compressDlg = CompressDialogState();
+        compressDlg.active = true;
+        compressDlg.extension = extension;
+        compressDlg.formatLabel = formatLabel;
+        for (const FilerEntry& e : targets) compressDlg.sourcePaths.push_back(e.path);
+
+        // Same default name the direct CompressSelection() would pick.
+        std::string base = (targets.size() == 1)
+                ? fs::path(targets[0].name).stem().string()
+                : fs::path(currentPath).filename().string();
+        if (base.empty()) base = "archive";
+        compressDlg.nameBuffer = base;
+        compressDlg.destDir = currentPath;
+        compressDlg.nameFocused = true;
+
+        if (renamingIndex >= 0) CancelRename();
+        SetFocus(true);
+        RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::CloseCompressDialog() {
+        if (compressDlg.draggingIcon) {
+            if (auto* app = UltraCanvasApplication::GetInstance()) app->ReleaseMouse();
+        }
+        compressDlg = CompressDialogState();
+        RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::CommitCompressDialog() {
+        CompressDialogState d = compressDlg;   // copy: we close before the work
+        CloseCompressDialog();
+#ifdef ULTRACANVAS_HAS_VIRTUALFS
+        if (d.sourcePaths.empty()) return;
+        std::string baseName = d.nameBuffer.empty() ? std::string("archive")
+                                                     : d.nameBuffer;
+        std::string ext = d.extension.empty() ? std::string("zip") : d.extension;
+
+        std::error_code ec;
+        fs::path dir(d.destDir.empty() ? currentPath : d.destDir);
+        if (!fs::is_directory(dir, ec)) dir = currentPath;
+
+        // Uniquify while keeping the full (possibly compound) extension intact,
+        // so ".tar.gz" stays ".tar.gz" rather than becoming ".tar (2).gz".
+        fs::path candidate = dir / (baseName + "." + ext);
+        int n = 2;
+        while (fs::exists(candidate, ec)) {
+            candidate = dir / (baseName + " (" + std::to_string(n++) + ")." + ext);
+        }
+        std::string dest = candidate.string();
+
+        if (!UCVFSBridge::CreateArchive(dest, d.sourcePaths)) {
+            ReportError("Compression failed for " + dest);
+            return;
+        }
+        Refresh();
+#else
+        (void)d;
+        ReportError("Compress requires the VirtualFS module");
+#endif
+    }
+
+    int UltraCanvasFilerWidget::FolderIndexAtLocal(const Point2Di& localPoint) const {
+        // Points over the dialog panel are never folder drop targets.
+        if (compressDlg.panel.Contains(localPoint)) return -1;
+        int idx = ItemAt(ToContentPoint(localPoint));
+        if (idx >= 0 && idx < static_cast<int>(entries.size()) &&
+            entries[idx].isDirectory) {
+            return idx;
+        }
+        return -1;
+    }
+
+    void UltraCanvasFilerWidget::LayoutCompressDialog(const Rect2Di& bounds) {
+        CompressDialogState& d = compressDlg;
+
+        int pw = std::min(400, std::max(280, bounds.width - 60));
+        int ph = 300;
+        int px = bounds.x + (bounds.width - pw) / 2;
+        int py = bounds.y + (bounds.height - ph) / 2;
+        if (py < bounds.y + 8) py = bounds.y + 8;
+        d.panel = Rect2Di(px, py, pw, ph);
+
+        int iconSz = 64;
+        d.iconRect = Rect2Di(px + (pw - iconSz) / 2, py + 44, iconSz, iconSz);
+
+        // Below the icon: format label (~18) + hint (~16) + gap, then the field.
+        int nameY = d.iconRect.y + iconSz + 8 + 18 + 16 + 12;
+        d.nameRect = Rect2Di(px + 16, nameY, pw - 32, 30);
+
+        int btnW = 104, btnH = 30, gap = 10;
+        int by = py + ph - btnH - 14;
+        d.cancelRect = Rect2Di(px + pw - 16 - btnW, by, btnW, btnH);
+        d.okRect     = Rect2Di(d.cancelRect.x - gap - btnW, by, btnW, btnH);
+    }
+
+    void UltraCanvasFilerWidget::DrawDialogButton(IRenderContext* ctx,
+                                                  const Rect2Di& rect,
+                                                  const std::string& label,
+                                                  bool primary, bool hovered) {
+        Color fill = primary ? Color(66, 133, 244, 255) : Color(238, 238, 242, 255);
+        if (hovered) {
+            fill = primary ? Color(90, 150, 250, 255) : Color(226, 226, 232, 255);
+        }
+        ctx->SetFillPaint(fill);
+        ctx->FillRoundedRectangle(Rect2Dd(rect), 5);
+        if (!primary) {
+            ctx->SetStrokePaint(Color(0, 0, 0, 40));
+            ctx->SetStrokeWidth(1.0f);
+            ctx->DrawRoundedRectangle(Rect2Dd(rect), 5);
+        }
+        FontStyle fsty;
+        fsty.fontFamily = style.fontFamily;
+        fsty.fontSize = style.fontSize;
+        fsty.fontWeight = FontWeight::Bold;
+        ctx->SetFontStyle(fsty);
+        ctx->SetTextPaint(primary ? Colors::White : style.textColor);
+        Size2Di ts = ctx->GetTextLineDimensions(label);
+        ctx->DrawText(label, Point2Dd(rect.x + (rect.width - ts.width) / 2.0,
+                                      rect.y + (rect.height - ts.height) / 2.0));
+    }
+
+    void UltraCanvasFilerWidget::DrawCompressDialog(IRenderContext* ctx,
+                                                    const Rect2Di& bounds) {
+        LayoutCompressDialog(bounds);
+        const CompressDialogState& d = compressDlg;
+
+        // A synthetic archive entry drives the file-type icon glyph.
+        FilerEntry synth;
+        synth.isDirectory = false;
+        synth.category = FilerFileCategory::Archive;
+        synth.extension = ArchiveIconTag(d.extension);
+
+        ctx->PushState();
+        ctx->ClipRect(Rect2Dd(bounds));
+
+        // Dimmed, semi-transparent backdrop — folders stay visible so the icon
+        // can be dragged onto one of them.
+        ctx->SetFillPaint(Color(20, 22, 28, 96));
+        ctx->FillRectangle(Rect2Dd(bounds));
+
+        // Highlight the folder currently under the dragged icon.
+        if (d.draggingIcon && d.dropFolderIndex >= 0) {
+            for (const ItemLayout& it : items) {
+                if (static_cast<int>(it.entryIndex) == d.dropFolderIndex) {
+                    Rect2Di r(it.rect.x - scrollOffsetX, it.rect.y - scrollOffsetY,
+                              it.rect.width, it.rect.height);
+                    Color fillc = style.selectionColor; fillc.a = 130;
+                    ctx->SetFillPaint(fillc);
+                    ctx->FillRoundedRectangle(Rect2Dd(r), 6);
+                    ctx->SetStrokePaint(style.selectionBorderColor);
+                    ctx->SetStrokeWidth(2.5f);
+                    ctx->DrawRoundedRectangle(Rect2Dd(r), 6);
+                    break;
+                }
+            }
+        }
+
+        // Panel.
+        ctx->SetFillPaint(style.backgroundColor);
+        ctx->FillRoundedRectangle(Rect2Dd(d.panel), 10);
+        ctx->SetStrokePaint(Color(0, 0, 0, 45));
+        ctx->SetStrokeWidth(1.0f);
+        ctx->DrawRoundedRectangle(Rect2Dd(d.panel), 10);
+
+        // Title.
+        FontStyle titleFont;
+        titleFont.fontFamily = style.fontFamily;
+        titleFont.fontSize = style.fontSize + 2;
+        titleFont.fontWeight = FontWeight::Bold;
+        ctx->SetFontStyle(titleFont);
+        ctx->SetTextPaint(style.textColor);
+        ctx->DrawText("Compress", Point2Dd(d.panel.x + 16, d.panel.y + 12));
+
+        // File-type icon on top. While being dragged a ghost follows the cursor
+        // and the panel shows a faint placeholder in its place.
+        if (d.draggingIcon) {
+            ctx->SetFillPaint(Color(0, 0, 0, 22));
+            ctx->FillRoundedRectangle(Rect2Dd(d.iconRect), 4);
+        } else {
+            DrawEntryIcon(ctx, synth, d.iconRect);
+        }
+
+        // Format label (already includes the extension) under the icon.
+        FontStyle bodyFont;
+        bodyFont.fontFamily = style.fontFamily;
+        bodyFont.fontSize = style.fontSize;
+        ctx->SetFontStyle(bodyFont);
+        ctx->SetTextPaint(style.textColor);
+        Size2Di fts = ctx->GetTextLineDimensions(d.formatLabel);
+        int fmtY = d.iconRect.y + d.iconRect.height + 8;
+        ctx->DrawText(d.formatLabel,
+                      Point2Dd(d.panel.x + (d.panel.width - fts.width) / 2.0, fmtY));
+
+        // Drag hint (smaller, grey).
+        FontStyle smallFont;
+        smallFont.fontFamily = style.fontFamily;
+        smallFont.fontSize = style.smallFontSize;
+        ctx->SetFontStyle(smallFont);
+        ctx->SetTextPaint(style.secondaryTextColor);
+        std::string hint = "Drag the icon onto a folder to change the location";
+        std::string hintFit = EllipsizeText(ctx, hint, d.panel.width - 24);
+        Size2Di hts = ctx->GetTextLineDimensions(hintFit);
+        ctx->DrawText(hintFit,
+                      Point2Dd(d.panel.x + (d.panel.width - hts.width) / 2.0,
+                               fmtY + fts.height + 4));
+
+        // Name field.
+        ctx->SetFillPaint(style.renameFieldColor);
+        ctx->FillRoundedRectangle(Rect2Dd(d.nameRect), 4);
+        ctx->SetStrokePaint(d.nameFocused ? style.renameBorderColor
+                                          : Color(0, 0, 0, 55));
+        ctx->SetStrokeWidth(d.nameFocused ? 2.0f : 1.0f);
+        ctx->DrawRoundedRectangle(Rect2Dd(d.nameRect), 4);
+
+        ctx->SetFontStyle(bodyFont);
+        Size2Di baseSz = ctx->GetTextLineDimensions(
+                d.nameBuffer.empty() ? std::string("Ag") : d.nameBuffer);
+        int tx = d.nameRect.x + 8;
+        int ty = d.nameRect.y + (d.nameRect.height - baseSz.height) / 2;
+        Size2Di nameSz = ctx->GetTextLineDimensions(d.nameBuffer);
+        ctx->SetTextPaint(style.textColor);
+        ctx->DrawText(d.nameBuffer, Point2Dd(tx, ty));
+        ctx->SetTextPaint(style.secondaryTextColor);
+        ctx->DrawText("." + d.extension, Point2Dd(tx + nameSz.width, ty));
+        if (d.nameFocused) {
+            int cx = tx + nameSz.width + 1;
+            ctx->SetStrokePaint(style.renameBorderColor);
+            ctx->SetStrokeWidth(1.0f);
+            ctx->DrawLine(Point2Dd(cx, d.nameRect.y + 5),
+                          Point2Dd(cx, d.nameRect.y + d.nameRect.height - 5));
+        }
+
+        // Destination path shown separately as smaller text.
+        ctx->SetFontStyle(smallFont);
+        ctx->SetTextPaint(style.secondaryTextColor);
+        std::string dir = d.destDir.empty() ? currentPath : d.destDir;
+        std::string pathText = "Location:  " + dir;
+        pathText = EllipsizeText(ctx, pathText, d.panel.width - 32);
+        ctx->DrawText(pathText,
+                      Point2Dd(d.panel.x + 16, d.nameRect.y + d.nameRect.height + 8));
+
+        // Buttons.
+        DrawDialogButton(ctx, d.okRect, "Compress", true, d.okHover);
+        DrawDialogButton(ctx, d.cancelRect, "Cancel", false, d.cancelHover);
+
+        // Ghost icon under the cursor, drawn last so it floats above everything.
+        if (d.draggingIcon) {
+            Rect2Di ghost(d.dragPos.x - 24, d.dragPos.y - 24, 48, 48);
+            DrawEntryIcon(ctx, synth, ghost);
+        }
+
+        ctx->PopState();
+    }
+
+    bool UltraCanvasFilerWidget::HandleCompressDialogEvent(const UCEvent& event) {
+        CompressDialogState& d = compressDlg;
+        switch (event.type) {
+            case UCEventType::KeyDown: {
+                if (event.virtualKey == UCKeys::Escape) { CloseCompressDialog(); return true; }
+                if (event.virtualKey == UCKeys::Return)  { CommitCompressDialog(); return true; }
+                if (event.virtualKey == UCKeys::Backspace) {
+                    if (d.nameFocused && !d.nameBuffer.empty()) {
+                        size_t cut = d.nameBuffer.size() - 1;
+                        while (cut > 0 &&
+                               (static_cast<unsigned char>(d.nameBuffer[cut]) & 0xC0) == 0x80)
+                            --cut;
+                        d.nameBuffer.erase(cut);
+                        RequestRedraw();
+                    }
+                    return true;
+                }
+                return true;   // stay modal: swallow every other key
+            }
+            case UCEventType::TextInput: {
+                if (d.nameFocused) {
+                    std::string in = event.text;
+                    if (in.empty() && event.character >= 32)
+                        in.assign(1, static_cast<char>(event.character));
+                    std::string filtered;
+                    for (char c : in) {
+                        if (static_cast<unsigned char>(c) >= 32 && c != '/' && c != '\\')
+                            filtered += c;
+                    }
+                    if (!filtered.empty()) { d.nameBuffer += filtered; RequestRedraw(); }
+                }
+                return true;
+            }
+            case UCEventType::MouseDown: {
+                if (event.button != UCMouseButton::Left) return true;
+                Point2Di local(event.pointer.x, event.pointer.y);
+                if (d.iconRect.Contains(local)) {
+                    d.draggingIcon = true;
+                    d.dragPos = local;
+                    d.dropFolderIndex = -1;
+                    if (auto* app = UltraCanvasApplication::GetInstance())
+                        app->CaptureMouse(this);
+                    RequestRedraw();
+                    return true;
+                }
+                if (d.nameRect.Contains(local)) { d.nameFocused = true; RequestRedraw(); return true; }
+                if (d.okRect.Contains(local))     { CommitCompressDialog(); return true; }
+                if (d.cancelRect.Contains(local)) { CloseCompressDialog();  return true; }
+                return true;   // modal: clicks elsewhere do nothing
+            }
+            case UCEventType::MouseMove: {
+                Point2Di local(event.pointer.x, event.pointer.y);
+                if (d.draggingIcon) {
+                    d.dragPos = local;
+                    d.dropFolderIndex = FolderIndexAtLocal(local);
+                    RequestRedraw();
+                } else {
+                    bool ok = d.okRect.Contains(local);
+                    bool cn = d.cancelRect.Contains(local);
+                    if (ok != d.okHover || cn != d.cancelHover) {
+                        d.okHover = ok; d.cancelHover = cn; RequestRedraw();
+                    }
+                }
+                return true;
+            }
+            case UCEventType::MouseUp: {
+                if (d.draggingIcon) {
+                    Point2Di local(event.pointer.x, event.pointer.y);
+                    if (auto* app = UltraCanvasApplication::GetInstance())
+                        app->ReleaseMouse();
+                    d.draggingIcon = false;
+                    int fi = FolderIndexAtLocal(local);
+                    if (fi >= 0) d.destDir = entries[fi].path;
+                    d.dropFolderIndex = -1;
+                    RequestRedraw();
+                }
+                return true;
+            }
+            default:
+                return true;   // stay modal
+        }
     }
 
     void UltraCanvasFilerWidget::SetNewDocumentTypes(
@@ -1772,7 +2206,9 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::LayoutThumbnails(const Rect2Di& area) {
         int edge = ThumbnailEdge();
         int gap = style.tileGap;
-        int capH = style.captionHeight;
+        // The name occupies the base caption band; each enabled dataset field
+        // adds one line below it (reserved uniformly so the grid stays aligned).
+        int capH = style.captionHeight + DatasetLineCount() * DatasetLineHeight();
         int tileW = edge;
         int scrollbarGutter = 10;
         int availW = area.width - scrollbarGutter;
@@ -2000,6 +2436,14 @@ namespace UltraCanvas {
         Rect2Di bounds(static_cast<int>(lb.x), static_cast<int>(lb.y),
                        static_cast<int>(lb.width), static_cast<int>(lb.height));
 
+        DrawViewContent(ctx, bounds);
+
+        // Modal overlay painted last so it sits above the folder view and chrome.
+        if (compressDlg.active) DrawCompressDialog(ctx, bounds);
+    }
+
+    void UltraCanvasFilerWidget::DrawViewContent(IRenderContext* ctx,
+                                                 const Rect2Di& bounds) {
         ctx->PushState();
         ctx->ClipRect(Rect2Dd(bounds));
         ctx->SetFillPaint(style.backgroundColor);
@@ -2731,6 +3175,24 @@ namespace UltraCanvas {
                 item.rect.x + (item.rect.width - ts.width) / 2.0,
                 capTop + (style.captionHeight - ts.height) / 2.0));
 
+        // Dataset lines (Display > Dataset) under the name, smaller and greyed.
+        if (datasetFields != 0) {
+            std::vector<std::string> lines = DatasetLinesFor(e);
+            if (!lines.empty()) {
+                ctx->SetTextPaint(style.secondaryTextColor);
+                int lineH = DatasetLineHeight();
+                int y = capTop + style.captionHeight;
+                for (const std::string& raw : lines) {
+                    std::string ln = EllipsizeText(ctx, raw, item.rect.width - 8);
+                    Size2Di lts = ctx->GetTextLineDimensions(ln);
+                    ctx->DrawText(ln, Point2Dd(
+                            item.rect.x + (item.rect.width - lts.width) / 2.0,
+                            y + (lineH - lts.height) / 2.0));
+                    y += lineH;
+                }
+            }
+        }
+
         if (selected) {
             ctx->SetStrokePaint(style.selectionBorderColor);
             ctx->SetStrokeWidth(2.0f);
@@ -2943,7 +3405,7 @@ namespace UltraCanvas {
 
         FontStyle fsty;
         fsty.fontFamily = style.fontFamily;
-        fsty.fontSize = style.fontSize;
+        fsty.fontSize = ItemNameFontSize();   // match the on-screen name size
         ctx->SetFontStyle(fsty);
         ctx->SetTextPaint(style.textColor);
         ctx->PushState();
@@ -3276,6 +3738,48 @@ namespace UltraCanvas {
         return -1;
     }
 
+    float UltraCanvasFilerWidget::ItemNameFontSize() const {
+        switch (viewType) {
+            case FilerViewType::ThumbnailsSmall:
+            case FilerViewType::ThumbnailsMedium:
+            case FilerViewType::ThumbnailsBig:
+            case FilerViewType::ThumbnailsMaximized:
+            case FilerViewType::TreeMap:
+                return style.smallFontSize;
+            default:
+                return style.fontSize;
+        }
+    }
+
+    bool UltraCanvasFilerWidget::IsOnItemName(const ItemLayout& item,
+                                              const Point2Di& contentPoint) const {
+        // The icon is never the name (double-clicking it activates the entry).
+        if (item.imageRect.Contains(contentPoint)) return false;
+
+        switch (viewType) {
+            case FilerViewType::ThumbnailsSmall:
+            case FilerViewType::ThumbnailsMedium:
+            case FilerViewType::ThumbnailsBig:
+            case FilerViewType::ThumbnailsMaximized:
+            case FilerViewType::TreeMap: {
+                // Caption sits below the icon.
+                int capTop = item.imageRect.y + item.imageRect.height;
+                return contentPoint.y >= capTop;
+            }
+            default: {
+                // Row views: the name runs to the right of the icon. In Details
+                // it is limited to the Name column so the other columns still
+                // open the entry.
+                int nameLeft = item.imageRect.x + item.imageRect.width;
+                int nameRight = item.rect.x + item.rect.width;
+                if (viewType == FilerViewType::Details && !detailsColumns.empty()) {
+                    nameRight = detailsColumns[0].x + detailsColumns[0].width;
+                }
+                return contentPoint.x >= nameLeft && contentPoint.x < nameRight;
+            }
+        }
+    }
+
     int UltraCanvasFilerWidget::IconMenuActionAt(const Point2Di& localPoint,
                                                  size_t& outEntry) const {
         for (const IconMenuHit& h : iconMenuHits) {
@@ -3425,9 +3929,28 @@ namespace UltraCanvas {
                         [this, v]() { SetViewType(v); }));
             }
 
+            // Dataset > extra per-file facts under thumbnail captions.
+            std::vector<MenuItemData> datasetItems;
+            struct DatasetOption { const char* label; FilerDatasetField field; };
+            static const DatasetOption datasetOptions[] = {
+                {"Size",                   FilerDatasetField::Size},
+                {"Edit date",              FilerDatasetField::ModifiedDate},
+                {"Creation date",          FilerDatasetField::CreatedDate},
+                {"Attributes",             FilerDatasetField::Attributes},
+                {"Length (audio/video)",   FilerDatasetField::Length},
+                {"Dimensions (bitmaps)",   FilerDatasetField::Dimensions},
+            };
+            for (const DatasetOption& o : datasetOptions) {
+                FilerDatasetField f = o.field;
+                datasetItems.push_back(MenuItemData::Checkbox(
+                        o.label, IsDatasetFieldEnabled(f),
+                        [this, f](bool on) { SetDatasetField(f, on); }));
+            }
+
             std::vector<MenuItemData> displayItems;
             displayItems.push_back(MenuItemData::Submenu("Sort", sortItems));
             displayItems.push_back(MenuItemData::Submenu("Type", typeItems));
+            displayItems.push_back(MenuItemData::Submenu("Dataset", datasetItems));
             displayItems.push_back(MenuItemData::Checkbox(
                     "Icon-Menu", hoverIconMenu,
                     [this](bool on) { SetHoverIconMenuEnabled(on); }));
@@ -3461,7 +3984,33 @@ namespace UltraCanvas {
         }
         menu.AddItem(MenuItemData::Separator());
 
-        addAction("Compress", !entries.empty(), [this]() { CompressSelection(); });
+        // Compress > (pick the archive format)
+        {
+            bool canCompress = !entries.empty();
+            struct CompressFormat { const char* label; const char* ext; };
+            static const CompressFormat compressFormats[] = {
+                {"ZIP (.zip)",             "zip"},
+                {"7-Zip (.7z)",            "7z"},
+                {"TAR (.tar)",             "tar"},
+                {"TAR + gzip (.tar.gz)",   "tar.gz"},
+                {"TAR + bzip2 (.tar.bz2)", "tar.bz2"},
+                {"TAR + xz (.tar.xz)",     "tar.xz"},
+                {"TAR + Zstd (.tar.zst)",  "tar.zst"},
+            };
+            std::vector<MenuItemData> compressItems;
+            for (const CompressFormat& f : compressFormats) {
+                std::string ext = f.ext;
+                std::string label = f.label;
+                MenuItemData item = MenuItemData::Action(
+                        f.label,
+                        [this, ext, label]() { OpenCompressDialog(ext, label); });
+                item.enabled = canCompress;
+                compressItems.push_back(item);
+            }
+            MenuItemData compressSub = MenuItemData::Submenu("Compress", compressItems);
+            compressSub.enabled = canCompress;
+            menu.AddItem(compressSub);
+        }
         addAction("Extract", anyArchive, [this]() { ExtractSelection(); });
         menu.AddItem(MenuItemData::Separator());
 
@@ -3522,7 +4071,12 @@ namespace UltraCanvas {
         Point2Di winPos(static_cast<int>(GetXInWindow()) + localPoint.x,
                         static_cast<int>(GetYInWindow()) + localPoint.y);
         PopupElementSettings settings;
-        settings.popupOwner = weak_from_this();
+        // Deliberately leave popupOwner unset. The owner would be this whole
+        // widget, and the window's dismissal logic treats a click on the owner as
+        // "inside" the popup — so a left click anywhere in the file view would
+        // fail to close the context menu. With no owner, any click outside the
+        // menu bounds (including on the file view itself) dismisses it.
+        settings.closeByClickOutside = true;
         activePopupMenu->OpenMenu(winPos, *win, settings);
     }
 
@@ -3571,6 +4125,10 @@ namespace UltraCanvas {
     // ===== EVENTS =====
     bool UltraCanvasFilerWidget::OnEvent(const UCEvent& event) {
         if (IsDisabled() || !IsVisible()) return false;
+
+        // The compress dialog is a modal in-widget overlay: while it is up it
+        // consumes every event and nothing behind it reacts.
+        if (compressDlg.active) return HandleCompressDialogEvent(event);
 
         switch (event.type) {
             case UCEventType::MouseLeave: {
@@ -3787,9 +4345,20 @@ namespace UltraCanvas {
             case UCEventType::MouseDoubleClick: {
                 Point2Di local(event.pointer.x, event.pointer.y);
                 if (IsInInfoBar(local)) return true;
-                int index = ItemAt(ToContentPoint(local));
+                Point2Di content = ToContentPoint(local);
+                int index = ItemAt(content);
                 if (index >= 0) {
-                    ActivateEntry(static_cast<size_t>(index));
+                    // Double-clicking the name edits it; double-clicking the
+                    // icon (or, in Details, another column) opens the entry.
+                    const ItemLayout* layout = nullptr;
+                    for (const ItemLayout& it : items) {
+                        if (static_cast<int>(it.entryIndex) == index) { layout = &it; break; }
+                    }
+                    if (layout && IsOnItemName(*layout, content)) {
+                        StartRename(static_cast<size_t>(index));
+                    } else {
+                        ActivateEntry(static_cast<size_t>(index));
+                    }
                     return true;
                 }
                 return false;

@@ -19,8 +19,14 @@
 // is an unused "X" channel, so frames are forced to opaque alpha on delivery (the
 // premultiplied ARGB32 pixmap would otherwise treat them as fully transparent).
 //
-// Version: 0.3.0
-// Last Modified: 2026-06-26
+// Version: 0.3.1
+// Last Modified: 2026-07-23
+// V0.3.1: Fix camera capture on webcams that don't expose RGB32 (i.e. most — they
+//   deliver NV12/YUY2/MJPG). The capture SourceReader is now created with
+//   MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING so MF inserts the color
+//   converter and the RGB32 request succeeds for any camera format/resolution
+//   (previously "RGB32 not supported by camera" → no frames). Preview/record now
+//   use the negotiated MF_MT_DEFAULT_STRIDE instead of assuming width*4.
 // V0.3.0: Fix persistent loss of all app audio on Windows. Volume/mute now use
 //   the per-stream renderer volume (MR_STREAM_VOLUME_SERVICE) instead of the
 //   persisted per-application policy volume (MR_POLICY_VOLUME_SERVICE), so a
@@ -606,7 +612,16 @@ public:
             }
         }
 
-        if (FAILED(MFCreateSourceReaderFromMediaSource(source.Get(), nullptr, &reader))) {
+        // Create the reader with advanced video processing enabled so it can insert
+        // the Video Processor MFT for color conversion (and scaling). Cameras deliver
+        // NV12/YUY2/MJPG far more often than RGB32; without this flag the RGB32
+        // request below fails on most webcams (the source reader auto-loads decoders
+        // but NOT the color converter), so no frames arrive at all. With it, RGB32 is
+        // produced from any native camera format and resolution.
+        ComPtr<IMFAttributes> readerAttrs;
+        MFCreateAttributes(&readerAttrs, 1);
+        readerAttrs->SetUINT32(MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING, TRUE);
+        if (FAILED(MFCreateSourceReaderFromMediaSource(source.Get(), readerAttrs.Get(), &reader))) {
             Fail("SourceReader create failed"); return false;
         }
 
@@ -628,6 +643,17 @@ public:
         if (cur) MFGetAttributeSize(cur.Get(), MF_MT_FRAME_SIZE, &w, &h);
         camW = (int)(w ? w : params.width);
         camH = (int)(h ? h : params.height);
+        // Use the negotiated row stride rather than assuming camW*4: the video
+        // processor may hand back a padded buffer. MF_MT_DEFAULT_STRIDE is stored
+        // unsigned but is a signed LONG (negative = bottom-up); take its magnitude
+        // (frames from the processor are top-down). Fall back to the packed size.
+        camStride = 0;
+        UINT32 strideU = 0;
+        if (cur && SUCCEEDED(cur->GetUINT32(MF_MT_DEFAULT_STRIDE, &strideU))) {
+            LONG s = (LONG)strideU;
+            camStride = (s < 0) ? -s : s;
+        }
+        if (camStride <= 0) camStride = camW * 4;
 
         // Request 16-bit PCM on the audio stream and remember the negotiated type.
         if (hasAudio && audioReaderIdx != (DWORD)-1) {
@@ -765,6 +791,9 @@ private:
         vIn->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
         vIn->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
         MFSetAttributeSize(vIn.Get(), MF_MT_FRAME_SIZE, camW, camH);
+        // The reader's RGB32 samples carry the negotiated (possibly padded) stride;
+        // tell the writer the same so recorded frames aren't skewed.
+        vIn->SetUINT32(MF_MT_DEFAULT_STRIDE, (UINT32)camStride);
         MFSetAttributeRatio(vIn.Get(), MF_MT_FRAME_RATE,
                             (UINT32)(params.frameRate > 0 ? params.frameRate : 30), 1);
         MFSetAttributeRatio(vIn.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
@@ -836,7 +865,7 @@ private:
                     BYTE* data = nullptr; DWORD maxLen = 0, curLen = 0;
                     if (SUCCEEDED(buf->Lock(&data, &maxLen, &curLen))) {
                         double pts = (double)timestamp / kHnsPerSecond;
-                        if (auto f = FrameFromRGB32(data, camW, camH, camW * 4, pts)) {
+                        if (auto f = FrameFromRGB32(data, camW, camH, camStride, pts)) {
                             if (onPreviewFrame) onPreviewFrame(std::move(f));
                         }
                         buf->Unlock();
@@ -865,6 +894,7 @@ private:
     bool opened = false;
     bool hasAudio = false;
     int camW = 0, camH = 0;
+    int camStride = 0;               // negotiated RGB32 row stride (may exceed camW*4)
     ULONGLONG startTime = 0;
     LONGLONG rtStart = -1;            // recording-timeline zero, shared A/V
 };

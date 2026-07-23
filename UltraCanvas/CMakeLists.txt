@@ -1,7 +1,7 @@
 # UltraCanvas/CMakeLists.txt
 # UltraCanvas Core Library - Builds as separate static library with optional plugins
-# Version: 1.4.5
-# Last Modified: 2026-07-05
+# Version: 1.4.7
+# Last Modified: 2026-07-22
 # Author: UltraCanvas Framework
 
 cmake_minimum_required(VERSION 3.16)
@@ -364,6 +364,7 @@ set(ULTRACANVAS_CORE_SOURCES
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/SVG/UltraCanvasSVGPlugin.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasSankey.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasVennDiagram.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasWordCloudDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasDendrogram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasDendrogramLayout.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasBlockDiagram.cpp
@@ -808,6 +809,31 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
             ${OPENGL_FRAMEWORK}
         )
     endif()
+    # Homebrew installs each formula under a keg-specific prefix
+    # (/opt/homebrew/opt/<pkg>/lib) that is NOT on the default Mach-O linker
+    # search path. libultracanvas re-exports cairo/pango/vips/rsvg/zbar/... as
+    # PUBLIC link deps, so every consumer inherits the -l<name> flags. As a
+    # STATIC archive the core never links these itself — only the final
+    # executable does — so the -L search dirs must reach those executables too.
+    # The root CMakeLists' link_directories() is directory-scoped and runs after
+    # add_subdirectory(Apps/...), so apps like UltraMail never saw it (linker:
+    # "library 'cairo' not found"). Attach the dirs to the TARGET (PUBLIC) so
+    # they propagate through usage requirements exactly like the -l flags do.
+    execute_process(COMMAND brew --prefix
+        OUTPUT_VARIABLE _uc_hb_prefix OUTPUT_STRIP_TRAILING_WHITESPACE)
+    target_link_directories(${ULTRACANVAS_LIB_NAME} PUBLIC
+            ${CAIRO_LIBRARY_DIRS}
+            ${PANGO_LIBRARY_DIRS}
+            ${FREETYPE_LIBRARY_DIRS}
+            ${HARFBUZZ_LIBRARY_DIRS}
+            ${GLIB_LIBRARY_DIRS}
+            ${TINYXML2_LIBRARY_DIRS}
+            ${LIBVIPS_LIBRARY_DIRS}
+            ${LIBRSVG_LIBRARY_DIRS}
+            ${ZBAR_LIBRARY_DIRS}
+            ${_uc_hb_prefix}/lib
+            ${_uc_hb_prefix}/opt/vips/lib
+    )
 endif()
 
 # ===== LINK LIBRARIES =====
@@ -1086,6 +1112,15 @@ if(ULTRACANVAS_ENABLE_NET)
     if(ULTRANET_HAS_CARES)
         target_compile_definitions(UltraNet PUBLIC ULTRANET_HAS_CARES=1)
         target_include_directories(UltraNet PRIVATE ${CARES_INCLUDE_DIRS})
+        # Put c-ares' pkg-config library dir on the link path so the transitive
+        # -lcares resolves for consumers. Needed on Homebrew macOS (arm64), where
+        # c-ares lives in a keg dir (/opt/homebrew/opt/c-ares/lib) that is NOT a
+        # default linker search path; without this the UltraMail/demo link fails
+        # with "ld: library 'cares' not found". PUBLIC so the -L propagates the
+        # same way the -l does (UltraNet is a STATIC archive resolved by its
+        # consumers). No-op on Linux/Windows, where libcares is already on the
+        # default search path. Mirrors the GStreamer pattern above.
+        target_link_directories(UltraNet PUBLIC ${CARES_LIBRARY_DIRS})
         target_link_libraries(UltraNet PUBLIC ${CARES_LIBRARIES})
     endif()
     if(ULTRACANVAS_PLATFORM STREQUAL "Linux")

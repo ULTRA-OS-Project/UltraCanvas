@@ -68,6 +68,20 @@ namespace UltraCanvas {
         CreatedDate
     };
 
+    // ===== THUMBNAIL DATASET FIELDS =====
+    // Extra per-file facts shown under the name in the thumbnail views. Combine
+    // as a bitmask (Display > Dataset toggles them). Length applies to audio /
+    // video, Dimensions to bitmaps; both are skipped for entries they don't fit.
+    enum class FilerDatasetField : uint32_t {
+        None         = 0,
+        Size         = 1u << 0,
+        ModifiedDate = 1u << 1,   // "Edit date"
+        CreatedDate  = 1u << 2,   // "Creation date"
+        Attributes   = 1u << 3,
+        Length       = 1u << 4,   // audio / video duration
+        Dimensions   = 1u << 5    // bitmap width × height
+    };
+
     // ===== COARSE FILE CATEGORY (drives icons / colors / type sorting) =====
     enum class FilerFileCategory {
         Folder,
@@ -151,7 +165,7 @@ namespace UltraCanvas {
         Color infoBarTextColor     = Color(50, 50, 56, 255);
 
         std::string fontFamily;          // empty = system default
-        float fontSize        = 13.0f;
+        float fontSize        = 12.0f;   // Windows standard UI size (9pt @ 96dpi)
         float smallFontSize   = 11.0f;
 
         int detailsRowHeight  = 24;      // details / bar-size row height
@@ -261,6 +275,14 @@ namespace UltraCanvas {
         void SetSelectionInfoVisible(bool visible);
         bool IsSelectionInfoVisible() const { return showSelectionInfo; }
 
+        // ===== THUMBNAIL DATASET =====
+        // Which extra facts are drawn under the file name in the thumbnail
+        // views (Display > Dataset). Changing the set relays out the tiles.
+        void SetDatasetField(FilerDatasetField field, bool on);
+        bool IsDatasetFieldEnabled(FilerDatasetField field) const;
+        void SetDatasetFields(uint32_t mask);
+        uint32_t GetDatasetFields() const { return datasetFields; }
+
         void SetStyle(const FilerStyle& s);
         const FilerStyle& GetStyle() const { return style; }
 
@@ -281,7 +303,10 @@ namespace UltraCanvas {
         void DeleteSelection();    // gated by confirmDelete when set
         void DuplicateSelection(); // copy alongside with a unique name
         void StartRename(size_t entryIndex);   // inline rename editor
-        void CompressSelection();  // pack the selection into a .zip alongside
+        // Pack the selection into an archive alongside it. The extension picks
+        // the format (e.g. "zip", "7z", "tar", "tar.gz", "tar.bz2", "tar.xz",
+        // "tar.zst"); defaults to a .zip archive.
+        void CompressSelection(const std::string& extension = "zip");
         void ExtractSelection();   // unpack selected archives alongside
         static bool ClipboardHasContent();
 
@@ -340,6 +365,8 @@ namespace UltraCanvas {
         bool showOpenPathItem = false;
         bool showSelectionInfo = true;
         bool shrinkThumbnailRows = true;
+        // Bitmask of FilerDatasetField values drawn under thumbnail captions.
+        uint32_t datasetFields = 0;
         FilerStyle style;
 
         // Natural aspect ratio (width / height) of raster image entries, keyed
@@ -601,6 +628,9 @@ namespace UltraCanvas {
         void EnsureVisible(size_t entryIndex);
 
         // ===== DRAWING =====
+        // The folder view + chrome (has several early-return branches); the
+        // public Render() calls this and then paints any modal overlay on top.
+        void DrawViewContent(IRenderContext* ctx, const Rect2Di& bounds);
         void DrawDetails(IRenderContext* ctx, const Rect2Di& bounds);
         void DrawDetailsHeader(IRenderContext* ctx, const Rect2Di& bounds);
         void DrawDetailsRow(IRenderContext* ctx, const ItemLayout& item, bool hovered);
@@ -621,6 +651,9 @@ namespace UltraCanvas {
         void DrawIconMenuGlyph(IRenderContext* ctx, IconMenuAction action,
                                const Rect2Di& button);
         void DrawRenameEditor(IRenderContext* ctx, const ItemLayout& item);
+        void DrawCompressDialog(IRenderContext* ctx, const Rect2Di& bounds);
+        void DrawDialogButton(IRenderContext* ctx, const Rect2Di& rect,
+                              const std::string& label, bool primary, bool hovered);
         void DrawScrollbar(IRenderContext* ctx);
         void DrawSelectionInfoBar(IRenderContext* ctx, const Rect2Di& bounds);
         int  InfoBarHeight() const {
@@ -638,9 +671,25 @@ namespace UltraCanvas {
         std::string EllipsizeText(IRenderContext* ctx, const std::string& text,
                                   int maxWidth) const;
 
+        // Thumbnail dataset lines (Display > Dataset): the formatted values of
+        // the enabled fields that apply to this entry, top to bottom.
+        std::vector<std::string> DatasetLinesFor(const FilerEntry& e) const;
+        // How many enabled dataset fields there are — the number of caption
+        // lines reserved per tile so the grid stays aligned across file kinds.
+        int  DatasetLineCount() const;
+        int  DatasetLineHeight() const;
+
+        // The font size the item name is drawn at in the current view — the
+        // rename editor uses the same so editing matches the display exactly
+        // (thumbnail / treemap captions use the small size, rows the base size).
+        float ItemNameFontSize() const;
+
         // ===== HIT TESTING =====
         Point2Di ToContentPoint(const Point2Di& localPoint) const;
         int  ItemAt(const Point2Di& contentPoint) const;   // entry index or -1
+        // True when a content-space point falls on the item's name text (not its
+        // icon) — a double-click there starts an inline rename.
+        bool IsOnItemName(const ItemLayout& item, const Point2Di& contentPoint) const;
         int  IconMenuActionAt(const Point2Di& localPoint, size_t& outEntry) const;
         int  DetailsHeaderColumnAt(const Point2Di& localPoint) const;
 
@@ -665,6 +714,51 @@ namespace UltraCanvas {
         // Selected entries, or the whole folder when nothing is selected —
         // what Compress / Print / Extras operate on.
         std::vector<FilerEntry> SelectionOrAll() const;
+
+        // ===== COMPRESS DIALOG (modal in-widget overlay) =====
+        // Shown when a format is picked from the context menu's "Compress"
+        // submenu. It previews the archive's file-type icon, lets the name be
+        // edited, and shows the destination folder as smaller text. The icon can
+        // be dragged onto any folder in the view to retarget that destination —
+        // which is why this is an in-widget overlay rather than a separate modal
+        // window (a top-level modal would block the folders behind it).
+        struct CompressDialogState {
+            bool        active = false;
+            std::string extension;      // archive extension, e.g. "zip", "tar.gz"
+            std::string formatLabel;    // human label, e.g. "TAR + gzip"
+            std::string nameBuffer;     // editable base name (no extension)
+            std::string destDir;        // folder the archive is written to
+            std::vector<std::string> sourcePaths;  // captured at open time
+
+            // Layout, recomputed each frame (widget-local coordinates).
+            Rect2Di panel;
+            Rect2Di iconRect;
+            Rect2Di nameRect;
+            Rect2Di okRect;
+            Rect2Di cancelRect;
+
+            // Icon drag-to-folder interaction.
+            bool     draggingIcon = false;
+            Point2Di dragPos;               // cursor while dragging (widget-local)
+            int      dropFolderIndex = -1;  // folder entry highlighted under the icon
+
+            bool     nameFocused = true;
+            bool     okHover = false;
+            bool     cancelHover = false;
+        };
+        CompressDialogState compressDlg;
+
+        void OpenCompressDialog(const std::string& extension,
+                                const std::string& formatLabel);
+        void LayoutCompressDialog(const Rect2Di& bounds);
+        bool HandleCompressDialogEvent(const UCEvent& event);
+        void CommitCompressDialog();
+        void CloseCompressDialog();
+        // Folder entry index under a widget-local point (ignoring the panel), or
+        // -1 when the point is over the panel or not over a folder.
+        int  FolderIndexAtLocal(const Point2Di& localPoint) const;
+        // Short uppercase tag drawn on the archive icon for a given extension.
+        static std::string ArchiveIconTag(const std::string& extension);
 
         // ===== DELETE CONFIRMATION =====
         // Actually removes the given entries from disk (no confirmation).
