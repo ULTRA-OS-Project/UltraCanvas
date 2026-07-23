@@ -13,7 +13,7 @@
 // Chapters come from an IEBookEngine (EPUB, TXT, ... via the engine
 // registry); the chapter XHTML is converted to native elements, so text is
 // real Labels laid out by CSSLayout — no page images.
-// Version: 2.1.0
+// Version: 2.2.0
 // Last Modified: 2026-07-23
 // Author: UltraCanvas Framework
 #pragma once
@@ -186,6 +186,8 @@ private:
     void PopulateTOC();
     void RefreshToolbarState();
     void ApplyThemeColors();
+    // Gives the TOC toolbar button an "active" look while the TOC pane is open.
+    void RefreshTocButtonHighlight();
     bool FinishLoad();
 
     // Font size actually handed to the builder: base size × zoom, clamped.

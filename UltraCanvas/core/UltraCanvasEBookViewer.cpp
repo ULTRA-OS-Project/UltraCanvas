@@ -1,6 +1,6 @@
 // core/UltraCanvasEBookViewer.cpp
 // eBook reading widget: engine chapters → HTML::ElementBuilder → CSSLayout.
-// Version: 2.1.0
+// Version: 2.2.0
 // Last Modified: 2026-07-23
 // Author: UltraCanvas Framework
 
@@ -172,6 +172,9 @@ void UltraCanvasEBookViewer::BuildUI() {
             if (chapter >= 0) GoToChapter(chapter);
         }
     };
+
+    // The TOC starts visible, so the button starts highlighted.
+    RefreshTocButtonHighlight();
 }
 
 void UltraCanvasEBookViewer::AttachTocPane() {
@@ -376,8 +379,29 @@ void UltraCanvasEBookViewer::ShowTableOfContents(bool show) {
     tocVisible = show;
     if (show) AttachTocPane();
     else      DetachTocPane();
+    RefreshTocButtonHighlight();
     InvalidateLayout();
     RequestRedraw();
+}
+
+void UltraCanvasEBookViewer::RefreshTocButtonHighlight() {
+    if (!btnToc) return;
+
+    ButtonStyle style;   // defaults match the other toolbar buttons
+    if (tocVisible) {
+        // Accent fill with light text so the ☰ button reads as "on". The blue
+        // contrasts on all three reading themes' toolbar backgrounds.
+        const Color accent(45, 110, 210, 255);
+        style.normalColor = accent;
+        style.hoverColor = Color(35, 95, 190, 255);
+        style.pressedColor = Color(30, 85, 175, 255);
+        style.normalTextColor = Colors::White;
+        style.hoverTextColor = Colors::White;
+        style.pressedTextColor = Colors::White;
+        style.borderColor = Color(30, 85, 175, 255);
+    }
+    btnToc->SetStyle(style);
+    btnToc->RequestRedraw();
 }
 
 void UltraCanvasEBookViewer::ShowToolbar(bool show) {
