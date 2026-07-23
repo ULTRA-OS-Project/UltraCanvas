@@ -1,8 +1,9 @@
 #### 2026-07-23 *0.3.16*
-- eBook reader: the table-of-contents toolbar button (☰) now highlights while
-  the TOC pane is open (accent fill with light text), so its active state is
-  visible. It reverts to the normal toolbar-button look when the pane is
-  hidden.
+- eBook reader: the table-of-contents toolbar button now uses the
+  `list-ordered` icon (drawn as a mask so it takes the button's text color)
+  and highlights while the TOC pane is open (accent fill with a light icon),
+  so its active state is visible. It reverts to the normal toolbar-button
+  look when the pane is hidden.
 
 #### 2026-07-23 *0.3.15*
 - The DemoApp eBook page now opens the bundled MOBI sample

@@ -7,6 +7,8 @@
 #include "UltraCanvasEBookViewer.h"
 
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasConfig.h"   // GetResourcesDir
+#include "UltraCanvasUtils.h"    // NormalizePath
 #include "HTMLReader/HTMLElementBuilder.h"
 
 #include <algorithm>
@@ -112,7 +114,16 @@ void UltraCanvasEBookViewer::BuildUI() {
     btnFontMinus = makeButton("_fminus", "A-", 40.f);
     btnFontPlus = makeButton("_fplus", "A+", 40.f);
     btnTheme = makeButton("_theme", "\xE2\x98\xBE");       // ☾
-    btnToc = makeButton("_toc", "\xE2\x98\xB0");           // ☰
+
+    // The table-of-contents button uses the ordered-list icon. It is drawn as
+    // a mask so it takes the button's text color, tracking the normal/active
+    // state (dark on the toolbar, light when the pane is open).
+    btnToc = makeButton("_toc", "");
+    btnToc->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/list-ordered.svg"));
+    btnToc->SetIconPosition(ButtonIconPosition::Center);
+    btnToc->SetIconSize(18, 18);
+    btnToc->SetUseIconAsMask(true);
+    btnToc->SetIconMaskColor(Colors::Transparent);   // follow the text color
 
     chapterLabel = std::make_shared<UltraCanvasLabel>(id + "_chapter", "");
     chapterLabel->layoutItem.SetFlexGrow(1.f);
@@ -387,18 +398,28 @@ void UltraCanvasEBookViewer::ShowTableOfContents(bool show) {
 void UltraCanvasEBookViewer::RefreshTocButtonHighlight() {
     if (!btnToc) return;
 
-    ButtonStyle style;   // defaults match the other toolbar buttons
+    // Copy the current style so the icon / mask / size set in BuildUI survive;
+    // only the state colors change. The icon is a mask that follows the text
+    // color, so setting light text also lightens the icon when active.
+    ButtonStyle style = btnToc->GetStyle();
     if (tocVisible) {
-        // Accent fill with light text so the ☰ button reads as "on". The blue
+        // Accent fill with light content so the button reads as "on". The blue
         // contrasts on all three reading themes' toolbar backgrounds.
-        const Color accent(45, 110, 210, 255);
-        style.normalColor = accent;
+        style.normalColor = Color(45, 110, 210, 255);
         style.hoverColor = Color(35, 95, 190, 255);
         style.pressedColor = Color(30, 85, 175, 255);
         style.normalTextColor = Colors::White;
         style.hoverTextColor = Colors::White;
         style.pressedTextColor = Colors::White;
         style.borderColor = Color(30, 85, 175, 255);
+    } else {
+        style.normalColor = Colors::ButtonFace;
+        style.hoverColor = Colors::SelectionHover;
+        style.pressedColor = Color(204, 228, 247, 255);
+        style.normalTextColor = Colors::TextDefault;
+        style.hoverTextColor = Colors::TextDefault;
+        style.pressedTextColor = Colors::TextDefault;
+        style.borderColor = Colors::ButtonShadow;
     }
     btnToc->SetStyle(style);
     btnToc->RequestRedraw();
