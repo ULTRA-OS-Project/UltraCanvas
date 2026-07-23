@@ -1,3 +1,20 @@
+#### 2026-07-23 *0.3.13*
+- Fix two MOBI/KF8 eBook rendering bugs (seen with the DemoApp eBook demo on
+  `media/ebooks/Game-of-rat-and-dragon.mobi`):
+  - **Drop caps.** Mobipocket/Project-Gutenberg books set the decorative
+    first letter of a section as a floated image
+    (`<div class="figleft"><img alt="P"/></div>` in front of the paragraph).
+    The layout engine has no CSS `float`, so each big letter stacked as a
+    centred block *above* its paragraph instead of leading it. The MOBI
+    engine now folds such single-letter drop-cap figures into a large inline
+    first letter at the start of the following paragraph, so "P" reads in
+    front of "inlighting" as intended. Genuine illustrations (multi-character
+    or empty `alt`) are left untouched as block images.
+  - **Inline table of contents.** kindlegen/calibre append the book's own
+    "Table of Contents" page as the last part of the file, so it appeared at
+    the very end of the chapter list. It is now moved to the second page,
+    right after the cover/title image, where readers expect it.
+
 #### 2026-07-21 *0.3.12*
 - Fix GIF export failing with `magicksave: libMagick error:
   NoEncodeDelegateForThisImageFormat 'gif'` (seen on the DemoApp bitmap
