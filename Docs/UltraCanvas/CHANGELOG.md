@@ -1,3 +1,10 @@
+#### 2026-07-23 *0.3.15*
+- The DemoApp eBook page now opens the bundled MOBI sample
+  (`media/ebooks/Game-of-rat-and-dragon.mobi`) by default instead of the
+  in-memory text sample, so the reader shows a real Kindle KF8 book (with the
+  drop-cap and table-of-contents fixes) on first open. It still falls back to
+  the in-memory sample if the bundled book is missing at runtime.
+
 #### 2026-07-23 *0.3.14*
 - eBook reader gains **zoom**. `UltraCanvasEBookViewer` now has a reading-zoom
   level on top of the base font size (`SetZoom`/`GetZoom`/`ZoomIn`/`ZoomOut`,

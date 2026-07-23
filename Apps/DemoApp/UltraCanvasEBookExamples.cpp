@@ -1,8 +1,10 @@
 // Apps/DemoApp/UltraCanvasEBookExamples.cpp
-// eBook Reader demo: hosts UltraCanvasEBookViewer with a built-in sample
-// book, an Open... dialog for real EPUB/TXT/MOBI files, and zoom controls
-// (zoom in/out, fit width, fit height).
-// Version: 1.1.0
+// eBook Reader demo: hosts UltraCanvasEBookViewer, opening the bundled MOBI
+// sample (media/ebooks/Game-of-rat-and-dragon.mobi) by default, with an
+// Open... dialog for real EPUB/TXT/MOBI files and zoom controls (zoom
+// in/out, fit width, fit height). Falls back to an in-memory text sample
+// when the bundled book is not present at runtime.
+// Version: 1.2.0
 // Last Modified: 2026-07-23
 // Author: UltraCanvas Framework
 
@@ -10,9 +12,13 @@
 
 #include "UltraCanvasEBookViewer.h"
 #include "UltraCanvasFileLoader.h"
+#include "UltraCanvasConfig.h"   // GetResourcesDir
+#include "UltraCanvasUtils.h"    // NormalizePath
 #include "Documents/eBook/TXTEngine.h"   // RegisterBuiltinEBookEngines
 
+#include <filesystem>
 #include <string>
+#include <system_error>
 
 namespace UltraCanvas {
 
@@ -80,7 +86,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateEBookExa
     header->AddChild(openBtn);
 
     auto statusLabel = std::make_shared<UltraCanvasLabel>(
-        "EBookDemoStatus", "Sample book (generated in memory)");
+        "EBookDemoStatus", "Opening sample book\xE2\x80\xA6");
     statusLabel->layoutItem.SetFlexGrow(1.f);
     statusLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
     statusLabel->SetTextColor(Color(90, 90, 90, 255));
@@ -140,9 +146,19 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateEBookExa
         if (auto viewer = zoomReaderWeak.lock()) viewer->ZoomToHeight();
     });
 
-    std::string sample = kSampleBook;
-    reader->LoadDocumentFromMemory(
-        std::vector<uint8_t>(sample.begin(), sample.end()), "sample.txt");
+    // Default document: the bundled MOBI sample (a real Kindle KF8 book that
+    // exercises the MOBI engine, drop caps and the table of contents). If it
+    // is not present at runtime, fall back to the in-memory text sample.
+    const std::string defaultBook =
+        NormalizePath(GetResourcesDir() + "media/ebooks/Game-of-rat-and-dragon.mobi");
+    std::error_code ec;
+    if (std::filesystem::exists(defaultBook, ec)) {
+        reader->LoadDocument(defaultBook);
+    } else {
+        std::string sample = kSampleBook;
+        reader->LoadDocumentFromMemory(
+            std::vector<uint8_t>(sample.begin(), sample.end()), "sample.txt");
+    }
 
     container->AddChild(reader);
 
