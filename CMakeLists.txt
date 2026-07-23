@@ -153,6 +153,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasSankeyExamples.cpp
             Apps/DemoApp/UltraCanvasTreeMapExamples.cpp
             Apps/DemoApp/UltraCanvasVennDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasWordCloudExamples.cpp
             Apps/DemoApp/UltraCanvasDendrogramExamples.cpp
             Apps/DemoApp/UltraCanvasBlockDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasNodeDiagramExamples.cpp
