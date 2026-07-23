@@ -9,6 +9,8 @@
 
 #include "UltraCanvasEBookViewer.h"
 #include "UltraCanvasFileLoader.h"
+#include "UltraCanvasConfig.h"            // GetResourcesDir
+#include "UltraCanvasUtils.h"             // NormalizePath
 #include "Documents/eBook/TXTEngine.h"   // RegisterBuiltinEBookEngines
 
 namespace UltraCanvas {
@@ -100,21 +102,29 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateEBookExa
         statusLabel->SetText("Error: " + error);
     };
 
-    std::string sample = kSampleBook;
-    reader->LoadDocumentFromMemory(
-        std::vector<uint8_t>(sample.begin(), sample.end()), "sample.txt");
+    // Load a real book from the bundled eBooks folder on startup. Fall back to
+    // the in-memory sample if the file is missing so the demo still works.
+    const std::string eBooksDir =
+        NormalizePath(GetResourcesDir() + "media/eBooks/");
+    const std::string defaultBook = eBooksDir + "Game-of-rat-and-dragon.mobi";
+    if (!reader->LoadDocument(defaultBook)) {
+        std::string sample = kSampleBook;
+        reader->LoadDocumentFromMemory(
+            std::vector<uint8_t>(sample.begin(), sample.end()), "sample.txt");
+    }
 
     container->AddChild(reader);
 
     // ---- open dialog ----
     auto readerWeak = std::weak_ptr<UltraCanvasEBookViewer>(reader);
-    openBtn->SetOnClick([readerWeak]() {
+    openBtn->SetOnClick([readerWeak, eBooksDir]() {
         auto viewer = readerWeak.lock();
         if (!viewer) return;
 
         FileDialogOptions opts;
         opts.title = "Open eBook";
         opts.parentWindow = viewer->GetWindow();
+        opts.SetInitialDirectory(eBooksDir);
         opts.AddFilter("eBooks", GetRegisteredEBookExtensions());
         UltraCanvasFileLoader::OpenFileDialog(opts,
             [readerWeak](DialogResult result, const std::string& path) {

@@ -1591,8 +1591,8 @@ namespace UltraCanvas {
                 {DemoCategory::AudioElements, "Audio Elements"},
                 {DemoCategory::VideoElements, "Video Elements"},
                 {DemoCategory::TextDocuments, "Document support"},
-                {DemoCategory::Widgets, "Widgets"},
                 {DemoCategory::Tools, "Tools"},
+                {DemoCategory::Widgets, "Widgets"},
                 {DemoCategory::Modules, "ULTRA OS modules"},
                 {DemoCategory::Dependencies, "Dependencies & Third Party"}
         };
