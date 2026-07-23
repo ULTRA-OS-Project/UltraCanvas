@@ -1,28 +1,58 @@
-#### 2026-07-23 *0.3.16*
+#### 2026-07-22 *0.3.16*
+- **UltraCanvasFilerWidget**:
+  - Default display font reduced from 13 to 12 px (Windows standard 9pt @ 96dpi).
+  - The inline rename editor now uses the same font size as the on-screen name
+    for the current view (base size in the row views, the small size in the
+    thumbnail / treemap captions) instead of a fixed larger size.
+  - Double-clicking a file's **name** now starts an inline rename; double-clicking
+    its **icon** (or, in Details view, another column) still opens/activates the
+    entry.
 - eBook reader: the table-of-contents toolbar button now uses the
   `list-ordered` icon (drawn as a mask so it takes the button's text color)
   and highlights while the TOC pane is open (accent fill with a light icon),
   so its active state is visible. It reverts to the normal toolbar-button
   look when the pane is hidden.
 
-#### 2026-07-23 *0.3.15*
-- The DemoApp eBook page now opens the bundled MOBI sample
-  (`media/ebooks/Game-of-rat-and-dragon.mobi`) by default instead of the
-  in-memory text sample, so the reader shows a real Kindle KF8 book (with the
-  drop-cap and table-of-contents fixes) on first open. It still falls back to
-  the in-memory sample if the bundled book is missing at runtime.
+#### 2026-07-22 *0.3.15*
+- **UltraCanvasFilerWidget**: new **Display > Dataset** submenu with toggles for
+  extra per-file facts shown under the name in the thumbnail views — Size, Edit
+  date, Creation date, Attributes, Length (audio/video) and Dimensions
+  (bitmaps). Each enabled field adds a caption line (Length/Dimensions only
+  appear on the file kinds they apply to); tiles grow to fit and the grid stays
+  aligned. Also available programmatically via `SetDatasetField()` /
+  `SetDatasetFields()` with the new `FilerDatasetField` flags.
 
-#### 2026-07-23 *0.3.14*
-- eBook reader gains **zoom**. `UltraCanvasEBookViewer` now has a reading-zoom
-  level on top of the base font size (`SetZoom`/`GetZoom`/`ZoomIn`/`ZoomOut`,
-  `onZoomChanged`), plus two fit modes: `ZoomToWidth()` scales the text so a
-  comfortable line measure fills the pane width, and `ZoomToHeight()` scales
-  the current chapter to fit the pane height. Because chapters reflow, zoom is
-  a crisp text scale rather than a page bitmap scale. The DemoApp eBook page
-  exposes it with −/+ buttons, a live zoom-percent readout, and "Fit Width" /
-  "Fit Height" buttons.
+#### 2026-07-22 *0.3.14*
+- **UltraCanvasFilerWidget**: picking a format from the context menu's
+  "Compress" submenu now opens a modal compress dialog instead of creating the
+  archive immediately. The dialog shows:
+  - the archive's file-type icon on top,
+  - an editable file name (with the format's extension shown as a suffix),
+  - the destination folder as smaller, separate text.
 
-#### 2026-07-23 *0.3.13*
+  The icon can be **dragged onto any folder in the view** to retarget the
+  destination path — the folder under the icon highlights while dragging, and
+  dropping on it updates the "Location". Enter / the Compress button creates the
+  archive; Esc / Cancel dismisses. Because the icon must be droppable onto the
+  folders behind it, the dialog is an in-widget overlay rather than a separate
+  top-level modal window.
+
+#### 2026-07-22 *0.3.13*
+- **UltraCanvasFilerWidget**: the right-click context menu now closes on a
+  left click anywhere outside it. Previously the popup registered the whole
+  Filer widget as its `popupOwner`, and the window's dismissal logic treats a
+  click on the owner as "inside" the popup — so clicking in the file view left
+  the menu stuck open. The context menu no longer sets an owner, so any click
+  outside the menu bounds dismisses it.
+- **UltraCanvasFilerWidget**: the context menu's "Compress" entry is now a
+  submenu listing the available archive formats — ZIP, 7-Zip, TAR, TAR+gzip,
+  TAR+bzip2, TAR+xz and TAR+Zstd. `CompressSelection(extension)` takes the
+  target extension (default `zip`) which selects the format.
+- **VirtualFS (libarchive provider)**: `CreateArchive` now recognises compound
+  archive extensions (`.tar.gz`, `.tar.bz2`, `.tar.xz`, `.tar.zst`, `.tar.lz4`)
+  when picking the format and filter. It previously inspected only the final
+  token (e.g. `gz`), which selected the ZIP format and then layered a gzip
+  filter on top, producing a corrupt archive for those names.
 - Fix two MOBI/KF8 eBook rendering bugs (seen with the DemoApp eBook demo on
   `media/ebooks/Game-of-rat-and-dragon.mobi`):
   - **Drop caps.** Mobipocket/Project-Gutenberg books set the decorative

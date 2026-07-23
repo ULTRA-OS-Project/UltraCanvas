@@ -59,8 +59,10 @@ Copy / Cut / Paste / Delete / Duplicate / Rename
 ──────────
 New            >  Text, Doc, Spreadsheet, Bitmap, Vector, Audio, Video
 ──────────
-Display        >  Sort  >  Name / Size / Type / Modified / Created + Ascending / Descending
-                  Type  >  all view types
+Display        >  Sort    >  Name / Size / Type / Modified / Created + Ascending / Descending
+                  Type    >  all view types
+                  Dataset >  Size / Edit date / Creation date / Attributes /
+                             Length (audio/video) / Dimensions (bitmaps)
                   Icon-Menu (checkbox: the small hover icon menu)
                   Info-Bar (checkbox: the selection info bar)
 ──────────
@@ -82,10 +84,24 @@ Notes:
 - Items whose hook callback is not set (Print, Share, Attributes, Access,
   Settings, empty Open with) are shown disabled. "Copy path" has a built-in
   default (system clipboard via `SetClipboardText`).
-- **Compress** packs the selection (or the whole folder) into a unique `.zip`
-  alongside, **Extract** unpacks selected archives into sibling folders — both
-  via `UCVFSBridge` and available when the VirtualFS module is built
+- **Compress** is a submenu of archive formats (ZIP, 7-Zip, TAR, TAR+gzip,
+  TAR+bzip2, TAR+xz, TAR+Zstd). Picking one opens a modal compress dialog
+  showing the archive's file-type icon, an editable file name, and the
+  destination folder as smaller text. The icon can be dragged onto any folder in
+  the view to change the destination (the target folder highlights while
+  dragging); Enter / Compress creates it, Esc / Cancel dismisses. **Extract**
+  unpacks selected archives into sibling folders. Both go through `UCVFSBridge`
+  and are available when the VirtualFS module is built
   (`ULTRACANVAS_HAS_VIRTUALFS`); without it they report an error through `onError`.
+  `CompressSelection(extension)` still performs an immediate, dialog-free
+  compress for programmatic use.
+- **Display > Dataset** toggles extra per-file facts drawn under the name in the
+  thumbnail views: Size, Edit date, Creation date, Attributes, Length
+  (audio/video duration) and Dimensions (bitmap pixel size). Each enabled field
+  adds a caption line and the tiles grow to fit; Length and Dimensions only
+  appear on the file kinds they apply to (their values are probed lazily from
+  the file headers and cached). Drive it in code with
+  `SetDatasetField(FilerDatasetField::Size, true)` / `SetDatasetFields(mask)`.
 
 ## Selection info bar
 
@@ -135,7 +151,8 @@ filer->Paste();               // into the current folder (unique names)
 filer->DeleteSelection();     // gated by confirmDelete when set
 filer->DuplicateSelection();  // copy alongside with " (2)" style names
 filer->StartRename(index);    // inline rename editor (Enter commits, Esc cancels)
-filer->CompressSelection();
+filer->CompressSelection();          // .zip alongside (default)
+filer->CompressSelection("tar.gz");  // pick the format via extension
 filer->ExtractSelection();
 filer->CreateNewDocument({"Text", "txt", ""});
 ```
@@ -186,6 +203,9 @@ cut / paste, Ctrl+D duplicates, Ctrl+P prints (when `onPrint` is set), and the
 arrow keys move the selection (grid-aware in the thumbnail and list views). The
 same shortcuts are shown next to their commands in the right-click context menu.
 Click, Ctrl+click and Shift+click select single items, toggle, and ranges.
+Double-clicking a file's name starts an inline rename (using the same font size
+as the displayed name); double-clicking its icon opens/activates the entry. The
+rename editor commits on Enter and cancels on Esc.
 
 ## Directory scanning
 

@@ -675,24 +675,57 @@ VirtualFSResult VirtualFSLibArchiveProvider::CreateArchive(
         return VirtualFSResult::OutOfMemory;
     }
     
-    std::string ext = archivePath;
+    // Determine the archive format and compression filter from the file name.
+    // Compound extensions such as ".tar.gz" / ".tar.bz2" must be recognised in
+    // full: inspecting only the final token ("gz") would select the ZIP format
+    // and then bolt a gzip filter onto it, producing a corrupt archive. Match
+    // the longest known suffix first, then fall back to the single-token map.
+    std::string lowerPath = archivePath;
+    std::transform(lowerPath.begin(), lowerPath.end(), lowerPath.begin(), ::tolower);
+    auto hasSuffix = [&lowerPath](const std::string& suffix) {
+        return lowerPath.size() >= suffix.size() &&
+               lowerPath.compare(lowerPath.size() - suffix.size(),
+                                 suffix.size(), suffix) == 0;
+    };
+
+    std::string ext = lowerPath;
     size_t dotPos = ext.rfind('.');
     if (dotPos != std::string::npos) ext = ext.substr(dotPos + 1);
-    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-    
-    int format = GetLibArchiveFormat(ext);
+
+    enum class WriteFilter { None, Gzip, BZip2, XZ, Zstd, LZ4 };
+    int format;
+    WriteFilter filter;
+
+    if (hasSuffix(".tar.gz") || hasSuffix(".tgz")) {
+        format = ARCHIVE_FORMAT_TAR_PAX_RESTRICTED; filter = WriteFilter::Gzip;
+    } else if (hasSuffix(".tar.bz2") || hasSuffix(".tbz2") || hasSuffix(".tbz")) {
+        format = ARCHIVE_FORMAT_TAR_PAX_RESTRICTED; filter = WriteFilter::BZip2;
+    } else if (hasSuffix(".tar.xz") || hasSuffix(".txz")) {
+        format = ARCHIVE_FORMAT_TAR_PAX_RESTRICTED; filter = WriteFilter::XZ;
+    } else if (hasSuffix(".tar.zst") || hasSuffix(".tzst")) {
+        format = ARCHIVE_FORMAT_TAR_PAX_RESTRICTED; filter = WriteFilter::Zstd;
+    } else if (hasSuffix(".tar.lz4")) {
+        format = ARCHIVE_FORMAT_TAR_PAX_RESTRICTED; filter = WriteFilter::LZ4;
+    } else {
+        format = GetLibArchiveFormat(ext);
+        // Standalone compressed streams keep their zip-family/default format but
+        // still receive the matching filter.
+        if      (ext == "gz")                   filter = WriteFilter::Gzip;
+        else if (ext == "bz2")                  filter = WriteFilter::BZip2;
+        else if (ext == "xz")                   filter = WriteFilter::XZ;
+        else if (ext == "zst" || ext == "zstd") filter = WriteFilter::Zstd;
+        else if (ext == "lz4")                  filter = WriteFilter::LZ4;
+        else                                    filter = WriteFilter::None;
+    }
+
     archive_write_set_format(pImpl->writeArchive, format);
-    
-    if (ext == "gz" || ext == "tgz") {
-        archive_write_add_filter_gzip(pImpl->writeArchive);
-    } else if (ext == "bz2" || ext == "tbz2") {
-        archive_write_add_filter_bzip2(pImpl->writeArchive);
-    } else if (ext == "xz" || ext == "txz") {
-        archive_write_add_filter_xz(pImpl->writeArchive);
-    } else if (ext == "zst" || ext == "zstd") {
-        archive_write_add_filter_zstd(pImpl->writeArchive);
-    } else if (ext == "lz4") {
-        archive_write_add_filter_lz4(pImpl->writeArchive);
+    switch (filter) {
+        case WriteFilter::Gzip:  archive_write_add_filter_gzip(pImpl->writeArchive);  break;
+        case WriteFilter::BZip2: archive_write_add_filter_bzip2(pImpl->writeArchive); break;
+        case WriteFilter::XZ:    archive_write_add_filter_xz(pImpl->writeArchive);    break;
+        case WriteFilter::Zstd:  archive_write_add_filter_zstd(pImpl->writeArchive);  break;
+        case WriteFilter::LZ4:   archive_write_add_filter_lz4(pImpl->writeArchive);   break;
+        case WriteFilter::None:  break;
     }
     
     if (!options.password.empty() && ext == "zip") {
