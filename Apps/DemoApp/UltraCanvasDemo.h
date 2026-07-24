@@ -283,6 +283,8 @@ namespace UltraCanvas {
         // Media Elements
         std::shared_ptr<UltraCanvasUIElement> CreateAudioExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateWaveformExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateSpectrogramExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateLevelMeterExamples();
 
         // Data Visualization
         std::shared_ptr<UltraCanvasUIElement> CreateDiagramExamples();
