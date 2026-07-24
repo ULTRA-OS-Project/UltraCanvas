@@ -57,6 +57,8 @@ void RemoveNode(const std::string& id);
 
 `AddNode` registers a node (auto-created on first `AddLink` too); `label` overrides the displayed text and `tgtColor` overrides the theme color.
 
+Node labels are positioned by the shared label placement solver (see `UltraCanvasLabelPlacement.md`): source nodes label to the left of their bar, terminal nodes to the right, intermediates follow the alignment — and labels that would collide with each other or with neighbouring bars are moved apart automatically.
+
 ### Link Management
 
 ```cpp

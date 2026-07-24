@@ -166,6 +166,7 @@ namespace UltraCanvas {
 
         // ===== DRAWING METHODS =====
         void DrawNode(IRenderContext* ctx, const SankeyNode& node);
+        void DrawNodeLabels(IRenderContext* ctx);
         void DrawLink(IRenderContext* ctx, const SankeyLink& link);
         void DrawCurvedLink(IRenderContext* ctx, float x0, float y0,
                             float x1, float y1, float sourceWidth, float targetWidth,

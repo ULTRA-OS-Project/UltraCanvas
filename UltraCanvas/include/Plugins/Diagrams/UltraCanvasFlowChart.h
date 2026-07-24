@@ -351,15 +351,23 @@ private:
     // Angle of the final segment (waypoints[n-2] -> waypoints[n-1]).
     double ComputeIncomingAngle(const std::vector<Point2Dd>& waypoints,
                                FlowChartConnectionStyle style, CardinalSide targetSide) const;
-    // Anchor for the connection label: midpoint of the longest segment in
-    // the path. Avoids placing the label on a corner.
-    Point2Dd ComputeOrthogonalLabelAnchor(const std::vector<Point2Dd>& waypoints) const;
+    // Carrier segment for the connection label: the longest segment in the
+    // path. Avoids placing the label on a corner.
+    void ComputeLabelSegment(const std::vector<Point2Dd>& waypoints,
+                             Point2Dd& segStart, Point2Dd& segEnd) const;
     void RenderCurvedLine(IRenderContext* ctx, const Point2Dd& start, const Point2Dd& end);
     void RenderArrowHead(IRenderContext* ctx, const Point2Dd& tip, double angle, const Color& color, double size);
     void RenderDiamondArrow(IRenderContext* ctx, const Point2Dd& tip, double angle, const Color& color, double size);
-    // Renders the connection label centered on `anchor`. For orthogonal lines
-    // `anchor` is the midpoint of the longest segment; for straight/curved
-    // lines it is the geometric midpoint.
+    // Connection labels are collected during RenderConnection and drawn in a
+    // single batch (RenderConnectionLabels) so the shared label placement
+    // solver can resolve collisions between labels and with nodes.
+    struct PendingConnectionLabel {
+        const FlowChartConnection* conn;
+        Point2Dd segStart, segEnd;
+    };
+    std::vector<PendingConnectionLabel> pendingConnectionLabels;
+    void RenderConnectionLabels(IRenderContext* ctx);
+    // Renders one connection label centered on `anchor`.
     void RenderConnectionLabel(IRenderContext* ctx, const FlowChartConnection& conn, const Point2Dd& anchor);
     void RenderArrow(IRenderContext* ctx, double x1, double y1, double x2, double y2, const Color& color);
     

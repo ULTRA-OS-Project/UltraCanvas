@@ -82,6 +82,10 @@ void AddConnection(const std::string& id, const std::string& sourceId,
                    FlowChartConnectionStyle style,
                    FlowChartArrowStyle arrowStyle = FlowChartArrowStyle::Arrow);
 void RemoveConnection(const std::string& id);
+// Connection labels are positioned by the shared label placement solver
+// (see UltraCanvasLabelPlacement.md): each label prefers the classic pill
+// centred on the longest segment of its path, and slides along or off the
+// line when it would collide with other connection labels or with nodes.
 void SetConnectionLabel(const std::string& id, const std::string& label);
 void SetConnectionStyle(const std::string& id, FlowChartConnectionStyle style);
 void SetConnectionLineStyle(const std::string& id, FlowChartLineStyle style);

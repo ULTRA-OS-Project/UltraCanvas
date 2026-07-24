@@ -1,9 +1,10 @@
 // Plugins/Diagrams/UltraCanvasSankey.cpp
 // Interactive Sankey diagram plugin for data flow visualization
-// Version: 1.3.0
-// Last Modified: 2025-10-16
+// Version: 1.4.0 (Node labels placed by the shared label placement solver)
+// Last Modified: 2026-07-24
 // Author: UltraCanvas Framework
 #include "Plugins/Diagrams/UltraCanvasSankey.h"
+#include "Plugins/Charts/UltraCanvasLabelPlacement.h"
 #include "UltraCanvasTooltipManager.h"
 
 namespace UltraCanvas {
@@ -259,6 +260,10 @@ namespace UltraCanvas {
         for (const auto &[id, node]: nodes) {
             DrawNode(ctx, node);
         }
+
+        // Draw all node labels in one pass so the shared solver can keep
+        // them from overlapping each other and neighbouring bars.
+        DrawNodeLabels(ctx);
     }
 
     bool UltraCanvasSankeyDiagram::OnEvent(const UCEvent &event) {
@@ -737,44 +742,58 @@ namespace UltraCanvas {
             ctx->SetStrokeWidth(style.nodeStrokeWidth);
             ctx->DrawRectangle(Rect2Dd(node.x, node.y, nodeWidth, node.height));
         }
+    }
 
-        // Draw label
+    void UltraCanvasSankeyDiagram::DrawNodeLabels(IRenderContext* ctx) {
+        if (nodes.empty()) return;
+
         ctx->SetTextPaint(style.textColor);
         ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
         ctx->SetFontSize(style.fontSize);
 
-        Size2Di textSize = ctx->GetTextLineDimensions(node.label);
-        float labelY = node.y + node.height / 2.0f - static_cast<float>(textSize.height)/2;
+        std::vector<LabelShape> shapes;
+        std::vector<ShapeLabel> labels;
+        shapes.reserve(nodes.size());
+        labels.reserve(nodes.size());
 
-        // Position label based on node depth
-        if (node.depth == 0) {
-            // Left-aligned labels for source nodes
-            float labelX = node.x - 8;
-            ctx->DrawText(node.label, {labelX - textSize.width, labelY});
-        } else {
-            // Check if this is a terminal node (no outgoing links)
+        for (const auto& [id, node] : nodes) {
+            LabelShape s;
+            s.type = LabelShapeType::Rectangle;
+            s.center = Point2Dd(node.x + nodeWidth * 0.5, node.y + node.height * 0.5);
+            s.size = Size2Dd(nodeWidth, node.height);
+            shapes.push_back(s);
+
+            // Same side rules as before: source nodes label left of the bar,
+            // terminal nodes right, intermediates follow the alignment.
             bool isTerminal = true;
             for (const auto& link : links) {
-                if (link.source == node.id) {
-                    isTerminal = false;
-                    break;
-                }
+                if (link.source == node.id) { isTerminal = false; break; }
+            }
+            LabelSide side;
+            if (node.depth == 0) {
+                side = LabelSide::Left;
+            } else if (isTerminal) {
+                side = LabelSide::Right;
+            } else {
+                side = (alignment == SankeyAlignment::Left) ? LabelSide::Left : LabelSide::Right;
             }
 
-            if (isTerminal) {
-                // Right-aligned labels for terminal nodes
-                double labelX = node.x + nodeWidth + 8;
-                ctx->DrawText(node.label, {labelX, labelY});
-            } else {
-                // For intermediate nodes, position based on alignment preference
-                if (alignment == SankeyAlignment::Left) {
-                    double labelX = node.x - 8;
-                    ctx->DrawText(node.label, {labelX - textSize.width, labelY});
-                } else {
-                    double labelX = node.x + nodeWidth + 8;
-                    ctx->DrawText(node.label, {labelX, labelY});
-                }
-            }
+            ShapeLabel l;
+            l.text = node.label;
+            l.shapeIndex = shapes.size() - 1;
+            l.preferredSide = side;
+            l.textSize = Size2Dd(ctx->GetTextLineDimensions(node.label));
+            labels.push_back(l);
+        }
+
+        LabelPlacementOptions opts;
+        opts.bounds = Rect2Dd(GetLocalBounds());
+        opts.shapeMargin = 8.0;   // Keeps the previous 8px bar-to-label gap
+        opts.labelMargin = 4.0;
+
+        std::vector<PlacedShapeLabel> placed = PlaceShapeLabels(shapes, labels, opts);
+        for (size_t i = 0; i < placed.size(); ++i) {
+            ctx->DrawText(labels[i].text, placed[i].bounds.TopLeft());
         }
     }
 

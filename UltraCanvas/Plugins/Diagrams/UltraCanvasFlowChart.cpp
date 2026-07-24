@@ -1,9 +1,14 @@
 // Plugins/Diagrams/UltraCanvasFlowChart.cpp
 // Interactive Flow Chart diagram component implementation
-// Version: 2.2.1
-// Last Modified: 2026-05-09
+// Version: 2.3.0
+// Last Modified: 2026-07-24
 //
 // Changelog:
+//   2.3.0 - Connection labels are collected per frame and placed in one
+//           batch by the shared label placement solver (Segment anchors):
+//           labels keep the centred-on-the-line pill when free, and slide
+//           along or off their carrier segment when they would collide with
+//           other labels or nodes.
 //   2.2.0 - Obstacle-aware orthogonal routing via A*:
 //           ComputeOrthogonalPath() is the new entry point for orthogonal
 //           routing. It first tries the cheap cardinal L/Z path; if that
@@ -30,6 +35,7 @@
 //   2.0.0 - Initial release.
 
 #include "Plugins/Diagrams/UltraCanvasFlowChart.h"
+#include "Plugins/Charts/UltraCanvasLabelPlacement.h"
 #include <cmath>
 #include <sstream>
 #include <algorithm>
@@ -698,9 +704,11 @@ void UltraCanvasFlowChart::RenderGrid(IRenderContext* ctx) {
 }
 
 void UltraCanvasFlowChart::RenderConnections(IRenderContext* ctx) {
+    pendingConnectionLabels.clear();
     for (const auto& conn : connections) {
         RenderConnection(ctx, conn);
     }
+    RenderConnectionLabels(ctx);
 }
 
 void UltraCanvasFlowChart::RenderConnectionPreview(IRenderContext* ctx) {
@@ -1087,13 +1095,13 @@ void UltraCanvasFlowChart::RenderConnection(IRenderContext* ctx, const FlowChart
     }
     
     if (!conn.label.empty()) {
-        Point2Dd anchor;
+        // Collect the label with its carrier segment; RenderConnectionLabels
+        // draws all of them in one batch after every connection is rendered.
+        Point2Dd segStart = start, segEnd = end;
         if (conn.style == FlowChartConnectionStyle::Orthogonal && !orthogonalPath.empty()) {
-            anchor = ComputeOrthogonalLabelAnchor(orthogonalPath);
-        } else {
-            anchor = Point2Dd((start.x + end.x) * 0.5f, (start.y + end.y) * 0.5f);
+            ComputeLabelSegment(orthogonalPath, segStart, segEnd);
         }
-        RenderConnectionLabel(ctx, conn, anchor);
+        pendingConnectionLabels.push_back({&conn, segStart, segEnd});
     }
 }
 
@@ -1563,6 +1571,56 @@ void UltraCanvasFlowChart::RenderDiamondArrow(IRenderContext* ctx, const Point2D
     ctx->FillLinePath(points);
 }
 
+void UltraCanvasFlowChart::RenderConnectionLabels(IRenderContext* ctx) {
+    if (pendingConnectionLabels.empty()) return;
+
+    ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
+    ctx->SetFontSize(10.0f);
+
+    std::vector<LabelShape> shapes;
+    std::vector<ShapeLabel> labels;
+    shapes.reserve(nodes.size() + pendingConnectionLabels.size());
+    labels.reserve(pendingConnectionLabels.size());
+
+    // Nodes participate as obstacle-only shapes: connection labels dodge
+    // them, while the node text itself stays where RenderNodeText puts it.
+    for (const auto& pair : nodes) {
+        const FlowChartNode& node = pair.second;
+        LabelShape s;
+        s.type = LabelShapeType::Rectangle;
+        s.center = Point2Dd(node.x + node.width * 0.5, node.y + node.height * 0.5);
+        s.size = Size2Dd(node.width, node.height);
+        shapes.push_back(s);
+    }
+
+    for (const auto& pending : pendingConnectionLabels) {
+        LabelShape s;
+        s.type = LabelShapeType::Segment;
+        s.p1 = pending.segStart;
+        s.p2 = pending.segEnd;
+        s.center = Point2Dd((s.p1.x + s.p2.x) * 0.5, (s.p1.y + s.p2.y) * 0.5);
+        s.thickness = pending.conn->lineWidth;
+        shapes.push_back(s);
+
+        ShapeLabel l;
+        l.text = pending.conn->label;
+        l.shapeIndex = shapes.size() - 1;
+        l.textSize = Size2Dd(ctx->GetTextLineDimensions(l.text));
+        labels.push_back(l);
+    }
+
+    // No bounds: chart coordinates are in world space (pan/zoom applies).
+    LabelPlacementOptions opts;
+    opts.shapeMargin = 4.0;
+    opts.labelMargin = 4.0;
+
+    std::vector<PlacedShapeLabel> placed = PlaceShapeLabels(shapes, labels, opts);
+    for (size_t i = 0; i < placed.size(); ++i) {
+        RenderConnectionLabel(ctx, *pendingConnectionLabels[i].conn,
+                              placed[i].bounds.Center());
+    }
+}
+
 void UltraCanvasFlowChart::RenderConnectionLabel(IRenderContext* ctx, const FlowChartConnection& conn,
                                                  const Point2Dd& anchor) {
     ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
@@ -1775,22 +1833,15 @@ Point2Dd UltraCanvasFlowChart::GetConnectionPoint(const FlowChartNode& node,
 }
 
 // Mirrors RenderOrthogonalLine: for a 3-segment path the label belongs on
-// the *middle* (vertical) segment, not at (start+end)/2 which sits in empty
-// space when start.y != end.y. For a degenerate single-segment path falls
-// back to the geometric midpoint.
-// Anchor for the orthogonal label: midpoint of the longest segment in the
-// path. Avoids placing the label exactly on a corner. Works for any number
-// of waypoints (L, Z, or A* paths).
-Point2Dd UltraCanvasFlowChart::ComputeOrthogonalLabelAnchor(
-        const std::vector<Point2Dd>& waypoints) const {
-    if (waypoints.size() < 2) return Point2Dd(0, 0);
-    if (waypoints.size() == 2) {
-        return Point2Dd((waypoints[0].x + waypoints[1].x) * 0.5f,
-                        (waypoints[0].y + waypoints[1].y) * 0.5f);
-    }
-    // Find the longest segment.
-    size_t bestIdx = 0;
-    double bestLen = 0.0f;
+// the *middle* (vertical) segment, not on the start->end chord which sits in
+// empty space when start.y != end.y. The label carrier is the longest
+// segment in the path, avoiding corners. Works for any number of waypoints
+// (L, Z, or A* paths).
+void UltraCanvasFlowChart::ComputeLabelSegment(const std::vector<Point2Dd>& waypoints,
+                                               Point2Dd& segStart, Point2Dd& segEnd) const {
+    if (waypoints.size() < 2) return;
+    size_t bestIdx = 1;
+    double bestLen = -1.0f;
     for (size_t i = 1; i < waypoints.size(); ++i) {
         double dx = waypoints[i].x - waypoints[i-1].x;
         double dy = waypoints[i].y - waypoints[i-1].y;
@@ -1800,8 +1851,8 @@ Point2Dd UltraCanvasFlowChart::ComputeOrthogonalLabelAnchor(
             bestIdx = i;
         }
     }
-    return Point2Dd((waypoints[bestIdx-1].x + waypoints[bestIdx].x) * 0.5f,
-                    (waypoints[bestIdx-1].y + waypoints[bestIdx].y) * 0.5f);
+    segStart = waypoints[bestIdx - 1];
+    segEnd = waypoints[bestIdx];
 }
 
 // Angle of the final segment of the path. For orthogonal/curved we still
