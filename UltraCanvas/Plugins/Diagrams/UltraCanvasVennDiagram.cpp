@@ -1,7 +1,7 @@
 // Plugins/Diagrams/UltraCanvasVennDiagram.cpp
 // Interactive Venn diagram element implementation
-// Version: 2.1.0 (Rectangular sets, nested layout, centred labels)
-// Last Modified: 2026-07-13
+// Version: 2.2.0 (Labels placed by the shared label placement solver)
+// Last Modified: 2026-07-24
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasVennDiagram.h"
@@ -145,6 +145,13 @@ void UltraCanvasVennDiagramElement::SetCornerRadius(double radius) {
 void UltraCanvasVennDiagramElement::SetShowLabels(bool show) {
     showLabels = show;
     RequestRedraw();
+}
+
+void UltraCanvasVennDiagramElement::SetCircleLabelSide(size_t index, LabelSide side) {
+    if (index < circles.size()) {
+        circles[index].labelSide = side;
+        RequestRedraw();
+    }
 }
 
 void UltraCanvasVennDiagramElement::SetShowItemCounts(bool show) {
@@ -512,47 +519,53 @@ void UltraCanvasVennDiagramElement::RenderCircles(IRenderContext* ctx) {
 }
 
 void UltraCanvasVennDiagramElement::RenderLabels(IRenderContext* ctx) {
+    if (circles.empty()) return;
+
     ctx->SetFontFace(fontFamily, FontWeight::Bold, FontSlant::Normal);
     ctx->SetFontSize(fontSize);
     ctx->SetTextPaint(Colors::Black);
 
-    double diagramMidY = GetHeight() * 0.5;
+    bool rectangular = (shape == VennShape::RoundedRectangle);
+    bool nested = (layout == VennLayout::Nested);
+
+    // Hand the whole problem to the shared solver: overlapping layouts keep
+    // set labels outside their shape, the nested (containment) layout keeps
+    // them inside the reserved band at the top of each box.
+    std::vector<LabelShape> labelShapes;
+    std::vector<ShapeLabel> shapeLabels;
+    labelShapes.reserve(circles.size());
+    shapeLabels.reserve(circles.size());
 
     for (size_t i = 0; i < circles.size(); ++i) {
         const VennCircle& circle = circles[i];
 
-        std::string labelText = circle.label;
+        LabelShape s;
+        s.type = rectangular ? LabelShapeType::Rectangle : LabelShapeType::Circle;
+        s.center = circle.center;
+        s.radius = circle.radius;
+        s.size = Size2Dd(circle.RectWidth(), circle.RectHeight());
+        s.keepLabelInside = nested;
+        labelShapes.push_back(s);
+
+        ShapeLabel l;
+        l.text = circle.label;
         if (showItemCounts) {
-            labelText += " (" + std::to_string(circle.items.size()) + ")";
+            l.text += " (" + std::to_string(circle.items.size()) + ")";
         }
+        l.shapeIndex = i;
+        l.preferredSide = circle.labelSide;
+        l.textSize = Size2Dd(ctx->GetTextLineDimensions(l.text));
+        shapeLabels.push_back(l);
+    }
 
-        if (layout == VennLayout::Nested) {
-            // Label anchored to the top-left inside the box, like the LaTeX
-            // set-hierarchy diagram. No centering / no offset collisions.
-            Rect2Dd r = circle.GetRect();
-            ctx->DrawText(labelText, Point2Dd(r.x + 12.0, r.y + fontSize + 4.0));
-            continue;
-        }
+    LabelPlacementOptions opts;
+    opts.bounds = Rect2Dd(0.0, 0.0, GetWidth(), GetHeight());
+    opts.shapeMargin = 6.0;
+    opts.labelMargin = 8.0;
 
-        // Centre the label horizontally on the shape and push it clear of the
-        // shape: shapes in the lower half get their label below, shapes in the
-        // upper half get it above. This keeps labels from piling up in the
-        // busy overlap region at the centre of the diagram.
-        int textWidth = ctx->GetTextLineWidth(labelText);
-        double labelX = circle.center.x - textWidth * 0.5;
-
-        double halfExtent = (shape == VennShape::RoundedRectangle)
-                                ? circle.RectHeight() * 0.5
-                                : circle.radius;
-
-        double labelY;
-        if (circle.center.y > diagramMidY) {
-            labelY = circle.center.y + halfExtent + fontSize + 4.0;   // below
-        } else {
-            labelY = circle.center.y - halfExtent - 8.0;              // above
-        }
-
-        ctx->DrawText(labelText, Point2Dd(labelX, labelY));
+    std::vector<PlacedShapeLabel> placed = PlaceShapeLabels(labelShapes, shapeLabels, opts);
+    for (size_t i = 0; i < placed.size(); ++i) {
+        ctx->DrawText(shapeLabels[i].text, placed[i].bounds.TopLeft());
     }
 }
 
@@ -568,8 +581,9 @@ void UltraCanvasVennDiagramElement::RenderRegionLabels(IRenderContext* ctx) {
         ctx->SetTextPaint(region.textColor);
 
         std::string regionText = std::to_string(region.items.size());
-        int tw = ctx->GetTextLineWidth(regionText);
-        ctx->DrawText(regionText, Point2Dd(region.labelPosition.x - tw * 0.5, region.labelPosition.y));
+        Size2Di ts = ctx->GetTextLineDimensions(regionText);
+        ctx->DrawText(regionText, Point2Dd(region.labelPosition.x - ts.width * 0.5,
+                                           region.labelPosition.y - ts.height * 0.5));
     }
 }
 

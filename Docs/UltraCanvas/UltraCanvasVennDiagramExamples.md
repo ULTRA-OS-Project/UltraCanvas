@@ -8,7 +8,7 @@
 
 `UltraCanvasVennDiagramElement` renders interactive Venn / Euler diagrams with two to five sets. Each set owns a collection of items, and items can additionally be assigned to specific intersections of sets. The element handles automatic layout for the common 2/3/4/5-set arrangements plus a **nested containment layout** (the LaTeX set-hierarchy style), draws sets either as **circles or rounded rectangles**, supports multiple visual styles (classic outlines, modern, minimal, filled), and exposes hover/click callbacks for both individual sets and computed regions.
 
-Set labels are centred on their shape and automatically placed above shapes in the upper half of the diagram and below shapes in the lower half, so labels never pile up in the busy overlap region at the centre.
+Set labels are positioned by the shared label placement solver (`PlaceShapeLabels` in `include/Plugins/Charts/UltraCanvasLabelPlacement.h`). In the overlapping layouts every label is kept fully **outside** its shape on the least crowded side; in the nested containment layout labels are kept **inside** the reserved band at the top of each box. The solver guarantees labels never overlap each other (they sit next to each other separated by a margin), never cover their own shape (outside mode), avoid covering other shapes where possible, and stay within the element bounds. A preferred side per set (`Top`, `Bottom`, `Left`, `Right`, `Inside`) can be requested with `SetCircleLabelSide`.
 
 **Namespace:** `UltraCanvas`
 **Header:** `include/Plugins/Diagrams/UltraCanvasVennDiagram.h`
@@ -95,6 +95,11 @@ VennShape GetShape() const;
 void SetCornerRadius(double radius); // Corner radius used in RoundedRectangle mode
 
 void SetShowLabels(bool show);
+// Preferred placement of one set's label: LabelSide::Auto (default) lets the
+// shared solver pick the least crowded side; Top/Bottom/Left/Right request a
+// specific outside position; LabelSide::Inside places the label inside the
+// shape.
+void SetCircleLabelSide(size_t index, LabelSide side);
 void SetShowItemCounts(bool show);
 void SetShowRegionLabels(bool show);
 void SetFontSize(double size);
