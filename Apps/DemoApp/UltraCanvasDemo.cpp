@@ -1084,6 +1084,17 @@ namespace UltraCanvas {
                 .AddVariant("spectrogram", "Magnitude & Dynamic Range")
                 .AddVariant("spectrogram", "Frequency Cap & Colour Maps");
 
+        chartBuilder.AddItem("audioanalysis", "Audio Analysis Charts",
+                             "Spectrum plot, amplitude envelope and correlogram built with "
+                             "the generic area / bar chart elements",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateAudioAnalysisExamples(); },
+                             "DemoApp/UltraCanvasAudioAnalysisExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasAudioAnalysisExamples.md")
+                .AddVariant("audioanalysis", "Spectrum Plot (Averaged FFT)")
+                .AddVariant("audioanalysis", "Amplitude Envelope (RMS)")
+                .AddVariant("audioanalysis", "Correlogram (Autocorrelation)");
+
         chartBuilder.AddItem("dumbbell", "Dumbbell chart", "Dumbbell chart",
                              ImplementationStatus::PartiallyImplemented,
                              [this]() { return CreatePartiallyImplementedExamples("Dumbbell Chart is not ready yet"); });
