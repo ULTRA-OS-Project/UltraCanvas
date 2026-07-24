@@ -1,12 +1,13 @@
 // include/Plugins/Diagrams/UltraCanvasVennDiagram.h
 // Interactive Venn/Euler diagram element with circular or rectangular sets,
 // overlapping and nested (containment) layouts, and intersection calculations
-// Version: 2.0.0
-// Last Modified: 2026-07-13
+// Version: 2.1.0
+// Last Modified: 2026-07-24
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "Plugins/Charts/UltraCanvasChartElementBase.h"
+#include "Plugins/Charts/UltraCanvasLabelPlacement.h"
 #include <vector>
 #include <string>
 #include <memory>
@@ -33,6 +34,9 @@ struct VennCircle {
     Color borderColor;
     float borderWidth = 2.0f;
     float alpha = 0.6f;
+    // Preferred placement of this set's label; Auto lets the shared label
+    // placement solver pick the least crowded side.
+    LabelSide labelSide = LabelSide::Auto;
     std::unordered_set<std::string> items;
 
     VennCircle(const std::string& circleLabel, float x, float y, float r, const Color& color)
@@ -231,6 +235,7 @@ public:
     void SetCornerRadius(double radius);
 
     void SetShowLabels(bool show);
+    void SetCircleLabelSide(size_t index, LabelSide side);
     void SetShowItemCounts(bool show);
     void SetShowRegionLabels(bool show);
     void SetFontSize(double size);

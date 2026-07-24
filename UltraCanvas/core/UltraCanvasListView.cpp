@@ -1,6 +1,6 @@
 // core/UltraCanvasListView.cpp
 // Model-View-Delegate ListView widget implementation
-// Last Modified: 2026-07-20
+// Last Modified: 2026-07-22
 #include "UltraCanvasListView.h"
 #include "UltraCanvasApplication.h"
 #include <algorithm>
@@ -42,6 +42,7 @@ namespace UltraCanvas {
         hoveredRow = -1;
         focusedRow = -1;
         if (selection) selection->Clear();
+        InvalidateRowGeometry();
         UpdateScrollbar();
         RequestRedraw();
     }
@@ -52,6 +53,8 @@ namespace UltraCanvas {
 
     void UltraCanvasListView::SetDelegate(std::shared_ptr<IItemDelegate> newDelegate) {
         delegate = newDelegate ? newDelegate : std::make_shared<UltraCanvasDefaultListDelegate>();
+        InvalidateRowGeometry();
+        UpdateScrollbar();
         RequestRedraw();
     }
 
@@ -81,6 +84,7 @@ namespace UltraCanvas {
         if (verticalScrollbar) {
             verticalScrollbar->SetStyle(viewStyle.scrollbarStyle);
         }
+        InvalidateRowGeometry();
         UpdateScrollbar();
         RequestRedraw();
     }
@@ -91,12 +95,31 @@ namespace UltraCanvas {
 
     void UltraCanvasListView::SetRowHeight(int height) {
         viewStyle.rowHeight = height;
+        InvalidateRowGeometry();
         UpdateScrollbar();
         RequestRedraw();
     }
 
     int UltraCanvasListView::GetRowHeight() const {
         return viewStyle.rowHeight;
+    }
+
+    void UltraCanvasListView::SetVariableRowHeights(bool enabled) {
+        if (useVariableRowHeights == enabled) return;
+        useVariableRowHeights = enabled;
+        InvalidateRowGeometry();
+        UpdateScrollbar();
+        RequestRedraw();
+    }
+
+    bool UltraCanvasListView::GetVariableRowHeights() const {
+        return useVariableRowHeights;
+    }
+
+    void UltraCanvasListView::InvalidateRowHeights() {
+        InvalidateRowGeometry();
+        UpdateScrollbar();
+        RequestRedraw();
     }
 
     void UltraCanvasListView::SetShowHeader(bool show) {
@@ -113,7 +136,7 @@ namespace UltraCanvas {
 
     void UltraCanvasListView::ScrollToRow(int row) {
         if (!model || row < 0 || row >= model->GetRowCount()) return;
-        scrollOffsetY = row * viewStyle.rowHeight;
+        scrollOffsetY = RowTopOffset(row);
         ClampScrollOffset();
         RequestRedraw();
     }
@@ -122,8 +145,8 @@ namespace UltraCanvas {
         if (!model || row < 0 || row >= model->GetRowCount()) return;
 
         auto viewport = GetViewportRect();
-        int rowTop = row * viewStyle.rowHeight;
-        int rowBottom = rowTop + viewStyle.rowHeight;
+        int rowTop = RowTopOffset(row);
+        int rowBottom = rowTop + RowHeightForRow(row);
 
         if (rowTop < scrollOffsetY) {
             scrollOffsetY = rowTop;
@@ -157,7 +180,7 @@ namespace UltraCanvas {
         }
 
         int headerOff = GetHeaderOffset();
-        int rowsContentHeight = model->GetRowCount() * viewStyle.rowHeight;
+        int rowsContentHeight = RowsContentHeight();
         int crHeight = GetHeight() - GetTotalBorderVertical() - GetTotalPaddingVertical();
         int rowsViewportHeight = crHeight - headerOff;
 
@@ -196,7 +219,84 @@ namespace UltraCanvas {
 
     int UltraCanvasListView::GetTotalContentHeight() const {
         if (!model) return 0;
-        return model->GetRowCount() * viewStyle.rowHeight + GetHeaderOffset();
+        return RowsContentHeight() + GetHeaderOffset();
+    }
+
+    // ===== PER-ROW GEOMETRY =====
+
+    void UltraCanvasListView::InvalidateRowGeometry() {
+        rowGeometryValid = false;
+    }
+
+    void UltraCanvasListView::RebuildRowGeometryIfNeeded() const {
+        if (rowGeometryValid) return;
+        rowGeometryValid = true;
+        rowTops.clear();
+        // The prefix-sum table is only needed for variable rows; uniform rows
+        // derive every offset arithmetically, so skip the allocation entirely.
+        if (!(useVariableRowHeights && delegate)) return;
+
+        int n = model ? model->GetRowCount() : 0;
+        rowTops.resize(static_cast<size_t>(n) + 1);
+        int y = 0;
+        for (int i = 0; i < n; ++i) {
+            rowTops[i] = y;
+            int h = delegate->GetRowHeight(model.get(), i);
+            if (h < 1) h = 1;
+            y += h;
+        }
+        rowTops[n] = y;
+    }
+
+    int UltraCanvasListView::RowHeightForRow(int row) const {
+        if (useVariableRowHeights && delegate) {
+            RebuildRowGeometryIfNeeded();
+            int n = model ? model->GetRowCount() : 0;
+            if (row < 0 || row >= n) return viewStyle.rowHeight;
+            return rowTops[row + 1] - rowTops[row];
+        }
+        return viewStyle.rowHeight;
+    }
+
+    int UltraCanvasListView::RowTopOffset(int row) const {
+        if (useVariableRowHeights && delegate) {
+            RebuildRowGeometryIfNeeded();
+            int n = model ? model->GetRowCount() : 0;
+            if (row < 0) return 0;
+            if (row > n) row = n;
+            return rowTops[row];
+        }
+        if (row < 0) return 0;
+        return row * viewStyle.rowHeight;
+    }
+
+    int UltraCanvasListView::RowsContentHeight() const {
+        if (!model) return 0;
+        if (useVariableRowHeights && delegate) {
+            RebuildRowGeometryIfNeeded();
+            return rowTops.empty() ? 0 : rowTops[model->GetRowCount()];
+        }
+        return model->GetRowCount() * viewStyle.rowHeight;
+    }
+
+    int UltraCanvasListView::ClampRowIndexAtContentY(int contentY) const {
+        int n = model ? model->GetRowCount() : 0;
+        if (n <= 0) return 0;
+        if (contentY < 0) contentY = 0;
+        if (useVariableRowHeights && delegate) {
+            RebuildRowGeometryIfNeeded();
+            // Largest row index with rowTops[row] <= contentY (search the row
+            // tops only, excluding the trailing content-height sentinel).
+            auto begin = rowTops.begin();
+            auto it = std::upper_bound(begin, begin + n, contentY);
+            int row = static_cast<int>(it - begin) - 1;
+            if (row < 0) row = 0;
+            if (row >= n) row = n - 1;
+            return row;
+        }
+        int row = contentY / std::max(1, viewStyle.rowHeight);
+        if (row >= n) row = n - 1;
+        return row;
     }
 
     int UltraCanvasListView::GetHeaderOffset() const {
@@ -242,15 +342,16 @@ namespace UltraCanvas {
         if (!model) return -1;
         auto viewport = GetViewportRect();
         int relativeY = y - viewport.y + scrollOffsetY;
-        int row = relativeY / viewStyle.rowHeight;
+        if (relativeY < 0 || relativeY >= RowsContentHeight()) return -1;
+        int row = ClampRowIndexAtContentY(relativeY);
         if (row < 0 || row >= model->GetRowCount()) return -1;
         return row;
     }
 
     Rect2Di UltraCanvasListView::GetRowRect(int row) const {
         auto viewport = GetViewportRect();
-        int rowY = viewport.y + (row * viewStyle.rowHeight) - scrollOffsetY;
-        return Rect2Di(viewport.x, rowY, viewport.width, viewStyle.rowHeight);
+        int rowY = viewport.y + RowTopOffset(row) - scrollOffsetY;
+        return Rect2Di(viewport.x, rowY, viewport.width, RowHeightForRow(row));
     }
 
     // ===== RENDERING =====
@@ -341,23 +442,25 @@ namespace UltraCanvas {
         ctx->PushState();
         ctx->ClipRect(Rect2Dd(viewport.x, viewport.y, viewport.width, viewport.height));
 
-        // Calculate visible range (culling)
-        int firstVisible = scrollOffsetY / viewStyle.rowHeight;
-        int lastVisible = (scrollOffsetY + viewport.height) / viewStyle.rowHeight;
-        firstVisible = std::max(0, firstVisible);
-        lastVisible = std::min(rowCount - 1, lastVisible);
+        // Calculate the first visible row (culling). With variable heights this
+        // is a search over the row-top table; uniform rows divide. The loop then
+        // walks forward accumulating each row's own height and stops once a row
+        // starts below the viewport.
+        int firstVisible = std::max(0, ClampRowIndexAtContentY(scrollOffsetY));
 
-        for (int row = firstVisible; row <= lastVisible; row++) {
-            int rowY = viewport.y + (row * viewStyle.rowHeight) - scrollOffsetY;
+        for (int row = firstVisible; row < rowCount; row++) {
+            int rowH = RowHeightForRow(row);
+            int rowY = viewport.y + RowTopOffset(row) - scrollOffsetY;
 
-            // Skip if completely outside viewport
-            if (rowY + viewStyle.rowHeight < viewport.y) continue;
+            // Stop once the row starts past the viewport bottom; skip the rare
+            // row entirely above it (can only precede the first visible one).
             if (rowY > viewport.Bottom()) break;
+            if (rowY + rowH < viewport.y) continue;
 
             // Alternate row background
             if (viewStyle.alternateRowColors && row % 2 == 1) {
                 ctx->SetFillPaint(viewStyle.alternateRowColor);
-                ctx->FillRectangle(Rect2Dd(viewport.x, rowY, viewport.width, viewStyle.rowHeight));
+                ctx->FillRectangle(Rect2Dd(viewport.x, rowY, viewport.width, rowH));
             }
 
             bool isSelected = selection && selection->IsSelected(row);
@@ -367,16 +470,16 @@ namespace UltraCanvas {
             // Draw full-row selection/hover background (before any column clipping)
             if (isSelected) {
                 ctx->SetFillPaint(viewStyle.selectionBackgroundColor);
-                ctx->FillRectangle(Rect2Dd(viewport.x, rowY, viewport.width, viewStyle.rowHeight));
+                ctx->FillRectangle(Rect2Dd(viewport.x, rowY, viewport.width, rowH));
             } else if (isHovered) {
                 ctx->SetFillPaint(viewStyle.hoverBackgroundColor);
-                ctx->FillRectangle(Rect2Dd(viewport.x, rowY, viewport.width, viewStyle.rowHeight));
+                ctx->FillRectangle(Rect2Dd(viewport.x, rowY, viewport.width, rowH));
             }
 
             if (colCount <= 1) {
                 // Single-column mode: delegate renders entire row
                 ListItemStyleOption opt;
-                opt.rect = Rect2Di(viewport.x, rowY, viewport.width, viewStyle.rowHeight);
+                opt.rect = Rect2Di(viewport.x, rowY, viewport.width, rowH);
                 opt.isSelected = isSelected;
                 opt.isHovered = isHovered;
                 opt.isFocused = isFocused;
@@ -395,7 +498,7 @@ namespace UltraCanvas {
                     auto colDef = model->GetColumnDef(col);
 
                     ListItemStyleOption opt;
-                    opt.rect = Rect2Di(viewport.x, rowY, viewport.width, viewStyle.rowHeight);
+                    opt.rect = Rect2Di(viewport.x, rowY, viewport.width, rowH);
                     opt.isSelected = isSelected;
                     opt.isHovered = isHovered;
                     opt.isFocused = isFocused;
@@ -408,7 +511,7 @@ namespace UltraCanvas {
                     opt.columnAlignment = colDef.alignment;
 
                     ctx->PushState();
-                    ctx->ClipRect({colX, rowY, colDef.width, viewStyle.rowHeight});
+                    ctx->ClipRect({colX, rowY, colDef.width, rowH});
                     delegate->RenderItem(ctx, model.get(), row, col, opt);
                     ctx->PopState();
 
@@ -416,7 +519,7 @@ namespace UltraCanvas {
                     if (viewStyle.showGridLines && col < colCount - 1) {
                         ctx->SetStrokePaint(viewStyle.gridLineColor);
                         ctx->DrawLine({colX + colDef.width, rowY},
-                                      {colX + colDef.width, rowY + viewStyle.rowHeight});
+                                      {colX + colDef.width, rowY + rowH});
                     }
 
                     colX += colDef.width;
@@ -613,20 +716,27 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasListView::NavigatePageUp() {
-        if (!model) return;
+        if (!model || model->GetRowCount() == 0) return;
         auto viewport = GetViewportRect();
-        int pageRows = std::max(1, viewport.height / viewStyle.rowHeight);
-        focusedRow = std::max(0, focusedRow - pageRows);
+        // Move up one viewport's worth of pixels (variable-height aware), always
+        // advancing by at least one row.
+        int cur = std::max(0, focusedRow);
+        int targetRow = ClampRowIndexAtContentY(RowTopOffset(cur) - viewport.height);
+        focusedRow = std::min(targetRow, cur - 1);
+        if (focusedRow < 0) focusedRow = 0;
         if (selection) selection->Select(focusedRow);
         EnsureRowVisible(focusedRow);
         RequestRedraw();
     }
 
     void UltraCanvasListView::NavigatePageDown() {
-        if (!model) return;
+        if (!model || model->GetRowCount() == 0) return;
         auto viewport = GetViewportRect();
-        int pageRows = std::max(1, viewport.height / viewStyle.rowHeight);
-        focusedRow = std::min(model->GetRowCount() - 1, focusedRow + pageRows);
+        int lastRow = model->GetRowCount() - 1;
+        int cur = std::max(0, focusedRow);
+        int targetRow = ClampRowIndexAtContentY(RowTopOffset(cur) + viewport.height);
+        focusedRow = std::max(targetRow, cur + 1);
+        if (focusedRow > lastRow) focusedRow = lastRow;
         if (selection) selection->Select(focusedRow);
         EnsureRowVisible(focusedRow);
         RequestRedraw();
@@ -653,13 +763,18 @@ namespace UltraCanvas {
     void UltraCanvasListView::ConnectModelSignals() {
         if (!model) return;
         model->onDataChanged = [this]() {
+            InvalidateRowGeometry();
             UpdateScrollbar();
             RequestRedraw();
         };
         model->onRowChanged = [this](int /*row*/) {
+            // A row's content may change its variable height.
+            InvalidateRowGeometry();
+            UpdateScrollbar();
             RequestRedraw();
         };
         model->onRowInserted = [this](int /*row*/) {
+            InvalidateRowGeometry();
             UpdateScrollbar();
             RequestRedraw();
         };
@@ -671,6 +786,7 @@ namespace UltraCanvas {
             else if (focusedRow > row) focusedRow--;
             if (hoveredRow == row) hoveredRow = -1;
             else if (hoveredRow > row) hoveredRow--;
+            InvalidateRowGeometry();
             UpdateScrollbar();
             RequestRedraw();
         };

@@ -1,15 +1,18 @@
 // core/UltraCanvasEBookViewer.cpp
 // eBook reading widget: engine chapters → HTML::ElementBuilder → CSSLayout.
-// Version: 2.0.0
-// Last Modified: 2026-07-02
+// Version: 2.2.0
+// Last Modified: 2026-07-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasEBookViewer.h"
 
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasConfig.h"   // GetResourcesDir
+#include "UltraCanvasUtils.h"    // NormalizePath
 #include "HTMLReader/HTMLElementBuilder.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace UltraCanvas {
 
@@ -111,7 +114,16 @@ void UltraCanvasEBookViewer::BuildUI() {
     btnFontMinus = makeButton("_fminus", "A-", 40.f);
     btnFontPlus = makeButton("_fplus", "A+", 40.f);
     btnTheme = makeButton("_theme", "\xE2\x98\xBE");       // ☾
-    btnToc = makeButton("_toc", "\xE2\x98\xB0");           // ☰
+
+    // The table-of-contents button uses the ordered-list icon. It is drawn as
+    // a mask so it takes the button's text color, tracking the normal/active
+    // state (dark on the toolbar, light when the pane is open).
+    btnToc = makeButton("_toc", "");
+    btnToc->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/list-ordered.svg"));
+    btnToc->SetIconPosition(ButtonIconPosition::Center);
+    btnToc->SetIconSize(18, 18);
+    btnToc->SetUseIconAsMask(true);
+    btnToc->SetIconMaskColor(Colors::Transparent);   // follow the text color
 
     chapterLabel = std::make_shared<UltraCanvasLabel>(id + "_chapter", "");
     chapterLabel->layoutItem.SetFlexGrow(1.f);
@@ -171,6 +183,9 @@ void UltraCanvasEBookViewer::BuildUI() {
             if (chapter >= 0) GoToChapter(chapter);
         }
     };
+
+    // The TOC starts visible, so the button starts highlighted.
+    RefreshTocButtonHighlight();
 }
 
 void UltraCanvasEBookViewer::AttachTocPane() {
@@ -324,13 +339,90 @@ void UltraCanvasEBookViewer::SetContentFontFamily(const std::string& family) {
     RebuildChapterContent();
 }
 
+float UltraCanvasEBookViewer::EffectiveFontSize() const {
+    return std::clamp(baseFontSizePx * zoomLevel, 6.f, 120.f);
+}
+
+void UltraCanvasEBookViewer::SetZoom(float level) {
+    level = std::clamp(level, kMinZoom, kMaxZoom);
+    if (std::abs(level - zoomLevel) < 0.001f) return;
+    zoomLevel = level;
+    RebuildChapterContent();
+    if (onZoomChanged) onZoomChanged(GetZoomPercent());
+}
+
+void UltraCanvasEBookViewer::ZoomToWidth() {
+    if (!IsDocumentLoaded() || !contentScroll) return;
+
+    // The content pane width, minus the reading margins (RebuildChapterContent
+    // sets 28px on each side) and room for the vertical scrollbar. Scale the
+    // text so a comfortable line measure (~kTargetCharsPerLine characters at a
+    // ~0.5em average advance) spans that width, so a wider pane reads larger.
+    float paneWidth = contentScroll->GetWidth();
+    if (paneWidth <= 0.f) return;
+    constexpr float kReadingMarginsPx = 28.f * 2.f;
+    constexpr float kScrollbarPx = 16.f;
+    constexpr float kTargetCharsPerLine = 50.f;
+    constexpr float kAverageAdvanceEm = 0.5f;
+    float usableWidth = paneWidth - kReadingMarginsPx - kScrollbarPx;
+    if (usableWidth <= 0.f) return;
+
+    float targetFont = usableWidth / (kTargetCharsPerLine * kAverageAdvanceEm);
+    SetZoom(targetFont / baseFontSizePx);
+}
+
+void UltraCanvasEBookViewer::ZoomToHeight() {
+    if (!IsDocumentLoaded() || !contentScroll || !contentRoot) return;
+
+    // Fit the current chapter into the visible pane height. Both sizes come
+    // from the last layout pass, so scaling the font by their ratio brings the
+    // content close to a single screen; because reflow makes height only
+    // roughly proportional to font size, clicking again refines the fit.
+    float paneHeight = contentScroll->GetHeight();
+    float contentHeight = contentRoot->GetHeight();
+    if (paneHeight <= 0.f || contentHeight <= 0.f) return;
+
+    SetZoom(zoomLevel * (paneHeight / contentHeight));
+}
+
 void UltraCanvasEBookViewer::ShowTableOfContents(bool show) {
     if (tocVisible == show) return;
     tocVisible = show;
     if (show) AttachTocPane();
     else      DetachTocPane();
+    RefreshTocButtonHighlight();
     InvalidateLayout();
     RequestRedraw();
+}
+
+void UltraCanvasEBookViewer::RefreshTocButtonHighlight() {
+    if (!btnToc) return;
+
+    // Copy the current style so the icon / mask / size set in BuildUI survive;
+    // only the state colors change. The icon is a mask that follows the text
+    // color, so setting light text also lightens the icon when active.
+    ButtonStyle style = btnToc->GetStyle();
+    if (tocVisible) {
+        // Accent fill with light content so the button reads as "on". The blue
+        // contrasts on all three reading themes' toolbar backgrounds.
+        style.normalColor = Color(45, 110, 210, 255);
+        style.hoverColor = Color(35, 95, 190, 255);
+        style.pressedColor = Color(30, 85, 175, 255);
+        style.normalTextColor = Colors::White;
+        style.hoverTextColor = Colors::White;
+        style.pressedTextColor = Colors::White;
+        style.borderColor = Color(30, 85, 175, 255);
+    } else {
+        style.normalColor = Colors::ButtonFace;
+        style.hoverColor = Colors::SelectionHover;
+        style.pressedColor = Color(204, 228, 247, 255);
+        style.normalTextColor = Colors::TextDefault;
+        style.hoverTextColor = Colors::TextDefault;
+        style.pressedTextColor = Colors::TextDefault;
+        style.borderColor = Colors::ButtonShadow;
+    }
+    btnToc->SetStyle(style);
+    btnToc->RequestRedraw();
 }
 
 void UltraCanvasEBookViewer::ShowToolbar(bool show) {
@@ -359,6 +451,7 @@ void UltraCanvasEBookViewer::ApplyThemeColors() {
 void UltraCanvasEBookViewer::RebuildChapterContent() {
     if (!contentScroll) return;
     contentScroll->ClearChildren();
+    contentRoot.reset();
     chapterAnchors.clear();
     pendingAnchorId.clear();
 
@@ -379,7 +472,7 @@ void UltraCanvasEBookViewer::RebuildChapterContent() {
     ThemeColors colors = CurrentThemeColors();
 
     HTML::BuildOptions options;
-    options.style.baseFontSizePx = baseFontSizePx;
+    options.style.baseFontSizePx = EffectiveFontSize();
     options.style.baseFontFamily = contentFontFamily;
     options.style.textColor = colors.text;
     options.style.linkColor = colors.link;
@@ -406,6 +499,7 @@ void UltraCanvasEBookViewer::RebuildChapterContent() {
     result.root->box.padding.right = CSSLayout::Dimension::Px(28);
 
     chapterAnchors = std::move(result.anchors);
+    contentRoot = result.root;
     contentScroll->AddChild(result.root);
     contentScroll->ScrollToVertical(0);
     RequestRedraw();

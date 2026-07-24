@@ -312,6 +312,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateWaterfallChartExamples();
 
         std::shared_ptr<UltraCanvasUIElement> CreateVennDiagramExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateWordCloudExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateDendrogramExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateBlockDiagramExamples();
 

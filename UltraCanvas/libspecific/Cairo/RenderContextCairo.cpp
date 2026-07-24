@@ -784,7 +784,6 @@ namespace UltraCanvas {
         }
         auto layout = GetOrCreateTextLayout(text, rect.Size(), false);
         if (layout) {
-            ApplySourceToCairo(cairo, currentState.textSourceColor, currentState.textSourcePattern);
             DrawTextLayout(*layout, rect.TopLeft());
         } else {
             debugOutput << "RenderContextCairo::DrawTextInRect: No text layout" << std::endl;

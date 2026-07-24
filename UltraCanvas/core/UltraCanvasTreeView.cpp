@@ -784,7 +784,11 @@ namespace UltraCanvas {
             ctx->SetFontSize(12);
             ctx->SetTextPaint(nodeTextColor);
             ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-            ctx->DrawTextInRect(node->data.text, Rect2Dd(textX, nodeY, nodeWidth - textX, rowHeight));
+            //ctx->DrawTextInRect(node->data.text, Rect2Dd(textX, nodeY, nodeWidth - textX, rowHeight));
+            auto layout = ctx->GetOrCreateTextLayout(node->data.text, Size2Di(nodeWidth - textX, rowHeight), true);
+            if (layout) {
+                ctx->DrawTextLayout(*layout, Point2Dd(textX, nodeY));
+            }
 
             // Draw right icon
             if (node->data.rightIcon.visible && !node->data.rightIcon.iconPath.empty()) {

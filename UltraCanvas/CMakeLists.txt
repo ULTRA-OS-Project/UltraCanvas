@@ -22,7 +22,7 @@ if(APPLE)
 endif()
 
 # ===== LIBRARY DEFINITION =====
-set(ULTRACANVAS_VERSION "0.3.12")
+set(ULTRACANVAS_VERSION "0.3.16")
 set(ULTRACANVAS_LIB_NAME "UltraCanvas")
 
 message(STATUS "")
@@ -342,6 +342,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartElementBase.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasSpecificChartElements.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartDataStructures.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasLabelPlacement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasFinancialChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasDivergingBarChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasWaterfallChart.cpp
@@ -364,6 +365,7 @@ set(ULTRACANVAS_CORE_SOURCES
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/SVG/UltraCanvasSVGPlugin.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasSankey.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasVennDiagram.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasWordCloudDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasDendrogram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasDendrogramLayout.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasBlockDiagram.cpp

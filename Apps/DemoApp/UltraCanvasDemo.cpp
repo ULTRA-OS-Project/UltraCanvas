@@ -1120,6 +1120,12 @@ namespace UltraCanvas {
                                "DemoApp/UltraCanvasVennDiagramExamples.cpp",
                                "Docs/UltraCanvas/UltraCanvasVennDiagramExamples.md");
 
+        diagramBuilder.AddItem("wordcloud", "Word Cloud", "Frequency word cloud with shapes, masks and center image",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateWordCloudExamples(); },
+                               "DemoApp/UltraCanvasWordCloudExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasWordCloudExamples.md");
+
         diagramBuilder.AddItem("dendrogram", "Dendrogram", "Interactive dendrogram / phylogenetic tree visualization",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateDendrogramExamples(); },
