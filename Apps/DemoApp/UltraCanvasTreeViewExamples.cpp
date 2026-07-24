@@ -103,6 +103,86 @@ namespace UltraCanvas {
         multiLabel->SetFontSize(12);
         container->AddChild(multiLabel);
 
+        // ----- Debugger "Variables" panel: Classic vs Modern columns -----
+        // Demonstrates the columnar display mode (Name / Type / Value with an accent
+        // Type column and section-header bars) an IDE debugger would use, plus the
+        // Classic/Modern layout toggle and Alphabetic/Last-access sort options.
+        auto varsTree = std::make_shared<UltraCanvasTreeView>("VarsTree", 680, 50, 300, 330);
+        varsTree->SetRowHeight(26);
+        varsTree->SetSelectionMode(TreeSelectionMode::Single);
+        varsTree->SetShowExpandButtons(true);
+        varsTree->SetDisplayMode(TreeDisplayMode::Modern);
+
+        // Root renders as a "Variables" section-header bar; the sections hang beneath it.
+        TreeNodeData varsRootData("vars_root", "Variables");
+        varsRootData.isGroupHeader = true;
+        TreeNode* varsRoot = varsTree->SetRootNode(varsRootData);
+        varsRoot->Expand();
+
+        // Helper: a variable row carrying Name / Type / Value + a last-access stamp.
+        auto addVar = [&](const std::string& parent, const std::string& id,
+                          const std::string& name, const std::string& type,
+                          const std::string& value, uint64_t access) {
+            TreeNodeData d(id, name);
+            d.typeText = type;
+            d.valueText = value;
+            d.accessSequence = access;
+            varsTree->AddNode(parent, d);
+        };
+        // Helper: a full-width section header (Line / Loop / function).
+        auto addGroup = [&](const std::string& id, const std::string& title) {
+            TreeNodeData g(id, title);
+            g.isGroupHeader = true;
+            TreeNode* n = varsTree->AddNode("vars_root", g);
+            if (n) n->Expand();
+        };
+
+        addGroup("grp_line", "Line");
+        addVar("grp_line", "v_y",     "y",     "int",  "1",    30);
+        addVar("grp_line", "v_tint",  "tint",  "*ptr", "2x67", 10);
+        addVar("grp_line", "v_xval",  "x-val", "fp",   "2,45", 20);
+
+        addGroup("grp_loop", "Loop");
+        addVar("grp_loop", "v_x",      "x",      "int", "45",  50);
+        addVar("grp_loop", "v_width",  "width",  "int", "257", 40);
+        addVar("grp_loop", "v_height", "height", "int", "400", 60);
+
+        addGroup("grp_fn", "function");
+        addVar("grp_fn", "v_type",   "type",   "str", "\"up\"", 90);
+        addVar("grp_fn", "v_offset", "offset", "int", "13",     70);
+        addVar("grp_fn", "v_border", "border", "int", "8",      80);
+
+        container->AddChild(varsTree);
+
+        auto varsLabel = std::make_shared<UltraCanvasLabel>("VarsTreeLabel", 680, 386, 300, 20);
+        varsLabel->SetText("Debugger Variables (Modern columns)");
+        varsLabel->SetFontSize(12);
+        container->AddChild(varsLabel);
+
+        // Layout toggle: Classic (single text) <-> Modern (columns)
+        auto modernCheckbox = std::make_shared<UltraCanvasCheckbox>(
+            "ModernLayoutCheckbox", 680, 414, 280, 24, "Modern layout (Name / Type / Value)");
+        modernCheckbox->SetChecked(true);
+        modernCheckbox->onStateChanged = [varsTree](CheckedState, CheckedState newState) {
+            varsTree->SetDisplayMode(newState == CheckedState::Checked
+                                         ? TreeDisplayMode::Modern
+                                         : TreeDisplayMode::Classic);
+        };
+        container->AddChild(modernCheckbox);
+
+        // Sort toggle: Alphabetic <-> Last access
+        auto sortCheckbox = std::make_shared<UltraCanvasCheckbox>(
+            "SortLastAccessCheckbox", 680, 444, 280, 24, "Sort by last access (else alphabetic)");
+        sortCheckbox->SetChecked(false);
+        sortCheckbox->onStateChanged = [varsTree](CheckedState, CheckedState newState) {
+            if (newState == CheckedState::Checked) {
+                varsTree->SetSortMode(TreeSortMode::LastAccess, /*ascending=*/false);
+            } else {
+                varsTree->SetSortMode(TreeSortMode::Alphabetic, /*ascending=*/true);
+            }
+        };
+        container->AddChild(sortCheckbox);
+
         return container;
     }
 
