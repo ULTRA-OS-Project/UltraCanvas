@@ -73,7 +73,7 @@ namespace UltraCanvas {
     // as a bitmask (Display > Dataset toggles them). Length applies to audio /
     // video, Dimensions to bitmaps; both are skipped for entries they don't fit.
     enum class FilerDatasetField : uint32_t {
-        None         = 0,
+        NoneData     = 0,
         Size         = 1u << 0,
         ModifiedDate = 1u << 1,   // "Edit date"
         CreatedDate  = 1u << 2,   // "Creation date"
