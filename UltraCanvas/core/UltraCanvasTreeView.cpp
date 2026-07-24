@@ -151,6 +151,34 @@ namespace UltraCanvas {
         }
     }
 
+    void TreeNode::SortChildNodes(TreeSortMode mode, bool recursive, bool ascending) {
+        if (mode == TreeSortMode::Alphabetic) {
+            SortChildNodes(recursive, ascending);
+            return;
+        }
+        if (mode == TreeSortMode::LastAccess) {
+            std::sort(children.begin(), children.end(),
+                      [ascending](const std::unique_ptr<TreeNode> &a,
+                                  const std::unique_ptr<TreeNode> &b) {
+                          // Ties fall back to a stable-ish name compare so equal
+                          // sequences keep a predictable order.
+                          if (a->data.accessSequence != b->data.accessSequence) {
+                              return ascending
+                                     ? a->data.accessSequence < b->data.accessSequence
+                                     : a->data.accessSequence > b->data.accessSequence;
+                          }
+                          return CaseInsensitiveTextLess(a->data.text, b->data.text);
+                      });
+            if (recursive) {
+                for (auto &child: children) {
+                    child->SortChildNodes(mode, true, ascending);
+                }
+            }
+            return;
+        }
+        // TreeSortMode::NoSort -> leave order untouched.
+    }
+
 
     /* UltraCanvasTreeView */
 
@@ -352,6 +380,23 @@ namespace UltraCanvas {
     void UltraCanvasTreeView::SortAllNodes(bool ascending) {
         if (!rootNode) return;
         rootNode->SortChildNodes(true, ascending);
+        UpdateScrollbars();
+        RequestRedraw();
+    }
+
+    void UltraCanvasTreeView::SetDisplayMode(TreeDisplayMode mode) {
+        if (displayMode == mode) return;
+        displayMode = mode;
+        UpdateScrollbars();
+        RequestRedraw();
+    }
+
+    void UltraCanvasTreeView::SetSortMode(TreeSortMode mode, bool ascending) {
+        sortMode = mode;
+        sortAscending = ascending;
+        if (rootNode && mode != TreeSortMode::NoSort) {
+            rootNode->SortChildNodes(mode, true, ascending);
+        }
         UpdateScrollbars();
         RequestRedraw();
     }
@@ -659,6 +704,30 @@ namespace UltraCanvas {
         int sbWidth = verticalScrollbar->IsVisible() ? verticalScrollbar->GetWidth() : 0;
         int nodeWidth = contentRect.width - sbWidth;
 
+        // Modern mode: a group-header node is a full-width section bar (Line/Loop/...).
+        // It owns the whole row and does not draw an expand button, icons or columns.
+        if (displayMode == TreeDisplayMode::Modern && node->data.isGroupHeader) {
+            ctx->DrawFilledRectangle(Rect2Di(contentRect.x + 1, nodeY, nodeWidth - 2, rowHeight),
+                                     columnStyle.groupHeaderBackground);
+            ctx->SetFontSize(12);
+            ctx->SetFontWeight(FontWeight::Bold);
+            ctx->SetTextPaint(columnStyle.groupHeaderTextColor);
+            ctx->SetTextAlignment(TextAlignment::Center);
+            ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
+            ctx->DrawTextInRect(node->data.text,
+                                Rect2Dd(contentRect.x + 1, nodeY, nodeWidth - 2, rowHeight));
+            ctx->SetFontWeight(FontWeight::Normal);
+            ctx->SetTextAlignment(TextAlignment::Left);
+
+            currentY += rowHeight;
+            if (node->IsExpanded()) {
+                for (auto &child: node->children) {
+                    RenderNode(ctx, child.get(), currentY, level + 1, contentRect);
+                }
+            }
+            return;
+        }
+
         // Draw node background
         Color bgColor = backgroundColor;
         if (node->selected) {
@@ -706,21 +775,26 @@ namespace UltraCanvas {
             textX += node->data.leftIcon.width + iconSpacing;
         }
 
-        // Draw text
-        Color nodeTextColor = node->data.textColor != Colors::Black ? node->data.textColor : textColor;
-        ctx->SetFontSize(12);
-        ctx->SetTextPaint(nodeTextColor);
-        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-        ctx->DrawTextInRect(node->data.text, Rect2Dd(textX, nodeY, nodeWidth - textX, rowHeight));
+        // Modern mode: draw the Name / Type / Value columns instead of one text run.
+        if (displayMode == TreeDisplayMode::Modern) {
+            RenderNodeColumns(ctx, node, nodeY, textX, contentRect.x + 1, nodeWidth - 2);
+        } else {
+            // Classic mode: single text run + optional right icon.
+            Color nodeTextColor = node->data.textColor != Colors::Black ? node->data.textColor : textColor;
+            ctx->SetFontSize(12);
+            ctx->SetTextPaint(nodeTextColor);
+            ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
+            ctx->DrawTextInRect(node->data.text, Rect2Dd(textX, nodeY, nodeWidth - textX, rowHeight));
 
-        // Draw right icon
-        if (node->data.rightIcon.visible && !node->data.rightIcon.iconPath.empty()) {
-            int rightIconX = contentRect.Right() - node->data.rightIcon.width - textPadding - sbWidth;
+            // Draw right icon
+            if (node->data.rightIcon.visible && !node->data.rightIcon.iconPath.empty()) {
+                int rightIconX = contentRect.Right() - node->data.rightIcon.width - textPadding - sbWidth;
 
-            ctx->DrawImage(node->data.rightIcon.iconPath.c_str(),
-                           Rect2Dd(rightIconX, nodeY + (rowHeight - node->data.rightIcon.height) / 2,
-                                   node->data.rightIcon.width, node->data.rightIcon.height),
-                           ImageFitMode::Contain);
+                ctx->DrawImage(node->data.rightIcon.iconPath.c_str(),
+                               Rect2Dd(rightIconX, nodeY + (rowHeight - node->data.rightIcon.height) / 2,
+                                       node->data.rightIcon.width, node->data.rightIcon.height),
+                               ImageFitMode::Contain);
+            }
         }
 
         currentY += rowHeight;
@@ -730,6 +804,66 @@ namespace UltraCanvas {
             for (auto &child: node->children) {
                 RenderNode(ctx, child.get(), currentY, level + 1, contentRect);
             }
+        }
+    }
+
+    void UltraCanvasTreeView::RenderNodeColumns(IRenderContext *ctx, TreeNode *node, int nodeY,
+                                                int textX, int rowLeft, int rowWidth) {
+        const TreeColumnStyle &cs = columnStyle;
+        int rowRight = rowLeft + rowWidth - textPadding;
+
+        // Column geometry (left -> right): Name | Type | Value.
+        int valW = cs.valueColumnWidth > 0
+                       ? cs.valueColumnWidth
+                       : std::max(48, static_cast<int>(rowWidth * 0.28f));
+        int typeW = cs.typeColumnWidth;
+        int gap = cs.columnGap;
+
+        int valueX = rowRight - valW;
+        int typeX = valueX - gap - typeW;
+        int nameRight = typeX - gap;
+        int nameWidth = std::max(0, nameRight - textX);
+
+        // Type accent background (only when there is a type to show).
+        if (!node->data.typeText.empty() && typeX >= textX) {
+            ctx->DrawFilledRectangle(
+                Rect2Di(typeX - cs.typeColumnPadding, nodeY,
+                        typeW + 2 * cs.typeColumnPadding, rowHeight),
+                cs.typeColumnBackground);
+        }
+
+        // Optional thin separators between columns.
+        if (cs.showColumnSeparators && typeX >= textX) {
+            ctx->DrawLine(Point2Dd(typeX - gap / 2.0, nodeY),
+                          Point2Dd(typeX - gap / 2.0, nodeY + rowHeight), cs.columnSeparatorColor);
+            ctx->DrawLine(Point2Dd(valueX - gap / 2.0, nodeY),
+                          Point2Dd(valueX - gap / 2.0, nodeY + rowHeight), cs.columnSeparatorColor);
+        }
+
+        ctx->SetFontSize(12);
+        ctx->SetTextAlignment(TextAlignment::Left);
+        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
+
+        // Name column
+        Color nameColor = node->data.textColor != Colors::Black ? node->data.textColor : textColor;
+        ctx->SetTextPaint(nameColor);
+        ctx->DrawTextInRect(node->data.text, Rect2Dd(textX, nodeY, nameWidth, rowHeight));
+
+        if (typeX < textX) return;  // row too narrow for the remaining columns
+
+        // Type column
+        if (!node->data.typeText.empty()) {
+            Color typeCol = node->data.typeColor != Colors::Transparent
+                                ? node->data.typeColor
+                                : cs.typeTextColor;
+            ctx->SetTextPaint(typeCol);
+            ctx->DrawTextInRect(node->data.typeText, Rect2Dd(typeX, nodeY, typeW, rowHeight));
+        }
+
+        // Value column
+        if (!node->data.valueText.empty()) {
+            ctx->SetTextPaint(cs.valueTextColor);
+            ctx->DrawTextInRect(node->data.valueText, Rect2Dd(valueX, nodeY, valW, rowHeight));
         }
     }
 

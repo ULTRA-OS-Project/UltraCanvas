@@ -13,6 +13,7 @@
 #include <memory>
 #include <functional>
 #include <unordered_map>
+#include <cstdint>
 
 namespace UltraCanvas {
 
@@ -34,6 +35,43 @@ enum class TreeLineStyle {
     NoLine = 0,       // No connecting lines
     Dotted = 1,     // Dotted connecting lines
     Solid = 2       // Solid connecting lines
+};
+
+// ===== TREE DISPLAY MODE =====
+// How each row is laid out. Classic renders a single line of text (data.text) and
+// is the historical/default behaviour. Modern renders three aligned columns
+// (Name / Type / Value) with an accent-filled Type column, matching an IDE-style
+// debugger "Variables" panel. Both modes keep the tree hierarchy and expand/collapse.
+enum class TreeDisplayMode {
+    Classic = 0,   // single-text rows (default, back-compatible)
+    Modern  = 1    // aligned Name / Type / Value columns
+};
+
+// ===== TREE SORT MODE =====
+// Ordering applied to a node's children. LastAccess orders by TreeNodeData::accessSequence
+// (largest first when ascending=false), which callers stamp when a value is touched.
+// NB: value is NoSort (not "None") deliberately — <X11/Xlib.h>, pulled in by the
+// Linux backend, #defines `None`, which would mangle an enumerator named None.
+enum class TreeSortMode {
+    NoSort = 0,      // preserve insertion order
+    Alphabetic = 1,  // by display name (data.text), case-insensitive
+    LastAccess = 2   // by data.accessSequence
+};
+
+// ===== MODERN-MODE COLUMN STYLE =====
+// Geometry and colours used only when TreeDisplayMode::Modern is active.
+struct TreeColumnStyle {
+    int   typeColumnWidth      = 64;   // fixed width of the Type column (px)
+    int   valueColumnWidth     = 0;    // 0 => Value column takes the remaining width to the right
+    int   columnGap            = 8;    // horizontal gap between columns (px)
+    int   typeColumnPadding    = 4;    // padding around the Type accent fill (px)
+    Color typeColumnBackground = Color(255, 190, 130);  // orange accent behind the Type column
+    Color typeTextColor        = Color(40, 40, 40);     // Type column text
+    Color valueTextColor       = Color(40, 40, 40);     // Value column text
+    Color groupHeaderBackground = Colors::Black;        // full-width section-header bar
+    Color groupHeaderTextColor  = Colors::White;        // section-header text
+    bool  showColumnSeparators  = false;                // thin vertical rules between columns
+    Color columnSeparatorColor  = Color(210, 210, 210);
 };
 
 struct TreeNodeIcon {
@@ -62,7 +100,20 @@ struct TreeNodeData {
     Color backgroundColor = Colors::Transparent; // Background color (transparent by default)
     std::string tooltip;          // Tooltip text
     void* userData = nullptr;     // Custom user data
-    
+
+    // ----- Modern display mode (TreeDisplayMode::Modern) -----
+    // In Classic mode `text` holds the whole row. In Modern mode `text` is the
+    // Name column and these supply the Type and Value columns. They are ignored
+    // in Classic mode, so setting them is always safe.
+    std::string typeText;         // Type column (e.g. "int", "*ptr", "fp", "str")
+    std::string valueText;        // Value column (e.g. "45", "2x67", "up")
+    Color typeColor = Colors::Transparent; // Type column text override (Transparent => use style default)
+    bool  isGroupHeader = false;  // Render this row as a full-width section-header bar (Line/Loop/...)
+    // Ordering key for TreeSortMode::LastAccess. Callers stamp a monotonically
+    // increasing value each time the variable is read/written so the most recently
+    // accessed entries can float to the top.
+    uint64_t accessSequence = 0;
+
     TreeNodeData() = default;
     TreeNodeData(const std::string& id, const std::string& displayText) 
         : nodeId(id), text(displayText) {}
@@ -96,6 +147,11 @@ public:
     // Sort direct children alphabetically (case-insensitive) by data.text.
     // recursive=true also sorts every descendant level. ascending=false reverses.
     void SortChildNodes(bool recursive = false, bool ascending = true);
+
+    // Sort direct children by the given mode (Alphabetic by data.text, or LastAccess
+    // by data.accessSequence). TreeSortMode::NoSort is a no-op. recursive=true also sorts
+    // every descendant level. ascending=false reverses the order.
+    void SortChildNodes(TreeSortMode mode, bool recursive = false, bool ascending = true);
 
     // ===== STATE MANAGEMENT =====
     void Expand();
@@ -138,6 +194,14 @@ private:
     bool autoExpandSelectedNode;  // auto expand selected node
     bool autoSortChildren = false; // keep children sorted alphabetically on insert
     bool autoSortAscending = true; // direction used by auto-sort
+
+    // Display mode + Modern-mode column layout
+    TreeDisplayMode displayMode = TreeDisplayMode::Classic;
+    TreeColumnStyle columnStyle;
+
+    // Active sort (applied by SetSortMode / re-applied by SortAllNodes)
+    TreeSortMode sortMode = TreeSortMode::NoSort;
+    bool sortAscending = true;
 
     // Colors
 //    Color backgroundColor;       // Tree background color
@@ -230,10 +294,26 @@ public:
     void SetLineColor(const Color &color) { lineColor = color; }
     void SetTextColor(const Color &color) { textColor = color; }
 
+    // ===== DISPLAY MODE (Classic / Modern columns) =====
+    // Switch between the single-text Classic layout and the columnar Modern layout.
+    // Safe to toggle at runtime; triggers a redraw. Node data is shared between modes.
+    void SetDisplayMode(TreeDisplayMode mode);
+    TreeDisplayMode GetDisplayMode() const { return displayMode; }
+
+    // Column geometry/colours used by Modern mode.
+    void SetColumnStyle(const TreeColumnStyle& style) { columnStyle = style; RequestRedraw(); }
+    const TreeColumnStyle& GetColumnStyle() const { return columnStyle; }
+
     // ===== SORTING =====
     // Persistent option: keep children alphabetically sorted as nodes are added.
     void SetAutoSortChildren(bool enable, bool ascending = true);
     bool GetAutoSortChildren() const { return autoSortChildren; }
+
+    // Sort the whole tree by the given mode and remember it as the active sort
+    // (re-applied by SortAllNodes()). Pass TreeSortMode::NoSort to leave order as-is.
+    void SetSortMode(TreeSortMode mode, bool ascending = true);
+    TreeSortMode GetSortMode() const { return sortMode; }
+    bool GetSortAscending() const { return sortAscending; }
 
     // On-demand sort of a specified node's children (no-op if not found / null).
     void SortNodeChildren(const std::string& nodeId, bool recursive = false, bool ascending = true);
@@ -276,6 +356,11 @@ private:
     TreeNode* GetNodeAtY(int y);
     
     void RenderNode(IRenderContext *ctx, TreeNode* node, int& currentY, int level, const Rect2Di& contentRect);
+
+    // Modern-mode row painter: draws the Name/Type/Value columns (or a full-width
+    // section-header bar when node->data.isGroupHeader). Called from RenderNode.
+    void RenderNodeColumns(IRenderContext *ctx, TreeNode* node, int nodeY, int textX,
+                           int rowLeft, int rowWidth);
 
     void ExpandNodeRecursive(TreeNode* node);
     void CollapseNodeRecursive(TreeNode* node);
