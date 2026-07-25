@@ -36,85 +36,156 @@ platforms. Let's walk through them.
 
 ## 3. The Elements
 
-**Menus** — Various menu types and styles: a context menu, a main menu bar, popup
-menus, and nested submenu navigation. Menu items support checkbox and radio states,
-and the demo shows fully custom-styled menus.
+**Menus** — Menus are the command center of a desktop application: they organize
+every available action into a compact, discoverable hierarchy. UltraCanvas covers
+the full range — a classic main menu bar across the top of the window, context
+menus that open on right-click, and free-floating popup menus. In the demo you can
+navigate nested submenus, toggle menu items that behave as checkboxes or radio
+buttons, and see how the same menu API can be completely restyled with custom
+colors and fonts.
 
-**Toolbar** — Tool and action bars in horizontal and vertical orientation, plus a
-ribbon-style variant for grouped, tabbed command sets.
+**Toolbar** — A toolbar puts the most frequently used actions one click away,
+usually as a row of icon buttons under the menu bar. The demo shows the classic
+horizontal toolbar, a vertical variant for tool palettes on the side of a window,
+and a ribbon-style toolbar that groups commands into tabbed sections, as known
+from modern office applications.
 
-**Tabs** — Tabbed interface containers with tabs on top or on the side, and
-closable tabs for document-style interfaces.
+**Tabs** — Tabbed containers let several views share the same screen space, with
+only one visible at a time — the standard pattern for settings pages, editors, and
+browsers. In the demo you see tabs positioned on top, tabs on the side for
+navigation-heavy layouts, and closable tabs with a close button on each tab, as
+you would use for open documents.
 
-**Split Pane** — A resizable pane splitter in the style of VSCode: horizontal and
-vertical splits, and nested split layouts for complex workspaces.
+**Split Pane** — A split pane divides the window into resizable regions separated
+by a draggable divider — think of a file manager or an IDE, where a navigation
+panel sits next to the main content. The demo shows horizontal and vertical
+splits in the style of VSCode, and demonstrates how splits can be nested inside
+each other to build complete multi-panel workspaces.
 
-**Layout System** — The automatic layout engine: vertical and horizontal box
-layouts, a grid layout, and a flex layout that wraps and distributes children —
-so interfaces adapt to window size without manual positioning.
+**Layout System** — Rather than positioning every element with fixed pixel
+coordinates, the layout system computes positions and sizes automatically and
+keeps the interface consistent when the window is resized. The demo walks through
+the three layout managers: vertical and horizontal box layouts that stack elements
+in one direction, a grid layout that aligns elements in rows and columns, and a
+flex layout that distributes and wraps children dynamically.
 
-**Segmented Control** — A compact control for mutually exclusive options, shown in
-bordered, iOS, flat, and bar styles, with a toggle mode and fit-to-content width.
+**Segmented Control** — A segmented control presents a small set of mutually
+exclusive options as one connected strip of buttons — a compact, modern
+alternative to a group of radio buttons, typically used for view switches like
+"day, week, month". The demo renders the same control in bordered, iOS, flat,
+and bar styles, shows a toggle mode where a segment can be deselected again, and
+a fit-to-content mode where each segment sizes itself to its label.
 
-**Group Box** — A titled container that frames a set of child elements: framed,
-header, and flat styles, configurable title alignment, plus checkable and
-collapsible groups.
+**Group Box** — A group box visually gathers related controls under a common
+title, giving structure to forms and settings dialogs. The demo shows the classic
+framed style, a header style, and a borderless flat style, with configurable
+title alignment. Two interactive variants stand out: the checkable group, whose
+title checkbox enables or disables everything inside, and the collapsible group,
+which folds away to save space.
 
-**Text Input** — Text fields with validation and formatting: single-line input, a
-multi-line text area, a password field, and numeric input.
+**Text Input** — The text input is the workhorse of every form: a field where the
+user types data. UltraCanvas adds validation and formatting on top. In the demo
+you type into a single-line field, a multi-line text area, a password field with
+masked characters, and a numeric field that only accepts numbers.
 
-**AutoComplete** — A text input with suggestion popup, fed either by a static item
-list or a dynamic provider callback, demonstrated in an interactive live demo.
+**AutoComplete** — AutoComplete extends a text input with a live suggestion list
+that filters while the user types — familiar from search boxes and address
+fields. The demo feeds the suggestions in two ways: from a fixed, static item
+list, and from a dynamic provider callback that computes matches on the fly, and
+lets you try both in an interactive playground.
 
-**Label** — Text display with formatting and styling: basic labels, header text,
-and status labels.
+**Label** — The label is the simplest element — it displays text — but it carries
+the typography of the whole interface. The demo shows plain body-text labels,
+large header text for titles and sections, and status labels whose color and
+style communicate a state at a glance.
 
-**Button** — Interactive buttons with various styles and states: standard buttons,
-icon buttons, toggle buttons, and the distinctive three-section split button.
+**Button** — The button is the fundamental trigger for user actions. Beyond the
+standard push button, the demo shows icon buttons that combine a glyph with text
+or stand alone, toggle buttons that stay pressed to represent an on/off state,
+and the distinctive three-section button — a split button whose left, middle, and
+right zones can carry separate actions.
 
-**Dropdown / ComboBox** — Dropdown selection controls: a simple dropdown, an
-editable combo box, and multi-select support.
+**Dropdown / ComboBox** — When the user must pick from a list but screen space is
+scarce, a dropdown collapses the choice into a single line that expands on click.
+The demo shows the simple dropdown for plain selection, the editable combo box
+that also accepts free typed input, and a multi-select variant where several
+entries can be checked at once.
 
-**Checkbox / Radio / Switch** — Interactive toggle controls: standard checkboxes,
-tri-state checkboxes, switch toggles, and radio button groups.
+**Checkbox / Radio / Switch** — These are the classic controls for yes/no
+decisions and exclusive choices. The demo covers the standard two-state checkbox,
+the tri-state checkbox whose third, indeterminate state is useful for "partially
+selected" parent items, the modern switch toggle for on/off settings, and radio
+button groups where selecting one option deselects the others.
 
-**Slider** — Range and value selection: horizontal and vertical sliders, and a
-dual-handle range slider.
+**Slider** — A slider lets the user pick a value from a continuous range by
+dragging a handle — perfect for volume, brightness, or zoom, where the relative
+position matters more than the exact number. The demo shows horizontal and
+vertical orientations, and a range slider with two handles that selects an entire
+interval, such as a price range in a filter.
 
-**Spinner / SpinBox** — Value selection via arrow buttons, arrow keys, mouse wheel,
-or direct typing: integer and decimal spinners, list-value cycling, and a
-horizontal stepper layout.
+**Spinner / SpinBox** — Where the slider is approximate, the spinner is precise:
+a numeric field with arrow buttons for stepping the value up and down, which also
+responds to arrow keys, the mouse wheel, and direct typing. The demo steps
+through integer and decimal spinners, a list spinner that cycles through
+predefined values instead of numbers, and a horizontal stepper layout with the
+buttons on either side.
 
-**Scrollbars** — Standalone, fully styleable scrollbars: preset styles, color
-options, corner-radius and end-shape control, horizontal orientation — and even a
-custom SVG scroll handle.
+**Scrollbars** — Scrollbars navigate content that is larger than its viewport.
+In UltraCanvas they are standalone, fully styleable elements rather than fixed
+system widgets. The demo makes that tangible: several preset styles, custom color
+schemes, control over corner radius and end shapes, horizontal orientation — and
+as a highlight, a scrollbar whose handle is a custom SVG graphic.
 
-**Breadcrumb** — Hierarchical path navigation with clickable segments. The demo
-shows default, compact, pills, file-explorer, and web-docs styles, configurable
-separators, dropdown segments, icons, live navigation, and three overflow
-strategies: collapse, ellipsize, and shrink-text.
+**Breadcrumb** — A breadcrumb shows the user where they are inside a hierarchy —
+a folder tree, a website, a document structure — and every segment of the path is
+clickable to jump back. The demo is extensive: default, compact, pills,
+file-explorer, and web-docs styles, configurable separators, segments with icons
+or dropdown menus, and a live navigation example. It also demonstrates three
+strategies for paths that grow too long: collapsing middle segments, ellipsizing,
+and shrinking the text.
 
-**Gauges** — Mode-driven gauges from a single component: analog dials, progress and
-LED bars, circular rings, batteries, thermometers, clocks, and digital panels.
+**Gauges** — Gauges turn a numeric value into an instrument reading — the natural
+choice for dashboards, monitoring tools, and device UIs. One mode-driven
+component covers them all. In the demo you see round analog dials with needles,
+progress and LED bars, circular rings, and a set of specialized instruments:
+battery indicators, thermometers, clocks, and digital display panels.
 
-**Alert / Message Box** — Modal, always-on-top dialogs: info, success, warning, and
-error alerts, yes/no confirmation, and rich alerts with details and custom buttons.
+**Alert / Message Box** — When the application must interrupt the user — to
+report a result, warn about a problem, or ask for confirmation — it raises a
+modal, always-on-top alert dialog. The demo triggers the full palette: info and
+success messages, warning and error dialogs, a yes/no confirmation, and a rich
+alert with an expandable details section and custom buttons.
 
-**Pagination** — A page-navigation strip with ellipsis windowing, construction from
-a total item count, plus compact and simple modes.
+**Pagination** — Pagination splits a large dataset into pages and gives the user
+a navigation strip to move between them — indispensable for tables and search
+results. The demo shows numbered pagination with ellipsis windowing, so even
+thousands of pages stay compact, a variant constructed directly from a total item
+count and page size, and space-saving compact and simple modes.
 
-**Rating** — Star and shape ratings with half-step precision: stars, circles and
-squares, read-only display, and custom SVG symbols for the on, off, and half states.
+**Rating** — The rating element displays or collects a score — the familiar row
+of stars from reviews and feedback forms. The demo shows star ratings with whole
+and half steps, alternative circle and square shapes, a read-only mode for
+displaying an average score, and fully custom appearance via user-supplied SVG
+symbols for the on, off, and half states.
 
-**Stepper / Wizard** — A multi-step progress indicator: a horizontal wizard,
-step descriptions and error states, vertical orientation, and dot markers with
-non-linear navigation.
+**Stepper / Wizard** — A stepper guides the user through a multi-step process —
+an installation, a checkout, an onboarding flow — and shows at a glance which
+steps are done, active, and still ahead. The demo walks a horizontal wizard
+forward and backward, adds step descriptions and an error state for a failed
+step, switches to vertical orientation, and shows dot markers with non-linear
+navigation, where the user may jump between steps freely.
 
-**Chip / Tag Input** — Compact chips in filled and outlined styles, closable chips,
-selectable filter chips, and a wrapping tag/token input field.
+**Chip / Tag Input** — Chips are compact tokens that represent small pieces of
+information — tags, filters, email recipients. The demo shows chips in filled and
+outlined styles, closable chips with a remove button, selectable filter chips
+that toggle like switches, and the tag input field: a text box in which confirmed
+entries turn into chips that wrap across multiple lines.
 
-**Badge** — Count and status indicators: colored status pills, counters with 99+
-overflow, status dots, and overlay badges anchored to icons.
+**Badge** — Badges are small, attention-grabbing indicators for counts and
+statuses — the unread counter on a mail icon is the classic example. The demo
+shows colored status pills with text, numeric counters that overflow gracefully
+to "99+", minimal status dots, and overlay badges anchored to the corner of an
+icon.
 
 ## 4. Conclusion — Basic UI Elements
 
