@@ -10,8 +10,8 @@
 // drop, external drops are copied into the shown folder, and Copy / Cut /
 // Paste go through the system clipboard so files can be exchanged with other
 // programs (external file managers, editors, ...).
-// Version: 1.4.0
-// Last Modified: 2026-07-22
+// Version: 1.4.1
+// Last Modified: 2026-07-25
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -55,6 +55,10 @@ namespace UltraCanvas {
         constexpr int kWheelStep = 64;                 // px per wheel notch
         constexpr uint64_t kDirSizeEntryCap = 50000;   // recursive-size safety cap
         constexpr int kDragStartSlop = 5;              // px before a press becomes a drag-out
+        // Delay before a click on the selected entry's name opens the rename
+        // editor (Windows style). Must exceed the platform double-click
+        // interval so the first click of a double-click never renames.
+        constexpr unsigned int kRenameClickDelayMs = 500;
 
         int clampi(int v, int lo, int hi) {
             return v < lo ? lo : (v > hi ? hi : v);
@@ -943,6 +947,7 @@ namespace UltraCanvas {
     }
 
     UltraCanvasFilerWidget::~UltraCanvasFilerWidget() {
+        CancelPendingRename();      // the timer callback captures `this`
         thumbAlive->store(false);   // neutralize queued cross-thread redraws
         StopThumbnailWorkers();
         StopFolderStatsWorker();
@@ -953,6 +958,7 @@ namespace UltraCanvas {
         currentPath = folderPath;
         scrollOffsetX = scrollOffsetY = 0;
         CancelRename();
+        CancelPendingRename();
         ClearSelection();
         ScanFolder();
         if (onPathChanged) onPathChanged(currentPath);
@@ -960,6 +966,7 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::Refresh() {
         CancelRename();
+        CancelPendingRename();
         ScanFolder();
     }
 
@@ -1141,6 +1148,7 @@ namespace UltraCanvas {
         viewType = type;
         scrollOffsetX = scrollOffsetY = 0;
         CancelRename();
+        CancelPendingRename();
         DropThumbnailCache();   // tile size changed; free the old-size pixmaps
         InvalidateFilerLayout();
         RequestRedraw();
@@ -1589,6 +1597,7 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::StartRename(size_t entryIndex) {
         if (entryIndex >= entries.size()) return;
+        CancelPendingRename();   // the editor opens now; drop any armed click
         renamingIndex = static_cast<int>(entryIndex);
         renameBuffer = entries[entryIndex].name;
         EnsureVisible(entryIndex);
@@ -1625,6 +1634,36 @@ namespace UltraCanvas {
         if (renamingIndex == -1) return;
         renamingIndex = -1;
         RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::ArmPendingRenameTimer() {
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (!app || pendingRenameIndex < 0) {
+            pendingRenameIndex = -1;
+            return;
+        }
+        if (pendingRenameTimer != InvalidTimerId) app->StopTimer(pendingRenameTimer);
+        pendingRenameTimer = app->StartTimer(kRenameClickDelayMs, false,
+                                             [this](TimerId) {
+            pendingRenameTimer = InvalidTimerId;
+            int idx = pendingRenameIndex;
+            pendingRenameIndex = -1;
+            // Only rename if the entry is still the sole selection — a
+            // refresh, keyboard move or programmatic change in the meantime
+            // means the click no longer applies.
+            if (idx >= 0 && idx < (int)entries.size() &&
+                selection.size() == 1 && (int)selection.front() == idx) {
+                StartRename(static_cast<size_t>(idx));
+            }
+        });
+    }
+
+    void UltraCanvasFilerWidget::CancelPendingRename() {
+        pendingRenameIndex = -1;
+        if (pendingRenameTimer == InvalidTimerId) return;
+        if (auto* app = UltraCanvasApplication::GetInstance())
+            app->StopTimer(pendingRenameTimer);
+        pendingRenameTimer = InvalidTimerId;
     }
 
     void UltraCanvasFilerWidget::CompressSelection(const std::string& extension) {
@@ -3753,7 +3792,7 @@ namespace UltraCanvas {
 
     bool UltraCanvasFilerWidget::IsOnItemName(const ItemLayout& item,
                                               const Point2Di& contentPoint) const {
-        // The icon is never the name (double-clicking it activates the entry).
+        // The icon is never the name (clicking it never starts a rename).
         if (item.imageRect.Contains(contentPoint)) return false;
 
         switch (viewType) {
@@ -4218,6 +4257,10 @@ namespace UltraCanvas {
                 Point2Di local(event.pointer.x, event.pointer.y);
                 SetFocus(true);
 
+                // Any new press supersedes a not-yet-fired rename click.
+                bool wasRenaming = renamingIndex >= 0;
+                CancelPendingRename();
+
                 // The info bar covers items scrolled behind it.
                 if (IsInInfoBar(local)) return true;
 
@@ -4303,7 +4346,8 @@ namespace UltraCanvas {
                 }
 
                 {
-                    int index = ItemAt(ToContentPoint(local));
+                    Point2Di content = ToContentPoint(local);
+                    int index = ItemAt(content);
                     bool alreadySelected = index >= 0 &&
                             std::find(selection.begin(), selection.end(),
                                       static_cast<size_t>(index)) != selection.end();
@@ -4312,6 +4356,22 @@ namespace UltraCanvas {
                         // whole; collapsing to just this item happens on
                         // release when no drag started.
                         dragCollapseIndex = index;
+                        // Windows-style rename: pressing the name of the entry
+                        // that is already the sole selection is a rename click
+                        // — unless it turns into a drag or a double-click. The
+                        // delay timer is armed on release. The press that
+                        // commits an active rename doesn't count.
+                        if (!wasRenaming && selection.size() == 1) {
+                            const ItemLayout* layout = nullptr;
+                            for (const ItemLayout& it : items) {
+                                if (static_cast<int>(it.entryIndex) == index) {
+                                    layout = &it;
+                                    break;
+                                }
+                            }
+                            if (layout && IsOnItemName(*layout, content))
+                                pendingRenameIndex = index;
+                        }
                     } else {
                         HandleItemClick(index, event.ctrl, event.shift);
                         dragCollapseIndex = -1;
@@ -4331,6 +4391,13 @@ namespace UltraCanvas {
                     // click: apply the deferred "select only this item".
                     HandleItemClick(dragCollapseIndex, false, false);
                 }
+                if (dragOutArmed && pendingRenameIndex >= 0) {
+                    // Plain click on the sole selection's name: rename after
+                    // the delay unless a double-click cancels it first.
+                    ArmPendingRenameTimer();
+                } else {
+                    pendingRenameIndex = -1;
+                }
                 dragOutArmed = false;
                 dragCollapseIndex = -1;
                 if (draggingScrollbar) {
@@ -4343,27 +4410,20 @@ namespace UltraCanvas {
                 return false;
             }
             case UCEventType::MouseDoubleClick: {
+                // The first click of this double-click may have armed the
+                // deferred rename — opening the entry supersedes it.
+                CancelPendingRename();
                 Point2Di local(event.pointer.x, event.pointer.y);
                 if (IsInInfoBar(local)) return true;
-                Point2Di content = ToContentPoint(local);
-                int index = ItemAt(content);
+                int index = ItemAt(ToContentPoint(local));
                 if (index >= 0) {
-                    // Double-clicking the name edits it; double-clicking the
-                    // icon (or, in Details, another column) opens the entry.
-                    const ItemLayout* layout = nullptr;
-                    for (const ItemLayout& it : items) {
-                        if (static_cast<int>(it.entryIndex) == index) { layout = &it; break; }
-                    }
-                    if (layout && IsOnItemName(*layout, content)) {
-                        StartRename(static_cast<size_t>(index));
-                    } else {
-                        ActivateEntry(static_cast<size_t>(index));
-                    }
+                    ActivateEntry(static_cast<size_t>(index));
                     return true;
                 }
                 return false;
             }
             case UCEventType::KeyDown: {
+                CancelPendingRename();   // keyboard action outruns the click
                 if (HandleRenameKey(event)) return true;
                 if (renamingIndex >= 0) return true;   // swallow while editing
 

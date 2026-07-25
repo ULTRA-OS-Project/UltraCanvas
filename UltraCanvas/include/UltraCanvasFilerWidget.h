@@ -17,8 +17,8 @@
 // onto the widget from other applications are copied into the shown folder,
 // and Copy / Cut / Paste (Ctrl+C/X/V) interoperate with the system clipboard
 // so files can be exchanged with external file managers.
-// Version: 1.4.0
-// Last Modified: 2026-07-22
+// Version: 1.4.1
+// Last Modified: 2026-07-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -26,6 +26,7 @@
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
+#include "UltraCanvasTimer.h"
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
@@ -431,6 +432,13 @@ namespace UltraCanvas {
         // Inline rename editor.
         int renamingIndex = -1;
         std::string renameBuffer;
+        // Windows-style rename trigger: pressing the name of the entry that is
+        // already the sole selection records it here; releasing without a drag
+        // arms a one-shot timer that opens the rename editor. The delay is
+        // what tells a "second click = rename" apart from a "double-click =
+        // open" — a double-click cancels the pending rename.
+        int pendingRenameIndex = -1;
+        TimerId pendingRenameTimer = InvalidTimerId;
 
         // ===== DRAG FILES OUT (native OS drag & drop) =====
         // A left press on an item arms the gesture; moving past the slop
@@ -688,7 +696,8 @@ namespace UltraCanvas {
         Point2Di ToContentPoint(const Point2Di& localPoint) const;
         int  ItemAt(const Point2Di& contentPoint) const;   // entry index or -1
         // True when a content-space point falls on the item's name text (not its
-        // icon) — a double-click there starts an inline rename.
+        // icon) — a click there on the already-selected entry starts an inline
+        // rename (Windows style, after a short delay).
         bool IsOnItemName(const ItemLayout& item, const Point2Di& contentPoint) const;
         int  IconMenuActionAt(const Point2Di& localPoint, size_t& outEntry) const;
         int  DetailsHeaderColumnAt(const Point2Di& localPoint) const;
@@ -706,6 +715,10 @@ namespace UltraCanvas {
         void AcceptDroppedFiles(const std::vector<std::string>& paths);
         void CommitRename();
         void CancelRename();
+        // Deferred Windows-style rename (single click on the selected entry's
+        // name): arm the delay timer on release / drop the pending rename.
+        void ArmPendingRenameTimer();
+        void CancelPendingRename();
         bool HandleRenameKey(const UCEvent& event);
         void FireSelectionChanged();
         void ReportError(const std::string& message);

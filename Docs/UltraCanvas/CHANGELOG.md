@@ -1,3 +1,15 @@
+#### 2026-07-25 *0.3.17*
+- **UltraCanvasFilerWidget**: double-click vs rename behavior corrected
+  (0.3.16 had it wrong). Double-clicking an entry — name or icon — now always
+  opens/activates it: folders and compressed archives are entered, files fire
+  `onFileActivated` (executable start / open with the designated program).
+  The inline rename is instead triggered Windows-style: a single click on the
+  **name** of the entry that is already the only selected one opens the rename
+  editor after a short delay (500 ms, longer than the double-click interval, so
+  the first click of a double-click never starts a rename). A drag, a
+  double-click, a key press, a refresh or a folder/view change cancels the
+  pending rename.
+
 #### 2026-07-22 *0.3.16*
 - **UltraCanvasFilerWidget**:
   - Default display font reduced from 13 to 12 px (Windows standard 9pt @ 96dpi).
