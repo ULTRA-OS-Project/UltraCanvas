@@ -1967,6 +1967,21 @@ namespace UltraCanvas {
                     }
                     return true;
                 }
+                // Printable characters are delivered on the KeyDown event
+                // itself (event.character / event.text) — the platform layers
+                // never emit a separate KeyChar/TextInput event. Same
+                // convention as UltraCanvasTextInput.
+                if (d.nameFocused && !event.ctrl && !event.alt) {
+                    std::string in = event.text;
+                    if (in.empty() && event.character >= 32)
+                        in.assign(1, event.character);
+                    std::string filtered;
+                    for (char c : in) {
+                        if (static_cast<unsigned char>(c) >= 32 && c != '/' && c != '\\')
+                            filtered += c;
+                    }
+                    if (!filtered.empty()) { d.nameBuffer += filtered; RequestRedraw(); }
+                }
                 return true;   // stay modal: swallow every other key
             }
             case UCEventType::TextInput: {
@@ -1985,6 +2000,10 @@ namespace UltraCanvas {
             }
             case UCEventType::MouseDown: {
                 if (event.button != UCMouseButton::Left) return true;
+                // Keyboard events are routed to the window's focused element,
+                // so any click while the modal is up must pull focus back to
+                // this widget or typing would go elsewhere.
+                SetFocus(true);
                 Point2Di local(event.pointer.x, event.pointer.y);
                 if (d.iconRect.Contains(local)) {
                     d.draggingIcon = true;
@@ -4102,21 +4121,26 @@ namespace UltraCanvas {
                     return true;
                 }
                 default:
-                    return false;   // characters arrive via KeyChar / TextInput
+                    break;   // may carry a printable character, handled below
             }
+            if (event.ctrl || event.alt) return false;
+        } else if (event.type != UCEventType::TextInput) {
+            return false;
         }
-        if (event.type == UCEventType::TextInput) {
-            std::string in = event.text;
-            if (in.empty() && event.character >= 32) in.assign(1, event.character);
-            // Strip control characters and the path separator.
-            std::string filtered;
-            for (char c : in) {
-                if (static_cast<unsigned char>(c) >= 32 && c != '/') filtered += c;
-            }
-            if (!filtered.empty()) {
-                renameBuffer += filtered;
-                RequestRedraw();
-            }
+        // Printable characters are delivered on the KeyDown event itself
+        // (event.character / event.text) — the platform layers never emit a
+        // separate KeyChar/TextInput event. Same convention as
+        // UltraCanvasTextInput.
+        std::string in = event.text;
+        if (in.empty() && event.character >= 32) in.assign(1, event.character);
+        // Strip control characters and the path separator.
+        std::string filtered;
+        for (char c : in) {
+            if (static_cast<unsigned char>(c) >= 32 && c != '/') filtered += c;
+        }
+        if (!filtered.empty()) {
+            renameBuffer += filtered;
+            RequestRedraw();
             return true;
         }
         return false;
