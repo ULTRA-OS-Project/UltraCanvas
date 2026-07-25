@@ -44,6 +44,15 @@
 #include <map>
 #include <sys/stat.h>
 
+// X11 (pulled in via UltraCanvasApplication.h) #defines Success and None,
+// which collide with the VirtualFS::VirtualFSResult enumerators used below.
+#ifdef Success
+#undef Success
+#endif
+#ifdef None
+#undef None
+#endif
+
 namespace fs = std::filesystem;
 
 namespace UltraCanvas {
@@ -1041,7 +1050,12 @@ namespace UltraCanvas {
                  : VirtualFS::VirtualFS_ListDirectory(currentPath)) {
                 FilerEntry e;
                 e.name = v.name;
-                e.path = v.path;
+                // v.path is the archive-internal path ("media/photo.jpg");
+                // the widget needs the full virtual path so navigation and
+                // file operations can resolve the entry again.
+                e.path = (!currentPath.empty() && currentPath.back() == '/')
+                             ? currentPath + v.name
+                             : currentPath + "/" + v.name;
                 e.isDirectory = v.IsDirectory();
                 e.isSymlink = v.IsSymlink();
                 e.isHidden = v.isHidden;
@@ -1449,7 +1463,42 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::PerformDeletion(
             const std::vector<FilerEntry>& victims) {
         std::error_code ec;
+#ifdef ULTRACANVAS_HAS_VIRTUALFS
+        // Entries living inside an archive cannot be removed via the real
+        // filesystem. They are grouped per archive and deleted with ONE
+        // batched VirtualFS call each, so the archive is rewritten once for
+        // the whole selection — deleting entries one-by-one would rewrite
+        // the archive once per entry, which for thousands of files takes
+        // practically forever.
+        std::vector<std::string> archiveOrder;
+        std::map<std::string, std::vector<std::string>> archiveVictims;
+        std::vector<FilerEntry> fsVictims;
         for (const FilerEntry& e : victims) {
+            // A real file/dir always wins - even if a path component looks
+            // like an archive name (a real folder named "backup.zip").
+            if (!fs::exists(e.path, ec)) {
+                auto resolved = VirtualFS::VirtualFSPath::Resolve(e.path);
+                if (resolved.isInsideArchive && !resolved.virtualPath.empty()) {
+                    auto& list = archiveVictims[resolved.realPath];
+                    if (list.empty()) archiveOrder.push_back(resolved.realPath);
+                    list.push_back(resolved.virtualPath);
+                    continue;
+                }
+            }
+            fsVictims.push_back(e);
+        }
+        for (const std::string& archive : archiveOrder) {
+            auto result = VirtualFS::VirtualFS_DeleteFromArchive(
+                    archive, archiveVictims[archive]);
+            if (result != VirtualFS::VirtualFSResult::Success) {
+                ReportError("Delete failed in " + archive + ": " +
+                            VirtualFS::VirtualFSResultToString(result));
+            }
+        }
+#else
+        const std::vector<FilerEntry>& fsVictims = victims;
+#endif
+        for (const FilerEntry& e : fsVictims) {
             fs::remove_all(e.path, ec);
             if (ec) ReportError("Delete failed for " + e.path + ": " + ec.message());
         }
@@ -1495,19 +1544,40 @@ namespace UltraCanvas {
             if (e.isDirectory) { previewFolder = &e; break; }
         }
         if (previewFolder) {
+            // realPath stays empty for entries inside archives - no
+            // thumbnail can be decoded from those, only name and type.
+            struct PreviewItem {
+                std::string name;
+                std::string realPath;
+                bool isDir = false;
+            };
             std::error_code ec;
-            std::vector<fs::directory_entry> inner;
-            for (fs::directory_iterator it(previewFolder->path, ec), end;
-                 it != end && inner.size() < 10; it.increment(ec)) {
-                if (ec) break;
-                inner.push_back(*it);
-            }
+            std::vector<PreviewItem> inner;
             size_t totalInner = 0;
-            for (fs::directory_iterator it(previewFolder->path, ec), end;
-                 it != end; it.increment(ec)) {
-                if (ec) break;
-                ++totalInner;
+            if (fs::is_directory(previewFolder->path, ec)) {
+                for (fs::directory_iterator it(previewFolder->path, ec), end;
+                     it != end; it.increment(ec)) {
+                    if (ec) break;
+                    if (inner.size() < 10) {
+                        std::error_code e2;
+                        inner.push_back({it->path().filename().string(),
+                                         it->path().string(),
+                                         it->is_directory(e2)});
+                    }
+                    ++totalInner;
+                }
             }
+#ifdef ULTRACANVAS_HAS_VIRTUALFS
+            else {
+                for (const VirtualFS::VirtualFSEntry& v
+                     : VirtualFS::VirtualFS_ListDirectory(previewFolder->path)) {
+                    if (inner.size() < 10) {
+                        inner.push_back({v.name, "", v.IsDirectory()});
+                    }
+                    ++totalInner;
+                }
+            }
+#endif
 
             auto caption = std::make_shared<UltraCanvasLabel>(
                     "FilerDelPreviewCap", 0, 0, 0, 18);
@@ -1532,10 +1602,8 @@ namespace UltraCanvas {
 
             const int tile = 64;
             int idx = 0;
-            for (const fs::directory_entry& de : inner) {
-                std::error_code e2;
-                std::string name = de.path().filename().string();
-                bool isDir = de.is_directory(e2);
+            for (const PreviewItem& pi : inner) {
+                const std::string& name = pi.name;
 
                 auto cell = std::make_shared<UltraCanvasContainer>(
                         "FilerDelCell" + std::to_string(idx));
@@ -1546,7 +1614,7 @@ namespace UltraCanvas {
                 auto thumb = CreateImageElement(
                         "FilerDelThumb" + std::to_string(idx), 0, 0, tile, tile);
                 thumb->SetFitMode(ImageFitMode::Contain);
-                if (!isDir) thumb->LoadFromFile(de.path().string());
+                if (!pi.isDir && !pi.realPath.empty()) thumb->LoadFromFile(pi.realPath);
                 thumb->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
                 cell->AddChild(thumb);
 
