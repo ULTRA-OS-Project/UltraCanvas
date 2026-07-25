@@ -1043,12 +1043,25 @@ namespace UltraCanvas {
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
         else if (!currentPath.empty()) {
             // Not a real directory: let VirtualFS list it (an archive interior —
-            // "/path/archive.zip" or a path inside one).
+            // "/path/archive.zip" or a path inside one). VirtualFS registers
+            // its providers in Initialize(); without it every archive lists
+            // as empty, so make sure it ran (idempotent, cheap after the
+            // first call).
+            if (!UltraCanvasVirtualFSBridge::Initialize()) {
+                ReportError("VirtualFS unavailable: "
+                            + UltraCanvasVirtualFSBridge::GetLastError());
+            }
             for (const VirtualFS::VirtualFSEntry& v
                  : VirtualFS::VirtualFS_ListDirectory(currentPath)) {
                 FilerEntry e;
                 e.name = v.name;
-                e.path = v.path;
+                // Provider entry paths are archive-internal ("sub/file.txt");
+                // navigation and file access need the full virtual path
+                // ("/path/archive.zip/sub/file.txt"). The entry is a direct
+                // child of the shown folder, so build the path from it.
+                e.path = (currentPath.back() == '/')
+                        ? currentPath + v.name
+                        : currentPath + "/" + v.name;
                 e.isDirectory = v.IsDirectory();
                 e.isSymlink = v.IsSymlink();
                 e.isHidden = v.isHidden;
@@ -3877,7 +3890,16 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::ActivateEntry(size_t index) {
         if (index >= entries.size()) return;
         const FilerEntry e = entries[index];   // copy: SetPath frees `entries`
-        if (e.isDirectory || e.isArchive) {
+#ifdef ULTRACANVAS_HAS_VIRTUALFS
+        // Archives open like folders: descending SetPath()s into the archive
+        // and ScanFolder() lists its interior through VirtualFS.
+        bool enters = e.isDirectory || e.isArchive;
+#else
+        // Without VirtualFS an archive can't be browsed — activate it like
+        // any other file instead of navigating into an empty view.
+        bool enters = e.isDirectory;
+#endif
+        if (enters) {
             SetPath(e.path);
             return;
         }

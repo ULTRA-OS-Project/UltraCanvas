@@ -9,6 +9,27 @@
   the first click of a double-click never starts a rename). A drag, a
   double-click, a key press, a refresh or a folder/view change cancels the
   pending rename.
+- **UltraCanvasFilerWidget**: double-clicking a compressed archive now really
+  opens it like a folder (it always listed as empty before). Three fixes:
+  - The widget listed archive interiors with `VirtualFS_ListDirectory()`
+    without ever initializing VirtualFS, so no archive provider was registered
+    and every archive came back empty. `ScanFolder()` now runs
+    `UltraCanvasVirtualFSBridge::Initialize()` (idempotent) before listing.
+  - VirtualFS entries carry archive-internal paths (`sub/file.txt`); the
+    widget stored them as the entry path, so descending into a folder inside
+    an archive navigated to a nonsense path. Entry paths are now built as
+    `<current folder>/<name>`, giving full virtual paths
+    (`/path/archive.zip/sub`) that also work for nested archives.
+  - Without the VirtualFS module in the build, activating an archive now
+    fires `onFileActivated` like any other file instead of navigating into a
+    permanently empty view.
+- **VirtualFS (libarchive provider)**: archives that store no explicit
+  directory headers (Python `zipfile`, several archivers) now show their
+  subdirectories. The entry cache synthesizes a Directory entry for every
+  path ancestor implied by a member (`sub/b.txt` ⇒ `sub`), so subfolders
+  appear when listing the parent and can be descended into; an explicit
+  directory header arriving later replaces the synthesized entry's metadata
+  without duplicating it in the listing.
 
 #### 2026-07-22 *0.3.16*
 - **UltraCanvasFilerWidget**:
