@@ -724,10 +724,15 @@ VirtualFSResult VirtualFS_AddToArchive(
 
 VirtualFSResult VirtualFS_DeleteFromArchive(
     const std::string& archivePath,
-    const std::vector<std::string>& entryPaths);
-    // Deletes entries from archive
+    const std::vector<std::string>& entryPaths,
+    VirtualFSProgressCallback progressCallback = nullptr);
+    // Deletes entries from archive in ONE rewrite pass (batched):
+    // the whole set is handed to the provider at once, so deleting
+    // thousands of entries costs a single archive rewrite - not one
+    // rewrite per entry. Directory paths delete their whole subtree.
     // @param archivePath - Path to archive
     // @param entryPaths - Paths inside archive to delete
+    // @param progressCallback - Progress callback (optional)
 
 VirtualFSResult VirtualFS_UpdateInArchive(
     const std::string& archivePath,
@@ -1032,6 +1037,22 @@ public:
     
     virtual VirtualFSResult Delete(const std::string& virtualPath) {
         return VirtualFSResult::NotSupported;
+    }
+    
+    virtual VirtualFSResult DeleteEntries(
+        const std::vector<std::string>& virtualPaths,
+        VirtualFSProgressCallback progressCallback = nullptr) {
+        // Batched delete: providers should rewrite the archive ONCE for the
+        // whole set (default falls back to per-entry Delete). Directory
+        // paths remove their whole subtree. The LibArchive provider takes a
+        // miniz raw-copy fast path for plain ZIP archives (surviving entries
+        // are copied without recompression) and a single-pass libarchive
+        // rewrite for the other writable formats.
+        for (const auto& path : virtualPaths) {
+            auto result = Delete(path);
+            if (result != VirtualFSResult::Success) return result;
+        }
+        return VirtualFSResult::Success;
     }
     
     virtual VirtualFSResult Rename(

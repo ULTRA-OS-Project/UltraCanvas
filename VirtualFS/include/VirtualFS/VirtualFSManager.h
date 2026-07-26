@@ -428,14 +428,19 @@ public:
         const VirtualFSOpenOptions& options = VirtualFSOpenOptions::Default());
     
     /**
-     * @brief Deletes entries from archive
-     * @param archivePath Archive path
-     * @param entryPaths Entries to delete
+     * @brief Deletes entries from archive in a single rewrite pass
+     * @param archivePath Archive path (must not be nested inside another archive)
+     * @param entryPaths Entries to delete; directory paths delete their subtree
+     * @param progressCallback Progress callback (optional)
      * @return Success or error
+     *
+     * The whole batch is handed to the provider at once, so deleting
+     * thousands of entries costs one archive rewrite — not one per entry.
      */
     VirtualFSResult DeleteFromArchive(
         const std::string& archivePath,
-        const std::vector<std::string>& entryPaths);
+        const std::vector<std::string>& entryPaths,
+        VirtualFSProgressCallback progressCallback = nullptr);
     
     // =========================================================================
     // UTILITY
