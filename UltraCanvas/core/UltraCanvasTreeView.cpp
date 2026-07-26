@@ -786,7 +786,6 @@ namespace UltraCanvas {
             ctx->SetFontSize(12);
             ctx->SetTextPaint(nodeTextColor);
             ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-            //ctx->DrawTextInRect(node->data.text, Rect2Dd(textX, nodeY, nodeWidth - textX, rowHeight));
             auto layout = ctx->GetOrCreateTextLayout(node->data.text, Size2Di(nodeWidth - textX, rowHeight), true);
             if (layout) {
                 ctx->DrawTextLayout(*layout, Point2Dd(textX, nodeY));
@@ -853,7 +852,11 @@ namespace UltraCanvas {
         // Name column
         Color nameColor = node->data.textColor != Colors::Black ? node->data.textColor : textColor;
         ctx->SetTextPaint(nameColor);
-        ctx->DrawTextInRect(node->data.text, Rect2Dd(textX, nodeY, nameWidth, rowHeight));
+//        ctx->DrawTextInRect(node->data.text, Rect2Dd(textX, nodeY, nameWidth, rowHeight));
+        auto layoutName = ctx->GetOrCreateTextLayout(node->data.text, Size2Di(nameWidth, rowHeight), true);
+        if (layoutName) {
+            ctx->DrawTextLayout(*layoutName, Point2Dd(textX, nodeY));
+        }
 
         if (typeX < textX) return;  // row too narrow for the remaining columns
 
@@ -863,13 +866,21 @@ namespace UltraCanvas {
                                 ? node->data.typeColor
                                 : cs.typeTextColor;
             ctx->SetTextPaint(typeCol);
-            ctx->DrawTextInRect(node->data.typeText, Rect2Dd(typeX, nodeY, typeW, rowHeight));
+//            ctx->DrawTextInRect(node->data.typeText, Rect2Dd(typeX, nodeY, typeW, rowHeight));
+            auto layoutType = ctx->GetOrCreateTextLayout(node->data.typeText, Size2Di(typeW, rowHeight), true);
+            if (layoutType) {
+                ctx->DrawTextLayout(*layoutType, Point2Dd(typeX, nodeY));
+            }
         }
 
         // Value column
         if (!node->data.valueText.empty()) {
             ctx->SetTextPaint(cs.valueTextColor);
-            ctx->DrawTextInRect(node->data.valueText, Rect2Dd(valueX, nodeY, valW, rowHeight));
+            //ctx->DrawTextInRect(node->data.valueText, Rect2Dd(valueX, nodeY, valW, rowHeight));
+            auto layoutValue = ctx->GetOrCreateTextLayout(node->data.valueText, Size2Di(valW, rowHeight), true);
+            if (layoutValue) {
+                ctx->DrawTextLayout(*layoutValue, Point2Dd(valueX, nodeY));
+            }
         }
     }
 
