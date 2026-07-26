@@ -1016,6 +1016,15 @@ namespace UltraCanvas {
                 .AddVariant("waterfallcharts", "Cash Flow with Subtotals")
                 .AddVariant("waterfallcharts", "Performance Impact");
 
+        chartBuilder.AddItem("nestedareacharts", "Nested Chart", "Nested proportional area comparison chart",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateNestedAreaChartExamples(); },
+                             "DemoApp/UltraCanvasNestedAreaChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasNestedAreaChartExamples.md")
+                .AddVariant("nestedareacharts", "Rectangle Mode")
+                .AddVariant("nestedareacharts", "Circle Mode")
+                .AddVariant("nestedareacharts", "Theme Showcase");
+
         chartBuilder.AddItem("populationcharts", "Population Chart", "Population chart data visualization",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreatePopulationChartExamples(); },
