@@ -714,8 +714,10 @@ namespace UltraCanvas {
             ctx->SetTextPaint(columnStyle.groupHeaderTextColor);
             ctx->SetTextAlignment(TextAlignment::Center);
             ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-            ctx->DrawTextInRect(node->data.text,
-                                Rect2Dd(contentRect.x + 1, nodeY, nodeWidth - 2, rowHeight));
+            auto layout = ctx->GetOrCreateTextLayout(node->data.text, Size2Di(nodeWidth - 2, rowHeight), true);
+            if (layout) {
+                ctx->DrawTextLayout(*layout, Point2Dd(contentRect.x + 1, nodeY));
+            }
             ctx->SetFontWeight(FontWeight::Normal);
             ctx->SetTextAlignment(TextAlignment::Left);
 
