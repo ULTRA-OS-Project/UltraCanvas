@@ -1166,6 +1166,12 @@ namespace UltraCanvas {
                                "DemoApp/UltraCanvasFlowChartExamples.cpp",
                                "Docs/UltraCanvas/UltraCanvasFlowChartExamples.md");
 
+        diagramBuilder.AddItem("pertchart", "PERT chart", "Project network with critical path analysis, node designs and palettes",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreatePertChartExamples(); },
+                               "DemoApp/UltraCanvasPertChartExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasPertChartExamples.md");
+
         diagramBuilder.AddItem("venndiagram", "Venn Diagram", "Interactive Venn diagram for set visualization",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateVennDiagramExamples(); },
