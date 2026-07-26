@@ -25,6 +25,7 @@
 #include <string>
 #include <algorithm>
 #include <cmath>
+#include <random>
 
 namespace UltraCanvas {
 
@@ -308,7 +309,17 @@ std::shared_ptr<UltraCanvasUIElement> BuildPackedTab() {
     };
     tab->AddChild(colorDrop);
 
-    auto info = std::make_shared<UltraCanvasLabel>("PackedInfo", ctrlX, ctrlY + 140, 440, 400);
+    auto encBtn = std::make_shared<UltraCanvasButton>("PackedEncBtn", ctrlX, ctrlY + 126, 250, 30);
+    encBtn->SetText("Show Enclosure Circle");
+    encBtn->onClick = [encBtn, packed]() {
+        static bool enclosed = false;
+        enclosed = !enclosed;
+        packed->SetPackedEnclosure(enclosed, Color(45, 55, 85, 255), 1.5f);
+        encBtn->SetText(enclosed ? "Hide Enclosure Circle" : "Show Enclosure Circle");
+    };
+    tab->AddChild(encBtn);
+
+    auto info = std::make_shared<UltraCanvasLabel>("PackedInfo", ctrlX, ctrlY + 170, 440, 400);
     info->SetText(
         "Packed Bubbles (BubbleChartMode::PackedBubbles)\n\n"
         "The Tableau-style \"bubble cloud\" / circle packing:\n"
@@ -325,6 +336,8 @@ std::shared_ptr<UltraCanvasUIElement> BuildPackedTab() {
         "  • SetPackedSortOrder() / SetPackedPadding()\n"
         "  • SetBubbleStyle(Flat | Shaded | Glossy)\n"
         "  • SetColorMode(Palette or ColormapBySize)\n"
+        "  • SetPackedEnclosure() — outlined boundary circle,\n"
+        "    packing scaled to fill it (toggle above)\n"
         "  • Auto labels: names + values inside when they fit");
     info->SetFontSize(11.5f);
     info->SetTextColor(Color(70, 70, 70, 255));
@@ -335,7 +348,216 @@ std::shared_ptr<UltraCanvasUIElement> BuildPackedTab() {
 }
 
 // =============================================================================
-// TAB 4: 3D BUBBLE CHART — OpenGL surface
+// TAB 4: HIERARCHICAL PACKED BUBBLES (nested circle packing)
+// =============================================================================
+// d3-style two-level circle packing: orbital launches by rocket family,
+// grouped into labelled country/region parent circles.
+
+std::shared_ptr<UltraCanvasUIElement> BuildHierarchicalTab() {
+    auto tab = std::make_shared<UltraCanvasContainer>("BubbleHierTab", 0, 0,
+                                                      kTabContentW, kTabContentH);
+
+    auto title = std::make_shared<UltraCanvasLabel>("HierTitle", 50, 14, 700, 26);
+    title->SetText("Orbital Launches by Rocket Family — Hierarchical Packed Bubbles");
+    title->SetFontSize(16);
+    title->SetTextColor(Color(50, 50, 50, 255));
+    tab->AddChild(title);
+
+    auto hier = CreateHierarchicalBubbleChart("launchFamilies", 30, 50, 720, 620);
+
+    struct Entry { const char* group; const char* name; double value; };
+    const std::vector<Entry> entries = {
+        {"The United States", "Falcon",    96},
+        {"The United States", "Electron",  10},
+        {"The United States", "Atlas",      5},
+        {"The United States", "Delta",      3},
+        {"The United States", "Antares",    2},
+        {"The United States", "Astra",      2},
+        {"China",             "Long March", 48},
+        {"China",             "Kuaizhou",    6},
+        {"China",             "Ceres",       3},
+        {"Russia",            "R-7",        19},
+        {"Russia",            "Proton",      2},
+        {"Russia",            "Angara",      1},
+        {"Europe",            "Ariane",      5},
+        {"Europe",            "Vega",        3},
+        {"Japan",             "H-II",        5},
+        {"Japan",             "Epsilon",     1},
+        {"India",             "PSLV",        4},
+        {"India",             "GSLV",        2},
+        {"Iran",              "Qased",       2},
+        {"Iran",              "Simorgh",     1},
+    };
+    for (const auto& e : entries) {
+        hier->AddBubble(0, 0, e.value, 0, e.name, e.group);
+    }
+
+    // Saturated child colour per group; the parent circle is drawn in the
+    // same colour lightened by the group tint.
+    hier->SetCategoryColorMap({
+        {"The United States", Color( 86, 146, 208, 255)},
+        {"China",             Color(247, 148,  51, 255)},
+        {"Russia",            Color( 63, 132, 130, 255)},
+        {"Europe",            Color(226, 113,  29, 255)},
+        {"Japan",             Color( 76, 140,  74, 255)},
+        {"India",             Color(141, 127,  36, 255)},
+        {"Iran",              Color(118, 183, 110, 255)},
+    });
+    hier->SetGroupTint(0.55f);
+    hier->SetGroupPadding(6.0f);
+    hier->SetGroupLabelStyle(11.0f, Colors::Transparent /* auto contrast */, true);
+
+    hier->SetRadiusRange(7.0f, 64.0f);
+    hier->SetNameLabelMode(BubbleNameLabelMode::Auto);
+    hier->SetHideNamesBelowRadius(13.0f);   // tiny bubbles: tooltip only
+    hier->SetValueLabelMode(BubbleValueLabelMode::Hidden);
+    hier->SetLabelFontSize(10.0f);
+    hier->SetEnableTooltips(true);
+    tab->AddChild(hier);
+
+    auto info = std::make_shared<UltraCanvasLabel>("HierInfo", 800, 60, 420, 520);
+    info->SetText(
+        "Hierarchical Packing\n"
+        "(BubbleChartMode::HierarchicalPacked)\n\n"
+        "Two-level circle packing: bubbles sharing a\n"
+        "category are packed inside a parent circle, and\n"
+        "the parent circles are packed against each other\n"
+        "(the d3.pack() hierarchy look).\n\n"
+        "  • Parent fill = group colour lightened by\n"
+        "    SetGroupTint(); children keep the saturated\n"
+        "    colour, so groups read at a glance\n"
+        "  • The group name sits in the headroom ring\n"
+        "    between the children and the parent rim\n"
+        "  • Parent size derives automatically from the\n"
+        "    packed children plus SetGroupPadding()\n\n"
+        "API used here:\n"
+        "  • CreateHierarchicalBubbleChart(...)\n"
+        "  • AddBubble(0, 0, value, 0, name, group)\n"
+        "  • SetCategoryColorMap() — colour per group\n"
+        "  • SetGroupTint() / SetGroupPadding() /\n"
+        "    SetGroupLabelStyle()\n\n"
+        "Hover any child bubble for name, group and value.");
+    info->SetFontSize(11.5f);
+    info->SetTextColor(Color(70, 70, 70, 255));
+    info->SetAlignment(TextAlignment::Left);
+    tab->AddChild(info);
+
+    return tab;
+}
+
+// =============================================================================
+// TAB 5: TIMELINE BUBBLES (named rows x time, size = value)
+// =============================================================================
+// Recreation of the Tableau "Which months had the highest number of orders?"
+// chart: region rows, monthly X axis, bubble area = order count.
+
+std::shared_ptr<UltraCanvasUIElement> BuildTimelineTab() {
+    auto tab = std::make_shared<UltraCanvasContainer>("BubbleTimelineTab", 0, 0,
+                                                      kTabContentW, kTabContentH);
+
+    auto title = std::make_shared<UltraCanvasLabel>("TlTitle", 50, 12, 800, 24);
+    title->SetText("Which months had the highest number of orders?");
+    title->SetFontSize(16);
+    title->SetTextColor(Color(50, 50, 50, 255));
+    tab->AddChild(title);
+
+    auto subtitle = std::make_shared<UltraCanvasLabel>("TlSubtitle", 50, 38, 800, 18);
+    subtitle->SetText("Bubble size represents number of orders");
+    subtitle->SetFontSize(11);
+    subtitle->SetTextColor(Color(110, 110, 110, 255));
+    tab->AddChild(subtitle);
+
+    std::vector<std::string> regions = {
+        "Africa", "Canada", "Caribbean", "Central Asia",
+        "EMEA", "North Asia", "Oceania", "Southeast Asia"
+    };
+    auto timeline = CreateTimelineBubbleChart("monthlyOrders", 30, 62, 900, 600, regions);
+
+    // Month index 0 = November 2011 ... 48 = November 2015.
+    auto monthLabel = [](double v) {
+        static const char* names[12] = {
+            "January", "February", "March", "April", "May", "June", "July",
+            "August", "September", "October", "November", "December"
+        };
+        int idx = static_cast<int>(std::lround(v));
+        int m = (10 + idx) % 12;
+        int year = 2011 + (10 + idx) / 12;
+        return std::string(names[m]) + " " + std::to_string(year);
+    };
+
+    // Synthetic order counts: per-region base volume, a gentle growth trend
+    // and seasonal noise (Canada intentionally tiny, like the original).
+    std::mt19937 gen(2015);
+    std::uniform_real_distribution<> noise(0.55, 1.45);
+    const std::vector<double> baseVolume = {120, 8, 60, 55, 130, 90, 100, 95};
+    for (size_t r = 0; r < regions.size(); ++r) {
+        for (int m = 0; m <= 48; ++m) {
+            double trend = 1.0 + m * 0.022;                      // slow growth
+            double season = 1.0 + 0.25 * std::sin((m % 12) * 0.52);
+            double orders = std::max(1.0, baseVolume[r] * trend * season * noise(gen));
+            timeline->AddTimelineBubble(regions[r], m, std::round(orders));
+        }
+    }
+
+    timeline->SetXAxisLabelFormatter(monthLabel);
+    timeline->SetColorMode(BubbleColorMode::Uniform);
+    timeline->SetUniformColor(Color(114, 158, 206, 255));
+    timeline->SetBubbleAlpha(0.62f);
+    timeline->SetRadiusRange(1.5f, 26.0f);
+    timeline->SetSizeScale(BubbleSizeScale::Area);
+    timeline->SetNameLabelMode(BubbleNameLabelMode::Hidden);
+    timeline->SetValueLabelMode(BubbleValueLabelMode::Hidden);
+    timeline->SetMatrixRowLabelStyle(11.0f, Color(100, 100, 100, 255));
+    timeline->SetGridColor(Color(232, 232, 232, 255));
+    timeline->SetEnableTooltips(true);
+
+    // Tableau-style tooltip: "EMEA / 173 order(s) in June 2014".
+    auto* timelinePtr = timeline.get();
+    timeline->SetCustomTooltipGenerator(
+        [timelinePtr, monthLabel](const ChartDataPoint&, size_t index) {
+            const auto& b = timelinePtr->GetBubble(index);
+            return b.category + "\n" +
+                   std::to_string(static_cast<long>(b.size)) +
+                   " order(s) in " + monthLabel(b.x);
+        });
+    tab->AddChild(timeline);
+
+    auto info = std::make_shared<UltraCanvasLabel>("TlInfo", 960, 70, 270, 520);
+    info->SetText(
+        "Timeline Bubbles\n"
+        "(BubbleChartMode::\n"
+        " TimelineBubbles)\n\n"
+        "Named categorical rows on\n"
+        "the Y axis, a continuous\n"
+        "(time) value on X, bubble\n"
+        "AREA = the measure. Zero-\n"
+        "anchored area scale, so a\n"
+        "month with twice the orders\n"
+        "shows twice the ink.\n\n"
+        "API used here:\n"
+        " • CreateTimelineBubble-\n"
+        "   Chart(id, ..., rows)\n"
+        " • AddTimelineBubble(row,\n"
+        "   monthIndex, orders)\n"
+        " • SetXAxisLabelFormatter\n"
+        "   — month index to\n"
+        "   \"June 2014\" labels\n"
+        " • SetCustomTooltip-\n"
+        "   Generator — Tableau-\n"
+        "   style order tooltips\n\n"
+        "392 bubbles (8 regions x\n"
+        "49 months). Hover any\n"
+        "bubble for its exact count.");
+    info->SetFontSize(11.0f);
+    info->SetTextColor(Color(70, 70, 70, 255));
+    info->SetAlignment(TextAlignment::Left);
+    tab->AddChild(info);
+
+    return tab;
+}
+
+// =============================================================================
+// TAB 6: 3D BUBBLE CHART — OpenGL surface
 // =============================================================================
 
 #ifdef ULTRACANVAS_ENABLE_GL
@@ -743,6 +965,8 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBubbleCh
     tabs->AddTab("Bubble Matrix (Mrs. President)", BuildMatrixTab());
     tabs->AddTab("Scatter Bubbles (Travel Concerns)", BuildScatterTab());
     tabs->AddTab("Packed Bubbles", BuildPackedTab());
+    tabs->AddTab("Hierarchical Packing", BuildHierarchicalTab());
+    tabs->AddTab("Bubble Timeline", BuildTimelineTab());
     tabs->AddTab("3D Bubbles (OpenGL)", Build3DTab());
     tabs->SetActiveTab(0);
 

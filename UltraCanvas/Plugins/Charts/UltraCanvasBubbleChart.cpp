@@ -251,6 +251,11 @@ void UltraCanvasBubbleChartElement::SetMinRadiusForInsideLabels(float radius) {
     RequestRedraw();
 }
 
+void UltraCanvasBubbleChartElement::SetHideNamesBelowRadius(float radius) {
+    hideNamesBelowRadius = std::max(0.0f, radius);
+    RequestRedraw();
+}
+
 void UltraCanvasBubbleChartElement::SetRowColorMap(const std::map<std::string, Color>& colorMap) {
     rowColors = colorMap;
     RequestRedraw();
@@ -276,6 +281,60 @@ void UltraCanvasBubbleChartElement::SetPackedSortOrder(PackedSortOrder order) {
 
 void UltraCanvasBubbleChartElement::SetPackedPadding(float pixels) {
     packedPadding = std::max(0.0f, pixels);
+    RequestRedraw();
+}
+
+void UltraCanvasBubbleChartElement::SetPackedEnclosure(bool show, const Color& strokeColor,
+                                                       float strokeWidth, const Color& fillColor) {
+    packedEnclosureShow = show;
+    packedEnclosureStroke = strokeColor;
+    packedEnclosureWidth = std::max(0.5f, strokeWidth);
+    packedEnclosureFill = fillColor;
+    RequestRedraw();
+}
+
+void UltraCanvasBubbleChartElement::SetGroupPadding(float pixels) {
+    groupPadding = std::max(0.0f, pixels);
+    RequestRedraw();
+}
+
+void UltraCanvasBubbleChartElement::SetGroupTint(float lightenFactor) {
+    groupTint = std::clamp(lightenFactor, 0.0f, 1.0f);
+    RequestRedraw();
+}
+
+void UltraCanvasBubbleChartElement::SetGroupLabelStyle(float fontSize, const Color& color, bool bold) {
+    groupLabelFontSize = std::max(6.0f, fontSize);
+    groupLabelColor = color;
+    groupLabelBold = bold;
+    RequestRedraw();
+}
+
+void UltraCanvasBubbleChartElement::SetTimelineRows(const std::vector<std::string>& rows) {
+    timelineRows = rows;
+    InvalidateCache();
+    RequestRedraw();
+}
+
+void UltraCanvasBubbleChartElement::AddTimelineBubble(const std::string& rowName, double xValue,
+                                                      double size, double colorValue) {
+    auto it = std::find(timelineRows.begin(), timelineRows.end(), rowName);
+    if (it == timelineRows.end()) {
+        timelineRows.push_back(rowName);
+        it = std::prev(timelineRows.end());
+    }
+    BubbleDataPoint b;
+    b.x = xValue;
+    b.size = size;
+    b.colorValue = colorValue;
+    b.category = rowName;
+    b.row = static_cast<int>(it - timelineRows.begin());
+    bubbles.push_back(b);
+    SyncDataSource();
+}
+
+void UltraCanvasBubbleChartElement::SetXAxisLabelFormatter(std::function<std::string(double)> formatter) {
+    xLabelFormatter = std::move(formatter);
     RequestRedraw();
 }
 
@@ -321,9 +380,12 @@ void UltraCanvasBubbleChartElement::GetSizeDomain(double& outMin, double& outMax
         outMin = std::min(outMin, b.size);
         outMax = std::max(outMax, b.size);
     }
-    // The matrix reads best with a zero-anchored scale so cell areas compare
-    // directly ("79" is ~5x the area of "16").
-    if (mode == BubbleChartMode::BubbleMatrix) outMin = 0.0;
+    // The matrix and timeline read best with a zero-anchored scale so bubble
+    // areas compare directly ("79" is ~5x the area of "16").
+    if (mode == BubbleChartMode::BubbleMatrix ||
+        mode == BubbleChartMode::TimelineBubbles) {
+        outMin = 0.0;
+    }
     if (outMax <= outMin) outMax = outMin + 1.0;
 }
 
@@ -370,6 +432,10 @@ Color UltraCanvasBubbleChartElement::ResolveBubbleColor(const BubbleDataPoint& b
     } else if (mode == BubbleChartMode::BubbleMatrix && b.row >= 0 &&
                rowColors.count(matrixRows[b.row])) {
         c = rowColors.at(matrixRows[b.row]);
+    } else if (mode == BubbleChartMode::HierarchicalPacked) {
+        // Children take the saturated group colour; the parent circle gets
+        // the tinted version.
+        c = ResolveGroupBaseColor(b.category.empty() ? "Other" : b.category);
     } else {
         switch (colorMode) {
             case BubbleColorMode::Uniform:
@@ -519,6 +585,120 @@ void UltraCanvasBubbleChartElement::BuildScatterLayout() {
     }
 }
 
+// Greedy tangent packing around the origin: each circle is placed at the
+// candidate position (tangent to two already-placed circles) closest to the
+// centre of mass; the first two circles seed the cluster. Items are placed in
+// the order given; radii must be pre-filled, x/y are written.
+void UltraCanvasBubbleChartElement::GreedyPack(std::vector<PackItem>& items, double pad) {
+    auto overlapsAny = [&](double x, double y, double r, size_t upTo) {
+        for (size_t i = 0; i < upTo; ++i) {
+            double dx = x - items[i].x, dy = y - items[i].y;
+            double minDist = r + items[i].r + pad - 0.01;
+            if (dx * dx + dy * dy < minDist * minDist) return true;
+        }
+        return false;
+    };
+
+    for (size_t n = 0; n < items.size(); ++n) {
+        double r = items[n].r;
+        double bestX = 0.0, bestY = 0.0;
+        bool found = false;
+
+        if (n == 0) {
+            found = true;
+        } else if (n == 1) {
+            bestX = items[0].x + items[0].r + r + pad;
+            bestY = items[0].y;
+            found = true;
+        } else {
+            double bestDist = 0.0;
+            for (size_t a = 0; a < n; ++a) {
+                for (size_t b = a + 1; b < n; ++b) {
+                    // Intersect the two circles of possible tangent centres.
+                    double ra = items[a].r + r + pad;
+                    double rb = items[b].r + r + pad;
+                    double dx = items[b].x - items[a].x;
+                    double dy = items[b].y - items[a].y;
+                    double d = std::sqrt(dx * dx + dy * dy);
+                    if (d < 1e-9 || d > ra + rb || d < std::abs(ra - rb)) continue;
+                    double aLen = (ra * ra - rb * rb + d * d) / (2.0 * d);
+                    double h2 = ra * ra - aLen * aLen;
+                    if (h2 < 0.0) continue;
+                    double h = std::sqrt(h2);
+                    double mx = items[a].x + aLen * dx / d;
+                    double my = items[a].y + aLen * dy / d;
+                    double candX[2] = { mx + h * dy / d, mx - h * dy / d };
+                    double candY[2] = { my - h * dx / d, my + h * dx / d };
+                    for (int k = 0; k < 2; ++k) {
+                        if (overlapsAny(candX[k], candY[k], r, n)) continue;
+                        double dist = candX[k] * candX[k] + candY[k] * candY[k];
+                        if (!found || dist < bestDist) {
+                            bestX = candX[k];
+                            bestY = candY[k];
+                            bestDist = dist;
+                            found = true;
+                        }
+                    }
+                }
+            }
+            if (!found) {
+                // Spiral fallback (degenerate configurations only).
+                for (double rad = r; !found; rad += r * 0.25) {
+                    for (int step = 0; step < 64 && !found; ++step) {
+                        double ang = step * (2.0 * 3.14159265358979 / 64.0);
+                        double x = rad * std::cos(ang), y = rad * std::sin(ang);
+                        if (!overlapsAny(x, y, r, n)) {
+                            bestX = x; bestY = y;
+                            found = true;
+                        }
+                    }
+                }
+            }
+        }
+        items[n].x = bestX;
+        items[n].y = bestY;
+    }
+}
+
+// Approximate minimal enclosing circle: start at the centroid and repeatedly
+// nudge the centre towards the farthest circle, keeping the best radius seen.
+void UltraCanvasBubbleChartElement::ComputeEnclosingCircle(
+        const std::vector<PackItem>& items, double& outCx, double& outCy, double& outR) {
+    if (items.empty()) {
+        outCx = outCy = 0.0;
+        outR = 1.0;
+        return;
+    }
+    double cx = 0.0, cy = 0.0;
+    for (const auto& it : items) { cx += it.x; cy += it.y; }
+    cx /= items.size();
+    cy /= items.size();
+
+    double bestCx = cx, bestCy = cy, bestR = 0.0;
+    for (int iter = 0; iter < 150; ++iter) {
+        double farD = 0.0, fx = cx, fy = cy;
+        for (const auto& it : items) {
+            double d = std::hypot(it.x - cx, it.y - cy) + it.r;
+            if (d > farD) { farD = d; fx = it.x; fy = it.y; }
+        }
+        if (iter == 0 || farD < bestR) {
+            bestCx = cx; bestCy = cy; bestR = farD;
+        }
+        cx += (fx - cx) * 0.08;
+        cy += (fy - cy) * 0.08;
+    }
+    outCx = bestCx;
+    outCy = bestCy;
+    outR = std::max(1.0, bestR);
+}
+
+Color UltraCanvasBubbleChartElement::ResolveGroupBaseColor(const std::string& group) const {
+    auto it = categoryColors.find(group);
+    if (it != categoryColors.end()) return it->second;
+    size_t h = std::hash<std::string>{}(group);
+    return palette[h % palette.size()];
+}
+
 void UltraCanvasBubbleChartElement::BuildPackedLayout() {
     double dMin, dMax;
     GetSizeDomain(dMin, dMax);
@@ -536,91 +716,135 @@ void UltraCanvasBubbleChartElement::BuildPackedLayout() {
         });
     }
 
-    // Greedy tangent packing around the origin: each circle is placed at the
-    // candidate position (tangent to two already-placed circles) closest to
-    // the centre of mass; the first two circles seed the cluster.
-    struct Placed { double x, y, r; size_t index; };
-    std::vector<Placed> placed;
-    placed.reserve(bubbles.size());
-    const double pad = packedPadding;
+    std::vector<PackItem> items;
+    items.reserve(order.size());
+    for (size_t idx : order) {
+        PackItem it;
+        it.r = SizeToRadius(bubbles[idx].size, dMin, dMax,
+                            minBubbleRadius, maxBubbleRadius);
+        it.index = idx;
+        items.push_back(it);
+    }
+    GreedyPack(items, packedPadding);
+    if (items.empty()) return;
 
-    auto overlapsAny = [&](double x, double y, double r) {
-        for (const auto& p : placed) {
-            double dx = x - p.x, dy = y - p.y;
-            double minDist = r + p.r + pad - 0.01;
-            if (dx * dx + dy * dy < minDist * minDist) return true;
+    Point2Dd plotCenter = cachedPlotArea.GetCenter();
+    double scale = 1.0;
+    double cx0 = 0.0, cy0 = 0.0;
+    enclosureR = 0.0;
+
+    if (packedEnclosureShow) {
+        // Scale so the cluster's enclosing circle fills the plot area.
+        double ecx, ecy, er;
+        ComputeEnclosingCircle(items, ecx, ecy, er);
+        double target = std::min(cachedPlotArea.width, cachedPlotArea.height) / 2.0
+                        - packedEnclosureWidth - 2.0;
+        scale = std::max(0.01, target / er);
+        cx0 = ecx;
+        cy0 = ecy;
+        enclosureCx = plotCenter.x;
+        enclosureCy = plotCenter.y;
+        enclosureR = er * scale + packedEnclosureWidth + 1.0;
+    } else {
+        // Fit the cluster's bounding box, preserving aspect ratio.
+        double minX = items[0].x - items[0].r, maxX = items[0].x + items[0].r;
+        double minY = items[0].y - items[0].r, maxY = items[0].y + items[0].r;
+        for (const auto& p : items) {
+            minX = std::min(minX, p.x - p.r);
+            maxX = std::max(maxX, p.x + p.r);
+            minY = std::min(minY, p.y - p.r);
+            maxY = std::max(maxY, p.y + p.r);
         }
-        return false;
-    };
-
-    for (size_t oi = 0; oi < order.size(); ++oi) {
-        size_t idx = order[oi];
-        double r = SizeToRadius(bubbles[idx].size, dMin, dMax,
-                                minBubbleRadius, maxBubbleRadius);
-        double bestX = 0.0, bestY = 0.0;
-        bool found = false;
-
-        if (placed.empty()) {
-            bestX = 0.0; bestY = 0.0;
-            found = true;
-        } else if (placed.size() == 1) {
-            bestX = placed[0].x + placed[0].r + r + pad;
-            bestY = placed[0].y;
-            found = true;
-        } else {
-            double bestDist = 0.0;
-            for (size_t a = 0; a < placed.size() && placed.size() >= 2; ++a) {
-                for (size_t b = a + 1; b < placed.size(); ++b) {
-                    // Intersect the two circles of possible tangent centres.
-                    double ra = placed[a].r + r + pad;
-                    double rb = placed[b].r + r + pad;
-                    double dx = placed[b].x - placed[a].x;
-                    double dy = placed[b].y - placed[a].y;
-                    double d = std::sqrt(dx * dx + dy * dy);
-                    if (d < 1e-9 || d > ra + rb || d < std::abs(ra - rb)) continue;
-                    double aLen = (ra * ra - rb * rb + d * d) / (2.0 * d);
-                    double h2 = ra * ra - aLen * aLen;
-                    if (h2 < 0.0) continue;
-                    double h = std::sqrt(h2);
-                    double mx = placed[a].x + aLen * dx / d;
-                    double my = placed[a].y + aLen * dy / d;
-                    double candX[2] = { mx + h * dy / d, mx - h * dy / d };
-                    double candY[2] = { my - h * dx / d, my + h * dx / d };
-                    for (int k = 0; k < 2; ++k) {
-                        if (overlapsAny(candX[k], candY[k], r)) continue;
-                        double dist = candX[k] * candX[k] + candY[k] * candY[k];
-                        if (!found || dist < bestDist) {
-                            bestX = candX[k];
-                            bestY = candY[k];
-                            bestDist = dist;
-                            found = true;
-                        }
-                    }
-                }
-            }
-            if (!found) {
-                // Spiral fallback (degenerate configurations only).
-                for (double rad = r; !found; rad += r * 0.25) {
-                    for (int step = 0; step < 64 && !found; ++step) {
-                        double ang = step * (2.0 * 3.14159265358979 / 64.0);
-                        double x = rad * std::cos(ang), y = rad * std::sin(ang);
-                        if (!overlapsAny(x, y, r)) {
-                            bestX = x; bestY = y;
-                            found = true;
-                        }
-                    }
-                }
-            }
-        }
-        placed.push_back({bestX, bestY, r, idx});
+        double bw = std::max(1.0, maxX - minX);
+        double bh = std::max(1.0, maxY - minY);
+        scale = std::min(cachedPlotArea.width / bw, cachedPlotArea.height / bh);
+        cx0 = (minX + maxX) / 2.0;
+        cy0 = (minY + maxY) / 2.0;
     }
 
-    if (placed.empty()) return;
+    effectiveMinRadius = minBubbleRadius * scale;
+    effectiveMaxRadius = maxBubbleRadius * scale;
+    effectiveDomainMin = dMin;
+    effectiveDomainMax = dMax;
 
-    // Fit the cluster into the plot area, preserving aspect ratio.
-    double minX = placed[0].x - placed[0].r, maxX = placed[0].x + placed[0].r;
-    double minY = placed[0].y - placed[0].r, maxY = placed[0].y + placed[0].r;
-    for (const auto& p : placed) {
+    for (const auto& p : items) {
+        LayoutCircle c;
+        c.cx = plotCenter.x + (p.x - cx0) * scale;
+        c.cy = plotCenter.y + (p.y - cy0) * scale;
+        c.r = p.r * scale;
+        c.index = p.index;
+        layoutCircles.push_back(c);
+    }
+}
+
+void UltraCanvasBubbleChartElement::BuildHierarchicalLayout() {
+    if (bubbles.empty()) return;
+
+    // Group bubbles by category, keeping category insertion order.
+    std::vector<std::string> groups;
+    std::map<std::string, std::vector<size_t>> byGroup;
+    for (size_t i = 0; i < bubbles.size(); ++i) {
+        std::string g = bubbles[i].category.empty() ? "Other" : bubbles[i].category;
+        if (!byGroup.count(g)) groups.push_back(g);
+        byGroup[g].push_back(i);
+    }
+
+    double dMin, dMax;
+    GetSizeDomain(dMin, dMax);
+
+    // 1. Pack the children of each group around their own origin and wrap
+    //    them in a parent circle with padding plus label headroom.
+    struct GroupLayout {
+        std::vector<PackItem> children;   // centred on (0, 0)
+        double innerR = 0.0;              // children cluster radius
+        double parentR = 0.0;
+        std::string name;
+    };
+    std::vector<GroupLayout> layouts;
+    double labelHeadroom = groupLabelFontSize * 1.6;
+
+    for (const auto& g : groups) {
+        GroupLayout gl;
+        gl.name = g;
+        auto indices = byGroup[g];
+        std::stable_sort(indices.begin(), indices.end(), [this](size_t a, size_t b) {
+            return bubbles[a].size > bubbles[b].size;
+        });
+        for (size_t idx : indices) {
+            PackItem it;
+            it.r = SizeToRadius(bubbles[idx].size, dMin, dMax,
+                                minBubbleRadius, maxBubbleRadius);
+            it.index = idx;
+            gl.children.push_back(it);
+        }
+        GreedyPack(gl.children, packedPadding);
+        double ecx, ecy, er;
+        ComputeEnclosingCircle(gl.children, ecx, ecy, er);
+        for (auto& c : gl.children) { c.x -= ecx; c.y -= ecy; }
+        gl.innerR = er;
+        gl.parentR = er + groupPadding + labelHeadroom;
+        layouts.push_back(std::move(gl));
+    }
+
+    // 2. Pack the parent circles against each other, biggest first.
+    std::vector<size_t> order(layouts.size());
+    std::iota(order.begin(), order.end(), size_t{0});
+    std::stable_sort(order.begin(), order.end(), [&layouts](size_t a, size_t b) {
+        return layouts[a].parentR > layouts[b].parentR;
+    });
+    std::vector<PackItem> parents;
+    for (size_t li : order) {
+        PackItem it;
+        it.r = layouts[li].parentR;
+        it.index = li;
+        parents.push_back(it);
+    }
+    GreedyPack(parents, packedPadding * 1.5);
+
+    // 3. Fit everything into the plot area.
+    double minX = parents[0].x - parents[0].r, maxX = parents[0].x + parents[0].r;
+    double minY = parents[0].y - parents[0].r, maxY = parents[0].y + parents[0].r;
+    for (const auto& p : parents) {
         minX = std::min(minX, p.x - p.r);
         maxX = std::max(maxX, p.x + p.r);
         minY = std::min(minY, p.y - p.r);
@@ -638,12 +862,78 @@ void UltraCanvasBubbleChartElement::BuildPackedLayout() {
     effectiveDomainMin = dMin;
     effectiveDomainMax = dMax;
 
-    for (const auto& p : placed) {
+    for (const auto& p : parents) {
+        const GroupLayout& gl = layouts[p.index];
+        double pcx = plotCenter.x + (p.x - cx0) * scale;
+        double pcy = plotCenter.y + (p.y - cy0) * scale;
+
+        ParentCircle pc;
+        pc.cx = pcx;
+        pc.cy = pcy;
+        pc.r = gl.parentR * scale;
+        pc.innerR = gl.innerR * scale;
+        pc.group = gl.name;
+        pc.base = ResolveGroupBaseColor(gl.name);
+        pc.fill = Lighten(pc.base, groupTint);
+        parentCircles.push_back(pc);
+
+        for (const auto& c : gl.children) {
+            LayoutCircle lc;
+            lc.cx = pcx + c.x * scale;
+            lc.cy = pcy + c.y * scale;
+            lc.r = c.r * scale;
+            lc.index = c.index;
+            layoutCircles.push_back(lc);
+        }
+    }
+}
+
+void UltraCanvasBubbleChartElement::BuildTimelineLayout(IRenderContext* ctx) {
+    if (timelineRows.empty() || bubbles.empty()) return;
+
+    ctx->SetFontSize(matrixRowLabelFontSize);
+    int rowLabelW = 0;
+    for (const auto& row : timelineRows) {
+        rowLabelW = std::max(rowLabelW, ctx->GetTextLineWidth(row));
+    }
+
+    double x0 = cachedPlotArea.x + rowLabelW + 14.0;
+    double y0 = cachedPlotArea.y + 2.0;
+    double bottomY = cachedPlotArea.GetBottom() - (matrixRowLabelFontSize + 10.0);
+    double width = cachedPlotArea.GetRight() - x0 - 6.0;
+    double rowH = (bottomY - y0) / timelineRows.size();
+
+    double xMin = bubbles[0].x, xMax = bubbles[0].x;
+    for (const auto& b : bubbles) {
+        xMin = std::min(xMin, b.x);
+        xMax = std::max(xMax, b.x);
+    }
+    if (xMax <= xMin) xMax = xMin + 1.0;
+
+    double dMin, dMax;
+    GetSizeDomain(dMin, dMax);
+    double effMaxR = std::min(static_cast<double>(maxBubbleRadius), rowH * 0.47);
+    double effMinR = std::min(static_cast<double>(minBubbleRadius), effMaxR * 0.5);
+
+    double sidePad = effMaxR + 2.0;
+    double usable = std::max(1.0, width - 2.0 * sidePad);
+
+    timelineMetrics = {x0, y0, rowH, width, bottomY, sidePad, usable, xMin, xMax};
+
+    effectiveMinRadius = effMinR;
+    effectiveMaxRadius = effMaxR;
+    effectiveDomainMin = dMin;
+    effectiveDomainMax = dMax;
+
+    for (size_t i = 0; i < bubbles.size(); ++i) {
+        const auto& b = bubbles[i];
+        if (b.row < 0 || b.row >= static_cast<int>(timelineRows.size())) continue;
+        double t = (b.x - xMin) / (xMax - xMin);
         LayoutCircle c;
-        c.cx = plotCenter.x + (p.x - cx0) * scale;
-        c.cy = plotCenter.y + (p.y - cy0) * scale;
-        c.r = p.r * scale;
-        c.index = p.index;
+        c.cx = x0 + sidePad + t * usable;
+        c.cy = y0 + (b.row + 0.5) * rowH;
+        c.r = SizeToRadius(b.size, dMin, dMax, effMinR, effMaxR);
+        c.index = i;
         layoutCircles.push_back(c);
     }
 }
@@ -695,14 +985,26 @@ void UltraCanvasBubbleChartElement::BuildMatrixLayout(IRenderContext* ctx) {
 
 void UltraCanvasBubbleChartElement::RenderChart(IRenderContext* ctx) {
     layoutCircles.clear();
+    parentCircles.clear();
     switch (mode) {
-        case BubbleChartMode::ScatterBubbles: BuildScatterLayout(); break;
-        case BubbleChartMode::PackedBubbles:  BuildPackedLayout(); break;
-        case BubbleChartMode::BubbleMatrix:   BuildMatrixLayout(ctx); break;
+        case BubbleChartMode::ScatterBubbles:     BuildScatterLayout(); break;
+        case BubbleChartMode::PackedBubbles:      BuildPackedLayout(); break;
+        case BubbleChartMode::BubbleMatrix:       BuildMatrixLayout(ctx); break;
+        case BubbleChartMode::HierarchicalPacked: BuildHierarchicalLayout(); break;
+        case BubbleChartMode::TimelineBubbles:    BuildTimelineLayout(ctx); break;
     }
 
     if (mode == BubbleChartMode::BubbleMatrix) {
         RenderMatrixChrome(ctx);
+    }
+    if (mode == BubbleChartMode::TimelineBubbles) {
+        RenderTimelineChrome(ctx);
+    }
+    if (mode == BubbleChartMode::PackedBubbles && packedEnclosureShow && enclosureR > 0.0) {
+        RenderEnclosureCircle(ctx);
+    }
+    if (mode == BubbleChartMode::HierarchicalPacked) {
+        RenderParentCircles(ctx);
     }
 
     RenderBubbles(ctx);
@@ -797,7 +1099,8 @@ void UltraCanvasBubbleChartElement::RenderBubbleLabels(IRenderContext* ctx) {
 
         // ----- decide where the name goes -----
         bool nameInside = false, nameBelow = false;
-        if (!b.name.empty()) {
+        if (!b.name.empty() &&
+            !(hideNamesBelowRadius > 0.0f && r < hideNamesBelowRadius)) {
             int nameW = ctx->GetTextLineWidth(b.name);
             bool fits = (nameW <= r * 1.75) && (r >= minInsideLabelRadius);
             switch (nameLabelMode) {
@@ -873,6 +1176,79 @@ void UltraCanvasBubbleChartElement::RenderMatrixChrome(IRenderContext* ctx) {
         double cy = mm.y0 + (row + 0.5) * mm.cellH;
         ctx->DrawText(matrixRows[row],
                       Point2Dd(mm.x0 - 12.0 - sz.width, cy - sz.height / 2.0));
+    }
+}
+
+void UltraCanvasBubbleChartElement::RenderParentCircles(IRenderContext* ctx) {
+    double grow = animationEnabled ? EaseOutCubic(GetAnimationProgress()) : 1.0;
+    for (const auto& p : parentCircles) {
+        double r = p.r * grow;
+        if (r <= 0.5) continue;
+        ctx->SetFillPaint(p.fill);
+        ctx->FillCircle(Point2Dd(p.cx, p.cy), r);
+
+        // Group label in the headroom ring between the children and the rim.
+        ctx->SetFontSize(groupLabelFontSize);
+        if (groupLabelBold) ctx->SetFontWeight(FontWeight::Bold);
+        Color labelColor = (groupLabelColor.a != 0) ? groupLabelColor
+                                                    : PickContrastTextColor(p.fill);
+        ctx->SetTextPaint(labelColor);
+        Size2Di sz = ctx->GetTextLineDimensions(p.group);
+        double bandCenterY = p.cy - (p.innerR + (p.r - p.innerR) * 0.5) * grow;
+        ctx->DrawText(p.group, Point2Dd(p.cx - sz.width / 2.0,
+                                        bandCenterY - sz.height / 2.0));
+        if (groupLabelBold) ctx->SetFontWeight(FontWeight::Normal);
+    }
+}
+
+void UltraCanvasBubbleChartElement::RenderEnclosureCircle(IRenderContext* ctx) {
+    Point2Dd center(enclosureCx, enclosureCy);
+    if (packedEnclosureFill.a != 0) {
+        ctx->SetFillPaint(packedEnclosureFill);
+        ctx->FillCircle(center, enclosureR);
+    }
+    ctx->SetStrokePaint(packedEnclosureStroke);
+    ctx->SetStrokeWidth(packedEnclosureWidth);
+    ctx->DrawCircle(center, enclosureR);
+}
+
+void UltraCanvasBubbleChartElement::RenderTimelineChrome(IRenderContext* ctx) {
+    const auto& tm = timelineMetrics;
+    if (tm.rowH <= 0.0) return;
+
+    // Row separators plus a light band border around the whole plot.
+    ctx->SetStrokePaint(gridColor);
+    ctx->SetStrokeWidth(1.0f);
+    for (size_t i = 0; i <= timelineRows.size(); ++i) {
+        double y = tm.y0 + i * tm.rowH;
+        ctx->DrawLine(Point2Dd(tm.x0, y), Point2Dd(tm.x0 + tm.width, y));
+    }
+
+    // Row labels, right-aligned before the plot.
+    ctx->SetTextPaint(matrixRowLabelColor);
+    ctx->SetFontSize(matrixRowLabelFontSize);
+    for (size_t i = 0; i < timelineRows.size(); ++i) {
+        Size2Di sz = ctx->GetTextLineDimensions(timelineRows[i]);
+        double cy = tm.y0 + (i + 0.5) * tm.rowH;
+        ctx->DrawText(timelineRows[i],
+                      Point2Dd(tm.x0 - 10.0 - sz.width, cy - sz.height / 2.0));
+    }
+
+    // X tick labels and light vertical gridlines.
+    int nTicks = std::clamp(static_cast<int>(tm.width / 150.0), 2, 10);
+    for (int k = 0; k <= nTicks; ++k) {
+        double v = tm.xMin + k * (tm.xMax - tm.xMin) / nTicks;
+        double x = tm.x0 + tm.sidePad + k * tm.usable / nTicks;
+
+        ctx->SetStrokePaint(gridColor);
+        ctx->SetStrokeWidth(1.0f);
+        ctx->DrawLine(Point2Dd(x, tm.y0), Point2Dd(x, tm.bottomY));
+
+        std::string label = xLabelFormatter ? xLabelFormatter(v) : FormatAxisLabel(v);
+        ctx->SetTextPaint(matrixRowLabelColor);
+        ctx->SetFontSize(matrixRowLabelFontSize - 1.0f);
+        Size2Di sz = ctx->GetTextLineDimensions(label);
+        ctx->DrawText(label, Point2Dd(x - sz.width / 2.0, tm.bottomY + 4.0));
     }
 }
 
@@ -1023,6 +1399,17 @@ std::string UltraCanvasBubbleChartElement::GenerateTooltipContent(
                 content += FormatValue(b.size);
             }
             break;
+        case BubbleChartMode::HierarchicalPacked:
+            if (!b.category.empty()) content += b.category + "\n";
+            content += "Value: " + FormatValue(b.size);
+            break;
+        case BubbleChartMode::TimelineBubbles: {
+            if (!b.category.empty()) content += b.category + "\n";
+            std::string xs = xLabelFormatter ? xLabelFormatter(b.x)
+                                             : FormatAxisLabel(b.x);
+            content += FormatValue(b.size) + " @ " + xs;
+            break;
+        }
     }
     return content;
 }

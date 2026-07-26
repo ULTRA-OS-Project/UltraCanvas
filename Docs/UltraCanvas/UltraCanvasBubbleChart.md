@@ -13,8 +13,10 @@ bubble chart documentation, plus an OpenGL-based 3D variant in the demo app:
 | Mode | Enum | Description |
 | --- | --- | --- |
 | Scatter bubbles | `BubbleChartMode::ScatterBubbles` | Scatter plot with size (3rd) and colour (4th) encodings, axes and grid |
-| Packed bubbles / bubble cloud | `BubbleChartMode::PackedBubbles` | Axis-free circle packing (Tableau "Packed Bubbles"); size and colour carry the message |
+| Packed bubbles / bubble cloud | `BubbleChartMode::PackedBubbles` | Axis-free circle packing (Tableau "Packed Bubbles"); size and colour carry the message; optional enclosure circle |
 | Bubble matrix | `BubbleChartMode::BubbleMatrix` | Categorical rows x columns grid of proportionally sized bubbles (survey/infographic style) |
+| Hierarchical packed | `BubbleChartMode::HierarchicalPacked` | Two-level circle packing: children packed inside tinted, labelled parent circles; parents packed against each other (d3-style hierarchy) |
+| Timeline bubbles | `BubbleChartMode::TimelineBubbles` | Named categorical rows x continuous (time) X axis, bubble area = value (Tableau "orders per month" style) |
 
 The demo (`Apps/DemoApp/UltraCanvasBubbleChartExamples.cpp`) recreates two
 classic reference charts natively:
@@ -119,10 +121,58 @@ row name that beats the colour mode (used for the purple "Men" / orange
 * `SetPackedSortOrder(SizeDescending | SizeAscending | DataOrder)` — placement
   order; biggest-first yields the classic centred Tableau cloud.
 * `SetPackedPadding(px)` — gap kept between circles.
+* `SetPackedEnclosure(show, strokeColor, strokeWidth, fillColor)` — draws an
+  outlined enclosure circle around the cluster and scales the packing to fill
+  it (the "circle packing in a circle" look).
 
 The layout is a greedy tangent packing: each circle is placed at the candidate
 position tangent to two already-placed circles that is closest to the cluster
-centre, then the whole cluster is uniformly scaled to fit the plot area.
+centre, then the whole cluster is uniformly scaled to fit the plot area (or
+the enclosure circle when enabled).
+
+## Hierarchical packing
+
+`HierarchicalPacked` groups bubbles by their `category`: the children of each
+group are packed around their own centre, wrapped in a parent circle (size
+derived automatically from the packed children plus `SetGroupPadding()` and
+label headroom), and the parent circles are then packed against each other.
+
+* Children take the saturated group colour (`SetCategoryColorMap()` or a
+  stable palette fallback); the parent fill is the same colour lightened by
+  `SetGroupTint(0..1)`.
+* The group name is drawn in the headroom ring between the children and the
+  parent rim; `SetGroupLabelStyle(fontSize, color, bold)` styles it
+  (a transparent colour means automatic contrast against the parent fill).
+
+```cpp
+auto hier = CreateHierarchicalBubbleChart("launches", 20, 20, 700, 600);
+hier->AddBubble(0, 0, 96, 0, "Falcon", "The United States");
+hier->AddBubble(0, 0, 48, 0, "Long March", "China");
+hier->SetCategoryColorMap({{"The United States", blue}, {"China", orange}});
+hier->SetGroupTint(0.55f);
+```
+
+## Timeline bubbles
+
+`TimelineBubbles` plots named rows against a continuous X value with bubble
+area as the measure — the Tableau "which months had the highest number of
+orders?" presentation. The size scale is zero-anchored.
+
+* `CreateTimelineBubbleChart(id, x, y, w, h, rows)` /
+  `SetTimelineRows({...})` — optional explicit row order (otherwise rows
+  appear in insertion order).
+* `AddTimelineBubble(rowName, xValue, size, colorValue = 0)`.
+* `SetXAxisLabelFormatter(fn)` — formats the X tick labels (e.g. a month
+  index into `"June 2014"`); tick count adapts to the plot width.
+* Row labels reuse `SetMatrixRowLabelStyle()`; separators and vertical
+  gridlines use the grid colour.
+
+```cpp
+auto tl = CreateTimelineBubbleChart("orders", 20, 20, 900, 600,
+                                    {"Africa", "Canada", "EMEA"});
+tl->AddTimelineBubble("EMEA", 31, 173);          // month index 31, 173 orders
+tl->SetXAxisLabelFormatter(monthName);           // 31 -> "June 2014"
+```
 
 ## Interactivity
 

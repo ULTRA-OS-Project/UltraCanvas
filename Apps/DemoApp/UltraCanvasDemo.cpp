@@ -1085,6 +1085,8 @@ namespace UltraCanvas {
                 .AddVariant("bubblecharts", "Bubble Matrix (Mrs. President)")
                 .AddVariant("bubblecharts", "Scatter Bubbles (Travel Concerns)")
                 .AddVariant("bubblecharts", "Packed Bubbles")
+                .AddVariant("bubblecharts", "Hierarchical Packing")
+                .AddVariant("bubblecharts", "Bubble Timeline")
                 .AddVariant("bubblecharts", "3D Bubbles (OpenGL)");
 
         chartBuilder.AddItem("contourplot", "Contour plot", "Contour plot",

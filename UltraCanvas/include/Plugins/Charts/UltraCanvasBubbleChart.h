@@ -26,18 +26,29 @@ namespace UltraCanvas {
 // BUBBLE CHART ENUMERATIONS
 // =============================================================================
 
-// The three classic bubble chart families:
-//   ScatterBubbles - scatter plot whose marks carry a third (size) and optional
-//                    fourth (colour) dimension ("Concerns when traveling").
-//   PackedBubbles  - axis-free Tableau-style packed bubble cloud / circle
-//                    packing; position is meaningless, size and colour carry
-//                    the values.
-//   BubbleMatrix   - categorical rows x columns grid of proportionally sized
-//                    bubbles ("Mrs. President" style survey charts).
+// The classic bubble chart families:
+//   ScatterBubbles     - scatter plot whose marks carry a third (size) and
+//                        optional fourth (colour) dimension ("Concerns when
+//                        traveling").
+//   PackedBubbles      - axis-free Tableau-style packed bubble cloud / circle
+//                        packing; position is meaningless, size and colour
+//                        carry the values. Optionally drawn inside an
+//                        enclosure circle (SetPackedEnclosure).
+//   BubbleMatrix       - categorical rows x columns grid of proportionally
+//                        sized bubbles ("Mrs. President" style survey charts).
+//   HierarchicalPacked - two-level circle packing: bubbles sharing a category
+//                        are packed inside a tinted parent circle labelled
+//                        with the group name, and the parent circles are
+//                        packed against each other (d3-style hierarchy).
+//   TimelineBubbles    - named categorical rows on the Y axis, a continuous
+//                        (usually time) value on X, bubble area = value
+//                        (Tableau "orders per month" style).
 enum class BubbleChartMode {
     ScatterBubbles,
     PackedBubbles,
-    BubbleMatrix
+    BubbleMatrix,
+    HierarchicalPacked,
+    TimelineBubbles
 };
 
 // How the size value maps to the drawn circle.
@@ -175,6 +186,9 @@ public:
     void SetValueSuffix(const std::string& suffix);   // e.g. "%"
     // Bubbles smaller than this radius never get inside labels (Auto modes).
     void SetMinRadiusForInsideLabels(float radius);
+    // Bubbles smaller than this radius get no name label at all (0 = off) -
+    // avoids label collisions between neighbouring tiny bubbles.
+    void SetHideNamesBelowRadius(float radius);
 
     // ===== MATRIX SPECIFICS =====
     // Colour per row name (e.g. "Men" -> purple). CategoryMap colours by
@@ -186,6 +200,28 @@ public:
     // ===== PACKED SPECIFICS =====
     void SetPackedSortOrder(PackedSortOrder order);
     void SetPackedPadding(float pixels);   // gap kept between packed circles
+    // Draw an outlined enclosure circle around the packed cluster and scale
+    // the packing to fill it (circle-packing-in-a-circle look).
+    void SetPackedEnclosure(bool show,
+                            const Color& strokeColor = Color(55, 65, 90, 255),
+                            float strokeWidth = 1.5f,
+                            const Color& fillColor = Colors::Transparent);
+
+    // ===== HIERARCHICAL PACKING SPECIFICS =====
+    // Bubbles are grouped by their `category`; each group becomes a parent
+    // circle. Parent fill = group colour lightened by the tint factor.
+    void SetGroupPadding(float pixels);        // gap between children and rim
+    void SetGroupTint(float lightenFactor);    // 0..1, parent fill tint
+    // Transparent colour = automatic contrast against the parent fill.
+    void SetGroupLabelStyle(float fontSize, const Color& color, bool bold);
+
+    // ===== TIMELINE SPECIFICS =====
+    // Optional explicit row order; otherwise rows appear in insertion order.
+    void SetTimelineRows(const std::vector<std::string>& rows);
+    void AddTimelineBubble(const std::string& rowName, double xValue,
+                           double size, double colorValue = 0.0);
+    // Formats the X tick labels (e.g. month index -> "June 2014").
+    void SetXAxisLabelFormatter(std::function<std::string(double)> formatter);
 
     // ===== SIZE LEGEND / ANNOTATION =====
     // Nested-circles size legend (largest at the back), drawn bottom-right.
@@ -248,6 +284,7 @@ private:
     int valueDecimals = 0;
     std::string valueSuffix;
     float minInsideLabelRadius = 12.0f;
+    float hideNamesBelowRadius = 0.0f;
 
     std::vector<std::string> matrixRows;
     std::vector<std::string> matrixColumns;
@@ -260,6 +297,19 @@ private:
 
     PackedSortOrder packedSortOrder = PackedSortOrder::SizeDescending;
     float packedPadding = 2.0f;
+    bool packedEnclosureShow = false;
+    Color packedEnclosureStroke = Color(55, 65, 90, 255);
+    float packedEnclosureWidth = 1.5f;
+    Color packedEnclosureFill = Colors::Transparent;
+
+    float groupPadding = 8.0f;
+    float groupTint = 0.60f;
+    float groupLabelFontSize = 11.0f;
+    Color groupLabelColor = Colors::Transparent;   // transparent = auto contrast
+    bool groupLabelBold = true;
+
+    std::vector<std::string> timelineRows;
+    std::function<std::string(double)> xLabelFormatter;
 
     bool showSizeLegend = false;
     std::string sizeLegendTitle = "Size";
@@ -279,6 +329,28 @@ private:
     };
     MatrixMetrics matrixMetrics;
 
+    // Parent circles computed by BuildHierarchicalLayout.
+    struct ParentCircle {
+        double cx = 0, cy = 0, r = 0;
+        double innerR = 0;       // radius of the children cluster (label band
+                                 // is the ring between innerR and r)
+        std::string group;
+        Color base;              // saturated group colour (children)
+        Color fill;              // tinted parent fill
+    };
+    std::vector<ParentCircle> parentCircles;
+
+    // Timeline geometry computed by BuildTimelineLayout, used by the chrome.
+    struct TimelineMetrics {
+        double x0 = 0, y0 = 0, rowH = 0, width = 0, bottomY = 0;
+        double sidePad = 0, usable = 0;
+        double xMin = 0, xMax = 1;
+    };
+    TimelineMetrics timelineMetrics;
+
+    // Enclosure circle in screen coordinates (packed mode, when enabled).
+    double enclosureCx = 0, enclosureCy = 0, enclosureR = 0;
+
     // Radius mapping actually used by the last layout pass, so the size legend
     // stays consistent with the drawn bubbles (packed layouts rescale radii).
     double effectiveMinRadius = 0.0, effectiveMaxRadius = 0.0;
@@ -294,11 +366,25 @@ private:
     Color PickContrastTextColor(const Color& background) const;
     std::string FormatValue(double value) const;
 
+    // Shared greedy tangent circle packing: places items (radii pre-filled,
+    // in the given order) around the origin, writing x/y.
+    struct PackItem { double x = 0, y = 0, r = 0; size_t index = 0; };
+    static void GreedyPack(std::vector<PackItem>& items, double pad);
+    // Approximate minimal enclosing circle of a set of packed circles.
+    static void ComputeEnclosingCircle(const std::vector<PackItem>& items,
+                                       double& outCx, double& outCy, double& outR);
+    Color ResolveGroupBaseColor(const std::string& group) const;
+
     void BuildScatterLayout();
     void BuildPackedLayout();
     void BuildMatrixLayout(IRenderContext* ctx);
+    void BuildHierarchicalLayout();
+    void BuildTimelineLayout(IRenderContext* ctx);
 
     void RenderBubbles(IRenderContext* ctx);
+    void RenderParentCircles(IRenderContext* ctx);
+    void RenderTimelineChrome(IRenderContext* ctx);
+    void RenderEnclosureCircle(IRenderContext* ctx);
     void DrawBubble(IRenderContext* ctx, const LayoutCircle& c, const Color& fill,
                     bool hovered);
     void RenderBubbleLabels(IRenderContext* ctx);
@@ -338,6 +424,21 @@ inline std::shared_ptr<UltraCanvasBubbleChartElement> CreateBubbleMatrixChart(
     return chart;
 }
 
+inline std::shared_ptr<UltraCanvasBubbleChartElement> CreateHierarchicalBubbleChart(
+        const std::string& id, int x, int y, int width, int height) {
+    return CreateBubbleChartElement(id, x, y, width, height,
+                                    BubbleChartMode::HierarchicalPacked);
+}
+
+inline std::shared_ptr<UltraCanvasBubbleChartElement> CreateTimelineBubbleChart(
+        const std::string& id, int x, int y, int width, int height,
+        const std::vector<std::string>& rows = {}) {
+    auto chart = CreateBubbleChartElement(id, x, y, width, height,
+                                          BubbleChartMode::TimelineBubbles);
+    if (!rows.empty()) chart->SetTimelineRows(rows);
+    return chart;
+}
+
 } // namespace UltraCanvas
 
 /*
@@ -345,8 +446,12 @@ inline std::shared_ptr<UltraCanvasBubbleChartElement> CreateBubbleMatrixChart(
 
 **CHART TYPES:**
 - Scatter bubble chart - XY position + size (3rd dimension) + colour (4th)
-- Packed bubble chart / bubble cloud - axis-free circle packing
+- Packed bubble chart / bubble cloud - axis-free circle packing, optionally
+  inside an outlined enclosure circle
 - Bubble matrix - categorical rows x columns grid of sized bubbles
+- Hierarchical packed bubbles - children packed inside tinted, labelled
+  parent circles; parents packed against each other
+- Timeline bubbles - named rows x continuous (time) X axis, size = value
 
 **SIZE ENCODING:**
 - Area-proportional scaling (perceptual best practice) or diameter scaling
