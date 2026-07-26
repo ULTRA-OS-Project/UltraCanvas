@@ -186,6 +186,9 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasAudioFXExamples.cpp
             Apps/DemoApp/UltraCanvasEBookExamples.cpp
             Apps/DemoApp/UltraCanvasWaveformExamples.cpp
+            Apps/DemoApp/UltraCanvasSpectrogramExamples.cpp
+            Apps/DemoApp/UltraCanvasLevelMeterExamples.cpp
+            Apps/DemoApp/UltraCanvasAudioAnalysisExamples.cpp
             Apps/DemoApp/UltraCanvasPDFExamples.cpp
             Apps/DemoApp/UltraCanvasLaTeXExamples.cpp
             Apps/DemoApp/UltraCanvasFileLoaderExamples.cpp

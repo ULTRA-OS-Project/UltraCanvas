@@ -1071,6 +1071,30 @@ namespace UltraCanvas {
                 .AddVariant("waveform", "Display Range")
                 .AddVariant("waveform", "Click-to-seek Playhead");
 
+        chartBuilder.AddItem("spectrogram", "Spectrogram Chart",
+                             "STFT time x frequency analysis of audio signals with every "
+                             "transform and display option adjustable live",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateSpectrogramExamples(); },
+                             "DemoApp/UltraCanvasSpectrogramExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasSpectrogram.md")
+                .AddVariant("spectrogram", "Sample Track & Synthetic Signals")
+                .AddVariant("spectrogram", "FFT Size & Overlap")
+                .AddVariant("spectrogram", "Window Functions")
+                .AddVariant("spectrogram", "Magnitude & Dynamic Range")
+                .AddVariant("spectrogram", "Frequency Cap & Colour Maps");
+
+        chartBuilder.AddItem("audioanalysis", "Audio Analysis Charts",
+                             "Spectrum plot, amplitude envelope and correlogram built with "
+                             "the generic area / bar chart elements",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateAudioAnalysisExamples(); },
+                             "DemoApp/UltraCanvasAudioAnalysisExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasAudioAnalysisExamples.md")
+                .AddVariant("audioanalysis", "Spectrum Plot (Averaged FFT)")
+                .AddVariant("audioanalysis", "Amplitude Envelope (RMS)")
+                .AddVariant("audioanalysis", "Correlogram (Autocorrelation)");
+
         chartBuilder.AddItem("dumbbell", "Dumbbell chart", "Dumbbell chart",
                              ImplementationStatus::PartiallyImplemented,
                              [this]() { return CreatePartiallyImplementedExamples("Dumbbell Chart is not ready yet"); });
@@ -1352,6 +1376,19 @@ namespace UltraCanvas {
                 .AddVariant("audio", "FLAC Support")
                 .AddVariant("audio", "MP3 Playback")
                 .AddVariant("audio", "Waveform Visualization");
+
+        audioBuilder.AddItem("levelmeter", "Level Meter / VU Strip",
+                             "Three-zone VU meter and scrolling waveform strip with themeable "
+                             "colours, driven by playback, synthetic or manual levels",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateLevelMeterExamples(); },
+                             "DemoApp/UltraCanvasLevelMeterExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasLevelMeter.md")
+                .AddVariant("levelmeter", "Three-zone VU Meter")
+                .AddVariant("levelmeter", "Scrolling Waveform Strip")
+                .AddVariant("levelmeter", "Custom Colour Themes")
+                .AddVariant("levelmeter", "Live Playback Levels")
+                .AddVariant("levelmeter", "Manual Control & Reset");
 
         auto toolsBuilder = DemoCategoryBuilder(this, DemoCategory::Tools);
 
