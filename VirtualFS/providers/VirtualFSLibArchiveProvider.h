@@ -1,7 +1,7 @@
 // VirtualFS/providers/VirtualFSLibArchiveProvider.h
 // libarchive-based provider for multi-format archive support
-// Version: 1.0.0
-// Last Modified: 2026-01-10
+// Version: 1.0.1
+// Last Modified: 2026-07-25
 // Author: ULTRA OS Framework
 #pragma once
 
@@ -83,6 +83,7 @@ public:
         return VirtualFSCapability::Read |
                VirtualFSCapability::Write |
                VirtualFSCapability::Create |
+               VirtualFSCapability::Delete |
                VirtualFSCapability::ListDirectory |
                VirtualFSCapability::Password |
                VirtualFSCapability::Streaming |
@@ -181,7 +182,26 @@ public:
         VirtualFSProgressCallback progressCallback = nullptr) override;
     
     VirtualFSResult Finalize() override;
-    
+
+    // =========================================================================
+    // DELETE OPERATIONS
+    // =========================================================================
+
+    VirtualFSResult Delete(const std::string& virtualPath) override;
+
+    /**
+     * @brief Deletes entries (files or whole directory subtrees) in a single
+     *        archive rewrite pass
+     *
+     * ZIP archives take a raw-copy fast path (when built with miniz):
+     * surviving entries are copied compressed-as-is into the new archive, so
+     * nothing is decompressed or recompressed. Other formats are rewritten
+     * through libarchive in one streaming pass.
+     */
+    VirtualFSResult DeleteEntries(
+        const std::vector<std::string>& virtualPaths,
+        VirtualFSProgressCallback progressCallback = nullptr) override;
+
     // =========================================================================
     // UTILITY
     // =========================================================================
@@ -196,12 +216,23 @@ private:
     
     // Internal helpers
     void BuildEntryCache();
+    void EnsureParentDirectories(const std::string& normalizedPath);
     void ClearEntryCache();
     VirtualFSEntry ConvertArchiveEntry(void* archiveEntry);
     std::string NormalizeInternalPath(const std::string& path);
     int GetLibArchiveFormat(const std::string& extension);
     int GetLibArchiveFilter(VirtualFSCompressionMethod method);
     int GetLibArchiveCompressionLevel(VirtualFSCompressionLevel level);
+    void ConfigureWriteFormat(void* writeArchive, const std::string& archivePath);
+    VirtualFSResult DeleteEntriesZipFast(
+        const std::vector<std::string>& targets,
+        const std::string& tempPath,
+        VirtualFSProgressCallback progressCallback,
+        bool& handled);
+    VirtualFSResult DeleteEntriesGeneric(
+        const std::vector<std::string>& targets,
+        const std::string& tempPath,
+        VirtualFSProgressCallback progressCallback);
 };
 
 // ============================================================================

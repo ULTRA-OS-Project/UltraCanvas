@@ -270,6 +270,53 @@ add_test(
 )
 message(STATUS "    Test registered: SpreadsheetNumberFormatTest")
 
+# ===== VIRTUALFS DELETE TEST =====
+# Regression test for batched archive-entry deletion (single rewrite pass).
+# Needs libarchive; the vendored miniz additionally enables the ZIP raw-copy
+# fast path, matching the flags the VirtualFS module itself is built with.
+if(PkgConfig_FOUND)
+    pkg_check_modules(LIBARCHIVE_TEST libarchive)
+endif()
+
+if(LIBARCHIVE_TEST_FOUND)
+    message(STATUS "  Building VirtualFSDeleteTest...")
+
+    add_executable(VirtualFSDeleteTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VirtualFSDeleteTest.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSManager.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSCompression.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/providers/VirtualFSLibArchiveProvider.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
+    )
+    target_include_directories(VirtualFSDeleteTest PRIVATE
+        ${ULTRACANVAS_ROOT}/VirtualFS/include
+        ${ULTRACANVAS_ROOT}/VirtualFS/include/VirtualFS
+        ${ULTRACANVAS_ROOT}/VirtualFS/providers
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz
+        ${LIBARCHIVE_TEST_INCLUDE_DIRS}
+    )
+    target_compile_definitions(VirtualFSDeleteTest PRIVATE
+        VIRTUALFS_HAS_LIBARCHIVE
+        VIRTUALFS_HAS_MINIZ
+    )
+    target_link_libraries(VirtualFSDeleteTest PRIVATE
+        ${LIBARCHIVE_TEST_LIBRARIES}
+        pthread
+    )
+    target_compile_features(VirtualFSDeleteTest PRIVATE cxx_std_17)
+    set_target_properties(VirtualFSDeleteTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(
+        NAME VirtualFSDeleteTest
+        COMMAND VirtualFSDeleteTest ${CMAKE_BINARY_DIR}/vfsdelete-test-out
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    message(STATUS "    Test registered: VirtualFSDeleteTest")
+else()
+    message(STATUS "  libarchive not found - VirtualFSDeleteTest disabled")
+endif()
+
 # ===== FUTURE TESTS =====
 # Add more test executables here as needed:
 #

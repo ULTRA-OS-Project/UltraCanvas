@@ -1,7 +1,7 @@
 // VirtualFS/providers/VirtualFSLibArchiveProvider.cpp
 // libarchive-based provider implementation
-// Version: 1.0.0
-// Last Modified: 2026-01-10
+// Version: 1.0.1
+// Last Modified: 2026-07-25
 // Author: ULTRA OS Framework
 
 #include "VirtualFSLibArchiveProvider.h"
@@ -17,6 +17,10 @@
 #include <cstring>
 #include <ctime>
 #include <sstream>
+
+#ifdef VIRTUALFS_HAS_MINIZ
+#include "miniz.h"
+#endif
 
 namespace VirtualFS {
 
@@ -275,24 +279,65 @@ void VirtualFSLibArchiveProvider::BuildEntryCache() {
     struct archive_entry* entry;
     while (archive_read_next_header(pImpl->readArchive, &entry) == ARCHIVE_OK) {
         VirtualFSEntry vfsEntry = ConvertArchiveEntry(entry);
-        
+
         std::string normalizedPath = NormalizeInternalPath(vfsEntry.path);
-        vfsEntry.path = normalizedPath;
-        
-        pImpl->entryCache[normalizedPath] = vfsEntry;
-        
-        std::string parentPath = "";
-        size_t lastSlash = normalizedPath.rfind('/');
-        if (lastSlash != std::string::npos) {
-            parentPath = normalizedPath.substr(0, lastSlash);
+        if (normalizedPath.empty()) {
+            archive_read_data_skip(pImpl->readArchive);
+            continue;
         }
-        
-        pImpl->directoryContents[parentPath].push_back(vfsEntry.name);
-        
+        vfsEntry.path = normalizedPath;
+
+        // An explicit header may arrive for a directory already synthesized
+        // by EnsureParentDirectories (or be listed twice); overwrite the
+        // cached entry with the real metadata but don't re-list the name in
+        // its parent.
+        bool known = pImpl->entryCache.find(normalizedPath) != pImpl->entryCache.end();
+        pImpl->entryCache[normalizedPath] = vfsEntry;
+
+        if (!known) {
+            std::string parentPath = "";
+            size_t lastSlash = normalizedPath.rfind('/');
+            if (lastSlash != std::string::npos) {
+                parentPath = normalizedPath.substr(0, lastSlash);
+            }
+            pImpl->directoryContents[parentPath].push_back(vfsEntry.name);
+        }
+
+        EnsureParentDirectories(normalizedPath);
+
         archive_read_data_skip(pImpl->readArchive);
     }
-    
+
     pImpl->cacheValid = true;
+}
+
+void VirtualFSLibArchiveProvider::EnsureParentDirectories(const std::string& normalizedPath) {
+    // Many archives store only file entries ("sub/b.txt") with no header for
+    // the directories they imply, so without synthesis "sub" would never
+    // appear when listing the archive root (and directory metadata lookups
+    // on it would fail). Walk the parent chain and create a Directory entry
+    // for every ancestor not seen yet; stop at the first known one — its own
+    // ancestors were ensured when it was created.
+    size_t slash = normalizedPath.rfind('/');
+    while (slash != std::string::npos) {
+        std::string dirPath = normalizedPath.substr(0, slash);
+        if (pImpl->entryCache.find(dirPath) != pImpl->entryCache.end()) break;
+
+        size_t parentSlash = dirPath.rfind('/');
+        VirtualFSEntry dir;
+        dir.path = dirPath;
+        dir.name = (parentSlash == std::string::npos)
+                ? dirPath : dirPath.substr(parentSlash + 1);
+        dir.type = VirtualFSEntryType::Directory;
+        dir.providerName = "LibArchive";
+        pImpl->entryCache[dirPath] = dir;
+
+        std::string parentPath = (parentSlash == std::string::npos)
+                ? std::string() : dirPath.substr(0, parentSlash);
+        pImpl->directoryContents[parentPath].push_back(dir.name);
+
+        slash = parentSlash;
+    }
 }
 
 void VirtualFSLibArchiveProvider::ClearEntryCache() {
@@ -675,59 +720,13 @@ VirtualFSResult VirtualFSLibArchiveProvider::CreateArchive(
         return VirtualFSResult::OutOfMemory;
     }
     
-    // Determine the archive format and compression filter from the file name.
-    // Compound extensions such as ".tar.gz" / ".tar.bz2" must be recognised in
-    // full: inspecting only the final token ("gz") would select the ZIP format
-    // and then bolt a gzip filter onto it, producing a corrupt archive. Match
-    // the longest known suffix first, then fall back to the single-token map.
-    std::string lowerPath = archivePath;
-    std::transform(lowerPath.begin(), lowerPath.end(), lowerPath.begin(), ::tolower);
-    auto hasSuffix = [&lowerPath](const std::string& suffix) {
-        return lowerPath.size() >= suffix.size() &&
-               lowerPath.compare(lowerPath.size() - suffix.size(),
-                                 suffix.size(), suffix) == 0;
-    };
+    ConfigureWriteFormat(pImpl->writeArchive, archivePath);
 
-    std::string ext = lowerPath;
+    std::string ext = archivePath;
     size_t dotPos = ext.rfind('.');
     if (dotPos != std::string::npos) ext = ext.substr(dotPos + 1);
+    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
-    enum class WriteFilter { None, Gzip, BZip2, XZ, Zstd, LZ4 };
-    int format;
-    WriteFilter filter;
-
-    if (hasSuffix(".tar.gz") || hasSuffix(".tgz")) {
-        format = ARCHIVE_FORMAT_TAR_PAX_RESTRICTED; filter = WriteFilter::Gzip;
-    } else if (hasSuffix(".tar.bz2") || hasSuffix(".tbz2") || hasSuffix(".tbz")) {
-        format = ARCHIVE_FORMAT_TAR_PAX_RESTRICTED; filter = WriteFilter::BZip2;
-    } else if (hasSuffix(".tar.xz") || hasSuffix(".txz")) {
-        format = ARCHIVE_FORMAT_TAR_PAX_RESTRICTED; filter = WriteFilter::XZ;
-    } else if (hasSuffix(".tar.zst") || hasSuffix(".tzst")) {
-        format = ARCHIVE_FORMAT_TAR_PAX_RESTRICTED; filter = WriteFilter::Zstd;
-    } else if (hasSuffix(".tar.lz4")) {
-        format = ARCHIVE_FORMAT_TAR_PAX_RESTRICTED; filter = WriteFilter::LZ4;
-    } else {
-        format = GetLibArchiveFormat(ext);
-        // Standalone compressed streams keep their zip-family/default format but
-        // still receive the matching filter.
-        if      (ext == "gz")                   filter = WriteFilter::Gzip;
-        else if (ext == "bz2")                  filter = WriteFilter::BZip2;
-        else if (ext == "xz")                   filter = WriteFilter::XZ;
-        else if (ext == "zst" || ext == "zstd") filter = WriteFilter::Zstd;
-        else if (ext == "lz4")                  filter = WriteFilter::LZ4;
-        else                                    filter = WriteFilter::None;
-    }
-
-    archive_write_set_format(pImpl->writeArchive, format);
-    switch (filter) {
-        case WriteFilter::Gzip:  archive_write_add_filter_gzip(pImpl->writeArchive);  break;
-        case WriteFilter::BZip2: archive_write_add_filter_bzip2(pImpl->writeArchive); break;
-        case WriteFilter::XZ:    archive_write_add_filter_xz(pImpl->writeArchive);    break;
-        case WriteFilter::Zstd:  archive_write_add_filter_zstd(pImpl->writeArchive);  break;
-        case WriteFilter::LZ4:   archive_write_add_filter_lz4(pImpl->writeArchive);   break;
-        case WriteFilter::None:  break;
-    }
-    
     if (!options.password.empty() && ext == "zip") {
         archive_write_set_passphrase(pImpl->writeArchive, options.password.c_str());
         archive_write_set_options(pImpl->writeArchive, "zip:encryption=aes256");
@@ -874,11 +873,358 @@ VirtualFSResult VirtualFSLibArchiveProvider::Finalize() {
         archive_write_free(pImpl->writeArchive);
         pImpl->writeArchive = nullptr;
     }
-    
+
     pImpl->isOpen = false;
     pImpl->isWriteMode = false;
-    
+
     return VirtualFSResult::Success;
+}
+
+// ============================================================================
+// DELETE OPERATIONS
+// ============================================================================
+
+namespace {
+
+// True when `entryPath` (normalized, no trailing slash) is `target` itself or
+// lies anywhere below it, so directory targets delete their whole subtree.
+bool PathMatchesTarget(const std::string& entryPath, const std::string& target) {
+    if (entryPath.size() < target.size()) return false;
+    if (entryPath.compare(0, target.size(), target) != 0) return false;
+    return entryPath.size() == target.size() || entryPath[target.size()] == '/';
+}
+
+bool PathMatchesAnyTarget(const std::string& entryPath,
+                          const std::vector<std::string>& targets) {
+    for (const auto& target : targets) {
+        if (PathMatchesTarget(entryPath, target)) return true;
+    }
+    return false;
+}
+
+} // namespace
+
+VirtualFSResult VirtualFSLibArchiveProvider::Delete(const std::string& virtualPath) {
+    return DeleteEntries({virtualPath}, nullptr);
+}
+
+VirtualFSResult VirtualFSLibArchiveProvider::DeleteEntries(
+    const std::vector<std::string>& virtualPaths,
+    VirtualFSProgressCallback progressCallback) {
+
+    if (!pImpl->isOpen) return VirtualFSResult::ArchiveNotOpen;
+    if (pImpl->writeArchive) {
+        pImpl->lastError = "Archive is open for writing";
+        return VirtualFSResult::InvalidArgument;
+    }
+
+    // Delete works by rewriting the archive, so it is only offered for
+    // container formats libarchive (or miniz) can also write. Read-only
+    // formats (RAR, CAB, ...) and single-stream compressed files (.gz,
+    // .bz2, ...) are rejected up front instead of producing a broken file.
+    {
+        std::string lowerPath = pImpl->archivePath;
+        std::transform(lowerPath.begin(), lowerPath.end(), lowerPath.begin(), ::tolower);
+        auto hasSuffix = [&lowerPath](const std::string& suffix) {
+            return lowerPath.size() >= suffix.size() &&
+                   lowerPath.compare(lowerPath.size() - suffix.size(),
+                                     suffix.size(), suffix) == 0;
+        };
+        static const char* rewritableExts[] = {
+            "zip", "cbz", "jar", "war", "ear", "apk", "ipa", "xpi", "crx",
+            "epub", "docx", "xlsx", "pptx", "odt", "ods", "odp",
+            "7z", "tar", "tgz", "tbz", "tbz2", "txz", "tzst", "cpio",
+            "ar", "a", "iso"
+        };
+        static const char* rewritableSuffixes[] = {
+            ".tar.gz", ".tar.bz2", ".tar.xz", ".tar.zst", ".tar.lz4"
+        };
+        std::string ext = lowerPath;
+        size_t dotPos = ext.rfind('.');
+        if (dotPos != std::string::npos) ext = ext.substr(dotPos + 1);
+
+        bool rewritable = false;
+        for (const char* e : rewritableExts) {
+            if (ext == e) { rewritable = true; break; }
+        }
+        for (const char* s : rewritableSuffixes) {
+            if (!rewritable && hasSuffix(s)) { rewritable = true; break; }
+        }
+        if (!rewritable) {
+            pImpl->lastError = "Format does not support deleting entries: " +
+                               pImpl->archivePath;
+            return VirtualFSResult::NotSupported;
+        }
+    }
+
+    std::vector<std::string> targets;
+    targets.reserve(virtualPaths.size());
+    for (const auto& path : virtualPaths) {
+        std::string normalized = NormalizeInternalPath(path);
+        if (normalized.empty()) {
+            pImpl->lastError = "Cannot delete archive root";
+            return VirtualFSResult::InvalidArgument;
+        }
+        targets.push_back(std::move(normalized));
+    }
+    if (targets.empty()) return VirtualFSResult::Success;
+
+    // Every requested path must match at least one cached entry. The cache is
+    // sorted, so a subtree check is a lower_bound + prefix test.
+    for (const auto& target : targets) {
+        auto it = pImpl->entryCache.lower_bound(target);
+        if (it == pImpl->entryCache.end() || !PathMatchesTarget(it->first, target)) {
+            pImpl->lastError = "Entry not found: " + target;
+            return VirtualFSResult::NotFound;
+        }
+    }
+
+    std::string tempPath = pImpl->archivePath + ".vfs-rewrite.tmp";
+    std::error_code ec;
+    std::filesystem::remove(tempPath, ec);
+
+    VirtualFSResult result;
+    bool handledByFastPath = false;
+    result = DeleteEntriesZipFast(targets, tempPath, progressCallback, handledByFastPath);
+    if (!handledByFastPath) {
+        result = DeleteEntriesGeneric(targets, tempPath, progressCallback);
+    }
+
+    if (result != VirtualFSResult::Success) {
+        std::filesystem::remove(tempPath, ec);
+        return result;
+    }
+
+    std::filesystem::rename(tempPath, pImpl->archivePath, ec);
+    if (ec) {
+        pImpl->lastError = "Failed to replace archive: " + ec.message();
+        std::filesystem::remove(tempPath, ec);
+        return VirtualFSResult::WriteError;
+    }
+
+    // Reopen so the entry cache and archive info reflect the new file.
+    std::string archivePath = pImpl->archivePath;
+    VirtualFSOpenOptions options = pImpl->openOptions;
+    return Open(archivePath, options);
+}
+
+VirtualFSResult VirtualFSLibArchiveProvider::DeleteEntriesZipFast(
+    const std::vector<std::string>& targets,
+    const std::string& tempPath,
+    VirtualFSProgressCallback progressCallback,
+    bool& handled) {
+
+    handled = false;
+#ifdef VIRTUALFS_HAS_MINIZ
+    // Raw-copy fast path: surviving entries move to the new archive as their
+    // original compressed streams — no decompression, no recompression. Only
+    // plain (non-password) ZIP-family archives qualify; anything else falls
+    // back to the generic libarchive rewrite.
+    static const char* zipExts[] = {"zip", "cbz", "jar", "war", "ear", "apk",
+                                    "ipa", "xpi", "crx", "epub", "docx",
+                                    "xlsx", "pptx", "odt", "ods", "odp"};
+    std::string lowerPath = pImpl->archivePath;
+    std::transform(lowerPath.begin(), lowerPath.end(), lowerPath.begin(), ::tolower);
+    std::string ext = lowerPath;
+    size_t dotPos = ext.rfind('.');
+    if (dotPos != std::string::npos) ext = ext.substr(dotPos + 1);
+
+    bool isZip = false;
+    for (const char* z : zipExts) {
+        if (ext == z) { isZip = true; break; }
+    }
+    if (!isZip || !pImpl->openOptions.password.empty()) {
+        return VirtualFSResult::NotSupported;
+    }
+
+    mz_zip_archive src;
+    mz_zip_zero_struct(&src);
+    if (!mz_zip_reader_init_file(&src, pImpl->archivePath.c_str(), 0)) {
+        return VirtualFSResult::NotSupported; // generic path retries
+    }
+
+    mz_zip_archive dst;
+    mz_zip_zero_struct(&dst);
+    if (!mz_zip_writer_init_file_v2(&dst, tempPath.c_str(), 0, 0)) {
+        mz_zip_reader_end(&src);
+        return VirtualFSResult::NotSupported;
+    }
+
+    handled = true;
+    VirtualFSResult result = VirtualFSResult::Success;
+
+    VirtualFSProgress progress;
+    mz_uint fileCount = mz_zip_reader_get_num_files(&src);
+    progress.totalFiles = fileCount;
+
+    for (mz_uint i = 0; i < fileCount; ++i) {
+        mz_zip_archive_file_stat stat;
+        if (!mz_zip_reader_file_stat(&src, i, &stat)) {
+            pImpl->lastError = mz_zip_get_error_string(mz_zip_get_last_error(&src));
+            result = VirtualFSResult::ReadError;
+            break;
+        }
+
+        std::string entryPath = NormalizeInternalPath(stat.m_filename);
+
+        if (progressCallback) {
+            progress.currentFile = entryPath;
+            progress.filesProcessed++;
+            progress.UpdatePercent();
+            if (!progressCallback(progress)) {
+                result = VirtualFSResult::Cancelled;
+                break;
+            }
+        }
+
+        if (PathMatchesAnyTarget(entryPath, targets)) {
+            continue;
+        }
+
+        if (!mz_zip_writer_add_from_zip_reader(&dst, &src, i)) {
+            pImpl->lastError = mz_zip_get_error_string(mz_zip_get_last_error(&dst));
+            result = VirtualFSResult::WriteError;
+            break;
+        }
+    }
+
+    if (result == VirtualFSResult::Success &&
+        !mz_zip_writer_finalize_archive(&dst)) {
+        pImpl->lastError = mz_zip_get_error_string(mz_zip_get_last_error(&dst));
+        result = VirtualFSResult::WriteError;
+    }
+
+    mz_zip_writer_end(&dst);
+    mz_zip_reader_end(&src);
+    return result;
+#else
+    (void)targets; (void)tempPath; (void)progressCallback;
+    return VirtualFSResult::NotSupported;
+#endif
+}
+
+VirtualFSResult VirtualFSLibArchiveProvider::DeleteEntriesGeneric(
+    const std::vector<std::string>& targets,
+    const std::string& tempPath,
+    VirtualFSProgressCallback progressCallback) {
+
+    struct archive* in = archive_read_new();
+    archive_read_support_filter_all(in);
+    archive_read_support_format_all(in);
+
+    if (!pImpl->openOptions.password.empty()) {
+        archive_read_add_passphrase(in, pImpl->openOptions.password.c_str());
+    }
+
+    if (archive_read_open_filename(in, pImpl->archivePath.c_str(), 10240) != ARCHIVE_OK) {
+        pImpl->lastError = archive_error_string(in);
+        archive_read_free(in);
+        return VirtualFSResult::ReadError;
+    }
+
+    struct archive* out = archive_write_new();
+    ConfigureWriteFormat(out, pImpl->archivePath);
+
+    if (!pImpl->openOptions.password.empty()) {
+        std::string ext = pImpl->archivePath;
+        size_t dotPos = ext.rfind('.');
+        if (dotPos != std::string::npos) ext = ext.substr(dotPos + 1);
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+        if (ext == "zip") {
+            archive_write_set_passphrase(out, pImpl->openOptions.password.c_str());
+            archive_write_set_options(out, "zip:encryption=aes256");
+        }
+    }
+
+    if (archive_write_open_filename(out, tempPath.c_str()) != ARCHIVE_OK) {
+        pImpl->lastError = archive_error_string(out);
+        archive_read_free(in);
+        archive_write_free(out);
+        return VirtualFSResult::WriteError;
+    }
+
+    VirtualFSProgress progress;
+    progress.totalFiles = pImpl->entryCache.size();
+    progress.grandTotalBytes = pImpl->archiveInfo.uncompressedSize;
+
+    struct archive_entry* entry;
+    VirtualFSResult result = VirtualFSResult::Success;
+
+    while (archive_read_next_header(in, &entry) == ARCHIVE_OK) {
+        const char* pathname = archive_entry_pathname_utf8(entry);
+        if (!pathname) pathname = archive_entry_pathname(entry);
+        std::string entryPath = NormalizeInternalPath(pathname ? pathname : "");
+
+        if (progressCallback) {
+            progress.currentFile = entryPath;
+            progress.filesProcessed++;
+            progress.UpdatePercent();
+            if (!progressCallback(progress)) {
+                result = VirtualFSResult::Cancelled;
+                break;
+            }
+        }
+
+        if (PathMatchesAnyTarget(entryPath, targets)) {
+            archive_read_data_skip(in);
+            continue;
+        }
+
+        if (archive_write_header(out, entry) != ARCHIVE_OK) {
+            pImpl->lastError = archive_error_string(out);
+            result = VirtualFSResult::WriteError;
+            break;
+        }
+
+        const void* buff;
+        size_t size;
+        la_int64_t offset;
+        la_int64_t written = 0;
+        int r;
+
+        while ((r = archive_read_data_block(in, &buff, &size, &offset)) == ARCHIVE_OK) {
+            // Sparse entries report holes as offset jumps; fill them with
+            // zeros since a plain write archive has no seek support.
+            if (offset > written) {
+                static const char zeros[8192] = {0};
+                la_int64_t gap = offset - written;
+                while (gap > 0) {
+                    size_t chunk = static_cast<size_t>(
+                        std::min<la_int64_t>(gap, sizeof(zeros)));
+                    if (archive_write_data(out, zeros, chunk) < 0) {
+                        pImpl->lastError = archive_error_string(out);
+                        result = VirtualFSResult::WriteError;
+                        break;
+                    }
+                    gap -= static_cast<la_int64_t>(chunk);
+                }
+                if (result != VirtualFSResult::Success) break;
+                written = offset;
+            }
+            if (size > 0 && archive_write_data(out, buff, size) < 0) {
+                pImpl->lastError = archive_error_string(out);
+                result = VirtualFSResult::WriteError;
+                break;
+            }
+            written += static_cast<la_int64_t>(size);
+            progress.totalBytes += size;
+        }
+
+        if (result == VirtualFSResult::Success && r != ARCHIVE_EOF && r != ARCHIVE_OK) {
+            pImpl->lastError = archive_error_string(in);
+            result = VirtualFSResult::ReadError;
+        }
+        if (result != VirtualFSResult::Success) break;
+    }
+
+    if (archive_write_close(out) != ARCHIVE_OK && result == VirtualFSResult::Success) {
+        pImpl->lastError = archive_error_string(out);
+        result = VirtualFSResult::WriteError;
+    }
+    archive_write_free(out);
+    archive_read_free(in);
+
+    return result;
 }
 
 // ============================================================================
@@ -961,6 +1307,65 @@ VirtualFSResult VirtualFSLibArchiveProvider::Test(VirtualFSProgressCallback prog
 
 std::string VirtualFSLibArchiveProvider::GetLastError() const {
     return pImpl->lastError;
+}
+
+void VirtualFSLibArchiveProvider::ConfigureWriteFormat(
+    void* writeArchivePtr, const std::string& archivePath) {
+
+    struct archive* writeArchive = static_cast<struct archive*>(writeArchivePtr);
+
+    // Determine the archive format and compression filter from the file name.
+    // Compound extensions such as ".tar.gz" / ".tar.bz2" must be recognised in
+    // full: inspecting only the final token ("gz") would select the ZIP format
+    // and then bolt a gzip filter onto it, producing a corrupt archive. Match
+    // the longest known suffix first, then fall back to the single-token map.
+    std::string lowerPath = archivePath;
+    std::transform(lowerPath.begin(), lowerPath.end(), lowerPath.begin(), ::tolower);
+    auto hasSuffix = [&lowerPath](const std::string& suffix) {
+        return lowerPath.size() >= suffix.size() &&
+               lowerPath.compare(lowerPath.size() - suffix.size(),
+                                 suffix.size(), suffix) == 0;
+    };
+
+    std::string ext = lowerPath;
+    size_t dotPos = ext.rfind('.');
+    if (dotPos != std::string::npos) ext = ext.substr(dotPos + 1);
+
+    enum class WriteFilter { None, Gzip, BZip2, XZ, Zstd, LZ4 };
+    int format;
+    WriteFilter filter;
+
+    if (hasSuffix(".tar.gz") || hasSuffix(".tgz")) {
+        format = ARCHIVE_FORMAT_TAR_PAX_RESTRICTED; filter = WriteFilter::Gzip;
+    } else if (hasSuffix(".tar.bz2") || hasSuffix(".tbz2") || hasSuffix(".tbz")) {
+        format = ARCHIVE_FORMAT_TAR_PAX_RESTRICTED; filter = WriteFilter::BZip2;
+    } else if (hasSuffix(".tar.xz") || hasSuffix(".txz")) {
+        format = ARCHIVE_FORMAT_TAR_PAX_RESTRICTED; filter = WriteFilter::XZ;
+    } else if (hasSuffix(".tar.zst") || hasSuffix(".tzst")) {
+        format = ARCHIVE_FORMAT_TAR_PAX_RESTRICTED; filter = WriteFilter::Zstd;
+    } else if (hasSuffix(".tar.lz4")) {
+        format = ARCHIVE_FORMAT_TAR_PAX_RESTRICTED; filter = WriteFilter::LZ4;
+    } else {
+        format = GetLibArchiveFormat(ext);
+        // Standalone compressed streams keep their zip-family/default format but
+        // still receive the matching filter.
+        if      (ext == "gz")                   filter = WriteFilter::Gzip;
+        else if (ext == "bz2")                  filter = WriteFilter::BZip2;
+        else if (ext == "xz")                   filter = WriteFilter::XZ;
+        else if (ext == "zst" || ext == "zstd") filter = WriteFilter::Zstd;
+        else if (ext == "lz4")                  filter = WriteFilter::LZ4;
+        else                                    filter = WriteFilter::None;
+    }
+
+    archive_write_set_format(writeArchive, format);
+    switch (filter) {
+        case WriteFilter::Gzip:  archive_write_add_filter_gzip(writeArchive);  break;
+        case WriteFilter::BZip2: archive_write_add_filter_bzip2(writeArchive); break;
+        case WriteFilter::XZ:    archive_write_add_filter_xz(writeArchive);    break;
+        case WriteFilter::Zstd:  archive_write_add_filter_zstd(writeArchive);  break;
+        case WriteFilter::LZ4:   archive_write_add_filter_lz4(writeArchive);   break;
+        case WriteFilter::None:  break;
+    }
 }
 
 int VirtualFSLibArchiveProvider::GetLibArchiveFormat(const std::string& ext) {

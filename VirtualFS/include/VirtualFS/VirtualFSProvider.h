@@ -403,7 +403,33 @@ public:
     virtual VirtualFSResult Delete(const std::string& virtualPath) {
         return VirtualFSResult::NotSupported;
     }
-    
+
+    /**
+     * @brief Deletes a batch of entries from the archive in one operation
+     * @param virtualPaths Paths inside archive; a directory path removes the
+     *                     whole subtree beneath it
+     * @param progressCallback Optional progress callback
+     * @return Success or error code
+     *
+     * Archive formats have no in-place delete: every mutation means rewriting
+     * the whole archive. Providers should override this so that deleting N
+     * entries costs ONE rewrite pass instead of N (the per-entry Delete()
+     * loop degenerates to O(N * archive size) — pathological for bulk
+     * deletes such as removing a 19,000-file folder).
+     */
+    virtual VirtualFSResult DeleteEntries(
+        const std::vector<std::string>& virtualPaths,
+        VirtualFSProgressCallback progressCallback = nullptr) {
+        (void)progressCallback;
+        for (const auto& path : virtualPaths) {
+            auto result = Delete(path);
+            if (result != VirtualFSResult::Success) {
+                return result;
+            }
+        }
+        return VirtualFSResult::Success;
+    }
+
     /**
      * @brief Renames an entry in the archive
      * @param oldPath Current path

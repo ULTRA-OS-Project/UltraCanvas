@@ -7,7 +7,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(UltraCanvasDemoApp
-    VERSION 0.3.16
+    VERSION 0.3.17
     DESCRIPTION "UltraCanvas Framework Demo Application"
     LANGUAGES CXX
 )
@@ -147,6 +147,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasBasicChartsExamples.cpp
             Apps/DemoApp/UltraCanvasDivergingChartExamples.cpp
             Apps/DemoApp/UltraCanvasWatefallChartExamples.cpp
+            Apps/DemoApp/UltraCanvasNestedAreaChartExamples.cpp
             Apps/DemoApp/UltraCanvasFinancialChartExamples.cpp
             Apps/DemoApp/UltraCanvasCheckboxExamples.cpp
             Apps/DemoApp/UltraCanvasDemoInfoWindow.cpp
@@ -161,6 +162,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasGourceTreeExamples.cpp
             Apps/DemoApp/UltraCanvasJitterPlotExamples.cpp
             Apps/DemoApp/UltraCanvasBubbleChartExamples.cpp
+            Apps/DemoApp/UltraCanvasQuadrantChartExamples.cpp
             Apps/DemoApp/UltraCanvasPopulationChartExamples.cpp
             Apps/DemoApp/UltraCanvasSegmentedControlExamples.cpp
             Apps/DemoApp/UltraCanvasBreadcrumbExamples.cpp
@@ -187,6 +189,9 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasAudioFXExamples.cpp
             Apps/DemoApp/UltraCanvasEBookExamples.cpp
             Apps/DemoApp/UltraCanvasWaveformExamples.cpp
+            Apps/DemoApp/UltraCanvasSpectrogramExamples.cpp
+            Apps/DemoApp/UltraCanvasLevelMeterExamples.cpp
+            Apps/DemoApp/UltraCanvasAudioAnalysisExamples.cpp
             Apps/DemoApp/UltraCanvasPDFExamples.cpp
             Apps/DemoApp/UltraCanvasLaTeXExamples.cpp
             Apps/DemoApp/UltraCanvasFileLoaderExamples.cpp
