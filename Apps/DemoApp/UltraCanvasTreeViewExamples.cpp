@@ -1,11 +1,12 @@
 // Apps/DemoApp/UltraCanvasDemoExamples.cpp
 // Implementation of all component example creators
-// Version: 1.0.1
-// Last Modified: 2026-05-01
+// Version: 1.0.2
+// Last Modified: 2026-07-26
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasCheckbox.h"
+#include "UltraCanvasColumnsTreeView.h"
 #include "Plugins/Charts/UltraCanvasDivergingBarChart.h"
 #include <sstream>
 #include <random>
@@ -107,17 +108,19 @@ namespace UltraCanvas {
         // Demonstrates the columnar display mode (Name / Type / Value with an accent
         // Type column and section-header bars) an IDE debugger would use, plus the
         // Classic/Modern layout toggle and Alphabetic/Last-access sort options.
-        auto varsTree = std::make_shared<UltraCanvasTreeView>("VarsTree", 680, 50, 300, 330);
+        auto varsTree = std::make_shared<UltraCanvasColumnsTreeView>("VarsTree", 680, 50, 300, 330);
         varsTree->SetRowHeight(26);
         varsTree->SetSelectionMode(TreeSelectionMode::Single);
         varsTree->SetShowExpandButtons(true);
-        varsTree->SetDisplayMode(TreeDisplayMode::Modern);
+        varsTree->SetDisplayMode(TreeDisplayMode::Columns);
 
         // Root renders as a "Variables" section-header bar; the sections hang beneath it.
         TreeNodeData varsRootData("vars_root", "Variables");
         varsRootData.isGroupHeader = true;
-        TreeNode* varsRoot = varsTree->SetRootNode(varsRootData);
-        varsRoot->Expand();
+        varsTree->SetRootNode(varsRootData);
+        // NOTE: don't expand here — the root has no children yet, so it is still a
+        // Leaf and Expand() is a no-op. The whole tree is expanded via ExpandAll()
+        // once it is fully populated (see below).
 
         // Helper: a variable row carrying Name / Type / Value + a last-access stamp.
         auto addVar = [&](const std::string& parent, const std::string& id,
@@ -133,8 +136,7 @@ namespace UltraCanvas {
         auto addGroup = [&](const std::string& id, const std::string& title) {
             TreeNodeData g(id, title);
             g.isGroupHeader = true;
-            TreeNode* n = varsTree->AddNode("vars_root", g);
-            if (n) n->Expand();
+            varsTree->AddNode("vars_root", g);
         };
 
         addGroup("grp_line", "Line");
@@ -152,6 +154,10 @@ namespace UltraCanvas {
         addVar("grp_fn", "v_offset", "offset", "int", "13",     70);
         addVar("grp_fn", "v_border", "border", "int", "8",      80);
 
+        // Expand root + all group headers now that every child exists. Expanding
+        // earlier is a no-op because a childless node is a Leaf, not Collapsed.
+        varsTree->ExpandAll();
+
         container->AddChild(varsTree);
 
         auto varsLabel = std::make_shared<UltraCanvasLabel>("VarsTreeLabel", 680, 386, 300, 20);
@@ -165,7 +171,7 @@ namespace UltraCanvas {
         modernCheckbox->SetChecked(true);
         modernCheckbox->onStateChanged = [varsTree](CheckedState, CheckedState newState) {
             varsTree->SetDisplayMode(newState == CheckedState::Checked
-                                         ? TreeDisplayMode::Modern
+                                         ? TreeDisplayMode::Columns
                                          : TreeDisplayMode::Classic);
         };
         container->AddChild(modernCheckbox);

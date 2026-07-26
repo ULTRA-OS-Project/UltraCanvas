@@ -37,16 +37,6 @@ enum class TreeLineStyle {
     Solid = 2       // Solid connecting lines
 };
 
-// ===== TREE DISPLAY MODE =====
-// How each row is laid out. Classic renders a single line of text (data.text) and
-// is the historical/default behaviour. Modern renders three aligned columns
-// (Name / Type / Value) with an accent-filled Type column, matching an IDE-style
-// debugger "Variables" panel. Both modes keep the tree hierarchy and expand/collapse.
-enum class TreeDisplayMode {
-    Classic = 0,   // single-text rows (default, back-compatible)
-    Modern  = 1    // aligned Name / Type / Value columns
-};
-
 // ===== TREE SORT MODE =====
 // Ordering applied to a node's children. LastAccess orders by TreeNodeData::accessSequence
 // (largest first when ascending=false), which callers stamp when a value is touched.
@@ -56,22 +46,6 @@ enum class TreeSortMode {
     NoSort = 0,      // preserve insertion order
     Alphabetic = 1,  // by display name (data.text), case-insensitive
     LastAccess = 2   // by data.accessSequence
-};
-
-// ===== MODERN-MODE COLUMN STYLE =====
-// Geometry and colours used only when TreeDisplayMode::Modern is active.
-struct TreeColumnStyle {
-    int   typeColumnWidth      = 64;   // fixed width of the Type column (px)
-    int   valueColumnWidth     = 0;    // 0 => Value column takes the remaining width to the right
-    int   columnGap            = 8;    // horizontal gap between columns (px)
-    int   typeColumnPadding    = 4;    // padding around the Type accent fill (px)
-    Color typeColumnBackground = Color(255, 190, 130);  // orange accent behind the Type column
-    Color typeTextColor        = Color(40, 40, 40);     // Type column text
-    Color valueTextColor       = Color(40, 40, 40);     // Value column text
-    Color groupHeaderBackground = Colors::Black;        // full-width section-header bar
-    Color groupHeaderTextColor  = Colors::White;        // section-header text
-    bool  showColumnSeparators  = false;                // thin vertical rules between columns
-    Color columnSeparatorColor  = Color(210, 210, 210);
 };
 
 struct TreeNodeIcon {
@@ -101,10 +75,10 @@ struct TreeNodeData {
     std::string tooltip;          // Tooltip text
     void* userData = nullptr;     // Custom user data
 
-    // ----- Modern display mode (TreeDisplayMode::Modern) -----
-    // In Classic mode `text` holds the whole row. In Modern mode `text` is the
-    // Name column and these supply the Type and Value columns. They are ignored
-    // in Classic mode, so setting them is always safe.
+    // ----- Optional columns (used by column tree views, see UltraCanvasColumnsTreeView) -----
+    // The base tree renders a single line from `text`. A column tree view instead
+    // treats `text` as the Name column and reads these for the Type and Value
+    // columns. They are ignored by the base tree, so setting them is always safe.
     std::string typeText;         // Type column (e.g. "int", "*ptr", "fp", "str")
     std::string valueText;        // Value column (e.g. "45", "2x67", "up")
     Color typeColor = Colors::Transparent; // Type column text override (Transparent => use style default)
@@ -194,10 +168,6 @@ private:
     bool autoExpandSelectedNode;  // auto expand selected node
     bool autoSortChildren = false; // keep children sorted alphabetically on insert
     bool autoSortAscending = true; // direction used by auto-sort
-
-    // Display mode + Modern-mode column layout
-    TreeDisplayMode displayMode = TreeDisplayMode::Classic;
-    TreeColumnStyle columnStyle;
 
     // Active sort (applied by SetSortMode / re-applied by SortAllNodes)
     TreeSortMode sortMode = TreeSortMode::NoSort;
@@ -294,16 +264,6 @@ public:
     void SetLineColor(const Color &color) { lineColor = color; }
     void SetTextColor(const Color &color) { textColor = color; }
 
-    // ===== DISPLAY MODE (Classic / Modern columns) =====
-    // Switch between the single-text Classic layout and the columnar Modern layout.
-    // Safe to toggle at runtime; triggers a redraw. Node data is shared between modes.
-    void SetDisplayMode(TreeDisplayMode mode);
-    TreeDisplayMode GetDisplayMode() const { return displayMode; }
-
-    // Column geometry/colours used by Modern mode.
-    void SetColumnStyle(const TreeColumnStyle& style) { columnStyle = style; RequestRedraw(); }
-    const TreeColumnStyle& GetColumnStyle() const { return columnStyle; }
-
     // ===== SORTING =====
     // Persistent option: keep children alphabetically sorted as nodes are added.
     void SetAutoSortChildren(bool enable, bool ascending = true);
@@ -341,6 +301,28 @@ public:
 // ==== WINDOW PROPAGATION =====
     void SetWindow(UltraCanvasWindowBase* win) override;
 
+protected:
+    // ===== ROW RENDERING EXTENSION POINTS =====
+    // Hooks that let a subclass (e.g. UltraCanvasColumnsTreeView) customise how a
+    // row is drawn without re-implementing the whole RenderNode traversal.
+
+    // Draw a row that occupies the entire width (e.g. a section-header bar) instead
+    // of the normal background/expander/label. Return true if the row was fully
+    // handled, in which case RenderNode skips its own drawing for this node.
+    virtual bool RenderNodeFullRow(IRenderContext* ctx, TreeNode* node, int nodeY,
+                                   const Rect2Di& contentRect, int rowWidth) { return false; }
+
+    // Draw the row's content to the right of the expander/left-icon. The base draws
+    // a single text run + optional right icon (Classic). Subclasses override to draw
+    // columns.
+    virtual void RenderNodeLabel(IRenderContext* ctx, TreeNode* node, int nodeY,
+                                 int textX, int nodeWidth, int sbWidth,
+                                 const Rect2Di& contentRect);
+
+    // Read-only access for subclass renderers.
+    int   GetTextPadding() const { return textPadding; }
+    Color GetTextColor()   const { return textColor; }
+
 private:
 
     // ===== SCROLLBAR MANAGEMENT =====
@@ -356,11 +338,6 @@ private:
     TreeNode* GetNodeAtY(int y);
     
     void RenderNode(IRenderContext *ctx, TreeNode* node, int& currentY, int level, const Rect2Di& contentRect);
-
-    // Modern-mode row painter: draws the Name/Type/Value columns (or a full-width
-    // section-header bar when node->data.isGroupHeader). Called from RenderNode.
-    void RenderNodeColumns(IRenderContext *ctx, TreeNode* node, int nodeY, int textX,
-                           int rowLeft, int rowWidth);
 
     void ExpandNodeRecursive(TreeNode* node);
     void CollapseNodeRecursive(TreeNode* node);

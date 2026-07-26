@@ -384,13 +384,6 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
-    void UltraCanvasTreeView::SetDisplayMode(TreeDisplayMode mode) {
-        if (displayMode == mode) return;
-        displayMode = mode;
-        UpdateScrollbars();
-        RequestRedraw();
-    }
-
     void UltraCanvasTreeView::SetSortMode(TreeSortMode mode, bool ascending) {
         sortMode = mode;
         sortAscending = ascending;
@@ -704,23 +697,8 @@ namespace UltraCanvas {
         int sbWidth = verticalScrollbar->IsVisible() ? verticalScrollbar->GetWidth() : 0;
         int nodeWidth = contentRect.width - sbWidth;
 
-        // Modern mode: a group-header node is a full-width section bar (Line/Loop/...).
-        // It owns the whole row and does not draw an expand button, icons or columns.
-        if (displayMode == TreeDisplayMode::Modern && node->data.isGroupHeader) {
-            ctx->DrawFilledRectangle(Rect2Di(contentRect.x + 1, nodeY, nodeWidth - 2, rowHeight),
-                                     columnStyle.groupHeaderBackground);
-            ctx->SetFontSize(12);
-            ctx->SetFontWeight(FontWeight::Bold);
-            ctx->SetTextPaint(columnStyle.groupHeaderTextColor);
-            ctx->SetTextAlignment(TextAlignment::Center);
-            ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-            auto layout = ctx->GetOrCreateTextLayout(node->data.text, Size2Di(nodeWidth - 2, rowHeight), true);
-            if (layout) {
-                ctx->DrawTextLayout(*layout, Point2Dd(contentRect.x + 1, nodeY));
-            }
-            ctx->SetFontWeight(FontWeight::Normal);
-            ctx->SetTextAlignment(TextAlignment::Left);
-
+        // Let a subclass fully own the row (e.g. a full-width section-header bar).
+        if (RenderNodeFullRow(ctx, node, nodeY, contentRect, nodeWidth)) {
             currentY += rowHeight;
             if (node->IsExpanded()) {
                 for (auto &child: node->children) {
@@ -777,30 +755,8 @@ namespace UltraCanvas {
             textX += node->data.leftIcon.width + iconSpacing;
         }
 
-        // Modern mode: draw the Name / Type / Value columns instead of one text run.
-        if (displayMode == TreeDisplayMode::Modern) {
-            RenderNodeColumns(ctx, node, nodeY, textX, contentRect.x + 1, nodeWidth - 2);
-        } else {
-            // Classic mode: single text run + optional right icon.
-            Color nodeTextColor = node->data.textColor != Colors::Black ? node->data.textColor : textColor;
-            ctx->SetFontSize(12);
-            ctx->SetTextPaint(nodeTextColor);
-            ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-            auto layout = ctx->GetOrCreateTextLayout(node->data.text, Size2Di(nodeWidth - textX, rowHeight), true);
-            if (layout) {
-                ctx->DrawTextLayout(*layout, Point2Dd(textX, nodeY));
-            }
-
-            // Draw right icon
-            if (node->data.rightIcon.visible && !node->data.rightIcon.iconPath.empty()) {
-                int rightIconX = contentRect.Right() - node->data.rightIcon.width - textPadding - sbWidth;
-
-                ctx->DrawImage(node->data.rightIcon.iconPath.c_str(),
-                               Rect2Dd(rightIconX, nodeY + (rowHeight - node->data.rightIcon.height) / 2,
-                                       node->data.rightIcon.width, node->data.rightIcon.height),
-                               ImageFitMode::Contain);
-            }
-        }
+        // Draw the row's label/content (Classic single text run; subclasses draw columns).
+        RenderNodeLabel(ctx, node, nodeY, textX, nodeWidth, sbWidth, contentRect);
 
         currentY += rowHeight;
 
@@ -812,75 +768,27 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasTreeView::RenderNodeColumns(IRenderContext *ctx, TreeNode *node, int nodeY,
-                                                int textX, int rowLeft, int rowWidth) {
-        const TreeColumnStyle &cs = columnStyle;
-        int rowRight = rowLeft + rowWidth - textPadding;
-
-        // Column geometry (left -> right): Name | Type | Value.
-        int valW = cs.valueColumnWidth > 0
-                       ? cs.valueColumnWidth
-                       : std::max(48, static_cast<int>(rowWidth * 0.28f));
-        int typeW = cs.typeColumnWidth;
-        int gap = cs.columnGap;
-
-        int valueX = rowRight - valW;
-        int typeX = valueX - gap - typeW;
-        int nameRight = typeX - gap;
-        int nameWidth = std::max(0, nameRight - textX);
-
-        // Type accent background (only when there is a type to show).
-        if (!node->data.typeText.empty() && typeX >= textX) {
-            ctx->DrawFilledRectangle(
-                Rect2Di(typeX - cs.typeColumnPadding, nodeY,
-                        typeW + 2 * cs.typeColumnPadding, rowHeight),
-                cs.typeColumnBackground);
-        }
-
-        // Optional thin separators between columns.
-        if (cs.showColumnSeparators && typeX >= textX) {
-            ctx->DrawLine(Point2Dd(typeX - gap / 2.0, nodeY),
-                          Point2Dd(typeX - gap / 2.0, nodeY + rowHeight), cs.columnSeparatorColor);
-            ctx->DrawLine(Point2Dd(valueX - gap / 2.0, nodeY),
-                          Point2Dd(valueX - gap / 2.0, nodeY + rowHeight), cs.columnSeparatorColor);
-        }
-
+    void UltraCanvasTreeView::RenderNodeLabel(IRenderContext *ctx, TreeNode *node, int nodeY,
+                                              int textX, int nodeWidth, int sbWidth,
+                                              const Rect2Di &contentRect) {
+        // Classic mode: single text run + optional right icon.
+        Color nodeTextColor = node->data.textColor != Colors::Black ? node->data.textColor : textColor;
         ctx->SetFontSize(12);
-        ctx->SetTextAlignment(TextAlignment::Left);
+        ctx->SetTextPaint(nodeTextColor);
         ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-
-        // Name column
-        Color nameColor = node->data.textColor != Colors::Black ? node->data.textColor : textColor;
-        ctx->SetTextPaint(nameColor);
-//        ctx->DrawTextInRect(node->data.text, Rect2Dd(textX, nodeY, nameWidth, rowHeight));
-        auto layoutName = ctx->GetOrCreateTextLayout(node->data.text, Size2Di(nameWidth, rowHeight), true);
-        if (layoutName) {
-            ctx->DrawTextLayout(*layoutName, Point2Dd(textX, nodeY));
+        auto layout = ctx->GetOrCreateTextLayout(node->data.text, Size2Di(nodeWidth - textX, rowHeight), true);
+        if (layout) {
+            ctx->DrawTextLayout(*layout, Point2Dd(textX, nodeY));
         }
 
-        if (typeX < textX) return;  // row too narrow for the remaining columns
+        // Draw right icon
+        if (node->data.rightIcon.visible && !node->data.rightIcon.iconPath.empty()) {
+            int rightIconX = contentRect.Right() - node->data.rightIcon.width - textPadding - sbWidth;
 
-        // Type column
-        if (!node->data.typeText.empty()) {
-            Color typeCol = node->data.typeColor != Colors::Transparent
-                                ? node->data.typeColor
-                                : cs.typeTextColor;
-            ctx->SetTextPaint(typeCol);
-//            ctx->DrawTextInRect(node->data.typeText, Rect2Dd(typeX, nodeY, typeW, rowHeight));
-            auto layoutType = ctx->GetOrCreateTextLayout(node->data.typeText, Size2Di(typeW, rowHeight), true);
-            if (layoutType) {
-                ctx->DrawTextLayout(*layoutType, Point2Dd(typeX, nodeY));
-            }
-        }
-
-        // Value column
-        if (!node->data.valueText.empty()) {
-            ctx->SetTextPaint(cs.valueTextColor);
-            //ctx->DrawTextInRect(node->data.valueText, Rect2Dd(valueX, nodeY, valW, rowHeight));
-            auto layoutValue = ctx->GetOrCreateTextLayout(node->data.valueText, Size2Di(valW, rowHeight), true);
-            if (layoutValue) {
-                ctx->DrawTextLayout(*layoutValue, Point2Dd(valueX, nodeY));
-            }
+            ctx->DrawImage(node->data.rightIcon.iconPath.c_str(),
+                           Rect2Dd(rightIconX, nodeY + (rowHeight - node->data.rightIcon.height) / 2,
+                                   node->data.rightIcon.width, node->data.rightIcon.height),
+                           ImageFitMode::Contain);
         }
     }
 

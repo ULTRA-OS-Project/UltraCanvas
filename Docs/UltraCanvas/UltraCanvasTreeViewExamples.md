@@ -61,11 +61,6 @@ enum class TreeLineStyle {
     Solid = 2         // Solid lines
 };
 
-enum class TreeDisplayMode {
-    Classic = 0,      // Single-text rows (default, back-compatible)
-    Modern  = 1       // Aligned Name / Type / Value columns (IDE debugger style)
-};
-
 enum class TreeSortMode {
     NoSort = 0,       // Preserve insertion order
     Alphabetic = 1,   // By display name (data.text), case-insensitive
@@ -99,7 +94,8 @@ struct TreeNodeData {
     std::string tooltip;                   // Tooltip text
     void* userData = nullptr;              // Custom user data
 
-    // Modern display mode (ignored in Classic mode)
+    // Optional columns — read by column tree views (UltraCanvasColumnsTreeView);
+    // ignored by the base tree, so setting them is always safe.
     std::string typeText;                  // Type column (e.g. "int", "*ptr")
     std::string valueText;                 // Value column (e.g. "45", "2x67")
     Color typeColor = Colors::Transparent; // Type column text override
@@ -108,19 +104,29 @@ struct TreeNodeData {
 };
 ```
 
-### Display Mode: Classic vs Modern
+### Columnar Layout: `UltraCanvasColumnsTreeView`
 
-TreeView renders each row in one of two layouts, switchable at runtime with
+The base `UltraCanvasTreeView` always renders one text run per row (`data.text`). For
+IDE-style debugger "Variables" / "Watch" panels, the framework provides the subclass
+`UltraCanvasColumnsTreeView` (in `UltraCanvasColumnsTreeView.h`), which adds a columnar
+row layout. It renders each row in one of two modes, switchable at runtime with
 `SetDisplayMode()`:
 
-- **Classic** (default) — one text run per row (`data.text`). Unchanged historical
-  behaviour; existing trees are unaffected.
-- **Modern** — three aligned columns drawn from `data.text` (Name), `data.typeText`
-  (Type) and `data.valueText` (Value), with an accent-filled Type column. Nodes with
-  `data.isGroupHeader = true` render as full-width section bars. Hierarchy and
-  expand/collapse work in both modes.
+- **Columns** (default) — three aligned columns drawn from `data.text` (Name),
+  `data.typeText` (Type) and `data.valueText` (Value), with an accent-filled Type
+  column. Nodes with `data.isGroupHeader = true` render as full-width section bars.
+- **Classic** — delegates to the base single-text layout (`data.text` per row).
 
-Modern-mode geometry and colours are controlled by `TreeColumnStyle`
+Hierarchy and expand/collapse work in both modes.
+
+```cpp
+enum class TreeDisplayMode {
+    Classic = 0,      // single-text rows (delegates to the base tree)
+    Columns = 1       // aligned Name / Type / Value columns (default)
+};
+```
+
+Column geometry and colours are controlled by `TreeColumnStyle`
 (`SetColumnStyle()` / `GetColumnStyle()`):
 
 ```cpp
@@ -152,8 +158,9 @@ alphabetical helpers (`SortNodeChildren`, `SortAllNodes`, `SetAutoSortChildren`)
 remain available.
 
 ```cpp
-// IDE debugger Variables panel in Modern columns, sorted by most-recent access
-tree->SetDisplayMode(TreeDisplayMode::Modern);
+// IDE debugger Variables panel in columns, sorted by most-recent access
+auto tree = std::make_shared<UltraCanvasColumnsTreeView>("vars");
+tree->SetDisplayMode(TreeDisplayMode::Columns);   // Columns is the default
 tree->SetSortMode(TreeSortMode::LastAccess, /*ascending=*/false);
 ```
 
