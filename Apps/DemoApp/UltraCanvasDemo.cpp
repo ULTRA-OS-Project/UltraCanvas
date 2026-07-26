@@ -1117,9 +1117,19 @@ namespace UltraCanvas {
                              ImplementationStatus::PartiallyImplemented,
                              [this]() { return CreatePartiallyImplementedExamples("Dumbbell Chart is not ready yet"); });
 
-        chartBuilder.AddItem("bubblecharts", "Bubble Chart", "Bubble Chart",
-                             ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples("Bubble Chart is not ready yet"); });
+        chartBuilder.AddItem("bubblecharts", "Bubble Chart",
+                             "Scatter bubbles, packed bubbles, bubble matrix and an "
+                             "OpenGL 3D bubble chart",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateBubbleChartExamples(); },
+                             "DemoApp/UltraCanvasBubbleChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasBubbleChart.md")
+                .AddVariant("bubblecharts", "Bubble Matrix (Mrs. President)")
+                .AddVariant("bubblecharts", "Scatter Bubbles (Travel Concerns)")
+                .AddVariant("bubblecharts", "Packed Bubbles")
+                .AddVariant("bubblecharts", "Hierarchical Packing")
+                .AddVariant("bubblecharts", "Bubble Timeline")
+                .AddVariant("bubblecharts", "3D Bubbles (OpenGL)");
 
         chartBuilder.AddItem("contourplot", "Contour plot", "Contour plot",
                              ImplementationStatus::NotImplemented,
