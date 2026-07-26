@@ -1,8 +1,17 @@
 // include/Plugins/Diagrams/UltraCanvasPertChart.h
 // Interactive PERT (Program Evaluation and Review Technique) chart component
-// Version: 1.1.0
+// Version: 1.2.0
 //
 // Changelog:
+//   1.2.0 - Flexible node definition system: PertNodeTemplate describes a
+//           node as any number of rows, each with any number of cells.
+//           Cells bind to activity/CPM fields (PertNodeField) or literal
+//           text, carry relative width/height weights and optional per-cell
+//           background/text colors and bold flags. Templates apply
+//           chart-wide (SetNodeTemplate, design PertNodeDesign::Custom) or
+//           per activity (SetActivityNodeTemplate, overriding the global
+//           design for that node). PertNodeTemplate::CpmMatrix() ships as a
+//           built-in: ES | D | EF / name / LS | TF | LF.
 //   1.1.0 - Circle design gained a label mode (PertCircleLabel): Code keeps
 //           the AOA look (code inside, name outside), Name centers the
 //           activity name inside the circle as a single-cell node, with the
@@ -62,7 +71,26 @@ enum class PertNodeDesign {
     Card,           // header + code/duration row + dates row
     DetailedCard,   // Card + responsible row
     Compact,        // rounded box, name + duration
-    Circle          // numbered circle, details along connectors (AOA style)
+    Circle,         // numbered circle, details along connectors (AOA style)
+    Custom          // rows/cells defined by a PertNodeTemplate
+};
+
+// Value a template cell displays. Numeric CPM fields render as plain
+// trimmed numbers; Duration additionally appends the duration unit.
+enum class PertNodeField {
+    Literal,        // fixed text from PertNodeCell::literal
+    Name,
+    Code,           // activity code (id as fallback)
+    Duration,       // expected duration with unit suffix ("3 days")
+    DurationValue,  // expected duration as a plain number ("3")
+    EarliestStart,
+    EarliestFinish,
+    LatestStart,
+    LatestFinish,
+    Slack,
+    StartDate,
+    EndDate,
+    Responsible
 };
 
 // What the Circle design draws inside the circle.
@@ -137,6 +165,65 @@ struct PertChartPalette {
 };
 
 // =============================================================================
+// FLEXIBLE NODE TEMPLATES
+// =============================================================================
+
+// One cell of a template row. The displayed text comes from `field`
+// (resolved against the activity and the computed schedule at render time)
+// or from `literal` when field == PertNodeField::Literal.
+struct PertNodeCell {
+    PertNodeField field = PertNodeField::Literal;
+    std::string literal;
+    double widthWeight = 1.0;   // relative width within the row
+    bool bold = false;
+    bool hasColors = false;     // per-cell background/text override
+    Color background;
+    Color textColor;
+
+    PertNodeCell() = default;
+    PertNodeCell(PertNodeField f, double weight = 1.0, bool boldText = false)
+        : field(f), widthWeight(weight), bold(boldText) {}
+    explicit PertNodeCell(const std::string& text, double weight = 1.0, bool boldText = false)
+        : field(PertNodeField::Literal), literal(text), widthWeight(weight), bold(boldText) {}
+
+    PertNodeCell& WithColors(const Color& bg, const Color& text) {
+        hasColors = true;
+        background = bg;
+        textColor = text;
+        return *this;
+    }
+};
+
+struct PertNodeRow {
+    std::vector<PertNodeCell> cells;
+    double heightWeight = 1.0;  // relative height within the node
+
+    PertNodeRow() = default;
+    PertNodeRow(std::vector<PertNodeCell> rowCells, double weight = 1.0)
+        : cells(std::move(rowCells)), heightWeight(weight) {}
+};
+
+// A node layout: any number of rows, each with any number of cells.
+struct PertNodeTemplate {
+    std::vector<PertNodeRow> rows;
+
+    bool IsEmpty() const { return rows.empty(); }
+    double TotalHeightWeight() const {
+        double sum = 0.0;
+        for (const auto& r : rows) sum += r.heightWeight;
+        return sum;
+    }
+
+    // Built-in: the classic CPM analysis matrix
+    //   ES | D  | EF
+    //      name
+    //   LS | TF | LF
+    // with soft per-cell coloring (greens for the forward pass, blues for
+    // the backward pass, orange for duration, amber for total float).
+    static PertNodeTemplate CpmMatrix();
+};
+
+// =============================================================================
 // PERT CHART DATA STRUCTURES
 // =============================================================================
 
@@ -169,6 +256,10 @@ struct PertActivity {
     double width = 0.0;          // 0 = use the default for the active design
     double height = 0.0;
     bool hasManualPosition = false;
+
+    // Per-activity node layout. When set, this activity renders with the
+    // template regardless of the chart's global node design.
+    std::shared_ptr<PertNodeTemplate> nodeTemplate;
 
     // Optional per-activity color overrides (take precedence over the
     // palette and the group color).
@@ -361,6 +452,16 @@ public:
 
     void SetNodeDesign(PertNodeDesign design);
     PertNodeDesign GetNodeDesign() const { return nodeDesign; }
+
+    // Chart-wide node template; switches the design to PertNodeDesign::
+    // Custom. Selecting Custom without ever setting a template renders the
+    // built-in CpmMatrix layout.
+    void SetNodeTemplate(const PertNodeTemplate& tpl);
+    const PertNodeTemplate& GetNodeTemplate() const { return chartTemplate; }
+    // Per-activity layout override; wins over the global design for that
+    // node only, so table nodes and single-cell nodes can be mixed freely.
+    void SetActivityNodeTemplate(const std::string& id, const PertNodeTemplate& tpl);
+    void ClearActivityNodeTemplate(const std::string& id);
     void SetConnectorStyle(PertConnectorStyle style);
     PertConnectorStyle GetConnectorStyle() const { return connectorStyle; }
 
@@ -450,6 +551,7 @@ private:
 
     PertNodeDesign nodeDesign = PertNodeDesign::Card;
     PertCircleLabel circleLabel = PertCircleLabel::Code;
+    PertNodeTemplate chartTemplate = PertNodeTemplate::CpmMatrix();
     PertConnectorStyle connectorStyle = PertConnectorStyle::Orthogonal;
     bool highlightCriticalPath = true;
     bool showDates = true;
@@ -519,6 +621,13 @@ private:
     void RenderCardNode(IRenderContext* ctx, const PertActivity& a, bool detailed);
     void RenderCompactNode(IRenderContext* ctx, const PertActivity& a);
     void RenderCircleNode(IRenderContext* ctx, const PertActivity& a);
+    void RenderTemplateNode(IRenderContext* ctx, const PertActivity& a,
+                            const PertNodeTemplate& tpl);
+    // Template active for this activity: its own, else the chart's when the
+    // design is Custom, else nullptr.
+    const PertNodeTemplate* TemplateForActivity(const PertActivity& a) const;
+    // Text a template cell displays for this activity.
+    std::string FieldText(const PertActivity& a, const PertNodeCell& cell) const;
     void RenderSelectionHighlight(IRenderContext* ctx, const PertActivity& a);
     void RenderLegend(IRenderContext* ctx);
     void RenderArrowHead(IRenderContext* ctx, const Point2Dd& tip, double angle,
@@ -526,7 +635,8 @@ private:
     void RenderConnectorLabel(IRenderContext* ctx, const PertDependency& dep,
                               const Point2Dd& anchor);
     std::vector<Point2Dd> ComputeConnectorPath(const Point2Dd& start, const Point2Dd& end) const;
-    std::string FormatDuration(double d) const;
+    std::string FormatDuration(double d) const;  // number + duration unit
+    std::string FormatNumber(double d) const;    // trimmed plain number
 
     // =============================================================================
     // EVENT HANDLERS

@@ -177,13 +177,15 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePertChar
     designDrop->AddItem("Detailed Card");
     designDrop->AddItem("Compact");
     designDrop->AddItem("Circle (AOA)");
+    designDrop->AddItem("CPM Matrix");
     designDrop->SetSelectedIndex(0, false);
     designDrop->onSelectionChanged = [chart](int index, const DropdownItem&) {
         static const PertNodeDesign kDesigns[] = {
             PertNodeDesign::Card, PertNodeDesign::DetailedCard,
-            PertNodeDesign::Compact, PertNodeDesign::Circle
+            PertNodeDesign::Compact, PertNodeDesign::Circle,
+            PertNodeDesign::Custom // default template = CpmMatrix
         };
-        if (index >= 0 && index < 4) chart->SetNodeDesign(kDesigns[index]);
+        if (index >= 0 && index < 5) chart->SetNodeDesign(kDesigns[index]);
     };
     container->AddChild(designDrop);
 

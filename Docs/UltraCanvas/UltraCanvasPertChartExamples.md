@@ -1,6 +1,6 @@
 # UltraCanvasPertChart Documentation
 
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Author:** UltraCanvas Framework
 
 ## Overview
@@ -23,7 +23,8 @@ UltraCanvasUIElement
 
 - **CPM analysis:** forward/backward pass with earliest start/finish, latest start/finish, slack, critical-path flags and cycle detection; recomputed automatically whenever the network changes.
 - **PERT statistics:** per-activity three-point estimates `TE = (O + 4M + P) / 6`, variance `((P - O) / 6)^2`, project variance/σ along the critical path and `GetCompletionProbability(target)` via the normal approximation.
-- **Node designs (`PertNodeDesign`):** `Card` (header + code/duration + dates rows), `DetailedCard` (adds a responsible row), `Compact` (solid rounded box with name and duration), `Circle` (numbered circles, activity-on-arrow look). The Circle design has two label modes (`PertCircleLabel`): `Code` puts the activity number inside with the name outside (AOA), `Name` centers the activity name inside the circle as a single-cell node, auto-shrinking the font to fit.
+- **Node designs (`PertNodeDesign`):** `Card` (header + code/duration + dates rows), `DetailedCard` (adds a responsible row), `Compact` (solid rounded box with name and duration), `Circle` (numbered circles, activity-on-arrow look), `Custom` (template-driven, see below). The Circle design has two label modes (`PertCircleLabel`): `Code` puts the activity number inside with the name outside (AOA), `Name` centers the activity name inside the circle as a single-cell node, auto-shrinking the font to fit.
+- **Flexible node templates (`PertNodeTemplate`):** define a node as any number of rows with any number of cells per row; cells bind to activity/CPM fields or literal text, take relative width/height weights, optional per-cell background/text colors and bold flags. Apply chart-wide (`SetNodeTemplate`) or per activity (`SetActivityNodeTemplate`), mixing layouts in one chart. `PertNodeTemplate::CpmMatrix()` is a ready-made ES | D | EF / name / LS | TF | LF analysis node.
 - **Color palettes (`PertChartPaletteKind`):** `Classic`, `Ocean`, `Vibrant`, `Pastel`, `Mint`, `Midnight`, `Dark`, `Monochrome` built-ins plus `SetCustomPalette()` for full control over every color slot.
 - **Groups & legend:** color-code activities per team; explicit colors or auto-assignment from the palette's group color cycle; optional legend overlay.
 - **Connectors:** `Straight`, `Orthogonal`, `Curved`; dashed *dummy dependencies* (zero-duration logical links); connector labels; critical-path connectors drawn thicker in the palette's accent color.
@@ -143,7 +144,7 @@ every successful pass with the project duration.
 ### Design Options
 
 ```cpp
-void SetNodeDesign(PertNodeDesign design);   // Card, DetailedCard, Compact, Circle
+void SetNodeDesign(PertNodeDesign design);   // Card, DetailedCard, Compact, Circle, Custom
 void SetCircleLabelMode(PertCircleLabel m);  // Circle only: Code (AOA) or Name inside
 void SetConnectorStyle(PertConnectorStyle s); // Straight, Orthogonal, Curved
 void SetCriticalPathHighlight(bool enable);
@@ -155,6 +156,73 @@ void SetDurationUnit(const std::string& unitSuffix); // default "days"
 void SetGridVisible(bool visible, double spacing = 20.0);
 void SetFontFamily(const std::string& fontFamily);
 PertChartStyle& GetStyle();                  // spacing, fonts, widths, radii
+```
+
+### Flexible Node Templates
+
+```cpp
+void SetNodeTemplate(const PertNodeTemplate& tpl);          // chart-wide, sets design Custom
+const PertNodeTemplate& GetNodeTemplate() const;
+void SetActivityNodeTemplate(const std::string& id,
+                             const PertNodeTemplate& tpl);  // per-node override
+void ClearActivityNodeTemplate(const std::string& id);
+static PertNodeTemplate PertNodeTemplate::CpmMatrix();      // built-in analysis node
+```
+
+A template is a list of `PertNodeRow`s, each holding `PertNodeCell`s:
+
+```cpp
+struct PertNodeCell {
+    PertNodeField field;      // Literal, Name, Code, Duration, DurationValue,
+                              // EarliestStart, EarliestFinish, LatestStart,
+                              // LatestFinish, Slack, StartDate, EndDate, Responsible
+    std::string literal;      // text when field == Literal
+    double widthWeight;       // relative width within the row (default 1)
+    bool bold;                // bold text, header font size
+    bool hasColors;           // per-cell colors (else palette body colors)
+    Color background, textColor;
+};
+struct PertNodeRow      { std::vector<PertNodeCell> cells; double heightWeight; };
+struct PertNodeTemplate { std::vector<PertNodeRow> rows; };
+```
+
+Field-bound cells resolve against the activity and the computed schedule at
+render time, so CPM values stay current after every graph change. Cell text
+auto-shrinks (down to 7pt) to fit its cell. Default node height follows the
+template (≈26 px per unit of row height weight); `SetActivitySize()`
+overrides it. A per-activity template beats the global design for that node
+only, so one chart can mix table nodes, matrix nodes and single-cell nodes.
+Selecting `PertNodeDesign::Custom` without setting a template renders the
+built-in `CpmMatrix()` layout. Milestones keep their solid-bar look.
+
+Example — rebuild the classic card plus a fully custom analysis node:
+
+```cpp
+// Header row (bold name), then code | duration, then the two dates.
+PertNodeTemplate card;
+card.rows.push_back(PertNodeRow({ PertNodeCell(PertNodeField::Name, 1.0, true) }, 1.2));
+card.rows.push_back(PertNodeRow({ PertNodeCell(PertNodeField::Code),
+                                  PertNodeCell(PertNodeField::Duration) }));
+card.rows.push_back(PertNodeRow({ PertNodeCell(PertNodeField::StartDate),
+                                  PertNodeCell(PertNodeField::EndDate) }));
+chart->SetNodeTemplate(card);                       // design becomes Custom
+
+// Per-cell colors + literals + weights: a labeled CPM matrix for one node.
+PertNodeTemplate matrix;
+matrix.rows.push_back(PertNodeRow({
+    PertNodeCell("ES", 0.7).WithColors(Color(214,238,218,255), Color(22,78,34,255)),
+    PertNodeCell(PertNodeField::EarliestStart),
+    PertNodeCell("EF", 0.7).WithColors(Color(214,238,218,255), Color(22,78,34,255)),
+    PertNodeCell(PertNodeField::EarliestFinish)
+}));
+matrix.rows.push_back(PertNodeRow({ PertNodeCell(PertNodeField::Name, 1.0, true) }, 1.3));
+matrix.rows.push_back(PertNodeRow({
+    PertNodeCell("LS", 0.7).WithColors(Color(212,227,246,255), Color(22,52,96,255)),
+    PertNodeCell(PertNodeField::LatestStart),
+    PertNodeCell("TF", 0.7).WithColors(Color(250,242,200,255), Color(96,78,8,255)),
+    PertNodeCell(PertNodeField::Slack)
+}));
+chart->SetActivityNodeTemplate("test", matrix);     // only this node
 ```
 
 ### Palette Options
@@ -269,7 +337,8 @@ chart->SetPalette(PertChartPaletteKind::Dark);       // dark canvas
 `Apps/DemoApp/UltraCanvasPertChartExamples.cpp` builds a software-delivery
 network (plan → parallel design tracks → programming → merge → test → UAT)
 with team color-coding, a dummy dependency and three-point estimates, and a
-control bar that switches node design, palette and connector routing live,
+control bar that switches node design (including the template-driven CPM
+Matrix), palette and connector routing live,
 toggles critical-path highlighting, legend, dates and slack, and shows the
 computed project duration, critical path and on-time probability.
 

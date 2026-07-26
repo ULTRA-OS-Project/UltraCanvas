@@ -1,8 +1,18 @@
 // Plugins/Diagrams/UltraCanvasPertChart.cpp
 // Interactive PERT chart component implementation
-// Version: 1.1.0
+// Version: 1.2.0
 //
 // Changelog:
+//   1.2.0 - Flexible node definition system (PertNodeTemplate): nodes as
+//           arbitrary row/cell grids with field bindings, relative
+//           width/height weights, per-cell colors and bold flags.
+//           Chart-wide via SetNodeTemplate() (design Custom) or per
+//           activity via SetActivityNodeTemplate() (overrides the global
+//           design, allowing mixed layouts in one chart). Node height
+//           follows the template's row weights. Built-in CpmMatrix()
+//           template renders ES | D | EF / name / LS | TF | LF with the
+//           forward pass green, backward pass blue, duration orange and
+//           total float amber.
 //   1.1.0 - Circle label mode: PertCircleLabel::Name centers the activity
 //           name inside the circle (auto-shrinking the font down to 7pt to
 //           fit the diameter) and suppresses the outside name; Code keeps
@@ -189,6 +199,33 @@ PertChartPalette PertChartPalette::BuiltIn(PertChartPaletteKind kind) {
             break;
     }
     return p;
+}
+
+// =============================================================================
+// BUILT-IN NODE TEMPLATES
+// =============================================================================
+
+PertNodeTemplate PertNodeTemplate::CpmMatrix() {
+    const Color fwdBg(214, 238, 218, 255),  fwdText(22, 78, 34, 255);   // ES/EF
+    const Color durBg(250, 227, 200, 255),  durText(110, 62, 8, 255);   // D
+    const Color bwdBg(212, 227, 246, 255),  bwdText(22, 52, 96, 255);   // LS/LF
+    const Color tfBg(250, 242, 200, 255),   tfText(96, 78, 8, 255);     // TF
+
+    PertNodeTemplate tpl;
+    tpl.rows.push_back(PertNodeRow({
+        PertNodeCell(PertNodeField::EarliestStart).WithColors(fwdBg, fwdText),
+        PertNodeCell(PertNodeField::DurationValue).WithColors(durBg, durText),
+        PertNodeCell(PertNodeField::EarliestFinish).WithColors(fwdBg, fwdText)
+    }));
+    tpl.rows.push_back(PertNodeRow({
+        PertNodeCell(PertNodeField::Name, 1.0, true)
+    }, 1.25));
+    tpl.rows.push_back(PertNodeRow({
+        PertNodeCell(PertNodeField::LatestStart).WithColors(bwdBg, bwdText),
+        PertNodeCell(PertNodeField::Slack).WithColors(tfBg, tfText),
+        PertNodeCell(PertNodeField::LatestFinish).WithColors(bwdBg, bwdText)
+    }));
+    return tpl;
 }
 
 // =============================================================================
@@ -770,6 +807,39 @@ void UltraCanvasPertChart::SetCircleLabelMode(PertCircleLabel mode) {
     RequestRedraw();
 }
 
+void UltraCanvasPertChart::SetNodeTemplate(const PertNodeTemplate& tpl) {
+    if (tpl.IsEmpty()) return;
+    chartTemplate = tpl;
+    nodeDesign = PertNodeDesign::Custom;
+    layoutDirty = true; // node heights follow the template's row weights
+    RequestRedraw();
+}
+
+void UltraCanvasPertChart::SetActivityNodeTemplate(const std::string& id,
+                                                   const PertNodeTemplate& tpl) {
+    auto* a = GetActivity(id);
+    if (a && !tpl.IsEmpty()) {
+        a->nodeTemplate = std::make_shared<PertNodeTemplate>(tpl);
+        layoutDirty = true;
+        RequestRedraw();
+    }
+}
+
+void UltraCanvasPertChart::ClearActivityNodeTemplate(const std::string& id) {
+    auto* a = GetActivity(id);
+    if (a) {
+        a->nodeTemplate.reset();
+        layoutDirty = true;
+        RequestRedraw();
+    }
+}
+
+const PertNodeTemplate* UltraCanvasPertChart::TemplateForActivity(const PertActivity& a) const {
+    if (a.nodeTemplate && !a.nodeTemplate->IsEmpty()) return a.nodeTemplate.get();
+    if (nodeDesign == PertNodeDesign::Custom && !chartTemplate.IsEmpty()) return &chartTemplate;
+    return nullptr;
+}
+
 void UltraCanvasPertChart::SetCriticalPathHighlight(bool enable) {
     highlightCriticalPath = enable;
     RequestRedraw();
@@ -838,12 +908,20 @@ void UltraCanvasPertChart::SetCustomPalette(const PertChartPalette& customPalett
 // LAYOUT & VIEW
 // =============================================================================
 
+namespace {
+// Height a template node needs: ~26 px per unit of row weight.
+double TemplateHeight(const PertNodeTemplate& tpl) {
+    return std::max(44.0, 26.0 * tpl.TotalHeightWeight());
+}
+} // namespace
+
 double UltraCanvasPertChart::DefaultNodeWidth() const {
     switch (nodeDesign) {
         case PertNodeDesign::Card:         return 150.0;
         case PertNodeDesign::DetailedCard: return 160.0;
         case PertNodeDesign::Compact:      return 150.0;
         case PertNodeDesign::Circle:       return 56.0;
+        case PertNodeDesign::Custom:       return 170.0;
     }
     return 150.0;
 }
@@ -854,16 +932,23 @@ double UltraCanvasPertChart::DefaultNodeHeight() const {
         case PertNodeDesign::DetailedCard: return 84.0;
         case PertNodeDesign::Compact:      return 54.0;
         case PertNodeDesign::Circle:       return 56.0;
+        case PertNodeDesign::Custom:       return TemplateHeight(chartTemplate);
     }
     return 66.0;
 }
 
 double UltraCanvasPertChart::NodeWidth(const PertActivity& a) const {
-    return (a.width > 0.0) ? a.width : DefaultNodeWidth();
+    if (a.width > 0.0) return a.width;
+    if (a.nodeTemplate && !a.nodeTemplate->IsEmpty()) return 170.0;
+    return DefaultNodeWidth();
 }
 
 double UltraCanvasPertChart::NodeHeight(const PertActivity& a) const {
-    return (a.height > 0.0) ? a.height : DefaultNodeHeight();
+    if (a.height > 0.0) return a.height;
+    if (a.nodeTemplate && !a.nodeTemplate->IsEmpty()) {
+        return TemplateHeight(*a.nodeTemplate);
+    }
+    return DefaultNodeHeight();
 }
 
 Point2Dd UltraCanvasPertChart::NodeCenter(const PertActivity& a) const {
@@ -1114,7 +1199,7 @@ Point2Dd UltraCanvasPertChart::ConnectorPoint(const PertActivity& a,
     double len = std::sqrt(dx * dx + dy * dy);
     if (len < 1e-9) return c;
 
-    if (nodeDesign == PertNodeDesign::Circle) {
+    if (nodeDesign == PertNodeDesign::Circle && !TemplateForActivity(a)) {
         double r = std::min(NodeWidth(a), NodeHeight(a)) / 2.0;
         return Point2Dd(c.x + dx / len * r, c.y + dy / len * r);
     }
@@ -1304,19 +1389,33 @@ void UltraCanvasPertChart::RenderActivities(IRenderContext* ctx) {
 }
 
 void UltraCanvasPertChart::RenderActivity(IRenderContext* ctx, const PertActivity& a) {
-    switch (nodeDesign) {
-        case PertNodeDesign::Card:
-            RenderCardNode(ctx, a, false);
-            break;
-        case PertNodeDesign::DetailedCard:
-            RenderCardNode(ctx, a, true);
-            break;
-        case PertNodeDesign::Compact:
-            RenderCompactNode(ctx, a);
-            break;
-        case PertNodeDesign::Circle:
-            RenderCircleNode(ctx, a);
-            break;
+    // A template (per-activity, or chart-wide in Custom design) wins over
+    // the enum designs. Milestones keep their solid-bar look either way.
+    const PertNodeTemplate* tpl = TemplateForActivity(a);
+    if (tpl) {
+        if (a.isMilestone) {
+            RenderCardNode(ctx, a, false); // solid milestone bar
+        } else {
+            RenderTemplateNode(ctx, a, *tpl);
+        }
+    } else {
+        switch (nodeDesign) {
+            case PertNodeDesign::Card:
+                RenderCardNode(ctx, a, false);
+                break;
+            case PertNodeDesign::DetailedCard:
+                RenderCardNode(ctx, a, true);
+                break;
+            case PertNodeDesign::Compact:
+                RenderCompactNode(ctx, a);
+                break;
+            case PertNodeDesign::Circle:
+                RenderCircleNode(ctx, a);
+                break;
+            case PertNodeDesign::Custom:
+                RenderCardNode(ctx, a, false); // unreachable safety net
+                break;
+        }
     }
 
     if (showSlack && scheduleValid && !a.onCriticalPath && !a.isMilestone) {
@@ -1531,12 +1630,115 @@ void UltraCanvasPertChart::RenderCircleNode(IRenderContext* ctx, const PertActiv
     }
 }
 
+void UltraCanvasPertChart::RenderTemplateNode(IRenderContext* ctx, const PertActivity& a,
+                                              const PertNodeTemplate& tpl) {
+    double w = NodeWidth(a);
+    double h = NodeHeight(a);
+    Rect2Dd rect(a.x, a.y, w, h);
+    double r = style.cornerRadius;
+
+    Color header, fill, border, headerText, bodyText;
+    ResolveNodeColors(a, header, fill, border, headerText, bodyText);
+
+    double totalWeight = tpl.TotalHeightWeight();
+    if (totalWeight <= 0.0) return;
+
+    ctx->PushState();
+    ctx->ClipRoundedRectangle(rect, r, r, r, r);
+
+    ctx->SetFillPaint(fill);
+    ctx->FillRectangle(rect);
+
+    // Cell backgrounds first, then all divider lines, then the text, so
+    // dividers are never painted over by a neighbouring cell fill.
+    double rowY = a.y;
+    for (const auto& row : tpl.rows) {
+        double rowH = h * (row.heightWeight / totalWeight);
+        double cellWeight = 0.0;
+        for (const auto& cell : row.cells) cellWeight += cell.widthWeight;
+        if (cellWeight > 0.0) {
+            double cellX = a.x;
+            for (const auto& cell : row.cells) {
+                double cellW = w * (cell.widthWeight / cellWeight);
+                if (cell.hasColors) {
+                    ctx->SetFillPaint(cell.background);
+                    ctx->FillRectangle(Rect2Dd(cellX, rowY, cellW, rowH));
+                }
+                cellX += cellW;
+            }
+        }
+        rowY += rowH;
+    }
+
+    ctx->SetStrokePaint(palette.nodeDividerColor);
+    ctx->SetStrokeWidth(1.0);
+    rowY = a.y;
+    for (size_t ri = 0; ri < tpl.rows.size(); ++ri) {
+        const auto& row = tpl.rows[ri];
+        double rowH = h * (row.heightWeight / totalWeight);
+        if (ri > 0) {
+            ctx->DrawLine({a.x, rowY}, {a.x + w, rowY});
+        }
+        double cellWeight = 0.0;
+        for (const auto& cell : row.cells) cellWeight += cell.widthWeight;
+        if (cellWeight > 0.0) {
+            double cellX = a.x;
+            for (size_t ci = 0; ci + 1 < row.cells.size(); ++ci) {
+                cellX += w * (row.cells[ci].widthWeight / cellWeight);
+                ctx->DrawLine({cellX, rowY}, {cellX, rowY + rowH});
+            }
+        }
+        rowY += rowH;
+    }
+
+    rowY = a.y;
+    for (const auto& row : tpl.rows) {
+        double rowH = h * (row.heightWeight / totalWeight);
+        double cellWeight = 0.0;
+        for (const auto& cell : row.cells) cellWeight += cell.widthWeight;
+        if (cellWeight > 0.0) {
+            double cellX = a.x;
+            for (const auto& cell : row.cells) {
+                double cellW = w * (cell.widthWeight / cellWeight);
+                std::string text = FieldText(a, cell);
+                if (!text.empty()) {
+                    ctx->SetFontFace(style.fontFamily,
+                                     cell.bold ? FontWeight::Bold : FontWeight::Normal,
+                                     FontSlant::Normal);
+                    // Shrink to the cell, never below 7pt.
+                    double fontSize = cell.bold ? style.headerFontSize : style.baseFontSize;
+                    double maxWidth = cellW - 6.0;
+                    ctx->SetFontSize(fontSize);
+                    Size2Di dim = ctx->GetTextLineDimensions(text);
+                    while (dim.width > maxWidth && fontSize > 7.0) {
+                        fontSize = std::max(7.0, fontSize - 1.0);
+                        ctx->SetFontSize(fontSize);
+                        dim = ctx->GetTextLineDimensions(text);
+                    }
+                    ctx->SetTextPaint(cell.hasColors ? cell.textColor : bodyText);
+                    ctx->DrawText(text, {cellX + (cellW - dim.width) / 2.0,
+                                         rowY + (rowH - dim.height) / 2.0});
+                }
+                cellX += cellW;
+            }
+        }
+        rowY += rowH;
+    }
+
+    ctx->PopState();
+
+    bool critical = highlightCriticalPath && scheduleValid && a.onCriticalPath;
+    ctx->SetStrokePaint(border);
+    ctx->SetStrokeWidth(critical ? style.borderWidth + 0.8 : style.borderWidth);
+    ctx->DrawRoundedRectangle(rect, r);
+}
+
 void UltraCanvasPertChart::RenderSelectionHighlight(IRenderContext* ctx, const PertActivity& a) {
     double pad = 4.0;
     ctx->PushState();
     ctx->SetStrokePaint(palette.selectionColor);
     ctx->SetStrokeWidth(style.selectionWidth);
-    if (nodeDesign == PertNodeDesign::Circle) {
+    if (nodeDesign == PertNodeDesign::Circle && !TemplateForActivity(a)) {
         double radius = std::min(NodeWidth(a), NodeHeight(a)) / 2.0 + pad;
         ctx->DrawCircle(NodeCenter(a), radius);
     } else {
@@ -1589,7 +1791,7 @@ void UltraCanvasPertChart::RenderLegend(IRenderContext* ctx) {
     ctx->PopState();
 }
 
-std::string UltraCanvasPertChart::FormatDuration(double d) const {
+std::string UltraCanvasPertChart::FormatNumber(double d) const {
     std::ostringstream oss;
     double rounded = std::round(d * 10.0) / 10.0;
     if (std::fabs(rounded - std::round(rounded)) < 1e-9) {
@@ -1598,10 +1800,35 @@ std::string UltraCanvasPertChart::FormatDuration(double d) const {
         oss.precision(1);
         oss << std::fixed << rounded;
     }
-    if (!durationUnit.empty()) {
-        oss << " " << durationUnit;
-    }
     return oss.str();
+}
+
+std::string UltraCanvasPertChart::FormatDuration(double d) const {
+    std::string text = FormatNumber(d);
+    if (!durationUnit.empty()) {
+        text += " " + durationUnit;
+    }
+    return text;
+}
+
+std::string UltraCanvasPertChart::FieldText(const PertActivity& a,
+                                            const PertNodeCell& cell) const {
+    switch (cell.field) {
+        case PertNodeField::Literal:        return cell.literal;
+        case PertNodeField::Name:           return a.name;
+        case PertNodeField::Code:           return a.code.empty() ? a.id : a.code;
+        case PertNodeField::Duration:       return FormatDuration(GetExpectedDuration(a.id));
+        case PertNodeField::DurationValue:  return FormatNumber(GetExpectedDuration(a.id));
+        case PertNodeField::EarliestStart:  return FormatNumber(a.earliestStart);
+        case PertNodeField::EarliestFinish: return FormatNumber(a.earliestFinish);
+        case PertNodeField::LatestStart:    return FormatNumber(a.latestStart);
+        case PertNodeField::LatestFinish:   return FormatNumber(a.latestFinish);
+        case PertNodeField::Slack:          return FormatNumber(a.slack);
+        case PertNodeField::StartDate:      return a.startDate;
+        case PertNodeField::EndDate:        return a.endDate;
+        case PertNodeField::Responsible:    return a.responsible;
+    }
+    return "";
 }
 
 // =============================================================================
@@ -1614,7 +1841,7 @@ Point2Dd UltraCanvasPertChart::ScreenToWorld(const Point2Di& screenPos) const {
 }
 
 bool UltraCanvasPertChart::PointInActivity(const PertActivity& a, const Point2Dd& p) const {
-    if (nodeDesign == PertNodeDesign::Circle) {
+    if (nodeDesign == PertNodeDesign::Circle && !TemplateForActivity(a)) {
         Point2Dd c = NodeCenter(a);
         double r = std::min(NodeWidth(a), NodeHeight(a)) / 2.0;
         double dx = p.x - c.x, dy = p.y - c.y;
