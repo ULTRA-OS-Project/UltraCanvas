@@ -203,9 +203,12 @@ cut / paste, Ctrl+D duplicates, Ctrl+P prints (when `onPrint` is set), and the
 arrow keys move the selection (grid-aware in the thumbnail and list views). The
 same shortcuts are shown next to their commands in the right-click context menu.
 Click, Ctrl+click and Shift+click select single items, toggle, and ranges.
-Double-clicking a file's name starts an inline rename (using the same font size
-as the displayed name); double-clicking its icon opens/activates the entry. The
-rename editor commits on Enter and cancels on Esc.
+Double-clicking an entry opens/activates it (folders and archives are entered,
+files fire `onFileActivated`). A single click on the **name** of the entry that
+is already the only selected one starts an inline rename after a short delay
+(Windows style — the delay is what separates a rename click from the first
+click of a double-click). The rename editor uses the same font size as the
+displayed name, commits on Enter and cancels on Esc.
 
 ## Directory scanning
 

@@ -1,7 +1,7 @@
 // VirtualFS/providers/VirtualFSLibArchiveProvider.h
 // libarchive-based provider for multi-format archive support
-// Version: 1.0.0
-// Last Modified: 2026-01-10
+// Version: 1.0.1
+// Last Modified: 2026-07-25
 // Author: ULTRA OS Framework
 #pragma once
 
@@ -216,6 +216,7 @@ private:
     
     // Internal helpers
     void BuildEntryCache();
+    void EnsureParentDirectories(const std::string& normalizedPath);
     void ClearEntryCache();
     VirtualFSEntry ConvertArchiveEntry(void* archiveEntry);
     std::string NormalizeInternalPath(const std::string& path);

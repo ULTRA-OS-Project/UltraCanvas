@@ -1,7 +1,7 @@
 // VirtualFS/providers/VirtualFSLibArchiveProvider.cpp
 // libarchive-based provider implementation
-// Version: 1.0.0
-// Last Modified: 2026-01-10
+// Version: 1.0.1
+// Last Modified: 2026-07-25
 // Author: ULTRA OS Framework
 
 #include "VirtualFSLibArchiveProvider.h"
@@ -279,24 +279,65 @@ void VirtualFSLibArchiveProvider::BuildEntryCache() {
     struct archive_entry* entry;
     while (archive_read_next_header(pImpl->readArchive, &entry) == ARCHIVE_OK) {
         VirtualFSEntry vfsEntry = ConvertArchiveEntry(entry);
-        
+
         std::string normalizedPath = NormalizeInternalPath(vfsEntry.path);
-        vfsEntry.path = normalizedPath;
-        
-        pImpl->entryCache[normalizedPath] = vfsEntry;
-        
-        std::string parentPath = "";
-        size_t lastSlash = normalizedPath.rfind('/');
-        if (lastSlash != std::string::npos) {
-            parentPath = normalizedPath.substr(0, lastSlash);
+        if (normalizedPath.empty()) {
+            archive_read_data_skip(pImpl->readArchive);
+            continue;
         }
-        
-        pImpl->directoryContents[parentPath].push_back(vfsEntry.name);
-        
+        vfsEntry.path = normalizedPath;
+
+        // An explicit header may arrive for a directory already synthesized
+        // by EnsureParentDirectories (or be listed twice); overwrite the
+        // cached entry with the real metadata but don't re-list the name in
+        // its parent.
+        bool known = pImpl->entryCache.find(normalizedPath) != pImpl->entryCache.end();
+        pImpl->entryCache[normalizedPath] = vfsEntry;
+
+        if (!known) {
+            std::string parentPath = "";
+            size_t lastSlash = normalizedPath.rfind('/');
+            if (lastSlash != std::string::npos) {
+                parentPath = normalizedPath.substr(0, lastSlash);
+            }
+            pImpl->directoryContents[parentPath].push_back(vfsEntry.name);
+        }
+
+        EnsureParentDirectories(normalizedPath);
+
         archive_read_data_skip(pImpl->readArchive);
     }
-    
+
     pImpl->cacheValid = true;
+}
+
+void VirtualFSLibArchiveProvider::EnsureParentDirectories(const std::string& normalizedPath) {
+    // Many archives store only file entries ("sub/b.txt") with no header for
+    // the directories they imply, so without synthesis "sub" would never
+    // appear when listing the archive root (and directory metadata lookups
+    // on it would fail). Walk the parent chain and create a Directory entry
+    // for every ancestor not seen yet; stop at the first known one — its own
+    // ancestors were ensured when it was created.
+    size_t slash = normalizedPath.rfind('/');
+    while (slash != std::string::npos) {
+        std::string dirPath = normalizedPath.substr(0, slash);
+        if (pImpl->entryCache.find(dirPath) != pImpl->entryCache.end()) break;
+
+        size_t parentSlash = dirPath.rfind('/');
+        VirtualFSEntry dir;
+        dir.path = dirPath;
+        dir.name = (parentSlash == std::string::npos)
+                ? dirPath : dirPath.substr(parentSlash + 1);
+        dir.type = VirtualFSEntryType::Directory;
+        dir.providerName = "LibArchive";
+        pImpl->entryCache[dirPath] = dir;
+
+        std::string parentPath = (parentSlash == std::string::npos)
+                ? std::string() : dirPath.substr(0, parentSlash);
+        pImpl->directoryContents[parentPath].push_back(dir.name);
+
+        slash = parentSlash;
+    }
 }
 
 void VirtualFSLibArchiveProvider::ClearEntryCache() {
