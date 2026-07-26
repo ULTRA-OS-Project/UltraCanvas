@@ -500,15 +500,18 @@ inline VirtualFSResult VirtualFS_AddToArchive(
 }
 
 /**
- * @brief Deletes from archive
+ * @brief Deletes entries from archive in a single rewrite pass
  * @param archivePath Archive path
- * @param entryPaths Entries to delete
+ * @param entryPaths Entries to delete; directory paths delete their subtree
+ * @param progressCallback Progress callback (optional)
  * @return Success or error
  */
 inline VirtualFSResult VirtualFS_DeleteFromArchive(
     const std::string& archivePath,
-    const std::vector<std::string>& entryPaths) {
-    return VirtualFSManager::Instance().DeleteFromArchive(archivePath, entryPaths);
+    const std::vector<std::string>& entryPaths,
+    VirtualFSProgressCallback progressCallback = nullptr) {
+    return VirtualFSManager::Instance().DeleteFromArchive(
+        archivePath, entryPaths, progressCallback);
 }
 
 // ---------------------------------------------------------------------------

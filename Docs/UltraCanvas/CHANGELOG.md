@@ -30,6 +30,17 @@
   appear when listing the parent and can be descended into; an explicit
   directory header arriving later replaces the synthesized entry's metadata
   without duplicating it in the listing.
+- New **UltraCanvasQuadrantChart** element
+  (`Plugins/Charts/UltraCanvasQuadrantChart`): interactive 2x2 strategic
+  matrices with presets for SWOT, BCG, Ansoff, Eisenhower, Gartner magic
+  quadrant, risk and priority frameworks plus fully custom quadrant
+  labels/colors/axis captions. Data points support per-point color, radius
+  (BCG-style bubbles), shape (circle/square/triangle/diamond) and outline;
+  hover tooltips, click (multi-)selection, double-click callbacks and
+  per-quadrant statistics utilities are built in. New demo page
+  (Charts > Quadrant Chart) with six tabbed examples and runtime style/data
+  controls, plus a programmer's guide in
+  `Docs/UltraCanvas/UltraCanvasQuadrantChartExamples.md`.
 
 #### 2026-07-22 *0.3.16*
 - **UltraCanvasFilerWidget**:

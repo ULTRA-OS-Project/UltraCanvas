@@ -44,6 +44,15 @@
 #include <map>
 #include <sys/stat.h>
 
+// X11 (pulled in via UltraCanvasApplication.h) #defines Success and None,
+// which collide with the VirtualFS::VirtualFSResult enumerators used below.
+#ifdef Success
+#undef Success
+#endif
+#ifdef None
+#undef None
+#endif
+
 namespace fs = std::filesystem;
 
 namespace UltraCanvas {
@@ -1055,13 +1064,12 @@ namespace UltraCanvas {
                  : VirtualFS::VirtualFS_ListDirectory(currentPath)) {
                 FilerEntry e;
                 e.name = v.name;
-                // Provider entry paths are archive-internal ("sub/file.txt");
-                // navigation and file access need the full virtual path
-                // ("/path/archive.zip/sub/file.txt"). The entry is a direct
-                // child of the shown folder, so build the path from it.
-                e.path = (currentPath.back() == '/')
-                        ? currentPath + v.name
-                        : currentPath + "/" + v.name;
+                // v.path is the archive-internal path ("media/photo.jpg");
+                // the widget needs the full virtual path so navigation and
+                // file operations can resolve the entry again.
+                e.path = (!currentPath.empty() && currentPath.back() == '/')
+                             ? currentPath + v.name
+                             : currentPath + "/" + v.name;
                 e.isDirectory = v.IsDirectory();
                 e.isSymlink = v.IsSymlink();
                 e.isHidden = v.isHidden;
@@ -1470,7 +1478,42 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::PerformDeletion(
             const std::vector<FilerEntry>& victims) {
         std::error_code ec;
+#ifdef ULTRACANVAS_HAS_VIRTUALFS
+        // Entries living inside an archive cannot be removed via the real
+        // filesystem. They are grouped per archive and deleted with ONE
+        // batched VirtualFS call each, so the archive is rewritten once for
+        // the whole selection — deleting entries one-by-one would rewrite
+        // the archive once per entry, which for thousands of files takes
+        // practically forever.
+        std::vector<std::string> archiveOrder;
+        std::map<std::string, std::vector<std::string>> archiveVictims;
+        std::vector<FilerEntry> fsVictims;
         for (const FilerEntry& e : victims) {
+            // A real file/dir always wins - even if a path component looks
+            // like an archive name (a real folder named "backup.zip").
+            if (!fs::exists(e.path, ec)) {
+                auto resolved = VirtualFS::VirtualFSPath::Resolve(e.path);
+                if (resolved.isInsideArchive && !resolved.virtualPath.empty()) {
+                    auto& list = archiveVictims[resolved.realPath];
+                    if (list.empty()) archiveOrder.push_back(resolved.realPath);
+                    list.push_back(resolved.virtualPath);
+                    continue;
+                }
+            }
+            fsVictims.push_back(e);
+        }
+        for (const std::string& archive : archiveOrder) {
+            auto result = VirtualFS::VirtualFS_DeleteFromArchive(
+                    archive, archiveVictims[archive]);
+            if (result != VirtualFS::VirtualFSResult::Success) {
+                ReportError("Delete failed in " + archive + ": " +
+                            VirtualFS::VirtualFSResultToString(result));
+            }
+        }
+#else
+        const std::vector<FilerEntry>& fsVictims = victims;
+#endif
+        for (const FilerEntry& e : fsVictims) {
             fs::remove_all(e.path, ec);
             if (ec) ReportError("Delete failed for " + e.path + ": " + ec.message());
         }
@@ -1516,19 +1559,40 @@ namespace UltraCanvas {
             if (e.isDirectory) { previewFolder = &e; break; }
         }
         if (previewFolder) {
+            // realPath stays empty for entries inside archives - no
+            // thumbnail can be decoded from those, only name and type.
+            struct PreviewItem {
+                std::string name;
+                std::string realPath;
+                bool isDir = false;
+            };
             std::error_code ec;
-            std::vector<fs::directory_entry> inner;
-            for (fs::directory_iterator it(previewFolder->path, ec), end;
-                 it != end && inner.size() < 10; it.increment(ec)) {
-                if (ec) break;
-                inner.push_back(*it);
-            }
+            std::vector<PreviewItem> inner;
             size_t totalInner = 0;
-            for (fs::directory_iterator it(previewFolder->path, ec), end;
-                 it != end; it.increment(ec)) {
-                if (ec) break;
-                ++totalInner;
+            if (fs::is_directory(previewFolder->path, ec)) {
+                for (fs::directory_iterator it(previewFolder->path, ec), end;
+                     it != end; it.increment(ec)) {
+                    if (ec) break;
+                    if (inner.size() < 10) {
+                        std::error_code e2;
+                        inner.push_back({it->path().filename().string(),
+                                         it->path().string(),
+                                         it->is_directory(e2)});
+                    }
+                    ++totalInner;
+                }
             }
+#ifdef ULTRACANVAS_HAS_VIRTUALFS
+            else {
+                for (const VirtualFS::VirtualFSEntry& v
+                     : VirtualFS::VirtualFS_ListDirectory(previewFolder->path)) {
+                    if (inner.size() < 10) {
+                        inner.push_back({v.name, "", v.IsDirectory()});
+                    }
+                    ++totalInner;
+                }
+            }
+#endif
 
             auto caption = std::make_shared<UltraCanvasLabel>(
                     "FilerDelPreviewCap", 0, 0, 0, 18);
@@ -1553,10 +1617,8 @@ namespace UltraCanvas {
 
             const int tile = 64;
             int idx = 0;
-            for (const fs::directory_entry& de : inner) {
-                std::error_code e2;
-                std::string name = de.path().filename().string();
-                bool isDir = de.is_directory(e2);
+            for (const PreviewItem& pi : inner) {
+                const std::string& name = pi.name;
 
                 auto cell = std::make_shared<UltraCanvasContainer>(
                         "FilerDelCell" + std::to_string(idx));
@@ -1567,7 +1629,7 @@ namespace UltraCanvas {
                 auto thumb = CreateImageElement(
                         "FilerDelThumb" + std::to_string(idx), 0, 0, tile, tile);
                 thumb->SetFitMode(ImageFitMode::Contain);
-                if (!isDir) thumb->LoadFromFile(de.path().string());
+                if (!pi.isDir && !pi.realPath.empty()) thumb->LoadFromFile(pi.realPath);
                 thumb->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
                 cell->AddChild(thumb);
 
@@ -2019,6 +2081,21 @@ namespace UltraCanvas {
                     }
                     return true;
                 }
+                // Printable characters are delivered on the KeyDown event
+                // itself (event.character / event.text) — the platform layers
+                // never emit a separate KeyChar/TextInput event. Same
+                // convention as UltraCanvasTextInput.
+                if (d.nameFocused && !event.ctrl && !event.alt) {
+                    std::string in = event.text;
+                    if (in.empty() && event.character >= 32)
+                        in.assign(1, event.character);
+                    std::string filtered;
+                    for (char c : in) {
+                        if (static_cast<unsigned char>(c) >= 32 && c != '/' && c != '\\')
+                            filtered += c;
+                    }
+                    if (!filtered.empty()) { d.nameBuffer += filtered; RequestRedraw(); }
+                }
                 return true;   // stay modal: swallow every other key
             }
             case UCEventType::TextInput: {
@@ -2037,6 +2114,10 @@ namespace UltraCanvas {
             }
             case UCEventType::MouseDown: {
                 if (event.button != UCMouseButton::Left) return true;
+                // Keyboard events are routed to the window's focused element,
+                // so any click while the modal is up must pull focus back to
+                // this widget or typing would go elsewhere.
+                SetFocus(true);
                 Point2Di local(event.pointer.x, event.pointer.y);
                 if (d.iconRect.Contains(local)) {
                     d.draggingIcon = true;
@@ -4163,21 +4244,26 @@ namespace UltraCanvas {
                     return true;
                 }
                 default:
-                    return false;   // characters arrive via KeyChar / TextInput
+                    break;   // may carry a printable character, handled below
             }
+            if (event.ctrl || event.alt) return false;
+        } else if (event.type != UCEventType::TextInput) {
+            return false;
         }
-        if (event.type == UCEventType::TextInput) {
-            std::string in = event.text;
-            if (in.empty() && event.character >= 32) in.assign(1, event.character);
-            // Strip control characters and the path separator.
-            std::string filtered;
-            for (char c : in) {
-                if (static_cast<unsigned char>(c) >= 32 && c != '/') filtered += c;
-            }
-            if (!filtered.empty()) {
-                renameBuffer += filtered;
-                RequestRedraw();
-            }
+        // Printable characters are delivered on the KeyDown event itself
+        // (event.character / event.text) — the platform layers never emit a
+        // separate KeyChar/TextInput event. Same convention as
+        // UltraCanvasTextInput.
+        std::string in = event.text;
+        if (in.empty() && event.character >= 32) in.assign(1, event.character);
+        // Strip control characters and the path separator.
+        std::string filtered;
+        for (char c : in) {
+            if (static_cast<unsigned char>(c) >= 32 && c != '/') filtered += c;
+        }
+        if (!filtered.empty()) {
+            renameBuffer += filtered;
+            RequestRedraw();
             return true;
         }
         return false;
