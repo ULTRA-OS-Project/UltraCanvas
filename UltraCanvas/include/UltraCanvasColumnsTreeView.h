@@ -23,7 +23,7 @@ enum class TreeDisplayMode {
 // ===== COLUMN STYLE =====
 // Geometry and colours used when TreeDisplayMode::Columns is active.
 struct TreeColumnStyle {
-    int   typeColumnWidth      = 64;   // fixed width of the Type column (px)
+    int   typeColumnWidth      = 128;   // fixed width of the Type column (px)
     int   valueColumnWidth     = 0;    // 0 => Value column takes the remaining width to the right
     int   columnGap            = 8;    // horizontal gap between columns (px)
     int   typeColumnPadding    = 4;    // padding around the Type accent fill (px)
