@@ -1,6 +1,13 @@
 // include/Plugins/Diagrams/UltraCanvasPertChart.h
 // Interactive PERT (Program Evaluation and Review Technique) chart component
-// Version: 1.0.0
+// Version: 1.1.0
+//
+// Changelog:
+//   1.1.0 - Circle design gained a label mode (PertCircleLabel): Code keeps
+//           the AOA look (code inside, name outside), Name centers the
+//           activity name inside the circle as a single-cell node, with the
+//           font auto-shrunk to fit. SetCircleLabelMode()/GetCircleLabelMode().
+//   1.0.0 - Initial public release.
 //
 // A comprehensive project-scheduling diagram element. Supports the classic
 // activity-on-node presentation (cards with activity code, duration and
@@ -56,6 +63,12 @@ enum class PertNodeDesign {
     DetailedCard,   // Card + responsible row
     Compact,        // rounded box, name + duration
     Circle          // numbered circle, details along connectors (AOA style)
+};
+
+// What the Circle design draws inside the circle.
+enum class PertCircleLabel {
+    Code,   // activity code inside, name outside above the circle (AOA look)
+    Name    // activity name inside the circle (single-cell circular node)
 };
 
 // Routing of dependency connectors.
@@ -351,6 +364,13 @@ public:
     void SetConnectorStyle(PertConnectorStyle style);
     PertConnectorStyle GetConnectorStyle() const { return connectorStyle; }
 
+    // Circle design only: what goes inside the circle. In Name mode the
+    // activity name is centered inside (font auto-shrunk to fit) and nothing
+    // is drawn above the circle; in Code mode (default) the code sits inside
+    // and the name above, as in classic activity-on-arrow charts.
+    void SetCircleLabelMode(PertCircleLabel mode);
+    PertCircleLabel GetCircleLabelMode() const { return circleLabel; }
+
     // Critical-path emphasis (thicker connectors + accent border). On by default.
     void SetCriticalPathHighlight(bool enable);
     bool GetCriticalPathHighlight() const { return highlightCriticalPath; }
@@ -429,6 +449,7 @@ private:
     PertChartPaletteKind paletteKind = PertChartPaletteKind::Classic;
 
     PertNodeDesign nodeDesign = PertNodeDesign::Card;
+    PertCircleLabel circleLabel = PertCircleLabel::Code;
     PertConnectorStyle connectorStyle = PertConnectorStyle::Orthogonal;
     bool highlightCriticalPath = true;
     bool showDates = true;

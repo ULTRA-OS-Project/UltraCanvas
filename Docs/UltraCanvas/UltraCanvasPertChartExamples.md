@@ -1,6 +1,6 @@
 # UltraCanvasPertChart Documentation
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Author:** UltraCanvas Framework
 
 ## Overview
@@ -23,7 +23,7 @@ UltraCanvasUIElement
 
 - **CPM analysis:** forward/backward pass with earliest start/finish, latest start/finish, slack, critical-path flags and cycle detection; recomputed automatically whenever the network changes.
 - **PERT statistics:** per-activity three-point estimates `TE = (O + 4M + P) / 6`, variance `((P - O) / 6)^2`, project variance/σ along the critical path and `GetCompletionProbability(target)` via the normal approximation.
-- **Node designs (`PertNodeDesign`):** `Card` (header + code/duration + dates rows), `DetailedCard` (adds a responsible row), `Compact` (solid rounded box with name and duration), `Circle` (numbered circles, activity-on-arrow look).
+- **Node designs (`PertNodeDesign`):** `Card` (header + code/duration + dates rows), `DetailedCard` (adds a responsible row), `Compact` (solid rounded box with name and duration), `Circle` (numbered circles, activity-on-arrow look). The Circle design has two label modes (`PertCircleLabel`): `Code` puts the activity number inside with the name outside (AOA), `Name` centers the activity name inside the circle as a single-cell node, auto-shrinking the font to fit.
 - **Color palettes (`PertChartPaletteKind`):** `Classic`, `Ocean`, `Vibrant`, `Pastel`, `Mint`, `Midnight`, `Dark`, `Monochrome` built-ins plus `SetCustomPalette()` for full control over every color slot.
 - **Groups & legend:** color-code activities per team; explicit colors or auto-assignment from the palette's group color cycle; optional legend overlay.
 - **Connectors:** `Straight`, `Orthogonal`, `Curved`; dashed *dummy dependencies* (zero-duration logical links); connector labels; critical-path connectors drawn thicker in the palette's accent color.
@@ -144,6 +144,7 @@ every successful pass with the project duration.
 
 ```cpp
 void SetNodeDesign(PertNodeDesign design);   // Card, DetailedCard, Compact, Circle
+void SetCircleLabelMode(PertCircleLabel m);  // Circle only: Code (AOA) or Name inside
 void SetConnectorStyle(PertConnectorStyle s); // Straight, Orthogonal, Curved
 void SetCriticalPathHighlight(bool enable);
 void SetShowDates(bool show);
@@ -256,6 +257,8 @@ chart->SetPalette(PertChartPaletteKind::Midnight);   // dark navy boxes
 
 chart->SetNodeDesign(PertNodeDesign::Circle);        // AOA-style circles
 chart->SetPalette(PertChartPaletteKind::Mint);
+chart->SetCircleLabelMode(PertCircleLabel::Name);    // name inside the circle
+chart->SetCircleLabelMode(PertCircleLabel::Code);    // back to number inside
 
 chart->SetNodeDesign(PertNodeDesign::DetailedCard);  // + responsible row
 chart->SetPalette(PertChartPaletteKind::Dark);       // dark canvas

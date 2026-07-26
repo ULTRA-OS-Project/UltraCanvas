@@ -264,12 +264,21 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePertChar
     };
     container->AddChild(chkSlack);
 
-    auto btnLayout = std::make_shared<UltraCanvasButton>("BtnLayout", 1030, ctrlY, 110, 28);
+    auto chkNameCircle = std::make_shared<UltraCanvasCheckbox>("ChkNameCircle", 1012, ctrlY + 2, 122, 24);
+    chkNameCircle->SetText("Name in circle");
+    chkNameCircle->SetChecked(false);
+    chkNameCircle->onStateChanged = [chart](CheckedState, CheckedState newState) {
+        chart->SetCircleLabelMode(newState == CheckedState::Checked
+                                      ? PertCircleLabel::Name : PertCircleLabel::Code);
+    };
+    container->AddChild(chkNameCircle);
+
+    auto btnLayout = std::make_shared<UltraCanvasButton>("BtnLayout", 1146, ctrlY, 105, 28);
     btnLayout->SetText("Auto Layout");
     btnLayout->SetOnClick([chart]() { chart->AutoLayout(true); });
     container->AddChild(btnLayout);
 
-    auto btnFit = std::make_shared<UltraCanvasButton>("BtnFit", 1152, ctrlY, 100, 28);
+    auto btnFit = std::make_shared<UltraCanvasButton>("BtnFit", 1263, ctrlY, 100, 28);
     btnFit->SetText("Fit to View");
     btnFit->SetOnClick([chart]() { chart->FitToView(); });
     container->AddChild(btnFit);

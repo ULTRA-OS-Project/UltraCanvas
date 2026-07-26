@@ -1,8 +1,12 @@
 // Plugins/Diagrams/UltraCanvasPertChart.cpp
 // Interactive PERT chart component implementation
-// Version: 1.0.0
+// Version: 1.1.0
 //
 // Changelog:
+//   1.1.0 - Circle label mode: PertCircleLabel::Name centers the activity
+//           name inside the circle (auto-shrinking the font down to 7pt to
+//           fit the diameter) and suppresses the outside name; Code keeps
+//           the 1.0.0 AOA presentation. Duration below the circle unchanged.
 //   1.0.0 - Initial release:
 //           * CPM forward/backward pass with cycle detection; slack and
 //             critical-path flags per activity.
@@ -761,6 +765,11 @@ void UltraCanvasPertChart::SetConnectorStyle(PertConnectorStyle s) {
     RequestRedraw();
 }
 
+void UltraCanvasPertChart::SetCircleLabelMode(PertCircleLabel mode) {
+    circleLabel = mode;
+    RequestRedraw();
+}
+
 void UltraCanvasPertChart::SetCriticalPathHighlight(bool enable) {
     highlightCriticalPath = enable;
     RequestRedraw();
@@ -1482,21 +1491,34 @@ void UltraCanvasPertChart::RenderCircleNode(IRenderContext* ctx, const PertActiv
         ctx->DrawCircle(c, radius);
     }
 
-    // Inside the circle: the activity code (or the id as fallback).
-    std::string codeText = showActivityCodes ? (a.code.empty() ? a.id : a.code) : "";
-    if (!codeText.empty()) {
+    // Inside the circle: the activity code (Code mode, id as fallback) or
+    // the activity name (Name mode, font shrunk until it fits the diameter).
+    std::string innerText;
+    if (circleLabel == PertCircleLabel::Name) {
+        innerText = a.name;
+    } else if (showActivityCodes) {
+        innerText = a.code.empty() ? a.id : a.code;
+    }
+    if (!innerText.empty()) {
         ctx->SetFontFace(style.fontFamily, FontWeight::Bold, FontSlant::Normal);
-        ctx->SetFontSize(style.headerFontSize);
-        Size2Di dim = ctx->GetTextLineDimensions(codeText);
+        double fontSize = style.headerFontSize;
+        double maxWidth = radius * 2.0 * 0.86;
+        ctx->SetFontSize(fontSize);
+        Size2Di dim = ctx->GetTextLineDimensions(innerText);
+        while (dim.width > maxWidth && fontSize > 7.0) {
+            fontSize = std::max(7.0, fontSize - 1.0);
+            ctx->SetFontSize(fontSize);
+            dim = ctx->GetTextLineDimensions(innerText);
+        }
         ctx->SetTextPaint(headerText);
-        ctx->DrawText(codeText, {c.x - dim.width / 2.0, c.y - dim.height / 2.0});
+        ctx->DrawText(innerText, {c.x - dim.width / 2.0, c.y - dim.height / 2.0});
     }
 
-    // Above the circle: name; below: duration (AOA-style annotations).
+    // Above the circle: name (Code mode only); below: duration.
     ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
     ctx->SetFontSize(style.baseFontSize);
     ctx->SetTextPaint(palette.nodeTextColor);
-    if (!a.name.empty()) {
+    if (circleLabel == PertCircleLabel::Code && !a.name.empty()) {
         Size2Di dim = ctx->GetTextLineDimensions(a.name);
         ctx->DrawText(a.name, {c.x - dim.width / 2.0, a.y - dim.height - 4.0});
     }
