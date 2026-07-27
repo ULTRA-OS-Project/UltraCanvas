@@ -1035,9 +1035,19 @@ namespace UltraCanvas {
                              ImplementationStatus::PartiallyImplemented,
                              [this]() { return CreatePartiallyImplementedExamples("Sunburst Chart is not ready yet"); });
 
-        chartBuilder.AddItem("ganttcharts", "Gantt Chart", "Gantt Chart",
-                             ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples("Gantt Chart is not ready yet"); });
+        chartBuilder.AddItem("ganttcharts", "Gantt Chart",
+                             "Project schedules with task table, hierarchy, dependencies, "
+                             "milestones, progress, critical path and design presets",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateGanttChartExamples(); },
+                             "DemoApp/UltraCanvasGanttChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasGanttChart.md")
+                .AddVariant("ganttcharts", "Modern Design")
+                .AddVariant("ganttcharts", "Professional / Critical Path")
+                .AddVariant("ganttcharts", "Classic Print Style")
+                .AddVariant("ganttcharts", "Soft Pastel Style")
+                .AddVariant("ganttcharts", "Minimal Project Table")
+                .AddVariant("ganttcharts", "Dark Theme");
 
         chartBuilder.AddItem("quadrantcharts", "Quadrant Chart",
                              "Strategic 2x2 matrices: SWOT, BCG, Eisenhower, risk, priority and custom quadrants",
