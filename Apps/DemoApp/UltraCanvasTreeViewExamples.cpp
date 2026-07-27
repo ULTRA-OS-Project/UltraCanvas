@@ -113,6 +113,15 @@ namespace UltraCanvas {
         varsTree->SetSelectionMode(TreeSelectionMode::Single);
         varsTree->SetShowExpandButtons(true);
         varsTree->SetDisplayMode(TreeDisplayMode::Columns);
+        // Define the columns explicitly and show a header row. Name (the tree column)
+        // and Value flex to fill; Type is fixed with the orange accent. Column
+        // boundaries are draggable to resize.
+        varsTree->SetColumns({
+            { "name",  "Name",  0,   0,  2.0f, TextAlignment::Left, Color(40, 40, 40), Colors::Transparent, 0, /*isTreeColumn*/true  },
+            { "type",  "Type",  128, 0,  1.0f, TextAlignment::Left, Color(40, 40, 40), Color(255, 190, 130), 4, false },
+            { "value", "Value", 0,   48, 1.0f, TextAlignment::Left, Color(40, 40, 40), Colors::Transparent, 0, false },
+        });
+        varsTree->SetShowColumnHeader(true);
 
         // Root renders as a "Variables" section-header bar; the sections hang beneath it.
         TreeNodeData varsRootData("vars_root", "Variables");
@@ -127,8 +136,8 @@ namespace UltraCanvas {
                           const std::string& name, const std::string& type,
                           const std::string& value, uint64_t access) {
             TreeNodeData d(id, name);
-            d.typeText = type;
-            d.valueText = value;
+            d.SetCell("type", type);
+            d.SetCell("value", value);
             d.accessSequence = access;
             varsTree->AddNode(parent, d);
         };

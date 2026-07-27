@@ -13,6 +13,7 @@
 #include <memory>
 #include <functional>
 #include <unordered_map>
+#include <map>
 #include <cstdint>
 
 namespace UltraCanvas {
@@ -59,6 +60,18 @@ struct TreeNodeIcon {
         : iconPath(path), width(w), height(h) {}
 };
 
+// ===== COLUMN CELL DATA =====
+// One cell value for a column tree view (see UltraCanvasColumnsTreeView). The
+// tree/name column reads its text from TreeNodeData::text; every other column
+// reads its cell from TreeNodeData::cells, keyed by the column's id.
+struct TreeCellData {
+    std::string text;                          // cell text
+    Color       textColor = Colors::Transparent; // Transparent => use the column's default color
+    TreeCellData() = default;
+    TreeCellData(std::string t, Color c = Colors::Transparent)
+        : text(std::move(t)), textColor(c) {}
+};
+
 struct TreeNodeData {
     std::string nodeId;           // Unique identifier for the node
     std::string text;             // Display text
@@ -76,13 +89,21 @@ struct TreeNodeData {
     void* userData = nullptr;     // Custom user data
 
     // ----- Optional columns (used by column tree views, see UltraCanvasColumnsTreeView) -----
-    // The base tree renders a single line from `text`. A column tree view instead
-    // treats `text` as the Name column and reads these for the Type and Value
-    // columns. They are ignored by the base tree, so setting them is always safe.
-    std::string typeText;         // Type column (e.g. "int", "*ptr", "fp", "str")
-    std::string valueText;        // Value column (e.g. "45", "2x67", "up")
-    Color typeColor = Colors::Transparent; // Type column text override (Transparent => use style default)
+    // The base tree renders a single line from `text`. A column tree view treats
+    // `text` as the tree/name column and reads `cells` (keyed by column id) for
+    // every other column. `cells` is ignored by the base tree, so setting it is
+    // always safe.
+    std::map<std::string, TreeCellData> cells; // per-column values, keyed by TreeViewColumn::id
     bool  isGroupHeader = false;  // Render this row as a full-width section-header bar (Line/Loop/...)
+
+    // Set/get a column cell by column id. The tree/name column uses `text`, not `cells`.
+    void SetCell(const std::string& colId, std::string text, Color color = Colors::Transparent) {
+        cells[colId] = TreeCellData(std::move(text), color);
+    }
+    const TreeCellData* GetCell(const std::string& colId) const {
+        auto it = cells.find(colId);
+        return it == cells.end() ? nullptr : &it->second;
+    }
     // Ordering key for TreeSortMode::LastAccess. Callers stamp a monotonically
     // increasing value each time the variable is read/written so the most recently
     // accessed entries can float to the top.
@@ -319,16 +340,29 @@ protected:
                                  int textX, int nodeWidth, int sbWidth,
                                  const Rect2Di& contentRect);
 
+    // ===== OPTIONAL FIXED HEADER BAND =====
+    // Height (px) of a fixed header band drawn at the top of the content area; the
+    // rows scroll beneath it. The base tree has no header, so this returns 0 and
+    // every layout/scroll/hit-test calculation below becomes a no-op. A subclass
+    // (e.g. UltraCanvasColumnsTreeView) overrides both to draw column titles.
+    virtual int  GetHeaderHeight() const { return 0; }
+    virtual void RenderHeader(IRenderContext* ctx, const Rect2Di& headerRect) {}
+
     // Read-only access for subclass renderers.
     int   GetTextPadding() const { return textPadding; }
     Color GetTextColor()   const { return textColor; }
+    // Width reserved on the right for the vertical scrollbar (0 when hidden).
+    int   GetVerticalScrollbarWidth() const {
+        return (verticalScrollbar && verticalScrollbar->IsVisible()) ? verticalScrollbar->GetWidth() : 0;
+    }
+    // Recompute scrollbar geometry (e.g. after a subclass changes GetHeaderHeight()).
+    void  UpdateScrollbars();
 
 private:
 
     // ===== SCROLLBAR MANAGEMENT =====
     void CreateScrollbar();
-    void UpdateScrollbars();
-    
+
     void ClampScrollOffset();
     
     int GetTotalVisibleHeight();

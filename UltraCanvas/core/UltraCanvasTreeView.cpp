@@ -483,10 +483,11 @@ namespace UltraCanvas {
         if (!node) return;
 
         int nodeY = GetNodeDisplayY(node);
+        int viewHeight = GetHeight() - GetHeaderHeight();   // visible rows sit below the header band
         if (nodeY < scrollOffsetY) {
             scrollOffsetY = nodeY;
-        } else if (nodeY >= scrollOffsetY + GetHeight() - rowHeight) {
-            scrollOffsetY = nodeY - GetHeight() + rowHeight;
+        } else if (nodeY >= scrollOffsetY + viewHeight - rowHeight) {
+            scrollOffsetY = nodeY - viewHeight + rowHeight;
         }
 
         ClampScrollOffset();
@@ -556,9 +557,16 @@ namespace UltraCanvas {
         UltraCanvasUIElement::Render(ctx, dirtyRect);
         // Build local-space content rect (ctx is translated to element origin)
         Rect2Di contentRect = GetLocalContentRect();
+        const int headerHeight = GetHeaderHeight();
         if (rootNode) {
-            int currentY = contentRect.y - scrollOffsetY;
+            // Rows start below the (optional) fixed header band and scroll beneath it.
+            int currentY = contentRect.y + headerHeight - scrollOffsetY;
             RenderNode(ctx, rootNode.get(), currentY, 0, contentRect);
+        }
+
+        // Draw the fixed header band last so rows scrolled up are covered by it.
+        if (headerHeight > 0) {
+            RenderHeader(ctx, Rect2Di(contentRect.x, contentRect.y, contentRect.width, headerHeight));
         }
 
         // Draw scrollbar if needed (translate to scrollbar's bounds origin)
@@ -578,8 +586,9 @@ namespace UltraCanvas {
             return;
         }
 
+        int headerHeight = GetHeaderHeight();
         int totalHeight = GetTotalVisibleHeight();
-        int viewHeight = GetHeight();
+        int viewHeight = GetHeight() - headerHeight;   // rows live below the fixed header band
 
         maxScrollY = std::max(0, totalHeight - viewHeight);
         bool hasVerticalScrollbar = maxScrollY > 0;
@@ -587,15 +596,15 @@ namespace UltraCanvas {
         verticalScrollbar->SetVisible(hasVerticalScrollbar);
 
         if (hasVerticalScrollbar) {
-            // Position scrollbar in element-local space
+            // Position scrollbar in element-local space, below the header band.
             int localPaddingX = GetBorderLeftWidth();
             int localPaddingY = GetBorderTopWidth();
             int paddingW = GetWidth() - GetTotalBorderHorizontal();
             int paddingH = GetHeight() - GetTotalBorderVertical();
             int scrollbarWidth = verticalScrollbar->GetStyle().trackSize;
             int sbX = localPaddingX + paddingW - scrollbarWidth;
-            int sbY = localPaddingY;
-            int sbHeight = paddingH;
+            int sbY = localPaddingY + headerHeight;
+            int sbHeight = paddingH - headerHeight;
 
             verticalScrollbar->SetPosition(sbX, sbY);
             verticalScrollbar->SetSize(scrollbarWidth, sbHeight);
@@ -648,9 +657,10 @@ namespace UltraCanvas {
     TreeNode *UltraCanvasTreeView::GetNodeAtY(int y) {
         if (!rootNode) return nullptr;
 
-        // y is element-local now; subtract local content offset + add scroll
-        int localContentY = GetBorderTopWidth() + GetPaddingTop();
+        // y is element-local now; subtract local content offset + header band + add scroll
+        int localContentY = GetBorderTopWidth() + GetPaddingTop() + GetHeaderHeight();
         int relativeY = y - localContentY + scrollOffsetY;
+        if (relativeY < 0) return nullptr;   // click landed in the fixed header band
         int nodeIndex = relativeY / rowHeight;
 
         if (nodeIndex < 0) return nullptr;
