@@ -26,6 +26,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasImage.h"
+#include "UltraCanvasUtils.h"
 #include "../libspecific/Cairo/QoiPixmapCodec.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasWindow.h"
@@ -368,7 +369,7 @@ namespace UltraCanvas {
         // --- Bitmap dimensions (PNG / GIF / BMP / QOI / WebP / ICO / JPEG / TIFF) ---
         bool ProbeImageDimensions(const std::string& path, int& w, int& h) {
             w = h = 0;
-            std::ifstream f(path, std::ios::binary);
+            std::ifstream f(PathFromUtf8(path), std::ios::binary);
             if (!f) return false;
             auto head = ReadFileBytes(f, 0, 64);
             if (head.size() < 16) return false;
@@ -909,7 +910,7 @@ namespace UltraCanvas {
 
         bool ProbeMediaFile(const std::string& path, const std::string& ext,
                             FilerMediaProbe& out) {
-            std::ifstream f(path, std::ios::binary);
+            std::ifstream f(PathFromUtf8(path), std::ios::binary);
             if (!f) return false;
             f.seekg(0, std::ios::end);
             uint64_t fileSize = uint64_t(std::max<std::streamoff>(0, f.tellg()));

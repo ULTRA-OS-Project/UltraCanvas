@@ -9,6 +9,7 @@
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasAudio.h"
+#include "UltraCanvasUtils.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 
 #include <algorithm>
@@ -126,7 +127,7 @@ namespace UltraCanvas {
         }
 
         // Local filesystem path
-        std::ifstream f(pathOrUrl, std::ios::binary);
+        std::ifstream f(PathFromUtf8(pathOrUrl), std::ios::binary);
         if (!f) {
             out.error = "cannot open file: " + pathOrUrl;
             return out;
@@ -300,7 +301,7 @@ namespace UltraCanvas {
         }
 
         // Everything else is treated as (markdown-flavored) text.
-        std::ifstream file(filePath, std::ios::binary);
+        std::ifstream file(PathFromUtf8(filePath), std::ios::binary);
         if (!file.is_open()) {
             outError = "Cannot open file: " + filePath;
             return nullptr;

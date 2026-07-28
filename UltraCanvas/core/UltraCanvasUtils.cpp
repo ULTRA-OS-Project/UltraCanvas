@@ -15,6 +15,7 @@
 
 #include "UltraCanvasUtils.h"
 #include <sstream>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <iomanip>
@@ -23,6 +24,48 @@
 
 namespace UltraCanvas {
     const char* versionString = "0.3.18";
+
+#if defined(_WIN32) || defined(_WIN64)
+    std::wstring Utf8ToWide(const std::string& utf8) {
+        if (utf8.empty()) return L"";
+        int size = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(),
+                                       static_cast<int>(utf8.size()), nullptr, 0);
+        if (size <= 0) return L"";
+        std::wstring result(static_cast<size_t>(size), L'\0');
+        MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(),
+                            static_cast<int>(utf8.size()), &result[0], size);
+        return result;
+    }
+
+    std::string WideToUtf8(const std::wstring& wide) {
+        if (wide.empty()) return "";
+        int size = WideCharToMultiByte(CP_UTF8, 0, wide.c_str(),
+                                       static_cast<int>(wide.size()),
+                                       nullptr, 0, nullptr, nullptr);
+        if (size <= 0) return "";
+        std::string result(static_cast<size_t>(size), '\0');
+        WideCharToMultiByte(CP_UTF8, 0, wide.c_str(),
+                            static_cast<int>(wide.size()),
+                            &result[0], size, nullptr, nullptr);
+        return result;
+    }
+#endif
+
+    std::filesystem::path PathFromUtf8(const std::string& utf8) {
+#if defined(_WIN32) || defined(_WIN64)
+        return std::filesystem::path(Utf8ToWide(utf8));
+#else
+        return std::filesystem::path(utf8);
+#endif
+    }
+
+    std::string PathToUtf8(const std::filesystem::path& p) {
+#if defined(_WIN32) || defined(_WIN64)
+        return WideToUtf8(p.native());
+#else
+        return p.string();
+#endif
+    }
 
     std::string ToLowerCase(const std::string &str) {
         std::string result = str;
@@ -367,7 +410,7 @@ namespace UltraCanvas {
     std::string LoadFile(const std::string& filePath) {
         if (filePath.empty()) return "";
 
-        std::ifstream file(filePath);
+        std::ifstream file(PathFromUtf8(filePath));
         if (!file.is_open()) {
             debugOutput << "Failed to open file: " << filePath << std::endl;
             return "// Error: Could not load file: " + filePath;
@@ -453,10 +496,15 @@ namespace UltraCanvas {
             path = buf;
         }
 #elif defined(_WIN32) || defined(_WIN64)
-        char buf[4096];
-        size_t len = GetModuleFileNameA(nullptr, buf, sizeof(buf) - 1);
-        if (len > 0 && len < sizeof(buf) - 1) {
-            path = buf;
+        // Must use the wide API: GetModuleFileNameA converts through the
+        // legacy ANSI code page, turning any character it can't represent
+        // (e.g. Thai folder names) into literal '?', which then poisons every
+        // asset path derived from the executable directory.
+        wchar_t buf[4096];
+        DWORD len = GetModuleFileNameW(nullptr, buf,
+                                       DWORD(sizeof(buf) / sizeof(buf[0]) - 1));
+        if (len > 0 && len < sizeof(buf) / sizeof(buf[0]) - 1) {
+            path = WideToUtf8(std::wstring(buf, len));
         }
 #elif defined(__APPLE__)
         char buf[PATH_MAX];
@@ -482,7 +530,7 @@ namespace UltraCanvas {
 
     void OpenURL(const std::string& url) {
 #if defined(_WIN32) || defined(_WIN64)
-        ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        ShellExecuteW(nullptr, L"open", Utf8ToWide(url).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 #elif defined(__APPLE__)
         system(("open \"" + url + "\"").c_str());
 #else

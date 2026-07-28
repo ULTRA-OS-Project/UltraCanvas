@@ -13,6 +13,7 @@
 #include "miniaudio.h"
 
 #include "IAudioBackend.h"
+#include "UltraCanvasUtils.h"
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -213,9 +214,18 @@ public:
         if (!Initialize()) return nullptr;
         ma_decoder decoder;
         ma_decoder_config dcfg = ma_decoder_config_init(ma_format_f32, 0, 0);
+#if defined(_WIN32) || defined(_WIN64)
+        // miniaudio's narrow open goes through the ANSI CRT fopen on Windows,
+        // which can't represent file names outside the system code page.
+        std::wstring wpath = Utf8ToWide(path);
+        if (ma_decoder_init_file_w(wpath.c_str(), &dcfg, &decoder) != MA_SUCCESS) {
+            return nullptr;
+        }
+#else
         if (ma_decoder_init_file(path.c_str(), &dcfg, &decoder) != MA_SUCCESS) {
             return nullptr;
         }
+#endif
         return DecodeViaDecoder(decoder);
     }
 
@@ -242,9 +252,16 @@ public:
             enc, ToMiniaudioFormat(info.sampleType),
             info.channels, info.sampleRate);
         ma_encoder encoder;
+#if defined(_WIN32) || defined(_WIN64)
+        std::wstring wpath = Utf8ToWide(path);
+        if (ma_encoder_init_file_w(wpath.c_str(), &ec, &encoder) != MA_SUCCESS) {
+            return false;
+        }
+#else
         if (ma_encoder_init_file(path.c_str(), &ec, &encoder) != MA_SUCCESS) {
             return false;
         }
+#endif
         ma_uint64 written = 0;
         ma_encoder_write_pcm_frames(&encoder, audio.GetData(),
                                     info.frameCount, &written);
