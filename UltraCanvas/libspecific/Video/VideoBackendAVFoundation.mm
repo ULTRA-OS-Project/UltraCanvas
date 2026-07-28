@@ -101,11 +101,11 @@ UCVideoFramePtr FrameFromCGImage(CGImageRef img, double pts) {
     CGColorSpaceRelease(cs);
     if (!ctx) return nullptr;
 
-    // A bitmap context has a bottom-left origin, so drawing the (upright) CGImage
-    // directly would store it upside-down relative to UCVideoFrame's top-to-bottom
-    // rows. Flip the CTM so context row 0 maps to the image's top row.
-    CGContextTranslateCTM(ctx, 0, h);
-    CGContextScaleCTM(ctx, 1, -1);
+    // A raw CGBitmapContext is NOT pre-flipped (unlike a UIKit/AppKit context):
+    // its data buffer's first scanline already maps to the top of the image, so
+    // drawing the upright CGImage with an identity CTM yields an upright
+    // top-to-bottom buffer — matching UCVideoFrame's row order. No flip needed
+    // (flipping the CTM here would store it upside-down).
     CGContextDrawImage(ctx, CGRectMake(0, 0, w, h), img);
     CGContextRelease(ctx);
 
