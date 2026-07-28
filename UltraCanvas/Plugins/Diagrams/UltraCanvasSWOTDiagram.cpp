@@ -288,13 +288,13 @@ namespace UltraCanvas {
             double itemHeight = lines.size() * lineHeight;
 
             if (y + itemHeight > rect.y + rect.height) {
-                // Not enough room - indicate how many items are hidden
+                // Not enough room - indicate how many items are hidden,
+                // clamped so the indicator always stays inside the panel
                 size_t hidden = list.size() - i;
-                if (y + lineHeight <= rect.y + rect.height + 2) {
-                    ctx->SetTextPaint(Color(textColor.r, textColor.g, textColor.b, 150));
-                    ctx->DrawText("+" + std::to_string(hidden) + " more...",
-                                  Point2Dd(rect.x + bulletIndent, y));
-                }
+                double moreY = std::min(y, rect.y + rect.height - lineHeight + 2);
+                ctx->SetTextPaint(Color(textColor.r, textColor.g, textColor.b, 150));
+                ctx->DrawText("+" + std::to_string(hidden) + " more...",
+                              Point2Dd(rect.x + bulletIndent, moreY));
                 break;
             }
 
@@ -599,8 +599,14 @@ namespace UltraCanvas {
                 Rect2Dd(inner.x, inner.y + panelH + gutter, panelW, panelH),
                 Rect2Dd(inner.x + panelW + gutter, inner.y + panelH + gutter, panelW, panelH)};
 
+        // The center circle overlaps the panels' inner corners - keep the item
+        // area clear of it by widening the padding on the inner-facing side
+        double centerR = std::min(area.width, area.height) * 0.14;
+        double innerPad = showCenterElement ? std::max(16.0, centerR * 0.6 + 10.0) : 16.0;
+
         for (size_t q = 0; q < kSWOTQuadrantCount; ++q) {
             const Rect2Dd& panel = panels[q];
+            bool innerIsRight = (q == 0 || q == 2);  // S and O face the center on their right
 
             ctx->SetFillPaint(quadrants[q].accentColor);
             ctx->FillRoundedRectangle(panel, radius);
@@ -614,17 +620,14 @@ namespace UltraCanvas {
                                    panel.y + 12));
             ctx->SetFontWeight(FontWeight::Normal);
 
-            // The center circle overlaps the inner corners - keep the item area
-            // clear of it by insetting the inner-facing side a little
-            Rect2Dd body(panel.x + 16, panel.y + 38,
-                         panel.width - 32, panel.height - 52);
+            Rect2Dd body(panel.x + (innerIsRight ? 16.0 : innerPad), panel.y + 38,
+                         panel.width - 16.0 - innerPad, panel.height - 52);
             layout.panels[q] = panel;
             layout.bodies[q] = body;
             DrawItemList(ctx, q, body, BodyTextColor(q), Color(255, 255, 255, 230));
         }
 
         if (showCenterElement) {
-            double centerR = std::min(area.width, area.height) * 0.155;
             DrawCenterCircle(ctx,
                              Point2Dd(inner.x + inner.width / 2.0, inner.y + inner.height / 2.0),
                              centerR);
