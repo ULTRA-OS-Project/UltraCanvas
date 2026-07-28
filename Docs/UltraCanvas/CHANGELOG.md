@@ -1,3 +1,6 @@
+#### 2026-07-28 *0.3.18*
+- Fixed slow video thumbnail generation in MacOS in Album control
+
 #### 2026-07-25 *0.3.17*
 - **UltraCanvasFilerWidget**: double-click vs rename behavior corrected
   (0.3.16 had it wrong). Double-clicking an entry — name or icon — now always
