@@ -17,7 +17,7 @@ found in the wild, so a future `UltraCanvasSWOTDiagram` element can offer them
 as design presets (the same approach used by `UltraCanvasPertChart` and
 `UltraCanvasGanttChart` designs/palettes).
 
-Survey result: **~24 distinct layout variants**, grouped into 6 structural
+Survey result: **~26 distinct layout variants**, grouped into 6 structural
 families, plus a set of cross-cutting decoration options that combine freely
 with almost every layout.
 
@@ -102,6 +102,12 @@ one per quadrant; text inside the petal or in an adjacent block.
 **C2. Windmill / pinwheel.** Four rotated blade shapes suggesting motion;
 letters at the hub, texts on the blades or beside them.
 
+**C2b. X / cross-ribbon.** Four rounded ribbon arms radiating diagonally
+from the center to form an X; the quadrant *names are written along the
+rotated arms*, icons cluster at the hub, and the body texts sit outside the
+arms connected by thin leader lines. Distinct from C2 because the arms are
+straight ribbons (not swept blades) and carry the labels themselves.
+
 **C3. Full-circle four sectors.** A pie divided into four 90° sectors with
 the texts inside the sectors (works only for very short texts) or as
 callouts.
@@ -123,6 +129,11 @@ chips — good for portrait slides and posters.
 **D3. Chevron / arrow strip.** Four chevrons or arrows in a row (or ascending
 stair-step "growth" arrangement); text below/above each arrow. Conveys
 progression rather than opposition.
+
+**D4. Lettered disc row.** Four large colored circles slightly overlapping in
+a horizontal strip, each carrying one big letter so together they spell
+"S W O T"; the quadrant title and body text are stacked beneath each disc.
+(Variants use squares, drops, or map-pin shapes instead of circles.)
 
 ## Family E — Shape-novelty layouts
 
