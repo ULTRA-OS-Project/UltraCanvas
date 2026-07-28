@@ -833,13 +833,22 @@ void UltraCanvasGanttChartElement::FitToRange() {
     if (!ds) return;
     GanttDate min, max;
     if (!ds->GetDateRange(min, max)) return;
-    ComputeLayout();
     long span = min.DaysUntil(max) + 1;
-    if (span < 1 || layout.timeBody.width <= 0) return;
-    // Leave a little padding on both sides.
-    style.dayWidth = std::clamp(
-            static_cast<float>(layout.timeBody.width) / static_cast<float>(span + 4),
-            0.5f, 200.0f);
+    if (span < 1) return;
+    // ComputeLayout() pads the grid by one scale unit before the first task and
+    // two after it, so the width to divide is the padded span, not the raw one
+    // — dividing by the raw span pushes the tail of the project off-screen.
+    // Two passes because with GanttTimeScale::Auto the resolved scale (and with
+    // it the padding) depends on the day width chosen here.
+    for (int pass = 0; pass < 2; ++pass) {
+        ComputeLayout();
+        if (layout.timeBody.width <= 0) return;
+        long pad = std::max<long>(2, static_cast<long>(layout.unitDays));
+        style.dayWidth = std::clamp(
+                static_cast<float>(layout.timeBody.width) /
+                static_cast<float>(span + pad * 3),
+                0.5f, 200.0f);
+    }
     scrollX = 0;
     scrollY = 0;
     RequestRedraw();

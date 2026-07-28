@@ -702,6 +702,8 @@ namespace {
     }
 
     // One gallery cell: palette name over a compact chart using that palette.
+    // The phases stay collapsed so each cell shows one bar per palette colour
+    // across the whole schedule instead of a clipped task list.
     std::shared_ptr<UltraCanvasContainer> MakePaletteCell(size_t index, int cellW, int cellH) {
         const auto& menu = PaletteMenu();
         const std::string suffix = std::to_string(index);
@@ -711,57 +713,62 @@ namespace {
         cell->layout.SetFlexColumn().SetFlexGap(2)
                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-        auto caption = std::make_shared<UltraCanvasLabel>("GanttPalCap" + suffix, 0, 0, 0, 16);
+        auto caption = std::make_shared<UltraCanvasLabel>("GanttPalCap" + suffix, 0, 0, 0, 15);
         caption->SetText(menu[index].first);
         caption->SetFontSize(11);
         caption->SetFontWeight(FontWeight::Bold);
         caption->SetTextColor(Color(50, 55, 70, 255));
         AddFlexChild(cell, caption, 0);
 
-        auto chart = CreateGanttChartWithData("GanttPal" + suffix, 0, 0, cellW, cellH - 18,
-                                              BuildLaunchProject(), GanttDesign::Professional);
+        auto data = BuildLaunchProject();
+        data->SetAllExpanded(false);
+
+        auto chart = CreateGanttChartWithData("GanttPal" + suffix, 0, 0, cellW, cellH - 17,
+                                              data, GanttDesign::Professional);
         chart->SetPalette(menu[index].second);
-        chart->SetColumns({GanttColumn(GanttColumnType::Name, "Task", 112)});
-        chart->SetToday(kToday);
+        chart->SetColumns({GanttColumn(GanttColumnType::Name, "Phase", 124)});
         auto& st = chart->EditStyle();
-        st.rowHeight = 18.0f;
-        st.dayWidth = 2.6f;
+        st.rowHeight = 24.0f;
+        st.barHeightRatio = 0.6f;
+        st.summaryStyle = GanttSummaryStyle::Bar;   // solid bars carry the colour
+        st.summaryBarColor = Colors::Transparent;   // ... taken from the palette
         st.timeScale = GanttTimeScale::Months;
-        st.tableFontSize = 9.0f;
-        st.headerFontSize = 9.0f;
-        st.headerTierHeight = 16.0f;
-        st.tableIndentPerLevel = 9.0f;
+        st.tableFontSize = 10.0f;
+        st.headerFontSize = 10.0f;
+        st.headerTierHeight = 17.0f;
         st.labelPlacement = GanttLabelPlacement::Hidden;
         st.showProgressText = false;
-        st.summaryBarColor = Colors::Transparent;   // summaries follow the palette
+        st.rowAlternateColor = Colors::Transparent;
         chart->StyleChanged();
+        chart->FitToRange();
         AddFlexChild(cell, chart, 1);
         return cell;
     }
 
     // Palette gallery: the same schedule rendered eight times, one per named
-    // palette, in a 4 x 2 grid that follows the page size.
+    // palette, in a 2 x 4 grid that follows the page size.
     std::shared_ptr<UltraCanvasContainer> MakePaletteTab(int innerW, int innerH) {
         auto tab = std::make_shared<UltraCanvasContainer>("GanttTabPalettes", 0, 0, innerW, innerH);
         tab->SetBackgroundColor(Color(255, 255, 255, 255));
-        tab->layout.SetFlexColumn().SetFlexGap(6)
+        tab->layout.SetFlexColumn().SetFlexGap(4)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
         AddFlexChild(tab, MakeTabDescription("GanttPalDesc",
-                "The eight named palettes from GanttPalettes::Get(), applied to one shared design. "
-                "SetPalette() swaps only the bar colour cycle - layout, header and progress "
-                "rendering stay exactly as the design preset left them."), 0);
+                "The eight named palettes from GanttPalettes::Get(), applied to one shared design "
+                "with the phases collapsed so each bar is one palette entry. SetPalette() swaps "
+                "only the bar colour cycle - layout, header and progress rendering stay exactly "
+                "as the design preset left them."), 0);
 
-        const int cols = 4, rows = 2;
+        const int cols = 2, rows = 4;
         const int cellW = innerW / cols;
         const int cellH = (innerH - 50) / rows;
 
         for (int r = 0; r < rows; ++r) {
             auto band = std::make_shared<UltraCanvasContainer>(
                     "GanttPalRow" + std::to_string(r), 0, 0, innerW, cellH);
-            band->layout.SetFlexRow().SetFlexGap(8)
+            band->layout.SetFlexRow().SetFlexGap(14)
                         .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-            band->SetMargin(0, 10, 0, 10);
+            band->SetMargin(0, 12, 0, 12);
             for (int c = 0; c < cols; ++c) {
                 AddFlexChild(band, MakePaletteCell(static_cast<size_t>(r * cols + c),
                                                    cellW, cellH), 1);
@@ -781,8 +788,12 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGanttCha
     const int CONTAINER_W = 1180;
     const int CONTAINER_H = 800;
     const int PAD = 16;
-    const int INNER_W = CONTAINER_W - 2 * PAD - 8;
-    const int INNER_H = 660;
+    // Tab content is built at a deliberately conservative width: the page is a
+    // stretched flex child, so the host may lay it out narrower than
+    // CONTAINER_W. FitToRange() reads the bounds it is called with, and
+    // under-filling the timeline is harmless where overflowing clips bars.
+    const int INNER_W = 1000;
+    const int INNER_H = 640;
 
     auto root = std::make_shared<UltraCanvasContainer>("GanttRoot", 0, 0,
                                                        CONTAINER_W, CONTAINER_H);
@@ -826,11 +837,22 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGanttCha
     panel->SetBackgroundColor(Color(247, 247, 250, 255));
     panel->size.width = CSSLayout::Dimension::Px(PANEL_W);
 
-    auto studioChart = CreateGanttChartWithData("GanttStudioChart", 0, 0, 740, INNER_H,
+    // Built at exactly the width the flex row will hand it, so FitToRange()
+    // below measures the timeline it actually gets.
+    const int CHART_W = INNER_W - static_cast<int>(PANEL_W) - 10;
+    auto studioChart = CreateGanttChartWithData("GanttStudioChart", 0, 0, CHART_W, INNER_H,
                                                 BuildLaunchProject(), GanttDesign::Modern);
     studioChart->SetToday(kToday);
-    studioChart->EditStyle().dayWidth = 14.0f;
+    // The option panel takes a third of the page, so start from the narrow
+    // column set and a week scale that stays readable once the whole project is
+    // fitted. Switching "Table columns" or "Time scale" shows the trade-off.
+    studioChart->SetColumns(ColumnPreset(5));
+    studioChart->SetTimeScale(GanttTimeScale::Weeks);
+    // Modern's uppercase captions ("WEEK 06") do not survive a narrow week
+    // column; the "Uppercase header" checkbox turns them back on.
+    studioChart->EditStyle().uppercaseHeader = false;
     studioChart->StyleChanged();
+    studioChart->FitToRange();
 
     BuildStudioPanel(panel, studioChart);
 
@@ -842,9 +864,10 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGanttCha
     tabs->AddTab("Modern", MakeDesignTab("GanttTabModern",
             "Modern preset: pill bars on a vibrant palette, two-tier day header with weekday "
             "letters, phase names inside the summary bars, and elbow arrows that take the "
-            "colour of their predecessor bar.",
+            "colour of their predecessor bar. Opens on the day scale - Ctrl+wheel to zoom out "
+            "to the whole schedule.",
             [](const std::shared_ptr<UltraCanvasGanttChartElement>& c) {
-                c->EditStyle().dayWidth = 16.0f;
+                c->EditStyle().dayWidth = 11.0f;
             },
             GanttDesign::Modern, INNER_W, INNER_H));
 
@@ -854,17 +877,18 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGanttCha
             "bar, and the critical path highlighted in red.",
             [](const std::shared_ptr<UltraCanvasGanttChartElement>& c) {
                 c->SetShowCriticalPath(true);
-                c->EditStyle().dayWidth = 10.0f;
+                c->FitToRange();
             },
             GanttDesign::Professional, INNER_W, INNER_H));
 
     tabs->AddTab("Classic", MakeDesignTab("GanttTabClassic",
             "Classic preset: the flat single-colour print style used in business plans - one "
             "corporate blue for every bar, a single-tier month header, no weekend shading and "
-            "solid elbow dependency arrows.",
+            "solid elbow dependency arrows. FitToRange() picks the zoom so the whole project "
+            "lands on one screen.",
             [](const std::shared_ptr<UltraCanvasGanttChartElement>& c) {
-                c->EditStyle().timeScale = GanttTimeScale::Weeks;
-                c->EditStyle().dayWidth = 7.0f;
+                c->SetTimeScale(GanttTimeScale::Weeks);
+                c->FitToRange();
             },
             GanttDesign::Classic, INNER_W, INNER_H));
 
@@ -872,17 +896,16 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGanttCha
             "Soft preset: a pastel report style - thin line bars with square end caps, striped "
             "rows under a dark table header, and dashed orange dependency arrows between the "
             "activities.",
-            [](const std::shared_ptr<UltraCanvasGanttChartElement>& c) {
-                c->EditStyle().dayWidth = 11.0f;
-            },
+            [](const std::shared_ptr<UltraCanvasGanttChartElement>& c) { c->FitToRange(); },
             GanttDesign::Soft, INNER_W, INNER_H));
 
     tabs->AddTab("Minimal", MakeDesignTab("GanttTabMinimal",
             "Minimal preset: a wide project table carrying assignee, priority chips and "
-            "% complete, with light-track progress bars on a day grid. Dependency arrows are "
-            "off so the table stays the focus.",
+            "% complete, with light-track progress bars. Dependency arrows are off so the "
+            "table stays the focus; the scale is dropped to weeks to leave the wide table room.",
             [](const std::shared_ptr<UltraCanvasGanttChartElement>& c) {
-                c->EditStyle().dayWidth = 11.0f;
+                c->SetTimeScale(GanttTimeScale::Weeks);
+                c->FitToRange();
             },
             GanttDesign::Minimal, INNER_W, INNER_H));
 
@@ -892,7 +915,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGanttCha
             "dark theme is a palette plus a handful of surface colours.",
             [](const std::shared_ptr<UltraCanvasGanttChartElement>& c) {
                 c->SetPalette(GanttPalette::Ocean);
-                c->EditStyle().dayWidth = 15.0f;
+                c->EditStyle().dayWidth = 11.0f;
             },
             GanttDesign::Dark, INNER_W, INNER_H));
 
