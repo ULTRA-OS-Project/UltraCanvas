@@ -1,4 +1,18 @@
 #### 2026-07-28 *0.3.18*
+- New **UltraCanvasSWOTDiagram** element
+  (`Plugins/Diagrams/UltraCanvasSWOTDiagram`): classic four-panel SWOT
+  analysis infographic rendering four text item lists (Strengths, Weaknesses,
+  Opportunities, Threats) in six design presets — corner-badge panels with a
+  central SWOT circle, classic 2x2 matrix (optional internal/external and
+  helpful/harmful axis captions), separated header-bar cards, central letter
+  diamond, stacked rows with big letter blocks, and four columns with header
+  chips. Light/dark theme, per-quadrant titles/badges/accent colors,
+  hover tooltips, item selection with callbacks and built-in sample data.
+  New demo page (Info Graphics > SWOT Diagram) with six tabbed designs and
+  runtime theme/decoration/data controls, plus a programmer's guide in
+  `Docs/UltraCanvas/UltraCanvasSWOTDiagramExamples.md`. A survey of the
+  SWOT presentation styles found in the wild is in
+  `Docs/UltraCanvas/SWOTDiagramDesignVariants.md`.
 - Fixed slow video thumbnail generation in MacOS in Album control
 
 #### 2026-07-25 *0.3.17*

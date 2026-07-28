@@ -1292,6 +1292,19 @@ namespace UltraCanvas {
 //                .AddVariant("infographics", "Statistical Displays")
 //                .AddVariant("infographics", "Interactive Maps");
 
+        infoBuilder.AddItem("swotdiagram", "SWOT Diagram",
+                            "Classic four-panel SWOT analysis infographic with six design presets",
+                            ImplementationStatus::FullyImplemented,
+                            [this]() { return CreateSWOTDiagramExamples(); },
+                            "DemoApp/UltraCanvasSWOTDiagramExamples.cpp",
+                            "Docs/UltraCanvas/UltraCanvasSWOTDiagramExamples.md")
+                .AddVariant("swotdiagram", "Corner Badges")
+                .AddVariant("swotdiagram", "Classic Matrix")
+                .AddVariant("swotdiagram", "Cards")
+                .AddVariant("swotdiagram", "Center Diamond")
+                .AddVariant("swotdiagram", "Rows")
+                .AddVariant("swotdiagram", "Columns");
+
         infoBuilder.AddItem("heatmap", "Heat map", "Heat map",
                              ImplementationStatus::PartiallyImplemented,
                              [this]() { return CreatePartiallyImplementedExamples("HeatMap is not ready yet"); });
