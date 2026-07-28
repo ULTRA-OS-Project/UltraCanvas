@@ -1031,9 +1031,17 @@ namespace UltraCanvas {
                              "DemoApp/UltraCanvasPopulationChartExamples.cpp",
                              "Docs/UltraCanvas/UltraCanvasPopulationChartExamples.md");
 
-        chartBuilder.AddItem("sunburstcharts", "Sunburst Chart", "Sunburst Chart",
-                             ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples("Sunburst Chart is not ready yet"); });
+        chartBuilder.AddItem("sunburstcharts", "Sunburst Chart",
+                             "Hierarchical radial partition charts with drill-down zoom, "
+                             "depth shading, partial sweeps and auto-fitting labels",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateSunburstChartExamples(); },
+                             "DemoApp/UltraCanvasSunburstChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasSunburstChartExamples.md")
+                .AddVariant("sunburstcharts", "Three-Level Sales Hierarchy")
+                .AddVariant("sunburstcharts", "Demographic Sunburst")
+                .AddVariant("sunburstcharts", "Partial-Sweep Fan")
+                .AddVariant("sunburstcharts", "Depth-Limited Overview");
 
         chartBuilder.AddItem("ganttcharts", "Gantt Chart",
                              "Project schedules with task table, hierarchy, dependencies, "
