@@ -134,6 +134,8 @@ for (size_t i = 0; i < placed.size(); ++i) {
 | `UltraCanvasSankeyDiagram` | Node labels beside the bars (left for sources, right for sinks) without label-on-label collisions |
 | `UltraCanvasFlowChart` | Connection labels: centred pill on the longest path segment when free, sliding along/off the line when crowded; nodes act as obstacles |
 | `UltraCanvasRadarChartElement` | Axis labels placed radially at their axis angle, kept apart and clamped inside the element (no more clipped names); the legend auto-places on the least crowded side treating axis labels as obstacles |
+| `UltraCanvasBubbleChartElement` | Names that fit stay inside their bubble; names that don't are solved in one batch below/around the bubble without touching other bubbles, group labels, or each other |
+| `UltraCanvasQuadrantChart` | Data point labels near their marker with quadrant titles as protected obstacles — the protected-primary pattern below |
 
 ## Protected Primary / Movable Secondary Labels
 

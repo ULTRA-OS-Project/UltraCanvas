@@ -1,11 +1,12 @@
 // Plugins/Charts/UltraCanvasBubbleChart.cpp
 // Implementation of the comprehensive bubble chart element (scatter bubbles,
 // packed bubbles, bubble matrix).
-// Version: 1.0.0
-// Last Modified: 2026-07-26
+// Version: 1.1.0 (Outside name labels placed by the shared label placement solver)
+// Last Modified: 2026-07-28
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasBubbleChart.h"
+#include "Plugins/Charts/UltraCanvasLabelPlacement.h"
 #include <algorithm>
 #include <cmath>
 #include <numeric>
@@ -1090,7 +1091,14 @@ void UltraCanvasBubbleChartElement::RenderBubbleLabels(IRenderContext* ctx) {
     double grow = animationEnabled ? EaseOutCubic(GetAnimationProgress()) : 1.0;
     ctx->SetFontSize(labelFontSize);
 
-    for (const auto& c : layoutCircles) {
+    // Names that do not fit inside their bubble are collected and placed in
+    // one batch by the shared solver, so they never cover other bubbles,
+    // group labels, or each other.
+    struct OutsideName { size_t circleIdx; std::string text; };
+    std::vector<OutsideName> outsideNames;
+
+    for (size_t ci = 0; ci < layoutCircles.size(); ++ci) {
+        const auto& c = layoutCircles[ci];
         const auto& b = bubbles[c.index];
         double r = c.r * grow;
         if (r <= 0.5) continue;
@@ -1145,10 +1153,59 @@ void UltraCanvasBubbleChartElement::RenderBubbleLabels(IRenderContext* ctx) {
         }
 
         if (nameBelow) {
-            Size2Di nameSz = ctx->GetTextLineDimensions(b.name);
-            ctx->SetTextPaint(nameLabelColor);
-            ctx->DrawText(b.name, Point2Dd(c.cx - nameSz.width / 2.0, c.cy + r + 3.0));
+            outsideNames.push_back({ci, b.name});
         }
+    }
+
+    if (outsideNames.empty()) return;
+
+    // Every bubble is an obstacle; hierarchical group labels are protected
+    // obstacle rects so child names cannot cover them.
+    std::vector<LabelShape> shapes;
+    shapes.reserve(layoutCircles.size() + parentCircles.size());
+    for (const auto& c : layoutCircles) {
+        LabelShape s;
+        s.type = LabelShapeType::Circle;
+        s.center = Point2Dd(c.cx, c.cy);
+        s.radius = c.r * grow;
+        shapes.push_back(s);
+    }
+    if (!parentCircles.empty()) {
+        ctx->SetFontSize(groupLabelFontSize);
+        if (groupLabelBold) ctx->SetFontWeight(FontWeight::Bold);
+        for (const auto& p : parentCircles) {
+            Size2Di sz = ctx->GetTextLineDimensions(p.group);
+            double bandCenterY = p.cy - (p.innerR + (p.r - p.innerR) * 0.5) * grow;
+            LabelShape s;
+            s.type = LabelShapeType::Rectangle;
+            s.center = Point2Dd(p.cx, bandCenterY);
+            s.size = Size2Dd(sz.width, sz.height);
+            shapes.push_back(s);
+        }
+        if (groupLabelBold) ctx->SetFontWeight(FontWeight::Normal);
+        ctx->SetFontSize(labelFontSize);
+    }
+
+    std::vector<ShapeLabel> labels;
+    labels.reserve(outsideNames.size());
+    for (const auto& o : outsideNames) {
+        ShapeLabel l;
+        l.text = o.text;
+        l.shapeIndex = o.circleIdx;
+        l.preferredSide = LabelSide::Bottom;   // keeps the below-bubble look
+        l.textSize = Size2Dd(ctx->GetTextLineDimensions(o.text));
+        labels.push_back(l);
+    }
+
+    LabelPlacementOptions opts;
+    opts.bounds = Rect2Dd(GetLocalBounds());
+    opts.shapeMargin = 3.0;
+    opts.labelMargin = 3.0;
+
+    std::vector<PlacedShapeLabel> placed = PlaceShapeLabels(shapes, labels, opts);
+    ctx->SetTextPaint(nameLabelColor);
+    for (size_t i = 0; i < placed.size(); ++i) {
+        ctx->DrawText(labels[i].text, placed[i].bounds.TopLeft());
     }
 }
 

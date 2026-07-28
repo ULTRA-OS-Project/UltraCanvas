@@ -260,6 +260,13 @@ namespace UltraCanvas {
                             const Point2Dd& pos, float radius);
         void DrawMultilineTextCentered(IRenderContext* ctx, const std::string& text,
                                        const Point2Dd& center, float lineHeight);
+        // The four quadrant title blocks (text + centre point), shared by
+        // DrawQuadrantLabels and the data point label placement, which treats
+        // the titles as protected obstacles.
+        struct QuadrantLabelAnchor { std::string text; Point2Dd center; };
+        std::vector<QuadrantLabelAnchor> GetQuadrantLabelAnchors() const;
+        Rect2Dd MeasureMultilineCentered(IRenderContext* ctx, const std::string& text,
+                                         const Point2Dd& center, float lineHeight) const;
     };
 
 // =============================================================================

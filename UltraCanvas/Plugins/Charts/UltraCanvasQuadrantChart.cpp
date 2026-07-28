@@ -1,10 +1,11 @@
 // Plugins/Charts/UltraCanvasQuadrantChart.cpp
 // Quadrant chart element for strategic analysis (SWOT, BCG, Eisenhower, risk & priority matrices)
-// Version: 1.0.0
-// Last Modified: 2026-07-25
+// Version: 1.1.0 (Point labels placed by the shared solver; quadrant titles protected)
+// Last Modified: 2026-07-28
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasQuadrantChart.h"
+#include "Plugins/Charts/UltraCanvasLabelPlacement.h"
 #include "UltraCanvasTooltipManager.h"
 #include <algorithm>
 #include <cmath>
@@ -650,31 +651,53 @@ namespace UltraCanvas {
         }
     }
 
+    std::vector<UltraCanvasQuadrantChart::QuadrantLabelAnchor>
+    UltraCanvasQuadrantChart::GetQuadrantLabelAnchors() const {
+        // Labels sit near the outer edge of each quadrant so they do not
+        // collide with data points clustered around the center.
+        return {
+            {quadrantDef.topLeftLabel,
+             Point2Dd(layout.topLeft.x + layout.topLeft.width / 2.0,
+                      layout.topLeft.y + std::min(24.0, layout.topLeft.height / 2.0))},
+            {quadrantDef.topRightLabel,
+             Point2Dd(layout.topRight.x + layout.topRight.width / 2.0,
+                      layout.topRight.y + std::min(24.0, layout.topRight.height / 2.0))},
+            {quadrantDef.bottomLeftLabel,
+             Point2Dd(layout.bottomLeft.x + layout.bottomLeft.width / 2.0,
+                      layout.bottomLeft.y + layout.bottomLeft.height -
+                              std::min(24.0, layout.bottomLeft.height / 2.0))},
+            {quadrantDef.bottomRightLabel,
+             Point2Dd(layout.bottomRight.x + layout.bottomRight.width / 2.0,
+                      layout.bottomRight.y + layout.bottomRight.height -
+                              std::min(24.0, layout.bottomRight.height / 2.0))},
+        };
+    }
+
+    Rect2Dd UltraCanvasQuadrantChart::MeasureMultilineCentered(IRenderContext* ctx, const std::string& text,
+                                                               const Point2Dd& center, float lineHeight) const {
+        std::vector<std::string> lines;
+        std::stringstream ss(text);
+        std::string line;
+        while (std::getline(ss, line, '\n')) lines.push_back(line);
+        if (lines.empty()) return Rect2Dd(center.x, center.y, 0, 0);
+
+        double maxWidth = 0.0;
+        for (const auto& l : lines) {
+            maxWidth = std::max(maxWidth, static_cast<double>(ctx->GetTextLineWidth(l)));
+        }
+        double totalHeight = lines.size() * lineHeight;
+        return Rect2Dd(center.x - maxWidth / 2.0, center.y - totalHeight / 2.0,
+                       maxWidth, totalHeight);
+    }
+
     void UltraCanvasQuadrantChart::DrawQuadrantLabels(IRenderContext* ctx) {
         ctx->SetFontSize(quadrantLabelFontSize);
         ctx->SetTextPaint(Color(70, 70, 70, 255));
 
         float lineHeight = quadrantLabelFontSize * 1.3f;
-
-        // Labels sit near the outer corner of each quadrant so they do not
-        // collide with data points clustered around the center.
-        DrawMultilineTextCentered(ctx, quadrantDef.topLeftLabel,
-                Point2Dd(layout.topLeft.x + layout.topLeft.width / 2.0,
-                         layout.topLeft.y + std::min(24.0, layout.topLeft.height / 2.0)), lineHeight);
-
-        DrawMultilineTextCentered(ctx, quadrantDef.topRightLabel,
-                Point2Dd(layout.topRight.x + layout.topRight.width / 2.0,
-                         layout.topRight.y + std::min(24.0, layout.topRight.height / 2.0)), lineHeight);
-
-        DrawMultilineTextCentered(ctx, quadrantDef.bottomLeftLabel,
-                Point2Dd(layout.bottomLeft.x + layout.bottomLeft.width / 2.0,
-                         layout.bottomLeft.y + layout.bottomLeft.height -
-                                 std::min(24.0, layout.bottomLeft.height / 2.0)), lineHeight);
-
-        DrawMultilineTextCentered(ctx, quadrantDef.bottomRightLabel,
-                Point2Dd(layout.bottomRight.x + layout.bottomRight.width / 2.0,
-                         layout.bottomRight.y + layout.bottomRight.height -
-                                 std::min(24.0, layout.bottomRight.height / 2.0)), lineHeight);
+        for (const auto& anchor : GetQuadrantLabelAnchors()) {
+            DrawMultilineTextCentered(ctx, anchor.text, anchor.center, lineHeight);
+        }
     }
 
     void UltraCanvasQuadrantChart::DrawPointShape(IRenderContext* ctx, const QuadrantDataPoint& point,
@@ -739,16 +762,56 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasQuadrantChart::DrawDataPointLabels(IRenderContext* ctx) {
-        ctx->SetFontSize(dataPointLabelFontSize);
-        ctx->SetTextPaint(Color(40, 40, 40, 255));
+        if (dataPoints.empty()) return;
 
+        // Quadrant titles are primary labels: they enter the shared solver as
+        // obstacle-only rects so point labels can never cover them. Markers
+        // are obstacles too, and each point label is placed near its marker
+        // (preferring the classic above-the-point position).
+        std::vector<LabelShape> shapes;
+        if (showQuadrantLabels) {
+            ctx->SetFontSize(quadrantLabelFontSize);
+            float lineHeight = quadrantLabelFontSize * 1.3f;
+            for (const auto& anchor : GetQuadrantLabelAnchors()) {
+                if (anchor.text.empty()) continue;
+                Rect2Dd r = MeasureMultilineCentered(ctx, anchor.text, anchor.center, lineHeight);
+                LabelShape s;
+                s.type = LabelShapeType::Rectangle;
+                s.center = r.Center();
+                s.size = Size2Dd(r.width, r.height);
+                shapes.push_back(s);
+            }
+        }
+
+        ctx->SetFontSize(dataPointLabelFontSize);
+        std::vector<ShapeLabel> labels;
+        labels.reserve(dataPoints.size());
         for (const auto& point : dataPoints) {
+            LabelShape s;
+            s.type = LabelShapeType::Circle;
+            s.center = DataToScreen(point.xValue, point.yValue);
+            s.radius = point.radius;
+            shapes.push_back(s);
+
             if (point.label.empty()) continue;
-            Point2Dd pos = DataToScreen(point.xValue, point.yValue);
-            Size2Di s = ctx->GetTextLineDimensions(point.label);
-            ctx->DrawText(point.label, Point2Dd(
-                    pos.x - s.width / 2.0,
-                    pos.y - point.radius - s.height - 3.0));
+            ShapeLabel l;
+            l.text = point.label;
+            l.shapeIndex = shapes.size() - 1;
+            l.preferredSide = LabelSide::Top;
+            l.textSize = Size2Dd(ctx->GetTextLineDimensions(l.text));
+            labels.push_back(l);
+        }
+        if (labels.empty()) return;
+
+        LabelPlacementOptions opts;
+        opts.bounds = layout.plotArea;
+        opts.shapeMargin = 3.0;
+        opts.labelMargin = 3.0;
+
+        std::vector<PlacedShapeLabel> placed = PlaceShapeLabels(shapes, labels, opts);
+        ctx->SetTextPaint(Color(40, 40, 40, 255));
+        for (size_t i = 0; i < placed.size(); ++i) {
+            ctx->DrawText(labels[i].text, placed[i].bounds.TopLeft());
         }
     }
 
