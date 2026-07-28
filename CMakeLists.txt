@@ -60,6 +60,7 @@ option(ULTRACANVAS_USE_VIRTUALFS "Build the VirtualFS module and the UltraCanvas
 
 include(FetchContent)
 include(cmake/UltraCanvasAppIcon.cmake)
+include(cmake/UltraCanvasWinManifest.cmake)
 
 # ===== FIND REQUIRED PACKAGES =====
 find_package(PkgConfig REQUIRED)
@@ -371,6 +372,10 @@ if(BUILD_DEMO_APP)
     # Embed app icon in .exe (Windows only)
     ultracanvas_embed_app_icon(UltraCanvasDemo
         "${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/Demo.png")
+
+    # Embed manifest with UTF-8 active code page (Windows only) so paths with
+    # characters outside the legacy ANSI code page work in all narrow APIs
+    ultracanvas_embed_windows_manifest(UltraCanvasDemo)
     
     # Compiler warnings
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -647,6 +652,9 @@ if (BUILD_FILEMANAGER_APP)
             OUTPUT_NAME "UCFileManager"
             RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/..
     )
+
+    # Embed manifest with UTF-8 active code page (Windows only)
+    ultracanvas_embed_windows_manifest(UCFileManager)
 endif()
 
 # Hide console window on Windows Release builds

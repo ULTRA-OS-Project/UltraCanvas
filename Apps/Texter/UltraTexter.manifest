@@ -44,6 +44,14 @@
             <heapType xmlns="http://schemas.microsoft.com/SMI/2020/WindowsSettings">
                 SegmentHeap
             </heapType>
+            <!-- UTF-8 process code page (Windows 10 1903+): makes every
+                 narrow (ANSI) Win32/CRT call interpret strings as UTF-8, so
+                 file paths with characters outside the legacy code page
+                 (Thai, CJK, ...) survive fopen & friends in third-party
+                 libraries too -->
+            <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">
+                UTF-8
+            </activeCodePage>
         </windowsSettings>
     </application>
 
