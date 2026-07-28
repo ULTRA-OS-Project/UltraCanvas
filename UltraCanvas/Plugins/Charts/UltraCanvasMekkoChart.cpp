@@ -528,7 +528,17 @@ namespace UltraCanvas {
             }
 
             Size2Di textSize = ctx->GetTextLineDimensions(text);
-            if (textSize.width > renderCache.columnWidth[displayIndex] + columnGap) continue;
+            double maxWidth = renderCache.columnWidth[displayIndex] + columnGap + 12;
+            if (textSize.width > maxWidth && columnHeaderMode == ColumnHeaderMode::TotalAndPercent) {
+                // Fall back to progressively shorter forms on narrow columns
+                text = FormatValue(columnTotal);
+                textSize = ctx->GetTextLineDimensions(text);
+                if (textSize.width > maxWidth) {
+                    text = FormatPercent(percent);
+                    textSize = ctx->GetTextLineDimensions(text);
+                }
+            }
+            if (textSize.width > maxWidth) continue;
 
             double centerX = renderCache.columnX[displayIndex] + renderCache.columnWidth[displayIndex] / 2.0;
 
@@ -568,7 +578,9 @@ namespace UltraCanvas {
                 ctx->DrawText(label, {0, 0});
                 ctx->PopState();
             } else {
-                if (textSize.width > renderCache.columnWidth[displayIndex] + columnGap) continue;
+                // Allow a small overflow beyond the column edges before hiding;
+                // adjacent labels rarely collide with this tolerance
+                if (textSize.width > renderCache.columnWidth[displayIndex] + columnGap + 14) continue;
                 ctx->DrawText(label, {centerX - textSize.width / 2.0, y});
             }
         }
