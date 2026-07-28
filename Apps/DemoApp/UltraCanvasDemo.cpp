@@ -1016,6 +1016,15 @@ namespace UltraCanvas {
                 .AddVariant("waterfallcharts", "Cash Flow with Subtotals")
                 .AddVariant("waterfallcharts", "Performance Impact");
 
+        chartBuilder.AddItem("mekkocharts", "Mekko Chart", "Marimekko / mosaic chart with variable-width stacked columns",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateMekkoChartExamples(); },
+                             "DemoApp/UltraCanvasMekkoChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasMekkoChart.md")
+                .AddVariant("mekkocharts", "Market Share by Sector")
+                .AddVariant("mekkocharts", "Product vs Region Sales Mix")
+                .AddVariant("mekkocharts", "Bar-Mekko Absolute Mode");
+
         chartBuilder.AddItem("nestedareacharts", "Nested Chart", "Nested proportional area comparison chart",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateNestedAreaChartExamples(); },
