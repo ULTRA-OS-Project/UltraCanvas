@@ -1071,12 +1071,14 @@ namespace UltraCanvas {
                              [this]() { return CreateGanttChartExamples(); },
                              "DemoApp/UltraCanvasGanttChartExamples.cpp",
                              "Docs/UltraCanvas/UltraCanvasGanttChart.md")
+                .AddVariant("ganttcharts", "Design Studio (all options)")
                 .AddVariant("ganttcharts", "Modern Design")
                 .AddVariant("ganttcharts", "Professional / Critical Path")
                 .AddVariant("ganttcharts", "Classic Print Style")
                 .AddVariant("ganttcharts", "Soft Pastel Style")
                 .AddVariant("ganttcharts", "Minimal Project Table")
-                .AddVariant("ganttcharts", "Dark Theme");
+                .AddVariant("ganttcharts", "Dark Theme")
+                .AddVariant("ganttcharts", "Palette Gallery");
 
         chartBuilder.AddItem("quadrantcharts", "Quadrant Chart",
                              "Strategic 2x2 matrices: SWOT, BCG, Eisenhower, risk, priority and custom quadrants",
