@@ -1,7 +1,7 @@
 // include/UltraCanvasBreadcrumb.h
 // Hierarchical breadcrumb navigation control with overflow handling and per-item dropdowns
-// Version: 1.3.0
-// Last Modified: 2026-06-20
+// Version: 1.4.0
+// Last Modified: 2026-07-28
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -182,6 +182,32 @@ namespace UltraCanvas {
         static BreadcrumbStyle Steps();        // Arrow segments + round numbered indicators
     };
 
+    class UltraCanvasBreadcrumb;
+
+// ===== FOLDER PATH MECHANISM (shared by the Filer and the Media Viewer) =====
+// The drive roots / mounted volumes offered by the leading "Computer" node:
+// "A:\" ... "Z:\" on Windows, "/" plus the entries of /media, /mnt and
+// /Volumes elsewhere.
+    std::vector<std::string> ListDriveRoots();
+
+    struct FolderBreadcrumbOptions {
+        // Leading node listing every drive / mounted volume in its dropdown.
+        bool showComputerItem = true;
+        std::string computerLabel = "Computer";
+        // Per-segment dropdown listing the folders next to that segment (its
+        // siblings), so a neighbouring folder can be picked directly. Filled
+        // lazily when the dropdown opens, so deep trees cost nothing to build.
+        bool siblingDropdowns = true;
+    };
+
+// Rebuilds `crumb` as the path of `folderPath`: an optional "Computer" node,
+// the drive / root node, then one node per path segment. Clicking any node —
+// or picking an entry from a dropdown — calls `onNavigate` with that folder.
+    void BuildFolderBreadcrumb(UltraCanvasBreadcrumb* crumb,
+                               const std::string& folderPath,
+                               std::function<void(const std::string&)> onNavigate,
+                               const FolderBreadcrumbOptions& options = FolderBreadcrumbOptions());
+
 // ===== MAIN BREADCRUMB CLASS =====
     class UltraCanvasBreadcrumb : public UltraCanvasUIElement {
     public:
@@ -320,6 +346,9 @@ namespace UltraCanvas {
         void RecalculateLayout(IRenderContext* ctx);
         // Natural content size (all items uncollapsed), excluding padding/border.
         Size2Df MeasureContentSize(IRenderContext* ctx) const;
+        // Narrowest renderable content width once Collapse has hidden everything
+        // it may (0 for the other overflow modes, which keep every item).
+        float MeasureCollapsedContentWidth(IRenderContext* ctx) const;
         std::unique_ptr<ITextLayout> BuildItemLayout(IRenderContext* ctx, const std::string& text,
                                                     bool bold, int maxWidth) const;
         int ComputeItemSlotWidth(const BreadcrumbItem& item, const Size2Dd& textSize,

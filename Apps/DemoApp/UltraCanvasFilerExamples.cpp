@@ -2,8 +2,8 @@
 // Demonstration of UltraCanvasFilerWidget: one folder shown with selectable
 // view types (details / list / thumbnails / bar size / treemap), sortable
 // columns, the hover icon menu and the full file context menu (right-click).
-// Version: 1.0.0
-// Last Modified: 2026-07-12
+// Version: 1.0.1
+// Last Modified: 2026-07-28
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -41,82 +41,17 @@ namespace UltraCanvas {
             return row;
         }
 
-        // Available drive roots / mounted volumes, used by the breadcrumb's
-        // leading "Computer" node so the user can jump straight to another drive.
-        std::vector<std::string> ListDriveRoots() {
-            std::vector<std::string> roots;
-            std::error_code ec;
-#ifdef _WIN32
-            for (char c = 'A'; c <= 'Z'; ++c) {
-                std::string drive = std::string(1, c) + ":\\";
-                if (std::filesystem::exists(drive, ec)) roots.push_back(drive);
-            }
-#else
-            roots.push_back("/");
-            for (const char* base : {"/media", "/mnt", "/Volumes"}) {
-                std::error_code e2;
-                if (!std::filesystem::is_directory(base, e2)) continue;
-                for (const auto& entry :
-                         std::filesystem::directory_iterator(base, e2)) {
-                    std::error_code e3;
-                    if (entry.is_directory(e3)) roots.push_back(entry.path().string());
-                }
-            }
-#endif
-            return roots;
-        }
-
-        // Rebuilds the breadcrumb from the filer's current path: a leading
-        // "Computer" node (drive list) followed by one clickable node per path
-        // segment, each jumping the filer to its cumulative sub-path.
+        // Rebuilds the breadcrumb from the filer's current path through the
+        // shared folder path mechanism (BuildFolderBreadcrumb, also used by the
+        // media viewer): a leading "Computer" node listing the drives, the drive
+        // node, then one clickable node per path segment — each jumping the filer
+        // to its cumulative sub-path.
         void RebuildFilerBreadcrumb(UltraCanvasBreadcrumb* crumb,
                                     UltraCanvasFilerWidget* filer,
                                     const std::string& path) {
             if (!crumb || !filer) return;
-            crumb->Clear();
-
-            std::filesystem::path p(path);
-            std::filesystem::path base = p.root_path();
-            if (base.empty()) base = "/";
-
-            // "Computer": jumps to the current drive root and drops down the
-            // full list of drives / volumes so any of them can be selected.
-            BreadcrumbItem computer("__computer__", "Computer");
-            computer.tooltip = "Computer — show all drives";
-            {
-                std::string rootTarget = base.string();
-                computer.onClick = [filer, rootTarget]() { filer->SetPath(rootTarget); };
-            }
-            std::vector<std::string> drives = ListDriveRoots();
-            if (!drives.empty()) {
-                computer.hasDropdown = true;
-                for (const std::string& d : drives) {
-                    computer.dropdownItems.emplace_back(
-                            d, [filer, d]() { filer->SetPath(d); });
-                }
-            }
-            crumb->AddItem(computer);
-
-            // On Windows the drive letter ("C:") is its own node; on Unix the
-            // root "/" is already covered by "Computer", so segments start below.
-            std::string driveLabel = p.root_name().string();
-            if (!driveLabel.empty()) {
-                BreadcrumbItem drive(driveLabel);
-                std::string target = base.string();
-                drive.onClick = [filer, target]() { filer->SetPath(target); };
-                crumb->AddItem(drive);
-            }
-
-            std::filesystem::path accum = base;
-            for (const auto& part : p.relative_path()) {
-                std::string seg = part.string();
-                if (seg.empty() || seg == "/" || seg == "\\") continue;
-                accum /= part;
-                BreadcrumbItem item(seg);
-                std::string target = accum.string();
-                item.onClick = [filer, target]() { filer->SetPath(target); };
-                crumb->AddItem(item);
-            }
+            BuildFolderBreadcrumb(crumb, path,
+                                  [filer](const std::string& folder) { filer->SetPath(folder); });
         }
 
         // A compact "arrow steps" breadcrumb style, smaller than the standalone

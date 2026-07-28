@@ -22,16 +22,19 @@
 // (ODT is an OpenDocument *text* document, not a spreadsheet, so it is not
 // handled by the spreadsheet engine.)
 //
-// A folder breadcrumb (Parallelogram style) sits at the top: each segment opens
-// that folder, and its dropdown lists the sibling folders at the same level so
-// another folder can be picked; long paths collapse their middle into a "..."
-// overflow menu.
+// A folder breadcrumb (Parallelogram style) sits at the top, built with the
+// same path mechanism the filer uses (BuildFolderBreadcrumb): a leading
+// "Computer" node whose dropdown lists every drive / mounted volume, the drive
+// (or root) node, then one node per folder — the path separator itself is never
+// a node. Each segment opens that folder, and its dropdown lists the sibling
+// folders at the same level so another folder can be picked; long paths
+// collapse their middle into a "..." overflow menu.
 //
 // Drag a folder onto the widget to browse it; drag one or more files to view
 // them.
 //
-// Version: 1.0.0
-// Last Modified: 2026-06-26
+// Version: 1.1.0
+// Last Modified: 2026-07-28
 // Author: UltraCanvas Framework
 #pragma once
 

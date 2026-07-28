@@ -1,7 +1,7 @@
 // core/UltraCanvasBreadcrumb.cpp
 // Hierarchical breadcrumb navigation control implementation
-// Version: 1.3.0
-// Last Modified: 2026-06-20
+// Version: 1.4.0
+// Last Modified: 2026-07-28
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasBreadcrumb.h"
@@ -9,6 +9,7 @@
 #include "UltraCanvasTooltipManager.h"
 #include "CSSLayout/LayoutUtils.h"
 #include <algorithm>
+#include <filesystem>
 #include <optional>
 #include <sstream>
 #include <cmath>
@@ -474,6 +475,18 @@ namespace UltraCanvas {
         separatorHeight = ctx->GetTextLineHeight("Mg");
         rowHeight = std::max<int>(separatorHeight, style.iconSize) + style.itemPaddingVertical * 2;
 
+        // Arrow/Parallelogram styles: segments butt against each other (no separator
+        // and no gap) and each non-first segment reserves a left inset so its content
+        // clears the previous segment's tip/slant. Every other style inserts a
+        // separator with its spacing between neighbours. Overflow handling must use
+        // the same per-neighbour cost the slot builder below applies, otherwise a
+        // segment-styled strip under-measures itself and clips instead of collapsing.
+        const bool segmentStyle = (style.itemStyle == BreadcrumbItemStyle::Arrow
+                                   || style.itemStyle == BreadcrumbItemStyle::Parallelogram);
+        const int arrowDepth = segmentStyle ? std::max(0, style.arrowSize) : 0;
+        const int gapBlock = segmentStyle ? arrowDepth
+                                          : (separatorWidth + style.separatorSpacing * 2);
+
         Rect2Di content = GetLocalContentRect();
         int availableWidth = content.width;
         int currentIdx = ResolvedCurrentIndex();
@@ -500,8 +513,7 @@ namespace UltraCanvas {
             totalWidth += itemWidths[i];
         }
         int separatorsTotal = items.size() > 1
-                              ? static_cast<int>(items.size() - 1)
-                                * (separatorWidth + style.separatorSpacing * 2)
+                              ? static_cast<int>(items.size() - 1) * gapBlock
                               : 0;
         totalWidth += separatorsTotal;
 
@@ -559,7 +571,7 @@ namespace UltraCanvas {
                                             + overflowTextW
                                             + style.dropdownChevronSpacing
                                             + style.dropdownChevronSize;
-                    int sepBlock = separatorWidth + style.separatorSpacing * 2;
+                    int sepBlock = gapBlock;
 
                     int firstIdx = style.keepFirstItemOnCollapse ? 0 : -1;
                     int lastKeep = std::max(currentIdx,
@@ -624,19 +636,12 @@ namespace UltraCanvas {
         int contentBottom = content.y + content.height;
         int centerY = (contentTop + contentBottom) / 2;
 
-        // Arrow/Parallelogram styles: segments butt against each other (no separator/gap)
-        // and each non-first segment reserves a left inset so its content clears the
-        // previous segment's tip/slant.
-        const bool segmentStyle = (style.itemStyle == BreadcrumbItemStyle::Arrow
-                                   || style.itemStyle == BreadcrumbItemStyle::Parallelogram);
-        const int arrowDepth = segmentStyle ? std::max(0, style.arrowSize) : 0;
-
         bool overflowEmitted = false;
 
         for (size_t i = 0; i < items.size(); ++i) {
             // Emit overflow placeholder right before the first hidden gap.
             if (needsOverflow && !visible[i] && !overflowEmitted) {
-                if (!slots.empty()) {
+                if (!slots.empty() && !segmentStyle) {
                     x += style.separatorSpacing;
                     // (Separator drawing computed during Render based on slot layout.)
                     x += separatorWidth + style.separatorSpacing;
@@ -646,10 +651,14 @@ namespace UltraCanvas {
                 oslot.isOverflow = true;
                 Size2Dd oTextSize = overflowLayout ? overflowLayout->GetLayoutSize() : Size2Dd();
                 int textW = static_cast<int>(oTextSize.width);
+                // Like any segment, the placeholder carves a left notch when it follows
+                // another one, so its "..." never sits under the previous tip/slant.
+                int oLeftNotch = (segmentStyle && !slots.empty()) ? arrowDepth : 0;
                 int oWidth = style.itemPaddingHorizontal * 2 + textW
-                             + style.dropdownChevronSpacing + style.dropdownChevronSize;
+                             + style.dropdownChevronSpacing + style.dropdownChevronSize
+                             + oLeftNotch;
                 oslot.rect = Rect2Di(x, centerY - slotHeight / 2, oWidth, slotHeight);
-                int innerX = x + style.itemPaddingHorizontal;
+                int innerX = x + style.itemPaddingHorizontal + oLeftNotch;
                 // Center the glyphs vertically via the text layout itself (full
                 // precision) so they share the exact center line of separators/icons.
                 if (overflowLayout) {
@@ -747,6 +756,12 @@ namespace UltraCanvas {
         ctx->SetFontStyle(style.fontStyle);
         // MeasureSeparator mutates cached separator layout state; const-cast to reuse it.
         int sepW = const_cast<UltraCanvasBreadcrumb*>(this)->MeasureSeparator(ctx);
+        // Same per-neighbour cost RecalculateLayout applies: the notch depth for
+        // interlocking segment styles, a separator plus its spacing otherwise.
+        const bool segmentStyle = (style.itemStyle == BreadcrumbItemStyle::Arrow
+                                   || style.itemStyle == BreadcrumbItemStyle::Parallelogram);
+        const int gapBlock = segmentStyle ? std::max(0, style.arrowSize)
+                                          : (sepW + style.separatorSpacing * 2);
         int currentIdx = ResolvedCurrentIndex();
         int total = 0;
         for (size_t i = 0; i < items.size(); ++i) {
@@ -755,11 +770,61 @@ namespace UltraCanvas {
             Size2Dd sz = layout ? layout->GetLayoutSize() : Size2Dd();
             total += ComputeItemSlotWidth(items[i], sz, true);
             if (i + 1 < items.size()) {
-                total += sepW + style.separatorSpacing * 2;
+                total += gapBlock;
             }
         }
         ctx->PopState();
         return Size2Df((float)total, contentH);
+    }
+
+    // Narrowest width the strip can still render at: what is left once the
+    // overflow strategy has collapsed everything it is allowed to — the kept
+    // first item, the "..." placeholder and the trailing items the style keeps
+    // visible. Reporting this as min-content lets a parent shrink the strip to
+    // its own width instead of being pushed wider by a deep path.
+    float UltraCanvasBreadcrumb::MeasureCollapsedContentWidth(IRenderContext* ctx) const {
+        if (!ctx || items.empty()) return 0.f;
+        // Only Collapse hides whole items; the other modes keep every item and
+        // are measured by their natural width (see ComputeIntrinsicSizes).
+        if (style.overflowMode != BreadcrumbOverflowMode::Collapse) return 0.f;
+
+        ctx->PushState();
+        ctx->SetFontStyle(style.fontStyle);
+        int sepW = const_cast<UltraCanvasBreadcrumb*>(this)->MeasureSeparator(ctx);
+        const bool segmentStyle = (style.itemStyle == BreadcrumbItemStyle::Arrow
+                                   || style.itemStyle == BreadcrumbItemStyle::Parallelogram);
+        const int gapBlock = segmentStyle ? std::max(0, style.arrowSize)
+                                          : (sepW + style.separatorSpacing * 2);
+
+        const int n = static_cast<int>(items.size());
+        const int currentIdx = ResolvedCurrentIndex();
+        // The items collapse can never hide (mirrors RecalculateLayout's rules).
+        std::vector<bool> kept(items.size(), false);
+        if (style.keepFirstItemOnCollapse) kept[0] = true;
+        int lastKeep = std::max(currentIdx, n - std::max(1, style.minVisibleAfterCollapse));
+        for (int i = std::max(0, lastKeep); i < n; ++i) kept[i] = true;
+
+        int total = 0;
+        int slotCount = 0;
+        bool anyHidden = false;
+        for (int i = 0; i < n; ++i) {
+            if (!kept[i]) { anyHidden = true; continue; }
+            bool bold = (i == currentIdx) && style.currentItemBold;
+            auto layout = BuildItemLayout(ctx, items[i].text, bold, style.maxItemTextWidth);
+            Size2Dd sz = layout ? layout->GetLayoutSize() : Size2Dd();
+            total += ComputeItemSlotWidth(items[i], sz, true);
+            ++slotCount;
+        }
+        if (anyHidden) {
+            auto layout = BuildItemLayout(ctx, style.overflowEllipsisText, false, 0);
+            int textW = layout ? static_cast<int>(layout->GetLayoutWidth()) : 0;
+            total += style.itemPaddingHorizontal * 2 + textW
+                     + style.dropdownChevronSpacing + style.dropdownChevronSize;
+            ++slotCount;
+        }
+        if (slotCount > 1) total += (slotCount - 1) * gapBlock;
+        ctx->PopState();
+        return static_cast<float>(total);
     }
 
     Size2Df UltraCanvasBreadcrumb::MeasureOwnContent(std::optional<float> /*definiteContentWidth*/,
@@ -785,10 +850,17 @@ namespace UltraCanvas {
         const float padH = GetTotalPaddingHorizontal() + GetTotalBorderHorizontal();
         const float padV = GetTotalPaddingVertical()   + GetTotalBorderVertical();
         Size2Df content = MeasureContentSize(rc);
-        // Preferred == max-content (the breadcrumb collapses internally at arrange time).
+        // Preferred == max-content (all items uncollapsed). In Collapse mode
+        // min-content is the collapsed floor, so a parent that is too narrow
+        // shrinks the strip into its "..." form instead of being widened by the
+        // path; the other modes cannot drop items, so they stay at max-content.
+        const float collapsedW =
+                (style.overflowMode == BreadcrumbOverflowMode::Collapse)
+                        ? MeasureCollapsedContentWidth(rc)
+                        : content.width;
         intrinsic.valid = true;
         intrinsic.maxContentWidth  = content.width  + padH;
-        intrinsic.minContentWidth  = content.width  + padH;
+        intrinsic.minContentWidth  = std::min(content.width, collapsedW) + padH;
         intrinsic.maxContentHeight = content.height + padV;
         intrinsic.minContentHeight = content.height + padV;
     }
@@ -1336,6 +1408,134 @@ namespace UltraCanvas {
 
     void UltraCanvasBreadcrumb::NotifyPathChanged() {
         if (onPathChanged) onPathChanged();
+    }
+
+// ===== FOLDER PATH MECHANISM =====
+// One implementation shared by every folder-browsing widget (the Filer and the
+// Media Viewer), so a path strip behaves identically wherever it appears.
+
+    std::vector<std::string> ListDriveRoots() {
+        std::vector<std::string> roots;
+        std::error_code ec;
+#ifdef _WIN32
+        for (char c = 'A'; c <= 'Z'; ++c) {
+            std::string drive = std::string(1, c) + ":\\";
+            if (std::filesystem::exists(drive, ec)) roots.push_back(drive);
+        }
+#else
+        roots.push_back("/");
+        for (const char* base : {"/media", "/mnt", "/Volumes"}) {
+            std::error_code e2;
+            if (!std::filesystem::is_directory(base, e2)) continue;
+            for (std::filesystem::directory_iterator it(base, e2), end;
+                 it != end && !e2; it.increment(e2)) {
+                std::error_code e3;
+                if (it->is_directory(e3)) roots.push_back(it->path().string());
+            }
+        }
+#endif
+        return roots;
+    }
+
+    namespace {
+        // The folders sitting next to `folder` (its siblings), listed when a
+        // segment's dropdown is opened. A root has no siblings, so it lists its
+        // own children instead.
+        std::vector<MenuItemData> SiblingFolderMenu(
+                const std::string& folder,
+                const std::function<void(const std::string&)>& onNavigate) {
+            std::vector<MenuItemData> out;
+            std::error_code ec;
+            std::filesystem::path sp(folder);
+            std::filesystem::path parent = sp.parent_path();
+            std::filesystem::path listDir =
+                    (parent.empty() || parent == sp) ? sp : parent;
+            std::vector<std::string> dirs;
+            for (std::filesystem::directory_iterator it(listDir, ec), end;
+                 it != end && !ec; it.increment(ec)) {
+                std::error_code dec;
+                if (it->is_directory(dec)) dirs.push_back(it->path().string());
+            }
+            std::sort(dirs.begin(), dirs.end());
+            for (const std::string& d : dirs) {
+                std::string name = std::filesystem::path(d).filename().string();
+                if (name.empty()) name = d;
+                out.emplace_back(name, [onNavigate, d]() { if (onNavigate) onNavigate(d); });
+            }
+            return out;
+        }
+    }
+
+    void BuildFolderBreadcrumb(UltraCanvasBreadcrumb* crumb,
+                               const std::string& folderPath,
+                               std::function<void(const std::string&)> onNavigate,
+                               const FolderBreadcrumbOptions& options) {
+        if (!crumb) return;
+        crumb->Clear();
+        if (folderPath.empty()) return;
+
+        std::error_code ec;
+        std::filesystem::path p =
+                std::filesystem::weakly_canonical(std::filesystem::path(folderPath), ec);
+        if (ec || p.empty()) p = std::filesystem::path(folderPath);
+
+        std::filesystem::path base = p.root_path();
+        if (base.empty()) base = "/";
+
+        // "Computer": jumps to the current drive root and drops down the full
+        // list of drives / volumes so any of them can be selected.
+        if (options.showComputerItem) {
+            BreadcrumbItem computer("__computer__", options.computerLabel);
+            computer.tooltip = options.computerLabel + " — show all drives";
+            std::string rootTarget = base.string();
+            computer.onClick = [onNavigate, rootTarget]() {
+                if (onNavigate) onNavigate(rootTarget);
+            };
+            std::vector<std::string> drives = ListDriveRoots();
+            if (!drives.empty()) {
+                computer.hasDropdown = true;
+                for (const std::string& d : drives) {
+                    computer.dropdownItems.emplace_back(
+                            d, [onNavigate, d]() { if (onNavigate) onNavigate(d); });
+                }
+            }
+            crumb->AddItem(computer);
+        }
+
+        // On Windows the drive letter ("C:") is its own node; on Unix the root
+        // "/" is already covered by "Computer", so segments start below it.
+        // Either way the separator itself never becomes a node of its own.
+        std::string driveLabel = p.root_name().string();
+        if (driveLabel.empty() && !options.showComputerItem) driveLabel = base.string();
+        if (!driveLabel.empty()) {
+            BreadcrumbItem drive(driveLabel);
+            std::string target = base.string();
+            drive.onClick = [onNavigate, target]() { if (onNavigate) onNavigate(target); };
+            if (options.siblingDropdowns) {
+                drive.hasDropdown = true;
+                drive.dropdownItemsProvider = [onNavigate, target]() {
+                    return SiblingFolderMenu(target, onNavigate);
+                };
+            }
+            crumb->AddItem(drive);
+        }
+
+        std::filesystem::path accum = base;
+        for (const auto& part : p.relative_path()) {
+            std::string seg = part.string();
+            if (seg.empty() || seg == "/" || seg == "\\") continue;
+            accum /= part;
+            BreadcrumbItem item(seg);
+            std::string target = accum.string();
+            item.onClick = [onNavigate, target]() { if (onNavigate) onNavigate(target); };
+            if (options.siblingDropdowns) {
+                item.hasDropdown = true;
+                item.dropdownItemsProvider = [onNavigate, target]() {
+                    return SiblingFolderMenu(target, onNavigate);
+                };
+            }
+            crumb->AddItem(item);
+        }
     }
 
 } // namespace UltraCanvas
