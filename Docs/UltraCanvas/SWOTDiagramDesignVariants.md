@@ -36,6 +36,11 @@ not separate designs:
   white panels with colored accents only.
 - **Header placement** — inside the panel, as a colored strip above the panel,
   or outside the panel connected by dotted leader lines.
+- **Rotated headers** — quadrant names set vertically or diagonally along the
+  diagram's outer edges/corners instead of horizontally above the texts.
+- **Letter rail** — a full-height (or full-width) sidebar strip spelling
+  S-W-O-T in giant stacked letters alongside the four text blocks, replacing
+  per-panel badges (seen with the rows layout D1).
 - **Text presentation** — bullet list, numbered list, or paragraph; with or
   without per-item markers.
 - **Axis captions** — "Internal / External" and "Helpful / Harmful" written
