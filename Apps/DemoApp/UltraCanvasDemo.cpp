@@ -1016,23 +1016,80 @@ namespace UltraCanvas {
                 .AddVariant("waterfallcharts", "Cash Flow with Subtotals")
                 .AddVariant("waterfallcharts", "Performance Impact");
 
+        chartBuilder.AddItem("mekkocharts", "Mekko Chart", "Marimekko / mosaic chart with variable-width stacked columns",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateMekkoChartExamples(); },
+                             "DemoApp/UltraCanvasMekkoChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasMekkoChart.md")
+                .AddVariant("mekkocharts", "Market Share by Sector")
+                .AddVariant("mekkocharts", "Product vs Region Sales Mix")
+                .AddVariant("mekkocharts", "Bar-Mekko Absolute Mode");
+
+        chartBuilder.AddItem("nestedareacharts", "Nested Chart", "Nested proportional area comparison chart",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateNestedAreaChartExamples(); },
+                             "DemoApp/UltraCanvasNestedAreaChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasNestedAreaChartExamples.md")
+                .AddVariant("nestedareacharts", "Rectangle Mode")
+                .AddVariant("nestedareacharts", "Circle Mode")
+                .AddVariant("nestedareacharts", "Theme Showcase");
+
         chartBuilder.AddItem("populationcharts", "Population Chart", "Population chart data visualization",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreatePopulationChartExamples(); },
                              "DemoApp/UltraCanvasPopulationChartExamples.cpp",
                              "Docs/UltraCanvas/UltraCanvasPopulationChartExamples.md");
 
-        chartBuilder.AddItem("sunburstcharts", "Sunburst Chart", "Sunburst Chart",
-                             ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples("Sunburst Chart is not ready yet"); });
+        chartBuilder.AddItem("sunburstcharts", "Sunburst Chart",
+                             "Hierarchical radial partition charts with drill-down zoom, "
+                             "depth shading, partial sweeps and auto-fitting labels",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateSunburstChartExamples(); },
+                             "DemoApp/UltraCanvasSunburstChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasSunburstChartExamples.md")
+                .AddVariant("sunburstcharts", "Three-Level Sales Hierarchy")
+                .AddVariant("sunburstcharts", "Demographic Sunburst")
+                .AddVariant("sunburstcharts", "Partial-Sweep Fan")
+                .AddVariant("sunburstcharts", "Depth-Limited Overview");
 
-        chartBuilder.AddItem("ganttcharts", "Gantt Chart", "Gantt Chart",
-                             ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples("Gantt Chart is not ready yet"); });
+        chartBuilder.AddItem("radialbarcharts", "Radial Bar Chart",
+                             "Value-driven rays around a circle: bar and line styles, "
+                             "cap shapes, gradient fade, ring guides and peak labels",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateRadialBarChartExamples(); },
+                             "DemoApp/UltraCanvasRadialBarChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasRadialBarChartExamples.md")
+                .AddVariant("radialbarcharts", "Multi-Sensor Radial Bars")
+                .AddVariant("radialbarcharts", "Geographic Radial Lines")
+                .AddVariant("radialbarcharts", "Partial-Sweep Fan")
+                .AddVariant("radialbarcharts", "Arrow Rays / Manual Range");
 
-        chartBuilder.AddItem("quadrantcharts", "Quadrant Chart", "Quadrant Chart",
-                             ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples("Quadrant Chart is not ready yet"); });
+        chartBuilder.AddItem("ganttcharts", "Gantt Chart",
+                             "Project schedules with task table, hierarchy, dependencies, "
+                             "milestones, progress, critical path and design presets",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateGanttChartExamples(); },
+                             "DemoApp/UltraCanvasGanttChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasGanttChart.md")
+                .AddVariant("ganttcharts", "Modern Design")
+                .AddVariant("ganttcharts", "Professional / Critical Path")
+                .AddVariant("ganttcharts", "Classic Print Style")
+                .AddVariant("ganttcharts", "Soft Pastel Style")
+                .AddVariant("ganttcharts", "Minimal Project Table")
+                .AddVariant("ganttcharts", "Dark Theme");
+
+        chartBuilder.AddItem("quadrantcharts", "Quadrant Chart",
+                             "Strategic 2x2 matrices: SWOT, BCG, Eisenhower, risk, priority and custom quadrants",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateQuadrantChartExamples(); },
+                             "DemoApp/UltraCanvasQuadrantChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasQuadrantChartExamples.md")
+                .AddVariant("quadrantcharts", "SWOT Analysis")
+                .AddVariant("quadrantcharts", "BCG Matrix")
+                .AddVariant("quadrantcharts", "Eisenhower Matrix")
+                .AddVariant("quadrantcharts", "Risk Matrix")
+                .AddVariant("quadrantcharts", "Priority Matrix")
+                .AddVariant("quadrantcharts", "Custom Quadrants");
 
         chartBuilder.AddItem("circularcharts", "Circular Chart", "Circular Chart",
                              ImplementationStatus::PartiallyImplemented,
@@ -1071,13 +1128,47 @@ namespace UltraCanvas {
                 .AddVariant("waveform", "Display Range")
                 .AddVariant("waveform", "Click-to-seek Playhead");
 
+        chartBuilder.AddItem("spectrogram", "Spectrogram Chart",
+                             "STFT time x frequency analysis of audio signals with every "
+                             "transform and display option adjustable live",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateSpectrogramExamples(); },
+                             "DemoApp/UltraCanvasSpectrogramExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasSpectrogram.md")
+                .AddVariant("spectrogram", "Sample Track & Synthetic Signals")
+                .AddVariant("spectrogram", "FFT Size & Overlap")
+                .AddVariant("spectrogram", "Window Functions")
+                .AddVariant("spectrogram", "Magnitude & Dynamic Range")
+                .AddVariant("spectrogram", "Frequency Cap & Colour Maps");
+
+        chartBuilder.AddItem("audioanalysis", "Audio Analysis Charts",
+                             "Spectrum plot, amplitude envelope and correlogram built with "
+                             "the generic area / bar chart elements",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateAudioAnalysisExamples(); },
+                             "DemoApp/UltraCanvasAudioAnalysisExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasAudioAnalysisExamples.md")
+                .AddVariant("audioanalysis", "Spectrum Plot (Averaged FFT)")
+                .AddVariant("audioanalysis", "Amplitude Envelope (RMS)")
+                .AddVariant("audioanalysis", "Correlogram (Autocorrelation)");
+
         chartBuilder.AddItem("dumbbell", "Dumbbell chart", "Dumbbell chart",
                              ImplementationStatus::PartiallyImplemented,
                              [this]() { return CreatePartiallyImplementedExamples("Dumbbell Chart is not ready yet"); });
 
-        chartBuilder.AddItem("bubblecharts", "Bubble Chart", "Bubble Chart",
-                             ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples("Bubble Chart is not ready yet"); });
+        chartBuilder.AddItem("bubblecharts", "Bubble Chart",
+                             "Scatter bubbles, packed bubbles, bubble matrix and an "
+                             "OpenGL 3D bubble chart",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateBubbleChartExamples(); },
+                             "DemoApp/UltraCanvasBubbleChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasBubbleChart.md")
+                .AddVariant("bubblecharts", "Bubble Matrix (Mrs. President)")
+                .AddVariant("bubblecharts", "Scatter Bubbles (Travel Concerns)")
+                .AddVariant("bubblecharts", "Packed Bubbles")
+                .AddVariant("bubblecharts", "Hierarchical Packing")
+                .AddVariant("bubblecharts", "Bubble Timeline")
+                .AddVariant("bubblecharts", "3D Bubbles (OpenGL)");
 
         chartBuilder.AddItem("contourplot", "Contour plot", "Contour plot",
                              ImplementationStatus::NotImplemented,
@@ -1113,6 +1204,12 @@ namespace UltraCanvas {
                                [this]() { return CreateFlowChartExamples(); },
                                "DemoApp/UltraCanvasFlowChartExamples.cpp",
                                "Docs/UltraCanvas/UltraCanvasFlowChartExamples.md");
+
+        diagramBuilder.AddItem("pertchart", "PERT chart", "Project network with critical path analysis, node designs and palettes",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreatePertChartExamples(); },
+                               "DemoApp/UltraCanvasPertChartExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasPertChartExamples.md");
 
         diagramBuilder.AddItem("venndiagram", "Venn Diagram", "Interactive Venn diagram for set visualization",
                                ImplementationStatus::FullyImplemented,
@@ -1352,6 +1449,19 @@ namespace UltraCanvas {
                 .AddVariant("audio", "FLAC Support")
                 .AddVariant("audio", "MP3 Playback")
                 .AddVariant("audio", "Waveform Visualization");
+
+        audioBuilder.AddItem("levelmeter", "Level Meter / VU Strip",
+                             "Three-zone VU meter and scrolling waveform strip with themeable "
+                             "colours, driven by playback, synthetic or manual levels",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateLevelMeterExamples(); },
+                             "DemoApp/UltraCanvasLevelMeterExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasLevelMeter.md")
+                .AddVariant("levelmeter", "Three-zone VU Meter")
+                .AddVariant("levelmeter", "Scrolling Waveform Strip")
+                .AddVariant("levelmeter", "Custom Colour Themes")
+                .AddVariant("levelmeter", "Live Playback Levels")
+                .AddVariant("levelmeter", "Manual Control & Reset");
 
         auto toolsBuilder = DemoCategoryBuilder(this, DemoCategory::Tools);
 

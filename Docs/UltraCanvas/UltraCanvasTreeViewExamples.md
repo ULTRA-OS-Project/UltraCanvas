@@ -60,6 +60,12 @@ enum class TreeLineStyle {
     Dotted = 1,       // Dotted lines
     Solid = 2         // Solid lines
 };
+
+enum class TreeSortMode {
+    NoSort = 0,       // Preserve insertion order
+    Alphabetic = 1,   // By display name (data.text), case-insensitive
+    LastAccess = 2    // By data.accessSequence (most-recent first when descending)
+};
 ```
 
 ### TreeNodeIcon Structure
@@ -87,7 +93,75 @@ struct TreeNodeData {
     Color backgroundColor = Colors::Transparent; // Background color
     std::string tooltip;                   // Tooltip text
     void* userData = nullptr;              // Custom user data
+
+    // Optional columns — read by column tree views (UltraCanvasColumnsTreeView);
+    // ignored by the base tree, so setting them is always safe.
+    std::string typeText;                  // Type column (e.g. "int", "*ptr")
+    std::string valueText;                 // Value column (e.g. "45", "2x67")
+    Color typeColor = Colors::Transparent; // Type column text override
+    bool isGroupHeader = false;            // Full-width section-header bar
+    uint64_t accessSequence = 0;           // Sort key for TreeSortMode::LastAccess
 };
+```
+
+### Columnar Layout: `UltraCanvasColumnsTreeView`
+
+The base `UltraCanvasTreeView` always renders one text run per row (`data.text`). For
+IDE-style debugger "Variables" / "Watch" panels, the framework provides the subclass
+`UltraCanvasColumnsTreeView` (in `UltraCanvasColumnsTreeView.h`), which adds a columnar
+row layout. It renders each row in one of two modes, switchable at runtime with
+`SetDisplayMode()`:
+
+- **Columns** (default) — three aligned columns drawn from `data.text` (Name),
+  `data.typeText` (Type) and `data.valueText` (Value), with an accent-filled Type
+  column. Nodes with `data.isGroupHeader = true` render as full-width section bars.
+- **Classic** — delegates to the base single-text layout (`data.text` per row).
+
+Hierarchy and expand/collapse work in both modes.
+
+```cpp
+enum class TreeDisplayMode {
+    Classic = 0,      // single-text rows (delegates to the base tree)
+    Columns = 1       // aligned Name / Type / Value columns (default)
+};
+```
+
+Column geometry and colours are controlled by `TreeColumnStyle`
+(`SetColumnStyle()` / `GetColumnStyle()`):
+
+```cpp
+struct TreeColumnStyle {
+    int   typeColumnWidth      = 64;   // fixed Type column width (px)
+    int   valueColumnWidth     = 0;    // 0 => Value takes remaining width
+    int   columnGap            = 8;    // gap between columns (px)
+    int   typeColumnPadding    = 4;    // padding around the Type accent fill
+    Color typeColumnBackground = Color(255, 190, 130);  // orange accent
+    Color typeTextColor        = Color(40, 40, 40);
+    Color valueTextColor       = Color(40, 40, 40);
+    Color groupHeaderBackground = Colors::Black;
+    Color groupHeaderTextColor  = Colors::White;
+    bool  showColumnSeparators  = false;
+    Color columnSeparatorColor  = Color(210, 210, 210);
+};
+```
+
+This layout is intended for IDE-style debugger "Variables" / "Watch" panels — an
+example is in `Apps/DemoApp/UltraCanvasTreeViewExamples.cpp`.
+
+### Sorting Modes
+
+`SetSortMode(TreeSortMode, bool ascending)` sorts the whole tree and remembers the
+choice. `Alphabetic` compares `data.text` case-insensitively; `LastAccess` compares
+`data.accessSequence` (stamp it when a variable is read/written, then sort
+descending to float the most recently touched entries to the top). Node-level and
+alphabetical helpers (`SortNodeChildren`, `SortAllNodes`, `SetAutoSortChildren`)
+remain available.
+
+```cpp
+// IDE debugger Variables panel in columns, sorted by most-recent access
+auto tree = std::make_shared<UltraCanvasColumnsTreeView>("vars");
+tree->SetDisplayMode(TreeDisplayMode::Columns);   // Columns is the default
+tree->SetSortMode(TreeSortMode::LastAccess, /*ascending=*/false);
 ```
 
 ## API Reference

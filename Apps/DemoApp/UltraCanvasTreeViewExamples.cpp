@@ -1,11 +1,12 @@
 // Apps/DemoApp/UltraCanvasDemoExamples.cpp
 // Implementation of all component example creators
-// Version: 1.0.1
-// Last Modified: 2026-05-01
+// Version: 1.0.2
+// Last Modified: 2026-07-26
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasCheckbox.h"
+#include "UltraCanvasColumnsTreeView.h"
 #include "Plugins/Charts/UltraCanvasDivergingBarChart.h"
 #include <sstream>
 #include <random>
@@ -102,6 +103,100 @@ namespace UltraCanvas {
         multiLabel->SetText("Multi-Selection TreeView (Ctrl+Click)");
         multiLabel->SetFontSize(12);
         container->AddChild(multiLabel);
+
+        // ----- Debugger "Variables" panel: Classic vs Modern columns -----
+        // Demonstrates the columnar display mode (Name / Type / Value with an accent
+        // Type column and section-header bars) an IDE debugger would use, plus the
+        // Classic/Modern layout toggle and Alphabetic/Last-access sort options.
+        auto varsTree = std::make_shared<UltraCanvasColumnsTreeView>("VarsTree", 680, 50, 300, 330);
+        varsTree->SetRowHeight(26);
+        varsTree->SetSelectionMode(TreeSelectionMode::Single);
+        varsTree->SetShowExpandButtons(true);
+        varsTree->SetDisplayMode(TreeDisplayMode::Columns);
+        // Define the columns explicitly and show a header row. Name (the tree column)
+        // and Value flex to fill; Type is fixed with the orange accent. Column
+        // boundaries are draggable to resize.
+        varsTree->SetColumns({
+            { "name",  "Name",  0,   0,  2.0f, TextAlignment::Left, Color(40, 40, 40), Colors::Transparent, 0, /*isTreeColumn*/true  },
+            { "type",  "Type",  128, 0,  1.0f, TextAlignment::Left, Color(40, 40, 40), Color(255, 190, 130), 4, false },
+            { "value", "Value", 0,   48, 1.0f, TextAlignment::Left, Color(40, 40, 40), Colors::Transparent, 0, false },
+        });
+        varsTree->SetShowColumnHeader(true);
+
+        // Root renders as a "Variables" section-header bar; the sections hang beneath it.
+        TreeNodeData varsRootData("vars_root", "Variables");
+        varsRootData.isGroupHeader = true;
+        varsTree->SetRootNode(varsRootData);
+        // NOTE: don't expand here — the root has no children yet, so it is still a
+        // Leaf and Expand() is a no-op. The whole tree is expanded via ExpandAll()
+        // once it is fully populated (see below).
+
+        // Helper: a variable row carrying Name / Type / Value + a last-access stamp.
+        auto addVar = [&](const std::string& parent, const std::string& id,
+                          const std::string& name, const std::string& type,
+                          const std::string& value, uint64_t access) {
+            TreeNodeData d(id, name);
+            d.SetCell("type", type);
+            d.SetCell("value", value);
+            d.accessSequence = access;
+            varsTree->AddNode(parent, d);
+        };
+        // Helper: a full-width section header (Line / Loop / function).
+        auto addGroup = [&](const std::string& id, const std::string& title) {
+            TreeNodeData g(id, title);
+            g.isGroupHeader = true;
+            varsTree->AddNode("vars_root", g);
+        };
+
+        addGroup("grp_line", "Line");
+        addVar("grp_line", "v_y",     "y",     "int",  "1",    30);
+        addVar("grp_line", "v_tint",  "tint",  "*ptr", "2x67", 10);
+        addVar("grp_line", "v_xval",  "x-val", "fp",   "2,45", 20);
+
+        addGroup("grp_loop", "Loop");
+        addVar("grp_loop", "v_x",      "x",      "int", "45",  50);
+        addVar("grp_loop", "v_width",  "width",  "int", "257", 40);
+        addVar("grp_loop", "v_height", "height", "int", "400", 60);
+
+        addGroup("grp_fn", "function");
+        addVar("grp_fn", "v_type",   "type",   "str", "\"up\"", 90);
+        addVar("grp_fn", "v_offset", "offset", "int", "13",     70);
+        addVar("grp_fn", "v_border", "border", "int", "8",      80);
+
+        // Expand root + all group headers now that every child exists. Expanding
+        // earlier is a no-op because a childless node is a Leaf, not Collapsed.
+        varsTree->ExpandAll();
+
+        container->AddChild(varsTree);
+
+        auto varsLabel = std::make_shared<UltraCanvasLabel>("VarsTreeLabel", 680, 386, 300, 20);
+        varsLabel->SetText("Debugger Variables (Modern columns)");
+        varsLabel->SetFontSize(12);
+        container->AddChild(varsLabel);
+
+        // Layout toggle: Classic (single text) <-> Modern (columns)
+        auto modernCheckbox = std::make_shared<UltraCanvasCheckbox>(
+            "ModernLayoutCheckbox", 680, 414, 280, 24, "Modern layout (Name / Type / Value)");
+        modernCheckbox->SetChecked(true);
+        modernCheckbox->onStateChanged = [varsTree](CheckedState, CheckedState newState) {
+            varsTree->SetDisplayMode(newState == CheckedState::Checked
+                                         ? TreeDisplayMode::Columns
+                                         : TreeDisplayMode::Classic);
+        };
+        container->AddChild(modernCheckbox);
+
+        // Sort toggle: Alphabetic <-> Last access
+        auto sortCheckbox = std::make_shared<UltraCanvasCheckbox>(
+            "SortLastAccessCheckbox", 680, 444, 280, 24, "Sort by last access (else alphabetic)");
+        sortCheckbox->SetChecked(false);
+        sortCheckbox->onStateChanged = [varsTree](CheckedState, CheckedState newState) {
+            if (newState == CheckedState::Checked) {
+                varsTree->SetSortMode(TreeSortMode::LastAccess, /*ascending=*/false);
+            } else {
+                varsTree->SetSortMode(TreeSortMode::Alphabetic, /*ascending=*/true);
+            }
+        };
+        container->AddChild(sortCheckbox);
 
         return container;
     }

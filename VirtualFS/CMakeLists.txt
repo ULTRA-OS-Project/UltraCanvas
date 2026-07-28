@@ -146,6 +146,19 @@ if(LIBARCHIVE_FOUND)
     )
 endif()
 
+# Vendored miniz (from the UltraCanvas module) enables the raw-copy ZIP
+# delete fast path: surviving entries are copied without recompression.
+# Optional - without it ZIP deletes fall back to the libarchive rewrite.
+set(VIRTUALFS_MINIZ_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../UltraCanvas/third_party/miniz"
+    CACHE PATH "Directory containing miniz.c/miniz.h for the ZIP fast path")
+if(LIBARCHIVE_FOUND AND EXISTS "${VIRTUALFS_MINIZ_DIR}/miniz.c")
+    enable_language(C)
+    message(STATUS "Found miniz: ${VIRTUALFS_MINIZ_DIR} (ZIP delete fast path enabled)")
+    list(APPEND VIRTUALFS_SOURCES "${VIRTUALFS_MINIZ_DIR}/miniz.c")
+    list(APPEND VIRTUALFS_DEFINITIONS VIRTUALFS_HAS_MINIZ)
+    set(VIRTUALFS_MINIZ_FOUND TRUE)
+endif()
+
 # ============================================================================
 # LIBRARY TARGET
 # ============================================================================
@@ -182,6 +195,10 @@ target_include_directories(VirtualFS
 
 if(LIBARCHIVE_FOUND)
     target_include_directories(VirtualFS PRIVATE ${LIBARCHIVE_INCLUDE_DIRS})
+endif()
+
+if(VIRTUALFS_MINIZ_FOUND)
+    target_include_directories(VirtualFS PRIVATE ${VIRTUALFS_MINIZ_DIR})
 endif()
 
 if(ZLIB_FOUND)

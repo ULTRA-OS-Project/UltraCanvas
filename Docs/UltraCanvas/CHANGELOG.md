@@ -1,3 +1,50 @@
+#### 2026-07-28 *0.3.18*
+- Fixed slow video thumbnail generation in MacOS in Album control
+
+#### 2026-07-25 *0.3.17*
+- **UltraCanvasFilerWidget**: double-click vs rename behavior corrected
+  (0.3.16 had it wrong). Double-clicking an entry — name or icon — now always
+  opens/activates it: folders and compressed archives are entered, files fire
+  `onFileActivated` (executable start / open with the designated program).
+  The inline rename is instead triggered Windows-style: a single click on the
+  **name** of the entry that is already the only selected one opens the rename
+  editor after a short delay (500 ms, longer than the double-click interval, so
+  the first click of a double-click never starts a rename). A drag, a
+  double-click, a key press, a refresh or a folder/view change cancels the
+  pending rename.
+- **UltraCanvasFilerWidget**: double-clicking a compressed archive now really
+  opens it like a folder (it always listed as empty before). Three fixes:
+  - The widget listed archive interiors with `VirtualFS_ListDirectory()`
+    without ever initializing VirtualFS, so no archive provider was registered
+    and every archive came back empty. `ScanFolder()` now runs
+    `UltraCanvasVirtualFSBridge::Initialize()` (idempotent) before listing.
+  - VirtualFS entries carry archive-internal paths (`sub/file.txt`); the
+    widget stored them as the entry path, so descending into a folder inside
+    an archive navigated to a nonsense path. Entry paths are now built as
+    `<current folder>/<name>`, giving full virtual paths
+    (`/path/archive.zip/sub`) that also work for nested archives.
+  - Without the VirtualFS module in the build, activating an archive now
+    fires `onFileActivated` like any other file instead of navigating into a
+    permanently empty view.
+- **VirtualFS (libarchive provider)**: archives that store no explicit
+  directory headers (Python `zipfile`, several archivers) now show their
+  subdirectories. The entry cache synthesizes a Directory entry for every
+  path ancestor implied by a member (`sub/b.txt` ⇒ `sub`), so subfolders
+  appear when listing the parent and can be descended into; an explicit
+  directory header arriving later replaces the synthesized entry's metadata
+  without duplicating it in the listing.
+- New **UltraCanvasQuadrantChart** element
+  (`Plugins/Charts/UltraCanvasQuadrantChart`): interactive 2x2 strategic
+  matrices with presets for SWOT, BCG, Ansoff, Eisenhower, Gartner magic
+  quadrant, risk and priority frameworks plus fully custom quadrant
+  labels/colors/axis captions. Data points support per-point color, radius
+  (BCG-style bubbles), shape (circle/square/triangle/diamond) and outline;
+  hover tooltips, click (multi-)selection, double-click callbacks and
+  per-quadrant statistics utilities are built in. New demo page
+  (Charts > Quadrant Chart) with six tabbed examples and runtime style/data
+  controls, plus a programmer's guide in
+  `Docs/UltraCanvas/UltraCanvasQuadrantChartExamples.md`.
+
 #### 2026-07-22 *0.3.16*
 - **UltraCanvasFilerWidget**:
   - Default display font reduced from 13 to 12 px (Windows standard 9pt @ 96dpi).

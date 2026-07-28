@@ -823,25 +823,34 @@ VirtualFSResult VirtualFSManager::AddToArchive(
 
 VirtualFSResult VirtualFSManager::DeleteFromArchive(
     const std::string& archivePath,
-    const std::vector<std::string>& entryPaths) {
-    
+    const std::vector<std::string>& entryPaths,
+    VirtualFSProgressCallback progressCallback) {
+
+    // Rewriting an archive nested inside another archive would only modify
+    // the extracted temp copy — the change would be silently lost.
+    auto resolved = ResolvePath(NormalizePath(archivePath));
+    if (resolved.IsNested()) {
+        return VirtualFSResult::NotSupported;
+    }
+
     auto provider = GetOrOpenArchive(archivePath);
     if (!provider) {
         return VirtualFSResult::ProviderNotFound;
     }
-    
+
     if (!HasCapability(provider->GetCapabilities(), VirtualFSCapability::Delete)) {
         return VirtualFSResult::NotSupported;
     }
-    
-    for (const auto& entryPath : entryPaths) {
-        auto result = provider->Delete(entryPath);
-        if (result != VirtualFSResult::Success) {
-            return result;
-        }
+
+    // One batched call: the provider rewrites the archive once for the whole
+    // set instead of once per entry.
+    auto result = provider->DeleteEntries(entryPaths, progressCallback);
+    if (result == VirtualFSResult::Success) {
+        // Drop any cached file data read from the pre-delete archive.
+        ClearCacheForPath(archivePath);
     }
-    
-    return VirtualFSResult::Success;
+
+    return result;
 }
 
 // ============================================================================

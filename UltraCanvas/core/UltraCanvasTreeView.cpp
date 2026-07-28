@@ -151,6 +151,34 @@ namespace UltraCanvas {
         }
     }
 
+    void TreeNode::SortChildNodes(TreeSortMode mode, bool recursive, bool ascending) {
+        if (mode == TreeSortMode::Alphabetic) {
+            SortChildNodes(recursive, ascending);
+            return;
+        }
+        if (mode == TreeSortMode::LastAccess) {
+            std::sort(children.begin(), children.end(),
+                      [ascending](const std::unique_ptr<TreeNode> &a,
+                                  const std::unique_ptr<TreeNode> &b) {
+                          // Ties fall back to a stable-ish name compare so equal
+                          // sequences keep a predictable order.
+                          if (a->data.accessSequence != b->data.accessSequence) {
+                              return ascending
+                                     ? a->data.accessSequence < b->data.accessSequence
+                                     : a->data.accessSequence > b->data.accessSequence;
+                          }
+                          return CaseInsensitiveTextLess(a->data.text, b->data.text);
+                      });
+            if (recursive) {
+                for (auto &child: children) {
+                    child->SortChildNodes(mode, true, ascending);
+                }
+            }
+            return;
+        }
+        // TreeSortMode::NoSort -> leave order untouched.
+    }
+
 
     /* UltraCanvasTreeView */
 
@@ -356,6 +384,16 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    void UltraCanvasTreeView::SetSortMode(TreeSortMode mode, bool ascending) {
+        sortMode = mode;
+        sortAscending = ascending;
+        if (rootNode && mode != TreeSortMode::NoSort) {
+            rootNode->SortChildNodes(mode, true, ascending);
+        }
+        UpdateScrollbars();
+        RequestRedraw();
+    }
+
     void UltraCanvasTreeView::SelectNode(TreeNode *node, bool addToSelection) {
         if (!node || !node->data.enabled) return;
 
@@ -445,10 +483,11 @@ namespace UltraCanvas {
         if (!node) return;
 
         int nodeY = GetNodeDisplayY(node);
+        int viewHeight = GetHeight() - GetHeaderHeight();   // visible rows sit below the header band
         if (nodeY < scrollOffsetY) {
             scrollOffsetY = nodeY;
-        } else if (nodeY >= scrollOffsetY + GetHeight() - rowHeight) {
-            scrollOffsetY = nodeY - GetHeight() + rowHeight;
+        } else if (nodeY >= scrollOffsetY + viewHeight - rowHeight) {
+            scrollOffsetY = nodeY - viewHeight + rowHeight;
         }
 
         ClampScrollOffset();
@@ -518,9 +557,16 @@ namespace UltraCanvas {
         UltraCanvasUIElement::Render(ctx, dirtyRect);
         // Build local-space content rect (ctx is translated to element origin)
         Rect2Di contentRect = GetLocalContentRect();
+        const int headerHeight = GetHeaderHeight();
         if (rootNode) {
-            int currentY = contentRect.y - scrollOffsetY;
+            // Rows start below the (optional) fixed header band and scroll beneath it.
+            int currentY = contentRect.y + headerHeight - scrollOffsetY;
             RenderNode(ctx, rootNode.get(), currentY, 0, contentRect);
+        }
+
+        // Draw the fixed header band last so rows scrolled up are covered by it.
+        if (headerHeight > 0) {
+            RenderHeader(ctx, Rect2Di(contentRect.x, contentRect.y, contentRect.width, headerHeight));
         }
 
         // Draw scrollbar if needed (translate to scrollbar's bounds origin)
@@ -540,8 +586,9 @@ namespace UltraCanvas {
             return;
         }
 
+        int headerHeight = GetHeaderHeight();
         int totalHeight = GetTotalVisibleHeight();
-        int viewHeight = GetHeight();
+        int viewHeight = GetHeight() - headerHeight;   // rows live below the fixed header band
 
         maxScrollY = std::max(0, totalHeight - viewHeight);
         bool hasVerticalScrollbar = maxScrollY > 0;
@@ -549,15 +596,15 @@ namespace UltraCanvas {
         verticalScrollbar->SetVisible(hasVerticalScrollbar);
 
         if (hasVerticalScrollbar) {
-            // Position scrollbar in element-local space
+            // Position scrollbar in element-local space, below the header band.
             int localPaddingX = GetBorderLeftWidth();
             int localPaddingY = GetBorderTopWidth();
             int paddingW = GetWidth() - GetTotalBorderHorizontal();
             int paddingH = GetHeight() - GetTotalBorderVertical();
             int scrollbarWidth = verticalScrollbar->GetStyle().trackSize;
             int sbX = localPaddingX + paddingW - scrollbarWidth;
-            int sbY = localPaddingY;
-            int sbHeight = paddingH;
+            int sbY = localPaddingY + headerHeight;
+            int sbHeight = paddingH - headerHeight;
 
             verticalScrollbar->SetPosition(sbX, sbY);
             verticalScrollbar->SetSize(scrollbarWidth, sbHeight);
@@ -610,9 +657,10 @@ namespace UltraCanvas {
     TreeNode *UltraCanvasTreeView::GetNodeAtY(int y) {
         if (!rootNode) return nullptr;
 
-        // y is element-local now; subtract local content offset + add scroll
-        int localContentY = GetBorderTopWidth() + GetPaddingTop();
+        // y is element-local now; subtract local content offset + header band + add scroll
+        int localContentY = GetBorderTopWidth() + GetPaddingTop() + GetHeaderHeight();
         int relativeY = y - localContentY + scrollOffsetY;
+        if (relativeY < 0) return nullptr;   // click landed in the fixed header band
         int nodeIndex = relativeY / rowHeight;
 
         if (nodeIndex < 0) return nullptr;
@@ -658,6 +706,17 @@ namespace UltraCanvas {
         int nodeY = currentY;
         int sbWidth = verticalScrollbar->IsVisible() ? verticalScrollbar->GetWidth() : 0;
         int nodeWidth = contentRect.width - sbWidth;
+
+        // Let a subclass fully own the row (e.g. a full-width section-header bar).
+        if (RenderNodeFullRow(ctx, node, nodeY, contentRect, nodeWidth)) {
+            currentY += rowHeight;
+            if (node->IsExpanded()) {
+                for (auto &child: node->children) {
+                    RenderNode(ctx, child.get(), currentY, level + 1, contentRect);
+                }
+            }
+            return;
+        }
 
         // Draw node background
         Color bgColor = backgroundColor;
@@ -706,7 +765,23 @@ namespace UltraCanvas {
             textX += node->data.leftIcon.width + iconSpacing;
         }
 
-        // Draw text
+        // Draw the row's label/content (Classic single text run; subclasses draw columns).
+        RenderNodeLabel(ctx, node, nodeY, textX, nodeWidth, sbWidth, contentRect);
+
+        currentY += rowHeight;
+
+        // Render children if expanded
+        if (node->IsExpanded()) {
+            for (auto &child: node->children) {
+                RenderNode(ctx, child.get(), currentY, level + 1, contentRect);
+            }
+        }
+    }
+
+    void UltraCanvasTreeView::RenderNodeLabel(IRenderContext *ctx, TreeNode *node, int nodeY,
+                                              int textX, int nodeWidth, int sbWidth,
+                                              const Rect2Di &contentRect) {
+        // Classic mode: single text run + optional right icon.
         Color nodeTextColor = node->data.textColor != Colors::Black ? node->data.textColor : textColor;
         ctx->SetFontSize(12);
         ctx->SetTextPaint(nodeTextColor);
@@ -715,7 +790,6 @@ namespace UltraCanvas {
         if (layout) {
             ctx->DrawTextLayout(*layout, Point2Dd(textX, nodeY));
         }
-        //ctx->DrawTextInRect(node->data.text, Rect2Dd(textX, nodeY, nodeWidth - textX, rowHeight));
 
         // Draw right icon
         if (node->data.rightIcon.visible && !node->data.rightIcon.iconPath.empty()) {
@@ -725,15 +799,6 @@ namespace UltraCanvas {
                            Rect2Dd(rightIconX, nodeY + (rowHeight - node->data.rightIcon.height) / 2,
                                    node->data.rightIcon.width, node->data.rightIcon.height),
                            ImageFitMode::Contain);
-        }
-
-        currentY += rowHeight;
-
-        // Render children if expanded
-        if (node->IsExpanded()) {
-            for (auto &child: node->children) {
-                RenderNode(ctx, child.get(), currentY, level + 1, contentRect);
-            }
         }
     }
 

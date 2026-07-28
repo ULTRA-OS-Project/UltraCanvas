@@ -7,7 +7,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(UltraCanvasDemoApp
-    VERSION 0.3.16
+    VERSION 0.3.18
     DESCRIPTION "UltraCanvas Framework Demo Application"
     LANGUAGES CXX
 )
@@ -60,6 +60,7 @@ option(ULTRACANVAS_USE_VIRTUALFS "Build the VirtualFS module and the UltraCanvas
 
 include(FetchContent)
 include(cmake/UltraCanvasAppIcon.cmake)
+include(cmake/UltraCanvasWinManifest.cmake)
 
 # ===== FIND REQUIRED PACKAGES =====
 find_package(PkgConfig REQUIRED)
@@ -147,6 +148,8 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasBasicChartsExamples.cpp
             Apps/DemoApp/UltraCanvasDivergingChartExamples.cpp
             Apps/DemoApp/UltraCanvasWatefallChartExamples.cpp
+            Apps/DemoApp/UltraCanvasMekkoChartExamples.cpp
+            Apps/DemoApp/UltraCanvasNestedAreaChartExamples.cpp
             Apps/DemoApp/UltraCanvasFinancialChartExamples.cpp
             Apps/DemoApp/UltraCanvasCheckboxExamples.cpp
             Apps/DemoApp/UltraCanvasDemoInfoWindow.cpp
@@ -158,8 +161,12 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasBlockDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasNodeDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasFlowChartExamples.cpp
+            Apps/DemoApp/UltraCanvasPertChartExamples.cpp
             Apps/DemoApp/UltraCanvasGourceTreeExamples.cpp
             Apps/DemoApp/UltraCanvasJitterPlotExamples.cpp
+            Apps/DemoApp/UltraCanvasBubbleChartExamples.cpp
+            Apps/DemoApp/UltraCanvasQuadrantChartExamples.cpp
+            Apps/DemoApp/UltraCanvasGanttChartExamples.cpp
             Apps/DemoApp/UltraCanvasPopulationChartExamples.cpp
             Apps/DemoApp/UltraCanvasSegmentedControlExamples.cpp
             Apps/DemoApp/UltraCanvasBreadcrumbExamples.cpp
@@ -169,6 +176,8 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp
             Apps/DemoApp/UltraCanvasTextRenderingExamples.cpp
             Apps/DemoApp/UltraCanvasPieChartExamples.cpp
+            Apps/DemoApp/UltraCanvasSunburstChartExamples.cpp
+            Apps/DemoApp/UltraCanvasRadialBarChartExamples.cpp
             Apps/DemoApp/UltraCanvasRadarChartExamples.cpp
             Apps/DemoApp/UltraCanvasHeatmapExamples.cpp
             Apps/DemoApp/UltraCanvasAdjacencyDiagramExamples.cpp
@@ -186,6 +195,9 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasAudioFXExamples.cpp
             Apps/DemoApp/UltraCanvasEBookExamples.cpp
             Apps/DemoApp/UltraCanvasWaveformExamples.cpp
+            Apps/DemoApp/UltraCanvasSpectrogramExamples.cpp
+            Apps/DemoApp/UltraCanvasLevelMeterExamples.cpp
+            Apps/DemoApp/UltraCanvasAudioAnalysisExamples.cpp
             Apps/DemoApp/UltraCanvasPDFExamples.cpp
             Apps/DemoApp/UltraCanvasLaTeXExamples.cpp
             Apps/DemoApp/UltraCanvasFileLoaderExamples.cpp
@@ -363,6 +375,10 @@ if(BUILD_DEMO_APP)
     # Embed app icon in .exe (Windows only)
     ultracanvas_embed_app_icon(UltraCanvasDemo
         "${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/Demo.png")
+
+    # Embed manifest with UTF-8 active code page (Windows only) so paths with
+    # characters outside the legacy ANSI code page work in all narrow APIs
+    ultracanvas_embed_windows_manifest(UltraCanvasDemo)
     
     # Compiler warnings
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -639,6 +655,9 @@ if (BUILD_FILEMANAGER_APP)
             OUTPUT_NAME "UCFileManager"
             RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/..
     )
+
+    # Embed manifest with UTF-8 active code page (Windows only)
+    ultracanvas_embed_windows_manifest(UCFileManager)
 endif()
 
 # Hide console window on Windows Release builds

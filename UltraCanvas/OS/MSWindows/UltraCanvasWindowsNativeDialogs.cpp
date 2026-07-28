@@ -18,6 +18,7 @@
 #include <commdlg.h>
 #include <shlobj.h>
 #include <shobjidl.h>
+#include <filesystem>
 #include <iostream>
 #include <fstream>
 #include "UltraCanvasDebug.h"
@@ -731,21 +732,23 @@ namespace UltraCanvas {
 
         HWND hwndParent = ToHWND(parent);
 
-        // Write content to a temp file
-        char tmpPath[MAX_PATH];
-        GetTempPathA(MAX_PATH, tmpPath);
-        std::string tmpFile = std::string(tmpPath) + "ultratexter_print.txt";
+        // Write content to a temp file. Wide APIs throughout: the temp path
+        // contains the user profile directory, whose name may not be
+        // representable in the ANSI code page.
+        wchar_t tmpPath[MAX_PATH];
+        GetTempPathW(MAX_PATH, tmpPath);
+        std::wstring tmpFile = std::wstring(tmpPath) + L"ultratexter_print.txt";
         {
-            std::ofstream f(tmpFile, std::ios::binary);
+            std::ofstream f(std::filesystem::path(tmpFile), std::ios::binary);
             if (!f.is_open()) return false;
             f << textContent;
         }
 
         // Use ShellExecute "print" verb — triggers the OS print dialog
         // for .txt files via Notepad or the registered text handler
-        HINSTANCE result = ShellExecuteA(
+        HINSTANCE result = ShellExecuteW(
                 hwndParent,
-                "print",
+                L"print",
                 tmpFile.c_str(),
                 nullptr,
                 nullptr,

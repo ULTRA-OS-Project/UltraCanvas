@@ -10,6 +10,7 @@
 #include "UltraCanvasUtils.h"
 #include <string>
 #include <vector>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <algorithm>
@@ -32,6 +33,19 @@ namespace UltraCanvas {
 
     std::string GetExecutableDir();
     std::string NormalizePath(const std::string& in);
+
+    // UltraCanvas strings are UTF-8 everywhere. On Windows the narrow CRT /
+    // ANSI Win32 APIs interpret narrow strings in the legacy system code page,
+    // so characters outside it (Thai, CJK, ...) get mangled to '?'. These
+    // helpers convert a UTF-8 string to a std::filesystem::path via UTF-16 so
+    // file opens and directory walks work for any file name; on other
+    // platforms they pass through unchanged.
+    std::filesystem::path PathFromUtf8(const std::string& utf8);
+    std::string PathToUtf8(const std::filesystem::path& p);
+#if defined(_WIN32) || defined(_WIN64)
+    std::wstring Utf8ToWide(const std::string& utf8);
+    std::string WideToUtf8(const std::wstring& wide);
+#endif
 
     void OpenURL(const std::string& url);
 

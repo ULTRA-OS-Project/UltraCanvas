@@ -9,8 +9,14 @@
 //   Capture  : AVCaptureSession with an AVCaptureVideoDataOutput (live preview)
 //              and an AVCaptureMovieFileOutput (records video + audio to file).
 //
-// Version: 0.1.2
-// Last Modified: 2026-07-23
+// Version: 0.1.3
+// Last Modified: 2026-07-28
+// V0.1.3: Native fast poster-frame grab. AVFBackend now implements GrabThumbnail
+//   via AVAssetImageGenerator (synchronous, no playback / audio device), so video
+//   thumbnails no longer fall back to the generic decode-session path that spins
+//   up an AVPlayer and can wait up to 8s per clip. Turns each grab into ~50-200ms
+//   (e.g. the Album demo's video posters), returning null on failure so the
+//   generic fallback still applies.
 // V0.1.2: Camera capture adapts to any camera mode. The session preset is chosen from
 //   a graceful fallback chain (a tier near the requested height, else High/Medium/Low)
 //   instead of hard-pinning 1280x720, and frame conversion defensively refuses any
@@ -22,8 +28,11 @@
 #import <AVFoundation/AVFoundation.h>
 #import <CoreVideo/CoreVideo.h>
 #import <CoreMedia/CoreMedia.h>
+#import <CoreGraphics/CoreGraphics.h>
 
+#include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <mutex>
 
 namespace UltraCanvas {
@@ -60,6 +69,47 @@ UCVideoFramePtr FrameFromPixelBuffer(CVPixelBufferRef pb, double pts) {
         frame->SetInfo(fi);
     }
     CVPixelBufferUnlockBaseAddress(pb, kCVPixelBufferLock_ReadOnly);
+    return frame;
+}
+
+// Build a UCVideoFrame (packed BGRA) from a CGImage — the poster / thumbnail
+// path (AVAssetImageGenerator hands back a CGImage, not a pixel buffer). Matches
+// FrameFromPixelBuffer's layout exactly: tightly packed, stride = w*4, byte order
+// B,G,R,A (kCGImageAlphaPremultipliedFirst | ByteOrder32Little), so the downstream
+// FitWithin() / SaveFrameAsQoi() read the channels correctly.
+UCVideoFramePtr FrameFromCGImage(CGImageRef img, double pts) {
+    if (!img) return nullptr;
+    const int w = (int)CGImageGetWidth(img);
+    const int h = (int)CGImageGetHeight(img);
+    if (w <= 0 || h <= 0) return nullptr;
+
+    const size_t stride = (size_t)w * 4;
+    auto frame = std::make_shared<UCVideoFrame>();
+    VideoFrameInfo fi;
+    fi.width = w; fi.height = h;
+    fi.pixelFormat = VideoPixelFormat::BGRA32;
+    fi.stride = (int)stride;
+    fi.pts = pts;
+    auto& out = frame->MutableData();
+    out.resize(stride * (size_t)h);
+
+    CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+    if (!cs) return nullptr;
+    CGContextRef ctx = CGBitmapContextCreate(
+        out.data(), (size_t)w, (size_t)h, 8, stride, cs,
+        kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little);
+    CGColorSpaceRelease(cs);
+    if (!ctx) return nullptr;
+
+    // A raw CGBitmapContext is NOT pre-flipped (unlike a UIKit/AppKit context):
+    // its data buffer's first scanline already maps to the top of the image, so
+    // drawing the upright CGImage with an identity CTM yields an upright
+    // top-to-bottom buffer — matching UCVideoFrame's row order. No flip needed
+    // (flipping the CTM here would store it upside-down).
+    CGContextDrawImage(ctx, CGRectMake(0, 0, w, h), img);
+    CGContextRelease(ctx);
+
+    frame->SetInfo(fi);
     return frame;
 }
 
@@ -430,6 +480,59 @@ public:
     }
     std::unique_ptr<IVideoCaptureSession> OpenCapture(const VideoCaptureParams& p) override {
         return std::make_unique<AVFCaptureSession>(p);
+    }
+
+    // Fast single-frame poster grab. AVAssetImageGenerator decodes one frame
+    // synchronously without starting playback or touching the audio device, so
+    // this avoids the generic decode-session fallback (a full AVPlayer + exact
+    // seek that can wait up to 8s per clip). Returns null on any failure so the
+    // caller still falls back to the generic path.
+    UCVideoFramePtr GrabThumbnail(const std::string& source,
+                                  const VideoThumbnailRequest& req) override {
+        if (source.empty()) return nullptr;
+        @autoreleasepool {
+            NSString* s = [NSString stringWithUTF8String:source.c_str()];
+            NSURL* url = [s containsString:@"://"] ? [NSURL URLWithString:s]
+                                                   : [NSURL fileURLWithPath:s];
+            if (!url) return nullptr;
+
+            AVURLAsset* asset = [AVURLAsset URLAssetWithURL:url options:nil];
+            if (!asset) return nullptr;
+            AVAssetImageGenerator* gen =
+                [AVAssetImageGenerator assetImageGeneratorWithAsset:asset];
+            if (!gen) return nullptr;
+            gen.appliesPreferredTrackTransform = YES;   // upright + correct aspect
+            // A small tolerance grabs the nearest already-decodable frame, which
+            // is far faster than an exact (keyframe-walk) seek and invisible for a
+            // poster.
+            gen.requestedTimeToleranceBefore = CMTimeMakeWithSeconds(0.5, 600);
+            gen.requestedTimeToleranceAfter  = CMTimeMakeWithSeconds(0.5, 600);
+            // Optional pre-scale. FitWithin() still enforces the exact box, so this
+            // is purely an optimization; maximumSize is an aspect-preserving bound.
+            if (req.maxWidth > 0 && req.maxHeight > 0)
+                gen.maximumSize = CGSizeMake(req.maxWidth, req.maxHeight);
+
+            // Match the generic fallback's auto position (~10% in, capped at 1s) so
+            // we skip black intros; honour an explicit request otherwise.
+            double target = req.timeSeconds;
+            if (target < 0.0) {
+                double dur = CMTimeGetSeconds(asset.duration);
+                if (!std::isfinite(dur)) dur = 0.0;
+                target = (dur > 1.0) ? std::min(dur * 0.1, 1.0) : 0.0;
+            }
+
+            NSError* err = nil;
+            CMTime actual = kCMTimeZero;
+            CGImageRef img = [gen copyCGImageAtTime:CMTimeMakeWithSeconds(target, 600)
+                                         actualTime:&actual
+                                              error:&err];
+            if (!img) return nullptr;   // → generic decode-session fallback runs
+            double pts = CMTimeGetSeconds(actual);
+            if (!std::isfinite(pts)) pts = target;
+            UCVideoFramePtr frame = FrameFromCGImage(img, pts);
+            CGImageRelease(img);        // copyCGImage returns +1; ARC won't free CF
+            return frame;
+        }
     }
 };
 

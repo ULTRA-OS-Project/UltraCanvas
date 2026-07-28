@@ -832,6 +832,38 @@ namespace UltraCanvas {
 
         FcConfig* cfg = FcConfigGetCurrent();
 
+        // Packaged builds ship no fonts.conf, so the current FcConfig usually
+        // knows no font directories at all — Pango then only ever sees the
+        // bundled fonts added below, and scripts they don't cover (Thai, CJK,
+        // Arabic, ...) have no fallback and render as boxes. If the config is
+        // empty, teach it the Windows system + per-user font directories and
+        // a cache dir so the scan doesn't repeat on every launch.
+        // WINDOWSFONTDIR / WINDOWSUSERFONTDIR / LOCAL_APPDATA_FONTCONFIG_CACHE
+        // are fontconfig's built-in Windows keywords.
+        if (cfg) {
+            bool hasFontDirs = false;
+            if (FcStrList* dirs = FcConfigGetFontDirs(cfg)) {
+                hasFontDirs = (FcStrListNext(dirs) != nullptr);
+                FcStrListDone(dirs);
+            }
+            if (!hasFontDirs) {
+                static const char kSystemFontsConfig[] =
+                    "<?xml version=\"1.0\"?>"
+                    "<!DOCTYPE fontconfig SYSTEM \"fonts.dtd\">"
+                    "<fontconfig>"
+                    "<dir>WINDOWSFONTDIR</dir>"
+                    "<dir>WINDOWSUSERFONTDIR</dir>"
+                    "<cachedir>LOCAL_APPDATA_FONTCONFIG_CACHE</cachedir>"
+                    "</fontconfig>";
+                if (!FcConfigParseAndLoadFromMemory(cfg,
+                        reinterpret_cast<const FcChar8*>(kSystemFontsConfig),
+                        FcFalse)) {
+                    debugOutput << "UltraCanvas: failed to add Windows system "
+                                   "font dirs to fontconfig" << std::endl;
+                }
+            }
+        }
+
         for (size_t i = 0; i < kEmbeddedAllFontsCount; ++i) {
             std::string path = dir + kEmbeddedAllFonts[i];
             if (!std::filesystem::exists(path)) {

@@ -13,6 +13,8 @@
 #include <memory>
 #include <functional>
 #include <unordered_map>
+#include <map>
+#include <cstdint>
 
 namespace UltraCanvas {
 
@@ -36,6 +38,17 @@ enum class TreeLineStyle {
     Solid = 2       // Solid connecting lines
 };
 
+// ===== TREE SORT MODE =====
+// Ordering applied to a node's children. LastAccess orders by TreeNodeData::accessSequence
+// (largest first when ascending=false), which callers stamp when a value is touched.
+// NB: value is NoSort (not "None") deliberately — <X11/Xlib.h>, pulled in by the
+// Linux backend, #defines `None`, which would mangle an enumerator named None.
+enum class TreeSortMode {
+    NoSort = 0,      // preserve insertion order
+    Alphabetic = 1,  // by display name (data.text), case-insensitive
+    LastAccess = 2   // by data.accessSequence
+};
+
 struct TreeNodeIcon {
     std::string iconPath;
     int width = 16;
@@ -45,6 +58,18 @@ struct TreeNodeIcon {
     TreeNodeIcon() = default;
     TreeNodeIcon(const std::string& path, int w = 16, int h = 16) 
         : iconPath(path), width(w), height(h) {}
+};
+
+// ===== COLUMN CELL DATA =====
+// One cell value for a column tree view (see UltraCanvasColumnsTreeView). The
+// tree/name column reads its text from TreeNodeData::text; every other column
+// reads its cell from TreeNodeData::cells, keyed by the column's id.
+struct TreeCellData {
+    std::string text;                          // cell text
+    Color       textColor = Colors::Transparent; // Transparent => use the column's default color
+    TreeCellData() = default;
+    TreeCellData(std::string t, Color c = Colors::Transparent)
+        : text(std::move(t)), textColor(c) {}
 };
 
 struct TreeNodeData {
@@ -62,7 +87,28 @@ struct TreeNodeData {
     Color backgroundColor = Colors::Transparent; // Background color (transparent by default)
     std::string tooltip;          // Tooltip text
     void* userData = nullptr;     // Custom user data
-    
+
+    // ----- Optional columns (used by column tree views, see UltraCanvasColumnsTreeView) -----
+    // The base tree renders a single line from `text`. A column tree view treats
+    // `text` as the tree/name column and reads `cells` (keyed by column id) for
+    // every other column. `cells` is ignored by the base tree, so setting it is
+    // always safe.
+    std::map<std::string, TreeCellData> cells; // per-column values, keyed by TreeViewColumn::id
+    bool  isGroupHeader = false;  // Render this row as a full-width section-header bar (Line/Loop/...)
+
+    // Set/get a column cell by column id. The tree/name column uses `text`, not `cells`.
+    void SetCell(const std::string& colId, std::string text, Color color = Colors::Transparent) {
+        cells[colId] = TreeCellData(std::move(text), color);
+    }
+    const TreeCellData* GetCell(const std::string& colId) const {
+        auto it = cells.find(colId);
+        return it == cells.end() ? nullptr : &it->second;
+    }
+    // Ordering key for TreeSortMode::LastAccess. Callers stamp a monotonically
+    // increasing value each time the variable is read/written so the most recently
+    // accessed entries can float to the top.
+    uint64_t accessSequence = 0;
+
     TreeNodeData() = default;
     TreeNodeData(const std::string& id, const std::string& displayText) 
         : nodeId(id), text(displayText) {}
@@ -96,6 +142,11 @@ public:
     // Sort direct children alphabetically (case-insensitive) by data.text.
     // recursive=true also sorts every descendant level. ascending=false reverses.
     void SortChildNodes(bool recursive = false, bool ascending = true);
+
+    // Sort direct children by the given mode (Alphabetic by data.text, or LastAccess
+    // by data.accessSequence). TreeSortMode::NoSort is a no-op. recursive=true also sorts
+    // every descendant level. ascending=false reverses the order.
+    void SortChildNodes(TreeSortMode mode, bool recursive = false, bool ascending = true);
 
     // ===== STATE MANAGEMENT =====
     void Expand();
@@ -138,6 +189,10 @@ private:
     bool autoExpandSelectedNode;  // auto expand selected node
     bool autoSortChildren = false; // keep children sorted alphabetically on insert
     bool autoSortAscending = true; // direction used by auto-sort
+
+    // Active sort (applied by SetSortMode / re-applied by SortAllNodes)
+    TreeSortMode sortMode = TreeSortMode::NoSort;
+    bool sortAscending = true;
 
     // Colors
 //    Color backgroundColor;       // Tree background color
@@ -235,6 +290,12 @@ public:
     void SetAutoSortChildren(bool enable, bool ascending = true);
     bool GetAutoSortChildren() const { return autoSortChildren; }
 
+    // Sort the whole tree by the given mode and remember it as the active sort
+    // (re-applied by SortAllNodes()). Pass TreeSortMode::NoSort to leave order as-is.
+    void SetSortMode(TreeSortMode mode, bool ascending = true);
+    TreeSortMode GetSortMode() const { return sortMode; }
+    bool GetSortAscending() const { return sortAscending; }
+
     // On-demand sort of a specified node's children (no-op if not found / null).
     void SortNodeChildren(const std::string& nodeId, bool recursive = false, bool ascending = true);
     void SortNodeChildren(TreeNode* node, bool recursive = false, bool ascending = true);
@@ -261,12 +322,47 @@ public:
 // ==== WINDOW PROPAGATION =====
     void SetWindow(UltraCanvasWindowBase* win) override;
 
+protected:
+    // ===== ROW RENDERING EXTENSION POINTS =====
+    // Hooks that let a subclass (e.g. UltraCanvasColumnsTreeView) customise how a
+    // row is drawn without re-implementing the whole RenderNode traversal.
+
+    // Draw a row that occupies the entire width (e.g. a section-header bar) instead
+    // of the normal background/expander/label. Return true if the row was fully
+    // handled, in which case RenderNode skips its own drawing for this node.
+    virtual bool RenderNodeFullRow(IRenderContext* ctx, TreeNode* node, int nodeY,
+                                   const Rect2Di& contentRect, int rowWidth) { return false; }
+
+    // Draw the row's content to the right of the expander/left-icon. The base draws
+    // a single text run + optional right icon (Classic). Subclasses override to draw
+    // columns.
+    virtual void RenderNodeLabel(IRenderContext* ctx, TreeNode* node, int nodeY,
+                                 int textX, int nodeWidth, int sbWidth,
+                                 const Rect2Di& contentRect);
+
+    // ===== OPTIONAL FIXED HEADER BAND =====
+    // Height (px) of a fixed header band drawn at the top of the content area; the
+    // rows scroll beneath it. The base tree has no header, so this returns 0 and
+    // every layout/scroll/hit-test calculation below becomes a no-op. A subclass
+    // (e.g. UltraCanvasColumnsTreeView) overrides both to draw column titles.
+    virtual int  GetHeaderHeight() const { return 0; }
+    virtual void RenderHeader(IRenderContext* ctx, const Rect2Di& headerRect) {}
+
+    // Read-only access for subclass renderers.
+    int   GetTextPadding() const { return textPadding; }
+    Color GetTextColor()   const { return textColor; }
+    // Width reserved on the right for the vertical scrollbar (0 when hidden).
+    int   GetVerticalScrollbarWidth() const {
+        return (verticalScrollbar && verticalScrollbar->IsVisible()) ? verticalScrollbar->GetWidth() : 0;
+    }
+    // Recompute scrollbar geometry (e.g. after a subclass changes GetHeaderHeight()).
+    void  UpdateScrollbars();
+
 private:
 
     // ===== SCROLLBAR MANAGEMENT =====
     void CreateScrollbar();
-    void UpdateScrollbars();
-    
+
     void ClampScrollOffset();
     
     int GetTotalVisibleHeight();
