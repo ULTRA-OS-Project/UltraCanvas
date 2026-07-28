@@ -1,10 +1,11 @@
 // Plugins/Charts/UltraCanvasRadarChartElement.cpp
 // Comprehensive radar chart implementation with multi-axis visualization
-// Version: 2.1.0
-// Last Modified: 2026-06-21
+// Version: 2.2.0 (Axis labels and auto legend placed by the shared label placement solver)
+// Last Modified: 2026-07-24
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasRadarChartElement.h"
+#include "Plugins/Charts/UltraCanvasLabelPlacement.h"
 #include "UltraCanvasTooltipManager.h"
 #include "UltraCanvasApplication.h"
 #include <cmath>
@@ -103,11 +104,8 @@ namespace UltraCanvas {
         centerPoint.x = bounds.x + labelMargin + maxRadius;
         centerPoint.y = bounds.y + labelMargin + maxRadius;
 
-        // Auto-position legend if no explicit position was given
-        if (showLegend && legendPosition.x == 0 && legendPosition.y == 0) {
-            legendPosition.x = centerPoint.x + maxRadius + 20.0f;
-            legendPosition.y = centerPoint.y - (series.size() * 20.0f) * 0.5f;
-        }
+        // Legend: (0,0) keeps auto mode — DrawRadarLegend places it with the
+        // shared label placement solver so it avoids the axis labels.
     }
 
     UltraCanvasRadarChartElement::~UltraCanvasRadarChartElement() {
@@ -251,6 +249,7 @@ namespace UltraCanvas {
 // =============================================================================
 
     void UltraCanvasRadarChartElement::DrawAxisLabels(IRenderContext* ctx) {
+        axisLabelRects.clear();
         if (axes.empty()) return;
 
         ctx->SetFontFamily(axisLabelFont);
@@ -258,38 +257,40 @@ namespace UltraCanvas {
         ctx->SetFontWeight(FontWeight::Normal);
         ctx->SetTextPaint(axisLabelColor);
 
+        // The shared solver places every axis label radially at its axis
+        // angle, keeps labels from overlapping each other, and clamps them
+        // into the element bounds (long names used to be clipped at the
+        // left/right edges).
+        std::vector<LabelShape> shapes;
+        LabelShape chart;
+        chart.type = LabelShapeType::Circle;
+        chart.center = Point2Dd(centerPoint.x, centerPoint.y);
+        chart.radius = maxRadius;
+        shapes.push_back(chart);
+
         float angleStep = 360.0f / static_cast<float>(axes.size());
-
+        std::vector<ShapeLabel> labels;
+        labels.reserve(axes.size());
         for (size_t i = 0; i < axes.size(); ++i) {
-            const auto& axis = axes[i];
-            float angle = startAngle + (clockwiseRotation ? 1.0f : -1.0f) * angleStep * static_cast<float>(i);
+            ShapeLabel l;
+            l.text = axes[i].name;
+            l.shapeIndex = 0;
+            l.preferredSide = LabelSide::Radial;
+            l.radialAngleDeg = startAngle + (clockwiseRotation ? 1.0f : -1.0f)
+                               * angleStep * static_cast<float>(i);
+            l.textSize = Size2Dd(ctx->GetTextLineDimensions(l.text));
+            labels.push_back(l);
+        }
 
-            float labelRadius = maxRadius + axisLabelFontSize;
-            Point2Df labelPos = PolarToScreen(angle, labelRadius);
+        LabelPlacementOptions opts;
+        opts.bounds = Rect2Dd(GetLocalBounds());
+        opts.shapeMargin = axisLabelFontSize * 0.5;
+        opts.labelMargin = 4.0;
 
-            Size2Di textSize = ctx->GetTextLineDimensions(axis.name);
-
-            float radians = angle * static_cast<float>(M_PI) / 180.0f;
-
-            // Horizontal alignment based on angle
-            if (std::cos(radians) < -0.5f) {
-                labelPos.x -= textSize.width;
-            } else if (std::cos(radians) > 0.5f) {
-                // keep
-            } else {
-                labelPos.x -= textSize.width * 0.5f;
-            }
-
-            // Vertical alignment based on angle
-            if (std::sin(radians) < -0.5f) {
-                labelPos.y -= textSize.height;
-            } else if (std::sin(radians) > 0.5f) {
-                // keep
-            } else {
-                labelPos.y -= textSize.height * 0.5f;
-            }
-
-            ctx->DrawText(axis.name, Point2Dd(labelPos.x, labelPos.y));
+        std::vector<PlacedShapeLabel> placed = PlaceShapeLabels(shapes, labels, opts);
+        for (size_t i = 0; i < placed.size(); ++i) {
+            ctx->DrawText(labels[i].text, placed[i].bounds.TopLeft());
+            axisLabelRects.push_back(placed[i].bounds);
         }
     }
 
@@ -398,8 +399,45 @@ namespace UltraCanvas {
         float legendWidth = 120.0f;
         float legendHeight = series.size() * legendItemHeight + legendPadding * 2;
 
+        Point2Df legendPos = legendPosition;
+        if (legendPos.x == 0 && legendPos.y == 0) {
+            // Auto placement: treat the legend box as a label of the chart
+            // circle, with the axis labels as obstacles, so it settles on the
+            // least crowded side instead of covering the right axis label.
+            std::vector<LabelShape> shapes;
+            LabelShape chart;
+            chart.type = LabelShapeType::Circle;
+            chart.center = Point2Dd(centerPoint.x, centerPoint.y);
+            chart.radius = maxRadius;
+            shapes.push_back(chart);
+            for (const Rect2Dd& r : axisLabelRects) {
+                LabelShape s;
+                s.type = LabelShapeType::Rectangle;
+                s.center = r.Center();
+                s.size = Size2Dd(r.width, r.height);
+                shapes.push_back(s);   // obstacle-only
+            }
+
+            ShapeLabel box;
+            box.text = "legend";
+            box.shapeIndex = 0;
+            box.preferredSide = LabelSide::Right;
+            box.textSize = Size2Dd(legendWidth, legendHeight);
+
+            LabelPlacementOptions opts;
+            opts.bounds = Rect2Dd(GetLocalBounds());
+            opts.shapeMargin = 16.0;
+            opts.labelMargin = 6.0;
+
+            std::vector<PlacedShapeLabel> placed = PlaceShapeLabels(shapes, {box}, opts);
+            if (!placed.empty()) {
+                legendPos.x = static_cast<float>(placed[0].bounds.x);
+                legendPos.y = static_cast<float>(placed[0].bounds.y);
+            }
+        }
+
         // Legend background + border
-        ctx->DrawFilledRectangle(Rect2Dd(legendPosition.x, legendPosition.y, legendWidth, legendHeight),
+        ctx->DrawFilledRectangle(Rect2Dd(legendPos.x, legendPos.y, legendWidth, legendHeight),
                                  legendBackgroundColor, 1.0f, Color(160, 160, 160, 255));
 
         ctx->SetFontFamily(axisLabelFont);
@@ -409,17 +447,17 @@ namespace UltraCanvas {
         for (size_t i = 0; i < series.size(); ++i) {
             const auto& currentSeries = series[i];
 
-            float itemY = legendPosition.y + legendPadding + i * legendItemHeight;
+            float itemY = legendPos.y + legendPadding + i * legendItemHeight;
             float colorBoxSize = 12.0f;
 
             // Color swatch
             ctx->SetFillPaint(currentSeries.strokeColor);
-            ctx->FillRectangle(Rect2Dd(legendPosition.x + legendPadding, itemY + 2, colorBoxSize, colorBoxSize));
+            ctx->FillRectangle(Rect2Dd(legendPos.x + legendPadding, itemY + 2, colorBoxSize, colorBoxSize));
 
             // Series name
             ctx->SetTextPaint(legendTextColor);
             ctx->DrawText(currentSeries.name,
-                          Point2Dd(legendPosition.x + legendPadding + colorBoxSize + 5,
+                          Point2Dd(legendPos.x + legendPadding + colorBoxSize + 5,
                                    itemY + colorBoxSize * 0.5));
         }
     }

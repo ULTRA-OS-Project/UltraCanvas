@@ -133,6 +133,33 @@ for (size_t i = 0; i < placed.size(); ++i) {
 | `UltraCanvasVennDiagramElement` | Set labels outside overlapping circles/boxes; inside the top band in the nested layout; per-set preferred side via `SetCircleLabelSide` |
 | `UltraCanvasSankeyDiagram` | Node labels beside the bars (left for sources, right for sinks) without label-on-label collisions |
 | `UltraCanvasFlowChart` | Connection labels: centred pill on the longest path segment when free, sliding along/off the line when crowded; nodes act as obstacles |
+| `UltraCanvasRadarChartElement` | Axis labels placed radially at their axis angle, kept apart and clamped inside the element (no more clipped names); the legend auto-places on the least crowded side treating axis labels as obstacles |
+
+## Protected Primary / Movable Secondary Labels
+
+A common requirement (quadrant charts, annotated scatter plots): fixed **primary** labels — quadrant titles, headings — must never be overwritten, while **secondary** labels (point annotations) move out of the way. Model this by passing the primary labels' rects as **obstacle-only shapes** (shapes no label references) and attaching the secondary labels to their markers:
+
+```cpp
+std::vector<LabelShape> shapes;
+// Primary: quadrant title rects, drawn by the chart itself, obstacle-only.
+LabelShape titleRect;
+titleRect.type = LabelShapeType::Rectangle;
+titleRect.center = /* title text centre */;
+titleRect.size   = /* measured title size */;
+shapes.push_back(titleRect);
+// Secondary: one small circle per data marker.
+LabelShape marker;
+marker.type = LabelShapeType::Circle;
+marker.center = pointPos;
+marker.radius = pointRadius;
+shapes.push_back(marker);
+
+ShapeLabel pointLabel;
+pointLabel.shapeIndex = 1;                  // the marker, not the title
+pointLabel.preferredSide = LabelSide::Top;  // classic annotation position
+```
+
+The solver then guarantees point labels never cover the titles, never cover their own or other markers, and never overlap each other. Combine with `priority` + `allowHide` when there are more annotations than space.
 
 ## Performance Notes
 

@@ -75,9 +75,15 @@ namespace UltraCanvas {
 
         // Legend settings
         bool showLegend;
+        // (0,0) means auto: the legend is placed by the shared label
+        // placement solver so it avoids the chart and the axis labels.
         Point2Df legendPosition;
         Color legendBackgroundColor;
         Color legendTextColor;
+
+        // Axis label rects computed by DrawAxisLabels each frame; the legend
+        // placement treats them as obstacles.
+        std::vector<Rect2Dd> axisLabelRects;
 
         // Animation (radar uses its own smoothstep grow-out animation,
         // independent of the base-class animation fields)
