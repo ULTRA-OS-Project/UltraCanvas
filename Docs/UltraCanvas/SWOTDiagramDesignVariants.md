@@ -17,7 +17,7 @@ found in the wild, so a future `UltraCanvasSWOTDiagram` element can offer them
 as design presets (the same approach used by `UltraCanvasPertChart` and
 `UltraCanvasGanttChart` designs/palettes).
 
-Survey result: **~26 distinct layout variants**, grouped into 6 structural
+Survey result: **~28 distinct layout variants**, grouped into 6 structural
 families, plus a set of cross-cutting decoration options that combine freely
 with almost every layout.
 
@@ -94,6 +94,12 @@ form.
 letter-labeled); texts sit outside the ring connected by callout lines, or in
 panels aligned to each arc.
 
+**B5. Hub with side list.** An *off-center* hub — a large circle (often with a
+segmented ring border) holding the word "SWOT" — placed to one side, with the
+four texts as a vertical stack of rounded capsule cards beside it, linked by
+dots or short connectors. An asymmetric hybrid of the hub motif and the
+list-style layouts of Family D.
+
 ## Family C — Radial / organic layouts
 
 **C1. Petal / flower.** Four petal shapes radiating from a central circle,
@@ -107,6 +113,12 @@ from the center to form an X; the quadrant *names are written along the
 rotated arms*, icons cluster at the hub, and the body texts sit outside the
 arms connected by thin leader lines. Distinct from C2 because the arms are
 straight ribbons (not swept blades) and carry the labels themselves.
+
+**C2c. Converging arrows.** Four arrows along the same diagonal X, pointing
+inward to (or outward from) the center; each arrow's outer tip carries a
+diamond or circle letter badge, and the body texts sit in the four corners
+with headers and icons. The directional arrowheads suggest the four factors
+feeding into one analysis.
 
 **C3. Full-circle four sectors.** A pie divided into four 90° sectors with
 the texts inside the sectors (works only for very short texts) or as
