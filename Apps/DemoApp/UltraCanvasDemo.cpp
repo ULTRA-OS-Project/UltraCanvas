@@ -1043,6 +1043,18 @@ namespace UltraCanvas {
                 .AddVariant("sunburstcharts", "Partial-Sweep Fan")
                 .AddVariant("sunburstcharts", "Depth-Limited Overview");
 
+        chartBuilder.AddItem("radialbarcharts", "Radial Bar Chart",
+                             "Value-driven rays around a circle: bar and line styles, "
+                             "cap shapes, gradient fade, ring guides and peak labels",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateRadialBarChartExamples(); },
+                             "DemoApp/UltraCanvasRadialBarChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasRadialBarChartExamples.md")
+                .AddVariant("radialbarcharts", "Multi-Sensor Radial Bars")
+                .AddVariant("radialbarcharts", "Geographic Radial Lines")
+                .AddVariant("radialbarcharts", "Partial-Sweep Fan")
+                .AddVariant("radialbarcharts", "Arrow Rays / Manual Range");
+
         chartBuilder.AddItem("ganttcharts", "Gantt Chart",
                              "Project schedules with task table, hierarchy, dependencies, "
                              "milestones, progress, critical path and design presets",
