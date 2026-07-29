@@ -1,0 +1,22 @@
+{
+  "$schema": "https://context7.com/schema/context7.json",
+  "projectTitle": "UltraCanvas",
+  "description": "Modular cross-platform C++20 UI and rendering framework (Windows, Linux, macOS, WebAssembly, ULTRA OS) with sibling modules for AI (UltraAI), networking (UltraNet), databases (UltraDatabase) and file loading (FileLoader).",
+  "folders": ["Docs"],
+  "excludeFolders": [
+    "UltraCanvas/third_party",
+    "3rdparty",
+    "Apps",
+    "Tests",
+    "media"
+  ],
+  "excludeFiles": ["CHANGELOG.md"],
+  "rules": [
+    "UltraCanvas is C++20; all identifiers use PascalCase",
+    "Widgets are std::shared_ptr-managed; prefer factory helpers such as CreateButton(...) over raw make_shared",
+    "Consult Docs/UltraCanvas/<Component>*.md before using a component; do not invent APIs",
+    "Framework code lives in namespace UltraCanvas; apps bootstrap via UltraCanvasApplication",
+    "Public engines are wrapped behind UltraCanvas-owned APIs (e.g. UltraCanvasJSON wraps yyjson); never call vendored third-party libraries directly from application code",
+    "UltraNet and UltraDatabase: TLS verification is on by default; blocking operations return UltraNetResult/UltraDbResult; SQL uses parameter binding only"
+  ]
+}

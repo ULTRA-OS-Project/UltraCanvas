@@ -6,7 +6,9 @@ made usable by AI assistants — following the pattern popularized by
 UI-framework vendors such as bit BlazorUI, and comparing it with the other
 mechanisms currently in use across the industry.
 
-Status: investigation / proposal. Nothing in this document is implemented yet.
+Status: Phase 0 is implemented (`AGENTS.md`, `CLAUDE.md`, generated
+`llms.txt`/`llms-full.txt` + `scripts/generate_llms_txt.py` with CI sync
+check, `context7.json`). Phases 1 and 2 remain proposals.
 
 ---
 
