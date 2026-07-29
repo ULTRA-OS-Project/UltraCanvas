@@ -301,7 +301,10 @@ namespace UltraCanvas {
         void DrawGroupOutlines(IRenderContext* ctx, const CircularRing& ring);
         void DrawConnections(IRenderContext* ctx);
         void DrawConnectionIndicators(IRenderContext* ctx, size_t ringIndex);
-        void DrawCenter(IRenderContext* ctx);
+        // Split in two so connections routed through the middle are drawn on
+        // top of the centre disc but still beneath its caption.
+        void DrawCenterBase(IRenderContext* ctx);
+        void DrawCenterLabel(IRenderContext* ctx);
         void RenderTitle(IRenderContext* ctx);
 
         void DrawCircularText(IRenderContext* ctx, const std::string& text,

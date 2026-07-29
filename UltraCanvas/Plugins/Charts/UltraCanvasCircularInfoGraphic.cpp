@@ -750,13 +750,17 @@ namespace {
             DrawRing(ctx, i);
         }
 
+        // The centre disc is laid down before the connections so that links
+        // routed through the middle stay visible on top of it, then its
+        // caption goes on last so the text is never crossed by a curve.
+        DrawCenterBase(ctx);
         DrawConnections(ctx);
 
         for (size_t i = 0; i < rings.size(); ++i) {
             if (rings[i].showConnectionIndicators) DrawConnectionIndicators(ctx, i);
         }
 
-        DrawCenter(ctx);
+        DrawCenterLabel(ctx);
         DrawStarLabels(ctx);
     }
 
@@ -1303,7 +1307,7 @@ namespace {
         }
     }
 
-    void UltraCanvasCircularInfoGraphic::DrawCenter(IRenderContext* ctx) {
+    void UltraCanvasCircularInfoGraphic::DrawCenterBase(IRenderContext* ctx) {
         if (cachedInnerRadius < 4.0f) return;
 
         if (showCenterCircle) {
@@ -1320,6 +1324,10 @@ namespace {
                                    side, side),
                            ImageFitMode::Contain);
         }
+    }
+
+    void UltraCanvasCircularInfoGraphic::DrawCenterLabel(IRenderContext* ctx) {
+        if (cachedInnerRadius < 4.0f) return;
 
         if (!centerText.empty()) {
             ctx->PushState();
