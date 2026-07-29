@@ -1,3 +1,9 @@
+#### 2026-07-29 *0.1.40*
+- Fixed **Recent Files** losing entries — most visibly the file a document was loaded from before a **Save As**. `recent_files.txt` is shared by every window and every UltraTexter process, but each window rewrote the whole file from the snapshot it read at start-up, discarding everything the others had added since. Add/remove/clear now merge with the file on disk, and the menus re-read it when they open.
+- Recent file entries are stored as normalized absolute paths, so the same file opened via a relative command-line argument, a symlink or a `..` resource path is one entry instead of several — and no longer silently drops out of the list when the working directory changes.
+- Recent Files entries that share a file name (what "Save As" into another folder produces) now show their folder next to the name instead of appearing twice as the same item.
+- Added `Tests/RecentFilesTest.cpp` covering the Save As / multi-window scenarios.
+
 #### 2026-06-22 *0.1.39*
 - Fix Texter Search. No advance on each typed character
 
