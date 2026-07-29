@@ -291,6 +291,32 @@ add_test(
 )
 message(STATUS "    Test registered: SpreadsheetNumberFormatTest")
 
+# ===== CONTOUR GEOMETRY TEST =====
+# Marching-squares isolines (including saddle disambiguation), isoband cell
+# clipping, level generation, NaN holes, point gridding and polyline
+# post-processing. No UI stack - only the two contour algorithm sources.
+message(STATUS "  Building ContourGeometryTest...")
+add_executable(ContourGeometryTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ContourGeometryTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/UltraCanvasContourGrid.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/UltraCanvasMarchingSquares.cpp
+)
+target_include_directories(ContourGeometryTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(ContourGeometryTest PRIVATE cxx_std_20)
+set_target_properties(ContourGeometryTest PROPERTIES
+    OUTPUT_NAME "ContourGeometryTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ContourGeometryTest
+    COMMAND ContourGeometryTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ContourGeometryTest")
+
 # ===== VIRTUALFS DELETE TEST =====
 # Regression test for batched archive-entry deletion (single rewrite pass).
 # Needs libarchive; the vendored miniz additionally enables the ZIP raw-copy
