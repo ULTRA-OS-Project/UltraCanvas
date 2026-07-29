@@ -1,6 +1,6 @@
 // Plugins/Charts/UltraCanvasLabelPlacement.cpp
 // Shared shape-label placement solver for diagrams
-// Version: 1.1.0
+// Version: 1.2.0
 // Last Modified: 2026-07-29
 // Author: UltraCanvas Framework
 
@@ -55,7 +55,7 @@ double ShapeOverlapArea(const LabelShape& s, const Rect2Dd& rect) {
     return area;
 }
 
-double Score(const Candidate& c, size_t ownIndex,
+double Score(const Candidate& c, size_t ownIndex, int containerIndex,
              const std::vector<LabelShape>& shapes,
              const std::vector<Rect2Dd>& placed,
              const LabelPlacementOptions& opt) {
@@ -63,7 +63,9 @@ double Score(const Candidate& c, size_t ownIndex,
     double cost = c.baseCost;
 
     const LabelShape& own = shapes[ownIndex];
-    if (c.side == LabelSide::Inside) {
+    if (c.side == LabelSide::Border) {
+        // Straddling the own shape's edge is the intent - no own-shape penalty.
+    } else if (c.side == LabelSide::Inside) {
         // Penalise the part of the label sticking out of its own shape.
         cost += 200.0 * (labelArea - ShapeOverlapArea(own, c.rect)) / labelArea;
     } else {
@@ -72,13 +74,20 @@ double Score(const Candidate& c, size_t ownIndex,
 
     if (opt.avoidOtherShapes) {
         for (size_t j = 0; j < shapes.size(); ++j) {
-            if (j == ownIndex) continue;
+            if (j == ownIndex || shapes[j].isContainer) continue;
             cost += 60.0 * ShapeOverlapArea(shapes[j], c.rect) / labelArea;
         }
     }
 
     if (opt.bounds.width > 0.0 && opt.bounds.height > 0.0) {
         cost += 300.0 * (labelArea - OverlapArea(opt.bounds, c.rect)) / labelArea;
+    }
+
+    if (containerIndex >= 0 && static_cast<size_t>(containerIndex) < shapes.size()) {
+        // Keep the label within its container shape (e.g. the parent circle
+        // of a hierarchical packing), like a second, shaped bounds.
+        cost += 300.0 * (labelArea - ShapeOverlapArea(shapes[containerIndex], c.rect))
+                / labelArea;
     }
 
     for (const Rect2Dd& p : placed) {
@@ -190,6 +199,35 @@ void AddInsideCandidates(std::vector<Candidate>& out, const LabelShape& s,
     }
 }
 
+// Candidates straddling the shape's border, centred on the border point at
+// each clock-face angle (0 = 12 o'clock, clockwise; 60 = 2 o'clock), in the
+// caller's priority order.
+void AddBorderCandidates(std::vector<Candidate>& out, const LabelShape& s,
+                         const Size2Dd& text, const std::vector<double>& angles) {
+    double cost = 0.0;
+    for (double deg : angles) {
+        double rad = deg * (M_PI / 180.0);
+        double dx = std::sin(rad);
+        double dy = -std::cos(rad);
+        Point2Dd p = s.center;
+        if (s.type == LabelShapeType::Circle) {
+            p.x += dx * s.radius;
+            p.y += dy * s.radius;
+        } else {
+            // Ray-to-border intersection of the rectangle.
+            double tx = (std::abs(dx) > 1e-9) ? (s.size.width * 0.5) / std::abs(dx) : 1e18;
+            double ty = (std::abs(dy) > 1e-9) ? (s.size.height * 0.5) / std::abs(dy) : 1e18;
+            double t = std::min(tx, ty);
+            p.x += dx * t;
+            p.y += dy * t;
+        }
+        out.push_back({Rect2Dd(p.x - text.width * 0.5, p.y - text.height * 0.5,
+                               text.width, text.height),
+                       LabelSide::Border, cost});
+        cost += 1.0;
+    }
+}
+
 LabelSide OppositeSide(LabelSide side) {
     switch (side) {
         case LabelSide::Top:    return LabelSide::Bottom;
@@ -285,6 +323,15 @@ std::vector<PlacedShapeLabel> PlaceShapeLabels(
             AddInsideCandidates(candidates, s, label.textSize, options.shapeMargin,
                                 label.anchorPriority);
         } else {
+            // Border-straddle positions first when the label asks for them,
+            // then the outside sides as fallback.
+            std::vector<double> borderAngles = label.borderAngles;
+            if (borderAngles.empty() && label.preferredSide == LabelSide::Border) {
+                borderAngles = {60.0, 300.0, 120.0, 240.0, 0.0, 180.0};
+            }
+            AddBorderCandidates(candidates, s, label.textSize, borderAngles);
+            double sideCost = borderAngles.empty() ? 0.0 : borderAngles.size() + 6.0;
+
             // Side order: the preferred side first if given; otherwise the
             // vertical side facing away from the diagram centre (wide, short
             // labels read best above/below), then the outward horizontal side,
@@ -292,13 +339,15 @@ std::vector<PlacedShapeLabel> PlaceShapeLabels(
             LabelSide vertical = (dy <= 0.0) ? LabelSide::Top : LabelSide::Bottom;
             LabelSide horizontal = (dx <= 0.0) ? LabelSide::Left : LabelSide::Right;
             std::vector<LabelSide> order;
-            if (label.preferredSide != LabelSide::Auto) order.push_back(label.preferredSide);
+            if (label.preferredSide != LabelSide::Auto &&
+                label.preferredSide != LabelSide::Border) {
+                order.push_back(label.preferredSide);
+            }
             for (LabelSide side : {vertical, horizontal, OppositeSide(vertical), OppositeSide(horizontal)}) {
                 if (std::find(order.begin(), order.end(), side) == order.end()) {
                     order.push_back(side);
                 }
             }
-            double sideCost = 0.0;
             for (LabelSide side : order) {
                 double bias = (side == LabelSide::Top || side == LabelSide::Bottom) ? dx : dy;
                 AddOutsideCandidates(candidates, s, label.textSize, side,
@@ -310,7 +359,8 @@ std::vector<PlacedShapeLabel> PlaceShapeLabels(
         const Candidate* best = nullptr;
         double bestScore = 0.0;
         for (const Candidate& c : candidates) {
-            double score = Score(c, label.shapeIndex, shapes, placed, options);
+            double score = Score(c, label.shapeIndex, label.containerShape,
+                                 shapes, placed, options);
             if (!best || score < bestScore) {
                 best = &c;
                 bestScore = score;

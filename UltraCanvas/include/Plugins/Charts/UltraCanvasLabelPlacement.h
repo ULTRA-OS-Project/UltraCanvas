@@ -4,9 +4,10 @@
 // keep-outside) and a list of labels tied to those shapes, computes the best
 // non-overlapping position for every label, honouring an optional preferred
 // side (top, bottom, left, right, inside) and an optional prioritised list
-// of inside anchors (top-left, centre-top, ...) with automatic fallback to
-// the next anchor when the preferred one collides.
-// Version: 1.1.0
+// of inside anchors (top-left, centre-top, ...) or border angles (clock-face
+// positions straddling the shape's edge) with automatic fallback to the next
+// position when the preferred one collides.
+// Version: 1.2.0
 // Last Modified: 2026-07-29
 // Author: UltraCanvas Framework
 #pragma once
@@ -28,14 +29,19 @@ enum class LabelShapeType {
 };
 
 // Preferred (input) or resolved (output) location of a label relative to its
-// shape. Auto lets the solver pick the least crowded side.
+// shape. Auto lets the solver pick the least crowded side. Border means the
+// label straddles the shape's edge, centred on the border point given by the
+// label's borderAngles (acceptable for node-style diagrams where the text is
+// clearly visible half inside, half outside the shape - pair it with a halo
+// behind the text for readability).
 enum class LabelSide {
     Auto,
     Top,
     Bottom,
     Left,
     Right,
-    Inside
+    Inside,
+    Border
 };
 
 // Anchor position of an inside label within its shape. Used to build the
@@ -58,6 +64,10 @@ struct LabelShape {
     // true: the label belongs inside the shape (containment/nested diagrams);
     // false: the label must stay fully outside the shape (overlap diagrams).
     bool keepLabelInside = false;
+    // Containers are background enclosures (e.g. the parent circle of a
+    // hierarchical packing): labels are not pushed off them, and labels that
+    // name one via ShapeLabel::containerShape are kept within it.
+    bool isContainer = false;
 
     Rect2Dd BoundingRect() const {
         if (type == LabelShapeType::Circle) {
@@ -81,6 +91,18 @@ struct ShapeLabel {
     // the per-shape-type default: rectangles top-left / top-centre /
     // top-right / bottom row / centre row, circles centre / above / below.
     std::vector<LabelAnchor> anchorPriority;
+    // Border-straddle positions, clock-face degrees (0 = 12 o'clock,
+    // clockwise, so 60 = the 2 o'clock position). When non-empty, candidates
+    // centred on the shape's border at these angles are tried first, in list
+    // order, with the regular outside sides as fallback. Straddling the own
+    // shape is not penalised for these candidates. Setting preferredSide to
+    // Border with an empty list uses a default angle order starting at
+    // 2 o'clock. Ignored for inside placement.
+    std::vector<double> borderAngles;
+    // Optional index of a shape (usually flagged isContainer) this label must
+    // stay within; the part of the label sticking out of it is penalised like
+    // an out-of-bounds excursion. -1 = no containment.
+    int containerShape = -1;
 };
 
 struct PlacedShapeLabel {

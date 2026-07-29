@@ -111,6 +111,11 @@ row name that beats the colour mode (used for the purple "Men" / orange
   alternative when that would cover a neighbouring bubble, another label, or
   a group label. Smaller bubbles get placement priority, since their labels
   have the least room to move.
+* In hierarchical mode the outside labels instead straddle their bubble's rim
+  at the 2 o'clock position (falling back to 4, 10 and 8 o'clock, then the
+  outside sides), stay within their own group circle, and are drawn with a
+  light halo so the part over the bubble fill stays readable — the same
+  convention node/adjacency diagrams use for labels drawn over their nodes.
 
 ## Size legend and annotations
 

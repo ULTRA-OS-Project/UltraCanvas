@@ -1190,6 +1190,18 @@ void UltraCanvasBubbleChartElement::RenderBubbleLabels(IRenderContext* ctx) {
         solverShapes[i].radius = layoutCircles[i].r * grow;
         solverShapes[i].keepLabelInside = false;
     }
+    // Hierarchical mode: the parent circles join as containers so each label
+    // is kept within its own group circle instead of spilling into the
+    // neighbouring group or the background.
+    size_t parentBase = solverShapes.size();
+    for (const auto& p : parentCircles) {
+        LabelShape s;
+        s.type = LabelShapeType::Circle;
+        s.center = Point2Dd(p.cx, p.cy);
+        s.radius = p.r * grow;
+        s.isContainer = true;
+        solverShapes.push_back(s);
+    }
     std::stable_sort(belowRequests.begin(), belowRequests.end(),
                      [this](const BelowLabelRequest& a, const BelowLabelRequest& b) {
                          return layoutCircles[a.circleIdx].r < layoutCircles[b.circleIdx].r;
@@ -1197,11 +1209,26 @@ void UltraCanvasBubbleChartElement::RenderBubbleLabels(IRenderContext* ctx) {
     std::vector<ShapeLabel> solverLabels;
     solverLabels.reserve(belowRequests.size());
     for (const auto& req : belowRequests) {
+        const LayoutCircle& c = layoutCircles[req.circleIdx];
         ShapeLabel l;
         l.text = req.text;
         l.shapeIndex = req.circleIdx;
         l.preferredSide = LabelSide::Bottom;   // keep the classic below look
         l.textSize = req.textSize;
+        if (mode == BubbleChartMode::HierarchicalPacked) {
+            // Straddling the bubble's rim at the 2 o'clock position reads
+            // best inside the crowded group circles; the outside sides stay
+            // available as fallback.
+            l.borderAngles = {60.0, 120.0, 300.0, 240.0};
+            for (size_t pi = 0; pi < parentCircles.size(); ++pi) {
+                const auto& p = parentCircles[pi];
+                double d = std::hypot(c.cx - p.cx, c.cy - p.cy);
+                if (d <= p.r) {
+                    l.containerShape = static_cast<int>(parentBase + pi);
+                    break;
+                }
+            }
+        }
         solverLabels.push_back(l);
     }
     LabelPlacementOptions opts;
@@ -1216,9 +1243,24 @@ void UltraCanvasBubbleChartElement::RenderBubbleLabels(IRenderContext* ctx) {
     std::vector<PlacedShapeLabel> placed =
         PlaceShapeLabels(solverShapes, solverLabels, opts);
 
-    ctx->SetTextPaint(nameLabelColor);
     for (size_t i = 0; i < placed.size(); ++i) {
-        ctx->DrawText(solverLabels[i].text, placed[i].bounds.TopLeft());
+        Point2Dd at = placed[i].bounds.TopLeft();
+        if (placed[i].side == LabelSide::Border) {
+            // The label straddles the bubble's rim, so part of the text sits
+            // on the bubble fill: a light halo keeps it readable on both the
+            // fill and the background (adjacency-diagram convention).
+            ctx->SetTextPaint(Color(255, 255, 255, 220));
+            static const double dirs[8][2] = {
+                {-1, 0}, {1, 0}, {0, -1}, {0, 1},
+                {-1, -1}, {1, -1}, {-1, 1}, {1, 1}
+            };
+            for (const auto& d : dirs) {
+                ctx->DrawText(solverLabels[i].text,
+                              Point2Dd(at.x + d[0], at.y + d[1]));
+            }
+        }
+        ctx->SetTextPaint(nameLabelColor);
+        ctx->DrawText(solverLabels[i].text, at);
     }
 }
 
