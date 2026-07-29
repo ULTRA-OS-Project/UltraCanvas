@@ -61,6 +61,23 @@ rings**, each an independent percentage. Concretely it requires:
 > This is the *concentric progress rings* sub-type. No existing UltraCanvas
 > element produces it cleanly today (see §4).
 
+### 2.1 Second batch of reference images — coverage check
+
+Five further references were checked against the existing elements and this
+proposal. Verdicts:
+
+| Reference | What it is | Coverage |
+|---|---|---|
+| **"Radial Bar Chart"** — four concentric arcs (teal/blue/orange/yellow), rounded caps, and a stacked column of `Legend NN%` rows at the top, each row aligned with its ring's start | Concentric progress rings with *stacked start labels* | **Proposed element**, one addition: the stacked label column at the start angle is a distinct label layout → new feature **C26** |
+| **"Completed 72 %"** — single ring, pink→purple→blue gradient along the arc, pale grey track, caption + value in the centre | Single progress ring | **Fully covered by the proposal**: C9 `SingleRing`, C10 track, C12 arc gradient, C19 centre disc text |
+| **Rings A–E with a 0–100 angular scale** — matplotlib-style circular barplot: each ring sweeps to its value on a numeric angular axis, perimeter tick labels (0, 10, … 90), polar grid in the empty region, category letters along a spoke | Concentric progress rings *with an angular value axis* | **Proposed element**, two additions: perimeter angular axis with tick labels (**C27**) and polar grid underlay + spoke category labels (**C28**) |
+| **Circular stacked bar / wind-rose** — many categorical spokes, stacked purple-ramp segments, labels rotated around the perimeter, side legend | Polar stacked columns | **Covered today** by `UltraCanvasPolarChart`: categorical angle mode, `Column` series, `Stacked` mode, `PolarLabelOrientation::Radial` perimeter labels, legend, palette |
+| **"Rose Chart"** — Nightingale rose (browser share), sector radius ∝ value, translucent fills, `NN%` labels inside sectors, top legend | Rose chart | **Covered today** by `CreatePolarRoseChart` (incl. per-series value labels and legend); one gap: labels show raw values, a *percent-of-total* label option is missing → new feature **R1** (§6.4) |
+
+Net result: two references are already fully served by `UltraCanvasPolarChart`,
+one is fully served by the proposed element, and two add three small features
+(C26–C28) to the proposed element plus one to the polar chart (R1).
+
 ---
 
 ## 3. What UltraCanvas already implements
@@ -205,6 +222,13 @@ completes the family; **P3** = polish / consolidation.
 | C19 | Centre disc: fill + border colours, image, title and subtitle text (the reference's red centre) | P1 |
 | C20 | Legend: numbered chips (`01`, `02`, …) with colour swatch, optional icon and label; positions left/right/top/bottom | P1 |
 | C21 | Legend interactivity: hover chip ↔ highlight ring | P2 |
+| C26 | Stacked start labels: a column of `label + value%` rows at the start angle, one per ring, each row aligned with its ring's radius (the "Radial Bar Chart" reference) | P1 |
+
+#### Angular axis & grid
+| # | Feature | Phase |
+|---|---|---|
+| C27 | Optional numeric angular axis: perimeter tick labels (e.g. 0–100) mapping value → sweep, with tick interval control | P2 |
+| C28 | Polar grid underlay (rings + spokes) behind the arcs, and ring category labels along a nominated spoke (matplotlib-style circular barplot reference) | P2 |
 
 #### Interaction & lifecycle
 | # | Feature | Phase |
@@ -236,6 +260,14 @@ completes the family; **P3** = polish / consolidation.
 | F4 | Factory aliases for discoverability: `CreateDonutChart`, `CreateProgressPieChart`, `CreateConcentricRingChart`, `CreateRoseChart` (thin wrappers over existing factories) | P2 |
 | F5 | Shared `UltraCanvasRadialGeometry.h` (annular sector outline, arc-tip point, polar hit-test, circular text), unit-tested; migrate pie/sunburst/radial-bar/polar/infographic incrementally | P3 |
 | F6 | Regenerate `llms.txt` / `llms-full.txt` with every doc change (house rule) | P1 |
+
+### 6.4 Existing polar chart — minor additions (rose / circular stacked bar)
+| # | Feature | Phase |
+|---|---|---|
+| R1 | Percent-of-total option for series value labels (rose sectors labelled `25%` instead of the raw value), plus a per-series value-label formatter | P2 |
+
+The circular-stacked-bar and Nightingale-rose references need nothing else —
+`UltraCanvasPolarChart` already covers them (see §2.1).
 
 ---
 
@@ -298,12 +330,14 @@ donut->onSliceClick = [](size_t i) { /* ... */ };   // B3
 1. **Phase 1 — the reference image + pie completion.**
    `UltraCanvasCircularProgressChart` with the P1 rows (ring model,
    concentric/single/sector styles, tracks, round caps, arc-tip callouts,
-   in-band name labels, centre disc, numbered legend, tooltips, callbacks),
+   stacked start labels, in-band name labels, centre disc, numbered legend,
+   tooltips, callbacks),
    the pie's B1–B3, the umbrella doc, the infographic doc, a DemoApp scene
    reproducing the reference image, `llms.txt` regeneration.
 2. **Phase 2 — family completeness.** Animated value tweens, semi-circular
-   sweeps, gradients/colour bands/targets, legend hover-link, export, pie
-   legend + aggregation + sorting + half-pie, factory aliases.
+   sweeps, gradients/colour bands/targets, angular value axis + grid underlay
+   (C27/C28), legend hover-link, export, pie legend + aggregation + sorting +
+   half-pie, polar percent-of-total labels (R1), factory aliases.
 3. **Phase 3 — polish & consolidation.** Over-100 % wrap, segmented arc
    styles, leader-line labels, rounded pie corners, and the shared
    `UltraCanvasRadialGeometry.h` extraction with element migration.
