@@ -22,7 +22,7 @@ if(APPLE)
 endif()
 
 # ===== LIBRARY DEFINITION =====
-set(ULTRACANVAS_VERSION "0.3.18")
+set(ULTRACANVAS_VERSION "0.3.19")
 set(ULTRACANVAS_LIB_NAME "UltraCanvas")
 
 message(STATUS "")
@@ -357,6 +357,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasPieChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasSunburstChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasRadialBarChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasPolarChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasRadarChartElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasColormap.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasHeatmapChart.cpp

@@ -1095,9 +1095,20 @@ namespace UltraCanvas {
                              ImplementationStatus::PartiallyImplemented,
                              [this]() { return CreatePartiallyImplementedExamples("Circular Chart is not ready yet"); });
 
-        chartBuilder.AddItem("polarcharts", "Polar Chart", "Polar Chart",
-                             ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples("Polar Chart is not ready yet"); });
+        chartBuilder.AddItem("polarcharts", "Polar Chart",
+                             "Angle/radius plots: scatter, line, spline, area and "
+                             "column series with categorical or numeric angle axes, "
+                             "tolerance bands, stacking and dual angle axes",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreatePolarChartExamples(); },
+                             "DemoApp/UltraCanvasPolarChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasPolarChart.md")
+                .AddVariant("polarcharts", "Polar Scatter")
+                .AddVariant("polarcharts", "Dual Angle Axis Curves")
+                .AddVariant("polarcharts", "Overlapping Polar Areas")
+                .AddVariant("polarcharts", "Categorical Spline Area")
+                .AddVariant("polarcharts", "Radial Tolerance Bands")
+                .AddVariant("polarcharts", "Stacked Polar Columns");
 
         chartBuilder.AddItem("heatmapchart", "Heat map", "Heatmap, spectrogram, calendar & hexbin variants",
                              ImplementationStatus::FullyImplemented,
