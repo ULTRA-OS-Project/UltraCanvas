@@ -1189,6 +1189,21 @@ namespace UltraCanvas {
                 .AddVariant("dumbbell", "Min / Max Range")
                 .AddVariant("dumbbell", "Gap Analysis & Sorting");
 
+        chartBuilder.AddItem("funnel", "Funnel Chart",
+                             "Staged process funnels - segmented bars with conversion necks, "
+                             "solid cones, card rows, presentation infographics and horizontal "
+                             "pipelines",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateFunnelChartExamples(); },
+                             "DemoApp/UltraCanvasFunnelChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasFunnelChart.md")
+                .AddVariant("funnel", "Segmented Funnel")
+                .AddVariant("funnel", "Continuous Cone")
+                .AddVariant("funnel", "Card Rows")
+                .AddVariant("funnel", "Presentation Infographic")
+                .AddVariant("funnel", "Horizontal Funnel")
+                .AddVariant("funnel", "Playground");
+
         chartBuilder.AddItem("bubblecharts", "Bubble Chart",
                              "Scatter bubbles, packed bubbles, bubble matrix and an "
                              "OpenGL 3D bubble chart",
