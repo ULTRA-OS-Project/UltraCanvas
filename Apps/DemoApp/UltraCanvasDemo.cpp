@@ -711,7 +711,7 @@ namespace UltraCanvas {
                              "DemoApp/UltraCanvasGaugeExamples.cpp",
                              "Docs/UltraCanvas/UltraCanvasGaugeExamples.md")
                 .AddVariant("gauges", "Round Gauges")
-                .AddVariant("gauges", "Progress & Linear")
+                .AddVariant("gauges", "Progress &amp; Linear")
                 .AddVariant("gauges", "Specialized")
                 .AddVariant("gauges", "Analog");
 
@@ -1608,7 +1608,7 @@ namespace UltraCanvas {
         // the UltraCanvas core and every additional ULTRA OS module, built with the
         // UltraCanvasListView multi-column element.
         auto dependenciesBuilder = DemoCategoryBuilder(this, DemoCategory::Dependencies);
-        dependenciesBuilder.AddItem("dependencies", "Dependencies & Third Party",
+        dependenciesBuilder.AddItem("dependencies", "Dependencies &amp; Third Party",
                                "Third-party libraries used by UltraCanvas and its modules",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateDependenciesExamples(); },
@@ -1744,7 +1744,7 @@ namespace UltraCanvas {
                 {DemoCategory::Widgets, "Widgets"},
                 {DemoCategory::Tools, "Tools"},
                 {DemoCategory::Modules, "ULTRA OS modules"},
-                {DemoCategory::Dependencies, "Dependencies & Third Party"}
+                {DemoCategory::Dependencies, "Dependencies &amp; Third Party"}
         };
 
 
