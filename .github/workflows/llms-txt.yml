@@ -1,0 +1,43 @@
+name: llms.txt sync
+
+# Keeps the generated LLM docs exports (llms.txt / llms-full.txt) in sync
+# with the markdown corpus. Fails when a docs change was committed without
+# rerunning scripts/generate_llms_txt.py.
+
+on:
+  push:
+    branches: [main, 'claude/**']
+    paths:
+      - 'Docs/**'
+      - 'README.md'
+      - 'Masterfile_modules.md'
+      - 'scripts/generate_llms_txt.py'
+      - 'llms.txt'
+      - 'llms-full.txt'
+      - '.github/workflows/llms-txt.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'Docs/**'
+      - 'README.md'
+      - 'Masterfile_modules.md'
+      - 'scripts/generate_llms_txt.py'
+      - 'llms.txt'
+      - 'llms-full.txt'
+      - '.github/workflows/llms-txt.yml'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Regenerate llms.txt / llms-full.txt
+        run: python3 scripts/generate_llms_txt.py
+      - name: Verify committed files are up to date
+        run: |
+          if ! git diff --exit-code -- llms.txt llms-full.txt; then
+            echo '::error::llms.txt / llms-full.txt are out of date.'
+            echo 'Run: python3 scripts/generate_llms_txt.py  and commit the result.'
+            exit 1
+          fi

@@ -1,0 +1,99 @@
+# AGENTS.md — guidance for AI coding assistants
+
+This file tells AI assistants (Claude, Copilot, Cursor, Windsurf, …) how to
+work productively in this repository and in applications built on it.
+Human-oriented docs start at [README.md](README.md).
+
+## What this repository is
+
+UltraCanvas is a modular, cross-platform **C++20 UI and rendering framework**
+(Windows, Linux, macOS, WebAssembly, ULTRA OS) plus sibling modules:
+
+| Module | Purpose | Where |
+|---|---|---|
+| UltraCanvas | UI widgets, layout, rendering, events | `UltraCanvas/{include,core,libspecific,OS/<Platform>,Plugins}` |
+| UltraAI | Provider-agnostic AI capabilities (LLM, STT, TTS, image/video/music gen, …) | `UltraAI/` |
+| UltraNet | Networking (HTTP, WebSocket, FTP, TCP/UDP, TLS, DNS) | `UltraCanvas/core/UltraNet`, `Docs/Modules/UltraNet` |
+| FileLoader | Universal file load/save/convert facade | `Docs/Modules/FileLoader` |
+| VirtualFS | Virtual filesystem and compression | `VirtualFS/` |
+| File-type plugins | Charts, diagrams, vector, documents, video, … | `UltraCanvas/Plugins/` |
+
+The authoritative module registry — purpose and public function surface of
+every module — is [`Masterfile_modules.md`](Masterfile_modules.md). Read it
+before adding cross-module code.
+
+## Documentation map (read before using a component)
+
+- `Docs/UltraCanvas/` — ~100 per-component/per-subsystem docs with buildable
+  C++ examples. Naming: `UltraCanvas<Component>.md` or
+  `UltraCanvas<Component>Examples.md` (e.g. `UltraCanvasButtonExamples.md`,
+  `UltraCanvasLineChartElement.md`, `UltraCanvasJSON.md`).
+  **Consult the matching doc before writing code that uses a component —
+  do not guess APIs from other frameworks.**
+- `Docs/Modules/<Name>/README.md` — sibling-module docs (UltraAI, UltraNet,
+  UltraDatabase, FileLoader, VirtualFS, OCR, PDF, QRCode, …).
+- `Docs/CSSLayout.md`, `Docs/Dependencies.md` — layout engine and
+  third-party dependency policy.
+- `llms.txt` / `llms-full.txt` (repo root, generated) — machine-readable
+  index / full concatenation of the docs corpus for LLM consumption.
+  Regenerate with `python3 scripts/generate_llms_txt.py` after editing docs.
+
+## Core conventions
+
+- **Language:** C++20 (Objective-C++ for macOS backends). Build: CMake ≥ 3.16.
+- **Naming:** PascalCase for all identifiers (`GetText`, `SetStyle`,
+  `UltraCanvasButton`). New APIs must be understandable from their names.
+- **Namespace:** framework code lives in `namespace UltraCanvas`.
+- **Widget creation:** widgets are `std::shared_ptr`-managed; use the factory
+  helpers where they exist:
+
+  ```cpp
+  auto button = CreateButton("MyButton", 101, 100, 50, 120, 40, "Click Me");
+  // equivalent: std::make_shared<UltraCanvasButton>("MyButton", 101, 100, 50, 120, 40, "Click Me")
+  ```
+
+- **Application bootstrap:** apps are built around `UltraCanvasApplication`
+  (see `Apps/Texter/main.cpp` and `Apps/DemoApp/` for canonical structure).
+- **Platform separation:** platform-specific code goes only under
+  `UltraCanvas/OS/<Platform>/`; shared logic in `UltraCanvas/core/`;
+  library-specific rendering backends in `UltraCanvas/libspecific/`.
+- **Wrapped engines:** public engines are always wrapped behind an
+  UltraCanvas-owned API (e.g. `UltraCanvasJSON` wraps yyjson) so backing
+  implementations can be swapped. Never expose a third-party type in a
+  public header; never call vendored libraries directly from app code.
+- **UltraNet/UltraDatabase rules:** TLS verification ON by default;
+  blocking ops return `UltraNetResult`/`UltraDbResult`; connection/handle
+  ops return `UltraNetHandle`/`UltraDbHandle`; SQL uses parameter binding
+  only. Follow existing naming patterns when adding protocols/drivers.
+- **Third-party code** is vendored under `UltraCanvas/third_party/` and
+  `3rdparty/` — do not modify it, and record licenses in
+  `THIRD_PARTY_LICENSES.md`.
+
+## Building and testing
+
+```bash
+# Ubuntu/Debian deps
+sudo apt install build-essential cmake libcairo2-dev libpango1.0-dev \
+    libfreetype6-dev libvips-dev libharfbuzz-dev
+# macOS deps
+brew install cmake cairo pango freetype vips harfbuzz
+
+mkdir build && cd build && cmake .. && make
+```
+
+The full 3-OS dependency lists are in `.github/workflows/build.yml`.
+UltraAI builds standalone: `cmake -S UltraAI -B build -DULTRAAI_BUILD_TESTS=ON`
+then `ctest --test-dir build`. Framework tests live under `Tests/`.
+
+## House rules for AI-generated changes
+
+1. Match the style of the file you are editing; PascalCase everywhere.
+2. Check `Docs/UltraCanvas/<Component>*.md` (or `llms.txt`) before using a
+   component; if you add or change public API, update the matching doc in
+   the same change.
+3. Keep platform-independent logic out of `OS/<Platform>/` and vice versa.
+4. Do not introduce new third-party dependencies without updating
+   `Docs/Dependencies.md`, `master_dependencies.yaml` and
+   `THIRD_PARTY_LICENSES.md`.
+5. Docs changes: regenerate `llms.txt`/`llms-full.txt`
+   (`python3 scripts/generate_llms_txt.py`) — CI verifies they are in sync.
