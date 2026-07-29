@@ -1,3 +1,28 @@
+#### 2026-07-29 *0.3.19*
+- New **UltraCanvasPolarChart** element
+  (`Plugins/Charts/UltraCanvasPolarChart`): a general polar coordinate chart
+  where every observation is an (angle, radius) pair. One element covers the
+  whole family of round plots built on that system — polar scatter, line,
+  spline, area, spline area and columns (the Nightingale rose / stacked polar
+  column chart) — and the types can be mixed in a single chart. The angular
+  axis works in numeric mode (each point carries its own angle, mapped through
+  a configurable domain) or categorical mode (one evenly spaced slot per
+  category, placed either on the grid spokes or between them), with settable
+  zero angle, winding direction, sweep angle for fans and wedges, automatic or
+  explicit tick intervals, horizontal/tangential/radial label orientation and
+  an optional second ring of angular labels with its own interval and side.
+  The radial axis supports linear, logarithmic and square-root (area-true)
+  scales, automatic "nice" ticks or a manual range, negative minima, reversed
+  direction, a donut hole and unit-suffixed labels on a selectable spoke.
+  Circular or polygonal spider-web grids, minor rings, alternating ring
+  shading, radial tolerance bands and angular sector bands render behind the
+  data; column and area series support stacked and percent-stacked modes while
+  unstacked columns group side by side inside their slot. Interaction covers
+  hover highlighting, tooltips, click/hover callbacks, click-to-toggle legend
+  entries in four positions and optional drag-to-rotate. New demo page
+  (Charts > Polar Chart) with six examples and a live control panel, plus a
+  programmer's guide in `Docs/UltraCanvas/UltraCanvasPolarChart.md`.
+
 #### 2026-07-28 *0.3.18*
 - Fixed slow video thumbnail generation in MacOS in Album control
 

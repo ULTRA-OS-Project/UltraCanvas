@@ -7,7 +7,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(UltraCanvasDemoApp
-    VERSION 0.3.18
+    VERSION 0.3.19
     DESCRIPTION "UltraCanvas Framework Demo Application"
     LANGUAGES CXX
 )
@@ -178,6 +178,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasPieChartExamples.cpp
             Apps/DemoApp/UltraCanvasSunburstChartExamples.cpp
             Apps/DemoApp/UltraCanvasRadialBarChartExamples.cpp
+            Apps/DemoApp/UltraCanvasPolarChartExamples.cpp
             Apps/DemoApp/UltraCanvasRadarChartExamples.cpp
             Apps/DemoApp/UltraCanvasHeatmapExamples.cpp
             Apps/DemoApp/UltraCanvasAdjacencyDiagramExamples.cpp
