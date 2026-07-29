@@ -60,9 +60,18 @@ namespace UltraCanvas {
 // CONTOUR CHART ELEMENT
 // =============================================================================
 
+// Everything a click on the field can tell the application.
+    struct ContourClickInfo {
+        double x = 0.0;        // data-space position
+        double y = 0.0;
+        double value = 0.0;    // bilinear field value at (x, y)
+        size_t bandIndex = 0;  // 0 = below the first level .. levels = above the last
+    };
+
     class UltraCanvasContourChartElement : public UltraCanvasHeatmapChartElement {
     public:
         using ValueFormatter = std::function<std::string(double)>;
+        using ContourClickHandler = std::function<void(const ContourClickInfo&)>;
 
     private:
         // ---- contour configuration ----
@@ -143,6 +152,25 @@ namespace UltraCanvas {
         double dataXMin = 0.0, dataXMax = 1.0;
         double dataYMin = 0.0, dataYMax = 1.0;
         bool dataRangeSet = false;
+
+        // ---- zoomed/panned view window (a sub-rectangle of the data extents) ----
+        double viewXMin = 0.0, viewXMax = 1.0;
+        double viewYMin = 0.0, viewYMax = 1.0;
+        bool viewActive = false;          // false = the full field is shown
+        double maxZoomFactor = 1000.0;    // smallest allowed span = full span / this
+
+        // ---- crosshair ----
+        bool showCrosshair = false;
+        Color crosshairColor = Color(90, 95, 110, 200);
+        bool crosshairLive = false;       // cursor currently inside the plot
+        Point2Di crosshairPos;
+
+        // ---- interaction state ----
+        ContourClickHandler onContourClick;
+        bool panDragging = false;
+        Point2Di panLastPos;
+        Point2Di clickDownPos;
+        bool clickCandidate = false;
 
         // Reserved by the last layout pass for the legend.
         mutable double legendReservedW = 0.0;
@@ -257,6 +285,33 @@ namespace UltraCanvas {
         void SetSourcePointStyle(const Color& c, float radius);
 
         // =====================================================================
+        // VIEW WINDOW (ZOOM / PAN)
+        // =====================================================================
+
+        // Show only this data-space sub-rectangle of the field. The window is
+        // clamped to the data extents. The same window is what the mouse wheel
+        // (SetEnableZoom) and drag panning (SetEnablePan) manipulate; both are
+        // ignored in HeatmapWithContours mode, which keeps the base heatmap's
+        // whole-matrix layout.
+        void SetViewRange(double xMin, double xMax, double yMin, double yMax);
+        // Back to the full field. A double-click does the same when zoom is on.
+        void ResetView();
+        // The window currently shown; returns false when the view is the full
+        // field (the outputs then hold the full extents).
+        bool GetViewRange(double& xMin, double& xMax, double& yMin, double& yMax) const;
+
+        // =====================================================================
+        // INTERACTION
+        // =====================================================================
+
+        // Crosshair that follows the cursor with an x/y read-out on the axes.
+        void SetShowCrosshair(bool on);
+        void SetCrosshairColor(const Color& c);
+        // Called on a left click (a press-and-release without dragging) inside
+        // the plot with the data position, field value and band index.
+        void SetOnContourClick(ContourClickHandler handler);
+
+        // =====================================================================
         // QUERIES
         // =====================================================================
 
@@ -267,6 +322,9 @@ namespace UltraCanvas {
         size_t BandIndexOf(double value) const;
         // The extracted contours, in fractional grid coordinates.
         const std::vector<ContourPolyline>& GetContours() const;
+        // The extracted contours converted to data-space coordinates - the
+        // GIS/CAD hand-off format. Levels and closed flags are preserved.
+        std::vector<ContourPolyline> ExportContourPolylines() const;
 
         // =====================================================================
         // OVERRIDES
@@ -274,6 +332,7 @@ namespace UltraCanvas {
 
         void RenderChart(IRenderContext* ctx) override;
         bool HandleChartMouseMove(const Point2Di& mousePos) override;
+        bool OnEvent(const UCEvent& event) override;
 
     protected:
         ChartPlotArea ComputeHeatmapArea(IRenderContext* ctx) override;
@@ -291,6 +350,15 @@ namespace UltraCanvas {
         bool UsesCellAlignedGrid() const;
         Point2Dd GridToScreen(double col, double row) const;
         Point2Dd ScreenToGrid(double sx, double sy) const;
+        // The data-space window currently mapped onto the plot area: the view
+        // window when one is active (and the mode honours it), otherwise the
+        // full field extents.
+        void EffectiveViewRange(double& xMin, double& xMax,
+                                double& yMin, double& yMax) const;
+        bool ViewZoomable() const;   // view/zoom/pan apply in this render mode
+        void ClampViewToData();
+        void ApplyZoom(double factor, double focusX, double focusY);
+        void ApplyPan(double dxData, double dyData);
 
         // ---- bands ----
         size_t BandCount() const;
@@ -306,6 +374,7 @@ namespace UltraCanvas {
         void RenderSourcePoints(IRenderContext* ctx);
         void RenderDiscreteLegend(IRenderContext* ctx);
         void RenderAxisTicks(IRenderContext* ctx);
+        void RenderCrosshair(IRenderContext* ctx);
 
         // ---- helpers ----
         int LevelIndexOf(double level) const;
