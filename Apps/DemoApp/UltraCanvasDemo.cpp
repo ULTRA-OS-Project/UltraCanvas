@@ -1152,9 +1152,17 @@ namespace UltraCanvas {
                 .AddVariant("audioanalysis", "Amplitude Envelope (RMS)")
                 .AddVariant("audioanalysis", "Correlogram (Autocorrelation)");
 
-        chartBuilder.AddItem("dumbbell", "Dumbbell chart", "Dumbbell chart",
-                             ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples("Dumbbell Chart is not ready yet"); });
+        chartBuilder.AddItem("dumbbell", "Dumbbell Chart",
+                             "Paired value comparison with connected dots - gender gaps, "
+                             "before/after studies and min/max ranges",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateDumbbellChartExamples(); },
+                             "DemoApp/UltraCanvasDumbbellChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasDumbbellChart.md")
+                .AddVariant("dumbbell", "Social Media by Age & Gender")
+                .AddVariant("dumbbell", "Before / After")
+                .AddVariant("dumbbell", "Min / Max Range")
+                .AddVariant("dumbbell", "Gap Analysis & Sorting");
 
         chartBuilder.AddItem("bubblecharts", "Bubble Chart",
                              "Scatter bubbles, packed bubbles, bubble matrix and an "
