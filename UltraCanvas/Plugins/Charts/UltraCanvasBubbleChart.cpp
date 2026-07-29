@@ -1,11 +1,12 @@
 // Plugins/Charts/UltraCanvasBubbleChart.cpp
 // Implementation of the comprehensive bubble chart element (scatter bubbles,
 // packed bubbles, bubble matrix).
-// Version: 1.0.0
-// Last Modified: 2026-07-26
+// Version: 1.1.0
+// Last Modified: 2026-07-29
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasBubbleChart.h"
+#include "Plugins/Charts/UltraCanvasLabelPlacement.h"
 #include <algorithm>
 #include <cmath>
 #include <numeric>
@@ -986,6 +987,7 @@ void UltraCanvasBubbleChartElement::BuildMatrixLayout(IRenderContext* ctx) {
 void UltraCanvasBubbleChartElement::RenderChart(IRenderContext* ctx) {
     layoutCircles.clear();
     parentCircles.clear();
+    parentLabelRects.clear();
     switch (mode) {
         case BubbleChartMode::ScatterBubbles:     BuildScatterLayout(); break;
         case BubbleChartMode::PackedBubbles:      BuildPackedLayout(); break;
@@ -1090,6 +1092,16 @@ void UltraCanvasBubbleChartElement::RenderBubbleLabels(IRenderContext* ctx) {
     double grow = animationEnabled ? EaseOutCubic(GetAnimationProgress()) : 1.0;
     ctx->SetFontSize(labelFontSize);
 
+    // Inside labels are drawn immediately; below-bubble labels are collected
+    // and placed collision-free by the shared solver afterwards.
+    struct BelowLabelRequest {
+        size_t circleIdx = 0;      // index into layoutCircles
+        std::string text;
+        Size2Dd textSize;
+    };
+    std::vector<BelowLabelRequest> belowRequests;
+    std::vector<Rect2Dd> insideLabelRects;
+
     for (const auto& c : layoutCircles) {
         const auto& b = bubbles[c.index];
         double r = c.r * grow;
@@ -1134,21 +1146,79 @@ void UltraCanvasBubbleChartElement::RenderBubbleLabels(IRenderContext* ctx) {
             ctx->SetTextPaint(insideColor);
             ctx->DrawText(b.name, Point2Dd(c.cx - nameSz.width / 2.0, c.cy - lineH));
             ctx->DrawText(valueText, Point2Dd(c.cx - valSz.width / 2.0, c.cy + lineH - valSz.height));
+            double w = std::max(nameSz.width, valSz.width);
+            insideLabelRects.push_back(Rect2Dd(c.cx - w / 2.0, c.cy - lineH,
+                                               w, lineH * 2.0));
         } else if (nameInside) {
             Size2Di nameSz = ctx->GetTextLineDimensions(b.name);
             ctx->SetTextPaint(insideColor);
             ctx->DrawText(b.name, Point2Dd(c.cx - nameSz.width / 2.0, c.cy - nameSz.height / 2.0));
+            insideLabelRects.push_back(Rect2Dd(c.cx - nameSz.width / 2.0,
+                                               c.cy - nameSz.height / 2.0,
+                                               nameSz.width, nameSz.height));
         } else if (valueInside) {
             Size2Di valSz = ctx->GetTextLineDimensions(valueText);
             ctx->SetTextPaint(insideColor);
             ctx->DrawText(valueText, Point2Dd(c.cx - valSz.width / 2.0, c.cy - valSz.height / 2.0));
+            insideLabelRects.push_back(Rect2Dd(c.cx - valSz.width / 2.0,
+                                               c.cy - valSz.height / 2.0,
+                                               valSz.width, valSz.height));
         }
 
         if (nameBelow) {
             Size2Di nameSz = ctx->GetTextLineDimensions(b.name);
-            ctx->SetTextPaint(nameLabelColor);
-            ctx->DrawText(b.name, Point2Dd(c.cx - nameSz.width / 2.0, c.cy + r + 3.0));
+            BelowLabelRequest req;
+            req.circleIdx = static_cast<size_t>(&c - layoutCircles.data());
+            req.text = b.name;
+            req.textSize = Size2Dd(nameSz.width, nameSz.height);
+            belowRequests.push_back(req);
         }
+    }
+
+    if (belowRequests.empty()) return;
+
+    // ----- collision-free placement of the outside (below) labels -----
+    // Every laid-out circle becomes a solver shape so labels avoid covering
+    // neighbouring bubbles; group labels and the inside labels drawn above
+    // are keep-out obstacles. Smallest bubbles get placement priority: their
+    // labels must stay close to a tiny circle, while labels of bigger
+    // bubbles have room to move.
+    std::vector<LabelShape> solverShapes(layoutCircles.size());
+    for (size_t i = 0; i < layoutCircles.size(); ++i) {
+        solverShapes[i].type = LabelShapeType::Circle;
+        solverShapes[i].center = Point2Dd(layoutCircles[i].cx, layoutCircles[i].cy);
+        solverShapes[i].radius = layoutCircles[i].r * grow;
+        solverShapes[i].keepLabelInside = false;
+    }
+    std::stable_sort(belowRequests.begin(), belowRequests.end(),
+                     [this](const BelowLabelRequest& a, const BelowLabelRequest& b) {
+                         return layoutCircles[a.circleIdx].r < layoutCircles[b.circleIdx].r;
+                     });
+    std::vector<ShapeLabel> solverLabels;
+    solverLabels.reserve(belowRequests.size());
+    for (const auto& req : belowRequests) {
+        ShapeLabel l;
+        l.text = req.text;
+        l.shapeIndex = req.circleIdx;
+        l.preferredSide = LabelSide::Bottom;   // keep the classic below look
+        l.textSize = req.textSize;
+        solverLabels.push_back(l);
+    }
+    LabelPlacementOptions opts;
+    opts.bounds = Rect2Dd(cachedPlotArea.x, cachedPlotArea.y,
+                          cachedPlotArea.width, cachedPlotArea.height);
+    opts.shapeMargin = 3.0;
+    opts.labelMargin = 3.0;
+    opts.obstacles = parentLabelRects;
+    opts.obstacles.insert(opts.obstacles.end(),
+                          insideLabelRects.begin(), insideLabelRects.end());
+
+    std::vector<PlacedShapeLabel> placed =
+        PlaceShapeLabels(solverShapes, solverLabels, opts);
+
+    ctx->SetTextPaint(nameLabelColor);
+    for (size_t i = 0; i < placed.size(); ++i) {
+        ctx->DrawText(solverLabels[i].text, placed[i].bounds.TopLeft());
     }
 }
 
@@ -1194,9 +1264,20 @@ void UltraCanvasBubbleChartElement::RenderParentCircles(IRenderContext* ctx) {
                                                     : PickContrastTextColor(p.fill);
         ctx->SetTextPaint(labelColor);
         Size2Di sz = ctx->GetTextLineDimensions(p.group);
-        double bandCenterY = p.cy - (p.innerR + (p.r - p.innerR) * 0.5) * grow;
-        ctx->DrawText(p.group, Point2Dd(p.cx - sz.width / 2.0,
-                                        bandCenterY - sz.height / 2.0));
+        // Wide labels in a thin band can poke through the rim: pull the label
+        // towards the centre until its corners sit >= 3px inside the circle
+        // (chord fit at the label's vertical offset).
+        double offset = (p.innerR + (p.r - p.innerR) * 0.5) * grow;
+        double halfW = sz.width / 2.0;
+        double rIn = r - 3.0;
+        double maxOffset = (rIn > halfW)
+            ? std::sqrt(rIn * rIn - halfW * halfW) - sz.height / 2.0
+            : 0.0;
+        offset = std::min(offset, std::max(0.0, maxOffset));
+        Rect2Dd labelRect(p.cx - halfW, p.cy - offset - sz.height / 2.0,
+                          sz.width, sz.height);
+        ctx->DrawText(p.group, labelRect.TopLeft());
+        parentLabelRects.push_back(labelRect);
         if (groupLabelBold) ctx->SetFontWeight(FontWeight::Normal);
     }
 }
