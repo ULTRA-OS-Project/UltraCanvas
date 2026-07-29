@@ -167,3 +167,19 @@ gantt->onSelectionChanged = [](int id) { ... };   // -1 = cleared
 | `SetToday(date, showLine)` | Dashed today marker. |
 | `ScrollToDate(d)` / `ScrollToTask(id)` | Programmatic navigation. |
 | `SelectTask(id)` / `GetSelectedTaskId()` | Selection. |
+
+## Demo page
+
+`Apps/DemoApp/UltraCanvasGanttChartExamples.cpp` puts every example on its own
+tab so each chart gets the full display area:
+
+| Tab | Shows |
+|---|---|
+| **Design Studio** | A live chart next to a control panel covering the whole style surface: design preset, palette, colour mode, bar / summary / milestone shapes, progress and dependency rendering, bar labels, time scale, date format, table column presets, sixteen element toggles (table, header tiers, weekday letters, grid lines, weekend shading, striping, today marker, critical path, dashed arrows, progress text, bar outline …) and six metric sliders (day width, row height, bar height, corner radius, milestone size, arrow width). |
+| **Modern / Professional / Classic / Soft / Minimal / Dark** | One tab per `GanttDesign` preset, full size, with a note on what characterises it. |
+| **Palette Gallery** | The same schedule rendered eight times — one per `GanttPalette` — over a single shared design, so the palettes can be compared directly. |
+
+Picking a design preset in the Design Studio reloads the whole style and pushes
+the new values back into every control, so the panel always reflects what the
+chart is actually drawing. The palette dropdown only calls `SetPalette()`, which
+swaps the bar colour cycle and leaves the rest of the design untouched.
