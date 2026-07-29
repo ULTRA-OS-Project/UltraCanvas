@@ -179,6 +179,8 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasTextRenderingExamples.cpp
             Apps/DemoApp/UltraCanvasPieChartExamples.cpp
             Apps/DemoApp/UltraCanvasSunburstChartExamples.cpp
+            Apps/DemoApp/UltraCanvasChordChartExamples.cpp
+            Apps/DemoApp/UltraCanvasCircularInfoGraphicExamples.cpp
             Apps/DemoApp/UltraCanvasRadialBarChartExamples.cpp
             Apps/DemoApp/UltraCanvasPolarChartExamples.cpp
             Apps/DemoApp/UltraCanvasRadarChartExamples.cpp

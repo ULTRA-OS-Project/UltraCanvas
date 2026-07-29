@@ -1052,6 +1052,18 @@ namespace UltraCanvas {
                 .AddVariant("sunburstcharts", "Partial-Sweep Fan")
                 .AddVariant("sunburstcharts", "Depth-Limited Overview");
 
+        chartBuilder.AddItem("chordcharts", "Chord Chart",
+                             "Directed flows between categories: throughput-sized arcs, "
+                             "proportional bezier ribbons, hover isolation and flow tooltips",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateChordChartExamples(); },
+                             "DemoApp/UltraCanvasChordChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasChordChartExamples.md")
+                .AddVariant("chordcharts", "Global Merchandise Trade")
+                .AddVariant("chordcharts", "Asymmetric Migration Corridors")
+                .AddVariant("chordcharts", "Project Phase Handovers")
+                .AddVariant("chordcharts", "Cross-Team Handovers");
+
         chartBuilder.AddItem("radialbarcharts", "Radial Bar Chart",
                              "Value-driven rays around a circle: bar and line styles, "
                              "cap shapes, gradient fade, ring guides and peak labels",
@@ -1359,9 +1371,17 @@ namespace UltraCanvas {
                              ImplementationStatus::PartiallyImplemented,
                              [this]() { return CreatePartiallyImplementedExamples("HeatMap is not ready yet"); });
 
-        infoBuilder.AddItem("circularinfo", "Circular info graphic", "Circular info graphic",
-                            ImplementationStatus::PartiallyImplemented,
-                            [this]() { return CreatePartiallyImplementedExamples("Circular info graphic is not ready yet"); });
+        infoBuilder.AddItem("circularinfo", "Circular info graphic",
+                            "Concentric rings of styled cells with value tracks, decorative "
+                            "rings, group outlines and cross-ring connections",
+                            ImplementationStatus::FullyImplemented,
+                            [this]() { return CreateCircularInfoGraphicExamples(); },
+                            "DemoApp/UltraCanvasCircularInfoGraphicExamples.cpp",
+                            "Docs/UltraCanvas/UltraCanvasCircularInfoGraphicExamples.md")
+                .AddVariant("circularinfo", "Corporate Hierarchy")
+                .AddVariant("circularinfo", "Technology Ecosystem (270°)")
+                .AddVariant("circularinfo", "Multi-Track Genomic Style")
+                .AddVariant("circularinfo", "Decorative Mandala");
 
         infoBuilder.AddItem("wavesinfo", "Waves info graphic", "Waves info graphic",
                             ImplementationStatus::PartiallyImplemented,
