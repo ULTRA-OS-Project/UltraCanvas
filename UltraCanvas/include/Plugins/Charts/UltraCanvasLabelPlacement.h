@@ -87,6 +87,10 @@ struct LabelPlacementOptions {
 // edge (outside labels) or inside it (keep-inside shapes / Inside preference),
 // avoid covering other shapes where possible, and stay within bounds.
 // Results are returned in the same order as the input labels.
+// Labels are placed greedily in input order, so the order doubles as a
+// priority: earlier labels claim their preferred spot and later labels are
+// steered around them. Callers should submit the most constrained labels
+// first (e.g. nested charts submit the smallest, innermost shapes first).
 std::vector<PlacedShapeLabel> PlaceShapeLabels(
     const std::vector<LabelShape>& shapes,
     const std::vector<ShapeLabel>& labels,

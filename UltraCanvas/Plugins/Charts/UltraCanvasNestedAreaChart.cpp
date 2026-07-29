@@ -1,10 +1,11 @@
 // Plugins/Charts/UltraCanvasNestedAreaChart.cpp
 // Nested Proportional Area Chart - Implementation
-// Version: 1.1.0
-// Last Modified: 2026-07-25
+// Version: 1.2.0
+// Last Modified: 2026-07-29
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasNestedAreaChart.h"
+#include "Plugins/Charts/UltraCanvasLabelPlacement.h"
 #include "UltraCanvasTooltipManager.h"
 #include <algorithm>
 #include <sstream>
@@ -43,7 +44,6 @@ namespace UltraCanvas {
     void UltraCanvasNestedAreaChart::CalculateShapeCache() {
         shapeCache.shapeBounds.clear();
         shapeCache.shapeRadii.clear();
-        shapeCache.labelPositions.clear();
 
         const auto& pts = nestedDataSource->GetPoints();
         if (pts.empty() || maxDataValue <= 0) {
@@ -85,7 +85,6 @@ namespace UltraCanvas {
 
         shapeCache.shapeBounds.resize(pts.size());
         shapeCache.shapeRadii.resize(pts.size());
-        shapeCache.labelPositions.resize(pts.size());
 
         for (size_t dataIdx = 0; dataIdx < pts.size(); ++dataIdx) {
             const auto& point = pts[dataIdx];
@@ -119,12 +118,6 @@ namespace UltraCanvas {
                         break;
                 }
                 shapeCache.shapeBounds[dataIdx] = bounds;
-
-                // Label at circle center
-                shapeCache.labelPositions[dataIdx] = Point2Df(
-                        bounds.x + bounds.width / 2,
-                        bounds.y + bounds.height / 2
-                );
             } else {
                 // Rectangle or RoundedRect mode
                 float side = CalculateSideFromValue(point.value, maxDataValue, maxDimension);
@@ -155,34 +148,6 @@ namespace UltraCanvas {
                 }
                 shapeCache.shapeBounds[dataIdx] = bounds;
                 shapeCache.shapeRadii[dataIdx] = side / 2;
-
-                // Label position - near the shape's outer corner so the labels of
-                // nested shapes don't overlap each other
-                float labelOffsetX = bounds.width * 0.1f;
-                float labelOffsetY = bounds.height * 0.1f;
-
-                switch (alignmentMode) {
-                    case NestedAreaAlignmentMode::BottomLeft:
-                    case NestedAreaAlignmentMode::TopLeft:
-                        shapeCache.labelPositions[dataIdx] = Point2Df(
-                                bounds.x + bounds.width - labelOffsetX,
-                                bounds.y + labelOffsetY
-                        );
-                        break;
-                    case NestedAreaAlignmentMode::BottomRight:
-                    case NestedAreaAlignmentMode::TopRight:
-                        shapeCache.labelPositions[dataIdx] = Point2Df(
-                                bounds.x + labelOffsetX,
-                                bounds.y + labelOffsetY
-                        );
-                        break;
-                    default:
-                        shapeCache.labelPositions[dataIdx] = Point2Df(
-                                bounds.x + bounds.width / 2,
-                                bounds.y + bounds.height / 2
-                        );
-                        break;
-                }
             }
         }
 
@@ -347,62 +312,117 @@ namespace UltraCanvas {
 
     void UltraCanvasNestedAreaChart::RenderShapeLabels(IRenderContext* ctx) {
         const auto& pts = nestedDataSource->GetPoints();
+        if (pts.empty() || shapeCache.shapeBounds.size() != pts.size()) return;
         ctx->SetFontSize(11.0f);
 
-        // Smallest labels last so they stay readable on top
+        bool inside = (labelPosition == NestedAreaLabelPosition::Inside);
+        bool circleMode = (shapeMode == NestedAreaShapeMode::Circle);
+
+        // One solver shape per data point (index == data index) so the solver
+        // can steer every label away from all shapes, labelled or not.
+        std::vector<LabelShape> labelShapes(pts.size());
+        for (size_t i = 0; i < pts.size(); ++i) {
+            const Rect2Df& b = shapeCache.shapeBounds[i];
+            LabelShape& s = labelShapes[i];
+            s.type = circleMode ? LabelShapeType::Circle : LabelShapeType::Rectangle;
+            s.center = Point2Dd(b.x + b.width * 0.5, b.y + b.height * 0.5);
+            s.radius = shapeCache.shapeRadii[i];
+            s.size = Size2Dd(b.width, b.height);
+            s.keepLabelInside = inside;
+        }
+
+        // PlaceShapeLabels() places labels greedily in input order, so input
+        // order is the priority order. Submit smallest shapes first: the inner
+        // shapes are the most cramped and get first pick of the free space,
+        // while the roomy outer shapes work around the labels already placed.
+        struct PendingLabel {
+            size_t dataIdx;
+            std::string nameLine, valueLine;
+            Size2Di nameSize, valueSize;
+        };
+        std::vector<PendingLabel> pending;
+        std::vector<ShapeLabel> shapeLabels;
+
         for (size_t dataIdx : GetSortedIndices(false)) {
             const auto& point = pts[dataIdx];
             const Rect2Df& bounds = shapeCache.shapeBounds[dataIdx];
+            if (bounds.width <= 0 || bounds.height <= 0) continue;
 
-            // Skip if shape is too small for labels
-            if (bounds.width < 40 || bounds.height < 30) continue;
+            // Inside labels need a minimally sized shape to make sense
+            if (inside && (bounds.width < 40 || bounds.height < 30)) continue;
 
-            std::string nameLine = showLabels ? point.label : std::string();
-            std::string valueLine = showValues ? FormatNestedValue(point.value, point.unit)
-                                               : std::string();
-            if (nameLine.empty() && valueLine.empty()) continue;
+            PendingLabel pl;
+            pl.dataIdx = dataIdx;
+            pl.nameLine = showLabels ? point.label : std::string();
+            pl.valueLine = showValues ? FormatNestedValue(point.value, point.unit)
+                                      : std::string();
+            if (pl.nameLine.empty() && pl.valueLine.empty()) continue;
+            pl.nameSize = pl.nameLine.empty() ? Size2Di(0, 0)
+                                              : ctx->GetTextLineDimensions(pl.nameLine);
+            pl.valueSize = pl.valueLine.empty() ? Size2Di(0, 0)
+                                                : ctx->GetTextLineDimensions(pl.valueLine);
 
-            Point2Df labelPos = shapeCache.labelPositions[dataIdx];
-            if (labelPosition == NestedAreaLabelPosition::Outside) {
-                // Move label outside the shape
-                if (alignmentMode == NestedAreaAlignmentMode::BottomLeft ||
-                    alignmentMode == NestedAreaAlignmentMode::TopLeft) {
-                    labelPos.x = bounds.x + bounds.width + 5;
-                } else if (alignmentMode == NestedAreaAlignmentMode::BottomRight ||
-                           alignmentMode == NestedAreaAlignmentMode::TopRight) {
-                    labelPos.x = bounds.x - 5;
+            ShapeLabel l;
+            l.text = pl.nameLine.empty() ? pl.valueLine : pl.nameLine;
+            l.shapeIndex = dataIdx;
+            l.preferredSide = inside ? LabelSide::Inside : LabelSide::Auto;
+            // The solver places the whole two-line block as one rectangle
+            l.textSize = Size2Dd(std::max(pl.nameSize.width, pl.valueSize.width),
+                                 pl.nameSize.height + pl.valueSize.height);
+            shapeLabels.push_back(l);
+            pending.push_back(pl);
+        }
+        if (pending.empty()) return;
+
+        LabelPlacementOptions opts;
+        opts.bounds = Rect2Dd(cachedPlotArea.x, cachedPlotArea.y,
+                              cachedPlotArea.width, cachedPlotArea.height);
+        opts.shapeMargin = 4.0;
+        opts.labelMargin = 4.0;
+
+        std::vector<PlacedShapeLabel> placed = PlaceShapeLabels(labelShapes, shapeLabels, opts);
+
+        auto ascending = GetSortedIndices(false);
+        for (size_t i = 0; i < pending.size(); ++i) {
+            const PendingLabel& pl = pending[i];
+            const Rect2Dd& r = placed[i].bounds;
+
+            // Text colour follows what the label actually sits on: the smallest
+            // shape containing the label centre (shapes render smallest-on-top),
+            // or the chart background when the label landed outside all shapes.
+            Point2Dd labelCenter(r.x + r.width * 0.5, r.y + r.height * 0.5);
+            Color textColor = Colors::Black;
+            for (size_t shapeIdx : ascending) {
+                const Rect2Df& b = shapeCache.shapeBounds[shapeIdx];
+                bool contains;
+                if (circleMode) {
+                    double dx = labelCenter.x - (b.x + b.width * 0.5);
+                    double dy = labelCenter.y - (b.y + b.height * 0.5);
+                    double radius = shapeCache.shapeRadii[shapeIdx];
+                    contains = (dx * dx + dy * dy <= radius * radius);
+                } else {
+                    contains = labelCenter.x >= b.x && labelCenter.x <= b.x + b.width &&
+                               labelCenter.y >= b.y && labelCenter.y <= b.y + b.height;
+                }
+                if (contains) {
+                    Color bgColor = GetColorForIndex(shapeIdx);
+                    float brightness = (bgColor.r * 0.299f + bgColor.g * 0.587f +
+                                        bgColor.b * 0.114f) / 255.0f;
+                    textColor = (brightness > 0.5f) ? Colors::Black : Colors::White;
+                    break;
                 }
             }
-
-            // Text color based on background brightness
-            Color bgColor = GetColorForIndex(dataIdx);
-            float brightness = (bgColor.r * 0.299f + bgColor.g * 0.587f + bgColor.b * 0.114f) / 255.0f;
-            Color textColor = (labelPosition == NestedAreaLabelPosition::Outside || brightness > 0.5f)
-                              ? Colors::Black : Colors::White;
             ctx->SetTextPaint(textColor);
 
-            Size2Di nameSize = nameLine.empty() ? Size2Di(0, 0) : ctx->GetTextLineDimensions(nameLine);
-            Size2Di valueSize = valueLine.empty() ? Size2Di(0, 0) : ctx->GetTextLineDimensions(valueLine);
-            int totalHeight = nameSize.height + valueSize.height;
-            int maxWidth = std::max(nameSize.width, valueSize.width);
-
-            float textY = labelPos.y - totalHeight / 2.0f;
-
-            // Keep inside labels within the shape bounds
-            if (labelPosition == NestedAreaLabelPosition::Inside) {
-                float minX = bounds.x + 2, maxX = bounds.x + bounds.width - maxWidth - 2;
-                float minY = bounds.y + 2, maxY = bounds.y + bounds.height - totalHeight - 2;
-                labelPos.x = std::max(minX + maxWidth / 2.0f,
-                                      std::min(labelPos.x, maxX + maxWidth / 2.0f));
-                textY = std::max(minY, std::min(textY, maxY));
+            double textY = r.y;
+            if (!pl.nameLine.empty()) {
+                ctx->DrawText(pl.nameLine,
+                              Point2Dd(r.x + (r.width - pl.nameSize.width) * 0.5, textY));
+                textY += pl.nameSize.height;
             }
-
-            if (!nameLine.empty()) {
-                ctx->DrawText(nameLine, Point2Dd(labelPos.x - nameSize.width / 2.0f, textY));
-                textY += nameSize.height;
-            }
-            if (!valueLine.empty()) {
-                ctx->DrawText(valueLine, Point2Dd(labelPos.x - valueSize.width / 2.0f, textY));
+            if (!pl.valueLine.empty()) {
+                ctx->DrawText(pl.valueLine,
+                              Point2Dd(r.x + (r.width - pl.valueSize.width) * 0.5, textY));
             }
         }
     }
