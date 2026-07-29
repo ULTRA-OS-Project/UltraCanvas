@@ -114,7 +114,14 @@ namespace UltraCanvas {
         float cellValueFontSize = 9.0f;
         Color cellValueColor = Color(0, 0, 0, 255);
 
-        // Labels / titles
+        // Cached layout / raster
+        ChartPlotArea heatmapArea;
+        std::shared_ptr<UCPixmap> cellPixmap;
+        bool pixmapValid = false;
+
+    protected:
+        // Labels / titles. Protected so specialized subclasses (calendar,
+        // hexbin, contour) can lay them out themselves.
         std::vector<std::string> columnLabels;
         std::vector<std::string> rowLabels;
         bool showColumnLabels = true;
@@ -128,10 +135,11 @@ namespace UltraCanvas {
         int colorBarWidth = 18;
         int colorBarGap = 12;
 
-        // Cached layout / raster
-        ChartPlotArea heatmapArea;
-        std::shared_ptr<UCPixmap> cellPixmap;
-        bool pixmapValid = false;
+        // Foreground palette. Defaults match the historical hard-coded values;
+        // override them to put the chart on a dark background.
+        Color titleColor = Color(0, 0, 0, 255);
+        Color labelColor = Color(40, 40, 40, 255);
+        Color frameColor = Color(120, 120, 120, 255);
 
     public:
         UltraCanvasHeatmapChartElement(const std::string& id, int x, int y, int width, int height);
@@ -194,6 +202,16 @@ namespace UltraCanvas {
         // ---- Colour bar ----
         void SetShowColorBar(bool on);
 
+        // ---- Foreground palette (dark themes) ----
+        void SetTitleColor(const Color& c) { titleColor = c; RequestRedraw(); }
+        void SetLabelColor(const Color& c) { labelColor = c; RequestRedraw(); }
+        void SetFrameColor(const Color& c) { frameColor = c; RequestRedraw(); }
+
+        // ---- Accessors used by subclasses / callers ----
+        HeatmapRowOrder GetRowOrder() const { return rowOrder; }
+        HeatmapColormap GetColormap() const { return colormap; }
+        const Color& GetNaNColor() const { return nanColor; }
+
         // ---- Overrides ----
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         void RenderChart(IRenderContext* ctx) override;
@@ -207,11 +225,17 @@ namespace UltraCanvas {
         void RenderColorBar(IRenderContext* ctx);   // reusable by subclasses
         const ChartPlotArea& GetHeatmapArea() const { return heatmapArea; }
 
-    private:
-        void RecomputeAutoRange();
-        void InvalidateRaster();
+        // Called by every mutator that changes the data, the value range or the
+        // colour mapping. Subclasses override it to drop their own derived
+        // caches (e.g. the contour geometry) without having to shadow each
+        // individual setter.
+        virtual void InvalidateRaster();
+
         double NormalizeValue(double v) const;         // -> [0,1], NaN passthrough
         Color ColorAtT(double t) const;                // colour-map lookup (handles reverse)
+
+    private:
+        void RecomputeAutoRange();
         bool EffectiveUseImageMode() const;
         void BuildPixmap();
         void RenderCells(IRenderContext* ctx);

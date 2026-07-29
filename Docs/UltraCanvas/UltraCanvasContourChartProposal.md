@@ -1,6 +1,18 @@
 # UltraCanvasContourChart — Research & Feature Proposal
 
-Status: **proposal / design document** (no implementation yet)
+Status: **Phase 1 and most of Phase 2 are implemented** — see
+[`UltraCanvasContourChart.md`](UltraCanvasContourChart.md) for the API
+documentation and `Apps/DemoApp/UltraCanvasContourChartExamples.cpp` for the
+demo. This document is kept as the research write-up and the roadmap for the
+remaining items.
+
+The three open questions in §8 were resolved as recommended: the 2D element
+derives from `UltraCanvasHeatmapChartElement`, the 3D surface is software
+rendered (no `ULTRACANVAS_ENABLE_GL` requirement), and the theme colours added
+for the dark-mode variant were put on the heatmap base class so the heatmap,
+hexbin and calendar charts gain them too. Isolines traced onto the 3D surface
+(T8) were pulled forward from P3 into the first delivery.
+
 Author: UltraCanvas Framework
 Last Modified: 2026-07-29
 

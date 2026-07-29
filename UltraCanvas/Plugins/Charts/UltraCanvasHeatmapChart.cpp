@@ -448,7 +448,7 @@ namespace UltraCanvas {
 
         // Title
         if (!chartTitle.empty()) {
-            ctx->SetTextPaint(Color(0, 0, 0, 255));
+            ctx->SetTextPaint(titleColor);
             ctx->SetFontSize(15.0);
             Size2Di sz = ctx->GetTextLineDimensions(chartTitle);
             ctx->DrawText(chartTitle, Point2Dd(GetWidth() / 2.0 - sz.width / 2.0, 6));
@@ -467,7 +467,7 @@ namespace UltraCanvas {
         }
 
         // Plot-area border
-        ctx->SetStrokePaint(Color(120, 120, 120, 255));
+        ctx->SetStrokePaint(frameColor);
         ctx->SetStrokeWidth(1.0);
         ctx->DrawRectangle(heatmapArea.ToRect2D());
 
@@ -578,7 +578,7 @@ namespace UltraCanvas {
 
     void UltraCanvasHeatmapChartElement::RenderGridLabels(IRenderContext* ctx) {
         ctx->SetFontSize(11.0);
-        ctx->SetTextPaint(Color(40, 40, 40, 255));
+        ctx->SetTextPaint(labelColor);
         int lineH = ctx->GetTextLineHeight("0");
 
         double cellW = heatmapArea.width / cols;
@@ -651,12 +651,12 @@ namespace UltraCanvas {
             ctx->DrawFilledRectangle(Rect2Dd(barX, barY + i, barW, 1.0), color);
         }
 
-        ctx->SetStrokePaint(Color(120, 120, 120, 255));
+        ctx->SetStrokePaint(frameColor);
         ctx->SetStrokeWidth(1.0);
         ctx->DrawRectangle(Rect2Dd(barX, barY, barW, barH));
 
         ctx->SetFontSize(10.0);
-        ctx->SetTextPaint(Color(40, 40, 40, 255));
+        ctx->SetTextPaint(labelColor);
         std::string maxLabel = FormatValue(valueMax);
         std::string minLabel = FormatValue(valueMin);
         double midValue;

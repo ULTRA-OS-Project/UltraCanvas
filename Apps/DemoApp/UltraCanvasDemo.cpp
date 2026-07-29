@@ -1123,6 +1123,22 @@ namespace UltraCanvas {
                 .AddVariant("heatmapchart", "Hexbin Density")
                 .AddVariant("heatmapchart", "Job Gains & Losses");
 
+        chartBuilder.AddItem("contourchart", "Contour Chart",
+                             "Isolines, filled contour bands, kernel-density contours of a "
+                             "point cloud, inline labelled curves, and 3D contour surfaces "
+                             "with isolines traced onto the terrain",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateContourChartExamples(); },
+                             "DemoApp/UltraCanvasContourChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasContourChart.md")
+                .AddVariant("contourchart", "Interactive Contour")
+                .AddVariant("contourchart", "Filled + Labels")
+                .AddVariant("contourchart", "Density (KDE)")
+                .AddVariant("contourchart", "Line Contour")
+                .AddVariant("contourchart", "Dark Density")
+                .AddVariant("contourchart", "3D Bands")
+                .AddVariant("contourchart", "3D Terrain");
+
         chartBuilder.AddItem("jitterchart", "Jitter chart", "Jitter chart",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateJitterPlotExamples(); },
