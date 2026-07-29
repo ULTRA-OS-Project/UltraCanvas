@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.h
 // Complete text editor application with multi-file tabs, autosave, and enhanced features
-// Version: 2.1.1
-// Last Modified: 2026-05-01
+// Version: 2.1.2
+// Last Modified: 2026-07-29
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -289,9 +289,12 @@ namespace UltraCanvas {
         // Recent files methods
         void AddToRecentFiles(const std::string& filePath);
         void RemoveFromRecentFiles(const std::string& filePath);
+        void ClearRecentFiles();
+        void RefreshRecentFiles();     // re-read the list shared with other windows
         void ShowRecentFilesPopup();
-        void LoadRecentFiles();
-        void SaveRecentFiles();
+        // Menu labels for the first `count` entries, disambiguated by folder
+        // when several entries share the same file name.
+        std::vector<std::string> BuildRecentFileLabels(int count) const;
         bool IsFileCurrentlyOpen(const std::string& filePath) const;
 
         // Config file methods

@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
-// Version: 2.2.1 - Redraw event.targetElement set via weak_from_this()
-// Last Modified: 2026-07-02
+// Version: 2.2.2 - Recent files list merged with the shared file on disk
+// Last Modified: 2026-07-29
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
@@ -33,13 +33,14 @@
 #include <cstdlib>
 #include <cstring>
 #include <unordered_set>
+#include <map>
 #include <fmt/os.h>
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasUtilsUtf8.h"
 
 namespace UltraCanvas {
-    std::string UltraCanvasTextEditor::version = "0.1.39";
+    std::string UltraCanvasTextEditor::version = "0.1.40";
     
 namespace {
     std::string GetAppDataDirectory() {
@@ -502,6 +503,7 @@ namespace {
                                 // Walk recentFiles (newest-first), collect up to 20 unique
                                 // parent folders preserving recency, then sort alphabetically.
                                 constexpr int kMaxRecentFolders = 20;
+                                RefreshRecentFiles();
                                 std::vector<std::string> folders;
                                 std::unordered_set<std::string> seen;
                                 for (const auto& filePath : recentFiles) {
@@ -561,6 +563,7 @@ namespace {
                             auto recent = MenuItemData::Submenu("Recent Files", NormalizePath(GetResourcesDir() + "media/icons/texter/clock-five.svg"),
                             [this]() -> std::vector<MenuItemData> {
                                 std::vector<MenuItemData> recentItems;
+                                RefreshRecentFiles();
                                 if (recentFiles.empty()) {
                                     MenuItemData emptyItem;
                                     emptyItem.type = MenuItemType::Action;
@@ -570,11 +573,10 @@ namespace {
                                 } else {
                                     int displayCount = std::min(static_cast<int>(recentFiles.size()),
                                                                 config.maxRecentFiles);
+                                    std::vector<std::string> labels = BuildRecentFileLabels(displayCount);
                                     for (int i = 0; i < displayCount; i++) {
                                         const std::string& fullPath = recentFiles[i];
-                                        std::filesystem::path p(fullPath);
-                                        std::string displayName = p.filename().string();
-                                        std::string label = std::to_string(i + 1) + ". " + displayName;
+                                        const std::string& label = labels[i];
                                         std::string iconPath = IsFileCurrentlyOpen(fullPath)
                                             ? NormalizePath(GetResourcesDir() + "media/icons/texter/circle-empty.svg")
                                             : std::string("-");
@@ -593,8 +595,7 @@ namespace {
                                     recentItems.push_back(MenuItemData::Separator());
                                     recentItems.push_back(
                                         MenuItemData::Action("Clear Recent Files", NormalizePath(GetResourcesDir()+"media/icons/texter/square-minus.svg"), [this]() {
-                                            recentFiles.clear();
-                                            SaveRecentFiles();
+                                            ClearRecentFiles();
                                         })
                                     );
                                 }
@@ -725,8 +726,9 @@ namespace {
                 .Build();
 
         // Load recent files — the "Recent Files" submenu regenerates its items
-        // via a lambda each time it is opened (see AddSubmenu above).
-        LoadRecentFiles();
+        // via a lambda each time it is opened (see AddSubmenu above) and
+        // re-reads the list then, so this is only the initial fill.
+        RefreshRecentFiles();
 
         MenuStyle menuStyle = MenuStyle::Default();
         menuStyle.font.fontSize = 11.0f;
@@ -1730,9 +1732,14 @@ namespace {
     }
 
     int UltraCanvasTextEditor::OpenDocumentFromPath(const std::string& filePath) {
-        // Check if file is already open
+        // Check if file is already open. Compare normalized so the same file
+        // reached through a relative path, a symlink or a resource path with
+        // ".." in it does not end up in two tabs.
+        std::string normalizedPath = TextEditorConfigFile::NormalizeRecentPath(filePath);
         for (size_t i = 0; i < documents.size(); i++) {
-            if (documents[i]->filePath == filePath) {
+            if (documents[i]->filePath.empty()) continue;
+            if (documents[i]->filePath == filePath ||
+                TextEditorConfigFile::NormalizeRecentPath(documents[i]->filePath) == normalizedPath) {
                 // Switch to existing tab
                 SwitchToDocument(static_cast<int>(i));
                 return static_cast<int>(i);
@@ -5121,31 +5128,50 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     void UltraCanvasTextEditor::AddToRecentFiles(const std::string& filePath) {
         if (filePath.empty()) return;
 
-        // Remove if already present (will re-add at front)
-        auto it = std::find(recentFiles.begin(), recentFiles.end(), filePath);
-        if (it != recentFiles.end()) {
-            recentFiles.erase(it);
-        }
-
-        // Insert at front (newest first)
-        recentFiles.insert(recentFiles.begin(), filePath);
-
-        // Trim to configured maximum
-        int maxFiles = config.maxRecentFiles;
-        if (static_cast<int>(recentFiles.size()) > maxFiles) {
-            recentFiles.resize(maxFiles);
-        }
-
-        // Persist — the menubar submenu regenerates on next open via its lambda.
-        SaveRecentFiles();
+        // Merge into the persisted list rather than overwriting it with this
+        // window's snapshot: other windows and other UltraTexter processes share
+        // recent_files.txt, and their entries (for example the file this
+        // document was loaded from before a Save As) must survive.
+        // The menubar submenu regenerates on next open via its lambda.
+        recentFiles = configFile.AddRecentFile(filePath, config.maxRecentFiles);
     }
 
     void UltraCanvasTextEditor::RemoveFromRecentFiles(const std::string& filePath) {
-        auto it = std::find(recentFiles.begin(), recentFiles.end(), filePath);
-        if (it != recentFiles.end()) {
-            recentFiles.erase(it);
-            SaveRecentFiles();
+        if (filePath.empty()) return;
+        recentFiles = configFile.RemoveRecentFile(filePath);
+    }
+
+    void UltraCanvasTextEditor::ClearRecentFiles() {
+        recentFiles.clear();
+        configFile.ClearRecentFiles();
+    }
+
+    // Recent files are shown by file name only, which is ambiguous when the same
+    // name exists in several folders — exactly what "Save As" into another
+    // directory produces. Suffix the parent folder in that case so the original
+    // file stays recognisable next to its copy.
+    std::vector<std::string> UltraCanvasTextEditor::BuildRecentFileLabels(int count) const {
+        count = std::min(count, static_cast<int>(recentFiles.size()));
+        std::vector<std::string> labels;
+        labels.reserve(static_cast<size_t>(std::max(count, 0)));
+
+        std::map<std::string, int> nameCounts;
+        for (int i = 0; i < count; i++) {
+            nameCounts[std::filesystem::path(recentFiles[i]).filename().string()]++;
         }
+
+        for (int i = 0; i < count; i++) {
+            std::filesystem::path p(recentFiles[i]);
+            std::string label = std::to_string(i + 1) + ". " + p.filename().string();
+            if (nameCounts[p.filename().string()] > 1) {
+                std::string folder = p.parent_path().string();
+                if (!folder.empty()) {
+                    label += "   [" + folder + "]";
+                }
+            }
+            labels.push_back(std::move(label));
+        }
+        return labels;
     }
 
     void UltraCanvasTextEditor::ShowRecentFilesPopup() {
@@ -5163,6 +5189,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
 
         // Clear and rebuild with current recent files
+        RefreshRecentFiles();
         recentFilesPopupMenu->Clear();
 
         if (recentFiles.empty()) {
@@ -5174,11 +5201,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         } else {
             int displayCount = std::min(static_cast<int>(recentFiles.size()),
                                         config.maxRecentFiles);
+            std::vector<std::string> labels = BuildRecentFileLabels(displayCount);
             for (int i = 0; i < displayCount; i++) {
                 const std::string& fullPath = recentFiles[i];
-                std::filesystem::path p(fullPath);
-                std::string displayName = p.filename().string();
-                std::string label = std::to_string(i + 1) + ". " + displayName;
+                const std::string& label = labels[i];
 
                 std::string iconPath = IsFileCurrentlyOpen(fullPath)
                     ? NormalizePath(GetResourcesDir() + "media/icons/texter/circle-empty.svg")
@@ -5200,11 +5226,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
             recentFilesPopupMenu->AddItem(MenuItemData::Separator());
             recentFilesPopupMenu->AddItem(
-                MenuItemData::Action("Clear Recent Files", 
-                    NormalizePath(GetResourcesDir() + "media/icons/texter/square-minus.svg"), 
+                MenuItemData::Action("Clear Recent Files",
+                    NormalizePath(GetResourcesDir() + "media/icons/texter/square-minus.svg"),
                     [this]() {
-                        recentFiles.clear();
-                        SaveRecentFiles();
+                        ClearRecentFiles();
                     }
                 )
             );
@@ -5220,7 +5245,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             *win, PopupElementSettings());
     }
 
-    void UltraCanvasTextEditor::LoadRecentFiles() {
+    // (Re-)read the list shared with the other windows and UltraTexter
+    // processes, so a menu about to be shown reflects what they opened since
+    // this window started.
+    void UltraCanvasTextEditor::RefreshRecentFiles() {
         recentFiles = configFile.LoadRecentFiles();
 
         // Trim to configured max
@@ -5229,13 +5257,14 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
     }
 
-    void UltraCanvasTextEditor::SaveRecentFiles() {
-        configFile.SaveRecentFiles(recentFiles);
-    }
-
     bool UltraCanvasTextEditor::IsFileCurrentlyOpen(const std::string& filePath) const {
+        // Recent-file entries are stored normalized while doc->filePath keeps the
+        // spelling the dialog/command line handed over, so compare normalized.
+        std::string normalized = TextEditorConfigFile::NormalizeRecentPath(filePath);
         for (const auto& doc : documents) {
-            if (doc && doc->filePath == filePath) return true;
+            if (!doc || doc->filePath.empty()) continue;
+            if (doc->filePath == filePath) return true;
+            if (TextEditorConfigFile::NormalizeRecentPath(doc->filePath) == normalized) return true;
         }
         return false;
     }

@@ -104,6 +104,27 @@ add_test(NAME FocusHistoryTest COMMAND FocusHistoryTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: FocusHistoryTest")
 
+# ===== RECENT FILES TEST =====
+# UltraTexter's recent-files store lives in the header-only
+# Apps/Texter/UltraCanvasTextEditorConfig.h, so the test builds without
+# linking UltraCanvas or opening a display.
+message(STATUS "  Building RecentFilesTest...")
+
+add_executable(RecentFilesTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/RecentFilesTest.cpp
+)
+target_include_directories(RecentFilesTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/Apps/Texter
+)
+target_compile_features(RecentFilesTest PRIVATE cxx_std_20)
+set_target_properties(RecentFilesTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME RecentFilesTest COMMAND RecentFilesTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: RecentFilesTest")
+
 # ===== HTMLREADER TEST =====
 # The HTMLReader parse/CSS/resolve layer is framework-independent, so the
 # test builds straight from the sources without linking UltraCanvas.

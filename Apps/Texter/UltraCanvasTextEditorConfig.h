@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditorConfig.h
 // Persistent configuration file manager for UltraTexter
-// Version: 1.0.2
-// Last Modified: 2026-06-03
+// Version: 1.0.3
+// Last Modified: 2026-07-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -153,8 +153,39 @@ namespace UltraCanvas {
         }
 
         // ===== RECENT FILES =====
+        //
+        // recent_files.txt is shared by every UltraTexter window *and* every
+        // running UltraTexter process (the app has no single-instance IPC — a
+        // file opened from the desktop file manager starts a new process). A
+        // window only reads the list when it starts, so writing that in-memory
+        // snapshot back would drop every entry another window/process added in
+        // the meantime. All mutations therefore re-read the file first and
+        // merge, and they return the merged list so the caller can refresh.
 
-        /// Load recent files list from file
+        /// Normalize a path for storage and comparison: absolute, "." and ".."
+        /// resolved, symlinks resolved where possible. Keeps a single entry per
+        /// physical file no matter how it was spelled (relative command-line
+        /// argument, "<exe>/../share/..." resource path, file dialog result).
+        static std::string NormalizeRecentPath(const std::string& filePath) {
+            if (filePath.empty()) return "";
+
+            std::filesystem::path p(filePath);
+            std::error_code ec;
+
+            // weakly_canonical resolves the part of the path that exists and
+            // leaves the rest lexically normalized, so it also works for files
+            // that have since been deleted or moved.
+            std::filesystem::path resolved = std::filesystem::weakly_canonical(p, ec);
+            if (ec || resolved.empty()) {
+                ec.clear();
+                resolved = std::filesystem::absolute(p, ec);
+                if (ec) resolved = p;
+            }
+            return resolved.lexically_normal().string();
+        }
+
+        /// Load recent files list from file (normalized, duplicates dropped,
+        /// newest first).
         std::vector<std::string> LoadRecentFiles() {
             std::vector<std::string> files;
             std::ifstream file(recentFilesPath);
@@ -162,9 +193,16 @@ namespace UltraCanvas {
 
             std::string line;
             while (std::getline(file, line)) {
-                if (!line.empty()) {
-                    files.push_back(line);
+                // Strip trailing \r for files written on Windows
+                if (!line.empty() && line.back() == '\r') line.pop_back();
+                if (line.empty()) continue;
+
+                std::string normalized = NormalizeRecentPath(line);
+                if (normalized.empty()) continue;
+                if (std::find(files.begin(), files.end(), normalized) != files.end()) {
+                    continue; // older duplicate of an entry we already kept
                 }
+                files.push_back(normalized);
             }
             return files;
         }
@@ -180,6 +218,46 @@ namespace UltraCanvas {
                 file << path << std::endl;
             }
             return true;
+        }
+
+        /// Move `filePath` to the front of the persisted list, keeping every
+        /// other entry (including the ones this process has never seen).
+        /// Returns the merged list.
+        std::vector<std::string> AddRecentFile(const std::string& filePath, int maxFiles) {
+            std::vector<std::string> files = LoadRecentFiles();
+
+            std::string normalized = NormalizeRecentPath(filePath);
+            if (normalized.empty()) return files;
+
+            files.erase(std::remove(files.begin(), files.end(), normalized), files.end());
+            files.insert(files.begin(), normalized);
+
+            if (maxFiles > 0 && static_cast<int>(files.size()) > maxFiles) {
+                files.resize(static_cast<size_t>(maxFiles));
+            }
+
+            SaveRecentFiles(files);
+            return files;
+        }
+
+        /// Drop a single entry from the persisted list. Returns the merged list.
+        std::vector<std::string> RemoveRecentFile(const std::string& filePath) {
+            std::vector<std::string> files = LoadRecentFiles();
+
+            std::string normalized = NormalizeRecentPath(filePath);
+            if (normalized.empty()) return files;
+
+            auto it = std::remove(files.begin(), files.end(), normalized);
+            if (it == files.end()) return files; // nothing to do, don't rewrite
+            files.erase(it, files.end());
+
+            SaveRecentFiles(files);
+            return files;
+        }
+
+        /// Empty the persisted list (explicit user action, so it is not merged).
+        bool ClearRecentFiles() {
+            return SaveRecentFiles({});
         }
 
         void SaveSearchHistory(const std::vector<std::string>& searchHist,
