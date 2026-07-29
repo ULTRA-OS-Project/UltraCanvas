@@ -1,4 +1,30 @@
 #### 2026-07-28 *0.3.18*
+- **UltraCanvasMediaViewer**: the folder path strip now uses the same path
+  mechanism as the filer. The shared builder `BuildFolderBreadcrumb()` (plus
+  `ListDriveRoots()` and `FolderBreadcrumbOptions`, declared in
+  `UltraCanvasBreadcrumb.h`) fills a breadcrumb with a leading **"Computer"**
+  node whose dropdown lists every drive / mounted volume, the drive (or root)
+  node, and one node per folder. The media viewer built its own strip before, by
+  iterating the whole `std::filesystem::path`, which on Windows turned the root
+  separator into a node of its own (`C:` → `\` → `Users` → …) and offered no way
+  to reach another drive. The filer demo's private copy of the logic is gone —
+  both now call the shared builder, so a path strip behaves identically wherever
+  it appears (segment click browses the folder; the segment dropdown lists the
+  sibling folders at that level).
+- **UltraCanvasBreadcrumb**: fixed long paths overflowing the strip instead of
+  collapsing when an interlocking item style (`Arrow` / `Parallelogram`) was
+  used — as seen on the media viewer, whose last folder was clipped at the right
+  edge with no `...` menu. Those styles butt their segments together and add the
+  notch depth (`arrowSize`) per neighbour, but overflow handling was still
+  costing a separator plus its spacing (0 for both presets), so the strip
+  under-measured itself by `arrowSize × segments` and decided everything fitted.
+  Measurement, collapse and slot building now share one per-neighbour cost, and
+  the `...` placeholder carves the same left notch as any other segment.
+- **UltraCanvasBreadcrumb**: min-content width in `Collapse` mode is now the
+  collapsed floor (kept first item + `...` + the trailing items the style keeps)
+  instead of the full uncollapsed path, so a parent layout can shrink the strip
+  to its own width rather than being widened by a deep path. Other overflow
+  modes keep every item and are unchanged.
 - New **UltraCanvasSWOTDiagram** element
   (`Plugins/Diagrams/UltraCanvasSWOTDiagram`): classic four-panel SWOT
   analysis infographic rendering four text item lists (Strengths, Weaknesses,

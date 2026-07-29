@@ -100,6 +100,48 @@ std::string GetPath(char separator = '/') const;
 void SetItems(std::vector<BreadcrumbItem> newItems);
 ```
 
+### Folder Path Mechanism
+
+`SetPath()` above only splits a string. For a real folder path — the one the
+filer and the media viewer show — use the shared builder, which produces a
+navigable strip instead of plain labels:
+
+```cpp
+// The drive roots / mounted volumes offered by the "Computer" node:
+// "A:\" ... "Z:\" on Windows, "/" plus /media, /mnt and /Volumes entries elsewhere.
+std::vector<std::string> ListDriveRoots();
+
+struct FolderBreadcrumbOptions {
+    bool showComputerItem = true;            // leading node listing all drives
+    std::string computerLabel = "Computer";
+    bool siblingDropdowns = true;            // per-segment dropdown of neighbouring folders
+};
+
+// Rebuilds `crumb` as the path of `folderPath`: an optional "Computer" node, the
+// drive / root node, then one node per folder — the path separator is never a
+// node of its own. Clicking a node, or picking an entry from a dropdown, calls
+// `onNavigate` with that folder.
+void BuildFolderBreadcrumb(UltraCanvasBreadcrumb* crumb,
+                           const std::string& folderPath,
+                           std::function<void(const std::string&)> onNavigate,
+                           const FolderBreadcrumbOptions& options = FolderBreadcrumbOptions());
+```
+
+Sibling dropdowns are filled lazily when the menu opens, so a deep path costs
+nothing extra to build.
+
+```cpp
+// Keep a filer and its path strip in sync.
+filer->onPathChanged = [crumb, filer](const std::string& path) {
+    BuildFolderBreadcrumb(crumb, path,
+                          [filer](const std::string& folder) { filer->SetPath(folder); });
+};
+```
+
+Pair it with `BreadcrumbOverflowMode::Collapse` (plus `keepFirstItemOnCollapse`
+and `minVisibleAfterCollapse`) so a deep path collapses its middle into a `...`
+menu rather than running past the strip.
+
 ### Current Item
 
 ```cpp
