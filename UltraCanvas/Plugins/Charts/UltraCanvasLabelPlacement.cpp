@@ -1,7 +1,7 @@
 // Plugins/Charts/UltraCanvasLabelPlacement.cpp
 // Shared shape-label placement solver for diagrams
-// Version: 1.0.0
-// Last Modified: 2026-07-24
+// Version: 1.1.0
+// Last Modified: 2026-07-29
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasLabelPlacement.h"
@@ -136,40 +136,57 @@ void AddOutsideCandidates(std::vector<Candidate>& out, const LabelShape& s,
     }
 }
 
-// Candidates inside the shape. Rectangles prefer the top-left corner (the
-// classic set-hierarchy look), then the other edges and the centre; circles
-// prefer the centre, then upper and lower positions.
-void AddInsideCandidates(std::vector<Candidate>& out, const LabelShape& s,
-                         const Size2Dd& text, double margin) {
+// Rect for one inside anchor. Rectangle shapes pin the label into the
+// corresponding corner/edge with a margin inset; circle shapes offset the
+// label from the centre by half the radius (corners diagonally by
+// 0.5r/sqrt(2) so the label stays within the disc).
+Rect2Dd InsideAnchorRect(const LabelShape& s, const Size2Dd& text,
+                         LabelAnchor anchor, double margin) {
+    int col = static_cast<int>(anchor) % 3 - 1;   // -1 left, 0 centre, 1 right
+    int row = static_cast<int>(anchor) / 3 - 1;   // -1 top,  0 centre, 1 bottom
     if (s.type == LabelShapeType::Rectangle) {
         Rect2Dd bb = s.BoundingRect();
         double xIn = margin * 2.0;
         double yIn = margin;
-        double lX = bb.Left() + xIn;
-        double cX = s.center.x - text.width * 0.5;
-        double rX = bb.Right() - xIn - text.width;
-        double tY = bb.Top() + yIn;
-        double cY = s.center.y - text.height * 0.5;
-        double bY = bb.Bottom() - yIn - text.height;
-        const struct { double x, y, cost; } anchors[] = {
-            {lX, tY, 0.0}, {cX, tY, 0.5}, {rX, tY, 1.0},
-            {lX, bY, 1.5}, {cX, bY, 2.0}, {rX, bY, 2.5},
-            {lX, cY, 3.0}, {cX, cY, 3.5}, {rX, cY, 4.0},
-        };
-        for (const auto& a : anchors) {
-            out.push_back({Rect2Dd(a.x, a.y, text.width, text.height),
-                           LabelSide::Inside, a.cost});
-        }
-    } else {
-        const struct { double dy, cost; } anchors[] = {
-            {0.0, 0.0}, {-0.5, 0.5}, {0.5, 1.0},
-        };
-        for (const auto& a : anchors) {
-            out.push_back({Rect2Dd(s.center.x - text.width * 0.5,
-                                   s.center.y + a.dy * s.radius - text.height * 0.5,
-                                   text.width, text.height),
-                           LabelSide::Inside, a.cost});
-        }
+        double x = (col < 0) ? bb.Left() + xIn
+                 : (col > 0) ? bb.Right() - xIn - text.width
+                             : s.center.x - text.width * 0.5;
+        double y = (row < 0) ? bb.Top() + yIn
+                 : (row > 0) ? bb.Bottom() - yIn - text.height
+                             : s.center.y - text.height * 0.5;
+        return Rect2Dd(x, y, text.width, text.height);
+    }
+    double f = (col != 0 && row != 0) ? 0.5 * M_SQRT1_2 : 0.5;
+    return Rect2Dd(s.center.x + col * f * s.radius - text.width * 0.5,
+                   s.center.y + row * f * s.radius - text.height * 0.5,
+                   text.width, text.height);
+}
+
+// Candidates inside the shape, in the caller's priority order (earlier
+// anchors get lower base cost, so they win unless they collide). Without an
+// explicit priority, rectangles prefer the top-left corner (the classic
+// set-hierarchy look), then the other edges and the centre; circles prefer
+// the centre, then upper and lower positions.
+void AddInsideCandidates(std::vector<Candidate>& out, const LabelShape& s,
+                         const Size2Dd& text, double margin,
+                         const std::vector<LabelAnchor>& priority) {
+    static const std::vector<LabelAnchor> rectDefault = {
+        LabelAnchor::TopLeft, LabelAnchor::TopCenter, LabelAnchor::TopRight,
+        LabelAnchor::BottomLeft, LabelAnchor::BottomCenter, LabelAnchor::BottomRight,
+        LabelAnchor::CenterLeft, LabelAnchor::Center, LabelAnchor::CenterRight,
+    };
+    static const std::vector<LabelAnchor> circleDefault = {
+        LabelAnchor::Center, LabelAnchor::TopCenter, LabelAnchor::BottomCenter,
+    };
+    const std::vector<LabelAnchor>& anchors =
+        !priority.empty() ? priority
+        : (s.type == LabelShapeType::Rectangle) ? rectDefault : circleDefault;
+
+    double cost = 0.0;
+    for (LabelAnchor anchor : anchors) {
+        out.push_back({InsideAnchorRect(s, text, anchor, margin),
+                       LabelSide::Inside, cost});
+        cost += 0.5;
     }
 }
 
@@ -243,8 +260,10 @@ std::vector<PlacedShapeLabel> PlaceShapeLabels(
     centroid.x /= shapes.size();
     centroid.y /= shapes.size();
 
-    std::vector<Rect2Dd> placed;
-    placed.reserve(labels.size());
+    // Obstacles behave exactly like labels that were already placed: they
+    // repel candidates in scoring and are avoided by the slide resolution.
+    std::vector<Rect2Dd> placed(options.obstacles.begin(), options.obstacles.end());
+    placed.reserve(placed.size() + labels.size());
 
     for (size_t i = 0; i < labels.size(); ++i) {
         const ShapeLabel& label = labels[i];
@@ -263,7 +282,8 @@ std::vector<PlacedShapeLabel> PlaceShapeLabels(
         std::vector<Candidate> candidates;
         bool wantInside = s.keepLabelInside || label.preferredSide == LabelSide::Inside;
         if (wantInside) {
-            AddInsideCandidates(candidates, s, label.textSize, options.shapeMargin);
+            AddInsideCandidates(candidates, s, label.textSize, options.shapeMargin,
+                                label.anchorPriority);
         } else {
             // Side order: the preferred side first if given; otherwise the
             // vertical side facing away from the diagram centre (wide, short

@@ -16,7 +16,7 @@ The `UltraCanvasNestedAreaChart` is a chart component in the UltraCanvas framewo
 - **Seven alignment modes**: shapes can share a corner (BottomLeft, BottomRight, TopLeft, TopRight), an edge midpoint (BottomCenter, TopCenter), or be concentric (Center)
 - **14 predefined color themes** plus fully custom palettes
 - **Interactive**: hover highlighting, framework tooltips, click selection, and hover/click/select callbacks
-- **Labels & legend**: inside/outside labels with automatic contrast color, value formatting with unit suffixes (K/M/B), and a wrapping legend. Label positions are solved by the shared `PlaceShapeLabels()` solver (`UltraCanvasLabelPlacement.h`), which keeps the labels of closely sized nested shapes from overlapping each other; the smallest (most cramped) shapes get placement priority
+- **Labels & legend**: inside/outside labels with automatic contrast color, value formatting with unit suffixes (K/M/B), and a wrapping legend. Label positions are solved by the shared `PlaceShapeLabels()` solver (`UltraCanvasLabelPlacement.h`): each alignment mode supplies a prioritised list of anchors (e.g. BottomLeft-aligned shapes prefer the top-right corner, concentric layouts the top-centre band) and the solver falls back to the next anchor whenever the preferred one would collide with another label or shape, so the labels of closely sized nested shapes never overlap; the smallest (most cramped) shapes get placement priority
 - **Reference grid**: optional area-scale reference outlines
 - **Fluent builder**: `NestedAreaChartBuilder` for compact, declarative chart construction
 

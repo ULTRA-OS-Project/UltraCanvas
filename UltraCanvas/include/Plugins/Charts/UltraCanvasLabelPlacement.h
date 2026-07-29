@@ -3,9 +3,11 @@
 // Given a list of shapes (circle or rectangle, each flagged keep-inside or
 // keep-outside) and a list of labels tied to those shapes, computes the best
 // non-overlapping position for every label, honouring an optional preferred
-// side (top, bottom, left, right, inside).
-// Version: 1.0.0
-// Last Modified: 2026-07-24
+// side (top, bottom, left, right, inside) and an optional prioritised list
+// of inside anchors (top-left, centre-top, ...) with automatic fallback to
+// the next anchor when the preferred one collides.
+// Version: 1.1.0
+// Last Modified: 2026-07-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -36,6 +38,18 @@ enum class LabelSide {
     Inside
 };
 
+// Anchor position of an inside label within its shape. Used to build the
+// prioritised candidate list for inside placement: the caller lists anchors
+// most-preferred first and the solver falls back to later ones when earlier
+// ones collide with other labels, shapes, obstacles or the bounds.
+// For circles the anchors map onto offsets within the disc (Center = circle
+// centre, TopCenter = above centre, corner anchors = diagonal offsets).
+enum class LabelAnchor {
+    TopLeft, TopCenter, TopRight,
+    CenterLeft, Center, CenterRight,
+    BottomLeft, BottomCenter, BottomRight
+};
+
 struct LabelShape {
     LabelShapeType type = LabelShapeType::Circle;
     Point2Dd center;
@@ -61,6 +75,12 @@ struct ShapeLabel {
     // Measured text extents; fill from IRenderContext::GetTextLineDimensions()
     // with the font that will be used for drawing.
     Size2Dd textSize;
+    // Prioritised anchors for inside placement, most-preferred first. Charts
+    // with different label conventions supply their own order (e.g. a nested
+    // chart prefers the corner opposite its shared anchor corner). Empty uses
+    // the per-shape-type default: rectangles top-left / top-centre /
+    // top-right / bottom row / centre row, circles centre / above / below.
+    std::vector<LabelAnchor> anchorPriority;
 };
 
 struct PlacedShapeLabel {
@@ -76,6 +96,11 @@ struct LabelPlacementOptions {
     double shapeMargin = 6.0;       // Gap between a label and its shape's edge
     double labelMargin = 6.0;       // Minimum gap between neighbouring labels
     bool avoidOtherShapes = true;   // Penalise labels covering other shapes
+    // Keep-out rectangles labels are expelled from exactly like from already
+    // placed labels (kept labelMargin away). Use for connector lines, leader
+    // lines, axes, markers or any other geometry labels must not cover;
+    // approximate a line by the bounding rects of its segments.
+    std::vector<Rect2Dd> obstacles;
 };
 
 // =============================================================================

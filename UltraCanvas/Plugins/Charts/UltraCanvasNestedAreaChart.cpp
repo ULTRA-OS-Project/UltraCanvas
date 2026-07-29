@@ -310,6 +310,33 @@ namespace UltraCanvas {
 // LABELS RENDERING
 // =============================================================================
 
+    // Prioritised inside anchors per alignment mode. Nested shapes share the
+    // alignment anchor, so the free (uncovered) part of every shape is the
+    // L-shaped strip opposite that anchor: labels prefer the corner farthest
+    // from the shared anchor, then fall back along the exposed edges toward
+    // the centre. For concentric layouts the free area is a ring, so the top
+    // band comes first.
+    static std::vector<LabelAnchor> AnchorPriorityForAlignment(NestedAreaAlignmentMode mode) {
+        using A = LabelAnchor;
+        switch (mode) {
+            case NestedAreaAlignmentMode::BottomLeft:
+                return {A::TopRight, A::TopCenter, A::CenterRight, A::TopLeft, A::BottomRight, A::Center};
+            case NestedAreaAlignmentMode::BottomRight:
+                return {A::TopLeft, A::TopCenter, A::CenterLeft, A::TopRight, A::BottomLeft, A::Center};
+            case NestedAreaAlignmentMode::TopLeft:
+                return {A::BottomRight, A::BottomCenter, A::CenterRight, A::BottomLeft, A::TopRight, A::Center};
+            case NestedAreaAlignmentMode::TopRight:
+                return {A::BottomLeft, A::BottomCenter, A::CenterLeft, A::BottomRight, A::TopLeft, A::Center};
+            case NestedAreaAlignmentMode::BottomCenter:
+                return {A::TopCenter, A::TopLeft, A::TopRight, A::CenterLeft, A::CenterRight, A::Center};
+            case NestedAreaAlignmentMode::TopCenter:
+                return {A::BottomCenter, A::BottomLeft, A::BottomRight, A::CenterLeft, A::CenterRight, A::Center};
+            case NestedAreaAlignmentMode::Center:
+            default:
+                return {A::TopCenter, A::BottomCenter, A::CenterLeft, A::CenterRight, A::Center};
+        }
+    }
+
     void UltraCanvasNestedAreaChart::RenderShapeLabels(IRenderContext* ctx) {
         const auto& pts = nestedDataSource->GetPoints();
         if (pts.empty() || shapeCache.shapeBounds.size() != pts.size()) return;
@@ -342,6 +369,7 @@ namespace UltraCanvas {
         };
         std::vector<PendingLabel> pending;
         std::vector<ShapeLabel> shapeLabels;
+        std::vector<LabelAnchor> anchorPriority = AnchorPriorityForAlignment(alignmentMode);
 
         for (size_t dataIdx : GetSortedIndices(false)) {
             const auto& point = pts[dataIdx];
@@ -366,6 +394,7 @@ namespace UltraCanvas {
             l.text = pl.nameLine.empty() ? pl.valueLine : pl.nameLine;
             l.shapeIndex = dataIdx;
             l.preferredSide = inside ? LabelSide::Inside : LabelSide::Auto;
+            l.anchorPriority = anchorPriority;
             // The solver places the whole two-line block as one rectangle
             l.textSize = Size2Dd(std::max(pl.nameSize.width, pl.valueSize.width),
                                  pl.nameSize.height + pl.valueSize.height);
