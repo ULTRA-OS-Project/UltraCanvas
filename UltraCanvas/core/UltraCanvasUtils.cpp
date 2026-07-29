@@ -23,7 +23,7 @@
 #include <string>
 
 namespace UltraCanvas {
-    const char* versionString = "0.3.18";
+    const char* versionString = "0.3.19";
 
 #if defined(_WIN32) || defined(_WIN64)
     std::wstring Utf8ToWide(const std::string& utf8) {
