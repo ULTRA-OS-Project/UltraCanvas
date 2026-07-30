@@ -577,6 +577,11 @@ endif()
 # BUILD_ULTRAMAIL is ON and the UltraCanvas UI library is available.
 
 if (BUILD_TESTS)
+    # JSONTests below compiles vendored C (yyjson.c); the project() call only
+    # declares CXX, so C must be enabled here - the enable_language(C) inside
+    # Tests/CMakeLists.txt does not propagate up to this scope.
+    enable_language(C)
+
     # Headless eBook viewer smoke test (links the full library).
     add_executable(EBookViewerTest Tests/EBookViewerTest.cpp)
     target_include_directories(EBookViewerTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})

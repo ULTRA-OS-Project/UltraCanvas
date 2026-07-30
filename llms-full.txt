@@ -8715,7 +8715,8 @@ the filled bands between them. Feed the element a regular grid, an analytic
 function, or a raw point cloud it converts into a density field for you.
 
 - 2D element: `include/Plugins/Charts/UltraCanvasContourChart.h` / `Plugins/Charts/UltraCanvasContourChart.cpp`
-- 3D surface: `include/Plugins/Charts/UltraCanvasContourSurface3D.h` / `Plugins/Charts/UltraCanvasContourSurface3D.cpp`
+- 3D surface (software): `include/Plugins/Charts/UltraCanvasContourSurface3D.h` / `Plugins/Charts/UltraCanvasContourSurface3D.cpp`
+- 3D surface (OpenGL): `include/Plugins/Charts/UltraCanvasContourSurfaceGL.h` / `Plugins/Charts/UltraCanvasContourSurfaceGL.cpp`
 - Field model & gridding (UI-free): `include/Plugins/Charts/UltraCanvasContourGrid.h`
 - Isoline / isoband extraction (UI-free): `include/Plugins/Charts/UltraCanvasMarchingSquares.h`
 
@@ -8840,6 +8841,57 @@ contour->SetFrameColor(Color(70, 72, 80, 255));
 (`SetTitleColor` / `SetLabelColor` / `SetFrameColor` live on the heatmap base
 class, so the heatmap, hexbin and calendar variants gain them too.)
 
+## Zoom, pan and the view window
+
+The element shows a *view window* — a data-space sub-rectangle of the field.
+By default that window is the whole field; the mouse (or the API) can narrow
+it:
+
+```cpp
+contour->SetEnableZoom(true);    // wheel zooms about the cursor
+contour->SetEnablePan(true);     // left-drag pans the zoomed window
+contour->SetViewRange(-1.0, 1.0, -0.5, 0.5);   // or set the window directly
+contour->ResetView();            // back to the full field (double-click does too)
+
+double x0, x1, y0, y1;
+bool zoomed = contour->GetViewRange(x0, x1, y0, y1);
+```
+
+The window is clamped to the data extents and axis ticks follow it. Because
+the fill raster is re-sampled per screen pixel and isolines are vector
+polylines, a zoomed view renders at full resolution rather than scaling up
+pixels. Zoom and pan are ignored in `HeatmapWithContours` mode, which keeps
+the base heatmap's whole-matrix cell layout.
+
+## Crosshair and click callback
+
+```cpp
+contour->SetShowCrosshair(true);                       // follows the cursor
+contour->SetCrosshairColor(Color(120, 170, 235, 200));
+
+contour->SetOnContourClick([](const UltraCanvas::ContourClickInfo& info) {
+    // info.x / info.y   data-space position
+    // info.value        bilinear field value there
+    // info.bandIndex    0 = below the first level .. levels = above the last
+});
+```
+
+The crosshair draws dashed guide lines through the cursor and pins the
+formatted x/y read-out to the axes (the tick formatters apply). The click
+callback fires on a press-and-release without dragging, so it coexists with
+panning.
+
+## Exporting the contour geometry
+
+```cpp
+std::vector<UltraCanvas::ContourPolyline> paths = contour->ExportContourPolylines();
+```
+
+Returns the extracted isolines converted to *data-space* coordinates, with
+each polyline's `level` and `closed` flag preserved — the hand-off format for
+GIS/CAD or custom post-processing. (`GetContours()` returns the same geometry
+in fractional grid coordinates.)
+
 ## Field preparation
 
 ```cpp
@@ -8890,6 +8942,33 @@ nature. The practical payoff is that the element works in every build — it doe
 not require `ULTRACANVAS_ENABLE_GL` — and text, axes and the legend are drawn by
 the same renderer as the rest of the UI.
 
+### The OpenGL variant
+
+For finer grids or heavy orbiting there is a GL-backed sibling with the same
+API surface:
+
+```cpp
+#include "Plugins/Charts/UltraCanvasContourSurfaceGL.h"
+
+auto surf = UltraCanvas::CreateContourSurfaceGLElement("surf1", 20, 20, 700, 460);
+surf->SetData(values, cols, rows);          // same setters as the software element
+surf->SetSurfaceColorMode(UltraCanvas::SurfaceColorMode::Smooth);
+surf->SetShowSurfaceIsolines(true);
+surf->SetAutoRotate(true);                  // GL-only: continuous orbit
+```
+
+`UltraCanvasContourSurfaceGLElement` follows the `UltraCanvasSTLElement`
+pattern: when the build defines `ULTRACANVAS_ENABLE_GL` it derives from
+`UltraCanvasGLSurface` (EGL / OpenGL 3.3 core) and renders the mesh, wireframe
+and on-surface isolines with a real depth buffer — flat per-quad colours in
+`Banded` mode, per-node normals and colours in `Smooth` mode, and a polygon
+offset on the fill so the lines win the depth test on the surface. The chart
+title, 3D axes and band legend are drawn on top by the normal 2D renderer
+through a CPU projection that matches the GL camera exactly, so text stays
+crisp and theme-aware. Without `ULTRACANVAS_ENABLE_GL` the class simply
+derives from the software `UltraCanvasContourSurface3DElement`, so calling
+code compiles and runs unchanged in every build.
+
 Isolines get correct occlusion for free: each cell's segments are emitted
 immediately after that cell's quad, so they inherit the depth ordering of the
 surface. The segments are bucketed by cell up front, which keeps that lookup
@@ -8918,10 +8997,14 @@ default field of view.
 
 ## Demo
 
-`Apps/DemoApp/UltraCanvasContourChartExamples.cpp` — seven tabs: an interactive
-tab wired to every option, filled contours with inline labels, a kernel-density
-contour with a band legend, a line-only contour coloured by level, a dark-theme
-density plot with formatted axis ticks, and the two 3D surface variants.
+`Apps/DemoApp/UltraCanvasContourChartExamples.cpp` — eight tabs: an interactive
+tab wired to every option (including zoom/pan, the crosshair and the click
+callback), filled contours with inline labels, a kernel-density contour with a
+band legend, a line-only contour coloured by level, a dark-theme density plot
+with formatted axis ticks, the two software 3D surface variants, and the
+GL-backed surface on the UC OpenGL element. Each tab's second description line
+states what the mouse does there (zoom / pan / rotate) and which renderer
+draws the tab.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasCoordinateSystemGuide.md

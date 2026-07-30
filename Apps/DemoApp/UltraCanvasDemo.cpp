@@ -1137,8 +1137,9 @@ namespace UltraCanvas {
 
         chartBuilder.AddItem("contourchart", "Contour Chart",
                              "Isolines, filled contour bands, kernel-density contours of a "
-                             "point cloud, inline labelled curves, and 3D contour surfaces "
-                             "with isolines traced onto the terrain",
+                             "point cloud, inline labelled curves, zoom/pan with crosshair "
+                             "read-out, and 3D contour surfaces (software painter's algorithm "
+                             "and the UC OpenGL element) with isolines traced onto the terrain",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateContourChartExamples(); },
                              "DemoApp/UltraCanvasContourChartExamples.cpp",
@@ -1148,8 +1149,9 @@ namespace UltraCanvas {
                 .AddVariant("contourchart", "Density (KDE)")
                 .AddVariant("contourchart", "Line Contour")
                 .AddVariant("contourchart", "Dark Density")
-                .AddVariant("contourchart", "3D Bands")
-                .AddVariant("contourchart", "3D Terrain");
+                .AddVariant("contourchart", "3D Bands (software)")
+                .AddVariant("contourchart", "3D Terrain (software)")
+                .AddVariant("contourchart", "3D Surface (UC OpenGL)");
 
         chartBuilder.AddItem("jitterchart", "Jitter chart", "Jitter chart",
                              ImplementationStatus::FullyImplemented,
@@ -1233,10 +1235,6 @@ namespace UltraCanvas {
                 .AddVariant("bubblecharts", "Hierarchical Packing")
                 .AddVariant("bubblecharts", "Bubble Timeline")
                 .AddVariant("bubblecharts", "3D Bubbles (OpenGL)");
-
-        chartBuilder.AddItem("contourplot", "Contour plot", "Contour plot",
-                             ImplementationStatus::NotImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples("Contour plot is not ready yet"); });
 
         // ===== DIAGRAMS =====
         auto diagramBuilder = DemoCategoryBuilder(this, DemoCategory::Diagrams);

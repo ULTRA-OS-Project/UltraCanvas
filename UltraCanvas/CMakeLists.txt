@@ -371,6 +371,9 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasMarchingSquares.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasContourChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasContourSurface3D.cpp
+        # GL-backed variant; compiles to an empty TU when ULTRACANVAS_ENABLE_GL is off
+        # (the header then aliases the class onto the software renderer above).
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasContourSurfaceGL.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasBubbleChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasSTFT.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasSpectrogram.cpp
