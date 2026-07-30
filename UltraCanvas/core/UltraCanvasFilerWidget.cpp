@@ -9,9 +9,11 @@
 // Files drag out to other windows / applications via the native OS drag &
 // drop, external drops are copied into the shown folder, and Copy / Cut /
 // Paste go through the system clipboard so files can be exchanged with other
-// programs (external file managers, editors, ...).
-// Version: 1.4.1
-// Last Modified: 2026-07-25
+// programs (external file managers, editors, ...). Pasting a clipboard that
+// holds raw data instead of files (an image or text copied elsewhere) writes
+// that content as a new file into the shown folder.
+// Version: 1.5.0
+// Last Modified: 2026-07-30
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -1331,9 +1333,17 @@ namespace UltraCanvas {
     // ===== CLIPBOARD / FILE OPERATIONS =====
     bool UltraCanvasFilerWidget::ClipboardHasContent() {
         if (!clipboardPaths.empty()) return true;
-        // Files copied in another application (external file manager).
+        // Files copied in another application (text/uri-list), or raw
+        // clipboard data — an image or text — that Paste writes as a new
+        // file. One format scan instead of per-format queries: on X11 each
+        // IsFormatAvailable() is a TARGETS round trip to the selection owner.
         if (UltraCanvasClipboard* cb = GetClipboard()) {
-            return cb->IsFormatAvailable("text/uri-list");
+            for (const std::string& f : cb->GetAvailableFormats()) {
+                if (f.rfind("image/", 0) == 0 || f.rfind("text/", 0) == 0 ||
+                    f == "UTF8_STRING" || f == "STRING" || f == "TEXT") {
+                    return true;
+                }
+            }
         }
         return false;
     }
@@ -1446,7 +1456,12 @@ namespace UltraCanvas {
             paths = clipboardPaths;
             cut = clipboardCut;
         }
-        if (paths.empty()) return;
+        if (paths.empty()) {
+            // No files on either clipboard: paste raw clipboard data (an
+            // image or text copied in another program) as a new file.
+            PasteClipboardDataAsFile();
+            return;
+        }
 
         std::error_code ec;
         if (!fs::is_directory(currentPath, ec)) {
@@ -1473,6 +1488,68 @@ namespace UltraCanvas {
         }
         if (cut) { clipboardPaths.clear(); clipboardCut = false; }
         Refresh();
+    }
+
+    namespace {
+        // File extension for a clipboard image MIME type ("image/png" → "png").
+        std::string ImageMimeExtension(const std::string& mimeType) {
+            std::string sub = mimeType.substr(mimeType.find('/') + 1);
+            size_t params = sub.find(';');   // "image/png;foo=bar"
+            if (params != std::string::npos) sub = sub.substr(0, params);
+            if (sub == "jpeg") return "jpg";
+            if (sub == "svg+xml") return "svg";
+            if (sub == "x-bmp" || sub == "x-ms-bmp") return "bmp";
+            if (sub.empty()) return "png";
+            return sub;
+        }
+
+        bool WriteFileBytes(const std::string& path, const void* data, size_t size) {
+            std::ofstream out(path, std::ios::binary);
+            if (!out) return false;
+            out.write(static_cast<const char*>(data),
+                      static_cast<std::streamsize>(size));
+            out.close();   // flush now — the folder is rescanned right after
+            return out.good();
+        }
+    }
+
+    bool UltraCanvasFilerWidget::PasteClipboardDataAsFile() {
+        UltraCanvasClipboard* cb = GetClipboard();
+        if (!cb) return false;
+
+        std::error_code ec;
+        if (!fs::is_directory(currentPath, ec)) {
+            ReportError("Paste target is not a writable folder: " + currentPath);
+            return false;
+        }
+
+        // An image wins over text: copying a bitmap in a browser typically
+        // offers its URL / alt text as a text target too, and the image is
+        // what the user copied.
+        std::vector<uint8_t> imageData;
+        std::string mimeType;
+        if (cb->GetImage(imageData, mimeType) && !imageData.empty()) {
+            std::string dest =
+                    UniqueChildPath("Pasted image." + ImageMimeExtension(mimeType));
+            if (!WriteFileBytes(dest, imageData.data(), imageData.size())) {
+                ReportError("Paste failed for clipboard image: " + dest);
+                return false;
+            }
+            Refresh();
+            return true;
+        }
+
+        std::string text;
+        if (cb->GetText(text) && !text.empty()) {
+            std::string dest = UniqueChildPath("Pasted text.txt");
+            if (!WriteFileBytes(dest, text.data(), text.size())) {
+                ReportError("Paste failed for clipboard text: " + dest);
+                return false;
+            }
+            Refresh();
+            return true;
+        }
+        return false;
     }
 
     void UltraCanvasFilerWidget::DeleteSelection() {

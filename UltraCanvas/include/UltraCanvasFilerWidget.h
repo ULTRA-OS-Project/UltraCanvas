@@ -16,9 +16,11 @@
 // (native OS drag & drop; the target performs the copy/move), files dropped
 // onto the widget from other applications are copied into the shown folder,
 // and Copy / Cut / Paste (Ctrl+C/X/V) interoperate with the system clipboard
-// so files can be exchanged with external file managers.
-// Version: 1.4.1
-// Last Modified: 2026-07-25
+// so files can be exchanged with external file managers. When the clipboard
+// holds raw data instead of files (an image or text copied in another
+// program), Paste creates a new file with that content in the shown folder.
+// Version: 1.5.0
+// Last Modified: 2026-07-30
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -300,7 +302,10 @@ namespace UltraCanvas {
         // Paste prefers the OS clipboard, falling back to the internal one.
         void CopySelection();
         void CutSelection();
-        void Paste();              // into the current folder
+        // Paste into the current folder. Clipboard files are copied (or moved
+        // after a Cut); a clipboard image or text without files is written as
+        // a new file ("Pasted image.png" / "Pasted text.txt" style names).
+        void Paste();
         void DeleteSelection();    // gated by confirmDelete when set
         void DuplicateSelection(); // copy alongside with a unique name
         void StartRename(size_t entryIndex);   // inline rename editor
@@ -708,6 +713,10 @@ namespace UltraCanvas {
         void OpenContextMenu(const Point2Di& localPoint);
         std::vector<size_t> SelectionOrItem(int index) const;
         void SelectionToClipboard(bool cut);
+        // Paste fallback when the clipboard holds no files: writes the raw
+        // clipboard data (an image or text copied in another program) as a
+        // new file into the current folder. False = nothing pastable there.
+        bool PasteClipboardDataAsFile();
         // Starts the native OS drag of the current selection (drag-out).
         bool StartNativeDragOfSelection();
         // Files dropped onto the widget from other applications / windows are
