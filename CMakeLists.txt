@@ -170,6 +170,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasQuadrantChartExamples.cpp
             Apps/DemoApp/UltraCanvasSWOTDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasGanttChartExamples.cpp
+            Apps/DemoApp/UltraCanvasKanbanBoardExamples.cpp
             Apps/DemoApp/UltraCanvasPopulationChartExamples.cpp
             Apps/DemoApp/UltraCanvasSegmentedControlExamples.cpp
             Apps/DemoApp/UltraCanvasBreadcrumbExamples.cpp

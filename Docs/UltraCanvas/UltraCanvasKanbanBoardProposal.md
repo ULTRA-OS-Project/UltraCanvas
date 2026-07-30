@@ -1,9 +1,26 @@
 # UltraCanvasKanbanBoard — Research & Feature Proposal
 
-Status: **Proposal — not yet implemented.** This document is the research
-write-up and feature list for a comprehensive Kanban board element (and its
-analytics companion, the cumulative flow chart). It follows the same process
-as [`UltraCanvasContourChartProposal.md`](UltraCanvasContourChartProposal.md).
+Status: **P1 and most of P2 are implemented** — see
+[`UltraCanvasKanbanBoard.md`](UltraCanvasKanbanBoard.md) for the API
+documentation and `Apps/DemoApp/UltraCanvasKanbanBoardExamples.cpp` for the
+demo. This document is kept as the research write-up and the roadmap for the
+remaining items.
+
+Delivered in the first drop: the data model with move history (D1–D8, D11,
+D13), all six design presets with header/body/card shape systems (B1–B8,
+B10, C1–C7, C9, S1–S6), swimlanes, drag & drop with insertion indicator and
+`canDropCard` veto (I1–I4, I8 partially), the built-in interactive card
+editor plus inline column rename and add-card/add-column chrome (open
+question 1 resolved: yes, built in), Mermaid `kanban` text definitions with
+metadata extensions, JSON persistence (D12), flow metrics M1–M5, Del-key
+card removal, and the demo/doc pair. Open question 2 resolved:
+`Plugins/Charts/` beside the Gantt chart.
+
+Still open: the `UltraCanvasCumulativeFlowChart` companion element (§6,
+F1–F8), card checklists/attachment chips (D9, C8), card cover images (D10),
+collapsed columns (B9), full keyboard navigation (I5), column drag-reorder
+with the mouse (I6), caret-positioned in-place editing (I7 is currently
+append/backspace), and FileLoader registration (open question 3).
 
 Author: UltraCanvas Framework
 Last Modified: 2026-07-30
