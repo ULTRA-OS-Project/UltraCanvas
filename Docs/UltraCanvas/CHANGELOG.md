@@ -1,4 +1,19 @@
 #### 2026-07-30 *0.3.20*
+- **VirtualFS / UltraCanvasFilerWidget**: fixed archives always listing as
+  "(empty folder)" on Windows. `VirtualFSPath::Resolve()` prefixed a slash to
+  the real-filesystem part of every absolute path, turning a drive-letter path
+  like `C:/Users/…/archive.zip` into `/C:/Users/…/archive.zip` — a path no
+  provider could open, so double-clicking any ZIP (or other archive) in the
+  filer showed an empty view. Drive-letter paths now keep their bare `C:`
+  prefix through resolution, and `Normalize()` treats them as absolute so
+  `..` components can no longer escape above the drive root. The filer also
+  distinguishes an unreadable archive from a genuinely empty one: when the
+  provider layer cannot open the archive (missing format provider, corrupt or
+  password-protected file), it reports "Cannot read archive: …" through the
+  widget's error callback instead of silently rendering "(empty folder)".
+  New header-only regression test `Tests/VirtualFSPathTest.cpp` covers Unix,
+  relative, backslash and drive-letter archive paths, including nested
+  archives.
 - New **UltraCanvasCircularProgressChart** element
   (`Plugins/Charts/UltraCanvasCircularProgressChart`): the angle-encoded
   member of the circular chart family — every ring carries one independent
