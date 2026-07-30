@@ -1149,9 +1149,10 @@ namespace KanbanBoardStyles {
         s.cardCornerRadius = 8.0f;
         s.cardPadding = 12.0f;
         s.showTitle = true;
-        s.titleHeight = 54.0f;
+        s.titleHeight = 46.0f;
         s.titleFontSize = 30.0f;
         s.showPriorityLegend = true;
+        s.legendHeight = 24.0f;
         s.showCardDescription = true;
         s.descriptionMaxLines = 3;
         s.showDueDate = true;
@@ -1215,8 +1216,9 @@ namespace KanbanBoardStyles {
         s.showTags = false;
         s.priorityMarker = KanbanPriorityMarker::Hidden;
         s.showWipBadge = false;
-        s.laneHeaderWidth = 96.0f;
+        s.laneHeaderWidth = 114.0f;
         s.laneMinHeight = 66.0f;
+        s.laneFontSize = 11.5f;
         s.footerHeight = 22.0f;
         s.palette = {Color(124, 179, 66), Color(66, 133, 244),
                      Color(230, 124, 34), Color(244, 180, 0)};
@@ -1465,13 +1467,25 @@ double UltraCanvasKanbanBoardElement::CardHeight(IRenderContext* ctx,
     double innerWidth = cardWidth - 2 * style.cardPadding;
     double h = style.cardPadding * 2;
 
+    // Mirror RenderCard's reserved corner space for the priority marker.
+    double titleReserve = 0;
+    if (card.priority != KanbanPriority::NoPriority) {
+        if (style.priorityMarker == KanbanPriorityMarker::Dot) {
+            titleReserve = style.priorityDotRadius * 2 + 6;
+        } else if (style.priorityMarker == KanbanPriorityMarker::Chip) {
+            ctx->SetFontSize(style.metaFontSize * 0.95f);
+            titleReserve = ctx->GetTextLineDimensions(
+                                   PriorityName(card.priority)).width + 16;
+        }
+    }
+
     ctx->SetFontSize(style.cardTitleFontSize);
     ctx->SetFontWeight(FontWeight::Bold);
     double titleLineH = style.cardTitleFontSize * 1.35;
     size_t titleLines = 1;
     if (!card.title.empty()) {
         titleLines = std::max<size_t>(1, WrapTextLines(ctx, card.title,
-                                                       innerWidth).size());
+                                                       innerWidth - titleReserve).size());
         titleLines = std::min<size_t>(titleLines, 3);
     }
     h += titleLines * titleLineH;
@@ -1510,7 +1524,7 @@ void UltraCanvasKanbanBoardElement::ComputeLayout(IRenderContext* ctx) {
         layout.titleRect = Rect2Dd(x, y, width, style.titleHeight);
         y += style.titleHeight;
     }
-    if (style.showPriorityLegend && !style.showTitle && style.legendHeight > 0) {
+    if (style.showPriorityLegend && style.legendHeight > 0) {
         layout.legendRect = Rect2Dd(x, y, width, style.legendHeight);
         y += style.legendHeight;
     }
@@ -2103,7 +2117,16 @@ void UltraCanvasKanbanBoardElement::RenderCard(IRenderContext* ctx,
     double innerWidth = rect.width - 2 * pad;
     bool showDot = style.priorityMarker == KanbanPriorityMarker::Dot &&
                    card.priority != KanbanPriority::NoPriority;
-    double titleReserve = showDot ? style.priorityDotRadius * 2 + 6 : 0;
+    bool showChip = style.priorityMarker == KanbanPriorityMarker::Chip &&
+                    card.priority != KanbanPriority::NoPriority;
+    double titleReserve = 0;
+    if (showDot) {
+        titleReserve = style.priorityDotRadius * 2 + 6;
+    } else if (showChip) {
+        ctx->SetFontSize(style.metaFontSize * 0.95f);
+        titleReserve = ctx->GetTextLineDimensions(
+                               PriorityName(card.priority)).width + 16;
+    }
 
     // Pill cards: a single centered-left line and nothing else.
     if (style.cardShape == KanbanCardShape::Pill) {
@@ -2281,8 +2304,9 @@ void UltraCanvasKanbanBoardElement::RenderCards(IRenderContext* ctx) {
         if (cl.rect.y + cl.rect.height < body.y - 40 ||
             cl.rect.y > body.y + body.height + 40) continue;
 
-        // Ordinal within its column for the ByCard palette cycle.
-        size_t ordinal = 0;
+        // Ordinal within its column for the ByCard palette cycle, offset per
+        // column so neighbouring columns don't repeat the same color pattern.
+        size_t ordinal = static_cast<size_t>(cl.columnIndex);
         for (const auto& other : layout.cards) {
             if (other.columnIndex != cl.columnIndex) continue;
             if (other.cardId == cl.cardId) break;
