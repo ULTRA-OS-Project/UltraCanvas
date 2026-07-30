@@ -83,11 +83,26 @@
 //  - FIXED: Zoom-at-cursor formula (was net-zero before)
 //  - FIXED: Mouse cursor feedback (Hand on handle, SizeAll on draggable node, etc.)
 
+// CHANGELOG 2.1.0 (minor - shared viewport):
+//  - CHANGED: pan/zoom, the snap grid, the minimap and the controls overlay now
+//    live in the shared UltraCanvasDiagramViewport instead of being duplicated
+//    here and in UltraCanvasCompositorDiagram. The public API is unchanged;
+//    NodeDiagramPanelPosition / NodeDiagramMinimapConfig /
+//    NodeDiagramControlsConfig / NodeDiagramSnapGrid are now aliases of the
+//    shared types, so existing app code keeps compiling.
+//  - FIXED: PointInMinimap(), FindControlButtonAt() and HandleMouseWheel()
+//    added/subtracted finalBounds.x/y against event coordinates that are
+//    already element-local, double-counting the element origin. Minimap and
+//    controls hit-testing, and zoom-at-cursor, were offset by the element's
+//    position whenever the diagram was not placed at (0, 0). The shared
+//    viewport is local-space throughout.
+
 #pragma once
 
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasCommonTypes.h"
+#include "Plugins/Diagrams/UltraCanvasDiagramViewport.h"
 #include <vector>
 #include <map>
 #include <set>
@@ -154,12 +169,8 @@ enum class HandleType {
 };
 
 // NEW in 2.0.0: Panel positions for overlays
-enum class NodeDiagramPanelPosition {
-    TopLeft,
-    TopRight,
-    BottomLeft,
-    BottomRight
-};
+// CHANGED in 2.1.0: now an alias of the shared DiagramPanelPosition
+using NodeDiagramPanelPosition = DiagramPanelPosition;
 
 // =============================================================================
 // NODE DIAGRAM DATA STRUCTURES
@@ -290,43 +301,11 @@ struct NodeDiagramStyle {
     int iterations = 100;
 };
 
-// NEW in 2.0.0: Snap grid
-struct NodeDiagramSnapGrid {
-    bool enabled = false;
-    double snapX = 25.0f;
-    double snapY = 25.0f;
-};
-
-// NEW in 2.0.0: Minimap config
-struct NodeDiagramMinimapConfig {
-    bool visible = false;
-    NodeDiagramPanelPosition position = NodeDiagramPanelPosition::BottomRight;
-    double width = 180.0f;
-    double height = 130.0f;
-    double padding = 10.0f;
-    Color backgroundColor = Color(245, 245, 245, 230);
-    Color borderColor = Color(180, 180, 180, 255);
-    Color nodeColor = Color(140, 160, 200, 255);
-    Color viewportFill = Color(0, 120, 215, 40);
-    Color viewportStroke = Color(0, 120, 215, 200);
-    bool pannable = true;
-};
-
-// NEW in 2.0.0: Controls overlay config
-struct NodeDiagramControlsConfig {
-    bool visible = false;
-    NodeDiagramPanelPosition position = NodeDiagramPanelPosition::BottomLeft;
-    double buttonSize = 28.0f;
-    double padding = 10.0f;
-    double gap = 4.0f;
-    Color backgroundColor = Color(255, 255, 255, 230);
-    Color borderColor = Color(200, 200, 200, 255);
-    Color iconColor = Color(80, 80, 80, 255);
-    Color hoverColor = Color(230, 230, 230, 255);
-    bool showZoom = true;
-    bool showFit = true;
-    bool showLock = true;
-};
+// NEW in 2.0.0: Snap grid / minimap / controls configuration
+// CHANGED in 2.1.0: now aliases of the shared viewport's configuration types
+using NodeDiagramSnapGrid = DiagramSnapGrid;
+using NodeDiagramMinimapConfig = DiagramMinimapConfig;
+using NodeDiagramControlsConfig = DiagramControlsConfig;
 
 // =============================================================================
 // NODE DIAGRAM COMPONENT CLASS
@@ -435,16 +414,16 @@ public:
     
     void SetZoomLevel(double zoom);
     void SetPanOffset(double x, double y);
-    double GetZoomLevel() const { return zoomLevel; }
-    Point2Dd GetPanOffset() const { return panOffset; }
+    double GetZoomLevel() const;
+    Point2Dd GetPanOffset() const;
     
     void ZoomIn(double factor = 1.2f);                                      // NEW in 2.0.0
     void ZoomOut(double factor = 1.2f);                                     // NEW in 2.0.0
     void FitView(double padding = 40.0f);                                   // NEW in 2.0.0
     void CenterOn(double worldX, double worldY);                             // NEW in 2.0.0
     
-    void SetMinZoom(double minZ) { minZoom = minZ; }
-    void SetMaxZoom(double maxZ) { maxZoom = maxZ; }
+    void SetMinZoom(double minZ);
+    void SetMaxZoom(double maxZ);
     
     // =============================================================================
     // SNAP-TO-GRID (NEW in 2.0.0)
@@ -452,7 +431,7 @@ public:
     
     void SetSnapToGrid(bool enabled);
     void SetSnapGrid(double snapX, double snapY);
-    bool IsSnapToGridEnabled() const { return snapGrid.enabled; }
+    bool IsSnapToGridEnabled() const;
     
     // =============================================================================
     // INTERACTION SETTINGS (NEW in 2.0.0)
@@ -471,7 +450,7 @@ public:
     void SetMinimapVisible(bool visible);
     void SetMinimapPosition(NodeDiagramPanelPosition pos);
     void SetMinimapConfig(const NodeDiagramMinimapConfig& cfg);
-    NodeDiagramMinimapConfig GetMinimapConfig() const { return minimapConfig; }
+    NodeDiagramMinimapConfig GetMinimapConfig() const;
     
     // =============================================================================
     // CONTROLS OVERLAY (NEW in 2.0.0)
@@ -480,7 +459,7 @@ public:
     void SetControlsVisible(bool visible);
     void SetControlsPosition(NodeDiagramPanelPosition pos);
     void SetControlsConfig(const NodeDiagramControlsConfig& cfg);
-    NodeDiagramControlsConfig GetControlsConfig() const { return controlsConfig; }
+    NodeDiagramControlsConfig GetControlsConfig() const;
     
     // =============================================================================
     // AUTO-FIT (NEW in 2.0.1)
@@ -603,6 +582,13 @@ private:
     
     Point2Dd ScreenToWorld(const Point2Di& screenPos) const;
     Point2Di WorldToScreen(const Point2Dd& worldPos) const;
+
+    // NEW in 2.1.0: world-space extent of all nodes, handed to the shared
+    // viewport for FitView and the minimap projection.
+    DiagramContentBounds ComputeContentBounds() const;
+    // Keeps the shared viewport's notion of the drawable area in sync with the
+    // element's current size. Called at the top of Render() and event handling.
+    void SyncViewportSize();
     double CalculateDistance(const Point2Dd& a, const Point2Dd& b) const;
     Point2Dd SnapPoint(const Point2Dd& p) const;
     void NotifySelectionChange();
@@ -671,26 +657,16 @@ private:
     HandleType connectionSourceType = HandleType::Source;
     Point2Dd connectionEndPoint;  // World coords, follows mouse
     
-    // Viewport
-    double zoomLevel = 1.0f;
-    Point2Dd panOffset;
-    double minZoom = 0.1f;
-    double maxZoom = 5.0f;
-    
-    // Snap grid
-    NodeDiagramSnapGrid snapGrid;
-    
+    // Viewport, snap grid, minimap and controls (shared component, 2.1.0)
+    UltraCanvasDiagramViewport viewport;
+
     // Interaction toggles
     bool isInteractive = true;
     bool nodesConnectable = true;
     bool panOnDrag = true;
     bool zoomOnScroll = true;
     bool isMultiSelectKeyHeld = false;  // Tracked from key events
-    
-    // Overlays
-    NodeDiagramMinimapConfig minimapConfig;
-    NodeDiagramControlsConfig controlsConfig;
-    
+
     // NEW in 2.0.1
     bool autoFitOnLayout = true;
 };

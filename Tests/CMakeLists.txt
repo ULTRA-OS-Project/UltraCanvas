@@ -317,6 +317,32 @@ add_test(
 )
 message(STATUS "    Test registered: ContourGeometryTest")
 
+# ===== DIAGRAM VIEWPORT TEST =====
+# Geometry of the shared diagram viewport: coordinate transforms, zoom-at-cursor
+# anchoring, FitView, overlay panel placement (element-local, the regression
+# guard for the finalBounds double-count bug), the minimap projection and its
+# inverse, control-button role mapping and the snap grid. No UI stack.
+message(STATUS "  Building DiagramViewportTest...")
+add_executable(DiagramViewportTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/DiagramViewportTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasDiagramViewport.cpp
+)
+target_include_directories(DiagramViewportTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(DiagramViewportTest PRIVATE cxx_std_20)
+set_target_properties(DiagramViewportTest PROPERTIES
+    OUTPUT_NAME "DiagramViewportTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME DiagramViewportTest
+    COMMAND DiagramViewportTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: DiagramViewportTest")
+
 # ===== VIRTUALFS PATH TEST =====
 # Regression test for VirtualFSPath archive-path resolution (Unix, relative
 # and Windows drive-letter paths). Header-only - no link dependencies, so it

@@ -1,6 +1,11 @@
 # UltraCanvasMindMap — Research & Feature Proposal
 
-Status: **Proposal — nothing implemented yet.** The DemoApp already reserves a
+Status: **Phase 0 is implemented; the mind-map element itself is not started.**
+The shared viewport (V0) has shipped as
+[`UltraCanvasDiagramViewport`](UltraCanvasDiagramViewport.md), with
+`UltraCanvasNodeDiagram` and `UltraCanvasCompositorDiagram` refactored onto it
+and `Tests/DiagramViewportTest.cpp` covering its geometry. Phases 1–3 below are
+still a proposal. The DemoApp already reserves a
 slot for this element (`Apps/DemoApp/UltraCanvasDemo.cpp`, item `"mindmap"`,
 `ImplementationStatus::NotImplemented`, "MindMap is not ready yet"), and
 `SWOTDiagramDesignVariants.md` §C4 flagged the mind-map/spider variant as *"the
@@ -613,12 +618,13 @@ overlay accessors are thin forwards onto `viewport`; `ScreenToWorld` /
 
 ## 7. Suggested delivery phases
 
-**Phase 0 — shared viewport (no mind-map code).**
-V0: extract `UltraCanvasDiagramViewport`, migrate `UltraCanvasNodeDiagram` and
-`UltraCanvasCompositorDiagram` onto it, standardise on `Point2Dd`, move
-`NodeDiagramPanelPosition` → `DiagramPanelPosition` with a compatibility alias.
-Ships on its own so the refactor is reviewable against the two existing elements
-without mind-map noise in the diff, and so any regression is attributable.
+**Phase 0 — shared viewport (no mind-map code). — DONE**
+V0: extracted `UltraCanvasDiagramViewport`, migrated `UltraCanvasNodeDiagram`
+(2.1.0) and `UltraCanvasCompositorDiagram` onto it, standardised on `Point2Dd`,
+moved `NodeDiagramPanelPosition` → `DiagramPanelPosition` with compatibility
+aliases for all four overlay types. Fixed the local-vs-absolute coordinate bug
+described in §4.1 as part of the move. Covered by `Tests/DiagramViewportTest.cpp`
+(74 assertions). API documented in `UltraCanvasDiagramViewport.md`.
 
 **Phase 1 — the working map (covers images 1, 2, 4, 6, 8 and 10 structurally).**
 D1–D4, D8, D11, D12; L1, L2, L4, L9–L11; R1–R3, R5, R6, R8; S1–S7, S10;

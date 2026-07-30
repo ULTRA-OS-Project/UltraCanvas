@@ -7,7 +7,14 @@
 **Namespace:** `UltraCanvas`
 **Header:** `include/Plugins/Diagrams/UltraCanvasNodeDiagram.h`
 **Base Class:** `UltraCanvasUIElement`
-**Version:** 2.0.6
+**Version:** 2.1.0
+
+> **Since 2.1.0** the pan/zoom, snap-grid, minimap and controls machinery lives
+> in the shared [`UltraCanvasDiagramViewport`](UltraCanvasDiagramViewport.md).
+> The public API here is unchanged (the overlay config types are now aliases of
+> the shared ones), and a coordinate bug is fixed: minimap/controls hit-testing
+> and zoom-at-cursor were previously offset by the element's position whenever
+> the diagram was not placed at `(0, 0)`.
 
 ## Class Hierarchy
 
@@ -62,7 +69,11 @@ enum class LinkStyle {
 enum class HandlePosition { Top, Right, Bottom, Left };
 enum class HandleType     { Source, Target };
 
-enum class NodeDiagramPanelPosition {
+// Since 2.1.0 an alias of the shared DiagramPanelPosition
+// (see UltraCanvasDiagramViewport.md).
+using NodeDiagramPanelPosition = DiagramPanelPosition;
+
+enum class DiagramPanelPosition {
     TopLeft, TopRight, BottomLeft, BottomRight
 };
 ```
@@ -245,7 +256,7 @@ bool                     IsLinkSelected(const std::string& id) const;
 void     SetZoomLevel(double zoom);
 double   GetZoomLevel() const;
 void     SetPanOffset(double x, double y);
-Point2Df GetPanOffset() const;
+Point2Dd GetPanOffset() const;
 
 void ZoomIn(double factor = 1.2);
 void ZoomOut(double factor = 1.2);
