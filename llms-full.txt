@@ -11580,7 +11580,8 @@ tiles, treemap cells, the hover icon menu and the scrollbar are all painted
 inside `Render()` rather than being child elements. Files can be dragged out to
 other windows and applications (and dropped in from them), and Copy / Cut /
 Paste go through the system clipboard so files can be exchanged with external
-file managers — see [Clipboard interop](#clipboard-interop-with-other-programs)
+file managers; pasting a clipboard image or text creates a file with that
+content — see [Clipboard interop](#clipboard-interop-with-other-programs)
 and [Drag & drop](#drag--drop).
 
 ```cpp
@@ -11653,8 +11654,9 @@ Settings
 
 Notes:
 
-- **Paste** is offered (enabled while the filer clipboard holds entries) so Copy /
-  Cut are actually usable; the clipboard is shared between all filer instances.
+- **Paste** is enabled while the filer clipboard holds entries (shared between
+  all filer instances) or the system clipboard offers files, an image or text —
+  see [Clipboard interop](#clipboard-interop-with-other-programs).
 - Items whose hook callback is not set (Print, Share, Attributes, Access,
   Settings, empty Open with) are shown disabled. "Copy path" has a built-in
   default (system clipboard via `SetClipboardText`).
@@ -11721,7 +11723,8 @@ All operations are also available programmatically:
 ```cpp
 filer->CopySelection();       // to the filer clipboard + the system clipboard
 filer->CutSelection();
-filer->Paste();               // into the current folder (unique names)
+filer->Paste();               // into the current folder (unique names); a
+                              // clipboard image / text becomes a new file
 filer->DeleteSelection();     // gated by confirmDelete when set
 filer->DuplicateSelection();  // copy alongside with " (2)" style names
 filer->StartRename(index);    // inline rename editor (Enter commits, Esc cancels)
@@ -11750,6 +11753,15 @@ Paste prefers the system clipboard (whatever was copied last, in this widget
 or in another program) and falls back to the internal filer clipboard. A cut
 paste moves the files; the paste of a file into the folder it already lives in
 is skipped for a cut and duplicated with a unique " (2)" style name for a copy.
+
+When the clipboard holds **raw data instead of files** — an image copied in a
+browser or screenshot tool, text copied in an editor — Paste creates a new
+file with that content in the current folder: `Pasted image.png` (extension
+following the clipboard MIME type, e.g. `.bmp` on Windows `CF_DIB` data) or
+`Pasted text.txt`, made unique with " (2)" style suffixes on collision. An
+image wins over text when both are offered (copying a browser image also
+places its URL as text). The Paste context-menu item lights up accordingly
+whenever files, an image or text are available.
 
 ## Drag & drop
 
