@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <cctype>
 
 namespace VirtualFS {
 
@@ -66,14 +67,21 @@ public:
         std::vector<std::string> parts = Split(result);
         std::vector<std::string> resolved;
         bool isAbsolute = !result.empty() && result[0] == Separator;
-        
+        // Windows drive-letter path ("C:/..."): absolute too, but its root is
+        // the "C:" component itself instead of a leading slash — ".." must not
+        // pop the drive component or escape above it.
+        bool isDriveAbsolute = !isAbsolute && result.length() >= 2 &&
+                               std::isalpha(static_cast<unsigned char>(result[0])) &&
+                               result[1] == ':';
+
         for (const auto& part : parts) {
             if (part == ".") {
                 continue;
             } else if (part == "..") {
-                if (!resolved.empty() && resolved.back() != "..") {
+                bool atDriveRoot = isDriveAbsolute && resolved.size() == 1;
+                if (!resolved.empty() && resolved.back() != ".." && !atDriveRoot) {
                     resolved.pop_back();
-                } else if (!isAbsolute) {
+                } else if (!isAbsolute && !isDriveAbsolute) {
                     resolved.push_back(part);
                 }
             } else if (!part.empty()) {
@@ -457,23 +465,28 @@ public:
         
         std::vector<std::string> components = Split(result.fullPath);
         std::string currentPath;
-        bool isAbsolute = IsAbsolute(result.fullPath);
-        
-        if (isAbsolute) {
+        // Only a Unix-style absolute path carries a leading slash. A Windows
+        // drive-letter path ("C:/Users/...") is absolute too, but its first
+        // component is the drive itself — prefixing "/" would produce
+        // "/C:/Users/..." which the real filesystem cannot resolve, so every
+        // archive under a drive path would silently list as empty.
+        bool hasRootSlash = !result.fullPath.empty() && result.fullPath[0] == Separator;
+
+        if (hasRootSlash) {
             currentPath = "/";
         }
-        
+
         bool foundArchive = false;
         std::string archivePath;
         std::vector<std::string> virtualComponents;
-        
+
         for (size_t i = 0; i < components.size(); ++i) {
             const auto& component = components[i];
-            
+
             if (!foundArchive) {
                 // Building real path
                 if (currentPath.empty() || currentPath == "/") {
-                    currentPath = isAbsolute ? "/" + component : component;
+                    currentPath = hasRootSlash ? "/" + component : component;
                 } else {
                     currentPath += Separator;
                     currentPath += component;

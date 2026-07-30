@@ -1085,6 +1085,18 @@ namespace UltraCanvas {
                 if (e.isHidden && !showHiddenFiles) continue;
                 entries.push_back(std::move(e));
             }
+            if (entries.empty()) {
+                // An unreadable archive and a genuinely empty one both produce
+                // an empty listing. When the path denotes the archive itself,
+                // ask the provider layer which case it is, so a failed open
+                // (no provider for the format, corrupt or password-protected
+                // file) is reported instead of masquerading as "(empty folder)".
+                auto resolved = VirtualFS::VirtualFSPath::Resolve(currentPath);
+                if (!resolved.archiveStack.empty() && !resolved.isInsideArchive &&
+                    VirtualFS::VirtualFS_GetArchiveInfo(currentPath).path.empty()) {
+                    ReportError("Cannot read archive: " + currentPath);
+                }
+            }
         }
 #endif
 
