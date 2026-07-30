@@ -14119,6 +14119,463 @@ slider->onValueChanged = [gaugePtr](float v) {
 - `include/Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h` — complete header.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasGitGraphExamples.md
+==============================================================================
+
+# UltraCanvasGitGraph Documentation
+
+## Overview
+
+**UltraCanvasGitGraph** renders a Git commit history — a directed acyclic graph
+of commits decorated with branch, tag and `HEAD` refs. Two layout families share
+one data model:
+
+- **Lanes** — one lane per concurrently open line of development, newest commit
+  first. This is the repository-browser view that gitk, GitKraken, SourceTree
+  and `git log --graph` all show.
+- **Swimlane** — one band per branch, distributed either side of a nominated
+  trunk, with time running along the axis. This is the git-flow teaching
+  diagram, including per-commit changed-file boxes and callout annotations.
+
+The layout is computed by a headless core (`UltraCanvasGitGraphLayout`) that
+produces `(row, lane)` geometry with no rendering dependencies, so it is unit
+tested on its own in `Tests/GitGraphLayoutTest.cpp`.
+
+**Namespace:** `UltraCanvas`
+**Headers:** `include/Plugins/Diagrams/UltraCanvasGitGraph.h`,
+`UltraCanvasGitGraphLayout.h`, `UltraCanvasGitGraphTypes.h`
+**Base Class:** `UltraCanvasUIElement`
+**Version:** 1.0.0
+
+## Class Hierarchy
+
+```
+UltraCanvasUIElement
+    └── UltraCanvasGitGraph
+```
+
+## Header Include
+
+```cpp
+#include "Plugins/Diagrams/UltraCanvasGitGraph.h"
+```
+
+## Features
+
+- **Two layout modes**: `Lanes` (repository browser) and `Swimlane` (git-flow)
+- **Two lane strategies**: `Stable` (straight branches, GitKraken-like) and
+  `Compact` (lanes recycled immediately, gitk-like)
+- **Four orientations**: newest-at-top, oldest-at-top, left-to-right, right-to-left
+- **Four commit orderings**: as given, commit date, author date, topological
+- **Four edge styles**: orthogonal with rounded corners, Bezier, arc, straight
+- **Full DAG coverage**: merges, octopus merges (≥3 parents), multiple roots,
+  boundary commits with parents outside the loaded window, cherry-picks
+- **Refs**: local and remote branches, lightweight and annotated tags, `HEAD`,
+  with overflow collapse (`+n`) when several land on one commit
+- **Per-commit file boxes** with leader lines, and free-standing callout
+  annotations
+- **Trunk pinning** — a nominated branch always keeps lane 0
+- **Virtualised rendering** — only rows inside the viewport are drawn
+- **Themes**: Default, Dark, Light, Colorful, Monochrome, Custom
+- **Ingest**: programmatic, `git log` text, or the authoring API
+- **SVG export** via `SaveToSVG`
+- Zoom, pan, selection, hover, tooltips, keyboard navigation
+
+## Data Structures
+
+### Enumerations
+
+```cpp
+enum class GitGraphOrientation  { LeftToRight, TopToBottom, BottomToTop, RightToLeft };
+enum class GitGraphLayoutMode   { Lanes, Swimlane };
+enum class GitGraphLaneStrategy { Compact, Stable };
+enum class GitGraphOrderMode    { AsGiven, CommitDate, AuthorDate, Topological };
+enum class GitGraphEdgeStyle    { Straight, Orthogonal, Bezier, Arc };
+enum class GitGraphNodeShape    { Circle, Ring, Square, Diamond };
+enum class GitGraphCommitType   { Normal, Reverse, Highlight };
+enum class GitGraphRefType      { LocalBranch, RemoteBranch, Tag, Head, Stash };
+enum class GitGraphEdgeKind     { Parent, Merge, CherryPick, Skipped };
+enum class GitGraphTheme        { Default, Dark, Light, Colorful, Monochrome, Custom };
+```
+
+`LeftToRight` and `TopToBottom` put the **oldest** commit at the start of the
+axis (the teaching-diagram convention); `BottomToTop` and `RightToLeft` put the
+**newest** there, which is what every repository browser does.
+
+### GitGraphCommit
+
+```cpp
+struct GitGraphCommit {
+    std::string sha;
+    std::vector<std::string> parents;      // [0] is the first parent
+
+    std::string subject, body;
+    std::string authorName, authorEmail, committerName;
+    int64_t     authorDate = 0, commitDate = 0;    // Unix seconds
+
+    std::string branch;                    // Optional; Swimlane mode uses it
+    std::vector<GitGraphFileChange> files;
+
+    GitGraphCommitType type = GitGraphCommitType::Normal;
+    bool  hasColorOverride  = false;
+    Color colorOverride;
+    std::string cherryPickSource;          // Drawn as a dashed non-parent edge
+
+    bool IsMerge() const;                  // parents.size() > 1
+    bool IsRoot()  const;                  // parents.empty()
+    std::string ShortSha(size_t length = 7) const;
+};
+```
+
+### GitGraphRef
+
+```cpp
+struct GitGraphRef {
+    std::string     name, sha, remote;
+    GitGraphRefType type      = GitGraphRefType::LocalBranch;
+    bool            isCurrent = false;     // HEAD points here
+    bool            annotated = false;     // Annotated (not lightweight) tag
+    std::string     DisplayName() const;   // "origin/main" for remote branches
+};
+```
+
+### GitGraphFileChange / GitGraphAnnotation
+
+```cpp
+struct GitGraphFileChange {
+    std::string path;
+    int  added = 0, removed = 0;
+    char status = 'M';                     // A, M, D, R
+};
+
+struct GitGraphAnnotation {
+    std::string sha, text;
+    bool   hasColor = false;
+    Color  color;
+    double offsetAlongAxis = 0.0, offsetAcrossAxis = -46.0;
+};
+```
+
+### GitGraphStyle (selected fields)
+
+```cpp
+struct GitGraphStyle {
+    Color  backgroundColor = Color(255, 255, 255);
+    double laneSpacing = 26.0, rowSpacing = 30.0;
+    double nodeRadius = 6.0, mergeNodeRadius = 4.5, rootNodeRadius = 7.0;
+    double edgeWidth = 2.0, cornerRadius = 12.0;
+
+    GitGraphNodeShape nodeShape = GitGraphNodeShape::Circle;
+    GitGraphNodeShape mergeNodeShape = GitGraphNodeShape::Ring;
+    GitGraphEdgeStyle edgeStyle = GitGraphEdgeStyle::Orthogonal;
+    bool   drawNodeHalo = true;            // Keeps crossing edges off the node
+    bool   showEdgeArrows = false;
+
+    bool   showTrunkBaseline = true, showTrunkArrow = true;
+    bool   showSwimlaneLabels = true, showSwimlaneBands = true;
+
+    bool   showCommitLabels = true, rotateCommitLabels = false;
+    bool   showBranchChips = true, showTagChips = true;
+    size_t maxChipsPerCommit = 3;          // Beyond this a "+n" chip is drawn
+
+    bool   showFileBoxes = false;
+    size_t maxFileBoxes  = 6;
+
+    std::vector<Color> lanePalette;        // Cycled by lane index
+};
+```
+
+## Class Reference
+
+### Constructor and factory
+
+```cpp
+UltraCanvasGitGraph(const std::string& id, float x, float y, float w, float h);
+
+std::shared_ptr<UltraCanvasGitGraph> CreateGitGraph(
+        const std::string& id, float x, float y, float w, float h);
+```
+
+### Data
+
+```cpp
+void AddCommit(const GitGraphCommit& commit);
+void AddCommits(const std::vector<GitGraphCommit>& newCommits);
+void AppendCommits(const std::vector<GitGraphCommit>& newCommits);
+void AddRef(const GitGraphRef& ref);
+void AddBranchRef(const std::string& name, const std::string& sha, bool isCurrent = false);
+void AddTagRef(const std::string& name, const std::string& sha, bool annotated = false);
+void AddRemoteRef(const std::string& remote, const std::string& name, const std::string& sha);
+void SetHead(const std::string& refNameOrSha);
+void AddAnnotation(const std::string& sha, const std::string& text);
+void Clear();
+
+size_t LoadFromGitLog(const std::string& text);
+static std::string GitLogFormat();
+
+const GitGraphCommit* GetCommit(const std::string& sha) const;
+std::vector<GitGraphRef> GetRefsForCommit(const std::string& sha) const;
+size_t GetCommitCount() const;
+```
+
+### Authoring (teaching diagrams)
+
+```cpp
+std::string Commit(const std::string& subject, const std::string& tag = "");
+void        Branch(const std::string& name);       // Create + check out
+void        Checkout(const std::string& name);
+std::string Merge(const std::string& fromBranch, const std::string& subject = "");
+std::string CherryPick(const std::string& sha, const std::string& subject = "");
+void        Tag(const std::string& name, const std::string& sha = "");
+```
+
+These append commits oldest-first and record the branch on each one, so
+`Swimlane` mode bands them without reconstructing branch membership.
+
+### Layout
+
+```cpp
+void SetOrientation(GitGraphOrientation orientation);
+void SetLayoutMode(GitGraphLayoutMode mode);
+void SetLaneStrategy(GitGraphLaneStrategy strategy);
+void SetOrderMode(GitGraphOrderMode mode);
+void SetTrunkBranch(const std::string& name);
+void SetSwimlaneOrder(const std::vector<std::string>& branchNames);
+void SetSwimlanesBothSides(bool bothSides);
+void SetRowsAreNewestFirst(bool newestFirst);
+void PerformLayout();
+
+const GitGraphLayoutResult& GetLayoutResult() const;
+int  GetRowCount() const;
+```
+
+### Style, selection, view and export
+
+```cpp
+void SetTheme(GitGraphTheme theme);
+GitGraphStyle& GetStyle();
+void SetStyle(const GitGraphStyle& newStyle);
+void SetEdgeStyle(GitGraphEdgeStyle edgeStyle);
+void SetShowCommitLabels(bool show);
+void SetShowFileBoxes(bool show);
+void SetShowBranchChips(bool show);
+void SetLaneColor(int lane, const Color& color);
+Color GetLaneColor(int lane) const;
+Color GetBranchColor(const std::string& branchName) const;
+
+void SelectCommit(const std::string& sha, bool addToSelection = false);
+void DeselectAll();
+std::vector<std::string> GetSelectedCommits() const;
+
+void ZoomIn();  void ZoomOut();  void ZoomToFit(double padding = 24.0);
+void ResetView();  void SetZoom(float zoom);  void SetPan(double x, double y);
+void CenterOnCommit(const std::string& sha);
+void ScrollToRef(const std::string& refName);
+
+bool SaveToSVG(const std::string& filePath);
+```
+
+### Callbacks
+
+```cpp
+std::function<void(const std::string&)> onCommitClick;
+std::function<void(const std::string&)> onCommitDoubleClick;
+std::function<void(const std::string&)> onCommitRightClick;
+std::function<void(const std::string&)> onCommitHover;
+std::function<void(const std::string&)> onCommitSelect;
+std::function<void(const GitGraphRef&)> onRefClick;
+std::function<void()>                   onLayoutComplete;
+
+std::function<std::string(const GitGraphCommit&)> commitLabelFormatter;
+```
+
+The element is **read-only**: it never executes git. `onCommitRightClick` is
+where an application hangs its checkout / branch / revert menu.
+
+## Usage Examples
+
+All examples are drawn from `Apps/DemoApp/UltraCanvasGitGraphExamples.cpp`.
+
+### A git-flow swimlane diagram
+
+```cpp
+auto graph = CreateGitGraph("GitFlow", 10, 88, 970, 520);
+
+graph->SetLayoutMode(GitGraphLayoutMode::Swimlane);
+graph->SetOrientation(GitGraphOrientation::LeftToRight);
+graph->SetTrunkBranch("main");
+graph->SetSwimlaneOrder({"hotfixes", "release branches", "develop", "feature branches"});
+
+graph->Branch("main");
+graph->Commit("initial commit", "0.1");
+
+graph->Branch("develop");
+graph->Commit("start develop");
+
+graph->Branch("feature branches");
+const std::string feature = graph->Commit("major feature for the next release");
+
+graph->Checkout("develop");
+graph->Merge("feature branches", "merge feature");
+
+graph->Checkout("main");
+graph->Merge("develop", "release 1.0");
+graph->Tag("1.0");
+
+graph->AddAnnotation(feature, "major feature for the next release");
+```
+
+### The repository lane view
+
+```cpp
+auto graph = CreateGitGraph("Repo", 10, 88, 970, 520);
+
+// Commits in git log order (newest first)
+GitGraphCommit commit;
+commit.sha        = "5c7570e";
+commit.parents    = {"c97feac"};
+commit.subject    = "Merge branch 'release/0.1.1' into develop";
+commit.authorName = "Alex";
+commit.commitDate = 1750000000;
+graph->AddCommit(commit);
+// ...more commits
+
+graph->AddBranchRef("develop", "5c7570e", /*isCurrent=*/true);
+graph->AddRemoteRef("origin", "develop", "5c7570e");
+graph->AddTagRef("v0.1.1", "637b096", /*annotated=*/true);
+
+graph->SetLayoutMode(GitGraphLayoutMode::Lanes);
+graph->SetOrientation(GitGraphOrientation::BottomToTop);   // Newest at the top
+graph->SetLaneStrategy(GitGraphLaneStrategy::Stable);      // Straight branches
+graph->SetTrunkBranch("main");
+graph->SetTheme(GitGraphTheme::Dark);
+```
+
+### Loading a real repository
+
+```cpp
+// Run this yourself and hand the output to the element - the widget never
+// spawns a process:
+//   git log --all --pretty=format:<UltraCanvasGitGraph::GitLogFormat()>
+const std::string log = LoadFile("history.txt");
+graph->LoadFromGitLog(log);
+graph->SetOrderMode(GitGraphOrderMode::Topological);
+graph->PerformLayout();
+```
+
+`GitLogFormat()` returns `%H<US>%P<US>%an<US>%ae<US>%at<US>%ct<US>%D<US>%s`
+(fields separated by the ASCII unit separator, `0x1F`). The parser also accepts
+`|` as the separator, which is friendlier for hand-written fixtures. `%D`
+decorations are turned into branch, remote-branch, tag and `HEAD` refs
+automatically.
+
+### Per-commit changed-file boxes
+
+```cpp
+GitGraphCommit commit = *graph->GetCommit(sha);
+commit.files.emplace_back("File 1.0.1", 'M');
+commit.files.emplace_back("File 2.0.1", 'A');
+graph->AddCommit(commit);          // Re-adding by sha replaces in place
+
+GitGraphStyle style = graph->GetStyle();
+style.showFileBoxes = true;
+style.maxFileBoxes  = 6;
+graph->SetStyle(style);
+```
+
+### Wiring callbacks to a status label
+
+```cpp
+graph->onCommitClick = [graph, statusLabel](const std::string& sha) {
+    const GitGraphCommit* commit = graph->GetCommit(sha);
+    if (commit) statusLabel->SetText(commit->ShortSha() + " - " + commit->subject);
+};
+
+graph->commitLabelFormatter = [](const GitGraphCommit& commit) {
+    return commit.ShortSha(8) + "  " + commit.subject;
+};
+```
+
+### Toolbar bindings
+
+```cpp
+edgeDropdown->onSelectionChanged = [graph](int index, const DropdownItem&) {
+    switch (index) {
+        case 0: graph->SetEdgeStyle(GitGraphEdgeStyle::Orthogonal); break;
+        case 1: graph->SetEdgeStyle(GitGraphEdgeStyle::Bezier);     break;
+        case 2: graph->SetEdgeStyle(GitGraphEdgeStyle::Arc);        break;
+        case 3: graph->SetEdgeStyle(GitGraphEdgeStyle::Straight);   break;
+    }
+};
+
+laneDropdown->onSelectionChanged = [graph](int index, const DropdownItem&) {
+    graph->SetLaneStrategy(index == 0 ? GitGraphLaneStrategy::Stable
+                                      : GitGraphLaneStrategy::Compact);
+};
+
+zoomFitBtn->onClick = [graph]() { graph->ZoomToFit(); };
+```
+
+## Using the layout core on its own
+
+`UltraCanvasGitGraphLayout` has no UI dependencies, so it can be used headlessly
+— for tests, for exporting geometry, or for a custom renderer:
+
+```cpp
+GitGraphLayoutOptions options;
+options.orderMode    = GitGraphOrderMode::Topological;
+options.laneStrategy = GitGraphLaneStrategy::Stable;
+options.trunkBranch  = "main";
+
+UltraCanvasGitGraphLayout engine(options);
+GitGraphLayoutResult result = engine.Compute(commits, refs);
+
+for (const GitGraphPlacedCommit& placed : result.commits) {
+    // placed.row, placed.lane, placed.isMerge, placed.isRoot, placed.branch
+}
+for (const GitGraphPlacedEdge& edge : result.edges) {
+    // edge.fromRow/fromLane -> edge.toRow/toLane, edge.kind, edge.turnAtChild
+}
+```
+
+`GitGraphPlacedEdge::turnAtChild` tells the renderer where the lane change
+happens: a first-parent edge runs down the child's lane and turns in at the
+parent (a branch growing out of its base), while a merge edge leaves the merge
+commit sideways and then runs down the parent's lane. That single flag is what
+makes branch points and merges read correctly.
+
+## Keyboard Navigation
+
+| Key | Action |
+|---|---|
+| Up / Down | Previous / next commit along the history axis |
+| Left / Right | Nearest commit in the lane to the left / right |
+| Home / End | Newest / oldest commit |
+| PageUp / PageDown | Jump ten rows |
+| Enter | Fires `onCommitDoubleClick` for the selected commit |
+
+Mouse: left-click selects (ctrl or shift extends), left-drag on empty space
+pans, middle-drag always pans, right-click on a commit fires
+`onCommitRightClick`, and the wheel zooms around the cursor.
+
+## Performance Notes
+
+- Lane assignment is `O(n · openBranches)` and runs in a single sweep.
+- Only rows inside the viewport are rendered, plus two rows of overscan, so
+  scrolling cost is independent of history size.
+- The layout is cached and recomputed only when data, ordering, layout mode or
+  lane strategy change.
+
+## See Also
+
+- [`UltraCanvasGitGraphProposal.md`](UltraCanvasGitGraphProposal.md) — the
+  research write-up, the full feature list and the delivery roadmap
+- [`UltraCanvasNodeDiagramExamples.md`](UltraCanvasNodeDiagramExamples.md) —
+  general node/link diagrams
+- [`UltraCanvasGourceTreeExamples.md`](UltraCanvasGourceTreeExamples.md) —
+  radial tree visualization
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasGourceTreeExamples.md
 ==============================================================================
 

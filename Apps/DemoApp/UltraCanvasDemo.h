@@ -338,6 +338,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreatePertChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateNodeDiagramExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateGourceTreeExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateGitGraphExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateAdjacencyDiagramExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateArcDiagramExamples();
         std::shared_ptr<UltraCanvasContainer> CreateExampleDiagramSection();

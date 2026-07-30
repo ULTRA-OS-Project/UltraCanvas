@@ -317,6 +317,31 @@ add_test(
 )
 message(STATUS "    Test registered: ContourGeometryTest")
 
+# ===== GIT GRAPH LAYOUT TEST =====
+# Commit ordering, lane assignment, merge/octopus handling, swimlane banding
+# and edge routing. Pure geometry - no UI stack, no link dependencies beyond
+# the layout source itself.
+message(STATUS "  Building GitGraphLayoutTest...")
+add_executable(GitGraphLayoutTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/GitGraphLayoutTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasGitGraphLayout.cpp
+)
+target_include_directories(GitGraphLayoutTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(GitGraphLayoutTest PRIVATE cxx_std_20)
+set_target_properties(GitGraphLayoutTest PROPERTIES
+    OUTPUT_NAME "GitGraphLayoutTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME GitGraphLayoutTest
+    COMMAND GitGraphLayoutTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: GitGraphLayoutTest")
+
 # ===== VIRTUALFS PATH TEST =====
 # Regression test for VirtualFSPath archive-path resolution (Unix, relative
 # and Windows drive-letter paths). Header-only - no link dependencies, so it

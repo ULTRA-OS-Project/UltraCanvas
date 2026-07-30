@@ -1,4 +1,30 @@
 #### 2026-07-30 *0.3.20*
+- New **UltraCanvasGitGraph** element
+  (`Plugins/Diagrams/UltraCanvasGitGraph`): renders a Git commit history — a
+  DAG of commits decorated with branch, tag and `HEAD` refs. Two layout
+  families share one data model: **Lanes**, one lane per open line of
+  development with the newest commit first (the gitk / GitKraken / SourceTree
+  repository view), and **Swimlane**, one band per branch either side of a
+  nominated trunk (the git-flow teaching diagram). Lane assignment is a single
+  active-lane sweep with two strategies — `Stable` keeps a branch on one lane
+  for its whole life (straight branches), `Compact` recycles freed lanes
+  (narrow graphs) — plus trunk pinning so a nominated branch always holds lane
+  0. Handles merges, octopus merges, multiple roots, boundary commits whose
+  parents lie outside the loaded window, and cherry-picks (dashed non-parent
+  edges). Four orientations, four commit orderings (as-given, commit date,
+  author date, topological), four edge routings (orthogonal with rounded
+  corners, Bezier, arc, straight), ref chips with `+n` overflow, per-commit
+  changed-file boxes with leader lines, callout annotations, an arrowheaded
+  trunk baseline, six themes, virtualised rendering (only rows in the viewport
+  are drawn), zoom/pan/selection/tooltips/keyboard navigation and SVG export.
+  Ingest is programmatic, from `git log` output (`LoadFromGitLog` +
+  `GitLogFormat`), or via the authoring API (`Branch`/`Commit`/`Merge`/
+  `CherryPick`/`Tag`) — the element is read-only and never executes git.
+  The layout core (`UltraCanvasGitGraphLayout`) is headless and covered by
+  `Tests/GitGraphLayoutTest.cpp` (11 cases, including 200 randomised DAGs
+  checked against the placement invariants). New demo page (Diagrams > Git
+  Graph), guide in `Docs/UltraCanvas/UltraCanvasGitGraphExamples.md`, research
+  write-up and roadmap in `Docs/UltraCanvas/UltraCanvasGitGraphProposal.md`.
 - **VirtualFS / UltraCanvasFilerWidget**: fixed archives always listing as
   "(empty folder)" on Windows. `VirtualFSPath::Resolve()` prefixed a slash to
   the real-filesystem part of every absolute path, turning a drive-letter path

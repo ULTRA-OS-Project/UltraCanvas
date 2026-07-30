@@ -1,9 +1,25 @@
 # UltraCanvasGitGraph — Research & Feature Proposal
 
-Status: **Proposal only — nothing implemented yet.** This document is the
-research write-up and the roadmap for a comprehensive Git commit-graph element
-for UltraCanvas. No header, source file, demo tab or CMake entry exists for it
-at the time of writing.
+Status: **Phase 1 is implemented** — see
+[`UltraCanvasGitGraphExamples.md`](UltraCanvasGitGraphExamples.md) for the API
+documentation and `Apps/DemoApp/UltraCanvasGitGraphExamples.cpp` for the demo.
+This document is kept as the research write-up and the roadmap for the
+remaining items.
+
+Delivered in the first pass: the headless layout core (`Lanes` + `Swimlane`
+modes, both lane strategies, all four orderings, trunk pinning), all four
+orientations and edge styles, merges/octopus/multiple-roots/boundary-commit
+handling, ref chips with overflow collapse, per-commit file boxes, callout
+annotations, the trunk baseline with arrowhead, virtualised rendering, themes,
+zoom/pan/selection/tooltips/keyboard navigation, `git log` ingest, the
+authoring API, SVG export, and `Tests/GitGraphLayoutTest.cpp` (11 cases
+including 200 randomised DAGs).
+
+Still open: everything marked P2/P3 below — most notably the
+`IGitGraphDataSource` lazy loader (D8), filtering and collapsing (L12, L13),
+crossing reduction (L10), the time-proportional axis (L9), the paired commit
+table (M1–M6), search (I8), the minimap (R15), mermaid import/export (D13, X4)
+and the native `.git` reader (D14).
 
 Author: UltraCanvas Framework
 Last Modified: 2026-07-30
@@ -55,11 +71,16 @@ user preference, not a right answer, so the element should offer both.
 
 ---
 
-## 2. What the reference image demands
+## 2. What the reference images demand
 
-The uploaded image ("GIT Branch and its Operations") is not a repository dump —
-it is the **didactic swimlane form** of a Git graph, and it defines a distinct
-set of requirements from the tool-style layouts above:
+Three images were supplied. Two are teaching diagrams in swimlane form; the
+third is a four-way comparison of real clients. Together they define the scope
+— and they confirm that the element must serve two different audiences.
+
+### Image 1 — "GIT Branch and its Operations"
+
+Not a repository dump — the **didactic swimlane form** of a Git graph, with a
+distinct set of requirements from the tool-style layouts above:
 
 * A single **horizontal trunk** labelled `Master`, drawn as a continuous
   straight axis line with an arrowhead, time flowing **left → right**.
@@ -84,12 +105,60 @@ set of requirements from the tool-style layouts above:
 > edges; a per-commit file-label column with leader lines and side-aware
 > placement; lane-end branch labels; an arrowheaded trunk baseline.
 
-This matters for scope: the element must serve **two audiences at once** — the
+### Image 2 — the git-flow diagram (JetBrains)
+
+The same swimlane form, scaled up to a real branching model. Five **named
+bands** stacked with a label chip each — `main`, `hotfixes`, `release
+branches`, `develop`, `feature branches` — and crucially **several distinct
+branches share one band** (three separate feature branches all live in the
+"feature branches" row). Commits are coloured per band, tags sit above the
+commit they mark (`tag 0.1`, `tag 0.2`, `tag 1.0`, `hotfix 0.2`), and free
+text callouts point at regions of the graph ("release branch for 1.0", "only
+bugfixes", "hotfix in develop", "major feature for the next release"). Cross-
+band edges are smooth curves with arrowheads, and every lane runs off the right
+edge with an arrow.
+
+> Requires: **named bands rather than one-band-per-branch** — so the band key
+> must be a free string on the commit, not the branch ref; band label chips at
+> the axis start; tag chips anchored to a commit; free-standing **callout
+> annotations** with leader lines; arrowheaded edges.
+
+This is what drove `GitGraphCommit::branch` being an arbitrary string that the
+caller sets (feature **D6**/**L5**), instead of deriving bands from refs alone.
+
+### Image 3 — git-graph / git log / GitExtensions / Sourcetree side by side
+
+Four real clients rendering the same history, and the single best summary of
+the repository-browser conventions:
+
+* **Newest commit at the top** in all four — time flows bottom-to-top, not the
+  mermaid `TB` direction.
+* A **compact lane column on the left, a subject column on the right**, rows
+  aligned one commit per row.
+* Ref decorations rendered inline: `(feature/fea…)`, `(develop)`, `(master)` as
+  parenthesised text in the terminal tools, as coloured chips in
+  GitExtensions/Sourcetree, with the current branch emphasised.
+* Visibly **different edge routing per tool** — git-graph uses orthogonal runs
+  with arrowheads turning into the lane (`o<-`), GitExtensions uses long
+  Bezier curves, Sourcetree uses diagonal steps — which is exactly why edge
+  routing is a style setting rather than a hard-coded look.
+* Dense rows (~20 px), dark theme, and heavy merge traffic: a realistic history
+  has merges every few commits, so merge rendering is the common case, not an
+  edge case.
+
+> Requires: `BottomToTop` orientation as the repository default; a label
+> **column** for vertical layouts rather than per-node offsets; ref chips with
+> current-branch emphasis; selectable edge routing; tight default spacing;
+> row virtualisation to keep long histories cheap.
+
+### What this means for scope
+
+The element must serve **two audiences at once** — the
 repository browser (thousands of commits, compact lanes, a paired commit table)
 and the documentation/teaching diagram (a dozen commits, curved swimlanes,
 authored programmatically). They share a data model, a lane model and a
-renderer; they differ in layout mode and density. Both are in scope; the
-reference image is the second.
+renderer; they differ in layout mode and density. Both are in scope: image 3 is
+the first audience, images 1 and 2 the second.
 
 ---
 
@@ -563,5 +632,7 @@ in `git log --graph`, with `Compact` one call away for dense histories.
 - [The Git Graph: A Directed Acyclic Graph](https://medium.com/@a.kago1988/why-the-git-graph-is-a-directed-acyclic-graph-dag-f9052b95f97f)
   and [Visualising changes to the Git DAG in real time](https://www.eseth.org/2023/git-graph-dag.html)
   — DAG semantics and refs-as-labels model.
-- Uploaded reference image — "GIT Branch and its Operations" swimlane diagram
-  (§2).
+- Uploaded reference images (§2): "GIT Branch and its Operations" swimlane
+  diagram; the [JetBrains git-flow diagram](https://blog.jetbrains.com/space/2023/04/18/space-git-flow/);
+  and the four-way `git-graph` / `git log` / GitExtensions / Sourcetree
+  comparison.
