@@ -60,10 +60,11 @@ The right relationship is **reuse, not derive** (see §4).
 
 ---
 
-## 2. What the five reference images demand
+## 2. What the ten reference images demand
 
 Each image maps onto a concrete set of capabilities; together they define the
-scope of a "comprehensive" element rather than a minimum one.
+scope of a "comprehensive" element rather than a minimum one. Images 1–5 came
+from the first review round, 6–10 from the second.
 
 ### Image 1 — Classic balanced mind map with an image centre
 Title "MIND MAP" above the canvas. Centre is a **drawn illustration** (a
