@@ -22465,8 +22465,11 @@ void SetLegendDisplay(bool show, const Point2Df& position = Point2Df(0, 0),
                       const Color& textColor       = Color(64, 64, 64, 255))
 ```
 Shows/hides the legend. With the default `(0, 0)` position the legend is
-auto-placed to the right of the plot; pass an explicit element-local position
-to override.
+auto-placed in a reserved strip on the right of the element, vertically centred
+and clear of the axis labels; pass an explicit element-local position to
+override. The legend box is sized from the measured series names, and the same
+width is reserved by the layout pass, so long names are neither clipped nor
+overlapping the chart.
 
 ### Accessors
 ```cpp
@@ -22593,9 +22596,13 @@ elements. Internally:
 1. **Background** — fills the element background colour
 2. **Animation update** — advances the smoothstep grow-out progress
 3. **Layout** — computes `centerPoint` and `maxRadius` from the local bounds,
-   reserving margin for labels and the legend
+   reserving margin from the *measured* axis-label and legend text so long
+   names cannot be clipped, and centring the ring in what is left
 4. **Grid** — concentric rings + radial spokes (one per axis)
-5. **Axis labels** — positioned just outside each spoke with angle-aware alignment
+5. **Axis labels** — placed by the shared `PlaceShapeLabels()` solver
+   (`UltraCanvasLabelPlacement.h`): each label prefers the side facing radially
+   outward from its spoke, and moves to another side when that spot would fall
+   under the legend, over a neighbouring label, or outside the element
 6. **Series** — filled polygon, closed outline, optional vertex markers
 7. **Value labels** (optional) — numeric values on the first series
 8. **Legend** (optional) — colour swatch + series name per row
