@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <limits>
 
 #ifndef M_PI
@@ -440,6 +441,112 @@ namespace UltraCanvas {
     }
 
 // =============================================================================
+// VIEW WINDOW (ZOOM / PAN)
+// =============================================================================
+
+    void UltraCanvasContourChartElement::SetViewRange(double xMin, double xMax,
+                                                      double yMin, double yMax) {
+        if (!(xMax > xMin) || !(yMax > yMin)) return;
+        viewXMin = xMin; viewXMax = xMax;
+        viewYMin = yMin; viewYMax = yMax;
+        viewActive = true;
+        ClampViewToData();
+        fillPixmapValid = false;
+        RequestRedraw();
+    }
+
+    void UltraCanvasContourChartElement::ResetView() {
+        if (!viewActive) return;
+        viewActive = false;
+        fillPixmapValid = false;
+        RequestRedraw();
+    }
+
+    bool UltraCanvasContourChartElement::GetViewRange(double& xMin, double& xMax,
+                                                      double& yMin, double& yMax) const {
+        EffectiveViewRange(xMin, xMax, yMin, yMax);
+        return viewActive;
+    }
+
+    void UltraCanvasContourChartElement::ClampViewToData() {
+        RebuildContours();
+        if (!field.Valid()) return;
+
+        double fullX = field.xMax - field.xMin;
+        double fullY = field.yMax - field.yMin;
+        double minSpanX = fullX / maxZoomFactor;
+        double minSpanY = fullY / maxZoomFactor;
+
+        double spanX = std::clamp(viewXMax - viewXMin, minSpanX, fullX);
+        double spanY = std::clamp(viewYMax - viewYMin, minSpanY, fullY);
+
+        // Keep the centre, then slide the window back inside the field.
+        double cx = (viewXMin + viewXMax) * 0.5;
+        double cy = (viewYMin + viewYMax) * 0.5;
+        viewXMin = std::clamp(cx - spanX * 0.5, field.xMin, field.xMax - spanX);
+        viewXMax = viewXMin + spanX;
+        viewYMin = std::clamp(cy - spanY * 0.5, field.yMin, field.yMax - spanY);
+        viewYMax = viewYMin + spanY;
+
+        // Fully zoomed out is the same as no view at all.
+        if (spanX >= fullX * 0.9999 && spanY >= fullY * 0.9999) {
+            viewActive = false;
+        }
+    }
+
+    void UltraCanvasContourChartElement::ApplyZoom(double factor, double focusX, double focusY) {
+        RebuildContours();
+        if (!field.Valid()) return;
+
+        double vx0, vx1, vy0, vy1;
+        EffectiveViewRange(vx0, vx1, vy0, vy1);
+
+        // Scale the window about the focus point so the data under the cursor
+        // stays under the cursor.
+        viewXMin = focusX - (focusX - vx0) * factor;
+        viewXMax = focusX + (vx1 - focusX) * factor;
+        viewYMin = focusY - (focusY - vy0) * factor;
+        viewYMax = focusY + (vy1 - focusY) * factor;
+        viewActive = true;
+        ClampViewToData();
+        fillPixmapValid = false;
+        RequestRedraw();
+    }
+
+    void UltraCanvasContourChartElement::ApplyPan(double dxData, double dyData) {
+        RebuildContours();
+        if (!field.Valid() || !viewActive) return;
+
+        double spanX = viewXMax - viewXMin;
+        double spanY = viewYMax - viewYMin;
+        viewXMin = std::clamp(viewXMin + dxData, field.xMin, field.xMax - spanX);
+        viewXMax = viewXMin + spanX;
+        viewYMin = std::clamp(viewYMin + dyData, field.yMin, field.yMax - spanY);
+        viewYMax = viewYMin + spanY;
+        fillPixmapValid = false;
+        RequestRedraw();
+    }
+
+// =============================================================================
+// INTERACTION SETTERS
+// =============================================================================
+
+    void UltraCanvasContourChartElement::SetShowCrosshair(bool on) {
+        showCrosshair = on;
+        if (!on) crosshairLive = false;
+        RequestRedraw();
+    }
+
+    void UltraCanvasContourChartElement::SetCrosshairColor(const Color& c) {
+        crosshairColor = c;
+        RequestRedraw();
+    }
+
+    void UltraCanvasContourChartElement::SetOnContourClick(ContourClickHandler handler) {
+        onContourClick = std::move(handler);
+    }
+
+// =============================================================================
 // PIPELINE
 // =============================================================================
 
@@ -516,18 +623,39 @@ namespace UltraCanvas {
         return contourMode == ContourRenderMode::HeatmapWithContours;
     }
 
+    bool UltraCanvasContourChartElement::ViewZoomable() const {
+        // The heatmap-cell presentation is laid out by the base class over the
+        // whole matrix, so the view window (and with it zoom/pan) only applies
+        // to the lattice-mapped contour modes.
+        return !UsesCellAlignedGrid();
+    }
+
+    void UltraCanvasContourChartElement::EffectiveViewRange(double& xMin, double& xMax,
+                                                            double& yMin, double& yMax) const {
+        if (field.Valid()) {
+            xMin = field.xMin; xMax = field.xMax;
+            yMin = field.yMin; yMax = field.yMax;
+        } else {
+            xMin = dataXMin; xMax = dataXMax;
+            yMin = dataYMin; yMax = dataYMax;
+        }
+        if (viewActive && ViewZoomable()) {
+            xMin = viewXMin; xMax = viewXMax;
+            yMin = viewYMin; yMax = viewYMax;
+        }
+    }
+
     Point2Dd UltraCanvasContourChartElement::GridToScreen(double col, double row) const {
         const ChartPlotArea& area = GetHeatmapArea();
         if (field.cols < 2 || field.rows < 2) {
             return Point2Dd(area.x, area.y);
         }
 
-        double displayRow = (GetRowOrder() == HeatmapRowOrder::TopDown)
-                            ? row : (field.rows - 1 - row);
-        double u = col / (field.cols - 1);
-        double v = displayRow / (field.rows - 1);
-
         if (UsesCellAlignedGrid()) {
+            double u = col / (field.cols - 1);
+            double displayRow = (GetRowOrder() == HeatmapRowOrder::TopDown)
+                                ? row : (field.rows - 1 - row);
+            double v = displayRow / (field.rows - 1);
             int baseCols = std::max(1, GetColumns());
             int baseRows = std::max(1, GetRows());
             double cw = area.width / baseCols;
@@ -535,6 +663,15 @@ namespace UltraCanvas {
             return Point2Dd(area.x + (0.5 + u * (baseCols - 1)) * cw,
                             area.y + (0.5 + v * (baseRows - 1)) * ch);
         }
+
+        double vx0, vx1, vy0, vy1;
+        EffectiveViewRange(vx0, vx1, vy0, vy1);
+        double colMin = field.ColAtX(vx0), colMax = field.ColAtX(vx1);
+        double rowMin = field.RowAtY(vy0), rowMax = field.RowAtY(vy1);
+
+        double u = (colMax > colMin) ? (col - colMin) / (colMax - colMin) : 0.0;
+        double rowFrac = (rowMax > rowMin) ? (row - rowMin) / (rowMax - rowMin) : 0.0;
+        double v = (GetRowOrder() == HeatmapRowOrder::TopDown) ? rowFrac : 1.0 - rowFrac;
         return Point2Dd(area.x + u * area.width, area.y + v * area.height);
     }
 
@@ -544,24 +681,30 @@ namespace UltraCanvas {
             return Point2Dd(0, 0);
         }
 
-        double u, v;
         if (UsesCellAlignedGrid()) {
             int baseCols = std::max(2, GetColumns());
             int baseRows = std::max(2, GetRows());
             double cw = area.width / baseCols;
             double ch = area.height / baseRows;
-            u = ((sx - area.x) / cw - 0.5) / (baseCols - 1);
-            v = ((sy - area.y) / ch - 0.5) / (baseRows - 1);
-        } else {
-            u = (sx - area.x) / area.width;
-            v = (sy - area.y) / area.height;
+            double u = ((sx - area.x) / cw - 0.5) / (baseCols - 1);
+            double v = ((sy - area.y) / ch - 0.5) / (baseRows - 1);
+            double col = u * (field.cols - 1);
+            double displayRow = v * (field.rows - 1);
+            double row = (GetRowOrder() == HeatmapRowOrder::TopDown)
+                         ? displayRow : (field.rows - 1 - displayRow);
+            return Point2Dd(col, row);
         }
 
-        double col = u * (field.cols - 1);
-        double displayRow = v * (field.rows - 1);
-        double row = (GetRowOrder() == HeatmapRowOrder::TopDown)
-                     ? displayRow : (field.rows - 1 - displayRow);
-        return Point2Dd(col, row);
+        double vx0, vx1, vy0, vy1;
+        EffectiveViewRange(vx0, vx1, vy0, vy1);
+        double colMin = field.ColAtX(vx0), colMax = field.ColAtX(vx1);
+        double rowMin = field.RowAtY(vy0), rowMax = field.RowAtY(vy1);
+
+        double u = (sx - area.x) / area.width;
+        double v = (sy - area.y) / area.height;
+        double rowFrac = (GetRowOrder() == HeatmapRowOrder::TopDown) ? v : 1.0 - v;
+        return Point2Dd(colMin + u * (colMax - colMin),
+                        rowMin + rowFrac * (rowMax - rowMin));
     }
 
 // =============================================================================
@@ -715,6 +858,9 @@ namespace UltraCanvas {
         bool categoricalY = !rowLabels.empty();
         bool categoricalX = !columnLabels.empty();
 
+        double vx0, vx1, vy0, vy1;
+        EffectiveViewRange(vx0, vx1, vy0, vy1);
+
         if (showAxisTicks || categoricalY) {
             double w = 0.0;
             if (categoricalY) {
@@ -722,8 +868,8 @@ namespace UltraCanvas {
                     w = std::max(w, static_cast<double>(ctx->GetTextLineWidth(s)));
                 }
             } else {
-                w = std::max(ctx->GetTextLineWidth(FormatTick(dataYMin, yTickFormatter)),
-                             ctx->GetTextLineWidth(FormatTick(dataYMax, yTickFormatter)));
+                w = std::max(ctx->GetTextLineWidth(FormatTick(vy0, yTickFormatter)),
+                             ctx->GetTextLineWidth(FormatTick(vy1, yTickFormatter)));
             }
             left += w + 10.0;
         }
@@ -770,6 +916,8 @@ namespace UltraCanvas {
         if (contourMode != ContourRenderMode::Filled) {
             RenderIsolines(ctx);
         }
+
+        if (showCrosshair && crosshairLive) RenderCrosshair(ctx);
 
         switch (legendMode) {
             case ContourLegendMode::ColorBar: {
@@ -825,15 +973,19 @@ namespace UltraCanvas {
             uint32_t nanPixel = ContourColorToPixel(GetNaNColor());
 
             bool bottomUp = (GetRowOrder() != HeatmapRowOrder::TopDown);
-            double colScale = (field.cols - 1) / static_cast<double>(std::max(1, w - 1));
-            double rowScale = (field.rows - 1) / static_cast<double>(std::max(1, h - 1));
+            double vx0, vx1, vy0, vy1;
+            EffectiveViewRange(vx0, vx1, vy0, vy1);
+            double colMin = field.ColAtX(vx0);
+            double rowMin = field.RowAtY(vy0);
+            double colScale = (field.ColAtX(vx1) - colMin) / std::max(1, w - 1);
+            double rowScale = (field.RowAtY(vy1) - rowMin) / std::max(1, h - 1);
 
             for (int py = 0; py < h; ++py) {
-                double displayRow = py * rowScale;
-                double row = bottomUp ? (field.rows - 1 - displayRow) : displayRow;
+                double rowFrac = bottomUp ? (h - 1 - py) : py;
+                double row = rowMin + rowFrac * rowScale;
                 uint32_t* line = px + static_cast<size_t>(py) * w;
                 for (int pxi = 0; pxi < w; ++pxi) {
-                    double v = field.SampleBilinear(pxi * colScale, row);
+                    double v = field.SampleBilinear(colMin + pxi * colScale, row);
                     if (std::isnan(v)) {
                         line[pxi] = nanPixel;
                         continue;
@@ -1023,10 +1175,12 @@ namespace UltraCanvas {
                               Point2Dd(cx - sz.width / 2.0, area.GetBottom() + 5.0));
             }
         } else if (showAxisTicks && field.Valid()) {
+            double vx0, vx1, vyUnused0, vyUnused1;
+            EffectiveViewRange(vx0, vx1, vyUnused0, vyUnused1);
             double lastRight = -1e9;
             for (int i = 0; i < xTickCount; ++i) {
                 double t = static_cast<double>(i) / (xTickCount - 1);
-                double value = dataXMin + (dataXMax - dataXMin) * t;
+                double value = vx0 + (vx1 - vx0) * t;
                 Point2Dd s = GridToScreen(field.ColAtX(value), 0.0);
                 std::string text = FormatTick(value, xTickFormatter);
                 Size2Di sz = ctx->GetTextLineDimensions(text);
@@ -1049,10 +1203,12 @@ namespace UltraCanvas {
                               Point2Dd(area.x - sz.width - 8.0, cy - sz.height / 2.0));
             }
         } else if (showAxisTicks && field.Valid()) {
+            double vxUnused0, vxUnused1, vy0, vy1;
+            EffectiveViewRange(vxUnused0, vxUnused1, vy0, vy1);
             double lastTop = 1e9;
             for (int i = 0; i < yTickCount; ++i) {
                 double t = static_cast<double>(i) / (yTickCount - 1);
-                double value = dataYMin + (dataYMax - dataYMin) * t;
+                double value = vy0 + (vy1 - vy0) * t;
                 Point2Dd s = GridToScreen(0.0, field.RowAtY(value));
                 std::string text = FormatTick(value, yTickFormatter);
                 Size2Di sz = ctx->GetTextLineDimensions(text);
@@ -1153,16 +1309,92 @@ namespace UltraCanvas {
         return field.SampleBilinear(field.ColAtX(x), field.RowAtY(y));
     }
 
+    std::vector<ContourPolyline> UltraCanvasContourChartElement::ExportContourPolylines() const {
+        RebuildContours();
+        std::vector<ContourPolyline> out;
+        if (!field.Valid()) return out;
+
+        out.reserve(polylines.size());
+        for (const auto& poly : polylines) {
+            ContourPolyline exported;
+            exported.level = poly.level;
+            exported.closed = poly.closed;
+            exported.points.reserve(poly.points.size());
+            for (const auto& p : poly.points) {
+                exported.points.emplace_back(field.XAt(p.x), field.YAt(p.y));
+            }
+            out.push_back(std::move(exported));
+        }
+        return out;
+    }
+
+    void UltraCanvasContourChartElement::RenderCrosshair(IRenderContext* ctx) {
+        const ChartPlotArea& area = GetHeatmapArea();
+        if (!field.Valid() ||
+            !area.Contains(static_cast<float>(crosshairPos.x),
+                           static_cast<float>(crosshairPos.y))) {
+            return;
+        }
+
+        double sx = crosshairPos.x;
+        double sy = crosshairPos.y;
+
+        ctx->PushState();
+        ctx->ClipRect(area.ToRect2D());
+        ctx->SetStrokePaint(crosshairColor);
+        ctx->SetStrokeWidth(1.0);
+        ctx->SetLineDash(UCDashPattern{{4.0, 3.0}, 0.0});
+        ctx->DrawLine(Point2Dd(area.x, sy), Point2Dd(area.GetRight(), sy));
+        ctx->DrawLine(Point2Dd(sx, area.y), Point2Dd(sx, area.GetBottom()));
+        ctx->SetLineDash(UCDashPattern());
+        ctx->PopState();
+
+        // Value read-outs pinned to the axes, on small plates so they stay
+        // legible over the fill and the frame.
+        Point2Dd g = ScreenToGrid(sx, sy);
+        std::string xText = FormatTick(field.XAt(g.x), xTickFormatter);
+        std::string yText = FormatTick(field.YAt(g.y), yTickFormatter);
+
+        ctx->SetFontSize(10.0);
+        Color plate(crosshairColor.r, crosshairColor.g, crosshairColor.b, 255);
+        Color plateText(255, 255, 255, 255);
+
+        Size2Di xSz = ctx->GetTextLineDimensions(xText);
+        double bx = std::clamp(sx - xSz.width / 2.0,
+                               static_cast<double>(area.x),
+                               area.GetRight() - xSz.width);
+        ctx->DrawFilledRectangle(Rect2Dd(bx - 3.0, area.GetBottom() + 1.0,
+                                         xSz.width + 6.0, xSz.height + 2.0), plate);
+        ctx->SetTextPaint(plateText);
+        ctx->DrawText(xText, Point2Dd(bx, area.GetBottom() + 2.0));
+
+        Size2Di ySz = ctx->GetTextLineDimensions(yText);
+        double by = std::clamp(sy - ySz.height / 2.0,
+                               static_cast<double>(area.y),
+                               area.GetBottom() - ySz.height);
+        ctx->DrawFilledRectangle(Rect2Dd(area.x - ySz.width - 9.0, by - 1.0,
+                                         ySz.width + 6.0, ySz.height + 2.0), plate);
+        ctx->SetTextPaint(plateText);
+        ctx->DrawText(yText, Point2Dd(area.x - ySz.width - 6.0, by));
+    }
+
     bool UltraCanvasContourChartElement::HandleChartMouseMove(const Point2Di& mousePos) {
+        RebuildContours();
+
+        const ChartPlotArea& area = GetHeatmapArea();
+        bool inside = field.Valid() && area.Contains(static_cast<float>(mousePos.x),
+                                                     static_cast<float>(mousePos.y));
+        if (showCrosshair) {
+            crosshairPos = mousePos;
+            if (inside != crosshairLive || inside) RequestRedraw();
+            crosshairLive = inside;
+        }
+
         if (!enableTooltips) {
             HideTooltip();
             return false;
         }
-        RebuildContours();
-
-        const ChartPlotArea& area = GetHeatmapArea();
-        if (!field.Valid() || !area.Contains(static_cast<float>(mousePos.x),
-                                             static_cast<float>(mousePos.y))) {
+        if (!inside) {
             HideTooltip();
             return false;
         }
@@ -1190,6 +1422,111 @@ namespace UltraCanvas {
                 Point2Di(static_cast<int>(windowMousePos.x), static_cast<int>(windowMousePos.y)));
         isTooltipActive = true;
         return true;
+    }
+
+    bool UltraCanvasContourChartElement::OnEvent(const UCEvent& event) {
+        switch (event.type) {
+            case UCEventType::MouseDown:
+                if (event.button == UCMouseButton::Left) {
+                    clickDownPos = Point2Di(event.pointer.x, event.pointer.y);
+                    clickCandidate = true;
+                    if (enablePan && ViewZoomable()) {
+                        panDragging = true;
+                        panLastPos = clickDownPos;
+                        return true;
+                    }
+                }
+                break;
+
+            case UCEventType::MouseMove:
+                if (panDragging) {
+                    Point2Di pos(event.pointer.x, event.pointer.y);
+                    if (std::abs(pos.x - clickDownPos.x) > 3 ||
+                        std::abs(pos.y - clickDownPos.y) > 3) {
+                        clickCandidate = false;
+                    }
+                    RebuildContours();
+                    if (field.Valid() && viewActive) {
+                        // Move the window so the data under the cursor follows
+                        // the drag; ScreenToGrid keeps this correct for either
+                        // row order.
+                        Point2Dd g0 = ScreenToGrid(panLastPos.x, panLastPos.y);
+                        Point2Dd g1 = ScreenToGrid(pos.x, pos.y);
+                        ApplyPan(field.XAt(g0.x) - field.XAt(g1.x),
+                                 field.YAt(g0.y) - field.YAt(g1.y));
+                    }
+                    panLastPos = pos;
+                    return true;
+                }
+                break;
+
+            case UCEventType::MouseUp:
+                if (event.button == UCMouseButton::Left) {
+                    bool wasPanning = panDragging;
+                    panDragging = false;
+
+                    if (clickCandidate && onContourClick) {
+                        Point2Di pos(event.pointer.x, event.pointer.y);
+                        if (std::abs(pos.x - clickDownPos.x) <= 3 &&
+                            std::abs(pos.y - clickDownPos.y) <= 3) {
+                            RebuildContours();
+                            const ChartPlotArea& area = GetHeatmapArea();
+                            if (field.Valid() &&
+                                area.Contains(static_cast<float>(pos.x),
+                                              static_cast<float>(pos.y))) {
+                                Point2Dd g = ScreenToGrid(pos.x, pos.y);
+                                double value = field.SampleBilinear(g.x, g.y);
+                                if (!std::isnan(value)) {
+                                    ContourClickInfo info;
+                                    info.x = field.XAt(g.x);
+                                    info.y = field.YAt(g.y);
+                                    info.value = value;
+                                    info.bandIndex = BandIndexOf(value);
+                                    onContourClick(info);
+                                }
+                            }
+                        }
+                    }
+                    clickCandidate = false;
+                    if (wasPanning) return true;
+                }
+                break;
+
+            case UCEventType::MouseWheel:
+                if (enableZoom && ViewZoomable()) {
+                    RebuildContours();
+                    const ChartPlotArea& area = GetHeatmapArea();
+                    if (field.Valid() &&
+                        area.Contains(static_cast<float>(event.pointer.x),
+                                      static_cast<float>(event.pointer.y))) {
+                        Point2Dd g = ScreenToGrid(event.pointer.x, event.pointer.y);
+                        double factor = (event.wheelDelta > 0) ? (1.0 / 1.25) : 1.25;
+                        ApplyZoom(factor, field.XAt(g.x), field.YAt(g.y));
+                        return true;
+                    }
+                }
+                break;
+
+            case UCEventType::MouseDoubleClick:
+                if (enableZoom && viewActive) {
+                    ResetView();
+                    return true;
+                }
+                break;
+
+            case UCEventType::MouseLeave:
+                panDragging = false;
+                clickCandidate = false;
+                if (crosshairLive) {
+                    crosshairLive = false;
+                    RequestRedraw();
+                }
+                break;
+
+            default:
+                break;
+        }
+        return UltraCanvasHeatmapChartElement::OnEvent(event);
     }
 
 } // namespace UltraCanvas

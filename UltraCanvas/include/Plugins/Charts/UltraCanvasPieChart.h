@@ -46,11 +46,25 @@ namespace UltraCanvas {
         void SetBorderColor(const Color& c);
         void SetBorderWidth(float w);
 
+        // ===== Orientation =====
+        void SetStartAngle(float degrees);      // default -90 (12 o'clock)
+        float GetStartAngle() const { return startAngleDeg; }
+        void SetClockwise(bool on);             // default true
+        bool GetClockwise() const { return clockwise; }
+
         // ===== Donut / ring =====
         void SetDonutMode(bool on);
         bool GetDonutMode() const { return donutMode; }
         void SetInnerRadius(float fraction);    // fraction of outer radius (0..1)
         float GetInnerRadius() const { return innerRadiusFraction; }
+
+        // ===== Donut centre content =====
+        // A KPI value with an optional caption above it, drawn in the donut
+        // hole (ignored when donut mode is off or the hole is too small).
+        void SetCenterKPI(const std::string& text, const std::string& caption = "");
+        void SetCenterText(const std::string& text) { SetCenterKPI(text); }
+        void SetCenterTextColor(const Color& c);
+        void SetCenterFont(const std::string& family, float size, FontWeight weight);
 
         // ===== Explosion =====
         void SetGlobalExplosion(float fraction);
@@ -111,6 +125,11 @@ namespace UltraCanvas {
         // ===== Tooltips =====
         void SetTooltipsEnabled(bool on) { SetEnableTooltips(on); }
 
+        // ===== Callbacks =====
+        // Both receive the slice's data-source index.
+        std::function<void(size_t)> onSliceClick;
+        std::function<void(size_t)> onSliceHover;
+
         // ===== Export =====
         bool QuickExport(const std::string& filename);
         bool ExportToFile(const std::string& filename, int w, int h);
@@ -118,6 +137,7 @@ namespace UltraCanvas {
         // ===== Base overrides =====
         void RenderChart(IRenderContext* ctx) override;
         bool HandleChartMouseMove(const Point2Di& mousePos) override;
+        bool OnEvent(const UCEvent& event) override;
 
     protected:
         ChartPlotArea CalculatePlotArea() override;
@@ -128,8 +148,18 @@ namespace UltraCanvas {
         Color borderColor = Colors::White;
         float borderWidth = 1.5f;
 
+        float startAngleDeg = -90.0f;
+        bool clockwise = true;
+
         bool donutMode = false;
         float innerRadiusFraction = 0.45f;
+
+        std::string centerKpiText;
+        std::string centerKpiCaption;
+        Color centerTextColor = Color(50, 50, 50, 255);
+        std::string centerFontFamily = "Arial";
+        float centerFontSize = 16.0f;
+        FontWeight centerFontWeight = FontWeight::Bold;
 
         float globalExplosion = 0.0f;
         std::unordered_map<size_t, float> sliceExplosionOverrides;
@@ -232,9 +262,11 @@ namespace UltraCanvas {
                           const Point2Dd& center,
                           float outerR,
                           double vScale);
+        void RenderCenterKPI(IRenderContext* ctx);
 
         // Hit-testing helper: returns slice index or SIZE_MAX
         size_t HitTestSlice(const Point2Dd& localPos) const;
+        bool HandleClick(const UCEvent& event);
 
         // Default palette
         static std::vector<Color> DefaultPalette();

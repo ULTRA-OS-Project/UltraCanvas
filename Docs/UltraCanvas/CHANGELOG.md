@@ -14,6 +14,28 @@
   New header-only regression test `Tests/VirtualFSPathTest.cpp` covers Unix,
   relative, backslash and drive-letter archive paths, including nested
   archives.
+- New **UltraCanvasCircularProgressChart** element
+  (`Plugins/Charts/UltraCanvasCircularProgressChart`): the angle-encoded
+  member of the circular chart family — every ring carries one independent
+  value drawn as an arc whose sweep is proportional to that value within the
+  ring's own range (concentric "activity rings"). Sub-styles cover the single
+  thick progress ring and the progress pie (filled sector over a track disc).
+  Rings take their colour from a palette or per-ring override, draw the
+  remainder as an auto-tinted, explicit or hidden track, and end in round or
+  butt caps. Labels: percentage/value callouts at each arc tip (optionally in
+  a bubble), ring names inside the band at the arc start, or a stacked column
+  of `label value` rows aligned with each ring's start point. A centre disc
+  with title + subtitle, a numbered-chip or swatch legend on any side (with
+  optional per-ring icons), configurable start angle and winding direction,
+  hover highlighting, tooltips and click/hover callbacks complete the P1
+  feature set. New demo page (Charts > Circular Progress Chart), programmer's
+  guide in `Docs/UltraCanvas/UltraCanvasCircularProgressChart.md`, plus the
+  family-wide guide `Docs/UltraCanvas/UltraCanvasCircularCharts.md` and the
+  previously missing `Docs/UltraCanvas/UltraCanvasCircularInfoGraphic.md`.
+- **UltraCanvasPieChartElement**: family-standard controls added —
+  `SetStartAngle` / `SetClockwise` for orientation and winding,
+  `SetCenterKPI(text, caption)` drawn in the donut hole, and
+  `onSliceClick` / `onSliceHover` callbacks.
 
 #### 2026-07-29 *0.3.19*
 - New **UltraCanvasPolarChart** element

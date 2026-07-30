@@ -1,6 +1,6 @@
 # UltraCanvasContourChart — Research & Feature Proposal
 
-Status: **Phase 1 and most of Phase 2 are implemented** — see
+Status: **Phase 1, Phase 2 and most of Phase 3 are implemented** — see
 [`UltraCanvasContourChart.md`](UltraCanvasContourChart.md) for the API
 documentation and `Apps/DemoApp/UltraCanvasContourChartExamples.cpp` for the
 demo. This document is kept as the research write-up and the roadmap for the
@@ -12,6 +12,17 @@ rendered (no `ULTRACANVAS_ENABLE_GL` requirement), and the theme colours added
 for the dark-mode variant were put on the heatmap base class so the heatmap,
 hexbin and calendar charts gain them too. Isolines traced onto the 3D surface
 (T8) were pulled forward from P3 into the first delivery.
+
+Second delivery: zoom + pan of a data-space view window with wheel/drag/
+double-click-reset (I3), the click callback with `(x, y, z, bandIndex)` (I4),
+the crosshair with live axis read-out (I5), contour export as data-space
+polylines (I7), and the GL-backed 3D surface `UltraCanvasContourSurfaceGLElement`
+on `UltraCanvasGLSurface` with the STL-element fallback pattern (T6).
+
+Still open: D3 (non-uniform x/y coordinate vectors), D9 (CSV /
+`IChartDataSource` loading), D11 (incremental streaming), R7 (map underlay),
+S11 (hatch fills), L7 (callout labels), I2 (hover band highlight), I6
+(interactive level dragging) and T9 (floor-projected contour shadow).
 
 Author: UltraCanvas Framework
 Last Modified: 2026-07-29
