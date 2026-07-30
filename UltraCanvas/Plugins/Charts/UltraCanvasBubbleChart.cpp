@@ -6,7 +6,7 @@
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasBubbleChart.h"
-#include "Plugins/Charts/UltraCanvasLabelPlacement.h"
+#include "UltraCanvasLabelPlacement.h"
 #include <algorithm>
 #include <cmath>
 #include <numeric>

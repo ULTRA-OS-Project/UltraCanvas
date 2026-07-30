@@ -174,6 +174,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasSegmentedControlExamples.cpp
             Apps/DemoApp/UltraCanvasBreadcrumbExamples.cpp
             Apps/DemoApp/UltraCanvasLayoutExamples.cpp
+            Apps/DemoApp/UltraCanvasLabelPlacementExamples.cpp
             Apps/DemoApp/UltraCanvasToolbarExamples.cpp
             Apps/DemoApp/UltraCanvasTabExamples.cpp
             Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp

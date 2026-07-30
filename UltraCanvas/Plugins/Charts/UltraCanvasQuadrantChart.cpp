@@ -5,7 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasQuadrantChart.h"
-#include "Plugins/Charts/UltraCanvasLabelPlacement.h"
+#include "UltraCanvasLabelPlacement.h"
 #include "UltraCanvasTooltipManager.h"
 #include <algorithm>
 #include <cmath>

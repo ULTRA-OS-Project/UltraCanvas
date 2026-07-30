@@ -130,7 +130,7 @@ element should **reuse, not duplicate**:
 | `UltraCanvasHexbinChart` | The precedent for "reuse the heatmap for data+colour, override the geometry" — and for its dependency-free, unit-tested geometry header (`UltraCanvasHexLayout.h`) |
 | `IRenderContext` | Everything the 2D renderer needs already exists: `FillLinePath`, `DrawLinePath`, path building + `ClipPath`, `SetLineDash`, `Rotate`/`SetTransform` (for inline rotated labels), gradients, alpha |
 | `UltraCanvasGLSurface` + `Plugins/Models/STL/UltraCanvas3DTypes.h` (`Vec3`, `Mesh3D`, `BoundingBox3D`, `RecomputeNormals`) | The 3D surface variant — `UltraCanvasSTLElement` is the working reference for a GL-backed element with mouse-orbit and a non-GL fallback |
-| `UltraCanvasLabelPlacement.h` | Collision-aware placement of the contour labels / legend entries |
+| `UltraCanvasLabelPlacement.h` (layout engine) | Collision-aware placement of the contour labels / legend entries |
 
 **Important build constraint:** `UltraCanvasGLSurface.h` hard-`#error`s unless
 `ULTRACANVAS_ENABLE_GL` is defined, and `UltraCanvasSTLElement` compiles a 2D

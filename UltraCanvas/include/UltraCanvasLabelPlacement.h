@@ -1,4 +1,4 @@
-// include/Plugins/Charts/UltraCanvasLabelPlacement.h
+// include/UltraCanvasLabelPlacement.h
 // Shared shape-label placement solver for diagrams (Venn, block, node, ...).
 // Given a list of shapes (circle or rectangle, each flagged keep-inside or
 // keep-outside) and a list of labels tied to those shapes, computes the best
@@ -7,7 +7,7 @@
 // of inside anchors (top-left, centre-top, ...) or border angles (clock-face
 // positions straddling the shape's edge) with automatic fallback to the next
 // position when the preferred one collides.
-// Version: 1.2.0
+// Version: 1.3.0
 // Last Modified: 2026-07-29
 // Author: UltraCanvas Framework
 #pragma once
@@ -103,6 +103,16 @@ struct ShapeLabel {
     // stay within; the part of the label sticking out of it is penalised like
     // an out-of-bounds excursion. -1 = no containment.
     int containerShape = -1;
+    // Inside placement only: do not penalise the part of the label sticking
+    // out of its own shape. Node-style diagrams draw the name across the node
+    // outline on purpose (pair it with a text halo), so the overflow is the
+    // intended look rather than a defect to score against.
+    bool tolerateShapeOverflow = false;
+    // Inside placement only: also offer the outside sides as last-resort
+    // candidates, priced well above every inside anchor. Lets a node label
+    // step off its node when all the inside anchors are blocked, instead of
+    // being stacked on top of a label that is already there.
+    bool allowOutsideFallback = false;
 };
 
 struct PlacedShapeLabel {

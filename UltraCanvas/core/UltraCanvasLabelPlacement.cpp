@@ -1,10 +1,10 @@
-// Plugins/Charts/UltraCanvasLabelPlacement.cpp
+// core/UltraCanvasLabelPlacement.cpp
 // Shared shape-label placement solver for diagrams
-// Version: 1.2.0
+// Version: 1.3.0
 // Last Modified: 2026-07-29
 // Author: UltraCanvas Framework
 
-#include "Plugins/Charts/UltraCanvasLabelPlacement.h"
+#include "UltraCanvasLabelPlacement.h"
 #include <algorithm>
 #include <cmath>
 
@@ -56,6 +56,7 @@ double ShapeOverlapArea(const LabelShape& s, const Rect2Dd& rect) {
 }
 
 double Score(const Candidate& c, size_t ownIndex, int containerIndex,
+             bool tolerateOverflow,
              const std::vector<LabelShape>& shapes,
              const std::vector<Rect2Dd>& placed,
              const LabelPlacementOptions& opt) {
@@ -63,7 +64,7 @@ double Score(const Candidate& c, size_t ownIndex, int containerIndex,
     double cost = c.baseCost;
 
     const LabelShape& own = shapes[ownIndex];
-    if (c.side == LabelSide::Border) {
+    if (c.side == LabelSide::Border || (c.side == LabelSide::Inside && tolerateOverflow)) {
         // Straddling the own shape's edge is the intent - no own-shape penalty.
     } else if (c.side == LabelSide::Inside) {
         // Penalise the part of the label sticking out of its own shape.
@@ -319,28 +320,18 @@ std::vector<PlacedShapeLabel> PlaceShapeLabels(
 
         std::vector<Candidate> candidates;
         bool wantInside = s.keepLabelInside || label.preferredSide == LabelSide::Inside;
-        if (wantInside) {
-            AddInsideCandidates(candidates, s, label.textSize, options.shapeMargin,
-                                label.anchorPriority);
-        } else {
-            // Border-straddle positions first when the label asks for them,
-            // then the outside sides as fallback.
-            std::vector<double> borderAngles = label.borderAngles;
-            if (borderAngles.empty() && label.preferredSide == LabelSide::Border) {
-                borderAngles = {60.0, 300.0, 120.0, 240.0, 0.0, 180.0};
-            }
-            AddBorderCandidates(candidates, s, label.textSize, borderAngles);
-            double sideCost = borderAngles.empty() ? 0.0 : borderAngles.size() + 6.0;
 
-            // Side order: the preferred side first if given; otherwise the
-            // vertical side facing away from the diagram centre (wide, short
-            // labels read best above/below), then the outward horizontal side,
-            // then the two remaining sides as fallbacks.
+        // The four outside sides, most promising first: the preferred side if
+        // one was given, otherwise the vertical side facing away from the
+        // diagram centre (wide, short labels read best above/below), then the
+        // outward horizontal side, then the two remaining sides.
+        auto addOutsideSides = [&](double sideCost) {
             LabelSide vertical = (dy <= 0.0) ? LabelSide::Top : LabelSide::Bottom;
             LabelSide horizontal = (dx <= 0.0) ? LabelSide::Left : LabelSide::Right;
             std::vector<LabelSide> order;
             if (label.preferredSide != LabelSide::Auto &&
-                label.preferredSide != LabelSide::Border) {
+                label.preferredSide != LabelSide::Border &&
+                label.preferredSide != LabelSide::Inside) {
                 order.push_back(label.preferredSide);
             }
             for (LabelSide side : {vertical, horizontal, OppositeSide(vertical), OppositeSide(horizontal)}) {
@@ -354,12 +345,33 @@ std::vector<PlacedShapeLabel> PlaceShapeLabels(
                                      options.shapeMargin, sideCost, bias);
                 sideCost += 8.0;
             }
+        };
+
+        if (wantInside) {
+            AddInsideCandidates(candidates, s, label.textSize, options.shapeMargin,
+                                label.anchorPriority);
+            if (label.allowOutsideFallback) {
+                // Priced above every inside anchor (which start at 0 and step
+                // by 0.5) so stepping off the shape only wins over a genuine
+                // collision, never over a merely imperfect inside anchor.
+                addOutsideSides(40.0);
+            }
+        } else {
+            // Border-straddle positions first when the label asks for them,
+            // then the outside sides as fallback.
+            std::vector<double> borderAngles = label.borderAngles;
+            if (borderAngles.empty() && label.preferredSide == LabelSide::Border) {
+                borderAngles = {60.0, 300.0, 120.0, 240.0, 0.0, 180.0};
+            }
+            AddBorderCandidates(candidates, s, label.textSize, borderAngles);
+            addOutsideSides(borderAngles.empty() ? 0.0 : borderAngles.size() + 6.0);
         }
 
         const Candidate* best = nullptr;
         double bestScore = 0.0;
         for (const Candidate& c : candidates) {
             double score = Score(c, label.shapeIndex, label.containerShape,
+                                 label.tolerateShapeOverflow,
                                  shapes, placed, options);
             if (!best || score < bestScore) {
                 best = &c;
