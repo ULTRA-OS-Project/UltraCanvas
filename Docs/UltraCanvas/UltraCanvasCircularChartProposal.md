@@ -1,8 +1,15 @@
 # UltraCanvas Circular Charts — Research & Feature Proposal
 
-Status: **Proposal** — research write-up, gap analysis and feature roadmap for
-the circular chart family. Nothing in this document is implemented yet unless
-explicitly marked as existing.
+Status: **Phase 1 implemented** — the `UltraCanvasCircularProgressChart`
+element (P1 features incl. C26 stacked start labels), the pie element's
+B1–B3, the family umbrella doc
+([`UltraCanvasCircularCharts.md`](UltraCanvasCircularCharts.md)), the
+[`UltraCanvasCircularInfoGraphic.md`](UltraCanvasCircularInfoGraphic.md)
+component doc and the DemoApp scene
+(`Apps/DemoApp/UltraCanvasCircularProgressChartExamples.cpp`) are in place.
+See [`UltraCanvasCircularProgressChart.md`](UltraCanvasCircularProgressChart.md)
+for the API documentation. This document is kept as the research write-up and
+the roadmap for the remaining P2/P3 items.
 
 Author: UltraCanvas Framework
 Last Modified: 2026-07-29

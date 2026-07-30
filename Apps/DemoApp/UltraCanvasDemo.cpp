@@ -1076,6 +1076,18 @@ namespace UltraCanvas {
                 .AddVariant("radialbarcharts", "Partial-Sweep Fan")
                 .AddVariant("radialbarcharts", "Arrow Rays / Manual Range");
 
+        chartBuilder.AddItem("circularprogresscharts", "Circular Progress Chart",
+                             "Angle-encoded progress: concentric rings, single ring and "
+                             "progress pie with tracks, tip callouts, centre disc and legend",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateCircularProgressChartExamples(); },
+                             "DemoApp/UltraCanvasCircularProgressChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasCircularProgressChart.md")
+                .AddVariant("circularprogresscharts", "Circular Infographic Rings")
+                .AddVariant("circularprogresscharts", "Stacked Start Labels")
+                .AddVariant("circularprogresscharts", "Completion Ring & Progress Pie")
+                .AddVariant("circularprogresscharts", "Donut KPI Pie");
+
         chartBuilder.AddItem("ganttcharts", "Gantt Chart",
                              "Project schedules with task table, hierarchy, dependencies, "
                              "milestones, progress, critical path and design presets",
