@@ -343,6 +343,32 @@ add_test(
 )
 message(STATUS "    Test registered: DiagramViewportTest")
 
+# ===== MIND MAP LAYOUT TEST =====
+# Topic tree model (add/remove/reparent/cycle rejection, outline build, outline
+# numbering, relationships) and the layout engine (balanced, logic, org chart and
+# radial structures, balance policies, collapse, floating topics, spacing) with a
+# non-overlap stress case over a deep ragged tree. Pure geometry - no UI stack.
+message(STATUS "  Building MindMapLayoutTest...")
+add_executable(MindMapLayoutTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/MindMapLayoutTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasMindMapLayout.cpp
+)
+target_include_directories(MindMapLayoutTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(MindMapLayoutTest PRIVATE cxx_std_20)
+set_target_properties(MindMapLayoutTest PROPERTIES
+    OUTPUT_NAME "MindMapLayoutTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME MindMapLayoutTest
+    COMMAND MindMapLayoutTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: MindMapLayoutTest")
+
 # ===== VIRTUALFS PATH TEST =====
 # Regression test for VirtualFSPath archive-path resolution (Unix, relative
 # and Windows drive-letter paths). Header-only - no link dependencies, so it
