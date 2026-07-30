@@ -6,6 +6,7 @@
 
 #include "Plugins/Diagrams/UltraCanvasMindMap.h"
 #include "DataFormats/UltraCanvasJSON.h"
+#include "Plugins/Diagrams/UltraCanvasMindMapIO.h"
 
 #include <algorithm>
 #include <cmath>
@@ -2425,6 +2426,141 @@ std::string UltraCanvasMindMap::ToOutlineText() const {
         out << std::string(std::max(0, depth) * 2, ' ') << topic.text << "\n";
     });
     return out.str();
+}
+
+
+// =============================================================================
+// INTERCHANGE FORMATS (delegated to UltraCanvasMindMapIO)
+// =============================================================================
+
+// Every importer follows the same shape: snapshot for undo, import into a
+// scratch model so a failure cannot damage the live map, then adopt it.
+bool UltraCanvasMindMap::FromMermaid(const std::string& source) {
+    MindMapModel scratch;
+    if (!UltraCanvasMindMapIO::FromMermaid(scratch, source)) return false;
+    PushUndo("Import Mermaid");
+    model = std::move(scratch);
+    selectedTopics.clear();
+    primarySelection.clear();
+    MarkLayoutDirty();
+    pendingAutoFit = true;
+    RequestRedraw();
+    return true;
+}
+
+std::string UltraCanvasMindMap::ToMermaid() const {
+    return UltraCanvasMindMapIO::ToMermaid(model);
+}
+
+bool UltraCanvasMindMap::FromFreeMind(const std::string& xml) {
+    MindMapModel scratch;
+    if (!UltraCanvasMindMapIO::FromFreeMind(scratch, xml)) return false;
+    PushUndo("Import FreeMind");
+    model = std::move(scratch);
+    selectedTopics.clear();
+    primarySelection.clear();
+    MarkLayoutDirty();
+    pendingAutoFit = true;
+    RequestRedraw();
+    return true;
+}
+
+std::string UltraCanvasMindMap::ToFreeMind() const {
+    return UltraCanvasMindMapIO::ToFreeMind(model);
+}
+
+bool UltraCanvasMindMap::FromOpml(const std::string& xml) {
+    MindMapModel scratch;
+    if (!UltraCanvasMindMapIO::FromOpml(scratch, xml)) return false;
+    PushUndo("Import OPML");
+    model = std::move(scratch);
+    selectedTopics.clear();
+    primarySelection.clear();
+    MarkLayoutDirty();
+    pendingAutoFit = true;
+    RequestRedraw();
+    return true;
+}
+
+std::string UltraCanvasMindMap::ToOpml(const std::string& title) const {
+    return UltraCanvasMindMapIO::ToOpml(model, title);
+}
+
+bool UltraCanvasMindMap::FromIndentedText(const std::string& text, int spacesPerLevel) {
+    MindMapModel scratch;
+    if (!UltraCanvasMindMapIO::FromIndentedText(scratch, text, spacesPerLevel)) return false;
+    PushUndo("Import text outline");
+    model = std::move(scratch);
+    selectedTopics.clear();
+    primarySelection.clear();
+    MarkLayoutDirty();
+    pendingAutoFit = true;
+    RequestRedraw();
+    return true;
+}
+
+bool UltraCanvasMindMap::FromCsv(const std::string& csv) {
+    MindMapModel scratch;
+    if (!UltraCanvasMindMapIO::FromCsv(scratch, csv)) return false;
+    PushUndo("Import CSV");
+    model = std::move(scratch);
+    selectedTopics.clear();
+    primarySelection.clear();
+    MarkLayoutDirty();
+    pendingAutoFit = true;
+    RequestRedraw();
+    return true;
+}
+
+std::string UltraCanvasMindMap::ToCsv() const {
+    return UltraCanvasMindMapIO::ToCsv(model);
+}
+
+bool UltraCanvasMindMap::FromXMindFile(const std::string& filePath) {
+    MindMapModel scratch;
+    if (!UltraCanvasMindMapIO::FromXMindFile(scratch, filePath)) return false;
+    PushUndo("Import XMind");
+    model = std::move(scratch);
+    selectedTopics.clear();
+    primarySelection.clear();
+    MarkLayoutDirty();
+    pendingAutoFit = true;
+    RequestRedraw();
+    return true;
+}
+
+bool UltraCanvasMindMap::ImportAuto(const std::string& text) {
+    switch (UltraCanvasMindMapIO::DetectFormat(text)) {
+        case UltraCanvasMindMapIO::Format::Mermaid:      return FromMermaid(text);
+        case UltraCanvasMindMapIO::Format::FreeMind:     return FromFreeMind(text);
+        case UltraCanvasMindMapIO::Format::Opml:         return FromOpml(text);
+        case UltraCanvasMindMapIO::Format::Markdown:     return FromMarkdown(text);
+        case UltraCanvasMindMapIO::Format::Csv:          return FromCsv(text);
+        case UltraCanvasMindMapIO::Format::Json:         return FromJson(text);
+        case UltraCanvasMindMapIO::Format::IndentedText: return FromIndentedText(text);
+        case UltraCanvasMindMapIO::Format::Unknown:
+        default:                                         return false;
+    }
+}
+
+MindMapSvgOptions UltraCanvasMindMap::MakeSvgOptions(double scale) const {
+    MindMapSvgOptions options;
+    options.scale = scale;
+    options.fontFamily = style.fontFamily;
+    options.backgroundColor = style.backgroundColor;
+    options.connectorColor = style.connectorColor;
+    options.connectorWidth = style.connectorWidth;
+    options.styleOf = [this](const MindMapTopic& topic) { return ResolveTopicStyle(topic); };
+    return options;
+}
+
+std::string UltraCanvasMindMap::ToSvg(double scale) const {
+    return UltraCanvasMindMapIO::ToSvg(model, layoutResult, MakeSvgOptions(scale));
+}
+
+bool UltraCanvasMindMap::ExportSvg(const std::string& filePath, double scale) const {
+    return UltraCanvasMindMapIO::WriteSvgFile(filePath, model, layoutResult,
+                                              MakeSvgOptions(scale));
 }
 
 } // namespace UltraCanvas

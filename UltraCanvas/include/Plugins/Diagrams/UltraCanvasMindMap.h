@@ -30,6 +30,7 @@
 #include "UltraCanvasTextInput.h"
 #include "Plugins/Diagrams/UltraCanvasDiagramViewport.h"
 #include "Plugins/Diagrams/UltraCanvasMindMapLayout.h"
+#include "Plugins/Diagrams/UltraCanvasMindMapIO.h"
 #include <memory>
 #include <functional>
 #include <string>
@@ -281,6 +282,27 @@ public:
     bool FromJson(const std::string& json);
     std::string ToMarkdown() const;
     bool FromMarkdown(const std::string& markdown);
+
+    // Interchange formats (X3-X8), delegated to UltraCanvasMindMapIO. Each
+    // import replaces the whole map and is undoable; a failed import leaves the
+    // current map untouched and returns false.
+    bool FromMermaid(const std::string& source);
+    std::string ToMermaid() const;
+    bool FromFreeMind(const std::string& xml);
+    std::string ToFreeMind() const;
+    bool FromOpml(const std::string& xml);
+    std::string ToOpml(const std::string& title = "Mind Map") const;
+    bool FromIndentedText(const std::string& text, int spacesPerLevel = 2);
+    bool FromCsv(const std::string& csv);
+    std::string ToCsv() const;
+    bool FromXMindFile(const std::string& filePath);
+
+    // Sniffs the payload and dispatches to the matching importer.
+    bool ImportAuto(const std::string& text);
+
+    // SVG export of the current layout (X7).
+    std::string ToSvg(double scale = 1.0) const;
+    bool ExportSvg(const std::string& filePath, double scale = 1.0) const;
     // Indented reading order, for accessibility and quick dumps (A6).
     std::string ToOutlineText() const;
 
@@ -363,6 +385,9 @@ private:
     };
     void PushUndo(const std::string& label);
     void ApplySnapshot(const std::string& json);
+
+    // Builds the SVG styling options from the element's own style.
+    MindMapSvgOptions MakeSvgOptions(double scale) const;
 
     // ---- Notifications ----
     void NotifySelectionChanged();
