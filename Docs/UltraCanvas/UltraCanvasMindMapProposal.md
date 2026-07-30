@@ -128,12 +128,70 @@ box fill stays white.
 > colour per branch; outline-only node style; stacked vertical rows on each
 > side; support for a multi-line text block inside a node.
 
-**Synthesis.** Images 1, 3 and 5 are *presentation* mind maps — they need shape
-variety, images/icons, background layers, callouts and a strong theming system.
-Images 2 and 4 are *structural* mind maps — they need correct balanced layout,
-alignment, deep subtrees and real editing. A comprehensive element must serve
-both, which argues for a clean split between **model → layout → style →
-render**, with each of the four swappable.
+### Image 6 — Balanced map with cross-branch relationships
+Dark rounded-rect centre "Mind Map", four `Subtopic` pill branches (yellow,
+orange, teal, purple) growing left and right, each into a column of rounded-rect
+leaves. Connectors are rounded elbows in the branch hue. Critically, **two
+dashed arcs labelled "Connection"** link leaves that belong to *different*
+branches — the classic non-hierarchical relationship.
+
+> Confirms D8 (relationships) as core rather than optional, with a distinct
+> dashed style (R8) and a label on the relationship (R9). Also confirms the
+> column-of-leaves alignment from image 2 (L12).
+
+### Image 7 — Radial map with arrow connectors
+"MIND MAP" as bare centred text with no shape at all. Six branches — `Analysis`,
+`Action`, `Revision`, `Solution`, `Strategy`, `Objectives` — each a coloured pill
+header with a paragraph of body text beneath it, arranged around the centre.
+Connectors are **thick tapered arrows pointing outward**, hand-drawn in style,
+each in its branch's hue.
+
+> Requires: `MindMapNodeShape::None` for the root (S1); a two-part node — pill
+> header *plus* an unboxed body paragraph beneath (S6); arrow end decorations
+> sized much larger than the default (R6); the `HandDrawn` theme (S7).
+
+### Image 8 — Software-style logic chart with numbered badges
+Root "Mind Mapping" with a **lightbulb icon to the left of the text**, growing
+all to the right. Six main topics (`Analysis`, `Objectives`, `Strategy`,
+`Action`, `Revision`, `Solution`), each prefixed by a **filled circular badge
+carrying its ordinal 1–6** in the branch hue. Leaves are plain text on an
+**underline rule** with no box at all. A small legend box floats at the right.
+
+> Requires: C2 (inline icon before the label) and C8 (automatic ordinal
+> numbering) together — this is the image that makes both concrete;
+> `MindMapNodeShape::Underline` (S1) and baseline attachment (R4) for the
+> leaves; floating topics (D7) for the legend.
+
+### Image 9 — Cluster map with depth-based lightness
+Centre "Mind Map Diagrams" as plain text. Four saturated main circles —
+`Creative` (blue), `Clean` (green), `Unique` (red), `Modern` (yellow) — each
+surrounded by a **loose cluster of smaller circles in the same hue but far
+lighter**, at varying sizes, with no visible connector strokes between them.
+
+> Requires: the branch-hue cascade with an explicit **lightness ramp per depth**
+> (S4); node size from `weight` (D5); a per-branch cluster/packing sub-layout
+> (L4 + L8); and a connector mode that draws nothing.
+
+### Image 10 — Fully radial ring
+Central black circle "Mind Map Diagrams"; roughly ten uniformly-sized coloured
+circles evenly distributed over the full 360°, each joined to the centre by a
+short straight spoke, and each carrying one outer satellite circle.
+
+> Requires: `MindMapStructure::Radial` in its purest form (L4) — equal angular
+> distribution, fixed orbit radius per generation, palette cycling per branch
+> (S4), uniform node sizing overriding text-fit (S6 min/max width).
+
+**Synthesis.** Images 1, 3, 5, 7, 9 and 10 are *presentation* mind maps — they
+need shape variety, images/icons, background layers, callouts, arrow styling and
+a strong theming system. Images 2, 4, 6 and 8 are *structural* mind maps — they
+need correct balanced layout, column alignment, deep subtrees, cross-branch
+relationships and real editing. A comprehensive element must serve both, which
+argues for a clean split between **model → layout → style → render**, with each
+of the four swappable.
+
+Two features are promoted on the strength of the second image set: **D8
+relationships** and **C8 numbering** each appear in more than one design and are
+load-bearing for the look, so both move into Phase 1.
 
 ---
 
@@ -259,9 +317,9 @@ IDs are stable handles for tracking (`D` data, `L` layout, `R` routing,
 | D5 | Per-topic `weight` (double) usable to drive node size, font size or colour (image 3's differently sized bubbles) | P2 |
 | D6 | Arbitrary user payload per topic (`std::string userData` + typed attribute map) for app-side binding | P2 |
 | D7 | **Floating topics** — topics with no parent, positioned freely on the canvas (image 3's edge callouts) | P2 |
-| D8 | **Relationships** — non-hierarchical arrows between any two topics, styled independently of branches | P2 |
+| D8 | **Relationships** — non-hierarchical arrows between any two topics, styled independently of branches (image 6's dashed labelled "Connection" arcs) | P1 |
 | D9 | **Boundaries** — a drawn region enclosing a subtree or a set of topics, with its own label/fill/outline (XMind "boundary", FreeMind "cloud") | P3 |
-| D10 | **Summaries** — a brace spanning a run of siblings that terminates in a summary topic | P3 |
+| D10 | **Braces & summaries** — a brace spanning a run of siblings, either terminating in a summary topic or used purely as decoration; also serves the brace-map look (absorbs the former L7) | P3 |
 | D11 | Traversal / query API: `ForEachTopic`, `FindTopic`, `GetPath(id)`, `GetSubtreeIds(id)`, depth accessor | P1 |
 | D12 | Bulk build helpers: `AddTopic(parentId, text)` returning the new id, and `BuildFromOutline(const std::vector<std::pair<int,std::string>>&)` (indent level + text) | P1 |
 
@@ -274,8 +332,8 @@ IDs are stable handles for tracking (`D` data, `L` layout, `R` routing,
 | L3 | `MindMapStructure::OrgChartDown` / `OrgChartUp` — top-down / bottom-up hierarchy | P2 |
 | L4 | `MindMapStructure::Radial` — children distributed over a full 360°, generation per orbit (image 1's four-diagonal look at level 1, image 3's free ring at level 2) | P1 |
 | L5 | `MindMapStructure::Fishbone` — angled ribs off a horizontal spine | P3 |
-| L6 | `MindMapStructure::Timeline` — siblings along an axis with alternating above/below placement | P3 |
-| L7 | `MindMapStructure::TreeChart` (indented tree with a shared trunk) and `BraceMap` | P3 |
+| ~~L6~~ | ~~Timeline~~ — **dropped** (§8.5); owned by the separately reserved `timelinediagram` element | — |
+| L7 | `MindMapStructure::TreeChart` — indented tree with a shared trunk. (Brace map moved to D10, §8.5) | P3 |
 | L8 | **Per-branch structure override** — a main topic may declare its own structure while the rest of the map keeps the default (XMind's combined structures) | P2 |
 | L9 | Deterministic non-overlap packing: bottom-up subtree extent accumulation with variable node sizes, so sibling subtrees never collide at any depth | P1 |
 | L10 | Balancing policy for `Auto` sides: `AlternateByIndex`, `MinimiseSubtreeWeight` (assign each main topic to the lighter side), `SplitInHalf` | P1 |
@@ -326,7 +384,7 @@ IDs are stable handles for tracking (`D` data, `L` layout, `R` routing,
 | C5 | **Callout cards** — an attached text card with a leader line back to its topic, auto-placed to avoid overlaps (image 3) | P2 |
 | C6 | Hyperlink / file-reference attribute with an affordance glyph and an `onTopicLinkActivated` callback | P2 |
 | C7 | Task attributes (assignee, progress, start/end) surfaced as an in-node progress bar or badge row | P3 |
-| C8 | Numbering — automatic outline numbering (`1`, `1.1`, `1.1.a`) per branch or map-wide | P2 |
+| C8 | Numbering — automatic outline numbering (`1`, `1.1`, `1.1.a`) per branch or map-wide, renderable as a plain prefix or as a filled circular badge in the branch hue (image 8) | P1 |
 
 ### I — Interaction & editing
 
@@ -562,18 +620,18 @@ V0: extract `UltraCanvasDiagramViewport`, migrate `UltraCanvasNodeDiagram` and
 Ships on its own so the refactor is reviewable against the two existing elements
 without mind-map noise in the diff, and so any regression is attributable.
 
-**Phase 1 — the working map (covers images 1, 2 and 4 structurally).**
-D1–D4, D11, D12; L1, L2, L4, L9–L11; R1–R3, R5, R6; S1–S7, S10; C1, C2;
-I1–I6, I8, I10, I12; V1, V2, V5; X1, X2; A3, A5. Plus the DemoApp page
-replacing the current "not ready yet" placeholder, and
+**Phase 1 — the working map (covers images 1, 2, 4, 6, 8 and 10 structurally).**
+D1–D4, D8, D11, D12; L1, L2, L4, L9–L11; R1–R3, R5, R6, R8; S1–S7, S10;
+C1, C2, C8; I1–I6, I8, I10, I12; V1, V2, V5; X1, X2; A3, A5. Plus the DemoApp
+page replacing the current "not ready yet" placeholder, and
 `Docs/UltraCanvas/UltraCanvasMindMapExamples.md`.
 
-**Phase 2 — the presentation map (fully covers images 2, 3 and 5).**
-D5–D8; L3, L8, L12–L14; R4, R7, R8; S8, S9; C3–C6, C8; I7, I9, I11;
+**Phase 2 — the presentation map (fully covers images 3, 5, 7 and 9).**
+D5–D7; L3, L8, L12–L14; R4, R7, R9; S8, S9; C3–C6; I7, I9, I11;
 V3, V4, V7; X3–X8; A1, A2, A6.
 
 **Phase 3 — the specialist structures.**
-D9, D10; L5–L7, L15; R9; S11; C7; V6; X9; A4, A7, A8.
+D9, D10 (incl. the brace-map look); L5, L7, L15; S11; C7; V6; X9; A4, A7, A8.
 
 ---
 
@@ -601,15 +659,106 @@ D9, D10; L5–L7, L15; R9; S11; C7; V6; X9; A4, A7, A8.
 
 ### Still open
 
-4. **Icon source for C2/C3.** Mermaid leans on Font Awesome / Material classes.
-   Does UltraCanvas expose a named icon registry we should bind to, or should
-   the element take an app-supplied `std::function<UCImage*(const std::string&)>`
-   resolver? The resolver is the safer default — it keeps the element free of an
-   icon-set dependency — but if a registry already exists, binding to it gives
-   better out-of-the-box results in the demo.
-5. **Scope of the structure taxonomy.** L5–L7 (fishbone, timeline, brace) are
-   arguably separate elements rather than mind-map structures. Keeping them here
-   matches XMind; splitting them keeps this element focused.
+#### 4. Icon source for C2 / C3
+
+**Finding: there is no icon registry in the framework, and the convention is
+already settled — icons are file paths.** Every widget that takes an icon takes
+a path string:
+
+| Widget | Surface |
+|---|---|
+| `UltraCanvasTreeView` | `struct TreeNodeIcon { std::string iconPath; int width, height; }`, used as `leftIcon` / `rightIcon` |
+| `UltraCanvasButton` | `SetIcon(const std::string& iconPath)`, `SetIconSize`, `SetIconPosition`, `SetIconMaskColor` |
+| `UltraCanvasMenu` | `MenuItemData::Action(label, iconPath, callback)` |
+
+There is also an established **named-set** idiom for bundled icons —
+`UltraCanvasAudioPlayerElement.h:27`:
+
+```cpp
+inline std::string AudioIconPath(const std::string& name) {
+    return NormalizePath(GetResourcesDir() + "media/icons/" + name);
+}
+```
+
+`media/icons/` already ships 165 mostly-SVG icons, including marker-suitable ones
+(`check.png`, `clock-five.svg`, `list-check.svg`, `warning.svg`, `info.png`,
+`rating-heart-on.svg`, `circle-*.svg`).
+
+Three candidate designs:
+
+**(a) Path only — mirror `TreeNodeIcon` exactly.**
+```cpp
+struct MindMapIcon {
+    std::string iconPath;              // resolved by the framework image loader
+    int width = 16, height = 16;
+    Color maskColor = Color(0,0,0,0);  // non-zero => tint via IRenderContext::DrawMask
+};
+mindMap->SetTopicIcon(topicId, MindMapIcon{ "media/icons/light 001.jpg", 20, 20 });
+```
+Zero new concepts, consistent with the whole framework, and `DrawMask` already
+exists for tinting a monochrome SVG to the branch hue (image 8's coloured
+badges). Downside: `FromMermaid` (X3) receives symbolic names like
+`fa fa-book`, which have no path.
+
+**(b) Resolver callback — app maps a name to an image.**
+```cpp
+mindMap->SetIconResolver([](const std::string& name) -> std::string {
+    return "media/icons/" + name + ".svg";
+});
+mindMap->SetTopicIcon(topicId, "bulb");
+```
+Handles the Mermaid case and lets an app bind its own icon set, but adds a
+concept no other UltraCanvas widget has, and the demo has to supply a resolver
+before any icon renders.
+
+**(c) Both — path is the storage, resolver is an optional fallback.**
+`MindMapTopic::iconPath` stays a path exactly as in (a). If a *name* is set
+instead (no separator, no extension) and an `iconResolver` is installed, the
+element calls it; if no resolver is installed it falls back to
+`MindMapIconPath(name)` over `media/icons/`, the `AudioIconPath` idiom.
+
+> **Recommendation: (c).** It is (a) for every normal caller — same shape as
+> `TreeNodeIcon`, nothing new to learn — and the resolver only exists to make
+> X3 Mermaid import and app-supplied icon sets work. C3 markers then ship as a
+> small curated name→file table over the existing `media/icons/` assets, so the
+> demo has working markers with no app setup.
+
+#### 5. Scope of the structure taxonomy (L5–L7)
+
+**Finding: the three cases are not alike, and the demo registry already answers
+one of them.**
+
+- **Timeline (L6) — should not live here.** `Apps/DemoApp/UltraCanvas
+  Demo.cpp:1377` already reserves a *separate* `"timelinediagram"` element slot
+  (`NotImplemented`). Building a timeline structure inside the mind map would
+  put two implementations of the same visual on a collision course, and a
+  timeline's real requirements — a date axis, scale/zoom in time units, event
+  durations, overlap lanes — are axis features that have nothing to do with a
+  topic tree. Related prior art already exists separately too
+  (`UltraCanvasGanttChart`, `UltraCanvasPertChart`).
+- **Fishbone (L5) — no home anywhere.** Nothing in the repo mentions fishbone or
+  Ishikawa; there is not even a reserved demo slot. It is genuinely net-new
+  either way. But its data *is* a rooted tree with a spine — a mind map whose
+  root is at one end and whose branches meet the spine at a fixed angle. It is
+  the cheapest of the three to express as a structure: it reuses the entire
+  model, needs no new node content, and is essentially one alternative
+  `ComputeLayout` case.
+- **Brace map (L7) — belongs here, but as a connector style.** A brace map is a
+  tree drawn with `{` glyphs instead of branch strokes. That is R-group work
+  (a connector that draws a brace spanning a sibling run), not a layout at all —
+  and D10 already proposes exactly that primitive for summaries. It should be
+  folded into D10 rather than kept as a separate structure.
+
+> **Recommendation:** keep **fishbone** as a structure (it is one layout case
+> over the existing model); drop **timeline** from this element and let the
+> reserved `timelinediagram` slot own it; and **merge brace into D10** as a
+> connector/decoration rather than a structure. That leaves L5 as the only
+> survivor of L5–L7, and it can stay in Phase 3.
+>
+> The general principle worth applying to any future addition: a variant belongs
+> in this element when it is *the same topic tree drawn differently*, and
+> belongs in its own element when it introduces a **new axis or new data
+> semantics** (time, duration, dependency) that the topic tree does not carry.
 
 ---
 
