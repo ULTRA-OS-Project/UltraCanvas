@@ -1,0 +1,530 @@
+# UltraCanvasMindMap — Research & Feature Proposal
+
+Status: **Proposal — nothing implemented yet.** The DemoApp already reserves a
+slot for this element (`Apps/DemoApp/UltraCanvasDemo.cpp`, item `"mindmap"`,
+`ImplementationStatus::NotImplemented`, "MindMap is not ready yet"), and
+`SWOTDiagramDesignVariants.md` §C4 flagged the mind-map/spider variant as *"the
+only one needing a distinct (branch) layout engine"*. This document is the
+research write-up, the image analysis, and the feature list that a first
+implementation should be scoped against.
+
+Author: UltraCanvas Framework
+Last Modified: 2026-07-30
+
+---
+
+## 1. What a mind map is (and what it is not)
+
+A **mind map** is a radial, hierarchical diagram: a single **central topic**
+sits at the visual centre, **main topics** (branches) radiate from it, and each
+main topic carries a subtree of **subtopics** that fan outward. Structurally it
+is a *rooted tree*; visually its defining properties are the ones a generic tree
+widget does not have:
+
+- The root is in the **middle**, not at the top or the left, and children are
+  distributed **around** it (usually balanced left/right, sometimes fully
+  radial).
+- Direction of growth is **inherited down the subtree** — everything under a
+  left-side main topic keeps growing leftward.
+- **Colour is inherited per branch**: each main topic owns a hue and the whole
+  subtree under it is tinted with that hue.
+- Connectors are **organic** — tapered or curved "branch" strokes, not the
+  square elbows of an org chart.
+- Nodes are **variably sized to their text**, and the layout must pack
+  non-uniform boxes without overlap.
+
+This is why a mind map cannot simply be `UltraCanvasTreeView` with different
+paint, and why it is not a re-skin of the existing elements either:
+
+| Existing element | Why it is not a mind map |
+|---|---|
+| `UltraCanvasNodeDiagram` | General graph — arbitrary edges, force-directed/circular/grid layout, ports. No rooted-tree semantics, no branch-direction inheritance, no collapse/expand, no per-branch colour cascade. |
+| `UltraCanvasDendrogram` | Rooted tree with a *radial* mode, but leaves are constrained to a circumference and node position encodes a **distance/merge height** — a data axis a mind map does not have. |
+| `UltraCanvasGourceTree` | Radial force-directed tree for filesystems; nodes are uniform dots, labels are satellites, layout is physics-driven not deterministic. |
+| `UltraCanvasFlowChart` | Directed process graph with orthogonal routing and decision semantics. |
+| `UltraCanvasTreeView` | Text outline widget, top-down rows, no canvas/viewport. |
+
+The right relationship is **reuse, not derive** (see §4).
+
+---
+
+## 2. What the five reference images demand
+
+Each image maps onto a concrete set of capabilities; together they define the
+scope of a "comprehensive" element rather than a minimum one.
+
+### Image 1 — Classic balanced mind map with an image centre
+Title "MIND MAP" above the canvas. Centre is a **drawn illustration** (a
+lightbulb-brain), not a text box. Four main topics — `Topic 1`…`Topic 4` — sit
+at the four diagonals as **outline-style rings** (thick coloured stroke, white
+fill, coloured text). Each main topic fans out to three small `Text` circles on
+its outward side. Connectors are thin straight strokes into the ring perimeter,
+and each main topic uses its own hue (green / purple / magenta) while the leaf
+rings share the light-blue leaf style.
+
+> Requires: image/vector centre node; per-level style presets (root vs main vs
+> leaf) rather than per-node styling; outline node style; balanced 4-quadrant
+> distribution; leaf fan-out on the outward side; edge-to-perimeter connector
+> anchoring on circles.
+
+### Image 2 — Infographic mind map, two-sided symmetric
+Big grey circle "MIND MAP" in the middle. Main topics are **coloured pill
+labels** (`TITLE 01`…`TITLE 06`), three on the left, three on the right, all
+level-aligned in rows. Each pill connects outward through a small **numbered
+circular marker** to a block of body text (`Lorem ipsum` heading + description).
+Connectors are short, mostly horizontal.
+
+> Requires: mirrored left/right layout with **row alignment across sides**; pill
+> (stadium) node shape; ordinal marker badges on the connector; a two-line node
+> (title + body) or an attached description block; palette-cycled main-topic
+> colours.
+
+### Image 3 — Creative bubble map with decorative background
+"MY MIND MAP" in a central rounded rectangle. Five main topics are **filled
+circles of differing radius** (First/Second/Third/Fourth idea), plus smaller
+satellite circles carrying icons and short counts. Connectors are thin grey
+straight lines with a **dot terminator**; a low-contrast plexus/network graphic
+sits behind everything; several white callout cards with paragraph text float at
+the edges, tied back to their node by a short leader line.
+
+> Requires: node size driven by a **weight/value** (à la bubble chart); circular
+> icon-only nodes; connector end caps (dot); a background layer hook
+> (image/pattern/vector) drawn under the map; **callout / note cards** with
+> leader lines; free-position ("floating") topics not on the strict radial grid.
+
+### Image 4 — Software-style editable map (Visual Paradigm)
+"Enforce fire safety regulations" in a black-outlined **diamond** at the centre
+of a real editor canvas. Strict **left/right balanced** layout, four main topics
+(`Inspection`, `Personnel`, `Risk`, `Inspection Report`) with deep subtrees of
+rounded-rectangle nodes; per-branch colour (green / yellow / blue / orange);
+organic curved branch strokes that **taper** and meet the node at its baseline;
+a few nodes show badges (`Others ?`, `2 Loans`). This is the working-tool
+scenario: an editable, scrollable, collapsible document.
+
+> Requires: the full **editing** story — create/rename/delete/reparent by mouse
+> and keyboard, Tab/Enter sibling-vs-child creation, drag-to-reparent with drop
+> indicator, collapse/expand with child counts, undo/redo, unlimited depth,
+> deterministic non-overlapping packing of variable-height subtrees, canvas
+> pan/zoom/fit.
+
+### Image 5 — Infographic with orthogonal routing and icon badges
+A head silhouette with a stylised brain at the centre; six branches
+(`PLANNING`, `ANALYSIS`, `CREATIVE`, `ROUTE MAP`, `LOREM`, `FINAL PRODUCT`) run
+out to **outlined rounded rectangles** holding placeholder body text. Routing is
+**orthogonal with rounded corners** (a stub out of the centre, a vertical riser,
+then a horizontal run into the box), a **circular icon badge** sits on the
+elbow, and each branch's label is coloured to match its box outline while the
+box fill stays white.
+
+> Requires: orthogonal/elbow connector mode with corner radius; icon badges
+> placed *on* the connector; separate label colour vs border colour vs fill
+> colour per branch; outline-only node style; stacked vertical rows on each
+> side; support for a multi-line text block inside a node.
+
+**Synthesis.** Images 1, 3 and 5 are *presentation* mind maps — they need shape
+variety, images/icons, background layers, callouts and a strong theming system.
+Images 2 and 4 are *structural* mind maps — they need correct balanced layout,
+alignment, deep subtrees and real editing. A comprehensive element must serve
+both, which argues for a clean split between **model → layout → style →
+render**, with each of the four swappable.
+
+---
+
+## 3. Prior art
+
+| Tool | Notable behaviour worth copying |
+|---|---|
+| **XMind** | Nine structures — Mind Map, Logic Chart, Brace Map, Org Chart, Tree Chart, Timeline, Fishbone, Tree Table, Matrix — and **each branch can use a different structure** inside one map. Markers, labels, notes, boundaries, summaries, relationships, floating topics. |
+| **FreeMind / Freeplane** | The `.mm` XML de-facto interchange format; classic left/right balanced layout; folding; rich node HTML; icons; cloud (boundary) shapes. |
+| **MindManager** | Task/data attributes on topics (Gantt-style roll-up), filtering by attribute, smart shapes that change with data. |
+| **Mermaid `mindmap`** | Text-source mind maps by indentation, node shapes `((circle))`, `[square]`, `(rounded)`, `{{hexagon}}`, `))cloud((`, `>bang]`, `::icon(...)` for icons, `:::class` for CSS classes, markdown-string labels for **bold**/*italic*. |
+| **markmap** | Markdown headings/lists → mind map, live re-layout, collapse on click. |
+| **Syncfusion / Telerik diagram controls** | `MindMapTreeLayout` primitives: root-centred with children spread equally left/right, per-sector child packing so sibling subtrees never overlap. |
+
+Structure taxonomy worth supporting (from the XMind/EdrawMind vocabulary):
+mind map (balanced radial), logic chart (all-right / all-left), org chart
+(top-down / bottom-up), tree chart, timeline, fishbone, brace map.
+
+---
+
+## 4. What UltraCanvas can reuse
+
+The framework already contains most of the primitives; the new work is the model,
+the layout engine and the editing UX.
+
+| Need | Reuse from |
+|---|---|
+| Bezier / step / smooth-step routing, arrow heads, hit-testing a stroke | `UltraCanvasNodeDiagram.cpp` (`BuildLinkBezier`, `BuildLinkStep`, `RenderArrowHead`), `Plugins/Charts/UltraCanvasConnectionRenderer.cpp` |
+| Pan / zoom / fit / minimap / controls overlay / selection box | `UltraCanvasNodeDiagram` (`FitView`, `CenterOn`, `NodeDiagramMinimapConfig`, `NodeDiagramControlsConfig`) — lift the shared parts rather than copy-paste |
+| Recursive subtree packing, radial placement | `UltraCanvasDendrogramLayout` (`ApplyRadialLayout`, subtree extent accumulation) |
+| Label measurement & auto-sizing nodes to text | `UltraCanvasNodeDiagram::MeasureLabel` / `SuggestNodeSizeForLabel`, `IRenderContext::GetTextLineDimensions` |
+| Non-overlapping label placement for callouts | `Plugins/Charts/UltraCanvasLabelPlacement.cpp` |
+| Palette cycling for per-branch colour | `UltraCanvasFlowChartPalette` |
+| Images / SVG inside nodes | `IRenderContext::DrawImage(...)`, `Plugins/SVG/UltraCanvasSVGPlugin.h` |
+| JSON persistence | `UltraCanvasJSON` (see `Docs/UltraCanvas/UltraCanvasJSON.md`) |
+
+New code lands in `UltraCanvas/include/Plugins/Diagrams/UltraCanvasMindMap.h`,
+`UltraCanvas/Plugins/Diagrams/UltraCanvasMindMap.cpp` and (following the
+dendrogram precedent) a separate `UltraCanvasMindMapLayout.{h,cpp}`, registered
+in `UltraCanvas/CMakeLists.txt` next to the other `Plugins/Diagrams/*.cpp`
+entries.
+
+---
+
+## 5. Proposed feature list
+
+IDs are stable handles for tracking (`D` data, `L` layout, `R` routing,
+`S` style, `C` content, `I` interaction, `V` viewport, `X` exchange,
+`A` advanced). Phase column: **P1** first delivery, **P2** second, **P3** later.
+
+### D — Data model
+
+| ID | Feature | Phase |
+|---|---|---|
+| D1 | `MindMapTopic` node: `id`, `parentId`, `text`, `children` — rooted tree with exactly one central topic | P1 |
+| D2 | Unlimited depth; stable ordering of siblings; `MoveTopic(id, newParentId, index)` reparenting | P1 |
+| D3 | Per-topic `side` hint (`Auto` / `Left` / `Right`) that is inherited by the whole subtree | P1 |
+| D4 | Collapsed flag per topic + descendant/leaf counts for the collapsed badge | P1 |
+| D5 | Per-topic `weight` (double) usable to drive node size, font size or colour (image 3's differently sized bubbles) | P2 |
+| D6 | Arbitrary user payload per topic (`std::string userData` + typed attribute map) for app-side binding | P2 |
+| D7 | **Floating topics** — topics with no parent, positioned freely on the canvas (image 3's edge callouts) | P2 |
+| D8 | **Relationships** — non-hierarchical arrows between any two topics, styled independently of branches | P2 |
+| D9 | **Boundaries** — a drawn region enclosing a subtree or a set of topics, with its own label/fill/outline (XMind "boundary", FreeMind "cloud") | P3 |
+| D10 | **Summaries** — a brace spanning a run of siblings that terminates in a summary topic | P3 |
+| D11 | Traversal / query API: `ForEachTopic`, `FindTopic`, `GetPath(id)`, `GetSubtreeIds(id)`, depth accessor | P1 |
+| D12 | Bulk build helpers: `AddTopic(parentId, text)` returning the new id, and `BuildFromOutline(const std::vector<std::pair<int,std::string>>&)` (indent level + text) | P1 |
+
+### L — Layout
+
+| ID | Feature | Phase |
+|---|---|---|
+| L1 | `MindMapStructure::Balanced` — root centred, main topics split left/right, subtrees grow outward; the default | P1 |
+| L2 | `MindMapStructure::LogicRight` / `LogicLeft` — the whole tree grows to one side (XMind logic chart) | P1 |
+| L3 | `MindMapStructure::OrgChartDown` / `OrgChartUp` — top-down / bottom-up hierarchy | P2 |
+| L4 | `MindMapStructure::Radial` — children distributed over a full 360°, generation per orbit (image 1's four-diagonal look at level 1, image 3's free ring at level 2) | P1 |
+| L5 | `MindMapStructure::Fishbone` — angled ribs off a horizontal spine | P3 |
+| L6 | `MindMapStructure::Timeline` — siblings along an axis with alternating above/below placement | P3 |
+| L7 | `MindMapStructure::TreeChart` (indented tree with a shared trunk) and `BraceMap` | P3 |
+| L8 | **Per-branch structure override** — a main topic may declare its own structure while the rest of the map keeps the default (XMind's combined structures) | P2 |
+| L9 | Deterministic non-overlap packing: bottom-up subtree extent accumulation with variable node sizes, so sibling subtrees never collide at any depth | P1 |
+| L10 | Balancing policy for `Auto` sides: `AlternateByIndex`, `MinimiseSubtreeWeight` (assign each main topic to the lighter side), `SplitInHalf` | P1 |
+| L11 | Spacing controls: `siblingGap`, `levelGap`, `rootGap`, per-level overrides | P1 |
+| L12 | Row alignment mode for the infographic case (image 2) — siblings on both sides share level rows and a common outward column | P2 |
+| L13 | Manual mode: topic positions are honoured as authored, layout only fills in unset positions | P2 |
+| L14 | Animated re-layout — positions tween when a node is collapsed, added or reparented | P2 |
+| L15 | Compact vs airy density presets, and an auto-shrink pass when the map exceeds the viewport | P3 |
+
+### R — Connectors
+
+| ID | Feature | Phase |
+|---|---|---|
+| R1 | Connector styles: `Straight`, `Curve` (bezier), `Elbow` (orthogonal, image 5), `RoundedElbow`, `Arc` | P1 |
+| R2 | **Organic tapered branch** — width interpolates from thick at the parent to thin at the child (image 4's hand-drawn look) | P1 |
+| R3 | Anchor resolution per node shape — connectors terminate on the shape *perimeter* (circle, rect, diamond, pill), never inside it | P1 |
+| R4 | Underline/baseline attachment mode: the stroke runs along the bottom edge of the child's text before leaving it (classic mind-map convention) | P2 |
+| R5 | Per-connector colour modes: `InheritFromBranch`, `InheritFromChild`, `Fixed`, `GradientParentToChild` | P1 |
+| R6 | End decorations: none / arrow / dot / square (image 3 uses dots), sized independently at each end | P1 |
+| R7 | Connector badges — a circular icon or ordinal number rendered on the connector at a settable `t` along its path (images 2 and 5) | P2 |
+| R8 | Dashed/dotted patterns per connector, including a distinct default style for relationship arrows (D8) | P2 |
+| R9 | Connector labels with background plate and collision-aware placement | P3 |
+
+### S — Node shapes, style and theming
+
+| ID | Feature | Phase |
+|---|---|---|
+| S1 | Shapes: `RoundedRect`, `Rect`, `Pill`/stadium, `Circle`, `Ellipse`, `Diamond`, `Hexagon`, `Cloud`, `Bang`, `Underline` (text with a rule beneath), `None` (text only) | P1 |
+| S2 | **Style by level**: `SetLevelStyle(level, style)` — root / main / sub / leaf presets, which is how all five images are actually styled | P1 |
+| S3 | Outline style (transparent fill + thick coloured stroke + coloured text) as a first-class preset (images 1 and 5) | P1 |
+| S4 | Per-branch colour cascade: main topics take successive hues from a palette; descendants inherit, optionally lightened per depth | P1 |
+| S5 | Explicit per-topic style override that wins over level and branch styles | P1 |
+| S6 | Auto-size to text with min/max width, word wrap, `maxLines` and ellipsis; multi-line body text inside a node (images 2 and 5) | P1 |
+| S7 | Built-in themes: `Default`, `Professional`, `Colorful`, `Pastel`, `Dark`, `Blueprint`, `HandDrawn` | P1 |
+| S8 | Drop shadows, per-node opacity, gradient fills | P2 |
+| S9 | Background layer hook — solid, gradient, grid, image or app-supplied draw callback rendered beneath the map (image 3's plexus) | P2 |
+| S10 | Selection / hover / focus visuals distinct from node styling, plus a "dimmed" state for filtering (A4) | P1 |
+| S11 | Rich text spans inside a label — bold / italic / colour runs, Mermaid-style markdown strings | P3 |
+
+### C — Node content
+
+| ID | Feature | Phase |
+|---|---|---|
+| C1 | **Image node** — raster or SVG as the node's whole body, used for the centre in images 1 and 5, with fit modes | P1 |
+| C2 | Inline icon before/after the label (Mermaid `::icon()` equivalent), from an app-supplied icon set | P1 |
+| C3 | **Markers** — small status/priority/progress badges attached at a chosen corner of the node | P2 |
+| C4 | **Notes** — long text attached to a topic, shown as an indicator plus tooltip/popover | P2 |
+| C5 | **Callout cards** — an attached text card with a leader line back to its topic, auto-placed to avoid overlaps (image 3) | P2 |
+| C6 | Hyperlink / file-reference attribute with an affordance glyph and an `onTopicLinkActivated` callback | P2 |
+| C7 | Task attributes (assignee, progress, start/end) surfaced as an in-node progress bar or badge row | P3 |
+| C8 | Numbering — automatic outline numbering (`1`, `1.1`, `1.1.a`) per branch or map-wide | P2 |
+
+### I — Interaction & editing
+
+| ID | Feature | Phase |
+|---|---|---|
+| I1 | Selection: click, Shift+click multi-select, marquee, `SelectAll`, `SelectSubtree` | P1 |
+| I2 | Collapse/expand by clicking the collapse handle or double-clicking, with a child-count badge on collapsed nodes | P1 |
+| I3 | In-place text editing on double-click / F2 / typing, with Esc-cancel and Enter-commit | P1 |
+| I4 | Keyboard authoring: `Enter` = sibling, `Tab` = child, `Delete` = subtree, arrows = navigate by geometry, `Ctrl+↑/↓` = reorder sibling | P1 |
+| I5 | Drag a topic to reparent, with a live drop indicator showing the target parent and insertion index; Ctrl+drag copies the subtree | P1 |
+| I6 | **Undo/redo stack** covering every structural and style mutation | P1 |
+| I7 | Cut / copy / paste of subtrees, including paste of plain-text outlines from the clipboard | P2 |
+| I8 | Context menu hooks — `onTopicRightClick(id, x, y)` and `onCanvasRightClick(x, y)`, mirroring `UltraCanvasNodeDiagram` 2.0.3 | P1 |
+| I9 | Drag-to-create — drag from a node's edge into empty canvas to spawn a child there | P2 |
+| I10 | Read-only / presentation mode toggle that disables all mutation | P1 |
+| I11 | Hover feedback: cursor changes, node highlight, dimming of unrelated branches on hover | P2 |
+| I12 | Callbacks: `onTopicClick`, `onTopicDoubleClick`, `onTopicTextChanged`, `onTopicAdded`, `onTopicRemoved`, `onTopicMoved`, `onCollapseChanged`, `onSelectionChanged`, `onViewportChanged` | P1 |
+
+### V — Viewport & navigation
+
+| ID | Feature | Phase |
+|---|---|---|
+| V1 | Pan (drag empty canvas / middle-drag), zoom at cursor (wheel), `ZoomIn`/`ZoomOut`/`SetZoomLevel` with clamped range | P1 |
+| V2 | `FitView(padding)`, `CenterOnTopic(id)`, `FitSubtree(id)`; auto-fit after layout | P1 |
+| V3 | Minimap overlay with a draggable viewport rectangle | P2 |
+| V4 | Controls overlay (zoom ±, fit, lock, collapse-all/expand-all) | P2 |
+| V5 | `ExpandToLevel(n)` / `CollapseToLevel(n)` for outline-depth browsing | P1 |
+| V6 | Focus mode — temporarily treat a chosen topic as the root ("drill down"), with a breadcrumb back | P3 |
+| V7 | Search box API: `FindTopics(text)` returning matches, `RevealTopic(id)` expanding ancestors and scrolling into view, with match highlighting | P2 |
+
+### X — Import / export / interchange
+
+| ID | Feature | Phase |
+|---|---|---|
+| X1 | `ToJson()` / `FromJson()` — native round-trip of model + style + viewport, matching the `UltraCanvasNodeDiagram` precedent | P1 |
+| X2 | Markdown outline import/export (headings and/or nested bullets), as in markmap | P1 |
+| X3 | Mermaid `mindmap` text import (indentation, `((circle))`/`[square]`/`(rounded)`/`{{hexagon}}`/`))cloud((`/`>bang]`, `::icon()`, `:::class`) and export | P2 |
+| X4 | FreeMind/Freeplane `.mm` XML import/export — the widest interchange format | P2 |
+| X5 | OPML import/export | P2 |
+| X6 | Plain indented-text and CSV parent/child import | P2 |
+| X7 | Raster export (PNG via the render context) and vector export (SVG) of the whole map at arbitrary scale | P2 |
+| X8 | XMind `.xmind` (zipped JSON) read support | P3 |
+| X9 | Print/paginate a large map across tiles | P3 |
+
+### A — Advanced
+
+| ID | Feature | Phase |
+|---|---|---|
+| A1 | Incremental re-layout — only the affected subtree is recomputed on edit | P2 |
+| A2 | Virtualised rendering + culling for maps in the thousands of topics | P2 |
+| A3 | Layout cache invalidation keyed on style/text changes so `Render()` never does full layout work | P1 |
+| A4 | Filtering — hide/dim topics failing an app-supplied predicate (MindManager-style attribute filters) | P3 |
+| A5 | Keyboard-only operation and focus ring, so the element is usable without a mouse | P1 |
+| A6 | Accessible text extraction: `ToOutlineText()` producing the indented reading order | P2 |
+| A7 | Presentation walk-through — step focus through branches one topic at a time with animated camera moves | P3 |
+| A8 | Diff/merge helper: compare two maps and report added/removed/moved topics | P3 |
+
+---
+
+## 6. API sketch
+
+Following house conventions (PascalCase, `UltraCanvas` namespace,
+`shared_ptr` + factory helper, verbose struct API alongside a simple one):
+
+```cpp
+// include/Plugins/Diagrams/UltraCanvasMindMap.h
+namespace UltraCanvas {
+
+enum class MindMapStructure { Balanced, LogicRight, LogicLeft,
+                              OrgChartDown, OrgChartUp, Radial,
+                              TreeChart, BraceMap, Fishbone, Timeline, Manual };
+
+enum class MindMapTopicSide  { Auto, Left, Right };
+enum class MindMapNodeShape  { RoundedRect, Rect, Pill, Circle, Ellipse,
+                               Diamond, Hexagon, Cloud, Bang, Underline, None };
+enum class MindMapConnector  { Straight, Curve, Elbow, RoundedElbow, Arc, TaperedBranch };
+enum class MindMapTheme      { Default, Professional, Colorful, Pastel,
+                               Dark, Blueprint, HandDrawn };
+
+struct MindMapTopicStyle {
+    MindMapNodeShape shape      = MindMapNodeShape::RoundedRect;
+    Color fillColor             = Color(255, 255, 255, 255);
+    Color borderColor           = Color(70, 110, 180, 255);
+    Color textColor             = Color(40, 40, 50, 255);
+    double borderWidth          = 2.0;
+    double cornerRadius         = 8.0;
+    double fontSize             = 12.0;
+    bool   bold                 = false;
+    double paddingX             = 12.0;
+    double paddingY             = 6.0;
+    double minWidth             = 0.0;
+    double maxWidth             = 220.0;   // 0 = no wrap
+    bool   outlineOnly          = false;   // S3
+};
+
+struct MindMapTopic {
+    std::string id;
+    std::string parentId;
+    std::string text;
+    std::vector<std::string> childIds;
+
+    MindMapTopicSide side       = MindMapTopicSide::Auto;   // D3
+    bool  collapsed             = false;                     // D4
+    double weight               = 1.0;                       // D5
+    std::string iconName;                                    // C2
+    std::string imagePath;                                   // C1
+    std::string note;                                        // C4
+    std::string link;                                        // C6
+    std::vector<std::string> markers;                        // C3
+
+    std::optional<MindMapTopicStyle> styleOverride;          // S5
+    std::optional<MindMapStructure>  structureOverride;      // L8
+
+    // Computed by the layout engine
+    Rect2Dd bounds;
+    int     depth = 0;
+};
+
+class UltraCanvasMindMap : public UltraCanvasUIElement {
+public:
+    UltraCanvasMindMap(const std::string& id, int x, int y, int w, int h);
+    bool AcceptsFocus() const override { return true; }
+
+    // --- Model ---
+    std::string SetCentralTopic(const std::string& text);
+    std::string AddTopic(const std::string& parentId, const std::string& text);
+    void        AddTopic(const MindMapTopic& topic);
+    void        RemoveTopic(const std::string& id);            // removes subtree
+    void        MoveTopic(const std::string& id, const std::string& newParentId, int index = -1);
+    void        SetTopicText(const std::string& id, const std::string& text);
+    MindMapTopic*       GetTopic(const std::string& id);
+    const MindMapTopic* GetTopic(const std::string& id) const;
+    void        BuildFromOutline(const std::vector<std::pair<int, std::string>>& outline);
+    void        Clear();
+
+    // --- Layout & structure ---
+    void SetStructure(MindMapStructure structure);
+    void SetTopicStructure(const std::string& id, MindMapStructure structure);
+    void SetSpacing(double siblingGap, double levelGap, double rootGap);
+    void RunLayout();
+    void SetAutoFitOnLayout(bool autoFit);
+
+    // --- Style ---
+    void SetTheme(MindMapTheme theme);
+    void SetLevelStyle(int level, const MindMapTopicStyle& style);   // S2
+    void SetTopicStyle(const std::string& id, const MindMapTopicStyle& style);
+    void SetBranchPalette(const std::vector<Color>& palette);        // S4
+    void SetConnectorStyle(MindMapConnector style);
+    void SetBackgroundColor(const Color& color);
+
+    // --- Collapse / navigation ---
+    void SetCollapsed(const std::string& id, bool collapsed);
+    void ExpandAll();
+    void CollapseAll();
+    void ExpandToLevel(int level);
+    void CenterOnTopic(const std::string& id);
+    void FitView(double padding = 40.0);
+    std::vector<std::string> FindTopics(const std::string& text) const;
+    void RevealTopic(const std::string& id);
+
+    // --- Editing ---
+    void SetEditable(bool editable);
+    void BeginEditTopic(const std::string& id);
+    void Undo();
+    void Redo();
+
+    // --- Relationships / boundaries / floating topics ---
+    void AddRelationship(const std::string& id, const std::string& fromId,
+                         const std::string& toId, const std::string& label = "");
+    void AddBoundary(const std::string& id, const std::vector<std::string>& topicIds,
+                     const std::string& label = "");
+    std::string AddFloatingTopic(const std::string& text, double x, double y);
+
+    // --- Exchange ---
+    std::string ToJson() const;
+    bool        FromJson(const std::string& json);
+    std::string ToMarkdown() const;
+    bool        FromMarkdown(const std::string& markdown);
+    bool        FromMermaid(const std::string& mermaidSource);
+    bool        FromFreeMind(const std::string& mmXml);
+    bool        ExportSVG(const std::string& filePath) const;
+
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
+    bool OnEvent(const UCEvent& event) override;
+
+    // --- Callbacks ---
+    std::function<void(const std::string&)> onTopicClick;
+    std::function<void(const std::string&)> onTopicDoubleClick;
+    std::function<void(const std::string&, const std::string&)> onTopicTextChanged;
+    std::function<void(const std::string&)> onTopicAdded;
+    std::function<void(const std::string&)> onTopicRemoved;
+    std::function<void(const std::string&, const std::string&)> onTopicMoved;
+    std::function<void(const std::string&, bool)> onCollapseChanged;
+    std::function<void(const std::vector<std::string>&)> onSelectionChanged;
+    std::function<void(double, double, double)> onViewportChanged;
+    std::function<void(double, double)> onCanvasRightClick;
+};
+
+inline std::shared_ptr<UltraCanvasMindMap> CreateMindMap(
+        const std::string& id, int x, int y, int w, int h) {
+    return std::make_shared<UltraCanvasMindMap>(id, x, y, w, h);
+}
+
+} // namespace UltraCanvas
+```
+
+The layout engine stays separate — `UltraCanvasMindMapLayout.{h,cpp}`, exposing
+a pure `ComputeLayout(const MindMapModel&, const MindMapLayoutOptions&,
+MindMapLayoutResult&)` — so structures can be added without touching the
+element, and so layout can be unit-tested headlessly under `Tests/`.
+
+---
+
+## 7. Suggested delivery phases
+
+**Phase 1 — the working map (covers images 1, 2 and 4 structurally).**
+D1–D4, D11, D12; L1, L2, L4, L9–L11; R1–R3, R5, R6; S1–S7, S10; C1, C2;
+I1–I6, I8, I10, I12; V1, V2, V5; X1, X2; A3, A5. Plus the DemoApp page
+replacing the current "not ready yet" placeholder, and
+`Docs/UltraCanvas/UltraCanvasMindMapExamples.md`.
+
+**Phase 2 — the presentation map (fully covers images 2, 3 and 5).**
+D5–D8; L3, L8, L12–L14; R4, R7, R8; S8, S9; C3–C6, C8; I7, I9, I11;
+V3, V4, V7; X3–X7; A1, A2, A6.
+
+**Phase 3 — the specialist structures.**
+D9, D10; L5–L7, L15; R9; S11; C7; V6; X8, X9; A4, A7, A8.
+
+---
+
+## 8. Open questions
+
+1. **Reuse mechanism for viewport/minimap/controls.** `UltraCanvasNodeDiagram`
+   and `UltraCanvasCompositorDiagram` already implement pan/zoom/minimap/controls
+   independently. Should Phase 1 extract a shared `UltraCanvasDiagramViewport`
+   mixin (and refactor those two onto it), or duplicate once more and unify
+   later? Extracting is the better long-term answer but widens the first PR.
+2. **Text editing widget.** In-place editing (I3) can either embed the existing
+   text-input element as a child overlay or re-implement a minimal caret inside
+   the element. Embedding is less code but requires the element to host a child
+   widget in canvas coordinates — needs a check against the current UI element
+   hosting rules.
+3. **Icon source for C2/C3.** Mermaid leans on Font Awesome / Material classes.
+   Does UltraCanvas expose a named icon registry we should bind to, or should
+   the element take an app-supplied `std::function<UCImage*(const std::string&)>`
+   resolver?
+4. **`.mm` and `.xmind` parsing (X4, X8)** need an XML reader and a zip reader.
+   VirtualFS already covers zip; confirm whether an approved XML parser exists
+   before X4 is scheduled, since a new third-party dependency would require
+   `Docs/Dependencies.md`, `master_dependencies.yaml` and
+   `THIRD_PARTY_LICENSES.md` updates.
+5. **Scope of the structure taxonomy.** L5–L7 (fishbone, timeline, brace) are
+   arguably separate elements rather than mind-map structures. Keeping them here
+   matches XMind; splitting them keeps this element focused.
+
+---
+
+## 9. Sources consulted
+
+- [Mermaid — Mindmap syntax](https://mermaid.js.org/syntax/mindmap.html)
+- [Xmind — Ultimate guide to mind mapping](https://xmind.com/blog/the-ultimate-guide-to-mind-mapping-with-xmind)
+- [Xmind — How to combine different structures](https://xmind.com/blog/how-to-combine-different-structures-in-xmind-and-why)
+- [Xmind — Introducing Tree Table, a new structure](https://xmind.com/blog/introducing-tree-table-new-structure-in-xmind)
+- [Xmind — Import & convert mind map files](https://xmind.com/user-guide/import-new)
+- [Xmind — Markdown to mind map](https://xmind.com/user-guide/markdown-to-mind-map)
+- [FreeMind — Import and export](https://freemind.sourceforge.io/wiki/index.php/Import_and_export)
+- [Syncfusion — MindMap tree layout](https://help.syncfusion.com/wpf/diagram/automatic-layouts/mindmaptreelayout)
+- [Telerik — Diagram tree layout](https://docs.telerik.com/devtools/aspnet-ajax/controls/diagram/structure/layout/tree)
+- [Wikipedia — Radial tree](https://en.wikipedia.org/wiki/Radial_tree)
+- [Edraw — Automatic layout of mind map](https://www.edrawsoft.com/mindmap-layout.html)
+- [EdrawMind — 8 mind map types](https://edrawmind.wondershare.com/mind-maps/types-of-mind-maps.html)
+- [Ayoa — Xmind vs MindManager](https://www.ayoa.com/ourblog/xmind-vs-mindmanager/)
