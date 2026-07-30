@@ -6,6 +6,7 @@
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasGitGraph.h"
+#include "Plugins/Diagrams/UltraCanvasGitGraphMermaid.h"
 
 #include <algorithm>
 #include <cmath>
@@ -167,6 +168,7 @@ void UltraCanvasGitGraph::Clear() {
     branchTips.clear();
     currentBranch = layoutOptions.trunkBranch.empty() ? "main" : layoutOptions.trunkBranch;
     syntheticShaCounter = 0;
+    dataSourceExhausted = false;
     needsLayout = true;
     RequestRedraw();
 }
@@ -289,6 +291,105 @@ size_t UltraCanvasGitGraph::LoadFromGitLog(const std::string& text) {
     rowsAreNewestFirst = true;
     needsLayout = true;
     return count;
+}
+
+// =============================================================================
+// MERMAID
+// =============================================================================
+
+size_t UltraCanvasGitGraph::LoadFromMermaid(const std::string& text) {
+    const GitGraphMermaidDocument document = ParseMermaidGitGraph(text);
+    if (!document.ok) {
+        lastError = "mermaid line " + std::to_string(document.errorLine) + ": " + document.error;
+        return 0;
+    }
+
+    Clear();
+    lastError.clear();
+
+    AddCommits(document.commits);
+    for (const GitGraphRef& ref : document.refs) AddRef(ref);
+
+    // Mermaid authors oldest-first, exactly like the authoring API.
+    rowsAreNewestFirst = false;
+    layoutOptions.orderMode = GitGraphOrderMode::AsGiven;
+    layoutOptions.trunkBranch = document.mainBranchName;
+    layoutOptions.swimlaneOrder = document.branchOrder;
+    layoutEngine.SetOptions(layoutOptions);
+
+    orientation = document.orientation;
+    style.showCommitLabels   = document.showCommitLabel;
+    style.showBranchChips    = document.showBranches;
+    style.rotateCommitLabels = document.rotateCommitLabel;
+
+    // Rebuild the authoring cursor so a loaded diagram can be extended in code.
+    currentBranch = document.mainBranchName;
+    for (const GitGraphRef& ref : document.refs) {
+        if (ref.type != GitGraphRefType::LocalBranch) continue;
+        branchTips[ref.name] = ref.sha;
+        if (ref.isCurrent) currentBranch = ref.name;
+    }
+
+    needsLayout = true;
+    RequestRedraw();
+    return document.commits.size();
+}
+
+std::string UltraCanvasGitGraph::ToMermaidText() const {
+    return ExportMermaidGitGraph(commits, refs, layoutOptions.trunkBranch);
+}
+
+bool UltraCanvasGitGraph::SaveToMermaid(const std::string& filePath) const {
+    std::ofstream file(filePath);
+    if (!file.is_open()) {
+        lastError = "cannot open '" + filePath + "' for writing";
+        return false;
+    }
+    file << ToMermaidText();
+    return true;
+}
+
+// =============================================================================
+// LAZY LOADING
+// =============================================================================
+
+void UltraCanvasGitGraph::SetDataSource(std::shared_ptr<IGitGraphDataSource> source,
+                                        size_t newChunkSize) {
+    dataSource = std::move(source);
+    chunkSize = std::max<size_t>(1, newChunkSize);
+    dataSourceExhausted = false;
+
+    Clear();
+    if (!dataSource) return;
+
+    for (const GitGraphRef& ref : dataSource->FetchRefs()) AddRef(ref);
+    LoadMoreCommits();
+}
+
+void UltraCanvasGitGraph::SetChunkSize(size_t commitsPerChunk) {
+    chunkSize = std::max<size_t>(1, commitsPerChunk);
+}
+
+void UltraCanvasGitGraph::SetPrefetchRows(int rows) {
+    prefetchRows = std::max(0, rows);
+}
+
+bool UltraCanvasGitGraph::LoadMoreCommits() {
+    if (!dataSource || dataSourceExhausted) return false;
+
+    const size_t offset = commits.size();
+    const std::vector<GitGraphCommit> chunk = dataSource->FetchCommits(offset, chunkSize);
+
+    // A short (or empty) chunk means the source has nothing left.
+    if (chunk.size() < chunkSize) dataSourceExhausted = true;
+    if (chunk.empty()) return false;
+
+    AddCommits(chunk);
+    needsLayout = true;
+
+    if (onChunkLoaded) onChunkLoaded(commits.size(), dataSource->GetTotalCommitCount());
+    RequestRedraw();
+    return true;
 }
 
 // =============================================================================
@@ -875,6 +976,16 @@ void UltraCanvasGitGraph::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) 
 
     int firstRow = 0, lastRow = 0;
     ComputeVisibleRows(firstRow, lastRow);
+
+    // Pull the next chunk once the viewport comes within prefetchRows of the
+    // end of the loaded history, and re-lay out so this frame is consistent.
+    if (dataSource && !dataSourceExhausted &&
+        lastRow >= layout.rowCount - 1 - prefetchRows) {
+        if (LoadMoreCommits()) {
+            PerformLayout();
+            ComputeVisibleRows(firstRow, lastRow);
+        }
+    }
 
     if (layoutOptions.layoutMode == GitGraphLayoutMode::Swimlane) {
         if (style.showSwimlaneBands)  DrawSwimlaneBands(ctx);

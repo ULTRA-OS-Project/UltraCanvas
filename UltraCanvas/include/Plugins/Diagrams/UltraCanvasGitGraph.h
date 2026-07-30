@@ -55,6 +55,27 @@ public:
     // The --pretty format LoadFromGitLog() expects.
     static std::string GitLogFormat();
 
+    // ===== MERMAID =====
+
+    // Replace the content with a Mermaid `gitGraph` block. Returns the number
+    // of commits read, or 0 on a parse error (see GetLastError()).
+    size_t LoadFromMermaid(const std::string& text);
+    std::string ToMermaidText() const;
+    bool SaveToMermaid(const std::string& filePath) const;
+    const std::string& GetLastError() const { return lastError; }
+
+    // ===== LAZY LOADING =====
+
+    // Attach a pull source. The first chunk is fetched immediately; further
+    // chunks arrive as the viewport approaches the end of the loaded history.
+    void   SetDataSource(std::shared_ptr<IGitGraphDataSource> source, size_t chunkSize = 500);
+    void   SetChunkSize(size_t commitsPerChunk);
+    size_t GetChunkSize() const { return chunkSize; }
+    bool   HasMoreCommits() const { return dataSource && !dataSourceExhausted; }
+    bool   LoadMoreCommits();               // Fetch one more chunk on demand
+    void   SetPrefetchRows(int rows);       // How close to the end triggers a fetch
+    std::function<void(size_t, size_t)> onChunkLoaded;   // (loaded, total or 0)
+
     const std::vector<GitGraphCommit>& GetCommits() const { return commits; }
     const std::vector<GitGraphRef>&    GetRefs()    const { return refs; }
     const GitGraphCommit* GetCommit(const std::string& sha) const;
@@ -163,6 +184,12 @@ public:
 
 private:
     // ===== DATA =====
+    std::shared_ptr<IGitGraphDataSource> dataSource;
+    bool   dataSourceExhausted = false;
+    size_t chunkSize    = 500;
+    int    prefetchRows = 40;
+    mutable std::string lastError;
+
     std::vector<GitGraphCommit>    commits;
     std::vector<GitGraphRef>       refs;
     std::vector<GitGraphAnnotation> annotations;

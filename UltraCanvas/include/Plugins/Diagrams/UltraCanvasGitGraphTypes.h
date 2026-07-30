@@ -180,6 +180,28 @@ struct GitGraphAnnotation {
     double      offsetAcrossAxis = -46.0;
 };
 
+// ===== LAZY LOADING =====
+
+// Pull interface for histories too large to hand over in one go. The element
+// fetches the first chunk when the source is attached and further chunks as the
+// viewport approaches the end of what is loaded.
+//
+// Commits must be returned in repository order (newest first) and each call
+// must return the same commits for the same offset. Returning fewer commits
+// than requested ends the stream.
+class IGitGraphDataSource {
+public:
+    virtual ~IGitGraphDataSource() = default;
+
+    // Total commits available, or 0 when the source cannot know in advance.
+    virtual size_t GetTotalCommitCount() { return 0; }
+
+    virtual std::vector<GitGraphCommit> FetchCommits(size_t offset, size_t count) = 0;
+
+    // Called once when the source is attached.
+    virtual std::vector<GitGraphRef> FetchRefs() { return {}; }
+};
+
 // ===== STYLE =====
 
 struct GitGraphStyle {

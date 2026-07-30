@@ -342,6 +342,59 @@ add_test(
 )
 message(STATUS "    Test registered: GitGraphLayoutTest")
 
+# ===== GIT GRAPH MERMAID TEST =====
+# Mermaid gitGraph import/export: statements, attributes, the init header,
+# error reporting and an import -> export -> import round trip.
+message(STATUS "  Building GitGraphMermaidTest...")
+add_executable(GitGraphMermaidTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/GitGraphMermaidTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasGitGraphMermaid.cpp
+)
+target_include_directories(GitGraphMermaidTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(GitGraphMermaidTest PRIVATE cxx_std_20)
+set_target_properties(GitGraphMermaidTest PROPERTIES
+    OUTPUT_NAME "GitGraphMermaidTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME GitGraphMermaidTest
+    COMMAND GitGraphMermaidTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: GitGraphMermaidTest")
+
+# ===== GIT REPOSITORY TEST =====
+# Reads a real repository (this checkout by default): refs, loose and packed
+# objects, delta chains and the newest-first walk. Needs the vendored miniz for
+# zlib inflate; skips cleanly when no .git directory is present.
+message(STATUS "  Building GitRepositoryTest...")
+add_executable(GitRepositoryTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/GitRepositoryTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasGitRepository.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
+)
+target_include_directories(GitRepositoryTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz
+)
+target_compile_definitions(GitRepositoryTest PRIVATE
+    ULTRACANVAS_REPO_ROOT="${ULTRACANVAS_ROOT}"
+)
+target_compile_features(GitRepositoryTest PRIVATE cxx_std_20)
+set_target_properties(GitRepositoryTest PROPERTIES
+    OUTPUT_NAME "GitRepositoryTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME GitRepositoryTest
+    COMMAND GitRepositoryTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: GitRepositoryTest")
+
 # ===== VIRTUALFS PATH TEST =====
 # Regression test for VirtualFSPath archive-path resolution (Unix, relative
 # and Windows drive-letter paths). Header-only - no link dependencies, so it
