@@ -183,6 +183,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasChordChartExamples.cpp
             Apps/DemoApp/UltraCanvasCircularInfoGraphicExamples.cpp
             Apps/DemoApp/UltraCanvasRadialBarChartExamples.cpp
+            Apps/DemoApp/UltraCanvasCircularProgressChartExamples.cpp
             Apps/DemoApp/UltraCanvasPolarChartExamples.cpp
             Apps/DemoApp/UltraCanvasRadarChartExamples.cpp
             Apps/DemoApp/UltraCanvasHeatmapExamples.cpp

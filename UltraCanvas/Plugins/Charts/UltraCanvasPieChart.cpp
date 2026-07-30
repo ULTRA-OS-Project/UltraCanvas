@@ -64,6 +64,38 @@ namespace UltraCanvas {
     void UltraCanvasPieChartElement::SetBorderColor(const Color& c) { borderColor = c; RequestRedraw(); }
     void UltraCanvasPieChartElement::SetBorderWidth(float w)        { borderWidth = std::max(0.0f, w); RequestRedraw(); }
 
+    void UltraCanvasPieChartElement::SetStartAngle(float degrees) {
+        startAngleDeg = degrees;
+        InvalidateSlices();
+        RequestRedraw();
+    }
+
+    void UltraCanvasPieChartElement::SetClockwise(bool on) {
+        clockwise = on;
+        InvalidateSlices();
+        RequestRedraw();
+    }
+
+    void UltraCanvasPieChartElement::SetCenterKPI(const std::string& text,
+                                                  const std::string& caption) {
+        centerKpiText = text;
+        centerKpiCaption = caption;
+        RequestRedraw();
+    }
+
+    void UltraCanvasPieChartElement::SetCenterTextColor(const Color& c) {
+        centerTextColor = c;
+        RequestRedraw();
+    }
+
+    void UltraCanvasPieChartElement::SetCenterFont(const std::string& family,
+                                                   float size, FontWeight weight) {
+        centerFontFamily = family;
+        centerFontSize = size;
+        centerFontWeight = weight;
+        RequestRedraw();
+    }
+
     void UltraCanvasPieChartElement::SetDonutMode(bool on) {
         donutMode = on;
         InvalidateCache();
@@ -344,28 +376,44 @@ namespace UltraCanvas {
 
         if (total <= 0.0) return;
 
-        double startAngle = -M_PI / 2.0;
+        double cursor = startAngleDeg * M_PI / 180.0;
         for (auto& kv : raw) {
             const ChartDataPoint& p = kv.second;
             double v = p.value != 0.0 ? p.value : p.y;
             double pct = v / total;
             double sweep = pct * 2.0 * M_PI;
-            double endAngle = startAngle + sweep;
+
+            // Slices always store startAngle <= endAngle; counter-clockwise
+            // layout walks the cursor backwards instead of reversing ranges.
+            double a0, a1;
+            if (clockwise) {
+                a0 = cursor;
+                a1 = cursor + sweep;
+                cursor = a1;
+            } else {
+                a1 = cursor;
+                a0 = cursor - sweep;
+                cursor = a0;
+            }
+
+            // The 3D renderer's face-visibility clamps expect slice angles in
+            // the historical [-PI/2, 3*PI/2) window; renormalize so custom
+            // start angles and directions keep working there.
+            while (a0 >= 3.0 * M_PI / 2.0) { a0 -= 2.0 * M_PI; a1 -= 2.0 * M_PI; }
+            while (a0 < -M_PI / 2.0)       { a0 += 2.0 * M_PI; a1 += 2.0 * M_PI; }
 
             Slice s;
             s.index      = kv.first;
             s.name       = p.label;
             s.value      = v;
             s.percentage = pct;
-            s.startAngle = startAngle;
-            s.endAngle   = endAngle;
-            s.midAngle   = startAngle + sweep / 2.0;
+            s.startAngle = a0;
+            s.endAngle   = a1;
+            s.midAngle   = (a0 + a1) / 2.0;
             s.baseColor    = ResolveSliceColor(s.index, p.color);
             s.explosion    = GetSliceExplosion(s.index);
             s.heightFactor = GetSliceHeightFactor(s.index);
             cachedSlices.push_back(s);
-
-            startAngle = endAngle;
         }
     }
 
@@ -485,6 +533,50 @@ namespace UltraCanvas {
 
         RenderLabels(ctx, cachedCenter, cachedOuterRadius,
                      enable3D ? std::cos(perspectiveAngleDeg * M_PI / 180.0) : 1.0);
+
+        RenderCenterKPI(ctx);
+    }
+
+    void UltraCanvasPieChartElement::RenderCenterKPI(IRenderContext* ctx) {
+        if (!donutMode || innerRadiusFraction <= 0.0f) return;
+        if (centerKpiText.empty() && centerKpiCaption.empty()) return;
+
+        float holeRadius = cachedOuterRadius * innerRadiusFraction;
+        if (holeRadius < 12.0f) return;
+
+        ctx->PushState();
+        ctx->SetFontFamily(centerFontFamily);
+        ctx->SetTextPaint(centerTextColor);
+
+        ctx->SetFontSize(centerFontSize);
+        ctx->SetFontWeight(centerFontWeight);
+        Size2Di kpiSize = centerKpiText.empty() ? Size2Di{0, 0}
+                        : ctx->GetTextLineDimensions(centerKpiText);
+
+        float captionFontSize = std::max(8.0f, centerFontSize * 0.65f);
+        ctx->SetFontSize(captionFontSize);
+        ctx->SetFontWeight(FontWeight::Normal);
+        Size2Di capSize = centerKpiCaption.empty() ? Size2Di{0, 0}
+                        : ctx->GetTextLineDimensions(centerKpiCaption);
+
+        double gap = (kpiSize.height > 0 && capSize.height > 0) ? 3.0 : 0.0;
+        double totalH = capSize.height + gap + kpiSize.height;
+        double top = cachedCenter.y - totalH / 2.0;
+
+        if (std::max(kpiSize.width, capSize.width) <= holeRadius * 1.8f) {
+            if (!centerKpiCaption.empty()) {
+                ctx->DrawText(centerKpiCaption,
+                              Point2Dd(cachedCenter.x - capSize.width / 2.0, top));
+                top += capSize.height + gap;
+            }
+            if (!centerKpiText.empty()) {
+                ctx->SetFontSize(centerFontSize);
+                ctx->SetFontWeight(centerFontWeight);
+                ctx->DrawText(centerKpiText,
+                              Point2Dd(cachedCenter.x - kpiSize.width / 2.0, top));
+            }
+        }
+        ctx->PopState();
     }
 
     // ===== 2D RENDERING =====
@@ -1224,6 +1316,7 @@ namespace UltraCanvas {
 
         if (hit != hoveredSliceIndex) {
             hoveredSliceIndex = hit;
+            if (hit != SIZE_MAX && onSliceHover) onSliceHover(hit);
             RequestRedraw();
         }
 
@@ -1237,6 +1330,41 @@ namespace UltraCanvas {
             HideTooltip();
         }
         return false;
+    }
+
+    // ===== EVENTS =====
+
+    bool UltraCanvasPieChartElement::HandleClick(const UCEvent& event) {
+        Point2Dd local(static_cast<double>(event.pointer.x),
+                       static_cast<double>(event.pointer.y));
+        size_t hit = HitTestSlice(local);
+        if (hit != SIZE_MAX) {
+            if (onSliceClick) onSliceClick(hit);
+            return true;
+        }
+        return false;
+    }
+
+    bool UltraCanvasPieChartElement::OnEvent(const UCEvent& event) {
+        if (IsDisabled() || !IsVisible()) return false;
+
+        switch (event.type) {
+            case UCEventType::MouseDown:
+                if (event.button == UCMouseButton::Left && HandleClick(event)) {
+                    return true;
+                }
+                break;
+            case UCEventType::MouseLeave:
+                if (hoveredSliceIndex != SIZE_MAX) {
+                    hoveredSliceIndex = SIZE_MAX;
+                    RequestRedraw();
+                }
+                HideTooltip();
+                return true;
+            default:
+                break;
+        }
+        return UltraCanvasChartElementBase::OnEvent(event);
     }
 
     // ===== EXPORT =====
