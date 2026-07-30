@@ -369,6 +369,32 @@ add_test(
 )
 message(STATUS "    Test registered: MindMapLayoutTest")
 
+# ===== MIND MAP SERIALIZATION TEST =====
+# MindMapModel::RestoreStructure - the path UltraCanvasMindMap::FromJson takes
+# after populating Topics() directly. Covers out-of-order definitions, dangling
+# parent/child references, a missing root, id-counter collisions and malformed
+# cyclic files.
+message(STATUS "  Building MindMapSerializationTest...")
+add_executable(MindMapSerializationTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/MindMapSerializationTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasMindMapLayout.cpp
+)
+target_include_directories(MindMapSerializationTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(MindMapSerializationTest PRIVATE cxx_std_20)
+set_target_properties(MindMapSerializationTest PROPERTIES
+    OUTPUT_NAME "MindMapSerializationTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME MindMapSerializationTest
+    COMMAND MindMapSerializationTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: MindMapSerializationTest")
+
 # ===== VIRTUALFS PATH TEST =====
 # Regression test for VirtualFSPath archive-path resolution (Unix, relative
 # and Windows drive-letter paths). Header-only - no link dependencies, so it

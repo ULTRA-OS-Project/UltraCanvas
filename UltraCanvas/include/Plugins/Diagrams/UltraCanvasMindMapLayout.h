@@ -218,6 +218,12 @@ public:
     // ---- Id generation ----
     std::string GenerateId(const std::string& prefix = "topic");
 
+    // Rebuilds rootId, the floating-topic list and the id counter from the
+    // topic map. Used after a deserializer has populated Topics() directly,
+    // where the normal Add* path cannot run because parents may be forward
+    // references. Drops any topic whose declared parent does not exist.
+    void RestoreStructure(const std::string& declaredRootId);
+
 private:
     void RemoveFromParent(const std::string& id);
     void CollectSubtree(const std::string& id, std::vector<std::string>& out) const;

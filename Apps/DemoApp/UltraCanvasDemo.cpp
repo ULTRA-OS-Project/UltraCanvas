@@ -1347,9 +1347,17 @@ namespace UltraCanvas {
                 .AddVariant("compositor", "Feature Playground")
                 .AddVariant("compositor", "Logic Diagram")
                 .AddVariant("compositor", "Marketing Funnel");
-    diagramBuilder.AddItem("mindmap", "MindMap", "MindMap",
-                               ImplementationStatus::NotImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("MindMap is not ready yet"); });
+    diagramBuilder.AddItem("mindmap", "Mind Map",
+                               "Rooted topic tree with balanced, logic, org chart and radial structures, editing and collapse",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateMindMapExamples(); },
+                               "DemoApp/UltraCanvasMindMapExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasMindMapExamples.md")
+                .AddVariant("mindmap", "Editable map")
+                .AddVariant("mindmap", "Logic chart")
+                .AddVariant("mindmap", "Radial")
+                .AddVariant("mindmap", "Relationships")
+                .AddVariant("mindmap", "Themes & structures");
     diagramBuilder.AddItem("kanbandiagram", "Kanban Diagram", "Kanban Diagram",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("Kanban Diagram is not ready yet"); });

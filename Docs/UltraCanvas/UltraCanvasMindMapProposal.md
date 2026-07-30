@@ -1,17 +1,19 @@
 # UltraCanvasMindMap — Research & Feature Proposal
 
-Status: **Phase 0 is implemented; the mind-map element itself is not started.**
-The shared viewport (V0) has shipped as
+Status: **Phases 0 and 1 are implemented.** The shared viewport (V0) shipped as
 [`UltraCanvasDiagramViewport`](UltraCanvasDiagramViewport.md), with
-`UltraCanvasNodeDiagram` and `UltraCanvasCompositorDiagram` refactored onto it
-and `Tests/DiagramViewportTest.cpp` covering its geometry. Phases 1–3 below are
-still a proposal. The DemoApp already reserves a
-slot for this element (`Apps/DemoApp/UltraCanvasDemo.cpp`, item `"mindmap"`,
-`ImplementationStatus::NotImplemented`, "MindMap is not ready yet"), and
-`SWOTDiagramDesignVariants.md` §C4 flagged the mind-map/spider variant as *"the
-only one needing a distinct (branch) layout engine"*. This document is the
-research write-up, the image analysis, and the feature list that a first
-implementation should be scoped against.
+`UltraCanvasNodeDiagram` and `UltraCanvasCompositorDiagram` refactored onto it.
+The element itself shipped as `UltraCanvasMindMap` + `UltraCanvasMindMapLayout`
+— see [`UltraCanvasMindMapExamples.md`](UltraCanvasMindMapExamples.md) for the
+API and `Apps/DemoApp/UltraCanvasMindMapExamples.cpp` for the demo. Phases 2 and
+3 below are still a proposal.
+
+This document is the research write-up, the image analysis and the feature list
+the implementation was scoped against. For background: the DemoApp had reserved a
+`"mindmap"` slot marked `NotImplemented` ("MindMap is not ready yet") since
+before this work, and `SWOTDiagramDesignVariants.md` §C4 had flagged the
+mind-map/spider variant as *"the only one needing a distinct (branch) layout
+engine"* — which is exactly what `UltraCanvasMindMapLayout` turned out to be.
 
 Three of the five open questions are now **resolved** (§8): the viewport is
 extracted into a shared `UltraCanvasDiagramViewport` as a Phase 0 refactor
@@ -627,14 +629,20 @@ aliases for all four overlay types. Fixed the local-vs-absolute coordinate bug
 described in §4.1 as part of the move. Covered by `Tests/DiagramViewportTest.cpp`
 (74 assertions). API documented in `UltraCanvasDiagramViewport.md`.
 
-**Phase 1 — the working map (covers images 1, 2, 4, 6, 8 and 10 structurally).**
-D1–D4, D8, D11, D12; L1, L2, L4, L9–L11; R1–R3, R5, R6, R8; S1–S7, S10;
-C1, C2, C8; I1–I6, I8, I10, I12; V1, V2, V5; X1, X2; A3, A5. Plus the DemoApp
-page replacing the current "not ready yet" placeholder, and
-`Docs/UltraCanvas/UltraCanvasMindMapExamples.md`.
+**Phase 1 — the working map (covers images 1, 2, 4, 6, 8 and 10 structurally). — DONE**
+Delivered: D1–D4, D7 (floating topics, pulled forward — the legend in image 8
+needed them), D8, D11, D12; L1–L4 (org chart came free from the same packing
+code), L9–L11; R1–R3, R5, R6, R8; S1–S7, S10; C1, C2, C8; I1–I6, I8, I10, I12;
+V1, V2, V5; X1, X2; A3, A5, A6. Plus the DemoApp page replacing the "not ready
+yet" placeholder, and `UltraCanvasMindMapExamples.md`.
+
+Covered by `Tests/MindMapLayoutTest.cpp` (model, all six structures, balance
+policies, collapse, floating topics, spacing, determinism, and a 364-topic
+zero-overlap stress case) and `Tests/MindMapSerializationTest.cpp` (the
+structural restore path FromJson depends on).
 
 **Phase 2 — the presentation map (fully covers images 3, 5, 7 and 9).**
-D5–D7; L3, L8, L12–L14; R4, R7, R9; S8, S9; C3–C6; I7, I9, I11;
+D5, D6; L8, L12–L14; R4, R7, R9; S8, S9; C3–C6; I7, I9, I11;
 V3, V4, V7; X3–X8; A1, A2, A6.
 
 **Phase 3 — the specialist structures.**

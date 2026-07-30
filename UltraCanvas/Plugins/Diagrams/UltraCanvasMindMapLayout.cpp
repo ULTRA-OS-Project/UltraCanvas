@@ -179,6 +179,46 @@ void MindMapModel::Clear() {
     nextId = 1;
 }
 
+void MindMapModel::RestoreStructure(const std::string& declaredRootId) {
+    floatingIds.clear();
+    rootId.clear();
+
+    // Drop dangling parent references so the tree is always well formed.
+    for (auto& [id, topic] : topics) {
+        if (!topic.parentId.empty() && topics.find(topic.parentId) == topics.end()) {
+            topic.parentId.clear();
+        }
+        topic.childIds.erase(
+            std::remove_if(topic.childIds.begin(), topic.childIds.end(),
+                           [&](const std::string& childId) {
+                               return topics.find(childId) == topics.end();
+                           }),
+            topic.childIds.end());
+    }
+
+    if (topics.find(declaredRootId) != topics.end()) {
+        rootId = declaredRootId;
+        topics[rootId].parentId.clear();
+        topics[rootId].floating = false;
+    }
+
+    // Anything else without a parent is a floating topic.
+    for (auto& [id, topic] : topics) {
+        if (id == rootId) continue;
+        if (topic.parentId.empty()) {
+            topic.floating = true;
+            floatingIds.push_back(id);
+        } else {
+            topic.floating = false;
+        }
+    }
+    std::sort(floatingIds.begin(), floatingIds.end());   // Deterministic order
+
+    // Keep generated ids from colliding with restored ones.
+    nextId = static_cast<int>(topics.size()) + 1;
+    while (topics.find("topic_" + std::to_string(nextId)) != topics.end()) ++nextId;
+}
+
 // =============================================================================
 // MODEL - ACCESS & QUERIES
 // =============================================================================

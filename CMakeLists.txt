@@ -190,6 +190,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasContourChartExamples.cpp
             Apps/DemoApp/UltraCanvasAdjacencyDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasArcDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasMindMapExamples.cpp
             Apps/DemoApp/UltraCanvasNetworkingExamples.cpp
             Apps/DemoApp/UltraCanvasSlideshowExamples.cpp
             Apps/DemoApp/UltraCanvasAlbumExamples.cpp
