@@ -8,6 +8,13 @@ only one needing a distinct (branch) layout engine"*. This document is the
 research write-up, the image analysis, and the feature list that a first
 implementation should be scoped against.
 
+Three of the five open questions are now **resolved** (§8): the viewport is
+extracted into a shared `UltraCanvasDiagramViewport` as a Phase 0 refactor
+(§4.1), in-place editing embeds `UltraCanvasTextInput` as a child overlay
+(§4.2), and every parser the interchange features need — `UltraCanvasJSON`,
+tinyxml2, `UltraCanvasZipPackage` — is already in the framework, so no new
+third-party dependency is required.
+
 Author: UltraCanvas Framework
 Last Modified: 2026-07-30
 
@@ -155,19 +162,83 @@ the layout engine and the editing UX.
 | Need | Reuse from |
 |---|---|
 | Bezier / step / smooth-step routing, arrow heads, hit-testing a stroke | `UltraCanvasNodeDiagram.cpp` (`BuildLinkBezier`, `BuildLinkStep`, `RenderArrowHead`), `Plugins/Charts/UltraCanvasConnectionRenderer.cpp` |
-| Pan / zoom / fit / minimap / controls overlay / selection box | `UltraCanvasNodeDiagram` (`FitView`, `CenterOn`, `NodeDiagramMinimapConfig`, `NodeDiagramControlsConfig`) — lift the shared parts rather than copy-paste |
+| Pan / zoom / fit / minimap / controls overlay / selection box | **New shared `UltraCanvasDiagramViewport`**, extracted from `UltraCanvasNodeDiagram` and `UltraCanvasCompositorDiagram` — see §4.1 |
+| In-place text editing | **Embedded `UltraCanvasTextInput` child overlay** — see §4.2 |
 | Recursive subtree packing, radial placement | `UltraCanvasDendrogramLayout` (`ApplyRadialLayout`, subtree extent accumulation) |
 | Label measurement & auto-sizing nodes to text | `UltraCanvasNodeDiagram::MeasureLabel` / `SuggestNodeSizeForLabel`, `IRenderContext::GetTextLineDimensions` |
 | Non-overlapping label placement for callouts | `Plugins/Charts/UltraCanvasLabelPlacement.cpp` |
 | Palette cycling for per-branch colour | `UltraCanvasFlowChartPalette` |
 | Images / SVG inside nodes | `IRenderContext::DrawImage(...)`, `Plugins/SVG/UltraCanvasSVGPlugin.h` |
-| JSON persistence | `UltraCanvasJSON` (see `Docs/UltraCanvas/UltraCanvasJSON.md`) |
+| JSON persistence | `UltraCanvasJSON` — `include/DataFormats/UltraCanvasJSON.h` (`JSONValue`, `Parse`, `Serialize`, `SerializeToFile`); see `Docs/UltraCanvas/UltraCanvasJSON.md` |
+| XML parsing (`.mm`, OPML) | **tinyxml2** — already a `REQUIRED` framework-wide dependency (`UltraCanvas/CMakeLists.txt:139`), used by the SVG plugin, DOCX/ODT, FB2 and XLSX readers |
+| Zip container (`.xmind`) | `UltraCanvasZipPackage` (`include/UltraCanvasZipPackage.h`), backed by vendored miniz |
 
 New code lands in `UltraCanvas/include/Plugins/Diagrams/UltraCanvasMindMap.h`,
 `UltraCanvas/Plugins/Diagrams/UltraCanvasMindMap.cpp` and (following the
 dendrogram precedent) a separate `UltraCanvasMindMapLayout.{h,cpp}`, registered
 in `UltraCanvas/CMakeLists.txt` next to the other `Plugins/Diagrams/*.cpp`
 entries.
+
+### 4.1 Shared viewport extraction (decided)
+
+`UltraCanvasNodeDiagram` and `UltraCanvasCompositorDiagram` each carry their own
+copy of the same viewport machinery — `zoomLevel`, `panOffset`, `minZoom`/
+`maxZoom`, `ScreenToWorld`/`WorldToScreen`, `ZoomIn`/`ZoomOut`/`FitView`/
+`CenterOn`, a minimap config + drag handler, and a controls overlay. Rather than
+writing a third copy, Phase 0 extracts
+
+```
+UltraCanvas/include/Plugins/Diagrams/UltraCanvasDiagramViewport.h
+UltraCanvas/Plugins/Diagrams/UltraCanvasDiagramViewport.cpp
+```
+
+covering: the zoom/pan state and clamping, both coordinate transforms,
+zoom-at-cursor, `FitView`/`CenterOn` against a caller-supplied content bounds
+rect, the snap grid, the minimap (config, render, hit-test, viewport drag) and
+the controls overlay (config, render, hit-test, button dispatch). Overlays stay
+in **screen space**, rendered after the world transform is popped — the
+convention both existing elements already follow.
+
+Two frictions found while scoping this, both of which must be settled in the
+extraction rather than papered over:
+
+1. **Coordinate type mismatch.** `UltraCanvasNodeDiagram` uses `Point2Dd`
+   (double) for pan offset and world points; `UltraCanvasCompositorDiagram` uses
+   `Point2Df` (float). The shared viewport should standardise on `Point2Dd` —
+   double is what the layout engine will produce — which makes the compositor
+   migration a signature change on its public `GetPanOffset()`.
+2. **Existing partial coupling.** `UltraCanvasCompositorDiagram` already borrows
+   `NodeDiagramPanelPosition` from the node diagram's header. That enum moves to
+   the shared viewport header as `DiagramPanelPosition`, with a deprecated alias
+   left in `UltraCanvasNodeDiagram.h` so existing app code keeps compiling.
+
+Both existing elements are refactored onto the shared viewport in the same
+change, so the extraction is verified by two real consumers before the mind map
+becomes the third.
+
+### 4.2 In-place editing via an embedded text input (decided)
+
+I3 embeds the existing `UltraCanvasTextInput` (`include/UltraCanvasTextInput.h`)
+as a child overlay rather than re-implementing a caret. The element already
+exposes everything needed: `SetText`/`GetText`, `SetStyle`/`SetFontSize`,
+`SetSelection`, `AcceptsFocus() == true`, and — critically for this use —
+`onEnterPressed`, `onEscapePressed`, `onFocusLost` and `onTextChanged`, which map
+exactly onto commit / cancel / commit-on-blur / live re-layout.
+
+**Hosting pattern.** There is a precedent inside the diagrams plugin already:
+`UltraCanvasDendrogram` holds `std::shared_ptr<UltraCanvasScrollbar>` members
+directly and drives their render and event forwarding itself, rather than going
+through `UltraCanvasContainer::AddChild`. The mind map does the same — a single
+lazily-created `std::shared_ptr<UltraCanvasTextInput> editOverlay`, hidden except
+while editing.
+
+**Positioning.** The overlay is placed in **screen coordinates**, computed from
+the topic's world bounds through the shared viewport's `WorldToScreen`, and its
+font size is scaled by the current zoom so the editor visually matches the text
+it replaces. It is repositioned on any viewport change while an edit is active,
+and rendered last (after the world transform is popped) so it sits above all
+branches. Events are offered to the overlay first while editing is active, so
+Tab/Enter/Delete go to the editor rather than to the map's authoring shortcuts.
 
 ---
 
@@ -263,7 +334,7 @@ IDs are stable handles for tracking (`D` data, `L` layout, `R` routing,
 |---|---|---|
 | I1 | Selection: click, Shift+click multi-select, marquee, `SelectAll`, `SelectSubtree` | P1 |
 | I2 | Collapse/expand by clicking the collapse handle or double-clicking, with a child-count badge on collapsed nodes | P1 |
-| I3 | In-place text editing on double-click / F2 / typing, with Esc-cancel and Enter-commit | P1 |
+| I3 | In-place text editing on double-click / F2 / typing, with Esc-cancel and Enter-commit — an embedded `UltraCanvasTextInput` overlay (§4.2) | P1 |
 | I4 | Keyboard authoring: `Enter` = sibling, `Tab` = child, `Delete` = subtree, arrows = navigate by geometry, `Ctrl+↑/↓` = reorder sibling | P1 |
 | I5 | Drag a topic to reparent, with a live drop indicator showing the target parent and insertion index; Ctrl+drag copies the subtree | P1 |
 | I6 | **Undo/redo stack** covering every structural and style mutation | P1 |
@@ -278,10 +349,11 @@ IDs are stable handles for tracking (`D` data, `L` layout, `R` routing,
 
 | ID | Feature | Phase |
 |---|---|---|
-| V1 | Pan (drag empty canvas / middle-drag), zoom at cursor (wheel), `ZoomIn`/`ZoomOut`/`SetZoomLevel` with clamped range | P1 |
+| V0 | Extract `UltraCanvasDiagramViewport` and refactor `UltraCanvasNodeDiagram` + `UltraCanvasCompositorDiagram` onto it (§4.1) — prerequisite for V1–V4 | P0 |
+| V1 | Pan (drag empty canvas / middle-drag), zoom at cursor (wheel), `ZoomIn`/`ZoomOut`/`SetZoomLevel` with clamped range — from V0 | P1 |
 | V2 | `FitView(padding)`, `CenterOnTopic(id)`, `FitSubtree(id)`; auto-fit after layout | P1 |
-| V3 | Minimap overlay with a draggable viewport rectangle | P2 |
-| V4 | Controls overlay (zoom ±, fit, lock, collapse-all/expand-all) | P2 |
+| V3 | Minimap overlay with a draggable viewport rectangle — from V0 | P2 |
+| V4 | Controls overlay (zoom ±, fit, lock, collapse-all/expand-all) — from V0 | P2 |
 | V5 | `ExpandToLevel(n)` / `CollapseToLevel(n)` for outline-depth browsing | P1 |
 | V6 | Focus mode — temporarily treat a chosen topic as the root ("drill down"), with a breadcrumb back | P3 |
 | V7 | Search box API: `FindTopics(text)` returning matches, `RevealTopic(id)` expanding ancestors and scrolling into view, with match highlighting | P2 |
@@ -290,14 +362,14 @@ IDs are stable handles for tracking (`D` data, `L` layout, `R` routing,
 
 | ID | Feature | Phase |
 |---|---|---|
-| X1 | `ToJson()` / `FromJson()` — native round-trip of model + style + viewport, matching the `UltraCanvasNodeDiagram` precedent | P1 |
+| X1 | `ToJson()` / `FromJson()` — native round-trip of model + style + viewport, built on `UltraCanvasJSON` (`JSONValue` / `Parse` / `Serialize`) | P1 |
 | X2 | Markdown outline import/export (headings and/or nested bullets), as in markmap | P1 |
 | X3 | Mermaid `mindmap` text import (indentation, `((circle))`/`[square]`/`(rounded)`/`{{hexagon}}`/`))cloud((`/`>bang]`, `::icon()`, `:::class`) and export | P2 |
-| X4 | FreeMind/Freeplane `.mm` XML import/export — the widest interchange format | P2 |
-| X5 | OPML import/export | P2 |
+| X4 | FreeMind/Freeplane `.mm` XML import/export via tinyxml2 — the widest interchange format | P2 |
+| X5 | OPML import/export via tinyxml2 | P2 |
 | X6 | Plain indented-text and CSV parent/child import | P2 |
 | X7 | Raster export (PNG via the render context) and vector export (SVG) of the whole map at arbitrary scale | P2 |
-| X8 | XMind `.xmind` (zipped JSON) read support | P3 |
+| X8 | XMind `.xmind` read support — `UltraCanvasZipPackage` to open the container, `UltraCanvasJSON` to parse `content.json` | P2 |
 | X9 | Print/paginate a large map across tiles | P3 |
 
 ### A — Advanced
@@ -467,9 +539,28 @@ a pure `ComputeLayout(const MindMapModel&, const MindMapLayoutOptions&,
 MindMapLayoutResult&)` — so structures can be added without touching the
 element, and so layout can be unit-tested headlessly under `Tests/`.
 
+Two members are not shown above because they are collaborators rather than API:
+
+```cpp
+private:
+    UltraCanvasDiagramViewport viewport;                    // §4.1 — pan/zoom/minimap/controls
+    std::shared_ptr<UltraCanvasTextInput> editOverlay;      // §4.2 — created on first edit
+```
+
+`SetZoomLevel`, `FitView`, `CenterOnTopic`, `SetMinimapVisible` and the controls
+overlay accessors are thin forwards onto `viewport`; `ScreenToWorld` /
+`WorldToScreen` come from it too, and are what position `editOverlay`.
+
 ---
 
 ## 7. Suggested delivery phases
+
+**Phase 0 — shared viewport (no mind-map code).**
+V0: extract `UltraCanvasDiagramViewport`, migrate `UltraCanvasNodeDiagram` and
+`UltraCanvasCompositorDiagram` onto it, standardise on `Point2Dd`, move
+`NodeDiagramPanelPosition` → `DiagramPanelPosition` with a compatibility alias.
+Ships on its own so the refactor is reviewable against the two existing elements
+without mind-map noise in the diff, and so any regression is attributable.
 
 **Phase 1 — the working map (covers images 1, 2 and 4 structurally).**
 D1–D4, D11, D12; L1, L2, L4, L9–L11; R1–R3, R5, R6; S1–S7, S10; C1, C2;
@@ -479,34 +570,43 @@ replacing the current "not ready yet" placeholder, and
 
 **Phase 2 — the presentation map (fully covers images 2, 3 and 5).**
 D5–D8; L3, L8, L12–L14; R4, R7, R8; S8, S9; C3–C6, C8; I7, I9, I11;
-V3, V4, V7; X3–X7; A1, A2, A6.
+V3, V4, V7; X3–X8; A1, A2, A6.
 
 **Phase 3 — the specialist structures.**
-D9, D10; L5–L7, L15; R9; S11; C7; V6; X8, X9; A4, A7, A8.
+D9, D10; L5–L7, L15; R9; S11; C7; V6; X9; A4, A7, A8.
 
 ---
 
-## 8. Open questions
+## 8. Decisions and remaining questions
 
-1. **Reuse mechanism for viewport/minimap/controls.** `UltraCanvasNodeDiagram`
-   and `UltraCanvasCompositorDiagram` already implement pan/zoom/minimap/controls
-   independently. Should Phase 1 extract a shared `UltraCanvasDiagramViewport`
-   mixin (and refactor those two onto it), or duplicate once more and unify
-   later? Extracting is the better long-term answer but widens the first PR.
-2. **Text editing widget.** In-place editing (I3) can either embed the existing
-   text-input element as a child overlay or re-implement a minimal caret inside
-   the element. Embedding is less code but requires the element to host a child
-   widget in canvas coordinates — needs a check against the current UI element
-   hosting rules.
-3. **Icon source for C2/C3.** Mermaid leans on Font Awesome / Material classes.
+### Resolved
+
+1. **Viewport reuse — extract the shared component.** A shared
+   `UltraCanvasDiagramViewport` is extracted and both existing consumers are
+   refactored onto it, as Phase 0. Design and the two frictions it has to settle
+   are in §4.1.
+2. **In-place editing — embed `UltraCanvasTextInput`.** Hosted as a
+   lazily-created child overlay owned by the element and positioned in screen
+   coordinates, following the `UltraCanvasDendrogram` scrollbar precedent rather
+   than `UltraCanvasContainer::AddChild`. Design in §4.2.
+3. **Parsing dependencies — all already present, nothing new required.**
+   `UltraCanvasJSON` (`include/DataFormats/UltraCanvasJSON.h`) covers X1 and the
+   `content.json` half of X8. tinyxml2 is already a `REQUIRED` framework-wide
+   dependency (`UltraCanvas/CMakeLists.txt:139`, used by the SVG plugin,
+   DOCX/ODT, FB2 and XLSX), so X4 and X5 need no new library.
+   `UltraCanvasZipPackage` covers the `.xmind` container. Consequently **X8 moves
+   from Phase 3 to Phase 2**, and no `Docs/Dependencies.md` /
+   `master_dependencies.yaml` / `THIRD_PARTY_LICENSES.md` change is needed for
+   any of the interchange work.
+
+### Still open
+
+4. **Icon source for C2/C3.** Mermaid leans on Font Awesome / Material classes.
    Does UltraCanvas expose a named icon registry we should bind to, or should
    the element take an app-supplied `std::function<UCImage*(const std::string&)>`
-   resolver?
-4. **`.mm` and `.xmind` parsing (X4, X8)** need an XML reader and a zip reader.
-   VirtualFS already covers zip; confirm whether an approved XML parser exists
-   before X4 is scheduled, since a new third-party dependency would require
-   `Docs/Dependencies.md`, `master_dependencies.yaml` and
-   `THIRD_PARTY_LICENSES.md` updates.
+   resolver? The resolver is the safer default — it keeps the element free of an
+   icon-set dependency — but if a registry already exists, binding to it gives
+   better out-of-the-box results in the demo.
 5. **Scope of the structure taxonomy.** L5–L7 (fishbone, timeline, brace) are
    arguably separate elements rather than mind-map structures. Keeping them here
    matches XMind; splitting them keeps this element focused.
