@@ -1357,6 +1357,7 @@ namespace UltraCanvas {
                 .AddVariant("mindmap", "Logic chart")
                 .AddVariant("mindmap", "Radial")
                 .AddVariant("mindmap", "Relationships")
+                .AddVariant("mindmap", "Presentation")
                 .AddVariant("mindmap", "Themes & structures");
     diagramBuilder.AddItem("kanbandiagram", "Kanban Diagram", "Kanban Diagram",
                                ImplementationStatus::NotImplemented,

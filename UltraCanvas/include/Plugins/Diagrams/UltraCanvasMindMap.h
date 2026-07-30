@@ -120,6 +120,37 @@ struct MindMapStyle {
     // Per-depth lightening of the branch hue (image 9's cluster look).
     // 0 disables; 0.15 lightens each level by 15% towards white.
     double depthLightenStep = 0.0;
+
+    // ---- Drop shadows (S8) ----
+    bool   showShadows = false;
+    Color  shadowColor = Color(0, 0, 0, 45);
+    double shadowOffsetX = 2.0;
+    double shadowOffsetY = 3.0;
+
+    // ---- Connector badges (R7) ----
+    // A circular badge drawn on the connector, carrying the child's ordinal or
+    // its icon. `connectorBadgeT` is the position along the path, 0 at the
+    // parent and 1 at the child.
+    bool   showConnectorBadges = false;
+    double connectorBadgeT = 0.5;
+    double connectorBadgeRadius = 9.0;
+    Color  connectorBadgeTextColor = Color(255, 255, 255, 255);
+
+    // ---- Content indicators ----
+    bool showNoteIndicator = true;    // C4
+    bool showLinkIndicator = true;    // C6
+    bool showMarkers = true;          // C3
+    double markerSize = 12.0;
+
+    // ---- Hover (I11) ----
+    // Fades every topic outside the hovered topic's branch.
+    bool   dimUnrelatedOnHover = false;
+    double dimOpacity = 0.28;
+
+    // ---- Background layer (S9) ----
+    // Drawn in WORLD space beneath the map, before the grid. The rect passed is
+    // the currently visible world region.
+    std::function<void(IRenderContext*, const Rect2Dd&)> backgroundRenderer;
 };
 
 // =============================================================================
@@ -161,6 +192,10 @@ public:
     bool RemoveRelationship(const std::string& id);
 
     // Content
+    void SetTopicMarkers(const std::string& id, const std::vector<std::string>& markers);
+    void AddTopicMarker(const std::string& id, const std::string& marker);
+    void ClearTopicMarkers(const std::string& id);
+    void SetTopicLink(const std::string& id, const std::string& link);
     void SetTopicIcon(const std::string& id, const std::string& iconPath);
     void SetTopicImage(const std::string& id, const std::string& imagePath);
     void SetTopicNote(const std::string& id, const std::string& note);
@@ -268,6 +303,16 @@ public:
     std::string CreateChild(const std::string& id, const std::string& text = "");
     void DeleteSelected();
 
+    // Clipboard (I7). Copy/cut place the subtree on an internal clipboard as
+    // JSON; paste grafts it under the target with fresh ids so the same subtree
+    // can be pasted repeatedly.
+    bool CopySelection();
+    bool CutSelection();
+    bool PasteInto(const std::string& targetParentId);
+    bool HasClipboardContent() const { return !clipboardJson.empty(); }
+    // Pastes an indented plain-text outline as a subtree.
+    bool PasteOutlineInto(const std::string& targetParentId, const std::string& outlineText);
+
     void Undo();
     void Redo();
     bool CanUndo() const { return !undoStack.empty(); }
@@ -328,6 +373,8 @@ public:
     std::function<void(double, double, double)> onViewportChanged;
     std::function<void(const std::string&, double, double)> onTopicRightClick;
     std::function<void(double, double)> onCanvasRightClick;
+    // Fires when the link indicator on a topic is clicked (C6).
+    std::function<void(const std::string&, const std::string&)> onTopicLinkActivated;
 
 private:
     // ---- Layout ----
@@ -350,6 +397,15 @@ private:
     void RenderTopicContent(IRenderContext* ctx, const MindMapTopic& topic,
                             const MindMapTopicStyle& topicStyle);
     void RenderCollapseHandle(IRenderContext* ctx, const MindMapTopic& topic);
+    void RenderTopicIndicators(IRenderContext* ctx, const MindMapTopic& topic,
+                               const MindMapTopicStyle& topicStyle);
+    void RenderConnectorBadge(IRenderContext* ctx, const MindMapTopic& child,
+                              const Point2Dd& from, const Point2Dd& to, const Color& color);
+    // Opacity a topic renders at, accounting for hover dimming (I11).
+    double TopicOpacity(const MindMapTopic& topic) const;
+    // Screen-space rect of the link indicator, for hit testing.
+    Rect2Dd LinkIndicatorRect(const MindMapTopic& topic) const;
+    std::string FindLinkIndicatorAt(const Point2Di& localPos) const;
     void RenderDropIndicator(IRenderContext* ctx);
     void RenderEndDecoration(IRenderContext* ctx, const Point2Dd& tip,
                              const Point2Dd& direction, const Color& color);
@@ -437,6 +493,9 @@ private:
     std::shared_ptr<UltraCanvasTextInput> editOverlay;
     std::string editingTopicId;
     bool editCommitting = false;   // Guards re-entrancy from onFocusLost
+
+    // Clipboard
+    std::string clipboardJson;
 
     // Undo/redo
     std::deque<UndoEntry> undoStack;

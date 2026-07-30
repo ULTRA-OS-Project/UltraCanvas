@@ -640,6 +640,113 @@ static void TestEdgeCases() {
     }
 }
 
+static void TestAlignmentPasses() {
+    std::printf("\n[alignment post-passes]\n");
+
+    MindMapModel model;
+    std::string root = model.SetCentralTopic("Centre");
+    // Deliberately uneven label lengths, so unaligned columns would be ragged.
+    std::vector<std::string> branches;
+    const char* labels[] = {"A", "Bee bee bee", "C", "Dee dee dee dee"};
+    for (const char* label : labels) {
+        branches.push_back(model.AddTopic(root, label));
+        model.AddTopic(branches.back(), "leaf");
+    }
+
+    MindMapLayoutOptions options;
+    options.structure = MindMapStructure::Balanced;
+    options.alignLevelColumns = true;
+    MindMapLayoutResult result = Run(model, options);
+
+    CHECK(CountOverlaps(result) == 0, "column alignment produces no overlaps");
+
+    // Every depth-1 topic on a given side must share an inner edge.
+    double rightEdge = 0.0, leftEdge = 0.0;
+    bool haveRight = false, haveLeft = false, columnsAligned = true;
+    for (const auto& id : branches) {
+        const MindMapTopic* topic = model.GetTopic(id);
+        Rect2Dd box = result.Get(id);
+        if (topic->resolvedSide == MindMapTopicSide::Right) {
+            if (!haveRight) { rightEdge = box.x; haveRight = true; }
+            else if (!Near(box.x, rightEdge, 1e-6)) columnsAligned = false;
+        } else {
+            double edge = box.x + box.width;
+            if (!haveLeft) { leftEdge = edge; haveLeft = true; }
+            else if (!Near(edge, leftEdge, 1e-6)) columnsAligned = false;
+        }
+    }
+    CHECK(columnsAligned, "same-depth topics share a column edge on each side");
+
+    // Row alignment pairs the Nth left topic with the Nth right topic.
+    options.alignSideRows = true;
+    result = Run(model, options);
+    CHECK(CountOverlaps(result) == 0, "row alignment produces no overlaps");
+
+    std::vector<double> leftRows, rightRows;
+    for (const auto& id : branches) {
+        Rect2Dd box = result.Get(id);
+        double centre = box.y + box.height * 0.5;
+        if (model.GetTopic(id)->resolvedSide == MindMapTopicSide::Right) {
+            rightRows.push_back(centre);
+        } else {
+            leftRows.push_back(centre);
+        }
+    }
+    std::sort(leftRows.begin(), leftRows.end());
+    std::sort(rightRows.begin(), rightRows.end());
+    bool rowsPaired = leftRows.size() == rightRows.size();
+    for (size_t i = 0; rowsPaired && i < leftRows.size(); ++i) {
+        if (!Near(leftRows[i], rightRows[i], 1e-6)) rowsPaired = false;
+    }
+    CHECK(rowsPaired, "the Nth topic on each side shares a row centre");
+
+    // Alignment is off by default, so existing maps are unaffected.
+    MindMapLayoutOptions plain;
+    MindMapLayoutResult plainResult = Run(model, plain);
+    CHECK(!plain.alignLevelColumns && !plain.alignSideRows,
+          "alignment is off by default");
+    CHECK(CountOverlaps(plainResult) == 0, "the default path still has no overlaps");
+}
+
+static void TestManualStructure() {
+    std::printf("\n[manual structure]\n");
+
+    MindMapModel model;
+    std::string root = model.SetCentralTopic("Centre");
+    std::string pinned = model.AddTopic(root, "Pinned");
+    std::string floated = model.AddTopic(root, "Auto placed");
+
+    MindMapTopic* pinnedTopic = model.GetTopic(pinned);
+    pinnedTopic->hasManualPosition = true;
+    pinnedTopic->manualX = 640.0;
+    pinnedTopic->manualY = -275.0;
+
+    MindMapLayoutOptions options;
+    options.structure = MindMapStructure::Manual;
+    MindMapLayoutResult result = Run(model, options);
+
+    CHECK(Near(result.Get(pinned).x, 640.0) && Near(result.Get(pinned).y, -275.0),
+          "an authored position is honoured exactly");
+    CHECK(result.Has(floated), "a topic without an authored position is still placed");
+    CHECK(!Near(result.Get(floated).x, 640.0),
+          "the auto-placed topic keeps its computed position");
+    CHECK(result.contentBounds.maxX >= 640.0,
+          "content bounds account for authored positions");
+
+    // Switching structures must not lose the authored position.
+    options.structure = MindMapStructure::Balanced;
+    MindMapLayoutResult balanced = Run(model, options);
+    CHECK(!Near(balanced.Get(pinned).x, 640.0),
+          "Balanced ignores the authored position");
+    CHECK(model.GetTopic(pinned)->hasManualPosition,
+          "the authored position survives a structure switch");
+
+    options.structure = MindMapStructure::Manual;
+    MindMapLayoutResult back = Run(model, options);
+    CHECK(Near(back.Get(pinned).x, 640.0),
+          "switching back restores the authored position");
+}
+
 int main() {
     std::printf("UltraCanvasMindMap model & layout tests\n");
     std::printf("=======================================\n");
@@ -658,6 +765,8 @@ int main() {
     TestFloatingTopics();
     TestSpacingAndSizing();
     TestEdgeCases();
+    TestAlignmentPasses();
+    TestManualStructure();
 
     std::printf("\n=======================================\n");
     if (g_failures == 0) {

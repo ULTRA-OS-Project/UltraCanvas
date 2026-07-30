@@ -11,6 +11,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasTabbedContainer.h"
 #include <sstream>
+#include <cmath>
 
 namespace UltraCanvas {
 
@@ -368,6 +369,93 @@ std::shared_ptr<UltraCanvasContainer> MakeGalleryTab(
     return tab;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB 6 — Presentation features (reference images 2, 3, 5 and 9)
+// Aligned columns and rows, connector badges, markers, notes, links,
+// shadows and a background layer.
+// ─────────────────────────────────────────────────────────────────────────────
+std::shared_ptr<UltraCanvasContainer> MakePresentationTab(
+        std::shared_ptr<UltraCanvasLabel> status) {
+    auto tab = std::make_shared<UltraCanvasContainer>("MindMapPresTab", 0, 0, 1020, 700);
+
+    auto desc = std::make_shared<UltraCanvasLabel>("MindMapPresDesc", 10, 8, 990, 22);
+    desc->SetText("Infographic layout: level columns and side rows aligned, numbered badges "
+                  "on the connectors, drop shadows, a dotted background layer, and note / "
+                  "link / marker indicators. Click a link glyph to fire the callback.");
+    desc->SetFontSize(11);
+    desc->SetWrap(TextWrap::WrapWord);
+    tab->AddChild(desc);
+
+    auto map = std::make_shared<UltraCanvasMindMap>("MindMapPres", 10, 34, 990, 654);
+    map->SetTheme(MindMapTheme::Colorful);
+    map->SetStructure(MindMapStructure::Balanced);
+    map->SetBalancePolicy(MindMapBalancePolicy::SplitInHalf);
+    map->SetNumbering(MindMapNumbering::Prefix);
+    map->SetControlsVisible(true);
+
+    std::string root = map->SetCentralTopic("MIND MAP");
+    const char* titles[] = {"TITLE 01", "TITLE 02", "TITLE 03",
+                            "TITLE 04", "TITLE 05", "TITLE 06"};
+    for (const char* title : titles) {
+        std::string branch = map->AddTopic(root, title);
+        map->AddTopic(branch, "Lorem ipsum dolor sit amet, consectetur adipiscing elit.");
+    }
+
+    // Aligned columns and rows are what give the infographic its grid feel.
+    MindMapLayoutOptions options = map->GetLayoutOptions();
+    options.alignLevelColumns = true;
+    options.alignSideRows = true;
+    options.siblingGap = 22.0;
+    map->SetLayoutOptions(options);
+
+    // Pill main topics, plain text leaves.
+    MindMapTopicStyle main = map->GetLevelStyle(1);
+    main.shape = MindMapNodeShape::Pill;
+    main.minWidth = 130.0;
+    map->SetLevelStyle(1, main);
+
+    MindMapTopicStyle leaf = map->GetLevelStyle(2);
+    leaf.shape = MindMapNodeShape::NoShape;
+    leaf.maxWidth = 210.0;
+    leaf.textColor = Color(90, 90, 100, 255);
+    map->SetLevelStyle(2, leaf);
+
+    MindMapStyle& s = map->Style();
+    s.showConnectorBadges = true;
+    s.connectorBadgeT = 0.55;
+    s.showShadows = true;
+    s.dimUnrelatedOnHover = true;
+    // A faint dot grid behind the map (S9).
+    s.backgroundRenderer = [](IRenderContext* ctx, const Rect2Dd& visible) {
+        const double spacing = 40.0;
+        ctx->SetFillPaint(Color(228, 228, 236, 255));
+        double startX = std::floor(visible.x / spacing) * spacing;
+        double startY = std::floor(visible.y / spacing) * spacing;
+        for (double x = startX; x <= visible.x + visible.width; x += spacing) {
+            for (double y = startY; y <= visible.y + visible.height; y += spacing) {
+                ctx->FillCircle({x, y}, 1.6);
+            }
+        }
+    };
+
+    // Indicators on the first branch.
+    const MindMapTopic* rootTopic = map->GetTopic(root);
+    if (rootTopic && rootTopic->childIds.size() >= 3) {
+        map->SetTopicNote(rootTopic->childIds[0], "A longer note attached to this topic.");
+        map->SetTopicLink(rootTopic->childIds[1], "https://example.com");
+        map->SetTopicMarkers(rootTopic->childIds[2],
+                             {"media/icons/check.png", "media/icons/clock-five.svg"});
+    }
+
+    map->onTopicLinkActivated = [status](const std::string&, const std::string& link) {
+        status->SetText("Link activated: " + link);
+    };
+
+    AttachStatus(map, status);
+    tab->AddChild(map);
+    return tab;
+}
+
 } // namespace
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -429,6 +517,7 @@ UltraCanvasDemoApplication::CreateMindMapExamples() {
     tabs->AddTab("Logic chart",         MakeLogicChartTab(statusLabel));
     tabs->AddTab("Radial",              MakeRadialTab(statusLabel));
     tabs->AddTab("Relationships",       MakeRelationshipsTab(statusLabel));
+    tabs->AddTab("Presentation",        MakePresentationTab(statusLabel));
     tabs->AddTab("Themes & structures", MakeGalleryTab(statusLabel));
 
     main->AddChild(tabs);

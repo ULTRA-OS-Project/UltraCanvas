@@ -11,11 +11,12 @@ shapes, images, icons and numbering).
 **Namespace:** `UltraCanvas`
 **Header:** `include/Plugins/Diagrams/UltraCanvasMindMap.h`
 **Base Class:** `UltraCanvasUIElement`
-**Version:** 1.0.0
+**Version:** 1.1.0
 
 The topic model and the layout engine live separately in
-`include/Plugins/Diagrams/UltraCanvasMindMapLayout.h` and have no dependency on
-the render context, so they can be used — and tested — headlessly.
+`include/Plugins/Diagrams/UltraCanvasMindMapLayout.h`, and the interchange
+formats in `include/Plugins/Diagrams/UltraCanvasMindMapIO.h`. Neither depends on
+the render context, so both can be used — and tested — headlessly.
 Pan/zoom, the minimap and the controls overlay come from the shared
 [`UltraCanvasDiagramViewport`](UltraCanvasDiagramViewport.md).
 
@@ -23,7 +24,8 @@ Pan/zoom, the minimap and the controls overlay come from the shared
 UltraCanvasUIElement
     └── UltraCanvasMindMap        (element: render, events, editing)
             ├── MindMapModel                (topic tree)
-            └── UltraCanvasMindMapLayout    (pure layout)
+            ├── UltraCanvasMindMapLayout    (pure layout)
+            └── UltraCanvasMindMapIO        (interchange formats)
 ```
 
 ## Header Include
@@ -79,6 +81,7 @@ map->SetStructure(MindMapStructure::Balanced);
 | `LogicRight` / `LogicLeft` | The whole tree grows to one side |
 | `OrgChartDown` / `OrgChartUp` | Top-down / bottom-up hierarchy |
 | `Radial` | Branches distributed over a full circle, one ring per generation |
+| `Manual` | Authored positions honoured; anything unset is auto-placed |
 
 In `Balanced`, which side an `Auto` main topic lands on is decided by the balance
 policy:
@@ -111,6 +114,33 @@ map->SetSpacing(/*siblingGap*/ 12.0, /*levelGap*/ 46.0, /*rootGap*/ 60.0);
 Sibling subtrees are packed by bottom-up extent accumulation, so **boxes never
 overlap at any depth**, whatever their sizes. `Tests/MindMapLayoutTest.cpp`
 verifies this over a 364-topic ragged tree in three structures.
+
+### Alignment (the infographic look)
+
+```cpp
+MindMapLayoutOptions options = map->GetLayoutOptions();
+options.alignLevelColumns = true;   // same depth => same distance from centre
+options.alignSideRows = true;       // Nth left topic shares a row with Nth right
+map->SetLayoutOptions(options);
+```
+
+Both are off by default. `alignSideRows` applies to the `Balanced` and `Manual`
+structures only — the other structures have no two sides to pair up.
+
+### Manual placement
+
+```cpp
+MindMapTopic* topic = map->GetTopic(id);
+topic->hasManualPosition = true;
+topic->manualX = 640.0;
+topic->manualY = -275.0;
+map->SetStructure(MindMapStructure::Manual);
+```
+
+Authored positions are stored on the topic and ignored by every other
+structure, so a map can be switched back and forth without losing them. In
+`Manual`, topics without an authored position keep the position the base pass
+computed.
 
 ---
 
@@ -165,6 +195,19 @@ map->ClearTopicStyle(topicId);          // back to the cascade
 
 `outlineOnly` gives the transparent-fill, coloured-stroke, coloured-text look.
 
+### Shadows, dimming and a background layer
+
+```cpp
+map->Style().showShadows = true;              // offset silhouette behind each node
+map->Style().dimUnrelatedOnHover = true;      // fade branches other than the hovered one
+map->Style().dimOpacity = 0.28;
+
+// Drawn in WORLD space beneath the map, before the grid.
+map->Style().backgroundRenderer = [](IRenderContext* ctx, const Rect2Dd& visible) {
+    // visible is the world region currently on screen
+};
+```
+
 ### Themes
 
 ```cpp
@@ -203,6 +246,17 @@ map->Style().taperStartWidth = 7.0;
 map->Style().taperEndWidth = 1.5;
 ```
 
+### Connector badges
+
+A circular badge on the connector carrying the child's icon, or its ordinal
+when there is no icon:
+
+```cpp
+map->Style().showConnectorBadges = true;
+map->Style().connectorBadgeT = 0.55;   // 0 at the parent, 1 at the child
+map->Style().connectorBadgeRadius = 9.0;
+```
+
 ---
 
 ## Node content
@@ -210,8 +264,20 @@ map->Style().taperEndWidth = 1.5;
 ```cpp
 map->SetTopicIcon(topicId, "media/icons/light 001.jpg");   // inline, before the label
 map->SetTopicImage(topicId, "media/images/brain.png");     // image as the node body
-map->SetTopicNote(topicId, "Longer note text");
+map->SetTopicNote(topicId, "Longer note text");            // corner triangle indicator
+map->SetTopicLink(topicId, "https://example.com");         // clickable ring indicator
+map->SetTopicMarkers(topicId, {"media/icons/check.png"});  // badge row above the node
 map->SetTopicWeight(topicId, 3.0);                          // with sizeFromWeight
+```
+
+Notes render as a small filled corner triangle, links as a clickable ring — a
+click fires `onTopicLinkActivated(id, link)` — and markers as a row of small
+icons above the node. Each can be turned off:
+
+```cpp
+map->Style().showNoteIndicator = false;
+map->Style().showLinkIndicator = false;
+map->Style().showMarkers = false;
 ```
 
 Icons and images are **file paths**, matching the framework convention
@@ -306,6 +372,20 @@ screen space, with its font scaled by the current zoom. While an edit is active
 the editor receives keyboard events first, so `Tab` and `Enter` go to the text
 field rather than to the authoring shortcuts.
 
+### Clipboard
+
+```cpp
+map->CopySelection();                  // topmost selected subtrees
+map->CutSelection();
+map->PasteInto(targetParentId);        // fresh ids, so it can be pasted repeatedly
+map->PasteOutlineInto(parentId, "Root\n  Child\n");
+map->HasClipboardContent();
+```
+
+Copy only takes the *topmost* selected topics — a descendant already travels
+with its ancestor, so copying both would duplicate it on paste. `Ctrl+C`,
+`Ctrl+X` and `Ctrl+V` are wired to these.
+
 Undo snapshots the whole map as JSON, so every structural and style mutation is
 covered by one mechanism. The default limit is 100 entries
 (`SetUndoLimit`).
@@ -328,6 +408,49 @@ JSON round-trips the model, per-topic style overrides, relationships, layout
 options and the viewport, using `UltraCanvasJSON`. Markdown import accepts both
 headings (`#`, `##`, …) and nested list items (two spaces per level, the markmap
 convention).
+
+### Interchange formats
+
+```cpp
+map->FromMermaid(source);      map->ToMermaid();
+map->FromFreeMind(mmXml);      map->ToFreeMind();      // FreeMind / Freeplane .mm
+map->FromOpml(opmlXml);        map->ToOpml("Title");
+map->FromIndentedText(text);   map->FromCsv(csv);      map->ToCsv();
+map->FromXMindFile("plan.xmind");
+map->ImportAuto(anyText);      // sniffs the format and dispatches
+map->ExportSvg("map.svg", 2.0);
+```
+
+Every importer **replaces the whole map** and is undoable. Import runs into a
+scratch model and only adopts it on success, so a malformed file can never
+half-destroy the map you have open.
+
+The underlying `UltraCanvasMindMapIO` works on a bare `MindMapModel` if you need
+conversion without an element:
+
+```cpp
+MindMapModel model;
+MindMapImportResult result = UltraCanvasMindMapIO::FromFreeMind(model, xml);
+if (!result) { /* result.error explains why */ }
+```
+
+Notes on fidelity:
+
+- **Mermaid** — indentation is ranked by distinct width, so 2-space, 4-space and
+  tab sources import identically. Shape delimiters survive as style overrides
+  and `::icon()` attaches to the preceding node. An identifier before the
+  delimiter (`root((Text))`) is accepted, as Mermaid allows.
+- **FreeMind** — `POSITION`, `FOLDED`, `LINK` and `BUILTIN` icons round-trip.
+- **OPML** — a body with several top-level outlines keeps them all: the first
+  becomes the centre, the rest its children.
+- **CSV** — rows may appear in any order; parents are resolved after the whole
+  file is read. Needs an id column and a parent column; the text column defaults
+  to `text`/`label`/`title`/`name`.
+- **XMind** — reads the modern `content.json` container. A legacy `content.xml`
+  archive is reported as unsupported rather than failing obscurely.
+
+No new third-party dependency is involved: tinyxml2, `UltraCanvasJSON` and
+`UCZipPackageReader` were already in the framework.
 
 ---
 
@@ -386,6 +509,8 @@ layout pass runs from there rather than from the mutating setters.
 
 ## Demo
 
-`Apps/DemoApp/UltraCanvasMindMapExamples.cpp` — five tabs: an editable map, a
-logic chart with ordinal badges, a radial map, cross-branch relationships, and a
-gallery for switching theme, structure and connector style at runtime.
+`Apps/DemoApp/UltraCanvasMindMapExamples.cpp` — six tabs: an editable map, a
+logic chart with ordinal badges, a radial map, cross-branch relationships, a
+presentation layout (aligned columns and rows, connector badges, shadows,
+background layer, note/link/marker indicators), and a gallery for switching
+theme, structure and connector style at runtime.

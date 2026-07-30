@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <map>
 
 namespace UltraCanvas {
 
@@ -671,6 +672,106 @@ void UltraCanvasMindMapLayout::LayoutHorizontal(MindMapModel& model,
 }
 
 // =============================================================================
+// LAYOUT - ALIGNMENT POST-PASSES (L12)
+// =============================================================================
+
+namespace {
+
+// Moves a topic and its whole subtree by (dx, dy).
+void ShiftSubtree(MindMapModel& model, const std::string& id,
+                  double dx, double dy, MindMapLayoutResult& out) {
+    for (const auto& subtreeId : model.GetSubtreeIds(id)) {
+        auto it = out.bounds.find(subtreeId);
+        if (it == out.bounds.end()) continue;   // Hidden by a collapsed ancestor
+        it->second.x += dx;
+        it->second.y += dy;
+        if (MindMapTopic* topic = model.GetTopic(subtreeId)) topic->bounds = it->second;
+    }
+}
+
+} // namespace
+
+// Every topic at the same depth is pushed out to the same distance from the
+// centre, so both sides read as aligned columns instead of ragged fans.
+static void AlignLevelColumns(MindMapModel& model, MindMapLayoutResult& out) {
+    // Furthest inner edge per (depth, side) decides the shared column.
+    std::map<std::pair<int, int>, double> columnEdge;   // (depth, side) -> x
+    for (const auto& [id, box] : out.bounds) {
+        const MindMapTopic* topic = model.GetTopic(id);
+        if (!topic || topic->depth < 1) continue;
+        int side = (topic->resolvedSide == MindMapTopicSide::Left) ? -1 : 1;
+        auto key = std::make_pair(topic->depth, side);
+
+        // Right side: the largest left edge. Left side: the smallest right edge.
+        double edge = (side > 0) ? box.x : (box.x + box.width);
+        auto it = columnEdge.find(key);
+        if (it == columnEdge.end()) {
+            columnEdge[key] = edge;
+        } else if (side > 0) {
+            it->second = std::max(it->second, edge);
+        } else {
+            it->second = std::min(it->second, edge);
+        }
+    }
+
+    // Shift each topic (not its subtree - deeper levels get their own column).
+    for (auto& [id, box] : out.bounds) {
+        MindMapTopic* topic = model.GetTopic(id);
+        if (!topic || topic->depth < 1) continue;
+        int side = (topic->resolvedSide == MindMapTopicSide::Left) ? -1 : 1;
+        auto it = columnEdge.find(std::make_pair(topic->depth, side));
+        if (it == columnEdge.end()) continue;
+
+        double target = (side > 0) ? it->second : it->second - box.width;
+        box.x = target;
+        topic->bounds = box;
+    }
+}
+
+// The Nth main topic on the left is lined up with the Nth on the right.
+static void AlignSideRows(MindMapModel& model, MindMapLayoutResult& out) {
+    MindMapTopic* root = model.GetTopic(model.GetRootId());
+    if (!root) return;
+
+    auto centreY = [&](const std::string& id) {
+        Rect2Dd box = out.Get(id);
+        return box.y + box.height * 0.5;
+    };
+
+    std::vector<std::string> left, right;
+    for (const auto& id : root->childIds) {
+        const MindMapTopic* child = model.GetTopic(id);
+        if (!child || !out.Has(id)) continue;
+        (child->resolvedSide == MindMapTopicSide::Left ? left : right).push_back(id);
+    }
+    // Both sides are already stacked top-to-bottom by the main pass.
+    std::sort(left.begin(),  left.end(),  [&](const std::string& a, const std::string& b) {
+        return centreY(a) < centreY(b);
+    });
+    std::sort(right.begin(), right.end(), [&](const std::string& a, const std::string& b) {
+        return centreY(a) < centreY(b);
+    });
+
+    size_t rows = std::min(left.size(), right.size());
+    for (size_t row = 0; row < rows; ++row) {
+        double shared = (centreY(left[row]) + centreY(right[row])) * 0.5;
+        ShiftSubtree(model, left[row],  0.0, shared - centreY(left[row]),  out);
+        ShiftSubtree(model, right[row], 0.0, shared - centreY(right[row]), out);
+    }
+}
+
+// Authored positions win; anything without one keeps what the base pass gave it.
+static void ApplyManualPositions(MindMapModel& model, MindMapLayoutResult& out) {
+    for (auto& [id, box] : out.bounds) {
+        MindMapTopic* topic = model.GetTopic(id);
+        if (!topic || !topic->hasManualPosition) continue;
+        box.x = topic->manualX;
+        box.y = topic->manualY;
+        topic->bounds = box;
+    }
+}
+
+// =============================================================================
 // LAYOUT - VERTICAL (OrgChartDown / OrgChartUp)
 // =============================================================================
 
@@ -869,6 +970,7 @@ void UltraCanvasMindMapLayout::ComputeLayout(MindMapModel& model,
         AssignSides(model, options);
 
         switch (options.structure) {
+            case MindMapStructure::Manual:
             case MindMapStructure::OrgChartDown:
             case MindMapStructure::OrgChartUp:
                 LayoutVertical(model, options, measure, resolveStyle, outResult);
@@ -882,6 +984,31 @@ void UltraCanvasMindMapLayout::ComputeLayout(MindMapModel& model,
             default:
                 LayoutHorizontal(model, options, measure, resolveStyle, outResult);
                 break;
+        }
+
+        // Post-passes run in a fixed order: columns, then rows, then authored
+        // overrides, so a manual position always has the final say.
+        const bool horizontal = (options.structure == MindMapStructure::Balanced ||
+                                 options.structure == MindMapStructure::LogicRight ||
+                                 options.structure == MindMapStructure::LogicLeft ||
+                                 options.structure == MindMapStructure::Manual);
+        if (options.alignLevelColumns && horizontal) {
+            AlignLevelColumns(model, outResult);
+        }
+        if (options.alignSideRows && (options.structure == MindMapStructure::Balanced ||
+                                      options.structure == MindMapStructure::Manual)) {
+            AlignSideRows(model, outResult);
+        }
+        if (options.structure == MindMapStructure::Manual) {
+            ApplyManualPositions(model, outResult);
+        }
+
+        // Any post-pass may have moved boxes, so the extent is recomputed
+        // rather than trusted from the base pass.
+        if (options.alignLevelColumns || options.alignSideRows ||
+            options.structure == MindMapStructure::Manual) {
+            outResult.contentBounds = DiagramContentBounds();
+            for (const auto& [id, box] : outResult.bounds) outResult.contentBounds.Include(box);
         }
     }
 

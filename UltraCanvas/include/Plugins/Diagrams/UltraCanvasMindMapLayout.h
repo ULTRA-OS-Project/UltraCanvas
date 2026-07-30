@@ -41,7 +41,8 @@ enum class MindMapStructure {
     LogicLeft,     // Whole tree grows left
     OrgChartDown,  // Root at top, children below
     OrgChartUp,    // Root at bottom, children above
-    Radial         // Children distributed over a full 360 degrees
+    Radial,        // Children distributed over a full 360 degrees
+    Manual         // Authored positions honoured; unset ones filled in (L13)
 };
 
 enum class MindMapTopicSide {
@@ -106,11 +107,21 @@ struct MindMapTopic {
     std::string imagePath;            // Image as the node body
     std::string note;
     std::string link;
+    // Small status/priority badges drawn on the node (C3). Values are icon
+    // paths or short names, resolved the same way as iconPath.
+    std::vector<std::string> markers;
 
     // Floating topics (no parent, placed by the app) keep their own position.
     bool   floating = false;
     double floatX   = 0.0;
     double floatY   = 0.0;
+
+    // Manual placement (L13). Honoured by MindMapStructure::Manual; ignored by
+    // every other structure, so a map can be switched back and forth without
+    // losing the authored positions.
+    bool   hasManualPosition = false;
+    double manualX = 0.0;
+    double manualY = 0.0;
 
     std::optional<MindMapTopicStyle> styleOverride;
     std::optional<MindMapStructure>  structureOverride;
@@ -260,6 +271,14 @@ struct MindMapLayoutOptions {
     // Node sizing
     bool   sizeFromWeight = false;
     double weightSizeScale = 18.0;  // Extra pixels per unit of weight above 1
+
+    // Alignment (L12) - the infographic look where both sides line up.
+    // Columns: every topic at the same depth sits the same distance from the
+    // centre, instead of hugging its own parent.
+    bool alignLevelColumns = false;
+    // Rows: the Nth main topic on the left shares a vertical centre with the
+    // Nth on the right. Balanced structure only.
+    bool alignSideRows = false;
 };
 
 struct MindMapLayoutResult {

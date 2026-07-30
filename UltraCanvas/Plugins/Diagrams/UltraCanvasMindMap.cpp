@@ -189,6 +189,35 @@ bool UltraCanvasMindMap::RemoveRelationship(const std::string& id) {
     return true;
 }
 
+void UltraCanvasMindMap::SetTopicMarkers(const std::string& id,
+                                         const std::vector<std::string>& markers) {
+    if (MindMapTopic* topic = model.GetTopic(id)) {
+        topic->markers = markers;
+        RequestRedraw();
+    }
+}
+
+void UltraCanvasMindMap::AddTopicMarker(const std::string& id, const std::string& marker) {
+    if (MindMapTopic* topic = model.GetTopic(id)) {
+        topic->markers.push_back(marker);
+        RequestRedraw();
+    }
+}
+
+void UltraCanvasMindMap::ClearTopicMarkers(const std::string& id) {
+    if (MindMapTopic* topic = model.GetTopic(id)) {
+        topic->markers.clear();
+        RequestRedraw();
+    }
+}
+
+void UltraCanvasMindMap::SetTopicLink(const std::string& id, const std::string& link) {
+    if (MindMapTopic* topic = model.GetTopic(id)) {
+        topic->link = link;
+        RequestRedraw();
+    }
+}
+
 void UltraCanvasMindMap::SetTopicIcon(const std::string& id, const std::string& iconPath) {
     if (MindMapTopic* topic = model.GetTopic(id)) {
         topic->iconPath = iconPath;
@@ -905,6 +934,10 @@ void UltraCanvasMindMap::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
     ctx->Translate(pan.x, pan.y);
     ctx->Scale(viewport.GetZoomLevel(), viewport.GetZoomLevel());
 
+    // Background layer sits beneath everything, in world space (S9).
+    if (style.backgroundRenderer) {
+        style.backgroundRenderer(ctx, viewport.GetVisibleWorldRect());
+    }
     if (style.showGrid) RenderGrid(ctx);
 
     RenderConnectors(ctx);
@@ -1095,6 +1128,10 @@ void UltraCanvasMindMap::RenderConnector(IRenderContext* ctx, const MindMapTopic
         }
     }
 
+    if (style.showConnectorBadges) {
+        RenderConnectorBadge(ctx, child, from, to, color);
+    }
+
     if (style.endDecoration != MindMapEndDecoration::NoDecoration) {
         double dirX = to.x - from.x;
         double dirY = to.y - from.y;
@@ -1223,10 +1260,22 @@ void UltraCanvasMindMap::RenderTopics(IRenderContext* ctx) {
         MindMapTopicStyle topicStyle = ResolveTopicStyle(*topic);
         RenderTopicShape(ctx, *topic, topicStyle);
         RenderTopicContent(ctx, *topic, topicStyle);
+        RenderTopicIndicators(ctx, *topic, topicStyle);
         if (style.showCollapseHandles && !topic->childIds.empty()) {
             RenderCollapseHandle(ctx, *topic);
         }
     }
+}
+
+double UltraCanvasMindMap::TopicOpacity(const MindMapTopic& topic) const {
+    if (!style.dimUnrelatedOnHover || hoveredTopicId.empty()) return 1.0;
+    const MindMapTopic* hovered = model.GetTopic(hoveredTopicId);
+    if (!hovered) return 1.0;
+    // The hovered topic's branch stays lit; so does the centre, which every
+    // branch hangs off.
+    if (topic.id == model.GetRootId()) return 1.0;
+    if (hovered->branchIndex < 0) return 1.0;   // Hovering the centre lights all
+    return (topic.branchIndex == hovered->branchIndex) ? 1.0 : style.dimOpacity;
 }
 
 void UltraCanvasMindMap::RenderTopicShape(IRenderContext* ctx, const MindMapTopic& topic,
@@ -1238,6 +1287,36 @@ void UltraCanvasMindMap::RenderTopicShape(IRenderContext* ctx, const MindMapTopi
     Color fill = topicStyle.outlineOnly ? Color(0, 0, 0, 0) : topicStyle.fillColor;
     Color border = topicStyle.borderColor;
     double borderWidth = topicStyle.borderWidth;
+
+    double opacity = TopicOpacity(topic);
+    if (opacity < 1.0) {
+        fill = WithAlpha(fill, static_cast<int>(fill.a * opacity));
+        border = WithAlpha(border, static_cast<int>(border.a * opacity));
+    }
+
+    // Drop shadow: the same silhouette offset behind the node (S8).
+    if (style.showShadows && opacity >= 1.0 &&
+        topicStyle.shape != MindMapNodeShape::Underline &&
+        topicStyle.shape != MindMapNodeShape::NoShape) {
+        Rect2Dd shadowBox(box.x + style.shadowOffsetX, box.y + style.shadowOffsetY,
+                          box.width, box.height);
+        ctx->SetFillPaint(style.shadowColor);
+        switch (topicStyle.shape) {
+            case MindMapNodeShape::Circle:
+            case MindMapNodeShape::Ellipse:
+                ctx->FillEllipse(shadowBox);
+                break;
+            case MindMapNodeShape::Pill:
+                ctx->FillRoundedRectangle(shadowBox, shadowBox.height * 0.5);
+                break;
+            case MindMapNodeShape::Rect:
+                ctx->FillRectangle(shadowBox);
+                break;
+            default:
+                ctx->FillRoundedRectangle(shadowBox, topicStyle.cornerRadius);
+                break;
+        }
+    }
 
     if (selected) {
         border = style.selectionColor;
@@ -1609,7 +1688,16 @@ bool UltraCanvasMindMap::HandleMouseDown(const UCEvent& event) {
         return true;
     }
 
-    // 5. Topic
+    // 5. Link indicator on a topic (C6)
+    std::string linkTopic = FindLinkIndicatorAt(mousePos);
+    if (!linkTopic.empty()) {
+        const MindMapTopic* topic = model.GetTopic(linkTopic);
+        if (topic && onTopicLinkActivated) onTopicLinkActivated(linkTopic, topic->link);
+        SelectTopic(linkTopic, isMultiSelectKeyHeld);
+        return true;
+    }
+
+    // 6. Topic
     std::string topicId = FindTopicAt(mousePos);
     if (!topicId.empty()) {
         if (!IsTopicSelected(topicId) || !isMultiSelectKeyHeld) {
@@ -1623,7 +1711,7 @@ bool UltraCanvasMindMap::HandleMouseDown(const UCEvent& event) {
         return true;
     }
 
-    // 6. Empty canvas -> deselect and start panning.
+    // 7. Empty canvas -> deselect and start panning.
     DeselectAll();
     isDraggingViewport = true;
     SetMouseCursor(UCMouseCursor::SizeAll);
@@ -1693,7 +1781,7 @@ bool UltraCanvasMindMap::HandleMouseMove(const UCEvent& event) {
 
     if (previousTopic != hoveredTopicId || previousHandle != hoveredHandleTopicId ||
         previousControl != hoveredControlButton) {
-        RequestRedraw();
+        RequestRedraw();   // Also repaints the dimming when it is enabled (I11)
     }
     lastMousePos = mousePos;
     return false;
@@ -1814,6 +1902,27 @@ bool UltraCanvasMindMap::HandleKeyDown(const UCEvent& event) {
         case UCKeys::Space:
             if (!primarySelection.empty()) {
                 ToggleCollapsed(primarySelection);
+                return true;
+            }
+            break;
+
+        case UCKeys::C:
+            if (event.ctrl || event.meta) {
+                CopySelection();
+                return true;
+            }
+            break;
+
+        case UCKeys::X:
+            if (event.ctrl || event.meta) {
+                CutSelection();
+                return true;
+            }
+            break;
+
+        case UCKeys::V:
+            if ((event.ctrl || event.meta) && !primarySelection.empty()) {
+                PasteInto(primarySelection);
                 return true;
             }
             break;
@@ -2561,6 +2670,255 @@ std::string UltraCanvasMindMap::ToSvg(double scale) const {
 bool UltraCanvasMindMap::ExportSvg(const std::string& filePath, double scale) const {
     return UltraCanvasMindMapIO::WriteSvgFile(filePath, model, layoutResult,
                                               MakeSvgOptions(scale));
+}
+
+
+// =============================================================================
+// CONTENT INDICATORS (C3, C4, C6) AND CONNECTOR BADGES (R7)
+// =============================================================================
+
+Rect2Dd UltraCanvasMindMap::LinkIndicatorRect(const MindMapTopic& topic) const {
+    double size = style.markerSize;
+    // Bottom-right corner, just inside the node.
+    return Rect2Dd(topic.bounds.x + topic.bounds.width - size - 2.0,
+                   topic.bounds.y + topic.bounds.height - size - 2.0,
+                   size, size);
+}
+
+void UltraCanvasMindMap::RenderTopicIndicators(IRenderContext* ctx, const MindMapTopic& topic,
+                                               const MindMapTopicStyle& topicStyle) {
+    double opacity = TopicOpacity(topic);
+    double size = style.markerSize;
+
+    // Markers sit in a row above the node's top-right corner (C3).
+    if (style.showMarkers && !topic.markers.empty()) {
+        double x = topic.bounds.x + topic.bounds.width - size;
+        double y = topic.bounds.y - size - 2.0;
+        for (auto it = topic.markers.rbegin(); it != topic.markers.rend(); ++it) {
+            ctx->DrawImage(*it, Rect2Dd(x, y, size, size), ImageFitMode::Contain);
+            x -= size + 2.0;
+        }
+    }
+
+    // Note indicator: a small filled corner triangle (C4).
+    if (style.showNoteIndicator && !topic.note.empty()) {
+        double tip = size * 0.7;
+        double right = topic.bounds.x + topic.bounds.width;
+        double top = topic.bounds.y;
+        Color noteColor = WithAlpha(topicStyle.borderColor,
+                                    static_cast<int>(topicStyle.borderColor.a * opacity));
+        ctx->SetFillPaint(noteColor);
+        ctx->FillLinePath({{right - tip, top}, {right, top}, {right, top + tip}});
+    }
+
+    // Link indicator: a small ring with a bar, clickable (C6).
+    if (style.showLinkIndicator && !topic.link.empty()) {
+        Rect2Dd rect = LinkIndicatorRect(topic);
+        Point2Dd centre(rect.x + rect.width * 0.5, rect.y + rect.height * 0.5);
+        double radius = rect.width * 0.42;
+        Color linkColor = WithAlpha(topicStyle.borderColor,
+                                    static_cast<int>(topicStyle.borderColor.a * opacity));
+        ctx->SetStrokePaint(linkColor);
+        ctx->SetStrokeWidth(1.4);
+        ctx->DrawCircle(centre, radius);
+        ctx->DrawLine({centre.x - radius * 0.5, centre.y + radius * 0.5},
+                      {centre.x + radius * 0.5, centre.y - radius * 0.5});
+    }
+}
+
+std::string UltraCanvasMindMap::FindLinkIndicatorAt(const Point2Di& localPos) const {
+    if (!style.showLinkIndicator) return std::string();
+    Point2Dd world = viewport.ScreenToWorld(localPos);
+    for (const auto& [id, box] : layoutResult.bounds) {
+        const MindMapTopic* topic = model.GetTopic(id);
+        if (!topic || topic->link.empty()) continue;
+        Rect2Dd rect = LinkIndicatorRect(*topic);
+        if (world.x >= rect.x && world.x <= rect.x + rect.width &&
+            world.y >= rect.y && world.y <= rect.y + rect.height) {
+            return id;
+        }
+    }
+    return std::string();
+}
+
+void UltraCanvasMindMap::RenderConnectorBadge(IRenderContext* ctx, const MindMapTopic& child,
+                                              const Point2Dd& from, const Point2Dd& to,
+                                              const Color& color) {
+    double t = std::clamp(style.connectorBadgeT, 0.0, 1.0);
+    Point2Dd centre(from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t);
+    double radius = style.connectorBadgeRadius;
+
+    ctx->SetFillPaint(color);
+    ctx->FillCircle(centre, radius);
+
+    // The badge carries the icon when there is one, otherwise the ordinal.
+    if (!child.iconPath.empty()) {
+        double inner = radius * 1.3;
+        ctx->DrawImage(child.iconPath,
+                       Rect2Dd(centre.x - inner * 0.5, centre.y - inner * 0.5, inner, inner),
+                       ImageFitMode::Contain);
+        return;
+    }
+    if (child.ordinal.empty()) return;
+
+    FontStyle font;
+    font.fontFamily = style.fontFamily;
+    font.fontSize = radius * 1.1;
+    font.fontWeight = FontWeight::Bold;
+    ctx->SetFontStyle(font);
+    Size2Di textSize = ctx->GetTextLineDimensions(child.ordinal);
+    ctx->SetTextPaint(style.connectorBadgeTextColor);
+    ctx->DrawText(child.ordinal,
+                  {centre.x - textSize.width * 0.5, centre.y - textSize.height * 0.5});
+}
+
+// =============================================================================
+// CLIPBOARD (I7)
+// =============================================================================
+
+namespace {
+
+// Serializes a subtree to JSON, ids and all. Paste re-generates the ids, so
+// they only need to be internally consistent.
+JSONValue SubtreeToJson(const MindMapModel& model, const std::string& id) {
+    const MindMapTopic* topic = model.GetTopic(id);
+    JSONValue value = JSONValue::MakeObject();
+    if (!topic) return value;
+
+    value.Set("text", JSONValue(topic->text));
+    value.Set("collapsed", JSONValue(topic->collapsed));
+    value.Set("weight", JSONValue(topic->weight));
+    if (!topic->iconPath.empty())  value.Set("iconPath", JSONValue(topic->iconPath));
+    if (!topic->imagePath.empty()) value.Set("imagePath", JSONValue(topic->imagePath));
+    if (!topic->note.empty())      value.Set("note", JSONValue(topic->note));
+    if (!topic->link.empty())      value.Set("link", JSONValue(topic->link));
+
+    JSONValue children = JSONValue::MakeArray();
+    for (const auto& childId : topic->childIds) {
+        children.Append(SubtreeToJson(model, childId));
+    }
+    value.Set("children", children);
+    return value;
+}
+
+// Grafts a serialized subtree under `parentId`, generating fresh ids.
+std::string SubtreeFromJson(MindMapModel& model, const JSONValue& value,
+                            const std::string& parentId) {
+    std::string id = model.AddTopic(parentId, value.Get("text").GetString());
+    if (id.empty()) return id;
+
+    if (MindMapTopic* topic = model.GetTopic(id)) {
+        topic->collapsed = value.Get("collapsed").GetBoolean(false);
+        topic->weight = value.Get("weight").GetNumber(1.0);
+        topic->iconPath = value.Get("iconPath").GetString();
+        topic->imagePath = value.Get("imagePath").GetString();
+        topic->note = value.Get("note").GetString();
+        topic->link = value.Get("link").GetString();
+    }
+
+    const JSONValue& children = value.Get("children");
+    for (size_t i = 0; i < children.GetSize(); ++i) {
+        SubtreeFromJson(model, children.At(i), id);
+    }
+    return id;
+}
+
+} // namespace
+
+bool UltraCanvasMindMap::CopySelection() {
+    if (selectedTopics.empty()) return false;
+
+    // Only copy the topmost selected topics: a descendant already travels with
+    // its ancestor, and copying both would duplicate it on paste.
+    std::vector<std::string> roots;
+    for (const auto& id : selectedTopics) {
+        bool coveredByAncestor = false;
+        for (const auto& other : selectedTopics) {
+            if (other != id && model.IsDescendantOf(id, other)) {
+                coveredByAncestor = true;
+                break;
+            }
+        }
+        if (!coveredByAncestor) roots.push_back(id);
+    }
+    if (roots.empty()) return false;
+    std::sort(roots.begin(), roots.end());
+
+    JSONValue clip = JSONValue::MakeObject();
+    JSONValue items = JSONValue::MakeArray();
+    for (const auto& id : roots) items.Append(SubtreeToJson(model, id));
+    clip.Set("subtrees", items);
+
+    clipboardJson = JSON::Serialize(clip);
+    return true;
+}
+
+bool UltraCanvasMindMap::CutSelection() {
+    if (!CopySelection()) return false;
+    DeleteSelected();
+    return true;
+}
+
+bool UltraCanvasMindMap::PasteInto(const std::string& targetParentId) {
+    if (clipboardJson.empty()) return false;
+    if (!model.GetTopic(targetParentId)) return false;
+
+    JSONParseResult parseResult;
+    JSONValue clip = JSON::Parse(clipboardJson, &parseResult);
+    if (!parseResult.success) return false;
+
+    const JSONValue& items = clip.Get("subtrees");
+    if (items.GetSize() == 0) return false;
+
+    PushUndo("Paste");
+    suppressUndo = true;
+    std::vector<std::string> pastedIds;
+    for (size_t i = 0; i < items.GetSize(); ++i) {
+        std::string id = SubtreeFromJson(model, items.At(i), targetParentId);
+        if (!id.empty()) pastedIds.push_back(id);
+    }
+    // Pasting into a collapsed parent would hide the result.
+    if (MindMapTopic* parent = model.GetTopic(targetParentId)) parent->collapsed = false;
+    suppressUndo = false;
+
+    if (pastedIds.empty()) return false;
+
+    selectedTopics.clear();
+    for (const auto& id : pastedIds) selectedTopics.insert(id);
+    primarySelection = pastedIds.front();
+
+    MarkLayoutDirty();
+    NotifySelectionChanged();
+    for (const auto& id : pastedIds) {
+        if (onTopicAdded) onTopicAdded(id);
+    }
+    RequestRedraw();
+    return true;
+}
+
+bool UltraCanvasMindMap::PasteOutlineInto(const std::string& targetParentId,
+                                          const std::string& outlineText) {
+    if (!model.GetTopic(targetParentId)) return false;
+
+    // Reuse the text importer's rules by building a scratch map, then graft it.
+    MindMapModel scratch;
+    if (!UltraCanvasMindMapIO::FromIndentedText(scratch, outlineText)) return false;
+    if (scratch.GetRootId().empty()) return false;
+
+    JSONValue subtree = SubtreeToJson(scratch, scratch.GetRootId());
+
+    PushUndo("Paste outline");
+    suppressUndo = true;
+    std::string id = SubtreeFromJson(model, subtree, targetParentId);
+    if (MindMapTopic* parent = model.GetTopic(targetParentId)) parent->collapsed = false;
+    suppressUndo = false;
+
+    if (id.empty()) return false;
+    SelectTopic(id);
+    MarkLayoutDirty();
+    if (onTopicAdded) onTopicAdded(id);
+    RequestRedraw();
+    return true;
 }
 
 } // namespace UltraCanvas
