@@ -1,3 +1,28 @@
+#### 2026-07-30 *0.3.20*
+- **UltraCanvasScatterPlotElement**: correlation / trend line display. The
+  element can now fit a least-squares regression line over its data
+  (`SetShowTrendLine`), styled solid, dashed or dotted with settable colour
+  and width, plus an optional readout of the fitted equation and the Pearson
+  correlation (`SetShowCorrelationInfo` draws `y = ax + b`, r and r² in the
+  plot corner). `ComputeLinearRegression` and `GetCorrelationCoefficient`
+  expose the fit programmatically. Points whose `ChartDataPoint::color` is
+  set now render in that colour, so outliers or categories can be marked
+  without extra elements.
+- New **UltraCanvasScatterPlot3DElement**
+  (`Plugins/Charts/UltraCanvasScatterPlot3D`): a software-rendered 3D scatter
+  plot for (x, y, z) point clouds. Perspective camera with drag-to-orbit,
+  wheel zoom and view presets; perspective axes with ticks, titles and an
+  optional ground grid that re-anchor to the corner nearest the camera;
+  depth cueing (perspective point sizing plus optional fade towards the
+  background); per-point colours; hover tooltips with X/Y/Z. An optional 3D
+  correlation line — the principal axis of the cloud, i.e. the orthogonal
+  least-squares fit from the covariance matrix's dominant eigenvector — is
+  depth sorted into the points so it threads through the cloud with correct
+  occlusion. `GetCorrelationLine` returns the fitted centroid and direction
+  in data space. The Charts > Scatter Plot demo page now shows both the 2D
+  trend line and the 3D cloud side by side, and a programmer's guide lives in
+  `Docs/UltraCanvas/UltraCanvasScatterPlot3D.md`.
+
 #### 2026-07-29 *0.3.19*
 - New **UltraCanvasPolarChart** element
   (`Plugins/Charts/UltraCanvasPolarChart`): a general polar coordinate chart
