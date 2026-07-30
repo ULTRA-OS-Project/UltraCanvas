@@ -1,8 +1,29 @@
 # UltraCanvasClassDiagram — Research & Feature Proposal
 
-Status: **Proposal — nothing implemented yet.** This document is the research
-write-up and the agreed feature list for a new
+Status: **Foundations delivered; the rendering element is still open.**
+This document is the research write-up and the agreed feature list for a new
 `UltraCanvasClassDiagram` element under `UltraCanvas/Plugins/Diagrams/`.
+
+Two of the open questions in §8 have been resolved as recommended, and the work
+they gate is implemented:
+
+* **Q1 — shared routing header (E1).** Done. FlowChart's A\* router now lives in
+  `UltraCanvasDiagramRouting.h/.cpp` as the stateless `UltraCanvasDiagramRouter`,
+  reusable by FlowChart, BlockDiagram and the class diagram. `UltraCanvasFlowChart`
+  is 2.3.0 and forwards to it. Three defects in the original router were fixed
+  during extraction. Multi-edge anchor distribution (E4) shipped with it.
+  Docs: [`UltraCanvasDiagramRouting.md`](UltraCanvasDiagramRouting.md).
+  Tests: `Tests/DiagramRoutingTest.cpp`.
+* **Q5 — pragmatic C++ reverse engineering (X9).** Done at the confirmed scope:
+  a heuristic header scanner, no C++ front end. It required the UML model
+  itself, so **M1–M7, M20, R1–R11 (model level), X11 validation** and the
+  supporting notation grammar are implemented, plus **X3/X5 text export** pulled
+  forward from P2 so a model is inspectable before the element exists.
+  Docs: [`UltraCanvasUMLModel.md`](UltraCanvasUMLModel.md).
+  Tests: `Tests/UMLModelTest.cpp`.
+
+Still open: the `UltraCanvasClassDiagram` element itself — everything in §5 that
+concerns rendering, layout, interaction and file I/O beyond text export.
 
 Author: UltraCanvas Framework
 Last Modified: 2026-07-30
@@ -533,21 +554,26 @@ would need eight positional arguments.
 
 | Phase | Content | Outcome |
 |---|---|---|
-| **P1** | §5.1 M1–M7, M10, M11, M20 · §5.2 R1–R11 · §5.4 L1–L4, L8, L9, L11 · §5.5 E1–E4, E10 · §5.6 S1, S2, S4–S6, S8–S10, S13 · §5.7 I1–I4, I13–I15, I19 · §5.8 X1 · all of §5.9 | Reproduces reference images 1, 2 and 5 exactly; read-only/scripted diagrams work end to end |
+| **P1** | §5.1 M1–M7, M10, M11, M20 · §5.2 R1–R11 · §5.4 L1–L4, L8, L9, L11 · §5.5 E1–E4, E10 · §5.6 S1, S2, S4–S6, S8–S10, S13 · §5.7 I1–I4, I13–I15, I19 · §5.8 X1 · all of §5.9 | Reproduces reference images 1, 2 and 5 exactly; read-only/scripted diagrams work end to end. **Delivered so far: E1, E4, E10 (router), and the model-level halves of M1–M7, M20, R1–R11 plus X11.** Remaining: everything that renders |
 | **P2** | Packages/frames/notes (K1–K4, K7), enumerations (M8), association classes (M15), editing + undo/redo + clipboard (I5–I12, I16–I18), remaining layouts (L5–L7, L10, L12), routing polish (E5–E7, E9), PlantUML/Mermaid/SVG/PNG I/O (X2–X7), validation (X11) | Reproduces images 3 and 4; becomes a real interactive UML editor |
-| **P3** | Advanced notation (M12–M14, M16–M18, R13–R15, R17, K5, K6), line jumps (E8), XMI (X8), C++ reverse engineering (X9), code generation (X10), metrics (X12) | Full UML 2.5 coverage and toolchain integration |
+| **P3** | Advanced notation (M12–M14, M16–M18, R13–R15, R17, K5, K6), line jumps (E8), XMI (X8), ~~C++ reverse engineering (X9)~~ **delivered**, code generation (X10), metrics (X12) | Full UML 2.5 coverage and toolchain integration |
 
 ---
 
 ## 8. Open questions for review
 
-1. **Shared routing header.** Lifting FlowChart's A\* router into
-   `UltraCanvasDiagramRouting.h` touches a shipped component. Do it as a
-   separate, behaviour-preserving refactor commit first, or copy the algorithm
-   into the class diagram and unify later?
-   *Recommendation: refactor first* — three components (FlowChart, BlockDiagram,
-   ClassDiagram) want the same router, and the FlowChart changelog shows the
-   routing rules have already been fixed twice in place.
+1. ~~**Shared routing header.**~~ **RESOLVED — refactored first, as
+   recommended.** `UltraCanvasDiagramRouter` is now the single implementation.
+   The extraction was validated against the pre-refactor code over 12,156
+   randomised layouts (3,280 of which exercised A\*): 9.7% of routed paths
+   differ, and 99.8% of those differences are cases where the *old* output was
+   defective. Three real bugs were found and fixed in the process:
+   a **use-after-free** in the A\* expansion loop (a reference into `visited`
+   held across a `push_back` into `visited`, which fired as soon as the search
+   outgrew the reserved capacity), **diagonal segments** in supposedly
+   orthogonal paths from the end-of-path bridging, and **zero-length segments**
+   that made the arrow-angle computation meaningless. The property tests that
+   found them are now part of the suite.
 2. **Base class.** Derive directly from `UltraCanvasUIElement` (as FlowChart,
    BlockDiagram, NodeDiagram and CompositorDiagram all do), or introduce a
    shared `UltraCanvasNodeCanvasBase` carrying zoom/pan/selection/minimap for
@@ -565,11 +591,16 @@ would need eight positional arguments.
    *Recommendation: `parentId`*, matching `CompositorNode::parentId` (relative
    child coordinates, cycle rejection, tree-order rendering, reverse-order hit
    testing) — the semantics have already been worked out there.
-5. **Scope of X9 (C++ reverse engineering).** A real C++ parser is out of scope;
-   a pragmatic regex/heuristic header scanner covering the subset this codebase
-   uses (`class X : public Y`, member declarations, access specifiers) would
-   already generate useful diagrams. Confirm the pragmatic scope is acceptable
-   before P3.
+5. ~~**Scope of X9 (C++ reverse engineering).**~~ **RESOLVED — pragmatic scope
+   confirmed and implemented.** `UltraCanvasCppReverseEngineer` is a brace- and
+   declaration-level scanner, not a C++ front end: no macro expansion, no `#if`
+   evaluation, no typedef resolution, no template instantiation. Declarations it
+   cannot interpret are skipped and counted rather than guessed at. Over this
+   repository's 217 public headers it produces 1,345 classifiers and 742
+   relationships, fails to interpret 55 declarations, and the resulting model
+   validates without errors. Ownership is mapped to UML: by-value and
+   `unique_ptr` → composition, `shared_ptr` → aggregation, raw pointer and
+   reference → directed association, containers → multiplicity `*`.
 
 ---
 
