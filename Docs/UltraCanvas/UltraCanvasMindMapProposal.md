@@ -1,13 +1,12 @@
 # UltraCanvasMindMap — Research & Feature Proposal
 
-Status: **Phases 0 and 1 are implemented; Phase 2 is partly implemented.** The shared viewport (V0) shipped as
+Status: **Phases 0, 1 and 2 are implemented.** The shared viewport (V0) shipped as
 [`UltraCanvasDiagramViewport`](UltraCanvasDiagramViewport.md), with
 `UltraCanvasNodeDiagram` and `UltraCanvasCompositorDiagram` refactored onto it.
 The element itself shipped as `UltraCanvasMindMap` + `UltraCanvasMindMapLayout`
 — see [`UltraCanvasMindMapExamples.md`](UltraCanvasMindMapExamples.md) for the
 API and `Apps/DemoApp/UltraCanvasMindMapExamples.cpp` for the demo. Phases 2 and
-3 below are still a proposal. §7 lists exactly what of Phase 2 landed and what
-did not.
+3 below is still a proposal. §7 records what landed in each phase.
 
 This document is the research write-up, the image analysis and the feature list
 the implementation was scoped against. For background: the DemoApp had reserved a
@@ -642,7 +641,7 @@ policies, collapse, floating topics, spacing, determinism, and a 364-topic
 zero-overlap stress case) and `Tests/MindMapSerializationTest.cpp` (the
 structural restore path FromJson depends on).
 
-**Phase 2 — the presentation map (fully covers images 3, 5, 7 and 9). — PARTLY DONE**
+**Phase 2 — the presentation map (fully covers images 3, 5, 7 and 9). — DONE**
 
 Delivered: L12 (`alignLevelColumns` / `alignSideRows`), L13 (`Manual`
 structure with authored positions), R7 (connector badges), S8 (drop shadows),
@@ -656,19 +655,19 @@ Covered by `Tests/MindMapIOTest.cpp` (every format's round-trip, malformed
 input, and a cross-format fidelity pass) and new alignment/manual cases in
 `Tests/MindMapLayoutTest.cpp`.
 
-**Still open from Phase 2:**
+**Everything in Phase 2 is now delivered.** The second pass added L8
+(per-branch structure override, laid out locally first so it reserves exactly
+the space it needs and never collides with its siblings), L14 (eased re-layout
+tweening), R4 (baseline connector attachment), R9 (labels on branch
+connectors), C5 (callout cards with leader lines), D6 (userData plus a typed
+attribute map, both round-tripping through JSON), I9 (Ctrl+drag to empty canvas
+creates a child) and A2 (view culling).
 
-| ID | Feature | Why it was left |
-|---|---|---|
-| D6 | Typed attribute map per topic | No consumer yet; `note`/`link`/`markers` cover the concrete cases the designs showed. Worth doing when a real binding need appears. |
-| L8 | Per-branch structure override | The field exists on `MindMapTopic` but the engine ignores it. Doing it properly means a subtree-local layout pass anchored at the branch node — a real piece of work, not a flag. |
-| L14 | Animated re-layout | Needs a frame tick the element does not currently own. |
-| R4 | Baseline/underline connector attachment | Cosmetic; the perimeter anchoring already reads correctly for every shape. |
-| R9 | Labels on branch connectors | Relationship connectors already carry labels; branch connectors do not. |
-| C5 | Callout cards with leader lines | Floating topics cover the placement half; the leader line and auto-placement are the missing part. |
-| I9 | Drag-from-edge to create | Drag currently always means reparent; adding create-on-empty-drop needs a modifier or an edge affordance to stay unambiguous. |
-| A1 | Incremental re-layout | Full re-layout is already lazy (once per frame) and fast at the sizes tested; this is an optimisation without a demonstrated need. |
-| A2 | Virtualised rendering / culling | Same — worth doing when a map large enough to need it exists. |
+A1 (incremental re-layout) was deliberately **not** implemented: full re-layout
+is already lazy — at most once per frame — and measured fine at the sizes
+tested, so subtree-level dirty tracking would add real complexity for no
+demonstrated gain. It stays on the list for when a map large enough to need it
+exists.
 
 **Phase 3 — the specialist structures.**
 D9, D10 (incl. the brace-map look); L5, L7, L15; S11; C7; V6; X9; A4, A7, A8.

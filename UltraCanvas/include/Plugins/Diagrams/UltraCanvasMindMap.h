@@ -37,6 +37,8 @@
 #include <vector>
 #include <set>
 #include <deque>
+#include <chrono>
+#include <unordered_map>
 
 namespace UltraCanvas {
 
@@ -68,6 +70,12 @@ enum class MindMapConnectorColorMode {
     Fixed                // Always MindMapStyle::connectorColor
 };
 
+// Where a connector meets a node (R4).
+enum class MindMapConnectorAttach {
+    Perimeter,   // Nearest point on the node outline (default)
+    Baseline     // The node's bottom edge, the classic mind map convention
+};
+
 enum class MindMapEndDecoration {
     NoDecoration,   // Not "None" - X11 defines None as a macro
     Arrow,
@@ -97,8 +105,11 @@ struct MindMapStyle {
     double connectorWidth = 2.0;
     double taperStartWidth = 6.0;     // TaperedBranch width at the parent
     double taperEndWidth   = 1.5;     // ...and at the child
+    MindMapConnectorAttach connectorAttach = MindMapConnectorAttach::Perimeter;
     MindMapEndDecoration endDecoration = MindMapEndDecoration::NoDecoration;
     double endDecorationSize = 5.0;
+    // Labels on branch connectors (R9). Relationship labels are always drawn.
+    bool showConnectorLabels = true;
 
     // Selection & hover
     Color selectionColor = Color(0, 120, 215, 255);
@@ -146,6 +157,16 @@ struct MindMapStyle {
     // Fades every topic outside the hovered topic's branch.
     bool   dimUnrelatedOnHover = false;
     double dimOpacity = 0.28;
+
+    // ---- Callout cards (C5) ----
+    Color calloutLeaderColor = Color(160, 160, 172, 255);
+    double calloutLeaderWidth = 1.2;
+    bool   calloutLeaderDashed = true;
+
+    // ---- Animated re-layout (L14) ----
+    // Topics tween from their old positions to the new ones after a layout
+    // change. 0 disables.
+    double layoutAnimationMs = 0.0;
 
     // ---- Background layer (S9) ----
     // Drawn in WORLD space beneath the map, before the grid. The rect passed is
@@ -196,6 +217,17 @@ public:
     void AddTopicMarker(const std::string& id, const std::string& marker);
     void ClearTopicMarkers(const std::string& id);
     void SetTopicLink(const std::string& id, const std::string& link);
+    void SetTopicConnectorLabel(const std::string& id, const std::string& label);
+    // Free-form application data (D6).
+    void SetTopicUserData(const std::string& id, const std::string& userData);
+    std::string GetTopicUserData(const std::string& id) const;
+    void SetTopicAttribute(const std::string& id, const std::string& key,
+                           const std::string& value);
+    std::string GetTopicAttribute(const std::string& id, const std::string& key,
+                                  const std::string& fallback = std::string()) const;
+    // Callout card (C5): a floating topic that points at `targetId`.
+    std::string AddCallout(const std::string& targetId, const std::string& text,
+                           double x, double y);
     void SetTopicIcon(const std::string& id, const std::string& iconPath);
     void SetTopicImage(const std::string& id, const std::string& imagePath);
     void SetTopicNote(const std::string& id, const std::string& note);
@@ -407,6 +439,14 @@ private:
     Rect2Dd LinkIndicatorRect(const MindMapTopic& topic) const;
     std::string FindLinkIndicatorAt(const Point2Di& localPos) const;
     void RenderDropIndicator(IRenderContext* ctx);
+    void RenderCallouts(IRenderContext* ctx);
+    void RenderConnectorLabel(IRenderContext* ctx, const MindMapTopic& child,
+                              const Point2Dd& from, const Point2Dd& to);
+    // Animation (L14): captures the pre-layout positions and, while a tween is
+    // running, returns the interpolated box for a topic.
+    void CaptureAnimationStart();
+    bool IsAnimating() const;
+    Rect2Dd AnimatedBounds(const std::string& id, const Rect2Dd& target) const;
     void RenderEndDecoration(IRenderContext* ctx, const Point2Dd& tip,
                              const Point2Dd& direction, const Color& color);
 
@@ -488,6 +528,8 @@ private:
     Point2Di dragStartPos;
     Point2Di lastMousePos;
     bool dragExceededThreshold = false;
+    // Ctrl held when the drag began: drop on empty canvas creates a child (I9).
+    bool dragCreateModifier = false;
 
     // In-place editing
     std::shared_ptr<UltraCanvasTextInput> editOverlay;
@@ -502,6 +544,11 @@ private:
     std::deque<UndoEntry> redoStack;
     size_t undoLimit = 100;
     bool suppressUndo = false;
+
+    // Animation state (L14)
+    std::unordered_map<std::string, Rect2Dd> animationFrom;
+    std::chrono::steady_clock::time_point animationStart;
+    bool animationActive = false;
 
     // Cached render context for text measurement between frames.
     mutable IRenderContext* measureContext = nullptr;

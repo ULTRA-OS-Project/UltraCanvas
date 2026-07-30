@@ -14,6 +14,7 @@
 #include "Plugins/Diagrams/UltraCanvasMindMapLayout.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -27,6 +28,10 @@ static int g_failures = 0;
         if (!(cond)) { std::printf("  FAIL: %s\n", msg); ++g_failures; } \
         else         { std::printf("  ok:   %s\n", msg); }               \
     } while (0)
+
+static bool Near(double a, double b, double eps = 1e-6) {
+    return std::abs(a - b) <= eps;
+}
 
 // Inserts a topic straight into the map, the way a deserializer would.
 static void RawInsert(MindMapModel& model, const std::string& id,
@@ -190,6 +195,95 @@ static void TestOutlineRoundTrip() {
     CHECK(depthsValid, "pre-order walk never skips a level");
 }
 
+static void TestRichFieldsSurviveRestore() {
+    std::printf("\n[rich fields survive restore]\n");
+
+    // Everything the JSON reader writes back onto a topic must survive the
+    // RestoreStructure repair pass, not just the tree links.
+    MindMapModel model;
+    MindMapTopic root("root", "Centre");
+    model.Topics()["root"] = root;
+
+    MindMapTopic rich("rich", "Rich topic");
+    rich.parentId = "root";
+    rich.note = "A note";
+    rich.link = "https://example.com";
+    rich.connectorLabel = "leads to";
+    rich.userData = "payload";
+    rich.markers = {"check", "clock"};
+    rich.attributes["owner"] = "alice";
+    rich.attributes["status"] = "done";
+    rich.hasManualPosition = true;
+    rich.manualX = 120.0;
+    rich.manualY = -80.0;
+    rich.structureOverride = MindMapStructure::OrgChartDown;
+    rich.weight = 2.5;
+    rich.collapsed = true;
+    model.Topics()["rich"] = rich;
+    model.Topics()["root"].childIds = {"rich"};
+
+    model.RestoreStructure("root");
+
+    const MindMapTopic* restored = model.GetTopic("rich");
+    CHECK(restored != nullptr, "the rich topic survives");
+    CHECK(restored && restored->note == "A note", "note survives");
+    CHECK(restored && restored->link == "https://example.com", "link survives");
+    CHECK(restored && restored->connectorLabel == "leads to", "connector label survives");
+    CHECK(restored && restored->userData == "payload", "userData survives");
+    CHECK(restored && restored->markers.size() == 2, "markers survive");
+    CHECK(restored && restored->attributes.size() == 2, "attributes survive");
+    CHECK(restored && restored->attributes.at("owner") == "alice",
+          "attribute values survive");
+    CHECK(restored && restored->hasManualPosition &&
+          Near(restored->manualX, 120.0) && Near(restored->manualY, -80.0),
+          "manual position survives");
+    CHECK(restored && restored->structureOverride.has_value() &&
+          restored->structureOverride.value() == MindMapStructure::OrgChartDown,
+          "structure override survives");
+    CHECK(restored && Near(restored->weight, 2.5), "weight survives");
+    CHECK(restored && restored->collapsed, "collapsed state survives");
+    CHECK(restored && !restored->floating,
+          "a parented topic is not marked floating by the repair");
+}
+
+static void TestCalloutRestore() {
+    std::printf("\n[callout restore]\n");
+
+    // A callout is a floating topic pointing at another topic. The repair pass
+    // must keep it floating and keep the pointer intact.
+    MindMapModel model;
+    MindMapTopic root("root", "Centre");
+    model.Topics()["root"] = root;
+    MindMapTopic target("target", "Target");
+    target.parentId = "root";
+    model.Topics()["target"] = target;
+    model.Topics()["root"].childIds = {"target"};
+
+    MindMapTopic callout("callout", "A note card");
+    callout.calloutTargetId = "target";
+    callout.floating = true;
+    callout.floatX = 400.0;
+    callout.floatY = 120.0;
+    model.Topics()["callout"] = callout;
+
+    model.RestoreStructure("root");
+
+    const MindMapTopic* restored = model.GetTopic("callout");
+    CHECK(restored && restored->floating, "the callout stays floating");
+    CHECK(restored && restored->calloutTargetId == "target",
+          "the callout keeps pointing at its target");
+    CHECK(model.FloatingTopicIds().size() == 1, "the floating list tracks the callout");
+    CHECK(Near(restored->floatX, 400.0), "the callout keeps its position");
+
+    // A callout whose target was deleted must not dangle into a crash - the
+    // pointer simply no longer resolves.
+    model.RemoveTopic("target");
+    const MindMapTopic* orphaned = model.GetTopic("callout");
+    CHECK(orphaned != nullptr, "the callout outlives its target");
+    CHECK(model.GetTopic(orphaned->calloutTargetId) == nullptr,
+          "the dangling callout target resolves to null rather than crashing");
+}
+
 int main() {
     std::printf("UltraCanvasMindMap serialization/restore tests\n");
     std::printf("=============================================\n");
@@ -200,6 +294,8 @@ int main() {
     TestRestoreIdCounter();
     TestRestoreRootReparenting();
     TestOutlineRoundTrip();
+    TestRichFieldsSurviveRestore();
+    TestCalloutRestore();
 
     std::printf("\n=============================================\n");
     if (g_failures == 0) {

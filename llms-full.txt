@@ -19380,7 +19380,7 @@ shapes, images, icons and numbering).
 **Namespace:** `UltraCanvas`
 **Header:** `include/Plugins/Diagrams/UltraCanvasMindMap.h`
 **Base Class:** `UltraCanvasUIElement`
-**Version:** 1.1.0
+**Version:** 1.2.0
 
 The topic model and the layout engine live separately in
 `include/Plugins/Diagrams/UltraCanvasMindMapLayout.h`, and the interchange
@@ -19495,6 +19495,30 @@ map->SetLayoutOptions(options);
 
 Both are off by default. `alignSideRows` applies to the `Balanced` and `Manual`
 structures only — the other structures have no two sides to pair up.
+
+### Per-branch structure
+
+A main topic can declare its own structure while the rest of the map keeps the
+default — XMind's "combine structures" behaviour:
+
+```cpp
+map->GetTopic(branchId)->structureOverride = MindMapStructure::OrgChartDown;
+```
+
+The overridden branch is laid out locally first, and the main pass then reserves
+exactly the space its bounding box needs, so an overridden branch never collides
+with its siblings. Overrides apply to **depth-1 branches**; a nested override is
+ignored.
+
+### Animated re-layout
+
+```cpp
+map->Style().layoutAnimationMs = 220.0;   // 0 disables
+```
+
+Topics tween from their old positions to the new ones with an ease-out curve
+after any layout change — collapse, structure switch, reparent. Re-triggering
+mid-tween starts from where things currently appear rather than snapping back.
 
 ### Manual placement
 
@@ -19615,6 +19639,19 @@ map->Style().taperStartWidth = 7.0;
 map->Style().taperEndWidth = 1.5;
 ```
 
+### Attachment and labels
+
+```cpp
+map->Style().connectorAttach = MindMapConnectorAttach::Baseline;  // or Perimeter
+map->SetTopicConnectorLabel(childId, "leads to");
+map->Style().showConnectorLabels = true;
+```
+
+`Baseline` runs the stroke to the bottom edge of each node — the classic
+hand-drawn convention — instead of to the nearest point on its outline.
+A connector label belongs to the **child**, since a connector is implied by the
+parent/child link rather than being an object of its own.
+
 ### Connector badges
 
 A circular badge on the connector carrying the child's icon, or its ordinal
@@ -19648,6 +19685,30 @@ map->Style().showNoteIndicator = false;
 map->Style().showLinkIndicator = false;
 map->Style().showMarkers = false;
 ```
+
+### Callout cards
+
+A callout is a floating topic that points at another topic with a leader line:
+
+```cpp
+std::string card = map->AddCallout(topicId, "Explanatory text", 520.0, -300.0);
+map->Style().calloutLeaderDashed = true;
+```
+
+The leader runs between the two nodes' perimeters and ends in a small dot on the
+target, so it reads as a reference rather than a branch. If the target is later
+deleted the card survives; its pointer simply stops resolving.
+
+### Application data
+
+```cpp
+map->SetTopicUserData(id, "external-key");
+map->SetTopicAttribute(id, "owner", "alice");
+std::string owner = map->GetTopicAttribute(id, "owner");
+```
+
+Neither the layout engine nor the element interprets these; both round-trip
+through JSON.
 
 Icons and images are **file paths**, matching the framework convention
 (`UltraCanvasTreeView::TreeNodeIcon`, `UltraCanvasButton::SetIcon`,
@@ -19735,6 +19796,10 @@ Click selects, Shift+click adds to the selection, double-click renames (or
 collapses when the map is read-only), dragging a topic onto another reparents it
 with a drop indicator, dragging empty canvas pans, and the wheel zooms at the
 cursor. Double-clicking empty canvas fits the view.
+
+**Ctrl+drag** from a topic to empty canvas creates a child at the drop point.
+The modifier is required so that a plain drag always means "reparent" and never
+silently creates a topic when it misses a target.
 
 In-place editing embeds an `UltraCanvasTextInput` positioned over the topic in
 screen space, with its font scaled by the current zoom. While an edit is active
@@ -19874,6 +19939,11 @@ Layout is **lazy**: mutations mark it dirty and `Render()` recomputes at most
 once per frame. Real text metrics only exist during `Render()`, which is why the
 layout pass runs from there rather than from the mutating setters.
 
+Rendering is **culled**: only topics intersecting the visible world region (plus
+a margin, so partially-visible nodes and their indicators do not pop at the
+edge) are drawn. Connectors and relationships are not culled — they are cheap
+and often span the visible region.
+
 ---
 
 ## Demo
@@ -19881,8 +19951,10 @@ layout pass runs from there rather than from the mutating setters.
 `Apps/DemoApp/UltraCanvasMindMapExamples.cpp` — six tabs: an editable map, a
 logic chart with ordinal badges, a radial map, cross-branch relationships, a
 presentation layout (aligned columns and rows, connector badges, shadows,
-background layer, note/link/marker indicators), and a gallery for switching
-theme, structure and connector style at runtime.
+background layer, callout cards, connector labels, note/link/marker
+indicators), and a gallery for switching theme, structure and connector style at
+runtime. The editable tab also shows a single branch overridden to an org chart
+inside an otherwise balanced map.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasNestedAreaChartExamples.md

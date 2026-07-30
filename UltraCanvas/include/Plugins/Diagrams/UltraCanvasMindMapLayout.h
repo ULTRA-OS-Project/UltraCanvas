@@ -111,6 +111,18 @@ struct MindMapTopic {
     // paths or short names, resolved the same way as iconPath.
     std::vector<std::string> markers;
 
+    // Label drawn on the connector coming from this topic's parent (R9).
+    std::string connectorLabel;
+
+    // Callout cards (C5): a floating topic that points at another topic with a
+    // leader line. Empty on ordinary topics.
+    std::string calloutTargetId;
+
+    // Free-form application data (D6). Neither the layout engine nor the
+    // element interprets these; both round-trip through JSON.
+    std::string userData;
+    std::unordered_map<std::string, std::string> attributes;
+
     // Floating topics (no parent, placed by the app) keep their own position.
     bool   floating = false;
     double floatX   = 0.0;

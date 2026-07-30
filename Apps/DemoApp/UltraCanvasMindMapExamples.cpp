@@ -47,9 +47,10 @@ std::shared_ptr<UltraCanvasContainer> MakeEditableTab(
     auto tab = std::make_shared<UltraCanvasContainer>("MindMapEditableTab", 0, 0, 1020, 700);
 
     auto desc = std::make_shared<UltraCanvasLabel>("MindMapEditableDesc", 10, 8, 990, 22);
-    desc->SetText("Balanced structure. Double-click or F2 to rename, Enter for a sibling, "
-                  "Tab for a child, Delete to remove, drag onto another topic to reparent, "
-                  "Ctrl+Z / Ctrl+Shift+Z to undo and redo.");
+    desc->SetText("Balanced structure with one branch overridden to an org chart. "
+                  "Double-click or F2 to rename, Enter for a sibling, Tab for a child, "
+                  "Delete to remove, drag onto another topic to reparent, Ctrl+drag to "
+                  "empty canvas to create, Ctrl+C/X/V to copy, Ctrl+Z to undo.");
     desc->SetFontSize(11);
     desc->SetWrap(TextWrap::WrapWord);
     tab->AddChild(desc);
@@ -84,6 +85,16 @@ std::shared_ptr<UltraCanvasContainer> MakeEditableTab(
         {2, "Send to archive"},
         {2, "May include photos"},
     });
+
+    // One branch drawn as an org chart while the rest of the map stays a mind
+    // map - the XMind "combine structures" behaviour (L8).
+    const MindMapTopic* editableRoot = map->GetTopic(map->GetRootId());
+    if (editableRoot && editableRoot->childIds.size() >= 4) {
+        if (MindMapTopic* branch = map->GetTopic(editableRoot->childIds[3])) {
+            branch->structureOverride = MindMapStructure::OrgChartDown;
+        }
+    }
+    map->Style().layoutAnimationMs = 200.0;
 
     AttachStatus(map, status);
     tab->AddChild(map);
@@ -446,6 +457,18 @@ std::shared_ptr<UltraCanvasContainer> MakePresentationTab(
         map->SetTopicMarkers(rootTopic->childIds[2],
                              {"media/icons/check.png", "media/icons/clock-five.svg"});
     }
+
+    // Callout cards with leader lines, and a label on one branch connector.
+    if (rootTopic && !rootTopic->childIds.empty()) {
+        map->AddCallout(rootTopic->childIds[0],
+                        "A callout card, tied back to its topic by a leader line.",
+                        -520.0, -260.0);
+        map->SetTopicConnectorLabel(rootTopic->childIds[0], "primary");
+    }
+
+    // Re-layout tweens instead of snapping, so collapse and structure changes
+    // are followable.
+    s.layoutAnimationMs = 220.0;
 
     map->onTopicLinkActivated = [status](const std::string&, const std::string& link) {
         status->SetText("Link activated: " + link);

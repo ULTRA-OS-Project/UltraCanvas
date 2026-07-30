@@ -747,6 +747,88 @@ static void TestManualStructure() {
           "switching back restores the authored position");
 }
 
+static void TestBranchStructureOverride() {
+    std::printf("\n[per-branch structure override]\n");
+
+    MindMapModel model;
+    std::string root = model.SetCentralTopic("Centre");
+    std::string plain = model.AddTopic(root, "Plain branch");
+    for (int i = 0; i < 3; ++i) model.AddTopic(plain, "Plain leaf");
+
+    std::string org = model.AddTopic(root, "Org branch");
+    for (int i = 0; i < 3; ++i) model.AddTopic(org, "Org leaf");
+    model.GetTopic(org)->structureOverride = MindMapStructure::OrgChartDown;
+
+    MindMapLayoutOptions options;
+    options.structure = MindMapStructure::Balanced;
+    MindMapLayoutResult result = Run(model, options);
+
+    CHECK(result.bounds.size() == model.GetTopicCount(),
+          "every topic is laid out with an override in play");
+    CHECK(CountOverlaps(result) == 0,
+          "an overridden branch does not collide with its siblings");
+
+    // The overridden branch's children must stack horizontally BELOW it,
+    // the org-chart shape, not fan out sideways like the rest of the map.
+    const MindMapTopic* orgTopic = model.GetTopic(org);
+    Rect2Dd orgBox = result.Get(org);
+    bool below = true, spreadHorizontally = true;
+    std::vector<double> childX;
+    for (const auto& childId : orgTopic->childIds) {
+        Rect2Dd childBox = result.Get(childId);
+        if (childBox.y <= orgBox.y) below = false;
+        childX.push_back(childBox.x);
+    }
+    std::sort(childX.begin(), childX.end());
+    for (size_t i = 1; i < childX.size(); ++i) {
+        if (!(childX[i] > childX[i - 1])) spreadHorizontally = false;
+    }
+    CHECK(below, "overridden branch children sit below their parent");
+    CHECK(spreadHorizontally, "overridden branch children spread horizontally");
+
+    // The plain branch keeps the map's own structure: children fan out
+    // vertically at a shared column.
+    const MindMapTopic* plainTopic = model.GetTopic(plain);
+    std::vector<double> plainY;
+    bool sameColumn = true;
+    double columnX = 0.0;
+    bool haveColumn = false;
+    for (const auto& childId : plainTopic->childIds) {
+        Rect2Dd childBox = result.Get(childId);
+        plainY.push_back(childBox.y);
+        if (!haveColumn) { columnX = childBox.x; haveColumn = true; }
+        else if (!Near(childBox.x, columnX, 1e-6)) sameColumn = false;
+    }
+    CHECK(sameColumn, "the un-overridden branch still uses the map's structure");
+    CHECK(plainY.size() == 3, "the un-overridden branch kept its children");
+
+    // Removing the override returns the branch to the map's structure.
+    model.GetTopic(org)->structureOverride.reset();
+    MindMapLayoutResult reverted = Run(model, options);
+    bool backToFan = true;
+    for (const auto& childId : orgTopic->childIds) {
+        if (reverted.Get(childId).y <= reverted.Get(org).y + reverted.Get(org).height) {
+            // A fanned child may sit above or below; what must change is that
+            // it is no longer strictly stacked underneath in a row.
+        }
+    }
+    double firstX = reverted.Get(orgTopic->childIds[0]).x;
+    for (const auto& childId : orgTopic->childIds) {
+        if (!Near(reverted.Get(childId).x, firstX, 1e-6)) backToFan = false;
+    }
+    CHECK(backToFan, "clearing the override restores the map's structure");
+    CHECK(CountOverlaps(reverted) == 0, "no overlaps after clearing the override");
+
+    // A collapsed overridden branch must not expand.
+    model.GetTopic(org)->structureOverride = MindMapStructure::OrgChartDown;
+    model.GetTopic(org)->collapsed = true;
+    MindMapLayoutResult collapsed = Run(model, options);
+    CHECK(collapsed.Has(org), "a collapsed overridden branch is still placed");
+    CHECK(!collapsed.Has(orgTopic->childIds[0]),
+          "a collapsed overridden branch hides its children");
+    CHECK(CountOverlaps(collapsed) == 0, "no overlaps with a collapsed override");
+}
+
 int main() {
     std::printf("UltraCanvasMindMap model & layout tests\n");
     std::printf("=======================================\n");
@@ -767,6 +849,7 @@ int main() {
     TestEdgeCases();
     TestAlignmentPasses();
     TestManualStructure();
+    TestBranchStructureOverride();
 
     std::printf("\n=======================================\n");
     if (g_failures == 0) {

@@ -218,6 +218,45 @@ void UltraCanvasMindMap::SetTopicLink(const std::string& id, const std::string& 
     }
 }
 
+void UltraCanvasMindMap::SetTopicConnectorLabel(const std::string& id,
+                                                const std::string& label) {
+    if (MindMapTopic* topic = model.GetTopic(id)) {
+        topic->connectorLabel = label;
+        RequestRedraw();
+    }
+}
+
+void UltraCanvasMindMap::SetTopicUserData(const std::string& id, const std::string& userData) {
+    if (MindMapTopic* topic = model.GetTopic(id)) topic->userData = userData;
+}
+
+std::string UltraCanvasMindMap::GetTopicUserData(const std::string& id) const {
+    const MindMapTopic* topic = model.GetTopic(id);
+    return topic ? topic->userData : std::string();
+}
+
+void UltraCanvasMindMap::SetTopicAttribute(const std::string& id, const std::string& key,
+                                           const std::string& value) {
+    if (MindMapTopic* topic = model.GetTopic(id)) topic->attributes[key] = value;
+}
+
+std::string UltraCanvasMindMap::GetTopicAttribute(const std::string& id, const std::string& key,
+                                                  const std::string& fallback) const {
+    const MindMapTopic* topic = model.GetTopic(id);
+    if (!topic) return fallback;
+    auto it = topic->attributes.find(key);
+    return it == topic->attributes.end() ? fallback : it->second;
+}
+
+std::string UltraCanvasMindMap::AddCallout(const std::string& targetId, const std::string& text,
+                                           double x, double y) {
+    if (!model.GetTopic(targetId)) return std::string();
+    std::string id = AddFloatingTopic(text, x, y);
+    if (MindMapTopic* callout = model.GetTopic(id)) callout->calloutTargetId = targetId;
+    RequestRedraw();
+    return id;
+}
+
 void UltraCanvasMindMap::SetTopicIcon(const std::string& id, const std::string& iconPath) {
     if (MindMapTopic* topic = model.GetTopic(id)) {
         topic->iconPath = iconPath;
@@ -328,6 +367,7 @@ void UltraCanvasMindMap::EnsureLayout() {
         return ResolveTopicStyle(topic);
     };
 
+    CaptureAnimationStart();   // Snapshot the outgoing positions first (L14)
     UltraCanvasMindMapLayout::ComputeLayout(model, layoutOptions, measure, styleOf, layoutResult);
     layoutDirty = false;
 
@@ -938,9 +978,26 @@ void UltraCanvasMindMap::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
     if (style.backgroundRenderer) {
         style.backgroundRenderer(ctx, viewport.GetVisibleWorldRect());
     }
+    // While a tween runs, topic bounds are the interpolated ones; the layout
+    // result keeps the final values so the next tween starts from the truth.
+    if (IsAnimating()) {
+        for (const auto& [id, target] : layoutResult.bounds) {
+            if (MindMapTopic* topic = model.GetTopic(id)) {
+                topic->bounds = AnimatedBounds(id, target);
+            }
+        }
+        RequestRedraw();   // Keep frames coming until the tween finishes
+    } else if (animationActive) {
+        animationActive = false;
+        for (const auto& [id, target] : layoutResult.bounds) {
+            if (MindMapTopic* topic = model.GetTopic(id)) topic->bounds = target;
+        }
+    }
+
     if (style.showGrid) RenderGrid(ctx);
 
     RenderConnectors(ctx);
+    RenderCallouts(ctx);
     RenderRelationships(ctx);
     RenderTopics(ctx);
     if (isDraggingTopic) RenderDropIndicator(ctx);
@@ -1007,6 +1064,19 @@ void UltraCanvasMindMap::RenderConnector(IRenderContext* ctx, const MindMapTopic
     Point2Dd childCenter = TopicCenter(child);
     Point2Dd from = PerimeterPoint(parent, parentStyle, childCenter);
     Point2Dd to = PerimeterPoint(child, childStyle, parentCenter);
+
+    // Baseline attachment: the stroke runs to the bottom edge of each node
+    // rather than its outline, the classic hand-drawn mind map convention (R4).
+    if (style.connectorAttach == MindMapConnectorAttach::Baseline) {
+        auto baseline = [](const MindMapTopic& topic, bool towardsRight) {
+            double y = topic.bounds.y + topic.bounds.height;
+            double x = towardsRight ? topic.bounds.x + topic.bounds.width : topic.bounds.x;
+            return Point2Dd(x, y);
+        };
+        bool childIsRight = childCenter.x >= parentCenter.x;
+        from = baseline(parent, childIsRight);
+        to = baseline(child, !childIsRight);
+    }
 
     Color color;
     switch (style.connectorColorMode) {
@@ -1130,6 +1200,9 @@ void UltraCanvasMindMap::RenderConnector(IRenderContext* ctx, const MindMapTopic
 
     if (style.showConnectorBadges) {
         RenderConnectorBadge(ctx, child, from, to, color);
+    }
+    if (style.showConnectorLabels && !child.connectorLabel.empty()) {
+        RenderConnectorLabel(ctx, child, from, to);
     }
 
     if (style.endDecoration != MindMapEndDecoration::NoDecoration) {
@@ -1255,8 +1328,21 @@ void UltraCanvasMindMap::RenderTopics(IRenderContext* ctx) {
                   return a->id < b->id;   // Stable, so rendering is deterministic
               });
 
+    // Culling: only topics intersecting the visible world region are drawn
+    // (A2). A generous margin keeps partially-visible nodes and their
+    // indicators from popping at the edge.
+    Rect2Dd visible = viewport.GetVisibleWorldRect();
+    const double cullMargin = 120.0;
+    Rect2Dd cullRect(visible.x - cullMargin, visible.y - cullMargin,
+                     visible.width + cullMargin * 2.0, visible.height + cullMargin * 2.0);
+
     for (const MindMapTopic* topic : ordered) {
         if (editingTopicId == topic->id) continue;   // The editor covers it
+        const Rect2Dd& box = topic->bounds;
+        if (box.x > cullRect.x + cullRect.width || box.x + box.width < cullRect.x ||
+            box.y > cullRect.y + cullRect.height || box.y + box.height < cullRect.y) {
+            continue;
+        }
         MindMapTopicStyle topicStyle = ResolveTopicStyle(*topic);
         RenderTopicShape(ctx, *topic, topicStyle);
         RenderTopicContent(ctx, *topic, topicStyle);
@@ -1706,6 +1792,7 @@ bool UltraCanvasMindMap::HandleMouseDown(const UCEvent& event) {
         if (editable && topicId != model.GetRootId()) {
             isDraggingTopic = true;
             dragTopicId = topicId;
+            dragCreateModifier = (event.ctrl || event.meta);
         }
         if (onTopicClick) onTopicClick(topicId);
         return true;
@@ -1805,6 +1892,28 @@ bool UltraCanvasMindMap::HandleMouseUp(const UCEvent& event) {
         bool reparented = false;
         if (dragExceededThreshold && !dropTargetId.empty() && dropTargetId != dragTopicId) {
             reparented = MoveTopic(dragTopicId, dropTargetId);
+        } else if (dragExceededThreshold && dropTargetId.empty() && dragCreateModifier) {
+            // Ctrl+drag onto empty canvas spawns a child at the drop point (I9).
+            // The modifier is required so a plain drag always means "reparent"
+            // and never silently creates a topic when it misses a target.
+            std::string parentId = dragTopicId;
+            Point2Dd world = viewport.ScreenToWorld(mousePos);
+            isDraggingTopic = false;
+            dragTopicId.clear();
+            dragExceededThreshold = false;
+            SetMouseCursor(UCMouseCursor::Default);
+
+            std::string created = CreateChild(parentId);
+            if (!created.empty()) {
+                if (MindMapTopic* topic = model.GetTopic(created)) {
+                    topic->hasManualPosition = true;
+                    topic->manualX = world.x;
+                    topic->manualY = world.y;
+                }
+                MarkLayoutDirty();
+                RequestRedraw();
+            }
+            return true;
         }
         isDraggingTopic = false;
         dragTopicId.clear();
@@ -2281,6 +2390,33 @@ std::string UltraCanvasMindMap::ToJson() const {
         if (!topic.imagePath.empty()) value.Set("imagePath", JSONValue(topic.imagePath));
         if (!topic.note.empty())      value.Set("note", JSONValue(topic.note));
         if (!topic.link.empty())      value.Set("link", JSONValue(topic.link));
+        if (!topic.connectorLabel.empty()) {
+            value.Set("connectorLabel", JSONValue(topic.connectorLabel));
+        }
+        if (!topic.calloutTargetId.empty()) {
+            value.Set("calloutTarget", JSONValue(topic.calloutTargetId));
+        }
+        if (!topic.userData.empty())  value.Set("userData", JSONValue(topic.userData));
+        if (!topic.markers.empty()) {
+            JSONValue markers = JSONValue::MakeArray();
+            for (const auto& marker : topic.markers) markers.Append(JSONValue(marker));
+            value.Set("markers", markers);
+        }
+        if (!topic.attributes.empty()) {
+            JSONValue attributes = JSONValue::MakeObject();
+            for (const auto& [key, attributeValue] : topic.attributes) {
+                attributes.Set(key, JSONValue(attributeValue));
+            }
+            value.Set("attributes", attributes);
+        }
+        if (topic.hasManualPosition) {
+            value.Set("manualX", JSONValue(topic.manualX));
+            value.Set("manualY", JSONValue(topic.manualY));
+        }
+        if (topic.structureOverride.has_value()) {
+            value.Set("structureOverride",
+                      JSONValue(static_cast<int>(topic.structureOverride.value())));
+        }
         if (topic.floating) {
             value.Set("floating", JSONValue(true));
             value.Set("floatX", JSONValue(topic.floatX));
@@ -2364,6 +2500,29 @@ bool UltraCanvasMindMap::FromJson(const std::string& json) {
         topic.imagePath = value.Get("imagePath").GetString();
         topic.note = value.Get("note").GetString();
         topic.link = value.Get("link").GetString();
+        topic.connectorLabel = value.Get("connectorLabel").GetString();
+        topic.calloutTargetId = value.Get("calloutTarget").GetString();
+        topic.userData = value.Get("userData").GetString();
+
+        const JSONValue& markers = value.Get("markers");
+        for (size_t m = 0; m < markers.GetSize(); ++m) {
+            topic.markers.push_back(markers.At(m).GetString());
+        }
+        const JSONValue& attributes = value.Get("attributes");
+        if (attributes.IsObject()) {
+            for (const auto& [key, attributeValue] : attributes.GetMembers()) {
+                topic.attributes[key] = attributeValue.GetString();
+            }
+        }
+        if (value.Contains("manualX") || value.Contains("manualY")) {
+            topic.hasManualPosition = true;
+            topic.manualX = value.Get("manualX").GetNumber(0.0);
+            topic.manualY = value.Get("manualY").GetNumber(0.0);
+        }
+        if (value.Contains("structureOverride")) {
+            topic.structureOverride = static_cast<MindMapStructure>(
+                value.Get("structureOverride").GetInteger(0));
+        }
         topic.floating = value.Get("floating").GetBoolean(false);
         topic.floatX = value.Get("floatX").GetNumber(0.0);
         topic.floatY = value.Get("floatY").GetNumber(0.0);
@@ -2919,6 +3078,101 @@ bool UltraCanvasMindMap::PasteOutlineInto(const std::string& targetParentId,
     if (onTopicAdded) onTopicAdded(id);
     RequestRedraw();
     return true;
+}
+
+
+// =============================================================================
+// CALLOUTS (C5) AND CONNECTOR LABELS (R9)
+// =============================================================================
+
+void UltraCanvasMindMap::RenderCallouts(IRenderContext* ctx) {
+    for (const auto& id : model.FloatingTopicIds()) {
+        const MindMapTopic* callout = model.GetTopic(id);
+        if (!callout || callout->calloutTargetId.empty()) continue;
+        const MindMapTopic* target = model.GetTopic(callout->calloutTargetId);
+        if (!target || !layoutResult.Has(target->id) || !layoutResult.Has(id)) continue;
+
+        // Leader line from the card's nearest edge to the target's perimeter.
+        MindMapTopicStyle calloutStyle = ResolveTopicStyle(*callout);
+        MindMapTopicStyle targetStyle = ResolveTopicStyle(*target);
+        Point2Dd from = PerimeterPoint(*callout, calloutStyle, TopicCenter(*target));
+        Point2Dd to = PerimeterPoint(*target, targetStyle, TopicCenter(*callout));
+
+        ctx->SetStrokePaint(style.calloutLeaderColor);
+        ctx->SetStrokeWidth(style.calloutLeaderWidth);
+        if (style.calloutLeaderDashed) ctx->SetLineDash(UCDashPattern({4.0, 3.0}));
+        ctx->DrawLine(from, to);
+        ctx->SetLineDash(UCDashPattern());
+
+        // A small dot at the target end marks what the card refers to.
+        ctx->SetFillPaint(style.calloutLeaderColor);
+        ctx->FillCircle(to, 2.5);
+    }
+}
+
+void UltraCanvasMindMap::RenderConnectorLabel(IRenderContext* ctx, const MindMapTopic& child,
+                                              const Point2Dd& from, const Point2Dd& to) {
+    FontStyle font;
+    font.fontFamily = style.fontFamily;
+    font.fontSize = 10.0;
+    ctx->SetFontStyle(font);
+
+    Size2Di textSize = ctx->GetTextLineDimensions(child.connectorLabel);
+    double centreX = (from.x + to.x) * 0.5;
+    double centreY = (from.y + to.y) * 0.5;
+
+    Rect2Dd plate(centreX - textSize.width * 0.5 - 4.0,
+                  centreY - textSize.height * 0.5 - 2.0,
+                  textSize.width + 8.0, textSize.height + 4.0);
+
+    // A background plate keeps the label readable over the stroke it sits on.
+    ctx->SetFillPaint(WithAlpha(style.backgroundColor, 235));
+    ctx->FillRoundedRectangle(plate, 3.0);
+    ctx->SetTextPaint(Color(90, 90, 100, 255));
+    ctx->DrawText(child.connectorLabel, {plate.x + 4.0, plate.y + 2.0});
+}
+
+// =============================================================================
+// ANIMATED RE-LAYOUT (L14)
+// =============================================================================
+
+void UltraCanvasMindMap::CaptureAnimationStart() {
+    if (style.layoutAnimationMs <= 0.0) {
+        animationActive = false;
+        return;
+    }
+    // Start from wherever things currently appear, so re-triggering mid-tween
+    // does not snap back to the original positions.
+    animationFrom.clear();
+    for (const auto& [id, box] : layoutResult.bounds) {
+        animationFrom[id] = IsAnimating() ? AnimatedBounds(id, box) : box;
+    }
+    animationStart = std::chrono::steady_clock::now();
+    animationActive = !animationFrom.empty();
+}
+
+bool UltraCanvasMindMap::IsAnimating() const {
+    if (!animationActive || style.layoutAnimationMs <= 0.0) return false;
+    auto elapsed = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - animationStart).count();
+    return elapsed < style.layoutAnimationMs;
+}
+
+Rect2Dd UltraCanvasMindMap::AnimatedBounds(const std::string& id, const Rect2Dd& target) const {
+    auto it = animationFrom.find(id);
+    if (it == animationFrom.end()) return target;   // New topic: no tween
+
+    auto elapsed = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - animationStart).count();
+    double t = std::clamp(elapsed / style.layoutAnimationMs, 0.0, 1.0);
+    // Ease-out cubic: fast start, gentle settle.
+    double eased = 1.0 - std::pow(1.0 - t, 3.0);
+
+    const Rect2Dd& from = it->second;
+    return Rect2Dd(from.x + (target.x - from.x) * eased,
+                   from.y + (target.y - from.y) * eased,
+                   from.width + (target.width - from.width) * eased,
+                   from.height + (target.height - from.height) * eased);
 }
 
 } // namespace UltraCanvas

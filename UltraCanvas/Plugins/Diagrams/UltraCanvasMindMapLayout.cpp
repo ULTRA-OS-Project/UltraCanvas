@@ -546,6 +546,87 @@ void UltraCanvasMindMapLayout::AssignSides(MindMapModel& model,
 }
 
 // =============================================================================
+// LAYOUT - PER-BRANCH STRUCTURE OVERRIDE (L8)
+// =============================================================================
+
+namespace {
+
+// A branch laid out under its own structure, positioned later by the parent.
+struct BranchOverrideLayout {
+    MindMapLayoutResult result;   // Positions in the branch's own local space
+    Rect2Dd boundingBox;          // Extent of `result`
+    Point2Dd rootCentre;          // Where the branch node sits inside that box
+};
+
+} // namespace
+
+// Lays out `branchId`'s subtree under `structure`, in its own local space.
+//
+// The subtree is copied into a scratch model whose root is the branch, so the
+// existing layout paths can be reused verbatim rather than reimplemented. The
+// copy's own structureOverride is cleared, which is what stops this recursing
+// back into itself.
+static bool LayoutBranchOverride(const MindMapModel& model, const std::string& branchId,
+                                 MindMapStructure structure,
+                                 const MindMapLayoutOptions& options,
+                                 const MindMapMeasureFn& measure,
+                                 const MindMapStyleFn& styleOf,
+                                 BranchOverrideLayout& out) {
+    MindMapModel scratch;
+    for (const auto& id : model.GetSubtreeIds(branchId)) {
+        const MindMapTopic* topic = model.GetTopic(id);
+        if (!topic) continue;
+        scratch.Topics()[id] = *topic;
+    }
+    auto rootIt = scratch.Topics().find(branchId);
+    if (rootIt == scratch.Topics().end()) return false;
+    rootIt->second.parentId.clear();
+    rootIt->second.structureOverride.reset();
+    scratch.RestoreStructure(branchId);
+
+    MindMapLayoutOptions subOptions = options;
+    subOptions.structure = structure;
+    // Alignment and manual placement belong to the whole map, not to a branch.
+    subOptions.alignLevelColumns = false;
+    subOptions.alignSideRows = false;
+
+    UltraCanvasMindMapLayout::ComputeLayout(scratch, subOptions, measure, styleOf, out.result);
+    if (!out.result.Has(branchId)) return false;
+
+    const DiagramContentBounds& bounds = out.result.contentBounds;
+    if (!bounds.valid) return false;
+    out.boundingBox = Rect2Dd(bounds.minX, bounds.minY,
+                              bounds.GetWidth(), bounds.GetHeight());
+
+    Rect2Dd rootBox = out.result.Get(branchId);
+    out.rootCentre = Point2Dd(rootBox.x + rootBox.width * 0.5,
+                              rootBox.y + rootBox.height * 0.5);
+    return true;
+}
+
+// Copies a branch's local layout into the map, translated so its bounding box
+// is centred on the slot the parent allocated.
+static void PlaceBranchOverride(MindMapModel& model, const std::string& branchId,
+                                const BranchOverrideLayout& branch,
+                                double slotCentreX, double slotCentreY,
+                                MindMapLayoutResult& out) {
+    double boxCentreX = branch.boundingBox.x + branch.boundingBox.width * 0.5;
+    double boxCentreY = branch.boundingBox.y + branch.boundingBox.height * 0.5;
+    double dx = slotCentreX - boxCentreX;
+    double dy = slotCentreY - boxCentreY;
+
+    for (const auto& [id, box] : branch.result.bounds) {
+        Rect2Dd placed(box.x + dx, box.y + dy, box.width, box.height);
+        out.bounds[id] = placed;
+        out.contentBounds.Include(placed);
+        // Depth, resolvedSide and branchIndex stay as the parent structure set
+        // them; only the geometry comes from the branch's own layout.
+        if (MindMapTopic* topic = model.GetTopic(id)) topic->bounds = placed;
+    }
+    (void)branchId;
+}
+
+// =============================================================================
 // LAYOUT - HORIZONTAL (Balanced / LogicRight / LogicLeft)
 // =============================================================================
 
@@ -557,6 +638,21 @@ void UltraCanvasMindMapLayout::LayoutHorizontal(MindMapModel& model,
     MindMapTopic* root = model.GetTopic(model.GetRootId());
     if (!root) return;
 
+    // ---- Pass 0: branches that declare their own structure (L8) ----
+    // Each is laid out locally first, so the main pass can reserve exactly the
+    // space it needs and the two never collide.
+    std::unordered_map<std::string, BranchOverrideLayout> overrides;
+    for (const auto& branchId : root->childIds) {
+        const MindMapTopic* branch = model.GetTopic(branchId);
+        if (!branch || !branch->structureOverride.has_value()) continue;
+        if (branch->collapsed) continue;
+        BranchOverrideLayout layout;
+        if (LayoutBranchOverride(model, branchId, branch->structureOverride.value(),
+                                 options, measure, styleOf, layout)) {
+            overrides[branchId] = std::move(layout);
+        }
+    }
+
     // ---- Pass 1: measure every visible topic ----
     std::unordered_map<std::string, Size2Dd> sizes;
     std::function<void(const std::string&, int)> measureWalk =
@@ -566,6 +662,11 @@ void UltraCanvasMindMapLayout::LayoutHorizontal(MindMapModel& model,
             topic->depth = depth;
             sizes[id] = MeasureTopic(*topic, styleOf(*topic), options, measure);
             if (topic->collapsed) return;
+            // An overridden branch owns its descendants' depths already.
+            if (overrides.find(id) != overrides.end()) {
+                for (const auto& childId : topic->childIds) measureWalk(childId, depth + 1);
+                return;
+            }
             for (const auto& childId : topic->childIds) measureWalk(childId, depth + 1);
         };
     measureWalk(root->id, 0);
@@ -576,6 +677,12 @@ void UltraCanvasMindMapLayout::LayoutHorizontal(MindMapModel& model,
         [&](const std::string& id) -> double {
             MindMapTopic* topic = model.GetTopic(id);
             if (!topic) return 0.0;
+            // An overridden branch reserves the height of its own laid-out box.
+            auto overrideIt = overrides.find(id);
+            if (overrideIt != overrides.end()) {
+                extents[id] = overrideIt->second.boundingBox.height;
+                return extents[id];
+            }
             double own = sizes[id].height;
             if (topic->collapsed || topic->childIds.empty()) {
                 extents[id] = own;
@@ -662,9 +769,21 @@ void UltraCanvasMindMapLayout::LayoutHorizontal(MindMapModel& model,
             for (const auto& childId : sideChildren) {
                 double childExtent = extents[childId];
                 double childCenterY = cursorY + childExtent * 0.5;
-                double childCenterX = direction *
-                    (rootSize.width * 0.5 + options.rootGap + sizes[childId].width * 0.5);
-                place(childId, childCenterX, childCenterY, direction);
+
+                auto overrideIt = overrides.find(childId);
+                if (overrideIt != overrides.end()) {
+                    // Reserve the slot for the branch's own box, offset from the
+                    // centre by half the root node plus the root gap.
+                    const Rect2Dd& box = overrideIt->second.boundingBox;
+                    double slotCentreX = direction *
+                        (rootSize.width * 0.5 + options.rootGap + box.width * 0.5);
+                    PlaceBranchOverride(model, childId, overrideIt->second,
+                                        slotCentreX, childCenterY, out);
+                } else {
+                    double childCenterX = direction *
+                        (rootSize.width * 0.5 + options.rootGap + sizes[childId].width * 0.5);
+                    place(childId, childCenterX, childCenterY, direction);
+                }
                 cursorY += childExtent + options.siblingGap;
             }
         }
