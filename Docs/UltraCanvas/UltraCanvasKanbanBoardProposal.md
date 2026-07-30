@@ -16,11 +16,18 @@ metadata extensions, JSON persistence (D12), flow metrics M1–M5, Del-key
 card removal, and the demo/doc pair. Open question 2 resolved:
 `Plugins/Charts/` beside the Gantt chart.
 
-Still open: the `UltraCanvasCumulativeFlowChart` companion element (§6,
-F1–F8), card checklists/attachment chips (D9, C8), card cover images (D10),
-collapsed columns (B9), full keyboard navigation (I5), column drag-reorder
-with the mouse (I6), caret-positioned in-place editing (I7 is currently
-append/backspace), and FileLoader registration (open question 3).
+Second drop: the `UltraCanvasCumulativeFlowChart` companion element (§6) —
+F1–F5 and F7–F8 in full (stacked bands with Done at the bottom,
+`LoadFromKanban` history binding, manual series, edge lines + markers, the
+three classic annotations with auto placement, right legend panel,
+Modern/Olive/Dark styles, hover read-out with per-stage counts), and F6
+custom annotations via `AddAnnotation`. See
+[`UltraCanvasCumulativeFlowChart.md`](UltraCanvasCumulativeFlowChart.md).
+
+Still open: card checklists/attachment chips (D9, C8), card cover images
+(D10), collapsed columns (B9), full keyboard navigation (I5), column
+drag-reorder with the mouse (I6), caret-positioned in-place editing (I7 is
+currently append/backspace), and FileLoader registration (open question 3).
 
 Author: UltraCanvas Framework
 Last Modified: 2026-07-30

@@ -1118,7 +1118,8 @@ namespace UltraCanvas {
                 .AddVariant("kanbanboards", "Schematic")
                 .AddVariant("kanbanboards", "Timeline / Swimlanes")
                 .AddVariant("kanbanboards", "Dark Theme")
-                .AddVariant("kanbanboards", "Text Definition");
+                .AddVariant("kanbanboards", "Text Definition")
+                .AddVariant("kanbanboards", "Cumulative Flow");
 
         chartBuilder.AddItem("quadrantcharts", "Quadrant Chart",
                              "Strategic 2x2 matrices: SWOT, BCG, Eisenhower, risk, priority and custom quadrants",

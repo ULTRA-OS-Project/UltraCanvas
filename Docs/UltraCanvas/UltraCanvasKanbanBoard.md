@@ -78,7 +78,9 @@ Every add/move/remove appends to the history (dated with
 `SetCurrentDate`). On top of it:
 
 - `GetColumnCountsAt(date)` — cards per column at the end of `date`,
-  replayed from history: the cumulative-flow-diagram input.
+  replayed from history: the cumulative-flow-diagram input. The companion
+  [`UltraCanvasCumulativeFlowChart`](UltraCanvasCumulativeFlowChart.md)
+  element binds to the board through it via `LoadFromKanban`.
 - `CardLeadTimeDays(id)` / `CardCycleTimeDays(id)` — days between passing
   the commitment/delivery boundaries (`SetCommitmentColumn` /
   `SetDeliveryColumn`; defaults are the second and last columns). Cycle time

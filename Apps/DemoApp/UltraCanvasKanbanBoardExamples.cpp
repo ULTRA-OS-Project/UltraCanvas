@@ -7,6 +7,7 @@
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasKanbanBoard.h"
+#include "Plugins/Charts/UltraCanvasCumulativeFlowChart.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasLabel.h"
@@ -200,6 +201,47 @@ namespace {
         add(soon, infra, "Automated tests");
         add(future, infra, "Regression");
         add(future, infra, "Back-end analytics");
+        return ds;
+    }
+
+    // Board with three months of dated history: cards are created and moved
+    // through the workflow day by day, so the cumulative flow chart can
+    // derive its bands from KanbanDataSource::GetColumnCountsAt.
+    std::shared_ptr<KanbanDataSource> BuildFlowHistoryBoard() {
+        auto ds = std::make_shared<KanbanDataSource>();
+        int todo   = ds->AddColumn("To Do");
+        int doing  = ds->AddColumn("Doing");
+        int review = ds->AddColumn("Review");
+        int done   = ds->AddColumn("Done");
+        ds->SetCommitmentColumn(todo);
+        ds->SetDeliveryColumn(done);
+
+        const GanttDate start(2026, 5, 1);
+        std::vector<int> cards;
+        size_t nextToDoing = 0, nextToReview = 0, nextToDone = 0;
+        for (int day = 0; day < 90; ++day) {
+            ds->SetCurrentDate(start.AddDays(day));
+            // Arrivals: a small deterministic burst every few days.
+            if (day % 3 != 2 && cards.size() < 60) {
+                cards.push_back(ds->AddCard(
+                        todo, "Item " + std::to_string(cards.size() + 1)));
+                if (day % 7 == 0 && cards.size() < 60) {
+                    cards.push_back(ds->AddCard(
+                            todo, "Item " + std::to_string(cards.size() + 1)));
+                }
+            }
+            // Flow: start work every 2nd day, review every 3rd, finish every
+            // 3rd with a slow first month (ramp-up bottleneck).
+            if (day % 2 == 0 && nextToDoing < cards.size()) {
+                ds->MoveCard(cards[nextToDoing++], doing);
+            }
+            if (day % 3 == 0 && nextToReview < nextToDoing) {
+                ds->MoveCard(cards[nextToReview++], review);
+            }
+            if (day % (day < 30 ? 4 : 2) == 1 && nextToDone < nextToReview) {
+                ds->MoveCard(cards[nextToDone++], done);
+            }
+        }
         return ds;
     }
 
@@ -409,6 +451,48 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateKanbanBo
             AddFlexChild(tab, lbl, 0);
             tabs->AddTab("Text Definition", tab);
         }
+    }
+
+    // ---- Tab 8: cumulative flow diagrams ------------------------------------
+    {
+        auto tab = std::make_shared<UltraCanvasContainer>("KanbanTabFlow", 0, 0,
+                                                          INNER_W, INNER_H);
+        tab->SetBackgroundColor(Color(255, 255, 255, 255));
+        tab->layout.SetFlexColumn().SetFlexGap(6)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        AddFlexChild(tab, MakeTabDescription(
+                "KanbanTabFlowDesc",
+                "Cumulative flow diagrams. Top: manual series in the olive "
+                "report style with the classic Lead Time / Cycle Time / WIP "
+                "Limit annotations. Bottom: bands derived live from a Kanban "
+                "board's 90-day move history via LoadFromKanban - hover for "
+                "the per-stage counts."), 0);
+
+        // Olive report chart from manual series (reference image style).
+        auto olive = CreateCumulativeFlowChartElement("KanbanFlowOlive", 0, 0,
+                                                      INNER_W, (INNER_H - 80) / 2);
+        olive->SetStyle(CumulativeFlowStyles::CreateOlive());
+        olive->AddStage("To do", {17, 15, 12, 12, 10, 5, 2, 1, 1});
+        olive->AddStage("Doing", {3, 3, 3, 3, 3, 5, 5, 5, 4});
+        olive->AddStage("QA",    {0, 2, 3, 2, 2, 3, 3, 3, 2});
+        olive->AddStage("Done",  {0, 0, 2, 3, 5, 7, 10, 11, 13});
+        olive->SetPeriodLabels({"Month 1", "Month 2", "Month 3", "Month 4",
+                                "Month 5", "Month 6", "Month 7", "Month 8",
+                                "Month 9"});
+        olive->AddLeadTimeAnnotation();
+        olive->AddCycleTimeAnnotation();
+        olive->AddWipAnnotation();
+        AddFlexChild(tab, olive, 1);
+
+        // Chart bound to a board's real move history.
+        auto derived = CreateCumulativeFlowChartFromKanban(
+                "KanbanFlowDerived", 0, 0, INNER_W, (INNER_H - 80) / 2,
+                BuildFlowHistoryBoard(), GanttDate(2026, 5, 1),
+                GanttDate(2026, 7, 29), /*stepDays=*/7,
+                "Derived from board history (weekly)");
+        AddFlexChild(tab, derived, 1);
+
+        tabs->AddTab("Cumulative Flow", tab);
     }
 
     AddFlexChild(root, tabs, 1);
