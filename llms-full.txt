@@ -10626,6 +10626,191 @@ mkBtn("rpos", 120, "Reset Pos",    [d]{ d->ResetNodePositions(); });
 - [UltraCanvasUIElement](UltraCanvasUIElement.md) — base element class
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasDiagramRouting.md
+==============================================================================
+
+# UltraCanvasDiagramRouter
+
+Shared orthogonal connection routing for the diagram family.
+
+- Header: `include/Plugins/Diagrams/UltraCanvasDiagramRouting.h`
+- Source: `Plugins/Diagrams/UltraCanvasDiagramRouting.cpp`
+- Tests: `Tests/DiagramRoutingTest.cpp` (target `DiagramRoutingTest`)
+- Version: 1.0.0
+
+## What it is
+
+The obstacle-aware orthogonal router that grew inside `UltraCanvasFlowChart`
+(v2.1.4 cardinal L/Z routing, v2.2.0 A\*), lifted into a standalone unit so
+every node-and-edge component can share one implementation.
+
+It is **UI-free** — it includes only `UltraCanvasCommonTypes.h`. There is no
+render context, no element, no node type. That is what makes it unit-testable
+without a window, and what lets `UltraCanvasFlowChart`, `UltraCanvasBlockDiagram`
+and the forthcoming `UltraCanvasClassDiagram` all call the same code.
+
+Every entry point is `static`: routing is a pure function of its inputs.
+
+## Model
+
+The router knows nothing about your nodes. You give it:
+
+| Input | Meaning |
+|---|---|
+| `start`, `end` | The exact points the line must touch, normally on a box border |
+| `sourceSide`, `targetSide` | `DiagramCardinalSide` — the box faces the line leaves from and arrives at, so it meets both boxes head-on |
+| `obstacles` | `std::vector<DiagramObstacle>` — rectangles to route around. **Pre-filtered by the caller**: leave out the source and target boxes, or the line can never leave or enter them |
+| `options` | `DiagramRoutingOptions` — grid size, routing area, turn penalty, expansion cap, obstacle insets |
+
+## Basic use
+
+```cpp
+#include "Plugins/Diagrams/UltraCanvasDiagramRouting.h"
+
+// 1. Turn your own nodes into obstacles, skipping the two being connected.
+std::vector<DiagramObstacle> obstacles;
+for (const auto& [id, node] : nodes) {
+    if (id == sourceId || id == targetId) continue;
+    obstacles.emplace_back(node.x, node.y, node.width, node.height);
+}
+
+// 2. Describe the grid and the area the router may use.
+DiagramRoutingOptions options;
+options.gridSize    = 20.0;
+options.routingArea = Rect2Dd(0, 0, elementWidth, elementHeight);
+
+// 3. Pick the faces, then route.
+Rect2Dd sourceBox(source.x, source.y, source.width, source.height);
+Rect2Dd targetBox(target.x, target.y, target.width, target.height);
+Point2Dd sourceCenter(sourceBox.x + sourceBox.width * 0.5,
+                      sourceBox.y + sourceBox.height * 0.5);
+Point2Dd targetCenter(targetBox.x + targetBox.width * 0.5,
+                      targetBox.y + targetBox.height * 0.5);
+
+auto sourceSide = UltraCanvasDiagramRouter::GetCardinalSide(sourceCenter, targetCenter);
+auto targetSide = UltraCanvasDiagramRouter::GetCardinalSide(targetCenter, sourceCenter);
+
+Point2Dd start = UltraCanvasDiagramRouter::GetCardinalPoint(sourceBox, sourceSide);
+Point2Dd end   = UltraCanvasDiagramRouter::GetCardinalPoint(targetBox, targetSide);
+
+std::vector<Point2Dd> path = UltraCanvasDiagramRouter::ComputeOrthogonalPath(
+    start, end, sourceSide, targetSide, obstacles, options);
+
+// 4. Draw it, anchor the label, aim the arrowhead.
+for (size_t i = 1; i < path.size(); ++i) ctx->DrawLine(path[i - 1], path[i]);
+
+Point2Dd labelAnchor = UltraCanvasDiagramRouter::ComputeLongestSegmentAnchor(path);
+double arrowAngle    = UltraCanvasDiagramRouter::ComputeApproachAngle(targetSide);
+```
+
+## Guarantees
+
+`ComputeOrthogonalPath` always returns a path that
+
+- begins exactly at `start` and ends exactly at `end`;
+- has every segment axis-aligned;
+- contains no duplicate consecutive waypoints and no collinear redundancy —
+  one waypoint per real corner;
+- leaves along `sourceSide`'s axis and arrives along `targetSide`'s axis;
+- is never empty. If A\* cannot find a route (target fully enclosed, expansion
+  cap reached) the cheap cardinal path is returned instead: a visible
+  connection beats no connection.
+
+These are asserted as properties over 2,000 randomised layouts in
+`Tests/DiagramRoutingTest.cpp`.
+
+## Strategy
+
+1. `ComputeCardinalPath` builds the cheap L-shape (source and target faces on
+   different axes, one corner) or Z-shape (same axis, bend at the midpoint).
+2. `PathHasObstacles` tests it. If nothing is in the way, that path is the
+   answer — no search runs.
+3. Otherwise `RouteAStar` searches a uniform grid, 4-connected, with a turn
+   penalty (default 5× a straight step) so paths prefer long straight runs, and
+   a Manhattan heuristic. The search starts one cell outside the source in the
+   direction of `sourceSide` and must reach the goal travelling perpendicular
+   into `targetSide`.
+4. The cell path is simplified to corners, stitched to the exact endpoints,
+   orthogonalised and normalised.
+
+## API
+
+### Routing
+
+| Function | Purpose |
+|---|---|
+| `ComputeOrthogonalPath(start, end, sourceSide, targetSide, obstacles, options)` | Top-level entry point (steps 1–4 above) |
+| `ComputeCardinalPath(start, end, sourceSide, targetSide)` | Obstacle-unaware L/Z path; 3 or 4 waypoints |
+| `PathHasObstacles(path, obstacles, inset = 1.0)` | True if any axis-aligned segment crosses an obstacle |
+| `RouteAStar(start, end, sourceSide, targetSide, obstacles, options)` | The search alone; empty vector when no route exists |
+
+### Geometry
+
+| Function | Purpose |
+|---|---|
+| `GetCardinalSide(boxCenter, otherCenter)` | Which face of a box points at another box |
+| `GetCardinalPoint(box, side)` | Midpoint of that face |
+| `GetDistributedCardinalPoint(box, side, index, count, spreadFraction = 0.6)` | Anchor *index* of *count* spread evenly along one face, so parallel connections into the same face do not overlap. `count == 1` is identical to `GetCardinalPoint` |
+| `IsHorizontalSide(side)` | True for `Left`/`Right` |
+| `ComputeLongestSegmentAnchor(path)` | Label anchor: midpoint of the longest segment, never a corner |
+| `ComputeApproachAngle(targetSide)` | Arrow angle for an orthogonal path, from the face alone |
+| `ComputeFinalSegmentAngle(path)` | Arrow angle for straight/curved connections, from the last segment |
+
+### `DiagramRoutingOptions`
+
+| Field | Default | Meaning |
+|---|---|---|
+| `gridSize` | `20.0` | A\* cell size in world units |
+| `routingArea` | empty | World region A\* may use; cells outside are blocked |
+| `turnPenalty` | `5.0` | Extra g-cost per direction change. `0` = shortest path however jagged |
+| `maxExpansions` | `20000` | Hard cap so a pathological graph cannot stall a render pass |
+| `obstacleInset` | `1.0` | Tolerance in `PathHasObstacles`, so a line along a border is not a collision |
+| `obstaclePaddingCells` | `0.5` | Padding around an obstacle when blocking A\* cells, as a fraction of `gridSize` |
+
+## Multiple connections into one face
+
+When several relationships land on the same side of a box, anchoring them all
+at the face midpoint makes the arrows overlap. Count the connections per face
+first, then ask for a distributed anchor:
+
+```cpp
+int index = IndexOfThisConnectionOnFace(targetId, targetSide);
+int count = ConnectionsOnFace(targetId, targetSide);
+Point2Dd end = UltraCanvasDiagramRouter::GetDistributedCardinalPoint(
+    targetBox, targetSide, index, count);
+```
+
+## Notes for callers
+
+- **Pre-filter the obstacle list.** Including the source or target box means A\*
+  has nowhere to start and the router silently falls back to the cardinal path.
+- **`routingArea` bounds the search**, not the drawing. Points outside it are
+  still routed to; only A\* cells outside are treated as blocked.
+- **`gridSize` is a cost/quality dial.** Smaller grids route more tightly and
+  cost more; the FlowChart convention is to reuse the chart's visual grid
+  spacing.
+- Use `ComputeApproachAngle` for orthogonal and curved connections and
+  `ComputeFinalSegmentAngle` for straight ones — the first is correct even for a
+  degenerate two-point path, where the second has no segment to measure.
+
+## History
+
+Extracted from `UltraCanvasFlowChart.cpp` at FlowChart 2.3.0. The algorithm and
+its constants are unchanged. Three defects present in the original were fixed
+during extraction, all found by the new property tests and confirmed against the
+pre-extraction code over 12k randomised layouts (9.7% of paths differ; 99.8% of
+those differences are one of these cases):
+
+1. **Use-after-free.** The A\* loop held a reference into the `visited` vector
+   across a `push_back` into that same vector; once the search outgrew the
+   reserved capacity, it read freed memory.
+2. **Diagonal segments.** End-of-path bridging assumed the preceding waypoint
+   already shared an axis with the bridge point; when it did not, an
+   "orthogonal" path contained a visible diagonal jog.
+3. **Degenerate waypoints.** Endpoints already sharing an axis produced
+   zero-length segments, which make the arrow-angle computation meaningless.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasDivergingChartExamples.md
 ==============================================================================
 
@@ -34233,6 +34418,359 @@ The UltraCanvasTreeView integrates seamlessly with the UltraCanvas framework:
 - [UltraCanvasContainer](UltraCanvasContainer.md) - Container for tree views
 - [UltraCanvasEvent](UltraCanvasEvent.md) - Event system documentation
 - [UltraCanvasRenderContext](UltraCanvasRenderContext.md) - Rendering system
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasUMLModel.md
+==============================================================================
+
+# UltraCanvasUMLModel, UMLNotation, C++ reverse engineering and text export
+
+The UI-free foundation of the class-diagram feature: a UML static-structure
+model, the member-notation grammar, a heuristic C++ header scanner that builds a
+model from source, and PlantUML/Mermaid export.
+
+| Unit | Header | Source |
+|---|---|---|
+| Model | `include/Plugins/Diagrams/UltraCanvasUMLModel.h` | `Plugins/Diagrams/UltraCanvasUMLModel.cpp` |
+| Notation grammar | `include/Plugins/Diagrams/UltraCanvasUMLNotation.h` | `Plugins/Diagrams/UltraCanvasUMLNotation.cpp` |
+| C++ reverse engineer | `include/Plugins/Diagrams/UltraCanvasCppReverseEngineer.h` | `Plugins/Diagrams/UltraCanvasCppReverseEngineer.cpp` |
+| Text export | `include/Plugins/Diagrams/UltraCanvasUMLTextExport.h` | `Plugins/Diagrams/UltraCanvasUMLTextExport.cpp` |
+
+Tests: `Tests/UMLModelTest.cpp` (target `UMLModelTest`). Version: 1.0.0.
+
+None of these include anything from the widget or render stack. The rendering
+element (`UltraCanvasClassDiagram`) is a separate, later piece — see
+[`UltraCanvasClassDiagramProposal.md`](UltraCanvasClassDiagramProposal.md).
+
+---
+
+## 1. The model
+
+```cpp
+#include "Plugins/Diagrams/UltraCanvasUMLModel.h"
+
+UltraCanvasUMLModel model;
+model.SetTitle("Class Diagram for a Banking System");
+
+// Short form: members as UML text, parsed on entry.
+model.AddClass("Bank", { "+BankId: int", "+Name: string", "+Location: string" }, {});
+model.AddClass("Teller", { "+Id: int", "+Name: string" },
+                         { "+CollectMoney()", "+OpenAccount()", "+LoanRequest()" });
+model.AddAbstractClass("Account", { "+Id: int", "+CustomerId: int" }, { "+Close()" });
+model.AddInterface("IPayable", { "+Pay(amount: double): bool" });
+model.AddEnumeration("AccountKind", { "Checking", "Savings = 2" });
+
+// Verbose form: full control.
+UMLClassifier checking("checking", "Checking");
+checking.attributes.push_back(UMLMember::Attribute(UMLVisibility::Public, "Id", "int"));
+model.AddClassifier(checking);
+```
+
+### Classifiers
+
+`UMLClassifierKind` covers `Class`, `AbstractClass`, `Interface`, `Enumeration`,
+`DataType`, `Primitive`, `Utility`, `ActiveClass`, `Template`, `Object`,
+`AssociationClass`, `Package` and `Note`.
+
+A `UMLClassifier` carries its name, kind, stereotypes, template parameters, the
+three member compartments (`attributes`, `operations`, `literals`), its
+containing `packageId`, provenance (`sourceFile`), presentation overrides
+(`UMLClassifierStyle`) and layout hints (`x`, `y`, `width`, `height`,
+`positionPinned`, `collapsed`). Nothing in the model interprets the style or
+layout fields — they are carried so a diagram round-trips without losing them.
+
+### Members
+
+One `UMLMember` is one row of a class box:
+
+```cpp
+struct UMLMember {
+    UMLMemberKind kind;          // Attribute / Operation / Literal
+    UMLVisibility visibility;    // Public + / Private - / Protected # / Package ~ / Unspecified
+    std::string name, type, multiplicity, defaultValue, propertyString;
+    std::vector<UMLParameter> parameters;   // operations only
+    bool isStatic;    // rendered underlined
+    bool isAbstract;  // rendered italic
+    bool isDerived;   // rendered "/name"
+};
+```
+
+Factories: `UMLMember::Attribute(...)`, `UMLMember::Operation(...)`,
+`UMLMember::Literal(...)`.
+
+### Relationships
+
+`UMLRelationshipKind` is `Association`, `DirectedAssociation`, `Aggregation`,
+`Composition`, `Generalization`, `Realization`, `Dependency` or `NAry`. The kind
+alone determines the line style and end decorations, so a mis-drawn relationship
+is not expressible.
+
+Each end (`UMLRelationshipEnd`) carries `classifierId`, `roleName`,
+`multiplicity`, `constraint`, `qualifier` and `navigable`.
+
+Builders return a fluent handle, which keeps the six labels a UML edge can carry
+readable at the call site:
+
+```cpp
+model.AddGeneralization("Checking", "Account");     // triangle at the parent
+model.AddRealization("Account", "IPayable");        // dashed triangle at the interface
+model.AddComposition("Customer", "Loan")            // filled diamond at the whole
+     .SetMultiplicity("1", "0..*");
+model.AddAggregation("Bank", "Teller")              // hollow diamond at the whole
+     .SetMultiplicity("1", "1..*");
+model.AddAssociation("Customer", "Account")
+     .SetMultiplicity("1", "1..*")
+     .SetRoles("+holder", "+accounts")
+     .SetName("owns", UMLReadingDirection::SourceToTarget);
+model.AddDependency("Teller", "Account", "use");    // dashed, «use»
+```
+
+Argument order follows the notation: `AddGeneralization(child, parent)`,
+`AddComposition(whole, part)`, `AddDependency(client, supplier)`.
+
+Ends accept either a classifier id or a classifier name — names are resolved to
+ids on insert.
+
+> The handle points into the model's relationship vector and is invalidated by
+> the next `Add*`/`Remove*` call. Use it immediately, as in the examples above.
+
+### Queries and maintenance
+
+| Call | Purpose |
+|---|---|
+| `GetClassifier(id)` / `FindClassifierByName(name)` | Lookup |
+| `RemoveClassifier(id)` | Removes the classifier **and every relationship touching it** |
+| `GetParents(id)` / `GetChildren(id)` | Follow generalization edges |
+| `GetRootClassifiers()` | Classifiers with no parent — the roots for a layered layout |
+| `GetRelationshipsFor(id)` | Every edge touching a classifier |
+| `HasRelationship(kind, sourceId, targetId)` | Duplicate check |
+| `Merge(other)` | Merge another model; colliding ids are skipped, edges get fresh ids |
+| `RemoveDanglingRelationships()` | Drop edges whose ends do not resolve |
+| `Validate()` | Diagnose without modifying |
+
+`Validate()` reports duplicate classifier names, interfaces that declare
+attributes, dangling relationship ends, missing association classes, duplicate
+relationships and inheritance cycles, each as a `UMLDiagnostic` with a severity
+of `Info`, `Warning` or `Error`.
+
+---
+
+## 2. The notation grammar
+
+`UMLNotation` converts between the text form and `UMLMember`, so demos stay
+short while export and validation keep structured data.
+
+```cpp
+UMLMember member;
+UMLNotation::ParseMember("+fees [0..1] : String", member);
+// visibility = Public, name = "fees", multiplicity = "0..1", type = "String"
+
+std::string text = UMLNotation::FormatMember(member);   // "+fees [0..1]: String"
+```
+
+Accepted forms (everything but the name is optional):
+
+```
+attribute:  [+-#~] [/]name [ '[' multiplicity ']' ] [: Type] [ '[' multiplicity ']' ]
+                         [= default] [{property}]
+operation:  [+-#~] name '(' [param [, param]*] ')' [: ReturnType] [{property}]
+parameter:  [in|out|inout] name : Type [= default]     — or just  Type
+literal:    NAME [= value]
+```
+
+- `(` outside brackets means the row is an operation; otherwise it is an
+  attribute.
+- `{static}` and `{abstract}` become flags; any other property string is
+  preserved verbatim.
+- Multiplicity is accepted before or after the type — both spellings occur in
+  the wild.
+- `::` and `,` inside a type do not split it: `~registry: std::map<std::string, Node>`
+  parses as one type.
+- A missing visibility glyph yields `UMLVisibility::Unspecified`. UML draws no
+  glyph in that case, and inventing "public" would misreport the source.
+
+Helpers: `FormatSignature` (no visibility glyph — good for tooltips),
+`FormatParameters`, `VisibilityFromGlyph` / `VisibilityToGlyph`,
+`NormalizeMultiplicity` (strips the decorative `+` of the `+1..*` spelling) and
+`IsValidMultiplicity`.
+
+Parse → format → parse is stable for every accepted form.
+
+---
+
+## 3. C++ reverse engineering
+
+Builds a model from C++ headers. **This is not a C++ front end** — it is a
+brace- and declaration-level scanner covering the subset of C++ that headers
+actually use. It does not expand macros, evaluate `#if`, resolve
+typedefs/using-aliases, instantiate templates, or understand SFINAE.
+Declarations it cannot make sense of are **skipped, not guessed at**, and every
+skip is counted in `CppReverseEngineerResult::declarationsSkipped`.
+
+```cpp
+#include "Plugins/Diagrams/UltraCanvasCppReverseEngineer.h"
+#include "Plugins/Diagrams/UltraCanvasUMLTextExport.h"
+
+UltraCanvasUMLModel model;
+
+CppReverseEngineerOptions options;
+options.includePrivateMembers   = false;
+options.maxMembersPerCompartment = 8;
+
+UltraCanvasCppReverseEngineer engineer(options);
+CppReverseEngineerResult result =
+    engineer.ParseDirectory("UltraCanvas/include/Plugins/Diagrams", true, model);
+
+// Always run this once, after every file has been parsed.
+size_t dropped = engineer.ResolveInferredRelationships(model);
+
+std::string plantUml = UMLTextExport::ToPlantUML(model);
+```
+
+Entry points: `ParseSource(text, model, name)`, `ParseFile(path, model)`,
+`ParseFiles(paths, model)`, `ParseDirectory(dir, recursive, model)`.
+
+### What it recognises
+
+- `class` / `struct` / `enum class` / `enum` definitions, including nested ones,
+  and skipping forward declarations
+- base-clauses with access specifiers, `virtual` bases and template bases
+- `final`, and export/attribute macros between the keyword and the name
+  (`class ULTRACANVAS_API Widget final : public Base`)
+- access sections, with the correct `class`/`struct` default
+- data members: multiple declarators on one line, initialisers, array bounds
+  (which become a multiplicity), bit-fields
+- member functions: `virtual`, `static`, `const` (→ `{query}`), `override`,
+  `final`, pure-virtual `= 0` (→ abstract), `= default`, `= delete` (skipped),
+  trailing return types, parameter names, types and defaults
+- namespaces, optionally prefixed onto the classifier name
+
+### Classification
+
+- All operations pure virtual **and** no data members → `Interface`, with the
+  `«interface»` stereotype (`detectInterfaces`).
+- Any pure virtual operation → `AbstractClass` (`detectAbstractClasses`).
+
+### Inferred relationships
+
+Base clauses become `Generalization` — upgraded to `Realization` when the base
+turns out to be an interface, which is the UML distinction that changes the line
+from solid to dashed.
+
+With `inferAssociations` on, a data member whose type names another classifier
+becomes an edge. With `inferOwnership` on (the default), the kind follows the
+ownership expressed by the C++ type:
+
+| Member type | Edge | Multiplicity |
+|---|---|---|
+| `Point origin` | Composition | `1` |
+| `std::unique_ptr<Body> body` | Composition | `1` |
+| `std::shared_ptr<Node> node` | Aggregation | `0..1` |
+| `Widget* parent` | DirectedAssociation | `0..1` |
+| `const Widget& owner` | DirectedAssociation | `1` |
+| `std::vector<Item> items` | Composition | `*` |
+| `std::vector<std::shared_ptr<Node>> kids` | Aggregation | `*` |
+| `std::map<std::string, Node> index` | Composition | `*` (the mapped type) |
+| `std::optional<Config> config` | Composition | `0..1` |
+| `Point corners[4]` | Composition | `4` |
+
+The member's own name becomes the target role name. Self-references produce no
+edge. `ExtractReferencedType(declaredType, outCore, outMultiplicity, outOwnership)`
+is public, so this mapping is directly testable.
+
+`ResolveInferredRelationships` runs after parsing and drops every edge whose
+target never appeared as a classifier — which is how `std::string`, `int` and
+external library types stay out of the diagram. Its return value is the number
+dropped.
+
+### Options
+
+| Option | Default | Effect |
+|---|---|---|
+| `includeAttributes` / `includeOperations` | `true` | Which compartments are filled |
+| `includePrivateMembers` / `includeProtectedMembers` | `true` | Access filtering |
+| `includeConstructors` | `false` | Constructors and destructors — noise on most diagrams |
+| `includeOperators` | `false` | `operator==`, `operator<<`, … |
+| `includeStaticMembers` | `true` | |
+| `maxMembersPerCompartment` | `0` (unlimited) | Cap per compartment; the overflow is reported in `warnings`, never silently dropped |
+| `includeClasses` / `includeStructs` / `includeEnums` / `includeNestedClasses` | `true` | Which classifiers are produced |
+| `includeAnonymousTypes` | `false` | |
+| `excludeNamePrefixes` | empty | Skip `detail`, `Impl`, … |
+| `detectInterfaces` / `detectAbstractClasses` | `true` | Classification |
+| `inferGeneralization` / `inferAssociations` / `inferOwnership` | `true` | Edge inference |
+| `inferDependencies` | `false` | Parameter/return types → dependency edges. On a real codebase this is a hairball |
+| `inferEdgesToEnumerations` | `false` | Enum-typed members do not sprout arrows; the enum is still a classifier and the member row still names its type |
+| `recordSourceFile` | `true` | Provenance on each classifier |
+| `qualifyNamesWithNamespace` | `false` | `UltraCanvas::Widget` instead of `Widget` |
+| `fileExtensions` | `.h .hpp .hh .hxx` | `ParseDirectory` filter |
+
+### Scale
+
+Run over this repository's whole public header tree (217 headers) the scanner
+produces 1,345 classifiers and 742 relationships, fails to interpret 55
+declarations, and yields a model that passes `Validate()` with no errors.
+
+---
+
+## 4. Text export
+
+```cpp
+#include "Plugins/Diagrams/UltraCanvasUMLTextExport.h"
+
+std::string plant   = UMLTextExport::ToPlantUML(model);
+std::string mermaid = UMLTextExport::ToMermaid(model);
+```
+
+`TextExportOptions` toggles members, attributes, operations, stereotypes,
+relationship labels, the title, the surrounding wrapper (`@startuml` /
+`classDiagram`) and the indent string.
+
+Arrow conventions:
+
+| Relationship | PlantUML | Mermaid |
+|---|---|---|
+| Generalization | `Child --\|> Parent` | `Parent <\|-- Child` |
+| Realization | `Class ..\|> Interface` | `Interface <\|.. Class` |
+| Composition | `Whole *-- Part` | `Whole *-- Part` |
+| Aggregation | `Whole o-- Part` | `Whole o-- Part` |
+| Directed association | `A --> B` | `A --> B` |
+| Association | `A -- B` | `A -- B` |
+| Dependency | `A ..> B` | `A ..> B` |
+
+Mermaid writes the parent first for inheritance, so generalization and
+realization swap ends on export. Multiplicities are emitted as quoted end
+labels; the association name, stereotype and role names are joined into the
+`: label` text.
+
+Import (PlantUML/Mermaid → model) is not part of this unit; it is items X2/X4 of
+the proposal.
+
+---
+
+## 5. End to end
+
+```cpp
+UltraCanvasUMLModel model;
+UltraCanvasCppReverseEngineer engineer;
+engineer.ParseDirectory("UltraCanvas/include/Plugins/Diagrams", true, model);
+engineer.ResolveInferredRelationships(model);
+model.SetTitle("Diagram plugins");
+
+for (const auto& diagnostic : model.Validate()) {
+    if (diagnostic.severity == UMLDiagnosticSeverity::Error) {
+        std::printf("error: %s\n", diagnostic.message.c_str());
+    }
+}
+
+std::printf("%s", UMLTextExport::ToPlantUML(model).c_str());
+```
+
+## See also
+
+- [`UltraCanvasClassDiagramProposal.md`](UltraCanvasClassDiagramProposal.md) —
+  the full feature list and roadmap for the rendering element
+- [`UltraCanvasDiagramRouting.md`](UltraCanvasDiagramRouting.md) — the shared
+  orthogonal router the element will use
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasVennDiagramExamples.md
