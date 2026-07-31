@@ -1121,19 +1121,6 @@ namespace UltraCanvas {
                 .AddVariant("kanbanboards", "Text Definition")
                 .AddVariant("kanbanboards", "Cumulative Flow");
 
-        chartBuilder.AddItem("quadrantcharts", "Quadrant Diagram",
-                             "Strategic 2x2 matrices: SWOT, BCG, Eisenhower, risk, priority and custom quadrants",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateQuadrantChartExamples(); },
-                             "DemoApp/UltraCanvasQuadrantChartExamples.cpp",
-                             "Docs/UltraCanvas/UltraCanvasQuadrantChartExamples.md")
-                .AddVariant("quadrantcharts", "SWOT Analysis")
-                .AddVariant("quadrantcharts", "BCG Matrix")
-                .AddVariant("quadrantcharts", "Eisenhower Matrix")
-                .AddVariant("quadrantcharts", "Risk Matrix")
-                .AddVariant("quadrantcharts", "Priority Matrix")
-                .AddVariant("quadrantcharts", "Custom Quadrants");
-
         chartBuilder.AddItem("circularcharts", "Circular Chart", "Circular Chart",
                              ImplementationStatus::PartiallyImplemented,
                              [this]() { return CreatePartiallyImplementedExamples("Circular Chart is not ready yet"); });
