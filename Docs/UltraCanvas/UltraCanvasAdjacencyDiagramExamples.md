@@ -32,6 +32,12 @@ UltraCanvasUIElement
 - **Pan via drag**, content centering
 - **Hover, click, selection** callbacks for rooms and links
 - **Tooltip** showing room name, area, and floor
+- **Collision-free room labels**: names are placed by the layout engine's
+  `PlaceShapeLabels()` solver ([UltraCanvasLabelPlacement.md](UltraCanvasLabelPlacement.md)).
+  A name is centred on its circle and may spill over the outline — the halo keeps
+  it readable, so that overflow is the intended look — but two names are never
+  drawn on top of each other: a blocked label moves to another anchor inside its
+  circle, or steps off the circle entirely. Smaller rooms get placement priority
 
 ## Data Structures
 

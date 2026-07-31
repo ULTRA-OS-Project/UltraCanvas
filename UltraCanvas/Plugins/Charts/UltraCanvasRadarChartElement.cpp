@@ -1,10 +1,11 @@
 // Plugins/Charts/UltraCanvasRadarChartElement.cpp
 // Comprehensive radar chart implementation with multi-axis visualization
-// Version: 2.1.0
-// Last Modified: 2026-06-21
+// Version: 2.2.0
+// Last Modified: 2026-07-29
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasRadarChartElement.h"
+#include "UltraCanvasLabelPlacement.h"
 #include "UltraCanvasTooltipManager.h"
 #include "UltraCanvasApplication.h"
 #include <cmath>
@@ -52,8 +53,8 @@ namespace UltraCanvas {
         // Update animation progress
         UpdateAnimationProgress();
 
-        // Recalculate layout
-        RecalculateLayout();
+        // Recalculate layout (measures label and legend text)
+        RecalculateLayout(ctx);
 
         ctx->PushState();
 
@@ -83,31 +84,80 @@ namespace UltraCanvas {
 // LAYOUT CALCULATION
 // =============================================================================
 
-    void UltraCanvasRadarChartElement::RecalculateLayout() {
+    void UltraCanvasRadarChartElement::RecalculateLayout(IRenderContext* ctx) {
         if (axes.empty()) return;
 
         // Work in element-local coordinates (origin at 0,0)
         Rect2Df bounds = GetLocalBounds();
 
-        // Reserve space for labels and legend
-        float labelMargin = showAxisLabels ? axisLabelFontSize * 2.0f : 10.0f;
-        float legendWidth = showLegend ? 150.0f : 0.0f;
+        // ----- reserve space from the measured text, not from guesses -----
+        // The widest axis name decides the horizontal margin: a label on the
+        // left of the ring extends its full width away from the chart, so
+        // reserving a fixed multiple of the font size clipped long names.
+        float labelWidth = 0.0f, labelHeight = axisLabelFontSize;
+        if (showAxisLabels && ctx && !axes.empty()) {
+            ctx->SetFontFamily(axisLabelFont);
+            ctx->SetFontSize(axisLabelFontSize);
+            for (const auto& axis : axes) {
+                Size2Di size = ctx->GetTextLineDimensions(axis.name);
+                labelWidth = std::max(labelWidth, static_cast<float>(size.width));
+                labelHeight = std::max(labelHeight, static_cast<float>(size.height));
+            }
+        }
+        float labelGap = showAxisLabels ? axisLabelFontSize : 0.0f;
+        float marginX = showAxisLabels ? labelWidth + labelGap + 4.0f : 10.0f;
+        float marginY = showAxisLabels ? labelHeight * 2.0f + labelGap : 10.0f;
+        // Never let the reservation starve the ring on small elements; the
+        // solver still keeps the labels inside the element in that case.
+        marginX = std::min(marginX, bounds.width * 0.3f);
+        marginY = std::min(marginY, bounds.height * 0.3f);
 
-        float availableWidth = bounds.width - labelMargin * 2 - legendWidth;
-        float availableHeight = bounds.height - labelMargin * 2;
+        // ----- legend box sized from its own text -----
+        legendBoxSize = Size2Df(0.0f, 0.0f);
+        if (showLegend && !series.empty()) {
+            float textWidth = 0.0f;
+            if (ctx) {
+                ctx->SetFontFamily(axisLabelFont);
+                ctx->SetFontSize(11.0f);
+                for (const auto& s : series) {
+                    textWidth = std::max(textWidth,
+                                         static_cast<float>(ctx->GetTextLineWidth(s.name)));
+                }
+            }
+            // padding + swatch + gap + text + padding
+            legendBoxSize.width = std::max(90.0f, 10.0f + 12.0f + 5.0f + textWidth + 10.0f);
+            legendBoxSize.height = series.size() * 20.0f + 20.0f;
+        }
+        float legendReserve = (showLegend && !legendPositionExplicit && !series.empty())
+                              ? legendBoxSize.width + 16.0f : 0.0f;
+        legendReserve = std::min(legendReserve, bounds.width * 0.35f);
 
-        // Use the smaller dimension to keep the chart circular
-        maxRadius = std::min(availableWidth, availableHeight) * 0.4f;
+        float availableWidth = bounds.width - marginX * 2 - legendReserve;
+        float availableHeight = bounds.height - marginY * 2;
+
+        // Use the smaller dimension to keep the chart circular. The margins now
+        // hold the labels, so the circle may fill what is left.
+        maxRadius = std::min(availableWidth, availableHeight) * 0.5f;
         if (maxRadius < 0.0f) maxRadius = 0.0f;
 
-        centerPoint.x = bounds.x + labelMargin + maxRadius;
-        centerPoint.y = bounds.y + labelMargin + maxRadius;
+        // Centre the ring inside the area left of the legend strip rather than
+        // pinning it to the top-left corner.
+        centerPoint.x = bounds.x + marginX + availableWidth * 0.5f;
+        centerPoint.y = bounds.y + marginY + availableHeight * 0.5f;
 
-        // Auto-position legend if no explicit position was given
-        if (showLegend && legendPosition.x == 0 && legendPosition.y == 0) {
-            legendPosition.x = centerPoint.x + maxRadius + 20.0f;
-            legendPosition.y = centerPoint.y - (series.size() * 20.0f) * 0.5f;
+        // Park the legend in its reserved strip, vertically centred, unless the
+        // caller placed it explicitly.
+        if (showLegend && !series.empty() && !legendPositionExplicit) {
+            legendPosition.x = bounds.x + bounds.width - legendBoxSize.width - 8.0f;
+            legendPosition.y = centerPoint.y - legendBoxSize.height * 0.5f;
+            legendPosition.y = std::max(bounds.y + 4.0f,
+                    std::min(legendPosition.y,
+                             bounds.y + bounds.height - legendBoxSize.height - 4.0f));
         }
+        legendRect = (showLegend && !series.empty())
+                     ? Rect2Dd(legendPosition.x, legendPosition.y,
+                               legendBoxSize.width, legendBoxSize.height)
+                     : Rect2Dd(0, 0, 0, 0);
     }
 
     UltraCanvasRadarChartElement::~UltraCanvasRadarChartElement() {
@@ -260,36 +310,61 @@ namespace UltraCanvas {
 
         float angleStep = 360.0f / static_cast<float>(axes.size());
 
+        // Each axis vertex on the outer ring becomes a solver shape and its
+        // label is placed radially outward from it: the side facing away from
+        // the chart centre is the preferred one, and the solver moves a label
+        // to another side when the preferred spot would collide with the
+        // legend, with a neighbouring label, or with the element border.
+        std::vector<LabelShape> shapes(axes.size());
+        std::vector<ShapeLabel> labels;
+        labels.reserve(axes.size());
+
         for (size_t i = 0; i < axes.size(); ++i) {
-            const auto& axis = axes[i];
             float angle = startAngle + (clockwiseRotation ? 1.0f : -1.0f) * angleStep * static_cast<float>(i);
+            Point2Df vertex = PolarToScreen(angle, maxRadius);
 
-            float labelRadius = maxRadius + axisLabelFontSize;
-            Point2Df labelPos = PolarToScreen(angle, labelRadius);
+            shapes[i].type = LabelShapeType::Circle;
+            shapes[i].center = Point2Dd(vertex.x, vertex.y);
+            shapes[i].radius = 1.0;
+            shapes[i].keepLabelInside = false;
 
-            Size2Di textSize = ctx->GetTextLineDimensions(axis.name);
+            if (axes[i].name.empty()) continue;
 
             float radians = angle * static_cast<float>(M_PI) / 180.0f;
+            float cosA = std::cos(radians);
+            float sinA = std::sin(radians);
 
-            // Horizontal alignment based on angle
-            if (std::cos(radians) < -0.5f) {
-                labelPos.x -= textSize.width;
-            } else if (std::cos(radians) > 0.5f) {
-                // keep
-            } else {
-                labelPos.x -= textSize.width * 0.5f;
-            }
+            ShapeLabel l;
+            l.text = axes[i].name;
+            l.shapeIndex = i;
+            // Radially outward: left/right for the flanks, above/below for the
+            // axes near the vertical - the same mapping the fixed alignment
+            // used, now expressed as a preference the solver can override.
+            if (cosA < -0.5f)      l.preferredSide = LabelSide::Left;
+            else if (cosA > 0.5f)  l.preferredSide = LabelSide::Right;
+            else if (sinA < 0.0f)  l.preferredSide = LabelSide::Top;
+            else                   l.preferredSide = LabelSide::Bottom;
 
-            // Vertical alignment based on angle
-            if (std::sin(radians) < -0.5f) {
-                labelPos.y -= textSize.height;
-            } else if (std::sin(radians) > 0.5f) {
-                // keep
-            } else {
-                labelPos.y -= textSize.height * 0.5f;
-            }
+            Size2Di textSize = ctx->GetTextLineDimensions(axes[i].name);
+            l.textSize = Size2Dd(textSize.width, textSize.height);
+            labels.push_back(l);
+        }
+        if (labels.empty()) return;
 
-            ctx->DrawText(axis.name, Point2Dd(labelPos.x, labelPos.y));
+        LabelPlacementOptions opts;
+        opts.bounds = Rect2Dd(GetLocalBounds());
+        // Vertex shapes have radius 1, so this keeps the classic ring-to-text
+        // gap of roughly one font size.
+        opts.shapeMargin = axisLabelFontSize * 0.9;
+        opts.labelMargin = 3.0;
+        // The legend is opaque, so labels must not end up underneath it.
+        if (legendRect.width > 0.0 && legendRect.height > 0.0) {
+            opts.obstacles.push_back(legendRect);
+        }
+
+        std::vector<PlacedShapeLabel> placed = PlaceShapeLabels(shapes, labels, opts);
+        for (size_t i = 0; i < placed.size(); ++i) {
+            ctx->DrawText(labels[i].text, placed[i].bounds.TopLeft());
         }
     }
 
@@ -395,8 +470,12 @@ namespace UltraCanvas {
 
         float legendItemHeight = 20.0f;
         float legendPadding = 10.0f;
-        float legendWidth = 120.0f;
-        float legendHeight = series.size() * legendItemHeight + legendPadding * 2;
+        // Sized by the layout pass from the series names so long names are not
+        // clipped and the reserved strip matches what is drawn.
+        float legendWidth = legendBoxSize.width > 0.0f ? legendBoxSize.width : 120.0f;
+        float legendHeight = legendBoxSize.height > 0.0f
+                             ? legendBoxSize.height
+                             : series.size() * legendItemHeight + legendPadding * 2;
 
         // Legend background + border
         ctx->DrawFilledRectangle(Rect2Dd(legendPosition.x, legendPosition.y, legendWidth, legendHeight),

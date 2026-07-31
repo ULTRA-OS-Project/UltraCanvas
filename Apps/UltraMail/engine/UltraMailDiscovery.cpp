@@ -5,7 +5,7 @@
 
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetHttp.h>
-
+#include <UltraCanvasUtils.h>
 #include <algorithm>
 #include <cctype>
 #include <string>
@@ -28,13 +28,6 @@ std::string EmailLocalPart(const std::string& email) {
 }
 
 namespace {
-
-std::string Trim(const std::string& s) {
-    std::size_t a = 0, b = s.size();
-    while (a < b && std::isspace(static_cast<unsigned char>(s[a]))) ++a;
-    while (b > a && std::isspace(static_cast<unsigned char>(s[b-1]))) --b;
-    return s.substr(a, b - a);
-}
 
 DiscoveryResult MakePreset(const std::string& display, const std::string& email,
                            const std::string& imapHost, int imapPort,
@@ -79,7 +72,7 @@ std::string TagText(const std::string& block, const std::string& tag) {
     std::size_t start = o + tag.size() + 2;
     std::size_t close = block.find("</" + tag + ">", start);
     if (close == std::string::npos) return "";
-    return Trim(block.substr(start, close - start));
+    return UltraCanvas::Trim(block.substr(start, close - start));
 }
 
 MailSecurity SecurityFromSocketType(const std::string& s) {

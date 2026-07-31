@@ -117,16 +117,30 @@ namespace UltraCanvas {
 // =============================================================================
 
     class UltraCanvasScatterPlotElement : public UltraCanvasChartElementBase {
-    private:
-        // Scatter-specific properties
-        Color pointColor = Color(0, 102, 204, 255);
-        double pointSize = 6.0f;
-
     public:
         enum class PointShape {
             Circle, Square, Triangle, Diamond
         } pointShape = PointShape::Circle;
 
+        enum class TrendLineStyle {
+            Solid, Dashed, Dotted
+        };
+
+    private:
+        // Scatter-specific properties
+        Color pointColor = Color(0, 102, 204, 255);
+        double pointSize = 6.0f;
+
+        // Correlation / trend line properties
+        bool showTrendLine = false;
+        Color trendLineColor = Color(220, 60, 60, 255);
+        float trendLineWidth = 2.0f;
+        TrendLineStyle trendLineStyle = TrendLineStyle::Dashed;
+        bool showCorrelationInfo = false;
+        Color correlationInfoColor = Color(80, 80, 80, 255);
+        float correlationInfoFontSize = 11.0f;
+
+    public:
         UltraCanvasScatterPlotElement(const std::string &id, int x, int y, int width, int height)
                 : UltraCanvasChartElementBase(id, x, y, width, height) {
             enableZoom = true;
@@ -154,9 +168,60 @@ namespace UltraCanvas {
             RequestRedraw();
         }
 
+        // Correlation / trend line configuration
+        void SetShowTrendLine(bool show) {
+            showTrendLine = show;
+            RequestRedraw();
+        }
+
+        bool GetShowTrendLine() const { return showTrendLine; }
+
+        void SetTrendLineColor(const Color &color) {
+            trendLineColor = color;
+            RequestRedraw();
+        }
+
+        void SetTrendLineWidth(float width) {
+            trendLineWidth = std::max(0.1f, width);
+            RequestRedraw();
+        }
+
+        void SetTrendLineStyle(TrendLineStyle style) {
+            trendLineStyle = style;
+            RequestRedraw();
+        }
+
+        // Shows "y = ax + b" and the Pearson r / r-squared next to the plot.
+        void SetShowCorrelationInfo(bool show) {
+            showCorrelationInfo = show;
+            RequestRedraw();
+        }
+
+        void SetCorrelationInfoColor(const Color &color) {
+            correlationInfoColor = color;
+            RequestRedraw();
+        }
+
+        void SetCorrelationInfoFontSize(float size) {
+            correlationInfoFontSize = std::max(1.0f, size);
+            RequestRedraw();
+        }
+
+        // Least-squares fit over the current data source. Returns false when
+        // there are fewer than 2 points or the x values have no variance.
+        bool ComputeLinearRegression(double &slope, double &intercept) const;
+
+        // Pearson correlation coefficient r of the current data (0 when the
+        // fit is undefined).
+        double GetCorrelationCoefficient() const;
+
         void RenderChart(IRenderContext *ctx) override;
 
         bool HandleChartMouseMove(const Point2Di &mousePos) override;
+
+    private:
+        void RenderTrendLine(IRenderContext *ctx);
+        void RenderCorrelationInfo(IRenderContext *ctx, double slope, double intercept);
     };
 
 

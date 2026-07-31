@@ -394,6 +394,72 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: GitRepositoryTest")
+# ===== DIAGRAM ROUTING TEST =====
+# Unit tests for the shared orthogonal router (cardinal L/Z paths, A* obstacle
+# avoidance, label anchors, arrow angles). UI-free - links only the one source
+# file under test.
+message(STATUS "  Building DiagramRoutingTest...")
+add_executable(DiagramRoutingTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/DiagramRoutingTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasDiagramRouting.cpp
+)
+target_include_directories(DiagramRoutingTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(DiagramRoutingTest PRIVATE cxx_std_20)
+set_target_properties(DiagramRoutingTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME DiagramRoutingTest COMMAND DiagramRoutingTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: DiagramRoutingTest")
+
+# ===== UML MODEL TEST =====
+# Unit tests for the UML static-structure model, the member-notation grammar,
+# the heuristic C++ reverse engineer and PlantUML/Mermaid export. UI-free.
+message(STATUS "  Building UMLModelTest...")
+add_executable(UMLModelTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/UMLModelTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasUMLModel.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasUMLNotation.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasUMLTextExport.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasCppReverseEngineer.cpp
+)
+target_include_directories(UMLModelTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(UMLModelTest PRIVATE cxx_std_20)
+set_target_properties(UMLModelTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME UMLModelTest COMMAND UMLModelTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: UMLModelTest")
+# ===== REQUIREMENT MODEL TEST =====
+# Unit tests for the SysML requirement model: endpoint semantics, containment
+# cycle detection, hierarchical id assignment, derived-element compartments,
+# coverage analysis, trace chains and the Mermaid/CSV interchange. The model
+# is deliberately free of UI dependencies, so only its own source is compiled.
+message(STATUS "  Building RequirementModelTests...")
+add_executable(RequirementModelTests
+    ${CMAKE_CURRENT_SOURCE_DIR}/RequirementModelTests.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasRequirementModel.cpp
+)
+target_include_directories(RequirementModelTests PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(RequirementModelTests PRIVATE cxx_std_20)
+set_target_properties(RequirementModelTests PROPERTIES
+    OUTPUT_NAME "RequirementModelTests"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME RequirementModelTests
+    COMMAND RequirementModelTests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: RequirementModelTests")
 
 # ===== VIRTUALFS PATH TEST =====
 # Regression test for VirtualFSPath archive-path resolution (Unix, relative

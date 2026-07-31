@@ -14,6 +14,7 @@
 #include <UltraNet/UltraNetFtp.h>
 #include <UltraNet/UltraNetPlugins.h>
 #include <UltraNet/UltraNetUrl.h>
+#include <UltraCanvasUtils.h>
 
 #include <curl/curl.h>
 
@@ -128,12 +129,6 @@ bool HasSelfClosingTag(const std::string& body, const std::string& tag) {
     return std::regex_search(body, re);
 }
 
-std::string Trim(std::string s) {
-    while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front()))) s.erase(0, 1);
-    while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back())))  s.pop_back();
-    return s;
-}
-
 // Splits a PROPFIND multistatus response into one substring per <response>.
 std::vector<std::string> SplitResponses(const std::string& body) {
     std::vector<std::string> out;
@@ -159,7 +154,7 @@ void ParseMultistatus(const std::string& body,
                       std::vector<UltraNetFtpEntry>& out) {
     for (const auto& resp : SplitResponses(body)) {
         UltraNetFtpEntry e;
-        std::string href = Trim(ExtractTag(resp, "href"));
+        std::string href = UltraCanvas::Trim(ExtractTag(resp, "href"));
         if (href.empty()) continue;
         // The href is URL-encoded; decode the last path segment as the name.
         std::string decodedHref = UltraNet_UrlDecode(href);
@@ -175,7 +170,7 @@ void ParseMultistatus(const std::string& body,
         }
         if (name.empty() || name == "." || name == "..") continue;
 
-        const std::string display = Trim(ExtractTag(resp, "displayname"));
+        const std::string display = UltraCanvas::Trim(ExtractTag(resp, "displayname"));
         if (!display.empty()) name = display;
         e.name     = name;
         e.fullPath = listUrl + name;
@@ -189,9 +184,9 @@ void ParseMultistatus(const std::string& body,
         } else {
             e.type = UltraNetFtpEntryType::File;
         }
-        const std::string size = Trim(ExtractTag(resp, "getcontentlength"));
+        const std::string size = UltraCanvas::Trim(ExtractTag(resp, "getcontentlength"));
         if (!size.empty()) e.size = std::atoll(size.c_str());
-        e.modificationTime = Trim(ExtractTag(resp, "getlastmodified"));
+        e.modificationTime = UltraCanvas::Trim(ExtractTag(resp, "getlastmodified"));
 
         out.push_back(std::move(e));
     }

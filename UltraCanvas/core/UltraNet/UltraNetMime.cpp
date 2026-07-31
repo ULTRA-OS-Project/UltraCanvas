@@ -16,6 +16,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <UltraCanvasUtils.h>
 
 namespace {
 
@@ -25,13 +26,6 @@ std::string Lower(const std::string& s) {
     std::string r; r.reserve(s.size());
     for (char c : s) r.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
     return r;
-}
-
-std::string Trim(const std::string& s) {
-    std::size_t a = 0, b = s.size();
-    while (a < b && std::isspace(static_cast<unsigned char>(s[a]))) ++a;
-    while (b > a && std::isspace(static_cast<unsigned char>(s[b-1]))) --b;
-    return s.substr(a, b - a);
 }
 
 int HexVal(char c) {
@@ -53,7 +47,7 @@ std::string Latin1ToUtf8(const std::string& in) {
 }
 
 std::string CharsetToUtf8(const std::string& bytes, const std::string& charsetIn) {
-    std::string cs = Lower(Trim(charsetIn));
+    std::string cs = Lower(UltraCanvas::Trim(charsetIn));
     auto star = cs.find('*');                 // strip RFC 2231 language tag
     if (star != std::string::npos) cs = cs.substr(0, star);
     if (cs.empty() || cs == "utf-8" || cs == "utf8" || cs == "us-ascii" || cs == "ascii")
@@ -65,50 +59,8 @@ std::string CharsetToUtf8(const std::string& bytes, const std::string& charsetIn
 }
 
 // ---- base64 ----------------------------------------------------------------
-
-const char* kB64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-std::string Base64EncodeImpl(const std::vector<uint8_t>& in, bool wrap) {
-    std::string out;
-    std::size_t lineWidth = 0;
-    for (std::size_t i = 0; i < in.size(); i += 3) {
-        const std::size_t left = in.size() - i;
-        const uint32_t t = (static_cast<uint32_t>(in[i]) << 16) |
-                           (left > 1 ? static_cast<uint32_t>(in[i+1]) << 8 : 0) |
-                           (left > 2 ? static_cast<uint32_t>(in[i+2])      : 0);
-        out.push_back(kB64[(t >> 18) & 0x3f]);
-        out.push_back(kB64[(t >> 12) & 0x3f]);
-        out.push_back(left > 1 ? kB64[(t >> 6) & 0x3f] : '=');
-        out.push_back(left > 2 ? kB64[ t       & 0x3f] : '=');
-        lineWidth += 4;
-        if (wrap && lineWidth >= 76) { out.append("\r\n"); lineWidth = 0; }
-    }
-    if (wrap && lineWidth > 0) out.append("\r\n");
-    return out;
-}
-
-int B64Val(unsigned char c) {
-    if (c >= 'A' && c <= 'Z') return c - 'A';
-    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
-    if (c >= '0' && c <= '9') return c - '0' + 52;
-    if (c == '+') return 62;
-    if (c == '/') return 63;
-    return -1;
-}
-
-bool Base64DecodeImpl(const std::string& text, std::vector<uint8_t>& out) {
-    out.clear();
-    int buf = 0, bits = 0;
-    for (unsigned char c : text) {
-        if (c == '=' || std::isspace(c)) continue;
-        int v = B64Val(c);
-        if (v < 0) continue;               // skip stray chars
-        buf = (buf << 6) | v;
-        bits += 6;
-        if (bits >= 8) { bits -= 8; out.push_back(static_cast<uint8_t>((buf >> bits) & 0xFF)); }
-    }
-    return true;
-}
+// The codec lives in UltraCanvasUtils (UltraCanvas::Base64Encode / Base64Decode);
+// this module just routes through it.
 
 // ---- quoted-printable ------------------------------------------------------
 
@@ -189,7 +141,7 @@ bool TryEncodedWord(const std::string& s, std::size_t i, std::string& out, std::
     std::string charset = s.substr(cs, q1 - cs);
     std::string text = s.substr(textStart, end - textStart);
     std::string rawBytes;
-    if (enc == 'B') { std::vector<uint8_t> b; Base64DecodeImpl(text, b); rawBytes.assign(b.begin(), b.end()); }
+    if (enc == 'B') { std::vector<uint8_t> b = UltraCanvas::Base64Decode(text); rawBytes.assign(b.begin(), b.end()); }
     else if (enc == 'Q') { rawBytes = DecodeQWord(text); }
     else return false;
 
@@ -232,17 +184,17 @@ std::vector<std::pair<std::string, std::string>> ParseHeaderList(const std::stri
     std::vector<std::pair<std::string, std::string>> out;
     std::istringstream is(block);
     std::string line, curName, curVal;
-    auto flush = [&]() { if (!curName.empty()) out.emplace_back(curName, Trim(curVal)); curName.clear(); curVal.clear(); };
+    auto flush = [&]() { if (!curName.empty()) out.emplace_back(curName, UltraCanvas::Trim(curVal)); curName.clear(); curVal.clear(); };
     while (std::getline(is, line)) {
         if (!line.empty() && line.back() == '\r') line.pop_back();
         if (!line.empty() && (line[0] == ' ' || line[0] == '\t')) {
-            curVal += ' '; curVal += Trim(line);            // folded continuation
+            curVal += ' '; curVal += UltraCanvas::Trim(line);            // folded continuation
         } else {
             flush();
             std::size_t colon = line.find(':');
             if (colon == std::string::npos) continue;
-            curName = Trim(line.substr(0, colon));
-            curVal  = Trim(line.substr(colon + 1));
+            curName = UltraCanvas::Trim(line.substr(0, colon));
+            curVal  = UltraCanvas::Trim(line.substr(colon + 1));
         }
     }
     flush();
@@ -260,14 +212,14 @@ std::string GetHeader(const std::vector<std::pair<std::string, std::string>>& hs
 void ParseValueWithParams(const std::string& header, std::string& value,
                           std::map<std::string, std::string>& params) {
     std::size_t semi = header.find(';');
-    value = Lower(Trim(header.substr(0, semi)));
+    value = Lower(UltraCanvas::Trim(header.substr(0, semi)));
     if (semi == std::string::npos) return;
     std::string rest = header.substr(semi + 1);
     std::size_t i = 0;
     while (i < rest.size()) {
         std::size_t eq = rest.find('=', i);
         if (eq == std::string::npos) break;
-        std::string key = Lower(Trim(rest.substr(i, eq - i)));
+        std::string key = Lower(UltraCanvas::Trim(rest.substr(i, eq - i)));
         std::size_t vstart = eq + 1;
         while (vstart < rest.size() && std::isspace(static_cast<unsigned char>(rest[vstart]))) ++vstart;
         std::string val;
@@ -281,7 +233,7 @@ void ParseValueWithParams(const std::string& header, std::string& value,
         } else {
             std::size_t vend = rest.find(';', vstart);
             if (vend == std::string::npos) vend = rest.size();
-            val = Trim(rest.substr(vstart, vend - vstart));
+            val = UltraCanvas::Trim(rest.substr(vstart, vend - vstart));
             i = (vend == rest.size()) ? rest.size() : vend + 1;
         }
         if (!key.empty()) params[key] = val;
@@ -323,7 +275,7 @@ void ParsePart(const std::string& raw, UltraNetMimePart& part) {
     if (mediaType.empty()) mediaType = "text/plain";
     part.mediaType = mediaType;
     part.charset = ctParams.count("charset") ? Lower(ctParams["charset"]) : "";
-    part.transferEncoding = Lower(Trim(GetHeader(hs, "content-transfer-encoding")));
+    part.transferEncoding = Lower(UltraCanvas::Trim(GetHeader(hs, "content-transfer-encoding")));
 
     std::string cd = GetHeader(hs, "content-disposition");
     std::map<std::string, std::string> cdParams;
@@ -337,7 +289,7 @@ void ParsePart(const std::string& raw, UltraNetMimePart& part) {
     else if (ctParams.count("name"))     filename = ctParams["name"];
     part.filename = DecodeHeaderImpl(filename);
 
-    std::string cid = Trim(GetHeader(hs, "content-id"));
+    std::string cid = UltraCanvas::Trim(GetHeader(hs, "content-id"));
     if (!cid.empty() && cid.front() == '<' && cid.back() == '>') cid = cid.substr(1, cid.size() - 2);
     part.contentId = cid;
 
@@ -350,7 +302,7 @@ void ParsePart(const std::string& raw, UltraNetMimePart& part) {
         }
     } else {
         if (part.transferEncoding == "base64") {
-            Base64DecodeImpl(body, part.body);
+            part.body = UltraCanvas::Base64Decode(body);
         } else if (part.transferEncoding == "quoted-printable") {
             std::string s = QpDecodeImpl(body);
             part.body.assign(s.begin(), s.end());
@@ -461,10 +413,11 @@ bool ReservedHeader(const std::string& name) {
 // ============================================================================
 
 std::string UltraNet_Base64Encode(const std::vector<uint8_t>& data, bool wrap76Cols) {
-    return Base64EncodeImpl(data, wrap76Cols);
+    return UltraCanvas::Base64Encode(data, wrap76Cols);
 }
 bool UltraNet_Base64Decode(const std::string& text, std::vector<uint8_t>& out) {
-    return Base64DecodeImpl(text, out);
+    out = UltraCanvas::Base64Decode(text);
+    return true;
 }
 std::string UltraNet_QuotedPrintableEncode(const std::string& text) { return QpEncodeImpl(text); }
 std::string UltraNet_QuotedPrintableDecode(const std::string& text) { return QpDecodeImpl(text); }
@@ -477,7 +430,7 @@ std::string UltraNet_MimeEncodeHeader(const std::string& utf8Value, bool useBase
     if (ascii) return utf8Value;
     if (useBase64) {
         std::vector<uint8_t> b(utf8Value.begin(), utf8Value.end());
-        return "=?UTF-8?B?" + Base64EncodeImpl(b, false) + "?=";
+        return "=?UTF-8?B?" + UltraCanvas::Base64Encode(b, false) + "?=";
     }
     std::string q;
     for (unsigned char c : utf8Value) {
@@ -509,7 +462,7 @@ bool UltraNet_MimeParse(const std::string& rawMessage, UltraNetMimeMessage& out)
         while (i < v.size()) {
             std::size_t comma = v.find(',', i);
             if (comma == std::string::npos) comma = v.size();
-            std::string a = Trim(v.substr(i, comma - i));
+            std::string a = UltraCanvas::Trim(v.substr(i, comma - i));
             if (!a.empty()) dst.push_back(DecodeHeaderImpl(a));
             i = comma + 1;
         }
@@ -577,7 +530,7 @@ std::string UltraNet_MimeBuild(const UltraNetMimeBuildInput& in) {
         if (a.isInline && !a.contentId.empty())
             os << "Content-ID: <" << a.contentId << ">\r\n";
         os << "Content-Transfer-Encoding: base64\r\n\r\n"
-           << Base64EncodeImpl(a.data, true);
+           << UltraCanvas::Base64Encode(a.data, true);
     }
     os << "--" << boundary << "--\r\n";
     return os.str();

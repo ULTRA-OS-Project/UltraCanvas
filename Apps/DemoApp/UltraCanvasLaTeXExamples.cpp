@@ -27,7 +27,7 @@
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasConfig.h"   // GetResourcesDir
-#include "UltraCanvasUtils.h"    // NormalizePath, LoadFile
+#include "UltraCanvasUtils.h"    // NormalizePath, LoadFile, Trim
 #include "Plugins/LaTeX/UltraCanvasLaTeXView.h"  // CreateLaTeXView (on-demand)
 
 #include <algorithm>
@@ -44,13 +44,6 @@ namespace {
         std::transform(s.begin(), s.end(), s.begin(),
                        [](unsigned char c) { return std::tolower(c); });
         return s;
-    }
-
-    std::string Trim(const std::string& s) {
-        const size_t a = s.find_first_not_of(" \t\r\n");
-        if (a == std::string::npos) return {};
-        const size_t b = s.find_last_not_of(" \t\r\n");
-        return s.substr(a, b - a + 1);
     }
 
     // A document is renderable by the math engine only if it is plain math-mode
