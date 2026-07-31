@@ -105,6 +105,17 @@ row name that beats the colour mode (used for the purple "Men" / orange
   with `SetValueDecimals(n)` and `SetValueSuffix("%")`.
 * `SetLabelFontSize(px)`, `SetNameLabelColor(color)`,
   `SetMinRadiusForInsideLabels(px)`.
+* Outside (below) labels are placed collision-free by the shared
+  `PlaceShapeLabels()` solver (`UltraCanvasLabelPlacement.h`): each label
+  prefers the spot directly under its bubble but moves to the least crowded
+  alternative when that would cover a neighbouring bubble, another label, or
+  a group label. Smaller bubbles get placement priority, since their labels
+  have the least room to move.
+* In hierarchical mode the outside labels instead straddle their bubble's rim
+  at the 2 o'clock position (falling back to 4, 10 and 8 o'clock, then the
+  outside sides), stay within their own group circle, and are drawn with a
+  light halo so the part over the bubble fill stays readable — the same
+  convention node/adjacency diagrams use for labels drawn over their nodes.
 
 ## Size legend and annotations
 
@@ -143,6 +154,9 @@ label headroom), and the parent circles are then packed against each other.
 * The group name is drawn in the headroom ring between the children and the
   parent rim; `SetGroupLabelStyle(fontSize, color, bold)` styles it
   (a transparent colour means automatic contrast against the parent fill).
+  A name wider than the ring is chord-fitted: it is pulled towards the centre
+  until its corners sit inside the parent circle instead of poking through
+  the rim, and the bubble name labels keep clear of it.
 
 ```cpp
 auto hier = CreateHierarchicalBubbleChart("launches", 20, 20, 700, 600);

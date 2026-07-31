@@ -10,7 +10,7 @@
 #include "EPUBEngine.h"
 
 #include "HTMLReader/HTMLParser.h"
-#include "HTMLReader/CSSStyleSheet.h"   // HTML::Trim
+#include "UltraCanvasUtils.h"   // UltraCanvas::Trim
 
 #include <algorithm>
 #include <cctype>
@@ -160,7 +160,7 @@ bool EPUBEngine::ParseOPF(const std::string& /*password*/) {
     if (HTML::Node* meta = Find(doc.root.get(), "metadata")) {
         std::string coverId;
         meta->ForEachElement([&](HTML::Node& e) {
-            std::string text = HTML::Trim(e.TextContent());
+            std::string text = UltraCanvas::Trim(e.TextContent());
             if (e.tag == "title" && metadata.title.empty()) {
                 metadata.title = text;
             } else if (e.tag == "creator" && !text.empty()) {
@@ -317,7 +317,7 @@ void EPUBEngine::ParseNCX(const std::string& ncxPath) {
                 entry.index = index++;
 
                 if (HTML::Node* label = child->FindFirst("text")) {
-                    entry.title = HTML::Trim(label->TextContent());
+                    entry.title = UltraCanvas::Trim(label->TextContent());
                 }
                 if (HTML::Node* content = child->FindFirst("content")) {
                     entry.href = ResolveHref(ncxPath, content->GetAttribute("src"));
@@ -366,10 +366,10 @@ void EPUBEngine::ParseNavDoc(const std::string& navPath) {
 
                 for (const auto& part : li->children) {
                     if (part->IsElement("a")) {
-                        entry.title = HTML::Trim(part->TextContent());
+                        entry.title = UltraCanvas::Trim(part->TextContent());
                         entry.href = ResolveHref(navPath, part->GetAttribute("href"));
                     } else if (part->IsElement("span") && entry.title.empty()) {
-                        entry.title = HTML::Trim(part->TextContent());
+                        entry.title = UltraCanvas::Trim(part->TextContent());
                     } else if (part->IsElement("ol") || part->IsElement("ul")) {
                         walkList(*part, level + 1, entry.children);
                     }

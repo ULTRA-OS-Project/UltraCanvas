@@ -7,7 +7,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(UltraCanvasDemoApp
-    VERSION 0.3.19
+    VERSION 0.3.21
     DESCRIPTION "UltraCanvas Framework Demo Application"
     LANGUAGES CXX
 )
@@ -170,10 +170,12 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasQuadrantChartExamples.cpp
             Apps/DemoApp/UltraCanvasSWOTDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasGanttChartExamples.cpp
+            Apps/DemoApp/UltraCanvasKanbanBoardExamples.cpp
             Apps/DemoApp/UltraCanvasPopulationChartExamples.cpp
             Apps/DemoApp/UltraCanvasSegmentedControlExamples.cpp
             Apps/DemoApp/UltraCanvasBreadcrumbExamples.cpp
             Apps/DemoApp/UltraCanvasLayoutExamples.cpp
+            Apps/DemoApp/UltraCanvasLabelPlacementExamples.cpp
             Apps/DemoApp/UltraCanvasToolbarExamples.cpp
             Apps/DemoApp/UltraCanvasTabExamples.cpp
             Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp
@@ -183,6 +185,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasChordChartExamples.cpp
             Apps/DemoApp/UltraCanvasCircularInfoGraphicExamples.cpp
             Apps/DemoApp/UltraCanvasRadialBarChartExamples.cpp
+            Apps/DemoApp/UltraCanvasCircularProgressChartExamples.cpp
             Apps/DemoApp/UltraCanvasPolarChartExamples.cpp
             Apps/DemoApp/UltraCanvasRadarChartExamples.cpp
             Apps/DemoApp/UltraCanvasHeatmapExamples.cpp
@@ -577,6 +580,11 @@ endif()
 # BUILD_ULTRAMAIL is ON and the UltraCanvas UI library is available.
 
 if (BUILD_TESTS)
+    # JSONTests below compiles vendored C (yyjson.c); the project() call only
+    # declares CXX, so C must be enabled here - the enable_language(C) inside
+    # Tests/CMakeLists.txt does not propagate up to this scope.
+    enable_language(C)
+
     # Headless eBook viewer smoke test (links the full library).
     add_executable(EBookViewerTest Tests/EBookViewerTest.cpp)
     target_include_directories(EBookViewerTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})

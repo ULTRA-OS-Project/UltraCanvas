@@ -1,3 +1,6 @@
+#### 2026-07-31 *0.3.21*
+- Fixed duplicated Trim and base64 code.
+
 #### 2026-07-30 *0.3.20*
 - **UltraCanvasScatterPlotElement**: correlation / trend line display. The
   element can now fit a least-squares regression line over its data
@@ -22,6 +25,45 @@
   in data space. The Charts > Scatter Plot demo page now shows both the 2D
   trend line and the 3D cloud side by side, and a programmer's guide lives in
   `Docs/UltraCanvas/UltraCanvasScatterPlot3D.md`.
+
+#### 2026-07-30 *0.3.20*
+- **VirtualFS / UltraCanvasFilerWidget**: fixed archives always listing as
+  "(empty folder)" on Windows. `VirtualFSPath::Resolve()` prefixed a slash to
+  the real-filesystem part of every absolute path, turning a drive-letter path
+  like `C:/Users/…/archive.zip` into `/C:/Users/…/archive.zip` — a path no
+  provider could open, so double-clicking any ZIP (or other archive) in the
+  filer showed an empty view. Drive-letter paths now keep their bare `C:`
+  prefix through resolution, and `Normalize()` treats them as absolute so
+  `..` components can no longer escape above the drive root. The filer also
+  distinguishes an unreadable archive from a genuinely empty one: when the
+  provider layer cannot open the archive (missing format provider, corrupt or
+  password-protected file), it reports "Cannot read archive: …" through the
+  widget's error callback instead of silently rendering "(empty folder)".
+  New header-only regression test `Tests/VirtualFSPathTest.cpp` covers Unix,
+  relative, backslash and drive-letter archive paths, including nested
+  archives.
+- New **UltraCanvasCircularProgressChart** element
+  (`Plugins/Charts/UltraCanvasCircularProgressChart`): the angle-encoded
+  member of the circular chart family — every ring carries one independent
+  value drawn as an arc whose sweep is proportional to that value within the
+  ring's own range (concentric "activity rings"). Sub-styles cover the single
+  thick progress ring and the progress pie (filled sector over a track disc).
+  Rings take their colour from a palette or per-ring override, draw the
+  remainder as an auto-tinted, explicit or hidden track, and end in round or
+  butt caps. Labels: percentage/value callouts at each arc tip (optionally in
+  a bubble), ring names inside the band at the arc start, or a stacked column
+  of `label value` rows aligned with each ring's start point. A centre disc
+  with title + subtitle, a numbered-chip or swatch legend on any side (with
+  optional per-ring icons), configurable start angle and winding direction,
+  hover highlighting, tooltips and click/hover callbacks complete the P1
+  feature set. New demo page (Charts > Circular Progress Chart), programmer's
+  guide in `Docs/UltraCanvas/UltraCanvasCircularProgressChart.md`, plus the
+  family-wide guide `Docs/UltraCanvas/UltraCanvasCircularCharts.md` and the
+  previously missing `Docs/UltraCanvas/UltraCanvasCircularInfoGraphic.md`.
+- **UltraCanvasPieChartElement**: family-standard controls added —
+  `SetStartAngle` / `SetClockwise` for orientation and winding,
+  `SetCenterKPI(text, caption)` drawn in the donut hole, and
+  `onSliceClick` / `onSliceHover` callbacks.
 
 #### 2026-07-29 *0.3.19*
 - New **UltraCanvasPolarChart** element

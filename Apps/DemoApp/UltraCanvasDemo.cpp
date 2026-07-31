@@ -1076,6 +1076,18 @@ namespace UltraCanvas {
                 .AddVariant("radialbarcharts", "Partial-Sweep Fan")
                 .AddVariant("radialbarcharts", "Arrow Rays / Manual Range");
 
+        chartBuilder.AddItem("circularprogresscharts", "Circular Progress Chart",
+                             "Angle-encoded progress: concentric rings, single ring and "
+                             "progress pie with tracks, tip callouts, centre disc and legend",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateCircularProgressChartExamples(); },
+                             "DemoApp/UltraCanvasCircularProgressChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasCircularProgressChart.md")
+                .AddVariant("circularprogresscharts", "Circular Infographic Rings")
+                .AddVariant("circularprogresscharts", "Stacked Start Labels")
+                .AddVariant("circularprogresscharts", "Completion Ring & Progress Pie")
+                .AddVariant("circularprogresscharts", "Donut KPI Pie");
+
         chartBuilder.AddItem("ganttcharts", "Gantt Chart",
                              "Project schedules with task table, hierarchy, dependencies, "
                              "milestones, progress, critical path and design presets",
@@ -1091,6 +1103,23 @@ namespace UltraCanvas {
                 .AddVariant("ganttcharts", "Minimal Project Table")
                 .AddVariant("ganttcharts", "Dark Theme")
                 .AddVariant("ganttcharts", "Palette Gallery");
+
+        chartBuilder.AddItem("kanbanboards", "Kanban Board",
+                             "Workflow boards with WIP limits, swimlanes, drag & drop, "
+                             "a built-in card editor, Mermaid text definitions and "
+                             "design presets",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateKanbanBoardExamples(); },
+                             "DemoApp/UltraCanvasKanbanBoardExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasKanbanBoard.md")
+                .AddVariant("kanbanboards", "Interactive Editor")
+                .AddVariant("kanbanboards", "Sticky Notes")
+                .AddVariant("kanbanboards", "Poster")
+                .AddVariant("kanbanboards", "Schematic")
+                .AddVariant("kanbanboards", "Timeline / Swimlanes")
+                .AddVariant("kanbanboards", "Dark Theme")
+                .AddVariant("kanbanboards", "Text Definition")
+                .AddVariant("kanbanboards", "Cumulative Flow");
 
         chartBuilder.AddItem("quadrantcharts", "Quadrant Chart",
                              "Strategic 2x2 matrices: SWOT, BCG, Eisenhower, risk, priority and custom quadrants",
@@ -1137,8 +1166,9 @@ namespace UltraCanvas {
 
         chartBuilder.AddItem("contourchart", "Contour Chart",
                              "Isolines, filled contour bands, kernel-density contours of a "
-                             "point cloud, inline labelled curves, and 3D contour surfaces "
-                             "with isolines traced onto the terrain",
+                             "point cloud, inline labelled curves, zoom/pan with crosshair "
+                             "read-out, and 3D contour surfaces (software painter's algorithm "
+                             "and the UC OpenGL element) with isolines traced onto the terrain",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateContourChartExamples(); },
                              "DemoApp/UltraCanvasContourChartExamples.cpp",
@@ -1148,8 +1178,9 @@ namespace UltraCanvas {
                 .AddVariant("contourchart", "Density (KDE)")
                 .AddVariant("contourchart", "Line Contour")
                 .AddVariant("contourchart", "Dark Density")
-                .AddVariant("contourchart", "3D Bands")
-                .AddVariant("contourchart", "3D Terrain");
+                .AddVariant("contourchart", "3D Bands (software)")
+                .AddVariant("contourchart", "3D Terrain (software)")
+                .AddVariant("contourchart", "3D Surface (UC OpenGL)");
 
         chartBuilder.AddItem("jitterchart", "Jitter chart", "Jitter chart",
                              ImplementationStatus::FullyImplemented,
@@ -1233,10 +1264,6 @@ namespace UltraCanvas {
                 .AddVariant("bubblecharts", "Hierarchical Packing")
                 .AddVariant("bubblecharts", "Bubble Timeline")
                 .AddVariant("bubblecharts", "3D Bubbles (OpenGL)");
-
-        chartBuilder.AddItem("contourplot", "Contour plot", "Contour plot",
-                             ImplementationStatus::NotImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples("Contour plot is not ready yet"); });
 
         // ===== DIAGRAMS =====
         auto diagramBuilder = DemoCategoryBuilder(this, DemoCategory::Diagrams);

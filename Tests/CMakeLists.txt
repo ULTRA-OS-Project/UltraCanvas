@@ -317,6 +317,25 @@ add_test(
 )
 message(STATUS "    Test registered: ContourGeometryTest")
 
+# ===== VIRTUALFS PATH TEST =====
+# Regression test for VirtualFSPath archive-path resolution (Unix, relative
+# and Windows drive-letter paths). Header-only - no link dependencies, so it
+# runs on every platform regardless of libarchive availability.
+message(STATUS "  Building VirtualFSPathTest...")
+add_executable(VirtualFSPathTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/VirtualFSPathTest.cpp
+)
+target_include_directories(VirtualFSPathTest PRIVATE
+    ${ULTRACANVAS_ROOT}/VirtualFS/include
+)
+target_compile_features(VirtualFSPathTest PRIVATE cxx_std_17)
+set_target_properties(VirtualFSPathTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME VirtualFSPathTest COMMAND VirtualFSPathTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: VirtualFSPathTest")
+
 # ===== VIRTUALFS DELETE TEST =====
 # Regression test for batched archive-entry deletion (single rewrite pass).
 # Needs libarchive; the vendored miniz additionally enables the ZIP raw-copy
