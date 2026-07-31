@@ -1403,9 +1403,22 @@ namespace UltraCanvas {
     diagramBuilder.AddItem("packetdiagram", "Packet Diagram", "Packet Diagram",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("Packet Diagram is not ready yet"); });
-    diagramBuilder.AddItem("erdiagram", "ER Diagram", "ER Diagram",
+    diagramBuilder.AddItem("gitgraph", "Git Graph", "Git Graph",
                                ImplementationStatus::NotImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("ER Diagram is not ready yet"); });
+                               [this]() { return CreatePartiallyImplementedExamples("Git Graph is not ready yet"); });
+    diagramBuilder.AddItem("erdiagram", "ER Diagram", "Entity-Relationship Diagram",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateERDiagramExamples(); },
+                               "DemoApp/UltraCanvasERDiagramExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasERDiagram.md")
+                .AddVariant("erdiagram", "Internet Sales (Chen + crow's foot)")
+                .AddVariant("erdiagram", "Dense Schema (attribute haloes)")
+                .AddVariant("erdiagram", "Student / Course (annotated)")
+                .AddVariant("erdiagram", "Hospital (pastel, spine layout)")
+                .AddVariant("erdiagram", "Academic (min,max + ternary)")
+                .AddVariant("erdiagram", "Crow's Foot (physical schema)")
+                .AddVariant("erdiagram", "Relational (min,max + arrowheads)")
+                .AddVariant("erdiagram", "IDEF1X (key compartment, FK1/FK2)");
     diagramBuilder.AddItem("sequencediagram", "Sequence Diagram", "Sequence Diagram",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("Sequence Diagram is not ready yet"); });
