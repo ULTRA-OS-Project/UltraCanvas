@@ -48,6 +48,24 @@
   next/previous navigation. **Minimap** with a viewport rectangle and
   click/drag navigation. New tests: `GitGraphMermaidTest`, `GitRepositoryTest`
   (runs against a real repository) and six more `GitGraphLayoutTest` cases.
+- **UltraCanvasGitGraph**: third feature pass. **Time-proportional axis** —
+  row position follows the commit timestamp, with a per-gap floor and ceiling so
+  a burst of same-second commits stays readable and a multi-year quiet period
+  costs one large gap instead of an unusable amount of empty axis; an optional
+  date ruler prints one label per calendar day. **Collapsing** — a run of plain
+  single-parent commits folds into one dashed pill labelled with how many
+  commits it stands for, expandable by double-click; refs, merges, roots and
+  cherry-picks are never folded. **Parallel rows** — commits made at the same
+  moment share a row (mermaid's `parallelCommits`), but only when neither is the
+  other's parent and they sit in different lanes, so no edge is ever flattened.
+  **Badges** for GPG signature and build status, **stash chips**, **author
+  avatars** (initials on a colour derived from the author) in the table pane,
+  **label collision avoidance** so overlapping text is dropped rather than
+  stacked, and **JSON export** of the laid-out geometry. Four more layout tests
+  cover collapsing and parallel rows. Note: `GitGraphSignature` /
+  `GitGraphBuildStatus` use `NoSignature` / `NoStatus` and `Passed` / `Failed`
+  rather than `None` and `Success` / `Failure`, because X11's `X.h` defines
+  `None` and `Success` as macros and the header reaches the window backend.
 - **VirtualFS / UltraCanvasFilerWidget**: fixed archives always listing as
   "(empty folder)" on Windows. `VirtualFSPath::Resolve()` prefixed a slash to
   the real-filesystem part of every absolute path, turning a drive-letter path

@@ -21,11 +21,16 @@ packfile and delta support (D14), filtering with skipped-edge bridging (L13),
 crossing reduction (L10), the commit table pane and row-alignment API (M1–M4),
 search (I8) and the minimap (R15).
 
-Still open: the time-proportional axis (L9), collapsing linear runs (L12),
-explicit lane ordering (L5), parallel-commit rows (L11), background-thread
-layout (L15), stash entries (D11), signature/CI badges (D15), the diff pane and
-avatars (M5–M6), drag-to-author (I12), animated transitions (R16), PNG/JSON
-export (X2, X3, X5), and label collision avoidance (B10).
+Delivered in the third pass: the time-proportional axis with a date ruler (L9),
+collapsing linear runs (L12), parallel-commit rows (L11), signature/CI badges
+(D15), stash chips (D11), author avatars in the table (M5), label collision
+avoidance (B10) and JSON export (X5).
+
+Still open: explicit lane ordering (L5), background-thread layout (L15), the
+diff pane (M6), drag-to-author (I12), animated transitions (R16), and PNG /
+clipboard export (X2, X3) — the last two because the framework has no portable
+image writer to build them on, which is a framework-level gap rather than an
+element one.
 
 Author: UltraCanvas Framework
 Last Modified: 2026-07-30
