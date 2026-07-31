@@ -660,7 +660,7 @@ void UltraCanvasGitGraph::ComputeVisibleRows(int& firstRow, int& lastRow) const 
 
     // Map the element's visible extent back into axis coordinates, then into
     // rows, so only the rows on screen are drawn.
-    const double extent = IsHorizontalAxis() ? GetWidth() : GetHeight();
+    const double extent = IsHorizontalAxis() ? GraphPaneWidth() : GetHeight();
     const double panAlongAxis = IsHorizontalAxis() ? panX : panY;
     const double axisMin = (0.0 - panAlongAxis) / zoomLevel;
     const double axisMax = (extent - panAlongAxis) / zoomLevel;
@@ -1183,12 +1183,13 @@ void UltraCanvasGitGraph::ZoomToFit(double padding) {
 
     const double contentWidth  = std::max(1.0, maxX - minX);
     const double contentHeight = std::max(1.0, maxY - minY);
-    const double availableWidth  = std::max(1.0, GetWidth()  - padding * 2.0);
+    const double paneWidth = GraphPaneWidth();
+    const double availableWidth  = std::max(1.0, paneWidth  - padding * 2.0);
     const double availableHeight = std::max(1.0, GetHeight() - padding * 2.0);
 
     const double fit = std::min(availableWidth / contentWidth, availableHeight / contentHeight);
     zoomLevel = std::clamp(static_cast<float>(fit), minZoom, maxZoom);
-    panX = (GetWidth()  - contentWidth  * zoomLevel) * 0.5 - minX * zoomLevel;
+    panX = (paneWidth  - contentWidth  * zoomLevel) * 0.5 - minX * zoomLevel;
     panY = (GetHeight() - contentHeight * zoomLevel) * 0.5 - minY * zoomLevel;
     RequestRedraw();
 }
@@ -1212,8 +1213,10 @@ void UltraCanvasGitGraph::CenterOnCommit(const std::string& sha) {
     if (!placed) return;
 
     const Point2Dd world = NodePoint(placed->row, placed->lane);
-    panX = GetWidth()  * 0.5 - world.x * zoomLevel;
-    panY = GetHeight() * 0.5 - world.y * zoomLevel;
+    // Centre inside the graph pane, not the whole element: with the table shown
+    // the graph occupies only the left-hand strip.
+    panX = GraphPaneWidth() * 0.5 - world.x * zoomLevel;
+    panY = GetHeight()      * 0.5 - world.y * zoomLevel;
     RequestRedraw();
 }
 
@@ -1361,8 +1364,12 @@ void UltraCanvasGitGraph::DrawTrunkBaseline(IRenderContext* ctx) {
 
     if (!style.showTrunkArrow) return;
 
-    // Arrowhead at the "newest" end of the axis.
-    const bool arrowAtHigh = !IsAxisReversed() ? false : true;
+    // Arrowhead at the newest end, which depends only on which way time runs:
+    // LeftToRight and TopToBottom start at the oldest commit, so the arrow goes
+    // at the far end; the other two start at the newest, so it goes at the near
+    // end. (Row order has no say here - it only decides where a row lands.)
+    const bool arrowAtHigh = (orientation == GitGraphOrientation::LeftToRight ||
+                              orientation == GitGraphOrientation::TopToBottom);
     const double tipAxis   = arrowAtHigh ? to : from;
     const double direction = arrowAtHigh ? 1.0 : -1.0;
     const double size = 8.0;
@@ -2066,8 +2073,10 @@ void UltraCanvasGitGraph::DrawMinimap(IRenderContext* ctx) {
     const int rowSpan  = std::max(1, layout.rowCount - 1);
 
     // One tick per commit: rows down the long side, lanes across the short one.
-    const double tick = std::max(1.0, std::min(plotWidth / (laneSpan + 1),
-                                               plotHeight / static_cast<double>(rowSpan + 1)));
+    // Ticks stay small so the map reads as a density overview, not as blocks.
+    const double tick = std::clamp(std::min(plotWidth / (laneSpan + 1),
+                                            plotHeight / static_cast<double>(rowSpan + 1)),
+                                   2.0, 5.0);
     for (const GitGraphPlacedCommit& placed : layout.commits) {
         const double rowFraction  = static_cast<double>(placed.row) / rowSpan;
         const double laneFraction = static_cast<double>(placed.lane - layout.minLane) / laneSpan;
