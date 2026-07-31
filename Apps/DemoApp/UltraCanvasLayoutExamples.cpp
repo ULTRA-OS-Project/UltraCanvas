@@ -10,6 +10,7 @@
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasSpacer.h"
+#include "UltraCanvasTabbedContainer.h"
 #include "CSSLayout/CSSLayout.h"
 #include <sstream>
 
@@ -35,7 +36,10 @@ namespace UltraCanvas {
         return desc;
     }
 
-    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateLayoutExamples() {
+    // Provided by UltraCanvasLabelPlacementExamples.cpp
+    std::shared_ptr<UltraCanvasUIElement> CreateLabelPlacementLayoutTab();
+
+    static std::shared_ptr<UltraCanvasUIElement> CreateBoxGridFlexLayoutTab() {
         auto mainContainer = std::make_shared<UltraCanvasContainer>("LayoutExamples", 0, 0, 1020, 1670);
         mainContainer->SetBackgroundColor(Colors::White);
         mainContainer->SetPadding(0,0,10,0);
@@ -318,6 +322,15 @@ namespace UltraCanvas {
         mainContainer->AddChild(summaryText);
 
         return mainContainer;
+    }
+
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateLayoutExamples() {
+        auto tabs = std::make_shared<UltraCanvasTabbedContainer>("LayoutExamplesTabs");
+        tabs->SetTabPosition(TabPosition::Top);
+        tabs->SetTabStyle(TabStyle::Modern);
+        tabs->AddTab("Box / Grid / Flex", CreateBoxGridFlexLayoutTab());
+        tabs->AddTab("Label placement", CreateLabelPlacementLayoutTab());
+        return tabs;
     }
 
 } // namespace UltraCanvas
