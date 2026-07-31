@@ -1408,6 +1408,22 @@ namespace UltraCanvas {
                 .AddVariant("swotdiagram", "Rows")
                 .AddVariant("swotdiagram", "Columns");
 
+        infoBuilder.AddItem("timelinediagram", "Timeline Diagram",
+                            "Narrative timeline infographic with nine design presets",
+                            ImplementationStatus::FullyImplemented,
+                            [this]() { return CreateTimelineDiagramExamples(); },
+                            "DemoApp/UltraCanvasTimelineDiagramExamples.cpp",
+                            "Docs/UltraCanvas/UltraCanvasTimelineDiagram.md")
+                .AddVariant("timelinediagram", "Bar")
+                .AddVariant("timelinediagram", "Line")
+                .AddVariant("timelinediagram", "Alternating")
+                .AddVariant("timelinediagram", "Cards")
+                .AddVariant("timelinediagram", "Vertical")
+                .AddVariant("timelinediagram", "Serpentine")
+                .AddVariant("timelinediagram", "Hanging")
+                .AddVariant("timelinediagram", "Chevron")
+                .AddVariant("timelinediagram", "Steps");
+
         infoBuilder.AddItem("heatmap", "Heat map", "Heat map",
                              ImplementationStatus::PartiallyImplemented,
                              [this]() { return CreatePartiallyImplementedExamples("HeatMap is not ready yet"); });

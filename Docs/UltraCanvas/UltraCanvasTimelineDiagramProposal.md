@@ -1,8 +1,32 @@
 # UltraCanvasTimelineDiagram — Research & Feature Proposal
 
-**Status:** Pre-implementation research. Nothing in this document is built yet.
+**Status:** **Phase 1 and most of Phase 2 are implemented** as
+`UltraCanvasTimelineDiagram` — see
+[`UltraCanvasTimelineDiagram.md`](UltraCanvasTimelineDiagram.md) for the API and
+`Apps/DemoApp/UltraCanvasTimelineDiagramExamples.cpp` for the demo. This
+document remains the research write-up and the roadmap for the rest.
+
+Delivered: all Phase 1 items plus the `Serpentine`, `Hanging`, `Vertical`,
+`Chevron` and `Steps` designs, circle-inscribed bubble text (A-T3), the
+independent scale row (A-L10), the "current position" pending style (A-D7), the
+proportional-placement bridge (A-L9, pulled forward from Phase 4) and the
+geometry query API (A-X3). Cards, boxes and bubbles size themselves to their
+text rather than filling the frame.
+
+Two deviations from §5/§8 as written, both deliberate:
+`TimelineItem` stores the date as a bare `long` serial (days since 1970-01-01,
+identical to `GanttDate::serial`) instead of a `GanttDate`, so the Diagrams
+element depends only on the header-only `UltraCanvasCalendarDate.h` and not on
+the whole Gantt chart header; and the `None` enumerators became `Hidden` /
+`Plain` because `None` is an X11 macro pulled in by the window headers.
+
+Still open: the `Roadmap` design, item groups (A-D6), per-item images (A-D4),
+CSV/JSON IO (A-X1/A-X2), keyboard navigation (A-I6), entrance animation (A-I7),
+the whole of `UltraCanvasTimelineChart` (Phase 3) and the Gantt additions
+G1/G2.
+
 **Author:** UltraCanvas Framework
-**Last Modified:** 2026-07-30
+**Last Modified:** 2026-07-31
 **Related:** `UltraCanvasGanttChart` (implemented), `UltraCanvasPertChart`
 (implemented), `UltraCanvasStepper` (implemented), `UltraCanvasCircularInfoGraphic`
 (implemented), orphaned `Plugins/Graphs/UltraCanvasTimeline.{h,cpp}` (see §9).

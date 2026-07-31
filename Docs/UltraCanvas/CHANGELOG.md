@@ -1,3 +1,23 @@
+#### 2026-07-31 *0.3.21*
+- New **UltraCanvasTimelineDiagram** element
+  (`Plugins/Diagrams/UltraCanvasTimelineDiagram`): the narrative timeline
+  infographic — an ordered list of events laid out along a decorative path,
+  with nine design presets (`Bar`, `Line`, `Alternating`, `Cards`, `Vertical`,
+  `Serpentine`, `Hanging`, `Chevron`, `Steps`). Items carry a period caption,
+  title, paragraph and icon glyph; cards, boxes and bubbles size themselves to
+  their text, and the `Hanging` design wraps bubble text to the circle and
+  staggers bubbles over several tiers so they never collide. Palettes
+  (`CorporateBlue`, `Vibrant`, `Pastel`, `Ocean`, `Sunset`, `Forest`, `Slate`,
+  `Mono`, custom), `PerItem`/`Single`/`GradientAlongPath` color modes, a dark
+  theme, side policies, reversible direction, a "current position" pending
+  style, an independent scale-label track, hover/selection/tooltips with
+  callbacks and node/content geometry queries. `TimelinePlacement::Proportional`
+  positions items by real dates (serials compatible with `GanttDate`) while
+  keeping the decorative design. New demo page (Info Graphics > Timeline
+  Diagram) and guide in `Docs/UltraCanvas/UltraCanvasTimelineDiagram.md`; the
+  research behind splitting narrative timelines from date-accurate ones is in
+  `Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md`.
+
 #### 2026-07-30 *0.3.20*
 - **VirtualFS / UltraCanvasFilerWidget**: fixed archives always listing as
   "(empty folder)" on Windows. `VirtualFSPath::Resolve()` prefixed a slash to
