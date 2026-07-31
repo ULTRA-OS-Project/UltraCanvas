@@ -10,6 +10,13 @@
   segment label closes it, and so does any change to the item list or the
   breadcrumb's destruction. New `IsDropdownOpen()`, `GetOpenDropdownItemIndex()`
   and `CloseDropdown()`.
+- **UltraCanvasBreadcrumb**: the pointer now says which parts of the strip open
+  a menu instead of navigating — a dropdown chevron, and the whole overflow
+  (`...`) item since it opens from anywhere on it, switch to the menu cursor
+  (`UCMouseCursor::ContextMenu`, the one the dropdown widget's button already
+  uses) and back to the item cursor elsewhere. Both are style fields
+  (`itemCursor`, `dropdownCursor`). The shape is applied as the pointer crosses
+  the chevron rather than one mouse event later.
 - **UltraCanvasBreadcrumb**: a click handler that rebuilds the path (which is
   what filer/media-viewer navigation does) cleared `items` while the clicked
   item was still being read from it — the item click and the overflow-menu

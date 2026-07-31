@@ -1,6 +1,6 @@
 // core/UltraCanvasBreadcrumb.cpp
 // Hierarchical breadcrumb navigation control implementation
-// Version: 1.4.1
+// Version: 1.4.2
 // Last Modified: 2026-07-31
 // Author: UltraCanvas Framework
 
@@ -157,7 +157,7 @@ namespace UltraCanvas {
                                                  float x, float y, float w, float h)
             : UltraCanvasUIElement(identifier, x, y, w, h) {
         style = BreadcrumbStyle::Default();
-        SetMouseCursor(UCMouseCursor::Hand);
+        SetMouseCursor(style.itemCursor);
     }
 
     UltraCanvasBreadcrumb::~UltraCanvasBreadcrumb() {
@@ -324,6 +324,7 @@ namespace UltraCanvas {
     void UltraCanvasBreadcrumb::SetStyle(const BreadcrumbStyle& newStyle) {
         style = newStyle;
         layoutDirty = true;
+        ApplyHoverCursor(hoveredSlotIdx, hoveredOnDropdown, hoveredSlotIdx >= 0);
         InvalidateLayout(); RequestRedraw();
     }
 
@@ -895,6 +896,26 @@ namespace UltraCanvas {
         return -1;
     }
 
+    void UltraCanvasBreadcrumb::ApplyHoverCursor(int slotIdx, bool onDropdown,
+                                                 bool pointerInside) {
+        UCMouseCursor wanted = style.itemCursor;
+        if (pointerInside && slotIdx >= 0 && slotIdx < (int)slots.size()) {
+            // The overflow item is a menu in its entirety — it opens from
+            // anywhere on the slot, not just its chevron.
+            if (slots[slotIdx].isOverflow || onDropdown) {
+                wanted = style.dropdownCursor;
+            }
+        }
+        if (GetMouseCursor() == wanted) return;
+        SetMouseCursor(wanted);
+        // The window samples the element's cursor *before* handing it the move
+        // event, so without this the new shape would only appear on the next
+        // one. Only while the pointer is over us, though: on the way out the
+        // window is already showing the cursor of whatever we left it for.
+        if (!pointerInside) return;
+        if (auto* win = GetWindow()) win->SelectMouseCursor(wanted);
+    }
+
 // ===== RENDERING =====
     void UltraCanvasBreadcrumb::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         // Layout is normally computed in Arrange(); recompute here only as a safety
@@ -1252,9 +1273,13 @@ namespace UltraCanvas {
                         hoveredSlotIdx = idx;
                         RequestRedraw();
                     }
+                    hoveredOnDropdown = onDropdown;
+                    ApplyHoverCursor(idx, onDropdown, true);
                     SetHovered(true);
                 } else if (hoveredSlotIdx != -1) {
                     hoveredSlotIdx = -1;
+                    hoveredOnDropdown = false;
+                    ApplyHoverCursor(-1, false, false);
                     SetHovered(false);
                     RequestRedraw();
                 }
@@ -1264,8 +1289,10 @@ namespace UltraCanvas {
             case UCEventType::MouseLeave:
                 if (hoveredSlotIdx != -1 || pressedSlotIdx != -1) {
                     hoveredSlotIdx = -1;
+                    hoveredOnDropdown = false;
                     pressedSlotIdx = -1;
                     pressedOnDropdown = false;
+                    ApplyHoverCursor(-1, false, false);
                     SetHovered(false);
                     RequestRedraw();
                 }

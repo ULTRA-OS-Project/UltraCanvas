@@ -6430,6 +6430,18 @@ int  GetOpenDropdownItemIndex() const;
 void CloseDropdown();
 ```
 
+The pointer says which parts open a menu: a dropdown chevron — and the whole
+overflow (`...`) item, which opens from anywhere on it — shows the menu cursor
+(`UCMouseCursor::ContextMenu`, the same one the dropdown widget's button uses),
+the rest of the strip shows the item cursor. Both are style fields:
+
+```cpp
+BreadcrumbStyle s = bc->GetStyle();
+s.itemCursor     = UCMouseCursor::Hand;         // default
+s.dropdownCursor = UCMouseCursor::ContextMenu;  // default
+bc->SetStyle(s);
+```
+
 ### Current Item
 
 ```cpp

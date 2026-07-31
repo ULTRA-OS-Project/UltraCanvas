@@ -1,6 +1,6 @@
 // include/UltraCanvasBreadcrumb.h
 // Hierarchical breadcrumb navigation control with overflow handling and per-item dropdowns
-// Version: 1.4.1
+// Version: 1.4.2
 // Last Modified: 2026-07-31
 // Author: UltraCanvas Framework
 #pragma once
@@ -163,6 +163,13 @@ namespace UltraCanvas {
 
         // Font
         FontStyle fontStyle;
+
+        // Mouse cursor. `dropdownCursor` marks the parts that open a menu
+        // rather than navigate — an item's dropdown chevron and the whole
+        // overflow ("...") item — the same cursor the dropdown widget's
+        // button uses; `itemCursor` covers the rest of the strip.
+        UCMouseCursor itemCursor = UCMouseCursor::Hand;
+        UCMouseCursor dropdownCursor = UCMouseCursor::ContextMenu;
 
         // Overflow
         BreadcrumbOverflowMode overflowMode = BreadcrumbOverflowMode::Collapse;
@@ -338,6 +345,7 @@ namespace UltraCanvas {
 
         // Hover/press tracking
         int hoveredSlotIdx = -1;
+        bool hoveredOnDropdown = false;
         int pressedSlotIdx = -1;
         bool pressedOnDropdown = false;
 
@@ -378,6 +386,11 @@ namespace UltraCanvas {
 
         // Hit testing (returns slot index or -1).
         int HitTest(const Point2Di& localPoint, bool& onDropdown) const;
+        // Picks style.dropdownCursor / style.itemCursor for what the pointer is
+        // over. While the pointer is inside the strip (pointerInside) the new
+        // shape is pushed to the window immediately instead of waiting for the
+        // next mouse event.
+        void ApplyHoverCursor(int slotIdx, bool onDropdown, bool pointerInside);
 
         // Rendering.
         void RenderBackground(IRenderContext* ctx);
