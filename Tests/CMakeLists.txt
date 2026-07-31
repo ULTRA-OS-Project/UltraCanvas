@@ -317,6 +317,32 @@ add_test(
 )
 message(STATUS "    Test registered: ContourGeometryTest")
 
+# ===== REQUIREMENT MODEL TEST =====
+# Unit tests for the SysML requirement model: endpoint semantics, containment
+# cycle detection, hierarchical id assignment, derived-element compartments,
+# coverage analysis, trace chains and the Mermaid/CSV interchange. The model
+# is deliberately free of UI dependencies, so only its own source is compiled.
+message(STATUS "  Building RequirementModelTests...")
+add_executable(RequirementModelTests
+    ${CMAKE_CURRENT_SOURCE_DIR}/RequirementModelTests.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasRequirementModel.cpp
+)
+target_include_directories(RequirementModelTests PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(RequirementModelTests PRIVATE cxx_std_20)
+set_target_properties(RequirementModelTests PROPERTIES
+    OUTPUT_NAME "RequirementModelTests"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME RequirementModelTests
+    COMMAND RequirementModelTests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: RequirementModelTests")
+
 # ===== VIRTUALFS PATH TEST =====
 # Regression test for VirtualFSPath archive-path resolution (Unix, relative
 # and Windows drive-letter paths). Header-only - no link dependencies, so it

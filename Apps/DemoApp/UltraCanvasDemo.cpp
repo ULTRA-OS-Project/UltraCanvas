@@ -1413,9 +1413,22 @@ namespace UltraCanvas {
     diagramBuilder.AddItem("classdiagram", "Class Diagram", "Class Diagram",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("Class Diagram is not ready yet"); });
-    diagramBuilder.AddItem("requirementdiagram", "Requirement Diagram", "Requirement Diagram",
+    diagramBuilder.AddItem("quadrantdiagram", "Quadrant Chart (diagram)", "Quadrant Chart (diagram)",
                                ImplementationStatus::NotImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("Requirement Diagram is not ready yet"); });
+                               [this]() { return CreatePartiallyImplementedExamples("Quadrant Chart (diagram) is not ready yet"); });
+    diagramBuilder.AddItem("requirementdiagram", "Requirement Diagram",
+                               "SysML requirement diagram: compartmented requirements, containment trees and traceability relationships",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateRequirementDiagramExamples(); },
+                               "DemoApp/UltraCanvasRequirementDiagramExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasRequirementDiagramExamples.md")
+                .AddVariant("requirementdiagram", "HybridSUV (compartments)")
+                .AddVariant("requirementdiagram", "Specification + callout")
+                .AddVariant("requirementdiagram", "SysML taxonomy + legend")
+                .AddVariant("requirementdiagram", "Smart Home traceability")
+                .AddVariant("requirementdiagram", "Coverage + compartments")
+                .AddVariant("requirementdiagram", "Mermaid import + editing")
+                .AddVariant("requirementdiagram", "ReqIF + overlays");
     diagramBuilder.AddItem("timelinediagram", "Timeline Diagram", "Timeline Diagram",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("Timeline Diagram is not ready yet"); });
