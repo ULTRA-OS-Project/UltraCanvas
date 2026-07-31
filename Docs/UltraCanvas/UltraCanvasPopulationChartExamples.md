@@ -11,6 +11,10 @@ The `UltraCanvasPopulationChart` is a specialized demographic visualization comp
 **Last Modified:** 2025-01-19  
 **Author:** UltraCanvas Framework
 
+> A population pyramid is a demographic chart, not a hierarchy diagram. For
+> ranked tiers of one whole — Maslow, a testing pyramid, a market by segment —
+> use [`UltraCanvasPyramidChart`](UltraCanvasPyramidChart.md) instead.
+
 ## Class Hierarchy
 
 ```

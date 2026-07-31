@@ -1234,6 +1234,22 @@ namespace UltraCanvas {
                 .AddVariant("funnel", "Horizontal Funnel")
                 .AddVariant("funnel", "Playground");
 
+        chartBuilder.AddItem("pyramid", "Pyramid Diagram",
+                             "Level hierarchies - extruded 3D tiers, colour ribbon and icon "
+                             "callouts, outlined and flat presentation layouts, and "
+                             "area-proportional data pyramids with a reference shape",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreatePyramidChartExamples(); },
+                             "DemoApp/UltraCanvasPyramidChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasPyramidChart.md")
+                .AddVariant("pyramid", "3D Ribbon Pyramid")
+                .AddVariant("pyramid", "Spectrum 3D")
+                .AddVariant("pyramid", "Outline Hierarchy")
+                .AddVariant("pyramid", "Flat & Minimal")
+                .AddVariant("pyramid", "Alternating Infographic")
+                .AddVariant("pyramid", "Data Pyramid")
+                .AddVariant("pyramid", "Playground");
+
         chartBuilder.AddItem("bubblecharts", "Bubble Chart",
                              "Scatter bubbles, packed bubbles, bubble matrix and an "
                              "OpenGL 3D bubble chart",

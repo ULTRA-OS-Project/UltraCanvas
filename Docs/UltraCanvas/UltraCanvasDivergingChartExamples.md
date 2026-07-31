@@ -9,6 +9,10 @@ The `UltraCanvasDivergingBarChart` is a specialized chart component in the Ultra
 **Author:** UltraCanvas Framework  
 **Namespace:** `UltraCanvas`
 
+> `DivergingChartStyle::PopulationPyramid` is a back-to-back demographic chart.
+> For ranked tiers of one whole — a hierarchy drawn as a triangle — use
+> [`UltraCanvasPyramidChart`](UltraCanvasPyramidChart.md) instead.
+
 ## Features
 
 - **Multiple Chart Styles**: Supports various diverging chart visualizations including Population Pyramid, Likert Scale, Tornado Chart, and Opposing Bars
