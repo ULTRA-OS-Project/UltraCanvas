@@ -1,10 +1,10 @@
-// Plugins/Charts/UltraCanvasLabelPlacement.cpp
+// core/UltraCanvasLabelPlacement.cpp
 // Shared shape-label placement solver for diagrams
-// Version: 1.0.0
-// Last Modified: 2026-07-24
+// Version: 1.3.0
+// Last Modified: 2026-07-29
 // Author: UltraCanvas Framework
 
-#include "Plugins/Charts/UltraCanvasLabelPlacement.h"
+#include "UltraCanvasLabelPlacement.h"
 #include <algorithm>
 #include <cmath>
 
@@ -55,7 +55,8 @@ double ShapeOverlapArea(const LabelShape& s, const Rect2Dd& rect) {
     return area;
 }
 
-double Score(const Candidate& c, size_t ownIndex,
+double Score(const Candidate& c, size_t ownIndex, int containerIndex,
+             bool tolerateOverflow,
              const std::vector<LabelShape>& shapes,
              const std::vector<Rect2Dd>& placed,
              const LabelPlacementOptions& opt) {
@@ -63,7 +64,9 @@ double Score(const Candidate& c, size_t ownIndex,
     double cost = c.baseCost;
 
     const LabelShape& own = shapes[ownIndex];
-    if (c.side == LabelSide::Inside) {
+    if (c.side == LabelSide::Border || (c.side == LabelSide::Inside && tolerateOverflow)) {
+        // Straddling the own shape's edge is the intent - no own-shape penalty.
+    } else if (c.side == LabelSide::Inside) {
         // Penalise the part of the label sticking out of its own shape.
         cost += 200.0 * (labelArea - ShapeOverlapArea(own, c.rect)) / labelArea;
     } else {
@@ -72,13 +75,20 @@ double Score(const Candidate& c, size_t ownIndex,
 
     if (opt.avoidOtherShapes) {
         for (size_t j = 0; j < shapes.size(); ++j) {
-            if (j == ownIndex) continue;
+            if (j == ownIndex || shapes[j].isContainer) continue;
             cost += 60.0 * ShapeOverlapArea(shapes[j], c.rect) / labelArea;
         }
     }
 
     if (opt.bounds.width > 0.0 && opt.bounds.height > 0.0) {
         cost += 300.0 * (labelArea - OverlapArea(opt.bounds, c.rect)) / labelArea;
+    }
+
+    if (containerIndex >= 0 && static_cast<size_t>(containerIndex) < shapes.size()) {
+        // Keep the label within its container shape (e.g. the parent circle
+        // of a hierarchical packing), like a second, shaped bounds.
+        cost += 300.0 * (labelArea - ShapeOverlapArea(shapes[containerIndex], c.rect))
+                / labelArea;
     }
 
     for (const Rect2Dd& p : placed) {
@@ -136,40 +146,86 @@ void AddOutsideCandidates(std::vector<Candidate>& out, const LabelShape& s,
     }
 }
 
-// Candidates inside the shape. Rectangles prefer the top-left corner (the
-// classic set-hierarchy look), then the other edges and the centre; circles
-// prefer the centre, then upper and lower positions.
-void AddInsideCandidates(std::vector<Candidate>& out, const LabelShape& s,
-                         const Size2Dd& text, double margin) {
+// Rect for one inside anchor. Rectangle shapes pin the label into the
+// corresponding corner/edge with a margin inset; circle shapes offset the
+// label from the centre by half the radius (corners diagonally by
+// 0.5r/sqrt(2) so the label stays within the disc).
+Rect2Dd InsideAnchorRect(const LabelShape& s, const Size2Dd& text,
+                         LabelAnchor anchor, double margin) {
+    int col = static_cast<int>(anchor) % 3 - 1;   // -1 left, 0 centre, 1 right
+    int row = static_cast<int>(anchor) / 3 - 1;   // -1 top,  0 centre, 1 bottom
     if (s.type == LabelShapeType::Rectangle) {
         Rect2Dd bb = s.BoundingRect();
         double xIn = margin * 2.0;
         double yIn = margin;
-        double lX = bb.Left() + xIn;
-        double cX = s.center.x - text.width * 0.5;
-        double rX = bb.Right() - xIn - text.width;
-        double tY = bb.Top() + yIn;
-        double cY = s.center.y - text.height * 0.5;
-        double bY = bb.Bottom() - yIn - text.height;
-        const struct { double x, y, cost; } anchors[] = {
-            {lX, tY, 0.0}, {cX, tY, 0.5}, {rX, tY, 1.0},
-            {lX, bY, 1.5}, {cX, bY, 2.0}, {rX, bY, 2.5},
-            {lX, cY, 3.0}, {cX, cY, 3.5}, {rX, cY, 4.0},
-        };
-        for (const auto& a : anchors) {
-            out.push_back({Rect2Dd(a.x, a.y, text.width, text.height),
-                           LabelSide::Inside, a.cost});
+        double x = (col < 0) ? bb.Left() + xIn
+                 : (col > 0) ? bb.Right() - xIn - text.width
+                             : s.center.x - text.width * 0.5;
+        double y = (row < 0) ? bb.Top() + yIn
+                 : (row > 0) ? bb.Bottom() - yIn - text.height
+                             : s.center.y - text.height * 0.5;
+        return Rect2Dd(x, y, text.width, text.height);
+    }
+    double f = (col != 0 && row != 0) ? 0.5 * M_SQRT1_2 : 0.5;
+    return Rect2Dd(s.center.x + col * f * s.radius - text.width * 0.5,
+                   s.center.y + row * f * s.radius - text.height * 0.5,
+                   text.width, text.height);
+}
+
+// Candidates inside the shape, in the caller's priority order (earlier
+// anchors get lower base cost, so they win unless they collide). Without an
+// explicit priority, rectangles prefer the top-left corner (the classic
+// set-hierarchy look), then the other edges and the centre; circles prefer
+// the centre, then upper and lower positions.
+void AddInsideCandidates(std::vector<Candidate>& out, const LabelShape& s,
+                         const Size2Dd& text, double margin,
+                         const std::vector<LabelAnchor>& priority) {
+    static const std::vector<LabelAnchor> rectDefault = {
+        LabelAnchor::TopLeft, LabelAnchor::TopCenter, LabelAnchor::TopRight,
+        LabelAnchor::BottomLeft, LabelAnchor::BottomCenter, LabelAnchor::BottomRight,
+        LabelAnchor::CenterLeft, LabelAnchor::Center, LabelAnchor::CenterRight,
+    };
+    static const std::vector<LabelAnchor> circleDefault = {
+        LabelAnchor::Center, LabelAnchor::TopCenter, LabelAnchor::BottomCenter,
+    };
+    const std::vector<LabelAnchor>& anchors =
+        !priority.empty() ? priority
+        : (s.type == LabelShapeType::Rectangle) ? rectDefault : circleDefault;
+
+    double cost = 0.0;
+    for (LabelAnchor anchor : anchors) {
+        out.push_back({InsideAnchorRect(s, text, anchor, margin),
+                       LabelSide::Inside, cost});
+        cost += 0.5;
+    }
+}
+
+// Candidates straddling the shape's border, centred on the border point at
+// each clock-face angle (0 = 12 o'clock, clockwise; 60 = 2 o'clock), in the
+// caller's priority order.
+void AddBorderCandidates(std::vector<Candidate>& out, const LabelShape& s,
+                         const Size2Dd& text, const std::vector<double>& angles) {
+    double cost = 0.0;
+    for (double deg : angles) {
+        double rad = deg * (M_PI / 180.0);
+        double dx = std::sin(rad);
+        double dy = -std::cos(rad);
+        Point2Dd p = s.center;
+        if (s.type == LabelShapeType::Circle) {
+            p.x += dx * s.radius;
+            p.y += dy * s.radius;
+        } else {
+            // Ray-to-border intersection of the rectangle.
+            double tx = (std::abs(dx) > 1e-9) ? (s.size.width * 0.5) / std::abs(dx) : 1e18;
+            double ty = (std::abs(dy) > 1e-9) ? (s.size.height * 0.5) / std::abs(dy) : 1e18;
+            double t = std::min(tx, ty);
+            p.x += dx * t;
+            p.y += dy * t;
         }
-    } else {
-        const struct { double dy, cost; } anchors[] = {
-            {0.0, 0.0}, {-0.5, 0.5}, {0.5, 1.0},
-        };
-        for (const auto& a : anchors) {
-            out.push_back({Rect2Dd(s.center.x - text.width * 0.5,
-                                   s.center.y + a.dy * s.radius - text.height * 0.5,
-                                   text.width, text.height),
-                           LabelSide::Inside, a.cost});
-        }
+        out.push_back({Rect2Dd(p.x - text.width * 0.5, p.y - text.height * 0.5,
+                               text.width, text.height),
+                       LabelSide::Border, cost});
+        cost += 1.0;
     }
 }
 
@@ -243,8 +299,10 @@ std::vector<PlacedShapeLabel> PlaceShapeLabels(
     centroid.x /= shapes.size();
     centroid.y /= shapes.size();
 
-    std::vector<Rect2Dd> placed;
-    placed.reserve(labels.size());
+    // Obstacles behave exactly like labels that were already placed: they
+    // repel candidates in scoring and are avoided by the slide resolution.
+    std::vector<Rect2Dd> placed(options.obstacles.begin(), options.obstacles.end());
+    placed.reserve(placed.size() + labels.size());
 
     for (size_t i = 0; i < labels.size(); ++i) {
         const ShapeLabel& label = labels[i];
@@ -262,35 +320,59 @@ std::vector<PlacedShapeLabel> PlaceShapeLabels(
 
         std::vector<Candidate> candidates;
         bool wantInside = s.keepLabelInside || label.preferredSide == LabelSide::Inside;
-        if (wantInside) {
-            AddInsideCandidates(candidates, s, label.textSize, options.shapeMargin);
-        } else {
-            // Side order: the preferred side first if given; otherwise the
-            // vertical side facing away from the diagram centre (wide, short
-            // labels read best above/below), then the outward horizontal side,
-            // then the two remaining sides as fallbacks.
+
+        // The four outside sides, most promising first: the preferred side if
+        // one was given, otherwise the vertical side facing away from the
+        // diagram centre (wide, short labels read best above/below), then the
+        // outward horizontal side, then the two remaining sides.
+        auto addOutsideSides = [&](double sideCost) {
             LabelSide vertical = (dy <= 0.0) ? LabelSide::Top : LabelSide::Bottom;
             LabelSide horizontal = (dx <= 0.0) ? LabelSide::Left : LabelSide::Right;
             std::vector<LabelSide> order;
-            if (label.preferredSide != LabelSide::Auto) order.push_back(label.preferredSide);
+            if (label.preferredSide != LabelSide::Auto &&
+                label.preferredSide != LabelSide::Border &&
+                label.preferredSide != LabelSide::Inside) {
+                order.push_back(label.preferredSide);
+            }
             for (LabelSide side : {vertical, horizontal, OppositeSide(vertical), OppositeSide(horizontal)}) {
                 if (std::find(order.begin(), order.end(), side) == order.end()) {
                     order.push_back(side);
                 }
             }
-            double sideCost = 0.0;
             for (LabelSide side : order) {
                 double bias = (side == LabelSide::Top || side == LabelSide::Bottom) ? dx : dy;
                 AddOutsideCandidates(candidates, s, label.textSize, side,
                                      options.shapeMargin, sideCost, bias);
                 sideCost += 8.0;
             }
+        };
+
+        if (wantInside) {
+            AddInsideCandidates(candidates, s, label.textSize, options.shapeMargin,
+                                label.anchorPriority);
+            if (label.allowOutsideFallback) {
+                // Priced above every inside anchor (which start at 0 and step
+                // by 0.5) so stepping off the shape only wins over a genuine
+                // collision, never over a merely imperfect inside anchor.
+                addOutsideSides(40.0);
+            }
+        } else {
+            // Border-straddle positions first when the label asks for them,
+            // then the outside sides as fallback.
+            std::vector<double> borderAngles = label.borderAngles;
+            if (borderAngles.empty() && label.preferredSide == LabelSide::Border) {
+                borderAngles = {60.0, 300.0, 120.0, 240.0, 0.0, 180.0};
+            }
+            AddBorderCandidates(candidates, s, label.textSize, borderAngles);
+            addOutsideSides(borderAngles.empty() ? 0.0 : borderAngles.size() + 6.0);
         }
 
         const Candidate* best = nullptr;
         double bestScore = 0.0;
         for (const Candidate& c : candidates) {
-            double score = Score(c, label.shapeIndex, shapes, placed, options);
+            double score = Score(c, label.shapeIndex, label.containerShape,
+                                 label.tolerateShapeOverflow,
+                                 shapes, placed, options);
             if (!best || score < bestScore) {
                 best = &c;
                 bestScore = score;

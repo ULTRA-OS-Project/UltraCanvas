@@ -7,7 +7,7 @@
 #pragma once
 
 #include "Plugins/Charts/UltraCanvasChartElementBase.h"
-#include "Plugins/Charts/UltraCanvasLabelPlacement.h"
+#include "UltraCanvasLabelPlacement.h"
 #include <vector>
 #include <string>
 #include <memory>
