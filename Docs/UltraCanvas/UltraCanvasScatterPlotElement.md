@@ -14,13 +14,18 @@ namespace UltraCanvas {
 
 **Header File:** `UltraCanvas/include/Plugins/Charts/UltraCanvasSpecificChartElements.h`  
 **Implementation:** `UltraCanvas/Plugins/Charts/UltraCanvasSpecificChartElements.cpp`  
-**Version:** 1.0.0  
-**Last Modified:** 2025-09-10  
+**Version:** 1.1.0  
+**Last Modified:** 2026-07-29  
+
+> For three-dimensional (x, y, z) point clouds see the companion element
+> [`UltraCanvasScatterPlot3DElement`](UltraCanvasScatterPlot3D.md).
 
 ## Features
 
 ### Core Capabilities
 - **Multiple Point Shapes:** Circle, Square, Triangle, Diamond
+- **Correlation / Trend Line:** Least-squares fit with r and r² readout
+- **Per-Point Colors:** Points may override the element color (outliers, series)
 - **Interactive Tooltips:** Display detailed information on hover
 - **Zoom & Pan:** Navigate through large datasets with mouse controls
 - **Point Selection:** Interactive selection of individual data points
@@ -61,6 +66,17 @@ enum class PointShape {
     Square,    // Square points
     Triangle,  // Triangular points pointing up
     Diamond    // Diamond-shaped points
+}
+```
+
+### TrendLineStyle
+Stroke style of the correlation/trend line.
+
+```cpp
+enum class TrendLineStyle {
+    Solid,
+    Dashed,    // default
+    Dotted
 }
 ```
 
@@ -108,6 +124,82 @@ Changes the shape used to render data points.
 **Example:**
 ```cpp
 scatterPlot->SetPointShape(UltraCanvasScatterPlotElement::PointShape::Diamond);
+```
+
+### Correlation / Trend Line
+
+The scatter plot can fit and draw a least-squares regression line over the
+current data source, together with an optional readout of the fitted equation
+and the Pearson correlation coefficient. The fit spans the full visible x
+range and is recomputed automatically whenever the data changes. With
+categorical (label-based) x positioning the x axis carries no metric, so the
+line is not drawn in that mode.
+
+#### SetShowTrendLine
+```cpp
+void SetShowTrendLine(bool show)
+bool GetShowTrendLine() const
+```
+Enables/disables the correlation line (off by default).
+
+**Example:**
+```cpp
+scatterPlot->SetShowTrendLine(true);
+```
+
+#### SetTrendLineColor / SetTrendLineWidth / SetTrendLineStyle
+```cpp
+void SetTrendLineColor(const Color& color)   // default: Color(220, 60, 60)
+void SetTrendLineWidth(float width)          // default: 2.0f
+void SetTrendLineStyle(TrendLineStyle style) // default: Dashed
+```
+Styling of the fitted line.
+
+#### SetShowCorrelationInfo
+```cpp
+void SetShowCorrelationInfo(bool show)
+void SetCorrelationInfoColor(const Color& color)
+void SetCorrelationInfoFontSize(float size)
+```
+When enabled (and the trend line is shown), draws `y = ax + b` and
+`r = …   r² = …` in the top-right corner of the plot area.
+
+#### ComputeLinearRegression
+```cpp
+bool ComputeLinearRegression(double& slope, double& intercept) const
+```
+Computes the least-squares fit over the current data source. Returns `false`
+when there are fewer than 2 points or the x values have no variance.
+
+#### GetCorrelationCoefficient
+```cpp
+double GetCorrelationCoefficient() const
+```
+Returns the Pearson correlation coefficient *r* of the current data
+(`0.0` when undefined).
+
+**Example:**
+```cpp
+scatterPlot->SetShowTrendLine(true);
+scatterPlot->SetTrendLineStyle(UltraCanvasScatterPlotElement::TrendLineStyle::Dashed);
+scatterPlot->SetShowCorrelationInfo(true);
+
+double r = scatterPlot->GetCorrelationCoefficient();
+if (std::fabs(r) > 0.8) {
+    // strong linear relationship
+}
+```
+
+### Per-Point Colors
+
+A `ChartDataPoint` whose `color` member is non-transparent overrides the
+element point color for that point — useful for marking outliers or encoding
+a series/category:
+
+```cpp
+ChartDataPoint p(x, y, 0, "Outlier 12");
+p.color = Color(220, 60, 60, 255);   // rendered red regardless of SetPointColor
+data->AddPoint(p);
 ```
 
 ### Data Management
@@ -415,28 +507,35 @@ Integrates with the UltraCanvas event system:
 ## Limitations and Considerations
 
 1. **Current Limitations**:
-   - Point size is uniform (not data-driven)
-   - No built-in trend line calculation
+   - Point size is uniform (not data-driven; use `UltraCanvasBubbleChart`
+     for value-scaled points)
    - No automatic axis scaling options
-   - Limited to 2D visualization
+   - This element renders 2D only; use
+     [`UltraCanvasScatterPlot3DElement`](UltraCanvasScatterPlot3D.md) for
+     (x, y, z) data
 
 2. **Future Enhancements** (Planned):
-   - Bubble chart support (variable point sizes)
-   - Regression line overlay
-   - Multiple series support
+   - Multiple named series with a legend
+   - Non-linear (polynomial, exponential) trend fits
    - Custom point renderer callbacks
-   - 3D scatter plot variant
 
 ## Related Components
 
+- `UltraCanvasScatterPlot3DElement`: 3D scatter plot with correlation line
 - `UltraCanvasLineChartElement`: For continuous data visualization
 - `UltraCanvasBarChartElement`: For categorical comparisons
 - `UltraCanvasAreaChartElement`: For cumulative data display
+- `UltraCanvasBubbleChart`: Scatter with value-scaled point sizes
 - `ChartDataVector`: Standard data source implementation
 - `ChartCoordinateTransform`: Coordinate transformation utility
 
 ## Version History
 
+- **1.1.0** (2026-07-29): Correlation line and per-point colors
+  - Least-squares trend line with solid/dashed/dotted styles
+  - `y = ax + b`, r and r² readout (`SetShowCorrelationInfo`)
+  - `ComputeLinearRegression` / `GetCorrelationCoefficient` accessors
+  - Per-point color override via `ChartDataPoint::color`
 - **1.0.0** (2025-09-10): Initial implementation with basic scatter plot functionality
   - Four point shapes supported
   - Interactive tooltips and selection

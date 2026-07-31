@@ -1,7 +1,7 @@
 // include/Plugins/Charts/UltraCanvasNestedAreaChart.h
 // Nested Proportional Area Chart - Layered shapes with area proportional to values
-// Version: 1.1.0
-// Last Modified: 2026-07-25
+// Version: 1.2.0
+// Last Modified: 2026-07-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -430,11 +430,12 @@ namespace UltraCanvas {
         int hoveredIndex = -1;
         int selectedIndex = -1;
 
-        // Cached per-shape layout (local coordinates)
+        // Cached per-shape layout (local coordinates). Label positions are not
+        // cached: they are solved at render time by PlaceShapeLabels(), which
+        // needs the render context for text measurement.
         struct ShapeCache {
             std::vector<Rect2Df> shapeBounds;      // Calculated bounds for each shape
             std::vector<float> shapeRadii;         // Radius for circles / half side for rects
-            std::vector<Point2Df> labelPositions;  // Calculated label positions
             bool isValid = false;
             void Invalidate() { isValid = false; }
         };

@@ -234,7 +234,6 @@ namespace UltraCanvas {
 
     private:
         bool CommitBuffer();
-        std::string Trim(const std::string& s) const;
         void ComputeLayout(IRenderContext* ctx) const;   // fills chipBoxes + inputRect
         void FireChanged();
 

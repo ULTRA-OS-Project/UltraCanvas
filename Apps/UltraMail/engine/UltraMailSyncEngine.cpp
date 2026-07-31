@@ -8,32 +8,28 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
-
+#include <UltraCanvasUtils.h>
 namespace fs = std::filesystem;
 
 namespace UltraMail {
 
 namespace {
 
-std::string Trim(const std::string& s) {
-    std::size_t a = 0, b = s.size();
-    while (a < b && (s[a] == ' ' || s[a] == '\t' || s[a] == '"')) ++a;
-    while (b > a && (s[b-1] == ' ' || s[b-1] == '\t' || s[b-1] == '"')) --b;
-    return s.substr(a, b - a);
-}
-
 // "Anna Schmidt <anna@x.com>" -> name "Anna Schmidt", addr "anna@x.com".
 void ParseFromField(const std::string& from, std::string& name, std::string& addr) {
+    // Strip surrounding whitespace and double-quotes from the display name and
+    // address (e.g. "Schmidt, Anna" <a@x> -> name: Schmidt, Anna).
+    const std::string kStrip = " \t\r\n\"";
     std::size_t lt = from.find('<');
     if (lt != std::string::npos) {
         std::size_t gt = from.find('>', lt);
         addr = from.substr(lt + 1, gt == std::string::npos ? std::string::npos : gt - lt - 1);
-        name = Trim(from.substr(0, lt));
+        name = UltraCanvas::Trim(from.substr(0, lt), kStrip);
     } else {
-        addr = Trim(from);
+        addr = UltraCanvas::Trim(from, kStrip);
         name.clear();
     }
-    addr = Trim(addr);
+    addr = UltraCanvas::Trim(addr, kStrip);
 }
 
 uint32_t MapNetFlagsToLocal(UltraNetMailFlags nf) {

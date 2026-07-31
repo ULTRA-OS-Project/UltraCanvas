@@ -99,7 +99,6 @@ private:
 
 // Lowercase-trim helper shared by parser and resolver.
 std::string TrimLower(const std::string& text);
-std::string Trim(const std::string& text);
 
 } // namespace HTML
 } // namespace UltraCanvas

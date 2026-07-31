@@ -1,3 +1,86 @@
+#### 2026-07-31 *0.3.21*
+- **UltraCanvasTimelineChart**: added the swimlane grouping mode
+  (`TimelineLaneMode::Swimlanes`). The same date axis and the same entries, with
+  rows given identity: one named band per workstream, a name column on the left
+  and a tinted background per row. Rows are declared with `SetSwimlanes()` or
+  derived from the distinct `TimelineChartEntry::swimlaneName` values in
+  first-appearance order; milestones move inside their band with the label
+  beside them; the axis is forced to the top. Each band sub-packs with the same
+  packer and the bands share one height budget - rows are compressed before any
+  sub-row is dropped, so a busy row can keep three sub-rows while quiet rows
+  keep one. New `SwimlaneProgram()` / `ProgramSwimlanes()` samples and a
+  Swimlanes demo tab with a row-grouping control.
+- **UltraCanvasTimelineChart**: the lane packer now tracks each row's full
+  interval list instead of only its right edge. Point events are placed in
+  importance order rather than date order, so with a single right edge an event
+  earlier than everything already placed could not be inserted and ended up
+  overlapping a bar. Affects packed mode as well as swimlanes.
+- New **UltraCanvasTimelineChart** element
+  (`Plugins/Charts/UltraCanvasTimelineChart`): the chronological counterpart to
+  the timeline diagram — milestones and spans placed to scale on a real date
+  axis, with no task table and no dependency graph. Four entry kinds
+  (milestone, span, era band, project bookend), eight marker styles, four bar
+  styles, open-ended spans, uncertain dates, span progress, and five design
+  presets (`Modern`, `Classic`, `Minimal`, `Roadmap`, `Dark`) over the usual
+  palettes and dark theme. Spans and milestone callouts share one shelf packer
+  per side of the axis, so a label is never drawn on a bar; when a side runs
+  out of room the least important labels are dropped rather than overprinted,
+  and the marker is always kept. Wheel zoom anchored on the cursor's date, drag
+  pan, double-click to refit, selection, tooltips and callbacks. New demo page
+  (Info Graphics > Timeline Chart) and guide in
+  `Docs/UltraCanvas/UltraCanvasTimelineChart.md`.
+- New header-only **UltraCanvasTimeAxis**
+  (`include/Plugins/Charts/UltraCanvasTimeAxis.h`): date<->pixel projection,
+  automatic scale resolution (minutes through decades) from the current
+  pixels-per-day, two-tier tick generation with Monday-based weeks and
+  calendar-correct month/quarter/year stepping, and cursor-anchored zoom. Day
+  serials match `GanttDate::serial`, so the axis, the Gantt chart and the
+  timeline elements share one date representation.
+- New **UltraCanvasTimelineDiagram** element
+  (`Plugins/Diagrams/UltraCanvasTimelineDiagram`): the narrative timeline
+  infographic — an ordered list of events laid out along a decorative path,
+  with nine design presets (`Bar`, `Line`, `Alternating`, `Cards`, `Vertical`,
+  `Serpentine`, `Hanging`, `Chevron`, `Steps`). Items carry a period caption,
+  title, paragraph and icon glyph; cards, boxes and bubbles size themselves to
+  their text, and the `Hanging` design wraps bubble text to the circle and
+  staggers bubbles over several tiers so they never collide. Palettes
+  (`CorporateBlue`, `Vibrant`, `Pastel`, `Ocean`, `Sunset`, `Forest`, `Slate`,
+  `Mono`, custom), `PerItem`/`Single`/`GradientAlongPath` color modes, a dark
+  theme, side policies, reversible direction, a "current position" pending
+  style, an independent scale-label track, hover/selection/tooltips with
+  callbacks and node/content geometry queries. `TimelinePlacement::Proportional`
+  positions items by real dates (serials compatible with `GanttDate`) while
+  keeping the decorative design. New demo page (Info Graphics > Timeline
+  Diagram) and guide in `Docs/UltraCanvas/UltraCanvasTimelineDiagram.md`; the
+  research behind splitting narrative timelines from date-accurate ones is in
+  `Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md`.
+- Fixed duplicated Trim and base64 code.
+
+#### 2026-07-30 *0.3.20*
+- **UltraCanvasScatterPlotElement**: correlation / trend line display. The
+  element can now fit a least-squares regression line over its data
+  (`SetShowTrendLine`), styled solid, dashed or dotted with settable colour
+  and width, plus an optional readout of the fitted equation and the Pearson
+  correlation (`SetShowCorrelationInfo` draws `y = ax + b`, r and r² in the
+  plot corner). `ComputeLinearRegression` and `GetCorrelationCoefficient`
+  expose the fit programmatically. Points whose `ChartDataPoint::color` is
+  set now render in that colour, so outliers or categories can be marked
+  without extra elements.
+- New **UltraCanvasScatterPlot3DElement**
+  (`Plugins/Charts/UltraCanvasScatterPlot3D`): a software-rendered 3D scatter
+  plot for (x, y, z) point clouds. Perspective camera with drag-to-orbit,
+  wheel zoom and view presets; perspective axes with ticks, titles and an
+  optional ground grid that re-anchor to the corner nearest the camera;
+  depth cueing (perspective point sizing plus optional fade towards the
+  background); per-point colours; hover tooltips with X/Y/Z. An optional 3D
+  correlation line — the principal axis of the cloud, i.e. the orthogonal
+  least-squares fit from the covariance matrix's dominant eigenvector — is
+  depth sorted into the points so it threads through the cloud with correct
+  occlusion. `GetCorrelationLine` returns the fitted centroid and direction
+  in data space. The Charts > Scatter Plot demo page now shows both the 2D
+  trend line and the 3D cloud side by side, and a programmer's guide lives in
+  `Docs/UltraCanvas/UltraCanvasScatterPlot3D.md`.
+
 #### 2026-07-30 *0.3.20*
 - **VirtualFS / UltraCanvasFilerWidget**: fixed archives always listing as
   "(empty folder)" on Windows. `VirtualFSPath::Resolve()` prefixed a slash to
