@@ -1,10 +1,27 @@
 # UltraCanvasRequirementDiagram — Research & Feature Proposal
 
-Status: **Proposal — not implemented.** The DemoApp already reserves the slot
-(`Apps/DemoApp/UltraCanvasDemo.cpp:1374`, `"requirementdiagram"`,
-`ImplementationStatus::NotImplemented`, *"Requirement Diagram is not ready
-yet"*). This document is the research write-up and the feature list to be
-approved before any code is written.
+Status: **Phase 1 implemented.** `UltraCanvasRequirementDiagram` ships with the
+P1 feature set; see
+[`UltraCanvasRequirementDiagramExamples.md`](UltraCanvasRequirementDiagramExamples.md)
+for the API documentation and
+`Apps/DemoApp/UltraCanvasRequirementDiagramExamples.cpp` for the demo scene,
+whose four tabs reproduce the four reference images in §2. This document is
+kept as the research write-up and the roadmap for the remaining P2/P3 items.
+
+Two deviations from the plan below, both made during implementation:
+
+* **§5.5 tree layout.** `UltraCanvasDendrogramLayout`'s Reingold–Tilford
+  implementation places leaves at a *fixed* spacing and derives the depth axis
+  from merge distance — both wrong for requirement boxes, whose widths vary
+  with their text. Phase 1 therefore implements a tidy tree over variable-size
+  boxes inside the element (`LayoutSubtree`), which guarantees non-overlapping
+  siblings at any content length. Extracting a shared variable-size tree layout
+  remains worthwhile and joins the phase-3 list.
+* **New in phase 1, not in the list below:** `RequirementRelation::visible` /
+  `SetRelationKindVisible()`. A hidden relation still participates in the model
+  (layout, parent/child queries, validation) but is not drawn. Reference image
+  3 needs it: containment defines the hierarchy while generalisation carries the
+  visible notation, and drawing both doubles every edge.
 
 Author: UltraCanvas Framework
 Last Modified: 2026-07-31

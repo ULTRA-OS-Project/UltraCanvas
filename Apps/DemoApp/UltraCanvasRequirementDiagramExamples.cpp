@@ -1,0 +1,509 @@
+// Apps/DemoApp/UltraCanvasRequirementDiagramExamples.cpp
+// Demo examples for UltraCanvasRequirementDiagram — SysML requirement diagram
+// Version: 1.0.0
+// Last Modified: 2026-07-31
+// Author: UltraCanvas Framework
+//
+// The four tabs reproduce the four reference images from
+// Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md §2:
+//   1. HybridSUV      - colour-by-category containment tree, full compartments
+//   2. HSVSpecification - block root, collapsed boxes, detail callout
+//   3. SysML taxonomy - generalisation arrows + legend panel
+//   4. Smart Home     - heterogeneous kinds, dashed «stereotype» relationships
+
+#include "UltraCanvasDemo.h"
+#include "Plugins/Diagrams/UltraCanvasRequirementDiagram.h"
+#include "UltraCanvasLabel.h"
+#include "UltraCanvasContainer.h"
+#include "UltraCanvasTabbedContainer.h"
+
+namespace UltraCanvas {
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared helper — wires a diagram's callbacks into the status label
+// ─────────────────────────────────────────────────────────────────────────────
+    static void WireStatus(const std::shared_ptr<UltraCanvasRequirementDiagram>& diagram,
+                           const std::shared_ptr<UltraCanvasLabel>& statusLabel) {
+        auto weakStatus = std::weak_ptr<UltraCanvasLabel>(statusLabel);
+        auto weakDiagram = std::weak_ptr<UltraCanvasRequirementDiagram>(diagram);
+
+        diagram->onNodeClick = [weakStatus, weakDiagram](const std::string& id) {
+            auto status = weakStatus.lock();
+            auto req = weakDiagram.lock();
+            if (!status || !req) return;
+            const RequirementNode* node = req->GetNode(id);
+            if (!node) return;
+
+            std::string message = node->name + "  [" + node->id + "]";
+            if (!node->text.empty()) message += "\n" + node->text;
+            if (node->risk != RequirementRisk::Unspecified) {
+                message += "\nrisk: " + std::string(RequirementRiskToString(node->risk));
+            }
+            if (node->verifyMethod != RequirementVerifyMethod::Unspecified) {
+                message += "\nverifyMethod: " +
+                           std::string(RequirementVerifyMethodToString(node->verifyMethod));
+            }
+            const std::string parent = req->GetParentId(id);
+            if (!parent.empty()) message += "\ncontained by: " + parent;
+            const std::vector<std::string> children = req->GetChildIds(id);
+            if (!children.empty()) {
+                message += "\nsub-requirements: " + std::to_string(children.size());
+            }
+            status->SetText(message);
+        };
+
+        diagram->onRelationClick = [weakStatus, weakDiagram](const std::string& id) {
+            auto status = weakStatus.lock();
+            auto req = weakDiagram.lock();
+            if (!status || !req) return;
+            const RequirementRelation* relation = req->GetRelation(id);
+            if (!relation) return;
+            status->SetText(std::string("«") +
+                            RequirementRelationKindToString(relation->kind) + "»\n" +
+                            relation->sourceId + "  ->  " + relation->targetId);
+        };
+    }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB 1 — HybridSUV  (reference image 1)
+// Colour-by-category containment tree with full extendedRequirement
+// compartments: id, source, text, verifyMethod, risk.
+// ─────────────────────────────────────────────────────────────────────────────
+    static std::shared_ptr<UltraCanvasContainer> MakeHybridSuvTab(
+            std::shared_ptr<UltraCanvasLabel> statusLabel) {
+        auto tab = std::make_shared<UltraCanvasContainer>("ReqHybridTab", 0, 0, 1020, 700);
+
+        auto desc = std::make_shared<UltraCanvasLabel>("ReqHybridDesc", 10, 8, 990, 22);
+        desc->SetText("Containment tree with ⊕ crosshairs, «stereotype» headers and "
+                      "id/source/text/verifyMethod/risk compartments. Colour comes from the category.");
+        desc->SetFontSize(11);
+        tab->AddChild(desc);
+
+        auto diagram = CreateRequirementDiagram("ReqHybrid", 10, 34, 990, 654);
+        diagram->SetPalette(RequirementPaletteKind::Pastel);
+        diagram->SetColorSource(RequirementColorSource::ByCategory);
+        diagram->SetNodeTemplate(RequirementNodeTemplate::Extended());
+        diagram->SetNodeWidthRange(130.0, 210.0);
+
+        diagram->AddCategory("Capacity",    Color(252, 244, 200, 255), Color(190, 170, 90, 255));
+        diagram->AddCategory("Environment", Color(212, 240, 226, 255), Color(110, 165, 135, 255));
+        diagram->AddCategory("Performance", Color(206, 236, 240, 255), Color(100, 155, 165, 255));
+        diagram->AddCategory("Ergonomics",  Color(232, 224, 246, 255), Color(140, 120, 180, 255));
+
+        // Root — collapsed, as in the reference.
+        RequirementNode root("UR1", "HybridSUV");
+        root.detail = RequirementDetailLevel::Collapsed;
+        diagram->AddNode(root);
+
+        // ---- Load / Capacity branch (yellow in the reference) ----
+        RequirementNode load("UR1.1", "Load");
+        load.stereotype = "functionalRequirement";
+        load.source = "Marketing";
+        load.text = "The vehicle shall carry passengers and cargo.";
+        load.verifyMethod = RequirementVerifyMethod::Test;
+        load.risk = RequirementRisk::Low;
+        load.category = "Capacity";
+        diagram->AddNode(load);
+
+        // ---- Eco-Friendliness branch (green) ----
+        RequirementNode eco("UR1.2", "Eco-Friendliness");
+        eco.source = "Marketing";
+        eco.text = "The vehicle shall be eco-friendly.";
+        eco.verifyMethod = RequirementVerifyMethod::Analysis;
+        eco.risk = RequirementRisk::High;
+        eco.category = "Environment";
+        diagram->AddNode(eco);
+
+        // ---- Performance branch (green) ----
+        RequirementNode performance("UR1.3", "Performance");
+        performance.stereotype = "performanceRequirement";
+        performance.source = "Marketing";
+        performance.text = "The vehicle shall have adequate performance.";
+        performance.verifyMethod = RequirementVerifyMethod::Analysis;
+        performance.risk = RequirementRisk::High;
+        performance.category = "Performance";
+        diagram->AddNode(performance);
+
+        RequirementNode ergonomics("UR1.4", "Ergonomics");
+        ergonomics.stereotype = "performanceRequirement";
+        ergonomics.detail = RequirementDetailLevel::Collapsed;
+        ergonomics.category = "Ergonomics";
+        diagram->AddNode(ergonomics);
+
+        // ---- Leaves: stereotype + name only (no compartment) ----
+        struct Leaf { const char* id; const char* name; const char* parent;
+                      const char* stereotype; const char* category; };
+        const Leaf leaves[] = {
+            {"UR1.1.1", "Passengers",   "UR1.1", "requirement", "Capacity"},
+            {"UR1.1.2", "Cargo",        "UR1.1", "requirement", "Capacity"},
+            {"UR1.1.3", "FuelCapacity", "UR1.1", "requirement", "Capacity"},
+            {"UR1.3.1", "Acceleration", "UR1.3", "requirement", "Performance"},
+            {"UR1.3.2", "Braking",      "UR1.3", "requirement", "Performance"},
+            {"UR1.3.3", "Power",        "UR1.3", "requirement", "Performance"},
+            {"UR1.3.4", "Range",        "UR1.3", "requirement", "Performance"}
+        };
+        for (const auto& leaf : leaves) {
+            RequirementNode node(leaf.id, leaf.name);
+            node.stereotype = leaf.stereotype;
+            node.category = leaf.category;
+            node.detail = RequirementDetailLevel::Collapsed;
+            diagram->AddNode(node);
+            diagram->AddContainment(leaf.parent, leaf.id);
+        }
+
+        // Two sub-requirements under Eco-Friendliness keep their compartments,
+        // matching the reference's Emissions / FuelEconomy boxes.
+        RequirementNode emissions("UR1.2.1", "Emissions");
+        emissions.stereotype = "performanceRequirement";
+        emissions.source = "Regulation";
+        emissions.text = "The vehicle shall meet Ultra-Low Emissions Vehicle standards.";
+        emissions.verifyMethod = RequirementVerifyMethod::Test;
+        emissions.risk = RequirementRisk::High;
+        emissions.category = "Environment";
+        diagram->AddNode(emissions);
+
+        RequirementNode fuelEconomy("UR1.2.2", "FuelEconomy");
+        fuelEconomy.stereotype = "performanceRequirement";
+        fuelEconomy.source = "Marketing";
+        fuelEconomy.text = "The vehicle shall obtain fuel economy better than "
+                           "95% of cars built in 2004.";
+        fuelEconomy.verifyMethod = RequirementVerifyMethod::Test;
+        fuelEconomy.risk = RequirementRisk::Medium;
+        fuelEconomy.category = "Environment";
+        diagram->AddNode(fuelEconomy);
+
+        diagram->AddContainment("UR1", "UR1.1");
+        diagram->AddContainment("UR1", "UR1.2");
+        diagram->AddContainment("UR1", "UR1.3");
+        diagram->AddContainment("UR1", "UR1.4");
+        diagram->AddContainment("UR1.2", "UR1.2.1");
+        diagram->AddContainment("UR1.2", "UR1.2.2");
+
+        diagram->SetLayoutMode(RequirementLayoutMode::ContainmentTree);
+        diagram->SetLayoutOrientation(RequirementOrientation::TopDown);
+        diagram->SetLevelGap(58.0);
+        diagram->SetSiblingGap(20.0);
+        diagram->SetLegendVisible(true, RequirementPanelPosition::BottomLeft);
+        diagram->SetLegendSource(RequirementLegendSource::Categories);
+        diagram->RunLayout();
+
+        WireStatus(diagram, statusLabel);
+        tab->AddChild(diagram);
+        return tab;
+    }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB 2 — HSVSpecification  (reference image 2)
+// A «block» root owning a wide, collapsed containment tree, with one detail
+// callout anchored to the Emissions requirement.
+// ─────────────────────────────────────────────────────────────────────────────
+    static std::shared_ptr<UltraCanvasContainer> MakeSpecificationTab(
+            std::shared_ptr<UltraCanvasLabel> statusLabel) {
+        auto tab = std::make_shared<UltraCanvasContainer>("ReqSpecTab", 0, 0, 1020, 700);
+
+        auto desc = std::make_shared<UltraCanvasLabel>("ReqSpecDesc", 10, 8, 990, 22);
+        desc->SetText("Structural overview: a «block» root owns collapsed requirement boxes. "
+                      "Detail lives in a draggable callout anchored to Emissions.");
+        desc->SetFontSize(11);
+        tab->AddChild(desc);
+
+        auto diagram = CreateRequirementDiagram("ReqSpec", 10, 34, 990, 654);
+        diagram->SetPalette(RequirementPaletteKind::Pastel);
+        diagram->SetDefaultDetailLevel(RequirementDetailLevel::Collapsed);
+        diagram->SetNodeWidthRange(110.0, 190.0);
+
+        diagram->AddNode(RequirementNodeKind::Block, "HSVSpec", "HSVSpecification");
+
+        struct Branch { const char* id; const char* name; };
+        const Branch branches[] = {
+            {"ECO",  "Eco-Friendliness"},
+            {"PERF", "Performance"},
+            {"ERGO", "Ergonomics"},
+            {"QUAL", "Qualification"},
+            {"CAP",  "Capacity"}
+        };
+        for (const auto& branch : branches) {
+            RequirementNode node(branch.id, branch.name);
+            node.detail = RequirementDetailLevel::Collapsed;
+            diagram->AddNode(node);
+            diagram->AddContainment("HSVSpec", branch.id);
+        }
+
+        struct Leaf { const char* id; const char* name; const char* parent; };
+        const Leaf leaves[] = {
+            {"BRAKE",  "Braking",             "PERF"},
+            {"FUELEC", "FuelEconomy",         "PERF"},
+            {"OFFRD",  "OffRoadCapability",   "PERF"},
+            {"ACCEL",  "Acceleration",        "PERF"},
+            {"SAFETY", "SafetyTest",          "QUAL"},
+            {"CARGO",  "CargoCapacity",       "CAP"},
+            {"PASSNG", "PassengerCapacity",   "CAP"},
+            {"FUELCP", "FuelCapacity",        "CAP"}
+        };
+        for (const auto& leaf : leaves) {
+            RequirementNode node(leaf.id, leaf.name);
+            node.detail = RequirementDetailLevel::Collapsed;
+            diagram->AddNode(node);
+            diagram->AddContainment(leaf.parent, leaf.id);
+        }
+
+        // The one requirement whose detail is shown, via a callout.
+        RequirementNode emissions("R1.2.1", "Emissions");
+        emissions.text = "The vehicle shall meet Ultra-Low Emissions Vehicle standards.";
+        emissions.detail = RequirementDetailLevel::Collapsed;
+        diagram->AddNode(emissions);
+        diagram->AddContainment("ECO", "R1.2.1");
+
+        diagram->SetLayoutMode(RequirementLayoutMode::ContainmentTree);
+        diagram->SetLevelGap(64.0);
+        diagram->SetSiblingGap(18.0);
+        diagram->RunLayout();
+
+        // Placed below-left of the laid-out tree so the dashed leader line to
+        // Emissions is visible; the callout is draggable.
+        diagram->AddCallout("emissionsNote", "R1.2.1",
+                            {RequirementField::Id, RequirementField::Text},
+                            -140.0, 320.0);
+
+        WireStatus(diagram, statusLabel);
+        tab->AddChild(diagram);
+        return tab;
+    }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB 3 — SysML diagram taxonomy  (reference image 3)
+// Generalisation arrows (hollow triangle) plus a legend keyed by category.
+// ─────────────────────────────────────────────────────────────────────────────
+    static std::shared_ptr<UltraCanvasContainer> MakeTaxonomyTab(
+            std::shared_ptr<UltraCanvasLabel> statusLabel) {
+        auto tab = std::make_shared<UltraCanvasContainer>("ReqTaxonomyTab", 0, 0, 1020, 700);
+
+        auto desc = std::make_shared<UltraCanvasLabel>("ReqTaxonomyDesc", 10, 8, 990, 22);
+        desc->SetText("The SysML diagram taxonomy: generalisation (solid line, hollow triangle) "
+                      "over a category-coloured tree, with an auto-generated legend.");
+        desc->SetFontSize(11);
+        tab->AddChild(desc);
+
+        auto diagram = CreateRequirementDiagram("ReqTaxonomy", 10, 34, 990, 654);
+        diagram->SetPalette(RequirementPaletteKind::Classic);
+        diagram->SetColorSource(RequirementColorSource::ByCategory);
+        diagram->SetDefaultDetailLevel(RequirementDetailLevel::Collapsed);
+        diagram->SetNodeWidthRange(120.0, 190.0);
+
+        diagram->AddCategory("Behavior Diagram",   Color(255, 238, 156, 255), Color(180, 155, 40, 255));
+        diagram->AddCategory("Structure Diagram",  Color(186, 222, 246, 255), Color(50, 120, 175, 255));
+        diagram->AddCategory("Requirement Diagram", Color(196, 236, 210, 255), Color(50, 140, 90, 255));
+        diagram->AddCategory("Abstract",           Color(248, 248, 250, 255), Color(90, 90, 100, 255));
+
+        struct Entry { const char* id; const char* name; const char* parent; const char* category; };
+        const Entry entries[] = {
+            {"SYSML",  "SysML Diagram",        "",       "Abstract"},
+            {"BEHAV",  "Behavior Diagram",     "SYSML",  "Abstract"},
+            {"REQD",   "Requirement Diagram",  "SYSML",  "Requirement Diagram"},
+            {"STRUCT", "Structure Diagram",    "SYSML",  "Abstract"},
+            {"ACT",    "Activity Diagram",     "BEHAV",  "Behavior Diagram"},
+            {"SEQ",    "Sequence Diagram",     "BEHAV",  "Behavior Diagram"},
+            {"STATE",  "State Machine Diagram","BEHAV",  "Behavior Diagram"},
+            {"USECASE","Use Case Diagram",     "BEHAV",  "Behavior Diagram"},
+            {"BDD",    "Block Definition Diagram", "STRUCT", "Structure Diagram"},
+            {"IBD",    "Internal Block Diagram",   "STRUCT", "Structure Diagram"},
+            {"PKG",    "Package Diagram",      "STRUCT", "Structure Diagram"},
+            {"PAR",    "Parametric Diagram",   "IBD",    "Structure Diagram"}
+        };
+
+        for (const auto& entry : entries) {
+            RequirementNode node(entry.id, entry.name);
+            node.kind = RequirementNodeKind::Block;
+            node.stereotype = "diagram";
+            node.category = entry.category;
+            node.detail = RequirementDetailLevel::Collapsed;
+            diagram->AddNode(node);
+        }
+        // Containment drives the layout; generalisation carries the notation.
+        // The containment lines are hidden so each edge is drawn exactly once.
+        for (const auto& entry : entries) {
+            if (!*entry.parent) continue;
+            diagram->AddContainment(entry.parent, entry.id);
+            diagram->AddRelation(RequirementRelationKind::Generalization,
+                                 entry.id, entry.parent);
+        }
+        diagram->SetRelationKindVisible(RequirementRelationKind::Containment, false);
+
+        diagram->SetLayoutMode(RequirementLayoutMode::ContainmentTree);
+        diagram->SetLevelGap(70.0);
+        diagram->SetSiblingGap(18.0);
+        diagram->SetLegendVisible(true, RequirementPanelPosition::BottomLeft);
+        diagram->SetLegendSource(RequirementLegendSource::Categories);
+        diagram->RunLayout();
+
+        WireStatus(diagram, statusLabel);
+        tab->AddChild(diagram);
+        return tab;
+    }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB 4 — Smart Home Automation  (reference image 4)
+// Heterogeneous node kinds, colour-by-kind, dashed «deriveReqt» / «satisfy» /
+// «verify» relationships over a non-tree topology, and a title banner.
+// ─────────────────────────────────────────────────────────────────────────────
+    static std::shared_ptr<UltraCanvasContainer> MakeSmartHomeTab(
+            std::shared_ptr<UltraCanvasLabel> statusLabel) {
+        auto tab = std::make_shared<UltraCanvasContainer>("ReqSmartHomeTab", 0, 0, 1020, 700);
+
+        auto desc = std::make_shared<UltraCanvasLabel>("ReqSmartHomeDesc", 10, 8, 990, 22);
+        desc->SetText("Traceability web: «testCase» verifies, «block» satisfies, requirements "
+                      "derive from each other. Drag boxes; the dashed routes follow.");
+        desc->SetFontSize(11);
+        tab->AddChild(desc);
+
+        auto diagram = CreateRequirementDiagram("ReqSmartHome", 10, 34, 990, 654);
+        diagram->SetPalette(RequirementPaletteKind::Vibrant);
+        diagram->SetColorSource(RequirementColorSource::ByKind);
+        diagram->SetNodeTemplate(RequirementNodeTemplate::Standard());
+        diagram->SetNodeWidthRange(140.0, 200.0);
+        diagram->SetTitle("Smart Home Automation — System Requirement Diagram");
+        diagram->SetDefaultRouting(RequirementRouting::Orthogonal);
+
+        // ---- Requirements ---------------------------------------------------
+        struct Req { const char* id; const char* name; const char* text;
+                     RequirementRisk risk; RequirementVerifyMethod method; };
+        const Req requirements[] = {
+            {"R1", "Device Compatibility",
+             "The system shall support at least 50 third-party smart devices.",
+             RequirementRisk::Medium, RequirementVerifyMethod::Test},
+            {"R2", "Energy Efficiency",
+             "The system shall reduce household energy consumption by 15%.",
+             RequirementRisk::High, RequirementVerifyMethod::Analysis},
+            {"R3", "Emergency Shutdown",
+             "The system shall cut power to all controlled circuits within 2 seconds.",
+             RequirementRisk::High, RequirementVerifyMethod::Demonstration},
+            {"R4", "Privacy Protection",
+             "The system shall store all personal data encrypted at rest.",
+             RequirementRisk::High, RequirementVerifyMethod::Inspection},
+            {"R5", "Remote Access",
+             "The system shall be controllable from outside the home network.",
+             RequirementRisk::Medium, RequirementVerifyMethod::Test},
+            {"R6", "Voice Command Accuracy",
+             "The system shall recognise voice commands with 95% accuracy.",
+             RequirementRisk::Medium, RequirementVerifyMethod::Test}
+        };
+        for (const auto& req : requirements) {
+            RequirementNode node(req.id, req.name);
+            node.text = req.text;
+            node.risk = req.risk;
+            node.verifyMethod = req.method;
+            node.detail = RequirementDetailLevel::Standard;
+            diagram->AddNode(node);
+        }
+
+        // ---- Design elements, test cases and use cases -----------------------
+        diagram->AddNode(RequirementNodeKind::Block,    "SYSHUB",  "System Hub");
+        diagram->AddNode(RequirementNodeKind::Block,    "AUTHSVC", "Authentication Service");
+        diagram->AddNode(RequirementNodeKind::TestCase, "TC1", "Remote Access Test");
+        diagram->AddNode(RequirementNodeKind::TestCase, "TC2", "Privacy Audit");
+        diagram->AddNode(RequirementNodeKind::TestCase, "TC3", "Voice Accuracy Test");
+        diagram->AddNode(RequirementNodeKind::UseCase,  "UC1", "User Logs In");
+        diagram->AddNode(RequirementNodeKind::Actor,    "A1",  "Homeowner");
+
+        // ---- Manual placement: the reference is a web, not a tree ------------
+        struct Placement { const char* id; double x; double y; };
+        const Placement placements[] = {
+            {"R1",      40.0,   30.0}, {"R2",     280.0,  30.0}, {"R3",     520.0,  30.0},
+            {"R4",     760.0,   30.0},
+            {"R5",     160.0,  250.0}, {"R6",     640.0, 250.0},
+            {"SYSHUB",  40.0,  430.0}, {"AUTHSVC", 280.0, 430.0},
+            {"TC1",    520.0,  430.0}, {"TC2",     720.0, 430.0}, {"TC3", 920.0, 430.0},
+            {"UC1",    320.0,  590.0}, {"A1",       80.0, 590.0}
+        };
+        for (const auto& placement : placements) {
+            diagram->SetNodePosition(placement.id, placement.x, placement.y);
+        }
+
+        // ---- Traceability ---------------------------------------------------
+        diagram->AddRelation(RequirementRelationKind::DeriveReqt, "R5", "R1");
+        diagram->AddRelation(RequirementRelationKind::DeriveReqt, "R6", "R3");
+        diagram->AddRelation(RequirementRelationKind::Satisfy,    "SYSHUB",  "R1");
+        diagram->AddRelation(RequirementRelationKind::Satisfy,    "SYSHUB",  "R2");
+        diagram->AddRelation(RequirementRelationKind::Satisfy,    "AUTHSVC", "R4");
+        diagram->AddRelation(RequirementRelationKind::Satisfy,    "AUTHSVC", "R5");
+        diagram->AddRelation(RequirementRelationKind::Verify,     "TC1", "R5");
+        diagram->AddRelation(RequirementRelationKind::Verify,     "TC2", "R4");
+        diagram->AddRelation(RequirementRelationKind::Verify,     "TC3", "R6");
+        diagram->AddRelation(RequirementRelationKind::Refine,     "UC1", "R5");
+        diagram->AddRelation(RequirementRelationKind::Trace,      "A1",  "R5");
+
+        diagram->SetLayoutMode(RequirementLayoutMode::Manual);
+        diagram->SetLegendVisible(true, RequirementPanelPosition::BottomRight);
+        diagram->SetLegendSource(RequirementLegendSource::RelationKinds);
+        diagram->FitView();
+
+        WireStatus(diagram, statusLabel);
+        tab->AddChild(diagram);
+        return tab;
+    }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SCENE
+// ─────────────────────────────────────────────────────────────────────────────
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateRequirementDiagramExamples() {
+        auto main = std::make_shared<UltraCanvasContainer>("ReqDiagramMain", 0, 0, 1040, 780);
+
+        main->layout.SetGrid()
+                .SetGridColumns({
+                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fr,
+                                                 .value = CSSLayout::Dimension::Fr(1)},
+                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fixed,
+                                                 .value = CSSLayout::Dimension::Px(350)}})
+                .SetGridRows({
+                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fixed,
+                                                 .value = CSSLayout::Dimension::Px(34)},
+                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fixed,
+                                                 .value = CSSLayout::Dimension::Px(44)},
+                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fr,
+                                                 .value = CSSLayout::Dimension::Fr(1)}})
+                .SetGridGap(6);
+
+        auto title = std::make_shared<UltraCanvasLabel>("ReqTitle");
+        title->SetText("Requirement Diagram");
+        title->SetFontSize(18);
+        title->SetFontWeight(FontWeight::Bold);
+        title->SetTextColor(Color(40, 100, 80));
+        main->AddChild(title);
+        title->layoutItem.SetGridRowColSimplified(0, 0);
+
+        auto subtitle = std::make_shared<UltraCanvasLabel>("ReqSub");
+        subtitle->SetText("SysML requirement diagram: compartmented requirement boxes, "
+                          "containment with ⊕ crosshairs, and dashed deriveReqt / satisfy / "
+                          "verify / refine / trace relationships.");
+        subtitle->SetFontSize(11);
+        subtitle->SetWrap(TextWrap::WrapWord);
+        subtitle->SetTextColor(Color(90, 90, 90));
+        main->AddChild(subtitle);
+        subtitle->layoutItem.SetGridRowColSimplified(1, 0);
+
+        auto statusLabel = std::make_shared<UltraCanvasLabel>("ReqStatus");
+        statusLabel->SetText("Click a requirement or a relationship to inspect it.");
+        statusLabel->SetFontSize(10);
+        statusLabel->SetWrap(TextWrap::WrapWord);
+        statusLabel->SetBackgroundColor(Color(245, 245, 245));
+        statusLabel->SetBorders(1.0f);
+        statusLabel->SetPadding(6.0f);
+        main->AddChild(statusLabel);
+        statusLabel->layoutItem.SetGridRowColSimplified(0, 1, 2, 1);
+
+        auto tabs = std::make_shared<UltraCanvasTabbedContainer>("ReqTabs");
+        tabs->SetTabPosition(TabPosition::Top);
+        tabs->SetTabStyle(TabStyle::Modern);
+        tabs->SetTabMaxWidth(300);
+
+        tabs->AddTab("HybridSUV (compartments)",   MakeHybridSuvTab(statusLabel));
+        tabs->AddTab("Specification + callout",    MakeSpecificationTab(statusLabel));
+        tabs->AddTab("SysML taxonomy + legend",    MakeTaxonomyTab(statusLabel));
+        tabs->AddTab("Smart Home traceability",    MakeSmartHomeTab(statusLabel));
+
+        main->AddChild(tabs);
+        tabs->layoutItem.SetGridRowColSimplified(2, 0, 1, 2);
+        return main;
+    }
+
+} // namespace UltraCanvas
