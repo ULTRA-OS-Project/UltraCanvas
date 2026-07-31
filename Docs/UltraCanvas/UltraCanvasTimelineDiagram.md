@@ -10,7 +10,7 @@ the presentation timeline rather than a date-accurate schedule.
 | You want | Use |
 |---|---|
 | A presentation/story with N events and rich text | `UltraCanvasTimelineDiagram` (this element) |
-| Dates to scale, milestones and spans, no task table | *planned* `UltraCanvasTimelineChart` — see the [proposal](UltraCanvasTimelineDiagramProposal.md) |
+| Dates to scale, milestones and spans, no task table | [`UltraCanvasTimelineChart`](UltraCanvasTimelineChart.md) |
 | A full project schedule: tasks, dependencies, progress, critical path | [`UltraCanvasGanttChart`](UltraCanvasGanttChart.md) |
 | Fixed process steps with a current position | [`UltraCanvasStepper`](UltraCanvasStepper.md) |
 | A sequence arranged around a circle | [`UltraCanvasCircularInfoGraphic`](UltraCanvasCircularInfoGraphic.md) |

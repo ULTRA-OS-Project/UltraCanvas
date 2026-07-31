@@ -1,3 +1,26 @@
+#### 2026-07-31 *0.3.22*
+- New **UltraCanvasTimelineChart** element
+  (`Plugins/Charts/UltraCanvasTimelineChart`): the chronological counterpart to
+  the timeline diagram — milestones and spans placed to scale on a real date
+  axis, with no task table and no dependency graph. Four entry kinds
+  (milestone, span, era band, project bookend), eight marker styles, four bar
+  styles, open-ended spans, uncertain dates, span progress, and five design
+  presets (`Modern`, `Classic`, `Minimal`, `Roadmap`, `Dark`) over the usual
+  palettes and dark theme. Spans and milestone callouts share one shelf packer
+  per side of the axis, so a label is never drawn on a bar; when a side runs
+  out of room the least important labels are dropped rather than overprinted,
+  and the marker is always kept. Wheel zoom anchored on the cursor's date, drag
+  pan, double-click to refit, selection, tooltips and callbacks. New demo page
+  (Info Graphics > Timeline Chart) and guide in
+  `Docs/UltraCanvas/UltraCanvasTimelineChart.md`.
+- New header-only **UltraCanvasTimeAxis**
+  (`include/Plugins/Charts/UltraCanvasTimeAxis.h`): date<->pixel projection,
+  automatic scale resolution (minutes through decades) from the current
+  pixels-per-day, two-tier tick generation with Monday-based weeks and
+  calendar-correct month/quarter/year stepping, and cursor-anchored zoom. Day
+  serials match `GanttDate::serial`, so the axis, the Gantt chart and the
+  timeline elements share one date representation.
+
 #### 2026-07-31 *0.3.21*
 - New **UltraCanvasTimelineDiagram** element
   (`Plugins/Diagrams/UltraCanvasTimelineDiagram`): the narrative timeline

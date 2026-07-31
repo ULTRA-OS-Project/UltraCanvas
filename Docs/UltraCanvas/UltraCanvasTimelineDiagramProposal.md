@@ -1,10 +1,11 @@
 # UltraCanvasTimelineDiagram — Research & Feature Proposal
 
-**Status:** **Phase 1 and most of Phase 2 are implemented** as
-`UltraCanvasTimelineDiagram` — see
-[`UltraCanvasTimelineDiagram.md`](UltraCanvasTimelineDiagram.md) for the API and
-`Apps/DemoApp/UltraCanvasTimelineDiagramExamples.cpp` for the demo. This
-document remains the research write-up and the roadmap for the rest.
+**Status:** **Phases 1-3 are implemented.** Both elements exist:
+`UltraCanvasTimelineDiagram` (Family A — see
+[`UltraCanvasTimelineDiagram.md`](UltraCanvasTimelineDiagram.md)) and
+`UltraCanvasTimelineChart` (Family B — see
+[`UltraCanvasTimelineChart.md`](UltraCanvasTimelineChart.md)), each with a demo
+page. This document remains the research write-up and the roadmap for the rest.
 
 Delivered: all Phase 1 items plus the `Serpentine`, `Hanging`, `Vertical`,
 `Chevron` and `Steps` designs, circle-inscribed bubble text (A-T3), the
@@ -20,10 +21,19 @@ element depends only on the header-only `UltraCanvasCalendarDate.h` and not on
 the whole Gantt chart header; and the `None` enumerators became `Hidden` /
 `Plain` because `None` is an X11 macro pulled in by the window headers.
 
-Still open: the `Roadmap` design, item groups (A-D6), per-item images (A-D4),
-CSV/JSON IO (A-X1/A-X2), keyboard navigation (A-I6), entrance animation (A-I7),
-the whole of `UltraCanvasTimelineChart` (Phase 3) and the Gantt additions
-G1/G2.
+Phase 3 delivered `UltraCanvasTimeAxis.h` (Q3: written fresh, Gantt not yet
+migrated onto it), B-A1..B-A5, B-E1..B-E3, B-E5, B-E8, B-E6/B-E7 (open-ended and
+uncertain dates), B-E9 (span progress), B-L1..B-L4, B-I1, B-I3 and B-D1/B-D2/B-D4.
+Spans and milestone callouts share one shelf packer per side, so B-L2 became
+real: when a side runs out of room, low-importance labels are dropped rather
+than overprinted, and the marker is always kept.
+
+Still open: the `Roadmap` design of the diagram element, item groups (A-D6),
+per-item images (A-D4), CSV/JSON IO (A-X1/A-X2/B-D3), keyboard navigation
+(A-I6), entrance animation (A-I7); time breaks (B-A6), relative time (B-A7),
+swimlanes (B-E4), the overview minimap (B-I2), drag-to-reschedule (B-I4), the
+crosshair read-out (B-I5); migrating the Gantt chart onto `UltraCanvasTimeAxis`;
+and the Gantt additions G1/G2.
 
 **Author:** UltraCanvas Framework
 **Last Modified:** 2026-07-31

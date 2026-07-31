@@ -1424,6 +1424,18 @@ namespace UltraCanvas {
                 .AddVariant("timelinediagram", "Chevron")
                 .AddVariant("timelinediagram", "Steps");
 
+        infoBuilder.AddItem("timelinechart", "Timeline Chart",
+                            "Chronological timeline: milestones and spans to scale on a date axis",
+                            ImplementationStatus::FullyImplemented,
+                            [this]() { return CreateTimelineChartExamples(); },
+                            "DemoApp/UltraCanvasTimelineChartExamples.cpp",
+                            "Docs/UltraCanvas/UltraCanvasTimelineChart.md")
+                .AddVariant("timelinechart", "Modern")
+                .AddVariant("timelinechart", "Classic")
+                .AddVariant("timelinechart", "Minimal")
+                .AddVariant("timelinechart", "Roadmap")
+                .AddVariant("timelinechart", "Dark");
+
         infoBuilder.AddItem("heatmap", "Heat map", "Heat map",
                              ImplementationStatus::PartiallyImplemented,
                              [this]() { return CreatePartiallyImplementedExamples("HeatMap is not ready yet"); });

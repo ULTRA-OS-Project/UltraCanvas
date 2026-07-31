@@ -4,7 +4,7 @@
 //
 // This element covers "Family A" of the timeline proposal - the presentation
 // timeline, where items are evenly spaced and time is not necessarily to scale.
-// For a date-accurate schedule with milestones and spans use the (planned)
+// For a date-accurate schedule with milestones and spans use
 // UltraCanvasTimelineChart; for a full project plan with tasks, dependencies
 // and progress use UltraCanvasGanttChart.
 //
