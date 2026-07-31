@@ -6,6 +6,7 @@
 // Last Modified: 2026-07-03
 // Author: UltraCanvas Framework
 #include "UltraCanvasMathToLatex.h"
+#include "UltraCanvasUtils.h"
 
 #include <tinyxml2.h>
 
@@ -45,14 +46,6 @@ size_t Utf8SeqLen(unsigned char lead) {
     if ((lead & 0xF0) == 0xE0) return 3;
     if ((lead & 0xF8) == 0xF0) return 4;
     return 1;
-}
-
-std::string Trim(const std::string& s) {
-    size_t begin = 0;
-    size_t end = s.size();
-    while (begin < end && std::isspace(static_cast<unsigned char>(s[begin]))) ++begin;
-    while (end > begin && std::isspace(static_cast<unsigned char>(s[end - 1]))) --end;
-    return s.substr(begin, end - begin);
 }
 
 // All text content of an element, descending through nested elements so
@@ -389,8 +382,8 @@ std::string ConvertMathMLFenced(const XMLElement* e) {
         }
         AppendLatex(inner, ConvertMathML(c));
     }
-    return "\\left" + FenceDelim(Trim(open)) + inner +
-           "\\right" + FenceDelim(Trim(close));
+    return "\\left" + FenceDelim(::UltraCanvas::Trim(open)) + inner +
+           "\\right" + FenceDelim(UltraCanvas::Trim(close));
 }
 
 std::string ConvertMathMLTable(const XMLElement* e) {

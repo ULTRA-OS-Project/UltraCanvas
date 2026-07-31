@@ -13,7 +13,7 @@
 #include "EBookArchive.h"
 
 #include "HTMLReader/HTMLParser.h"
-#include "HTMLReader/CSSStyleSheet.h"   // HTML::Trim
+#include "UltraCanvasUtils.h"   // UltraCanvas::Trim
 
 #include <algorithm>
 #include <cctype>
@@ -135,13 +135,13 @@ void EmitHeading(const HTML::Node& title, int level, std::string& out) {
         if (!child->IsElement()) continue;
         std::string line;
         EmitInlineChildren(*child, line);
-        if (HTML::Trim(line).empty()) continue;
+        if (UltraCanvas::Trim(line).empty()) continue;
         if (!inner.empty()) inner += "<br/>";
         inner += line;
     }
     if (inner.empty()) {
         EmitInlineChildren(title, inner);
-        inner = HTML::Trim(inner);
+        inner = UltraCanvas::Trim(inner);
     }
     if (inner.empty()) return;
     std::string h = std::to_string(level);

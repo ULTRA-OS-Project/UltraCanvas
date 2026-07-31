@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/CSSStyleSheet.h"
+#include "UltraCanvasUtils.h"
 
 #include <algorithm>
 #include <cctype>
@@ -17,13 +18,6 @@ namespace HTML {
 // ============================================================================
 // STRING HELPERS
 // ============================================================================
-
-std::string Trim(const std::string& text) {
-    size_t start = 0, end = text.size();
-    while (start < end && std::isspace(static_cast<unsigned char>(text[start]))) ++start;
-    while (end > start && std::isspace(static_cast<unsigned char>(text[end - 1]))) --end;
-    return text.substr(start, end - start);
-}
 
 std::string TrimLower(const std::string& text) {
     std::string result = Trim(text);

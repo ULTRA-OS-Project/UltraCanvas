@@ -23,7 +23,7 @@
 #include <string>
 
 namespace UltraCanvas {
-    const char* versionString = "0.3.20";
+    const char* versionString = "0.3.21";
 
 #if defined(_WIN32) || defined(_WIN64)
     std::wstring Utf8ToWide(const std::string& utf8) {
@@ -424,9 +424,10 @@ namespace UltraCanvas {
     }
 
 // ===== BASE64 DECODING HELPER =====
+    static const std::string base64Chars =
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
     std::vector<uint8_t> Base64Decode(const std::string& input) {
-        static const std::string base64Chars =
-                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
         std::vector<uint8_t> result;
 
@@ -471,6 +472,26 @@ namespace UltraCanvas {
 
         return result;
     }
+
+    std::string Base64Encode(const std::vector<uint8_t>& in, bool wrap) {
+        std::string out;
+        std::size_t lineWidth = 0;
+        for (std::size_t i = 0; i < in.size(); i += 3) {
+            const std::size_t left = in.size() - i;
+            const uint32_t t = (static_cast<uint32_t>(in[i]) << 16) |
+                               (left > 1 ? static_cast<uint32_t>(in[i+1]) << 8 : 0) |
+                               (left > 2 ? static_cast<uint32_t>(in[i+2])      : 0);
+            out.push_back(base64Chars[(t >> 18) & 0x3f]);
+            out.push_back(base64Chars[(t >> 12) & 0x3f]);
+            out.push_back(left > 1 ? base64Chars[(t >> 6) & 0x3f] : '=');
+            out.push_back(left > 2 ? base64Chars[ t       & 0x3f] : '=');
+            lineWidth += 4;
+            if (wrap && lineWidth >= 76) { out.append("\r\n"); lineWidth = 0; }
+        }
+        if (wrap && lineWidth > 0) out.append("\r\n");
+        return out;
+    }
+
 
     std::string FormatFileSize(size_t bytes) {
         std::ostringstream oss;
@@ -556,5 +577,12 @@ namespace UltraCanvas {
 #endif
         }
         return result;
+    }
+
+    std::string Trim(const std::string& s, const std::string& strippedChars) {
+        const size_t a = s.find_first_not_of(strippedChars);
+        if (a == std::string::npos) return {};
+        const size_t b = s.find_last_not_of(strippedChars);
+        return s.substr(a, b - a + 1);
     }
 }

@@ -24,7 +24,7 @@ namespace UltraCanvas {
     extern const char* versionString;
     std::string ToLowerCase(const std::string &str);
     bool StartsWith(const std::string& str, const std::string& prefix);
-    std::string Trim(const std::string& str);
+    std::string Trim(const std::string& str, const std::string& strippedChars = " \t\r\n");
     std::vector<std::string> Split(const std::string& str, char delimiter);
     Color ParseColor(const std::string& colorStr);
     std::string GetFileExtension(const std::string& filePath);
@@ -50,6 +50,7 @@ namespace UltraCanvas {
     void OpenURL(const std::string& url);
 
     std::vector<uint8_t> Base64Decode(const std::string& input);
+    std::string Base64Encode(const std::vector<uint8_t>& in, bool wrap = true);
 
     inline std::string LTrimWhitespace(std::string s) {
         std::string result = s;

@@ -1,3 +1,6 @@
+#### 2026-07-31 *0.3.21*
+- Fixed duplicated Trim and base64 code.
+
 #### 2026-07-30 *0.3.20*
 - **VirtualFS / UltraCanvasFilerWidget**: fixed archives always listing as
   "(empty folder)" on Windows. `VirtualFSPath::Resolve()` prefixed a slash to

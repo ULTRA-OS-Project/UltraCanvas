@@ -6,6 +6,7 @@
 
 #include "UltraCanvasChip.h"
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasUtils.h"
 #include <cctype>
 
 namespace UltraCanvas {
@@ -211,13 +212,6 @@ namespace UltraCanvas {
             : UltraCanvasUIElement(identifier, x, y, w, h) {
         mouseCursor = UCMouseCursor::Text;
         if (h <= 0) SetHeight(style.chipStyle.height + 2 * style.padding);
-    }
-
-    std::string UltraCanvasTagInput::Trim(const std::string& s) const {
-        size_t a = s.find_first_not_of(" \t\r\n");
-        if (a == std::string::npos) return "";
-        size_t b = s.find_last_not_of(" \t\r\n");
-        return s.substr(a, b - a + 1);
     }
 
     bool UltraCanvasTagInput::HasTag(const std::string& tag) const {
