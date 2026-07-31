@@ -6,6 +6,7 @@
 
 #include "UltraCanvasDemo.h"
 #include "Plugins/Charts/UltraCanvasSpecificChartElements.h"
+#include "Plugins/Charts/UltraCanvasScatterPlot3D.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
 #include <sstream>
@@ -347,20 +348,21 @@ static struct ChartControls {
         }
         correlationData->LoadFromArray(correlation);
 
-        auto container = std::make_shared<UltraCanvasContainer>("ScatterPlotExamples", 0, 0, 800, 700);
+        auto container = std::make_shared<UltraCanvasContainer>("ScatterPlotExamples", 0, 0, 1180, 700);
 
         // Add description label
-        auto descLabel = std::make_shared<UltraCanvasLabel>("ScatterPlotDescription", 50, 20, 700, 60);
+        auto descLabel = std::make_shared<UltraCanvasLabel>("ScatterPlotDescription", 30, 20, 1120, 60);
         descLabel->SetText("Scatter Plot Example - Shows relationships between two continuous variables.\n"
-                           "Excellent for identifying correlations, clusters, and outliers in datasets.\n"
-                           "Features: Multiple point shapes, selection capability, zoom, pan, and interactive tooltips.");
+                           "The 2D plot fits a least-squares correlation line with r / r-squared readout; "
+                           "the 3D plot shows an (x, y, z) cloud with its principal-axis correlation line.\n"
+                           "Features: Point shapes, per-point colors, tooltips - drag the 3D plot to orbit, wheel to zoom.");
         descLabel->SetFontSize(12);
         descLabel->SetTextColor(Color(50, 50, 50, 255));
         container->AddChild(descLabel);
 
         // Create scatter plot for correlation analysis
         std::shared_ptr<UltraCanvasScatterPlotElement> scatterPlot =
-                CreateScatterPlotElement("correlationScatter", 50, 100, 600, 400);
+                CreateScatterPlotElement("correlationScatter", 30, 100, 540, 420);
 
         // Configure Scatter Plot
         scatterPlot->SetDataSource(correlationData);
@@ -372,18 +374,50 @@ static struct ChartControls {
         scatterPlot->SetEnableZoom(true);
         scatterPlot->SetEnablePan(true);
         scatterPlot->SetEnableSelection(true);
+        scatterPlot->SetShowTrendLine(true);
+        scatterPlot->SetShowCorrelationInfo(true);
 
         container->AddChild(scatterPlot);
 
-        // Button for cycling scatter plot shapes
-        int buttonY = 520;
-        int buttonX = 50;
+        // 3D scatter plot: a correlated cloud along a spatial diagonal with a
+        // few outliers, plus the fitted principal-axis correlation line.
+        auto scatter3DData = std::make_shared<ChartDataVector>();
+        {
+            std::uniform_real_distribution<> tDist(-100.0, 100.0);
+            std::uniform_real_distribution<> jitter(-8.0, 8.0);
+            std::uniform_real_distribution<> outlierJitter(-55.0, 55.0);
+            std::vector<ChartDataPoint> cloud;
+            for (int i = 0; i < 90; ++i) {
+                bool outlier = (i % 9) == 8;
+                auto& spread = outlier ? outlierJitter : jitter;
+                double t = tDist(gen);
+                ChartDataPoint p(t * 0.9 + spread(gen),
+                                 t * 0.7 + spread(gen),
+                                 t * 1.1 + spread(gen),
+                                 outlier ? "Outlier " + std::to_string(i + 1)
+                                         : "Inlier " + std::to_string(i + 1));
+                p.color = outlier ? Color(220, 60, 60, 255) : Color(0, 102, 204, 255);
+                cloud.push_back(p);
+            }
+            scatter3DData->LoadFromArray(cloud);
+        }
+
+        auto scatterPlot3D = CreateScatterPlot3DElement("scatter3D", 600, 100, 540, 420);
+        scatterPlot3D->SetDataSource(scatter3DData);
+        scatterPlot3D->SetChartTitle("3D Correlation Cloud");
+        scatterPlot3D->SetPointSize(4.5);
+        scatterPlot3D->SetAxisTitles("X", "Y", "Z");
+        scatterPlot3D->SetShowCorrelationLine(true);
+        container->AddChild(scatterPlot3D);
+
+        // Buttons under the charts
+        int buttonY = 540;
         int buttonWidth = 220;
         int buttonHeight = 35;
 
         // Cycle Scatter Plot Shapes button
         auto btnCycleShapes = std::make_shared<UltraCanvasButton>("btnCycleShapes",
-                                                                  buttonX, buttonY, buttonWidth, buttonHeight);
+                                                                  30, buttonY, buttonWidth, buttonHeight);
         btnCycleShapes->SetText("Cycle Scatter Shapes");
 
         // Track current shape
@@ -400,6 +434,27 @@ static struct ChartControls {
             //scatterPlot->Invalidate();
         });
         container->AddChild(btnCycleShapes);
+
+        // Toggle the 2D correlation line
+        auto btnToggleTrend = std::make_shared<UltraCanvasButton>("btnToggleTrend",
+                                                                  30 + buttonWidth + 20, buttonY,
+                                                                  buttonWidth, buttonHeight);
+        btnToggleTrend->SetText("Toggle Correlation Line");
+        btnToggleTrend->SetOnClick([scatterPlot]() {
+            bool show = !scatterPlot->GetShowTrendLine();
+            scatterPlot->SetShowTrendLine(show);
+            scatterPlot->SetShowCorrelationInfo(show);
+        });
+        container->AddChild(btnToggleTrend);
+
+        // Reset the 3D camera
+        auto btnResetView = std::make_shared<UltraCanvasButton>("btnResetView3D",
+                                                                600, buttonY, buttonWidth, buttonHeight);
+        btnResetView->SetText("Reset 3D View");
+        btnResetView->SetOnClick([scatterPlot3D]() {
+            scatterPlot3D->ViewIsometric();
+        });
+        container->AddChild(btnResetView);
 
         return container;
     }

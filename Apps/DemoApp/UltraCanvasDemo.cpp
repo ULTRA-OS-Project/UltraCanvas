@@ -1104,6 +1104,23 @@ namespace UltraCanvas {
                 .AddVariant("ganttcharts", "Dark Theme")
                 .AddVariant("ganttcharts", "Palette Gallery");
 
+        chartBuilder.AddItem("kanbanboards", "Kanban Board",
+                             "Workflow boards with WIP limits, swimlanes, drag & drop, "
+                             "a built-in card editor, Mermaid text definitions and "
+                             "design presets",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateKanbanBoardExamples(); },
+                             "DemoApp/UltraCanvasKanbanBoardExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasKanbanBoard.md")
+                .AddVariant("kanbanboards", "Interactive Editor")
+                .AddVariant("kanbanboards", "Sticky Notes")
+                .AddVariant("kanbanboards", "Poster")
+                .AddVariant("kanbanboards", "Schematic")
+                .AddVariant("kanbanboards", "Timeline / Swimlanes")
+                .AddVariant("kanbanboards", "Dark Theme")
+                .AddVariant("kanbanboards", "Text Definition")
+                .AddVariant("kanbanboards", "Cumulative Flow");
+
         chartBuilder.AddItem("quadrantcharts", "Quadrant Chart",
                              "Strategic 2x2 matrices: SWOT, BCG, Eisenhower, risk, priority and custom quadrants",
                              ImplementationStatus::FullyImplemented,
@@ -1233,6 +1250,22 @@ namespace UltraCanvas {
                 .AddVariant("funnel", "Presentation Infographic")
                 .AddVariant("funnel", "Horizontal Funnel")
                 .AddVariant("funnel", "Playground");
+
+        chartBuilder.AddItem("pyramid", "Pyramid Diagram",
+                             "Level hierarchies - extruded 3D tiers, colour ribbon and icon "
+                             "callouts, outlined and flat presentation layouts, and "
+                             "area-proportional data pyramids with a reference shape",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreatePyramidChartExamples(); },
+                             "DemoApp/UltraCanvasPyramidChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasPyramidChart.md")
+                .AddVariant("pyramid", "3D Ribbon Pyramid")
+                .AddVariant("pyramid", "Spectrum 3D")
+                .AddVariant("pyramid", "Outline Hierarchy")
+                .AddVariant("pyramid", "Flat & Minimal")
+                .AddVariant("pyramid", "Alternating Infographic")
+                .AddVariant("pyramid", "Data Pyramid")
+                .AddVariant("pyramid", "Playground");
 
         chartBuilder.AddItem("bubblecharts", "Bubble Chart",
                              "Scatter bubbles, packed bubbles, bubble matrix and an "

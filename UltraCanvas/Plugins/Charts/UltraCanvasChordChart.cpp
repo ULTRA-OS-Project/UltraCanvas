@@ -1,8 +1,17 @@
 // Plugins/Charts/UltraCanvasChordChart.cpp
 // Chord diagram element: circular category arcs joined by proportional ribbons.
-// Version: 1.0.0
-// Last Modified: 2026-07-29
+// Version: 1.0.1
+// Last Modified: 2026-07-30
 // Author: UltraCanvas Framework
+//
+// Changelog:
+//   v1.0.1 (2026-07-30):
+//     - Rebuild the cached layout when the layout engine resizes the element.
+//       The plot area was only computed once, so a chart sized by flex/grid kept
+//       its original ring after a window resize, and the ribbon outlines were
+//       never rebuilt in the new geometry.
+//     - Reserve the full label room above and below the ring for radial labels.
+//       They run straight up and down there, so half the room clipped them.
 #include "Plugins/Charts/UltraCanvasChordChart.h"
 
 #include <algorithm>
@@ -293,6 +302,18 @@ namespace UltraCanvas {
         layoutValid = false;
     }
 
+    void UltraCanvasChordChart::SyncLayoutToElementSize() {
+        // The layout engine can resize the element without any setter running —
+        // it happens on every window resize when the chart is a flex/grid item.
+        // Both the plot area and everything derived from it are cached, so drop
+        // both caches when the size we last built for is stale.
+        if (lastLayoutWidth == GetWidth() && lastLayoutHeight == GetHeight()) return;
+        lastLayoutWidth  = GetWidth();
+        lastLayoutHeight = GetHeight();
+        InvalidateCache();
+        InvalidateLayout();
+    }
+
     ChartPlotArea UltraCanvasChordChart::CalculatePlotArea() {
         // Reserve room for outboard labels so neither the ring nor the longest
         // label is clipped. Text cannot be measured here (no render context),
@@ -305,9 +326,15 @@ namespace UltraCanvas {
             }
             labelRoom = labelDistance + static_cast<float>(longest) * labelFontSize * 0.62f + 6.0f;
         }
+        // A radial label at the top or bottom of the ring runs straight up or
+        // down, so it needs as much vertical room as a side label needs
+        // horizontal room. An outside label is horizontal wherever it sits, so
+        // there it is only the line height that has to fit.
+        float verticalLabelRoom = (labelPlacement == ChordLabelPlacement::Radial)
+                                ? labelRoom : labelRoom * 0.5f;
         float marginSide   = 8.0f + labelRoom;
-        float marginTop    = (chartTitle.empty() ? 8.0f : 32.0f) + labelRoom * 0.5f;
-        float marginBottom = 8.0f + labelRoom * 0.5f;
+        float marginTop    = (chartTitle.empty() ? 8.0f : 32.0f) + verticalLabelRoom;
+        float marginBottom = 8.0f + verticalLabelRoom;
 
         ChartPlotArea area;
         area.x = marginSide;
@@ -539,6 +566,7 @@ namespace UltraCanvas {
     void UltraCanvasChordChart::Render(IRenderContext* ctx, const Rect2Df& /*dirtyRect*/) {
         if (!ctx) return;
 
+        SyncLayoutToElementSize();
         UpdateRenderingCache();
         // RenderCommonBackground() is deliberately not called: grid, axes and
         // the plot-area rectangle are meaningless for a radial chart, and its
@@ -553,6 +581,7 @@ namespace UltraCanvas {
 
     void UltraCanvasChordChart::RenderChart(IRenderContext* ctx) {
         if (!ctx) return;
+        SyncLayoutToElementSize();
         UpdateRenderingCache();
 
         if (!layoutValid) {
@@ -562,9 +591,16 @@ namespace UltraCanvas {
             BuildRibbonOutlines();
             layoutValid = true;
         } else {
-            // Geometry depends on the plot area, which can change without the
-            // data changing (element resize), so keep it in sync every frame.
+            // The plot area can also change without the size changing (a label
+            // font or placement only invalidates the cache), and the ribbon
+            // outlines are built in the resulting geometry, so they have to
+            // follow it whenever it actually moves.
+            Point2Dd previousCenter = cachedCenter;
+            float previousInnerRadius = cachedInnerRadius;
             ComputeGeometry();
+            if (cachedCenter != previousCenter || cachedInnerRadius != previousInnerRadius) {
+                BuildRibbonOutlines();
+            }
         }
 
         if (flows.empty() && chordMatrix.categories.empty()) {

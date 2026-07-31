@@ -2,11 +2,12 @@
 // Architectural space-planning adjacency diagram
 // Rooms as area-proportional circles, edges as solid/dashed adjacency links,
 // functional zones as dashed bounding regions.
-// Version: 1.0.2
-// Last Modified: 2026-07-13
+// Version: 1.1.0
+// Last Modified: 2026-07-29
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasAdjacencyDiagram.h"
+#include "UltraCanvasLabelPlacement.h"
 #include <algorithm>
 #include <cmath>
 #include <sstream>
@@ -546,38 +547,110 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasAdjacencyDiagram::DrawLabels(IRenderContext* ctx) const {
-        for (const auto& room : rooms) {
-            float r = RoomRadius(room);
-            Color fill = RoomColor(room);
+        if (rooms.empty()) return;
+
+        ctx->SetFontFace("Sans", FontWeight::Normal, FontSlant::Normal);
+
+        // Every room circle becomes a shape for the shared placement solver.
+        // A room name is meant to sit centred on its circle and may spill over
+        // the outline - the halo keeps it readable, so the overflow is not
+        // scored against. What must not happen is two names landing on top of
+        // each other, so a blocked label steps to another anchor inside its
+        // circle and, failing that, off the circle entirely.
+        struct RoomLabel {
+            size_t roomIndex = 0;
+            std::string label, note;
+            Size2Dd labelSize, noteSize;
+            Color textColor;
+        };
+        std::vector<LabelShape> shapes(rooms.size());
+        std::vector<RoomLabel> pending;
+        std::vector<ShapeLabel> labels;
+
+        for (size_t i = 0; i < rooms.size(); ++i) {
+            const AdjacencyRoom& room = rooms[i];
             float sx, sy;
             DiagramToScreen(room.x, room.y, sx, sy);
 
-            // Choose text color for contrast
-            Color textCol = IsLightColor(fill) ? style.labelColorDark : style.labelColor;
+            shapes[i].type = LabelShapeType::Circle;
+            shapes[i].center = Point2Dd(sx, sy);
+            shapes[i].radius = RoomRadius(room);
+            shapes[i].keepLabelInside = false;
 
-            // Room name
+            if (room.label.empty() && room.note.empty()) continue;
+
+            RoomLabel rl;
+            rl.roomIndex = i;
+            rl.label = room.label;
+            rl.note = room.note;
+            rl.textColor = IsLightColor(RoomColor(room)) ? style.labelColorDark
+                                                         : style.labelColor;
             ctx->SetFontSize(style.labelFontSize);
-            ctx->SetFontFace("Sans", FontWeight::Normal, FontSlant::Normal);
-
-            auto dims = ctx->GetTextLineDimensions(room.label);
-            int tw = dims.width, th = dims.height;
-
-            // If label wider than circle, clip by drawing only if r > 12
-            float labelY = sy - th * 0.5f;
-            if (!room.note.empty()) {
-                // Two-line: shift main label up
-                dims = ctx->GetTextLineDimensions(room.note);
-                int nw = dims.width, nh = dims.height;
-
-                labelY = sy - th - 1.0f;
-                float noteX = sx - nw * 0.5f;
-                float noteY = sy + 2.0f;
+            if (!rl.label.empty()) {
+                auto d = ctx->GetTextLineDimensions(rl.label);
+                rl.labelSize = Size2Dd(d.width, d.height);
+            }
+            if (!rl.note.empty()) {
                 ctx->SetFontSize(style.noteFontSize);
-                DrawTextWithHalo(ctx, room.note, noteX, noteY, textCol);
-                ctx->SetFontSize(style.labelFontSize);
+                auto d = ctx->GetTextLineDimensions(rl.note);
+                rl.noteSize = Size2Dd(d.width, d.height);
             }
 
-            DrawTextWithHalo(ctx, room.label, sx - tw * 0.5f, labelY, textCol);
+            ShapeLabel l;
+            l.text = rl.label.empty() ? rl.note : rl.label;
+            l.shapeIndex = i;
+            l.preferredSide = LabelSide::Inside;
+            // Name (and note) are placed as one block.
+            l.textSize = Size2Dd(std::max(rl.labelSize.width, rl.noteSize.width),
+                                 rl.labelSize.height + rl.noteSize.height);
+            l.tolerateShapeOverflow = true;   // text over the outline is the look
+            l.allowOutsideFallback = true;    // but never text over text
+            labels.push_back(l);
+            pending.push_back(rl);
+        }
+        if (pending.empty()) return;
+
+        // Smallest rooms first: their labels are the ones with no room to
+        // spare, so they get first pick of the free space.
+        std::vector<size_t> order(pending.size());
+        for (size_t i = 0; i < order.size(); ++i) order[i] = i;
+        std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+            return shapes[pending[a].roomIndex].radius < shapes[pending[b].roomIndex].radius;
+        });
+        std::vector<ShapeLabel> orderedLabels;
+        std::vector<RoomLabel> orderedPending;
+        orderedLabels.reserve(order.size());
+        orderedPending.reserve(order.size());
+        for (size_t idx : order) {
+            orderedLabels.push_back(labels[idx]);
+            orderedPending.push_back(pending[idx]);
+        }
+
+        LabelPlacementOptions opts;
+        opts.bounds = Rect2Dd(0.0, 0.0, GetWidth(), GetHeight());
+        opts.shapeMargin = 4.0;
+        opts.labelMargin = 2.0;
+
+        std::vector<PlacedShapeLabel> placed =
+                PlaceShapeLabels(shapes, orderedLabels, opts);
+
+        for (size_t i = 0; i < placed.size(); ++i) {
+            const RoomLabel& rl = orderedPending[i];
+            const Rect2Dd& box = placed[i].bounds;
+            double y = box.y;
+            if (!rl.label.empty()) {
+                ctx->SetFontSize(style.labelFontSize);
+                DrawTextWithHalo(ctx, rl.label,
+                                 static_cast<float>(box.x + (box.width - rl.labelSize.width) * 0.5),
+                                 static_cast<float>(y), rl.textColor);
+                y += rl.labelSize.height;
+            }
+            if (!rl.note.empty()) {
+                ctx->SetFontSize(style.noteFontSize);
+                DrawTextWithHalo(ctx, rl.note,
+                                 static_cast<float>(box.x + (box.width - rl.noteSize.width) * 0.5),
+                                 static_cast<float>(y), rl.textColor);
+            }
         }
     }
 
