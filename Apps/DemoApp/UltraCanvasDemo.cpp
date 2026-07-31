@@ -1104,6 +1104,19 @@ namespace UltraCanvas {
                 .AddVariant("ganttcharts", "Dark Theme")
                 .AddVariant("ganttcharts", "Palette Gallery");
 
+        chartBuilder.AddItem("timelinechart", "Timeline Chart",
+                             "Chronological timeline: milestones and spans to scale, packed or in swimlanes",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateTimelineChartExamples(); },
+                             "DemoApp/UltraCanvasTimelineChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasTimelineChart.md")
+                .AddVariant("timelinechart", "Modern")
+                .AddVariant("timelinechart", "Classic")
+                .AddVariant("timelinechart", "Minimal")
+                .AddVariant("timelinechart", "Roadmap")
+                .AddVariant("timelinechart", "Dark")
+                .AddVariant("timelinechart", "Swimlanes");
+
         chartBuilder.AddItem("kanbanboards", "Kanban Board",
                              "Workflow boards with WIP limits, swimlanes, drag & drop, "
                              "a built-in card editor, Mermaid text definitions and "
@@ -1472,19 +1485,6 @@ namespace UltraCanvas {
                 .AddVariant("timelinediagram", "Hanging")
                 .AddVariant("timelinediagram", "Chevron")
                 .AddVariant("timelinediagram", "Steps");
-
-        infoBuilder.AddItem("timelinechart", "Timeline Chart",
-                            "Chronological timeline: milestones and spans to scale, packed or in swimlanes",
-                            ImplementationStatus::FullyImplemented,
-                            [this]() { return CreateTimelineChartExamples(); },
-                            "DemoApp/UltraCanvasTimelineChartExamples.cpp",
-                            "Docs/UltraCanvas/UltraCanvasTimelineChart.md")
-                .AddVariant("timelinechart", "Modern")
-                .AddVariant("timelinechart", "Classic")
-                .AddVariant("timelinechart", "Minimal")
-                .AddVariant("timelinechart", "Roadmap")
-                .AddVariant("timelinechart", "Dark")
-                .AddVariant("timelinechart", "Swimlanes");
 
         infoBuilder.AddItem("heatmap", "Heat map", "Heat map",
                              ImplementationStatus::PartiallyImplemented,
