@@ -15,11 +15,17 @@ zoom/pan/selection/tooltips/keyboard navigation, `git log` ingest, the
 authoring API, SVG export, and `Tests/GitGraphLayoutTest.cpp` (11 cases
 including 200 randomised DAGs).
 
-Still open: everything marked P2/P3 below — most notably the
-`IGitGraphDataSource` lazy loader (D8), filtering and collapsing (L12, L13),
-crossing reduction (L10), the time-proportional axis (L9), the paired commit
-table (M1–M6), search (I8), the minimap (R15), mermaid import/export (D13, X4)
-and the native `.git` reader (D14).
+Delivered in the second pass: lazy loading through `IGitGraphDataSource` (D8),
+Mermaid `gitGraph` import and export (D13, X4), the native `.git` reader with
+packfile and delta support (D14), filtering with skipped-edge bridging (L13),
+crossing reduction (L10), the commit table pane and row-alignment API (M1–M4),
+search (I8) and the minimap (R15).
+
+Still open: the time-proportional axis (L9), collapsing linear runs (L12),
+explicit lane ordering (L5), parallel-commit rows (L11), background-thread
+layout (L15), stash entries (D11), signature/CI badges (D15), the diff pane and
+avatars (M5–M6), drag-to-author (I12), animated transitions (R16), PNG/JSON
+export (X2, X3, X5), and label collision avoidance (B10).
 
 Author: UltraCanvas Framework
 Last Modified: 2026-07-30

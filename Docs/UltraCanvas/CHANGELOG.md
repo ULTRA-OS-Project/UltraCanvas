@@ -25,6 +25,29 @@
   checked against the placement invariants). New demo page (Diagrams > Git
   Graph), guide in `Docs/UltraCanvas/UltraCanvasGitGraphExamples.md`, research
   write-up and roadmap in `Docs/UltraCanvas/UltraCanvasGitGraphProposal.md`.
+- **UltraCanvasGitGraph**: second feature pass. **Lazy loading** —
+  `IGitGraphDataSource` pages a history into the element as the viewport nears
+  the end of what is loaded. **Mermaid I/O** — a headless
+  `UltraCanvasGitGraphMermaid` unit imports and exports the `gitGraph` DSL
+  (commit/branch/checkout/switch/merge/cherry-pick, the id/tag/type/msg/order/
+  parent attributes, `%%` comments, the `%%{init: ...}%%` header and the
+  LR/TB/BT direction suffixes), reporting parse errors with a line number.
+  **Native `.git` reader** — new `UltraCanvasGitRepository` (core) reads refs
+  (loose, `packed-refs`, annotated tags peeled), loose objects and packfiles
+  including `OFS_DELTA`/`REF_DELTA` chains, inflating with the vendored miniz;
+  no git executable is spawned and no dependency is added, and
+  `UltraCanvasGitRepositorySource` adapts it to the lazy loader. **Filtering**
+  by text, author, path, branch, date range and merge status, with edges through
+  filtered-out commits re-pointed at the nearest surviving ancestor and drawn
+  dashed. **Crossing reduction** — lane columns reordered by a barycentre
+  heuristic that keeps the best measured permutation (about a third fewer
+  crossings over 300 randomised layouts, never worse), budgeted and off by
+  default. **Commit table pane** row-aligned beside the graph with configurable
+  columns and a date formatter, plus a row-alignment API for pairing an external
+  `UltraCanvasTableView`. **Search** over sha, subject, author and refs with
+  next/previous navigation. **Minimap** with a viewport rectangle and
+  click/drag navigation. New tests: `GitGraphMermaidTest`, `GitRepositoryTest`
+  (runs against a real repository) and six more `GitGraphLayoutTest` cases.
 - **VirtualFS / UltraCanvasFilerWidget**: fixed archives always listing as
   "(empty folder)" on Windows. `VirtualFSPath::Resolve()` prefixed a slash to
   the real-filesystem part of every absolute path, turning a drive-letter path

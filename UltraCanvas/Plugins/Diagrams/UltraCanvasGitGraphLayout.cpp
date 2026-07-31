@@ -9,6 +9,9 @@
 #include "Plugins/Diagrams/UltraCanvasGitGraphLayout.h"
 
 #include <algorithm>
+#include <cmath>
+#include <deque>
+#include <functional>
 #include <set>
 #include <tuple>
 
@@ -25,14 +28,31 @@ struct LaneSlot {
 
 // Leftmost free slot (Compact) or the first slot with nothing active to its
 // right (Stable). Both append when no slot qualifies.
-int AllocateLane(std::vector<LaneSlot>& lanes, GitGraphLaneStrategy strategy) {
+//
+// `hint` is the lane the new one will be drawn next to (the merge commit's own
+// lane). When set, Compact takes the free slot closest to it instead of the
+// leftmost, which keeps a merged-in branch beside the commit that merges it
+// and removes crossings at no cost.
+int AllocateLane(std::vector<LaneSlot>& lanes, GitGraphLaneStrategy strategy,
+                 int hint = -1) {
     if (strategy == GitGraphLaneStrategy::Compact) {
+        int best = -1;
+        int bestDistance = 0;
         for (size_t i = 0; i < lanes.size(); ++i) {
-            if (!lanes[i].active && !lanes[i].reserved) {
-                lanes[i].active = true;
-                lanes[i].expecting.clear();
-                return static_cast<int>(i);
+            if (lanes[i].active || lanes[i].reserved) continue;
+            const int candidate = static_cast<int>(i);
+            if (hint < 0) { best = candidate; break; }       // Leftmost free
+
+            const int distance = std::abs(candidate - hint);
+            if (best < 0 || distance < bestDistance) {
+                best = candidate;
+                bestDistance = distance;
             }
+        }
+        if (best >= 0) {
+            lanes[best].active = true;
+            lanes[best].expecting.clear();
+            return best;
         }
     } else {
         // Stable: drop trailing free slots so the new branch takes the
@@ -160,6 +180,18 @@ std::vector<size_t> UltraCanvasGitGraphLayout::ResolveOrder(
         }
     }
 
+    // Filtered commits are ordered with everything else (so a topological walk
+    // stays correct) and only then dropped, which keeps the surviving rows in
+    // the order they would have had.
+    if (!options.hiddenCommits.empty()) {
+        std::vector<size_t> visible;
+        visible.reserve(order.size());
+        for (size_t index : order) {
+            if (options.hiddenCommits.count(commits[index].sha) == 0) visible.push_back(index);
+        }
+        order.swap(visible);
+    }
+
     return order;
 }
 
@@ -239,7 +271,7 @@ void UltraCanvasGitGraphLayout::AssignLanes(
             }
             if (alreadyExpected) continue;
 
-            const int mergeLane = AllocateLane(lanes, options.laneStrategy);
+            const int mergeLane = AllocateLane(lanes, options.laneStrategy, lane);
             lanes[mergeLane].expecting = parentSha;
         }
 
@@ -391,13 +423,49 @@ void UltraCanvasGitGraphLayout::BuildEdges(
         const std::unordered_map<std::string, size_t>& bySha,
         GitGraphLayoutResult& result) const {
 
+    // Walks up from a parent that was filtered out until it reaches a commit
+    // that is actually on the graph, so a filtered history still shows how the
+    // surviving commits relate. Memoized: a long hidden run is walked once.
+    std::unordered_map<std::string, std::string> resolved;
+    std::function<std::string(const std::string&, bool&)> resolveVisibleAncestor =
+        [&](const std::string& sha, bool& viaHidden) -> std::string {
+            if (result.Find(sha)) return sha;
+            viaHidden = true;
+
+            auto cached = resolved.find(sha);
+            if (cached != resolved.end()) return cached->second;
+
+            // Breadth-first so the nearest visible ancestor wins.
+            std::deque<std::string> queue{sha};
+            std::unordered_set<std::string> visited{sha};
+            std::string answer;
+            while (!queue.empty() && answer.empty()) {
+                const std::string current = queue.front();
+                queue.pop_front();
+
+                auto source = bySha.find(current);
+                if (source == bySha.end()) continue;
+                for (const std::string& parent : commits[source->second].parents) {
+                    if (!visited.insert(parent).second) continue;
+                    if (result.Find(parent)) { answer = parent; break; }
+                    queue.push_back(parent);
+                }
+            }
+            resolved[sha] = answer;
+            return answer;
+        };
+
+    std::unordered_set<std::string> emitted;
+
     for (GitGraphPlacedCommit& child : result.commits) {
         auto childSourceIt = bySha.find(child.sha);
         if (childSourceIt == bySha.end()) continue;
         const GitGraphCommit& commit = commits[childSourceIt->second];
 
         for (size_t p = 0; p < commit.parents.size(); ++p) {
-            const GitGraphPlacedCommit* parent = result.Find(commit.parents[p]);
+            bool viaHidden = false;
+            const std::string target = resolveVisibleAncestor(commit.parents[p], viaHidden);
+            const GitGraphPlacedCommit* parent = target.empty() ? nullptr : result.Find(target);
             if (!parent) {
                 child.isBoundary = true;      // History truncated above this commit
                 continue;
@@ -410,13 +478,19 @@ void UltraCanvasGitGraphLayout::BuildEdges(
             edge.fromLane  = child.lane;
             edge.toRow     = parent->row;
             edge.toLane    = parent->lane;
-            edge.kind      = (p == 0) ? GitGraphEdgeKind::Parent : GitGraphEdgeKind::Merge;
+            edge.kind      = viaHidden
+                                 ? GitGraphEdgeKind::Skipped
+                                 : ((p == 0) ? GitGraphEdgeKind::Parent
+                                             : GitGraphEdgeKind::Merge);
 
             // A first-parent edge runs down the child's lane and turns in at the
             // parent (a branch growing out of its base); a merge edge leaves the
             // merge commit sideways and then runs down the parent's lane.
             edge.turnAtChild = (p > 0);
             edge.colorLane   = (p == 0) ? child.lane : parent->lane;
+
+            // Filtering can collapse several parents onto one ancestor.
+            if (!emitted.insert(edge.childSha + ">" + edge.parentSha).second) continue;
 
             result.edges.push_back(edge);
         }
@@ -437,6 +511,141 @@ void UltraCanvasGitGraphLayout::BuildEdges(
                 result.edges.push_back(edge);
             }
         }
+    }
+}
+
+// ===== CROSSING REDUCTION =====
+
+size_t GitGraphLayoutResult::CountCrossings() const {
+    // Each edge is treated as a straight segment in (row, lane) space. Two
+    // segments cross when their row spans overlap and their lane order swaps
+    // across that overlap. Edges meeting at a shared commit are not crossings.
+    auto laneAt = [](const GitGraphPlacedEdge& edge, double row) {
+        const double span = static_cast<double>(edge.toRow - edge.fromRow);
+        if (std::fabs(span) < 1e-9) return static_cast<double>(edge.fromLane);
+        const double t = (row - edge.fromRow) / span;
+        return edge.fromLane + t * (edge.toLane - edge.fromLane);
+    };
+
+    size_t crossings = 0;
+    for (size_t i = 0; i < edges.size(); ++i) {
+        const GitGraphPlacedEdge& a = edges[i];
+        const double aLow  = std::min(a.fromRow, a.toRow);
+        const double aHigh = std::max(a.fromRow, a.toRow);
+
+        for (size_t j = i + 1; j < edges.size(); ++j) {
+            const GitGraphPlacedEdge& b = edges[j];
+            if (a.childSha == b.childSha || a.childSha == b.parentSha ||
+                a.parentSha == b.childSha || a.parentSha == b.parentSha) {
+                continue;
+            }
+
+            const double low  = std::max(aLow,  static_cast<double>(std::min(b.fromRow, b.toRow)));
+            const double high = std::min(aHigh, static_cast<double>(std::max(b.fromRow, b.toRow)));
+            if (low >= high) continue;
+
+            const double startDelta = laneAt(a, low)  - laneAt(b, low);
+            const double endDelta   = laneAt(a, high) - laneAt(b, high);
+            if (startDelta * endDelta < 0.0) ++crossings;
+        }
+    }
+    return crossings;
+}
+
+void UltraCanvasGitGraphLayout::ReduceCrossings(GitGraphLayoutResult& result) const {
+    if (result.commits.empty() || result.maxLane <= 1) return;
+
+    const int laneCount = result.maxLane + 1;
+
+    // Lanes that touch each other through an edge. The barycentre pass pulls
+    // connected lanes towards each other, which is what removes crossings.
+    std::vector<std::vector<int>> neighbours(static_cast<size_t>(laneCount));
+    for (const GitGraphPlacedEdge& edge : result.edges) {
+        if (edge.fromLane == edge.toLane) continue;
+        if (edge.fromLane < 0 || edge.toLane < 0) continue;
+        if (edge.fromLane >= laneCount || edge.toLane >= laneCount) continue;
+        neighbours[static_cast<size_t>(edge.fromLane)].push_back(edge.toLane);
+        neighbours[static_cast<size_t>(edge.toLane)].push_back(edge.fromLane);
+    }
+
+    // columnOf[lane] -> drawn column. Lane 0 is pinned: it is either the trunk
+    // or the leftmost lane, and moving it is never what the reader wants.
+    std::vector<int> columnOf(static_cast<size_t>(laneCount));
+    for (int lane = 0; lane < laneCount; ++lane) columnOf[static_cast<size_t>(lane)] = lane;
+
+    auto applyColumns = [&](const std::vector<int>& mapping, GitGraphLayoutResult& target) {
+        for (GitGraphPlacedCommit& placed : target.commits) {
+            if (placed.lane >= 0 && placed.lane < laneCount) {
+                placed.lane = mapping[static_cast<size_t>(placed.lane)];
+            }
+        }
+        for (GitGraphPlacedEdge& edge : target.edges) {
+            if (edge.fromLane >= 0 && edge.fromLane < laneCount) {
+                edge.fromLane = mapping[static_cast<size_t>(edge.fromLane)];
+            }
+            if (edge.toLane >= 0 && edge.toLane < laneCount) {
+                edge.toLane = mapping[static_cast<size_t>(edge.toLane)];
+            }
+            if (edge.colorLane >= 0 && edge.colorLane < laneCount) {
+                edge.colorLane = mapping[static_cast<size_t>(edge.colorLane)];
+            }
+        }
+    };
+
+    std::vector<int> bestMapping = columnOf;
+    size_t bestCrossings = result.CountCrossings();
+
+    for (int iteration = 0; iteration < 8 && bestCrossings > 0; ++iteration) {
+        // Barycentre of each lane in the current column assignment.
+        std::vector<std::pair<double, int>> ranked;
+        ranked.reserve(static_cast<size_t>(laneCount));
+        for (int lane = 0; lane < laneCount; ++lane) {
+            const std::vector<int>& linked = neighbours[static_cast<size_t>(lane)];
+            double barycentre = columnOf[static_cast<size_t>(lane)];
+            if (!linked.empty()) {
+                double total = 0.0;
+                for (int other : linked) total += columnOf[static_cast<size_t>(other)];
+                barycentre = total / static_cast<double>(linked.size());
+            }
+            ranked.emplace_back(barycentre, lane);
+        }
+
+        std::stable_sort(ranked.begin(), ranked.end(),
+                         [](const std::pair<double, int>& a, const std::pair<double, int>& b) {
+                             return a.first < b.first;
+                         });
+
+        std::vector<int> candidate(static_cast<size_t>(laneCount), 0);
+        int nextColumn = 1;
+        for (const std::pair<double, int>& entry : ranked) {
+            if (entry.second == 0) continue;              // Lane 0 keeps column 0
+            candidate[static_cast<size_t>(entry.second)] = nextColumn++;
+        }
+
+        // Measure the candidate on a copy before committing to it.
+        GitGraphLayoutResult trial = result;
+        applyColumns(candidate, trial);
+        const size_t crossings = trial.CountCrossings();
+
+        columnOf = candidate;
+        if (crossings < bestCrossings) {
+            bestCrossings = crossings;
+            bestMapping = candidate;
+        }
+    }
+
+    bool changed = false;
+    for (int lane = 0; lane < laneCount; ++lane) {
+        if (bestMapping[static_cast<size_t>(lane)] != lane) changed = true;
+    }
+    if (!changed) return;
+
+    applyColumns(bestMapping, result);
+
+    result.maxLane = 0;
+    for (const GitGraphPlacedCommit& placed : result.commits) {
+        result.maxLane = std::max(result.maxLane, placed.lane);
+        result.minLane = std::min(result.minLane, placed.lane);
     }
 }
 
@@ -494,6 +703,20 @@ GitGraphLayoutResult UltraCanvasGitGraphLayout::Compute(
     }
 
     BuildEdges(commits, bySha, result);
+
+    result.hiddenCount = 0;
+    for (const GitGraphCommit& commit : commits) {
+        if (options.hiddenCommits.count(commit.sha) > 0) ++result.hiddenCount;
+    }
+
+    // Column reordering only makes sense for lane graphs - a swimlane band is
+    // semantic, so its position is not ours to change.
+    if (options.reduceCrossings &&
+        options.layoutMode == GitGraphLayoutMode::Lanes &&
+        result.edges.size() <= options.crossingReductionEdgeBudget) {
+        ReduceCrossings(result);
+    }
+
     return result;
 }
 

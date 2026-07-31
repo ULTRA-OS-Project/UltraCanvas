@@ -14178,7 +14178,15 @@ UltraCanvasUIElement
 - **Virtualised rendering** — only rows inside the viewport are drawn
 - **Themes**: Default, Dark, Light, Colorful, Monochrome, Custom
 - **Ingest**: programmatic, `git log` text, or the authoring API
-- **SVG export** via `SaveToSVG`
+- **SVG export** via `SaveToSVG`, **Mermaid** `gitGraph` import and export
+- **Lazy loading** through `IGitGraphDataSource` - pages arrive as you scroll
+- **Native `.git` reader** (`UltraCanvasGitRepository`): refs, loose objects and
+  packfiles with delta chains, no git executable and no new dependency
+- **Filtering** by text, author, path, branch, date range and merge status, with
+  edges re-pointed across the commits that were filtered out
+- **Crossing reduction** - lane columns reordered to cut edge crossings
+- **Search** over sha, subject, author and refs, with next/previous navigation
+- **Commit table pane** row-aligned beside the graph, and a **minimap**
 - Zoom, pan, selection, hover, tooltips, keyboard navigation
 
 ## Data Structures
@@ -14516,6 +14524,157 @@ laneDropdown->onSelectionChanged = [graph](int index, const DropdownItem&) {
 zoomFitBtn->onClick = [graph]() { graph->ZoomToFit(); };
 ```
 
+### Lazy loading a large history
+
+```cpp
+class MyHistorySource : public IGitGraphDataSource {
+public:
+    size_t GetTotalCommitCount() override { return total; }
+
+    std::vector<GitGraphCommit> FetchCommits(size_t offset, size_t count) override {
+        return backend.Read(offset, count);      // Newest first
+    }
+
+    std::vector<GitGraphRef> FetchRefs() override { return backend.ReadRefs(); }
+};
+
+graph->SetDataSource(std::make_shared<MyHistorySource>(), /*chunkSize=*/500);
+graph->SetPrefetchRows(40);        // Fetch when this close to the loaded end
+graph->onChunkLoaded = [](size_t loaded, size_t total) {
+    // total is 0 when the source cannot know it up front
+};
+```
+
+The first chunk is fetched when the source is attached; the next one is pulled
+during rendering as soon as the viewport comes within `SetPrefetchRows()` of the
+end of the loaded history, and the layout is refreshed in the same frame.
+
+### Reading a real repository
+
+```cpp
+#include "UltraCanvasGitRepository.h"
+
+auto repository = std::make_shared<UltraCanvasGitRepository>();
+if (repository->Open("/path/to/worktree")) {          // or a .git dir, or any
+    graph->AddCommits(repository->ReadCommits(500));  // subdirectory of it
+    for (const GitGraphRef& ref : repository->ReadRefs()) graph->AddRef(ref);
+    graph->SetOrderMode(GitGraphOrderMode::Topological);
+}
+
+// ...or page it in lazily instead:
+graph->SetDataSource(std::make_shared<UltraCanvasGitRepositorySource>(repository));
+```
+
+`UltraCanvasGitRepository` reads refs (loose, `packed-refs`, annotated tags
+peeled to their commit), loose objects, and packfiles including `OFS_DELTA` and
+`REF_DELTA` chains, inflating with the vendored miniz. It never spawns a
+process. `Open()` accepts a working tree, a `.git` directory, a `.git` file
+pointing elsewhere (worktrees and submodules), or any directory inside a tree.
+
+### Mermaid import and export
+
+```cpp
+graph->LoadFromMermaid(R"(
+gitGraph LR:
+    commit id: "base"
+    branch develop
+    commit
+    checkout main
+    merge develop tag: "v1.0"
+)");
+
+const std::string text = graph->ToMermaidText();
+graph->SaveToMermaid("history.mmd");
+```
+
+Import covers `commit`, `branch`, `checkout`/`switch`, `merge` and
+`cherry-pick`, the `id`, `tag`, `type`, `msg`, `order` and `parent` attributes,
+`%%` comments, the `%%{init: ...}%%` header (`mainBranchName`, `showBranches`,
+`showCommitLabel`, `rotateCommitLabel`) and the `LR` / `TB` / `BT` direction
+suffixes. On a bad line `LoadFromMermaid` returns 0 and `GetLastError()` reports
+the message with a line number.
+
+### Filtering
+
+```cpp
+GitGraphFilter filter;
+filter.author = "alex";
+filter.since  = 1750000000;
+filter.path   = "src/";
+filter.hideMerges = true;
+graph->SetFilter(filter);
+
+// Commits removed by the filter: their edges are re-pointed at the nearest
+// surviving ancestor and drawn dashed (GitGraphEdgeKind::Skipped).
+const size_t hidden = graph->GetFilteredOutCount();
+graph->ClearFilter();
+```
+
+### Crossing reduction
+
+```cpp
+graph->SetReduceCrossings(true);
+const size_t crossings = graph->CountEdgeCrossings();
+```
+
+Lane columns are reordered with a barycentre heuristic, keeping whichever
+permutation actually measures fewest crossings, with lane 0 (the trunk) pinned.
+Measured over 300 randomised layouts it removes about a third of all crossings
+and never makes a layout worse. The pass is skipped above
+`crossingReductionEdgeBudget` edges (default 4000) because it counts crossings
+pairwise, and it only applies to `Lanes` mode - a swimlane band's position is
+semantic.
+
+### Search
+
+```cpp
+const size_t matches = graph->Search("hotfix");
+graph->FindNext();
+graph->FindPrevious();
+graph->onSearchChanged = [](size_t current, size_t total) { /* "3 / 12" */ };
+graph->ClearSearch();
+```
+
+Matches are highlighted with a ring; the current match gets a stronger one, and
+navigating centres the view on it.
+
+### Commit table pane
+
+```cpp
+graph->SetShowTable(true);              // Vertical orientations only
+graph->SetGraphPaneWidth(150.0);        // Width reserved for the graph column
+graph->SetTableColumns({
+    {GitGraphTableColumn::Subject, "Subject", 320.0},
+    {GitGraphTableColumn::Author,  "Author",  140.0},
+    {GitGraphTableColumn::Date,    "Date",    130.0},
+    {GitGraphTableColumn::Sha,     "Commit",   80.0}
+});
+graph->SetDateFormatter([](int64_t when) { return MyRelativeTime(when); });
+```
+
+Rows are aligned by construction, so selection and scrolling are shared with the
+graph - no synchronisation to wire up. To pair an external
+`UltraCanvasTableView` instead, use the row-alignment API:
+
+```cpp
+const int    rows    = graph->GetRowCount();
+const double top     = graph->GetRowScreenPosition(row);   // Element space
+const double spacing = graph->GetRowSpacing();             // Zoom applied
+const auto   visible = graph->GetVisibleRowRange();        // {first, last}
+const int    row     = graph->GetRowAtScreenPosition(y);
+```
+
+### Minimap
+
+```cpp
+graph->SetShowMinimap(true);
+graph->SetMinimapPosition(GitGraphMinimapPosition::TopRight);
+```
+
+Every commit is drawn as one tick in its lane colour, with a viewport rectangle
+over the rows currently on screen. Clicking or dragging inside the minimap jumps
+the view to that point in the history.
+
 ## Using the layout core on its own
 
 `UltraCanvasGitGraphLayout` has no UI dependencies, so it can be used headlessly
@@ -14561,6 +14720,10 @@ pans, middle-drag always pans, right-click on a commit fires
 ## Performance Notes
 
 - Lane assignment is `O(n · openBranches)` and runs in a single sweep.
+- Crossing reduction is `O(edges²)` per iteration, so it is budgeted and off by
+  default.
+- Lazy loading keeps only the commits that have been paged in; the layout is
+  extended as chunks arrive.
 - Only rows inside the viewport are rendered, plus two rows of overscan, so
   scrolling cost is independent of history size.
 - The layout is cached and recomputed only when data, ordering, layout mode or

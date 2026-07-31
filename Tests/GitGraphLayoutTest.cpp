@@ -440,6 +440,222 @@ static void TestRandomHistories() {
     CHECK(violations == 0, "no placement or ordering invariant was violated");
 }
 
+static void TestFiltering() {
+    std::printf("Filtering (hidden commits become skipped edges)\n");
+
+    //  c4 -> c3 -> c2 -> c1   with c3 and c2 filtered out
+    std::vector<GitGraphCommit> commits = {
+        MakeCommit("c4", {"c3"}, 400),
+        MakeCommit("c3", {"c2"}, 300),
+        MakeCommit("c2", {"c1"}, 200),
+        MakeCommit("c1", {},     100)
+    };
+    std::vector<GitGraphRef> refs = {MakeBranch("main", "c4")};
+
+    GitGraphLayoutOptions options;
+    options.orderMode = GitGraphOrderMode::CommitDate;
+    options.hiddenCommits = {"c3", "c2"};
+
+    const GitGraphLayoutResult result =
+        UltraCanvasGitGraphLayout(options).Compute(commits, refs);
+
+    CHECK(result.commits.size() == 2, "filtered commits are not placed");
+    CHECK(result.hiddenCount == 2, "the hidden count is reported");
+    CHECK(result.Find("c3") == nullptr && result.Find("c2") == nullptr,
+          "hidden commits are absent from the result");
+    CHECK(result.rowCount == 2, "rows are renumbered over the visible commits");
+
+    const GitGraphPlacedEdge* bridge = FindEdge(result, "c4", "c1");
+    CHECK(bridge != nullptr, "an edge bridges the hidden run");
+    CHECK(bridge && bridge->kind == GitGraphEdgeKind::Skipped,
+          "the bridging edge is typed Skipped");
+    CHECK(result.edges.size() == 1, "no edge points at a hidden commit");
+}
+
+static void TestFilteringAcrossMerge() {
+    std::printf("Filtering across a merge (both sides re-point, no duplicates)\n");
+
+    std::vector<GitGraphCommit> commits = {
+        MakeCommit("m",  {"a", "b"}, 500),
+        MakeCommit("a",  {"base"},   400),
+        MakeCommit("b",  {"base"},   300),
+        MakeCommit("base", {},       100)
+    };
+    std::vector<GitGraphRef> refs = {MakeBranch("main", "m")};
+
+    GitGraphLayoutOptions options;
+    options.orderMode = GitGraphOrderMode::CommitDate;
+    options.hiddenCommits = {"a", "b"};
+
+    const GitGraphLayoutResult result =
+        UltraCanvasGitGraphLayout(options).Compute(commits, refs);
+
+    CHECK(result.commits.size() == 2, "only the merge and the base survive");
+    CHECK(result.edges.size() == 1,
+          "both hidden parents collapse onto one edge, not two duplicates");
+    const GitGraphPlacedEdge* bridge = FindEdge(result, "m", "base");
+    CHECK(bridge && bridge->kind == GitGraphEdgeKind::Skipped,
+          "the collapsed edge is typed Skipped");
+    CHECK(!result.Find("m")->isBoundary,
+          "a commit whose parents are merely filtered is not a boundary");
+}
+
+static void TestFilteringKeepsBoundary() {
+    std::printf("Filtering to nothing above a commit marks it boundary\n");
+
+    std::vector<GitGraphCommit> commits = {
+        MakeCommit("c2", {"c1"}, 200),
+        MakeCommit("c1", {},     100)
+    };
+    std::vector<GitGraphRef> refs = {MakeBranch("main", "c2")};
+
+    GitGraphLayoutOptions options;
+    options.orderMode = GitGraphOrderMode::CommitDate;
+    options.hiddenCommits = {"c1"};
+
+    const GitGraphLayoutResult result =
+        UltraCanvasGitGraphLayout(options).Compute(commits, refs);
+
+    CHECK(result.commits.size() == 1, "one commit survives");
+    CHECK(result.edges.empty(), "no edge is drawn to a filtered-away ancestor");
+    CHECK(result.Find("c2") && result.Find("c2")->isBoundary,
+          "the commit is marked boundary instead of dangling an edge");
+}
+
+static void TestCrossingReduction() {
+    std::printf("Crossing reduction (column reordering never makes it worse)\n");
+
+    // A history whose branches are merged in a different order than they were
+    // created, which is what produces crossings in the first place.
+    std::vector<GitGraphCommit> commits = {
+        MakeCommit("m6", {"m5", "a2"}, 1000),
+        MakeCommit("m5", {"m4", "b2"},  900),
+        MakeCommit("m4", {"m3", "c2"},  800),
+        MakeCommit("a2", {"a1"},        700),
+        MakeCommit("b2", {"b1"},        650),
+        MakeCommit("c2", {"c1"},        600),
+        MakeCommit("a1", {"base"},      500),
+        MakeCommit("b1", {"base"},      450),
+        MakeCommit("c1", {"base"},      400),
+        MakeCommit("m3", {"base"},      300),
+        MakeCommit("base", {},          100)
+    };
+    std::vector<GitGraphRef> refs = {MakeBranch("main", "m6")};
+
+    GitGraphLayoutOptions options;
+    options.orderMode    = GitGraphOrderMode::CommitDate;
+    options.laneStrategy = GitGraphLaneStrategy::Stable;
+    options.trunkBranch  = "main";
+
+    const GitGraphLayoutResult plain =
+        UltraCanvasGitGraphLayout(options).Compute(commits, refs);
+
+    options.reduceCrossings = true;
+    const GitGraphLayoutResult reduced =
+        UltraCanvasGitGraphLayout(options).Compute(commits, refs);
+
+    CheckInvariants(reduced, commits, "crossing-reduced");
+
+    const size_t before = plain.CountCrossings();
+    const size_t after  = reduced.CountCrossings();
+    std::printf("       (%zu crossings -> %zu)\n", before, after);
+
+    CHECK(after <= before, "the pass never increases crossings");
+    CHECK(reduced.Find("base") && reduced.Find("base")->lane == 0,
+          "the trunk keeps column 0");
+    CHECK(reduced.LaneCount() == plain.LaneCount(),
+          "reordering is a permutation - the lane count is unchanged");
+
+    // Every lane must still be a distinct column.
+    std::set<int> columns;
+    for (const GitGraphPlacedCommit& placed : reduced.commits) columns.insert(placed.lane);
+    bool contiguous = true;
+    int expected = 0;
+    for (int column : columns) {
+        if (column != expected++) contiguous = false;
+    }
+    CHECK(contiguous, "columns stay contiguous from 0");
+}
+
+static void TestCrossingReductionBudget() {
+    std::printf("Crossing reduction respects its edge budget\n");
+
+    std::vector<GitGraphCommit> commits;
+    for (int i = 0; i < 60; ++i) {
+        const std::string sha = "c" + std::to_string(i);
+        std::vector<std::string> parents;
+        if (i > 0) parents.push_back("c" + std::to_string(i - 1));
+        commits.push_back(MakeCommit(sha, parents, i * 10));   // c0 oldest, c59 newest
+    }
+    std::reverse(commits.begin(), commits.end());
+    std::vector<GitGraphRef> refs = {MakeBranch("main", commits.front().sha)};
+
+    GitGraphLayoutOptions options;
+    options.orderMode = GitGraphOrderMode::CommitDate;
+    options.reduceCrossings = true;
+    options.crossingReductionEdgeBudget = 4;      // Far below the edge count
+
+    const GitGraphLayoutResult result =
+        UltraCanvasGitGraphLayout(options).Compute(commits, refs);
+
+    CheckInvariants(result, commits, "over-budget");
+    CHECK(result.commits.size() == commits.size(),
+          "an over-budget graph is laid out normally, just not reordered");
+}
+
+static void TestCrossingReductionAtScale() {
+    std::printf("Crossing reduction over randomised histories\n");
+
+    std::mt19937 rng(7u);
+    int improved = 0, worse = 0;
+    size_t totalBefore = 0, totalAfter = 0;
+
+    for (int iteration = 0; iteration < 150; ++iteration) {
+        const int count = 12 + static_cast<int>(rng() % 25);
+        std::vector<GitGraphCommit> commits;
+        for (int i = 0; i < count; ++i) {
+            std::vector<std::string> parents;
+            if (i > 0) {
+                parents.push_back("c" + std::to_string(rng() % static_cast<unsigned>(i)));
+                if (i > 3 && (rng() % 3) == 0) {
+                    const std::string extra =
+                        "c" + std::to_string(rng() % static_cast<unsigned>(i));
+                    if (extra != parents.front()) parents.push_back(extra);
+                }
+            }
+            commits.push_back(MakeCommit("c" + std::to_string(i), parents, i * 10));
+        }
+        std::reverse(commits.begin(), commits.end());
+        std::vector<GitGraphRef> refs = {MakeBranch("main", commits.front().sha)};
+
+        for (GitGraphLaneStrategy strategy : {GitGraphLaneStrategy::Compact,
+                                              GitGraphLaneStrategy::Stable}) {
+            GitGraphLayoutOptions options;
+            options.orderMode    = GitGraphOrderMode::CommitDate;
+            options.laneStrategy = strategy;
+            options.trunkBranch  = "main";
+
+            const size_t before =
+                UltraCanvasGitGraphLayout(options).Compute(commits, refs).CountCrossings();
+
+            options.reduceCrossings = true;
+            const size_t after =
+                UltraCanvasGitGraphLayout(options).Compute(commits, refs).CountCrossings();
+
+            totalBefore += before;
+            totalAfter  += after;
+            if (after < before) ++improved;
+            if (after > before) ++worse;
+        }
+    }
+
+    std::printf("       (%zu crossings -> %zu across 300 layouts; %d improved)\n",
+                totalBefore, totalAfter, improved);
+    CHECK(worse == 0, "the pass never makes any layout worse");
+    CHECK(improved > 0, "the pass measurably improves real layouts");
+    CHECK(totalAfter < totalBefore, "total crossings drop overall");
+}
+
 // ---------------------------------------------------------------------------
 
 int main() {
@@ -455,6 +671,12 @@ int main() {
     TestSwimlaneLayout();
     TestSwimlaneDerivedBranches();
     TestCherryPickEdge();
+    TestFiltering();
+    TestFilteringAcrossMerge();
+    TestFilteringKeepsBoundary();
+    TestCrossingReduction();
+    TestCrossingReductionBudget();
+    TestCrossingReductionAtScale();
     TestRandomHistories();
 
     std::printf("\n%s (%d failure%s)\n",

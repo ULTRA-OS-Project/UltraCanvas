@@ -140,6 +140,54 @@ public:
     Color GetLaneColor(int lane) const;
     Color GetBranchColor(const std::string& branchName) const;
 
+    // ===== FILTERING =====
+
+    // Commits that fail the filter leave the graph; edges that ran through them
+    // are re-pointed at the nearest surviving ancestor and drawn dashed.
+    void SetFilter(const GitGraphFilter& filter);
+    const GitGraphFilter& GetFilter() const { return filter; }
+    void ClearFilter();
+    size_t GetFilteredOutCount() const { return layout.hiddenCount; }
+    size_t GetVisibleCommitCount() const { return layout.commits.size(); }
+
+    void SetReduceCrossings(bool enabled);
+    bool GetReduceCrossings() const { return layoutOptions.reduceCrossings; }
+    size_t CountEdgeCrossings() const { return layout.CountCrossings(); }
+
+    // ===== SEARCH =====
+
+    // Matches sha, subject, author and ref names. Returns the match count and
+    // moves to the first match.
+    size_t Search(const std::string& query, bool caseSensitive = false);
+    void   ClearSearch();
+    const std::vector<std::string>& GetSearchMatches() const { return searchMatches; }
+    bool   FindNext();
+    bool   FindPrevious();
+    std::string GetCurrentSearchMatch() const;
+    std::function<void(size_t, size_t)> onSearchChanged;   // (currentIndex, total)
+
+    // ===== TABLE PANE =====
+
+    // Row-aligned commit table beside the graph (vertical orientations only).
+    void SetShowTable(bool show);
+    bool GetShowTable() const { return style.showTable; }
+    void SetTableColumns(const std::vector<GitGraphTableColumnSpec>& columns);
+    const std::vector<GitGraphTableColumnSpec>& GetTableColumns() const { return tableColumns; }
+    void SetGraphPaneWidth(double width);
+    void SetDateFormatter(std::function<std::string(int64_t)> formatter);
+
+    // Row alignment, so an external UltraCanvasTableView can be paired instead.
+    double GetRowScreenPosition(int row) const;    // Along-axis position in element space
+    double GetRowSpacing() const { return style.rowSpacing * zoomLevel; }
+    int    GetRowAtScreenPosition(double position) const;
+    std::pair<int, int> GetVisibleRowRange() const;
+
+    // ===== MINIMAP =====
+
+    void SetShowMinimap(bool show);
+    bool GetShowMinimap() const { return style.showMinimap; }
+    void SetMinimapPosition(GitGraphMinimapPosition position);
+
     // ===== SELECTION =====
 
     void SelectCommit(const std::string& sha, bool addToSelection = false);
@@ -216,6 +264,17 @@ private:
     double panX = 0.0, panY = 0.0;
     float  minZoom = 0.15f, maxZoom = 6.0f;
 
+    // ===== FILTER / SEARCH / TABLE / MINIMAP =====
+    GitGraphFilter filter;
+    std::vector<std::string> searchMatches;
+    size_t      searchIndex = 0;
+    std::string searchQuery;
+    bool        searchCaseSensitive = false;
+    std::vector<GitGraphTableColumnSpec> tableColumns;
+    std::function<std::string(int64_t)>  dateFormatter;
+    Rect2Dd     minimapBounds;          // Element-space, updated each render
+    bool        isDraggingMinimap = false;
+
     // ===== INTERACTION =====
     std::string hoveredSha;
     std::vector<std::string> selectedShas;
@@ -268,6 +327,16 @@ private:
                        const GitGraphCommit& commit);
     void DrawAnnotations(IRenderContext* ctx);
     void DrawTooltip(IRenderContext* ctx);
+    void DrawTablePane(IRenderContext* ctx, int firstRow, int lastRow);
+    void DrawMinimap(IRenderContext* ctx);
+    std::string TableCellText(const GitGraphCommit& commit, GitGraphTableColumn column) const;
+    bool     IsTableActive() const;
+    double   GraphPaneWidth() const;
+    Rect2Dd  ComputeMinimapBounds() const;
+    bool     HandleMinimapPointer(const Point2Di& position);
+    void     ApplyFilter();
+    bool     MatchesFilter(const GitGraphCommit& commit) const;
+    bool     IsSearchMatch(const std::string& sha) const;
     void DrawChip(IRenderContext* ctx, const Point2Dd& topLeft, const std::string& text,
                   const Color& fill, const Color& border, const Color& textColor,
                   double& outWidth);

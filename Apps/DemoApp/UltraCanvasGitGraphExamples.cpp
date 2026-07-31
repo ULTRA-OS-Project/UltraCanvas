@@ -21,6 +21,7 @@
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasTabbedContainer.h"
+#include "UltraCanvasTextInput.h"
 
 #include <memory>
 #include <string>
@@ -242,6 +243,14 @@ void BuildRepositoryHistory(UltraCanvasGitGraph* graph) {
     style.showCommitLabels = true;
     style.showRowStripes   = false;
     graph->SetStyle(style);
+
+    // Repository-browser extras: a row-aligned commit table beside the graph,
+    // an overview minimap, and lane reordering to cut edge crossings.
+    graph->SetShowTable(true);
+    graph->SetGraphPaneWidth(150.0);
+    graph->SetShowMinimap(true);
+    graph->SetMinimapPosition(GitGraphMinimapPosition::TopRight);
+    graph->SetReduceCrossings(true);
 }
 
 // Builds the shared toolbar: theme / edge style / lane strategy / orientation
@@ -443,11 +452,81 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGitGraph
                                 "Lane mode: newest commit first with ref chips and a subject "
                                 "column - the view git clients show"));
 
-        auto graph = CreateGitGraph("RepoGraph", 10, 88, kGraphWidth, kGraphHeight);
+        auto graph = CreateGitGraph("RepoGraph", 10, 128, kGraphWidth, kGraphHeight - 40);
         BuildRepositoryHistory(graph.get());
         wireStatus(graph);
 
         tab->AddChild(MakeToolbar("Repo", graph, true));
+
+        // Second toolbar row: search and filtering.
+        auto filterBar = std::make_shared<UltraCanvasContainer>("RepoFilterBar", 10, 84,
+                                                                kGraphWidth, 38);
+        filterBar->layout.SetFlexRow().SetFlexGap(8)
+                 .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+
+        filterBar->AddChild(MakeLabel("RepoSearchLabel", 0, 0, 50, 20, "Search:"));
+        auto searchInput = std::make_shared<UltraCanvasTextInput>("RepoSearch", 0, 0, 200, 28);
+        searchInput->SetPlaceholder("sha, subject, author or ref");
+        filterBar->AddChild(searchInput);
+
+        auto prevBtn = std::make_shared<UltraCanvasButton>("RepoPrev", 0, 0, 36, 28);
+        prevBtn->SetText("<");
+        filterBar->AddChild(prevBtn);
+
+        auto nextBtn = std::make_shared<UltraCanvasButton>("RepoNext", 0, 0, 36, 28);
+        nextBtn->SetText(">");
+        filterBar->AddChild(nextBtn);
+
+        auto matchLabel = MakeLabel("RepoMatches", 0, 0, 110, 20, "no search");
+        filterBar->AddChild(matchLabel);
+
+        auto mergesCheck = std::make_shared<UltraCanvasCheckbox>("RepoMerges", 0, 0, 130, 22);
+        mergesCheck->SetText("Merges only");
+        filterBar->AddChild(mergesCheck);
+
+        auto tableCheck = std::make_shared<UltraCanvasCheckbox>("RepoTable", 0, 0, 110, 22);
+        tableCheck->SetText("Table");
+        tableCheck->SetChecked(true);
+        filterBar->AddChild(tableCheck);
+
+        auto minimapCheck = std::make_shared<UltraCanvasCheckbox>("RepoMinimap", 0, 0, 120, 22);
+        minimapCheck->SetText("Minimap");
+        minimapCheck->SetChecked(true);
+        filterBar->AddChild(minimapCheck);
+
+        auto crossingsCheck = std::make_shared<UltraCanvasCheckbox>("RepoCrossings", 0, 0, 150, 22);
+        crossingsCheck->SetText("Reduce crossings");
+        crossingsCheck->SetChecked(true);
+        filterBar->AddChild(crossingsCheck);
+
+        graph->onSearchChanged = [matchLabel](size_t current, size_t total) {
+            matchLabel->SetText(total == 0
+                                    ? "no matches"
+                                    : (std::to_string(current) + " / " + std::to_string(total)));
+        };
+        searchInput->onTextChanged = [graph](const std::string& text) {
+            if (text.empty()) graph->ClearSearch();
+            else              graph->Search(text);
+        };
+        prevBtn->onClick = [graph]() { graph->FindPrevious(); };
+        nextBtn->onClick = [graph]() { graph->FindNext(); };
+
+        auto applyMergeFilter = [graph](bool mergesOnly) {
+            GitGraphFilter filter = graph->GetFilter();
+            filter.mergesOnly = mergesOnly;
+            graph->SetFilter(filter);
+        };
+        mergesCheck->onChecked   = [applyMergeFilter]() { applyMergeFilter(true);  };
+        mergesCheck->onUnchecked = [applyMergeFilter]() { applyMergeFilter(false); };
+
+        tableCheck->onChecked   = [graph]() { graph->SetShowTable(true);  };
+        tableCheck->onUnchecked = [graph]() { graph->SetShowTable(false); };
+        minimapCheck->onChecked   = [graph]() { graph->SetShowMinimap(true);  };
+        minimapCheck->onUnchecked = [graph]() { graph->SetShowMinimap(false); };
+        crossingsCheck->onChecked   = [graph]() { graph->SetReduceCrossings(true);  };
+        crossingsCheck->onUnchecked = [graph]() { graph->SetReduceCrossings(false); };
+
+        tab->AddChild(filterBar);
         tab->AddChild(graph);
         tabs->AddTab("Repository", tab);
     }

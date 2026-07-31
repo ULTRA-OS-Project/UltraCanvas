@@ -14,6 +14,7 @@
 
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace UltraCanvas {
@@ -67,6 +68,19 @@ struct GitGraphLayoutOptions {
     // Distribute swimlanes alternately above and below the trunk (the git-flow
     // look). When false every band sits on one side.
     bool swimlanesBothSides = true;
+
+    // Commits to leave out of the graph. They keep their place in the history:
+    // an edge that passed through a hidden commit is re-pointed at the nearest
+    // visible ancestor and typed Skipped, so a filtered graph still shows how
+    // the surviving commits relate.
+    std::unordered_set<std::string> hiddenCommits;
+
+    // Reorder lane columns to reduce edge crossings (Lanes mode only; the
+    // trunk keeps column 0). Skipped when the graph exceeds
+    // crossingReductionEdgeBudget edges, since the pass counts crossings
+    // pairwise.
+    bool   reduceCrossings = false;
+    size_t crossingReductionEdgeBudget = 4000;
 };
 
 struct GitGraphLayoutResult {
@@ -77,6 +91,7 @@ struct GitGraphLayoutResult {
     int rowCount = 0;
     int minLane  = 0;
     int maxLane  = 0;
+    size_t hiddenCount = 0;         // Commits excluded by the filter
 
     std::unordered_map<std::string, size_t> indexBySha;   // sha -> index in commits
 
@@ -95,7 +110,12 @@ struct GitGraphLayoutResult {
         rowCount = 0;
         minLane = 0;
         maxLane = 0;
+        hiddenCount = 0;
     }
+
+    // Number of edge pairs that visually cross. Used by the crossing-reduction
+    // pass and handy for tests.
+    size_t CountCrossings() const;
 };
 
 // Ordering + lane assignment. Stateless apart from the options; call Compute()
@@ -136,6 +156,10 @@ private:
     void BuildEdges(const std::vector<GitGraphCommit>& commits,
                     const std::unordered_map<std::string, size_t>& bySha,
                     GitGraphLayoutResult& result) const;
+
+    // Reorders lane columns (barycentre heuristic, keeping the best measured
+    // permutation) to reduce edge crossings.
+    void ReduceCrossings(GitGraphLayoutResult& result) const;
 };
 
 } // namespace UltraCanvas

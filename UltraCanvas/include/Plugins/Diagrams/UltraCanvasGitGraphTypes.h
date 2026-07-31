@@ -202,6 +202,59 @@ public:
     virtual std::vector<GitGraphRef> FetchRefs() { return {}; }
 };
 
+// ===== FILTERING =====
+
+// Criteria applied before layout. Everything set must match for a commit to
+// stay on the graph; empty fields are ignored.
+struct GitGraphFilter {
+    std::string text;                       // Substring of sha, subject, author
+    std::string author;                     // Substring of author name/email
+    std::string path;                       // Substring of a changed file path
+    std::vector<std::string> branches;      // Keep only these branches (by name)
+    int64_t     since = 0;                  // Unix seconds, 0 = no bound
+    int64_t     until = 0;
+    bool        mergesOnly   = false;
+    bool        hideMerges   = false;
+    bool        caseSensitive = false;
+
+    bool IsActive() const {
+        return !text.empty() || !author.empty() || !path.empty() || !branches.empty() ||
+               since != 0 || until != 0 || mergesOnly || hideMerges;
+    }
+
+    void Clear() { *this = GitGraphFilter(); }
+};
+
+// ===== TABLE PANE =====
+
+enum class GitGraphTableColumn {
+    Subject,
+    Author,
+    Date,
+    Sha,
+    Refs
+};
+
+struct GitGraphTableColumnSpec {
+    GitGraphTableColumn column = GitGraphTableColumn::Subject;
+    std::string         title;
+    double              width   = 160.0;
+    bool                visible = true;
+
+    GitGraphTableColumnSpec() = default;
+    GitGraphTableColumnSpec(GitGraphTableColumn column, const std::string& title, double width)
+        : column(column), title(title), width(width) {}
+};
+
+// ===== MINIMAP =====
+
+enum class GitGraphMinimapPosition {
+    TopRight,
+    BottomRight,
+    TopLeft,
+    BottomLeft
+};
+
 // ===== STYLE =====
 
 struct GitGraphStyle {
@@ -291,6 +344,32 @@ struct GitGraphStyle {
     Color  selectionColor  = Color(0, 122, 204);
     double selectionWidth  = 2.0;
     bool   showTooltips    = true;
+
+    // Table pane (vertical orientations only)
+    bool   showTable        = false;
+    double tableGraphWidth  = 190.0;    // Width reserved for the graph column
+    double tableHeaderHeight = 22.0;
+    double tableCellPadding = 6.0;
+    Color  tableHeaderColor = Color(243, 245, 247);
+    Color  tableGridColor   = Color(224, 228, 233);
+    Color  tableTextColor   = Color(32, 34, 38);
+    Color  tableMutedColor  = Color(110, 116, 124);
+    Color  tableRowHoverColor     = Color(236, 241, 247);
+    Color  tableRowSelectedColor  = Color(214, 229, 246);
+
+    // Search highlighting
+    Color  searchMatchColor   = Color(255, 214, 0);
+    Color  searchCurrentColor = Color(255, 111, 0);
+
+    // Minimap
+    bool   showMinimap  = false;
+    GitGraphMinimapPosition minimapPosition = GitGraphMinimapPosition::TopRight;
+    double minimapWidth  = 96.0;
+    double minimapHeight = 128.0;
+    double minimapMargin = 10.0;
+    Color  minimapBackgroundColor = Color(255, 255, 255, 225);
+    Color  minimapBorderColor     = Color(190, 196, 204);
+    Color  minimapViewportColor   = Color(0, 122, 204, 60);
 
     // Lane palette - cycled by lane index (mermaid's git0..git7 equivalent)
     std::vector<Color> lanePalette = {

@@ -556,6 +556,13 @@ void UltraCanvasGitGraph::SetRowsAreNewestFirst(bool newestFirst) {
 
 void UltraCanvasGitGraph::PerformLayout() {
     RebuildCommitIndex();
+    if (filter.IsActive()) {
+        // Commits may have arrived since the filter was set (lazy loading).
+        layoutOptions.hiddenCommits.clear();
+        for (const GitGraphCommit& commit : commits) {
+            if (!MatchesFilter(commit)) layoutOptions.hiddenCommits.insert(commit.sha);
+        }
+    }
     layoutEngine.SetOptions(layoutOptions);
     layout = layoutEngine.Compute(commits, refs);
     UpdateContentExtent();
@@ -856,6 +863,265 @@ void UltraCanvasGitGraph::ApplyThemeColors(GitGraphTheme theme) {
 }
 
 // =============================================================================
+// FILTERING
+// =============================================================================
+
+namespace {
+
+bool ContainsFold(const std::string& haystack, const std::string& needle, bool caseSensitive) {
+    if (needle.empty()) return true;
+    if (caseSensitive) return haystack.find(needle) != std::string::npos;
+
+    auto lower = [](std::string text) {
+        std::transform(text.begin(), text.end(), text.begin(),
+                       [](unsigned char c) { return static_cast<char>(::tolower(c)); });
+        return text;
+    };
+    return lower(haystack).find(lower(needle)) != std::string::npos;
+}
+
+} // namespace
+
+bool UltraCanvasGitGraph::MatchesFilter(const GitGraphCommit& commit) const {
+    if (!filter.IsActive()) return true;
+
+    if (filter.mergesOnly && !commit.IsMerge()) return false;
+    if (filter.hideMerges && commit.IsMerge())  return false;
+
+    if (filter.since != 0 && commit.commitDate < filter.since) return false;
+    if (filter.until != 0 && commit.commitDate > filter.until) return false;
+
+    if (!filter.author.empty()) {
+        if (!ContainsFold(commit.authorName, filter.author, filter.caseSensitive) &&
+            !ContainsFold(commit.authorEmail, filter.author, filter.caseSensitive)) {
+            return false;
+        }
+    }
+
+    if (!filter.text.empty()) {
+        const bool hit =
+            ContainsFold(commit.subject, filter.text, filter.caseSensitive) ||
+            ContainsFold(commit.body, filter.text, filter.caseSensitive) ||
+            ContainsFold(commit.sha, filter.text, filter.caseSensitive) ||
+            ContainsFold(commit.authorName, filter.text, filter.caseSensitive);
+        if (!hit) return false;
+    }
+
+    if (!filter.path.empty()) {
+        bool hit = false;
+        for (const GitGraphFileChange& file : commit.files) {
+            if (ContainsFold(file.path, filter.path, filter.caseSensitive)) { hit = true; break; }
+        }
+        if (!hit) return false;
+    }
+
+    if (!filter.branches.empty()) {
+        // Match the recorded branch, or any ref sitting on this commit.
+        bool hit = std::find(filter.branches.begin(), filter.branches.end(),
+                             commit.branch) != filter.branches.end();
+        if (!hit) {
+            for (const GitGraphRef& ref : refs) {
+                if (ref.sha != commit.sha) continue;
+                if (std::find(filter.branches.begin(), filter.branches.end(),
+                              ref.name) != filter.branches.end()) {
+                    hit = true;
+                    break;
+                }
+            }
+        }
+        if (!hit) return false;
+    }
+
+    return true;
+}
+
+void UltraCanvasGitGraph::ApplyFilter() {
+    layoutOptions.hiddenCommits.clear();
+    if (filter.IsActive()) {
+        for (const GitGraphCommit& commit : commits) {
+            if (!MatchesFilter(commit)) layoutOptions.hiddenCommits.insert(commit.sha);
+        }
+    }
+    layoutEngine.SetOptions(layoutOptions);
+    needsLayout = true;
+}
+
+void UltraCanvasGitGraph::SetFilter(const GitGraphFilter& newFilter) {
+    filter = newFilter;
+    ApplyFilter();
+    RequestRedraw();
+}
+
+void UltraCanvasGitGraph::ClearFilter() {
+    filter.Clear();
+    ApplyFilter();
+    RequestRedraw();
+}
+
+void UltraCanvasGitGraph::SetReduceCrossings(bool enabled) {
+    layoutOptions.reduceCrossings = enabled;
+    layoutEngine.SetOptions(layoutOptions);
+    needsLayout = true;
+    RequestRedraw();
+}
+
+// =============================================================================
+// SEARCH
+// =============================================================================
+
+size_t UltraCanvasGitGraph::Search(const std::string& query, bool caseSensitive) {
+    searchMatches.clear();
+    searchIndex = 0;
+    searchQuery = query;
+    searchCaseSensitive = caseSensitive;
+
+    if (query.empty()) {
+        RequestRedraw();
+        return 0;
+    }
+    if (needsLayout) PerformLayout();
+
+    // Search in row order so next/previous walk the graph top to bottom.
+    for (const GitGraphPlacedCommit& placed : layout.commits) {
+        const GitGraphCommit* commit = GetCommit(placed.sha);
+        if (!commit) continue;
+
+        bool hit = ContainsFold(commit->sha, query, caseSensitive) ||
+                   ContainsFold(commit->subject, query, caseSensitive) ||
+                   ContainsFold(commit->body, query, caseSensitive) ||
+                   ContainsFold(commit->authorName, query, caseSensitive) ||
+                   ContainsFold(commit->authorEmail, query, caseSensitive);
+        if (!hit) {
+            for (const GitGraphRef& ref : GetRefsForCommit(placed.sha)) {
+                if (ContainsFold(ref.DisplayName(), query, caseSensitive)) { hit = true; break; }
+            }
+        }
+        if (hit) searchMatches.push_back(placed.sha);
+    }
+
+    if (!searchMatches.empty()) {
+        SelectCommit(searchMatches.front());
+        CenterOnCommit(searchMatches.front());
+    }
+    if (onSearchChanged) onSearchChanged(searchMatches.empty() ? 0 : 1, searchMatches.size());
+
+    RequestRedraw();
+    return searchMatches.size();
+}
+
+void UltraCanvasGitGraph::ClearSearch() {
+    searchMatches.clear();
+    searchQuery.clear();
+    searchIndex = 0;
+    if (onSearchChanged) onSearchChanged(0, 0);
+    RequestRedraw();
+}
+
+bool UltraCanvasGitGraph::FindNext() {
+    if (searchMatches.empty()) return false;
+    searchIndex = (searchIndex + 1) % searchMatches.size();
+    SelectCommit(searchMatches[searchIndex]);
+    CenterOnCommit(searchMatches[searchIndex]);
+    if (onSearchChanged) onSearchChanged(searchIndex + 1, searchMatches.size());
+    return true;
+}
+
+bool UltraCanvasGitGraph::FindPrevious() {
+    if (searchMatches.empty()) return false;
+    searchIndex = (searchIndex + searchMatches.size() - 1) % searchMatches.size();
+    SelectCommit(searchMatches[searchIndex]);
+    CenterOnCommit(searchMatches[searchIndex]);
+    if (onSearchChanged) onSearchChanged(searchIndex + 1, searchMatches.size());
+    return true;
+}
+
+std::string UltraCanvasGitGraph::GetCurrentSearchMatch() const {
+    if (searchMatches.empty()) return std::string();
+    return searchMatches[std::min(searchIndex, searchMatches.size() - 1)];
+}
+
+bool UltraCanvasGitGraph::IsSearchMatch(const std::string& sha) const {
+    return std::find(searchMatches.begin(), searchMatches.end(), sha) != searchMatches.end();
+}
+
+// =============================================================================
+// TABLE PANE / ROW ALIGNMENT / MINIMAP CONFIG
+// =============================================================================
+
+void UltraCanvasGitGraph::SetShowTable(bool show) {
+    style.showTable = show;
+    if (show && tableColumns.empty()) {
+        tableColumns = {
+            GitGraphTableColumnSpec(GitGraphTableColumn::Subject, "Subject", 320.0),
+            GitGraphTableColumnSpec(GitGraphTableColumn::Author,  "Author",  140.0),
+            GitGraphTableColumnSpec(GitGraphTableColumn::Date,    "Date",    130.0),
+            GitGraphTableColumnSpec(GitGraphTableColumn::Sha,     "Commit",   80.0)
+        };
+    }
+    needsLayout = true;
+    RequestRedraw();
+}
+
+void UltraCanvasGitGraph::SetTableColumns(const std::vector<GitGraphTableColumnSpec>& columns) {
+    tableColumns = columns;
+    RequestRedraw();
+}
+
+void UltraCanvasGitGraph::SetGraphPaneWidth(double width) {
+    style.tableGraphWidth = std::max(40.0, width);
+    needsLayout = true;
+    RequestRedraw();
+}
+
+void UltraCanvasGitGraph::SetDateFormatter(std::function<std::string(int64_t)> formatter) {
+    dateFormatter = std::move(formatter);
+    RequestRedraw();
+}
+
+bool UltraCanvasGitGraph::IsTableActive() const {
+    // A row-aligned table only makes sense when rows run down the element.
+    return style.showTable && !IsHorizontalAxis() && !tableColumns.empty();
+}
+
+double UltraCanvasGitGraph::GraphPaneWidth() const {
+    return IsTableActive() ? std::min<double>(style.tableGraphWidth, GetWidth())
+                           : GetWidth();
+}
+
+double UltraCanvasGitGraph::GetRowScreenPosition(int row) const {
+    const double axis = AxisCoord(row) * zoomLevel;
+    return axis + (IsHorizontalAxis() ? panX : panY);
+}
+
+int UltraCanvasGitGraph::GetRowAtScreenPosition(double position) const {
+    if (layout.rowCount <= 0 || style.rowSpacing <= 0.0) return -1;
+
+    const double pan = IsHorizontalAxis() ? panX : panY;
+    const double axis = (position - pan) / zoomLevel;
+    int index = static_cast<int>(std::lround((axis - style.marginAlongAxis) / style.rowSpacing));
+    index = std::clamp(index, 0, layout.rowCount - 1);
+
+    const int row = IsAxisReversed() ? (layout.rowCount - 1 - index) : index;
+    return std::clamp(row, 0, layout.rowCount - 1);
+}
+
+std::pair<int, int> UltraCanvasGitGraph::GetVisibleRowRange() const {
+    int firstRow = 0, lastRow = 0;
+    ComputeVisibleRows(firstRow, lastRow);
+    return {firstRow, lastRow};
+}
+
+void UltraCanvasGitGraph::SetShowMinimap(bool show) {
+    style.showMinimap = show;
+    RequestRedraw();
+}
+
+void UltraCanvasGitGraph::SetMinimapPosition(GitGraphMinimapPosition position) {
+    style.minimapPosition = position;
+    RequestRedraw();
+}
+
+// =============================================================================
 // SELECTION
 // =============================================================================
 
@@ -971,6 +1237,11 @@ void UltraCanvasGitGraph::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) 
     DrawBackground(ctx);
 
     ctx->PushState();
+    if (IsTableActive()) {
+        // Keep the graph inside its pane so long edges never bleed into the
+        // table columns.
+        ctx->ClipRect(Rect2Dd(0, 0, GraphPaneWidth(), GetHeight()));
+    }
     ctx->Translate(panX, panY);
     ctx->Scale(zoomLevel, zoomLevel);
 
@@ -1000,6 +1271,8 @@ void UltraCanvasGitGraph::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) 
 
     ctx->PopState();
 
+    if (IsTableActive())  DrawTablePane(ctx, firstRow, lastRow);
+    if (style.showMinimap) DrawMinimap(ctx);
     if (style.showTooltips && !hoveredSha.empty()) DrawTooltip(ctx);
 }
 
@@ -1310,6 +1583,13 @@ void UltraCanvasGitGraph::DrawNode(IRenderContext* ctx, const GitGraphPlacedComm
         ctx->SetStrokePaint(Blend(color, style.backgroundColor, 0.45));
         ctx->SetStrokeWidth(1.5);
         ctx->DrawCircle(center, radius + 2.5);
+    }
+
+    if (!searchMatches.empty() && IsSearchMatch(placed.sha)) {
+        const bool isCurrent = (placed.sha == GetCurrentSearchMatch());
+        ctx->SetStrokePaint(isCurrent ? style.searchCurrentColor : style.searchMatchColor);
+        ctx->SetStrokeWidth(isCurrent ? 3.0 : 2.0);
+        ctx->DrawCircle(center, radius + 6.5);
     }
 
     if (selected || hovered) {
@@ -1627,6 +1907,228 @@ std::string UltraCanvasGitGraph::FormatTimestamp(int64_t timestamp) const {
 }
 
 // =============================================================================
+// TABLE PANE
+// =============================================================================
+
+std::string UltraCanvasGitGraph::TableCellText(const GitGraphCommit& commit,
+                                               GitGraphTableColumn column) const {
+    switch (column) {
+        case GitGraphTableColumn::Subject: return commit.subject;
+        case GitGraphTableColumn::Author:  return commit.authorName;
+        case GitGraphTableColumn::Sha:     return commit.ShortSha();
+        case GitGraphTableColumn::Date:
+            return dateFormatter ? dateFormatter(commit.commitDate)
+                                 : FormatTimestamp(commit.commitDate);
+        case GitGraphTableColumn::Refs: {
+            std::string text;
+            for (const GitGraphRef& ref : GetRefsForCommit(commit.sha)) {
+                if (!text.empty()) text += ", ";
+                text += ref.DisplayName();
+            }
+            return text;
+        }
+    }
+    return std::string();
+}
+
+void UltraCanvasGitGraph::DrawTablePane(IRenderContext* ctx, int firstRow, int lastRow) {
+    const double paneX = GraphPaneWidth();
+    const double paneWidth = GetWidth() - paneX;
+    if (paneWidth <= 1.0) return;
+
+    ctx->PushState();
+    ctx->ClipRect(Rect2Dd(paneX, 0, paneWidth, GetHeight()));
+
+    ctx->SetFillPaint(style.backgroundColor);
+    ctx->ClearPath();
+    ctx->Rect(paneX, 0, paneWidth, GetHeight());
+    ctx->FillPathPreserve();
+    ctx->ClearPath();
+
+    ctx->SetFontFamily(style.fontFamily);
+    ctx->SetFontSize(style.fontSize);
+
+    const double rowHeight = style.rowSpacing * zoomLevel;
+    const double headerHeight = style.tableHeaderHeight;
+
+    // Rows first, so the header paints over anything that scrolls under it.
+    for (int row = firstRow; row <= lastRow && row < static_cast<int>(layout.commits.size() + 1);
+         ++row) {
+        const GitGraphPlacedCommit* placed = nullptr;
+        for (const GitGraphPlacedCommit& candidate : layout.commits) {
+            if (candidate.row == row) { placed = &candidate; break; }
+        }
+        if (!placed) continue;
+
+        const GitGraphCommit* commit = GetCommit(placed->sha);
+        if (!commit) continue;
+
+        const double centreY = GetRowScreenPosition(row);
+        const double top = centreY - rowHeight * 0.5;
+        if (top + rowHeight < headerHeight || top > GetHeight()) continue;
+
+        const bool selected = IsCommitSelected(placed->sha);
+        const bool hovered  = (placed->sha == hoveredSha);
+        if (selected || hovered) {
+            ctx->SetFillPaint(selected ? style.tableRowSelectedColor : style.tableRowHoverColor);
+            ctx->ClearPath();
+            ctx->Rect(paneX, top, paneWidth, rowHeight);
+            ctx->FillPathPreserve();
+            ctx->ClearPath();
+        }
+
+        double cellX = paneX + style.tableCellPadding;
+        for (const GitGraphTableColumnSpec& column : tableColumns) {
+            if (!column.visible) continue;
+            if (cellX > GetWidth()) break;
+
+            const std::string text = TableCellText(*commit, column.column);
+            if (!text.empty()) {
+                ctx->PushState();
+                ctx->ClipRect(Rect2Dd(cellX, top, column.width - style.tableCellPadding,
+                                      rowHeight));
+                ctx->SetTextPaint(column.column == GitGraphTableColumn::Subject
+                                      ? style.tableTextColor
+                                      : style.tableMutedColor);
+                ctx->DrawText(text, Point2Dd(cellX, centreY - style.fontSize * 0.65));
+                ctx->PopState();
+            }
+            cellX += column.width;
+        }
+    }
+
+    // Header
+    ctx->SetFillPaint(style.tableHeaderColor);
+    ctx->ClearPath();
+    ctx->Rect(paneX, 0, paneWidth, headerHeight);
+    ctx->FillPathPreserve();
+    ctx->ClearPath();
+
+    ctx->SetStrokePaint(style.tableGridColor);
+    ctx->SetStrokeWidth(1.0);
+    ctx->DrawLine(Point2Dd(paneX, headerHeight), Point2Dd(GetWidth(), headerHeight));
+    ctx->DrawLine(Point2Dd(paneX, 0), Point2Dd(paneX, GetHeight()));
+
+    double headerX = paneX + style.tableCellPadding;
+    ctx->SetTextPaint(style.tableMutedColor);
+    for (const GitGraphTableColumnSpec& column : tableColumns) {
+        if (!column.visible) continue;
+        if (headerX > GetWidth()) break;
+        ctx->DrawText(column.title, Point2Dd(headerX, (headerHeight - style.fontSize) * 0.5));
+        headerX += column.width;
+        ctx->DrawLine(Point2Dd(headerX - style.tableCellPadding, 0),
+                      Point2Dd(headerX - style.tableCellPadding, headerHeight));
+    }
+
+    ctx->PopState();
+}
+
+// =============================================================================
+// MINIMAP
+// =============================================================================
+
+Rect2Dd UltraCanvasGitGraph::ComputeMinimapBounds() const {
+    const double width  = std::min(style.minimapWidth,  GetWidth()  * 0.4);
+    const double height = std::min(style.minimapHeight, GetHeight() * 0.6);
+    const double margin = style.minimapMargin;
+
+    double x = GetWidth() - width - margin;
+    double y = margin;
+    switch (style.minimapPosition) {
+        case GitGraphMinimapPosition::TopLeft:     x = margin; y = margin; break;
+        case GitGraphMinimapPosition::BottomLeft:  x = margin; y = GetHeight() - height - margin;
+                                                   break;
+        case GitGraphMinimapPosition::BottomRight: y = GetHeight() - height - margin; break;
+        case GitGraphMinimapPosition::TopRight:
+        default: break;
+    }
+    return Rect2Dd(x, y, width, height);
+}
+
+void UltraCanvasGitGraph::DrawMinimap(IRenderContext* ctx) {
+    if (layout.commits.empty()) return;
+
+    const Rect2Dd bounds = ComputeMinimapBounds();
+    minimapBounds = bounds;
+
+    ctx->SetFillPaint(style.minimapBackgroundColor);
+    ctx->FillRoundedRectangle(bounds, 4.0);
+    ctx->SetStrokePaint(style.minimapBorderColor);
+    ctx->SetStrokeWidth(1.0);
+    ctx->DrawRoundedRectangle(bounds, 4.0);
+
+    const double inset = 4.0;
+    const double plotWidth  = bounds.width  - inset * 2.0;
+    const double plotHeight = bounds.height - inset * 2.0;
+    if (plotWidth <= 0.0 || plotHeight <= 0.0) return;
+
+    const int laneSpan = std::max(1, layout.maxLane - layout.minLane);
+    const int rowSpan  = std::max(1, layout.rowCount - 1);
+
+    // One tick per commit: rows down the long side, lanes across the short one.
+    const double tick = std::max(1.0, std::min(plotWidth / (laneSpan + 1),
+                                               plotHeight / static_cast<double>(rowSpan + 1)));
+    for (const GitGraphPlacedCommit& placed : layout.commits) {
+        const double rowFraction  = static_cast<double>(placed.row) / rowSpan;
+        const double laneFraction = static_cast<double>(placed.lane - layout.minLane) / laneSpan;
+
+        const double x = bounds.x + inset + laneFraction * (plotWidth - tick);
+        const double y = bounds.y + inset + rowFraction  * (plotHeight - tick);
+
+        ctx->SetFillPaint(CommitColor(placed));
+        ctx->ClearPath();
+        ctx->Rect(x, y, tick, tick);
+        ctx->FillPathPreserve();
+        ctx->ClearPath();
+    }
+
+    // Viewport rectangle: which rows are on screen right now.
+    int firstRow = 0, lastRow = 0;
+    ComputeVisibleRows(firstRow, lastRow);
+    const double fromFraction = static_cast<double>(firstRow) / rowSpan;
+    const double toFraction   = static_cast<double>(lastRow)  / rowSpan;
+
+    const double viewY = bounds.y + inset + fromFraction * plotHeight;
+    const double viewH = std::max(3.0, (toFraction - fromFraction) * plotHeight);
+
+    ctx->SetFillPaint(style.minimapViewportColor);
+    ctx->ClearPath();
+    ctx->Rect(bounds.x + inset, viewY, plotWidth, viewH);
+    ctx->FillPathPreserve();
+    ctx->ClearPath();
+
+    ctx->SetStrokePaint(style.selectionColor);
+    ctx->SetStrokeWidth(1.0);
+    ctx->DrawRectangle(Rect2Dd(bounds.x + inset, viewY, plotWidth, viewH));
+}
+
+// Jumps the view to the row the pointer is over inside the minimap.
+bool UltraCanvasGitGraph::HandleMinimapPointer(const Point2Di& position) {
+    if (!style.showMinimap || layout.rowCount <= 0) return false;
+
+    const Rect2Dd bounds = minimapBounds;
+    if (bounds.width <= 0.0) return false;
+    if (position.x < bounds.x || position.x > bounds.x + bounds.width) return false;
+    if (position.y < bounds.y || position.y > bounds.y + bounds.height) return false;
+
+    const double inset = 4.0;
+    const double plotHeight = bounds.height - inset * 2.0;
+    if (plotHeight <= 0.0) return false;
+
+    const double fraction =
+        std::clamp((position.y - bounds.y - inset) / plotHeight, 0.0, 1.0);
+    const int row = std::clamp(static_cast<int>(std::lround(fraction * (layout.rowCount - 1))),
+                               0, layout.rowCount - 1);
+
+    for (const GitGraphPlacedCommit& placed : layout.commits) {
+        if (placed.row != row) continue;
+        CenterOnCommit(placed.sha);
+        return true;
+    }
+    return true;
+}
+
+// =============================================================================
 // EVENTS
 // =============================================================================
 
@@ -1655,6 +2157,26 @@ bool UltraCanvasGitGraph::OnEvent(const UCEvent& event) {
 bool UltraCanvasGitGraph::HandleMouseMove(const UCEvent& event) {
     const Point2Di mousePos(event.pointer.x, event.pointer.y);
 
+    if (isDraggingMinimap) {
+        HandleMinimapPointer(mousePos);
+        return true;
+    }
+
+    if (IsTableActive() && mousePos.x >= GraphPaneWidth()) {
+        // Hovering a table row highlights the commit on the graph too.
+        const int row = GetRowAtScreenPosition(mousePos.y);
+        std::string sha;
+        for (const GitGraphPlacedCommit& placed : layout.commits) {
+            if (placed.row == row) { sha = placed.sha; break; }
+        }
+        if (sha != hoveredSha) {
+            hoveredSha = sha;
+            if (!hoveredSha.empty() && onCommitHover) onCommitHover(hoveredSha);
+            RequestRedraw();
+        }
+        return true;
+    }
+
     if (isPanning) {
         panX = panStartOffset.x + (mousePos.x - dragStartPos.x);
         panY = panStartOffset.y + (mousePos.y - dragStartPos.y);
@@ -1673,6 +2195,27 @@ bool UltraCanvasGitGraph::HandleMouseMove(const UCEvent& event) {
 
 bool UltraCanvasGitGraph::HandleMouseDown(const UCEvent& event) {
     const Point2Di mousePos(event.pointer.x, event.pointer.y);
+
+    if (event.button == UCMouseButton::Left && HandleMinimapPointer(mousePos)) {
+        isDraggingMinimap = true;
+        return true;
+    }
+
+    if (IsTableActive() && mousePos.x >= GraphPaneWidth() &&
+        mousePos.y >= style.tableHeaderHeight) {
+        const int row = GetRowAtScreenPosition(mousePos.y);
+        for (const GitGraphPlacedCommit& placed : layout.commits) {
+            if (placed.row != row) continue;
+            if (event.button == UCMouseButton::Right) {
+                if (onCommitRightClick) onCommitRightClick(placed.sha);
+            } else {
+                SelectCommit(placed.sha, event.ctrl || event.shift);
+                if (onCommitClick) onCommitClick(placed.sha);
+            }
+            return true;
+        }
+        return true;
+    }
 
     if (event.button == UCMouseButton::Middle) {
         isPanning = true;
@@ -1711,6 +2254,10 @@ bool UltraCanvasGitGraph::HandleMouseDown(const UCEvent& event) {
 }
 
 bool UltraCanvasGitGraph::HandleMouseUp(const UCEvent& event) {
+    if (isDraggingMinimap) {
+        isDraggingMinimap = false;
+        return true;
+    }
     if (isPanning) {
         isPanning = false;
         return true;
