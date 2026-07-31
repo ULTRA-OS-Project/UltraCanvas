@@ -1359,9 +1359,17 @@ namespace UltraCanvas {
     diagramBuilder.AddItem("gitgraph", "Git Graph", "Git Graph",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("Git Graph is not ready yet"); });
-    diagramBuilder.AddItem("erdiagram", "ER Diagram", "ER Diagram",
-                               ImplementationStatus::NotImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("ER Diagram is not ready yet"); });
+    diagramBuilder.AddItem("erdiagram", "ER Diagram", "Entity-Relationship Diagram",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateERDiagramExamples(); },
+                               "DemoApp/UltraCanvasERDiagramExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasERDiagram.md")
+                .AddVariant("erdiagram", "Internet Sales (Chen + crow's foot)")
+                .AddVariant("erdiagram", "Dense Schema (attribute haloes)")
+                .AddVariant("erdiagram", "Student / Course (annotated)")
+                .AddVariant("erdiagram", "Hospital (pastel, spine layout)")
+                .AddVariant("erdiagram", "Academic (min,max + ternary)")
+                .AddVariant("erdiagram", "Crow's Foot (physical schema)");
     diagramBuilder.AddItem("sequencediagram", "Sequence Diagram", "Sequence Diagram",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("Sequence Diagram is not ready yet"); });

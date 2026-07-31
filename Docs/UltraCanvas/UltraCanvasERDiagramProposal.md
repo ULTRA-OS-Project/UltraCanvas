@@ -1,15 +1,27 @@
 # UltraCanvasERDiagram — Research & Feature Proposal
 
-Status: **Not implemented.** The DemoApp already reserves the slot
-(`diagramBuilder.AddItem("erdiagram", "ER Diagram", …,
-ImplementationStatus::NotImplemented)` in
-`Apps/DemoApp/UltraCanvasDemo.cpp`), so this document defines what the
-element has to be before that flag can flip.
+Status: **Phase 1 implemented** — `UltraCanvasERDiagram` v1.0.0 is in
+`UltraCanvas/{include/,}Plugins/Diagrams/`, the DemoApp scene
+(`Apps/DemoApp/UltraCanvasERDiagramExamples.cpp`) has one tab per reference
+image, and the demo entry is `ImplementationStatus::FullyImplemented`. See
+[`UltraCanvasERDiagram.md`](UltraCanvasERDiagram.md) for the API documentation
+and [`UltraCanvasERDiagramExamples.md`](UltraCanvasERDiagramExamples.md) for
+worked examples. This document is kept as the research write-up and the roadmap
+for Phase 2/3.
 
-This is the research write-up and the roadmap. The API documentation
-(`UltraCanvasERDiagram.md`) and the examples doc
-(`UltraCanvasERDiagramExamples.md`) are written against the implementation
-once Phase 1 lands.
+Delivered in Phase 1: M1–M12, N1–N3, N8–N12, L1–L4, L7, L9–L10, R1–R3, R6, R8,
+R10, S1–S7, S10, C1–C3, C5, I1–I3, I10, I12–I13, I15, X1, T1–T2, T6–T7 — the
+three notations over one relationship-as-node model, weak/identifying/n-ary/
+recursive relationships, the attribute-satellite layout, key underlines,
+legend, title, annotation callouts, eight themes, straight/orthogonal/bezier and
+self-loop routing, zoom/pan/select/drag, JSON round-trip, docs and the demo.
+
+Deferred from the Phase 1 list: L5–L6 (hierarchical and orthogonal-grid layouts
+— the four shipped layouts cover every reference image), C4 (minimap — the
+controls overlay plus hover isolation carry the dense case), I8 (context menus
+— `onCanvasRightClick` leaves this to the app), and X7 (image export — there is
+no element-level export path in the framework yet; it belongs with a shared
+render-to-surface facility rather than in this element).
 
 Author: UltraCanvas Framework
 Last Modified: 2026-07-31
