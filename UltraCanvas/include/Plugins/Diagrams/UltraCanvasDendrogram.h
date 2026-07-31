@@ -1,8 +1,22 @@
 // UltraCanvasDendrogram.h
 // Interactive dendrogram / phylogenetic tree diagram element
-// Version: 1.4.2
-// Last Modified: 2026-06-05
+// Version: 1.5.0
+// Last Modified: 2026-07-31
 // Author: UltraCanvas Framework
+//
+// CHANGELOG 1.5.0 (minor):
+//  - NEW: Hierarchical edge bundling (Holten 2006). AddRelation() registers a
+//         leaf-to-leaf association; each one is drawn as a spline routed through
+//         the tree path source -> lowest common ancestor -> target, then relaxed
+//         toward a straight chord by the bundling strength (beta). Relations are
+//         a separate layer from the tree's own branches, so a radial dendrogram
+//         can now show both its hierarchy and the cross-links between its leaves
+//         without turning into a hairball.
+//  - NEW: Area-proportional node dots. DendrogramNodeSizeMode::ByValue sizes
+//         each dot from DendrogramNode::nodeValue, normalised against the
+//         largest value in the tree and mapped through sqrt so AREA - not
+//         radius - tracks the quantity. Replaces the previous behaviour where
+//         style.leafNodeRadius was the only leaf size available.
 #pragma once
 
 #include "UltraCanvasUIElement.h"
@@ -78,6 +92,39 @@ namespace UltraCanvas {
         bool  showInternalNodes  = true;
         bool  showLeafNodes      = true;
         Color internalNodeColor  = Color(100, 100, 100, 255);
+
+        // --- Value-driven node radius (NEW in 1.5.0) ---
+        // In ByValue mode a node's dot area is proportional to its
+        // DendrogramNode::nodeValue, normalised against the largest value found
+        // in the tree, then mapped onto [nodeRadiusMin, nodeRadiusMaxValue].
+        // Nodes with nodeValue < 0 (unset) keep their fixed radius, so a tree
+        // can mix sized and unsized nodes.
+        DendrogramNodeSizeMode nodeSizeMode = DendrogramNodeSizeMode::Fixed;
+        double nodeRadiusMin      = 2.0f;   // Radius at value 0
+        double nodeRadiusMaxValue = 22.0f;  // Radius at the largest value in the tree
+        bool   sizeLeafNodesByValue     = true;  // Apply ByValue sizing to leaves
+        bool   sizeInternalNodesByValue = true;  // Apply ByValue sizing to internal nodes
+
+        // --- Hierarchical edge bundling (NEW in 1.5.0) ---
+        bool  showRelations = true;
+        // Bundling strength (Holten's beta). 1.0 = follow the tree path exactly
+        // (maximum bundling); 0.0 = a straight chord between the two leaves (no
+        // bundling at all). 0.85 is the value Holten recommends and reads well
+        // on radial layouts.
+        double bundlingStrength = 0.85f;
+        // Samples per spline. Higher is smoother and slower; 32 is plenty for
+        // on-screen work, drop to 16 for very large relation sets.
+        int    relationSegments = 32;
+        double relationWidth    = 1.0f;  // Fallback width when relation.width <= 0
+        // Draw relations under the tree branches (true, matches the classic
+        // look where trunks sit on top of the wispy bundles) or over them.
+        bool   relationsBelowBranches = true;
+        // Extra alpha multiplier applied to every relation, 0-1. Lets an app dim
+        // the whole bundle layer without touching per-relation colors.
+        double relationOpacity = 1.0f;
+        // When a leaf is hovered or selected, dim every relation that does not
+        // touch it to this alpha multiplier. 1.0 disables the effect.
+        double relationDimOpacity = 1.0f;
 
         // --- Node radius scaling by depth ---
         bool  scaleNodesByDepth      = false;
@@ -202,6 +249,39 @@ namespace UltraCanvas {
         void SetConfidenceMode(ConfidenceDisplayMode m);
 
         // =====================================================================
+        // NODE SIZING (NEW in 1.5.0)
+        // =====================================================================
+
+        void SetNodeSizeMode(DendrogramNodeSizeMode m);
+        DendrogramNodeSizeMode GetNodeSizeMode() const { return style.nodeSizeMode; }
+
+        // Radius range used by DendrogramNodeSizeMode::ByValue.
+        void SetNodeRadiusRange(double minRadius, double maxRadius);
+
+        // Largest nodeValue found in the current data source, or 0 when no node
+        // carries a value. Exposed so apps can label a size legend.
+        double GetMaxNodeValue() const { return maxNodeValue; }
+
+        // =====================================================================
+        // HIERARCHICAL EDGE BUNDLING (NEW in 1.5.0)
+        // =====================================================================
+
+        void AddRelation(const DendrogramRelation& relation);
+        void AddRelation(const std::string& sourceLeafId, const std::string& targetLeafId);
+        void SetRelations(const std::vector<DendrogramRelation>& relations);
+        void ClearRelations();
+        size_t GetRelationCount() const { return relations.size(); }
+        const std::vector<DendrogramRelation>& GetRelations() const { return relations; }
+
+        void SetRelationsVisible(bool visible);
+        bool AreRelationsVisible() const { return style.showRelations; }
+
+        // Holten's beta: 1.0 hugs the tree (maximum bundling), 0.0 draws straight
+        // chords. Values outside 0-1 are clamped.
+        void SetBundlingStrength(double beta);
+        double GetBundlingStrength() const { return style.bundlingStrength; }
+
+        // =====================================================================
         // SELECTION
         // =====================================================================
 
@@ -284,6 +364,17 @@ namespace UltraCanvas {
         // Cached group map: leafId → groupId (built from data source on SetDataSource)
         std::unordered_map<std::string, std::string> leafGroupMap;
 
+        // --- Edge bundling (1.5.0) ---
+        std::vector<DendrogramRelation> relations;
+        // childId → parentId, rebuilt with the layout. Needed to walk a leaf up
+        // to the root when resolving the lowest common ancestor.
+        std::unordered_map<std::string, std::string> parentMap;
+
+        // --- Value sizing (1.5.0) ---
+        // Largest DendrogramNode::nodeValue in the data source, cached on
+        // SetDataSource so ResolveNodeRadius stays O(1) per node.
+        double maxNodeValue = 0.0;
+
         // =====================================================================
         // LAYOUT
         // =====================================================================
@@ -291,6 +382,8 @@ namespace UltraCanvas {
         void RebuildLayout();
         Rect2Dd GetTreeBounds() const; // Inner area after margins
         void BuildLeafGroupMap();
+        void BuildParentMap();      // NEW in 1.5.0 — childId → parentId
+        void ComputeMaxNodeValue(); // NEW in 1.5.0 — cache for ByValue sizing
 
         // =====================================================================
         // RENDERING PASSES  (called in order inside Render())
@@ -299,6 +392,7 @@ namespace UltraCanvas {
         void RenderBackground(IRenderContext* ctx);
         void RenderGroupFills(IRenderContext* ctx);       // Strategy 2: sector/band fills
         void RenderAxis(IRenderContext* ctx);              // Distance axis + grid
+        void RenderRelations(IRenderContext* ctx);         // 1.5.0: bundled leaf-to-leaf splines
         void RenderBranches(IRenderContext* ctx);          // All branch lines
         void RenderNodeDots(IRenderContext* ctx);          // Node circles
         void RenderLeafLabels(IRenderContext* ctx);        // Leaf text
@@ -346,6 +440,25 @@ namespace UltraCanvas {
                                 float px, float py,
                                 float cx, float cy,
                                 const Color& color, float width);
+
+        // =====================================================================
+        // EDGE BUNDLING HELPERS (NEW in 1.5.0)
+        // =====================================================================
+
+        // Node ids from `leafId` up to the root, inclusive of both ends.
+        std::vector<std::string> PathToRoot(const std::string& leafId) const;
+
+        // Full tree path source -> lowest common ancestor -> target, as pixel
+        // control points. Empty when either endpoint is missing or hidden.
+        std::vector<Point2Dd> BuildRelationControlPoints(const DendrogramRelation& relation) const;
+
+        // Holten's straightening: pull each interior control point toward the
+        // straight line between the endpoints by (1 - beta).
+        void ApplyBundlingStrength(std::vector<Point2Dd>& controlPoints, double beta) const;
+
+        // Sample a clamped uniform cubic B-spline through the control points.
+        static std::vector<Point2Dd> SampleBSpline(const std::vector<Point2Dd>& controlPoints,
+                                                    int segments);
 
         // Returns style.defaultBranchWidth — needed internally before confidence lookup
         double DefaultBranchWidth() const { return style.defaultBranchWidth; }

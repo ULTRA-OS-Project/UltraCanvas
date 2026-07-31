@@ -10135,8 +10135,8 @@ FILE: Docs/UltraCanvas/UltraCanvasDendrogramExamples.md
 
 # UltraCanvasDendrogram Documentation
 
-**Version:** 1.4.1
-**Last Modified:** 2026-05-09
+**Version:** 1.5.0
+**Last Modified:** 2026-07-31
 **Author:** UltraCanvas Framework
 
 ## Overview
@@ -10167,6 +10167,8 @@ UltraCanvasUIElement
 - **Interaction:** click to select leaves, shift/ctrl-click for multi-select, double-click internal nodes to collapse/expand, scroll-wheel zoom, middle/Alt+left drag to pan, ctrl+drag a node to reposition it manually.
 - **Distance axis & grid:** optional axis with configurable tick count and font size.
 - **Label background pills:** optional rounded rectangles behind labels for readability.
+- **Hierarchical edge bundling (1.5.0):** leaf-to-leaf associations drawn as splines routed through the tree, with a bundling-strength (beta) control.
+- **Area-proportional node dots (1.5.0):** size each node from a per-node value instead of a single global radius.
 
 ## Header Includes
 
@@ -10213,6 +10215,59 @@ void SetBranchColorMode(BranchColorMode m);
 void SetLinkStyle(DendrogramLinkStyle l);
 void SetConfidenceMode(ConfidenceDisplayMode m);
 ```
+
+### Node sizing (1.5.0)
+
+```cpp
+void                   SetNodeSizeMode(DendrogramNodeSizeMode m);
+DendrogramNodeSizeMode GetNodeSizeMode() const;
+
+// Radius range used by DendrogramNodeSizeMode::ByValue.
+void SetNodeRadiusRange(double minRadius, double maxRadius);
+
+// Largest nodeValue in the current data source, or 0 when no node carries one.
+// Exposed so an app can label a size legend.
+double GetMaxNodeValue() const;
+```
+
+Radius is mapped through `sqrt(value / maxValue)`, so the dot's **area** — not its
+radius — is proportional to the quantity. A linear radius would make a 9× value
+look 81× bigger.
+
+### Hierarchical edge bundling (1.5.0)
+
+```cpp
+void   AddRelation(const DendrogramRelation& relation);
+void   AddRelation(const std::string& sourceLeafId, const std::string& targetLeafId);
+void   SetRelations(const std::vector<DendrogramRelation>& relations);
+void   ClearRelations();
+size_t GetRelationCount() const;
+const std::vector<DendrogramRelation>& GetRelations() const;
+
+void SetRelationsVisible(bool visible);
+bool AreRelationsVisible() const;
+
+// Holten's beta: 1.0 hugs the tree (maximum bundling), 0.0 draws straight
+// chords. Values outside 0-1 are clamped.
+void   SetBundlingStrength(double beta);
+double GetBundlingStrength() const;
+```
+
+**How it works** (Holten 2006), in three steps:
+
+1. **Route the edge along the tree.** The control polygon is the path from the
+   source leaf up to the lowest common ancestor and back down to the target leaf.
+   Edges that share ancestors therefore share control points — which is what makes
+   them bundle.
+2. **Relax toward the straight chord** by `(1 - beta)`. At `beta = 1` the curve
+   hugs the hierarchy; at `beta = 0` it is the straight line you would have drawn
+   without bundling at all.
+3. **Smooth** the polygon with a clamped cubic B-spline, so the result flows
+   instead of being a chain of corners.
+
+Relations whose endpoints sit inside a collapsed subtree are skipped — there is no
+visible node to anchor them to. Self-loops and duplicate-id relations are rejected
+by `AddRelation`.
 
 ### Selection
 
@@ -10313,6 +10368,22 @@ struct DendrogramStyle {
     Color gradientLow  = Color( 24,  95, 165, 255);
     Color gradientHigh = Color(163,  45,  45, 255);
 
+    // --- Value-driven node radius (1.5.0) ---
+    DendrogramNodeSizeMode nodeSizeMode = DendrogramNodeSizeMode::Fixed;
+    double nodeRadiusMin      = 2.0f;   // Radius at value 0
+    double nodeRadiusMaxValue = 22.0f;  // Radius at the largest value in the tree
+    bool   sizeLeafNodesByValue     = true;
+    bool   sizeInternalNodesByValue = true;
+
+    // --- Hierarchical edge bundling (1.5.0) ---
+    bool   showRelations          = true;
+    double bundlingStrength       = 0.85f; // Holten's beta: 1 = hug the tree, 0 = straight chord
+    int    relationSegments       = 32;    // Spline samples; 16 for very large sets
+    double relationWidth          = 1.0f;  // Fallback when relation.width <= 0
+    bool   relationsBelowBranches = true;  // Bundles under the trunks (classic look)
+    double relationOpacity        = 1.0f;  // Global alpha multiplier for the layer
+    double relationDimOpacity     = 1.0f;  // Dim relations not touching the focused leaf
+
     double leafLabelFontSize  = 11.0f;
     bool   colorLeafLabels    = true;
     int    leafLabelPadding   = 5;
@@ -10386,7 +10457,43 @@ enum class GroupFillMode {
 enum class ConfidenceDisplayMode {
     None, LineThickness, LineDash, NodeDot, LineThicknessAndDot
 };
+
+// NEW in 1.5.0 - how a node dot's radius is derived
+enum class DendrogramNodeSizeMode {
+    Fixed,   // style.leafNodeRadius / style.internalNodeRadius (default)
+    ByValue  // Area proportional to DendrogramNode::nodeValue
+};
 ```
+
+### DendrogramRelation (1.5.0)
+
+An association between two leaves that does **not** follow the tree's parent/child
+structure — a citation, a co-occurrence, a dependency. Rendered as a hierarchically
+bundled spline rather than a straight chord.
+
+```cpp
+struct DendrogramRelation {
+    std::string sourceLeafId;
+    std::string targetLeafId;
+
+    // Differing endpoint colors draw the spline as a gradient, which makes
+    // direction readable without arrowheads.
+    Color sourceColor = Color( 90, 110, 200, 90);
+    Color targetColor = Color(200,  90, 110, 90);
+
+    float width   = 1.0f;   // Stroke width in pixels
+    float weight  = 1.0f;   // Optional magnitude; apps may map it to width
+    bool  visible = true;
+
+    std::string tooltip;
+    void*       userData = nullptr;
+};
+```
+
+`DendrogramNode` also gained `nodeValue` (default `-1.0` = unset), the magnitude
+behind a node. Radii are normalised against the largest value in the tree, so the
+units never have to be pixels; nodes left at `-1` keep their fixed radius, which
+means a tree can mix sized and unsized nodes.
 
 ### Data Source Interfaces
 
@@ -10571,6 +10678,99 @@ s.arcLabelRadiusMul     = 1.14f;
 s.marginTop = s.marginBottom = s.marginLeft = s.marginRight = 70;
 d->SetStyle(s);
 ```
+
+### Demo 7 — Radial Tree with Bundled Relations and Sized Nodes (1.5.0)
+
+The hierarchical-edge-bundling look: a radial dendrogram whose leaves carry
+magnitudes (drawn as area-proportional bubbles) and whose cross-links are routed
+through the tree instead of drawn as straight chords.
+
+```cpp
+auto data = std::make_shared<DendrogramDataVector>();
+
+DendrogramNode root;
+root.id = "root";
+root.mergeDistance = 1.0;
+
+const char* disciplines[] = { "Arts", "Sciences", "Social", "Engineering" };
+const Color colors[] = {
+    Color(120,  80, 190, 255), Color(150, 175,  60, 255),
+    Color( 60, 160, 150, 255), Color(190, 110,  60, 255)
+};
+
+std::vector<std::string> allLeaves;
+for (int g = 0; g < 4; ++g) {
+    std::string branchId = "b" + std::to_string(g);
+
+    DendrogramNode branch;
+    branch.id            = branchId;
+    branch.label         = disciplines[g];
+    branch.mergeDistance = 0.6;
+
+    DendrogramGroup group;
+    group.groupId     = branchId;
+    group.label       = disciplines[g];
+    group.branchColor = colors[g];
+    group.fillColor   = Color(colors[g].r, colors[g].g, colors[g].b, 40);
+    group.fillMode    = GroupFillMode::SectorFill;
+
+    for (int i = 0; i < 7; ++i) {
+        std::string leafId = branchId + "_l" + std::to_string(i);
+
+        DendrogramNode leaf;
+        leaf.id        = leafId;
+        leaf.label     = std::string(disciplines[g]) + std::to_string(i);
+        leaf.groupId   = branchId;
+        leaf.nodeValue = static_cast<float>(publicationCount[g][i]);  // Drives the bubble size
+        data->AddNode(leaf);
+
+        branch.childIds.push_back(leafId);
+        group.leafIds.push_back(leafId);
+        allLeaves.push_back(leafId);
+    }
+    data->AddNode(branch);
+    data->AddGroup(group);
+    root.childIds.push_back(branchId);
+}
+data->AddNode(root);
+data->SetRootId("root");
+
+auto dendro = std::make_shared<UltraCanvasDendrogram>("D7", 0, 0, 760, 700);
+dendro->SetDataSource(data);
+dendro->SetOrientation(DendrogramOrientation::Radial);
+dendro->SetScaleMode(DendrogramScaleMode::Proportional);
+
+DendrogramStyle style = dendro->GetStyle();
+style.linkStyle          = DendrogramLinkStyle::Curved;
+style.showDistanceAxis   = false;
+style.marginTop = style.marginBottom = style.marginLeft = style.marginRight = 70;
+
+// Bubbles: area proportional to nodeValue
+style.nodeSizeMode       = DendrogramNodeSizeMode::ByValue;
+style.nodeRadiusMin      = 2.0;
+style.nodeRadiusMaxValue = 16.0;
+
+// Bundling
+style.showRelations      = true;
+style.bundlingStrength   = 0.85;   // Holten's recommended beta
+dendro->SetStyle(style);
+
+// Cross-discipline associations - bundling is what keeps these readable
+for (const auto& pair : collaborations) {
+    DendrogramRelation relation(pair.first, pair.second);
+    relation.sourceColor = Color( 70,  90, 200, 70);
+    relation.targetColor = Color(200,  80,  90, 70);
+    dendro->AddRelation(relation);
+}
+```
+
+Drop `bundlingStrength` to `0.0` and the same relations become straight chords
+across the middle of the circle — the classic hairball. That comparison is the
+fastest way to see what bundling buys you.
+
+Set `style.relationDimOpacity` below `1.0` to dim every relation that does not
+touch the hovered or selected leaf, which turns the diagram into a focus-and-context
+explorer without any extra code.
 
 ### Demo 6 — Branch Color By Value Gradient
 
@@ -10809,6 +11009,278 @@ those differences are one of these cases):
    "orthogonal" path contained a visible diagonal jog.
 3. **Degenerate waypoints.** Endpoints already sharing an axis produced
    zero-length segments, which make the arrow-angle computation meaningless.
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasDiagramViewport.md
+==============================================================================
+
+# UltraCanvasDiagramViewport
+
+Shared pan / zoom / minimap / controls viewport for canvas-style diagram
+elements.
+
+- Header: `include/Plugins/Diagrams/UltraCanvasDiagramViewport.h`
+- Source: `UltraCanvas/Plugins/Diagrams/UltraCanvasDiagramViewport.cpp`
+- Tests: `Tests/DiagramViewportTest.cpp` (target `DiagramViewportTest`)
+- Version: 1.0.0
+
+This is **not** a UI element. It is a plain helper object that a diagram element
+owns as a member and forwards to. It has no bounds of its own, no event loop and
+no render pass — the host element decides when to call it.
+
+Current consumers: `UltraCanvasNodeDiagram`, `UltraCanvasCompositorDiagram`.
+
+---
+
+## Why it exists
+
+`UltraCanvasNodeDiagram` and `UltraCanvasCompositorDiagram` each carried their
+own copy of the same machinery: zoom/pan state and clamping, screen↔world
+transforms, zoom-at-cursor, `FitView`/`CenterOn`, a snap grid, a minimap panel
+with a draggable viewport indicator, and a controls panel with zoom/fit/lock
+buttons. The two copies had already begun to diverge — the compositor was
+correct on coordinates, the node diagram was not (see *Coordinate convention*).
+
+Everything listed above now lives here once.
+
+---
+
+## Coordinate convention
+
+**Everything in this component is element-local.** Local space is
+`(0, 0, width, height)`; the host element's absolute position on screen never
+enters into it.
+
+This matches how the framework actually dispatches input:
+
+- containers translate pointer coordinates into the child's local space before
+  calling `OnEvent` (`UltraCanvasContainer::HandleScrollbarEvents`), and
+- `UltraCanvasUIElement::Contains()` tests against `GetLocalBounds()`, which is
+  always `(0, 0, w, h)`.
+
+> **Bug fixed by the extraction.** `UltraCanvasNodeDiagram::PointInMinimap()`,
+> `FindControlButtonAt()` and `HandleMouseWheel()` added or subtracted
+> `finalBounds.x/y` against coordinates that were already element-local. That
+> double-counted the element origin, so minimap and controls hit-testing, and
+> zoom-at-cursor, were offset by exactly the element's position whenever the
+> diagram was not placed at `(0, 0)`. `UltraCanvasCompositorDiagram` had it
+> right; the shared component adopts that convention for both.
+
+The host must keep the viewport's idea of its size current:
+
+```cpp
+void MyDiagram::SyncViewportSize() {
+    viewport.SetViewportSize(GetWidth(), GetHeight());
+}
+```
+
+Call it at the top of `Render()` and before any size-dependent operation
+(`FitView`, `ZoomAtPoint`, overlay hit-testing).
+
+---
+
+## Content bounds
+
+The viewport never inspects host data structures. The host reports the
+world-space extent of whatever it draws through `DiagramContentBounds`:
+
+```cpp
+DiagramContentBounds MyDiagram::ComputeContentBounds() const {
+    DiagramContentBounds bounds;
+    for (const auto& [id, node] : nodes) {
+        bounds.Include(Rect2Dd(node.x, node.y, node.width, node.height));
+    }
+    return bounds;
+}
+```
+
+`Include(x, y)` seeds both min and max on the first call, so a default-
+constructed value is `!valid` rather than a spurious box at the origin.
+`IsUsable()` additionally requires a non-zero area — `FitView` and the minimap
+projection both reject anything that fails it instead of producing NaNs.
+
+---
+
+## Pan and zoom
+
+```cpp
+viewport.SetZoomLevel(1.5);           // clamped to [minZoom, maxZoom]
+viewport.SetZoomRange(0.25, 4.0);     // re-clamps the current level immediately
+viewport.ZoomIn();                     // default factor 1.2
+viewport.ZoomOut(1.1);
+viewport.SetPanOffset(x, y);
+viewport.PanBy(dx, dy);                // for drag-to-pan
+viewport.CenterOn(worldX, worldY);
+```
+
+`ZoomAtPoint(localCursor, factor)` is the wheel-zoom primitive: it keeps the
+world point under the cursor pinned while the zoom changes, and returns `false`
+when the zoom was already clamped and nothing moved (consume the event anyway).
+
+```cpp
+bool MyDiagram::HandleMouseWheel(const UCEvent& event) {
+    SyncViewportSize();
+    double factor = (event.wheelDelta > 0) ? 1.1 : (1.0 / 1.1);
+    if (!viewport.ZoomAtPoint(Point2Di(event.pointer.x, event.pointer.y), factor)) {
+        return true;   // at the limit; still handled
+    }
+    RequestRedraw();
+    return true;
+}
+```
+
+`FitView(content, padding)` fits and centres the given content, returning
+`false` if the content or the available area is degenerate.
+
+Transforms: `ScreenToWorld` (local pixels → world), `WorldToScreen` (world →
+integer local pixels), `WorldToScreenD` (same, in doubles) and
+`GetVisibleWorldRect()`.
+
+---
+
+## Rendering with the transform
+
+The viewport does not push the transform for you — the host stays in control of
+its own render order:
+
+```cpp
+void MyDiagram::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
+    SyncViewportSize();
+
+    ctx->SetFillPaint(backgroundColor);
+    ctx->FillRectangle(GetLocalBounds());
+
+    ctx->PushState();
+    Point2Dd pan = viewport.GetPanOffset();
+    ctx->Translate(pan.x, pan.y);
+    ctx->Scale(viewport.GetZoomLevel(), viewport.GetZoomLevel());
+
+    RenderContentInWorldSpace(ctx);   // world coordinates below this point
+
+    ctx->PopState();
+
+    // Overlays are screen space and must come after PopState.
+    if (viewport.IsMinimapVisible())  RenderMinimap(ctx);
+    if (viewport.AreControlsVisible()) RenderControls(ctx);
+}
+```
+
+To keep a stroke visually 1px regardless of zoom, divide by the zoom level:
+`ctx->SetStrokeWidth(1.0 / viewport.GetZoomLevel())`.
+
+---
+
+## Minimap
+
+`RenderMinimap` draws the panel and the viewport indicator, and calls back so
+the host can plot its own items. The fill paint is pre-set to
+`DiagramMinimapConfig::nodeColor` before the callback runs.
+
+```cpp
+void MyDiagram::RenderMinimap(IRenderContext* ctx) {
+    viewport.RenderMinimap(ctx, ComputeContentBounds(),
+        [&](const DiagramMinimapProjection& projection) {
+            for (const auto& [id, node] : nodes) {
+                Point2Dd tl = projection.WorldToMinimap(node.x, node.y);
+                double w = std::max(1.0, node.width  * projection.scale);
+                double h = std::max(1.0, node.height * projection.scale);
+                ctx->FillRectangle(Rect2Dd(tl.x, tl.y, w, h));
+            }
+        });
+}
+```
+
+`HandleMinimapDrag(localPos, content)` inverts exactly the same projection, so a
+click always centres the view on the world point drawn under the cursor. Wire it
+on both mouse-down (jump) and mouse-move (drag):
+
+```cpp
+if (viewport.PointInMinimap(mousePos) && viewport.MinimapConfig().pannable) {
+    isDraggingMinimap = true;
+    viewport.HandleMinimapDrag(mousePos, ComputeContentBounds());
+    RequestRedraw();
+    return true;
+}
+```
+
+Configuration is `viewport.MinimapConfig()` (mutable reference) or
+`SetMinimapConfig()`. Beyond the usual colours and size it exposes
+`innerPadding` (gap between panel edge and projected content) and
+`contentMargin` (world-space margin added around the content bounds).
+
+---
+
+## Controls overlay
+
+Buttons are laid out vertically in the order zoom-in, zoom-out, fit, lock, but
+only the groups enabled in `DiagramControlsConfig` are present. **Indices are
+therefore not fixed** — never hard-code them. Resolve with
+`GetControlButtonRole(index)`, or let `ApplyControlButton` do it:
+
+```cpp
+int btnIdx = viewport.FindControlButtonAt(mousePos);
+if (btnIdx >= 0) {
+    SyncViewportSize();
+    DiagramControlButton role =
+        viewport.ApplyControlButton(btnIdx, ComputeContentBounds());
+    if (role == DiagramControlButton::ToggleLock) {
+        isInteractive = !isInteractive;   // lock state belongs to the host
+    }
+    RequestRedraw();
+    return true;
+}
+```
+
+`ApplyControlButton` performs zoom-in / zoom-out / fit itself and returns the
+role. It deliberately does **not** act on `ToggleLock`: what "locked" means is
+the host element's business.
+
+`RenderControls(ctx, hoveredButton, locked)` draws the panel and its glyphs.
+Glyphs are vector primitives, not text — text glyphs at 14pt rendered too small
+and off-centre inside a 28px square.
+
+> The enumeration `DiagramControlButton` uses `NoAction`, not `None`, because
+> X11's `Xlib.h` defines `None` as a macro and this header is reachable from app
+> code that includes X11.
+
+---
+
+## Snap grid
+
+```cpp
+viewport.SetSnapToGrid(true);
+viewport.SetSnapGrid(25.0, 25.0);
+Point2Dd placed = viewport.SnapPoint(worldPoint);
+```
+
+`SnapPoint` rounds to the nearest intersection on both axes, symmetrically for
+negative coordinates. A zero or negative spacing is ignored rather than dividing
+by zero.
+
+---
+
+## Migration notes (existing consumers)
+
+`UltraCanvasNodeDiagram` 2.1.0 and `UltraCanvasCompositorDiagram` keep their
+public APIs. Their overlay types are now aliases:
+
+| Element type | Now an alias of |
+|---|---|
+| `NodeDiagramPanelPosition` | `DiagramPanelPosition` |
+| `NodeDiagramSnapGrid` | `DiagramSnapGrid` |
+| `NodeDiagramMinimapConfig` / `CompositorMinimapConfig` | `DiagramMinimapConfig` |
+| `NodeDiagramControlsConfig` / `CompositorControlsConfig` | `DiagramControlsConfig` |
+
+Two behavioural notes:
+
+1. **`UltraCanvasCompositorDiagram::GetPanOffset()` now returns `Point2Dd`**
+   (was `Point2Df`). The shared viewport keeps pan/zoom in double precision;
+   the compositor's own world coordinates remain `Point2Df`, converted in its
+   `ScreenToWorld` / `WorldToScreen` wrappers.
+2. The shared config structs carry the node diagram's light-theme defaults. The
+   compositor's dark defaults are applied in its constructor through
+   `MakeCompositorMinimapDefaults()` / `MakeCompositorControlsDefaults()`, so
+   its appearance is unchanged.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasDivergingChartExamples.md
@@ -17724,8 +18196,8 @@ The `UltraCanvasJitterPlotElement` is a categorical distribution chart for the U
 **Namespace:** `UltraCanvas`  
 **Header:** `include/Plugins/Charts/UltraCanvasJitterPlotElement.h`  
 **Base Class:** `UltraCanvasChartElementBase`  
-**Version:** 1.1.3  
-**Last Modified:** 2026-05-09  
+**Version:** 1.3.0  
+**Last Modified:** 2026-07-31  
 **Author:** UltraCanvas Framework
 
 ## Class Hierarchy
@@ -17747,7 +18219,19 @@ UltraCanvasUIElement
 - **Secondary grouping:** Hue variable with per-hue colour map and optional dodge
 - **Filtering hooks:** `SetRegionFilter` and `SetMinScoreFilter` for live data subsetting
 - **Reproducibility:** `SetJitterSeed()` for deterministic random jitter
+- **Per-point size (1.3.0):** a parallel vector of magnitudes drives bubble area, and the beeswarm packer receives the real per-point radii
+- **Per-point continuous colour (1.3.0):** a parallel vector of values sampled through any `HeatmapColormap` palette, including diverging ones with a configurable midpoint
 - **Tooltips:** Hover values via the inherited `IChartDataSource` tooltip pipeline
+
+### Fixed in 1.3.0
+
+- `minScoreFilter` defaulted to `0.0`, which silently discarded **every negative
+  value** before rendering. Any signed quantity — a margin, a change, a z-score —
+  lost half its distribution with no indication why. It now defaults to "no filter".
+- `AddCategoryData()` did not invalidate the point-position cache, so a second call
+  left the previously cached points on screen.
+- `RenderJitterPoints()` always drew a plain circle, ignoring `SetPointShape()` and
+  the point edge style. It now draws through `DrawJitterPoint()`, so both apply.
 
 ## Enumerations
 
@@ -17770,6 +18254,17 @@ enum class BeeswarmPriority { Ascending, Descending, Random, Compact, Dense };
 enum class BeeswarmCorral   { NoneCorral, Open, Wrap, Clamp };
 enum class BeeswarmSide     { Both, Left, Right };
 
+// NEW in 1.3.0
+enum class JitterPointSizeMode {
+    Fixed,    // Every point uses pointSize (default)
+    ByValue   // Area proportional to JitterCategoryData::sizeValues
+};
+
+enum class JitterPointColorMode {
+    ByCategory,  // Category / hue group colour (default)
+    ByValue      // Continuous colormap over JitterCategoryData::colorValues
+};
+
 // Public nested point shape (used by examples)
 enum class UltraCanvasJitterPlotElement::PointShape {
     Circle, Square, Triangle, Diamond
@@ -17788,6 +18283,13 @@ struct JitterCategoryData {
     std::vector<double> values;
     std::string hueGroup;     // Secondary grouping variable
     Color customColor;        // Optional per-data colour override
+
+    // NEW in 1.3.0 - optional per-point encodings, parallel to `values`.
+    // Leave either empty to fall back to the uniform size / categorical colour.
+    // A SHORT vector is tolerated: points past its end use the fallback, so a
+    // partially-annotated dataset still renders.
+    std::vector<double> sizeValues;   // Magnitude behind each point (bubble area)
+    std::vector<double> colorValues;  // Continuous value behind each point
 
     // Cached statistics (median / mean / Q1 / Q3 / min / max)
     double cachedMedian, cachedMean;
@@ -17902,10 +18404,79 @@ void SetBeeswarmCompact(bool compact);
 void AddCategoryData(const std::string& category,
                      const std::vector<double>& values,
                      const std::string& hueValue = "");
+
+// NEW in 1.3.0 - values plus the parallel per-point size and colour vectors.
+// Either extra vector may be empty (or shorter than `values`).
+void AddCategoryData(const std::string& category,
+                     const std::vector<double>& values,
+                     const std::vector<double>& sizeValues,
+                     const std::vector<double>& colorValues,
+                     const std::string& hueValue = "");
+
 void ClearData();
 void SetRegionFilter(const std::string& region);   // empty = no filter
-void SetMinScoreFilter(double minScore);
+void SetMinScoreFilter(double minScore);           // default: no filter (1.3.0)
 ```
+
+### Per-Point Size Encoding (1.3.0)
+
+```cpp
+void                SetPointSizeMode(JitterPointSizeMode mode);
+JitterPointSizeMode GetPointSizeMode() const;
+
+// Radius range that the size domain maps onto.
+void SetPointSizeRange(float minRadius, float maxRadius);
+
+// Fix the size domain explicitly. Pass minValue >= maxValue to return to
+// automatic domain detection from the data.
+void SetPointSizeDomain(double minValue, double maxValue);
+
+double GetSizeDomainMin() const;   // Populated once the point cache is built
+double GetSizeDomainMax() const;
+```
+
+The mapping is `radius = min + sqrt(t) * (max - min)`, so the point's **area** —
+not its radius — is proportional to the value.
+
+Two details worth knowing:
+
+- The domain is computed across **all** categories, not per category. A size scale
+  that changed between categories would make them impossible to compare, which
+  defeats the point of the encoding.
+- On automatic detection the low end is anchored at `0` when the data is
+  non-negative. A bubble scale that starts at the smallest observed value
+  exaggerates small differences — the classic bubble-chart lie.
+
+In beeswarm mode the packer receives the real per-point radii. `Swarm` (the
+default) is collision-tested and packs mixed sizes properly; the three grid
+methods reserve a cell sized for the largest bubble, then draw each point at its
+own radius. Larger bubbles are drawn first so small ones stay visible on top.
+
+### Per-Point Colour Encoding (1.3.0)
+
+```cpp
+void                 SetPointColorMode(JitterPointColorMode mode);
+JitterPointColorMode GetPointColorMode() const;
+
+void SetPointColormap(HeatmapColormap cmap, bool reverse = false);
+void SetPointCustomColormap(const std::vector<Color>& anchors);
+
+// Fix the colour domain explicitly. Pass minValue >= maxValue to return to
+// automatic domain detection.
+void SetPointColorDomain(double minValue, double maxValue);
+
+// Centre a diverging palette on `midpoint` (e.g. 0 for a signed margin).
+void SetPointColorDiverging(bool diverging, double midpoint = 0.0);
+
+double GetColorDomainMin() const;
+double GetColorDomainMax() const;
+```
+
+Palettes come from [`UltraCanvasColormap`](UltraCanvasColormap.md) — sequential
+(`Viridis`, `Inferno`, `Blues`, …), diverging (`RdBu`, `Spectral`, `Coolwarm`, …),
+or `Custom` with your own anchors. With diverging normalization on, `[min, mid]`
+maps to `[0, 0.5]` and `[mid, max]` to `[0.5, 1]`, so the midpoint lands on the
+palette's neutral centre regardless of how lopsided the data is.
 
 ### Background / Grid / Axes
 
@@ -18235,6 +18806,53 @@ jitter->SetPointAlpha(0.6f);
 jitter->SetChartTitle("Response Value");
 jitter->SetEnableTooltips(true);
 ```
+
+### Example 8: Bubble Beeswarm with a Diverging Colour Scale (1.3.0)
+
+Election results by county: horizontal position is the win margin, bubble area is
+the county's share of the national vote, and colour is the same signed margin run
+through a diverging palette centred on zero. Three encodings, one chart.
+
+```cpp
+auto plot = CreateJitterPlotElement("margins", 1001, 20, 20, 900, 420);
+plot->SetCategories({"Counties"});
+plot->SetChartTitle("Results by County");
+
+plot->SetJitterDistribution(JitterDistribution::Beeswarm);
+plot->SetBeeswarmMethod(BeeswarmMethod::Swarm);
+plot->SetOrientation(true);          // Horizontal: value runs left-to-right
+plot->SetPointAlpha(0.85f);
+
+// Three parallel vectors, one entry per county
+std::vector<double> margins;     // -50 (opposition) .. +50 (incumbent)
+std::vector<double> voteShare;   // Share of the national total
+std::vector<double> colorBy;     // Same as margins - colour reinforces position
+
+for (const auto& county : counties) {
+    margins.push_back(county.marginPercent);
+    voteShare.push_back(county.votes / nationalTotal * 100.0);
+    colorBy.push_back(county.marginPercent);
+}
+plot->AddCategoryData("Counties", margins, voteShare, colorBy);
+
+// Bubble area tracks vote share
+plot->SetPointSizeMode(JitterPointSizeMode::ByValue);
+plot->SetPointSizeRange(2.0f, 13.0f);
+
+// Colour tracks the signed margin, centred on 0
+plot->SetPointColorMode(JitterPointColorMode::ByValue);
+plot->SetPointColormap(HeatmapColormap::RdBu, /*reverse=*/true);
+plot->SetPointColorDiverging(true, 0.0);
+```
+
+To split the chart the way the original does — "counties under 100k votes" above,
+"counties over 100k" below — build two elements and stack them, feeding each the
+matching subset. Keep the size and colour domains identical across the two
+(`SetPointSizeDomain` / `SetPointColorDomain`) or the panels will not be comparable.
+
+> **Note:** `SetMinScoreFilter` defaults to no filter as of 1.3.0. On earlier
+> versions it defaulted to `0.0`, which would have discarded every negative margin
+> in this example.
 
 ## Internal Pipeline
 
@@ -21615,6 +22233,599 @@ UltraCanvasMenu is not thread-safe. All menu operations should be performed on t
 - Menu recording/replay for testing
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasMindMapExamples.md
+==============================================================================
+
+# UltraCanvasMindMap Documentation
+
+## Overview
+
+**UltraCanvasMindMap** is an interactive mind map element: a rooted topic tree on
+a pan/zoom canvas, with the central topic in the middle and branches radiating
+outward. It covers both the *working-tool* case (deep editable maps with
+collapse, drag-to-reparent and undo) and the *presentation* case (themes, node
+shapes, images, icons and numbering).
+
+**Namespace:** `UltraCanvas`
+**Header:** `include/Plugins/Diagrams/UltraCanvasMindMap.h`
+**Base Class:** `UltraCanvasUIElement`
+**Version:** 1.2.0
+
+The topic model and the layout engine live separately in
+`include/Plugins/Diagrams/UltraCanvasMindMapLayout.h`, and the interchange
+formats in `include/Plugins/Diagrams/UltraCanvasMindMapIO.h`. Neither depends on
+the render context, so both can be used — and tested — headlessly.
+Pan/zoom, the minimap and the controls overlay come from the shared
+[`UltraCanvasDiagramViewport`](UltraCanvasDiagramViewport.md).
+
+```
+UltraCanvasUIElement
+    └── UltraCanvasMindMap        (element: render, events, editing)
+            ├── MindMapModel                (topic tree)
+            ├── UltraCanvasMindMapLayout    (pure layout)
+            └── UltraCanvasMindMapIO        (interchange formats)
+```
+
+## Header Include
+
+```cpp
+#include "Plugins/Diagrams/UltraCanvasMindMap.h"
+```
+
+## Quick start
+
+```cpp
+auto map = CreateMindMap("ProjectMap", 10, 10, 900, 640);
+map->SetTheme(MindMapTheme::Colorful);
+map->SetStructure(MindMapStructure::Balanced);
+map->SetControlsVisible(true);
+
+std::string root = map->SetCentralTopic("Product launch");
+std::string research = map->AddTopic(root, "Research");
+map->AddTopic(research, "User interviews");
+map->AddTopic(research, "Competitor scan");
+
+map->FitView();
+window->AddChild(map);
+```
+
+Or build a whole map from an indented outline in one call:
+
+```cpp
+map->BuildFromOutline({
+    {0, "Product launch"},
+    {1, "Research"},
+    {2, "User interviews"},
+    {2, "Competitor scan"},
+    {1, "Design"},
+    {2, "Wireframes"},
+});
+```
+
+`BuildFromOutline` clamps an over-indented line to one level deeper than the
+previous one, so a hand-written outline can never produce a broken tree.
+
+---
+
+## Structures
+
+```cpp
+map->SetStructure(MindMapStructure::Balanced);
+```
+
+| Structure | Shape |
+|---|---|
+| `Balanced` | Root centred, main topics split left and right (the default) |
+| `LogicRight` / `LogicLeft` | The whole tree grows to one side |
+| `OrgChartDown` / `OrgChartUp` | Top-down / bottom-up hierarchy |
+| `Radial` | Branches distributed over a full circle, one ring per generation |
+| `Manual` | Authored positions honoured; anything unset is auto-placed |
+
+In `Balanced`, which side an `Auto` main topic lands on is decided by the balance
+policy:
+
+```cpp
+map->SetBalancePolicy(MindMapBalancePolicy::MinimiseSubtreeWeight);
+```
+
+- `AlternateByIndex` — right, left, right, left (the default)
+- `SplitInHalf` — first half right, second half left
+- `MinimiseSubtreeWeight` — each branch goes to whichever side is currently
+  lighter, measured in leaf count
+
+An explicit side always wins over the policy:
+
+```cpp
+map->SetTopicSide(topicId, MindMapTopicSide::Left);
+```
+
+Side is **inherited by the whole subtree**: everything under a left-side main
+topic keeps growing leftward. So is the branch index, which is what the colour
+cascade keys off.
+
+### Spacing
+
+```cpp
+map->SetSpacing(/*siblingGap*/ 12.0, /*levelGap*/ 46.0, /*rootGap*/ 60.0);
+```
+
+Sibling subtrees are packed by bottom-up extent accumulation, so **boxes never
+overlap at any depth**, whatever their sizes. `Tests/MindMapLayoutTest.cpp`
+verifies this over a 364-topic ragged tree in three structures.
+
+### Alignment (the infographic look)
+
+```cpp
+MindMapLayoutOptions options = map->GetLayoutOptions();
+options.alignLevelColumns = true;   // same depth => same distance from centre
+options.alignSideRows = true;       // Nth left topic shares a row with Nth right
+map->SetLayoutOptions(options);
+```
+
+Both are off by default. `alignSideRows` applies to the `Balanced` and `Manual`
+structures only — the other structures have no two sides to pair up.
+
+### Per-branch structure
+
+A main topic can declare its own structure while the rest of the map keeps the
+default — XMind's "combine structures" behaviour:
+
+```cpp
+map->GetTopic(branchId)->structureOverride = MindMapStructure::OrgChartDown;
+```
+
+The overridden branch is laid out locally first, and the main pass then reserves
+exactly the space its bounding box needs, so an overridden branch never collides
+with its siblings. Overrides apply to **depth-1 branches**; a nested override is
+ignored.
+
+### Animated re-layout
+
+```cpp
+map->Style().layoutAnimationMs = 220.0;   // 0 disables
+```
+
+Topics tween from their old positions to the new ones with an ease-out curve
+after any layout change — collapse, structure switch, reparent. Re-triggering
+mid-tween starts from where things currently appear rather than snapping back.
+
+### Manual placement
+
+```cpp
+MindMapTopic* topic = map->GetTopic(id);
+topic->hasManualPosition = true;
+topic->manualX = 640.0;
+topic->manualY = -275.0;
+map->SetStructure(MindMapStructure::Manual);
+```
+
+Authored positions are stored on the topic and ignored by every other
+structure, so a map can be switched back and forth without losing them. In
+`Manual`, topics without an authored position keep the position the base pass
+computed.
+
+---
+
+## Styling
+
+### Style by level
+
+Mind maps are styled by *level*, not per node — that is how all the reference
+designs actually work. Level 0 is the central topic, 1 the main topics, and so
+on; the deepest configured level applies to everything beyond it.
+
+```cpp
+MindMapTopicStyle leaf = map->GetLevelStyle(2);
+leaf.shape = MindMapNodeShape::Underline;   // text with a rule beneath
+leaf.maxWidth = 300.0;
+map->SetLevelStyle(2, leaf);
+```
+
+### Branch colour cascade
+
+Each main topic takes the next hue from the palette, and its whole subtree
+inherits it. Text colour is chosen automatically for contrast against the fill.
+
+```cpp
+map->SetBranchPalette({
+    Color(233, 86, 86), Color(247, 168, 40), Color(76, 175, 92),
+    Color(45, 156, 219), Color(155, 89, 182), Color(26, 188, 156),
+});
+map->Style().depthLightenStep = 0.18;   // lighten 18% per level below the branch
+```
+
+`depthLightenStep` produces the cluster look where a saturated main circle is
+surrounded by paler descendants.
+
+### Per-topic override
+
+```cpp
+MindMapTopicStyle callout = map->GetLevelStyle(1);
+callout.fillColor = Color(232, 245, 233);
+map->SetTopicStyle(topicId, callout);   // wins over level and branch styles
+map->ClearTopicStyle(topicId);          // back to the cascade
+```
+
+### Shapes
+
+`RoundedRect`, `Rect`, `Pill`, `Circle`, `Ellipse`, `Diamond`, `Hexagon`,
+`Cloud`, `Bang`, `Underline` and `NoShape` (text only).
+
+> `NoShape` is spelled that way rather than `None` because X11's `Xlib.h`
+> defines `None` as a macro. The same applies to
+> `MindMapEndDecoration::NoDecoration`.
+
+`outlineOnly` gives the transparent-fill, coloured-stroke, coloured-text look.
+
+### Shadows, dimming and a background layer
+
+```cpp
+map->Style().showShadows = true;              // offset silhouette behind each node
+map->Style().dimUnrelatedOnHover = true;      // fade branches other than the hovered one
+map->Style().dimOpacity = 0.28;
+
+// Drawn in WORLD space beneath the map, before the grid.
+map->Style().backgroundRenderer = [](IRenderContext* ctx, const Rect2Dd& visible) {
+    // visible is the world region currently on screen
+};
+```
+
+### Themes
+
+```cpp
+map->SetTheme(MindMapTheme::Professional);
+```
+
+`Default`, `Professional`, `Colorful`, `Pastel`, `Dark`, `HandDrawn`. A theme
+sets the palette, the background, the connector style and the four level styles
+in one call — so apply it **before** any `SetLevelStyle` customisation, since it
+replaces them.
+
+---
+
+## Connectors
+
+```cpp
+map->SetConnectorStyle(MindMapConnectorStyle::TaperedBranch);
+```
+
+| Style | Look |
+|---|---|
+| `Straight` | Direct line |
+| `Curve` | Cubic bezier, the classic mind map S-curve (default) |
+| `Elbow` | Orthogonal, sharp corners |
+| `RoundedElbow` | Orthogonal with rounded corners |
+| `TaperedBranch` | Organic branch, thick at the parent and thin at the child |
+
+Connectors always terminate on the node's **perimeter**, computed per shape
+(ellipse, diamond and rectangle each have their own intersection), so a line
+never runs into the middle of a box.
+
+```cpp
+map->Style().connectorColorMode = MindMapConnectorColorMode::InheritFromBranch;
+map->Style().endDecoration = MindMapEndDecoration::Dot;   // or Arrow, Square
+map->Style().taperStartWidth = 7.0;
+map->Style().taperEndWidth = 1.5;
+```
+
+### Attachment and labels
+
+```cpp
+map->Style().connectorAttach = MindMapConnectorAttach::Baseline;  // or Perimeter
+map->SetTopicConnectorLabel(childId, "leads to");
+map->Style().showConnectorLabels = true;
+```
+
+`Baseline` runs the stroke to the bottom edge of each node — the classic
+hand-drawn convention — instead of to the nearest point on its outline.
+A connector label belongs to the **child**, since a connector is implied by the
+parent/child link rather than being an object of its own.
+
+### Connector badges
+
+A circular badge on the connector carrying the child's icon, or its ordinal
+when there is no icon:
+
+```cpp
+map->Style().showConnectorBadges = true;
+map->Style().connectorBadgeT = 0.55;   // 0 at the parent, 1 at the child
+map->Style().connectorBadgeRadius = 9.0;
+```
+
+---
+
+## Node content
+
+```cpp
+map->SetTopicIcon(topicId, "media/icons/light 001.jpg");   // inline, before the label
+map->SetTopicImage(topicId, "media/images/brain.png");     // image as the node body
+map->SetTopicNote(topicId, "Longer note text");            // corner triangle indicator
+map->SetTopicLink(topicId, "https://example.com");         // clickable ring indicator
+map->SetTopicMarkers(topicId, {"media/icons/check.png"});  // badge row above the node
+map->SetTopicWeight(topicId, 3.0);                          // with sizeFromWeight
+```
+
+Notes render as a small filled corner triangle, links as a clickable ring — a
+click fires `onTopicLinkActivated(id, link)` — and markers as a row of small
+icons above the node. Each can be turned off:
+
+```cpp
+map->Style().showNoteIndicator = false;
+map->Style().showLinkIndicator = false;
+map->Style().showMarkers = false;
+```
+
+### Callout cards
+
+A callout is a floating topic that points at another topic with a leader line:
+
+```cpp
+std::string card = map->AddCallout(topicId, "Explanatory text", 520.0, -300.0);
+map->Style().calloutLeaderDashed = true;
+```
+
+The leader runs between the two nodes' perimeters and ends in a small dot on the
+target, so it reads as a reference rather than a branch. If the target is later
+deleted the card survives; its pointer simply stops resolving.
+
+### Application data
+
+```cpp
+map->SetTopicUserData(id, "external-key");
+map->SetTopicAttribute(id, "owner", "alice");
+std::string owner = map->GetTopicAttribute(id, "owner");
+```
+
+Neither the layout engine nor the element interprets these; both round-trip
+through JSON.
+
+Icons and images are **file paths**, matching the framework convention
+(`UltraCanvasTreeView::TreeNodeIcon`, `UltraCanvasButton::SetIcon`,
+`MenuItemData::Action`).
+
+### Numbering
+
+```cpp
+map->SetNumbering(MindMapNumbering::Badge);   // or Prefix, Off
+```
+
+`Prefix` renders `1.2 Topic text`; `Badge` draws a filled circle in the branch
+hue carrying the ordinal, just outside the node.
+
+---
+
+## Relationships
+
+Non-hierarchical links between any two topics, drawn as dashed bowed arcs so
+they read separately from the branch strokes:
+
+```cpp
+map->AddRelationship("connection_1", fromTopicId, toTopicId, "Connection");
+
+MindMapRelationship rel("r2", a, b);
+rel.color = Color(200, 80, 120);
+rel.dashed = false;
+rel.arrowAtEnd = true;
+map->AddRelationship(rel);
+```
+
+Removing either endpoint removes the relationship with it.
+
+---
+
+## Collapse and navigation
+
+```cpp
+map->SetCollapsed(topicId, true);
+map->ToggleCollapsed(topicId);
+map->ExpandAll();
+map->CollapseAll();        // collapses the main topics, never the centre
+map->ExpandToLevel(2);
+
+map->CenterOnTopic(topicId);
+map->FitView(50.0);
+map->RevealTopic(topicId);            // expands ancestors, then centres
+auto hits = map->FindTopics("design"); // case-insensitive substring
+```
+
+A collapsed topic keeps its own box but its descendants are not laid out at all,
+so collapsing genuinely frees the space.
+
+---
+
+## Editing
+
+```cpp
+map->SetEditable(true);
+map->BeginEditTopic(topicId);
+std::string childId = map->CreateChild(parentId);     // creates, selects, edits
+std::string siblingId = map->CreateSibling(topicId);
+map->DeleteSelected();
+map->Undo();
+map->Redo();
+```
+
+### Keyboard
+
+| Key | Action |
+|---|---|
+| `Enter` | New sibling (a child, when the central topic is selected) |
+| `Tab` | New child |
+| `F2` | Rename the selected topic |
+| `Delete` / `Backspace` | Delete the selection (never the central topic) |
+| `Space` | Collapse / expand |
+| Arrow keys | Move the selection geometrically |
+| `Ctrl+A` | Select all |
+| `Ctrl+Z` / `Ctrl+Shift+Z`, `Ctrl+Y` | Undo / redo |
+| `Escape` | Deselect, or cancel an in-progress edit |
+
+### Mouse
+
+Click selects, Shift+click adds to the selection, double-click renames (or
+collapses when the map is read-only), dragging a topic onto another reparents it
+with a drop indicator, dragging empty canvas pans, and the wheel zooms at the
+cursor. Double-clicking empty canvas fits the view.
+
+**Ctrl+drag** from a topic to empty canvas creates a child at the drop point.
+The modifier is required so that a plain drag always means "reparent" and never
+silently creates a topic when it misses a target.
+
+In-place editing embeds an `UltraCanvasTextInput` positioned over the topic in
+screen space, with its font scaled by the current zoom. While an edit is active
+the editor receives keyboard events first, so `Tab` and `Enter` go to the text
+field rather than to the authoring shortcuts.
+
+### Clipboard
+
+```cpp
+map->CopySelection();                  // topmost selected subtrees
+map->CutSelection();
+map->PasteInto(targetParentId);        // fresh ids, so it can be pasted repeatedly
+map->PasteOutlineInto(parentId, "Root\n  Child\n");
+map->HasClipboardContent();
+```
+
+Copy only takes the *topmost* selected topics — a descendant already travels
+with its ancestor, so copying both would duplicate it on paste. `Ctrl+C`,
+`Ctrl+X` and `Ctrl+V` are wired to these.
+
+Undo snapshots the whole map as JSON, so every structural and style mutation is
+covered by one mechanism. The default limit is 100 entries
+(`SetUndoLimit`).
+
+---
+
+## Exchange
+
+```cpp
+std::string json = map->ToJson();
+map->FromJson(json);
+
+std::string markdown = map->ToMarkdown();
+map->FromMarkdown(markdown);
+
+std::string plain = map->ToOutlineText();   // indented reading order
+```
+
+JSON round-trips the model, per-topic style overrides, relationships, layout
+options and the viewport, using `UltraCanvasJSON`. Markdown import accepts both
+headings (`#`, `##`, …) and nested list items (two spaces per level, the markmap
+convention).
+
+### Interchange formats
+
+```cpp
+map->FromMermaid(source);      map->ToMermaid();
+map->FromFreeMind(mmXml);      map->ToFreeMind();      // FreeMind / Freeplane .mm
+map->FromOpml(opmlXml);        map->ToOpml("Title");
+map->FromIndentedText(text);   map->FromCsv(csv);      map->ToCsv();
+map->FromXMindFile("plan.xmind");
+map->ImportAuto(anyText);      // sniffs the format and dispatches
+map->ExportSvg("map.svg", 2.0);
+```
+
+Every importer **replaces the whole map** and is undoable. Import runs into a
+scratch model and only adopts it on success, so a malformed file can never
+half-destroy the map you have open.
+
+The underlying `UltraCanvasMindMapIO` works on a bare `MindMapModel` if you need
+conversion without an element:
+
+```cpp
+MindMapModel model;
+MindMapImportResult result = UltraCanvasMindMapIO::FromFreeMind(model, xml);
+if (!result) { /* result.error explains why */ }
+```
+
+Notes on fidelity:
+
+- **Mermaid** — indentation is ranked by distinct width, so 2-space, 4-space and
+  tab sources import identically. Shape delimiters survive as style overrides
+  and `::icon()` attaches to the preceding node. An identifier before the
+  delimiter (`root((Text))`) is accepted, as Mermaid allows.
+- **FreeMind** — `POSITION`, `FOLDED`, `LINK` and `BUILTIN` icons round-trip.
+- **OPML** — a body with several top-level outlines keeps them all: the first
+  becomes the centre, the rest its children.
+- **CSV** — rows may appear in any order; parents are resolved after the whole
+  file is read. Needs an id column and a parent column; the text column defaults
+  to `text`/`label`/`title`/`name`.
+- **XMind** — reads the modern `content.json` container. A legacy `content.xml`
+  archive is reported as unsupported rather than failing obscurely.
+
+No new third-party dependency is involved: tinyxml2, `UltraCanvasJSON` and
+`UCZipPackageReader` were already in the framework.
+
+---
+
+## Callbacks
+
+```cpp
+map->onTopicClick        = [](const std::string& id) { /* ... */ };
+map->onTopicDoubleClick  = [](const std::string& id) { /* ... */ };
+map->onTopicTextChanged  = [](const std::string& id, const std::string& previous) { /* ... */ };
+map->onTopicAdded        = [](const std::string& id) { /* ... */ };
+map->onTopicRemoved      = [](const std::string& id) { /* ... */ };
+map->onTopicMoved        = [](const std::string& id, const std::string& newParentId) { /* ... */ };
+map->onCollapseChanged   = [](const std::string& id, bool collapsed) { /* ... */ };
+map->onSelectionChanged  = [](const std::vector<std::string>& ids) { /* ... */ };
+map->onViewportChanged   = [](double zoom, double panX, double panY) { /* ... */ };
+map->onTopicRightClick   = [](const std::string& id, double worldX, double worldY) { /* ... */ };
+map->onCanvasRightClick  = [](double worldX, double worldY) { /* ... */ };
+```
+
+---
+
+## Working with the model directly
+
+`MindMapModel` is usable on its own, with no element and no render context —
+useful for import/export tools and tests:
+
+```cpp
+MindMapModel model;
+std::string root = model.SetCentralTopic("Root");
+std::string a = model.AddTopic(root, "A");
+
+model.MoveTopic(a, otherId);          // false on a cycle
+model.GetPath(id);                     // root-first, inclusive
+model.GetSubtreeIds(id);               // pre-order, inclusive
+model.CountDescendants(id);
+model.IsHiddenByCollapse(id);
+model.AssignOrdinals();
+
+MindMapLayoutResult result;
+UltraCanvasMindMapLayout::ComputeLayout(model, MindMapLayoutOptions(),
+                                        nullptr, nullptr, result);
+```
+
+Passing `nullptr` for the measure function falls back to a built-in text-size
+estimator, so layout works without a render context.
+
+---
+
+## Performance notes
+
+Layout is **lazy**: mutations mark it dirty and `Render()` recomputes at most
+once per frame. Real text metrics only exist during `Render()`, which is why the
+layout pass runs from there rather than from the mutating setters.
+
+Rendering is **culled**: only topics intersecting the visible world region (plus
+a margin, so partially-visible nodes and their indicators do not pop at the
+edge) are drawn. Connectors and relationships are not culled — they are cheap
+and often span the visible region.
+
+---
+
+## Demo
+
+`Apps/DemoApp/UltraCanvasMindMapExamples.cpp` — six tabs: an editable map, a
+logic chart with ordinal badges, a radial map, cross-branch relationships, a
+presentation layout (aligned columns and rows, connector badges, shadows,
+background layer, callout cards, connector labels, note/link/marker
+indicators), and a gallery for switching theme, structure and connector style at
+runtime. The editable tab also shows a single branch overridden to an org chart
+inside an otherwise balanced map.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasNestedAreaChartExamples.md
 ==============================================================================
 
@@ -21905,7 +23116,21 @@ FILE: Docs/UltraCanvas/UltraCanvasNodeDiagramExamples.md
 **Namespace:** `UltraCanvas`
 **Header:** `include/Plugins/Diagrams/UltraCanvasNodeDiagram.h`
 **Base Class:** `UltraCanvasUIElement`
-**Version:** 2.0.6
+**Version:** 2.2.0
+
+> **Since 2.2.0** the component covers organizational-network work: data-driven
+> node sizing (`NodeSizeMode::ByDegree` / `ByValue`), cluster containers
+> (`NodeDiagramGroup`) that auto-fit a boundary box around a set of member
+> nodes, a group-cohesion force that keeps those clusters together during
+> force-directed layout, and a color legend overlay. See
+> [Cluster containers, sizing and legend](#cluster-containers-sizing-and-legend).
+
+> **Since 2.1.0** the pan/zoom, snap-grid, minimap and controls machinery lives
+> in the shared [`UltraCanvasDiagramViewport`](UltraCanvasDiagramViewport.md).
+> The public API here is unchanged (the overlay config types are now aliases of
+> the shared ones), and a coordinate bug is fixed: minimap/controls hit-testing
+> and zoom-at-cursor were previously offset by the element's position whenever
+> the diagram was not placed at `(0, 0)`.
 
 ## Class Hierarchy
 
@@ -21934,6 +23159,10 @@ UltraCanvasUIElement
 - **JSON serialization**: `ToJson()` / `FromJson()`
 - **Themes**: Default, Professional, Colorful, Minimal, Dark
 - **Auto-fit on layout**, label measurement (`SuggestNodeSizeForLabel`)
+- **Data-driven node sizing** (2.2.0): size by connection degree or by a per-node value
+- **Cluster containers** (2.2.0): auto-fitted, titled boundary boxes around node sets
+- **Group cohesion** (2.2.0): pulls cluster members together during force-directed layout
+- **Color legend overlay** (2.2.0), placeable in any corner
 
 ## Data Structures
 
@@ -21960,7 +23189,29 @@ enum class LinkStyle {
 enum class HandlePosition { Top, Right, Bottom, Left };
 enum class HandleType     { Source, Target };
 
-enum class NodeDiagramPanelPosition {
+// NEW in 2.2.0
+enum class NodeSizeMode {
+    Fixed,      // node.width / node.height used verbatim (default)
+    ByDegree,   // size = baseSize * sqrt(degree), clamped to [minSize, maxSize]
+    ByValue     // size = baseSize * sqrt(node.value), clamped the same way
+};
+
+enum class NodeDegreeMode {
+    Total,      // incoming + outgoing (default)
+    Incoming,
+    Outgoing
+};
+
+// NOTE: no enumerator may be named "None" - X11's Xlib.h defines None as a macro.
+enum class GroupLabelPosition {
+    TopLeft, TopCenter, TopRight, BottomLeft, BottomCenter, NoLabel
+};
+
+// Since 2.1.0 an alias of the shared DiagramPanelPosition
+// (see UltraCanvasDiagramViewport.md).
+using NodeDiagramPanelPosition = DiagramPanelPosition;
+
+enum class DiagramPanelPosition {
     TopLeft, TopRight, BottomLeft, BottomRight
 };
 ```
@@ -22028,6 +23279,105 @@ struct NodeDiagramLink {
     bool   deletable   = true;
 };
 ```
+
+### NodeDiagramSizing (2.2.0)
+
+```cpp
+struct NodeDiagramSizing {
+    NodeSizeMode   mode       = NodeSizeMode::Fixed;
+    NodeDegreeMode degreeMode = NodeDegreeMode::Total;
+
+    double baseSize = 26.0;   // Size of a degree-1 (or value-1) node
+    double minSize  = 18.0;   // Floor - keeps isolated nodes clickable
+    double maxSize  = 96.0;   // Ceiling - keeps a mega-hub from eating the canvas
+
+    bool keepAspect = true;   // Scale width and height together
+};
+```
+
+Both scaling modes use a **square-root transfer**, so the node's *area* — not its
+diameter — is proportional to the underlying quantity. That is the perceptually
+correct mapping for a filled mark: scaling the diameter linearly would make a
+degree-9 hub look nine times more important than a degree-1 leaf instead of three.
+
+`NodeDiagramNode` gained a `value` field (default `1.0`) that drives
+`NodeSizeMode::ByValue`, plus `baseWidth` / `baseHeight`, which capture the size a
+node was authored with so switching back to `NodeSizeMode::Fixed` restores it exactly.
+
+### NodeDiagramGroup (2.2.0)
+
+A cluster container: a boundary box drawn around a set of member nodes, with an
+optional title. Bounds are recomputed from the members every frame, so the box
+tracks its contents through dragging and re-layout.
+
+```cpp
+struct NodeDiagramGroup {
+    std::string id;
+    std::string label;
+    std::vector<std::string> nodeIds;
+
+    Color  fillColor   = Color(0, 0, 0, 0);          // Transparent by default
+    Color  borderColor = Color(170, 170, 170, 255);
+    double borderWidth = 1.0;
+    bool   dashed      = false;
+    double dashLength  = 6.0;
+    double dashGap     = 4.0;
+
+    double padding      = 24.0;   // World-space gap between members and the box
+    double cornerRadius = 0.0;    // 0 = sharp corners
+
+    GroupLabelPosition labelPosition = GroupLabelPosition::TopLeft;
+    Color  labelColor    = Color(70, 70, 70, 255);
+    double labelFontSize = 12.0;
+    double labelMargin   = 6.0;
+
+    bool visible = true;
+};
+```
+
+Boxes render **behind the links** so edges crossing between clusters stay readable;
+titles render **after the nodes** so a node never covers one. Group titles and
+box borders are scaled by the inverse of the zoom, so they hold a constant
+on-screen size at any zoom level.
+
+### NodeDiagramLegendConfig (2.2.0)
+
+```cpp
+struct NodeDiagramLegendEntry {
+    std::string label;
+    Color       color = Color(100, 150, 220, 255);
+};
+
+struct NodeDiagramLegendConfig {
+    bool visible = false;
+    std::vector<NodeDiagramLegendEntry> entries;
+
+    DiagramPanelPosition position = DiagramPanelPosition::TopLeft;
+    double padding      = 10.0;   // Distance from the element edge
+    double innerPadding = 8.0;    // Panel border to content
+    double swatchWidth  = 14.0;
+    double swatchHeight = 14.0;
+    double rowGap       = 5.0;
+    double swatchGap    = 7.0;
+    double fontSize     = 11.0;
+
+    std::string title;            // Optional heading above the rows
+    double titleFontSize = 12.0;
+    double titleGap      = 6.0;
+
+    Color textColor        = Color(50, 50, 50, 255);
+    Color backgroundColor  = Color(255, 255, 255, 225);
+    Color borderColor      = Color(200, 200, 200, 255);
+    bool  showBackground   = true;
+    bool  showSwatchBorder = true;
+    Color swatchBorderColor = Color(120, 120, 120, 180);
+};
+```
+
+The legend is drawn in **screen space**, like the minimap and controls overlays —
+it does not pan or zoom with the diagram. Panel size is measured from the actual
+text, so long category names are never clipped.
+
 
 ## Class Reference
 
@@ -22109,6 +23459,94 @@ void ApplyHierarchicalLayout(const std::string& rootId);
 void SetAutoFitOnLayout(bool autoFit);
 ```
 
+### Data-driven node sizing (2.2.0)
+
+```cpp
+void         SetNodeSizeMode(NodeSizeMode mode);
+NodeSizeMode GetNodeSizeMode() const;
+
+void              SetNodeSizing(const NodeDiagramSizing& sizing);
+NodeDiagramSizing GetNodeSizing() const;
+
+// Convenience: mode-independent scale range in one call.
+void SetNodeSizeRange(double baseSize, double minSize, double maxSize);
+
+// Magnitude behind a node, used by NodeSizeMode::ByValue.
+void   SetNodeValue(const std::string& id, double value);
+double GetNodeValue(const std::string& id) const;
+
+// Connection count under the current (or an explicit) degree mode. 0 for unknown ids.
+int GetNodeDegree(const std::string& id) const;
+int GetNodeDegree(const std::string& id, NodeDegreeMode mode) const;
+
+// Force a sizing pass now. Normally unnecessary - sizes are recomputed when
+// links or values change - but useful after bulk edits made through GetNode().
+void ApplyNodeSizing();
+```
+
+Degree counts are cached and invalidated by any node or link mutation, so
+bulk-loading a graph costs one rebuild rather than one per `AddLink` call.
+`RunLayout()` re-runs sizing before laying out, so the anti-overlap pass
+separates nodes by their final sizes.
+
+### Cluster containers (2.2.0)
+
+```cpp
+void AddGroup(const NodeDiagramGroup& group);
+void AddGroup(const std::string& id, const std::string& label,
+              const std::vector<std::string>& nodeIds,
+              const Color& borderColor,
+              const Color& fillColor = Color(0, 0, 0, 0));
+void RemoveGroup(const std::string& id);
+void ClearGroups();
+
+void AddNodeToGroup(const std::string& groupId, const std::string& nodeId);
+void RemoveNodeFromGroup(const std::string& groupId, const std::string& nodeId);
+
+NodeDiagramGroup*        GetGroup(const std::string& id);
+const NodeDiagramGroup*  GetGroup(const std::string& id) const;
+std::vector<std::string> GetAllGroupIds() const;
+
+// Id of the first group containing the node, or "" when it belongs to none.
+std::string GetNodeGroupId(const std::string& nodeId) const;
+
+// Current world-space box including padding. Empty rect for unknown ids.
+Rect2Dd GetGroupBounds(const std::string& id) const;
+
+void SetGroupsVisible(bool visible);
+bool AreGroupsVisible() const;
+
+// Per-group centroid attraction used by the force-directed layout.
+// 0 disables clustering; 0.05-0.20 gives visually distinct clusters.
+void   SetGroupCohesion(double strength);
+double GetGroupCohesion() const;
+```
+
+`RemoveNode()` drops the node from every group it belonged to, so a box never
+reserves space for a node that no longer exists. Group boxes are included in
+`ComputeContentBounds()`, so `FitView()` and the minimap account for them.
+
+**Group cohesion matters.** Without it, repulsion scatters a cluster's members
+across the canvas and the boxes grow until they overlap into mush — the boxes
+only read as clusters if the layout keeps their members together in the first
+place.
+
+### Color legend (2.2.0)
+
+```cpp
+void SetLegendVisible(bool visible);
+void SetLegendPosition(NodeDiagramPanelPosition pos);
+void SetLegendConfig(const NodeDiagramLegendConfig& cfg);
+NodeDiagramLegendConfig GetLegendConfig() const;
+
+void AddLegendEntry(const std::string& label, const Color& color);
+void ClearLegendEntries();
+
+// One row per group, using each group's border color as the swatch.
+// Groups with an empty label are skipped.
+void BuildLegendFromGroups();
+```
+
 ### Styling & Theme
 
 ```cpp
@@ -22143,7 +23581,7 @@ bool                     IsLinkSelected(const std::string& id) const;
 void     SetZoomLevel(double zoom);
 double   GetZoomLevel() const;
 void     SetPanOffset(double x, double y);
-Point2Df GetPanOffset() const;
+Point2Dd GetPanOffset() const;
 
 void ZoomIn(double factor = 1.2);
 void ZoomOut(double factor = 1.2);
@@ -22393,6 +23831,95 @@ diagram->AddLink("e5", "eng_mgr", "dev1");
 diagram->SetDefaultLinkStyle(LinkStyle::SmoothStep);
 diagram->ApplyHierarchicalLayout("ceo");
 ```
+
+### Cluster containers, sizing and legend
+
+An organizational network: five departments, each wrapped in its own boundary
+box, with hub nodes sized by how many people connect to them. This is the shape
+a strict org chart cannot draw — the cross-department links are the point.
+
+```cpp
+auto diagram = CreateNodeDiagram("org", 0, 0, 900, 620);
+diagram->SetTheme(NodeDiagramTheme::Minimal);
+diagram->SetDefaultLinkStyle(LinkStyle::Straight);
+
+struct Dept { const char* id; const char* label; Color color; const char* hub; };
+const Dept departments[] = {
+    {"grp_sales", "Sales",              Color(31,  78, 160, 255), "sales_hub"},
+    {"grp_care",  "Customer Care",      Color(38, 125,  60, 255), "care_hub"},
+    {"grp_biz",   "Business Solutions", Color(214,106,  20, 255), "biz_hub"},
+    {"grp_cli",   "Client Services",    Color(196, 42,  96, 255), "cli_hub"},
+};
+
+int linkNo = 0;
+for (const auto& dept : departments) {
+    NodeDiagramNode hub(dept.hub, dept.label);
+    hub.shape       = NodeShape::Square;
+    hub.fillColor   = dept.color;
+    hub.borderColor = Color(40, 40, 40, 255);
+    hub.textColor   = Color(255, 255, 255, 255);
+    hub.width = hub.height = 46.0;
+    hub.value = 6.0;                     // Headcount - drives NodeSizeMode::ByValue
+    diagram->AddNode(hub);
+
+    std::vector<std::string> members{dept.hub};
+    for (int i = 0; i < 6; ++i) {
+        std::string id = std::string(dept.hub) + "_m" + std::to_string(i);
+        NodeDiagramNode node(id, "Member " + std::to_string(i));
+        node.shape       = NodeShape::Square;
+        node.borderColor = dept.color;
+        node.width = node.height = 34.0;
+        diagram->AddNode(node);
+        members.push_back(id);
+
+        NodeDiagramLink link("l" + std::to_string(++linkNo), dept.hub, id);
+        link.directed  = false;
+        link.lineColor = Color(dept.color.r, dept.color.g, dept.color.b, 150);
+        diagram->AddLink(link);
+    }
+
+    NodeDiagramGroup group(dept.id, dept.label);
+    group.nodeIds       = members;
+    group.borderColor   = dept.color;
+    group.fillColor     = Color(dept.color.r, dept.color.g, dept.color.b, 18);
+    group.labelColor    = dept.color;
+    group.dashed        = true;
+    group.cornerRadius  = 6.0;
+    group.labelPosition = GroupLabelPosition::TopLeft;
+    diagram->AddGroup(group);
+}
+
+// Cross-department ties: the reason this is a network, not a tree.
+diagram->AddLink(NodeDiagramLink("x1", "sales_hub", "biz_hub"));
+diagram->AddLink(NodeDiagramLink("x2", "biz_hub",   "cli_hub"));
+diagram->AddLink(NodeDiagramLink("x3", "cli_hub",   "care_hub"));
+
+// Hubs read as hubs: area proportional to connection count.
+NodeDiagramSizing sizing;
+sizing.mode     = NodeSizeMode::ByDegree;
+sizing.baseSize = 20.0;
+sizing.minSize  = 26.0;
+sizing.maxSize  = 74.0;
+diagram->SetNodeSizing(sizing);
+
+// Keep each department's members together while the layout runs.
+diagram->SetGroupCohesion(0.14);
+
+diagram->BuildLegendFromGroups();
+auto legend = diagram->GetLegendConfig();
+legend.visible  = true;
+legend.position = DiagramPanelPosition::TopRight;
+legend.title    = "Departments";
+diagram->SetLegendConfig(legend);
+
+diagram->SetLayout(NodeDiagramLayout::ForceDirected);
+diagram->RunLayout();
+```
+
+Switching `sizing.mode` to `NodeSizeMode::ByValue` sizes each node from its
+`value` field instead — headcount, budget, revenue, whatever the graph is about.
+`NodeSizeMode::Fixed` restores the authored sizes exactly.
+
 
 ## Keyboard Shortcuts
 

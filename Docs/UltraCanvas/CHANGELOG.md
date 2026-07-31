@@ -1,3 +1,46 @@
+#### 2026-07-31 *0.3.22*
+- **UltraCanvasNodeDiagram** *(2.2.0)*: organizational-network features. Node
+  size can now be driven by the data - `NodeSizeMode::ByDegree` sizes a node
+  from its connection count, `ByValue` from a new `NodeDiagramNode::value`
+  field, both through a sqrt transfer so node AREA tracks the quantity rather
+  than the diameter. Degrees can count total / incoming / outgoing links and are
+  cached, so bulk-loading a graph costs one rebuild instead of one per
+  `AddLink`. New `NodeDiagramGroup` cluster containers wrap a set of member
+  nodes in an auto-fitted boundary box (solid or dashed, optional fill and
+  corner radius, title in any corner) that follows its members through dragging
+  and re-layout; boxes draw behind the links and titles after the nodes, both
+  sized in screen pixels so they hold up at any zoom. `SetGroupCohesion()` adds
+  a per-group centroid attraction to the force-directed layout - without it
+  repulsion scatters a cluster and the boxes overlap into mush. New color legend
+  overlay (`NodeDiagramLegendConfig`, `BuildLegendFromGroups()`) drawn in screen
+  space in any corner. Groups and sizing round-trip through `ToJson()` /
+  `FromJson()`, and group boxes are included in `ComputeContentBounds()` so
+  `FitView()` and the minimap account for them. New demo tab (Diagrams > Node
+  Diagram > Organization): a five-department company network with a control
+  column for layout, sizing mode, degree mode, cohesion, link style, node shape,
+  theme, and toggles for the boxes, legend, grid, minimap, controls and snap.
+- **UltraCanvasDendrogram** *(1.5.0)*: hierarchical edge bundling (Holten 2006).
+  `AddRelation()` registers a leaf-to-leaf association that does not follow the
+  tree's parent/child structure; each one is routed through the tree path source
+  -> lowest common ancestor -> target, relaxed toward the straight chord by
+  `SetBundlingStrength()` (beta), and smoothed with a clamped cubic B-spline. A
+  radial dendrogram can now show its hierarchy and the cross-links between its
+  leaves at the same time without becoming a hairball. Also new: area-proportional
+  node dots via `DendrogramNodeSizeMode::ByValue` and `DendrogramNode::nodeValue`,
+  normalised against the largest value in the tree - replacing the single global
+  `style.leafNodeRadius` as the only leaf size available.
+- **UltraCanvasJitterPlotElement** *(1.3.0)*: per-point encodings. A parallel
+  vector of size magnitudes plus `JitterPointSizeMode::ByValue` turns a beeswarm
+  into a bubble beeswarm, with the packer receiving the real per-point radii so
+  mixed sizes pack without overlapping. A parallel vector of color values plus
+  `JitterPointColorMode::ByValue` samples any `UltraCanvasColormap` palette,
+  including the diverging ones with a configurable midpoint, so a signed quantity
+  reads correctly around zero. Fixes: `minScoreFilter` defaulted to `0.0` and
+  silently discarded every negative value before rendering; `AddCategoryData()`
+  did not invalidate the point-position cache, so a second call left the previous
+  points on screen; `RenderJitterPoints()` always drew a plain circle and ignored
+  both `SetPointShape()` and the point edge style.
+
 #### 2026-07-31 *0.3.21*
 - **UltraCanvasTimelineChart**: added the swimlane grouping mode
   (`TimelineLaneMode::Swimlanes`). The same date axis and the same entries, with

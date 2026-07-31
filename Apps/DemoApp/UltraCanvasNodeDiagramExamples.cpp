@@ -1,8 +1,8 @@
 // Apps/Demo/Items/UltraCanvasNodeDiagramExamples.cpp
-// Comprehensive examples for UltraCanvasNodeDiagram v2.0.5
-// Last Modified: 2026-05-09
+// Comprehensive examples for UltraCanvasNodeDiagram v2.2.0
+// Last Modified: 2026-07-31
 //
-// Demonstrates all features of NodeDiagram 2.0.x:
+// Demonstrates all features of NodeDiagram 2.x:
 //  - Simple API (graph visualization)
 //  - Verbose API with custom handles (workflow editor)
 //  - Drag-to-connect interactive editing
@@ -11,6 +11,13 @@
 //  - Multi-select with Shift+click and selection box
 //  - Themes
 //  - Layouts (force-directed, circular, grid, hierarchical)
+//  - 2.2.0: cluster containers, degree/value node sizing, group cohesion,
+//    color legend - all switchable from the Organization tab's control column
+//
+// 2.2.0: New "Organization" tab. A five-department company network with cluster
+//        boxes, degree-based node sizing and a legend, plus a sidebar of
+//        dropdowns and checkboxes that toggles every display option the
+//        component has. Tab indices shifted: Custom is now index 2.
 //
 // 2.0.5: Editor polish:
 //        - Color swatches now render as real color squares (UltraCanvasButton
@@ -39,6 +46,8 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasCheckbox.h"
+#include "UltraCanvasDropdown.h"
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasUIElement.h"
@@ -86,6 +95,497 @@ std::shared_ptr<UltraCanvasNodeDiagram> CreateFriendsNetworkDiagram(
     diagram->RunLayout();  // Auto-fits at the end (2.0.1)
     
     return diagram;
+}
+
+// =============================================================================
+// 2. ORGANIZATIONAL NETWORK - CLUSTERS, DEGREE SIZING, LEGEND (2.2.0)
+// =============================================================================
+//
+// The showcase dataset: a company graph with five departments, each wrapped in
+// a NodeDiagramGroup so it renders inside its own boundary box, plus the
+// cross-department links that a strict tree-shaped org chart could not draw.
+//
+// Three 2.2.0 features carry this diagram:
+//   - NodeSizeMode::ByDegree so the hubs (the people everyone connects to) read
+//     as hubs instead of rendering the same size as a leaf.
+//   - Cluster containers so each department is visually enclosed and labelled.
+//   - Group cohesion in the force-directed layout, without which the clusters
+//     would scatter and their boxes would overlap into mush.
+// =============================================================================
+
+// One department: its palette and its members.
+struct OrgDepartment {
+    std::string id;
+    std::string label;
+    Color color;
+    std::string hubId;
+    std::string hubLabel;
+    std::vector<std::pair<std::string, std::string>> members;  // (id, label)
+};
+
+// Lighten a department color into a node fill (the border keeps the full hue).
+static Color OrgFillFor(const Color& base) {
+    return Color(
+        std::min(255, base.r + 70),
+        std::min(255, base.g + 70),
+        std::min(255, base.b + 70),
+        255);
+}
+
+// Very light wash for the cluster box interior.
+static Color OrgGroupFillFor(const Color& base) {
+    return Color(base.r, base.g, base.b, 18);
+}
+
+static std::vector<OrgDepartment> BuildOrgDepartments() {
+    std::vector<OrgDepartment> departments;
+
+    OrgDepartment sales;
+    sales.id = "grp_sales";
+    sales.label = "Sales";
+    sales.color = Color(31, 78, 160, 255);
+    sales.hubId = "sales_hub";
+    sales.hubLabel = "Sales Support";
+    sales.members = {
+        {"sales_tl1", "Team Lead A"}, {"sales_tl2", "Team Lead B"},
+        {"sa1", "Analyst 1"}, {"sa2", "Analyst 2"}, {"sa3", "Analyst 3"},
+        {"sa4", "Analyst 4"}, {"sa5", "Analyst 5"}, {"sa6", "Analyst 6"}
+    };
+    departments.push_back(sales);
+
+    OrgDepartment care;
+    care.id = "grp_care";
+    care.label = "Customer Care";
+    care.color = Color(38, 125, 60, 255);
+    care.hubId = "care_lead";
+    care.hubLabel = "Quality Control";
+    care.members = {
+        {"care1", "Service 1"}, {"care2", "Service 2"}, {"care3", "Service 3"}
+    };
+    departments.push_back(care);
+
+    OrgDepartment solutions;
+    solutions.id = "grp_solutions";
+    solutions.label = "Business Solutions";
+    solutions.color = Color(214, 106, 20, 255);
+    solutions.hubId = "bsc_hub";
+    solutions.hubLabel = "Solution Center";
+    solutions.members = {
+        {"bsc_tl1", "Team Lead C"}, {"bsc_tl2", "Team Lead D"},
+        {"agent1", "Agent 1"}, {"agent2", "Agent 2"}, {"agent3", "Agent 3"},
+        {"agent4", "Agent 4"}, {"agent5", "Agent 5"},
+        {"support1", "Online 1"}, {"support2", "Online 2"}
+    };
+    departments.push_back(solutions);
+
+    OrgDepartment client;
+    client.id = "grp_client";
+    client.label = "Client Services";
+    client.color = Color(196, 42, 96, 255);
+    client.hubId = "pcs_lead";
+    client.hubLabel = "Client Lead";
+    client.members = {
+        {"pcs1", "Analyst A"}, {"pcs2", "Analyst B"},
+        {"pcs3", "Analyst C"}, {"pcs4", "Analyst D"}
+    };
+    departments.push_back(client);
+
+    OrgDepartment exec;
+    exec.id = "grp_exec";
+    exec.label = "Executive";
+    exec.color = Color(94, 53, 160, 255);
+    exec.hubId = "director";
+    exec.hubLabel = "Director";
+    exec.members = {
+        {"pm", "Project Mgr"}
+    };
+    departments.push_back(exec);
+
+    return departments;
+}
+
+std::shared_ptr<UltraCanvasNodeDiagram> CreateOrgNetworkDiagram(
+        int x, int y, int w, int h) {
+    auto diagram = CreateNodeDiagram("nd_org", x, y, w, h);
+
+    diagram->SetTheme(NodeDiagramTheme::Minimal);
+    diagram->SetBackgroundColor(Color(252, 252, 253, 255));
+    diagram->SetDefaultLinkStyle(LinkStyle::Straight);
+
+    auto departments = BuildOrgDepartments();
+
+    int linkCounter = 0;
+    auto nextLinkId = [&linkCounter]() {
+        return "orgl_" + std::to_string(++linkCounter);
+    };
+
+    // --- Nodes + intra-department links ---
+    for (const auto& dept : departments) {
+        Color fill = OrgFillFor(dept.color);
+
+        // Hub node: squares, matching the classic ONA look.
+        NodeDiagramNode hub(dept.hubId, dept.hubLabel);
+        hub.shape = NodeShape::Square;
+        hub.fillColor = dept.color;
+        hub.borderColor = Color(40, 40, 40, 255);
+        hub.textColor = Color(255, 255, 255, 255);
+        hub.width = hub.height = 46.0;
+        hub.value = 6.0;   // Headcount-ish magnitude, for NodeSizeMode::ByValue
+        diagram->AddNode(hub);
+
+        std::vector<std::string> groupMembers;
+        groupMembers.push_back(dept.hubId);
+
+        for (const auto& member : dept.members) {
+            NodeDiagramNode node(member.first, member.second);
+            node.shape = NodeShape::Square;
+            node.fillColor = fill;
+            node.borderColor = dept.color;
+            node.textColor = Color(35, 35, 45, 255);
+            node.width = node.height = 34.0;
+            node.fontSize = 9.0;
+            // Team leads carry more weight than individual contributors.
+            node.value = (member.second.rfind("Team Lead", 0) == 0) ? 3.0 : 1.0;
+            diagram->AddNode(node);
+
+            groupMembers.push_back(member.first);
+
+            // Every member links to their department hub.
+            NodeDiagramLink link(nextLinkId(), dept.hubId, member.first);
+            link.directed = false;
+            link.lineColor = Color(dept.color.r, dept.color.g, dept.color.b, 150);
+            link.lineWidth = 1.2;
+            diagram->AddLink(link);
+        }
+
+        // The cluster container itself.
+        NodeDiagramGroup group(dept.id, dept.label);
+        group.nodeIds = groupMembers;
+        group.borderColor = dept.color;
+        group.fillColor = OrgGroupFillFor(dept.color);
+        group.labelColor = dept.color;
+        group.dashed = true;
+        group.padding = 22.0;
+        group.cornerRadius = 6.0;
+        group.labelPosition = GroupLabelPosition::TopLeft;
+        diagram->AddGroup(group);
+    }
+
+    // --- Cross-department links ---
+    //
+    // These are the whole reason this is a network diagram and not an org
+    // chart: a strict tree cannot draw them without backtracking.
+    struct CrossLink { std::string from, to; };
+    const std::vector<CrossLink> crossLinks = {
+        {"director", "sales_hub"},
+        {"director", "bsc_hub"},
+        {"director", "pm"},
+        {"pm", "care_lead"},
+        {"pm", "pcs_lead"},
+        {"pcs_lead", "bsc_hub"},
+        {"pcs_lead", "agent1"},
+        {"pcs_lead", "agent4"},
+        {"care_lead", "support1"},
+        {"sales_tl1", "bsc_tl1"},
+        {"sales_hub", "pcs_lead"},
+        {"support2", "sales_tl2"}
+    };
+
+    for (const auto& cross : crossLinks) {
+        NodeDiagramLink link(nextLinkId(), cross.from, cross.to);
+        link.directed = false;
+        link.lineColor = Color(120, 120, 135, 190);
+        link.lineWidth = 1.6;
+        diagram->AddLink(link);
+    }
+
+    // --- 2.2.0 features on by default so the tab opens on the good view ---
+    NodeDiagramSizing sizing;
+    sizing.mode = NodeSizeMode::ByDegree;
+    sizing.degreeMode = NodeDegreeMode::Total;
+    sizing.baseSize = 20.0;
+    sizing.minSize = 26.0;
+    sizing.maxSize = 74.0;
+    diagram->SetNodeSizing(sizing);
+
+    diagram->SetGroupCohesion(0.14);
+    diagram->BuildLegendFromGroups();
+
+    NodeDiagramLegendConfig legendCfg = diagram->GetLegendConfig();
+    legendCfg.visible = true;
+    legendCfg.position = DiagramPanelPosition::TopRight;
+    legendCfg.title = "Departments";
+    diagram->SetLegendConfig(legendCfg);
+
+    diagram->SetMinimapVisible(false);
+    diagram->SetControlsVisible(false);
+
+    diagram->SetLayout(NodeDiagramLayout::ForceDirected);
+    diagram->RunLayout();
+
+    return diagram;
+}
+
+// -----------------------------------------------------------------------------
+// Showcase tab: the org network plus a control column that exercises every
+// display option the component exposes.
+// -----------------------------------------------------------------------------
+
+static std::shared_ptr<UltraCanvasContainer> CreateOrgShowcaseTab(
+        int w, int h,
+        std::shared_ptr<UltraCanvasNodeDiagram>& outDiagram,
+        std::shared_ptr<UltraCanvasLabel> statusLabel) {
+
+    const int SIDEBAR_W = 176;
+    const int PAD = 8;
+    const int ROW_H = 26;
+    const int LABEL_H = 15;
+
+    auto tab = std::make_shared<UltraCanvasContainer>("ndTabOrg", 0, 0, w, h);
+    tab->SetBackgroundColor(Color(255, 255, 255, 255));
+
+    int diagramX = SIDEBAR_W + PAD * 2;
+    auto diagram = CreateOrgNetworkDiagram(
+        diagramX, PAD, w - diagramX - PAD, h - PAD * 2);
+    outDiagram = diagram;
+
+    int cy = PAD;
+
+    // Small helper: a bold caption above a control.
+    auto addCaption = [&](const std::string& id, const std::string& text) {
+        auto label = std::make_shared<UltraCanvasLabel>(id, PAD, cy, SIDEBAR_W, LABEL_H);
+        label->SetText(text);
+        label->SetFontSize(9);
+        label->SetFontWeight(FontWeight::Bold);
+        label->SetTextColor(Color(90, 90, 105, 255));
+        tab->AddChild(label);
+        cy += LABEL_H;
+    };
+
+    auto makeDropdown = [&](const std::string& id) {
+        auto dd = std::make_shared<UltraCanvasDropdown>(id, PAD, cy, SIDEBAR_W, ROW_H);
+        cy += ROW_H + 6;
+        return dd;
+    };
+
+    auto setStatus = [statusLabel](const std::string& text) {
+        if (statusLabel) statusLabel->SetText(text);
+    };
+
+    // ---- Layout algorithm ----
+    addCaption("ndOrgLayoutCap", "LAYOUT");
+    auto layoutDD = makeDropdown("ndOrgLayout");
+    layoutDD->AddItem("Force-directed", "force");
+    layoutDD->AddItem("Circular", "circular");
+    layoutDD->AddItem("Grid", "grid");
+    layoutDD->AddItem("Hierarchical", "hierarchical");
+    layoutDD->SetSelectedIndex(0);
+    layoutDD->onSelectionChanged =
+        [diagram, setStatus](int index, const DropdownItem&) {
+            switch (index) {
+                case 1: diagram->SetLayout(NodeDiagramLayout::Circular); break;
+                case 2: diagram->SetLayout(NodeDiagramLayout::Grid); break;
+                case 3: diagram->SetLayout(NodeDiagramLayout::Hierarchical); break;
+                default: diagram->SetLayout(NodeDiagramLayout::ForceDirected); break;
+            }
+            diagram->RunLayout();
+            setStatus("Layout changed - group cohesion only applies to the "
+                      "force-directed layout, so the cluster boxes look loosest "
+                      "in Grid and Circular.");
+        };
+    tab->AddChild(layoutDD);
+
+    // ---- Node sizing ----
+    addCaption("ndOrgSizeCap", "NODE SIZE (2.2.0)");
+    auto sizeDD = makeDropdown("ndOrgSize");
+    sizeDD->AddItem("By degree", "degree");
+    sizeDD->AddItem("By value", "value");
+    sizeDD->AddItem("Fixed", "fixed");
+    sizeDD->SetSelectedIndex(0);
+    sizeDD->onSelectionChanged =
+        [diagram, setStatus](int index, const DropdownItem&) {
+            switch (index) {
+                case 1:
+                    diagram->SetNodeSizeMode(NodeSizeMode::ByValue);
+                    setStatus("Node size = sqrt(node.value) - here a stand-in for "
+                              "headcount, so leads outrank individual contributors.");
+                    break;
+                case 2:
+                    diagram->SetNodeSizeMode(NodeSizeMode::Fixed);
+                    setStatus("Fixed size - every node renders at its authored size, "
+                              "and the hubs become impossible to spot.");
+                    break;
+                default:
+                    diagram->SetNodeSizeMode(NodeSizeMode::ByDegree);
+                    setStatus("Node size = sqrt(connection count) - the department "
+                              "hubs now read as hubs.");
+                    break;
+            }
+            diagram->FitView();
+        };
+    tab->AddChild(sizeDD);
+
+    // ---- Degree counting mode ----
+    addCaption("ndOrgDegreeCap", "DEGREE COUNTS");
+    auto degreeDD = makeDropdown("ndOrgDegree");
+    degreeDD->AddItem("In + out (total)", "total");
+    degreeDD->AddItem("Incoming only", "in");
+    degreeDD->AddItem("Outgoing only", "out");
+    degreeDD->SetSelectedIndex(0);
+    degreeDD->onSelectionChanged =
+        [diagram, setStatus](int index, const DropdownItem&) {
+            NodeDiagramSizing sizing = diagram->GetNodeSizing();
+            sizing.degreeMode = (index == 1) ? NodeDegreeMode::Incoming
+                              : (index == 2) ? NodeDegreeMode::Outgoing
+                                             : NodeDegreeMode::Total;
+            diagram->SetNodeSizing(sizing);
+            diagram->FitView();
+            setStatus("Degree mode changed - links here are undirected, so "
+                      "Incoming/Outgoing split each pair by the order it was "
+                      "declared in.");
+        };
+    tab->AddChild(degreeDD);
+
+    // ---- Clustering strength ----
+    addCaption("ndOrgCohesionCap", "CLUSTER COHESION");
+    auto cohesionDD = makeDropdown("ndOrgCohesion");
+    cohesionDD->AddItem("Medium (0.14)", "medium");
+    cohesionDD->AddItem("Off (0.0)", "off");
+    cohesionDD->AddItem("Light (0.04)", "light");
+    cohesionDD->AddItem("Strong (0.20)", "strong");
+    cohesionDD->SetSelectedIndex(0);
+    cohesionDD->onSelectionChanged =
+        [diagram, setStatus](int index, const DropdownItem&) {
+            double strength = (index == 1) ? 0.0
+                            : (index == 2) ? 0.04
+                            : (index == 3) ? 0.20
+                                           : 0.14;
+            diagram->SetGroupCohesion(strength);
+            diagram->SetLayout(NodeDiagramLayout::ForceDirected);
+            diagram->RunLayout();
+            if (strength <= 0.0) {
+                setStatus("Cohesion off - repulsion scatters department members "
+                          "and the cluster boxes grow until they overlap. This is "
+                          "why the force needs to exist.");
+            } else {
+                setStatus("Cohesion applied - members are pulled toward their "
+                          "department centroid during layout.");
+            }
+        };
+    tab->AddChild(cohesionDD);
+
+    // ---- Link routing ----
+    addCaption("ndOrgLinkCap", "LINK STYLE");
+    auto linkDD = makeDropdown("ndOrgLink");
+    linkDD->AddItem("Straight", "straight");
+    linkDD->AddItem("Bezier", "bezier");
+    linkDD->AddItem("Smooth step", "smoothstep");
+    linkDD->AddItem("Step", "step");
+    linkDD->SetSelectedIndex(0);
+    linkDD->onSelectionChanged =
+        [diagram, setStatus](int index, const DropdownItem&) {
+            LinkStyle style = (index == 1) ? LinkStyle::Bezier
+                            : (index == 2) ? LinkStyle::SmoothStep
+                            : (index == 3) ? LinkStyle::Step
+                                           : LinkStyle::Straight;
+            for (const auto& linkId : diagram->GetAllLinkIds()) {
+                diagram->SetLinkStyle(linkId, style);
+            }
+            diagram->SetDefaultLinkStyle(style);
+            setStatus("Link routing changed for all links.");
+        };
+    tab->AddChild(linkDD);
+
+    // ---- Node shape ----
+    addCaption("ndOrgShapeCap", "NODE SHAPE");
+    auto shapeDD = makeDropdown("ndOrgShape");
+    shapeDD->AddItem("Square", "square");
+    shapeDD->AddItem("Circle", "circle");
+    shapeDD->AddItem("Rounded square", "rounded");
+    shapeDD->AddItem("Diamond", "diamond");
+    shapeDD->AddItem("Hexagon", "hexagon");
+    shapeDD->SetSelectedIndex(0);
+    shapeDD->onSelectionChanged =
+        [diagram, setStatus](int index, const DropdownItem&) {
+            NodeShape shape = (index == 1) ? NodeShape::Circle
+                            : (index == 2) ? NodeShape::RoundedSquare
+                            : (index == 3) ? NodeShape::Diamond
+                            : (index == 4) ? NodeShape::Hexagon
+                                           : NodeShape::Square;
+            for (const auto& nodeId : diagram->GetAllNodeIds()) {
+                diagram->SetNodeShape(nodeId, shape);
+            }
+            setStatus("Node shape changed for all nodes.");
+        };
+    tab->AddChild(shapeDD);
+
+    // ---- Theme ----
+    addCaption("ndOrgThemeCap", "THEME");
+    auto themeDD = makeDropdown("ndOrgTheme");
+    themeDD->AddItem("Minimal", "minimal");
+    themeDD->AddItem("Default", "default");
+    themeDD->AddItem("Professional", "professional");
+    themeDD->AddItem("Dark", "dark");
+    themeDD->SetSelectedIndex(0);
+    themeDD->onSelectionChanged =
+        [diagram, setStatus](int index, const DropdownItem&) {
+            NodeDiagramTheme theme = (index == 1) ? NodeDiagramTheme::Default
+                                   : (index == 2) ? NodeDiagramTheme::Professional
+                                   : (index == 3) ? NodeDiagramTheme::Dark
+                                                  : NodeDiagramTheme::Minimal;
+            diagram->SetTheme(theme);
+            setStatus("Theme changed - themes set the canvas and grid colors; the "
+                      "per-node department colors set by this example stay put.");
+        };
+    tab->AddChild(themeDD);
+
+    // ---- Boolean toggles ----
+    cy += 2;
+
+    auto addToggle = [&](const std::string& id, const std::string& text, bool initial,
+                         std::function<void(bool)> apply) {
+        auto box = UltraCanvasCheckbox::CreateCheckbox(
+            id, PAD, cy, SIDEBAR_W, 20, text, initial);
+        box->SetFontSize(10);
+        box->onStateChanged = [apply](CheckedState, CheckedState newState) {
+            apply(newState == CheckedState::Checked);
+        };
+        tab->AddChild(box);
+        cy += 21;
+        return box;
+    };
+
+    addToggle("ndOrgGroups", "Cluster boxes", true,
+        [diagram, setStatus](bool on) {
+            diagram->SetGroupsVisible(on);
+            setStatus(on ? "Cluster containers shown - each box auto-fits its member "
+                           "nodes and follows them when they are dragged."
+                         : "Cluster containers hidden - the departments are now only "
+                           "readable from the node colors.");
+        });
+
+    addToggle("ndOrgLegend", "Color legend", true,
+        [diagram, setStatus](bool on) {
+            diagram->SetLegendVisible(on);
+            setStatus(on ? "Legend shown (screen space - it does not pan or zoom "
+                           "with the diagram)."
+                         : "Legend hidden.");
+        });
+
+    addToggle("ndOrgGrid", "Background grid", false,
+        [diagram](bool on) { diagram->SetGridVisible(on, 25.0); });
+
+    addToggle("ndOrgMinimap", "Minimap", false,
+        [diagram](bool on) { diagram->SetMinimapVisible(on); });
+
+    addToggle("ndOrgControls", "Zoom controls", false,
+        [diagram](bool on) { diagram->SetControlsVisible(on); });
+
+    addToggle("ndOrgSnap", "Snap to grid", false,
+        [diagram](bool on) { diagram->SetSnapToGrid(on); });
+
+    tab->AddChild(diagram);
+    return tab;
 }
 
 // Custom tab: empty canvas where the user builds their own graph
@@ -1009,9 +1509,10 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
     auto subtitleLabel = std::make_shared<UltraCanvasLabel>(
         "ndSubtitle", PAD, yCursor, CONTAINER_W - 2 * PAD, SUBTITLE_H);
     subtitleLabel->SetText(
-        "Interactive graph editor - Friends shows a force-directed network. "
-        "In Custom: click 'Add Node' or right-click on canvas to create nodes; "
-        "double-click any node to edit its label and color.");
+        "Friends: a force-directed network. Organization: cluster containers, "
+        "degree-based node sizing and a color legend, with controls for every "
+        "option. Custom: click 'Add Node' or right-click the canvas to create "
+        "nodes, double-click a node to edit its label and color.");
     subtitleLabel->SetFontSize(11);
     subtitleLabel->SetTextColor(Color(110, 110, 120, 255));
     subtitleLabel->SetWrap(TextWrap::WrapWord);   // 2.0.6: was being truncated to "do..."
@@ -1047,13 +1548,18 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
     friendsTab->SetBackgroundColor(Color(255, 255, 255, 255));
     friendsTab->AddChild(friendsDiag);
     
+    // ---- Organization tab (2.2.0 showcase: clusters, degree sizing, legend) ----
+    std::shared_ptr<UltraCanvasNodeDiagram> orgDiag;
+    auto orgTab = CreateOrgShowcaseTab(INNER_W, INNER_H, orgDiag, statusLabel);
+
     // ---- Custom tab (real editor: blank canvas + popup + right-click create) ----
     auto customState = std::make_shared<CustomEditorState>();
     auto customTab = CreateCustomEditor(0, 0, INNER_W, INNER_H,
                                           customState, statusLabel);
     auto customDiag = customState->diagram;  // For activeDiagram routing
-    
+
     tabs->AddTab("Friends", friendsTab);
+    tabs->AddTab("Organization", orgTab);
     tabs->AddTab("Custom", customTab);
     tabs->SetActiveTab(0);
     
@@ -1064,16 +1570,27 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
     auto activeDiagram = std::make_shared<std::shared_ptr<UltraCanvasNodeDiagram>>(friendsDiag);
     auto isCustomTab   = std::make_shared<bool>(false);
     
-    tabs->onTabChange = [activeDiagram, isCustomTab, friendsDiag, customDiag, statusLabel]
+    // Tab indices: 0 = Friends, 1 = Organization, 2 = Custom.
+    const int TAB_ORG = 1;
+    const int TAB_CUSTOM = 2;
+
+    tabs->onTabChange = [activeDiagram, isCustomTab, friendsDiag, orgDiag, customDiag,
+                         statusLabel, TAB_ORG, TAB_CUSTOM]
                         (int /*oldIdx*/, int newIdx) {
-        bool custom = (newIdx == 1);
-        *activeDiagram = custom ? customDiag : friendsDiag;
+        bool custom = (newIdx == TAB_CUSTOM);
+        *activeDiagram = custom ? customDiag
+                       : (newIdx == TAB_ORG) ? orgDiag
+                                             : friendsDiag;
         *isCustomTab = custom;
         if (statusLabel) {
             if (custom) {
                 statusLabel->SetText("Custom - Click 'Add Node' or right-click on the "
                                       "canvas to create a node. Double-click any node "
                                       "to edit its label/color.");
+            } else if (newIdx == TAB_ORG) {
+                statusLabel->SetText("Organization - Cluster containers, degree-based "
+                                      "node sizing and a color legend. Use the controls "
+                                      "on the left to switch every option on and off.");
             } else {
                 statusLabel->SetText("Friends - Force-directed graph. "
                                       "Use mouse wheel to zoom, drag to pan.");
@@ -1184,10 +1701,10 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
         }
     };
     
-    btnAddNode->onClick = [customState, isCustomTab, tabs, statusLabel]() {
-        // If somehow on Friends (button shouldn't be visible there) switch first
+    btnAddNode->onClick = [customState, isCustomTab, tabs, statusLabel, TAB_CUSTOM]() {
+        // If somehow on another tab (button shouldn't be visible there) switch first
         if (!*isCustomTab) {
-            tabs->SetActiveTab(1);
+            tabs->SetActiveTab(TAB_CUSTOM);
             *isCustomTab = true;
         }
         if (!customState || !customState->diagram) return;
@@ -1282,10 +1799,10 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
     // 2.0.4: Toggle button visibility per tab. Override the earlier
     // onTabChange that only updated activeDiagram and status.
     auto baseOnTabChange = tabs->onTabChange;
-    tabs->onTabChange = [baseOnTabChange, btnAddNode, btnDelete, btnClearAll]
+    tabs->onTabChange = [baseOnTabChange, btnAddNode, btnDelete, btnClearAll, TAB_CUSTOM]
                         (int oldIdx, int newIdx) {
         if (baseOnTabChange) baseOnTabChange(oldIdx, newIdx);
-        bool custom = (newIdx == 1);
+        bool custom = (newIdx == TAB_CUSTOM);
         if (btnAddNode)  btnAddNode->SetVisible(custom);
         if (btnDelete)   btnDelete->SetVisible(custom);
         if (btnClearAll) btnClearAll->SetVisible(custom);

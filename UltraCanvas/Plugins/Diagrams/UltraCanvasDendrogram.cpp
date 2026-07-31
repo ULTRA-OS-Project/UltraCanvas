@@ -1,10 +1,13 @@
 // UltraCanvasDendrogram.cpp
 // Interactive dendrogram / phylogenetic tree diagram element
-// Version: 1.4.2
-// Last Modified: 2026-06-05
+// Version: 1.5.0
+// Last Modified: 2026-07-31
 // Author: UltraCanvas Framework
 //
 // Changelog:
+//   v1.5.0 (2026-07-31):
+//     - Hierarchical edge bundling for leaf-to-leaf relations (Holten 2006).
+//     - Area-proportional node dots driven by DendrogramNode::nodeValue.
 //   v1.4.2 (2026-06-05):
 //     - Re-fit the tree layout when the element is resized. Render() now compares
 //       the current width/height to the size used by the last RebuildLayout() and
@@ -52,6 +55,8 @@ static constexpr float kPi = 3.14159265f;
         panOffset = {0.0f, 0.0f};
 
         BuildLeafGroupMap();
+        BuildParentMap();        // 1.5.0
+        ComputeMaxNodeValue();   // 1.5.0
         RequestRedraw();
     }
 
@@ -66,6 +71,36 @@ static constexpr float kPi = 3.14159265f;
             for (const auto& leafId : g->leafIds) {
                 leafGroupMap[leafId] = g->groupId;
             }
+        }
+    }
+
+    // 1.5.0: the data source only stores childIds, but bundling has to walk
+    // upward from a leaf. Invert the relation once instead of searching the
+    // whole node list per step.
+    void UltraCanvasDendrogram::BuildParentMap()
+    {
+        parentMap.clear();
+        if (!dataSource) return;
+
+        for (size_t i = 0; i < dataSource->GetNodeCount(); ++i) {
+            const DendrogramNode* n = dataSource->GetNode(i);
+            if (!n) continue;
+            for (const auto& childId : n->childIds) {
+                parentMap[childId] = n->id;
+            }
+        }
+    }
+
+    // 1.5.0: cache the largest nodeValue so ResolveNodeRadius stays O(1).
+    void UltraCanvasDendrogram::ComputeMaxNodeValue()
+    {
+        maxNodeValue = 0.0;
+        if (!dataSource) return;
+
+        for (size_t i = 0; i < dataSource->GetNodeCount(); ++i) {
+            const DendrogramNode* n = dataSource->GetNode(i);
+            if (!n || n->nodeValue < 0.0f) continue;
+            maxNodeValue = std::max(maxNodeValue, static_cast<double>(n->nodeValue));
         }
     }
 
@@ -120,6 +155,66 @@ static constexpr float kPi = 3.14159265f;
     void UltraCanvasDendrogram::SetConfidenceMode(ConfidenceDisplayMode m)
     {
         style.confidenceMode = m;
+        RequestRedraw();
+    }
+
+// =============================================================================
+// NODE SIZING (1.5.0)
+// =============================================================================
+
+    void UltraCanvasDendrogram::SetNodeSizeMode(DendrogramNodeSizeMode m)
+    {
+        style.nodeSizeMode = m;
+        RequestRedraw();
+    }
+
+    void UltraCanvasDendrogram::SetNodeRadiusRange(double minRadius, double maxRadius)
+    {
+        style.nodeRadiusMin      = std::min(minRadius, maxRadius);
+        style.nodeRadiusMaxValue = std::max(minRadius, maxRadius);
+        RequestRedraw();
+    }
+
+// =============================================================================
+// HIERARCHICAL EDGE BUNDLING (1.5.0)
+// =============================================================================
+
+    void UltraCanvasDendrogram::AddRelation(const DendrogramRelation& relation)
+    {
+        if (relation.sourceLeafId.empty() || relation.targetLeafId.empty()) return;
+        if (relation.sourceLeafId == relation.targetLeafId) return;  // No self-loops
+        relations.push_back(relation);
+        RequestRedraw();
+    }
+
+    void UltraCanvasDendrogram::AddRelation(const std::string& sourceLeafId,
+                                            const std::string& targetLeafId)
+    {
+        AddRelation(DendrogramRelation(sourceLeafId, targetLeafId));
+    }
+
+    void UltraCanvasDendrogram::SetRelations(const std::vector<DendrogramRelation>& newRelations)
+    {
+        relations.clear();
+        for (const auto& r : newRelations) AddRelation(r);
+        RequestRedraw();
+    }
+
+    void UltraCanvasDendrogram::ClearRelations()
+    {
+        relations.clear();
+        RequestRedraw();
+    }
+
+    void UltraCanvasDendrogram::SetRelationsVisible(bool visible)
+    {
+        style.showRelations = visible;
+        RequestRedraw();
+    }
+
+    void UltraCanvasDendrogram::SetBundlingStrength(double beta)
+    {
+        style.bundlingStrength = std::clamp(beta, 0.0, 1.0);
         RequestRedraw();
     }
 
@@ -279,6 +374,11 @@ static constexpr float kPi = 3.14159265f;
         }
         
         layout = layoutEngine.Compute(dataSource.get(), bounds, orientation, scaleMode, style.leafSpacing);
+
+        // 1.5.0: refresh the derived caches here as well as in SetDataSource -
+        // an app may mutate its data source in place and just flip layoutDirty.
+        BuildParentMap();
+        ComputeMaxNodeValue();
         
         // Apply custom positions if any exist
         for (const auto& [nodeId, pos] : customNodePositions) {
@@ -386,7 +486,11 @@ static constexpr float kPi = 3.14159265f;
 
             RenderGroupFills(ctx);
             RenderAxis(ctx);
+            // 1.5.0: bundled relations normally sit under the branches, so the
+            // trunks read on top of the wispy bundle layer.
+            if (style.relationsBelowBranches) RenderRelations(ctx);
             RenderBranches(ctx);
+            if (!style.relationsBelowBranches) RenderRelations(ctx);
             RenderNodeDots(ctx);
             RenderLeafLabels(ctx);
             RenderInternalNodeLabels(ctx);
@@ -835,6 +939,223 @@ static constexpr float kPi = 3.14159265f;
     }
 
 // =============================================================================
+// HIERARCHICAL EDGE BUNDLING (1.5.0)
+// =============================================================================
+//
+// Holten's construction, in three steps:
+//
+//   1. Route the edge along the tree. The control polygon is the path from the
+//      source leaf up to the lowest common ancestor and back down to the
+//      target leaf. Edges that share ancestors therefore share control points,
+//      which is what makes them bundle.
+//   2. Relax toward the straight chord by (1 - beta). At beta = 1 the curve
+//      hugs the hierarchy; at beta = 0 it is the straight line you would have
+//      drawn without bundling at all.
+//   3. Smooth the polygon with a clamped cubic B-spline so the result is a
+//      flowing curve rather than a chain of corners.
+// =============================================================================
+
+    std::vector<std::string> UltraCanvasDendrogram::PathToRoot(const std::string& leafId) const
+    {
+        std::vector<std::string> path;
+        std::string current = leafId;
+
+        // Bound the walk by the node count: a malformed data source with a
+        // parent cycle would otherwise spin forever.
+        size_t guard = parentMap.size() + 2;
+        while (!current.empty() && guard-- > 0) {
+            path.push_back(current);
+            auto it = parentMap.find(current);
+            if (it == parentMap.end()) break;   // Reached the root
+            current = it->second;
+        }
+        return path;
+    }
+
+    std::vector<Point2Dd> UltraCanvasDendrogram::BuildRelationControlPoints(
+            const DendrogramRelation& relation) const
+    {
+        std::vector<Point2Dd> points;
+
+        const DendrogramLayoutNode* sourceNode = layout.FindNode(relation.sourceLeafId);
+        const DendrogramLayoutNode* targetNode = layout.FindNode(relation.targetLeafId);
+        if (!sourceNode || !targetNode) return points;
+
+        // A relation into a collapsed subtree has no visible endpoint to anchor to.
+        if (!IsSubtreeVisible(relation.sourceLeafId)) return points;
+        if (!IsSubtreeVisible(relation.targetLeafId)) return points;
+
+        std::vector<std::string> sourcePath = PathToRoot(relation.sourceLeafId);
+        std::vector<std::string> targetPath = PathToRoot(relation.targetLeafId);
+        if (sourcePath.empty() || targetPath.empty()) return points;
+
+        // Lowest common ancestor: walk in from the root ends of both paths while
+        // they agree. Both paths run leaf -> root, so compare from the back.
+        size_t si = sourcePath.size();
+        size_t ti = targetPath.size();
+        size_t common = 0;
+        while (common < si && common < ti &&
+               sourcePath[si - 1 - common] == targetPath[ti - 1 - common]) {
+            ++common;
+        }
+        if (common == 0) return points;   // Disjoint forest - nothing to bundle through
+
+        size_t lcaIndexInSource = si - common;   // First index NOT shared, from the leaf side
+
+        // Source leaf up to and including the LCA
+        for (size_t i = 0; i <= lcaIndexInSource; ++i) {
+            const DendrogramLayoutNode* n = layout.FindNode(sourcePath[i]);
+            if (n) points.emplace_back(n->px, n->py);
+        }
+        // LCA back down to the target leaf, skipping the LCA itself (already added)
+        size_t lcaIndexInTarget = ti - common;
+        for (size_t i = lcaIndexInTarget; i-- > 0; ) {
+            const DendrogramLayoutNode* n = layout.FindNode(targetPath[i]);
+            if (n) points.emplace_back(n->px, n->py);
+        }
+
+        return points;
+    }
+
+    void UltraCanvasDendrogram::ApplyBundlingStrength(std::vector<Point2Dd>& controlPoints,
+                                                       double beta) const
+    {
+        if (controlPoints.size() < 3) return;   // Endpoints only - nothing to relax
+        if (beta >= 1.0) return;                // Full bundling: leave the tree path alone
+
+        const Point2Dd first = controlPoints.front();
+        const Point2Dd last  = controlPoints.back();
+        const double n = static_cast<double>(controlPoints.size() - 1);
+
+        // Endpoints are pinned to the leaves; only interior points move.
+        for (size_t i = 1; i + 1 < controlPoints.size(); ++i) {
+            double t = static_cast<double>(i) / n;
+            double straightX = first.x + t * (last.x - first.x);
+            double straightY = first.y + t * (last.y - first.y);
+
+            controlPoints[i].x = beta * controlPoints[i].x + (1.0 - beta) * straightX;
+            controlPoints[i].y = beta * controlPoints[i].y + (1.0 - beta) * straightY;
+        }
+    }
+
+    std::vector<Point2Dd> UltraCanvasDendrogram::SampleBSpline(
+            const std::vector<Point2Dd>& controlPoints, int segments)
+    {
+        std::vector<Point2Dd> curve;
+        if (controlPoints.size() < 2) return curve;
+        if (segments < 2) segments = 2;
+
+        // Two points can only ever be a straight line.
+        if (controlPoints.size() == 2) {
+            curve.push_back(controlPoints[0]);
+            curve.push_back(controlPoints[1]);
+            return curve;
+        }
+
+        // Clamp the spline to its endpoints by triplicating the first and last
+        // control points - without this the curve starts somewhere inside the
+        // hull and the relation would visibly detach from its leaf.
+        std::vector<Point2Dd> pts;
+        pts.reserve(controlPoints.size() + 4);
+        pts.push_back(controlPoints.front());
+        pts.push_back(controlPoints.front());
+        for (const auto& p : controlPoints) pts.push_back(p);
+        pts.push_back(controlPoints.back());
+        pts.push_back(controlPoints.back());
+
+        size_t spanCount = pts.size() - 3;
+        curve.reserve(spanCount * static_cast<size_t>(segments) + 1);
+
+        for (size_t span = 0; span < spanCount; ++span) {
+            const Point2Dd& p0 = pts[span];
+            const Point2Dd& p1 = pts[span + 1];
+            const Point2Dd& p2 = pts[span + 2];
+            const Point2Dd& p3 = pts[span + 3];
+
+            for (int s = 0; s < segments; ++s) {
+                double t  = static_cast<double>(s) / static_cast<double>(segments);
+                double t2 = t * t;
+                double t3 = t2 * t;
+
+                // Uniform cubic B-spline basis
+                double b0 = (-t3 + 3.0 * t2 - 3.0 * t + 1.0) / 6.0;
+                double b1 = ( 3.0 * t3 - 6.0 * t2 + 4.0) / 6.0;
+                double b2 = (-3.0 * t3 + 3.0 * t2 + 3.0 * t + 1.0) / 6.0;
+                double b3 = t3 / 6.0;
+
+                curve.emplace_back(
+                    b0 * p0.x + b1 * p1.x + b2 * p2.x + b3 * p3.x,
+                    b0 * p0.y + b1 * p1.y + b2 * p2.y + b3 * p3.y);
+            }
+        }
+        curve.push_back(controlPoints.back());
+        return curve;
+    }
+
+    void UltraCanvasDendrogram::RenderRelations(IRenderContext* ctx)
+    {
+        if (!style.showRelations || relations.empty()) return;
+
+        // What counts as "focused" for the dimming effect: the hovered node, or
+        // the selection when nothing is hovered.
+        std::string focusId = hoveredNodeId;
+        if (focusId.empty() && selectedLeafIds.size() == 1) {
+            focusId = selectedLeafIds.front();
+        }
+        bool dimming = (style.relationDimOpacity < 1.0) && !focusId.empty();
+
+        double globalAlpha = std::clamp(style.relationOpacity, 0.0, 1.0);
+
+        for (const auto& relation : relations) {
+            if (!relation.visible) continue;
+
+            std::vector<Point2Dd> controlPoints = BuildRelationControlPoints(relation);
+            if (controlPoints.size() < 2) continue;
+
+            ApplyBundlingStrength(controlPoints, style.bundlingStrength);
+
+            std::vector<Point2Dd> curve = SampleBSpline(controlPoints, style.relationSegments);
+            if (curve.size() < 2) continue;
+
+            double alpha = globalAlpha;
+            if (dimming &&
+                relation.sourceLeafId != focusId &&
+                relation.targetLeafId != focusId) {
+                alpha *= std::clamp(style.relationDimOpacity, 0.0, 1.0);
+            }
+
+            float width = relation.width > 0.0f
+                            ? relation.width
+                            : static_cast<float>(style.relationWidth);
+            ctx->SetStrokeWidth(width);
+
+            // Draw as a gradient polyline: each segment takes the color
+            // interpolated between the two endpoint colors at its midpoint.
+            // Cheaper and more portable than building a real gradient paint, and
+            // at 32 samples the banding is invisible.
+            size_t segCount = curve.size() - 1;
+            for (size_t i = 0; i < segCount; ++i) {
+                double t = (static_cast<double>(i) + 0.5) / static_cast<double>(segCount);
+
+                Color c(
+                    static_cast<uint8_t>(relation.sourceColor.r +
+                        t * (static_cast<double>(relation.targetColor.r) - relation.sourceColor.r)),
+                    static_cast<uint8_t>(relation.sourceColor.g +
+                        t * (static_cast<double>(relation.targetColor.g) - relation.sourceColor.g)),
+                    static_cast<uint8_t>(relation.sourceColor.b +
+                        t * (static_cast<double>(relation.targetColor.b) - relation.sourceColor.b)),
+                    static_cast<uint8_t>(std::clamp(
+                        (relation.sourceColor.a +
+                            t * (static_cast<double>(relation.targetColor.a) - relation.sourceColor.a))
+                            * alpha, 0.0, 255.0)));
+
+                ctx->SetStrokePaint(c);
+                ctx->DrawLine(curve[i], curve[i + 1]);
+            }
+        }
+    }
+
+// =============================================================================
 // RENDER — NODE DOTS
 // =============================================================================
 
@@ -852,13 +1173,18 @@ static constexpr float kPi = 3.14159265f;
                     : ResolveBranchColor(node);
 
                 // Hover ring on hovered leaf
+                // 1.5.0: leaves honour ResolveNodeRadius so ByValue sizing
+                // reaches them; in Fixed mode this returns style.leafNodeRadius
+                // exactly as before.
+                float leafRadius = ResolveNodeRadius(node);
+
                 if (node.id == hoveredNodeId) {
                     ctx->DrawFilledCircle(Point2Dd(node.px, node.py),
-                        style.leafNodeRadius + 2.5f,
+                        leafRadius + 2.5f,
                         Color(c.r, c.g, c.b, 80));
                 }
                 ctx->DrawFilledCircle(Point2Dd(node.px, node.py),
-                                      style.leafNodeRadius, c);
+                                      leafRadius, c);
 
             } else {
                 if (!style.showInternalNodes) continue;
@@ -1506,12 +1832,36 @@ static constexpr float kPi = 3.14159265f;
     }
 
     // Resolve dot radius for a node.
-    // Leaf nodes always use leafNodeRadius.
-    // Internal nodes scale by depth when scaleNodesByDepth is true:
+    //
+    // 1.5.0: DendrogramNodeSizeMode::ByValue takes priority when the node
+    // carries a value. Radius is normalised against the largest value in the
+    // tree and mapped through sqrt, so the dot's AREA - not its radius - is
+    // proportional to the quantity. That is the mapping the eye actually reads
+    // for a filled circle; a linear radius makes a 9x value look 9x wider and
+    // therefore 81x bigger.
+    //
+    // Otherwise: leaves use leafNodeRadius, and internal nodes scale by depth
+    // when scaleNodesByDepth is true:
     //   radius = internalNodeRadius * (1 + scale * (1 - normalizedDepth))
-    // where normalizedDepth=0 is the root (largest) and 1 is near the leaves (smallest).
+    // where normalizedDepth=0 is the root (largest) and 1 is near the leaves.
     float UltraCanvasDendrogram::ResolveNodeRadius(const DendrogramLayoutNode& node) const
     {
+        if (style.nodeSizeMode == DendrogramNodeSizeMode::ByValue &&
+            maxNodeValue > 0.0 && dataSource) {
+
+            bool applies = node.isLeaf ? style.sizeLeafNodesByValue
+                                       : style.sizeInternalNodesByValue;
+            if (applies) {
+                const DendrogramNode* src = dataSource->GetNodeById(node.id);
+                if (src && src->nodeValue >= 0.0f) {
+                    double t = std::sqrt(static_cast<double>(src->nodeValue) / maxNodeValue);
+                    t = std::clamp(t, 0.0, 1.0);
+                    return static_cast<float>(style.nodeRadiusMin +
+                            t * (style.nodeRadiusMaxValue - style.nodeRadiusMin));
+                }
+            }
+        }
+
         if (node.isLeaf) return style.leafNodeRadius;
 
         if (!style.scaleNodesByDepth) return style.internalNodeRadius;

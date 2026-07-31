@@ -7,8 +7,8 @@ The `UltraCanvasJitterPlotElement` is a categorical distribution chart for the U
 **Namespace:** `UltraCanvas`  
 **Header:** `include/Plugins/Charts/UltraCanvasJitterPlotElement.h`  
 **Base Class:** `UltraCanvasChartElementBase`  
-**Version:** 1.1.3  
-**Last Modified:** 2026-05-09  
+**Version:** 1.3.0  
+**Last Modified:** 2026-07-31  
 **Author:** UltraCanvas Framework
 
 ## Class Hierarchy
@@ -30,7 +30,19 @@ UltraCanvasUIElement
 - **Secondary grouping:** Hue variable with per-hue colour map and optional dodge
 - **Filtering hooks:** `SetRegionFilter` and `SetMinScoreFilter` for live data subsetting
 - **Reproducibility:** `SetJitterSeed()` for deterministic random jitter
+- **Per-point size (1.3.0):** a parallel vector of magnitudes drives bubble area, and the beeswarm packer receives the real per-point radii
+- **Per-point continuous colour (1.3.0):** a parallel vector of values sampled through any `HeatmapColormap` palette, including diverging ones with a configurable midpoint
 - **Tooltips:** Hover values via the inherited `IChartDataSource` tooltip pipeline
+
+### Fixed in 1.3.0
+
+- `minScoreFilter` defaulted to `0.0`, which silently discarded **every negative
+  value** before rendering. Any signed quantity — a margin, a change, a z-score —
+  lost half its distribution with no indication why. It now defaults to "no filter".
+- `AddCategoryData()` did not invalidate the point-position cache, so a second call
+  left the previously cached points on screen.
+- `RenderJitterPoints()` always drew a plain circle, ignoring `SetPointShape()` and
+  the point edge style. It now draws through `DrawJitterPoint()`, so both apply.
 
 ## Enumerations
 
@@ -53,6 +65,17 @@ enum class BeeswarmPriority { Ascending, Descending, Random, Compact, Dense };
 enum class BeeswarmCorral   { NoneCorral, Open, Wrap, Clamp };
 enum class BeeswarmSide     { Both, Left, Right };
 
+// NEW in 1.3.0
+enum class JitterPointSizeMode {
+    Fixed,    // Every point uses pointSize (default)
+    ByValue   // Area proportional to JitterCategoryData::sizeValues
+};
+
+enum class JitterPointColorMode {
+    ByCategory,  // Category / hue group colour (default)
+    ByValue      // Continuous colormap over JitterCategoryData::colorValues
+};
+
 // Public nested point shape (used by examples)
 enum class UltraCanvasJitterPlotElement::PointShape {
     Circle, Square, Triangle, Diamond
@@ -71,6 +94,13 @@ struct JitterCategoryData {
     std::vector<double> values;
     std::string hueGroup;     // Secondary grouping variable
     Color customColor;        // Optional per-data colour override
+
+    // NEW in 1.3.0 - optional per-point encodings, parallel to `values`.
+    // Leave either empty to fall back to the uniform size / categorical colour.
+    // A SHORT vector is tolerated: points past its end use the fallback, so a
+    // partially-annotated dataset still renders.
+    std::vector<double> sizeValues;   // Magnitude behind each point (bubble area)
+    std::vector<double> colorValues;  // Continuous value behind each point
 
     // Cached statistics (median / mean / Q1 / Q3 / min / max)
     double cachedMedian, cachedMean;
@@ -185,10 +215,79 @@ void SetBeeswarmCompact(bool compact);
 void AddCategoryData(const std::string& category,
                      const std::vector<double>& values,
                      const std::string& hueValue = "");
+
+// NEW in 1.3.0 - values plus the parallel per-point size and colour vectors.
+// Either extra vector may be empty (or shorter than `values`).
+void AddCategoryData(const std::string& category,
+                     const std::vector<double>& values,
+                     const std::vector<double>& sizeValues,
+                     const std::vector<double>& colorValues,
+                     const std::string& hueValue = "");
+
 void ClearData();
 void SetRegionFilter(const std::string& region);   // empty = no filter
-void SetMinScoreFilter(double minScore);
+void SetMinScoreFilter(double minScore);           // default: no filter (1.3.0)
 ```
+
+### Per-Point Size Encoding (1.3.0)
+
+```cpp
+void                SetPointSizeMode(JitterPointSizeMode mode);
+JitterPointSizeMode GetPointSizeMode() const;
+
+// Radius range that the size domain maps onto.
+void SetPointSizeRange(float minRadius, float maxRadius);
+
+// Fix the size domain explicitly. Pass minValue >= maxValue to return to
+// automatic domain detection from the data.
+void SetPointSizeDomain(double minValue, double maxValue);
+
+double GetSizeDomainMin() const;   // Populated once the point cache is built
+double GetSizeDomainMax() const;
+```
+
+The mapping is `radius = min + sqrt(t) * (max - min)`, so the point's **area** —
+not its radius — is proportional to the value.
+
+Two details worth knowing:
+
+- The domain is computed across **all** categories, not per category. A size scale
+  that changed between categories would make them impossible to compare, which
+  defeats the point of the encoding.
+- On automatic detection the low end is anchored at `0` when the data is
+  non-negative. A bubble scale that starts at the smallest observed value
+  exaggerates small differences — the classic bubble-chart lie.
+
+In beeswarm mode the packer receives the real per-point radii. `Swarm` (the
+default) is collision-tested and packs mixed sizes properly; the three grid
+methods reserve a cell sized for the largest bubble, then draw each point at its
+own radius. Larger bubbles are drawn first so small ones stay visible on top.
+
+### Per-Point Colour Encoding (1.3.0)
+
+```cpp
+void                 SetPointColorMode(JitterPointColorMode mode);
+JitterPointColorMode GetPointColorMode() const;
+
+void SetPointColormap(HeatmapColormap cmap, bool reverse = false);
+void SetPointCustomColormap(const std::vector<Color>& anchors);
+
+// Fix the colour domain explicitly. Pass minValue >= maxValue to return to
+// automatic domain detection.
+void SetPointColorDomain(double minValue, double maxValue);
+
+// Centre a diverging palette on `midpoint` (e.g. 0 for a signed margin).
+void SetPointColorDiverging(bool diverging, double midpoint = 0.0);
+
+double GetColorDomainMin() const;
+double GetColorDomainMax() const;
+```
+
+Palettes come from [`UltraCanvasColormap`](UltraCanvasColormap.md) — sequential
+(`Viridis`, `Inferno`, `Blues`, …), diverging (`RdBu`, `Spectral`, `Coolwarm`, …),
+or `Custom` with your own anchors. With diverging normalization on, `[min, mid]`
+maps to `[0, 0.5]` and `[mid, max]` to `[0.5, 1]`, so the midpoint lands on the
+palette's neutral centre regardless of how lopsided the data is.
 
 ### Background / Grid / Axes
 
@@ -518,6 +617,53 @@ jitter->SetPointAlpha(0.6f);
 jitter->SetChartTitle("Response Value");
 jitter->SetEnableTooltips(true);
 ```
+
+### Example 8: Bubble Beeswarm with a Diverging Colour Scale (1.3.0)
+
+Election results by county: horizontal position is the win margin, bubble area is
+the county's share of the national vote, and colour is the same signed margin run
+through a diverging palette centred on zero. Three encodings, one chart.
+
+```cpp
+auto plot = CreateJitterPlotElement("margins", 1001, 20, 20, 900, 420);
+plot->SetCategories({"Counties"});
+plot->SetChartTitle("Results by County");
+
+plot->SetJitterDistribution(JitterDistribution::Beeswarm);
+plot->SetBeeswarmMethod(BeeswarmMethod::Swarm);
+plot->SetOrientation(true);          // Horizontal: value runs left-to-right
+plot->SetPointAlpha(0.85f);
+
+// Three parallel vectors, one entry per county
+std::vector<double> margins;     // -50 (opposition) .. +50 (incumbent)
+std::vector<double> voteShare;   // Share of the national total
+std::vector<double> colorBy;     // Same as margins - colour reinforces position
+
+for (const auto& county : counties) {
+    margins.push_back(county.marginPercent);
+    voteShare.push_back(county.votes / nationalTotal * 100.0);
+    colorBy.push_back(county.marginPercent);
+}
+plot->AddCategoryData("Counties", margins, voteShare, colorBy);
+
+// Bubble area tracks vote share
+plot->SetPointSizeMode(JitterPointSizeMode::ByValue);
+plot->SetPointSizeRange(2.0f, 13.0f);
+
+// Colour tracks the signed margin, centred on 0
+plot->SetPointColorMode(JitterPointColorMode::ByValue);
+plot->SetPointColormap(HeatmapColormap::RdBu, /*reverse=*/true);
+plot->SetPointColorDiverging(true, 0.0);
+```
+
+To split the chart the way the original does — "counties under 100k votes" above,
+"counties over 100k" below — build two elements and stack them, feeding each the
+matching subset. Keep the size and colour domains identical across the two
+(`SetPointSizeDomain` / `SetPointColorDomain`) or the panels will not be comparable.
+
+> **Note:** `SetMinScoreFilter` defaults to no filter as of 1.3.0. On earlier
+> versions it defaulted to `0.0`, which would have discarded every negative margin
+> in this example.
 
 ## Internal Pipeline
 
