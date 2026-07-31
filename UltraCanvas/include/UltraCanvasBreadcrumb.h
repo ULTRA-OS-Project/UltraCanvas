@@ -1,7 +1,7 @@
 // include/UltraCanvasBreadcrumb.h
 // Hierarchical breadcrumb navigation control with overflow handling and per-item dropdowns
-// Version: 1.4.0
-// Last Modified: 2026-07-28
+// Version: 1.4.1
+// Last Modified: 2026-07-31
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -232,7 +232,9 @@ namespace UltraCanvas {
         explicit UltraCanvasBreadcrumb(const std::string& identifier = "")
                 : UltraCanvasBreadcrumb(identifier, -1, -1, -1, -1) {};
 
-        virtual ~UltraCanvasBreadcrumb() = default;
+        // Closes a still-open dropdown so it cannot outlive the breadcrumb:
+        // the window holds the popup menu alive as one of its children.
+        ~UltraCanvasBreadcrumb() override;
 
         // ===== ITEM MANAGEMENT =====
         void AddItem(const BreadcrumbItem& item);
@@ -261,6 +263,16 @@ namespace UltraCanvas {
         std::string GetPath(char separator = '/') const;
         // Replaces the entire item list.
         void SetItems(std::vector<BreadcrumbItem> newItems);
+
+        // ===== DROPDOWNS =====
+        // Only one dropdown (an item's sibling list or the overflow "..." menu)
+        // is ever open at a time: opening one closes whichever was open before,
+        // and clicking the same chevron again toggles it shut.
+        bool IsDropdownOpen() const;
+        // Index of the item whose dropdown is open, -1 when none is open or the
+        // open menu is the overflow menu.
+        int GetOpenDropdownItemIndex() const;
+        void CloseDropdown();
 
         // ===== CURRENT ITEM (the "leaf" / active position) =====
         // By default the current item is the last one. SetCurrentIndex lets a
@@ -338,8 +350,17 @@ namespace UltraCanvas {
         int rowHeight = 0;
         bool layoutDirty = true;
 
-        // Active dropdown menu (kept alive while shown)
+        // Active dropdown menu (kept alive while shown). At most one is open at
+        // a time — the window stacks popups (submenus rely on it) and never
+        // dismisses one because another opened, and a click on the breadcrumb
+        // is a click on the popup's owner, so it isn't a click-outside either.
+        // Both mean the previous menu has to be closed here.
         std::shared_ptr<UltraCanvasMenu> activePopupMenu;
+        // Which menu activePopupMenu is: the item index for an item dropdown,
+        // kOverflowDropdown for the overflow ("...") menu, kNoDropdown for none.
+        static constexpr int kNoDropdown = -1;
+        static constexpr int kOverflowDropdown = -2;
+        int activeDropdownItem = kNoDropdown;
 
         // ===== HELPERS =====
         int ResolvedCurrentIndex() const;
