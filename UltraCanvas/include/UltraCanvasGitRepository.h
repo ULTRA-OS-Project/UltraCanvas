@@ -63,6 +63,12 @@ public:
     // Single-object access.
     bool ReadCommit(const std::string& sha, GitGraphCommit& outCommit);
 
+    // Files changed by `sha` against its first parent, as a recursive tree
+    // diff (a root commit reports its whole tree as added). `maxFiles` 0 means
+    // no limit. Paths are repository-relative.
+    std::vector<GitGraphFileChange> ReadChangedFiles(const std::string& sha,
+                                                     size_t maxFiles = 0);
+
     // Raw object access: returns false when the object is missing or the type
     // does not match `expectedType` ("commit", "tree", "blob", "tag"; empty
     // accepts any type and reports the real one in `outType`).

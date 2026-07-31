@@ -66,6 +66,23 @@
   `GitGraphBuildStatus` use `NoSignature` / `NoStatus` and `Passed` / `Failed`
   rather than `None` and `Success` / `Failure`, because X11's `X.h` defines
   `None` and `Success` as macros and the header reaches the window backend.
+- **UltraCanvasGitGraph**: fourth feature pass. **Explicit lane ordering** —
+  `SetLanePriority()` puts named branches in the columns you choose, applied
+  after crossing reduction so it always wins over the heuristic; a pinned trunk
+  keeps column 0 and unlisted branches keep their relative order. **Diff pane**
+  across the bottom of the element: a header naming the commit, the files it
+  touched coloured by A/M/D status, and the patch for the selected file coloured
+  by unified-diff prefix, each half scrolling independently. The element never
+  computes diffs — `SetFileListProvider()` and `SetDiffProvider()` supply them.
+  **Drag to author** — dragging a commit onto another adds a merge on the
+  target's branch, dragging into empty space branches off it; a drag that never
+  moved is just a selection, and a merge duplicating an existing parent link is
+  refused. Also `GetCommitScreenPosition()` for anchoring popovers to a node.
+- **UltraCanvasGitRepository**: `ReadChangedFiles()` produces a commit's changed
+  files by recursively diffing its tree against its first parent's (a root
+  commit reports its whole tree as added), handling files replaced by
+  directories and vice versa. Verified against `git show --name-status` on this
+  repository, including merges. Blob-level diffing is not implemented.
 - **VirtualFS / UltraCanvasFilerWidget**: fixed archives always listing as
   "(empty folder)" on Windows. `VirtualFSPath::Resolve()` prefixed a slash to
   the real-filesystem part of every absolute path, turning a drive-letter path

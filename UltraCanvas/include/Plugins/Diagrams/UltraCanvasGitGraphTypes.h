@@ -425,6 +425,26 @@ struct GitGraphStyle {
     // Label collision avoidance
     bool   avoidLabelOverlap = true;
 
+    // Diff pane (bottom of the element)
+    bool   showDiffPane      = false;
+    double diffPaneHeight    = 190.0;
+    double diffFileListWidth = 260.0;
+    double diffFontSize      = 11.0;
+    Color  diffHeaderColor   = Color(243, 245, 247);
+    Color  diffAddedColor    = Color(31, 122, 60);
+    Color  diffRemovedColor  = Color(190, 44, 46);
+    Color  diffHunkColor     = Color(88, 96, 168);
+    Color  diffContextColor  = Color(90, 96, 104);
+    Color  diffAddedBackground   = Color(230, 245, 234);
+    Color  diffRemovedBackground = Color(253, 235, 236);
+    Color  statusAddedColor   = Color(46, 160, 67);
+    Color  statusModifiedColor = Color(219, 171, 10);
+    Color  statusDeletedColor = Color(207, 34, 46);
+
+    // Drag-to-author feedback
+    Color  authoringLineColor = Color(0, 122, 204);
+    double authoringLineWidth = 2.0;
+
     // Minimap
     bool   showMinimap  = false;
     GitGraphMinimapPosition minimapPosition = GitGraphMinimapPosition::TopRight;

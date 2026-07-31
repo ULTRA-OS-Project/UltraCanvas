@@ -793,6 +793,96 @@ static void TestParallelCommitsNeverFlattensAnEdge() {
     CheckInvariants(result, commits, "parallel-related");
 }
 
+static void TestLanePriority() {
+    std::printf("Explicit lane ordering\n");
+
+    // Three branches off a trunk; the caller wants them in a specific order.
+    std::vector<GitGraphCommit> commits = {
+        MakeCommit("m3", {"m2", "c1"}, 900),
+        MakeCommit("m2", {"m1", "b1"}, 800),
+        MakeCommit("m1", {"base", "a1"}, 700),
+        MakeCommit("c1", {"base"},     600),
+        MakeCommit("b1", {"base"},     500),
+        MakeCommit("a1", {"base"},     400),
+        MakeCommit("base", {},         100)
+    };
+    std::vector<GitGraphRef> refs = {
+        MakeBranch("main", "m3"),
+        MakeBranch("alpha", "a1"),
+        MakeBranch("beta",  "b1"),
+        MakeBranch("gamma", "c1")
+    };
+
+    GitGraphLayoutOptions options;
+    options.orderMode   = GitGraphOrderMode::CommitDate;
+    options.trunkBranch = "main";
+    options.lanePriority = {"gamma", "alpha", "beta"};
+
+    const GitGraphLayoutResult result =
+        UltraCanvasGitGraphLayout(options).Compute(commits, refs);
+
+    CheckInvariants(result, commits, "lane-priority");
+
+    const int trunk = result.Find("base")->lane;
+    const int gamma = result.Find("c1")->lane;
+    const int alpha = result.Find("a1")->lane;
+    const int beta  = result.Find("b1")->lane;
+
+    CHECK(trunk == 0, "the pinned trunk keeps column 0");
+    CHECK(gamma < alpha && alpha < beta,
+          "listed branches take columns in the order given");
+    std::printf("       (trunk=%d gamma=%d alpha=%d beta=%d)\n", trunk, gamma, alpha, beta);
+
+    // Reversing the list must reverse the columns.
+    options.lanePriority = {"beta", "alpha", "gamma"};
+    const GitGraphLayoutResult reversed =
+        UltraCanvasGitGraphLayout(options).Compute(commits, refs);
+    CHECK(reversed.Find("b1")->lane < reversed.Find("a1")->lane &&
+          reversed.Find("a1")->lane < reversed.Find("c1")->lane,
+          "reversing the priority list reverses the columns");
+
+    // Unlisted branches must still get a column, and columns stay unique.
+    options.lanePriority = {"beta"};
+    const GitGraphLayoutResult partial =
+        UltraCanvasGitGraphLayout(options).Compute(commits, refs);
+    CheckInvariants(partial, commits, "lane-priority-partial");
+    CHECK(partial.Find("b1")->lane == 1,
+          "the single listed branch takes the column next to the trunk");
+
+    std::set<int> columns;
+    for (const GitGraphPlacedCommit& placed : partial.commits) columns.insert(placed.lane);
+    CHECK(columns.size() == static_cast<size_t>(partial.LaneCount()),
+          "every lane still maps to a distinct column");
+}
+
+static void TestLanePriorityBeatsCrossingReduction() {
+    std::printf("Explicit ordering wins over the crossing heuristic\n");
+
+    std::vector<GitGraphCommit> commits = {
+        MakeCommit("m2", {"m1", "b1"}, 800),
+        MakeCommit("m1", {"base", "a1"}, 700),
+        MakeCommit("b1", {"base"},     500),
+        MakeCommit("a1", {"base"},     400),
+        MakeCommit("base", {},         100)
+    };
+    std::vector<GitGraphRef> refs = {
+        MakeBranch("main", "m2"), MakeBranch("alpha", "a1"), MakeBranch("beta", "b1")
+    };
+
+    GitGraphLayoutOptions options;
+    options.orderMode       = GitGraphOrderMode::CommitDate;
+    options.trunkBranch     = "main";
+    options.reduceCrossings = true;
+    options.lanePriority    = {"beta", "alpha"};
+
+    const GitGraphLayoutResult result =
+        UltraCanvasGitGraphLayout(options).Compute(commits, refs);
+
+    CheckInvariants(result, commits, "priority-vs-crossings");
+    CHECK(result.Find("b1")->lane < result.Find("a1")->lane,
+          "the requested order survives the crossing-reduction pass");
+}
+
 // ---------------------------------------------------------------------------
 
 int main() {
@@ -818,6 +908,8 @@ int main() {
     TestCollapseSkipsDecorated();
     TestParallelCommits();
     TestParallelCommitsNeverFlattensAnEdge();
+    TestLanePriority();
+    TestLanePriorityBeatsCrossingReduction();
     TestRandomHistories();
 
     std::printf("\n%s (%d failure%s)\n",

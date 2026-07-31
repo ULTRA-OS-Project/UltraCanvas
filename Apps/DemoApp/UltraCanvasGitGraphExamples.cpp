@@ -433,11 +433,22 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGitGraph
                                                           kPageWidth - 30, kGraphHeight + 110);
         tab->AddChild(MakeLabel("BranchOpsDesc", 10, 8, kPageWidth - 60, 22,
                                 "Branch and merge operations: a trunk with one branch above and "
-                                "one below, each commit showing its changed files"));
+                                "one below, each commit showing its changed files. Drag a commit "
+                                "onto another to merge, or into empty space to branch."));
 
         auto graph = CreateGitGraph("BranchOpsGraph", 10, 88, kGraphWidth, kGraphHeight);
         BuildBranchOperationsHistory(graph.get());
         wireStatus(graph);
+
+        // Drag a commit onto another to merge it in, or into empty space to
+        // branch off it.
+        graph->SetAuthoringEnabled(true);
+        graph->onAuthorBranch = [statusLabel](const std::string&, const std::string& branch) {
+            statusLabel->SetText("Created branch '" + branch + "'");
+        };
+        graph->onAuthorMerge = [statusLabel](const std::string& source, const std::string&) {
+            statusLabel->SetText("Merged " + source.substr(0, 7));
+        };
 
         tab->AddChild(MakeToolbar("BranchOps", graph, false));
         tab->AddChild(graph);
@@ -511,9 +522,48 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGitGraph
         avatarCheck->SetText("Avatars");
         filterBar->AddChild(avatarCheck);
 
+        auto diffCheck = std::make_shared<UltraCanvasCheckbox>("RepoDiff", 0, 0, 110, 22);
+        diffCheck->SetText("Diff pane");
+        filterBar->AddChild(diffCheck);
+
+        auto laneOrderCheck = std::make_shared<UltraCanvasCheckbox>("RepoLaneOrder", 0, 0, 140, 22);
+        laneOrderCheck->SetText("develop first");
+        filterBar->AddChild(laneOrderCheck);
+
         auto jsonBtn = std::make_shared<UltraCanvasButton>("RepoJson", 0, 0, 90, 28);
         jsonBtn->SetText("Save JSON");
         filterBar->AddChild(jsonBtn);
+
+        // The demo has no repository behind it, so it stands in for the
+        // providers an application would wire to UltraCanvasGitRepository.
+        graph->SetFileListProvider([graph](const std::string& sha) {
+            const GitGraphCommit* commit = graph->GetCommit(sha);
+            std::vector<GitGraphFileChange> files;
+            if (!commit) return files;
+            files.emplace_back("src/" + commit->ShortSha() + ".cpp", 'M', 12, 4);
+            files.emplace_back("include/" + commit->ShortSha() + ".h", 'M', 3, 1);
+            if (commit->IsMerge()) files.emplace_back("CHANGELOG.md", 'A', 8, 0);
+            return files;
+        });
+        graph->SetDiffProvider([](const std::string& sha, const std::string& path) {
+            return "@@ -18,7 +18,9 @@ " + path + "\n"
+                   " void Existing() {\n"
+                   "-    int removed = 1;\n"
+                   "+    int added = 2;\n"
+                   "+    int alsoAdded = 3;\n"
+                   " }\n"
+                   "  (commit " + sha + ")\n";
+        });
+
+        diffCheck->onChecked   = [graph]() { graph->SetShowDiffPane(true);  };
+        diffCheck->onUnchecked = [graph]() { graph->SetShowDiffPane(false); };
+
+        auto applyLaneOrder = [graph](bool developFirst) {
+            graph->SetLanePriority(developFirst ? std::vector<std::string>{"develop"}
+                                                : std::vector<std::string>{});
+        };
+        laneOrderCheck->onChecked   = [applyLaneOrder]() { applyLaneOrder(true);  };
+        laneOrderCheck->onUnchecked = [applyLaneOrder]() { applyLaneOrder(false); };
 
         timeCheck->onChecked = [graph]() {
             graph->SetAxisMode(GitGraphAxisMode::TimeProportional);

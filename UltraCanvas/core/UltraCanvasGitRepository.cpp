@@ -15,6 +15,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <queue>
 #include <sstream>
 #include <unordered_map>
@@ -533,6 +534,138 @@ struct UltraCanvasGitRepository::Impl {
         return ParseCommitBody(sha, body, commit);
     }
 
+    // ----- trees ----------------------------------------------------------
+
+    struct TreeEntry {
+        std::string sha;
+        bool        isTree = false;
+    };
+
+    // A tree object is a packed sequence of "<mode> <name>\0<20-byte sha>".
+    static bool ParseTree(const std::string& body,
+                          std::map<std::string, TreeEntry>& entries) {
+        size_t pos = 0;
+        while (pos < body.size()) {
+            const size_t space = body.find(' ', pos);
+            if (space == std::string::npos) return false;
+            const std::string mode = body.substr(pos, space - pos);
+
+            const size_t nul = body.find('\0', space + 1);
+            if (nul == std::string::npos) return false;
+            const std::string name = body.substr(space + 1, nul - space - 1);
+
+            if (nul + 1 + 20 > body.size()) return false;
+            TreeEntry entry;
+            entry.sha = ToHex(reinterpret_cast<const uint8_t*>(body.data()) + nul + 1, 20);
+            entry.isTree = (mode == "40000" || mode == "040000");
+            entries[name] = entry;
+
+            pos = nul + 1 + 20;
+        }
+        return true;
+    }
+
+    bool LoadTree(const std::string& sha, std::map<std::string, TreeEntry>& entries) {
+        if (sha.empty()) return true;                    // Absent side of a diff
+        std::string type, body;
+        if (!ReadAnyObject(sha, type, body)) return false;
+        if (type != "tree") return false;
+        return ParseTree(body, entries);
+    }
+
+    // Everything under a tree, reported with one status - used when a whole
+    // directory appears or disappears.
+    void CollectTree(const std::string& treeSha, const std::string& prefix, char status,
+                     std::vector<GitGraphFileChange>& out, size_t maxFiles, int depth) {
+        if (depth > 32) return;
+        if (maxFiles > 0 && out.size() >= maxFiles) return;
+
+        std::map<std::string, TreeEntry> entries;
+        if (!LoadTree(treeSha, entries)) return;
+
+        for (const auto& entry : entries) {
+            if (maxFiles > 0 && out.size() >= maxFiles) return;
+            const std::string path = prefix.empty() ? entry.first : (prefix + "/" + entry.first);
+            if (entry.second.isTree) {
+                CollectTree(entry.second.sha, path, status, out, maxFiles, depth + 1);
+            } else {
+                out.push_back(GitGraphFileChange(path, status));
+            }
+        }
+    }
+
+    void DiffTrees(const std::string& oldTree, const std::string& newTree,
+                   const std::string& prefix, std::vector<GitGraphFileChange>& out,
+                   size_t maxFiles, int depth) {
+        if (depth > 32) return;
+        if (oldTree == newTree) return;                  // Identical subtree
+        if (maxFiles > 0 && out.size() >= maxFiles) return;
+
+        std::map<std::string, TreeEntry> before, after;
+        LoadTree(oldTree, before);
+        LoadTree(newTree, after);
+
+        for (const auto& entry : after) {
+            if (maxFiles > 0 && out.size() >= maxFiles) return;
+            const std::string path = prefix.empty() ? entry.first : (prefix + "/" + entry.first);
+            auto previous = before.find(entry.first);
+
+            if (previous == before.end()) {
+                if (entry.second.isTree) {
+                    CollectTree(entry.second.sha, path, 'A', out, maxFiles, depth + 1);
+                } else {
+                    out.push_back(GitGraphFileChange(path, 'A'));
+                }
+                continue;
+            }
+            if (previous->second.sha == entry.second.sha) continue;
+
+            if (entry.second.isTree && previous->second.isTree) {
+                DiffTrees(previous->second.sha, entry.second.sha, path, out, maxFiles, depth + 1);
+            } else if (entry.second.isTree != previous->second.isTree) {
+                // A file replaced by a directory, or the reverse.
+                if (previous->second.isTree) {
+                    CollectTree(previous->second.sha, path, 'D', out, maxFiles, depth + 1);
+                } else {
+                    out.push_back(GitGraphFileChange(path, 'D'));
+                }
+                if (entry.second.isTree) {
+                    CollectTree(entry.second.sha, path, 'A', out, maxFiles, depth + 1);
+                } else {
+                    out.push_back(GitGraphFileChange(path, 'A'));
+                }
+            } else {
+                out.push_back(GitGraphFileChange(path, 'M'));
+            }
+        }
+
+        for (const auto& entry : before) {
+            if (maxFiles > 0 && out.size() >= maxFiles) return;
+            if (after.count(entry.first)) continue;
+
+            const std::string path = prefix.empty() ? entry.first : (prefix + "/" + entry.first);
+            if (entry.second.isTree) {
+                CollectTree(entry.second.sha, path, 'D', out, maxFiles, depth + 1);
+            } else {
+                out.push_back(GitGraphFileChange(path, 'D'));
+            }
+        }
+    }
+
+    // The tree line of a commit object.
+    std::string TreeOfCommit(const std::string& sha) {
+        std::string type, body;
+        if (!ReadAnyObject(sha, type, body) || type != "commit") return std::string();
+
+        std::istringstream stream(body);
+        std::string line;
+        while (std::getline(stream, line)) {
+            if (line.rfind("tree ", 0) == 0) return Trim(line.substr(5));
+            if (line.empty()) break;
+        }
+        return std::string();
+    }
+
     // ----- refs -----------------------------------------------------------
 
     void CollectRefsFromDirectory(const fs::path& base, const std::string& prefix,
@@ -765,6 +898,31 @@ bool UltraCanvasGitRepository::ReadObject(const std::string& sha,
 bool UltraCanvasGitRepository::ReadCommit(const std::string& sha, GitGraphCommit& outCommit) {
     if (!impl->open) return false;
     return impl->LoadCommit(sha, outCommit);
+}
+
+std::vector<GitGraphFileChange> UltraCanvasGitRepository::ReadChangedFiles(
+        const std::string& sha, size_t maxFiles) {
+    std::vector<GitGraphFileChange> changes;
+    if (!impl->open) return changes;
+
+    GitGraphCommit commit;
+    if (!impl->LoadCommit(sha, commit)) return changes;
+
+    const std::string newTree = impl->TreeOfCommit(sha);
+    if (newTree.empty()) return changes;
+
+    // Compare against the first parent, which is what every client shows for a
+    // merge; a root commit has its whole tree added.
+    const std::string oldTree = commit.parents.empty()
+                                    ? std::string()
+                                    : impl->TreeOfCommit(commit.parents.front());
+
+    impl->DiffTrees(oldTree, newTree, std::string(), changes, maxFiles, 0);
+    std::sort(changes.begin(), changes.end(),
+              [](const GitGraphFileChange& a, const GitGraphFileChange& b) {
+                  return a.path < b.path;
+              });
+    return changes;
 }
 
 void UltraCanvasGitRepository::RestartWalk() {

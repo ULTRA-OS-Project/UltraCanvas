@@ -14193,6 +14193,9 @@ UltraCanvasUIElement
 - **Parallel rows** for commits made at the same moment
 - **Signature and build-status badges** beside a commit
 - **JSON export** of the laid-out geometry
+- **Explicit lane ordering** by branch name
+- **Diff pane** showing the selected commit's files and patch
+- **Drag to author** - drag a commit onto another to merge, or into space to branch
 - Zoom, pan, selection, hover, tooltips, keyboard navigation
 
 ## Data Structures
@@ -14745,6 +14748,80 @@ Emits the laid-out geometry — commits with their row/lane/flags, edges with
 their endpoints and kind, refs, and swimlane bands — for tooling and golden
 tests. There is no PNG export: the framework has no portable image writer to
 build it on, so that stays out of this element.
+
+### Explicit lane ordering
+
+```cpp
+graph->SetLanePriority({"develop", "release", "hotfix"});
+```
+
+Named branches take the leftmost columns in the order given; a pinned trunk
+still keeps column 0, and unlisted branches keep their relative order after the
+listed ones. Applied after crossing reduction, so an explicit order always wins
+over the heuristic.
+
+### Diff pane
+
+```cpp
+graph->SetShowDiffPane(true);
+graph->SetDiffPaneHeight(200.0);
+
+// The element never computes diffs itself - supply the data.
+auto repository = std::make_shared<UltraCanvasGitRepository>();
+repository->Open("/path/to/worktree");
+
+graph->SetFileListProvider([repository](const std::string& sha) {
+    return repository->ReadChangedFiles(sha, 200);      // Real tree diff
+});
+graph->SetDiffProvider([](const std::string& sha, const std::string& path) {
+    return MyPatchFor(sha, path);                        // Unified diff text
+});
+
+graph->onFileSelect = [](const std::string& sha, const std::string& path) { /* ... */ };
+```
+
+The pane spans the bottom of the element: a header naming the commit, the list
+of files it touched (coloured by A/M/D status), and the patch for the selected
+file. Patch lines are coloured by their unified-diff prefix — this is diff
+colouring, not language syntax highlighting. The wheel scrolls whichever half
+the pointer is over.
+
+`UltraCanvasGitRepository::ReadChangedFiles()` produces the file list by
+recursively diffing the commit's tree against its first parent's (a root commit
+reports its whole tree as added). Its output matches `git show --name-status`,
+including on merges. Blob-level diffing is **not** implemented — the patch text
+comes from your provider.
+
+### Drag to author
+
+```cpp
+graph->SetAuthoringEnabled(true);
+
+graph->onAuthorBranchName = [](const std::string& fromSha) {
+    return AskUserForBranchName();      // Return "" to veto the branch
+};
+graph->onAuthorMerge  = [](const std::string& source, const std::string& target) { /* ... */ };
+graph->onAuthorBranch = [](const std::string& fromSha, const std::string& branch) { /* ... */ };
+```
+
+Dragging a commit onto another adds a merge commit on the target's branch with
+the dragged commit as its second parent; dragging into empty space creates a
+branch off it with one commit. A drag that never moves is just a selection, and
+a merge that would duplicate an existing parent link is refused. A dashed
+rubber-band line follows the pointer, with a filled ring over a drop target
+(merge) and a hollow one over empty space (branch).
+
+This edits the element's own model — it is for authored diagrams, and never
+touches a repository.
+
+### Locating a commit on screen
+
+```cpp
+const Point2Dd at = graph->GetCommitScreenPosition(sha);   // (-1, -1) if absent
+```
+
+Element coordinates with zoom and pan applied, for anchoring a popover or a
+context menu to a node.
 
 ## Using the layout core on its own
 

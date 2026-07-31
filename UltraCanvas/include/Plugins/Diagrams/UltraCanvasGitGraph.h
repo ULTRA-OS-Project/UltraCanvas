@@ -112,6 +112,12 @@ public:
     const std::string& GetTrunkBranch() const { return layoutOptions.trunkBranch; }
 
     void SetSwimlaneOrder(const std::vector<std::string>& branchNames);
+
+    // Column order for lane graphs, leftmost first. Applied after crossing
+    // reduction, so an explicit order always wins over the heuristic.
+    void SetLanePriority(const std::vector<std::string>& branchNames);
+    const std::vector<std::string>& GetLanePriority() const { return layoutOptions.lanePriority; }
+
     void SetSwimlanesBothSides(bool bothSides);
 
     // Whether row 0 holds the newest commit (git log order, the default) or the
@@ -176,6 +182,12 @@ public:
     void SetGraphPaneWidth(double width);
     void SetDateFormatter(std::function<std::string(int64_t)> formatter);
 
+    // Where a commit currently sits in element coordinates (zoom and pan
+    // applied). Useful for anchoring a popover or context menu to a node, and
+    // for driving the element in tests. Returns (-1, -1) when the commit is not
+    // on the graph.
+    Point2Dd GetCommitScreenPosition(const std::string& sha) const;
+
     // Row alignment, so an external UltraCanvasTableView can be paired instead.
     double GetRowScreenPosition(int row) const;    // Along-axis position in element space
     double GetRowSpacing() const { return style.rowSpacing * zoomLevel; }
@@ -203,6 +215,35 @@ public:
 
     void SetParallelCommits(bool enabled, int64_t toleranceSeconds = 0);
     bool GetParallelCommits() const { return layoutOptions.parallelCommits; }
+
+    // ===== DIFF PANE =====
+
+    // A pane across the bottom showing the selected commit: its header, the
+    // files it touched, and the patch for the selected file.
+    void SetShowDiffPane(bool show);
+    bool GetShowDiffPane() const { return style.showDiffPane; }
+    void SetDiffPaneHeight(double height);
+
+    // The element never computes diffs itself. Supply the file list and the
+    // patch text; UltraCanvasGitRepository::ReadChangedFiles() feeds the first.
+    void SetFileListProvider(std::function<std::vector<GitGraphFileChange>(const std::string&)> provider);
+    void SetDiffProvider(std::function<std::string(const std::string&, const std::string&)> provider);
+
+    void SelectFile(const std::string& path);
+    const std::string& GetSelectedFile() const { return selectedFile; }
+    std::function<void(const std::string&, const std::string&)> onFileSelect;  // (sha, path)
+
+    // ===== DRAG TO AUTHOR =====
+
+    // Drag from a commit onto another to merge it in, or onto empty space to
+    // branch off it. Only meaningful for authored diagrams.
+    void SetAuthoringEnabled(bool enabled);
+    bool GetAuthoringEnabled() const { return authoringEnabled; }
+
+    // Return an empty string from onAuthorBranchName to veto the branch.
+    std::function<std::string(const std::string&)> onAuthorBranchName;   // (fromSha) -> name
+    std::function<void(const std::string&, const std::string&)> onAuthorMerge;   // (source, target)
+    std::function<void(const std::string&, const std::string&)> onAuthorBranch;  // (fromSha, branch)
 
     // ===== MINIMAP =====
 
@@ -309,6 +350,22 @@ private:
     // Label rectangles already drawn this frame, for collision avoidance.
     mutable std::vector<Rect2Dd> occupiedLabelRects;
 
+    // ===== DIFF PANE =====
+    std::function<std::vector<GitGraphFileChange>(const std::string&)> fileListProvider;
+    std::function<std::string(const std::string&, const std::string&)> diffProvider;
+    std::string selectedFile;
+    std::string diffSha;                            // Commit the cache belongs to
+    std::vector<GitGraphFileChange> diffFiles;      // Cached file list
+    std::string diffText;                           // Cached patch
+    double diffFileScroll = 0.0;
+    double diffTextScroll = 0.0;
+
+    // ===== AUTHORING =====
+    bool        authoringEnabled = false;
+    std::string authoringDragSha;
+    Point2Di    authoringDragPoint;
+    int         authoredBranchCounter = 0;
+
     // ===== INTERACTION =====
     std::string hoveredSha;
     std::vector<std::string> selectedShas;
@@ -363,6 +420,15 @@ private:
     void DrawTooltip(IRenderContext* ctx);
     void DrawTablePane(IRenderContext* ctx, int firstRow, int lastRow);
     void DrawDateRuler(IRenderContext* ctx, int firstRow, int lastRow);
+    void DrawDiffPane(IRenderContext* ctx);
+    void DrawAuthoringDrag(IRenderContext* ctx);
+    bool IsDiffPaneActive() const;
+    double ContentHeight() const;               // Element height minus the diff pane
+    Rect2Dd DiffPaneBounds() const;
+    void RefreshDiffCache();
+    bool HandleDiffPanePointer(const Point2Di& position, bool click);
+    std::string CreateAuthoredMerge(const std::string& sourceSha, const std::string& targetSha);
+    std::string CreateAuthoredBranch(const std::string& fromSha);
     void DrawBadges(IRenderContext* ctx, const GitGraphPlacedCommit& placed,
                     const GitGraphCommit& commit, double& cursorAcross);
     void DrawCollapsedNode(IRenderContext* ctx, const GitGraphPlacedCommit& placed);

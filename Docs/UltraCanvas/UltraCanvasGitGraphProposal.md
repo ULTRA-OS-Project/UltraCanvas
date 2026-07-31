@@ -26,11 +26,14 @@ collapsing linear runs (L12), parallel-commit rows (L11), signature/CI badges
 (D15), stash chips (D11), author avatars in the table (M5), label collision
 avoidance (B10) and JSON export (X5).
 
-Still open: explicit lane ordering (L5), background-thread layout (L15), the
-diff pane (M6), drag-to-author (I12), animated transitions (R16), and PNG /
-clipboard export (X2, X3) — the last two because the framework has no portable
-image writer to build them on, which is a framework-level gap rather than an
-element one.
+Delivered in the fourth pass: explicit lane ordering (L5), the diff pane with a
+real tree-diff file list (M6) and drag-to-author (I12).
+
+Still open: background-thread layout (L15), animated transitions (R16), and
+PNG / clipboard export (X2, X3) — the last two because the framework has no
+portable image writer to build them on, which is a framework-level gap rather
+than an element one. Blob-level diffing is also out of scope for the reader:
+the diff pane takes its patch text from an application-supplied provider.
 
 Author: UltraCanvas Framework
 Last Modified: 2026-07-30

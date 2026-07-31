@@ -79,6 +79,12 @@ struct GitGraphLayoutOptions {
     // the surviving commits relate.
     std::unordered_set<std::string> hiddenCommits;
 
+    // Branch names in the column order they should appear, leftmost first.
+    // Applied after crossing reduction, so an explicit order always wins over
+    // the heuristic. A pinned trunk still keeps column 0; branches not listed
+    // keep their relative order after the listed ones.
+    std::vector<std::string> lanePriority;
+
     // Reorder lane columns to reduce edge crossings (Lanes mode only; the
     // trunk keeps column 0). Skipped when the graph exceeds
     // crossingReductionEdgeBudget edges, since the pass counts crossings
@@ -190,6 +196,10 @@ private:
     // Reorders lane columns (barycentre heuristic, keeping the best measured
     // permutation) to reduce edge crossings.
     void ReduceCrossings(GitGraphLayoutResult& result) const;
+
+    // Applies GitGraphLayoutOptions::lanePriority as a column permutation.
+    void ApplyLanePriority(const std::vector<GitGraphRef>& refs,
+                           GitGraphLayoutResult& result) const;
 };
 
 } // namespace UltraCanvas

@@ -230,6 +230,60 @@ static void TestDataSource(const std::shared_ptr<UltraCanvasGitRepository>& repo
     CHECK(!source.FetchRefs().empty(), "the source exposes the repository refs");
 }
 
+static void TestChangedFiles(UltraCanvasGitRepository& repository) {
+    std::printf("Changed files (recursive tree diff against the first parent)\n");
+
+    repository.RestartWalk();
+    const std::vector<GitGraphCommit> commits = repository.WalkMore(40);
+    if (commits.empty()) { SKIP("no commits to diff"); return; }
+
+    // Find a non-merge commit: a merge diffs against its first parent too, but
+    // a plain commit gives the clearest assertion.
+    const GitGraphCommit* plain = nullptr;
+    for (const GitGraphCommit& commit : commits) {
+        if (!commit.IsMerge() && !commit.IsRoot()) { plain = &commit; break; }
+    }
+    if (!plain) { SKIP("no plain commit in the walked window"); return; }
+
+    const std::vector<GitGraphFileChange> changes = repository.ReadChangedFiles(plain->sha);
+    CHECK(!changes.empty(), "a plain commit reports changed files");
+
+    bool pathsValid = true, statusesValid = true, sorted = true;
+    for (size_t i = 0; i < changes.size(); ++i) {
+        if (changes[i].path.empty() || changes[i].path.front() == '/') pathsValid = false;
+        const char status = changes[i].status;
+        if (status != 'A' && status != 'M' && status != 'D') statusesValid = false;
+        if (i > 0 && changes[i - 1].path > changes[i].path) sorted = false;
+    }
+    CHECK(pathsValid, "every path is non-empty and repository-relative");
+    CHECK(statusesValid, "every status is A, M or D");
+    CHECK(sorted, "the list comes back sorted by path");
+    std::printf("       (%s touched %zu file(s))\n", plain->ShortSha().c_str(), changes.size());
+
+    // maxFiles must cap the result.
+    const std::vector<GitGraphFileChange> capped = repository.ReadChangedFiles(plain->sha, 1);
+    CHECK(capped.size() <= 1, "maxFiles caps the result");
+
+    // A root commit has no parent, so its whole tree is added.
+    const GitGraphCommit* root = nullptr;
+    for (const GitGraphCommit& commit : commits) {
+        if (commit.IsRoot()) { root = &commit; break; }
+    }
+    if (root) {
+        const std::vector<GitGraphFileChange> initial = repository.ReadChangedFiles(root->sha);
+        const bool allAdded = std::all_of(initial.begin(), initial.end(),
+                                          [](const GitGraphFileChange& f) {
+                                              return f.status == 'A';
+                                          });
+        CHECK(!initial.empty() && allAdded, "a root commit reports its whole tree as added");
+    } else {
+        SKIP("no root commit in the walked window");
+    }
+
+    CHECK(repository.ReadChangedFiles("0000000000000000000000000000000000000000").empty(),
+          "an unknown commit yields no changes");
+}
+
 static void TestFailureModes() {
     std::printf("Failure modes\n");
 
@@ -270,6 +324,7 @@ int main(int argc, char** argv) {
     TestRefs(*repository);
     TestObjectReads(*repository);
     TestWalk(*repository);
+    TestChangedFiles(*repository);
     TestDataSource(repository);
     TestFailureModes();
 

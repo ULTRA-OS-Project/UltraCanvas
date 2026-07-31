@@ -542,6 +542,13 @@ void UltraCanvasGitGraph::SetSwimlaneOrder(const std::vector<std::string>& branc
     RequestRedraw();
 }
 
+void UltraCanvasGitGraph::SetLanePriority(const std::vector<std::string>& branchNames) {
+    layoutOptions.lanePriority = branchNames;
+    layoutEngine.SetOptions(layoutOptions);
+    needsLayout = true;
+    RequestRedraw();
+}
+
 void UltraCanvasGitGraph::SetSwimlanesBothSides(bool bothSides) {
     layoutOptions.swimlanesBothSides = bothSides;
     layoutEngine.SetOptions(layoutOptions);
@@ -714,7 +721,7 @@ void UltraCanvasGitGraph::ComputeVisibleRows(int& firstRow, int& lastRow) const 
 
     // Map the element's visible extent back into axis coordinates, then into
     // rows, so only the rows on screen are drawn.
-    const double extent = IsHorizontalAxis() ? GraphPaneWidth() : GetHeight();
+    const double extent = IsHorizontalAxis() ? GraphPaneWidth() : ContentHeight();
     const double panAlongAxis = IsHorizontalAxis() ? panX : panY;
     const double axisMin = (0.0 - panAlongAxis) / zoomLevel;
     const double axisMax = (extent - panAlongAxis) / zoomLevel;
@@ -1163,6 +1170,12 @@ double UltraCanvasGitGraph::GraphPaneWidth() const {
                            : GetWidth();
 }
 
+Point2Dd UltraCanvasGitGraph::GetCommitScreenPosition(const std::string& sha) const {
+    const GitGraphPlacedCommit* placed = layout.Find(sha);
+    if (!placed) return Point2Dd(-1.0, -1.0);
+    return WorldToScreen(NodePoint(placed->row, placed->lane));
+}
+
 double UltraCanvasGitGraph::GetRowScreenPosition(int row) const {
     const double axis = AxisCoord(row) * zoomLevel;
     return axis + (IsHorizontalAxis() ? panX : panY);
@@ -1272,12 +1285,12 @@ void UltraCanvasGitGraph::ZoomToFit(double padding) {
     const double contentHeight = std::max(1.0, maxY - minY);
     const double paneWidth = GraphPaneWidth();
     const double availableWidth  = std::max(1.0, paneWidth  - padding * 2.0);
-    const double availableHeight = std::max(1.0, GetHeight() - padding * 2.0);
+    const double availableHeight = std::max(1.0, ContentHeight() - padding * 2.0);
 
     const double fit = std::min(availableWidth / contentWidth, availableHeight / contentHeight);
     zoomLevel = std::clamp(static_cast<float>(fit), minZoom, maxZoom);
-    panX = (paneWidth  - contentWidth  * zoomLevel) * 0.5 - minX * zoomLevel;
-    panY = (GetHeight() - contentHeight * zoomLevel) * 0.5 - minY * zoomLevel;
+    panX = (paneWidth      - contentWidth  * zoomLevel) * 0.5 - minX * zoomLevel;
+    panY = (ContentHeight() - contentHeight * zoomLevel) * 0.5 - minY * zoomLevel;
     RequestRedraw();
 }
 
@@ -1303,7 +1316,7 @@ void UltraCanvasGitGraph::CenterOnCommit(const std::string& sha) {
     // Centre inside the graph pane, not the whole element: with the table shown
     // the graph occupies only the left-hand strip.
     panX = GraphPaneWidth() * 0.5 - world.x * zoomLevel;
-    panY = GetHeight()      * 0.5 - world.y * zoomLevel;
+    panY = ContentHeight()  * 0.5 - world.y * zoomLevel;
     RequestRedraw();
 }
 
@@ -1327,10 +1340,10 @@ void UltraCanvasGitGraph::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) 
     DrawBackground(ctx);
 
     ctx->PushState();
-    if (IsTableActive()) {
+    if (IsTableActive() || IsDiffPaneActive()) {
         // Keep the graph inside its pane so long edges never bleed into the
-        // table columns.
-        ctx->ClipRect(Rect2Dd(0, 0, GraphPaneWidth(), GetHeight()));
+        // table columns or the diff pane.
+        ctx->ClipRect(Rect2Dd(0, 0, GraphPaneWidth(), ContentHeight()));
     }
     ctx->Translate(panX, panY);
     ctx->Scale(zoomLevel, zoomLevel);
@@ -1366,8 +1379,10 @@ void UltraCanvasGitGraph::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) 
 
     ctx->PopState();
 
-    if (IsTableActive())  DrawTablePane(ctx, firstRow, lastRow);
+    if (IsTableActive())   DrawTablePane(ctx, firstRow, lastRow);
+    if (IsDiffPaneActive()) DrawDiffPane(ctx);
     if (style.showMinimap) DrawMinimap(ctx);
+    if (!authoringDragSha.empty()) DrawAuthoringDrag(ctx);
     if (style.showTooltips && !hoveredSha.empty()) DrawTooltip(ctx);
 }
 
@@ -2293,11 +2308,11 @@ void UltraCanvasGitGraph::DrawTablePane(IRenderContext* ctx, int firstRow, int l
     if (paneWidth <= 1.0) return;
 
     ctx->PushState();
-    ctx->ClipRect(Rect2Dd(paneX, 0, paneWidth, GetHeight()));
+    ctx->ClipRect(Rect2Dd(paneX, 0, paneWidth, ContentHeight()));
 
     ctx->SetFillPaint(style.backgroundColor);
     ctx->ClearPath();
-    ctx->Rect(paneX, 0, paneWidth, GetHeight());
+    ctx->Rect(paneX, 0, paneWidth, ContentHeight());
     ctx->FillPathPreserve();
     ctx->ClearPath();
 
@@ -2307,7 +2322,12 @@ void UltraCanvasGitGraph::DrawTablePane(IRenderContext* ctx, int firstRow, int l
     const double rowHeight = style.rowSpacing * zoomLevel;
     const double headerHeight = style.tableHeaderHeight;
 
-    // Rows first, so the header paints over anything that scrolls under it.
+    // Rows are clipped to below the header, so a row scrolling past the top
+    // cannot bleed over the column titles.
+    ctx->PushState();
+    ctx->ClipRect(Rect2Dd(paneX, headerHeight, paneWidth,
+                          std::max(0.0, ContentHeight() - headerHeight)));
+
     for (int row = firstRow; row <= lastRow && row < static_cast<int>(layout.commits.size() + 1);
          ++row) {
         const GitGraphPlacedCommit* placed = nullptr;
@@ -2321,7 +2341,7 @@ void UltraCanvasGitGraph::DrawTablePane(IRenderContext* ctx, int firstRow, int l
 
         const double centreY = GetRowScreenPosition(row);
         const double top = centreY - rowHeight * 0.5;
-        if (top + rowHeight < headerHeight || top > GetHeight()) continue;
+        if (top + rowHeight < headerHeight || top > ContentHeight()) continue;
 
         const bool selected = IsCommitSelected(placed->sha);
         const bool hovered  = (placed->sha == hoveredSha);
@@ -2361,6 +2381,8 @@ void UltraCanvasGitGraph::DrawTablePane(IRenderContext* ctx, int firstRow, int l
         }
     }
 
+    ctx->PopState();
+
     // Header
     ctx->SetFillPaint(style.tableHeaderColor);
     ctx->ClearPath();
@@ -2371,7 +2393,7 @@ void UltraCanvasGitGraph::DrawTablePane(IRenderContext* ctx, int firstRow, int l
     ctx->SetStrokePaint(style.tableGridColor);
     ctx->SetStrokeWidth(1.0);
     ctx->DrawLine(Point2Dd(paneX, headerHeight), Point2Dd(GetWidth(), headerHeight));
-    ctx->DrawLine(Point2Dd(paneX, 0), Point2Dd(paneX, GetHeight()));
+    ctx->DrawLine(Point2Dd(paneX, 0), Point2Dd(paneX, ContentHeight()));
 
     double headerX = paneX + style.tableCellPadding;
     ctx->SetTextPaint(style.tableMutedColor);
@@ -2388,21 +2410,374 @@ void UltraCanvasGitGraph::DrawTablePane(IRenderContext* ctx, int firstRow, int l
 }
 
 // =============================================================================
+// DIFF PANE
+// =============================================================================
+
+void UltraCanvasGitGraph::SetShowDiffPane(bool show) {
+    style.showDiffPane = show;
+    needsLayout = true;
+    RequestRedraw();
+}
+
+void UltraCanvasGitGraph::SetDiffPaneHeight(double height) {
+    style.diffPaneHeight = std::max(40.0, height);
+    needsLayout = true;
+    RequestRedraw();
+}
+
+void UltraCanvasGitGraph::SetFileListProvider(
+        std::function<std::vector<GitGraphFileChange>(const std::string&)> provider) {
+    fileListProvider = std::move(provider);
+    diffSha.clear();                    // Invalidate the cache
+    RequestRedraw();
+}
+
+void UltraCanvasGitGraph::SetDiffProvider(
+        std::function<std::string(const std::string&, const std::string&)> provider) {
+    diffProvider = std::move(provider);
+    diffText.clear();
+    RequestRedraw();
+}
+
+bool UltraCanvasGitGraph::IsDiffPaneActive() const {
+    return style.showDiffPane && GetHeight() > style.diffPaneHeight + 40.0;
+}
+
+double UltraCanvasGitGraph::ContentHeight() const {
+    return IsDiffPaneActive() ? (GetHeight() - style.diffPaneHeight) : GetHeight();
+}
+
+Rect2Dd UltraCanvasGitGraph::DiffPaneBounds() const {
+    return Rect2Dd(0, ContentHeight(), GetWidth(), style.diffPaneHeight);
+}
+
+// Pulls the file list (and patch) for the selected commit, once per selection.
+void UltraCanvasGitGraph::RefreshDiffCache() {
+    const std::string sha = selectedShas.empty() ? std::string() : selectedShas.back();
+    if (sha == diffSha) return;
+
+    diffSha = sha;
+    diffFiles.clear();
+    diffText.clear();
+    selectedFile.clear();
+    diffFileScroll = 0.0;
+    diffTextScroll = 0.0;
+    if (sha.empty()) return;
+
+    if (fileListProvider) {
+        diffFiles = fileListProvider(sha);
+    } else if (const GitGraphCommit* commit = GetCommit(sha)) {
+        diffFiles = commit->files;      // Whatever the caller already attached
+    }
+
+    if (!diffFiles.empty()) SelectFile(diffFiles.front().path);
+}
+
+void UltraCanvasGitGraph::SelectFile(const std::string& path) {
+    selectedFile = path;
+    diffTextScroll = 0.0;
+    diffText = (diffProvider && !diffSha.empty()) ? diffProvider(diffSha, path) : std::string();
+    if (onFileSelect) onFileSelect(diffSha, path);
+    RequestRedraw();
+}
+
+void UltraCanvasGitGraph::DrawDiffPane(IRenderContext* ctx) {
+    RefreshDiffCache();
+
+    const Rect2Dd bounds = DiffPaneBounds();
+    ctx->PushState();
+    ctx->ClipRect(bounds);
+
+    ctx->SetFillPaint(style.backgroundColor);
+    ctx->ClearPath();
+    ctx->Rect(bounds.x, bounds.y, bounds.width, bounds.height);
+    ctx->FillPathPreserve();
+    ctx->ClearPath();
+
+    ctx->SetStrokePaint(style.tableGridColor);
+    ctx->SetStrokeWidth(1.0);
+    ctx->DrawLine(Point2Dd(bounds.x, bounds.y), Point2Dd(bounds.x + bounds.width, bounds.y));
+
+    ctx->SetFontFamily(style.fontFamily);
+    ctx->SetFontSize(style.fontSize);
+
+    // Header: which commit this is.
+    const double headerHeight = style.tableHeaderHeight;
+    ctx->SetFillPaint(style.diffHeaderColor);
+    ctx->ClearPath();
+    ctx->Rect(bounds.x, bounds.y, bounds.width, headerHeight);
+    ctx->FillPathPreserve();
+    ctx->ClearPath();
+
+    const GitGraphCommit* commit = diffSha.empty() ? nullptr : GetCommit(diffSha);
+    ctx->SetTextPaint(style.tableTextColor);
+    if (commit) {
+        std::string header = commit->ShortSha() + "  " + commit->subject;
+        if (!commit->authorName.empty()) {
+            header += "   -   " + commit->authorName + "  " + FormatTimestamp(commit->commitDate);
+        }
+        ctx->DrawText(header, Point2Dd(bounds.x + style.tableCellPadding,
+                                       bounds.y + (headerHeight - style.fontSize) * 0.5));
+    } else {
+        ctx->SetTextPaint(style.tableMutedColor);
+        ctx->DrawText("Select a commit to see what it changed",
+                      Point2Dd(bounds.x + style.tableCellPadding,
+                               bounds.y + (headerHeight - style.fontSize) * 0.5));
+        ctx->PopState();
+        return;
+    }
+
+    const double bodyTop = bounds.y + headerHeight;
+    const double bodyHeight = bounds.height - headerHeight;
+    const double listWidth = std::min(style.diffFileListWidth, bounds.width * 0.45);
+    const double lineHeight = style.diffFontSize + 4.0;
+
+    // File list.
+    ctx->PushState();
+    ctx->ClipRect(Rect2Dd(bounds.x, bodyTop, listWidth, bodyHeight));
+    ctx->SetFontSize(style.diffFontSize);
+
+    double y = bodyTop + 3.0 - diffFileScroll;
+    for (const GitGraphFileChange& file : diffFiles) {
+        if (y > bodyTop + bodyHeight) break;
+        if (y + lineHeight >= bodyTop) {
+            if (file.path == selectedFile) {
+                ctx->SetFillPaint(style.tableRowSelectedColor);
+                ctx->ClearPath();
+                ctx->Rect(bounds.x, y, listWidth, lineHeight);
+                ctx->FillPathPreserve();
+                ctx->ClearPath();
+            }
+
+            const Color statusColor = (file.status == 'A') ? style.statusAddedColor
+                                    : (file.status == 'D') ? style.statusDeletedColor
+                                                           : style.statusModifiedColor;
+            ctx->SetTextPaint(statusColor);
+            ctx->DrawText(std::string(1, file.status), Point2Dd(bounds.x + 6.0, y + 1.0));
+
+            ctx->SetTextPaint(style.tableTextColor);
+            ctx->DrawText(file.path, Point2Dd(bounds.x + 20.0, y + 1.0));
+        }
+        y += lineHeight;
+    }
+    ctx->PopState();
+
+    ctx->SetStrokePaint(style.tableGridColor);
+    ctx->DrawLine(Point2Dd(bounds.x + listWidth, bodyTop),
+                  Point2Dd(bounds.x + listWidth, bounds.y + bounds.height));
+
+    // Patch, coloured by unified-diff line prefix. This is diff colouring, not
+    // language syntax highlighting.
+    ctx->PushState();
+    const double patchX = bounds.x + listWidth + 8.0;
+    ctx->ClipRect(Rect2Dd(patchX, bodyTop, bounds.width - listWidth - 8.0, bodyHeight));
+
+    if (diffText.empty()) {
+        ctx->SetTextPaint(style.tableMutedColor);
+        ctx->DrawText(diffFiles.empty() ? "No file changes recorded for this commit"
+                                        : "No patch text supplied - set a diff provider",
+                      Point2Dd(patchX, bodyTop + 6.0));
+    } else {
+        double patchY = bodyTop + 3.0 - diffTextScroll;
+        size_t start = 0;
+        while (start <= diffText.size()) {
+            const size_t end = diffText.find('\n', start);
+            const std::string line = diffText.substr(start, (end == std::string::npos)
+                                                                ? std::string::npos
+                                                                : end - start);
+            if (patchY > bodyTop + bodyHeight) break;
+
+            if (patchY + lineHeight >= bodyTop && !line.empty()) {
+                Color textColor = style.diffContextColor;
+                Color background(0, 0, 0, 0);
+
+                if (line.rfind("@@", 0) == 0) {
+                    textColor = style.diffHunkColor;
+                } else if (line[0] == '+' && line.rfind("+++", 0) != 0) {
+                    textColor = style.diffAddedColor;
+                    background = style.diffAddedBackground;
+                } else if (line[0] == '-' && line.rfind("---", 0) != 0) {
+                    textColor = style.diffRemovedColor;
+                    background = style.diffRemovedBackground;
+                }
+
+                if (background.a > 0) {
+                    ctx->SetFillPaint(background);
+                    ctx->ClearPath();
+                    ctx->Rect(patchX - 4.0, patchY, bounds.width - listWidth, lineHeight);
+                    ctx->FillPathPreserve();
+                    ctx->ClearPath();
+                }
+                ctx->SetTextPaint(textColor);
+                ctx->DrawText(line, Point2Dd(patchX, patchY + 1.0));
+            }
+
+            patchY += lineHeight;
+            if (end == std::string::npos) break;
+            start = end + 1;
+        }
+    }
+    ctx->PopState();
+    ctx->PopState();
+}
+
+// Click selects a file; the wheel scrolls whichever half the pointer is over.
+bool UltraCanvasGitGraph::HandleDiffPanePointer(const Point2Di& position, bool click) {
+    if (!IsDiffPaneActive()) return false;
+
+    const Rect2Dd bounds = DiffPaneBounds();
+    if (position.y < bounds.y) return false;
+
+    const double listWidth = std::min(style.diffFileListWidth, bounds.width * 0.45);
+    const double bodyTop = bounds.y + style.tableHeaderHeight;
+    const double lineHeight = style.diffFontSize + 4.0;
+
+    if (click && position.x <= bounds.x + listWidth && position.y >= bodyTop) {
+        const size_t index = static_cast<size_t>(
+            std::max(0.0, (position.y - bodyTop - 3.0 + diffFileScroll) / lineHeight));
+        if (index < diffFiles.size()) SelectFile(diffFiles[index].path);
+    }
+    return true;
+}
+
+// =============================================================================
+// DRAG TO AUTHOR
+// =============================================================================
+
+void UltraCanvasGitGraph::SetAuthoringEnabled(bool enabled) {
+    authoringEnabled = enabled;
+    if (!enabled) authoringDragSha.clear();
+    RequestRedraw();
+}
+
+// Adds a merge commit on the target's branch taking the dragged commit as its
+// second parent - "merge source into the branch target is on".
+std::string UltraCanvasGitGraph::CreateAuthoredMerge(const std::string& sourceSha,
+                                                     const std::string& targetSha) {
+    const GitGraphCommit* source = GetCommit(sourceSha);
+    const GitGraphCommit* target = GetCommit(targetSha);
+    if (!source || !target) return std::string();
+
+    // Refuse a merge that would duplicate an existing parent link.
+    for (const std::string& parent : target->parents) {
+        if (parent == sourceSha) return std::string();
+    }
+
+    std::string targetBranch = target->branch;
+    for (const GitGraphRef& ref : refs) {
+        if (ref.type == GitGraphRefType::LocalBranch && ref.sha == targetSha) {
+            targetBranch = ref.name;
+            break;
+        }
+    }
+    if (targetBranch.empty()) targetBranch = currentBranch;
+
+    std::string sourceBranch = source->branch;
+    for (const GitGraphRef& ref : refs) {
+        if (ref.type == GitGraphRefType::LocalBranch && ref.sha == sourceSha) {
+            sourceBranch = ref.name;
+            break;
+        }
+    }
+
+    GitGraphCommit merge;
+    merge.sha        = MakeSyntheticSha();
+    merge.subject    = sourceBranch.empty() ? ("Merge " + source->ShortSha())
+                                            : ("Merge branch '" + sourceBranch + "'");
+    merge.branch     = targetBranch;
+    merge.authorName = "UltraCanvas";
+    merge.commitDate = static_cast<int64_t>(commits.size());
+    merge.authorDate = merge.commitDate;
+    merge.parents    = {targetSha, sourceSha};
+
+    AddCommit(merge);
+    branchTips[targetBranch] = merge.sha;
+    AddBranchRef(targetBranch, merge.sha, targetBranch == currentBranch);
+
+    rowsAreNewestFirst = false;
+    layoutOptions.orderMode = GitGraphOrderMode::AsGiven;
+    layoutEngine.SetOptions(layoutOptions);
+    needsLayout = true;
+
+    if (onAuthorMerge) onAuthorMerge(sourceSha, targetSha);
+    RequestRedraw();
+    return merge.sha;
+}
+
+std::string UltraCanvasGitGraph::CreateAuthoredBranch(const std::string& fromSha) {
+    const GitGraphCommit* from = GetCommit(fromSha);
+    if (!from) return std::string();
+
+    std::string name = onAuthorBranchName ? onAuthorBranchName(fromSha)
+                                          : ("branch-" + std::to_string(++authoredBranchCounter));
+    if (name.empty()) return std::string();          // Vetoed by the application
+
+    GitGraphCommit commit;
+    commit.sha        = MakeSyntheticSha();
+    commit.subject    = "start " + name;
+    commit.branch     = name;
+    commit.authorName = "UltraCanvas";
+    commit.commitDate = static_cast<int64_t>(commits.size());
+    commit.authorDate = commit.commitDate;
+    commit.parents    = {fromSha};
+
+    AddCommit(commit);
+    branchTips[name] = commit.sha;
+    AddBranchRef(name, commit.sha, false);
+
+    rowsAreNewestFirst = false;
+    layoutOptions.orderMode = GitGraphOrderMode::AsGiven;
+    layoutEngine.SetOptions(layoutOptions);
+    needsLayout = true;
+
+    if (onAuthorBranch) onAuthorBranch(fromSha, name);
+    RequestRedraw();
+    return commit.sha;
+}
+
+void UltraCanvasGitGraph::DrawAuthoringDrag(IRenderContext* ctx) {
+    if (authoringDragSha.empty()) return;
+
+    const GitGraphPlacedCommit* source = layout.Find(authoringDragSha);
+    if (!source) return;
+
+    const Point2Dd from = WorldToScreen(NodePoint(source->row, source->lane));
+    const Point2Dd to(authoringDragPoint.x, authoringDragPoint.y);
+
+    ctx->SetStrokePaint(style.authoringLineColor);
+    ctx->SetStrokeWidth(style.authoringLineWidth);
+    ctx->SetLineDash(UCDashPattern({5.0, 3.0}));
+    ctx->DrawLine(from, to);
+    ctx->SetLineDash(UCDashPattern());
+
+    // A ring under the pointer shows what a release would do: filled when it is
+    // over a commit (merge), hollow over empty space (branch).
+    const std::string target = FindCommitAt(ScreenToWorld(authoringDragPoint));
+    if (!target.empty() && target != authoringDragSha) {
+        ctx->SetFillPaint(style.authoringLineColor.WithAlpha(60));
+        ctx->FillCircle(to, 9.0);
+    }
+    ctx->SetStrokePaint(style.authoringLineColor);
+    ctx->DrawCircle(to, 9.0);
+}
+
+// =============================================================================
 // MINIMAP
 // =============================================================================
 
 Rect2Dd UltraCanvasGitGraph::ComputeMinimapBounds() const {
-    const double width  = std::min(style.minimapWidth,  GetWidth()  * 0.4);
-    const double height = std::min(style.minimapHeight, GetHeight() * 0.6);
+    const double width  = std::min(style.minimapWidth,  GetWidth()      * 0.4);
+    const double height = std::min(style.minimapHeight, ContentHeight() * 0.6);
     const double margin = style.minimapMargin;
 
     double x = GetWidth() - width - margin;
     double y = margin;
     switch (style.minimapPosition) {
         case GitGraphMinimapPosition::TopLeft:     x = margin; y = margin; break;
-        case GitGraphMinimapPosition::BottomLeft:  x = margin; y = GetHeight() - height - margin;
+        case GitGraphMinimapPosition::BottomLeft:  x = margin;
+                                                   y = ContentHeight() - height - margin;
                                                    break;
-        case GitGraphMinimapPosition::BottomRight: y = GetHeight() - height - margin; break;
+        case GitGraphMinimapPosition::BottomRight: y = ContentHeight() - height - margin; break;
         case GitGraphMinimapPosition::TopRight:
         default: break;
     }
@@ -2523,6 +2898,12 @@ bool UltraCanvasGitGraph::OnEvent(const UCEvent& event) {
 bool UltraCanvasGitGraph::HandleMouseMove(const UCEvent& event) {
     const Point2Di mousePos(event.pointer.x, event.pointer.y);
 
+    if (!authoringDragSha.empty()) {
+        authoringDragPoint = mousePos;
+        RequestRedraw();
+        return true;
+    }
+
     if (isDraggingMinimap) {
         HandleMinimapPointer(mousePos);
         return true;
@@ -2561,6 +2942,19 @@ bool UltraCanvasGitGraph::HandleMouseMove(const UCEvent& event) {
 
 bool UltraCanvasGitGraph::HandleMouseDown(const UCEvent& event) {
     const Point2Di mousePos(event.pointer.x, event.pointer.y);
+
+    if (HandleDiffPanePointer(mousePos, /*click=*/true)) return true;
+
+    // An authoring drag starts on a commit and is resolved on release.
+    if (authoringEnabled && event.button == UCMouseButton::Left) {
+        const std::string sha = FindCommitAt(ScreenToWorld(mousePos));
+        if (!sha.empty()) {
+            authoringDragSha = sha;
+            authoringDragPoint = mousePos;
+            SelectCommit(sha);
+            return true;
+        }
+    }
 
     if (event.button == UCMouseButton::Left && HandleMinimapPointer(mousePos)) {
         isDraggingMinimap = true;
@@ -2620,6 +3014,27 @@ bool UltraCanvasGitGraph::HandleMouseDown(const UCEvent& event) {
 }
 
 bool UltraCanvasGitGraph::HandleMouseUp(const UCEvent& event) {
+    if (!authoringDragSha.empty()) {
+        const std::string source = authoringDragSha;
+        authoringDragSha.clear();
+
+        const std::string target = FindCommitAt(ScreenToWorld(authoringDragPoint));
+        if (!target.empty() && target != source) {
+            CreateAuthoredMerge(source, target);
+        } else if (target.empty()) {
+            // Dropping on empty space branches off the dragged commit, but a
+            // click that never moved is just a selection.
+            const Point2Dd from = WorldToScreen(NodePoint(layout.Find(source)->row,
+                                                          layout.Find(source)->lane));
+            if (std::hypot(authoringDragPoint.x - from.x,
+                           authoringDragPoint.y - from.y) > 12.0) {
+                CreateAuthoredBranch(source);
+            }
+        }
+        RequestRedraw();
+        return true;
+    }
+
     if (isDraggingMinimap) {
         isDraggingMinimap = false;
         return true;
@@ -2633,6 +3048,23 @@ bool UltraCanvasGitGraph::HandleMouseUp(const UCEvent& event) {
 
 bool UltraCanvasGitGraph::HandleMouseWheel(const UCEvent& event) {
     const Point2Di mousePos(event.pointer.x, event.pointer.y);
+
+    if (IsDiffPaneActive() && mousePos.y >= DiffPaneBounds().y) {
+        const double step = (style.diffFontSize + 4.0) * 3.0;
+        const double delta = (event.wheelDelta > 0) ? -step : step;
+        const double listWidth = std::min(style.diffFileListWidth, GetWidth() * 0.45);
+
+        if (mousePos.x <= listWidth) {
+            const double limit = std::max(0.0, diffFiles.size() * (style.diffFontSize + 4.0)
+                                               - style.diffPaneHeight * 0.6);
+            diffFileScroll = std::clamp(diffFileScroll + delta, 0.0, limit);
+        } else {
+            diffTextScroll = std::max(0.0, diffTextScroll + delta);
+        }
+        RequestRedraw();
+        return true;
+    }
+
     const Point2Dd worldBefore = ScreenToWorld(mousePos);
 
     const float factor = (event.wheelDelta > 0) ? 1.12f : 0.89f;

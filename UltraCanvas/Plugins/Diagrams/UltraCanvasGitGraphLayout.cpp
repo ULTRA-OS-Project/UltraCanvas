@@ -681,6 +681,83 @@ size_t GitGraphLayoutResult::CountCrossings() const {
     return crossings;
 }
 
+namespace {
+
+// Rewrites every lane index in the result through `mapping`.
+void ApplyColumnMapping(const std::vector<int>& mapping, int laneCount,
+                        GitGraphLayoutResult& target) {
+    auto remap = [&](int lane) {
+        return (lane >= 0 && lane < laneCount) ? mapping[static_cast<size_t>(lane)] : lane;
+    };
+    for (GitGraphPlacedCommit& placed : target.commits) placed.lane = remap(placed.lane);
+    for (GitGraphPlacedEdge& edge : target.edges) {
+        edge.fromLane  = remap(edge.fromLane);
+        edge.toLane    = remap(edge.toLane);
+        edge.colorLane = remap(edge.colorLane);
+    }
+
+    target.maxLane = 0;
+    for (const GitGraphPlacedCommit& placed : target.commits) {
+        target.maxLane = std::max(target.maxLane, placed.lane);
+        target.minLane = std::min(target.minLane, placed.lane);
+    }
+}
+
+} // namespace
+
+void UltraCanvasGitGraphLayout::ApplyLanePriority(const std::vector<GitGraphRef>& refs,
+                                                  GitGraphLayoutResult& result) const {
+    if (options.lanePriority.empty() || result.maxLane <= 0) return;
+
+    const int laneCount = result.maxLane + 1;
+
+    // A branch owns the lane its tip commit sits in.
+    std::unordered_map<std::string, int> laneOfBranch;
+    for (const GitGraphRef& ref : refs) {
+        if (ref.type != GitGraphRefType::LocalBranch &&
+            ref.type != GitGraphRefType::RemoteBranch) {
+            continue;
+        }
+        const GitGraphPlacedCommit* tip = result.Find(ref.sha);
+        if (tip && tip->lane >= 0 && tip->lane < laneCount) {
+            laneOfBranch.emplace(ref.name, tip->lane);
+        }
+    }
+
+    // Column order: the pinned trunk first, then the listed branches in order,
+    // then everything else in its existing order.
+    const bool trunkPinned = !options.trunkBranch.empty();
+    std::vector<int> ordered;
+    std::vector<bool> taken(static_cast<size_t>(laneCount), false);
+
+    if (trunkPinned) {
+        ordered.push_back(0);
+        taken[0] = true;
+    }
+    for (const std::string& name : options.lanePriority) {
+        auto owned = laneOfBranch.find(name);
+        if (owned == laneOfBranch.end()) continue;
+        const int lane = owned->second;
+        if (lane < 0 || lane >= laneCount || taken[static_cast<size_t>(lane)]) continue;
+        ordered.push_back(lane);
+        taken[static_cast<size_t>(lane)] = true;
+    }
+    for (int lane = 0; lane < laneCount; ++lane) {
+        if (!taken[static_cast<size_t>(lane)]) ordered.push_back(lane);
+    }
+
+    std::vector<int> mapping(static_cast<size_t>(laneCount), 0);
+    for (size_t column = 0; column < ordered.size(); ++column) {
+        mapping[static_cast<size_t>(ordered[column])] = static_cast<int>(column);
+    }
+
+    bool changed = false;
+    for (int lane = 0; lane < laneCount; ++lane) {
+        if (mapping[static_cast<size_t>(lane)] != lane) changed = true;
+    }
+    if (changed) ApplyColumnMapping(mapping, laneCount, result);
+}
+
 void UltraCanvasGitGraphLayout::ReduceCrossings(GitGraphLayoutResult& result) const {
     if (result.commits.empty() || result.maxLane <= 1) return;
 
@@ -703,22 +780,7 @@ void UltraCanvasGitGraphLayout::ReduceCrossings(GitGraphLayoutResult& result) co
     for (int lane = 0; lane < laneCount; ++lane) columnOf[static_cast<size_t>(lane)] = lane;
 
     auto applyColumns = [&](const std::vector<int>& mapping, GitGraphLayoutResult& target) {
-        for (GitGraphPlacedCommit& placed : target.commits) {
-            if (placed.lane >= 0 && placed.lane < laneCount) {
-                placed.lane = mapping[static_cast<size_t>(placed.lane)];
-            }
-        }
-        for (GitGraphPlacedEdge& edge : target.edges) {
-            if (edge.fromLane >= 0 && edge.fromLane < laneCount) {
-                edge.fromLane = mapping[static_cast<size_t>(edge.fromLane)];
-            }
-            if (edge.toLane >= 0 && edge.toLane < laneCount) {
-                edge.toLane = mapping[static_cast<size_t>(edge.toLane)];
-            }
-            if (edge.colorLane >= 0 && edge.colorLane < laneCount) {
-                edge.colorLane = mapping[static_cast<size_t>(edge.colorLane)];
-            }
-        }
+        ApplyColumnMapping(mapping, laneCount, target);
     };
 
     std::vector<int> bestMapping = columnOf;
@@ -770,12 +832,6 @@ void UltraCanvasGitGraphLayout::ReduceCrossings(GitGraphLayoutResult& result) co
     if (!changed) return;
 
     applyColumns(bestMapping, result);
-
-    result.maxLane = 0;
-    for (const GitGraphPlacedCommit& placed : result.commits) {
-        result.maxLane = std::max(result.maxLane, placed.lane);
-        result.minLane = std::min(result.minLane, placed.lane);
-    }
 }
 
 // ===== ENTRY POINT =====
@@ -860,6 +916,11 @@ GitGraphLayoutResult UltraCanvasGitGraphLayout::Compute(
         options.layoutMode == GitGraphLayoutMode::Lanes &&
         result.edges.size() <= options.crossingReductionEdgeBudget) {
         ReduceCrossings(result);
+    }
+
+    // Explicit ordering runs last so it always wins over the heuristic.
+    if (options.layoutMode == GitGraphLayoutMode::Lanes) {
+        ApplyLanePriority(refs, result);
     }
 
     return result;
