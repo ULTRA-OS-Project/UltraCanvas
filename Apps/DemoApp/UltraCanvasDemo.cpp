@@ -1409,15 +1409,9 @@ namespace UltraCanvas {
                 .AddVariant("mindmap", "Relationships")
                 .AddVariant("mindmap", "Presentation")
                 .AddVariant("mindmap", "Themes & structures");
-    diagramBuilder.AddItem("kanbandiagram", "Kanban Diagram", "Kanban Diagram",
-                               ImplementationStatus::NotImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("Kanban Diagram is not ready yet"); });
     diagramBuilder.AddItem("packetdiagram", "Packet Diagram", "Packet Diagram",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("Packet Diagram is not ready yet"); });
-    diagramBuilder.AddItem("gitgraph", "Git Graph", "Git Graph",
-                               ImplementationStatus::NotImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("Git Graph is not ready yet"); });
     diagramBuilder.AddItem("erdiagram", "ER Diagram", "Entity-Relationship Diagram",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateERDiagramExamples(); },
