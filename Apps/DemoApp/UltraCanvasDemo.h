@@ -347,6 +347,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateAdjacencyDiagramExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateArcDiagramExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateRequirementDiagramExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateMindMapExamples();
         std::shared_ptr<UltraCanvasContainer> CreateExampleDiagramSection();
         std::shared_ptr<UltraCanvasUIElement> CreateCompositorDiagramExamples();
 

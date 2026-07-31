@@ -245,6 +245,45 @@ else()
     message(STATUS "  tinyxml2 not found - WordFormatsTest disabled")
 endif()
 
+# ===== MIND MAP IO TEST =====
+# Interchange: Mermaid, FreeMind/Freeplane .mm, OPML, indented text, CSV, XMind
+# content.json, SVG export and format sniffing. Checks round-trip fidelity and
+# that a failed import leaves the caller's model untouched. Needs the same
+# system tinyxml2 + vendored miniz/yyjson as WordFormatsTest, not the UI stack.
+if(TINYXML2_TEST_FOUND)
+    message(STATUS "  Building MindMapIOTest...")
+    add_executable(MindMapIOTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/MindMapIOTest.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasMindMapLayout.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasMindMapIO.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/core/DataFormats/UltraCanvasJSON.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasZipPackage.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/yyjson/yyjson.c
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
+    )
+    target_include_directories(MindMapIOTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/yyjson
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz
+        ${TINYXML2_TEST_INCLUDE_DIRS}
+    )
+    target_link_libraries(MindMapIOTest PRIVATE ${TINYXML2_TEST_LIBRARIES})
+    target_compile_features(MindMapIOTest PRIVATE cxx_std_20)
+    set_target_properties(MindMapIOTest PROPERTIES
+        OUTPUT_NAME "MindMapIOTest"
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(
+        NAME MindMapIOTest
+        COMMAND MindMapIOTest
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    message(STATUS "    Test registered: MindMapIOTest")
+else()
+    message(STATUS "  tinyxml2 not found - MindMapIOTest disabled")
+endif()
+
+
 # ===== SPREADSHEET ODS FORMULA TEST =====
 # Regression test for translating OpenDocument (ODS) formula references into the
 # engine's native A1 syntax and tokenizing them. Header-only: exercises the real
@@ -394,6 +433,33 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: GitRepositoryTest")
+
+# ===== MIND MAP LAYOUT TEST =====
+# Topic tree model (add/remove/reparent/cycle rejection, outline build, outline
+# numbering, relationships) and the layout engine (balanced, logic, org chart and
+# radial structures, balance policies, collapse, floating topics, spacing) with a
+# non-overlap stress case over a deep ragged tree. Pure geometry - no UI stack.
+message(STATUS "  Building MindMapLayoutTest...")
+add_executable(MindMapLayoutTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/MindMapLayoutTest.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasMindMapLayout.cpp
+)
+target_include_directories(MindMapLayoutTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(MindMapLayoutTest PRIVATE cxx_std_20)
+set_target_properties(MindMapLayoutTest PROPERTIES
+        OUTPUT_NAME "MindMapLayoutTest"
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+        NAME MindMapLayoutTest
+        COMMAND MindMapLayoutTest
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: MindMapLayoutTest")
+
 # ===== DIAGRAM ROUTING TEST =====
 # Unit tests for the shared orthogonal router (cardinal L/Z paths, A* obstacle
 # avoidance, label anchors, arrow angles). UI-free - links only the one source

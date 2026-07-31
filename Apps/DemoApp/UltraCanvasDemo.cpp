@@ -1397,9 +1397,21 @@ namespace UltraCanvas {
                 .AddVariant("quadrantcharts", "Risk Matrix")
                 .AddVariant("quadrantcharts", "Priority Matrix")
                 .AddVariant("quadrantcharts", "Custom Quadrants");
-    diagramBuilder.AddItem("mindmap", "MindMap", "MindMap",
+    diagramBuilder.AddItem("mindmap", "Mind Map",
+                               "Rooted topic tree with balanced, logic, org chart and radial structures, editing and collapse",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateMindMapExamples(); },
+                               "DemoApp/UltraCanvasMindMapExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasMindMapExamples.md")
+                .AddVariant("mindmap", "Editable map")
+                .AddVariant("mindmap", "Logic chart")
+                .AddVariant("mindmap", "Radial")
+                .AddVariant("mindmap", "Relationships")
+                .AddVariant("mindmap", "Presentation")
+                .AddVariant("mindmap", "Themes & structures");
+    diagramBuilder.AddItem("kanbandiagram", "Kanban Diagram", "Kanban Diagram",
                                ImplementationStatus::NotImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("MindMap is not ready yet"); });
+                               [this]() { return CreatePartiallyImplementedExamples("Kanban Diagram is not ready yet"); });
     diagramBuilder.AddItem("packetdiagram", "Packet Diagram", "Packet Diagram",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("Packet Diagram is not ready yet"); });
