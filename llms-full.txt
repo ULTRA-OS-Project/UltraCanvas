@@ -11604,10 +11604,10 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
 
 | View type | Description |
 |---|---|
-| `Details` | Text columns: name (with mini thumbnail), size, type, modified date, created date, attributes and an info column (play duration via `infoProvider`, compression factor of archive-compressed entries). Column headers are clickable and toggle the sort. |
-| `List` | Compact icon + name entries flowing top-to-bottom into columns (horizontal scrolling). |
+| `Details` | Text columns: name (with mini thumbnail), size, type, modified date, created date, attributes and an info column (play duration via `infoProvider`, compression factor of archive-compressed entries). Column headers are clickable and toggle the sort, and every column can be resized by dragging the splitter on its right edge — see [Resizable columns](#resizable-columns). |
+| `List` | Compact icon + name entries flowing top-to-bottom into columns (horizontal scrolling). The column width is draggable — see [Resizable columns](#resizable-columns). |
 | `ThumbnailsSmall` / `ThumbnailsMedium` / `ThumbnailsBig` / `ThumbnailsMaximized` | Thumbnail grids with growing tile sizes. Images and SVGs show their real bitmap (via the shared `UCImage` cache); images larger than the tile are scaled down to fit, while images already smaller than the tile keep their original size (centered) instead of being upscaled. Other files draw a category-colored glyph with their extension. Thumbnails are decoded **asynchronously** on background worker threads: the folder page appears immediately (each image tile shows the generic glyph first) and tiles fill in as their decode completes, so opening a folder full of photos never blocks the window. Decoding is **viewport-driven**: only visible tiles plus a prefetch band of one screen ahead in scroll direction are ever decoded, visible tiles always decode first, and queued decodes that scroll out of range are dropped. With `SetCompressedThumbnails(true)` the finished thumbnails are additionally held QOI-compressed in memory (2–6× smaller, bit-exact) and decompressed on demand into a small hot cache while drawn; `GetThumbnailCacheStats()` exposes the footprint for comparison. Tiles are square by the selected edge, so a row of landscape photos would leave a wide empty band above and below each image; by default (`SetShrinkThumbnailRows(true)`) a grid row whose thumbnails **all** display shorter than the tile edge is shortened to the tallest image actually shown in it, while any row that contains a full-height item (a folder, a glyph file, a vector/portrait/square or not-yet-measured image) keeps the full edge. The natural image sizes are read from file headers (no decode) and cached, so different grid rows can have different heights. Set it to `false` for a strict square grid. |
-| `BarSize` | One row per entry with a bar proportional to its size (directories use a recursive size computed asynchronously on a background worker, capped for safety; bars reflow as the walks complete). |
+| `BarSize` | One row per entry with a bar proportional to its size (directories use a recursive size computed asynchronously on a background worker, capped for safety; bars reflow as the walks complete). The name column and the size label column are draggable — see [Resizable columns](#resizable-columns). |
 | `TreeMap` | Squarified treemap weighted by entry size, colored by file category. |
 | `GourceTree` | Force-directed tree (Gource style) — reserved, shows a placeholder until implemented. |
 | `View3D` | 3D view — reserved, shows a placeholder until implemented. |
@@ -11624,6 +11624,57 @@ Fields: `Name`, `Size`, `Type`, `ModifiedDate`, `CreatedDate`. Directories alway
 list before files. In the Details view a click on a sortable column header
 selects that field (a second click flips the direction) and the header shows a
 ▲ / ▼ indicator. `onSortChanged(field, ascending)` fires on every change.
+
+## Resizable columns
+
+The three column-based views carry draggable splitters between their columns.
+They are `UltraCanvasSplitPane` dividers in look and feel — the style is a
+`SplitPaneStyle` (`FilerStyle::columnSplitter`), the hovered and dragged
+divider highlight the same way, the cursor turns into the `SizeWE` resize
+cursor, and a drag re-splits the two neighbouring columns instead of moving the
+whole table. They are painted by the widget itself (like the rows, the hover
+icon menu and the scrollbar) rather than being child elements, so a folder with
+thousands of entries stays as cheap as before.
+
+| View | Splitters | Dragging one |
+|---|---|---|
+| `Details` | On the right edge of every column, inside the header strip (the rows stay fully clickable). A guide line follows the drag down the entries. | Moves width between that column and the one after it, so the table keeps spanning the widget. The Name column is the flexible one: it absorbs whatever the others leave, so dragging the first splitter widens or narrows the name. |
+| `List` | In every gap between the flowing columns, full height. | Re-widths **all** columns (the list columns are uniform) and reflows the entries. |
+| `BarSize` | Between the name column and the bar, and between the bar and the size label, full height. | Resizes the name / label column; the bar takes what is left between them. |
+
+Widths survive rescans, sorting and view switches, and can be driven from code
+— e.g. to restore a layout the application saved:
+
+```cpp
+filer->SetDetailsColumnWidth(FilerDetailsColumn::Size, 110);
+filer->SetDetailsColumnWidth(FilerDetailsColumn::Info, 200);
+int nameWidth = filer->GetDetailsColumnWidth(FilerDetailsColumn::Name);
+filer->ResetDetailsColumnWidths();       // back to the built-in widths
+
+filer->SetListColumnWidth(260);          // == FilerStyle::listColumnWidth
+filer->SetBarSizeNameColumnWidth(180);
+filer->SetBarSizeValueColumnWidth(0);    // 0 = auto (fits the widest size)
+
+filer->onColumnWidthsChanged = [] { /* persist the layout */ };
+filer->SetColumnResizeEnabled(false);    // fixed columns
+```
+
+`FilerDetailsColumn` names the Details columns left to right: `Name`, `Size`,
+`Type`, `ModifiedDate`, `CreatedDate`, `Attributes`, `Info`. Columns cannot be
+dragged below a usable minimum (44 px, 120 px for the name).
+`onColumnWidthsChanged` fires when a drag ends and on every programmatic change.
+
+## Name tooltips
+
+Names that do not fit the space they are drawn in are ellipsized; hovering such
+a name pops a tooltip with the full name (`SetNameTooltipsEnabled`, default on).
+It applies to every view — the Name column in Details, the rows in List and
+BarSize, the captions in the thumbnail grids, and treemap cells too small to
+show any caption at all. Names that fit are not repeated in a tooltip.
+
+The hover icon-menu buttons keep their own action tooltips and win wherever the
+two overlap, so in the Details view the name column describes the file while the
+icon strip — which sits over the columns to its right — describes its buttons.
 
 ## Context menu
 
@@ -11813,6 +11864,7 @@ their compression factor in the Info column.
 | `onSelectionChanged(entries)` | Selection changed |
 | `onViewTypeChanged(viewType)` | View switched (API or Display > Type) |
 | `onSortChanged(field, ascending)` | Sort changed (API, menu or header click) |
+| `onColumnWidthsChanged()` | A column splitter drag ended, or a width was set from code |
 | `confirmDelete(entries) -> bool` | Before deleting — return false to abort |
 | `infoProvider(entry) -> string` | Per entry at scan time (e.g. media duration) |
 | `onShare / onPrint / onAttributes / onAccess (entries)` | Their menu items |
@@ -11825,7 +11877,11 @@ their compression factor in the Info column.
 
 `SetStyle(FilerStyle)` controls colors (background, selection, hover, bars,
 grid lines, icon-menu), fonts, row heights, thumbnail tile sizes and paddings —
-see the `FilerStyle` struct in `UltraCanvasFilerWidget.h`.
+see the `FilerStyle` struct in `UltraCanvasFilerWidget.h`. The column splitters
+are styled through `FilerStyle::columnSplitter`, a `SplitPaneStyle`: thickness,
+the idle / hover / drag colors, the extra grab margin around the painted strip
+and `showSplitterBackground` (off paints no divider while the drag handle stays
+live).
 
 ## Demo
 
