@@ -698,6 +698,205 @@ refunds - derives -> card_payments
         return tab;
     }
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB 7 — ReqIF import & overlays  (phase 3)
+// A specification imported from ReqIF, wrapped in a «package» grouping region,
+// with copy/suspect links, a relationship rationale note, status badges, block
+// port nubs, and the minimap + controls overlays.
+// ─────────────────────────────────────────────────────────────────────────────
+    static std::shared_ptr<UltraCanvasContainer> MakeReqIfTab(
+            std::shared_ptr<UltraCanvasLabel> statusLabel) {
+        auto tab = std::make_shared<UltraCanvasContainer>("ReqIfTab", 0, 0, 1020, 700);
+
+        auto desc = std::make_shared<UltraCanvasLabel>("ReqIfDesc", 10, 8, 990, 22);
+        desc->SetText("Imported from ReqIF XML, then annotated: package region, «copy» with a "
+                      "suspect badge, relationship rationale, status chips, block ports.");
+        desc->SetFontSize(11);
+        tab->AddChild(desc);
+
+        auto diagram = CreateRequirementDiagram("ReqIfDiagram", 10, 66, 990, 622);
+        diagram->SetPalette(RequirementPaletteKind::Professional);
+        diagram->SetNodeWidthRange(150.0, 220.0);
+
+        static const char* kReqIfSource = R"(<?xml version="1.0" encoding="UTF-8"?>
+<REQ-IF>
+  <CORE-CONTENT><REQ-IF-CONTENT>
+    <SPEC-TYPES>
+      <SPEC-OBJECT-TYPE IDENTIFIER="ST-1" LONG-NAME="Requirement">
+        <SPEC-ATTRIBUTES>
+          <ATTRIBUTE-DEFINITION-STRING IDENTIFIER="AD-ID"   LONG-NAME="ReqIF.ForeignID"/>
+          <ATTRIBUTE-DEFINITION-STRING IDENTIFIER="AD-NAME" LONG-NAME="ReqIF.Name"/>
+          <ATTRIBUTE-DEFINITION-XHTML  IDENTIFIER="AD-TEXT" LONG-NAME="ReqIF.Text"/>
+          <ATTRIBUTE-DEFINITION-STRING IDENTIFIER="AD-RISK" LONG-NAME="Risk"/>
+          <ATTRIBUTE-DEFINITION-STRING IDENTIFIER="AD-STAT" LONG-NAME="Status"/>
+        </SPEC-ATTRIBUTES>
+      </SPEC-OBJECT-TYPE>
+    </SPEC-TYPES>
+    <SPEC-OBJECTS>
+      <SPEC-OBJECT IDENTIFIER="SO-SYS"><VALUES>
+        <ATTRIBUTE-VALUE-STRING THE-VALUE="SYS-1"><DEFINITION>
+          <ATTRIBUTE-DEFINITION-STRING-REF>AD-ID</ATTRIBUTE-DEFINITION-STRING-REF></DEFINITION>
+        </ATTRIBUTE-VALUE-STRING>
+        <ATTRIBUTE-VALUE-STRING THE-VALUE="Landing Gear"><DEFINITION>
+          <ATTRIBUTE-DEFINITION-STRING-REF>AD-NAME</ATTRIBUTE-DEFINITION-STRING-REF></DEFINITION>
+        </ATTRIBUTE-VALUE-STRING>
+        <ATTRIBUTE-VALUE-XHTML><DEFINITION>
+          <ATTRIBUTE-DEFINITION-XHTML-REF>AD-TEXT</ATTRIBUTE-DEFINITION-XHTML-REF></DEFINITION>
+          <THE-VALUE><xhtml:div>The landing gear shall extend and retract on command.</xhtml:div></THE-VALUE>
+        </ATTRIBUTE-VALUE-XHTML>
+        <ATTRIBUTE-VALUE-STRING THE-VALUE="Approved"><DEFINITION>
+          <ATTRIBUTE-DEFINITION-STRING-REF>AD-STAT</ATTRIBUTE-DEFINITION-STRING-REF></DEFINITION>
+        </ATTRIBUTE-VALUE-STRING>
+      </VALUES></SPEC-OBJECT>
+      <SPEC-OBJECT IDENTIFIER="SO-EXT"><VALUES>
+        <ATTRIBUTE-VALUE-STRING THE-VALUE="SYS-1.1"><DEFINITION>
+          <ATTRIBUTE-DEFINITION-STRING-REF>AD-ID</ATTRIBUTE-DEFINITION-STRING-REF></DEFINITION>
+        </ATTRIBUTE-VALUE-STRING>
+        <ATTRIBUTE-VALUE-STRING THE-VALUE="Extension Time"><DEFINITION>
+          <ATTRIBUTE-DEFINITION-STRING-REF>AD-NAME</ATTRIBUTE-DEFINITION-STRING-REF></DEFINITION>
+        </ATTRIBUTE-VALUE-STRING>
+        <ATTRIBUTE-VALUE-XHTML><DEFINITION>
+          <ATTRIBUTE-DEFINITION-XHTML-REF>AD-TEXT</ATTRIBUTE-DEFINITION-XHTML-REF></DEFINITION>
+          <THE-VALUE><xhtml:div>Extension shall complete within 12 s at any airspeed below V_LO.</xhtml:div></THE-VALUE>
+        </ATTRIBUTE-VALUE-XHTML>
+        <ATTRIBUTE-VALUE-STRING THE-VALUE="High"><DEFINITION>
+          <ATTRIBUTE-DEFINITION-STRING-REF>AD-RISK</ATTRIBUTE-DEFINITION-STRING-REF></DEFINITION>
+        </ATTRIBUTE-VALUE-STRING>
+        <ATTRIBUTE-VALUE-STRING THE-VALUE="Approved"><DEFINITION>
+          <ATTRIBUTE-DEFINITION-STRING-REF>AD-STAT</ATTRIBUTE-DEFINITION-STRING-REF></DEFINITION>
+        </ATTRIBUTE-VALUE-STRING>
+      </VALUES></SPEC-OBJECT>
+      <SPEC-OBJECT IDENTIFIER="SO-IND"><VALUES>
+        <ATTRIBUTE-VALUE-STRING THE-VALUE="SYS-1.2"><DEFINITION>
+          <ATTRIBUTE-DEFINITION-STRING-REF>AD-ID</ATTRIBUTE-DEFINITION-STRING-REF></DEFINITION>
+        </ATTRIBUTE-VALUE-STRING>
+        <ATTRIBUTE-VALUE-STRING THE-VALUE="Cockpit Indication"><DEFINITION>
+          <ATTRIBUTE-DEFINITION-STRING-REF>AD-NAME</ATTRIBUTE-DEFINITION-STRING-REF></DEFINITION>
+        </ATTRIBUTE-VALUE-STRING>
+        <ATTRIBUTE-VALUE-XHTML><DEFINITION>
+          <ATTRIBUTE-DEFINITION-XHTML-REF>AD-TEXT</ATTRIBUTE-DEFINITION-XHTML-REF></DEFINITION>
+          <THE-VALUE><xhtml:div>Gear position shall be indicated in the cockpit within 1 s.</xhtml:div></THE-VALUE>
+        </ATTRIBUTE-VALUE-XHTML>
+        <ATTRIBUTE-VALUE-STRING THE-VALUE="Proposed"><DEFINITION>
+          <ATTRIBUTE-DEFINITION-STRING-REF>AD-STAT</ATTRIBUTE-DEFINITION-STRING-REF></DEFINITION>
+        </ATTRIBUTE-VALUE-STRING>
+      </VALUES></SPEC-OBJECT>
+    </SPEC-OBJECTS>
+    <SPECIFICATIONS><SPECIFICATION IDENTIFIER="SPEC-1"><CHILDREN>
+      <SPEC-HIERARCHY IDENTIFIER="SH-1">
+        <OBJECT><SPEC-OBJECT-REF>SO-SYS</SPEC-OBJECT-REF></OBJECT>
+        <CHILDREN>
+          <SPEC-HIERARCHY IDENTIFIER="SH-2">
+            <OBJECT><SPEC-OBJECT-REF>SO-EXT</SPEC-OBJECT-REF></OBJECT>
+          </SPEC-HIERARCHY>
+          <SPEC-HIERARCHY IDENTIFIER="SH-3">
+            <OBJECT><SPEC-OBJECT-REF>SO-IND</SPEC-OBJECT-REF></OBJECT>
+          </SPEC-HIERARCHY>
+        </CHILDREN>
+      </SPEC-HIERARCHY>
+    </CHILDREN></SPECIFICATION></SPECIFICATIONS>
+  </REQ-IF-CONTENT></CORE-CONTENT>
+</REQ-IF>)";
+
+        std::string error;
+        const bool imported = diagram->FromReqIf(kReqIfSource, &error);
+
+        if (imported) {
+            // Wrap the imported tree in a package so the grouping region has
+            // something to bound.
+            diagram->AddNode(RequirementNodeKind::Package, "PKG", "LandingGearSpec");
+            diagram->AddContainment("PKG", "SO-SYS");
+
+            // A design element and a test case, with ports on the block.
+            diagram->AddNode(RequirementNodeKind::Block, "GEARCTL", "Gear Controller");
+            diagram->AddNode(RequirementNodeKind::TestCase, "TC-EXT", "Extension Timing Test");
+            diagram->SetNodePortCount("GEARCTL", 3);
+
+            const std::string satisfyId =
+                diagram->AddRelation(RequirementRelationKind::Satisfy, "GEARCTL", "SO-EXT");
+            diagram->AddRelation(RequirementRelationKind::Verify, "TC-EXT", "SO-EXT");
+            // A second relation between the same pair, to show the fan-out.
+            diagram->AddRelation(RequirementRelationKind::Trace, "GEARCTL", "SO-EXT");
+
+            diagram->SetRelationRationale(satisfyId,
+                "Hydraulic actuation chosen over electric after the weight trade study TR-114.");
+            diagram->SetRationaleNotesVisible(true);
+
+            // A copy of the extension requirement, then an edit to its master
+            // so the suspect badge has something to report.
+            RequirementNode copy("SYS-1.1-COPY", "Extension Time (copy)");
+            diagram->AddNode(copy);
+            diagram->AddRelation(RequirementRelationKind::Copy, "SYS-1.1-COPY", "SO-EXT");
+            diagram->SyncCopies();
+            if (RequirementNode* master = diagram->GetNode("SO-EXT")) {
+                master->text = "Extension shall complete within 10 s at any airspeed below V_LO.";
+            }
+
+            diagram->SetStatusColor("Approved", Color(206, 236, 214));
+            diagram->SetStatusColor("Proposed", Color(250, 238, 200));
+            diagram->SetPackageRegionsVisible(true);
+            diagram->SetCoverageOverlayVisible(true);
+            diagram->SetLevelGap(78.0);
+            diagram->SetSiblingGap(26.0);
+            diagram->RunLayout();
+        } else {
+            diagram->SetTitle("ReqIF import failed", error);
+        }
+
+        diagram->SetMinimapVisible(true);
+        diagram->SetControlsVisible(true);
+
+        WireStatus(diagram, statusLabel);
+        auto weakStatus = std::weak_ptr<UltraCanvasLabel>(statusLabel);
+        auto weakDiagram = std::weak_ptr<UltraCanvasRequirementDiagram>(diagram);
+
+        struct ActionButton { const char* id; const char* label; int action; };
+        const ActionButton buttons[] = {
+            {"ReqIfSearch", "Find \"cockpit\"", 0},
+            {"ReqIfSync",   "Sync copies",      1},
+            {"ReqIfMatrix", "Trace matrix CSV", 2},
+            {"ReqIfForce",  "Force layout",     3}
+        };
+        int buttonX = 10;
+        for (const auto& button : buttons) {
+            auto widget = std::make_shared<UltraCanvasButton>(button.id, buttonX, 34, 150, 26,
+                                                              button.label);
+            const int action = button.action;
+            widget->SetOnClick([weakDiagram, weakStatus, action]() {
+                auto req = weakDiagram.lock();
+                auto status = weakStatus.lock();
+                if (!req || !status) return;
+
+                if (action == 0) {
+                    const std::string found = req->FindAndFocus("cockpit");
+                    status->SetText(found.empty() ? "No match for \"cockpit\"."
+                                                  : "Focused " + found);
+                } else if (action == 1) {
+                    const int synced = req->SyncCopies();
+                    status->SetText("Re-synced " + std::to_string(synced) +
+                                    " copy/copies.\nSuspect badges cleared.");
+                } else if (action == 2) {
+                    const std::string csv = req->ToTraceMatrixCsv();
+                    std::string preview = csv.substr(0, 480);
+                    if (csv.size() > preview.size()) preview += "\n...";
+                    status->SetText("ToTraceMatrixCsv() — " + std::to_string(csv.size()) +
+                                    " chars:\n\n" + preview);
+                } else {
+                    req->SetLayoutMode(RequirementLayoutMode::ForceDirected);
+                    req->RunLayout();
+                    status->SetText("Force-directed layout applied.\n"
+                                    "Every visible relation acts as a spring.");
+                }
+            });
+            tab->AddChild(widget);
+            buttonX += 158;
+        }
+
+        tab->AddChild(diagram);
+        return tab;
+    }
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SCENE
 // ─────────────────────────────────────────────────────────────────────────────
@@ -758,6 +957,7 @@ refunds - derives -> card_payments
         tabs->AddTab("Smart Home traceability",    MakeSmartHomeTab(statusLabel));
         tabs->AddTab("Coverage + compartments",    MakeCoverageTab(statusLabel));
         tabs->AddTab("Mermaid import + editing",   MakeMermaidTab(statusLabel));
+        tabs->AddTab("ReqIF + overlays",           MakeReqIfTab(statusLabel));
 
         main->AddChild(tabs);
         tabs->layoutItem.SetGridRowColSimplified(2, 0, 1, 2);

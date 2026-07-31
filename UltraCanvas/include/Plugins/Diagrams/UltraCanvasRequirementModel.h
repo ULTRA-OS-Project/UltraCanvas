@@ -1,7 +1,7 @@
 // include/Plugins/Diagrams/UltraCanvasRequirementModel.h
 // SysML requirement model — the data, semantics, traceability analysis and
 // text interchange behind UltraCanvasRequirementDiagram
-// Version: 1.1.0
+// Version: 1.2.0
 // Last Modified: 2026-07-31
 // Author: UltraCanvas Framework
 //
@@ -317,6 +317,15 @@ struct RequirementNode {
     bool hasExplicitWidth = false;
     bool pinned = false;   // excluded from auto-layout
 
+    // ----- Copy semantics -----
+    // A slave requirement (the source of a Copy relation) mirrors its master's
+    // id and text and is read-only. The snapshot records what the master said
+    // at the last sync, so a later edit to the master makes the copy suspect.
+    bool isCopy = false;              // set by SyncCopies()
+    bool suspect = false;             // master changed since the last sync
+    std::string copySnapshotId;
+    std::string copySnapshotText;
+
     // ----- state -----
     bool isSelected = false;
     bool isHovered = false;
@@ -417,7 +426,8 @@ struct RequirementWarning {
         MultipleParents,
         DuplicateRelation,
         IllegalEndpointKind,   // e.g. a block "verifying" a requirement
-        DirectionCorrected     // a backwards satisfy/verify/refine was flipped
+        DirectionCorrected,    // a backwards satisfy/verify/refine was flipped
+        SuspectCopy            // a copy's master changed since the last sync
     };
     Kind kind = Kind::DuplicateNodeId;
     std::string nodeId;
@@ -458,6 +468,35 @@ struct RequirementCsvSchema {
     char delimiter = ',';
 
     static RequirementCsvSchema Default() { return RequirementCsvSchema(); }
+};
+
+// =============================================================================
+// TRACEABILITY MATRIX
+// =============================================================================
+
+// The requirement table real projects review: one row per requirement, one
+// column per element that satisfies / verifies / refines something, and the
+// relationship kinds in the cells. Produced as data so it can be rendered by
+// UltraCanvasTable, exported as CSV, or inspected programmatically.
+struct RequirementTraceMatrix {
+    std::vector<std::string> rowIds;      // requirements, in model order
+    std::vector<std::string> columnIds;   // linking elements, in model order
+    // cells[row][column] - empty when the pair is unrelated.
+    std::vector<std::vector<std::vector<RequirementRelationKind>>> cells;
+
+    size_t RowCount() const { return rowIds.size(); }
+    size_t ColumnCount() const { return columnIds.size(); }
+    const std::vector<RequirementRelationKind>& Cell(size_t row, size_t column) const;
+
+private:
+    static const std::vector<RequirementRelationKind> emptyCell;
+};
+
+// A search hit, ranked so exact id matches come before text matches.
+struct RequirementSearchHit {
+    std::string nodeId;
+    enum class Field { Id, Name, Text, Property } field = Field::Id;
+    bool exact = false;
 };
 
 // =============================================================================
@@ -583,6 +622,39 @@ public:
                                          int depth = 0) const;
 
     // =========================================================================
+    // COPY SEMANTICS
+    // =========================================================================
+
+    // A Copy relation means `source` is a read-only copy of `target`. Pulls
+    // each master's id and text into its slaves, marks the slaves isCopy, and
+    // records the snapshot used. Returns the number of slaves updated.
+    int SyncCopies();
+    // Slaves whose master's id or text changed since the last SyncCopies().
+    std::vector<std::string> GetSuspectCopies() const;
+    // Re-syncs one slave and clears its suspect flag; false when `nodeId` is
+    // not the source of a Copy relation.
+    bool RefreshCopy(const std::string& nodeId);
+    // Recomputes the suspect flags without changing any value. Called
+    // automatically by Validate().
+    void RefreshSuspectFlags();
+
+    // =========================================================================
+    // SEARCH
+    // =========================================================================
+
+    // Case-insensitive substring search over id, externalId, name, text and
+    // the custom properties. Exact id/name matches rank first.
+    std::vector<RequirementSearchHit> FindNodes(const std::string& query) const;
+
+    // =========================================================================
+    // TRACEABILITY MATRIX
+    // =========================================================================
+
+    RequirementTraceMatrix BuildTraceMatrix() const;
+    std::string ToTraceMatrixCsv(const RequirementTraceMatrix& matrix,
+                                 char delimiter = ',') const;
+
+    // =========================================================================
     // TEXT INTERCHANGE
     // =========================================================================
 
@@ -606,6 +678,18 @@ public:
     // delimiters/newlines-in-quotes. Exposed for callers doing their own
     // column mapping.
     static std::vector<std::string> ParseCsvLine(const std::string& line, char delimiter);
+
+    // ReqIF (OMG requirements interchange format) import. Reads SPEC-OBJECTS
+    // and the SPEC-HIERARCHY nesting of every SPECIFICATION, mapping the
+    // standard ReqIF.ForeignID / ReqIF.Name / ReqIF.Text attribute definitions
+    // onto the model and everything else onto custom properties.
+    //
+    // This is a deliberate SUBSET: requirements, their attributes and the
+    // hierarchy. SPEC-RELATIONS, relation groups, datatype enumerations,
+    // embedded objects and tool extensions are not read - a full ReqIF
+    // implementation is a project of its own. `outError` reports what stopped
+    // the parse; a file with no SPEC-OBJECTS is an error, not an empty model.
+    bool FromReqIf(const std::string& xml, std::string* outError = nullptr);
 
     // =========================================================================
     // FIELD RESOLUTION

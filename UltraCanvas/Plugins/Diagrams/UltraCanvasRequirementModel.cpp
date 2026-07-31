@@ -1,6 +1,6 @@
 // Plugins/Diagrams/UltraCanvasRequirementModel.cpp
 // SysML requirement model implementation
-// Version: 1.1.0
+// Version: 1.2.0
 // Last Modified: 2026-07-31
 // Author: UltraCanvas Framework
 //
@@ -10,6 +10,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
+#include <functional>
 #include <sstream>
 
 namespace UltraCanvas {
@@ -797,6 +799,16 @@ std::vector<RequirementWarning> RequirementModel::Validate() const {
         }
     }
 
+    // Copy staleness is part of model integrity, not a separate query.
+    const_cast<RequirementModel*>(this)->RefreshSuspectFlags();
+    for (const auto& id : GetSuspectCopies()) {
+        RequirementWarning w;
+        w.kind = RequirementWarning::Kind::SuspectCopy;
+        w.nodeId = id;
+        w.message = "'" + id + "' is a copy whose master changed since the last sync";
+        warnings.push_back(w);
+    }
+
     const std::vector<std::string> cycle = GetContainmentCycleNodes();
     if (!cycle.empty()) {
         RequirementWarning w;
@@ -1443,6 +1455,648 @@ bool RequirementModel::FromCsv(const std::string& text, const RequirementCsvSche
     // Containment is wired after every row exists, so forward references work.
     for (const auto& [child, parent] : parentage) {
         if (HasNode(parent)) AddContainment(parent, child);
+    }
+    return true;
+}
+
+
+// =============================================================================
+// COPY SEMANTICS
+// =============================================================================
+//
+// A Copy relation reads "source is a read-only copy of target": the slave
+// mirrors the master's id and text. The snapshot stored on the slave is what
+// the master said at the last sync, so a later edit to the master is
+// detectable without watching for writes.
+
+int RequirementModel::SyncCopies() {
+    int updated = 0;
+    for (const auto& r : relations) {
+        if (r.kind != RequirementRelationKind::Copy) continue;
+        RequirementNode* slave = GetNode(r.sourceId);
+        const RequirementNode* master = GetNode(r.targetId);
+        if (!slave || !master) continue;
+
+        slave->isCopy = true;
+        slave->externalId = master->DisplayId();
+        slave->text = master->text;
+        slave->copySnapshotId = master->DisplayId();
+        slave->copySnapshotText = master->text;
+        slave->suspect = false;
+        updated++;
+    }
+    return updated;
+}
+
+void RequirementModel::RefreshSuspectFlags() {
+    for (const auto& r : relations) {
+        if (r.kind != RequirementRelationKind::Copy) continue;
+        RequirementNode* slave = GetNode(r.sourceId);
+        const RequirementNode* master = GetNode(r.targetId);
+        if (!slave || !master) continue;
+        // Never synced yet: not suspect, just uninitialised.
+        if (!slave->isCopy) continue;
+        slave->suspect = (master->DisplayId() != slave->copySnapshotId ||
+                          master->text != slave->copySnapshotText);
+    }
+}
+
+std::vector<std::string> RequirementModel::GetSuspectCopies() const {
+    std::vector<std::string> result;
+    for (const auto& r : relations) {
+        if (r.kind != RequirementRelationKind::Copy) continue;
+        const RequirementNode* slave = GetNode(r.sourceId);
+        const RequirementNode* master = GetNode(r.targetId);
+        if (!slave || !master || !slave->isCopy) continue;
+        if (master->DisplayId() != slave->copySnapshotId ||
+            master->text != slave->copySnapshotText) {
+            if (std::find(result.begin(), result.end(), slave->id) == result.end()) {
+                result.push_back(slave->id);
+            }
+        }
+    }
+    return result;
+}
+
+bool RequirementModel::RefreshCopy(const std::string& nodeId) {
+    for (const auto& r : relations) {
+        if (r.kind != RequirementRelationKind::Copy || r.sourceId != nodeId) continue;
+        RequirementNode* slave = GetNode(r.sourceId);
+        const RequirementNode* master = GetNode(r.targetId);
+        if (!slave || !master) return false;
+
+        slave->isCopy = true;
+        slave->externalId = master->DisplayId();
+        slave->text = master->text;
+        slave->copySnapshotId = master->DisplayId();
+        slave->copySnapshotText = master->text;
+        slave->suspect = false;
+        return true;
+    }
+    return false;
+}
+
+// =============================================================================
+// SEARCH
+// =============================================================================
+
+std::vector<RequirementSearchHit> RequirementModel::FindNodes(
+        const std::string& query) const {
+    std::vector<RequirementSearchHit> hits;
+    const std::string needle = ToLowerCopy(Trim(query));
+    if (needle.empty()) return hits;
+
+    auto contains = [&needle](const std::string& haystack) {
+        return ToLowerCopy(haystack).find(needle) != std::string::npos;
+    };
+    auto equals = [&needle](const std::string& value) {
+        return ToLowerCopy(value) == needle;
+    };
+
+    // Collected per field so the ranking below is a simple concatenation.
+    std::vector<RequirementSearchHit> exactId, idHits, nameHits, textHits, propertyHits;
+
+    for (const auto& id : nodeOrder) {
+        const RequirementNode* node = GetNode(id);
+        if (!node) continue;
+
+        if (equals(node->id) || equals(node->externalId) || equals(node->name)) {
+            exactId.push_back({id, RequirementSearchHit::Field::Id, true});
+            continue;
+        }
+        if (contains(node->id) || contains(node->externalId)) {
+            idHits.push_back({id, RequirementSearchHit::Field::Id, false});
+            continue;
+        }
+        if (contains(node->name)) {
+            nameHits.push_back({id, RequirementSearchHit::Field::Name, false});
+            continue;
+        }
+        if (contains(node->text)) {
+            textHits.push_back({id, RequirementSearchHit::Field::Text, false});
+            continue;
+        }
+        bool inProperty = contains(node->source) || contains(node->status) ||
+                          contains(node->owner) || contains(node->docRef) ||
+                          contains(node->stereotype);
+        if (!inProperty) {
+            for (const auto& [key, value] : node->customProperties) {
+                if (contains(key) || contains(value)) { inProperty = true; break; }
+            }
+        }
+        if (inProperty) {
+            propertyHits.push_back({id, RequirementSearchHit::Field::Property, false});
+        }
+    }
+
+    hits.insert(hits.end(), exactId.begin(), exactId.end());
+    hits.insert(hits.end(), idHits.begin(), idHits.end());
+    hits.insert(hits.end(), nameHits.begin(), nameHits.end());
+    hits.insert(hits.end(), textHits.begin(), textHits.end());
+    hits.insert(hits.end(), propertyHits.begin(), propertyHits.end());
+    return hits;
+}
+
+// =============================================================================
+// TRACEABILITY MATRIX
+// =============================================================================
+
+const std::vector<RequirementRelationKind> RequirementTraceMatrix::emptyCell;
+
+const std::vector<RequirementRelationKind>& RequirementTraceMatrix::Cell(
+        size_t row, size_t column) const {
+    if (row >= cells.size() || column >= cells[row].size()) return emptyCell;
+    return cells[row][column];
+}
+
+RequirementTraceMatrix RequirementModel::BuildTraceMatrix() const {
+    RequirementTraceMatrix matrix;
+
+    // Rows: every requirement. Columns: every element that links TO a
+    // requirement through satisfy / verify / refine / trace. A requirement
+    // that derives from another appears as a column too, so the matrix shows
+    // requirement-to-requirement derivation alongside the design coverage.
+    static const RequirementRelationKind kMatrixKinds[] = {
+        RequirementRelationKind::Satisfy,
+        RequirementRelationKind::Verify,
+        RequirementRelationKind::Refine,
+        RequirementRelationKind::Trace,
+        RequirementRelationKind::DeriveReqt,
+        RequirementRelationKind::Copy
+    };
+    auto isMatrixKind = [](RequirementRelationKind kind) {
+        for (RequirementRelationKind k : kMatrixKinds) {
+            if (k == kind) return true;
+        }
+        return false;
+    };
+
+    for (const auto& id : nodeOrder) {
+        const RequirementNode* node = GetNode(id);
+        if (node && node->kind == RequirementNodeKind::Requirement) {
+            matrix.rowIds.push_back(id);
+        }
+    }
+    std::set<std::string> columnSet;
+    for (const auto& r : relations) {
+        if (!isMatrixKind(r.kind)) continue;
+        const RequirementNode* target = GetNode(r.targetId);
+        if (!target || target->kind != RequirementNodeKind::Requirement) continue;
+        columnSet.insert(r.sourceId);
+    }
+    for (const auto& id : nodeOrder) {
+        if (columnSet.count(id)) matrix.columnIds.push_back(id);
+    }
+
+    matrix.cells.assign(matrix.rowIds.size(),
+                        std::vector<std::vector<RequirementRelationKind>>(
+                            matrix.columnIds.size()));
+
+    std::map<std::string, size_t> rowIndex, columnIndex;
+    for (size_t i = 0; i < matrix.rowIds.size(); ++i) rowIndex[matrix.rowIds[i]] = i;
+    for (size_t i = 0; i < matrix.columnIds.size(); ++i) columnIndex[matrix.columnIds[i]] = i;
+
+    for (const auto& r : relations) {
+        if (!isMatrixKind(r.kind)) continue;
+        auto rowIt = rowIndex.find(r.targetId);
+        auto columnIt = columnIndex.find(r.sourceId);
+        if (rowIt == rowIndex.end() || columnIt == columnIndex.end()) continue;
+
+        auto& cell = matrix.cells[rowIt->second][columnIt->second];
+        if (std::find(cell.begin(), cell.end(), r.kind) == cell.end()) {
+            cell.push_back(r.kind);
+        }
+    }
+    return matrix;
+}
+
+std::string RequirementModel::ToTraceMatrixCsv(const RequirementTraceMatrix& matrix,
+                                                char delimiter) const {
+    std::ostringstream out;
+
+    out << CsvQuote("requirement", delimiter) << delimiter
+        << CsvQuote("name", delimiter);
+    for (const auto& columnId : matrix.columnIds) {
+        const RequirementNode* node = GetNode(columnId);
+        out << delimiter << CsvQuote(node ? node->name : columnId, delimiter);
+    }
+    out << "\n";
+
+    for (size_t row = 0; row < matrix.rowIds.size(); ++row) {
+        const RequirementNode* node = GetNode(matrix.rowIds[row]);
+        out << CsvQuote(node ? node->DisplayId() : matrix.rowIds[row], delimiter)
+            << delimiter << CsvQuote(node ? node->name : std::string(), delimiter);
+
+        for (size_t column = 0; column < matrix.columnIds.size(); ++column) {
+            const auto& kinds = matrix.Cell(row, column);
+            std::string cell;
+            for (const auto& kind : kinds) {
+                if (!cell.empty()) cell += "+";
+                cell += RequirementRelationKindToString(kind);
+            }
+            out << delimiter << CsvQuote(cell, delimiter);
+        }
+        out << "\n";
+    }
+    return out.str();
+}
+
+// =============================================================================
+// MINIMAL XML READER (for the ReqIF subset)
+// =============================================================================
+//
+// A tiny read-only DOM. Keeping it here rather than pulling in tinyxml2 is
+// what lets the model stay dependency-free, so the unit tests compile this one
+// source and nothing else. It handles what ReqIF files actually contain:
+// elements, attributes, text, CDATA, comments, the XML declaration, entity
+// references and self-closing tags. It is NOT a validating parser and has no
+// namespace resolution beyond stripping the prefix.
+
+namespace {
+
+struct XmlNode {
+    std::string name;                              // local name, prefix stripped
+    std::map<std::string, std::string> attributes;
+    std::string text;                              // direct character data
+    std::vector<XmlNode> children;
+
+    const XmlNode* FirstChild(const std::string& childName) const {
+        for (const auto& child : children) {
+            if (child.name == childName) return &child;
+        }
+        return nullptr;
+    }
+    std::string Attribute(const std::string& key) const {
+        auto it = attributes.find(key);
+        return it == attributes.end() ? std::string() : it->second;
+    }
+    // Concatenated text of this element and everything under it - how the
+    // XHTML payload of a ReqIF text attribute is read.
+    std::string DeepText() const {
+        std::string out = text;
+        for (const auto& child : children) {
+            const std::string childText = child.DeepText();
+            if (!childText.empty()) {
+                if (!out.empty() && out.back() != ' ') out += ' ';
+                out += childText;
+            }
+        }
+        return out;
+    }
+};
+
+std::string XmlDecodeEntities(const std::string& text) {
+    std::string out;
+    out.reserve(text.size());
+    for (size_t i = 0; i < text.size(); ++i) {
+        if (text[i] != '&') { out += text[i]; continue; }
+        const size_t end = text.find(';', i);
+        if (end == std::string::npos || end - i > 10) { out += text[i]; continue; }
+        const std::string entity = text.substr(i + 1, end - i - 1);
+        if (entity == "lt")        out += '<';
+        else if (entity == "gt")   out += '>';
+        else if (entity == "amp")  out += '&';
+        else if (entity == "quot") out += '"';
+        else if (entity == "apos") out += '\'';
+        else if (entity.size() > 1 && entity[0] == '#') {
+            const int code = (entity[1] == 'x' || entity[1] == 'X')
+                                 ? static_cast<int>(std::strtol(entity.c_str() + 2, nullptr, 16))
+                                 : std::atoi(entity.c_str() + 1);
+            if (code > 0 && code < 128) out += static_cast<char>(code);
+            else out += ' ';    // non-ASCII: keep the word spacing, drop the glyph
+        } else {
+            out += text.substr(i, end - i + 1);   // unknown entity: leave as written
+            i = end;
+            continue;
+        }
+        i = end;
+    }
+    return out;
+}
+
+std::string XmlLocalName(const std::string& qualified) {
+    const size_t colon = qualified.find(':');
+    return colon == std::string::npos ? qualified : qualified.substr(colon + 1);
+}
+
+class XmlParser {
+public:
+    explicit XmlParser(const std::string& source) : text(source) {}
+
+    // Parses the document and returns its root element.
+    bool Parse(XmlNode& outRoot, std::string& outError) {
+        SkipProlog();
+        if (position >= text.size()) { outError = "no root element"; return false; }
+        return ParseElement(outRoot, outError);
+    }
+
+private:
+    const std::string& text;
+    size_t position = 0;
+
+    void SkipSpace() {
+        while (position < text.size() &&
+               std::isspace(static_cast<unsigned char>(text[position]))) {
+            position++;
+        }
+    }
+
+    // XML declaration, doctype, comments and processing instructions.
+    void SkipProlog() {
+        for (;;) {
+            SkipSpace();
+            if (text.compare(position, 4, "<!--") == 0) {
+                const size_t end = text.find("-->", position);
+                position = (end == std::string::npos) ? text.size() : end + 3;
+            } else if (text.compare(position, 2, "<?") == 0) {
+                const size_t end = text.find("?>", position);
+                position = (end == std::string::npos) ? text.size() : end + 2;
+            } else if (text.compare(position, 9, "<!DOCTYPE") == 0) {
+                const size_t end = text.find('>', position);
+                position = (end == std::string::npos) ? text.size() : end + 1;
+            } else {
+                return;
+            }
+        }
+    }
+
+    bool ParseElement(XmlNode& node, std::string& outError) {
+        SkipProlog();
+        if (position >= text.size() || text[position] != '<') {
+            outError = "expected '<'";
+            return false;
+        }
+        position++;   // '<'
+
+        // ---- tag name ----
+        const size_t nameStart = position;
+        while (position < text.size() && text[position] != '>' && text[position] != '/' &&
+               !std::isspace(static_cast<unsigned char>(text[position]))) {
+            position++;
+        }
+        node.name = XmlLocalName(text.substr(nameStart, position - nameStart));
+        if (node.name.empty()) { outError = "empty tag name"; return false; }
+
+        // ---- attributes ----
+        for (;;) {
+            SkipSpace();
+            if (position >= text.size()) { outError = "unterminated tag"; return false; }
+            if (text[position] == '>') { position++; break; }
+            if (text[position] == '/') {
+                position++;
+                if (position < text.size() && text[position] == '>') position++;
+                return true;                     // self-closing
+            }
+            const size_t keyStart = position;
+            while (position < text.size() && text[position] != '=' &&
+                   text[position] != '>' && text[position] != '/' &&
+                   !std::isspace(static_cast<unsigned char>(text[position]))) {
+                position++;
+            }
+            const std::string key = XmlLocalName(text.substr(keyStart, position - keyStart));
+            SkipSpace();
+            if (position < text.size() && text[position] == '=') {
+                position++;
+                SkipSpace();
+                if (position < text.size() && (text[position] == '"' || text[position] == '\'')) {
+                    const char quote = text[position++];
+                    const size_t valueStart = position;
+                    while (position < text.size() && text[position] != quote) position++;
+                    node.attributes[key] =
+                        XmlDecodeEntities(text.substr(valueStart, position - valueStart));
+                    if (position < text.size()) position++;
+                }
+            } else if (!key.empty()) {
+                node.attributes[key] = "";
+            }
+        }
+
+        // ---- content ----
+        std::string collected;
+        for (;;) {
+            if (position >= text.size()) { outError = "unterminated element"; return false; }
+            if (text[position] == '<') {
+                if (text.compare(position, 4, "<!--") == 0) {
+                    const size_t end = text.find("-->", position);
+                    position = (end == std::string::npos) ? text.size() : end + 3;
+                    continue;
+                }
+                if (text.compare(position, 9, "<![CDATA[") == 0) {
+                    const size_t end = text.find("]]>", position);
+                    const size_t start = position + 9;
+                    collected += text.substr(start, (end == std::string::npos ? text.size() : end) - start);
+                    position = (end == std::string::npos) ? text.size() : end + 3;
+                    continue;
+                }
+                if (text.compare(position, 2, "</") == 0) {
+                    const size_t end = text.find('>', position);
+                    position = (end == std::string::npos) ? text.size() : end + 1;
+                    node.text = Trim(XmlDecodeEntities(collected));
+                    return true;
+                }
+                XmlNode child;
+                if (!ParseElement(child, outError)) return false;
+                node.children.push_back(std::move(child));
+                continue;
+            }
+            collected += text[position++];
+        }
+    }
+};
+
+// Which model field a ReqIF attribute definition maps onto, by its LONG-NAME.
+enum class ReqIfField { Ignore, ExternalId, Name, Text, Risk, VerifyMethod,
+                        Source, Status, Owner, Priority, Custom };
+
+ReqIfField ReqIfFieldForLongName(const std::string& longName) {
+    const std::string n = ToLowerCopy(longName);
+    if (n == "reqif.foreignid" || n == "id" || n == "identifier" ||
+        n == "reqif.chapternumber") return ReqIfField::ExternalId;
+    if (n == "reqif.name" || n == "reqif.chaptername" || n == "name" ||
+        n == "title" || n == "heading") return ReqIfField::Name;
+    if (n == "reqif.text" || n == "text" || n == "description" ||
+        n == "reqif.description") return ReqIfField::Text;
+    if (n == "risk") return ReqIfField::Risk;
+    if (n == "verifymethod" || n == "verification method" ||
+        n == "verification_method") return ReqIfField::VerifyMethod;
+    if (n == "source") return ReqIfField::Source;
+    if (n == "status" || n == "reqif.foreignstate") return ReqIfField::Status;
+    if (n == "owner" || n == "responsible") return ReqIfField::Owner;
+    if (n == "priority") return ReqIfField::Priority;
+    return ReqIfField::Custom;
+}
+
+// Depth-first search for every element with the given name.
+void XmlCollect(const XmlNode& node, const std::string& name,
+                std::vector<const XmlNode*>& out) {
+    if (node.name == name) out.push_back(&node);
+    for (const auto& child : node.children) XmlCollect(child, name, out);
+}
+
+}  // namespace
+
+// =============================================================================
+// REQIF IMPORT
+// =============================================================================
+
+bool RequirementModel::FromReqIf(const std::string& xml, std::string* outError) {
+    auto fail = [&outError](const std::string& message) {
+        if (outError) *outError = message;
+        return false;
+    };
+
+    XmlNode root;
+    std::string parseError;
+    XmlParser parser(xml);
+    if (!parser.Parse(root, parseError)) return fail("XML parse error: " + parseError);
+    if (root.name != "REQ-IF" && root.FirstChild("CORE-CONTENT") == nullptr) {
+        return fail("not a ReqIF document (no REQ-IF root)");
+    }
+
+    // ---- attribute definitions: IDENTIFIER -> (field, long name) ----------
+    struct Definition { ReqIfField field; std::string longName; };
+    std::map<std::string, Definition> definitions;
+    for (const char* tag : {"ATTRIBUTE-DEFINITION-STRING", "ATTRIBUTE-DEFINITION-XHTML",
+                            "ATTRIBUTE-DEFINITION-ENUMERATION", "ATTRIBUTE-DEFINITION-INTEGER",
+                            "ATTRIBUTE-DEFINITION-REAL", "ATTRIBUTE-DEFINITION-DATE",
+                            "ATTRIBUTE-DEFINITION-BOOLEAN"}) {
+        std::vector<const XmlNode*> found;
+        XmlCollect(root, tag, found);
+        for (const XmlNode* definition : found) {
+            const std::string identifier = definition->Attribute("IDENTIFIER");
+            if (identifier.empty()) continue;
+            const std::string longName = definition->Attribute("LONG-NAME");
+            definitions[identifier] = {ReqIfFieldForLongName(longName), longName};
+        }
+    }
+
+    // ---- enumeration values: IDENTIFIER -> LONG-NAME ---------------------
+    // ATTRIBUTE-VALUE-ENUMERATION references values by id, so risk/status
+    // enumerations only become readable text through this table.
+    std::map<std::string, std::string> enumValues;
+    {
+        std::vector<const XmlNode*> found;
+        XmlCollect(root, "ENUM-VALUE", found);
+        for (const XmlNode* value : found) {
+            const std::string identifier = value->Attribute("IDENTIFIER");
+            if (!identifier.empty()) enumValues[identifier] = value->Attribute("LONG-NAME");
+        }
+    }
+
+    // ---- spec objects ----------------------------------------------------
+    std::vector<const XmlNode*> specObjects;
+    XmlCollect(root, "SPEC-OBJECT", specObjects);
+    if (specObjects.empty()) return fail("no SPEC-OBJECTS found");
+
+    Clear();
+
+    // The reference a value carries, whatever flavour of DEFINITION it uses.
+    auto definitionRef = [](const XmlNode& value) -> std::string {
+        const XmlNode* definition = value.FirstChild("DEFINITION");
+        if (!definition) return "";
+        for (const auto& ref : definition->children) {
+            if (!ref.text.empty()) return ref.text;
+        }
+        return "";
+    };
+
+    for (const XmlNode* object : specObjects) {
+        const std::string identifier = object->Attribute("IDENTIFIER");
+        if (identifier.empty()) continue;
+
+        RequirementNode node(identifier, object->Attribute("LONG-NAME"));
+        node.kind = RequirementNodeKind::Requirement;
+
+        const XmlNode* values = object->FirstChild("VALUES");
+        if (values) {
+            for (const auto& value : values->children) {
+                const std::string ref = definitionRef(value);
+                auto definitionIt = definitions.find(ref);
+                const ReqIfField field = definitionIt == definitions.end()
+                                             ? ReqIfField::Custom : definitionIt->second.field;
+                const std::string longName = definitionIt == definitions.end()
+                                                 ? ref : definitionIt->second.longName;
+
+                // THE-VALUE is an attribute on simple types and a child
+                // element on XHTML and enumeration values.
+                std::string content = value.Attribute("THE-VALUE");
+                if (content.empty()) {
+                    if (const XmlNode* child = value.FirstChild("THE-VALUE")) {
+                        content = Trim(child->DeepText());
+                    }
+                }
+                if (content.empty()) {
+                    if (const XmlNode* enumValues2 = value.FirstChild("VALUES")) {
+                        for (const auto& ref2 : enumValues2->children) {
+                            auto enumIt = enumValues.find(ref2.text);
+                            if (enumIt == enumValues.end()) continue;
+                            if (!content.empty()) content += ", ";
+                            content += enumIt->second;
+                        }
+                    }
+                }
+                if (content.empty()) continue;
+
+                switch (field) {
+                    case ReqIfField::ExternalId:   node.externalId = content; break;
+                    case ReqIfField::Name:         node.name = content; break;
+                    case ReqIfField::Text:         node.text = content; break;
+                    case ReqIfField::Risk:         node.risk = RequirementRiskFromString(content); break;
+                    case ReqIfField::VerifyMethod:
+                        node.verifyMethod = RequirementVerifyMethodFromString(content);
+                        break;
+                    case ReqIfField::Source:   node.source = content; break;
+                    case ReqIfField::Status:   node.status = content; break;
+                    case ReqIfField::Owner:    node.owner = content; break;
+                    case ReqIfField::Priority: node.priority = content; break;
+                    case ReqIfField::Custom:
+                        if (!longName.empty()) node.customProperties[longName] = content;
+                        break;
+                    case ReqIfField::Ignore: break;
+                }
+            }
+        }
+
+        // Something readable must end up on the box.
+        if (node.name.empty()) {
+            node.name = !node.externalId.empty() ? node.externalId
+                      : !node.text.empty()       ? node.text.substr(0, 40)
+                                                 : identifier;
+        }
+        AddNode(node);
+    }
+
+    // ---- hierarchy: SPEC-HIERARCHY nesting -> containment ----------------
+    std::function<void(const XmlNode&, const std::string&)> walk =
+        [&](const XmlNode& hierarchy, const std::string& parentId) {
+            std::string ownId;
+            if (const XmlNode* object = hierarchy.FirstChild("OBJECT")) {
+                for (const auto& ref : object->children) {
+                    if (!ref.text.empty()) { ownId = ref.text; break; }
+                }
+            }
+            // A SPEC-HIERARCHY without an OBJECT is a pure grouping node: its
+            // children attach to the grandparent rather than vanishing.
+            const std::string effectiveParent =
+                (!ownId.empty() && HasNode(ownId)) ? ownId : parentId;
+            if (!ownId.empty() && HasNode(ownId) && !parentId.empty() && parentId != ownId) {
+                AddContainment(parentId, ownId);
+            }
+            if (const XmlNode* children = hierarchy.FirstChild("CHILDREN")) {
+                for (const auto& child : children->children) {
+                    if (child.name == "SPEC-HIERARCHY") walk(child, effectiveParent);
+                }
+            }
+        };
+
+    std::vector<const XmlNode*> specifications;
+    XmlCollect(root, "SPECIFICATION", specifications);
+    for (const XmlNode* specification : specifications) {
+        if (const XmlNode* children = specification->FirstChild("CHILDREN")) {
+            for (const auto& child : children->children) {
+                if (child.name == "SPEC-HIERARCHY") walk(child, "");
+            }
+        }
     }
     return true;
 }

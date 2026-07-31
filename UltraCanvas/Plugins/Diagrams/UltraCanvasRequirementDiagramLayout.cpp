@@ -1,7 +1,7 @@
 // Plugins/Diagrams/UltraCanvasRequirementDiagramLayout.cpp
 // UltraCanvasRequirementDiagram - layout, visibility, viewport, geometry and
 // connector routing
-// Version: 2.0.0
+// Version: 3.0.0
 // Last Modified: 2026-07-31
 // Author: UltraCanvas Framework
 
@@ -253,6 +253,8 @@ void UltraCanvasRequirementDiagram::RunLayout() {
         ApplyContainmentTreeLayout();
     } else if (layoutMode == RequirementLayoutMode::Layered) {
         ApplyLayeredLayout();
+    } else if (layoutMode == RequirementLayoutMode::ForceDirected) {
+        ApplyForceDirectedLayout();
     }
     RequestRedraw();
 }
@@ -990,6 +992,19 @@ void UltraCanvasRequirementDiagram::BuildRelationPath(const RequirementRelation&
     const RequirementNode* target = model.GetNode(relation.targetId);
     if (!source || !target) return;
 
+    // A self-relation cannot use faces at all - it gets a loop on the box.
+    if (relation.sourceId == relation.targetId) {
+        int loopIndex = 0;
+        for (const auto& r : model.GetRelations()) {
+            if (r.sourceId != r.targetId || r.sourceId != relation.sourceId) continue;
+            if (r.id == relation.id) break;
+            loopIndex++;
+        }
+        BuildSelfLoopPath(*source, loopIndex, outPath);
+        routeCache[relation.id] = {routingGeneration, outPath};
+        return;
+    }
+
     const NodeFace sourceFace = ChooseFaceTowards(*source, *target);
     const NodeFace targetFace = ChooseFaceTowards(*target, *source);
 
@@ -997,8 +1012,25 @@ void UltraCanvasRequirementDiagram::BuildRelationPath(const RequirementRelation&
     CountFaceUsage(relation.sourceId, sourceFace, relation.id, sourceSlots, sourceIndex);
     CountFaceUsage(relation.targetId, targetFace, relation.id, targetSlots, targetIndex);
 
-    const Point2Dd from = AnchorPoint(*source, sourceFace, sourceIndex, sourceSlots);
-    const Point2Dd to = AnchorPoint(*target, targetFace, targetIndex, targetSlots);
+    Point2Dd from = AnchorPoint(*source, sourceFace, sourceIndex, sourceSlots);
+    Point2Dd to = AnchorPoint(*target, targetFace, targetIndex, targetSlots);
+
+    // Parallel relations between the same pair are fanned apart along each
+    // face, so two arrows between two boxes never coincide.
+    const double fan = MultiEdgeOffset(relation);
+    if (fan != 0.0) {
+        const bool sourceVertical = (sourceFace == NodeFace::Top ||
+                                     sourceFace == NodeFace::Bottom);
+        const bool targetVertical = (targetFace == NodeFace::Top ||
+                                     targetFace == NodeFace::Bottom);
+        if (sourceVertical) from.x += fan; else from.y += fan;
+        if (targetVertical) to.x += fan;   else to.y += fan;
+        // Keep the anchors on their own box.
+        from.x = std::max(source->x, std::min(source->x + source->width, from.x));
+        from.y = std::max(source->y, std::min(source->y + source->height, from.y));
+        to.x = std::max(target->x, std::min(target->x + target->width, to.x));
+        to.y = std::max(target->y, std::min(target->y + target->height, to.y));
+    }
 
     RequirementRouting routing =
         relation.useDefaultRouting ? defaultRouting : relation.routing;
@@ -1163,6 +1195,167 @@ std::string UltraCanvasRequirementDiagram::FindRelationAt(const Point2Di& screen
         }
     }
     return "";
+}
+
+
+// =============================================================================
+// FORCE-DIRECTED LAYOUT (phase 3)
+// =============================================================================
+
+void UltraCanvasRequirementDiagram::ApplyForceDirectedLayout() {
+    // Spring model for trace webs that have no usable hierarchy. Deterministic
+    // on purpose: a circular seed rather than random placement, so repeated
+    // Reset gives the same arrangement (NodeDiagram 2.0.4's lesson).
+    std::vector<std::string> active;
+    for (const auto& id : model.GetNodeOrder()) {
+        const RequirementNode* node = model.GetNode(id);
+        if (node && !node->filtered && !IsHiddenByCollapse(id)) active.push_back(id);
+    }
+    if (active.empty()) return;
+
+    const size_t count = active.size();
+    std::map<std::string, size_t> index;
+    std::vector<double> px(count), py(count), vx(count, 0.0), vy(count, 0.0);
+
+    const double radius = std::max(180.0, style.forceLinkDistance *
+                                            static_cast<double>(count) / 6.0);
+    for (size_t i = 0; i < count; ++i) {
+        index[active[i]] = i;
+        const double angle = 2.0 * 3.14159265358979323846 *
+                             static_cast<double>(i) / static_cast<double>(count);
+        const RequirementNode* node = model.GetNode(active[i]);
+        px[i] = node && node->pinned ? node->x : radius * std::cos(angle);
+        py[i] = node && node->pinned ? node->y : radius * std::sin(angle);
+    }
+
+    // Every visible relation is a spring, whatever its kind - on a trace web
+    // that is exactly the structure worth showing.
+    struct Edge { size_t a, b; };
+    std::vector<Edge> edges;
+    for (const auto& r : model.GetRelations()) {
+        auto ia = index.find(r.sourceId);
+        auto ib = index.find(r.targetId);
+        if (ia == index.end() || ib == index.end() || ia->second == ib->second) continue;
+        edges.push_back({ia->second, ib->second});
+    }
+
+    const double linkDistance = style.forceLinkDistance;
+    const double charge = style.forceCharge;
+    for (int iteration = 0; iteration < style.forceIterations; ++iteration) {
+        const double cooling = 1.0 - static_cast<double>(iteration) /
+                                      static_cast<double>(style.forceIterations);
+
+        for (size_t i = 0; i < count; ++i) {
+            for (size_t j = i + 1; j < count; ++j) {
+                double dx = px[j] - px[i];
+                double dy = py[j] - py[i];
+                double distanceSquared = dx * dx + dy * dy;
+                if (distanceSquared < 1.0) { dx = 0.6; dy = 0.4; distanceSquared = 1.0; }
+                const double distance = std::sqrt(distanceSquared);
+                const double force = charge / distanceSquared;
+                const double fx = force * dx / distance;
+                const double fy = force * dy / distance;
+                vx[i] -= fx; vy[i] -= fy;
+                vx[j] += fx; vy[j] += fy;
+            }
+        }
+        for (const auto& edge : edges) {
+            double dx = px[edge.b] - px[edge.a];
+            double dy = py[edge.b] - py[edge.a];
+            const double distance = std::max(0.01, std::sqrt(dx * dx + dy * dy));
+            const double force = (distance - linkDistance) * 0.06;
+            const double fx = force * dx / distance;
+            const double fy = force * dy / distance;
+            vx[edge.a] += fx; vy[edge.a] += fy;
+            vx[edge.b] -= fx; vy[edge.b] -= fy;
+        }
+        // Weak pull to the origin keeps disconnected components from drifting.
+        for (size_t i = 0; i < count; ++i) {
+            vx[i] -= px[i] * 0.006;
+            vy[i] -= py[i] * 0.006;
+            px[i] += vx[i] * cooling * 0.5;
+            py[i] += vy[i] * cooling * 0.5;
+            vx[i] *= 0.82;
+            vy[i] *= 0.82;
+        }
+    }
+
+    for (size_t i = 0; i < count; ++i) {
+        RequirementNode* node = model.GetNode(active[i]);
+        if (!node || node->pinned) continue;
+        node->x = px[i] - node->width / 2.0;
+        node->y = py[i] - node->height / 2.0;
+    }
+
+    // Force-directed with discrete timesteps can leave residual overlaps;
+    // push any remaining pair apart so the result is always readable.
+    for (int pass = 0; pass < 24; ++pass) {
+        bool moved = false;
+        for (size_t i = 0; i < count; ++i) {
+            RequirementNode* a = model.GetNode(active[i]);
+            if (!a) continue;
+            for (size_t j = i + 1; j < count; ++j) {
+                RequirementNode* b = model.GetNode(active[j]);
+                if (!b) continue;
+                const double gap = style.siblingGap;
+                const double overlapX = std::min(a->x + a->width + gap, b->x + b->width + gap) -
+                                        std::max(a->x, b->x);
+                const double overlapY = std::min(a->y + a->height + gap, b->y + b->height + gap) -
+                                        std::max(a->y, b->y);
+                if (overlapX <= 0.0 || overlapY <= 0.0) continue;
+
+                moved = true;
+                const bool alongX = overlapX < overlapY;
+                const double push = (alongX ? overlapX : overlapY) / 2.0 + 0.5;
+                const double sign = alongX ? (a->x <= b->x ? -1.0 : 1.0)
+                                           : (a->y <= b->y ? -1.0 : 1.0);
+                if (!a->pinned) { if (alongX) a->x += push * sign; else a->y += push * sign; }
+                if (!b->pinned) { if (alongX) b->x -= push * sign; else b->y -= push * sign; }
+            }
+        }
+        if (!moved) break;
+    }
+    layoutDirty = false;
+}
+
+// =============================================================================
+// MULTI-EDGE & SELF-RELATION GEOMETRY (phase 3)
+// =============================================================================
+
+double UltraCanvasRequirementDiagram::MultiEdgeOffset(
+        const RequirementRelation& relation) const {
+    // Relations sharing a node pair fan out symmetrically around the centre
+    // line: with three of them the offsets are -gap, 0, +gap.
+    int total = 0, myIndex = 0;
+    for (const auto& r : model.GetRelations()) {
+        if (r.kind == RequirementRelationKind::Containment || !r.visible) continue;
+        const bool samePair =
+            (r.sourceId == relation.sourceId && r.targetId == relation.targetId) ||
+            (r.sourceId == relation.targetId && r.targetId == relation.sourceId);
+        if (!samePair) continue;
+        if (r.id == relation.id) myIndex = total;
+        total++;
+    }
+    if (total <= 1) return 0.0;
+    return (static_cast<double>(myIndex) - (static_cast<double>(total) - 1.0) / 2.0) *
+           style.multiEdgeGap;
+}
+
+void UltraCanvasRequirementDiagram::BuildSelfLoopPath(const RequirementNode& node,
+                                                       int loopIndex,
+                                                       std::vector<Point2Dd>& outPath) const {
+    // A rounded rectangle hanging off the top-right corner, growing outward
+    // for each additional loop on the same box.
+    const double size = style.selfLoopSize + loopIndex * style.multiEdgeGap;
+    const double startX = node.x + node.width * 0.62;
+    const double endX = node.x + node.width * 0.88;
+    const double top = node.y;
+
+    outPath.clear();
+    outPath.push_back(Point2Dd(startX, top));
+    outPath.push_back(Point2Dd(startX, top - size));
+    outPath.push_back(Point2Dd(endX, top - size));
+    outPath.push_back(Point2Dd(endX, top));
 }
 
 } // namespace UltraCanvas

@@ -623,6 +623,272 @@ static void TestTemplates() {
           "literal");
 }
 
+
+// =============================================================================
+// COPY SEMANTICS
+// =============================================================================
+
+static void TestCopySemantics() {
+    RequirementModel model;
+    RequirementNode master("MASTER", "Braking");
+    master.externalId = "R1";
+    master.text = "The vehicle shall stop within 40 m.";
+    model.AddNode(master);
+    model.AddRequirement("SLAVE", "Braking (copy)", "");
+    // A copy reads "source is a read-only copy of target".
+    model.AddRelation(RequirementRelationKind::Copy, "SLAVE", "MASTER");
+
+    CHECK(model.SyncCopies() == 1);
+    const RequirementNode* slave = model.GetNode("SLAVE");
+    CHECK(slave != nullptr);
+    CHECK(slave->isCopy);
+    CHECK(!slave->suspect);
+    CHECK(slave->DisplayId() == "R1");
+    CHECK(slave->text == "The vehicle shall stop within 40 m.");
+    CHECK(model.GetSuspectCopies().empty());
+
+    // Editing the master makes the copy stale.
+    model.GetNode("MASTER")->text = "The vehicle shall stop within 35 m.";
+    model.RefreshSuspectFlags();
+    CHECK(model.GetNode("SLAVE")->suspect);
+    const auto suspects = model.GetSuspectCopies();
+    CHECK(suspects.size() == 1 && suspects[0] == "SLAVE");
+
+    // Validate() surfaces it as a warning.
+    bool sawSuspect = false;
+    for (const auto& w : model.Validate()) {
+        if (w.kind == RequirementWarning::Kind::SuspectCopy && w.nodeId == "SLAVE") {
+            sawSuspect = true;
+        }
+    }
+    CHECK(sawSuspect);
+
+    // Re-syncing one copy clears it and pulls the new text through.
+    CHECK(model.RefreshCopy("SLAVE"));
+    CHECK(!model.GetNode("SLAVE")->suspect);
+    CHECK(model.GetNode("SLAVE")->text == "The vehicle shall stop within 35 m.");
+    CHECK(model.GetSuspectCopies().empty());
+
+    // A node that is not the source of a Copy cannot be refreshed.
+    CHECK(!model.RefreshCopy("MASTER"));
+
+    // The compartment notation reads the same relation from the other end.
+    const auto masters = model.GetDerivedElements("SLAVE", RequirementDerivedList::Master);
+    CHECK(masters.size() == 1 && masters[0] == "MASTER");
+}
+
+// =============================================================================
+// SEARCH
+// =============================================================================
+
+static void TestSearch() {
+    RequirementModel model;
+    RequirementNode braking("R1", "Braking");
+    braking.text = "The vehicle shall decelerate safely.";
+    model.AddNode(braking);
+    RequirementNode steering("R2", "Steering");
+    steering.text = "Steering shall respond within 100 ms.";
+    steering.customProperties["allocatedTo"] = "Chassis";
+    model.AddNode(steering);
+    model.AddNode(RequirementNodeKind::TestCase, "TC1", "Brake Test");
+
+    CHECK(model.FindNodes("").empty());
+    CHECK(model.FindNodes("nothing here").empty());
+
+    // Exact id match ranks first, ahead of the substring hits.
+    const auto exact = model.FindNodes("R1");
+    CHECK(!exact.empty());
+    CHECK(exact[0].nodeId == "R1");
+    CHECK(exact[0].exact);
+
+    // Case-insensitive name search.
+    const auto byName = model.FindNodes("brak");
+    CHECK(byName.size() == 2);           // Braking and Brake Test
+
+    // Text search.
+    const auto byText = model.FindNodes("decelerate");
+    CHECK(byText.size() == 1 && byText[0].nodeId == "R1");
+    CHECK(byText[0].field == RequirementSearchHit::Field::Text);
+
+    // Custom properties are searched too.
+    const auto byProperty = model.FindNodes("chassis");
+    CHECK(byProperty.size() == 1 && byProperty[0].nodeId == "R2");
+    CHECK(byProperty[0].field == RequirementSearchHit::Field::Property);
+}
+
+// =============================================================================
+// TRACEABILITY MATRIX
+// =============================================================================
+
+static void TestTraceMatrix() {
+    RequirementModel model;
+    model.AddRequirement("R1", "Braking", "");
+    model.AddRequirement("R2", "Steering", "");
+    model.AddRequirement("R3", "Untraced", "");
+    model.AddNode(RequirementNodeKind::Block, "ABS", "ABS Module");
+    model.AddNode(RequirementNodeKind::TestCase, "TC1", "Brake Test");
+
+    model.AddRelation(RequirementRelationKind::Satisfy, "ABS", "R1");
+    model.AddRelation(RequirementRelationKind::Verify, "TC1", "R1");
+    model.AddRelation(RequirementRelationKind::Satisfy, "ABS", "R2");
+
+    const RequirementTraceMatrix matrix = model.BuildTraceMatrix();
+    // Rows are every requirement, including the untraced one - that is the
+    // whole point of the matrix.
+    CHECK(matrix.RowCount() == 3);
+    // Columns are only the elements that actually link to a requirement.
+    CHECK(matrix.ColumnCount() == 2);
+
+    size_t rowR1 = 0, colABS = 0, colTC1 = 0;
+    for (size_t i = 0; i < matrix.rowIds.size(); ++i) {
+        if (matrix.rowIds[i] == "R1") rowR1 = i;
+    }
+    for (size_t i = 0; i < matrix.columnIds.size(); ++i) {
+        if (matrix.columnIds[i] == "ABS") colABS = i;
+        if (matrix.columnIds[i] == "TC1") colTC1 = i;
+    }
+    CHECK(matrix.Cell(rowR1, colABS).size() == 1);
+    CHECK(matrix.Cell(rowR1, colABS)[0] == RequirementRelationKind::Satisfy);
+    CHECK(matrix.Cell(rowR1, colTC1).size() == 1);
+    CHECK(matrix.Cell(rowR1, colTC1)[0] == RequirementRelationKind::Verify);
+
+    // Out-of-range access returns the shared empty cell rather than crashing.
+    CHECK(matrix.Cell(99, 99).empty());
+
+    const std::string csv = model.ToTraceMatrixCsv(matrix);
+    CHECK(csv.find("requirement") != std::string::npos);
+    CHECK(csv.find("ABS Module") != std::string::npos);
+    CHECK(csv.find("satisfy") != std::string::npos);
+    CHECK(csv.find("verify") != std::string::npos);
+    // Four lines: the header plus one per requirement.
+    size_t lineCount = 0;
+    for (char c : csv) { if (c == '\n') lineCount++; }
+    CHECK(lineCount == 4);
+}
+
+// =============================================================================
+// REQIF IMPORT
+// =============================================================================
+
+static void TestReqIfImport() {
+    const std::string reqif = R"(<?xml version="1.0" encoding="UTF-8"?>
+<REQ-IF xmlns="http://www.omg.org/spec/ReqIF/20110401/reqif.xsd">
+  <CORE-CONTENT>
+    <REQ-IF-CONTENT>
+      <SPEC-TYPES>
+        <SPEC-OBJECT-TYPE IDENTIFIER="ST-1" LONG-NAME="Requirement Type">
+          <SPEC-ATTRIBUTES>
+            <ATTRIBUTE-DEFINITION-STRING IDENTIFIER="AD-ID" LONG-NAME="ReqIF.ForeignID"/>
+            <ATTRIBUTE-DEFINITION-STRING IDENTIFIER="AD-NAME" LONG-NAME="ReqIF.Name"/>
+            <ATTRIBUTE-DEFINITION-XHTML IDENTIFIER="AD-TEXT" LONG-NAME="ReqIF.Text"/>
+            <ATTRIBUTE-DEFINITION-STRING IDENTIFIER="AD-RISK" LONG-NAME="Risk"/>
+            <ATTRIBUTE-DEFINITION-STRING IDENTIFIER="AD-OWN" LONG-NAME="Allocated Team"/>
+          </SPEC-ATTRIBUTES>
+        </SPEC-OBJECT-TYPE>
+      </SPEC-TYPES>
+      <SPEC-OBJECTS>
+        <SPEC-OBJECT IDENTIFIER="SO-ROOT">
+          <VALUES>
+            <ATTRIBUTE-VALUE-STRING THE-VALUE="SYS-1">
+              <DEFINITION><ATTRIBUTE-DEFINITION-STRING-REF>AD-ID</ATTRIBUTE-DEFINITION-STRING-REF></DEFINITION>
+            </ATTRIBUTE-VALUE-STRING>
+            <ATTRIBUTE-VALUE-STRING THE-VALUE="Vehicle System">
+              <DEFINITION><ATTRIBUTE-DEFINITION-STRING-REF>AD-NAME</ATTRIBUTE-DEFINITION-STRING-REF></DEFINITION>
+            </ATTRIBUTE-VALUE-STRING>
+          </VALUES>
+        </SPEC-OBJECT>
+        <SPEC-OBJECT IDENTIFIER="SO-BRAKE">
+          <VALUES>
+            <ATTRIBUTE-VALUE-STRING THE-VALUE="SYS-1.1">
+              <DEFINITION><ATTRIBUTE-DEFINITION-STRING-REF>AD-ID</ATTRIBUTE-DEFINITION-STRING-REF></DEFINITION>
+            </ATTRIBUTE-VALUE-STRING>
+            <ATTRIBUTE-VALUE-STRING THE-VALUE="Braking">
+              <DEFINITION><ATTRIBUTE-DEFINITION-STRING-REF>AD-NAME</ATTRIBUTE-DEFINITION-STRING-REF></DEFINITION>
+            </ATTRIBUTE-VALUE-STRING>
+            <ATTRIBUTE-VALUE-XHTML>
+              <DEFINITION><ATTRIBUTE-DEFINITION-XHTML-REF>AD-TEXT</ATTRIBUTE-DEFINITION-XHTML-REF></DEFINITION>
+              <THE-VALUE><xhtml:div>The vehicle shall stop from 100 km/h in under 40 m &amp; remain stable.</xhtml:div></THE-VALUE>
+            </ATTRIBUTE-VALUE-XHTML>
+            <ATTRIBUTE-VALUE-STRING THE-VALUE="High">
+              <DEFINITION><ATTRIBUTE-DEFINITION-STRING-REF>AD-RISK</ATTRIBUTE-DEFINITION-STRING-REF></DEFINITION>
+            </ATTRIBUTE-VALUE-STRING>
+            <ATTRIBUTE-VALUE-STRING THE-VALUE="Chassis">
+              <DEFINITION><ATTRIBUTE-DEFINITION-STRING-REF>AD-OWN</ATTRIBUTE-DEFINITION-STRING-REF></DEFINITION>
+            </ATTRIBUTE-VALUE-STRING>
+          </VALUES>
+        </SPEC-OBJECT>
+        <SPEC-OBJECT IDENTIFIER="SO-ABS"/>
+      </SPEC-OBJECTS>
+      <SPECIFICATIONS>
+        <SPECIFICATION IDENTIFIER="SPEC-1" LONG-NAME="Vehicle Spec">
+          <CHILDREN>
+            <SPEC-HIERARCHY IDENTIFIER="SH-1">
+              <OBJECT><SPEC-OBJECT-REF>SO-ROOT</SPEC-OBJECT-REF></OBJECT>
+              <CHILDREN>
+                <SPEC-HIERARCHY IDENTIFIER="SH-2">
+                  <OBJECT><SPEC-OBJECT-REF>SO-BRAKE</SPEC-OBJECT-REF></OBJECT>
+                  <CHILDREN>
+                    <SPEC-HIERARCHY IDENTIFIER="SH-3">
+                      <OBJECT><SPEC-OBJECT-REF>SO-ABS</SPEC-OBJECT-REF></OBJECT>
+                    </SPEC-HIERARCHY>
+                  </CHILDREN>
+                </SPEC-HIERARCHY>
+              </CHILDREN>
+            </SPEC-HIERARCHY>
+          </CHILDREN>
+        </SPECIFICATION>
+      </SPECIFICATIONS>
+    </REQ-IF-CONTENT>
+  </CORE-CONTENT>
+</REQ-IF>)";
+
+    RequirementModel model;
+    std::string error;
+    CHECK(model.FromReqIf(reqif, &error));
+    CHECK(error.empty());
+    CHECK(model.GetNodeCount() == 3);
+
+    const RequirementNode* brake = model.GetNode("SO-BRAKE");
+    CHECK(brake != nullptr);
+    CHECK(brake->name == "Braking");
+    CHECK(brake->externalId == "SYS-1.1");
+    CHECK(brake->DisplayId() == "SYS-1.1");
+    CHECK(brake->risk == RequirementRisk::High);
+    // The XHTML payload is read as text, with entities decoded.
+    CHECK(brake->text.find("100 km/h") != std::string::npos);
+    CHECK(brake->text.find("&") != std::string::npos);
+    CHECK(brake->text.find("&amp;") == std::string::npos);
+    // An unmapped attribute definition lands in the custom properties.
+    CHECK(brake->customProperties.count("Allocated Team") == 1);
+    CHECK(brake->customProperties.at("Allocated Team") == "Chassis");
+
+    // SPEC-HIERARCHY nesting became containment.
+    CHECK(model.GetParentId("SO-BRAKE") == "SO-ROOT");
+    CHECK(model.GetParentId("SO-ABS") == "SO-BRAKE");
+    CHECK(model.GetRootIds().size() == 1);
+
+    // A SPEC-OBJECT with no attributes still gets a usable name.
+    const RequirementNode* abs = model.GetNode("SO-ABS");
+    CHECK(abs != nullptr && !abs->name.empty());
+
+    // Rejections.
+    RequirementModel bad;
+    error.clear();
+    CHECK(!bad.FromReqIf("", &error));
+    CHECK(!error.empty());
+
+    error.clear();
+    CHECK(!bad.FromReqIf("<html><body>not reqif</body></html>", &error));
+    CHECK(!error.empty());
+
+    // Well-formed ReqIF that simply has no requirements is an error, not an
+    // empty success - otherwise a bad path silently yields a blank diagram.
+    error.clear();
+    CHECK(!bad.FromReqIf("<REQ-IF><CORE-CONTENT><REQ-IF-CONTENT/></CORE-CONTENT></REQ-IF>",
+                         &error));
+    CHECK(!error.empty());
+}
+
 // =============================================================================
 // MAIN
 // =============================================================================
@@ -650,6 +916,10 @@ int main() {
     TestCsvImport();
     TestCsvRoundTrip();
     TestTemplates();
+    TestCopySemantics();
+    TestSearch();
+    TestTraceMatrix();
+    TestReqIfImport();
 
     std::printf("RequirementModelTests: %d checks, %d failed\n", testsRun, testsFailed);
     return testsFailed == 0 ? 0 : 1;

@@ -1,13 +1,12 @@
 # UltraCanvasRequirementDiagram — Research & Feature Proposal
 
-Status: **Phases 1 and 2 implemented.** `UltraCanvasRequirementDiagram` ships
-the P1 and P2 feature sets; see
+Status: **Complete — phases 1, 2 and 3 implemented.**
+`UltraCanvasRequirementDiagram` ships the full P1–P3 feature set; see
 [`UltraCanvasRequirementDiagramExamples.md`](UltraCanvasRequirementDiagramExamples.md)
 for the API documentation, `Apps/DemoApp/UltraCanvasRequirementDiagramExamples.cpp`
-for the demo scene (six tabs — four reproducing the reference images in §2, two
-for the phase-2 features) and `Tests/RequirementModelTests.cpp` for the headless
-model tests. This document is kept as the research write-up and the roadmap for
-the remaining P3 items.
+for the demo scene (seven tabs — four reproducing the reference images in §2,
+three for the phase-2/3 features) and `Tests/RequirementModelTests.cpp` for the
+headless model tests. This document is kept as the research write-up.
 
 Deviations from the plan below, all made during implementation:
 
@@ -16,22 +15,31 @@ Deviations from the plan below, all made during implementation:
   from merge distance — both wrong for requirement boxes, whose widths vary
   with their text. A tidy tree over variable-size boxes is implemented inside
   the element (`LayoutSubtree`) instead, guaranteeing non-overlapping siblings
-  at any content length. Extracting a shared variable-size tree layout joins
-  the phase-3 list.
+  at any content length.
 * **Phase 2 moved the model out of the element**, as §5.1 argued it should:
   `RequirementModel` (`UltraCanvasRequirementModel.h/.cpp`) holds the data,
   semantics, analysis and text interchange with no UI dependency, and the
   element owns one and forwards its API. That is what lets Q87's tests run
   headless like the repository's other unit tests. No phase-1 caller changed.
-* **Two features not in the list below**, both forced by the reference images:
+* **Three features not in the list below**, all forced by the material:
   `RequirementRelation::visible` / `SetRelationKindVisible()` (image 3 needs
   containment to define the hierarchy while generalisation carries the visible
-  notation — drawing both doubles every edge), and
-  `RequirementNode::externalId` (Mermaid and CSV reference a requirement by
-  name but carry a separate authored `id`, so both must survive a round trip).
-* **Q19's compartments and Q45's frame** were folded into the same measurement
-  and overlay passes as the phase-1 rows and title, rather than becoming their
-  own subsystems.
+  notation — drawing both doubles every edge), `RequirementNode::externalId`
+  (Mermaid, CSV and ReqIF all reference a requirement by name or internal key
+  but carry a separate authored `id`, so both must survive a round trip), and
+  `RequirementSearchHit` ranking for Q67.
+* **Q82 ReqIF is import-only and a documented subset** — requirements,
+  attributes and the `SPEC-HIERARCHY` nesting. It is parsed by a small XML
+  reader inside the model rather than through tinyxml2, so the model keeps its
+  zero-dependency property and the unit tests keep compiling one source.
+  `SPEC-RELATIONS` and the type system are out of scope; ReqIF *export* needs
+  authoring decisions that belong to the application.
+* **Open question 1 stays open by design.** The box-and-typed-relation
+  machinery is still private to this element. Extracting a shared
+  `UltraCanvasUmlCore.h` was recommended for "when the class diagram lands";
+  class, ER and block-definition diagrams are still `NotImplemented`
+  placeholders in the DemoApp registry, so there is still exactly one consumer
+  and nothing to generalise against yet.
 
 Author: UltraCanvas Framework
 Last Modified: 2026-07-31

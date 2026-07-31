@@ -1,6 +1,6 @@
 // Plugins/Diagrams/UltraCanvasRequirementDiagramRender.cpp
 // UltraCanvasRequirementDiagram - rendering, events, editing and serialization
-// Version: 2.0.0
+// Version: 3.0.0
 // Last Modified: 2026-07-31
 // Author: UltraCanvas Framework
 
@@ -31,6 +31,9 @@ void UltraCanvasRequirementDiagram::Render(IRenderContext* ctx, const Rect2Df& d
         } else if (layoutMode == RequirementLayoutMode::Layered) {
             ApplyLayeredLayout();
             if (autoFitOnLayout) fitPending = true;
+        } else if (layoutMode == RequirementLayoutMode::ForceDirected) {
+            ApplyForceDirectedLayout();
+            if (autoFitOnLayout) fitPending = true;
         }
     }
     layoutDirty = false;
@@ -38,6 +41,11 @@ void UltraCanvasRequirementDiagram::Render(IRenderContext* ctx, const Rect2Df& d
         fitPending = false;   // cleared first: FitView() re-arms it only while
         FitView();            // the measurement is still dirty, which it isn't
     }
+
+    // A copy goes stale when its master is edited, and nothing tells the view
+    // that happened - so the flags are refreshed here rather than relying on
+    // the caller having run Validate().
+    if (suspectBadge) model.RefreshSuspectFlags();
 
     ctx->SetFillPaint(palette.backgroundColor);
     ctx->FillRectangle(GetLocalBounds());
@@ -47,6 +55,7 @@ void UltraCanvasRequirementDiagram::Render(IRenderContext* ctx, const Rect2Df& d
     ctx->Scale(zoomLevel, zoomLevel);
 
     if (style.showGrid) RenderGrid(ctx);
+    if (packageRegionConfig.visible) RenderPackageRegions(ctx);
 
     RenderContainmentBuses(ctx);
     RenderRelations(ctx);
@@ -54,6 +63,7 @@ void UltraCanvasRequirementDiagram::Render(IRenderContext* ctx, const Rect2Df& d
     RenderNodes(ctx);
     RenderCollapseToggles(ctx);
     if (coverageOverlay) RenderCoverageBadges(ctx);
+    if (rationaleNotes) RenderRationaleNotes(ctx);
     RenderCallouts(ctx);
     if (isConnecting) RenderConnectionPreview(ctx);
     if (isSelectingBox) RenderSelectionBox(ctx);
@@ -65,6 +75,8 @@ void UltraCanvasRequirementDiagram::Render(IRenderContext* ctx, const Rect2Df& d
     if (frameConfig.visible) RenderFrame(ctx);
     if (titleConfig.visible) RenderTitle(ctx);
     if (legendConfig.visible) RenderLegend(ctx);
+    if (minimapConfig.visible) RenderMinimap(ctx);
+    if (controlsConfig.visible) RenderControls(ctx);
     (void)dirtyRect;
 }
 
@@ -456,6 +468,10 @@ void UltraCanvasRequirementDiagram::RenderNode(IRenderContext* ctx,
 
     auto measuredIt = measuredNodes.find(node.id);
     if (measuredIt != measuredNodes.end()) RenderNodeBody(ctx, node, measuredIt->second);
+
+    RenderPorts(ctx, node);
+    RenderStatusBadge(ctx, node);
+    if (suspectBadge) RenderSuspectBadge(ctx, node);
 }
 
 void UltraCanvasRequirementDiagram::DrawTextLine(IRenderContext* ctx, const MeasuredLine& line,
@@ -1238,6 +1254,31 @@ bool UltraCanvasRequirementDiagram::HandleMouseDown(const UCEvent& event) {
         return true;
     }
 
+    // ---- controls overlay (screen space, above everything) ---------------
+    const int controlIndex = FindControlButtonAt(mousePos);
+    if (controlIndex >= 0) {
+        int index = 0;
+        if (controlsConfig.showZoom) {
+            if (controlIndex == index++) { ZoomIn(); return true; }
+            if (controlIndex == index++) { ZoomOut(); return true; }
+        }
+        if (controlsConfig.showFit && controlIndex == index++) { FitView(); return true; }
+        if (controlsConfig.showLock && controlIndex == index) {
+            isInteractive = !isInteractive;
+            RequestRedraw();
+            return true;
+        }
+        return true;
+    }
+
+    if (PointInMinimap(mousePos)) {
+        if (minimapConfig.pannable) {
+            isDraggingMinimap = true;
+            HandleMouseMove(event);   // jump to the clicked spot immediately
+        }
+        return true;
+    }
+
     if (event.button == UCMouseButton::Middle || editMode == RequirementEditMode::Pan) {
         isDraggingViewport = true;
         return true;
@@ -1350,6 +1391,36 @@ bool UltraCanvasRequirementDiagram::HandleMouseDown(const UCEvent& event) {
 
 bool UltraCanvasRequirementDiagram::HandleMouseMove(const UCEvent& event) {
     const Point2Di mousePos(event.pointer.x, event.pointer.y);
+
+    if (isDraggingMinimap) {
+        // Map the cursor back through the minimap's transform and centre there.
+        const Rect2Dd panel = MinimapBounds();
+        const Rect2Dd content = GetContentBounds();
+        if (content.width > 0.0 && content.height > 0.0) {
+            const double inset = 6.0;
+            const double scale = std::min((panel.width - inset * 2.0) / content.width,
+                                          (panel.height - inset * 2.0) / content.height);
+            const double originX = panel.x + inset +
+                ((panel.width - inset * 2.0) - content.width * scale) / 2.0;
+            const double originY = panel.y + inset +
+                ((panel.height - inset * 2.0) - content.height * scale) / 2.0;
+            CenterOn(content.x + (mousePos.x - originX) / scale,
+                     content.y + (mousePos.y - originY) / scale);
+        }
+        return true;
+    }
+
+    if (controlsConfig.visible) {
+        const int hovered = FindControlButtonAt(mousePos);
+        if (hovered != hoveredControlButton) {
+            hoveredControlButton = hovered;
+            RequestRedraw();
+        }
+        if (hovered >= 0) {
+            SetMouseCursor(UCMouseCursor::Hand);
+            return true;
+        }
+    }
 
     if (isDraggingViewport) {
         panOffset.x += mousePos.x - lastMousePos.x;
@@ -1494,10 +1565,12 @@ bool UltraCanvasRequirementDiagram::HandleMouseUp(const UCEvent& event) {
         return true;
     }
 
-    const bool wasInteracting = isDraggingNode || isDraggingViewport || isDraggingCallout;
+    const bool wasInteracting = isDraggingNode || isDraggingViewport ||
+                                isDraggingCallout || isDraggingMinimap;
     isDraggingNode = false;
     isDraggingViewport = false;
     isDraggingCallout = false;
+    isDraggingMinimap = false;
     draggedCalloutId.clear();
     dragStartPositions.clear();
     return wasInteracting;
@@ -1506,6 +1579,7 @@ bool UltraCanvasRequirementDiagram::HandleMouseUp(const UCEvent& event) {
 bool UltraCanvasRequirementDiagram::HandleMouseWheel(const UCEvent& event) {
     const Point2Di mousePos(event.pointer.x, event.pointer.y);
     if (!Contains(mousePos) || !zoomOnScroll) return false;
+    if (PointInMinimap(mousePos) || FindControlButtonAt(mousePos) >= 0) return true;
 
     const double oldZoom = zoomLevel;
     zoomLevel *= (event.wheelDelta > 0) ? 1.1 : (1.0 / 1.1);
@@ -1916,6 +1990,511 @@ bool UltraCanvasRequirementDiagram::FromCsv(const std::string& text,
     highlightActive = false;
 
     if (!model.FromCsv(text, schema, outError)) return false;
+
+    layoutMode = RequirementLayoutMode::ContainmentTree;
+    autoFitOnLayout = true;
+    InvalidateMeasurement();
+    RunLayout();
+    return true;
+}
+
+
+// =============================================================================
+// PHASE 3 DECORATIONS
+// =============================================================================
+
+void UltraCanvasRequirementDiagram::RenderStatusBadge(IRenderContext* ctx,
+                                                       const RequirementNode& node) {
+    if (node.status.empty()) return;
+
+    ctx->SetFontFace(style.fontFamily, FontWeight::Bold, FontSlant::Normal);
+    ctx->SetFontSize(std::max(7.0, style.baseFontSize - 1.5));
+    const Size2Di dim = ctx->GetTextLineDimensions(node.status);
+    const double padding = 4.0;
+    const double badgeWidth = dim.width + padding * 2.0;
+    const double badgeHeight = dim.height + 2.0;
+    // Hangs ABOVE the top edge, right-aligned: inside the box it would sit on
+    // the centred «stereotype» and name lines, and the top-right corner
+    // already carries the coverage badge.
+    const double x = node.x + node.width - badgeWidth - 2.0;
+    const double y = node.y - badgeHeight - 2.0;
+
+    // A status the caller gave a colour to uses it; otherwise the neutral chip.
+    Color fill = palette.statusBadgeColor;
+    auto colorIt = statusColors.find(node.status);
+    if (colorIt != statusColors.end()) fill = colorIt->second;
+
+    ctx->SetLineDash(UCDashPattern::EMPTY);
+    ctx->DrawFilledRectangle(Rect2Dd(x, y, badgeWidth, badgeHeight),
+                             ApplyDim(fill, node.dimmed), 0.0f, Colors::Transparent, 3.0f);
+    ctx->SetTextPaint(ApplyDim(palette.statusBadgeTextColor, node.dimmed));
+    ctx->DrawText(node.status, Point2Dd(x + padding, y + 1.0));
+}
+
+void UltraCanvasRequirementDiagram::RenderPorts(IRenderContext* ctx,
+                                                 const RequirementNode& node) {
+    auto it = nodePorts.find(node.id);
+    if (it == nodePorts.end() || it->second <= 0) return;
+
+    const int ports = it->second;
+    const double size = 7.0;
+    for (int i = 0; i < ports; ++i) {
+        const double fraction = (static_cast<double>(i) + 1.0) /
+                                (static_cast<double>(ports) + 1.0);
+        const double cx = node.x + node.width * fraction;
+        ctx->DrawFilledRectangle(
+            Rect2Dd(cx - size / 2.0, node.y - size / 2.0, size, size),
+            ApplyDim(palette.backgroundColor, node.dimmed), 1.0f,
+            ApplyDim(palette.portColor, node.dimmed), 0.0f);
+    }
+}
+
+void UltraCanvasRequirementDiagram::RenderSuspectBadge(IRenderContext* ctx,
+                                                        const RequirementNode& node) {
+    if (!node.suspect) return;
+    // A copy whose master moved on: an exclamation disc on the bottom-left,
+    // clear of the coverage badge and the collapse toggle.
+    const double radius = 6.0;
+    const Point2Dd centre(node.x + radius + 3.0, node.y + node.height - radius - 3.0);
+    const Color color = ApplyDim(palette.suspectColor, node.dimmed);
+
+    ctx->SetLineDash(UCDashPattern::EMPTY);
+    ctx->DrawFilledCircle(centre, static_cast<float>(radius), color,
+                          ApplyDim(palette.backgroundColor, node.dimmed), 1.0f);
+    ctx->SetStrokePaint(ApplyDim(palette.backgroundColor, node.dimmed));
+    ctx->SetStrokeWidth(1.6);
+    ctx->DrawLine(Point2Dd(centre.x, centre.y - radius * 0.55),
+                  Point2Dd(centre.x, centre.y + radius * 0.15));
+    ctx->DrawLine(Point2Dd(centre.x, centre.y + radius * 0.45),
+                  Point2Dd(centre.x, centre.y + radius * 0.55));
+}
+
+void UltraCanvasRequirementDiagram::RenderPackageRegions(IRenderContext* ctx) {
+    // A dashed translucent band around everything a «package» contains - the
+    // SysML package grouping, drawn behind the boxes.
+    for (const auto& id : model.GetNodeOrder()) {
+        const RequirementNode* package = model.GetNode(id);
+        if (!package || package->kind != RequirementNodeKind::Package) continue;
+        if (!IsDisplayed(*package)) continue;
+
+        const std::vector<std::string> members = model.GetDescendants(id);
+        if (members.empty()) continue;
+
+        bool any = false;
+        double minX = 0, minY = 0, maxX = 0, maxY = 0;
+        for (const auto& memberId : members) {
+            const RequirementNode* member = model.GetNode(memberId);
+            if (!member || !IsDisplayed(*member)) continue;
+            if (!any) {
+                minX = member->x; minY = member->y;
+                maxX = member->x + member->width; maxY = member->y + member->height;
+                any = true;
+            } else {
+                minX = std::min(minX, member->x);
+                minY = std::min(minY, member->y);
+                maxX = std::max(maxX, member->x + member->width);
+                maxY = std::max(maxY, member->y + member->height);
+            }
+        }
+        if (!any) continue;
+
+        const double m = packageRegionConfig.margin;
+        const Rect2Dd region(minX - m, minY - m - packageRegionConfig.titleHeight,
+                             (maxX - minX) + m * 2.0,
+                             (maxY - minY) + m * 2.0 + packageRegionConfig.titleHeight);
+
+        Color fill = ResolveFillColor(*package);
+        fill.a = static_cast<uint8_t>(std::max(0.0, std::min(255.0,
+                     255.0 * packageRegionConfig.fillAlpha)));
+        ctx->SetFillPaint(fill);
+        ctx->FillRoundedRectangle(region, packageRegionConfig.cornerRadius);
+
+        ctx->SetLineDash(style.relationDash);
+        ctx->SetStrokePaint(packageRegionConfig.borderColor);
+        ctx->SetStrokeWidth(1.2);
+        ctx->DrawRoundedRectangle(region, packageRegionConfig.cornerRadius);
+        ctx->SetLineDash(UCDashPattern::EMPTY);
+
+        ctx->SetFontFace(style.fontFamily, FontWeight::Bold, FontSlant::Normal);
+        ctx->SetFontSize(packageRegionConfig.fontSize);
+        ctx->SetTextPaint(packageRegionConfig.textColor);
+        ctx->DrawText("«package» " + package->name,
+                      Point2Dd(region.x + 8.0, region.y + 3.0));
+    }
+}
+
+void UltraCanvasRequirementDiagram::RenderRationaleNotes(IRenderContext* ctx) {
+    // SysML lets a rationale hang off a relationship; drawn as a small note at
+    // the middle of the route with a dashed leader.
+    for (const auto& relation : model.GetRelations()) {
+        if (relation.rationale.empty() || !relation.visible) continue;
+        const RequirementNode* source = model.GetNode(relation.sourceId);
+        const RequirementNode* target = model.GetNode(relation.targetId);
+        if (!source || !target || !IsDisplayed(*source) || !IsDisplayed(*target)) continue;
+
+        std::vector<Point2Dd> path;
+        BuildRelationPath(relation, path);
+        if (path.empty()) continue;
+        const Point2Dd anchor = path[path.size() / 2];
+
+        ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Italic);
+        ctx->SetFontSize(style.baseFontSize - 0.5);
+        const double maxWidth = 150.0;
+        const std::vector<std::string> lines =
+            WrapText(ctx, relation.rationale, maxWidth - 10.0, 3);
+        if (lines.empty()) continue;
+
+        double textWidth = 0.0, lineHeight = 0.0;
+        for (const auto& line : lines) {
+            textWidth = std::max(textWidth, static_cast<double>(ctx->GetTextLineWidth(line)));
+            lineHeight = std::max(lineHeight, static_cast<double>(ctx->GetTextLineHeight(line)));
+        }
+        const double boxWidth = textWidth + 12.0;
+        const double boxHeight = lineHeight * static_cast<double>(lines.size()) + 10.0;
+
+        // Try a few placements around the anchor and take the first that does
+        // not land on a box; a note drawn over a requirement is worse than a
+        // note slightly further from its line.
+        static const Point2Dd kOffsets[] = {
+            {18.0, 12.0}, {18.0, -12.0}, {-18.0, 12.0}, {-18.0, -12.0},
+            {0.0, 34.0}, {0.0, -34.0}, {44.0, 0.0}, {-44.0, 0.0}
+        };
+        Rect2Dd box(anchor.x + kOffsets[0].x, anchor.y + kOffsets[0].y, boxWidth, boxHeight);
+        for (const auto& offset : kOffsets) {
+            Rect2Dd candidate(offset.x >= 0.0 ? anchor.x + offset.x
+                                              : anchor.x + offset.x - boxWidth,
+                              offset.y >= 0.0 ? anchor.y + offset.y
+                                              : anchor.y + offset.y - boxHeight,
+                              boxWidth, boxHeight);
+            bool clear = true;
+            for (const auto& id : model.GetNodeOrder()) {
+                const RequirementNode* other = model.GetNode(id);
+                if (!other || !IsDisplayed(*other)) continue;
+                if (candidate.Intersects(NodeRect(*other))) { clear = false; break; }
+            }
+            box = candidate;
+            if (clear) break;
+        }
+
+        ctx->SetLineDash(style.leaderDash);
+        ctx->SetStrokePaint(ApplyDim(palette.noteBorder, relation.dimmed));
+        ctx->SetStrokeWidth(style.relationLineWidth);
+        ctx->DrawLine(anchor, Point2Dd(box.x, box.y + box.height / 2.0));
+        ctx->SetLineDash(UCDashPattern::EMPTY);
+
+        ctx->DrawFilledRectangle(box, ApplyDim(palette.noteFill, relation.dimmed), 1.0f,
+                                 ApplyDim(palette.noteBorder, relation.dimmed), 3.0f);
+
+        double y = box.y + 5.0;
+        ctx->SetTextPaint(ApplyDim(palette.propertyTextColor, relation.dimmed));
+        for (const auto& line : lines) {
+            ctx->DrawText(line, Point2Dd(box.x + 6.0, y));
+            y += lineHeight;
+        }
+        ctx->SetFontSlant(FontSlant::Normal);
+    }
+}
+
+// =============================================================================
+// MINIMAP & CONTROLS OVERLAYS
+// =============================================================================
+
+Rect2Dd UltraCanvasRequirementDiagram::MinimapBounds() const {
+    const double topInset = (titleConfig.visible ? titleConfig.height : 0.0);
+    double x = minimapConfig.padding;
+    double y = minimapConfig.padding + topInset;
+    switch (minimapConfig.position) {
+        case RequirementPanelPosition::TopLeft: break;
+        case RequirementPanelPosition::TopRight:
+            x = GetWidth() - minimapConfig.width - minimapConfig.padding;
+            break;
+        case RequirementPanelPosition::BottomLeft:
+            y = GetHeight() - minimapConfig.height - minimapConfig.padding;
+            break;
+        case RequirementPanelPosition::BottomRight:
+            x = GetWidth() - minimapConfig.width - minimapConfig.padding;
+            y = GetHeight() - minimapConfig.height - minimapConfig.padding;
+            break;
+    }
+    return Rect2Dd(x, y, minimapConfig.width, minimapConfig.height);
+}
+
+bool UltraCanvasRequirementDiagram::PointInMinimap(const Point2Di& screenPos) const {
+    if (!minimapConfig.visible) return false;
+    return MinimapBounds().Contains(Point2Dd(screenPos.x, screenPos.y));
+}
+
+void UltraCanvasRequirementDiagram::RenderMinimap(IRenderContext* ctx) {
+    const Rect2Dd panel = MinimapBounds();
+    ctx->SetLineDash(UCDashPattern::EMPTY);
+    ctx->DrawFilledRectangle(panel, minimapConfig.backgroundColor, 1.0f,
+                             minimapConfig.borderColor, 3.0f);
+
+    const Rect2Dd content = GetContentBounds();
+    if (content.width <= 0.0 || content.height <= 0.0) return;
+
+    const double inset = 6.0;
+    const double scale = std::min((panel.width - inset * 2.0) / content.width,
+                                  (panel.height - inset * 2.0) / content.height);
+    const double originX = panel.x + inset +
+                           ((panel.width - inset * 2.0) - content.width * scale) / 2.0;
+    const double originY = panel.y + inset +
+                           ((panel.height - inset * 2.0) - content.height * scale) / 2.0;
+
+    for (const auto& id : model.GetNodeOrder()) {
+        const RequirementNode* node = model.GetNode(id);
+        if (!node || !IsDisplayed(*node)) continue;
+        const Rect2Dd box(originX + (node->x - content.x) * scale,
+                          originY + (node->y - content.y) * scale,
+                          std::max(1.0, node->width * scale),
+                          std::max(1.0, node->height * scale));
+        ctx->SetFillPaint(node->isSelected ? palette.selectionColor : minimapConfig.nodeColor);
+        ctx->FillRectangle(box);
+    }
+
+    // The viewport rectangle: the world region currently on screen.
+    const Point2Dd topLeft = ScreenToWorld(Point2Di(0, 0));
+    const Point2Dd bottomRight = ScreenToWorld(
+        Point2Di(static_cast<int>(GetWidth()), static_cast<int>(GetHeight())));
+    const Rect2Dd viewport(originX + (topLeft.x - content.x) * scale,
+                           originY + (topLeft.y - content.y) * scale,
+                           (bottomRight.x - topLeft.x) * scale,
+                           (bottomRight.y - topLeft.y) * scale);
+    ctx->SetFillPaint(minimapConfig.viewportFill);
+    ctx->FillRectangle(viewport);
+    ctx->SetStrokePaint(minimapConfig.viewportStroke);
+    ctx->SetStrokeWidth(1.0);
+    ctx->DrawRectangle(viewport);
+}
+
+int UltraCanvasRequirementDiagram::FindControlButtonAt(const Point2Di& screenPos) const {
+    if (!controlsConfig.visible) return -1;
+
+    int buttonCount = 0;
+    if (controlsConfig.showZoom) buttonCount += 2;
+    if (controlsConfig.showFit)  buttonCount += 1;
+    if (controlsConfig.showLock) buttonCount += 1;
+    if (buttonCount == 0) return -1;
+
+    const double size = controlsConfig.buttonSize;
+    const double gap = controlsConfig.gap;
+    const double totalHeight = buttonCount * size + (buttonCount - 1) * gap;
+    const double topInset = (titleConfig.visible ? titleConfig.height : 0.0);
+
+    double x = controlsConfig.padding;
+    double y = controlsConfig.padding + topInset;
+    switch (controlsConfig.position) {
+        case RequirementPanelPosition::TopLeft: break;
+        case RequirementPanelPosition::TopRight:
+            x = GetWidth() - size - controlsConfig.padding;
+            break;
+        case RequirementPanelPosition::BottomLeft:
+            y = GetHeight() - totalHeight - controlsConfig.padding;
+            break;
+        case RequirementPanelPosition::BottomRight:
+            x = GetWidth() - size - controlsConfig.padding;
+            y = GetHeight() - totalHeight - controlsConfig.padding;
+            break;
+    }
+
+    for (int i = 0; i < buttonCount; ++i) {
+        const Rect2Dd button(x, y + i * (size + gap), size, size);
+        if (button.Contains(Point2Dd(screenPos.x, screenPos.y))) return i;
+    }
+    return -1;
+}
+
+void UltraCanvasRequirementDiagram::RenderControls(IRenderContext* ctx) {
+    int buttonCount = 0;
+    if (controlsConfig.showZoom) buttonCount += 2;
+    if (controlsConfig.showFit)  buttonCount += 1;
+    if (controlsConfig.showLock) buttonCount += 1;
+    if (buttonCount == 0) return;
+
+    const double size = controlsConfig.buttonSize;
+    const double gap = controlsConfig.gap;
+    const double totalHeight = buttonCount * size + (buttonCount - 1) * gap;
+    const double topInset = (titleConfig.visible ? titleConfig.height : 0.0);
+
+    double x = controlsConfig.padding;
+    double y = controlsConfig.padding + topInset;
+    switch (controlsConfig.position) {
+        case RequirementPanelPosition::TopLeft: break;
+        case RequirementPanelPosition::TopRight:
+            x = GetWidth() - size - controlsConfig.padding;
+            break;
+        case RequirementPanelPosition::BottomLeft:
+            y = GetHeight() - totalHeight - controlsConfig.padding;
+            break;
+        case RequirementPanelPosition::BottomRight:
+            x = GetWidth() - size - controlsConfig.padding;
+            y = GetHeight() - totalHeight - controlsConfig.padding;
+            break;
+    }
+
+    // Glyphs are drawn as vector primitives, not text characters: at 28px a
+    // glyph font renders tiny and off-centre (NodeDiagram 2.0.1's lesson).
+    ctx->SetLineDash(UCDashPattern::EMPTY);
+    int index = 0;
+    auto drawButton = [&](int which) {
+        const Rect2Dd button(x, y + index * (size + gap), size, size);
+        ctx->DrawFilledRectangle(button,
+                                 hoveredControlButton == index ? controlsConfig.hoverColor
+                                                               : controlsConfig.backgroundColor,
+                                 1.0f, controlsConfig.borderColor, 3.0f);
+        ctx->SetStrokePaint(controlsConfig.iconColor);
+        ctx->SetStrokeWidth(1.8);
+        const double cx = button.x + button.width / 2.0;
+        const double cy = button.y + button.height / 2.0;
+        const double arm = button.width * 0.22;
+
+        switch (which) {
+            case 0:                                    // zoom in: +
+                ctx->DrawLine(Point2Dd(cx - arm, cy), Point2Dd(cx + arm, cy));
+                ctx->DrawLine(Point2Dd(cx, cy - arm), Point2Dd(cx, cy + arm));
+                break;
+            case 1:                                    // zoom out: -
+                ctx->DrawLine(Point2Dd(cx - arm, cy), Point2Dd(cx + arm, cy));
+                break;
+            case 2:                                    // fit: corner brackets
+                ctx->DrawRectangle(Rect2Dd(cx - arm, cy - arm, arm * 2.0, arm * 2.0));
+                break;
+            case 3: {                                  // lock: shackle + body
+                ctx->DrawRectangle(Rect2Dd(cx - arm, cy - arm * 0.2,
+                                           arm * 2.0, arm * 1.4));
+                if (!isInteractive) {
+                    ctx->DrawLine(Point2Dd(cx - arm * 0.5, cy - arm * 0.2),
+                                  Point2Dd(cx - arm * 0.5, cy - arm));
+                    ctx->DrawLine(Point2Dd(cx - arm * 0.5, cy - arm),
+                                  Point2Dd(cx + arm * 0.5, cy - arm));
+                    ctx->DrawLine(Point2Dd(cx + arm * 0.5, cy - arm),
+                                  Point2Dd(cx + arm * 0.5, cy - arm * 0.2));
+                }
+                break;
+            }
+            default: break;
+        }
+        index++;
+    };
+
+    if (controlsConfig.showZoom) { drawButton(0); drawButton(1); }
+    if (controlsConfig.showFit)  drawButton(2);
+    if (controlsConfig.showLock) drawButton(3);
+}
+
+// =============================================================================
+// PHASE 3 API
+// =============================================================================
+
+int UltraCanvasRequirementDiagram::SyncCopies() {
+    const int updated = model.SyncCopies();
+    if (updated > 0) InvalidateMeasurement();
+    return updated;
+}
+
+bool UltraCanvasRequirementDiagram::RefreshCopy(const std::string& nodeId) {
+    if (!model.RefreshCopy(nodeId)) return false;
+    InvalidateMeasurement();
+    return true;
+}
+
+void UltraCanvasRequirementDiagram::SetSuspectBadgeVisible(bool visible) {
+    suspectBadge = visible;
+    RequestRedraw();
+}
+
+void UltraCanvasRequirementDiagram::FocusOnNode(const std::string& nodeId, bool select) {
+    const RequirementNode* node = model.GetNode(nodeId);
+    if (!node) return;
+
+    // Expand every collapsed ancestor, or the "focused" node stays hidden.
+    std::string current = model.GetParentId(nodeId);
+    int guard = 0;
+    while (!current.empty() && guard++ < 1000) {
+        if (RequirementNode* parent = model.GetNode(current)) parent->collapsed = false;
+        current = model.GetParentId(current);
+    }
+    if (guard > 0 && layoutMode != RequirementLayoutMode::Manual) {
+        layoutDirty = true;
+        InvalidateRouting();
+    }
+
+    if (select) SelectNode(nodeId);
+    CenterOn(node->x + node->width / 2.0, node->y + node->height / 2.0);
+}
+
+std::string UltraCanvasRequirementDiagram::FindAndFocus(const std::string& query) {
+    const std::vector<RequirementSearchHit> hits = model.FindNodes(query);
+    if (hits.empty()) return "";
+    FocusOnNode(hits.front().nodeId, true);
+    return hits.front().nodeId;
+}
+
+std::string UltraCanvasRequirementDiagram::ToTraceMatrixCsv(char delimiter) const {
+    return model.ToTraceMatrixCsv(model.BuildTraceMatrix(), delimiter);
+}
+
+void UltraCanvasRequirementDiagram::SetPackageRegionsVisible(bool visible) {
+    packageRegionConfig.visible = visible;
+    RequestRedraw();
+}
+
+void UltraCanvasRequirementDiagram::SetPackageRegionConfig(
+        const RequirementPackageRegionConfig& config) {
+    packageRegionConfig = config;
+    RequestRedraw();
+}
+
+void UltraCanvasRequirementDiagram::SetMinimapVisible(bool visible) {
+    minimapConfig.visible = visible;
+    RequestRedraw();
+}
+
+void UltraCanvasRequirementDiagram::SetMinimapConfig(const RequirementMinimapConfig& config) {
+    minimapConfig = config;
+    RequestRedraw();
+}
+
+void UltraCanvasRequirementDiagram::SetControlsVisible(bool visible) {
+    controlsConfig.visible = visible;
+    RequestRedraw();
+}
+
+void UltraCanvasRequirementDiagram::SetControlsConfig(
+        const RequirementControlsConfig& config) {
+    controlsConfig = config;
+    RequestRedraw();
+}
+
+void UltraCanvasRequirementDiagram::SetRationaleNotesVisible(bool visible) {
+    rationaleNotes = visible;
+    RequestRedraw();
+}
+
+void UltraCanvasRequirementDiagram::SetRelationRationale(const std::string& relationId,
+                                                          const std::string& rationale) {
+    if (auto* relation = model.GetRelation(relationId)) {
+        relation->rationale = rationale;
+        RequestRedraw();
+    }
+}
+
+void UltraCanvasRequirementDiagram::SetNodePortCount(const std::string& nodeId, int ports) {
+    if (ports <= 0) nodePorts.erase(nodeId);
+    else nodePorts[nodeId] = ports;
+    RequestRedraw();
+}
+
+bool UltraCanvasRequirementDiagram::FromReqIf(const std::string& xml, std::string* outError) {
+    selectedNodes.clear();
+    selectedRelations.clear();
+    measuredNodes.clear();
+    measuredCallouts.clear();
+    routeCache.clear();
+    highlightedNodes.clear();
+    highlightActive = false;
+
+    if (!model.FromReqIf(xml, outError)) return false;
 
     layoutMode = RequirementLayoutMode::ContainmentTree;
     autoFitOnLayout = true;

@@ -1,9 +1,25 @@
 // include/Plugins/Diagrams/UltraCanvasRequirementDiagram.h
 // SysML requirement diagram (req) component — requirements, traceability
 // relationships, containment trees, callouts, legends and coverage analysis
-// Version: 2.0.0
+// Version: 3.0.0
 // Last Modified: 2026-07-31
 // Author: UltraCanvas Framework
+//
+// CHANGELOG 3.0.0 (phase 3 of the proposal — additive):
+//  - NEW: Copy master/slave semantics with suspect-link detection, drawn as a
+//    warning badge on a stale copy.
+//  - NEW: status badge in the box header; port nubs on «block» boxes.
+//  - NEW: relationship rationale drawn as an anchored note.
+//  - NEW: self-relations (loops) and multi-edges between the same pair, fanned
+//    apart so they stay distinguishable.
+//  - NEW: force-directed layout for dense trace webs.
+//  - NEW: package grouping regions - a dashed translucent band with a title
+//    tab around everything a «package» contains.
+//  - NEW: minimap and controls overlays, config-compatible with
+//    UltraCanvasNodeDiagram.
+//  - NEW: search (FindNodes) with focus-on-result.
+//  - NEW: traceability-matrix export (via the model).
+//  - NEW: ReqIF import (via the model).
 //
 // CHANGELOG 2.0.0 (phase 2 of the proposal — additive, no phase-1 breakage):
 //  - REFACTOR: the data, semantics and interchange moved into RequirementModel
@@ -70,7 +86,8 @@ namespace UltraCanvas {
 enum class RequirementLayoutMode {
     Manual,           // positions set by the caller / by dragging
     ContainmentTree,  // tidy tree over the containment relationships
-    Layered           // Sugiyama-style layers for non-tree topologies
+    Layered,          // Sugiyama-style layers for non-tree topologies
+    ForceDirected     // spring model, for dense trace webs with no hierarchy
 };
 
 enum class RequirementOrientation {
@@ -187,6 +204,49 @@ struct RequirementFrameConfig {
     double borderWidth = 1.2;
 };
 
+// Overlay panels, structurally identical to UltraCanvasNodeDiagram's so a
+// caller styling both diagrams writes the values once.
+struct RequirementMinimapConfig {
+    bool visible = false;
+    RequirementPanelPosition position = RequirementPanelPosition::BottomRight;
+    double width = 180.0;
+    double height = 130.0;
+    double padding = 10.0;
+    Color backgroundColor = Color(245, 245, 245, 230);
+    Color borderColor = Color(180, 180, 180, 255);
+    Color nodeColor = Color(140, 160, 200, 255);
+    Color viewportFill = Color(0, 120, 215, 40);
+    Color viewportStroke = Color(0, 120, 215, 200);
+    bool pannable = true;
+};
+
+struct RequirementControlsConfig {
+    bool visible = false;
+    RequirementPanelPosition position = RequirementPanelPosition::BottomLeft;
+    double buttonSize = 28.0;
+    double padding = 10.0;
+    double gap = 4.0;
+    Color backgroundColor = Color(255, 255, 255, 230);
+    Color borderColor = Color(200, 200, 200, 255);
+    Color iconColor = Color(80, 80, 80, 255);
+    Color hoverColor = Color(230, 230, 230, 255);
+    bool showZoom = true;
+    bool showFit = true;
+    bool showLock = true;
+};
+
+// A dashed translucent band drawn around everything a «package» contains.
+struct RequirementPackageRegionConfig {
+    bool visible = false;
+    double margin = 16.0;          // around the members' bounding box
+    double cornerRadius = 6.0;
+    double titleHeight = 18.0;
+    double fontSize = 10.0;
+    double fillAlpha = 0.10;       // of the package's own colour
+    Color borderColor = Color(140, 148, 162, 255);
+    Color textColor = Color(70, 76, 88, 255);
+};
+
 // =============================================================================
 // PALETTE
 // =============================================================================
@@ -244,6 +304,10 @@ struct RequirementPalette {
     Color selectionColor = Color(0, 120, 215, 255);
     Color hoverColor = Color(0, 150, 240, 255);
     Color warningColor = Color(220, 80, 60, 255);
+    Color suspectColor = Color(226, 140, 40, 255);      // a stale copy
+    Color statusBadgeColor = Color(226, 232, 240, 255);
+    Color statusBadgeTextColor = Color(50, 58, 72, 255);
+    Color portColor = Color(120, 130, 150, 255);        // «block» port nubs
     Color calloutFill = Color(255, 252, 226, 255);
     Color calloutBorder = Color(196, 182, 110, 255);
 
@@ -292,6 +356,13 @@ struct RequirementDiagramStyle {
     double crosshairRadius = 7.0;        // containment ⊕
     double trianglSize = 11.0;           // generalisation triangle
     double toggleRadius = 6.0;           // expand/collapse ⊕ / ⊖
+    double multiEdgeGap = 14.0;          // fan between parallel relations
+    double selfLoopSize = 26.0;          // radius of a self-relation loop
+
+    // Force-directed layout
+    double forceLinkDistance = 150.0;
+    double forceCharge = -900.0;
+    int forceIterations = 320;
 
     bool showGrid = false;
     double gridSpacing = 25.0;
@@ -646,6 +717,61 @@ public:
     bool IsRenaming() const { return !renamingNodeId.empty(); }
 
     // =========================================================================
+    // COPY SEMANTICS (phase 3)
+    // =========================================================================
+
+    // Pulls each master's id and text into the copies that reference it.
+    int SyncCopies();
+    // Copies whose master changed since the last sync. With the suspect badge
+    // enabled they are marked on the diagram.
+    std::vector<std::string> GetSuspectCopies() const { return model.GetSuspectCopies(); }
+    bool RefreshCopy(const std::string& nodeId);
+    void SetSuspectBadgeVisible(bool visible);
+
+    // =========================================================================
+    // SEARCH (phase 3)
+    // =========================================================================
+
+    std::vector<RequirementSearchHit> FindNodes(const std::string& query) const {
+        return model.FindNodes(query);
+    }
+    // Centres the view on a node, optionally selecting it. Expands any
+    // collapsed ancestor first, so the target is actually visible.
+    void FocusOnNode(const std::string& nodeId, bool select = true);
+    // Convenience: search and focus the best hit. Returns its id, or "".
+    std::string FindAndFocus(const std::string& query);
+
+    // =========================================================================
+    // TRACEABILITY MATRIX (phase 3)
+    // =========================================================================
+
+    RequirementTraceMatrix BuildTraceMatrix() const { return model.BuildTraceMatrix(); }
+    std::string ToTraceMatrixCsv(char delimiter = ',') const;
+
+    // =========================================================================
+    // PACKAGE REGIONS, MINIMAP & CONTROLS (phase 3)
+    // =========================================================================
+
+    void SetPackageRegionsVisible(bool visible);
+    void SetPackageRegionConfig(const RequirementPackageRegionConfig& config);
+    RequirementPackageRegionConfig GetPackageRegionConfig() const { return packageRegionConfig; }
+
+    void SetMinimapVisible(bool visible);
+    void SetMinimapConfig(const RequirementMinimapConfig& config);
+    RequirementMinimapConfig GetMinimapConfig() const { return minimapConfig; }
+
+    void SetControlsVisible(bool visible);
+    void SetControlsConfig(const RequirementControlsConfig& config);
+    RequirementControlsConfig GetControlsConfig() const { return controlsConfig; }
+
+    // Draws a relationship's rationale as a small anchored note.
+    void SetRationaleNotesVisible(bool visible);
+    void SetRelationRationale(const std::string& relationId, const std::string& rationale);
+
+    // «block» port nubs on the top edge (reference image 2's root).
+    void SetNodePortCount(const std::string& nodeId, int ports);
+
+    // =========================================================================
     // SERIALIZATION
     // =========================================================================
 
@@ -662,6 +788,11 @@ public:
     bool FromCsv(const std::string& text,
                  const RequirementCsvSchema& schema = RequirementCsvSchema(),
                  std::string* outError = nullptr);
+
+    // ReqIF (OMG XML) import - requirements, their attributes and the
+    // SPEC-HIERARCHY nesting. See RequirementModel::FromReqIf for the exact
+    // subset supported.
+    bool FromReqIf(const std::string& xml, std::string* outError = nullptr);
 
     // =========================================================================
     // RENDERING & EVENTS
@@ -733,6 +864,7 @@ private:
                             std::map<int, double>& levelSize,
                             std::set<std::string>& visited);
     void ApplyLayeredLayout();
+    void ApplyForceDirectedLayout();
     void ApplyGridFallbackLayout();
     void OrientPositions();
     // Children as seen by the layout: containment plus any other kinds the
@@ -769,6 +901,21 @@ private:
     void RenderCollapseToggles(IRenderContext* ctx);
     void RenderCoverageBadges(IRenderContext* ctx);
     void RenderCallouts(IRenderContext* ctx);
+    void RenderPackageRegions(IRenderContext* ctx);
+    void RenderRationaleNotes(IRenderContext* ctx);
+    void RenderStatusBadge(IRenderContext* ctx, const RequirementNode& node);
+    void RenderPorts(IRenderContext* ctx, const RequirementNode& node);
+    void RenderSuspectBadge(IRenderContext* ctx, const RequirementNode& node);
+    void RenderMinimap(IRenderContext* ctx);
+    void RenderControls(IRenderContext* ctx);
+    // Index of the control button under the cursor, or -1.
+    int FindControlButtonAt(const Point2Di& screenPos) const;
+    bool PointInMinimap(const Point2Di& screenPos) const;
+    Rect2Dd MinimapBounds() const;
+    // Perpendicular offset for one of several relations sharing a node pair.
+    double MultiEdgeOffset(const RequirementRelation& relation) const;
+    void BuildSelfLoopPath(const RequirementNode& node, int loopIndex,
+                           std::vector<Point2Dd>& outPath) const;
     void RenderSelectionBox(IRenderContext* ctx);
     void RenderConnectionPreview(IRenderContext* ctx);
     void RenderRenameEditor(IRenderContext* ctx);
@@ -883,6 +1030,15 @@ private:
     bool showRiskStripe = false;
     bool coverageOverlay = false;
     bool obstacleAvoidance = false;
+    bool suspectBadge = true;
+    bool rationaleNotes = false;
+
+    RequirementPackageRegionConfig packageRegionConfig;
+    RequirementMinimapConfig minimapConfig;
+    RequirementControlsConfig controlsConfig;
+    std::map<std::string, int> nodePorts;      // «block» port nub counts
+    bool isDraggingMinimap = false;
+    int hoveredControlButton = -1;
 
     // Filters
     std::set<RequirementNodeKind> hiddenKinds;

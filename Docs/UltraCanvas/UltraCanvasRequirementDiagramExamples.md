@@ -18,11 +18,11 @@ separately.
 **Header:** `include/Plugins/Diagrams/UltraCanvasRequirementDiagram.h`
 **Model header:** `include/Plugins/Diagrams/UltraCanvasRequirementModel.h`
 **Base Class:** `UltraCanvasUIElement`
-**Version:** 2.0.0
+**Version:** 3.0.0
 
 Research write-up and the full phased feature list:
 [`UltraCanvasRequirementDiagramProposal.md`](UltraCanvasRequirementDiagramProposal.md).
-This document covers the shipped phase-1 and phase-2 API.
+This document covers the shipped phase-1, phase-2 and phase-3 API.
 
 ### Model and view
 
@@ -91,8 +91,18 @@ UltraCanvasUIElement
   orthogonal routing
 - **Editing**: create node, drag-to-connect, delete, inline rename
 - **SysML diagram frame** with the `req [Package] Name [Diagram]` pentagon tab
-- **JSON save/load** covering model, layout and style, plus **Mermaid** and
-  **CSV** import/export
+- **Copy semantics**: a copy mirrors its master's id and text, and is badged
+  as suspect when the master is edited afterwards
+- **Package grouping regions**, status chips, «block» port nubs and
+  relationship rationale notes
+- **Self-relations and multi-edges** fanned apart so parallel arrows stay
+  distinguishable
+- **Force-directed layout** for dense trace webs
+- **Minimap and controls overlays**, config-compatible with
+  `UltraCanvasNodeDiagram`
+- **Search** with focus-on-result, and **traceability-matrix** export
+- **JSON save/load** covering model, layout and style, plus **Mermaid**, **CSV**
+  and **ReqIF** import/export
 
 ## Quick Start
 
@@ -665,6 +675,89 @@ req->SetFrame("Package", "HSVSpecification", "Requirements Diagram");
 // draws: req [Package] HSVSpecification [Requirements Diagram]
 ```
 
+## Copy semantics
+
+A `Copy` relation reads "source is a read-only copy of target". `SyncCopies()`
+pulls each master's id and text into its copies and records a snapshot; a later
+edit to the master makes the copy **suspect**, which the diagram badges with an
+orange exclamation disc.
+
+```cpp
+req->AddRelation(RequirementRelationKind::Copy, "R1-COPY", "R1");
+req->SyncCopies();                       // copy now mirrors R1
+
+req->GetNode("R1")->text = "…revised…";  // master moves on
+for (const auto& id : req->GetSuspectCopies()) { /* stale */ }
+req->RefreshCopy("R1-COPY");             // re-sync one copy
+req->SetSuspectBadgeVisible(false);      // if you'd rather not see the badge
+```
+
+`Validate()` reports stale copies as `RequirementWarning::Kind::SuspectCopy`.
+The badge is refreshed every frame, so an edit made anywhere shows up without
+the caller having to re-validate.
+
+## Search
+
+```cpp
+for (const auto& hit : req->FindNodes("brak")) { /* hit.nodeId, hit.field */ }
+
+req->FocusOnNode("R1.2");                 // centres, selects, expands ancestors
+const std::string found = req->FindAndFocus("cockpit");   // search + focus
+```
+
+Search is case-insensitive over id, `externalId`, name, text and the custom
+properties. Exact id/name matches rank first, then id substrings, then names,
+then text, then properties.
+
+## Traceability matrix
+
+```cpp
+RequirementTraceMatrix matrix = req->BuildTraceMatrix();
+for (size_t r = 0; r < matrix.RowCount(); ++r) {
+    for (size_t c = 0; c < matrix.ColumnCount(); ++c) {
+        for (auto kind : matrix.Cell(r, c)) { /* satisfy / verify / … */ }
+    }
+}
+const std::string csv = req->ToTraceMatrixCsv();
+```
+
+Rows are **every** requirement — including the uncovered ones, which is the
+point of the matrix. Columns are only the elements that actually link to a
+requirement. It is produced as data, so it can be rendered by
+`UltraCanvasTable`, exported, or asserted on in a test.
+
+## Package regions, overlays and decorations
+
+```cpp
+req->SetPackageRegionsVisible(true);      // dashed band around a «package»
+req->SetMinimapVisible(true);
+req->SetControlsVisible(true);            // zoom / fit / lock buttons
+req->SetRationaleNotesVisible(true);
+req->SetRelationRationale(relationId, "Chosen after the trade study in TR-114.");
+req->SetNodePortCount("PWR", 3);          // «block» port nubs on the top edge
+```
+
+A node's `status` renders as a chip hanging above the box; give a status a
+colour with `SetStatusColor()` and the chip uses it. Rationale notes place
+themselves around the relationship's midpoint, avoiding the boxes.
+
+## Force-directed layout
+
+```cpp
+req->SetLayoutMode(RequirementLayoutMode::ForceDirected);
+RequirementDiagramStyle style = req->GetStyle();
+style.forceLinkDistance = 150.0;
+style.forceCharge = -900.0;
+style.forceIterations = 320;
+req->SetStyle(style);
+req->RunLayout();
+```
+
+Every visible relation acts as a spring. The seed is a deterministic circle
+rather than random placement, so repeated runs give the same arrangement, and a
+final pass pushes apart any pair the simulation left overlapping. Pinned nodes
+are anchors.
+
 ## Serialization
 
 ```cpp
@@ -721,6 +814,26 @@ schema case-insensitively; only the id column is required. Quoted fields,
 embedded delimiters, escaped `""` quotes and newlines inside quotes are all
 handled. The `parent` column wires containment after every row exists, so
 forward references work.
+
+### ReqIF
+
+```cpp
+std::string error;
+if (!req->FromReqIf(xmlText, &error)) { /* error says what stopped the parse */ }
+```
+
+Reads `SPEC-OBJECTS` and the `SPEC-HIERARCHY` nesting of every `SPECIFICATION`,
+mapping the standard `ReqIF.ForeignID` / `ReqIF.Name` / `ReqIF.Text` attribute
+definitions onto the model, `Risk` / `Status` / `Source` / `Owner` / `Priority`
+where present, and everything else onto custom properties. XHTML values are
+read as text with entities decoded; enumeration values resolve through their
+`ENUM-VALUE` long names.
+
+This is a deliberate **subset**: requirements, their attributes and the
+hierarchy. `SPEC-RELATIONS`, relation groups, datatype definitions, embedded
+objects and tool extensions are not read — full ReqIF is a project of its own.
+A well-formed file with no `SPEC-OBJECTS` is reported as an error rather than
+silently producing an empty diagram.
 
 ## Complete example — HybridSUV requirement tree
 
@@ -782,6 +895,7 @@ window->AddChild(req);
 | **Smart Home traceability** | Heterogeneous node kinds, colour-by-kind, dashed `«deriveReqt»` / `«satisfy»` / `«verify»` / `«refine»` / `«trace»` relationships, title banner, relation-kind legend |
 | **Coverage + compartments** | SysML compartment notation, coverage badges and legend, the diagram frame, obstacle-aware routing, click-to-trace |
 | **Mermaid import + editing** | A diagram parsed from Mermaid text, expand/collapse toggles, create-node / drag-to-connect / rename, Mermaid export |
+| **ReqIF + overlays** | A specification imported from ReqIF XML, package grouping region, copy with suspect badge, rationale note, status chips, block ports, minimap + controls, search, matrix export, force layout |
 
 ## Notes and limitations
 
@@ -795,10 +909,18 @@ window->AddChild(req);
 - Mermaid has no generalisation relationship, so `Generalization` exports as
   `traces`. Mermaid requirement *names* are the model keys; the authored `id:`
   round-trips through `RequirementNode::externalId`.
-- Still open (phase 3, see the proposal): `Copy` master/slave semantics with
-  suspect-link detection, rationale notes attached to relationships, swimlane
-  package grouping, minimap, search, the traceability-matrix export and ReqIF
-  import.
+- ReqIF import covers requirements and hierarchy only (see above);
+  `SPEC-RELATIONS` do not become traceability links, so a ReqIF file's
+  satisfy/verify relationships must be added separately.
+- There is no ReqIF *export* — the format's type system needs authoring
+  decisions (which attribute definitions to emit, under which datatypes) that
+  belong to the exporting application, not to a diagram widget.
+- Force-directed layout is O(n²) per iteration; it is meant for the tens of
+  boxes a trace web has, not for thousands.
+- The box-and-typed-relation machinery is still private to this element. The
+  proposal's open question 1 recommends extracting a shared `UltraCanvasUmlCore`
+  once a second consumer exists (class / ER / block-definition diagrams are
+  still `NotImplemented` placeholders), so that remains deliberately deferred.
 
 ## Related Documentation
 
