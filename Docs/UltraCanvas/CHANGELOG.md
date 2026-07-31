@@ -1,4 +1,4 @@
-#### 2026-07-31 *0.3.23*
+#### 2026-07-31 *0.3.21*
 - **UltraCanvasTimelineChart**: added the swimlane grouping mode
   (`TimelineLaneMode::Swimlanes`). The same date axis and the same entries, with
   rows given identity: one named band per workstream, a name column on the left
@@ -15,8 +15,6 @@
   importance order rather than date order, so with a single right edge an event
   earlier than everything already placed could not be inserted and ended up
   overlapping a bar. Affects packed mode as well as swimlanes.
-
-#### 2026-07-31 *0.3.22*
 - New **UltraCanvasTimelineChart** element
   (`Plugins/Charts/UltraCanvasTimelineChart`): the chronological counterpart to
   the timeline diagram — milestones and spans placed to scale on a real date
@@ -38,8 +36,6 @@
   calendar-correct month/quarter/year stepping, and cursor-anchored zoom. Day
   serials match `GanttDate::serial`, so the axis, the Gantt chart and the
   timeline elements share one date representation.
-
-#### 2026-07-31 *0.3.21*
 - New **UltraCanvasTimelineDiagram** element
   (`Plugins/Diagrams/UltraCanvasTimelineDiagram`): the narrative timeline
   infographic — an ordered list of events laid out along a decorative path,
@@ -58,6 +54,7 @@
   Diagram) and guide in `Docs/UltraCanvas/UltraCanvasTimelineDiagram.md`; the
   research behind splitting narrative timelines from date-accurate ones is in
   `Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md`.
+- Fixed duplicated Trim and base64 code.
 
 #### 2026-07-30 *0.3.20*
 - **VirtualFS / UltraCanvasFilerWidget**: fixed archives always listing as

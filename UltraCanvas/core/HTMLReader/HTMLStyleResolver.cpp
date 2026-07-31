@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLStyleResolver.h"
+#include "UltraCanvasUtils.h"
 
 #include <algorithm>
 

@@ -15,6 +15,7 @@
 
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetPlugins.h>
+#include <UltraCanvasUtils.h>
 
 #include <curl/curl.h>
 
@@ -48,12 +49,6 @@ UltraNetResultCode MapCurlError(CURLcode rc) {
         case CURLE_PEER_FAILED_VERIFICATION:return UltraNetResultCode::TlsCertificateInvalid;
         default:                            return UltraNetResultCode::Unknown;
     }
-}
-
-std::string Trim(std::string s) {
-    while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front()))) s.erase(0, 1);
-    while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back())))  s.pop_back();
-    return s;
 }
 
 // Parses an LDIF stream (RFC 2849, simplified) into UltraNetDirectoryEntries.
@@ -92,7 +87,7 @@ void ParseLdif(const std::string& body,
         std::size_t valStart = colon + 1;
         if (valStart < line.size() && line[valStart] == ':') ++valStart;     // ::
         std::string value = (valStart < line.size())
-                                ? Trim(line.substr(valStart))
+                                ? UltraCanvas::Trim(line.substr(valStart))
                                 : std::string{};
 
         std::string lower; lower.reserve(name.size());

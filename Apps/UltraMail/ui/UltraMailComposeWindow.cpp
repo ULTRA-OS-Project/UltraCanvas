@@ -21,19 +21,12 @@ std::string Join(const std::vector<std::string>& v) {
     return out;
 }
 
-std::string Trim(const std::string& s) {
-    std::size_t a = 0, b = s.size();
-    while (a < b && (s[a] == ' ' || s[a] == '\t')) ++a;
-    while (b > a && (s[b-1] == ' ' || s[b-1] == '\t')) --b;
-    return s.substr(a, b - a);
-}
-
 std::vector<std::string> Split(const std::string& s) {
     std::vector<std::string> out;
     std::stringstream ss(s);
     std::string item;
     while (std::getline(ss, item, ',')) {
-        std::string t = Trim(item);
+        std::string t = UltraCanvas::Trim(item);
         if (!t.empty()) out.push_back(t);
     }
     return out;
