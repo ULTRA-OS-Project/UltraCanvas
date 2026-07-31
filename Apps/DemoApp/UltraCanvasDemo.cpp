@@ -1380,6 +1380,18 @@ namespace UltraCanvas {
                 .AddVariant("compositor", "Feature Playground")
                 .AddVariant("compositor", "Logic Diagram")
                 .AddVariant("compositor", "Marketing Funnel");
+    diagramBuilder.AddItem("quadrantcharts", "Quadrant Chart",
+                               "Strategic 2x2 matrices: SWOT, BCG, Eisenhower, risk, priority and custom quadrants",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateQuadrantChartExamples(); },
+                               "DemoApp/UltraCanvasQuadrantChartExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasQuadrantChartExamples.md")
+                .AddVariant("quadrantcharts", "SWOT Analysis")
+                .AddVariant("quadrantcharts", "BCG Matrix")
+                .AddVariant("quadrantcharts", "Eisenhower Matrix")
+                .AddVariant("quadrantcharts", "Risk Matrix")
+                .AddVariant("quadrantcharts", "Priority Matrix")
+                .AddVariant("quadrantcharts", "Custom Quadrants");
     diagramBuilder.AddItem("mindmap", "MindMap", "MindMap",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("MindMap is not ready yet"); });
@@ -1401,9 +1413,6 @@ namespace UltraCanvas {
     diagramBuilder.AddItem("classdiagram", "Class Diagram", "Class Diagram",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("Class Diagram is not ready yet"); });
-    diagramBuilder.AddItem("quadrantdiagram", "Quadrant Chart (diagram)", "Quadrant Chart (diagram)",
-                               ImplementationStatus::NotImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("Quadrant Chart (diagram) is not ready yet"); });
     diagramBuilder.AddItem("requirementdiagram", "Requirement Diagram", "Requirement Diagram",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("Requirement Diagram is not ready yet"); });
