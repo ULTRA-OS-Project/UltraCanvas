@@ -1427,10 +1427,6 @@ namespace UltraCanvas {
                 .AddVariant("requirementdiagram", "Coverage + compartments")
                 .AddVariant("requirementdiagram", "Mermaid import + editing")
                 .AddVariant("requirementdiagram", "ReqIF + overlays");
-    diagramBuilder.AddItem("timelinediagram", "Timeline Diagram", "Timeline Diagram",
-                               ImplementationStatus::NotImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("Timeline Diagram is not ready yet"); });
-
 
 //        diagramBuilder.AddItem("mermaid", "Mermaid", "Mermaid",
 //                               ImplementationStatus::NotImplemented,
