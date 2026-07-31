@@ -1121,7 +1121,7 @@ namespace UltraCanvas {
                 .AddVariant("kanbanboards", "Text Definition")
                 .AddVariant("kanbanboards", "Cumulative Flow");
 
-        chartBuilder.AddItem("quadrantcharts", "Quadrant Chart",
+        chartBuilder.AddItem("quadrantcharts", "Quadrant Diagram",
                              "Strategic 2x2 matrices: SWOT, BCG, Eisenhower, risk, priority and custom quadrants",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateQuadrantChartExamples(); },
@@ -1400,15 +1400,9 @@ namespace UltraCanvas {
     diagramBuilder.AddItem("mindmap", "MindMap", "MindMap",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("MindMap is not ready yet"); });
-    diagramBuilder.AddItem("kanbandiagram", "Kanban Diagram", "Kanban Diagram",
-                               ImplementationStatus::NotImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("Kanban Diagram is not ready yet"); });
     diagramBuilder.AddItem("packetdiagram", "Packet Diagram", "Packet Diagram",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("Packet Diagram is not ready yet"); });
-    diagramBuilder.AddItem("gitgraph", "Git Graph", "Git Graph",
-                               ImplementationStatus::NotImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("Git Graph is not ready yet"); });
     diagramBuilder.AddItem("erdiagram", "ER Diagram", "ER Diagram",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("ER Diagram is not ready yet"); });
@@ -1418,9 +1412,6 @@ namespace UltraCanvas {
     diagramBuilder.AddItem("classdiagram", "Class Diagram", "Class Diagram",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("Class Diagram is not ready yet"); });
-    diagramBuilder.AddItem("quadrantdiagram", "Quadrant Chart (diagram)", "Quadrant Chart (diagram)",
-                               ImplementationStatus::NotImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("Quadrant Chart (diagram) is not ready yet"); });
     diagramBuilder.AddItem("requirementdiagram", "Requirement Diagram",
                                "SysML requirement diagram: compartmented requirements, containment trees and traceability relationships",
                                ImplementationStatus::FullyImplemented,
