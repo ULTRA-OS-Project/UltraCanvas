@@ -571,8 +571,13 @@ void UltraCanvasGitGraph::PerformLayout() {
 }
 
 void UltraCanvasGitGraph::UpdateContentExtent() {
+    RebuildTimeAxis();
+
     contentAlongAxis = style.marginAlongAxis * 2.0 +
                        style.rowSpacing * std::max(0, layout.rowCount - 1);
+    if (!rowAxisOffsets.empty()) {
+        contentAlongAxis = rowAxisOffsets.back() + style.marginAlongAxis;
+    }
 
     const int laneSpan = std::max(0, layout.maxLane - layout.minLane);
     contentAcrossAxis = style.marginAcrossAxis * 2.0 + style.laneSpacing * laneSpan;
@@ -606,7 +611,56 @@ bool UltraCanvasGitGraph::IsAxisReversed() const {
 
 double UltraCanvasGitGraph::AxisCoord(int row) const {
     const int index = IsAxisReversed() ? (std::max(0, layout.rowCount - 1) - row) : row;
+
+    if (style.axisMode == GitGraphAxisMode::TimeProportional &&
+        index >= 0 && index < static_cast<int>(rowAxisOffsets.size())) {
+        return rowAxisOffsets[static_cast<size_t>(index)];
+    }
     return style.marginAlongAxis + style.rowSpacing * index;
+}
+
+// Turns commit timestamps into axis offsets: proportional to the elapsed time
+// between neighbouring rows, but clamped so a burst of same-second commits stays
+// readable and a multi-year gap does not blow the graph apart.
+void UltraCanvasGitGraph::RebuildTimeAxis() {
+    rowAxisOffsets.clear();
+    if (style.axisMode != GitGraphAxisMode::TimeProportional || layout.rowCount <= 0) return;
+
+    // Newest date on each row, in axis order.
+    std::vector<int64_t> dateByRow(static_cast<size_t>(layout.rowCount), 0);
+    for (const GitGraphPlacedCommit& placed : layout.commits) {
+        const GitGraphCommit* commit = GetCommit(placed.sha);
+        if (!commit) continue;
+        int64_t& slot = dateByRow[static_cast<size_t>(placed.row)];
+        slot = std::max(slot, commit->commitDate);
+    }
+
+    std::vector<int64_t> dateByIndex(dateByRow.size(), 0);
+    for (int row = 0; row < layout.rowCount; ++row) {
+        const int index = IsAxisReversed() ? (layout.rowCount - 1 - row) : row;
+        dateByIndex[static_cast<size_t>(index)] = dateByRow[static_cast<size_t>(row)];
+    }
+
+    // Scale so the whole history occupies about the same span it would with
+    // uniform rows; the clamps then redistribute it.
+    int64_t totalSpan = 0;
+    for (size_t i = 1; i < dateByIndex.size(); ++i) {
+        totalSpan += std::llabs(dateByIndex[i] - dateByIndex[i - 1]);
+    }
+    const double targetSpan = style.rowSpacing * static_cast<double>(layout.rowCount - 1);
+    const double perSecond = (totalSpan > 0) ? (targetSpan / static_cast<double>(totalSpan))
+                                             : 0.0;
+
+    rowAxisOffsets.resize(dateByIndex.size());
+    double cursor = style.marginAlongAxis;
+    rowAxisOffsets[0] = cursor;
+    for (size_t i = 1; i < dateByIndex.size(); ++i) {
+        const double elapsed = static_cast<double>(std::llabs(dateByIndex[i] - dateByIndex[i - 1]));
+        const double gap = std::clamp(elapsed * perSecond,
+                                      style.minTimeRowSpacing, style.maxTimeRowSpacing);
+        cursor += gap;
+        rowAxisOffsets[i] = cursor;
+    }
 }
 
 double UltraCanvasGitGraph::CrossCoord(int lane) const {
@@ -666,10 +720,23 @@ void UltraCanvasGitGraph::ComputeVisibleRows(int& firstRow, int& lastRow) const 
     const double axisMax = (extent - panAlongAxis) / zoomLevel;
 
     const double overscan = style.rowSpacing * 2.0;
-    int indexMin = static_cast<int>(std::floor((axisMin - style.marginAlongAxis - overscan) /
+    int indexMin = 0;
+    int indexMax = layout.rowCount - 1;
+
+    if (!rowAxisOffsets.empty()) {
+        // Non-uniform spacing: binary-search the offsets instead of dividing.
+        const auto low = std::lower_bound(rowAxisOffsets.begin(), rowAxisOffsets.end(),
+                                          axisMin - overscan);
+        const auto high = std::upper_bound(rowAxisOffsets.begin(), rowAxisOffsets.end(),
+                                           axisMax + overscan);
+        indexMin = static_cast<int>(std::distance(rowAxisOffsets.begin(), low));
+        indexMax = static_cast<int>(std::distance(rowAxisOffsets.begin(), high));
+    } else {
+        indexMin = static_cast<int>(std::floor((axisMin - style.marginAlongAxis - overscan) /
                                                style.rowSpacing));
-    int indexMax = static_cast<int>(std::ceil((axisMax - style.marginAlongAxis + overscan) /
+        indexMax = static_cast<int>(std::ceil((axisMax - style.marginAlongAxis + overscan) /
                                               style.rowSpacing));
+    }
     indexMin = std::clamp(indexMin, 0, layout.rowCount - 1);
     indexMax = std::clamp(indexMax, 0, layout.rowCount - 1);
 
@@ -687,6 +754,14 @@ std::string UltraCanvasGitGraph::FindCommitAt(const Point2Dd& worldPos) const {
         const Point2Dd center = NodePoint(placed.row, placed.lane);
         const double dx = worldPos.x - center.x;
         const double dy = worldPos.y - center.y;
+        if (placed.collapsedCount > 1) {
+            // The placeholder pill is wider than a node.
+            const double halfWidth = style.collapsedNodeWidth * 0.5 + 2.0;
+            const double halfHeight = std::max(style.nodeRadius, 7.0) + 2.0;
+            if (std::fabs(dx) <= halfWidth && std::fabs(dy) <= halfHeight) return placed.sha;
+            continue;
+        }
+
         const double hitRadius = NodeRadiusFor(placed) + 5.0;
         if (dx * dx + dy * dy <= hitRadius * hitRadius) return placed.sha;
     }
@@ -1098,7 +1173,19 @@ int UltraCanvasGitGraph::GetRowAtScreenPosition(double position) const {
 
     const double pan = IsHorizontalAxis() ? panX : panY;
     const double axis = (position - pan) / zoomLevel;
-    int index = static_cast<int>(std::lround((axis - style.marginAlongAxis) / style.rowSpacing));
+
+    int index = 0;
+    if (!rowAxisOffsets.empty()) {
+        const auto nearest = std::lower_bound(rowAxisOffsets.begin(), rowAxisOffsets.end(), axis);
+        index = static_cast<int>(std::distance(rowAxisOffsets.begin(), nearest));
+        if (index > 0 && index < static_cast<int>(rowAxisOffsets.size())) {
+            const double before = rowAxisOffsets[static_cast<size_t>(index) - 1];
+            const double after  = rowAxisOffsets[static_cast<size_t>(index)];
+            if (axis - before < after - axis) --index;
+        }
+    } else {
+        index = static_cast<int>(std::lround((axis - style.marginAlongAxis) / style.rowSpacing));
+    }
     index = std::clamp(index, 0, layout.rowCount - 1);
 
     const int row = IsAxisReversed() ? (layout.rowCount - 1 - index) : index;
@@ -1265,6 +1352,11 @@ void UltraCanvasGitGraph::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) 
         if (style.showSwimlaneBands)  DrawSwimlaneBands(ctx);
         if (style.showTrunkBaseline)  DrawTrunkBaseline(ctx);
         if (style.showSwimlaneLabels) DrawSwimlaneLabels(ctx);
+    }
+
+    occupiedLabelRects.clear();
+    if (style.showDateRuler && style.axisMode == GitGraphAxisMode::TimeProportional) {
+        DrawDateRuler(ctx, firstRow, lastRow);
     }
 
     DrawEdges(ctx, firstRow, lastRow);
@@ -1555,6 +1647,11 @@ void UltraCanvasGitGraph::DrawNode(IRenderContext* ctx, const GitGraphPlacedComm
     const Color  color    = CommitColor(placed);
     const GitGraphCommit* commit = GetCommit(placed.sha);
 
+    if (placed.collapsedCount > 1) {
+        DrawCollapsedNode(ctx, placed);
+        return;
+    }
+
     // Halo so edges crossing behind the node do not touch it.
     if (style.drawNodeHalo) {
         ctx->SetFillPaint(style.backgroundColor);
@@ -1673,6 +1770,10 @@ void UltraCanvasGitGraph::DrawRefChips(IRenderContext* ctx,
             fill = style.tagChipColor;
             border = Blend(style.tagChipColor, Color(0, 0, 0), 0.25);
             textColor = style.tagChipTextColor;
+        } else if (ref.type == GitGraphRefType::Stash) {
+            fill = style.stashChipColor;
+            border = style.stashChipColor;
+            textColor = style.stashChipTextColor;
         } else if (ref.type == GitGraphRefType::RemoteBranch) {
             fill = style.backgroundColor;
             border = GetLaneColor(placed.lane);
@@ -1706,6 +1807,12 @@ void UltraCanvasGitGraph::DrawRefChips(IRenderContext* ctx,
 
 std::string UltraCanvasGitGraph::CommitLabelText(const GitGraphCommit& commit) const {
     if (commitLabelFormatter) return commitLabelFormatter(commit);
+
+    // A folded run stands for many commits, so naming just the first one would
+    // misrepresent it.
+    const int collapsed = GetCollapsedCount(commit.sha);
+    if (collapsed > 1) return std::to_string(collapsed) + " commits";
+
     if (commit.subject.empty()) return commit.ShortSha();
     return commit.ShortSha() + "  " + commit.subject;
 }
@@ -1728,6 +1835,12 @@ void UltraCanvasGitGraph::DrawCommitLabel(IRenderContext* ctx,
         const double textWidth = ctx->GetTextLineWidth(text);
         const Point2Dd position(center.x - textWidth * 0.5,
                                 center.y + side * offset - (side < 0 ? style.fontSize : 0.0));
+
+        // Skip a label that would land on one already drawn - stacked text is
+        // worse than a missing label the user can get from the tooltip.
+        if (!ReserveLabelRect(Rect2Dd(position.x, position.y, textWidth, style.fontSize))) {
+            return;
+        }
 
         if (style.rotateCommitLabels) {
             ctx->PushState();
@@ -1808,6 +1921,8 @@ void UltraCanvasGitGraph::DrawDecorations(IRenderContext* ctx, int firstRow, int
 
         double cursorAcross = NodeRadiusFor(placed) + style.chipGap + 2.0;
 
+        DrawBadges(ctx, placed, *commit, cursorAcross);
+
         if (style.showBranchChips || style.showTagChips) {
             const std::vector<GitGraphRef> commitRefs = GetRefsForCommit(placed.sha);
             if (!commitRefs.empty()) DrawRefChips(ctx, placed, commitRefs, cursorAcross);
@@ -1842,10 +1957,13 @@ void UltraCanvasGitGraph::DrawAnnotations(IRenderContext* ctx) {
         ctx->DrawLine(center, target);
 
         const double textWidth = ctx->GetTextLineWidth(annotation.text);
+        const Rect2Dd rect(target.x - textWidth * 0.5,
+                           target.y - style.annotationFontSize,
+                           textWidth, style.annotationFontSize);
+        if (!ReserveLabelRect(rect)) continue;
+
         ctx->SetTextPaint(color);
-        ctx->DrawText(annotation.text,
-                      Point2Dd(target.x - textWidth * 0.5,
-                               target.y - style.annotationFontSize));
+        ctx->DrawText(annotation.text, Point2Dd(rect.x, rect.y));
     }
 }
 
@@ -1911,6 +2029,237 @@ std::string UltraCanvasGitGraph::FormatTimestamp(int64_t timestamp) const {
     char buffer[32];
     std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M", &parts);
     return std::string(buffer);
+}
+
+// =============================================================================
+// TIME AXIS / COLLAPSING / PARALLEL ROWS - CONFIGURATION
+// =============================================================================
+
+void UltraCanvasGitGraph::SetAxisMode(GitGraphAxisMode mode) {
+    style.axisMode = mode;
+    needsLayout = true;
+    RequestRedraw();
+}
+
+void UltraCanvasGitGraph::SetTimeRowSpacingRange(double minimum, double maximum) {
+    style.minTimeRowSpacing = std::max(1.0, minimum);
+    style.maxTimeRowSpacing = std::max(style.minTimeRowSpacing, maximum);
+    needsLayout = true;
+    RequestRedraw();
+}
+
+void UltraCanvasGitGraph::SetShowDateRuler(bool show) {
+    style.showDateRuler = show;
+    RequestRedraw();
+}
+
+void UltraCanvasGitGraph::SetCollapseLinearRuns(bool enabled, int minimumRun) {
+    layoutOptions.collapseLinearRuns = enabled;
+    layoutOptions.minCollapsibleRun = std::max(2, minimumRun);
+    layoutEngine.SetOptions(layoutOptions);
+    needsLayout = true;
+    RequestRedraw();
+}
+
+void UltraCanvasGitGraph::ExpandRun(const std::string& sha) {
+    // Pin the placeholder and everything it stands for: the run is rebuilt from
+    // the placeholder's first-parent chain, which is exactly what was folded.
+    const GitGraphCommit* commit = GetCommit(sha);
+    int remaining = GetCollapsedCount(sha);
+    while (commit && remaining-- > 0) {
+        layoutOptions.keepExpanded.insert(commit->sha);
+        if (commit->parents.empty()) break;
+        commit = GetCommit(commit->parents.front());
+    }
+    layoutEngine.SetOptions(layoutOptions);
+    needsLayout = true;
+    RequestRedraw();
+}
+
+void UltraCanvasGitGraph::CollapseAllRuns() {
+    layoutOptions.keepExpanded.clear();
+    layoutEngine.SetOptions(layoutOptions);
+    needsLayout = true;
+    RequestRedraw();
+}
+
+int UltraCanvasGitGraph::GetCollapsedCount(const std::string& sha) const {
+    const GitGraphPlacedCommit* placed = layout.Find(sha);
+    return placed ? placed->collapsedCount : 0;
+}
+
+void UltraCanvasGitGraph::SetParallelCommits(bool enabled, int64_t toleranceSeconds) {
+    layoutOptions.parallelCommits = enabled;
+    layoutOptions.parallelTolerance = std::max<int64_t>(0, toleranceSeconds);
+    layoutEngine.SetOptions(layoutOptions);
+    needsLayout = true;
+    RequestRedraw();
+}
+
+// =============================================================================
+// LABEL COLLISION AVOIDANCE
+// =============================================================================
+
+// Returns false when `rect` would overlap something already drawn this frame,
+// so the caller can skip that label instead of stacking text on text.
+bool UltraCanvasGitGraph::ReserveLabelRect(const Rect2Dd& rect) const {
+    if (!style.avoidLabelOverlap) return true;
+
+    for (const Rect2Dd& taken : occupiedLabelRects) {
+        const bool apart = rect.x + rect.width  <= taken.x ||
+                           taken.x + taken.width <= rect.x ||
+                           rect.y + rect.height <= taken.y ||
+                           taken.y + taken.height <= rect.y;
+        if (!apart) return false;
+    }
+    occupiedLabelRects.push_back(rect);
+    return true;
+}
+
+// =============================================================================
+// DATE RULER / BADGES / COLLAPSED NODES / AVATARS
+// =============================================================================
+
+void UltraCanvasGitGraph::DrawDateRuler(IRenderContext* ctx, int firstRow, int lastRow) {
+    if (layout.rowCount <= 0) return;
+
+    ctx->SetFontFamily(style.fontFamily);
+    ctx->SetFontSize(style.chipFontSize);
+
+    // One label whenever the calendar day changes, so a dense burst gets one
+    // marker rather than one per commit.
+    std::string previousLabel;
+    for (int row = firstRow; row <= lastRow; ++row) {
+        const GitGraphPlacedCommit* placed = nullptr;
+        for (const GitGraphPlacedCommit& candidate : layout.commits) {
+            if (candidate.row == row) { placed = &candidate; break; }
+        }
+        if (!placed) continue;
+
+        const GitGraphCommit* commit = GetCommit(placed->sha);
+        if (!commit || commit->commitDate <= 0) continue;
+
+        const std::string stamp = FormatTimestamp(commit->commitDate);
+        const std::string label = stamp.substr(0, 10);          // YYYY-MM-DD
+        if (label.empty() || label == previousLabel) continue;
+        previousLabel = label;
+
+        const double axis = AxisCoord(placed->row);
+        const double cross = CrossCoord(layout.minLane) - style.dateRulerSize;
+
+        ctx->SetStrokePaint(style.dateRulerLineColor);
+        ctx->SetStrokeWidth(1.0);
+        if (IsHorizontalAxis()) {
+            ctx->DrawLine(MakePoint(axis, cross), MakePoint(axis, CrossCoord(layout.maxLane)));
+        } else {
+            ctx->DrawLine(MakePoint(axis, cross), MakePoint(axis, CrossCoord(layout.maxLane)));
+        }
+
+        ctx->SetTextPaint(style.dateRulerColor);
+        const double textWidth = ctx->GetTextLineWidth(label);
+        const double textCross = CrossCoord(layout.minLane) - style.nodeRadius
+                                 - style.chipGap - textWidth;
+        ctx->DrawText(label, MakePoint(axis - style.chipFontSize * 0.7, textCross));
+    }
+}
+
+void UltraCanvasGitGraph::DrawBadges(IRenderContext* ctx, const GitGraphPlacedCommit& placed,
+                                     const GitGraphCommit& commit, double& cursorAcross) {
+    if (!style.showBadges) return;
+    if (commit.signature == GitGraphSignature::NoSignature &&
+        commit.buildStatus == GitGraphBuildStatus::NoStatus) {
+        return;
+    }
+
+    const Point2Dd center = NodePoint(placed.row, placed.lane);
+    const int side = LabelSideSign(placed.lane);
+
+    // Badges share the chip cursor, so they queue up beside the node rather
+    // than floating diagonally off it.
+    auto dot = [&](const Color& color) {
+        const double offset = cursorAcross + style.badgeRadius;
+        const Point2Dd at = IsHorizontalAxis()
+                                ? Point2Dd(center.x, center.y + side * offset)
+                                : Point2Dd(center.x + offset, center.y);
+        ctx->SetFillPaint(color);
+        ctx->FillCircle(at, style.badgeRadius);
+        ctx->SetStrokePaint(style.backgroundColor);
+        ctx->SetStrokeWidth(1.0);
+        ctx->DrawCircle(at, style.badgeRadius);
+        cursorAcross += style.badgeRadius * 2.0 + 2.0;
+    };
+
+    switch (commit.signature) {
+        case GitGraphSignature::Good:    dot(style.signatureGoodColor);    break;
+        case GitGraphSignature::Bad:     dot(style.signatureBadColor);     break;
+        case GitGraphSignature::Unknown: dot(style.signatureUnknownColor); break;
+        default: break;
+    }
+    switch (commit.buildStatus) {
+        case GitGraphBuildStatus::Pending: dot(style.buildPendingColor); break;
+        case GitGraphBuildStatus::Passed: dot(style.buildSuccessColor); break;
+        case GitGraphBuildStatus::Failed: dot(style.buildFailureColor); break;
+        default: break;
+    }
+}
+
+void UltraCanvasGitGraph::DrawCollapsedNode(IRenderContext* ctx,
+                                            const GitGraphPlacedCommit& placed) {
+    const Point2Dd center = NodePoint(placed.row, placed.lane);
+    const double halfWidth = style.collapsedNodeWidth * 0.5;
+    const double halfHeight = std::max(style.nodeRadius, 7.0);
+
+    // A pill labelled with how many commits are folded inside it.
+    const Rect2Dd pill(center.x - halfWidth, center.y - halfHeight,
+                       style.collapsedNodeWidth, halfHeight * 2.0);
+    ctx->SetFillPaint(style.backgroundColor);
+    ctx->FillRoundedRectangle(pill, halfHeight);
+    ctx->SetStrokePaint(style.collapsedNodeColor);
+    ctx->SetStrokeWidth(1.5);
+    ctx->SetLineDash(UCDashPattern({3.0, 2.0}));
+    ctx->DrawRoundedRectangle(pill, halfHeight);
+    ctx->SetLineDash(UCDashPattern());
+
+    ctx->SetFontFamily(style.fontFamily);
+    ctx->SetFontSize(style.fileBoxFontSize);
+    ctx->SetTextPaint(style.collapsedNodeColor);
+
+    const std::string label = std::to_string(placed.collapsedCount);
+    const double textWidth = ctx->GetTextLineWidth(label);
+    ctx->DrawText(label, Point2Dd(center.x - textWidth * 0.5,
+                                  center.y - style.fileBoxFontSize * 0.6));
+}
+
+void UltraCanvasGitGraph::DrawAvatar(IRenderContext* ctx, const GitGraphCommit& commit,
+                                     const Rect2Dd& bounds) {
+    // Initials on a colour derived from the author, so the same person keeps the
+    // same swatch without any image loading.
+    uint32_t hash = 2166136261u;
+    for (char c : commit.authorEmail.empty() ? commit.authorName : commit.authorEmail) {
+        hash = (hash ^ static_cast<uint8_t>(c)) * 16777619u;
+    }
+    const Color swatch = GetLaneColor(static_cast<int>(hash % 8u));
+
+    const Point2Dd center(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.5);
+    ctx->SetFillPaint(swatch);
+    ctx->FillCircle(center, bounds.width * 0.5);
+
+    std::string initials;
+    bool atStart = true;
+    for (char c : commit.authorName) {
+        if (c == ' ') { atStart = true; continue; }
+        if (atStart && initials.size() < 2) {
+            initials.push_back(static_cast<char>(::toupper(static_cast<unsigned char>(c))));
+            atStart = false;
+        }
+    }
+    if (initials.empty()) return;
+
+    ctx->SetFontSize(bounds.height * 0.5);
+    ctx->SetTextPaint(Color(255, 255, 255));
+    const double textWidth = ctx->GetTextLineWidth(initials);
+    ctx->DrawText(initials, Point2Dd(center.x - textWidth * 0.5,
+                                     center.y - bounds.height * 0.3));
 }
 
 // =============================================================================
@@ -1988,6 +2337,14 @@ void UltraCanvasGitGraph::DrawTablePane(IRenderContext* ctx, int firstRow, int l
         for (const GitGraphTableColumnSpec& column : tableColumns) {
             if (!column.visible) continue;
             if (cellX > GetWidth()) break;
+
+            if (column.column == GitGraphTableColumn::Author && style.showAvatars) {
+                const Rect2Dd avatar(cellX, centreY - style.avatarSize * 0.5,
+                                     style.avatarSize, style.avatarSize);
+                DrawAvatar(ctx, *commit, avatar);
+                cellX += style.avatarSize + 6.0;
+                ctx->SetFontSize(style.fontSize);
+            }
 
             const std::string text = TableCellText(*commit, column.column);
             if (!text.empty()) {
@@ -2297,6 +2654,12 @@ bool UltraCanvasGitGraph::HandleDoubleClick(const UCEvent& event) {
     const std::string sha = FindCommitAt(ScreenToWorld(Point2Di(event.pointer.x,
                                                                 event.pointer.y)));
     if (sha.empty()) return false;
+
+    if (GetCollapsedCount(sha) > 1) {
+        ExpandRun(sha);
+        return true;
+    }
+
     if (onCommitDoubleClick) onCommitDoubleClick(sha);
     return true;
 }
@@ -2360,6 +2723,137 @@ bool UltraCanvasGitGraph::HandleKeyDown(const UCEvent& event) {
             break;
     }
     return false;
+}
+
+// =============================================================================
+// JSON EXPORT
+// =============================================================================
+
+namespace {
+
+std::string EscapeJson(const std::string& text) {
+    std::string out;
+    out.reserve(text.size() + 8);
+    for (char c : text) {
+        switch (c) {
+            case '"':  out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\n': out += "\\n";  break;
+            case '\r': out += "\\r";  break;
+            case '\t': out += "\\t";  break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    char buffer[8];
+                    std::snprintf(buffer, sizeof(buffer), "\\u%04x", c);
+                    out += buffer;
+                } else {
+                    out.push_back(c);
+                }
+        }
+    }
+    return out;
+}
+
+const char* EdgeKindName(GitGraphEdgeKind kind) {
+    switch (kind) {
+        case GitGraphEdgeKind::Merge:      return "merge";
+        case GitGraphEdgeKind::CherryPick: return "cherry-pick";
+        case GitGraphEdgeKind::Skipped:    return "skipped";
+        default:                           return "parent";
+    }
+}
+
+const char* RefTypeName(GitGraphRefType type) {
+    switch (type) {
+        case GitGraphRefType::RemoteBranch: return "remote";
+        case GitGraphRefType::Tag:          return "tag";
+        case GitGraphRefType::Head:         return "head";
+        case GitGraphRefType::Stash:        return "stash";
+        default:                            return "branch";
+    }
+}
+
+} // namespace
+
+std::string UltraCanvasGitGraph::ToJSON() const {
+    std::ostringstream out;
+    out << "{\n";
+    out << "  \"rowCount\": " << layout.rowCount
+        << ", \"minLane\": " << layout.minLane
+        << ", \"maxLane\": " << layout.maxLane
+        << ", \"hiddenCount\": " << layout.hiddenCount << ",\n";
+
+    out << "  \"commits\": [\n";
+    for (size_t i = 0; i < layout.commits.size(); ++i) {
+        const GitGraphPlacedCommit& placed = layout.commits[i];
+        const GitGraphCommit* commit = GetCommit(placed.sha);
+
+        out << "    {\"sha\": \"" << EscapeJson(placed.sha) << "\""
+            << ", \"row\": " << placed.row
+            << ", \"lane\": " << placed.lane
+            << ", \"isMerge\": " << (placed.isMerge ? "true" : "false")
+            << ", \"isRoot\": " << (placed.isRoot ? "true" : "false")
+            << ", \"isBoundary\": " << (placed.isBoundary ? "true" : "false");
+        if (placed.collapsedCount > 0) out << ", \"collapsed\": " << placed.collapsedCount;
+        if (!placed.branch.empty()) out << ", \"branch\": \"" << EscapeJson(placed.branch) << "\"";
+        if (commit) {
+            out << ", \"subject\": \"" << EscapeJson(commit->subject) << "\""
+                << ", \"author\": \"" << EscapeJson(commit->authorName) << "\""
+                << ", \"date\": " << commit->commitDate;
+        }
+        out << "}" << (i + 1 < layout.commits.size() ? "," : "") << "\n";
+    }
+    out << "  ],\n";
+
+    out << "  \"edges\": [\n";
+    for (size_t i = 0; i < layout.edges.size(); ++i) {
+        const GitGraphPlacedEdge& edge = layout.edges[i];
+        out << "    {\"child\": \"" << EscapeJson(edge.childSha) << "\""
+            << ", \"parent\": \"" << EscapeJson(edge.parentSha) << "\""
+            << ", \"fromRow\": " << edge.fromRow << ", \"fromLane\": " << edge.fromLane
+            << ", \"toRow\": " << edge.toRow << ", \"toLane\": " << edge.toLane
+            << ", \"kind\": \"" << EdgeKindName(edge.kind) << "\""
+            << ", \"turnAtChild\": " << (edge.turnAtChild ? "true" : "false")
+            << "}" << (i + 1 < layout.edges.size() ? "," : "") << "\n";
+    }
+    out << "  ],\n";
+
+    out << "  \"refs\": [\n";
+    for (size_t i = 0; i < refs.size(); ++i) {
+        const GitGraphRef& ref = refs[i];
+        out << "    {\"name\": \"" << EscapeJson(ref.DisplayName()) << "\""
+            << ", \"sha\": \"" << EscapeJson(ref.sha) << "\""
+            << ", \"type\": \"" << RefTypeName(ref.type) << "\""
+            << ", \"current\": " << (ref.isCurrent ? "true" : "false")
+            << "}" << (i + 1 < refs.size() ? "," : "") << "\n";
+    }
+    out << "  ]";
+
+    if (!layout.swimlanes.empty()) {
+        out << ",\n  \"swimlanes\": [\n";
+        for (size_t i = 0; i < layout.swimlanes.size(); ++i) {
+            const GitGraphSwimlane& band = layout.swimlanes[i];
+            out << "    {\"name\": \"" << EscapeJson(band.name) << "\""
+                << ", \"lane\": " << band.lane
+                << ", \"firstRow\": " << band.firstRow
+                << ", \"lastRow\": " << band.lastRow
+                << "}" << (i + 1 < layout.swimlanes.size() ? "," : "") << "\n";
+        }
+        out << "  ]";
+    }
+
+    out << "\n}\n";
+    return out.str();
+}
+
+bool UltraCanvasGitGraph::SaveToJSON(const std::string& filePath) const {
+    std::ofstream file(filePath);
+    if (!file.is_open()) {
+        lastError = "cannot open '" + filePath + "' for writing";
+        return false;
+    }
+    file << ToJSON();
+    return true;
 }
 
 // =============================================================================

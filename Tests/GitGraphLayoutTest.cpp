@@ -656,6 +656,143 @@ static void TestCrossingReductionAtScale() {
     CHECK(totalAfter < totalBefore, "total crossings drop overall");
 }
 
+static void TestCollapseLinearRuns() {
+    std::printf("Collapsing linear runs\n");
+
+    // tip -> 12 plain commits -> base, with a tag pinning one of them.
+    std::vector<GitGraphCommit> commits;
+    commits.push_back(MakeCommit("tip", {"c11"}, 2000));
+    for (int i = 11; i >= 0; --i) {
+        const std::string sha = "c" + std::to_string(i);
+        const std::string parent = (i == 0) ? "base" : ("c" + std::to_string(i - 1));
+        commits.push_back(MakeCommit(sha, {parent}, 1000 + i));
+    }
+    commits.push_back(MakeCommit("base", {}, 100));
+
+    std::vector<GitGraphRef> refs = {MakeBranch("main", "tip")};
+
+    GitGraphLayoutOptions options;
+    options.orderMode = GitGraphOrderMode::CommitDate;
+    options.collapseLinearRuns = true;
+    options.minCollapsibleRun  = 4;
+
+    const GitGraphLayoutResult result =
+        UltraCanvasGitGraphLayout(options).Compute(commits, refs);
+
+    CHECK(result.commits.size() < commits.size(), "the run is folded away");
+    CHECK(result.Find("tip") != nullptr, "the branch tip survives (it carries a ref)");
+    CHECK(result.Find("base") != nullptr, "the root survives");
+
+    int collapsed = 0;
+    for (const GitGraphPlacedCommit& placed : result.commits) {
+        if (placed.collapsedCount > 0) ++collapsed;
+    }
+    CHECK(collapsed == 1, "one node stands in for the folded run");
+
+    const GitGraphPlacedCommit* placeholder = nullptr;
+    for (const GitGraphPlacedCommit& placed : result.commits) {
+        if (placed.collapsedCount > 0) placeholder = &placed;
+    }
+    CHECK(placeholder && placeholder->collapsedCount == 12,
+          "the placeholder reports how many commits it replaces");
+
+    // The chain must still connect end to end.
+    bool reachesBase = false;
+    for (const GitGraphPlacedEdge& edge : result.edges) {
+        if (edge.parentSha == "base") reachesBase = true;
+    }
+    CHECK(reachesBase, "an edge still reaches the root across the fold");
+
+    // keepExpanded pins a commit open.
+    options.keepExpanded = {"c5"};
+    const GitGraphLayoutResult pinned =
+        UltraCanvasGitGraphLayout(options).Compute(commits, refs);
+    CHECK(pinned.Find("c5") != nullptr, "keepExpanded holds a commit on the graph");
+    CHECK(pinned.commits.size() > result.commits.size(),
+          "pinning splits the run, so more commits stay visible");
+}
+
+static void TestCollapseSkipsDecorated() {
+    std::printf("Collapsing never folds a decorated, merge or root commit\n");
+
+    std::vector<GitGraphCommit> commits = {
+        MakeCommit("tip", {"c4"}, 900),
+        MakeCommit("c4",  {"c3"}, 800),
+        MakeCommit("c3",  {"c2"}, 700),
+        MakeCommit("c2",  {"c1"}, 600),
+        MakeCommit("c1",  {"base"}, 500),
+        MakeCommit("base", {},      100)
+    };
+    std::vector<GitGraphRef> refs = {MakeBranch("main", "tip"), MakeBranch("keep", "c3")};
+
+    GitGraphLayoutOptions options;
+    options.orderMode = GitGraphOrderMode::CommitDate;
+    options.collapseLinearRuns = true;
+    options.minCollapsibleRun  = 2;
+
+    const GitGraphLayoutResult result =
+        UltraCanvasGitGraphLayout(options).Compute(commits, refs);
+
+    CHECK(result.Find("c3") != nullptr, "a commit carrying a ref is never folded");
+    CHECK(result.Find("base") != nullptr, "the root is never folded");
+    CHECK(result.Find("tip") != nullptr, "the tip is never folded");
+}
+
+static void TestParallelCommits() {
+    std::printf("Parallel commits (same moment, different lanes, one row)\n");
+
+    // a and b are unrelated siblings committed at the same second.
+    std::vector<GitGraphCommit> commits = {
+        MakeCommit("merge", {"a", "b"}, 900),
+        MakeCommit("a",     {"base"},   500),
+        MakeCommit("b",     {"base"},   500),
+        MakeCommit("base",  {},         100)
+    };
+    std::vector<GitGraphRef> refs = {MakeBranch("main", "merge")};
+
+    GitGraphLayoutOptions options;
+    options.orderMode = GitGraphOrderMode::CommitDate;
+    options.trunkBranch = "main";
+
+    const GitGraphLayoutResult stacked =
+        UltraCanvasGitGraphLayout(options).Compute(commits, refs);
+
+    options.parallelCommits = true;
+    const GitGraphLayoutResult parallel =
+        UltraCanvasGitGraphLayout(options).Compute(commits, refs);
+
+    CHECK(stacked.rowCount == 4, "without the option each commit gets its own row");
+    CHECK(parallel.rowCount == 3, "the two same-second commits share a row");
+    CHECK(parallel.Find("a")->row == parallel.Find("b")->row,
+          "the siblings land on the same row");
+    CHECK(parallel.Find("a")->lane != parallel.Find("b")->lane,
+          "and stay in different lanes");
+    CheckInvariants(parallel, commits, "parallel");
+}
+
+static void TestParallelCommitsNeverFlattensAnEdge() {
+    std::printf("Parallel commits refuse to merge a parent with its child\n");
+
+    // Parent and child share a timestamp - they must NOT share a row.
+    std::vector<GitGraphCommit> commits = {
+        MakeCommit("child",  {"parent"}, 500),
+        MakeCommit("parent", {"base"},   500),
+        MakeCommit("base",   {},         100)
+    };
+    std::vector<GitGraphRef> refs = {MakeBranch("main", "child")};
+
+    GitGraphLayoutOptions options;
+    options.orderMode = GitGraphOrderMode::CommitDate;
+    options.parallelCommits = true;
+
+    const GitGraphLayoutResult result =
+        UltraCanvasGitGraphLayout(options).Compute(commits, refs);
+
+    CHECK(result.Find("child")->row != result.Find("parent")->row,
+          "a parent never shares its child's row");
+    CheckInvariants(result, commits, "parallel-related");
+}
+
 // ---------------------------------------------------------------------------
 
 int main() {
@@ -677,6 +814,10 @@ int main() {
     TestCrossingReduction();
     TestCrossingReductionBudget();
     TestCrossingReductionAtScale();
+    TestCollapseLinearRuns();
+    TestCollapseSkipsDecorated();
+    TestParallelCommits();
+    TestParallelCommitsNeverFlattensAnEdge();
     TestRandomHistories();
 
     std::printf("\n%s (%d failure%s)\n",

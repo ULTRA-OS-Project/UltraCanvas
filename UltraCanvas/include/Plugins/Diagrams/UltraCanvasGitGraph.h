@@ -182,6 +182,28 @@ public:
     int    GetRowAtScreenPosition(double position) const;
     std::pair<int, int> GetVisibleRowRange() const;
 
+    // ===== TIME AXIS =====
+
+    // Rows (equal slices) or TimeProportional (position follows the commit
+    // date, with quiet periods compressed between the min/max row spacing).
+    void SetAxisMode(GitGraphAxisMode mode);
+    GitGraphAxisMode GetAxisMode() const { return style.axisMode; }
+    void SetTimeRowSpacingRange(double minimum, double maximum);
+    void SetShowDateRuler(bool show);
+
+    // ===== COLLAPSING =====
+
+    void SetCollapseLinearRuns(bool enabled, int minimumRun = 8);
+    bool GetCollapseLinearRuns() const { return layoutOptions.collapseLinearRuns; }
+    void ExpandRun(const std::string& sha);        // Unfold one placeholder
+    void CollapseAllRuns();                        // Drop every manual expansion
+    int  GetCollapsedCount(const std::string& sha) const;
+
+    // ===== PARALLEL ROWS =====
+
+    void SetParallelCommits(bool enabled, int64_t toleranceSeconds = 0);
+    bool GetParallelCommits() const { return layoutOptions.parallelCommits; }
+
     // ===== MINIMAP =====
 
     void SetShowMinimap(bool show);
@@ -211,6 +233,11 @@ public:
     // ===== EXPORT =====
 
     bool SaveToSVG(const std::string& filePath);
+
+    // Laid-out geometry (commits, edges, lanes, refs) as JSON, for tooling and
+    // golden tests.
+    std::string ToJSON() const;
+    bool SaveToJSON(const std::string& filePath) const;
 
     // ===== RENDERING / EVENTS =====
 
@@ -275,6 +302,13 @@ private:
     Rect2Dd     minimapBounds;          // Element-space, updated each render
     bool        isDraggingMinimap = false;
 
+    // Axis positions per row index (TimeProportional mode only; empty in Rows
+    // mode, where spacing is uniform).
+    std::vector<double> rowAxisOffsets;
+
+    // Label rectangles already drawn this frame, for collision avoidance.
+    mutable std::vector<Rect2Dd> occupiedLabelRects;
+
     // ===== INTERACTION =====
     std::string hoveredSha;
     std::vector<std::string> selectedShas;
@@ -328,6 +362,14 @@ private:
     void DrawAnnotations(IRenderContext* ctx);
     void DrawTooltip(IRenderContext* ctx);
     void DrawTablePane(IRenderContext* ctx, int firstRow, int lastRow);
+    void DrawDateRuler(IRenderContext* ctx, int firstRow, int lastRow);
+    void DrawBadges(IRenderContext* ctx, const GitGraphPlacedCommit& placed,
+                    const GitGraphCommit& commit, double& cursorAcross);
+    void DrawCollapsedNode(IRenderContext* ctx, const GitGraphPlacedCommit& placed);
+    void DrawAvatar(IRenderContext* ctx, const GitGraphCommit& commit,
+                    const Rect2Dd& bounds);
+    bool ReserveLabelRect(const Rect2Dd& rect) const;
+    void RebuildTimeAxis();
     void DrawMinimap(IRenderContext* ctx);
     std::string TableCellText(const GitGraphCommit& commit, GitGraphTableColumn column) const;
     bool     IsTableActive() const;

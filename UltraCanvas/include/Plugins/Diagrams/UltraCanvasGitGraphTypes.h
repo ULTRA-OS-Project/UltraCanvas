@@ -92,6 +92,32 @@ enum class GitGraphEdgeKind {
     Skipped         // Link across commits hidden by a filter
 };
 
+// Rows            - every commit gets an equal slice of the axis (the default).
+// TimeProportional - position follows the commit timestamp, with long quiet
+//                    periods compressed so a two-year gap does not blow the
+//                    graph apart.
+enum class GitGraphAxisMode {
+    Rows,
+    TimeProportional
+};
+
+// NoSignature / NoStatus rather than None, and Passed / Failed rather than
+// Success / Failure: X11's X.h #defines None and Success as macros, so those
+// identifiers cannot be enumerators in a header that reaches a window backend.
+enum class GitGraphSignature {
+    NoSignature,
+    Good,
+    Bad,
+    Unknown
+};
+
+enum class GitGraphBuildStatus {
+    NoStatus,
+    Pending,
+    Passed,
+    Failed
+};
+
 enum class GitGraphTheme {
     Default,
     Dark,
@@ -145,6 +171,10 @@ struct GitGraphCommit {
     // Set when this commit was cherry-picked from another; drawn as a dashed
     // non-parent edge back to the source.
     std::string cherryPickSource;
+
+    // Optional badges drawn beside the node.
+    GitGraphSignature   signature   = GitGraphSignature::NoSignature;
+    GitGraphBuildStatus buildStatus = GitGraphBuildStatus::NoStatus;
 
     bool IsMerge() const { return parents.size() > 1; }
     bool IsRoot()  const { return parents.empty(); }
@@ -360,6 +390,40 @@ struct GitGraphStyle {
     // Search highlighting
     Color  searchMatchColor   = Color(255, 214, 0);
     Color  searchCurrentColor = Color(255, 111, 0);
+
+    // Time-proportional axis
+    GitGraphAxisMode axisMode = GitGraphAxisMode::Rows;
+    double minTimeRowSpacing = 14.0;    // Floor, so same-second commits stay apart
+    double maxTimeRowSpacing = 120.0;   // Ceiling - this is the gap compression
+    bool   showDateRuler     = false;
+    double dateRulerSize     = 62.0;    // Width (vertical axis) or height (horizontal)
+    Color  dateRulerColor    = Color(146, 152, 161);
+    Color  dateRulerLineColor = Color(228, 232, 236);
+
+    // Collapsed runs
+    Color  collapsedNodeColor = Color(150, 156, 165);
+    double collapsedNodeWidth = 34.0;
+
+    // Badges (signature / build status)
+    bool   showBadges  = true;
+    double badgeRadius = 3.5;
+    Color  signatureGoodColor    = Color(46, 160, 67);
+    Color  signatureBadColor     = Color(207, 34, 46);
+    Color  signatureUnknownColor = Color(154, 160, 166);
+    Color  buildPendingColor = Color(219, 171, 10);
+    Color  buildSuccessColor = Color(46, 160, 67);
+    Color  buildFailureColor = Color(207, 34, 46);
+
+    // Author avatars in the table pane (initials when no image is supplied)
+    bool   showAvatars = false;
+    double avatarSize  = 18.0;
+
+    // Stash chips
+    Color  stashChipColor     = Color(126, 87, 194);
+    Color  stashChipTextColor = Color(255, 255, 255);
+
+    // Label collision avoidance
+    bool   avoidLabelOverlap = true;
 
     // Minimap
     bool   showMinimap  = false;

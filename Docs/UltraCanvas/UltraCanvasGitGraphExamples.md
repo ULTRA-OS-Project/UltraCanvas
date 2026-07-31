@@ -62,7 +62,13 @@ UltraCanvasUIElement
   edges re-pointed across the commits that were filtered out
 - **Crossing reduction** - lane columns reordered to cut edge crossings
 - **Search** over sha, subject, author and refs, with next/previous navigation
-- **Commit table pane** row-aligned beside the graph, and a **minimap**
+- **Commit table pane** row-aligned beside the graph, with optional author
+  avatars, and a **minimap**
+- **Time-proportional axis** with a date ruler and gap compression
+- **Collapsing** long linear runs into one expandable placeholder
+- **Parallel rows** for commits made at the same moment
+- **Signature and build-status badges** beside a commit
+- **JSON export** of the laid-out geometry
 - Zoom, pan, selection, hover, tooltips, keyboard navigation
 
 ## Data Structures
@@ -550,6 +556,71 @@ graph->SetMinimapPosition(GitGraphMinimapPosition::TopRight);
 Every commit is drawn as one tick in its lane colour, with a viewport rectangle
 over the rows currently on screen. Clicking or dragging inside the minimap jumps
 the view to that point in the history.
+
+### Time-proportional axis
+
+```cpp
+graph->SetAxisMode(GitGraphAxisMode::TimeProportional);
+graph->SetTimeRowSpacingRange(16.0, 90.0);   // Floor and ceiling per gap
+graph->SetShowDateRuler(true);
+```
+
+Row position follows the commit timestamp instead of the row index. The floor
+keeps a burst of same-second commits readable; the ceiling is the gap
+compression, so a two-year quiet period costs one large gap rather than an
+unusable amount of empty axis. The date ruler prints one label per calendar day
+rather than one per commit.
+
+### Collapsing linear runs
+
+```cpp
+graph->SetCollapseLinearRuns(true, /*minimumRun=*/8);
+graph->ExpandRun(sha);        // Unfold one placeholder (also on double-click)
+graph->CollapseAllRuns();     // Drop every manual expansion
+const int folded = graph->GetCollapsedCount(sha);
+```
+
+A run of plain single-parent, single-child commits folds into one dashed pill
+labelled with how many commits it stands for. Commits carrying a ref, merges,
+roots, cherry-picks and anything in `keepExpanded` are never folded, and the
+edge across the fold is drawn dashed like any other skipped link.
+
+### Parallel rows
+
+```cpp
+graph->SetParallelCommits(true, /*toleranceSeconds=*/0);
+```
+
+Commits made at the same moment share a row instead of stacking, matching
+mermaid's `parallelCommits`. Two commits only share a row when neither is the
+other's parent and they sit in different lanes, so no edge is ever flattened.
+
+### Badges
+
+```cpp
+GitGraphCommit commit = *graph->GetCommit(sha);
+commit.signature   = GitGraphSignature::Good;      // Good / Bad / Unknown
+commit.buildStatus = GitGraphBuildStatus::Passed;  // Pending / Passed / Failed
+graph->AddCommit(commit);
+```
+
+Badges are small dots queued beside the node, ahead of the ref chips.
+
+> The enumerators are `NoSignature` / `NoStatus` and `Passed` / `Failed` rather
+> than `None` and `Success` / `Failure`, because X11's `X.h` defines `None` and
+> `Success` as macros and this header reaches the window backend.
+
+### JSON export
+
+```cpp
+const std::string json = graph->ToJSON();
+graph->SaveToJSON("history.json");
+```
+
+Emits the laid-out geometry — commits with their row/lane/flags, edges with
+their endpoints and kind, refs, and swimlane bands — for tooling and golden
+tests. There is no PNG export: the framework has no portable image writer to
+build it on, so that stays out of this element.
 
 ## Using the layout core on its own
 

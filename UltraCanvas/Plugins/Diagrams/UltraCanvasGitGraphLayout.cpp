@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <deque>
 #include <functional>
 #include <set>
@@ -514,6 +515,134 @@ void UltraCanvasGitGraphLayout::BuildEdges(
     }
 }
 
+// ===== COLLAPSING LINEAR RUNS =====
+
+void UltraCanvasGitGraphLayout::CollapseRuns(
+        const std::vector<GitGraphCommit>& commits,
+        const std::vector<size_t>& order,
+        const std::unordered_map<std::string, size_t>& bySha,
+        const std::vector<GitGraphRef>& refs,
+        std::unordered_set<std::string>& hidden,
+        std::unordered_map<std::string, int>& runLengths) const {
+
+    if (!options.collapseLinearRuns || options.minCollapsibleRun < 2) return;
+
+    // A commit is foldable only if nothing else needs to point at it: no ref, no
+    // merge, no root, exactly one parent and exactly one child.
+    std::unordered_set<std::string> decorated;
+    for (const GitGraphRef& ref : refs) decorated.insert(ref.sha);
+
+    std::unordered_map<std::string, int> childCount;
+    for (size_t index : order) {
+        for (const std::string& parent : commits[index].parents) {
+            if (bySha.count(parent)) ++childCount[parent];
+        }
+    }
+
+    auto foldable = [&](size_t index) {
+        const GitGraphCommit& commit = commits[index];
+        if (commit.parents.size() != 1) return false;        // Merge or root
+        if (!bySha.count(commit.parents.front())) return false;
+        if (decorated.count(commit.sha)) return false;
+        if (options.keepExpanded.count(commit.sha)) return false;
+        if (!commit.cherryPickSource.empty()) return false;
+
+        auto children = childCount.find(commit.sha);
+        return children != childCount.end() && children->second == 1;
+    };
+
+    // Walk the resolved order and fold maximal runs of foldable commits. The
+    // first commit of a run survives and carries the count; the rest are hidden
+    // and their edges bridge through the existing skipped-edge path.
+    size_t position = 0;
+    while (position < order.size()) {
+        if (!foldable(order[position])) { ++position; continue; }
+
+        size_t end = position;
+        while (end + 1 < order.size() && foldable(order[end + 1])) {
+            // Only fold commits that really follow each other in history.
+            const GitGraphCommit& current = commits[order[end]];
+            const GitGraphCommit& next    = commits[order[end + 1]];
+            if (current.parents.front() != next.sha) break;
+            ++end;
+        }
+
+        const int length = static_cast<int>(end - position) + 1;
+        if (length >= options.minCollapsibleRun) {
+            runLengths[commits[order[position]].sha] = length;
+            for (size_t i = position + 1; i <= end; ++i) {
+                hidden.insert(commits[order[i]].sha);
+            }
+        }
+        position = end + 1;
+    }
+}
+
+// ===== PARALLEL ROWS =====
+
+void UltraCanvasGitGraphLayout::ApplyParallelRows(
+        const std::vector<GitGraphCommit>& commits,
+        const std::unordered_map<std::string, size_t>& bySha,
+        GitGraphLayoutResult& result) const {
+
+    if (!options.parallelCommits || result.commits.size() < 2) return;
+
+    auto dateOf = [&](const GitGraphPlacedCommit& placed) -> int64_t {
+        auto it = bySha.find(placed.sha);
+        return (it == bySha.end()) ? 0 : commits[it->second].commitDate;
+    };
+
+    // Two commits may share a row only when neither is the other's parent -
+    // otherwise an edge would collapse to zero length and the "parents come
+    // later" invariant would break.
+    auto related = [&](const GitGraphPlacedCommit& a, const GitGraphPlacedCommit& b) {
+        auto ia = bySha.find(a.sha);
+        auto ib = bySha.find(b.sha);
+        if (ia == bySha.end() || ib == bySha.end()) return true;
+
+        for (const std::string& parent : commits[ia->second].parents) {
+            if (parent == b.sha) return true;
+        }
+        for (const std::string& parent : commits[ib->second].parents) {
+            if (parent == a.sha) return true;
+        }
+        return false;
+    };
+
+    int nextRow = 0;
+    size_t groupStart = 0;
+    std::vector<int> assigned(result.commits.size(), 0);
+
+    while (groupStart < result.commits.size()) {
+        size_t groupEnd = groupStart;
+
+        while (groupEnd + 1 < result.commits.size()) {
+            const GitGraphPlacedCommit& candidate = result.commits[groupEnd + 1];
+            const int64_t candidateDate = dateOf(candidate);
+
+            bool joins = true;
+            for (size_t i = groupStart; i <= groupEnd; ++i) {
+                const GitGraphPlacedCommit& member = result.commits[i];
+                if (std::llabs(candidateDate - dateOf(member)) > options.parallelTolerance ||
+                    member.lane == candidate.lane ||
+                    related(member, candidate)) {
+                    joins = false;
+                    break;
+                }
+            }
+            if (!joins) break;
+            ++groupEnd;
+        }
+
+        for (size_t i = groupStart; i <= groupEnd; ++i) assigned[i] = nextRow;
+        ++nextRow;
+        groupStart = groupEnd + 1;
+    }
+
+    for (size_t i = 0; i < result.commits.size(); ++i) result.commits[i].row = assigned[i];
+    result.rowCount = nextRow;
+}
+
 // ===== CROSSING REDUCTION =====
 
 size_t GitGraphLayoutResult::CountCrossings() const {
@@ -664,10 +793,20 @@ GitGraphLayoutResult UltraCanvasGitGraphLayout::Compute(
         bySha.emplace(commits[i].sha, i);
     }
 
-    const std::vector<size_t> order = ResolveOrder(commits);
+    // Collapsing is expressed through the same hidden-commit machinery as
+    // filtering, so the run interior bridges with skipped edges for free.
+    UltraCanvasGitGraphLayout effective(*this);
+    std::unordered_map<std::string, int> runLengths;
+    if (options.collapseLinearRuns) {
+        std::unordered_set<std::string> hidden = options.hiddenCommits;
+        CollapseRuns(commits, ResolveOrder(commits), bySha, refs, hidden, runLengths);
+        effective.options.hiddenCommits = hidden;
+    }
+
+    const std::vector<size_t> order = effective.ResolveOrder(commits);
 
     if (options.layoutMode == GitGraphLayoutMode::Swimlane) {
-        AssignSwimlanes(commits, order, bySha, refs, result);
+        effective.AssignSwimlanes(commits, order, bySha, refs, result);
     } else {
         // Trunk membership: the first-parent chain from the pinned branch's tip.
         std::vector<bool> onTrunk(commits.size(), false);
@@ -699,14 +838,20 @@ GitGraphLayoutResult UltraCanvasGitGraphLayout::Compute(
             }
         }
 
-        AssignLanes(commits, order, bySha, onTrunk, result);
+        effective.AssignLanes(commits, order, bySha, onTrunk, result);
     }
 
-    BuildEdges(commits, bySha, result);
+    for (GitGraphPlacedCommit& placed : result.commits) {
+        auto run = runLengths.find(placed.sha);
+        if (run != runLengths.end()) placed.collapsedCount = run->second;
+    }
+
+    ApplyParallelRows(commits, bySha, result);
+    effective.BuildEdges(commits, bySha, result);
 
     result.hiddenCount = 0;
     for (const GitGraphCommit& commit : commits) {
-        if (options.hiddenCommits.count(commit.sha) > 0) ++result.hiddenCount;
+        if (effective.options.hiddenCommits.count(commit.sha) > 0) ++result.hiddenCount;
     }
 
     // Column reordering only makes sense for lane graphs - a swimlane band is

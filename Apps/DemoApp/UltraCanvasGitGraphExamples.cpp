@@ -499,6 +499,42 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGitGraph
         crossingsCheck->SetChecked(true);
         filterBar->AddChild(crossingsCheck);
 
+        auto timeCheck = std::make_shared<UltraCanvasCheckbox>("RepoTimeAxis", 0, 0, 120, 22);
+        timeCheck->SetText("Time axis");
+        filterBar->AddChild(timeCheck);
+
+        auto collapseCheck = std::make_shared<UltraCanvasCheckbox>("RepoCollapse", 0, 0, 110, 22);
+        collapseCheck->SetText("Collapse");
+        filterBar->AddChild(collapseCheck);
+
+        auto avatarCheck = std::make_shared<UltraCanvasCheckbox>("RepoAvatars", 0, 0, 110, 22);
+        avatarCheck->SetText("Avatars");
+        filterBar->AddChild(avatarCheck);
+
+        auto jsonBtn = std::make_shared<UltraCanvasButton>("RepoJson", 0, 0, 90, 28);
+        jsonBtn->SetText("Save JSON");
+        filterBar->AddChild(jsonBtn);
+
+        timeCheck->onChecked = [graph]() {
+            graph->SetAxisMode(GitGraphAxisMode::TimeProportional);
+            graph->SetShowDateRuler(true);
+        };
+        timeCheck->onUnchecked = [graph]() {
+            graph->SetAxisMode(GitGraphAxisMode::Rows);
+            graph->SetShowDateRuler(false);
+        };
+        collapseCheck->onChecked   = [graph]() { graph->SetCollapseLinearRuns(true, 4); };
+        collapseCheck->onUnchecked = [graph]() { graph->SetCollapseLinearRuns(false); };
+
+        auto setAvatars = [graph](bool on) {
+            GitGraphStyle style = graph->GetStyle();
+            style.showAvatars = on;
+            graph->SetStyle(style);
+        };
+        avatarCheck->onChecked   = [setAvatars]() { setAvatars(true);  };
+        avatarCheck->onUnchecked = [setAvatars]() { setAvatars(false); };
+        jsonBtn->onClick = [graph]() { graph->SaveToJSON("gitgraph.json"); };
+
         graph->onSearchChanged = [matchLabel](size_t current, size_t total) {
             matchLabel->SetText(total == 0
                                     ? "no matches"

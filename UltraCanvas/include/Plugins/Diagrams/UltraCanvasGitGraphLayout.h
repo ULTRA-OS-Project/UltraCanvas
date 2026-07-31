@@ -30,6 +30,10 @@ struct GitGraphPlacedCommit {
     bool isRoot     = false;
     bool isBoundary = false;        // A parent is missing (truncated history)
     std::string branch;             // Resolved branch name (Swimlane mode)
+
+    // >0 when this node stands in for a folded run of linear commits: the
+    // number of commits it replaces, itself included.
+    int collapsedCount = 0;
 };
 
 struct GitGraphPlacedEdge {
@@ -81,6 +85,18 @@ struct GitGraphLayoutOptions {
     // pairwise.
     bool   reduceCrossings = false;
     size_t crossingReductionEdgeBudget = 4000;
+
+    // Give commits made at the same moment the same row instead of stacking
+    // them (mermaid's parallelCommits). Only applied when the commits are
+    // unrelated and land in different lanes, so no edge is ever flattened.
+    bool    parallelCommits = false;
+    int64_t parallelTolerance = 0;      // Seconds; 0 = exactly equal timestamps
+
+    // Fold a run of plain single-parent commits into one node. Commits that
+    // carry a ref, merge, root or appear in keepExpanded are never folded.
+    bool   collapseLinearRuns = false;
+    int    minCollapsibleRun  = 8;
+    std::unordered_set<std::string> keepExpanded;
 };
 
 struct GitGraphLayoutResult {
@@ -152,6 +168,20 @@ private:
                          const std::unordered_map<std::string, size_t>& bySha,
                          const std::vector<GitGraphRef>& refs,
                          GitGraphLayoutResult& result) const;
+
+    // Marks the interior of long linear runs hidden and tags the surviving
+    // node with how many commits it now stands for.
+    void CollapseRuns(const std::vector<GitGraphCommit>& commits,
+                      const std::vector<size_t>& order,
+                      const std::unordered_map<std::string, size_t>& bySha,
+                      const std::vector<GitGraphRef>& refs,
+                      std::unordered_set<std::string>& hidden,
+                      std::unordered_map<std::string, int>& runLengths) const;
+
+    // Collapses rows for commits made at the same moment.
+    void ApplyParallelRows(const std::vector<GitGraphCommit>& commits,
+                           const std::unordered_map<std::string, size_t>& bySha,
+                           GitGraphLayoutResult& result) const;
 
     void BuildEdges(const std::vector<GitGraphCommit>& commits,
                     const std::unordered_map<std::string, size_t>& bySha,
