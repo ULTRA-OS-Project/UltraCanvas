@@ -8,6 +8,14 @@ UltraCanvas provides three complementary layout managers for arranging child UI 
 - **Grid Layout** — Row/column grid with cell spanning (like `QGridLayout`)
 - **Flex Layout** — CSS Flexbox-style layout with wrap, justify, and align
 
+Alongside the element layout managers, the layout engine provides
+**label placement** (`PlaceShapeLabels()`, `include/UltraCanvasLabelPlacement.h`):
+collision-aware positioning of annotation text around rectangles and circles,
+shared by every chart and diagram. See
+[UltraCanvasLabelPlacement.md](UltraCanvasLabelPlacement.md), and the
+**Label placement** tab of the Layout System demo page for an interactive
+version with rectangles, circles and lines.
+
 Every layout manager attaches to an `UltraCanvasContainer*`, accepts shared pointers to UI elements via `AddUIElement(...)`, and recalculates child positions whenever the container is invalidated.
 
 **Version:** 1.0.0

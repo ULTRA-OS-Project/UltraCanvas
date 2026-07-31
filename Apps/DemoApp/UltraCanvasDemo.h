@@ -315,6 +315,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateBubbleChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateQuadrantChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateGanttChartExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateKanbanBoardExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateRaincloudPlotExample();
         std::shared_ptr<UltraCanvasUIElement> CreateScientificCrossMeansExample();
         std::shared_ptr<UltraCanvasUIElement> CreateBoxPlotOverlayExample();
@@ -323,6 +324,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateDivergingChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateDumbbellChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateFunnelChartExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreatePyramidChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateInfoGraphicsExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateWaterfallChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateMekkoChartExamples();
@@ -330,6 +332,8 @@ namespace UltraCanvas {
 
         std::shared_ptr<UltraCanvasUIElement> CreateVennDiagramExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSWOTDiagramExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateTimelineDiagramExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateTimelineChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateWordCloudExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateDendrogramExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateBlockDiagramExamples();
@@ -339,8 +343,10 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateNodeDiagramExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateERDiagramExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateGourceTreeExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateGitGraphExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateAdjacencyDiagramExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateArcDiagramExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateRequirementDiagramExamples();
         std::shared_ptr<UltraCanvasContainer> CreateExampleDiagramSection();
         std::shared_ptr<UltraCanvasUIElement> CreateCompositorDiagramExamples();
 

@@ -1,8 +1,22 @@
 // include/Plugins/Diagrams/UltraCanvasFlowChart.h
 // Interactive Flow Chart diagram component
-// Version: 2.2.0
+// Version: 2.3.0
 //
 // Changelog:
+//   2.3.0 - Routing extracted to the shared UltraCanvasDiagramRouter
+//           (include/Plugins/Diagrams/UltraCanvasDiagramRouting.h). The
+//           cardinal L/Z router, the A* router, the obstacle test, the
+//           label anchor and the arrow-angle logic now live there so
+//           BlockDiagram and the upcoming ClassDiagram can share them.
+//           Same algorithm and same constants; routed geometry is identical
+//           except where the old code was defective — it could read freed
+//           memory during A*, emit a diagonal segment in an "orthogonal"
+//           path, and emit zero-length segments. All three are fixed in the
+//           shared router (see its header). API impact: UltraCanvasFlowChart::CardinalSide is now
+//           an alias of UltraCanvas::DiagramCardinalSide (source-compatible;
+//           UltraCanvasFlowChart::CardinalSide::Top still resolves), and the
+//           private helpers ComputeCardinalPath / RouteAStar /
+//           PathHasObstacles were removed in favour of the router.
 //   2.2.0 - Obstacle-aware orthogonal routing via A*:
 //           Orthogonal connections now use A* pathfinding over the chart's
 //           grid to avoid passing through other nodes. The path model
@@ -36,6 +50,7 @@
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasCommonTypes.h"
+#include "Plugins/Diagrams/UltraCanvasDiagramRouting.h"
 #include <vector>
 #include <map>
 #include <string>
@@ -180,7 +195,10 @@ public:
         Pan
     };
 
-    enum class CardinalSide { Top, Right, Bottom, Left };
+    // Kept as an alias so existing code referring to
+    // UltraCanvasFlowChart::CardinalSide::Top keeps compiling after the
+    // router moved to UltraCanvasDiagramRouting.h (2.3.0).
+    using CardinalSide = DiagramCardinalSide;
 
     UltraCanvasFlowChart(const std::string& id, int x, int y, int width, int height);
     bool AcceptsFocus() const override { return true; }
@@ -327,25 +345,18 @@ private:
     void RenderConnection(IRenderContext* ctx, const FlowChartConnection& conn);
     void RenderStraightLine(IRenderContext* ctx, const Point2Dd& start, const Point2Dd& end);
     // Computes the orthogonal path from `start` (on `sourceSide` of source) to
-    // `end` (on `targetSide` of target), avoiding all other nodes. Falls back
-    // to cardinal-aware L/Z routing if A* cannot find a path. The exclusion
-    // set lists node ids that A* must NOT treat as obstacles (typically the
-    // source and target nodes themselves so the line can leave/enter them).
+    // `end` (on `targetSide` of target), avoiding all other nodes. Thin
+    // wrapper over UltraCanvasDiagramRouter::ComputeOrthogonalPath: it turns
+    // the node map into an obstacle list, excluding the source and target
+    // nodes so the line can leave and enter them.
     std::vector<Point2Dd> ComputeOrthogonalPath(const Point2Dd& start, const Point2Dd& end,
                                                 CardinalSide sourceSide, CardinalSide targetSide,
                                                 const std::string& sourceId, const std::string& targetId);
-    // Cardinal-aware L/Z fallback (the 2.1.4 behavior). Used when A* fails
-    // or when no obstacle is in the way.
-    std::vector<Point2Dd> ComputeCardinalPath(const Point2Dd& start, const Point2Dd& end,
-                                              CardinalSide sourceSide, CardinalSide targetSide) const;
-    // A* over the chart's grid. Returns empty vector if no path exists.
-    std::vector<Point2Dd> RouteAStar(const Point2Dd& start, const Point2Dd& end,
-                                     CardinalSide sourceSide, CardinalSide targetSide,
-                                     const std::string& sourceId, const std::string& targetId);
-    // True if the cardinal L/Z path between start and end intersects any
-    // node not in {sourceId, targetId}. Used to decide whether to call A*.
-    bool PathHasObstacles(const std::vector<Point2Dd>& path,
-                          const std::string& sourceId, const std::string& targetId) const;
+    // Every node except `sourceId` / `targetId`, as router obstacles.
+    std::vector<DiagramObstacle> CollectRoutingObstacles(const std::string& sourceId,
+                                                         const std::string& targetId) const;
+    // Router options derived from the chart's grid spacing and bounds.
+    DiagramRoutingOptions BuildRoutingOptions() const;
     // Draws a polyline from the given waypoints.
     void RenderOrthogonalLine(IRenderContext* ctx, const std::vector<Point2Dd>& waypoints);
     // Angle of the final segment (waypoints[n-2] -> waypoints[n-1]).

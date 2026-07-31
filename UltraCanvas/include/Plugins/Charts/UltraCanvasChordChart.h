@@ -1,7 +1,7 @@
 // include/Plugins/Charts/UltraCanvasChordChart.h
 // Chord diagram element: circular category arcs joined by proportional ribbons.
-// Version: 1.0.0
-// Last Modified: 2026-07-29
+// Version: 1.0.1
+// Last Modified: 2026-07-30
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -205,6 +205,10 @@ namespace UltraCanvas {
 
         // ----- Cached layout -----
         bool layoutValid = false;
+        // Element size the cached layout was built for; a change means the
+        // layout engine resized us and everything derived has to be rebuilt.
+        int lastLayoutWidth  = -1;
+        int lastLayoutHeight = -1;
         Point2Dd cachedCenter;
         float cachedOuterRadius = 0.0f;
         float cachedInnerRadius = 0.0f;
@@ -214,6 +218,7 @@ namespace UltraCanvas {
 
         // ----- Layout -----
         void InvalidateLayout();
+        void SyncLayoutToElementSize();
         void RebuildFlows();
         void ComputeGeometry();
         void AssignArcs();

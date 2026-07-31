@@ -2,7 +2,7 @@
 // Architectural space-planning adjacency diagram
 // Rooms as area-proportional circles, edges as solid/dashed adjacency links,
 // functional zones as dashed bounding regions.
-// Version: 1.0.2
+// Version: 1.1.0
 // Last Modified: 2026-07-13
 // Author: UltraCanvas Framework
 

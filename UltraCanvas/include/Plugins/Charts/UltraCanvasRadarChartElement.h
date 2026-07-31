@@ -1,7 +1,7 @@
 // include/Plugins/Charts/UltraCanvasRadarChartElement.h
 // Comprehensive radar chart element with multi-axis, multi-series visualization
-// Version: 2.1.0
-// Last Modified: 2026-06-21
+// Version: 2.2.0
+// Last Modified: 2026-07-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -78,6 +78,14 @@ namespace UltraCanvas {
         Point2Df legendPosition;
         Color legendBackgroundColor;
         Color legendTextColor;
+        // true when the caller passed an explicit legend position; otherwise the
+        // legend is parked in the reserved strip on the right by the layout pass.
+        bool legendPositionExplicit = false;
+        // Legend box measured by the layout pass (text width + swatch + padding)
+        // and reused by both the space reservation and the drawing code.
+        Size2Df legendBoxSize;
+        // Legend rect drawn this frame; keep-out obstacle for the axis labels.
+        Rect2Dd legendRect;
 
         // Animation (radar uses its own smoothstep grow-out animation,
         // independent of the base-class animation fields)
@@ -225,6 +233,7 @@ namespace UltraCanvas {
                               const Color& textColor = Color(64, 64, 64, 255)) {
             showLegend = show;
             legendPosition = position;
+            legendPositionExplicit = (position.x != 0.0f || position.y != 0.0f);
             legendBackgroundColor = backgroundColor;
             legendTextColor = textColor;
             RequestRedraw();
@@ -269,7 +278,9 @@ namespace UltraCanvas {
         // INTERNAL CALCULATION METHODS
         // =============================================================================
 
-        void RecalculateLayout();
+        // Needs the render context: the space reserved for the axis labels and
+        // the legend is derived from the measured text extents.
+        void RecalculateLayout(IRenderContext* ctx);
         void UpdateAnimationProgress();
         void OnAnimationTick();      // periodic timer callback: advance progress and repaint
         void StopAnimationTimer();   // cancels the running frame-driver timer, if any

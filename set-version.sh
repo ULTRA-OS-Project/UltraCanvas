@@ -7,7 +7,23 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEXTER_CHANGELOG_FILE="$SCRIPT_DIR/Docs/Texter/CHANGELOG.md"
 UC_CHANGELOG_FILE="$SCRIPT_DIR/Docs/UltraCanvas/CHANGELOG.md"
 
-extract_version() {
+extract_texter_version() {
+    local file="$1"
+    if [[ ! -f "$file" ]]; then
+        echo "ERROR: changelog not found at $file" >&2
+        exit 1
+    fi
+    local v
+    v="$(sed -nE '1s/^#### [0-9-]+ \*([0-9]+\.[0-9]+)\*.*/\1/p' "$file")"
+    if [[ -z "$v" ]]; then
+        echo "ERROR: could not parse version from first line of $file" >&2
+        echo "       expected format: '#### YYYY-MM-DD *x.y.z*'" >&2
+        exit 1
+    fi
+    printf '%s' "$v"
+}
+
+extract_uc_version() {
     local file="$1"
     if [[ ! -f "$file" ]]; then
         echo "ERROR: changelog not found at $file" >&2
@@ -23,22 +39,22 @@ extract_version() {
     printf '%s' "$v"
 }
 
-TEXTER_VERSION="$(extract_version "$TEXTER_CHANGELOG_FILE")"
-UC_VERSION="$(extract_version "$UC_CHANGELOG_FILE")"
+TEXTER_VERSION="$(extract_texter_version "$TEXTER_CHANGELOG_FILE")"
+UC_VERSION="$(extract_uc_version "$UC_CHANGELOG_FILE")"
 
 if [[ ! "$UC_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     echo "ERROR: Invalid version format '$UC_VERSION' (expected x.y.z)" >&2
     exit 1
 fi
 
-if [[ ! "$TEXTER_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+if [[ ! "$TEXTER_VERSION" =~ ^[0-9]+\.[0-9]+$ ]]; then
     echo "ERROR: Invalid version format '$TEXTER_VERSION' (expected x.y.z)" >&2
     exit 1
 fi
 
-IFS='.' read -r MAJOR MINOR PATCH <<< "$TEXTER_VERSION"
-TEXTER_COMMA_VER="$MAJOR,$MINOR,$PATCH,0"
-TEXTER_DOT4_VER="$TEXTER_VERSION.0"
+IFS='.' read -r MAJOR MINOR <<< "$TEXTER_VERSION"
+TEXTER_COMMA_VER="$MAJOR,$MINOR,0,0"
+TEXTER_DOT4_VER="$TEXTER_VERSION.0.0"
 
 IFS='.' read -r MAJOR MINOR PATCH <<< "$UC_VERSION"
 UC_COMMA_VER="$MAJOR,$MINOR,$PATCH,0"

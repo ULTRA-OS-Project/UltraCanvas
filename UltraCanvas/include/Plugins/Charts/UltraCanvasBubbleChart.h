@@ -3,8 +3,8 @@
 // categorical bubble matrix, with area/diameter size encoding, palette /
 // category / colormap colour encoding, nested size legend, in-bubble and
 // outside labels, tooltips, hover highlight and click callbacks.
-// Version: 1.0.0
-// Last Modified: 2026-07-26
+// Version: 1.1.0
+// Last Modified: 2026-07-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -339,6 +339,10 @@ private:
         Color fill;              // tinted parent fill
     };
     std::vector<ParentCircle> parentCircles;
+
+    // Group label rects drawn by RenderParentCircles this frame; passed to the
+    // label placement solver as keep-out obstacles for the bubble name labels.
+    std::vector<Rect2Dd> parentLabelRects;
 
     // Timeline geometry computed by BuildTimelineLayout, used by the chrome.
     struct TimelineMetrics {

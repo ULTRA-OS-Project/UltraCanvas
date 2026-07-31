@@ -1,9 +1,15 @@
 // Plugins/Diagrams/UltraCanvasFlowChart.cpp
 // Interactive Flow Chart diagram component implementation
-// Version: 2.2.1
-// Last Modified: 2026-05-09
+// Version: 2.3.0
+// Last Modified: 2026-07-30
 //
 // Changelog:
+//   2.3.0 - Routing extracted to UltraCanvasDiagramRouter (see
+//           Plugins/Diagrams/UltraCanvasDiagramRouting.cpp). The algorithms
+//           below are unchanged; this file now only adapts the chart's node
+//           map into the router's obstacle list and forwards. Removed:
+//           ComputeCardinalPath, RouteAStar, PathHasObstacles and the
+//           file-local A* helpers.
 //   2.2.0 - Obstacle-aware orthogonal routing via A*:
 //           ComputeOrthogonalPath() is the new entry point for orthogonal
 //           routing. It first tries the cheap cardinal L/Z path; if that
@@ -34,8 +40,6 @@
 #include <sstream>
 #include <algorithm>
 #include <limits>
-#include <queue>
-#include <unordered_map>
 #include <unordered_set>
 
 namespace UltraCanvas {
@@ -1113,387 +1117,45 @@ void UltraCanvasFlowChart::RenderOrthogonalLine(IRenderContext* ctx,
     }
 }
 
-// Cardinal-aware L-shape (mixed axes) or Z-shape (same axes) routing.
-// This is the 2.1.4 behavior, now packaged as a waypoint generator and used
-// either when there are no obstacles, or as a fallback when A* fails.
-std::vector<Point2Dd> UltraCanvasFlowChart::ComputeCardinalPath(
-        const Point2Dd& start, const Point2Dd& end,
-        CardinalSide sourceSide, CardinalSide targetSide) const {
-    auto isHoriz = [](CardinalSide s) {
-        return s == CardinalSide::Left || s == CardinalSide::Right;
-    };
-    bool srcH = isHoriz(sourceSide);
-    bool tgtH = isHoriz(targetSide);
-    
-    std::vector<Point2Dd> waypoints;
-    waypoints.push_back(start);
-    
-    if (srcH != tgtH) {
-        // L-shape: 1 corner.
-        Point2Dd corner = srcH ? Point2Dd(end.x, start.y) : Point2Dd(start.x, end.y);
-        waypoints.push_back(corner);
-    } else if (srcH) {
-        // Z-shape on horizontal axis: midX vertical bend.
-        double midX = (start.x + end.x) * 0.5f;
-        waypoints.push_back(Point2Dd(midX, start.y));
-        waypoints.push_back(Point2Dd(midX, end.y));
-    } else {
-        // Z-shape on vertical axis: midY horizontal bend.
-        double midY = (start.y + end.y) * 0.5f;
-        waypoints.push_back(Point2Dd(start.x, midY));
-        waypoints.push_back(Point2Dd(end.x, midY));
-    }
-    
-    waypoints.push_back(end);
-    return waypoints;
-}
-
-// Returns true if any segment of `path` intersects the bbox of a node not
-// in {sourceId, targetId}. Bbox uses a small inset so a path running exactly
-// along the border is not considered a collision.
-bool UltraCanvasFlowChart::PathHasObstacles(const std::vector<Point2Dd>& path,
-                                             const std::string& sourceId,
-                                             const std::string& targetId) const {
-    if (path.size() < 2) return false;
-    const double inset = 1.0f;  // tolerance: a line grazing the border is OK
-    
+// Builds the obstacle list handed to the shared router: every node except
+// the two the connection attaches to (a path must be free to leave the
+// source and enter the target).
+std::vector<DiagramObstacle> UltraCanvasFlowChart::CollectRoutingObstacles(
+        const std::string& sourceId, const std::string& targetId) const {
+    std::vector<DiagramObstacle> obstacles;
+    obstacles.reserve(nodes.size());
     for (const auto& kv : nodes) {
-        const std::string& nid = kv.first;
-        if (nid == sourceId || nid == targetId) continue;
+        if (kv.first == sourceId || kv.first == targetId) continue;
         const FlowChartNode& n = kv.second;
-        double l = n.x + inset, r = n.x + n.width - inset;
-        double t = n.y + inset, b = n.y + n.height - inset;
-        
-        for (size_t i = 1; i < path.size(); ++i) {
-            const Point2Dd& a = path[i - 1];
-            const Point2Dd& c = path[i];
-            // All segments are axis-aligned by construction.
-            if (std::abs(a.y - c.y) < 0.5f) {
-                // Horizontal segment at y = a.y.
-                double y = a.y;
-                if (y < t || y > b) continue;
-                double xMin = std::min(a.x, c.x);
-                double xMax = std::max(a.x, c.x);
-                if (xMax >= l && xMin <= r) return true;
-            } else if (std::abs(a.x - c.x) < 0.5f) {
-                // Vertical segment at x = a.x.
-                double x = a.x;
-                if (x < l || x > r) continue;
-                double yMin = std::min(a.y, c.y);
-                double yMax = std::max(a.y, c.y);
-                if (yMax >= t && yMin <= b) return true;
-            }
-        }
+        obstacles.emplace_back(n.x, n.y, n.width, n.height);
     }
-    return false;
+    return obstacles;
 }
 
-namespace {
-    // A* node state. Coordinates are grid-cell indices, not pixels.
-    struct AStarNode {
-        int x, y;
-        int dirFromParent;  // 0=N, 1=E, 2=S, 3=W, -1=start (no parent)
-        double g;            // cost from start
-        double f;            // g + heuristic
-        int parentIdx;      // index into the visited-nodes vector, -1 if start
-    };
-    struct AStarOpenEntry {
-        double f;
-        int idx;
-        bool operator<(const AStarOpenEntry& o) const { return f > o.f; }  // min-heap
-    };
-    inline uint64_t PackCellDir(int x, int y, int d) {
-        // (x, y, dir) packed into a single key. x,y < 65536, d in [0,3].
-        return (static_cast<uint64_t>(static_cast<uint32_t>(x)) << 32)
-             | (static_cast<uint64_t>(static_cast<uint32_t>(y)) << 4)
-             | static_cast<uint64_t>(d & 0xF);
-    }
-}
-
-// A* over the chart grid. Path is built in cell space, then post-processed
-// into pixel waypoints. The first cell sits next to the source endpoint
-// (in the direction of sourceSide); the last cell sits next to the target.
-// This guarantees the path leaves perpendicular to the source side and
-// arrives perpendicular to the target side. Returns empty on failure.
-std::vector<Point2Dd> UltraCanvasFlowChart::RouteAStar(
-        const Point2Dd& start, const Point2Dd& end,
-        CardinalSide sourceSide, CardinalSide targetSide,
-        const std::string& sourceId, const std::string& targetId) {
-    const double gridSize = style.gridSpacing > 0.0f ? style.gridSpacing : 20.0f;
+// Router options from the chart's own settings. The A* grid uses the chart's
+// visual grid spacing (falling back to 20px) and spans the element bounds,
+// exactly as the in-class router did before 2.3.0.
+DiagramRoutingOptions UltraCanvasFlowChart::BuildRoutingOptions() const {
+    DiagramRoutingOptions options;
+    options.gridSize = style.gridSpacing > 0.0f ? style.gridSpacing : 20.0f;
     Rect2Di chartBounds = GetBounds();
-    
-    // Grid extent in world coordinates: [0, chartBounds.width] x [0, chartBounds.height].
-    int gridW = std::max(2, static_cast<int>(std::ceil(chartBounds.width  / gridSize)));
-    int gridH = std::max(2, static_cast<int>(std::ceil(chartBounds.height / gridSize)));
-    
-    // Build obstacle map: a cell is blocked if its center sits inside any
-    // node's bbox (with 1-cell padding so paths don't graze borders).
-    auto cellBlocked = [&](int cx, int cy) -> bool {
-        if (cx < 0 || cy < 0 || cx >= gridW || cy >= gridH) return true;
-        double wx = (cx + 0.5f) * gridSize;
-        double wy = (cy + 0.5f) * gridSize;
-        for (const auto& kv : nodes) {
-            if (kv.first == sourceId || kv.first == targetId) continue;
-            const FlowChartNode& n = kv.second;
-            double pad = gridSize * 0.5f;
-            if (wx >= n.x - pad && wx <= n.x + n.width + pad &&
-                wy >= n.y - pad && wy <= n.y + n.height + pad) {
-                return true;
-            }
-        }
-        return false;
-    };
-    
-    // Map cardinal side to (dx, dy) step offset for "one cell outside the node".
-    auto sideOffset = [](CardinalSide s) -> std::pair<int,int> {
-        switch (s) {
-            case CardinalSide::Top:    return { 0, -1};
-            case CardinalSide::Right:  return { 1,  0};
-            case CardinalSide::Bottom: return { 0,  1};
-            case CardinalSide::Left:   return {-1,  0};
-        }
-        return {0, 0};
-    };
-    auto worldToCell = [&](const Point2Dd& p) -> std::pair<int,int> {
-        return {
-            static_cast<int>(std::floor(p.x / gridSize)),
-            static_cast<int>(std::floor(p.y / gridSize))
-        };
-    };
-    
-    auto srcCell = worldToCell(start);
-    auto tgtCell = worldToCell(end);
-    auto srcOff  = sideOffset(sourceSide);
-    auto tgtOff  = sideOffset(targetSide);
-    
-    // Step ONE cell outside the source/target so the start/goal of A* sit in
-    // free space (the cells inside the source and target nodes are blocked
-    // for everyone else, but we're using them as anchors).
-    int sx = srcCell.first  + srcOff.first;
-    int sy = srcCell.second + srcOff.second;
-    int gx = tgtCell.first  + tgtOff.first;
-    int gy = tgtCell.second + tgtOff.second;
-    
-    if (cellBlocked(sx, sy) || cellBlocked(gx, gy)) {
-        return {};  // Anchor cells themselves are blocked: A* cannot start.
-    }
-    
-    // Initial direction the path must face when leaving the source. This
-    // forces the first segment to be perpendicular to sourceSide.
-    auto sideDir = [](CardinalSide s) -> int {
-        switch (s) {
-            case CardinalSide::Top:    return 0;  // moving north
-            case CardinalSide::Right:  return 1;  // moving east
-            case CardinalSide::Bottom: return 2;
-            case CardinalSide::Left:   return 3;
-        }
-        return 1;
-    };
-    int initialDir = sideDir(sourceSide);
-    
-    // 4-connected grid moves: dx, dy per direction.
-    static const int DX[4] = { 0, 1, 0, -1};
-    static const int DY[4] = {-1, 0, 1,  0};
-    
-    // The goal must be reached coming from a direction perpendicular to
-    // targetSide so the last segment enters the target node head-on. Top
-    // side -> approach moving south (dir=2). Right -> approach moving west
-    // (dir=3). Etc.
-    auto requiredApproachDir = [](CardinalSide s) -> int {
-        switch (s) {
-            case CardinalSide::Top:    return 2;  // approach by moving down (north->south)
-            case CardinalSide::Right:  return 3;  // approach by moving left
-            case CardinalSide::Bottom: return 0;  // approach by moving up
-            case CardinalSide::Left:   return 1;  // approach by moving right
-        }
-        return 0;
-    };
-    int goalDir = requiredApproachDir(targetSide);
-    
-    auto manhattan = [&](int x, int y) -> double {
-        return static_cast<double>(std::abs(x - gx) + std::abs(y - gy));
-    };
-    
-    std::vector<AStarNode> visited;
-    visited.reserve(256);
-    std::priority_queue<AStarOpenEntry> open;
-    std::unordered_map<uint64_t, double> bestG;
-    
-    AStarNode startNode{sx, sy, initialDir, 0.0f, manhattan(sx, sy), -1};
-    visited.push_back(startNode);
-    open.push({startNode.f, 0});
-    bestG[PackCellDir(sx, sy, initialDir)] = 0.0f;
-    
-    constexpr double TURN_PENALTY = 5.0f;
-    constexpr int MAX_EXPANSIONS = 20000;
-    int expansions = 0;
-    int goalIdx = -1;
-    
-    while (!open.empty() && expansions < MAX_EXPANSIONS) {
-        AStarOpenEntry top = open.top();
-        open.pop();
-        ++expansions;
-        
-        const AStarNode& cur = visited[top.idx];
-        // Goal: cell matches AND we arrived facing the right way.
-        if (cur.x == gx && cur.y == gy && cur.dirFromParent == goalDir) {
-            goalIdx = top.idx;
-            break;
-        }
-        
-        // Stale entry (a better g was already found): skip.
-        uint64_t curKey = PackCellDir(cur.x, cur.y, cur.dirFromParent);
-        auto itG = bestG.find(curKey);
-        if (itG != bestG.end() && cur.g > itG->second + 0.001f) continue;
-        
-        for (int d = 0; d < 4; ++d) {
-            int nx = cur.x + DX[d];
-            int ny = cur.y + DY[d];
-            if (cellBlocked(nx, ny)) continue;
-            
-            double stepCost = 1.0f;
-            if (cur.dirFromParent != -1 && d != cur.dirFromParent) {
-                stepCost += TURN_PENALTY;
-            }
-            double ng = cur.g + stepCost;
-            uint64_t nkey = PackCellDir(nx, ny, d);
-            auto itB = bestG.find(nkey);
-            if (itB != bestG.end() && ng >= itB->second - 0.001f) continue;
-            bestG[nkey] = ng;
-            
-            int parentIdx = top.idx;
-            AStarNode nn{nx, ny, d, ng, ng + manhattan(nx, ny), parentIdx};
-            visited.push_back(nn);
-            open.push({nn.f, static_cast<int>(visited.size()) - 1});
-        }
-    }
-    
-    if (goalIdx < 0) return {};
-    
-    // Reconstruct cell path (goal -> start -> reverse).
-    std::vector<std::pair<int,int>> cellPath;
-    int idx = goalIdx;
-    while (idx != -1) {
-        const AStarNode& n = visited[idx];
-        cellPath.emplace_back(n.x, n.y);
-        idx = n.parentIdx;
-    }
-    std::reverse(cellPath.begin(), cellPath.end());
-    
-    // Convert to world waypoints (cell centers), keeping only corners
-    // (where direction changes). This collapses long straight runs.
-    std::vector<Point2Dd> raw;
-    raw.reserve(cellPath.size());
-    for (auto& c : cellPath) {
-        raw.push_back(Point2Dd((c.first + 0.5f) * gridSize, (c.second + 0.5f) * gridSize));
-    }
-    std::vector<Point2Dd> simplified;
-    simplified.push_back(raw.front());
-    for (size_t i = 1; i + 1 < raw.size(); ++i) {
-        // Keep waypoint i if it's a corner (direction changes here).
-        double dx1 = raw[i].x - raw[i-1].x, dy1 = raw[i].y - raw[i-1].y;
-        double dx2 = raw[i+1].x - raw[i].x, dy2 = raw[i+1].y - raw[i].y;
-        bool sameDir = (std::abs(dx1) < 0.5f) == (std::abs(dx2) < 0.5f) &&
-                       ((dx1 == 0.0f) == (dx2 == 0.0f));
-        // Direction is "same" iff both are vertical or both are horizontal
-        // AND have the same sign.
-        bool h1 = std::abs(dx1) > 0.5f, h2 = std::abs(dx2) > 0.5f;
-        bool sameSign = (h1 ? (dx1 * dx2 > 0.0f) : (dy1 * dy2 > 0.0f));
-        if (h1 == h2 && sameSign) {
-            // Collinear: drop this waypoint.
-            (void)sameDir;
-            continue;
-        }
-        simplified.push_back(raw[i]);
-    }
-    if (raw.size() > 1) simplified.push_back(raw.back());
-    
-    // Anchor first/last waypoints to the exact cardinal endpoints. The cells
-    // adjacent to source/target may sit a few px off the endpoint axis;
-    // insert bridge waypoints to keep the path strictly orthogonal.
-    auto isHoriz = [](CardinalSide s) {
-        return s == CardinalSide::Left || s == CardinalSide::Right;
-    };
-    
-    std::vector<Point2Dd> finalPath;
-    finalPath.reserve(simplified.size() + 4);
-    finalPath.push_back(start);
-    
-    // Bridge from `start` to simplified[0]: source side dictates which axis
-    // the first segment uses.
-    if (!simplified.empty()) {
-        const Point2Dd& first = simplified.front();
-        if (isHoriz(sourceSide)) {
-            // First segment is horizontal: keep start.y, snap to first.x.
-            if (std::abs(first.x - start.x) > 0.5f) {
-                finalPath.push_back(Point2Dd(first.x, start.y));
-            }
-            if (std::abs(first.y - start.y) > 0.5f) {
-                finalPath.push_back(first);
-            }
-        } else {
-            // First segment is vertical: keep start.x, snap to first.y.
-            if (std::abs(first.y - start.y) > 0.5f) {
-                finalPath.push_back(Point2Dd(start.x, first.y));
-            }
-            if (std::abs(first.x - start.x) > 0.5f) {
-                finalPath.push_back(first);
-            }
-        }
-    }
-    
-    // Middle waypoints (skip first/last, they're handled by bridges).
-    for (size_t i = 1; i + 1 < simplified.size(); ++i) {
-        finalPath.push_back(simplified[i]);
-    }
-    
-    // Bridge from simplified.back() to `end`.
-    if (simplified.size() > 1) {
-        const Point2Dd& last = simplified.back();
-        if (isHoriz(targetSide)) {
-            // Last segment is horizontal: keep end.y, come from last.x.
-            if (std::abs(last.y - end.y) > 0.5f) {
-                finalPath.push_back(Point2Dd(last.x, end.y));
-            }
-        } else {
-            // Last segment is vertical: keep end.x, come from last.y.
-            if (std::abs(last.x - end.x) > 0.5f) {
-                finalPath.push_back(Point2Dd(end.x, last.y));
-            }
-        }
-    }
-    
-    finalPath.push_back(end);
-    
-    // De-duplicate consecutive identical waypoints.
-    std::vector<Point2Dd> dedup;
-    dedup.reserve(finalPath.size());
-    for (const auto& p : finalPath) {
-        if (dedup.empty() ||
-            std::abs(p.x - dedup.back().x) > 0.5f ||
-            std::abs(p.y - dedup.back().y) > 0.5f) {
-            dedup.push_back(p);
-        }
-    }
-    return dedup;
+    options.routingArea = Rect2Dd(0.0, 0.0,
+                                  static_cast<double>(chartBounds.width),
+                                  static_cast<double>(chartBounds.height));
+    return options;
 }
 
-// Top-level orthogonal routing entry. Tries the cheap cardinal path first;
-// only invokes A* if the cheap path collides with another node. Fallback to
-// cardinal if A* finds nothing.
+// Top-level orthogonal routing entry. Delegates to the shared router, which
+// tries the cheap cardinal path first and only invokes A* if that path
+// collides with another node (falling back to cardinal if A* finds nothing).
 std::vector<Point2Dd> UltraCanvasFlowChart::ComputeOrthogonalPath(
         const Point2Dd& start, const Point2Dd& end,
         CardinalSide sourceSide, CardinalSide targetSide,
         const std::string& sourceId, const std::string& targetId) {
-    auto cheap = ComputeCardinalPath(start, end, sourceSide, targetSide);
-    if (!PathHasObstacles(cheap, sourceId, targetId)) {
-        return cheap;
-    }
-    auto astar = RouteAStar(start, end, sourceSide, targetSide, sourceId, targetId);
-    if (astar.empty()) {
-        return cheap;  // silent fallback: visible connection > no connection
-    }
-    return astar;
+    return UltraCanvasDiagramRouter::ComputeOrthogonalPath(
+        start, end, sourceSide, targetSide,
+        CollectRoutingObstacles(sourceId, targetId),
+        BuildRoutingOptions());
 }
 
 void UltraCanvasFlowChart::RenderCurvedLine(IRenderContext* ctx, const Point2Dd& start, const Point2Dd& end) {
@@ -1690,13 +1352,7 @@ Point2Dd UltraCanvasFlowChart::GetNodeCenter(const FlowChartNode& node) const {
 UltraCanvasFlowChart::CardinalSide
 UltraCanvasFlowChart::GetCardinalSide(const Point2Dd& nodeCenter,
                                        const Point2Dd& otherCenter) const {
-    double dx = otherCenter.x - nodeCenter.x;
-    double dy = otherCenter.y - nodeCenter.y;
-    if (std::abs(dx) >= std::abs(dy)) {
-        return (dx >= 0.0f) ? CardinalSide::Right : CardinalSide::Left;
-    } else {
-        return (dy >= 0.0f) ? CardinalSide::Bottom : CardinalSide::Top;
-    }
+    return UltraCanvasDiagramRouter::GetCardinalSide(nodeCenter, otherCenter);
 }
 
 // Mid-point of the requested cardinal side of the node's bbox. For Diamond
@@ -1704,15 +1360,8 @@ UltraCanvasFlowChart::GetCardinalSide(const Point2Dd& nodeCenter,
 // edge users expect lines to attach to.
 Point2Dd UltraCanvasFlowChart::GetCardinalPoint(const FlowChartNode& node,
                                                 CardinalSide side) const {
-    double cx = node.x + node.width * 0.5f;
-    double cy = node.y + node.height * 0.5f;
-    switch (side) {
-        case CardinalSide::Top:    return Point2Dd(cx, node.y);
-        case CardinalSide::Right:  return Point2Dd(node.x + node.width, cy);
-        case CardinalSide::Bottom: return Point2Dd(cx, node.y + node.height);
-        case CardinalSide::Left:   return Point2Dd(node.x, cy);
-    }
-    return Point2Dd(cx, cy);
+    return UltraCanvasDiagramRouter::GetCardinalPoint(
+        Rect2Dd(node.x, node.y, node.width, node.height), side);
 }
 
 // Returns the attach point on `node` for a connection coming from
@@ -1783,25 +1432,7 @@ Point2Dd UltraCanvasFlowChart::GetConnectionPoint(const FlowChartNode& node,
 // of waypoints (L, Z, or A* paths).
 Point2Dd UltraCanvasFlowChart::ComputeOrthogonalLabelAnchor(
         const std::vector<Point2Dd>& waypoints) const {
-    if (waypoints.size() < 2) return Point2Dd(0, 0);
-    if (waypoints.size() == 2) {
-        return Point2Dd((waypoints[0].x + waypoints[1].x) * 0.5f,
-                        (waypoints[0].y + waypoints[1].y) * 0.5f);
-    }
-    // Find the longest segment.
-    size_t bestIdx = 0;
-    double bestLen = 0.0f;
-    for (size_t i = 1; i < waypoints.size(); ++i) {
-        double dx = waypoints[i].x - waypoints[i-1].x;
-        double dy = waypoints[i].y - waypoints[i-1].y;
-        double len = std::abs(dx) + std::abs(dy);  // Manhattan; segments are axis-aligned
-        if (len > bestLen) {
-            bestLen = len;
-            bestIdx = i;
-        }
-    }
-    return Point2Dd((waypoints[bestIdx-1].x + waypoints[bestIdx].x) * 0.5f,
-                    (waypoints[bestIdx-1].y + waypoints[bestIdx].y) * 0.5f);
+    return UltraCanvasDiagramRouter::ComputeLongestSegmentAnchor(waypoints);
 }
 
 // Angle of the final segment of the path. For orthogonal/curved we still
@@ -1810,19 +1441,13 @@ Point2Dd UltraCanvasFlowChart::ComputeOrthogonalLabelAnchor(
 double UltraCanvasFlowChart::ComputeIncomingAngle(const std::vector<Point2Dd>& waypoints,
                                                  FlowChartConnectionStyle s,
                                                  CardinalSide targetSide) const {
+    // Orthogonal/curved paths always enter perpendicular to targetSide, so the
+    // side alone gives the correct arrow angle even for a 2-point path.
     if (s == FlowChartConnectionStyle::Orthogonal ||
         s == FlowChartConnectionStyle::Curved) {
-        switch (targetSide) {
-            case CardinalSide::Top:    return  3.14159265f * 0.5f;   // arriving going down
-            case CardinalSide::Bottom: return -3.14159265f * 0.5f;   // arriving going up
-            case CardinalSide::Left:   return  0.0f;                 // arriving going right
-            case CardinalSide::Right:  return  3.14159265f;          // arriving going left
-        }
+        return UltraCanvasDiagramRouter::ComputeApproachAngle(targetSide);
     }
-    if (waypoints.size() < 2) return 0.0f;
-    const Point2Dd& a = waypoints[waypoints.size() - 2];
-    const Point2Dd& b = waypoints.back();
-    return std::atan2(b.y - a.y, b.x - a.x);
+    return UltraCanvasDiagramRouter::ComputeFinalSegmentAngle(waypoints);
 }
 
 bool UltraCanvasFlowChart::IsNodeSelected(const std::string& nodeId) const {
