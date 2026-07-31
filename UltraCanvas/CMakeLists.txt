@@ -394,6 +394,10 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasAdjacencyDiagram.cpp
 
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/SVG/UltraCanvasSVGPlugin.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasDiagramViewport.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasMindMapLayout.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasMindMap.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasMindMapIO.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasSankey.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasVennDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasSWOTDiagram.cpp
@@ -702,7 +706,7 @@ set_target_properties(${ULTRACANVAS_LIB_NAME} PROPERTIES
     VERSION ${ULTRACANVAS_VERSION}
     SOVERSION 1
     POSITION_INDEPENDENT_CODE ON
-    OUTPUT_NAME "ultracanvas"
+    OUTPUT_NAME "UltraCanvas"
 )
 
 if(WIN32)
@@ -1627,7 +1631,6 @@ if(ULTRACANVAS_PLUGIN_LATEX)
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/LaTeX/UltraCanvasLaTeXModule.cpp
     )
     set_target_properties(UltraCanvasLaTeX PROPERTIES
-        PREFIX "lib"                     # libUltraCanvasLaTeX.so on all UNIX
         CXX_VISIBILITY_PRESET hidden
         # Co-locate with the core lib so the loader's "<exe>/../lib" and bare-name
         # searches find it during dev/test; installers can relocate it.
@@ -1679,7 +1682,7 @@ if(ULTRACANVAS_PLUGIN_LATEX)
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_PLUGIN_LATEX=1)
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${CMAKE_DL_LIBS})
 
-    message(STATUS "  [✓] LaTeX Plugin - ENABLED (on-demand module: libUltraCanvasLaTeX)")
+    message(STATUS "  [✓] LaTeX Plugin - ENABLED (on-demand module: UltraCanvasLaTeX)")
 else()
     message(STATUS "  [−] LaTeX Plugin - SKIPPED (disabled by option)")
 endif()

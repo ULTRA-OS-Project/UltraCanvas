@@ -478,11 +478,10 @@ struct CompositorDiagramStyle {
 // SNAP-TO-GRID
 // =============================================================================
 
-struct CompositorSnapGrid {
-    bool   enabled = false;
-    double snapX = 20.0;
-    double snapY = 20.0;
-};
+// CHANGED in 2.1.0: alias of the shared DiagramSnapGrid. The compositor's 20px
+// default (the shared default is 25px) is applied in the constructor.
+using CompositorSnapGrid = DiagramSnapGrid;
+inline constexpr double kCompositorDefaultSnap = 20.0;
 
 // =============================================================================
 // MINIMAP & CONTROLS OVERLAY CONFIGS
@@ -492,34 +491,31 @@ struct CompositorSnapGrid {
 // rather than reusing avoids cross-coupling). The position enum
 // NodeDiagramPanelPosition IS reused.
 
-struct CompositorMinimapConfig {
-    bool visible = false;
-    NodeDiagramPanelPosition position = NodeDiagramPanelPosition::BottomRight;
-    double width = 180.0;
-    double height = 130.0;
-    double padding = 10.0;
-    Color backgroundColor = Color(30, 30, 30, 235);
-    Color borderColor     = Color(80, 80, 80, 255);
-    Color nodeColor       = Color(140, 160, 200, 255);
-    Color viewportFill    = Color(80, 130, 200,  40);
-    Color viewportStroke  = Color(80, 130, 200, 200);
-    bool pannable = true;
-};
+// CHANGED in 2.1.0: aliases of the shared viewport's configuration types. The
+// compositor's dark-theme defaults are no longer struct member initialisers
+// (the shared struct is light-themed for the node diagram), so they are applied
+// through these factories in the constructor.
+using CompositorMinimapConfig = DiagramMinimapConfig;
+using CompositorControlsConfig = DiagramControlsConfig;
 
-struct CompositorControlsConfig {
-    bool visible = false;
-    NodeDiagramPanelPosition position = NodeDiagramPanelPosition::BottomLeft;
-    double buttonSize = 28.0;
-    double padding = 10.0;
-    double gap = 4.0;
-    Color backgroundColor = Color(40, 40, 40, 235);
-    Color borderColor     = Color(80, 80, 80, 255);
-    Color iconColor       = Color(220, 220, 220, 255);
-    Color hoverColor      = Color(70, 70, 70, 255);
-    bool showZoom = true;
-    bool showFit = true;
-    bool showLock = true;
-};
+inline CompositorMinimapConfig MakeCompositorMinimapDefaults() {
+    CompositorMinimapConfig cfg;
+    cfg.backgroundColor = Color(30, 30, 30, 235);
+    cfg.borderColor     = Color(80, 80, 80, 255);
+    cfg.nodeColor       = Color(140, 160, 200, 255);
+    cfg.viewportFill    = Color(80, 130, 200,  40);
+    cfg.viewportStroke  = Color(80, 130, 200, 200);
+    return cfg;
+}
+
+inline CompositorControlsConfig MakeCompositorControlsDefaults() {
+    CompositorControlsConfig cfg;
+    cfg.backgroundColor = Color(40, 40, 40, 235);
+    cfg.borderColor     = Color(80, 80, 80, 255);
+    cfg.iconColor       = Color(220, 220, 220, 255);
+    cfg.hoverColor      = Color(70, 70, 70, 255);
+    return cfg;
+}
 
 // =============================================================================
 // ALIGNMENT GUIDES
@@ -661,16 +657,19 @@ public:
 
     void SetZoomLevel(double zoom);
     void SetPanOffset(double x, double y);
-    double GetZoomLevel() const { return zoomLevel; }
-    Point2Df GetPanOffset() const { return panOffset; }
+    double GetZoomLevel() const;
+    // CHANGED in 2.1.0: returns Point2Dd (was Point2Df). The shared viewport
+    // keeps pan/zoom in double precision; the compositor's own world
+    // coordinates remain Point2Df.
+    Point2Dd GetPanOffset() const;
 
     void ZoomIn(double factor = 1.2f);
     void ZoomOut(double factor = 1.2f);
     void FitView(double padding = 40.0f);
     void CenterOn(double worldX, double worldY);
 
-    void SetMinZoom(double minZ) { minZoom = minZ; }
-    void SetMaxZoom(double maxZ) { maxZoom = maxZ; }
+    void SetMinZoom(double minZ);
+    void SetMaxZoom(double maxZ);
 
     // =========================================================================
     // INTERACTION SETTINGS
@@ -688,7 +687,7 @@ public:
 
     void SetSnapToGrid(bool enabled);
     void SetSnapGrid(double snapX, double snapY);
-    bool IsSnapToGridEnabled() const             { return snapGrid.enabled; }
+    bool IsSnapToGridEnabled() const;
 
     // =========================================================================
     // HISTORY (UNDO / REDO)
@@ -728,12 +727,12 @@ public:
     void SetMinimapVisible(bool visible);
     void SetMinimapPosition(NodeDiagramPanelPosition pos);
     void SetMinimapConfig(const CompositorMinimapConfig& cfg);
-    const CompositorMinimapConfig& GetMinimapConfig() const { return minimapConfig; }
+    const CompositorMinimapConfig& GetMinimapConfig() const;
 
     void SetControlsVisible(bool visible);
     void SetControlsPosition(NodeDiagramPanelPosition pos);
     void SetControlsConfig(const CompositorControlsConfig& cfg);
-    const CompositorControlsConfig& GetControlsConfig() const { return controlsConfig; }
+    const CompositorControlsConfig& GetControlsConfig() const;
 
     // =========================================================================
     // EDGE RECONNECTION
@@ -971,6 +970,11 @@ private:
     // UTILITY
     // =========================================================================
 
+    // World-space extent of all nodes, handed to the shared viewport for
+    // FitView and the minimap projection.
+    DiagramContentBounds ComputeContentBounds() const;
+    void SyncViewportSize();
+
     Point2Df ScreenToWorld(const Point2Di& screenPos) const;
     Point2Di WorldToScreen(const Point2Df& worldPos) const;
     Point2Df SnapWorldPoint(const Point2Df& p) const;
@@ -1070,11 +1074,8 @@ private:
     Point2Df selectionBoxStart;
     Point2Df selectionBoxEnd;
 
-    // Viewport
-    double  zoomLevel = 1.0f;
-    Point2Df panOffset;
-    double  minZoom = 0.1f;
-    double  maxZoom = 5.0f;
+    // Viewport, snap grid, minimap and controls (shared component, 2.1.0)
+    UltraCanvasDiagramViewport viewport;
 
     // Interaction toggles
     bool isInteractive    = true;
@@ -1083,12 +1084,6 @@ private:
     bool zoomOnScroll     = true;
     bool isMultiSelectKeyHeld = false;
 
-    // Snap to grid
-    CompositorSnapGrid snapGrid;
-
-    // Minimap & controls overlays
-    CompositorMinimapConfig minimapConfig;
-    CompositorControlsConfig controlsConfig;
     bool isDraggingMinimap = false;
     int  hoveredControlButton = -1;
 

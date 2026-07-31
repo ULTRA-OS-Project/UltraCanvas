@@ -1397,15 +1397,21 @@ namespace UltraCanvas {
                 .AddVariant("quadrantcharts", "Risk Matrix")
                 .AddVariant("quadrantcharts", "Priority Matrix")
                 .AddVariant("quadrantcharts", "Custom Quadrants");
-    diagramBuilder.AddItem("mindmap", "MindMap", "MindMap",
-                               ImplementationStatus::NotImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("MindMap is not ready yet"); });
+    diagramBuilder.AddItem("mindmap", "Mind Map",
+                               "Rooted topic tree with balanced, logic, org chart and radial structures, editing and collapse",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateMindMapExamples(); },
+                               "DemoApp/UltraCanvasMindMapExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasMindMapExamples.md")
+                .AddVariant("mindmap", "Editable map")
+                .AddVariant("mindmap", "Logic chart")
+                .AddVariant("mindmap", "Radial")
+                .AddVariant("mindmap", "Relationships")
+                .AddVariant("mindmap", "Presentation")
+                .AddVariant("mindmap", "Themes & structures");
     diagramBuilder.AddItem("packetdiagram", "Packet Diagram", "Packet Diagram",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("Packet Diagram is not ready yet"); });
-    diagramBuilder.AddItem("gitgraph", "Git Graph", "Git Graph",
-                               ImplementationStatus::NotImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("Git Graph is not ready yet"); });
     diagramBuilder.AddItem("erdiagram", "ER Diagram", "Entity-Relationship Diagram",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateERDiagramExamples(); },
