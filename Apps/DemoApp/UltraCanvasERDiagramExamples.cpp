@@ -402,6 +402,207 @@ static std::shared_ptr<UltraCanvasERDiagram> CreateCrowsFootDiagram(
 }
 
 // =============================================================================
+// 7. RELATIONAL / MERISE  (reference image A)
+// =============================================================================
+//
+// A table notation carrying (min,max) labels and plain arrowheads - no crow's
+// feet anywhere. This is the combination that proves SetLineEndStyle and
+// SetCardinalityLabelStyle really are independent of SetNotation: the boxes are
+// the crow's-foot projection, but nothing about the line ends is.
+
+static std::shared_ptr<UltraCanvasERDiagram> CreateRelationalDiagram(
+        int x, int y, int w, int h) {
+    auto er = CreateERDiagram("er_relational", x, y, w, h);
+
+    er->SetNotation(ERNotation::CrowsFoot);
+    er->SetLineEndStyle(ERLineEndStyle::Arrow);                  // Not crow's feet
+    er->SetCardinalityLabelStyle(ERCardinalityLabels::MinMax);   // (1,n) / (0,1)
+    er->SetTheme(ERDiagramTheme::Colorful);
+    er->SetConnectorStyle(ERConnectorStyle::Orthogonal);
+    er->SetShowDataTypes(false);                                 // Column names only
+    er->SetTitle("Forum Schema", "Relational tables with (min,max) cardinality");
+
+    // Badge column on the right, striped rows - the other house style.
+    er->SetRowMarkerSide(ERRowMarkerSide::Right);
+    er->SetStripeRows(true);
+
+    er->AddEntity("groups", "groups", 40, 300);
+    er->AddTypedAttribute("groups", "id_group", "", ERKeyRole::Primary, false);
+    er->AddAttribute("groups", "title");
+
+    er->AddEntity("users", "users", 330, 280);
+    er->AddTypedAttribute("users", "id_user", "", ERKeyRole::Primary, false);
+    er->AddTypedAttribute("users", "id_group", "", ERKeyRole::Foreign, false);
+    er->AddAttribute("users", "first_name");
+    er->AddAttribute("users", "fam_name");
+    er->AddAttribute("users", "email");
+    er->AddAttribute("users", "pass");
+    er->AddAttribute("users", "about");
+
+    er->AddEntity("topics", "topics", 170, 60);
+    er->AddTypedAttribute("topics", "id_topic", "", ERKeyRole::Primary, false);
+    er->AddTypedAttribute("topics", "id_user", "", ERKeyRole::Foreign, false);
+    er->AddAttribute("topics", "date_modified");
+    er->AddAttribute("topics", "title");
+
+    er->AddEntity("posts", "posts", 540, 20);
+    er->AddTypedAttribute("posts", "id_post", "", ERKeyRole::Primary, false);
+    er->AddTypedAttribute("posts", "id_topic", "", ERKeyRole::Foreign, false);
+    er->AddTypedAttribute("posts", "id_user", "", ERKeyRole::Foreign, false);
+    er->AddAttribute("posts", "date_created");
+    er->AddAttribute("posts", "body");
+
+    er->AddEntity("pages", "pages", 800, 150);
+    er->AddTypedAttribute("pages", "id_page", "", ERKeyRole::Primary, false);
+    er->AddTypedAttribute("pages", "id_user", "", ERKeyRole::Foreign, false);
+    er->AddAttribute("pages", "date_modified");
+    er->AddAttribute("pages", "title");
+    er->AddAttribute("pages", "body");
+    er->AddAttribute("pages", "is_home");
+
+    er->AddEntity("files", "files", 800, 420);
+    er->AddTypedAttribute("files", "id_file", "", ERKeyRole::Primary, false);
+    er->AddTypedAttribute("files", "id_user", "", ERKeyRole::Foreign, false);
+    er->AddAttribute("files", "date_modified");
+    er->AddAttribute("files", "title");
+    er->AddAttribute("files", "filename");
+
+    er->AddEntity("schedule", "schedule", 170, 620);
+    er->AddTypedAttribute("schedule", "id_sch", "", ERKeyRole::Primary, false);
+    er->AddAttribute("schedule", "time_start");
+    er->AddAttribute("schedule", "time_end");
+    er->AddAttribute("schedule", "weekday");
+    er->AddAttribute("schedule", "title");
+
+    er->AddEntity("calendar", "calendar", 540, 620);
+    er->AddTypedAttribute("calendar", "id_cal", "", ERKeyRole::Primary, false);
+    er->AddAttribute("calendar", "date_start");
+    er->AddAttribute("calendar", "date_end");
+    er->AddAttribute("calendar", "title");
+
+    // Highlighted columns - the reference tints the ones worth the eye.
+    er->SetAttributeHighlighted("users", "id_group", true);
+    er->SetAttributeHighlighted("topics", "id_user", true);
+    er->SetAttributeHighlighted("posts", "id_topic", true);
+    er->SetAttributeHighlighted("pages", "id_user", true);
+    er->SetAttributeHighlighted("files", "id_user", true);
+
+    er->AddRelationship("user_group", "", "users", "groups",
+                        ERCardinality::ExactlyOne, ERCardinality::ZeroOrMany);
+    er->AddRelationship("topic_user", "", "topics", "users",
+                        ERCardinality::ZeroOrOne, ERCardinality::ZeroOrMany);
+    er->AddRelationship("post_topic", "", "posts", "topics",
+                        ERCardinality::ExactlyOne, ERCardinality::OneOrMany);
+    er->AddRelationship("post_user", "", "posts", "users",
+                        ERCardinality::ExactlyOne, ERCardinality::ZeroOrMany);
+    er->AddRelationship("page_user", "", "pages", "users",
+                        ERCardinality::ZeroOrOne, ERCardinality::ZeroOrMany);
+    er->AddRelationship("file_user", "", "files", "users",
+                        ERCardinality::ZeroOrOne, ERCardinality::ZeroOrMany);
+    er->AddRelationship("sch_user", "", "schedule", "users",
+                        ERCardinality::ExactlyOne, ERCardinality::ZeroOrMany);
+    er->AddRelationship("cal_user", "", "calendar", "users",
+                        ERCardinality::ExactlyOne, ERCardinality::ZeroOrMany);
+
+    er->SetShowRelationshipNames(false);   // The reference labels edges by cardinality only
+    er->AutoSizeAll();
+    er->SetLayout(ERDiagramLayout::Manual);
+    er->RunLayout();
+    return er;
+}
+
+// =============================================================================
+// 8. IDEF1X / DATABASE MODEL  (reference image B)
+// =============================================================================
+//
+// The convention used by IDEF1X and the Access/Visio database-model diagrams:
+// key columns hoisted into their own compartment above a rule and underlined,
+// foreign keys numbered so a reader can tell which constraint a column serves.
+
+static std::shared_ptr<UltraCanvasERDiagram> CreateIdef1xDiagram(
+        int x, int y, int w, int h) {
+    auto er = CreateERDiagram("er_idef1x", x, y, w, h);
+
+    er->SetNotation(ERNotation::CrowsFoot);
+    er->SetLineEndStyle(ERLineEndStyle::CrowsFoot);
+    er->SetCardinalityLabelStyle(ERCardinalityLabels::NoLabels);
+    er->SetTheme(ERDiagramTheme::Minimal);
+    er->SetConnectorStyle(ERConnectorStyle::Orthogonal);
+    er->SetShowDataTypes(false);
+    er->SetTitle("Equipment Hire", "IDEF1X - key compartment, numbered foreign keys");
+
+    er->SetKeyCompartment(true);
+    er->SetUnderlineKeyRows(true);
+    er->SetNumberForeignKeys(true);
+
+    er->AddEntity("categories", "tblCATEGORIES", 40, 60);
+    er->AddTypedAttribute("categories", "category_id", "", ERKeyRole::Primary, false);
+    er->AddAttribute("categories", "category_name");
+    er->AddAttribute("categories", "category_description");
+    er->AddAttribute("categories", "category_type");
+
+    er->AddEntity("equipment", "tblEQUIPMENT", 40, 400);
+    er->AddTypedAttribute("equipment", "equipment_id", "", ERKeyRole::Primary, false);
+    er->AddAttribute("equipment", "equipment_name");
+    er->AddAttribute("equipment", "equipment_description");
+    er->AddTypedAttribute("equipment", "status_id", "", ERKeyRole::Foreign, false);
+
+    er->AddEntity("equipcat", "tblEQUIP_CAT", 40, 230);
+    er->AddTypedAttribute("equipcat", "equip_cat_id", "", ERKeyRole::Primary, false);
+    er->AddTypedAttribute("equipcat", "category_id", "", ERKeyRole::Foreign, false);
+    er->AddTypedAttribute("equipcat", "equipment_id", "", ERKeyRole::Foreign, false);
+
+    er->AddEntity("status", "tblSTATUS", 40, 600);
+    er->AddTypedAttribute("status", "status_id", "", ERKeyRole::Primary, false);
+    er->AddAttribute("status", "status_name");
+    er->AddAttribute("status", "status_notes");
+
+    er->AddEntity("projects", "tblPROJECTS", 700, 60);
+    er->AddTypedAttribute("projects", "project_id", "", ERKeyRole::Primary, false);
+    er->AddAttribute("projects", "project_name");
+    er->AddAttribute("projects", "project_start_date");
+    er->AddAttribute("projects", "project_end_date");
+    er->AddTypedAttribute("projects", "contact_id", "", ERKeyRole::Foreign, false);
+
+    er->AddEntity("projequip", "tblPROJECT_EQUIPMENT", 700, 340);
+    er->AddTypedAttribute("projequip", "project_equip_id", "", ERKeyRole::Primary, false);
+    er->AddTypedAttribute("projequip", "project_id", "", ERKeyRole::Foreign, false);
+    er->AddTypedAttribute("projequip", "equipment_id", "", ERKeyRole::Foreign, false);
+    er->AddAttribute("projequip", "proj_equip_booking_rate");
+
+    er->AddEntity("hirerates", "tblHIRE_RATES", 400, 600);
+    er->AddTypedAttribute("hirerates", "hire_rate_id", "", ERKeyRole::Primary, false);
+    er->AddAttribute("hirerates", "hire_rate_rate");
+    er->AddAttribute("hirerates", "hire_rate_period");
+
+    er->AddEntity("equiprates", "tblEQUIP_HIRE_RATES", 380, 420);
+    er->AddTypedAttribute("equiprates", "equip_hire_rate_id", "", ERKeyRole::Primary, false);
+    er->AddTypedAttribute("equiprates", "equipment_id", "", ERKeyRole::Foreign, false);
+    er->AddTypedAttribute("equiprates", "hire_rate_id", "", ERKeyRole::Foreign, false);
+
+    er->AddRelationship("cat_equipcat", "", "categories", "equipcat",
+                        ERCardinality::ExactlyOne, ERCardinality::ZeroOrMany);
+    er->AddRelationship("equip_equipcat", "", "equipment", "equipcat",
+                        ERCardinality::ExactlyOne, ERCardinality::ZeroOrMany);
+    er->AddRelationship("status_equip", "", "status", "equipment",
+                        ERCardinality::ExactlyOne, ERCardinality::ZeroOrMany);
+    er->AddRelationship("equip_rates", "", "equipment", "equiprates",
+                        ERCardinality::ExactlyOne, ERCardinality::ZeroOrMany);
+    er->AddRelationship("rates_equiprates", "", "hirerates", "equiprates",
+                        ERCardinality::ExactlyOne, ERCardinality::ZeroOrMany);
+    er->AddRelationship("proj_projequip", "", "projects", "projequip",
+                        ERCardinality::ExactlyOne, ERCardinality::ZeroOrMany);
+    er->AddRelationship("equip_projequip", "", "equipment", "projequip",
+                        ERCardinality::ExactlyOne, ERCardinality::ZeroOrMany);
+
+    er->SetShowRelationshipNames(false);
+    er->AutoSizeAll();
+    er->SetLayout(ERDiagramLayout::Manual);
+    er->RunLayout();
+    return er;
+}
+
+// =============================================================================
 // SCENE
 // =============================================================================
 
@@ -482,7 +683,13 @@ UltraCanvasDemoApplication::CreateERDiagramExamples() {
           "recursive Tutor_Tutored with role names." },
         { "Crow's Foot", CreateCrowsFootDiagram(4, 4, INNER_W, INNER_H),
           "Crow's Foot - typed attribute rows with PK/FK/UK markers. "
-          "Identifying relationships are solid, non-identifying dashed." }
+          "Identifying relationships are solid, non-identifying dashed." },
+        { "Relational", CreateRelationalDiagram(4, 4, INNER_W, INNER_H),
+          "Relational - table boxes with (min,max) labels and plain arrowheads, "
+          "badge column on the right, striped rows." },
+        { "IDEF1X", CreateIdef1xDiagram(4, 4, INNER_W, INNER_H),
+          "IDEF1X - key columns in their own compartment above the rule and "
+          "underlined; foreign keys numbered FK1/FK2." }
     };
 
     std::vector<std::shared_ptr<UltraCanvasERDiagram>> diagrams;

@@ -46,6 +46,7 @@ UltraCanvasUIElement
 - **Relationships as nodes**: binary, **n-ary** (one diamond, 3+ legs), **recursive** (self-loop with per-leg role names), and **identifying** (double diamond)
 - **Attribute kinds**: simple, composite (nested spokes), multivalued (double oval), derived (dashed oval)
 - **Key roles**: primary (solid underline), partial (dashed underline), foreign, unique; `PK`/`FK`/`UK` markers in crow's-foot rows
+- **Row layout options** for the table projection: badge column on either side, striped rows, an IDEF1X key compartment with underlined key names, numbered foreign keys (`FK1`/`FK2`), and per-column highlighting
 - **Cardinality**: `ExactlyOne` / `ZeroOrOne` / `OneOrMany` / `ZeroOrMany`, or explicit `(min,max)` per leg
 - **Participation**: partial (single line), total (double line), optional (dashed)
 - **Line-end markers** selectable independently of the notation, so Chen bodies can carry crow's-foot ends
@@ -87,6 +88,7 @@ enum class ERDiagramTheme {
     Default, Professional, Colorful, Pastel, Dark, Blueprint, Minimal, Print
 };
 
+enum class ERRowMarkerSide      { Left, Right };
 enum class ERPanelPosition      { TopLeft, TopRight, BottomLeft, BottomRight };
 enum class ERAnnotationSide     { Left, Right, Top, Bottom };
 ```
@@ -117,7 +119,11 @@ struct ERDiagramAttribute {
 
     bool  useCustomColors = false;
     Color fillColor, borderColor, textColor;
-    bool  visible = true;
+
+    bool highlighted = false;    // Crow's foot: tint this column's badge cell
+    int  foreignKeyIndex = 0;    // 0 = auto-number among the entity's foreign keys
+
+    bool visible = true;
 };
 ```
 
@@ -196,7 +202,8 @@ struct ERDiagramRolePalette {
     Color relationshipFill, relationshipBorder, relationshipText;
     Color attributeFill, attributeBorder, attributeText;
     Color keyAttributeFill, derivedAttributeFill, multiValuedAttributeFill;
-    Color rowFill, rowText, rowKeyText;      // Crow's-foot rows
+    Color rowFill, rowStripeFill, rowHighlightFill;   // Crow's-foot rows
+    Color rowText, rowKeyText, rowDivider;
     Color connectorColor, cardinalityText, roleText;
 };
 ```
@@ -217,6 +224,14 @@ struct ERDiagramStyle {
     double selectionWidth = 3.0;
 
     ERDiagramRolePalette palette;
+
+    // Crow's-foot row layout
+    ERRowMarkerSide rowMarkerSide = ERRowMarkerSide::Left;
+    bool   stripeRows = false;
+    bool   keyCompartment = false;
+    bool   underlineKeyRows = false;
+    bool   numberForeignKeys = false;
+    double rowMarkerColumnWidth = 26.0;
 
     double connectorWidth = 1.6;
     double cornerRadius = 4.0;
@@ -381,14 +396,21 @@ void SetShowDataTypes(bool show);
 ```
 
 `SetNotation` re-sizes entities for the target notation (crow's-foot boxes grow
-to hold their rows; Chen boxes shrink back to a name plate). Switching to
-`CrowsFoot` with `MinMax` labels active turns the labels off, because the glyphs
-and the `(min,max)` pair say the same thing twice.
+to hold their rows; Chen boxes shrink back to a name plate). It does **not**
+touch the cardinality label style or the marker set — the relational/MERISE
+style is a table notation carrying `(min,max)` labels and plain arrowheads, so
+neither can be inferred from the notation alone.
 
-`ERLineEndStyle` resolution order per leg: an explicit `leg.lineEnd` wins;
-otherwise, if a crow's-foot-family marker set is active (or the notation is
-`CrowsFoot`), the glyph is derived from `(minCard, maxCard)`; otherwise the
-diagram-wide `lineEndStyle` is used verbatim.
+`ERLineEndStyle` resolution order per leg:
+
+1. An explicit `leg.lineEnd` wins.
+2. Otherwise, if the diagram-wide `lineEndStyle` is a crow's-foot-family marker
+   (`Tick`, `DoubleTick`, `CrowsFoot`, `CircleCrowsFoot`, `Circle`), or it is
+   unset and the notation is `CrowsFoot`, the glyph is derived from
+   `(minCard, maxCard)`.
+3. Otherwise the diagram-wide `lineEndStyle` is used verbatim — so
+   `SetLineEndStyle(ERLineEndStyle::Arrow)` really does draw arrowheads, in
+   every notation.
 
 ### Layout
 
@@ -435,6 +457,30 @@ Color GetRoleFill(ERNodeRole role) const;
 Color GetRoleBorder(ERNodeRole role) const;
 Color GetRoleText(ERNodeRole role) const;
 ```
+
+### Crow's-foot row layout
+
+House styles disagree on every one of these, so they are settings rather than a
+fixed convention.
+
+```cpp
+void SetRowMarkerSide(ERRowMarkerSide side);   // PK/FK badge column left or right
+void SetStripeRows(bool stripe);               // Alternate row background
+void SetKeyCompartment(bool enabled);          // Key columns above a divider rule
+void SetUnderlineKeyRows(bool underline);      // IDEF1X: underline key column names
+void SetNumberForeignKeys(bool numbered);      // FK1 / FK2 instead of a bare FK
+void SetAttributeHighlighted(const std::string& entityId,
+                             const std::string& attributeId, bool highlighted);
+```
+
+`SetKeyCompartment(true)` hoists the key columns above the rule for display
+only — the model keeps whatever order the caller supplied, and the divider is
+drawn only when there are columns on both sides of it.
+
+`SetNumberForeignKeys(true)` numbers foreign keys in order of appearance within
+the entity, unless the attribute sets `foreignKeyIndex` explicitly. The badge
+column widens automatically to hold the longer text, so `AutoSizeAll()` and the
+renderer never disagree about the row width.
 
 `SetTheme` also recolours the title band, unless `SetTitleConfig` has already
 supplied explicit colours.

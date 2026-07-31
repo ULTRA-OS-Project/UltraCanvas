@@ -1369,7 +1369,9 @@ namespace UltraCanvas {
                 .AddVariant("erdiagram", "Student / Course (annotated)")
                 .AddVariant("erdiagram", "Hospital (pastel, spine layout)")
                 .AddVariant("erdiagram", "Academic (min,max + ternary)")
-                .AddVariant("erdiagram", "Crow's Foot (physical schema)");
+                .AddVariant("erdiagram", "Crow's Foot (physical schema)")
+                .AddVariant("erdiagram", "Relational (min,max + arrowheads)")
+                .AddVariant("erdiagram", "IDEF1X (key compartment, FK1/FK2)");
     diagramBuilder.AddItem("sequencediagram", "Sequence Diagram", "Sequence Diagram",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("Sequence Diagram is not ready yet"); });

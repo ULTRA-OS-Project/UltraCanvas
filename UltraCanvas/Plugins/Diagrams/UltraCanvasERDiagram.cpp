@@ -25,6 +25,7 @@ static constexpr double ER_MIN_ENTITY_WIDTH = 90.0;
 static constexpr double ER_MIN_ENTITY_HEIGHT = 46.0;
 static constexpr double ER_ROW_HEIGHT = 20.0;
 static constexpr double ER_HEADER_HEIGHT = 28.0;
+static constexpr double ER_KEY_DIVIDER_GAP = 7.0;
 
 namespace {
 
@@ -217,6 +218,10 @@ JSONValue AttributeToJson(const ERDiagramAttribute& attribute) {
     object.Set("keyRole", std::string(KeyRoleToString(attribute.keyRole)));
     object.Set("nullable", attribute.nullable);
     if (!attribute.defaultValue.empty()) object.Set("default", attribute.defaultValue);
+    if (attribute.highlighted) object.Set("highlighted", true);
+    if (attribute.foreignKeyIndex > 0) {
+        object.Set("foreignKeyIndex", static_cast<int64_t>(attribute.foreignKeyIndex));
+    }
     if (attribute.hasPlacement) {
         object.Set("x", attribute.x);
         object.Set("y", attribute.y);
@@ -256,6 +261,9 @@ ERDiagramAttribute AttributeFromJson(const JSONValue& object) {
     attribute.keyRole = KeyRoleFromString(object.Get("keyRole").GetString());
     attribute.nullable = object.Get("nullable").GetBoolean(true);
     attribute.defaultValue = object.Get("default").GetString();
+    attribute.highlighted = object.Get("highlighted").GetBoolean(false);
+    attribute.foreignKeyIndex =
+            static_cast<int>(object.Get("foreignKeyIndex").GetInteger(0));
     if (object.Contains("x") && object.Contains("y")) {
         attribute.x = object.Get("x").GetNumber();
         attribute.y = object.Get("y").GetNumber();
@@ -718,11 +726,11 @@ void UltraCanvasERDiagram::SetNotation(ERNotation newNotation) {
             entity.height = h;
         }
     }
-    if (cardinalityLabels == ERCardinalityLabels::MinMax &&
-        notation == ERNotation::CrowsFoot) {
-        // Min-max pairs and crow's-foot glyphs say the same thing twice.
-        cardinalityLabels = ERCardinalityLabels::NoLabels;
-    }
+    // No label style is forced here. An earlier version cleared MinMax under
+    // CrowsFoot on the theory that the pair and the glyph say the same thing
+    // twice - but the relational/MERISE style is exactly a table notation
+    // carrying (min,max) labels and no crow's feet, and the clear was also
+    // order-dependent (it only fired when the notation actually changed).
     RequestRedraw();
 }
 
@@ -1474,6 +1482,9 @@ void UltraCanvasERDiagram::ApplyThemeColors() {
             palette.connectorColor    = Color(95, 105, 120, 255);
             style.backgroundColor     = Color(250, 251, 252, 255);
             palette.rowFill = Color(246, 248, 251, 255);
+            palette.rowStripeFill = Color(233, 238, 245, 255);
+            palette.rowHighlightFill = Color(150, 178, 214, 255);
+            palette.rowDivider = Color(120, 136, 160, 255);
             palette.rowText = Color(42, 52, 68, 255);
             palette.rowKeyText = Color(24, 34, 50, 255);
             break;
@@ -1494,6 +1505,9 @@ void UltraCanvasERDiagram::ApplyThemeColors() {
             palette.connectorColor    = Color(90, 95, 105, 255);
             style.backgroundColor     = Color(253, 253, 254, 255);
             palette.rowFill = Color(255, 252, 246, 255);
+            palette.rowStripeFill = Color(252, 240, 226, 255);
+            palette.rowHighlightFill = Color(245, 196, 130, 255);
+            palette.rowDivider = Color(196, 150, 100, 255);
             palette.rowText = Color(60, 45, 30, 255);
             palette.rowKeyText = Color(120, 62, 12, 255);
             break;
@@ -1515,6 +1529,9 @@ void UltraCanvasERDiagram::ApplyThemeColors() {
             style.backgroundColor     = Color(255, 255, 255, 255);
             style.roundedEntities     = true;
             palette.rowFill = Color(253, 250, 251, 255);
+            palette.rowStripeFill = Color(248, 238, 242, 255);
+            palette.rowHighlightFill = Color(238, 186, 200, 255);
+            palette.rowDivider = Color(206, 172, 184, 255);
             palette.rowText = Color(66, 52, 58, 255);
             palette.rowKeyText = Color(140, 70, 88, 255);
             break;
@@ -1541,6 +1558,9 @@ void UltraCanvasERDiagram::ApplyThemeColors() {
             style.backgroundColor     = Color(28, 32, 42, 255);
             style.gridColor           = Color(42, 48, 60, 255);
             palette.rowFill = Color(38, 44, 58, 255);
+            palette.rowStripeFill = Color(45, 52, 68, 255);
+            palette.rowHighlightFill = Color(74, 104, 148, 255);
+            palette.rowDivider = Color(104, 122, 154, 255);
             palette.rowText = Color(214, 222, 236, 255);
             palette.rowKeyText = Color(244, 248, 255, 255);
             break;
@@ -1568,6 +1588,9 @@ void UltraCanvasERDiagram::ApplyThemeColors() {
             style.gridColor           = Color(24, 60, 104, 255);
             style.showGrid            = true;
             palette.rowFill = Color(14, 42, 80, 255);
+            palette.rowStripeFill = Color(18, 50, 92, 255);
+            palette.rowHighlightFill = Color(38, 92, 150, 255);
+            palette.rowDivider = Color(120, 175, 235, 255);
             palette.rowText = Color(206, 228, 250, 255);
             palette.rowKeyText = Color(238, 246, 255, 255);
             break;
@@ -1591,6 +1614,9 @@ void UltraCanvasERDiagram::ApplyThemeColors() {
             palette.connectorColor    = Color(60, 62, 68, 255);
             style.backgroundColor     = Color(255, 255, 255, 255);
             palette.rowFill = Color(255, 255, 255, 255);
+            palette.rowStripeFill = Color(244, 244, 246, 255);
+            palette.rowHighlightFill = Color(224, 226, 232, 255);
+            palette.rowDivider = Color(60, 62, 68, 255);
             palette.rowText = Color(40, 42, 48, 255);
             palette.rowKeyText = Color(20, 22, 28, 255);
             break;
@@ -1617,6 +1643,9 @@ void UltraCanvasERDiagram::ApplyThemeColors() {
             style.backgroundColor     = Color(255, 255, 255, 255);
             style.showGrid            = false;
             palette.rowFill = Color(255, 255, 255, 255);
+            palette.rowStripeFill = Color(240, 240, 240, 255);
+            palette.rowHighlightFill = Color(216, 216, 216, 255);
+            palette.rowDivider = Color(0, 0, 0, 255);
             palette.rowText = Color(0, 0, 0, 255);
             palette.rowKeyText = Color(0, 0, 0, 255);
             break;
@@ -1672,6 +1701,40 @@ void UltraCanvasERDiagram::SetFontSize(double size) {
 
 void UltraCanvasERDiagram::SetConnectorStyle(ERConnectorStyle newStyle) {
     connectorStyle = newStyle;
+    RequestRedraw();
+}
+
+void UltraCanvasERDiagram::SetRowMarkerSide(ERRowMarkerSide side) {
+    style.rowMarkerSide = side;
+    RequestRedraw();
+}
+
+void UltraCanvasERDiagram::SetStripeRows(bool stripe) {
+    style.stripeRows = stripe;
+    RequestRedraw();
+}
+
+void UltraCanvasERDiagram::SetKeyCompartment(bool enabled) {
+    style.keyCompartment = enabled;
+    RequestRedraw();
+}
+
+void UltraCanvasERDiagram::SetUnderlineKeyRows(bool underline) {
+    style.underlineKeyRows = underline;
+    RequestRedraw();
+}
+
+void UltraCanvasERDiagram::SetNumberForeignKeys(bool numbered) {
+    style.numberForeignKeys = numbered;
+    RequestRedraw();
+}
+
+void UltraCanvasERDiagram::SetAttributeHighlighted(const std::string& entityId,
+                                                    const std::string& attributeId,
+                                                    bool highlighted) {
+    auto* attribute = GetAttribute(entityId, attributeId);
+    if (!attribute) return;
+    attribute->highlighted = highlighted;
     RequestRedraw();
 }
 
@@ -2001,7 +2064,80 @@ Point2Dd UltraCanvasERDiagram::GetDiamondBorderPoint(const ERDiagramRelationship
 double UltraCanvasERDiagram::MeasuredEntityHeight(const ERDiagramEntity& entity) const {
     if (entity.collapsed) return ER_HEADER_HEIGHT + 4.0;
     size_t rows = entity.attributes.size();
-    return ER_HEADER_HEIGHT + static_cast<double>(rows) * ER_ROW_HEIGHT + 8.0;
+    double height = ER_HEADER_HEIGHT + static_cast<double>(rows) * ER_ROW_HEIGHT + 8.0;
+
+    // The key compartment costs one rule plus its breathing room, but only when
+    // there is something on both sides of it to separate.
+    if (style.keyCompartment) {
+        size_t keyCount = 0;
+        for (const auto& attribute : entity.attributes) {
+            if (attribute.keyRole == ERKeyRole::Primary ||
+                attribute.keyRole == ERKeyRole::Partial) {
+                ++keyCount;
+            }
+        }
+        if (keyCount > 0 && keyCount < rows) height += ER_KEY_DIVIDER_GAP;
+    }
+    return height;
+}
+
+// Display order for the crow's-foot projection. With keyCompartment on, key
+// columns are hoisted above the divider (the IDEF1X convention); the model
+// itself keeps whatever order the caller supplied.
+std::vector<const ERDiagramAttribute*> UltraCanvasERDiagram::RowOrder(
+        const ERDiagramEntity& entity, size_t& outKeyCount) const {
+    std::vector<const ERDiagramAttribute*> order;
+    order.reserve(entity.attributes.size());
+    outKeyCount = 0;
+
+    if (!style.keyCompartment) {
+        for (const auto& attribute : entity.attributes) order.push_back(&attribute);
+        return order;
+    }
+    for (const auto& attribute : entity.attributes) {
+        if (attribute.keyRole == ERKeyRole::Primary ||
+            attribute.keyRole == ERKeyRole::Partial) {
+            order.push_back(&attribute);
+            ++outKeyCount;
+        }
+    }
+    for (const auto& attribute : entity.attributes) {
+        if (attribute.keyRole != ERKeyRole::Primary &&
+            attribute.keyRole != ERKeyRole::Partial) {
+            order.push_back(&attribute);
+        }
+    }
+    return order;
+}
+
+// PK / FK / UK, optionally numbered so a reader can tell which foreign key a
+// column belongs to. An explicit foreignKeyIndex wins; otherwise foreign keys
+// are numbered in order of appearance within the entity.
+std::string UltraCanvasERDiagram::RowMarkerText(const ERDiagramEntity& entity,
+                                                 const ERDiagramAttribute& attribute) const {
+    switch (attribute.keyRole) {
+        case ERKeyRole::Primary:
+        case ERKeyRole::Partial:
+            return "PK";
+        case ERKeyRole::Unique:
+            return "UK";
+        case ERKeyRole::NoKey:
+            return std::string();
+        case ERKeyRole::Foreign:
+            break;
+    }
+    if (!style.numberForeignKeys) return "FK";
+
+    int index = attribute.foreignKeyIndex;
+    if (index <= 0) {
+        int seen = 0;
+        for (const auto& candidate : entity.attributes) {
+            if (candidate.keyRole != ERKeyRole::Foreign) continue;
+            ++seen;
+            if (candidate.id == attribute.id) { index = seen; break; }
+        }
+    }
+    return (index > 0) ? ("FK" + std::to_string(index)) : "FK";
 }
 
 // =============================================================================
@@ -2119,7 +2255,9 @@ void UltraCanvasERDiagram::AutoSizeAll() {
                 if (!attribute.nullable) row += " *";
                 int rw = 0, rh = 0;
                 EstimateTextSize(row, style.rowFontSize, true, rw, rh);
-                w = std::max(w, static_cast<double>(rw) + 34.0 + 14.0);
+                // Name cell + badge column + an inset on each side.
+                w = std::max(w, static_cast<double>(rw) +
+                                EffectiveMarkerColumnWidth() + 22.0);
             }
             entity.width = w;
             entity.height = MeasuredEntityHeight(entity);
@@ -2200,12 +2338,20 @@ std::string UltraCanvasERDiagram::CardinalityText(const ERDiagramRelationship& r
 ERLineEndStyle UltraCanvasERDiagram::ResolveLineEnd(const ERDiagramLeg& leg) const {
     if (leg.lineEnd != ERLineEndStyle::NoMarker) return leg.lineEnd;
 
+    // A marker set the caller chose explicitly is used verbatim, whatever the
+    // notation - the whole point of SetLineEndStyle being separate from
+    // SetNotation is that a table notation can carry plain arrowheads. Only the
+    // crow's-foot family (and the default, unset case under CrowsFoot) derives
+    // its glyph from (min,max).
     bool crowFamily = (lineEndStyle == ERLineEndStyle::CrowsFoot ||
                        lineEndStyle == ERLineEndStyle::CircleCrowsFoot ||
                        lineEndStyle == ERLineEndStyle::Tick ||
                        lineEndStyle == ERLineEndStyle::DoubleTick ||
                        lineEndStyle == ERLineEndStyle::Circle);
-    if (notation == ERNotation::CrowsFoot) crowFamily = true;
+    if (notation == ERNotation::CrowsFoot &&
+        lineEndStyle == ERLineEndStyle::NoMarker) {
+        crowFamily = true;
+    }
     if (!crowFamily) return lineEndStyle;
 
     bool many = (leg.maxCard != 1);
@@ -2954,34 +3100,61 @@ void UltraCanvasERDiagram::RenderEntityCrowsFoot(IRenderContext* ctx,
                        style.baseFontSize, FontWeight::Bold);
     if (entity.collapsed) return;
 
-    // Attribute rows: "PK  name : TYPE"
-    ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
-    ctx->SetFontSize(style.rowFontSize);
-    double rowY = rect.y + ER_HEADER_HEIGHT + 4.0;
+    // Attribute rows: a badge cell (PK / FK1 / UK) and a name cell, in whichever
+    // order the house style puts them.
+    size_t keyCount = 0;
+    std::vector<const ERDiagramAttribute*> order = RowOrder(entity, keyCount);
+    bool drawDivider = style.keyCompartment && keyCount > 0 && keyCount < order.size();
 
-    for (const auto& attribute : entity.attributes) {
-        Color rowColor = WithAlpha(attribute.keyRole == ERKeyRole::NoKey
-                                   ? style.palette.rowText
-                                   : style.palette.rowKeyText, alpha);
-        std::string marker;
-        switch (attribute.keyRole) {
-            case ERKeyRole::Primary: marker = "PK"; break;
-            case ERKeyRole::Partial: marker = "PK"; break;
-            case ERKeyRole::Foreign: marker = "FK"; break;
-            case ERKeyRole::Unique:  marker = "UK"; break;
-            case ERKeyRole::NoKey:    break;
+    const double markerWidth = EffectiveMarkerColumnWidth();
+    const double inset = 8.0;
+    bool markerLeft = (style.rowMarkerSide == ERRowMarkerSide::Left);
+
+    double markerX = markerLeft ? rect.x + inset
+                                : rect.x + rect.width - inset - markerWidth;
+    double nameX   = markerLeft ? rect.x + inset + markerWidth : rect.x + inset;
+    double nameWidth = rect.width - 2.0 * inset - markerWidth;
+
+    double rowY = rect.y + ER_HEADER_HEIGHT + 4.0;
+    size_t index = 0;
+
+    for (const auto* attributePtr : order) {
+        const auto& attribute = *attributePtr;
+
+        if (drawDivider && index == keyCount) {
+            double lineY = rowY + ER_KEY_DIVIDER_GAP / 2.0;
+            ctx->SetStrokePaint(WithAlpha(style.palette.rowDivider, alpha));
+            ctx->SetStrokeWidth(1.0);
+            ctx->DrawLine(Point2Dd(rect.x, lineY), Point2Dd(rect.x + rect.width, lineY));
+            rowY += ER_KEY_DIVIDER_GAP;
         }
 
+        if (style.stripeRows && (index % 2) == 1) {
+            ctx->SetFillPaint(WithAlpha(style.palette.rowStripeFill, alpha));
+            ctx->FillRectangle(Rect2Dd(rect.x + 1.0, rowY - 2.0,
+                                       rect.width - 2.0, ER_ROW_HEIGHT));
+        }
+
+        std::string marker = RowMarkerText(entity, attribute);
+
+        if (attribute.highlighted) {
+            ctx->SetFillPaint(WithAlpha(style.palette.rowHighlightFill, alpha));
+            ctx->FillRectangle(Rect2Dd(markerX - 4.0, rowY - 2.0,
+                                       markerWidth + 8.0, ER_ROW_HEIGHT));
+        }
+
+        bool isKey = (attribute.keyRole != ERKeyRole::NoKey);
+        Color rowColor = WithAlpha(isKey ? style.palette.rowKeyText
+                                         : style.palette.rowText, alpha);
         ctx->SetTextPaint(rowColor);
         ctx->SetFontFace(style.fontFamily,
-                         attribute.keyRole == ERKeyRole::NoKey ? FontWeight::Normal
-                                                              : FontWeight::Bold,
+                         isKey ? FontWeight::Bold : FontWeight::Normal,
                          attribute.kind == ERAttributeKind::Derived ? FontSlant::Italic
                                                                     : FontSlant::Normal);
         ctx->SetFontSize(style.rowFontSize);
 
         if (!marker.empty()) {
-            ctx->DrawText(marker, Point2Dd(rect.x + 8.0, rowY));
+            ctx->DrawText(marker, Point2Dd(markerX, rowY));
         }
 
         std::string label = attribute.name;
@@ -2989,9 +3162,23 @@ void UltraCanvasERDiagram::RenderEntityCrowsFoot(IRenderContext* ctx,
             label += " : " + attribute.dataType;
         }
         if (!attribute.nullable) label += " *";
-        ctx->DrawText(label, Point2Dd(rect.x + 34.0, rowY));
+
+        Point2Dd labelOrigin(nameX, rowY);
+        ctx->DrawText(label, labelOrigin);
+
+        // IDEF1X underlines the key column names inside the compartment.
+        if (style.underlineKeyRows &&
+            (attribute.keyRole == ERKeyRole::Primary ||
+             attribute.keyRole == ERKeyRole::Partial)) {
+            Size2Di dimensions = ctx->GetTextLineDimensions(label);
+            RenderUnderline(ctx, labelOrigin,
+                            std::min(dimensions.width, static_cast<int>(nameWidth)),
+                            dimensions.height,
+                            attribute.keyRole == ERKeyRole::Partial, rowColor);
+        }
 
         rowY += ER_ROW_HEIGHT;
+        ++index;
     }
 }
 

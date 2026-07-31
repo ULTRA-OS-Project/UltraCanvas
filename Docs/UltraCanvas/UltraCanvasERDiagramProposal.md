@@ -16,6 +16,16 @@ recursive relationships, the attribute-satellite layout, key underlines,
 legend, title, annotation callouts, eight themes, straight/orthogonal/bezier and
 self-loop routing, zoom/pan/select/drag, JSON round-trip, docs and the demo.
 
+Follow-up delivery (from a second round of reference diagrams): two defects
+fixed — `SetLineEndStyle` was silently overridden in `CrowsFoot` notation, and
+`SetNotation` cleared `MinMax` labels on the false premise that the pair and the
+crow's-foot glyph are redundant (the relational/MERISE style is exactly a table
+notation carrying `(min,max)` and no crow's feet). Four row-layout options were
+added for the table projection — S12 badge column on either side, S13 striped
+rows, S14 IDEF1X key compartment with underlined key names, S15 numbered
+foreign keys — plus per-column highlighting, and DemoApp tabs for the
+relational and IDEF1X reference diagrams.
+
 Deferred from the Phase 1 list: L5–L6 (hierarchical and orthogonal-grid layouts
 — the four shipped layouts cover every reference image), C4 (minimap — the
 controls overlay plus hover isolation carry the dense case), I8 (context menus

@@ -131,6 +131,13 @@ enum class ERDiagramTheme {
     Print
 };
 
+// Which side of a crow's-foot row the PK/FK/UK badge column sits on. Real
+// diagrams put it on either side depending on house style.
+enum class ERRowMarkerSide {
+    Left,
+    Right
+};
+
 enum class ERPanelPosition {
     TopLeft,
     TopRight,
@@ -193,6 +200,11 @@ struct ERDiagramAttribute {
     Color fillColor = Color(220, 60, 90, 255);
     Color borderColor = Color(160, 30, 60, 255);
     Color textColor = Color(255, 255, 255, 255);
+
+    // Crow's-foot rows: draws the badge cell in the palette's highlight colour.
+    bool highlighted = false;
+    // 0 = auto-number in order of appearance among this entity's foreign keys.
+    int  foreignKeyIndex = 0;
 
     bool visible = true;
     bool isSelected = false;
@@ -348,8 +360,11 @@ struct ERDiagramRolePalette {
     // neutral surface of their own - the oval fill is a signal colour and is
     // unreadable behind a column of typed rows.
     Color rowFill           = Color(248, 249, 251, 255);
+    Color rowStripeFill     = Color(236, 239, 244, 255);   // Alternate rows
+    Color rowHighlightFill  = Color(120, 205, 210, 255);   // Highlighted badge cell
     Color rowText           = Color(40, 45, 55, 255);
     Color rowKeyText        = Color(20, 25, 35, 255);
+    Color rowDivider        = Color(150, 158, 172, 255);   // Key-compartment rule
 
     Color connectorColor    = Color(90, 95, 105, 255);
     Color cardinalityText   = Color(55, 60, 70, 255);
@@ -374,6 +389,15 @@ struct ERDiagramStyle {
     Color selectionBoxStroke = Color(0, 120, 215, 200);
 
     ERDiagramRolePalette palette;
+
+    // Crow's-foot row layout. The reference diagrams disagree on every one of
+    // these, so they are settings rather than a house style.
+    ERRowMarkerSide rowMarkerSide = ERRowMarkerSide::Left;
+    bool   stripeRows = false;         // Alternate row background
+    bool   keyCompartment = false;     // Key columns hoisted above a divider
+    bool   underlineKeyRows = false;   // IDEF1X: underline the key column names
+    bool   numberForeignKeys = false;  // FK1 / FK2 / FK3 instead of a bare FK
+    double rowMarkerColumnWidth = 26.0;
 
     double connectorWidth = 1.6;
     double cornerRadius = 4.0;           // Crow's-foot boxes / rounded entities
@@ -619,6 +643,15 @@ public:
     void SetConnectorStyle(ERConnectorStyle style);
     ERConnectorStyle GetConnectorStyle() const { return connectorStyle; }
 
+    // Crow's-foot row layout
+    void SetRowMarkerSide(ERRowMarkerSide side);
+    void SetStripeRows(bool stripe);
+    void SetKeyCompartment(bool enabled);
+    void SetUnderlineKeyRows(bool underline);
+    void SetNumberForeignKeys(bool numbered);
+    void SetAttributeHighlighted(const std::string& entityId,
+                                 const std::string& attributeId, bool highlighted);
+
     // Role colours resolved through the palette and any per-node override.
     Color GetRoleFill(ERNodeRole role) const;
     Color GetRoleBorder(ERNodeRole role) const;
@@ -809,6 +842,19 @@ private:
     Point2Dd GetDiamondBorderPoint(const ERDiagramRelationship& rel,
                                    const Point2Dd& towards) const;
     double MeasuredEntityHeight(const ERDiagramEntity& entity) const;
+    // Row order for the crow's-foot projection: with keyCompartment on, key
+    // columns are hoisted above the divider. Display order only - the model
+    // keeps the order the caller supplied.
+    std::vector<const ERDiagramAttribute*> RowOrder(const ERDiagramEntity& entity,
+                                                    size_t& outKeyCount) const;
+    std::string RowMarkerText(const ERDiagramEntity& entity,
+                              const ERDiagramAttribute& attribute) const;
+    // The badge column has to hold "FK1", not just "FK", when foreign keys are
+    // numbered. Shared by AutoSizeAll and the renderer so the width they assume
+    // can never disagree.
+    double EffectiveMarkerColumnWidth() const {
+        return style.rowMarkerColumnWidth + (style.numberForeignKeys ? 14.0 : 0.0);
+    }
 
     // =========================================================================
     // ROUTING

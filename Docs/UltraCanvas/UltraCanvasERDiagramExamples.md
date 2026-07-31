@@ -314,3 +314,86 @@ er->SetControlsVisible(false);
 er->SetTheme(ERDiagramTheme::Print);   // White fills, black strokes
 er->FitView();
 ```
+
+---
+
+## 11. Relational / MERISE — table boxes with `(min,max)` and arrowheads
+
+The table projection is not tied to crow's-foot markers. This is the
+relational/MERISE style: entity boxes, `(min,max)` labels, plain arrowheads,
+badge column on the right, striped rows.
+
+```cpp
+auto er = CreateERDiagram("er_relational", 0, 0, 900, 520);
+
+er->SetNotation(ERNotation::CrowsFoot);
+er->SetLineEndStyle(ERLineEndStyle::Arrow);                  // Not crow's feet
+er->SetCardinalityLabelStyle(ERCardinalityLabels::MinMax);   // (1,n) / (0,1)
+er->SetShowDataTypes(false);                                 // Column names only
+er->SetShowRelationshipNames(false);
+
+er->SetRowMarkerSide(ERRowMarkerSide::Right);
+er->SetStripeRows(true);
+
+er->AddEntity("users", "users", 330, 280);
+er->AddTypedAttribute("users", "id_user", "", ERKeyRole::Primary, false);
+er->AddTypedAttribute("users", "id_group", "", ERKeyRole::Foreign, false);
+er->AddAttribute("users", "email");
+
+er->AddEntity("groups", "groups", 40, 300);
+er->AddTypedAttribute("groups", "id_group", "", ERKeyRole::Primary, false);
+er->AddAttribute("groups", "title");
+
+er->SetAttributeHighlighted("users", "id_group", true);   // Tint the badge cell
+
+er->AddRelationship("user_group", "", "users", "groups",
+                    ERCardinality::ExactlyOne, ERCardinality::ZeroOrMany);
+
+er->AutoSizeAll();
+er->RunLayout();
+```
+
+Neither `SetLineEndStyle` nor `SetCardinalityLabelStyle` is affected by
+`SetNotation`, so the order of these calls does not matter.
+
+---
+
+## 12. IDEF1X / database-model style
+
+Key columns hoisted into their own compartment above a rule and underlined,
+foreign keys numbered so a reader can tell which constraint a column serves.
+
+```cpp
+auto er = CreateERDiagram("er_idef1x", 0, 0, 900, 520);
+
+er->SetNotation(ERNotation::CrowsFoot);
+er->SetLineEndStyle(ERLineEndStyle::CrowsFoot);
+er->SetTheme(ERDiagramTheme::Minimal);
+er->SetShowDataTypes(false);
+
+er->SetKeyCompartment(true);      // Keys above the rule
+er->SetUnderlineKeyRows(true);    // ... and underlined
+er->SetNumberForeignKeys(true);   // FK1 / FK2 rather than a bare FK
+
+er->AddEntity("equipcat", "tblEQUIP_CAT", 40, 230);
+er->AddTypedAttribute("equipcat", "equip_cat_id", "", ERKeyRole::Primary, false);
+er->AddTypedAttribute("equipcat", "category_id", "", ERKeyRole::Foreign, false);   // FK1
+er->AddTypedAttribute("equipcat", "equipment_id", "", ERKeyRole::Foreign, false);  // FK2
+
+er->AutoSizeAll();
+er->RunLayout();
+```
+
+Foreign keys are numbered in order of appearance. To pin the numbering — when
+two columns belong to the same constraint, say — set `foreignKeyIndex` on the
+attribute:
+
+```cpp
+ERDiagramAttribute column("order_no", ERKeyRole::Foreign);
+column.foreignKeyIndex = 1;       // Both halves of a composite FK read FK1
+er->AddAttribute("line", column);
+```
+
+The compartment divider is drawn only when there are columns on both sides of
+it, and the hoisting is display-only — `GetEntity()->attributes` keeps the order
+you supplied.
