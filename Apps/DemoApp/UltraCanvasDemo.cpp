@@ -1425,7 +1425,7 @@ namespace UltraCanvas {
                 .AddVariant("timelinediagram", "Steps");
 
         infoBuilder.AddItem("timelinechart", "Timeline Chart",
-                            "Chronological timeline: milestones and spans to scale on a date axis",
+                            "Chronological timeline: milestones and spans to scale, packed or in swimlanes",
                             ImplementationStatus::FullyImplemented,
                             [this]() { return CreateTimelineChartExamples(); },
                             "DemoApp/UltraCanvasTimelineChartExamples.cpp",
@@ -1434,7 +1434,8 @@ namespace UltraCanvas {
                 .AddVariant("timelinechart", "Classic")
                 .AddVariant("timelinechart", "Minimal")
                 .AddVariant("timelinechart", "Roadmap")
-                .AddVariant("timelinechart", "Dark");
+                .AddVariant("timelinechart", "Dark")
+                .AddVariant("timelinechart", "Swimlanes");
 
         infoBuilder.AddItem("heatmap", "Heat map", "Heat map",
                              ImplementationStatus::PartiallyImplemented,

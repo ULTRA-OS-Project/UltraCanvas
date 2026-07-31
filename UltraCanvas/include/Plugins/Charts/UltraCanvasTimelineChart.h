@@ -82,6 +82,12 @@ namespace UltraCanvas {
         Custom
     };
 
+    // How entries are assigned to rows.
+    enum class TimelineLaneMode {
+        Packed,      // Auto-packed into as few lanes as fit (default)
+        Swimlanes    // One named band per category, sub-packed inside the band
+    };
+
     enum class TimelineChartDesign {
         Classic,     // Flat bars, plain header, print friendly
         Modern,      // Rounded colorful bars, tinted header bands
@@ -93,6 +99,20 @@ namespace UltraCanvas {
 // =============================================================================
 // TIMELINE CHART DATA
 // =============================================================================
+
+    // One named row of a swimlane timeline. Entries are assigned to a lane by
+    // TimelineChartEntry::swimlaneName.
+    struct TimelineSwimlane {
+        std::string name;
+        std::string detail;               // Optional second header line (owner, team)
+        Color color = Color(0, 0, 0, 0);  // Transparent = palette entry for this row
+
+        TimelineSwimlane() = default;
+        explicit TimelineSwimlane(const std::string& n) : name(n) {}
+        TimelineSwimlane(const std::string& n, const Color& c) : name(n), color(c) {}
+        TimelineSwimlane(const std::string& n, const std::string& d, const Color& c)
+                : name(n), detail(d), color(c) {}
+    };
 
     struct TimelineChartEntry {
         TimelineEntryKind kind = TimelineEntryKind::Milestone;
@@ -113,6 +133,7 @@ namespace UltraCanvas {
 
         int lane = -1;             // -1 = pack automatically
         int side = 0;              // -1 above the axis, +1 below, 0 = automatic
+        std::string swimlaneName;  // Row this entry belongs to in Swimlanes mode
         Color color = Color(0, 0, 0, 0);          // Transparent = palette
         TimelineMarkerStyle marker = TimelineMarkerStyle::Diamond;
         float importance = 1.0f;   // Scales the marker; higher wins label space
@@ -149,6 +170,7 @@ namespace UltraCanvas {
         bool SetEntryProgress(int id, float progress);
         bool SetEntryImportance(int id, float importance);
         bool SetEntryDates(int id, double start, double end);
+        bool SetEntrySwimlane(int id, const std::string& swimlaneName);
 
         // ===== QUERIES =====
         const std::vector<TimelineChartEntry>& GetEntries() const { return entries; }
@@ -197,6 +219,18 @@ namespace UltraCanvas {
         double laneHeight = 30.0;
         double laneGap = 6.0;
         double axisGap = 14.0;            // Space between the axis and lane 0
+
+        // ===== SWIMLANES =====
+        double swimlaneHeaderWidth = 140.0;   // Left gutter carrying the row names
+        double swimlaneMinHeight = 54.0;
+        double swimlanePadding = 7.0;         // Inset between a band and its content
+        double swimlaneGap = 4.0;             // Gap between bands
+        bool showSwimlaneHeaders = true;
+        bool showSwimlaneBands = true;
+        bool showSwimlaneSeparators = true;
+        int swimlaneBandAlpha = 26;
+        int swimlaneHeaderAlpha = 52;
+        float swimlaneTitleFontSize = 11.5f;
 
         // ===== BARS =====
         TimelineBarStyle barStyle = TimelineBarStyle::Rounded;
@@ -262,6 +296,8 @@ namespace UltraCanvas {
         // ===== CONFIGURATION =====
         TimelineChartStyle style;
         TimelineChartDesign design = TimelineChartDesign::Modern;
+        TimelineLaneMode laneMode = TimelineLaneMode::Packed;
+        std::vector<TimelineSwimlane> swimlanes;   // Empty = derived from the data
         TimelineChartPalette palette = TimelineChartPalette::CorporateBlue;
         std::vector<Color> customPalette;
         bool darkTheme = false;
@@ -294,13 +330,20 @@ namespace UltraCanvas {
             bool labelInside = false;
             bool visible = false;
         };
+        struct SwimlaneBand {
+            Rect2Dd rect;
+            double contentTop = 0.0;   // Inside the band padding
+        };
         struct ChartLayout {
-            Rect2Dd plotArea;       // Below the header tiers
+            Rect2Dd plotArea;       // Below the header tiers, right of the gutter
             Rect2Dd headerArea;
+            Rect2Dd gutterArea;     // Swimlane name column (zero width when unused)
             double axisY = 0.0;
             std::vector<EntryLayout> entries;   // Parallel to data->GetEntries()
             std::vector<Rect2Dd> eraBands;
             std::vector<size_t> eraIndices;
+            std::vector<TimelineSwimlane> lanes;   // Declared or derived
+            std::vector<SwimlaneBand> laneBands;   // Parallel to lanes
             bool valid = false;
         };
         ChartLayout layout;
@@ -327,6 +370,22 @@ namespace UltraCanvas {
 
         void SetDarkTheme(bool dark);
         bool GetDarkTheme() const { return darkTheme; }
+
+        // ===== LANE MODE & SWIMLANES =====
+        void SetLaneMode(TimelineLaneMode mode);
+        TimelineLaneMode GetLaneMode() const { return laneMode; }
+
+        // Declares the rows explicitly. When left empty, Swimlanes mode derives
+        // them from the distinct TimelineChartEntry::swimlaneName values in the
+        // order they first appear.
+        void SetSwimlanes(const std::vector<TimelineSwimlane>& lanes);
+        const std::vector<TimelineSwimlane>& GetSwimlanes() const { return swimlanes; }
+        void ClearSwimlanes();
+        int FindSwimlane(const std::string& name) const;   // -1 when absent
+        // The rows actually drawn - declared or derived. Valid after a render.
+        const std::vector<TimelineSwimlane>& GetResolvedSwimlanes() const;
+        // Band rectangle of a row, element-local. False when out of range.
+        bool GetSwimlaneRect(size_t index, Rect2Dd& outRect) const;
 
         void SetPalette(TimelineChartPalette p);
         TimelineChartPalette GetPalette() const { return palette; }
@@ -393,10 +452,16 @@ namespace UltraCanvas {
         // Spans and milestone labels share one packer, so a callout can never
         // land on top of a bar.
         void LayoutEntries(IRenderContext* ctx);
+        // Swimlanes mode: one band per row, the same packer run inside each band
+        void ResolveSwimlanes();
+        void LayoutSwimlaneEntries(IRenderContext* ctx);
+        int SwimlaneOf(const TimelineChartEntry& entry) const;
+        Color SwimlaneColor(size_t index) const;
 
         // ===== DRAWING =====
         void DrawTitles(IRenderContext* ctx);
         void DrawEras(IRenderContext* ctx);
+        void DrawSwimlanes(IRenderContext* ctx);
         void DrawHeader(IRenderContext* ctx);
         void DrawAxis(IRenderContext* ctx);
         void DrawGrid(IRenderContext* ctx, const std::vector<TimeAxisTick>& ticks);
@@ -433,6 +498,10 @@ namespace UltraCanvas {
         std::shared_ptr<TimelineChartDataSource> DevelopmentTimeline(int year);
         // Company history over five decades, for the wide-scale case
         std::shared_ptr<TimelineChartDataSource> CompanyHistory();
+        // Programme plan grouped into four workstream rows, for Swimlanes mode
+        std::shared_ptr<TimelineChartDataSource> SwimlaneProgram(int year);
+        // The rows SwimlaneProgram() expects, in order
+        std::vector<TimelineSwimlane> ProgramSwimlanes();
     }
 
 // =============================================================================

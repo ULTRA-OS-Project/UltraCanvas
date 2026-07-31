@@ -121,7 +121,9 @@ namespace UltraCanvas {
             if (ppd >= 1500.0) return TimelineScale::Minutes;
             if (ppd >= 200.0)  return TimelineScale::Hours;
             if (ppd >= 14.0)   return TimelineScale::Days;
-            if (ppd >= 3.5)    return TimelineScale::Weeks;
+            // A week label ("5 Jan") needs ~46px, so weeks only earn their tier
+            // above ~6.5 px/day - below that the row would come out blank
+            if (ppd >= 6.5)    return TimelineScale::Weeks;
             if (ppd >= 0.9)    return TimelineScale::Months;
             if (ppd >= 0.3)    return TimelineScale::Quarters;
             if (ppd >= 0.03)   return TimelineScale::Years;

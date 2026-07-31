@@ -88,13 +88,26 @@ namespace UltraCanvas {
         axisSelector->SetSelectedIndex(0);
         leftSidebar->AddChild(axisSelector);
 
-        auto scaleLabel = std::make_shared<UltraCanvasLabel>("tcScaleLabel", PAD, 162, SIDEBAR_W, 18);
+        auto laneLabel = std::make_shared<UltraCanvasLabel>("tcLaneLabel", PAD, 162, SIDEBAR_W, 18);
+        laneLabel->SetText("Row Grouping");
+        laneLabel->SetFontSize(10);
+        laneLabel->SetFontWeight(FontWeight::Bold);
+        leftSidebar->AddChild(laneLabel);
+
+        auto laneSelector = std::make_shared<UltraCanvasDropdown>("tcLaneSelector", PAD, 182, SIDEBAR_W, 28);
+        laneSelector->AddItem("Per tab", "tab");
+        laneSelector->AddItem("Packed", "packed");
+        laneSelector->AddItem("Swimlanes", "swimlanes");
+        laneSelector->SetSelectedIndex(0);
+        leftSidebar->AddChild(laneSelector);
+
+        auto scaleLabel = std::make_shared<UltraCanvasLabel>("tcScaleLabel", PAD, 218, SIDEBAR_W, 18);
         scaleLabel->SetText("Time Scale");
         scaleLabel->SetFontSize(10);
         scaleLabel->SetFontWeight(FontWeight::Bold);
         leftSidebar->AddChild(scaleLabel);
 
-        auto scaleSelector = std::make_shared<UltraCanvasDropdown>("tcScaleSelector", PAD, 182, SIDEBAR_W, 28);
+        auto scaleSelector = std::make_shared<UltraCanvasDropdown>("tcScaleSelector", PAD, 238, SIDEBAR_W, 28);
         scaleSelector->AddItem("Auto", "auto");
         scaleSelector->AddItem("Days", "days");
         scaleSelector->AddItem("Weeks", "weeks");
@@ -104,13 +117,13 @@ namespace UltraCanvas {
         scaleSelector->SetSelectedIndex(0);
         leftSidebar->AddChild(scaleSelector);
 
-        auto paletteLabel = std::make_shared<UltraCanvasLabel>("tcPaletteLabel", PAD, 218, SIDEBAR_W, 18);
+        auto paletteLabel = std::make_shared<UltraCanvasLabel>("tcPaletteLabel", PAD, 274, SIDEBAR_W, 18);
         paletteLabel->SetText("Palette");
         paletteLabel->SetFontSize(10);
         paletteLabel->SetFontWeight(FontWeight::Bold);
         leftSidebar->AddChild(paletteLabel);
 
-        auto paletteSelector = std::make_shared<UltraCanvasDropdown>("tcPaletteSelector", PAD, 238, SIDEBAR_W, 28);
+        auto paletteSelector = std::make_shared<UltraCanvasDropdown>("tcPaletteSelector", PAD, 294, SIDEBAR_W, 28);
         paletteSelector->AddItem("Corporate Blue", "corporate");
         paletteSelector->AddItem("Vibrant", "vibrant");
         paletteSelector->AddItem("Ocean", "ocean");
@@ -120,13 +133,13 @@ namespace UltraCanvas {
         paletteSelector->SetSelectedIndex(0);
         leftSidebar->AddChild(paletteSelector);
 
-        auto labelsLabel = std::make_shared<UltraCanvasLabel>("tcLabelsLabel", PAD, 274, SIDEBAR_W, 18);
+        auto labelsLabel = std::make_shared<UltraCanvasLabel>("tcLabelsLabel", PAD, 330, SIDEBAR_W, 18);
         labelsLabel->SetText("Labels");
         labelsLabel->SetFontSize(10);
         labelsLabel->SetFontWeight(FontWeight::Bold);
         leftSidebar->AddChild(labelsLabel);
 
-        auto labelsSelector = std::make_shared<UltraCanvasDropdown>("tcLabelsSelector", PAD, 294, SIDEBAR_W, 28);
+        auto labelsSelector = std::make_shared<UltraCanvasDropdown>("tcLabelsSelector", PAD, 350, SIDEBAR_W, 28);
         labelsSelector->AddItem("Auto place", "auto");
         labelsSelector->AddItem("Always callout", "callout");
         labelsSelector->AddItem("Inside bars", "inside");
@@ -134,37 +147,36 @@ namespace UltraCanvas {
         labelsSelector->SetSelectedIndex(0);
         leftSidebar->AddChild(labelsSelector);
 
-        auto btnZoomIn = std::make_shared<UltraCanvasButton>("tcBtnZoomIn", PAD, 336, SIDEBAR_W, 30);
+        auto btnZoomIn = std::make_shared<UltraCanvasButton>("tcBtnZoomIn", PAD, 392, SIDEBAR_W, 30);
         btnZoomIn->SetText("Zoom In");
         btnZoomIn->SetBackgroundColor(Color(13, 110, 253, 255));
         leftSidebar->AddChild(btnZoomIn);
 
-        auto btnZoomOut = std::make_shared<UltraCanvasButton>("tcBtnZoomOut", PAD, 371, SIDEBAR_W, 30);
+        auto btnZoomOut = std::make_shared<UltraCanvasButton>("tcBtnZoomOut", PAD, 427, SIDEBAR_W, 30);
         btnZoomOut->SetText("Zoom Out");
         btnZoomOut->SetBackgroundColor(Color(13, 110, 253, 255));
         leftSidebar->AddChild(btnZoomOut);
 
-        auto btnPanBack = std::make_shared<UltraCanvasButton>("tcBtnPanBack", PAD, 406, SIDEBAR_W, 30);
+        auto btnPanBack = std::make_shared<UltraCanvasButton>("tcBtnPanBack", PAD, 462, SIDEBAR_W, 30);
         btnPanBack->SetText("Pan Back 30 Days");
         btnPanBack->SetBackgroundColor(Color(111, 66, 193, 255));
         leftSidebar->AddChild(btnPanBack);
 
-        auto btnFit = std::make_shared<UltraCanvasButton>("tcBtnFit", PAD, 441, SIDEBAR_W, 30);
+        auto btnFit = std::make_shared<UltraCanvasButton>("tcBtnFit", PAD, 497, SIDEBAR_W, 30);
         btnFit->SetText("Fit To Data");
         btnFit->SetBackgroundColor(Color(25, 135, 84, 255));
         leftSidebar->AddChild(btnFit);
 
-        auto btnAddMilestone = std::make_shared<UltraCanvasButton>("tcBtnAdd", PAD, 476, SIDEBAR_W, 30);
+        auto btnAddMilestone = std::make_shared<UltraCanvasButton>("tcBtnAdd", PAD, 532, SIDEBAR_W, 30);
         btnAddMilestone->SetText("Add Milestone");
         btnAddMilestone->SetBackgroundColor(Color(108, 117, 125, 255));
         leftSidebar->AddChild(btnAddMilestone);
 
-        auto helpBox = std::make_shared<UltraCanvasLabel>("tcHelpBox", PAD, 520, SIDEBAR_W, 130);
+        auto helpBox = std::make_shared<UltraCanvasLabel>("tcHelpBox", PAD, 572, SIDEBAR_W, 96);
         helpBox->SetText("INTERACTION TIPS\n\n"
                          "- Wheel zooms about the\n  cursor date\n"
                          "- Drag to pan the range\n"
-                         "- Click an entry to select\n"
-                         "- Double-click empty space\n  to fit the data again");
+                         "- Click an entry to select");
         helpBox->SetFontSize(9);
         helpBox->SetAlignment(TextAlignment::Left);
         helpBox->SetBackgroundColor(Color(255, 243, 205, 255));
@@ -222,40 +234,61 @@ namespace UltraCanvas {
 
         const int CHART_X = 20, CHART_Y = 15, CHART_W = 620, CHART_H = 510;
 
+        enum class TabData { Program, History, Swimlane };
         struct TabSpec {
             std::string tabTitle;
             TimelineChartDesign design;
-            bool history;         // Company history instead of the project plan
+            TabData dataset;
             std::string title;
             std::string about;
         };
         const std::vector<TabSpec> tabSpecs = {
-                {"Modern", TimelineChartDesign::Modern, false, "Partner Development 2026",
+                {"Modern", TimelineChartDesign::Modern, TabData::Program, "Partner Development 2026",
                  "Modern\n\nRounded phase bars below\nthe axis, milestone\nmarkers above it, project\nbookends at both ends.\n\nSpans and milestone\ncallouts share one\npacker, so a label never\nlands on a bar."},
-                {"Classic", TimelineChartDesign::Classic, false, "Partner Development 2026",
+                {"Classic", TimelineChartDesign::Classic, TabData::Program, "Partner Development 2026",
                  "Classic\n\nFlat bars and a thin axis\n- the print-friendly\nvariant. Era bands are\noff by default here."},
-                {"Minimal", TimelineChartDesign::Minimal, false, "Partner Development 2026",
+                {"Minimal", TimelineChartDesign::Minimal, TabData::Program, "Partner Development 2026",
                  "Minimal\n\nThin line bars, hairline\ngrid, small markers, axis\nat the top so everything\nhangs below it."},
-                {"Roadmap", TimelineChartDesign::Roadmap, true, "Company History",
+                {"Roadmap", TimelineChartDesign::Roadmap, TabData::History, "Company History",
                  "Roadmap\n\nBig circular markers and\nera bands across five\ndecades. The axis scale\nresolves itself from the\nzoom level - decades\nhere, months once you\nzoom in."},
-                {"Dark", TimelineChartDesign::Dark, false, "Partner Development 2026",
-                 "Dark\n\nThe dark-theme variant of\nModern; every colour is\nrecoloured coherently,\nthe palette is untouched."}};
+                {"Dark", TimelineChartDesign::Dark, TabData::Program, "Partner Development 2026",
+                 "Dark\n\nThe dark-theme variant of\nModern; every colour is\nrecoloured coherently,\nthe palette is untouched."},
+                {"Swimlanes", TimelineChartDesign::Modern, TabData::Swimlane,
+                 "Programme 2026",
+                 "Swimlanes\n\nSame date axis, same\nentries - only the row\nassignment changes: one\nnamed band per work-\nstream instead of\nauto-packing.\n\nBands sub-pack inside\nthemselves and share one\nheight budget, so a busy\nrow can take three\nsub-rows while quiet rows\nuse one."}};
 
         std::vector<std::shared_ptr<UltraCanvasTimelineChart>> allCharts;
         for (const auto& spec : tabSpecs) {
+            std::shared_ptr<TimelineChartDataSource> source;
+            switch (spec.dataset) {
+                case TabData::History:  source = TimelineChartSamples::CompanyHistory(); break;
+                case TabData::Swimlane: source = TimelineChartSamples::SwimlaneProgram(2026); break;
+                case TabData::Program:
+                default:                source = TimelineChartSamples::DevelopmentTimeline(2026); break;
+            }
             auto chart = CreateTimelineChartWithData(
                     "tcChart" + std::to_string(allCharts.size()),
-                    CHART_X, CHART_Y, CHART_W, CHART_H,
-                    spec.history ? TimelineChartSamples::CompanyHistory()
-                                 : TimelineChartSamples::DevelopmentTimeline(2026),
-                    spec.design);
+                    CHART_X, CHART_Y, CHART_W, CHART_H, source, spec.design);
             chart->SetTitle(spec.title);
-            chart->SetSubtitle(spec.history ? "Five decades of milestones"
-                                            : "Phases, milestones and hand-over");
+            switch (spec.dataset) {
+                case TabData::History:
+                    chart->SetSubtitle("Five decades of milestones");
+                    break;
+                case TabData::Swimlane:
+                    chart->SetSubtitle("Four workstreams on one date axis");
+                    chart->SetLaneMode(TimelineLaneMode::Swimlanes);
+                    chart->SetSwimlanes(TimelineChartSamples::ProgramSwimlanes());
+                    chart->SetNow(2026, 6, 15);
+                    break;
+                case TabData::Program:
+                default:
+                    chart->SetSubtitle("Phases, milestones and hand-over");
+                    chart->SetNow(2026, 8, 20);
+                    break;
+            }
             if (spec.design == TimelineChartDesign::Minimal) {
                 chart->SetAxisPosition(TimelineAxisPosition::Top);
             }
-            if (!spec.history) chart->SetNow(2026, 8, 20);
 
             auto tabContent = std::make_shared<UltraCanvasContainer>(
                     chart->GetIdentifier() + "Tab", 0, 0, 660, 542);
@@ -336,6 +369,19 @@ namespace UltraCanvas {
             if (item.value == "top") position = TimelineAxisPosition::Top;
             else if (item.value == "bottom") position = TimelineAxisPosition::Bottom;
             for (auto& chart : allCharts) chart->SetAxisPosition(position);
+        };
+
+        // "Per tab" restores each tab's own grouping; the other two force one
+        std::vector<TimelineLaneMode> tabModes;
+        for (auto& chart : allCharts) tabModes.push_back(chart->GetLaneMode());
+        laneSelector->onSelectionChanged =
+                [allCharts, tabModes](int, const DropdownItem& item) {
+            for (size_t i = 0; i < allCharts.size(); ++i) {
+                TimelineLaneMode mode = tabModes[i];
+                if (item.value == "packed") mode = TimelineLaneMode::Packed;
+                else if (item.value == "swimlanes") mode = TimelineLaneMode::Swimlanes;
+                allCharts[i]->SetLaneMode(mode);
+            }
         };
 
         scaleSelector->onSelectionChanged = [allCharts](int, const DropdownItem& item) {

@@ -57,33 +57,46 @@ namespace UltraCanvas {
     // Spans and milestone callouts share one shelf per side, so a label can
     // never be placed on top of a bar.
     struct TimelineShelf {
-        std::vector<double> lastRight;
+        // Occupied x-intervals per row. Items are NOT placed in date order -
+        // point events are placed by importance - so each row keeps its whole
+        // interval list rather than just a right edge.
+        std::vector<std::vector<std::pair<double, double>>> rows;
         std::vector<double> height;
         std::vector<double> offset;   // Distance from the axis to the row's near edge
+
+        bool Fits(size_t row, double x0, double x1, double gap) const {
+            for (const auto& span : rows[row]) {
+                if (x0 < span.second + gap && span.first - gap < x1) return false;
+            }
+            return true;
+        }
 
         // Returns -1 when nothing fits, so the caller can drop a label rather
         // than overprint one. Pass allowOverflow for items that must be placed.
         int Place(double x0, double x1, double rowHeight, int maxRows, double gap,
                   bool allowOverflow = false) {
-            for (size_t i = 0; i < lastRight.size(); ++i) {
-                if (lastRight[i] + gap <= x0) {
-                    lastRight[i] = x1;
+            for (size_t i = 0; i < rows.size(); ++i) {
+                if (Fits(i, x0, x1, gap)) {
+                    rows[i].emplace_back(x0, x1);
                     height[i] = std::max(height[i], rowHeight);
                     return static_cast<int>(i);
                 }
             }
-            if (static_cast<int>(lastRight.size()) < std::max(1, maxRows)) {
-                lastRight.push_back(x1);
+            if (static_cast<int>(rows.size()) < std::max(1, maxRows)) {
+                rows.push_back({{x0, x1}});
                 height.push_back(rowHeight);
-                return static_cast<int>(lastRight.size()) - 1;
+                return static_cast<int>(rows.size()) - 1;
             }
             if (!allowOverflow) return -1;
-            // Must be placed: stack on the row that frees up first
+            // Must be placed: use the row with the least total occupancy
             size_t best = 0;
-            for (size_t i = 1; i < lastRight.size(); ++i) {
-                if (lastRight[i] < lastRight[best]) best = i;
+            double bestLoad = 1e18;
+            for (size_t i = 0; i < rows.size(); ++i) {
+                double load = 0.0;
+                for (const auto& span : rows[i]) load += span.second - span.first;
+                if (load < bestLoad) { bestLoad = load; best = i; }
             }
-            lastRight[best] = std::max(lastRight[best], x1);
+            rows[best].emplace_back(x0, x1);
             height[best] = std::max(height[best], rowHeight);
             return static_cast<int>(best);
         }
@@ -221,6 +234,11 @@ namespace UltraCanvas {
         if (auto* e = GetEntry(id)) { e->importance = importance; return true; }
         return false;
     }
+    bool TimelineChartDataSource::SetEntrySwimlane(int id, const std::string& swimlaneName) {
+        if (auto* e = GetEntry(id)) { e->swimlaneName = swimlaneName; return true; }
+        return false;
+    }
+
     bool TimelineChartDataSource::SetEntryDates(int id, double start, double end) {
         if (auto* e = GetEntry(id)) {
             e->start = std::min(start, end);
@@ -364,6 +382,42 @@ namespace UltraCanvas {
 // =============================================================================
 // PALETTE
 // =============================================================================
+
+    void UltraCanvasTimelineChart::SetLaneMode(TimelineLaneMode mode) {
+        if (laneMode == mode) return;
+        laneMode = mode;
+        InvalidateLayout();
+        RequestRedraw();
+    }
+
+    void UltraCanvasTimelineChart::SetSwimlanes(const std::vector<TimelineSwimlane>& lanes) {
+        swimlanes = lanes;
+        InvalidateLayout();
+        RequestRedraw();
+    }
+
+    void UltraCanvasTimelineChart::ClearSwimlanes() {
+        swimlanes.clear();
+        InvalidateLayout();
+        RequestRedraw();
+    }
+
+    int UltraCanvasTimelineChart::FindSwimlane(const std::string& name) const {
+        for (size_t i = 0; i < swimlanes.size(); ++i) {
+            if (swimlanes[i].name == name) return static_cast<int>(i);
+        }
+        return -1;
+    }
+
+    const std::vector<TimelineSwimlane>& UltraCanvasTimelineChart::GetResolvedSwimlanes() const {
+        return layout.lanes;
+    }
+
+    bool UltraCanvasTimelineChart::GetSwimlaneRect(size_t index, Rect2Dd& outRect) const {
+        if (!layout.valid || index >= layout.laneBands.size()) return false;
+        outRect = layout.laneBands[index].rect;
+        return true;
+    }
 
     void UltraCanvasTimelineChart::SetPalette(TimelineChartPalette p) {
         palette = p;
@@ -528,6 +582,38 @@ namespace UltraCanvas {
         return h;
     }
 
+    Color UltraCanvasTimelineChart::SwimlaneColor(size_t index) const {
+        if (index < layout.lanes.size() && layout.lanes[index].color.a > 0) {
+            return layout.lanes[index].color;
+        }
+        const std::vector<Color>& colors = GetPaletteColors();
+        if (colors.empty()) return Color(41, 128, 185, 255);
+        return colors[index % colors.size()];
+    }
+
+    int UltraCanvasTimelineChart::SwimlaneOf(const TimelineChartEntry& entry) const {
+        for (size_t i = 0; i < layout.lanes.size(); ++i) {
+            if (layout.lanes[i].name == entry.swimlaneName) return static_cast<int>(i);
+        }
+        return layout.lanes.empty() ? -1 : 0;   // Unassigned entries fall into row 0
+    }
+
+    void UltraCanvasTimelineChart::ResolveSwimlanes() {
+        layout.lanes = swimlanes;
+        if (!layout.lanes.empty()) return;
+
+        // Derive the rows from the data, in first-appearance order
+        for (const auto& entry : data->GetEntries()) {
+            if (entry.kind == TimelineEntryKind::Era) continue;
+            bool known = false;
+            for (const auto& lane : layout.lanes) {
+                if (lane.name == entry.swimlaneName) { known = true; break; }
+            }
+            if (!known) layout.lanes.emplace_back(entry.swimlaneName);
+        }
+        if (layout.lanes.empty()) layout.lanes.emplace_back(std::string());
+    }
+
     void UltraCanvasTimelineChart::UpdateLayout(IRenderContext* ctx) {
         EnsureView();
 
@@ -535,14 +621,27 @@ namespace UltraCanvas {
         const double headerH = (style.showMajorTier ? style.majorTierHeight : 0.0) +
                                (style.showMinorTier ? style.minorTierHeight : 0.0);
 
-        layout.headerArea = Rect2Dd(12.0, top,
-                                    std::max(40.0, static_cast<double>(GetWidth()) - 24.0),
-                                    headerH);
-        layout.plotArea = Rect2Dd(12.0, top + headerH,
-                                  layout.headerArea.width,
+        const bool swimlaneMode = (laneMode == TimelineLaneMode::Swimlanes);
+        layout.lanes.clear();
+        layout.laneBands.clear();
+        if (swimlaneMode) ResolveSwimlanes();
+
+        // Swimlane rows need a name column on the left; the plot starts after it
+        const double fullWidth = std::max(40.0, static_cast<double>(GetWidth()) - 24.0);
+        const double gutterW = (swimlaneMode && style.showSwimlaneHeaders)
+                ? std::min(style.swimlaneHeaderWidth, fullWidth * 0.4) : 0.0;
+
+        layout.gutterArea = Rect2Dd(12.0, top + headerH, gutterW,
+                                    std::max(40.0, static_cast<double>(GetHeight()) - top - headerH - 12.0));
+        layout.headerArea = Rect2Dd(12.0 + gutterW, top, fullWidth - gutterW, headerH);
+        layout.plotArea = Rect2Dd(12.0 + gutterW, top + headerH,
+                                  fullWidth - gutterW,
                                   std::max(40.0, static_cast<double>(GetHeight()) - top - headerH - 12.0));
 
-        switch (style.axisPosition) {
+        // Rows have identity in swimlane mode, so the axis has to sit at the top
+        const TimelineAxisPosition axisPosition = swimlaneMode
+                ? TimelineAxisPosition::Top : style.axisPosition;
+        switch (axisPosition) {
             case TimelineAxisPosition::Top:
                 layout.axisY = layout.plotArea.y + style.axisThickness;
                 break;
@@ -562,7 +661,8 @@ namespace UltraCanvas {
         layout.eraIndices.clear();
 
         LayoutEras();
-        LayoutEntries(ctx);
+        if (swimlaneMode) LayoutSwimlaneEntries(ctx);
+        else LayoutEntries(ctx);
 
         for (auto& el : layout.entries) {
             el.hitRect = UnionRect(el.shapeRect, el.labelRect);
@@ -786,9 +886,10 @@ namespace UltraCanvas {
             // An explicit lane still has to exist in the shelf
             if (entry.lane >= 0) {
                 while (static_cast<int>(shelf.height.size()) <= el.row) {
-                    shelf.lastRight.push_back(-1e9);
+                    shelf.rows.emplace_back();
                     shelf.height.push_back(style.laneHeight);
                 }
+                shelf.rows[el.row].emplace_back(occupiedLeft, occupiedRight);
                 shelf.height[el.row] = std::max(shelf.height[el.row], rowHeight);
             }
             pending.push_back(p);
@@ -856,6 +957,285 @@ namespace UltraCanvas {
         }
     }
 
+    void UltraCanvasTimelineChart::LayoutSwimlaneEntries(IRenderContext* ctx) {
+        const auto& entries = data->GetEntries();
+        const double plotLeft = layout.plotArea.x;
+        const double plotRight = layout.plotArea.x + layout.plotArea.width;
+        const size_t laneCount = layout.lanes.size();
+        if (laneCount == 0) return;
+
+        // Measured once; packing is then cheap enough to repeat while the rows
+        // negotiate for the shared height budget.
+        struct Pending {
+            size_t index = 0;
+            bool isSpan = false;
+            int lane = 0;
+            int row = 0;
+            double barX0 = 0.0;
+            double barWidth = 0.0;
+            double labelX = 0.0;
+            double labelWidth = 0.0;
+            double markerSize = 0.0;
+            double rowHeight = 0.0;
+            double labeledLeft = 0.0, labeledRight = 0.0;
+            double bareLeft = 0.0, bareRight = 0.0;
+            bool labelInside = false;
+            bool wantsLabel = false;   // Has a label to place
+            bool hasLabel = false;     // Room was found for it
+        };
+        std::vector<Pending> pending;
+        pending.reserve(entries.size());
+
+        const bool labelsHidden = (style.labelPlacement == TimelineLabelPlacement::Hidden);
+
+        // Spans first in document order, then point events most-important-first
+        std::vector<size_t> order;
+        order.reserve(entries.size());
+        for (size_t i = 0; i < entries.size(); ++i) {
+            if (entries[i].kind == TimelineEntryKind::Span) order.push_back(i);
+        }
+        std::vector<size_t> points;
+        for (size_t i = 0; i < entries.size(); ++i) {
+            if (entries[i].kind == TimelineEntryKind::Milestone ||
+                entries[i].kind == TimelineEntryKind::Bookend) {
+                points.push_back(i);
+            }
+        }
+        std::stable_sort(points.begin(), points.end(),
+                         [&entries](size_t a, size_t b) {
+                             return entries[a].importance > entries[b].importance;
+                         });
+        order.insert(order.end(), points.begin(), points.end());
+
+        for (size_t i : order) {
+            const TimelineChartEntry& entry = entries[i];
+            const bool isSpan = (entry.kind == TimelineEntryKind::Span);
+
+            EntryLayout& el = layout.entries[i];
+            el.entryIndex = static_cast<int>(i);
+            el.color = EntryColor(i);
+            el.side = 1;
+
+            const double x0 = axis.ToPixel(entry.start);
+            const double x1 = isSpan ? (entry.openEnded ? plotRight : axis.ToPixel(entry.end))
+                                     : x0;
+            if (x1 < plotLeft - 250.0 || x0 > plotRight + 250.0) {
+                el.visible = false;
+                continue;
+            }
+            el.visible = true;
+
+            Pending p;
+            p.index = i;
+            p.isSpan = isSpan;
+            p.lane = std::clamp(SwimlaneOf(entry), 0, static_cast<int>(laneCount) - 1);
+
+            ctx->SetFontSize(style.labelFontSize);
+            ctx->SetFontWeight(FontWeight::Bold);
+            const double nameWidth = entry.name.empty()
+                    ? 0.0 : ctx->GetTextLineDimensions(entry.name).width;
+            ctx->SetFontWeight(FontWeight::Normal);
+
+            if (isSpan) {
+                p.barX0 = x0;
+                p.barWidth = std::max(3.0, x1 - x0);
+                p.wantsLabel = !labelsHidden && !entry.name.empty();
+                p.labelWidth = nameWidth + 14.0;
+                p.rowHeight = std::max(style.barHeight, style.laneHeight);
+                p.bareLeft = x0;
+                p.bareRight = x0 + p.barWidth;
+
+                const bool canHoldText = (style.barStyle != TimelineBarStyle::Line) &&
+                                         (style.barHeight >= style.labelFontSize + 4.0);
+                p.labelInside = canHoldText &&
+                                ((style.labelPlacement == TimelineLabelPlacement::InsideBar) ||
+                                 (style.labelPlacement != TimelineLabelPlacement::Callout &&
+                                  p.labelWidth <= p.barWidth - 6.0));
+                if (p.wantsLabel && !p.labelInside) {
+                    p.labelX = x0 + p.barWidth + style.labelGap;
+                    if (p.labelX + p.labelWidth > plotRight) {
+                        const double leftCandidate = x0 - style.labelGap - p.labelWidth;
+                        p.labelX = (leftCandidate >= plotLeft)
+                                   ? leftCandidate
+                                   : std::max(plotLeft, plotRight - p.labelWidth);
+                    }
+                }
+            } else {
+                // Markers sit inside the band, not on the axis, and label to the
+                // right so a row reads left-to-right like a schedule
+                p.markerSize = style.markerSize *
+                               std::clamp(static_cast<double>(entry.importance), 0.4, 2.0);
+                p.wantsLabel = !labelsHidden && !entry.name.empty();
+                p.labelWidth = nameWidth + 6.0;
+                p.rowHeight = style.laneHeight;
+                p.bareLeft = x0 - p.markerSize;
+                p.bareRight = x0 + p.markerSize;
+                if (p.wantsLabel) {
+                    p.labelX = x0 + p.markerSize + style.labelGap * 0.6;
+                    if (p.labelX + p.labelWidth > plotRight) {
+                        const double leftCandidate =
+                                x0 - p.markerSize - style.labelGap * 0.6 - p.labelWidth;
+                        p.labelX = (leftCandidate >= plotLeft)
+                                   ? leftCandidate
+                                   : std::max(plotLeft, plotRight - p.labelWidth);
+                    }
+                }
+            }
+
+            if (p.wantsLabel && !p.labelInside) {
+                p.labeledLeft = std::min(p.bareLeft, p.labelX);
+                p.labeledRight = std::max(p.bareRight, p.labelX + p.labelWidth);
+            } else {
+                p.labeledLeft = p.bareLeft;
+                p.labeledRight = p.bareRight;
+            }
+            pending.push_back(p);
+        }
+
+        std::vector<std::vector<size_t>> byLane(laneCount);   // Indices into `pending`
+        for (size_t k = 0; k < pending.size(); ++k) {
+            byLane[pending[k].lane].push_back(k);
+        }
+
+        // Pack one row with a given sub-row cap. Labels that cannot be placed
+        // are dropped rather than overprinted; the bar/marker always lands.
+        auto packLane = [&](size_t lane, int cap) {
+            TimelineShelf shelf;
+            for (size_t k : byLane[lane]) {
+                Pending& p = pending[k];
+                p.hasLabel = p.wantsLabel;
+                int row = shelf.Place(p.labeledLeft, p.labeledRight, p.rowHeight,
+                                      cap, style.labelGap);
+                if (row < 0 && p.wantsLabel && !p.labelInside) {
+                    p.hasLabel = false;
+                    row = shelf.Place(p.bareLeft, p.bareRight, p.rowHeight,
+                                      cap, style.labelGap);
+                }
+                if (row < 0) {
+                    // Forced to share a row: the bars already overlap, so piling
+                    // the text on top too only makes it unreadable
+                    p.hasLabel = p.labelInside && p.wantsLabel;
+                    row = shelf.Place(p.bareLeft, p.bareRight, p.rowHeight, cap,
+                                      style.labelGap, true);
+                }
+                p.row = row;
+            }
+            return shelf;
+        };
+
+        // Sub-row heights come out of one shared budget. Compressing the rows
+        // is always better than dropping a sub-row, because dropping one forces
+        // two bars to share a line and overlap - so scale first, and only start
+        // removing sub-rows once the compression floor is reached.
+        const int kGenerousRows = 8;
+        const double kMinRowScale = 0.5;
+        const double available = layout.plotArea.height - style.axisGap -
+                                 static_cast<double>(laneCount) * style.swimlaneGap;
+
+        auto bandHeightOf = [&](const TimelineShelf& shelf, double scale) {
+            double content = 0.0;
+            for (size_t r = 0; r < shelf.height.size(); ++r) {
+                content += shelf.height[r] * scale;
+                if (r + 1 < shelf.height.size()) content += style.laneGap * scale;
+            }
+            return std::max(style.swimlaneMinHeight * scale,
+                            content + style.swimlanePadding * 2.0);
+        };
+
+        std::vector<int> caps(laneCount, kGenerousRows);
+        std::vector<TimelineShelf> shelves(laneCount);
+        std::vector<double> heights(laneCount, 0.0);
+        double rowScale = 1.0;
+
+        auto measure = [&]() {
+            double total = 0.0;
+            for (size_t lane = 0; lane < laneCount; ++lane) {
+                heights[lane] = bandHeightOf(shelves[lane], rowScale);
+                total += heights[lane];
+            }
+            return total;
+        };
+
+        for (size_t lane = 0; lane < laneCount; ++lane) {
+            shelves[lane] = packLane(lane, caps[lane]);
+        }
+
+        double total = measure();
+        if (total > available) {
+            rowScale = std::clamp(available / total, kMinRowScale, 1.0);
+            total = measure();
+        }
+
+        for (int guard = 0; guard < 64 && total > available; ++guard) {
+            // Still short at the compression floor: take a sub-row from the
+            // tallest row. Some overlap becomes unavoidable at this point.
+            size_t worst = laneCount;
+            size_t worstRows = 1;
+            for (size_t lane = 0; lane < laneCount; ++lane) {
+                const size_t used = shelves[lane].height.size();
+                if (used > worstRows) { worstRows = used; worst = lane; }
+            }
+            if (worst == laneCount) break;
+            caps[worst] = static_cast<int>(worstRows) - 1;
+            shelves[worst] = packLane(worst, caps[worst]);
+            total = measure();
+        }
+
+        const double barH = style.barHeight * rowScale;
+        for (size_t lane = 0; lane < laneCount; ++lane) {
+            for (double& h : shelves[lane].height) h *= rowScale;
+            shelves[lane].ComputeOffsets(0.0, style.laneGap * rowScale);
+        }
+
+        // Final geometry
+        double cursor = layout.axisY + style.axisGap;
+        const double bottomLimit = layout.plotArea.y + layout.plotArea.height;
+        layout.laneBands.assign(laneCount, SwimlaneBand());
+        for (size_t lane = 0; lane < laneCount; ++lane) {
+            layout.laneBands[lane].rect =
+                    Rect2Dd(layout.plotArea.x, cursor, layout.plotArea.width,
+                            std::min(heights[lane], std::max(10.0, bottomLimit - cursor)));
+            layout.laneBands[lane].contentTop = cursor + style.swimlanePadding;
+            cursor += heights[lane] + style.swimlaneGap;
+        }
+
+        for (const Pending& p : pending) {
+            EntryLayout& el = layout.entries[p.index];
+            if (!el.visible) continue;
+            const TimelineChartEntry& entry = entries[p.index];
+            const TimelineShelf& shelf = shelves[p.lane];
+            const double rowHeight = shelf.Height(p.row);
+            const double rowTop = layout.laneBands[p.lane].contentTop + shelf.Offset(p.row);
+            el.row = p.row;
+
+            if (p.isSpan) {
+                const double barTop = rowTop + (rowHeight - barH) / 2.0;
+                el.shapeRect = Rect2Dd(p.barX0, barTop, p.barWidth, barH);
+                el.labelInside = p.labelInside;
+                el.hasLeader = false;
+                if (!p.hasLabel) {
+                    el.labelRect = Rect2Dd(0, 0, 0, 0);
+                } else if (p.labelInside) {
+                    el.labelRect = el.shapeRect;
+                } else {
+                    el.labelRect = Rect2Dd(p.labelX, barTop, p.labelWidth, barH);
+                }
+            } else {
+                const double centerY = rowTop + rowHeight / 2.0;
+                const double markerSize = std::min(p.markerSize, rowHeight / 2.0);
+                el.markerCenter = Point2Dd(axis.ToPixel(entry.start), centerY);
+                el.shapeRect = Rect2Dd(el.markerCenter.x - markerSize,
+                                       centerY - markerSize,
+                                       markerSize * 2.0, markerSize * 2.0);
+                el.labelInside = false;
+                el.hasLeader = false;
+                el.labelRect = p.hasLabel
+                        ? Rect2Dd(p.labelX, rowTop, p.labelWidth, rowHeight)
+                        : Rect2Dd(0, 0, 0, 0);
+            }
+        }
+    }
+
 // =============================================================================
 // TEXT HELPERS
 // =============================================================================
@@ -919,6 +1299,7 @@ namespace UltraCanvas {
         const TimelineScale minor = axis.Resolve(style.scale);
         const std::vector<TimeAxisTick> minorTicks = axis.Ticks(minor, false);
 
+        if (laneMode == TimelineLaneMode::Swimlanes) DrawSwimlanes(ctx);
         DrawEras(ctx);
         if (style.showGrid) DrawGrid(ctx, minorTicks);
         DrawHeader(ctx);
@@ -974,6 +1355,76 @@ namespace UltraCanvas {
                     ctx->SetFontWeight(FontWeight::Normal);
                 }
             }
+        }
+    }
+
+    void UltraCanvasTimelineChart::DrawSwimlanes(IRenderContext* ctx) {
+        if (layout.laneBands.empty()) return;
+
+        for (size_t i = 0; i < layout.laneBands.size(); ++i) {
+            const Rect2Dd& band = layout.laneBands[i].rect;
+            if (band.height <= 0.0) continue;
+            const Color color = SwimlaneColor(i);
+
+            if (style.showSwimlaneBands) {
+                ctx->SetFillPaint(WithAlpha(color, style.swimlaneBandAlpha));
+                ctx->FillRectangle(band);
+            }
+
+            // Name column on the left, in a stronger tint of the row's color
+            if (layout.gutterArea.width > 0.0) {
+                Rect2Dd header(layout.gutterArea.x, band.y,
+                               layout.gutterArea.width, band.height);
+                ctx->SetFillPaint(WithAlpha(color, style.swimlaneHeaderAlpha));
+                ctx->FillRectangle(header);
+
+                const std::string& name = layout.lanes[i].name;
+                const std::string& detail = layout.lanes[i].detail;
+                if (!name.empty()) {
+                    // Shrink the row title until it fits the name column
+                    const double room = header.width - 16.0;
+                    float titleSize = style.swimlaneTitleFontSize;
+                    ctx->SetFontWeight(FontWeight::Bold);
+                    ctx->SetFontSize(titleSize);
+                    while (titleSize > 7.5f &&
+                           ctx->GetTextLineDimensions(name).width > room) {
+                        titleSize -= 0.5f;
+                        ctx->SetFontSize(titleSize);
+                    }
+                    ctx->SetTextPaint(TextColor());
+                    Size2Di s1 = ctx->GetTextLineDimensions(name);
+                    const double lineH = style.swimlaneTitleFontSize * 1.35;
+                    const bool twoLines = !detail.empty();
+                    double y = band.y + band.height / 2.0 -
+                               (twoLines ? lineH : s1.height / 2.0);
+                    ctx->DrawText(name, Point2Dd(header.x + 10.0, y));
+                    ctx->SetFontWeight(FontWeight::Normal);
+                    if (twoLines) {
+                        ctx->SetFontSize(style.detailFontSize);
+                        ctx->SetTextPaint(style.mutedTextColor);
+                        if (ctx->GetTextLineDimensions(detail).width <= room) {
+                            ctx->DrawText(detail, Point2Dd(header.x + 10.0, y + lineH));
+                        }
+                    }
+                }
+            }
+
+            if (style.showSwimlaneSeparators) {
+                ctx->SetStrokePaint(style.gridColor);
+                ctx->SetStrokeWidth(1.0);
+                const double y = band.y + band.height;
+                ctx->DrawLine(Point2Dd(layout.gutterArea.x, y),
+                              Point2Dd(band.x + band.width, y));
+            }
+        }
+
+        // Vertical rule closing the name column
+        if (layout.gutterArea.width > 0.0 && style.showSwimlaneSeparators) {
+            ctx->SetStrokePaint(style.gridColor);
+            ctx->SetStrokeWidth(1.0);
+            const double x = layout.plotArea.x;
+            ctx->DrawLine(Point2Dd(x, layout.headerArea.y),
+                          Point2Dd(x, layout.plotArea.y + layout.plotArea.height));
         }
     }
 
@@ -1219,8 +1670,9 @@ namespace UltraCanvas {
 
             const double size = el.shapeRect.width / 2.0;
 
-            // Halo in the background color separates the marker from the axis
-            if (style.markerBorderWidth > 0.0) {
+            // Halo in the background color separates the marker from the axis;
+            // inside a swimlane band it would punch a hole in the tint
+            if (style.markerBorderWidth > 0.0 && laneMode != TimelineLaneMode::Swimlanes) {
                 ctx->SetFillPaint(backgroundColor);
                 DrawMarkerShape(ctx, el.markerCenter, size + style.markerBorderWidth,
                                 entry.marker);
@@ -1267,7 +1719,8 @@ namespace UltraCanvas {
         }
 
         double y = el.labelRect.y;
-        const bool centered = (entry.kind != TimelineEntryKind::Span);
+        const bool centered = (entry.kind != TimelineEntryKind::Span) &&
+                              (laneMode != TimelineLaneMode::Swimlanes);
         auto drawLine = [&](const std::string& text, float fontSize, const Color& color,
                             bool bold) {
             if (text.empty()) return;
@@ -1283,8 +1736,9 @@ namespace UltraCanvas {
             ctx->SetFontWeight(FontWeight::Normal);
         };
 
-        if (entry.kind == TimelineEntryKind::Span) {
-            // Vertically centre a single-line label beside the bar
+        if (entry.kind == TimelineEntryKind::Span ||
+            laneMode == TimelineLaneMode::Swimlanes) {
+            // Vertically centre a single-line label beside the bar or marker
             y = el.labelRect.y + el.labelRect.height / 2.0 - style.labelFontSize * 0.7;
             drawLine(entry.name, style.labelFontSize, TextColor(), true);
             return;
@@ -1679,6 +2133,63 @@ namespace UltraCanvas {
                 source->SetEntryDetail(id, events[i].detail);
                 source->SetEntryMarker(id, (i % 2 == 0) ? TimelineMarkerStyle::Circle
                                                         : TimelineMarkerStyle::Diamond);
+            }
+            return source;
+        }
+
+        std::vector<TimelineSwimlane> ProgramSwimlanes() {
+            return {TimelineSwimlane("Delivery Management", "Programme office",
+                                     Color(224, 106, 96, 255)),
+                    TimelineSwimlane("Operations", "Platform team",
+                                     Color(240, 173, 78, 255)),
+                    TimelineSwimlane("Risk Management", "Compliance",
+                                     Color(91, 168, 214, 255)),
+                    TimelineSwimlane("Quality of Service", "SRE",
+                                     Color(87, 178, 148, 255))};
+        }
+
+        std::shared_ptr<TimelineChartDataSource> SwimlaneProgram(int year) {
+            auto source = std::make_shared<TimelineChartDataSource>();
+
+            struct Row { const char* lane; const char* name;
+                         int m1; int d1; int m2; int d2; bool milestone; };
+            const Row rows[] = {
+                    // Delivery Management
+                    {"Delivery Management", "Usage baseline",   1,  8,  2, 20, false},
+                    {"Delivery Management", "Phase 1",          2, 25,  5, 10, false},
+                    {"Delivery Management", "Off-boarding",     5, 20,  7, 15, false},
+                    {"Delivery Management", "Rollout Phase",    7, 20, 11, 30, false},
+                    {"Delivery Management", "Kick-off",         1,  8,  1,  8, true},
+                    {"Delivery Management", "Perf Review",      8, 12,  8, 12, true},
+                    // Operations
+                    {"Operations", "Security policy setup",     1, 20,  3, 15, false},
+                    {"Operations", "Documentation programme",   3,  1,  6, 30, false},
+                    {"Operations", "Station setup",             6, 10,  8, 20, false},
+                    {"Operations", "Code development",          8, 15, 12, 10, false},
+                    {"Operations", "Doc finalisation",          6, 30,  6, 30, true},
+                    // Risk Management
+                    {"Risk Management", "Risk profiling",       2,  1,  4, 10, false},
+                    {"Risk Management", "Access & control",     4, 20,  7, 31, false},
+                    {"Risk Management", "Content management",   8, 10, 11, 20, false},
+                    {"Risk Management", "Hiring round 1",       3, 12,  3, 12, true},
+                    {"Risk Management", "Certification",        7, 31,  7, 31, true},
+                    {"Risk Management", "Password policy",     11, 20, 11, 20, true},
+                    // Quality of Service
+                    {"Quality of Service", "Alerts setup",      1, 15,  3, 31, false},
+                    {"Quality of Service", "Availability metrics", 4, 15, 7, 20, false},
+                    {"Quality of Service", "Uptime & SLA tracking", 8, 1, 12, 20, false},
+                    {"Quality of Service", "User onboarding",   9, 10,  9, 10, true}};
+
+            for (const Row& row : rows) {
+                const int id = row.milestone
+                        ? source->AddMilestone(row.name, year, row.m1, row.d1)
+                        : source->AddSpan(row.name, year, row.m1, row.d1,
+                                          year, row.m2, row.d2);
+                source->SetEntrySwimlane(id, row.lane);
+                if (row.milestone) {
+                    source->SetEntryMarker(id, TimelineMarkerStyle::Diamond);
+                    source->SetEntryImportance(id, 1.2f);
+                }
             }
             return source;
         }

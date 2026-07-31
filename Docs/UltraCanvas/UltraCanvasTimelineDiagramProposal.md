@@ -28,10 +28,17 @@ Spans and milestone callouts share one shelf packer per side, so B-L2 became
 real: when a side runs out of room, low-importance labels are dropped rather
 than overprinted, and the marker is always kept.
 
+B-E4 (swimlanes) followed as `TimelineLaneMode::Swimlanes`, confirming the §4
+reading that a "swimlane timeline" is a grouping mode on Family B and not a
+third family. Rows can be declared or derived from the data, each band
+sub-packs with the same packer, and the bands share one height budget:
+compression comes before dropping a sub-row, since dropping one is what forces
+two bars onto a single line.
+
 Still open: the `Roadmap` design of the diagram element, item groups (A-D6),
 per-item images (A-D4), CSV/JSON IO (A-X1/A-X2/B-D3), keyboard navigation
 (A-I6), entrance animation (A-I7); time breaks (B-A6), relative time (B-A7),
-swimlanes (B-E4), the overview minimap (B-I2), drag-to-reschedule (B-I4), the
+the overview minimap (B-I2), drag-to-reschedule (B-I4), the
 crosshair read-out (B-I5); migrating the Gantt chart onto `UltraCanvasTimeAxis`;
 and the Gantt additions G1/G2.
 

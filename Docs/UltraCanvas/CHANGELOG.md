@@ -1,3 +1,21 @@
+#### 2026-07-31 *0.3.23*
+- **UltraCanvasTimelineChart**: added the swimlane grouping mode
+  (`TimelineLaneMode::Swimlanes`). The same date axis and the same entries, with
+  rows given identity: one named band per workstream, a name column on the left
+  and a tinted background per row. Rows are declared with `SetSwimlanes()` or
+  derived from the distinct `TimelineChartEntry::swimlaneName` values in
+  first-appearance order; milestones move inside their band with the label
+  beside them; the axis is forced to the top. Each band sub-packs with the same
+  packer and the bands share one height budget - rows are compressed before any
+  sub-row is dropped, so a busy row can keep three sub-rows while quiet rows
+  keep one. New `SwimlaneProgram()` / `ProgramSwimlanes()` samples and a
+  Swimlanes demo tab with a row-grouping control.
+- **UltraCanvasTimelineChart**: the lane packer now tracks each row's full
+  interval list instead of only its right edge. Point events are placed in
+  importance order rather than date order, so with a single right edge an event
+  earlier than everything already placed could not be inserted and ended up
+  overlapping a bar. Affects packed mode as well as swimlanes.
+
 #### 2026-07-31 *0.3.22*
 - New **UltraCanvasTimelineChart** element
   (`Plugins/Charts/UltraCanvasTimelineChart`): the chronological counterpart to

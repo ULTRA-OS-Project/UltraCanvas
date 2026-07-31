@@ -30202,6 +30202,51 @@ overprinted — and point events are placed **most-important first**
 marker itself is always drawn, so nothing silently disappears from the axis.
 Set `lane` explicitly to pin an entry to a row.
 
+## Lane modes: packed or swimlanes
+
+```cpp
+chart->SetLaneMode(TimelineLaneMode::Swimlanes);
+chart->SetSwimlanes({TimelineSwimlane("Delivery Management", "Programme office", Color(224, 106, 96, 255)),
+                     TimelineSwimlane("Operations",          "Platform team",    Color(240, 173, 78, 255)),
+                     TimelineSwimlane("Risk Management",     "Compliance",       Color(91, 168, 214, 255))});
+data->SetEntrySwimlane(id, "Operations");
+```
+
+`Packed` (default) is the stakeholder view: rows are anonymous free space and
+entries pack into as few of them as fit. `Swimlanes` gives rows identity — one
+named band per workstream, with a name column on the left and a tinted
+background per row. Nothing else changes: same axis, same entries, same
+markers, same interaction.
+
+This is *not* a Gantt chart in disguise. A Gantt row is one **task**; a swimlane
+row is one **category** holding many entries, sub-packed inside its band.
+
+- **Declared or derived.** `SetSwimlanes()` fixes the rows and their order.
+  Leave it empty and the rows are derived from the distinct
+  `TimelineChartEntry::swimlaneName` values, in first-appearance order. An entry
+  whose name matches no row falls into the first one.
+- **Markers move into the band.** In swimlane mode a milestone is drawn inside
+  its row at its date with the label beside it, not on the axis with a leader.
+- **The axis moves to the top.** Rows have identity, so a centered axis is
+  meaningless; `axisPosition` is overridden in this mode.
+- **Rows share one height budget.** Each band sub-packs independently, then the
+  bands negotiate: rows are *compressed* (down to half height) before any
+  sub-row is taken away, because losing a sub-row is what forces two bars onto
+  one line. A busy row can hold three sub-rows while quiet rows hold one.
+
+```cpp
+Rect2Dd band;
+chart->GetSwimlaneRect(0, band);                  // band rectangle, element-local
+const auto& rows = chart->GetResolvedSwimlanes(); // declared or derived
+int index = chart->FindSwimlane("Operations");    // -1 when absent
+```
+
+Style knobs: `swimlaneHeaderWidth`, `swimlaneMinHeight`, `swimlanePadding`,
+`swimlaneGap`, `showSwimlaneHeaders`, `showSwimlaneBands`,
+`showSwimlaneSeparators`, `swimlaneBandAlpha`, `swimlaneHeaderAlpha`,
+`swimlaneTitleFontSize`. A row's color comes from `TimelineSwimlane::color`, or
+the palette when that is transparent.
+
 ## Axis, scale and view
 
 ```cpp
@@ -30320,13 +30365,15 @@ axis.ZoomAbout(mouseX, 0.8);   // keeps the date under the cursor fixed
 ```cpp
 TimelineChartSamples::DevelopmentTimeline(2026);  // phases + milestones + bookends
 TimelineChartSamples::CompanyHistory();           // five decades with era bands
+TimelineChartSamples::SwimlaneProgram(2026);      // 21 entries across four workstreams
+TimelineChartSamples::ProgramSwimlanes();         // the four rows it expects
 ```
 
 ## Not yet implemented
 
 Tracked in [`UltraCanvasTimelineDiagramProposal.md`](UltraCanvasTimelineDiagramProposal.md):
 time breaks that collapse empty stretches (B-A6), relative-time labelling
-(B-A7), explicit swimlanes with headers (B-E4), the draggable overview minimap
+(B-A7), the draggable overview minimap
 (B-I2), interactive rescheduling by dragging entries (B-I4), the crosshair
 read-out (B-I5) and CSV/JSON import-export (B-D3). The Gantt chart itself is
 also unchanged; its two small additions (G1, G2) remain open.
