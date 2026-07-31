@@ -1359,6 +1359,11 @@ namespace UltraCanvas {
                            [this]() { return CreateGourceTreeExamples(); },
                            "DemoApp/UltraCanvasGourceTreeExamples.cpp",
                            "Docs/UltraCanvas/UltraCanvasGourceTreeExamples.md");
+    diagramBuilder.AddItem("gitgraph", "Git Graph", "Commit graph: git-flow swimlanes, branch operations and the repository lane view",
+                           ImplementationStatus::FullyImplemented,
+                           [this]() { return CreateGitGraphExamples(); },
+                           "DemoApp/UltraCanvasGitGraphExamples.cpp",
+                           "Docs/UltraCanvas/UltraCanvasGitGraphExamples.md");
     diagramBuilder.AddItem("adjacencydiagrams", "Adjacency Diagram", "Architectural Adjacency Diagram",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateAdjacencyDiagramExamples(); },

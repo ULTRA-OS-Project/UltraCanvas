@@ -166,6 +166,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasFlowChartExamples.cpp
             Apps/DemoApp/UltraCanvasPertChartExamples.cpp
             Apps/DemoApp/UltraCanvasGourceTreeExamples.cpp
+            Apps/DemoApp/UltraCanvasGitGraphExamples.cpp
             Apps/DemoApp/UltraCanvasJitterPlotExamples.cpp
             Apps/DemoApp/UltraCanvasBubbleChartExamples.cpp
             Apps/DemoApp/UltraCanvasQuadrantChartExamples.cpp

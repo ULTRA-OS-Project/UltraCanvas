@@ -82,6 +82,90 @@
   `Docs/UltraCanvas/UltraCanvasScatterPlot3D.md`.
 
 #### 2026-07-30 *0.3.20*
+- New **UltraCanvasGitGraph** element
+  (`Plugins/Diagrams/UltraCanvasGitGraph`): renders a Git commit history — a
+  DAG of commits decorated with branch, tag and `HEAD` refs. Two layout
+  families share one data model: **Lanes**, one lane per open line of
+  development with the newest commit first (the gitk / GitKraken / SourceTree
+  repository view), and **Swimlane**, one band per branch either side of a
+  nominated trunk (the git-flow teaching diagram). Lane assignment is a single
+  active-lane sweep with two strategies — `Stable` keeps a branch on one lane
+  for its whole life (straight branches), `Compact` recycles freed lanes
+  (narrow graphs) — plus trunk pinning so a nominated branch always holds lane
+  0. Handles merges, octopus merges, multiple roots, boundary commits whose
+  parents lie outside the loaded window, and cherry-picks (dashed non-parent
+  edges). Four orientations, four commit orderings (as-given, commit date,
+  author date, topological), four edge routings (orthogonal with rounded
+  corners, Bezier, arc, straight), ref chips with `+n` overflow, per-commit
+  changed-file boxes with leader lines, callout annotations, an arrowheaded
+  trunk baseline, six themes, virtualised rendering (only rows in the viewport
+  are drawn), zoom/pan/selection/tooltips/keyboard navigation and SVG export.
+  Ingest is programmatic, from `git log` output (`LoadFromGitLog` +
+  `GitLogFormat`), or via the authoring API (`Branch`/`Commit`/`Merge`/
+  `CherryPick`/`Tag`) — the element is read-only and never executes git.
+  The layout core (`UltraCanvasGitGraphLayout`) is headless and covered by
+  `Tests/GitGraphLayoutTest.cpp` (11 cases, including 200 randomised DAGs
+  checked against the placement invariants). New demo page (Diagrams > Git
+  Graph), guide in `Docs/UltraCanvas/UltraCanvasGitGraphExamples.md`, research
+  write-up and roadmap in `Docs/UltraCanvas/UltraCanvasGitGraphProposal.md`.
+- **UltraCanvasGitGraph**: second feature pass. **Lazy loading** —
+  `IGitGraphDataSource` pages a history into the element as the viewport nears
+  the end of what is loaded. **Mermaid I/O** — a headless
+  `UltraCanvasGitGraphMermaid` unit imports and exports the `gitGraph` DSL
+  (commit/branch/checkout/switch/merge/cherry-pick, the id/tag/type/msg/order/
+  parent attributes, `%%` comments, the `%%{init: ...}%%` header and the
+  LR/TB/BT direction suffixes), reporting parse errors with a line number.
+  **Native `.git` reader** — new `UltraCanvasGitRepository` (core) reads refs
+  (loose, `packed-refs`, annotated tags peeled), loose objects and packfiles
+  including `OFS_DELTA`/`REF_DELTA` chains, inflating with the vendored miniz;
+  no git executable is spawned and no dependency is added, and
+  `UltraCanvasGitRepositorySource` adapts it to the lazy loader. **Filtering**
+  by text, author, path, branch, date range and merge status, with edges through
+  filtered-out commits re-pointed at the nearest surviving ancestor and drawn
+  dashed. **Crossing reduction** — lane columns reordered by a barycentre
+  heuristic that keeps the best measured permutation (about a third fewer
+  crossings over 300 randomised layouts, never worse), budgeted and off by
+  default. **Commit table pane** row-aligned beside the graph with configurable
+  columns and a date formatter, plus a row-alignment API for pairing an external
+  `UltraCanvasTableView`. **Search** over sha, subject, author and refs with
+  next/previous navigation. **Minimap** with a viewport rectangle and
+  click/drag navigation. New tests: `GitGraphMermaidTest`, `GitRepositoryTest`
+  (runs against a real repository) and six more `GitGraphLayoutTest` cases.
+- **UltraCanvasGitGraph**: third feature pass. **Time-proportional axis** —
+  row position follows the commit timestamp, with a per-gap floor and ceiling so
+  a burst of same-second commits stays readable and a multi-year quiet period
+  costs one large gap instead of an unusable amount of empty axis; an optional
+  date ruler prints one label per calendar day. **Collapsing** — a run of plain
+  single-parent commits folds into one dashed pill labelled with how many
+  commits it stands for, expandable by double-click; refs, merges, roots and
+  cherry-picks are never folded. **Parallel rows** — commits made at the same
+  moment share a row (mermaid's `parallelCommits`), but only when neither is the
+  other's parent and they sit in different lanes, so no edge is ever flattened.
+  **Badges** for GPG signature and build status, **stash chips**, **author
+  avatars** (initials on a colour derived from the author) in the table pane,
+  **label collision avoidance** so overlapping text is dropped rather than
+  stacked, and **JSON export** of the laid-out geometry. Four more layout tests
+  cover collapsing and parallel rows. Note: `GitGraphSignature` /
+  `GitGraphBuildStatus` use `NoSignature` / `NoStatus` and `Passed` / `Failed`
+  rather than `None` and `Success` / `Failure`, because X11's `X.h` defines
+  `None` and `Success` as macros and the header reaches the window backend.
+- **UltraCanvasGitGraph**: fourth feature pass. **Explicit lane ordering** —
+  `SetLanePriority()` puts named branches in the columns you choose, applied
+  after crossing reduction so it always wins over the heuristic; a pinned trunk
+  keeps column 0 and unlisted branches keep their relative order. **Diff pane**
+  across the bottom of the element: a header naming the commit, the files it
+  touched coloured by A/M/D status, and the patch for the selected file coloured
+  by unified-diff prefix, each half scrolling independently. The element never
+  computes diffs — `SetFileListProvider()` and `SetDiffProvider()` supply them.
+  **Drag to author** — dragging a commit onto another adds a merge on the
+  target's branch, dragging into empty space branches off it; a drag that never
+  moved is just a selection, and a merge duplicating an existing parent link is
+  refused. Also `GetCommitScreenPosition()` for anchoring popovers to a node.
+- **UltraCanvasGitRepository**: `ReadChangedFiles()` produces a commit's changed
+  files by recursively diffing its tree against its first parent's (a root
+  commit reports its whole tree as added), handling files replaced by
+  directories and vice versa. Verified against `git show --name-status` on this
+  repository, including merges. Blob-level diffing is not implemented.
 - **VirtualFS / UltraCanvasFilerWidget**: fixed archives always listing as
   "(empty folder)" on Windows. `VirtualFSPath::Resolve()` prefixed a slash to
   the real-filesystem part of every absolute path, turning a drive-letter path
