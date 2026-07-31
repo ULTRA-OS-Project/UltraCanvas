@@ -14,8 +14,10 @@
 #include "UltraCanvasDemo.h"
 #include "Plugins/Diagrams/UltraCanvasRequirementDiagram.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasTabbedContainer.h"
+#include <sstream>
 
 namespace UltraCanvas {
 
@@ -443,6 +445,260 @@ namespace UltraCanvas {
     }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TAB 5 — Traceability & coverage  (phase 2)
+// Layered layout over a non-tree topology, SysML compartment notation
+// (satisfiedBy / verifiedBy listed inside the box instead of drawn as lines),
+// the coverage overlay, obstacle-aware routing, and click-to-trace.
+// ─────────────────────────────────────────────────────────────────────────────
+    static std::shared_ptr<UltraCanvasContainer> MakeCoverageTab(
+            std::shared_ptr<UltraCanvasLabel> statusLabel) {
+        auto tab = std::make_shared<UltraCanvasContainer>("ReqCoverageTab", 0, 0, 1020, 700);
+
+        auto desc = std::make_shared<UltraCanvasLabel>("ReqCoverageDesc", 10, 8, 990, 22);
+        desc->SetText("Compartment notation + coverage badges. Click a requirement to trace it; "
+                      "Escape clears. Red = nothing satisfies it, amber = no test case.");
+        desc->SetFontSize(11);
+        tab->AddChild(desc);
+
+        auto diagram = CreateRequirementDiagram("ReqCoverage", 10, 34, 990, 654);
+        diagram->SetPalette(RequirementPaletteKind::Professional);
+        diagram->SetFrame("Package", "VehicleControl", "Requirements Diagram");
+        diagram->SetNodeWidthRange(150.0, 215.0);
+
+        // The satisfiedBy / verifiedBy lists replace the drawn trace lines -
+        // the SysML alternative notation for a dense diagram.
+        RequirementNodeTemplate tpl = RequirementNodeTemplate::Standard();
+        tpl.AddDerivedCompartment(RequirementDerivedList::SatisfiedBy);
+        tpl.AddDerivedCompartment(RequirementDerivedList::VerifiedBy);
+        diagram->SetNodeTemplate(tpl);
+
+        struct Req { const char* id; const char* name; const char* text; };
+        const Req requirements[] = {
+            {"VC1", "Vehicle Control",  "The vehicle shall be controllable at all speeds."},
+            {"VC1.1", "Steering",       "Steering shall respond within 100 ms."},
+            {"VC1.2", "Braking",        "The vehicle shall stop from 100 km/h in under 40 m."},
+            {"VC1.3", "Stability",      "The vehicle shall remain stable in a 30 deg turn."},
+            {"VC1.4", "Diagnostics",    "Faults shall be reported to the driver within 1 s."}
+        };
+        for (const auto& r : requirements) {
+            RequirementNode node(r.id, r.name);
+            node.text = r.text;
+            node.detail = RequirementDetailLevel::Full;
+            diagram->AddNode(node);
+        }
+        diagram->AddContainment("VC1", "VC1.1");
+        diagram->AddContainment("VC1", "VC1.2");
+        diagram->AddContainment("VC1", "VC1.3");
+        diagram->AddContainment("VC1", "VC1.4");
+
+        diagram->AddNode(RequirementNodeKind::Block,    "SBW",  "Steer-by-Wire");
+        diagram->AddNode(RequirementNodeKind::Block,    "ABS",  "ABS Module");
+        diagram->AddNode(RequirementNodeKind::TestCase, "TS1",  "Steering Latency Test");
+        diagram->AddNode(RequirementNodeKind::TestCase, "TS2",  "Brake Distance Test");
+
+        // VC1.3 is satisfied but unverified; VC1.4 has nothing at all.
+        diagram->AddRelation(RequirementRelationKind::Satisfy, "SBW", "VC1.1");
+        diagram->AddRelation(RequirementRelationKind::Satisfy, "ABS", "VC1.2");
+        diagram->AddRelation(RequirementRelationKind::Satisfy, "SBW", "VC1.3");
+        diagram->AddRelation(RequirementRelationKind::Verify,  "TS1", "VC1.1");
+        diagram->AddRelation(RequirementRelationKind::Verify,  "TS2", "VC1.2");
+
+        // The trace relations live in the compartments, so their lines are
+        // hidden; containment still draws its bus.
+        diagram->SetRelationKindVisible(RequirementRelationKind::Satisfy, false);
+        diagram->SetRelationKindVisible(RequirementRelationKind::Verify, false);
+
+        diagram->SetCoverageOverlayVisible(true);
+        diagram->SetObstacleAvoidance(true);
+        diagram->SetLayoutMode(RequirementLayoutMode::ContainmentTree);
+        diagram->SetLevelGap(70.0);
+        diagram->SetLegendVisible(true, RequirementPanelPosition::BottomRight);
+        diagram->SetLegendSource(RequirementLegendSource::Coverage);
+        diagram->RunLayout();
+
+        auto weakStatus = std::weak_ptr<UltraCanvasLabel>(statusLabel);
+        auto weakDiagram = std::weak_ptr<UltraCanvasRequirementDiagram>(diagram);
+        diagram->onNodeClick = [weakStatus, weakDiagram](const std::string& id) {
+            auto status = weakStatus.lock();
+            auto req = weakDiagram.lock();
+            if (!status || !req) return;
+            req->HighlightTraceChain(id, RequirementTraceDirection::Both, 0);
+
+            const RequirementCoverage coverage = req->GetCoverage();
+            std::ostringstream out;
+            out << id << "\n\nCoverage over " << coverage.requirementCount << " requirements:\n"
+                << "  satisfied " << coverage.satisfiedCount << " ("
+                << static_cast<int>(coverage.satisfiedPercent) << "%)\n"
+                << "  verified  " << coverage.verifiedCount << " ("
+                << static_cast<int>(coverage.verifiedPercent) << "%)\n"
+                << "  orphans   " << coverage.orphanCount;
+
+            const std::vector<std::string> unverified = req->GetUnverifiedRequirements();
+            if (!unverified.empty()) {
+                out << "\n\nNot verified:";
+                for (const auto& u : unverified) out << "\n  " << u;
+            }
+            status->SetText(out.str());
+        };
+
+        tab->AddChild(diagram);
+        return tab;
+    }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB 6 — Mermaid import & editing  (phase 2)
+// The whole diagram is parsed from Mermaid requirementDiagram text, then
+// edited live: expand/collapse toggles, create-node, drag-to-connect, delete.
+// ─────────────────────────────────────────────────────────────────────────────
+    static std::shared_ptr<UltraCanvasContainer> MakeMermaidTab(
+            std::shared_ptr<UltraCanvasLabel> statusLabel) {
+        auto tab = std::make_shared<UltraCanvasContainer>("ReqMermaidTab", 0, 0, 1020, 700);
+
+        auto desc = std::make_shared<UltraCanvasLabel>("ReqMermaidDesc", 10, 8, 990, 22);
+        desc->SetText("Parsed from Mermaid requirementDiagram text. Use the ⊖ toggles to collapse "
+                      "a sub-tree; the buttons switch edit mode. F2 renames, Delete removes.");
+        desc->SetFontSize(11);
+        tab->AddChild(desc);
+
+        auto diagram = CreateRequirementDiagram("ReqMermaid", 10, 66, 990, 622);
+        diagram->SetPalette(RequirementPaletteKind::Pastel);
+        diagram->SetNodeWidthRange(140.0, 220.0);
+        diagram->SetDoubleClickAction(RequirementDoubleClickAction::ToggleDetail);
+
+        static const char* kMermaidSource = R"(requirementDiagram
+
+direction TB
+
+requirement payment_system {
+    id: R1
+    text: The platform shall process payments securely.
+    risk: high
+    verifymethod: analysis
+}
+
+functionalRequirement card_payments {
+    id: R1.1
+    text: The platform shall accept major credit cards.
+    risk: medium
+    verifymethod: test
+}
+
+functionalRequirement refunds {
+    id: R1.2
+    text: A refund shall complete within two business days.
+    risk: medium
+    verifymethod: demonstration
+}
+
+designConstraint pci_compliance {
+    id: R1.3
+    text: The platform shall satisfy PCI DSS level 1.
+    risk: high
+    verifymethod: inspection
+}
+
+performanceRequirement throughput {
+    id: R1.1.1
+    text: The gateway shall sustain 500 transactions per second.
+    risk: high
+    verifymethod: test
+}
+
+element payment_gateway {
+    type: block
+    docref: arch/gateway.md
+}
+
+element audit_suite {
+    type: testCase
+    docref: qa/audit-plan.md
+}
+
+payment_system - contains -> card_payments
+payment_system - contains -> refunds
+payment_system - contains -> pci_compliance
+card_payments - contains -> throughput
+payment_gateway - satisfies -> card_payments
+payment_gateway - satisfies -> throughput
+audit_suite - verifies -> pci_compliance
+refunds - derives -> card_payments
+)";
+
+        std::string error;
+        if (!diagram->FromMermaid(kMermaidSource, &error)) {
+            diagram->SetTitle("Mermaid import failed", error);
+        }
+        diagram->SetLegendVisible(true, RequirementPanelPosition::BottomRight);
+        diagram->SetLegendSource(RequirementLegendSource::NodeKinds);
+        // The trace lines cross the tree here, so route them around the boxes
+        // rather than through them - otherwise the «satisfies» / «derives»
+        // labels land behind a requirement.
+        diagram->SetObstacleAvoidance(true);
+
+        WireStatus(diagram, statusLabel);
+        auto weakStatus = std::weak_ptr<UltraCanvasLabel>(statusLabel);
+        auto weakDiagram = std::weak_ptr<UltraCanvasRequirementDiagram>(diagram);
+        diagram->onValidationWarning = [weakStatus](const RequirementWarning& warning) {
+            if (auto status = weakStatus.lock()) {
+                status->SetText("Model warning:\n" + warning.message);
+            }
+        };
+        diagram->onRelationCreated = [weakStatus](const RequirementRelation& relation) {
+            if (auto status = weakStatus.lock()) {
+                status->SetText(std::string("Created «") +
+                                RequirementRelationKindToString(relation.kind) + "»\n" +
+                                relation.sourceId + "  ->  " + relation.targetId);
+            }
+        };
+
+        // ---- edit-mode buttons ------------------------------------------
+        struct ModeButton { const char* id; const char* label; RequirementEditMode mode; };
+        const ModeButton buttons[] = {
+            {"ReqModeSelect",  "Select",       RequirementEditMode::Select},
+            {"ReqModeNode",    "+ Requirement", RequirementEditMode::CreateNode},
+            {"ReqModeConnect", "Connect (satisfy)", RequirementEditMode::CreateRelation}
+        };
+        int buttonX = 10;
+        for (const auto& button : buttons) {
+            auto widget = std::make_shared<UltraCanvasButton>(button.id, buttonX, 34, 150, 26,
+                                                              button.label);
+            const RequirementEditMode mode = button.mode;
+            widget->SetOnClick([weakDiagram, weakStatus, mode]() {
+                auto req = weakDiagram.lock();
+                if (!req) return;
+                req->SetEditMode(mode);
+                if (auto status = weakStatus.lock()) {
+                    status->SetText(mode == RequirementEditMode::CreateNode
+                        ? "Create mode: click empty canvas to add a requirement."
+                        : mode == RequirementEditMode::CreateRelation
+                            ? "Connect mode: drag from a block onto a requirement."
+                            : "Select mode: drag boxes, rubber-band select, F2 to rename.");
+                }
+            });
+            tab->AddChild(widget);
+            buttonX += 158;
+        }
+
+        auto exportButton = std::make_shared<UltraCanvasButton>(
+            "ReqExportMermaid", buttonX, 34, 150, 26, "Export Mermaid");
+        exportButton->SetOnClick([weakDiagram, weakStatus]() {
+            auto req = weakDiagram.lock();
+            auto status = weakStatus.lock();
+            if (!req || !status) return;
+            const std::string text = req->ToMermaid("TB");
+            // Show the head of the export; the full text is what ToMermaid returns.
+            std::string preview = text.substr(0, 520);
+            if (text.size() > preview.size()) preview += "\n...";
+            status->SetText("ToMermaid() — " + std::to_string(text.size()) +
+                            " chars:\n\n" + preview);
+        });
+        tab->AddChild(exportButton);
+
+        tab->AddChild(diagram);
+        return tab;
+    }
+
+// ─────────────────────────────────────────────────────────────────────────────
 // SCENE
 // ─────────────────────────────────────────────────────────────────────────────
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateRequirementDiagramExamples() {
@@ -500,6 +756,8 @@ namespace UltraCanvas {
         tabs->AddTab("Specification + callout",    MakeSpecificationTab(statusLabel));
         tabs->AddTab("SysML taxonomy + legend",    MakeTaxonomyTab(statusLabel));
         tabs->AddTab("Smart Home traceability",    MakeSmartHomeTab(statusLabel));
+        tabs->AddTab("Coverage + compartments",    MakeCoverageTab(statusLabel));
+        tabs->AddTab("Mermaid import + editing",   MakeMermaidTab(statusLabel));
 
         main->AddChild(tabs);
         tabs->layoutItem.SetGridRowColSimplified(2, 0, 1, 2);

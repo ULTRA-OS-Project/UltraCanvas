@@ -1380,7 +1380,9 @@ namespace UltraCanvas {
                 .AddVariant("requirementdiagram", "HybridSUV (compartments)")
                 .AddVariant("requirementdiagram", "Specification + callout")
                 .AddVariant("requirementdiagram", "SysML taxonomy + legend")
-                .AddVariant("requirementdiagram", "Smart Home traceability");
+                .AddVariant("requirementdiagram", "Smart Home traceability")
+                .AddVariant("requirementdiagram", "Coverage + compartments")
+                .AddVariant("requirementdiagram", "Mermaid import + editing");
     diagramBuilder.AddItem("timelinediagram", "Timeline Diagram", "Timeline Diagram",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("Timeline Diagram is not ready yet"); });

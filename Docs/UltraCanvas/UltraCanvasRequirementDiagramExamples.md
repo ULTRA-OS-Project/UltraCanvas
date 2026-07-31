@@ -16,18 +16,36 @@ separately.
 
 **Namespace:** `UltraCanvas`
 **Header:** `include/Plugins/Diagrams/UltraCanvasRequirementDiagram.h`
+**Model header:** `include/Plugins/Diagrams/UltraCanvasRequirementModel.h`
 **Base Class:** `UltraCanvasUIElement`
-**Version:** 1.0.0
+**Version:** 2.0.0
 
 Research write-up and the full phased feature list:
 [`UltraCanvasRequirementDiagramProposal.md`](UltraCanvasRequirementDiagramProposal.md).
-This document covers the shipped phase-1 API.
+This document covers the shipped phase-1 and phase-2 API.
+
+### Model and view
+
+The data, semantics and text interchange live in **`RequirementModel`**, which
+depends on nothing but `Color` and the standard library. The element owns one
+model and forwards its API, so you can use either level:
+
+```cpp
+auto req = CreateRequirementDiagram("systemReq", 0, 0, 900, 600);
+req->AddRequirement("R1", "Braking", "…");        // through the element
+req->GetModel().AddRequirement("R2", "Steering", "…");  // straight at the model
+req->NotifyModelChanged();   // after direct model edits, so the view re-measures
+```
+
+`RequirementModel` runs headless — it is what
+`Tests/RequirementModelTests.cpp` exercises without a render context.
 
 ## Class Hierarchy
 
 ```
 UltraCanvasUIElement
-    └── UltraCanvasRequirementDiagram
+    └── UltraCanvasRequirementDiagram   (view: layout, rendering, interaction)
+            └── owns RequirementModel   (data, semantics, analysis, interchange)
 ```
 
 ## Header Include
@@ -61,7 +79,20 @@ UltraCanvasUIElement
 - **Pan / zoom / fit**, multi-select, rubber-band selection, node dragging,
   snap-to-grid, hover tooltips
 - **Containment cycle detection** and model validation with a warning callback
-- **JSON save/load** covering model, layout and style
+- **Endpoint semantics** per relationship kind, with automatic correction of a
+  backwards `satisfy` / `verify` / `refine`
+- **Compartment notation**: `satisfiedBy`, `verifiedBy`, `derived`, … computed
+  from the relations and listed inside the box instead of drawn as lines
+- **Coverage analysis**: uncovered / unverified / orphan requirements, coverage
+  statistics, and a corner-badge overlay
+- **Trace highlighting**, expand/collapse sub-trees, and filters by kind,
+  category, risk or status
+- **Layered (Sugiyama) layout** for non-tree topologies, and obstacle-aware
+  orthogonal routing
+- **Editing**: create node, drag-to-connect, delete, inline rename
+- **SysML diagram frame** with the `req [Package] Name [Diagram]` pentagon tab
+- **JSON save/load** covering model, layout and style, plus **Mermaid** and
+  **CSV** import/export
 
 ## Quick Start
 
@@ -129,13 +160,12 @@ the `id` property row. Adding a duplicate id is rejected and reported through
 | `Block` | `«block»` | Rectangle |
 | `TestCase` | `«testCase»` | Rounded rectangle |
 | `UseCase` | `«useCase»` | Oval |
-| `Actor` | `«actor»` | Rounded rectangle |
-| `Package` | `«package»` | Rectangle |
-| `Rationale` / `Problem` / `Note` | `«rationale»` / … | Rectangle |
+| `Actor` | `«actor»` | Stick figure |
+| `Package` | `«package»` | Folder (tab + body) |
+| `Rationale` / `Problem` / `Note` | `«rationale»` / … | Folded-corner note |
 
-Set `RequirementNode::shape` to override; `RequirementNodeShape::Folder`,
-`FoldedNote` and `StickFigure` are reserved for phase 2 and currently fall back
-to a rectangle.
+Set `RequirementNode::shape` to override with any of `Rectangle`,
+`RoundedRectangle`, `Oval`, `Folder`, `FoldedNote` or `StickFigure`.
 
 ### Requirement specialisations
 
@@ -476,6 +506,165 @@ req->onCanvasRightClick = [](double worldX, double worldY) { /* … */ };
 req->onValidationWarning = [](const RequirementWarning& w) { /* … */ };
 ```
 
+## Endpoint semantics
+
+Each relationship kind has legal endpoint kinds. A backwards `satisfy`,
+`verify` or `refine` — where the reverse pairing *is* legal — is flipped and
+reported rather than refused, because that is nearly always a typo:
+
+```cpp
+req->AddRelation(RequirementRelationKind::Verify, "R1", "TC1");   // backwards
+// stored as TC1 -> R1, with a DirectionCorrected warning
+```
+
+Anything that is illegal in both directions is kept and flagged (drawn in the
+warning colour) in the default lenient mode, or refused outright in strict
+mode:
+
+```cpp
+req->SetSemanticsMode(RequirementSemanticsMode::Strict);
+// RequirementModel::IsLegalEndpointPair() is the rule table, and is static:
+bool ok = RequirementModel::IsLegalEndpointPair(
+    RequirementRelationKind::Verify,
+    RequirementNodeKind::TestCase, RequirementNodeKind::Requirement);   // true
+```
+
+| Kind | Legal source → target |
+|---|---|
+| `Containment` | requirement / package / block → any non-note |
+| `DeriveReqt`, `Copy` | requirement → requirement |
+| `Satisfy`, `Refine` | any non-requirement, non-note → requirement |
+| `Verify` | test case → requirement |
+| `Trace` | anything → anything (deliberately unconstrained) |
+| `Generalization` | same kind → same kind |
+
+## Hierarchical id numbering
+
+```cpp
+const int renamed = req->AssignHierarchicalIds("R");
+// roots become R1, R2 …; children R1.1, R1.1.1 …
+```
+
+Every relation endpoint, callout target and note anchor follows the rename. A
+cyclic containment graph is refused (returns 0) rather than half-renumbered.
+
+## Compartment notation
+
+Instead of drawing every trace as a line, list the related elements inside the
+box — the SysML alternative notation, and the only readable option on a dense
+diagram:
+
+```cpp
+RequirementNodeTemplate tpl = RequirementNodeTemplate::Standard();
+tpl.AddDerivedCompartment(RequirementDerivedList::SatisfiedBy);
+tpl.AddDerivedCompartment(RequirementDerivedList::VerifiedBy);
+req->SetNodeTemplate(tpl);
+
+// …and hide the lines those compartments now stand in for
+req->SetRelationKindVisible(RequirementRelationKind::Satisfy, false);
+req->SetRelationKindVisible(RequirementRelationKind::Verify, false);
+```
+
+Or use the ready-made `RequirementNodeTemplate::WithTraceCompartments()`.
+
+Available lists: `Derived`, `DerivedFrom`, `SatisfiedBy`, `VerifiedBy`,
+`RefinedBy`, `TracedTo`, `Master`. Empty compartments are not drawn. Query them
+directly with `GetModel().GetDerivedElements(id, list)`.
+
+## Coverage analysis
+
+```cpp
+for (const auto& id : req->GetUnverifiedRequirements()) { /* no test case */ }
+for (const auto& id : req->GetUncoveredRequirements())  { /* nothing satisfies */ }
+for (const auto& id : req->GetOrphanRequirements())     { /* no relations */ }
+
+RequirementCoverage coverage = req->GetCoverage();
+printf("%d requirements, %.0f%% satisfied, %.0f%% verified, %d orphans\n",
+       coverage.requirementCount, coverage.satisfiedPercent,
+       coverage.verifiedPercent, coverage.orphanCount);
+
+RequirementCoverage safety = req->GetCoverageForCategory("Safety");
+
+req->SetCoverageOverlayVisible(true);   // green / amber / red corner badges
+req->SetLegendSource(RequirementLegendSource::Coverage);
+```
+
+Only `Requirement` nodes are counted — blocks and test cases are not
+requirements and never appear in the denominator.
+
+## Trace highlighting and filters
+
+```cpp
+req->HighlightTraceChain("R1.2", RequirementTraceDirection::Both, /*depth*/ 2);
+req->ClearHighlight();                    // Escape does this too
+
+req->SetKindVisible(RequirementNodeKind::TestCase, false);
+req->SetCategoryVisible("Environment", false);
+req->SetRiskVisible(RequirementRisk::Low, false);
+req->SetStatusVisible("Rejected", false);
+req->ClearFilters();
+bool shown = req->IsNodeDisplayed("R1.2");
+```
+
+Filtered nodes are hidden **and excluded from the layout**, so the remaining
+boxes close up rather than leaving holes.
+
+## Expand / collapse
+
+Any box with children carries a ⊖ toggle at its bottom-right corner (the
+bottom-centre is where the containment bus leaves, and carries the ⊕
+crosshair). Collapsing hides the whole sub-tree and shows a count badge.
+
+```cpp
+req->SetNodeCollapsed("R1.2", true);
+req->ToggleNodeCollapsed("R1.2");
+req->CollapseAll();
+req->ExpandAll();
+```
+
+## Layout modes and routing
+
+```cpp
+req->SetLayoutMode(RequirementLayoutMode::Layered);   // non-tree topologies
+req->SetLayoutRelationKinds({RequirementRelationKind::Containment,
+                             RequirementRelationKind::DeriveReqt});
+req->SetObstacleAvoidance(true);        // A* around the boxes
+```
+
+`Layered` assigns longest-path layers over the layout relation kinds, reduces
+crossings with barycentre sweeps, then places boxes by their real sizes — use
+it when the diagram is a trace web rather than a tree.
+
+## Editing
+
+```cpp
+req->SetEditMode(RequirementEditMode::CreateNode);
+req->SetPendingNodeKind(RequirementNodeKind::Requirement);
+
+req->SetEditMode(RequirementEditMode::CreateRelation);
+req->SetPendingRelationKind(RequirementRelationKind::Satisfy);
+
+req->SetDoubleClickAction(RequirementDoubleClickAction::ToggleDetail);
+req->BeginRename("R1.2");   // or press F2 with one node selected
+req->DeleteSelected();      // or press Delete
+```
+
+| Key | Action |
+|---|---|
+| `F2` | Rename the selected node (first keystroke replaces the name) |
+| `Enter` / `Escape` | Commit / cancel the rename |
+| `Delete` | Delete the selection |
+| `Escape` | Clear a trace highlight, then the selection |
+
+Callbacks: `onNodeCreated`, `onRelationCreated`, `onNodeRenamed`.
+
+## Diagram frame
+
+```cpp
+req->SetFrame("Package", "HSVSpecification", "Requirements Diagram");
+// draws: req [Package] HSVSpecification [Requirements Diagram]
+```
+
 ## Serialization
 
 ```cpp
@@ -492,6 +681,46 @@ colour source, layout mode, orientation, title, legend). Serializing a
 round-tripped diagram reproduces the original document byte for byte. An
 explicit `viewport` block in the file wins over the auto-fit that a
 `ContainmentTree` layout would otherwise apply.
+
+### Mermaid
+
+```cpp
+const std::string text = req->ToMermaid("TB");    // TB | BT | LR | RL
+
+std::string error;
+if (!req->FromMermaid(text, &error)) { /* error describes the offending line */ }
+```
+
+The full `requirementDiagram` dialect is supported: the six requirement types,
+`id` / `text` / `risk` / `verifymethod`, `element { type, docref }` blocks, all
+seven relationship keywords in both arrow directions (`a - satisfies -> b` and
+`b <- satisfies - a`), `%%` comments and the `direction` directive — which maps
+onto the layout orientation on import. Importing replaces the contents and
+re-runs the layout. A relationship naming an undeclared requirement creates a
+bare box for it, as Mermaid does.
+
+Mermaid references a requirement by its **name**, and carries `id` as a
+separate property, so the name becomes the model key and the authored id lands
+in `RequirementNode::externalId` — which is then what the `id` compartment row
+displays. `ToMermaid()` output round-trips unchanged.
+
+### CSV
+
+```cpp
+const std::string csv = req->ToCsv();
+
+RequirementCsvSchema schema;         // column names, all overridable
+schema.parentColumn = "parent_id";
+schema.delimiter = ';';
+std::string error;
+req->FromCsv(csvText, schema, &error);
+```
+
+Import is header-driven: the first row names the columns, matched against the
+schema case-insensitively; only the id column is required. Quoted fields,
+embedded delimiters, escaped `""` quotes and newlines inside quotes are all
+handled. The `parent` column wires containment after every row exists, so
+forward references work.
 
 ## Complete example — HybridSUV requirement tree
 
@@ -551,20 +780,25 @@ window->AddChild(req);
 | **Specification + callout** | A `«block»` root owning collapsed requirement boxes, with a draggable detail callout |
 | **SysML taxonomy + legend** | Generalisation notation over a hidden containment hierarchy, auto-generated legend |
 | **Smart Home traceability** | Heterogeneous node kinds, colour-by-kind, dashed `«deriveReqt»` / `«satisfy»` / `«verify»` / `«refine»` / `«trace»` relationships, title banner, relation-kind legend |
+| **Coverage + compartments** | SysML compartment notation, coverage badges and legend, the diagram frame, obstacle-aware routing, click-to-trace |
+| **Mermaid import + editing** | A diagram parsed from Mermaid text, expand/collapse toggles, create-node / drag-to-connect / rename, Mermaid export |
 
 ## Notes and limitations
 
 - Node sizes come from real text metrics, which are only available during
   `Render()`. `RunLayout()` therefore completes on the next frame; positions
   read back earlier come from a heuristic estimate.
-- Orthogonal routing does not yet avoid passing through intervening boxes;
-  obstacle-aware A\* routing is a phase-2 item.
-- Only `ContainmentTree` and `Manual` layouts ship in phase 1. Layered
-  (Sugiyama) layout for non-tree topologies is phase 2 — until then, position
-  trace webs manually as the Smart Home demo does.
-- Compartment notation for derived elements (`satisfiedBy`, `verifiedBy`, …),
-  coverage analysis, expand/collapse, trace highlighting and Mermaid/CSV/ReqIF
-  interchange are phase-2 items; see the proposal for the full list.
+- Obstacle-aware routing is **opt-in** (`SetObstacleAvoidance(true)`) because
+  the A\* search costs more than the direct Z route. It falls back silently to
+  the direct route when no path fits in the cell budget
+  (`RequirementDiagramStyle::routingMaxCells`).
+- Mermaid has no generalisation relationship, so `Generalization` exports as
+  `traces`. Mermaid requirement *names* are the model keys; the authored `id:`
+  round-trips through `RequirementNode::externalId`.
+- Still open (phase 3, see the proposal): `Copy` master/slave semantics with
+  suspect-link detection, rationale notes attached to relationships, swimlane
+  package grouping, minimap, search, the traceability-matrix export and ReqIF
+  import.
 
 ## Related Documentation
 
@@ -573,3 +807,4 @@ window->AddChild(req);
 - [`UltraCanvasFlowChartExamples.md`](UltraCanvasFlowChartExamples.md) — flow charts with A\* orthogonal routing
 - [`UltraCanvasBlockDiagramExamples.md`](UltraCanvasBlockDiagramExamples.md) — block diagrams
 - [`UltraCanvasJSON.md`](UltraCanvasJSON.md) — the JSON module used by `ToJson`/`FromJson`
+- `Tests/RequirementModelTests.cpp` — headless unit tests for the model layer
