@@ -7,6 +7,7 @@
 #include "Plugins/Charts/UltraCanvasSpecificChartElements.h"
 #include <cmath>
 #include <algorithm>
+#include <cstdio>
 
 namespace UltraCanvas {
 
@@ -242,12 +243,20 @@ namespace UltraCanvas {
     void UltraCanvasScatterPlotElement::RenderChart(IRenderContext* ctx) {
         if (!ctx || !dataSource || dataSource->GetPointCount() == 0) return;
 
+        if (showTrendLine) {
+            RenderTrendLine(ctx);
+        }
+
         ctx->SetFillPaint(pointColor);
         ctx->SetStrokePaint(pointColor);
         ctx->SetStrokeWidth(1.5f);
 
         for (size_t i = 0; i < dataSource->GetPointCount(); ++i) {
             auto point = dataSource->GetPoint(i);
+
+            // A point may carry its own colour (e.g. to mark outliers or
+            // distinguish series); fall back to the element colour otherwise.
+            ctx->SetFillPaint(point.color.a > 0 ? point.color : pointColor);
 
             // Use the new positioning method
             Point2Dd screenPos = GetDataPointScreenPosition(i, point);
@@ -287,6 +296,130 @@ namespace UltraCanvas {
                 }
             }
         }
+    }
+
+    bool UltraCanvasScatterPlotElement::ComputeLinearRegression(double& slope, double& intercept) const {
+        slope = 0.0;
+        intercept = 0.0;
+        if (!dataSource) return false;
+
+        size_t n = dataSource->GetPointCount();
+        if (n < 2) return false;
+
+        double sumX = 0.0, sumY = 0.0;
+        for (size_t i = 0; i < n; ++i) {
+            auto point = dataSource->GetPoint(i);
+            sumX += point.x;
+            sumY += point.y;
+        }
+        double meanX = sumX / n;
+        double meanY = sumY / n;
+
+        double covXY = 0.0, varX = 0.0;
+        for (size_t i = 0; i < n; ++i) {
+            auto point = dataSource->GetPoint(i);
+            double dx = point.x - meanX;
+            covXY += dx * (point.y - meanY);
+            varX += dx * dx;
+        }
+
+        if (varX <= 0.0) return false;   // vertical column of points - no fit
+
+        slope = covXY / varX;
+        intercept = meanY - slope * meanX;
+        return true;
+    }
+
+    double UltraCanvasScatterPlotElement::GetCorrelationCoefficient() const {
+        if (!dataSource) return 0.0;
+
+        size_t n = dataSource->GetPointCount();
+        if (n < 2) return 0.0;
+
+        double sumX = 0.0, sumY = 0.0;
+        for (size_t i = 0; i < n; ++i) {
+            auto point = dataSource->GetPoint(i);
+            sumX += point.x;
+            sumY += point.y;
+        }
+        double meanX = sumX / n;
+        double meanY = sumY / n;
+
+        double covXY = 0.0, varX = 0.0, varY = 0.0;
+        for (size_t i = 0; i < n; ++i) {
+            auto point = dataSource->GetPoint(i);
+            double dx = point.x - meanX;
+            double dy = point.y - meanY;
+            covXY += dx * dy;
+            varX += dx * dx;
+            varY += dy * dy;
+        }
+
+        double denom = std::sqrt(varX * varY);
+        if (denom <= 0.0) return 0.0;
+        return covXY / denom;
+    }
+
+    void UltraCanvasScatterPlotElement::RenderTrendLine(IRenderContext* ctx) {
+        // The fit is over numeric x values; with index-based (categorical)
+        // positioning the x axis carries no metric, so a fit is meaningless.
+        if (IsUsingIndexBasedPositioning()) return;
+
+        double slope, intercept;
+        if (!ComputeLinearRegression(slope, intercept)) return;
+
+        // Span the full visible x range so the line reads as a reference line
+        // rather than a segment between the extreme points.
+        ChartCoordinateTransform transform(cachedPlotArea, cachedDataBounds);
+        Point2Dd p0 = transform.DataToScreen(cachedDataBounds.minX,
+                                             slope * cachedDataBounds.minX + intercept);
+        Point2Dd p1 = transform.DataToScreen(cachedDataBounds.maxX,
+                                             slope * cachedDataBounds.maxX + intercept);
+
+        ctx->PushState();
+        ctx->ClipRect(cachedPlotArea.ToRect2D());
+        ctx->SetStrokePaint(trendLineColor);
+        ctx->SetStrokeWidth(trendLineWidth);
+        switch (trendLineStyle) {
+            case TrendLineStyle::Dashed:
+                ctx->SetLineDash(UCDashPattern({6.0, 4.0}));
+                break;
+            case TrendLineStyle::Dotted:
+                ctx->SetLineDash(UCDashPattern({1.5, 3.5}));
+                break;
+            case TrendLineStyle::Solid:
+                break;
+        }
+        ctx->DrawLine(p0, p1);
+        ctx->SetLineDash(UCDashPattern::EMPTY);
+        ctx->PopState();
+
+        if (showCorrelationInfo) {
+            RenderCorrelationInfo(ctx, slope, intercept);
+        }
+    }
+
+    void UltraCanvasScatterPlotElement::RenderCorrelationInfo(IRenderContext* ctx,
+                                                              double slope, double intercept) {
+        double r = GetCorrelationCoefficient();
+
+        char equation[96];
+        std::snprintf(equation, sizeof(equation), "y = %.4gx %c %.4g",
+                      slope, intercept < 0.0 ? '-' : '+', std::fabs(intercept));
+        char correlation[64];
+        std::snprintf(correlation, sizeof(correlation), "r = %.3f   r² = %.3f", r, r * r);
+
+        ctx->SetFontSize(correlationInfoFontSize);
+        ctx->SetTextPaint(correlationInfoColor);
+
+        Size2Di eqSize = ctx->GetTextLineDimensions(equation);
+        Size2Di corrSize = ctx->GetTextLineDimensions(correlation);
+        double width = std::max(eqSize.width, corrSize.width);
+        double x = cachedPlotArea.GetRight() - width - 8.0;
+        double y = cachedPlotArea.y + 6.0;
+
+        ctx->DrawText(equation, Point2Dd(x, y));
+        ctx->DrawText(correlation, Point2Dd(x, y + eqSize.height + 2.0));
     }
 
     bool UltraCanvasScatterPlotElement::HandleChartMouseMove(const Point2Di& mousePos) {

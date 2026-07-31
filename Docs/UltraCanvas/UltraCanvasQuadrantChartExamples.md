@@ -1,6 +1,6 @@
 # UltraCanvasQuadrantChart Documentation
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Last Modified:** 2026-07-25
 **Author:** UltraCanvas Framework
 
@@ -104,6 +104,11 @@ void SetShowQuadrantLabels(bool show);   // Labels inside each quadrant (default
 void SetShowQuadrantColors(bool show);   // Quadrant background fills (default: on)
 void SetShowDataPointLabels(bool show);  // Text above each point (default: off)
 ```
+
+Data point labels are placed collision-free by the shared `PlaceShapeLabels()`
+solver (`UltraCanvasLabelPlacement.h`): each label prefers the spot above its
+point but moves to another side when that would cover a quadrant title,
+another label, or a neighbouring point.
 
 ### Interaction Settings
 

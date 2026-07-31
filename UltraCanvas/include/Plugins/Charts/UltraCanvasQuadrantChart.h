@@ -1,7 +1,7 @@
 // include/Plugins/Charts/UltraCanvasQuadrantChart.h
 // Quadrant chart element for strategic analysis (SWOT, BCG, Eisenhower, risk & priority matrices)
-// Version: 1.0.0
-// Last Modified: 2026-07-25
+// Version: 1.1.0
+// Last Modified: 2026-07-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -160,6 +160,10 @@ namespace UltraCanvas {
         };
         QuadrantLayout layout;
 
+        // Quadrant title rects drawn this frame; keep-out obstacles for the
+        // data point label placement solver.
+        std::vector<Rect2Dd> quadrantLabelRects;
+
     public:
         // ===== CONSTRUCTOR =====
         UltraCanvasQuadrantChart(const std::string& id, int x, int y, int w, int h);
@@ -258,8 +262,10 @@ namespace UltraCanvas {
         void DrawSelectionRings(IRenderContext* ctx);
         void DrawPointShape(IRenderContext* ctx, const QuadrantDataPoint& point,
                             const Point2Dd& pos, float radius);
-        void DrawMultilineTextCentered(IRenderContext* ctx, const std::string& text,
-                                       const Point2Dd& center, float lineHeight);
+        // Draws the (possibly multi-line) text centred on `center` and returns
+        // its bounding rect.
+        Rect2Dd DrawMultilineTextCentered(IRenderContext* ctx, const std::string& text,
+                                          const Point2Dd& center, float lineHeight);
     };
 
 // =============================================================================

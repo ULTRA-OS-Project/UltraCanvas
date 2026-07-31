@@ -1104,6 +1104,36 @@ namespace UltraCanvas {
                 .AddVariant("ganttcharts", "Dark Theme")
                 .AddVariant("ganttcharts", "Palette Gallery");
 
+        chartBuilder.AddItem("kanbanboards", "Kanban Board",
+                             "Workflow boards with WIP limits, swimlanes, drag & drop, "
+                             "a built-in card editor, Mermaid text definitions and "
+                             "design presets",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateKanbanBoardExamples(); },
+                             "DemoApp/UltraCanvasKanbanBoardExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasKanbanBoard.md")
+                .AddVariant("kanbanboards", "Interactive Editor")
+                .AddVariant("kanbanboards", "Sticky Notes")
+                .AddVariant("kanbanboards", "Poster")
+                .AddVariant("kanbanboards", "Schematic")
+                .AddVariant("kanbanboards", "Timeline / Swimlanes")
+                .AddVariant("kanbanboards", "Dark Theme")
+                .AddVariant("kanbanboards", "Text Definition")
+                .AddVariant("kanbanboards", "Cumulative Flow");
+
+        chartBuilder.AddItem("quadrantcharts", "Quadrant Chart",
+                             "Strategic 2x2 matrices: SWOT, BCG, Eisenhower, risk, priority and custom quadrants",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateQuadrantChartExamples(); },
+                             "DemoApp/UltraCanvasQuadrantChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasQuadrantChartExamples.md")
+                .AddVariant("quadrantcharts", "SWOT Analysis")
+                .AddVariant("quadrantcharts", "BCG Matrix")
+                .AddVariant("quadrantcharts", "Eisenhower Matrix")
+                .AddVariant("quadrantcharts", "Risk Matrix")
+                .AddVariant("quadrantcharts", "Priority Matrix")
+                .AddVariant("quadrantcharts", "Custom Quadrants");
+
         chartBuilder.AddItem("circularcharts", "Circular Chart", "Circular Chart",
                              ImplementationStatus::PartiallyImplemented,
                              [this]() { return CreatePartiallyImplementedExamples("Circular Chart is not ready yet"); });
@@ -1220,6 +1250,22 @@ namespace UltraCanvas {
                 .AddVariant("funnel", "Presentation Infographic")
                 .AddVariant("funnel", "Horizontal Funnel")
                 .AddVariant("funnel", "Playground");
+
+        chartBuilder.AddItem("pyramid", "Pyramid Diagram",
+                             "Level hierarchies - extruded 3D tiers, colour ribbon and icon "
+                             "callouts, outlined and flat presentation layouts, and "
+                             "area-proportional data pyramids with a reference shape",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreatePyramidChartExamples(); },
+                             "DemoApp/UltraCanvasPyramidChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasPyramidChart.md")
+                .AddVariant("pyramid", "3D Ribbon Pyramid")
+                .AddVariant("pyramid", "Spectrum 3D")
+                .AddVariant("pyramid", "Outline Hierarchy")
+                .AddVariant("pyramid", "Flat & Minimal")
+                .AddVariant("pyramid", "Alternating Infographic")
+                .AddVariant("pyramid", "Data Pyramid")
+                .AddVariant("pyramid", "Playground");
 
         chartBuilder.AddItem("bubblecharts", "Bubble Chart",
                              "Scatter bubbles, packed bubbles, bubble matrix and an "
@@ -1403,6 +1449,35 @@ namespace UltraCanvas {
                 .AddVariant("swotdiagram", "Center Diamond")
                 .AddVariant("swotdiagram", "Rows")
                 .AddVariant("swotdiagram", "Columns");
+
+        infoBuilder.AddItem("timelinediagram", "Timeline Diagram",
+                            "Narrative timeline infographic with nine design presets",
+                            ImplementationStatus::FullyImplemented,
+                            [this]() { return CreateTimelineDiagramExamples(); },
+                            "DemoApp/UltraCanvasTimelineDiagramExamples.cpp",
+                            "Docs/UltraCanvas/UltraCanvasTimelineDiagram.md")
+                .AddVariant("timelinediagram", "Bar")
+                .AddVariant("timelinediagram", "Line")
+                .AddVariant("timelinediagram", "Alternating")
+                .AddVariant("timelinediagram", "Cards")
+                .AddVariant("timelinediagram", "Vertical")
+                .AddVariant("timelinediagram", "Serpentine")
+                .AddVariant("timelinediagram", "Hanging")
+                .AddVariant("timelinediagram", "Chevron")
+                .AddVariant("timelinediagram", "Steps");
+
+        infoBuilder.AddItem("timelinechart", "Timeline Chart",
+                            "Chronological timeline: milestones and spans to scale, packed or in swimlanes",
+                            ImplementationStatus::FullyImplemented,
+                            [this]() { return CreateTimelineChartExamples(); },
+                            "DemoApp/UltraCanvasTimelineChartExamples.cpp",
+                            "Docs/UltraCanvas/UltraCanvasTimelineChart.md")
+                .AddVariant("timelinechart", "Modern")
+                .AddVariant("timelinechart", "Classic")
+                .AddVariant("timelinechart", "Minimal")
+                .AddVariant("timelinechart", "Roadmap")
+                .AddVariant("timelinechart", "Dark")
+                .AddVariant("timelinechart", "Swimlanes");
 
         infoBuilder.AddItem("heatmap", "Heat map", "Heat map",
                              ImplementationStatus::PartiallyImplemented,
