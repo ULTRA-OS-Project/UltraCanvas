@@ -6386,7 +6386,7 @@ std::vector<std::string> ListDriveRoots();
 struct FolderBreadcrumbOptions {
     bool showComputerItem = true;            // leading node listing all drives
     std::string computerLabel = "Computer";
-    bool siblingDropdowns = true;            // per-segment dropdown of neighbouring folders
+    bool subFolderDropdowns = true;          // per-segment dropdown of that folder's sub-folders
 };
 
 // Rebuilds `crumb` as the path of `folderPath`: an optional "Computer" node, the
@@ -6399,8 +6399,11 @@ void BuildFolderBreadcrumb(UltraCanvasBreadcrumb* crumb,
                            const FolderBreadcrumbOptions& options = FolderBreadcrumbOptions());
 ```
 
-Sibling dropdowns are filled lazily when the menu opens, so a deep path costs
-nothing extra to build.
+Every node drops down its own sub-folders: `Computer` lists the drives, the
+drive node the folders of that drive, and each folder node the folders inside
+it — so the path can be extended one level straight from the strip. A folder
+without sub-folders shows a disabled `(no sub-folders)` entry. The lists are
+filled lazily when the menu opens, so a deep path costs nothing extra to build.
 
 ```cpp
 // Keep a filer and its path strip in sync.
