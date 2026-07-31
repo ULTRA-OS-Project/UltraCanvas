@@ -1121,10 +1121,6 @@ namespace UltraCanvas {
                 .AddVariant("kanbanboards", "Text Definition")
                 .AddVariant("kanbanboards", "Cumulative Flow");
 
-        chartBuilder.AddItem("circularcharts", "Circular Chart", "Circular Chart",
-                             ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples("Circular Chart is not ready yet"); });
-
         chartBuilder.AddItem("polarcharts", "Polar Chart",
                              "Angle/radius plots: scatter, line, spline, area and "
                              "column series with categorical or numeric angle axes, "
