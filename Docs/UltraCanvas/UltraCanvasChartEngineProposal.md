@@ -760,3 +760,197 @@ financial (one axis renderer), scatter3D + contourSurface3D + GL (one camera).
    interaction end (recommended, zero cost during the drag, labels lag the
    geometry until release) versus a fixed interval such as 150 ms (labels track
    better, costs one solve per interval).
+
+---
+
+## 12. Packaging: the engine and the charts as plugins
+
+Requirement: **the chart engine loads only when charts are used, and then only
+the chart types the application actually uses.**
+
+### 12.1 Current state — charts are not plugins
+
+They live under `Plugins/Charts/` but are not plugins in any sense:
+
+* **44 chart `.cpp` files are listed in `ULTRACANVAS_CORE_SOURCES`** in
+  `UltraCanvas/CMakeLists.txt` (lines ~348–456) — they are compiled
+  unconditionally into the core library. There is no `ULTRACANVAS_PLUGIN_CHARTS`
+  option, no separate target, no per-chart selection.
+* A shared build (`ULTRACANVAS_BUILD_SHARED=ON`) therefore ships all 42,874
+  lines of chart code to every application, including ones that never draw a
+  chart. Every application also pays the compile time.
+* In a static build the linker does already drop chart objects nothing
+  references — each chart is an independent TU. **That accidental laziness is
+  the thing a naive registry would destroy** (§12.5).
+
+One piece of good news from the scan: **nothing in `core/`, the top-level
+`include/*.h` or `OS/` references `Plugins/Charts`.** The coupling is
+build-system only, so the split is a CMake change plus a registry — no core code
+has to move.
+
+### 12.2 Existing plugin precedents to follow, not reinvent
+
+| Precedent | What it gives us |
+|---|---|
+| **UltraNet plug-ins** (`Plugins/UltraNet/*`, `core/UltraNet/UltraNetPlugins.cpp`) | The mature model: `add_library(... MODULE ...)` with `PREFIX ""`, output into `${CMAKE_BINARY_DIR}/Plugins/UltraNet`, an ABI-versioned `extern "C" UltraNet_PluginInit(host)` entry with a host vtable (`abiVersion`, `RegisterPlugin`), a POSIX v1 fallback, an idempotent directory scan keyed on canonical path, lookup by scheme, and configure-time self-disable when a backend is missing |
+| **`UltraCanvasGraphicsPluginSystem.h`** | The in-process registry shape: `IGraphicsPlugin`, `RegisterPlugin` / `UnregisterPlugin` / `FindPluginForFile`, static registry with `Initialize()` / `Shutdown()` |
+| **`UltraCanvasTemplate.h::RegisterElementFactory(elementType, …)`** | String-keyed element factories already exist for templates — chart type names should plug into the same idea |
+
+The chart system should mirror the UltraNet ABI rather than invent a second one.
+
+### 12.3 Three tiers, all supported by one registry
+
+| Tier | Selection | Where it fits |
+|---|---|---|
+| **T1 — compile-time** | `ULTRACANVAS_CHARTS="Line;Bar;ParallelCoordinate"` at configure time; unselected charts are never compiled | WASM, ULTRA OS, embedded, and any app that knows its chart set. Smallest binary, no loader, no ABI concerns |
+| **T2 — link-time (default)** | Everything built, but each chart is an independent TU reached only through its own factory, so a static link pulls in exactly the charts referenced | Ordinary desktop static builds; preserves today's accidental laziness by design instead of by luck |
+| **T3 — runtime modules** | `uc_chart_<name>` MODULE libraries loaded on first use | Shared builds, host applications with plug-in galleries, apps that decide their chart set from a document or user data |
+
+T1 and T3 compose: an app can compile in the two charts it always shows and
+load the rest on demand.
+
+### 12.4 Lazy engine initialisation
+
+The engine core is itself a module (`ultracanvas_chartengine`) and must not be
+touched until a chart exists:
+
+```cpp
+// Nothing in UltraCanvas core calls this. The first chart construction does.
+ChartEngine& UltraCanvasChartEngine::Instance();   // builds theme, palette,
+                                                   // label service, registry
+```
+
+Because no core code references `Plugins/Charts` today (§12.1), "the engine is
+not loaded unless a chart is used" is automatic in T1/T2 — the symbol is never
+referenced, so the object is never pulled in. In T3 it means the engine module
+is dlopen'd by the first `CreateChart(...)` call, not at application start.
+
+### 12.5 The registry, and the static-initialiser trap
+
+The obvious design — every chart TU registers itself with a file-scope static —
+**must be avoided**. A self-registering static forces the linker to keep every
+chart object in every binary (it has to run the initialiser), which is worse
+than the status quo. Instead:
+
+```cpp
+// UltraCanvasChartRegistry.h  (engine core)
+using ChartFactory = std::function<std::shared_ptr<UltraCanvasChartElementBase>(
+        const std::string& id, int x, int y, int w, int h)>;
+
+class UltraCanvasChartRegistry {
+public:
+    static void Register(const std::string& typeName, ChartFactory);
+    static bool IsRegistered(const std::string& typeName);
+    static std::vector<std::string> RegisteredTypes();
+
+    // Registry miss → try to load uc_chart_<typeName> (T3) → retry once.
+    static std::shared_ptr<UltraCanvasChartElementBase>
+        Create(const std::string& typeName, const std::string& id,
+               int x, int y, int w, int h);
+};
+```
+
+Registration reaches it three ways, none of which defeats laziness:
+
+1. **Direct construction (T2, the common case).** The app includes
+   `UltraCanvasParallelCoordinateChart.h` and calls
+   `CreateParallelCoordinateChartElement(...)`. No registry involved, no other
+   chart linked. This stays the primary API — the registry is for *name-driven*
+   creation, not a replacement for the factory helpers.
+2. **A generated registration TU (T1).** CMake knows the selected chart list and
+   generates `UltraCanvasChartRegistry.generated.cpp` containing exactly the
+   selected `RegisterXxxChart()` calls. No `--whole-archive`, no self-registering
+   statics, and name-based creation still works for the charts the app chose.
+3. **Module init (T3).** The loader calls the module's entry point, which
+   registers its chart types into the host registry.
+
+### 12.6 Module ABI (mirrors UltraNet v2)
+
+```cpp
+// UltraCanvasChartPluginABI.h
+struct UltraCanvasChartHost {
+    uint32_t abiVersion;                       // ULTRACANVAS_CHART_ABI = 1
+    void (*RegisterChart)(const char* typeName, ChartFactory);
+    ChartEngine* engine;                       // shared services, one instance
+};
+
+extern "C" ULTRACANVAS_CHART_PLUGIN_EXPORT
+void UltraCanvasChart_PluginInit(UltraCanvasChartHost* host);
+```
+
+Loader behaviour, copied from `UltraNet_RefreshPlugins()`: scan
+`${binary}/Plugins/Charts`, skip non-module files, track canonical paths so
+repeated calls are idempotent, reject mismatched `abiVersion`, and resolve by
+**chart type name** the way UltraNet resolves by scheme. Loading is
+**on-demand** (registry miss) rather than an eager scan, with an explicit
+`RefreshChartPlugins()` for hosts that want a gallery of what is available.
+
+The C++-types-across-the-boundary constraint (`std::shared_ptr`,
+`std::function`, `std::string` in the ABI) is the same one UltraNet already
+accepts: plug-ins must be built with the same compiler and standard library as
+the host. That is an existing, documented constraint in this codebase, not a new
+one — but it is the reason T1/T2 stay first-class rather than being deprecated
+in favour of T3.
+
+### 12.7 Granularity and shared support code
+
+Some charts share support TUs — `UltraCanvasColormap`, `UltraCanvasContourGrid`
++ `UltraCanvasMarchingSquares`, `UltraCanvasHexLayout`, `UltraCanvasTimeAxis`,
+`UltraCanvasCalendarDate`, `UltraCanvasConnectionRenderer`, `UltraCanvasSTFT`
+(+ vendored KissFFT). Rule: **shared support code lives in the engine core
+module; only chart-specific code lives in a chart module.** A chart module
+therefore never depends on another chart module.
+
+Packaging granularity:
+
+* **Compile-time selection is per chart** — the user requirement, met exactly.
+* **Runtime module packaging defaults to per family** (`basic`, `statistical`,
+  `radial`, `project`, `flow`, `3d`, plus standalone heavyweights such as
+  `parallelcoordinate`, `kanban`, `gantt`), because 43 modules means 43 dlopens
+  and 43 install artefacts. A `ULTRACANVAS_CHART_MODULE_GRANULARITY=chart|family`
+  switch allows one module per chart where that is wanted.
+
+### 12.8 Build layout
+
+```
+UltraCanvas/Plugins/Charts/CMakeLists.txt          # new: owns all chart targets
+  → UltraCanvasChartEngine        (STATIC or SHARED)   engine core + support code
+  → uc_chart_<family|name>        (MODULE, T3)         one per selected module
+  → UltraCanvasCharts             (STATIC, T1/T2)      selected charts, no self-registration
+ULTRACANVAS_CORE_SOURCES                            # chart entries removed
+```
+
+New options, following the existing `ULTRACANVAS_PLUGIN_*` naming:
+
+```cmake
+option(ULTRACANVAS_ENABLE_CHARTS "Build the chart engine and chart types" ON)
+set(ULTRACANVAS_CHARTS "all" CACHE STRING "Chart types to build: all, none, or a ;-list")
+set(ULTRACANVAS_CHART_MODULE_GRANULARITY "family" CACHE STRING "chart|family")
+option(ULTRACANVAS_CHART_RUNTIME_MODULES "Build charts as loadable modules (T3)" OFF)
+```
+
+With `ULTRACANVAS_ENABLE_CHARTS=OFF` the core library contains no chart code at
+all — which is not possible today.
+
+### 12.9 Effect on the delivery phases
+
+* **P1** additionally: move the chart sources out of `ULTRACANVAS_CORE_SOURCES`
+  into `Plugins/Charts/CMakeLists.txt`, add the engine target, the registry, the
+  generated registration TU and the `ULTRACANVAS_CHARTS` selection. The parallel
+  coordinate chart ships as the first chart built through this path.
+* **P2** additionally: the T3 module ABI, the on-demand loader, family packaging
+  and the install rules.
+* Migration of existing charts (§9) is unaffected — a Tier-1 adapter chart is
+  just as selectable as a native one.
+
+### 12.10 Packaging decisions needed
+
+1. **Default for `ULTRACANVAS_CHARTS`** — `all` (no behaviour change for
+   existing apps, recommended) or a small default set with opt-in for the rest?
+2. **Module granularity default** — `family` (recommended) or `chart`?
+3. **Runtime modules on by default?** Recommendation: **off**; T1/T2 cover the
+   stated requirement without the ABI constraint, and T3 is opt-in for hosts
+   that genuinely need runtime discovery.
+4. **Name-based creation surface** — should `CreateChart("ParallelCoordinate",…)`
+   be part of the public API for all apps, or only for template/markup-driven
+   construction? It is the only reason the registry exists at all.
