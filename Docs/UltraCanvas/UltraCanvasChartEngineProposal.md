@@ -1,7 +1,8 @@
 # UltraCanvasChartEngine — Investigation & Architecture Proposal
 
-Status: **Investigation complete, all design decisions resolved (§11, §12.10),
-implementation not started.** This document reports what the existing chart code
+Status: **Investigation complete, all design decisions resolved (§11, §12.10).
+P0 (the label engine upgrade, §7) is implemented and tested; the engine itself
+is not started.** This document reports what the existing chart code
 actually contains, what is duplicated or broken, and specifies one layered chart
 engine to replace the duplication — with the parallel coordinate chart as its
 first native client.
@@ -571,7 +572,22 @@ SetAnimation(bool, durationMs, ChartEasing); RenderToPixmap(UCPixmap&, Size2Di);
 
 ---
 
-## 7. Label engine upgrade (prerequisite work)
+## 7. Label engine upgrade (prerequisite work) — **implemented**
+
+Shipped in `UltraCanvasLabelPlacement` 2.0 (`include/UltraCanvasLabelPlacement.h`,
+`core/UltraCanvasLabelPlacement.cpp`), with `Tests/LabelPlacementTest.cpp`
+covering session reuse, index equivalence, rotation, polyline obstacles,
+priority, suppression, minimum separation, leader lines, point anchors,
+backward compatibility and the tick declutter policies. 800 labels solve in
+about 7 ms. Every addition is opt-in and the defaults reproduce the 1.3
+behaviour, so the six existing callers are untouched.
+
+One semantic decision came out of the implementation rather than the design:
+the solver prefers pushing a label **outside the bounds** over overlapping a
+neighbour, so suppression keyed only on overlap would almost never fire. A
+label is therefore suppressed when it would overlap something claimed **or**
+would have to leave the bounds to avoid it — both are defects a chart wants
+gone.
 
 `UltraCanvasLabelPlacement` stays the solver; it gains a session, an index, and
 the chart-facing capabilities from §3.4.

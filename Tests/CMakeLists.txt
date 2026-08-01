@@ -593,6 +593,31 @@ else()
     message(STATUS "  libarchive not found - VirtualFSDeleteTest disabled")
 endif()
 
+# ===== LABEL PLACEMENT TEST =====
+# Session reuse across passes, the spatial index, rotated labels, polyline
+# obstacles, priority, suppression, minimum separation, leader lines, point
+# anchors and the 1-D axis tick declutter. Pure geometry - no UI stack, no link
+# dependencies beyond the solver itself.
+message(STATUS "  Building LabelPlacementTest...")
+add_executable(LabelPlacementTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/LabelPlacementTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasLabelPlacement.cpp
+)
+target_include_directories(LabelPlacementTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(LabelPlacementTest PRIVATE cxx_std_20)
+set_target_properties(LabelPlacementTest PROPERTIES
+    OUTPUT_NAME "LabelPlacementTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME LabelPlacementTest
+    COMMAND LabelPlacementTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: LabelPlacementTest")
+
 # ===== FUTURE TESTS =====
 # Add more test executables here as needed:
 #
