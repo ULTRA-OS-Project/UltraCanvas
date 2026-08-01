@@ -1,9 +1,10 @@
 # UltraCanvasChartEngine — Investigation & Architecture Proposal
 
-Status: **Investigation complete, nothing implemented yet.** This document
-reports what the existing chart code actually contains, what is duplicated or
-broken, and proposes one layered chart engine to replace the duplication —
-with the parallel coordinate chart as its first native client.
+Status: **Investigation complete, all design decisions resolved (§11, §12.10),
+implementation not started.** This document reports what the existing chart code
+actually contains, what is duplicated or broken, and specifies one layered chart
+engine to replace the duplication — with the parallel coordinate chart as its
+first native client.
 
 Companion document:
 [`UltraCanvasParallelCoordinateChartProposal.md`](UltraCanvasParallelCoordinateChartProposal.md)
@@ -113,7 +114,7 @@ list the engine API must cover, and each item already exists somewhere:
 | Label collision solving | `UltraCanvasLabelPlacement` (6 charts) |
 | Animation with a timer | radar (`UltraCanvasTimer`), funnel, pyramid |
 | Tooltips | base class + `UltraCanvasTooltipManager` |
-| Image / video / animated surfaces | `UltraCanvasImageElement`, `UltraCanvasVideoPlayerElement`, `UltraCanvasImageAnimation`, `UltraCanvasGLSurface` |
+| Static image surfaces (video / GL backgrounds are out of scope) | `UltraCanvasImageElement` |
 | Gradients, clipping, dashes, transforms, pixmap blit | `IRenderContext` (`CreateLinearGradientPattern`, `ClipPath`, `SetLineDash`, `DrawPixmap`) |
 
 Nothing in the nine layers the brief asks for needs a new dependency. It needs
@@ -232,7 +233,7 @@ include/Plugins/Charts/Engine/UltraCanvasChartLimiters.h      # min/max/average/
 include/Plugins/Charts/Engine/UltraCanvasChartHighlights.h    # rect / ellipse / confidence / hull-blob / value band
 include/Plugins/Charts/Engine/UltraCanvasChartDistribution.h  # axis histograms, density, box summaries
 include/Plugins/Charts/Engine/UltraCanvasChartLabels.h        # chart-facing label broker over the label solver
-include/Plugins/Charts/Engine/UltraCanvasChartBackground.h    # colour / gradient / image / video / GL / 3D scene
+include/Plugins/Charts/Engine/UltraCanvasChartBackground.h    # colour / gradient / image (no video / GL / 3D scene)
 include/Plugins/Charts/Engine/UltraCanvasChartInteraction.h   # hover, select, brush, zoom/pan, crosshair, callbacks
 Plugins/Charts/Engine/*.cpp
 ```
@@ -263,7 +264,7 @@ public:
 * `Vertical` — domain along x, value up y (line, bar, PCP with vertical axes)
 * `Horizontal` — the same renderers transposed (horizontal bars, dumbbell,
   population pyramid, PCP with axes as rows). **No separate chart classes.**
-* `Polar` — recommended fourth kind; the framework has 8 radial charts
+* `Polar` — **confirmed as the fourth kind**; the framework has 8 radial charts
   (radar, polar, sunburst, radial bar, chord, pie, circular progress, circular
   infographic) each with its own angle maths
 * `Space3D` — yaw/pitch/distance camera, perspective divide, painter depth sort,
@@ -289,7 +290,7 @@ API the chart author has to think about:
 
 | Phase | Slot | Layer | Brief # | Contents |
 |---|---|---|---|---|
-| **1** | 100 | `Background` | 8 | element fill, chart-area fill, plot-area fill, gradient, image, video, GL/shader, 3D scene, per-level bands |
+| **1** | 100 | `Background` | 8 | element fill, chart-area fill, plot-area fill, gradient, image, per-level bands |
 | **1** | 200 | `Highlight` (wash) | 7 | group rectangles, circular/elliptical shading, confidence ellipses, hull blobs, value/area bands |
 | **1** | 300 | `Grid` | 6 | major/minor gridlines derived **from the axis ticks**, alternating stripes, polar rings, 3D floor grid |
 | **1** | 400 | `Limiter` | 5 | min, max, average, median, target, threshold, up/down limits, tolerance bands, captions |
@@ -430,8 +431,8 @@ Consequences worth stating:
   animation runs, and revealed on completion. No per-frame solver work.
 * **Zoom / pan / axis reorder.** These do change geometry, so they do invalidate
   the plan — but the rebuild is **throttled**: the previous plan keeps being
-  drawn during the drag and the solver runs once on release (or at most once per
-  configurable interval).
+  drawn during the drag and the solver runs once **on interaction end** — the chosen policy, so a drag
+  costs nothing and the labels catch up on release.
 * The persistent plan is also what makes the solver's cost irrelevant in
   practice: the O(L·C·k) work of §7 happens on creation and on genuine change,
   not at 60 Hz.
@@ -556,7 +557,7 @@ SetShowLegend(bool); SetLegendMode(Discrete|ColorBar|SizeLegend|PinnedItems);
 SetLegendPosition(Left|Right|Top|Bottom|Inside|Custom); SetLegendTitle(text);
 
 // ---- background (phase 1, slot 100) ----
-SetBackground(ChartBackgroundScope, const ChartBackground&);  // Solid|Gradient|Image|Video|GLShader|Scene3D
+SetBackground(ChartBackgroundScope, const ChartBackground&);  // Solid|Gradient|Image
 
 // ---- interaction (phase 3, slot 900) ----
 SetEnableTooltips(bool); SetTooltipGenerator(fn);
@@ -726,40 +727,23 @@ financial (one axis renderer), scatter3D + contourSurface3D + GL (one camera).
 | Phase | Content |
 |---|---|
 | **P0** | Label engine upgrade (§7) + unit tests. Independently useful; deletes the §4 workarounds. |
-| **P1** | Engine core: the three-phase render driver, `IChartContent` contract, frozen frame, slot ordering, dirty model, two-pass layout, cached label plan with the §5.7 invalidation rules and §5.8 per-type policies, `Vertical`/`Horizontal` projections, axis + scale + tick model, theme/palette, shared legend + colour bar, solid/gradient/image backgrounds, interaction state. **Plus the parallel coordinate chart as the first native client**, implementing only phase 2 and exercising every phase-1/phase-3 slot including axis histograms (§8.1) and highlight regions (§8.2). |
-| **P2** | Tier-1 adapter for all existing charts; Tier-2 migration of the colour-bar and legend families; `Polar` projection; `Space3D` projection with one camera; video / GL-shader / 3D-scene backgrounds; export to pixmap. |
+| **P1** | Engine core: the three-phase render driver, `IChartContent` contract, frozen frame, slot ordering, dirty model, two-pass layout, cached label plan with the §5.7 invalidation rules and §5.8 per-type policies, `Vertical`/`Horizontal` projections, axis + scale + tick model, theme/palette, shared legend + colour bar, solid/gradient/image backgrounds (no video/GL/3D-scene — out of scope), interaction state. **Plus the parallel coordinate chart as the first native client**, implementing only phase 2 and exercising every phase-1/phase-3 slot including axis histograms (§8.1) and highlight regions (§8.2). |
+| **P2** | Tier-1 adapter for all existing charts; Tier-2 migration of the colour-bar and legend families; `Polar` projection; `Space3D` projection with one camera; export to pixmap. |
 | **P3** | Remaining Tier-2 migrations; density/binned series rendering; animated transitions between layouts; multi-chart linked selection. |
 
 ---
 
-## 11. Decisions needed before coding
+## 11. Decisions — all resolved
 
-1. **Polar as a fourth projection kind** — the brief names vertical, horizontal
-   and 3D. Eight existing radial charts each carry their own angle maths.
-   Recommendation: include `Polar` in the projection interface from the start
-   (cheap now, expensive to retrofit).
-2. **Migration appetite** — is Tier 1 (adapter, all charts keep their drawing
-   code) acceptable as the steady state for most charts, with Tier 2 reserved
-   for the families listed in §9? Recommendation: yes.
-3. **Naming canon breakage** — keep deprecated aliases forever, or remove them
-   at the next major version? Recommendation: keep aliases through the migration,
-   remove in one sweep afterwards.
-4. **Background media** — `IRenderContext` cannot run shaders or decode video.
-   A video/GL/3D-scene background must be a sibling surface
-   (`UltraCanvasVideoPlayerElement` / `UltraCanvasGLSurface`) composited beneath
-   a chart with a transparent background, not a paint operation. Confirm that
-   composition model before P2.
-5. ~~**Label session ownership**~~ — **resolved**: the session and its solved
-   plan are persistent, built at chart creation and rebuilt only on the
-   invalidation list in §5.7. The solver never runs on a redraw.
-6. **Per-type label policies** — §5.8 proposes defaults per chart family (axis
-   furniture excluded; parallel-coordinate axis headers and heatmap row/column
-   labels as obstacles; radar spoke labels solved). These defaults need a review
-   pass per chart type as each one migrates.
-7. **Throttled re-solve during zoom / pan / axis reorder** — re-solve on
-   interaction end (recommended, zero cost during the drag, labels lag the
-   geometry until release) versus a fixed interval such as 150 ms (labels track
-   better, costs one solve per interval).
+| # | Question | Decision |
+|---|---|---|
+| 1 | Polar as a fourth projection kind | **Yes** — `Polar` is in `IChartProjection` from the start, alongside `Vertical`, `Horizontal` and `Space3D` |
+| 2 | Is the Tier-1 adapter an acceptable steady state? | **Yes** — most charts keep their own drawing code permanently; Tier 2 is reserved for the families in §9 |
+| 3 | Naming canon breakage | **Keep deprecated aliases through the migration**, then remove them in one sweep afterwards |
+| 4 | Background media | **Out of scope** — no video, GL/shader or 3D-scene backgrounds. The `Background` layer is solid colour, gradient and static image only |
+| 5 | Label session ownership | **Persistent** — the session and its solved plan are built at chart creation and rebuilt only on the §5.7 invalidation list. The solver never runs on a redraw |
+| 6 | Per-type label policies | **Accepted as proposed** in §5.8, with a review pass per chart type as each one migrates |
+| 7 | Re-solve during zoom / pan / axis reorder | **On interaction end** — nothing during the drag; labels catch up on release |
 
 ---
 
@@ -802,9 +786,9 @@ The chart system should mirror the UltraNet ABI rather than invent a second one.
 
 | Tier | Selection | Where it fits |
 |---|---|---|
-| **T1 — compile-time** | `ULTRACANVAS_CHARTS="Line;Bar;ParallelCoordinate"` at configure time; unselected charts are never compiled | WASM, ULTRA OS, embedded, and any app that knows its chart set. Smallest binary, no loader, no ABI concerns |
+| **T1 — compile-time** | `ULTRACANVAS_CHARTS="Line;Bar;ParallelCoordinate"` at configure time; unselected charts are never compiled. **Default: empty** | WASM, ULTRA OS, embedded, and any app that wants the typed chart API linked in. Smallest binary, no loader, no ABI concerns |
 | **T2 — link-time (default)** | Everything built, but each chart is an independent TU reached only through its own factory, so a static link pulls in exactly the charts referenced | Ordinary desktop static builds; preserves today's accidental laziness by design instead of by luck |
-| **T3 — runtime modules** | `uc_chart_<name>` MODULE libraries loaded on first use | Shared builds, host applications with plug-in galleries, apps that decide their chart set from a document or user data |
+| **T3 — runtime modules** | One `uc_chart_<name>` MODULE per chart type, loaded on first use. **On by default** | The default path: the core ships chart-free and each chart arrives only when something asks for it by name |
 
 T1 and T3 compose: an app can compile in the two charts it always shows and
 load the rest on demand.
@@ -904,11 +888,11 @@ therefore never depends on another chart module.
 Packaging granularity:
 
 * **Compile-time selection is per chart** — the user requirement, met exactly.
-* **Runtime module packaging defaults to per family** (`basic`, `statistical`,
-  `radial`, `project`, `flow`, `3d`, plus standalone heavyweights such as
-  `parallelcoordinate`, `kanban`, `gantt`), because 43 modules means 43 dlopens
-  and 43 install artefacts. A `ULTRACANVAS_CHART_MODULE_GRANULARITY=chart|family`
-  switch allows one module per chart where that is wanted.
+* **Runtime module packaging is also per chart** (decided): one
+  `uc_chart_<name>` per chart type, so an application loads exactly the chart it
+  asked for and nothing else. `ULTRACANVAS_CHART_MODULE_GRANULARITY=family`
+  remains available for deployments that would rather ship a handful of grouped
+  modules than ~43 files.
 
 ### 12.8 Build layout
 
@@ -924,9 +908,11 @@ New options, following the existing `ULTRACANVAS_PLUGIN_*` naming:
 
 ```cmake
 option(ULTRACANVAS_ENABLE_CHARTS "Build the chart engine and chart types" ON)
-set(ULTRACANVAS_CHARTS "all" CACHE STRING "Chart types to build: all, none, or a ;-list")
-set(ULTRACANVAS_CHART_MODULE_GRANULARITY "family" CACHE STRING "chart|family")
-option(ULTRACANVAS_CHART_RUNTIME_MODULES "Build charts as loadable modules (T3)" OFF)
+# Charts linked into the application (typed API available at compile time).
+# Empty by default: nothing is compiled in, everything arrives as a module.
+set(ULTRACANVAS_CHARTS "" CACHE STRING "Charts to link in: empty, all, or a ;-list")
+set(ULTRACANVAS_CHART_MODULE_GRANULARITY "chart" CACHE STRING "chart|family")
+option(ULTRACANVAS_CHART_RUNTIME_MODULES "Build charts as loadable modules (T3)" ON)
 ```
 
 With `ULTRACANVAS_ENABLE_CHARTS=OFF` the core library contains no chart code at
@@ -943,14 +929,60 @@ all — which is not possible today.
 * Migration of existing charts (§9) is unaffected — a Tier-1 adapter chart is
   just as selectable as a native one.
 
-### 12.10 Packaging decisions needed
+### 12.10 Packaging decisions — all resolved
 
-1. **Default for `ULTRACANVAS_CHARTS`** — `all` (no behaviour change for
-   existing apps, recommended) or a small default set with opt-in for the rest?
-2. **Module granularity default** — `family` (recommended) or `chart`?
-3. **Runtime modules on by default?** Recommendation: **off**; T1/T2 cover the
-   stated requirement without the ABI constraint, and T3 is opt-in for hosts
-   that genuinely need runtime discovery.
-4. **Name-based creation surface** — should `CreateChart("ParallelCoordinate",…)`
-   be part of the public API for all apps, or only for template/markup-driven
-   construction? It is the only reason the registry exists at all.
+| # | Question | Decision |
+|---|---|---|
+| 1 | Default for `ULTRACANVAS_CHARTS` | **Empty — no charts compiled in.** The core ships chart-free; charts arrive as modules |
+| 2 | Module granularity default | **Per chart** — one `uc_chart_<name>` per chart type |
+| 3 | Runtime modules on by default | **Yes** — T3 is the default delivery path |
+| 4 | `CreateChart("ParallelCoordinate", …)` public for all apps | **Yes** — name-based creation is public API, not just for templates/markup |
+
+### 12.11 What those decisions imply
+
+The default build is now: **core with zero chart code, an engine module, and
+~43 individual chart modules, none of which is loaded until something asks for
+it by name.** Four consequences follow, and each needs handling in P1/P2.
+
+**1. The engine must be a shared library when modules are on.** Every chart
+module and the host have to see *one* registry, one label service, one theme —
+a static engine would give each module its own copy of those statics. So
+`ULTRACANVAS_CHART_RUNTIME_MODULES=ON` forces `UltraCanvasChartEngine` to build
+`SHARED`, and each `uc_chart_<name>` links against it.
+
+**2. Typed chart APIs need a rule.** `CreateChart(...)` returns
+`std::shared_ptr<UltraCanvasChartElementBase>`, which cannot reach
+`SetKDEBandwidth()` or `SetLevelStep()`. Three ways to configure a chart, and
+the rule for choosing:
+
+| Path | How the app configures it | Requires |
+|---|---|---|
+| Typed factory (`CreateParallelCoordinateChartElement`) | Directly, full typed API | Chart listed in `ULTRACANVAS_CHARTS` |
+| `CreateChart("…")` + `std::dynamic_pointer_cast<T>` | Full typed API after the cast | Chart header included; module and host built with the same compiler and standard library (POSIX `RTLD_GLOBAL`; Windows needs exported RTTI) |
+| `CreateChart("…")` + named properties | `SetProperty("levelStep", 0.02)` on the base class | Nothing — works across any module boundary |
+
+Recommendation: implement all three, with the base class carrying a small
+`SetProperty` / `GetProperty` surface that each chart registers its own keys
+into. It is what makes name-based creation genuinely useful for
+document-driven and gallery-style applications, and it is the only path that
+does not inherit the ABI constraint.
+
+**3. This repository's own applications must declare their chart sets.**
+DemoApp includes chart headers directly and calls typed factories for roughly
+25 chart types; with an empty default it would no longer link. Its CMake must
+set `ULTRACANVAS_CHARTS` to the list it uses (or migrate those screens to
+`CreateChart` + properties). Same check for Texter, the UltraAI dashboard and
+the file manager. This is a P1 task, not a follow-up.
+
+**4. Platforms without `dlopen` fall back to T1.** WASM and any ULTRA OS
+configuration without dynamic loading must force
+`ULTRACANVAS_CHART_RUNTIME_MODULES=OFF` at configure time and require a
+non-empty `ULTRACANVAS_CHARTS` — otherwise the build silently produces an
+application that can draw no charts at all. The CMake must emit a hard error in
+that combination rather than a working-but-empty build.
+
+Deployment: chart modules install next to the application as
+`Plugins/Charts/uc_chart_<name>.<so|dll|dylib>`. A missing module makes
+`CreateChart` return `nullptr`; `AvailableChartTypes()` and
+`RefreshChartPlugins()` let a host enumerate what is actually installed for a
+chart gallery.
