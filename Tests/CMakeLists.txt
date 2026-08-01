@@ -618,6 +618,33 @@ add_test(
 )
 message(STATUS "    Test registered: LabelPlacementTest")
 
+# ===== CHART ENGINE TEST =====
+# The engine's model layer: axis ranges and scales, tick generation and
+# formatting, layout negotiation, the vertical / horizontal / polar projections
+# and the label policy and plan. Pure model code - no UI stack.
+message(STATUS "  Building ChartEngineTest...")
+add_executable(ChartEngineTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ChartEngineTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartAxis.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartProjection.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartLabels.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasLabelPlacement.cpp
+)
+target_include_directories(ChartEngineTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(ChartEngineTest PRIVATE cxx_std_20)
+set_target_properties(ChartEngineTest PROPERTIES
+    OUTPUT_NAME "ChartEngineTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ChartEngineTest
+    COMMAND ChartEngineTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ChartEngineTest")
+
 # ===== FUTURE TESTS =====
 # Add more test executables here as needed:
 #
