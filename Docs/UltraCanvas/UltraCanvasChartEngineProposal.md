@@ -211,12 +211,14 @@ labels or the legend. All five become calls into one label service.
 
 ### 5.1 Design position
 
-**The engine is a layer framework plus shared services — not a universal data
-model.** A single data model that covers Gantt, chord, Kanban, sunburst *and*
-parallel coordinates would be a fantasy; charts keep their own domain models.
-What they stop owning is: layout, axes, scales, projection, theme/palette,
-legend, colour bar, limiters, highlights, distributions, label placement,
-interaction, background and the render/dirty pipeline.
+**The engine is a three-phase render frame plus shared services — not a
+universal data model.** A single data model that covers Gantt, chord, Kanban,
+sunburst *and* parallel coordinates would be a fantasy; charts keep their own
+domain models, and each chart file keeps its own drawing code and inserts it
+into the middle phase. What charts stop owning is: layout, axes, scales,
+projection, theme/palette, legend, colour bar, limiters, highlights,
+distributions, label placement, interaction, background and the render/dirty
+pipeline.
 
 ### 5.2 Files
 
@@ -268,87 +270,238 @@ public:
   optional `UltraCanvasGLSurface` backend. **One** camera replaces the three
   `Project()` implementations found.
 
-### 5.4 The layer stack
+### 5.4 Rendering is three phases, not ten layers
 
-The brief lists nine features numbered from the front. The engine paints them in
-reverse, with numeric slots so custom layers can be inserted between:
+The engine renders in **three phases**. The specific chart file implements
+**only the middle one** and inserts itself there; everything above and below is
+engine-supplied:
 
-| Slot | Layer | Brief # | Contents |
-|---|---|---|---|
-| 100 | `Background` | 8 | element fill, chart-area fill, plot-area fill, gradient, image, video, GL/shader, 3D scene, per-level bands |
-| 200 | `Highlight` (wash) | 7 | group rectangles, circular/elliptical shading, confidence ellipses, hull blobs, value/area bands |
-| 300 | `Grid` | 6 | major/minor gridlines derived **from the axis ticks**, alternating stripes, polar rings, 3D floor grid |
-| 400 | `Limiter` | 5 | min, max, average, median, target, threshold, up/down limits, tolerance bands, captions |
-| 500 | `Axes` | 4 | axis lines, ticks, tick labels, axis titles, endpoint labels, category labels, multi-axis, colour-bar axis |
-| 550 | `Distribution` | (new) | marginal histograms / density / box summaries on any axis |
-| 600 | `Series` | 3 | the graph itself + graph values (data labels) |
-| 700 | `Analysis` | 2 | correlation line, regression/trend, moving average, progress line, statistic annotation (`τ = -0.34; p = 1.8e-59`) |
-| 800 | `Annotation` | 1 | labels, legend, colour bar, callouts, leader lines, arrows/indicators, watermark |
-| 900 | `Interaction` | 9 | hover emphasis, crosshair, tooltip anchor, brush bands + handles, rubber band, drag ghosts |
+```
+Phase 1  UNDER the chart   — background, highlights, grid, limiters, axes,
+                             grid/tick labels, axis titles, distributions
+Phase 2  THE CHART         — the specific chart's own drawing   ← chart file
+Phase 3  OVER the chart    — analysis lines, value labels, legend, callouts,
+                             annotations, interaction overlay
+```
+
+The brief's nine features remain as **ordering slots inside a phase**, not as an
+API the chart author has to think about:
+
+| Phase | Slot | Layer | Brief # | Contents |
+|---|---|---|---|---|
+| **1** | 100 | `Background` | 8 | element fill, chart-area fill, plot-area fill, gradient, image, video, GL/shader, 3D scene, per-level bands |
+| **1** | 200 | `Highlight` (wash) | 7 | group rectangles, circular/elliptical shading, confidence ellipses, hull blobs, value/area bands |
+| **1** | 300 | `Grid` | 6 | major/minor gridlines derived **from the axis ticks**, alternating stripes, polar rings, 3D floor grid |
+| **1** | 400 | `Limiter` | 5 | min, max, average, median, target, threshold, up/down limits, tolerance bands, captions |
+| **1** | 500 | `Axes` | 4 | axis lines, ticks, tick labels, axis titles, endpoint labels, category labels, multi-axis |
+| **1** | 550 | `Distribution` | (new) | marginal histograms / density / box summaries on any axis |
+| **2** | 600 | `Content` | 3 | **the specific chart** — its geometry and its graph values |
+| **3** | 700 | `Analysis` | 2 | correlation line, regression/trend, moving average, progress line, statistic annotation (`τ = -0.34; p = 1.8e-59`) |
+| **3** | 800 | `Annotation` | 1 | solved labels, legend, colour bar, callouts, leader lines, arrows/indicators |
+| **3** | 900 | `Interaction` | 9 | hover emphasis, crosshair, tooltip anchor, brush bands + handles, rubber band, drag ghosts |
+
+The driver in the base class is fixed and short:
 
 ```cpp
-class IChartLayer {
-public:
-    virtual ChartLayerId Id() const = 0;
-    virtual int  ZSlot() const;                       // default from Id
-    virtual void Measure(ChartLayoutRequest&) {}      // reserve margin before layout freezes
-    virtual void Render(IRenderContext*, const ChartFrame&) = 0;
-    virtual bool HitTest(const Point2Dd&, ChartHit&) const { return false; }
-    virtual bool IsCacheable() const { return true; }
-};
+void UltraCanvasChartElementBase::Render(IRenderContext* ctx, const Rect2Df& dirty) {
+    EnsureLayout();                    // §5.6 — only when geometry/data/style changed
+    EnsureLabelPlan();                 // §5.7 — solver runs here, NOT per frame
+    RenderPhaseUnder(ctx, frame);      // engine
+    RenderChart(ctx, frame);           // the specific chart file — the one override
+    RenderPhaseOver(ctx, frame);       // engine
+}
 ```
 
 Two rules give the brief's "prevent wrong rendering":
 
-1. **Every layer renders inside its own `PushState()` / `ClipPath()` /
-   `PopState()`.** A layer cannot leak a fill colour, dash pattern, transform or
-   clip into the next one — the class of bug that makes charts render wrongly
-   today.
-2. **A layer may only draw within its declared region** (plot area, margin band,
-   or full element), declared in `Measure()`.
+1. **Every phase and every slot inside it renders within its own
+   `PushState()` / `ClipPath()` / `PopState()`.** No fill colour, dash pattern,
+   transform or clip leaks into the next — the class of bug that makes charts
+   render wrongly today.
+2. **Phase 2 is clipped to the plot area by default.** A chart cannot paint over
+   the axes, tick labels or legend by accident. A chart that genuinely needs to
+   draw into the margin (a spill-out marker) opts in explicitly.
 
-### 5.5 Layout is a two-pass negotiation
+### 5.5 What the specific chart file provides
+
+A chart type implements one small interface. Everything it does *not* implement
+is supplied by the engine:
+
+```cpp
+class IChartContent {
+public:
+    // What axes exist, their ranges, scales and titles.
+    virtual void DescribeAxes(ChartAxisSet&) = 0;
+
+    // Optional extra margin this chart needs (axis header chips, spill-out
+    // markers, per-axis histograms...). Runs in the measure pass, not per frame.
+    virtual void Measure(ChartLayoutRequest&) {}
+
+    // Labels this chart wants placed. Called ONLY when the label plan is
+    // rebuilt (§5.7), never on an ordinary redraw.
+    virtual void CollectLabels(ChartLabelRequest&) {}
+
+    // Phase 2. The only method that must be implemented.
+    virtual void RenderChart(IRenderContext*, const ChartFrame&) = 0;
+
+    // Optional: chart-specific picking for the interaction layer.
+    virtual bool HitTest(const Point2Dd&, ChartHit&) const { return false; }
+};
+```
+
+So a new chart type is: a data model, a `RenderChart()`, and — if it has labels
+or unusual margins — two short descriptor methods. Background, grid, axes,
+limiters, highlights, legend, label placement and interaction come for free and
+are never re-implemented.
+
+### 5.6 Layout is a two-pass negotiation, run on change only
 
 Today every chart guesses its margins (`marginLeft = 60` in the base class).
 Instead:
 
 ```
-pass 1  Measure: axis labels, legend, colour bar, marginal histograms, titles
-                 each report the space they need on each side
-pass 2  Solve:   engine subtracts reservations → plotArea, freezes ChartFrame
-pass 3  Render:  layers paint in z order against the frozen frame
+pass 1  Measure: axes, legend, colour bar, marginal histograms, titles and the
+                 chart itself report the space they need on each side
+pass 2  Solve:   engine subtracts the reservations → plotArea, freezes ChartFrame
 ```
 
-### 5.6 The frame
+`EnsureLayout()` runs this only when the layout inputs changed (§5.9); an
+ordinary repaint reuses the frozen frame:
 
 ```cpp
 struct ChartFrame {
-    Rect2Dd              elementBounds, chartArea, plotArea;
+    Rect2Dd                 elementBounds, chartArea, plotArea;
     const IChartProjection* projection;
-    const ChartAxisSet*  axes;
-    const ChartTheme*    theme;
-    const ChartPalette*  palette;
-    ChartLabelSession*   labels;        // ONE collision world for the whole frame
+    const ChartAxisSet*     axes;
+    const ChartTheme*       theme;
+    const ChartPalette*     palette;
+    const ChartLabelPlan*   labelPlan;      // solved earlier, read-only while drawing
     const ChartInteractionState* interaction;
-    double               animationProgress;
-    uint64_t             generation;
+    double                  animationProgress;
+    uint64_t                generation;
 };
 ```
 
-`labels` being on the frame is the fix for §3.2: axis ticks, value labels,
-limiter captions, legend entries and annotations all place into the same
-session, in z order, so later layers automatically avoid earlier ones.
+The frame is **read-only during rendering**. All three phases receive the same
+frozen frame, which is what lets phase 1 and phase 3 be cached independently of
+the chart's own drawing.
 
-### 5.7 Dirty model — why layering pays for itself
+### 5.7 Label placement runs at build time, not at draw time
+
+**The solver runs when the chart is created or invalidated — never on a
+redraw.** Its output is a cached plan that the draw path simply iterates:
 
 ```cpp
-enum class ChartDirty : uint32_t { Data=1, Geometry=2, Style=4, Selection=8, Hover=16, Animation=32 };
+struct PlacedChartLabel {
+    std::string text;
+    Rect2Dd     bounds;          // final position, already solved
+    double      rotationDegrees;
+    Color       color; float fontSize; std::string font;
+    ChartLabelClass  klass;
+    bool        suppressed;      // decluttered away — skip it
+    bool        hasLeader; Point2Dd leaderFrom;
+};
+
+struct ChartLabelPlan {
+    std::vector<PlacedChartLabel> labels;
+    std::vector<bool>             tickVisible;   // per axis, from DeclutterAxisTicks
+    uint64_t                      generation;    // matches the frame it was solved for
+};
 ```
 
-The engine maps each flag to the layers it invalidates; cacheable layers keep a
-`UCPixmap` of their last output. Hovering a line dirties `Hover` only → layer
-900 repaints, everything else is blitted. Brushing 100k parallel-coordinate
-lines stops being a full redraw.
+`EnsureLabelPlan()` rebuilds the plan **only** when one of the inputs that can
+change a label's position changed:
+
+| Rebuilds the label plan | Does **not** rebuild it |
+|---|---|
+| Data set / appended / cleared | Ordinary repaint, expose, dirty-rect |
+| Element resized, layout re-solved | Hover, tooltip, crosshair |
+| Axis range / scale / inversion / order changed | Selection, pinning, brushing |
+| Font, font size or label style changed | Animation frames (see below) |
+| Label text, formatter or visibility changed | Background video / shader frames |
+| Legend content or position changed | Scroll / repaint of a parent |
+| Explicit `InvalidateLabels()` | Theme colour change (colours only) |
+
+Consequences worth stating:
+
+* **Animation.** Grow-out and transition animations move the geometry every
+  frame; re-solving per frame is exactly what this design forbids. Policy:
+  labels are solved once against the **final** geometry, hidden while the
+  animation runs, and revealed on completion. No per-frame solver work.
+* **Zoom / pan / axis reorder.** These do change geometry, so they do invalidate
+  the plan — but the rebuild is **throttled**: the previous plan keeps being
+  drawn during the drag and the solver runs once on release (or at most once per
+  configurable interval).
+* The persistent plan is also what makes the solver's cost irrelevant in
+  practice: the O(L·C·k) work of §7 happens on creation and on genuine change,
+  not at 60 Hz.
+
+### 5.8 Which labels take part — decided per chart type
+
+**Axis tick labels, grid labels and axis titles are excluded from the collision
+solver by default.** They sit at fixed, constructed positions in the margin
+bands, they cannot collide with in-plot labels, and feeding them to a 2-D solver
+would be wasted work. They are decluttered by the cheap 1-D pass instead
+(`DeclutterAxisTicks`, §7) — excluded from the solver does **not** mean
+"allowed to overprint each other".
+
+Each label class gets one of three roles, and the default set is a **per chart
+type policy** that a chart may override:
+
+```cpp
+enum class ChartLabelClass : uint32_t {
+    AxisTick   = 1u<<0, AxisTitle = 1u<<1, GridLabel      = 1u<<2,
+    ValueLabel = 1u<<3, SeriesName = 1u<<4, LimiterCaption = 1u<<5,
+    HighlightLabel = 1u<<6, LegendEntry = 1u<<7, Annotation = 1u<<8,
+};
+
+struct ChartLabelPolicy {
+    uint32_t solved    = ValueLabel|SeriesName|LimiterCaption|HighlightLabel|Annotation;
+    uint32_t obstacles = LegendEntry;              // fixed, but solved labels avoid them
+    uint32_t excluded  = AxisTick|AxisTitle|GridLabel;   // neither move nor block
+};
+
+void SetLabelPolicy(const ChartLabelPolicy&);      // per chart type / per instance
+```
+
+* **solved** — routed through the placement solver, may move, may be suppressed.
+* **obstacle** — fixed position, but claimed in the collision world so solved
+  labels steer around it (the legend box; the pie chart's centre text).
+* **excluded** — outside the collision world entirely (axis furniture in the
+  margins).
+
+Concrete per-type examples:
+
+| Chart type | Override | Why |
+|---|---|---|
+| Line / bar / scatter | default | Axis furniture is in the margin; only value labels compete |
+| Parallel coordinates | `AxisTitle` → **obstacle** | Axis header chips sit *inside* the plot band at the top of each axis, so in-plot labels must avoid them; the chips themselves declutter in 1-D |
+| Heatmap | `AxisTick` → **obstacle** | Row/column labels sit against the cell grid, and cell value labels must not collide with them |
+| Radar / polar | `AxisTitle` → **solved** | Spoke labels ring the plot at arbitrary angles and genuinely do collide with each other |
+| Pie | `AxisTick` unused; centre text → **obstacle** | Outside slice labels must avoid the centre text and each other |
+
+### 5.9 Dirty model — why the phase split pays for itself
+
+```cpp
+enum class ChartDirty : uint32_t {
+    Data=1, Geometry=2, Style=4, Labels=8, Selection=16, Hover=32, Animation=64
+};
+```
+
+The engine maps each flag to the phases and slots it invalidates; cacheable
+slots keep a `UCPixmap` of their last output.
+
+| Change | Layout | Label plan | Phase 1 | Phase 2 | Phase 3 |
+|---|---|---|---|---|---|
+| Hover | — | — | blit | blit | repaint |
+| Selection / brush | — | — | blit | repaint | repaint |
+| Data | rebuild | rebuild | repaint | repaint | repaint |
+| Resize | rebuild | rebuild | repaint | repaint | repaint |
+| Theme colour | — | — | repaint | repaint | repaint |
+| Animation frame | — | — | blit | repaint | hidden |
+
+Hovering a parallel-coordinate line repaints one overlay; brushing 100k lines
+repaints phases 2–3 over a blitted background; neither ever touches the solver.
 
 ---
 
@@ -377,11 +530,11 @@ SetShowGrid(bool, ChartGridPart::Major|Minor|Both); SetGridStyle(color, width, d
 SetGridFollowsTicks(bool);                  // default true — fixes the 10x8 mismatch
 SetAlternatingBands(bool, color);
 
-// ---- limiters (layer 5) ----
+// ---- limiters (phase 1, slot 400) ----
 size_t AddLimiter(const ChartLimiter&);     // Min|Max|Average|Median|Target|Threshold|Band|Custom
 SetLimiterStyle(id, color, width, dash); SetLimiterCaption(id, text, side);
 
-// ---- highlights (layer 7) ----
+// ---- highlights (phase 1, slot 200 / phase 3, slot 700) ----
 size_t AddHighlight(const ChartHighlight&); // Rectangle|Ellipse|ConfidenceEllipse|Hull|Blob|ValueBand|PointHalo
 SetHighlightLabel(id, text, color, bool followContour);
 ClearHighlights();
@@ -389,20 +542,23 @@ ClearHighlights();
 // ---- distributions on axes (images 1 & 2) ----
 size_t AddAxisDistribution(const AxisDistribution&);  // Histogram|Density|Box|Strip|Violin
 
-// ---- analysis (layer 2) ----
+// ---- analysis (phase 3, slot 700) ----
 SetShowTrendLine(bool); SetTrendLineStyle(...); SetShowMovingAverage(bool, window);
 SetShowCorrelationLine(bool); SetStatisticAnnotation(ChartStatistic, position);
 
-// ---- labels & legend (layer 1) ----
+// ---- labels & legend (phase 3) ----
 SetShowValueLabels(bool); SetValueLabelPolicy(LabelDeclutterPolicy);
 SetMinLabelSeparation(px); SetLabelPriorityRule(LabelPriorityRule);
+SetLabelPolicy(const ChartLabelPolicy&);    // which classes are solved / obstacle / excluded
+InvalidateLabels();                          // force one re-solve; never called per frame
+SetLabelResolveThrottleMs(ms);               // zoom/pan/reorder re-solve cadence
 SetShowLegend(bool); SetLegendMode(Discrete|ColorBar|SizeLegend|PinnedItems);
 SetLegendPosition(Left|Right|Top|Bottom|Inside|Custom); SetLegendTitle(text);
 
-// ---- background (layer 8) ----
+// ---- background (phase 1, slot 100) ----
 SetBackground(ChartBackgroundScope, const ChartBackground&);  // Solid|Gradient|Image|Video|GLShader|Scene3D
 
-// ---- interaction (layer 9) ----
+// ---- interaction (phase 3, slot 900) ----
 SetEnableTooltips(bool); SetTooltipGenerator(fn);
 SetEnableHover(bool); SetEnableSelection(SelectionMode); SetEnableBrushing(bool);
 SetEnableZoom(bool); SetEnablePan(bool); SetShowCrosshair(bool);
@@ -418,6 +574,11 @@ SetAnimation(bool, durationMs, ChartEasing); RenderToPixmap(UCPixmap&, Size2Di);
 
 `UltraCanvasLabelPlacement` stays the solver; it gains a session, an index, and
 the chart-facing capabilities from §3.4.
+
+The session is **owned by the chart's label plan and outlives the frame**: it is
+built when the chart is created, added to incrementally as each phase
+contributes its labels, and thrown away only when the plan is invalidated
+(§5.7). Redraws never touch it.
 
 ```cpp
 // ---- session: one collision world, reused across passes ----
@@ -529,7 +690,7 @@ struct ChartHighlight {
     double  confidence = 0.95, padding = 18.0, smoothing = 0.6;
     Color   fill, stroke; float strokeWidth = 0.0f; bool dashed = false;
     std::string label; Color labelColor; bool labelFollowsContour = false;
-    int     zSlot = 200;                  // 200 = wash behind the grid, 650 = over the series
+    int     zSlot = 200;                  // 200 = phase-1 wash behind the grid, 700 = phase-3 overlay
 };
 ```
 
@@ -565,7 +726,7 @@ financial (one axis renderer), scatter3D + contourSurface3D + GL (one camera).
 | Phase | Content |
 |---|---|
 | **P0** | Label engine upgrade (§7) + unit tests. Independently useful; deletes the §4 workarounds. |
-| **P1** | Engine core: frame, layer stack, dirty model, two-pass layout, `Vertical`/`Horizontal` projections, axis + scale + tick model, theme/palette, label broker, shared legend + colour bar, solid/gradient/image backgrounds, interaction state. **Plus the parallel coordinate chart as the first native client**, exercising all nine layers including axis histograms (§8.1) and highlight regions (§8.2). |
+| **P1** | Engine core: the three-phase render driver, `IChartContent` contract, frozen frame, slot ordering, dirty model, two-pass layout, cached label plan with the §5.7 invalidation rules and §5.8 per-type policies, `Vertical`/`Horizontal` projections, axis + scale + tick model, theme/palette, shared legend + colour bar, solid/gradient/image backgrounds, interaction state. **Plus the parallel coordinate chart as the first native client**, implementing only phase 2 and exercising every phase-1/phase-3 slot including axis histograms (§8.1) and highlight regions (§8.2). |
 | **P2** | Tier-1 adapter for all existing charts; Tier-2 migration of the colour-bar and legend families; `Polar` projection; `Space3D` projection with one camera; video / GL-shader / 3D-scene backgrounds; export to pixmap. |
 | **P3** | Remaining Tier-2 migrations; density/binned series rendering; animated transitions between layouts; multi-chart linked selection. |
 
@@ -588,6 +749,14 @@ financial (one axis renderer), scatter3D + contourSurface3D + GL (one camera).
    (`UltraCanvasVideoPlayerElement` / `UltraCanvasGLSurface`) composited beneath
    a chart with a transparent background, not a paint operation. Confirm that
    composition model before P2.
-5. **Label session ownership** — one session per frame owned by the engine
-   (recommended), versus a persistent session that survives across frames and is
-   incrementally invalidated (faster, but needs careful invalidation).
+5. ~~**Label session ownership**~~ — **resolved**: the session and its solved
+   plan are persistent, built at chart creation and rebuilt only on the
+   invalidation list in §5.7. The solver never runs on a redraw.
+6. **Per-type label policies** — §5.8 proposes defaults per chart family (axis
+   furniture excluded; parallel-coordinate axis headers and heatmap row/column
+   labels as obstacles; radar spoke labels solved). These defaults need a review
+   pass per chart type as each one migrates.
+7. **Throttled re-solve during zoom / pan / axis reorder** — re-solve on
+   interaction end (recommended, zero cost during the drag, labels lag the
+   geometry until release) versus a fixed interval such as 150 ms (labels track
+   better, costs one solve per interval).
