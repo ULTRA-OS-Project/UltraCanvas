@@ -230,6 +230,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEvent.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasConfig.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUtils.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasGitRepository.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUtilsUtf8.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasApplication.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRenderInterface.cpp
@@ -304,6 +305,10 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/FlexLayout.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/GridLayout.cpp
 
+        # Collision-aware placement of annotation labels around shapes.
+        # Part of the layout engine, not of any chart/diagram plugin.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasLabelPlacement.cpp
+
         # HTMLReader: HTML/XHTML parser + CSS subset + DOM→element builder
         # on top of the CSSLayout engine (used by the eBook subsystem).
         ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/HTMLDocument.cpp
@@ -344,11 +349,11 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartLegend.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasSpecificChartElements.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartDataStructures.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasLabelPlacement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasFinancialChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasDivergingBarChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasDumbbellChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasFunnelChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasPyramidChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasWaterfallChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasMekkoChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasNestedAreaChart.cpp
@@ -356,6 +361,9 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasJitterPlotElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasQuadrantChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasGanttChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasTimelineChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasKanbanBoard.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasCumulativeFlowChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasPieChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasSunburstChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasConnectionRenderer.cpp
@@ -373,6 +381,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasMarchingSquares.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasContourChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasContourSurface3D.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasScatterPlot3D.cpp
         # GL-backed variant; compiles to an empty TU when ULTRACANVAS_ENABLE_GL is off
         # (the header then aliases the class onto the software renderer above).
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasContourSurfaceGL.cpp
@@ -386,6 +395,10 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasAdjacencyDiagram.cpp
 
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/SVG/UltraCanvasSVGPlugin.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasDiagramViewport.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasMindMapLayout.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasMindMap.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasMindMapIO.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasSankey.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasPacketLayout.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasPacketTemplates.cpp
@@ -393,18 +406,32 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasPacketDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasVennDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasSWOTDiagram.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasTimelineDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasWordCloudDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasDendrogram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasDendrogramLayout.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasBlockDiagram.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasDiagramRouting.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasUMLModel.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasUMLNotation.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasUMLTextExport.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasCppReverseEngineer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasFlowChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasPertChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasNodeDiagram.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasERDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasGourceTree.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasGitGraphLayout.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasGitGraphMermaid.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasGitGraph.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasTreeMapElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasFlowChartPalette.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasGaugeDiagramElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasCompositorDiagram.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasRequirementModel.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasRequirementDiagram.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasRequirementDiagramLayout.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasRequirementDiagramRender.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Barcode/UltraCanvasBarcodeElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Barcode/UltraCanvasBarcodeEncoders.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Barcode/Encoders/CodabarEncoder.cpp
@@ -684,7 +711,7 @@ set_target_properties(${ULTRACANVAS_LIB_NAME} PROPERTIES
     VERSION ${ULTRACANVAS_VERSION}
     SOVERSION 1
     POSITION_INDEPENDENT_CODE ON
-    OUTPUT_NAME "ultracanvas"
+    OUTPUT_NAME "UltraCanvas"
 )
 
 if(WIN32)
@@ -1609,7 +1636,6 @@ if(ULTRACANVAS_PLUGIN_LATEX)
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/LaTeX/UltraCanvasLaTeXModule.cpp
     )
     set_target_properties(UltraCanvasLaTeX PROPERTIES
-        PREFIX "lib"                     # libUltraCanvasLaTeX.so on all UNIX
         CXX_VISIBILITY_PRESET hidden
         # Co-locate with the core lib so the loader's "<exe>/../lib" and bare-name
         # searches find it during dev/test; installers can relocate it.
@@ -1661,7 +1687,7 @@ if(ULTRACANVAS_PLUGIN_LATEX)
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_PLUGIN_LATEX=1)
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${CMAKE_DL_LIBS})
 
-    message(STATUS "  [✓] LaTeX Plugin - ENABLED (on-demand module: libUltraCanvasLaTeX)")
+    message(STATUS "  [✓] LaTeX Plugin - ENABLED (on-demand module: UltraCanvasLaTeX)")
 else()
     message(STATUS "  [−] LaTeX Plugin - SKIPPED (disabled by option)")
 endif()

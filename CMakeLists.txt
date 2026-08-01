@@ -149,6 +149,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasDivergingChartExamples.cpp
             Apps/DemoApp/UltraCanvasDumbbellChartExamples.cpp
             Apps/DemoApp/UltraCanvasFunnelChartExamples.cpp
+            Apps/DemoApp/UltraCanvasPyramidChartExamples.cpp
             Apps/DemoApp/UltraCanvasWatefallChartExamples.cpp
             Apps/DemoApp/UltraCanvasMekkoChartExamples.cpp
             Apps/DemoApp/UltraCanvasNestedAreaChartExamples.cpp
@@ -162,18 +163,24 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasDendrogramExamples.cpp
             Apps/DemoApp/UltraCanvasBlockDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasNodeDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasERDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasFlowChartExamples.cpp
             Apps/DemoApp/UltraCanvasPertChartExamples.cpp
             Apps/DemoApp/UltraCanvasGourceTreeExamples.cpp
+            Apps/DemoApp/UltraCanvasGitGraphExamples.cpp
             Apps/DemoApp/UltraCanvasJitterPlotExamples.cpp
             Apps/DemoApp/UltraCanvasBubbleChartExamples.cpp
             Apps/DemoApp/UltraCanvasQuadrantChartExamples.cpp
             Apps/DemoApp/UltraCanvasSWOTDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasTimelineDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasTimelineChartExamples.cpp
             Apps/DemoApp/UltraCanvasGanttChartExamples.cpp
+            Apps/DemoApp/UltraCanvasKanbanBoardExamples.cpp
             Apps/DemoApp/UltraCanvasPopulationChartExamples.cpp
             Apps/DemoApp/UltraCanvasSegmentedControlExamples.cpp
             Apps/DemoApp/UltraCanvasBreadcrumbExamples.cpp
             Apps/DemoApp/UltraCanvasLayoutExamples.cpp
+            Apps/DemoApp/UltraCanvasLabelPlacementExamples.cpp
             Apps/DemoApp/UltraCanvasToolbarExamples.cpp
             Apps/DemoApp/UltraCanvasTabExamples.cpp
             Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp
@@ -191,6 +198,8 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasPacketDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasAdjacencyDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasArcDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasRequirementDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasMindMapExamples.cpp
             Apps/DemoApp/UltraCanvasNetworkingExamples.cpp
             Apps/DemoApp/UltraCanvasSlideshowExamples.cpp
             Apps/DemoApp/UltraCanvasAlbumExamples.cpp
