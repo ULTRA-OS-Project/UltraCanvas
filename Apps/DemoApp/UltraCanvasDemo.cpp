@@ -1291,6 +1291,23 @@ namespace UltraCanvas {
                                "DemoApp/UltraCanvasVennDiagramExamples.cpp",
                                "Docs/UltraCanvas/UltraCanvasVennDiagramExamples.md");
 
+        diagramBuilder.AddItem("packetdiagram", "Packet Diagram",
+                               "Bit-accurate protocol header and frame structure: RFC word grid "
+                               "with fields wrapping across rows, proportional byte strips, "
+                               "layer brackets, bit and byte rulers, word gutters, dimension "
+                               "rails, stacked flag bits, sub-fields, and a Mermaid-compatible "
+                               "text spec",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreatePacketDiagramExamples(); },
+                               "DemoApp/UltraCanvasPacketDiagramExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasPacketDiagram.md")
+                .AddVariant("packetdiagram", "TCP/IP Stack")
+                .AddVariant("packetdiagram", "Rails + Payload")
+                .AddVariant("packetdiagram", "RFC Monochrome")
+                .AddVariant("packetdiagram", "Proportional Strip")
+                .AddVariant("packetdiagram", "Byte Columns + Values")
+                .AddVariant("packetdiagram", "Text Spec (Mermaid)");
+
         diagramBuilder.AddItem("wordcloud", "Word Cloud", "Frequency word cloud with shapes, masks and center image",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateWordCloudExamples(); },
@@ -1353,9 +1370,6 @@ namespace UltraCanvas {
     diagramBuilder.AddItem("kanbandiagram", "Kanban Diagram", "Kanban Diagram",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("Kanban Diagram is not ready yet"); });
-    diagramBuilder.AddItem("packetdiagram", "Packet Diagram", "Packet Diagram",
-                               ImplementationStatus::NotImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("Packet Diagram is not ready yet"); });
     diagramBuilder.AddItem("gitgraph", "Git Graph", "Git Graph",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("Git Graph is not ready yet"); });

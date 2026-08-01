@@ -317,6 +317,32 @@ add_test(
 )
 message(STATUS "    Test registered: ContourGeometryTest")
 
+# ===== PACKET LAYOUT TEST =====
+# Packet structure model, layout engine (row splitting with continuation
+# edges, proportional clamping, lanes), validators, and the RFC-pinning
+# template tests. No UI stack - the layout engine is pure geometry.
+message(STATUS "  Building PacketLayoutTest...")
+add_executable(PacketLayoutTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/PacketLayoutTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasPacketLayout.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasPacketTemplates.cpp
+)
+target_include_directories(PacketLayoutTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(PacketLayoutTest PRIVATE cxx_std_20)
+set_target_properties(PacketLayoutTest PROPERTIES
+    OUTPUT_NAME "PacketLayoutTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME PacketLayoutTest
+    COMMAND PacketLayoutTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: PacketLayoutTest")
+
 # ===== VIRTUALFS PATH TEST =====
 # Regression test for VirtualFSPath archive-path resolution (Unix, relative
 # and Windows drive-letter paths). Header-only - no link dependencies, so it

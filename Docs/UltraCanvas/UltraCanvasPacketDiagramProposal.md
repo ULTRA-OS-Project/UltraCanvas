@@ -1,7 +1,26 @@
 # UltraCanvas Packet Diagrams — Research & Feature Proposal
 
-Status: **Proposal — not yet implemented.** This document is the research
-write-up and the roadmap for packet / protocol visualisation in UltraCanvas.
+Status: **Phase 0 and Phase 1 implemented** — see
+[`UltraCanvasPacketDiagram.md`](UltraCanvasPacketDiagram.md) for the API
+documentation and `Apps/DemoApp/UltraCanvasPacketDiagramExamples.cpp` for the
+demo. This document remains the research write-up and the roadmap for
+Phases 2 and 3.
+
+Delivered: the shared `UltraCanvasChartLegend` (§10.1 G1–G9, G11); the
+dependency-free `UltraCanvasPacketModel` / `UltraCanvasPacketLayout` /
+`UltraCanvasPacketParser` / `UltraCanvasPacketTemplates` units; the
+`UltraCanvasPacketDiagram` element with the word-grid, proportional and lane
+layouts, row-wrapping fields with continuation edges, layers and sub-fields,
+flag stacking, highlight sets, banding, bit and byte rulers with stacked-digit
+labels, offset and word gutters, dimension rails, twin braces, the monochrome
+theme, tooltips and click callbacks; the Mermaid-compatible parser with ASCII
+and Mermaid emitters; the validators; eight RFC-pinned protocol templates;
+`Tests/PacketLayoutTest.cpp` (80+ assertions, registered with CTest); the
+six-tab demo; and the API documentation.
+
+Still open from Phase 1: JSON load/save via `UltraCanvasJSON` (X3) and
+on-diagram validation badges (V6's visual half). Everything else outstanding
+is Phase 2 or 3 as scheduled in §11.
 
 Author: UltraCanvas Framework
 Last Modified: 2026-07-31
