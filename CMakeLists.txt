@@ -43,6 +43,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # ===== BUILD OPTIONS =====
 option(BUILD_TEXTER_APP "Build the texter application" ON)
+option(BUILD_ULTRAFILER_APP "Build the UltraFiler file manager application" ON)
 option(BUILD_FILEMANAGER_APP "Build the file manager application" OFF) # OFF: source files not yet committed
 option(BUILD_DEMO_APP "Build the demo application" ON)
 option(BUILD_ULTRAAI_APP "Build the UltraAI dashboard demo application" ON)
@@ -530,6 +531,47 @@ endif()
 #            OUTPUT_NAME "UltraCanvasTexter"
 #            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/..
 #    )
+endif()
+
+# ===== ULTRAFILER APPLICATION =====
+# Windows Explorer style file manager: folder tree (UltraCanvasTreeView) +
+# folder content (UltraCanvasFilerWidget) + media preview
+# (UltraCanvasMediaViewer) in a three-pane split window.
+if (BUILD_ULTRAFILER_APP)
+    message(STATUS "")
+    message(STATUS "── Building UltraFiler Application ──")
+
+    add_executable(UltraFiler
+            Apps/UltraFiler/main.cpp
+            Apps/UltraFiler/UltraFilerWindow.cpp
+    )
+    # Export dynamic symbols so on-demand plugin modules can resolve core
+    # symbols when the core is linked statically (see UltraCanvasDemo).
+    set_target_properties(UltraFiler PROPERTIES ENABLE_EXPORTS ON)
+
+    target_include_directories(UltraFiler PRIVATE
+            ${ULTRACANVAS_INCLUDE_DIRS}
+            ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraFiler
+    )
+
+    target_link_libraries(UltraFiler PRIVATE
+            ${ULTRACANVAS_LIBRARY}
+    )
+    target_link_libraries(UltraFiler PRIVATE fmt::fmt)
+
+    target_compile_features(UltraFiler PRIVATE cxx_std_20)
+
+    target_compile_definitions(UltraFiler PRIVATE
+            ULTRAFILER_VERSION="${PROJECT_VERSION}"
+            UCAPP_ICON_PATH="media/appicon/UltraCanvas.png"
+            $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
+    )
+
+    # Embed app icon in .exe (Windows only)
+    ultracanvas_embed_app_icon(UltraFiler
+        "${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/UltraCanvas.png")
+
+    message(STATUS "  UltraFiler executable: UltraFiler")
 endif()
 
 # ===== ULTRAAI APPLICATION =====
