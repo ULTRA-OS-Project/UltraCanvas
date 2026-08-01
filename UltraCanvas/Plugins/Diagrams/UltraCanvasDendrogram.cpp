@@ -1,10 +1,13 @@
 // UltraCanvasDendrogram.cpp
 // Interactive dendrogram / phylogenetic tree diagram element
-// Version: 1.5.0
-// Last Modified: 2026-07-31
+// Version: 1.5.1
+// Last Modified: 2026-08-01
 // Author: UltraCanvas Framework
 //
 // Changelog:
+//   v1.5.1 (2026-08-01):
+//     - Radial leaf labels in the upper-right quadrant were rendered upside down
+//       (half test assumed a (-pi, pi] angle range; the layout produces [0, 2pi)).
 //   v1.5.0 (2026-07-31):
 //     - Hierarchical edge bundling for leaf-to-leaf relations (Holten 2006).
 //     - Area-proportional node dots driven by DendrogramNode::nodeValue.
@@ -1323,8 +1326,20 @@ static constexpr float kPi = 3.14159265f;
             } else if (orientation == DendrogramOrientation::Radial) {
                 // Radial label WITH CONNECTING LINE to node (colored branch extension)
                 float angle = node.angle;
-                bool rightHalf = (angle > -kPi * 0.5f && angle < kPi * 0.5f);
-                
+
+                // FIXED in 1.5.1: the half test was `angle > -pi/2 && angle < pi/2`,
+                // which assumes angles in (-pi, pi]. ApplyRadialLayout produces
+                // [0, 2pi), so every leaf in the upper-right quadrant (angle in
+                // (3pi/2, 2pi)) failed the test, took the left-half branch and was
+                // rendered rotated 180 degrees - upside down.
+                //
+                // Rotating by `rot` maps the text's up-vector to (sin rot, -cos rot).
+                // Screen y grows downward, so the text reads right way up exactly
+                // when cos(rot) > 0. Testing that directly is range-independent and
+                // cannot drift out of sync with the layout's angle convention.
+                bool rightHalf = std::cos(angle) >= 0.0f;
+
+
                 int tw = ctx->GetTextLineWidth(label);
                 int th = static_cast<int>(style.leafLabelFontSize);
                 float baseOffset = static_cast<float>(style.leafLabelPadding + 2);
@@ -1725,7 +1740,12 @@ static constexpr float kPi = 3.14159265f;
 
             ctx->PushState();
             ctx->Translate(lx, ly);
-            ctx->Rotate(midAngle + (midAngle > kPi * 0.5f && midAngle < kPi * 1.5f ? kPi : 0.0f));
+            // 1.5.1: same range-independent rule as the leaf labels - flip when
+            // rotating by midAngle alone would put the text upside down. The old
+            // form (midAngle > pi/2 && midAngle < 3pi/2) happened to be correct
+            // for the layout's [0, 2pi) angles, but silently breaks if that
+            // convention ever changes.
+            ctx->Rotate(midAngle + (std::cos(midAngle) < 0.0f ? kPi : 0.0f));
             ctx->SetTextPaint(g->branchColor);
             ctx->DrawText(g->label, {-tw * 0.5, g->groupLabelFontSize * 0.35});
             ctx->PopState();

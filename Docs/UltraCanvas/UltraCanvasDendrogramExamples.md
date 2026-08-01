@@ -1,7 +1,7 @@
 # UltraCanvasDendrogram Documentation
 
-**Version:** 1.5.0
-**Last Modified:** 2026-07-31
+**Version:** 1.5.1
+**Last Modified:** 2026-08-01
 **Author:** UltraCanvas Framework
 
 ## Overview
@@ -34,6 +34,12 @@ UltraCanvasUIElement
 - **Label background pills:** optional rounded rectangles behind labels for readability.
 - **Hierarchical edge bundling (1.5.0):** leaf-to-leaf associations drawn as splines routed through the tree, with a bundling-strength (beta) control.
 - **Area-proportional node dots (1.5.0):** size each node from a per-node value instead of a single global radius.
+
+> **Fixed in 1.5.1:** radial leaf labels in the upper-right quadrant rendered
+> upside down. Text rotation now keys off `cos(rotation)` — the actual condition
+> for "this text is not upside down" — instead of a hard-coded angle window that
+> assumed a different range than the layout produces. Group arc labels use the
+> same rule.
 
 ## Header Includes
 

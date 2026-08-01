@@ -1,3 +1,15 @@
+#### 2026-08-01 *0.3.23*
+- **UltraCanvasDendrogram** *(1.5.1)*: fixed radial leaf labels rendering upside
+  down in the upper-right quadrant. The left/right half test was
+  `angle > -pi/2 && angle < pi/2`, which assumes angles in `(-pi, pi]`, but
+  `DendrogramLayoutEngine::ApplyRadialLayout` produces `[0, 2pi)` — so every leaf
+  between `3pi/2` and `2pi` failed the test, took the left-half branch and picked
+  up an extra 180-degree rotation. Both the leaf labels and the group arc labels
+  now test `cos(rotation)`, which is precisely the condition for "this text is not
+  upside down" and does not depend on which angle range the layout uses. Audited
+  the other radial components at the same time — Sunburst, Chord, RadialBar,
+  CircularInfoGraphic and PolarChart all normalise correctly and were unaffected.
+
 #### 2026-07-31 *0.3.22*
 - **UltraCanvasNodeDiagram** *(2.2.0)*: organizational-network features. Node
   size can now be driven by the data - `NodeSizeMode::ByDegree` sizes a node

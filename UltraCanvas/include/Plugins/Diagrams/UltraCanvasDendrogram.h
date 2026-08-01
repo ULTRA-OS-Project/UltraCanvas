@@ -1,8 +1,18 @@
 // UltraCanvasDendrogram.h
 // Interactive dendrogram / phylogenetic tree diagram element
-// Version: 1.5.0
-// Last Modified: 2026-07-31
+// Version: 1.5.1
+// Last Modified: 2026-08-01
 // Author: UltraCanvas Framework
+//
+// CHANGELOG 1.5.1 (patch):
+//  - FIXED: radial leaf labels in the upper-right quadrant rendered upside down.
+//         The half test was `angle > -pi/2 && angle < pi/2`, which assumes angles
+//         in (-pi, pi]; DendrogramLayoutEngine::ApplyRadialLayout produces
+//         [0, 2pi), so every leaf between 3pi/2 and 2pi failed the test, took the
+//         left-half branch and was rotated an extra 180 degrees. Both the leaf
+//         labels and the group arc labels now test cos(rotation), which is what
+//         "the text is not upside down" actually means and is independent of the
+//         angle range the layout happens to use.
 //
 // CHANGELOG 1.5.0 (minor):
 //  - NEW: Hierarchical edge bundling (Holten 2006). AddRelation() registers a
