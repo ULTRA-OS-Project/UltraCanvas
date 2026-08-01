@@ -32250,11 +32250,12 @@ carry a much larger handle.
 ## Splitter handle
 
 ```cpp
-enum class SplitterHandleShape { NoHandle, Square, RoundedSquare, Round };
+enum class SplitterHandleShape { NoHandle, Square, RoundedSquare, Round, Image };
 ```
 
 `Round` is fully rounded: a **circle** when the handle is square, a **capsule**
-when it is elongated.
+when it is elongated. `Image` draws an SVG or raster asset as the handle — see
+[Image handles](#image-handles).
 
 ```cpp
 // Shorthand
@@ -32284,13 +32285,51 @@ split->SetSplitterHandleStyle(hs);
 | Field | Meaning |
 |---|---|
 | `crossSize` | Handle size perpendicular to the line. The splitter strip widens to fit it. |
-| `axisLength` | Handle size along the line. `<= 0` means auto: `crossSize` for a bare handle, or just enough to wrap the icon group when `containsIcons` is set. |
+| `axisLength` | Handle size along the line. `<= 0` means auto: the image's aspect ratio when `imagePath` is set, otherwise `crossSize` for a bare handle, or just enough to wrap the icon group when `containsIcons` is set. |
 | `cornerRadius` | Used by `RoundedSquare` only. |
 | `position` | Where the handle sits along the line, `0.0` … `1.0`. |
 | `containsIcons` | `true` (default): the icons of this splitter are drawn inside the handle. `false`: handle and icons are positioned independently. |
 
 Dragging works on the handle exactly as on the rest of the line — the handle is
 a visual affordance, not a separate control.
+
+### Image handles
+
+```cpp
+// Shorthand — shape, path and size in one call
+split->SetSplitterHandleImage("media/icons/scrollbar-handle-v.svg",
+                              /*crossSize*/ 14, /*axisLength*/ 48);
+
+// Full control
+SplitterHandleStyle hs = split->GetSplitterHandleStyle();
+hs.shape       = SplitterHandleShape::Image;
+hs.imagePath   = "media/icons/scrollbar-handle-v.svg";
+hs.crossSize   = 14;
+hs.axisLength  = 0;                      // 0 = take proportions from the asset
+hs.imageFit    = ImageFitMode::Fill;
+hs.imageAsMask = false;                  // true tints a monochrome glyph
+hs.imageColor  = Colors::Transparent;    // Transparent = follow the state color
+split->SetSplitterHandleStyle(hs);
+```
+
+| `shape` | `imagePath` | Result |
+|---|---|---|
+| `Image` | set | The image **is** the handle — no fill, border or grip |
+| `Image` | empty | Nothing is drawn |
+| `Square` / `RoundedSquare` / `Round` | set | The shape is drawn and the image is centred on top of it; the grip is suppressed |
+| `Square` / `RoundedSquare` / `Round` | empty | The plain drawn shape, with grip lines |
+
+Supply an asset matching the orientation: a **tall** one for a `Horizontal`
+split pane (whose split line is vertical), a **wide** one for a `Vertical` one.
+`media/icons/scrollbar-handle-v.svg` (14 × 48) and `scrollbar-handle-h.svg`
+(48 × 14) are ready-made grips.
+
+With `axisLength <= 0` the handle takes its length from the asset's aspect
+ratio, so a 14 × 48 grip at `crossSize = 14` renders 48 px long rather than as
+a squashed square. Setting `imageAsMask = true` re-colours a monochrome glyph
+with `imageColor`, or with the handle's own normal/hover/active color when
+`imageColor` is left transparent — which makes an image handle react to hover
+and drag the way a drawn one does.
 
 ## Action icons on the split line
 

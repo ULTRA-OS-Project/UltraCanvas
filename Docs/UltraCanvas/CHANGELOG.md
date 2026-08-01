@@ -1,14 +1,24 @@
 #### 2026-08-01 *0.3.21*
 - **UltraCanvasSplitPane**: split lines can now carry an optional **handle**.
-  `SplitterHandleShape` picks the form - `Square`, `RoundedSquare` or `Round`
-  (a circle when square, a capsule when elongated) - and `SplitterHandleStyle`
-  sets its size across and along the line, corner radius, position along the
-  line (0..1), colors, border and grip lines. The splitter strip widens to fit
-  the handle while the painted line stays as thin as `splitterThickness`, so a
-  3 px line can carry a 22 px handle. `SetSplitterHandleShape()` is the
-  one-liner; the handle drags exactly like the rest of the line. The shape
-  enumerator for "no handle" is `NoHandle`, not `None`, because `<X11/X.h>`
-  defines `None` as a macro.
+  `SplitterHandleShape` picks the form - `Square`, `RoundedSquare`, `Round`
+  (a circle when square, a capsule when elongated) or `Image` - and
+  `SplitterHandleStyle` sets its size across and along the line, corner radius,
+  position along the line (0..1), colors, border and grip lines. The splitter
+  strip widens to fit the handle while the painted line stays as thin as
+  `splitterThickness`, so a 3 px line can carry a 22 px handle.
+  `SetSplitterHandleShape()` is the one-liner; the handle drags exactly like the
+  rest of the line. The shape enumerator for "no handle" is `NoHandle`, not
+  `None`, because `<X11/X.h>` defines `None` as a macro.
+- **UltraCanvasSplitPane**: **image handles**. `SplitterHandleStyle::imagePath`
+  takes an SVG or raster asset, with `SetSplitterHandleImage()` as the
+  one-liner. With `SplitterHandleShape::Image` the asset is the whole handle;
+  with any drawn shape it is centred on top of it and the grip is suppressed.
+  Leaving `axisLength` at 0 takes the handle's proportions from the asset, so
+  the ready-made `media/icons/scrollbar-handle-v.svg` (14x48) renders as a grip
+  rather than a squashed square. `imageAsMask` re-tints a monochrome glyph with
+  `imageColor`, or with the handle's own normal/hover/active color when that is
+  left transparent, so an image handle can react to hover and drag like a drawn
+  one.
 - **UltraCanvasSplitPane**: **action icons on the split line**. Any number of
   icons per splitter (`AddSplitterIcon`, `SetSplitterIcons`,
   `InsertSplitterIcon`, `RemoveSplitterIcon`, `ClearSplitterIcons`), each with

@@ -271,9 +271,10 @@ namespace UltraCanvas {
 
         root->AddChild(MakeDescription(20, currentY, 960,
             "An optional grab handle sits on the split line. Pick a shape - square, square with rounded "
-            "edges, or round (a circle when square, a capsule when elongated) - and a size across the line. "
-            "The splitter strip widens to fit the handle; the split line itself stays as thin as configured. "
-            "Use the buttons to switch shape and size live."));
+            "edges, round (a circle when square, a capsule when elongated), or an SVG/raster image - and a "
+            "size across the line. The splitter strip widens to fit the handle; the split line itself stays "
+            "as thin as configured. An image handle with no explicit length takes its proportions from the "
+            "asset. Use the buttons to switch shape and size live."));
         currentY += 70;
 
         auto splitHandles = CreateHorizontalSplitPane("SplitPaneD", 20, currentY, 960, 200);
@@ -318,11 +319,13 @@ namespace UltraCanvas {
 
         {
             auto splitPtr = splitHandles.get();
-            auto applyHandle = [splitPtr](SplitterHandleShape shape, int crossSize, int axisLength) {
+            auto applyHandle = [splitPtr](SplitterHandleShape shape, int crossSize, int axisLength,
+                                          const std::string& imagePath) {
                 SplitterHandleStyle hs = splitPtr->GetSplitterHandleStyle();
                 hs.shape = shape;
                 hs.crossSize = crossSize;
                 hs.axisLength = axisLength;
+                hs.imagePath = imagePath;
                 splitPtr->SetSplitterHandleStyle(hs);
             };
 
@@ -331,14 +334,18 @@ namespace UltraCanvas {
                 SplitterHandleShape shape;
                 int crossSize;
                 int axisLength;
+                const char* image;   // empty for the drawn shapes
             };
             const HandleChoice choices[] = {
-                { "None",          SplitterHandleShape::NoHandle,      14,  0 },
-                { "Square",        SplitterHandleShape::Square,        14, 48 },
-                { "Rounded",       SplitterHandleShape::RoundedSquare, 14, 48 },
-                { "Capsule",       SplitterHandleShape::Round,         14, 48 },
-                { "Circle 22px",   SplitterHandleShape::Round,         22, 22 },
-                { "Rounded 20px",  SplitterHandleShape::RoundedSquare, 20, 64 },
+                { "None",         SplitterHandleShape::NoHandle,      14,  0, "" },
+                { "Square",       SplitterHandleShape::Square,        14, 48, "" },
+                { "Rounded",      SplitterHandleShape::RoundedSquare, 14, 48, "" },
+                { "Capsule",      SplitterHandleShape::Round,         14, 48, "" },
+                { "Circle 16px",  SplitterHandleShape::Round,         16, 16, "" },
+                { "Rounded 20px", SplitterHandleShape::RoundedSquare, 20, 64, "" },
+                // Image handle: axisLength 0 lets the 14x48 asset set its own
+                // proportions from the 14 px cross size.
+                { "SVG image",    SplitterHandleShape::Image,         14,  0, "scrollbar-handle-v.svg" },
             };
 
             float bx = 20;
@@ -350,7 +357,8 @@ namespace UltraCanvas {
                 SplitterHandleShape shape = c.shape;
                 int cs = c.crossSize;
                 int al = c.axisLength;
-                b->SetOnClick([applyHandle, shape, cs, al]() { applyHandle(shape, cs, al); });
+                std::string img = (c.image[0] != '\0') ? SplitIcon(c.image) : std::string();
+                b->SetOnClick([applyHandle, shape, cs, al, img]() { applyHandle(shape, cs, al, img); });
                 root->AddChild(b);
                 bx += 118;
             }

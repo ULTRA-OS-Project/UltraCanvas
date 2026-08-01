@@ -30,7 +30,9 @@ namespace UltraCanvas {
         NoHandle,       // no handle (default) — the split line is a plain strip
         Square,         // sharp-cornered rectangle
         RoundedSquare,  // rectangle with SplitterHandleStyle::cornerRadius corners
-        Round           // fully rounded: a circle when square, a capsule when elongated
+        Round,          // fully rounded: a circle when square, a capsule when elongated
+        Image           // the handle IS the image at SplitterHandleStyle::imagePath
+                        // (SVG or raster) — no fill, border or grip is drawn
     };
 
     struct SplitterHandleStyle {
@@ -54,8 +56,20 @@ namespace UltraCanvas {
         Color borderColor = Color(160, 160, 160, 255);   // Transparent = no border
         float borderWidth = 1.0f;
 
+        // Image (SVG or raster) drawn as, or inside, the handle. With
+        // SplitterHandleShape::Image the image IS the handle. With any drawn
+        // shape the image is centred on top of it and the grip is suppressed.
+        // Supply an asset matching the orientation - a tall one for a Horizontal
+        // split pane (vertical split line), a wide one for a Vertical one.
+        std::string imagePath;
+        ImageFitMode imageFit = ImageFitMode::Fill;
+        // Draw the image as a mask tinted with imageColor, for monochrome
+        // glyphs. Transparent imageColor follows the handle's state color.
+        bool  imageAsMask = false;
+        Color imageColor  = Colors::Transparent;
+
         // Grip lines drawn inside the handle. Suppressed when the handle carries
-        // icons, since the icons take that space.
+        // icons or an image, since those take that space.
         bool  showGrip      = true;
         int   gripLineCount = 3;
         int   gripSpacing   = 3;
@@ -202,6 +216,11 @@ namespace UltraCanvas {
         // Shorthand for the common case: pick a shape and its across-the-line size.
         void SetSplitterHandleShape(SplitterHandleShape shape, int crossSize = 16,
                                     int axisLength = 0, float cornerRadius = 4.0f);
+        // Shorthand for an image handle (SplitterHandleShape::Image). Pass an
+        // asset sized for the orientation - tall for a Horizontal split pane,
+        // wide for a Vertical one.
+        void SetSplitterHandleImage(const std::string& imagePath, int crossSize = 14,
+                                    int axisLength = 48);
 
         // ===== SPLITTER ACTION ICONS =====
         // Icons sit on the split line, centred across it and grouped at

@@ -76,6 +76,20 @@ namespace UltraCanvas {
         if (hasHandle) {
             float handleCross = std::min(static_cast<float>(hs.crossSize), crossExtent);
             float handleAlong = static_cast<float>((hs.axisLength > 0) ? hs.axisLength : hs.crossSize);
+            if (hs.axisLength <= 0 && !hs.imagePath.empty()) {
+                // Auto-length for an image handle follows the asset's aspect ratio, so
+                // a 14x48 grip renders as a grip rather than a squashed square. The
+                // image cache makes this a lookup after the first call.
+                if (auto img = UCImage::Get(hs.imagePath)) {
+                    int iw = img->GetWidth();
+                    int ih = img->GetHeight();
+                    if (iw > 0 && ih > 0) {
+                        float alongPx = horizontal ? static_cast<float>(ih) : static_cast<float>(iw);
+                        float crossPx = horizontal ? static_cast<float>(iw) : static_cast<float>(ih);
+                        if (crossPx > 0.0f) handleAlong = handleCross * (alongPx / crossPx);
+                    }
+                }
+            }
             if (hs.containsIcons && count > 0) {
                 handleAlong = std::max(handleAlong, groupLen + 2.0f * std::max(0, is.padding));
             }
@@ -188,28 +202,44 @@ namespace UltraCanvas {
         else if (IsHovered()) fill = hs.hoverColor;
 
         Rect2Dd r(handleRect.x, handleRect.y, handleRect.width, handleRect.height);
-        double radius = 0.0;
-        if (hs.shape == SplitterHandleShape::RoundedSquare) {
-            radius = std::max(0.0f, hs.cornerRadius);
-        } else if (hs.shape == SplitterHandleShape::Round) {
-            radius = std::min(r.width, r.height) / 2.0;   // circle when square, capsule when not
+        const bool imageOnly = (hs.shape == SplitterHandleShape::Image);
+        const bool hasImage  = !hs.imagePath.empty();
+
+        if (!imageOnly) {
+            double radius = 0.0;
+            if (hs.shape == SplitterHandleShape::RoundedSquare) {
+                radius = std::max(0.0f, hs.cornerRadius);
+            } else if (hs.shape == SplitterHandleShape::Round) {
+                radius = std::min(r.width, r.height) / 2.0;   // circle when square, capsule when not
+            }
+            radius = std::min(radius, std::min(r.width, r.height) / 2.0);
+
+            ctx->SetFillPaint(fill);
+            if (radius > 0.0) ctx->FillRoundedRectangle(r, radius);
+            else              ctx->FillRectangle(r);
+
+            if (hs.borderColor.a != 0 && hs.borderWidth > 0.0f) {
+                ctx->SetStrokePaint(hs.borderColor);
+                ctx->SetStrokeWidth(hs.borderWidth);
+                if (radius > 0.0) ctx->DrawRoundedRectangle(r, radius);
+                else              ctx->DrawRectangle(r);
+            }
         }
-        radius = std::min(radius, std::min(r.width, r.height) / 2.0);
 
-        ctx->SetFillPaint(fill);
-        if (radius > 0.0) ctx->FillRoundedRectangle(r, radius);
-        else              ctx->FillRectangle(r);
-
-        if (hs.borderColor.a != 0 && hs.borderWidth > 0.0f) {
-            ctx->SetStrokePaint(hs.borderColor);
-            ctx->SetStrokeWidth(hs.borderWidth);
-            if (radius > 0.0) ctx->DrawRoundedRectangle(r, radius);
-            else              ctx->DrawRectangle(r);
+        // The image is the whole handle for shape Image, and sits on top of the
+        // drawn shape otherwise.
+        if (hasImage) {
+            if (hs.imageAsMask) {
+                Color tint = (hs.imageColor.a != 0) ? hs.imageColor : fill;
+                ctx->DrawMask(tint, hs.imagePath, r, hs.imageFit);
+            } else {
+                ctx->DrawImage(hs.imagePath, r, hs.imageFit);
+            }
         }
 
-        // Grip lines only when the handle is not carrying the icons.
+        // Grip lines only when the handle is not already carrying icons or an image.
         bool carriesIcons = hs.containsIcons && !iconRects.empty();
-        if (!hs.showGrip || carriesIcons || hs.gripLineCount <= 0) return;
+        if (!hs.showGrip || carriesIcons || hasImage || imageOnly || hs.gripLineCount <= 0) return;
 
         const bool horizontal = (orientation == SplitOrientation::Horizontal);
         float alongLen  = horizontal ? handleRect.height : handleRect.width;
@@ -451,6 +481,16 @@ namespace UltraCanvas {
         splitStyle.handle.crossSize = std::max(0, crossSize);
         splitStyle.handle.axisLength = axisLength;
         splitStyle.handle.cornerRadius = cornerRadius;
+        PushStyleToSplitters();
+        InvalidateLayout();
+    }
+
+    void UltraCanvasSplitPane::SetSplitterHandleImage(const std::string& imagePath,
+                                                      int crossSize, int axisLength) {
+        splitStyle.handle.shape = SplitterHandleShape::Image;
+        splitStyle.handle.imagePath = imagePath;
+        splitStyle.handle.crossSize = std::max(0, crossSize);
+        splitStyle.handle.axisLength = axisLength;
         PushStyleToSplitters();
         InvalidateLayout();
     }
