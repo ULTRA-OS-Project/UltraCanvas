@@ -317,6 +317,11 @@ namespace UltraCanvas {
                     int hit = HitTestIcon(Point2Df(event.pointer.x, event.pointer.y));
                     if (IsIconActionable(hit)) {
                         pressedIcon = hit;
+                        // A handler may swap this icon out (collapse -> restore), which
+                        // would leave the old tooltip on screen describing an icon that
+                        // is no longer there.
+                        SetTooltip("");
+                        UltraCanvasTooltipManager::HideTooltip();
                         // Capture so the release comes back here even if the pointer
                         // slips off the icon; the application drops it on MouseUp.
                         if (auto* app = UltraCanvasApplication::GetInstance()) {
@@ -386,6 +391,9 @@ namespace UltraCanvas {
                     pressedIcon = -1;
                     UpdateGeometry();
                     int hit = HitTestIcon(Point2Df(event.pointer.x, event.pointer.y));
+                    // Forget the hover so the next move re-resolves it (and the
+                    // tooltip) against whatever the handler left on the line.
+                    hoveredIcon = -1;
                     RequestRedraw();
                     // Fire only when the release lands on the icon that was pressed.
                     if (hit == pressed && owner && IsIconActionable(pressed)) {
