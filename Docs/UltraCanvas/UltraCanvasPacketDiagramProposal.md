@@ -10,8 +10,15 @@ Last Modified: 2026-07-31
 > several structurally unrelated diagram types. This document therefore
 > proposes a **family** of elements sharing one data model, not a single
 > widget. §1 defines the taxonomy; §2 maps every reference image onto it; §3
-> shows which families the framework already covers; §§5–8 give the per-family
+> shows which families the framework already covers; §§5–9 give the per-family
 > feature lists.
+>
+> **Review status: all open questions resolved (2026-07-31).** The decisions
+> are recorded in §12 and are already reflected in the architecture, the
+> feature lists and the delivery order. Notably: the ladder element ships as
+> the framework's general-purpose `UltraCanvasSequenceDiagram` with a packet
+> preset, a **shared legend component** is pulled out as its own deliverable,
+> and the proposed UltraNet coupling was **rejected** — see §12.6.
 
 ---
 
@@ -26,7 +33,7 @@ geometrically. The taxonomy below is the core finding of this research.
 | **A** | **Packet Structure** (header / bitfield / format diagram) | *What do the bytes look like?* | Bit-proportional cell grid | **New element needed** |
 | **B** | **Packet Switching / Routing** | *How do packets get across the network?* | Topology graph + tokens in transit | **New element on top of `UltraCanvasNodeDiagram`** |
 | **C1** | **Packet Processing Flow** (netfilter/iptables, NIC ingress, kernel stack) | *What happens to a packet inside a box?* | Flowchart with decisions | **Covered** by `UltraCanvasFlowChart` (+ swimlanes) |
-| **C2** | **Packet Flow Graph / Ladder** (Wireshark *Statistics → Flow Graph*) | *Who sent what, when?* | Lifelines + time-ordered arrows | **New element needed** |
+| **C2** | **Packet Flow Graph / Ladder** (Wireshark *Statistics → Flow Graph*) | *Who sent what, when?* | Lifelines + time-ordered arrows | **New `UltraCanvasSequenceDiagram`** — general-purpose, with a packet preset |
 | **D** | **Packet Data** (hex dump + dissection tree) | *What are the actual values?* | Monospace byte pane + tree | **New companion view** |
 | **E** | **Encapsulation / OSI layering** | *Which protocol wraps which?* | Nested PDU bands | **Mode of A** |
 | **F** | **Packet Timing / bitstream** (SDIO, SPI, CAN) | *What does the bus do bit by bit?* | Lanes over time | **Mode of A** |
@@ -39,6 +46,11 @@ The three families that need real work are **A** (structure), **B**
 (switching) and **C2** (flow graph). **D** is a companion pane that makes A and
 C2 far more useful. Everything else is a mode of one of those, or already
 exists in the framework.
+
+Two supporting deliverables fall out of the same work and are scoped in §10:
+a **shared legend component** (§10.1) and **swimlanes on
+`UltraCanvasFlowChart`** (§10.2) — both are framework-wide wins that the packet
+work merely forces into the open.
 
 The variants are recognised as distinct in the literature: packet *flow*
 diagrams show data movement and processing sequences, packet *switching*
@@ -215,9 +227,10 @@ covered**, and the third gets its hardest half for free.
 | **A — Structure** | Nothing | The whole element |
 | **B — Switching** | `UltraCanvasNodeDiagram` v2.0.6 — force-directed and manual layout, `NodeDiagramLink` with `LinkStyle::{Straight,Bezier,SmoothStep,Step}`, arrowheads, zoom/pan, `WorldToScreen`/`ScreenToWorld`, minimap, hit testing, JSON save/load. Topology is **done**. | Packet tokens on links, route model, region containers, scenario panels, animation driver |
 | **C1 — Processing flow** | `UltraCanvasFlowChart` — `Process`, `Decision`, `Database`, `Cloud`, `Actor` shapes, orthogonal routing, themes | Swimlanes (grep finds none anywhere in the repo) — a small addition, useful far beyond packets |
-| **C2 — Flow graph / ladder** | Nothing — there is **no sequence/ladder diagram element in the framework at all** | The whole element |
+| **C2 — Flow graph / ladder** | Nothing — there is **no sequence/ladder diagram element in the framework at all** | The whole element, shipped as the general-purpose `UltraCanvasSequenceDiagram` |
 | **D — Packet data** | Nothing packet-specific | Hex pane + dissection tree |
 | **H — Statistics** | The full chart suite (`UltraCanvasFinancialChart`, line/area/heatmap …) | Nothing — out of scope by design |
+| *(cross-cutting)* | 10 private `RenderLegend`/`DrawLegend` implementations across the chart plugins, behind 5 incompatible position enums (`CircularLegendPosition`, `DumbbellLegendPosition`, `FunnelLegendPosition`, `LegendPosition`, `PolarLegendPosition`) plus a stringly-typed sixth in `UltraCanvasPopulationChart` | One shared legend component (§10.1) |
 
 Shared machinery to reuse rather than duplicate:
 
@@ -232,8 +245,31 @@ Shared machinery to reuse rather than duplicate:
 | `Plugins/Charts/UltraCanvasHexLayout.h` | The precedent to follow: header-only, dependency-free, unit-testable geometry with no UI includes |
 | `UltraCanvasTooltipManager` | Hover read-out in all four views |
 | `UltraCanvasJSON` | Load/save of specs, topologies and traces (never expose yyjson — house rule) |
-| `Plugins/UltraNet/rtp`, `.../rtsp` | Existing in-tree packet knowledge — the template library (§5.11) should be defined next to the code that already parses those headers so picture and parser cannot drift |
 | `UltraCanvas/CMakeLists.txt:389` (`Plugins/Diagrams/…`) | Where new `.cpp` files register — the source list is explicit, not globbed |
+
+### 3.1 What these elements must *not* depend on
+
+**No dependency on UltraNet, in either direction.** A packet diagram is a
+drawing widget: it consumes a `PacketModel` (field table) and, optionally, a
+`const uint8_t*`. It performs no I/O, opens no sockets and knows no protocol
+semantics. Equally, `Plugins/UltraNet/` must not gain a dependency on the
+diagram model in order to publish field tables — that would make a networking
+plugin link against a UI plugin to describe its own headers.
+
+The two plugin trees stay independent, and an application that wants both
+simply wires them together in app code:
+
+```cpp
+// Application code — the only place the two modules meet.
+UltraNetResult r = UltraNetRtpReceive(handle, buffer, sizeof(buffer));
+packetDiagram->SetModel(UltraCanvas::PacketTemplates::RTP());   // static field table
+packetDiagram->SetPacketBytes(buffer, r.bytesTransferred);      // the widget just draws
+```
+
+The protocol templates (§5.11) are therefore **plain static data** living in
+`Plugins/Diagrams/UltraCanvasPacketTemplates.cpp` — field names, offsets and
+lengths, no parsing code. See §12.6 for why the originally proposed coupling
+was rejected and what replaces it.
 
 ---
 
@@ -251,9 +287,10 @@ in every view, with selection synchronised between them.
                     └──────────────┬───────────────┘
         ┌──────────────┬───────────┴────────┬──────────────────┐
         ▼              ▼                    ▼                  ▼
-  PacketDiagram   PacketFlowDiagram   PacketSwitchingDiagram  PacketBytesView
-   (family A)        (family C2)          (family B)            (family D)
-   structure         ladder/time         topology+tokens        hex + tree
+  PacketDiagram   SequenceDiagram     PacketSwitchingDiagram  PacketBytesView
+   (family A)     + packet preset       (family B)             (family D)
+   structure        (family C2)        topology+tokens         hex + tree
+                    ladder/time      : UltraCanvasNodeDiagram
         └──────────────┴────────────────────┴──────────────────┘
                        PacketSelectionBus (id ↔ id ↔ byte range)
 ```
@@ -265,16 +302,28 @@ model is shared.
 
 ### 4.2 Files
 
+All four elements derive from `UltraCanvasUIElement` and live in
+`Plugins/Diagrams/` (§12.1).
+
 ```
-include/Plugins/Diagrams/UltraCanvasPacketModel.h       # field/layer model        (no UI deps)
-include/Plugins/Diagrams/UltraCanvasPacketLayout.h      # offsets -> cell rects    (no UI deps)
-include/Plugins/Diagrams/UltraCanvasPacketParser.h      # text spec -> model       (no UI deps)
-include/Plugins/Diagrams/UltraCanvasPacketTrace.h       # packets/endpoints/routes (no UI deps)
-include/Plugins/Diagrams/UltraCanvasPacketDiagram.h         # family A element
-include/Plugins/Diagrams/UltraCanvasPacketFlowDiagram.h     # family C2 element
-include/Plugins/Diagrams/UltraCanvasPacketSwitchingDiagram.h# family B element
-include/Plugins/Diagrams/UltraCanvasPacketBytesView.h       # family D companion
+# dependency-free model/algorithm units (no UI includes, unit-testable)
+include/Plugins/Diagrams/UltraCanvasPacketModel.h            # field/layer model
+include/Plugins/Diagrams/UltraCanvasPacketLayout.h           # offsets -> cell rects
+include/Plugins/Diagrams/UltraCanvasPacketParser.h           # text spec -> model
+include/Plugins/Diagrams/UltraCanvasPacketTrace.h            # packets/endpoints/routes
+include/Plugins/Diagrams/UltraCanvasPacketTemplates.h        # static protocol field tables
+
+# elements
+include/Plugins/Diagrams/UltraCanvasPacketDiagram.h          # family A  (+E/F/G modes)
+include/Plugins/Diagrams/UltraCanvasSequenceDiagram.h        # family C2 (general purpose)
+include/Plugins/Diagrams/UltraCanvasPacketSwitchingDiagram.h # family B  : UltraCanvasNodeDiagram
+include/Plugins/Diagrams/UltraCanvasPacketBytesView.h        # family D
 Plugins/Diagrams/UltraCanvasPacket*.cpp
+Plugins/Diagrams/UltraCanvasSequenceDiagram.cpp
+
+# shared, framework-wide (§10.1)
+include/Plugins/Charts/UltraCanvasChartLegend.h
+Plugins/Charts/UltraCanvasChartLegend.cpp
 ```
 
 ### 4.3 The structure model (family A)
@@ -375,8 +424,35 @@ real work is and where bugs would otherwise hide:
 
 ### 4.6 The switching element (family B)
 
-`UltraCanvasPacketSwitchingDiagram` **wraps** `UltraCanvasNodeDiagram` rather
-than reimplementing a graph. One small upstream addition is required:
+`UltraCanvasPacketSwitchingDiagram` **derives from** `UltraCanvasNodeDiagram`
+rather than reimplementing a graph or forwarding dozens of methods (§12.2).
+Because a packet figure is not a flow editor, the inherited authoring surface
+is suppressed in the constructor and the editing entry points are re-declared
+`private` so they cannot be reached through the derived type:
+
+```cpp
+class UltraCanvasPacketSwitchingDiagram : public UltraCanvasNodeDiagram {
+public:
+    UltraCanvasPacketSwitchingDiagram(...) {
+        SetInteractionLocked(true);      // no drag-to-connect, no node dragging
+        SetShowControls(false);          // no editor overlay
+        SetSnapToGrid(false);
+    }
+    // topology is declared, not drawn by hand:
+    void AddNode(const std::string& id, const std::string& label, PacketNodeRole role);
+    void AddLink(const std::string& fromId, const std::string& toId);
+private:
+    // hidden: handle/port editing, selection boxes, delete-key handling
+    using UltraCanvasNodeDiagram::AddHandle;
+    using UltraCanvasNodeDiagram::SetHandlesVisible;
+    /* … */
+};
+```
+
+Read-only inherited behaviour that packet figures *do* want — force-directed
+layout, `FitView`, zoom/pan, `WorldToScreen`, minimap, JSON load — stays public.
+
+One small upstream addition to `UltraCanvasNodeDiagram` is required:
 
 ```cpp
 // New public API on UltraCanvasNodeDiagram — sample a point along a routed link.
@@ -387,6 +463,32 @@ Point2Dd GetLinkTangentAt(const std::string& linkId, double t) const;
 That one function is what lets a packet token sit at 40% along a Bezier link
 with its arrow aligned to the local tangent, for every `LinkStyle`. Everything
 else — layout, zoom, pan, hit testing, JSON — is inherited.
+
+**The refactor this implies** (approved, §12.3). Today each `LinkStyle` builds
+its geometry inline inside the render path. The change extracts that into a
+pure function and leaves rendering as a consumer:
+
+```cpp
+// Private, in UltraCanvasNodeDiagram — one place that knows link geometry.
+struct LinkPath { std::vector<Point2Dd> points; bool isBezier; /* control pts */ };
+LinkPath BuildLinkPath(const NodeDiagramLink& link) const;   // per LinkStyle
+```
+
+`RenderLink` then draws `BuildLinkPath(...)`, and `GetLinkPointAt` walks the
+same path by arc length. Properties of the change worth stating up front:
+
+* **Purely additive in public API** — two new `const` methods; no existing
+  signature changes, so it is a **minor** version bump (2.1.0), not a breaking
+  one. This matters because `UltraCanvasNodeDiagram`'s changelog shows it is
+  actively used and has been through several behavioural fixes.
+* **Behaviour-preserving by construction** — the extracted function must return
+  the geometry the renderer already produced. The regression risk is arrow
+  placement on `SmoothStep`/`Step` links, which the changelog (2.3.1, 2.0.0)
+  shows has been fixed before; a golden-geometry unit test per `LinkStyle`
+  pins it.
+* **Independently useful** — link labels, hit testing and any future link
+  decoration (bandwidth ticks, flow arrows) all currently re-derive geometry
+  the renderer already computed. One source of truth removes that class of bug.
 
 Animation is driven by `UltraCanvasApplication::StartTimer`, but note that
 **both reference images are static figures**: the element must produce a good
@@ -497,7 +599,7 @@ do for a networking codebase.
 | S5 | Highlight set — emphasise any subset of fields independently of layer colour (image 1) | P1 |
 | S6 | Full theme surface (background, fill, border, text, ruler, banding, gutter) with light, dark and **monochrome/print** presets (image 6) | P1 |
 | S7 | Reuse of the 19 `UltraCanvasColormap` ramps for automatic colouring | P1 |
-| S8 | Legend: swatch + label for layers, kinds or source bytes; four edge positions (image 5) | P2 |
+| S8 | Legend: swatch + label for layers, kinds or source bytes; four edge positions (image 5) — **consumes the shared `UltraCanvasChartLegend` (§10.1), does not reimplement it** | P2 |
 | S9 | Automatic readable text colour (contrast against cell fill) | P1 |
 | S10 | Hatch/pattern fills for accessibility and monochrome print | P3 |
 | S11 | Per-field opacity + "dim all but the selection" focus mode | P2 |
@@ -568,7 +670,8 @@ do for a networking codebase.
 |---|---|---|
 | P1t | `PacketTemplates::IPv4()`, `IPv6()`, `TCP()`, `UDP()`, `ICMP()`, `ARP()`, `Ethernet()` | P1 |
 | P2t | `DNS()`, `DHCP()`, `TLSRecord()`, `HTTP2Frame()`, `QUICLongHeader()`, `WebSocketFrame()` | P2 |
-| P3t | `RTP()`, `RTCP()` built from the existing `Plugins/UltraNet/rtp` field knowledge | P2 |
+| P3t | `RTP()`, `RTCP()` — plain field tables written against RFC 3550, with **no dependency on `Plugins/UltraNet/` in either direction** (§3.1, §12.6) | P2 |
+| P6t | RFC-pinning unit tests per template (e.g. RTP: version @ 0–1, PT @ 9–15, SSRC @ 64–95) — the drift protection that replaces the rejected coupling | P1 |
 | P4t | Bus/embedded: `SDIOData()`, `CANFrame()`, `Modbus()`, `MQTT()`, `IEEE802_15_4()`, `USBPacket()` | P3 |
 | P5t | `Stack({Ethernet(), IPv4(), TCP()})` composition producing an image-1 style layered diagram | P2 |
 
@@ -586,7 +689,7 @@ Built on `UltraCanvasNodeDiagram`; only the packet layer is new.
 | PS3 | **Bounded network region** container — a labelled box or cloud grouping a node subset (image 7) | P1 |
 | PS4 | Link attributes: bandwidth, latency, cost, capacity — mapped to width, dash, colour or label | P2 |
 | PS5 | `GetLinkPointAt(linkId, t)` / `GetLinkTangentAt` added upstream to `UltraCanvasNodeDiagram` | P1 |
-| PS6 | Legend (`● Routers`), diagram title, per-scenario caption | P1 |
+| PS6 | Legend (`● Routers`) via the shared `UltraCanvasChartLegend` (§10.1), diagram title, per-scenario caption | P1 |
 | PS7 | **Multi-scenario comparison panels** — two or more topologies stacked or side by side, each captioned (image 8) | P2 |
 
 ### 6.2 Packets & routing
@@ -626,14 +729,27 @@ Built on `UltraCanvasNodeDiagram`; only the packet layer is new.
 
 ---
 
-## 7. Family C2 — Packet Flow Graph (ladder): feature list
+## 7. Family C2 — `UltraCanvasSequenceDiagram`: feature list
 
-There is no sequence/ladder diagram in the framework at all, so this element
-also fills a general-purpose gap (UML sequence diagrams come nearly free).
+Shipped as the framework's **general-purpose sequence diagram** with a packet
+preset, not as a packet-only widget (§12.7). The framework has no sequence
+diagram at all today, and the ladder geometry is identical to UML's:
+participants ≡ endpoints, messages ≡ packets, time flows down in both. Naming
+it for the general case costs nothing and doubles the payoff.
+
+The split is: **PF1–PF17 are the generic engine**, and the packet character
+comes entirely from a preset that supplies label formatting, colour-by-stream
+and the trace importer.
+
+```cpp
+auto seq = UltraCanvas::CreateSequenceDiagram("flow", 300, 20, 20, 640, 480);
+seq->ApplyPreset(UltraCanvas::SequencePreset::PacketFlow);   // Wireshark-style
+// or  SequencePreset::UML  — participants, messages, activations, notes
+```
 
 | # | Feature | Phase |
 |---|---|---|
-| PF1 | Vertical lifelines, one per endpoint, with header boxes and addresses | P1 |
+| PF1 | Vertical lifelines, one per participant/endpoint, with header boxes and subtitles (address, role) | P1 |
 | PF2 | Time flowing downward; arrows between lifelines, one per packet | P1 |
 | PF3 | Arrow labels: protocol, ports, flags, sequence number, frame size — Wireshark's flow-graph column set | P1 |
 | PF4 | Time axis modes: absolute, relative-to-first, delta-from-previous | P1 |
@@ -654,7 +770,11 @@ also fills a general-purpose gap (UML sequence diagrams come nearly free).
 | PF19 | Export to Mermaid `sequenceDiagram` and PlantUML | P2 |
 | PF20 | ASCII export (the Wireshark text flow-graph form) | P2 |
 | PF21 | SVG/PNG export | P2 |
-| PF22 | Reuse as a general UML sequence diagram (participants, messages, notes) | P3 |
+| **PF22** | **`SequencePreset::PacketFlow`** — Wireshark-style labels, colour-by-stream, time columns, `PacketTrace` importer | P1 |
+| **PF23** | **`SequencePreset::UML`** — participants, sync/async/return message arrows, notes | P2 |
+| PF24 | UML fragments: `alt` / `opt` / `loop` / `par` boxes with guard labels (reuses PF10's bracket machinery) | P2 |
+| PF25 | Participant creation/destruction markers (UML `create`/`destroy`) | P3 |
+| PF26 | Mermaid `sequenceDiagram` **import**, so existing docs render natively | P3 |
 
 ---
 
@@ -842,12 +962,13 @@ packet.AddPacket("4", {"a","sw2","sw4","b"});
 packet.SetShowReassembly(true);
 ```
 
-### Family C2 — flow graph / ladder
+### Family C2 — flow graph / ladder (`UltraCanvasSequenceDiagram`)
 
 ```cpp
-#include "Plugins/Diagrams/UltraCanvasPacketFlowDiagram.h"
+#include "Plugins/Diagrams/UltraCanvasSequenceDiagram.h"
 
-auto flow = UltraCanvas::CreatePacketFlowDiagram("flow", 300, 20, 20, 640, 480);
+auto flow = UltraCanvas::CreateSequenceDiagram("flow", 300, 20, 20, 640, 480);
+flow->ApplyPreset(UltraCanvas::SequencePreset::PacketFlow);
 flow->SetTitle("TCP three-way handshake");
 flow->AddLifeline("client", "10.0.0.5");
 flow->AddLifeline("server", "93.184.216.34:80");
@@ -862,13 +983,41 @@ flow->AddPacket({.id="3", .sourceId="client", .destId="server",
                  .timestamp=0.021, .sizeBytes=66, .protocol="TCP",
                  .label="ACK  Seq=1 Ack=1"});
 
-flow->SetTimeMode(UltraCanvas::PacketTimeMode::RelativeToFirst);
+flow->SetTimeMode(UltraCanvas::SequenceTimeMode::RelativeToFirst);
 flow->AddGroupBracket("1", "3", "3-way handshake");
-flow->SetColorMode(UltraCanvas::PacketFlowColorMode::ByStream);
-flow->SetOnPacketClick([&](const UltraCanvas::TracePacketRef& p) {
+flow->SetColorMode(UltraCanvas::SequenceColorMode::ByStream);
+flow->SetOnMessageClick([&](const UltraCanvas::TracePacketRef& p) {
     structureView->SetModel(p.structure);      // cross-view sync
     bytesView->SetBytes(p.bytes);
 });
+```
+
+The same element with the UML preset — no packet vocabulary involved:
+
+```cpp
+auto uml = UltraCanvas::CreateSequenceDiagram("uml", 301, 20, 20, 640, 480);
+uml->ApplyPreset(UltraCanvas::SequencePreset::UML);
+uml->AddLifeline("user", "User");
+uml->AddLifeline("api",  "API Gateway");
+uml->AddMessage("user", "api", "POST /login", UltraCanvas::SequenceArrow::Sync);
+uml->AddMessage("api", "user", "200 OK",      UltraCanvas::SequenceArrow::Return);
+uml->AddFragment(UltraCanvas::SequenceFragment::Alt, "credentials valid", /*from*/1, /*to*/2);
+```
+
+### The shared legend, used by any element (§10.1)
+
+```cpp
+#include "Plugins/Charts/UltraCanvasChartLegend.h"
+
+UltraCanvas::ChartLegend legend;
+legend.SetPosition(UltraCanvas::ChartLegendPosition::BottomCenter);
+legend.SetTitle("level");
+legend.AddEntry({.label = "Routers", .color = green,
+                 .swatch = UltraCanvas::LegendSwatch::Circle});
+
+// during the host element's paint pass:
+Rect2Dd consumed = legend.Measure(ctx, availableRect);   // host shrinks its plot area
+legend.Render(ctx, consumed);
 ```
 
 ### Text spec (Mermaid-compatible) instead of code
@@ -887,72 +1036,175 @@ title UDP Packet
 
 ---
 
-## 10. Suggested delivery order
+## 10. Supporting deliverables
 
+Two pieces of shared framework work fall out of this proposal. Neither is
+packet-specific; the packet elements are simply the fifteenth and sixteenth
+callers that make the duplication impossible to ignore.
+
+### 10.1 `UltraCanvasChartLegend` — the shared legend component
+
+**Approved as its own deliverable (§12.8).** The survey found **10 private
+`RenderLegend` / `DrawLegend` implementations** across the chart plugins,
+reached through **5 mutually incompatible position enums** —
+`CircularLegendPosition`, `DumbbellLegendPosition`, `FunnelLegendPosition`,
+`LegendPosition`, `PolarLegendPosition` — plus a stringly-typed sixth
+(`std::string legendPosition` in `UltraCanvasPopulationChart`). Every one of
+them re-solves swatch sizing, text measurement, wrapping and edge placement,
+and they disagree on defaults.
+
+Proposed unit: `include/Plugins/Charts/UltraCanvasChartLegend.h` +
+`Plugins/Charts/UltraCanvasChartLegend.cpp` — a **renderable helper, not a
+`UIElement`**, so any element can host it inside its own paint pass without a
+child-widget relationship.
+
+| # | Feature | Phase |
+|---|---|---|
+| G1 | One `ChartLegendPosition` enum: Top/Bottom/Left/Right × Start/Center/End, plus the four inset corners | P1 |
+| G2 | Entry model: swatch + label (+ optional secondary value text), swatch shapes Square/Circle/Line/Dash/Marker | P1 |
+| G3 | Discrete band entries with interval text (`[0.00, 0.02]`, `> a`) — the contour/hexbin requirement | P1 |
+| G4 | Continuous colour bar mode with ticks and a formatter — folds in `UltraCanvasHeatmapChartElement::RenderColorBar` | P2 |
+| G5 | Layout: measure-then-place, returning the space consumed so the host can shrink its plot area | P1 |
+| G6 | Flow across multiple rows/columns with wrapping and a max-entries + "…and N more" overflow | P1 |
+| G7 | Legend title, per-entry enable/disable, ordering | P1 |
+| G8 | Optional interactivity: hit-test an entry, click to toggle series visibility, hover to highlight | P2 |
+| G9 | Theming: background, border, text, spacing, font — light/dark/monochrome presets | P1 |
+| G10 | Migrate the 10 existing call sites, delete the private implementations, alias the old enums as deprecated typedefs so no chart API breaks | P2 |
+| G11 | Unit tests for measurement and wrapping (no render context needed) | P1 |
+
+Sequencing note: build G1–G7 and G9 with the packet work (families A and B
+consume it immediately), then do the migration in G10 as a separate, purely
+mechanical change so any visual regression is isolated from new-feature churn.
+
+### 10.2 Swimlanes on `UltraCanvasFlowChart`
+
+Variant C1 (the netfilter/iptables packet-flow figure) is otherwise already
+covered, but that figure is fundamentally lane-organised — chains grouped by
+table, hooks grouped by traversal stage. A grep finds no swimlane support
+anywhere in the repo.
+
+| # | Feature | Phase |
+|---|---|---|
+| SL1 | Horizontal and vertical lane bands with header labels | P3 |
+| SL2 | Node assignment to a lane; lane-aware layout keeps nodes inside their band | P3 |
+| SL3 | Per-lane background tint and separators | P3 |
+| SL4 | Nested lanes (pools containing lanes, BPMN style) | P3 |
+| SL5 | A `FlowChartTemplates::NetfilterPacketFlow()` preset reproducing the canonical figure | P3 |
+
+---
+
+## 11. Suggested delivery order
+
+0. **Phase 0 — the shared legend.** `UltraCanvasChartLegend` G1–G7, G9, G11
+   (§10.1). Small, self-contained, no dependency on any packet work, and every
+   later phase consumes it instead of growing an eleventh private
+   implementation. Migration of the existing 10 call sites (G10) is deliberately
+   *not* here — it comes in Phase 2, once the component has been proven.
 1. **Phase 1 — Family A core.** `UltraCanvasPacketModel` +
    `UltraCanvasPacketLayout` (word grid, proportional linear, row-wrapping with
    continuation edges, text-fit cascade) unit-tested against IPv4/TCP/UDP; the
    element with layers, sub-fields, flags, highlights, banding, bit ruler,
    byte-column headers, offset **and word** gutters, stacked ruler digits,
    dimension rails, twin side braces, title/caption, monochrome theme,
-   tooltips, click callbacks; the Mermaid parser; JSON; validators; first
-   template batch; docs and demo. **Reproduces images 1, 2, 6 and the lower
-   half of 4.**
-2. **Phase 2 — Family A completeness + Family B.** Lane layout with striped
-   bit-to-lane mapping, encapsulation mode, exploded detail bands, payload
-   styling, per-bit cells, markers, legend, byte binding and decoding,
-   zoom/pan, ASCII/Mermaid/SVG export (**completes images 3, 4, 5**); plus
-   `GetLinkPointAt` on `UltraCanvasNodeDiagram`, the switching element with
-   roles, regions, routes, tokens, path highlighting, sender queue, reassembly
-   and static snapshots (**completes images 7 and 8**).
-3. **Phase 3 — Family C2 + D.** The ladder/flow-graph element and the
-   hex/dissection companion, wired to the shared selection bus; then switching
-   animation and playback, family A's ASCII import, editing mode, diff mode,
-   fragmentation layout, and swimlanes on `UltraCanvasFlowChart` for the C1
-   netfilter-style figure.
+   tooltips, click callbacks; the Mermaid parser; JSON; validators; the first
+   template batch **plus its RFC-pinning tests (§12.6)**; docs and demo.
+   **Reproduces images 1, 2, 6 and the lower half of 4.**
+2. **Phase 2 — Family A completeness + Family B + legend migration.** Lane
+   layout with striped bit-to-lane mapping, encapsulation mode, exploded detail
+   bands, payload styling, per-bit cells, markers, byte binding and decoding,
+   zoom/pan, ASCII/Mermaid/SVG export (**completes images 3, 4, 5**); the
+   `BuildLinkPath` extraction and `GetLinkPointAt` on `UltraCanvasNodeDiagram`
+   (2.1.0) with golden-geometry tests, then the switching element deriving from
+   it with roles, regions, routes, tokens, path highlighting, sender queue,
+   reassembly, comparison panels and static snapshots (**completes images 7 and
+   8**); and separately, the mechanical legend migration (G10).
+3. **Phase 3 — `UltraCanvasSequenceDiagram` + Family D.** The sequence element
+   with both presets (PacketFlow and UML) and the hex/dissection companion,
+   wired to the shared selection bus; then switching animation and playback,
+   family A's ASCII import, editing mode, diff mode, fragmentation layout, and
+   swimlanes on `UltraCanvasFlowChart` (§10.2) for the C1 netfilter figure.
 
 ---
 
-## 11. Open questions for review
+## 12. Resolved decisions
 
-1. **Base class.** Recommendation: derive all three new elements from
-   `UltraCanvasUIElement`, not `UltraCanvasChartElementBase` — none has data
-   bounds, a coordinate transform, series or axes, so it would inherit almost
-   nothing and fight what it did inherit. All belong in `Plugins/Diagrams/`.
-2. **Family B: wrap or extend?** Should `UltraCanvasPacketSwitchingDiagram`
-   *contain* a `UltraCanvasNodeDiagram` (composition, clean separation) or
-   *derive* from it (inherits the full interaction surface for free, but
-   exposes graph-editing API that makes no sense for a packet figure)?
-   Recommendation: **derive**, and hide the editing API — the alternative means
-   forwarding dozens of methods. Confirm before Phase 2.
-3. **`GetLinkPointAt` upstream change.** Adding path sampling to
-   `UltraCanvasNodeDiagram` is a small, purely additive public API, but it
-   requires the link routers to expose their computed geometry rather than
-   drawing it inline. Confirm this refactor is acceptable in a v2.0.x
-   component.
-4. **One element or four?** Family A's four layouts stay in one element (the
-   model, colouring, annotations, legend, tooltips and export are identical;
-   splitting would duplicate ~80% of the code). Families B and C2 are genuinely
-   separate elements. Confirm the split lands at that boundary.
-5. **Byte binding scope.** Should `SetPacketBytes` do full decoding, or should
-   the element stay presentational with the host supplying values?
-   Recommendation: **both** — a `SetFieldValueText(id, text)` escape hatch in
-   P1, automatic extraction in P2 — so UltraNet can drive it without the
-   diagram needing protocol knowledge.
-6. **Template ownership.** Define `PacketTemplates::RTP()` next to the
-   `Plugins/UltraNet/rtp` code that already parses those headers, so the
-   picture and the parser cannot drift; the diagram element merely consumes a
-   `PacketModel`.
-7. **Text-spec grammar.** Adopt Mermaid's `packet` syntax verbatim as the
-   baseline and add UltraCanvas features as trailing `@modifiers` Mermaid
-   ignores. Round-tripping into Markdown docs is worth more than syntactic
-   elegance.
-8. **Shared legend widget.** The legend needed here (swatch + label, four edge
-   positions) is the same one the contour, hexbin, heatmap and Mekko charts
-   want. Is this the moment to factor out a reusable legend component rather
-   than adding a fifth private implementation?
-9. **Is the C2 ladder element "packet" at all?** It is a general sequence
-   diagram with packet-flavoured labels. Should it ship as
-   `UltraCanvasSequenceDiagram` with a packet preset, filling the framework's
-   missing UML sequence diagram in the same stroke? Recommendation: **yes** —
-   same code, wider payoff.
+All questions raised in review are settled. This section is the record; the
+rest of the document already reflects these outcomes.
+
+### 12.1 Base class — `UltraCanvasUIElement`, in `Plugins/Diagrams/` ✔
+All four elements derive from `UltraCanvasUIElement`, not
+`UltraCanvasChartElementBase`. None of them has data bounds, a coordinate
+transform, series or axes, so the chart base offers nothing to inherit and
+several things to fight. All live in `Plugins/Diagrams/` alongside
+`UltraCanvasBlockDiagram` and `UltraCanvasNodeDiagram`. The one shared piece
+that *does* belong under `Plugins/Charts/` is the legend (§10.1), because its
+other ten callers are charts.
+
+### 12.2 Family B — derive from `UltraCanvasNodeDiagram`, hide the editing API ✔
+`UltraCanvasPacketSwitchingDiagram : public UltraCanvasNodeDiagram`, with the
+flow-editor surface suppressed in the constructor and re-declared `private`
+(§4.6). Composition would have meant forwarding dozens of methods to reach
+layout, zoom, pan, minimap and JSON — all of which a packet figure genuinely
+wants.
+
+### 12.3 `GetLinkPointAt` — approved, as a minor version bump ✔
+Link geometry is extracted from the render path into a private `BuildLinkPath`
+and consumed by both the renderer and the new samplers (§4.6). Purely additive
+public API → `UltraCanvasNodeDiagram` **2.1.0**. Golden-geometry unit tests per
+`LinkStyle` guard the extraction, with `SmoothStep`/`Step` arrow placement
+called out as the known-fragile case from the component's own changelog.
+
+### 12.4 Element count — four ✔
+Family A keeps its four layouts (word grid, proportional, encapsulation, lanes)
+plus the encapsulation/timing/fragmentation modes in **one** element: the
+model, colouring, annotations, legend, tooltips, validation and export are
+identical across them, and splitting would duplicate ~80% of the code.
+Families B, C2 and D are genuinely separate elements.
+
+### 12.5 Text-spec grammar — Mermaid-compatible baseline ✔
+Mermaid's `packet` syntax verbatim (`0-15:` ranges and `+16:` auto-advance),
+with UltraCanvas features as trailing `@modifiers` that Mermaid ignores. A
+plain Mermaid diagram must parse unchanged; an UltraCanvas diagram must
+degrade to a valid Mermaid one when the modifiers are stripped. Round-tripping
+into Markdown docs is worth more than syntactic elegance.
+
+### 12.6 Byte binding & template ownership — **UltraNet coupling rejected** ✘
+The earlier draft justified two design points with "so UltraNet can drive it"
+and "define `PacketTemplates::RTP()` next to the `Plugins/UltraNet/rtp` code
+that already parses those headers". Both justifications were wrong and are
+withdrawn.
+
+*Why it was wrong.* Inspecting `Plugins/UltraNet/rtp/RtpPlugin.cpp` shows the
+header knowledge lives in an anonymous-namespace struct with hand-rolled bit
+shifts (`out.version = (buf[0] >> 6) & 0x03;`) — a private implementation
+detail of a 325-line socket plugin, not a publishable field table. Making it
+the source of truth for the diagram would require either exporting that struct
+(so a **networking** plugin gains a dependency on a **UI** plugin's model
+header, backwards through the layering) or having the diagram include UltraNet
+(so a drawing widget depends on a socket library). Both trade a real,
+permanent coupling for protection against drift in a 12-byte header that has
+been frozen since RFC 3550 in 1996.
+
+*What replaces it.*
+
+| Concern | Resolution |
+|---|---|
+| Module dependency | **None, in either direction** (§3.1). `Plugins/Diagrams` and `Plugins/UltraNet` stay independent; applications wire them together. |
+| Template ownership | Plain static field tables in `Plugins/Diagrams/UltraCanvasPacketTemplates.cpp`. No parsing code, no protocol behaviour — just names, offsets and lengths. |
+| Drift protection | A **unit test**, not a dependency: assert `PacketTemplates::RTP()` places version at bits 0–1, payload type at 9–15, sequence number at 16–31, timestamp at 32–63, SSRC at 64–95. If a template is edited wrongly the test fails, and it pins the template to the RFC rather than to another module's private code. |
+| Byte binding rationale | The `SetFieldValueText(id, text)` escape hatch stays (P1) and automatic extraction stays (P2) — but the reason is **generic**: any host with its own decoder (a pcap reader, a firmware log parser, an app-specific protocol) can supply values without the widget implementing decoding. UltraNet is one such host, not the motivating case. |
+
+The net effect on the design is small — the same two features ship — but the
+architecture is now honest about what the diagram elements are: **drawing
+widgets that know nothing about networking.**
+
+### 12.7 Family C2 — ship as `UltraCanvasSequenceDiagram` ✔
+The ladder is a general sequence diagram with packet-flavoured labels, and the
+framework has no sequence diagram at all. It ships under the general name with
+`SequencePreset::PacketFlow` and `SequencePreset::UML` (§7). Same code, wider
+payoff.
+
+### 12.8 Shared legend — build it ✔
+`UltraCanvasChartLegend` is promoted from a question to a deliverable (§10.1),
+with the migration of the 10 existing implementations sequenced as a separate
+mechanical change after the new component is proven by the packet elements.
