@@ -748,6 +748,9 @@ endif()
 if(BUILD_DEMO_APP)
     add_dependencies(UltraCanvasDemo copy_assets)
 endif()
+if(BUILD_ULTRAFILER_APP)
+    add_dependencies(UltraFiler copy_assets)
+endif()
 
 # The LaTeX plugin is a dlopen()ed CMake MODULE - never linked by any app, so
 # nothing forces it to rebuild when a core interface header (e.g. IRenderContext)
@@ -756,7 +759,7 @@ endif()
 # crashing on the first cross-module virtual call. Take an explicit build-order
 # dependency (NOT a link) so any app that can load the module always rebuilds it.
 if(TARGET UltraCanvasLaTeX)
-    foreach(_uc_app UltraCanvasDemo UltraCanvasTexter UltraAIApp UCFileManager EBookViewerTest)
+    foreach(_uc_app UltraCanvasDemo UltraCanvasTexter UltraFiler UltraAIApp UCFileManager EBookViewerTest)
         if(TARGET ${_uc_app})
             add_dependencies(${_uc_app} UltraCanvasLaTeX)
         endif()

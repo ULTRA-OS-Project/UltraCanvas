@@ -118,9 +118,9 @@ namespace {
         auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, width, 28, label);
         b->SetFontSize(12);
         b->SetCornerRadius(4.0f);
-        b->SetColors(Color(249, 249, 251, 255), Color(233, 238, 244, 255));
+        b->SetColors(Color(255, 255, 255, 255), Color(233, 238, 244, 255));
         b->SetTextColors(Color(40, 40, 44, 255));
-        b->SetBorder(0.0f, Color(0, 0, 0, 0));
+        b->SetBorder(1.0f, Color(0, 0, 0, 60));
         if (!iconFile.empty()) {
             b->SetIcon(IconPath(iconFile));
             b->SetIconSize(15, 15);
@@ -322,7 +322,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     row->AddChild(sep2);
 
     // Sort field + direction. The dropdown mirrors FilerSortField order.
-    auto sortLbl = std::make_shared<UltraCanvasLabel>("ufl-sort-lbl", 0, 0, 32, 24);
+    auto sortLbl = std::make_shared<UltraCanvasLabel>("ufl-sort-lbl", 0, 0, 42, 24);
     sortLbl->SetText("Sort");
     sortLbl->SetFontSize(12);
     sortLbl->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
@@ -352,7 +352,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     row->AddChild(orderButton);
 
     // View type; defaults to medium thumbnails like the Explorer screenshot.
-    auto viewLbl = std::make_shared<UltraCanvasLabel>("ufl-view-lbl", 0, 0, 34, 24);
+    auto viewLbl = std::make_shared<UltraCanvasLabel>("ufl-view-lbl", 0, 0, 44, 24);
     viewLbl->SetText("View");
     viewLbl->SetFontSize(12);
     viewLbl->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
