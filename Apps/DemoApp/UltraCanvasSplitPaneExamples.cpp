@@ -1,7 +1,8 @@
 // Apps/DemoApp/UltraCanvasSplitPaneExamples.cpp
-// Demonstrates UltraCanvasSplitPane: horizontal, vertical, and nested splits
-// Version: 1.0.1
-// Last Modified: 2026-06-01
+// Demonstrates UltraCanvasSplitPane: horizontal, vertical, nested splits,
+// splitter handles and action icons on the split line
+// Version: 1.1.0
+// Last Modified: 2026-08-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
@@ -12,6 +13,9 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasConfig.h"
+#include "UltraCanvasUtils.h"
+#include "UltraCanvasDebug.h"
 #include <sstream>
 
 namespace UltraCanvas {
@@ -53,6 +57,10 @@ namespace UltraCanvas {
             l->SetFontSize(fontSize);
             l->SetTextColor(Color(60, 60, 60, 255));
             return l;
+        }
+
+        std::string SplitIcon(const std::string& name) {
+            return NormalizePath(GetResourcesDir() + "media/icons/" + name);
         }
     } // namespace
 
@@ -254,6 +262,291 @@ namespace UltraCanvas {
 
         root->AddChild(outer);
         currentY += 320 + 20;
+
+        // ============================================================
+        // Section D: Splitter handles
+        // ============================================================
+        root->AddChild(MakeSectionTitle(20, currentY, "4. Splitter handle (shape and size)"));
+        currentY += 30;
+
+        root->AddChild(MakeDescription(20, currentY, 960,
+            "An optional grab handle sits on the split line. Pick a shape - square, square with rounded "
+            "edges, or round (a circle when square, a capsule when elongated) - and a size across the line. "
+            "The splitter strip widens to fit the handle; the split line itself stays as thin as configured. "
+            "Use the buttons to switch shape and size live."));
+        currentY += 70;
+
+        auto splitHandles = CreateHorizontalSplitPane("SplitPaneD", 20, currentY, 960, 200);
+        splitHandles->SetBorders(1, Color(180, 180, 180, 255));
+
+        auto handleLeft  = splitHandles->AddPane(1.0);
+        auto handleMid   = splitHandles->AddPane(1.0);
+        auto handleRight = splitHandles->AddPane(1.0);
+        splitHandles->SetPaneMinSize(0, 80);
+        splitHandles->SetPaneMinSize(1, 80);
+        splitHandles->SetPaneMinSize(2, 80);
+
+        {
+            SplitPaneStyle st = splitHandles->GetSplitPaneStyle();
+            st.splitterThickness = 3;
+            st.handle.shape = SplitterHandleShape::RoundedSquare;
+            st.handle.crossSize = 14;
+            st.handle.axisLength = 48;
+            st.handle.cornerRadius = 4.0f;
+            splitHandles->SetSplitPaneStyle(st);
+        }
+
+        handleLeft->SetBackgroundColor(Color(232, 240, 252, 255));
+        handleLeft->SetPadding(8);
+        handleLeft->AddChild(MakePaneTitle("pdLeft", "Left"));
+        handleLeft->AddChild(MakeInfoLabel("pdLeftInfo", 10, 40, 240, "Grab the handle or the line."));
+
+        handleMid->SetBackgroundColor(Color(252, 252, 252, 255));
+        handleMid->SetPadding(8);
+        handleMid->AddChild(MakePaneTitle("pdMid", "Middle"));
+        handleMid->AddChild(MakeInfoLabel("pdMidInfo1", 10, 40, 240, "handle.shape"));
+        handleMid->AddChild(MakeInfoLabel("pdMidInfo2", 10, 60, 240, "handle.crossSize"));
+        handleMid->AddChild(MakeInfoLabel("pdMidInfo3", 10, 80, 240, "handle.axisLength"));
+
+        handleRight->SetBackgroundColor(Color(245, 245, 245, 255));
+        handleRight->SetPadding(8);
+        handleRight->AddChild(MakePaneTitle("pdRight", "Right"));
+        handleRight->AddChild(MakeInfoLabel("pdRightInfo", 10, 40, 240, "Both splitters share one style."));
+
+        root->AddChild(splitHandles);
+        currentY += 200 + 10;
+
+        {
+            auto splitPtr = splitHandles.get();
+            auto applyHandle = [splitPtr](SplitterHandleShape shape, int crossSize, int axisLength) {
+                SplitterHandleStyle hs = splitPtr->GetSplitterHandleStyle();
+                hs.shape = shape;
+                hs.crossSize = crossSize;
+                hs.axisLength = axisLength;
+                splitPtr->SetSplitterHandleStyle(hs);
+            };
+
+            struct HandleChoice {
+                const char* text;
+                SplitterHandleShape shape;
+                int crossSize;
+                int axisLength;
+            };
+            const HandleChoice choices[] = {
+                { "None",          SplitterHandleShape::NoHandle,      14,  0 },
+                { "Square",        SplitterHandleShape::Square,        14, 48 },
+                { "Rounded",       SplitterHandleShape::RoundedSquare, 14, 48 },
+                { "Capsule",       SplitterHandleShape::Round,         14, 48 },
+                { "Circle 22px",   SplitterHandleShape::Round,         22, 22 },
+                { "Rounded 20px",  SplitterHandleShape::RoundedSquare, 20, 64 },
+            };
+
+            float bx = 20;
+            int n = 0;
+            for (const auto& c : choices) {
+                auto b = std::make_shared<UltraCanvasButton>("pdHandleBtn" + std::to_string(n++),
+                                                            bx, currentY, 110, 26);
+                b->SetText(c.text);
+                SplitterHandleShape shape = c.shape;
+                int cs = c.crossSize;
+                int al = c.axisLength;
+                b->SetOnClick([applyHandle, shape, cs, al]() { applyHandle(shape, cs, al); });
+                root->AddChild(b);
+                bx += 118;
+            }
+        }
+        currentY += 26 + 25;
+
+        // ============================================================
+        // Section E: Action icons on the split line
+        // ============================================================
+        root->AddChild(MakeSectionTitle(20, currentY, "5. Action icons on the split line"));
+        currentY += 30;
+
+        root->AddChild(MakeDescription(20, currentY, 960,
+            "Any number of icons can sit on a split line, centred across it and grouped at the middle "
+            "along it. Each icon has its own tooltip, enabled state and click handler, and clicking one "
+            "never starts a drag. Here splitter 0 collapses/restores the sidebar and splitter 1 carries "
+            "three actions. The handle wraps the icon group."));
+        currentY += 70;
+
+        auto statusE = std::make_shared<UltraCanvasLabel>("SplitEStatus", 20, currentY + 235, 960, 20);
+        statusE->SetText("Click an icon on a split line.");
+        statusE->SetFontSize(11);
+        statusE->SetTextColor(Color(0, 100, 200, 255));
+
+        auto splitIcons = CreateHorizontalSplitPane("SplitPaneE", 20, currentY, 960, 230);
+        splitIcons->SetBorders(1, Color(180, 180, 180, 255));
+
+        auto iconSidebar = splitIcons->AddPane(1.0);
+        auto iconMain    = splitIcons->AddPane(3.0);
+        auto iconAside   = splitIcons->AddPane(1.0);
+        splitIcons->SetPaneMinSize(1, 120);
+
+        {
+            SplitPaneStyle st = splitIcons->GetSplitPaneStyle();
+            st.splitterThickness = 3;
+            st.handle.shape = SplitterHandleShape::Round;   // capsule around the icon group
+            st.handle.crossSize = 22;
+            st.handle.color = Color(244, 244, 244, 255);
+            st.handle.borderColor = Color(170, 170, 170, 255);
+            st.icons.size = 14;
+            st.icons.spacing = 6;
+            st.icons.padding = 5;
+            splitIcons->SetSplitPaneStyle(st);
+        }
+
+        iconSidebar->SetBackgroundColor(Color(232, 240, 252, 255));
+        iconSidebar->SetPadding(8);
+        iconSidebar->AddChild(MakePaneTitle("peSidebar", "Sidebar"));
+        iconSidebar->AddChild(MakeInfoLabel("peSidebarInfo", 10, 40, 200, "Collapse me with the icon."));
+
+        iconMain->SetBackgroundColor(Color(252, 252, 252, 255));
+        iconMain->SetPadding(8);
+        iconMain->AddChild(MakePaneTitle("peMain", "Main"));
+        iconMain->AddChild(MakeInfoLabel("peMainInfo1", 10, 40, 500, "splitIcons->AddSplitterIcon(0, icon);"));
+        iconMain->AddChild(MakeInfoLabel("peMainInfo2", 10, 60, 500, "icon.onClick = [](size_t s, size_t i) { ... };"));
+
+        iconAside->SetBackgroundColor(Color(245, 245, 245, 255));
+        iconAside->SetPadding(8);
+        iconAside->AddChild(MakePaneTitle("peAside", "Aside"));
+        iconAside->AddChild(MakeInfoLabel("peAsideInfo", 10, 40, 200, "Three icons on the right line."));
+
+        {
+            auto* splitPtr = splitIcons.get();
+            auto* statusPtrE = statusE.get();
+
+            // --- splitter 0: collapse / restore the sidebar ---
+            SplitPaneIcon collapse;
+            collapse.id = "collapse-sidebar";
+            collapse.iconPath = SplitIcon("angle-left.svg");
+            collapse.tooltip = "Collapse the sidebar";
+            collapse.onClick = [splitPtr, statusPtrE](size_t s, size_t i) {
+                splitPtr->SetPaneWeight(0, 0.02);
+                splitPtr->SetSplitterIconVisible(s, i, false);
+                splitPtr->SetSplitterIconVisible(s, i + 1, true);
+                statusPtrE->SetText("Sidebar collapsed.");
+            };
+            splitIcons->AddSplitterIcon(0, collapse);
+
+            SplitPaneIcon restore;
+            restore.id = "restore-sidebar";
+            restore.iconPath = SplitIcon("angle-right.svg");
+            restore.tooltip = "Restore the sidebar";
+            restore.visible = false;
+            restore.onClick = [splitPtr, statusPtrE](size_t s, size_t i) {
+                splitPtr->SetPaneWeight(0, 1.0);
+                splitPtr->SetSplitterIconVisible(s, i, false);
+                splitPtr->SetSplitterIconVisible(s, i - 1, true);
+                statusPtrE->SetText("Sidebar restored.");
+            };
+            splitIcons->AddSplitterIcon(0, restore);
+
+            // --- splitter 1: three actions ---
+            SplitPaneIcon grow;
+            grow.id = "grow-aside";
+            grow.iconPath = SplitIcon("angle-left.svg");
+            grow.tooltip = "Give the aside more room";
+            grow.onClick = [splitPtr, statusPtrE](size_t, size_t) {
+                splitPtr->SetPaneWeight(2, splitPtr->GetPaneWeight(2) * 1.4);
+                statusPtrE->SetText("Aside enlarged.");
+            };
+            splitIcons->AddSplitterIcon(1, grow);
+
+            SplitPaneIcon even;
+            even.id = "even-panes";
+            even.iconPath = SplitIcon("maximise.svg");
+            even.tooltip = "Even out all three panes";
+            even.onClick = [splitPtr, statusPtrE](size_t, size_t) {
+                for (size_t p = 0; p < splitPtr->PaneCount(); ++p) splitPtr->SetPaneWeight(p, 1.0);
+                statusPtrE->SetText("Panes evened out.");
+            };
+            splitIcons->AddSplitterIcon(1, even);
+
+            SplitPaneIcon shrink;
+            shrink.id = "shrink-aside";
+            shrink.iconPath = SplitIcon("angle-right.svg");
+            shrink.tooltip = "Give the aside less room";
+            shrink.onClick = [splitPtr, statusPtrE](size_t, size_t) {
+                splitPtr->SetPaneWeight(2, splitPtr->GetPaneWeight(2) / 1.4);
+                statusPtrE->SetText("Aside shrunk.");
+            };
+            splitIcons->AddSplitterIcon(1, shrink);
+
+            // Fires after every icon's own handler - handy for logging.
+            splitIcons->onSplitterIconClicked =
+                [](size_t splitterIndex, size_t iconIndex, const SplitPaneIcon& icon) {
+                    debugOutput << "SplitPane icon '" << icon.id << "' clicked (splitter "
+                                << splitterIndex << ", icon " << iconIndex << ")" << std::endl;
+                };
+        }
+
+        root->AddChild(splitIcons);
+        root->AddChild(statusE);
+        currentY += 230 + 30;
+
+        // ============================================================
+        // Section F: Vertical split with icons, no handle
+        // ============================================================
+        root->AddChild(MakeSectionTitle(20, currentY, "6. Vertical split: icons without a handle"));
+        currentY += 30;
+
+        root->AddChild(MakeDescription(20, currentY, 960,
+            "The same icons on a horizontal split line, with no handle behind them and the group parked "
+            "at 15% along the line (SplitterIconStyle::position)."));
+        currentY += 50;
+
+        auto splitVIcons = CreateVerticalSplitPane("SplitPaneF", 20, currentY, 960, 200);
+        splitVIcons->SetBorders(1, Color(180, 180, 180, 255));
+
+        auto vTop    = splitVIcons->AddPane(2.0);
+        auto vBottom = splitVIcons->AddPane(1.0);
+        splitVIcons->SetPaneMinSize(0, 60);
+        splitVIcons->SetPaneMinSize(1, 40);
+
+        {
+            SplitPaneStyle st = splitVIcons->GetSplitPaneStyle();
+            st.splitterThickness = 2;
+            st.splitterColor = Color(150, 150, 150, 255);
+            st.icons.size = 14;
+            st.icons.spacing = 8;
+            st.icons.position = 0.15f;
+            splitVIcons->SetSplitPaneStyle(st);
+        }
+
+        vTop->SetBackgroundColor(Color(252, 252, 252, 255));
+        vTop->SetPadding(8);
+        vTop->AddChild(MakePaneTitle("pfTop", "Document"));
+        vTop->AddChild(MakeInfoLabel("pfTopInfo", 10, 40, 500, "The icons below sit directly on the line."));
+
+        vBottom->SetBackgroundColor(Color(240, 240, 240, 255));
+        vBottom->SetPadding(8);
+        vBottom->AddChild(MakePaneTitle("pfBottom", "Console"));
+        vBottom->AddChild(MakeInfoLabel("pfBottomInfo", 10, 36, 500, "One splitter, two icons, no handle."));
+
+        {
+            auto* splitPtr = splitVIcons.get();
+            SplitPaneIcon up;
+            up.id = "console-grow";
+            up.iconPath = SplitIcon("arrow-up.svg");
+            up.tooltip = "Grow the console";
+            up.onClick = [splitPtr](size_t, size_t) {
+                splitPtr->SetPaneWeight(1, splitPtr->GetPaneWeight(1) * 1.5);
+            };
+            splitVIcons->AddSplitterIcon(up);
+
+            SplitPaneIcon down;
+            down.id = "console-shrink";
+            down.iconPath = SplitIcon("arrow-down.svg");
+            down.tooltip = "Shrink the console";
+            down.onClick = [splitPtr](size_t, size_t) {
+                splitPtr->SetPaneWeight(1, splitPtr->GetPaneWeight(1) / 1.5);
+            };
+            splitVIcons->AddSplitterIcon(down);
+        }
+
+        root->AddChild(splitVIcons);
+        currentY += 200 + 20;
 
         // Trim the root container to its actual content height
         root->SetHeight(currentY + 20);

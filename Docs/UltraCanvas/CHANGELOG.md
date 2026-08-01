@@ -1,3 +1,31 @@
+#### 2026-08-01 *0.3.21*
+- **UltraCanvasSplitPane**: split lines can now carry an optional **handle**.
+  `SplitterHandleShape` picks the form - `Square`, `RoundedSquare` or `Round`
+  (a circle when square, a capsule when elongated) - and `SplitterHandleStyle`
+  sets its size across and along the line, corner radius, position along the
+  line (0..1), colors, border and grip lines. The splitter strip widens to fit
+  the handle while the painted line stays as thin as `splitterThickness`, so a
+  3 px line can carry a 22 px handle. `SetSplitterHandleShape()` is the
+  one-liner; the handle drags exactly like the rest of the line. The shape
+  enumerator for "no handle" is `NoHandle`, not `None`, because `<X11/X.h>`
+  defines `None` as a macro.
+- **UltraCanvasSplitPane**: **action icons on the split line**. Any number of
+  icons per splitter (`AddSplitterIcon`, `SetSplitterIcons`,
+  `InsertSplitterIcon`, `RemoveSplitterIcon`, `ClearSplitterIcons`), each with
+  an image or text glyph, tooltip, enabled/visible state and its own click
+  handler, plus a pane-level `onSplitterIconClicked`. Icons are centred across
+  the line and grouped along it, either inside the handle (which auto-sizes to
+  wrap them) or at their own `SplitterIconStyle::position`. Pressing an icon
+  does not start a drag: the click fires on release over the same icon, the
+  cursor turns into a hand, and a disabled icon dims and swallows the press.
+  Icons live on the split pane rather than on the splitter objects, so they
+  survive pane insertion and removal.
+- **UltraCanvasSplitPane**: `SplitPaneStyle::splitterHitMargin` is wired up -
+  it now widens the grab strip on each side of the line without thickening the
+  painted line. New guide `Docs/UltraCanvas/UltraCanvasSplitPane.md` (the demo
+  already pointed at it) and three new demo sections covering handle shapes,
+  icons in a capsule handle, and icons on a bare vertical split line.
+
 #### 2026-07-31 *0.3.21*
 - **UltraCanvasTimelineChart**: added the swimlane grouping mode
   (`TimelineLaneMode::Swimlanes`). The same date axis and the same entries, with

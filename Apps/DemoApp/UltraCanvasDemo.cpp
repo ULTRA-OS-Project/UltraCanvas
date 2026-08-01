@@ -549,7 +549,9 @@ namespace UltraCanvas {
                              "Docs/UltraCanvas/UltraCanvasSplitPane.md")
                 .AddVariant("splitpane", "Horizontal Split")
                 .AddVariant("splitpane", "Vertical Split")
-                .AddVariant("splitpane", "Nested Splits");
+                .AddVariant("splitpane", "Nested Splits")
+                .AddVariant("splitpane", "Splitter Handles")
+                .AddVariant("splitpane", "Split Line Action Icons");
 
         basicBuilder.AddItem("layouts", "Layout System",
                              "Box, Grid, and Flex layout examples",
