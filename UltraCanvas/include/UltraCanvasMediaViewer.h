@@ -30,11 +30,20 @@
 // folders at the same level so another folder can be picked; long paths
 // collapse their middle into a "..." overflow menu.
 //
-// Drag a folder onto the widget to browse it; drag one or more files to view
-// them.
+// Drag a folder onto the widget to browse it; drag a single file to browse the
+// folder that file lives in (it is shown first), or several files to view just
+// those. The Open dialog follows the same rule.
 //
-// Version: 1.1.0
-// Last Modified: 2026-07-28
+// Keyboard: the widget claims the window keyboard focus when it is attached to
+// a window (SetGrabFocusOnAttach(false) opts out), so Left / Right browse the
+// folder without clicking the picture first. It also filters the window's key
+// events, which keeps browsing alive while one of the display views holds the
+// focus — text files are shown display-only for exactly that reason. Where a
+// view owns the bare arrows itself (spreadsheet cell movement) Alt+Left /
+// Alt+Right still browse.
+//
+// Version: 1.2.0
+// Last Modified: 2026-08-01
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -236,7 +245,9 @@ public:
     void SetFiles(const std::vector<std::string>& files, size_t startIndex = 0);
     // Open a single file and browse the rest of its folder.
     void OpenFile(const std::string& filePath);
-    // Native open dialog (multi-select) through UltraCanvasFileLoader.
+    // Native open dialog (multi-select) through UltraCanvasFileLoader. Picking a
+    // single file browses its folder (OpenFile); picking several sets them as
+    // the playlist (SetFiles).
     void ShowOpenDialog();
 
     size_t GetCount() const { return playlist.size(); }
@@ -261,6 +272,18 @@ public:
 
     UltraCanvasMediaSurface* GetSurface() const { return surface.get(); }
 
+    // ===== KEYBOARD =====
+    // Give the widget the window keyboard focus, so the browsing keys work
+    // without clicking into it first.
+    bool FocusForKeyboard();
+    // Whether the widget takes the keyboard focus when it is added to a window
+    // (default true). Turn it off when the host wants to place the initial
+    // focus itself.
+    void SetGrabFocusOnAttach(bool grab) { grabFocusOnAttach = grab; }
+    bool GetGrabFocusOnAttach() const { return grabFocusOnAttach; }
+
+    bool AcceptsFocus() const override { return true; }
+    void SetWindow(UltraCanvasWindowBase* win) override;
     bool OnEvent(const UCEvent& event) override;
 
     // Whether a path is a media file this viewer can display.
@@ -289,6 +312,25 @@ private:
     static bool IsVideoFile(const std::string& path);
     static bool IsAudioFile(const std::string& path);
     static MediaKind ClassifyFile(const std::string& path);
+
+    // ----- keyboard plumbing -----
+    // Browsing / view keys, shared by OnEvent() (focus is on the widget or one
+    // of its controls, so the event bubbles here) and by the window key filter
+    // (focus is nowhere, or on a display view that would swallow the key).
+    bool HandleViewerKey(const UCEvent& event);
+    bool HandleFilteredKey(const UCEvent& event);
+    void InstallKeyFilter();
+    void RemoveKeyFilter();
+    std::string KeyFilterId() const;
+    // The child element showing the current file (surface, PDF view, …).
+    UltraCanvasUIElement* ActiveViewElement() const;
+    // True when `element` is one of the display views (not a toolbar control).
+    bool IsDisplayView(const UltraCanvasUIElement* element) const;
+    // Visible with every ancestor visible (IsVisible() is per-element only).
+    bool IsEffectivelyVisible() const;
+    // The active view uses the bare arrow keys itself (spreadsheet cells), so
+    // browsing needs the Alt modifier while it is showing.
+    bool ActiveViewUsesArrowKeys() const { return activeKind == MediaKind::Sheet; }
     std::shared_ptr<UltraCanvasUIElement> BuildAdjustSlider(
             const std::string& id, const std::string& caption,
             float minV, float maxV, float value, std::function<void(float)> onChange);
@@ -325,6 +367,9 @@ private:
     TimerId slideshowTimer = 0;
     MediaTransition transition = MediaTransition::CrossFade;
     int transitionDurationMs = 450;
+
+    bool grabFocusOnAttach = true;   // claim the keyboard when attached to a window
+    bool keyFilterInstalled = false; // window key filter is live
 };
 
 // ===== FACTORY =====

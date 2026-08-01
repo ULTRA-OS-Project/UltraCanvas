@@ -1,3 +1,32 @@
+#### 2026-08-01 *0.3.22*
+- **UltraCanvasMediaViewer**: the arrow keys now browse the folder as soon as
+  the widget is on screen. The widget takes the window keyboard focus when it is
+  attached to a window (`SetGrabFocusOnAttach(false)` opts out,
+  `FocusForKeyboard()` requests it on demand) and installs a window key filter,
+  so Left / Right no longer require a click into the picture first — with no
+  focused element at all the key event never reached the widget before. The
+  filter only steps in when the keyboard is unowned or held by one of the
+  display views; toolbar buttons, sliders and the breadcrumb keep their own key
+  handling. Where the active view uses the bare arrows itself (spreadsheet cell
+  movement) `Alt+Left` / `Alt+Right` browse instead.
+- **UltraCanvasMediaViewer**: text / source / markdown files open display-only
+  instead of read-only-but-focusable. The text area used to grab the focus and
+  swallow Left / Right for caret movement, which stopped file browsing dead
+  (and showed an editing caret in a viewer). The viewer now scrolls the text
+  itself with Up / Down / PageUp / PageDown and copies the selection with
+  Ctrl+C.
+- **UltraCanvasMediaViewer**: opening a single file through the Open dialog, or
+  dropping one file onto the widget, now browses the folder that file lives in
+  (with that file shown first) instead of building a one-entry playlist that the
+  arrow keys and the slideshow had nowhere to move in. Multi-selections are
+  still taken as an explicit playlist.
+- **UltraCanvasTextArea**: new `SetDisplayOnly()` / `IsDisplayOnly()`. Display-
+  only implies read-only and additionally takes the area out of the keyboard
+  focus chain — `AcceptsFocus()` returns false, no caret is drawn and no key
+  event reaches it — so a hosting widget keeps the arrow keys for its own
+  navigation. Mouse wheel / scrollbar scrolling and mouse selection are
+  unaffected.
+
 #### 2026-07-31 *0.3.21*
 - **UltraCanvasTimelineChart**: added the swimlane grouping mode
   (`TimelineLaneMode::Swimlanes`). The same date axis and the same entries, with
