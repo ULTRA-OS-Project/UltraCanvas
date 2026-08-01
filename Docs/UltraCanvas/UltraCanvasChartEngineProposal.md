@@ -882,8 +882,28 @@ Some charts share support TUs — `UltraCanvasColormap`, `UltraCanvasContourGrid
 + `UltraCanvasMarchingSquares`, `UltraCanvasHexLayout`, `UltraCanvasTimeAxis`,
 `UltraCanvasCalendarDate`, `UltraCanvasConnectionRenderer`, `UltraCanvasSTFT`
 (+ vendored KissFFT). Rule: **shared support code lives in the engine core
-module; only chart-specific code lives in a chart module.** A chart module
-therefore never depends on another chart module.
+module; only chart-specific code lives in a chart module.**
+
+That is not the whole story, and an earlier draft of this section was wrong to
+claim a chart module never depends on another. **Five chart classes inherit from
+another chart class**, not from the base:
+
+| Derived chart | Base chart |
+|---|---|
+| `UltraCanvasHexbinChartElement` | `UltraCanvasHeatmapChartElement` |
+| `UltraCanvasContourChartElement` | `UltraCanvasHeatmapChartElement` |
+| `UltraCanvasCalendarHeatmapElement` | `UltraCanvasHeatmapChartElement` |
+| `UltraCanvasSpectrogramElement` | `UltraCanvasHeatmapChartElement` |
+| `UltraCanvasContourSurfaceGLElement` | `UltraCanvasContourSurface3DElement` |
+
+Per-chart modules therefore need a **dependency closure**: `uc_chart_hexbin`
+links against `uc_chart_heatmap`, and the dynamic linker resolves it
+automatically (`DT_NEEDED` on ELF/Mach-O, an import library on Windows) — the
+loader needs no dependency logic of its own. Loading hexbin loads heatmap,
+which is correct, because a hexbin chart *is* a heatmap. The alternative —
+promoting `UltraCanvasHeatmapChartElement` into the engine core — is rejected:
+the heatmap is a chart in its own right and would then be paid for by every
+application, including ones that never draw one.
 
 Packaging granularity:
 
