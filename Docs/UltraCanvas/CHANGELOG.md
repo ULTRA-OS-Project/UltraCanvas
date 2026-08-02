@@ -1,4 +1,57 @@
+#### 2026-08-01 *0.3.23*
+- **UltraCanvasDendrogram** *(1.5.1)*: fixed radial leaf labels rendering upside
+  down in the upper-right quadrant. The left/right half test was
+  `angle > -pi/2 && angle < pi/2`, which assumes angles in `(-pi, pi]`, but
+  `DendrogramLayoutEngine::ApplyRadialLayout` produces `[0, 2pi)` — so every leaf
+  between `3pi/2` and `2pi` failed the test, took the left-half branch and picked
+  up an extra 180-degree rotation. Both the leaf labels and the group arc labels
+  now test `cos(rotation)`, which is precisely the condition for "this text is not
+  upside down" and does not depend on which angle range the layout uses. Audited
+  the other radial components at the same time — Sunburst, Chord, RadialBar,
+  CircularInfoGraphic and PolarChart all normalise correctly and were unaffected.
+
 #### 2026-08-01 *0.3.22*
+- **UltraCanvasNodeDiagram** *(2.2.0)*: organizational-network features. Node
+  size can now be driven by the data - `NodeSizeMode::ByDegree` sizes a node
+  from its connection count, `ByValue` from a new `NodeDiagramNode::value`
+  field, both through a sqrt transfer so node AREA tracks the quantity rather
+  than the diameter. Degrees can count total / incoming / outgoing links and are
+  cached, so bulk-loading a graph costs one rebuild instead of one per
+  `AddLink`. New `NodeDiagramGroup` cluster containers wrap a set of member
+  nodes in an auto-fitted boundary box (solid or dashed, optional fill and
+  corner radius, title in any corner) that follows its members through dragging
+  and re-layout; boxes draw behind the links and titles after the nodes, both
+  sized in screen pixels so they hold up at any zoom. `SetGroupCohesion()` adds
+  a per-group centroid attraction to the force-directed layout - without it
+  repulsion scatters a cluster and the boxes overlap into mush. New color legend
+  overlay (`NodeDiagramLegendConfig`, `BuildLegendFromGroups()`) drawn in screen
+  space in any corner. Groups and sizing round-trip through `ToJson()` /
+  `FromJson()`, and group boxes are included in `ComputeContentBounds()` so
+  `FitView()` and the minimap account for them. New demo tab (Diagrams > Node
+  Diagram > Organization): a five-department company network with a control
+  column for layout, sizing mode, degree mode, cohesion, link style, node shape,
+  theme, and toggles for the boxes, legend, grid, minimap, controls and snap.
+- **UltraCanvasDendrogram** *(1.5.0)*: hierarchical edge bundling (Holten 2006).
+  `AddRelation()` registers a leaf-to-leaf association that does not follow the
+  tree's parent/child structure; each one is routed through the tree path source
+  -> lowest common ancestor -> target, relaxed toward the straight chord by
+  `SetBundlingStrength()` (beta), and smoothed with a clamped cubic B-spline. A
+  radial dendrogram can now show its hierarchy and the cross-links between its
+  leaves at the same time without becoming a hairball. Also new: area-proportional
+  node dots via `DendrogramNodeSizeMode::ByValue` and `DendrogramNode::nodeValue`,
+  normalised against the largest value in the tree - replacing the single global
+  `style.leafNodeRadius` as the only leaf size available.
+- **UltraCanvasJitterPlotElement** *(1.3.0)*: per-point encodings. A parallel
+  vector of size magnitudes plus `JitterPointSizeMode::ByValue` turns a beeswarm
+  into a bubble beeswarm, with the packer receiving the real per-point radii so
+  mixed sizes pack without overlapping. A parallel vector of color values plus
+  `JitterPointColorMode::ByValue` samples any `UltraCanvasColormap` palette,
+  including the diverging ones with a configurable midpoint, so a signed quantity
+  reads correctly around zero. Fixes: `minScoreFilter` defaulted to `0.0` and
+  silently discarded every negative value before rendering; `AddCategoryData()`
+  did not invalidate the point-position cache, so a second call left the previous
+  points on screen; `RenderJitterPoints()` always drew a plain circle and ignored
+  both `SetPointShape()` and the point edge style.
 - **UltraCanvasMediaViewer**: the arrow keys now browse the folder as soon as
   the widget is on screen. The widget takes the window keyboard focus when it is
   attached to a window (`SetGrabFocusOnAttach(false)` opts out,
@@ -65,43 +118,62 @@
   already pointed at it) and three new demo sections covering handle shapes,
   icons in a capsule handle, and icons on a bare vertical split line.
 
+#### 2026-08-01 *0.3.23*
+- **UltraCanvasDendrogram** *(1.5.1)*: fixed radial leaf labels rendering upside
+  down in the upper-right quadrant. The left/right half test was
+  `angle > -pi/2 && angle < pi/2`, which assumes angles in `(-pi, pi]`, but
+  `DendrogramLayoutEngine::ApplyRadialLayout` produces `[0, 2pi)` — so every leaf
+  between `3pi/2` and `2pi` failed the test, took the left-half branch and picked
+  up an extra 180-degree rotation. Both the leaf labels and the group arc labels
+  now test `cos(rotation)`, which is precisely the condition for "this text is not
+  upside down" and does not depend on which angle range the layout uses. Audited
+  the other radial components at the same time — Sunburst, Chord, RadialBar,
+  CircularInfoGraphic and PolarChart all normalise correctly and were unaffected.
+
+#### 2026-07-31 *0.3.22*
+- **UltraCanvasNodeDiagram** *(2.2.0)*: organizational-network features. Node
+  size can now be driven by the data - `NodeSizeMode::ByDegree` sizes a node
+  from its connection count, `ByValue` from a new `NodeDiagramNode::value`
+  field, both through a sqrt transfer so node AREA tracks the quantity rather
+  than the diameter. Degrees can count total / incoming / outgoing links and are
+  cached, so bulk-loading a graph costs one rebuild instead of one per
+  `AddLink`. New `NodeDiagramGroup` cluster containers wrap a set of member
+  nodes in an auto-fitted boundary box (solid or dashed, optional fill and
+  corner radius, title in any corner) that follows its members through dragging
+  and re-layout; boxes draw behind the links and titles after the nodes, both
+  sized in screen pixels so they hold up at any zoom. `SetGroupCohesion()` adds
+  a per-group centroid attraction to the force-directed layout - without it
+  repulsion scatters a cluster and the boxes overlap into mush. New color legend
+  overlay (`NodeDiagramLegendConfig`, `BuildLegendFromGroups()`) drawn in screen
+  space in any corner. Groups and sizing round-trip through `ToJson()` /
+  `FromJson()`, and group boxes are included in `ComputeContentBounds()` so
+  `FitView()` and the minimap account for them. New demo tab (Diagrams > Node
+  Diagram > Organization): a five-department company network with a control
+  column for layout, sizing mode, degree mode, cohesion, link style, node shape,
+  theme, and toggles for the boxes, legend, grid, minimap, controls and snap.
+- **UltraCanvasDendrogram** *(1.5.0)*: hierarchical edge bundling (Holten 2006).
+  `AddRelation()` registers a leaf-to-leaf association that does not follow the
+  tree's parent/child structure; each one is routed through the tree path source
+  -> lowest common ancestor -> target, relaxed toward the straight chord by
+  `SetBundlingStrength()` (beta), and smoothed with a clamped cubic B-spline. A
+  radial dendrogram can now show its hierarchy and the cross-links between its
+  leaves at the same time without becoming a hairball. Also new: area-proportional
+  node dots via `DendrogramNodeSizeMode::ByValue` and `DendrogramNode::nodeValue`,
+  normalised against the largest value in the tree - replacing the single global
+  `style.leafNodeRadius` as the only leaf size available.
+- **UltraCanvasJitterPlotElement** *(1.3.0)*: per-point encodings. A parallel
+  vector of size magnitudes plus `JitterPointSizeMode::ByValue` turns a beeswarm
+  into a bubble beeswarm, with the packer receiving the real per-point radii so
+  mixed sizes pack without overlapping. A parallel vector of color values plus
+  `JitterPointColorMode::ByValue` samples any `UltraCanvasColormap` palette,
+  including the diverging ones with a configurable midpoint, so a signed quantity
+  reads correctly around zero. Fixes: `minScoreFilter` defaulted to `0.0` and
+  silently discarded every negative value before rendering; `AddCategoryData()`
+  did not invalidate the point-position cache, so a second call left the previous
+  points on screen; `RenderJitterPoints()` always drew a plain circle and ignored
+  both `SetPointShape()` and the point edge style.
+
 #### 2026-07-31 *0.3.21*
-- **UltraCanvasBreadcrumb**: fixed the folder path dropdowns of
-  `BuildFolderBreadcrumb()` (the media viewer's and the filer's path strip).
-  Every segment listed the folders next to it (its siblings), so opening the
-  dropdown of a folder repeated the listing of the segment before it instead of
-  descending — on `Computer > C: > Projekte` the `Projekte` dropdown showed the
-  contents of `C:\`. Each node now drops down its own sub-folders, so the path
-  can be extended one level from the strip; a folder without sub-folders shows a
-  disabled `(no sub-folders)` entry rather than an empty menu.
-  `FolderBreadcrumbOptions::siblingDropdowns` is accordingly renamed
-  `subFolderDropdowns`.
-- **UltraCanvasBreadcrumb**: a segment dropdown no longer stays up when a
-  second one is opened. The window stacks popups (submenus depend on it) and
-  never dismisses one because another opened, and a click on the breadcrumb is
-  a click on the popup's *owner*, so it does not count as a click-outside
-  either — both left the previous menu on screen, which is what the filer's and
-  the media viewer's path strips showed. The breadcrumb now closes the menu it
-  owns before opening another: only one dropdown (item or overflow) is open at
-  a time, a second click on the same chevron toggles it shut, clicking a
-  segment label closes it, and so does any change to the item list or the
-  breadcrumb's destruction. New `IsDropdownOpen()`, `GetOpenDropdownItemIndex()`
-  and `CloseDropdown()`.
-- **UltraCanvasBreadcrumb**: the pointer now says which parts of the strip open
-  a menu instead of navigating — a dropdown chevron, and the whole overflow
-  (`...`) item since it opens from anywhere on it, switch to the menu cursor
-  (`UCMouseCursor::ContextMenu`, the one the dropdown widget's button already
-  uses) and back to the item cursor elsewhere. Both are style fields
-  (`itemCursor`, `dropdownCursor`). The shape is applied as the pointer crosses
-  the chevron rather than one mouse event later.
-- **UltraCanvasBreadcrumb**: a click handler that rebuilds the path (which is
-  what filer/media-viewer navigation does) cleared `items` while the clicked
-  item was still being read from it — the item click and the overflow-menu
-  entries now work off copies.
-- **UltraCanvasMenu**: `CloseMenu()` on an already-closed menu is a no-op
-  instead of dereferencing the window pointer that closing cleared. Reached
-  when an item's action dismisses its own menu, as a breadcrumb dropdown entry
-  now does by navigating.
 - **UltraCanvasTimelineChart**: added the swimlane grouping mode
   (`TimelineLaneMode::Swimlanes`). The same date axis and the same entries, with
   rows given identity: one named band per workstream, a name column on the left

@@ -1,7 +1,7 @@
 # UltraCanvasDendrogram Documentation
 
-**Version:** 1.4.1
-**Last Modified:** 2026-05-09
+**Version:** 1.5.1
+**Last Modified:** 2026-08-01
 **Author:** UltraCanvas Framework
 
 ## Overview
@@ -32,6 +32,14 @@ UltraCanvasUIElement
 - **Interaction:** click to select leaves, shift/ctrl-click for multi-select, double-click internal nodes to collapse/expand, scroll-wheel zoom, middle/Alt+left drag to pan, ctrl+drag a node to reposition it manually.
 - **Distance axis & grid:** optional axis with configurable tick count and font size.
 - **Label background pills:** optional rounded rectangles behind labels for readability.
+- **Hierarchical edge bundling (1.5.0):** leaf-to-leaf associations drawn as splines routed through the tree, with a bundling-strength (beta) control.
+- **Area-proportional node dots (1.5.0):** size each node from a per-node value instead of a single global radius.
+
+> **Fixed in 1.5.1:** radial leaf labels in the upper-right quadrant rendered
+> upside down. Text rotation now keys off `cos(rotation)` — the actual condition
+> for "this text is not upside down" — instead of a hard-coded angle window that
+> assumed a different range than the layout produces. Group arc labels use the
+> same rule.
 
 ## Header Includes
 
@@ -78,6 +86,59 @@ void SetBranchColorMode(BranchColorMode m);
 void SetLinkStyle(DendrogramLinkStyle l);
 void SetConfidenceMode(ConfidenceDisplayMode m);
 ```
+
+### Node sizing (1.5.0)
+
+```cpp
+void                   SetNodeSizeMode(DendrogramNodeSizeMode m);
+DendrogramNodeSizeMode GetNodeSizeMode() const;
+
+// Radius range used by DendrogramNodeSizeMode::ByValue.
+void SetNodeRadiusRange(double minRadius, double maxRadius);
+
+// Largest nodeValue in the current data source, or 0 when no node carries one.
+// Exposed so an app can label a size legend.
+double GetMaxNodeValue() const;
+```
+
+Radius is mapped through `sqrt(value / maxValue)`, so the dot's **area** — not its
+radius — is proportional to the quantity. A linear radius would make a 9× value
+look 81× bigger.
+
+### Hierarchical edge bundling (1.5.0)
+
+```cpp
+void   AddRelation(const DendrogramRelation& relation);
+void   AddRelation(const std::string& sourceLeafId, const std::string& targetLeafId);
+void   SetRelations(const std::vector<DendrogramRelation>& relations);
+void   ClearRelations();
+size_t GetRelationCount() const;
+const std::vector<DendrogramRelation>& GetRelations() const;
+
+void SetRelationsVisible(bool visible);
+bool AreRelationsVisible() const;
+
+// Holten's beta: 1.0 hugs the tree (maximum bundling), 0.0 draws straight
+// chords. Values outside 0-1 are clamped.
+void   SetBundlingStrength(double beta);
+double GetBundlingStrength() const;
+```
+
+**How it works** (Holten 2006), in three steps:
+
+1. **Route the edge along the tree.** The control polygon is the path from the
+   source leaf up to the lowest common ancestor and back down to the target leaf.
+   Edges that share ancestors therefore share control points — which is what makes
+   them bundle.
+2. **Relax toward the straight chord** by `(1 - beta)`. At `beta = 1` the curve
+   hugs the hierarchy; at `beta = 0` it is the straight line you would have drawn
+   without bundling at all.
+3. **Smooth** the polygon with a clamped cubic B-spline, so the result flows
+   instead of being a chain of corners.
+
+Relations whose endpoints sit inside a collapsed subtree are skipped — there is no
+visible node to anchor them to. Self-loops and duplicate-id relations are rejected
+by `AddRelation`.
 
 ### Selection
 
@@ -178,6 +239,22 @@ struct DendrogramStyle {
     Color gradientLow  = Color( 24,  95, 165, 255);
     Color gradientHigh = Color(163,  45,  45, 255);
 
+    // --- Value-driven node radius (1.5.0) ---
+    DendrogramNodeSizeMode nodeSizeMode = DendrogramNodeSizeMode::Fixed;
+    double nodeRadiusMin      = 2.0f;   // Radius at value 0
+    double nodeRadiusMaxValue = 22.0f;  // Radius at the largest value in the tree
+    bool   sizeLeafNodesByValue     = true;
+    bool   sizeInternalNodesByValue = true;
+
+    // --- Hierarchical edge bundling (1.5.0) ---
+    bool   showRelations          = true;
+    double bundlingStrength       = 0.85f; // Holten's beta: 1 = hug the tree, 0 = straight chord
+    int    relationSegments       = 32;    // Spline samples; 16 for very large sets
+    double relationWidth          = 1.0f;  // Fallback when relation.width <= 0
+    bool   relationsBelowBranches = true;  // Bundles under the trunks (classic look)
+    double relationOpacity        = 1.0f;  // Global alpha multiplier for the layer
+    double relationDimOpacity     = 1.0f;  // Dim relations not touching the focused leaf
+
     double leafLabelFontSize  = 11.0f;
     bool   colorLeafLabels    = true;
     int    leafLabelPadding   = 5;
@@ -251,7 +328,43 @@ enum class GroupFillMode {
 enum class ConfidenceDisplayMode {
     None, LineThickness, LineDash, NodeDot, LineThicknessAndDot
 };
+
+// NEW in 1.5.0 - how a node dot's radius is derived
+enum class DendrogramNodeSizeMode {
+    Fixed,   // style.leafNodeRadius / style.internalNodeRadius (default)
+    ByValue  // Area proportional to DendrogramNode::nodeValue
+};
 ```
+
+### DendrogramRelation (1.5.0)
+
+An association between two leaves that does **not** follow the tree's parent/child
+structure — a citation, a co-occurrence, a dependency. Rendered as a hierarchically
+bundled spline rather than a straight chord.
+
+```cpp
+struct DendrogramRelation {
+    std::string sourceLeafId;
+    std::string targetLeafId;
+
+    // Differing endpoint colors draw the spline as a gradient, which makes
+    // direction readable without arrowheads.
+    Color sourceColor = Color( 90, 110, 200, 90);
+    Color targetColor = Color(200,  90, 110, 90);
+
+    float width   = 1.0f;   // Stroke width in pixels
+    float weight  = 1.0f;   // Optional magnitude; apps may map it to width
+    bool  visible = true;
+
+    std::string tooltip;
+    void*       userData = nullptr;
+};
+```
+
+`DendrogramNode` also gained `nodeValue` (default `-1.0` = unset), the magnitude
+behind a node. Radii are normalised against the largest value in the tree, so the
+units never have to be pixels; nodes left at `-1` keep their fixed radius, which
+means a tree can mix sized and unsized nodes.
 
 ### Data Source Interfaces
 
@@ -436,6 +549,99 @@ s.arcLabelRadiusMul     = 1.14f;
 s.marginTop = s.marginBottom = s.marginLeft = s.marginRight = 70;
 d->SetStyle(s);
 ```
+
+### Demo 7 — Radial Tree with Bundled Relations and Sized Nodes (1.5.0)
+
+The hierarchical-edge-bundling look: a radial dendrogram whose leaves carry
+magnitudes (drawn as area-proportional bubbles) and whose cross-links are routed
+through the tree instead of drawn as straight chords.
+
+```cpp
+auto data = std::make_shared<DendrogramDataVector>();
+
+DendrogramNode root;
+root.id = "root";
+root.mergeDistance = 1.0;
+
+const char* disciplines[] = { "Arts", "Sciences", "Social", "Engineering" };
+const Color colors[] = {
+    Color(120,  80, 190, 255), Color(150, 175,  60, 255),
+    Color( 60, 160, 150, 255), Color(190, 110,  60, 255)
+};
+
+std::vector<std::string> allLeaves;
+for (int g = 0; g < 4; ++g) {
+    std::string branchId = "b" + std::to_string(g);
+
+    DendrogramNode branch;
+    branch.id            = branchId;
+    branch.label         = disciplines[g];
+    branch.mergeDistance = 0.6;
+
+    DendrogramGroup group;
+    group.groupId     = branchId;
+    group.label       = disciplines[g];
+    group.branchColor = colors[g];
+    group.fillColor   = Color(colors[g].r, colors[g].g, colors[g].b, 40);
+    group.fillMode    = GroupFillMode::SectorFill;
+
+    for (int i = 0; i < 7; ++i) {
+        std::string leafId = branchId + "_l" + std::to_string(i);
+
+        DendrogramNode leaf;
+        leaf.id        = leafId;
+        leaf.label     = std::string(disciplines[g]) + std::to_string(i);
+        leaf.groupId   = branchId;
+        leaf.nodeValue = static_cast<float>(publicationCount[g][i]);  // Drives the bubble size
+        data->AddNode(leaf);
+
+        branch.childIds.push_back(leafId);
+        group.leafIds.push_back(leafId);
+        allLeaves.push_back(leafId);
+    }
+    data->AddNode(branch);
+    data->AddGroup(group);
+    root.childIds.push_back(branchId);
+}
+data->AddNode(root);
+data->SetRootId("root");
+
+auto dendro = std::make_shared<UltraCanvasDendrogram>("D7", 0, 0, 760, 700);
+dendro->SetDataSource(data);
+dendro->SetOrientation(DendrogramOrientation::Radial);
+dendro->SetScaleMode(DendrogramScaleMode::Proportional);
+
+DendrogramStyle style = dendro->GetStyle();
+style.linkStyle          = DendrogramLinkStyle::Curved;
+style.showDistanceAxis   = false;
+style.marginTop = style.marginBottom = style.marginLeft = style.marginRight = 70;
+
+// Bubbles: area proportional to nodeValue
+style.nodeSizeMode       = DendrogramNodeSizeMode::ByValue;
+style.nodeRadiusMin      = 2.0;
+style.nodeRadiusMaxValue = 16.0;
+
+// Bundling
+style.showRelations      = true;
+style.bundlingStrength   = 0.85;   // Holten's recommended beta
+dendro->SetStyle(style);
+
+// Cross-discipline associations - bundling is what keeps these readable
+for (const auto& pair : collaborations) {
+    DendrogramRelation relation(pair.first, pair.second);
+    relation.sourceColor = Color( 70,  90, 200, 70);
+    relation.targetColor = Color(200,  80,  90, 70);
+    dendro->AddRelation(relation);
+}
+```
+
+Drop `bundlingStrength` to `0.0` and the same relations become straight chords
+across the middle of the circle — the classic hairball. That comparison is the
+fastest way to see what bundling buys you.
+
+Set `style.relationDimOpacity` below `1.0` to dim every relation that does not
+touch the hovered or selected leaf, which turns the diagram into a focus-and-context
+explorer without any extra code.
 
 ### Demo 6 — Branch Color By Value Gradient
 

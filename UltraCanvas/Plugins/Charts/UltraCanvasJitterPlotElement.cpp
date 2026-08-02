@@ -381,36 +381,207 @@ void UltraCanvasJitterPlotElement::SetMinScoreFilter(double minScore) {
 // DATA LOADING
 // =============================================================================
 
-void UltraCanvasJitterPlotElement::AddCategoryData(const std::string& category, 
+void UltraCanvasJitterPlotElement::AddCategoryData(const std::string& category,
                                                    const std::vector<double>& values,
+                                                   const std::string& hueValue) {
+    AddCategoryData(category, values, {}, {}, hueValue);
+}
+
+// NEW in 1.3.0. The single-vector overload delegates here with empty encoding
+// vectors, so there is exactly one append path to keep consistent.
+void UltraCanvasJitterPlotElement::AddCategoryData(const std::string& category,
+                                                   const std::vector<double>& values,
+                                                   const std::vector<double>& sizeValues,
+                                                   const std::vector<double>& colorValues,
                                                    const std::string& hueValue) {
     if (std::find(categories.begin(), categories.end(), category) == categories.end()) {
         categories.push_back(category);
     }
-    
+
     auto& catDataList = categoryData[category];
-    
+
     auto it = std::find_if(catDataList.begin(), catDataList.end(),
         [&hueValue](const JitterCategoryData& data) {
             return data.hueGroup == hueValue;
         });
-    
+
     if (it != catDataList.end()) {
+        // Appending to an existing series: the encoding vectors have to stay
+        // index-aligned with `values`. If the existing series had no size/color
+        // data, pad it out to its current length first so the new points line up
+        // with their own entries instead of shifting onto the old ones.
+        if (!sizeValues.empty() && it->sizeValues.size() < it->values.size()) {
+            it->sizeValues.resize(it->values.size(), 0.0);
+        }
+        if (!colorValues.empty() && it->colorValues.size() < it->values.size()) {
+            it->colorValues.resize(it->values.size(), 0.0);
+        }
+
         it->values.insert(it->values.end(), values.begin(), values.end());
+        if (!sizeValues.empty()) {
+            it->sizeValues.insert(it->sizeValues.end(), sizeValues.begin(), sizeValues.end());
+        }
+        if (!colorValues.empty()) {
+            it->colorValues.insert(it->colorValues.end(), colorValues.begin(), colorValues.end());
+        }
         it->statisticsCached = false;
     } else {
         JitterCategoryData newData(category, hueValue);
         newData.values = values;
+        newData.sizeValues = sizeValues;
+        newData.colorValues = colorValues;
         catDataList.push_back(newData);
-        
-        if (!hueValue.empty() && 
+
+        if (!hueValue.empty() &&
             std::find(hueCategories.begin(), hueCategories.end(), hueValue) == hueCategories.end()) {
             hueCategories.push_back(hueValue);
         }
     }
-    
+
+    // 1.3.0: InvalidateCache() only clears the chart-level cache. Without this
+    // the position cache kept the points from the previous call, so a second
+    // AddCategoryData() (and any per-point encoding it carried) never appeared.
+    pointCacheValid = false;
     InvalidateCache();
     RequestRedraw();
+}
+
+// =============================================================================
+// PER-POINT ENCODINGS (1.3.0)
+// =============================================================================
+
+void UltraCanvasJitterPlotElement::SetPointSizeMode(JitterPointSizeMode mode) {
+    pointSizeMode = mode;
+    pointCacheValid = false;   // Radii are baked into the cache
+    InvalidateCache();
+    RequestRedraw();
+}
+
+void UltraCanvasJitterPlotElement::SetPointSizeRange(float minRadius, float maxRadius) {
+    pointRadiusMin = std::min(minRadius, maxRadius);
+    pointRadiusMax = std::max(minRadius, maxRadius);
+    pointCacheValid = false;
+    InvalidateCache();
+    RequestRedraw();
+}
+
+void UltraCanvasJitterPlotElement::SetPointSizeDomain(double minValue, double maxValue) {
+    if (minValue >= maxValue) {
+        autoSizeDomain = true;   // Degenerate range means "go back to automatic"
+    } else {
+        autoSizeDomain = false;
+        sizeDomainMin = minValue;
+        sizeDomainMax = maxValue;
+    }
+    pointCacheValid = false;
+    InvalidateCache();
+    RequestRedraw();
+}
+
+void UltraCanvasJitterPlotElement::SetPointColorMode(JitterPointColorMode mode) {
+    pointColorMode = mode;
+    RequestRedraw();
+}
+
+void UltraCanvasJitterPlotElement::SetPointColormap(HeatmapColormap cmap, bool reverse) {
+    pointColormap = cmap;
+    pointColormapReverse = reverse;
+    RequestRedraw();
+}
+
+void UltraCanvasJitterPlotElement::SetPointCustomColormap(const std::vector<Color>& anchors) {
+    pointColormapCustom = anchors;
+    if (anchors.size() >= 2) {
+        pointColormap = HeatmapColormap::Custom;
+    }
+    RequestRedraw();
+}
+
+void UltraCanvasJitterPlotElement::SetPointColorDomain(double minValue, double maxValue) {
+    if (minValue >= maxValue) {
+        autoColorDomain = true;
+    } else {
+        autoColorDomain = false;
+        colorDomainMin = minValue;
+        colorDomainMax = maxValue;
+    }
+    RequestRedraw();
+}
+
+void UltraCanvasJitterPlotElement::SetPointColorDiverging(bool diverging, double midpoint) {
+    pointColorDiverging = diverging;
+    pointColorMidpoint = midpoint;
+    RequestRedraw();
+}
+
+// Scan the data once per cache rebuild and pick up the encoding ranges. Doing
+// this across ALL categories (rather than per category) is deliberate: a size
+// or color scale that changed between categories would make them impossible to
+// compare, which defeats the point of the encoding.
+void UltraCanvasJitterPlotElement::RefreshEncodingDomains() {
+    bool haveSize = false;
+    bool haveColor = false;
+    double sMin = 0.0, sMax = 0.0, cMin = 0.0, cMax = 0.0;
+
+    for (const auto& cat : categories) {
+        const auto& catDataList = GetCategoryDataList(cat);
+        for (const auto& catData : catDataList) {
+            for (double v : catData.sizeValues) {
+                if (!haveSize) { sMin = sMax = v; haveSize = true; }
+                else { sMin = std::min(sMin, v); sMax = std::max(sMax, v); }
+            }
+            for (double v : catData.colorValues) {
+                if (!haveColor) { cMin = cMax = v; haveColor = true; }
+                else { cMin = std::min(cMin, v); cMax = std::max(cMax, v); }
+            }
+        }
+    }
+
+    if (autoSizeDomain && haveSize) {
+        // Anchor the low end at 0 when the data is all non-negative: a bubble
+        // scale that starts at the smallest observed value exaggerates small
+        // differences, which is the classic bubble-chart lie.
+        sizeDomainMin = (sMin >= 0.0) ? 0.0 : sMin;
+        sizeDomainMax = (sMax > sizeDomainMin) ? sMax : sizeDomainMin + 1.0;
+    }
+    if (autoColorDomain && haveColor) {
+        colorDomainMin = cMin;
+        colorDomainMax = (cMax > cMin) ? cMax : cMin + 1.0;
+    }
+}
+
+float UltraCanvasJitterPlotElement::ResolvePointRadius(const JitterCategoryData& catData,
+                                                        size_t pointIndex) const {
+    if (pointSizeMode != JitterPointSizeMode::ByValue) return pointSize;
+    if (pointIndex >= catData.sizeValues.size())      return pointSize;
+
+    double span = sizeDomainMax - sizeDomainMin;
+    if (span <= 0.0) return pointSize;
+
+    double t = (catData.sizeValues[pointIndex] - sizeDomainMin) / span;
+    t = std::clamp(t, 0.0, 1.0);
+
+    // sqrt so the point's AREA - not its radius - is proportional to the value.
+    t = std::sqrt(t);
+    return static_cast<float>(pointRadiusMin + t * (pointRadiusMax - pointRadiusMin));
+}
+
+Color UltraCanvasJitterPlotElement::ResolvePointColor(const PointPosition& pp,
+                                                       const Color& categoricalColor) const {
+    if (pointColorMode != JitterPointColorMode::ByValue || !pp.hasColorValue) {
+        return categoricalColor;
+    }
+
+    double t;
+    if (pointColorDiverging) {
+        t = DivergingNorm(pp.colorValue, colorDomainMin, pointColorMidpoint, colorDomainMax);
+    } else {
+        double span = colorDomainMax - colorDomainMin;
+        t = (span > 0.0) ? (pp.colorValue - colorDomainMin) / span : 0.5;
+        t = std::clamp(t, 0.0, 1.0);
+    }
+
+    return SampleColormap(pointColormap, pointColormapCustom, t, pointColormapReverse);
 }
 
 void UltraCanvasJitterPlotElement::ClearData() {
@@ -892,17 +1063,37 @@ void UltraCanvasJitterPlotElement::RenderJitterPoints(IRenderContext* ctx) {
     // Build point positions cache if needed
     if (!pointCacheValid) {
         pointPositionsCache.clear();
-        
+
+        // 1.3.0: encoding ranges must be known before any radius is resolved.
+        RefreshEncodingDomains();
+
         size_t catIdx = 0;
         for (const auto& cat : categories) {
             const auto& catDataList = GetCategoryDataList(cat);
             size_t hueIdx = 0;
             for (const auto& catData : catDataList) {
+                // 1.3.0: resolve every point's radius up front. The beeswarm
+                // packer needs them to avoid overlap, and the render loop reads
+                // them straight out of the cache.
+                std::vector<float> radii;
+                radii.reserve(catData.values.size());
+                for (size_t i = 0; i < catData.values.size(); ++i) {
+                    radii.push_back(ResolvePointRadius(catData, i));
+                }
+
+                // Helper: attach the per-point color value, if the series has one.
+                auto attachColorValue = [&catData](PointPosition& pp, size_t index) {
+                    if (index < catData.colorValues.size()) {
+                        pp.hasColorValue = true;
+                        pp.colorValue = catData.colorValues[index];
+                    }
+                };
+
                 // Check if we're using beeswarm packing
                 if (jitterDistribution == JitterDistribution::Beeswarm) {
                     // Use beeswarm layout
                     float categoryCenter = GetCategoryPosition(catIdx, hueIdx);
-                    
+
                     // FIX (v1.2.2): compute category width in PIXELS, not
                     // data units. The member `categoryWidth` (= 1.0) is a
                     // logical span in data space; the real horizontal slot
@@ -911,14 +1102,15 @@ void UltraCanvasJitterPlotElement::RenderJitterPoints(IRenderContext* ctx) {
                     float categoryPixelWidth = categories.empty() ? 1.0f :
                         cachedPlotArea.width / static_cast<float>(categories.size());
                     float categoryWidthForBeeswarm = categoryPixelWidth * 0.8f;
-                    
+
                     auto beeswarmPoints = CalculateBeeswarmLayout(
                         catData.values,
                         categoryCenter,
                         categoryWidthForBeeswarm,
-                        pointSize
+                        pointSize,
+                        radii
                     );
-                    
+
                     for (const auto& bp : beeswarmPoints) {
                         PointPosition pp;
                         pp.x = bp.position.x;
@@ -926,6 +1118,12 @@ void UltraCanvasJitterPlotElement::RenderJitterPoints(IRenderContext* ctx) {
                         pp.value = bp.yValue;
                         pp.category = cat;
                         pp.region = catData.hueGroup;
+                        pp.radius = bp.radius;
+                        // originalIndex maps the packed point back to its row in
+                        // the source vectors - the packer reorders points.
+                        if (bp.originalIndex >= 0) {
+                            attachColorValue(pp, static_cast<size_t>(bp.originalIndex));
+                        }
                         pointPositionsCache.push_back(pp);
                     }
                 } else {
@@ -934,15 +1132,17 @@ void UltraCanvasJitterPlotElement::RenderJitterPoints(IRenderContext* ctx) {
                     for (double val : catData.values) {
                         float jitter = CalculateJitter(ptIdx, hueIdx);
                         Point2Dd pos = CalculatePointPosition(catIdx, val, jitter, hueIdx);
-                        
+
                         PointPosition pp;
                         pp.x = pos.x;
                         pp.y = pos.y;
                         pp.value = val;
                         pp.category = cat;
                         pp.region = catData.hueGroup;
+                        pp.radius = (ptIdx < radii.size()) ? radii[ptIdx] : pointSize;
+                        attachColorValue(pp, ptIdx);
                         pointPositionsCache.push_back(pp);
-                        
+
                         ptIdx++;
                     }
                 }
@@ -952,19 +1152,33 @@ void UltraCanvasJitterPlotElement::RenderJitterPoints(IRenderContext* ctx) {
         }
         pointCacheValid = true;
     }
-    
+
+    // 1.3.0: draw the biggest bubbles first so small ones stay visible on top
+    // of them. Only worth the sort when sizes actually vary.
+    std::vector<const PointPosition*> drawOrder;
+    drawOrder.reserve(pointPositionsCache.size());
+    for (const auto& pp : pointPositionsCache) drawOrder.push_back(&pp);
+    if (pointSizeMode == JitterPointSizeMode::ByValue) {
+        std::stable_sort(drawOrder.begin(), drawOrder.end(),
+            [](const PointPosition* a, const PointPosition* b) {
+                return a->radius > b->radius;
+            });
+    }
+
     // Render from cache - much faster!
-    for (const auto& pp : pointPositionsCache) {
+    for (const PointPosition* ptr : drawOrder) {
+        const PointPosition& pp = *ptr;
+
         // Apply region filter
         if (!selectedRegion.empty() && pp.region != selectedRegion) {
             continue;
         }
-        
+
         // Apply score filter
         if (pp.value < minScoreFilter) {
             continue;
         }
-        
+
         // Get color for region
         Color color = Color(0, 102, 204, 180);
         for (size_t c = 0; c < categories.size(); c++) {
@@ -979,10 +1193,15 @@ void UltraCanvasJitterPlotElement::RenderJitterPoints(IRenderContext* ctx) {
                 break;
             }
         }
-        
+
+        // 1.3.0: a continuous color value overrides the categorical color.
+        color = ResolvePointColor(pp, color);
         color.a = static_cast<uint8_t>(pointAlpha * 255);
-        ctx->SetFillPaint(color);
-        ctx->FillCircle({pp.x, pp.y}, pointSize);
+
+        // 1.3.0: route through DrawJitterPoint so pointShape and the edge style
+        // apply. This used to be a bare FillCircle, which silently ignored both.
+        float radius = (pp.radius > 0.0f) ? pp.radius : pointSize;
+        DrawJitterPoint(ctx, {pp.x, pp.y}, color, radius);
     }
 }
 
@@ -1775,43 +1994,68 @@ UltraCanvasJitterPlotElement::CalculateBeeswarmLayout(
     const std::vector<double>& values,
     float categoryCenter,
     float categoryWidth,
-    float pointRadius)
+    float pointRadius,
+    const std::vector<float>& perPointRadii)
 {
     if (values.empty()) {
         return {};
     }
-    
+
+    bool variableRadii = !perPointRadii.empty();
+
+    // 1.3.0: the three grid methods lay points out on a fixed pitch, so they
+    // need one radius for the whole grid. Use the largest so the biggest bubble
+    // still fits its cell; each point then gets its own radius back for
+    // rendering. Swarm is greedy and collision-tested, so it takes the real
+    // per-point radii and packs them properly.
+    float gridRadius = pointRadius;
+    if (variableRadii) {
+        gridRadius = *std::max_element(perPointRadii.begin(), perPointRadii.end());
+    }
+
     // Sort indices by priority (if using Swarm method)
     std::vector<int> sortedIndices;
     if (beeswarmMethod == BeeswarmMethod::Swarm) {
         sortedIndices = SortIndicesByPriority(values, beeswarmPriority);
     }
-    
+
     // Calculate layout based on method
     std::vector<BeeswarmPoint> points;
-    
+
     switch (beeswarmMethod) {
         case BeeswarmMethod::Swarm:
-            points = CalculateBeeswarmSwarm(values, sortedIndices, 
-                                           categoryCenter, categoryWidth, pointRadius);
+            points = CalculateBeeswarmSwarm(values, sortedIndices,
+                                           categoryCenter, categoryWidth, pointRadius,
+                                           perPointRadii);
             break;
-            
+
         case BeeswarmMethod::Center:
-            points = CalculateBeeswarmCenter(values, categoryCenter, 
-                                            categoryWidth, pointRadius);
+            points = CalculateBeeswarmCenter(values, categoryCenter,
+                                            categoryWidth, gridRadius);
             break;
-            
+
         case BeeswarmMethod::Hex:
-            points = CalculateBeeswarmHex(values, categoryCenter, 
-                                         categoryWidth, pointRadius);
+            points = CalculateBeeswarmHex(values, categoryCenter,
+                                         categoryWidth, gridRadius);
             break;
-            
+
         case BeeswarmMethod::Square:
-            points = CalculateBeeswarmSquare(values, categoryCenter, 
-                                            categoryWidth, pointRadius);
+            points = CalculateBeeswarmSquare(values, categoryCenter,
+                                            categoryWidth, gridRadius);
             break;
     }
-    
+
+    // 1.3.0: grid methods stamped every point with gridRadius. Restore each
+    // point's own radius now that its cell is reserved.
+    if (variableRadii && beeswarmMethod != BeeswarmMethod::Swarm) {
+        for (auto& p : points) {
+            if (p.originalIndex >= 0 &&
+                static_cast<size_t>(p.originalIndex) < perPointRadii.size()) {
+                p.radius = perPointRadii[p.originalIndex];
+            }
+        }
+    }
+
     // Apply corral strategy for runaway points
     float maxWidth = categoryWidth * beeswarmMaxWidth;
     ApplyCorralStrategy(points, categoryCenter, maxWidth, beeswarmCorral);
@@ -1832,11 +2076,22 @@ UltraCanvasJitterPlotElement::CalculateBeeswarmSwarm(
     const std::vector<int>& sortedIndices,
     float categoryCenter,
     float categoryWidth,
-    float pointRadius)
+    float pointRadius,
+    const std::vector<float>& perPointRadii)
 {
     std::vector<BeeswarmPoint> placed;
     placed.reserve(values.size());
-    
+
+    // 1.3.0: radius of the point currently being placed. CheckBeeswarmCollision
+    // already compares against each PLACED point's own radius, so honouring the
+    // test point's radius here is all that variable-size packing needs.
+    auto radiusFor = [&](int idx) -> float {
+        if (idx >= 0 && static_cast<size_t>(idx) < perPointRadii.size()) {
+            return perPointRadii[idx];
+        }
+        return pointRadius;
+    };
+
     // FIX (v1.2.2): `categoryWidth` is the TOTAL pixel width of the category
     // slot. Points spiral OUT from `categoryCenter` toward both sides, so
     // each side only has half the width available. Previously this was
@@ -1850,27 +2105,28 @@ UltraCanvasJitterPlotElement::CalculateBeeswarmSwarm(
     for (int idx : sortedIndices) {
         double yValue = values[idx];
         float yPos = GetValuePosition(yValue);
-        
+        float thisRadius = radiusFor(idx);
+
         // Try placing at center first
         Point2Dd testPos(categoryCenter, yPos);
-        
+
         // Check if center position is free
-        if (!CheckBeeswarmCollision(testPos, pointRadius, placed, beeswarmSpacing)) {
-            placed.push_back({testPos, pointRadius, idx, yValue});
+        if (!CheckBeeswarmCollision(testPos, thisRadius, placed, beeswarmSpacing)) {
+            placed.push_back({testPos, thisRadius, idx, yValue});
             continue;
         }
-        
+
         // Spiral outward alternating left/right
         float offset = searchIncrement;
         int side = 1; // Start right
         bool foundPosition = false;
-        
+
         while (offset < maxHalfWidth && !foundPosition) {
             float xPos = categoryCenter + (offset * side);
             testPos = Point2Dd(xPos, yPos);
-            
-            if (!CheckBeeswarmCollision(testPos, pointRadius, placed, beeswarmSpacing)) {
-                placed.push_back({testPos, pointRadius, idx, yValue});
+
+            if (!CheckBeeswarmCollision(testPos, thisRadius, placed, beeswarmSpacing)) {
+                placed.push_back({testPos, thisRadius, idx, yValue});
                 foundPosition = true;
             } else {
                 // Alternate sides
@@ -1886,7 +2142,7 @@ UltraCanvasJitterPlotElement::CalculateBeeswarmSwarm(
         // If no position found (runaway point), place at max offset
         if (!foundPosition) {
             testPos = Point2Dd(categoryCenter + (maxHalfWidth * side), yPos);
-            placed.push_back({testPos, pointRadius, idx, yValue});
+            placed.push_back({testPos, thisRadius, idx, yValue});
         }
     }
     
