@@ -1,9 +1,19 @@
 # UltraCanvas Element Plugin System — Plan & Proposal
 
-Status: **Proposal — not yet implemented.** Plan for a real, on-demand
-plugin system covering **charts, diagrams, tools and widgets**: elements
-become installable, dynamically loadable modules instead of compile-time
-members of the core library.
+Status: **P1 (registry) and the P2 loader core are implemented** — see
+[`UltraCanvasElementPlugins.md`](UltraCanvasElementPlugins.md) for the API
+documentation and `Tests/ElementPluginTest.cpp` for the tests, which include a
+real end-to-end DSO load. Still open from the plan: manifest-indexed selective
+lazy loading (today a registry miss refreshes all directories), the
+`ultracanvas_add_element_plugin` CMake helper, porting UltraNet onto the shared
+loader helpers, `RegisterGraphicsPlugin` in the host vtable, and the §8 P3/P4
+migration and consumer work. The §10.1 property surface shipped as
+`UltraCanvasElementProperties.h`.
+
+This document remains the plan of record for a real, on-demand plugin system
+covering **charts, diagrams, tools and widgets**: elements become installable,
+dynamically loadable modules instead of compile-time members of the core
+library.
 
 Author: UltraCanvas Framework
 Last Modified: 2026-08-01

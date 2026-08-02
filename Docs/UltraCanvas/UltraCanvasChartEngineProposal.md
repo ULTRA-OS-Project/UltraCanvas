@@ -1,8 +1,11 @@
 # UltraCanvasChartEngine — Investigation & Architecture Proposal
 
 Status: **Investigation complete, all design decisions resolved (§11, §12.10).
-P0 (the label engine upgrade, §7) is implemented and tested; the engine itself
-is not started.** This document reports what the existing chart code
+Implemented so far: P0 (the label engine upgrade, §7), the engine model layer
+(axes, projections, label plan — `Plugins/Charts/Engine/`), and the shared
+element plugin registry + loader that §12.12 defers to
+(`UltraCanvasElementPlugins`). Not started: the three-phase render driver, the
+CMake target split, and the parallel coordinate chart itself.** This document reports what the existing chart code
 actually contains, what is duplicated or broken, and specifies one layered chart
 engine to replace the duplication — with the parallel coordinate chart as its
 first native client.

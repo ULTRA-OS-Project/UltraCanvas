@@ -308,6 +308,9 @@ set(ULTRACANVAS_CORE_SOURCES
         # Collision-aware placement of annotation labels around shapes.
         # Part of the layout engine, not of any chart/diagram plugin.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasLabelPlacement.cpp
+        # Element plugin system: registry + DSO loader (element plugin proposal P1/P2)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPluginLoader.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasElementPlugins.cpp
 
         # HTMLReader: HTML/XHTML parser + CSS subset + DOM→element builder
         # on top of the CSSLayout engine (used by the eBook subsystem).

@@ -645,6 +645,55 @@ add_test(
 )
 message(STATUS "    Test registered: ChartEngineTest")
 
+# ===== ELEMENT PLUGIN TEST =====
+# The element plugin registry, create-by-name, keyword text dispatch, the named
+# property surface, the ABI handshake, and a real end-to-end DSO load: two test
+# plugins are built as MODULE libraries and loaded through the host vtable.
+# The test supplies its own minimal UltraCanvasUIElement stand-in (see
+# ElementPluginTestSupport.h) so no UI stack is needed.
+message(STATUS "  Building ElementPluginTest...")
+add_library(TestElementPlugin MODULE
+    ${CMAKE_CURRENT_SOURCE_DIR}/TestElementPlugin.cpp
+)
+add_library(TestRefusingPlugin MODULE
+    ${CMAKE_CURRENT_SOURCE_DIR}/TestRefusingPlugin.cpp
+)
+foreach(plugin TestElementPlugin TestRefusingPlugin)
+    target_include_directories(${plugin} PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+    target_compile_features(${plugin} PRIVATE cxx_std_20)
+    set_target_properties(${plugin} PROPERTIES
+        PREFIX ""
+        POSITION_INDEPENDENT_CODE ON
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/TestElements
+    )
+endforeach()
+
+add_executable(ElementPluginTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ElementPluginTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasElementPlugins.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasPluginLoader.cpp
+)
+target_include_directories(ElementPluginTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_compile_features(ElementPluginTest PRIVATE cxx_std_20)
+target_link_libraries(ElementPluginTest PRIVATE ${CMAKE_DL_LIBS})
+add_dependencies(ElementPluginTest TestElementPlugin TestRefusingPlugin)
+set_target_properties(ElementPluginTest PROPERTIES
+    OUTPUT_NAME "ElementPluginTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ElementPluginTest
+    COMMAND ElementPluginTest ${CMAKE_BINARY_DIR}/Plugins/TestElements
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ElementPluginTest")
+
 # ===== FUTURE TESTS =====
 # Add more test executables here as needed:
 #
