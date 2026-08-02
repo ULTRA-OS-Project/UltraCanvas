@@ -112,6 +112,9 @@ if(BUILD_DEMO_APP)
     message(STATUS "── Building Demo Application ──")
 
     # Demo app source files
+    if(NOT ULTRACANVAS_ENABLE_CHARTS)
+        message(FATAL_ERROR "BUILD_DEMO_APP requires ULTRACANVAS_ENABLE_CHARTS=ON (the demo's chart pages need the bundled charts)")
+    endif()
     set(DEMO_SOURCES
             Apps/DemoApp/main.cpp
             Apps/DemoApp/UltraCanvasDemo.cpp

@@ -13342,6 +13342,13 @@ int loaded = UltraCanvas_RefreshElementPlugins();   // explicit; usually implici
   vtables live in the DSO.
 - POSIX loads use `RTLD_GLOBAL` so `dynamic_cast` works across module
   boundaries (path 2 above).
+- **Static-core hosts must call `UltraCanvas_RegisterSelectedCharts()` at
+  startup** (harmless no-op body when nothing is selected): besides registering
+  the compile-time chart selection, its generated TU anchors the chart engine's
+  objects into the executable. A static archive only keeps referenced members,
+  so without the anchor the linker strips the engine and a runtime chart module
+  fails at `dlopen` with an undefined base-class symbol. Shared-core builds
+  need no anchor - modules link the DLL/so directly.
 
 ## Best Practices
 

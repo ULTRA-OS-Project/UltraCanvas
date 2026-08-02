@@ -5,9 +5,18 @@ Implemented so far: P0 (the label engine upgrade, §7); the engine model layer
 (axes, projections, label plan — `Plugins/Charts/Engine/`); the shared element
 plugin registry + loader that §12.12 defers to (`UltraCanvasElementPlugins`);
 the three-phase render driver (`UltraCanvasChartEngineElement` — a new subclass
-rather than a change to the 43-chart base, so Tier 0 stays untouched); and the
-parallel coordinate chart as the first native client. Not started: the CMake
-target split (`ULTRACANVAS_CHARTS`, per-chart modules) and the Tier-1 adapter.** This document reports what the existing chart code
+rather than a change to the 43-chart base, so Tier 0 stays untouched); the
+parallel coordinate chart as the first native client; and the CMake target
+split for the selectable-chart mechanism: `ULTRACANVAS_CHARTS` (default empty),
+`ULTRACANVAS_CHART_RUNTIME_MODULES` (default on), a generated
+`UltraCanvas_RegisterSelectedCharts()` TU, and one
+`ultracanvas-chart-<name>` MODULE per unselected chart following the LaTeX
+plugin's symbol-resolution pattern. The parallel coordinate chart is the first
+selectable chart; the ~40 legacy charts stay unconditionally bundled until each
+gains a descriptor and joins the selectable table (which is when the §12.11
+application chart lists start to bite — DemoApp is guarded to require
+`ULTRACANVAS_ENABLE_CHARTS=ON`). Not started: the Tier-1 adapter and the legacy
+chart migration.** This document reports what the existing chart code
 actually contains, what is duplicated or broken, and specifies one layered chart
 engine to replace the duplication — with the parallel coordinate chart as its
 first native client.

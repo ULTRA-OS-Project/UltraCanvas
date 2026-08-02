@@ -649,7 +649,7 @@ CreateParallelCoordinateChartElement(const std::string& id, int x, int y, int w,
     return std::make_shared<UltraCanvasParallelCoordinateChartElement>(id, x, y, w, h);
 }
 
-void RegisterParallelCoordinateChartElement() {
+UCElementDescriptor MakeParallelCoordinateChartDescriptor() {
     UCElementDescriptor descriptor;
     descriptor.typeName = "parallel-coordinate-chart";
     descriptor.category = UCPluginCategory::Chart;
@@ -663,7 +663,11 @@ void RegisterParallelCoordinateChartElement() {
         return std::static_pointer_cast<UltraCanvasUIElement>(
             CreateParallelCoordinateChartElement(id, x, y, w, h));
     };
-    UltraCanvasElementRegistry::Register(descriptor);
+    return descriptor;
+}
+
+void RegisterParallelCoordinateChartElement() {
+    UltraCanvasElementRegistry::Register(MakeParallelCoordinateChartDescriptor());
 }
 
 } // namespace UltraCanvas

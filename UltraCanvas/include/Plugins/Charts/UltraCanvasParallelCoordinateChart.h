@@ -139,6 +139,11 @@ private:
 std::shared_ptr<UltraCanvasParallelCoordinateChartElement>
 CreateParallelCoordinateChartElement(const std::string& id, int x, int y, int w, int h);
 
+// The element descriptor, shared by the bundled registration below and the
+// runtime module's plugin init (which routes it through the host vtable).
+struct UCElementDescriptor;
+UCElementDescriptor MakeParallelCoordinateChartDescriptor();
+
 // Registers "parallel-coordinate-chart" with UltraCanvasElementRegistry.
 // Explicit call, never a static initialiser (see the element plugin plan).
 void RegisterParallelCoordinateChartElement();
