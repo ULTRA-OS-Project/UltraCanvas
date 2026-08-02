@@ -142,6 +142,34 @@ Pair it with `BreadcrumbOverflowMode::Collapse` (plus `keepFirstItemOnCollapse`
 and `minVisibleAfterCollapse`) so a deep path collapses its middle into a `...`
 menu rather than running past the strip.
 
+### Dropdowns
+
+Only one dropdown is ever open at a time — an item's dropdown or the overflow
+(`...`) menu. Opening one closes whichever was open before, clicking the same
+chevron again toggles it shut, clicking any segment label closes it, and so
+does any change to the item list (the open menu belongs to the path it was
+opened from). The menu is also closed if the breadcrumb itself is destroyed.
+
+```cpp
+bool IsDropdownOpen() const;
+// Item index of the open dropdown; -1 when nothing is open or the open menu
+// is the overflow menu.
+int  GetOpenDropdownItemIndex() const;
+void CloseDropdown();
+```
+
+The pointer says which parts open a menu: a dropdown chevron — and the whole
+overflow (`...`) item, which opens from anywhere on it — shows the menu cursor
+(`UCMouseCursor::ContextMenu`, the same one the dropdown widget's button uses),
+the rest of the strip shows the item cursor. Both are style fields:
+
+```cpp
+BreadcrumbStyle s = bc->GetStyle();
+s.itemCursor     = UCMouseCursor::Hand;         // default
+s.dropdownCursor = UCMouseCursor::ContextMenu;  // default
+bc->SetStyle(s);
+```
+
 ### Current Item
 
 ```cpp

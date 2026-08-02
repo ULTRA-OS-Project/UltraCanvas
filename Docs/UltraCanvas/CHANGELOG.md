@@ -1,4 +1,30 @@
 #### 2026-07-31 *0.3.21*
+- **UltraCanvasBreadcrumb**: a segment dropdown no longer stays up when a
+  second one is opened. The window stacks popups (submenus depend on it) and
+  never dismisses one because another opened, and a click on the breadcrumb is
+  a click on the popup's *owner*, so it does not count as a click-outside
+  either — both left the previous menu on screen, which is what the filer's and
+  the media viewer's path strips showed. The breadcrumb now closes the menu it
+  owns before opening another: only one dropdown (item or overflow) is open at
+  a time, a second click on the same chevron toggles it shut, clicking a
+  segment label closes it, and so does any change to the item list or the
+  breadcrumb's destruction. New `IsDropdownOpen()`, `GetOpenDropdownItemIndex()`
+  and `CloseDropdown()`.
+- **UltraCanvasBreadcrumb**: the pointer now says which parts of the strip open
+  a menu instead of navigating — a dropdown chevron, and the whole overflow
+  (`...`) item since it opens from anywhere on it, switch to the menu cursor
+  (`UCMouseCursor::ContextMenu`, the one the dropdown widget's button already
+  uses) and back to the item cursor elsewhere. Both are style fields
+  (`itemCursor`, `dropdownCursor`). The shape is applied as the pointer crosses
+  the chevron rather than one mouse event later.
+- **UltraCanvasBreadcrumb**: a click handler that rebuilds the path (which is
+  what filer/media-viewer navigation does) cleared `items` while the clicked
+  item was still being read from it — the item click and the overflow-menu
+  entries now work off copies.
+- **UltraCanvasMenu**: `CloseMenu()` on an already-closed menu is a no-op
+  instead of dereferencing the window pointer that closing cleared. Reached
+  when an item's action dismisses its own menu, as a breadcrumb dropdown entry
+  now does by navigating.
 - **UltraCanvasTimelineChart**: added the swimlane grouping mode
   (`TimelineLaneMode::Swimlanes`). The same date axis and the same entries, with
   rows given identity: one named band per workstream, a name column on the left
