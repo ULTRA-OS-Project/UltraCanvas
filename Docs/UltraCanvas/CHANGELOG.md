@@ -1,4 +1,14 @@
 #### 2026-07-31 *0.3.21*
+- **UltraCanvasBreadcrumb**: fixed the folder path dropdowns of
+  `BuildFolderBreadcrumb()` (the media viewer's and the filer's path strip).
+  Every segment listed the folders next to it (its siblings), so opening the
+  dropdown of a folder repeated the listing of the segment before it instead of
+  descending — on `Computer > C: > Projekte` the `Projekte` dropdown showed the
+  contents of `C:\`. Each node now drops down its own sub-folders, so the path
+  can be extended one level from the strip; a folder without sub-folders shows a
+  disabled `(no sub-folders)` entry rather than an empty menu.
+  `FolderBreadcrumbOptions::siblingDropdowns` is accordingly renamed
+  `subFolderDropdowns`.
 - **UltraCanvasBreadcrumb**: a segment dropdown no longer stays up when a
   second one is opened. The window stacks popups (submenus depend on it) and
   never dismisses one because another opened, and a click on the breadcrumb is

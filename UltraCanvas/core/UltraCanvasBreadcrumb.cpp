@@ -1527,20 +1527,17 @@ namespace UltraCanvas {
     }
 
     namespace {
-        // The folders sitting next to `folder` (its siblings), listed when a
-        // segment's dropdown is opened. A root has no siblings, so it lists its
-        // own children instead.
-        std::vector<MenuItemData> SiblingFolderMenu(
+        // The folders inside `folder`, listed when that segment's dropdown is
+        // opened. Every node drops down its own sub-folders — the drive node the
+        // folders of the drive, the last node the folders below the current one —
+        // so the path can be extended one level without leaving the breadcrumb.
+        std::vector<MenuItemData> SubFolderMenu(
                 const std::string& folder,
                 const std::function<void(const std::string&)>& onNavigate) {
             std::vector<MenuItemData> out;
             std::error_code ec;
-            std::filesystem::path sp(folder);
-            std::filesystem::path parent = sp.parent_path();
-            std::filesystem::path listDir =
-                    (parent.empty() || parent == sp) ? sp : parent;
             std::vector<std::string> dirs;
-            for (std::filesystem::directory_iterator it(listDir, ec), end;
+            for (std::filesystem::directory_iterator it(std::filesystem::path(folder), ec), end;
                  it != end && !ec; it.increment(ec)) {
                 std::error_code dec;
                 if (it->is_directory(dec)) dirs.push_back(it->path().string());
@@ -1550,6 +1547,13 @@ namespace UltraCanvas {
                 std::string name = std::filesystem::path(d).filename().string();
                 if (name.empty()) name = d;
                 out.emplace_back(name, [onNavigate, d]() { if (onNavigate) onNavigate(d); });
+            }
+            if (out.empty()) {
+                // A leaf folder still opens its dropdown — say so instead of
+                // popping up an empty menu.
+                MenuItemData empty("(no sub-folders)");
+                empty.enabled = false;
+                out.push_back(empty);
             }
             return out;
         }
@@ -1600,10 +1604,10 @@ namespace UltraCanvas {
             BreadcrumbItem drive(driveLabel);
             std::string target = base.string();
             drive.onClick = [onNavigate, target]() { if (onNavigate) onNavigate(target); };
-            if (options.siblingDropdowns) {
+            if (options.subFolderDropdowns) {
                 drive.hasDropdown = true;
                 drive.dropdownItemsProvider = [onNavigate, target]() {
-                    return SiblingFolderMenu(target, onNavigate);
+                    return SubFolderMenu(target, onNavigate);
                 };
             }
             crumb->AddItem(drive);
@@ -1617,10 +1621,10 @@ namespace UltraCanvas {
             BreadcrumbItem item(seg);
             std::string target = accum.string();
             item.onClick = [onNavigate, target]() { if (onNavigate) onNavigate(target); };
-            if (options.siblingDropdowns) {
+            if (options.subFolderDropdowns) {
                 item.hasDropdown = true;
                 item.dropdownItemsProvider = [onNavigate, target]() {
-                    return SiblingFolderMenu(target, onNavigate);
+                    return SubFolderMenu(target, onNavigate);
                 };
             }
             crumb->AddItem(item);
