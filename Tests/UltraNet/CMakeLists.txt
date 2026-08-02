@@ -29,20 +29,23 @@ target_compile_features(UltraNetTests PRIVATE cxx_std_20)
 
 # UltraNetMime routes base64/Trim through UltraCanvas core (UltraCanvasUtils),
 # whose definitions live in libultracanvas — which in turn PUBLIC-links UltraNet.
-# That makes the two static archives mutually dependent. Wrap them in a rescanned
-# link group so GNU ld (Linux/Windows CI) resolves the UltraNet -> UltraCanvas
-# back-references regardless of scan order; Apple ld rescans natively. Guarded on
-# the UltraCanvas target because the net tests can be built standalone. Mirrors
-# the version-guarded WHOLE_ARCHIVE idiom in UltraCanvas/CMakeLists.txt.
+# That makes the two static archives mutually dependent, so the test must link
+# both and the linker must resolve the UltraNet -> UltraCanvas back-references
+# regardless of scan order. GNU ld (Linux + Windows/MinGW CI) is single-pass, so
+# wrap the pair in a rescanned link group; Apple ld64 / MSVC link.exe rescan
+# archives natively AND reject CMake's LINK_GROUP RESCAN feature at generate time,
+# so those get plain order. Linker family is checked first for exactly that
+# reason. Guarded on the UltraCanvas target because the net tests can be built
+# standalone. Mirrors the version-guarded WHOLE_ARCHIVE idiom in
+# UltraCanvas/CMakeLists.txt.
 if(TARGET UltraCanvas)
-    if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.24)
+    if(APPLE OR MSVC)
+        target_link_libraries(UltraNetTests PRIVATE UltraNet UltraCanvas)
+    elseif(CMAKE_VERSION VERSION_GREATER_EQUAL 3.24)
         target_link_libraries(UltraNetTests PRIVATE
             "$<LINK_GROUP:RESCAN,UltraNet,UltraCanvas>")
-    elseif(APPLE)
-        # ld64 rescans archives, so plain order suffices.
-        target_link_libraries(UltraNetTests PRIVATE UltraNet UltraCanvas)
     else()
-        # Fallback for GNU ld on CMake < 3.24.
+        # GNU ld on CMake < 3.24 (no LINK_GROUP genex): emit the flags directly.
         target_link_libraries(UltraNetTests PRIVATE
             -Wl,--start-group UltraNet UltraCanvas -Wl,--end-group)
     endif()
