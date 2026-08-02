@@ -31,7 +31,10 @@ void UltraCanvasChartEngineElement::SetProjectionKind(ChartProjectionKind kind) 
     if (kind == projectionKind) return;
     projectionKind = kind;
     engineProjection = CreateChartProjection(kind);
-    MarkEngineDirty(ChartDirty::Geometry);
+    // Data, not just Geometry: DescribeAxes must run again, because a chart
+    // may place its edge axes differently per projection (a horizontal bar
+    // chart's value axis sits on the bottom, not the left).
+    MarkEngineDirty(ChartDirty::Data | ChartDirty::Geometry);
 }
 
 ChartProjectionKind UltraCanvasChartEngineElement::GetProjectionKind() const {

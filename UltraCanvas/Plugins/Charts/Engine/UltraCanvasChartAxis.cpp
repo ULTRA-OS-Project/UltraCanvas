@@ -268,6 +268,20 @@ std::vector<ChartTick> ChartAxis::GenerateTicks(int targetCount) const {
     std::vector<ChartTick> ticks;
     targetCount = std::max(2, targetCount);
 
+    // Explicit ticks win over every generation rule: a bar chart's category
+    // slots, a log axis with hand-picked decades, a regulatory threshold list.
+    if (!tickValues.empty()) {
+        for (size_t i = 0; i < tickValues.size(); ++i) {
+            ChartTick t;
+            t.value = tickValues[i];
+            t.normalized = Normalize(t.value);
+            t.label = FormatValue(t.value);
+            t.priority = (i == 0 || i + 1 == tickValues.size()) ? 10 : 0;
+            ticks.push_back(t);
+        }
+        return ticks;
+    }
+
     if (scale == ChartScale::Category) {
         for (size_t i = 0; i < categories.size(); ++i) {
             ChartTick t;

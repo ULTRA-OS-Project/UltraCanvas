@@ -222,6 +222,23 @@ static void TestTicksAndFormatting() {
     custom.formatter = [](double v) { return std::string("<") + std::to_string((int)(v * 100)) + ">"; };
     custom.Finalize();
     CHECK(custom.FormatValue(0.5) == "<50>", "a custom formatter overrides everything");
+
+    // Explicit tick values override generation - what a bar chart's category
+    // axis uses to put one tick under each bar.
+    ChartAxis explicitTicks;
+    explicitTicks.SetRange(-0.6, 3.4);
+    explicitTicks.tickValues = {0.0, 1.0, 2.0, 3.0};
+    explicitTicks.formatter = [](double v) {
+        static const char* names[] = {"Q1", "Q2", "Q3", "Q4"};
+        const int i = (int)std::lround(v);
+        return std::string((i >= 0 && i < 4) ? names[i] : "?");
+    };
+    explicitTicks.Finalize();
+    const std::vector<ChartTick> et = explicitTicks.GenerateTicks(6);
+    CHECK(et.size() == 4, "explicit tickValues produce exactly those ticks");
+    CHECK(et[1].label == "Q2", "explicit ticks format through the axis formatter");
+    CHECK(et[0].normalized > 0.0 && et[3].normalized < 1.0,
+          "explicit ticks sit inside a padded range");
 }
 
 static void TestAxisSet() {

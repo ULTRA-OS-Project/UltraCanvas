@@ -951,6 +951,12 @@ namespace UltraCanvas {
         // ===== CHARTS =====
         auto chartBuilder = DemoCategoryBuilder(this, DemoCategory::Charts);
 
+        chartBuilder.AddItem("chartengine", "Chart Engine", "The shared chart engine: three-phase rendering, axes, limiters, legend and label plan on one minimal bar chart",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateChartEngineExamples(); },
+                             "DemoApp/UltraCanvasChartEngineExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasChartEngine.md");
+
         chartBuilder.AddItem("linecharts", "Line Chart", "Line chart data visualization",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateLineChartsExamples(); },

@@ -203,6 +203,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasRadialBarChartExamples.cpp
             Apps/DemoApp/UltraCanvasCircularProgressChartExamples.cpp
             Apps/DemoApp/UltraCanvasPolarChartExamples.cpp
+            Apps/DemoApp/UltraCanvasChartEngineExamples.cpp
             Apps/DemoApp/UltraCanvasRadarChartExamples.cpp
             Apps/DemoApp/UltraCanvasParallelCoordinateChartExamples.cpp
             Apps/DemoApp/UltraCanvasHeatmapExamples.cpp
