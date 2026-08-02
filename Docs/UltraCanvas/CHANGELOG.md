@@ -1,3 +1,34 @@
+#### 2026-08-02 *0.3.24*
+- **UltraCanvasMediaViewer**: selectable video preview behavior. New
+  `VideoPreviewMode` (`Autoplay` — full playback with sound, the previous and
+  default behavior; `PreviewClip` — the first seconds muted and then paused,
+  the `UltraCanvasAlbum` hover-preview style; `Still` — the prerolled first
+  frame, paused) with `SetVideoPreviewMode()` / `GetVideoPreviewMode()` and
+  `SetVideoPreviewClipSeconds()` (default 5 s). Changing the mode applies to a
+  currently shown video too. New `StopPlayback()` stops video / audio playback
+  and the pending clip timer — for hosts that hide or detach the viewer, where
+  the sound used to keep playing invisibly.
+- **UltraCanvasSupportedFormats**: new `CanImagePipelineLoad(extension)` —
+  whether the raster/SVG image pipeline behind `UCImage` (libvips + the
+  built-in SVG renderer, including the ImageMagick delegate fallback for known
+  raster extensions) can decode files with that extension. The existing
+  inventory reports plugin-provided formats (CDR, XAR, ...) as loadable, so it
+  could not answer "may this file go to the image loader?".
+- **UltraCanvasFilerWidget**: thumbnail decoding is now gated on
+  `CanImagePipelineLoad`. Vector-category files that only a graphics plugin
+  understands (e.g. `.xar`, `.cdr`) were handed to the libvips loader by both
+  the thumbnail worker and the delete-confirmation folder preview (which fed it
+  *every* file type), producing `VipsForeignLoad "... is not a known file
+  format"` warnings and wasted decode attempts; such files now keep their
+  category glyph.
+- **UltraFiler app** *(1.1.0)*: tabbed browsing — a "+" button on the left of
+  the toolbar opens additional tabs, each with its own folder view, history
+  and sort/view settings (drag to reorder, closable except the last). The
+  preview pane now folds away while nothing previewable is selected, giving
+  the folder display the whole width; the Preview toggle enables / disables
+  the feature. New "Video" dropdown selecting the preview behavior for video
+  files: Autoplay (default), 5 s muted clip, or still image.
+
 #### 2026-08-01 *0.3.23*
 - **UltraCanvasDendrogram** *(1.5.1)*: fixed radial leaf labels rendering upside
   down in the upper-right quadrant. The left/right half test was

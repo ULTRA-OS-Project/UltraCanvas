@@ -1,9 +1,10 @@
 // Apps/UltraFiler/UltraFilerWindow.cpp
 // UltraFiler main window: Windows Explorer style file manager built from the
-// UltraCanvas folder tree (UltraCanvasTreeView), the folder content widget
-// (UltraCanvasFilerWidget) and the media preview (UltraCanvasMediaViewer).
-// Version: 1.0.0
-// Last Modified: 2026-08-01
+// UltraCanvas folder tree (UltraCanvasTreeView), tabbed folder content
+// (UltraCanvasTabbedContainer + UltraCanvasFilerWidget per tab) and the media
+// preview (UltraCanvasMediaViewer).
+// Version: 1.1.0
+// Last Modified: 2026-08-02
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -164,6 +165,11 @@ namespace {
         return data;
     }
 
+    std::string TabTitleForPath(const std::string& path) {
+        const std::string name = fs::path(path).filename().string();
+        return name.empty() ? (path.empty() ? "New tab" : path) : name;
+    }
+
 } // namespace
 
 // ===== INITIALIZATION =====
@@ -183,12 +189,12 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     window->SetBackgroundColor(Color(249, 249, 251, 255));
 
-    // The filer is created before the control rows so their callbacks can
-    // capture it; it is placed into the split layout afterwards.
-    filer = CreateFilerWidget("ufl-filer", 0, 0, 0, 0);
-    filer->SetViewType(FilerViewType::ThumbnailsMedium);
-
     preview = CreateMediaViewer("ufl-preview", 0, 0, 0, 0);
+    // The pane is added / removed as the selection changes; the viewer must
+    // not steal the keyboard focus from the filer on every appearance.
+    preview->SetGrabFocusOnAttach(false);
+
+    BuildTabbedContainer();
 
     window->AddChild(BuildNavigationRow());
     window->AddChild(BuildCommandBar());
@@ -207,13 +213,12 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     window->AddChild(statusLabel);
 
-    WireFilerCallbacks();
-
     std::string start = startFolder;
     std::error_code ec;
     if (start.empty() || !fs::is_directory(start, ec)) start = UserHomeDir();
     if (start.empty()) start = fs::current_path(ec).string();
-    filer->SetPath(start);
+
+    AddNewTab(start, true);
 
     return true;
 }
@@ -222,11 +227,22 @@ void UltraFilerWindow::Show() {
     if (window) window->Show();
 }
 
-// ===== NAVIGATION ROW (Back / Forward / Up / Refresh + breadcrumb) =====
+// ===== NAVIGATION ROW ("+" / Back / Forward / Up / Refresh + breadcrumb) =====
 
 std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     auto row = MakeToolRow("ufl-nav-row");
     row->SetPadding(6, 8, 2, 8);
+
+    // "+" on the left side of the toolbar opens an additional tab showing the
+    // current folder.
+    auto newTabButton = MakeToolButton("ufl-new-tab", "+", "", 30,
+            [this]() {
+        std::string path = filer ? filer->GetPath() : std::string();
+        if (path.empty()) path = UserHomeDir();
+        AddNewTab(path, true);
+    });
+    newTabButton->SetFontSize(16);
+    row->AddChild(newTabButton);
 
     backButton = MakeToolButton("ufl-back", "", "arrow-left.svg", 30,
                                 [this]() { NavigateBack(); });
@@ -385,9 +401,32 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     stretch->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     row->AddChild(stretch);
 
+    // How the preview treats video files: full playback with sound (default),
+    // a 5 second muted clip (album hover-preview style) or a still frame.
+    auto videoLbl = std::make_shared<UltraCanvasLabel>("ufl-video-lbl", 0, 0, 44, 24);
+    videoLbl->SetText("Video");
+    videoLbl->SetFontSize(12);
+    videoLbl->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
+    row->AddChild(videoLbl);
+
+    videoModeDropdown = CreateDropdown("ufl-video-mode", 0, 0, 104, 26);
+    videoModeDropdown->AddItem("Autoplay");
+    videoModeDropdown->AddItem("5 s clip");
+    videoModeDropdown->AddItem("Still image");
+    videoModeDropdown->SetSelectedIndex(0, false);   // autostart is the default
+    videoModeDropdown->onSelectionChanged = [this](int index, const DropdownItem&) {
+        if (!preview) return;
+        static const VideoPreviewMode modes[] = {
+            VideoPreviewMode::Autoplay, VideoPreviewMode::PreviewClip,
+            VideoPreviewMode::Still};
+        if (index >= 0 && index < 3) preview->SetVideoPreviewMode(modes[index]);
+    };
+    videoModeDropdown->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    row->AddChild(videoModeDropdown);
+
     previewButton = MakeToolButton("ufl-preview-toggle", "Preview", "split-screen.svg", 0,
-            [this]() { SetPreviewVisible(!previewVisible); });
-    StyleToggleButton(previewButton.get(), previewVisible);
+            [this]() { SetPreviewEnabled(!previewEnabled); });
+    StyleToggleButton(previewButton.get(), previewEnabled);
     row->AddChild(previewButton);
 
     return row;
@@ -508,7 +547,174 @@ void UltraFilerWindow::SyncTreeSelection(const std::string& path) {
     syncingTree = false;
 }
 
-// ===== SPLIT LAYOUT (tree | filer | preview) =====
+// ===== TABS =====
+
+void UltraFilerWindow::BuildTabbedContainer() {
+    tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("ufl-tabs");
+    tabbedContainer->SetTabHeight(30);
+    tabbedContainer->SetTabMinWidth(90);
+    tabbedContainer->SetCloseMode(TabCloseMode::Closable);
+    tabbedContainer->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                               .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    tabbedContainer->onTabClose = [this](int index) {
+        // The last remaining tab stays open.
+        if (tabStates.size() <= 1) return false;
+        if (index >= 0 && index < (int)tabStates.size())
+            tabStates.erase(tabStates.begin() + index);
+        return true;
+    };
+    tabbedContainer->onTabChange = [this](int /*oldIndex*/, int newIndex) {
+        HandleTabSwitched(newIndex);
+    };
+    tabbedContainer->onTabReorder = [this](int from, int to) {
+        if (from < 0 || to < 0 || from >= (int)tabStates.size() ||
+            to >= (int)tabStates.size() || from == to)
+            return;
+        auto st = std::move(tabStates[from]);
+        tabStates.erase(tabStates.begin() + from);
+        tabStates.insert(tabStates.begin() + to, std::move(st));
+    };
+}
+
+void UltraFilerWindow::AddNewTab(const std::string& path, bool activate) {
+    auto state = std::make_unique<FilerTabState>();
+    const std::string suffix = std::to_string(++tabCounter);
+
+    state->page = MakeLayoutBox("ufl-tab-page-" + suffix);
+    state->page->layout.SetFlexColumn()
+                       .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+
+    state->filer = CreateFilerWidget("ufl-filer-" + suffix, 0, 0, 0, 0);
+    state->filer->SetViewType(FilerViewType::ThumbnailsMedium);
+    state->filer->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    state->page->AddChild(state->filer);
+
+    FilerTabState* raw = state.get();
+    tabStates.push_back(std::move(state));
+    WireFilerCallbacks(raw);
+
+    const int index = tabbedContainer->AddTab(TabTitleForPath(path), raw->page);
+    if (activate) {
+        // Fires onTabChange, which points `filer` at the new tab.
+        tabbedContainer->SetActiveTab(index);
+    }
+    raw->filer->SetPath(path);
+}
+
+void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
+    tab->filer->onPathChanged = [this, tab](const std::string& path) {
+        HandlePathChanged(tab, path);
+    };
+    tab->filer->onSelectionChanged = [this, tab](const std::vector<FilerEntry>&) {
+        if (!IsActiveTab(tab)) return;
+        UpdateStatusBar();
+        UpdatePreviewPane();
+    };
+    tab->filer->onFileActivated = [this, tab](const FilerEntry& entry) {
+        if (!IsActiveTab(tab) || entry.isDirectory) return;
+        if (!UltraCanvasMediaViewer::IsSupportedMedia(entry.path)) return;
+        // Double-click / Enter opens the file in the preview, un-hiding it
+        // when needed.
+        if (!previewEnabled) SetPreviewEnabled(true);
+        else UpdatePreviewPane();
+    };
+    tab->filer->onSortChanged = [this, tab](FilerSortField field, bool /*ascending*/) {
+        if (!IsActiveTab(tab) || !sortDropdown) return;
+        syncingControls = true;
+        switch (field) {
+            case FilerSortField::Name:         sortDropdown->SetSelectedIndex(0, false); break;
+            case FilerSortField::Size:         sortDropdown->SetSelectedIndex(1, false); break;
+            case FilerSortField::Type:         sortDropdown->SetSelectedIndex(2, false); break;
+            case FilerSortField::ModifiedDate: sortDropdown->SetSelectedIndex(3, false); break;
+            case FilerSortField::CreatedDate:  sortDropdown->SetSelectedIndex(4, false); break;
+        }
+        syncingControls = false;
+    };
+    tab->filer->onViewTypeChanged = [this, tab](FilerViewType type) {
+        if (!IsActiveTab(tab) || !viewDropdown) return;
+        syncingControls = true;
+        switch (type) {
+            case FilerViewType::Details:             viewDropdown->SetSelectedIndex(0, false); break;
+            case FilerViewType::List:                viewDropdown->SetSelectedIndex(1, false); break;
+            case FilerViewType::ThumbnailsSmall:     viewDropdown->SetSelectedIndex(2, false); break;
+            case FilerViewType::ThumbnailsMedium:    viewDropdown->SetSelectedIndex(3, false); break;
+            case FilerViewType::ThumbnailsBig:       viewDropdown->SetSelectedIndex(4, false); break;
+            case FilerViewType::ThumbnailsMaximized: viewDropdown->SetSelectedIndex(5, false); break;
+            case FilerViewType::BarSize:             viewDropdown->SetSelectedIndex(6, false); break;
+            case FilerViewType::TreeMap:             viewDropdown->SetSelectedIndex(7, false); break;
+            default: break;
+        }
+        syncingControls = false;
+    };
+    tab->filer->onError = [this](const std::string& message) {
+        if (statusLabel) statusLabel->SetText("Error: " + message);
+    };
+}
+
+void UltraFilerWindow::HandleTabSwitched(int index) {
+    if (index < 0 || index >= (int)tabStates.size()) return;
+    FilerTabState* tab = tabStates[index].get();
+    if (!tab->filer) return;
+    filer = tab->filer;
+
+    const std::string path = filer->GetPath();
+    if (breadcrumb && !path.empty()) {
+        BuildFolderBreadcrumb(breadcrumb.get(), path,
+                              [this](const std::string& folder) { NavigateTo(folder); });
+    }
+    UpdateNavButtons();
+    if (!path.empty()) SyncTreeSelection(path);
+    UpdateStatusBar();
+    if (window && !path.empty()) {
+        const std::string name = fs::path(path).filename().string();
+        window->SetWindowTitle((name.empty() ? path : name) + " - UltraFiler");
+    }
+
+    // Mirror the tab's sort / view settings into the command bar.
+    syncingControls = true;
+    switch (filer->GetSortField()) {
+        case FilerSortField::Name:         sortDropdown->SetSelectedIndex(0, false); break;
+        case FilerSortField::Size:         sortDropdown->SetSelectedIndex(1, false); break;
+        case FilerSortField::Type:         sortDropdown->SetSelectedIndex(2, false); break;
+        case FilerSortField::ModifiedDate: sortDropdown->SetSelectedIndex(3, false); break;
+        case FilerSortField::CreatedDate:  sortDropdown->SetSelectedIndex(4, false); break;
+    }
+    switch (filer->GetViewType()) {
+        case FilerViewType::Details:             viewDropdown->SetSelectedIndex(0, false); break;
+        case FilerViewType::List:                viewDropdown->SetSelectedIndex(1, false); break;
+        case FilerViewType::ThumbnailsSmall:     viewDropdown->SetSelectedIndex(2, false); break;
+        case FilerViewType::ThumbnailsMedium:    viewDropdown->SetSelectedIndex(3, false); break;
+        case FilerViewType::ThumbnailsBig:       viewDropdown->SetSelectedIndex(4, false); break;
+        case FilerViewType::ThumbnailsMaximized: viewDropdown->SetSelectedIndex(5, false); break;
+        case FilerViewType::BarSize:             viewDropdown->SetSelectedIndex(6, false); break;
+        case FilerViewType::TreeMap:             viewDropdown->SetSelectedIndex(7, false); break;
+        default: break;
+    }
+    syncingControls = false;
+
+    UpdatePreviewPane();
+}
+
+UltraFilerWindow::FilerTabState* UltraFilerWindow::ActiveTabState() const {
+    if (!tabbedContainer) return nullptr;
+    const int index = tabbedContainer->GetActiveTab();
+    if (index < 0 || index >= (int)tabStates.size()) return nullptr;
+    return tabStates[index].get();
+}
+
+bool UltraFilerWindow::IsActiveTab(const FilerTabState* tab) const {
+    return tab && tab == ActiveTabState();
+}
+
+int UltraFilerWindow::TabIndexOf(const FilerTabState* tab) const {
+    for (size_t i = 0; i < tabStates.size(); ++i)
+        if (tabStates[i].get() == tab) return (int)i;
+    return -1;
+}
+
+// ===== SPLIT LAYOUT (tree | tabbed filer | preview) =====
 
 void UltraFilerWindow::BuildSplitLayout() {
     split = std::make_shared<UltraCanvasSplitPane>("ufl-split", SplitOrientation::Horizontal);
@@ -527,71 +733,14 @@ void UltraFilerWindow::BuildSplitLayout() {
     split->SetPaneMinSize(1, 360);
     filerPane->layout.SetFlexColumn()
                      .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    filer->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                     .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    filerPane->AddChild(filer);
+    filerPane->AddChild(tabbedContainer);
 
     preview->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    if (previewVisible) {
-        previewPane = split->AddPane(1.4);
-        split->SetPaneMinSize(2, 260);
-        previewPane->layout.SetFlexColumn()
-                           .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        previewPane->AddChild(preview);
-    }
+    // The preview pane is added by UpdatePreviewPane once a previewable file
+    // is selected; until then the folder display uses the whole width.
 
     window->AddChild(split);
-}
-
-// ===== FILER WIRING =====
-
-void UltraFilerWindow::WireFilerCallbacks() {
-    filer->onPathChanged = [this](const std::string& path) {
-        HandlePathChanged(path);
-    };
-    filer->onSelectionChanged = [this](const std::vector<FilerEntry>&) {
-        UpdateStatusBar();
-        ShowSelectionInPreview();
-    };
-    filer->onFileActivated = [this](const FilerEntry& entry) {
-        if (entry.isDirectory) return;
-        if (!UltraCanvasMediaViewer::IsSupportedMedia(entry.path)) return;
-        if (!previewVisible) SetPreviewVisible(true);
-        if (preview && preview->GetCurrentPath() != entry.path)
-            preview->OpenFile(entry.path);
-    };
-    filer->onSortChanged = [this](FilerSortField field, bool /*ascending*/) {
-        if (!sortDropdown) return;
-        syncingControls = true;
-        switch (field) {
-            case FilerSortField::Name:         sortDropdown->SetSelectedIndex(0, false); break;
-            case FilerSortField::Size:         sortDropdown->SetSelectedIndex(1, false); break;
-            case FilerSortField::Type:         sortDropdown->SetSelectedIndex(2, false); break;
-            case FilerSortField::ModifiedDate: sortDropdown->SetSelectedIndex(3, false); break;
-            case FilerSortField::CreatedDate:  sortDropdown->SetSelectedIndex(4, false); break;
-        }
-        syncingControls = false;
-    };
-    filer->onViewTypeChanged = [this](FilerViewType type) {
-        if (!viewDropdown) return;
-        syncingControls = true;
-        switch (type) {
-            case FilerViewType::Details:             viewDropdown->SetSelectedIndex(0, false); break;
-            case FilerViewType::List:                viewDropdown->SetSelectedIndex(1, false); break;
-            case FilerViewType::ThumbnailsSmall:     viewDropdown->SetSelectedIndex(2, false); break;
-            case FilerViewType::ThumbnailsMedium:    viewDropdown->SetSelectedIndex(3, false); break;
-            case FilerViewType::ThumbnailsBig:       viewDropdown->SetSelectedIndex(4, false); break;
-            case FilerViewType::ThumbnailsMaximized: viewDropdown->SetSelectedIndex(5, false); break;
-            case FilerViewType::BarSize:             viewDropdown->SetSelectedIndex(6, false); break;
-            case FilerViewType::TreeMap:             viewDropdown->SetSelectedIndex(7, false); break;
-            default: break;
-        }
-        syncingControls = false;
-    };
-    filer->onError = [this](const std::string& message) {
-        if (statusLabel) statusLabel->SetText("Error: " + message);
-    };
 }
 
 // ===== NAVIGATION =====
@@ -602,19 +751,21 @@ void UltraFilerWindow::NavigateTo(const std::string& path) {
 }
 
 void UltraFilerWindow::NavigateBack() {
-    if (historyIndex == 0 || history.empty()) return;
-    navigatingHistory = true;
-    --historyIndex;
-    filer->SetPath(history[historyIndex]);
-    navigatingHistory = false;
+    FilerTabState* tab = ActiveTabState();
+    if (!tab || tab->historyIndex == 0 || tab->history.empty()) return;
+    tab->navigatingHistory = true;
+    --tab->historyIndex;
+    tab->filer->SetPath(tab->history[tab->historyIndex]);
+    tab->navigatingHistory = false;
 }
 
 void UltraFilerWindow::NavigateForward() {
-    if (history.empty() || historyIndex + 1 >= history.size()) return;
-    navigatingHistory = true;
-    ++historyIndex;
-    filer->SetPath(history[historyIndex]);
-    navigatingHistory = false;
+    FilerTabState* tab = ActiveTabState();
+    if (!tab || tab->history.empty() || tab->historyIndex + 1 >= tab->history.size()) return;
+    tab->navigatingHistory = true;
+    ++tab->historyIndex;
+    tab->filer->SetPath(tab->history[tab->historyIndex]);
+    tab->navigatingHistory = false;
 }
 
 void UltraFilerWindow::NavigateUp() {
@@ -624,22 +775,30 @@ void UltraFilerWindow::NavigateUp() {
         NavigateTo(p.parent_path().string());
 }
 
-void UltraFilerWindow::HandlePathChanged(const std::string& path) {
+void UltraFilerWindow::HandlePathChanged(FilerTabState* tab, const std::string& path) {
+    if (!tab->navigatingHistory) {
+        if (tab->historyIndex + 1 < tab->history.size())
+            tab->history.erase(tab->history.begin() + tab->historyIndex + 1,
+                               tab->history.end());
+        if (tab->history.empty() || tab->history.back() != path) {
+            tab->history.push_back(path);
+            tab->historyIndex = tab->history.size() - 1;
+        }
+    }
+    const int index = TabIndexOf(tab);
+    if (index >= 0) tabbedContainer->SetTabTitle(index, TabTitleForPath(path));
+
+    if (!IsActiveTab(tab)) return;
+
     if (breadcrumb) {
         BuildFolderBreadcrumb(breadcrumb.get(), path,
                               [this](const std::string& folder) { NavigateTo(folder); });
     }
-    if (!navigatingHistory) {
-        if (historyIndex + 1 < history.size())
-            history.erase(history.begin() + historyIndex + 1, history.end());
-        if (history.empty() || history.back() != path) {
-            history.push_back(path);
-            historyIndex = history.size() - 1;
-        }
-    }
     UpdateNavButtons();
     SyncTreeSelection(path);
     UpdateStatusBar();
+    // Entering a folder clears the selection - fold the preview away.
+    UpdatePreviewPane();
     if (window) {
         const std::string name = fs::path(path).filename().string();
         window->SetWindowTitle((name.empty() ? path : name) + " - UltraFiler");
@@ -647,9 +806,11 @@ void UltraFilerWindow::HandlePathChanged(const std::string& path) {
 }
 
 void UltraFilerWindow::UpdateNavButtons() {
-    if (backButton) backButton->SetDisabled(historyIndex == 0);
+    FilerTabState* tab = ActiveTabState();
+    if (backButton) backButton->SetDisabled(!tab || tab->historyIndex == 0);
     if (forwardButton)
-        forwardButton->SetDisabled(history.empty() || historyIndex + 1 >= history.size());
+        forwardButton->SetDisabled(!tab || tab->history.empty() ||
+                                   tab->historyIndex + 1 >= tab->history.size());
     if (upButton && filer) {
         const fs::path p(filer->GetPath());
         upButton->SetDisabled(!p.has_parent_path() || p.parent_path() == p);
@@ -674,32 +835,43 @@ void UltraFilerWindow::UpdateStatusBar() {
     statusLabel->SetText(text);
 }
 
-void UltraFilerWindow::SetPreviewVisible(bool visible) {
-    if (visible == previewVisible || !split || !preview) return;
-    previewVisible = visible;
-    if (visible) {
-        previewPane = split->AddPane(1.4);
-        split->SetPaneMinSize(split->PaneCount() - 1, 260);
-        previewPane->layout.SetFlexColumn()
-                           .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        previewPane->AddChild(preview);
-        ShowSelectionInPreview();
-    } else if (previewPane) {
+std::string UltraFilerWindow::PreviewablePathForSelection() const {
+    if (!filer) return {};
+    auto sel = filer->GetSelectedEntries();
+    if (sel.size() != 1 || sel.front().isDirectory) return {};
+    if (!UltraCanvasMediaViewer::IsSupportedMedia(sel.front().path)) return {};
+    return sel.front().path;
+}
+
+void UltraFilerWindow::SetPreviewEnabled(bool enabled) {
+    if (enabled == previewEnabled) return;
+    previewEnabled = enabled;
+    StyleToggleButton(previewButton.get(), previewEnabled);
+    UpdatePreviewPane();
+}
+
+void UltraFilerWindow::UpdatePreviewPane() {
+    if (!split || !preview) return;
+    const std::string path = previewEnabled ? PreviewablePathForSelection()
+                                            : std::string();
+    if (!path.empty()) {
+        if (!previewShown) {
+            previewShown = true;
+            previewPane = split->AddPane(1.4);
+            split->SetPaneMinSize(split->PaneCount() - 1, 260);
+            previewPane->layout.SetFlexColumn()
+                               .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+            previewPane->AddChild(preview);
+        }
+        if (preview->GetCurrentPath() != path) preview->OpenFile(path);
+    } else if (previewShown) {
+        // Nothing to preview - give the folder display the whole width.
+        previewShown = false;
+        preview->StopPlayback();
         previewPane->RemoveChild(preview);
         split->RemovePane(previewPane.get());
         previewPane.reset();
     }
-    StyleToggleButton(previewButton.get(), previewVisible);
-}
-
-void UltraFilerWindow::ShowSelectionInPreview() {
-    if (!previewVisible || !preview || !filer) return;
-    auto sel = filer->GetSelectedEntries();
-    if (sel.size() != 1 || sel.front().isDirectory) return;
-    const std::string& path = sel.front().path;
-    if (!UltraCanvasMediaViewer::IsSupportedMedia(path)) return;
-    if (preview->GetCurrentPath() == path) return;
-    preview->OpenFile(path);
 }
 
 } // namespace UltraCanvas
