@@ -349,6 +349,14 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoHoverPreview.cpp
 
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartElementBase.cpp
+        # Chart engine: model layer + three-phase render driver (chart engine proposal P1)
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartAxis.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartProjection.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartLabels.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartEngineElement.cpp
+        # Parallel coordinate chart - first native client of the engine
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasParallelAxisModel.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasParallelCoordinateChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasSpecificChartElements.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartDataStructures.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasFinancialChart.cpp

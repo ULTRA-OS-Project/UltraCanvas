@@ -13,6 +13,7 @@
 #include "Plugins/Charts/Engine/UltraCanvasChartAxis.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartLabels.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartProjection.h"
+#include "Plugins/Charts/UltraCanvasParallelAxisModel.h"
 
 #include <algorithm>
 #include <cmath>
@@ -480,6 +481,149 @@ static void TestLabelBrokerUserData() {
 }
 
 // =============================================================================
+// PARALLEL AXIS MODEL
+// =============================================================================
+
+static ParallelAxisModel MakeIrisLikeModel() {
+    ParallelAxisModel model;
+    model.AddDimensionColumn("petal", {1.0, 2.0, 3.0, 4.0});
+    model.AddDimensionColumn("sepal", {10.0, 20.0, 30.0, 40.0});
+    model.AddDimensionColumn("width", {100.0, 300.0, 200.0, 400.0});
+    model.SetRecordGroups({"a", "a", "b", "b"});
+    return model;
+}
+
+static void TestPCPModelBasics() {
+    std::printf("PCP model (columns, order, visibility, inversion)\n");
+
+    ParallelAxisModel model = MakeIrisLikeModel();
+    CHECK(model.DimensionCount() == 3 && model.RecordCount() == 4,
+          "columns build dimensions and records");
+
+    std::vector<size_t> order = model.DisplayOrder();
+    CHECK(order.size() == 3 && order[0] == 0 && order[2] == 2,
+          "the default display order is insertion order");
+
+    model.MoveAxis(2, 0);            // drag "width" to the front
+    order = model.DisplayOrder();
+    CHECK(order[0] == 2 && order[1] == 0 && order[2] == 1,
+          "MoveAxis reorders the display");
+
+    model.SetAxisVisible(0, false);  // hide "petal"
+    order = model.DisplayOrder();
+    CHECK(order.size() == 2 && order[0] == 2 && order[1] == 1,
+          "a hidden dimension leaves the display order");
+    CHECK(Near(model.AxisU(0), 0.0) && Near(model.AxisU(1), 1.0),
+          "axis positions respan after hiding");
+
+    model.SetAxisVisible(0, true);
+    ChartAxisSet axes;
+    model.ConfigureAxes(axes);
+    model.BuildCache(axes);
+    CHECK(axes.Count() == 3, "one axis per visible dimension");
+    CHECK(axes.At(0).inPlot && Near(axes.At(0).plotPosition, 0.0) &&
+              Near(axes.At(2).plotPosition, 1.0),
+          "axes are in-plot at their display positions");
+
+    // Per-axis normalisation: each column's extremes hit 0 and 1.
+    // Display order is now width, petal, sepal.
+    CHECK(Near(model.NormalizedValue(0, 1), 0.0) &&
+              Near(model.NormalizedValue(3, 1), 1.0),
+          "per-axis: a column's extremes map to the axis ends");
+
+    model.SetAxisInverted(0, true);  // invert petal (display slot 1)
+    ChartAxisSet inverted;
+    model.ConfigureAxes(inverted);
+    model.BuildCache(inverted);
+    CHECK(Near(model.NormalizedValue(0, 1), 1.0),
+          "inversion flips a single axis");
+}
+
+static void TestPCPCommonScale() {
+    std::printf("PCP model (common scale and standardisation)\n");
+
+    ParallelAxisModel model;
+    model.AddDimensionColumn("small", {0.0, 5.0, 10.0});
+    model.AddDimensionColumn("large", {0.0, 50.0, 100.0});
+
+    // Raw common scale: the same value lands at the same height on every axis.
+    model.SetNormalization(PCPNormalization::CommonScale);
+    ChartAxisSet axes;
+    model.ConfigureAxes(axes);
+    model.BuildCache(axes);
+    CHECK(Near(model.NormalizedValue(1, 0), 0.05) &&
+              Near(model.NormalizedValue(1, 1), 0.5),
+          "raw common scale maps values onto one shared band");
+    double lo = 0.0, hi = 0.0;
+    model.SharedRange(lo, hi);
+    CHECK(Near(lo, 0.0) && Near(hi, 100.0), "the shared range spans all columns");
+
+    // Standardised: each column's mean sits at the same height even though the
+    // units differ by 10x - the Iris look.
+    model.SetStandardize(PCPStandardize::ZScore);
+    ChartAxisSet zAxes;
+    model.ConfigureAxes(zAxes);
+    model.BuildCache(zAxes);
+    CHECK(Near(model.NormalizedValue(1, 0), model.NormalizedValue(1, 1), 1e-9),
+          "z-scored common scale aligns the column means");
+    CHECK(Near(model.NormalizedValue(0, 0), model.NormalizedValue(0, 1), 1e-9),
+          "and the standardised extremes");
+}
+
+static void TestPCPBrushes() {
+    std::printf("PCP model (brush semantics: AND across axes, OR within)\n");
+
+    ParallelAxisModel model = MakeIrisLikeModel();
+    CHECK(model.RecordPasses(0) && model.PassingCount() == 4,
+          "no brushes: everything passes");
+
+    model.AddBrush(0, 1.5, 3.5);            // petal in [1.5, 3.5] -> records 1, 2
+    CHECK(model.PassingCount() == 2 && !model.RecordPasses(0) && model.RecordPasses(1),
+          "one brush filters its dimension");
+
+    model.AddBrush(1, 25.0, 45.0);          // AND sepal in [25, 45] -> records 2, 3
+    CHECK(model.PassingCount() == 1 && model.RecordPasses(2),
+          "brushes on different axes intersect (AND)");
+
+    model.AddBrush(0, 3.8, 4.2);            // OR petal in [3.8, 4.2] -> adds record 3
+    CHECK(model.PassingCount() == 2 && model.RecordPasses(3),
+          "brushes on the same axis union (OR)");
+
+    model.ClearBrushes(0);
+    CHECK(model.PassingCount() == 2, "clearing one axis keeps the other's filter");
+    model.ClearBrushes();
+    CHECK(model.PassingCount() == 4, "clearing all brushes restores everything");
+}
+
+static void TestPCPMissingAndHitTest() {
+    std::printf("PCP model (missing values and nearest-line hit testing)\n");
+
+    ParallelAxisModel model;
+    model.AddDimensionColumn("a", {0.0, 1.0, std::nan("")});
+    model.AddDimensionColumn("b", {0.0, 1.0, 0.5});
+    ChartAxisSet axes;
+    model.ConfigureAxes(axes);
+    model.BuildCache(axes);
+
+    CHECK(!model.HasValue(2, 0) && model.HasValue(2, 1),
+          "a NaN cell is missing, its neighbours are not");
+
+    // Record 0 runs along v=0, record 1 along v=1 (both columns share ranges).
+    CHECK(model.NearestRecord(0.5, 0.05, 0.2) == 0,
+          "the nearest line to a point near the bottom is record 0");
+    CHECK(model.NearestRecord(0.5, 0.95, 0.2) == 1,
+          "and near the top is record 1");
+    CHECK(model.NearestRecord(0.5, 0.5, 0.05) == -1,
+          "nothing within tolerance yields -1");
+    // Record 2's segment is broken by the NaN, so it can never be hit.
+    CHECK(model.NearestRecord(0.5, 0.55, 0.12) != 2,
+          "a record with a missing endpoint is not hit through the gap");
+
+    CHECK(MakeIrisLikeModel().Groups() == std::vector<std::string>({"a", "b"}),
+          "groups come back distinct, in first-seen order");
+}
+
+// =============================================================================
 
 int main() {
     std::printf("=== ChartEngineTest ===\n\n");
@@ -499,6 +643,10 @@ int main() {
     TestLabelPolicyRoles();
     TestLabelBrokerRouting();
     TestLabelBrokerUserData();
+    TestPCPModelBasics();
+    TestPCPCommonScale();
+    TestPCPBrushes();
+    TestPCPMissingAndHitTest();
 
     std::printf("\n%s (%d failure%s)\n",
                 g_failures == 0 ? "ALL TESTS PASSED" : "TESTS FAILED",

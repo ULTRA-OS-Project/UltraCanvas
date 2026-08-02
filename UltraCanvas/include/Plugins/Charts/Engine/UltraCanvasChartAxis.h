@@ -59,6 +59,13 @@ public:
     ChartAxisSide side = ChartAxisSide::Left;
     bool visible = true;
     bool inverted = false;          // flip which end is "high"
+    // In-plot axes (parallel coordinates, small multiples): drawn as a rule
+    // inside the plot at normalized domain position `plotPosition` instead of
+    // along an edge. The engine's axes layer renders both kinds.
+    bool inPlot = false;
+    double plotPosition = 0.0;      // 0..1 along the domain direction
+    bool showEndpointLabels = false; // min/max printed at the axis ends
+    std::string title;              // drawn by the axes layer; may differ from name
     double logBase = 10.0;
     double symLogThreshold = 1.0;   // |v| below this is linear
     int decimals = -1;              // -1 = choose from the range

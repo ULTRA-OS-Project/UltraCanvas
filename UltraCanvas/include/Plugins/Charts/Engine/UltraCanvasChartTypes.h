@@ -69,7 +69,7 @@ inline ChartRenderPhase PhaseOfSlot(ChartLayerSlot slot) {
 // actually has to be redone: most notably, only Data / Geometry / Style rebuild
 // the label plan, so hovering, selecting and animating never run the solver.
 enum class ChartDirty : uint32_t {
-    None      = 0,
+    Clean     = 0,   // named Clean, not None: X11's Xlib.h #defines None
     Data      = 1u << 0,   // values added, replaced or cleared
     Geometry  = 1u << 1,   // element resized, plot area re-solved, axis range changed
     Style     = 1u << 2,   // fonts, label text, formatters, legend contents

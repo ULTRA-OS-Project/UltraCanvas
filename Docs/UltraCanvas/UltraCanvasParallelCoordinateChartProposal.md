@@ -1,6 +1,15 @@
 # UltraCanvasParallelCoordinateChart — Research & Feature Proposal
 
-Status: **Proposed — nothing implemented yet.** This document is the research
+Status: **P1 core implemented.** The model (`UltraCanvasParallelAxisModel`,
+unit-tested), the element (`UltraCanvasParallelCoordinateChart` on the chart
+engine's three-phase driver), per-axis / common-scale / z-scored normalisation,
+straight and curved lines, group / value / per-record colouring with automatic
+alpha, endpoint labels, the shared value axis with grid, legend, tooltips,
+click-to-pin, 1-D axis brushing with AND/OR semantics, drag-to-reorder,
+double-click inversion, callbacks and registry registration are in — see
+[`UltraCanvasParallelCoordinateChart.md`](UltraCanvasParallelCoordinateChart.md).
+The remaining P1 items (vertex-marker styling per group, colour bar for ByValue)
+and everything marked P2/P3 below stay open. This document is the research
 write-up and the roadmap for a comprehensive parallel coordinate chart element.
 It follows the pattern established by
 [`UltraCanvasContourChartProposal.md`](UltraCanvasContourChartProposal.md):
