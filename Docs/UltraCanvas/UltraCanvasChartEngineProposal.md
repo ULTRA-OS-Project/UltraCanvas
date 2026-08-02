@@ -827,28 +827,40 @@ is dlopen'd by the first `CreateChart(...)` call, not at application start.
 
 ### 12.5 The registry, and the static-initialiser trap
 
+**There is already a framework-wide design for this** —
+[`UltraCanvasElementPluginSystemProposal.md`](UltraCanvasElementPluginSystemProposal.md)
+covers charts, diagrams, widgets, tools and file formats through one
+`UltraCanvasElementRegistry` and one `UCElementDescriptor`. Charts must not
+grow a second registry beside it; §12.12 reconciles the two documents in
+detail. What follows is what the *chart* side contributes.
+
 The obvious design — every chart TU registers itself with a file-scope static —
 **must be avoided**. A self-registering static forces the linker to keep every
 chart object in every binary (it has to run the initialiser), which is worse
-than the status quo. Instead:
+than the status quo. The element proposal reaches the same conclusion
+independently and for the same reason, which is a good sign the constraint is
+real.
+
+A chart therefore registers a descriptor, exactly like every other element:
 
 ```cpp
-// UltraCanvasChartRegistry.h  (engine core)
-using ChartFactory = std::function<std::shared_ptr<UltraCanvasChartElementBase>(
-        const std::string& id, int x, int y, int w, int h)>;
-
-class UltraCanvasChartRegistry {
-public:
-    static void Register(const std::string& typeName, ChartFactory);
-    static bool IsRegistered(const std::string& typeName);
-    static std::vector<std::string> RegisteredTypes();
-
-    // Registry miss → try to load uc_chart_<typeName> (T3) → retry once.
-    static std::shared_ptr<UltraCanvasChartElementBase>
-        Create(const std::string& typeName, const std::string& id,
-               int x, int y, int w, int h);
+UCElementDescriptor d;
+d.typeName    = "parallel-coordinate-chart";     // kebab-case, per the element system
+d.category    = UCPluginCategory::Chart;
+d.displayName = "Parallel Coordinates";
+d.docPath     = "Docs/UltraCanvas/UltraCanvasParallelCoordinateChart.md";
+d.create      = [](const std::string& id, int x, int y, int w, int h) {
+    return std::static_pointer_cast<UltraCanvasUIElement>(
+        CreateParallelCoordinateChartElement(id, x, y, w, h));
 };
+UltraCanvasElementRegistry::Register(d);
 ```
+
+`CreateChart("parallel-coordinate-chart", …)` stays in the chart API, but only
+as a **typed convenience** over that registry — it calls
+`UltraCanvasElementRegistry::Create` and down-casts to
+`UltraCanvasChartElementBase`, so there is one registry, one loader and one
+manifest format in the framework.
 
 Registration reaches it three ways, none of which defeats laziness:
 
@@ -862,28 +874,42 @@ Registration reaches it three ways, none of which defeats laziness:
    selected `RegisterXxxChart()` calls. No `--whole-archive`, no self-registering
    statics, and name-based creation still works for the charts the app chose.
 3. **Module init (T3).** The loader calls the module's entry point, which
-   registers its chart types into the host registry.
+   registers its descriptors through the host vtable.
 
-### 12.6 Module ABI (mirrors UltraNet v2)
+### 12.6 Module ABI — the element system's, not a chart-specific one
+
+An earlier draft of this section proposed a chart-only entry point
+(`UltraCanvasChart_PluginInit` with a `UltraCanvasChartHost`). **That is
+withdrawn.** The element plugin proposal already specifies the framework-wide
+contract, and it is strictly better than the chart-specific sketch:
 
 ```cpp
-// UltraCanvasChartPluginABI.h
-struct UltraCanvasChartHost {
-    uint32_t abiVersion;                       // ULTRACANVAS_CHART_ABI = 1
-    void (*RegisterChart)(const char* typeName, ChartFactory);
-    ChartEngine* engine;                       // shared services, one instance
-};
-
-extern "C" ULTRACANVAS_CHART_PLUGIN_EXPORT
-void UltraCanvasChart_PluginInit(UltraCanvasChartHost* host);
+extern "C" ULTRACANVAS_PLUGIN_EXPORT
+bool UltraCanvas_PluginInit(const UltraCanvasPluginHost* host);
 ```
 
-Loader behaviour, copied from `UltraNet_RefreshPlugins()`: scan
-`${binary}/Plugins/Charts`, skip non-module files, track canonical paths so
-repeated calls are idempotent, reject mismatched `abiVersion`, and resolve by
-**chart type name** the way UltraNet resolves by scheme. Loading is
-**on-demand** (registry miss) rather than an eager scan, with an explicit
-`RefreshChartPlugins()` for hosts that want a gallery of what is available.
+Three things it has that the chart draft lacked, all worth keeping:
+
+* **`bool` return with a refusal path** — a mismatched plugin is skipped with a
+  log line instead of being half-registered.
+* **`frameworkAbiTag`** (e.g. `"gcc-libstdc++-cxx20-uc1"`) alongside the numeric
+  `abiVersion`. The numeric version guards the C entry contract; the tag guards
+  the *C++* boundary, which is what actually breaks when a plugin is built with
+  a different compiler or standard library. The chart draft had no such guard.
+* **One DSO, many descriptors** — a module may register several elements, so
+  per-chart packaging is simply the degenerate case rather than a different
+  mechanism.
+
+Discovery, manifests (`<name>.ucplugin.json`), the plugin directory list and
+the lazy-load-on-first-`Create` behaviour all come from the element system too.
+Its manifest index is a genuine improvement on what this document originally
+proposed: a chart gallery can list every installed chart **without opening a
+single DSO**, where "scan the directory and dlopen each module" would have had
+to load them all to find out what they contain.
+
+The one thing the chart side still owns: **the engine instance must be shared
+with every loaded chart module** (§12.11), which is why the engine builds
+`SHARED` when modules are on.
 
 The C++-types-across-the-boundary constraint (`std::shared_ptr`,
 `std::function`, `std::string` in the ABI) is the same one UltraNet already
@@ -934,11 +960,17 @@ Packaging granularity:
 
 ```
 UltraCanvas/Plugins/Charts/CMakeLists.txt          # new: owns all chart targets
-  → UltraCanvasChartEngine        (STATIC or SHARED)   engine core + support code
-  → uc_chart_<family|name>        (MODULE, T3)         one per selected module
-  → UltraCanvasCharts             (STATIC, T1/T2)      selected charts, no self-registration
+  → UltraCanvasChartEngine        (SHARED when modules are on)  engine core + support
+  → ultracanvas-chart-<name>      (MODULE, T3)   one per chart, plus its manifest
+  → UltraCanvasCharts             (STATIC, T1/T2)  selected charts, no self-registration
 ULTRACANVAS_CORE_SOURCES                            # chart entries removed
 ```
+
+Target naming and the install location follow the element system
+(`ultracanvas_add_element_plugin`, DSO + `<name>.ucplugin.json` installed into
+the plugin directory), **not** a chart-private convention, and the loader's
+fixed directory list — system, user, app-provided, `ULTRACANVAS_PLUGIN_PATH`,
+never the working directory — applies unchanged.
 
 New options, following the existing `ULTRACANVAS_PLUGIN_*` naming:
 
@@ -1022,3 +1054,97 @@ Deployment: chart modules install next to the application as
 `CreateChart` return `nullptr`; `AvailableChartTypes()` and
 `RefreshChartPlugins()` let a host enumerate what is actually installed for a
 chart gallery.
+
+### 12.12 Reconciliation with the element plugin system
+
+[`UltraCanvasElementPluginSystemProposal.md`](UltraCanvasElementPluginSystemProposal.md)
+specifies a framework-wide plugin system covering charts, diagrams, widgets,
+tools and file formats. It is the senior document on packaging; §12 above is
+now written to fit inside it rather than beside it. This subsection records the
+comparison honestly, including where the two disagree.
+
+#### Where they agree (independently, which is reassuring)
+
+| Point | Both documents |
+|---|---|
+| Lift the UltraNet v2 contract | Host vtable rather than symbol lookup, ABI version handshake, CMake `MODULE` targets, idempotent directory refresh |
+| Reject self-registering statics | Both reach it from the same measurement: a static registration object forces every element's object file into every binary and destroys the link-time laziness that exists today |
+| Explicit registration functions instead | Generated / explicit `Register…()` calls |
+| Create-by-name is the point of the registry | Enables document-driven and gallery-style construction |
+| Same-toolchain C++ across the boundary | `shared_ptr` in the contract, accepted as UltraNet already does |
+| No unloading in v1 | Process-lifetime residency |
+| Charts are a category, not a special case | The element system's `UCPluginCategory::Chart` |
+
+#### Where this document was wrong, and is now corrected
+
+1. **A chart-private registry.** §12.5 proposed `UltraCanvasChartRegistry`.
+   Withdrawn — charts register `UCElementDescriptor`s into
+   `UltraCanvasElementRegistry` like every other element. `CreateChart(...)`
+   survives only as a typed convenience wrapper over it.
+2. **A chart-private entry point.** `UltraCanvasChart_PluginInit` is withdrawn
+   in favour of `UltraCanvas_PluginInit`, which also brings a `bool` refusal
+   path and the `frameworkAbiTag` C++-boundary guard this document lacked.
+3. **Discovery by directory scan.** Replaced by the element system's manifest
+   index: a chart gallery lists installed charts without opening any DSO.
+4. **Type-name convention.** Chart type names are kebab-case
+   (`"parallel-coordinate-chart"`), matching the element descriptors, not the
+   PascalCase this document first used.
+5. **Install location.** The element system's plugin directory list and
+   `ultracanvas_add_element_plugin` helper replace the build-tree
+   `${binary}/Plugins/Charts` path, and bring the security policy with them
+   (never the working directory).
+
+#### Where they genuinely conflict — one decision, deliberately taken
+
+The element proposal's goal 4 is **zero breakage**:
+`ULTRACANVAS_BUNDLED_ELEMENTS=ON` by default, every element still compiled into
+the core library, no existing application affected.
+
+The chart decisions in §12.10 go the other way for charts specifically:
+`ULTRACANVAS_CHARTS` defaults to **empty** and runtime modules default to
+**on**, so a default build ships a chart-free core.
+
+This is a real divergence, not an oversight. It is compatible with the element
+system's design — that document explicitly supports the lean mode
+(`BUNDLED_ELEMENTS=OFF` plus a plugin list, "ULTRA OS uses this mode") — but it
+makes **charts the first category to adopt plugin-first as its default** while
+diagrams, widgets and tools stay bundled. The cost is the one already recorded
+in §12.11: this repository's own applications must declare their chart sets, and
+DemoApp (about 25 chart types through typed factories) stops linking until it
+does. That work belongs in the same commit as the target split.
+
+If that cost is judged too high at integration time, the fallback is to align
+with the element system's default (`ULTRACANVAS_CHARTS=all`) and let individual
+products opt into the lean build — which changes one CMake default and nothing
+else in this design.
+
+#### What the chart side still contributes that the element system does not cover
+
+* **Typed configuration across a module boundary.** `UCElementDescriptor::create`
+  returns `UltraCanvasUIElement`, which cannot reach `SetKDEBandwidth()` or
+  `SetLevelStep()`. The three-path rule and the base-class `SetProperty` surface
+  in §12.11 fill that gap, and it applies to every category, not just charts —
+  worth folding back into the element proposal.
+* **A shared engine instance.** Chart modules are unusual in needing one shared
+  service object (registry, label service, theme) rather than being
+  self-contained, which is why the engine builds `SHARED` when modules are on.
+  Other categories have no equivalent requirement.
+* **Inter-module inheritance.** Four chart classes derive from
+  `UltraCanvasHeatmapChartElement` and one from `UltraCanvasContourSurface3DElement`
+  (§12.7). Per-element DSOs therefore need a dependency edge between modules —
+  a case the element proposal's one-DSO-many-descriptors model handles by
+  grouping, but which per-chart packaging must solve by linking.
+
+#### Sequencing
+
+The chart work should **not** ship its own loader. Concretely:
+
+* Chart engine P1 (the render frame and the model layer) has no dependency on
+  the plugin system at all and proceeds as planned.
+* The chart **registry integration** lands on top of element-plugin P1 (the
+  registry and bundled providers).
+* Chart **modules** land on top of element-plugin P2 (the DSO loader), reusing
+  `UltraCanvasPluginLoader` rather than adding a second implementation.
+
+If the chart work reaches that point first, it should implement the shared
+registry from the element proposal rather than a chart-local one.
